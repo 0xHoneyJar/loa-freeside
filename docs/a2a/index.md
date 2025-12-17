@@ -188,7 +188,19 @@ This document maintains organizational memory across sprints for the Sietch proj
 |-------------|--------|-----|
 | Development | 🟡 Local only | - |
 | Staging | ⏳ Not deployed | - |
-| Production | ⏳ Not deployed | - |
+| Production | Ready to deploy | sietch-api.honeyjar.xyz (pending DNS) |
+
+### Deployment Documentation
+- `deployment-report.md` - DevOps deployment report (✅ Created)
+- `sietch-service/docs/deployment/PRE_DEPLOYMENT_CHECKLIST.md` - Credential setup guide (✅ Created)
+- `sietch-service/docs/deployment/DEPLOYMENT_RUNBOOK.md` - Full deployment runbook (✅ Sprint 4)
+
+### User Action Items
+- [ ] Configure DNS A record for sietch-api.honeyjar.xyz
+- [ ] Setup Discord bot and obtain credentials
+- [ ] Setup trigger.dev account and credentials
+- [ ] Configure Collab.Land token gates
+- [ ] Execute deployment commands
 
 ---
 
@@ -237,4 +249,4 @@ This document maintains organizational memory across sprints for the Sietch proj
 
 ---
 
-*Last Updated: December 18, 2025 (Sprint 5 COMPLETED - SIETCH MVP PRODUCTION READY)*
+*Last Updated: December 18, 2025 (All sprints complete, deployment ready pending user prerequisites)*
