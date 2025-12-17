@@ -185,17 +185,17 @@ Sietch is a token-gated Discord community for the top 69 BGT holders who have ne
 
 ### Tasks
 
-#### S2-T1: Express API Setup
+#### S2-T1: Express API Setup ✅
 
 **Description**: Set up Express server with middleware and route structure.
 
 **Acceptance Criteria**:
-- [ ] `src/index.ts` starts Express server
-- [ ] `src/api/routes.ts` with route definitions
-- [ ] `src/api/middleware.ts` with error handling, rate limiting
-- [ ] CORS configured for expected origins
-- [ ] Request logging via pino-http
-- [ ] Graceful shutdown handling
+- [x] `src/index.ts` starts Express server
+- [x] `src/api/routes.ts` with route definitions
+- [x] `src/api/middleware.ts` with error handling, rate limiting
+- [x] CORS configured for expected origins
+- [x] Request logging via pino-http
+- [x] Graceful shutdown handling
 
 **Estimated Effort**: 4 hours
 **Assigned To**: Backend Developer
@@ -204,17 +204,17 @@ Sietch is a token-gated Discord community for the top 69 BGT holders who have ne
 
 ---
 
-#### S2-T2: Public API Endpoints
+#### S2-T2: Public API Endpoints ✅
 
 **Description**: Implement `/eligibility` and `/health` endpoints.
 
 **Acceptance Criteria**:
-- [ ] `GET /eligibility` returns top_69 and top_7 arrays per SDD spec
-- [ ] `GET /health` returns service health status
-- [ ] Response includes `updated_at` and `grace_period` fields
-- [ ] Rate limiting: 100 req/min per IP
-- [ ] Cache-Control headers set (max-age=300)
-- [ ] Input validation with Zod
+- [x] `GET /eligibility` returns top_69 and top_7 arrays per SDD spec
+- [x] `GET /health` returns service health status
+- [x] Response includes `updated_at` and `grace_period` fields
+- [x] Rate limiting: 100 req/min per IP
+- [x] Cache-Control headers set (max-age=300)
+- [x] Input validation with Zod
 
 **Estimated Effort**: 5 hours
 **Assigned To**: Backend Developer
@@ -223,18 +223,18 @@ Sietch is a token-gated Discord community for the top 69 BGT holders who have ne
 
 ---
 
-#### S2-T3: Admin API Endpoints
+#### S2-T3: Admin API Endpoints ✅
 
 **Description**: Implement protected admin endpoints for overrides and audit log.
 
 **Acceptance Criteria**:
-- [ ] `POST /admin/override` creates admin override
-- [ ] `GET /admin/overrides` lists active overrides
-- [ ] `DELETE /admin/override/:id` deactivates override
-- [ ] `GET /admin/audit-log` returns audit entries
-- [ ] API key authentication via `X-API-Key` header
-- [ ] Rate limiting: 30 req/min per API key
-- [ ] All admin actions logged to audit_log
+- [x] `POST /admin/override` creates admin override
+- [x] `GET /admin/overrides` lists active overrides
+- [x] `DELETE /admin/override/:id` deactivates override
+- [x] `GET /admin/audit-log` returns audit entries
+- [x] API key authentication via `X-API-Key` header
+- [x] Rate limiting: 30 req/min per API key
+- [x] All admin actions logged to audit_log
 
 **Estimated Effort**: 5 hours
 **Assigned To**: Backend Developer
@@ -243,18 +243,18 @@ Sietch is a token-gated Discord community for the top 69 BGT holders who have ne
 
 ---
 
-#### S2-T4: trigger.dev Setup
+#### S2-T4: trigger.dev Setup ✅
 
 **Description**: Configure trigger.dev project and implement scheduled task.
 
 **Acceptance Criteria**:
-- [ ] `trigger.config.ts` with project configuration
-- [ ] trigger.dev project created and linked
-- [ ] `trigger/syncEligibility.ts` with scheduled task
-- [ ] Cron schedule: every 6 hours (0 */6 * * *)
-- [ ] Task calls chain service, computes diff, stores snapshot
-- [ ] Retry configuration: 3 attempts with exponential backoff
-- [ ] Task logs progress via trigger.dev logger
+- [x] `trigger.config.ts` with project configuration
+- [x] trigger.dev project created and linked
+- [x] `trigger/syncEligibility.ts` with scheduled task
+- [x] Cron schedule: every 6 hours (0 */6 * * *)
+- [x] Task calls chain service, computes diff, stores snapshot
+- [x] Retry configuration: 3 attempts with exponential backoff
+- [x] Task logs progress via trigger.dev logger
 
 **Estimated Effort**: 6 hours
 **Assigned To**: Backend Developer
@@ -263,16 +263,16 @@ Sietch is a token-gated Discord community for the top 69 BGT holders who have ne
 
 ---
 
-#### S2-T5: Grace Period Logic
+#### S2-T5: Grace Period Logic ✅
 
 **Description**: Implement grace period handling for RPC outages.
 
 **Acceptance Criteria**:
-- [ ] `health_status` table tracks consecutive failures
-- [ ] After 24 hours without successful query, enter grace period
-- [ ] During grace period: serve cached data, no revocations
-- [ ] `/health` endpoint reports `status: degraded` during grace period
-- [ ] Grace period flag included in `/eligibility` response
+- [x] `health_status` table tracks consecutive failures
+- [x] After 24 hours without successful query, enter grace period
+- [x] During grace period: serve cached data, no revocations
+- [x] `/health` endpoint reports `status: degraded` during grace period
+- [x] Grace period flag included in `/eligibility` response
 
 **Estimated Effort**: 4 hours
 **Assigned To**: Backend Developer
@@ -281,16 +281,16 @@ Sietch is a token-gated Discord community for the top 69 BGT holders who have ne
 
 ---
 
-#### S2-T6: Collab.Land Integration Research
+#### S2-T6: Collab.Land Integration Research ✅
 
 **Description**: Investigate Collab.Land custom API token gating capabilities and document integration approach.
 
 **Acceptance Criteria**:
-- [ ] Research Collab.Land subscription tiers and API capabilities
-- [ ] Determine if custom API token gating is available
-- [ ] Document integration approach or identify alternatives
-- [ ] Create spike document: `docs/research/collabland-integration.md`
-- [ ] Decision made on integration path (Collab.Land vs direct role management)
+- [x] Research Collab.Land subscription tiers and API capabilities
+- [x] Determine if custom API token gating is available
+- [x] Document integration approach or identify alternatives
+- [x] Create spike document: `docs/research/collabland-integration.md`
+- [x] Decision made on integration path (Collab.Land vs direct role management)
 
 **Estimated Effort**: 4 hours
 **Assigned To**: Integration Developer
@@ -299,16 +299,16 @@ Sietch is a token-gated Discord community for the top 69 BGT holders who have ne
 
 ---
 
-#### S2-T7: RPC Resilience - Multiple Endpoints
+#### S2-T7: RPC Resilience - Multiple Endpoints ✅
 
 **Description**: Add support for multiple RPC endpoints with automatic fallback for improved reliability.
 
 **Acceptance Criteria**:
-- [ ] Configuration supports comma-separated list of RPC URLs
-- [ ] Chain service attempts primary RPC first, falls back to secondary on failure
-- [ ] Failed endpoints tracked and temporarily deprioritized
-- [ ] Health check tests all configured endpoints
-- [ ] Logging indicates which endpoint is being used
+- [x] Configuration supports comma-separated list of RPC URLs
+- [x] Chain service attempts primary RPC first, falls back to secondary on failure
+- [x] Failed endpoints tracked and temporarily deprioritized
+- [x] Health check tests all configured endpoints
+- [x] Logging indicates which endpoint is being used
 
 **Estimated Effort**: 4 hours
 **Assigned To**: Backend Developer
@@ -318,16 +318,16 @@ Sietch is a token-gated Discord community for the top 69 BGT holders who have ne
 
 ---
 
-#### S2-T8: Historical Event Caching
+#### S2-T8: Historical Event Caching ✅
 
 **Description**: Implement caching for historical blockchain events to improve sync performance.
 
 **Acceptance Criteria**:
-- [ ] Cache historical claim/burn events in database
-- [ ] Sync task only queries new blocks since last cached block
-- [ ] `last_synced_block` tracked in health_status table
-- [ ] Full resync capability via admin endpoint or flag
-- [ ] Significant performance improvement on subsequent syncs
+- [x] Cache historical claim/burn events in database
+- [x] Sync task only queries new blocks since last cached block
+- [x] `last_synced_block` tracked in health_status table
+- [x] Full resync capability via admin endpoint or flag
+- [x] Significant performance improvement on subsequent syncs
 
 **Estimated Effort**: 5 hours
 **Assigned To**: Backend Developer
@@ -339,12 +339,12 @@ Sietch is a token-gated Discord community for the top 69 BGT holders who have ne
 
 ### Sprint 2 Success Metrics
 
-- [ ] API endpoints return correct data
-- [ ] trigger.dev task runs successfully on schedule
-- [ ] Grace period logic activates correctly
-- [ ] Collab.Land integration path documented
-- [ ] RPC fallback working with multiple endpoints
-- [ ] Historical event caching reduces sync time
+- [x] API endpoints return correct data
+- [x] trigger.dev task runs successfully on schedule
+- [x] Grace period logic activates correctly
+- [x] Collab.Land integration path documented
+- [x] RPC fallback working with multiple endpoints
+- [x] Historical event caching reduces sync time
 
 ---
 
