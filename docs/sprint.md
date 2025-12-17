@@ -631,16 +631,16 @@ Sietch is a token-gated Discord community for the top 69 BGT holders who have ne
 
 ### Tasks
 
-#### S5-T1: DM Notifications
+#### S5-T1: DM Notifications ✅
 
 **Description**: Implement direct message notifications for access changes.
 
 **Acceptance Criteria**:
-- [ ] `handleMemberRemoval()` sends DM to removed member
-- [ ] DM includes: reason, previous rank, current rank, path to regain access
-- [ ] Handles case where user has DMs disabled (log warning, continue)
-- [ ] `handleNaibPromotion()` sends congratulatory DM
-- [ ] `handleNaibDemotion()` sends notification DM
+- [x] `handleMemberRemoval()` sends DM to removed member
+- [x] DM includes: reason, previous rank, current rank, path to regain access
+- [x] Handles case where user has DMs disabled (log warning, continue)
+- [x] `handleNaibPromotion()` sends congratulatory DM
+- [x] `handleNaibDemotion()` sends notification DM
 
 **Estimated Effort**: 5 hours
 **Assigned To**: Integration Developer
@@ -649,16 +649,16 @@ Sietch is a token-gated Discord community for the top 69 BGT holders who have ne
 
 ---
 
-#### S5-T2: #the-door Announcements
+#### S5-T2: #the-door Announcements ✅
 
 **Description**: Implement public announcements for member joins and departures.
 
 **Acceptance Criteria**:
-- [ ] Post to #the-door when member becomes eligible
-- [ ] Post to #the-door when member loses eligibility
-- [ ] Post to #the-door on Naib promotion/demotion
-- [ ] Messages include: truncated wallet, reason, previous role
-- [ ] No PII exposed in announcements
+- [x] Post to #the-door when member becomes eligible
+- [x] Post to #the-door when member loses eligibility
+- [x] Post to #the-door on Naib promotion/demotion
+- [x] Messages include: truncated wallet, reason, previous role
+- [x] No PII exposed in announcements
 
 **Estimated Effort**: 4 hours
 **Assigned To**: Integration Developer
@@ -667,16 +667,16 @@ Sietch is a token-gated Discord community for the top 69 BGT holders who have ne
 
 ---
 
-#### S5-T3: Embed Builders for Notifications
+#### S5-T3: Embed Builders for Notifications ✅
 
 **Description**: Create rich embed templates for all notification types.
 
 **Acceptance Criteria**:
-- [ ] Removal DM embed per SDD example
-- [ ] Departure announcement embed
-- [ ] New eligible announcement embed
-- [ ] Naib promotion/demotion embeds
-- [ ] Consistent branding and color scheme
+- [x] Removal DM embed per SDD example
+- [x] Departure announcement embed
+- [x] New eligible announcement embed
+- [x] Naib promotion/demotion embeds
+- [x] Consistent branding and color scheme
 
 **Estimated Effort**: 3 hours
 **Assigned To**: Integration Developer
@@ -685,17 +685,17 @@ Sietch is a token-gated Discord community for the top 69 BGT holders who have ne
 
 ---
 
-#### S5-T4: Server Administration Guide
+#### S5-T4: Server Administration Guide ✅
 
 **Description**: Create operational documentation for server administration.
 
 **Acceptance Criteria**:
-- [ ] `docs/operations/server-admin.md` created
-- [ ] Common administrative tasks documented
-- [ ] Troubleshooting guide for common issues
-- [ ] How to manually trigger eligibility sync
-- [ ] How to add/remove admin overrides
-- [ ] How to check service health
+- [x] `docs/operations/server-admin.md` created
+- [x] Common administrative tasks documented
+- [x] Troubleshooting guide for common issues
+- [x] How to manually trigger eligibility sync
+- [x] How to add/remove admin overrides
+- [x] How to check service health
 
 **Estimated Effort**: 4 hours
 **Assigned To**: DevOps/Infra
@@ -704,18 +704,18 @@ Sietch is a token-gated Discord community for the top 69 BGT holders who have ne
 
 ---
 
-#### S5-T5: Deployment Runbook
+#### S5-T5: Deployment Runbook ✅
 
 **Description**: Create comprehensive deployment and maintenance runbook.
 
 **Acceptance Criteria**:
-- [ ] `docs/operations/deployment-runbook.md` created
-- [ ] Deployment procedure documented
-- [ ] Rollback procedure documented
-- [ ] Log locations and interpretation
-- [ ] How to restart services
-- [ ] Backup restoration procedure
-- [ ] Incident response checklist
+- [x] `docs/operations/deployment-runbook.md` created
+- [x] Deployment procedure documented
+- [x] Rollback procedure documented
+- [x] Log locations and interpretation
+- [x] How to restart services
+- [x] Backup restoration procedure
+- [x] Incident response checklist
 
 **Estimated Effort**: 4 hours
 **Assigned To**: DevOps/Infra
@@ -724,17 +724,17 @@ Sietch is a token-gated Discord community for the top 69 BGT holders who have ne
 
 ---
 
-#### S5-T6: Member Onboarding Guide
+#### S5-T6: Member Onboarding Guide ✅
 
 **Description**: Create documentation for community members.
 
 **Acceptance Criteria**:
-- [ ] `docs/community/onboarding.md` created
-- [ ] How to verify wallet with Collab.Land
-- [ ] Explanation of eligibility criteria
-- [ ] Channel guide (what's each channel for)
-- [ ] FAQ for common verification issues
-- [ ] Chatham House Rules explanation
+- [x] `docs/community/onboarding.md` created
+- [x] How to verify wallet with Collab.Land
+- [x] Explanation of eligibility criteria
+- [x] Channel guide (what's each channel for)
+- [x] FAQ for common verification issues
+- [x] Chatham House Rules explanation
 
 **Estimated Effort**: 3 hours
 **Assigned To**: Integration Developer
@@ -743,17 +743,17 @@ Sietch is a token-gated Discord community for the top 69 BGT holders who have ne
 
 ---
 
-#### S5-T7: Handover Documentation
+#### S5-T7: Handover Documentation ✅
 
 **Description**: Create comprehensive handover package for future maintainers.
 
 **Acceptance Criteria**:
-- [ ] `docs/handover/README.md` with overview
-- [ ] System architecture summary
-- [ ] All credentials and access documented (in secure location)
-- [ ] Known issues and workarounds
-- [ ] Contact information for escalation
-- [ ] Full list of external services and accounts
+- [x] `docs/handover/README.md` with overview
+- [x] System architecture summary
+- [x] All credentials and access documented (in secure location)
+- [x] Known issues and workarounds
+- [x] Contact information for escalation
+- [x] Full list of external services and accounts
 
 **Estimated Effort**: 4 hours
 **Assigned To**: All team members
@@ -764,10 +764,10 @@ Sietch is a token-gated Discord community for the top 69 BGT holders who have ne
 
 ### Sprint 5 Success Metrics
 
-- [ ] All notification types working correctly
-- [ ] Complete operational documentation
-- [ ] Complete member-facing documentation
-- [ ] Handover package ready for transfer
+- [x] All notification types working correctly
+- [x] Complete operational documentation
+- [x] Complete member-facing documentation
+- [x] Handover package ready for transfer
 
 ---
 
