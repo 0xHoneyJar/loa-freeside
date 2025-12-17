@@ -1,0 +1,109 @@
+/**
+ * SQLite Database Schema
+ *
+ * Tables:
+ * - eligibility_snapshots: Historical record of eligibility snapshots
+ * - current_eligibility: Fast lookups for current eligibility status
+ * - admin_overrides: Manual eligibility adjustments
+ * - audit_log: Event history for auditing
+ * - health_status: Service health tracking
+ * - wallet_mappings: Discord user to wallet address mappings
+ */
+
+/**
+ * SQL statements for creating database schema
+ */
+export const SCHEMA_SQL = `
+-- Enable WAL mode for better concurrent read performance
+PRAGMA journal_mode = WAL;
+PRAGMA foreign_keys = ON;
+
+-- Eligibility snapshots (historical record)
+CREATE TABLE IF NOT EXISTS eligibility_snapshots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  created_at TEXT DEFAULT (datetime('now')) NOT NULL,
+  data TEXT NOT NULL  -- Full eligibility list as JSON
+);
+
+CREATE INDEX IF NOT EXISTS idx_eligibility_snapshots_created
+  ON eligibility_snapshots(created_at);
+
+-- Current eligibility (fast lookups)
+CREATE TABLE IF NOT EXISTS current_eligibility (
+  address TEXT PRIMARY KEY COLLATE NOCASE,
+  rank INTEGER NOT NULL,
+  bgt_held TEXT NOT NULL,  -- Stored as string for bigint precision
+  role TEXT NOT NULL CHECK (role IN ('naib', 'fedaykin', 'none')),
+  updated_at TEXT DEFAULT (datetime('now')) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_current_eligibility_rank
+  ON current_eligibility(rank);
+
+CREATE INDEX IF NOT EXISTS idx_current_eligibility_role
+  ON current_eligibility(role);
+
+-- Admin overrides
+CREATE TABLE IF NOT EXISTS admin_overrides (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  address TEXT NOT NULL COLLATE NOCASE,
+  action TEXT NOT NULL CHECK (action IN ('add', 'remove')),
+  reason TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')) NOT NULL,
+  expires_at TEXT,  -- NULL = permanent
+  active INTEGER DEFAULT 1 NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_overrides_address
+  ON admin_overrides(address);
+
+CREATE INDEX IF NOT EXISTS idx_admin_overrides_active
+  ON admin_overrides(active);
+
+-- Audit log
+CREATE TABLE IF NOT EXISTS audit_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_type TEXT NOT NULL,
+  event_data TEXT NOT NULL,  -- JSON
+  created_at TEXT DEFAULT (datetime('now')) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_type
+  ON audit_log(event_type);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_created
+  ON audit_log(created_at);
+
+-- Health status (single row)
+CREATE TABLE IF NOT EXISTS health_status (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  last_successful_query TEXT,
+  last_query_attempt TEXT,
+  consecutive_failures INTEGER DEFAULT 0 NOT NULL,
+  in_grace_period INTEGER DEFAULT 0 NOT NULL,
+  updated_at TEXT DEFAULT (datetime('now')) NOT NULL
+);
+
+-- Insert default health status row if not exists
+INSERT OR IGNORE INTO health_status (id, consecutive_failures, in_grace_period)
+VALUES (1, 0, 0);
+
+-- Discord wallet mappings (populated by Collab.Land events)
+CREATE TABLE IF NOT EXISTS wallet_mappings (
+  discord_user_id TEXT PRIMARY KEY,
+  wallet_address TEXT NOT NULL COLLATE NOCASE,
+  verified_at TEXT DEFAULT (datetime('now')) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_wallet_mappings_address
+  ON wallet_mappings(wallet_address);
+`;
+
+/**
+ * Migration for cleaning up old snapshots (keep last 30 days)
+ */
+export const CLEANUP_OLD_SNAPSHOTS_SQL = `
+DELETE FROM eligibility_snapshots
+WHERE created_at < datetime('now', '-30 days');
+`;
