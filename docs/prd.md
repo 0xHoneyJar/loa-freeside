@@ -10,15 +10,15 @@
 
 ### 1.1 Product Overview
 
-**Sietch** is a token-gated Discord community for the top 69 BGT (Berachain Governance Token) holders who have demonstrated irrefutable commitment by never redeeming (burning) any of their BGT holdings. The community provides a dedicated space for high-conviction Berachain participants to connect, discuss, and potentially coordinate on ecosystem matters.
+**Sietch** is a token-gated Discord community for the top 69 BGT (Berachain Governance Token) holders who have never redeemed (burned) any of their BGT holdings. Eligibility is determined entirely on-chain, creating a verifiable and objective membership criteria. The community provides a dedicated space for these participants to connect, discuss, and potentially coordinate on ecosystem matters.
 
 ### 1.2 Problem Statement
 
-There is currently no dedicated location for Berachain participants with demonstrated skin in the game to connect and speak with each other. Existing community channels mix casual participants with deeply committed holders, diluting signal quality and preventing the formation of a cohesive power user group.
+There is currently no dedicated space for top BGT holders to connect with each other. Existing community channels serve a broad audience, which can dilute signal quality for participants seeking focused discussions with others who share similar on-chain positions.
 
 ### 1.3 Vision
 
-Sietch becomes a self-governing power user group within the Berachain ecosystem—a trusted forum where the most committed participants can have candid discussions under Chatham House Rules, share insights, and potentially coordinate on capital allocation decisions.
+Sietch becomes a self-governing group within the Berachain ecosystem—a forum where top BGT holders can have candid discussions under Chatham House Rules, share insights, and potentially coordinate on ecosystem matters.
 
 ### 1.4 Success Metrics
 
@@ -42,9 +42,9 @@ Eligibility is determined by:
 3. Ranked in top 69 by total BGT held meeting above criteria
 
 **Profile characteristics**:
-- Long-term Berachain believers
+- Active Berachain participants
 - Likely validators, liquidity providers, or protocol participants
-- Demonstrated patience and conviction (never sold/redeemed)
+- Have accumulated BGT through reward vaults without redeeming
 - Potential interest in governance and ecosystem coordination
 
 ### 2.2 Stakeholders

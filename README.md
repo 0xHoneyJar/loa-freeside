@@ -1,10 +1,10 @@
 # Sietch
 
-A token-gated Discord community for the top 69 BGT (Berachain Governance Token) holders who have demonstrated irrefutable commitment by never redeeming any of their BGT holdings.
+A token-gated Discord community for the top 69 BGT (Berachain Governance Token) holders who have never redeemed any of their BGT holdings.
 
 ## Overview
 
-Sietch provides a dedicated space for high-conviction Berachain participants to connect, discuss, and coordinate on ecosystem matters. Eligibility is determined entirely on-chain—only wallets that have claimed BGT from reward vaults and never burned (redeemed) any BGT qualify.
+Sietch provides a dedicated space for a specific, highly curated, subset of the Berachain community with demonstrated (over time and onchain actions) high-conviction Berachain participants to connect, discuss, and coordinate on ecosystem matters. Eligibility is determined entirely on-chain—only wallets that have claimed BGT from reward vaults and never burned (redeemed) any BGT qualify.
 
 ## How It Works
 
