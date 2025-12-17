@@ -12,6 +12,7 @@
 import { config } from './config.js';
 import { logger } from './utils/logger.js';
 import { startServer } from './api/index.js';
+import { discordService } from './services/discord.js';
 
 async function main() {
   logger.info({ config: { port: config.api.port, host: config.api.host } }, 'Starting Sietch Service');
@@ -19,7 +20,17 @@ async function main() {
   // Start Express API server (initializes database internally)
   await startServer();
 
-  // TODO: Initialize Discord bot
+  // Initialize Discord bot (non-blocking - errors don't prevent service startup)
+  if (config.discord.botToken) {
+    try {
+      await discordService.connect();
+      logger.info('Discord bot connected successfully');
+    } catch (error) {
+      logger.error({ error }, 'Failed to connect Discord bot - service will continue without Discord');
+    }
+  } else {
+    logger.warn('Discord token not configured - skipping Discord bot initialization');
+  }
 
   logger.info('Sietch Service started successfully');
 }

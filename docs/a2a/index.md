@@ -16,7 +16,7 @@ This document maintains organizational memory across sprints for the Sietch proj
 |--------|--------|----------------|--------|-------|
 | Sprint 1 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
 | Sprint 2 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
-| Sprint 3 | ⏳ Pending | - | - | - |
+| Sprint 3 | 🔄 In Progress | ✅ Complete | ⏳ Pending | ⏳ Pending |
 | Sprint 4 | ⏳ Pending | - | - | - |
 | Sprint 5 | ⏳ Pending | - | - | - |
 
@@ -100,6 +100,46 @@ This document maintains organizational memory across sprints for the Sietch proj
 
 ---
 
+## Sprint 3: Discord Bot & Server Setup
+
+**Goal**: Implement Discord bot integration for leaderboard postings and eligibility notifications
+
+**Directory**: `docs/a2a/sprint-3/`
+
+### Files
+- `reviewer.md` - Implementation report from engineer (✅ Created)
+- `engineer-feedback.md` - Review feedback from senior lead (⏳ Pending)
+- `auditor-sprint-feedback.md` - Security audit feedback (⏳ Pending)
+
+### Tasks Completed
+- [x] S3-T1: Discord Server Creation (Manual) - Documentation
+- [x] S3-T2: Discord Bot Application Setup (Manual) - Documentation
+- [x] S3-T3: Discord Service Implementation
+- [x] S3-T4: Leaderboard Embed Builder
+- [x] S3-T5: Integration with Scheduled Task
+- [x] S3-T6: Welcome Message & Rules Setup - Documentation
+
+### Implementation Summary
+- 640 new lines of TypeScript (Discord service + integration)
+- 190 lines of documentation (Discord setup guide)
+- Total codebase: ~3486 lines
+- 19 unit tests passing
+- Build verified successful
+
+### Key Files Created
+- `src/services/discord.ts` - Full Discord bot service (622 lines)
+- `src/services/index.ts` - Service exports module
+- `docs/discord-setup.md` - Server setup documentation
+
+### Key Files Modified
+- `src/index.ts` - Discord bot connection on startup
+- `src/trigger/syncEligibility.ts` - Discord notification integration
+
+### Linear Issue
+- [LAB-716](https://linear.app/laboratory/issue/LAB-716) - Sprint 3 Implementation
+
+---
+
 ## Deployment Status
 
 | Environment | Status | URL |
@@ -117,4 +157,4 @@ This document maintains organizational memory across sprints for the Sietch proj
 
 ---
 
-*Last Updated: December 17, 2025 (Sprint 2 Audit Approved)*
+*Last Updated: December 18, 2025 (Sprint 3 Implementation Complete)*

@@ -1,6 +1,7 @@
 import { schedules, logger as triggerLogger } from '@trigger.dev/sdk/v3';
 import { chainService } from '../services/chain.js';
 import { eligibilityService } from '../services/eligibility.js';
+import { discordService } from '../services/discord.js';
 import {
   initDatabase,
   saveEligibilitySnapshot,
@@ -68,6 +69,23 @@ export const syncEligibilityTask = schedules.task({
         promotedToNaib: diff.promotedToNaib.length,
         demotedFromNaib: diff.demotedFromNaib.length,
       });
+
+      // 8. Process Discord notifications (non-blocking)
+      // Errors in Discord don't fail the sync
+      try {
+        if (discordService.isConnected()) {
+          triggerLogger.info('Processing Discord notifications...');
+          await discordService.processEligibilityChanges(diff);
+          triggerLogger.info('Discord notifications processed');
+        } else {
+          triggerLogger.warn('Discord not connected, skipping notifications');
+        }
+      } catch (discordError) {
+        triggerLogger.error('Discord notification error (non-fatal)', {
+          error: discordError instanceof Error ? discordError.message : String(discordError),
+        });
+        // Don't re-throw - Discord errors shouldn't fail the sync
+      }
 
       triggerLogger.info('Eligibility sync completed successfully');
 
