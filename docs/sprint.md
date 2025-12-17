@@ -484,16 +484,16 @@ Sietch is a token-gated Discord community for the top 69 BGT holders who have ne
 
 ### Tasks
 
-#### S4-T1: Collab.Land Configuration
+#### S4-T1: Collab.Land Configuration ✅
 
 **Description**: Configure Collab.Land token gating based on research from S2-T6.
 
 **Acceptance Criteria**:
-- [ ] Collab.Land bot added to Sietch server
-- [ ] Custom API token gate configured pointing to `/eligibility` endpoint
-- [ ] Role mapping configured: top_7 → Naib, top_69 → Fedaykin
-- [ ] Verification flow tested with test wallet
-- [ ] Documentation of Collab.Land configuration
+- [x] Collab.Land bot added to Sietch server
+- [x] Custom API token gate configured pointing to `/eligibility` endpoint
+- [x] Role mapping configured: top_7 → Naib, top_69 → Fedaykin
+- [x] Verification flow tested with test wallet
+- [x] Documentation of Collab.Land configuration
 
 **Estimated Effort**: 6 hours
 **Assigned To**: Integration Developer
@@ -502,18 +502,18 @@ Sietch is a token-gated Discord community for the top 69 BGT holders who have ne
 
 ---
 
-#### S4-T2: VPS Environment Setup
+#### S4-T2: VPS Environment Setup ✅
 
 **Description**: Prepare OVH VPS for Sietch deployment.
 
 **Acceptance Criteria**:
-- [ ] Node.js 20 LTS installed
-- [ ] PM2 installed globally
-- [ ] nginx installed and configured
-- [ ] Let's Encrypt SSL certificate obtained
-- [ ] Directory structure created: `/opt/sietch/{current,releases,data,logs,backups}`
-- [ ] Environment file created at `/opt/sietch/.env`
-- [ ] Firewall configured (80, 443 only)
+- [x] Node.js 20 LTS installed
+- [x] PM2 installed globally
+- [x] nginx installed and configured
+- [x] Let's Encrypt SSL certificate obtained
+- [x] Directory structure created: `/opt/sietch/{current,releases,data,logs,backups}`
+- [x] Environment file created at `/opt/sietch/.env`
+- [x] Firewall configured (80, 443 only)
 
 **Estimated Effort**: 4 hours
 **Assigned To**: DevOps/Infra
@@ -522,17 +522,17 @@ Sietch is a token-gated Discord community for the top 69 BGT holders who have ne
 
 ---
 
-#### S4-T3: nginx Configuration
+#### S4-T3: nginx Configuration ✅
 
 **Description**: Configure nginx as reverse proxy with SSL and rate limiting.
 
 **Acceptance Criteria**:
-- [ ] nginx site config per SDD specification
-- [ ] SSL termination with Let's Encrypt cert
-- [ ] Rate limiting: 10 req/s with burst of 20
-- [ ] Proxy to localhost:3000
-- [ ] HTTP → HTTPS redirect
-- [ ] Domain DNS configured (sietch-api.example.com)
+- [x] nginx site config per SDD specification
+- [x] SSL termination with Let's Encrypt cert
+- [x] Rate limiting: 10 req/s with burst of 20
+- [x] Proxy to localhost:3000
+- [x] HTTP → HTTPS redirect
+- [x] Domain DNS configured (sietch-api.example.com)
 
 **Estimated Effort**: 3 hours
 **Assigned To**: DevOps/Infra
@@ -541,16 +541,16 @@ Sietch is a token-gated Discord community for the top 69 BGT holders who have ne
 
 ---
 
-#### S4-T4: PM2 Configuration
+#### S4-T4: PM2 Configuration ✅
 
 **Description**: Configure PM2 for process management.
 
 **Acceptance Criteria**:
-- [ ] `ecosystem.config.js` created per SDD specification
-- [ ] Auto-restart on crash enabled
-- [ ] Memory limit: 256MB
-- [ ] Log rotation configured
-- [ ] PM2 startup script installed (survives reboot)
+- [x] `ecosystem.config.js` created per SDD specification
+- [x] Auto-restart on crash enabled
+- [x] Memory limit: 256MB
+- [x] Log rotation configured
+- [x] PM2 startup script installed (survives reboot)
 
 **Estimated Effort**: 2 hours
 **Assigned To**: DevOps/Infra
@@ -559,16 +559,16 @@ Sietch is a token-gated Discord community for the top 69 BGT holders who have ne
 
 ---
 
-#### S4-T5: Deployment Script
+#### S4-T5: Deployment Script ✅
 
 **Description**: Create deployment script for zero-downtime deploys.
 
 **Acceptance Criteria**:
-- [ ] `deploy.sh` script created per SDD specification
-- [ ] Clone, build, symlink workflow
-- [ ] Keeps last 5 releases for rollback
-- [ ] PM2 reload (not restart) for zero-downtime
-- [ ] Exit on any error (set -e)
+- [x] `deploy.sh` script created per SDD specification
+- [x] Clone, build, symlink workflow
+- [x] Keeps last 5 releases for rollback
+- [x] PM2 reload (not restart) for zero-downtime
+- [x] Exit on any error (set -e)
 
 **Estimated Effort**: 3 hours
 **Assigned To**: DevOps/Infra
@@ -577,17 +577,17 @@ Sietch is a token-gated Discord community for the top 69 BGT holders who have ne
 
 ---
 
-#### S4-T6: Initial Production Deployment
+#### S4-T6: Initial Production Deployment ✅
 
 **Description**: Deploy Sietch service to production and verify operation.
 
 **Acceptance Criteria**:
-- [ ] Application deployed and running
-- [ ] `/health` endpoint returns healthy status
-- [ ] `/eligibility` endpoint returns data
-- [ ] trigger.dev task registered and running
-- [ ] Discord bot online and posting
-- [ ] Collab.Land verification working
+- [x] Application deployed and running
+- [x] `/health` endpoint returns healthy status
+- [x] `/eligibility` endpoint returns data
+- [x] trigger.dev task registered and running
+- [x] Discord bot online and posting
+- [x] Collab.Land verification working
 
 **Estimated Effort**: 4 hours
 **Assigned To**: DevOps/Infra + Integration Developer
@@ -596,16 +596,16 @@ Sietch is a token-gated Discord community for the top 69 BGT holders who have ne
 
 ---
 
-#### S4-T7: Backup Script Setup
+#### S4-T7: Backup Script Setup ✅
 
 **Description**: Configure automated daily backups.
 
 **Acceptance Criteria**:
-- [ ] `backup.sh` script created per SDD specification
-- [ ] Cron job: daily at 3 AM
-- [ ] SQLite online backup (safe while running)
-- [ ] Retains last 7 days of backups
-- [ ] Backup directory secured (700 permissions)
+- [x] `backup.sh` script created per SDD specification
+- [x] Cron job: daily at 3 AM
+- [x] SQLite online backup (safe while running)
+- [x] Retains last 7 days of backups
+- [x] Backup directory secured (700 permissions)
 
 **Estimated Effort**: 2 hours
 **Assigned To**: DevOps/Infra
@@ -616,10 +616,10 @@ Sietch is a token-gated Discord community for the top 69 BGT holders who have ne
 
 ### Sprint 4 Success Metrics
 
-- [ ] Production deployment live and stable
-- [ ] Collab.Land verification working end-to-end
-- [ ] Backups running daily
-- [ ] All monitoring checks passing
+- [x] Production deployment live and stable
+- [x] Collab.Land verification working end-to-end
+- [x] Backups running daily
+- [x] All monitoring checks passing
 
 ---
 
