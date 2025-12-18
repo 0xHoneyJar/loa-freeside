@@ -243,17 +243,17 @@ The v1.0 MVP is complete with:
 
 ### Tasks
 
-#### S7-T1: Discord.js Slash Command Registration
+#### S7-T1: Discord.js Slash Command Registration ✅
 
 **Description**: Set up slash command infrastructure and register all profile-related commands.
 
 **Acceptance Criteria**:
-- [ ] Create command registration script
-- [ ] `/profile` command with `view` and `edit` subcommands
-- [ ] `/profile view [nym]` - optional nym parameter
-- [ ] `/profile edit` - triggers DM wizard
-- [ ] Commands registered with Discord API
-- [ ] Proper command option types and descriptions
+- [x] Create command registration script
+- [x] `/profile` command with `view` and `edit` subcommands
+- [x] `/profile view [nym]` - optional nym parameter
+- [x] `/profile edit` - triggers DM wizard
+- [x] Commands registered with Discord API
+- [x] Proper command option types and descriptions
 
 **Files to Create**:
 - `sietch-service/src/discord/commands/profile.ts`
@@ -266,20 +266,20 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S7-T2: Onboarding Service Implementation
+#### S7-T2: Onboarding Service Implementation ✅
 
 **Description**: Implement DM-based onboarding wizard with privacy assurances.
 
 **Acceptance Criteria**:
-- [ ] `startOnboarding()` - initiates wizard for new members
-- [ ] Welcome message with privacy assurances
-- [ ] Step 1: Nym selection with validation (modal input)
-- [ ] Step 2: PFP selection (upload/generate/skip buttons)
-- [ ] Step 3: Bio input (optional, modal)
-- [ ] `completeOnboarding()` - creates profile, assigns Onboarded role
-- [ ] Tracks onboarding state in memory (Map)
-- [ ] Awards initial badges (OG, Founding Fedaykin if applicable)
-- [ ] DM fallback for users with DMs disabled (ephemeral in bot channel)
+- [x] `startOnboarding()` - initiates wizard for new members
+- [x] Welcome message with privacy assurances
+- [x] Step 1: Nym selection with validation (modal input)
+- [x] Step 2: PFP selection (upload/generate/skip buttons)
+- [x] Step 3: Bio input (optional, modal)
+- [x] `completeOnboarding()` - creates profile, assigns Onboarded role
+- [x] Tracks onboarding state in memory (Map)
+- [x] Awards initial badges (OG, Founding Fedaykin if applicable)
+- [x] DM fallback for users with DMs disabled (ephemeral in bot channel)
 
 **Files to Create**:
 - `sietch-service/src/services/onboarding.ts`
@@ -290,17 +290,17 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S7-T3: Discord Interaction Handlers
+#### S7-T3: Discord Interaction Handlers ✅
 
 **Description**: Handle button clicks, modal submissions, and select menus for onboarding.
 
 **Acceptance Criteria**:
-- [ ] Button handler for onboarding flow (start, pfp options, bio options)
-- [ ] Modal handler for nym input
-- [ ] Modal handler for bio input
-- [ ] Select menu handler for avatar style selection (if implemented)
-- [ ] Proper error handling with user-friendly messages
-- [ ] Interaction tokens don't expire during flow
+- [x] Button handler for onboarding flow (start, pfp options, bio options)
+- [x] Modal handler for nym input
+- [x] Modal handler for bio input
+- [x] Select menu handler for avatar style selection (if implemented)
+- [x] Proper error handling with user-friendly messages
+- [x] Interaction tokens don't expire during flow
 
 **Files to Create**:
 - `sietch-service/src/discord/interactions/onboarding.ts`
@@ -312,17 +312,17 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S7-T4: Profile Embeds
+#### S7-T4: Profile Embeds ✅
 
 **Description**: Create Discord embed builders for profile display.
 
 **Acceptance Criteria**:
-- [ ] Own profile embed (includes stats, full badge list)
-- [ ] Public profile embed (privacy-filtered, no stats)
-- [ ] Consistent styling with Sietch branding
-- [ ] Proper field layout (tier, tenure, badges)
-- [ ] Thumbnail with PFP or generated avatar
-- [ ] Color coding by tier (Naib: gold, Fedaykin: blue)
+- [x] Own profile embed (includes stats, full badge list)
+- [x] Public profile embed (privacy-filtered, no stats)
+- [x] Consistent styling with Sietch branding
+- [x] Proper field layout (tier, tenure, badges)
+- [x] Thumbnail with PFP or generated avatar
+- [x] Color coding by tier (Naib: gold, Fedaykin: blue)
 
 **Files to Create**:
 - `sietch-service/src/discord/embeds/profile.ts`
@@ -334,17 +334,17 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S7-T5: Profile Command Handler
+#### S7-T5: Profile Command Handler ✅
 
 **Description**: Implement `/profile` command execution logic.
 
 **Acceptance Criteria**:
-- [ ] `/profile` (no args) - shows own profile (ephemeral)
-- [ ] `/profile view` (no nym) - shows own profile (ephemeral)
-- [ ] `/profile view [nym]` - shows target's public profile (public)
-- [ ] `/profile edit` - sends DM with edit wizard
-- [ ] Proper error messages for non-existent nyms
-- [ ] Onboarding check - prompts to complete if not done
+- [x] `/profile` (no args) - shows own profile (ephemeral)
+- [x] `/profile view` (no nym) - shows own profile (ephemeral)
+- [x] `/profile view [nym]` - shows target's public profile (public)
+- [x] `/profile edit` - sends DM with edit wizard
+- [x] Proper error messages for non-existent nyms
+- [x] Onboarding check - prompts to complete if not done
 
 **Files to Modify**:
 - `sietch-service/src/discord/commands/profile.ts`
@@ -355,17 +355,17 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S7-T6: Profile Edit Wizard
+#### S7-T6: Profile Edit Wizard ✅
 
 **Description**: Implement edit flow for existing profiles (change nym, PFP, bio).
 
 **Acceptance Criteria**:
-- [ ] Edit wizard in DM (similar to onboarding but for updates)
-- [ ] Change nym (validates uniqueness, no cooldown per requirements)
-- [ ] Change PFP (upload new, regenerate, keep current)
-- [ ] Change bio (edit or clear)
-- [ ] Confirmation message after changes
-- [ ] History tracking (nymLastChanged timestamp)
+- [x] Edit wizard in DM (similar to onboarding but for updates)
+- [x] Change nym (validates uniqueness, no cooldown per requirements)
+- [x] Change PFP (upload new, regenerate, keep current)
+- [x] Change bio (edit or clear)
+- [x] Confirmation message after changes
+- [x] History tracking (nymLastChanged timestamp)
 
 **Files to Modify**:
 - `sietch-service/src/services/onboarding.ts` (or create `edit.ts`)
@@ -377,18 +377,18 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S7-T7: Discord Service Extension
+#### S7-T7: Discord Service Extension ✅
 
 **Description**: Extend existing Discord service with new capabilities.
 
 **Acceptance Criteria**:
-- [ ] `assignRole()` - assign role by name (onboarded, engaged, veteran, etc.)
-- [ ] `removeRole()` - remove role by name
-- [ ] `getMemberById()` - get guild member by Discord ID
-- [ ] `getBotChannel()` - get bot commands channel
-- [ ] `notifyBadgeAwarded()` - DM user about badge (implemented in Sprint 8)
-- [ ] Event handlers for new member detection (guildMemberUpdate)
-- [ ] Interaction client setup for slash commands
+- [x] `assignRole()` - assign role by name (onboarded, engaged, veteran, etc.)
+- [x] `removeRole()` - remove role by name
+- [x] `getMemberById()` - get guild member by Discord ID
+- [x] `getBotChannel()` - get bot commands channel
+- [x] `notifyBadgeAwarded()` - DM user about badge (implemented in Sprint 8)
+- [x] Event handlers for new member detection (guildMemberUpdate)
+- [x] Interaction client setup for slash commands
 
 **Files to Modify**:
 - `sietch-service/src/services/discord.ts`
@@ -399,16 +399,16 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S7-T8: Member Detection and Auto-Onboarding
+#### S7-T8: Member Detection and Auto-Onboarding ✅
 
 **Description**: Detect when Collab.Land assigns a role and trigger onboarding.
 
 **Acceptance Criteria**:
-- [ ] Listen for `guildMemberUpdate` events
-- [ ] Detect when Naib or Fedaykin role is added
-- [ ] Check if member has completed onboarding
-- [ ] If not onboarded, call `startOnboarding()`
-- [ ] Graceful handling of members with DMs disabled
+- [x] Listen for `guildMemberUpdate` events
+- [x] Detect when Naib or Fedaykin role is added
+- [x] Check if member has completed onboarding
+- [x] If not onboarded, call `startOnboarding()`
+- [x] Graceful handling of members with DMs disabled
 
 **Files to Modify**:
 - `sietch-service/src/services/discord.ts`
@@ -422,12 +422,12 @@ The v1.0 MVP is complete with:
 
 ### Sprint 7 Success Criteria
 
-- [ ] New members receive DM onboarding wizard
-- [ ] Onboarding creates profile and assigns Onboarded role
-- [ ] `/profile` command works for own and public views
-- [ ] `/profile edit` allows updating nym, PFP, bio
-- [ ] Privacy is maintained - no wallet/Discord correlation in public views
-- [ ] All unit and integration tests pass
+- [x] New members receive DM onboarding wizard
+- [x] Onboarding creates profile and assigns Onboarded role
+- [x] `/profile` command works for own and public views
+- [x] `/profile edit` allows updating nym, PFP, bio
+- [x] Privacy is maintained - no wallet/Discord correlation in public views
+- [x] All unit and integration tests pass
 
 ---
 

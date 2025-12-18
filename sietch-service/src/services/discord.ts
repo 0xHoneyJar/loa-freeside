@@ -5,7 +5,14 @@ import {
   TextChannel,
   Guild,
   GuildMember,
+  Role,
+  User,
   type ColorResolvable,
+  type Interaction,
+  type ChatInputCommandInteraction,
+  type ButtonInteraction,
+  type ModalSubmitInteraction,
+  type AutocompleteInteraction,
 } from 'discord.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
@@ -13,9 +20,19 @@ import {
   getCurrentEligibility,
   getHealthStatus,
   getDiscordIdByWallet,
+  getWalletByDiscordId,
+  getEligibilityByAddress,
   logAuditEvent,
 } from '../db/index.js';
 import type { EligibilityEntry, EligibilityDiff } from '../types/index.js';
+import { registerCommands, handleProfileCommand } from '../discord/commands/index.js';
+import {
+  isOnboardingButton,
+  isOnboardingModal,
+  handleOnboardingButton,
+  handleOnboardingModal,
+} from '../discord/interactions/index.js';
+import { profileService } from './profile.js';
 
 /**
  * Discord embed colors
@@ -91,6 +108,9 @@ class DiscordService {
       intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.MessageContent,
       ],
     });
 
@@ -110,8 +130,13 @@ class DiscordService {
       try {
         this.guild = await this.client.guilds.fetch(config.discord.guildId);
         logger.info({ guildName: this.guild.name }, 'Connected to guild');
+
+        // Register slash commands
+        if (this.client.user) {
+          await registerCommands(this.client.user.id);
+        }
       } catch (error) {
-        logger.error({ error, guildId: config.discord.guildId }, 'Failed to fetch guild');
+        logger.error({ error, guildId: config.discord.guildId }, 'Failed to fetch guild or register commands');
       }
     });
 
@@ -133,6 +158,176 @@ class DiscordService {
       logger.warn('Discord shard disconnected, attempting reconnect...');
       this.handleReconnect();
     });
+
+    // Handle slash commands and interactions
+    this.client.on('interactionCreate', async (interaction) => {
+      await this.handleInteraction(interaction);
+    });
+
+    // Handle role changes for auto-onboarding
+    this.client.on('guildMemberUpdate', async (oldMember, newMember) => {
+      // Ensure we have full member objects
+      if (oldMember.partial) {
+        try {
+          await oldMember.fetch();
+        } catch (error) {
+          logger.warn({ error }, 'Could not fetch partial old member');
+          return;
+        }
+      }
+      await this.handleMemberUpdate(oldMember as GuildMember, newMember);
+    });
+  }
+
+  /**
+   * Handle incoming Discord interactions (slash commands, buttons, modals)
+   */
+  private async handleInteraction(interaction: Interaction): Promise<void> {
+    try {
+      // Slash commands
+      if (interaction.isChatInputCommand()) {
+        await this.handleSlashCommand(interaction);
+        return;
+      }
+
+      // Button clicks
+      if (interaction.isButton()) {
+        await this.handleButtonInteraction(interaction);
+        return;
+      }
+
+      // Modal submissions
+      if (interaction.isModalSubmit()) {
+        await this.handleModalInteraction(interaction);
+        return;
+      }
+
+      // Autocomplete
+      if (interaction.isAutocomplete()) {
+        await this.handleAutocomplete(interaction);
+        return;
+      }
+    } catch (error) {
+      logger.error({ error, interactionType: interaction.type }, 'Error handling interaction');
+    }
+  }
+
+  /**
+   * Handle slash command interactions
+   */
+  private async handleSlashCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+    const { commandName } = interaction;
+
+    switch (commandName) {
+      case 'profile':
+        await handleProfileCommand(interaction);
+        break;
+      default:
+        logger.warn({ commandName }, 'Unknown slash command');
+        await interaction.reply({
+          content: 'Unknown command',
+          ephemeral: true,
+        });
+    }
+  }
+
+  /**
+   * Handle button interactions
+   */
+  private async handleButtonInteraction(interaction: ButtonInteraction): Promise<void> {
+    const { customId } = interaction;
+
+    // Onboarding buttons
+    if (isOnboardingButton(customId)) {
+      await handleOnboardingButton(interaction);
+      return;
+    }
+
+    logger.warn({ customId }, 'Unknown button interaction');
+  }
+
+  /**
+   * Handle modal submission interactions
+   */
+  private async handleModalInteraction(interaction: ModalSubmitInteraction): Promise<void> {
+    const { customId } = interaction;
+
+    // Onboarding modals
+    if (isOnboardingModal(customId)) {
+      await handleOnboardingModal(interaction);
+      return;
+    }
+
+    logger.warn({ customId }, 'Unknown modal interaction');
+  }
+
+  /**
+   * Handle autocomplete interactions (for nym search)
+   */
+  private async handleAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
+    const { commandName } = interaction;
+    const focusedOption = interaction.options.getFocused(true);
+
+    if (commandName === 'profile' && focusedOption.name === 'nym') {
+      const query = focusedOption.value;
+      const results = profileService.searchByNym(query, 25);
+
+      await interaction.respond(
+        results.map((profile) => ({
+          name: profile.nym,
+          value: profile.nym,
+        }))
+      );
+      return;
+    }
+
+    await interaction.respond([]);
+  }
+
+  /**
+   * Handle member role updates for auto-onboarding detection
+   */
+  private async handleMemberUpdate(
+    oldMember: GuildMember,
+    newMember: GuildMember
+  ): Promise<void> {
+    // Check if Naib or Fedaykin role was added
+    const naibRoleId = config.discord.roles.naib;
+    const fedaykinRoleId = config.discord.roles.fedaykin;
+
+    const hadNaib = oldMember.roles.cache.has(naibRoleId);
+    const hadFedaykin = oldMember.roles.cache.has(fedaykinRoleId);
+    const hasNaib = newMember.roles.cache.has(naibRoleId);
+    const hasFedaykin = newMember.roles.cache.has(fedaykinRoleId);
+
+    // New role assignment detected
+    const gainedAccess = (!hadNaib && !hadFedaykin) && (hasNaib || hasFedaykin);
+
+    if (gainedAccess) {
+      await this.triggerOnboardingIfNeeded(newMember.user, hasNaib ? 'naib' : 'fedaykin');
+    }
+  }
+
+  /**
+   * Trigger onboarding for a user if they haven't completed it
+   */
+  private async triggerOnboardingIfNeeded(user: User, tier: 'naib' | 'fedaykin'): Promise<void> {
+    // Check if user already has a profile
+    const existingProfile = profileService.getProfileByDiscordId(user.id);
+    if (existingProfile) {
+      logger.debug({ userId: user.id }, 'User already has profile, skipping onboarding');
+      return;
+    }
+
+    // Lazy import to avoid circular dependency
+    const { onboardingService } = await import('./onboarding.js');
+
+    try {
+      await onboardingService.startOnboarding(user, tier);
+      logger.info({ userId: user.id, tier }, 'Triggered onboarding for new member');
+    } catch (error) {
+      logger.warn({ error, userId: user.id }, 'Could not start onboarding - DMs may be disabled');
+    }
   }
 
   /**
@@ -613,6 +808,151 @@ class DiscordService {
       )
       .setFooter({ text: 'Welcome to Sietch!' })
       .setTimestamp();
+  }
+
+  // ==========================================================================
+  // Role Management Methods (S7-T7)
+  // ==========================================================================
+
+  /**
+   * Get a guild member by Discord ID
+   */
+  async getMemberById(discordUserId: string): Promise<GuildMember | null> {
+    if (!this.isConnected()) {
+      logger.warn('Cannot get member: Discord not connected');
+      return null;
+    }
+
+    try {
+      const guild = this.getGuild();
+      return await guild.members.fetch(discordUserId);
+    } catch (error) {
+      logger.debug({ discordUserId, error }, 'Could not fetch member');
+      return null;
+    }
+  }
+
+  /**
+   * Assign a role to a member
+   */
+  async assignRole(discordUserId: string, roleId: string): Promise<boolean> {
+    if (!this.isConnected()) {
+      logger.warn('Cannot assign role: Discord not connected');
+      return false;
+    }
+
+    try {
+      const guild = this.getGuild();
+      const member = await guild.members.fetch(discordUserId);
+      await member.roles.add(roleId);
+      logger.info({ discordUserId, roleId }, 'Assigned role to member');
+      return true;
+    } catch (error) {
+      logger.error({ error, discordUserId, roleId }, 'Failed to assign role');
+      return false;
+    }
+  }
+
+  /**
+   * Remove a role from a member
+   */
+  async removeRole(discordUserId: string, roleId: string): Promise<boolean> {
+    if (!this.isConnected()) {
+      logger.warn('Cannot remove role: Discord not connected');
+      return false;
+    }
+
+    try {
+      const guild = this.getGuild();
+      const member = await guild.members.fetch(discordUserId);
+      await member.roles.remove(roleId);
+      logger.info({ discordUserId, roleId }, 'Removed role from member');
+      return true;
+    } catch (error) {
+      logger.error({ error, discordUserId, roleId }, 'Failed to remove role');
+      return false;
+    }
+  }
+
+  /**
+   * Get the bot commands channel (for fallback messages)
+   */
+  async getBotChannel(): Promise<TextChannel | null> {
+    if (!this.isConnected()) {
+      return null;
+    }
+
+    try {
+      const guild = this.getGuild();
+      // Try sietch lounge first, then fallback to the-door
+      const channelId = config.discord.channels.sietchLounge ?? config.discord.channels.theDoor;
+      const channel = await guild.channels.fetch(channelId);
+      return channel instanceof TextChannel ? channel : null;
+    } catch (error) {
+      logger.error({ error }, 'Failed to get bot channel');
+      return null;
+    }
+  }
+
+  /**
+   * Send a DM to a user with fallback to channel message
+   */
+  async sendDMWithFallback(
+    user: User,
+    content: { embeds?: EmbedBuilder[]; content?: string }
+  ): Promise<boolean> {
+    try {
+      await user.send(content);
+      return true;
+    } catch (error) {
+      logger.warn({ userId: user.id, error }, 'Could not send DM, trying channel fallback');
+
+      // Try sending to bot channel as ephemeral-like message
+      const channel = await this.getBotChannel();
+      if (channel) {
+        try {
+          await channel.send({
+            content: `<@${user.id}> ` + (content.content ?? ''),
+            embeds: content.embeds,
+          });
+          return true;
+        } catch (channelError) {
+          logger.error({ error: channelError }, 'Failed to send fallback message');
+        }
+      }
+
+      return false;
+    }
+  }
+
+  /**
+   * Notify user about badge award
+   */
+  async notifyBadgeAwarded(
+    discordUserId: string,
+    badgeName: string,
+    badgeEmoji: string,
+    badgeDescription: string
+  ): Promise<void> {
+    const member = await this.getMemberById(discordUserId);
+    if (!member) return;
+
+    const embed = new EmbedBuilder()
+      .setTitle(`${badgeEmoji} New Badge Earned!`)
+      .setDescription(`Congratulations! You've earned the **${badgeName}** badge.`)
+      .addFields({ name: 'Description', value: badgeDescription })
+      .setColor(COLORS.GOLD)
+      .setFooter({ text: 'Use /badges to view all your badges' })
+      .setTimestamp();
+
+    await this.sendDMWithFallback(member.user, { embeds: [embed] });
+  }
+
+  /**
+   * Get the Discord client (for direct access if needed)
+   */
+  getClient(): Client {
+    return this.client;
   }
 }
 

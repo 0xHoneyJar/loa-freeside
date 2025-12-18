@@ -20,7 +20,7 @@ This document maintains organizational memory across sprints for the Sietch proj
 | Sprint 4 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
 | Sprint 5 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
 | Sprint 6 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
-| Sprint 7 | ⏳ Not Started | - | - | - |
+| Sprint 7 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
 | Sprint 8 | ⏳ Not Started | - | - | - |
 | Sprint 9 | ⏳ Not Started | - | - | - |
 | Sprint 10 | ⏳ Not Started | - | - | - |
@@ -293,4 +293,49 @@ This document maintains organizational memory across sprints for the Sietch proj
 
 ---
 
-*Last Updated: December 18, 2025 (Sprint 6 review approved, pending security audit)*
+## Sprint 7: Onboarding & Core Identity (Social Layer v2.0)
+
+**Goal**: Implement DM-based onboarding wizard and Discord slash commands for profile management
+
+**Directory**: `docs/a2a/sprint-7/`
+
+### Files
+- `reviewer.md` - Implementation report from engineer (✅ Created)
+- `engineer-feedback.md` - Review feedback from senior lead (✅ Approved)
+- `auditor-sprint-feedback.md` - Security audit feedback (✅ Approved)
+- `COMPLETED` - Completion marker (✅ Created)
+
+### Tasks Completed
+- [x] S7-T1: Discord.js Slash Command Registration
+- [x] S7-T2: Onboarding Service Implementation
+- [x] S7-T3: Discord Interaction Handlers
+- [x] S7-T4: Profile Embeds
+- [x] S7-T5: Profile Command Handler
+- [x] S7-T6: Profile Edit Wizard
+- [x] S7-T7: Discord Service Extension
+- [x] S7-T8: Member Detection and Auto-Onboarding
+
+### Implementation Summary
+- 10 files created/modified
+- ~1,331 new lines of TypeScript
+- 19 unit tests passing
+- TypeScript compilation successful
+- Complete onboarding flow with privacy-first design
+- Slash command infrastructure for profile management
+
+### Key Files Created
+- `sietch-service/src/discord/commands/profile.ts` - Slash command definition
+- `sietch-service/src/discord/commands/index.ts` - Command registration
+- `sietch-service/src/discord/embeds/profile.ts` - Profile embed builders
+- `sietch-service/src/discord/interactions/onboarding.ts` - Interaction handlers
+- `sietch-service/src/services/onboarding.ts` - Onboarding wizard service
+
+### Key Files Modified
+- `sietch-service/src/services/discord.ts` - Extended with role management, interaction handling, auto-onboarding
+
+### Linear Issue
+- [LAB-732](https://linear.app/honeyjar/issue/LAB-732) - Sprint 7 Implementation
+
+---
+
+*Last Updated: December 18, 2025 (Sprint 7 COMPLETED - Security audit approved)*
