@@ -17,6 +17,7 @@ import {
   type ButtonInteraction,
   type ModalSubmitInteraction,
   type AutocompleteInteraction,
+  type StringSelectMenuInteraction,
 } from 'discord.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
@@ -38,6 +39,11 @@ import {
   handleStatsCommand,
   handleAdminBadgeCommand,
   handleAdminBadgeAutocomplete,
+  handleDirectoryCommand,
+  handleDirectoryButton,
+  handleDirectorySelect,
+  handleLeaderboardCommand,
+  DIRECTORY_INTERACTIONS,
 } from '../discord/commands/index.js';
 import {
   isOnboardingButton,
@@ -214,7 +220,7 @@ class DiscordService {
   }
 
   /**
-   * Handle incoming Discord interactions (slash commands, buttons, modals)
+   * Handle incoming Discord interactions (slash commands, buttons, modals, select menus)
    */
   private async handleInteraction(interaction: Interaction): Promise<void> {
     try {
@@ -233,6 +239,12 @@ class DiscordService {
       // Modal submissions
       if (interaction.isModalSubmit()) {
         await this.handleModalInteraction(interaction);
+        return;
+      }
+
+      // String select menus
+      if (interaction.isStringSelectMenu()) {
+        await this.handleSelectMenuInteraction(interaction);
         return;
       }
 
@@ -265,6 +277,12 @@ class DiscordService {
       case 'admin-badge':
         await handleAdminBadgeCommand(interaction);
         break;
+      case 'directory':
+        await handleDirectoryCommand(interaction);
+        break;
+      case 'leaderboard':
+        await handleLeaderboardCommand(interaction);
+        break;
       default:
         logger.warn({ commandName }, 'Unknown slash command');
         await interaction.reply({
@@ -286,7 +304,49 @@ class DiscordService {
       return;
     }
 
+    // Directory pagination buttons
+    if (this.isDirectoryButton(customId)) {
+      await handleDirectoryButton(interaction);
+      return;
+    }
+
     logger.warn({ customId }, 'Unknown button interaction');
+  }
+
+  /**
+   * Handle string select menu interactions
+   */
+  private async handleSelectMenuInteraction(interaction: StringSelectMenuInteraction): Promise<void> {
+    const { customId } = interaction;
+
+    // Directory filter/sort select menus
+    if (this.isDirectorySelectMenu(customId)) {
+      await handleDirectorySelect(interaction);
+      return;
+    }
+
+    logger.warn({ customId }, 'Unknown select menu interaction');
+  }
+
+  /**
+   * Check if a custom ID is a directory button
+   */
+  private isDirectoryButton(customId: string): boolean {
+    return (
+      customId === DIRECTORY_INTERACTIONS.prevPage ||
+      customId === DIRECTORY_INTERACTIONS.nextPage ||
+      customId === DIRECTORY_INTERACTIONS.refresh
+    );
+  }
+
+  /**
+   * Check if a custom ID is a directory select menu
+   */
+  private isDirectorySelectMenu(customId: string): boolean {
+    return (
+      customId === DIRECTORY_INTERACTIONS.tierFilter ||
+      customId === DIRECTORY_INTERACTIONS.sortBy
+    );
   }
 
   /**

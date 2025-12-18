@@ -51,6 +51,26 @@ export const adminRateLimiter = rateLimit({
 });
 
 /**
+ * Rate limiter for member-facing API endpoints
+ * 60 requests per minute per IP (Sprint 9)
+ */
+export const memberRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later' },
+  keyGenerator: (req) => {
+    // Use X-Forwarded-For for proxied requests, fall back to IP
+    const forwarded = req.headers['x-forwarded-for'];
+    if (typeof forwarded === 'string') {
+      return `member:${forwarded.split(',')[0]?.trim() ?? 'unknown'}`;
+    }
+    return `member:${req.ip ?? 'unknown'}`;
+  },
+});
+
+/**
  * API key authentication middleware for admin endpoints
  */
 export function requireApiKey(req: AuthenticatedRequest, res: Response, next: NextFunction): void {

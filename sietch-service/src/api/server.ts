@@ -4,7 +4,7 @@ import type { IncomingMessage, ServerResponse } from 'http';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { initDatabase, closeDatabase } from '../db/index.js';
-import { publicRouter, adminRouter } from './routes.js';
+import { publicRouter, adminRouter, memberRouter } from './routes.js';
 import {
   errorHandler,
   notFoundHandler,
@@ -59,7 +59,7 @@ function createApp(): Application {
     // Allow requests from any origin (Collab.Land will be calling from various sources)
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-API-Key, X-Request-ID');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-API-Key, X-Request-ID, X-Member-Nym');
     res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
 
     // Handle preflight requests
@@ -76,6 +76,9 @@ function createApp(): Application {
 
   // Public routes
   expressApp.use('/', publicRouter);
+
+  // Member API routes (under /api prefix)
+  expressApp.use('/api', memberRouter);
 
   // Admin routes (under /admin prefix)
   expressApp.use('/admin', adminRouter);

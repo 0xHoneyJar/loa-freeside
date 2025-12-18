@@ -3,10 +3,11 @@
  */
 
 export { startServer, stopServer, getApp } from './server.js';
-export { publicRouter, adminRouter } from './routes.js';
+export { publicRouter, adminRouter, memberRouter } from './routes.js';
 export {
   publicRateLimiter,
   adminRateLimiter,
+  memberRateLimiter,
   requireApiKey,
   errorHandler,
   notFoundHandler,

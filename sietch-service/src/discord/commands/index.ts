@@ -9,6 +9,8 @@ import { profileCommand } from './profile.js';
 import { badgesCommand } from './badges.js';
 import { statsCommand } from './stats.js';
 import { adminBadgeCommand } from './admin-badge.js';
+import { directoryCommand } from './directory.js';
+import { leaderboardCommand } from './leaderboard.js';
 
 /**
  * All registered slash commands
@@ -18,6 +20,8 @@ export const commands: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
   badgesCommand.toJSON(),
   statsCommand.toJSON(),
   adminBadgeCommand.toJSON(),
+  directoryCommand.toJSON(),
+  leaderboardCommand.toJSON(),
 ];
 
 /**
@@ -27,6 +31,15 @@ export { handleProfileCommand } from './profile.js';
 export { handleBadgesCommand, handleBadgesAutocomplete } from './badges.js';
 export { handleStatsCommand } from './stats.js';
 export { handleAdminBadgeCommand, handleAdminBadgeAutocomplete } from './admin-badge.js';
+
+// Sprint 9: Directory & Leaderboard commands
+export {
+  handleDirectoryCommand,
+  handleDirectoryButton,
+  handleDirectorySelect,
+  DIRECTORY_INTERACTIONS,
+} from './directory.js';
+export { handleLeaderboardCommand } from './leaderboard.js';
 
 /**
  * Register slash commands with Discord API

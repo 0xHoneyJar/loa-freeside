@@ -22,7 +22,7 @@ This document maintains organizational memory across sprints for the Sietch proj
 | Sprint 6 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
 | Sprint 7 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
 | Sprint 8 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
-| Sprint 9 | ⏳ Not Started | - | - | - |
+| Sprint 9 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
 | Sprint 10 | ⏳ Not Started | - | - | - |
 
 ---
@@ -389,4 +389,53 @@ This document maintains organizational memory across sprints for the Sietch proj
 
 ---
 
-*Last Updated: December 18, 2025 (Sprint 8 COMPLETED - Security audit approved)*
+## Sprint 9: Directory & Leaderboard (Social Layer v2.0)
+
+**Goal**: Implement member directory, engagement leaderboard, and REST API endpoints
+
+**Directory**: `docs/a2a/sprint-9/`
+
+### Files
+- `reviewer.md` - Implementation report from engineer (✅ Created)
+- `engineer-feedback.md` - Review feedback from senior lead (✅ Approved)
+- `auditor-sprint-feedback.md` - Security audit feedback (✅ Approved)
+- `COMPLETED` - Completion marker (✅ Created)
+
+### Tasks Completed
+- [x] S9-T1: Directory Service Implementation (145 lines)
+- [x] S9-T2: Leaderboard Service Implementation (150 lines)
+- [x] S9-T3: Directory Slash Command (/directory with pagination)
+- [x] S9-T4: Leaderboard Slash Command (/leaderboard)
+- [x] S9-T5: Directory & Leaderboard Embeds (200 lines)
+- [x] S9-T6: REST API - Profile Endpoints (/api/profile, /api/members/:nym)
+- [x] S9-T7: REST API - Directory & Badges Endpoints (/api/directory, /api/badges, /api/leaderboard)
+- [x] S9-T8: REST API - Admin Badge Endpoints (/admin/badges/award, /admin/badges/:memberId/:badgeId)
+- [x] S9-T9: API Rate Limiting Extension (60 req/min member limiter)
+
+### Implementation Summary
+- 14 files created/modified
+- ~1,250 new lines of TypeScript
+- Interactive directory browser with filters (tier, sort)
+- Public engagement leaderboard (badge count ranking)
+- Full REST API for profiles, directory, badges
+- TypeScript compilation successful
+
+### Key Files Created
+- `sietch-service/src/services/directory.ts` - Directory service with filters
+- `sietch-service/src/services/leaderboard.ts` - Leaderboard service
+- `sietch-service/src/discord/commands/directory.ts` - Interactive /directory command
+- `sietch-service/src/discord/commands/leaderboard.ts` - /leaderboard command
+- `sietch-service/src/discord/embeds/directory.ts` - Directory & leaderboard embeds
+
+### Key Files Modified
+- `sietch-service/src/api/routes.ts` - New member and admin badge endpoints
+- `sietch-service/src/api/middleware.ts` - Member rate limiter
+- `sietch-service/src/services/discord.ts` - Button & select menu handlers
+- `sietch-service/src/types/index.ts` - New audit event types
+
+### Linear Issue
+- [LAB-734](https://linear.app/honeyjar/issue/LAB-734) - Sprint 9 Implementation
+
+---
+
+*Last Updated: December 18, 2025 (Sprint 9 COMPLETED - Security audit approved)*

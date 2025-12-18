@@ -113,7 +113,9 @@ export interface AuditLogEntry {
     | 'naib_promotion'
     | 'naib_demotion'
     | 'grace_period_entered'
-    | 'grace_period_exited';
+    | 'grace_period_exited'
+    | 'admin_badge_award'
+    | 'admin_badge_revoke';
   /** Event-specific data */
   eventData: Record<string, unknown>;
   /** When the event occurred */

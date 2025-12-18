@@ -650,18 +650,18 @@ The v1.0 MVP is complete with:
 
 ### Tasks
 
-#### S9-T1: Directory Service Implementation
+#### S9-T1: Directory Service Implementation ✅
 
 **Description**: Implement directory browsing with pagination and filtering.
 
 **Acceptance Criteria**:
-- [ ] `getDirectory()` - paginated member list
-- [ ] Filter by tier (naib, fedaykin)
-- [ ] Filter by badge (has specific badge)
-- [ ] Filter by tenure category (OG, veteran, elder)
-- [ ] Sort by nym (alphabetical), tenure, badge count
-- [ ] Privacy filtering - only public fields returned
-- [ ] Efficient queries with proper indexing
+- [x] `getDirectory()` - paginated member list
+- [x] Filter by tier (naib, fedaykin)
+- [x] Filter by badge (has specific badge)
+- [x] Filter by tenure category (OG, veteran, elder)
+- [x] Sort by nym (alphabetical), tenure, badge count
+- [x] Privacy filtering - only public fields returned
+- [x] Efficient queries with proper indexing
 
 **Files to Create**:
 - `sietch-service/src/services/directory.ts`
@@ -672,16 +672,16 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S9-T2: Leaderboard Service Implementation
+#### S9-T2: Leaderboard Service Implementation ✅
 
 **Description**: Implement engagement leaderboard (rankings + badge counts only).
 
 **Acceptance Criteria**:
-- [ ] `getLeaderboard()` - top N members by badge count
-- [ ] Returns rank, nym, pfp, badge count, tier
-- [ ] Does NOT return activity stats (privacy)
-- [ ] Does NOT return wallet info
-- [ ] Tiebreaker: tenure (older members rank higher)
+- [x] `getLeaderboard()` - top N members by badge count
+- [x] Returns rank, nym, pfp, badge count, tier
+- [x] Does NOT return activity stats (privacy)
+- [x] Does NOT return wallet info
+- [x] Tiebreaker: tenure (older members rank higher)
 
 **Files to Create**:
 - `sietch-service/src/services/leaderboard.ts`
@@ -692,16 +692,16 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S9-T3: Directory Slash Command
+#### S9-T3: Directory Slash Command ✅
 
 **Description**: Implement `/directory` command with interactive browsing.
 
 **Acceptance Criteria**:
-- [ ] `/directory` - opens interactive directory browser (ephemeral)
-- [ ] Pagination buttons (Previous, Next, page indicator)
-- [ ] Filter dropdown (All, Naib only, Fedaykin only, badge filters)
-- [ ] Members displayed in embed with nym, tier, badges preview
-- [ ] Click member to view full profile (button or mention)
+- [x] `/directory` - opens interactive directory browser (ephemeral)
+- [x] Pagination buttons (Previous, Next, page indicator)
+- [x] Filter dropdown (All, Naib only, Fedaykin only, badge filters)
+- [x] Members displayed in embed with nym, tier, badges preview
+- [x] Click member to view full profile (button or mention)
 
 **Files to Create**:
 - `sietch-service/src/discord/commands/directory.ts`
@@ -713,16 +713,16 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S9-T4: Leaderboard Slash Command
+#### S9-T4: Leaderboard Slash Command ✅
 
 **Description**: Implement `/leaderboard` command.
 
 **Acceptance Criteria**:
-- [ ] `/leaderboard` - shows engagement leaderboard (public)
-- [ ] Top 20 members by badge count
-- [ ] Rank, nym, badge count, tier shown
-- [ ] Color-coded by tier
-- [ ] No activity stats (privacy per SDD)
+- [x] `/leaderboard` - shows engagement leaderboard (public)
+- [x] Top 20 members by badge count
+- [x] Rank, nym, badge count, tier shown
+- [x] Color-coded by tier
+- [x] No activity stats (privacy per SDD)
 
 **Files to Create**:
 - `sietch-service/src/discord/commands/leaderboard.ts`
@@ -733,16 +733,16 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S9-T5: Directory Embeds
+#### S9-T5: Directory Embeds ✅
 
 **Description**: Create embed builders for directory display.
 
 **Acceptance Criteria**:
-- [ ] Directory list embed (paginated)
-- [ ] Leaderboard embed
-- [ ] Consistent styling
-- [ ] Badge emoji display
-- [ ] Footer with pagination info
+- [x] Directory list embed (paginated)
+- [x] Leaderboard embed
+- [x] Consistent styling
+- [x] Badge emoji display
+- [x] Footer with pagination info
 
 **Files to Create**:
 - `sietch-service/src/discord/embeds/directory.ts`
@@ -753,18 +753,18 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S9-T6: REST API - Profile Endpoints
+#### S9-T6: REST API - Profile Endpoints ✅
 
 **Description**: Implement REST API endpoints for profile operations.
 
 **Acceptance Criteria**:
-- [ ] `GET /api/profile` - own profile (session auth)
-- [ ] `PUT /api/profile` - update own profile (session auth)
-- [ ] `POST /api/profile/pfp` - upload PFP (multipart, session auth)
-- [ ] `GET /api/members/:nym` - public profile (no auth)
-- [ ] `GET /api/members/:nym/badges` - member badges (no auth)
-- [ ] Privacy filtering on public endpoints
-- [ ] Proper error responses (404, 400, 401)
+- [x] `GET /api/profile` - own profile (session auth)
+- [x] `PUT /api/profile` - update own profile (session auth)
+- [x] `POST /api/profile/pfp` - upload PFP (multipart, session auth)
+- [x] `GET /api/members/:nym` - public profile (no auth)
+- [x] `GET /api/members/:nym/badges` - member badges (no auth)
+- [x] Privacy filtering on public endpoints
+- [x] Proper error responses (404, 400, 401)
 
 **Files to Create**:
 - `sietch-service/src/api/handlers/profile.ts`
@@ -778,16 +778,16 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S9-T7: REST API - Directory & Badges Endpoints
+#### S9-T7: REST API - Directory & Badges Endpoints ✅
 
 **Description**: Implement REST API endpoints for directory and badges.
 
 **Acceptance Criteria**:
-- [ ] `GET /api/directory` - paginated directory with filters
-- [ ] `GET /api/badges` - all available badges
-- [ ] `GET /api/leaderboard` - engagement leaderboard
-- [ ] Query params for pagination and filters
-- [ ] Response schemas match SDD
+- [x] `GET /api/directory` - paginated directory with filters
+- [x] `GET /api/badges` - all available badges
+- [x] `GET /api/leaderboard` - engagement leaderboard
+- [x] Query params for pagination and filters
+- [x] Response schemas match SDD
 
 **Files to Create**:
 - `sietch-service/src/api/handlers/directory.ts`
@@ -802,16 +802,16 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S9-T8: REST API - Admin Badge Endpoints
+#### S9-T8: REST API - Admin Badge Endpoints ✅
 
 **Description**: Implement admin endpoints for badge management.
 
 **Acceptance Criteria**:
-- [ ] `POST /api/admin/badges/award` - award badge (API key auth)
-- [ ] `DELETE /api/admin/badges/:memberId/:badgeId` - revoke badge (API key auth)
-- [ ] Request validation
-- [ ] Audit logging for badge operations
-- [ ] Error handling for non-existent members/badges
+- [x] `POST /api/admin/badges/award` - award badge (API key auth)
+- [x] `DELETE /api/admin/badges/:memberId/:badgeId` - revoke badge (API key auth)
+- [x] Request validation
+- [x] Audit logging for badge operations
+- [x] Error handling for non-existent members/badges
 
 **Files to Modify**:
 - `sietch-service/src/api/handlers/badges.ts`
@@ -823,17 +823,17 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S9-T9: API Rate Limiting Extension
+#### S9-T9: API Rate Limiting Extension ✅
 
 **Description**: Add rate limiting for new endpoints.
 
 **Acceptance Criteria**:
-- [ ] Directory endpoint: 50 req/min
-- [ ] Public profile: 100 req/min
-- [ ] Own profile: 30 req/min
-- [ ] Profile update: 10 req/min
-- [ ] PFP upload: 3 req/min
-- [ ] Admin badge: 30 req/min
+- [x] Directory endpoint: 50 req/min
+- [x] Public profile: 100 req/min
+- [x] Own profile: 30 req/min
+- [x] Profile update: 10 req/min
+- [x] PFP upload: 3 req/min
+- [x] Admin badge: 30 req/min
 
 **Files to Modify**:
 - `sietch-service/src/api/middleware.ts`
@@ -846,12 +846,12 @@ The v1.0 MVP is complete with:
 
 ### Sprint 9 Success Criteria
 
-- [ ] `/directory` command shows paginated member list with filters
-- [ ] `/leaderboard` shows top members by badge count
-- [ ] All REST API endpoints functional and documented
-- [ ] Privacy maintained across all endpoints
-- [ ] Rate limiting in place
-- [ ] All tests pass
+- [x] `/directory` command shows paginated member list with filters
+- [x] `/leaderboard` shows top members by badge count
+- [x] All REST API endpoints functional and documented
+- [x] Privacy maintained across all endpoints
+- [x] Rate limiting in place
+- [x] All tests pass
 
 ---
 

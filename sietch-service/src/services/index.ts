@@ -33,3 +33,7 @@ export {
   TENURE_THRESHOLDS,
   ROLE_THRESHOLDS,
 } from './badge.js';
+
+// Sprint 9: Directory & Leaderboard
+export { directoryService } from './directory.js';
+export { leaderboardService } from './leaderboard.js';
