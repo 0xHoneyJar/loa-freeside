@@ -6,8 +6,6 @@ import {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
-  Message,
-  type MessageComponentInteraction,
   type ModalSubmitInteraction,
   type ButtonInteraction,
 } from 'discord.js';
@@ -75,7 +73,7 @@ class OnboardingService {
   /**
    * Start onboarding for a new member
    */
-  async startOnboarding(user: User, tier: 'naib' | 'fedaykin'): Promise<void> {
+  async startOnboarding(user: User, _tier: 'naib' | 'fedaykin'): Promise<void> {
     const discordUserId = user.id;
 
     // Check if already has profile
@@ -555,6 +553,14 @@ class OnboardingService {
 
     // Complete onboarding
     profileService.completeOnboarding(profile.memberId);
+
+    // Assign @Onboarded role and sync dynamic roles (async, don't wait)
+    import('./roleManager.js').then(async ({ assignOnboardedRole, syncMemberRoles }) => {
+      await assignOnboardedRole(discordUserId);
+      await syncMemberRoles(profile.memberId);
+    }).catch((error) => {
+      logger.error({ error, discordUserId }, 'Failed to assign roles after onboarding');
+    });
 
     // Clean up session
     this.sessions.delete(discordUserId);

@@ -165,6 +165,63 @@ Monitor Collab.Land integration via:
 2. Sietch API `/health` endpoint
 3. Discord server audit logs
 
+## Integration with Sietch Onboarding
+
+### Automatic Onboarding Trigger
+
+When Collab.Land assigns the Naib or Fedaykin role to a new member, the Sietch bot detects this via the `guildMemberUpdate` event and automatically triggers the onboarding flow:
+
+1. User verifies wallet with Collab.Land
+2. Collab.Land assigns Naib or Fedaykin role based on BGT rank
+3. Sietch bot detects the new role assignment
+4. Sietch bot sends onboarding DM with pseudonym setup
+5. User completes onboarding flow (choose nym, optional bio/PFP)
+6. User receives @Onboarded role
+
+### Role Hierarchy
+
+After Collab.Land integration, the Discord role hierarchy should be:
+
+```
+@Admin (server admins)
+@Collab.Land Bot
+@Sietch Bot
+@Naib (top 7 - Collab.Land assigned)
+@Fedaykin (8-69 - Collab.Land assigned)
+@Trusted (10+ badges OR Helper badge - Sietch auto-assigned)
+@Veteran (90+ days tenure - Sietch auto-assigned)
+@Engaged (5+ badges OR 200+ activity - Sietch auto-assigned)
+@Onboarded (completed onboarding - Sietch assigned)
+@everyone
+```
+
+**Important**: Sietch bot role must be positioned above any roles it needs to manage (@Trusted, @Veteran, @Engaged, @Onboarded).
+
+### Channel Access Configuration
+
+| Channel | Required Role | Purpose |
+|---------|--------------|---------|
+| #water-discipline | @everyone | Verification channel |
+| #the-door | @everyone | Announcements |
+| #sietch-lounge | @Onboarded | Main chat |
+| #introductions | @Onboarded | New member intros |
+| #deep-desert | @Engaged | Active members |
+| #stillsuit-lounge | @Veteran | Long-term members |
+| #council-rock | @Naib | Top 7 BGT holders |
+
+### Existing Member Sync
+
+For existing members who had access before v2.0:
+
+1. Run migration script to create placeholder profiles
+2. Send DM prompting them to complete onboarding
+3. Until onboarding complete:
+   - Can view channels based on Collab.Land role
+   - Cannot use social features (profile, badges)
+4. After onboarding complete:
+   - Full access to social features
+   - Automatic badge checks begin
+
 ## Support
 
 - Collab.Land Support: https://collabland.freshdesk.com/

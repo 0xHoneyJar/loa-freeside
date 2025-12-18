@@ -76,6 +76,11 @@ const configSchema = z.object({
     roles: z.object({
       naib: z.string().min(1),
       fedaykin: z.string().min(1),
+      // Dynamic roles (v2.0) - assigned by Sietch bot based on badges/tenure
+      onboarded: z.string().optional(),
+      engaged: z.string().optional(),
+      veteran: z.string().optional(),
+      trusted: z.string().optional(),
     }),
   }),
 
@@ -173,6 +178,11 @@ function parseConfig() {
       roles: {
         naib: process.env.DISCORD_ROLE_NAIB ?? '',
         fedaykin: process.env.DISCORD_ROLE_FEDAYKIN ?? '',
+        // Dynamic roles (v2.0)
+        onboarded: process.env.DISCORD_ROLE_ONBOARDED,
+        engaged: process.env.DISCORD_ROLE_ENGAGED,
+        veteran: process.env.DISCORD_ROLE_VETERAN,
+        trusted: process.env.DISCORD_ROLE_TRUSTED,
       },
     },
     api: {
@@ -258,6 +268,11 @@ export interface Config {
     roles: {
       naib: string;
       fedaykin: string;
+      // Dynamic roles (v2.0)
+      onboarded?: string;
+      engaged?: string;
+      veteran?: string;
+      trusted?: string;
     };
   };
   api: {

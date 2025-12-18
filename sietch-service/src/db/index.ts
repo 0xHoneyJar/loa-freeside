@@ -60,4 +60,5 @@ export {
   getMemberCount,
   getMemberCountByTier,
   searchMembersByNym,
+  getBatchMemberBadges,
 } from './queries.js';

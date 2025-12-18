@@ -5,11 +5,12 @@ This runbook provides step-by-step instructions for deploying and operating the 
 ## Table of Contents
 
 1. [Initial Deployment](#initial-deployment)
-2. [Subsequent Deployments](#subsequent-deployments)
-3. [Rollback Procedure](#rollback-procedure)
-4. [Common Operations](#common-operations)
-5. [Troubleshooting](#troubleshooting)
-6. [Monitoring](#monitoring)
+2. [Upgrading to v2.0 (Social Layer)](#upgrading-to-v20-social-layer)
+3. [Subsequent Deployments](#subsequent-deployments)
+4. [Rollback Procedure](#rollback-procedure)
+5. [Common Operations](#common-operations)
+6. [Troubleshooting](#troubleshooting)
+7. [Monitoring](#monitoring)
 
 ---
 
@@ -137,6 +138,58 @@ chmod +x /opt/sietch/scripts/backup.sh
 crontab -e
 # Add: 0 3 * * * /opt/sietch/scripts/backup.sh
 ```
+
+---
+
+## Upgrading to v2.0 (Social Layer)
+
+If upgrading an existing v1.0 deployment to v2.0:
+
+### Step 1: Update Environment Variables
+
+Add the new v2.0 variables to `/opt/sietch/.env`:
+
+```bash
+# v2.0 Optional Dynamic Roles (leave empty to disable)
+DISCORD_ROLE_ONBOARDED=your_role_id
+DISCORD_ROLE_ENGAGED=your_role_id
+DISCORD_ROLE_VETERAN=your_role_id
+DISCORD_ROLE_TRUSTED=your_role_id
+
+# Sietch Lounge Channel (for fallback DMs)
+DISCORD_CHANNEL_SIETCH_LOUNGE=your_channel_id
+```
+
+### Step 2: Create Discord Roles
+
+In your Discord server:
+1. Create new roles: "Onboarded", "Engaged", "Veteran", "Trusted"
+2. Position them above @everyone but below Naib/Fedaykin
+3. Copy role IDs to .env file
+
+### Step 3: Deploy v2.0
+
+```bash
+# Standard deployment
+./deploy.sh main
+```
+
+The deployment will:
+1. Run database migrations automatically (creates new tables)
+2. Migration 003 creates placeholder profiles for existing verified members
+3. Existing v1.0 members will be prompted to complete onboarding via DM
+
+### Step 4: Verify Migration
+
+```bash
+sqlite3 /opt/sietch/data/sietch.db "SELECT COUNT(*) FROM member_profiles WHERE onboarding_complete = 0;"
+```
+
+This shows how many v1.0 members need to complete onboarding.
+
+### Step 5: Configure Collab.Land for v2.0
+
+Follow `collabland-setup.md` to update token gates for the new role structure.
 
 ---
 
@@ -275,8 +328,42 @@ SELECT * FROM health_status;
 # View recent audit log
 SELECT * FROM audit_log ORDER BY created_at DESC LIMIT 20;
 
+# v2.0 Social Layer Queries
+# --------------------------
+
+# View member profiles (onboarded)
+SELECT member_id, nym, tier, onboarding_complete
+FROM member_profiles
+WHERE onboarding_complete = 1
+ORDER BY created_at DESC LIMIT 20;
+
+# View pending migrations (v1.0 members needing onboarding)
+SELECT member_id, nym, discord_user_id
+FROM member_profiles
+WHERE onboarding_complete = 0;
+
+# View member badges
+SELECT mp.nym, b.badge_id, b.awarded_at
+FROM member_badges b
+JOIN member_profiles mp ON b.member_id = mp.member_id
+ORDER BY b.awarded_at DESC LIMIT 20;
+
+# View activity balances
+SELECT mp.nym, a.activity_balance, a.last_decay_at
+FROM member_activity a
+JOIN member_profiles mp ON a.member_id = mp.member_id
+ORDER BY a.activity_balance DESC LIMIT 10;
+
 # Exit SQLite
 .quit
+```
+
+### Run Database Migrations
+
+```bash
+# Migrations run automatically on startup
+# To verify migrations:
+sqlite3 /opt/sietch/data/sietch.db "SELECT * FROM _migrations ORDER BY version;"
 ```
 
 ### Admin API Operations

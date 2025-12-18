@@ -131,6 +131,13 @@ export function awardBadge(
       { memberId, badgeId, badgeName: badge.name, awardedBy: options.awardedBy },
       'Badge awarded'
     );
+
+    // Trigger role sync after badge award (async, don't wait)
+    import('./roleManager.js').then(({ onBadgeAwarded }) => {
+      onBadgeAwarded(memberId).catch((error) => {
+        logger.error({ error, memberId }, 'Failed to sync roles after badge award');
+      });
+    });
   }
 
   return result;

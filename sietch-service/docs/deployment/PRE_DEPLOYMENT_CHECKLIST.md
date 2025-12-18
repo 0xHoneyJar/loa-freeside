@@ -102,14 +102,32 @@ Get IDs by right-clicking and selecting "Copy ID":
 | #census channel | Right-click channel | `1234567890123456789` |
 | Naib role | Server Settings → Roles → Right-click | `1234567890123456789` |
 | Fedaykin role | Server Settings → Roles → Right-click | `1234567890123456789` |
+| #sietch-lounge channel | Right-click channel | `1234567890123456789` |
+
+**v2.0 Dynamic Roles** (optional, enable for Social Layer):
+
+| Item | How to Get | Notes |
+|------|------------|-------|
+| Onboarded role | Create new role "Onboarded" | Assigned after completing onboarding |
+| Engaged role | Create new role "Engaged" | 5+ badges OR 200+ activity |
+| Veteran role | Create new role "Veteran" | 90+ days membership |
+| Trusted role | Create new role "Trusted" | 10+ badges OR Helper badge |
 
 **Required values for .env**:
 ```
+# Core Discord Config
 DISCORD_GUILD_ID=your_guild_id
 DISCORD_CHANNEL_THE_DOOR=your_the_door_channel_id
 DISCORD_CHANNEL_CENSUS=your_census_channel_id
+DISCORD_CHANNEL_SIETCH_LOUNGE=your_sietch_lounge_channel_id
 DISCORD_ROLE_NAIB=your_naib_role_id
 DISCORD_ROLE_FEDAYKIN=your_fedaykin_role_id
+
+# v2.0 Dynamic Roles (optional - leave empty to disable)
+DISCORD_ROLE_ONBOARDED=your_onboarded_role_id
+DISCORD_ROLE_ENGAGED=your_engaged_role_id
+DISCORD_ROLE_VETERAN=your_veteran_role_id
+DISCORD_ROLE_TRUSTED=your_trusted_role_id
 ```
 
 ---
@@ -264,8 +282,9 @@ Store these keys in your password manager (1Password).
 
 - [ ] Discord Bot Token (`DISCORD_BOT_TOKEN`)
 - [ ] Discord Guild ID (`DISCORD_GUILD_ID`)
-- [ ] Discord Channel IDs (`DISCORD_CHANNEL_THE_DOOR`, `DISCORD_CHANNEL_CENSUS`)
-- [ ] Discord Role IDs (`DISCORD_ROLE_NAIB`, `DISCORD_ROLE_FEDAYKIN`)
+- [ ] Discord Channel IDs (`DISCORD_CHANNEL_THE_DOOR`, `DISCORD_CHANNEL_CENSUS`, `DISCORD_CHANNEL_SIETCH_LOUNGE`)
+- [ ] Discord Core Role IDs (`DISCORD_ROLE_NAIB`, `DISCORD_ROLE_FEDAYKIN`)
+- [ ] Discord Dynamic Role IDs (optional): `DISCORD_ROLE_ONBOARDED`, `DISCORD_ROLE_ENGAGED`, `DISCORD_ROLE_VETERAN`, `DISCORD_ROLE_TRUSTED`
 - [ ] trigger.dev Project ID (`TRIGGER_PROJECT_ID`)
 - [ ] trigger.dev Secret Key (`TRIGGER_SECRET_KEY`)
 - [ ] Berachain RPC URLs (`BERACHAIN_RPC_URLS`)
@@ -296,7 +315,7 @@ Copy this to `/opt/sietch/.env` on your VPS and fill in values:
 
 ```bash
 # =============================================================================
-# Sietch Service Environment Configuration
+# Sietch Service Environment Configuration (v2.0)
 # =============================================================================
 
 # Berachain RPC (comma-separated for fallback)
@@ -310,13 +329,21 @@ REWARD_VAULT_ADDRESSES=0x_VAULT1,0x_VAULT2
 TRIGGER_PROJECT_ID=sietch-service
 TRIGGER_SECRET_KEY=tr_YOUR_SECRET_KEY
 
-# Discord
+# Discord Core Configuration
 DISCORD_BOT_TOKEN=YOUR_BOT_TOKEN
 DISCORD_GUILD_ID=YOUR_GUILD_ID
 DISCORD_CHANNEL_THE_DOOR=YOUR_CHANNEL_ID
 DISCORD_CHANNEL_CENSUS=YOUR_CHANNEL_ID
+DISCORD_CHANNEL_SIETCH_LOUNGE=YOUR_CHANNEL_ID
 DISCORD_ROLE_NAIB=YOUR_ROLE_ID
 DISCORD_ROLE_FEDAYKIN=YOUR_ROLE_ID
+
+# Discord v2.0 Dynamic Roles (optional - leave empty to disable)
+# These roles are automatically managed based on member activity and badges
+DISCORD_ROLE_ONBOARDED=YOUR_ROLE_ID      # Assigned after completing onboarding
+DISCORD_ROLE_ENGAGED=YOUR_ROLE_ID        # 5+ badges OR 200+ activity balance
+DISCORD_ROLE_VETERAN=YOUR_ROLE_ID        # 90+ days membership (permanent)
+DISCORD_ROLE_TRUSTED=YOUR_ROLE_ID        # 10+ badges OR Helper badge
 
 # API
 API_PORT=3000

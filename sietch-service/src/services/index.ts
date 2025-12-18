@@ -37,3 +37,21 @@ export {
 // Sprint 9: Directory & Leaderboard
 export { directoryService } from './directory.js';
 export { leaderboardService } from './leaderboard.js';
+
+// Sprint 10: Role Management
+export {
+  syncMemberRoles,
+  assignOnboardedRole,
+  runRoleSyncTask,
+  onBadgeAwarded,
+  onActivityUpdated,
+  isDynamicRolesEnabled,
+} from './roleManager.js';
+
+// Sprint 10: Member Migration
+export {
+  getPendingMigrationMembers,
+  sendMigrationPrompt,
+  runMigrationPromptTask,
+  getMigrationStatus,
+} from './memberMigration.js';

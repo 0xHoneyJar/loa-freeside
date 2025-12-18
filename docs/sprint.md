@@ -863,17 +863,17 @@ The v1.0 MVP is complete with:
 
 ### Tasks
 
-#### S10-T1: Collab.Land Configuration
+#### S10-T1: Collab.Land Configuration ✅
 
 **Description**: Configure Collab.Land for token gating with Sietch API.
 
 **Acceptance Criteria**:
-- [ ] Collab.Land bot added to Sietch server
-- [ ] Custom API token gate configured pointing to `/eligibility` endpoint
-- [ ] Role mapping configured: top_7 → Naib, top_69 → Fedaykin
-- [ ] Role assignment triggers onboarding flow
-- [ ] Existing eligibility sync task works with Collab.Land
-- [ ] Documentation for Collab.Land setup
+- [x] Collab.Land bot added to Sietch server
+- [x] Custom API token gate configured pointing to `/eligibility` endpoint
+- [x] Role mapping configured: top_7 → Naib, top_69 → Fedaykin
+- [x] Role assignment triggers onboarding flow
+- [x] Existing eligibility sync task works with Collab.Land
+- [x] Documentation for Collab.Land setup
 
 **Files to Modify**:
 - Collab.Land configuration (external)
@@ -885,17 +885,17 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S10-T2: Dynamic Role Management
+#### S10-T2: Dynamic Role Management ✅
 
 **Description**: Implement automatic role assignment/removal based on badges and tenure.
 
 **Acceptance Criteria**:
-- [ ] Auto-assign @Engaged when 5+ badges OR activity balance > 200
-- [ ] Auto-assign @Veteran when 90+ days tenure
-- [ ] Auto-assign @Trusted when 10+ badges OR has Helper badge
-- [ ] Role check runs on badge award and periodically
-- [ ] Remove role if conditions no longer met (except tenure)
-- [ ] Roles grant channel access (#deep-desert, #stillsuit-lounge)
+- [x] Auto-assign @Engaged when 5+ badges OR activity balance > 200
+- [x] Auto-assign @Veteran when 90+ days tenure
+- [x] Auto-assign @Trusted when 10+ badges OR has Helper badge
+- [x] Role check runs on badge award and periodically
+- [x] Remove role if conditions no longer met (except tenure)
+- [x] Roles grant channel access (#deep-desert, #stillsuit-lounge)
 
 **Files to Modify**:
 - `sietch-service/src/services/badge.ts`
@@ -907,17 +907,17 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S10-T3: Channel Access Setup
+#### S10-T3: Channel Access Setup ✅
 
 **Description**: Configure Discord channels with proper role permissions.
 
 **Acceptance Criteria**:
-- [ ] Main channels require @Onboarded role to view
-- [ ] #deep-desert requires @Engaged role
-- [ ] #stillsuit-lounge requires @Veteran role
-- [ ] #council-rock requires @Naib role
-- [ ] Bot commands channel accessible to all verified members
-- [ ] Channel permissions documented
+- [x] Main channels require @Onboarded role to view
+- [x] #deep-desert requires @Engaged role
+- [x] #stillsuit-lounge requires @Veteran role
+- [x] #council-rock requires @Naib role
+- [x] Bot commands channel accessible to all verified members
+- [x] Channel permissions documented
 
 **Dependencies**: S10-T2
 **Estimated Effort**: Low
@@ -925,17 +925,17 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S10-T4: Migration Script for Existing Members
+#### S10-T4: Migration Script for Existing Members ✅
 
 **Description**: Create migration to handle existing v1.0 members.
 
 **Acceptance Criteria**:
-- [ ] Identify existing wallet_mappings with current_eligibility
-- [ ] Create placeholder profiles (onboarding_complete = 0)
-- [ ] Generate temporary nyms (Member_XXXXXX)
-- [ ] Preserve original verified_at as created_at
-- [ ] Send DM prompting them to complete onboarding
-- [ ] Reversible migration
+- [x] Identify existing wallet_mappings with current_eligibility
+- [x] Create placeholder profiles (onboarding_complete = 0)
+- [x] Generate temporary nyms (Member_XXXXXX)
+- [x] Preserve original verified_at as created_at
+- [x] Send DM prompting them to complete onboarding
+- [x] Reversible migration
 
 **Files to Modify**:
 - `sietch-service/src/db/migrations/002_social_layer.ts`
@@ -946,19 +946,19 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S10-T5: Comprehensive Testing
+#### S10-T5: Comprehensive Testing ✅
 
 **Description**: Write integration tests for full user flows.
 
 **Acceptance Criteria**:
-- [ ] New member onboarding flow test (end-to-end)
-- [ ] Profile edit flow test
-- [ ] Activity tracking and decay test
-- [ ] Badge award and notification test
-- [ ] Directory browsing test
-- [ ] API endpoint tests
-- [ ] Privacy leak detection tests (no wallet in public responses)
-- [ ] Test coverage > 80%
+- [x] New member onboarding flow test (end-to-end)
+- [x] Profile edit flow test
+- [x] Activity tracking and decay test
+- [x] Badge award and notification test
+- [x] Directory browsing test
+- [x] API endpoint tests
+- [x] Privacy leak detection tests (no wallet in public responses)
+- [x] Test coverage > 80%
 
 **Files to Create**:
 - `sietch-service/tests/integration/onboarding.test.ts`
@@ -974,17 +974,17 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S10-T6: Error Handling & Edge Cases
+#### S10-T6: Error Handling & Edge Cases ✅
 
 **Description**: Ensure robust error handling throughout the application.
 
 **Acceptance Criteria**:
-- [ ] Graceful handling of Discord API failures
-- [ ] Retry logic for transient errors
-- [ ] User-friendly error messages in Discord
-- [ ] Proper HTTP status codes in API
-- [ ] Logging for debugging without exposing private data
-- [ ] DM fallback when DMs disabled
+- [x] Graceful handling of Discord API failures
+- [x] Retry logic for transient errors
+- [x] User-friendly error messages in Discord
+- [x] Proper HTTP status codes in API
+- [x] Logging for debugging without exposing private data
+- [x] DM fallback when DMs disabled
 
 **Files to Modify**:
 - Various service files
@@ -996,17 +996,17 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S10-T7: Deployment Documentation Update
+#### S10-T7: Deployment Documentation Update ✅
 
 **Description**: Update deployment documentation for v2.0.
 
 **Acceptance Criteria**:
-- [ ] Update PRE_DEPLOYMENT_CHECKLIST.md with new env vars
-- [ ] Update DEPLOYMENT_RUNBOOK.md with v2.0 steps
-- [ ] Document Discord role and channel setup
-- [ ] Document Collab.Land configuration
-- [ ] Update backup script for new tables
-- [ ] Create rollback procedure
+- [x] Update PRE_DEPLOYMENT_CHECKLIST.md with new env vars
+- [x] Update DEPLOYMENT_RUNBOOK.md with v2.0 steps
+- [x] Document Discord role and channel setup
+- [x] Document Collab.Land configuration
+- [x] Update backup script for new tables
+- [x] Create rollback procedure
 
 **Files to Modify**:
 - `sietch-service/docs/deployment/PRE_DEPLOYMENT_CHECKLIST.md`
@@ -1018,17 +1018,17 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S10-T8: Performance Optimization
+#### S10-T8: Performance Optimization ✅
 
 **Description**: Optimize queries and caching for production load.
 
 **Acceptance Criteria**:
-- [ ] Index optimization for common queries
-- [ ] In-memory caching for badge definitions
-- [ ] Profile cache with TTL
-- [ ] Efficient batch operations in scheduled tasks
-- [ ] Response time < 200ms for API endpoints
-- [ ] Bot response time < 1s for slash commands
+- [x] Index optimization for common queries
+- [x] In-memory caching for badge definitions
+- [x] Profile cache with TTL
+- [x] Efficient batch operations in scheduled tasks
+- [x] Response time < 200ms for API endpoints
+- [x] Bot response time < 1s for slash commands
 
 **Files to Modify**:
 - Various service and query files
@@ -1039,20 +1039,20 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S10-T9: Final Integration & Smoke Testing
+#### S10-T9: Final Integration & Smoke Testing ✅
 
 **Description**: End-to-end testing of complete system on staging.
 
 **Acceptance Criteria**:
-- [ ] Deploy to staging environment
-- [ ] Test complete new member flow
-- [ ] Test profile management
-- [ ] Test activity tracking over time
-- [ ] Test badge awards (automatic and manual)
-- [ ] Test directory and leaderboard
-- [ ] Test API endpoints with real data
-- [ ] Verify privacy (no wallet leaks)
-- [ ] Performance under load
+- [x] Deploy to staging environment
+- [x] Test complete new member flow
+- [x] Test profile management
+- [x] Test activity tracking over time
+- [x] Test badge awards (automatic and manual)
+- [x] Test directory and leaderboard
+- [x] Test API endpoints with real data
+- [x] Verify privacy (no wallet leaks)
+- [x] Performance under load
 
 **Dependencies**: All previous tasks
 **Estimated Effort**: High
@@ -1062,13 +1062,13 @@ The v1.0 MVP is complete with:
 
 ### Sprint 10 Success Criteria
 
-- [ ] Collab.Land integration working end-to-end
-- [ ] Dynamic role assignment functioning
-- [ ] All channel permissions configured
-- [ ] Existing members can complete onboarding
-- [ ] All integration tests pass
-- [ ] Performance meets requirements
-- [ ] Ready for production deployment
+- [x] Collab.Land integration working end-to-end
+- [x] Dynamic role assignment functioning
+- [x] All channel permissions configured
+- [x] Existing members can complete onboarding
+- [x] All integration tests pass
+- [x] Performance meets requirements
+- [x] Ready for production deployment
 
 ---
 

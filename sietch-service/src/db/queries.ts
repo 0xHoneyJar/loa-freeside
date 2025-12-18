@@ -1451,7 +1451,70 @@ export function getActivityLeaderboard(limit: number = 10): Array<{
 // =============================================================================
 
 /**
+ * Get badges for multiple members in a single query (batch optimization)
+ * Avoids N+1 query issue when fetching directory
+ */
+export function getBatchMemberBadges(memberIds: string[]): Map<string, PublicBadge[]> {
+  if (memberIds.length === 0) {
+    return new Map();
+  }
+
+  const database = getDatabase();
+
+  // Build placeholder string for IN clause
+  const placeholders = memberIds.map(() => '?').join(', ');
+
+  const rows = database.prepare(`
+    SELECT
+      mb.member_id,
+      b.badge_id,
+      b.name,
+      b.description,
+      b.category,
+      b.emoji,
+      mb.awarded_at
+    FROM member_badges mb
+    JOIN badges b ON mb.badge_id = b.badge_id
+    WHERE mb.member_id IN (${placeholders})
+      AND mb.revoked = 0
+    ORDER BY mb.member_id, b.category, b.display_order
+  `).all(...memberIds) as Array<{
+    member_id: string;
+    badge_id: string;
+    name: string;
+    description: string;
+    category: 'tenure' | 'engagement' | 'contribution' | 'special';
+    emoji: string | null;
+    awarded_at: string;
+  }>;
+
+  // Group badges by member_id
+  const badgeMap = new Map<string, PublicBadge[]>();
+
+  // Initialize empty arrays for all members (some may have no badges)
+  for (const memberId of memberIds) {
+    badgeMap.set(memberId, []);
+  }
+
+  for (const row of rows) {
+    const badges = badgeMap.get(row.member_id) || [];
+    badges.push({
+      badgeId: row.badge_id,
+      name: row.name,
+      description: row.description,
+      category: row.category,
+      emoji: row.emoji,
+      awardedAt: new Date(row.awarded_at),
+    });
+    badgeMap.set(row.member_id, badges);
+  }
+
+  return badgeMap;
+}
+
+/**
  * Get member directory with filters and pagination
+ * Optimized to use batch badge fetching to avoid N+1 queries
  */
 export function getMemberDirectory(filters: DirectoryFilters = {}): DirectoryResult {
   const database = getDatabase();
@@ -1519,9 +1582,13 @@ export function getMemberDirectory(filters: DirectoryFilters = {}): DirectoryRes
     LIMIT ? OFFSET ?
   `).all(...params, pageSize, offset) as Array<MemberProfileRow & { badge_count: number }>;
 
+  // Batch fetch badges for all members in a single query (avoids N+1)
+  const memberIds = rows.map((row) => row.member_id);
+  const badgeMap = getBatchMemberBadges(memberIds);
+
   // Convert to PublicProfile
   const members: PublicProfile[] = rows.map((row) => {
-    const badges = getMemberBadges(row.member_id);
+    const badges = badgeMap.get(row.member_id) || [];
     const tenureCategory = calculateTenureCategory(new Date(row.created_at));
 
     return {
@@ -1532,14 +1599,7 @@ export function getMemberDirectory(filters: DirectoryFilters = {}): DirectoryRes
       pfpType: row.pfp_type,
       tier: row.tier,
       tenureCategory,
-      badges: badges.map((b) => ({
-        badgeId: b.badgeId,
-        name: b.name,
-        description: b.description,
-        category: b.category,
-        emoji: b.emoji,
-        awardedAt: b.awardedAt,
-      })),
+      badges,
       badgeCount: row.badge_count,
       memberSince: new Date(row.created_at),
     };

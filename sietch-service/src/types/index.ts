@@ -115,7 +115,10 @@ export interface AuditLogEntry {
     | 'grace_period_entered'
     | 'grace_period_exited'
     | 'admin_badge_award'
-    | 'admin_badge_revoke';
+    | 'admin_badge_revoke'
+    | 'role_assigned'
+    | 'role_removed'
+    | 'migration_prompt_sent';
   /** Event-specific data */
   eventData: Record<string, unknown>;
   /** When the event occurred */
