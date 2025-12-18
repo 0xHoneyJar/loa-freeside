@@ -6,18 +6,27 @@ import {
 import { config } from '../../config.js';
 import { logger } from '../../utils/logger.js';
 import { profileCommand } from './profile.js';
+import { badgesCommand } from './badges.js';
+import { statsCommand } from './stats.js';
+import { adminBadgeCommand } from './admin-badge.js';
 
 /**
  * All registered slash commands
  */
 export const commands: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
   profileCommand,
+  badgesCommand.toJSON(),
+  statsCommand.toJSON(),
+  adminBadgeCommand.toJSON(),
 ];
 
 /**
  * Command name to handler mapping
  */
 export { handleProfileCommand } from './profile.js';
+export { handleBadgesCommand, handleBadgesAutocomplete } from './badges.js';
+export { handleStatsCommand } from './stats.js';
+export { handleAdminBadgeCommand, handleAdminBadgeAutocomplete } from './admin-badge.js';
 
 /**
  * Register slash commands with Discord API

@@ -21,7 +21,7 @@ This document maintains organizational memory across sprints for the Sietch proj
 | Sprint 5 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
 | Sprint 6 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
 | Sprint 7 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
-| Sprint 8 | ⏳ Not Started | - | - | - |
+| Sprint 8 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
 | Sprint 9 | ⏳ Not Started | - | - | - |
 | Sprint 10 | ⏳ Not Started | - | - | - |
 
@@ -338,4 +338,55 @@ This document maintains organizational memory across sprints for the Sietch proj
 
 ---
 
-*Last Updated: December 18, 2025 (Sprint 7 COMPLETED - Security audit approved)*
+## Sprint 8: Activity & Badges (Social Layer v2.0)
+
+**Goal**: Implement demurrage-based activity tracking and badge award system
+
+**Directory**: `docs/a2a/sprint-8/`
+
+### Files
+- `reviewer.md` - Implementation report from engineer (✅ Created)
+- `engineer-feedback.md` - Review feedback from senior lead (✅ Approved)
+- `auditor-sprint-feedback.md` - Security audit feedback (✅ Approved)
+- `COMPLETED` - Completion marker (✅ Created)
+
+### Tasks Completed
+- [x] S8-T1: Activity Service Implementation (demurrage decay, rate limiting)
+- [x] S8-T2: Badge Service Implementation (tenure/activity badges)
+- [x] S8-T3: Discord Event Handlers for Activity
+- [x] S8-T4: Activity Decay Scheduled Task (6-hour cron)
+- [x] S8-T5: Badge Check Scheduled Task (daily cron)
+- [x] S8-T6: Badge Slash Commands (/badges, /admin-badge)
+- [x] S8-T7: Stats Slash Command (/stats)
+- [x] S8-T8: Badge Embeds
+- [x] S8-T9: Badge Award Notifications
+
+### Implementation Summary
+- 8 new files created, 3 files modified
+- ~1,500 new lines of TypeScript
+- Activity decay: 10% every 6 hours
+- Badge system: 10 badges across 4 categories
+- Slash commands: /badges, /stats, /admin-badge
+- TypeScript compilation successful
+
+### Key Files Created
+- `sietch-service/src/services/activity.ts` - Demurrage-based activity tracking
+- `sietch-service/src/services/badge.ts` - Badge award and check logic
+- `sietch-service/src/trigger/activityDecay.ts` - Scheduled decay task
+- `sietch-service/src/trigger/badgeCheck.ts` - Scheduled badge check task
+- `sietch-service/src/discord/commands/badges.ts` - /badges command
+- `sietch-service/src/discord/commands/stats.ts` - /stats command
+- `sietch-service/src/discord/commands/admin-badge.ts` - /admin-badge command
+- `sietch-service/src/discord/embeds/badge.ts` - Badge embed builders
+
+### Key Files Modified
+- `sietch-service/src/discord/commands/index.ts` - Command exports
+- `sietch-service/src/services/discord.ts` - Event handlers, command routing
+- `sietch-service/src/services/index.ts` - Service exports
+
+### Linear Issue
+- [LAB-733](https://linear.app/honeyjar/issue/LAB-733) - Sprint 8 Implementation
+
+---
+
+*Last Updated: December 18, 2025 (Sprint 8 COMPLETED - Security audit approved)*

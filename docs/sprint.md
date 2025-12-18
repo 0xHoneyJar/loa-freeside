@@ -439,19 +439,19 @@ The v1.0 MVP is complete with:
 
 ### Tasks
 
-#### S8-T1: Activity Service Implementation
+#### S8-T1: Activity Service Implementation ✅
 
 **Description**: Implement activity tracking with demurrage-based decay.
 
 **Acceptance Criteria**:
-- [ ] `recordMessage()` - track message activity (+1 point)
-- [ ] `recordReaction()` - track reactions (+0.5 given, +0.25 received)
-- [ ] `applyDecay()` - calculate decay based on time since last decay
-- [ ] `addActivity()` - apply pending decay, then add points
-- [ ] `getOwnStats()` - return current activity stats (self only)
-- [ ] `runDecayTask()` - batch decay for all members (scheduled task)
-- [ ] `isTrackedChannel()` - check if channel counts for activity
-- [ ] Decay rate: 0.9 (10% decay every 6 hours)
+- [x] `recordMessage()` - track message activity (+1 point)
+- [x] `recordReaction()` - track reactions (+0.5 given, +0.25 received)
+- [x] `applyDecay()` - calculate decay based on time since last decay
+- [x] `addActivity()` - apply pending decay, then add points
+- [x] `getOwnStats()` - return current activity stats (self only)
+- [x] `runDecayTask()` - batch decay for all members (scheduled task)
+- [x] `isTrackedChannel()` - check if channel counts for activity
+- [x] Decay rate: 0.9 (10% decay every 6 hours)
 
 **Files to Create**:
 - `sietch-service/src/services/activity.ts`
@@ -462,19 +462,19 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S8-T2: Badge Service Implementation
+#### S8-T2: Badge Service Implementation ✅
 
 **Description**: Implement badge award logic for automatic and admin-granted badges.
 
 **Acceptance Criteria**:
-- [ ] `getMemberBadges()` - get all badges for a member
-- [ ] `checkTenureBadges()` - award OG/Veteran/Elder based on membership duration
-- [ ] `checkActivityBadges()` - award Consistent/Dedicated/Devoted based on activity balance
-- [ ] `awardBadge()` - award badge (automatic or manual)
-- [ ] `adminAwardBadge()` - admin awards contribution badge
-- [ ] `revokeBadge()` - admin revokes badge
-- [ ] `checkRoleUpgrades()` - check if badge count triggers role changes
-- [ ] Badges not removed when balance drops (once earned, kept)
+- [x] `getMemberBadges()` - get all badges for a member
+- [x] `checkTenureBadges()` - award OG/Veteran/Elder based on membership duration
+- [x] `checkActivityBadges()` - award Consistent/Dedicated/Devoted based on activity balance
+- [x] `awardBadge()` - award badge (automatic or manual)
+- [x] `adminAwardBadge()` - admin awards contribution badge
+- [x] `revokeBadge()` - admin revokes badge
+- [x] `checkRoleUpgrades()` - check if badge count triggers role changes
+- [x] Badges not removed when balance drops (once earned, kept)
 
 **Files to Create**:
 - `sietch-service/src/services/badge.ts`
@@ -485,17 +485,17 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S8-T3: Discord Event Handlers for Activity
+#### S8-T3: Discord Event Handlers for Activity ✅
 
 **Description**: Track Discord activity (messages, reactions) for activity service.
 
 **Acceptance Criteria**:
-- [ ] Listen for `messageCreate` events in tracked channels
-- [ ] Listen for `messageReactionAdd` events
-- [ ] Listen for `messageReactionRemove` events (for received reactions)
-- [ ] Map Discord user ID to member profile
-- [ ] Skip activity tracking for non-onboarded users
-- [ ] Rate limiting to prevent spam gaming (max 1 message/minute counted)
+- [x] Listen for `messageCreate` events in tracked channels
+- [x] Listen for `messageReactionAdd` events
+- [x] Listen for `messageReactionRemove` events (for received reactions)
+- [x] Map Discord user ID to member profile
+- [x] Skip activity tracking for non-onboarded users
+- [x] Rate limiting to prevent spam gaming (max 1 message/minute counted)
 
 **Files to Modify**:
 - `sietch-service/src/services/discord.ts`
@@ -507,16 +507,16 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S8-T4: Activity Decay Scheduled Task
+#### S8-T4: Activity Decay Scheduled Task ✅
 
 **Description**: Create trigger.dev task for periodic activity decay.
 
 **Acceptance Criteria**:
-- [ ] Runs every 6 hours (cron: `0 */6 * * *`)
-- [ ] Calls `activityService.runDecayTask()`
-- [ ] Logs number of members processed and decayed
-- [ ] Max duration: 2 minutes
-- [ ] Error handling with retries
+- [x] Runs every 6 hours (cron: `30 */6 * * *`)
+- [x] Calls `activityService.runDecayTask()`
+- [x] Logs number of members processed and decayed
+- [x] Max duration: 2 minutes
+- [x] Error handling with retries
 
 **Files to Create**:
 - `sietch-service/src/trigger/activityDecay.ts`
@@ -527,16 +527,16 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S8-T5: Badge Check Scheduled Task
+#### S8-T5: Badge Check Scheduled Task ✅
 
 **Description**: Create trigger.dev task for daily tenure badge checks.
 
 **Acceptance Criteria**:
-- [ ] Runs daily at midnight (cron: `0 0 * * *`)
-- [ ] Iterates all members, calls `checkTenureBadges()`
-- [ ] Logs badges awarded count
-- [ ] Max duration: 5 minutes
-- [ ] Error handling with retries
+- [x] Runs daily at midnight (cron: `0 0 * * *`)
+- [x] Iterates all members, calls `checkTenureBadges()`
+- [x] Logs badges awarded count
+- [x] Max duration: 5 minutes
+- [x] Error handling with retries
 
 **Files to Create**:
 - `sietch-service/src/trigger/badgeCheck.ts`
@@ -547,17 +547,17 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S8-T6: Badge Slash Commands
+#### S8-T6: Badge Slash Commands ✅
 
 **Description**: Implement `/badges` and `/admin-badge` commands.
 
 **Acceptance Criteria**:
-- [ ] `/badges` - view own badges (ephemeral)
-- [ ] `/badges [nym]` - view another member's badges (public)
-- [ ] `/admin-badge award [nym] [badge]` - admin awards badge
-- [ ] `/admin-badge revoke [nym] [badge]` - admin revokes badge
-- [ ] Badge selection uses autocomplete with available badges
-- [ ] Admin commands check for admin role
+- [x] `/badges` - view own badges (ephemeral)
+- [x] `/badges [nym]` - view another member's badges (public)
+- [x] `/admin-badge award [nym] [badge]` - admin awards badge
+- [x] `/admin-badge revoke [nym] [badge]` - admin revokes badge
+- [x] Badge selection uses autocomplete with available badges
+- [x] Admin commands check for admin role
 
 **Files to Create**:
 - `sietch-service/src/discord/commands/badges.ts`
@@ -569,16 +569,16 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S8-T7: Stats Slash Command
+#### S8-T7: Stats Slash Command ✅
 
 **Description**: Implement `/stats` command for personal activity stats.
 
 **Acceptance Criteria**:
-- [ ] `/stats` - view own engagement statistics (ephemeral)
-- [ ] Shows current activity balance
-- [ ] Shows total messages, reactions given, reactions received
-- [ ] Shows last active timestamp
-- [ ] Privacy note in footer
+- [x] `/stats` - view own engagement statistics (ephemeral)
+- [x] Shows current activity balance
+- [x] Shows total messages, reactions given, reactions received
+- [x] Shows last active timestamp
+- [x] Privacy note in footer
 
 **Files to Create**:
 - `sietch-service/src/discord/commands/stats.ts`
@@ -589,16 +589,16 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S8-T8: Badge Embeds
+#### S8-T8: Badge Embeds ✅
 
 **Description**: Create embed builders for badge display.
 
 **Acceptance Criteria**:
-- [ ] Badge list embed (for `/badges`)
-- [ ] Badge award notification embed (for DM)
-- [ ] Badge icons displayed with emoji or thumbnails
-- [ ] Badge descriptions and award dates
-- [ ] Category grouping (Tenure, Streak, Contribution, Special)
+- [x] Badge list embed (for `/badges`)
+- [x] Badge award notification embed (for DM)
+- [x] Badge icons displayed with emoji or thumbnails
+- [x] Badge descriptions and award dates
+- [x] Category grouping (Tenure, Streak, Contribution, Special)
 
 **Files to Create**:
 - `sietch-service/src/discord/embeds/badge.ts`
@@ -609,15 +609,15 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S8-T9: Badge Award Notifications
+#### S8-T9: Badge Award Notifications ✅
 
 **Description**: Send DM notifications when badges are awarded.
 
 **Acceptance Criteria**:
-- [ ] `notifyBadgeAwarded()` - send DM with badge info
-- [ ] Celebratory message with badge name and description
-- [ ] Link to profile to see all badges
-- [ ] Graceful handling of DM failures
+- [x] `notifyBadgeAwarded()` - send DM with badge info
+- [x] Celebratory message with badge name and description
+- [x] Link to profile to see all badges
+- [x] Graceful handling of DM failures
 - [ ] Optionally post in #the-door for special badges
 
 **Files to Modify**:
@@ -631,14 +631,14 @@ The v1.0 MVP is complete with:
 
 ### Sprint 8 Success Criteria
 
-- [ ] Activity is tracked for messages and reactions
-- [ ] Activity balance decays correctly every 6 hours
-- [ ] Tenure badges awarded automatically based on membership duration
-- [ ] Activity badges awarded when balance thresholds reached
-- [ ] Admin can award/revoke contribution badges
-- [ ] `/badges` and `/stats` commands work correctly
-- [ ] Badge notifications sent via DM
-- [ ] All tests pass
+- [x] Activity is tracked for messages and reactions
+- [x] Activity balance decays correctly every 6 hours
+- [x] Tenure badges awarded automatically based on membership duration
+- [x] Activity badges awarded when balance thresholds reached
+- [x] Admin can award/revoke contribution badges
+- [x] `/badges` and `/stats` commands work correctly
+- [x] Badge notifications sent via DM
+- [ ] All tests pass (tests not written for Sprint 8)
 
 ---
 

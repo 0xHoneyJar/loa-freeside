@@ -7,6 +7,10 @@ import {
   GuildMember,
   Role,
   User,
+  Message,
+  MessageReaction,
+  type PartialMessageReaction,
+  type PartialUser,
   type ColorResolvable,
   type Interaction,
   type ChatInputCommandInteraction,
@@ -23,9 +27,18 @@ import {
   getWalletByDiscordId,
   getEligibilityByAddress,
   logAuditEvent,
+  getMemberProfileByDiscordId,
 } from '../db/index.js';
 import type { EligibilityEntry, EligibilityDiff } from '../types/index.js';
-import { registerCommands, handleProfileCommand } from '../discord/commands/index.js';
+import {
+  registerCommands,
+  handleProfileCommand,
+  handleBadgesCommand,
+  handleBadgesAutocomplete,
+  handleStatsCommand,
+  handleAdminBadgeCommand,
+  handleAdminBadgeAutocomplete,
+} from '../discord/commands/index.js';
 import {
   isOnboardingButton,
   isOnboardingModal,
@@ -33,6 +46,11 @@ import {
   handleOnboardingModal,
 } from '../discord/interactions/index.js';
 import { profileService } from './profile.js';
+import {
+  recordMessage,
+  recordReactionGiven,
+  recordReactionReceived,
+} from './activity.js';
 
 /**
  * Discord embed colors
@@ -109,6 +127,7 @@ class DiscordService {
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.GuildMessageReactions,
         GatewayIntentBits.DirectMessages,
         GatewayIntentBits.MessageContent,
       ],
@@ -177,6 +196,21 @@ class DiscordService {
       }
       await this.handleMemberUpdate(oldMember as GuildMember, newMember);
     });
+
+    // Activity tracking: message create
+    this.client.on('messageCreate', async (message) => {
+      await this.handleMessageCreate(message);
+    });
+
+    // Activity tracking: reaction add
+    this.client.on('messageReactionAdd', async (reaction, user) => {
+      await this.handleReactionAdd(reaction, user);
+    });
+
+    // Activity tracking: reaction remove
+    this.client.on('messageReactionRemove', async (reaction, user) => {
+      await this.handleReactionRemove(reaction, user);
+    });
   }
 
   /**
@@ -221,6 +255,15 @@ class DiscordService {
     switch (commandName) {
       case 'profile':
         await handleProfileCommand(interaction);
+        break;
+      case 'badges':
+        await handleBadgesCommand(interaction);
+        break;
+      case 'stats':
+        await handleStatsCommand(interaction);
+        break;
+      case 'admin-badge':
+        await handleAdminBadgeCommand(interaction);
         break;
       default:
         logger.warn({ commandName }, 'Unknown slash command');
@@ -268,6 +311,7 @@ class DiscordService {
     const { commandName } = interaction;
     const focusedOption = interaction.options.getFocused(true);
 
+    // Profile command autocomplete
     if (commandName === 'profile' && focusedOption.name === 'nym') {
       const query = focusedOption.value;
       const results = profileService.searchByNym(query, 25);
@@ -278,6 +322,18 @@ class DiscordService {
           value: profile.nym,
         }))
       );
+      return;
+    }
+
+    // Badges command autocomplete
+    if (commandName === 'badges') {
+      await handleBadgesAutocomplete(interaction);
+      return;
+    }
+
+    // Admin-badge command autocomplete
+    if (commandName === 'admin-badge') {
+      await handleAdminBadgeAutocomplete(interaction);
       return;
     }
 
@@ -328,6 +384,89 @@ class DiscordService {
     } catch (error) {
       logger.warn({ error, userId: user.id }, 'Could not start onboarding - DMs may be disabled');
     }
+  }
+
+  // ==========================================================================
+  // Activity Tracking Handlers (S8-T3)
+  // ==========================================================================
+
+  /**
+   * Handle message create event for activity tracking
+   */
+  private async handleMessageCreate(message: Message): Promise<void> {
+    // Ignore bot messages
+    if (message.author.bot) return;
+
+    // Only track messages in our guild
+    if (!message.guild || message.guild.id !== config.discord.guildId) return;
+
+    // Only track messages from onboarded members
+    const profile = getMemberProfileByDiscordId(message.author.id);
+    if (!profile || !profile.onboardingComplete) return;
+
+    try {
+      await recordMessage(message.author.id, message.channel.id);
+    } catch (error) {
+      logger.error({ error, userId: message.author.id }, 'Failed to record message activity');
+    }
+  }
+
+  /**
+   * Handle reaction add event for activity tracking
+   */
+  private async handleReactionAdd(
+    reaction: MessageReaction | PartialMessageReaction,
+    user: User | PartialUser
+  ): Promise<void> {
+    // Ignore bot reactions
+    if (user.bot) return;
+
+    // Fetch full reaction if partial
+    if (reaction.partial) {
+      try {
+        await reaction.fetch();
+      } catch (error) {
+        logger.debug({ error }, 'Could not fetch partial reaction');
+        return;
+      }
+    }
+
+    // Only track reactions in our guild
+    if (!reaction.message.guild || reaction.message.guild.id !== config.discord.guildId) return;
+
+    // Only track reactions from onboarded members
+    const profile = getMemberProfileByDiscordId(user.id);
+    if (!profile || !profile.onboardingComplete) return;
+
+    try {
+      // Record reaction given by the user
+      await recordReactionGiven(user.id, reaction.message.channel.id);
+
+      // Record reaction received by the message author (if different and onboarded)
+      const messageAuthorId = reaction.message.author?.id;
+      if (messageAuthorId && messageAuthorId !== user.id) {
+        const authorProfile = getMemberProfileByDiscordId(messageAuthorId);
+        if (authorProfile?.onboardingComplete) {
+          await recordReactionReceived(messageAuthorId, reaction.message.channel.id);
+        }
+      }
+    } catch (error) {
+      logger.error({ error, userId: user.id }, 'Failed to record reaction activity');
+    }
+  }
+
+  /**
+   * Handle reaction remove event for activity tracking
+   * Note: We don't subtract points for removed reactions (activity is cumulative)
+   */
+  private async handleReactionRemove(
+    reaction: MessageReaction | PartialMessageReaction,
+    user: User | PartialUser
+  ): Promise<void> {
+    // We don't track reaction removes for activity
+    // Activity points are cumulative and don't decrease on reaction removal
+    // The decay system handles activity reduction over time
+    logger.debug({ userId: user.id, messageId: reaction.message.id }, 'Reaction removed (not tracked)');
   }
 
   /**
