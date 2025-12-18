@@ -31,4 +31,33 @@ export {
   deleteWalletMapping,
   // Maintenance
   cleanupOldSnapshots,
+  // Member Profiles (Social Layer v2.0)
+  createMemberProfile,
+  getMemberProfileById,
+  getMemberProfileByDiscordId,
+  getMemberProfileByNym,
+  updateMemberProfile,
+  deleteMemberProfile,
+  isNymAvailable,
+  getPublicProfile,
+  calculateTenureCategory,
+  // Badges (Social Layer v2.0)
+  getAllBadges,
+  getBadgeById,
+  getBadgesByCategory,
+  getMemberBadges,
+  memberHasBadge,
+  awardBadge,
+  revokeBadge,
+  getMemberBadgeCount,
+  // Activity (Social Layer v2.0)
+  getMemberActivity,
+  applyActivityDecay,
+  addActivityPoints,
+  getActivityLeaderboard,
+  // Directory (Social Layer v2.0)
+  getMemberDirectory,
+  getMemberCount,
+  getMemberCountByTier,
+  searchMembersByNym,
 } from './queries.js';

@@ -74,13 +74,13 @@ The v1.0 MVP is complete with:
 **Description**: Extend SQLite schema with new tables for member profiles, badges, activity tracking, and perks.
 
 **Acceptance Criteria**:
-- [ ] Create `member_profiles` table with privacy-separated fields
-- [ ] Create `badges` table with seed data for all 10 badge types
-- [ ] Create `member_badges` junction table
-- [ ] Create `member_activity` table with demurrage fields
-- [ ] Create `member_perks` table
-- [ ] All tables have proper indexes for query performance
-- [ ] Foreign key constraints properly reference existing tables
+- [x] Create `member_profiles` table with privacy-separated fields
+- [x] Create `badges` table with seed data for all 10 badge types
+- [x] Create `member_badges` junction table
+- [x] Create `member_activity` table with demurrage fields
+- [x] Create `member_perks` table
+- [x] All tables have proper indexes for query performance
+- [x] Foreign key constraints properly reference existing tables
 
 **Files to Create/Modify**:
 - `sietch-service/src/db/migrations/002_social_layer.ts`
@@ -97,13 +97,13 @@ The v1.0 MVP is complete with:
 **Description**: Define TypeScript interfaces for all new domain objects.
 
 **Acceptance Criteria**:
-- [ ] `MemberProfile` interface with public/private field separation
-- [ ] `PublicProfile` interface (privacy-filtered view)
-- [ ] `Badge` and `MemberBadge` interfaces
-- [ ] `MemberActivity` interface with demurrage fields
-- [ ] `OnboardingState` interface
-- [ ] `DirectoryFilters` interface
-- [ ] All interfaces exported from `types/index.ts`
+- [x] `MemberProfile` interface with public/private field separation
+- [x] `PublicProfile` interface (privacy-filtered view)
+- [x] `Badge` and `MemberBadge` interfaces
+- [x] `MemberActivity` interface with demurrage fields
+- [x] `OnboardingState` interface
+- [x] `DirectoryFilters` interface
+- [x] All interfaces exported from `types/index.ts`
 
 **Files to Create/Modify**:
 - `sietch-service/src/types/index.ts` (extend)
@@ -119,13 +119,13 @@ The v1.0 MVP is complete with:
 **Description**: Add database query functions for new tables.
 
 **Acceptance Criteria**:
-- [ ] Profile CRUD queries (create, read by ID/nym/discordId, update)
-- [ ] Badge queries (get all, get by ID, get member badges)
-- [ ] Badge award/revoke queries
-- [ ] Activity queries (get, upsert, update balance)
-- [ ] Directory queries with pagination and filtering
-- [ ] All queries use prepared statements
-- [ ] Proper error handling for constraint violations
+- [x] Profile CRUD queries (create, read by ID/nym/discordId, update)
+- [x] Badge queries (get all, get by ID, get member badges)
+- [x] Badge award/revoke queries
+- [x] Activity queries (get, upsert, update balance)
+- [x] Directory queries with pagination and filtering
+- [x] All queries use prepared statements
+- [x] Proper error handling for constraint violations
 
 **Files to Create/Modify**:
 - `sietch-service/src/db/queries.ts` (extend)
@@ -141,15 +141,15 @@ The v1.0 MVP is complete with:
 **Description**: Implement ProfileService with strict privacy separation.
 
 **Acceptance Criteria**:
-- [ ] `createProfile()` - validates nym uniqueness and format
-- [ ] `getPublicProfile()` - returns privacy-filtered profile (NO wallet, NO discord ID)
-- [ ] `getOwnProfile()` - returns full profile for owner
-- [ ] `updateProfile()` - updates nym/bio with validation
-- [ ] `nymExists()` - check nym availability
-- [ ] `isValidNym()` - validate nym format (3-32 chars, alphanumeric + limited special)
-- [ ] `stripUrls()` - remove URLs from bio (privacy protection)
-- [ ] `calculateTenureCategory()` - derive OG/Veteran/Elder from membership duration
-- [ ] Profile updates never expose wallet-nym correlation
+- [x] `createProfile()` - validates nym uniqueness and format
+- [x] `getPublicProfile()` - returns privacy-filtered profile (NO wallet, NO discord ID)
+- [x] `getOwnProfile()` - returns full profile for owner
+- [x] `updateProfile()` - updates nym/bio with validation
+- [x] `nymExists()` - check nym availability
+- [x] `isValidNym()` - validate nym format (3-32 chars, alphanumeric + limited special)
+- [x] `stripUrls()` - remove URLs from bio (privacy protection)
+- [x] `calculateTenureCategory()` - derive OG/Veteran/Elder from membership duration
+- [x] Profile updates never expose wallet-nym correlation
 
 **Files to Create**:
 - `sietch-service/src/services/profile.ts`
@@ -165,12 +165,12 @@ The v1.0 MVP is complete with:
 **Description**: Implement crypto-hash based avatar generation using drunken bishop algorithm.
 
 **Acceptance Criteria**:
-- [ ] `generateAvatar()` - creates ASCII art from SHA-256 hash of member ID
-- [ ] `generateAvatarImage()` - renders hash as 256x256 PNG using sharp
-- [ ] Deterministic output - same member ID always produces same avatar
-- [ ] Color palette derived from hash bytes for uniqueness
-- [ ] Avatar generation never uses wallet address (uses internal UUID)
-- [ ] Performance: generate avatar in <100ms
+- [x] `generateAvatar()` - creates ASCII art from SHA-256 hash of member ID
+- [x] `generateAvatarImage()` - renders hash as 256x256 PNG using sharp
+- [x] Deterministic output - same member ID always produces same avatar
+- [x] Color palette derived from hash bytes for uniqueness
+- [x] Avatar generation never uses wallet address (uses internal UUID)
+- [x] Performance: generate avatar in <100ms
 
 **Files to Create**:
 - `sietch-service/src/services/avatar.ts`
@@ -186,12 +186,12 @@ The v1.0 MVP is complete with:
 **Description**: Create utilities for profile picture upload processing.
 
 **Acceptance Criteria**:
-- [ ] `processProfileImage()` - validates and compresses uploaded images
-- [ ] Validates file type (PNG, JPG, GIF, WebP only)
-- [ ] Resizes to 256x256 with center crop
-- [ ] Compresses to under 1MB for Discord CDN
-- [ ] Strips EXIF metadata (privacy)
-- [ ] Throws typed errors for invalid input
+- [x] `processProfileImage()` - validates and compresses uploaded images
+- [x] Validates file type (PNG, JPG, GIF, WebP only)
+- [x] Resizes to 256x256 with center crop
+- [x] Compresses to under 1MB for Discord CDN
+- [x] Strips EXIF metadata (privacy)
+- [x] Throws typed errors for invalid input
 
 **Files to Create**:
 - `sietch-service/src/utils/image.ts`
@@ -207,13 +207,13 @@ The v1.0 MVP is complete with:
 **Description**: Extend config to include all v2.0 environment variables.
 
 **Acceptance Criteria**:
-- [ ] Add Discord channel IDs (general, bot-commands, deep-desert, stillsuit-lounge)
-- [ ] Add Discord role IDs (onboarded, engaged, veteran, trusted, inner-circle)
-- [ ] Add tracked channels array for activity tracking
-- [ ] Add Sietch launch date for OG badge calculation
-- [ ] Add activity decay configuration (rate, interval)
-- [ ] Add session configuration (secret, expiry)
-- [ ] Update `.env.example` with all new variables
+- [x] Add Discord channel IDs (general, bot-commands, deep-desert, stillsuit-lounge)
+- [x] Add Discord role IDs (onboarded, engaged, veteran, trusted, inner-circle)
+- [x] Add tracked channels array for activity tracking
+- [x] Add Sietch launch date for OG badge calculation
+- [x] Add activity decay configuration (rate, interval)
+- [x] Add session configuration (secret, expiry)
+- [x] Update `.env.example` with all new variables
 
 **Files to Modify**:
 - `sietch-service/src/config.ts`
@@ -227,11 +227,11 @@ The v1.0 MVP is complete with:
 
 ### Sprint 6 Success Criteria
 
-- [ ] All database migrations run successfully
-- [ ] Profile service creates and retrieves profiles with privacy separation
-- [ ] Avatar service generates deterministic avatars from member IDs
-- [ ] All unit tests pass
-- [ ] No TypeScript compilation errors
+- [x] All database migrations run successfully
+- [x] Profile service creates and retrieves profiles with privacy separation
+- [x] Avatar service generates deterministic avatars from member IDs
+- [x] All unit tests pass
+- [x] No TypeScript compilation errors
 
 ---
 

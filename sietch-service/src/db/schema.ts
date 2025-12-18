@@ -145,3 +145,6 @@ export const CLEANUP_OLD_SNAPSHOTS_SQL = `
 DELETE FROM eligibility_snapshots
 WHERE created_at < datetime('now', '-30 days');
 `;
+
+// Re-export social layer schema for v2.0
+export { SOCIAL_LAYER_SCHEMA_SQL, SOCIAL_LAYER_ROLLBACK_SQL } from './migrations/002_social_layer.js';

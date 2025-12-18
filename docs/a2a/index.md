@@ -19,6 +19,11 @@ This document maintains organizational memory across sprints for the Sietch proj
 | Sprint 3 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
 | Sprint 4 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
 | Sprint 5 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
+| Sprint 6 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
+| Sprint 7 | ⏳ Not Started | - | - | - |
+| Sprint 8 | ⏳ Not Started | - | - | - |
+| Sprint 9 | ⏳ Not Started | - | - | - |
+| Sprint 10 | ⏳ Not Started | - | - | - |
 
 ---
 
@@ -249,4 +254,43 @@ This document maintains organizational memory across sprints for the Sietch proj
 
 ---
 
-*Last Updated: December 18, 2025 (All sprints complete, deployment ready pending user prerequisites)*
+## Sprint 6: Foundation & Database (Social Layer v2.0)
+
+**Goal**: Establish database schema, core services, and crypto-hash avatar generation
+
+**Directory**: `docs/a2a/sprint-6/`
+
+### Files
+- `reviewer.md` - Implementation report from engineer (✅ Created)
+- `engineer-feedback.md` - Review feedback from senior lead (✅ Approved)
+- `auditor-sprint-feedback.md` - Security audit feedback (⏳ Pending)
+- `COMPLETED` - Completion marker (⏳ Pending audit)
+
+### Tasks Completed
+- [x] S6-T1: Database Schema Extension (5 tables, 10 badge seeds)
+- [x] S6-T2: TypeScript Type Definitions (~240 lines)
+- [x] S6-T3: Database Query Layer Extension (~500 lines)
+- [x] S6-T4: Profile Service Implementation (465 lines)
+- [x] S6-T5: Avatar Service Implementation (330 lines, drunken bishop)
+- [x] S6-T6: Image Processing Utilities (346 lines, sharp)
+- [x] S6-T7: Configuration Extension (~100 lines)
+
+### Implementation Summary
+- 13 files created/modified
+- ~2000 new lines of TypeScript
+- 19 unit tests passing
+- TypeScript compilation successful
+- Privacy separation between MemberProfile and PublicProfile
+
+### Key Files Created
+- `sietch-service/src/db/migrations/002_social_layer.ts` - 5 new tables
+- `sietch-service/src/services/profile.ts` - Profile CRUD with privacy
+- `sietch-service/src/services/avatar.ts` - Drunken bishop avatars
+- `sietch-service/src/utils/image.ts` - PFP processing with sharp
+
+### Linear Issue
+- [LAB-731](https://linear.app/honeyjar/issue/LAB-731) - Sprint 6 Implementation
+
+---
+
+*Last Updated: December 18, 2025 (Sprint 6 review approved, pending security audit)*

@@ -3,7 +3,7 @@ import { mkdirSync, existsSync } from 'fs';
 import { dirname } from 'path';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
-import { SCHEMA_SQL, CLEANUP_OLD_SNAPSHOTS_SQL } from './schema.js';
+import { SCHEMA_SQL, CLEANUP_OLD_SNAPSHOTS_SQL, SOCIAL_LAYER_SCHEMA_SQL } from './schema.js';
 import type {
   EligibilityEntry,
   SerializedEligibilityEntry,
@@ -11,6 +11,15 @@ import type {
   AdminOverride,
   AuditLogEntry,
   WalletMapping,
+  MemberProfile,
+  PublicProfile,
+  Badge,
+  PublicBadge,
+  MemberBadge,
+  MemberActivity,
+  DirectoryFilters,
+  DirectoryResult,
+  ProfileUpdateRequest,
 } from '../types/index.js';
 
 let db: Database.Database | null = null;
@@ -38,6 +47,10 @@ export function initDatabase(): Database.Database {
   // Enable WAL mode and run schema
   db.exec(SCHEMA_SQL);
   logger.info('Database schema initialized');
+
+  // Run social layer schema (v2.0)
+  db.exec(SOCIAL_LAYER_SCHEMA_SQL);
+  logger.info('Social layer schema initialized');
 
   return db;
 }
@@ -743,4 +756,862 @@ export function clearEventCache(): void {
   })();
 
   logger.info('Cleared event cache for full resync');
+}
+
+// =============================================================================
+// Member Profile Queries (Social Layer v2.0)
+// =============================================================================
+
+/**
+ * Database row shape for member_profiles table
+ */
+interface MemberProfileRow {
+  member_id: string;
+  discord_user_id: string;
+  nym: string;
+  bio: string | null;
+  pfp_url: string | null;
+  pfp_type: 'custom' | 'generated' | 'none';
+  tier: 'naib' | 'fedaykin';
+  created_at: string;
+  updated_at: string;
+  nym_last_changed: string | null;
+  onboarding_complete: number;
+  onboarding_step: number;
+}
+
+/**
+ * Convert database row to MemberProfile
+ */
+function rowToMemberProfile(row: MemberProfileRow): MemberProfile {
+  return {
+    memberId: row.member_id,
+    discordUserId: row.discord_user_id,
+    nym: row.nym,
+    bio: row.bio,
+    pfpUrl: row.pfp_url,
+    pfpType: row.pfp_type,
+    tier: row.tier,
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+    nymLastChanged: row.nym_last_changed ? new Date(row.nym_last_changed) : null,
+    onboardingComplete: row.onboarding_complete === 1,
+    onboardingStep: row.onboarding_step,
+  };
+}
+
+/**
+ * Create a new member profile
+ */
+export function createMemberProfile(profile: {
+  memberId: string;
+  discordUserId: string;
+  nym: string;
+  tier: 'naib' | 'fedaykin';
+  bio?: string | null;
+  pfpUrl?: string | null;
+  pfpType?: 'custom' | 'generated' | 'none';
+}): MemberProfile {
+  const database = getDatabase();
+
+  database.prepare(`
+    INSERT INTO member_profiles (member_id, discord_user_id, nym, tier, bio, pfp_url, pfp_type)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    profile.memberId,
+    profile.discordUserId,
+    profile.nym,
+    profile.tier,
+    profile.bio ?? null,
+    profile.pfpUrl ?? null,
+    profile.pfpType ?? 'none'
+  );
+
+  // Also create activity record
+  database.prepare(`
+    INSERT INTO member_activity (member_id)
+    VALUES (?)
+  `).run(profile.memberId);
+
+  logger.info({ memberId: profile.memberId, nym: profile.nym }, 'Created member profile');
+
+  return getMemberProfileById(profile.memberId)!;
+}
+
+/**
+ * Get member profile by member ID
+ */
+export function getMemberProfileById(memberId: string): MemberProfile | null {
+  const database = getDatabase();
+
+  const row = database.prepare(`
+    SELECT * FROM member_profiles WHERE member_id = ?
+  `).get(memberId) as MemberProfileRow | undefined;
+
+  return row ? rowToMemberProfile(row) : null;
+}
+
+/**
+ * Get member profile by Discord user ID
+ */
+export function getMemberProfileByDiscordId(discordUserId: string): MemberProfile | null {
+  const database = getDatabase();
+
+  const row = database.prepare(`
+    SELECT * FROM member_profiles WHERE discord_user_id = ?
+  `).get(discordUserId) as MemberProfileRow | undefined;
+
+  return row ? rowToMemberProfile(row) : null;
+}
+
+/**
+ * Get member profile by nym (case-insensitive)
+ */
+export function getMemberProfileByNym(nym: string): MemberProfile | null {
+  const database = getDatabase();
+
+  const row = database.prepare(`
+    SELECT * FROM member_profiles WHERE nym = ? COLLATE NOCASE
+  `).get(nym) as MemberProfileRow | undefined;
+
+  return row ? rowToMemberProfile(row) : null;
+}
+
+/**
+ * Check if a nym is available (case-insensitive)
+ */
+export function isNymAvailable(nym: string, excludeMemberId?: string): boolean {
+  const database = getDatabase();
+
+  let sql = 'SELECT 1 FROM member_profiles WHERE nym = ? COLLATE NOCASE';
+  const params: unknown[] = [nym];
+
+  if (excludeMemberId) {
+    sql += ' AND member_id != ?';
+    params.push(excludeMemberId);
+  }
+
+  const row = database.prepare(sql).get(...params);
+  return !row;
+}
+
+/**
+ * Update member profile
+ */
+export function updateMemberProfile(
+  memberId: string,
+  updates: ProfileUpdateRequest & {
+    tier?: 'naib' | 'fedaykin';
+    onboardingComplete?: boolean;
+    onboardingStep?: number;
+  }
+): MemberProfile | null {
+  const database = getDatabase();
+
+  const setClauses: string[] = ['updated_at = datetime(\'now\')'];
+  const params: unknown[] = [];
+
+  if (updates.nym !== undefined) {
+    setClauses.push('nym = ?', 'nym_last_changed = datetime(\'now\')');
+    params.push(updates.nym);
+  }
+
+  if (updates.bio !== undefined) {
+    setClauses.push('bio = ?');
+    params.push(updates.bio);
+  }
+
+  if (updates.pfpUrl !== undefined) {
+    setClauses.push('pfp_url = ?');
+    params.push(updates.pfpUrl);
+  }
+
+  if (updates.pfpType !== undefined) {
+    setClauses.push('pfp_type = ?');
+    params.push(updates.pfpType);
+  }
+
+  if (updates.tier !== undefined) {
+    setClauses.push('tier = ?');
+    params.push(updates.tier);
+  }
+
+  if (updates.onboardingComplete !== undefined) {
+    setClauses.push('onboarding_complete = ?');
+    params.push(updates.onboardingComplete ? 1 : 0);
+  }
+
+  if (updates.onboardingStep !== undefined) {
+    setClauses.push('onboarding_step = ?');
+    params.push(updates.onboardingStep);
+  }
+
+  params.push(memberId);
+
+  const result = database.prepare(`
+    UPDATE member_profiles
+    SET ${setClauses.join(', ')}
+    WHERE member_id = ?
+  `).run(...params);
+
+  if (result.changes === 0) {
+    return null;
+  }
+
+  logger.info({ memberId, updates: Object.keys(updates) }, 'Updated member profile');
+  return getMemberProfileById(memberId);
+}
+
+/**
+ * Delete member profile (cascades to badges, activity, perks)
+ */
+export function deleteMemberProfile(memberId: string): boolean {
+  const database = getDatabase();
+
+  const result = database.prepare(`
+    DELETE FROM member_profiles WHERE member_id = ?
+  `).run(memberId);
+
+  if (result.changes > 0) {
+    logger.info({ memberId }, 'Deleted member profile');
+  }
+
+  return result.changes > 0;
+}
+
+/**
+ * Calculate tenure category based on membership duration
+ */
+export function calculateTenureCategory(
+  createdAt: Date,
+  launchDate: Date = new Date('2025-01-01')
+): 'og' | 'veteran' | 'elder' | 'member' {
+  const now = new Date();
+  const membershipDays = Math.floor((now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24));
+
+  // OG: joined within first 30 days of launch
+  const launchWindow = 30;
+  const daysAfterLaunch = Math.floor((createdAt.getTime() - launchDate.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (daysAfterLaunch <= launchWindow) {
+    return 'og';
+  }
+
+  if (membershipDays >= 180) {
+    return 'elder';
+  }
+
+  if (membershipDays >= 90) {
+    return 'veteran';
+  }
+
+  return 'member';
+}
+
+/**
+ * Get public profile (privacy-filtered) by member ID
+ */
+export function getPublicProfile(memberId: string): PublicProfile | null {
+  const profile = getMemberProfileById(memberId);
+  if (!profile) return null;
+
+  const badges = getMemberBadges(memberId);
+  const tenureCategory = calculateTenureCategory(profile.createdAt);
+
+  return {
+    memberId: profile.memberId,
+    nym: profile.nym,
+    bio: profile.bio,
+    pfpUrl: profile.pfpUrl,
+    pfpType: profile.pfpType,
+    tier: profile.tier,
+    tenureCategory,
+    badges: badges.map((b) => ({
+      badgeId: b.badgeId,
+      name: b.name,
+      description: b.description,
+      category: b.category,
+      emoji: b.emoji,
+      awardedAt: b.awardedAt,
+    })),
+    badgeCount: badges.length,
+    memberSince: profile.createdAt,
+  };
+}
+
+// =============================================================================
+// Badge Queries (Social Layer v2.0)
+// =============================================================================
+
+/**
+ * Database row shape for badges table
+ */
+interface BadgeRow {
+  badge_id: string;
+  name: string;
+  description: string;
+  category: 'tenure' | 'engagement' | 'contribution' | 'special';
+  emoji: string | null;
+  auto_criteria_type: 'tenure_days' | 'activity_balance' | 'badge_count' | null;
+  auto_criteria_value: number | null;
+  display_order: number;
+  created_at: string;
+}
+
+/**
+ * Convert database row to Badge
+ */
+function rowToBadge(row: BadgeRow): Badge {
+  return {
+    badgeId: row.badge_id,
+    name: row.name,
+    description: row.description,
+    category: row.category,
+    emoji: row.emoji,
+    autoCriteriaType: row.auto_criteria_type,
+    autoCriteriaValue: row.auto_criteria_value,
+    displayOrder: row.display_order,
+  };
+}
+
+/**
+ * Get all badge definitions
+ */
+export function getAllBadges(): Badge[] {
+  const database = getDatabase();
+
+  const rows = database.prepare(`
+    SELECT * FROM badges ORDER BY category, display_order
+  `).all() as BadgeRow[];
+
+  return rows.map(rowToBadge);
+}
+
+/**
+ * Get badge by ID
+ */
+export function getBadgeById(badgeId: string): Badge | null {
+  const database = getDatabase();
+
+  const row = database.prepare(`
+    SELECT * FROM badges WHERE badge_id = ?
+  `).get(badgeId) as BadgeRow | undefined;
+
+  return row ? rowToBadge(row) : null;
+}
+
+/**
+ * Get badges by category
+ */
+export function getBadgesByCategory(category: Badge['category']): Badge[] {
+  const database = getDatabase();
+
+  const rows = database.prepare(`
+    SELECT * FROM badges WHERE category = ? ORDER BY display_order
+  `).all(category) as BadgeRow[];
+
+  return rows.map(rowToBadge);
+}
+
+/**
+ * Extended badge info with award date for member queries
+ */
+interface MemberBadgeWithInfo extends Badge {
+  awardedAt: Date;
+  awardedBy: string | null;
+  awardReason: string | null;
+}
+
+/**
+ * Get all badges for a member (non-revoked)
+ */
+export function getMemberBadges(memberId: string): MemberBadgeWithInfo[] {
+  const database = getDatabase();
+
+  const rows = database.prepare(`
+    SELECT b.*, mb.awarded_at, mb.awarded_by, mb.award_reason
+    FROM member_badges mb
+    JOIN badges b ON mb.badge_id = b.badge_id
+    WHERE mb.member_id = ? AND mb.revoked = 0
+    ORDER BY b.category, b.display_order
+  `).all(memberId) as Array<BadgeRow & {
+    awarded_at: string;
+    awarded_by: string | null;
+    award_reason: string | null;
+  }>;
+
+  return rows.map((row) => ({
+    ...rowToBadge(row),
+    awardedAt: new Date(row.awarded_at),
+    awardedBy: row.awarded_by,
+    awardReason: row.award_reason,
+  }));
+}
+
+/**
+ * Check if member has a specific badge
+ */
+export function memberHasBadge(memberId: string, badgeId: string): boolean {
+  const database = getDatabase();
+
+  const row = database.prepare(`
+    SELECT 1 FROM member_badges
+    WHERE member_id = ? AND badge_id = ? AND revoked = 0
+  `).get(memberId, badgeId);
+
+  return !!row;
+}
+
+/**
+ * Award a badge to a member
+ */
+export function awardBadge(
+  memberId: string,
+  badgeId: string,
+  options: { awardedBy?: string; reason?: string } = {}
+): MemberBadge | null {
+  const database = getDatabase();
+
+  // Check if badge exists
+  const badge = getBadgeById(badgeId);
+  if (!badge) {
+    logger.warn({ badgeId }, 'Attempted to award non-existent badge');
+    return null;
+  }
+
+  // Check if already has badge (including revoked - we'll un-revoke)
+  const existing = database.prepare(`
+    SELECT id, revoked FROM member_badges
+    WHERE member_id = ? AND badge_id = ?
+  `).get(memberId, badgeId) as { id: number; revoked: number } | undefined;
+
+  if (existing) {
+    if (existing.revoked === 0) {
+      // Already has active badge
+      return null;
+    }
+
+    // Un-revoke the badge
+    database.prepare(`
+      UPDATE member_badges
+      SET revoked = 0, revoked_at = NULL, revoked_by = NULL,
+          awarded_at = datetime('now'), awarded_by = ?, award_reason = ?
+      WHERE id = ?
+    `).run(options.awardedBy ?? null, options.reason ?? null, existing.id);
+
+    logger.info({ memberId, badgeId }, 'Re-awarded previously revoked badge');
+  } else {
+    // Insert new badge
+    database.prepare(`
+      INSERT INTO member_badges (member_id, badge_id, awarded_by, award_reason)
+      VALUES (?, ?, ?, ?)
+    `).run(memberId, badgeId, options.awardedBy ?? null, options.reason ?? null);
+
+    logger.info({ memberId, badgeId }, 'Awarded badge');
+  }
+
+  // Return the badge record
+  const row = database.prepare(`
+    SELECT * FROM member_badges
+    WHERE member_id = ? AND badge_id = ?
+  `).get(memberId, badgeId) as {
+    id: number;
+    member_id: string;
+    badge_id: string;
+    awarded_at: string;
+    awarded_by: string | null;
+    award_reason: string | null;
+    revoked: number;
+    revoked_at: string | null;
+    revoked_by: string | null;
+  };
+
+  return {
+    id: row.id,
+    memberId: row.member_id,
+    badgeId: row.badge_id,
+    awardedAt: new Date(row.awarded_at),
+    awardedBy: row.awarded_by,
+    awardReason: row.award_reason,
+    revoked: row.revoked === 1,
+    revokedAt: row.revoked_at ? new Date(row.revoked_at) : null,
+    revokedBy: row.revoked_by,
+  };
+}
+
+/**
+ * Revoke a badge from a member
+ */
+export function revokeBadge(
+  memberId: string,
+  badgeId: string,
+  revokedBy: string
+): boolean {
+  const database = getDatabase();
+
+  const result = database.prepare(`
+    UPDATE member_badges
+    SET revoked = 1, revoked_at = datetime('now'), revoked_by = ?
+    WHERE member_id = ? AND badge_id = ? AND revoked = 0
+  `).run(revokedBy, memberId, badgeId);
+
+  if (result.changes > 0) {
+    logger.info({ memberId, badgeId, revokedBy }, 'Revoked badge');
+  }
+
+  return result.changes > 0;
+}
+
+/**
+ * Get count of badges for a member
+ */
+export function getMemberBadgeCount(memberId: string): number {
+  const database = getDatabase();
+
+  const row = database.prepare(`
+    SELECT COUNT(*) as count FROM member_badges
+    WHERE member_id = ? AND revoked = 0
+  `).get(memberId) as { count: number };
+
+  return row.count;
+}
+
+// =============================================================================
+// Member Activity Queries (Social Layer v2.0)
+// =============================================================================
+
+/**
+ * Database row shape for member_activity table
+ */
+interface MemberActivityRow {
+  member_id: string;
+  activity_balance: number;
+  last_decay_at: string;
+  total_messages: number;
+  total_reactions_given: number;
+  total_reactions_received: number;
+  last_active_at: string | null;
+  peak_balance: number;
+  updated_at: string;
+}
+
+/**
+ * Convert database row to MemberActivity
+ */
+function rowToMemberActivity(row: MemberActivityRow): MemberActivity {
+  return {
+    memberId: row.member_id,
+    activityBalance: row.activity_balance,
+    lastDecayAt: new Date(row.last_decay_at),
+    totalMessages: row.total_messages,
+    totalReactionsGiven: row.total_reactions_given,
+    totalReactionsReceived: row.total_reactions_received,
+    lastActiveAt: row.last_active_at ? new Date(row.last_active_at) : null,
+    peakBalance: row.peak_balance,
+    updatedAt: new Date(row.updated_at),
+  };
+}
+
+/**
+ * Get member activity record
+ */
+export function getMemberActivity(memberId: string): MemberActivity | null {
+  const database = getDatabase();
+
+  const row = database.prepare(`
+    SELECT * FROM member_activity WHERE member_id = ?
+  `).get(memberId) as MemberActivityRow | undefined;
+
+  return row ? rowToMemberActivity(row) : null;
+}
+
+/**
+ * Apply decay to activity balance based on time elapsed
+ * Default: 10% decay every 6 hours
+ */
+export function applyActivityDecay(
+  memberId: string,
+  decayRate: number = 0.1,
+  decayPeriodHours: number = 6
+): MemberActivity | null {
+  const database = getDatabase();
+
+  const activity = getMemberActivity(memberId);
+  if (!activity) return null;
+
+  const now = new Date();
+  const hoursSinceDecay = (now.getTime() - activity.lastDecayAt.getTime()) / (1000 * 60 * 60);
+  const decayPeriods = Math.floor(hoursSinceDecay / decayPeriodHours);
+
+  if (decayPeriods <= 0) {
+    return activity; // No decay needed
+  }
+
+  // Apply compound decay: balance * (1 - decayRate)^periods
+  const decayMultiplier = Math.pow(1 - decayRate, decayPeriods);
+  const newBalance = Math.max(0, activity.activityBalance * decayMultiplier);
+
+  database.prepare(`
+    UPDATE member_activity
+    SET activity_balance = ?,
+        last_decay_at = datetime('now'),
+        updated_at = datetime('now')
+    WHERE member_id = ?
+  `).run(newBalance, memberId);
+
+  return getMemberActivity(memberId);
+}
+
+/**
+ * Add activity points to a member
+ */
+export function addActivityPoints(
+  memberId: string,
+  points: number,
+  type: 'message' | 'reaction_given' | 'reaction_received'
+): MemberActivity | null {
+  const database = getDatabase();
+
+  // First apply any pending decay
+  applyActivityDecay(memberId);
+
+  const activity = getMemberActivity(memberId);
+  if (!activity) return null;
+
+  const newBalance = activity.activityBalance + points;
+  const newPeak = Math.max(activity.peakBalance, newBalance);
+
+  const updateClauses = [
+    'activity_balance = ?',
+    'peak_balance = ?',
+    'last_active_at = datetime(\'now\')',
+    'updated_at = datetime(\'now\')',
+  ];
+  const params: unknown[] = [newBalance, newPeak];
+
+  // Update lifetime stats
+  switch (type) {
+    case 'message':
+      updateClauses.push('total_messages = total_messages + 1');
+      break;
+    case 'reaction_given':
+      updateClauses.push('total_reactions_given = total_reactions_given + 1');
+      break;
+    case 'reaction_received':
+      updateClauses.push('total_reactions_received = total_reactions_received + 1');
+      break;
+  }
+
+  params.push(memberId);
+
+  database.prepare(`
+    UPDATE member_activity
+    SET ${updateClauses.join(', ')}
+    WHERE member_id = ?
+  `).run(...params);
+
+  return getMemberActivity(memberId);
+}
+
+/**
+ * Get activity leaderboard (top N by activity balance)
+ */
+export function getActivityLeaderboard(limit: number = 10): Array<{
+  memberId: string;
+  nym: string;
+  activityBalance: number;
+  tier: 'naib' | 'fedaykin';
+}> {
+  const database = getDatabase();
+
+  const rows = database.prepare(`
+    SELECT ma.member_id, mp.nym, ma.activity_balance, mp.tier
+    FROM member_activity ma
+    JOIN member_profiles mp ON ma.member_id = mp.member_id
+    WHERE mp.onboarding_complete = 1
+    ORDER BY ma.activity_balance DESC
+    LIMIT ?
+  `).all(limit) as Array<{
+    member_id: string;
+    nym: string;
+    activity_balance: number;
+    tier: 'naib' | 'fedaykin';
+  }>;
+
+  return rows.map((row) => ({
+    memberId: row.member_id,
+    nym: row.nym,
+    activityBalance: row.activity_balance,
+    tier: row.tier,
+  }));
+}
+
+// =============================================================================
+// Directory Queries (Social Layer v2.0)
+// =============================================================================
+
+/**
+ * Get member directory with filters and pagination
+ */
+export function getMemberDirectory(filters: DirectoryFilters = {}): DirectoryResult {
+  const database = getDatabase();
+
+  const whereClauses: string[] = ['mp.onboarding_complete = 1'];
+  const params: unknown[] = [];
+
+  // Filter by tier
+  if (filters.tier) {
+    whereClauses.push('mp.tier = ?');
+    params.push(filters.tier);
+  }
+
+  // Filter by badge
+  if (filters.badge) {
+    whereClauses.push(`
+      EXISTS (
+        SELECT 1 FROM member_badges mb
+        WHERE mb.member_id = mp.member_id
+        AND mb.badge_id = ?
+        AND mb.revoked = 0
+      )
+    `);
+    params.push(filters.badge);
+  }
+
+  // Build ORDER BY clause
+  let orderBy = 'mp.created_at DESC'; // Default sort
+  switch (filters.sortBy) {
+    case 'nym':
+      orderBy = `mp.nym ${filters.sortDir === 'desc' ? 'DESC' : 'ASC'}`;
+      break;
+    case 'tenure':
+      orderBy = `mp.created_at ${filters.sortDir === 'desc' ? 'DESC' : 'ASC'}`;
+      break;
+    case 'badgeCount':
+      orderBy = `badge_count ${filters.sortDir === 'desc' ? 'DESC' : 'ASC'}`;
+      break;
+  }
+
+  // Count total results
+  const countRow = database.prepare(`
+    SELECT COUNT(*) as total
+    FROM member_profiles mp
+    WHERE ${whereClauses.join(' AND ')}
+  `).get(...params) as { total: number };
+
+  const total = countRow.total;
+  const pageSize = filters.pageSize ?? 20;
+  const page = filters.page ?? 1;
+  const totalPages = Math.ceil(total / pageSize);
+  const offset = (page - 1) * pageSize;
+
+  // Get paginated results with badge count
+  const rows = database.prepare(`
+    SELECT
+      mp.*,
+      COALESCE((
+        SELECT COUNT(*) FROM member_badges mb
+        WHERE mb.member_id = mp.member_id AND mb.revoked = 0
+      ), 0) as badge_count
+    FROM member_profiles mp
+    WHERE ${whereClauses.join(' AND ')}
+    ORDER BY ${orderBy}
+    LIMIT ? OFFSET ?
+  `).all(...params, pageSize, offset) as Array<MemberProfileRow & { badge_count: number }>;
+
+  // Convert to PublicProfile
+  const members: PublicProfile[] = rows.map((row) => {
+    const badges = getMemberBadges(row.member_id);
+    const tenureCategory = calculateTenureCategory(new Date(row.created_at));
+
+    return {
+      memberId: row.member_id,
+      nym: row.nym,
+      bio: row.bio,
+      pfpUrl: row.pfp_url,
+      pfpType: row.pfp_type,
+      tier: row.tier,
+      tenureCategory,
+      badges: badges.map((b) => ({
+        badgeId: b.badgeId,
+        name: b.name,
+        description: b.description,
+        category: b.category,
+        emoji: b.emoji,
+        awardedAt: b.awardedAt,
+      })),
+      badgeCount: row.badge_count,
+      memberSince: new Date(row.created_at),
+    };
+  });
+
+  // Filter by tenure category (post-query since it's computed)
+  const filteredMembers = filters.tenureCategory
+    ? members.filter((m) => m.tenureCategory === filters.tenureCategory)
+    : members;
+
+  return {
+    members: filteredMembers,
+    total: filters.tenureCategory ? filteredMembers.length : total,
+    page,
+    pageSize,
+    totalPages: filters.tenureCategory
+      ? Math.ceil(filteredMembers.length / pageSize)
+      : totalPages,
+  };
+}
+
+/**
+ * Get total member count
+ */
+export function getMemberCount(): number {
+  const database = getDatabase();
+
+  const row = database.prepare(`
+    SELECT COUNT(*) as count FROM member_profiles
+    WHERE onboarding_complete = 1
+  `).get() as { count: number };
+
+  return row.count;
+}
+
+/**
+ * Get member count by tier
+ */
+export function getMemberCountByTier(): { naib: number; fedaykin: number } {
+  const database = getDatabase();
+
+  const rows = database.prepare(`
+    SELECT tier, COUNT(*) as count
+    FROM member_profiles
+    WHERE onboarding_complete = 1
+    GROUP BY tier
+  `).all() as Array<{ tier: 'naib' | 'fedaykin'; count: number }>;
+
+  const counts = { naib: 0, fedaykin: 0 };
+  for (const row of rows) {
+    counts[row.tier] = row.count;
+  }
+
+  return counts;
+}
+
+/**
+ * Search members by nym (partial match, case-insensitive)
+ */
+export function searchMembersByNym(query: string, limit: number = 10): PublicProfile[] {
+  const database = getDatabase();
+
+  const rows = database.prepare(`
+    SELECT * FROM member_profiles
+    WHERE nym LIKE ? COLLATE NOCASE
+    AND onboarding_complete = 1
+    ORDER BY nym ASC
+    LIMIT ?
+  `).all(`%${query}%`, limit) as MemberProfileRow[];
+
+  return rows.map((row) => {
+    const profile = rowToMemberProfile(row);
+    return getPublicProfile(profile.memberId)!;
+  });
 }

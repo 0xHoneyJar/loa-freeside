@@ -68,6 +68,10 @@ const configSchema = z.object({
     channels: z.object({
       theDoor: z.string().min(1),
       census: z.string().min(1),
+      // Social Layer channels (v2.0)
+      sietchLounge: z.string().optional(),
+      naibCouncil: z.string().optional(),
+      introductions: z.string().optional(),
     }),
     roles: z.object({
       naib: z.string().min(1),
@@ -96,6 +100,49 @@ const configSchema = z.object({
   gracePeriod: z.object({
     hours: z.coerce.number().int().min(1).default(24),
   }),
+
+  // Social Layer Configuration (v2.0)
+  socialLayer: z.object({
+    // Activity decay settings
+    activity: z.object({
+      // Decay rate per period (0.0-1.0)
+      decayRate: z.coerce.number().min(0).max(1).default(0.1),
+      // Decay period in hours
+      decayPeriodHours: z.coerce.number().int().min(1).default(6),
+      // Points per activity type
+      points: z.object({
+        message: z.coerce.number().int().min(0).default(1),
+        reactionGiven: z.coerce.number().int().min(0).default(1),
+        reactionReceived: z.coerce.number().int().min(0).default(2),
+      }),
+    }),
+    // Profile settings
+    profile: z.object({
+      // Nym change cooldown in days
+      nymChangeCooldownDays: z.coerce.number().int().min(0).default(30),
+      // Launch date for OG badge calculation
+      launchDate: z.string().datetime().optional(),
+      // Max bio length
+      maxBioLength: z.coerce.number().int().min(0).default(160),
+    }),
+    // Avatar settings
+    avatar: z.object({
+      // Default size in pixels
+      defaultSize: z.coerce.number().int().min(32).max(512).default(200),
+      // Grid dimensions for drunken bishop
+      gridWidth: z.coerce.number().int().min(5).max(50).default(17),
+      gridHeight: z.coerce.number().int().min(5).max(50).default(9),
+    }),
+    // Image processing settings
+    image: z.object({
+      // Target PFP size
+      pfpSize: z.coerce.number().int().min(64).max(512).default(256),
+      // Max file size in KB
+      maxFileSizeKB: z.coerce.number().int().min(100).max(2048).default(500),
+      // WebP quality
+      webpQuality: z.coerce.number().int().min(1).max(100).default(80),
+    }),
+  }),
 });
 
 /**
@@ -118,6 +165,10 @@ function parseConfig() {
       channels: {
         theDoor: process.env.DISCORD_CHANNEL_THE_DOOR ?? '',
         census: process.env.DISCORD_CHANNEL_CENSUS ?? '',
+        // Social Layer channels (v2.0)
+        sietchLounge: process.env.DISCORD_CHANNEL_SIETCH_LOUNGE,
+        naibCouncil: process.env.DISCORD_CHANNEL_NAIB_COUNCIL,
+        introductions: process.env.DISCORD_CHANNEL_INTRODUCTIONS,
       },
       roles: {
         naib: process.env.DISCORD_ROLE_NAIB ?? '',
@@ -137,6 +188,33 @@ function parseConfig() {
     },
     gracePeriod: {
       hours: process.env.GRACE_PERIOD_HOURS ?? '24',
+    },
+    // Social Layer Configuration (v2.0)
+    socialLayer: {
+      activity: {
+        decayRate: process.env.ACTIVITY_DECAY_RATE ?? '0.1',
+        decayPeriodHours: process.env.ACTIVITY_DECAY_PERIOD_HOURS ?? '6',
+        points: {
+          message: process.env.ACTIVITY_POINTS_MESSAGE ?? '1',
+          reactionGiven: process.env.ACTIVITY_POINTS_REACTION_GIVEN ?? '1',
+          reactionReceived: process.env.ACTIVITY_POINTS_REACTION_RECEIVED ?? '2',
+        },
+      },
+      profile: {
+        nymChangeCooldownDays: process.env.NYM_CHANGE_COOLDOWN_DAYS ?? '30',
+        launchDate: process.env.SOCIAL_LAYER_LAUNCH_DATE,
+        maxBioLength: process.env.MAX_BIO_LENGTH ?? '160',
+      },
+      avatar: {
+        defaultSize: process.env.AVATAR_DEFAULT_SIZE ?? '200',
+        gridWidth: process.env.AVATAR_GRID_WIDTH ?? '17',
+        gridHeight: process.env.AVATAR_GRID_HEIGHT ?? '9',
+      },
+      image: {
+        pfpSize: process.env.PFP_SIZE ?? '256',
+        maxFileSizeKB: process.env.MAX_PFP_SIZE_KB ?? '500',
+        webpQuality: process.env.WEBP_QUALITY ?? '80',
+      },
     },
   };
 
@@ -172,6 +250,10 @@ export interface Config {
     channels: {
       theDoor: string;
       census: string;
+      // Social Layer channels (v2.0)
+      sietchLounge?: string;
+      naibCouncil?: string;
+      introductions?: string;
     };
     roles: {
       naib: string;
@@ -191,6 +273,33 @@ export interface Config {
   };
   gracePeriod: {
     hours: number;
+  };
+  // Social Layer Configuration (v2.0)
+  socialLayer: {
+    activity: {
+      decayRate: number;
+      decayPeriodHours: number;
+      points: {
+        message: number;
+        reactionGiven: number;
+        reactionReceived: number;
+      };
+    };
+    profile: {
+      nymChangeCooldownDays: number;
+      launchDate?: string;
+      maxBioLength: number;
+    };
+    avatar: {
+      defaultSize: number;
+      gridWidth: number;
+      gridHeight: number;
+    };
+    image: {
+      pfpSize: number;
+      maxFileSizeKB: number;
+      webpQuality: number;
+    };
   };
 }
 
@@ -212,6 +321,7 @@ export const config: Config = {
   database: parsedConfig.database,
   logging: parsedConfig.logging,
   gracePeriod: parsedConfig.gracePeriod,
+  socialLayer: parsedConfig.socialLayer,
 };
 
 /**
