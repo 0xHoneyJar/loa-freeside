@@ -1,9 +1,10 @@
-# Sprint Plan: Sietch
+# Sprint Plan: Sietch v2.1
 
-**Version**: 2.0
-**Date**: December 18, 2025
-**PRD Reference**: `docs/prd.md`
-**SDD Reference**: `docs/sdd.md`
+**Version**: 2.1
+**Date**: December 19, 2025
+**PRD Reference**: `docs/prd-v2.1.md`
+**SDD Reference**: `docs/sdd-v2.1.md`
+**Codename**: Naib Dynamics & Threshold
 
 ---
 
@@ -11,29 +12,29 @@
 
 ### Project Summary
 
-Sietch is a privacy-first, token-gated Discord community for the top 69 BGT holders who have never redeemed their tokens. Version 2.0 introduces a comprehensive **Social Layer** with pseudonymous member profiles, badge system with demurrage-based activity tracking, member directory, and exclusive access perks.
+Sietch v2.1 introduces the **Naib Dynamics & Threshold System** - a dynamic governance layer and waitlist visibility feature that rewards early adopters, creates competitive tension around eligibility boundaries, and provides transparency into who may be joining (or leaving) the community.
 
-### Completed Work (v1.0)
+### Completed Work (v1.0 - v2.0)
 
-The v1.0 MVP is complete with:
+The v1.0 MVP and v2.0 Social Layer are complete with:
 - Chain service fetching BGT data from Berachain RPC
-- SQLite database with eligibility snapshots
+- SQLite database with eligibility snapshots and social layer tables
 - REST API for Collab.Land integration
-- Discord bot with leaderboard and notifications
-- trigger.dev scheduled tasks
+- Discord bot with profiles, badges, activity tracking, directory, leaderboard
+- DM-based onboarding wizard with mandatory gating
+- trigger.dev scheduled tasks (eligibility sync, activity decay, badge checks)
 - Production deployment infrastructure
 
-### v2.0 Scope: Social Layer
+### v2.1 Scope: Naib Dynamics & Threshold
 
-- Pseudonymous identity system (nym, PFP, bio)
-- DM-based onboarding wizard with mandatory gating
-- Badge and reputation system (10 badge types)
-- Demurrage-based activity tracking (decay every 6 hours)
-- Member directory with filters
-- Exclusive access tiers and dynamic role assignment
-- Leaderboard (rankings + badge counts)
-- Collab.Land configuration
-- All Discord slash commands and interactions
+- **Dynamic Naib System** - First 7 eligible members get Naib seats, with BGT-based competition
+- **Former Naib Recognition** - Historical recognition for members who held Naib seats
+- **Naib Archives** - Private channel for current and Former Naib members
+- **Cave Entrance (Public Waitlist)** - Public lobby for aspiring members (positions 70-100)
+- **Taqwa Role** - Discord role for registered waitlist members ("those holding back")
+- **Position Alert System** - Personalized notifications about ranking changes
+- **At-Risk Warnings** - Private alerts for members in bottom 10%
+- **Threshold Display** - Live statistics showing entry requirements
 
 ### Team Configuration
 
@@ -43,970 +44,851 @@ The v1.0 MVP is complete with:
 
 ### Sprint Configuration
 
-- **Sprint Duration**: 1 week
-- **Total Sprints**: 5 sprints
+- **Sprint Duration**: 2.5 days
+- **Total Sprints**: 4 sprints (Sprint 11-14)
 - **Review Cadence**: End of each sprint
 
 ---
 
-## v2.0 Sprint Summary
+## v2.1 Sprint Summary
 
-| Sprint | Focus | Key Deliverables |
-|--------|-------|------------------|
-| **Sprint 6** | Foundation & Database | Schema extensions, migrations, Profile service, Avatar service |
-| **Sprint 7** | Onboarding & Core Identity | Onboarding wizard, profile CRUD, Discord slash commands |
-| **Sprint 8** | Activity & Badges | Activity service with demurrage, Badge service, scheduled tasks |
-| **Sprint 9** | Directory & Leaderboard | Directory browsing, filters, leaderboard, API endpoints |
-| **Sprint 10** | Integration & Polish | Collab.Land integration, role automation, testing, deployment |
+| Sprint | Focus | Key Deliverables | Duration |
+|--------|-------|------------------|----------|
+| **Sprint 11** | Naib Foundation | Schema, NaibService, seat management, /naib command | 2.5 days |
+| **Sprint 12** | Cave Entrance | ThresholdService, waitlist registration, Taqwa role, /threshold command | 2.5 days |
+| **Sprint 13** | Notification System | NotificationService, alerts, preferences, /position & /alerts commands | 2.5 days |
+| **Sprint 14** | Integration & Polish | Enhanced sync task, testing, Discord setup, deployment | 2.5 days |
 
 ---
 
-## Sprint 6: Foundation & Database
+## Sprint 11: Naib Foundation
 
-**Goal**: Establish database schema, core services, and crypto-hash avatar generation
+**Goal**: Establish Naib seat management system with dynamic competition mechanics
 
-**Duration**: Week 1
+**Duration**: 2.5 days
 
 ### Tasks
 
-#### S6-T1: Database Schema Extension
+#### S11-T1: Database Schema Extension (Naib)
 
-**Description**: Extend SQLite schema with new tables for member profiles, badges, activity tracking, and perks.
+**Description**: Create database migration for Naib seat tracking and related tables.
 
 **Acceptance Criteria**:
-- [x] Create `member_profiles` table with privacy-separated fields
-- [x] Create `badges` table with seed data for all 10 badge types
-- [x] Create `member_badges` junction table
-- [x] Create `member_activity` table with demurrage fields
-- [x] Create `member_perks` table
-- [x] All tables have proper indexes for query performance
-- [x] Foreign key constraints properly reference existing tables
+- [ ] Create `naib_seats` table with seat assignment history
+- [ ] Create indexes for current Naib lookup (`idx_naib_current`)
+- [ ] Create unique constraint for active seat per member
+- [ ] Create unique constraint for one member per seat number (active)
+- [ ] Add `is_former_naib` column to `member_profiles` table
+- [ ] Create index for Former Naib lookup
+- [ ] Migration is reversible
 
 **Files to Create/Modify**:
-- `sietch-service/src/db/migrations/002_social_layer.ts`
+- `sietch-service/src/db/migrations/005_naib_threshold.ts`
 - `sietch-service/src/db/schema.ts` (extend)
 
 **Dependencies**: None
-**Estimated Effort**: Medium
-**Testing**: Schema creation tests, migration up/down tests
-
----
-
-#### S6-T2: TypeScript Type Definitions
-
-**Description**: Define TypeScript interfaces for all new domain objects.
-
-**Acceptance Criteria**:
-- [x] `MemberProfile` interface with public/private field separation
-- [x] `PublicProfile` interface (privacy-filtered view)
-- [x] `Badge` and `MemberBadge` interfaces
-- [x] `MemberActivity` interface with demurrage fields
-- [x] `OnboardingState` interface
-- [x] `DirectoryFilters` interface
-- [x] All interfaces exported from `types/index.ts`
-
-**Files to Create/Modify**:
-- `sietch-service/src/types/index.ts` (extend)
-
-**Dependencies**: S6-T1
-**Estimated Effort**: Low
-**Testing**: TypeScript compilation
-
----
-
-#### S6-T3: Database Query Layer Extension
-
-**Description**: Add database query functions for new tables.
-
-**Acceptance Criteria**:
-- [x] Profile CRUD queries (create, read by ID/nym/discordId, update)
-- [x] Badge queries (get all, get by ID, get member badges)
-- [x] Badge award/revoke queries
-- [x] Activity queries (get, upsert, update balance)
-- [x] Directory queries with pagination and filtering
-- [x] All queries use prepared statements
-- [x] Proper error handling for constraint violations
-
-**Files to Create/Modify**:
-- `sietch-service/src/db/queries.ts` (extend)
-
-**Dependencies**: S6-T1, S6-T2
-**Estimated Effort**: Medium
-**Testing**: Unit tests for each query function
-
----
-
-#### S6-T4: Profile Service Implementation
-
-**Description**: Implement ProfileService with strict privacy separation.
-
-**Acceptance Criteria**:
-- [x] `createProfile()` - validates nym uniqueness and format
-- [x] `getPublicProfile()` - returns privacy-filtered profile (NO wallet, NO discord ID)
-- [x] `getOwnProfile()` - returns full profile for owner
-- [x] `updateProfile()` - updates nym/bio with validation
-- [x] `nymExists()` - check nym availability
-- [x] `isValidNym()` - validate nym format (3-32 chars, alphanumeric + limited special)
-- [x] `stripUrls()` - remove URLs from bio (privacy protection)
-- [x] `calculateTenureCategory()` - derive OG/Veteran/Elder from membership duration
-- [x] Profile updates never expose wallet-nym correlation
-
-**Files to Create**:
-- `sietch-service/src/services/profile.ts`
-
-**Dependencies**: S6-T3
-**Estimated Effort**: Medium
-**Testing**: Unit tests for validation, privacy filtering tests
-
----
-
-#### S6-T5: Avatar Service Implementation
-
-**Description**: Implement crypto-hash based avatar generation using drunken bishop algorithm.
-
-**Acceptance Criteria**:
-- [x] `generateAvatar()` - creates ASCII art from SHA-256 hash of member ID
-- [x] `generateAvatarImage()` - renders hash as 256x256 PNG using sharp
-- [x] Deterministic output - same member ID always produces same avatar
-- [x] Color palette derived from hash bytes for uniqueness
-- [x] Avatar generation never uses wallet address (uses internal UUID)
-- [x] Performance: generate avatar in <100ms
-
-**Files to Create**:
-- `sietch-service/src/services/avatar.ts`
-
-**Dependencies**: None
-**Estimated Effort**: Medium
-**Testing**: Determinism tests, performance tests
-
----
-
-#### S6-T6: Image Processing Utilities
-
-**Description**: Create utilities for profile picture upload processing.
-
-**Acceptance Criteria**:
-- [x] `processProfileImage()` - validates and compresses uploaded images
-- [x] Validates file type (PNG, JPG, GIF, WebP only)
-- [x] Resizes to 256x256 with center crop
-- [x] Compresses to under 1MB for Discord CDN
-- [x] Strips EXIF metadata (privacy)
-- [x] Throws typed errors for invalid input
-
-**Files to Create**:
-- `sietch-service/src/utils/image.ts`
-
-**Dependencies**: sharp package
-**Estimated Effort**: Low
-**Testing**: Unit tests with sample images
-
----
-
-#### S6-T7: Configuration Extension
-
-**Description**: Extend config to include all v2.0 environment variables.
-
-**Acceptance Criteria**:
-- [x] Add Discord channel IDs (general, bot-commands, deep-desert, stillsuit-lounge)
-- [x] Add Discord role IDs (onboarded, engaged, veteran, trusted, inner-circle)
-- [x] Add tracked channels array for activity tracking
-- [x] Add Sietch launch date for OG badge calculation
-- [x] Add activity decay configuration (rate, interval)
-- [x] Add session configuration (secret, expiry)
-- [x] Update `.env.example` with all new variables
-
-**Files to Modify**:
-- `sietch-service/src/config.ts`
-- `sietch-service/.env.example`
-
-**Dependencies**: None
-**Estimated Effort**: Low
-**Testing**: Config loading tests
-
----
-
-### Sprint 6 Success Criteria
-
-- [x] All database migrations run successfully
-- [x] Profile service creates and retrieves profiles with privacy separation
-- [x] Avatar service generates deterministic avatars from member IDs
-- [x] All unit tests pass
-- [x] No TypeScript compilation errors
-
----
-
-## Sprint 7: Onboarding & Core Identity
-
-**Goal**: Implement DM-based onboarding wizard and Discord slash commands for profile management
-
-**Duration**: Week 2
-
-### Tasks
-
-#### S7-T1: Discord.js Slash Command Registration ✅
-
-**Description**: Set up slash command infrastructure and register all profile-related commands.
-
-**Acceptance Criteria**:
-- [x] Create command registration script
-- [x] `/profile` command with `view` and `edit` subcommands
-- [x] `/profile view [nym]` - optional nym parameter
-- [x] `/profile edit` - triggers DM wizard
-- [x] Commands registered with Discord API
-- [x] Proper command option types and descriptions
-
-**Files to Create**:
-- `sietch-service/src/discord/commands/profile.ts`
-- `sietch-service/src/discord/commands/index.ts`
-- `sietch-service/src/discord/registerCommands.ts`
-
-**Dependencies**: Sprint 6 complete
-**Estimated Effort**: Medium
-**Testing**: Command registration verification
-
----
-
-#### S7-T2: Onboarding Service Implementation ✅
-
-**Description**: Implement DM-based onboarding wizard with privacy assurances.
-
-**Acceptance Criteria**:
-- [x] `startOnboarding()` - initiates wizard for new members
-- [x] Welcome message with privacy assurances
-- [x] Step 1: Nym selection with validation (modal input)
-- [x] Step 2: PFP selection (upload/generate/skip buttons)
-- [x] Step 3: Bio input (optional, modal)
-- [x] `completeOnboarding()` - creates profile, assigns Onboarded role
-- [x] Tracks onboarding state in memory (Map)
-- [x] Awards initial badges (OG, Founding Fedaykin if applicable)
-- [x] DM fallback for users with DMs disabled (ephemeral in bot channel)
-
-**Files to Create**:
-- `sietch-service/src/services/onboarding.ts`
-
-**Dependencies**: S6-T4, S6-T5
-**Estimated Effort**: High
-**Testing**: Integration tests with mock Discord client
-
----
-
-#### S7-T3: Discord Interaction Handlers ✅
-
-**Description**: Handle button clicks, modal submissions, and select menus for onboarding.
-
-**Acceptance Criteria**:
-- [x] Button handler for onboarding flow (start, pfp options, bio options)
-- [x] Modal handler for nym input
-- [x] Modal handler for bio input
-- [x] Select menu handler for avatar style selection (if implemented)
-- [x] Proper error handling with user-friendly messages
-- [x] Interaction tokens don't expire during flow
-
-**Files to Create**:
-- `sietch-service/src/discord/interactions/onboarding.ts`
-- `sietch-service/src/discord/interactions/index.ts`
-
-**Dependencies**: S7-T2
-**Estimated Effort**: Medium
-**Testing**: Interaction flow tests
-
----
-
-#### S7-T4: Profile Embeds ✅
-
-**Description**: Create Discord embed builders for profile display.
-
-**Acceptance Criteria**:
-- [x] Own profile embed (includes stats, full badge list)
-- [x] Public profile embed (privacy-filtered, no stats)
-- [x] Consistent styling with Sietch branding
-- [x] Proper field layout (tier, tenure, badges)
-- [x] Thumbnail with PFP or generated avatar
-- [x] Color coding by tier (Naib: gold, Fedaykin: blue)
-
-**Files to Create**:
-- `sietch-service/src/discord/embeds/profile.ts`
-- `sietch-service/src/discord/embeds/index.ts`
-
-**Dependencies**: S6-T4
-**Estimated Effort**: Low
-**Testing**: Visual verification
-
----
-
-#### S7-T5: Profile Command Handler ✅
-
-**Description**: Implement `/profile` command execution logic.
-
-**Acceptance Criteria**:
-- [x] `/profile` (no args) - shows own profile (ephemeral)
-- [x] `/profile view` (no nym) - shows own profile (ephemeral)
-- [x] `/profile view [nym]` - shows target's public profile (public)
-- [x] `/profile edit` - sends DM with edit wizard
-- [x] Proper error messages for non-existent nyms
-- [x] Onboarding check - prompts to complete if not done
-
-**Files to Modify**:
-- `sietch-service/src/discord/commands/profile.ts`
-
-**Dependencies**: S7-T1, S7-T4
-**Estimated Effort**: Medium
-**Testing**: Command execution tests
-
----
-
-#### S7-T6: Profile Edit Wizard ✅
-
-**Description**: Implement edit flow for existing profiles (change nym, PFP, bio).
-
-**Acceptance Criteria**:
-- [x] Edit wizard in DM (similar to onboarding but for updates)
-- [x] Change nym (validates uniqueness, no cooldown per requirements)
-- [x] Change PFP (upload new, regenerate, keep current)
-- [x] Change bio (edit or clear)
-- [x] Confirmation message after changes
-- [x] History tracking (nymLastChanged timestamp)
-
-**Files to Modify**:
-- `sietch-service/src/services/onboarding.ts` (or create `edit.ts`)
-- `sietch-service/src/discord/interactions/profile.ts`
-
-**Dependencies**: S7-T2, S7-T3
-**Estimated Effort**: Medium
-**Testing**: Edit flow tests
-
----
-
-#### S7-T7: Discord Service Extension ✅
-
-**Description**: Extend existing Discord service with new capabilities.
-
-**Acceptance Criteria**:
-- [x] `assignRole()` - assign role by name (onboarded, engaged, veteran, etc.)
-- [x] `removeRole()` - remove role by name
-- [x] `getMemberById()` - get guild member by Discord ID
-- [x] `getBotChannel()` - get bot commands channel
-- [x] `notifyBadgeAwarded()` - DM user about badge (implemented in Sprint 8)
-- [x] Event handlers for new member detection (guildMemberUpdate)
-- [x] Interaction client setup for slash commands
-
-**Files to Modify**:
-- `sietch-service/src/services/discord.ts`
-
-**Dependencies**: Sprint 6 config
-**Estimated Effort**: Medium
-**Testing**: Role assignment tests
-
----
-
-#### S7-T8: Member Detection and Auto-Onboarding ✅
-
-**Description**: Detect when Collab.Land assigns a role and trigger onboarding.
-
-**Acceptance Criteria**:
-- [x] Listen for `guildMemberUpdate` events
-- [x] Detect when Naib or Fedaykin role is added
-- [x] Check if member has completed onboarding
-- [x] If not onboarded, call `startOnboarding()`
-- [x] Graceful handling of members with DMs disabled
-
-**Files to Modify**:
-- `sietch-service/src/services/discord.ts`
-- `sietch-service/src/index.ts` (event setup)
-
-**Dependencies**: S7-T2, S7-T7
-**Estimated Effort**: Medium
-**Testing**: Event trigger tests
-
----
-
-### Sprint 7 Success Criteria
-
-- [x] New members receive DM onboarding wizard
-- [x] Onboarding creates profile and assigns Onboarded role
-- [x] `/profile` command works for own and public views
-- [x] `/profile edit` allows updating nym, PFP, bio
-- [x] Privacy is maintained - no wallet/Discord correlation in public views
-- [x] All unit and integration tests pass
-
----
-
-## Sprint 8: Activity & Badges
-
-**Goal**: Implement demurrage-based activity tracking and badge award system
-
-**Duration**: Week 3
-
-### Tasks
-
-#### S8-T1: Activity Service Implementation ✅
-
-**Description**: Implement activity tracking with demurrage-based decay.
-
-**Acceptance Criteria**:
-- [x] `recordMessage()` - track message activity (+1 point)
-- [x] `recordReaction()` - track reactions (+0.5 given, +0.25 received)
-- [x] `applyDecay()` - calculate decay based on time since last decay
-- [x] `addActivity()` - apply pending decay, then add points
-- [x] `getOwnStats()` - return current activity stats (self only)
-- [x] `runDecayTask()` - batch decay for all members (scheduled task)
-- [x] `isTrackedChannel()` - check if channel counts for activity
-- [x] Decay rate: 0.9 (10% decay every 6 hours)
-
-**Files to Create**:
-- `sietch-service/src/services/activity.ts`
-
-**Dependencies**: S6-T3
-**Estimated Effort**: High
-**Testing**: Decay calculation tests, activity recording tests
-
----
-
-#### S8-T2: Badge Service Implementation ✅
-
-**Description**: Implement badge award logic for automatic and admin-granted badges.
-
-**Acceptance Criteria**:
-- [x] `getMemberBadges()` - get all badges for a member
-- [x] `checkTenureBadges()` - award OG/Veteran/Elder based on membership duration
-- [x] `checkActivityBadges()` - award Consistent/Dedicated/Devoted based on activity balance
-- [x] `awardBadge()` - award badge (automatic or manual)
-- [x] `adminAwardBadge()` - admin awards contribution badge
-- [x] `revokeBadge()` - admin revokes badge
-- [x] `checkRoleUpgrades()` - check if badge count triggers role changes
-- [x] Badges not removed when balance drops (once earned, kept)
-
-**Files to Create**:
-- `sietch-service/src/services/badge.ts`
-
-**Dependencies**: S6-T3, S7-T7
-**Estimated Effort**: High
-**Testing**: Badge threshold tests, role upgrade tests
-
----
-
-#### S8-T3: Discord Event Handlers for Activity ✅
-
-**Description**: Track Discord activity (messages, reactions) for activity service.
-
-**Acceptance Criteria**:
-- [x] Listen for `messageCreate` events in tracked channels
-- [x] Listen for `messageReactionAdd` events
-- [x] Listen for `messageReactionRemove` events (for received reactions)
-- [x] Map Discord user ID to member profile
-- [x] Skip activity tracking for non-onboarded users
-- [x] Rate limiting to prevent spam gaming (max 1 message/minute counted)
-
-**Files to Modify**:
-- `sietch-service/src/services/discord.ts`
-- `sietch-service/src/index.ts`
-
-**Dependencies**: S8-T1
-**Estimated Effort**: Medium
-**Testing**: Event handling tests
-
----
-
-#### S8-T4: Activity Decay Scheduled Task ✅
-
-**Description**: Create trigger.dev task for periodic activity decay.
-
-**Acceptance Criteria**:
-- [x] Runs every 6 hours (cron: `30 */6 * * *`)
-- [x] Calls `activityService.runDecayTask()`
-- [x] Logs number of members processed and decayed
-- [x] Max duration: 2 minutes
-- [x] Error handling with retries
-
-**Files to Create**:
-- `sietch-service/src/trigger/activityDecay.ts`
-
-**Dependencies**: S8-T1
-**Estimated Effort**: Low
-**Testing**: Task execution test
-
----
-
-#### S8-T5: Badge Check Scheduled Task ✅
-
-**Description**: Create trigger.dev task for daily tenure badge checks.
-
-**Acceptance Criteria**:
-- [x] Runs daily at midnight (cron: `0 0 * * *`)
-- [x] Iterates all members, calls `checkTenureBadges()`
-- [x] Logs badges awarded count
-- [x] Max duration: 5 minutes
-- [x] Error handling with retries
-
-**Files to Create**:
-- `sietch-service/src/trigger/badgeCheck.ts`
-
-**Dependencies**: S8-T2
-**Estimated Effort**: Low
-**Testing**: Task execution test
-
----
-
-#### S8-T6: Badge Slash Commands ✅
-
-**Description**: Implement `/badges` and `/admin-badge` commands.
-
-**Acceptance Criteria**:
-- [x] `/badges` - view own badges (ephemeral)
-- [x] `/badges [nym]` - view another member's badges (public)
-- [x] `/admin-badge award [nym] [badge]` - admin awards badge
-- [x] `/admin-badge revoke [nym] [badge]` - admin revokes badge
-- [x] Badge selection uses autocomplete with available badges
-- [x] Admin commands check for admin role
-
-**Files to Create**:
-- `sietch-service/src/discord/commands/badges.ts`
-- `sietch-service/src/discord/commands/admin-badge.ts`
-
-**Dependencies**: S8-T2
-**Estimated Effort**: Medium
-**Testing**: Command execution tests
-
----
-
-#### S8-T7: Stats Slash Command ✅
-
-**Description**: Implement `/stats` command for personal activity stats.
-
-**Acceptance Criteria**:
-- [x] `/stats` - view own engagement statistics (ephemeral)
-- [x] Shows current activity balance
-- [x] Shows total messages, reactions given, reactions received
-- [x] Shows last active timestamp
-- [x] Privacy note in footer
-
-**Files to Create**:
-- `sietch-service/src/discord/commands/stats.ts`
-
-**Dependencies**: S8-T1
-**Estimated Effort**: Low
-**Testing**: Command execution test
-
----
-
-#### S8-T8: Badge Embeds ✅
-
-**Description**: Create embed builders for badge display.
-
-**Acceptance Criteria**:
-- [x] Badge list embed (for `/badges`)
-- [x] Badge award notification embed (for DM)
-- [x] Badge icons displayed with emoji or thumbnails
-- [x] Badge descriptions and award dates
-- [x] Category grouping (Tenure, Streak, Contribution, Special)
-
-**Files to Create**:
-- `sietch-service/src/discord/embeds/badge.ts`
-
-**Dependencies**: S8-T2
-**Estimated Effort**: Low
-**Testing**: Visual verification
-
----
-
-#### S8-T9: Badge Award Notifications ✅
-
-**Description**: Send DM notifications when badges are awarded.
-
-**Acceptance Criteria**:
-- [x] `notifyBadgeAwarded()` - send DM with badge info
-- [x] Celebratory message with badge name and description
-- [x] Link to profile to see all badges
-- [x] Graceful handling of DM failures
-- [ ] Optionally post in #the-door for special badges
-
-**Files to Modify**:
-- `sietch-service/src/services/discord.ts`
-
-**Dependencies**: S8-T8
-**Estimated Effort**: Low
-**Testing**: Notification delivery test
-
----
-
-### Sprint 8 Success Criteria
-
-- [x] Activity is tracked for messages and reactions
-- [x] Activity balance decays correctly every 6 hours
-- [x] Tenure badges awarded automatically based on membership duration
-- [x] Activity badges awarded when balance thresholds reached
-- [x] Admin can award/revoke contribution badges
-- [x] `/badges` and `/stats` commands work correctly
-- [x] Badge notifications sent via DM
-- [ ] All tests pass (tests not written for Sprint 8)
-
----
-
-## Sprint 9: Directory & Leaderboard
-
-**Goal**: Implement member directory, leaderboard, and REST API endpoints
-
-**Duration**: Week 4
-
-### Tasks
-
-#### S9-T1: Directory Service Implementation ✅
-
-**Description**: Implement directory browsing with pagination and filtering.
-
-**Acceptance Criteria**:
-- [x] `getDirectory()` - paginated member list
-- [x] Filter by tier (naib, fedaykin)
-- [x] Filter by badge (has specific badge)
-- [x] Filter by tenure category (OG, veteran, elder)
-- [x] Sort by nym (alphabetical), tenure, badge count
-- [x] Privacy filtering - only public fields returned
-- [x] Efficient queries with proper indexing
-
-**Files to Create**:
-- `sietch-service/src/services/directory.ts`
-
-**Dependencies**: S6-T4
-**Estimated Effort**: Medium
-**Testing**: Pagination tests, filter tests
-
----
-
-#### S9-T2: Leaderboard Service Implementation ✅
-
-**Description**: Implement engagement leaderboard (rankings + badge counts only).
-
-**Acceptance Criteria**:
-- [x] `getLeaderboard()` - top N members by badge count
-- [x] Returns rank, nym, pfp, badge count, tier
-- [x] Does NOT return activity stats (privacy)
-- [x] Does NOT return wallet info
-- [x] Tiebreaker: tenure (older members rank higher)
-
-**Files to Create**:
-- `sietch-service/src/services/leaderboard.ts`
-
-**Dependencies**: S8-T2
-**Estimated Effort**: Low
-**Testing**: Ranking tests
-
----
-
-#### S9-T3: Directory Slash Command ✅
-
-**Description**: Implement `/directory` command with interactive browsing.
-
-**Acceptance Criteria**:
-- [x] `/directory` - opens interactive directory browser (ephemeral)
-- [x] Pagination buttons (Previous, Next, page indicator)
-- [x] Filter dropdown (All, Naib only, Fedaykin only, badge filters)
-- [x] Members displayed in embed with nym, tier, badges preview
-- [x] Click member to view full profile (button or mention)
-
-**Files to Create**:
-- `sietch-service/src/discord/commands/directory.ts`
-- `sietch-service/src/discord/interactions/directory.ts`
-
-**Dependencies**: S9-T1
-**Estimated Effort**: High
-**Testing**: Interaction flow tests
-
----
-
-#### S9-T4: Leaderboard Slash Command ✅
-
-**Description**: Implement `/leaderboard` command.
-
-**Acceptance Criteria**:
-- [x] `/leaderboard` - shows engagement leaderboard (public)
-- [x] Top 20 members by badge count
-- [x] Rank, nym, badge count, tier shown
-- [x] Color-coded by tier
-- [x] No activity stats (privacy per SDD)
-
-**Files to Create**:
-- `sietch-service/src/discord/commands/leaderboard.ts`
-
-**Dependencies**: S9-T2
-**Estimated Effort**: Low
-**Testing**: Command execution test
-
----
-
-#### S9-T5: Directory Embeds ✅
-
-**Description**: Create embed builders for directory display.
-
-**Acceptance Criteria**:
-- [x] Directory list embed (paginated)
-- [x] Leaderboard embed
-- [x] Consistent styling
-- [x] Badge emoji display
-- [x] Footer with pagination info
-
-**Files to Create**:
-- `sietch-service/src/discord/embeds/directory.ts`
-
-**Dependencies**: S9-T1, S9-T2
-**Estimated Effort**: Low
-**Testing**: Visual verification
-
----
-
-#### S9-T6: REST API - Profile Endpoints ✅
-
-**Description**: Implement REST API endpoints for profile operations.
-
-**Acceptance Criteria**:
-- [x] `GET /api/profile` - own profile (session auth)
-- [x] `PUT /api/profile` - update own profile (session auth)
-- [x] `POST /api/profile/pfp` - upload PFP (multipart, session auth)
-- [x] `GET /api/members/:nym` - public profile (no auth)
-- [x] `GET /api/members/:nym/badges` - member badges (no auth)
-- [x] Privacy filtering on public endpoints
-- [x] Proper error responses (404, 400, 401)
-
-**Files to Create**:
-- `sietch-service/src/api/handlers/profile.ts`
-
-**Files to Modify**:
-- `sietch-service/src/api/routes.ts`
-
-**Dependencies**: S6-T4, Sprint 7
-**Estimated Effort**: Medium
-**Testing**: API integration tests
-
----
-
-#### S9-T7: REST API - Directory & Badges Endpoints ✅
-
-**Description**: Implement REST API endpoints for directory and badges.
-
-**Acceptance Criteria**:
-- [x] `GET /api/directory` - paginated directory with filters
-- [x] `GET /api/badges` - all available badges
-- [x] `GET /api/leaderboard` - engagement leaderboard
-- [x] Query params for pagination and filters
-- [x] Response schemas match SDD
-
-**Files to Create**:
-- `sietch-service/src/api/handlers/directory.ts`
-- `sietch-service/src/api/handlers/badges.ts`
-
-**Files to Modify**:
-- `sietch-service/src/api/routes.ts`
-
-**Dependencies**: S9-T1, S9-T2
-**Estimated Effort**: Medium
-**Testing**: API integration tests
-
----
-
-#### S9-T8: REST API - Admin Badge Endpoints ✅
-
-**Description**: Implement admin endpoints for badge management.
-
-**Acceptance Criteria**:
-- [x] `POST /api/admin/badges/award` - award badge (API key auth)
-- [x] `DELETE /api/admin/badges/:memberId/:badgeId` - revoke badge (API key auth)
-- [x] Request validation
-- [x] Audit logging for badge operations
-- [x] Error handling for non-existent members/badges
-
-**Files to Modify**:
-- `sietch-service/src/api/handlers/badges.ts`
-- `sietch-service/src/api/routes.ts`
-
-**Dependencies**: S8-T2
-**Estimated Effort**: Low
-**Testing**: API integration tests
-
----
-
-#### S9-T9: API Rate Limiting Extension ✅
-
-**Description**: Add rate limiting for new endpoints.
-
-**Acceptance Criteria**:
-- [x] Directory endpoint: 50 req/min
-- [x] Public profile: 100 req/min
-- [x] Own profile: 30 req/min
-- [x] Profile update: 10 req/min
-- [x] PFP upload: 3 req/min
-- [x] Admin badge: 30 req/min
-
-**Files to Modify**:
-- `sietch-service/src/api/middleware.ts`
-
-**Dependencies**: S9-T6, S9-T7
-**Estimated Effort**: Low
-**Testing**: Rate limit tests
-
----
-
-### Sprint 9 Success Criteria
-
-- [x] `/directory` command shows paginated member list with filters
-- [x] `/leaderboard` shows top members by badge count
-- [x] All REST API endpoints functional and documented
-- [x] Privacy maintained across all endpoints
-- [x] Rate limiting in place
-- [x] All tests pass
-
----
-
-## Sprint 10: Integration & Polish
-
-**Goal**: Collab.Land integration, role automation, testing, and deployment preparation
-
-**Duration**: Week 5
-
-### Tasks
-
-#### S10-T1: Collab.Land Configuration ✅
-
-**Description**: Configure Collab.Land for token gating with Sietch API.
-
-**Acceptance Criteria**:
-- [x] Collab.Land bot added to Sietch server
-- [x] Custom API token gate configured pointing to `/eligibility` endpoint
-- [x] Role mapping configured: top_7 → Naib, top_69 → Fedaykin
-- [x] Role assignment triggers onboarding flow
-- [x] Existing eligibility sync task works with Collab.Land
-- [x] Documentation for Collab.Land setup
-
-**Files to Modify**:
-- Collab.Land configuration (external)
-- `sietch-service/src/api/handlers/eligibility.ts` (if needed)
-
-**Dependencies**: Sprint 7 (onboarding)
-**Estimated Effort**: Medium
-**Testing**: End-to-end verification
-
----
-
-#### S10-T2: Dynamic Role Management ✅
-
-**Description**: Implement automatic role assignment/removal based on badges and tenure.
-
-**Acceptance Criteria**:
-- [x] Auto-assign @Engaged when 5+ badges OR activity balance > 200
-- [x] Auto-assign @Veteran when 90+ days tenure
-- [x] Auto-assign @Trusted when 10+ badges OR has Helper badge
-- [x] Role check runs on badge award and periodically
-- [x] Remove role if conditions no longer met (except tenure)
-- [x] Roles grant channel access (#deep-desert, #stillsuit-lounge)
-
-**Files to Modify**:
-- `sietch-service/src/services/badge.ts`
-- `sietch-service/src/services/discord.ts`
-
-**Dependencies**: S8-T2
-**Estimated Effort**: Medium
-**Testing**: Role assignment tests
-
----
-
-#### S10-T3: Channel Access Setup ✅
-
-**Description**: Configure Discord channels with proper role permissions.
-
-**Acceptance Criteria**:
-- [x] Main channels require @Onboarded role to view
-- [x] #deep-desert requires @Engaged role
-- [x] #stillsuit-lounge requires @Veteran role
-- [x] #council-rock requires @Naib role
-- [x] Bot commands channel accessible to all verified members
-- [x] Channel permissions documented
-
-**Dependencies**: S10-T2
-**Estimated Effort**: Low
-**Testing**: Permission verification
-
----
-
-#### S10-T4: Migration Script for Existing Members ✅
-
-**Description**: Create migration to handle existing v1.0 members.
-
-**Acceptance Criteria**:
-- [x] Identify existing wallet_mappings with current_eligibility
-- [x] Create placeholder profiles (onboarding_complete = 0)
-- [x] Generate temporary nyms (Member_XXXXXX)
-- [x] Preserve original verified_at as created_at
-- [x] Send DM prompting them to complete onboarding
-- [x] Reversible migration
-
-**Files to Modify**:
-- `sietch-service/src/db/migrations/002_social_layer.ts`
-
-**Dependencies**: Sprint 6, Sprint 7
 **Estimated Effort**: Medium
 **Testing**: Migration up/down tests
 
 ---
 
-#### S10-T5: Comprehensive Testing ✅
+#### S11-T2: TypeScript Type Definitions (Naib)
 
-**Description**: Write integration tests for full user flows.
+**Description**: Define TypeScript interfaces for Naib domain objects.
 
 **Acceptance Criteria**:
-- [x] New member onboarding flow test (end-to-end)
-- [x] Profile edit flow test
-- [x] Activity tracking and decay test
-- [x] Badge award and notification test
-- [x] Directory browsing test
-- [x] API endpoint tests
-- [x] Privacy leak detection tests (no wallet in public responses)
-- [x] Test coverage > 80%
+- [ ] `NaibSeat` interface with all seat record fields
+- [ ] `NaibMember` interface (seat + profile + currentBgt)
+- [ ] `BumpResult` interface for seat changes
+- [ ] `NaibChange` type for seat evaluation results
+- [ ] Export all interfaces from `types/index.ts`
+
+**Files to Modify**:
+- `sietch-service/src/types/index.ts`
+
+**Dependencies**: S11-T1
+**Estimated Effort**: Low
+**Testing**: TypeScript compilation
+
+---
+
+#### S11-T3: Database Query Layer (Naib)
+
+**Description**: Add database query functions for Naib seat management.
+
+**Acceptance Criteria**:
+- [ ] `insertNaibSeat()` - create new seat record
+- [ ] `updateNaibSeat()` - update seat (for unseating)
+- [ ] `getCurrentNaibSeats()` - get all active seats
+- [ ] `getNaibSeatsByMember()` - get seat history for member
+- [ ] `countActiveNaibSeats()` - count filled seats
+- [ ] `getLowestBgtNaibSeat()` - get seat with lowest BGT holder
+- [ ] `updateMemberFormerNaibStatus()` - mark member as Former Naib
+- [ ] All queries use prepared statements
+
+**Files to Modify**:
+- `sietch-service/src/db/queries.ts`
+
+**Dependencies**: S11-T1, S11-T2
+**Estimated Effort**: Medium
+**Testing**: Unit tests for each query
+
+---
+
+#### S11-T4: Naib Service Implementation
+
+**Description**: Implement NaibService with seat management and bump logic.
+
+**Acceptance Criteria**:
+- [ ] `getCurrentNaib()` - returns current 7 Naib members with profiles
+- [ ] `getFormerNaib()` - returns all Former Naib members with history
+- [ ] `getMemberNaibHistory()` - returns seat history for specific member
+- [ ] `isCurrentNaib()` - check if member currently holds seat
+- [ ] `isFormerNaib()` - check if member was Naib but isn't currently
+- [ ] `hasEverBeenNaib()` - check if member has any Naib history
+- [ ] `getLowestNaibMember()` - get member with lowest BGT among Naib
+- [ ] `getAvailableSeatCount()` - count empty seats (0-7)
+- [ ] `seatMember()` - assign member to available seat
+- [ ] `bumpMember()` - remove member from seat, mark as Former Naib
+- [ ] `unseatMember()` - remove for non-bump reasons (left_server, ineligible)
+- [ ] `evaluateNewMember()` - determine if new member gets seat or bumps someone
+- [ ] `evaluateSeats()` - full seat evaluation during sync (handles BGT changes)
+- [ ] Tie-breaker logic: tenure wins when BGT is equal
 
 **Files to Create**:
-- `sietch-service/tests/integration/onboarding.test.ts`
-- `sietch-service/tests/integration/activity.test.ts`
-- `sietch-service/tests/integration/badges.test.ts`
-- `sietch-service/tests/integration/directory.test.ts`
-- `sietch-service/tests/integration/api.test.ts`
-- `sietch-service/tests/integration/privacy.test.ts`
+- `sietch-service/src/services/naib.ts`
+
+**Dependencies**: S11-T3
+**Estimated Effort**: High
+**Testing**: Unit tests for all bump scenarios, tenure tie-breakers
+
+---
+
+#### S11-T5: Role Manager Extension (Naib)
+
+**Description**: Extend role manager to handle Naib and Former Naib Discord roles.
+
+**Acceptance Criteria**:
+- [ ] `assignNaibRole()` - assign @Naib, remove @Fedaykin
+- [ ] `assignFormerNaibRole()` - assign @Former Naib + @Fedaykin, remove @Naib
+- [ ] `removeNaibRole()` - remove @Naib, add @Fedaykin (non-bump demotion)
+- [ ] Configuration for `DISCORD_ROLE_FORMER_NAIB` environment variable
+- [ ] Graceful handling if roles don't exist yet
+
+**Files to Modify**:
+- `sietch-service/src/services/roleManager.ts`
+- `sietch-service/src/config.ts`
+
+**Dependencies**: S11-T4
+**Estimated Effort**: Medium
+**Testing**: Role assignment tests
+
+---
+
+#### S11-T6: Naib Slash Command
+
+**Description**: Implement `/naib` command to view current and Former Naib.
+
+**Acceptance Criteria**:
+- [ ] `/naib` - shows current Naib members (numbered 1-7)
+- [ ] Shows "Founding" indicator for inaugural Naib members
+- [ ] Shows Former Naib section with member nyms
+- [ ] Shows tenure information (when they joined)
+- [ ] Public visibility (not ephemeral)
+- [ ] Gold color for embed (#FFD700)
+
+**Files to Create**:
+- `sietch-service/src/discord/commands/naib.ts`
+- `sietch-service/src/discord/embeds/naib.ts`
+
+**Dependencies**: S11-T4
+**Estimated Effort**: Medium
+**Testing**: Command execution tests
+
+---
+
+#### S11-T7: Onboarding Integration (Naib Evaluation)
+
+**Description**: Integrate Naib seat evaluation into onboarding completion flow.
+
+**Acceptance Criteria**:
+- [ ] After onboarding completion, evaluate if member should be Naib
+- [ ] If seats < 7, auto-seat new member
+- [ ] If seats = 7, compare BGT to lowest Naib and potentially bump
+- [ ] Assign appropriate role (@Naib or @Fedaykin)
+- [ ] If bump occurs, update roles for both members
+- [ ] Log seat assignments and bumps
+
+**Files to Modify**:
+- `sietch-service/src/services/onboarding.ts`
+
+**Dependencies**: S11-T4, S11-T5
+**Estimated Effort**: Medium
+**Testing**: Integration tests for onboarding + Naib flow
+
+---
+
+#### S11-T8: Naib REST API Endpoints
+
+**Description**: Implement REST API endpoints for Naib data.
+
+**Acceptance Criteria**:
+- [ ] `GET /api/naib` - current Naib + Former Naib list (public)
+- [ ] `GET /api/naib/history` - Naib seat change history (public)
+- [ ] `GET /api/naib/member/:memberId` - Naib history for specific member (public)
+- [ ] Response schemas match SDD specification
+- [ ] Rate limiting applied (50 req/min)
+
+**Files to Create**:
+- `sietch-service/src/api/handlers/naib.ts`
+
+**Files to Modify**:
+- `sietch-service/src/api/routes.ts`
+
+**Dependencies**: S11-T4
+**Estimated Effort**: Low
+**Testing**: API integration tests
+
+---
+
+### Sprint 11 Success Criteria
+
+- [ ] Database migration creates Naib tables successfully
+- [ ] NaibService correctly manages seat assignments and bumps
+- [ ] Tenure tie-breaker works for equal BGT scenarios
+- [ ] `/naib` command displays current and Former Naib
+- [ ] New members evaluated for Naib seat during onboarding
+- [ ] @Naib and @Former Naib roles assigned correctly
+- [ ] All unit tests pass
+
+---
+
+## Sprint 12: Cave Entrance
+
+**Goal**: Implement public waitlist lobby with threshold visibility and registration
+
+**Duration**: 2.5 days
+
+### Tasks
+
+#### S12-T1: Database Schema Extension (Threshold)
+
+**Description**: Create database tables for waitlist and threshold tracking.
+
+**Acceptance Criteria**:
+- [ ] Create `waitlist_registrations` table
+- [ ] Create `threshold_snapshots` table for historical tracking
+- [ ] Create indexes for wallet and Discord user lookups
+- [ ] Unique constraints on wallet_address and discord_user_id
+- [ ] Migration is reversible
+
+**Files to Modify**:
+- `sietch-service/src/db/migrations/005_naib_threshold.ts`
+
+**Dependencies**: S11-T1
+**Estimated Effort**: Medium
+**Testing**: Migration tests
+
+---
+
+#### S12-T2: TypeScript Type Definitions (Threshold)
+
+**Description**: Define TypeScript interfaces for threshold and waitlist.
+
+**Acceptance Criteria**:
+- [ ] `PositionDistance` interface (position, wallet, BGT, distances)
+- [ ] `ThresholdSnapshot` interface (entry threshold, waitlist data)
+- [ ] `WaitlistRegistration` interface
+- [ ] `ThresholdData` type for API responses
+- [ ] Export all interfaces from `types/index.ts`
+
+**Files to Modify**:
+- `sietch-service/src/types/index.ts`
+
+**Dependencies**: S12-T1
+**Estimated Effort**: Low
+**Testing**: TypeScript compilation
+
+---
+
+#### S12-T3: Database Query Layer (Threshold)
+
+**Description**: Add database queries for threshold and waitlist management.
+
+**Acceptance Criteria**:
+- [ ] `insertWaitlistRegistration()` - register for alerts
+- [ ] `getWaitlistRegistrationByDiscord()` - lookup by Discord ID
+- [ ] `getWaitlistRegistrationByWallet()` - lookup by wallet
+- [ ] `updateWaitlistNotified()` - mark as notified
+- [ ] `deleteWaitlistRegistration()` - unregister
+- [ ] `getActiveWaitlistRegistrations()` - all non-notified registrations
+- [ ] `insertThresholdSnapshot()` - save snapshot
+- [ ] `getLatestThresholdSnapshot()` - get most recent
+- [ ] `getThresholdSnapshots()` - historical data with limit
+
+**Files to Modify**:
+- `sietch-service/src/db/queries.ts`
+
+**Dependencies**: S12-T1, S12-T2
+**Estimated Effort**: Medium
+**Testing**: Unit tests for queries
+
+---
+
+#### S12-T4: Threshold Service Implementation
+
+**Description**: Implement ThresholdService for waitlist and distance calculations.
+
+**Acceptance Criteria**:
+- [ ] `getEntryThreshold()` - returns BGT of position 69
+- [ ] `getWaitlistPositions()` - returns positions 70-100 with distances
+- [ ] `getMemberDistances()` - returns distance to above/below for member
+- [ ] `calculateDistances()` - compute all distances from eligibility list
+- [ ] `saveSnapshot()` - save threshold data to database
+- [ ] `getLatestSnapshot()` - retrieve most recent snapshot
+- [ ] `registerWaitlist()` - register wallet for alerts (validates position 70-100)
+- [ ] `unregisterWaitlist()` - remove registration
+- [ ] `getRegistration()` - lookup by Discord ID
+- [ ] `getRegistrationByWallet()` - lookup by wallet
+- [ ] `checkWaitlistEligibility()` - find newly eligible waitlist members
+- [ ] `markNotified()` - mark registration as notified
+- [ ] Efficient distance calculation algorithm
+
+**Files to Create**:
+- `sietch-service/src/services/threshold.ts`
+
+**Dependencies**: S12-T3
+**Estimated Effort**: High
+**Testing**: Unit tests for distance calculations, registration validation
+
+---
+
+#### S12-T5: Taqwa Role Management
+
+**Description**: Create and manage the @Taqwa role for waitlist members.
+
+**Acceptance Criteria**:
+- [ ] Configuration for `DISCORD_ROLE_TAQWA` environment variable
+- [ ] `assignTaqwaRole()` - assign role when registering for waitlist
+- [ ] `removeTaqwaRole()` - remove when unregistering or becoming eligible
+- [ ] Role grants access to Cave Entrance channels only
+- [ ] Graceful handling if role doesn't exist
+
+**Files to Modify**:
+- `sietch-service/src/services/roleManager.ts`
+- `sietch-service/src/config.ts`
+
+**Dependencies**: S12-T4
+**Estimated Effort**: Low
+**Testing**: Role assignment tests
+
+---
+
+#### S12-T6: Threshold Slash Command
+
+**Description**: Implement `/threshold` command to view entry requirements.
+
+**Acceptance Criteria**:
+- [ ] `/threshold` - shows current entry threshold BGT amount
+- [ ] Shows top 5 waitlist positions with distances to entry
+- [ ] Shows last updated timestamp
+- [ ] Public visibility (not ephemeral)
+- [ ] Desert brown color for embed (#8B4513)
+
+**Files to Create**:
+- `sietch-service/src/discord/commands/threshold.ts`
+- `sietch-service/src/discord/embeds/threshold.ts`
+
+**Dependencies**: S12-T4
+**Estimated Effort**: Medium
+**Testing**: Command execution tests
+
+---
+
+#### S12-T7: Register Waitlist Slash Command
+
+**Description**: Implement `/register-waitlist` command for eligibility alerts.
+
+**Acceptance Criteria**:
+- [ ] `/register-waitlist <wallet>` - registers wallet for alerts
+- [ ] Validates wallet address format (0x...)
+- [ ] Validates wallet is in positions 70-100
+- [ ] Rejects if wallet already associated with member
+- [ ] Rejects if Discord user already registered
+- [ ] Shows current position and distance to entry on success
+- [ ] Assigns @Taqwa role on successful registration
+- [ ] Ephemeral response (private to user)
+
+**Files to Create**:
+- `sietch-service/src/discord/commands/register-waitlist.ts`
+
+**Dependencies**: S12-T4, S12-T5
+**Estimated Effort**: Medium
+**Testing**: Command validation tests
+
+---
+
+#### S12-T8: Threshold REST API Endpoints
+
+**Description**: Implement REST API endpoints for threshold and waitlist.
+
+**Acceptance Criteria**:
+- [ ] `GET /api/threshold` - current threshold + waitlist positions (public)
+- [ ] `GET /api/threshold/history` - historical threshold data (public)
+- [ ] `POST /api/waitlist/register` - register for alerts (Discord OAuth)
+- [ ] `DELETE /api/waitlist/register` - unregister (Discord OAuth)
+- [ ] `GET /api/waitlist/status/:wallet` - check registration status (public)
+- [ ] Response schemas match SDD specification
+- [ ] Rate limiting: 5 req/hour for registration
+
+**Files to Create**:
+- `sietch-service/src/api/handlers/threshold.ts`
+- `sietch-service/src/api/handlers/waitlist.ts`
+
+**Files to Modify**:
+- `sietch-service/src/api/routes.ts`
+
+**Dependencies**: S12-T4
+**Estimated Effort**: Medium
+**Testing**: API integration tests
+
+---
+
+#### S12-T9: Discord Channel Configuration (Cave Entrance)
+
+**Description**: Configure Discord channels for Cave Entrance visibility.
+
+**Acceptance Criteria**:
+- [ ] Document channel structure for Cave Entrance category
+- [ ] `#the-threshold` - read-only for @everyone, live stats
+- [ ] `#waiting-pool` - discussion for aspiring members
+- [ ] `#register-interest` - bot command channel
+- [ ] Configuration for channel IDs in environment
+- [ ] Permission matrix documented
+
+**Files to Modify**:
+- `sietch-service/src/config.ts`
+- `.env.example`
+
+**Dependencies**: None
+**Estimated Effort**: Low
+**Testing**: Permission verification
+
+---
+
+### Sprint 12 Success Criteria
+
+- [ ] ThresholdService calculates accurate distances
+- [ ] Waitlist registration validates position 70-100
+- [ ] `/threshold` shows live entry requirements
+- [ ] `/register-waitlist` works for valid wallets
+- [ ] @Taqwa role assigned to registered waitlist members
+- [ ] Cave Entrance channel permissions configured
+- [ ] All unit tests pass
+
+---
+
+## Sprint 13: Notification System
+
+**Goal**: Implement position alerts, at-risk warnings, and notification preferences
+
+**Duration**: 2.5 days
+
+### Tasks
+
+#### S13-T1: Database Schema Extension (Notifications)
+
+**Description**: Create database tables for notification preferences and history.
+
+**Acceptance Criteria**:
+- [ ] Create `notification_preferences` table with all preference fields
+- [ ] Create `alert_history` table for audit trail
+- [ ] Create indexes for member lookups and alert type queries
+- [ ] Default values: position_updates ON, 3_per_week frequency
+- [ ] Migration is reversible
+
+**Files to Modify**:
+- `sietch-service/src/db/migrations/005_naib_threshold.ts`
+
+**Dependencies**: S12-T1
+**Estimated Effort**: Medium
+**Testing**: Migration tests
+
+---
+
+#### S13-T2: TypeScript Type Definitions (Notifications)
+
+**Description**: Define TypeScript interfaces for notification system.
+
+**Acceptance Criteria**:
+- [ ] `AlertType` union type (position_update, at_risk_warning, naib_threat, etc.)
+- [ ] `NotificationPreferences` interface
+- [ ] `AlertRecord` interface for history
+- [ ] `AlertFrequency` type ('1_per_week' | '2_per_week' | '3_per_week' | 'daily')
+- [ ] Export all interfaces from `types/index.ts`
+
+**Files to Modify**:
+- `sietch-service/src/types/index.ts`
+
+**Dependencies**: S13-T1
+**Estimated Effort**: Low
+**Testing**: TypeScript compilation
+
+---
+
+#### S13-T3: Database Query Layer (Notifications)
+
+**Description**: Add database queries for notification management.
+
+**Acceptance Criteria**:
+- [ ] `getNotificationPreferences()` - get member preferences
+- [ ] `upsertNotificationPreferences()` - create or update preferences
+- [ ] `insertAlertRecord()` - log alert sent
+- [ ] `getAlertHistory()` - get alerts for member
+- [ ] `countAlertsThisWeek()` - for rate limiting
+- [ ] `resetWeeklyAlertCounters()` - batch reset for new week
+- [ ] `getMembersForPositionAlerts()` - get eligible members
+
+**Files to Modify**:
+- `sietch-service/src/db/queries.ts`
+
+**Dependencies**: S13-T1, S13-T2
+**Estimated Effort**: Medium
+**Testing**: Unit tests for queries
+
+---
+
+#### S13-T4: Notification Service Implementation
+
+**Description**: Implement NotificationService with all alert types and rate limiting.
+
+**Acceptance Criteria**:
+- [ ] `getPreferences()` - get or create default preferences
+- [ ] `updatePreferences()` - update member preferences
+- [ ] `canSendAlert()` - check rate limits and preferences
+- [ ] `sendPositionUpdate()` - send position distance DM
+- [ ] `sendAtRiskWarning()` - send bottom 10% warning DM
+- [ ] `sendNaibThreat()` - send seat-at-risk alert to Naib
+- [ ] `sendBumpNotification()` - notify bumped member
+- [ ] `sendNaibSeated()` - congratulate new Naib member
+- [ ] `sendWaitlistEligible()` - notify waitlist member of eligibility
+- [ ] `processPositionAlerts()` - batch send position updates
+- [ ] `recordAlertSent()` - log to history and update counter
+- [ ] `resetWeeklyCounters()` - reset all member counters
+- [ ] Alert templates match SDD message formats
+
+**Files to Create**:
+- `sietch-service/src/services/notification.ts`
+
+**Dependencies**: S13-T3
+**Estimated Effort**: High
+**Testing**: Unit tests for rate limiting, alert sending
+
+---
+
+#### S13-T5: Alert Message Templates
+
+**Description**: Create Discord embed builders for all alert types.
+
+**Acceptance Criteria**:
+- [ ] Position update embed with distances
+- [ ] At-risk warning embed with threat info
+- [ ] Naib threat embed with lowest BGT
+- [ ] Bump notification embed (demotion to Former Naib)
+- [ ] Naib seated embed (congratulations)
+- [ ] Waitlist eligible embed with onboarding button
+- [ ] Consistent styling and branding
+- [ ] Action buttons (Manage Alerts, Disable, etc.)
+
+**Files to Create**:
+- `sietch-service/src/discord/embeds/alerts.ts`
+
+**Dependencies**: S13-T4
+**Estimated Effort**: Medium
+**Testing**: Visual verification
+
+---
+
+#### S13-T6: Position Slash Command
+
+**Description**: Implement `/position` command for own position info.
+
+**Acceptance Criteria**:
+- [ ] `/position` - shows own position relative to above/below
+- [ ] Shows distance to move up (BGT needed)
+- [ ] Shows distance from position below (how close they are)
+- [ ] Indicates if member is Naib or Fedaykin
+- [ ] Ephemeral response (private to user)
+- [ ] Footer with link to /alerts
+
+**Files to Create**:
+- `sietch-service/src/discord/commands/position.ts`
+
+**Dependencies**: S12-T4, S13-T4
+**Estimated Effort**: Medium
+**Testing**: Command execution tests
+
+---
+
+#### S13-T7: Alerts Slash Command
+
+**Description**: Implement `/alerts` command for notification preferences.
+
+**Acceptance Criteria**:
+- [ ] `/alerts` - shows current notification settings
+- [ ] Toggle buttons for Position Updates, At-Risk Warnings
+- [ ] Toggle for Naib Alerts (only shown to Naib members)
+- [ ] Select menu for frequency (1/week, 2/week, 3/week, daily)
+- [ ] Persists changes to database
+- [ ] Ephemeral response (private to user)
+
+**Files to Create**:
+- `sietch-service/src/discord/commands/alerts.ts`
+- `sietch-service/src/discord/interactions/alerts.ts`
+
+**Dependencies**: S13-T4
+**Estimated Effort**: High
+**Testing**: Interaction flow tests
+
+---
+
+#### S13-T8: Notification REST API Endpoints
+
+**Description**: Implement REST API endpoints for notification management.
+
+**Acceptance Criteria**:
+- [ ] `GET /api/notifications/preferences` - get own preferences (auth)
+- [ ] `PUT /api/notifications/preferences` - update preferences (auth)
+- [ ] `GET /api/notifications/history` - get own alert history (auth)
+- [ ] `GET /api/position` - get own position distances (auth)
+- [ ] Response schemas match SDD specification
+- [ ] Rate limiting: 10 req/min for preferences
+
+**Files to Create**:
+- `sietch-service/src/api/handlers/notifications.ts`
+- `sietch-service/src/api/handlers/position.ts`
+
+**Files to Modify**:
+- `sietch-service/src/api/routes.ts`
+
+**Dependencies**: S13-T4
+**Estimated Effort**: Medium
+**Testing**: API integration tests
+
+---
+
+#### S13-T9: Admin Alert Endpoints
+
+**Description**: Implement admin endpoints for alert management.
+
+**Acceptance Criteria**:
+- [ ] `GET /admin/alerts/stats` - alert delivery statistics (admin key)
+- [ ] `PUT /admin/config/at-risk-threshold` - configure threshold (admin key)
+- [ ] `POST /admin/alerts/test/:memberId` - send test alert (admin key)
+- [ ] Statistics include: total sent, by type, delivery rate, opt-out rate
+
+**Files to Create**:
+- `sietch-service/src/api/handlers/admin-alerts.ts`
+
+**Files to Modify**:
+- `sietch-service/src/api/routes.ts`
+
+**Dependencies**: S13-T4
+**Estimated Effort**: Low
+**Testing**: Admin API tests
+
+---
+
+### Sprint 13 Success Criteria
+
+- [ ] NotificationService sends all alert types correctly
+- [ ] Rate limiting respects frequency preferences
+- [ ] `/position` shows accurate distance information
+- [ ] `/alerts` allows preference configuration
+- [ ] Alert history tracked in database
+- [ ] Admin can view statistics and send test alerts
+- [ ] All unit tests pass
+
+---
+
+## Sprint 14: Integration & Polish
+
+**Goal**: Integrate all systems, enhance sync task, comprehensive testing, deployment
+
+**Duration**: 2.5 days
+
+### Tasks
+
+#### S14-T1: Enhanced Eligibility Sync Task
+
+**Description**: Extend 6-hour sync task to include Naib and threshold processing.
+
+**Acceptance Criteria**:
+- [ ] Evaluate Naib seats during sync (handle BGT changes)
+- [ ] Process bumps and role updates
+- [ ] Calculate and save threshold snapshot
+- [ ] Check waitlist for newly eligible members
+- [ ] Send waitlist eligibility notifications
+- [ ] Process position alerts (respecting rate limits)
+- [ ] Send at-risk warnings to bottom 10%
+- [ ] Comprehensive logging of all changes
+- [ ] Error handling with retries
+
+**Files to Modify**:
+- `sietch-service/src/trigger/syncEligibility.ts`
+
+**Dependencies**: S11-T4, S12-T4, S13-T4
+**Estimated Effort**: High
+**Testing**: Integration tests for full sync flow
+
+---
+
+#### S14-T2: Weekly Counter Reset Task
+
+**Description**: Create scheduled task to reset weekly alert counters.
+
+**Acceptance Criteria**:
+- [ ] Runs every Monday at 00:00 UTC
+- [ ] Resets `alerts_sent_this_week` for all members
+- [ ] Updates `week_start_timestamp`
+- [ ] Logs count of members reset
+- [ ] Error handling
+
+**Files to Create**:
+- `sietch-service/src/trigger/weeklyReset.ts`
+
+**Dependencies**: S13-T4
+**Estimated Effort**: Low
+**Testing**: Task execution test
+
+---
+
+#### S14-T3: Discord Channel Setup & Permissions
+
+**Description**: Configure all Discord channels with proper role permissions.
+
+**Acceptance Criteria**:
+- [ ] Cave Entrance category created with channels
+- [ ] `#the-threshold` - @everyone view, no send (read-only)
+- [ ] `#waiting-pool` - @everyone view and send
+- [ ] `#register-interest` - @everyone view, slash commands only
+- [ ] Naib Chamber - @Naib only view and send
+- [ ] Naib Archives - @Naib + @Former Naib view and send
+- [ ] All existing channels require @Fedaykin or higher
+- [ ] @Taqwa role has Cave Entrance access only
+- [ ] Permission matrix documented
+
+**Dependencies**: S11-T5, S12-T5
+**Estimated Effort**: Medium
+**Testing**: Permission verification
+
+---
+
+#### S14-T4: Configuration Extension
+
+**Description**: Extend config with all v2.1 environment variables.
+
+**Acceptance Criteria**:
+- [ ] Naib configuration (seat count, tiebreaker)
+- [ ] Alert configuration (at-risk threshold, default frequency)
+- [ ] Waitlist configuration (range start/end)
+- [ ] Discord channel IDs for Cave Entrance and Naib areas
+- [ ] Discord role IDs (@Former Naib, @Taqwa)
+- [ ] Update `.env.example` with all new variables
+- [ ] Configuration validation on startup
+
+**Files to Modify**:
+- `sietch-service/src/config.ts`
+- `.env.example`
 
 **Dependencies**: All previous sprints
+**Estimated Effort**: Low
+**Testing**: Config loading tests
+
+---
+
+#### S14-T5: Command Registration Update
+
+**Description**: Register all new slash commands with Discord.
+
+**Acceptance Criteria**:
+- [ ] `/naib` command registered
+- [ ] `/threshold` command registered
+- [ ] `/position` command registered
+- [ ] `/alerts` command registered
+- [ ] `/register-waitlist` command registered
+- [ ] Commands available in Discord
+- [ ] Command descriptions and options correct
+
+**Files to Modify**:
+- `sietch-service/src/discord/commands/index.ts`
+
+**Dependencies**: All command implementations
+**Estimated Effort**: Low
+**Testing**: Command availability verification
+
+---
+
+#### S14-T6: Comprehensive Unit Tests
+
+**Description**: Write unit tests for all new services.
+
+**Acceptance Criteria**:
+- [ ] NaibService tests (seat management, bump logic, tie-breakers)
+- [ ] ThresholdService tests (distance calculation, registration)
+- [ ] NotificationService tests (rate limiting, preference checks)
+- [ ] Database query tests
+- [ ] Edge case coverage (empty seats, all seats full, ties)
+- [ ] Test coverage > 80%
+
+**Files to Create**:
+- `sietch-service/tests/services/naib.test.ts`
+- `sietch-service/tests/services/threshold.test.ts`
+- `sietch-service/tests/services/notification.test.ts`
+
+**Dependencies**: All service implementations
 **Estimated Effort**: High
 **Testing**: Test runner
 
 ---
 
-#### S10-T6: Error Handling & Edge Cases ✅
+#### S14-T7: Integration Tests
 
-**Description**: Ensure robust error handling throughout the application.
+**Description**: Write integration tests for complete flows.
 
 **Acceptance Criteria**:
-- [x] Graceful handling of Discord API failures
-- [x] Retry logic for transient errors
-- [x] User-friendly error messages in Discord
-- [x] Proper HTTP status codes in API
-- [x] Logging for debugging without exposing private data
-- [x] DM fallback when DMs disabled
+- [ ] New member onboarding with Naib seat assignment
+- [ ] Bump scenario (high BGT member joins)
+- [ ] Bump during sync (BGT changes)
+- [ ] Former Naib re-entry scenario
+- [ ] Waitlist registration and eligibility notification
+- [ ] Position alert batch processing
+- [ ] At-risk warning delivery
+- [ ] Privacy leak detection (no wallet in responses)
 
-**Files to Modify**:
-- Various service files
-- `sietch-service/src/utils/errors.ts`
+**Files to Create**:
+- `sietch-service/tests/integration/naib-flow.test.ts`
+- `sietch-service/tests/integration/threshold-flow.test.ts`
+- `sietch-service/tests/integration/notification-flow.test.ts`
 
-**Dependencies**: All previous sprints
-**Estimated Effort**: Medium
-**Testing**: Error scenario tests
+**Dependencies**: S14-T1
+**Estimated Effort**: High
+**Testing**: Test runner
 
 ---
 
-#### S10-T7: Deployment Documentation Update ✅
+#### S14-T8: Documentation Update
 
-**Description**: Update deployment documentation for v2.0.
+**Description**: Update deployment documentation for v2.1.
 
 **Acceptance Criteria**:
-- [x] Update PRE_DEPLOYMENT_CHECKLIST.md with new env vars
-- [x] Update DEPLOYMENT_RUNBOOK.md with v2.0 steps
-- [x] Document Discord role and channel setup
-- [x] Document Collab.Land configuration
-- [x] Update backup script for new tables
-- [x] Create rollback procedure
+- [ ] Update PRE_DEPLOYMENT_CHECKLIST.md with new env vars
+- [ ] Update DEPLOYMENT_RUNBOOK.md with v2.1 steps
+- [ ] Document Discord role and channel setup
+- [ ] Document Naib seat mechanics
+- [ ] Document notification system configuration
+- [ ] Create rollback procedure for v2.1 migration
+- [ ] Update backup script for new tables
 
 **Files to Modify**:
 - `sietch-service/docs/deployment/PRE_DEPLOYMENT_CHECKLIST.md`
@@ -1018,41 +900,21 @@ The v1.0 MVP is complete with:
 
 ---
 
-#### S10-T8: Performance Optimization ✅
+#### S14-T9: Final Integration & Smoke Testing
 
-**Description**: Optimize queries and caching for production load.
-
-**Acceptance Criteria**:
-- [x] Index optimization for common queries
-- [x] In-memory caching for badge definitions
-- [x] Profile cache with TTL
-- [x] Efficient batch operations in scheduled tasks
-- [x] Response time < 200ms for API endpoints
-- [x] Bot response time < 1s for slash commands
-
-**Files to Modify**:
-- Various service and query files
-
-**Dependencies**: All previous sprints
-**Estimated Effort**: Medium
-**Testing**: Performance benchmarks
-
----
-
-#### S10-T9: Final Integration & Smoke Testing ✅
-
-**Description**: End-to-end testing of complete system on staging.
+**Description**: End-to-end testing on staging environment.
 
 **Acceptance Criteria**:
-- [x] Deploy to staging environment
-- [x] Test complete new member flow
-- [x] Test profile management
-- [x] Test activity tracking over time
-- [x] Test badge awards (automatic and manual)
-- [x] Test directory and leaderboard
-- [x] Test API endpoints with real data
-- [x] Verify privacy (no wallet leaks)
-- [x] Performance under load
+- [ ] Deploy to staging environment
+- [ ] Test Naib seat assignment during onboarding
+- [ ] Test bump scenario with role changes
+- [ ] Test waitlist registration and alerts
+- [ ] Test position and alerts commands
+- [ ] Test notification preferences
+- [ ] Verify threshold display accuracy
+- [ ] Verify privacy (no wallet leaks)
+- [ ] Performance under load
+- [ ] All Discord channels and permissions working
 
 **Dependencies**: All previous tasks
 **Estimated Effort**: High
@@ -1060,15 +922,16 @@ The v1.0 MVP is complete with:
 
 ---
 
-### Sprint 10 Success Criteria
+### Sprint 14 Success Criteria
 
-- [x] Collab.Land integration working end-to-end
-- [x] Dynamic role assignment functioning
-- [x] All channel permissions configured
-- [x] Existing members can complete onboarding
-- [x] All integration tests pass
-- [x] Performance meets requirements
-- [x] Ready for production deployment
+- [ ] Enhanced sync task processes Naib, threshold, and notifications
+- [ ] Weekly reset task functioning
+- [ ] All Discord channels and permissions configured
+- [ ] All slash commands registered and working
+- [ ] Unit test coverage > 80%
+- [ ] All integration tests pass
+- [ ] Documentation updated
+- [ ] Ready for production deployment
 
 ---
 
@@ -1076,28 +939,27 @@ The v1.0 MVP is complete with:
 
 | Risk | Probability | Impact | Mitigation |
 |------|-------------|--------|------------|
-| Discord API rate limits | Medium | Medium | Implement proper rate limiting, queue operations |
-| Collab.Land integration complexity | Medium | High | Early testing, fallback manual verification |
-| Privacy leak in edge cases | Low | Critical | Comprehensive privacy tests, code review |
-| Demurrage tuning | Medium | Low | Make decay rate configurable, monitor in production |
-| User confusion with onboarding | Low | Medium | Clear instructions, helpful error messages |
-| DM delivery failures | Medium | Medium | Implement fallback to ephemeral channel messages |
+| Naib gaming (coordinated BGT movements) | Medium | Medium | Tenure tie-breaker, no advance warning of exact thresholds |
+| Alert fatigue causing opt-outs | High | Medium | Configurable frequency, clear opt-out, non-spammy defaults |
+| Privacy leak (correlating at-risk members) | Low | Critical | All at-risk info is private DM only, never public |
+| Waitlist spam (fake registrations) | Medium | Low | Rate limiting, must be in positions 70-100, @Taqwa role |
+| Complex bump scenarios during sync | Medium | Medium | Comprehensive testing, transaction-safe database operations |
+| Discord API rate limits during batch alerts | Medium | Medium | Queue alerts, spread over time, respect rate limits |
 
 ---
 
 ## Dependencies
 
 ### External Dependencies
-- Collab.Land configuration and access
 - Discord server with proper permissions
-- Berachain RPC access (existing)
+- Existing v2.0 Sietch service (profiles, badges, activity)
 - trigger.dev project (existing)
+- Berachain RPC access (existing)
 
 ### Sprint Dependencies
-- Sprint 7 depends on Sprint 6 (database, services)
-- Sprint 8 depends on Sprint 7 (onboarding, Discord setup)
-- Sprint 9 depends on Sprint 6-8 (all services)
-- Sprint 10 depends on Sprint 6-9 (integration)
+- Sprint 12 depends on Sprint 11 (database migration shared)
+- Sprint 13 depends on Sprint 12 (threshold service for distances)
+- Sprint 14 depends on Sprints 11-13 (integration)
 
 ---
 
@@ -1105,12 +967,66 @@ The v1.0 MVP is complete with:
 
 | Metric | Target | Measurement Point |
 |--------|--------|------------------|
-| Onboarding completion | >90% | End of Sprint 7 |
-| Test coverage | >80% | End of Sprint 10 |
-| API response time | <200ms | End of Sprint 10 |
-| Bot response time | <1s | End of Sprint 10 |
+| Naib seat assignment accuracy | 100% | End of Sprint 11 |
+| Threshold distance accuracy | 100% | End of Sprint 12 |
+| Alert delivery rate | >95% | End of Sprint 13 |
+| Opt-in retention (30 days) | >70% | Post-launch |
+| Unit test coverage | >80% | End of Sprint 14 |
 | Zero privacy leaks | 0 | Continuous |
-| All slash commands functional | 100% | End of Sprint 9 |
+| All slash commands functional | 100% | End of Sprint 14 |
+
+---
+
+## Discord Role Hierarchy (v2.1)
+
+| Role | Color | Permissions | Granted By |
+|------|-------|-------------|------------|
+| `@Naib` | Gold (#FFD700) | Naib Chamber, Naib Archives, all member channels | NaibService (BGT-based) |
+| `@Former Naib` | Silver (#C0C0C0) | Naib Archives, all member channels (implies @Fedaykin) | NaibService (after bump) |
+| `@Fedaykin` | Blue (#4169E1) | All member channels | Collab.Land (top 69) |
+| `@Taqwa` | Sand (#C2B280) | Cave Entrance channels only | Waitlist registration |
+| `@Engaged` | Green | #deep-desert | BadgeService (5+ badges) |
+| `@Veteran` | Purple | #stillsuit-lounge | BadgeService (90+ days) |
+
+---
+
+## Channel Structure (v2.1)
+
+```
+SIETCH SERVER
+│
+├── 🚪 CAVE ENTRANCE (Public - @everyone + @Taqwa)
+│   ├── #the-threshold ───── Live waitlist stats (read-only)
+│   ├── #waiting-pool ────── Aspiring member discussion
+│   └── #register-interest ─ Waitlist registration commands
+│
+├── 📜 STILLSUIT (Members - @Fedaykin+)
+│   ├── #water-discipline ── Welcome, rules
+│   ├── #census ──────────── Live leaderboard
+│   └── #the-door ────────── Member joins/departures
+│
+├── 🏛️ NAIB CHAMBER (@Naib only)
+│   └── #naib-council ────── Current Naib private discussion
+│
+├── 🏛️ NAIB ARCHIVES (@Naib + @Former Naib)
+│   └── #naib-archives ───── All who have served
+│
+├── 💬 SIETCH-COMMONS (@Fedaykin+)
+│   ├── #general
+│   ├── #spice
+│   ├── #water-shares
+│   └── #introductions
+│
+├── 🏜️ DEEP DESERT (@Engaged+)
+│   └── #deep-desert
+│
+├── 🧘 STILLSUIT LOUNGE (@Veteran+)
+│   └── #stillsuit-lounge
+│
+└── 🛠️ WINDTRAP (@Fedaykin+)
+    ├── #support
+    └── #bot-commands
+```
 
 ---
 
@@ -1120,16 +1036,25 @@ The v1.0 MVP is complete with:
 |---------|------|---------|
 | 1.0 | 2025-12-17 | Initial MVP sprint plan (Sprints 1-5) |
 | 2.0 | 2025-12-18 | Social Layer sprint plan (Sprints 6-10) |
+| 2.1 | 2025-12-19 | Naib Dynamics & Threshold sprint plan (Sprints 11-14) |
 
 ---
 
-## Completed Sprints (v1.0)
+## Completed Sprints
 
-### Sprint 1: Foundation & Chain Service ✅
-### Sprint 2: REST API & Scheduled Task ✅
-### Sprint 3: Discord Bot & Server Setup ✅
-### Sprint 4: Collab.Land Integration & Deployment ✅
-### Sprint 5: Notifications & Documentation ✅
+### v1.0 (MVP)
+- Sprint 1: Foundation & Chain Service ✅
+- Sprint 2: REST API & Scheduled Task ✅
+- Sprint 3: Discord Bot & Server Setup ✅
+- Sprint 4: Collab.Land Integration & Deployment ✅
+- Sprint 5: Notifications & Documentation ✅
+
+### v2.0 (Social Layer)
+- Sprint 6: Foundation & Database ✅
+- Sprint 7: Onboarding & Core Identity ✅
+- Sprint 8: Activity & Badges ✅
+- Sprint 9: Directory & Leaderboard ✅
+- Sprint 10: Integration & Polish ✅
 
 ---
 
