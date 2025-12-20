@@ -24,6 +24,10 @@ This document maintains organizational memory across sprints for the Sietch proj
 | Sprint 8 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
 | Sprint 9 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
 | Sprint 10 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
+| Sprint 11 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
+| Sprint 12 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
+| Sprint 13 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
+| Sprint 14 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
 
 ---
 
@@ -492,4 +496,78 @@ This document maintains organizational memory across sprints for the Sietch proj
 
 ---
 
-*Last Updated: December 18, 2025 (Sprint 10 COMPLETED - Security audit approved)*
+## Sprint 11: Naib Foundation (Social Layer v2.1)
+
+**Goal**: Implement the Naib seat system with dynamic seat management and bump mechanics
+
+**Directory**: `docs/a2a/sprint-11/`
+
+### Files
+- `reviewer.md` - Implementation report from engineer (✅ Created)
+- `engineer-feedback.md` - Review feedback from senior lead (✅ Approved)
+- `auditor-sprint-feedback.md` - Security audit feedback (✅ Approved)
+- `COMPLETED` - Completion marker (✅ Created)
+
+---
+
+## Sprint 12: Cave Entrance - Threshold & Waitlist (Social Layer v2.1)
+
+**Goal**: Implement threshold tracking and waitlist registration system
+
+**Directory**: `docs/a2a/sprint-12/`
+
+### Files
+- `reviewer.md` - Implementation report from engineer (✅ Created)
+- `engineer-feedback.md` - Review feedback from senior lead (✅ Approved)
+- `auditor-sprint-feedback.md` - Security audit feedback (✅ Approved)
+- `COMPLETED` - Completion marker (✅ Created)
+
+---
+
+## Sprint 13: Notification System (Social Layer v2.1)
+
+**Goal**: Implement notification preferences, rate limiting, and alert delivery
+
+**Directory**: `docs/a2a/sprint-13/`
+
+### Files
+- `reviewer.md` - Implementation report from engineer (✅ Created)
+- `engineer-feedback.md` - Review feedback from senior lead (✅ Approved)
+- `auditor-sprint-feedback.md` - Security audit feedback (✅ Approved)
+- `COMPLETED` - Completion marker (✅ Created)
+
+---
+
+## Sprint 14: Integration & Polish (Social Layer v2.1)
+
+**Goal**: Integrate all v2.1 systems, add comprehensive tests, and prepare for production
+
+**Directory**: `docs/a2a/sprint-14/`
+
+### Files
+- `reviewer.md` - Implementation report from engineer (✅ Created)
+- `engineer-feedback.md` - Review feedback from senior lead (✅ Approved)
+- `auditor-sprint-feedback.md` - Security audit feedback (✅ Approved)
+- `COMPLETED` - Completion marker (✅ Created)
+
+### Tasks Completed
+- [x] S14-T1: Enhanced Eligibility Sync Task (v2.1 integration)
+- [x] S14-T2: Weekly Counter Reset Task
+- [x] S14-T4: Configuration Extension (from Sprint 12-13)
+- [x] S14-T5: Command Registration Update (/alerts, /position)
+- [x] S14-T6+T7: Comprehensive Tests (60 new tests)
+- [x] S14-T8: Type Definitions (audit event types)
+
+### Implementation Summary
+- 201 tests passing (12 test files)
+- TypeScript compilation clean
+- Non-blocking v2.1 integration steps (8-12)
+- Weekly counter reset task (0 0 * * 1 cron)
+- /alerts and /position commands registered
+
+### Linear Issue
+- [LAB-793](https://linear.app/honeyjar/issue/LAB-793) - Sprint 14 Implementation
+
+---
+
+*Last Updated: December 20, 2025 (Sprint 14 COMPLETED - Security audit approved)*

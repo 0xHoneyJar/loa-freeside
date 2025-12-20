@@ -1,0 +1,202 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Run tests
+        run: npm run test:run
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: |
+            dist/
+            package.json
+            package-lock.json
+            deploy/
+          retention-days: 1
+
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: production
+      url: https://${{ secrets.DOMAIN }}
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to server
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          APP_DIR: /opt/sietch-service
+        run: |
+          # Create deployment package
+          tar -czf deploy.tar.gz dist/ package.json package-lock.json deploy/
+
+          # Copy to server
+          scp deploy.tar.gz ${SERVER_USER}@${SERVER_HOST}:/tmp/
+
+          # Execute deployment
+          ssh ${SERVER_USER}@${SERVER_HOST} << 'ENDSSH'
+            set -e
+
+            APP_DIR=/opt/sietch-service
+            DEPLOY_DIR=/tmp/sietch-deploy-$(date +%s)
+
+            echo "Creating deployment directory..."
+            mkdir -p $DEPLOY_DIR
+            cd $DEPLOY_DIR
+
+            echo "Extracting deployment package..."
+            tar -xzf /tmp/deploy.tar.gz
+            rm /tmp/deploy.tar.gz
+
+            echo "Backing up current deployment..."
+            if [ -d "$APP_DIR/dist" ]; then
+              cp -r $APP_DIR/dist $APP_DIR/dist.backup.$(date +%Y%m%d%H%M%S)
+            fi
+
+            echo "Installing dependencies..."
+            cd $APP_DIR
+            cp $DEPLOY_DIR/package*.json .
+            npm ci --production
+
+            echo "Deploying new build..."
+            rm -rf $APP_DIR/dist
+            cp -r $DEPLOY_DIR/dist $APP_DIR/
+
+            # Update deploy scripts
+            cp -r $DEPLOY_DIR/deploy $APP_DIR/
+
+            echo "Reloading application..."
+            pm2 reload sietch-service --update-env
+
+            echo "Waiting for application to start..."
+            sleep 5
+
+            echo "Checking application health..."
+            curl -sf http://localhost:3000/health || {
+              echo "Health check failed! Rolling back..."
+              LATEST_BACKUP=$(ls -td $APP_DIR/dist.backup.* | head -1)
+              if [ -n "$LATEST_BACKUP" ]; then
+                rm -rf $APP_DIR/dist
+                mv $LATEST_BACKUP $APP_DIR/dist
+                pm2 reload sietch-service --update-env
+              fi
+              exit 1
+            }
+
+            echo "Cleaning up..."
+            rm -rf $DEPLOY_DIR
+
+            # Keep only last 3 backups
+            ls -td $APP_DIR/dist.backup.* 2>/dev/null | tail -n +4 | xargs -r rm -rf
+
+            echo "Deployment successful!"
+          ENDSSH
+
+      - name: Notify success
+        if: success()
+        run: |
+          echo "::notice::Deployment to production completed successfully"
+
+      - name: Notify failure
+        if: failure()
+        run: |
+          echo "::error::Deployment failed! Check logs for details."
+
+  trigger-deploy:
+    name: Deploy Trigger.dev Tasks
+    runs-on: ubuntu-latest
+    needs: deploy
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Deploy to Trigger.dev
+        env:
+          TRIGGER_SECRET_KEY: ${{ secrets.TRIGGER_SECRET_KEY }}
+        run: npm run trigger:deploy

@@ -6,3 +6,4 @@
  */
 
 export { syncEligibilityTask } from './syncEligibility.js';
+export { weeklyResetTask } from './weeklyReset.js';

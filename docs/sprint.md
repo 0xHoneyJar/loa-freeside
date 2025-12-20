@@ -712,11 +712,12 @@ The v1.0 MVP and v2.0 Social Layer are complete with:
 
 ---
 
-## Sprint 14: Integration & Polish
+## Sprint 14: Integration & Polish ✅ COMPLETE
 
 **Goal**: Integrate all systems, enhance sync task, comprehensive testing, deployment
 
 **Duration**: 2.5 days
+**Status**: COMPLETE (2025-12-20)
 
 ### Tasks
 
@@ -725,15 +726,15 @@ The v1.0 MVP and v2.0 Social Layer are complete with:
 **Description**: Extend 6-hour sync task to include Naib and threshold processing.
 
 **Acceptance Criteria**:
-- [ ] Evaluate Naib seats during sync (handle BGT changes)
-- [ ] Process bumps and role updates
-- [ ] Calculate and save threshold snapshot
-- [ ] Check waitlist for newly eligible members
-- [ ] Send waitlist eligibility notifications
-- [ ] Process position alerts (respecting rate limits)
-- [ ] Send at-risk warnings to bottom 10%
-- [ ] Comprehensive logging of all changes
-- [ ] Error handling with retries
+- [x] Evaluate Naib seats during sync (handle BGT changes)
+- [x] Process bumps and role updates
+- [x] Calculate and save threshold snapshot
+- [x] Check waitlist for newly eligible members
+- [x] Send waitlist eligibility notifications
+- [x] Process position alerts (respecting rate limits)
+- [x] Send at-risk warnings to bottom 10%
+- [x] Comprehensive logging of all changes
+- [x] Error handling with retries
 
 **Files to Modify**:
 - `sietch-service/src/trigger/syncEligibility.ts`
@@ -744,16 +745,16 @@ The v1.0 MVP and v2.0 Social Layer are complete with:
 
 ---
 
-#### S14-T2: Weekly Counter Reset Task
+#### S14-T2: Weekly Counter Reset Task ✅
 
 **Description**: Create scheduled task to reset weekly alert counters.
 
 **Acceptance Criteria**:
-- [ ] Runs every Monday at 00:00 UTC
-- [ ] Resets `alerts_sent_this_week` for all members
-- [ ] Updates `week_start_timestamp`
-- [ ] Logs count of members reset
-- [ ] Error handling
+- [x] Runs every Monday at 00:00 UTC
+- [x] Resets `alerts_sent_this_week` for all members
+- [x] Updates `week_start_timestamp`
+- [x] Logs count of members reset
+- [x] Error handling
 
 **Files to Create**:
 - `sietch-service/src/trigger/weeklyReset.ts`
@@ -782,21 +783,22 @@ The v1.0 MVP and v2.0 Social Layer are complete with:
 **Dependencies**: S11-T5, S12-T5
 **Estimated Effort**: Medium
 **Testing**: Permission verification
+**Note**: Manual Discord configuration required at deployment
 
 ---
 
-#### S14-T4: Configuration Extension
+#### S14-T4: Configuration Extension ✅
 
 **Description**: Extend config with all v2.1 environment variables.
 
 **Acceptance Criteria**:
-- [ ] Naib configuration (seat count, tiebreaker)
-- [ ] Alert configuration (at-risk threshold, default frequency)
-- [ ] Waitlist configuration (range start/end)
-- [ ] Discord channel IDs for Cave Entrance and Naib areas
-- [ ] Discord role IDs (@Former Naib, @Taqwa)
-- [ ] Update `.env.example` with all new variables
-- [ ] Configuration validation on startup
+- [x] Naib configuration (seat count, tiebreaker)
+- [x] Alert configuration (at-risk threshold, default frequency)
+- [x] Waitlist configuration (range start/end)
+- [x] Discord channel IDs for Cave Entrance and Naib areas
+- [x] Discord role IDs (@Former Naib, @Taqwa)
+- [x] Update `.env.example` with all new variables
+- [x] Configuration validation on startup
 
 **Files to Modify**:
 - `sietch-service/src/config.ts`
@@ -805,21 +807,22 @@ The v1.0 MVP and v2.0 Social Layer are complete with:
 **Dependencies**: All previous sprints
 **Estimated Effort**: Low
 **Testing**: Config loading tests
+**Note**: Already configured in Sprint 12-13
 
 ---
 
-#### S14-T5: Command Registration Update
+#### S14-T5: Command Registration Update ✅
 
 **Description**: Register all new slash commands with Discord.
 
 **Acceptance Criteria**:
-- [ ] `/naib` command registered
-- [ ] `/threshold` command registered
-- [ ] `/position` command registered
-- [ ] `/alerts` command registered
-- [ ] `/register-waitlist` command registered
-- [ ] Commands available in Discord
-- [ ] Command descriptions and options correct
+- [x] `/naib` command registered
+- [x] `/threshold` command registered
+- [x] `/position` command registered
+- [x] `/alerts` command registered
+- [x] `/register-waitlist` command registered
+- [x] Commands available in Discord
+- [x] Command descriptions and options correct
 
 **Files to Modify**:
 - `sietch-service/src/discord/commands/index.ts`
@@ -830,22 +833,22 @@ The v1.0 MVP and v2.0 Social Layer are complete with:
 
 ---
 
-#### S14-T6: Comprehensive Unit Tests
+#### S14-T6: Comprehensive Unit Tests ✅
 
 **Description**: Write unit tests for all new services.
 
 **Acceptance Criteria**:
-- [ ] NaibService tests (seat management, bump logic, tie-breakers)
-- [ ] ThresholdService tests (distance calculation, registration)
-- [ ] NotificationService tests (rate limiting, preference checks)
-- [ ] Database query tests
-- [ ] Edge case coverage (empty seats, all seats full, ties)
-- [ ] Test coverage > 80%
+- [x] NaibService tests (seat management, bump logic, tie-breakers)
+- [x] ThresholdService tests (distance calculation, registration)
+- [x] NotificationService tests (rate limiting, preference checks)
+- [x] Database query tests
+- [x] Edge case coverage (empty seats, all seats full, ties)
+- [x] Test coverage > 80%
 
 **Files to Create**:
-- `sietch-service/tests/services/naib.test.ts`
-- `sietch-service/tests/services/threshold.test.ts`
-- `sietch-service/tests/services/notification.test.ts`
+- `sietch-service/tests/integration/naib.test.ts`
+- `sietch-service/tests/integration/threshold.test.ts`
+- `sietch-service/tests/integration/notification.test.ts`
 
 **Dependencies**: All service implementations
 **Estimated Effort**: High
@@ -853,19 +856,19 @@ The v1.0 MVP and v2.0 Social Layer are complete with:
 
 ---
 
-#### S14-T7: Integration Tests
+#### S14-T7: Integration Tests ✅
 
 **Description**: Write integration tests for complete flows.
 
 **Acceptance Criteria**:
-- [ ] New member onboarding with Naib seat assignment
-- [ ] Bump scenario (high BGT member joins)
-- [ ] Bump during sync (BGT changes)
-- [ ] Former Naib re-entry scenario
-- [ ] Waitlist registration and eligibility notification
-- [ ] Position alert batch processing
-- [ ] At-risk warning delivery
-- [ ] Privacy leak detection (no wallet in responses)
+- [x] New member onboarding with Naib seat assignment
+- [x] Bump scenario (high BGT member joins)
+- [x] Bump during sync (BGT changes)
+- [x] Former Naib re-entry scenario
+- [x] Waitlist registration and eligibility notification
+- [x] Position alert batch processing
+- [x] At-risk warning delivery
+- [x] Privacy leak detection (no wallet in responses)
 
 **Files to Create**:
 - `sietch-service/tests/integration/naib-flow.test.ts`
@@ -925,14 +928,14 @@ The v1.0 MVP and v2.0 Social Layer are complete with:
 
 ### Sprint 14 Success Criteria
 
-- [ ] Enhanced sync task processes Naib, threshold, and notifications
-- [ ] Weekly reset task functioning
-- [ ] All Discord channels and permissions configured
-- [ ] All slash commands registered and working
-- [ ] Unit test coverage > 80%
-- [ ] All integration tests pass
-- [ ] Documentation updated
-- [ ] Ready for production deployment
+- [x] Enhanced sync task processes Naib, threshold, and notifications
+- [x] Weekly reset task functioning
+- [ ] All Discord channels and permissions configured (manual at deployment)
+- [x] All slash commands registered and working
+- [x] Unit test coverage > 80%
+- [x] All integration tests pass
+- [ ] Documentation updated (S14-T8, S14-T9 at deployment)
+- [x] Ready for production deployment
 
 ---
 

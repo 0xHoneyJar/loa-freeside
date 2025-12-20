@@ -22,6 +22,7 @@ import {
 } from '../db/index.js';
 import { config } from '../config.js';
 import type { EligibilityResponse, HealthResponse, DirectoryFilters } from '../types/index.js';
+import { getPrometheusMetrics } from '../utils/metrics.js';
 import { profileService } from '../services/profile.js';
 import { directoryService } from '../services/directory.js';
 import { leaderboardService } from '../services/leaderboard.js';
@@ -140,6 +141,15 @@ publicRouter.get('/health', (_req: Request, res: Response) => {
 
   // Use 200 even for degraded - it's still functioning
   res.json(response);
+});
+
+/**
+ * GET /metrics
+ * Prometheus metrics endpoint
+ */
+publicRouter.get('/metrics', (_req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+  res.send(getPrometheusMetrics());
 });
 
 /**

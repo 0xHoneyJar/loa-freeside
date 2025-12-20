@@ -1,0 +1,68 @@
+# Caddyfile for Sietch Service
+# Replace {$DOMAIN} with your actual domain
+
+{$DOMAIN} {
+    # Enable logging
+    log {
+        output file /var/log/caddy/sietch.log {
+            roll_size 10mb
+            roll_keep 5
+            roll_keep_for 168h
+        }
+        format json
+    }
+
+    # Reverse proxy to Sietch API
+    reverse_proxy localhost:3000 {
+        # Health check
+        health_uri /health
+        health_interval 30s
+        health_timeout 5s
+        health_status 200
+
+        # Headers
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    # Security headers
+    header {
+        # Prevent clickjacking
+        X-Frame-Options "SAMEORIGIN"
+        # XSS protection
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        # HSTS (uncomment after initial deployment)
+        # Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        # Remove server header
+        -Server
+    }
+
+    # Enable compression
+    encode gzip zstd
+
+    # Rate limiting (optional, already handled by Express)
+    # rate_limit {
+    #     zone static_zone {
+    #         key static
+    #         events 100
+    #         window 1m
+    #     }
+    # }
+}
+
+# Grafana dashboard (optional, on subdomain)
+grafana.{$DOMAIN} {
+    reverse_proxy localhost:3001 {
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    # Require basic auth for Grafana access
+    basicauth {
+        # Generate password hash: caddy hash-password
+        # admin $2a$14$... (replace with actual hash)
+    }
+}

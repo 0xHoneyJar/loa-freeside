@@ -14,6 +14,8 @@ import { leaderboardCommand } from './leaderboard.js';
 import { naibCommand } from './naib.js';
 import { thresholdCommand } from './threshold.js';
 import { registerWaitlistCommand } from './register-waitlist.js';
+import { alertsCommand } from './alerts.js';
+import { positionCommand } from './position.js';
 
 /**
  * All registered slash commands
@@ -28,6 +30,9 @@ export const commands: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
   naibCommand.toJSON(),
   thresholdCommand.toJSON(),
   registerWaitlistCommand.toJSON(),
+  // Sprint 13: Notification System commands
+  alertsCommand.toJSON(),
+  positionCommand.toJSON(),
 ];
 
 /**
@@ -53,6 +58,10 @@ export { handleNaibCommand } from './naib.js';
 // Sprint 12: Cave Entrance commands
 export { handleThresholdCommand } from './threshold.js';
 export { handleRegisterWaitlistCommand } from './register-waitlist.js';
+
+// Sprint 13: Notification System commands
+export { handleAlertsCommand } from './alerts.js';
+export { handlePositionCommand } from './position.js';
 
 /**
  * Register slash commands with Discord API

@@ -124,7 +124,10 @@ export interface AuditLogEntry {
     | 'waitlist_eligible'
     | 'alert_sent'
     | 'admin_test_alert'
-    | 'admin_reset_alert_counters';
+    | 'admin_reset_alert_counters'
+    // Sprint 14: Integration event types
+    | 'naib_seats_evaluated'
+    | 'weekly_reset';
   /** Event-specific data */
   eventData: Record<string, unknown>;
   /** When the event occurred */
