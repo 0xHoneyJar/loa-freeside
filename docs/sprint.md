@@ -1,10 +1,10 @@
-# Sprint Plan: Sietch v2.1
+# Sprint Plan: Sietch v3.0 "The Great Expansion"
 
-**Version**: 2.1
-**Date**: December 19, 2025
-**PRD Reference**: `docs/prd-v2.1.md`
-**SDD Reference**: `docs/sdd-v2.1.md`
-**Codename**: Naib Dynamics & Threshold
+**Version**: 3.0
+**Date**: December 20, 2025
+**PRD Reference**: `docs/prd.md`
+**SDD Reference**: `docs/sdd.md`
+**Codename**: The Great Expansion
 
 ---
 
@@ -12,29 +12,32 @@
 
 ### Project Summary
 
-Sietch v2.1 introduces the **Naib Dynamics & Threshold System** - a dynamic governance layer and waitlist visibility feature that rewards early adopters, creates competitive tension around eligibility boundaries, and provides transparency into who may be joining (or leaving) the community.
+Sietch v3.0 "The Great Expansion" transforms Sietch from an exclusive 69-member community into a **layered sanctuary** supporting 500+ members across 9 tiers. The system maintains the privacy-first, never-redeemed purity requirement while dramatically expanding participation.
 
-### Completed Work (v1.0 - v2.0)
+### Completed Work (v1.0 - v2.1)
 
-The v1.0 MVP and v2.0 Social Layer are complete with:
+The v1.0 MVP, v2.0 Social Layer, and v2.1 Naib Dynamics are complete with:
 - Chain service fetching BGT data from Berachain RPC
 - SQLite database with eligibility snapshots and social layer tables
 - REST API for Collab.Land integration
 - Discord bot with profiles, badges, activity tracking, directory, leaderboard
 - DM-based onboarding wizard with mandatory gating
 - trigger.dev scheduled tasks (eligibility sync, activity decay, badge checks)
+- Naib seat management with bump mechanics
+- Cave Entrance waitlist with @Taqwa role
+- Position alerts and notification preferences
 - Production deployment infrastructure
 
-### v2.1 Scope: Naib Dynamics & Threshold
+### v3.0 Scope: The Great Expansion
 
-- **Dynamic Naib System** - First 7 eligible members get Naib seats, with BGT-based competition
-- **Former Naib Recognition** - Historical recognition for members who held Naib seats
-- **Naib Archives** - Private channel for current and Former Naib members
-- **Cave Entrance (Public Waitlist)** - Public lobby for aspiring members (positions 70-100)
-- **Taqwa Role** - Discord role for registered waitlist members ("those holding back")
-- **Position Alert System** - Personalized notifications about ranking changes
-- **At-Risk Warnings** - Private alerts for members in bottom 10%
-- **Threshold Display** - Live statistics showing entry requirements
+- **9-Tier System** - Hajra (6.9 BGT) through Naib (Top 7) with progressive access
+- **Automatic Tier Assignment** - BGT balance and rank-based calculation
+- **Sponsor Invites** - Water Sharer badge enables sponsoring one member
+- **Tier Notifications** - DM alerts on tier promotion
+- **Weekly Digest** - Community pulse posted to #announcements every Monday
+- **Story Fragments** - Cryptic Dune-themed narratives for elite joins
+- **Analytics Dashboard** - Admin visibility into community health
+- **Enhanced Stats** - Personal /stats command and tier leaderboard
 
 ### Team Configuration
 
@@ -45,19 +48,23 @@ The v1.0 MVP and v2.0 Social Layer are complete with:
 ### Sprint Configuration
 
 - **Sprint Duration**: 2.5 days
-- **Total Sprints**: 4 sprints (Sprint 11-14)
+- **Total Sprints**: 8 sprints (Sprint 15-22)
 - **Review Cadence**: End of each sprint
 
 ---
 
-## v2.1 Sprint Summary
+## v3.0 Sprint Summary
 
 | Sprint | Focus | Key Deliverables | Duration |
 |--------|-------|------------------|----------|
-| **Sprint 11** | Naib Foundation | Schema, NaibService, seat management, /naib command | 2.5 days |
-| **Sprint 12** | Cave Entrance | ThresholdService, waitlist registration, Taqwa role, /threshold command | 2.5 days |
-| **Sprint 13** | Notification System | NotificationService, alerts, preferences, /position & /alerts commands | 2.5 days |
-| **Sprint 14** | Integration & Polish | Enhanced sync task, testing, Discord setup, deployment | 2.5 days |
+| **Sprint 15** | Tier Foundation | Schema migration, TierService, type definitions | 2.5 days |
+| **Sprint 16** | Tier Integration | Role management, sync integration, initial assignment | 2.5 days |
+| **Sprint 17** | Sponsor System | Water Sharer badge, SponsorService, /invite command | 2.5 days |
+| **Sprint 18** | Notifications | Tier promotions, badge awards, Usul Ascended badge | 2.5 days |
+| **Sprint 19** | Stats & Leaderboard | StatsService, /stats command, /leaderboard tiers | 2.5 days |
+| **Sprint 20** | Weekly Digest | DigestService, scheduled task, API stats endpoints | 2.5 days |
+| **Sprint 21** | Stories & Analytics | StoryService, fragments, admin analytics, profile updates | 2.5 days |
+| **Sprint 22** | Testing & Release | Integration tests, permissions, docs, security audit, deploy | 2.5 days |
 
 ---
 
@@ -1041,6 +1048,7 @@ SIETCH SERVER
 | 1.0 | 2025-12-17 | Initial MVP sprint plan (Sprints 1-5) |
 | 2.0 | 2025-12-18 | Social Layer sprint plan (Sprints 6-10) |
 | 2.1 | 2025-12-19 | Naib Dynamics & Threshold sprint plan (Sprints 11-14) |
+| 3.0 | 2025-12-20 | The Great Expansion sprint plan (Sprints 15-22) |
 
 ---
 
@@ -1059,6 +1067,1020 @@ SIETCH SERVER
 - Sprint 8: Activity & Badges ✅
 - Sprint 9: Directory & Leaderboard ✅
 - Sprint 10: Integration & Polish ✅
+
+### v2.1 (Naib Dynamics & Threshold)
+- Sprint 11: Naib Foundation ✅
+- Sprint 12: Cave Entrance ✅
+- Sprint 13: Notification System ✅
+- Sprint 14: Integration & Polish ✅
+
+---
+
+# v3.0 Sprint Details
+
+---
+
+## Sprint 15: Tier Foundation
+
+**Goal**: Database schema and TierService implementation
+
+**Duration**: 2.5 days
+
+### Tasks
+
+#### S15-T1: Database Migration
+**Description**: Create migration 006_tier_system.sql with all new tables and columns
+
+**Acceptance Criteria**:
+- [ ] `tier` column added to `member_profiles` (default: 'hajra')
+- [ ] `tier_updated_at` column added to `member_profiles`
+- [ ] `tier_history` table created with proper indexes
+- [ ] `sponsor_invites` table created with proper indexes
+- [ ] `story_fragments` table created
+- [ ] `weekly_digests` table created
+- [ ] Migration runs without errors on existing data
+- [ ] Rollback script documented
+
+**Files to Create/Modify**:
+- `sietch-service/src/db/migrations/006_tier_system.sql`
+
+**Estimated Effort**: 0.5 days
+**Dependencies**: None
+**Testing**: Run migration on test database; verify schema
+
+---
+
+#### S15-T2: Type Definitions
+**Description**: Add TypeScript types for tier system
+
+**Acceptance Criteria**:
+- [ ] `Tier` union type defined with all 9 tiers
+- [ ] `TierHistoryEntry` interface defined
+- [ ] `SponsorInvite` interface defined
+- [ ] `StoryFragment` interface defined
+- [ ] `WeeklyDigest` interface defined
+- [ ] `TierProgress` interface defined
+- [ ] `PersonalStats` interface defined
+- [ ] `AdminAnalytics` interface defined
+- [ ] All types exported from `src/types/index.ts`
+
+**Files to Modify**:
+- `sietch-service/src/types/index.ts`
+
+**Estimated Effort**: 0.25 days
+**Dependencies**: None
+**Testing**: TypeScript compilation succeeds
+
+---
+
+#### S15-T3: TierService Core
+**Description**: Implement TierService with tier calculation logic
+
+**Acceptance Criteria**:
+- [ ] `TIER_THRESHOLDS` constant defined with BGT values
+- [ ] `TIER_ORDER` array for ordering comparison
+- [ ] `calculateTier(bgt, rank)` returns correct tier
+- [ ] Rank-based logic: Top 7 = Naib, Top 8-69 = Fedaykin
+- [ ] BGT-based logic: 6.9 → Hajra through 1111 → Usul
+- [ ] Rank takes precedence over BGT threshold
+- [ ] Unit tests for all threshold boundaries
+- [ ] Unit tests for rank precedence
+
+**Files to Create**:
+- `sietch-service/src/services/TierService.ts`
+
+**Estimated Effort**: 0.75 days
+**Dependencies**: S15-T2
+**Testing**:
+- `calculateTier(6.9, null)` returns 'hajra'
+- `calculateTier(69, null)` returns 'ichwan'
+- `calculateTier(1111, null)` returns 'usul'
+- `calculateTier(500, 5)` returns 'naib' (rank precedence)
+- `calculateTier(10, 30)` returns 'fedaykin' (rank precedence)
+
+---
+
+#### S15-T4: TierService Persistence
+**Description**: Implement tier update and history tracking
+
+**Acceptance Criteria**:
+- [ ] `updateMemberTier(memberId, bgt, rank)` updates profile
+- [ ] Tier changes logged to `tier_history` table
+- [ ] `getTierProgress(memberId)` returns progress to next tier
+- [ ] `getTierHistory(memberId)` returns change history
+- [ ] `getTierDistribution()` returns member counts by tier
+- [ ] `isPromotion(oldTier, newTier)` correctly identifies upgrades
+- [ ] Unit tests for persistence operations
+
+**Files to Modify**:
+- `sietch-service/src/services/TierService.ts`
+
+**Estimated Effort**: 1 day
+**Dependencies**: S15-T1, S15-T3
+**Testing**: Database integration tests
+
+---
+
+### Sprint 15 Success Criteria
+- [ ] All unit tests pass
+- [ ] Migration applies cleanly
+- [ ] TierService correctly calculates all 9 tiers
+- [ ] Tier history properly recorded
+
+---
+
+## Sprint 16: Tier Integration
+
+**Goal**: Integrate tier calculation into sync and Discord roles
+
+**Duration**: 2.5 days
+
+### Tasks
+
+#### S16-T1: Discord Role Setup
+**Description**: Add environment variables and role constants for 9 tiers
+
+**Acceptance Criteria**:
+- [ ] `DISCORD_ROLE_HAJRA` through `DISCORD_ROLE_USUL` env vars documented
+- [ ] `.env.example` updated with all tier role IDs
+- [ ] `TIER_ROLES` mapping constant created
+- [ ] Role colors documented (Hajra=Sand, Ichwan=Orange, etc.)
+- [ ] README updated with role setup instructions
+
+**Files to Modify**:
+- `sietch-service/src/config.ts`
+- `.env.example`
+
+**Estimated Effort**: 0.25 days
+**Dependencies**: None
+**Testing**: Manual verification of env var loading
+
+---
+
+#### S16-T2: RoleManagerService Extension
+**Description**: Extend RoleManagerService for tier role management
+
+**Acceptance Criteria**:
+- [ ] `syncTierRole(discordId, tier)` method implemented
+- [ ] Role assignment is additive (members keep earned roles)
+- [ ] Higher tier roles removed if tier decreases (edge case)
+- [ ] Role sync handles missing role IDs gracefully
+- [ ] Logging for all role changes
+- [ ] Unit tests for role sync logic
+
+**Files to Modify**:
+- `sietch-service/src/services/roleManager.ts`
+
+**Estimated Effort**: 0.75 days
+**Dependencies**: S16-T1
+**Testing**: Mock Discord API tests
+
+---
+
+#### S16-T3: Sync Task Integration
+**Description**: Integrate tier updates into sync-eligibility task
+
+**Acceptance Criteria**:
+- [ ] Tier calculated for each member during sync
+- [ ] Promotions detected and collected
+- [ ] Discord roles updated for promotions
+- [ ] Tier changes logged to history
+- [ ] Sync task logs promotion count
+- [ ] Existing sync functionality unchanged
+
+**Files to Modify**:
+- `sietch-service/src/trigger/syncEligibility.ts`
+
+**Estimated Effort**: 1 day
+**Dependencies**: Sprint 15, S16-T2
+**Testing**: Integration test with mock data
+
+---
+
+#### S16-T4: Initial Tier Assignment
+**Description**: Script to assign tiers to existing members
+
+**Acceptance Criteria**:
+- [ ] Script calculates tier for all existing members
+- [ ] Top 69 assigned Fedaykin/Naib based on rank
+- [ ] Lower-ranked members assigned BGT-based tier
+- [ ] Script logs all assignments
+- [ ] Script is idempotent (safe to run multiple times)
+- [ ] Existing Naib/Former Naib status preserved
+
+**Files to Create**:
+- `sietch-service/scripts/assign-initial-tiers.ts`
+
+**Estimated Effort**: 0.5 days
+**Dependencies**: S16-T3
+**Testing**: Run on staging database
+
+---
+
+### Sprint 16 Success Criteria
+- [ ] Tier sync runs without errors
+- [ ] Discord roles assigned correctly
+- [ ] Existing members have appropriate tiers
+- [ ] No regression in v2.1 functionality
+
+---
+
+## Sprint 17: Sponsor System
+
+**Goal**: Implement Water Sharer badge and sponsor invite system
+
+**Duration**: 2.5 days
+
+### Tasks
+
+#### S17-T1: Water Sharer Badge
+**Description**: Add Water Sharer badge to badge system
+
+**Acceptance Criteria**:
+- [ ] `water-sharer` badge ID defined
+- [ ] Badge has name: "Water Sharer"
+- [ ] Badge has description: "Recognized contributor who can sponsor one member"
+- [ ] Badge emoji: appropriate water/sharing theme
+- [ ] Badge visible on profile and directory
+- [ ] Badge can be awarded via `/admin badge award`
+
+**Files to Modify**:
+- `sietch-service/src/services/BadgeService.ts`
+- `sietch-service/src/data/badges.ts`
+
+**Estimated Effort**: 0.5 days
+**Dependencies**: None
+**Testing**: Award badge via admin command
+
+---
+
+#### S17-T2: SponsorService Core
+**Description**: Implement SponsorService for invite management
+
+**Acceptance Criteria**:
+- [ ] `canSponsor(memberId)` checks badge and active invite
+- [ ] `createInvite(sponsorId, discordId)` creates pending invite
+- [ ] Validates sponsor has Water Sharer badge
+- [ ] Validates sponsor has no active invite
+- [ ] Validates invited user not already a member
+- [ ] Validates invited user has no pending invite
+- [ ] Invite stores sponsor's current tier
+- [ ] Unit tests for validation logic
+
+**Files to Create**:
+- `sietch-service/src/services/SponsorService.ts`
+
+**Estimated Effort**: 1 day
+**Dependencies**: S17-T1
+**Testing**: Unit tests with mocked badge service
+
+---
+
+#### S17-T3: Invite Acceptance
+**Description**: Handle invite acceptance during onboarding
+
+**Acceptance Criteria**:
+- [ ] `acceptInvite(discordId, memberId)` marks invite accepted
+- [ ] Invitee receives sponsor's tier
+- [ ] Invitee's tier_updated_at set
+- [ ] Sponsor's invite marked used
+- [ ] `getPendingInvite(discordId)` checks for pending invites
+- [ ] Onboarding flow checks for invite before BGT check
+
+**Files to Modify**:
+- `sietch-service/src/services/SponsorService.ts`
+- `sietch-service/src/services/onboarding.ts`
+
+**Estimated Effort**: 0.5 days
+**Dependencies**: S17-T2
+**Testing**: Integration test of invite → onboarding flow
+
+---
+
+#### S17-T4: /invite Command
+**Description**: Implement /invite Discord command
+
+**Acceptance Criteria**:
+- [ ] `/invite user @user` subcommand creates invite
+- [ ] `/invite status` subcommand shows invite status
+- [ ] Command validates sponsor has badge
+- [ ] Command validates no active invite
+- [ ] Error messages are helpful and specific
+- [ ] Success message confirms invite created
+- [ ] Status shows invitee Discord username and acceptance state
+- [ ] All responses are ephemeral
+
+**Files to Create**:
+- `sietch-service/src/discord/commands/invite.ts`
+
+**Estimated Effort**: 0.5 days
+**Dependencies**: S17-T2, S17-T3
+**Testing**: Manual Discord testing
+
+---
+
+### Sprint 17 Success Criteria
+- [ ] Water Sharer badge can be awarded
+- [ ] Sponsors can create one invite
+- [ ] Invited users bypass BGT requirement
+- [ ] Invite status visible to sponsor
+
+---
+
+## Sprint 18: Notification Extensions
+
+**Goal**: Tier promotion and badge award notifications
+
+**Duration**: 2.5 days
+
+### Tasks
+
+#### S18-T1: Tier Promotion DM
+**Description**: Send DM when member is promoted to higher tier
+
+**Acceptance Criteria**:
+- [ ] `sendTierPromotion(discordId, newTier)` method implemented
+- [ ] DM includes tier name and threshold
+- [ ] DM mentions new channels available
+- [ ] DM follows existing notification format
+- [ ] Notification respects user preferences
+- [ ] Failure to send DM doesn't break sync
+
+**Files to Modify**:
+- `sietch-service/src/services/notification.ts`
+
+**Estimated Effort**: 0.5 days
+**Dependencies**: Sprint 16
+**Testing**: Send test DM to dev account
+
+---
+
+#### S18-T2: Badge Award DM
+**Description**: Send DM when admin awards a badge
+
+**Acceptance Criteria**:
+- [ ] `sendBadgeAward(discordId, badgeId)` method implemented
+- [ ] DM includes badge name and description
+- [ ] Water Sharer badge DM mentions invite ability
+- [ ] DM follows existing notification format
+- [ ] Badge award logs notification sent
+
+**Files to Modify**:
+- `sietch-service/src/services/notification.ts`
+- `sietch-service/src/services/BadgeService.ts`
+
+**Estimated Effort**: 0.5 days
+**Dependencies**: S17-T1
+**Testing**: Award badge and verify DM
+
+---
+
+#### S18-T3: Promotion Notifications in Sync
+**Description**: Trigger notifications during tier sync
+
+**Acceptance Criteria**:
+- [ ] Promotion notifications sent after role update
+- [ ] Notifications batched (don't DM during each iteration)
+- [ ] Failed notifications logged but don't stop sync
+- [ ] Promotion count includes notified members
+- [ ] Notifications only for actual promotions (not first assignment)
+
+**Files to Modify**:
+- `sietch-service/src/trigger/syncEligibility.ts`
+
+**Estimated Effort**: 0.5 days
+**Dependencies**: S18-T1, Sprint 16
+**Testing**: Run sync with test promotions
+
+---
+
+#### S18-T4: Admin Invite Management
+**Description**: Admin commands for invite management
+
+**Acceptance Criteria**:
+- [ ] `/admin invite revoke @user` revokes sponsor's invite
+- [ ] `DELETE /admin/invites/:id` API endpoint
+- [ ] Revocation logs admin who revoked
+- [ ] Revoked invites cannot be accepted
+- [ ] Sponsor can create new invite after revocation
+
+**Files to Create**:
+- `sietch-service/src/api/handlers/admin-invites.ts`
+
+**Files to Modify**:
+- `sietch-service/src/discord/commands/admin.ts`
+- `sietch-service/src/api/routes.ts`
+
+**Estimated Effort**: 0.5 days
+**Dependencies**: S17-T2
+**Testing**: Revoke invite via command and API
+
+---
+
+#### S18-T5: Usul Ascended Badge
+**Description**: Auto-award badge when reaching Usul tier
+
+**Acceptance Criteria**:
+- [ ] `usul-ascended` badge ID defined
+- [ ] Badge name: "Usul Ascended"
+- [ ] Badge description: "Reached the Usul tier (1111+ BGT)"
+- [ ] Badge auto-awarded on Usul promotion
+- [ ] Badge persists if member later reaches Fedaykin
+- [ ] Badge award triggers notification
+
+**Files to Modify**:
+- `sietch-service/src/services/BadgeService.ts`
+- `sietch-service/src/services/TierService.ts`
+
+**Estimated Effort**: 0.5 days
+**Dependencies**: S18-T2, Sprint 16
+**Testing**: Promote member to Usul, verify badge
+
+---
+
+### Sprint 18 Success Criteria
+- [ ] Promotions trigger DM notifications
+- [ ] Badge awards trigger DM notifications
+- [ ] Usul Ascended badge auto-awarded
+- [ ] Admin can revoke invites
+
+---
+
+## Sprint 19: Stats & Leaderboard
+
+**Goal**: Personal stats command and tier leaderboard
+
+**Duration**: 2.5 days
+
+### Tasks
+
+#### S19-T1: StatsService
+**Description**: Implement StatsService for stats aggregation
+
+**Acceptance Criteria**:
+- [ ] `getPersonalStats(memberId)` returns full stats object
+- [ ] Stats include: nym, tier, member since, activity, badges
+- [ ] Activity includes: messages this week, current streak, longest streak
+- [ ] Tier progress included with distance to next tier
+- [ ] `getCommunityStats()` returns public community stats
+- [ ] `getAdminAnalytics()` returns full admin dashboard data
+- [ ] Unit tests for stats calculations
+
+**Files to Create**:
+- `sietch-service/src/services/StatsService.ts`
+
+**Estimated Effort**: 1 day
+**Dependencies**: Sprint 15, Sprint 16
+**Testing**: Unit tests with test data
+
+---
+
+#### S19-T2: /stats Command
+**Description**: Implement /stats Discord command
+
+**Acceptance Criteria**:
+- [ ] Command shows personal activity summary
+- [ ] Embed includes nym and tier
+- [ ] Embed shows messages this week, streaks
+- [ ] Embed lists badges with count
+- [ ] Embed shows tier progress (current BGT, next threshold, distance)
+- [ ] Response is ephemeral
+- [ ] Format matches PRD mockup
+
+**Files to Create**:
+- `sietch-service/src/discord/commands/stats.ts`
+- `sietch-service/src/discord/embeds/stats.ts`
+
+**Estimated Effort**: 0.5 days
+**Dependencies**: S19-T1
+**Testing**: Manual Discord testing
+
+---
+
+#### S19-T3: Tier Leaderboard
+**Description**: Implement tier progression leaderboard
+
+**Acceptance Criteria**:
+- [ ] `getTierLeaderboard(limit)` returns closest to promotion
+- [ ] Excludes Fedaykin/Naib (rank-based tiers)
+- [ ] Sorted by distance to next tier (ascending)
+- [ ] Includes: nym, current tier, BGT, next tier, distance
+- [ ] Respects privacy (no exact BGT, just rounded)
+
+**Files to Modify**:
+- `sietch-service/src/services/StatsService.ts`
+
+**Estimated Effort**: 0.5 days
+**Dependencies**: S19-T1
+**Testing**: Unit tests with test data
+
+---
+
+#### S19-T4: /leaderboard tiers Subcommand
+**Description**: Add tiers subcommand to leaderboard
+
+**Acceptance Criteria**:
+- [ ] `/leaderboard tiers` shows tier progression ranking
+- [ ] Shows top 10 closest to promotion
+- [ ] Format: rank, nym, current/next tier, BGT/threshold (distance)
+- [ ] Shows user's own position if not in top 10
+- [ ] Response is public (not ephemeral)
+
+**Files to Modify**:
+- `sietch-service/src/discord/commands/leaderboard.ts`
+
+**Estimated Effort**: 0.5 days
+**Dependencies**: S19-T3
+**Testing**: Manual Discord testing
+
+---
+
+### Sprint 19 Success Criteria
+- [ ] /stats shows comprehensive personal data
+- [ ] /leaderboard tiers shows progression ranking
+- [ ] Stats calculations are accurate
+- [ ] Privacy maintained (no exact BGT exposed)
+
+---
+
+## Sprint 20: Weekly Digest
+
+**Goal**: Automated weekly community digest
+
+**Duration**: 2.5 days
+
+### Tasks
+
+#### S20-T1: DigestService
+**Description**: Implement DigestService for weekly stats collection
+
+**Acceptance Criteria**:
+- [ ] `collectWeeklyStats()` gathers all required metrics
+- [ ] Stats include: total members, new members, total BGT
+- [ ] Stats include: tier distribution, most active tier
+- [ ] Stats include: promotions count, badges awarded
+- [ ] Stats include: notable promotions (Usul+), top new member
+- [ ] `formatDigest(stats)` creates Discord message
+- [ ] Format matches PRD mockup
+
+**Files to Create**:
+- `sietch-service/src/services/DigestService.ts`
+
+**Estimated Effort**: 1 day
+**Dependencies**: S19-T1
+**Testing**: Unit tests with mock data
+
+---
+
+#### S20-T2: Digest Posting
+**Description**: Post digest to announcements channel
+
+**Acceptance Criteria**:
+- [ ] `postDigest()` sends formatted message to channel
+- [ ] Uses DISCORD_ANNOUNCEMENTS_CHANNEL_ID env var
+- [ ] Stores digest record in `weekly_digests` table
+- [ ] Records message ID for reference
+- [ ] Handles posting failures gracefully
+- [ ] Logs success/failure
+
+**Files to Modify**:
+- `sietch-service/src/services/DigestService.ts`
+- `sietch-service/src/config.ts`
+
+**Estimated Effort**: 0.5 days
+**Dependencies**: S20-T1
+**Testing**: Manual posting to test channel
+
+---
+
+#### S20-T3: Weekly Digest Task
+**Description**: Create trigger.dev scheduled task
+
+**Acceptance Criteria**:
+- [ ] `weekly-digest` task defined
+- [ ] Cron: `0 0 * * 1` (Monday 00:00 UTC)
+- [ ] Task calls `digestService.postDigest()`
+- [ ] Task logs start and completion
+- [ ] Error handling with proper logging
+- [ ] Task registered in trigger.dev config
+
+**Files to Create**:
+- `sietch-service/src/trigger/weekly-digest.ts`
+
+**Estimated Effort**: 0.5 days
+**Dependencies**: S20-T2
+**Testing**: Manual task trigger
+
+---
+
+#### S20-T4: API Stats Endpoints
+**Description**: Add public and member stats API endpoints
+
+**Acceptance Criteria**:
+- [ ] `GET /api/tiers` returns tier definitions
+- [ ] `GET /api/stats/community` returns public stats
+- [ ] `GET /api/me/stats` returns personal stats (auth required)
+- [ ] `GET /api/me/tier-progress` returns tier progress (auth required)
+- [ ] Rate limiting applied appropriately
+- [ ] OpenAPI documentation updated
+
+**Files to Create**:
+- `sietch-service/src/api/handlers/tiers.ts`
+- `sietch-service/src/api/handlers/stats.ts`
+
+**Files to Modify**:
+- `sietch-service/src/api/routes.ts`
+
+**Estimated Effort**: 0.5 days
+**Dependencies**: S19-T1
+**Testing**: API integration tests
+
+---
+
+### Sprint 20 Success Criteria
+- [ ] Weekly digest posts automatically
+- [ ] Digest format matches PRD spec
+- [ ] API endpoints return correct data
+- [ ] Task runs on schedule
+
+---
+
+## Sprint 21: Story Fragments & Analytics
+
+**Goal**: Story fragments for elite joins, admin analytics
+
+**Duration**: 2.5 days
+
+### Tasks
+
+#### S21-T1: StoryService
+**Description**: Implement StoryService for narrative fragments
+
+**Acceptance Criteria**:
+- [ ] `getFragment(category)` returns random least-used fragment
+- [ ] Fragment usage count incremented on retrieval
+- [ ] Categories: `fedaykin_join`, `naib_join`
+- [ ] `postJoinFragment(tier)` posts to #the-door
+- [ ] Fragment formatted with decorative borders
+- [ ] Uses DISCORD_THE_DOOR_CHANNEL_ID env var
+
+**Files to Create**:
+- `sietch-service/src/services/StoryService.ts`
+
+**Estimated Effort**: 0.5 days
+**Dependencies**: None
+**Testing**: Unit tests for fragment selection
+
+---
+
+#### S21-T2: Default Fragments Seeder
+**Description**: Seed default story fragments
+
+**Acceptance Criteria**:
+- [ ] `seedDefaultFragments()` populates table if empty
+- [ ] 3+ Fedaykin join fragments (from PRD)
+- [ ] 2+ Naib join fragments (from PRD)
+- [ ] Seeder is idempotent
+- [ ] npm script: `npm run seed:stories`
+- [ ] Seeder runs on app startup if table empty
+
+**Files to Create**:
+- `sietch-service/scripts/seed-stories.ts`
+
+**Files to Modify**:
+- `sietch-service/package.json`
+- `sietch-service/src/index.ts`
+
+**Estimated Effort**: 0.25 days
+**Dependencies**: S21-T1
+**Testing**: Run seeder, verify fragments
+
+---
+
+#### S21-T3: Story Integration
+**Description**: Post story fragments on elite promotions
+
+**Acceptance Criteria**:
+- [ ] Story posted when member promoted to Fedaykin
+- [ ] Story posted when member promoted to Naib
+- [ ] Story posted after role assignment (not before)
+- [ ] Story posting failure doesn't break sync
+- [ ] Story only posted for promotions (not initial assignment)
+
+**Files to Modify**:
+- `sietch-service/src/trigger/syncEligibility.ts`
+
+**Estimated Effort**: 0.5 days
+**Dependencies**: S21-T1, Sprint 16
+**Testing**: Promote test member, verify story
+
+---
+
+#### S21-T4: Admin Analytics Dashboard
+**Description**: Admin stats command and API
+
+**Acceptance Criteria**:
+- [ ] `/admin stats` shows community analytics
+- [ ] Analytics include: total members by tier
+- [ ] Analytics include: total BGT represented
+- [ ] Analytics include: weekly active, new this week
+- [ ] Analytics include: promotions this week
+- [ ] `GET /admin/analytics` API endpoint
+- [ ] Admin API key authentication
+
+**Files to Create**:
+- `sietch-service/src/discord/commands/admin-stats.ts`
+- `sietch-service/src/api/handlers/admin-analytics.ts`
+
+**Files to Modify**:
+- `sietch-service/src/discord/commands/admin.ts`
+- `sietch-service/src/api/routes.ts`
+
+**Estimated Effort**: 0.75 days
+**Dependencies**: S19-T1
+**Testing**: Manual admin command testing
+
+---
+
+#### S21-T5: Profile & Directory Updates
+**Description**: Show tier in profile and directory
+
+**Acceptance Criteria**:
+- [ ] `/profile` embed shows member's tier
+- [ ] `/profile @user` shows their tier
+- [ ] `/directory` can filter by tier
+- [ ] `/directory` listing shows tier name
+- [ ] Tier displayed with appropriate formatting
+
+**Files to Modify**:
+- `sietch-service/src/discord/commands/profile.ts`
+- `sietch-service/src/discord/commands/directory.ts`
+- `sietch-service/src/discord/embeds/profile.ts`
+
+**Estimated Effort**: 0.5 days
+**Dependencies**: Sprint 15
+**Testing**: Manual Discord testing
+
+---
+
+### Sprint 21 Success Criteria
+- [ ] Story fragments post for elite joins
+- [ ] Admin has full analytics dashboard
+- [ ] Profile and directory show tiers
+- [ ] All fragments properly seeded
+
+---
+
+## Sprint 22: Testing & Release
+
+**Goal**: Comprehensive testing, documentation, production release
+
+**Duration**: 2.5 days
+
+### Tasks
+
+#### S22-T1: Integration Testing
+**Description**: End-to-end integration tests
+
+**Acceptance Criteria**:
+- [ ] Tier calculation integration test
+- [ ] Sponsor invite flow integration test
+- [ ] Weekly digest generation test
+- [ ] Story fragment posting test
+- [ ] Stats aggregation test
+- [ ] All existing tests still pass
+- [ ] Test coverage meets targets (TierService 90%, etc.)
+
+**Files to Create**:
+- `sietch-service/tests/integration/tier.test.ts`
+- `sietch-service/tests/integration/sponsor.test.ts`
+- `sietch-service/tests/integration/digest.test.ts`
+
+**Estimated Effort**: 1 day
+**Dependencies**: All previous sprints
+**Testing**: `npm test` passes
+
+---
+
+#### S22-T2: Discord Permission Verification
+**Description**: Verify channel permissions work correctly
+
+**Acceptance Criteria**:
+- [ ] Hajra can read #cave-entrance, not write
+- [ ] Ichwan can write #cave-entrance
+- [ ] Qanat can read #the-depths
+- [ ] Sihaya can write #the-depths
+- [ ] Mushtamal has full VC access in Tier 2
+- [ ] Sayyadina can read #inner-sanctum
+- [ ] Usul has full VC access in Tier 3
+- [ ] Fedaykin has full access to all public
+- [ ] Naib has access to council channels
+
+**Files to Create**:
+- `sietch-service/docs/discord/PERMISSION_MATRIX.md`
+
+**Estimated Effort**: 0.5 days
+**Dependencies**: All role/permission setup
+**Testing**: Manual testing with test accounts
+
+---
+
+#### S22-T3: Documentation Updates
+**Description**: Update all documentation for v3.0
+
+**Acceptance Criteria**:
+- [ ] README updated with v3.0 features
+- [ ] API documentation updated
+- [ ] Environment variables documented
+- [ ] Discord setup guide updated for 9 roles
+- [ ] Deployment guide updated
+- [ ] Runbooks updated if needed
+
+**Files to Modify**:
+- `sietch-service/README.md`
+- `sietch-service/docs/deployment/deployment-guide.md`
+- `.env.example`
+
+**Estimated Effort**: 0.5 days
+**Dependencies**: All features complete
+**Testing**: Review documentation
+
+---
+
+#### S22-T4: Security Audit Request
+**Description**: Request paranoid auditor review
+
+**Acceptance Criteria**:
+- [ ] All new services reviewed for security
+- [ ] Sponsor invite validation reviewed
+- [ ] Privacy controls verified (no BGT leaks)
+- [ ] Input validation checked
+- [ ] Rate limiting appropriate
+- [ ] Audit feedback addressed
+
+**Files to Create**:
+- `sietch-service/docs/a2a/v3-security-audit.md`
+
+**Estimated Effort**: 0.25 days
+**Dependencies**: All features complete
+**Testing**: Audit report generated
+
+---
+
+#### S22-T5: Production Release
+**Description**: Deploy to production
+
+**Acceptance Criteria**:
+- [ ] All tests pass in CI
+- [ ] Migration runs on production database
+- [ ] Story fragments seeded
+- [ ] Discord roles created on server
+- [ ] Channel permissions configured
+- [ ] Initial tier assignment run
+- [ ] Health check passes
+- [ ] Monitoring dashboards updated
+- [ ] Release notes published
+
+**Estimated Effort**: 0.25 days
+**Dependencies**: Audit approval
+**Testing**: Production health verification
+
+---
+
+### Sprint 22 Success Criteria
+- [ ] All integration tests pass
+- [ ] Security audit approved
+- [ ] Production deployment successful
+- [ ] v3.0 features operational
+
+---
+
+## v3.0 Risk Assessment
+
+| Risk | Likelihood | Impact | Mitigation |
+|------|------------|--------|------------|
+| Discord role limit | Low | High | Test role creation early; may need cleanup |
+| Tier calculation bugs | Medium | Medium | Comprehensive unit tests; staged rollout |
+| Sponsor invite abuse | Low | Medium | Admin-only badge; single invite limit |
+| Weekly digest failure | Medium | Low | Manual trigger fallback; monitoring |
+| Migration issues | Low | High | Test on staging first; backup database |
+| Performance at scale | Low | Medium | Current architecture handles 500+ |
+
+---
+
+## v3.0 Dependencies
+
+### External Dependencies
+
+- Discord server admin access for role creation (9 new tier roles)
+- Collab.Land configuration for tier verification
+- trigger.dev access for scheduled tasks
+- Production server access for deployment
+
+### Sprint Dependencies
+
+```
+Sprint 15 (Tier Foundation)
+    ↓
+Sprint 16 (Tier Integration) ──→ Sprint 17 (Sponsor System)
+    ↓                               ↓
+Sprint 18 (Notifications) ←────────┘
+    ↓
+Sprint 19 (Stats & Leaderboard)
+    ↓
+Sprint 20 (Weekly Digest)
+    ↓
+Sprint 21 (Stories & Analytics)
+    ↓
+Sprint 22 (Testing & Release)
+```
+
+---
+
+## v3.0 Success Metrics
+
+| Metric | Target | Measurement Point |
+|--------|--------|-------------------|
+| Tier calculation accuracy | 100% | End of Sprint 16 |
+| Sponsor invite flow working | 100% | End of Sprint 17 |
+| Notification delivery rate | >95% | End of Sprint 18 |
+| Stats accuracy | 100% | End of Sprint 19 |
+| Weekly digest posts | Automatic | End of Sprint 20 |
+| Story fragments seeded | 5+ | End of Sprint 21 |
+| Unit test coverage | >80% | End of Sprint 22 |
+| Security audit approval | APPROVED | End of Sprint 22 |
+| Zero privacy leaks | 0 | Continuous |
+
+---
+
+## Discord Role Hierarchy (v3.0)
+
+| Role | Color | Tier | Granted By |
+|------|-------|------|------------|
+| `@Naib` | Gold (#FFD700) | Top 7 | BGT rank |
+| `@Former Naib` | Silver (#C0C0C0) | Historical | After Naib bump |
+| `@Fedaykin` | Blue (#4169E1) | Top 8-69 | BGT rank |
+| `@Usul` | Purple (#9B59B6) | 1111+ BGT | BGT threshold |
+| `@Sayyadina` | Indigo (#6610F2) | 888+ BGT | BGT threshold |
+| `@Mushtamal` | Teal (#20C997) | 690+ BGT | BGT threshold |
+| `@Sihaya` | Green (#28A745) | 420+ BGT | BGT threshold |
+| `@Qanat` | Cyan (#17A2B8) | 222+ BGT | BGT threshold |
+| `@Ichwan` | Orange (#FD7E14) | 69+ BGT | BGT threshold |
+| `@Hajra` | Sand (#C2B280) | 6.9+ BGT | BGT threshold |
+| `@Water Sharer` | Aqua (#00D4FF) | Badge | Admin grant |
+| `@Taqwa` | Sand (#C2B280) | Waitlist | Registration |
+| `@Engaged` | Green | 5+ badges | Badge count |
+| `@Veteran` | Purple | 90+ days | Tenure |
+
+---
+
+## Channel Structure (v3.0)
+
+```
+SIETCH SERVER
+│
+├── 📜 STILLSUIT (Info - @everyone)
+│   ├── #water-discipline ──── Welcome, rules, Chatham House reminder
+│   └── #announcements ─────── Weekly digest, important updates
+│
+├── 🚪 TIER 0: CAVE ENTRANCE (6.9+ BGT)
+│   ├── #cave-entrance ──────── Main discussion (read: Hajra+, write: Ichwan+)
+│   └── 🔊 cave-voices ──────── VC (see count: all, join: Ichwan+)
+│
+├── 🕳️ TIER 2: THE DEPTHS (222+ BGT)
+│   ├── #the-depths ─────────── Main discussion (read: Qanat+, write: Sihaya+)
+│   └── 🔊 depth-voices ─────── VC (see count: Qanat+, join+speak: Mushtamal+)
+│
+├── ⚡ TIER 3: INNER SANCTUM (888+ BGT)
+│   ├── #inner-sanctum ──────── Main discussion (read+write: Sayyadina+)
+│   └── 🔊 sanctum-voices ───── VC (see members: Sayyadina+, speak: Usul+)
+│
+├── ⚔️ FEDAYKIN COMMONS (Top 69)
+│   ├── #general ────────────── Main discussion
+│   ├── #spice ──────────────── Market insights, alpha
+│   ├── #water-shares ───────── Ideas and proposals
+│   ├── #introductions ──────── Member introductions
+│   ├── #census ─────────────── Live leaderboard
+│   ├── #the-door ───────────── Member joins/departures + story fragments
+│   └── 🔊 fedaykin-voices ──── Full VC access
+│
+├── 🏛️ NAIB COUNCIL (Top 7 Only)
+│   ├── #council-rock ───────── Private Naib discussion
+│   └── 🔊 council-chamber ──── Private VC
+│
+├── 🏛️ NAIB ARCHIVES (Naib + Former Naib)
+│   └── #naib-archives ──────── Historical discussions
+│
+├── 🏜️ DEEP DESERT (Engaged - 5+ badges)
+│   └── #deep-desert ────────── Engaged members space
+│
+├── 🧘 STILLSUIT LOUNGE (Veterans - 90+ days)
+│   └── #stillsuit-lounge ───── Long-term members space
+│
+└── 🛠️ WINDTRAP (Support)
+    ├── #support ────────────── Technical help
+    └── #bot-commands ───────── Bot interactions
+```
 
 ---
 

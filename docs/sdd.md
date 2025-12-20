@@ -1,36 +1,50 @@
 # Software Design Document: Sietch
 
-**Version**: 2.0
-**Date**: December 18, 2025
+**Version**: 3.0
+**Date**: December 20, 2025
 **Status**: Draft
 **PRD Reference**: `docs/prd.md`
+**Codename**: The Great Expansion
 
 ---
 
 ## 1. Executive Summary
 
-Sietch is a privacy-first, token-gated Discord community service for the top 69 BGT holders who have never redeemed their tokens. Version 2.0 introduces a comprehensive **Social Layer** with pseudonymous member profiles, reputation badges, exclusive access perks, and a member directory.
+### 1.1 Document Purpose
 
-The system consists of:
+This Software Design Document (SDD) provides the technical architecture and implementation blueprint for Sietch v3.0 "The Great Expansion". It extends the existing v2.1 architecture to support a 9-tier membership system, sponsor invites, enhanced notifications, and community engagement features.
 
-1. **Sietch Service** - A TypeScript/Node.js application that:
-   - Queries Berachain RPC via viem for eligibility data
-   - Manages pseudonymous member profiles and badges
-   - Tracks member activity with a novel demurrage-based decay system
-   - Uses trigger.dev for scheduled tasks
-   - Exposes a REST API for Collab.Land and profile operations
-   - Manages Discord bot interactions including slash commands, button UIs, and DM-based onboarding
+### 1.2 System Overview
 
-2. **Collab.Land Integration** - Token gating that queries the Sietch Service API for wallet verification and role assignment.
+Sietch v3.0 transforms from an exclusive 69-member community into a layered sanctuary supporting 500+ members across 9 tiers. The system maintains the privacy-first, never-redeemed purity requirement while dramatically expanding participation.
 
-3. **Discord Server** - The community platform with role-based channel access, including dynamically earned channels.
+**Key Capabilities**:
+1. **9-Tier Membership** - Hajra (6.9 BGT) through Naib (Top 7)
+2. **Automatic Tier Assignment** - BGT balance and rank-based calculation
+3. **Sponsor Invites** - Water Sharer badge enables sponsorship
+4. **Tier Notifications** - DM alerts on promotion
+5. **Weekly Digest** - Community pulse posted to announcements
+6. **Story Fragments** - Cryptic narratives for elite joins
+7. **Analytics Dashboard** - Admin visibility into community health
 
-### 1.1 Key Design Principles
+### 1.3 Key Architectural Decisions
 
-- **Privacy First**: Wallet addresses never exposed publicly; nyms completely unlinked from on-chain identity
-- **Cypherpunk Ethos**: Cryptographic hashing for avatar generation; no correlation between identity and holdings
-- **Progressive Engagement**: Dynamic role assignment based on activity, not just holdings
-- **Low Friction**: Mandatory but streamlined onboarding; unlimited nym changes
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Database | SQLite (existing) | Sufficient for 500+ members; WAL mode handles concurrent reads |
+| Tier Storage | Column in member_profiles | Single source of truth; atomic updates with BGT sync |
+| Role Management | Additive roles | Members accumulate tier roles; simplifies permission inheritance |
+| Invite System | Badge-gated | Water Sharer badge enables sponsorship; admin-controlled |
+| Story Fragments | Database-stored | Editable without code deployment; usage tracking |
+| Weekly Digest | trigger.dev task | Existing scheduler infrastructure; reliable delivery |
+
+### 1.4 Architecture Principles
+
+1. **Extend, Don't Replace**: Build on existing patterns; no breaking changes
+2. **Privacy First**: Tier visible, BGT amount never exposed
+3. **Graceful Degradation**: Tier features fail safely; core eligibility unaffected
+4. **Audit Everything**: All tier changes and sponsor actions logged
+5. **Single Source of Truth**: Tier calculated during sync, not on-demand
 
 ---
 
@@ -39,2163 +53,1806 @@ The system consists of:
 ### 2.1 High-Level Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              Sietch Service v2.0                                  │
-│                            (TypeScript/Node.js)                                   │
-│  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐     │
-│  │  trigger.dev  │  │   REST API    │  │  Discord Bot  │  │    SQLite     │     │
-│  │  (Scheduler)  │  │   (Express)   │  │  (discord.js) │  │    Cache      │     │
-│  └───────┬───────┘  └───────┬───────┘  └───────┬───────┘  └───────┬───────┘     │
-│          │                  │                  │                  │              │
-│  ┌───────┴──────────────────┴──────────────────┴──────────────────┴───────┐     │
-│  │                         Core Services                                    │     │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐    │     │
-│  │  │   Chain     │  │  Profile    │  │   Badge     │  │  Activity   │    │     │
-│  │  │  Service    │  │  Service    │  │  Service    │  │  Service    │    │     │
-│  │  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘    │     │
-│  └────────────────────────────────────────────────────────────────────────┘     │
-└─────────────────────────────────────────────────────────────────────────────────┘
-         │                  │                  │
-         ▼                  │                  ▼
-┌─────────────────┐         │         ┌─────────────────┐
-│  Berachain RPC  │         │         │  Discord API    │
-│  (viem queries) │         │         │  (Notifications)│
-└─────────────────┘         │         └─────────────────┘
-                            │
-                            ▼
-                   ┌─────────────────┐
-                   │   Collab.Land   │
-                   │  (Role Gating)  │
-                   └────────┬────────┘
-                            │
-                            ▼
-                   ┌─────────────────┐
-                   │  Discord Server │
-                   │    (Sietch)     │
-                   └─────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              SIETCH v3.0                                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                   │
+│  │   Discord    │    │   Express    │    │  trigger.dev │                   │
+│  │     Bot      │    │     API      │    │   Scheduler  │                   │
+│  └──────┬───────┘    └──────┬───────┘    └──────┬───────┘                   │
+│         │                   │                   │                            │
+│         └───────────────────┴───────────────────┘                            │
+│                             │                                                │
+│  ┌──────────────────────────┴──────────────────────────┐                    │
+│  │                   SERVICE LAYER                      │                    │
+│  │  ┌────────────┐  ┌────────────┐  ┌────────────┐     │                    │
+│  │  │   Tier     │  │  Sponsor   │  │   Digest   │     │  NEW SERVICES      │
+│  │  │  Service   │  │  Service   │  │  Service   │     │                    │
+│  │  └────────────┘  └────────────┘  └────────────┘     │                    │
+│  │  ┌────────────┐  ┌────────────┐  ┌────────────┐     │                    │
+│  │  │   Story    │  │ Analytics  │  │   Stats    │     │                    │
+│  │  │  Service   │  │  Service   │  │  Service   │     │                    │
+│  │  └────────────┘  └────────────┘  └────────────┘     │                    │
+│  │                                                      │                    │
+│  │  ┌────────────┐  ┌────────────┐  ┌────────────┐     │                    │
+│  │  │ Eligibility│  │  Profile   │  │   Badge    │     │  EXISTING          │
+│  │  │  Service   │  │  Service   │  │  Service   │     │  SERVICES          │
+│  │  └────────────┘  └────────────┘  └────────────┘     │                    │
+│  │  ┌────────────┐  ┌────────────┐  ┌────────────┐     │                    │
+│  │  │   Naib     │  │ Threshold  │  │Notification│     │                    │
+│  │  │  Service   │  │  Service   │  │  Service   │     │                    │
+│  │  └────────────┘  └────────────┘  └────────────┘     │                    │
+│  └─────────────────────────┬────────────────────────────┘                    │
+│                            │                                                 │
+│  ┌─────────────────────────┴────────────────────────────┐                   │
+│  │                    DATA LAYER                         │                   │
+│  │  ┌────────────────────────────────────────────────┐  │                   │
+│  │  │              SQLite Database                    │  │                   │
+│  │  │  • member_profiles (+ tier, tier_updated_at)   │  │                   │
+│  │  │  • tier_history (NEW)                          │  │                   │
+│  │  │  • sponsor_invites (NEW)                       │  │                   │
+│  │  │  • story_fragments (NEW)                       │  │                   │
+│  │  │  • weekly_digests (NEW)                        │  │                   │
+│  │  │  • [existing tables unchanged]                 │  │                   │
+│  │  └────────────────────────────────────────────────┘  │                   │
+│  └───────────────────────────────────────────────────────┘                   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+            ┌───────────────────────┼───────────────────────┐
+            │                       │                       │
+    ┌───────┴───────┐       ┌───────┴───────┐       ┌───────┴───────┐
+    │   Berachain   │       │    Discord    │       │  Collab.Land  │
+    │     RPC       │       │     API       │       │  (Unchanged)  │
+    └───────────────┘       └───────────────┘       └───────────────┘
 ```
 
 ### 2.2 Component Interaction Flow
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                     New Member Onboarding Flow                                 │
-├──────────────────────────────────────────────────────────────────────────────┤
-│                                                                                │
-│  [Wallet Verification via Collab.Land]                                        │
-│              │                                                                 │
-│              ▼                                                                 │
-│  [Collab.Land queries GET /eligibility]                                       │
-│              │                                                                 │
-│              ├── Not in top 69 ──▶ Access Denied                              │
-│              │                                                                 │
-│              ├── In top 69 ──▶ Assign base role (Naib/Fedaykin)               │
-│              │                                                                 │
-│              ▼                                                                 │
-│  [Bot detects new member with role]                                           │
-│              │                                                                 │
-│              ▼                                                                 │
-│  [Bot sends DM: Onboarding Wizard]                                            │
-│              │                                                                 │
-│  ┌───────────┼───────────────────────────────────────────────────┐            │
-│  │           ▼                                                    │            │
-│  │   Step 1: Choose Nym ──▶ Validate uniqueness                  │            │
-│  │           │                                                    │            │
-│  │           ▼                                                    │            │
-│  │   Step 2: Profile Picture ──▶ Upload/Generate/Skip            │            │
-│  │           │                                                    │            │
-│  │           ▼                                                    │            │
-│  │   Step 3: Bio (Optional) ──▶ Save profile                     │            │
-│  │           │                                                    │            │
-│  └───────────┼───────────────────────────────────────────────────┘            │
-│              ▼                                                                 │
-│  [Profile created in member_profiles table]                                   │
-│              │                                                                 │
-│              ▼                                                                 │
-│  [Assign "Onboarded" role ──▶ Channel access granted]                         │
-│              │                                                                 │
-│              ▼                                                                 │
-│  [Award initial badges: Founding Fedaykin (if applicable)]                    │
-│                                                                                │
-└──────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    TIER SYNC FLOW (Every 6 Hours)                        │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  1. trigger.dev fires sync-eligibility task                             │
+│                     │                                                    │
+│                     ▼                                                    │
+│  2. EligibilityService fetches BGT from Berachain                       │
+│                     │                                                    │
+│                     ▼                                                    │
+│  3. TierService.calculateTier(bgt, rank) for each member                │
+│                     │                                                    │
+│     ┌───────────────┼───────────────┐                                   │
+│     │               │               │                                   │
+│     ▼               ▼               ▼                                   │
+│  Hajra-Usul     Fedaykin       Naib                                     │
+│  (BGT only)     (Top 8-69)     (Top 7)                                  │
+│                     │                                                    │
+│                     ▼                                                    │
+│  4. Compare previous tier → detect promotions                           │
+│                     │                                                    │
+│     ┌───────────────┼───────────────┐                                   │
+│     │               │               │                                   │
+│     ▼               ▼               ▼                                   │
+│  Update DB      Log History    Queue Notification                       │
+│                     │                                                    │
+│                     ▼                                                    │
+│  5. RoleManagerService.syncTierRoles(memberId, newTier)                 │
+│                     │                                                    │
+│                     ▼                                                    │
+│  6. If Fedaykin/Naib promotion → StoryService.postFragment()            │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
 
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                     Activity Tracking & Badge Award Flow                       │
-├──────────────────────────────────────────────────────────────────────────────┤
-│                                                                                │
-│  [Member sends message or reacts in tracked channel]                          │
-│              │                                                                 │
-│              ▼                                                                 │
-│  [Activity Service records event]                                             │
-│              │                                                                 │
-│              ├── Increment activity_balance                                    │
-│              │                                                                 │
-│              ▼                                                                 │
-│  [Every 6 hours: Decay Scheduled Task]                                        │
-│              │                                                                 │
-│              ├── activity_balance *= DECAY_RATE (0.9)                         │
-│              │                                                                 │
-│              ▼                                                                 │
-│  [Badge Service evaluates thresholds]                                         │
-│              │                                                                 │
-│              ├── Activity balance > 50 ──▶ Award "Consistent" badge          │
-│              ├── Activity balance > 200 ──▶ Award "Dedicated" badge          │
-│              ├── Activity balance > 500 ──▶ Award "Devoted" badge            │
-│              │                                                                 │
-│              ▼                                                                 │
-│  [Role Service checks badge count]                                            │
-│              │                                                                 │
-│              ├── 5+ badges ──▶ Assign "Engaged" role ──▶ #deep-desert access │
-│              ├── Tenure 90+ days ──▶ Assign "Veteran" role ──▶ #stillsuit    │
-│              │                                                                 │
-└──────────────────────────────────────────────────────────────────────────────┘
+### 2.3 Request Flow Patterns
+
+**Discord Command Flow**:
+```
+User → /stats → CommandRouter → StatsCommand
+                                    │
+                                    ▼
+                              StatsService.getPersonalStats(memberId)
+                                    │
+                    ┌───────────────┼───────────────┐
+                    │               │               │
+                    ▼               ▼               ▼
+              ProfileService   ActivityService  TierService
+              (tier, badges)   (streaks, msgs)  (progress)
+                    │               │               │
+                    └───────────────┼───────────────┘
+                                    │
+                                    ▼
+                              Build Embed → Reply
+```
+
+**API Request Flow**:
+```
+Client → GET /api/me/tier-progress
+              │
+              ▼
+         Auth Middleware (Discord OAuth header)
+              │
+              ▼
+         Rate Limiter (60 req/min member tier)
+              │
+              ▼
+         TierController.getTierProgress()
+              │
+              ▼
+         TierService.calculateProgress(memberId)
+              │
+              ▼
+         JSON Response: { current, next, distance, percentage }
 ```
 
 ---
 
 ## 3. Technology Stack
 
-| Layer | Technology | Justification |
-|-------|------------|---------------|
-| **Runtime** | Node.js 20 LTS | Stable, async-native, large ecosystem |
-| **Language** | TypeScript 5.x | Type safety, better maintainability |
-| **Web Framework** | Express.js | Simple, well-documented, minimal overhead |
-| **Database** | SQLite (better-sqlite3) | Zero config, file-based, supports queries |
-| **Discord Library** | discord.js v14 | Official library, full API coverage, slash commands |
-| **Scheduler** | trigger.dev v3 | Managed scheduling, same pattern as existing |
-| **Chain Client** | viem | Type-safe Ethereum client, Berachain support |
-| **Image Processing** | sharp | High-performance image compression |
-| **Avatar Generation** | Custom (crypto hash + ASCII art) | Privacy-preserving, unique identifiers |
-| **Process Manager** | PM2 | Auto-restart, log management, monitoring |
-| **Reverse Proxy** | nginx | SSL termination, rate limiting |
+### 3.1 Core Technologies (Unchanged)
 
-### 3.1 Project Structure (Extended)
+| Layer | Technology | Version | Purpose |
+|-------|------------|---------|---------|
+| Runtime | Node.js | 20.x LTS | Server runtime |
+| Language | TypeScript | 5.6.x | Type safety |
+| Database | SQLite | 3.x (better-sqlite3) | Data persistence |
+| API | Express | 4.21.x | REST endpoints |
+| Bot | discord.js | 14.16.x | Discord integration |
+| Scheduler | trigger.dev | 3.0.x | Cron jobs |
+| Blockchain | viem | 2.21.x | Berachain RPC |
+| Logging | Pino | 9.5.x | Structured logs |
+
+### 3.2 New Dependencies
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| None required | - | v3.0 uses existing dependencies |
+
+### 3.3 Project Structure (Extended)
 
 ```
 sietch-service/
 ├── src/
-│   ├── index.ts              # Application entry point
-│   ├── config.ts             # Environment configuration
-│   ├── api/
-│   │   ├── routes.ts         # Express route definitions
-│   │   ├── middleware.ts     # Auth, rate limiting, error handling
-│   │   └── handlers/
-│   │       ├── eligibility.ts
-│   │       ├── health.ts
-│   │       ├── admin.ts
-│   │       ├── profile.ts    # NEW: Profile CRUD operations
-│   │       ├── directory.ts  # NEW: Member directory
-│   │       └── badges.ts     # NEW: Badge endpoints
 │   ├── services/
-│   │   ├── chain.ts          # viem client for Berachain RPC
-│   │   ├── eligibility.ts    # Core eligibility logic
-│   │   ├── discord.ts        # Discord bot & notifications (extended)
-│   │   ├── profile.ts        # NEW: Profile management
-│   │   ├── badge.ts          # NEW: Badge award logic
-│   │   ├── activity.ts       # NEW: Activity tracking & decay
-│   │   ├── avatar.ts         # NEW: Hash-based avatar generation
-│   │   └── onboarding.ts     # NEW: DM onboarding wizard
-│   ├── db/
-│   │   ├── schema.ts         # SQLite schema definitions (extended)
-│   │   ├── migrations/       # Schema migrations
-│   │   └── queries.ts        # Database access layer
+│   │   ├── TierService.ts          # NEW: Tier calculation & management
+│   │   ├── SponsorService.ts       # NEW: Invite management
+│   │   ├── DigestService.ts        # NEW: Weekly digest generation
+│   │   ├── StoryService.ts         # NEW: Story fragment posting
+│   │   ├── StatsService.ts         # NEW: Personal & community stats
+│   │   ├── AnalyticsService.ts     # NEW: Admin analytics
+│   │   ├── EligibilityService.ts   # Extended: tier integration
+│   │   ├── ProfileService.ts       # Extended: tier display
+│   │   ├── BadgeService.ts         # Extended: Usul Ascended badge
+│   │   ├── NotificationService.ts  # Extended: tier promotions
+│   │   └── RoleManagerService.ts   # Extended: 9 tier roles
 │   ├── discord/
-│   │   ├── commands/         # NEW: Slash command definitions
-│   │   │   ├── profile.ts
-│   │   │   ├── directory.ts
-│   │   │   ├── badges.ts
-│   │   │   ├── stats.ts
-│   │   │   ├── leaderboard.ts
-│   │   │   └── admin-badge.ts
-│   │   ├── interactions/     # NEW: Button/menu handlers
-│   │   │   ├── onboarding.ts
-│   │   │   ├── directory.ts
-│   │   │   └── profile.ts
-│   │   └── embeds/           # NEW: Embed builders
-│   │       ├── profile.ts
-│   │       ├── badge.ts
-│   │       └── directory.ts
-│   ├── types/
-│   │   └── index.ts          # TypeScript type definitions
-│   └── utils/
-│       ├── logger.ts         # Structured logging
-│       ├── errors.ts         # Custom error classes
-│       └── image.ts          # NEW: Image compression utilities
-├── trigger/
-│   ├── syncEligibility.ts    # Eligibility sync task
-│   ├── activityDecay.ts      # NEW: Activity balance decay task
-│   └── badgeCheck.ts         # NEW: Automatic badge award task
-├── trigger.config.ts
-├── tests/
-├── package.json
-├── tsconfig.json
-├── .env.example
-└── README.md
+│   │   └── commands/
+│   │       ├── stats.ts            # NEW: /stats command
+│   │       ├── invite.ts           # NEW: /invite command
+│   │       └── leaderboard.ts      # Extended: tiers subcommand
+│   ├── api/
+│   │   └── routes/
+│   │       ├── tier.ts             # NEW: Tier endpoints
+│   │       ├── sponsor.ts          # NEW: Sponsor endpoints
+│   │       └── stats.ts            # NEW: Stats endpoints
+│   ├── trigger/
+│   │   ├── sync-eligibility.ts     # Extended: tier sync
+│   │   └── weekly-digest.ts        # NEW: Digest posting
+│   └── db/
+│       └── migrations/
+│           └── 006_tier_system.sql # NEW: Tier tables
 ```
 
 ---
 
 ## 4. Component Design
 
-### 4.1 Profile Service
+### 4.1 TierService
 
-**Purpose**: Manage pseudonymous member profiles with strict privacy separation.
+**File**: `src/services/TierService.ts`
 
-```typescript
-// src/services/profile.ts
-
-interface MemberProfile {
-  id: string;                    // UUID, never exposed externally
-  discordUserId: string;         // PRIVATE - never in public API
-  walletAddress: string;         // PRIVATE - never in public API
-  nym: string;                   // Public identifier
-  pfpUrl: string | null;         // Discord CDN URL
-  bio: string | null;            // Max 200 chars, no links
-  createdAt: Date;
-  updatedAt: Date;
-  nymLastChanged: Date | null;   // For historical tracking (no cooldown enforced)
-  onboardingComplete: boolean;
-}
-
-class ProfileService {
-  /**
-   * Create a new profile during onboarding
-   * Links Discord user to wallet (private) and creates public nym
-   */
-  async createProfile(params: {
-    discordUserId: string;
-    walletAddress: string;
-    nym: string;
-    pfpUrl?: string;
-    bio?: string;
-  }): Promise<MemberProfile> {
-    // Validate nym uniqueness
-    if (await this.nymExists(params.nym)) {
-      throw new NymTakenError(params.nym);
-    }
-
-    // Validate nym format (3-32 chars, alphanumeric + limited special)
-    if (!this.isValidNym(params.nym)) {
-      throw new InvalidNymError(params.nym);
-    }
-
-    // Generate UUID for internal tracking
-    const id = crypto.randomUUID();
-
-    // Store profile with private data separated
-    return db.createProfile({
-      id,
-      ...params,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      onboardingComplete: true,
-    });
-  }
-
-  /**
-   * Get public profile by nym (privacy-filtered)
-   * NEVER returns wallet address, discord ID, or exact timestamps
-   */
-  async getPublicProfile(nym: string): Promise<PublicProfile | null> {
-    const profile = await db.getProfileByNym(nym);
-    if (!profile) return null;
-
-    const badges = await badgeService.getMemberBadges(profile.id);
-    const tier = await eligibilityService.getMemberTier(profile.walletAddress);
-    const tenureCategory = this.calculateTenureCategory(profile.createdAt);
-
-    return {
-      nym: profile.nym,
-      pfpUrl: profile.pfpUrl ?? avatarService.generateAvatar(profile.id),
-      bio: profile.bio,
-      tier,                    // 'naib' | 'fedaykin'
-      badges,                  // Array of badge objects
-      tenureCategory,          // 'OG' | 'Veteran' | 'Elder' | 'Member'
-      // NO wallet, NO discord ID, NO exact dates
-    };
-  }
-
-  /**
-   * Update profile (own profile only)
-   * No cooldown on nym changes per user preference
-   */
-  async updateProfile(
-    discordUserId: string,
-    updates: { nym?: string; bio?: string }
-  ): Promise<MemberProfile> {
-    const profile = await db.getProfileByDiscordId(discordUserId);
-    if (!profile) throw new ProfileNotFoundError();
-
-    if (updates.nym && updates.nym !== profile.nym) {
-      if (await this.nymExists(updates.nym)) {
-        throw new NymTakenError(updates.nym);
-      }
-      if (!this.isValidNym(updates.nym)) {
-        throw new InvalidNymError(updates.nym);
-      }
-    }
-
-    if (updates.bio && updates.bio.length > 200) {
-      throw new BioTooLongError();
-    }
-
-    // Strip any URLs from bio (prevents doxing)
-    if (updates.bio) {
-      updates.bio = this.stripUrls(updates.bio);
-    }
-
-    return db.updateProfile(profile.id, {
-      ...updates,
-      nymLastChanged: updates.nym ? new Date() : undefined,
-      updatedAt: new Date(),
-    });
-  }
-
-  private calculateTenureCategory(createdAt: Date): string {
-    const days = Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24));
-    if (days <= 30) return 'OG';      // First 30 days of launch
-    if (days <= 90) return 'Veteran';
-    if (days <= 180) return 'Elder';
-    return 'Member';
-  }
-
-  private isValidNym(nym: string): boolean {
-    return /^[a-zA-Z0-9_\-\.]{3,32}$/.test(nym);
-  }
-
-  private stripUrls(text: string): string {
-    return text.replace(/https?:\/\/[^\s]+/gi, '[link removed]');
-  }
-}
-```
-
-### 4.2 Avatar Service
-
-**Purpose**: Generate cryptographically-derived ASCII-art-style avatars.
+**Responsibility**: Calculate, assign, and track member tiers based on BGT holdings and rank.
 
 ```typescript
-// src/services/avatar.ts
+// src/services/TierService.ts
 
-import { createHash } from 'crypto';
+import { db } from '../db';
+import { logger } from '../utils/logger';
+import type { Tier, TierHistoryEntry, TierProgress } from '../types';
 
-/**
- * Avatar generation inspired by SSH randomart but modernized.
- * Uses member's internal UUID (never wallet) to generate unique patterns.
- */
-class AvatarService {
-  private readonly GRID_SIZE = 9;
-  private readonly CHAR_PALETTE = ' .,:;+*#@█';
+export const TIER_THRESHOLDS = {
+  hajra: 6.9,
+  ichwan: 69,
+  qanat: 222,
+  sihaya: 420,
+  mushtamal: 690,
+  sayyadina: 888,
+  usul: 1111,
+  fedaykin: null,  // Top 8-69 (rank-based)
+  naib: null,      // Top 7 (rank-based)
+} as const;
 
-  /**
-   * Generate a deterministic avatar from member ID
-   * Based on the "drunken bishop" algorithm used in SSH fingerprint visualization
-   */
-  generateAvatar(memberId: string): string {
-    const hash = createHash('sha256').update(memberId).digest();
-    const grid = this.createGrid();
-
-    // Walk the grid based on hash bytes (drunken bishop algorithm)
-    let x = Math.floor(this.GRID_SIZE / 2);
-    let y = Math.floor(this.GRID_SIZE / 2);
-
-    for (const byte of hash) {
-      for (let i = 0; i < 4; i++) {
-        const direction = (byte >> (i * 2)) & 0x03;
-
-        // Move based on 2-bit direction
-        switch (direction) {
-          case 0: x = Math.max(0, x - 1); y = Math.max(0, y - 1); break;
-          case 1: x = Math.min(this.GRID_SIZE - 1, x + 1); y = Math.max(0, y - 1); break;
-          case 2: x = Math.max(0, x - 1); y = Math.min(this.GRID_SIZE - 1, y + 1); break;
-          case 3: x = Math.min(this.GRID_SIZE - 1, x + 1); y = Math.min(this.GRID_SIZE - 1, y + 1); break;
-        }
-
-        grid[y][x]++;
-      }
-    }
-
-    // Convert grid to ASCII art
-    return this.gridToAscii(grid);
-  }
-
-  /**
-   * Generate avatar as an image buffer for Discord upload
-   * Renders ASCII art to a modern visual representation
-   */
-  async generateAvatarImage(memberId: string): Promise<Buffer> {
-    const hash = createHash('sha256').update(memberId).digest();
-
-    // Use sharp to create a pixel-art style image from the hash
-    // Color palette derived from hash for uniqueness
-    const hue = hash[0] / 255 * 360;
-    const saturation = 50 + (hash[1] / 255) * 30;
-
-    // Create 256x256 image with hash-based pattern
-    return sharp({
-      create: {
-        width: 256,
-        height: 256,
-        channels: 4,
-        background: { r: 0, g: 0, b: 0, alpha: 0 }
-      }
-    })
-    .composite([
-      // Render the pattern as overlaid shapes
-      ...this.generatePatternOverlays(hash, hue, saturation)
-    ])
-    .png()
-    .toBuffer();
-  }
-
-  private createGrid(): number[][] {
-    return Array(this.GRID_SIZE).fill(null)
-      .map(() => Array(this.GRID_SIZE).fill(0));
-  }
-
-  private gridToAscii(grid: number[][]): string {
-    const maxVal = Math.max(...grid.flat());
-    return grid.map(row =>
-      row.map(val => {
-        const idx = Math.floor((val / maxVal) * (this.CHAR_PALETTE.length - 1));
-        return this.CHAR_PALETTE[idx];
-      }).join('')
-    ).join('\n');
-  }
-}
-
-export const avatarService = new AvatarService();
-```
-
-### 4.3 Activity Service
-
-**Purpose**: Track member activity with demurrage-based decay system.
-
-```typescript
-// src/services/activity.ts
-
-/**
- * Activity tracking with demurrage (decay)
- *
- * Instead of traditional streaks that reset on inactivity,
- * activity balance decays continuously every 6 hours.
- * This creates a more forgiving but still engagement-rewarding system.
- *
- * DECAY_RATE = 0.9 means 10% decay every 6 hours
- * - After 1 day (4 cycles): balance * 0.9^4 = 65.6% remaining
- * - After 1 week (28 cycles): balance * 0.9^28 = 5.4% remaining
- *
- * Activity points awarded:
- * - Message sent: +1 point
- * - Reaction given: +0.5 points
- * - Reaction received: +0.25 points
- */
-
-const DECAY_RATE = 0.9;
-const DECAY_INTERVAL_HOURS = 6;
-const ACTIVITY_POINTS = {
-  MESSAGE: 1.0,
-  REACTION_GIVEN: 0.5,
-  REACTION_RECEIVED: 0.25,
-};
-
-interface MemberActivity {
-  memberId: string;
-  activityBalance: number;       // Cumulative with decay
-  lastActivityAt: Date;
-  lastDecayAt: Date;
-  totalMessages: number;         // Lifetime stats (don't decay)
-  totalReactionsGiven: number;
-  totalReactionsReceived: number;
-}
-
-class ActivityService {
-  /**
-   * Record a message activity
-   */
-  async recordMessage(discordUserId: string, channelId: string): Promise<void> {
-    const profile = await db.getProfileByDiscordId(discordUserId);
-    if (!profile) return; // Not onboarded yet
-
-    // Check if channel is tracked (not all channels count)
-    if (!this.isTrackedChannel(channelId)) return;
-
-    await this.addActivity(profile.id, ACTIVITY_POINTS.MESSAGE, 'message');
-  }
-
-  /**
-   * Record a reaction activity (giving or receiving)
-   */
-  async recordReaction(
-    discordUserId: string,
-    type: 'given' | 'received'
-  ): Promise<void> {
-    const profile = await db.getProfileByDiscordId(discordUserId);
-    if (!profile) return;
-
-    const points = type === 'given'
-      ? ACTIVITY_POINTS.REACTION_GIVEN
-      : ACTIVITY_POINTS.REACTION_RECEIVED;
-
-    await this.addActivity(profile.id, points, `reaction_${type}`);
-  }
-
-  /**
-   * Add activity points (applies pending decay first)
-   */
-  private async addActivity(
-    memberId: string,
-    points: number,
-    type: string
-  ): Promise<void> {
-    const activity = await db.getMemberActivity(memberId) ?? {
-      memberId,
-      activityBalance: 0,
-      lastActivityAt: new Date(),
-      lastDecayAt: new Date(),
-      totalMessages: 0,
-      totalReactionsGiven: 0,
-      totalReactionsReceived: 0,
-    };
-
-    // Apply pending decay before adding new points
-    const decayedBalance = this.applyDecay(
-      activity.activityBalance,
-      activity.lastDecayAt
-    );
-
-    // Update balance and stats
-    const newActivity: MemberActivity = {
-      ...activity,
-      activityBalance: decayedBalance + points,
-      lastActivityAt: new Date(),
-      lastDecayAt: new Date(),
-      totalMessages: activity.totalMessages + (type === 'message' ? 1 : 0),
-      totalReactionsGiven: activity.totalReactionsGiven + (type === 'reaction_given' ? 1 : 0),
-      totalReactionsReceived: activity.totalReactionsReceived + (type === 'reaction_received' ? 1 : 0),
-    };
-
-    await db.upsertMemberActivity(newActivity);
-
-    // Check if new badges should be awarded
-    await badgeService.checkActivityBadges(memberId, newActivity.activityBalance);
-  }
-
-  /**
-   * Apply decay based on time since last decay
-   */
-  private applyDecay(balance: number, lastDecayAt: Date): number {
-    const hoursSinceDecay = (Date.now() - lastDecayAt.getTime()) / (1000 * 60 * 60);
-    const decayCycles = Math.floor(hoursSinceDecay / DECAY_INTERVAL_HOURS);
-
-    if (decayCycles <= 0) return balance;
-
-    // Apply exponential decay
-    return balance * Math.pow(DECAY_RATE, decayCycles);
-  }
-
-  /**
-   * Scheduled task: Apply decay to all members
-   * Run every 6 hours via trigger.dev
-   */
-  async runDecayTask(): Promise<{ processed: number; decayed: number }> {
-    const allActivity = await db.getAllMemberActivity();
-    let decayed = 0;
-
-    for (const activity of allActivity) {
-      const newBalance = this.applyDecay(activity.activityBalance, activity.lastDecayAt);
-
-      if (newBalance !== activity.activityBalance) {
-        await db.updateActivityBalance(activity.memberId, newBalance);
-        decayed++;
-      }
-    }
-
-    return { processed: allActivity.length, decayed };
-  }
-
-  /**
-   * Get member's activity stats (own stats only - privacy)
-   */
-  async getOwnStats(discordUserId: string): Promise<ActivityStats | null> {
-    const profile = await db.getProfileByDiscordId(discordUserId);
-    if (!profile) return null;
-
-    const activity = await db.getMemberActivity(profile.id);
-    if (!activity) return null;
-
-    // Apply current decay for accurate display
-    const currentBalance = this.applyDecay(
-      activity.activityBalance,
-      activity.lastDecayAt
-    );
-
-    return {
-      activityBalance: Math.floor(currentBalance),
-      totalMessages: activity.totalMessages,
-      totalReactionsGiven: activity.totalReactionsGiven,
-      totalReactionsReceived: activity.totalReactionsReceived,
-      lastActiveAt: activity.lastActivityAt,
-    };
-  }
-
-  private isTrackedChannel(channelId: string): boolean {
-    return config.discord.trackedChannels.includes(channelId);
-  }
-}
-
-export const activityService = new ActivityService();
-```
-
-### 4.4 Badge Service
-
-**Purpose**: Award and manage badges based on tenure, activity, and admin grants.
-
-```typescript
-// src/services/badge.ts
-
-interface Badge {
-  id: string;
-  name: string;
-  description: string;
-  iconUrl: string;
-  category: 'tenure' | 'streak' | 'contribution' | 'special';
-  isAutomatic: boolean;
-}
-
-interface MemberBadge {
-  badge: Badge;
-  awardedAt: Date;
-  awardedBy: string | null;  // null = automatic, admin ID = manual
-}
-
-const BADGE_DEFINITIONS: Badge[] = [
-  // Tenure badges (automatic)
-  { id: 'og', name: 'OG', description: 'Member in first 30 days', category: 'tenure', isAutomatic: true, iconUrl: '/badges/og.png' },
-  { id: 'veteran', name: 'Veteran', description: '90+ days as member', category: 'tenure', isAutomatic: true, iconUrl: '/badges/veteran.png' },
-  { id: 'elder', name: 'Elder', description: '180+ days as member', category: 'tenure', isAutomatic: true, iconUrl: '/badges/elder.png' },
-
-  // Activity badges (automatic via demurrage balance)
-  { id: 'consistent', name: 'Consistent', description: 'Maintain 50+ activity balance', category: 'streak', isAutomatic: true, iconUrl: '/badges/consistent.png' },
-  { id: 'dedicated', name: 'Dedicated', description: 'Maintain 200+ activity balance', category: 'streak', isAutomatic: true, iconUrl: '/badges/dedicated.png' },
-  { id: 'devoted', name: 'Devoted', description: 'Maintain 500+ activity balance', category: 'streak', isAutomatic: true, iconUrl: '/badges/devoted.png' },
-
-  // Contribution badges (admin-granted)
-  { id: 'helper', name: 'Helper', description: 'Recognized for helping others', category: 'contribution', isAutomatic: false, iconUrl: '/badges/helper.png' },
-  { id: 'thought_leader', name: 'Thought Leader', description: 'Consistent quality contributions', category: 'contribution', isAutomatic: false, iconUrl: '/badges/thought_leader.png' },
-
-  // Special badges (event-triggered)
-  { id: 'founding_fedaykin', name: 'Founding Fedaykin', description: 'Original top 69 at launch', category: 'special', isAutomatic: true, iconUrl: '/badges/founding.png' },
-  { id: 'promoted', name: 'Promoted', description: 'Rose from Fedaykin to Naib', category: 'special', isAutomatic: true, iconUrl: '/badges/promoted.png' },
+export const TIER_ORDER: Tier[] = [
+  'hajra', 'ichwan', 'qanat', 'sihaya',
+  'mushtamal', 'sayyadina', 'usul',
+  'fedaykin', 'naib'
 ];
 
-const ACTIVITY_BADGE_THRESHOLDS = {
-  consistent: 50,
-  dedicated: 200,
-  devoted: 500,
-};
-
-class BadgeService {
+export class TierService {
   /**
-   * Get all badges for a member (public - shown on profile)
+   * Calculate tier from BGT amount and rank position
+   * Rank takes precedence for Fedaykin/Naib
    */
-  async getMemberBadges(memberId: string): Promise<MemberBadge[]> {
-    return db.getMemberBadges(memberId);
+  calculateTier(bgt: number, rank: number | null): Tier {
+    // Rank-based tiers (top 69)
+    if (rank !== null) {
+      if (rank <= 7) return 'naib';
+      if (rank <= 69) return 'fedaykin';
+    }
+
+    // BGT-based tiers (threshold)
+    if (bgt >= 1111) return 'usul';
+    if (bgt >= 888) return 'sayyadina';
+    if (bgt >= 690) return 'mushtamal';
+    if (bgt >= 420) return 'sihaya';
+    if (bgt >= 222) return 'qanat';
+    if (bgt >= 69) return 'ichwan';
+    if (bgt >= 6.9) return 'hajra';
+
+    // Below minimum - should not happen for verified members
+    return 'hajra';
   }
 
   /**
-   * Check and award tenure badges
-   * Run periodically (daily)
+   * Update member's tier and record history if changed
+   * Returns true if tier changed (promotion)
    */
-  async checkTenureBadges(memberId: string): Promise<Badge[]> {
-    const profile = await db.getProfileById(memberId);
-    if (!profile) return [];
-
-    const awarded: Badge[] = [];
-    const existingBadges = await db.getMemberBadgeIds(memberId);
-    const tenure = Math.floor((Date.now() - profile.createdAt.getTime()) / (1000 * 60 * 60 * 24));
-
-    // OG badge - only awarded if joined in first 30 days of Sietch launch
-    // (This is checked at onboarding time, not here)
-
-    // Veteran badge - 90+ days
-    if (tenure >= 90 && !existingBadges.includes('veteran')) {
-      await this.awardBadge(memberId, 'veteran', null);
-      awarded.push(BADGE_DEFINITIONS.find(b => b.id === 'veteran')!);
-    }
-
-    // Elder badge - 180+ days
-    if (tenure >= 180 && !existingBadges.includes('elder')) {
-      await this.awardBadge(memberId, 'elder', null);
-      awarded.push(BADGE_DEFINITIONS.find(b => b.id === 'elder')!);
-    }
-
-    return awarded;
-  }
-
-  /**
-   * Check activity badges based on current balance
-   */
-  async checkActivityBadges(memberId: string, activityBalance: number): Promise<Badge[]> {
-    const awarded: Badge[] = [];
-    const existingBadges = await db.getMemberBadgeIds(memberId);
-
-    for (const [badgeId, threshold] of Object.entries(ACTIVITY_BADGE_THRESHOLDS)) {
-      if (activityBalance >= threshold && !existingBadges.includes(badgeId)) {
-        await this.awardBadge(memberId, badgeId, null);
-        awarded.push(BADGE_DEFINITIONS.find(b => b.id === badgeId)!);
-      }
-    }
-
-    // Note: Badges are NOT removed if balance drops below threshold
-    // Once earned, you keep them (but may lose associated perks)
-
-    return awarded;
-  }
-
-  /**
-   * Award a badge (automatic or admin-granted)
-   */
-  async awardBadge(
+  async updateMemberTier(
     memberId: string,
-    badgeId: string,
-    awardedBy: string | null  // null = automatic
-  ): Promise<void> {
-    const badge = BADGE_DEFINITIONS.find(b => b.id === badgeId);
-    if (!badge) throw new BadgeNotFoundError(badgeId);
+    bgt: number,
+    rank: number | null
+  ): Promise<{ changed: boolean; oldTier: Tier | null; newTier: Tier }> {
+    const newTier = this.calculateTier(bgt, rank);
 
-    await db.awardBadge({
-      memberId,
-      badgeId,
-      awardedAt: new Date(),
-      awardedBy,
-    });
+    const current = db.prepare(`
+      SELECT tier FROM member_profiles WHERE id = ?
+    `).get(memberId) as { tier: Tier } | undefined;
 
-    // Log audit event
-    await logAuditEvent('badge_awarded', {
-      memberId,
-      badgeId,
-      badgeName: badge.name,
-      awardedBy: awardedBy ?? 'system',
-    });
+    const oldTier = current?.tier ?? null;
+    const changed = oldTier !== newTier;
 
-    // Notify member via DM
-    await discordService.notifyBadgeAwarded(memberId, badge);
+    if (changed) {
+      const now = Date.now();
 
-    // Check if this triggers role upgrades
-    await this.checkRoleUpgrades(memberId);
+      // Update profile
+      db.prepare(`
+        UPDATE member_profiles
+        SET tier = ?, tier_updated_at = ?
+        WHERE id = ?
+      `).run(newTier, now, memberId);
+
+      // Record history
+      db.prepare(`
+        INSERT INTO tier_history (id, member_id, from_tier, to_tier, bgt_at_change, changed_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        crypto.randomUUID(),
+        memberId,
+        oldTier,
+        newTier,
+        Math.floor(bgt),
+        now
+      );
+
+      logger.info({ memberId, oldTier, newTier, bgt }, 'Tier changed');
+    }
+
+    return { changed, oldTier, newTier };
   }
 
   /**
-   * Admin: Award contribution badge via slash command or API
+   * Calculate progress toward next tier
    */
-  async adminAwardBadge(
-    memberNym: string,
-    badgeId: string,
-    adminId: string
-  ): Promise<void> {
-    const profile = await db.getProfileByNym(memberNym);
-    if (!profile) throw new ProfileNotFoundError();
+  getTierProgress(memberId: string): TierProgress | null {
+    const member = db.prepare(`
+      SELECT mp.tier, ce.bgt
+      FROM member_profiles mp
+      JOIN wallet_mappings wm ON wm.discord_id = mp.discord_id
+      JOIN current_eligibility ce ON ce.address = wm.wallet_address
+      WHERE mp.id = ?
+    `).get(memberId) as { tier: Tier; bgt: number } | undefined;
 
-    const badge = BADGE_DEFINITIONS.find(b => b.id === badgeId);
-    if (!badge) throw new BadgeNotFoundError(badgeId);
+    if (!member) return null;
 
-    if (badge.isAutomatic) {
-      throw new BadgeNotManualError(badgeId);
+    const currentIndex = TIER_ORDER.indexOf(member.tier);
+    const nextTier = TIER_ORDER[currentIndex + 1];
+
+    // Fedaykin/Naib - rank-based, no BGT progress
+    if (member.tier === 'fedaykin' || member.tier === 'naib' || !nextTier) {
+      return {
+        currentTier: member.tier,
+        currentBgt: member.bgt,
+        nextTier: null,
+        nextThreshold: null,
+        distance: null,
+        percentage: 100,
+      };
     }
 
-    await this.awardBadge(profile.id, badgeId, adminId);
+    // BGT-based tiers
+    const nextThreshold = TIER_THRESHOLDS[nextTier as keyof typeof TIER_THRESHOLDS];
+
+    if (nextThreshold === null) {
+      // Next tier is rank-based (Fedaykin)
+      return {
+        currentTier: member.tier,
+        currentBgt: member.bgt,
+        nextTier: 'fedaykin',
+        nextThreshold: null,
+        distance: null,
+        percentage: null,
+        note: 'Fedaykin requires Top 69 rank',
+      };
+    }
+
+    const currentThreshold = TIER_THRESHOLDS[member.tier] || 0;
+    const range = nextThreshold - currentThreshold;
+    const progress = member.bgt - currentThreshold;
+    const percentage = Math.min(100, Math.floor((progress / range) * 100));
+
+    return {
+      currentTier: member.tier,
+      currentBgt: member.bgt,
+      nextTier,
+      nextThreshold,
+      distance: Math.max(0, nextThreshold - member.bgt),
+      percentage,
+    };
   }
 
   /**
-   * Check if badge count triggers role upgrades
+   * Get tier history for a member
    */
-  private async checkRoleUpgrades(memberId: string): Promise<void> {
-    const badges = await db.getMemberBadges(memberId);
-    const badgeCount = badges.length;
+  getTierHistory(memberId: string, limit = 10): TierHistoryEntry[] {
+    return db.prepare(`
+      SELECT from_tier, to_tier, bgt_at_change, changed_at
+      FROM tier_history
+      WHERE member_id = ?
+      ORDER BY changed_at DESC
+      LIMIT ?
+    `).all(memberId, limit) as TierHistoryEntry[];
+  }
 
-    const profile = await db.getProfileById(memberId);
-    if (!profile) return;
+  /**
+   * Get tier distribution for analytics
+   */
+  getTierDistribution(): Record<Tier, number> {
+    const rows = db.prepare(`
+      SELECT tier, COUNT(*) as count
+      FROM member_profiles
+      WHERE tier IS NOT NULL
+      GROUP BY tier
+    `).all() as { tier: Tier; count: number }[];
 
-    // 5+ badges → Engaged role
-    if (badgeCount >= 5) {
-      await discordService.assignRole(profile.discordUserId, 'engaged');
+    const distribution: Record<Tier, number> = {
+      hajra: 0, ichwan: 0, qanat: 0, sihaya: 0,
+      mushtamal: 0, sayyadina: 0, usul: 0,
+      fedaykin: 0, naib: 0,
+    };
+
+    for (const row of rows) {
+      distribution[row.tier] = row.count;
     }
 
-    // Check tenure for Veteran role
-    const tenure = Math.floor((Date.now() - profile.createdAt.getTime()) / (1000 * 60 * 60 * 24));
-    if (tenure >= 90) {
-      await discordService.assignRole(profile.discordUserId, 'veteran');
-    }
+    return distribution;
+  }
+
+  /**
+   * Check if tier is promotion (higher than previous)
+   */
+  isPromotion(oldTier: Tier | null, newTier: Tier): boolean {
+    if (!oldTier) return true; // First tier assignment
+    return TIER_ORDER.indexOf(newTier) > TIER_ORDER.indexOf(oldTier);
   }
 }
 
-export const badgeService = new BadgeService();
+export const tierService = new TierService();
 ```
 
-### 4.5 Onboarding Service
+### 4.2 SponsorService
 
-**Purpose**: DM-based wizard for mandatory profile setup.
+**File**: `src/services/SponsorService.ts`
+
+**Responsibility**: Manage sponsor invites for Water Sharer badge holders.
 
 ```typescript
-// src/services/onboarding.ts
+// src/services/SponsorService.ts
 
-import {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  TextInputBuilder,
-  TextInputStyle,
-  ModalBuilder,
-} from 'discord.js';
+import { db } from '../db';
+import { logger } from '../utils/logger';
+import { badgeService } from './BadgeService';
+import type { SponsorInvite, Tier } from '../types';
 
-type OnboardingStep = 'welcome' | 'nym' | 'pfp' | 'bio' | 'complete';
-
-interface OnboardingState {
-  discordUserId: string;
-  walletAddress: string;
-  currentStep: OnboardingStep;
-  nym?: string;
-  pfpUrl?: string;
-  bio?: string;
-  startedAt: Date;
-}
-
-class OnboardingService {
-  private activeOnboarding = new Map<string, OnboardingState>();
+export class SponsorService {
+  private readonly WATER_SHARER_BADGE = 'water-sharer';
 
   /**
-   * Start onboarding for a new member
-   * Called when Collab.Land assigns a base role
+   * Check if member can sponsor (has badge + no active invite)
    */
-  async startOnboarding(discordUserId: string, walletAddress: string): Promise<void> {
-    // Check if already onboarded
-    const existingProfile = await db.getProfileByDiscordId(discordUserId);
-    if (existingProfile?.onboardingComplete) {
-      return; // Already onboarded
+  canSponsor(memberId: string): { allowed: boolean; reason?: string } {
+    // Check badge
+    const hasBadge = badgeService.hasBadge(memberId, this.WATER_SHARER_BADGE);
+    if (!hasBadge) {
+      return { allowed: false, reason: 'Water Sharer badge required' };
     }
 
-    // Initialize state
-    const state: OnboardingState = {
-      discordUserId,
-      walletAddress,
-      currentStep: 'welcome',
-      startedAt: new Date(),
+    // Check for active invite
+    const activeInvite = db.prepare(`
+      SELECT id FROM sponsor_invites
+      WHERE sponsor_member_id = ?
+        AND revoked_at IS NULL
+    `).get(memberId);
+
+    if (activeInvite) {
+      return { allowed: false, reason: 'You already have an active invite' };
+    }
+
+    return { allowed: true };
+  }
+
+  /**
+   * Create sponsor invite for a Discord user
+   */
+  async createInvite(
+    sponsorMemberId: string,
+    invitedDiscordId: string
+  ): Promise<{ success: boolean; invite?: SponsorInvite; error?: string }> {
+    // Validate sponsor
+    const canSponsor = this.canSponsor(sponsorMemberId);
+    if (!canSponsor.allowed) {
+      return { success: false, error: canSponsor.reason };
+    }
+
+    // Check invited user isn't already a member
+    const existingMember = db.prepare(`
+      SELECT id FROM member_profiles WHERE discord_id = ?
+    `).get(invitedDiscordId);
+
+    if (existingMember) {
+      return { success: false, error: 'User is already a member' };
+    }
+
+    // Check invited user doesn't have pending invite
+    const pendingInvite = db.prepare(`
+      SELECT id FROM sponsor_invites
+      WHERE invited_discord_id = ?
+        AND revoked_at IS NULL
+        AND accepted_at IS NULL
+    `).get(invitedDiscordId);
+
+    if (pendingInvite) {
+      return { success: false, error: 'User already has a pending invite' };
+    }
+
+    // Get sponsor's tier to grant to invitee
+    const sponsor = db.prepare(`
+      SELECT tier FROM member_profiles WHERE id = ?
+    `).get(sponsorMemberId) as { tier: Tier };
+
+    const invite: SponsorInvite = {
+      id: crypto.randomUUID(),
+      sponsor_member_id: sponsorMemberId,
+      invited_discord_id: invitedDiscordId,
+      invited_member_id: null,
+      tier_granted: sponsor.tier,
+      created_at: Date.now(),
+      accepted_at: null,
+      revoked_at: null,
     };
-    this.activeOnboarding.set(discordUserId, state);
 
-    // Send welcome DM
-    await this.sendWelcomeMessage(discordUserId);
-  }
-
-  /**
-   * Send the welcome message with privacy assurances
-   */
-  private async sendWelcomeMessage(discordUserId: string): Promise<void> {
-    const member = await discordService.getMemberById(discordUserId);
-    if (!member) return;
-
-    const embed = new EmbedBuilder()
-      .setTitle('Welcome to Sietch, traveler.')
-      .setDescription(
-        `You've proven yourself worthy by your BGT holdings.\n` +
-        `But here, **your wallet doesn't define you**.\n\n` +
-        `In Sietch, you choose who you want to be. Your wallet ` +
-        `address will **NEVER** be shown to other members. Your ` +
-        `balance is private. Your rank is private.\n\n` +
-        `Let's create your anonymous identity...`
-      )
-      .setColor(0xf5a623)
-      .setFooter({ text: 'Step 1 of 3 • Your privacy is protected' });
-
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId('onboarding_start')
-        .setLabel('Begin Setup')
-        .setStyle(ButtonStyle.Primary)
-        .setEmoji('🏜️')
+    db.prepare(`
+      INSERT INTO sponsor_invites
+      (id, sponsor_member_id, invited_discord_id, tier_granted, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(
+      invite.id,
+      invite.sponsor_member_id,
+      invite.invited_discord_id,
+      invite.tier_granted,
+      invite.created_at
     );
 
-    try {
-      await member.send({ embeds: [embed], components: [row] });
-    } catch (error) {
-      // DMs disabled - fallback to ephemeral in bot channel
-      await this.sendEphemeralFallback(discordUserId, embed, row);
-    }
+    logger.info({ sponsorMemberId, invitedDiscordId, tier: sponsor.tier }, 'Sponsor invite created');
+
+    return { success: true, invite };
   }
 
   /**
-   * Handle nym input step
+   * Accept invite (called during onboarding)
    */
-  async handleNymStep(interaction: ButtonInteraction | ModalSubmitInteraction): Promise<void> {
-    const state = this.activeOnboarding.get(interaction.user.id);
-    if (!state) return;
+  async acceptInvite(
+    invitedDiscordId: string,
+    newMemberId: string
+  ): Promise<{ success: boolean; tier?: Tier; error?: string }> {
+    const invite = db.prepare(`
+      SELECT * FROM sponsor_invites
+      WHERE invited_discord_id = ?
+        AND revoked_at IS NULL
+        AND accepted_at IS NULL
+    `).get(invitedDiscordId) as SponsorInvite | undefined;
 
-    if (interaction.isButton() && interaction.customId === 'onboarding_start') {
-      // Show modal for nym input
-      const modal = new ModalBuilder()
-        .setCustomId('onboarding_nym_modal')
-        .setTitle('Choose Your Nym');
-
-      const nymInput = new TextInputBuilder()
-        .setCustomId('nym_input')
-        .setLabel('Pick a name you\'ll be known by in Sietch')
-        .setPlaceholder('e.g., CryptoNomad, SpiceTrader, DuneSurfer')
-        .setStyle(TextInputStyle.Short)
-        .setMinLength(3)
-        .setMaxLength(32)
-        .setRequired(true);
-
-      modal.addComponents(
-        new ActionRowBuilder<TextInputBuilder>().addComponents(nymInput)
-      );
-
-      await interaction.showModal(modal);
-    } else if (interaction.isModalSubmit() && interaction.customId === 'onboarding_nym_modal') {
-      const nym = interaction.fields.getTextInputValue('nym_input');
-
-      // Validate nym
-      if (!profileService.isValidNym(nym)) {
-        await interaction.reply({
-          content: 'Invalid nym format. Use 3-32 characters: letters, numbers, underscores, hyphens, or periods.',
-          ephemeral: true,
-        });
-        return;
-      }
-
-      if (await profileService.nymExists(nym)) {
-        await interaction.reply({
-          content: `The nym "${nym}" is already taken. Please choose another.`,
-          ephemeral: true,
-        });
-        return;
-      }
-
-      // Save and proceed to next step
-      state.nym = nym;
-      state.currentStep = 'pfp';
-      await this.sendPfpStep(interaction);
+    if (!invite) {
+      return { success: false, error: 'No pending invite found' };
     }
+
+    const now = Date.now();
+
+    db.prepare(`
+      UPDATE sponsor_invites
+      SET accepted_at = ?, invited_member_id = ?
+      WHERE id = ?
+    `).run(now, newMemberId, invite.id);
+
+    // Set invitee's tier to sponsor's tier
+    db.prepare(`
+      UPDATE member_profiles
+      SET tier = ?, tier_updated_at = ?
+      WHERE id = ?
+    `).run(invite.tier_granted, now, newMemberId);
+
+    logger.info({ inviteId: invite.id, newMemberId, tier: invite.tier_granted }, 'Sponsor invite accepted');
+
+    return { success: true, tier: invite.tier_granted };
   }
 
   /**
-   * Handle PFP step
+   * Revoke invite (admin action)
    */
-  private async sendPfpStep(interaction: ModalSubmitInteraction): Promise<void> {
-    const embed = new EmbedBuilder()
-      .setTitle('Choose Your Avatar')
-      .setDescription(
-        `Your avatar is your visual identity in Sietch.\n\n` +
-        `• **Upload** a custom image (max 2MB)\n` +
-        `• **Generate** a unique crypto-art avatar based on your ID\n` +
-        `• **Skip** and use the generated avatar later`
-      )
-      .setColor(0xf5a623)
-      .setFooter({ text: 'Step 2 of 3 • Your privacy is protected' });
+  revokeInvite(inviteId: string, revokedBy: string): boolean {
+    const result = db.prepare(`
+      UPDATE sponsor_invites
+      SET revoked_at = ?
+      WHERE id = ? AND revoked_at IS NULL
+    `).run(Date.now(), inviteId);
 
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId('onboarding_pfp_upload')
-        .setLabel('Upload')
-        .setStyle(ButtonStyle.Primary)
-        .setEmoji('📤'),
-      new ButtonBuilder()
-        .setCustomId('onboarding_pfp_generate')
-        .setLabel('Generate')
-        .setStyle(ButtonStyle.Secondary)
-        .setEmoji('🎨'),
-      new ButtonBuilder()
-        .setCustomId('onboarding_pfp_skip')
-        .setLabel('Skip')
-        .setStyle(ButtonStyle.Secondary)
-    );
-
-    await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+    if (result.changes > 0) {
+      logger.info({ inviteId, revokedBy }, 'Sponsor invite revoked');
+      return true;
+    }
+    return false;
   }
 
   /**
-   * Handle PFP generation
+   * Get invite status for a sponsor
    */
-  async handlePfpGenerate(interaction: ButtonInteraction): Promise<void> {
-    const state = this.activeOnboarding.get(interaction.user.id);
-    if (!state || !state.nym) return;
+  getInviteStatus(sponsorMemberId: string): {
+    hasActiveInvite: boolean;
+    invite?: SponsorInvite;
+    invitee?: { discord_id: string; nym?: string; accepted: boolean };
+  } {
+    const invite = db.prepare(`
+      SELECT si.*, mp.nym
+      FROM sponsor_invites si
+      LEFT JOIN member_profiles mp ON mp.id = si.invited_member_id
+      WHERE si.sponsor_member_id = ?
+        AND si.revoked_at IS NULL
+      ORDER BY si.created_at DESC
+      LIMIT 1
+    `).get(sponsorMemberId) as (SponsorInvite & { nym?: string }) | undefined;
 
-    await interaction.deferReply({ ephemeral: true });
-
-    // Generate temporary ID for avatar (will be replaced with real profile ID)
-    const tempId = crypto.randomUUID();
-    const avatarBuffer = await avatarService.generateAvatarImage(tempId);
-
-    // Upload to Discord CDN
-    const attachment = new AttachmentBuilder(avatarBuffer, { name: 'avatar.png' });
-    const reply = await interaction.editReply({
-      content: 'Here\'s your generated avatar:',
-      files: [attachment],
-    });
-
-    // Store the CDN URL
-    const attachmentUrl = reply.attachments.first()?.url;
-    if (attachmentUrl) {
-      state.pfpUrl = attachmentUrl;
+    if (!invite) {
+      return { hasActiveInvite: false };
     }
 
-    state.currentStep = 'bio';
-    await this.sendBioStep(interaction);
+    return {
+      hasActiveInvite: true,
+      invite,
+      invitee: {
+        discord_id: invite.invited_discord_id,
+        nym: invite.nym,
+        accepted: invite.accepted_at !== null,
+      },
+    };
   }
 
   /**
-   * Handle bio step (optional)
+   * Check if Discord user has pending invite
    */
-  private async sendBioStep(interaction: ButtonInteraction): Promise<void> {
-    const embed = new EmbedBuilder()
-      .setTitle('Add a Bio (Optional)')
-      .setDescription(
-        `Tell other members a bit about yourself.\n\n` +
-        `• Max 200 characters\n` +
-        `• No links allowed (for privacy)\n` +
-        `• This is optional - skip if you prefer`
-      )
-      .setColor(0xf5a623)
-      .setFooter({ text: 'Step 3 of 3 • Your privacy is protected' });
-
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId('onboarding_bio_add')
-        .setLabel('Add Bio')
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId('onboarding_bio_skip')
-        .setLabel('Skip')
-        .setStyle(ButtonStyle.Secondary)
-    );
-
-    await interaction.followUp({ embeds: [embed], components: [row], ephemeral: true });
-  }
-
-  /**
-   * Complete onboarding and create profile
-   */
-  async completeOnboarding(interaction: ButtonInteraction | ModalSubmitInteraction): Promise<void> {
-    const state = this.activeOnboarding.get(interaction.user.id);
-    if (!state || !state.nym) {
-      await interaction.reply({
-        content: 'Onboarding session expired. Please start again.',
-        ephemeral: true,
-      });
-      return;
-    }
-
-    try {
-      // Create the profile
-      const profile = await profileService.createProfile({
-        discordUserId: state.discordUserId,
-        walletAddress: state.walletAddress,
-        nym: state.nym,
-        pfpUrl: state.pfpUrl,
-        bio: state.bio,
-      });
-
-      // Assign "Onboarded" role (unlocks channel access)
-      await discordService.assignRole(state.discordUserId, 'onboarded');
-
-      // Award initial badges
-      await this.awardInitialBadges(profile.id);
-
-      // Clear onboarding state
-      this.activeOnboarding.delete(state.discordUserId);
-
-      // Send completion message
-      const embed = new EmbedBuilder()
-        .setTitle(`✨ Your identity is ready, ${state.nym}.`)
-        .setDescription(
-          `You are now part of the Sietch. No one knows your wallet.\n` +
-          `No one knows your balance. You are simply **${state.nym}**.\n\n` +
-          `**Explore:**\n` +
-          `• \`/directory\` - Browse other members\n` +
-          `• \`/badges\` - See available badges\n` +
-          `• \`/profile\` - View or edit your profile\n\n` +
-          `*The spice must flow.*`
-        )
-        .setColor(0x2ecc71)
-        .setThumbnail(state.pfpUrl ?? null);
-
-      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder()
-          .setLabel('Enter Sietch')
-          .setStyle(ButtonStyle.Link)
-          .setURL(`https://discord.com/channels/${config.discord.guildId}/${config.discord.channels.general}`)
-      );
-
-      await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
-
-    } catch (error) {
-      if (error instanceof NymTakenError) {
-        await interaction.reply({
-          content: `The nym "${state.nym}" was just taken by someone else. Please start over.`,
-          ephemeral: true,
-        });
-      } else {
-        throw error;
-      }
-    }
-  }
-
-  private async awardInitialBadges(memberId: string): Promise<void> {
-    // Check if within first 30 days of Sietch launch
-    const launchDate = new Date(config.sietch.launchDate);
-    const now = new Date();
-    const daysSinceLaunch = Math.floor((now.getTime() - launchDate.getTime()) / (1000 * 60 * 60 * 24));
-
-    if (daysSinceLaunch <= 30) {
-      await badgeService.awardBadge(memberId, 'founding_fedaykin', null);
-    }
-
-    // OG badge for joining in first 30 days (of their membership, not launch)
-    await badgeService.awardBadge(memberId, 'og', null);
-  }
-
-  /**
-   * Fallback for users with DMs disabled
-   */
-  private async sendEphemeralFallback(
-    discordUserId: string,
-    embed: EmbedBuilder,
-    row: ActionRowBuilder<ButtonBuilder>
-  ): Promise<void> {
-    const botChannel = await discordService.getBotChannel();
-    if (!botChannel) return;
-
-    // Send ephemeral message to bot-commands channel
-    // Note: This requires the user to be in the channel and interact first
-    // We'll ping them to come complete onboarding
-    await botChannel.send({
-      content: `<@${discordUserId}> - Please complete your Sietch onboarding to access the community. ` +
-               `You have DMs disabled, so please enable them temporarily or use the button below.`,
-      embeds: [embed],
-      components: [row],
-    });
+  getPendingInvite(discordId: string): SponsorInvite | null {
+    return db.prepare(`
+      SELECT * FROM sponsor_invites
+      WHERE invited_discord_id = ?
+        AND revoked_at IS NULL
+        AND accepted_at IS NULL
+    `).get(discordId) as SponsorInvite | null;
   }
 }
 
-export const onboardingService = new OnboardingService();
+export const sponsorService = new SponsorService();
+```
+
+### 4.3 DigestService
+
+**File**: `src/services/DigestService.ts`
+
+**Responsibility**: Generate and post weekly community digest to #announcements.
+
+```typescript
+// src/services/DigestService.ts
+
+import { db } from '../db';
+import { logger } from '../utils/logger';
+import { discordService } from './DiscordService';
+import { tierService } from './TierService';
+import type { WeeklyStats, WeeklyDigest } from '../types';
+
+export class DigestService {
+  /**
+   * Collect stats for the past week
+   */
+  collectWeeklyStats(): WeeklyStats {
+    const now = Date.now();
+    const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+
+    // Total members
+    const totalMembers = db.prepare(`
+      SELECT COUNT(*) as count FROM member_profiles
+    `).get() as { count: number };
+
+    // New members this week
+    const newMembers = db.prepare(`
+      SELECT COUNT(*) as count FROM member_profiles
+      WHERE created_at >= ?
+    `).get(weekAgo) as { count: number };
+
+    // Total BGT (from current_eligibility)
+    const totalBgt = db.prepare(`
+      SELECT SUM(bgt) as total FROM current_eligibility
+      WHERE address IN (
+        SELECT wallet_address FROM wallet_mappings
+        WHERE discord_id IN (SELECT discord_id FROM member_profiles)
+      )
+    `).get() as { total: number };
+
+    // Tier distribution
+    const tierDistribution = tierService.getTierDistribution();
+
+    // Most active tier (by message count)
+    const mostActiveTier = db.prepare(`
+      SELECT mp.tier, SUM(ma.weekly_messages) as messages
+      FROM member_profiles mp
+      JOIN member_activity ma ON ma.member_id = mp.id
+      GROUP BY mp.tier
+      ORDER BY messages DESC
+      LIMIT 1
+    `).get() as { tier: string; messages: number } | undefined;
+
+    // Tier promotions this week
+    const promotions = db.prepare(`
+      SELECT COUNT(*) as count FROM tier_history
+      WHERE changed_at >= ?
+    `).get(weekAgo) as { count: number };
+
+    // Notable promotions (to Usul or higher)
+    const notablePromotions = db.prepare(`
+      SELECT mp.nym, th.to_tier
+      FROM tier_history th
+      JOIN member_profiles mp ON mp.id = th.member_id
+      WHERE th.changed_at >= ?
+        AND th.to_tier IN ('usul', 'fedaykin', 'naib')
+      ORDER BY th.changed_at DESC
+      LIMIT 3
+    `).all(weekAgo) as { nym: string; to_tier: string }[];
+
+    // Badges awarded this week
+    const badgesAwarded = db.prepare(`
+      SELECT COUNT(*) as count FROM member_badges
+      WHERE awarded_at >= ?
+    `).get(weekAgo) as { count: number };
+
+    // Top new member (highest BGT)
+    const topNewMember = db.prepare(`
+      SELECT mp.nym, mp.tier
+      FROM member_profiles mp
+      JOIN wallet_mappings wm ON wm.discord_id = mp.discord_id
+      JOIN current_eligibility ce ON ce.address = wm.wallet_address
+      WHERE mp.created_at >= ?
+      ORDER BY ce.bgt DESC
+      LIMIT 1
+    `).get(weekAgo) as { nym: string; tier: string } | undefined;
+
+    return {
+      week_start: new Date(weekAgo),
+      total_members: totalMembers.count,
+      new_members: newMembers.count,
+      total_bgt: Math.floor(totalBgt.total || 0),
+      tier_distribution: tierDistribution,
+      most_active_tier: mostActiveTier?.tier || 'unknown',
+      promotions: promotions.count,
+      badges_awarded: badgesAwarded.count,
+      top_new_member: topNewMember,
+      notable_promotions: notablePromotions.map(p => ({
+        nym: p.nym,
+        new_tier: p.to_tier,
+      })),
+    };
+  }
+
+  /**
+   * Format stats into Discord message
+   */
+  formatDigest(stats: WeeklyStats): string {
+    const weekEnd = new Date();
+    const dateRange = `${stats.week_start.toLocaleDateString()} - ${weekEnd.toLocaleDateString()}`;
+
+    let message = `📜 **Weekly Pulse of the Sietch**\n\n`;
+    message += `**Week of ${dateRange}**\n\n`;
+
+    // Community Stats
+    message += `📊 **Community Stats:**\n`;
+    message += `• Total Members: ${stats.total_members} (+${stats.new_members})\n`;
+    message += `• BGT Represented: ${stats.total_bgt.toLocaleString()} BGT\n`;
+    message += `• Most Active Tier: ${this.formatTierName(stats.most_active_tier)}\n\n`;
+
+    // New Members
+    message += `🎖️ **New Members:**\n`;
+    message += `• ${stats.new_members} joined this week\n`;
+    if (stats.top_new_member) {
+      message += `• Notable: ${stats.top_new_member.nym} entered as ${this.formatTierName(stats.top_new_member.tier)}\n`;
+    }
+    message += `\n`;
+
+    // Tier Promotions
+    message += `⬆️ **Tier Promotions:**\n`;
+    message += `• ${stats.promotions} members rose to higher tiers\n`;
+    for (const promo of stats.notable_promotions) {
+      message += `• ${promo.nym} reached ${this.formatTierName(promo.new_tier)}!\n`;
+    }
+    message += `\n`;
+
+    // Badges
+    message += `🏅 **Badges Awarded:**\n`;
+    message += `• ${stats.badges_awarded} badges given this week\n\n`;
+
+    message += `*The spice flows...*`;
+
+    return message;
+  }
+
+  /**
+   * Format tier name for display
+   */
+  private formatTierName(tier: string): string {
+    const names: Record<string, string> = {
+      hajra: 'Hajra',
+      ichwan: 'Ichwan',
+      qanat: 'Qanat',
+      sihaya: 'Sihaya',
+      mushtamal: 'Mushtamal',
+      sayyadina: 'Sayyadina',
+      usul: 'Usul',
+      fedaykin: 'Fedaykin',
+      naib: 'Naib',
+    };
+    return names[tier] || tier;
+  }
+
+  /**
+   * Post digest to announcements channel
+   */
+  async postDigest(): Promise<boolean> {
+    try {
+      const stats = this.collectWeeklyStats();
+      const message = this.formatDigest(stats);
+
+      // Post to announcements
+      const channelId = process.env.DISCORD_ANNOUNCEMENTS_CHANNEL_ID;
+      if (!channelId) {
+        logger.error('DISCORD_ANNOUNCEMENTS_CHANNEL_ID not configured');
+        return false;
+      }
+
+      const sentMessage = await discordService.sendMessage(channelId, message);
+
+      // Store digest record
+      const digest: WeeklyDigest = {
+        id: crypto.randomUUID(),
+        week_start: stats.week_start.toISOString().split('T')[0],
+        stats_json: JSON.stringify(stats),
+        posted_at: Date.now(),
+        message_id: sentMessage?.id || null,
+      };
+
+      db.prepare(`
+        INSERT INTO weekly_digests (id, week_start, stats_json, posted_at, message_id)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(digest.id, digest.week_start, digest.stats_json, digest.posted_at, digest.message_id);
+
+      logger.info({ digestId: digest.id }, 'Weekly digest posted');
+      return true;
+    } catch (error) {
+      logger.error({ error }, 'Failed to post weekly digest');
+      return false;
+    }
+  }
+}
+
+export const digestService = new DigestService();
+```
+
+### 4.4 StoryService
+
+**File**: `src/services/StoryService.ts`
+
+**Responsibility**: Manage and post story fragments for elite member joins.
+
+```typescript
+// src/services/StoryService.ts
+
+import { db } from '../db';
+import { logger } from '../utils/logger';
+import { discordService } from './DiscordService';
+import type { StoryFragment, Tier } from '../types';
+
+export class StoryService {
+  private readonly CATEGORIES = {
+    fedaykin_join: 'fedaykin_join',
+    naib_join: 'naib_join',
+  } as const;
+
+  /**
+   * Get random fragment for category, preferring least-used
+   */
+  getFragment(category: keyof typeof this.CATEGORIES): StoryFragment | null {
+    // Get least-used fragments for this category
+    const fragment = db.prepare(`
+      SELECT * FROM story_fragments
+      WHERE category = ?
+      ORDER BY used_count ASC, RANDOM()
+      LIMIT 1
+    `).get(category) as StoryFragment | null;
+
+    if (fragment) {
+      // Increment usage
+      db.prepare(`
+        UPDATE story_fragments SET used_count = used_count + 1 WHERE id = ?
+      `).run(fragment.id);
+    }
+
+    return fragment;
+  }
+
+  /**
+   * Post story fragment for new elite member
+   */
+  async postJoinFragment(tier: Tier): Promise<boolean> {
+    // Only for Fedaykin and Naib
+    if (tier !== 'fedaykin' && tier !== 'naib') {
+      return false;
+    }
+
+    const category = tier === 'naib' ? 'naib_join' : 'fedaykin_join';
+    const fragment = this.getFragment(category);
+
+    if (!fragment) {
+      logger.warn({ category }, 'No story fragments available');
+      return false;
+    }
+
+    const channelId = process.env.DISCORD_THE_DOOR_CHANNEL_ID;
+    if (!channelId) {
+      logger.error('DISCORD_THE_DOOR_CHANNEL_ID not configured');
+      return false;
+    }
+
+    // Format with decorative borders
+    const message = `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n${fragment.content}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+
+    try {
+      await discordService.sendMessage(channelId, message);
+      logger.info({ category, fragmentId: fragment.id }, 'Story fragment posted');
+      return true;
+    } catch (error) {
+      logger.error({ error, category }, 'Failed to post story fragment');
+      return false;
+    }
+  }
+
+  /**
+   * Seed default fragments
+   */
+  seedDefaultFragments(): void {
+    const fedaykinFragments = [
+      `The desert wind carried whispers of a new arrival.\nOne who had held their water, never trading the sacred spice.\nThe sietch grows stronger.`,
+      `Footsteps in the sand revealed a traveler from distant dunes.\nThey bore no marks of the water sellers.\nA new Fedaykin has earned their place.`,
+      `The winds shifted across the Great Bled.\nA new figure emerged from the dancing sands,\ntheir stillsuit bearing the marks of deep desert travel.\n\nThe watermasters took note.\nAnother has proven their worth in the spice trade.\n\nA new Fedaykin walks among us.`,
+    ];
+
+    const naibFragments = [
+      `The council chamber stirred.\nA presence of great weight approached -\none whose reserves of melange could shift the balance.\nA new voice joins the Naib.`,
+      `The seven seats trembled as the sands revealed\na walker of extraordinary means.\nThe council must make room.\nA new Naib has arrived.`,
+    ];
+
+    // Insert if table is empty
+    const count = db.prepare(`SELECT COUNT(*) as c FROM story_fragments`).get() as { c: number };
+    if (count.c > 0) return;
+
+    for (const content of fedaykinFragments) {
+      db.prepare(`
+        INSERT INTO story_fragments (id, category, content, used_count)
+        VALUES (?, ?, ?, 0)
+      `).run(crypto.randomUUID(), 'fedaykin_join', content);
+    }
+    for (const content of naibFragments) {
+      db.prepare(`
+        INSERT INTO story_fragments (id, category, content, used_count)
+        VALUES (?, ?, ?, 0)
+      `).run(crypto.randomUUID(), 'naib_join', content);
+    }
+
+    logger.info('Default story fragments seeded');
+  }
+}
+
+export const storyService = new StoryService();
+```
+
+### 4.5 StatsService
+
+**File**: `src/services/StatsService.ts`
+
+**Responsibility**: Provide personal stats and analytics for members.
+
+```typescript
+// src/services/StatsService.ts
+
+import { db } from '../db';
+import { tierService } from './TierService';
+import { badgeService } from './BadgeService';
+import type { PersonalStats, CommunityStats, AdminAnalytics } from '../types';
+
+export class StatsService {
+  /**
+   * Get personal stats for /stats command
+   */
+  getPersonalStats(memberId: string): PersonalStats | null {
+    const member = db.prepare(`
+      SELECT mp.*, ma.current_streak, ma.longest_streak, ma.weekly_messages
+      FROM member_profiles mp
+      LEFT JOIN member_activity ma ON ma.member_id = mp.id
+      WHERE mp.id = ?
+    `).get(memberId) as {
+      id: string;
+      nym: string;
+      tier: string;
+      created_at: number;
+      current_streak: number;
+      longest_streak: number;
+      weekly_messages: number;
+    } | undefined;
+
+    if (!member) return null;
+
+    // Get badges
+    const badges = badgeService.getMemberBadges(memberId);
+
+    // Get tier progress
+    const tierProgress = tierService.getTierProgress(memberId);
+
+    return {
+      nym: member.nym,
+      tier: member.tier,
+      memberSince: new Date(member.created_at),
+      activity: {
+        messagesThisWeek: member.weekly_messages || 0,
+        currentStreak: member.current_streak || 0,
+        longestStreak: member.longest_streak || 0,
+      },
+      badges: badges.map(b => b.badge_id),
+      badgeCount: badges.length,
+      tierProgress: tierProgress ? {
+        current: tierProgress.currentTier,
+        currentBgt: tierProgress.currentBgt,
+        next: tierProgress.nextTier,
+        threshold: tierProgress.nextThreshold,
+        distance: tierProgress.distance,
+        percentage: tierProgress.percentage,
+      } : null,
+    };
+  }
+
+  /**
+   * Get public community stats
+   */
+  getCommunityStats(): CommunityStats {
+    const totalMembers = db.prepare(`
+      SELECT COUNT(*) as count FROM member_profiles
+    `).get() as { count: number };
+
+    const totalBgt = db.prepare(`
+      SELECT SUM(bgt) as total FROM current_eligibility
+      WHERE address IN (
+        SELECT wallet_address FROM wallet_mappings
+        WHERE discord_id IN (SELECT discord_id FROM member_profiles)
+      )
+    `).get() as { total: number };
+
+    const tierDistribution = tierService.getTierDistribution();
+
+    return {
+      totalMembers: totalMembers.count,
+      totalBgt: Math.floor(totalBgt.total || 0),
+      tierDistribution,
+    };
+  }
+
+  /**
+   * Get admin analytics dashboard
+   */
+  getAdminAnalytics(): AdminAnalytics {
+    const now = Date.now();
+    const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+
+    const totalMembers = db.prepare(`
+      SELECT COUNT(*) as count FROM member_profiles
+    `).get() as { count: number };
+
+    const tierDistribution = tierService.getTierDistribution();
+
+    const totalBgt = db.prepare(`
+      SELECT SUM(bgt) as total FROM current_eligibility
+      WHERE address IN (
+        SELECT wallet_address FROM wallet_mappings
+        WHERE discord_id IN (SELECT discord_id FROM member_profiles)
+      )
+    `).get() as { total: number };
+
+    const weeklyActive = db.prepare(`
+      SELECT COUNT(*) as count FROM member_activity
+      WHERE last_active >= ?
+    `).get(weekAgo) as { count: number };
+
+    const newThisWeek = db.prepare(`
+      SELECT COUNT(*) as count FROM member_profiles
+      WHERE created_at >= ?
+    `).get(weekAgo) as { count: number };
+
+    const promotionsThisWeek = db.prepare(`
+      SELECT COUNT(*) as count FROM tier_history
+      WHERE changed_at >= ?
+    `).get(weekAgo) as { count: number };
+
+    return {
+      total_members: totalMembers.count,
+      by_tier: tierDistribution,
+      total_bgt: Math.floor(totalBgt.total || 0),
+      weekly_active: weeklyActive.count,
+      new_this_week: newThisWeek.count,
+      promotions_this_week: promotionsThisWeek.count,
+    };
+  }
+
+  /**
+   * Get tier leaderboard (closest to promotion)
+   */
+  getTierLeaderboard(limit = 10): Array<{
+    nym: string;
+    tier: string;
+    currentBgt: number;
+    nextTier: string;
+    nextThreshold: number;
+    distance: number;
+  }> {
+    // Get members with BGT-based tiers (not Fedaykin/Naib)
+    const members = db.prepare(`
+      SELECT mp.id, mp.nym, mp.tier, ce.bgt
+      FROM member_profiles mp
+      JOIN wallet_mappings wm ON wm.discord_id = mp.discord_id
+      JOIN current_eligibility ce ON ce.address = wm.wallet_address
+      WHERE mp.tier NOT IN ('fedaykin', 'naib')
+      ORDER BY ce.bgt DESC
+    `).all() as { id: string; nym: string; tier: string; bgt: number }[];
+
+    const leaderboard = [];
+
+    for (const member of members) {
+      const progress = tierService.getTierProgress(member.id);
+      if (progress?.nextTier && progress.nextThreshold && progress.distance !== null) {
+        leaderboard.push({
+          nym: member.nym,
+          tier: member.tier,
+          currentBgt: Math.floor(member.bgt),
+          nextTier: progress.nextTier,
+          nextThreshold: progress.nextThreshold,
+          distance: progress.distance,
+        });
+      }
+    }
+
+    // Sort by distance (ascending - closest first)
+    leaderboard.sort((a, b) => a.distance - b.distance);
+
+    return leaderboard.slice(0, limit);
+  }
+}
+
+export const statsService = new StatsService();
 ```
 
 ---
 
 ## 5. Data Architecture
 
-### 5.1 Extended SQLite Schema
+### 5.1 Database Schema Extensions
+
+**Migration File**: `src/db/migrations/006_tier_system.sql`
 
 ```sql
--- =============================================================================
--- EXISTING TABLES (from v1.0)
--- =============================================================================
+-- Migration: 006_tier_system
+-- Description: Add tier system, sponsor invites, story fragments, weekly digests
 
--- (Existing tables: eligibility_snapshots, current_eligibility, admin_overrides,
---  audit_log, health_status, wallet_mappings, cached_claim_events, cached_burn_events)
--- See existing schema.ts for full definitions
+-- Add tier columns to member_profiles
+ALTER TABLE member_profiles ADD COLUMN tier TEXT DEFAULT 'hajra';
+ALTER TABLE member_profiles ADD COLUMN tier_updated_at INTEGER;
 
--- =============================================================================
--- NEW TABLES (v2.0 Social Layer)
--- =============================================================================
+-- Create index for tier queries
+CREATE INDEX IF NOT EXISTS idx_member_profiles_tier ON member_profiles(tier);
 
--- Member profiles (pseudonymous identity)
--- PRIVACY: wallet_address and discord_user_id are NEVER exposed via public API
-CREATE TABLE IF NOT EXISTS member_profiles (
-  id TEXT PRIMARY KEY,  -- UUID, internal use only
-  discord_user_id TEXT NOT NULL UNIQUE,
-  wallet_address TEXT NOT NULL COLLATE NOCASE,
-  nym TEXT NOT NULL UNIQUE COLLATE NOCASE,
-  pfp_url TEXT,
-  bio TEXT CHECK (length(bio) <= 200),
-  created_at TEXT DEFAULT (datetime('now')) NOT NULL,
-  updated_at TEXT DEFAULT (datetime('now')) NOT NULL,
-  nym_last_changed TEXT,
-  onboarding_complete INTEGER DEFAULT 0 NOT NULL,
-  FOREIGN KEY (discord_user_id) REFERENCES wallet_mappings(discord_user_id)
+-- Tier history for analytics
+CREATE TABLE IF NOT EXISTS tier_history (
+    id TEXT PRIMARY KEY,
+    member_id TEXT NOT NULL,
+    from_tier TEXT,
+    to_tier TEXT NOT NULL,
+    bgt_at_change INTEGER NOT NULL,
+    changed_at INTEGER NOT NULL,
+    FOREIGN KEY (member_id) REFERENCES member_profiles(id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_member_profiles_nym
-  ON member_profiles(nym);
+CREATE INDEX IF NOT EXISTS idx_tier_history_member ON tier_history(member_id);
+CREATE INDEX IF NOT EXISTS idx_tier_history_date ON tier_history(changed_at);
 
-CREATE INDEX IF NOT EXISTS idx_member_profiles_discord
-  ON member_profiles(discord_user_id);
-
-CREATE INDEX IF NOT EXISTS idx_member_profiles_wallet
-  ON member_profiles(wallet_address);
-
--- Badge definitions
-CREATE TABLE IF NOT EXISTS badges (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  description TEXT,
-  icon_url TEXT,
-  category TEXT NOT NULL CHECK (category IN ('tenure', 'streak', 'contribution', 'special')),
-  is_automatic INTEGER DEFAULT 0 NOT NULL
+-- Sponsor invites
+CREATE TABLE IF NOT EXISTS sponsor_invites (
+    id TEXT PRIMARY KEY,
+    sponsor_member_id TEXT NOT NULL,
+    invited_discord_id TEXT NOT NULL,
+    invited_member_id TEXT,
+    tier_granted TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    accepted_at INTEGER,
+    revoked_at INTEGER,
+    FOREIGN KEY (sponsor_member_id) REFERENCES member_profiles(id),
+    FOREIGN KEY (invited_member_id) REFERENCES member_profiles(id)
 );
 
--- Member badges (awarded badges)
-CREATE TABLE IF NOT EXISTS member_badges (
-  member_id TEXT NOT NULL,
-  badge_id TEXT NOT NULL,
-  awarded_at TEXT DEFAULT (datetime('now')) NOT NULL,
-  awarded_by TEXT,  -- NULL = automatic, admin discord ID = manual
-  PRIMARY KEY (member_id, badge_id),
-  FOREIGN KEY (member_id) REFERENCES member_profiles(id) ON DELETE CASCADE,
-  FOREIGN KEY (badge_id) REFERENCES badges(id)
+CREATE INDEX IF NOT EXISTS idx_invites_sponsor ON sponsor_invites(sponsor_member_id);
+CREATE INDEX IF NOT EXISTS idx_invites_discord ON sponsor_invites(invited_discord_id);
+CREATE INDEX IF NOT EXISTS idx_invites_active ON sponsor_invites(sponsor_member_id)
+    WHERE revoked_at IS NULL;
+
+-- Story fragments
+CREATE TABLE IF NOT EXISTS story_fragments (
+    id TEXT PRIMARY KEY,
+    category TEXT NOT NULL,
+    content TEXT NOT NULL,
+    used_count INTEGER DEFAULT 0
 );
 
-CREATE INDEX IF NOT EXISTS idx_member_badges_member
-  ON member_badges(member_id);
+CREATE INDEX IF NOT EXISTS idx_story_category ON story_fragments(category);
 
-CREATE INDEX IF NOT EXISTS idx_member_badges_badge
-  ON member_badges(badge_id);
-
--- Member activity (for demurrage-based engagement tracking)
-CREATE TABLE IF NOT EXISTS member_activity (
-  member_id TEXT PRIMARY KEY,
-  activity_balance REAL DEFAULT 0 NOT NULL,  -- Current balance with decay applied
-  last_activity_at TEXT,
-  last_decay_at TEXT DEFAULT (datetime('now')) NOT NULL,
-  total_messages INTEGER DEFAULT 0 NOT NULL,
-  total_reactions_given INTEGER DEFAULT 0 NOT NULL,
-  total_reactions_received INTEGER DEFAULT 0 NOT NULL,
-  FOREIGN KEY (member_id) REFERENCES member_profiles(id) ON DELETE CASCADE
+-- Weekly digests
+CREATE TABLE IF NOT EXISTS weekly_digests (
+    id TEXT PRIMARY KEY,
+    week_start DATE NOT NULL UNIQUE,
+    stats_json TEXT NOT NULL,
+    posted_at INTEGER,
+    message_id TEXT
 );
 
--- Member perks/roles (earned access levels)
-CREATE TABLE IF NOT EXISTS member_perks (
-  member_id TEXT NOT NULL,
-  perk_level TEXT NOT NULL CHECK (perk_level IN ('base', 'engaged', 'trusted', 'inner_circle')),
-  unlocked_at TEXT DEFAULT (datetime('now')) NOT NULL,
-  PRIMARY KEY (member_id, perk_level),
-  FOREIGN KEY (member_id) REFERENCES member_profiles(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_member_perks_level
-  ON member_perks(perk_level);
-
--- =============================================================================
--- SEED DATA: Badge Definitions
--- =============================================================================
-
-INSERT OR IGNORE INTO badges (id, name, description, icon_url, category, is_automatic) VALUES
-  -- Tenure badges
-  ('og', 'OG', 'Member in first 30 days of Sietch launch', '/badges/og.png', 'tenure', 1),
-  ('veteran', 'Veteran', '90+ days as member', '/badges/veteran.png', 'tenure', 1),
-  ('elder', 'Elder', '180+ days as member', '/badges/elder.png', 'tenure', 1),
-
-  -- Activity/Streak badges (demurrage-based)
-  ('consistent', 'Consistent', 'Maintain 50+ activity balance', '/badges/consistent.png', 'streak', 1),
-  ('dedicated', 'Dedicated', 'Maintain 200+ activity balance', '/badges/dedicated.png', 'streak', 1),
-  ('devoted', 'Devoted', 'Maintain 500+ activity balance', '/badges/devoted.png', 'streak', 1),
-
-  -- Contribution badges (admin-granted)
-  ('helper', 'Helper', 'Recognized for helping others', '/badges/helper.png', 'contribution', 0),
-  ('thought_leader', 'Thought Leader', 'Consistent quality contributions', '/badges/thought_leader.png', 'contribution', 0),
-
-  -- Special badges
-  ('founding_fedaykin', 'Founding Fedaykin', 'Original top 69 at launch', '/badges/founding.png', 'special', 1),
-  ('promoted', 'Promoted', 'Rose from Fedaykin to Naib', '/badges/promoted.png', 'special', 1);
+CREATE INDEX IF NOT EXISTS idx_digest_date ON weekly_digests(week_start);
 ```
 
-### 5.2 Data Privacy Architecture
+### 5.2 Entity Relationship Diagram
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                        Data Privacy Separation                                │
-├──────────────────────────────────────────────────────────────────────────────┤
-│                                                                               │
-│  ┌─────────────────────────────────────────────────────────────────────┐     │
-│  │                     PRIVATE STORE (Admin Only)                       │     │
-│  │  - wallet_address                                                    │     │
-│  │  - discord_user_id                                                   │     │
-│  │  - exact_bgt_balance                                                 │     │
-│  │  - exact_rank_position                                               │     │
-│  │  - member_profiles.id (internal UUID)                                │     │
-│  │  - created_at (exact timestamp)                                      │     │
-│  └─────────────────────────────────────────────────────────────────────┘     │
-│                              ║                                                │
-│                              ║ NEVER JOINED IN PUBLIC API                    │
-│                              ║                                                │
-│  ┌─────────────────────────────────────────────────────────────────────┐     │
-│  │                     PUBLIC STORE (Member Visible)                    │     │
-│  │  - nym                                                               │     │
-│  │  - pfp_url                                                           │     │
-│  │  - bio                                                               │     │
-│  │  - tier (naib/fedaykin) - derived, not stored                        │     │
-│  │  - badges[] - array of badge names/icons                             │     │
-│  │  - tenure_category (OG/Veteran/Elder) - derived from days            │     │
-│  │  - badge_count - for leaderboard                                     │     │
-│  └─────────────────────────────────────────────────────────────────────┘     │
-│                                                                               │
-│  ┌─────────────────────────────────────────────────────────────────────┐     │
-│  │                     SELF-ONLY (Own Profile View)                     │     │
-│  │  - activity_balance                                                  │     │
-│  │  - total_messages                                                    │     │
-│  │  - total_reactions_given                                             │     │
-│  │  - total_reactions_received                                          │     │
-│  │  - last_active_at                                                    │     │
-│  └─────────────────────────────────────────────────────────────────────┘     │
-│                                                                               │
-│  ┌─────────────────────────────────────────────────────────────────────┐     │
-│  │                     NEVER EXPOSED (Internal Only)                    │     │
-│  │  - Wallet-nym correlation                                            │     │
-│  │  - Discord username-nym correlation                                  │     │
-│  │  - Exact BGT balance amounts                                         │     │
-│  │  - Exact rank positions (1-69)                                       │     │
-│  └─────────────────────────────────────────────────────────────────────┘     │
-│                                                                               │
-└──────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────┐       ┌─────────────────────┐
+│   member_profiles   │       │   tier_history      │
+├─────────────────────┤       ├─────────────────────┤
+│ id (PK)             │──┐    │ id (PK)             │
+│ discord_id          │  │    │ member_id (FK)      │───┐
+│ nym                 │  │    │ from_tier           │   │
+│ bio                 │  │    │ to_tier             │   │
+│ pfp_seed            │  │    │ bgt_at_change       │   │
+│ tier (NEW)          │  │    │ changed_at          │   │
+│ tier_updated_at(NEW)│  │    └─────────────────────┘   │
+│ is_former_naib      │  │                              │
+│ created_at          │  └──────────────────────────────┘
+│ updated_at          │
+└─────────────────────┘
+         │
+         │ 1:N
+         ▼
+┌─────────────────────┐
+│   sponsor_invites   │
+├─────────────────────┤
+│ id (PK)             │
+│ sponsor_member_id(FK)│──────┐
+│ invited_discord_id  │      │
+│ invited_member_id(FK)│     │
+│ tier_granted        │      │
+│ created_at          │      │
+│ accepted_at         │      │
+│ revoked_at          │      │
+└─────────────────────┘      │
+                             │
+         ┌───────────────────┘
+         │
+         ▼
+┌─────────────────────┐       ┌─────────────────────┐
+│   story_fragments   │       │   weekly_digests    │
+├─────────────────────┤       ├─────────────────────┤
+│ id (PK)             │       │ id (PK)             │
+│ category            │       │ week_start (UNIQUE) │
+│ content             │       │ stats_json          │
+│ used_count          │       │ posted_at           │
+└─────────────────────┘       │ message_id          │
+                              └─────────────────────┘
+```
+
+### 5.3 Data Model Types
+
+```typescript
+// src/types/index.ts (extensions)
+
+export type Tier =
+  | 'hajra'
+  | 'ichwan'
+  | 'qanat'
+  | 'sihaya'
+  | 'mushtamal'
+  | 'sayyadina'
+  | 'usul'
+  | 'fedaykin'
+  | 'naib';
+
+export interface TierHistoryEntry {
+  id: string;
+  member_id: string;
+  from_tier: Tier | null;
+  to_tier: Tier;
+  bgt_at_change: number;
+  changed_at: number;
+}
+
+export interface SponsorInvite {
+  id: string;
+  sponsor_member_id: string;
+  invited_discord_id: string;
+  invited_member_id: string | null;
+  tier_granted: Tier;
+  created_at: number;
+  accepted_at: number | null;
+  revoked_at: number | null;
+}
+
+export interface StoryFragment {
+  id: string;
+  category: string;
+  content: string;
+  used_count: number;
+}
+
+export interface WeeklyDigest {
+  id: string;
+  week_start: string;
+  stats_json: string;
+  posted_at: number | null;
+  message_id: string | null;
+}
+
+export interface TierProgress {
+  currentTier: Tier;
+  currentBgt: number;
+  nextTier: Tier | null;
+  nextThreshold: number | null;
+  distance: number | null;
+  percentage: number | null;
+  note?: string;
+}
+
+export interface PersonalStats {
+  nym: string;
+  tier: string;
+  memberSince: Date;
+  activity: {
+    messagesThisWeek: number;
+    currentStreak: number;
+    longestStreak: number;
+  };
+  badges: string[];
+  badgeCount: number;
+  tierProgress: {
+    current: Tier;
+    currentBgt: number;
+    next: Tier | null;
+    threshold: number | null;
+    distance: number | null;
+    percentage: number | null;
+  } | null;
+}
+
+export interface AdminAnalytics {
+  total_members: number;
+  by_tier: Record<Tier, number>;
+  total_bgt: number;
+  weekly_active: number;
+  new_this_week: number;
+  promotions_this_week: number;
+}
 ```
 
 ---
 
 ## 6. API Design
 
-### 6.1 Extended API Endpoints
+### 6.1 New API Endpoints
 
-#### Profile Endpoints
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/api/tiers` | None | Tier definitions |
+| GET | `/api/stats/community` | None | Public stats |
+| GET | `/api/leaderboard/tiers` | None | Tier progression |
+| GET | `/api/me/stats` | Member | Personal stats |
+| GET | `/api/me/tier-progress` | Member | Next tier distance |
+| GET | `/api/me/tier-history` | Member | Tier change history |
+| POST | `/api/invite` | Member | Create sponsor invite |
+| GET | `/api/invite/status` | Member | Invite status |
+| GET | `/api/invite/can-sponsor` | Member | Check badge |
+| GET | `/admin/analytics` | Admin | Full analytics |
+| DELETE | `/admin/invites/:id` | Admin | Revoke invite |
 
-```
-# Get own profile (authenticated via Discord OAuth or session)
-GET /api/profile
-Authorization: Bearer <session_token>
-
-Response 200:
-{
-  "nym": "CryptoNomad",
-  "pfpUrl": "https://cdn.discordapp.com/...",
-  "bio": "Just here for the spice",
-  "tier": "fedaykin",
-  "badges": [
-    { "id": "og", "name": "OG", "iconUrl": "/badges/og.png" },
-    { "id": "consistent", "name": "Consistent", "iconUrl": "/badges/consistent.png" }
-  ],
-  "tenureCategory": "OG",
-  "stats": {
-    "activityBalance": 127,
-    "totalMessages": 234,
-    "totalReactionsGiven": 89,
-    "totalReactionsReceived": 156
-  }
-}
-
-# Update own profile
-PUT /api/profile
-Authorization: Bearer <session_token>
-Content-Type: application/json
-
-{
-  "nym": "NewNym",
-  "bio": "Updated bio"
-}
-
-Response 200:
-{
-  "nym": "NewNym",
-  "bio": "Updated bio",
-  "updatedAt": "2025-12-18T12:00:00Z"
-}
-
-# Upload profile picture
-POST /api/profile/pfp
-Authorization: Bearer <session_token>
-Content-Type: multipart/form-data
-
-file: <image file, max 2MB>
-
-Response 200:
-{
-  "pfpUrl": "https://cdn.discordapp.com/..."
-}
-```
-
-#### Public Profile Endpoints
-
-```
-# Get public profile by nym (privacy-filtered)
-GET /api/members/:nym
-
-Response 200:
-{
-  "nym": "CryptoNomad",
-  "pfpUrl": "https://cdn.discordapp.com/...",
-  "bio": "Just here for the spice",
-  "tier": "fedaykin",
-  "badges": [
-    { "id": "og", "name": "OG", "iconUrl": "/badges/og.png" }
-  ],
-  "tenureCategory": "OG"
-  // NO wallet, NO discord ID, NO stats
-}
-
-Response 404:
-{
-  "error": "Member not found"
-}
-```
-
-#### Directory Endpoints
-
-```
-# Browse member directory (privacy-filtered)
-GET /api/directory?page=1&limit=20&tier=fedaykin&badge=og&sort=nym
-
-Query Parameters:
-- page: Page number (default: 1)
-- limit: Items per page (default: 20, max: 50)
-- tier: Filter by tier (naib | fedaykin)
-- badge: Filter by badge ID
-- tenure: Filter by tenure category (og | veteran | elder)
-- sort: Sort field (nym | tenure | badges)
-
-Response 200:
-{
-  "members": [
-    {
-      "nym": "CryptoNomad",
-      "pfpUrl": "...",
-      "tier": "fedaykin",
-      "badges": ["og", "consistent"],
-      "badgeCount": 2,
-      "tenureCategory": "OG"
-    },
-    ...
-  ],
-  "pagination": {
-    "page": 1,
-    "limit": 20,
-    "total": 69,
-    "totalPages": 4
-  }
-}
-```
-
-#### Badge Endpoints
-
-```
-# Get all available badges
-GET /api/badges
-
-Response 200:
-{
-  "badges": [
-    {
-      "id": "og",
-      "name": "OG",
-      "description": "Member in first 30 days of Sietch launch",
-      "iconUrl": "/badges/og.png",
-      "category": "tenure",
-      "isAutomatic": true
-    },
-    ...
-  ]
-}
-
-# Get member's badges by nym
-GET /api/members/:nym/badges
-
-Response 200:
-{
-  "nym": "CryptoNomad",
-  "badges": [
-    {
-      "id": "og",
-      "name": "OG",
-      "iconUrl": "/badges/og.png",
-      "awardedAt": "2025-12-01"  // Month/Year only for privacy
-    }
-  ]
-}
-```
-
-#### Leaderboard Endpoint
-
-```
-# Get engagement leaderboard (rankings + badge counts only)
-GET /api/leaderboard?limit=20
-
-Response 200:
-{
-  "leaderboard": [
-    {
-      "rank": 1,
-      "nym": "SpiceTrader",
-      "pfpUrl": "...",
-      "badgeCount": 8,
-      "tier": "naib"
-    },
-    {
-      "rank": 2,
-      "nym": "DuneSurfer",
-      "pfpUrl": "...",
-      "badgeCount": 7,
-      "tier": "fedaykin"
-    },
-    ...
-  ]
-  // NO activity stats, NO wallet info
-}
-```
-
-#### Admin Endpoints (Extended)
-
-```
-# Award badge to member (admin only)
-POST /api/admin/badges/award
-X-API-Key: <admin_api_key>
-Content-Type: application/json
-
-{
-  "memberNym": "CryptoNomad",
-  "badgeId": "helper",
-  "reason": "Consistently helpful in #support channel"
-}
-
-Response 200:
-{
-  "success": true,
-  "badge": {
-    "id": "helper",
-    "name": "Helper",
-    "awardedTo": "CryptoNomad",
-    "awardedBy": "admin1"
-  }
-}
-
-# Revoke badge (admin only)
-DELETE /api/admin/badges/:memberId/:badgeId
-X-API-Key: <admin_api_key>
-
-Response 200:
-{
-  "success": true
-}
-```
-
----
-
-## 7. Discord Bot Design
-
-### 7.1 Slash Commands
-
-| Command | Description | Privacy | Response Type |
-|---------|-------------|---------|---------------|
-| `/profile` | View your own profile | Private | Ephemeral embed |
-| `/profile view [nym]` | View another member's profile | Public | Public embed |
-| `/profile edit` | Open profile editing wizard | Private | DM-based |
-| `/badges` | View your badges | Private | Ephemeral embed |
-| `/badges [nym]` | View another member's badges | Public | Public embed |
-| `/directory` | Open member directory browser | Interactive | Ephemeral + buttons |
-| `/stats` | View your engagement stats | Private | Ephemeral embed |
-| `/leaderboard` | View engagement leaderboard | Public | Public embed |
-| `/admin-badge award [nym] [badge]` | Award badge (admin) | Admin | Ephemeral |
-| `/admin-badge revoke [nym] [badge]` | Revoke badge (admin) | Admin | Ephemeral |
-
-### 7.2 Command Implementations
+### 6.2 Rate Limiting
 
 ```typescript
-// src/discord/commands/profile.ts
-
-import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder } from 'discord.js';
-
-export const profileCommand = {
-  data: new SlashCommandBuilder()
-    .setName('profile')
-    .setDescription('View and manage your Sietch profile')
-    .addSubcommand(sub =>
-      sub.setName('view')
-        .setDescription('View a profile')
-        .addStringOption(opt =>
-          opt.setName('nym')
-            .setDescription('Member\'s nym (leave empty for your own)')
-            .setRequired(false)
-        )
-    )
-    .addSubcommand(sub =>
-      sub.setName('edit')
-        .setDescription('Edit your profile')
-    ),
-
-  async execute(interaction: ChatInputCommandInteraction) {
-    const subcommand = interaction.options.getSubcommand();
-
-    if (subcommand === 'view') {
-      const targetNym = interaction.options.getString('nym');
-
-      if (!targetNym) {
-        // Own profile (private, ephemeral)
-        await this.showOwnProfile(interaction);
-      } else {
-        // Other's profile (public)
-        await this.showPublicProfile(interaction, targetNym);
-      }
-    } else if (subcommand === 'edit') {
-      // Start edit wizard in DM
-      await this.startEditWizard(interaction);
-    }
-  },
-
-  async showOwnProfile(interaction: ChatInputCommandInteraction) {
-    const profile = await profileService.getOwnProfile(interaction.user.id);
-
-    if (!profile) {
-      await interaction.reply({
-        content: 'You haven\'t completed onboarding yet. Check your DMs!',
-        ephemeral: true,
-      });
-      return;
-    }
-
-    const stats = await activityService.getOwnStats(interaction.user.id);
-
-    const embed = new EmbedBuilder()
-      .setTitle(profile.nym)
-      .setThumbnail(profile.pfpUrl ?? avatarService.generateAvatarUrl(profile.id))
-      .setDescription(profile.bio ?? '*No bio set*')
-      .setColor(profile.tier === 'naib' ? 0xf5a623 : 0x3498db)
-      .addFields(
-        { name: 'Tier', value: profile.tier === 'naib' ? 'Naib' : 'Fedaykin', inline: true },
-        { name: 'Tenure', value: profile.tenureCategory, inline: true },
-        { name: 'Badges', value: profile.badges.map(b => b.name).join(', ') || 'None yet', inline: false },
-        { name: 'Activity Balance', value: `${stats?.activityBalance ?? 0}`, inline: true },
-        { name: 'Messages', value: `${stats?.totalMessages ?? 0}`, inline: true },
-      )
-      .setFooter({ text: 'Your wallet and balance are private' });
-
-    await interaction.reply({ embeds: [embed], ephemeral: true });
-  },
-
-  async showPublicProfile(interaction: ChatInputCommandInteraction, nym: string) {
-    const profile = await profileService.getPublicProfile(nym);
-
-    if (!profile) {
-      await interaction.reply({
-        content: `Member "${nym}" not found.`,
-        ephemeral: true,
-      });
-      return;
-    }
-
-    const embed = new EmbedBuilder()
-      .setTitle(profile.nym)
-      .setThumbnail(profile.pfpUrl)
-      .setDescription(profile.bio ?? '*No bio set*')
-      .setColor(profile.tier === 'naib' ? 0xf5a623 : 0x3498db)
-      .addFields(
-        { name: 'Tier', value: profile.tier === 'naib' ? 'Naib' : 'Fedaykin', inline: true },
-        { name: 'Tenure', value: profile.tenureCategory, inline: true },
-        { name: 'Badges', value: profile.badges.map(b => b.name).join(', ') || 'None yet', inline: false },
-      );
-
-    await interaction.reply({ embeds: [embed] });  // Public response
-  },
-};
-```
-
-### 7.3 Interactive Components
-
-```typescript
-// src/discord/interactions/directory.ts
-
-import {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  StringSelectMenuBuilder,
-  ComponentType,
-} from 'discord.js';
-
-/**
- * Directory browser with pagination and filters
- */
-export async function handleDirectoryCommand(interaction: ChatInputCommandInteraction) {
-  const page = 1;
-  const filters = { tier: null, badge: null, tenure: null };
-
-  await showDirectoryPage(interaction, page, filters);
-}
-
-async function showDirectoryPage(
-  interaction: ChatInputCommandInteraction | ButtonInteraction,
-  page: number,
-  filters: DirectoryFilters
-) {
-  const result = await profileService.getDirectory({
-    page,
-    limit: 10,
-    ...filters,
-  });
-
-  const embed = new EmbedBuilder()
-    .setTitle('Sietch Member Directory')
-    .setColor(0xf5a623)
-    .setDescription(
-      result.members.map((m, i) => {
-        const rank = (page - 1) * 10 + i + 1;
-        const badges = m.badges.slice(0, 3).map(b => b.emoji).join(' ');
-        return `**${rank}.** ${m.nym} · ${m.tier === 'naib' ? 'Naib' : 'Fedaykin'} ${badges}`;
-      }).join('\n')
-    )
-    .setFooter({ text: `Page ${page} of ${result.totalPages} · ${result.total} members` });
-
-  // Filter dropdown
-  const filterRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId('directory_filter')
-      .setPlaceholder('Filter by...')
-      .addOptions([
-        { label: 'All Members', value: 'all' },
-        { label: 'Naib Only', value: 'tier:naib' },
-        { label: 'Fedaykin Only', value: 'tier:fedaykin' },
-        { label: 'Has OG Badge', value: 'badge:og' },
-        { label: 'Veterans (90+ days)', value: 'tenure:veteran' },
-      ])
-  );
-
-  // Pagination buttons
-  const paginationRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`directory_prev:${page}`)
-      .setLabel('Previous')
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(page <= 1),
-    new ButtonBuilder()
-      .setCustomId(`directory_page:${page}`)
-      .setLabel(`${page}/${result.totalPages}`)
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(true),
-    new ButtonBuilder()
-      .setCustomId(`directory_next:${page}`)
-      .setLabel('Next')
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(page >= result.totalPages),
-  );
-
-  const replyOptions = {
-    embeds: [embed],
-    components: [filterRow, paginationRow],
-    ephemeral: true,
-  };
-
-  if (interaction.replied || interaction.deferred) {
-    await interaction.editReply(replyOptions);
-  } else {
-    await interaction.reply(replyOptions);
-  }
-}
-```
-
-### 7.4 Discord Roles Architecture
-
-```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                         Discord Role Hierarchy                                │
-├──────────────────────────────────────────────────────────────────────────────┤
-│                                                                               │
-│  ┌─────────────────────────────────────────────────────────────────────┐     │
-│  │  ADMIN ROLES (Manual Assignment)                                     │     │
-│  │  - @Admin                                                            │     │
-│  │  - @Moderator                                                        │     │
-│  └─────────────────────────────────────────────────────────────────────┘     │
-│                                                                               │
-│  ┌─────────────────────────────────────────────────────────────────────┐     │
-│  │  ELIGIBILITY ROLES (Collab.Land Managed)                            │     │
-│  │  - @Naib (top 7) - Highest tier, council access                     │     │
-│  │  - @Fedaykin (top 8-69) - Base eligible tier                        │     │
-│  └─────────────────────────────────────────────────────────────────────┘     │
-│                                                                               │
-│  ┌─────────────────────────────────────────────────────────────────────┐     │
-│  │  ONBOARDING ROLE (Bot Managed)                                       │     │
-│  │  - @Onboarded - Granted after completing profile setup               │     │
-│  │    → Without this, can't see main channels                          │     │
-│  └─────────────────────────────────────────────────────────────────────┘     │
-│                                                                               │
-│  ┌─────────────────────────────────────────────────────────────────────┐     │
-│  │  ENGAGEMENT ROLES (Bot Managed, Dynamic)                             │     │
-│  │  - @Engaged - 5+ badges OR activity balance > 200                   │     │
-│  │    → Access to #deep-desert                                         │     │
-│  │  - @Veteran - 90+ days tenure                                       │     │
-│  │    → Access to #stillsuit-lounge                                    │     │
-│  │  - @Trusted - 10+ badges OR Helper badge                            │     │
-│  │    → Early event access                                             │     │
-│  │  - @Inner-Circle - Admin granted only                               │     │
-│  │    → Preview features, special events                               │     │
-│  └─────────────────────────────────────────────────────────────────────┘     │
-│                                                                               │
-│  ┌─────────────────────────────────────────────────────────────────────┐     │
-│  │  COSMETIC ROLES (Bot Managed, Badge Rewards)                         │     │
-│  │  - Custom color roles (unlocked at 10+ badges)                      │     │
-│  └─────────────────────────────────────────────────────────────────────┘     │
-│                                                                               │
-└──────────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 8. Security Architecture
-
-### 8.1 Privacy Controls
-
-| Data | API Exposure | Log Exposure | Database Access |
-|------|--------------|--------------|-----------------|
-| Wallet Address | Never | Admin only (encrypted) | Admin only |
-| Discord User ID | Never | Admin only | Admin only |
-| Exact BGT Balance | Never | Never | Admin only |
-| Exact Rank | Never | Never | Admin only |
-| Nym | Public | Safe to log | Public |
-| Bio | Public | Safe to log | Public |
-| Badges | Public | Safe to log | Public |
-| Activity Stats | Self only | Per-member | Admin only |
-
-### 8.2 API Authentication
-
-```typescript
-// src/api/middleware.ts
-
-/**
- * Authentication strategy:
- * - Public endpoints: No auth, rate limited
- * - Profile endpoints: Discord OAuth session
- * - Admin endpoints: API key
- */
-
-// Discord OAuth session middleware
-const sessionAuthMiddleware = async (req, res, next) => {
-  const sessionToken = req.cookies.sietch_session;
-
-  if (!sessionToken) {
-    return res.status(401).json({ error: 'Not authenticated' });
-  }
-
-  const session = await sessionStore.get(sessionToken);
-  if (!session || session.expiresAt < Date.now()) {
-    return res.status(401).json({ error: 'Session expired' });
-  }
-
-  req.discordUserId = session.discordUserId;
-  next();
-};
-
-// Admin API key middleware (unchanged from v1)
-const adminAuthMiddleware = (req, res, next) => {
-  const apiKey = req.headers['x-api-key'];
-
-  if (!apiKey) {
-    return res.status(401).json({ error: 'API key required' });
-  }
-
-  const admin = validateApiKey(apiKey);
-  if (!admin) {
-    return res.status(403).json({ error: 'Invalid API key' });
-  }
-
-  req.admin = admin;
-  next();
-};
-```
-
-### 8.3 Rate Limiting
-
-```typescript
-// Extended rate limiting for new endpoints
 const rateLimits = {
   // Public endpoints
-  eligibility: rateLimit({ windowMs: 60000, max: 100 }),
-  directory: rateLimit({ windowMs: 60000, max: 50 }),
-  publicProfile: rateLimit({ windowMs: 60000, max: 100 }),
+  tiers: rateLimit({ windowMs: 60000, max: 100 }),
+  communityStats: rateLimit({ windowMs: 60000, max: 50 }),
+  tierLeaderboard: rateLimit({ windowMs: 60000, max: 30 }),
 
-  // Authenticated endpoints
-  ownProfile: rateLimit({ windowMs: 60000, max: 30 }),
-  profileUpdate: rateLimit({ windowMs: 60000, max: 10 }),
-  pfpUpload: rateLimit({ windowMs: 60000, max: 3 }),
+  // Member endpoints
+  personalStats: rateLimit({ windowMs: 60000, max: 30 }),
+  tierProgress: rateLimit({ windowMs: 60000, max: 30 }),
+  sponsorInvite: rateLimit({ windowMs: 60000, max: 5 }),
 
   // Admin endpoints
-  adminBadge: rateLimit({ windowMs: 60000, max: 30 }),
+  analytics: rateLimit({ windowMs: 60000, max: 30 }),
 };
 ```
 
-### 8.4 Image Upload Security
+---
+
+## 7. Discord Integration
+
+### 7.1 New Slash Commands
+
+| Command | Subcommand | Description | Visibility |
+|---------|------------|-------------|------------|
+| `/stats` | - | Personal activity summary | Ephemeral |
+| `/invite` | `user @user` | Create sponsor invite | Ephemeral |
+| `/invite` | `status` | Check invite status | Ephemeral |
+| `/leaderboard` | `tiers` | Tier progression ranking | Public |
+| `/admin` | `stats` | Community analytics | Ephemeral |
+
+### 7.2 Discord Role Hierarchy (v3.0)
+
+| Role | Color | Tier | Granted By |
+|------|-------|------|------------|
+| `@Naib` | Gold (#FFD700) | Top 7 | BGT rank |
+| `@Former Naib` | Silver (#C0C0C0) | Historical | After Naib bump |
+| `@Fedaykin` | Blue (#4169E1) | Top 8-69 | BGT rank |
+| `@Usul` | Purple (#9B59B6) | 1111+ BGT | BGT threshold |
+| `@Sayyadina` | Indigo (#6610F2) | 888+ BGT | BGT threshold |
+| `@Mushtamal` | Teal (#20C997) | 690+ BGT | BGT threshold |
+| `@Sihaya` | Green (#28A745) | 420+ BGT | BGT threshold |
+| `@Qanat` | Cyan (#17A2B8) | 222+ BGT | BGT threshold |
+| `@Ichwan` | Orange (#FD7E14) | 69+ BGT | BGT threshold |
+| `@Hajra` | Sand (#C2B280) | 6.9+ BGT | BGT threshold |
+| `@Water Sharer` | Aqua (#00D4FF) | Badge | Admin grant |
+| `@Engaged` | Green | 5+ badges | Badge count |
+| `@Veteran` | Purple | 90+ days | Tenure |
+
+### 7.3 Role Management Extensions
 
 ```typescript
-// src/utils/image.ts
-
-import sharp from 'sharp';
-
-const MAX_IMAGE_SIZE = 2 * 1024 * 1024; // 2MB
-const OUTPUT_SIZE = 256; // 256x256 output
+// Add tier role constants
+const TIER_ROLES: Record<Tier, string> = {
+  hajra: process.env.DISCORD_ROLE_HAJRA!,
+  ichwan: process.env.DISCORD_ROLE_ICHWAN!,
+  qanat: process.env.DISCORD_ROLE_QANAT!,
+  sihaya: process.env.DISCORD_ROLE_SIHAYA!,
+  mushtamal: process.env.DISCORD_ROLE_MUSHTAMAL!,
+  sayyadina: process.env.DISCORD_ROLE_SAYYADINA!,
+  usul: process.env.DISCORD_ROLE_USUL!,
+  fedaykin: process.env.DISCORD_ROLE_FEDAYKIN!,
+  naib: process.env.DISCORD_ROLE_NAIB!,
+};
 
 /**
- * Process and validate uploaded profile image
- * - Validates file type (PNG, JPG, GIF, WebP)
- * - Resizes to 256x256
- * - Compresses to under 1MB for Discord CDN
- * - Strips EXIF data (privacy)
+ * Sync tier role for member
+ * Additive: member keeps all tier roles they've earned
  */
-export async function processProfileImage(buffer: Buffer): Promise<Buffer> {
-  // Validate size
-  if (buffer.length > MAX_IMAGE_SIZE) {
-    throw new ImageTooLargeError();
+async syncTierRole(discordId: string, tier: Tier): Promise<void> {
+  const guild = await this.getGuild();
+  const member = await guild.members.fetch(discordId);
+
+  const roleId = TIER_ROLES[tier];
+  if (!roleId) {
+    logger.warn({ tier }, 'No role ID configured for tier');
+    return;
   }
 
-  // Process with sharp
-  const processed = await sharp(buffer)
-    .resize(OUTPUT_SIZE, OUTPUT_SIZE, {
-      fit: 'cover',
-      position: 'center',
-    })
-    .removeAlpha() // Remove alpha for smaller size
-    .jpeg({ quality: 85 }) // Compress as JPEG
-    .toBuffer();
-
-  // Final size check
-  if (processed.length > 1024 * 1024) {
-    // Re-compress with lower quality
-    return sharp(buffer)
-      .resize(OUTPUT_SIZE, OUTPUT_SIZE, { fit: 'cover' })
-      .jpeg({ quality: 70 })
-      .toBuffer();
+  // Add new tier role
+  if (!member.roles.cache.has(roleId)) {
+    await member.roles.add(roleId);
+    logger.info({ discordId, tier, roleId }, 'Added tier role');
   }
 
-  return processed;
+  // Remove higher tier roles if demoted (shouldn't happen but safety check)
+  const tierIndex = TIER_ORDER.indexOf(tier);
+  for (let i = tierIndex + 1; i < TIER_ORDER.length; i++) {
+    const higherTier = TIER_ORDER[i];
+    const higherRoleId = TIER_ROLES[higherTier];
+    if (higherRoleId && member.roles.cache.has(higherRoleId)) {
+      await member.roles.remove(higherRoleId);
+      logger.info({ discordId, tier: higherTier }, 'Removed higher tier role');
+    }
+  }
 }
 ```
 
 ---
 
-## 9. Scheduled Tasks
+## 8. Scheduled Tasks
 
-### 9.1 trigger.dev Tasks
+### 8.1 Modified Sync Task
 
 ```typescript
-// trigger/activityDecay.ts
+// Add to existing sync-eligibility task
 
-import { schedules, logger } from "@trigger.dev/sdk/v3";
-import { activityService } from "../src/services/activity";
+import { tierService } from '../services/TierService';
+import { notificationService } from '../services/NotificationService';
+import { storyService } from '../services/StoryService';
 
-/**
- * Activity Decay Task
- * Runs every 6 hours to apply demurrage to activity balances
- */
-export const activityDecay = schedules.task({
-  id: "activity-decay",
-  cron: "0 */6 * * *", // Every 6 hours
-  maxDuration: 120,    // 2 minutes max
-  run: async (payload, { ctx }) => {
-    logger.info("Starting activity decay", { runId: ctx.run.id });
+// After eligibility sync, update tiers
+async function processTierUpdates(eligibilityData: EligibilityRecord[]) {
+  const promotions: Array<{
+    memberId: string;
+    discordId: string;
+    oldTier: Tier;
+    newTier: Tier;
+  }> = [];
 
-    const result = await activityService.runDecayTask();
+  for (const record of eligibilityData) {
+    const member = getMemberByWallet(record.address);
+    if (!member) continue;
 
-    logger.info("Activity decay completed", result);
-    return result;
-  },
-});
+    const result = await tierService.updateMemberTier(
+      member.id,
+      record.bgt,
+      record.rank
+    );
 
-// trigger/badgeCheck.ts
+    if (result.changed && tierService.isPromotion(result.oldTier, result.newTier)) {
+      promotions.push({
+        memberId: member.id,
+        discordId: member.discord_id,
+        oldTier: result.oldTier!,
+        newTier: result.newTier,
+      });
 
-import { schedules, logger } from "@trigger.dev/sdk/v3";
-import { badgeService } from "../src/services/badge";
-
-/**
- * Badge Check Task
- * Runs daily to check and award tenure badges
- */
-export const badgeCheck = schedules.task({
-  id: "badge-check",
-  cron: "0 0 * * *", // Daily at midnight
-  maxDuration: 300,  // 5 minutes max
-  run: async (payload, { ctx }) => {
-    logger.info("Starting badge check", { runId: ctx.run.id });
-
-    const allMembers = await db.getAllMemberIds();
-    let awarded = 0;
-
-    for (const memberId of allMembers) {
-      const badges = await badgeService.checkTenureBadges(memberId);
-      awarded += badges.length;
+      // Update Discord role
+      await roleManagerService.syncTierRole(member.discord_id, result.newTier);
     }
+  }
 
-    logger.info("Badge check completed", { checked: allMembers.length, awarded });
-    return { checked: allMembers.length, awarded };
+  // Send promotion notifications
+  for (const promo of promotions) {
+    await notificationService.sendTierPromotion(
+      promo.discordId,
+      promo.newTier
+    );
+
+    // Post story fragment for elite promotions
+    if (promo.newTier === 'fedaykin' || promo.newTier === 'naib') {
+      await storyService.postJoinFragment(promo.newTier);
+    }
+  }
+
+  logger.info({ promotions: promotions.length }, 'Tier sync complete');
+}
+```
+
+### 8.2 Weekly Digest Task
+
+```typescript
+// src/trigger/weekly-digest.ts
+
+import { schedules } from '@trigger.dev/sdk/v3';
+import { digestService } from '../services/DigestService';
+import { logger } from '../utils/logger';
+
+export const weeklyDigestTask = schedules.task({
+  id: 'weekly-digest',
+  cron: '0 0 * * 1', // Monday 00:00 UTC
+  run: async () => {
+    logger.info('Starting weekly digest');
+
+    try {
+      const success = await digestService.postDigest();
+
+      if (success) {
+        logger.info('Weekly digest posted successfully');
+        return { status: 'success' };
+      } else {
+        logger.error('Failed to post weekly digest');
+        return { status: 'failed' };
+      }
+    } catch (error) {
+      logger.error({ error }, 'Weekly digest task error');
+      throw error;
+    }
   },
 });
+```
+
+### 8.3 Task Summary
+
+| Task | Schedule | Function |
+|------|----------|----------|
+| `sync-eligibility` | Every 6 hours | BGT sync + tier updates + promotions |
+| `weekly-digest` | Monday 00:00 UTC | Generate and post digest |
+| `weekly-reset` | Monday 00:00 UTC | Reset weekly counters |
+| `badge-check` | Every 2 hours | Auto-award badges |
+| `activity-decay` | Hourly | Apply demurrage |
+
+---
+
+## 9. Security Architecture
+
+### 9.1 Authorization Rules
+
+| Action | Required |
+|--------|----------|
+| Create sponsor invite | Water Sharer badge |
+| View own tier progress | Verified member |
+| View tier leaderboard | None (public) |
+| Revoke invite | Admin API key |
+| View admin analytics | Admin API key |
+
+### 9.2 Privacy Controls
+
+**Tier Privacy**:
+- Tier name is visible (not sensitive)
+- Exact BGT amount never exposed
+- Tier leaderboard shows rounded BGT (nearest integer)
+- Rank position only shown for top 69
+
+**Sponsor Privacy**:
+- Invited Discord ID stored (needed for lookup)
+- Sponsor relationship visible to both parties
+- Not exposed in public APIs
+
+### 9.3 Input Validation
+
+```typescript
+const createInviteSchema = z.object({
+  discordId: z.string().regex(/^\d{17,19}$/),
+});
+
+const tierSchema = z.enum([
+  'hajra', 'ichwan', 'qanat', 'sihaya',
+  'mushtamal', 'sayyadina', 'usul',
+  'fedaykin', 'naib'
+]);
 ```
 
 ---
 
 ## 10. Deployment Architecture
 
-### 10.1 Extended Environment Configuration
+### 10.1 Environment Variables (New)
 
 ```bash
-# /opt/sietch/.env (extended for v2.0)
+# Discord Tier Roles (add to existing .env)
+DISCORD_ROLE_HAJRA=
+DISCORD_ROLE_ICHWAN=
+DISCORD_ROLE_QANAT=
+DISCORD_ROLE_SIHAYA=
+DISCORD_ROLE_MUSHTAMAL=
+DISCORD_ROLE_SAYYADINA=
+DISCORD_ROLE_USUL=
+# Note: FEDAYKIN and NAIB roles already exist
 
-# =============================================================================
-# Existing v1.0 Configuration
-# =============================================================================
-BERACHAIN_RPC_URLS=https://rpc.berachain.com,https://bera-rpc.publicnode.com
-BGT_ADDRESS=0x...
-REWARD_VAULT_ADDRESSES=0x...,0x...,0x...
-
-TRIGGER_PROJECT_ID=sietch-service
-TRIGGER_SECRET_KEY=your_trigger_secret_key
-
-DISCORD_BOT_TOKEN=your_discord_bot_token
-DISCORD_GUILD_ID=your_guild_id
-DISCORD_CHANNEL_THE_DOOR=channel_id
-DISCORD_CHANNEL_CENSUS=channel_id
-DISCORD_ROLE_NAIB=role_id
-DISCORD_ROLE_FEDAYKIN=role_id
-
-API_PORT=3000
-API_HOST=127.0.0.1
-ADMIN_API_KEYS=key1:admin1,key2:admin2
-
-DATABASE_PATH=/opt/sietch/data/sietch.db
-LOG_LEVEL=info
-
-# =============================================================================
-# New v2.0 Configuration
-# =============================================================================
-
-# Sietch launch date (for OG badge calculation)
-SIETCH_LAUNCH_DATE=2025-12-18
-
-# Additional Discord roles
-DISCORD_ROLE_ONBOARDED=role_id
-DISCORD_ROLE_ENGAGED=role_id
-DISCORD_ROLE_VETERAN=role_id
-DISCORD_ROLE_TRUSTED=role_id
-DISCORD_ROLE_INNER_CIRCLE=role_id
-
-# Additional Discord channels
-DISCORD_CHANNEL_GENERAL=channel_id
-DISCORD_CHANNEL_BOT_COMMANDS=channel_id
-DISCORD_CHANNEL_DEEP_DESERT=channel_id
-DISCORD_CHANNEL_STILLSUIT_LOUNGE=channel_id
-
-# Tracked channels for activity (comma-separated)
-DISCORD_TRACKED_CHANNELS=channel_id1,channel_id2,channel_id3
-
-# Activity decay configuration
-ACTIVITY_DECAY_RATE=0.9
-ACTIVITY_DECAY_INTERVAL_HOURS=6
-
-# Session configuration (for web API auth)
-SESSION_SECRET=your_session_secret
-SESSION_EXPIRY_HOURS=24
+# Discord Channels (add)
+DISCORD_ANNOUNCEMENTS_CHANNEL_ID=
+DISCORD_THE_DOOR_CHANNEL_ID=
 ```
+
+### 10.2 Migration Procedure
+
+1. **Pre-deployment**:
+   - Create Discord roles for new tiers
+   - Configure Collab.Land for new tier thresholds
+   - Set up Discord channel permissions
+
+2. **Database Migration**:
+   ```bash
+   npm run migrate
+   ```
+
+3. **Seed Story Fragments**:
+   ```bash
+   npm run seed:stories
+   ```
+
+4. **Deploy Application**:
+   - Push to main branch (triggers GitHub Actions)
+   - Verify health check passes
+   - Monitor logs for tier sync
+
+5. **Post-deployment**:
+   - Run initial tier assignment: `npm run task:sync`
+   - Verify role assignments in Discord
+   - Test sponsor invite flow
+
+### 10.3 Rollback Plan
+
+1. Revert to previous deployment
+2. Tier columns remain (no data loss)
+3. New tables ignored by old code
+4. Discord roles can be manually cleaned
 
 ---
 
-## 11. Migration Plan
+## 11. Testing Strategy
 
-### 11.1 v1.0 to v2.0 Migration
+### 11.1 Unit Tests
 
 ```typescript
-// src/db/migrations/002_social_layer.ts
+describe('TierService', () => {
+  describe('calculateTier', () => {
+    it('returns hajra for 6.9 BGT', () => {
+      expect(tierService.calculateTier(6.9, null)).toBe('hajra');
+    });
 
-export async function up(db: Database): Promise<void> {
-  // Run new table creation SQL
-  db.exec(SOCIAL_LAYER_SCHEMA_SQL);
+    it('returns ichwan for 69 BGT', () => {
+      expect(tierService.calculateTier(69, null)).toBe('ichwan');
+    });
 
-  // Migrate existing members
-  const existingMappings = db.prepare(`
-    SELECT discord_user_id, wallet_address, verified_at
-    FROM wallet_mappings
-  `).all();
+    it('returns fedaykin for rank 50', () => {
+      expect(tierService.calculateTier(1000, 50)).toBe('fedaykin');
+    });
 
-  for (const mapping of existingMappings) {
-    // Check if in current eligibility
-    const eligibility = db.prepare(`
-      SELECT address FROM current_eligibility WHERE address = ?
-    `).get(mapping.wallet_address);
+    it('returns naib for rank 5', () => {
+      expect(tierService.calculateTier(500, 5)).toBe('naib');
+    });
 
-    if (eligibility) {
-      // Create placeholder profile (onboarding not complete)
-      db.prepare(`
-        INSERT INTO member_profiles (
-          id, discord_user_id, wallet_address, nym,
-          created_at, updated_at, onboarding_complete
-        ) VALUES (?, ?, ?, ?, ?, ?, 0)
-      `).run(
-        crypto.randomUUID(),
-        mapping.discord_user_id,
-        mapping.wallet_address,
-        `Member_${mapping.discord_user_id.slice(-6)}`, // Temporary nym
-        mapping.verified_at,
-        new Date().toISOString()
-      );
-    }
-  }
+    it('rank takes precedence over BGT', () => {
+      expect(tierService.calculateTier(10, 30)).toBe('fedaykin');
+    });
+  });
 
-  logger.info(`Migrated ${existingMappings.length} members to v2.0 schema`);
-}
+  describe('isPromotion', () => {
+    it('returns true for tier increase', () => {
+      expect(tierService.isPromotion('hajra', 'ichwan')).toBe(true);
+    });
 
-export async function down(db: Database): Promise<void> {
-  // Drop new tables (careful - data loss!)
-  db.exec(`
-    DROP TABLE IF EXISTS member_perks;
-    DROP TABLE IF EXISTS member_activity;
-    DROP TABLE IF EXISTS member_badges;
-    DROP TABLE IF EXISTS badges;
-    DROP TABLE IF EXISTS member_profiles;
-  `);
-}
+    it('returns false for same tier', () => {
+      expect(tierService.isPromotion('ichwan', 'ichwan')).toBe(false);
+    });
+  });
+});
 ```
 
-### 11.2 Existing Member Onboarding
+### 11.2 Test Coverage Targets
 
-Existing members (from v1.0) will be prompted to complete their profile:
-
-1. On bot startup, check for profiles with `onboarding_complete = 0`
-2. Send them a DM prompting them to complete setup
-3. They can access channels but will see a persistent reminder
-4. After completing onboarding, they get their full profile and any retroactive badges
+| Component | Target |
+|-----------|--------|
+| TierService | 90% |
+| SponsorService | 90% |
+| DigestService | 80% |
+| StatsService | 80% |
+| API Routes | 85% |
+| Discord Commands | 75% |
 
 ---
 
 ## 12. Technical Risks & Mitigations
 
-| Risk | Probability | Impact | Mitigation |
-|------|-------------|--------|------------|
-| Privacy leak (wallet-nym correlation) | Low | Critical | Strict data separation, security audit, never join in API |
-| Nym collision race condition | Low | Medium | Database UNIQUE constraint, transaction isolation |
-| Avatar generation performance | Low | Low | Pre-generate on profile creation, cache result |
-| Activity tracking spam | Medium | Medium | Rate limit messages, diminishing returns on rapid activity |
-| Discord CDN image deletion | Low | Medium | Store original in DB, regenerate if CDN fails |
-| Onboarding drop-off | Medium | Medium | Reminders, simplified flow, ephemeral fallback |
-| Badge gaming | Low | Medium | Demurrage system naturally prevents, admin review for contribution badges |
+| Risk | Likelihood | Impact | Mitigation |
+|------|------------|--------|------------|
+| **Tier calculation drift** | Low | High | Single source of truth in sync task |
+| **Role assignment race** | Medium | Medium | Queue role updates; idempotent ops |
+| **Sponsor abuse** | Low | Medium | Admin-only badge; one invite limit |
+| **Story fragment exhaustion** | Low | Low | Usage counting; admin can add more |
+| **Digest posting failure** | Medium | Low | Retry logic; manual trigger available |
+| **Migration data loss** | Low | Critical | Additive schema changes only |
 
 ---
 
 ## 13. Future Considerations
 
-### 13.1 Potential Enhancements
+### 13.1 Potential v3.1 Features
 
-| Enhancement | Complexity | Value | Notes |
-|-------------|------------|-------|-------|
-| Web dashboard | High | High | Full profile management outside Discord |
-| NFT badges | Medium | Medium | On-chain proof of achievements |
-| Cross-server identity | High | Low | Portability to other communities |
-| Governance integration | Medium | Medium | Badge-weighted voting |
-| API for external tools | Low | Medium | Let community build on profiles |
+- **Tier-specific badges**: Auto-award badges for reaching certain tiers
+- **Sponsor leaderboard**: Track who has sponsored the most members
+- **Digest customization**: Allow members to opt-in to DM digests
+- **Story fragment voting**: Let Naib vote on favorite fragments
 
-### 13.2 Technical Debt Awareness
+### 13.2 Scalability Path
 
-- **Discord CDN dependency**: If Discord changes CDN policies, need fallback storage
-- **SQLite scale**: Still appropriate for 69 members, but monitor if expanding
-- **Demurrage tuning**: May need to adjust decay rate based on community feedback
+| Scale | Recommendation |
+|-------|----------------|
+| 500 members | Current architecture sufficient |
+| 1000 members | Add read replicas for analytics |
+| 5000+ members | Migrate to PostgreSQL; add Redis cache |
 
 ---
 
-## 14. Version History
+## 14. Appendix
+
+### 14.1 Tier Threshold Constants
+
+```typescript
+export const TIER_THRESHOLDS = {
+  hajra: 6.9,
+  ichwan: 69,
+  qanat: 222,
+  sihaya: 420,
+  mushtamal: 690,
+  sayyadina: 888,
+  usul: 1111,
+  fedaykin: null,  // Top 8-69
+  naib: null,      // Top 7
+} as const;
+```
+
+### 14.2 Discord Role Colors
+
+| Role | Hex | Preview |
+|------|-----|---------|
+| Hajra | #C2B280 | Sand |
+| Ichwan | #FD7E14 | Orange |
+| Qanat | #17A2B8 | Cyan |
+| Sihaya | #28A745 | Green |
+| Mushtamal | #20C997 | Teal |
+| Sayyadina | #6610F2 | Indigo |
+| Usul | #9B59B6 | Purple |
+| Fedaykin | #4169E1 | Blue |
+| Naib | #FFD700 | Gold |
+
+### 14.3 Weekly Digest Schedule
+
+- **Collection**: Sunday 23:59 UTC (end of week)
+- **Posting**: Monday 00:00 UTC (start of week)
+- **Channel**: #announcements
+- **Format**: Plain text with emoji headers
+
+---
+
+## 15. Version History
 
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0 | 2025-12-17 | Initial MVP - eligibility, API, Discord notifications |
 | 2.0 | 2025-12-18 | Social Layer - profiles, badges, directory, activity tracking |
+| 2.1 | 2025-12-19 | Naib Dynamics & Threshold system |
+| 3.0 | 2025-12-20 | The Great Expansion - 9-tier system, sponsors, digest |
 
 ---
 
-*Document generated by Architecture Designer*
+*Document generated by Architecture Designer Agent*

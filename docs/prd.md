@@ -1,8 +1,9 @@
 # Product Requirements Document: Sietch
 
-**Version**: 2.0
-**Date**: December 18, 2025
+**Version**: 3.0
+**Date**: December 20, 2025
 **Status**: Draft
+**Codename**: The Great Expansion
 
 ---
 
@@ -10,576 +11,782 @@
 
 ### 1.1 Product Overview
 
-**Sietch** is a privacy-first, token-gated Discord community for the top 69 BGT (Berachain Governance Token) holders who have never redeemed (burned) any of their BGT holdings.
+**Sietch** is a privacy-first, token-gated Discord community for BGT (Berachain Governance Token) holders who have never redeemed (burned) any of their BGT holdings.
 
-Version 2.0 introduces a comprehensive **Social Layer** with pseudonymous member profiles, reputation badges, exclusive access perks, and a member directory - all built with a cypherpunk privacy-first mindset where wallet addresses and on-chain identities are never publicly linked to member identities.
+Version 3.0 introduces **The Great Expansion** - a multi-tiered membership system that opens the community beyond the top 69 to ALL qualified BGT holders with a minimum of 6.9 BGT. This creates a layered sanctuary with 9 distinct tiers, progressive access controls, and community growth mechanics including sponsor invites.
 
 ### 1.2 Problem Statement
 
-The Sietch MVP successfully established the token-gated community, but lacks:
-1. **Member identity and expression** - No way for members to create personalized identities
-2. **Recognition and engagement** - No system to reward participation and tenure
-3. **Member discovery** - No way to browse or find other community members
-4. **Progressive rewards** - No exclusive perks for engaged members
+Sietch v2.0/v2.1 successfully established:
+1. Token-gated community for top 69 BGT holders
+2. Privacy-preserving pseudonymous identity system
+3. Social layer with profiles, badges, and engagement tracking
+4. Naib governance layer with dynamic seat competition
+5. Waitlist system for positions 70-100
+
+**However**, the current system has limitations:
+1. **Exclusivity ceiling** - Only 69 members can participate; vast majority of BGT holders excluded
+2. **Limited growth** - Community can't grow beyond fixed cap despite demand
+3. **Binary access** - You're either in (top 69) or out; no graduated access
+4. **Missed engagement** - Holders with significant BGT (e.g., 500 BGT) have no pathway
 
 ### 1.3 Vision
 
-Sietch becomes a privacy-respecting digital sanctuary where top BGT holders can:
-- Express themselves through pseudonymous identities (nyms) completely unlinked from their wallets
-- Earn recognition through a reputation and badge system
-- Discover and connect with other members without compromising privacy
-- Unlock exclusive access and perks based on engagement, not just holdings
+Sietch v3.0 transforms from an exclusive club into a **layered sanctuary**:
 
-**Core Design Principle**: Every feature assumes a cypherpunk threat model - wallets are transparent on-chain, but within Sietch, members can be completely pseudonymous.
+- **9 tiers** based on BGT holdings (6.9 minimum to Top 7)
+- **Progressive permissions** - Higher tiers unlock more access and capabilities
+- **Sponsor system** - Recognized contributors can invite one person to share their tier
+- **Automated celebrations** - Tier promotions and badge awards trigger notifications
+- **Weekly pulse** - Digest recapping community activity
+- **Story immersion** - Cryptic Dune-themed narratives when elite members join
+
+**Core Principle**: Maintain the "never redeemed" purity requirement while dramatically expanding who can participate.
 
 ### 1.4 Success Metrics
 
 | Metric | Target | Measurement |
 |--------|--------|-------------|
-| Profile completion rate | >80% of members | Members with custom nym, PFP, and bio |
-| Badge engagement | >50% earn 3+ badges | Members with multiple badges |
-| Member retention | >85% at 30 days | Members who remain active and engaged |
-| Feature adoption | >60% use directory | Members who browse member directory |
-| Member satisfaction | NPS >50 | Periodic community surveys |
+| Total membership | 500+ active | Members across all tiers |
+| Tier distribution | Healthy curve | No tier > 40% of total |
+| Engagement depth | Correlated | Higher tiers show higher engagement |
+| DAU BGT representation | 1M+ BGT | Total BGT held by daily active users |
+| Profile completion | >80% | Members with nym, PFP, and bio |
+| Retention | >85% at 30 days | Monthly member retention |
+| Sponsor utilization | >50% | Sponsors who use their invite |
 
 ---
 
-## 2. User & Stakeholder Context
+## 2. Tier System
 
-### 2.1 Target Users
+### 2.1 Complete Tier Structure
 
-**Primary**: Top 69 BGT holders who have never redeemed any BGT
+| BGT Threshold | Tier Name | Area | Permissions |
+|---------------|-----------|------|-------------|
+| **6.9+** | Hajra | Tier 0 (Cave Entrance) | Read-only; see VC member count only |
+| **69+** | Ichwan | Tier 0 (Cave Entrance) | Read/write in Tier 0; see VC member count only |
+| **222+** | Qanat | Tier 2 | Read Tier 2, write Tier 0+; see VC member count |
+| **420+** | Sihaya | Tier 2 | Write Tier 2+0; see VC member count |
+| **690+** | Mushtamal | Tier 2 | Write Tier 2+0; full VC access in Tier 2 |
+| **888+** | Sayyadina | Tier 3 | Write Tier 3+2+0; see VC members (no speak) |
+| **1111+** | Usul | Tier 3 | Write Tier 3+2+0; full VC access in Tier 3 |
+| **Top 8-69** | Fedaykin | All Public | Full access all public channels + VCs |
+| **Top 7** | Naib | Council + All | Full access + private Naib council zone |
 
-**User Personas**:
+### 2.2 Tier Naming (Dune Lore)
 
-| Persona | Profile | Privacy Needs |
-|---------|---------|---------------|
-| **The Whale** | Large BGT holder, wants to engage but stay anonymous | Maximum privacy - doesn't want holdings associated with identity |
-| **The Builder** | Active protocol participant, wants recognition | Wants to be known for contributions, not wallet size |
-| **The Lurker** | Prefers to observe, occasional participation | Wants to browse without being tracked |
-| **The Networker** | Wants to connect with specific members | Needs discovery features while respecting others' privacy |
+All tier names draw from Frank Herbert's Dune universe:
 
-### 2.2 Privacy Threat Model
+- **Hajra** - "Journey of seeking" - on the path to belonging
+- **Ichwan** - "Brotherhood" (from Ichwan Bedwine) - first acceptance into community
+- **Qanat** - Underground water channels - access to hidden depths
+- **Sihaya** - "Desert spring" (Chani's secret name) - precious, life-giving
+- **Mushtamal** - Inner garden of the sietch - trusted inner space
+- **Sayyadina** - Fremen priestess rank - spiritual guide, near-leader
+- **Usul** - "Base of the pillar" (Paul's sietch name) - innermost identity
+- **Fedaykin** - Elite warriors, death commandos of the Fremen
+- **Naib** - Tribal leader of the sietch
 
-Members should be protected from:
-1. **Wallet-identity correlation** - No one should link a member's nym to their wallet address
-2. **Holdings exposure** - Exact BGT balances should never be visible
-3. **Rank identification** - Specific leaderboard position should be private
-4. **Discord identity leak** - Server-specific identity should be independent of Discord username
+### 2.3 Eligibility Requirements
 
-**What IS allowed**:
-- Tier visibility (Naib/Fedaykin) - this is public by role anyway
-- Self-disclosed information
-- Aggregate statistics (e.g., "member since Month Year")
+**All tiers require**:
+1. BGT balance >= tier threshold
+2. **Zero BGT redemptions** - Never burned any BGT from wallet
+3. Wallet verification via Collab.Land
+4. Completed onboarding (nym, PFP, optional bio)
+
+**Note**: BGT can only increase (redemption = disqualification). Members can only maintain or rise in tier - never fall due to BGT decrease.
+
+### 2.4 Tier Progression
+
+```
+Hajra (6.9) → Ichwan (69) → Qanat (222) → Sihaya (420) → Mushtamal (690)
+                                                              ↓
+                                    Sayyadina (888) → Usul (1111)
+                                                              ↓
+                                         Fedaykin (Top 8-69) → Naib (Top 7)
+```
+
+**Tier upgrades are automatic**: When a member's BGT crosses a threshold during sync, they're upgraded.
 
 ---
 
-## 3. Functional Requirements
+## 3. Discord Channel Structure
 
-### 3.1 Pseudonymous Identity System
+### 3.1 Proposed Minimal Structure
 
-#### 3.1.1 Nym (Server-Specific Name)
-
-- **Unique identifier** within Sietch, completely unlinked to wallet or Discord username
-- **Format**: 3-32 characters, alphanumeric + limited special chars
-- **Uniqueness**: Enforced server-wide
-- **Changeability**: Can be changed (with cooldown period to prevent confusion)
-
-#### 3.1.2 Custom Profile Picture (PFP)
-
-- **Upload option**: Members can upload custom images
-- **Size limits**: Max 2MB, 256x256 minimum resolution
-- **Generation option**: Random avatar generator for quick setup
-- **Default**: Procedurally generated based on internal ID (not wallet)
-
-#### 3.1.3 Bio/Tagline
-
-- **Short bio**: Max 200 characters
-- **Optional**: Not required for profile completion
-- **Content**: Free text, no links (prevents doxing)
-
-#### 3.1.4 Profile Data Model
+Philosophy: Higher tiers see all channels below. Minimize channels to prevent overwhelm.
 
 ```
-Member Profile:
-├── internal_id (UUID, never exposed)
-├── nym (public within server)
-├── pfp_url (public within server)
-├── bio (public within server, optional)
-├── created_at (private)
-├── tier (Naib/Fedaykin - public)
-├── badges[] (public)
-├── tenure_category (e.g., "OG", "Veteran" - public)
-├── [PRIVATE - never exposed]
-│   ├── discord_user_id
-│   ├── wallet_address
-│   ├── exact_bgt_balance
-│   └── exact_rank_position
+SIETCH SERVER
+│
+├── 📜 STILLSUIT (Info - @everyone)
+│   ├── #water-discipline ──── Welcome, rules, Chatham House reminder
+│   └── #announcements ─────── Weekly digest, important updates
+│
+├── 🚪 TIER 0: CAVE ENTRANCE (6.9+ BGT)
+│   ├── #cave-entrance ──────── Main discussion (read: Hajra+, write: Ichwan+)
+│   └── 🔊 cave-voices ──────── VC (see count: all, join: Ichwan+)
+│
+├── 🕳️ TIER 2: THE DEPTHS (222+ BGT)
+│   ├── #the-depths ─────────── Main discussion (read: Qanat+, write: Sihaya+)
+│   └── 🔊 depth-voices ─────── VC (see count: Qanat+, join+speak: Mushtamal+)
+│
+├── ⚡ TIER 3: INNER SANCTUM (888+ BGT)
+│   ├── #inner-sanctum ──────── Main discussion (read+write: Sayyadina+)
+│   └── 🔊 sanctum-voices ───── VC (see members: Sayyadina+, speak: Usul+)
+│
+├── ⚔️ FEDAYKIN COMMONS (Top 69)
+│   ├── #general ────────────── Main discussion
+│   ├── #spice ──────────────── Market insights, alpha
+│   ├── #water-shares ───────── Ideas and proposals
+│   ├── #introductions ──────── Member introductions
+│   ├── #census ─────────────── Live leaderboard
+│   ├── #the-door ───────────── Member joins/departures + story fragments
+│   └── 🔊 fedaykin-voices ──── Full VC access
+│
+├── 🏛️ NAIB COUNCIL (Top 7 Only)
+│   ├── #council-rock ───────── Private Naib discussion
+│   └── 🔊 council-chamber ──── Private VC (hidden from all others)
+│
+├── 🏛️ NAIB ARCHIVES (Naib + Former Naib)
+│   └── #naib-archives ──────── Historical discussions
+│
+├── 🏜️ DEEP DESERT (Engaged - 5+ badges)
+│   └── #deep-desert ────────── Engaged members space
+│
+├── 🧘 STILLSUIT LOUNGE (Veterans - 90+ days)
+│   └── #stillsuit-lounge ───── Long-term members space
+│
+└── 🛠️ WINDTRAP (Support)
+    ├── #support ────────────── Technical help
+    └── #bot-commands ───────── Bot interactions
 ```
 
-### 3.2 DM-Based Onboarding Flow
+### 3.2 Permission Matrix
 
-New members receive a private DM wizard to set up their pseudonymous identity.
-
-#### 3.2.1 Flow Steps
-
-```
-[Member gains access via Collab.Land]
-            │
-            ▼
-[Bot DM: Welcome to Sietch!]
-"You've verified your eligibility. Let's set up your
-anonymous identity. Nothing you choose here will be
-linked to your wallet."
-            │
-            ▼
-[Step 1: Choose Your Nym]
-"Pick a name you'll be known by in Sietch:"
-[Text input or "Suggest Random" button]
-            │
-            ▼
-[Step 2: Profile Picture]
-"Choose your avatar:"
-[Upload] [Generate Random] [Skip for now]
-            │
-            ▼
-[Step 3: Bio (Optional)]
-"Add a short bio (optional):"
-[Text input] [Skip]
-            │
-            ▼
-[Confirmation]
-"Welcome, {nym}! Your identity is set.
-You can change these anytime with /profile edit"
-[View Profile] [Go to #general]
-```
-
-#### 3.2.2 Privacy Assurances
-
-At each step, display privacy reassurances:
-- "Your wallet address will never be shown publicly"
-- "Your BGT balance is private"
-- "Only you and admins can see your wallet connection"
-
-### 3.3 Reputation & Badge System
-
-#### 3.3.1 Badge Categories
-
-| Category | Badge | Criteria | Icon Suggestion |
-|----------|-------|----------|-----------------|
-| **Tenure** | OG | Member in first 30 days of Sietch launch | Ancient spice harvester |
-| **Tenure** | Veteran | 90+ days as member | Weathered stillsuit |
-| **Tenure** | Elder | 180+ days as member | Naib staff |
-| **Streak** | Consistent | Active 7 days in a row | Water drops |
-| **Streak** | Dedicated | Active 30 days in a row | Full water pouch |
-| **Streak** | Devoted | Active 90 days in a row | Maker hook |
-| **Contribution** | Helper | Recognized by admins for helping others | Guiding hand |
-| **Contribution** | Thought Leader | Consistent quality contributions | Third-stage guild navigator |
-| **Special** | Founding Fedaykin | Original top 69 at launch | Golden crysknife |
-| **Special** | Promoted | Rose from Fedaykin to Naib | Rising sun |
-
-#### 3.3.2 Badge Award Mechanisms
-
-- **Automatic**: Tenure and streak badges awarded by system
-- **Admin-granted**: Helper and Thought Leader badges
-- **Event-triggered**: Founding badges, promotion badges
-
-#### 3.3.3 Badge Display
-
-- Badges visible on member profiles
-- Top 3 badges shown in member directory preview
-- Full badge showcase on profile view
-
-### 3.4 Member Directory
-
-#### 3.4.1 Directory Features
-
-- **Browse**: Paginated list of all members (by nym, never wallet)
-- **Filter**: By tier, badges, tenure category
-- **Search**: By nym only (no wallet search)
-- **Sort**: By nym (alphabetical), tenure, badge count
-
-#### 3.4.2 Directory Entry Display
-
-```
-┌────────────────────────────────────┐
-│ [PFP] CryptoNomad                  │
-│ ═══════════════════                │
-│ Fedaykin · OG · Veteran            │
-│ "Just here for the spice"          │
-│                                    │
-│ [View Profile]                     │
-└────────────────────────────────────┘
-```
-
-#### 3.4.3 Privacy in Directory
-
-- NO wallet address shown
-- NO exact BGT balance
-- NO exact rank position
-- ONLY: Nym, PFP, tier, badges, bio snippet, tenure category
-
-### 3.5 Exclusive Access & Perks
-
-#### 3.5.1 Perk Tiers
-
-| Perk Level | Unlock Criteria | Benefits |
-|------------|-----------------|----------|
-| **Base** | Verified member | Standard access |
-| **Engaged** | 5+ badges OR 30+ day streak | Access to #deep-desert channel |
-| **Trusted** | 10+ badges OR Helper badge | Access to exclusive events |
-| **Inner Circle** | Admin-granted | Early access to features, special events |
-
-#### 3.5.2 Private Channels (Earned Access)
-
-- **#deep-desert**: Unlocked by engagement, for focused discussions
-- **#stillsuit-lounge**: Unlocked by tenure (90+ days), chill space
-
-#### 3.5.3 Special Events
-
-- **AMAs**: Priority access for Trusted+ members
-- **Calls**: Exclusive voice events for engaged members
-- **Early Access**: New features shown to Inner Circle first
-
-#### 3.5.4 Custom Perks
-
-- **Custom color role**: Unlocked at 10+ badges
-- **Custom emoji slots**: Unlocked at Trusted tier
-- **Profile flair**: Special frames/borders based on achievements
-
-### 3.6 Discord Bot Commands
-
-#### 3.6.1 Slash Commands
-
-| Command | Description | Privacy |
-|---------|-------------|---------|
-| `/profile` | View your own profile | Private response |
-| `/profile view @nym` | View another member's profile | Public embed |
-| `/profile edit` | Open profile editing wizard | DM-based |
-| `/badges` | View your badges | Private response |
-| `/badges @nym` | View another member's badges | Public embed |
-| `/directory` | Open member directory browser | Interactive embed |
-| `/stats` | View your engagement stats | Private response |
-| `/leaderboard` | View engagement leaderboard (by nym) | Public embed |
-
-#### 3.6.2 Button/Menu Interactions
-
-- **Profile cards**: Expandable with buttons
-- **Directory pagination**: Next/Previous buttons
-- **Filter menus**: Dropdown selectors
-- **Onboarding wizard**: Button-driven flow
+| Channel | Hajra | Ichwan | Qanat | Sihaya | Mushtamal | Sayyadina | Usul | Fedaykin | Naib |
+|---------|-------|--------|-------|--------|-----------|-----------|------|----------|------|
+| #cave-entrance | Read | R/W | R/W | R/W | R/W | R/W | R/W | R/W | R/W |
+| cave-voices | Count | Join | Join | Join | Join | Join | Join | Full | Full |
+| #the-depths | - | - | Read | R/W | R/W | R/W | R/W | R/W | R/W |
+| depth-voices | - | - | Count | Count | Full | Full | Full | Full | Full |
+| #inner-sanctum | - | - | - | - | - | R/W | R/W | R/W | R/W |
+| sanctum-voices | - | - | - | - | - | See | Full | Full | Full |
+| Fedaykin channels | - | - | - | - | - | - | - | Full | Full |
+| #council-rock | - | - | - | - | - | - | - | - | Full |
 
 ---
 
-## 4. Technical Requirements
+## 4. Functional Requirements
 
-### 4.1 Updated System Architecture
+### 4.1 Tier Management Service
 
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Berachain     │────▶│  Sietch Service │────▶│   Collab.Land   │
-│   RPC Nodes     │     │   (Extended)    │     │  (Discord Bot)  │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-                               │
-                               │ API + Discord.js
-                               ▼
-                        ┌─────────────────┐
-                        │  Discord Server │
-                        │    (Sietch)     │
-                        └─────────────────┘
-```
+#### 4.1.1 Tier Assignment
 
-### 4.2 Database Schema Extensions
+- Automatic tier calculation based on BGT balance
+- Tier stored in member profile
+- Role assignment via Discord API
+- Upgrade notifications via DM
+
+#### 4.1.2 Tier Data Model Extension
 
 ```sql
--- Member profiles (pseudonymous identity)
-CREATE TABLE member_profiles (
-    id TEXT PRIMARY KEY,  -- UUID
-    discord_user_id TEXT NOT NULL UNIQUE,  -- FK to discord user (private)
-    wallet_address TEXT NOT NULL,  -- (private, never exposed via API)
-    nym TEXT NOT NULL UNIQUE,
-    pfp_url TEXT,
-    bio TEXT,
+-- Add tier to member_profiles
+ALTER TABLE member_profiles ADD COLUMN tier TEXT DEFAULT 'hajra';
+ALTER TABLE member_profiles ADD COLUMN tier_updated_at INTEGER;
+
+-- Tier history for analytics
+CREATE TABLE tier_history (
+    id TEXT PRIMARY KEY,
+    member_id TEXT NOT NULL,
+    from_tier TEXT,
+    to_tier TEXT NOT NULL,
+    bgt_at_change INTEGER NOT NULL,
+    changed_at INTEGER NOT NULL,
+    FOREIGN KEY (member_id) REFERENCES member_profiles(id)
+);
+```
+
+### 4.2 Sponsor/Invite System
+
+#### 4.2.1 Sponsor Badge
+
+**"Water Sharer"** badge - Dune-themed recognition for contributors:
+- Granted by admin via `/admin badge award`
+- Indicates member can sponsor one person
+- Visible on profile and directory
+
+#### 4.2.2 Invite Mechanics
+
+- **Command**: `/invite @discorduser`
+- **Effect**: Invited person receives sponsor's tier
+- **Duration**: Permanent (as long as sponsor has the badge)
+- **Limit**: One active invite per sponsor
+- **Requirements**:
+  - Sponsor must have Water Sharer badge
+  - Invited user must not already be a member
+  - Invited user doesn't need BGT (bypass)
+
+#### 4.2.3 Invite Data Model
+
+```sql
+CREATE TABLE sponsor_invites (
+    id TEXT PRIMARY KEY,
+    sponsor_member_id TEXT NOT NULL,
+    invited_discord_id TEXT NOT NULL,
+    invited_member_id TEXT,  -- Set when they complete onboarding
+    tier_granted TEXT NOT NULL,
     created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL,
-    nym_last_changed INTEGER,  -- cooldown tracking
-    FOREIGN KEY (discord_user_id) REFERENCES eligibility(discord_user_id)
+    accepted_at INTEGER,
+    revoked_at INTEGER,
+    FOREIGN KEY (sponsor_member_id) REFERENCES member_profiles(id)
 );
+```
 
--- Badges
-CREATE TABLE badges (
+### 4.3 Notification System Extensions
+
+#### 4.3.1 Tier Promotion Notifications
+
+DM sent when member crosses tier threshold:
+
+```
+🎉 Tier Promotion!
+
+Congratulations, {nym}! You've ascended to **{new_tier}**.
+
+Your BGT holdings have crossed the {threshold} BGT threshold.
+New channels are now available to you.
+
+[View Your Profile]
+```
+
+#### 4.3.2 Badge Award Notifications
+
+DM sent when admin awards badge:
+
+```
+🏅 New Badge Earned!
+
+{nym}, you've been recognized!
+
+**{badge_name}**
+{badge_description}
+
+{special_note if Water Sharer: "You can now invite one person to share your tier using /invite"}
+
+[View Your Badges]
+```
+
+#### 4.3.3 Weekly Digest
+
+Posted to #announcements every Monday:
+
+```
+📜 Weekly Pulse of the Sietch
+
+**Week of {date_range}**
+
+📊 Community Stats:
+• Total Members: {count} (+{new_this_week})
+• BGT Represented: {total_bgt} BGT
+• Most Active Tier: {tier_name}
+
+🎖️ New Members:
+• {count} joined this week
+• Notable: {top_bgt_new_member} entered as {tier}
+
+⬆️ Tier Promotions:
+• {count} members rose to higher tiers
+• {nym} reached Usul!
+
+🏅 Badges Awarded:
+• {count} badges given this week
+
+The spice flows...
+```
+
+### 4.4 Story Fragment System
+
+#### 4.4.1 Top 69 Join Announcements
+
+When a new Fedaykin or Naib joins, post a cryptic story fragment to #the-door:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+The winds shifted across the Great Bled.
+A new figure emerged from the dancing sands,
+their stillsuit bearing the marks of deep desert travel.
+
+The watermasters took note.
+Another has proven their worth in the spice trade.
+
+A new Fedaykin walks among us.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+Story fragments are:
+- Pre-written collection (10-20 variations)
+- Randomly selected
+- Never reveal nym or tier specifics
+- Posted immediately after onboarding completes
+
+### 4.5 Analytics Dashboard (Admin)
+
+#### 4.5.1 Stats Command
+
+`/admin stats` - Shows:
+- Total members by tier
+- Tier distribution chart
+- Total BGT represented
+- Weekly active users
+- New members this week
+- Tier promotions this week
+- Badge awards this week
+
+#### 4.5.2 API Endpoint
+
+`GET /admin/analytics` returns:
+```json
+{
+  "total_members": 450,
+  "by_tier": {
+    "hajra": 150,
+    "ichwan": 120,
+    "qanat": 80,
+    "sihaya": 50,
+    "mushtamal": 25,
+    "sayyadina": 12,
+    "usul": 6,
+    "fedaykin": 6,
+    "naib": 1
+  },
+  "total_bgt": 1250000,
+  "weekly_active": 320,
+  "new_this_week": 45,
+  "promotions_this_week": 12
+}
+```
+
+### 4.6 Member Stats Command
+
+`/stats` - Personal activity summary (ephemeral):
+
+```
+📊 Your Sietch Stats
+
+**{nym}** | {tier}
+
+📈 Activity:
+• Messages this week: {count}
+• Current streak: {days} days
+• Longest streak: {days} days
+
+🎖️ Badges: {count}
+• {badge_list}
+
+⬆️ Tier Progress:
+• Current: {tier} ({bgt} BGT)
+• Next tier: {next_tier} at {threshold} BGT
+• Distance: {distance} BGT to go
+
+🕐 Member since: {date}
+```
+
+### 4.7 Tier Leaderboard
+
+`/leaderboard tiers` - Shows progression toward next tier:
+
+```
+📊 Tier Progression Leaderboard
+
+Closest to Promotion:
+
+1. {nym} - 418/420 BGT → Sihaya (2 BGT away)
+2. {nym} - 880/888 BGT → Sayyadina (8 BGT away)
+3. {nym} - 1100/1111 BGT → Usul (11 BGT away)
+...
+
+Your position: #{rank} ({bgt}/{next_threshold} BGT)
+```
+
+---
+
+## 5. Badge System Updates
+
+### 5.1 Existing Badges (Retained)
+
+| Category | Badge | Criteria |
+|----------|-------|----------|
+| Tenure | OG | Member in first 30 days |
+| Tenure | Veteran | 90+ days as member |
+| Tenure | Elder | 180+ days as member |
+| Streak | Consistent | 7 day activity streak |
+| Streak | Dedicated | 30 day activity streak |
+| Streak | Devoted | 90 day activity streak |
+| Contribution | Helper | Admin-granted for helping others |
+| Contribution | Thought Leader | Admin-granted for quality contributions |
+| Special | Founding Fedaykin | Original top 69 at launch |
+| Special | Promoted | Rose to Fedaykin from lower tier |
+
+### 5.2 New Badges (v3.0)
+
+| Badge | Criteria | Unlocks |
+|-------|----------|---------|
+| **Water Sharer** | Admin-granted for contributions | Sponsor invite ability |
+| **Usul Ascended** | Reached Usul tier (1111+ BGT) | Prestige recognition |
+
+### 5.3 Badge Display
+
+- All badges visible on profile
+- Top 3 badges shown in directory preview
+- Water Sharer badge shows invite status (used/available)
+
+---
+
+## 6. Slash Commands
+
+### 6.1 New Commands
+
+| Command | Description | Visibility |
+|---------|-------------|------------|
+| `/stats` | Personal activity summary | Ephemeral |
+| `/leaderboard tiers` | Tier progression leaderboard | Public |
+| `/invite @user` | Sponsor invite (requires badge) | Ephemeral |
+| `/invite status` | Check your invite status | Ephemeral |
+
+### 6.2 Updated Commands
+
+| Command | Changes |
+|---------|---------|
+| `/profile` | Shows tier in addition to other info |
+| `/directory` | Filter by tier, shows tier in listing |
+| `/leaderboard` | Add "tiers" sub-command |
+
+### 6.3 Admin Commands
+
+| Command | Description |
+|---------|-------------|
+| `/admin stats` | Community analytics dashboard |
+| `/admin badge award @user water-sharer` | Grant sponsor badge |
+| `/admin invite revoke @user` | Revoke sponsor's invite |
+
+---
+
+## 7. Technical Requirements
+
+### 7.1 Database Schema Extensions
+
+```sql
+-- Tier tracking
+ALTER TABLE member_profiles ADD COLUMN tier TEXT DEFAULT 'hajra';
+ALTER TABLE member_profiles ADD COLUMN tier_updated_at INTEGER;
+
+-- Tier history
+CREATE TABLE tier_history (
     id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    description TEXT,
-    icon_url TEXT,
-    category TEXT NOT NULL,  -- tenure, streak, contribution, special
-    is_automatic INTEGER DEFAULT 0
-);
-
--- Member badges (many-to-many)
-CREATE TABLE member_badges (
     member_id TEXT NOT NULL,
-    badge_id TEXT NOT NULL,
-    awarded_at INTEGER NOT NULL,
-    awarded_by TEXT,  -- null for automatic, admin id for manual
-    PRIMARY KEY (member_id, badge_id),
-    FOREIGN KEY (member_id) REFERENCES member_profiles(id),
-    FOREIGN KEY (badge_id) REFERENCES badges(id)
-);
-
--- Engagement tracking (for streaks and stats)
-CREATE TABLE member_activity (
-    id TEXT PRIMARY KEY,
-    member_id TEXT NOT NULL,
-    activity_date TEXT NOT NULL,  -- YYYY-MM-DD
-    message_count INTEGER DEFAULT 0,
-    reaction_count INTEGER DEFAULT 0,
-    UNIQUE(member_id, activity_date),
+    from_tier TEXT,
+    to_tier TEXT NOT NULL,
+    bgt_at_change INTEGER NOT NULL,
+    changed_at INTEGER NOT NULL,
     FOREIGN KEY (member_id) REFERENCES member_profiles(id)
 );
 
--- Perk unlocks
-CREATE TABLE member_perks (
-    member_id TEXT NOT NULL,
-    perk_level TEXT NOT NULL,  -- base, engaged, trusted, inner_circle
-    unlocked_at INTEGER NOT NULL,
-    PRIMARY KEY (member_id, perk_level),
-    FOREIGN KEY (member_id) REFERENCES member_profiles(id)
+CREATE INDEX idx_tier_history_member ON tier_history(member_id);
+CREATE INDEX idx_tier_history_date ON tier_history(changed_at);
+
+-- Sponsor invites
+CREATE TABLE sponsor_invites (
+    id TEXT PRIMARY KEY,
+    sponsor_member_id TEXT NOT NULL,
+    invited_discord_id TEXT NOT NULL,
+    invited_member_id TEXT,
+    tier_granted TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    accepted_at INTEGER,
+    revoked_at INTEGER,
+    FOREIGN KEY (sponsor_member_id) REFERENCES member_profiles(id)
+);
+
+CREATE INDEX idx_invites_sponsor ON sponsor_invites(sponsor_member_id);
+CREATE INDEX idx_invites_discord ON sponsor_invites(invited_discord_id);
+
+-- Story fragments
+CREATE TABLE story_fragments (
+    id TEXT PRIMARY KEY,
+    category TEXT NOT NULL,  -- 'fedaykin_join', 'naib_join', etc.
+    content TEXT NOT NULL,
+    used_count INTEGER DEFAULT 0
+);
+
+-- Weekly digest tracking
+CREATE TABLE weekly_digests (
+    id TEXT PRIMARY KEY,
+    week_start DATE NOT NULL UNIQUE,
+    stats_json TEXT NOT NULL,
+    posted_at INTEGER,
+    message_id TEXT
 );
 ```
 
-### 4.3 API Endpoints (Extended)
+### 7.2 New Services
+
+| Service | Responsibility |
+|---------|----------------|
+| `TierService` | Tier calculation, assignment, history |
+| `SponsorService` | Invite management, validation |
+| `DigestService` | Weekly stats collection, posting |
+| `StoryService` | Fragment selection, posting |
+
+### 7.3 API Endpoints
 
 ```
-# Profile endpoints (authenticated, user sees own data)
-GET  /api/profile          → Own profile with all private data
-PUT  /api/profile          → Update own profile
-POST /api/profile/pfp      → Upload profile picture
+# Public
+GET  /api/tiers                    → Tier definitions and thresholds
+GET  /api/stats/community          → Public community stats
 
-# Public profile view (privacy-filtered)
-GET  /api/members/:nym     → Public profile (no wallet, no balance)
+# Member (authenticated)
+GET  /api/me/stats                 → Personal activity stats
+GET  /api/me/tier-progress         → Distance to next tier
+POST /api/invite                   → Create sponsor invite
+GET  /api/invite/status            → Check invite status
 
-# Directory
-GET  /api/directory        → Paginated member list (privacy-filtered)
-     ?tier=naib|fedaykin
-     ?badge=badge_id
-     ?tenure=og|veteran|elder
-     ?page=1&limit=20
-
-# Badges
-GET  /api/badges           → All available badges
-GET  /api/members/:nym/badges → Member's badges
-
-# Stats (own only)
-GET  /api/stats            → Own engagement statistics
-
-# Admin endpoints
-POST /api/admin/badges/award → Award badge to member
+# Admin
+GET  /admin/analytics              → Full analytics dashboard
+POST /admin/badges/water-sharer    → Grant sponsor badge
+DELETE /admin/invites/:id          → Revoke invite
 ```
 
-### 4.4 Privacy Implementation Requirements
+### 7.4 Scheduled Tasks
 
-#### 4.4.1 Data Separation
+| Task | Schedule | Function |
+|------|----------|----------|
+| `syncEligibility` | Every 6 hours | Sync BGT, update tiers, send promotions |
+| `weeklyDigest` | Monday 00:00 UTC | Generate and post weekly digest |
+| `weeklyReset` | Monday 00:00 UTC | Reset weekly alert counters |
 
-- **Private Store**: wallet_address, discord_user_id, exact_bgt_balance, exact_rank
-- **Public Store**: nym, pfp, bio, tier, badges, tenure_category
-- **Never join these in public API responses**
-
-#### 4.4.2 Logging Requirements
-
-- **DO log**: nym-based actions, badge awards, profile updates
-- **DO NOT log**: wallet addresses in any user-visible logs
-- **Admin logs**: May include correlation for debugging, encrypted at rest
-
-#### 4.4.3 Discord Message Privacy
-
-- Bot NEVER mentions wallet addresses in server channels
-- Bot NEVER shows exact BGT amounts publicly
-- Bot NEVER correlates nym to Discord username publicly
-
-### 4.5 Non-Functional Requirements
+### 7.5 Non-Functional Requirements
 
 | Requirement | Specification |
 |-------------|---------------|
-| Availability | 99.5% uptime for API and bot |
-| Latency | API response < 200ms, bot response < 1s |
-| Storage | PFP images stored with CDN, max 2MB each |
-| Privacy | Zero wallet-identity correlation in public APIs |
-| Auditability | All badge awards logged with timestamps |
+| Availability | 99.5% uptime |
+| Latency | API < 200ms, bot < 1s |
+| Scale | Support 500+ members |
+| Database | SQLite (sufficient for scale) |
+| Privacy | Zero wallet exposure in public APIs |
 
 ---
 
-## 5. Scope
+## 8. User & Stakeholder Context
 
-### 5.1 In Scope (v2.0)
+### 8.1 User Personas (Expanded)
 
-- [x] Pseudonymous identity system (nym, PFP, bio)
-- [x] DM-based onboarding wizard
-- [x] Badge and reputation system (10+ badge types)
-- [x] Member directory with filters
-- [x] Exclusive access tiers and perks
-- [x] Private channels for engaged members
-- [x] Slash commands and button interactions
-- [x] Engagement tracking for streaks
-- [x] Activity leaderboard (by nym, privacy-preserving)
+| Persona | BGT Range | Tier | Needs |
+|---------|-----------|------|-------|
+| **The Curious** | 6.9-69 | Hajra | Wants to observe, learn the culture |
+| **The Engaged** | 69-420 | Ichwan-Sihaya | Wants to participate, build reputation |
+| **The Committed** | 420-1111 | Sihaya-Usul | Deep engagement, seeking recognition |
+| **The Elite** | 1111+ / Top 69 | Usul-Naib | Leadership, influence, exclusivity |
+| **The Sponsor** | Any + badge | Any | Wants to bring trusted friends |
 
-### 5.2 Out of Scope (Future)
+### 8.2 Privacy Threat Model (Unchanged)
 
-- Web dashboard / app (designed for future expansion)
+All tiers receive same privacy protections:
+- Wallet addresses never exposed publicly
+- Exact BGT balances never shown
+- Exact rank positions private
+- Only tier name visible (not BGT amount)
+
+---
+
+## 9. Scope
+
+### 9.1 In Scope (v3.0)
+
+- [x] 9-tier membership system
+- [x] BGT-based automatic tier assignment
+- [x] Tier-specific channel permissions
+- [x] Sponsor/invite system (Water Sharer badge)
+- [x] Tier promotion notifications
+- [x] Badge award notifications
+- [x] `/stats` personal summary command
+- [x] `/leaderboard tiers` command
+- [x] `/invite` command
+- [x] Weekly digest automation
+- [x] Story fragment system for elite joins
+- [x] Admin analytics dashboard
+- [x] Usul Ascended badge
+- [x] Full onboarding for all tiers
+
+### 9.2 Out of Scope (Future)
+
+- Web dashboard / public stats page
+- Mobile app
 - NFT badge representations
-- Token rewards or airdrops
+- On-chain verification (non Collab.Land)
 - Cross-server identity portability
-- On-chain badge proofs
-- Governance voting through profiles
+- Token rewards or airdrops
 
-### 5.3 Migration from v1.0
+### 9.3 Migration from v2.1
 
-- Existing members auto-enrolled in new system
-- Prompted to complete profile setup on first interaction
-- Eligibility system unchanged
-- Existing channels and structure preserved
+- Existing top 69 members auto-assigned Fedaykin/Naib tier
+- Former Naib retain their status
+- All existing badges preserved
+- New lower-tier members go through full onboarding
+- Waitlist registrations converted to tier-based membership
 
 ---
 
-## 6. Risks & Mitigations
+## 10. Risks & Mitigations
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|------------|--------|------------|
-| Privacy leak (wallet-nym correlation) | Medium | Critical | Strict data separation, security audit, encrypted logs |
-| Complexity overwhelming users | Medium | High | Gradual feature introduction, clear onboarding |
-| Low adoption of profiles | Medium | Medium | Make profile setup part of access flow, showcase benefits |
-| Badge gaming/farming | Low | Medium | Manual badges for high-value recognition, anti-gaming cooldowns |
-| Storage costs (PFPs) | Low | Low | Image size limits, CDN caching, cleanup of inactive profiles |
-| Bot performance under load | Low | Medium | Rate limiting, efficient queries, caching |
+| **Collab.Land tier limits** | Medium | High | Test multi-role configuration; fallback to custom verification |
+| **Discord API complexity** | Medium | Medium | Careful permission planning; phased rollout |
+| **User confusion (7 tiers)** | High | Medium | Clear documentation; onboarding explanation; minimal channels |
+| **Sponsor abuse** | Low | Medium | Admin-granted only; one invite limit; revocation capability |
+| **Low engagement lower tiers** | Medium | Low | Quality content in upper tiers visible; tier progression incentive |
+| **Privacy leak in tiers** | Low | Critical | Same protections all tiers; audit tier displays |
 
 ---
 
-## 7. Dependencies
+## 11. Dependencies
 
-### 7.1 New Dependencies
+### 11.1 External Dependencies
 
 | Service | Purpose | Notes |
 |---------|---------|-------|
-| Image hosting (CDN) | PFP storage | Could use Discord CDN or external |
-| Discord.js v14+ | Slash commands, buttons, modals | Already in use |
+| Discord | Platform | API for roles, channels, permissions |
+| Collab.Land | Verification | Multi-tier token gate configuration |
+| Berachain RPC | BGT data | Existing infrastructure |
+| trigger.dev | Scheduling | Existing infrastructure |
 
-### 7.2 Existing Dependencies (Unchanged)
+### 11.2 Internal Dependencies
 
-- Berachain RPC nodes
-- Collab.Land
-- Discord
-- SQLite database
-- VPS hosting
-
----
-
-## 8. Updated Server Structure
-
-```
-SIETCH
-├── 📜 STILLSUIT (Info Category)
-│   ├── #water-discipline ── Welcome, rules, Chatham House reminder
-│   ├── #census ──────────── Live leaderboard (by nym, not wallet)
-│   └── #the-door ────────── Member joins/departures (nym only)
-│
-├── 🔥 NAIB COUNCIL (Top 7 Only)
-│   └── #council-rock ────── Private Naib discussion
-│
-├── 💬 SIETCH-COMMONS (All Members)
-│   ├── #general ─────────── Main discussion
-│   ├── #spice ───────────── Market insights, alpha
-│   ├── #water-shares ────── Ideas and proposals
-│   └── #introductions ───── NEW: Members introduce their nyms
-│
-├── 🏜️ DEEP DESERT (Engaged Members - 5+ badges OR 30-day streak)
-│   └── #deep-desert ─────── Focused discussions for engaged members
-│
-├── 🧘 STILLSUIT LOUNGE (Veterans - 90+ days tenure)
-│   └── #stillsuit-lounge ── Chill space for long-term members
-│
-└── 🛠️ WINDTRAP (Operations)
-    ├── #support ─────────── Technical help
-    └── #bot-commands ────── Bot interaction channel
-```
+- v2.1 complete (Naib, notifications, etc.)
+- Production deployment infrastructure ready
 
 ---
 
-## 9. Appendix
+## 12. Timeline
 
-### 9.1 Badge Icon Concepts (Dune-Themed)
+**Estimated Duration**: 3-4 weeks
 
-| Badge | Visual Concept |
-|-------|---------------|
-| OG | Ancient crysknife with patina |
-| Veteran | Worn stillsuit with repairs |
-| Elder | Naib ceremonial staff |
-| Consistent | Three water drops |
-| Dedicated | Full water pouch with seal |
-| Devoted | Golden maker hook |
-| Helper | Open hand with water offering |
-| Thought Leader | Guild navigator eyes (blue-in-blue) |
-| Founding Fedaykin | Golden crysknife on black |
-| Promoted | Sun rising over sand dune |
+### Phase 1: Core Tier System (Week 1-2)
+- Database schema extensions
+- TierService implementation
+- Role management for 9 tiers
+- Channel permission configuration
+- Tier assignment during sync
 
-### 9.2 Privacy Decision Matrix
+### Phase 2: Sponsor & Notifications (Week 2-3)
+- SponsorService implementation
+- Water Sharer badge
+- Tier promotion notifications
+- Badge award notifications
+- `/invite` command
 
-| Data Point | Public | Members Only | Admin Only | Never Exposed |
-|------------|--------|--------------|------------|---------------|
-| Nym | ✓ | | | |
-| PFP | ✓ | | | |
-| Bio | ✓ | | | |
-| Tier (Naib/Fedaykin) | ✓ | | | |
-| Badges | ✓ | | | |
-| Tenure category | ✓ | | | |
-| Engagement stats | | Self only | | |
-| Discord username | | | ✓ | |
-| Wallet address | | | ✓ | |
-| Exact BGT balance | | | | ✓ |
-| Exact rank position | | | | ✓ |
+### Phase 3: Engagement Features (Week 3-4)
+- `/stats` command
+- `/leaderboard tiers` command
+- Weekly digest automation
+- Story fragment system
+- Admin analytics dashboard
 
-### 9.3 Onboarding Message Templates
+### Phase 4: Testing & Polish (Week 4)
+- Integration testing
+- Permission verification
+- Documentation
+- Staging deployment
+- Production release
 
-**Welcome DM**:
+---
+
+## 13. Discord Role Hierarchy (v3.0)
+
+| Role | Color | Tier | Granted By |
+|------|-------|------|------------|
+| `@Naib` | Gold (#FFD700) | Top 7 | BGT rank |
+| `@Former Naib` | Silver (#C0C0C0) | Historical | After Naib bump |
+| `@Fedaykin` | Blue (#4169E1) | Top 8-69 | BGT rank |
+| `@Usul` | Purple (#9B59B6) | 1111+ BGT | BGT threshold |
+| `@Sayyadina` | Indigo (#6610F2) | 888+ BGT | BGT threshold |
+| `@Mushtamal` | Teal (#20C997) | 690+ BGT | BGT threshold |
+| `@Sihaya` | Green (#28A745) | 420+ BGT | BGT threshold |
+| `@Qanat` | Cyan (#17A2B8) | 222+ BGT | BGT threshold |
+| `@Ichwan` | Orange (#FD7E14) | 69+ BGT | BGT threshold |
+| `@Hajra` | Sand (#C2B280) | 6.9+ BGT | BGT threshold |
+| `@Water Sharer` | Aqua (#00D4FF) | Badge | Admin grant |
+| `@Engaged` | Green | 5+ badges | Badge count |
+| `@Veteran` | Purple | 90+ days | Tenure |
+
+---
+
+## 14. Appendix
+
+### 14.1 Story Fragment Examples
+
+**Fedaykin Join:**
 ```
-🏜️ Welcome to Sietch, traveler.
-
-You've proven yourself worthy by your BGT holdings.
-But here, your wallet doesn't define you.
-
-In Sietch, you choose who you want to be. Your wallet
-address will NEVER be shown to other members. Your
-balance is private. Your rank is private.
-
-Let's create your anonymous identity...
-
-[Begin Setup]
+The desert wind carried whispers of a new arrival.
+One who had held their water, never trading the sacred spice.
+The sietch grows stronger.
 ```
 
-**Profile Complete**:
 ```
-✨ Your identity is ready, {nym}.
+Footsteps in the sand revealed a traveler from distant dunes.
+They bore no marks of the water sellers.
+A new Fedaykin has earned their place.
+```
 
-You are now part of the Sietch. No one knows your wallet.
-No one knows your balance. You are simply {nym}.
+**Naib Join:**
+```
+The council chamber stirred.
+A presence of great weight approached -
+one whose reserves of melange could shift the balance.
+A new voice joins the Naib.
+```
 
-Explore:
-• /directory - Browse other members
-• /badges - See available badges
-• /profile - View or edit your profile
+### 14.2 Tier Threshold Rationale
 
-The spice must flow.
+| Threshold | Significance |
+|-----------|--------------|
+| 6.9 | Meme number, low barrier to entry |
+| 69 | Meme number, original eligibility threshold |
+| 222 | Angel number, first significant step |
+| 420 | Meme culture, middle ground |
+| 690 | 10x of entry threshold |
+| 888 | Lucky number, near-elite |
+| 1111 | Angel number, penultimate tier |
 
-[Enter Sietch]
+### 14.3 Weekly Digest Data Collection
+
+```typescript
+interface WeeklyStats {
+  week_start: Date;
+  total_members: number;
+  new_members: number;
+  total_bgt: number;
+  tier_distribution: Record<string, number>;
+  most_active_tier: string;
+  promotions: number;
+  badges_awarded: number;
+  top_new_member?: { nym: string; tier: string };
+  notable_promotions: Array<{ nym: string; new_tier: string }>;
+}
 ```
 
 ---
 
-## 10. Version History
+## 15. Version History
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 1.0 | 2025-12-17 | Initial MVP - token gating, eligibility, basic server |
-| 2.0 | 2025-12-18 | Social Layer - profiles, badges, directory, perks |
+| 1.0 | 2025-12-17 | Initial MVP - token gating, eligibility |
+| 2.0 | 2025-12-18 | Social Layer - profiles, badges, directory |
+| 2.1 | 2025-12-19 | Naib Dynamics & Threshold system |
+| 3.0 | 2025-12-20 | The Great Expansion - 9-tier system, sponsors |
 
 ---
 
