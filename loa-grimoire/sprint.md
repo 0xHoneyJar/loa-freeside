@@ -32,7 +32,7 @@ The v1.0 MVP, v2.0 Social Layer, and v2.1 Naib Dynamics are complete with:
 
 - **9-Tier System** - Hajra (6.9 BGT) through Naib (Top 7) with progressive access
 - **Automatic Tier Assignment** - BGT balance and rank-based calculation
-- **Sponsor Invites** - Water Sharer badge enables sponsoring one member
+- **Water Sharer Badge Sharing** - Badge holders can share badge with one existing member
 - **Tier Notifications** - DM alerts on tier promotion
 - **Weekly Digest** - Community pulse posted to #announcements every Monday
 - **Story Fragments** - Cryptic Dune-themed narratives for elite joins
@@ -59,7 +59,7 @@ The v1.0 MVP, v2.0 Social Layer, and v2.1 Naib Dynamics are complete with:
 |--------|-------|------------------|----------|
 | **Sprint 15** | Tier Foundation | Schema migration, TierService, type definitions | 2.5 days |
 | **Sprint 16** | Tier Integration | Role management, sync integration, initial assignment | 2.5 days |
-| **Sprint 17** | Sponsor System | Water Sharer badge, SponsorService, /invite command | 2.5 days |
+| **Sprint 17** | Water Sharer System | Water Sharer badge sharing, WaterSharerService, /water-share command, The Oasis | 2.5 days |
 | **Sprint 18** | Notifications | Tier promotions, badge awards, Usul Ascended badge | 2.5 days |
 | **Sprint 19** | Stats & Leaderboard | StatsService, /stats command, /leaderboard tiers | 2.5 days |
 | **Sprint 20** | Weekly Digest | DigestService, scheduled task, API stats endpoints | 2.5 days |
@@ -1116,7 +1116,7 @@ SIETCH SERVER
 **Acceptance Criteria**:
 - [ ] `Tier` union type defined with all 9 tiers
 - [ ] `TierHistoryEntry` interface defined
-- [ ] `SponsorInvite` interface defined
+- [ ] `WaterSharerGrant` interface defined
 - [ ] `StoryFragment` interface defined
 - [ ] `WeeklyDigest` interface defined
 - [ ] `TierProgress` interface defined
@@ -1286,24 +1286,27 @@ SIETCH SERVER
 
 ---
 
-## Sprint 17: Sponsor System
+## Sprint 17: Water Sharer System
 
-**Goal**: Implement Water Sharer badge and sponsor invite system
+**Goal**: Implement Water Sharer badge sharing system and The Oasis channel
 
 **Duration**: 2.5 days
 
+**Key Concept**: Water Sharer badge holders can share their badge with ONE other existing member (not external invites). This is a badge-passing system for community recognition, inspired by Fremen water-sharing culture.
+
 ### Tasks
 
-#### S17-T1: Water Sharer Badge
-**Description**: Add Water Sharer badge to badge system
+#### S17-T1: Water Sharer Badge Definition
+**Description**: Add Water Sharer badge to badge system with sharing capability indicator
 
 **Acceptance Criteria**:
-- [ ] `water-sharer` badge ID defined
+- [ ] `water-sharer` badge ID defined in badges data
 - [ ] Badge has name: "Water Sharer"
-- [ ] Badge has description: "Recognized contributor who can sponsor one member"
-- [ ] Badge emoji: appropriate water/sharing theme
+- [ ] Badge has description: "Recognized contributor who can share this badge with one other member"
+- [ ] Badge emoji: 💧 or appropriate water/sharing theme
 - [ ] Badge visible on profile and directory
-- [ ] Badge can be awarded via `/admin badge award`
+- [ ] Badge can be awarded via `/admin badge award water-sharer @user`
+- [ ] Badge shows sharing status (shared/available) on profile
 
 **Files to Modify**:
 - `sietch-service/src/services/BadgeService.ts`
@@ -1315,76 +1318,102 @@ SIETCH SERVER
 
 ---
 
-#### S17-T2: SponsorService Core
-**Description**: Implement SponsorService for invite management
+#### S17-T2: Database Schema - water_sharer_grants
+**Description**: Create database migration for Water Sharer badge grant tracking
 
 **Acceptance Criteria**:
-- [ ] `canSponsor(memberId)` checks badge and active invite
-- [ ] `createInvite(sponsorId, discordId)` creates pending invite
-- [ ] Validates sponsor has Water Sharer badge
-- [ ] Validates sponsor has no active invite
-- [ ] Validates invited user not already a member
-- [ ] Validates invited user has no pending invite
-- [ ] Invite stores sponsor's current tier
-- [ ] Unit tests for validation logic
+- [ ] Create `water_sharer_grants` table with columns:
+  - `id` TEXT PRIMARY KEY
+  - `granter_member_id` TEXT NOT NULL (who shared)
+  - `recipient_member_id` TEXT NOT NULL (who received)
+  - `granted_at` INTEGER NOT NULL
+  - `revoked_at` INTEGER (null if active)
+- [ ] Create unique index `idx_granter_active` on granter WHERE revoked_at IS NULL (one share per granter)
+- [ ] Create unique index `idx_recipient_unique` on recipient_member_id (can only receive once)
+- [ ] Foreign keys to member_profiles
+- [ ] Migration is reversible
 
 **Files to Create**:
-- `sietch-service/src/services/SponsorService.ts`
+- `sietch-service/src/db/migrations/007_water_sharer_grants.ts`
+
+**Estimated Effort**: 0.5 days
+**Dependencies**: None
+**Testing**: Migration up/down tests
+
+---
+
+#### S17-T3: WaterSharerService Core
+**Description**: Implement WaterSharerService for badge sharing management
+
+**Acceptance Criteria**:
+- [ ] `canShare(memberId)` checks badge AND no existing active grant
+- [ ] `shareBadge(granterMemberId, recipientMemberId)` creates grant record
+- [ ] Validates granter has Water Sharer badge
+- [ ] Validates granter hasn't already shared (one share limit)
+- [ ] Validates recipient is existing server member with completed onboarding
+- [ ] Validates recipient doesn't already have Water Sharer badge
+- [ ] Awards badge to recipient on successful share
+- [ ] Logs audit event for badge share
+- [ ] Unit tests for all validation scenarios
+
+**Files to Create**:
+- `sietch-service/src/services/WaterSharerService.ts`
 
 **Estimated Effort**: 1 day
-**Dependencies**: S17-T1
+**Dependencies**: S17-T1, S17-T2
 **Testing**: Unit tests with mocked badge service
 
 ---
 
-#### S17-T3: Invite Acceptance
-**Description**: Handle invite acceptance during onboarding
+#### S17-T4: /water-share Command
+**Description**: Implement /water-share Discord command for badge sharing
 
 **Acceptance Criteria**:
-- [ ] `acceptInvite(discordId, memberId)` marks invite accepted
-- [ ] Invitee receives sponsor's tier
-- [ ] Invitee's tier_updated_at set
-- [ ] Sponsor's invite marked used
-- [ ] `getPendingInvite(discordId)` checks for pending invites
-- [ ] Onboarding flow checks for invite before BGT check
-
-**Files to Modify**:
-- `sietch-service/src/services/SponsorService.ts`
-- `sietch-service/src/services/onboarding.ts`
-
-**Estimated Effort**: 0.5 days
-**Dependencies**: S17-T2
-**Testing**: Integration test of invite → onboarding flow
-
----
-
-#### S17-T4: /invite Command
-**Description**: Implement /invite Discord command
-
-**Acceptance Criteria**:
-- [ ] `/invite user @user` subcommand creates invite
-- [ ] `/invite status` subcommand shows invite status
-- [ ] Command validates sponsor has badge
-- [ ] Command validates no active invite
+- [ ] `/water-share @user` shares badge with mentioned member
+- [ ] `/water-share status` shows sharing status:
+  - Has badge? Can share? Already shared with (nym)?
+  - Received from (nym)?
+- [ ] Command validates caller has Water Sharer badge
+- [ ] Command validates caller hasn't already shared
+- [ ] Command validates recipient is onboarded member
 - [ ] Error messages are helpful and specific
-- [ ] Success message confirms invite created
-- [ ] Status shows invitee Discord username and acceptance state
+- [ ] Success message confirms badge shared
 - [ ] All responses are ephemeral
 
 **Files to Create**:
-- `sietch-service/src/discord/commands/invite.ts`
+- `sietch-service/src/discord/commands/water-share.ts`
 
 **Estimated Effort**: 0.5 days
-**Dependencies**: S17-T2, S17-T3
+**Dependencies**: S17-T3
 **Testing**: Manual Discord testing
 
 ---
 
+#### S17-T5: The Oasis Channel Setup
+**Description**: Configure The Oasis exclusive channel for Water Sharer badge holders
+
+**Acceptance Criteria**:
+- [ ] `DISCORD_CHANNEL_OASIS` environment variable documented
+- [ ] Channel access granted to `@Water Sharer` role
+- [ ] Graceful degradation if channel ID not configured
+- [ ] Channel mentioned in badge award notification
+
+**Files to Modify**:
+- `sietch-service/src/config.ts`
+- `.env.example`
+
+**Estimated Effort**: 0.25 days
+**Dependencies**: S17-T1
+**Testing**: Verify role permissions on test server
+
+---
+
 ### Sprint 17 Success Criteria
-- [ ] Water Sharer badge can be awarded
-- [ ] Sponsors can create one invite
-- [ ] Invited users bypass BGT requirement
-- [ ] Invite status visible to sponsor
+- [ ] Water Sharer badge can be awarded by admin
+- [ ] Badge holders can share badge with ONE existing member via `/water-share`
+- [ ] Recipients receive badge and can access The Oasis (if configured)
+- [ ] Sharing status visible to badge holders
+- [ ] Badge lineage tracked in database
 
 ---
 
@@ -1422,7 +1451,7 @@ SIETCH SERVER
 **Acceptance Criteria**:
 - [ ] `sendBadgeAward(discordId, badgeId)` method implemented
 - [ ] DM includes badge name and description
-- [ ] Water Sharer badge DM mentions invite ability
+- [ ] Water Sharer badge DM mentions sharing ability and The Oasis
 - [ ] DM follows existing notification format
 - [ ] Badge award logs notification sent
 
@@ -1455,26 +1484,29 @@ SIETCH SERVER
 
 ---
 
-#### S18-T4: Admin Invite Management
-**Description**: Admin commands for invite management
+#### S18-T4: Admin Water Sharer Management
+**Description**: Admin commands for Water Sharer badge management
 
 **Acceptance Criteria**:
-- [ ] `/admin invite revoke @user` revokes sponsor's invite
-- [ ] `DELETE /admin/invites/:id` API endpoint
+- [ ] `/admin water-share revoke @user` revokes badge (cascades to downstream grants)
+- [ ] `/admin water-share list` shows badge lineage tree
+- [ ] `DELETE /admin/water-share/:memberId` API endpoint
+- [ ] `GET /admin/water-share/lineage` API endpoint
+- [ ] Revocation cascade removes badge from granter AND all downstream recipients
 - [ ] Revocation logs admin who revoked
-- [ ] Revoked invites cannot be accepted
-- [ ] Sponsor can create new invite after revocation
+- [ ] Member can receive badge again after revocation
 
 **Files to Create**:
-- `sietch-service/src/api/handlers/admin-invites.ts`
+- `sietch-service/src/api/handlers/admin-water-share.ts`
 
 **Files to Modify**:
 - `sietch-service/src/discord/commands/admin.ts`
 - `sietch-service/src/api/routes.ts`
+- `sietch-service/src/services/WaterSharerService.ts` (add revoke cascade)
 
 **Estimated Effort**: 0.5 days
-**Dependencies**: S17-T2
-**Testing**: Revoke invite via command and API
+**Dependencies**: S17-T3
+**Testing**: Revoke badge via command and verify cascade
 
 ---
 
