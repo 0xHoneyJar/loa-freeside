@@ -46,6 +46,7 @@ import {
   handleNaibCommand,
   handleThresholdCommand,
   handleRegisterWaitlistCommand,
+  handleWaterShareCommand,
   DIRECTORY_INTERACTIONS,
 } from '../discord/commands/index.js';
 import {
@@ -294,6 +295,9 @@ class DiscordService {
         break;
       case 'register-waitlist':
         await handleRegisterWaitlistCommand(interaction);
+        break;
+      case 'water-share':
+        await handleWaterShareCommand(interaction);
         break;
       default:
         logger.warn({ commandName }, 'Unknown slash command');

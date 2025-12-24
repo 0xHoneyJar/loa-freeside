@@ -28,6 +28,9 @@ This document maintains organizational memory across sprints for the Sietch proj
 | Sprint 12 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
 | Sprint 13 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
 | Sprint 14 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
+| Sprint 15 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
+| Sprint 16 | ✅ Complete | ✅ Complete | ✅ Approved | ✅ Approved |
+| Sprint 17 | 🔄 In Progress | ✅ Complete | ⏳ Pending | ⏳ Pending |
 
 ---
 

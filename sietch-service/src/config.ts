@@ -74,6 +74,8 @@ const configSchema = z.object({
       introductions: z.string().optional(),
       // Cave Entrance channel (v2.1) - for aspiring members in positions 70-100
       caveEntrance: z.string().optional(),
+      // The Oasis channel (v3.0 - Sprint 17) - exclusive for Water Sharer badge holders
+      oasis: z.string().optional(),
     }),
     roles: z.object({
       naib: z.string().min(1),
@@ -190,6 +192,8 @@ function parseConfig() {
         introductions: process.env.DISCORD_CHANNEL_INTRODUCTIONS,
         // Cave Entrance channel (v2.1)
         caveEntrance: process.env.DISCORD_CHANNEL_CAVE_ENTRANCE,
+        // The Oasis channel (v3.0 - Sprint 17)
+        oasis: process.env.DISCORD_CHANNEL_OASIS,
       },
       roles: {
         naib: process.env.DISCORD_ROLE_NAIB ?? '',
@@ -294,6 +298,8 @@ export interface Config {
       introductions?: string;
       // Cave Entrance channel (v2.1)
       caveEntrance?: string;
+      // The Oasis channel (v3.0 - Sprint 17)
+      oasis?: string;
     };
     roles: {
       naib: string;
@@ -456,4 +462,19 @@ export function getMissingTierRoles(): string[] {
   if (!roles.naib) missing.push('naib');
 
   return missing;
+}
+
+/**
+ * Check if The Oasis channel is configured
+ */
+export function isOasisChannelConfigured(): boolean {
+  return !!config.discord.channels.oasis;
+}
+
+/**
+ * Get The Oasis channel ID
+ * Returns undefined if not configured
+ */
+export function getOasisChannelId(): string | undefined {
+  return config.discord.channels.oasis;
 }

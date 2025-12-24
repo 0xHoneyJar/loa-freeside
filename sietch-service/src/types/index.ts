@@ -132,7 +132,10 @@ export interface AuditLogEntry {
     | 'tier_change'
     | 'tier_role_sync'
     | 'tier_roles_assigned'
-    | 'tier_roles_removed';
+    | 'tier_roles_removed'
+    // Sprint 17: Water Sharer event types
+    | 'water_sharer_grant'
+    | 'water_sharer_revoke';
   /** Event-specific data */
   eventData: Record<string, unknown>;
   /** When the event occurred */
@@ -1137,7 +1140,47 @@ export interface TierHistoryEntry {
 }
 
 /**
- * Sponsor invite record
+ * Water Sharer grant record (v3.0 - Sprint 17)
+ * Tracks badge sharing between existing members
+ */
+export interface WaterSharerGrant {
+  /** Unique grant identifier (UUID) */
+  id: string;
+  /** Member who shared the badge (must have Water Sharer badge) */
+  granterMemberId: string;
+  /** Member who received the badge */
+  recipientMemberId: string;
+  /** When the grant was made (unix timestamp) */
+  grantedAt: Date;
+  /** When the grant was revoked (null if active) */
+  revokedAt: Date | null;
+}
+
+/**
+ * Water Sharer sharing status for a member
+ */
+export interface WaterSharerStatus {
+  /** Does the member have the Water Sharer badge? */
+  hasBadge: boolean;
+  /** Can the member share their badge? (has badge AND hasn't shared yet) */
+  canShare: boolean;
+  /** If they've shared, who did they share with? */
+  sharedWith: {
+    memberId: string;
+    nym: string;
+    grantedAt: Date;
+  } | null;
+  /** If they received the badge via sharing, who from? */
+  receivedFrom: {
+    memberId: string;
+    nym: string;
+    grantedAt: Date;
+  } | null;
+}
+
+/**
+ * @deprecated Use WaterSharerGrant instead - kept for backwards compatibility
+ * Sponsor invite record (legacy - not used in v3.0.1)
  */
 export interface SponsorInvite {
   /** Auto-incrementing ID */

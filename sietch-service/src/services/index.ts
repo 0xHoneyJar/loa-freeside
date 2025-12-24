@@ -88,3 +88,15 @@ export {
   TIER_ORDER,
   TIER_INFO,
 } from './TierService.js';
+
+// Sprint 17: Water Sharer Badge System
+export {
+  canShare,
+  shareBadge,
+  getShareStatus,
+  getShareStatusByDiscordId,
+  getGrantsByGranter,
+  revokeGrant,
+  getBadgeLineage,
+  WATER_SHARER_ERRORS,
+} from './WaterSharerService.js';
