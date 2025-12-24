@@ -1,8 +1,12 @@
 # Product Requirements Document: Sietch v2.1
 
+> **DEPRECATED**: This document has been superseded by PRD v3.0 (`loa-grimoire/context/prd.md`)
+> and the evidence-grounded PRD (`loa-grimoire/artifacts/prd-grounded.md`).
+> Retained for historical reference only. Last updated: December 19, 2025.
+
 **Version**: 2.1
 **Date**: December 19, 2025
-**Status**: Draft
+**Status**: DEPRECATED (Superseded by v3.0)
 **Codename**: Naib Dynamics & Threshold
 
 ---

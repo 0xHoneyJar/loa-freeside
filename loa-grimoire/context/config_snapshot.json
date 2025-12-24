@@ -1,0 +1,23 @@
+{
+  "persistence_mode": "standard",
+  "integrity_enforcement": "strict",
+  "drift_resolution": "code",
+  "disabled_agents": [],
+  "memory": {
+    "notes_file": "loa-grimoire/NOTES.md",
+    "trajectory_dir": "loa-grimoire/a2a/trajectory",
+    "trajectory_retention_days": 30
+  },
+  "edd": {
+    "enabled": true,
+    "min_test_scenarios": 3,
+    "trajectory_audit": true
+  },
+  "compaction": {
+    "enabled": true,
+    "threshold": 5
+  },
+  "integrations": [
+    "github"
+  ]
+}

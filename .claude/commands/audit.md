@@ -1,89 +1,125 @@
 ---
-description: Launch the paranoid cypherpunk auditor agent to perform a rigorous security and quality audit of the integration work
-args: [background]
+name: "audit"
+version: "1.0.0"
+description: |
+  Comprehensive security and quality audit of the application codebase.
+  OWASP Top 10, secrets, architecture, code quality review.
+
+arguments: []
+
+agent: "auditing-security"
+agent_path: "skills/auditing-security/"
+
+context_files:
+  - path: "loa-grimoire/prd.md"
+    required: false
+    purpose: "Product requirements for context"
+  - path: "loa-grimoire/sdd.md"
+    required: false
+    purpose: "Architecture decisions for context"
+  - path: "loa-grimoire/sprint.md"
+    required: false
+    purpose: "Sprint plan and implementation status"
+  - path: "app/src/**/*"
+    required: false
+    purpose: "Application source code"
+  - path: "app/tests/**/*"
+    required: false
+    purpose: "Test files"
+
+pre_flight: []
+
+outputs:
+  - path: "SECURITY-AUDIT-REPORT.md"
+    type: "file"
+    description: "Comprehensive security audit report"
+
+mode:
+  default: "foreground"
+  allow_background: true
 ---
 
-I'm launching the paranoid cypherpunk auditor agent with 30+ years of professional experience across systems administration, DevOps, architecture, blockchain, cryptography, and AI.
+# Audit Codebase
 
-**Execution Mode**: {{ "background - use /tasks to monitor" if "background" in $ARGUMENTS else "foreground (default)" }}
+## Purpose
 
-{{ if "background" in $ARGUMENTS }}
-Running in background mode. Use `/tasks` to monitor progress.
+Comprehensive security and quality audit of the application codebase by the Paranoid Cypherpunk Auditor. Use before production deployment or after major code changes.
 
-<Task
-  subagent_type="paranoid-auditor"
-  prompt="Perform a comprehensive security and quality audit of the agentic-base organizational integration that was just completed. The integration connects agentic-base with Discord, Linear, GitHub, and Vercel.
+## Invocation
 
-## Scope of Audit
+```
+/audit
+/audit background
+```
 
-Review the following deliverables systematically:
+## Agent
 
-### Documentation
-1. `docs/integration-architecture.md` - System architecture and design
-2. `docs/tool-setup.md` - Setup and configuration guide
-3. `docs/team-playbook.md` - Team usage guide
-4. `docs/adoption-plan.md` - Rollout strategy
+Launches `auditing-security` from `skills/auditing-security/`.
 
-### Implementation Code
-1. `integration/src/bot.ts` - Main Discord bot
-2. `integration/src/handlers/feedbackCapture.ts` - Feedback capture handler
-3. `integration/src/handlers/commands.ts` - Command handlers
-4. `integration/src/services/linearService.ts` - Linear API integration
-5. `integration/src/cron/dailyDigest.ts` - Daily digest cron job
-6. `integration/src/utils/logger.ts` - Logging utility
+See: `skills/auditing-security/SKILL.md` for full workflow details.
 
-### Configuration
-1. Configuration templates in `integration/config/`
-2. `.gitignore` patterns for secrets
-3. Environment variable handling
-4. Deployment procedures
+## When to Use
+
+- Before production deployment
+- After major code changes or new integrations
+- When implementing security-sensitive features (auth, payments, data handling)
+- Periodically for ongoing projects
+- When onboarding to assess existing codebase
+
+## Workflow
+
+1. **Documentation Review**: Read PRD, SDD, sprint plan for context
+2. **Code Audit**: Review `app/src/` for security vulnerabilities
+3. **Test Review**: Check `app/tests/` for coverage and quality
+4. **Config Audit**: Review configuration and environment handling
+5. **Report**: Generate `SECURITY-AUDIT-REPORT.md`
+
+## Arguments
+
+| Argument | Description | Required |
+|----------|-------------|----------|
+| `background` | Run as subagent for parallel execution | No |
+
+## Outputs
+
+| Path | Description |
+|------|-------------|
+| `SECURITY-AUDIT-REPORT.md` | Comprehensive audit report |
 
 ## Focus Areas
 
-Apply your systematic methodology covering:
+### Security Audit (Highest Priority)
+- Secrets management
+- Authentication & authorization
+- Input validation & injection vulnerabilities
+- Data privacy concerns
+- Supply chain security
+- API security
+- Infrastructure security
 
-1. **Security Audit** (Highest Priority)
-   - Secrets management
-   - Authentication & authorization
-   - Input validation & injection vulnerabilities
-   - Data privacy concerns
-   - Supply chain security
-   - API security
-   - Infrastructure security
+### Architecture Audit
+- Threat modeling
+- Single points of failure
+- Complexity analysis
+- Scalability concerns
+- Vendor lock-in risks
 
-2. **Architecture Audit**
-   - Threat modeling
-   - Single points of failure
-   - Complexity analysis
-   - Scalability concerns
-   - Vendor lock-in risks
+### Code Quality Audit
+- Error handling
+- Type safety
+- Code smells
+- Testing coverage
+- Documentation quality
 
-3. **Code Quality Audit**
-   - Error handling
-   - Type safety
-   - Code smells
-   - Testing coverage
-   - Documentation quality
+### DevOps & Infrastructure Audit
+- Deployment security
+- Monitoring & observability
+- Backup & recovery
+- Access control
 
-4. **DevOps & Infrastructure Audit**
-   - Deployment security
-   - Monitoring & observability
-   - Backup & recovery
-   - Access control
+## Report Format
 
-## Special Considerations
-
-This integration handles:
-- Discord bot with message access (potential PII exposure)
-- Linear API tokens (secret management critical)
-- User-generated content from Discord (injection risk)
-- Webhook integrations (signature verification needed)
-- Multi-user notification preferences (authorization concerns)
-- Cron jobs with API access (credential scope)
-
-## Deliverable
-
-Provide a comprehensive audit report following your standard format:
+The audit report includes:
 - Executive summary with overall risk level
 - Critical issues (fix immediately)
 - High priority issues (fix before production)
@@ -93,97 +129,3 @@ Provide a comprehensive audit report following your standard format:
 - Actionable recommendations
 - Complete security checklist status
 - Threat model summary
-
-Be brutally honest. The team needs to know what's wrong before deploying to production.
-
-**Begin your systematic audit now.**"
-/>
-{{ else }}
-## Your Mission
-
-Perform a comprehensive security and quality audit of the agentic-base organizational integration that was just completed. The integration connects agentic-base with Discord, Linear, GitHub, and Vercel.
-
-## Scope of Audit
-
-Review the following deliverables systematically:
-
-### Documentation
-1. `docs/integration-architecture.md` - System architecture and design
-2. `docs/tool-setup.md` - Setup and configuration guide
-3. `docs/team-playbook.md` - Team usage guide
-4. `docs/adoption-plan.md` - Rollout strategy
-
-### Implementation Code
-1. `integration/src/bot.ts` - Main Discord bot
-2. `integration/src/handlers/feedbackCapture.ts` - Feedback capture handler
-3. `integration/src/handlers/commands.ts` - Command handlers
-4. `integration/src/services/linearService.ts` - Linear API integration
-5. `integration/src/cron/dailyDigest.ts` - Daily digest cron job
-6. `integration/src/utils/logger.ts` - Logging utility
-
-### Configuration
-1. Configuration templates in `integration/config/`
-2. `.gitignore` patterns for secrets
-3. Environment variable handling
-4. Deployment procedures
-
-## Focus Areas
-
-Apply your systematic methodology covering:
-
-1. **Security Audit** (Highest Priority)
-   - Secrets management
-   - Authentication & authorization
-   - Input validation & injection vulnerabilities
-   - Data privacy concerns
-   - Supply chain security
-   - API security
-   - Infrastructure security
-
-2. **Architecture Audit**
-   - Threat modeling
-   - Single points of failure
-   - Complexity analysis
-   - Scalability concerns
-   - Vendor lock-in risks
-
-3. **Code Quality Audit**
-   - Error handling
-   - Type safety
-   - Code smells
-   - Testing coverage
-   - Documentation quality
-
-4. **DevOps & Infrastructure Audit**
-   - Deployment security
-   - Monitoring & observability
-   - Backup & recovery
-   - Access control
-
-## Special Considerations
-
-This integration handles:
-- Discord bot with message access (potential PII exposure)
-- Linear API tokens (secret management critical)
-- User-generated content from Discord (injection risk)
-- Webhook integrations (signature verification needed)
-- Multi-user notification preferences (authorization concerns)
-- Cron jobs with API access (credential scope)
-
-## Deliverable
-
-Provide a comprehensive audit report following your standard format:
-- Executive summary with overall risk level
-- Critical issues (fix immediately)
-- High priority issues (fix before production)
-- Medium and low priority issues
-- Informational notes and best practices
-- Positive findings
-- Actionable recommendations
-- Complete security checklist status
-- Threat model summary
-
-Be brutally honest. The team needs to know what's wrong before deploying to production.
-
-**Begin your systematic audit now.**
-{{ endif }}

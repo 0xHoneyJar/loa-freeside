@@ -1,61 +1,120 @@
 ---
-description: Launch the sprint planner agent to review PRD and SDD, then generate a comprehensive sprint plan
-args: [background]
+name: "sprint-plan"
+version: "1.1.0"
+description: |
+  Create comprehensive sprint plan based on PRD and SDD.
+  Task breakdown, prioritization, acceptance criteria, assignments.
+  Optionally integrates with Beads for task graph management.
+
+arguments: []
+
+agent: "planning-sprints"
+agent_path: "skills/planning-sprints/"
+
+context_files:
+  - path: "loa-grimoire/prd.md"
+    required: true
+    purpose: "Product requirements for scope"
+  - path: "loa-grimoire/sdd.md"
+    required: true
+    purpose: "Architecture for technical breakdown"
+  - path: "loa-grimoire/a2a/integration-context.md"
+    required: false
+    purpose: "Organizational context and knowledge sources"
+
+pre_flight:
+  - check: "file_exists"
+    path: ".loa-setup-complete"
+    error: "Loa setup has not been completed. Run /setup first."
+
+  - check: "file_exists"
+    path: "loa-grimoire/prd.md"
+    error: "PRD not found. Run /plan-and-analyze first."
+
+  - check: "file_exists"
+    path: "loa-grimoire/sdd.md"
+    error: "SDD not found. Run /architect first."
+
+# Optional dependency check with HITL gate
+optional_dependencies:
+  - name: "beads"
+    check_script: ".claude/scripts/check-beads.sh --quiet"
+    description: "Beads (bd CLI) - Git-backed task graph management"
+    benefits:
+      - "Git-backed task graph (replaces markdown parsing)"
+      - "Dependency tracking (blocks, related, discovered-from)"
+      - "Session persistence across context windows"
+      - "JIT task retrieval with bd ready"
+    install_options:
+      - "brew install steveyegge/beads/bd"
+      - "npm install -g @beads/bd"
+    fallback: "Sprint plan will use markdown-based tracking only"
+
+outputs:
+  - path: "loa-grimoire/sprint.md"
+    type: "file"
+    description: "Sprint plan with tasks and acceptance criteria"
+
+mode:
+  default: "foreground"
+  allow_background: true
 ---
 
-I'm launching the sprint-planner agent to create a detailed sprint plan based on your Product Requirements Document and Software Design Document.
+# Sprint Plan
 
-**Execution Mode**: {{ "background - use /tasks to monitor" if "background" in $ARGUMENTS else "foreground (default)" }}
+## Purpose
 
-The agent will:
-1. **Carefully review** both `docs/prd.md` and `docs/sdd.md` to understand requirements and architecture
-2. **Analyze and plan** sprint breakdown, task prioritization, and implementation sequencing
-3. **Clarify uncertainties** by asking you questions with specific proposals when anything is ambiguous
-4. **Validate assumptions** about team capacity, sprint duration, priorities, and dependencies
-5. **Generate sprint plan** only when fully satisfied with all answers and has no remaining doubts
-6. **Save output** to `docs/sprint.md`
+Create a comprehensive sprint plan based on PRD and SDD. Breaks down work into actionable tasks with acceptance criteria, priorities, and assignments.
 
-The sprint planner will cover:
-- Sprint structure and duration (2.5-day sprints or customized)
-- Task breakdown with clear acceptance criteria
-- Priority and sequencing of features
-- Developer assignments and workload distribution
-- Dependencies and blockers
-- Testing and quality assurance requirements
-- Sprint goals and success metrics
-- Risk mitigation strategies
+## Invocation
 
-{{ if "background" in $ARGUMENTS }}
-Running in background mode. Use `/tasks` to monitor progress.
+```
+/sprint-plan
+/sprint-plan background
+```
 
-<Task
-  subagent_type="sprint-planner"
-  prompt="You are tasked with creating a comprehensive sprint plan based on the Product Requirements Document at docs/prd.md and the Software Design Document at docs/sdd.md.
+## Agent
 
-Your process:
-1. Carefully read and analyze both docs/prd.md and docs/sdd.md in their entirety
-2. Understand the product requirements, technical architecture, and implementation approach
-3. Break down the work into sprints with specific, actionable tasks
-4. For ANY uncertainties, ambiguities, or areas where clarification is needed:
-   - Ask the user specific questions
-   - Present 2-3 concrete proposals with pros/cons when multiple approaches are valid
-   - Seek clarification on priorities, team size, sprint duration, MVP scope, etc.
-   - Wait for their decision before proceeding
-5. Validate all assumptions about:
-   - Team capacity and available developers
-   - Sprint duration (default is 2.5-day sprints, but confirm)
-   - Feature prioritization and MVP scope
-   - Technical dependencies and sequencing
-   - Testing and QA requirements
-6. Only when you are completely satisfied with all answers and have NO remaining doubts or uncertainties, proceed to write the sprint plan
-7. Generate a detailed, comprehensive sprint plan
-8. Save the final sprint plan to docs/sprint.md
+Launches `planning-sprints` from `skills/planning-sprints/`.
 
-The sprint plan should include:
+See: `skills/planning-sprints/SKILL.md` for full workflow details.
+
+## Prerequisites
+
+- Setup completed (`.loa-setup-complete` exists)
+- PRD created (`loa-grimoire/prd.md` exists)
+- SDD created (`loa-grimoire/sdd.md` exists)
+
+## Workflow
+
+1. **Pre-flight**: Verify setup, PRD, and SDD exist
+2. **Analysis**: Read PRD for requirements, SDD for architecture
+3. **Breakdown**: Create sprint structure with actionable tasks
+4. **Clarification**: Ask about team size, sprint duration, priorities
+5. **Validation**: Confirm assumptions about capacity and scope
+6. **Generation**: Create sprint plan at `loa-grimoire/sprint.md`
+7. **Analytics**: Update usage metrics (THJ users only)
+
+## Arguments
+
+| Argument | Description | Required |
+|----------|-------------|----------|
+| `background` | Run as subagent for parallel execution | No |
+
+## Outputs
+
+| Path | Description |
+|------|-------------|
+| `loa-grimoire/sprint.md` | Sprint plan with tasks |
+
+## Sprint Plan Sections
+
+The generated plan includes:
 - Sprint Overview (goals, duration, team structure)
-- Sprint Breakdown:
+- Sprint Breakdown with:
   - Sprint number and goals
-  - Tasks with clear descriptions and acceptance criteria
+  - Tasks with clear descriptions
+  - Acceptance criteria (specific, measurable)
   - Estimated effort/complexity
   - Developer assignments
   - Dependencies and prerequisites
@@ -67,65 +126,42 @@ The sprint plan should include:
 - Dependencies and blockers
 - Buffer time for unknowns
 
-Format each task clearly with:
+## Task Format
+
+Each task includes:
 - Task ID and title
 - Detailed description
-- Acceptance criteria (specific, measurable)
+- Acceptance criteria
 - Estimated effort
-- Assigned to (developer role or name)
+- Assigned to
 - Dependencies
 - Testing requirements
 
-Remember: Ask questions and seek clarity BEFORE writing. Only generate the sprint plan when you have complete confidence in the breakdown and sequencing."
-/>
-{{ else }}
-Let me begin the sprint planning process.
+## Error Handling
 
-You are tasked with creating a comprehensive sprint plan based on the Product Requirements Document at docs/prd.md and the Software Design Document at docs/sdd.md.
+| Error | Cause | Resolution |
+|-------|-------|------------|
+| "Loa setup has not been completed" | Missing `.loa-setup-complete` | Run `/setup` first |
+| "PRD not found" | Missing prd.md | Run `/plan-and-analyze` first |
+| "SDD not found" | Missing sdd.md | Run `/architect` first |
 
-Your process:
-1. Carefully read and analyze both docs/prd.md and docs/sdd.md in their entirety
-2. Understand the product requirements, technical architecture, and implementation approach
-3. Break down the work into sprints with specific, actionable tasks
-4. For ANY uncertainties, ambiguities, or areas where clarification is needed:
-   - Ask the user specific questions
-   - Present 2-3 concrete proposals with pros/cons when multiple approaches are valid
-   - Seek clarification on priorities, team size, sprint duration, MVP scope, etc.
-   - Wait for their decision before proceeding
-5. Validate all assumptions about:
-   - Team capacity and available developers
-   - Sprint duration (default is 2.5-day sprints, but confirm)
-   - Feature prioritization and MVP scope
-   - Technical dependencies and sequencing
-   - Testing and QA requirements
-6. Only when you are completely satisfied with all answers and have NO remaining doubts or uncertainties, proceed to write the sprint plan
-7. Generate a detailed, comprehensive sprint plan
-8. Save the final sprint plan to docs/sprint.md
+## Planner Style
 
-The sprint plan should include:
-- Sprint Overview (goals, duration, team structure)
-- Sprint Breakdown:
-  - Sprint number and goals
-  - Tasks with clear descriptions and acceptance criteria
-  - Estimated effort/complexity
-  - Developer assignments
-  - Dependencies and prerequisites
-  - Testing requirements
-- MVP Definition and scope
-- Feature prioritization rationale
-- Risk assessment and mitigation
-- Success metrics per sprint
-- Dependencies and blockers
-- Buffer time for unknowns
+The planner will:
+- Ask about team capacity and sprint duration
+- Clarify MVP scope and feature priorities
+- Present options for sequencing and dependencies
+- Only generate plan when confident in breakdown
 
-Format each task clearly with:
-- Task ID and title
-- Detailed description
-- Acceptance criteria (specific, measurable)
-- Estimated effort
-- Assigned to (developer role or name)
-- Dependencies
-- Testing requirements
+## Next Step
 
-Remember: Ask questions and seek clarity BEFORE writing. Only generate the sprint plan when you have complete confidence in the breakdown and sequencing.
-{{ endif }}
+After sprint plan is complete:
+```
+/implement sprint-1
+```
+
+That's it. The implement command handles everything:
+- If Beads is installed: Automatically manages task lifecycle (bd ready, update, close)
+- If Beads is not installed: Uses markdown-based tracking from sprint.md
+
+**No manual `bd` commands required.** The agent handles task state internally.
