@@ -1286,11 +1286,12 @@ SIETCH SERVER
 
 ---
 
-## Sprint 17: Water Sharer System
+## Sprint 17: Water Sharer System ✅ COMPLETE
 
 **Goal**: Implement Water Sharer badge sharing system and The Oasis channel
 
 **Duration**: 2.5 days
+**Status**: COMPLETE (2025-12-25)
 
 **Key Concept**: Water Sharer badge holders can share their badge with ONE other existing member (not external invites). This is a badge-passing system for community recognition, inspired by Fremen water-sharing culture.
 
@@ -1300,13 +1301,13 @@ SIETCH SERVER
 **Description**: Add Water Sharer badge to badge system with sharing capability indicator
 
 **Acceptance Criteria**:
-- [ ] `water-sharer` badge ID defined in badges data
-- [ ] Badge has name: "Water Sharer"
-- [ ] Badge has description: "Recognized contributor who can share this badge with one other member"
-- [ ] Badge emoji: 💧 or appropriate water/sharing theme
-- [ ] Badge visible on profile and directory
-- [ ] Badge can be awarded via `/admin badge award water-sharer @user`
-- [ ] Badge shows sharing status (shared/available) on profile
+- [x] `water-sharer` badge ID defined in badges data
+- [x] Badge has name: "Water Sharer"
+- [x] Badge has description: "Recognized contributor who can share this badge with one other member"
+- [x] Badge emoji: 💧 or appropriate water/sharing theme
+- [x] Badge visible on profile and directory
+- [x] Badge can be awarded via `/admin badge award water-sharer @user`
+- [x] Badge shows sharing status (shared/available) on profile
 
 **Files to Modify**:
 - `sietch-service/src/services/BadgeService.ts`
@@ -1322,16 +1323,16 @@ SIETCH SERVER
 **Description**: Create database migration for Water Sharer badge grant tracking
 
 **Acceptance Criteria**:
-- [ ] Create `water_sharer_grants` table with columns:
+- [x] Create `water_sharer_grants` table with columns:
   - `id` TEXT PRIMARY KEY
   - `granter_member_id` TEXT NOT NULL (who shared)
   - `recipient_member_id` TEXT NOT NULL (who received)
   - `granted_at` INTEGER NOT NULL
   - `revoked_at` INTEGER (null if active)
-- [ ] Create unique index `idx_granter_active` on granter WHERE revoked_at IS NULL (one share per granter)
-- [ ] Create unique index `idx_recipient_unique` on recipient_member_id (can only receive once)
-- [ ] Foreign keys to member_profiles
-- [ ] Migration is reversible
+- [x] Create unique index `idx_granter_active` on granter WHERE revoked_at IS NULL (one share per granter)
+- [x] Create unique index `idx_recipient_unique` on recipient_member_id (can only receive once)
+- [x] Foreign keys to member_profiles
+- [x] Migration is reversible
 
 **Files to Create**:
 - `sietch-service/src/db/migrations/007_water_sharer_grants.ts`
@@ -1346,15 +1347,15 @@ SIETCH SERVER
 **Description**: Implement WaterSharerService for badge sharing management
 
 **Acceptance Criteria**:
-- [ ] `canShare(memberId)` checks badge AND no existing active grant
-- [ ] `shareBadge(granterMemberId, recipientMemberId)` creates grant record
-- [ ] Validates granter has Water Sharer badge
-- [ ] Validates granter hasn't already shared (one share limit)
-- [ ] Validates recipient is existing server member with completed onboarding
-- [ ] Validates recipient doesn't already have Water Sharer badge
-- [ ] Awards badge to recipient on successful share
-- [ ] Logs audit event for badge share
-- [ ] Unit tests for all validation scenarios
+- [x] `canShare(memberId)` checks badge AND no existing active grant
+- [x] `shareBadge(granterMemberId, recipientMemberId)` creates grant record
+- [x] Validates granter has Water Sharer badge
+- [x] Validates granter hasn't already shared (one share limit)
+- [x] Validates recipient is existing server member with completed onboarding
+- [x] Validates recipient doesn't already have Water Sharer badge
+- [x] Awards badge to recipient on successful share
+- [x] Logs audit event for badge share
+- [x] Unit tests for all validation scenarios
 
 **Files to Create**:
 - `sietch-service/src/services/WaterSharerService.ts`
@@ -1369,16 +1370,16 @@ SIETCH SERVER
 **Description**: Implement /water-share Discord command for badge sharing
 
 **Acceptance Criteria**:
-- [ ] `/water-share @user` shares badge with mentioned member
-- [ ] `/water-share status` shows sharing status:
+- [x] `/water-share @user` shares badge with mentioned member
+- [x] `/water-share status` shows sharing status:
   - Has badge? Can share? Already shared with (nym)?
   - Received from (nym)?
-- [ ] Command validates caller has Water Sharer badge
-- [ ] Command validates caller hasn't already shared
-- [ ] Command validates recipient is onboarded member
-- [ ] Error messages are helpful and specific
-- [ ] Success message confirms badge shared
-- [ ] All responses are ephemeral
+- [x] Command validates caller has Water Sharer badge
+- [x] Command validates caller hasn't already shared
+- [x] Command validates recipient is onboarded member
+- [x] Error messages are helpful and specific
+- [x] Success message confirms badge shared
+- [x] All responses are ephemeral
 
 **Files to Create**:
 - `sietch-service/src/discord/commands/water-share.ts`
@@ -1393,10 +1394,10 @@ SIETCH SERVER
 **Description**: Configure The Oasis exclusive channel for Water Sharer badge holders
 
 **Acceptance Criteria**:
-- [ ] `DISCORD_CHANNEL_OASIS` environment variable documented
-- [ ] Channel access granted to `@Water Sharer` role
-- [ ] Graceful degradation if channel ID not configured
-- [ ] Channel mentioned in badge award notification
+- [x] `DISCORD_CHANNEL_OASIS` environment variable documented
+- [x] Channel access granted to `@Water Sharer` role
+- [x] Graceful degradation if channel ID not configured
+- [x] Channel mentioned in badge award notification
 
 **Files to Modify**:
 - `sietch-service/src/config.ts`
@@ -1409,11 +1410,11 @@ SIETCH SERVER
 ---
 
 ### Sprint 17 Success Criteria
-- [ ] Water Sharer badge can be awarded by admin
-- [ ] Badge holders can share badge with ONE existing member via `/water-share`
-- [ ] Recipients receive badge and can access The Oasis (if configured)
-- [ ] Sharing status visible to badge holders
-- [ ] Badge lineage tracked in database
+- [x] Water Sharer badge can be awarded by admin
+- [x] Badge holders can share badge with ONE existing member via `/water-share`
+- [x] Recipients receive badge and can access The Oasis (if configured)
+- [x] Sharing status visible to badge holders
+- [x] Badge lineage tracked in database
 
 ---
 
