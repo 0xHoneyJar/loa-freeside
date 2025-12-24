@@ -1,8 +1,8 @@
 # Product Requirements Document: Sietch
 
-**Version**: 3.0
-**Date**: December 20, 2025
-**Status**: Draft
+**Version**: 3.0.1
+**Date**: December 24, 2025
+**Status**: Active
 **Codename**: The Great Expansion
 
 ---
@@ -109,6 +109,29 @@ Hajra (6.9) → Ichwan (69) → Qanat (222) → Sihaya (420) → Mushtamal (690)
 
 **Tier upgrades are automatic**: When a member's BGT crosses a threshold during sync, they're upgraded.
 
+### 2.4.1 Additive Role Model
+
+Discord tier roles use an **additive model** - members accumulate all roles from their tier and below:
+
+| Member Tier | Discord Roles Assigned |
+|-------------|------------------------|
+| Hajra | @Hajra |
+| Ichwan | @Hajra, @Ichwan |
+| Qanat | @Hajra, @Ichwan, @Qanat |
+| Sihaya | @Hajra, @Ichwan, @Qanat, @Sihaya |
+| Mushtamal | @Hajra, @Ichwan, @Qanat, @Sihaya, @Mushtamal |
+| Sayyadina | @Hajra, @Ichwan, @Qanat, @Sihaya, @Mushtamal, @Sayyadina |
+| Usul | @Hajra, @Ichwan, @Qanat, @Sihaya, @Mushtamal, @Sayyadina, @Usul |
+| Fedaykin | All BGT-based roles + @Fedaykin |
+| Naib | All BGT-based roles + @Fedaykin, @Naib |
+
+**Benefits**:
+- Channel permissions work naturally (higher tiers see all lower channels)
+- Visual recognition of tier history
+- Simpler permission management (grant access to @Qanat+ instead of listing each)
+
+**Note**: Fedaykin and Naib are rank-based exceptions - they skip intermediate BGT roles since their qualification is position-based, not BGT threshold-based.
+
 ### 2.5 Dynamic Naib System (Retained from v2.1)
 
 The Naib tier operates differently from threshold-based tiers - it uses **rank-based competition**.
@@ -200,6 +223,9 @@ SIETCH SERVER
 ├── 🧘 STILLSUIT LOUNGE (Veterans - 90+ days)
 │   └── #stillsuit-lounge ───── Long-term members space
 │
+├── 🌊 THE OASIS (Water Sharer badge holders)
+│   └── #the-oasis ────────────── Community contributor space
+│
 └── 🛠️ WINDTRAP (Support)
     ├── #support ────────────── Technical help
     └── #bot-commands ───────── Bot interactions
@@ -250,40 +276,71 @@ CREATE TABLE tier_history (
 );
 ```
 
-### 4.2 Sponsor/Invite System
+### 4.2 Water Sharer Badge System
 
-#### 4.2.1 Sponsor Badge
+#### 4.2.1 Overview
 
-**"Water Sharer"** badge - Dune-themed recognition for contributors:
-- Granted by admin via `/admin badge award`
-- Indicates member can sponsor one person
-- Visible on profile and directory
+**"Water Sharer"** badge - Dune-themed recognition for helpful community contributors. In Fremen culture, sharing water is the ultimate act of trust and generosity.
 
-#### 4.2.2 Invite Mechanics
+**Key Concept**: Water Sharers can "pass the gift" by granting the Water Sharer badge to ONE other existing member (not external invites).
 
-- **Command**: `/invite @discorduser`
-- **Effect**: Invited person receives sponsor's tier
-- **Duration**: Permanent (as long as sponsor has the badge)
-- **Limit**: One active invite per sponsor
-- **Requirements**:
-  - Sponsor must have Water Sharer badge
-  - Invited user must not already be a member
-  - Invited user doesn't need BGT (bypass)
+#### 4.2.2 Badge Mechanics
 
-#### 4.2.3 Invite Data Model
+- **Initial Grant**: Admin awards via `/admin badge award water-sharer @user`
+- **Pass-Along**: Badge holder can share with ONE other eligible member via `/water-share @user`
+- **Requirements for Recipient**:
+  - Must already be a server member (meets BGT eligibility)
+  - Must have completed onboarding
+  - Cannot already have Water Sharer badge
+- **Limit**: Each Water Sharer can only share once (one active "child" badge)
+- **Tracking**: System tracks badge lineage (who shared with whom)
+
+#### 4.2.3 Water Sharer Channel
+
+**"The Oasis"** - A special channel for Water Sharer badge holders:
+
+```
+🌊 THE OASIS (Water Sharer badge holders only)
+└── #the-oasis ── Exclusive space for community contributors
+```
+
+**Permissions**:
+- Only members with Water Sharer badge can view and post
+- Admin always has access for moderation
+
+#### 4.2.4 Badge Lineage Data Model
 
 ```sql
-CREATE TABLE sponsor_invites (
+CREATE TABLE water_sharer_grants (
     id TEXT PRIMARY KEY,
-    sponsor_member_id TEXT NOT NULL,
-    invited_discord_id TEXT NOT NULL,
-    invited_member_id TEXT,  -- Set when they complete onboarding
-    tier_granted TEXT NOT NULL,
-    created_at INTEGER NOT NULL,
-    accepted_at INTEGER,
-    revoked_at INTEGER,
-    FOREIGN KEY (sponsor_member_id) REFERENCES member_profiles(id)
+    granter_member_id TEXT NOT NULL,      -- Who shared the badge
+    recipient_member_id TEXT NOT NULL,    -- Who received it
+    granted_at INTEGER NOT NULL,
+    revoked_at INTEGER,                   -- If admin revokes
+    FOREIGN KEY (granter_member_id) REFERENCES member_profiles(id),
+    FOREIGN KEY (recipient_member_id) REFERENCES member_profiles(id)
 );
+
+CREATE UNIQUE INDEX idx_granter_active ON water_sharer_grants(granter_member_id) WHERE revoked_at IS NULL;
+CREATE UNIQUE INDEX idx_recipient_unique ON water_sharer_grants(recipient_member_id);
+```
+
+#### 4.2.5 /water-share Command
+
+```
+/water-share @user
+
+Validates:
+1. Caller has Water Sharer badge
+2. Caller hasn't already shared (one share limit)
+3. Target is server member with completed onboarding
+4. Target doesn't already have Water Sharer badge
+
+On success:
+- Awards Water Sharer badge to target
+- Records grant in water_sharer_grants table
+- Sends DM notification to recipient
+- Logs audit event
 ```
 
 ### 4.3 Notification System Extensions
@@ -509,14 +566,14 @@ Your position: #{rank} ({bgt}/{next_threshold} BGT)
 
 | Badge | Criteria | Unlocks |
 |-------|----------|---------|
-| **Water Sharer** | Admin-granted for contributions | Sponsor invite ability |
+| **Water Sharer** | Admin-granted or shared by existing Water Sharer | Access to #the-oasis, ability to share badge once |
 | **Usul Ascended** | Reached Usul tier (1111+ BGT) | Prestige recognition |
 
 ### 5.3 Badge Display
 
 - All badges visible on profile
 - Top 3 badges shown in directory preview
-- Water Sharer badge shows invite status (used/available)
+- Water Sharer badge shows sharing status (shared/available)
 
 ---
 
@@ -528,8 +585,8 @@ Your position: #{rank} ({bgt}/{next_threshold} BGT)
 |---------|-------------|------------|
 | `/stats` | Personal activity summary | Ephemeral |
 | `/leaderboard tiers` | Tier progression leaderboard | Public |
-| `/invite @user` | Sponsor invite (requires badge) | Ephemeral |
-| `/invite status` | Check your invite status | Ephemeral |
+| `/water-share @user` | Share Water Sharer badge with member (requires badge) | Ephemeral |
+| `/water-share status` | Check your sharing status | Ephemeral |
 
 ### 6.2 Retained Commands (from v2.1)
 
@@ -553,8 +610,9 @@ Your position: #{rank} ({bgt}/{next_threshold} BGT)
 | Command | Description |
 |---------|-------------|
 | `/admin stats` | Community analytics dashboard |
-| `/admin badge award @user water-sharer` | Grant sponsor badge |
-| `/admin invite revoke @user` | Revoke sponsor's invite |
+| `/admin badge award @user water-sharer` | Grant Water Sharer badge |
+| `/admin badge revoke @user water-sharer` | Revoke Water Sharer badge (also revokes downstream grants) |
+| `/admin water-share list` | View Water Sharer badge lineage tree |
 
 ---
 
@@ -581,21 +639,19 @@ CREATE TABLE tier_history (
 CREATE INDEX idx_tier_history_member ON tier_history(member_id);
 CREATE INDEX idx_tier_history_date ON tier_history(changed_at);
 
--- Sponsor invites
-CREATE TABLE sponsor_invites (
+-- Water Sharer badge grants (badge sharing lineage)
+CREATE TABLE water_sharer_grants (
     id TEXT PRIMARY KEY,
-    sponsor_member_id TEXT NOT NULL,
-    invited_discord_id TEXT NOT NULL,
-    invited_member_id TEXT,
-    tier_granted TEXT NOT NULL,
-    created_at INTEGER NOT NULL,
-    accepted_at INTEGER,
-    revoked_at INTEGER,
-    FOREIGN KEY (sponsor_member_id) REFERENCES member_profiles(id)
+    granter_member_id TEXT NOT NULL,      -- Who shared the badge
+    recipient_member_id TEXT NOT NULL,    -- Who received it
+    granted_at INTEGER NOT NULL,
+    revoked_at INTEGER,                   -- If admin revokes
+    FOREIGN KEY (granter_member_id) REFERENCES member_profiles(id),
+    FOREIGN KEY (recipient_member_id) REFERENCES member_profiles(id)
 );
 
-CREATE INDEX idx_invites_sponsor ON sponsor_invites(sponsor_member_id);
-CREATE INDEX idx_invites_discord ON sponsor_invites(invited_discord_id);
+CREATE UNIQUE INDEX idx_granter_active ON water_sharer_grants(granter_member_id) WHERE revoked_at IS NULL;
+CREATE UNIQUE INDEX idx_recipient_unique ON water_sharer_grants(recipient_member_id);
 
 -- Story fragments
 CREATE TABLE story_fragments (
@@ -672,7 +728,7 @@ CREATE INDEX idx_alert_history_type ON alert_history(alert_type, sent_at);
 | Service | Responsibility |
 |---------|----------------|
 | `TierService` | Tier calculation, assignment, history |
-| `SponsorService` | Invite management, validation |
+| `WaterSharerService` | Badge sharing, lineage tracking, validation |
 | `DigestService` | Weekly stats collection, posting |
 | `StoryService` | Fragment selection, posting |
 
@@ -727,6 +783,22 @@ GET  /admin/alerts/stats           → Alert delivery statistics
 | Scale | Support 500+ members |
 | Database | SQLite (sufficient for scale) |
 | Privacy | Zero wallet exposure in public APIs |
+
+### 7.7 Graceful Degradation
+
+The system is designed to function even when optional components are not configured:
+
+| Component | If Missing | Behavior |
+|-----------|------------|----------|
+| **Tier Discord Roles** | Role IDs not in env | Tier sync skips role assignment, logs debug message, data still updated |
+| **Oasis Channel** | Channel ID not configured | Water Sharer badge still works, just no exclusive channel |
+| **Announcements Channel** | Channel ID not configured | Weekly digest skipped, no error |
+| **Story Fragments** | Table empty | Elite join posts skipped silently |
+| **Discord Connection** | Bot not connected | Sync task completes without role updates, logged as warning |
+
+**Principle**: Core data operations (eligibility sync, tier calculation, database updates) always complete. Discord visual features degrade gracefully without blocking functionality.
+
+**Startup Validation**: On startup, the system logs which optional features are configured vs unavailable, allowing operators to see feature status at a glance.
 
 ---
 
@@ -880,9 +952,13 @@ All tiers receive same privacy protections:
 | `@Qanat` | Cyan (#17A2B8) | 222+ BGT | BGT threshold |
 | `@Ichwan` | Orange (#FD7E14) | 69+ BGT | BGT threshold |
 | `@Hajra` | Sand (#C2B280) | 6.9+ BGT | BGT threshold |
-| `@Water Sharer` | Aqua (#00D4FF) | Badge | Admin grant |
+| `@Water Sharer` | Aqua (#00D4FF) | Badge | Admin grant or shared by Water Sharer |
 | `@Engaged` | Green | 5+ badges | Badge count |
 | `@Veteran` | Purple | 90+ days | Tenure |
+
+**Water Sharer Role Permissions**:
+- Access to #the-oasis channel
+- Role is additive (keeps all other tier/badge roles)
 
 ---
 
@@ -950,6 +1026,7 @@ interface WeeklyStats {
 | 2.0 | 2025-12-18 | Social Layer - profiles, badges, directory |
 | 2.1 | 2025-12-19 | Naib Dynamics & Threshold system |
 | 3.0 | 2025-12-20 | The Great Expansion - 9-tier system, sponsors |
+| 3.0.1 | 2025-12-24 | Refinements: Water Sharer model clarified (badge-sharing not external invite), additive role model documented, graceful degradation section, #the-oasis channel |
 
 ---
 
