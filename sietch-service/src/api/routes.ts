@@ -264,6 +264,11 @@ const auditLogQuerySchema = z.object({
       'naib_demotion',
       'grace_period_entered',
       'grace_period_exited',
+      // Sprint 15-16: Tier system event types
+      'tier_change',
+      'tier_role_sync',
+      'tier_roles_assigned',
+      'tier_roles_removed',
     ])
     .optional(),
   since: z.string().datetime().optional(),

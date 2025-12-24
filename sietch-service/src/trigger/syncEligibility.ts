@@ -5,6 +5,7 @@ import { discordService } from '../services/discord.js';
 import { naibService } from '../services/naib.js';
 import { thresholdService } from '../services/threshold.js';
 import { notificationService } from '../services/notification.js';
+import { tierService, syncTierRole, isTierRolesConfigured } from '../services/index.js';
 import {
   initDatabase,
   saveEligibilitySnapshot,
@@ -14,7 +15,9 @@ import {
   logAuditEvent,
   getDiscordIdByWallet,
   getMemberProfileByDiscordId,
+  getMemberProfileById,
 } from '../db/index.js';
+import type { Tier } from '../types/index.js';
 
 /**
  * Scheduled task to sync BGT eligibility data from chain
@@ -107,7 +110,85 @@ export const syncEligibilityTask = schedules.task({
         });
       }
 
-      // 9. Save threshold snapshot (v2.1)
+      // 9. Calculate and sync tier for each member (v3.0)
+      let tierStats = { updated: 0, promotions: 0, demotions: 0, roleChanges: 0, errors: 0 };
+      if (isTierRolesConfigured()) {
+        try {
+          triggerLogger.info('Processing tier updates for members...');
+
+          // Get all onboarded members with their current BGT and rank
+          for (const entry of eligibility) {
+            const discordId = getDiscordIdByWallet(entry.address);
+            if (!discordId) continue;
+
+            const profile = getMemberProfileByDiscordId(discordId);
+            if (!profile || !profile.onboardingComplete) continue;
+
+            try {
+              // Calculate new tier based on BGT and rank
+              const newTier = tierService.calculateTier(entry.bgtHeld, entry.rank ?? null);
+              const oldTier = profile.tier as Tier | null;
+
+              // Check if tier changed
+              if (oldTier !== newTier) {
+                // Update tier in database
+                const updated = await tierService.updateMemberTier(
+                  profile.memberId,
+                  newTier,
+                  entry.bgtHeld.toString(),
+                  entry.rank ?? null,
+                  oldTier
+                );
+
+                if (updated) {
+                  tierStats.updated++;
+
+                  // Check if promotion or demotion
+                  if (oldTier && tierService.isPromotion(oldTier, newTier)) {
+                    tierStats.promotions++;
+                  } else if (oldTier) {
+                    tierStats.demotions++;
+                  }
+
+                  // Sync Discord roles
+                  const roleResult = await syncTierRole(discordId, newTier, oldTier);
+                  if (roleResult.assigned.length > 0 || roleResult.removed.length > 0) {
+                    tierStats.roleChanges++;
+                  }
+                }
+              }
+            } catch (memberTierError) {
+              triggerLogger.warn('Failed to process tier for member', {
+                discordId,
+                error: memberTierError instanceof Error ? memberTierError.message : String(memberTierError),
+              });
+              tierStats.errors++;
+            }
+          }
+
+          triggerLogger.info('Tier sync completed', tierStats);
+
+          // Log audit event for tier sync
+          if (tierStats.updated > 0) {
+            logAuditEvent('tier_role_sync', {
+              snapshotId,
+              updated: tierStats.updated,
+              promotions: tierStats.promotions,
+              demotions: tierStats.demotions,
+              roleChanges: tierStats.roleChanges,
+              errors: tierStats.errors,
+            });
+          }
+        } catch (tierError) {
+          triggerLogger.error('Tier sync error (non-fatal)', {
+            error: tierError instanceof Error ? tierError.message : String(tierError),
+          });
+        }
+      } else {
+        triggerLogger.debug('Tier roles not configured, skipping tier sync');
+      }
+
+      // 10. Save threshold snapshot (v2.1)
       let thresholdSnapshot = null;
       try {
         triggerLogger.info('Saving threshold snapshot...');
@@ -253,6 +334,7 @@ export const syncEligibilityTask = schedules.task({
           droppedOut: waitlistCheck.droppedOut.length,
         } : null,
         notifications: notificationStats,
+        tiers: tierStats.updated > 0 ? tierStats : null,
       };
     } catch (error) {
       // Update health status - failure

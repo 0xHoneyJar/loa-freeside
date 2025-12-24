@@ -127,7 +127,12 @@ export interface AuditLogEntry {
     | 'admin_reset_alert_counters'
     // Sprint 14: Integration event types
     | 'naib_seats_evaluated'
-    | 'weekly_reset';
+    | 'weekly_reset'
+    // Sprint 15-16: Tier system event types
+    | 'tier_change'
+    | 'tier_role_sync'
+    | 'tier_roles_assigned'
+    | 'tier_roles_removed';
   /** Event-specific data */
   eventData: Record<string, unknown>;
   /** When the event occurred */

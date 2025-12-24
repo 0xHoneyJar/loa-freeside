@@ -56,6 +56,12 @@ export {
   assignTaqwaRole,
   removeTaqwaRole,
   isTaqwaRoleConfigured,
+  // Sprint 16: Tier role management
+  syncTierRole,
+  assignTierRolesUpTo,
+  removeAllTierRoles,
+  isTierRolesConfigured,
+  getUnconfiguredTierRoles,
 } from './roleManager.js';
 
 // Sprint 10: Member Migration
@@ -74,3 +80,11 @@ export { thresholdService } from './threshold.js';
 
 // Sprint 13: Notification System
 export { notificationService } from './notification.js';
+
+// Sprint 15: Tier System
+export {
+  tierService,
+  TIER_THRESHOLDS,
+  TIER_ORDER,
+  TIER_INFO,
+} from './TierService.js';
