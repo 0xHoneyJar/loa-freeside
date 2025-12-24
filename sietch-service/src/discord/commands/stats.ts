@@ -1,11 +1,16 @@
 /**
- * /stats Slash Command
+ * /stats Slash Command (Enhanced for Sprint 19)
  *
- * View your personal activity statistics.
+ * View your personal activity statistics including:
+ * - Tier and progression
+ * - Activity this week and streaks
+ * - Badges earned
+ * - Member tenure
+ *
  * This is private - only you can see your stats.
  *
  * Usage:
- * - /stats - View your activity stats (ephemeral)
+ * - /stats - View your comprehensive activity stats (ephemeral)
  */
 
 import {
@@ -13,12 +18,9 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import { logger } from '../../utils/logger.js';
-import {
-  getMemberProfileByDiscordId,
-  getMemberBadgeCount,
-} from '../../db/queries.js';
-import { getOwnStats } from '../../services/activity.js';
-import { buildStatsEmbed } from '../embeds/badge.js';
+import { getMemberProfileByDiscordId } from '../../db/queries.js';
+import { statsService } from '../../services/index.js';
+import { buildPersonalStatsEmbed } from '../embeds/stats.js';
 
 /**
  * Slash command definition
@@ -59,27 +61,19 @@ export async function handleStatsCommand(
       return;
     }
 
-    // Get activity stats (applies pending decay)
-    const activity = getOwnStats(discordUserId);
+    // Get comprehensive personal stats
+    const stats = statsService.getPersonalStats(discordUserId);
 
-    if (!activity) {
+    if (!stats) {
       await interaction.reply({
-        content: 'Unable to fetch your activity stats. Please try again later.',
+        content: 'Unable to fetch your stats. Please try again later.',
         ephemeral: true,
       });
       return;
     }
 
-    // Get badge count
-    const badgeCount = getMemberBadgeCount(profile.memberId);
-
     // Build and send embed
-    const embed = buildStatsEmbed(
-      profile.nym,
-      activity,
-      badgeCount,
-      profile.pfpUrl
-    );
+    const embed = buildPersonalStatsEmbed(stats, profile.pfpUrl);
 
     await interaction.reply({
       embeds: [embed],

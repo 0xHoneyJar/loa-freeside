@@ -102,3 +102,7 @@ export {
   getGrantById,
   WATER_SHARER_ERRORS,
 } from './WaterSharerService.js';
+
+// Sprint 19: Stats & Leaderboard
+export { statsService } from './StatsService.js';
+export type { TierProgressionEntry } from './StatsService.js';
