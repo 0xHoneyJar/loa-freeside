@@ -1,9 +1,9 @@
 # Software Design Document: Sietch
 
-**Version**: 3.0
-**Date**: December 20, 2025
-**Status**: Draft
-**PRD Reference**: `docs/prd.md`
+**Version**: 3.0.1
+**Date**: December 24, 2025
+**Status**: Active
+**PRD Reference**: `loa-grimoire/context/prd.md`
 **Codename**: The Great Expansion
 
 ---
@@ -23,7 +23,7 @@ Sietch v3.0 transforms from an exclusive 69-member community into a layered sanc
 2. **Automatic Tier Assignment** - BGT balance and rank-based calculation
 3. **Dynamic Naib System** - 7 competitive seats with BGT-based bumping (retained from v2.1)
 4. **Position Alert System** - At-risk warnings, Naib threats, relative standings (retained from v2.1)
-5. **Sponsor Invites** - Water Sharer badge enables sponsorship
+5. **Water Sharer Badge Sharing** - Badge holders can share badge with one existing member
 6. **Tier Notifications** - DM alerts on promotion
 7. **Weekly Digest** - Community pulse posted to announcements
 8. **Story Fragments** - Cryptic narratives for elite joins
@@ -36,7 +36,7 @@ Sietch v3.0 transforms from an exclusive 69-member community into a layered sanc
 | Database | SQLite (existing) | Sufficient for 500+ members; WAL mode handles concurrent reads |
 | Tier Storage | Column in member_profiles | Single source of truth; atomic updates with BGT sync |
 | Role Management | Additive roles | Members accumulate tier roles; simplifies permission inheritance |
-| Invite System | Badge-gated | Water Sharer badge enables sponsorship; admin-controlled |
+| Badge Sharing | Pass-along model | Water Sharer badge can be shared once to existing member |
 | Story Fragments | Database-stored | Editable without code deployment; usage tracking |
 | Weekly Digest | trigger.dev task | Existing scheduler infrastructure; reliable delivery |
 
@@ -45,8 +45,50 @@ Sietch v3.0 transforms from an exclusive 69-member community into a layered sanc
 1. **Extend, Don't Replace**: Build on existing patterns; no breaking changes
 2. **Privacy First**: Tier visible, BGT amount never exposed
 3. **Graceful Degradation**: Tier features fail safely; core eligibility unaffected
-4. **Audit Everything**: All tier changes and sponsor actions logged
+4. **Audit Everything**: All tier changes and badge sharing actions logged
 5. **Single Source of Truth**: Tier calculated during sync, not on-demand
+
+### 1.5 Graceful Degradation
+
+The system is designed to function even when optional components are not configured:
+
+| Component | If Missing | Behavior |
+|-----------|------------|----------|
+| **Tier Discord Roles** | Role IDs not in env | Tier sync skips role assignment, logs debug message, data still updated |
+| **Oasis Channel** | Channel ID not configured | Water Sharer badge still works, just no exclusive channel |
+| **Announcements Channel** | Channel ID not configured | Weekly digest skipped, no error |
+| **Story Fragments** | Table empty | Elite join posts skipped silently |
+| **Discord Connection** | Bot not connected | Sync task completes without role updates, logged as warning |
+
+**Principle**: Core data operations (eligibility sync, tier calculation, database updates) always complete. Discord visual features degrade gracefully without blocking functionality.
+
+**Implementation**:
+```typescript
+// Example: Check before role operations
+function isTierRolesConfigured(): boolean {
+  return Object.values(TIER_ROLES).some(id => id && id.length > 0);
+}
+
+// Example: Graceful channel posting
+async function postToChannel(channelId: string | undefined, content: string): Promise<boolean> {
+  if (!channelId) {
+    logger.debug('Channel not configured, skipping post');
+    return false;
+  }
+  try {
+    const channel = await client.channels.fetch(channelId);
+    if (channel?.isTextBased()) {
+      await channel.send(content);
+      return true;
+    }
+  } catch (error) {
+    logger.warn({ channelId, error }, 'Failed to post to channel');
+  }
+  return false;
+}
+```
+
+**Startup Validation**: On startup, the system logs which optional features are configured vs unavailable, allowing operators to see feature status at a glance.
 
 ---
 
@@ -69,7 +111,7 @@ Sietch v3.0 transforms from an exclusive 69-member community into a layered sanc
 │  ┌──────────────────────────┴──────────────────────────┐                    │
 │  │                   SERVICE LAYER                      │                    │
 │  │  ┌────────────┐  ┌────────────┐  ┌────────────┐     │                    │
-│  │  │   Tier     │  │  Sponsor   │  │   Digest   │     │  NEW SERVICES      │
+│  │  │   Tier     │  │WaterSharer │  │   Digest   │     │  NEW SERVICES      │
 │  │  │  Service   │  │  Service   │  │  Service   │     │                    │
 │  │  └────────────┘  └────────────┘  └────────────┘     │                    │
 │  │  ┌────────────┐  ┌────────────┐  ┌────────────┐     │                    │
@@ -93,7 +135,7 @@ Sietch v3.0 transforms from an exclusive 69-member community into a layered sanc
 │  │  │              SQLite Database                    │  │                   │
 │  │  │  • member_profiles (+ tier, tier_updated_at)   │  │                   │
 │  │  │  • tier_history (NEW)                          │  │                   │
-│  │  │  • sponsor_invites (NEW)                       │  │                   │
+│  │  │  • water_sharer_grants (NEW)                   │  │                   │
 │  │  │  • story_fragments (NEW)                       │  │                   │
 │  │  │  • weekly_digests (NEW)                        │  │                   │
 │  │  │  • naib_seats (RETAINED v2.1)                  │  │                   │
@@ -222,7 +264,7 @@ sietch-service/
 ├── src/
 │   ├── services/
 │   │   ├── TierService.ts          # NEW: Tier calculation & management
-│   │   ├── SponsorService.ts       # NEW: Invite management
+│   │   ├── WaterSharerService.ts   # NEW: Badge sharing management
 │   │   ├── DigestService.ts        # NEW: Weekly digest generation
 │   │   ├── StoryService.ts         # NEW: Story fragment posting
 │   │   ├── StatsService.ts         # NEW: Personal & community stats
@@ -235,12 +277,12 @@ sietch-service/
 │   ├── discord/
 │   │   └── commands/
 │   │       ├── stats.ts            # NEW: /stats command
-│   │       ├── invite.ts           # NEW: /invite command
+│   │       ├── water-share.ts      # NEW: /water-share command
 │   │       └── leaderboard.ts      # Extended: tiers subcommand
 │   ├── api/
 │   │   └── routes/
 │   │       ├── tier.ts             # NEW: Tier endpoints
-│   │       ├── sponsor.ts          # NEW: Sponsor endpoints
+│   │       ├── water-sharer.ts     # NEW: Badge sharing endpoints
 │   │       └── stats.ts            # NEW: Stats endpoints
 │   ├── trigger/
 │   │   ├── sync-eligibility.ts     # Extended: tier sync
@@ -466,216 +508,204 @@ export class TierService {
 export const tierService = new TierService();
 ```
 
-### 4.2 SponsorService
+### 4.2 WaterSharerService
 
-**File**: `src/services/SponsorService.ts`
+**File**: `src/services/WaterSharerService.ts`
 
-**Responsibility**: Manage sponsor invites for Water Sharer badge holders.
+**Responsibility**: Manage Water Sharer badge sharing between existing members.
+
+**Key Concept**: Water Sharer badge holders can share the badge with ONE other existing member (not external invites). This is a badge-passing system for community recognition.
 
 ```typescript
-// src/services/SponsorService.ts
+// src/services/WaterSharerService.ts
 
 import { db } from '../db';
 import { logger } from '../utils/logger';
 import { badgeService } from './BadgeService';
-import type { SponsorInvite, Tier } from '../types';
+import { auditService } from './AuditService';
+import type { WaterSharerGrant } from '../types';
 
-export class SponsorService {
+export class WaterSharerService {
   private readonly WATER_SHARER_BADGE = 'water-sharer';
 
   /**
-   * Check if member can sponsor (has badge + no active invite)
+   * Check if member can share badge (has badge + hasn't shared yet)
    */
-  canSponsor(memberId: string): { allowed: boolean; reason?: string } {
+  canShare(memberId: string): { allowed: boolean; reason?: string } {
     // Check badge
     const hasBadge = badgeService.hasBadge(memberId, this.WATER_SHARER_BADGE);
     if (!hasBadge) {
       return { allowed: false, reason: 'Water Sharer badge required' };
     }
 
-    // Check for active invite
-    const activeInvite = db.prepare(`
-      SELECT id FROM sponsor_invites
-      WHERE sponsor_member_id = ?
+    // Check for existing active grant (can only share once)
+    const existingGrant = db.prepare(`
+      SELECT id FROM water_sharer_grants
+      WHERE granter_member_id = ?
         AND revoked_at IS NULL
     `).get(memberId);
 
-    if (activeInvite) {
-      return { allowed: false, reason: 'You already have an active invite' };
+    if (existingGrant) {
+      return { allowed: false, reason: 'You have already shared your badge' };
     }
 
     return { allowed: true };
   }
 
   /**
-   * Create sponsor invite for a Discord user
+   * Share badge with another existing member
    */
-  async createInvite(
-    sponsorMemberId: string,
-    invitedDiscordId: string
-  ): Promise<{ success: boolean; invite?: SponsorInvite; error?: string }> {
-    // Validate sponsor
-    const canSponsor = this.canSponsor(sponsorMemberId);
-    if (!canSponsor.allowed) {
-      return { success: false, error: canSponsor.reason };
+  async shareBadge(
+    granterMemberId: string,
+    recipientMemberId: string
+  ): Promise<{ success: boolean; grant?: WaterSharerGrant; error?: string }> {
+    // Validate granter can share
+    const canShare = this.canShare(granterMemberId);
+    if (!canShare.allowed) {
+      return { success: false, error: canShare.reason };
     }
 
-    // Check invited user isn't already a member
-    const existingMember = db.prepare(`
-      SELECT id FROM member_profiles WHERE discord_id = ?
-    `).get(invitedDiscordId);
+    // Validate recipient exists and completed onboarding
+    const recipient = db.prepare(`
+      SELECT id, onboarding_complete FROM member_profiles WHERE id = ?
+    `).get(recipientMemberId) as { id: string; onboarding_complete: number } | undefined;
 
-    if (existingMember) {
-      return { success: false, error: 'User is already a member' };
+    if (!recipient) {
+      return { success: false, error: 'Recipient must be an existing server member' };
     }
 
-    // Check invited user doesn't have pending invite
-    const pendingInvite = db.prepare(`
-      SELECT id FROM sponsor_invites
-      WHERE invited_discord_id = ?
-        AND revoked_at IS NULL
-        AND accepted_at IS NULL
-    `).get(invitedDiscordId);
-
-    if (pendingInvite) {
-      return { success: false, error: 'User already has a pending invite' };
+    if (!recipient.onboarding_complete) {
+      return { success: false, error: 'Recipient must have completed onboarding' };
     }
 
-    // Get sponsor's tier to grant to invitee
-    const sponsor = db.prepare(`
-      SELECT tier FROM member_profiles WHERE id = ?
-    `).get(sponsorMemberId) as { tier: Tier };
-
-    const invite: SponsorInvite = {
-      id: crypto.randomUUID(),
-      sponsor_member_id: sponsorMemberId,
-      invited_discord_id: invitedDiscordId,
-      invited_member_id: null,
-      tier_granted: sponsor.tier,
-      created_at: Date.now(),
-      accepted_at: null,
-      revoked_at: null,
-    };
-
-    db.prepare(`
-      INSERT INTO sponsor_invites
-      (id, sponsor_member_id, invited_discord_id, tier_granted, created_at)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(
-      invite.id,
-      invite.sponsor_member_id,
-      invite.invited_discord_id,
-      invite.tier_granted,
-      invite.created_at
-    );
-
-    logger.info({ sponsorMemberId, invitedDiscordId, tier: sponsor.tier }, 'Sponsor invite created');
-
-    return { success: true, invite };
-  }
-
-  /**
-   * Accept invite (called during onboarding)
-   */
-  async acceptInvite(
-    invitedDiscordId: string,
-    newMemberId: string
-  ): Promise<{ success: boolean; tier?: Tier; error?: string }> {
-    const invite = db.prepare(`
-      SELECT * FROM sponsor_invites
-      WHERE invited_discord_id = ?
-        AND revoked_at IS NULL
-        AND accepted_at IS NULL
-    `).get(invitedDiscordId) as SponsorInvite | undefined;
-
-    if (!invite) {
-      return { success: false, error: 'No pending invite found' };
+    // Check recipient doesn't already have badge
+    const recipientHasBadge = badgeService.hasBadge(recipientMemberId, this.WATER_SHARER_BADGE);
+    if (recipientHasBadge) {
+      return { success: false, error: 'Recipient already has Water Sharer badge' };
     }
 
     const now = Date.now();
+    const grant: WaterSharerGrant = {
+      id: crypto.randomUUID(),
+      granter_member_id: granterMemberId,
+      recipient_member_id: recipientMemberId,
+      granted_at: now,
+      revoked_at: null,
+    };
 
+    // Create grant record
     db.prepare(`
-      UPDATE sponsor_invites
-      SET accepted_at = ?, invited_member_id = ?
-      WHERE id = ?
-    `).run(now, newMemberId, invite.id);
+      INSERT INTO water_sharer_grants
+      (id, granter_member_id, recipient_member_id, granted_at)
+      VALUES (?, ?, ?, ?)
+    `).run(grant.id, grant.granter_member_id, grant.recipient_member_id, grant.granted_at);
 
-    // Set invitee's tier to sponsor's tier
-    db.prepare(`
-      UPDATE member_profiles
-      SET tier = ?, tier_updated_at = ?
-      WHERE id = ?
-    `).run(invite.tier_granted, now, newMemberId);
+    // Award badge to recipient
+    await badgeService.awardBadge(recipientMemberId, this.WATER_SHARER_BADGE);
 
-    logger.info({ inviteId: invite.id, newMemberId, tier: invite.tier_granted }, 'Sponsor invite accepted');
+    // Log audit event
+    auditService.log({
+      event_type: 'water_sharer_grant',
+      member_id: granterMemberId,
+      metadata: { recipient_member_id: recipientMemberId, grant_id: grant.id },
+    });
 
-    return { success: true, tier: invite.tier_granted };
+    logger.info({ granterMemberId, recipientMemberId }, 'Water Sharer badge shared');
+
+    return { success: true, grant };
   }
 
   /**
-   * Revoke invite (admin action)
+   * Revoke badge (admin action) - also revokes downstream grants
    */
-  revokeInvite(inviteId: string, revokedBy: string): boolean {
-    const result = db.prepare(`
-      UPDATE sponsor_invites
+  async revokeBadge(memberId: string, revokedBy: string): Promise<boolean> {
+    const now = Date.now();
+
+    // Revoke any grant this member received
+    db.prepare(`
+      UPDATE water_sharer_grants
       SET revoked_at = ?
-      WHERE id = ? AND revoked_at IS NULL
-    `).run(Date.now(), inviteId);
+      WHERE recipient_member_id = ? AND revoked_at IS NULL
+    `).run(now, memberId);
 
-    if (result.changes > 0) {
-      logger.info({ inviteId, revokedBy }, 'Sponsor invite revoked');
-      return true;
+    // Revoke any grant this member gave (cascade)
+    const downstream = db.prepare(`
+      SELECT recipient_member_id FROM water_sharer_grants
+      WHERE granter_member_id = ? AND revoked_at IS NULL
+    `).all(memberId) as { recipient_member_id: string }[];
+
+    for (const grant of downstream) {
+      await this.revokeBadge(grant.recipient_member_id, revokedBy);
     }
-    return false;
+
+    // Remove badge
+    badgeService.removeBadge(memberId, this.WATER_SHARER_BADGE);
+
+    auditService.log({
+      event_type: 'water_sharer_revoke',
+      member_id: memberId,
+      metadata: { revoked_by: revokedBy },
+    });
+
+    logger.info({ memberId, revokedBy }, 'Water Sharer badge revoked');
+    return true;
   }
 
   /**
-   * Get invite status for a sponsor
+   * Get sharing status for a member
    */
-  getInviteStatus(sponsorMemberId: string): {
-    hasActiveInvite: boolean;
-    invite?: SponsorInvite;
-    invitee?: { discord_id: string; nym?: string; accepted: boolean };
+  getSharingStatus(memberId: string): {
+    hasBadge: boolean;
+    canShare: boolean;
+    sharedWith?: { member_id: string; nym?: string };
+    receivedFrom?: { member_id: string; nym?: string };
   } {
-    const invite = db.prepare(`
-      SELECT si.*, mp.nym
-      FROM sponsor_invites si
-      LEFT JOIN member_profiles mp ON mp.id = si.invited_member_id
-      WHERE si.sponsor_member_id = ?
-        AND si.revoked_at IS NULL
-      ORDER BY si.created_at DESC
-      LIMIT 1
-    `).get(sponsorMemberId) as (SponsorInvite & { nym?: string }) | undefined;
+    const hasBadge = badgeService.hasBadge(memberId, this.WATER_SHARER_BADGE);
 
-    if (!invite) {
-      return { hasActiveInvite: false };
-    }
+    // Check if shared with someone
+    const sharedGrant = db.prepare(`
+      SELECT wsg.recipient_member_id, mp.nym
+      FROM water_sharer_grants wsg
+      LEFT JOIN member_profiles mp ON mp.id = wsg.recipient_member_id
+      WHERE wsg.granter_member_id = ? AND wsg.revoked_at IS NULL
+    `).get(memberId) as { recipient_member_id: string; nym?: string } | undefined;
+
+    // Check if received from someone
+    const receivedGrant = db.prepare(`
+      SELECT wsg.granter_member_id, mp.nym
+      FROM water_sharer_grants wsg
+      LEFT JOIN member_profiles mp ON mp.id = wsg.granter_member_id
+      WHERE wsg.recipient_member_id = ? AND wsg.revoked_at IS NULL
+    `).get(memberId) as { granter_member_id: string; nym?: string } | undefined;
 
     return {
-      hasActiveInvite: true,
-      invite,
-      invitee: {
-        discord_id: invite.invited_discord_id,
-        nym: invite.nym,
-        accepted: invite.accepted_at !== null,
-      },
+      hasBadge,
+      canShare: hasBadge && !sharedGrant,
+      sharedWith: sharedGrant ? { member_id: sharedGrant.recipient_member_id, nym: sharedGrant.nym } : undefined,
+      receivedFrom: receivedGrant ? { member_id: receivedGrant.granter_member_id, nym: receivedGrant.nym } : undefined,
     };
   }
 
   /**
-   * Check if Discord user has pending invite
+   * Get badge lineage tree (admin view)
    */
-  getPendingInvite(discordId: string): SponsorInvite | null {
+  getBadgeLineage(): Array<{
+    granter_nym: string;
+    recipient_nym: string;
+    granted_at: number;
+  }> {
     return db.prepare(`
-      SELECT * FROM sponsor_invites
-      WHERE invited_discord_id = ?
-        AND revoked_at IS NULL
-        AND accepted_at IS NULL
-    `).get(discordId) as SponsorInvite | null;
+      SELECT g.nym as granter_nym, r.nym as recipient_nym, wsg.granted_at
+      FROM water_sharer_grants wsg
+      JOIN member_profiles g ON g.id = wsg.granter_member_id
+      JOIN member_profiles r ON r.id = wsg.recipient_member_id
+      WHERE wsg.revoked_at IS NULL
+      ORDER BY wsg.granted_at DESC
+    `).all() as Array<{ granter_nym: string; recipient_nym: string; granted_at: number }>;
   }
 }
 
-export const sponsorService = new SponsorService();
+export const waterSharerService = new WaterSharerService();
 ```
 
 ### 4.3 DigestService
@@ -1757,24 +1787,22 @@ CREATE TABLE IF NOT EXISTS tier_history (
 CREATE INDEX IF NOT EXISTS idx_tier_history_member ON tier_history(member_id);
 CREATE INDEX IF NOT EXISTS idx_tier_history_date ON tier_history(changed_at);
 
--- Sponsor invites
-CREATE TABLE IF NOT EXISTS sponsor_invites (
+-- Water Sharer badge grants (badge-sharing lineage)
+CREATE TABLE IF NOT EXISTS water_sharer_grants (
     id TEXT PRIMARY KEY,
-    sponsor_member_id TEXT NOT NULL,
-    invited_discord_id TEXT NOT NULL,
-    invited_member_id TEXT,
-    tier_granted TEXT NOT NULL,
-    created_at INTEGER NOT NULL,
-    accepted_at INTEGER,
-    revoked_at INTEGER,
-    FOREIGN KEY (sponsor_member_id) REFERENCES member_profiles(id),
-    FOREIGN KEY (invited_member_id) REFERENCES member_profiles(id)
+    granter_member_id TEXT NOT NULL,      -- Who shared the badge
+    recipient_member_id TEXT NOT NULL,    -- Who received it
+    granted_at INTEGER NOT NULL,
+    revoked_at INTEGER,                   -- If admin revokes
+    FOREIGN KEY (granter_member_id) REFERENCES member_profiles(id),
+    FOREIGN KEY (recipient_member_id) REFERENCES member_profiles(id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_invites_sponsor ON sponsor_invites(sponsor_member_id);
-CREATE INDEX IF NOT EXISTS idx_invites_discord ON sponsor_invites(invited_discord_id);
-CREATE INDEX IF NOT EXISTS idx_invites_active ON sponsor_invites(sponsor_member_id)
+-- Each member can only share once (one active grant as granter)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_granter_active ON water_sharer_grants(granter_member_id)
     WHERE revoked_at IS NULL;
+-- Each member can only receive badge once
+CREATE UNIQUE INDEX IF NOT EXISTS idx_recipient_unique ON water_sharer_grants(recipient_member_id);
 
 -- Story fragments
 CREATE TABLE IF NOT EXISTS story_fragments (
@@ -1865,15 +1893,12 @@ CREATE INDEX IF NOT EXISTS idx_alert_history_sent ON alert_history(sent_at);
          │ 1:N
          ▼
 ┌─────────────────────┐
-│   sponsor_invites   │
+│ water_sharer_grants │
 ├─────────────────────┤
 │ id (PK)             │
-│ sponsor_member_id(FK)│──────┐
-│ invited_discord_id  │      │
-│ invited_member_id(FK)│     │
-│ tier_granted        │      │
-│ created_at          │      │
-│ accepted_at         │      │
+│ granter_member_id(FK)│─────┐
+│ recipient_member_id(FK)│   │
+│ granted_at          │      │
 │ revoked_at          │      │
 └─────────────────────┘      │
                              │
@@ -2082,11 +2107,12 @@ export interface PositionDistances {
 | GET | `/api/me/stats` | Member | Personal stats |
 | GET | `/api/me/tier-progress` | Member | Next tier distance |
 | GET | `/api/me/tier-history` | Member | Tier change history |
-| POST | `/api/invite` | Member | Create sponsor invite |
-| GET | `/api/invite/status` | Member | Invite status |
-| GET | `/api/invite/can-sponsor` | Member | Check badge |
+| POST | `/api/water-share` | Member | Share badge with member |
+| GET | `/api/water-share/status` | Member | Sharing status |
+| GET | `/api/water-share/can-share` | Member | Check if can share |
 | GET | `/admin/analytics` | Admin | Full analytics |
-| DELETE | `/admin/invites/:id` | Admin | Revoke invite |
+| GET | `/admin/water-share/lineage` | Admin | Badge lineage tree |
+| DELETE | `/admin/water-share/:memberId` | Admin | Revoke badge (cascades) |
 
 ### 6.2 Retained API Endpoints (from v2.1)
 
@@ -2113,7 +2139,7 @@ const rateLimits = {
   // Member endpoints
   personalStats: rateLimit({ windowMs: 60000, max: 30 }),
   tierProgress: rateLimit({ windowMs: 60000, max: 30 }),
-  sponsorInvite: rateLimit({ windowMs: 60000, max: 5 }),
+  waterShare: rateLimit({ windowMs: 60000, max: 5 }),
 
   // Admin endpoints
   analytics: rateLimit({ windowMs: 60000, max: 30 }),
@@ -2129,10 +2155,11 @@ const rateLimits = {
 | Command | Subcommand | Description | Visibility |
 |---------|------------|-------------|------------|
 | `/stats` | - | Personal activity summary | Ephemeral |
-| `/invite` | `user @user` | Create sponsor invite | Ephemeral |
-| `/invite` | `status` | Check invite status | Ephemeral |
+| `/water-share` | `@user` | Share badge with member | Ephemeral |
+| `/water-share` | `status` | Check sharing status | Ephemeral |
 | `/leaderboard` | `tiers` | Tier progression ranking | Public |
 | `/admin` | `stats` | Community analytics | Ephemeral |
+| `/admin` | `water-share list` | View badge lineage | Ephemeral |
 
 ### 7.2 Retained Slash Commands (from v2.1)
 
@@ -2160,11 +2187,34 @@ const rateLimits = {
 | `@Qanat` | Cyan (#17A2B8) | 222+ BGT | BGT threshold |
 | `@Ichwan` | Orange (#FD7E14) | 69+ BGT | BGT threshold |
 | `@Hajra` | Sand (#C2B280) | 6.9+ BGT | BGT threshold |
-| `@Water Sharer` | Aqua (#00D4FF) | Badge | Admin grant |
+| `@Water Sharer` | Aqua (#00D4FF) | Badge | Admin grant or shared by Water Sharer |
 | `@Engaged` | Green | 5+ badges | Badge count |
 | `@Veteran` | Purple | 90+ days | Tenure |
 
-### 7.4 Role Management Extensions
+### 7.4 Additive Role Model
+
+Discord tier roles use an **additive model** - members accumulate all roles from their tier and below:
+
+| Member Tier | Discord Roles Assigned |
+|-------------|------------------------|
+| Hajra | @Hajra |
+| Ichwan | @Hajra, @Ichwan |
+| Qanat | @Hajra, @Ichwan, @Qanat |
+| Sihaya | @Hajra, @Ichwan, @Qanat, @Sihaya |
+| Mushtamal | @Hajra, @Ichwan, @Qanat, @Sihaya, @Mushtamal |
+| Sayyadina | @Hajra, @Ichwan, @Qanat, @Sihaya, @Mushtamal, @Sayyadina |
+| Usul | @Hajra, @Ichwan, @Qanat, @Sihaya, @Mushtamal, @Sayyadina, @Usul |
+| Fedaykin | All BGT-based roles + @Fedaykin |
+| Naib | All BGT-based roles + @Fedaykin, @Naib |
+
+**Benefits**:
+- Channel permissions work naturally (higher tiers see all lower channels)
+- Visual recognition of tier history
+- Simpler permission management (grant access to @Qanat+ instead of listing each)
+
+**Note**: Fedaykin and Naib are rank-based exceptions - they skip intermediate BGT roles since their qualification is position-based, not BGT threshold-based.
+
+### 7.5 Role Management Implementation
 
 ```typescript
 // Add tier role constants
@@ -2181,34 +2231,52 @@ const TIER_ROLES: Record<Tier, string> = {
 };
 
 /**
- * Sync tier role for member
- * Additive: member keeps all tier roles they've earned
+ * Sync tier roles for member using additive model
+ * Member accumulates all tier roles up to their current tier
  */
 async syncTierRole(discordId: string, tier: Tier): Promise<void> {
   const guild = await this.getGuild();
   const member = await guild.members.fetch(discordId);
+  const tierIndex = TIER_ORDER.indexOf(tier);
 
-  const roleId = TIER_ROLES[tier];
-  if (!roleId) {
-    logger.warn({ tier }, 'No role ID configured for tier');
+  // Check if role configuration is available
+  if (!isTierRolesConfigured()) {
+    logger.debug({ tier }, 'Tier roles not configured, skipping role sync');
     return;
   }
 
-  // Add new tier role
-  if (!member.roles.cache.has(roleId)) {
-    await member.roles.add(roleId);
-    logger.info({ discordId, tier, roleId }, 'Added tier role');
+  // Additive: assign all roles up to current tier
+  const rolesToAdd: string[] = [];
+  for (let i = 0; i <= tierIndex; i++) {
+    const t = TIER_ORDER[i];
+    // Skip Fedaykin/Naib for non-rank-based members
+    if ((t === 'fedaykin' || t === 'naib') && tierIndex < TIER_ORDER.indexOf('fedaykin')) {
+      continue;
+    }
+    const roleId = TIER_ROLES[t];
+    if (roleId && !member.roles.cache.has(roleId)) {
+      rolesToAdd.push(roleId);
+    }
   }
 
-  // Remove higher tier roles if demoted (shouldn't happen but safety check)
-  const tierIndex = TIER_ORDER.indexOf(tier);
+  if (rolesToAdd.length > 0) {
+    await member.roles.add(rolesToAdd);
+    logger.info({ discordId, tier, rolesAdded: rolesToAdd.length }, 'Added tier roles');
+  }
+
+  // Remove higher tier roles if demoted (safety check)
+  const rolesToRemove: string[] = [];
   for (let i = tierIndex + 1; i < TIER_ORDER.length; i++) {
     const higherTier = TIER_ORDER[i];
     const higherRoleId = TIER_ROLES[higherTier];
     if (higherRoleId && member.roles.cache.has(higherRoleId)) {
-      await member.roles.remove(higherRoleId);
-      logger.info({ discordId, tier: higherTier }, 'Removed higher tier role');
+      rolesToRemove.push(higherRoleId);
     }
+  }
+
+  if (rolesToRemove.length > 0) {
+    await member.roles.remove(rolesToRemove);
+    logger.info({ discordId, rolesRemoved: rolesToRemove.length }, 'Removed higher tier roles');
   }
 }
 ```
@@ -2462,7 +2530,7 @@ describe('TierService', () => {
 | Component | Target |
 |-----------|--------|
 | TierService | 90% |
-| SponsorService | 90% |
+| WaterSharerService | 90% |
 | DigestService | 80% |
 | StatsService | 80% |
 | API Routes | 85% |
@@ -2476,7 +2544,7 @@ describe('TierService', () => {
 |------|------------|--------|------------|
 | **Tier calculation drift** | Low | High | Single source of truth in sync task |
 | **Role assignment race** | Medium | Medium | Queue role updates; idempotent ops |
-| **Sponsor abuse** | Low | Medium | Admin-only badge; one invite limit |
+| **Badge sharing abuse** | Low | Medium | Admin-only initial grant; one share limit; cascade revocation |
 | **Story fragment exhaustion** | Low | Low | Usage counting; admin can add more |
 | **Digest posting failure** | Medium | Low | Retry logic; manual trigger available |
 | **Migration data loss** | Low | Critical | Additive schema changes only |
@@ -2488,7 +2556,7 @@ describe('TierService', () => {
 ### 13.1 Potential v3.1 Features
 
 - **Tier-specific badges**: Auto-award badges for reaching certain tiers
-- **Sponsor leaderboard**: Track who has sponsored the most members
+- **Badge sharing analytics**: Track badge sharing patterns and lineage depth
 - **Digest customization**: Allow members to opt-in to DM digests
 - **Story fragment voting**: Let Naib vote on favorite fragments
 
@@ -2551,6 +2619,7 @@ export const TIER_THRESHOLDS = {
 | 2.0 | 2025-12-18 | Social Layer - profiles, badges, directory, activity tracking |
 | 2.1 | 2025-12-19 | Naib Dynamics & Threshold system |
 | 3.0 | 2025-12-20 | The Great Expansion - 9-tier system, sponsors, digest |
+| 3.0.1 | 2025-12-24 | Refinements: Water Sharer badge model (sharing not external invite), additive role model, graceful degradation, The Oasis channel |
 
 ---
 
