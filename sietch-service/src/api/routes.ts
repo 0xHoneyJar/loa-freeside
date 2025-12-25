@@ -27,9 +27,11 @@ import { profileService } from '../services/profile.js';
 import { directoryService } from '../services/directory.js';
 import { leaderboardService } from '../services/leaderboard.js';
 import { getAllBadgeDefinitions, adminAwardBadge, revokeBadge } from '../services/badge.js';
+import { listAllActiveGrants, revokeGrant, getBadgeLineage, getGrantById } from '../services/WaterSharerService.js';
 import { naibService } from '../services/naib.js';
 import { thresholdService } from '../services/threshold.js';
 import { notificationService } from '../services/notification.js';
+import { analyticsService } from '../services/AnalyticsService.js';
 import { getMemberProfileByDiscordId, getWalletPosition, getCurrentEligibility as getEligibilityList, getWalletByDiscordId } from '../db/queries.js';
 import type {
   ThresholdResponse,
@@ -264,6 +266,11 @@ const auditLogQuerySchema = z.object({
       'naib_demotion',
       'grace_period_entered',
       'grace_period_exited',
+      // Sprint 15-16: Tier system event types
+      'tier_change',
+      'tier_role_sync',
+      'tier_roles_assigned',
+      'tier_roles_removed',
     ])
     .optional(),
   since: z.string().datetime().optional(),
@@ -517,6 +524,110 @@ memberRouter.get('/leaderboard', (req: Request, res: Response) => {
 });
 
 // -----------------------------------------------------------------------------
+// S19-S20: Stats & Analytics Endpoints
+// -----------------------------------------------------------------------------
+
+/**
+ * GET /api/stats/tiers
+ * Get tier definitions and thresholds
+ */
+memberRouter.get('/stats/tiers', (_req: Request, res: Response) => {
+  // Import tierService dynamically to avoid circular deps
+  const { tierService } = require('../services/index.js');
+  const tiers = tierService.getAllTierInfo();
+
+  res.json({
+    tiers: tiers.map((t: any) => ({
+      name: t.name,
+      display_name: t.displayName,
+      bgt_threshold: t.bgtThreshold,
+      rank_based: t.rankBased,
+      description: t.description,
+    })),
+  });
+});
+
+/**
+ * GET /api/stats/community
+ * Get public community statistics (aggregated)
+ */
+publicRouter.get('/stats/community', (_req: Request, res: Response) => {
+  // Import statsService dynamically to avoid circular deps
+  const { statsService } = require('../services/StatsService.js');
+  const stats = statsService.getCommunityStats();
+
+  // Set cache headers (5 minutes)
+  res.setHeader('Cache-Control', 'public, max-age=300');
+  res.json(stats);
+});
+
+/**
+ * GET /api/me/stats
+ * Get personal activity stats for authenticated member
+ */
+memberRouter.get('/me/stats', (req: Request, res: Response) => {
+  const discordUserId = req.headers['x-discord-user-id'] as string;
+
+  if (!discordUserId) {
+    throw new ValidationError('Discord user ID required in x-discord-user-id header');
+  }
+
+  // Import statsService dynamically to avoid circular deps
+  const { statsService } = require('../services/StatsService.js');
+  const stats = statsService.getPersonalStats(discordUserId);
+
+  if (!stats) {
+    throw new NotFoundError('Member not found or onboarding incomplete');
+  }
+
+  res.json(stats);
+});
+
+/**
+ * GET /api/me/tier-progress
+ * Get tier progression data for authenticated member
+ */
+memberRouter.get('/me/tier-progress', (req: Request, res: Response) => {
+  const discordUserId = req.headers['x-discord-user-id'] as string;
+
+  if (!discordUserId) {
+    throw new ValidationError('Discord user ID required in x-discord-user-id header');
+  }
+
+  const member = getMemberProfileByDiscordId(discordUserId);
+
+  if (!member || !member.onboardingComplete) {
+    throw new NotFoundError('Member not found or onboarding incomplete');
+  }
+
+  // Get wallet address
+  const walletAddress = getWalletByDiscordId(discordUserId);
+  if (!walletAddress) {
+    throw new NotFoundError('Wallet mapping not found');
+  }
+
+  // Get eligibility to get BGT and rank
+  const eligibilityList = getEligibilityList();
+  const eligibility = eligibilityList.find(
+    (e) => e.address.toLowerCase() === walletAddress.toLowerCase()
+  );
+
+  if (!eligibility) {
+    throw new NotFoundError('Eligibility data not found');
+  }
+
+  // Import tierService dynamically to avoid circular deps
+  const { tierService } = require('../services/index.js');
+  const progress = tierService.getTierProgress(
+    member.tier,
+    eligibility.bgtHeld.toString(),
+    eligibility.rank ?? null
+  );
+
+  res.json(progress);
+});
+
+// -----------------------------------------------------------------------------
 // S9-T8: Admin Badge Endpoints
 // -----------------------------------------------------------------------------
 
@@ -598,6 +709,188 @@ adminRouter.delete('/badges/:memberId/:badgeId', (req: AuthenticatedRequest, res
     message: 'Badge revoked successfully',
     member_id: memberId,
     badge_id: badgeId,
+  });
+});
+
+// =============================================================================
+// Sprint 18: Admin Water Sharer Management Endpoints
+// =============================================================================
+
+/**
+ * GET /admin/water-share/lineage
+ * Get full Water Sharer badge lineage tree
+ */
+adminRouter.get('/water-share/lineage', (_req: AuthenticatedRequest, res: Response) => {
+  const grants = listAllActiveGrants();
+
+  const lineageTree = grants.map((g) => ({
+    grant_id: g.grant.id,
+    granter: {
+      member_id: g.granter.memberId,
+      nym: g.granter.nym,
+    },
+    recipient: {
+      member_id: g.recipient.memberId,
+      nym: g.recipient.nym,
+    },
+    granted_at: g.grant.grantedAt.toISOString(),
+  }));
+
+  res.json({
+    lineage: lineageTree,
+    total: lineageTree.length,
+  });
+});
+
+/**
+ * GET /admin/water-share/:memberId/lineage
+ * Get badge lineage for a specific member
+ */
+adminRouter.get('/water-share/:memberId/lineage', (req: AuthenticatedRequest, res: Response) => {
+  const { memberId } = req.params;
+
+  if (!memberId) {
+    throw new ValidationError('Member ID is required');
+  }
+
+  // Validate UUID format
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(memberId)) {
+    throw new ValidationError('Invalid member ID format');
+  }
+
+  const lineage = getBadgeLineage(memberId);
+
+  if (!lineage) {
+    throw new NotFoundError('Member not found');
+  }
+
+  res.json({
+    member: {
+      member_id: lineage.member.memberId,
+      nym: lineage.member.nym,
+    },
+    received_from: lineage.receivedFrom
+      ? {
+          member_id: lineage.receivedFrom.memberId,
+          nym: lineage.receivedFrom.nym,
+          granted_at: lineage.receivedFrom.grantedAt.toISOString(),
+        }
+      : null,
+    shared_to: lineage.sharedTo
+      ? {
+          member_id: lineage.sharedTo.memberId,
+          nym: lineage.sharedTo.nym,
+          granted_at: lineage.sharedTo.grantedAt.toISOString(),
+        }
+      : null,
+  });
+});
+
+/**
+ * DELETE /admin/water-share/:memberId
+ * Revoke Water Sharer badge and all grants for a member
+ * This finds and revokes all active grants involving the member
+ */
+adminRouter.delete('/water-share/:memberId', (req: AuthenticatedRequest, res: Response) => {
+  const { memberId } = req.params;
+
+  if (!memberId) {
+    throw new ValidationError('Member ID is required');
+  }
+
+  // Validate UUID format
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(memberId)) {
+    throw new ValidationError('Invalid member ID format');
+  }
+
+  // Find active grants where this member is the granter
+  const allGrants = listAllActiveGrants();
+  const granterGrant = allGrants.find((g) => g.granter.memberId === memberId);
+
+  // Also find grants where this member is the recipient
+  const recipientGrant = allGrants.find((g) => g.recipient.memberId === memberId);
+
+  if (!granterGrant && !recipientGrant) {
+    throw new NotFoundError('No active Water Sharer grants found for this member');
+  }
+
+  let totalRevoked = 0;
+  const revokedGrants: string[] = [];
+
+  // Revoke grant where member is granter (this also cascades to their downstream grants)
+  if (granterGrant) {
+    const count = revokeGrant(granterGrant.grant.id, req.adminName ?? 'admin-api');
+    totalRevoked += count;
+    revokedGrants.push(granterGrant.grant.id);
+  }
+
+  // Revoke grant where member is recipient (they received from someone)
+  // Note: This is separate from the cascade - we're revoking their received grant
+  if (recipientGrant && !revokedGrants.includes(recipientGrant.grant.id)) {
+    const count = revokeGrant(recipientGrant.grant.id, req.adminName ?? 'admin-api');
+    totalRevoked += count;
+    revokedGrants.push(recipientGrant.grant.id);
+  }
+
+  logAuditEvent('admin_badge_revoke', {
+    type: 'water_sharer_admin_revoke',
+    memberId,
+    grantsRevoked: revokedGrants,
+    totalRevoked,
+    revokedBy: req.adminName,
+  });
+
+  res.json({
+    success: true,
+    message: 'Water Sharer grants revoked',
+    member_id: memberId,
+    grants_revoked: revokedGrants,
+    total_revoked: totalRevoked,
+  });
+});
+
+/**
+ * DELETE /admin/water-share/grant/:grantId
+ * Revoke a specific Water Sharer grant by ID
+ */
+adminRouter.delete('/water-share/grant/:grantId', (req: AuthenticatedRequest, res: Response) => {
+  const { grantId } = req.params;
+
+  if (!grantId) {
+    throw new ValidationError('Grant ID is required');
+  }
+
+  // Validate UUID format
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(grantId)) {
+    throw new ValidationError('Invalid grant ID format');
+  }
+
+  // Check if grant exists
+  const grant = getGrantById(grantId);
+  if (!grant || grant.grant.revokedAt !== null) {
+    throw new NotFoundError('Active grant not found');
+  }
+
+  const revokeCount = revokeGrant(grantId, req.adminName ?? 'admin-api');
+
+  logAuditEvent('admin_badge_revoke', {
+    type: 'water_sharer_grant_revoke',
+    grantId,
+    granterMemberId: grant.granter.memberId,
+    recipientMemberId: grant.recipient.memberId,
+    cascadeCount: revokeCount - 1,
+    revokedBy: req.adminName,
+  });
+
+  res.json({
+    success: true,
+    message: 'Water Sharer grant revoked',
+    grant_id: grantId,
+    cascade_count: revokeCount - 1,
+    total_revoked: revokeCount,
   });
 });
 
@@ -695,6 +988,31 @@ adminRouter.post('/alerts/reset-counters', (req: AuthenticatedRequest, res: Resp
   res.json({
     message: 'Weekly alert counters reset',
     members_reset: count,
+  });
+});
+
+// =============================================================================
+// Sprint 21: Admin Analytics API
+// =============================================================================
+
+/**
+ * GET /admin/analytics
+ * Get comprehensive community analytics
+ * Returns member counts, tier distribution, BGT totals, weekly activity
+ */
+adminRouter.get('/analytics', (_req: AuthenticatedRequest, res: Response) => {
+  const analytics = analyticsService.getCommunityAnalytics();
+
+  res.json({
+    total_members: analytics.totalMembers,
+    by_tier: analytics.byTier,
+    total_bgt: analytics.totalBgt,
+    total_bgt_wei: analytics.totalBgtWei,
+    weekly_active: analytics.weeklyActive,
+    new_this_week: analytics.newThisWeek,
+    promotions_this_week: analytics.promotionsThisWeek,
+    badges_awarded_this_week: analytics.badgesAwardedThisWeek,
+    generated_at: analytics.generatedAt.toISOString(),
   });
 });
 

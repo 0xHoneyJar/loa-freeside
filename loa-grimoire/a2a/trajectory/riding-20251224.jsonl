@@ -1,0 +1,12 @@
+{"timestamp":"2025-12-24T09:14:13Z","agent":"riding-codebase","phase":0,"action":"preflight","status":"complete","details":{"loa_version":"0.6.0","target_repo":"arrakis"}}
+{"timestamp":"2025-12-24T09:15:43Z","agent":"riding-codebase","phase":1,"action":"claims_generated","status":"complete","details":{"claim_count":50,"output":"loa-grimoire/context/claims-to-verify.md"}}
+{"timestamp":"2025-12-24T10:30:00Z","agent":"riding-codebase","phase":2,"action":"reality_extracted","status":"complete","details":{"files_generated":8,"services_found":16,"commands_found":11,"migrations_found":6}}
+{"timestamp":"2025-12-24T10:35:00Z","agent":"riding-codebase","phase":"2b","action":"hygiene_audited","status":"complete","details":{"todos":1,"any_casts":5,"console_logs":12,"test_files":13}}
+{"timestamp":"2025-12-24T10:40:00Z","agent":"riding-codebase","phase":3,"action":"docs_inventoried","status":"complete","details":{"doc_locations":6,"legacy_docs":2,"duplicates":7}}
+{"timestamp":"2025-12-24T10:45:00Z","agent":"riding-codebase","phase":4,"action":"drift_analyzed","status":"complete","details":{"high_drift":5,"medium_drift":2,"aligned":15}}
+{"timestamp":"2025-12-24T10:50:00Z","agent":"riding-codebase","phase":5,"action":"consistency_analyzed","status":"complete","details":{"score":"95%","inconsistencies":3}}
+{"timestamp":"2025-12-24T10:55:00Z","agent":"riding-codebase","phase":6,"action":"artifacts_generated","status":"complete","details":{"prd":"loa-grimoire/artifacts/prd-grounded.md","sdd":"loa-grimoire/artifacts/sdd-grounded.md"}}
+{"timestamp":"2025-12-24T11:00:00Z","agent":"riding-codebase","phase":7,"action":"governance_audited","status":"complete","details":{"score":"93.5/100"}}
+{"timestamp":"2025-12-24T11:05:00Z","agent":"riding-codebase","phase":8,"action":"legacy_deprecated","status":"complete","details":{"deprecated":["prd-v2.1.md","sdd-v2.1.md"]}}
+{"timestamp":"2025-12-24T11:10:00Z","agent":"riding-codebase","phase":9,"action":"self_audit","status":"complete","details":{"trajectory_complete":true}}
+{"timestamp":"2025-12-24T11:15:00Z","agent":"riding-codebase","phase":10,"action":"handoff_created","status":"complete","details":{"output":"loa-grimoire/artifacts/HANDOFF.md","governance_score":"93.5/100"}}

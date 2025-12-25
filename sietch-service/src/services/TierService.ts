@@ -173,10 +173,10 @@ class TierService {
    */
   getNextTier(currentTier: Tier): Tier | null {
     const currentIndex = TIER_ORDER.indexOf(currentTier);
-    if (currentIndex === TIER_ORDER.length - 1) {
-      return null; // Already at Naib (max tier)
+    if (currentIndex === -1 || currentIndex === TIER_ORDER.length - 1) {
+      return null; // Already at Naib (max tier) or tier not found
     }
-    return TIER_ORDER[currentIndex + 1];
+    return TIER_ORDER[currentIndex + 1] ?? null;
   }
 
   /**

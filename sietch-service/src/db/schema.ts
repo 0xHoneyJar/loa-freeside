@@ -151,3 +151,9 @@ export { SOCIAL_LAYER_SCHEMA_SQL, SOCIAL_LAYER_ROLLBACK_SQL } from './migrations
 
 // Re-export Naib/Threshold schema for v2.1
 export { NAIB_THRESHOLD_SCHEMA_SQL, NAIB_THRESHOLD_ROLLBACK_SQL } from './migrations/005_naib_threshold.js';
+
+// Re-export Water Sharer schema for v3.0 (Sprint 17)
+export { WATER_SHARER_SCHEMA_SQL, WATER_SHARER_ROLLBACK_SQL } from './migrations/007_water_sharer.js';
+
+// Re-export Usul Ascended schema for v3.0 (Sprint 18)
+export { USUL_ASCENDED_SCHEMA_SQL, USUL_ASCENDED_ROLLBACK_SQL } from './migrations/008_usul_ascended.js';

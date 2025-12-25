@@ -1,99 +1,121 @@
 ---
-description: Launch the architecture designer agent to review the PRD and generate a comprehensive Software Design Document (SDD)
-args: [background]
+name: "architect"
+version: "1.0.0"
+description: |
+  Create comprehensive Software Design Document based on PRD.
+  System architecture, tech stack, data models, APIs, security design.
+
+arguments: []
+
+agent: "designing-architecture"
+agent_path: "skills/designing-architecture/"
+
+context_files:
+  - path: "loa-grimoire/prd.md"
+    required: true
+    purpose: "Product requirements for design basis"
+  - path: "loa-grimoire/a2a/integration-context.md"
+    required: false
+    purpose: "Organizational context and knowledge sources"
+
+pre_flight:
+  - check: "file_exists"
+    path: ".loa-setup-complete"
+    error: "Loa setup has not been completed. Run /setup first."
+
+  - check: "file_exists"
+    path: "loa-grimoire/prd.md"
+    error: "PRD not found. Run /plan-and-analyze first."
+
+outputs:
+  - path: "loa-grimoire/sdd.md"
+    type: "file"
+    description: "Software Design Document"
+
+mode:
+  default: "foreground"
+  allow_background: true
 ---
 
-I'm launching the architecture-designer agent to create a comprehensive Software Design Document based on your Product Requirements Document.
+# Architect
 
-**Execution Mode**: {{ "background - use /tasks to monitor" if "background" in $ARGUMENTS else "foreground (default)" }}
+## Purpose
 
-The agent will:
-1. **Carefully review** `docs/prd.md` to understand all requirements
-2. **Analyze and design** the system architecture, components, and technical decisions
-3. **Clarify uncertainties** by asking you questions with specific proposals when anything is ambiguous
-4. **Validate assumptions** to ensure the design aligns with your vision
-5. **Generate SDD** only when fully satisfied with all answers and has no remaining doubts
-6. **Save output** to `docs/sdd.md`
+Create a comprehensive Software Design Document (SDD) based on the Product Requirements Document. Designs system architecture, technology stack, data models, APIs, and security architecture.
 
-The architecture designer will cover:
-- System architecture and component design
-- Technology stack recommendations
-- Data models and database schema
-- API design and integration points
-- Security architecture
-- Scalability and performance considerations
-- Deployment architecture
-- Technical risks and mitigation strategies
+## Invocation
 
-{{ if "background" in $ARGUMENTS }}
-Running in background mode. Use `/tasks` to monitor progress.
+```
+/architect
+/architect background
+```
 
-<Task
-  subagent_type="architecture-designer"
-  prompt="You are tasked with creating a comprehensive Software Design Document (SDD) based on the Product Requirements Document at docs/prd.md.
+## Agent
 
-Your process:
-1. Carefully read and analyze docs/prd.md in its entirety
-2. Design the system architecture, components, data models, APIs, and technical stack
-3. For ANY uncertainties, ambiguities, or areas where multiple approaches are valid:
-   - Ask the user specific questions
-   - Present 2-3 concrete proposals with pros/cons for each approach
-   - Explain the technical tradeoffs
-   - Wait for their decision before proceeding
-4. Validate all assumptions with the user
-5. Only when you are completely satisfied with all answers and have NO remaining doubts or uncertainties, proceed to write the SDD
-6. Generate a detailed, comprehensive Software Design Document
-7. Save the final SDD to docs/sdd.md
+Launches `designing-architecture` from `skills/designing-architecture/`.
 
-The SDD should include:
+See: `skills/designing-architecture/SKILL.md` for full workflow details.
+
+## Prerequisites
+
+- Setup completed (`.loa-setup-complete` exists)
+- PRD created (`loa-grimoire/prd.md` exists)
+- Run `/plan-and-analyze` first if PRD is missing
+
+## Workflow
+
+1. **Pre-flight**: Verify setup and PRD exist
+2. **PRD Analysis**: Carefully read and analyze requirements
+3. **Design**: Architect system, components, APIs, data models
+4. **Clarification**: Ask questions with proposals for ambiguities
+5. **Validation**: Confirm assumptions with user
+6. **Generation**: Create SDD at `loa-grimoire/sdd.md`
+7. **Analytics**: Update usage metrics (THJ users only)
+
+## Arguments
+
+| Argument | Description | Required |
+|----------|-------------|----------|
+| `background` | Run as subagent for parallel execution | No |
+
+## Outputs
+
+| Path | Description |
+|------|-------------|
+| `loa-grimoire/sdd.md` | Software Design Document |
+
+## SDD Sections
+
+The generated SDD includes:
 - Executive Summary
 - System Architecture (high-level components and interactions)
 - Technology Stack (with justification for choices)
 - Component Design (detailed breakdown of each component)
-- Data Architecture (database schema, data models, storage strategies)
+- Data Architecture (database schema, data models, storage)
 - API Design (endpoints, contracts, authentication)
-- Security Architecture (authentication, authorization, encryption, threat mitigation)
-- Integration Points (external services, APIs, third-party dependencies)
-- Scalability & Performance (caching, load balancing, optimization strategies)
+- Security Architecture (auth, encryption, threat mitigation)
+- Integration Points (external services, APIs, dependencies)
+- Scalability & Performance (caching, load balancing)
 - Deployment Architecture (infrastructure, CI/CD, environments)
-- Development Workflow (Git strategy, testing approach, code review process)
+- Development Workflow (Git strategy, testing, code review)
 - Technical Risks & Mitigation Strategies
 - Future Considerations & Technical Debt Management
 
-Remember: Ask questions and seek clarity BEFORE writing. Only generate the SDD when you have complete confidence in the design decisions."
-/>
-{{ else }}
-Let me begin the architectural design process.
+## Error Handling
 
-You are tasked with creating a comprehensive Software Design Document (SDD) based on the Product Requirements Document at docs/prd.md.
+| Error | Cause | Resolution |
+|-------|-------|------------|
+| "Loa setup has not been completed" | Missing `.loa-setup-complete` | Run `/setup` first |
+| "PRD not found" | Missing prd.md | Run `/plan-and-analyze` first |
 
-Your process:
-1. Carefully read and analyze docs/prd.md in its entirety
-2. Design the system architecture, components, data models, APIs, and technical stack
-3. For ANY uncertainties, ambiguities, or areas where multiple approaches are valid:
-   - Ask the user specific questions
-   - Present 2-3 concrete proposals with pros/cons for each approach
-   - Explain the technical tradeoffs
-   - Wait for their decision before proceeding
-4. Validate all assumptions with the user
-5. Only when you are completely satisfied with all answers and have NO remaining doubts or uncertainties, proceed to write the SDD
-6. Generate a detailed, comprehensive Software Design Document
-7. Save the final SDD to docs/sdd.md
+## Architect Style
 
-The SDD should include:
-- Executive Summary
-- System Architecture (high-level components and interactions)
-- Technology Stack (with justification for choices)
-- Component Design (detailed breakdown of each component)
-- Data Architecture (database schema, data models, storage strategies)
-- API Design (endpoints, contracts, authentication)
-- Security Architecture (authentication, authorization, encryption, threat mitigation)
-- Integration Points (external services, APIs, third-party dependencies)
-- Scalability & Performance (caching, load balancing, optimization strategies)
-- Deployment Architecture (infrastructure, CI/CD, environments)
-- Development Workflow (Git strategy, testing approach, code review process)
-- Technical Risks & Mitigation Strategies
-- Future Considerations & Technical Debt Management
+The architect will:
+- Ask clarifying questions before making assumptions
+- Present 2-3 proposals with pros/cons for uncertain decisions
+- Explain technical tradeoffs clearly
+- Only generate SDD when confident in all decisions
 
-Remember: Ask questions and seek clarity BEFORE writing. Only generate the SDD when you have complete confidence in the design decisions.
-{{ endif }}
+## Next Step
+
+After SDD is complete: `/sprint-plan` to break down work into sprints

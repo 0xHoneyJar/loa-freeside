@@ -45,8 +45,11 @@ export const BADGE_IDS = {
   helper: 'helper',
   builder: 'builder',
   teacher: 'teacher',
+  waterSharer: 'water-sharer',
   // Special badges
   foundingFedaykin: 'founding-fedaykin',
+  // Tier badges (Sprint 18)
+  usulAscended: 'usul-ascended',
 } as const;
 
 /**

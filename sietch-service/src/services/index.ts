@@ -56,6 +56,12 @@ export {
   assignTaqwaRole,
   removeTaqwaRole,
   isTaqwaRoleConfigured,
+  // Sprint 16: Tier role management
+  syncTierRole,
+  assignTierRolesUpTo,
+  removeAllTierRoles,
+  isTierRolesConfigured,
+  getUnconfiguredTierRoles,
 } from './roleManager.js';
 
 // Sprint 10: Member Migration
@@ -74,3 +80,39 @@ export { thresholdService } from './threshold.js';
 
 // Sprint 13: Notification System
 export { notificationService } from './notification.js';
+
+// Sprint 15: Tier System
+export {
+  tierService,
+  TIER_THRESHOLDS,
+  TIER_ORDER,
+  TIER_INFO,
+} from './TierService.js';
+
+// Sprint 17: Water Sharer Badge System
+export {
+  canShare,
+  shareBadge,
+  getShareStatus,
+  getShareStatusByDiscordId,
+  getGrantsByGranter,
+  revokeGrant,
+  getBadgeLineage,
+  listAllActiveGrants,
+  getGrantById,
+  WATER_SHARER_ERRORS,
+} from './WaterSharerService.js';
+
+// Sprint 19: Stats & Leaderboard
+export { statsService } from './StatsService.js';
+export type { TierProgressionEntry } from './StatsService.js';
+
+// Sprint 20: Weekly Digest
+export { digestService } from './DigestService.js';
+export type { WeeklyStats, DigestPostResult } from './DigestService.js';
+
+// Sprint 21: Story Fragments & Analytics
+export { storyService } from './StoryService.js';
+export { analyticsService } from './AnalyticsService.js';
+export type { StoryFragment, FragmentCategory } from './StoryService.js';
+export type { CommunityAnalytics } from './AnalyticsService.js';

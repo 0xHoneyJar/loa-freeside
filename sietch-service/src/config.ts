@@ -74,6 +74,10 @@ const configSchema = z.object({
       introductions: z.string().optional(),
       // Cave Entrance channel (v2.1) - for aspiring members in positions 70-100
       caveEntrance: z.string().optional(),
+      // The Oasis channel (v3.0 - Sprint 17) - exclusive for Water Sharer badge holders
+      oasis: z.string().optional(),
+      // Announcements channel (v3.0 - Sprint 20) - weekly digest posts
+      announcements: z.string().optional(),
     }),
     roles: z.object({
       naib: z.string().min(1),
@@ -87,6 +91,14 @@ const configSchema = z.object({
       formerNaib: z.string().optional(),
       // Cave Entrance role (v2.1) - assigned to waitlist registrations
       taqwa: z.string().optional(),
+      // Tier roles (v3.0) - assigned based on BGT threshold
+      hajra: z.string().optional(),
+      ichwan: z.string().optional(),
+      qanat: z.string().optional(),
+      sihaya: z.string().optional(),
+      mushtamal: z.string().optional(),
+      sayyadina: z.string().optional(),
+      usul: z.string().optional(),
     }),
   }),
 
@@ -182,6 +194,10 @@ function parseConfig() {
         introductions: process.env.DISCORD_CHANNEL_INTRODUCTIONS,
         // Cave Entrance channel (v2.1)
         caveEntrance: process.env.DISCORD_CHANNEL_CAVE_ENTRANCE,
+        // The Oasis channel (v3.0 - Sprint 17)
+        oasis: process.env.DISCORD_CHANNEL_OASIS,
+        // Announcements channel (v3.0 - Sprint 20)
+        announcements: process.env.DISCORD_ANNOUNCEMENTS_CHANNEL_ID,
       },
       roles: {
         naib: process.env.DISCORD_ROLE_NAIB ?? '',
@@ -195,6 +211,14 @@ function parseConfig() {
         formerNaib: process.env.DISCORD_ROLE_FORMER_NAIB,
         // Cave Entrance role (v2.1)
         taqwa: process.env.DISCORD_ROLE_TAQWA,
+        // Tier roles (v3.0)
+        hajra: process.env.DISCORD_ROLE_HAJRA,
+        ichwan: process.env.DISCORD_ROLE_ICHWAN,
+        qanat: process.env.DISCORD_ROLE_QANAT,
+        sihaya: process.env.DISCORD_ROLE_SIHAYA,
+        mushtamal: process.env.DISCORD_ROLE_MUSHTAMAL,
+        sayyadina: process.env.DISCORD_ROLE_SAYYADINA,
+        usul: process.env.DISCORD_ROLE_USUL,
       },
     },
     api: {
@@ -278,6 +302,10 @@ export interface Config {
       introductions?: string;
       // Cave Entrance channel (v2.1)
       caveEntrance?: string;
+      // The Oasis channel (v3.0 - Sprint 17)
+      oasis?: string;
+      // Announcements channel (v3.0 - Sprint 20)
+      announcements?: string;
     };
     roles: {
       naib: string;
@@ -291,6 +319,14 @@ export interface Config {
       formerNaib?: string;
       // Cave Entrance role (v2.1)
       taqwa?: string;
+      // Tier roles (v3.0)
+      hajra?: string;
+      ichwan?: string;
+      qanat?: string;
+      sihaya?: string;
+      mushtamal?: string;
+      sayyadina?: string;
+      usul?: string;
     };
   };
   api: {
@@ -363,4 +399,88 @@ export const config: Config = {
  */
 export function validateApiKey(apiKey: string): string | undefined {
   return config.api.adminApiKeys.get(apiKey);
+}
+
+/**
+ * Tier role colors for Discord (hex values)
+ * Used when creating roles programmatically
+ */
+export const TIER_ROLE_COLORS = {
+  hajra: 0xC2B280,     // Sand
+  ichwan: 0xFD7E14,    // Orange
+  qanat: 0x17A2B8,     // Cyan
+  sihaya: 0x28A745,    // Green
+  mushtamal: 0x20C997, // Teal
+  sayyadina: 0x6610F2, // Indigo
+  usul: 0x9B59B6,      // Purple
+  fedaykin: 0x4169E1,  // Blue
+  naib: 0xFFD700,      // Gold
+} as const;
+
+/**
+ * Get tier role ID from config
+ * Returns the Discord role ID for a given tier, or undefined if not configured
+ */
+export function getTierRoleId(tier: string): string | undefined {
+  const roles = config.discord.roles;
+  switch (tier) {
+    case 'hajra':
+      return roles.hajra;
+    case 'ichwan':
+      return roles.ichwan;
+    case 'qanat':
+      return roles.qanat;
+    case 'sihaya':
+      return roles.sihaya;
+    case 'mushtamal':
+      return roles.mushtamal;
+    case 'sayyadina':
+      return roles.sayyadina;
+    case 'usul':
+      return roles.usul;
+    case 'fedaykin':
+      return roles.fedaykin;
+    case 'naib':
+      return roles.naib;
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Check if all tier roles are configured
+ * Returns list of missing tier role names
+ */
+export function getMissingTierRoles(): string[] {
+  const missing: string[] = [];
+  const roles = config.discord.roles;
+
+  // BGT-based tiers (optional)
+  if (!roles.hajra) missing.push('hajra');
+  if (!roles.ichwan) missing.push('ichwan');
+  if (!roles.qanat) missing.push('qanat');
+  if (!roles.sihaya) missing.push('sihaya');
+  if (!roles.mushtamal) missing.push('mushtamal');
+  if (!roles.sayyadina) missing.push('sayyadina');
+  if (!roles.usul) missing.push('usul');
+  // Rank-based tiers (required)
+  if (!roles.fedaykin) missing.push('fedaykin');
+  if (!roles.naib) missing.push('naib');
+
+  return missing;
+}
+
+/**
+ * Check if The Oasis channel is configured
+ */
+export function isOasisChannelConfigured(): boolean {
+  return !!config.discord.channels.oasis;
+}
+
+/**
+ * Get The Oasis channel ID
+ * Returns undefined if not configured
+ */
+export function getOasisChannelId(): string | undefined {
+  return config.discord.channels.oasis;
 }

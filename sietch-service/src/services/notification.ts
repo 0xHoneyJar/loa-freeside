@@ -53,6 +53,8 @@ import type {
   NaibBumpAlertData,
   NaibSeatedAlertData,
   WaitlistEligibleAlertData,
+  TierPromotionAlertData,
+  BadgeAwardAlertData,
 } from '../types/index.js';
 
 /**
@@ -165,10 +167,19 @@ class NotificationService {
       case 'waitlist_eligible':
         // Waitlist alerts are always sent (one-time critical notification)
         break;
+      case 'tier_promotion':
+        // Tier promotions are critical one-time milestone notifications that always send.
+        // Unlike regular position_updates, promotions represent significant achievements
+        // that members should be informed about regardless of frequency settings.
+        // This aligns with the pattern used for waitlist_eligible and naib_seated alerts.
+        break;
+      case 'badge_award':
+        // Badge awards are always sent (one-time notification)
+        break;
     }
 
     // Check rate limit (except for critical alerts)
-    const criticalAlerts: AlertType[] = ['naib_bump', 'naib_seated', 'waitlist_eligible'];
+    const criticalAlerts: AlertType[] = ['naib_bump', 'naib_seated', 'waitlist_eligible', 'tier_promotion', 'badge_award'];
     if (!criticalAlerts.includes(alertType)) {
       if (prefs.alertsSentThisWeek >= maxAlerts) {
         return {
@@ -252,6 +263,30 @@ class NotificationService {
   ): Promise<SendAlertResult> {
     const alertData: WaitlistEligibleAlertData = { type: 'waitlist_eligible', ...data };
     return this.sendAlert(discordUserId, 'waitlist', 'waitlist_eligible', alertData);
+  }
+
+  /**
+   * Send tier promotion notification (v3.0 - Sprint 18)
+   * Called when a member is promoted to a higher tier
+   */
+  async sendTierPromotion(
+    memberId: string,
+    data: Omit<TierPromotionAlertData, 'type'>
+  ): Promise<SendAlertResult> {
+    const alertData: TierPromotionAlertData = { type: 'tier_promotion', ...data };
+    return this.sendAlert(memberId, 'member', 'tier_promotion', alertData);
+  }
+
+  /**
+   * Send badge award notification (v3.0 - Sprint 18)
+   * Called when admin awards a badge to a member
+   */
+  async sendBadgeAward(
+    memberId: string,
+    data: Omit<BadgeAwardAlertData, 'type'>
+  ): Promise<SendAlertResult> {
+    const alertData: BadgeAwardAlertData = { type: 'badge_award', ...data };
+    return this.sendAlert(memberId, 'member', 'badge_award', alertData);
   }
 
   /**

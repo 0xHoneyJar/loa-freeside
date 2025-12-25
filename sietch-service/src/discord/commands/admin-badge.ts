@@ -25,8 +25,10 @@ import {
   adminAwardBadge,
   revokeBadge,
   getAllBadgeDefinitions,
+  BADGE_IDS,
 } from '../../services/badge.js';
 import { buildBadgeAwardEmbed } from '../embeds/badge.js';
+import { notificationService } from '../../services/notification.js';
 
 /**
  * Slash command definition
@@ -173,7 +175,30 @@ async function handleAwardBadge(
     'Admin awarded badge'
   );
 
-  // TODO: Send DM notification to the member (S8-T9)
+  // Send DM notification to the member (Sprint 18)
+  try {
+    const isWaterSharer = badgeId === BADGE_IDS.waterSharer;
+
+    await notificationService.sendBadgeAward(profile.memberId, {
+      badgeId,
+      badgeName: badge.name,
+      badgeDescription: badge.description || 'A special recognition badge.',
+      badgeEmoji: badge.emoji ?? null,
+      awardReason: reason,
+      isWaterSharer,
+    });
+
+    logger.debug(
+      { memberId: profile.memberId, badgeId },
+      'Badge award DM sent'
+    );
+  } catch (dmError) {
+    // DM failures are non-critical, just log
+    logger.warn(
+      { error: dmError, memberId: profile.memberId, badgeId },
+      'Failed to send badge award DM'
+    );
+  }
 }
 
 /**

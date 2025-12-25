@@ -127,7 +127,20 @@ export interface AuditLogEntry {
     | 'admin_reset_alert_counters'
     // Sprint 14: Integration event types
     | 'naib_seats_evaluated'
-    | 'weekly_reset';
+    | 'weekly_reset'
+    // Sprint 15-16: Tier system event types
+    | 'tier_change'
+    | 'tier_role_sync'
+    | 'tier_roles_assigned'
+    | 'tier_roles_removed'
+    // Sprint 17: Water Sharer event types
+    | 'water_sharer_grant'
+    | 'water_sharer_revoke'
+    // Sprint 20: Weekly Digest event types
+    | 'weekly_digest_posted'
+    | 'weekly_digest_skipped'
+    | 'weekly_digest_failed'
+    | 'weekly_digest_error';
   /** Event-specific data */
   eventData: Record<string, unknown>;
   /** When the event occurred */
@@ -843,7 +856,9 @@ export type AlertType =
   | 'naib_threat'         // Naib seat at risk from challenger
   | 'naib_bump'           // Naib member was bumped
   | 'naib_seated'         // Member just got Naib seat
-  | 'waitlist_eligible';  // Waitlist member became eligible
+  | 'waitlist_eligible'   // Waitlist member became eligible
+  | 'tier_promotion'      // Member promoted to higher tier (Sprint 18)
+  | 'badge_award';        // Badge awarded to member (Sprint 18)
 
 /**
  * Alert frequency preferences
@@ -907,7 +922,9 @@ export type AlertData =
   | NaibThreatAlertData
   | NaibBumpAlertData
   | NaibSeatedAlertData
-  | WaitlistEligibleAlertData;
+  | WaitlistEligibleAlertData
+  | TierPromotionAlertData
+  | BadgeAwardAlertData;
 
 /**
  * Position update alert data
@@ -974,6 +991,44 @@ export interface WaitlistEligibleAlertData {
   previousPosition: number;
   currentPosition: number;
   bgt: number;
+}
+
+/**
+ * Tier promotion alert data (v3.0 - Sprint 18)
+ * Sent when member is promoted to a higher tier
+ */
+export interface TierPromotionAlertData {
+  type: 'tier_promotion';
+  /** Previous tier */
+  oldTier: string;
+  /** New (higher) tier */
+  newTier: string;
+  /** Display name of new tier */
+  newTierName: string;
+  /** BGT threshold for new tier (null if rank-based) */
+  bgtThreshold: number | null;
+  /** Whether new tier is rank-based (Fedaykin/Naib) */
+  isRankBased: boolean;
+}
+
+/**
+ * Badge award alert data (v3.0 - Sprint 18)
+ * Sent when admin awards a badge to a member
+ */
+export interface BadgeAwardAlertData {
+  type: 'badge_award';
+  /** Badge ID */
+  badgeId: string;
+  /** Badge display name */
+  badgeName: string;
+  /** Badge description */
+  badgeDescription: string;
+  /** Badge emoji */
+  badgeEmoji: string | null;
+  /** Reason for awarding (admin-provided) */
+  awardReason: string | null;
+  /** Whether this is Water Sharer badge (for special messaging) */
+  isWaterSharer: boolean;
 }
 
 /**
@@ -1132,7 +1187,47 @@ export interface TierHistoryEntry {
 }
 
 /**
- * Sponsor invite record
+ * Water Sharer grant record (v3.0 - Sprint 17)
+ * Tracks badge sharing between existing members
+ */
+export interface WaterSharerGrant {
+  /** Unique grant identifier (UUID) */
+  id: string;
+  /** Member who shared the badge (must have Water Sharer badge) */
+  granterMemberId: string;
+  /** Member who received the badge */
+  recipientMemberId: string;
+  /** When the grant was made (unix timestamp) */
+  grantedAt: Date;
+  /** When the grant was revoked (null if active) */
+  revokedAt: Date | null;
+}
+
+/**
+ * Water Sharer sharing status for a member
+ */
+export interface WaterSharerStatus {
+  /** Does the member have the Water Sharer badge? */
+  hasBadge: boolean;
+  /** Can the member share their badge? (has badge AND hasn't shared yet) */
+  canShare: boolean;
+  /** If they've shared, who did they share with? */
+  sharedWith: {
+    memberId: string;
+    nym: string;
+    grantedAt: Date;
+  } | null;
+  /** If they received the badge via sharing, who from? */
+  receivedFrom: {
+    memberId: string;
+    nym: string;
+    grantedAt: Date;
+  } | null;
+}
+
+/**
+ * @deprecated Use WaterSharerGrant instead - kept for backwards compatibility
+ * Sponsor invite record (legacy - not used in v3.0.1)
  */
 export interface SponsorInvite {
   /** Auto-incrementing ID */

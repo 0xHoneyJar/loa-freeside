@@ -23,6 +23,8 @@ import type {
   NaibBumpAlertData,
   NaibSeatedAlertData,
   WaitlistEligibleAlertData,
+  TierPromotionAlertData,
+  BadgeAwardAlertData,
 } from '../../types/index.js';
 
 /**
@@ -35,6 +37,8 @@ const ALERT_COLORS: Record<AlertType, number> = {
   naib_bump: 0x8b008b,        // Dark Magenta
   naib_seated: 0xffd700,      // Gold
   waitlist_eligible: 0x228b22, // Forest Green
+  tier_promotion: 0x9b59b6,   // Purple - Celebration (Sprint 18)
+  badge_award: 0x00d4ff,      // Aqua - Badge (Sprint 18)
 };
 
 /**
@@ -67,6 +71,10 @@ export function buildAlertEmbed(alertType: AlertType, data: AlertData): EmbedBui
       return buildNaibSeatedEmbed(data as NaibSeatedAlertData);
     case 'waitlist_eligible':
       return buildWaitlistEligibleEmbed(data as WaitlistEligibleAlertData);
+    case 'tier_promotion':
+      return buildTierPromotionEmbed(data as TierPromotionAlertData);
+    case 'badge_award':
+      return buildBadgeAwardAlertEmbed(data as BadgeAwardAlertData);
     default:
       throw new Error(`Unknown alert type: ${alertType}`);
   }
@@ -500,6 +508,130 @@ export function buildPositionStatusEmbed(data: {
 
   embed.setFooter({
     text: 'Use /alerts to manage position notifications',
+  });
+
+  return embed;
+}
+
+/**
+ * Tier Promotion Embed
+ * Celebrate member's tier advancement
+ */
+function buildTierPromotionEmbed(data: TierPromotionAlertData): EmbedBuilder {
+  const embed = new EmbedBuilder()
+    .setTitle('🎉 Tier Promotion!')
+    .setColor(ALERT_COLORS.tier_promotion)
+    .setTimestamp();
+
+  // Different messaging for rank-based vs BGT-based tiers
+  if (data.isRankBased) {
+    embed.setDescription(
+      `**Congratulations!**\n\n` +
+      `You have been promoted to **${data.newTierName}**!\n` +
+      `Your dedication and contributions to the Sietch have been recognized.`
+    );
+  } else {
+    embed.setDescription(
+      `**Congratulations!**\n\n` +
+      `You have reached the **${data.newTierName}** tier!\n` +
+      `Your BGT holdings have crossed a new threshold.`
+    );
+  }
+
+  embed.addFields({
+    name: '⬆️ Previous Tier',
+    value: data.oldTier ? `**${data.oldTier}**` : 'None',
+    inline: true,
+  });
+
+  embed.addFields({
+    name: '✨ New Tier',
+    value: `**${data.newTierName}**`,
+    inline: true,
+  });
+
+  if (data.bgtThreshold !== null) {
+    embed.addFields({
+      name: '💰 BGT Threshold',
+      value: `**${data.bgtThreshold.toLocaleString()}** BGT`,
+      inline: true,
+    });
+  }
+
+  embed.addFields({
+    name: '🏅 New Privileges',
+    value: `You now have access to the **@${data.newTierName}** role and any associated channel permissions.`,
+    inline: false,
+  });
+
+  embed.setFooter({
+    text: 'Keep contributing to the Sietch • May your water always be shared',
+  });
+
+  return embed;
+}
+
+/**
+ * Badge Award Embed
+ * Celebrate badge being awarded to member
+ */
+function buildBadgeAwardAlertEmbed(data: BadgeAwardAlertData): EmbedBuilder {
+  const embed = new EmbedBuilder()
+    .setTitle(`${data.badgeEmoji || '🏅'} Badge Awarded!`)
+    .setColor(ALERT_COLORS.badge_award)
+    .setTimestamp();
+
+  // Special messaging for Water Sharer badge
+  if (data.isWaterSharer) {
+    embed.setDescription(
+      `**You have received the Water Sharer badge!**\n\n` +
+      `This badge recognizes you as a trusted member of the Sietch. ` +
+      `You can now share this badge with one other existing member using \`/water-share share @user\`.`
+    );
+  } else {
+    embed.setDescription(
+      `**You have been awarded a badge!**\n\n` +
+      `This badge recognizes your contributions to the Sietch community.`
+    );
+  }
+
+  embed.addFields({
+    name: `${data.badgeEmoji || '🏅'} Badge`,
+    value: `**${data.badgeName}**`,
+    inline: true,
+  });
+
+  embed.addFields({
+    name: '📝 Description',
+    value: data.badgeDescription || 'A special recognition badge.',
+    inline: false,
+  });
+
+  if (data.awardReason) {
+    embed.addFields({
+      name: '💬 Award Reason',
+      value: data.awardReason,
+      inline: false,
+    });
+  }
+
+  if (data.isWaterSharer) {
+    embed.addFields({
+      name: '🏝️ The Oasis Access',
+      value: 'You now have access to **#the-oasis** - an exclusive channel for Water Sharers.',
+      inline: false,
+    });
+
+    embed.addFields({
+      name: '💧 Water Sharing',
+      value: `Use \`/water-share share @user\` to share your badge with another member.\n` +
+        `Use \`/water-share status\` to check your sharing status.`,
+      inline: false,
+    });
+  }
+
+  embed.setFooter({
+    text: 'View your badges with /profile • The Sietch remembers',
   });
 
   return embed;

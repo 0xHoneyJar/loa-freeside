@@ -1,0 +1,65 @@
+# Loa Framework Configuration
+# This file is yours to customize - framework updates will never modify it
+
+# =============================================================================
+# Persistence Mode
+# =============================================================================
+# - standard: Commit grimoire and beads to repo (default)
+# - stealth: Add state files to .gitignore, local-only operation
+persistence_mode: standard
+
+# =============================================================================
+# Integrity Enforcement
+# =============================================================================
+# - strict: Block agent execution on System Zone drift (recommended)
+# - warn: Warn but allow execution
+# - disabled: No integrity checks (not recommended)
+integrity_enforcement: strict
+
+# =============================================================================
+# Drift Resolution Policy
+# =============================================================================
+# - code: Update documentation to match implementation (existing codebases)
+# - docs: Create beads to fix code to match documentation (greenfield)
+# - ask: Always prompt for human decision
+drift_resolution: code
+
+# =============================================================================
+# Agent Configuration
+# =============================================================================
+disabled_agents: []
+# disabled_agents:
+#   - auditing-security
+#   - translating-for-executives
+
+# =============================================================================
+# Structured Memory
+# =============================================================================
+memory:
+  notes_file: loa-grimoire/NOTES.md
+  trajectory_dir: loa-grimoire/a2a/trajectory
+  # Auto-compact trajectory logs older than N days
+  trajectory_retention_days: 30
+
+# =============================================================================
+# Evaluation-Driven Development
+# =============================================================================
+edd:
+  enabled: true
+  # Require N test scenarios before marking task complete
+  min_test_scenarios: 3
+  # Audit reasoning trajectory for hallucination
+  trajectory_audit: true
+
+# =============================================================================
+# Context Hygiene
+# =============================================================================
+compaction:
+  enabled: true
+  threshold: 5
+
+# =============================================================================
+# Integrations
+# =============================================================================
+integrations:
+  - github

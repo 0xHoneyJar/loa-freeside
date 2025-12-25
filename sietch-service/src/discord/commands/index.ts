@@ -16,6 +16,9 @@ import { thresholdCommand } from './threshold.js';
 import { registerWaitlistCommand } from './register-waitlist.js';
 import { alertsCommand } from './alerts.js';
 import { positionCommand } from './position.js';
+import { waterShareCommand } from './water-share.js';
+import { adminWaterShareCommand } from './admin-water-share.js';
+import { adminStatsCommand } from './admin-stats.js';
 
 /**
  * All registered slash commands
@@ -33,6 +36,12 @@ export const commands: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
   // Sprint 13: Notification System commands
   alertsCommand.toJSON(),
   positionCommand.toJSON(),
+  // Sprint 17: Water Sharer commands
+  waterShareCommand.toJSON(),
+  // Sprint 18: Admin Water Sharer management
+  adminWaterShareCommand.toJSON(),
+  // Sprint 21: Admin analytics dashboard
+  adminStatsCommand.toJSON(),
 ];
 
 /**
@@ -62,6 +71,15 @@ export { handleRegisterWaitlistCommand } from './register-waitlist.js';
 // Sprint 13: Notification System commands
 export { handleAlertsCommand } from './alerts.js';
 export { handlePositionCommand } from './position.js';
+
+// Sprint 17: Water Sharer commands
+export { handleWaterShareCommand } from './water-share.js';
+
+// Sprint 18: Admin Water Sharer management
+export { handleAdminWaterShareCommand, handleAdminWaterShareAutocomplete } from './admin-water-share.js';
+
+// Sprint 21: Admin analytics dashboard
+export { handleAdminStatsCommand } from './admin-stats.js';
 
 /**
  * Register slash commands with Discord API

@@ -9,6 +9,10 @@ This directory contains sprint-specific documentation for the A2A workflow.
 | sprint-11 | Naib Foundation | COMPLETED | 2025-12-20 |
 | sprint-12 | Cave Entrance | COMPLETED | 2025-12-20 |
 | sprint-13 | Notification System | COMPLETED | 2025-12-20 |
+| sprint-19 | Stats & Leaderboard | COMPLETED | 2025-12-25 |
+| sprint-20 | Weekly Digest | COMPLETED | 2025-12-25 |
+| sprint-21 | Story Fragments & Analytics | COMPLETED | 2025-12-26 |
+| sprint-22 | Testing & Release | COMPLETED | 2025-12-26 |
 
 ## Sprint Documentation Structure
 

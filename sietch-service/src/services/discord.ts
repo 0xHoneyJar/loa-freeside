@@ -39,6 +39,7 @@ import {
   handleStatsCommand,
   handleAdminBadgeCommand,
   handleAdminBadgeAutocomplete,
+  handleAdminStatsCommand,
   handleDirectoryCommand,
   handleDirectoryButton,
   handleDirectorySelect,
@@ -46,6 +47,9 @@ import {
   handleNaibCommand,
   handleThresholdCommand,
   handleRegisterWaitlistCommand,
+  handleWaterShareCommand,
+  handleAdminWaterShareCommand,
+  handleAdminWaterShareAutocomplete,
   DIRECTORY_INTERACTIONS,
 } from '../discord/commands/index.js';
 import {
@@ -280,6 +284,9 @@ class DiscordService {
       case 'admin-badge':
         await handleAdminBadgeCommand(interaction);
         break;
+      case 'admin-stats':
+        await handleAdminStatsCommand(interaction);
+        break;
       case 'directory':
         await handleDirectoryCommand(interaction);
         break;
@@ -294,6 +301,12 @@ class DiscordService {
         break;
       case 'register-waitlist':
         await handleRegisterWaitlistCommand(interaction);
+        break;
+      case 'water-share':
+        await handleWaterShareCommand(interaction);
+        break;
+      case 'admin-water-share':
+        await handleAdminWaterShareCommand(interaction);
         break;
       default:
         logger.warn({ commandName }, 'Unknown slash command');
@@ -406,6 +419,12 @@ class DiscordService {
     // Admin-badge command autocomplete
     if (commandName === 'admin-badge') {
       await handleAdminBadgeAutocomplete(interaction);
+      return;
+    }
+
+    // Admin-water-share command autocomplete
+    if (commandName === 'admin-water-share') {
+      await handleAdminWaterShareAutocomplete(interaction);
       return;
     }
 

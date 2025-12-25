@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { mkdirSync, existsSync } from 'fs';
 import { dirname } from 'path';
+import { randomUUID } from 'crypto';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { SCHEMA_SQL, CLEANUP_OLD_SNAPSHOTS_SQL, SOCIAL_LAYER_SCHEMA_SQL } from './schema.js';
@@ -32,6 +33,97 @@ import type {
 let db: Database.Database | null = null;
 
 /**
+ * Default story fragments for seeding (Sprint 21)
+ * Cryptic Dune-themed narratives for elite member joins
+ */
+const DEFAULT_STORY_FRAGMENTS = {
+  fedaykin_join: [
+    `The desert wind carried whispers of a new arrival.
+One who had held their water, never trading the sacred spice.
+The sietch grows stronger.`,
+    `Footsteps in the sand revealed a traveler from distant dunes.
+They bore no marks of the water sellers.
+A new Fedaykin has earned their place.`,
+    `The winds shifted across the Great Bled.
+A new figure emerged from the dancing sands,
+their stillsuit bearing the marks of deep desert travel.
+
+The watermasters took note.
+Another has proven their worth in the spice trade.
+
+A new Fedaykin walks among us.`,
+    `Beneath the twin moons, a shadow moved with purpose.
+The sand gave no resistance to their practiced steps.
+One more keeper of the ancient way has joined our ranks.`,
+    `The sietch's heartbeat grows louder.
+Another warrior of the deep desert approaches,
+their loyalty to the spice unbroken, their resolve unshaken.`,
+  ],
+  naib_join: [
+    `The council chamber stirred.
+A presence of great weight approached -
+one whose reserves of melange could shift the balance.
+A new voice joins the Naib.`,
+    `The sands trembled with significance.
+One of profound holdings has crossed the threshold,
+their wisdom forged in the crucible of scarcity.
+The Naib Council is complete once more.`,
+    `Ancient traditions speak of leaders rising from the dunes.
+Today, the prophecy continues.
+A new Naib takes their seat among the watermasters.`,
+  ],
+};
+
+/**
+ * Seed default story fragments if table is empty
+ * This is called automatically during database initialization
+ * Idempotent - only seeds if table is empty
+ */
+function seedDefaultStoryFragments(database: Database.Database): void {
+  // Check if fragments already exist
+  const existingCount = database
+    .prepare('SELECT COUNT(*) as count FROM story_fragments')
+    .get() as { count: number };
+
+  if (existingCount.count > 0) {
+    logger.debug(
+      { count: existingCount.count },
+      'Story fragments already seeded, skipping'
+    );
+    return;
+  }
+
+  logger.info('Seeding default story fragments...');
+
+  const insertStmt = database.prepare(
+    `INSERT INTO story_fragments (id, category, content, used_count) VALUES (?, ?, ?, ?)`
+  );
+
+  let totalInserted = 0;
+
+  // Insert Fedaykin fragments
+  for (const content of DEFAULT_STORY_FRAGMENTS.fedaykin_join) {
+    insertStmt.run(randomUUID(), 'fedaykin_join', content, 0);
+    totalInserted++;
+  }
+
+  // Insert Naib fragments
+  for (const content of DEFAULT_STORY_FRAGMENTS.naib_join) {
+    insertStmt.run(randomUUID(), 'naib_join', content, 0);
+    totalInserted++;
+  }
+
+  logger.info(
+    {
+      totalInserted,
+      fedaykin: DEFAULT_STORY_FRAGMENTS.fedaykin_join.length,
+      naib: DEFAULT_STORY_FRAGMENTS.naib_join.length,
+    },
+    'Default story fragments seeded successfully'
+  );
+}
+
+/**
  * Initialize the database connection
  */
 export function initDatabase(): Database.Database {
@@ -58,6 +150,9 @@ export function initDatabase(): Database.Database {
   // Run social layer schema (v2.0)
   db.exec(SOCIAL_LAYER_SCHEMA_SQL);
   logger.info('Social layer schema initialized');
+
+  // Seed default story fragments if table is empty (v3.0 - Sprint 21)
+  seedDefaultStoryFragments(db);
 
   return db;
 }

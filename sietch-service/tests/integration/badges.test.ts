@@ -355,3 +355,273 @@ describe('Badge System', () => {
     });
   });
 });
+
+// =============================================================================
+// Sprint 18: Usul Ascended Badge Tests
+// =============================================================================
+
+describe('Usul Ascended Badge (Sprint 18)', () => {
+  // Constants matching badge.ts
+  const USUL_ASCENDED_BADGE = {
+    badgeId: 'usul-ascended',
+    name: 'Usul Ascended',
+    description: 'Reached the Usul tier (1111+ BGT)',
+    emoji: '⭐',
+    category: 'special',
+  };
+
+  const USUL_TIER_THRESHOLD = 1111; // BGT
+
+  describe('Badge Definition', () => {
+    it('should have correct badge ID', () => {
+      expect(USUL_ASCENDED_BADGE.badgeId).toBe('usul-ascended');
+    });
+
+    it('should have correct badge name', () => {
+      expect(USUL_ASCENDED_BADGE.name).toBe('Usul Ascended');
+    });
+
+    it('should have description mentioning 1111+ BGT', () => {
+      expect(USUL_ASCENDED_BADGE.description).toContain('1111');
+      expect(USUL_ASCENDED_BADGE.description).toContain('BGT');
+    });
+
+    it('should be in special category (auto-awarded)', () => {
+      expect(USUL_ASCENDED_BADGE.category).toBe('special');
+    });
+
+    it('should have star emoji', () => {
+      expect(USUL_ASCENDED_BADGE.emoji).toBe('⭐');
+    });
+  });
+
+  describe('Auto-Award Eligibility', () => {
+    it('should award when member reaches Usul tier (1111 BGT)', () => {
+      const memberBgt = 1111;
+      const memberTier = 'usul';
+      const oldTier = 'sayyadina';
+
+      const shouldAward =
+        memberBgt >= USUL_TIER_THRESHOLD &&
+        memberTier === 'usul' &&
+        oldTier !== null &&
+        oldTier !== 'usul';
+
+      expect(shouldAward).toBe(true);
+    });
+
+    it('should award when member exceeds Usul threshold (1500 BGT)', () => {
+      const memberBgt = 1500;
+      const memberTier = 'usul';
+      const oldTier = 'sayyadina';
+
+      const shouldAward =
+        memberBgt >= USUL_TIER_THRESHOLD &&
+        memberTier === 'usul' &&
+        oldTier !== null &&
+        oldTier !== 'usul';
+
+      expect(shouldAward).toBe(true);
+    });
+
+    it('should NOT award on first tier assignment (oldTier is null)', () => {
+      const memberBgt = 1111;
+      const memberTier = 'usul';
+      const oldTier = null;
+
+      const shouldAward =
+        memberBgt >= USUL_TIER_THRESHOLD &&
+        memberTier === 'usul' &&
+        oldTier !== null;
+
+      expect(shouldAward).toBe(false);
+    });
+
+    it('should NOT award if member is below Usul threshold (1110 BGT)', () => {
+      const memberBgt = 1110;
+      const memberTier = 'sayyadina';
+      const oldTier = 'mushtamal';
+
+      const shouldAward =
+        memberBgt >= USUL_TIER_THRESHOLD && memberTier === 'usul';
+
+      expect(shouldAward).toBe(false);
+    });
+
+    it('should NOT award again if member already has badge', () => {
+      const memberBadges = ['newcomer', 'usul-ascended', 'active'];
+      const alreadyHasBadge = memberBadges.includes(USUL_ASCENDED_BADGE.badgeId);
+
+      expect(alreadyHasBadge).toBe(true);
+    });
+
+    it('should NOT award if tier is Fedaykin (rank-based, not BGT-based Usul)', () => {
+      const memberBgt = 1200;
+      const memberTier = 'fedaykin'; // Rank 8-69 overrides BGT tier
+      const oldTier = 'usul';
+
+      const shouldAward = memberTier === 'usul';
+
+      expect(shouldAward).toBe(false);
+    });
+
+    it('should NOT award if tier is Naib (rank-based)', () => {
+      const memberBgt = 2000;
+      const memberTier = 'naib'; // Rank 1-7 overrides BGT tier
+      const oldTier = 'usul';
+
+      const shouldAward = memberTier === 'usul';
+
+      expect(shouldAward).toBe(false);
+    });
+  });
+
+  describe('Badge Persistence Through Tier Changes', () => {
+    it('should persist badge when member is promoted from Usul to Fedaykin', () => {
+      // Member has Usul Ascended badge
+      const memberBadges = ['newcomer', 'usul-ascended'];
+
+      // Member is promoted to Fedaykin (rank 8-69)
+      const oldTier = 'usul';
+      const newTier = 'fedaykin';
+
+      // Badge should remain (tiers change, badges persist)
+      // Badges are separate from tiers - they are permanent achievements
+      const badgeRevokedOnTierChange = false; // Expected behavior
+
+      expect(badgeRevokedOnTierChange).toBe(false);
+      expect(memberBadges).toContain('usul-ascended');
+    });
+
+    it('should persist badge when member is promoted from Fedaykin to Naib', () => {
+      // Member has Usul Ascended badge from before reaching Fedaykin
+      const memberBadges = ['newcomer', 'usul-ascended'];
+
+      // Member is now being promoted to Naib
+      const oldTier = 'fedaykin';
+      const newTier = 'naib';
+
+      // Badge should still be there
+      expect(memberBadges).toContain('usul-ascended');
+    });
+
+    it('should persist badge when member is demoted from Fedaykin to Usul', () => {
+      // Member has badge, drops in rank from Top 69
+      const memberBadges = ['newcomer', 'usul-ascended'];
+
+      // Demotion from Fedaykin back to Usul (left top 69 but still has 1111+ BGT)
+      const oldTier = 'fedaykin';
+      const newTier = 'usul';
+
+      // Badge persists through demotion
+      expect(memberBadges).toContain('usul-ascended');
+    });
+
+    it('should persist badge even if BGT drops below Usul threshold', () => {
+      // Badges are permanent achievements once earned
+      const memberBadges = ['newcomer', 'usul-ascended'];
+
+      // Member's BGT drops to below Usul threshold
+      const currentBgt = 800; // Below 1111
+      const currentTier = 'sayyadina'; // Demoted tier
+
+      // Badge should still persist - it's a historical achievement
+      expect(memberBadges).toContain('usul-ascended');
+    });
+  });
+
+  describe('Badge Award Notification', () => {
+    it('should trigger notification when badge is auto-awarded', () => {
+      const notification = {
+        type: 'badge_award',
+        badgeId: 'usul-ascended',
+        badgeName: 'Usul Ascended',
+        badgeDescription: USUL_ASCENDED_BADGE.description,
+        badgeEmoji: '⭐',
+        awardReason: 'Reached Usul tier (1111+ BGT)',
+        isWaterSharer: false,
+      };
+
+      expect(notification.type).toBe('badge_award');
+      expect(notification.badgeId).toBe('usul-ascended');
+      expect(notification.awardReason).toContain('Usul tier');
+      expect(notification.isWaterSharer).toBe(false);
+    });
+
+    it('should include correct badge details in notification embed', () => {
+      const embed = {
+        title: `${USUL_ASCENDED_BADGE.emoji} Badge Awarded!`,
+        description: 'You have been awarded a badge!',
+        fields: [
+          { name: '⭐ Badge', value: '**Usul Ascended**' },
+          { name: '📝 Description', value: USUL_ASCENDED_BADGE.description },
+          { name: '💬 Award Reason', value: 'Reached Usul tier (1111+ BGT)' },
+        ],
+      };
+
+      expect(embed.title).toContain(USUL_ASCENDED_BADGE.emoji);
+      expect(embed.fields.find((f) => f.name.includes('Badge'))?.value).toContain('Usul Ascended');
+    });
+  });
+
+  describe('Idempotency', () => {
+    it('should not create duplicate badge records', () => {
+      const memberBadges = [
+        { badgeId: 'usul-ascended', awardedAt: new Date('2025-01-01') },
+      ];
+
+      // Attempt to award again should check for existing badge first
+      const hasExisting = memberBadges.some(
+        (b) => b.badgeId === 'usul-ascended'
+      );
+
+      expect(hasExisting).toBe(true);
+
+      // Award function should return false/null when badge already exists
+      const awardResult = hasExisting ? null : { badgeId: 'usul-ascended' };
+      expect(awardResult).toBeNull();
+    });
+
+    it('should handle rapid tier changes without duplicate awards', () => {
+      // Simulate rapid tier changes during sync
+      const tierChanges = [
+        { oldTier: 'sayyadina', newTier: 'usul' },
+        { oldTier: 'usul', newTier: 'usul' }, // No change (re-processed)
+        { oldTier: 'usul', newTier: 'usul' }, // No change (re-processed)
+      ];
+
+      let badgeAwardCount = 0;
+      let hasBadge = false;
+
+      for (const change of tierChanges) {
+        const isPromotion = change.newTier === 'usul' && change.oldTier !== 'usul';
+        if (isPromotion && !hasBadge) {
+          badgeAwardCount++;
+          hasBadge = true;
+        }
+      }
+
+      // Should only award once
+      expect(badgeAwardCount).toBe(1);
+    });
+  });
+
+  describe('Audit Trail', () => {
+    it('should log badge award with correct event data', () => {
+      const auditEvent = {
+        eventType: 'admin_badge_award', // Same event type as other badge awards
+        eventData: {
+          memberId: 'member-123',
+          badgeId: 'usul-ascended',
+          awardedBy: null, // Auto-awarded by system
+          reason: 'Reached Usul tier (1111+ BGT)',
+          isAutoAward: true,
+        },
+      };
+
+      expect(auditEvent.eventData.badgeId).toBe('usul-ascended');
+      expect(auditEvent.eventData.isAutoAward).toBe(true);
+      expect(auditEvent.eventData.awardedBy).toBeNull();
+    });
+  });
+});

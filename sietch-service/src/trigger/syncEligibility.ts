@@ -5,6 +5,9 @@ import { discordService } from '../services/discord.js';
 import { naibService } from '../services/naib.js';
 import { thresholdService } from '../services/threshold.js';
 import { notificationService } from '../services/notification.js';
+import { storyService } from '../services/StoryService.js';
+import { tierService, syncTierRole, isTierRolesConfigured, TIER_INFO, awardBadge, BADGE_IDS } from '../services/index.js';
+import { memberHasBadge } from '../db/queries.js';
 import {
   initDatabase,
   saveEligibilitySnapshot,
@@ -14,7 +17,9 @@ import {
   logAuditEvent,
   getDiscordIdByWallet,
   getMemberProfileByDiscordId,
+  getMemberProfileById,
 } from '../db/index.js';
+import type { Tier } from '../types/index.js';
 
 /**
  * Scheduled task to sync BGT eligibility data from chain
@@ -107,7 +112,167 @@ export const syncEligibilityTask = schedules.task({
         });
       }
 
-      // 9. Save threshold snapshot (v2.1)
+      // 9. Calculate and sync tier for each member (v3.0)
+      let tierStats = { updated: 0, promotions: 0, demotions: 0, roleChanges: 0, errors: 0, dmsSent: 0 };
+      if (isTierRolesConfigured()) {
+        try {
+          triggerLogger.info('Processing tier updates for members...');
+
+          // Get all onboarded members with their current BGT and rank
+          for (const entry of eligibility) {
+            const discordId = getDiscordIdByWallet(entry.address);
+            if (!discordId) continue;
+
+            const profile = getMemberProfileByDiscordId(discordId);
+            if (!profile || !profile.onboardingComplete) continue;
+
+            try {
+              // Calculate new tier based on BGT and rank
+              const newTier = tierService.calculateTier(entry.bgtHeld, entry.rank ?? null);
+              const oldTier = profile.tier as Tier | null;
+
+              // Check if tier changed
+              if (oldTier !== newTier) {
+                // Update tier in database
+                const updated = await tierService.updateMemberTier(
+                  profile.memberId,
+                  newTier,
+                  entry.bgtHeld.toString(),
+                  entry.rank ?? null,
+                  oldTier
+                );
+
+                if (updated) {
+                  tierStats.updated++;
+
+                  // Check if promotion or demotion
+                  // Note: First tier assignment (oldTier === null) is NOT a promotion
+                  const isPromotion = oldTier !== null && tierService.isPromotion(oldTier, newTier);
+                  if (isPromotion) {
+                    tierStats.promotions++;
+
+                    // Send tier promotion DM (Sprint 18)
+                    // Only for actual promotions, not first tier assignment
+                    try {
+                      const newTierInfo = TIER_INFO[newTier];
+                      const isRankBased = newTier === 'naib' || newTier === 'fedaykin';
+
+                      await notificationService.sendTierPromotion(profile.memberId, {
+                        oldTier: oldTier, // Safe - we know oldTier is not null
+                        newTier,
+                        newTierName: newTierInfo.name,
+                        bgtThreshold: newTierInfo.bgtThreshold,
+                        isRankBased,
+                      });
+
+                      tierStats.dmsSent++;
+                      triggerLogger.debug('Tier promotion DM sent', {
+                        memberId: profile.memberId,
+                        oldTier,
+                        newTier,
+                      });
+                    } catch (dmError) {
+                      // DM failures are non-critical
+                      triggerLogger.warn('Failed to send tier promotion DM', {
+                        memberId: profile.memberId,
+                        error: dmError instanceof Error ? dmError.message : String(dmError),
+                      });
+                    }
+
+                    // Auto-award Usul Ascended badge when promoted to Usul tier (Sprint 18)
+                    if (newTier === 'usul' && !memberHasBadge(profile.memberId, BADGE_IDS.usulAscended)) {
+                      try {
+                        const badge = awardBadge(profile.memberId, BADGE_IDS.usulAscended, {
+                          reason: 'Reached Usul tier (1111+ BGT)',
+                        });
+                        if (badge) {
+                          triggerLogger.info('Usul Ascended badge awarded', { memberId: profile.memberId });
+
+                          // Send badge award DM
+                          await notificationService.sendBadgeAward(profile.memberId, {
+                            badgeId: BADGE_IDS.usulAscended,
+                            badgeName: 'Usul Ascended',
+                            badgeDescription: 'Reached the Usul tier - the base of the pillar, the innermost identity. 1111+ BGT',
+                            badgeEmoji: '\u2B50',
+                            awardReason: 'Reached Usul tier (1111+ BGT)',
+                            isWaterSharer: false,
+                          });
+                        }
+                      } catch (badgeError) {
+                        triggerLogger.warn('Failed to award Usul Ascended badge', {
+                          memberId: profile.memberId,
+                          error: badgeError instanceof Error ? badgeError.message : String(badgeError),
+                        });
+                      }
+                    }
+                  } else if (oldTier) {
+                    tierStats.demotions++;
+                  }
+
+                  // Sync Discord roles
+                  const roleResult = await syncTierRole(discordId, newTier, oldTier);
+                  if (roleResult.assigned.length > 0 || roleResult.removed.length > 0) {
+                    tierStats.roleChanges++;
+                  }
+
+                  // Post story fragment for elite tier promotions (v3.0 - Sprint 21)
+                  // Only post for actual promotions to Fedaykin or Naib (not initial assignment)
+                  if (isPromotion && (newTier === 'fedaykin' || newTier === 'naib')) {
+                    try {
+                      const client = discordService.getClient();
+                      if (client) {
+                        const fragmentPosted = await storyService.postJoinFragment(client, newTier);
+                        if (fragmentPosted) {
+                          triggerLogger.info('Story fragment posted for elite promotion', {
+                            memberId: profile.memberId,
+                            tier: newTier,
+                          });
+                        }
+                      }
+                    } catch (storyError) {
+                      // Story fragment failures are non-critical
+                      triggerLogger.warn('Failed to post story fragment', {
+                        memberId: profile.memberId,
+                        tier: newTier,
+                        error: storyError instanceof Error ? storyError.message : String(storyError),
+                      });
+                    }
+                  }
+                }
+              }
+            } catch (memberTierError) {
+              triggerLogger.warn('Failed to process tier for member', {
+                discordId,
+                error: memberTierError instanceof Error ? memberTierError.message : String(memberTierError),
+              });
+              tierStats.errors++;
+            }
+          }
+
+          triggerLogger.info('Tier sync completed', tierStats);
+
+          // Log audit event for tier sync
+          if (tierStats.updated > 0) {
+            logAuditEvent('tier_role_sync', {
+              snapshotId,
+              updated: tierStats.updated,
+              promotions: tierStats.promotions,
+              demotions: tierStats.demotions,
+              roleChanges: tierStats.roleChanges,
+              dmsSent: tierStats.dmsSent,
+              errors: tierStats.errors,
+            });
+          }
+        } catch (tierError) {
+          triggerLogger.error('Tier sync error (non-fatal)', {
+            error: tierError instanceof Error ? tierError.message : String(tierError),
+          });
+        }
+      } else {
+        triggerLogger.debug('Tier roles not configured, skipping tier sync');
+      }
+
+      // 10. Save threshold snapshot (v2.1)
       let thresholdSnapshot = null;
       try {
         triggerLogger.info('Saving threshold snapshot...');
@@ -253,6 +418,7 @@ export const syncEligibilityTask = schedules.task({
           droppedOut: waitlistCheck.droppedOut.length,
         } : null,
         notifications: notificationStats,
+        tiers: tierStats.updated > 0 ? tierStats : null,
       };
     } catch (error) {
       // Update health status - failure

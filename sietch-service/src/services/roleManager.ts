@@ -15,7 +15,7 @@
  * - Periodically via scheduled task (daily)
  */
 
-import { config } from '../config.js';
+import { config, getTierRoleId, getMissingTierRoles } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { checkRoleUpgrades } from './badge.js';
 import { discordService } from './discord.js';
@@ -24,6 +24,8 @@ import {
   getDatabase,
   logAuditEvent,
 } from '../db/queries.js';
+import type { Tier } from '../types/index.js';
+import { TIER_ORDER } from './TierService.js';
 
 /**
  * Role ID mapping from config
@@ -417,4 +419,200 @@ export async function removeTaqwaRole(discordUserId: string): Promise<boolean> {
  */
 export function isTaqwaRoleConfigured(): boolean {
   return !!config.discord.roles.taqwa;
+}
+
+// =============================================================================
+// Tier Role Management (v3.0 - Sprint 16: Tier Integration)
+// =============================================================================
+
+/**
+ * Sync tier role for a member
+ * Role assignment is additive - members accumulate roles as they progress
+ * If tier decreases, higher tier roles are removed
+ *
+ * @param discordUserId - Discord user ID
+ * @param newTier - The new tier to sync
+ * @param oldTier - Optional previous tier for differential role management
+ * @returns Object with assigned and removed role names
+ */
+export async function syncTierRole(
+  discordUserId: string,
+  newTier: Tier,
+  oldTier?: Tier | null
+): Promise<{ assigned: string[]; removed: string[] }> {
+  const assigned: string[] = [];
+  const removed: string[] = [];
+
+  const newTierIndex = TIER_ORDER.indexOf(newTier);
+  const oldTierIndex = oldTier ? TIER_ORDER.indexOf(oldTier) : -1;
+
+  // Get current member roles from Discord
+  const member = await discordService.getMemberById(discordUserId);
+  if (!member) {
+    logger.warn({ discordUserId, newTier }, 'Could not fetch Discord member for tier sync');
+    return { assigned: [], removed: [] };
+  }
+
+  const currentRoles = member.roles.cache;
+
+  // Assign the new tier role
+  const newTierRoleId = getTierRoleId(newTier);
+  if (newTierRoleId && !currentRoles.has(newTierRoleId)) {
+    const success = await discordService.assignRole(discordUserId, newTierRoleId);
+    if (success) {
+      assigned.push(newTier);
+      logger.info({ discordUserId, tier: newTier }, 'Assigned tier role');
+    }
+  }
+
+  // Handle tier decrease: remove higher tier roles
+  if (oldTier && oldTierIndex > newTierIndex) {
+    // Member's tier decreased, remove roles for tiers above new tier
+    for (let i = newTierIndex + 1; i <= oldTierIndex; i++) {
+      const tierToRemove = TIER_ORDER[i];
+      if (!tierToRemove) continue;
+
+      const roleIdToRemove = getTierRoleId(tierToRemove);
+      if (roleIdToRemove && currentRoles.has(roleIdToRemove)) {
+        const success = await discordService.removeRole(discordUserId, roleIdToRemove);
+        if (success) {
+          removed.push(tierToRemove);
+          logger.info({ discordUserId, tier: tierToRemove }, 'Removed tier role (tier decreased)');
+        }
+      }
+    }
+  }
+
+  // Log audit event if any changes
+  if (assigned.length > 0 || removed.length > 0) {
+    logAuditEvent('tier_role_sync', {
+      discordUserId,
+      newTier,
+      oldTier: oldTier ?? null,
+      assigned,
+      removed,
+    });
+  }
+
+  return { assigned, removed };
+}
+
+/**
+ * Assign all tier roles up to and including the given tier
+ * Used for initial tier assignment of existing members
+ *
+ * @param discordUserId - Discord user ID
+ * @param tier - The tier to assign (will also assign all lower tiers)
+ * @returns Number of roles assigned
+ */
+export async function assignTierRolesUpTo(
+  discordUserId: string,
+  tier: Tier
+): Promise<number> {
+  const tierIndex = TIER_ORDER.indexOf(tier);
+  if (tierIndex === -1) {
+    logger.warn({ tier }, 'Unknown tier, cannot assign roles');
+    return 0;
+  }
+
+  // Get current member roles
+  const member = await discordService.getMemberById(discordUserId);
+  if (!member) {
+    logger.warn({ discordUserId }, 'Could not fetch Discord member for tier role assignment');
+    return 0;
+  }
+
+  const currentRoles = member.roles.cache;
+  let assigned = 0;
+
+  // Assign roles for all tiers up to and including current tier
+  // Note: For BGT-based tiers only (not Fedaykin/Naib which are rank-based)
+  for (let i = 0; i <= tierIndex; i++) {
+    const tierName = TIER_ORDER[i];
+    if (!tierName) continue;
+
+    // Skip rank-based tiers in this function - they're handled separately
+    if (tierName === 'fedaykin' || tierName === 'naib') {
+      continue;
+    }
+
+    const roleId = getTierRoleId(tierName);
+    if (roleId && !currentRoles.has(roleId)) {
+      const success = await discordService.assignRole(discordUserId, roleId);
+      if (success) {
+        assigned++;
+        logger.debug({ discordUserId, tier: tierName }, 'Assigned tier role');
+      }
+    }
+  }
+
+  if (assigned > 0) {
+    logger.info({ discordUserId, tier, rolesAssigned: assigned }, 'Assigned tier roles');
+    logAuditEvent('tier_roles_assigned', {
+      discordUserId,
+      tier,
+      rolesAssigned: assigned,
+      reason: 'tier_assignment',
+    });
+  }
+
+  return assigned;
+}
+
+/**
+ * Remove all tier roles from a member
+ * Used when a member becomes ineligible
+ *
+ * @param discordUserId - Discord user ID
+ * @returns Number of roles removed
+ */
+export async function removeAllTierRoles(discordUserId: string): Promise<number> {
+  const member = await discordService.getMemberById(discordUserId);
+  if (!member) {
+    logger.warn({ discordUserId }, 'Could not fetch Discord member for tier role removal');
+    return 0;
+  }
+
+  const currentRoles = member.roles.cache;
+  let removed = 0;
+
+  for (const tierName of TIER_ORDER) {
+    const roleId = getTierRoleId(tierName);
+    if (roleId && currentRoles.has(roleId)) {
+      const success = await discordService.removeRole(discordUserId, roleId);
+      if (success) {
+        removed++;
+        logger.debug({ discordUserId, tier: tierName }, 'Removed tier role');
+      }
+    }
+  }
+
+  if (removed > 0) {
+    logger.info({ discordUserId, rolesRemoved: removed }, 'Removed all tier roles');
+    logAuditEvent('tier_roles_removed', {
+      discordUserId,
+      rolesRemoved: removed,
+      reason: 'ineligible',
+    });
+  }
+
+  return removed;
+}
+
+/**
+ * Check if tier roles are configured
+ * Returns true if at least some tier roles are configured
+ */
+export function isTierRolesConfigured(): boolean {
+  const missing = getMissingTierRoles();
+  // Consider configured if we have at least naib and fedaykin (the rank-based ones)
+  return !missing.includes('naib') && !missing.includes('fedaykin');
+}
+
+/**
+ * Get list of unconfigured tier roles
+ * Useful for admin diagnostics
+ */
+export function getUnconfiguredTierRoles(): string[] {
+  return getMissingTierRoles();
 }
