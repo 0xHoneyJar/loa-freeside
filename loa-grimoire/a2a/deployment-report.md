@@ -53,8 +53,8 @@ Sietch v3.0.0 is ready for production deployment. This release adds significant 
 
 ### License
 
-- **Type**: MIT
-- **Location**: `/LICENSE` (existing)
+- **Type**: AGPL-3.0
+- **Location**: `/LICENSE.md`
 
 ## Infrastructure
 

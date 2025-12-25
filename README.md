@@ -239,4 +239,4 @@ This project was built using [Loa](https://github.com/0xHoneyJar/loa), an agent-
 
 ## License
 
-MIT
+AGPL-3.0 - See [LICENSE.md](LICENSE.md) for details.

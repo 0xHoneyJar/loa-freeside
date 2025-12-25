@@ -153,7 +153,20 @@ sudo -u sietch pm2 startup systemd -u sietch --hp /home/sietch
 
 ### 6. nginx Configuration
 
-Create `/etc/nginx/sites-available/sietch`:
+First, add rate limiting zone to `/etc/nginx/nginx.conf` inside the `http` block:
+
+```nginx
+http {
+    # ... existing config ...
+
+    # Rate limiting zone (must be in http context)
+    limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+
+    # ... rest of config ...
+}
+```
+
+Then create `/etc/nginx/sites-available/sietch`:
 
 ```nginx
 server {
@@ -176,9 +189,6 @@ server {
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-XSS-Protection "1; mode=block" always;
-
-    # Rate limiting
-    limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
 
     location / {
         limit_req zone=api burst=20 nodelay;
@@ -226,6 +236,29 @@ sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
 sudo ufw enable
 ```
+
+### 8a. SSH Hardening
+
+Secure SSH access with key-only authentication:
+
+```bash
+# Ensure you have SSH key access before proceeding!
+# Test: ssh -i ~/.ssh/your_key sietch@server
+
+# Disable password authentication
+sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+sudo sed -i 's/PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+
+# Disable root login
+sudo sed -i 's/#PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
+sudo sed -i 's/PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
+sudo sed -i 's/PermitRootLogin prohibit-password/PermitRootLogin no/' /etc/ssh/sshd_config
+
+# Restart SSH service
+sudo systemctl restart sshd
+```
+
+**Warning**: Ensure you have working SSH key access before disabling password authentication, or you may lock yourself out!
 
 ### 9. Seed Initial Data
 

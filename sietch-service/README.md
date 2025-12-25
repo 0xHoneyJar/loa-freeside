@@ -178,4 +178,4 @@ DISCORD_FEDAYKIN_ROLE_ID=
 
 ## License
 
-MIT
+AGPL-3.0 - See [LICENSE.md](../LICENSE.md) for details.
