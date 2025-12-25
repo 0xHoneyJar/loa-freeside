@@ -235,7 +235,7 @@ Names from Frank Herbert's *Dune*:
 
 ## Built With
 
-This project was built using [agentic-base](https://github.com/0xHoneyJar/agentic-base), an agent-driven development framework for orchestrating product development lifecycle.
+This project was built using [Loa](https://github.com/0xHoneyJar/loa), an agent-driven development framework for orchestrating product development lifecycle.
 
 ## License
 
