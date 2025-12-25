@@ -14,7 +14,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import type { Response, Request } from 'express';
-import type { AuthenticatedRequest } from './middleware.js';
+import type { AuthenticatedRequest, RawBodyRequest } from './middleware.js';
 import {
   memberRateLimiter,
   requireApiKey,
@@ -302,7 +302,19 @@ billingRouter.post('/webhook', async (req: Request, res: Response) => {
   try {
     // Verify webhook signature
     // Note: req.body should be raw Buffer for signature verification
-    const rawBody = (req as any).rawBody || req.body;
+    // The raw body middleware is configured in server.ts - we require it explicitly
+    // to prevent signature bypass if middleware misconfigured
+    const rawBody = (req as RawBodyRequest).rawBody;
+
+    if (!rawBody) {
+      logger.error('Webhook received without raw body - check middleware configuration');
+      res.status(500).json({
+        error: 'Internal server error',
+        message: 'Server misconfiguration - raw body not available',
+      });
+      return;
+    }
+
     event = stripeService.constructWebhookEvent(rawBody, signature);
   } catch (error) {
     logger.warn({ error }, 'Invalid Stripe webhook signature');

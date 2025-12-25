@@ -185,8 +185,10 @@ class StripeService {
 
     return withRetry(async () => {
       // Search for existing customer by metadata
+      // Escape single quotes to prevent query injection
+      const escapedCommunityId = communityId.replace(/'/g, "\\'");
       const existingCustomers = await stripe.customers.search({
-        query: `metadata['community_id']:'${communityId}'`,
+        query: `metadata['community_id']:'${escapedCommunityId}'`,
         limit: 1,
       });
 

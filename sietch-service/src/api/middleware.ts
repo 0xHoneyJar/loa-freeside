@@ -11,6 +11,14 @@ export interface AuthenticatedRequest extends Request {
 }
 
 /**
+ * Extended Request type with raw body for webhook signature verification
+ * Used by routes that need to verify signatures (e.g., Stripe webhooks)
+ */
+export interface RawBodyRequest extends Request {
+  rawBody: Buffer;
+}
+
+/**
  * Rate limiter for public endpoints
  * 100 requests per minute per IP
  */

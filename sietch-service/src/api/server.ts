@@ -73,7 +73,14 @@ function createApp(): Application {
 
   // Raw body parser for Stripe webhook (must be before JSON parsing)
   // Stripe requires raw body for signature verification
-  expressApp.use('/api/billing/webhook', express.raw({ type: 'application/json' }));
+  // We use a custom verify function to attach the raw body to the request
+  expressApp.use('/api/billing/webhook', express.raw({
+    type: 'application/json',
+    verify: (req: any, _res, buf) => {
+      // Attach raw body buffer to request for signature verification
+      req.rawBody = buf;
+    },
+  }));
 
   // JSON body parsing
   expressApp.use(express.json({ limit: '10kb' }));
