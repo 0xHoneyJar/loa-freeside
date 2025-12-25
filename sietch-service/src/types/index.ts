@@ -135,7 +135,12 @@ export interface AuditLogEntry {
     | 'tier_roles_removed'
     // Sprint 17: Water Sharer event types
     | 'water_sharer_grant'
-    | 'water_sharer_revoke';
+    | 'water_sharer_revoke'
+    // Sprint 20: Weekly Digest event types
+    | 'weekly_digest_posted'
+    | 'weekly_digest_skipped'
+    | 'weekly_digest_failed'
+    | 'weekly_digest_error';
   /** Event-specific data */
   eventData: Record<string, unknown>;
   /** When the event occurred */

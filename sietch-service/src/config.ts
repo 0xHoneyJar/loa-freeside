@@ -76,6 +76,8 @@ const configSchema = z.object({
       caveEntrance: z.string().optional(),
       // The Oasis channel (v3.0 - Sprint 17) - exclusive for Water Sharer badge holders
       oasis: z.string().optional(),
+      // Announcements channel (v3.0 - Sprint 20) - weekly digest posts
+      announcements: z.string().optional(),
     }),
     roles: z.object({
       naib: z.string().min(1),
@@ -194,6 +196,8 @@ function parseConfig() {
         caveEntrance: process.env.DISCORD_CHANNEL_CAVE_ENTRANCE,
         // The Oasis channel (v3.0 - Sprint 17)
         oasis: process.env.DISCORD_CHANNEL_OASIS,
+        // Announcements channel (v3.0 - Sprint 20)
+        announcements: process.env.DISCORD_ANNOUNCEMENTS_CHANNEL_ID,
       },
       roles: {
         naib: process.env.DISCORD_ROLE_NAIB ?? '',
@@ -300,6 +304,8 @@ export interface Config {
       caveEntrance?: string;
       // The Oasis channel (v3.0 - Sprint 17)
       oasis?: string;
+      // Announcements channel (v3.0 - Sprint 20)
+      announcements?: string;
     };
     roles: {
       naib: string;

@@ -523,6 +523,110 @@ memberRouter.get('/leaderboard', (req: Request, res: Response) => {
 });
 
 // -----------------------------------------------------------------------------
+// S19-S20: Stats & Analytics Endpoints
+// -----------------------------------------------------------------------------
+
+/**
+ * GET /api/stats/tiers
+ * Get tier definitions and thresholds
+ */
+memberRouter.get('/stats/tiers', (_req: Request, res: Response) => {
+  // Import tierService dynamically to avoid circular deps
+  const { tierService } = require('../services/index.js');
+  const tiers = tierService.getAllTierInfo();
+
+  res.json({
+    tiers: tiers.map((t: any) => ({
+      name: t.name,
+      display_name: t.displayName,
+      bgt_threshold: t.bgtThreshold,
+      rank_based: t.rankBased,
+      description: t.description,
+    })),
+  });
+});
+
+/**
+ * GET /api/stats/community
+ * Get public community statistics (aggregated)
+ */
+publicRouter.get('/stats/community', (_req: Request, res: Response) => {
+  // Import statsService dynamically to avoid circular deps
+  const { statsService } = require('../services/StatsService.js');
+  const stats = statsService.getCommunityStats();
+
+  // Set cache headers (5 minutes)
+  res.setHeader('Cache-Control', 'public, max-age=300');
+  res.json(stats);
+});
+
+/**
+ * GET /api/me/stats
+ * Get personal activity stats for authenticated member
+ */
+memberRouter.get('/me/stats', (req: Request, res: Response) => {
+  const discordUserId = req.headers['x-discord-user-id'] as string;
+
+  if (!discordUserId) {
+    throw new ValidationError('Discord user ID required in x-discord-user-id header');
+  }
+
+  // Import statsService dynamically to avoid circular deps
+  const { statsService } = require('../services/StatsService.js');
+  const stats = statsService.getPersonalStats(discordUserId);
+
+  if (!stats) {
+    throw new NotFoundError('Member not found or onboarding incomplete');
+  }
+
+  res.json(stats);
+});
+
+/**
+ * GET /api/me/tier-progress
+ * Get tier progression data for authenticated member
+ */
+memberRouter.get('/me/tier-progress', (req: Request, res: Response) => {
+  const discordUserId = req.headers['x-discord-user-id'] as string;
+
+  if (!discordUserId) {
+    throw new ValidationError('Discord user ID required in x-discord-user-id header');
+  }
+
+  const member = getMemberProfileByDiscordId(discordUserId);
+
+  if (!member || !member.onboardingComplete) {
+    throw new NotFoundError('Member not found or onboarding incomplete');
+  }
+
+  // Get wallet address
+  const walletAddress = getWalletByDiscordId(discordUserId);
+  if (!walletAddress) {
+    throw new NotFoundError('Wallet mapping not found');
+  }
+
+  // Get eligibility to get BGT and rank
+  const eligibilityList = getEligibilityList();
+  const eligibility = eligibilityList.find(
+    (e) => e.address.toLowerCase() === walletAddress.toLowerCase()
+  );
+
+  if (!eligibility) {
+    throw new NotFoundError('Eligibility data not found');
+  }
+
+  // Import tierService dynamically to avoid circular deps
+  const { tierService } = require('../services/index.js');
+  const progress = tierService.getTierProgress(
+    member.tier,
+    eligibility.bgtHeld.toString(),
+    eligibility.rank ?? null
+  );
+
+  res.json(progress);
+});
+
+// -----------------------------------------------------------------------------
 // S9-T8: Admin Badge Endpoints
 // -----------------------------------------------------------------------------
 

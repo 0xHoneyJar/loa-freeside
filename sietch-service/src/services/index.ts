@@ -106,3 +106,7 @@ export {
 // Sprint 19: Stats & Leaderboard
 export { statsService } from './StatsService.js';
 export type { TierProgressionEntry } from './StatsService.js';
+
+// Sprint 20: Weekly Digest
+export { digestService } from './DigestService.js';
+export type { WeeklyStats, DigestPostResult } from './DigestService.js';
