@@ -39,6 +39,7 @@ import {
   handleStatsCommand,
   handleAdminBadgeCommand,
   handleAdminBadgeAutocomplete,
+  handleAdminStatsCommand,
   handleDirectoryCommand,
   handleDirectoryButton,
   handleDirectorySelect,
@@ -282,6 +283,9 @@ class DiscordService {
         break;
       case 'admin-badge':
         await handleAdminBadgeCommand(interaction);
+        break;
+      case 'admin-stats':
+        await handleAdminStatsCommand(interaction);
         break;
       case 'directory':
         await handleDirectoryCommand(interaction);

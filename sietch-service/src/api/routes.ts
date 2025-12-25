@@ -31,6 +31,7 @@ import { listAllActiveGrants, revokeGrant, getBadgeLineage, getGrantById } from 
 import { naibService } from '../services/naib.js';
 import { thresholdService } from '../services/threshold.js';
 import { notificationService } from '../services/notification.js';
+import { analyticsService } from '../services/AnalyticsService.js';
 import { getMemberProfileByDiscordId, getWalletPosition, getCurrentEligibility as getEligibilityList, getWalletByDiscordId } from '../db/queries.js';
 import type {
   ThresholdResponse,
@@ -987,6 +988,31 @@ adminRouter.post('/alerts/reset-counters', (req: AuthenticatedRequest, res: Resp
   res.json({
     message: 'Weekly alert counters reset',
     members_reset: count,
+  });
+});
+
+// =============================================================================
+// Sprint 21: Admin Analytics API
+// =============================================================================
+
+/**
+ * GET /admin/analytics
+ * Get comprehensive community analytics
+ * Returns member counts, tier distribution, BGT totals, weekly activity
+ */
+adminRouter.get('/analytics', (_req: AuthenticatedRequest, res: Response) => {
+  const analytics = analyticsService.getCommunityAnalytics();
+
+  res.json({
+    total_members: analytics.totalMembers,
+    by_tier: analytics.byTier,
+    total_bgt: analytics.totalBgt,
+    total_bgt_wei: analytics.totalBgtWei,
+    weekly_active: analytics.weeklyActive,
+    new_this_week: analytics.newThisWeek,
+    promotions_this_week: analytics.promotionsThisWeek,
+    badges_awarded_this_week: analytics.badgesAwardedThisWeek,
+    generated_at: analytics.generatedAt.toISOString(),
   });
 });
 

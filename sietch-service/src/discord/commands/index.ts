@@ -18,6 +18,7 @@ import { alertsCommand } from './alerts.js';
 import { positionCommand } from './position.js';
 import { waterShareCommand } from './water-share.js';
 import { adminWaterShareCommand } from './admin-water-share.js';
+import { adminStatsCommand } from './admin-stats.js';
 
 /**
  * All registered slash commands
@@ -39,6 +40,8 @@ export const commands: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
   waterShareCommand.toJSON(),
   // Sprint 18: Admin Water Sharer management
   adminWaterShareCommand.toJSON(),
+  // Sprint 21: Admin analytics dashboard
+  adminStatsCommand.toJSON(),
 ];
 
 /**
@@ -74,6 +77,9 @@ export { handleWaterShareCommand } from './water-share.js';
 
 // Sprint 18: Admin Water Sharer management
 export { handleAdminWaterShareCommand, handleAdminWaterShareAutocomplete } from './admin-water-share.js';
+
+// Sprint 21: Admin analytics dashboard
+export { handleAdminStatsCommand } from './admin-stats.js';
 
 /**
  * Register slash commands with Discord API

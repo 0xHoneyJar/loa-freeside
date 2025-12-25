@@ -5,6 +5,7 @@ import { discordService } from '../services/discord.js';
 import { naibService } from '../services/naib.js';
 import { thresholdService } from '../services/threshold.js';
 import { notificationService } from '../services/notification.js';
+import { storyService } from '../services/StoryService.js';
 import { tierService, syncTierRole, isTierRolesConfigured, TIER_INFO, awardBadge, BADGE_IDS } from '../services/index.js';
 import { memberHasBadge } from '../db/queries.js';
 import {
@@ -212,6 +213,30 @@ export const syncEligibilityTask = schedules.task({
                   const roleResult = await syncTierRole(discordId, newTier, oldTier);
                   if (roleResult.assigned.length > 0 || roleResult.removed.length > 0) {
                     tierStats.roleChanges++;
+                  }
+
+                  // Post story fragment for elite tier promotions (v3.0 - Sprint 21)
+                  // Only post for actual promotions to Fedaykin or Naib (not initial assignment)
+                  if (isPromotion && (newTier === 'fedaykin' || newTier === 'naib')) {
+                    try {
+                      const client = discordService.getClient();
+                      if (client) {
+                        const fragmentPosted = await storyService.postJoinFragment(client, newTier);
+                        if (fragmentPosted) {
+                          triggerLogger.info('Story fragment posted for elite promotion', {
+                            memberId: profile.memberId,
+                            tier: newTier,
+                          });
+                        }
+                      }
+                    } catch (storyError) {
+                      // Story fragment failures are non-critical
+                      triggerLogger.warn('Failed to post story fragment', {
+                        memberId: profile.memberId,
+                        tier: newTier,
+                        error: storyError instanceof Error ? storyError.message : String(storyError),
+                      });
+                    }
                   }
                 }
               }

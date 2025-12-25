@@ -110,3 +110,9 @@ export type { TierProgressionEntry } from './StatsService.js';
 // Sprint 20: Weekly Digest
 export { digestService } from './DigestService.js';
 export type { WeeklyStats, DigestPostResult } from './DigestService.js';
+
+// Sprint 21: Story Fragments & Analytics
+export { storyService } from './StoryService.js';
+export { analyticsService } from './AnalyticsService.js';
+export type { StoryFragment, FragmentCategory } from './StoryService.js';
+export type { CommunityAnalytics } from './AnalyticsService.js';

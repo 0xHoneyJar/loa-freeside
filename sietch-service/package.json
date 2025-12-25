@@ -15,7 +15,8 @@
     "format": "prettier --write \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit",
     "trigger:dev": "trigger dev",
-    "trigger:deploy": "trigger deploy"
+    "trigger:deploy": "trigger deploy",
+    "seed:stories": "tsx scripts/seed-stories.ts"
   },
   "keywords": [
     "berachain",
