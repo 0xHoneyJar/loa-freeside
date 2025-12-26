@@ -27,6 +27,7 @@ import {
   recordWebhookEvent,
   logBillingAuditEvent,
 } from '../../db/billing-queries.js';
+import { boostService } from '../boost/BoostService.js';
 import { logger } from '../../utils/logger.js';
 import type { SubscriptionTier, SubscriptionStatus } from '../../types/billing.js';
 
@@ -266,9 +267,34 @@ class WebhookService {
 
   /**
    * Handle checkout.session.completed
-   * Creates or updates subscription record when checkout succeeds
+   * Routes to appropriate handler based on checkout type (subscription vs one-time payment)
    */
   private async handleCheckoutCompleted(
+    session: Stripe.Checkout.Session
+  ): Promise<void> {
+    const paymentType = session.metadata?.type;
+
+    // Route to boost payment handler for boost purchases
+    if (paymentType === 'boost_purchase') {
+      await this.handleBoostPaymentCompleted(session);
+      return;
+    }
+
+    // Route to badge payment handler for badge purchases
+    if (paymentType === 'badge_purchase') {
+      await this.handleBadgePaymentCompleted(session);
+      return;
+    }
+
+    // Default: Handle as subscription checkout
+    await this.handleSubscriptionCheckoutCompleted(session);
+  }
+
+  /**
+   * Handle subscription checkout completion
+   * Creates or updates subscription record when checkout succeeds
+   */
+  private async handleSubscriptionCheckoutCompleted(
     session: Stripe.Checkout.Session
   ): Promise<void> {
     const communityId = session.metadata?.community_id;
@@ -341,6 +367,123 @@ class WebhookService {
       { communityId, tier, sessionId: session.id },
       'Checkout completed, subscription created/updated'
     );
+  }
+
+  /**
+   * Handle boost purchase payment completion
+   * Records boost purchase and updates community stats
+   */
+  private async handleBoostPaymentCompleted(
+    session: Stripe.Checkout.Session
+  ): Promise<void> {
+    const { metadata } = session;
+    const communityId = metadata?.community_id;
+    const memberId = metadata?.member_id;
+    const months = parseInt(metadata?.months || '0', 10);
+
+    if (!communityId || !memberId || !months) {
+      logger.warn(
+        { sessionId: session.id, metadata },
+        'Boost checkout session missing required metadata'
+      );
+      return;
+    }
+
+    const amountPaid = session.amount_total || 0;
+    const paymentIntentId =
+      typeof session.payment_intent === 'string'
+        ? session.payment_intent
+        : session.payment_intent?.id;
+
+    try {
+      // Process the boost payment through BoostService
+      const purchase = await boostService.processBoostPayment({
+        stripeSessionId: session.id,
+        stripePaymentId: paymentIntentId || session.id,
+        memberId,
+        communityId,
+        months,
+        amountPaidCents: amountPaid,
+      });
+
+      logger.info(
+        {
+          communityId,
+          memberId,
+          months,
+          purchaseId: purchase.id,
+          sessionId: session.id,
+        },
+        'Boost payment processed successfully'
+      );
+    } catch (error) {
+      logger.error(
+        {
+          error: (error as Error).message,
+          sessionId: session.id,
+          communityId,
+          memberId,
+        },
+        'Failed to process boost payment'
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Handle badge purchase payment completion
+   * Records badge purchase for the member
+   */
+  private async handleBadgePaymentCompleted(
+    session: Stripe.Checkout.Session
+  ): Promise<void> {
+    const { metadata } = session;
+    const communityId = metadata?.communityId;
+    const memberId = metadata?.memberId;
+
+    if (!communityId || !memberId) {
+      logger.warn(
+        { sessionId: session.id, metadata },
+        'Badge checkout session missing required metadata'
+      );
+      return;
+    }
+
+    const paymentIntentId =
+      typeof session.payment_intent === 'string'
+        ? session.payment_intent
+        : session.payment_intent?.id;
+
+    try {
+      // Import badge service dynamically to avoid circular dependency
+      const { badgeService } = await import('../badge/BadgeService.js');
+
+      // Record the badge purchase
+      badgeService.recordBadgePurchase({
+        memberId,
+        stripePaymentId: paymentIntentId || session.id,
+      });
+
+      logger.info(
+        {
+          communityId,
+          memberId,
+          sessionId: session.id,
+        },
+        'Badge payment processed successfully'
+      );
+    } catch (error) {
+      logger.error(
+        {
+          error: (error as Error).message,
+          sessionId: session.id,
+          communityId,
+          memberId,
+        },
+        'Failed to process badge payment'
+      );
+      throw error;
+    }
   }
 
   /**

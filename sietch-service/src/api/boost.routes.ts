@@ -16,6 +16,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { boostService, BOOST_PERKS } from '../services/boost/BoostService.js';
 import { logger } from '../utils/logger.js';
+import { requireApiKey, adminRateLimiter, memberRateLimiter } from './middleware.js';
 import type {
   BoostStatusResponse,
   BoosterListResponse,
@@ -57,6 +58,9 @@ const listBoostersSchema = z.object({
 // =============================================================================
 
 export const boostRouter = Router();
+
+// Apply rate limiting to all boost routes
+boostRouter.use(memberRateLimiter);
 
 // =============================================================================
 // Public Endpoints
@@ -395,10 +399,12 @@ boostRouter.get(
 /**
  * POST /boosts/:communityId/grant
  * Admin: Grant a free boost to a member
- * Requires admin API key authentication (applied in routes.ts)
+ * Requires admin API key authentication
  */
 boostRouter.post(
   '/:communityId/grant',
+  adminRateLimiter,
+  requireApiKey,
   async (
     req: Request<{ communityId: string }, unknown, z.infer<typeof grantBoostSchema>>,
     res: Response<{

@@ -143,7 +143,9 @@ export interface AuditLogEntry {
     | 'weekly_digest_posted'
     | 'weekly_digest_skipped'
     | 'weekly_digest_failed'
-    | 'weekly_digest_error';
+    | 'weekly_digest_error'
+    // Sprint 28: Boost event types
+    | 'boost_expiry_check';
   /** Event-specific data */
   eventData: Record<string, unknown>;
   /** When the event occurred */

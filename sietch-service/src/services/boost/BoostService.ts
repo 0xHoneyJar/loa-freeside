@@ -145,6 +145,7 @@ export interface PurchaseBoostResult {
 }
 
 export interface ProcessBoostPaymentParams {
+  stripeSessionId?: string;
   stripePaymentId: string;
   memberId: string;
   communityId: string;
