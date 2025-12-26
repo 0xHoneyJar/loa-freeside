@@ -1,9 +1,13 @@
 /**
- * Telegram Command Tests (v4.1 - Sprint 30)
+ * Telegram Command Tests (v4.1 - Sprint 31)
  *
  * Test suite for Telegram bot commands covering:
  * - /start command handler
  * - /verify command handler
+ * - /score command handler
+ * - /status command handler
+ * - /leaderboard command handler
+ * - /help command handler
  * - Callback query handlers
  * - Edge cases and error handling
  */
@@ -30,7 +34,27 @@ vi.mock('../../src/services/IdentityService.js', () => ({
     createVerificationSession: vi.fn(),
     completeVerification: vi.fn(),
     failVerification: vi.fn(),
+    getPlatformStatus: vi.fn(),
   },
+}));
+
+vi.mock('../../src/services/leaderboard.js', () => ({
+  leaderboardService: {
+    getLeaderboard: vi.fn(),
+    getMemberRank: vi.fn(),
+    isInTopTen: vi.fn(),
+  },
+}));
+
+vi.mock('../../src/db/queries.js', () => ({
+  getEligibilityByAddress: vi.fn(),
+  getMemberProfileById: vi.fn(),
+  getMemberBadgeCount: vi.fn(),
+}));
+
+vi.mock('../../src/utils/format.js', () => ({
+  formatBigInt: vi.fn((value) => value.toString()),
+  formatRelativeTime: vi.fn(() => '2 days ago'),
 }));
 
 // =============================================================================
@@ -38,6 +62,8 @@ vi.mock('../../src/services/IdentityService.js', () => ({
 // =============================================================================
 
 import { identityService } from '../../src/services/IdentityService.js';
+import { leaderboardService } from '../../src/services/leaderboard.js';
+import { getEligibilityByAddress, getMemberProfileById, getMemberBadgeCount } from '../../src/db/queries.js';
 
 // =============================================================================
 // Test Helpers
@@ -426,6 +452,300 @@ describe('Telegram Commands', () => {
       expect(ctx.answerCallbackQuery).toHaveBeenCalledOnce();
       // Should trigger handleVerifyCommand
       expect(identityService.createVerificationSession).toHaveBeenCalled();
+    });
+  });
+
+  // =============================================================================
+  // Sprint 31 Command Tests
+  // =============================================================================
+
+  describe('/score command', () => {
+    it('should show not linked message for unverified users', async () => {
+      const { handleScoreCommand } = await import('../../src/telegram/commands/score.js');
+
+      vi.mocked(identityService.getMemberByPlatformId).mockResolvedValue(null);
+
+      const ctx = createMockContext();
+      await handleScoreCommand(ctx as any);
+
+      expect(ctx.reply).toHaveBeenCalledOnce();
+      const [message] = ctx.reply.mock.calls[0];
+
+      expect(message).toContain('Wallet Not Linked');
+      expect(message).toContain('/verify');
+    });
+
+    it('should show score details for verified users', async () => {
+      const { handleScoreCommand } = await import('../../src/telegram/commands/score.js');
+
+      // Mock verified member
+      vi.mocked(identityService.getMemberByPlatformId).mockResolvedValue({
+        id: 'member-123',
+        walletAddress: '0x1234567890abcdef1234567890abcdef12345678',
+        platforms: [],
+      });
+
+      // Mock eligibility data
+      vi.mocked(getEligibilityByAddress).mockReturnValue({
+        address: '0x1234...',
+        bgtHeld: 100n * 10n ** 18n,
+        bgtClaimed: 100n * 10n ** 18n,
+        bgtBurned: 0n,
+        rank: 5,
+        role: 'naib',
+      });
+
+      // Mock profile
+      vi.mocked(getMemberProfileById).mockReturnValue({
+        member_id: 'member-123',
+        nym: 'testuser',
+        tier: 'naib',
+        created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+      } as any);
+
+      // Mock badge count
+      vi.mocked(getMemberBadgeCount).mockReturnValue(5);
+
+      // Mock rank
+      vi.mocked(leaderboardService.getMemberRank).mockReturnValue(5);
+
+      const ctx = createMockContext();
+      await handleScoreCommand(ctx as any);
+
+      expect(ctx.reply).toHaveBeenCalledOnce();
+      const [message, options] = ctx.reply.mock.calls[0];
+
+      expect(message).toContain('Conviction Score');
+      expect(message).toContain('Tier');
+      expect(message).toContain('Rank');
+      expect(message).toContain('Badges');
+      expect(options).toHaveProperty('parse_mode', 'Markdown');
+    });
+
+    it('should handle missing user gracefully', async () => {
+      const { handleScoreCommand } = await import('../../src/telegram/commands/score.js');
+
+      const ctx = createMockContext();
+      ctx.from = undefined as any;
+
+      await handleScoreCommand(ctx as any);
+
+      expect(ctx.reply).toHaveBeenCalledOnce();
+      expect(ctx.reply.mock.calls[0][0]).toContain('Could not identify');
+    });
+
+    it('should handle errors gracefully', async () => {
+      const { handleScoreCommand } = await import('../../src/telegram/commands/score.js');
+
+      vi.mocked(identityService.getMemberByPlatformId).mockRejectedValue(
+        new Error('Database error')
+      );
+
+      const ctx = createMockContext();
+      await handleScoreCommand(ctx as any);
+
+      expect(ctx.reply).toHaveBeenCalledOnce();
+      const [message] = ctx.reply.mock.calls[0];
+
+      expect(message).toContain('Error');
+    });
+  });
+
+  describe('/status command', () => {
+    it('should show not linked message for unverified users', async () => {
+      const { handleStatusCommand } = await import('../../src/telegram/commands/status.js');
+
+      vi.mocked(identityService.getMemberByPlatformId).mockResolvedValue(null);
+
+      const ctx = createMockContext();
+      await handleStatusCommand(ctx as any);
+
+      expect(ctx.reply).toHaveBeenCalledOnce();
+      const [message] = ctx.reply.mock.calls[0];
+
+      expect(message).toContain('Wallet Not Linked');
+      expect(message).toContain('/verify');
+    });
+
+    it('should show platform status for verified users', async () => {
+      const { handleStatusCommand } = await import('../../src/telegram/commands/status.js');
+
+      // Mock verified member
+      vi.mocked(identityService.getMemberByPlatformId).mockResolvedValue({
+        id: 'member-123',
+        walletAddress: '0x1234567890abcdef1234567890abcdef12345678',
+        platforms: [],
+      });
+
+      // Mock platform status
+      vi.mocked(identityService.getPlatformStatus).mockResolvedValue({
+        discord: {
+          platformUserId: '123456',
+          linkedAt: new Date(),
+        },
+        telegram: {
+          platformUserId: '789012',
+          linkedAt: new Date(),
+        },
+      });
+
+      const ctx = createMockContext();
+      await handleStatusCommand(ctx as any);
+
+      expect(ctx.reply).toHaveBeenCalledOnce();
+      const [message, options] = ctx.reply.mock.calls[0];
+
+      expect(message).toContain('Platform Status');
+      expect(message).toContain('Discord');
+      expect(message).toContain('Telegram');
+      expect(options).toHaveProperty('parse_mode', 'Markdown');
+    });
+
+    it('should show tip when not all platforms connected', async () => {
+      const { handleStatusCommand } = await import('../../src/telegram/commands/status.js');
+
+      vi.mocked(identityService.getMemberByPlatformId).mockResolvedValue({
+        id: 'member-123',
+        walletAddress: '0x1234...',
+        platforms: [],
+      });
+
+      vi.mocked(identityService.getPlatformStatus).mockResolvedValue({
+        discord: null,
+        telegram: {
+          platformUserId: '789012',
+          linkedAt: new Date(),
+        },
+      });
+
+      const ctx = createMockContext();
+      await handleStatusCommand(ctx as any);
+
+      const [message] = ctx.reply.mock.calls[0];
+      expect(message).toContain('Tip');
+      expect(message).toContain('1/2 platforms');
+    });
+  });
+
+  describe('/leaderboard command', () => {
+    it('should show empty message when no members', async () => {
+      const { handleLeaderboardCommand } = await import('../../src/telegram/commands/leaderboard.js');
+
+      vi.mocked(leaderboardService.getLeaderboard).mockReturnValue([]);
+
+      const ctx = createMockContext();
+      await handleLeaderboardCommand(ctx as any);
+
+      expect(ctx.reply).toHaveBeenCalledOnce();
+      const [message] = ctx.reply.mock.calls[0];
+
+      expect(message).toContain('Leaderboard');
+      expect(message).toContain('No members');
+    });
+
+    it('should show leaderboard entries', async () => {
+      const { handleLeaderboardCommand } = await import('../../src/telegram/commands/leaderboard.js');
+
+      vi.mocked(leaderboardService.getLeaderboard).mockReturnValue([
+        { rank: 1, nym: 'alpha', tier: 'naib', badgeCount: 10, tenureCategory: 'veteran' },
+        { rank: 2, nym: 'beta', tier: 'naib', badgeCount: 8, tenureCategory: 'established' },
+        { rank: 3, nym: 'gamma', tier: 'fedaykin', badgeCount: 5, tenureCategory: 'newcomer' },
+      ]);
+
+      vi.mocked(identityService.getMemberByPlatformId).mockResolvedValue(null);
+
+      const ctx = createMockContext();
+      await handleLeaderboardCommand(ctx as any);
+
+      expect(ctx.reply).toHaveBeenCalledOnce();
+      const [message, options] = ctx.reply.mock.calls[0];
+
+      expect(message).toContain('Leaderboard');
+      expect(message).toContain('alpha');
+      expect(message).toContain('beta');
+      expect(message).toContain('gamma');
+      expect(message).toContain('badge');
+      expect(options).toHaveProperty('parse_mode', 'Markdown');
+    });
+
+    it('should show user position if in top 10', async () => {
+      const { handleLeaderboardCommand } = await import('../../src/telegram/commands/leaderboard.js');
+
+      vi.mocked(leaderboardService.getLeaderboard).mockReturnValue([
+        { rank: 1, nym: 'alpha', tier: 'naib', badgeCount: 10, tenureCategory: 'veteran' },
+      ]);
+
+      vi.mocked(identityService.getMemberByPlatformId).mockResolvedValue({
+        id: 'member-123',
+        walletAddress: '0x1234...',
+        platforms: [],
+      });
+
+      vi.mocked(leaderboardService.getMemberRank).mockReturnValue(5);
+
+      const ctx = createMockContext();
+      await handleLeaderboardCommand(ctx as any);
+
+      const [message] = ctx.reply.mock.calls[0];
+      expect(message).toContain("You're in the top 10");
+    });
+
+    it('should show user position if outside top 10', async () => {
+      const { handleLeaderboardCommand } = await import('../../src/telegram/commands/leaderboard.js');
+
+      vi.mocked(leaderboardService.getLeaderboard).mockReturnValue([
+        { rank: 1, nym: 'alpha', tier: 'naib', badgeCount: 10, tenureCategory: 'veteran' },
+      ]);
+
+      vi.mocked(identityService.getMemberByPlatformId).mockResolvedValue({
+        id: 'member-123',
+        walletAddress: '0x1234...',
+        platforms: [],
+      });
+
+      vi.mocked(leaderboardService.getMemberRank).mockReturnValue(25);
+
+      const ctx = createMockContext();
+      await handleLeaderboardCommand(ctx as any);
+
+      const [message] = ctx.reply.mock.calls[0];
+      expect(message).toContain('Your Position');
+      expect(message).toContain('#25');
+    });
+  });
+
+  describe('/help command', () => {
+    it('should show help message with all commands', async () => {
+      const { handleHelpCommand } = await import('../../src/telegram/commands/help.js');
+
+      const ctx = createMockContext();
+      await handleHelpCommand(ctx as any);
+
+      expect(ctx.reply).toHaveBeenCalledOnce();
+      const [message, options] = ctx.reply.mock.calls[0];
+
+      expect(message).toContain('Help');
+      expect(message).toContain('/verify');
+      expect(message).toContain('/score');
+      expect(message).toContain('/leaderboard');
+      expect(message).toContain('/status');
+      expect(message).toContain('/help');
+      expect(message).toContain('/start');
+      expect(options).toHaveProperty('parse_mode', 'Markdown');
+      expect(options.reply_markup.inline_keyboard).toBeDefined();
+    });
+
+    it('should register help callback handler', async () => {
+      const { registerHelpCommand } = await import('../../src/telegram/commands/help.js');
+
+      const mockBot = {
+        command: vi.fn(),
+        callbackQuery: vi.fn(),
+      };
+
+      registerHelpCommand(mockBot as any);
+
+      expect(mockBot.callbackQuery).toHaveBeenCalledWith('help', expect.any(Function));
     });
   });
 });

@@ -208,20 +208,6 @@ export function registerVerifyCommand(bot: Bot<BotContext>): void {
     );
   });
 
-  // Placeholder callbacks for future features (Sprint 31)
-  bot.callbackQuery('score', async (ctx) => {
-    await ctx.answerCallbackQuery();
-    await ctx.reply(
-      '📊 Score command coming in the next update!\n\nUse /verify first to link your wallet.',
-      { parse_mode: 'Markdown' }
-    );
-  });
-
-  bot.callbackQuery('status', async (ctx) => {
-    await ctx.answerCallbackQuery();
-    await ctx.reply(
-      '🔗 Status command coming in the next update!\n\nUse /verify first to link your wallet.',
-      { parse_mode: 'Markdown' }
-    );
-  });
+  // Note: 'score' and 'status' callbacks are now handled by their respective command files
+  // See score.ts and status.ts
 }
