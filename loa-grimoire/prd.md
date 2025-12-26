@@ -1,9 +1,9 @@
-# Product Requirements Document: Sietch v4.0
+# Product Requirements Document: Sietch v4.1
 
-**Version**: 4.0
-**Date**: December 26, 2025
+**Version**: 4.1
+**Date**: December 27, 2025
 **Status**: DRAFT
-**Codename**: The Unification
+**Codename**: The Crossing
 
 ---
 
@@ -11,11 +11,11 @@
 
 | Section | Primary Source | Secondary Sources |
 |---------|---------------|-------------------|
-| Problem Statement | ARCHITECTURE_SPEC_v2.9.0.md:1-50 | BOOTSTRAP_PROMPT.md:9-11 |
-| Vision | BOOTSTRAP_PROMPT.md:9-50 | Existing Sietch v3.0 codebase |
-| Billing Model | ARCHITECTURE_SPEC_v2.9.0.md:203-296 | Phase 2 Interview |
-| Technical Stack | BOOTSTRAP_PROMPT.md:850-865 | sietch-unified reference |
-| Existing Features | Sietch v3.0 codebase | prd-v2.1.md (historical) |
+| Problem Statement | v4.0 PRD Out of Scope | ARCHITECTURE_SPEC_v2.9.0.md |
+| Vision | Phase 1 Discovery Interview | Existing v4.0 Implementation |
+| Telegram Architecture | ARCHITECTURE_SPEC_v2.9.0.md:61-90 | grammy library docs |
+| Identity Bridging | ARCHITECTURE_SPEC_v2.9.0.md:30-35 | Collab.Land AccountKit |
+| Feature Scope | Phase 3 Discovery Interview | v4.0 feature set |
 
 ---
 
@@ -23,513 +23,423 @@
 
 ### 1.1 Product Overview
 
-**Sietch v4.0 "The Unification"** evolves the existing Sietch v3.0 community management system into an enterprise-grade SaaS platform. This release preserves ALL existing v3.0 features while adding:
-
-1. **Stripe SaaS Billing** - Subscription tiers aligned with Collab.Land pricing
-2. **Multi-Tenancy Foundation** - Community isolation for future multi-server support
-3. **Enterprise Hardening** - Quality gates, secret scanning, deployment controls
-4. **Migration Infrastructure** - Hybrid VPS→GCP deployment path
+**Sietch v4.1 "The Crossing"** extends the Sietch platform to Telegram, enabling cross-platform community management through wallet-based identity bridging. This release adds a Telegram bot with core features while preserving the stable VPS + SQLite infrastructure.
 
 ### 1.2 Problem Statement
 
-**Current State (v3.0):**
-- Single-tenant Discord bot for BGT holder community management
-- Manual deployment via PM2 on VPS
-- No monetization capability
-- No multi-community support
+**Current State (v4.0):**
+- Discord-only community management
+- Single-platform identity (Discord ID)
+- Users must be in Discord to participate
+- No Telegram presence despite 700M+ MAU market
 
-**Target State (v4.0):**
-- Multi-tenant SaaS platform foundation
-- Stripe-powered subscription billing
-- Enterprise deployment controls
-- Path to multi-community, multi-platform support
+**Target State (v4.1):**
+- Cross-platform community (Discord + Telegram)
+- Unified wallet-based identity
+- Same conviction score visible on both platforms
+- Same subscription benefits across platforms
 
 **Why Now:**
-- v3.0 feature set is complete and stable (22 sprints, ~15,000 LOC)
-- Market demand for token-gated community tools
-- Revenue generation needed to sustain development
-- Enterprise customers requesting white-label options
+- v4.0 billing infrastructure is stable and production-ready
+- Telegram market represents significant growth opportunity
+- Collab.Land AccountKit enables wallet-based identity bridging
+- Community demand for Telegram support
 
 ### 1.3 Vision
 
-Sietch becomes the **enterprise-grade token-gated community platform**:
+Sietch becomes a **cross-platform community management system**:
 
-- **For community operators**: Monetizable SaaS with tiered features
-- **For members**: Privacy-first, pseudonymous community experience
-- **For enterprises**: White-label, GDPR-compliant, multi-region deployment
+- **For community operators**: Single dashboard, dual platform reach
+- **For members**: Seamless identity across Discord and Telegram
+- **For enterprises**: Platform-agnostic community infrastructure
 
 ### 1.4 Success Metrics
 
 | Metric | Target | Measurement |
 |--------|--------|-------------|
-| Billing integration | 100% payment success rate | Stripe webhook completion |
-| Migration safety | Zero data loss during migration | Pre/post row counts |
-| Feature parity | All v3.0 features functional | Regression test suite |
-| Deployment reliability | <5min deployment time | CI/CD metrics |
-| Grace period effectiveness | <1% role stripping during outages | Audit logs |
+| Cross-platform users | 20% of active users linked | Database query: users with both platforms |
+| Telegram bot uptime | 99.9% | Health check monitoring |
+| Identity bridging success | >95% verification success rate | Collab.Land webhook logs |
+| Feature parity accuracy | 100% score consistency | Cross-platform score comparison |
+| Command response time | <500ms | Bot telemetry |
 
-### 1.5 Preserved v3.0 Capabilities
+### 1.5 Preserved v4.0 Capabilities
 
-**CRITICAL**: The following features from v3.0 MUST be preserved:
+**CRITICAL**: All v4.0 features MUST continue working:
 
 | Feature | Sprint | Status |
 |---------|--------|--------|
-| 9-Tier Progression System | 15-18 | Preserve |
-| Tier Notifications | 18 | Preserve |
-| Stats & Leaderboard | 19 | Preserve |
-| Weekly Digest | 20 | Preserve |
-| Story Fragments | 21 | Preserve |
-| Admin Analytics | 21 | Preserve |
-| Integration Tests | 22 | Preserve |
-| Naib Dynamics | 14 | Preserve |
-| Cave Entrance (Waitlist) | 14 | Preserve |
-| Position Alerts | 14 | Preserve |
+| Stripe SaaS Billing | 23-24 | Preserve |
+| Gatekeeper Service | 25 | Preserve |
+| Fee Waivers | 26 | Preserve |
+| Score Badges | 27 | Preserve |
+| Community Boosts | 28 | Preserve |
+| CI/CD Quality Gates | 29 | Preserve |
 
 ---
 
-## 2. User & Stakeholder Context
+## 2. User Personas
 
-### 2.1 Target Users
+### 2.1 Primary Persona: Cross-Platform Community Member
 
-| User Type | Description | Primary Needs |
-|-----------|-------------|---------------|
-| **Platform Operator** | Runs the Sietch SaaS platform | Revenue, multi-tenancy, ops tools |
-| **Community Admin** | Discord server owner using Sietch | Easy setup, billing management, analytics |
-| **Premium Member** | Token holder in paid community | All v3.0 features, badge display |
-| **Free Tier Member** | Member in free/starter community | Basic token gating, tier display |
-| **Aspiring Member** | On waitlist (Cave Entrance) | Visibility, eligibility notifications |
+**Profile:**
+- Active in both Discord and Telegram communities
+- Holds BGT tokens in connected wallet
+- Wants consistent identity and score visibility
+- May prefer Telegram for notifications
 
-### 2.2 User Stories
+**Pain Points:**
+- Currently excluded from Sietch if not on Discord
+- Cannot see conviction score on Telegram
+- Manual cross-posting between platforms
 
-#### Platform Operator (NEW)
-- As a platform operator, I want communities to self-service subscribe so I can scale without manual onboarding
-- As a platform operator, I want to grant fee waivers to partners so I can support strategic relationships
-- As a platform operator, I want deployment gates so I can ensure code quality before production
+**Goals:**
+- Single wallet = single identity across platforms
+- See score and leaderboard on preferred platform
+- Receive notifications on preferred platform
 
-#### Community Admin (NEW)
-- As a community admin, I want to subscribe to a tier that matches my community size
-- As a community admin, I want a grace period if my payment fails so my members aren't immediately affected
-- As a community admin, I want to see which features unlock at each tier
+### 2.2 Secondary Persona: Telegram-First User
 
-#### Premium Member (PRESERVED + ENHANCED)
-- As a premium member, I want all existing v3.0 features (tiers, stats, leaderboards)
-- As a premium member, I want to display my Sietch Score as a badge (NEW)
-- As a premium member, I want to boost my community (NEW)
+**Profile:**
+- Primarily uses Telegram
+- Has wallet but limited Discord usage
+- Interested in BGT community participation
 
-#### Free Tier Member (NEW)
-- As a free tier member, I want basic token gating (25 members max)
-- As a free tier member, I want to see upgrade prompts for premium features
+**Pain Points:**
+- Must join Discord to participate in Sietch
+- Unfamiliar with Discord interface
+- Prefers Telegram for crypto communities
 
-### 2.3 Privacy Threat Model (PRESERVED)
+**Goals:**
+- Full community participation via Telegram
+- Easy wallet verification
+- Access to conviction scoring without Discord
 
-All v3.0 privacy constraints remain in effect:
+### 2.3 Operator Persona: Community Admin
 
-| Data Point | Public | Members | Admin | Never |
-|------------|--------|---------|-------|-------|
-| Wallet address | | | | ✓ |
-| Discord UID | | | ✓ | |
-| BGT holdings | | | ✓ | |
-| Pseudonym (Nym) | ✓ | | | |
-| Conviction score | | ✓ | | |
-| Tier assignment | ✓ | | | |
-| Position rank | | ✓ | | |
+**Profile:**
+- Manages BGT community
+- Currently Discord-only
+- Wants to expand reach
 
-**NEW Privacy Considerations for v4.0:**
-- Payment data: Stripe-managed, never stored locally
-- Community billing: Admin-only visibility
-- Cross-community data: Isolated (multi-tenancy)
+**Pain Points:**
+- Missing Telegram audience
+- Manual cross-posting announcements
+- No unified member view
+
+**Goals:**
+- Single member database across platforms
+- Unified analytics
+- Platform-agnostic feature access
 
 ---
 
 ## 3. Functional Requirements
 
-### 3.1 Preserved Features (v3.0)
+### 3.1 Telegram Bot Core (P0)
 
-All features from Sietch v3.0 are preserved without modification:
+#### FR-4.1.1: Bot Registration & Setup
 
-#### 3.1.1 9-Tier System
-- Traveler, Acolyte, Fremen, Sayyadina, Sandrider, Reverend Mother, Usul, Fedaykin, Naib
-- BGT-based tier calculation
-- Discord role synchronization
-- Tier promotion/demotion notifications
+**Description**: Telegram bot registered and connected to Sietch backend.
 
-#### 3.1.2 Member Features
-- `/stats` - Personal statistics
-- `/leaderboard` - Community rankings
-- Profile management (nym, visibility)
-- Position alerts (at-risk warnings)
+**Acceptance Criteria**:
+- [ ] Bot registered with @BotFather
+- [ ] Bot token securely stored in environment
+- [ ] grammy library integrated
+- [ ] Bot responds to /start command
+- [ ] Health check endpoint includes bot status
 
-#### 3.1.3 Admin Features
-- `/admin-stats` - Community analytics
-- Weekly digest generation
-- Story fragment posting
-- Manual sync triggers
+**Technical Notes**:
+- Use grammy library (per ARCHITECTURE_SPEC)
+- Bot username: @SietchBot (or similar)
+- Webhook mode for VPS deployment
 
-#### 3.1.4 Naib Dynamics
-- First 7 eligible = Naib status
-- Dynamic seat competition
-- Former Naib recognition
-- Naib Archives access
+#### FR-4.1.2: Wallet Verification Command
 
-#### 3.1.5 Cave Entrance
-- Positions 70-100 waitlist
-- Public threshold visibility
-- Waitlist registration
-- Eligibility notifications
+**Description**: `/verify` command initiates wallet linking via Collab.Land.
 
-### 3.2 New Features (v4.0)
+**Acceptance Criteria**:
+- [ ] `/verify` generates unique session ID
+- [ ] Returns Collab.Land AccountKit verification URL
+- [ ] Session tracked in database with 15-minute expiry
+- [ ] Webhook handler processes verification_complete event
+- [ ] Links Telegram user ID to unified identity
+- [ ] Success message sent to user
+- [ ] Handles already-verified users gracefully
 
-#### 3.2.1 Stripe Billing Integration
+**Technical Notes**:
+- Reuse existing Collab.Land integration
+- Session schema: `{ id, telegram_user_id, created_at, expires_at, status }`
+- Idempotent: re-verification updates existing link
 
-**FR-4.0.1**: Subscription Management
-- Community admins can subscribe via Stripe Checkout
-- Tier alignment: Starter (Free) → Basic ($15) → Premium ($35) → Exclusive ($149) → Elite ($449) → Enterprise (Contact)
-- Self-service upgrade/downgrade via Stripe Customer Portal
+#### FR-4.1.3: Score Display Command
 
-**FR-4.0.2**: Webhook Processing
-- Idempotent webhook handler (Redis-based deduplication)
-- Events: `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`, `customer.subscription.deleted`, `customer.subscription.updated`
-- HMAC-SHA256 signature verification
+**Description**: `/score` displays user's conviction score and tier.
 
-**FR-4.0.3**: Grace Period
-- 24-hour grace period on payment failure
-- Warning notifications to admin
-- Soft access revocation (settings preserved)
-- Re-activation on payment success
+**Acceptance Criteria**:
+- [ ] `/score` returns current conviction score
+- [ ] Displays current tier (e.g., "Fremen Warrior")
+- [ ] Shows tier progress percentage
+- [ ] Shows wallet address (truncated)
+- [ ] Returns "Please verify first" if not linked
+- [ ] Cached response (5-minute TTL) for performance
 
-**FR-4.0.4**: Fee Waivers
-- Platform operators can grant complimentary access
-- Waiver priority: Fee Waiver > Subscription > Free Tier
-- Audit trail with reason and expiration
-- API: `POST /admin/waivers`, `GET /admin/waivers`, `DELETE /admin/waivers/:id`
+**Technical Notes**:
+- Query StatsService.getMemberStats()
+- Format consistent with Discord /check command
+- Include tier emoji mapping
 
-#### 3.2.2 Feature Gating (Gatekeeper Service)
+#### FR-4.1.4: Leaderboard Command
 
-**FR-4.0.5**: Entitlement Checking
-- Redis-cached entitlements (5-minute TTL)
-- Feature matrix enforcement:
+**Description**: `/leaderboard` shows top community members by score.
 
-| Feature | Starter | Basic | Premium | Exclusive | Elite | Enterprise |
-|---------|---------|-------|---------|-----------|-------|------------|
-| Verified Members | 25 | 500 | 1,000 | 2,500 | 7,500 | Unlimited |
-| Basic TGRs | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| 9-Tier System | | | ✓ | ✓ | ✓ | ✓ |
-| Stats & Leaderboard | | | ✓ | ✓ | ✓ | ✓ |
-| Weekly Digest | | | ✓ | ✓ | ✓ | ✓ |
-| Position Alerts | | | ✓ | ✓ | ✓ | ✓ |
-| Naib Dynamics | | | | ✓ | ✓ | ✓ |
-| Admin Analytics | | | | ✓ | ✓ | ✓ |
-| White-label | | | | | | ✓ |
+**Acceptance Criteria**:
+- [ ] `/leaderboard` returns top 10 by conviction score
+- [ ] Shows rank, pseudonym (nym), and score
+- [ ] Highlights user's own position if in list
+- [ ] Supports optional page argument (`/leaderboard 2`)
+- [ ] Cached response (5-minute TTL)
 
-**FR-4.0.6**: Upgrade Prompts
-- Non-intrusive prompts when accessing gated features
-- Direct link to Stripe Checkout for upgrade
-- "Unlock with Premium" style messaging
+**Technical Notes**:
+- Query StatsService.getLeaderboard()
+- Privacy: show nym, not wallet or platform ID
+- Pagination: 10 per page
 
-#### 3.2.3 Score Badge (Optional Add-on)
+#### FR-4.1.5: Tier Check Command
 
-**FR-4.0.7**: Badge Display
-- Users can display conviction score in Discord messages
-- Styles: `default` (⚡ 847 | Fedaykin), `minimal` (⚡847), `detailed`
-- Free for Premium+ tiers, $4.99 one-time for lower tiers
+**Description**: `/tier` shows user's subscription tier and features.
 
-**FR-4.0.8**: Badge Management
-- Enable/disable per platform
-- Style selection
-- Bot integration for display
+**Acceptance Criteria**:
+- [ ] `/tier` returns current effective tier
+- [ ] Shows tier source (subscription, boost, waiver)
+- [ ] Lists available features for tier
+- [ ] Shows upgrade path if applicable
+- [ ] Returns "starter" for unverified users
 
-#### 3.2.4 Community Boosts (Collective Funding)
+**Technical Notes**:
+- Query GatekeeperService.getEntitlements()
+- Format matches Discord tier display
 
-**FR-4.0.9**: Boost Levels
-- Members can purchase boosts ($2.99/month each)
-- Level thresholds: 2 boosts = Basic, 7 = Premium, 14 = Exclusive, 30 = Elite
-- Higher of (subscription tier, boost level) wins
+### 3.2 Identity Bridging (P0)
 
-**FR-4.0.10**: Booster Perks
-- "Booster" badge
-- Priority in member directory
-- Recognition in announcements
+#### FR-4.1.6: Unified Identity Schema
 
-**FR-4.0.11**: Sustain Period
-- 7-day grace when boost level drops
-- Prevents immediate feature loss
+**Description**: Database schema supports cross-platform identity.
 
-#### 3.2.5 Multi-Tenancy Foundation
+**Acceptance Criteria**:
+- [ ] `member_profiles` table extended with `telegram_user_id` column
+- [ ] Unique constraint on `telegram_user_id`
+- [ ] Migration preserves existing Discord-only records
+- [ ] Query by wallet OR Discord ID OR Telegram ID
+- [ ] Index on `telegram_user_id` for fast lookups
 
-**FR-4.0.12**: Community Isolation
-- `community_id` column on all member data
-- Database queries scoped by community
-- Prepared for future multi-community support
+**Technical Notes**:
+- Schema change via migration: `012_telegram_identity.ts`
+- Nullable `telegram_user_id` (not all users will link)
+- Consider composite index: `(wallet_address, telegram_user_id)`
 
-**FR-4.0.13**: Data Region Selection (GDPR Prep)
-- Community selects data region during onboarding: US, EU, Asia
-- Region stored but single-region deployment in v4.0
-- Foundation for v4.1 regional databases
+#### FR-4.1.7: Cross-Platform Score Consistency
 
-### 3.3 API Endpoints
+**Description**: Conviction score is identical across platforms.
 
-#### 3.3.1 Preserved Endpoints (v3.0)
-All existing endpoints remain functional:
-- `GET /health` - Health check
-- `GET /api/v1/members` - Member listing
-- `GET /api/v1/members/:id` - Member details
-- `GET /api/v1/stats` - Community statistics
-- `POST /api/v1/sync` - Trigger sync (admin)
+**Acceptance Criteria**:
+- [ ] Score calculated once per member (not per platform)
+- [ ] Discord /check and Telegram /score return same value
+- [ ] Score updates reflected on both platforms within cache TTL
+- [ ] No platform-specific score modifiers
 
-#### 3.3.2 New Endpoints (v4.0)
+**Technical Notes**:
+- Existing ConvictionEngine is platform-agnostic
+- Cache key: `score:{member_id}` (not platform-specific)
 
-**Billing:**
-- `POST /api/billing/checkout` - Create Stripe Checkout session
-- `GET /api/billing/portal` - Get Stripe Customer Portal URL
-- `GET /api/billing/subscription` - Current subscription details
-- `POST /api/billing/webhook` - Stripe webhook handler
+#### FR-4.1.8: Platform Linking Status
 
-**Waivers (Admin):**
-- `POST /admin/waivers` - Grant fee waiver
-- `GET /admin/waivers` - List all waivers
-- `DELETE /admin/waivers/:communityId` - Revoke waiver
+**Description**: Users can see which platforms are linked.
 
-**Badges:**
-- `GET /api/badge/entitlement` - Check badge access
-- `POST /api/badge/purchase` - Purchase badge (lower tiers)
-- `GET /api/badge/display/:platform/:platformId` - Get badge for display
-- `PUT /api/badge/settings` - Update badge settings
+**Acceptance Criteria**:
+- [ ] `/status` command shows linked platforms
+- [ ] Lists: wallet (truncated), Discord (yes/no), Telegram (yes/no)
+- [ ] Shows link date for each platform
+- [ ] Works on both Discord and Telegram
 
-**Boosts:**
-- `GET /api/boost/levels` - Get boost level definitions
-- `GET /api/boost/status/:communityId` - Community boost status
-- `POST /api/boost/purchase` - Purchase boosts
-- `GET /api/boost/boosters/:communityId` - List boosters
+**Technical Notes**:
+- New endpoint: `GET /api/member/{id}/platforms`
+- Response: `{ wallet: "0x...", discord: { linked: true, at: "..." }, telegram: { linked: true, at: "..." } }`
 
-**Gatekeeper:**
-- `GET /api/entitlements` - Current community entitlements
-- `GET /api/features/:feature` - Check specific feature access
+### 3.3 Bot Infrastructure (P1)
+
+#### FR-4.1.9: Webhook Mode Deployment
+
+**Description**: Telegram bot runs in webhook mode on VPS.
+
+**Acceptance Criteria**:
+- [ ] nginx configured for Telegram webhook endpoint
+- [ ] Webhook URL: `https://api.sietch.xyz/telegram/webhook`
+- [ ] SSL certificate valid (Let's Encrypt)
+- [ ] Bot automatically sets webhook on startup
+- [ ] Fallback to polling in development mode
+
+**Technical Notes**:
+- grammy supports both webhook and polling modes
+- Webhook preferred for VPS (lower resource usage)
+- Health check: `GET /telegram/health`
+
+#### FR-4.1.10: Rate Limiting
+
+**Description**: Bot respects Telegram rate limits.
+
+**Acceptance Criteria**:
+- [ ] Max 30 messages/second per chat
+- [ ] Bulk message queue with rate limiting
+- [ ] Graceful handling of 429 errors
+- [ ] Retry with exponential backoff
+
+**Technical Notes**:
+- grammy has built-in rate limiting middleware
+- Configure: `bot.api.config.use(throttle())`
+
+#### FR-4.1.11: Error Handling
+
+**Description**: Bot handles errors gracefully.
+
+**Acceptance Criteria**:
+- [ ] Invalid commands return help message
+- [ ] API errors return user-friendly message
+- [ ] Verification failures provide clear next steps
+- [ ] All errors logged with context
+- [ ] No sensitive data in error messages
+
+**Technical Notes**:
+- Use grammy's error boundary
+- Error format: "Something went wrong. Please try again or contact support."
+
+### 3.4 Admin Commands (P2)
+
+#### FR-4.1.12: Admin Broadcast
+
+**Description**: Admins can broadcast messages to Telegram users.
+
+**Acceptance Criteria**:
+- [ ] `/broadcast <message>` sends to all verified users
+- [ ] Requires admin API key
+- [ ] Rate-limited delivery (avoid spam flags)
+- [ ] Delivery report: sent/failed counts
+- [ ] Opt-out mechanism for users
+
+**Technical Notes**:
+- Defer to v4.2 if timeline constrained
+- Consider trigger.dev for async delivery
 
 ---
 
-## 4. Technical & Non-Functional Requirements
+## 4. Non-Functional Requirements
 
-### 4.1 Preserved Architecture (v3.0)
+### 4.1 Infrastructure (VPS-First)
 
-The existing sietch-service architecture is preserved:
+#### NFR-4.1.1: No Infrastructure Changes
 
-```
-sietch-service/
-├── src/
-│   ├── index.ts              # Application entry
-│   ├── bot.ts                # Discord bot
-│   ├── services/             # Business logic
-│   │   ├── ChainService.ts   # Blockchain interaction
-│   │   ├── TierService.ts    # 9-tier calculations
-│   │   ├── StatsService.ts   # Analytics
-│   │   ├── DigestService.ts  # Weekly digest
-│   │   ├── StoryService.ts   # Story fragments
-│   │   └── NotificationService.ts
-│   ├── database/             # SQLite + migrations
-│   └── commands/             # Discord slash commands
-├── data/                     # SQLite database
-└── .env.local               # Configuration
-```
+**Acceptance Criteria**:
+- [ ] Bot runs on existing VPS
+- [ ] SQLite database unchanged
+- [ ] Redis cache shared with Discord bot
+- [ ] PM2 manages both Discord and Telegram processes
+- [ ] Single deployment artifact
 
-### 4.2 New Services (v4.0)
+**Technical Notes**:
+- Telegram bot can be same Node.js process or separate
+- Recommend: separate PM2 process for isolation
+- Shared database, shared Redis
 
-```
-sietch-service/
-├── src/
-│   ├── services/
-│   │   ├── billing/
-│   │   │   ├── StripeService.ts      # Stripe API client
-│   │   │   ├── WebhookService.ts     # Webhook processing
-│   │   │   ├── GatekeeperService.ts  # Feature gating
-│   │   │   └── WaiverService.ts      # Fee waivers
-│   │   ├── badge/
-│   │   │   └── BadgeService.ts       # Score badges
-│   │   ├── boost/
-│   │   │   └── BoostService.ts       # Community boosts
-│   │   └── cache/
-│   │       └── RedisService.ts       # Entitlement cache
-│   └── routes/
-│       ├── billing.routes.ts
-│       ├── badge.routes.ts
-│       └── boost.routes.ts
-```
+#### NFR-4.1.2: Resource Constraints
 
-### 4.3 Database Schema Extensions
+**Acceptance Criteria**:
+- [ ] Additional memory: <256MB
+- [ ] Additional CPU: <10% average
+- [ ] No additional infrastructure costs
+- [ ] Database size increase: <10MB
 
-```sql
--- Subscriptions
-CREATE TABLE subscriptions (
-  id TEXT PRIMARY KEY,
-  community_id TEXT NOT NULL,
-  stripe_customer_id TEXT,
-  stripe_subscription_id TEXT,
-  tier TEXT NOT NULL DEFAULT 'starter',
-  status TEXT NOT NULL DEFAULT 'active',
-  current_period_end INTEGER,
-  grace_until INTEGER,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
-);
+### 4.2 Performance
 
--- Fee Waivers
-CREATE TABLE fee_waivers (
-  id TEXT PRIMARY KEY,
-  community_id TEXT NOT NULL UNIQUE,
-  tier TEXT NOT NULL DEFAULT 'enterprise',
-  reason TEXT NOT NULL,
-  granted_by TEXT NOT NULL,
-  expires_at INTEGER,
-  internal_notes TEXT,
-  created_at INTEGER NOT NULL
-);
+#### NFR-4.1.3: Response Times
 
--- Badges
-CREATE TABLE badge_purchases (
-  id TEXT PRIMARY KEY,
-  member_id TEXT NOT NULL,
-  stripe_payment_id TEXT,
-  purchased_at INTEGER NOT NULL
-);
+| Operation | Target | Measurement |
+|-----------|--------|-------------|
+| Command response | <500ms | Bot telemetry |
+| Verification initiation | <1s | End-to-end timing |
+| Score lookup (cached) | <100ms | Cache hit |
+| Leaderboard (cached) | <200ms | Cache hit |
 
-CREATE TABLE badge_settings (
-  member_id TEXT PRIMARY KEY,
-  display_on_discord INTEGER DEFAULT 1,
-  display_on_telegram INTEGER DEFAULT 0,
-  badge_style TEXT DEFAULT 'default'
-);
+#### NFR-4.1.4: Availability
 
--- Boosts
-CREATE TABLE boosts (
-  id TEXT PRIMARY KEY,
-  community_id TEXT NOT NULL,
-  member_id TEXT NOT NULL,
-  stripe_subscription_id TEXT,
-  boost_count INTEGER NOT NULL DEFAULT 1,
-  status TEXT NOT NULL DEFAULT 'active',
-  created_at INTEGER NOT NULL
-);
+**Acceptance Criteria**:
+- [ ] Telegram bot uptime: 99.9%
+- [ ] Independent of Discord bot status
+- [ ] Graceful degradation if API unreachable
+- [ ] Health check endpoint for monitoring
 
--- Webhook Idempotency
-CREATE TABLE webhook_events (
-  event_id TEXT PRIMARY KEY,
-  event_type TEXT NOT NULL,
-  processed_at INTEGER NOT NULL,
-  status TEXT NOT NULL
-);
-```
+### 4.3 Security
 
-### 4.4 Infrastructure Requirements
+#### NFR-4.1.5: Bot Token Security
 
-#### 4.4.1 Preserved (VPS)
-- OVH VPS Starter (2 vCPU, 4GB RAM)
-- Ubuntu 22.04 LTS
-- Node.js 20 LTS
-- PM2 process manager
-- SQLite database
-- nginx reverse proxy
+**Acceptance Criteria**:
+- [ ] Bot token in environment variable only
+- [ ] Token never logged or exposed
+- [ ] CI/CD secret scanning includes Telegram patterns
+- [ ] Webhook endpoint validates Telegram signatures
 
-#### 4.4.2 New Requirements (v4.0)
-- **Redis**: Entitlement cache (5-min TTL)
-  - Option A: Redis Cloud free tier
-  - Option B: Upstash serverless Redis
-- **Stripe Account**: For payment processing
-- **Environment Variables**:
-  ```bash
-  STRIPE_SECRET_KEY=sk_live_...
-  STRIPE_WEBHOOK_SECRET=whsec_...
-  STRIPE_PRICE_ID_BASIC=price_...
-  STRIPE_PRICE_ID_PREMIUM=price_...
-  STRIPE_PRICE_ID_EXCLUSIVE=price_...
-  STRIPE_PRICE_ID_ELITE=price_...
-  REDIS_URL=redis://...
-  ```
+#### NFR-4.1.6: User Privacy
 
-### 4.5 Security Requirements
-
-#### 4.5.1 Preserved (v3.0)
-- API key authentication
-- Discord OAuth2
-- Rate limiting (nginx)
-- Input validation
-
-#### 4.5.2 New Requirements (v4.0)
-- **Stripe Webhook Verification**: HMAC-SHA256 signature validation
-- **Secret Scanning**: TruffleHog in CI pipeline
-- **Deployment Gates**:
-  - Integrity checks
-  - Type checking
-  - Lint passing
-  - Test passing
-
-### 4.6 Performance Requirements
-
-| Metric | Target | Measurement |
-|--------|--------|-------------|
-| Webhook processing | <500ms | Stripe dashboard |
-| Entitlement check | <10ms (cached) | Application logs |
-| Feature gate decision | <50ms | Application logs |
-| Badge display lookup | <100ms | Application logs |
-
-### 4.7 Compliance Requirements
-
-#### 4.7.1 Payment Compliance
-- PCI DSS: Handled by Stripe (no card data stored locally)
-- Refund policy: Standard Stripe refund handling
-- Invoice generation: Stripe automatic invoicing
-
-#### 4.7.2 GDPR Preparation (v4.0 Foundation)
-- `data_region` column added to communities table
-- Selection UI during onboarding (US/EU/Asia)
-- Actual regional deployment deferred to v4.1
+**Acceptance Criteria**:
+- [ ] No Telegram user data stored beyond ID
+- [ ] No message content logged
+- [ ] Wallet addresses truncated in public displays
+- [ ] GDPR: deletion removes Telegram link
 
 ---
 
 ## 5. Scope & Prioritization
 
-### 5.1 In Scope (v4.0)
+### 5.1 In Scope (v4.1)
 
 | Priority | Feature | Effort |
 |----------|---------|--------|
-| P0 | Stripe billing integration | High |
-| P0 | Gatekeeper service (feature gating) | Medium |
-| P0 | Fee waiver system | Low |
-| P0 | Webhook idempotency | Medium |
-| P1 | Score badges | Medium |
-| P1 | Community boosts | Medium |
-| P2 | Multi-tenancy foundation | Medium |
-| P2 | Deployment gates (CI/CD) | Low |
+| P0 | Telegram bot core (5 commands) | Medium |
+| P0 | Wallet verification via Collab.Land | Medium |
+| P0 | Unified identity schema | Low |
+| P1 | Webhook deployment | Low |
+| P1 | Rate limiting & error handling | Low |
+| P2 | Admin broadcast | Low |
 
-### 5.2 Out of Scope (v4.0)
+### 5.2 Out of Scope (v4.1)
 
 | Feature | Reason | Target Version |
 |---------|--------|----------------|
-| Telegram support | Scope reduction | v4.1 |
-| Telegram Mini App | Scope reduction | v4.1 |
-| Regional databases (multi-region) | Infrastructure complexity | v4.1 |
-| White-label theming | Enterprise-only | v4.2 |
-| Multi-chain token gating | Collab.Land integration | v4.2 |
-| AI Quiz Agent | Elite feature | v5.0 |
-| GCP Cloud Run migration | Hybrid approach | v4.1+ |
+| Telegram Mini App | Scope reduction | v4.2 |
+| Telegram notifications | Requires opt-in system | v4.2 |
+| Telegram payments (Stars) | Complexity | v4.3 |
+| Group/channel management | Enterprise feature | v4.2 |
+| Inline bot queries | Advanced feature | v4.2 |
+| GCP Cloud Run | Infrastructure change | v4.2+ |
+| PostgreSQL migration | Database change | v4.2+ |
 
 ### 5.3 Migration Path
 
 ```
-v3.0 (Current)                    v4.0 (This Release)
+v4.0 (Complete)                   v4.1 (This Release)
 ┌─────────────────────┐          ┌─────────────────────┐
-│ Single-tenant       │          │ Single-tenant       │
-│ Discord only        │    ──►   │ Discord only        │
-│ No billing          │          │ Stripe billing      │
-│ VPS deployment      │          │ VPS + Redis         │
-│ All features free   │          │ Gated features      │
+│ Discord only        │          │ Discord + Telegram  │
+│ Discord identity    │    ──►   │ Wallet identity     │
+│ VPS + SQLite        │          │ VPS + SQLite        │
+│ Stripe billing      │          │ Stripe billing      │
 └─────────────────────┘          └─────────────────────┘
                                           │
                                           ▼
-                                 v4.1 (Next Release)
+                                 v4.2 (Next Release)
                                  ┌─────────────────────┐
-                                 │ Multi-tenant        │
-                                 │ Discord + Telegram  │
-                                 │ Regional databases  │
-                                 │ GCP Cloud Run       │
+                                 │ Telegram Mini App   │
+                                 │ Telegram notifs     │
+                                 │ Group management    │
+                                 │ Enhanced analytics  │
                                  └─────────────────────┘
 ```
 
@@ -541,111 +451,158 @@ v3.0 (Current)                    v4.0 (This Release)
 
 | Dependency | Risk Level | Mitigation |
 |------------|------------|------------|
-| Stripe API | Low | Well-documented, reliable SLA |
-| Redis | Low | Multiple provider options, local fallback |
-| Discord API | Low | Existing integration proven |
-| Berachain RPC | Medium | Existing 24hr grace period |
+| Telegram Bot API | Low | Well-documented, reliable |
+| grammy library | Low | Active maintenance, good docs |
+| Collab.Land AccountKit | Medium | Existing integration, proven |
+| Telegram rate limits | Low | Built-in rate limiting |
 
 ### 6.2 Technical Risks
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|------------|--------|------------|
-| Webhook delivery failures | Medium | Medium | Idempotent handler, retry logic |
-| Redis unavailability | Low | Medium | Graceful degradation to DB lookup |
-| Feature gate bypass | Low | High | Server-side enforcement, audit logging |
-| Migration data loss | Low | Critical | Pre-migration backup, row count verification |
+| AccountKit Telegram support | Medium | High | Verify capability before sprint |
+| VPS resource constraints | Low | Medium | Monitor during development |
+| Cache key collisions | Low | Medium | Platform-agnostic cache keys |
+| User confusion (dual platform) | Medium | Low | Clear onboarding messages |
 
 ### 6.3 Business Risks
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|------------|--------|------------|
-| Low subscription conversion | Medium | Medium | Generous free tier, boost option |
-| Payment fraud | Low | Medium | Stripe Radar fraud detection |
-| Churn after trial | Medium | Low | Grace periods, engagement features |
+| Low Telegram adoption | Medium | Medium | Clear value prop, easy onboarding |
+| Support burden increase | Medium | Low | Comprehensive help commands |
+| Feature parity confusion | Low | Low | Consistent command naming |
 
 ---
 
-## 7. Implementation Approach
+## 7. Implementation Recommendations
 
-### 7.1 Sprint Planning
+### 7.1 Sprint Structure
+
+**Estimated Duration**: 4-6 weeks (4 sprints)
 
 | Sprint | Focus | Deliverables |
 |--------|-------|--------------|
-| Sprint 16 | Billing Foundation | StripeService, webhook handler, subscriptions table |
-| Sprint 17 | Gatekeeper | GatekeeperService, feature matrix, Redis cache |
-| Sprint 18 | Fee Waivers & Admin | WaiverService, admin endpoints, audit logging |
-| Sprint 19 | Score Badges | BadgeService, purchase flow, display integration |
-| Sprint 20 | Community Boosts | BoostService, level calculations, booster perks |
-| Sprint 21 | Integration & Testing | End-to-end tests, migration scripts |
-| Sprint 22 | Deployment & Docs | CI/CD gates, documentation, runbooks |
+| Sprint 30 | Foundation | Bot setup, /start, /verify, DB migration |
+| Sprint 31 | Core Commands | /score, /leaderboard, /tier, /status |
+| Sprint 32 | Infrastructure | Webhook mode, rate limiting, error handling |
+| Sprint 33 | Polish & Testing | E2E tests, documentation, admin commands |
 
-### 7.2 Testing Strategy
+### 7.2 Technical Architecture
 
-- **Unit Tests**: All new services
-- **Integration Tests**: Stripe webhook flow, feature gating
-- **Migration Tests**: v3.0 → v4.0 data migration
-- **Regression Tests**: All preserved v3.0 features
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         API GATEWAY (Hono)                       │
+├─────────────────────────────────────────────────────────────────┤
+│  /discord/*  │  /telegram/*  │  /api/*  │  /webhook/*           │
+└──────┬───────┴───────┬───────┴─────┬────┴─────────┬─────────────┘
+       │               │             │              │
+       ▼               ▼             ▼              ▼
+┌──────────────┐ ┌──────────────┐ ┌──────────┐ ┌──────────────┐
+│  Discord.js  │ │    grammy    │ │  REST    │ │   Stripe     │
+│     Bot      │ │     Bot      │ │   API    │ │  Webhooks    │
+└──────┬───────┘ └──────┬───────┘ └────┬─────┘ └──────┬───────┘
+       │               │              │               │
+       └───────────────┴──────────────┴───────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      SERVICE LAYER                               │
+├─────────────────────────────────────────────────────────────────┤
+│  StatsService  │  GatekeeperService  │  IdentityService (NEW)   │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                       DATA LAYER                                 │
+├─────────────────────────────────────────────────────────────────┤
+│           SQLite (better-sqlite3)  │  Redis (ioredis)           │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-### 7.3 Rollback Plan
+### 7.3 New Files (Estimated)
 
-1. Database backup before migration
-2. Feature flags for new functionality
-3. Gradual rollout (internal → beta → production)
-4. One-click rollback via git tag checkout
+| Path | Description |
+|------|-------------|
+| `src/telegram/bot.ts` | grammy bot initialization |
+| `src/telegram/commands/verify.ts` | Wallet verification command |
+| `src/telegram/commands/score.ts` | Score display command |
+| `src/telegram/commands/leaderboard.ts` | Leaderboard command |
+| `src/telegram/commands/tier.ts` | Tier check command |
+| `src/telegram/commands/status.ts` | Platform linking status |
+| `src/telegram/middleware/rateLimit.ts` | Rate limiting middleware |
+| `src/services/IdentityService.ts` | Cross-platform identity management |
+| `src/db/migrations/012_telegram_identity.ts` | Schema migration |
+| `tests/telegram/*.test.ts` | Telegram bot tests |
 
 ---
 
-## 8. Appendix
+## 8. Appendices
 
-### 8.1 Stripe Product Configuration
+### Appendix A: Command Reference
 
+| Command | Description | Auth Required |
+|---------|-------------|---------------|
+| `/start` | Welcome message, getting started | No |
+| `/verify` | Link wallet via Collab.Land | No |
+| `/score` | Display conviction score | Yes (verified) |
+| `/leaderboard [page]` | Community rankings | No |
+| `/tier` | Subscription tier and features | Yes (verified) |
+| `/status` | Linked platform status | Yes (verified) |
+| `/help` | Command help | No |
+
+### Appendix B: Database Schema Changes
+
+```sql
+-- Migration 012_telegram_identity.ts
+
+-- Add Telegram user ID to member_profiles
+ALTER TABLE member_profiles ADD COLUMN telegram_user_id TEXT UNIQUE;
+
+-- Index for Telegram lookups
+CREATE INDEX idx_member_telegram ON member_profiles(telegram_user_id);
+
+-- Verification sessions table
+CREATE TABLE telegram_verification_sessions (
+  id TEXT PRIMARY KEY,
+  telegram_user_id TEXT NOT NULL,
+  collabland_session_id TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+  expires_at INTEGER NOT NULL
+);
+
+CREATE INDEX idx_telegram_session_status ON telegram_verification_sessions(status, expires_at);
 ```
-Products:
-- sietch-basic ($15/mo) → price_basic
-- sietch-premium ($35/mo) → price_premium
-- sietch-exclusive ($149/mo) → price_exclusive
-- sietch-elite ($449/mo) → price_elite
-- sietch-badge ($4.99 one-time) → price_badge
-- sietch-boost ($2.99/mo) → price_boost
-```
 
-### 8.2 Feature Flag Configuration
-
-```yaml
-feature_flags:
-  billing_enabled: true
-  boosts_enabled: true
-  badges_enabled: true
-  multi_tenancy_foundation: true
-  regional_selection: true  # UI only, single region deployed
-```
-
-### 8.3 Environment Variables Template
+### Appendix C: Environment Variables
 
 ```bash
-# Existing (v3.0)
-NODE_ENV=production
-PORT=3000
-API_KEY=<secure-key>
-BERACHAIN_RPC_URL=https://rpc.berachain.com
-DISCORD_BOT_TOKEN=<token>
-DISCORD_GUILD_ID=<guild-id>
-DISCORD_ANNOUNCEMENTS_CHANNEL_ID=<channel-id>
-# ... (all tier role IDs)
+# Telegram Bot (NEW)
+TELEGRAM_BOT_TOKEN=<from @BotFather>
+TELEGRAM_WEBHOOK_SECRET=<random string for validation>
+TELEGRAM_WEBHOOK_URL=https://api.sietch.xyz/telegram/webhook
 
-# New (v4.0)
-STRIPE_SECRET_KEY=sk_live_...
-STRIPE_WEBHOOK_SECRET=whsec_...
-STRIPE_PRICE_ID_BASIC=price_...
-STRIPE_PRICE_ID_PREMIUM=price_...
-STRIPE_PRICE_ID_EXCLUSIVE=price_...
-STRIPE_PRICE_ID_ELITE=price_...
-STRIPE_PRICE_ID_BADGE=price_...
-STRIPE_PRICE_ID_BOOST=price_...
-REDIS_URL=redis://...
+# Existing (unchanged)
+DISCORD_BOT_TOKEN=...
+STRIPE_SECRET_KEY=...
+REDIS_URL=...
 ```
 
 ---
 
-*PRD v4.0 generated by Loa discovery workflow*
-*Sources: ARCHITECTURE_SPEC_v2.9.0.md, BOOTSTRAP_PROMPT.md, sietch-unified reference implementation, Sietch v3.0 codebase*
+## Document Metadata
+
+| Field | Value |
+|-------|-------|
+| Version | 4.1 |
+| Generated | December 27, 2025 |
+| Author | Loa Framework |
+| Classification | Internal |
+| Status | DRAFT |
+| Next Step | `/architect` to create SDD |
+
+---
+
+*PRD v4.1 "The Crossing" generated by Loa planning workflow*
+*Based on: v4.0 completion, discovery interview, ARCHITECTURE_SPEC_v2.9.0.md*
