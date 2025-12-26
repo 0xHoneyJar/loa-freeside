@@ -1,10 +1,12 @@
 /**
- * Billing API Routes (v4.0 - Sprint 23)
+ * Billing API Routes (v4.0 - Sprint 25)
  *
  * Handles billing-related endpoints:
  * - POST /checkout - Create Stripe Checkout session
  * - POST /portal - Create Stripe Customer Portal session
  * - GET /subscription - Get current subscription status
+ * - GET /entitlements - Get feature entitlements (cached)
+ * - POST /feature-check - Check access to specific feature
  * - POST /webhook - Handle Stripe webhooks
  *
  * All routes except webhook require authentication.
@@ -22,7 +24,7 @@ import {
   NotFoundError,
 } from './middleware.js';
 import { config, isBillingEnabled, SUBSCRIPTION_TIERS } from '../config.js';
-import { stripeService, webhookService } from '../services/billing/index.js';
+import { stripeService, webhookService, gatekeeperService } from '../services/billing/index.js';
 import {
   getSubscriptionByCommunityId,
   getActiveFeeWaiver,
@@ -34,6 +36,7 @@ import type {
   SubscriptionTier,
   BillingStatusResponse,
   EntitlementsResponse,
+  FeatureCheckResponse,
   CheckoutResult,
   PortalResult,
   Feature,
@@ -93,6 +96,14 @@ const createPortalSchema = z.object({
  */
 const subscriptionQuerySchema = z.object({
   community_id: z.string().default('default'),
+});
+
+/**
+ * Feature check schema
+ */
+const featureCheckSchema = z.object({
+  community_id: z.string().default('default'),
+  feature: z.string(),
 });
 
 // =============================================================================
@@ -233,13 +244,13 @@ billingRouter.get(
 
 /**
  * GET /billing/entitlements
- * Get feature entitlements for a community
+ * Get feature entitlements for a community (with caching)
  */
 billingRouter.get(
   '/entitlements',
   requireBillingEnabled,
   requireApiKey,
-  (req: AuthenticatedRequest, res: Response) => {
+  async (req: AuthenticatedRequest, res: Response) => {
     const result = subscriptionQuerySchema.safeParse(req.query);
 
     if (!result.success) {
@@ -249,29 +260,72 @@ billingRouter.get(
 
     const { community_id } = result.data;
 
-    const { tier, source } = getEffectiveTier(community_id);
-    const tierInfo = SUBSCRIPTION_TIERS[tier as keyof typeof SUBSCRIPTION_TIERS];
-    const subscription = getSubscriptionByCommunityId(community_id);
+    try {
+      // Use GatekeeperService for cached entitlement lookup
+      const entitlements = await gatekeeperService.getEntitlements(community_id);
+      const tierInfo = SUBSCRIPTION_TIERS[entitlements.tier as keyof typeof SUBSCRIPTION_TIERS];
 
-    // Determine features based on tier
-    const features = getFeaturesByTier(tier);
+      const response: EntitlementsResponse = {
+        communityId: entitlements.communityId,
+        tier: entitlements.tier,
+        tierName: tierInfo?.name ?? 'Unknown',
+        maxMembers: entitlements.maxMembers,
+        features: entitlements.features,
+        source: entitlements.source,
+        inGracePeriod: entitlements.inGracePeriod,
+        graceUntil: entitlements.graceUntil?.toISOString(),
+      };
 
-    const inGracePeriod = !!(
-      subscription?.graceUntil && subscription.graceUntil > new Date()
-    );
+      res.json(response);
+    } catch (error) {
+      logger.error({ error, communityId: community_id }, 'Failed to get entitlements');
+      throw error;
+    }
+  }
+);
 
-    const response: EntitlementsResponse = {
-      communityId: community_id,
-      tier,
-      tierName: tierInfo?.name ?? 'Unknown',
-      maxMembers: tierInfo?.maxMembers ?? 100,
-      features,
-      source,
-      inGracePeriod,
-      graceUntil: subscription?.graceUntil?.toISOString(),
-    };
+/**
+ * POST /billing/feature-check
+ * Check if a community has access to a specific feature
+ */
+billingRouter.post(
+  '/feature-check',
+  requireBillingEnabled,
+  requireApiKey,
+  async (req: AuthenticatedRequest, res: Response) => {
+    const result = featureCheckSchema.safeParse(req.body);
 
-    res.json(response);
+    if (!result.success) {
+      const errors = result.error.issues.map((i) => i.message).join(', ');
+      throw new ValidationError(errors);
+    }
+
+    const { community_id, feature } = result.data;
+
+    // Validate feature is a valid Feature type
+    if (!isValidFeature(feature)) {
+      throw new ValidationError(`Invalid feature: ${feature}`);
+    }
+
+    try {
+      const accessResult = await gatekeeperService.checkAccess({
+        communityId: community_id,
+        feature: feature as Feature,
+      });
+
+      const response: FeatureCheckResponse = {
+        feature: feature as Feature,
+        canAccess: accessResult.canAccess,
+        currentTier: accessResult.tier,
+        requiredTier: accessResult.requiredTier,
+        upgradeUrl: accessResult.upgradeUrl,
+      };
+
+      res.json(response);
+    } catch (error) {
+      logger.error({ error, communityId: community_id, feature }, 'Failed to check feature access');
+      throw error;
+    }
   }
 );
 
@@ -338,39 +392,30 @@ billingRouter.post('/webhook', async (req: Request, res: Response) => {
 // =============================================================================
 
 /**
- * Get features available for a tier
+ * Check if a string is a valid Feature type
  */
-function getFeaturesByTier(tier: SubscriptionTier): Feature[] {
-  const features: Feature[] = [];
-
-  // Starter features (all tiers)
-  features.push('discord_bot', 'basic_onboarding', 'member_profiles');
-
-  if (['basic', 'premium', 'exclusive', 'elite', 'enterprise'].includes(tier)) {
-    features.push('stats_leaderboard', 'position_alerts', 'custom_nym');
-  }
-
-  if (['premium', 'exclusive', 'elite', 'enterprise'].includes(tier)) {
-    features.push(
-      'nine_tier_system',
-      'custom_pfp',
-      'weekly_digest',
-      'activity_tracking',
-      'score_badge'
-    );
-  }
-
-  if (['exclusive', 'elite', 'enterprise'].includes(tier)) {
-    features.push('admin_analytics', 'naib_dynamics', 'water_sharer_badge');
-  }
-
-  if (['elite', 'enterprise'].includes(tier)) {
-    features.push('custom_branding', 'priority_support', 'api_access');
-  }
-
-  if (tier === 'enterprise') {
-    features.push('white_label', 'dedicated_support', 'custom_integrations');
-  }
-
-  return features;
+function isValidFeature(feature: string): feature is Feature {
+  const validFeatures = [
+    'discord_bot',
+    'basic_onboarding',
+    'member_profiles',
+    'stats_leaderboard',
+    'position_alerts',
+    'custom_nym',
+    'nine_tier_system',
+    'custom_pfp',
+    'weekly_digest',
+    'activity_tracking',
+    'score_badge',
+    'admin_analytics',
+    'naib_dynamics',
+    'water_sharer_badge',
+    'custom_branding',
+    'priority_support',
+    'api_access',
+    'white_label',
+    'dedicated_support',
+    'custom_integrations',
+  ];
+  return validFeatures.includes(feature);
 }
