@@ -464,3 +464,147 @@ export interface FeatureCheckResponse {
   /** Upgrade URL (if denied) */
   upgradeUrl?: string;
 }
+
+// =============================================================================
+// Score Badge Types (v4.0 - Sprint 27)
+// =============================================================================
+
+/**
+ * Badge display style options
+ */
+export type BadgeStyle = 'default' | 'minimal' | 'detailed';
+
+/**
+ * Badge purchase record stored in database
+ */
+export interface BadgePurchase {
+  /** Unique purchase ID (UUID) */
+  id: string;
+  /** Member who purchased the badge */
+  memberId: string;
+  /** Stripe payment intent ID */
+  stripePaymentId?: string;
+  /** Purchase timestamp */
+  purchasedAt: Date;
+  /** Record creation timestamp */
+  createdAt: Date;
+}
+
+/**
+ * Badge settings record stored in database
+ */
+export interface BadgeSettings {
+  /** Member identifier (primary key) */
+  memberId: string;
+  /** Display badge on Discord */
+  displayOnDiscord: boolean;
+  /** Display badge on Telegram */
+  displayOnTelegram: boolean;
+  /** Badge display style */
+  badgeStyle: BadgeStyle;
+  /** Record creation timestamp */
+  createdAt: Date;
+  /** Record update timestamp */
+  updatedAt: Date;
+}
+
+/**
+ * Badge purchase creation parameters
+ */
+export interface CreateBadgePurchaseParams {
+  memberId: string;
+  stripePaymentId?: string;
+}
+
+/**
+ * Badge settings update parameters
+ */
+export interface UpdateBadgeSettingsParams {
+  displayOnDiscord?: boolean;
+  displayOnTelegram?: boolean;
+  badgeStyle?: BadgeStyle;
+}
+
+/**
+ * Badge entitlement check result
+ */
+export interface BadgeEntitlementResult {
+  /** Whether user has badge access */
+  hasAccess: boolean;
+  /** Reason for access (premium tier or purchased) */
+  reason: 'premium_tier' | 'purchased' | 'none';
+  /** Whether purchase is required */
+  purchaseRequired: boolean;
+  /** Purchase price in cents (if purchase required) */
+  priceInCents?: number;
+  /** Stripe price ID (if purchase required) */
+  stripePriceId?: string;
+}
+
+/**
+ * Badge display result
+ */
+export interface BadgeDisplay {
+  /** Formatted badge string */
+  display: string;
+  /** Whether badge is enabled for platform */
+  enabled: boolean;
+  /** Badge style used */
+  style: BadgeStyle;
+}
+
+/**
+ * Badge API response types
+ */
+
+/**
+ * Badge entitlement API response
+ */
+export interface BadgeEntitlementResponse {
+  /** Member identifier */
+  memberId: string;
+  /** Whether badge is accessible */
+  hasAccess: boolean;
+  /** Access reason */
+  reason: 'premium_tier' | 'purchased' | 'none';
+  /** Whether purchase is required */
+  purchaseRequired: boolean;
+  /** Purchase price (if required) */
+  price?: string;
+  /** Purchase URL (if required) */
+  purchaseUrl?: string;
+}
+
+/**
+ * Badge display API response
+ */
+export interface BadgeDisplayResponse {
+  /** Member identifier */
+  memberId: string;
+  /** Platform (discord or telegram) */
+  platform: string;
+  /** Badge display string */
+  display: string;
+  /** Whether badge is enabled */
+  enabled: boolean;
+  /** Badge style */
+  style: BadgeStyle;
+  /** Member conviction score */
+  score?: number;
+  /** Member tier */
+  tier?: string;
+}
+
+/**
+ * Badge settings API response
+ */
+export interface BadgeSettingsResponse {
+  /** Member identifier */
+  memberId: string;
+  /** Display on Discord */
+  displayOnDiscord: boolean;
+  /** Display on Telegram */
+  displayOnTelegram: boolean;
+  /** Badge style */
+  badgeStyle: BadgeStyle;
+}

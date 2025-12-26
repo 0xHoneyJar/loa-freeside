@@ -102,6 +102,8 @@ const configSchema = z.object({
     gatekeeperEnabled: z.coerce.boolean().default(false),
     // Enable Redis caching
     redisEnabled: z.coerce.boolean().default(false),
+    // Enable score badges (Sprint 27)
+    badgesEnabled: z.coerce.boolean().default(true),
   }),
 
   // Discord Configuration
@@ -370,6 +372,7 @@ export interface Config {
     billingEnabled: boolean;
     gatekeeperEnabled: boolean;
     redisEnabled: boolean;
+    badgesEnabled: boolean;
   };
   discord: {
     botToken: string;

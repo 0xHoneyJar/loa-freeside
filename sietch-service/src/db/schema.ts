@@ -160,3 +160,6 @@ export { USUL_ASCENDED_SCHEMA_SQL, USUL_ASCENDED_ROLLBACK_SQL } from './migratio
 
 // Re-export Billing schema for v4.0 (Sprint 23)
 export { BILLING_SCHEMA_SQL, BILLING_ROLLBACK_SQL } from './migrations/009_billing.js';
+
+// Re-export Score Badges schema for v4.0 (Sprint 27)
+export { BADGES_SCHEMA_SQL, BADGES_ROLLBACK_SQL } from './migrations/010_badges.js';

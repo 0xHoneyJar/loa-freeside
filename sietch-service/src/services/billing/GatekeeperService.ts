@@ -364,7 +364,7 @@ class GatekeeperService {
     requiredTier: SubscriptionTier
   ): string {
     // In production, this would link to Stripe Checkout with pre-selected tier
-    const baseUrl = config.stripe?.upgradeUrl || 'https://sietch.io/upgrade';
+    const baseUrl = process.env.UPGRADE_URL || 'https://sietch.io/upgrade';
     return `${baseUrl}?tier=${requiredTier}&community=${communityId}`;
   }
 
@@ -440,7 +440,7 @@ class GatekeeperService {
    * @returns Whether gatekeeper enforcement is active
    */
   isEnabled(): boolean {
-    return config.featureFlags?.gatekeeperEnabled ?? true;
+    return config.features?.gatekeeperEnabled ?? true;
   }
 }
 

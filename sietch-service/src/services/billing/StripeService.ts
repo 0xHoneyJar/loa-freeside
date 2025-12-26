@@ -322,6 +322,52 @@ class StripeService {
     }, 'createCheckoutSession');
   }
 
+  /**
+   * Create a Stripe Checkout session for one-time payment (e.g., badge purchase)
+   *
+   * @param params - Checkout creation parameters
+   * @returns Checkout session ID and URL
+   */
+  async createOneTimeCheckoutSession(params: {
+    customerId: string;
+    priceId: string;
+    successUrl: string;
+    cancelUrl: string;
+    metadata: Record<string, string>;
+  }): Promise<{ sessionId: string; url: string }> {
+    const stripe = this.getClient();
+
+    return withRetry(async () => {
+      const session = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        customer: params.customerId,
+        line_items: [
+          {
+            price: params.priceId,
+            quantity: 1,
+          },
+        ],
+        success_url: params.successUrl,
+        cancel_url: params.cancelUrl,
+        metadata: params.metadata,
+      });
+
+      if (!session.url) {
+        throw new Error('Stripe Checkout session created without URL');
+      }
+
+      logger.info(
+        { customerId: params.customerId, sessionId: session.id },
+        'Created Stripe one-time Checkout session'
+      );
+
+      return {
+        sessionId: session.id,
+        url: session.url,
+      };
+    }, 'createOneTimeCheckoutSession');
+  }
+
   // ---------------------------------------------------------------------------
   // Customer Portal
   // ---------------------------------------------------------------------------
