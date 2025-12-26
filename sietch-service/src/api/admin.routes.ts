@@ -43,11 +43,9 @@ import type {
 
 export const adminRouter = Router();
 
-// Apply API key authentication to all admin routes
-adminRouter.use(requireApiKey);
-
-// Apply rate limiting
-adminRouter.use(memberRateLimiter);
+// Note: Authentication and rate limiting are applied in routes.ts
+// The parent adminRouter already has requireApiKey and adminRateLimiter
+// We don't duplicate those middlewares here
 
 // =============================================================================
 // Middleware: Check Billing Enabled

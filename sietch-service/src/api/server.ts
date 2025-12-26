@@ -5,6 +5,7 @@ import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { initDatabase, closeDatabase } from '../db/index.js';
 import { publicRouter, adminRouter, memberRouter, billingRouter } from './routes.js';
+import { adminRouter as billingAdminRouter } from './admin.routes.js';
 import {
   errorHandler,
   notFoundHandler,
@@ -96,6 +97,9 @@ function createApp(): Application {
 
   // Admin routes (under /admin prefix)
   expressApp.use('/admin', adminRouter);
+
+  // Billing admin routes (v4.0 - Sprint 26)
+  expressApp.use('/admin', billingAdminRouter);
 
   // 404 handler
   expressApp.use(notFoundHandler);
