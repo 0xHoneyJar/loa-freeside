@@ -41,11 +41,15 @@ const WEBHOOK_DEDUP_TTL = 86400;
 /** TTL for event processing locks (30 seconds) */
 const EVENT_LOCK_TTL = 30;
 
+/** TTL for leaderboard cache (60 seconds - Sprint 32) */
+const LEADERBOARD_TTL = 60;
+
 /** Redis key prefixes */
 const KEY_PREFIX = {
   entitlement: 'entitlement',
   webhookEvent: 'webhook:event',
   eventLock: 'webhook:lock',
+  leaderboard: 'leaderboard',
 } as const;
 
 // =============================================================================
@@ -415,6 +419,67 @@ class RedisService {
     const key = `${KEY_PREFIX.eventLock}:${eventId}`;
     await this.del(key);
     logger.debug({ eventId }, 'Released event lock');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Leaderboard Cache Helpers (Sprint 32)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Get cached leaderboard data
+   */
+  async getLeaderboard(limit: number): Promise<unknown[] | null> {
+    const key = `${KEY_PREFIX.leaderboard}:top${limit}`;
+    const cached = await this.get(key);
+
+    if (!cached) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(cached);
+    } catch (error) {
+      logger.warn(
+        { limit, error: (error as Error).message },
+        'Failed to parse cached leaderboard'
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Cache leaderboard data
+   */
+  async setLeaderboard(limit: number, data: unknown[]): Promise<void> {
+    const key = `${KEY_PREFIX.leaderboard}:top${limit}`;
+    await this.set(key, JSON.stringify(data), LEADERBOARD_TTL);
+    logger.debug({ limit, entryCount: data.length, ttl: LEADERBOARD_TTL }, 'Cached leaderboard');
+  }
+
+  /**
+   * Invalidate leaderboard cache (all sizes)
+   * Call this when badge counts change
+   */
+  async invalidateLeaderboard(): Promise<void> {
+    if (!this.isConnected()) {
+      return;
+    }
+
+    try {
+      // Delete common leaderboard cache sizes
+      const keys = [10, 20, 50, 100].map(
+        (size) => `${KEY_PREFIX.leaderboard}:top${size}`
+      );
+      for (const key of keys) {
+        await this.del(key);
+      }
+      logger.debug('Invalidated leaderboard cache');
+    } catch (error) {
+      logger.warn(
+        { error: (error as Error).message },
+        'Failed to invalidate leaderboard cache'
+      );
+    }
   }
 
   // ---------------------------------------------------------------------------

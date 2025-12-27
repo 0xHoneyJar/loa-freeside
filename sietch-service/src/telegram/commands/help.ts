@@ -1,5 +1,5 @@
 /**
- * /help Command Handler (v4.1 - Sprint 31)
+ * /help Command Handler (v4.1 - Sprint 32)
  *
  * Displays help information and available commands.
  * Provides documentation for all bot features.
@@ -21,6 +21,8 @@ const HELP_MESSAGE = `
 📊 /score - View your conviction score
 🔗 /status - See linked platforms
 🏆 /leaderboard - View community rankings
+🔄 /refresh - Refresh your score data
+🔓 /unlink - Disconnect your wallet
 📖 /help - Show this help message
 🏠 /start - Welcome message
 

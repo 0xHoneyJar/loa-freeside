@@ -1,5 +1,5 @@
 /**
- * Telegram Command Tests (v4.1 - Sprint 31)
+ * Telegram Command Tests (v4.1 - Sprint 32)
  *
  * Test suite for Telegram bot commands covering:
  * - /start command handler
@@ -8,6 +8,8 @@
  * - /status command handler
  * - /leaderboard command handler
  * - /help command handler
+ * - /refresh command handler (Sprint 32)
+ * - /unlink command handler (Sprint 32)
  * - Callback query handlers
  * - Edge cases and error handling
  */
@@ -35,14 +37,17 @@ vi.mock('../../src/services/IdentityService.js', () => ({
     completeVerification: vi.fn(),
     failVerification: vi.fn(),
     getPlatformStatus: vi.fn(),
+    unlinkTelegram: vi.fn(),
   },
 }));
 
 vi.mock('../../src/services/leaderboard.js', () => ({
   leaderboardService: {
-    getLeaderboard: vi.fn(),
+    getLeaderboard: vi.fn().mockResolvedValue([]),
+    getLeaderboardFromDb: vi.fn(),
     getMemberRank: vi.fn(),
     isInTopTen: vi.fn(),
+    invalidateCache: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -631,7 +636,7 @@ describe('Telegram Commands', () => {
     it('should show empty message when no members', async () => {
       const { handleLeaderboardCommand } = await import('../../src/telegram/commands/leaderboard.js');
 
-      vi.mocked(leaderboardService.getLeaderboard).mockReturnValue([]);
+      vi.mocked(leaderboardService.getLeaderboard).mockResolvedValue([]);
 
       const ctx = createMockContext();
       await handleLeaderboardCommand(ctx as any);
@@ -646,7 +651,7 @@ describe('Telegram Commands', () => {
     it('should show leaderboard entries', async () => {
       const { handleLeaderboardCommand } = await import('../../src/telegram/commands/leaderboard.js');
 
-      vi.mocked(leaderboardService.getLeaderboard).mockReturnValue([
+      vi.mocked(leaderboardService.getLeaderboard).mockResolvedValue([
         { rank: 1, nym: 'alpha', tier: 'naib', badgeCount: 10, tenureCategory: 'veteran' },
         { rank: 2, nym: 'beta', tier: 'naib', badgeCount: 8, tenureCategory: 'established' },
         { rank: 3, nym: 'gamma', tier: 'fedaykin', badgeCount: 5, tenureCategory: 'newcomer' },
@@ -671,7 +676,7 @@ describe('Telegram Commands', () => {
     it('should show user position if in top 10', async () => {
       const { handleLeaderboardCommand } = await import('../../src/telegram/commands/leaderboard.js');
 
-      vi.mocked(leaderboardService.getLeaderboard).mockReturnValue([
+      vi.mocked(leaderboardService.getLeaderboard).mockResolvedValue([
         { rank: 1, nym: 'alpha', tier: 'naib', badgeCount: 10, tenureCategory: 'veteran' },
       ]);
 
@@ -693,7 +698,7 @@ describe('Telegram Commands', () => {
     it('should show user position if outside top 10', async () => {
       const { handleLeaderboardCommand } = await import('../../src/telegram/commands/leaderboard.js');
 
-      vi.mocked(leaderboardService.getLeaderboard).mockReturnValue([
+      vi.mocked(leaderboardService.getLeaderboard).mockResolvedValue([
         { rank: 1, nym: 'alpha', tier: 'naib', badgeCount: 10, tenureCategory: 'veteran' },
       ]);
 
@@ -746,6 +751,288 @@ describe('Telegram Commands', () => {
       registerHelpCommand(mockBot as any);
 
       expect(mockBot.callbackQuery).toHaveBeenCalledWith('help', expect.any(Function));
+    });
+  });
+
+  // =============================================================================
+  // Sprint 32 Command Tests
+  // =============================================================================
+
+  describe('/refresh command', () => {
+    it('should show not linked message for unverified users', async () => {
+      const { handleRefreshCommand } = await import('../../src/telegram/commands/refresh.js');
+
+      vi.mocked(identityService.getMemberByPlatformId).mockResolvedValue(null);
+
+      const ctx = createMockContext();
+      await handleRefreshCommand(ctx as any);
+
+      expect(ctx.reply).toHaveBeenCalledOnce();
+      const [message] = ctx.reply.mock.calls[0];
+
+      expect(message).toContain('Wallet Not Linked');
+      expect(message).toContain('/verify');
+    });
+
+    it('should show cooldown message when refreshing too soon', async () => {
+      const { handleRefreshCommand } = await import('../../src/telegram/commands/refresh.js');
+
+      // Set last refresh to recent time (1 minute ago)
+      const ctx = createMockContext({
+        session: {
+          lastRefreshAt: Date.now() - 60 * 1000, // 1 minute ago
+        },
+      });
+
+      await handleRefreshCommand(ctx as any);
+
+      expect(ctx.reply).toHaveBeenCalledOnce();
+      const [message] = ctx.reply.mock.calls[0];
+
+      expect(message).toContain('Please Wait');
+      expect(message).toContain('minute');
+    });
+
+    it('should refresh score for verified users', async () => {
+      const { handleRefreshCommand } = await import('../../src/telegram/commands/refresh.js');
+
+      // Mock verified member
+      vi.mocked(identityService.getMemberByPlatformId).mockResolvedValue({
+        memberId: 'member-123',
+        walletAddress: '0x1234567890abcdef1234567890abcdef12345678',
+        platforms: [],
+      });
+
+      // Mock eligibility data
+      vi.mocked(getEligibilityByAddress).mockReturnValue({
+        address: '0x1234...',
+        bgtHeld: 100n * 10n ** 18n,
+        rank: 5,
+      });
+
+      // Mock profile
+      vi.mocked(getMemberProfileById).mockReturnValue({
+        member_id: 'member-123',
+        tier: 'naib',
+      } as any);
+
+      // Mock badge count
+      vi.mocked(getMemberBadgeCount).mockReturnValue(3);
+
+      // Mock rank
+      vi.mocked(leaderboardService.getMemberRank).mockReturnValue(5);
+
+      const ctx = createMockContext({
+        session: {
+          lastRefreshAt: 0, // No recent refresh
+        },
+      });
+
+      // Mock editMessageText
+      ctx.api = {
+        editMessageText: vi.fn().mockResolvedValue({}),
+      } as any;
+
+      await handleRefreshCommand(ctx as any);
+
+      // Should have called reply for the "Refreshing..." message
+      expect(ctx.reply).toHaveBeenCalled();
+
+      // Session should be updated
+      expect(ctx.session.lastRefreshAt).toBeGreaterThan(0);
+    });
+
+    it('should handle missing user gracefully', async () => {
+      const { handleRefreshCommand } = await import('../../src/telegram/commands/refresh.js');
+
+      const ctx = createMockContext();
+      ctx.from = undefined as any;
+
+      await handleRefreshCommand(ctx as any);
+
+      expect(ctx.reply).toHaveBeenCalledOnce();
+      expect(ctx.reply.mock.calls[0][0]).toContain('Could not identify');
+    });
+
+    it('should handle errors gracefully', async () => {
+      const { handleRefreshCommand } = await import('../../src/telegram/commands/refresh.js');
+
+      vi.mocked(identityService.getMemberByPlatformId).mockRejectedValue(
+        new Error('Database error')
+      );
+
+      const ctx = createMockContext({
+        session: {
+          lastRefreshAt: 0,
+        },
+      });
+
+      await handleRefreshCommand(ctx as any);
+
+      // Should show error message
+      const calls = ctx.reply.mock.calls;
+      const lastMessage = calls[calls.length - 1][0];
+      expect(lastMessage).toContain('Error');
+    });
+
+    it('should register refresh callback handler', async () => {
+      const { registerRefreshCommand } = await import('../../src/telegram/commands/refresh.js');
+
+      const mockBot = {
+        command: vi.fn(),
+        callbackQuery: vi.fn(),
+      };
+
+      registerRefreshCommand(mockBot as any);
+
+      expect(mockBot.command).toHaveBeenCalledWith('refresh', expect.any(Function));
+      expect(mockBot.callbackQuery).toHaveBeenCalledWith('refresh', expect.any(Function));
+    });
+  });
+
+  describe('/unlink command', () => {
+    it('should show not linked message for unverified users', async () => {
+      const { handleUnlinkCommand } = await import('../../src/telegram/commands/unlink.js');
+
+      vi.mocked(identityService.getMemberByPlatformId).mockResolvedValue(null);
+
+      const ctx = createMockContext();
+      await handleUnlinkCommand(ctx as any);
+
+      expect(ctx.reply).toHaveBeenCalledOnce();
+      const [message] = ctx.reply.mock.calls[0];
+
+      expect(message).toContain('No Wallet Linked');
+      expect(message).toContain('/verify');
+    });
+
+    it('should show confirmation prompt for verified users', async () => {
+      const { handleUnlinkCommand } = await import('../../src/telegram/commands/unlink.js');
+
+      vi.mocked(identityService.getMemberByPlatformId).mockResolvedValue({
+        memberId: 'member-123',
+        walletAddress: '0x1234567890abcdef1234567890abcdef12345678',
+        platforms: [],
+      });
+
+      const ctx = createMockContext();
+      await handleUnlinkCommand(ctx as any);
+
+      expect(ctx.reply).toHaveBeenCalledOnce();
+      const [message, options] = ctx.reply.mock.calls[0];
+
+      expect(message).toContain('Unlink Wallet');
+      expect(message).toContain('0x1234...5678');
+      expect(message).toContain('Are you sure');
+      expect(options.reply_markup.inline_keyboard).toBeDefined();
+      // Should have Cancel and Confirm buttons
+      const buttons = options.reply_markup.inline_keyboard.flat();
+      expect(buttons.some((b: any) => b.callback_data === 'unlink_cancel')).toBe(true);
+      expect(buttons.some((b: any) => b.callback_data === 'unlink_confirm')).toBe(true);
+    });
+
+    it('should handle missing user gracefully', async () => {
+      const { handleUnlinkCommand } = await import('../../src/telegram/commands/unlink.js');
+
+      const ctx = createMockContext();
+      ctx.from = undefined as any;
+
+      await handleUnlinkCommand(ctx as any);
+
+      expect(ctx.reply).toHaveBeenCalledOnce();
+      expect(ctx.reply.mock.calls[0][0]).toContain('Could not identify');
+    });
+
+    it('should handle errors gracefully', async () => {
+      const { handleUnlinkCommand } = await import('../../src/telegram/commands/unlink.js');
+
+      vi.mocked(identityService.getMemberByPlatformId).mockRejectedValue(
+        new Error('Database error')
+      );
+
+      const ctx = createMockContext();
+      await handleUnlinkCommand(ctx as any);
+
+      expect(ctx.reply).toHaveBeenCalledOnce();
+      const [message] = ctx.reply.mock.calls[0];
+
+      expect(message).toContain('Error');
+    });
+
+    it('should register unlink command and callbacks', async () => {
+      const { registerUnlinkCommand } = await import('../../src/telegram/commands/unlink.js');
+
+      const mockBot = {
+        command: vi.fn(),
+        callbackQuery: vi.fn(),
+      };
+
+      registerUnlinkCommand(mockBot as any);
+
+      expect(mockBot.command).toHaveBeenCalledWith('unlink', expect.any(Function));
+      expect(mockBot.callbackQuery).toHaveBeenCalledWith('unlink_confirm', expect.any(Function));
+      expect(mockBot.callbackQuery).toHaveBeenCalledWith('unlink_cancel', expect.any(Function));
+    });
+
+    it('should unlink wallet on confirm', async () => {
+      const { registerUnlinkCommand } = await import('../../src/telegram/commands/unlink.js');
+
+      vi.mocked(identityService.getMemberByPlatformId).mockResolvedValue({
+        memberId: 'member-123',
+        walletAddress: '0x1234567890abcdef1234567890abcdef12345678',
+        platforms: [],
+      });
+
+      vi.mocked(identityService.unlinkTelegram).mockResolvedValue(undefined);
+
+      const mockBot = {
+        command: vi.fn(),
+        callbackQuery: vi.fn(),
+      };
+
+      registerUnlinkCommand(mockBot as any);
+
+      // Find the unlink_confirm handler
+      const confirmHandler = mockBot.callbackQuery.mock.calls.find(
+        ([query]) => query === 'unlink_confirm'
+      )?.[1];
+
+      expect(confirmHandler).toBeDefined();
+
+      const ctx = createMockContext();
+      await confirmHandler(ctx);
+
+      expect(ctx.answerCallbackQuery).toHaveBeenCalledOnce();
+      expect(identityService.unlinkTelegram).toHaveBeenCalledWith('member-123');
+      expect(ctx.reply).toHaveBeenCalled();
+      const [message] = ctx.reply.mock.calls[0];
+      expect(message).toContain('Wallet Unlinked');
+    });
+
+    it('should cancel unlink on cancel button', async () => {
+      const { registerUnlinkCommand } = await import('../../src/telegram/commands/unlink.js');
+
+      const mockBot = {
+        command: vi.fn(),
+        callbackQuery: vi.fn(),
+      };
+
+      registerUnlinkCommand(mockBot as any);
+
+      // Find the unlink_cancel handler
+      const cancelHandler = mockBot.callbackQuery.mock.calls.find(
+        ([query]) => query === 'unlink_cancel'
+      )?.[1];
+
+      expect(cancelHandler).toBeDefined();
+
+      const ctx = createMockContext();
+      await cancelHandler(ctx);
+
+      expect(ctx.answerCallbackQuery).toHaveBeenCalledOnce();
+      expect(ctx.reply).toHaveBeenCalled();
+      const [message] = ctx.reply.mock.calls[0];
+      expect(message).toContain('Unlink Cancelled');
     });
   });
 });

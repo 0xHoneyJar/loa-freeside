@@ -24,6 +24,8 @@ export interface SessionData {
   lastCommandAt: number;
   /** Pending verification session ID */
   pendingVerificationId?: string;
+  /** Timestamp of last refresh command (Sprint 32) */
+  lastRefreshAt?: number;
 }
 
 /**

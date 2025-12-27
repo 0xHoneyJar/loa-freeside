@@ -499,7 +499,7 @@ memberRouter.get('/badges', (_req: Request, res: Response) => {
  * GET /api/leaderboard
  * Get the engagement leaderboard (top members by badge count)
  */
-memberRouter.get('/leaderboard', (req: Request, res: Response) => {
+memberRouter.get('/leaderboard', async (req: Request, res: Response) => {
   const limitParam = req.query.limit;
   const limit = limitParam ? parseInt(limitParam as string, 10) : 20;
 
@@ -507,7 +507,7 @@ memberRouter.get('/leaderboard', (req: Request, res: Response) => {
     throw new ValidationError('Limit must be between 1 and 100');
   }
 
-  const entries = leaderboardService.getLeaderboard(limit);
+  const entries = await leaderboardService.getLeaderboard(limit);
   const stats = directoryService.getStats();
 
   res.json({

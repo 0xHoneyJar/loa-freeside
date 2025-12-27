@@ -97,8 +97,8 @@ async function handleBadgesLeaderboard(
   interaction: ChatInputCommandInteraction,
   memberId: string
 ): Promise<void> {
-  // Get badge leaderboard data
-  const entries = leaderboardService.getLeaderboard(DEFAULT_LEADERBOARD_SIZE);
+  // Get badge leaderboard data (cached with 60s TTL)
+  const entries = await leaderboardService.getLeaderboard(DEFAULT_LEADERBOARD_SIZE);
 
   // Get stats for context
   const stats = directoryService.getStats();

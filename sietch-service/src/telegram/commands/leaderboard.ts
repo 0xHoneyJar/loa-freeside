@@ -1,8 +1,10 @@
 /**
- * /leaderboard Command Handler (v4.1 - Sprint 31)
+ * /leaderboard Command Handler (v4.1 - Sprint 32)
  *
  * Shows the top members by badge count.
  * Privacy-first: only shows nym and badge count, no wallet info.
+ *
+ * Sprint 32: Updated to use cached leaderboard for performance.
  */
 
 import type { Bot } from 'grammy';
@@ -54,8 +56,8 @@ export async function handleLeaderboardCommand(ctx: BotContext): Promise<void> {
   ctx.session.lastCommandAt = Date.now();
 
   try {
-    // Get top 10 from leaderboard
-    const leaderboard = leaderboardService.getLeaderboard(10);
+    // Get top 10 from leaderboard (cached with 60s TTL)
+    const leaderboard = await leaderboardService.getLeaderboard(10);
 
     if (leaderboard.length === 0) {
       await ctx.reply(
