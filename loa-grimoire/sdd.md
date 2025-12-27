@@ -1,10 +1,20 @@
-# Software Design Document: Sietch
+# Software Design Document: Sietch v4.1
 
-**Version**: 3.0.1
-**Date**: December 24, 2025
-**Status**: Active
-**PRD Reference**: `loa-grimoire/context/prd.md`
-**Codename**: The Great Expansion
+**Version**: 4.1
+**Date**: December 27, 2025
+**Status**: DRAFT
+**Codename**: The Crossing
+
+---
+
+## Document Traceability
+
+| Section | Source | Reference |
+|---------|--------|-----------|
+| Requirements | loa-grimoire/prd.md | PRD v4.1 |
+| Existing Architecture | sdd-v4.0-completed.md | v4.0 SDD |
+| Reference Architecture | ARCHITECTURE_SPEC_v2.9.0.md | Enterprise spec |
+| grammy Patterns | grammy.dev documentation | Bot framework |
 
 ---
 
@@ -12,83 +22,36 @@
 
 ### 1.1 Document Purpose
 
-This Software Design Document (SDD) provides the technical architecture and implementation blueprint for Sietch v3.0 "The Great Expansion". It extends the existing v2.1 architecture to support a 9-tier membership system, sponsor invites, enhanced notifications, and community engagement features.
+This Software Design Document (SDD) details the technical architecture for Sietch v4.1 "The Crossing". This release adds Telegram bot support with cross-platform identity bridging while preserving the stable v4.0 architecture.
 
-### 1.2 System Overview
+### 1.2 Scope
 
-Sietch v3.0 transforms from an exclusive 69-member community into a layered sanctuary supporting 500+ members across 9 tiers. The system maintains the privacy-first, never-redeemed purity requirement while dramatically expanding participation.
+This document covers:
+- Telegram bot integration using grammy
+- Cross-platform identity service design
+- Database schema extensions for Telegram
+- API endpoint specifications for Telegram
+- Verification flow with Collab.Land
+- Integration with existing v4.0 services
 
-**Key Capabilities**:
-1. **9-Tier Membership** - Hajra (6.9 BGT) through Naib (Top 7)
-2. **Automatic Tier Assignment** - BGT balance and rank-based calculation
-3. **Dynamic Naib System** - 7 competitive seats with BGT-based bumping (retained from v2.1)
-4. **Position Alert System** - At-risk warnings, Naib threats, relative standings (retained from v2.1)
-5. **Water Sharer Badge Sharing** - Badge holders can share badge with one existing member
-6. **Tier Notifications** - DM alerts on promotion
-7. **Weekly Digest** - Community pulse posted to announcements
-8. **Story Fragments** - Cryptic narratives for elite joins
-9. **Analytics Dashboard** - Admin visibility into community health
-
-### 1.3 Key Architectural Decisions
+### 1.3 Key Design Decisions
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Database | SQLite (existing) | Sufficient for 500+ members; WAL mode handles concurrent reads |
-| Tier Storage | Column in member_profiles | Single source of truth; atomic updates with BGT sync |
-| Role Management | Additive roles | Members accumulate tier roles; simplifies permission inheritance |
-| Badge Sharing | Pass-along model | Water Sharer badge can be shared once to existing member |
-| Story Fragments | Database-stored | Editable without code deployment; usage tracking |
-| Weekly Digest | trigger.dev task | Existing scheduler infrastructure; reliable delivery |
+| Bot Framework | grammy | Lightweight, TypeScript-native, active maintenance |
+| Process Model | Same process | Simpler deployment, shared state, lower resource usage |
+| Verification Flow | Deep link to web | Reuses existing Collab.Land flow, proven pattern |
+| Identity Model | Wallet-centric | Platform IDs link to wallet, not to each other |
+| Webhook Mode | Production only | Polling in dev for local testing |
+| Cache Strategy | Shared Redis | Platform-agnostic cache keys, existing infrastructure |
 
 ### 1.4 Architecture Principles
 
-1. **Extend, Don't Replace**: Build on existing patterns; no breaking changes
-2. **Privacy First**: Tier visible, BGT amount never exposed
-3. **Graceful Degradation**: Tier features fail safely; core eligibility unaffected
-4. **Audit Everything**: All tier changes and badge sharing actions logged
-5. **Single Source of Truth**: Tier calculated during sync, not on-demand
-
-### 1.5 Graceful Degradation
-
-The system is designed to function even when optional components are not configured:
-
-| Component | If Missing | Behavior |
-|-----------|------------|----------|
-| **Tier Discord Roles** | Role IDs not in env | Tier sync skips role assignment, logs debug message, data still updated |
-| **Oasis Channel** | Channel ID not configured | Water Sharer badge still works, just no exclusive channel |
-| **Announcements Channel** | Channel ID not configured | Weekly digest skipped, no error |
-| **Story Fragments** | Table empty | Elite join posts skipped silently |
-| **Discord Connection** | Bot not connected | Sync task completes without role updates, logged as warning |
-
-**Principle**: Core data operations (eligibility sync, tier calculation, database updates) always complete. Discord visual features degrade gracefully without blocking functionality.
-
-**Implementation**:
-```typescript
-// Example: Check before role operations
-function isTierRolesConfigured(): boolean {
-  return Object.values(TIER_ROLES).some(id => id && id.length > 0);
-}
-
-// Example: Graceful channel posting
-async function postToChannel(channelId: string | undefined, content: string): Promise<boolean> {
-  if (!channelId) {
-    logger.debug('Channel not configured, skipping post');
-    return false;
-  }
-  try {
-    const channel = await client.channels.fetch(channelId);
-    if (channel?.isTextBased()) {
-      await channel.send(content);
-      return true;
-    }
-  } catch (error) {
-    logger.warn({ channelId, error }, 'Failed to post to channel');
-  }
-  return false;
-}
-```
-
-**Startup Validation**: On startup, the system logs which optional features are configured vs unavailable, allowing operators to see feature status at a glance.
+1. **Preserve v4.0 Stability**: All v4.0 features continue working unchanged
+2. **Platform Agnostic Services**: Services operate on member_id, not platform IDs
+3. **Shared Infrastructure**: Single database, single Redis, single deployment
+4. **Graceful Degradation**: Telegram failures don't affect Discord
+5. **Minimal New Dependencies**: Only grammy added to dependencies
 
 ---
 
@@ -98,2529 +61,1154 @@ async function postToChannel(channelId: string | undefined, content: string): Pr
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              SIETCH v3.0                                     │
+│                           SIETCH SERVICE v4.1                                │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                   │
-│  │   Discord    │    │   Express    │    │  trigger.dev │                   │
-│  │     Bot      │    │     API      │    │   Scheduler  │                   │
-│  └──────┬───────┘    └──────┬───────┘    └──────┬───────┘                   │
-│         │                   │                   │                            │
-│         └───────────────────┴───────────────────┘                            │
-│                             │                                                │
-│  ┌──────────────────────────┴──────────────────────────┐                    │
-│  │                   SERVICE LAYER                      │                    │
-│  │  ┌────────────┐  ┌────────────┐  ┌────────────┐     │                    │
-│  │  │   Tier     │  │WaterSharer │  │   Digest   │     │  NEW SERVICES      │
-│  │  │  Service   │  │  Service   │  │  Service   │     │                    │
-│  │  └────────────┘  └────────────┘  └────────────┘     │                    │
-│  │  ┌────────────┐  ┌────────────┐  ┌────────────┐     │                    │
-│  │  │   Story    │  │ Analytics  │  │   Stats    │     │                    │
-│  │  │  Service   │  │  Service   │  │  Service   │     │                    │
-│  │  └────────────┘  └────────────┘  └────────────┘     │                    │
-│  │                                                      │                    │
-│  │  ┌────────────┐  ┌────────────┐  ┌────────────┐     │                    │
-│  │  │ Eligibility│  │  Profile   │  │   Badge    │     │  EXISTING          │
-│  │  │  Service   │  │  Service   │  │  Service   │     │  SERVICES          │
-│  │  └────────────┘  └────────────┘  └────────────┘     │                    │
-│  │  ┌────────────┐  ┌────────────┐  ┌────────────┐     │                    │
-│  │  │   Naib     │  │ Threshold  │  │Notification│     │  RETAINED v2.1     │
-│  │  │  Service   │  │  Service   │  │  Service   │     │                    │
-│  │  └────────────┘  └────────────┘  └────────────┘     │                    │
-│  └─────────────────────────┬────────────────────────────┘                    │
-│                            │                                                 │
-│  ┌─────────────────────────┴────────────────────────────┐                   │
-│  │                    DATA LAYER                         │                   │
-│  │  ┌────────────────────────────────────────────────┐  │                   │
-│  │  │              SQLite Database                    │  │                   │
-│  │  │  • member_profiles (+ tier, tier_updated_at)   │  │                   │
-│  │  │  • tier_history (NEW)                          │  │                   │
-│  │  │  • water_sharer_grants (NEW)                   │  │                   │
-│  │  │  • story_fragments (NEW)                       │  │                   │
-│  │  │  • weekly_digests (NEW)                        │  │                   │
-│  │  │  • naib_seats (RETAINED v2.1)                  │  │                   │
-│  │  │  • notification_preferences (RETAINED v2.1)   │  │                   │
-│  │  │  • alert_history (RETAINED v2.1)              │  │                   │
-│  │  │  • [existing tables unchanged]                 │  │                   │
-│  │  └────────────────────────────────────────────────┘  │                   │
-│  └───────────────────────────────────────────────────────┘                   │
-│                                                                              │
+│                                                                             │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │                     PLATFORM LAYER (v4.1 NEW)                         │ │
+│  │                                                                       │ │
+│  │  ┌─────────────────────────┐     ┌─────────────────────────┐         │ │
+│  │  │      Discord Bot        │     │     Telegram Bot        │         │ │
+│  │  │      (Discord.js)       │     │       (grammy)          │         │ │
+│  │  │                         │     │                         │         │ │
+│  │  │  • /check command       │     │  • /start command       │         │ │
+│  │  │  • /register command    │     │  • /verify command      │         │ │
+│  │  │  • Role management      │     │  • /score command       │         │ │
+│  │  │  • Notifications        │     │  • /leaderboard cmd     │         │ │
+│  │  │                         │     │  • /tier command        │         │ │
+│  │  │                         │     │  • /status command      │         │ │
+│  │  └────────────┬────────────┘     └────────────┬────────────┘         │ │
+│  │               │                               │                       │ │
+│  │               └───────────────┬───────────────┘                       │ │
+│  │                               │                                       │ │
+│  │                               ▼                                       │ │
+│  │               ┌───────────────────────────────┐                       │ │
+│  │               │     Identity Service (NEW)    │                       │ │
+│  │               │                               │                       │ │
+│  │               │  • Platform → Member lookup   │                       │ │
+│  │               │  • Cross-platform linking     │                       │ │
+│  │               │  • Verification sessions      │                       │ │
+│  │               └───────────────┬───────────────┘                       │ │
+│  │                               │                                       │ │
+│  └───────────────────────────────┼───────────────────────────────────────┘ │
+│                                  │                                         │
+│  ┌───────────────────────────────┼───────────────────────────────────────┐ │
+│  │                    PRESERVED SERVICES (v4.0)                          │ │
+│  │                               │                                       │ │
+│  │  ┌───────────────┐ ┌─────────┴─────────┐ ┌───────────────┐           │ │
+│  │  │  Gatekeeper   │ │    Stats          │ │    Boost      │           │ │
+│  │  │   Service     │ │    Service        │ │   Service     │           │ │
+│  │  │               │ │                   │ │               │           │ │
+│  │  │ • Tier lookup │ │ • Score query     │ │ • Level calc  │           │ │
+│  │  │ • Feature     │ │ • Leaderboard     │ │ • Perks       │           │ │
+│  │  │   gating      │ │ • Rankings        │ │               │           │ │
+│  │  └───────────────┘ └───────────────────┘ └───────────────┘           │ │
+│  │                                                                       │ │
+│  │  ┌───────────────┐ ┌───────────────────┐ ┌───────────────┐           │ │
+│  │  │    Stripe     │ │      Badge        │ │    Waiver     │           │ │
+│  │  │   Service     │ │     Service       │ │   Service     │           │ │
+│  │  └───────────────┘ └───────────────────┘ └───────────────┘           │ │
+│  │                                                                       │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+│                                                                             │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │                           DATA LAYER                                   │ │
+│  │                                                                       │ │
+│  │  ┌─────────────────────────────┐   ┌─────────────────────────────┐   │ │
+│  │  │          SQLite             │   │       Upstash Redis         │   │ │
+│  │  │                             │   │                             │   │ │
+│  │  │ • member_profiles           │   │ • entitlement:{member_id}   │   │ │
+│  │  │   + telegram_user_id (NEW)  │   │ • score:{member_id}         │   │ │
+│  │  │ • telegram_verification_    │   │ • leaderboard:global        │   │ │
+│  │  │   sessions (NEW)            │   │ • webhook:{event_id}        │   │ │
+│  │  │ • All v4.0 tables           │   │                             │   │ │
+│  │  └─────────────────────────────┘   └─────────────────────────────┘   │ │
+│  │                                                                       │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+│                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
-                                    │
-            ┌───────────────────────┼───────────────────────┐
-            │                       │                       │
-    ┌───────┴───────┐       ┌───────┴───────┐       ┌───────┴───────┐
-    │   Berachain   │       │    Discord    │       │  Collab.Land  │
-    │     RPC       │       │     API       │       │  (Unchanged)  │
-    └───────────────┘       └───────────────┘       └───────────────┘
 ```
 
-### 2.2 Component Interaction Flow
+### 2.2 External Integrations
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    TIER SYNC FLOW (Every 6 Hours)                        │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  1. trigger.dev fires sync-eligibility task                             │
-│                     │                                                    │
-│                     ▼                                                    │
-│  2. EligibilityService fetches BGT from Berachain                       │
-│                     │                                                    │
-│                     ▼                                                    │
-│  3. TierService.calculateTier(bgt, rank) for each member                │
-│                     │                                                    │
-│     ┌───────────────┼───────────────┐                                   │
-│     │               │               │                                   │
-│     ▼               ▼               ▼                                   │
-│  Hajra-Usul     Fedaykin       Naib                                     │
-│  (BGT only)     (Top 8-69)     (Top 7)                                  │
-│                     │                                                    │
-│                     ▼                                                    │
-│  4. Compare previous tier → detect promotions                           │
-│                     │                                                    │
-│     ┌───────────────┼───────────────┐                                   │
-│     │               │               │                                   │
-│     ▼               ▼               ▼                                   │
-│  Update DB      Log History    Queue Notification                       │
-│                     │                                                    │
-│                     ▼                                                    │
-│  5. RoleManagerService.syncTierRoles(memberId, newTier)                 │
-│                     │                                                    │
-│                     ▼                                                    │
-│  6. If Fedaykin/Naib promotion → StoryService.postFragment()            │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          EXTERNAL SERVICES                                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐   │
+│  │  Telegram   │  │   Discord   │  │  Collab.Land │  │    Existing     │   │
+│  │   Bot API   │  │     API     │  │  AccountKit  │  │   (Stripe,etc)  │   │
+│  │             │  │             │  │              │  │                 │   │
+│  │ • getMe     │  │ • Bot API   │  │ • Verify URL │  │ • Unchanged     │   │
+│  │ • setWebhook│  │ • Roles     │  │ • Webhook    │  │                 │   │
+│  │ • sendMsg   │  │ • Messages  │  │ • Sessions   │  │                 │   │
+│  │ • Updates   │  │             │  │              │  │                 │   │
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └────────┬────────┘   │
+│         │                │                │                   │            │
+│         └────────────────┴────────┬───────┴───────────────────┘            │
+│                                   │                                        │
+│                                   ▼                                        │
+│                         ┌─────────────────────┐                            │
+│                         │   Sietch Service    │                            │
+│                         │       v4.1          │                            │
+│                         └─────────────────────┘                            │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 2.3 Request Flow Patterns
+### 2.3 Process Architecture
 
-**Discord Command Flow**:
 ```
-User → /stats → CommandRouter → StatsCommand
-                                    │
-                                    ▼
-                              StatsService.getPersonalStats(memberId)
-                                    │
-                    ┌───────────────┼───────────────┐
-                    │               │               │
-                    ▼               ▼               ▼
-              ProfileService   ActivityService  TierService
-              (tier, badges)   (streaks, msgs)  (progress)
-                    │               │               │
-                    └───────────────┼───────────────┘
-                                    │
-                                    ▼
-                              Build Embed → Reply
-```
-
-**API Request Flow**:
-```
-Client → GET /api/me/tier-progress
-              │
-              ▼
-         Auth Middleware (Discord OAuth header)
-              │
-              ▼
-         Rate Limiter (60 req/min member tier)
-              │
-              ▼
-         TierController.getTierProgress()
-              │
-              ▼
-         TierService.calculateProgress(memberId)
-              │
-              ▼
-         JSON Response: { current, next, distance, percentage }
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           PM2 PROCESS: sietch                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                      Node.js Process (Single)                        │   │
+│  │                                                                       │   │
+│  │  ┌───────────────┐  ┌───────────────┐  ┌───────────────────────────┐ │   │
+│  │  │  HTTP Server  │  │  Discord.js   │  │      grammy Bot           │ │   │
+│  │  │    (Hono)     │  │     Client    │  │                           │ │   │
+│  │  │               │  │               │  │  • Webhook handler        │ │   │
+│  │  │ :3000         │  │  Gateway      │  │  • Command handlers       │ │   │
+│  │  │               │  │  connection   │  │  • Error boundary         │ │   │
+│  │  └───────────────┘  └───────────────┘  └───────────────────────────┘ │   │
+│  │                                                                       │   │
+│  │  Shared: Database connection, Redis client, Services                  │   │
+│  │                                                                       │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│  Memory Budget: ~512MB (Discord ~256MB + Telegram ~64MB + API ~192MB)      │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 3. Technology Stack
+## 3. Component Design
 
-### 3.1 Core Technologies (Unchanged)
+### 3.1 Telegram Bot Component
 
-| Layer | Technology | Version | Purpose |
-|-------|------------|---------|---------|
-| Runtime | Node.js | 20.x LTS | Server runtime |
-| Language | TypeScript | 5.6.x | Type safety |
-| Database | SQLite | 3.x (better-sqlite3) | Data persistence |
-| API | Express | 4.21.x | REST endpoints |
-| Bot | discord.js | 14.16.x | Discord integration |
-| Scheduler | trigger.dev | 3.0.x | Cron jobs |
-| Blockchain | viem | 2.21.x | Berachain RPC |
-| Logging | Pino | 9.5.x | Structured logs |
+#### 3.1.1 Bot Initialization
 
-### 3.2 New Dependencies
-
-| Package | Version | Purpose |
-|---------|---------|---------|
-| None required | - | v3.0 uses existing dependencies |
-
-### 3.3 Project Structure (Extended)
-
-```
-sietch-service/
-├── src/
-│   ├── services/
-│   │   ├── TierService.ts          # NEW: Tier calculation & management
-│   │   ├── WaterSharerService.ts   # NEW: Badge sharing management
-│   │   ├── DigestService.ts        # NEW: Weekly digest generation
-│   │   ├── StoryService.ts         # NEW: Story fragment posting
-│   │   ├── StatsService.ts         # NEW: Personal & community stats
-│   │   ├── AnalyticsService.ts     # NEW: Admin analytics
-│   │   ├── EligibilityService.ts   # Extended: tier integration
-│   │   ├── ProfileService.ts       # Extended: tier display
-│   │   ├── BadgeService.ts         # Extended: Usul Ascended badge
-│   │   ├── NotificationService.ts  # Extended: tier promotions
-│   │   └── RoleManagerService.ts   # Extended: 9 tier roles
-│   ├── discord/
-│   │   └── commands/
-│   │       ├── stats.ts            # NEW: /stats command
-│   │       ├── water-share.ts      # NEW: /water-share command
-│   │       └── leaderboard.ts      # Extended: tiers subcommand
-│   ├── api/
-│   │   └── routes/
-│   │       ├── tier.ts             # NEW: Tier endpoints
-│   │       ├── water-sharer.ts     # NEW: Badge sharing endpoints
-│   │       └── stats.ts            # NEW: Stats endpoints
-│   ├── trigger/
-│   │   ├── sync-eligibility.ts     # Extended: tier sync
-│   │   └── weekly-digest.ts        # NEW: Digest posting
-│   └── db/
-│       └── migrations/
-│           └── 006_tier_system.sql # NEW: Tier tables
-```
-
----
-
-## 4. Component Design
-
-### 4.1 TierService
-
-**File**: `src/services/TierService.ts`
-
-**Responsibility**: Calculate, assign, and track member tiers based on BGT holdings and rank.
+**File**: `src/telegram/bot.ts`
 
 ```typescript
-// src/services/TierService.ts
+import { Bot, webhookCallback, session } from 'grammy';
+import { config } from '../config.js';
 
-import { db } from '../db';
-import { logger } from '../utils/logger';
-import type { Tier, TierHistoryEntry, TierProgress } from '../types';
-
-export const TIER_THRESHOLDS = {
-  hajra: 6.9,
-  ichwan: 69,
-  qanat: 222,
-  sihaya: 420,
-  mushtamal: 690,
-  sayyadina: 888,
-  usul: 1111,
-  fedaykin: null,  // Top 8-69 (rank-based)
-  naib: null,      // Top 7 (rank-based)
-} as const;
-
-export const TIER_ORDER: Tier[] = [
-  'hajra', 'ichwan', 'qanat', 'sihaya',
-  'mushtamal', 'sayyadina', 'usul',
-  'fedaykin', 'naib'
-];
-
-export class TierService {
-  /**
-   * Calculate tier from BGT amount and rank position
-   * Rank takes precedence for Fedaykin/Naib
-   */
-  calculateTier(bgt: number, rank: number | null): Tier {
-    // Rank-based tiers (top 69)
-    if (rank !== null) {
-      if (rank <= 7) return 'naib';
-      if (rank <= 69) return 'fedaykin';
-    }
-
-    // BGT-based tiers (threshold)
-    if (bgt >= 1111) return 'usul';
-    if (bgt >= 888) return 'sayyadina';
-    if (bgt >= 690) return 'mushtamal';
-    if (bgt >= 420) return 'sihaya';
-    if (bgt >= 222) return 'qanat';
-    if (bgt >= 69) return 'ichwan';
-    if (bgt >= 6.9) return 'hajra';
-
-    // Below minimum - should not happen for verified members
-    return 'hajra';
-  }
-
-  /**
-   * Update member's tier and record history if changed
-   * Returns true if tier changed (promotion)
-   */
-  async updateMemberTier(
-    memberId: string,
-    bgt: number,
-    rank: number | null
-  ): Promise<{ changed: boolean; oldTier: Tier | null; newTier: Tier }> {
-    const newTier = this.calculateTier(bgt, rank);
-
-    const current = db.prepare(`
-      SELECT tier FROM member_profiles WHERE id = ?
-    `).get(memberId) as { tier: Tier } | undefined;
-
-    const oldTier = current?.tier ?? null;
-    const changed = oldTier !== newTier;
-
-    if (changed) {
-      const now = Date.now();
-
-      // Update profile
-      db.prepare(`
-        UPDATE member_profiles
-        SET tier = ?, tier_updated_at = ?
-        WHERE id = ?
-      `).run(newTier, now, memberId);
-
-      // Record history
-      db.prepare(`
-        INSERT INTO tier_history (id, member_id, from_tier, to_tier, bgt_at_change, changed_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(
-        crypto.randomUUID(),
-        memberId,
-        oldTier,
-        newTier,
-        Math.floor(bgt),
-        now
-      );
-
-      logger.info({ memberId, oldTier, newTier, bgt }, 'Tier changed');
-    }
-
-    return { changed, oldTier, newTier };
-  }
-
-  /**
-   * Calculate progress toward next tier
-   */
-  getTierProgress(memberId: string): TierProgress | null {
-    const member = db.prepare(`
-      SELECT mp.tier, ce.bgt
-      FROM member_profiles mp
-      JOIN wallet_mappings wm ON wm.discord_id = mp.discord_id
-      JOIN current_eligibility ce ON ce.address = wm.wallet_address
-      WHERE mp.id = ?
-    `).get(memberId) as { tier: Tier; bgt: number } | undefined;
-
-    if (!member) return null;
-
-    const currentIndex = TIER_ORDER.indexOf(member.tier);
-    const nextTier = TIER_ORDER[currentIndex + 1];
-
-    // Fedaykin/Naib - rank-based, no BGT progress
-    if (member.tier === 'fedaykin' || member.tier === 'naib' || !nextTier) {
-      return {
-        currentTier: member.tier,
-        currentBgt: member.bgt,
-        nextTier: null,
-        nextThreshold: null,
-        distance: null,
-        percentage: 100,
-      };
-    }
-
-    // BGT-based tiers
-    const nextThreshold = TIER_THRESHOLDS[nextTier as keyof typeof TIER_THRESHOLDS];
-
-    if (nextThreshold === null) {
-      // Next tier is rank-based (Fedaykin)
-      return {
-        currentTier: member.tier,
-        currentBgt: member.bgt,
-        nextTier: 'fedaykin',
-        nextThreshold: null,
-        distance: null,
-        percentage: null,
-        note: 'Fedaykin requires Top 69 rank',
-      };
-    }
-
-    const currentThreshold = TIER_THRESHOLDS[member.tier] || 0;
-    const range = nextThreshold - currentThreshold;
-    const progress = member.bgt - currentThreshold;
-    const percentage = Math.min(100, Math.floor((progress / range) * 100));
-
-    return {
-      currentTier: member.tier,
-      currentBgt: member.bgt,
-      nextTier,
-      nextThreshold,
-      distance: Math.max(0, nextThreshold - member.bgt),
-      percentage,
-    };
-  }
-
-  /**
-   * Get tier history for a member
-   */
-  getTierHistory(memberId: string, limit = 10): TierHistoryEntry[] {
-    return db.prepare(`
-      SELECT from_tier, to_tier, bgt_at_change, changed_at
-      FROM tier_history
-      WHERE member_id = ?
-      ORDER BY changed_at DESC
-      LIMIT ?
-    `).all(memberId, limit) as TierHistoryEntry[];
-  }
-
-  /**
-   * Get tier distribution for analytics
-   */
-  getTierDistribution(): Record<Tier, number> {
-    const rows = db.prepare(`
-      SELECT tier, COUNT(*) as count
-      FROM member_profiles
-      WHERE tier IS NOT NULL
-      GROUP BY tier
-    `).all() as { tier: Tier; count: number }[];
-
-    const distribution: Record<Tier, number> = {
-      hajra: 0, ichwan: 0, qanat: 0, sihaya: 0,
-      mushtamal: 0, sayyadina: 0, usul: 0,
-      fedaykin: 0, naib: 0,
-    };
-
-    for (const row of rows) {
-      distribution[row.tier] = row.count;
-    }
-
-    return distribution;
-  }
-
-  /**
-   * Check if tier is promotion (higher than previous)
-   */
-  isPromotion(oldTier: Tier | null, newTier: Tier): boolean {
-    if (!oldTier) return true; // First tier assignment
-    return TIER_ORDER.indexOf(newTier) > TIER_ORDER.indexOf(oldTier);
-  }
+// Type definitions
+interface SessionData {
+  verificationAttempts: number;
+  lastCommandAt: number;
 }
 
-export const tierService = new TierService();
+// Bot instance
+export const telegramBot = new Bot<Context>(config.TELEGRAM_BOT_TOKEN);
+
+// Middleware stack
+telegramBot.use(session({ initial: () => ({ verificationAttempts: 0, lastCommandAt: 0 }) }));
+telegramBot.use(rateLimitMiddleware());
+telegramBot.use(errorBoundary());
+
+// Command registration
+telegramBot.command('start', startHandler);
+telegramBot.command('verify', verifyHandler);
+telegramBot.command('score', scoreHandler);
+telegramBot.command('leaderboard', leaderboardHandler);
+telegramBot.command('tier', tierHandler);
+telegramBot.command('status', statusHandler);
+telegramBot.command('help', helpHandler);
+
+// Webhook handler export
+export const telegramWebhook = webhookCallback(telegramBot, 'hono');
+
+// Start function (called from main entry)
+export async function startTelegramBot(): Promise<void> {
+  if (config.NODE_ENV === 'development') {
+    // Polling mode for local development
+    await telegramBot.start();
+  } else {
+    // Webhook mode set during server startup
+    await telegramBot.api.setWebhook(config.TELEGRAM_WEBHOOK_URL);
+  }
+}
 ```
 
-### 4.2 WaterSharerService
+#### 3.1.2 Command Handlers
 
-**File**: `src/services/WaterSharerService.ts`
+**Directory Structure**:
+```
+src/telegram/
+├── bot.ts                    # Bot initialization
+├── commands/
+│   ├── index.ts              # Command exports
+│   ├── start.ts              # Welcome message
+│   ├── verify.ts             # Wallet verification
+│   ├── score.ts              # Score display
+│   ├── leaderboard.ts        # Rankings
+│   ├── tier.ts               # Subscription tier
+│   ├── status.ts             # Platform linking
+│   └── help.ts               # Command reference
+├── middleware/
+│   ├── rateLimit.ts          # Rate limiting
+│   ├── errorBoundary.ts      # Error handling
+│   └── auth.ts               # Verification check
+└── utils/
+    ├── formatters.ts         # Message formatting
+    └── keyboards.ts          # Inline keyboards
+```
 
-**Responsibility**: Manage Water Sharer badge sharing between existing members.
+#### 3.1.3 Verify Command Flow
 
-**Key Concept**: Water Sharer badge holders can share the badge with ONE other existing member (not external invites). This is a badge-passing system for community recognition.
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       VERIFICATION FLOW                                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  User                 Telegram Bot         Identity Service    Collab.Land  │
+│   │                       │                      │                  │       │
+│   │  /verify              │                      │                  │       │
+│   │──────────────────────>│                      │                  │       │
+│   │                       │                      │                  │       │
+│   │                       │  createSession()     │                  │       │
+│   │                       │─────────────────────>│                  │       │
+│   │                       │                      │                  │       │
+│   │                       │                      │  generateURL()   │       │
+│   │                       │                      │─────────────────>│       │
+│   │                       │                      │                  │       │
+│   │                       │                      │<─────────────────│       │
+│   │                       │                      │  verifyURL       │       │
+│   │                       │<─────────────────────│                  │       │
+│   │                       │  { sessionId, url }  │                  │       │
+│   │                       │                      │                  │       │
+│   │  Inline Button: 🔗    │                      │                  │       │
+│   │  "Verify Wallet"      │                      │                  │       │
+│   │<──────────────────────│                      │                  │       │
+│   │                       │                      │                  │       │
+│   │  [User clicks, verifies in browser]          │                  │       │
+│   │                       │                      │                  │       │
+│   │                       │                      │  webhook:        │       │
+│   │                       │                      │  verification_   │       │
+│   │                       │                      │  complete        │       │
+│   │                       │                      │<─────────────────│       │
+│   │                       │                      │                  │       │
+│   │                       │  linkTelegram()      │                  │       │
+│   │                       │<─────────────────────│                  │       │
+│   │                       │                      │                  │       │
+│   │  ✅ Wallet linked!    │                      │                  │       │
+│   │  0x1234...5678        │                      │                  │       │
+│   │<──────────────────────│                      │                  │       │
+│   │                       │                      │                  │       │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 3.2 Identity Service Component
+
+**File**: `src/services/IdentityService.ts`
 
 ```typescript
-// src/services/WaterSharerService.ts
+/**
+ * IdentityService - Cross-platform identity management
+ *
+ * Handles wallet-centric identity model where:
+ * - Wallet address is the canonical identifier
+ * - Platform IDs (Discord, Telegram) link TO the wallet
+ * - All services use member_id (derived from wallet)
+ */
 
-import { db } from '../db';
-import { logger } from '../utils/logger';
-import { badgeService } from './BadgeService';
-import { auditService } from './AuditService';
-import type { WaterSharerGrant } from '../types';
-
-export class WaterSharerService {
-  private readonly WATER_SHARER_BADGE = 'water-sharer';
-
-  /**
-   * Check if member can share badge (has badge + hasn't shared yet)
-   */
-  canShare(memberId: string): { allowed: boolean; reason?: string } {
-    // Check badge
-    const hasBadge = badgeService.hasBadge(memberId, this.WATER_SHARER_BADGE);
-    if (!hasBadge) {
-      return { allowed: false, reason: 'Water Sharer badge required' };
-    }
-
-    // Check for existing active grant (can only share once)
-    const existingGrant = db.prepare(`
-      SELECT id FROM water_sharer_grants
-      WHERE granter_member_id = ?
-        AND revoked_at IS NULL
-    `).get(memberId);
-
-    if (existingGrant) {
-      return { allowed: false, reason: 'You have already shared your badge' };
-    }
-
-    return { allowed: true };
-  }
-
-  /**
-   * Share badge with another existing member
-   */
-  async shareBadge(
-    granterMemberId: string,
-    recipientMemberId: string
-  ): Promise<{ success: boolean; grant?: WaterSharerGrant; error?: string }> {
-    // Validate granter can share
-    const canShare = this.canShare(granterMemberId);
-    if (!canShare.allowed) {
-      return { success: false, error: canShare.reason };
-    }
-
-    // Validate recipient exists and completed onboarding
-    const recipient = db.prepare(`
-      SELECT id, onboarding_complete FROM member_profiles WHERE id = ?
-    `).get(recipientMemberId) as { id: string; onboarding_complete: number } | undefined;
-
-    if (!recipient) {
-      return { success: false, error: 'Recipient must be an existing server member' };
-    }
-
-    if (!recipient.onboarding_complete) {
-      return { success: false, error: 'Recipient must have completed onboarding' };
-    }
-
-    // Check recipient doesn't already have badge
-    const recipientHasBadge = badgeService.hasBadge(recipientMemberId, this.WATER_SHARER_BADGE);
-    if (recipientHasBadge) {
-      return { success: false, error: 'Recipient already has Water Sharer badge' };
-    }
-
-    const now = Date.now();
-    const grant: WaterSharerGrant = {
-      id: crypto.randomUUID(),
-      granter_member_id: granterMemberId,
-      recipient_member_id: recipientMemberId,
-      granted_at: now,
-      revoked_at: null,
-    };
-
-    // Create grant record
-    db.prepare(`
-      INSERT INTO water_sharer_grants
-      (id, granter_member_id, recipient_member_id, granted_at)
-      VALUES (?, ?, ?, ?)
-    `).run(grant.id, grant.granter_member_id, grant.recipient_member_id, grant.granted_at);
-
-    // Award badge to recipient
-    await badgeService.awardBadge(recipientMemberId, this.WATER_SHARER_BADGE);
-
-    // Log audit event
-    auditService.log({
-      event_type: 'water_sharer_grant',
-      member_id: granterMemberId,
-      metadata: { recipient_member_id: recipientMemberId, grant_id: grant.id },
-    });
-
-    logger.info({ granterMemberId, recipientMemberId }, 'Water Sharer badge shared');
-
-    return { success: true, grant };
-  }
-
-  /**
-   * Revoke badge (admin action) - also revokes downstream grants
-   */
-  async revokeBadge(memberId: string, revokedBy: string): Promise<boolean> {
-    const now = Date.now();
-
-    // Revoke any grant this member received
-    db.prepare(`
-      UPDATE water_sharer_grants
-      SET revoked_at = ?
-      WHERE recipient_member_id = ? AND revoked_at IS NULL
-    `).run(now, memberId);
-
-    // Revoke any grant this member gave (cascade)
-    const downstream = db.prepare(`
-      SELECT recipient_member_id FROM water_sharer_grants
-      WHERE granter_member_id = ? AND revoked_at IS NULL
-    `).all(memberId) as { recipient_member_id: string }[];
-
-    for (const grant of downstream) {
-      await this.revokeBadge(grant.recipient_member_id, revokedBy);
-    }
-
-    // Remove badge
-    badgeService.removeBadge(memberId, this.WATER_SHARER_BADGE);
-
-    auditService.log({
-      event_type: 'water_sharer_revoke',
-      member_id: memberId,
-      metadata: { revoked_by: revokedBy },
-    });
-
-    logger.info({ memberId, revokedBy }, 'Water Sharer badge revoked');
-    return true;
-  }
-
-  /**
-   * Get sharing status for a member
-   */
-  getSharingStatus(memberId: string): {
-    hasBadge: boolean;
-    canShare: boolean;
-    sharedWith?: { member_id: string; nym?: string };
-    receivedFrom?: { member_id: string; nym?: string };
-  } {
-    const hasBadge = badgeService.hasBadge(memberId, this.WATER_SHARER_BADGE);
-
-    // Check if shared with someone
-    const sharedGrant = db.prepare(`
-      SELECT wsg.recipient_member_id, mp.nym
-      FROM water_sharer_grants wsg
-      LEFT JOIN member_profiles mp ON mp.id = wsg.recipient_member_id
-      WHERE wsg.granter_member_id = ? AND wsg.revoked_at IS NULL
-    `).get(memberId) as { recipient_member_id: string; nym?: string } | undefined;
-
-    // Check if received from someone
-    const receivedGrant = db.prepare(`
-      SELECT wsg.granter_member_id, mp.nym
-      FROM water_sharer_grants wsg
-      LEFT JOIN member_profiles mp ON mp.id = wsg.granter_member_id
-      WHERE wsg.recipient_member_id = ? AND wsg.revoked_at IS NULL
-    `).get(memberId) as { granter_member_id: string; nym?: string } | undefined;
-
-    return {
-      hasBadge,
-      canShare: hasBadge && !sharedGrant,
-      sharedWith: sharedGrant ? { member_id: sharedGrant.recipient_member_id, nym: sharedGrant.nym } : undefined,
-      receivedFrom: receivedGrant ? { member_id: receivedGrant.granter_member_id, nym: receivedGrant.nym } : undefined,
-    };
-  }
-
-  /**
-   * Get badge lineage tree (admin view)
-   */
-  getBadgeLineage(): Array<{
-    granter_nym: string;
-    recipient_nym: string;
-    granted_at: number;
-  }> {
-    return db.prepare(`
-      SELECT g.nym as granter_nym, r.nym as recipient_nym, wsg.granted_at
-      FROM water_sharer_grants wsg
-      JOIN member_profiles g ON g.id = wsg.granter_member_id
-      JOIN member_profiles r ON r.id = wsg.recipient_member_id
-      WHERE wsg.revoked_at IS NULL
-      ORDER BY wsg.granted_at DESC
-    `).all() as Array<{ granter_nym: string; recipient_nym: string; granted_at: number }>;
-  }
+export interface PlatformLink {
+  platform: 'discord' | 'telegram';
+  platformUserId: string;
+  linkedAt: Date;
 }
 
-export const waterSharerService = new WaterSharerService();
-```
-
-### 4.3 DigestService
-
-**File**: `src/services/DigestService.ts`
-
-**Responsibility**: Generate and post weekly community digest to #announcements.
-
-```typescript
-// src/services/DigestService.ts
-
-import { db } from '../db';
-import { logger } from '../utils/logger';
-import { discordService } from './DiscordService';
-import { tierService } from './TierService';
-import type { WeeklyStats, WeeklyDigest } from '../types';
-
-export class DigestService {
-  /**
-   * Collect stats for the past week
-   */
-  collectWeeklyStats(): WeeklyStats {
-    const now = Date.now();
-    const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
-
-    // Total members
-    const totalMembers = db.prepare(`
-      SELECT COUNT(*) as count FROM member_profiles
-    `).get() as { count: number };
-
-    // New members this week
-    const newMembers = db.prepare(`
-      SELECT COUNT(*) as count FROM member_profiles
-      WHERE created_at >= ?
-    `).get(weekAgo) as { count: number };
-
-    // Total BGT (from current_eligibility)
-    const totalBgt = db.prepare(`
-      SELECT SUM(bgt) as total FROM current_eligibility
-      WHERE address IN (
-        SELECT wallet_address FROM wallet_mappings
-        WHERE discord_id IN (SELECT discord_id FROM member_profiles)
-      )
-    `).get() as { total: number };
-
-    // Tier distribution
-    const tierDistribution = tierService.getTierDistribution();
-
-    // Most active tier (by message count)
-    const mostActiveTier = db.prepare(`
-      SELECT mp.tier, SUM(ma.weekly_messages) as messages
-      FROM member_profiles mp
-      JOIN member_activity ma ON ma.member_id = mp.id
-      GROUP BY mp.tier
-      ORDER BY messages DESC
-      LIMIT 1
-    `).get() as { tier: string; messages: number } | undefined;
-
-    // Tier promotions this week
-    const promotions = db.prepare(`
-      SELECT COUNT(*) as count FROM tier_history
-      WHERE changed_at >= ?
-    `).get(weekAgo) as { count: number };
-
-    // Notable promotions (to Usul or higher)
-    const notablePromotions = db.prepare(`
-      SELECT mp.nym, th.to_tier
-      FROM tier_history th
-      JOIN member_profiles mp ON mp.id = th.member_id
-      WHERE th.changed_at >= ?
-        AND th.to_tier IN ('usul', 'fedaykin', 'naib')
-      ORDER BY th.changed_at DESC
-      LIMIT 3
-    `).all(weekAgo) as { nym: string; to_tier: string }[];
-
-    // Badges awarded this week
-    const badgesAwarded = db.prepare(`
-      SELECT COUNT(*) as count FROM member_badges
-      WHERE awarded_at >= ?
-    `).get(weekAgo) as { count: number };
-
-    // Top new member (highest BGT)
-    const topNewMember = db.prepare(`
-      SELECT mp.nym, mp.tier
-      FROM member_profiles mp
-      JOIN wallet_mappings wm ON wm.discord_id = mp.discord_id
-      JOIN current_eligibility ce ON ce.address = wm.wallet_address
-      WHERE mp.created_at >= ?
-      ORDER BY ce.bgt DESC
-      LIMIT 1
-    `).get(weekAgo) as { nym: string; tier: string } | undefined;
-
-    return {
-      week_start: new Date(weekAgo),
-      total_members: totalMembers.count,
-      new_members: newMembers.count,
-      total_bgt: Math.floor(totalBgt.total || 0),
-      tier_distribution: tierDistribution,
-      most_active_tier: mostActiveTier?.tier || 'unknown',
-      promotions: promotions.count,
-      badges_awarded: badgesAwarded.count,
-      top_new_member: topNewMember,
-      notable_promotions: notablePromotions.map(p => ({
-        nym: p.nym,
-        new_tier: p.to_tier,
-      })),
-    };
-  }
-
-  /**
-   * Format stats into Discord message
-   */
-  formatDigest(stats: WeeklyStats): string {
-    const weekEnd = new Date();
-    const dateRange = `${stats.week_start.toLocaleDateString()} - ${weekEnd.toLocaleDateString()}`;
-
-    let message = `📜 **Weekly Pulse of the Sietch**\n\n`;
-    message += `**Week of ${dateRange}**\n\n`;
-
-    // Community Stats
-    message += `📊 **Community Stats:**\n`;
-    message += `• Total Members: ${stats.total_members} (+${stats.new_members})\n`;
-    message += `• BGT Represented: ${stats.total_bgt.toLocaleString()} BGT\n`;
-    message += `• Most Active Tier: ${this.formatTierName(stats.most_active_tier)}\n\n`;
-
-    // New Members
-    message += `🎖️ **New Members:**\n`;
-    message += `• ${stats.new_members} joined this week\n`;
-    if (stats.top_new_member) {
-      message += `• Notable: ${stats.top_new_member.nym} entered as ${this.formatTierName(stats.top_new_member.tier)}\n`;
-    }
-    message += `\n`;
-
-    // Tier Promotions
-    message += `⬆️ **Tier Promotions:**\n`;
-    message += `• ${stats.promotions} members rose to higher tiers\n`;
-    for (const promo of stats.notable_promotions) {
-      message += `• ${promo.nym} reached ${this.formatTierName(promo.new_tier)}!\n`;
-    }
-    message += `\n`;
-
-    // Badges
-    message += `🏅 **Badges Awarded:**\n`;
-    message += `• ${stats.badges_awarded} badges given this week\n\n`;
-
-    message += `*The spice flows...*`;
-
-    return message;
-  }
-
-  /**
-   * Format tier name for display
-   */
-  private formatTierName(tier: string): string {
-    const names: Record<string, string> = {
-      hajra: 'Hajra',
-      ichwan: 'Ichwan',
-      qanat: 'Qanat',
-      sihaya: 'Sihaya',
-      mushtamal: 'Mushtamal',
-      sayyadina: 'Sayyadina',
-      usul: 'Usul',
-      fedaykin: 'Fedaykin',
-      naib: 'Naib',
-    };
-    return names[tier] || tier;
-  }
-
-  /**
-   * Post digest to announcements channel
-   */
-  async postDigest(): Promise<boolean> {
-    try {
-      const stats = this.collectWeeklyStats();
-      const message = this.formatDigest(stats);
-
-      // Post to announcements
-      const channelId = process.env.DISCORD_ANNOUNCEMENTS_CHANNEL_ID;
-      if (!channelId) {
-        logger.error('DISCORD_ANNOUNCEMENTS_CHANNEL_ID not configured');
-        return false;
-      }
-
-      const sentMessage = await discordService.sendMessage(channelId, message);
-
-      // Store digest record
-      const digest: WeeklyDigest = {
-        id: crypto.randomUUID(),
-        week_start: stats.week_start.toISOString().split('T')[0],
-        stats_json: JSON.stringify(stats),
-        posted_at: Date.now(),
-        message_id: sentMessage?.id || null,
-      };
-
-      db.prepare(`
-        INSERT INTO weekly_digests (id, week_start, stats_json, posted_at, message_id)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(digest.id, digest.week_start, digest.stats_json, digest.posted_at, digest.message_id);
-
-      logger.info({ digestId: digest.id }, 'Weekly digest posted');
-      return true;
-    } catch (error) {
-      logger.error({ error }, 'Failed to post weekly digest');
-      return false;
-    }
-  }
-}
-
-export const digestService = new DigestService();
-```
-
-### 4.4 StoryService
-
-**File**: `src/services/StoryService.ts`
-
-**Responsibility**: Manage and post story fragments for elite member joins.
-
-```typescript
-// src/services/StoryService.ts
-
-import { db } from '../db';
-import { logger } from '../utils/logger';
-import { discordService } from './DiscordService';
-import type { StoryFragment, Tier } from '../types';
-
-export class StoryService {
-  private readonly CATEGORIES = {
-    fedaykin_join: 'fedaykin_join',
-    naib_join: 'naib_join',
-  } as const;
-
-  /**
-   * Get random fragment for category, preferring least-used
-   */
-  getFragment(category: keyof typeof this.CATEGORIES): StoryFragment | null {
-    // Get least-used fragments for this category
-    const fragment = db.prepare(`
-      SELECT * FROM story_fragments
-      WHERE category = ?
-      ORDER BY used_count ASC, RANDOM()
-      LIMIT 1
-    `).get(category) as StoryFragment | null;
-
-    if (fragment) {
-      // Increment usage
-      db.prepare(`
-        UPDATE story_fragments SET used_count = used_count + 1 WHERE id = ?
-      `).run(fragment.id);
-    }
-
-    return fragment;
-  }
-
-  /**
-   * Post story fragment for new elite member
-   */
-  async postJoinFragment(tier: Tier): Promise<boolean> {
-    // Only for Fedaykin and Naib
-    if (tier !== 'fedaykin' && tier !== 'naib') {
-      return false;
-    }
-
-    const category = tier === 'naib' ? 'naib_join' : 'fedaykin_join';
-    const fragment = this.getFragment(category);
-
-    if (!fragment) {
-      logger.warn({ category }, 'No story fragments available');
-      return false;
-    }
-
-    const channelId = process.env.DISCORD_THE_DOOR_CHANNEL_ID;
-    if (!channelId) {
-      logger.error('DISCORD_THE_DOOR_CHANNEL_ID not configured');
-      return false;
-    }
-
-    // Format with decorative borders
-    const message = `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n${fragment.content}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
-
-    try {
-      await discordService.sendMessage(channelId, message);
-      logger.info({ category, fragmentId: fragment.id }, 'Story fragment posted');
-      return true;
-    } catch (error) {
-      logger.error({ error, category }, 'Failed to post story fragment');
-      return false;
-    }
-  }
-
-  /**
-   * Seed default fragments
-   */
-  seedDefaultFragments(): void {
-    const fedaykinFragments = [
-      `The desert wind carried whispers of a new arrival.\nOne who had held their water, never trading the sacred spice.\nThe sietch grows stronger.`,
-      `Footsteps in the sand revealed a traveler from distant dunes.\nThey bore no marks of the water sellers.\nA new Fedaykin has earned their place.`,
-      `The winds shifted across the Great Bled.\nA new figure emerged from the dancing sands,\ntheir stillsuit bearing the marks of deep desert travel.\n\nThe watermasters took note.\nAnother has proven their worth in the spice trade.\n\nA new Fedaykin walks among us.`,
-    ];
-
-    const naibFragments = [
-      `The council chamber stirred.\nA presence of great weight approached -\none whose reserves of melange could shift the balance.\nA new voice joins the Naib.`,
-      `The seven seats trembled as the sands revealed\na walker of extraordinary means.\nThe council must make room.\nA new Naib has arrived.`,
-    ];
-
-    // Insert if table is empty
-    const count = db.prepare(`SELECT COUNT(*) as c FROM story_fragments`).get() as { c: number };
-    if (count.c > 0) return;
-
-    for (const content of fedaykinFragments) {
-      db.prepare(`
-        INSERT INTO story_fragments (id, category, content, used_count)
-        VALUES (?, ?, ?, 0)
-      `).run(crypto.randomUUID(), 'fedaykin_join', content);
-    }
-    for (const content of naibFragments) {
-      db.prepare(`
-        INSERT INTO story_fragments (id, category, content, used_count)
-        VALUES (?, ?, ?, 0)
-      `).run(crypto.randomUUID(), 'naib_join', content);
-    }
-
-    logger.info('Default story fragments seeded');
-  }
-}
-
-export const storyService = new StoryService();
-```
-
-### 4.5 StatsService
-
-**File**: `src/services/StatsService.ts`
-
-**Responsibility**: Provide personal stats and analytics for members.
-
-```typescript
-// src/services/StatsService.ts
-
-import { db } from '../db';
-import { tierService } from './TierService';
-import { badgeService } from './BadgeService';
-import type { PersonalStats, CommunityStats, AdminAnalytics } from '../types';
-
-export class StatsService {
-  /**
-   * Get personal stats for /stats command
-   */
-  getPersonalStats(memberId: string): PersonalStats | null {
-    const member = db.prepare(`
-      SELECT mp.*, ma.current_streak, ma.longest_streak, ma.weekly_messages
-      FROM member_profiles mp
-      LEFT JOIN member_activity ma ON ma.member_id = mp.id
-      WHERE mp.id = ?
-    `).get(memberId) as {
-      id: string;
-      nym: string;
-      tier: string;
-      created_at: number;
-      current_streak: number;
-      longest_streak: number;
-      weekly_messages: number;
-    } | undefined;
-
-    if (!member) return null;
-
-    // Get badges
-    const badges = badgeService.getMemberBadges(memberId);
-
-    // Get tier progress
-    const tierProgress = tierService.getTierProgress(memberId);
-
-    return {
-      nym: member.nym,
-      tier: member.tier,
-      memberSince: new Date(member.created_at),
-      activity: {
-        messagesThisWeek: member.weekly_messages || 0,
-        currentStreak: member.current_streak || 0,
-        longestStreak: member.longest_streak || 0,
-      },
-      badges: badges.map(b => b.badge_id),
-      badgeCount: badges.length,
-      tierProgress: tierProgress ? {
-        current: tierProgress.currentTier,
-        currentBgt: tierProgress.currentBgt,
-        next: tierProgress.nextTier,
-        threshold: tierProgress.nextThreshold,
-        distance: tierProgress.distance,
-        percentage: tierProgress.percentage,
-      } : null,
-    };
-  }
-
-  /**
-   * Get public community stats
-   */
-  getCommunityStats(): CommunityStats {
-    const totalMembers = db.prepare(`
-      SELECT COUNT(*) as count FROM member_profiles
-    `).get() as { count: number };
-
-    const totalBgt = db.prepare(`
-      SELECT SUM(bgt) as total FROM current_eligibility
-      WHERE address IN (
-        SELECT wallet_address FROM wallet_mappings
-        WHERE discord_id IN (SELECT discord_id FROM member_profiles)
-      )
-    `).get() as { total: number };
-
-    const tierDistribution = tierService.getTierDistribution();
-
-    return {
-      totalMembers: totalMembers.count,
-      totalBgt: Math.floor(totalBgt.total || 0),
-      tierDistribution,
-    };
-  }
-
-  /**
-   * Get admin analytics dashboard
-   */
-  getAdminAnalytics(): AdminAnalytics {
-    const now = Date.now();
-    const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
-
-    const totalMembers = db.prepare(`
-      SELECT COUNT(*) as count FROM member_profiles
-    `).get() as { count: number };
-
-    const tierDistribution = tierService.getTierDistribution();
-
-    const totalBgt = db.prepare(`
-      SELECT SUM(bgt) as total FROM current_eligibility
-      WHERE address IN (
-        SELECT wallet_address FROM wallet_mappings
-        WHERE discord_id IN (SELECT discord_id FROM member_profiles)
-      )
-    `).get() as { total: number };
-
-    const weeklyActive = db.prepare(`
-      SELECT COUNT(*) as count FROM member_activity
-      WHERE last_active >= ?
-    `).get(weekAgo) as { count: number };
-
-    const newThisWeek = db.prepare(`
-      SELECT COUNT(*) as count FROM member_profiles
-      WHERE created_at >= ?
-    `).get(weekAgo) as { count: number };
-
-    const promotionsThisWeek = db.prepare(`
-      SELECT COUNT(*) as count FROM tier_history
-      WHERE changed_at >= ?
-    `).get(weekAgo) as { count: number };
-
-    return {
-      total_members: totalMembers.count,
-      by_tier: tierDistribution,
-      total_bgt: Math.floor(totalBgt.total || 0),
-      weekly_active: weeklyActive.count,
-      new_this_week: newThisWeek.count,
-      promotions_this_week: promotionsThisWeek.count,
-    };
-  }
-
-  /**
-   * Get tier leaderboard (closest to promotion)
-   */
-  getTierLeaderboard(limit = 10): Array<{
-    nym: string;
-    tier: string;
-    currentBgt: number;
-    nextTier: string;
-    nextThreshold: number;
-    distance: number;
-  }> {
-    // Get members with BGT-based tiers (not Fedaykin/Naib)
-    const members = db.prepare(`
-      SELECT mp.id, mp.nym, mp.tier, ce.bgt
-      FROM member_profiles mp
-      JOIN wallet_mappings wm ON wm.discord_id = mp.discord_id
-      JOIN current_eligibility ce ON ce.address = wm.wallet_address
-      WHERE mp.tier NOT IN ('fedaykin', 'naib')
-      ORDER BY ce.bgt DESC
-    `).all() as { id: string; nym: string; tier: string; bgt: number }[];
-
-    const leaderboard = [];
-
-    for (const member of members) {
-      const progress = tierService.getTierProgress(member.id);
-      if (progress?.nextTier && progress.nextThreshold && progress.distance !== null) {
-        leaderboard.push({
-          nym: member.nym,
-          tier: member.tier,
-          currentBgt: Math.floor(member.bgt),
-          nextTier: progress.nextTier,
-          nextThreshold: progress.nextThreshold,
-          distance: progress.distance,
-        });
-      }
-    }
-
-    // Sort by distance (ascending - closest first)
-    leaderboard.sort((a, b) => a.distance - b.distance);
-
-    return leaderboard.slice(0, limit);
-  }
-}
-
-export const statsService = new StatsService();
-```
-
-### 4.6 NaibService (Retained from v2.1)
-
-**File**: `src/services/NaibService.ts`
-
-**Responsibility**: Manage Naib seat assignment, bumping logic, and seat history.
-
-```typescript
-// src/services/NaibService.ts
-
-import { db } from '../db';
-import { logger } from '../utils/logger';
-import type { NaibSeat, NaibMember } from '../types';
-
-export class NaibService {
-  private readonly NAIB_SEAT_COUNT = 7;
-
-  /**
-   * Get current Naib members
-   */
-  getCurrentNaib(): NaibMember[] {
-    return db.prepare(`
-      SELECT ns.*, mp.nym, mp.discord_id, ce.bgt
-      FROM naib_seats ns
-      JOIN member_profiles mp ON mp.id = ns.member_id
-      JOIN wallet_mappings wm ON wm.discord_id = mp.discord_id
-      JOIN current_eligibility ce ON ce.address = wm.wallet_address
-      WHERE ns.unseated_at IS NULL
-      ORDER BY ce.bgt DESC
-    `).all() as NaibMember[];
-  }
-
-  /**
-   * Get Former Naib members
-   */
-  getFormerNaib(): NaibMember[] {
-    return db.prepare(`
-      SELECT DISTINCT mp.id, mp.nym, mp.discord_id
-      FROM naib_seats ns
-      JOIN member_profiles mp ON mp.id = ns.member_id
-      WHERE ns.unseated_at IS NOT NULL
-        AND mp.id NOT IN (
-          SELECT member_id FROM naib_seats WHERE unseated_at IS NULL
-        )
-    `).all() as NaibMember[];
-  }
-
-  /**
-   * Get lowest Naib member by BGT (for bump evaluation)
-   */
-  getLowestNaibMember(): NaibMember | null {
-    return db.prepare(`
-      SELECT ns.*, mp.nym, mp.discord_id, ce.bgt, mp.created_at as tenure_start
-      FROM naib_seats ns
-      JOIN member_profiles mp ON mp.id = ns.member_id
-      JOIN wallet_mappings wm ON wm.discord_id = mp.discord_id
-      JOIN current_eligibility ce ON ce.address = wm.wallet_address
-      WHERE ns.unseated_at IS NULL
-      ORDER BY ce.bgt ASC, mp.created_at DESC
-      LIMIT 1
-    `).get() as NaibMember | null;
-  }
-
-  /**
-   * Seat a member in the Naib
-   */
-  seatMember(memberId: string, seatNumber: number): void {
-    const id = crypto.randomUUID();
-    const now = Date.now();
-
-    db.prepare(`
-      INSERT INTO naib_seats (id, member_id, seat_number, seated_at)
-      VALUES (?, ?, ?, ?)
-    `).run(id, memberId, seatNumber, now);
-
-    logger.info({ memberId, seatNumber }, 'Member seated in Naib');
-  }
-
-  /**
-   * Bump lowest Naib member when higher BGT member arrives
-   */
-  bumpMember(bumpedMemberId: string, bumpedByMemberId: string): void {
-    const now = Date.now();
-
-    // Unseat the bumped member
-    db.prepare(`
-      UPDATE naib_seats
-      SET unseated_at = ?, unseated_by = ?, unseated_reason = 'bumped'
-      WHERE member_id = ? AND unseated_at IS NULL
-    `).run(now, bumpedByMemberId, bumpedMemberId);
-
-    // Get the freed seat number
-    const freedSeat = db.prepare(`
-      SELECT seat_number FROM naib_seats
-      WHERE member_id = ? AND unseated_at = ?
-    `).get(bumpedMemberId, now) as { seat_number: number };
-
-    // Seat the new member
-    this.seatMember(bumpedByMemberId, freedSeat.seat_number);
-
-    // Mark bumped member as Former Naib
-    db.prepare(`
-      UPDATE member_profiles SET is_former_naib = 1 WHERE id = ?
-    `).run(bumpedMemberId);
-
-    logger.info({ bumpedMemberId, bumpedByMemberId }, 'Naib member bumped');
-  }
-
-  /**
-   * Evaluate and process Naib seat changes during sync
-   */
-  evaluateNaibSeats(eligibilityList: Array<{ memberId: string; bgt: number; rank: number }>): {
-    seated: string[];
-    bumped: Array<{ member: string; by: string }>;
-  } {
-    const result = { seated: [] as string[], bumped: [] as Array<{ member: string; by: string }> };
-    const currentNaib = this.getCurrentNaib();
-
-    // If Naib not full, seat top members
-    if (currentNaib.length < this.NAIB_SEAT_COUNT) {
-      const topMembers = eligibilityList
-        .filter(e => e.rank <= this.NAIB_SEAT_COUNT)
-        .filter(e => !currentNaib.some(n => n.member_id === e.memberId));
-
-      for (const member of topMembers) {
-        const nextSeat = currentNaib.length + result.seated.length + 1;
-        if (nextSeat <= this.NAIB_SEAT_COUNT) {
-          this.seatMember(member.memberId, nextSeat);
-          result.seated.push(member.memberId);
-        }
-      }
-    }
-
-    // Check for bumping (new member with higher BGT than lowest Naib)
-    const lowest = this.getLowestNaibMember();
-    if (lowest) {
-      const challengers = eligibilityList
-        .filter(e => e.bgt > lowest.bgt)
-        .filter(e => !currentNaib.some(n => n.member_id === e.memberId))
-        .sort((a, b) => b.bgt - a.bgt);
-
-      if (challengers.length > 0) {
-        this.bumpMember(lowest.member_id, challengers[0].memberId);
-        result.bumped.push({ member: lowest.member_id, by: challengers[0].memberId });
-      }
-    }
-
-    return result;
-  }
-
-  /**
-   * Check if member is current Naib
-   */
-  isNaibMember(memberId: string): boolean {
-    const result = db.prepare(`
-      SELECT 1 FROM naib_seats WHERE member_id = ? AND unseated_at IS NULL
-    `).get(memberId);
-    return !!result;
-  }
-
-  /**
-   * Check if member is Former Naib
-   */
-  isFormerNaib(memberId: string): boolean {
-    const result = db.prepare(`
-      SELECT is_former_naib FROM member_profiles WHERE id = ?
-    `).get(memberId) as { is_former_naib: number } | undefined;
-    return result?.is_former_naib === 1;
-  }
-}
-
-export const naibService = new NaibService();
-```
-
-### 4.7 NotificationService Extensions (Retained from v2.1)
-
-**File**: `src/services/NotificationService.ts`
-
-**Responsibility**: Send position alerts, at-risk warnings, Naib threats, and manage notification preferences.
-
-```typescript
-// src/services/NotificationService.ts (extensions for v2.1 features)
-
-import { db } from '../db';
-import { logger } from '../utils/logger';
-import { discordService } from './DiscordService';
-import type { NotificationPreferences, AlertType } from '../types';
-
-export class NotificationService {
-  /**
-   * Get member notification preferences
-   */
-  getPreferences(memberId: string): NotificationPreferences {
-    const prefs = db.prepare(`
-      SELECT * FROM notification_preferences WHERE member_id = ?
-    `).get(memberId) as NotificationPreferences | undefined;
-
-    // Return defaults if no preferences set
-    return prefs || {
-      member_id: memberId,
-      position_updates_enabled: 1,
-      position_update_frequency: '3_per_week',
-      at_risk_warnings_enabled: 1,
-      naib_alerts_enabled: 1,
-      last_position_alert_at: null,
-      alerts_sent_this_week: 0,
-      week_start_timestamp: null,
-      created_at: Date.now(),
-      updated_at: Date.now(),
-    };
-  }
-
-  /**
-   * Update notification preferences
-   */
-  updatePreferences(memberId: string, updates: Partial<NotificationPreferences>): void {
-    const now = Date.now();
-    const existing = this.getPreferences(memberId);
-
-    if (existing.created_at === now) {
-      // New record - insert
-      db.prepare(`
-        INSERT INTO notification_preferences
-        (member_id, position_updates_enabled, position_update_frequency,
-         at_risk_warnings_enabled, naib_alerts_enabled, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        memberId,
-        updates.position_updates_enabled ?? 1,
-        updates.position_update_frequency ?? '3_per_week',
-        updates.at_risk_warnings_enabled ?? 1,
-        updates.naib_alerts_enabled ?? 1,
-        now, now
-      );
-    } else {
-      // Update existing
-      const fields = [];
-      const values = [];
-
-      if (updates.position_updates_enabled !== undefined) {
-        fields.push('position_updates_enabled = ?');
-        values.push(updates.position_updates_enabled);
-      }
-      if (updates.position_update_frequency !== undefined) {
-        fields.push('position_update_frequency = ?');
-        values.push(updates.position_update_frequency);
-      }
-      if (updates.at_risk_warnings_enabled !== undefined) {
-        fields.push('at_risk_warnings_enabled = ?');
-        values.push(updates.at_risk_warnings_enabled);
-      }
-      if (updates.naib_alerts_enabled !== undefined) {
-        fields.push('naib_alerts_enabled = ?');
-        values.push(updates.naib_alerts_enabled);
-      }
-
-      fields.push('updated_at = ?');
-      values.push(now);
-      values.push(memberId);
-
-      db.prepare(`
-        UPDATE notification_preferences
-        SET ${fields.join(', ')}
-        WHERE member_id = ?
-      `).run(...values);
-    }
-  }
-
-  /**
-   * Send at-risk warning to member
-   */
-  async sendAtRiskWarning(
-    discordId: string,
-    distanceTo70: number,
-    distanceTo71: number
-  ): Promise<boolean> {
-    const message = `⚠️ **Position Alert**
-
-You are currently in the bottom 10% of Fedaykin members.
-
-Your standing:
-• Position #70 (first outside): ${distanceTo70} BGT behind you
-• Position #71: ${distanceTo71} BGT behind you
-
-If a wallet with more BGT than yours becomes eligible,
-you may lose your Fedaykin status.
-
-This is a private alert - your position is never shown publicly.
-━━━━━━━━━━━━━━━━━━━━━━━
-[Understood] [Turn Off At-Risk Alerts]`;
-
-    try {
-      await discordService.sendDM(discordId, message);
-      this.recordAlert(null, discordId, 'at_risk_warning', 'At-risk warning sent');
-      return true;
-    } catch (error) {
-      logger.error({ error, discordId }, 'Failed to send at-risk warning');
-      return false;
-    }
-  }
-
-  /**
-   * Send Naib threat alert
-   */
-  async sendNaibThreat(discordId: string, lowestNaibBgt: number): Promise<boolean> {
-    const message = `🏛️ **Naib Alert**
-
-A new member has joined with significant BGT holdings.
-
-As a Naib member, your seat is determined by BGT holdings
-among the first 7 members (with tenure as tie-breaker).
-
-Current lowest Naib BGT: ${lowestNaibBgt.toLocaleString()}
-
-If your holdings are lowest, your seat may be at risk.
-━━━━━━━━━━━━━━━━━━━━━━━
-[View Naib Status] [Dismiss]`;
-
-    try {
-      await discordService.sendDM(discordId, message);
-      this.recordAlert(null, discordId, 'naib_threat', 'Naib threat alert sent');
-      return true;
-    } catch (error) {
-      logger.error({ error, discordId }, 'Failed to send Naib threat');
-      return false;
-    }
-  }
-
-  /**
-   * Send position update alert
-   */
-  async sendPositionUpdate(
-    discordId: string,
-    distanceUp: number,
-    distanceDown: number
-  ): Promise<boolean> {
-    const statusMessage = distanceDown > 500
-      ? 'Your position is secure for now.'
-      : distanceDown < 100
-        ? '⚠️ Watch your position closely.'
-        : 'Stay vigilant, Fedaykin.';
-
-    const message = `📊 **Position Update**
-
-Your current standing:
-• You are ${distanceUp} BGT away from the position above you
-• The position below you is ${distanceDown} BGT away from yours
-
-${statusMessage}
-━━━━━━━━━━━━━━━━━━━━━━━
-[Manage Alerts] [Disable]`;
-
-    try {
-      await discordService.sendDM(discordId, message);
-      this.recordAlert(null, discordId, 'position_update', 'Position update sent');
-      return true;
-    } catch (error) {
-      logger.error({ error, discordId }, 'Failed to send position update');
-      return false;
-    }
-  }
-
-  /**
-   * Check if member can receive alert (rate limiting)
-   */
-  canSendAlert(memberId: string, alertType: AlertType): boolean {
-    const prefs = this.getPreferences(memberId);
-    const now = Date.now();
-    const weekStart = this.getWeekStart(now);
-
-    // Reset weekly counter if new week
-    if (!prefs.week_start_timestamp || prefs.week_start_timestamp < weekStart) {
-      db.prepare(`
-        UPDATE notification_preferences
-        SET alerts_sent_this_week = 0, week_start_timestamp = ?
-        WHERE member_id = ?
-      `).run(weekStart, memberId);
-      prefs.alerts_sent_this_week = 0;
-    }
-
-    // Check specific alert type enabled
-    if (alertType === 'position_update' && !prefs.position_updates_enabled) return false;
-    if (alertType === 'at_risk_warning' && !prefs.at_risk_warnings_enabled) return false;
-    if (alertType === 'naib_threat' && !prefs.naib_alerts_enabled) return false;
-
-    // Check frequency limit for position updates
-    if (alertType === 'position_update') {
-      const maxAlerts: Record<string, number> = {
-        '1_per_week': 1,
-        '2_per_week': 2,
-        '3_per_week': 3,
-        'daily': 7,
-      };
-      const limit = maxAlerts[prefs.position_update_frequency] || 3;
-      return prefs.alerts_sent_this_week < limit;
-    }
-
-    return true;
-  }
-
-  /**
-   * Record alert in history
-   */
-  private recordAlert(
-    memberId: string | null,
-    discordId: string,
-    alertType: AlertType,
-    summary: string
-  ): void {
-    db.prepare(`
-      INSERT INTO alert_history (id, member_id, discord_user_id, alert_type, content_summary, sent_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(crypto.randomUUID(), memberId, discordId, alertType, summary, Date.now());
-  }
-
-  /**
-   * Get start of current week (Monday 00:00 UTC)
-   */
-  private getWeekStart(timestamp: number): number {
-    const date = new Date(timestamp);
-    const day = date.getUTCDay();
-    const diff = date.getUTCDate() - day + (day === 0 ? -6 : 1);
-    date.setUTCDate(diff);
-    date.setUTCHours(0, 0, 0, 0);
-    return date.getTime();
-  }
-}
-
-export const notificationService = new NotificationService();
-```
-
-### 4.8 ThresholdService (Retained from v2.1)
-
-**File**: `src/services/ThresholdService.ts`
-
-**Responsibility**: Calculate Fedaykin entry threshold and position distances.
-
-```typescript
-// src/services/ThresholdService.ts
-
-import { db } from '../db';
-import type { ThresholdData } from '../types';
-
-export class ThresholdService {
-  /**
-   * Get current Fedaykin entry threshold (position 69's BGT)
-   */
-  getCurrentThreshold(): ThresholdData {
-    // Get position 69's BGT (the threshold)
-    const position69 = db.prepare(`
-      SELECT ce.bgt
-      FROM current_eligibility ce
-      WHERE ce.rank = 69
-    `).get() as { bgt: number } | undefined;
-
-    // Get positions 70-100 (next in line)
-    const waitlist = db.prepare(`
-      SELECT ce.rank, ce.bgt, ce.address
-      FROM current_eligibility ce
-      WHERE ce.rank BETWEEN 70 AND 100
-      ORDER BY ce.rank ASC
-    `).all() as { rank: number; bgt: number; address: string }[];
-
-    const threshold = position69?.bgt || 0;
-
-    return {
-      threshold,
-      position_69_bgt: threshold,
-      waitlist: waitlist.map(w => ({
-        rank: w.rank,
-        bgt: w.bgt,
-        distance: threshold - w.bgt,
-      })),
-    };
-  }
-
-  /**
-   * Get member's position relative to above/below
-   */
-  getPositionDistances(memberId: string): {
-    distanceUp: number;
-    distanceDown: number;
-    position: number;
-  } | null {
-    const member = db.prepare(`
-      SELECT ce.rank, ce.bgt
-      FROM member_profiles mp
-      JOIN wallet_mappings wm ON wm.discord_id = mp.discord_id
-      JOIN current_eligibility ce ON ce.address = wm.wallet_address
-      WHERE mp.id = ?
-    `).get(memberId) as { rank: number; bgt: number } | undefined;
-
-    if (!member || !member.rank) return null;
-
-    // Get position above
-    const above = db.prepare(`
-      SELECT bgt FROM current_eligibility WHERE rank = ?
-    `).get(member.rank - 1) as { bgt: number } | undefined;
-
-    // Get position below
-    const below = db.prepare(`
-      SELECT bgt FROM current_eligibility WHERE rank = ?
-    `).get(member.rank + 1) as { bgt: number } | undefined;
-
-    return {
-      position: member.rank,
-      distanceUp: above ? above.bgt - member.bgt : 0,
-      distanceDown: below ? member.bgt - below.bgt : 0,
-    };
-  }
-
-  /**
-   * Get at-risk members (bottom ~10% of Fedaykin)
-   */
-  getAtRiskMembers(percentage: number = 10): string[] {
-    const fedaykinCount = db.prepare(`
-      SELECT COUNT(*) as count FROM member_profiles WHERE tier = 'fedaykin'
-    `).get() as { count: number };
-
-    const atRiskCount = Math.ceil(fedaykinCount.count * (percentage / 100));
-
-    // Get bottom N Fedaykin by rank (highest rank numbers = lowest position)
-    const atRisk = db.prepare(`
-      SELECT mp.id
-      FROM member_profiles mp
-      JOIN wallet_mappings wm ON wm.discord_id = mp.discord_id
-      JOIN current_eligibility ce ON ce.address = wm.wallet_address
-      WHERE mp.tier = 'fedaykin'
-      ORDER BY ce.rank DESC
-      LIMIT ?
-    `).all(atRiskCount) as { id: string }[];
-
-    return atRisk.map(m => m.id);
-  }
-}
-
-export const thresholdService = new ThresholdService();
-```
-
----
-
-## 5. Data Architecture
-
-### 5.1 Database Schema Extensions
-
-**Migration File**: `src/db/migrations/006_tier_system.sql`
-
-```sql
--- Migration: 006_tier_system
--- Description: Add tier system, sponsor invites, story fragments, weekly digests
-
--- Add tier columns to member_profiles
-ALTER TABLE member_profiles ADD COLUMN tier TEXT DEFAULT 'hajra';
-ALTER TABLE member_profiles ADD COLUMN tier_updated_at INTEGER;
-
--- Create index for tier queries
-CREATE INDEX IF NOT EXISTS idx_member_profiles_tier ON member_profiles(tier);
-
--- Tier history for analytics
-CREATE TABLE IF NOT EXISTS tier_history (
-    id TEXT PRIMARY KEY,
-    member_id TEXT NOT NULL,
-    from_tier TEXT,
-    to_tier TEXT NOT NULL,
-    bgt_at_change INTEGER NOT NULL,
-    changed_at INTEGER NOT NULL,
-    FOREIGN KEY (member_id) REFERENCES member_profiles(id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_tier_history_member ON tier_history(member_id);
-CREATE INDEX IF NOT EXISTS idx_tier_history_date ON tier_history(changed_at);
-
--- Water Sharer badge grants (badge-sharing lineage)
-CREATE TABLE IF NOT EXISTS water_sharer_grants (
-    id TEXT PRIMARY KEY,
-    granter_member_id TEXT NOT NULL,      -- Who shared the badge
-    recipient_member_id TEXT NOT NULL,    -- Who received it
-    granted_at INTEGER NOT NULL,
-    revoked_at INTEGER,                   -- If admin revokes
-    FOREIGN KEY (granter_member_id) REFERENCES member_profiles(id),
-    FOREIGN KEY (recipient_member_id) REFERENCES member_profiles(id)
-);
-
--- Each member can only share once (one active grant as granter)
-CREATE UNIQUE INDEX IF NOT EXISTS idx_granter_active ON water_sharer_grants(granter_member_id)
-    WHERE revoked_at IS NULL;
--- Each member can only receive badge once
-CREATE UNIQUE INDEX IF NOT EXISTS idx_recipient_unique ON water_sharer_grants(recipient_member_id);
-
--- Story fragments
-CREATE TABLE IF NOT EXISTS story_fragments (
-    id TEXT PRIMARY KEY,
-    category TEXT NOT NULL,
-    content TEXT NOT NULL,
-    used_count INTEGER DEFAULT 0
-);
-
-CREATE INDEX IF NOT EXISTS idx_story_category ON story_fragments(category);
-
--- Weekly digests
-CREATE TABLE IF NOT EXISTS weekly_digests (
-    id TEXT PRIMARY KEY,
-    week_start DATE NOT NULL UNIQUE,
-    stats_json TEXT NOT NULL,
-    posted_at INTEGER,
-    message_id TEXT
-);
-
-CREATE INDEX IF NOT EXISTS idx_digest_date ON weekly_digests(week_start);
-
--- ============================================
--- RETAINED FROM v2.1: Naib & Alert System
--- ============================================
-
--- Naib seats (Top 7 competitive positions)
-CREATE TABLE IF NOT EXISTS naib_seats (
-    seat_number INTEGER PRIMARY KEY CHECK (seat_number BETWEEN 1 AND 7),
-    member_id TEXT NOT NULL UNIQUE,
-    seated_at INTEGER NOT NULL,
-    bumped_from_seat INTEGER,
-    bumped_by_member_id TEXT,
-    FOREIGN KEY (member_id) REFERENCES member_profiles(id),
-    FOREIGN KEY (bumped_by_member_id) REFERENCES member_profiles(id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_naib_seats_member ON naib_seats(member_id);
-CREATE INDEX IF NOT EXISTS idx_naib_seats_seated ON naib_seats(seated_at);
-
--- Notification preferences
-CREATE TABLE IF NOT EXISTS notification_preferences (
-    member_id TEXT PRIMARY KEY,
-    position_alerts_enabled INTEGER DEFAULT 1,
-    at_risk_alerts_enabled INTEGER DEFAULT 1,
-    naib_threat_alerts_enabled INTEGER DEFAULT 1,
-    frequency TEXT DEFAULT 'daily' CHECK (frequency IN ('1_per_week', '2_per_week', '3_per_week', 'daily')),
-    quiet_hours_start INTEGER,
-    quiet_hours_end INTEGER,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL,
-    FOREIGN KEY (member_id) REFERENCES member_profiles(id)
-);
-
--- Alert history for rate limiting
-CREATE TABLE IF NOT EXISTS alert_history (
-    id TEXT PRIMARY KEY,
-    member_id TEXT NOT NULL,
-    alert_type TEXT NOT NULL CHECK (alert_type IN ('position_update', 'at_risk', 'naib_threat', 'naib_bump')),
-    sent_at INTEGER NOT NULL,
-    context_json TEXT,
-    FOREIGN KEY (member_id) REFERENCES member_profiles(id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_alert_history_member ON alert_history(member_id);
-CREATE INDEX IF NOT EXISTS idx_alert_history_type ON alert_history(member_id, alert_type);
-CREATE INDEX IF NOT EXISTS idx_alert_history_sent ON alert_history(sent_at);
-```
-
-### 5.2 Entity Relationship Diagram
-
-```
-┌─────────────────────┐       ┌─────────────────────┐
-│   member_profiles   │       │   tier_history      │
-├─────────────────────┤       ├─────────────────────┤
-│ id (PK)             │──┐    │ id (PK)             │
-│ discord_id          │  │    │ member_id (FK)      │───┐
-│ nym                 │  │    │ from_tier           │   │
-│ bio                 │  │    │ to_tier             │   │
-│ pfp_seed            │  │    │ bgt_at_change       │   │
-│ tier (NEW)          │  │    │ changed_at          │   │
-│ tier_updated_at(NEW)│  │    └─────────────────────┘   │
-│ is_former_naib      │  │                              │
-│ created_at          │  └──────────────────────────────┘
-│ updated_at          │
-└─────────────────────┘
-         │
-         │ 1:N
-         ▼
-┌─────────────────────┐
-│ water_sharer_grants │
-├─────────────────────┤
-│ id (PK)             │
-│ granter_member_id(FK)│─────┐
-│ recipient_member_id(FK)│   │
-│ granted_at          │      │
-│ revoked_at          │      │
-└─────────────────────┘      │
-                             │
-         ┌───────────────────┘
-         │
-         ▼
-┌─────────────────────┐       ┌─────────────────────┐
-│   story_fragments   │       │   weekly_digests    │
-├─────────────────────┤       ├─────────────────────┤
-│ id (PK)             │       │ id (PK)             │
-│ category            │       │ week_start (UNIQUE) │
-│ content             │       │ stats_json          │
-│ used_count          │       │ posted_at           │
-└─────────────────────┘       │ message_id          │
-                              └─────────────────────┘
-
-RETAINED FROM v2.1:
-
-┌─────────────────────┐       ┌─────────────────────────┐
-│   naib_seats        │       │ notification_preferences │
-├─────────────────────┤       ├─────────────────────────┤
-│ seat_number (PK)    │       │ member_id (PK, FK)      │
-│ member_id (FK)      │───┐   │ position_alerts_enabled │
-│ seated_at           │   │   │ at_risk_alerts_enabled  │
-│ bumped_from_seat    │   │   │ naib_threat_alerts_en.  │
-│ bumped_by_member_id │   │   │ frequency               │
-└─────────────────────┘   │   │ quiet_hours_start       │
-                          │   │ quiet_hours_end         │
-                          │   │ created_at              │
-                          │   │ updated_at              │
-                          │   └─────────────────────────┘
-                          │
-                          │   ┌─────────────────────┐
-                          │   │   alert_history     │
-                          │   ├─────────────────────┤
-                          └──▶│ id (PK)             │
-                              │ member_id (FK)      │
-                              │ alert_type          │
-                              │ sent_at             │
-                              │ context_json        │
-                              └─────────────────────┘
-```
-
-### 5.3 Data Model Types
-
-```typescript
-// src/types/index.ts (extensions)
-
-export type Tier =
-  | 'hajra'
-  | 'ichwan'
-  | 'qanat'
-  | 'sihaya'
-  | 'mushtamal'
-  | 'sayyadina'
-  | 'usul'
-  | 'fedaykin'
-  | 'naib';
-
-export interface TierHistoryEntry {
-  id: string;
-  member_id: string;
-  from_tier: Tier | null;
-  to_tier: Tier;
-  bgt_at_change: number;
-  changed_at: number;
-}
-
-export interface SponsorInvite {
-  id: string;
-  sponsor_member_id: string;
-  invited_discord_id: string;
-  invited_member_id: string | null;
-  tier_granted: Tier;
-  created_at: number;
-  accepted_at: number | null;
-  revoked_at: number | null;
-}
-
-export interface StoryFragment {
-  id: string;
-  category: string;
-  content: string;
-  used_count: number;
-}
-
-export interface WeeklyDigest {
-  id: string;
-  week_start: string;
-  stats_json: string;
-  posted_at: number | null;
-  message_id: string | null;
-}
-
-export interface TierProgress {
-  currentTier: Tier;
-  currentBgt: number;
-  nextTier: Tier | null;
-  nextThreshold: number | null;
-  distance: number | null;
-  percentage: number | null;
-  note?: string;
-}
-
-export interface PersonalStats {
-  nym: string;
-  tier: string;
-  memberSince: Date;
-  activity: {
-    messagesThisWeek: number;
-    currentStreak: number;
-    longestStreak: number;
-  };
-  badges: string[];
-  badgeCount: number;
-  tierProgress: {
-    current: Tier;
-    currentBgt: number;
-    next: Tier | null;
-    threshold: number | null;
-    distance: number | null;
-    percentage: number | null;
-  } | null;
-}
-
-export interface AdminAnalytics {
-  total_members: number;
-  by_tier: Record<Tier, number>;
-  total_bgt: number;
-  weekly_active: number;
-  new_this_week: number;
-  promotions_this_week: number;
-}
-
-// ============================================
-// RETAINED FROM v2.1: Naib & Alert Types
-// ============================================
-
-export interface NaibMember {
+export interface MemberIdentity {
   memberId: string;
-  discordId: string;
-  nym: string;
-  seatNumber: number;
-  bgt: number;
-  seatedAt: number;
-  tenure: number;  // Days in seat
+  walletAddress: string;
+  platforms: PlatformLink[];
 }
 
-export interface NaibSeat {
-  seat_number: number;
-  member_id: string;
-  seated_at: number;
-  bumped_from_seat: number | null;
-  bumped_by_member_id: string | null;
-}
+export class IdentityService {
+  constructor(
+    private db: Database,
+    private redis: RedisService
+  ) {}
 
-export type AlertType = 'position_update' | 'at_risk' | 'naib_threat' | 'naib_bump';
+  /**
+   * Look up member by any platform ID
+   */
+  async getMemberByPlatformId(
+    platform: 'discord' | 'telegram',
+    platformUserId: string
+  ): Promise<MemberIdentity | null> {
+    const cacheKey = `identity:${platform}:${platformUserId}`;
+    const cached = await this.redis.get(cacheKey);
+    if (cached) return JSON.parse(cached);
 
-export type AlertFrequency = '1_per_week' | '2_per_week' | '3_per_week' | 'daily';
+    const column = platform === 'discord' ? 'discord_user_id' : 'telegram_user_id';
+    const member = await this.db.get(
+      `SELECT member_id, wallet_address, discord_user_id, telegram_user_id,
+              discord_linked_at, telegram_linked_at
+       FROM member_profiles
+       WHERE ${column} = ?`,
+      [platformUserId]
+    );
 
-export interface NotificationPreferences {
-  member_id: string;
-  position_alerts_enabled: boolean;
-  at_risk_alerts_enabled: boolean;
-  naib_threat_alerts_enabled: boolean;
-  frequency: AlertFrequency;
-  quiet_hours_start: number | null;
-  quiet_hours_end: number | null;
-  created_at: number;
-  updated_at: number;
-}
+    if (!member) return null;
 
-export interface AlertHistoryEntry {
-  id: string;
-  member_id: string;
-  alert_type: AlertType;
-  sent_at: number;
-  context_json: string | null;
-}
+    const identity = this.mapToIdentity(member);
+    await this.redis.setex(cacheKey, 300, JSON.stringify(identity));
+    return identity;
+  }
 
-export interface ThresholdData {
-  rank70Bgt: number;      // BGT of rank 70 (exit threshold)
-  rank71Bgt: number;      // BGT of rank 71 (just below)
-  lowestNaibBgt: number;  // BGT of rank 7 (Naib floor)
-  timestamp: number;
-}
+  /**
+   * Link Telegram account to existing member
+   */
+  async linkTelegram(
+    memberId: string,
+    telegramUserId: string
+  ): Promise<void> {
+    // Check for existing link
+    const existing = await this.db.get(
+      'SELECT member_id FROM member_profiles WHERE telegram_user_id = ?',
+      [telegramUserId]
+    );
 
-export interface PositionDistances {
-  position: number;
-  distanceUp: number;     // BGT needed to move up 1
-  distanceDown: number;   // BGT buffer before dropping 1
+    if (existing && existing.member_id !== memberId) {
+      throw new Error('Telegram account already linked to another wallet');
+    }
+
+    await this.db.run(
+      `UPDATE member_profiles
+       SET telegram_user_id = ?, telegram_linked_at = ?
+       WHERE member_id = ?`,
+      [telegramUserId, Date.now(), memberId]
+    );
+
+    // Invalidate cache
+    await this.redis.del(`identity:telegram:${telegramUserId}`);
+  }
+
+  /**
+   * Create verification session for Telegram
+   */
+  async createVerificationSession(
+    telegramUserId: string
+  ): Promise<{ sessionId: string; verifyUrl: string }> {
+    const sessionId = generateId();
+    const expiresAt = Date.now() + 15 * 60 * 1000; // 15 minutes
+
+    await this.db.run(
+      `INSERT INTO telegram_verification_sessions
+       (id, telegram_user_id, status, created_at, expires_at)
+       VALUES (?, ?, 'pending', ?, ?)`,
+      [sessionId, telegramUserId, Date.now(), expiresAt]
+    );
+
+    // Generate Collab.Land verify URL with session reference
+    const verifyUrl = `${config.COLLABLAND_VERIFY_URL}?session=${sessionId}&platform=telegram`;
+
+    return { sessionId, verifyUrl };
+  }
+
+  /**
+   * Complete verification (called from webhook)
+   */
+  async completeVerification(
+    sessionId: string,
+    walletAddress: string
+  ): Promise<{ telegramUserId: string; memberId: string }> {
+    const session = await this.db.get(
+      `SELECT telegram_user_id, status, expires_at
+       FROM telegram_verification_sessions
+       WHERE id = ?`,
+      [sessionId]
+    );
+
+    if (!session) throw new Error('Session not found');
+    if (session.status !== 'pending') throw new Error('Session already processed');
+    if (session.expires_at < Date.now()) throw new Error('Session expired');
+
+    // Find or create member
+    let member = await this.db.get(
+      'SELECT member_id FROM member_profiles WHERE wallet_address = ?',
+      [walletAddress.toLowerCase()]
+    );
+
+    if (!member) {
+      // Create new member profile
+      const memberId = generateId();
+      await this.db.run(
+        `INSERT INTO member_profiles (member_id, wallet_address, created_at)
+         VALUES (?, ?, ?)`,
+        [memberId, walletAddress.toLowerCase(), Date.now()]
+      );
+      member = { member_id: memberId };
+    }
+
+    // Link Telegram
+    await this.linkTelegram(member.member_id, session.telegram_user_id);
+
+    // Mark session complete
+    await this.db.run(
+      `UPDATE telegram_verification_sessions
+       SET status = 'completed', completed_at = ?
+       WHERE id = ?`,
+      [Date.now(), sessionId]
+    );
+
+    return {
+      telegramUserId: session.telegram_user_id,
+      memberId: member.member_id
+    };
+  }
+
+  /**
+   * Get platform status for a member
+   */
+  async getPlatformStatus(memberId: string): Promise<{
+    wallet: string;
+    discord: { linked: boolean; at?: Date };
+    telegram: { linked: boolean; at?: Date };
+  }> {
+    const member = await this.db.get(
+      `SELECT wallet_address, discord_user_id, telegram_user_id,
+              discord_linked_at, telegram_linked_at
+       FROM member_profiles WHERE member_id = ?`,
+      [memberId]
+    );
+
+    if (!member) throw new Error('Member not found');
+
+    return {
+      wallet: member.wallet_address,
+      discord: {
+        linked: !!member.discord_user_id,
+        at: member.discord_linked_at ? new Date(member.discord_linked_at) : undefined
+      },
+      telegram: {
+        linked: !!member.telegram_user_id,
+        at: member.telegram_linked_at ? new Date(member.telegram_linked_at) : undefined
+      }
+    };
+  }
 }
 ```
 
----
+### 3.3 API Routes Extension
 
-## 6. API Design
-
-### 6.1 New API Endpoints
-
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/api/tiers` | None | Tier definitions |
-| GET | `/api/stats/community` | None | Public stats |
-| GET | `/api/leaderboard/tiers` | None | Tier progression |
-| GET | `/api/me/stats` | Member | Personal stats |
-| GET | `/api/me/tier-progress` | Member | Next tier distance |
-| GET | `/api/me/tier-history` | Member | Tier change history |
-| POST | `/api/water-share` | Member | Share badge with member |
-| GET | `/api/water-share/status` | Member | Sharing status |
-| GET | `/api/water-share/can-share` | Member | Check if can share |
-| GET | `/admin/analytics` | Admin | Full analytics |
-| GET | `/admin/water-share/lineage` | Admin | Badge lineage tree |
-| DELETE | `/admin/water-share/:memberId` | Admin | Revoke badge (cascades) |
-
-### 6.2 Retained API Endpoints (from v2.1)
-
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/api/naib` | None | Current Naib roster |
-| GET | `/api/naib/former` | None | Former Naib list |
-| GET | `/api/threshold` | None | Current BGT thresholds |
-| GET | `/api/position/:memberId` | Member | Position distances |
-| GET | `/api/alerts/preferences` | Member | Alert preferences |
-| PUT | `/api/alerts/preferences` | Member | Update preferences |
-| GET | `/api/alerts/history` | Member | Alert history |
-| POST | `/admin/naib/recalculate` | Admin | Force Naib recalc |
-
-### 6.3 Rate Limiting
+**File**: `src/api/telegram.routes.ts`
 
 ```typescript
-const rateLimits = {
-  // Public endpoints
-  tiers: rateLimit({ windowMs: 60000, max: 100 }),
-  communityStats: rateLimit({ windowMs: 60000, max: 50 }),
-  tierLeaderboard: rateLimit({ windowMs: 60000, max: 30 }),
+import { Hono } from 'hono';
+import { telegramWebhook } from '../telegram/bot.js';
+import { validateTelegramWebhook } from './middleware.js';
 
-  // Member endpoints
-  personalStats: rateLimit({ windowMs: 60000, max: 30 }),
-  tierProgress: rateLimit({ windowMs: 60000, max: 30 }),
-  waterShare: rateLimit({ windowMs: 60000, max: 5 }),
-
-  // Admin endpoints
-  analytics: rateLimit({ windowMs: 60000, max: 30 }),
-};
-```
-
----
-
-## 7. Discord Integration
-
-### 7.1 New Slash Commands
-
-| Command | Subcommand | Description | Visibility |
-|---------|------------|-------------|------------|
-| `/stats` | - | Personal activity summary | Ephemeral |
-| `/water-share` | `@user` | Share badge with member | Ephemeral |
-| `/water-share` | `status` | Check sharing status | Ephemeral |
-| `/leaderboard` | `tiers` | Tier progression ranking | Public |
-| `/admin` | `stats` | Community analytics | Ephemeral |
-| `/admin` | `water-share list` | View badge lineage | Ephemeral |
-
-### 7.2 Retained Slash Commands (from v2.1)
-
-| Command | Subcommand | Description | Visibility |
-|---------|------------|-------------|------------|
-| `/naib` | - | Current Naib roster | Public |
-| `/naib` | `history` | Former Naib members | Public |
-| `/threshold` | - | BGT entry thresholds | Public |
-| `/position` | - | Your position & distances | Ephemeral |
-| `/alerts` | `settings` | View alert preferences | Ephemeral |
-| `/alerts` | `configure` | Update preferences | Ephemeral |
-| `/alerts` | `history` | Recent alert history | Ephemeral |
-
-### 7.3 Discord Role Hierarchy (v3.0)
-
-| Role | Color | Tier | Granted By |
-|------|-------|------|------------|
-| `@Naib` | Gold (#FFD700) | Top 7 | BGT rank |
-| `@Former Naib` | Silver (#C0C0C0) | Historical | After Naib bump |
-| `@Fedaykin` | Blue (#4169E1) | Top 8-69 | BGT rank |
-| `@Usul` | Purple (#9B59B6) | 1111+ BGT | BGT threshold |
-| `@Sayyadina` | Indigo (#6610F2) | 888+ BGT | BGT threshold |
-| `@Mushtamal` | Teal (#20C997) | 690+ BGT | BGT threshold |
-| `@Sihaya` | Green (#28A745) | 420+ BGT | BGT threshold |
-| `@Qanat` | Cyan (#17A2B8) | 222+ BGT | BGT threshold |
-| `@Ichwan` | Orange (#FD7E14) | 69+ BGT | BGT threshold |
-| `@Hajra` | Sand (#C2B280) | 6.9+ BGT | BGT threshold |
-| `@Water Sharer` | Aqua (#00D4FF) | Badge | Admin grant or shared by Water Sharer |
-| `@Engaged` | Green | 5+ badges | Badge count |
-| `@Veteran` | Purple | 90+ days | Tenure |
-
-### 7.4 Additive Role Model
-
-Discord tier roles use an **additive model** - members accumulate all roles from their tier and below:
-
-| Member Tier | Discord Roles Assigned |
-|-------------|------------------------|
-| Hajra | @Hajra |
-| Ichwan | @Hajra, @Ichwan |
-| Qanat | @Hajra, @Ichwan, @Qanat |
-| Sihaya | @Hajra, @Ichwan, @Qanat, @Sihaya |
-| Mushtamal | @Hajra, @Ichwan, @Qanat, @Sihaya, @Mushtamal |
-| Sayyadina | @Hajra, @Ichwan, @Qanat, @Sihaya, @Mushtamal, @Sayyadina |
-| Usul | @Hajra, @Ichwan, @Qanat, @Sihaya, @Mushtamal, @Sayyadina, @Usul |
-| Fedaykin | All BGT-based roles + @Fedaykin |
-| Naib | All BGT-based roles + @Fedaykin, @Naib |
-
-**Benefits**:
-- Channel permissions work naturally (higher tiers see all lower channels)
-- Visual recognition of tier history
-- Simpler permission management (grant access to @Qanat+ instead of listing each)
-
-**Note**: Fedaykin and Naib are rank-based exceptions - they skip intermediate BGT roles since their qualification is position-based, not BGT threshold-based.
-
-### 7.5 Role Management Implementation
-
-```typescript
-// Add tier role constants
-const TIER_ROLES: Record<Tier, string> = {
-  hajra: process.env.DISCORD_ROLE_HAJRA!,
-  ichwan: process.env.DISCORD_ROLE_ICHWAN!,
-  qanat: process.env.DISCORD_ROLE_QANAT!,
-  sihaya: process.env.DISCORD_ROLE_SIHAYA!,
-  mushtamal: process.env.DISCORD_ROLE_MUSHTAMAL!,
-  sayyadina: process.env.DISCORD_ROLE_SAYYADINA!,
-  usul: process.env.DISCORD_ROLE_USUL!,
-  fedaykin: process.env.DISCORD_ROLE_FEDAYKIN!,
-  naib: process.env.DISCORD_ROLE_NAIB!,
-};
+export const telegramRoutes = new Hono();
 
 /**
- * Sync tier roles for member using additive model
- * Member accumulates all tier roles up to their current tier
+ * POST /telegram/webhook
+ * Telegram Bot API webhook endpoint
  */
-async syncTierRole(discordId: string, tier: Tier): Promise<void> {
-  const guild = await this.getGuild();
-  const member = await guild.members.fetch(discordId);
-  const tierIndex = TIER_ORDER.indexOf(tier);
+telegramRoutes.post('/webhook', validateTelegramWebhook, telegramWebhook);
 
-  // Check if role configuration is available
-  if (!isTierRolesConfigured()) {
-    logger.debug({ tier }, 'Tier roles not configured, skipping role sync');
-    return;
-  }
-
-  // Additive: assign all roles up to current tier
-  const rolesToAdd: string[] = [];
-  for (let i = 0; i <= tierIndex; i++) {
-    const t = TIER_ORDER[i];
-    // Skip Fedaykin/Naib for non-rank-based members
-    if ((t === 'fedaykin' || t === 'naib') && tierIndex < TIER_ORDER.indexOf('fedaykin')) {
-      continue;
-    }
-    const roleId = TIER_ROLES[t];
-    if (roleId && !member.roles.cache.has(roleId)) {
-      rolesToAdd.push(roleId);
-    }
-  }
-
-  if (rolesToAdd.length > 0) {
-    await member.roles.add(rolesToAdd);
-    logger.info({ discordId, tier, rolesAdded: rolesToAdd.length }, 'Added tier roles');
-  }
-
-  // Remove higher tier roles if demoted (safety check)
-  const rolesToRemove: string[] = [];
-  for (let i = tierIndex + 1; i < TIER_ORDER.length; i++) {
-    const higherTier = TIER_ORDER[i];
-    const higherRoleId = TIER_ROLES[higherTier];
-    if (higherRoleId && member.roles.cache.has(higherRoleId)) {
-      rolesToRemove.push(higherRoleId);
-    }
-  }
-
-  if (rolesToRemove.length > 0) {
-    await member.roles.remove(rolesToRemove);
-    logger.info({ discordId, rolesRemoved: rolesToRemove.length }, 'Removed higher tier roles');
-  }
-}
-```
-
----
-
-## 8. Scheduled Tasks
-
-### 8.1 Modified Sync Task
-
-```typescript
-// Add to existing sync-eligibility task
-
-import { tierService } from '../services/TierService';
-import { notificationService } from '../services/NotificationService';
-import { storyService } from '../services/StoryService';
-
-// After eligibility sync, update tiers
-async function processTierUpdates(eligibilityData: EligibilityRecord[]) {
-  const promotions: Array<{
-    memberId: string;
-    discordId: string;
-    oldTier: Tier;
-    newTier: Tier;
-  }> = [];
-
-  for (const record of eligibilityData) {
-    const member = getMemberByWallet(record.address);
-    if (!member) continue;
-
-    const result = await tierService.updateMemberTier(
-      member.id,
-      record.bgt,
-      record.rank
-    );
-
-    if (result.changed && tierService.isPromotion(result.oldTier, result.newTier)) {
-      promotions.push({
-        memberId: member.id,
-        discordId: member.discord_id,
-        oldTier: result.oldTier!,
-        newTier: result.newTier,
-      });
-
-      // Update Discord role
-      await roleManagerService.syncTierRole(member.discord_id, result.newTier);
-    }
-  }
-
-  // Send promotion notifications
-  for (const promo of promotions) {
-    await notificationService.sendTierPromotion(
-      promo.discordId,
-      promo.newTier
-    );
-
-    // Post story fragment for elite promotions
-    if (promo.newTier === 'fedaykin' || promo.newTier === 'naib') {
-      await storyService.postJoinFragment(promo.newTier);
-    }
-  }
-
-  logger.info({ promotions: promotions.length }, 'Tier sync complete');
-}
-```
-
-### 8.2 Weekly Digest Task
-
-```typescript
-// src/trigger/weekly-digest.ts
-
-import { schedules } from '@trigger.dev/sdk/v3';
-import { digestService } from '../services/DigestService';
-import { logger } from '../utils/logger';
-
-export const weeklyDigestTask = schedules.task({
-  id: 'weekly-digest',
-  cron: '0 0 * * 1', // Monday 00:00 UTC
-  run: async () => {
-    logger.info('Starting weekly digest');
-
-    try {
-      const success = await digestService.postDigest();
-
-      if (success) {
-        logger.info('Weekly digest posted successfully');
-        return { status: 'success' };
-      } else {
-        logger.error('Failed to post weekly digest');
-        return { status: 'failed' };
+/**
+ * GET /telegram/health
+ * Health check for Telegram bot
+ */
+telegramRoutes.get('/health', async (c) => {
+  try {
+    const me = await telegramBot.api.getMe();
+    return c.json({
+      status: 'healthy',
+      bot: {
+        id: me.id,
+        username: me.username,
+        canReadMessages: me.can_read_all_group_messages
       }
-    } catch (error) {
-      logger.error({ error }, 'Weekly digest task error');
-      throw error;
-    }
-  },
+    });
+  } catch (error) {
+    return c.json({ status: 'unhealthy', error: error.message }, 503);
+  }
+});
+
+/**
+ * POST /telegram/verify/callback
+ * Collab.Land verification webhook
+ */
+telegramRoutes.post('/verify/callback', async (c) => {
+  const { sessionId, walletAddress, signature } = await c.req.json();
+
+  // Verify signature with Collab.Land
+  const isValid = await verifyCollabLandSignature(sessionId, walletAddress, signature);
+  if (!isValid) {
+    return c.json({ error: 'Invalid signature' }, 400);
+  }
+
+  const result = await identityService.completeVerification(sessionId, walletAddress);
+
+  // Send success message to Telegram user
+  await telegramBot.api.sendMessage(
+    result.telegramUserId,
+    `✅ Wallet linked successfully!\n\n` +
+    `Wallet: \`${truncateAddress(walletAddress)}\`\n\n` +
+    `Use /score to see your conviction score.`,
+    { parse_mode: 'Markdown' }
+  );
+
+  return c.json({ success: true });
 });
 ```
 
-### 8.3 Task Summary
-
-| Task | Schedule | Function |
-|------|----------|----------|
-| `sync-eligibility` | Every 6 hours | BGT sync + tier updates + promotions |
-| `weekly-digest` | Monday 00:00 UTC | Generate and post digest |
-| `weekly-reset` | Monday 00:00 UTC | Reset weekly counters |
-| `badge-check` | Every 2 hours | Auto-award badges |
-| `activity-decay` | Hourly | Apply demurrage |
-
 ---
 
-## 9. Security Architecture
+## 4. Data Architecture
 
-### 9.1 Authorization Rules
+### 4.1 Database Schema Extensions
 
-| Action | Required |
-|--------|----------|
-| Create sponsor invite | Water Sharer badge |
-| View own tier progress | Verified member |
-| View tier leaderboard | None (public) |
-| Revoke invite | Admin API key |
-| View admin analytics | Admin API key |
-
-### 9.2 Privacy Controls
-
-**Tier Privacy**:
-- Tier name is visible (not sensitive)
-- Exact BGT amount never exposed
-- Tier leaderboard shows rounded BGT (nearest integer)
-- Rank position only shown for top 69
-
-**Sponsor Privacy**:
-- Invited Discord ID stored (needed for lookup)
-- Sponsor relationship visible to both parties
-- Not exposed in public APIs
-
-### 9.3 Input Validation
+**Migration**: `src/db/migrations/012_telegram_identity.ts`
 
 ```typescript
-const createInviteSchema = z.object({
-  discordId: z.string().regex(/^\d{17,19}$/),
-});
+import { Database } from 'better-sqlite3';
 
-const tierSchema = z.enum([
-  'hajra', 'ichwan', 'qanat', 'sihaya',
-  'mushtamal', 'sayyadina', 'usul',
-  'fedaykin', 'naib'
-]);
+export const up = (db: Database): void => {
+  // Add Telegram columns to member_profiles
+  db.exec(`
+    ALTER TABLE member_profiles
+    ADD COLUMN telegram_user_id TEXT UNIQUE;
+  `);
+
+  db.exec(`
+    ALTER TABLE member_profiles
+    ADD COLUMN telegram_linked_at INTEGER;
+  `);
+
+  // Index for Telegram lookups
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_member_telegram
+    ON member_profiles(telegram_user_id);
+  `);
+
+  // Verification sessions table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS telegram_verification_sessions (
+      id TEXT PRIMARY KEY,
+      telegram_user_id TEXT NOT NULL,
+      collabland_session_id TEXT,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'completed', 'expired', 'failed')),
+      wallet_address TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      expires_at INTEGER NOT NULL,
+      completed_at INTEGER,
+      error_message TEXT
+    );
+  `);
+
+  // Index for session cleanup and lookups
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_telegram_session_status
+    ON telegram_verification_sessions(status, expires_at);
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_telegram_session_user
+    ON telegram_verification_sessions(telegram_user_id, status);
+  `);
+};
+
+export const down = (db: Database): void => {
+  db.exec('DROP TABLE IF EXISTS telegram_verification_sessions');
+  db.exec('DROP INDEX IF EXISTS idx_member_telegram');
+  // Note: SQLite doesn't support DROP COLUMN, would need table rebuild
+};
+```
+
+### 4.2 Complete Schema (Post-Migration)
+
+```sql
+-- member_profiles (updated)
+CREATE TABLE member_profiles (
+  member_id TEXT PRIMARY KEY,
+  wallet_address TEXT UNIQUE NOT NULL,
+
+  -- Discord identity (existing)
+  discord_user_id TEXT UNIQUE,
+  discord_linked_at INTEGER,
+
+  -- Telegram identity (NEW v4.1)
+  telegram_user_id TEXT UNIQUE,
+  telegram_linked_at INTEGER,
+
+  -- Profile data
+  nym TEXT,
+  conviction_score REAL DEFAULT 0,
+  tier TEXT DEFAULT 'Wanderer',
+  tier_rank INTEGER DEFAULT 0,
+
+  -- Timestamps
+  created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+  updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+-- Indexes
+CREATE INDEX idx_member_discord ON member_profiles(discord_user_id);
+CREATE INDEX idx_member_telegram ON member_profiles(telegram_user_id);
+CREATE INDEX idx_member_wallet ON member_profiles(wallet_address);
+CREATE INDEX idx_member_tier ON member_profiles(tier_rank DESC);
+
+-- telegram_verification_sessions (NEW v4.1)
+CREATE TABLE telegram_verification_sessions (
+  id TEXT PRIMARY KEY,
+  telegram_user_id TEXT NOT NULL,
+  collabland_session_id TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  wallet_address TEXT,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+  expires_at INTEGER NOT NULL,
+  completed_at INTEGER,
+  error_message TEXT
+);
+```
+
+### 4.3 Cache Strategy
+
+| Cache Key | Value | TTL | Purpose |
+|-----------|-------|-----|---------|
+| `identity:telegram:{userId}` | MemberIdentity JSON | 5 min | Fast platform lookup |
+| `identity:discord:{userId}` | MemberIdentity JSON | 5 min | Fast platform lookup |
+| `score:{memberId}` | ConvictionScore JSON | 5 min | Score display (unchanged) |
+| `leaderboard:global` | Top 100 members | 5 min | Leaderboard (unchanged) |
+| `entitlement:{communityId}` | Entitlements JSON | 5 min | Tier/features (unchanged) |
+
+---
+
+## 5. API Design
+
+### 5.1 New Endpoints
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| POST | `/telegram/webhook` | Telegram Bot API updates | Telegram signature |
+| GET | `/telegram/health` | Bot health check | None |
+| POST | `/telegram/verify/callback` | Collab.Land verification callback | Collab.Land signature |
+| GET | `/api/member/{id}/platforms` | Get linked platforms | API key |
+
+### 5.2 Platform Status Endpoint
+
+**GET /api/member/{id}/platforms**
+
+Response:
+```json
+{
+  "memberId": "member_abc123",
+  "wallet": "0x1234...5678",
+  "platforms": {
+    "discord": {
+      "linked": true,
+      "userId": "123456789",
+      "linkedAt": "2024-01-15T10:30:00Z"
+    },
+    "telegram": {
+      "linked": true,
+      "userId": "987654321",
+      "linkedAt": "2025-12-27T14:00:00Z"
+    }
+  }
+}
+```
+
+### 5.3 Telegram Webhook Validation
+
+```typescript
+import crypto from 'crypto';
+
+export function validateTelegramWebhook(c: Context, next: Next) {
+  const secretToken = c.req.header('X-Telegram-Bot-Api-Secret-Token');
+
+  if (secretToken !== config.TELEGRAM_WEBHOOK_SECRET) {
+    return c.json({ error: 'Invalid webhook secret' }, 403);
+  }
+
+  return next();
+}
 ```
 
 ---
 
-## 10. Deployment Architecture
+## 6. Security Architecture
 
-### 10.1 Environment Variables (New)
+### 6.1 Bot Token Security
+
+| Concern | Mitigation |
+|---------|------------|
+| Token exposure | Environment variable only, never in code |
+| Token in logs | Token masked in all logging |
+| CI/CD leakage | TruffleHog pattern for Telegram tokens |
+| Webhook forgery | Secret token validation header |
+
+**TruffleHog Pattern Addition**:
+```yaml
+# .trufflehog.yml
+detectors:
+  - telegram_bot_token:
+      keywords: ["bot"]
+      regex: '\d{10}:[A-Za-z0-9_-]{35}'
+```
+
+### 6.2 Verification Security
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                 VERIFICATION SECURITY                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  1. Session Creation                                             │
+│     • Random session ID (UUIDv4)                                 │
+│     • 15-minute expiry                                           │
+│     • One session per Telegram user at a time                    │
+│                                                                  │
+│  2. Collab.Land Verification                                     │
+│     • User signs message with wallet                             │
+│     • Collab.Land validates signature                            │
+│     • Webhook includes Collab.Land signature                     │
+│                                                                  │
+│  3. Callback Validation                                          │
+│     • Verify Collab.Land webhook signature                       │
+│     • Check session exists and is pending                        │
+│     • Check session not expired                                  │
+│     • Mark session complete atomically                           │
+│                                                                  │
+│  4. Rate Limiting                                                │
+│     • Max 3 verification attempts per user per hour              │
+│     • Exponential backoff on failures                            │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 6.3 Privacy Considerations
+
+| Data | Storage | Display |
+|------|---------|---------|
+| Telegram user ID | Database | Never shown publicly |
+| Telegram username | Not stored | N/A |
+| Wallet address | Database | Truncated (0x1234...5678) |
+| Message content | Not stored | N/A |
+| User commands | Logged (no PII) | N/A |
+
+### 6.4 GDPR Compliance
+
+**Data Subject Rights**:
+
+| Right | Implementation |
+|-------|----------------|
+| Access (Art. 15) | `/status` shows all linked data |
+| Rectification (Art. 16) | Re-verification updates link |
+| Erasure (Art. 17) | Delete removes telegram_user_id |
+| Portability (Art. 20) | Export includes Telegram link status |
+
+---
+
+## 7. Performance Architecture
+
+### 7.1 Response Time Targets
+
+| Operation | Target | Implementation |
+|-----------|--------|----------------|
+| /start | <200ms | Static message |
+| /verify | <500ms | Session creation + URL generation |
+| /score | <100ms (cached) | Redis lookup |
+| /score | <500ms (uncached) | DB + cache write |
+| /leaderboard | <200ms | Redis cached list |
+| /tier | <100ms | GatekeeperService (cached) |
+
+### 7.2 Resource Budgets
+
+| Resource | Budget | Rationale |
+|----------|--------|-----------|
+| Memory (grammy) | ~64MB | Lightweight bot, no message storage |
+| CPU (idle) | <2% | Webhook mode, no polling |
+| CPU (peak) | <15% | Command processing burst |
+| Network | ~1MB/day | Text commands only, no media |
+| Database | +10MB | Sessions table, identity columns |
+
+### 7.3 Caching Strategy
+
+```typescript
+// Platform-agnostic cache keys
+const cacheKeys = {
+  // Identity lookups
+  identity: (platform: string, userId: string) =>
+    `identity:${platform}:${userId}`,
+
+  // Score (unchanged from v4.0)
+  score: (memberId: string) =>
+    `score:${memberId}`,
+
+  // Leaderboard (unchanged from v4.0)
+  leaderboard: (page: number) =>
+    `leaderboard:page:${page}`,
+};
+
+// Cache invalidation on identity change
+async function invalidateIdentityCache(memberId: string, platforms: string[]) {
+  const keys = platforms.map(p =>
+    cacheKeys.identity(p, getMemberPlatformId(memberId, p))
+  );
+  await redis.del(...keys);
+}
+```
+
+---
+
+## 8. Integration Points
+
+### 8.1 grammy Integration
+
+**Dependencies**:
+```json
+{
+  "grammy": "^1.21.0",
+  "@grammyjs/runner": "^2.0.0"
+}
+```
+
+**Webhook Setup**:
+```typescript
+// In server.ts
+import { telegramRoutes } from './api/telegram.routes.js';
+import { startTelegramBot } from './telegram/bot.js';
+
+// Mount routes
+app.route('/telegram', telegramRoutes);
+
+// Start bot
+await startTelegramBot();
+```
+
+### 8.2 Collab.Land Integration
+
+**Existing Integration** (reused):
+- Verification URL generation
+- Webhook handling for verification_complete
+- Signature validation
+
+**New Parameters**:
+```typescript
+// Add platform parameter to verification URL
+const verifyUrl = new URL(config.COLLABLAND_VERIFY_URL);
+verifyUrl.searchParams.set('session', sessionId);
+verifyUrl.searchParams.set('platform', 'telegram');
+verifyUrl.searchParams.set('callback', config.TELEGRAM_VERIFY_CALLBACK_URL);
+```
+
+### 8.3 Existing Service Integration
+
+| Service | Integration Point | Changes |
+|---------|-------------------|---------|
+| StatsService | getMemberStats() | None (uses member_id) |
+| GatekeeperService | getEntitlements() | None (uses community_id) |
+| BoostService | getBoostStatus() | None (uses community_id) |
+| BadgeService | getBadge() | None (uses member_id) |
+
+**Key Insight**: All existing services are already platform-agnostic because they use `member_id` as the identifier, not platform-specific IDs.
+
+---
+
+## 9. Deployment Architecture
+
+### 9.1 Infrastructure (Unchanged)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     OVH VPS (Unchanged)                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │                       nginx                                  │ │
+│  │                                                              │ │
+│  │  location /telegram/webhook → :3000 (NEW)                    │ │
+│  │  location /api → :3000                                       │ │
+│  │  location /discord → :3000                                   │ │
+│  │                                                              │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                              │                                   │
+│                              ▼                                   │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │                      PM2: sietch                             │ │
+│  │                                                              │ │
+│  │  Node.js process (unified Discord + Telegram + API)          │ │
+│  │                                                              │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                                                                  │
+│  ┌────────────────┐  ┌────────────────┐                        │
+│  │    SQLite      │  │     Data       │                        │
+│  │   sietch.db    │  │   /var/data    │                        │
+│  └────────────────┘  └────────────────┘                        │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 9.2 nginx Configuration Addition
+
+```nginx
+# Add to existing nginx config
+location /telegram/webhook {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+    # Telegram sends updates quickly, don't buffer
+    proxy_buffering off;
+}
+```
+
+### 9.3 Environment Variables
 
 ```bash
-# Discord Tier Roles (add to existing .env)
-DISCORD_ROLE_HAJRA=
-DISCORD_ROLE_ICHWAN=
-DISCORD_ROLE_QANAT=
-DISCORD_ROLE_SIHAYA=
-DISCORD_ROLE_MUSHTAMAL=
-DISCORD_ROLE_SAYYADINA=
-DISCORD_ROLE_USUL=
-# Note: FEDAYKIN and NAIB roles already exist
+# .env additions for v4.1
 
-# Discord Channels (add)
-DISCORD_ANNOUNCEMENTS_CHANNEL_ID=
-DISCORD_THE_DOOR_CHANNEL_ID=
+# Telegram Bot
+TELEGRAM_BOT_TOKEN=<from @BotFather>
+TELEGRAM_WEBHOOK_SECRET=<random 32-char string>
+TELEGRAM_WEBHOOK_URL=https://api.sietch.xyz/telegram/webhook
+TELEGRAM_VERIFY_CALLBACK_URL=https://api.sietch.xyz/telegram/verify/callback
+
+# Collab.Land (existing, may need update)
+COLLABLAND_VERIFY_URL=https://verify.collab.land/...
 ```
 
-### 10.2 Migration Procedure
+### 9.4 Deployment Checklist
 
-1. **Pre-deployment**:
-   - Create Discord roles for new tiers
-   - Configure Collab.Land for new tier thresholds
-   - Set up Discord channel permissions
+```markdown
+## v4.1 Deployment Checklist
 
-2. **Database Migration**:
-   ```bash
-   npm run migrate
-   ```
+### Pre-deployment
+- [ ] Create Telegram bot via @BotFather
+- [ ] Generate TELEGRAM_WEBHOOK_SECRET
+- [ ] Update .env with Telegram variables
+- [ ] Run migration: 012_telegram_identity.ts
+- [ ] Test locally with polling mode
 
-3. **Seed Story Fragments**:
-   ```bash
-   npm run seed:stories
-   ```
+### Deployment
+- [ ] Update nginx config with /telegram routes
+- [ ] Reload nginx: `sudo nginx -t && sudo nginx -s reload`
+- [ ] Deploy updated sietch service
+- [ ] Verify PM2 process restart: `pm2 status`
 
-4. **Deploy Application**:
-   - Push to main branch (triggers GitHub Actions)
-   - Verify health check passes
-   - Monitor logs for tier sync
-
-5. **Post-deployment**:
-   - Run initial tier assignment: `npm run task:sync`
-   - Verify role assignments in Discord
-   - Test sponsor invite flow
-
-### 10.3 Rollback Plan
-
-1. Revert to previous deployment
-2. Tier columns remain (no data loss)
-3. New tables ignored by old code
-4. Discord roles can be manually cleaned
+### Post-deployment
+- [ ] Verify webhook registered: Check /telegram/health
+- [ ] Test /start command in Telegram
+- [ ] Test /verify flow end-to-end
+- [ ] Monitor logs for errors: `pm2 logs sietch`
+```
 
 ---
 
-## 11. Testing Strategy
+## 10. Testing Architecture
 
-### 11.1 Unit Tests
+### 10.1 Test Structure
+
+```
+tests/
+├── telegram/
+│   ├── bot.test.ts           # Bot initialization tests
+│   ├── commands/
+│   │   ├── start.test.ts
+│   │   ├── verify.test.ts
+│   │   ├── score.test.ts
+│   │   ├── leaderboard.test.ts
+│   │   └── tier.test.ts
+│   ├── middleware/
+│   │   └── rateLimit.test.ts
+│   └── integration/
+│       └── verification.test.ts
+├── services/
+│   └── IdentityService.test.ts
+└── e2e/
+    └── telegram.e2e.test.ts
+```
+
+### 10.2 Test Categories
+
+| Category | Count | Focus |
+|----------|-------|-------|
+| Unit (commands) | ~25 | Individual command handlers |
+| Unit (IdentityService) | ~15 | Identity operations |
+| Integration | ~10 | Verification flow, service interaction |
+| E2E | ~5 | Full command flows with mocked Telegram API |
+
+### 10.3 grammy Test Utilities
 
 ```typescript
-describe('TierService', () => {
-  describe('calculateTier', () => {
-    it('returns hajra for 6.9 BGT', () => {
-      expect(tierService.calculateTier(6.9, null)).toBe('hajra');
-    });
+import { Bot, Context } from 'grammy';
+import { createMockContext, createMockUpdate } from './testUtils.js';
 
-    it('returns ichwan for 69 BGT', () => {
-      expect(tierService.calculateTier(69, null)).toBe('ichwan');
-    });
+describe('score command', () => {
+  let bot: Bot;
+  let mockIdentityService: jest.Mocked<IdentityService>;
+  let mockStatsService: jest.Mocked<StatsService>;
 
-    it('returns fedaykin for rank 50', () => {
-      expect(tierService.calculateTier(1000, 50)).toBe('fedaykin');
-    });
-
-    it('returns naib for rank 5', () => {
-      expect(tierService.calculateTier(500, 5)).toBe('naib');
-    });
-
-    it('rank takes precedence over BGT', () => {
-      expect(tierService.calculateTier(10, 30)).toBe('fedaykin');
-    });
+  beforeEach(() => {
+    mockIdentityService = createMockIdentityService();
+    mockStatsService = createMockStatsService();
+    bot = createTestBot({ identityService: mockIdentityService, statsService: mockStatsService });
   });
 
-  describe('isPromotion', () => {
-    it('returns true for tier increase', () => {
-      expect(tierService.isPromotion('hajra', 'ichwan')).toBe(true);
+  it('returns score for verified user', async () => {
+    mockIdentityService.getMemberByPlatformId.mockResolvedValue({
+      memberId: 'member_123',
+      walletAddress: '0x1234567890abcdef',
+      platforms: [{ platform: 'telegram', platformUserId: '12345', linkedAt: new Date() }]
     });
 
-    it('returns false for same tier', () => {
-      expect(tierService.isPromotion('ichwan', 'ichwan')).toBe(false);
+    mockStatsService.getMemberStats.mockResolvedValue({
+      convictionScore: 85.5,
+      tier: 'Fremen Warrior',
+      tierProgress: 0.7
     });
+
+    const ctx = createMockContext({
+      message: { text: '/score', from: { id: 12345 } }
+    });
+
+    await scoreHandler(ctx);
+
+    expect(ctx.reply).toHaveBeenCalledWith(
+      expect.stringContaining('85.5'),
+      expect.any(Object)
+    );
+  });
+
+  it('prompts verification for unverified user', async () => {
+    mockIdentityService.getMemberByPlatformId.mockResolvedValue(null);
+
+    const ctx = createMockContext({
+      message: { text: '/score', from: { id: 99999 } }
+    });
+
+    await scoreHandler(ctx);
+
+    expect(ctx.reply).toHaveBeenCalledWith(
+      expect.stringContaining('verify'),
+      expect.any(Object)
+    );
   });
 });
 ```
 
-### 11.2 Test Coverage Targets
-
-| Component | Target |
-|-----------|--------|
-| TierService | 90% |
-| WaterSharerService | 90% |
-| DigestService | 80% |
-| StatsService | 80% |
-| API Routes | 85% |
-| Discord Commands | 75% |
-
 ---
 
-## 12. Technical Risks & Mitigations
+## 11. Technical Risks & Mitigation
+
+### 11.1 Risk Matrix
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|------------|--------|------------|
-| **Tier calculation drift** | Low | High | Single source of truth in sync task |
-| **Role assignment race** | Medium | Medium | Queue role updates; idempotent ops |
-| **Badge sharing abuse** | Low | Medium | Admin-only initial grant; one share limit; cascade revocation |
-| **Story fragment exhaustion** | Low | Low | Usage counting; admin can add more |
-| **Digest posting failure** | Medium | Low | Retry logic; manual trigger available |
-| **Migration data loss** | Low | Critical | Additive schema changes only |
+| Collab.Land Telegram support | Medium | High | Verify before Sprint 30, fallback to manual linking |
+| VPS memory exhaustion | Low | High | Memory monitoring, graceful shutdown on OOM |
+| Webhook delivery failures | Low | Medium | Telegram retries, health monitoring |
+| Rate limit violations | Low | Low | Built-in grammy throttling |
+| Cross-platform cache inconsistency | Low | Medium | Platform-agnostic cache keys |
 
----
+### 11.2 Fallback Strategies
 
-## 13. Future Considerations
+**Collab.Land Fallback**:
+If Collab.Land doesn't support Telegram platform parameter:
+1. Generate session without platform hint
+2. Store platform in local session
+3. On callback, use session to identify platform
+4. Manual flow: user copies code to bot
 
-### 13.1 Potential v3.1 Features
-
-- **Tier-specific badges**: Auto-award badges for reaching certain tiers
-- **Badge sharing analytics**: Track badge sharing patterns and lineage depth
-- **Digest customization**: Allow members to opt-in to DM digests
-- **Story fragment voting**: Let Naib vote on favorite fragments
-
-### 13.2 Scalability Path
-
-| Scale | Recommendation |
-|-------|----------------|
-| 500 members | Current architecture sufficient |
-| 1000 members | Add read replicas for analytics |
-| 5000+ members | Migrate to PostgreSQL; add Redis cache |
-
----
-
-## 14. Appendix
-
-### 14.1 Tier Threshold Constants
-
+**Memory Fallback**:
 ```typescript
-export const TIER_THRESHOLDS = {
-  hajra: 6.9,
-  ichwan: 69,
-  qanat: 222,
-  sihaya: 420,
-  mushtamal: 690,
-  sayyadina: 888,
-  usul: 1111,
-  fedaykin: null,  // Top 8-69
-  naib: null,      // Top 7
-} as const;
+// Monitor memory and warn
+setInterval(() => {
+  const used = process.memoryUsage();
+  if (used.heapUsed > 400 * 1024 * 1024) { // 400MB warning
+    logger.warn('High memory usage', { heapUsed: used.heapUsed });
+  }
+}, 60000);
 ```
 
-### 14.2 Discord Role Colors
+---
 
-| Role | Hex | Preview |
-|------|-----|---------|
-| Hajra | #C2B280 | Sand |
-| Ichwan | #FD7E14 | Orange |
-| Qanat | #17A2B8 | Cyan |
-| Sihaya | #28A745 | Green |
-| Mushtamal | #20C997 | Teal |
-| Sayyadina | #6610F2 | Indigo |
-| Usul | #9B59B6 | Purple |
-| Fedaykin | #4169E1 | Blue |
-| Naib | #FFD700 | Gold |
+## 12. Future Considerations
 
-### 14.3 Weekly Digest Schedule
+### 12.1 v4.2 Preparation
 
-- **Collection**: Sunday 23:59 UTC (end of week)
-- **Posting**: Monday 00:00 UTC (start of week)
-- **Channel**: #announcements
-- **Format**: Plain text with emoji headers
+| Feature | v4.1 Foundation |
+|---------|-----------------|
+| Telegram Mini App | Identity schema ready, API endpoints available |
+| Telegram notifications | Telegram user ID stored, notification service can extend |
+| Group management | Bot permissions can be extended |
+| Inline queries | grammy supports, just add handlers |
+
+### 12.2 Technical Debt
+
+| Item | Priority | Notes |
+|------|----------|-------|
+| Session cleanup cron | Medium | Add trigger.dev task to clean expired sessions |
+| Platform abstraction | Low | Consider PlatformAdapter interface for future platforms |
+| Metrics collection | Low | Add Telegram-specific metrics (commands/hour, etc.) |
 
 ---
 
-## 15. Version History
+## 13. Implementation Summary
 
-| Version | Date | Changes |
-|---------|------|---------|
-| 1.0 | 2025-12-17 | Initial MVP - eligibility, API, Discord notifications |
-| 2.0 | 2025-12-18 | Social Layer - profiles, badges, directory, activity tracking |
-| 2.1 | 2025-12-19 | Naib Dynamics & Threshold system |
-| 3.0 | 2025-12-20 | The Great Expansion - 9-tier system, sponsors, digest |
-| 3.0.1 | 2025-12-24 | Refinements: Water Sharer badge model (sharing not external invite), additive role model, graceful degradation, The Oasis channel |
+### 13.1 New Files
+
+| Path | LOC (Est.) | Purpose |
+|------|------------|---------|
+| `src/telegram/bot.ts` | ~100 | Bot initialization |
+| `src/telegram/commands/*.ts` | ~400 | Command handlers (7 files) |
+| `src/telegram/middleware/*.ts` | ~100 | Rate limiting, error handling |
+| `src/telegram/utils/*.ts` | ~80 | Formatters, keyboards |
+| `src/services/IdentityService.ts` | ~200 | Cross-platform identity |
+| `src/api/telegram.routes.ts` | ~80 | API routes |
+| `src/db/migrations/012_telegram_identity.ts` | ~50 | Schema migration |
+| `tests/telegram/**/*.ts` | ~500 | Test suite |
+
+**Total New Code**: ~1,500 LOC
+
+### 13.2 Modified Files
+
+| Path | Changes |
+|------|---------|
+| `src/api/server.ts` | Mount telegram routes |
+| `src/index.ts` | Initialize Telegram bot |
+| `src/config.ts` | Add Telegram env vars |
+| `package.json` | Add grammy dependency |
+| `ecosystem.config.cjs` | No changes (same process) |
+| `.env.example` | Add Telegram variables |
+
+### 13.3 Sprint Mapping
+
+| Sprint | Components | Tests |
+|--------|------------|-------|
+| Sprint 30 | Bot init, /start, /verify, migration, IdentityService | ~15 |
+| Sprint 31 | /score, /leaderboard, /tier, /status, /help | ~20 |
+| Sprint 32 | Webhook mode, rate limiting, error handling | ~10 |
+| Sprint 33 | E2E tests, docs, polish, admin broadcast | ~10 |
 
 ---
 
-*Document generated by Architecture Designer Agent*
+## Document Metadata
+
+| Field | Value |
+|-------|-------|
+| Version | 4.1 |
+| Generated | December 27, 2025 |
+| Author | Loa Framework |
+| Classification | Internal |
+| Status | DRAFT |
+| PRD Reference | loa-grimoire/prd.md v4.1 |
+| Next Step | `/sprint-plan` to create sprint breakdown |
+
+---
+
+*SDD v4.1 "The Crossing" generated by Loa architecture workflow*
+*Based on: PRD v4.1, sdd-v4.0-completed.md, ARCHITECTURE_SPEC_v2.9.0.md*

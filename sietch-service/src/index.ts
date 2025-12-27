@@ -9,10 +9,11 @@
  * - Manages Discord notifications
  */
 
-import { config } from './config.js';
+import { config, isTelegramEnabled, getMissingTelegramConfig } from './config.js';
 import { logger } from './utils/logger.js';
 import { startServer } from './api/index.js';
 import { discordService } from './services/discord.js';
+import { startTelegramBot } from './telegram/bot.js';
 
 async function main() {
   logger.info({ config: { port: config.api.port, host: config.api.host } }, 'Starting Sietch Service');
@@ -30,6 +31,23 @@ async function main() {
     }
   } else {
     logger.warn('Discord token not configured - skipping Discord bot initialization');
+  }
+
+  // Initialize Telegram bot (v4.1 - Sprint 30)
+  if (isTelegramEnabled()) {
+    try {
+      await startTelegramBot();
+      logger.info('Telegram bot started successfully');
+    } catch (error) {
+      logger.error({ error }, 'Failed to start Telegram bot - service will continue without Telegram');
+    }
+  } else {
+    const missing = getMissingTelegramConfig();
+    if (missing.length > 0) {
+      logger.warn({ missing }, 'Telegram bot not configured - skipping initialization');
+    } else {
+      logger.info('Telegram bot disabled in configuration');
+    }
   }
 
   logger.info('Sietch Service started successfully');

@@ -157,3 +157,19 @@ export { WATER_SHARER_SCHEMA_SQL, WATER_SHARER_ROLLBACK_SQL } from './migrations
 
 // Re-export Usul Ascended schema for v3.0 (Sprint 18)
 export { USUL_ASCENDED_SCHEMA_SQL, USUL_ASCENDED_ROLLBACK_SQL } from './migrations/008_usul_ascended.js';
+
+// Re-export Billing schema for v4.0 (Sprint 23)
+export { BILLING_SCHEMA_SQL, BILLING_ROLLBACK_SQL } from './migrations/009_billing.js';
+
+// Re-export Score Badges schema for v4.0 (Sprint 27)
+export { BADGES_SCHEMA_SQL, BADGES_ROLLBACK_SQL } from './migrations/010_badges.js';
+
+// Re-export Community Boosts schema for v4.0 (Sprint 28)
+export { BOOSTS_SCHEMA_SQL, BOOSTS_ROLLBACK_SQL } from './migrations/011_boosts.js';
+
+// Re-export Telegram Identity schema for v4.1 (Sprint 30)
+export {
+  TELEGRAM_IDENTITY_SCHEMA_SQL,
+  TELEGRAM_IDENTITY_SAFE_SQL,
+  TELEGRAM_IDENTITY_ROLLBACK_SQL,
+} from './migrations/012_telegram_identity.js';

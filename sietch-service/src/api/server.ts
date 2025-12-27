@@ -4,7 +4,9 @@ import type { IncomingMessage, ServerResponse } from 'http';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { initDatabase, closeDatabase } from '../db/index.js';
-import { publicRouter, adminRouter, memberRouter } from './routes.js';
+import { publicRouter, adminRouter, memberRouter, billingRouter, badgeRouter, boostRouter } from './routes.js';
+import { telegramRouter } from './telegram.routes.js';
+import { adminRouter as billingAdminRouter } from './admin.routes.js';
 import {
   errorHandler,
   notFoundHandler,
@@ -71,6 +73,17 @@ function createApp(): Application {
     next();
   });
 
+  // Raw body parser for Stripe webhook (must be before JSON parsing)
+  // Stripe requires raw body for signature verification
+  // We use a custom verify function to attach the raw body to the request
+  expressApp.use('/api/billing/webhook', express.raw({
+    type: 'application/json',
+    verify: (req: any, _res, buf) => {
+      // Attach raw body buffer to request for signature verification
+      req.rawBody = buf;
+    },
+  }));
+
   // JSON body parsing
   expressApp.use(express.json({ limit: '10kb' }));
 
@@ -80,8 +93,23 @@ function createApp(): Application {
   // Member API routes (under /api prefix)
   expressApp.use('/api', memberRouter);
 
+  // Billing routes (v4.0 - Sprint 23)
+  expressApp.use('/api/billing', billingRouter);
+
+  // Badge routes (v4.0 - Sprint 27)
+  expressApp.use('/api/badge', badgeRouter);
+
+  // Boost routes (v4.0 - Sprint 28)
+  expressApp.use('/api/boosts', boostRouter);
+
+  // Telegram routes (v4.1 - Sprint 30)
+  expressApp.use('/telegram', telegramRouter);
+
   // Admin routes (under /admin prefix)
   expressApp.use('/admin', adminRouter);
+
+  // Billing admin routes (v4.0 - Sprint 26)
+  expressApp.use('/admin', billingAdminRouter);
 
   // 404 handler
   expressApp.use(notFoundHandler);

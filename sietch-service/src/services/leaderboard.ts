@@ -1,5 +1,5 @@
 /**
- * Leaderboard Service
+ * Leaderboard Service (v4.1 - Sprint 32)
  *
  * Provides engagement leaderboard based on badge count.
  * Privacy-first design: Does NOT expose activity stats or wallet info.
@@ -7,6 +7,8 @@
  * Rankings are based on:
  * 1. Badge count (primary)
  * 2. Tenure (tiebreaker - older members rank higher)
+ *
+ * Sprint 32: Added Redis caching with 60-second TTL for performance.
  */
 
 import { logger } from '../utils/logger.js';
@@ -15,6 +17,7 @@ import {
   calculateTenureCategory,
   getMemberBadgeCount,
 } from '../db/queries.js';
+import { redisService } from './cache/RedisService.js';
 import type { LeaderboardEntry } from '../types/index.js';
 
 /**
@@ -40,8 +43,42 @@ class LeaderboardService {
    * - Does NOT return activity stats
    * - Does NOT return wallet info
    * - Only returns public profile information
+   *
+   * Sprint 32: Now uses Redis caching with 60-second TTL
    */
-  getLeaderboard(limit: number = DEFAULT_LEADERBOARD_SIZE): LeaderboardEntry[] {
+  async getLeaderboard(limit: number = DEFAULT_LEADERBOARD_SIZE): Promise<LeaderboardEntry[]> {
+    // Normalize limit
+    const normalizedLimit = Math.min(
+      MAX_LEADERBOARD_SIZE,
+      Math.max(1, limit)
+    );
+
+    // Try cache first
+    const cached = await redisService.getLeaderboard(normalizedLimit);
+    if (cached) {
+      logger.debug(
+        { count: cached.length, limit: normalizedLimit },
+        'Leaderboard served from cache'
+      );
+      return cached as LeaderboardEntry[];
+    }
+
+    // Cache miss - query database
+    const entries = this.getLeaderboardFromDb(normalizedLimit);
+
+    // Store in cache (fire and forget)
+    redisService.setLeaderboard(normalizedLimit, entries).catch((error) => {
+      logger.warn({ error: (error as Error).message }, 'Failed to cache leaderboard');
+    });
+
+    return entries;
+  }
+
+  /**
+   * Get leaderboard directly from database (bypasses cache)
+   * Used internally and for cache population
+   */
+  getLeaderboardFromDb(limit: number = DEFAULT_LEADERBOARD_SIZE): LeaderboardEntry[] {
     const database = getDatabase();
 
     // Normalize limit
@@ -97,10 +134,18 @@ class LeaderboardService {
 
     logger.debug(
       { count: entries.length, limit: normalizedLimit },
-      'Fetched leaderboard'
+      'Fetched leaderboard from database'
     );
 
     return entries;
+  }
+
+  /**
+   * Invalidate the leaderboard cache
+   * Call this when badge counts change (badge awarded/revoked)
+   */
+  async invalidateCache(): Promise<void> {
+    await redisService.invalidateLeaderboard();
   }
 
   /**

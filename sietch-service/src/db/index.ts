@@ -62,3 +62,33 @@ export {
   searchMembersByNym,
   getBatchMemberBadges,
 } from './queries.js';
+
+// Billing Queries (v4.0 - Sprint 23)
+export {
+  // Subscriptions
+  getSubscriptionByCommunityId,
+  getSubscriptionByStripeId,
+  getSubscriptionById,
+  createSubscription,
+  updateSubscription,
+  deleteSubscription,
+  getSubscriptionsInGracePeriod,
+  getExpiredGracePeriodSubscriptions,
+  // Fee Waivers
+  getActiveFeeWaiver,
+  getFeeWaiversByCommunity,
+  createFeeWaiver,
+  revokeFeeWaiver,
+  getAllActiveFeeWaivers,
+  // Webhook Events
+  isWebhookEventProcessed,
+  recordWebhookEvent,
+  updateWebhookEventStatus,
+  getFailedWebhookEvents,
+  getWebhookEvent,
+  // Billing Audit
+  logBillingAuditEvent,
+  getBillingAuditLog,
+  // Entitlements
+  getEffectiveTier,
+} from './billing-queries.js';

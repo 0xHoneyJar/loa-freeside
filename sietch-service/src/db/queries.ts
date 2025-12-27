@@ -4,7 +4,7 @@ import { dirname } from 'path';
 import { randomUUID } from 'crypto';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
-import { SCHEMA_SQL, CLEANUP_OLD_SNAPSHOTS_SQL, SOCIAL_LAYER_SCHEMA_SQL } from './schema.js';
+import { SCHEMA_SQL, CLEANUP_OLD_SNAPSHOTS_SQL, SOCIAL_LAYER_SCHEMA_SQL, BILLING_SCHEMA_SQL, BADGES_SCHEMA_SQL, BOOSTS_SCHEMA_SQL, TELEGRAM_IDENTITY_SAFE_SQL } from './schema.js';
 import type {
   EligibilityEntry,
   SerializedEligibilityEntry,
@@ -150,6 +150,45 @@ export function initDatabase(): Database.Database {
   // Run social layer schema (v2.0)
   db.exec(SOCIAL_LAYER_SCHEMA_SQL);
   logger.info('Social layer schema initialized');
+
+  // Run billing schema (v4.0 - Sprint 23)
+  db.exec(BILLING_SCHEMA_SQL);
+  logger.info('Billing schema initialized');
+
+  // Run badge schema (v4.0 - Sprint 27)
+  db.exec(BADGES_SCHEMA_SQL);
+  logger.info('Badge schema initialized');
+
+  // Run boosts schema (v4.0 - Sprint 28)
+  db.exec(BOOSTS_SCHEMA_SQL);
+  logger.info('Boosts schema initialized');
+
+  // Run telegram identity schema (v4.1 - Sprint 30)
+  // Uses safe SQL that handles existing columns gracefully
+  try {
+    db.exec(TELEGRAM_IDENTITY_SAFE_SQL);
+    logger.info('Telegram identity schema initialized');
+  } catch (error) {
+    // Ignore errors for existing columns (SQLite limitation)
+    logger.debug({ error }, 'Telegram schema migration note (may be already applied)');
+  }
+
+  // Add telegram columns if they don't exist (safe migration)
+  // SQLite doesn't have ADD COLUMN IF NOT EXISTS, so we handle manually
+  try {
+    const columnExists = db.prepare(
+      "SELECT COUNT(*) as count FROM pragma_table_info('member_profiles') WHERE name = 'telegram_user_id'"
+    ).get() as { count: number };
+
+    if (columnExists.count === 0) {
+      db.exec('ALTER TABLE member_profiles ADD COLUMN telegram_user_id TEXT UNIQUE');
+      db.exec('ALTER TABLE member_profiles ADD COLUMN telegram_linked_at INTEGER');
+      logger.info('Added telegram columns to member_profiles');
+    }
+  } catch (error) {
+    // Column might already exist
+    logger.debug({ error }, 'Telegram column migration note');
+  }
 
   // Seed default story fragments if table is empty (v3.0 - Sprint 21)
   seedDefaultStoryFragments(db);

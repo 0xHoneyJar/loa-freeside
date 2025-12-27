@@ -1,5 +1,8 @@
 import type { Address } from 'viem';
 
+// Re-export billing types (v4.0 - Sprint 23)
+export * from './billing.js';
+
 /**
  * BGT eligibility entry representing a wallet's claim/burn status
  */
@@ -140,7 +143,9 @@ export interface AuditLogEntry {
     | 'weekly_digest_posted'
     | 'weekly_digest_skipped'
     | 'weekly_digest_failed'
-    | 'weekly_digest_error';
+    | 'weekly_digest_error'
+    // Sprint 28: Boost event types
+    | 'boost_expiry_check';
   /** Event-specific data */
   eventData: Record<string, unknown>;
   /** When the event occurred */

@@ -45,6 +45,23 @@ const adminApiKeysSchema = z
   });
 
 /**
+ * Stripe price IDs schema: "tier:priceId,tier:priceId"
+ */
+const stripePriceIdsSchema = z
+  .string()
+  .transform((val) => {
+    const prices = new Map<string, string>();
+    if (!val) return prices;
+    for (const pair of val.split(',')) {
+      const [tier, priceId] = pair.split(':');
+      if (tier && priceId) {
+        prices.set(tier.trim(), priceId.trim());
+      }
+    }
+    return prices;
+  });
+
+/**
  * Configuration schema with Zod validation
  */
 const configSchema = z.object({
@@ -59,6 +76,44 @@ const configSchema = z.object({
   triggerDev: z.object({
     projectId: z.string().min(1),
     secretKey: z.string().min(1),
+  }),
+
+  // Stripe Configuration (v4.0 - Sprint 23)
+  stripe: z.object({
+    secretKey: z.string().optional(),
+    webhookSecret: z.string().optional(),
+    priceIds: stripePriceIdsSchema,
+  }),
+
+  // Redis Configuration (v4.0 - Sprint 23)
+  redis: z.object({
+    url: z.string().url().optional(),
+    maxRetries: z.coerce.number().int().min(0).max(10).default(3),
+    connectTimeout: z.coerce.number().int().min(1000).max(30000).default(5000),
+    // TTL for entitlement cache in seconds (5 minutes default)
+    entitlementTtl: z.coerce.number().int().min(60).max(3600).default(300),
+  }),
+
+  // Feature Flags (v4.0 - Sprint 23)
+  features: z.object({
+    // Enable Stripe billing integration
+    billingEnabled: z.coerce.boolean().default(false),
+    // Enable Gatekeeper feature gating
+    gatekeeperEnabled: z.coerce.boolean().default(false),
+    // Enable Redis caching
+    redisEnabled: z.coerce.boolean().default(false),
+    // Enable score badges (Sprint 27)
+    badgesEnabled: z.coerce.boolean().default(true),
+    // Enable Telegram bot (v4.1 - Sprint 30)
+    telegramEnabled: z.coerce.boolean().default(false),
+  }),
+
+  // Telegram Configuration (v4.1 - Sprint 30)
+  telegram: z.object({
+    botToken: z.string().optional(),
+    webhookSecret: z.string().optional(),
+    webhookUrl: z.string().url().optional(),
+    verifyCallbackUrl: z.string().url().optional(),
   }),
 
   // Discord Configuration
@@ -182,6 +237,33 @@ function parseConfig() {
       projectId: process.env.TRIGGER_PROJECT_ID ?? '',
       secretKey: process.env.TRIGGER_SECRET_KEY ?? '',
     },
+    // Stripe Configuration (v4.0 - Sprint 23)
+    stripe: {
+      secretKey: process.env.STRIPE_SECRET_KEY,
+      webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+      priceIds: process.env.STRIPE_PRICE_IDS ?? '',
+    },
+    // Redis Configuration (v4.0 - Sprint 23)
+    redis: {
+      url: process.env.REDIS_URL,
+      maxRetries: process.env.REDIS_MAX_RETRIES ?? '3',
+      connectTimeout: process.env.REDIS_CONNECT_TIMEOUT ?? '5000',
+      entitlementTtl: process.env.REDIS_ENTITLEMENT_TTL ?? '300',
+    },
+    // Feature Flags (v4.0 - Sprint 23)
+    features: {
+      billingEnabled: process.env.FEATURE_BILLING_ENABLED ?? 'false',
+      gatekeeperEnabled: process.env.FEATURE_GATEKEEPER_ENABLED ?? 'false',
+      redisEnabled: process.env.FEATURE_REDIS_ENABLED ?? 'false',
+      telegramEnabled: process.env.FEATURE_TELEGRAM_ENABLED ?? 'false',
+    },
+    // Telegram Configuration (v4.1 - Sprint 30)
+    telegram: {
+      botToken: process.env.TELEGRAM_BOT_TOKEN,
+      webhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET,
+      webhookUrl: process.env.TELEGRAM_WEBHOOK_URL,
+      verifyCallbackUrl: process.env.TELEGRAM_VERIFY_CALLBACK_URL,
+    },
     discord: {
       botToken: process.env.DISCORD_BOT_TOKEN ?? '',
       guildId: process.env.DISCORD_GUILD_ID ?? '',
@@ -290,6 +372,34 @@ export interface Config {
     projectId: string;
     secretKey: string;
   };
+  // Stripe Configuration (v4.0 - Sprint 23)
+  stripe: {
+    secretKey?: string;
+    webhookSecret?: string;
+    priceIds: Map<string, string>;
+  };
+  // Redis Configuration (v4.0 - Sprint 23)
+  redis: {
+    url?: string;
+    maxRetries: number;
+    connectTimeout: number;
+    entitlementTtl: number;
+  };
+  // Feature Flags (v4.0 - Sprint 23)
+  features: {
+    billingEnabled: boolean;
+    gatekeeperEnabled: boolean;
+    redisEnabled: boolean;
+    badgesEnabled: boolean;
+    telegramEnabled: boolean;
+  };
+  // Telegram Configuration (v4.1 - Sprint 30)
+  telegram: {
+    botToken?: string;
+    webhookSecret?: string;
+    webhookUrl?: string;
+    verifyCallbackUrl?: string;
+  };
   discord: {
     botToken: string;
     guildId: string;
@@ -385,6 +495,10 @@ export const config: Config = {
     rewardVaultAddresses: parsedConfig.chain.rewardVaultAddresses as Address[],
   },
   triggerDev: parsedConfig.triggerDev,
+  stripe: parsedConfig.stripe,
+  redis: parsedConfig.redis,
+  features: parsedConfig.features,
+  telegram: parsedConfig.telegram,
   discord: parsedConfig.discord,
   api: parsedConfig.api,
   database: parsedConfig.database,
@@ -483,4 +597,102 @@ export function isOasisChannelConfigured(): boolean {
  */
 export function getOasisChannelId(): string | undefined {
   return config.discord.channels.oasis;
+}
+
+// =============================================================================
+// Billing Configuration Helpers (v4.0 - Sprint 23)
+// =============================================================================
+
+/**
+ * Check if Stripe billing is enabled and configured
+ */
+export function isBillingEnabled(): boolean {
+  return config.features.billingEnabled && !!config.stripe.secretKey;
+}
+
+/**
+ * Check if Gatekeeper feature gating is enabled
+ */
+export function isGatekeeperEnabled(): boolean {
+  return config.features.gatekeeperEnabled;
+}
+
+/**
+ * Check if Redis caching is enabled and configured
+ */
+export function isRedisEnabled(): boolean {
+  return config.features.redisEnabled && !!config.redis.url;
+}
+
+/**
+ * Get Stripe price ID for a subscription tier
+ * Returns undefined if not configured
+ */
+export function getStripePriceId(tier: string): string | undefined {
+  return config.stripe.priceIds.get(tier);
+}
+
+/**
+ * Check if all required Stripe configuration is present
+ * Returns list of missing configuration keys
+ */
+export function getMissingStripeConfig(): string[] {
+  const missing: string[] = [];
+
+  if (!config.stripe.secretKey) missing.push('STRIPE_SECRET_KEY');
+  if (!config.stripe.webhookSecret) missing.push('STRIPE_WEBHOOK_SECRET');
+  if (config.stripe.priceIds.size === 0) missing.push('STRIPE_PRICE_IDS');
+
+  return missing;
+}
+
+/**
+ * Subscription tier pricing information
+ * Monthly prices in USD
+ */
+export const SUBSCRIPTION_TIERS = {
+  starter: { price: 0, maxMembers: 100, name: 'Starter' },
+  basic: { price: 29, maxMembers: 500, name: 'Basic' },
+  premium: { price: 99, maxMembers: 1000, name: 'Premium' },
+  exclusive: { price: 199, maxMembers: 2500, name: 'Exclusive' },
+  elite: { price: 449, maxMembers: 10000, name: 'Elite' },
+  enterprise: { price: 0, maxMembers: Infinity, name: 'Enterprise' }, // Custom pricing
+} as const;
+
+/**
+ * Get subscription tier info
+ */
+export function getSubscriptionTierInfo(tier: string): typeof SUBSCRIPTION_TIERS[keyof typeof SUBSCRIPTION_TIERS] | undefined {
+  return SUBSCRIPTION_TIERS[tier as keyof typeof SUBSCRIPTION_TIERS];
+}
+
+// =============================================================================
+// Telegram Configuration Helpers (v4.1 - Sprint 30)
+// =============================================================================
+
+/**
+ * Check if Telegram bot is enabled and configured
+ */
+export function isTelegramEnabled(): boolean {
+  return config.features.telegramEnabled && !!config.telegram.botToken;
+}
+
+/**
+ * Check if all required Telegram configuration is present
+ * Returns list of missing configuration keys
+ */
+export function getMissingTelegramConfig(): string[] {
+  const missing: string[] = [];
+
+  if (!config.telegram.botToken) missing.push('TELEGRAM_BOT_TOKEN');
+  if (!config.telegram.webhookSecret) missing.push('TELEGRAM_WEBHOOK_SECRET');
+
+  return missing;
+}
+
+/**
+ * Check if Telegram is in production mode (webhook) vs development (polling)
+ */
+export function isTelegramWebhookMode(): boolean {
+  return !!config.telegram.webhookUrl;
 }

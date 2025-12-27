@@ -1,0 +1,20 @@
+Sprint 31 - Telegram User Commands
+Completed: 2025-12-27
+Version: v4.1 "The Crossing"
+
+Implementation: APPROVED by Senior Technical Lead
+Security Audit: APPROVED by Paranoid Cypherpunk Auditor
+
+Tasks Completed:
+- TASK-31.1: Implement /score command
+- TASK-31.2: Implement /status command
+- TASK-31.3: Implement /leaderboard command
+- TASK-31.4: Implement /help command
+- TASK-31.5: Create session cleanup trigger task
+- TASK-31.6: Create format utilities
+- TASK-31.7: Update command index
+- TASK-31.8: Write unit tests (13 new tests)
+
+Test Results: 28/28 passing
+
+Security: No critical or high-severity vulnerabilities identified.

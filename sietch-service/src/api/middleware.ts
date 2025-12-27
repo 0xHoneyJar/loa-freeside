@@ -8,6 +8,15 @@ import { validateApiKey } from '../config.js';
  */
 export interface AuthenticatedRequest extends Request {
   adminName?: string;
+  apiKeyId?: string;
+}
+
+/**
+ * Extended Request type with raw body for webhook signature verification
+ * Used by routes that need to verify signatures (e.g., Stripe webhooks)
+ */
+export interface RawBodyRequest extends Request {
+  rawBody: Buffer;
 }
 
 /**
