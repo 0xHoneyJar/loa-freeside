@@ -308,6 +308,32 @@ async function handleDisableAll(ctx: BotContext, memberId: string): Promise<void
 }
 
 /**
+ * Verify the user making the callback is authorized to modify the given memberId
+ * Prevents IDOR attacks where User A's forwarded message could let User B modify A's preferences
+ */
+async function verifyCallbackAuthorization(
+  ctx: BotContext,
+  memberId: string
+): Promise<boolean> {
+  const userId = ctx.from?.id;
+  if (!userId) {
+    logger.warn({ memberId }, 'Callback without user ID');
+    return false;
+  }
+
+  const member = await identityService.getMemberByPlatformId('telegram', userId.toString());
+  if (!member || member.memberId !== memberId) {
+    logger.warn(
+      { userId, attemptedMemberId: memberId, actualMemberId: member?.memberId },
+      'Unauthorized callback attempt - IDOR blocked'
+    );
+    return false;
+  }
+
+  return true;
+}
+
+/**
  * Refresh the alerts message with updated preferences
  */
 async function refreshAlertsMessage(ctx: BotContext, memberId: string): Promise<void> {
@@ -345,47 +371,57 @@ export function registerAlertsCommand(bot: Bot<BotContext>): void {
 
   // Toggle position updates
   bot.callbackQuery(/^alerts_toggle_position_(.+)$/, async (ctx) => {
-    await ctx.answerCallbackQuery('Updating...');
     const memberId = ctx.match?.[1];
-    if (memberId) {
-      await handleTogglePosition(ctx, memberId);
+    if (!memberId || !(await verifyCallbackAuthorization(ctx, memberId))) {
+      await ctx.answerCallbackQuery('Unauthorized');
+      return;
     }
+    await ctx.answerCallbackQuery('Updating...');
+    await handleTogglePosition(ctx, memberId);
   });
 
   // Toggle at-risk warnings
   bot.callbackQuery(/^alerts_toggle_atrisk_(.+)$/, async (ctx) => {
-    await ctx.answerCallbackQuery('Updating...');
     const memberId = ctx.match?.[1];
-    if (memberId) {
-      await handleToggleAtRisk(ctx, memberId);
+    if (!memberId || !(await verifyCallbackAuthorization(ctx, memberId))) {
+      await ctx.answerCallbackQuery('Unauthorized');
+      return;
     }
+    await ctx.answerCallbackQuery('Updating...');
+    await handleToggleAtRisk(ctx, memberId);
   });
 
   // Toggle naib alerts
   bot.callbackQuery(/^alerts_toggle_naib_(.+)$/, async (ctx) => {
-    await ctx.answerCallbackQuery('Updating...');
     const memberId = ctx.match?.[1];
-    if (memberId) {
-      await handleToggleNaib(ctx, memberId);
+    if (!memberId || !(await verifyCallbackAuthorization(ctx, memberId))) {
+      await ctx.answerCallbackQuery('Unauthorized');
+      return;
     }
+    await ctx.answerCallbackQuery('Updating...');
+    await handleToggleNaib(ctx, memberId);
   });
 
   // Frequency changes
   bot.callbackQuery(/^alerts_freq_(1_per_week|2_per_week|3_per_week|daily)_(.+)$/, async (ctx) => {
-    await ctx.answerCallbackQuery('Updating...');
     const frequency = ctx.match?.[1] as AlertFrequency | undefined;
     const memberId = ctx.match?.[2];
-    if (frequency && memberId) {
-      await handleFrequencyChange(ctx, memberId, frequency);
+    if (!frequency || !memberId || !(await verifyCallbackAuthorization(ctx, memberId))) {
+      await ctx.answerCallbackQuery('Unauthorized');
+      return;
     }
+    await ctx.answerCallbackQuery('Updating...');
+    await handleFrequencyChange(ctx, memberId, frequency);
   });
 
   // Disable all
   bot.callbackQuery(/^alerts_disable_all_(.+)$/, async (ctx) => {
-    await ctx.answerCallbackQuery('All alerts disabled');
     const memberId = ctx.match?.[1];
-    if (memberId) {
-      await handleDisableAll(ctx, memberId);
+    if (!memberId || !(await verifyCallbackAuthorization(ctx, memberId))) {
+      await ctx.answerCallbackQuery('Unauthorized');
+      return;
     }
+    await ctx.answerCallbackQuery('All alerts disabled');
+    await handleDisableAll(ctx, memberId);
   });
 }

@@ -1235,6 +1235,91 @@ describe('Telegram Commands', () => {
       // Should have disable all button
       expect(buttons.some((b: any) => b.callback_data?.includes('disable_all'))).toBe(true);
     });
+
+    it('should block unauthorized callback attempts (IDOR protection)', async () => {
+      const { registerAlertsCommand } = await import('../../src/telegram/commands/alerts.js');
+      const { notificationService } = await import('../../src/services/notification.js');
+
+      // User A is member-123, User B (attacker) is trying to modify A's preferences
+      vi.mocked(identityService.getMemberByPlatformId).mockResolvedValue({
+        memberId: 'member-456', // User B's member ID
+        walletAddress: '0xattacker...',
+        platforms: [],
+      });
+
+      const mockBot = {
+        command: vi.fn(),
+        callbackQuery: vi.fn(),
+      };
+
+      registerAlertsCommand(mockBot as any);
+
+      // Find the toggle position handler (regex pattern)
+      const togglePositionCall = mockBot.callbackQuery.mock.calls.find(
+        ([query]) => query instanceof RegExp && query.source.includes('toggle_position')
+      );
+
+      expect(togglePositionCall).toBeDefined();
+      const [, handler] = togglePositionCall;
+
+      // Create context for User B trying to modify User A's (member-123) preferences
+      const ctx = createMockContext({ userId: 789012 }); // User B's Telegram ID
+      ctx.match = ['alerts_toggle_position_member-123', 'member-123']; // Trying to target User A
+
+      await handler(ctx);
+
+      // Should show unauthorized and NOT call updatePreferences
+      expect(ctx.answerCallbackQuery).toHaveBeenCalledWith('Unauthorized');
+      expect(notificationService.updatePreferences).not.toHaveBeenCalled();
+    });
+
+    it('should allow authorized callback attempts', async () => {
+      const { registerAlertsCommand } = await import('../../src/telegram/commands/alerts.js');
+      const { notificationService } = await import('../../src/services/notification.js');
+
+      // User A is member-123, clicking their own button
+      vi.mocked(identityService.getMemberByPlatformId).mockResolvedValue({
+        memberId: 'member-123',
+        walletAddress: '0x1234...',
+        platforms: [],
+      });
+
+      vi.mocked(notificationService.getPreferences).mockReturnValue({
+        positionUpdates: true,
+        atRiskWarnings: true,
+        naibAlerts: false,
+        frequency: '2_per_week',
+        alertsSentThisWeek: 1,
+      });
+
+      const mockBot = {
+        command: vi.fn(),
+        callbackQuery: vi.fn(),
+      };
+
+      registerAlertsCommand(mockBot as any);
+
+      // Find the toggle position handler
+      const togglePositionCall = mockBot.callbackQuery.mock.calls.find(
+        ([query]) => query instanceof RegExp && query.source.includes('toggle_position')
+      );
+
+      const [, handler] = togglePositionCall;
+
+      // Create context for User A clicking their own button
+      const ctx = createMockContext({ userId: 123456789 });
+      ctx.match = ['alerts_toggle_position_member-123', 'member-123'];
+      ctx.editMessageText = vi.fn().mockResolvedValue({});
+
+      await handler(ctx);
+
+      // Should update preferences (authorized)
+      expect(ctx.answerCallbackQuery).toHaveBeenCalledWith('Updating...');
+      expect(notificationService.updatePreferences).toHaveBeenCalledWith(
+        'member-123',
+        { positionUpdates: false }
+      );
+    });
   });
 
   describe('Inline Queries', () => {
