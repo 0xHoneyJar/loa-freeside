@@ -1,5 +1,5 @@
 /**
- * Telegram Command Tests (v4.1 - Sprint 32)
+ * Telegram Command Tests (v4.1 - Sprint 33)
  *
  * Test suite for Telegram bot commands covering:
  * - /start command handler
@@ -10,6 +10,8 @@
  * - /help command handler
  * - /refresh command handler (Sprint 32)
  * - /unlink command handler (Sprint 32)
+ * - /alerts command handler (Sprint 33)
+ * - Inline queries (Sprint 33)
  * - Callback query handlers
  * - Edge cases and error handling
  */
@@ -48,6 +50,32 @@ vi.mock('../../src/services/leaderboard.js', () => ({
     getMemberRank: vi.fn(),
     isInTopTen: vi.fn(),
     invalidateCache: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
+vi.mock('../../src/services/notification.js', () => ({
+  notificationService: {
+    getPreferences: vi.fn().mockReturnValue({
+      positionUpdates: true,
+      atRiskWarnings: true,
+      naibAlerts: false,
+      frequency: '2_per_week',
+      alertsSentThisWeek: 1,
+    }),
+    updatePreferences: vi.fn().mockReturnValue({
+      positionUpdates: false,
+      atRiskWarnings: true,
+      naibAlerts: false,
+      frequency: '2_per_week',
+      alertsSentThisWeek: 1,
+    }),
+    getMaxAlertsPerWeek: vi.fn().mockReturnValue(2),
+  },
+}));
+
+vi.mock('../../src/services/naib.js', () => ({
+  naibService: {
+    isCurrentNaib: vi.fn().mockReturnValue(false),
   },
 }));
 
@@ -1033,6 +1061,416 @@ describe('Telegram Commands', () => {
       expect(ctx.reply).toHaveBeenCalled();
       const [message] = ctx.reply.mock.calls[0];
       expect(message).toContain('Unlink Cancelled');
+    });
+  });
+
+  // =============================================================================
+  // Sprint 33 Command Tests
+  // =============================================================================
+
+  describe('/alerts command', () => {
+    it('should show not linked message for unverified users', async () => {
+      const { handleAlertsCommand } = await import('../../src/telegram/commands/alerts.js');
+
+      vi.mocked(identityService.getMemberByPlatformId).mockResolvedValue(null);
+
+      const ctx = createMockContext();
+      await handleAlertsCommand(ctx as any);
+
+      expect(ctx.reply).toHaveBeenCalledOnce();
+      const [message] = ctx.reply.mock.calls[0];
+
+      expect(message).toContain('Wallet Not Linked');
+      expect(message).toContain('/verify');
+    });
+
+    it('should show alert preferences for verified users', async () => {
+      const { handleAlertsCommand } = await import('../../src/telegram/commands/alerts.js');
+      const { notificationService } = await import('../../src/services/notification.js');
+      const { naibService } = await import('../../src/services/naib.js');
+
+      // Mock verified member
+      vi.mocked(identityService.getMemberByPlatformId).mockResolvedValue({
+        memberId: 'member-123',
+        walletAddress: '0x1234567890abcdef1234567890abcdef12345678',
+        platforms: [],
+      });
+
+      // Mock preferences
+      vi.mocked(notificationService.getPreferences).mockReturnValue({
+        positionUpdates: true,
+        atRiskWarnings: true,
+        naibAlerts: false,
+        frequency: '2_per_week',
+        alertsSentThisWeek: 1,
+      });
+
+      vi.mocked(notificationService.getMaxAlertsPerWeek).mockReturnValue(2);
+      vi.mocked(naibService.isCurrentNaib).mockReturnValue(false);
+
+      const ctx = createMockContext();
+      await handleAlertsCommand(ctx as any);
+
+      expect(ctx.reply).toHaveBeenCalledOnce();
+      const [message, options] = ctx.reply.mock.calls[0];
+
+      expect(message).toContain('Alert Preferences');
+      expect(message).toContain('Position Updates');
+      expect(message).toContain('At-Risk Warnings');
+      expect(message).toContain('Frequency');
+      expect(message).toContain('2x per week');
+      expect(options).toHaveProperty('parse_mode', 'Markdown');
+      expect(options.reply_markup.inline_keyboard).toBeDefined();
+    });
+
+    it('should show naib alerts option for naib members', async () => {
+      const { handleAlertsCommand } = await import('../../src/telegram/commands/alerts.js');
+      const { notificationService } = await import('../../src/services/notification.js');
+      const { naibService } = await import('../../src/services/naib.js');
+
+      vi.mocked(identityService.getMemberByPlatformId).mockResolvedValue({
+        memberId: 'member-123',
+        walletAddress: '0x1234...',
+        platforms: [],
+      });
+
+      vi.mocked(notificationService.getPreferences).mockReturnValue({
+        positionUpdates: true,
+        atRiskWarnings: true,
+        naibAlerts: true,
+        frequency: 'daily',
+        alertsSentThisWeek: 3,
+      });
+
+      vi.mocked(naibService.isCurrentNaib).mockReturnValue(true);
+
+      const ctx = createMockContext();
+      await handleAlertsCommand(ctx as any);
+
+      const [message, options] = ctx.reply.mock.calls[0];
+
+      expect(message).toContain('Naib Alerts');
+      // Should have naib toggle button
+      const buttons = options.reply_markup.inline_keyboard.flat();
+      expect(buttons.some((b: any) => b.callback_data?.includes('toggle_naib'))).toBe(true);
+    });
+
+    it('should handle missing user gracefully', async () => {
+      const { handleAlertsCommand } = await import('../../src/telegram/commands/alerts.js');
+
+      const ctx = createMockContext();
+      ctx.from = undefined as any;
+
+      await handleAlertsCommand(ctx as any);
+
+      expect(ctx.reply).toHaveBeenCalledOnce();
+      expect(ctx.reply.mock.calls[0][0]).toContain('Could not identify');
+    });
+
+    it('should handle errors gracefully', async () => {
+      const { handleAlertsCommand } = await import('../../src/telegram/commands/alerts.js');
+
+      vi.mocked(identityService.getMemberByPlatformId).mockRejectedValue(
+        new Error('Database error')
+      );
+
+      const ctx = createMockContext();
+      await handleAlertsCommand(ctx as any);
+
+      expect(ctx.reply).toHaveBeenCalledOnce();
+      const [message] = ctx.reply.mock.calls[0];
+
+      expect(message).toContain('Error');
+    });
+
+    it('should register alerts command and callbacks', async () => {
+      const { registerAlertsCommand } = await import('../../src/telegram/commands/alerts.js');
+
+      const mockBot = {
+        command: vi.fn(),
+        callbackQuery: vi.fn(),
+      };
+
+      registerAlertsCommand(mockBot as any);
+
+      expect(mockBot.command).toHaveBeenCalledWith('alerts', expect.any(Function));
+      expect(mockBot.callbackQuery).toHaveBeenCalledWith('alerts', expect.any(Function));
+      // Toggle handlers (regex patterns)
+      expect(mockBot.callbackQuery).toHaveBeenCalledWith(
+        expect.any(RegExp),
+        expect.any(Function)
+      );
+    });
+
+    it('should have frequency buttons in keyboard', async () => {
+      const { handleAlertsCommand } = await import('../../src/telegram/commands/alerts.js');
+      const { notificationService } = await import('../../src/services/notification.js');
+      const { naibService } = await import('../../src/services/naib.js');
+
+      vi.mocked(identityService.getMemberByPlatformId).mockResolvedValue({
+        memberId: 'member-123',
+        walletAddress: '0x1234...',
+        platforms: [],
+      });
+
+      vi.mocked(notificationService.getPreferences).mockReturnValue({
+        positionUpdates: true,
+        atRiskWarnings: false,
+        naibAlerts: false,
+        frequency: '1_per_week',
+        alertsSentThisWeek: 0,
+      });
+
+      vi.mocked(naibService.isCurrentNaib).mockReturnValue(false);
+
+      const ctx = createMockContext();
+      await handleAlertsCommand(ctx as any);
+
+      const [, options] = ctx.reply.mock.calls[0];
+      const buttons = options.reply_markup.inline_keyboard.flat();
+
+      // Should have frequency buttons
+      expect(buttons.some((b: any) => b.callback_data?.includes('freq_1_per_week'))).toBe(true);
+      expect(buttons.some((b: any) => b.callback_data?.includes('freq_daily'))).toBe(true);
+      // Should have disable all button
+      expect(buttons.some((b: any) => b.callback_data?.includes('disable_all'))).toBe(true);
+    });
+  });
+
+  describe('Inline Queries', () => {
+    /**
+     * Create a mock inline query context
+     */
+    function createMockInlineContext(options: {
+      userId?: number;
+      query?: string;
+    } = {}) {
+      const {
+        userId = 123456789,
+        query = '',
+      } = options;
+
+      return {
+        from: {
+          id: userId,
+          username: 'testuser',
+        },
+        inlineQuery: {
+          query,
+        },
+        answerInlineQuery: vi.fn().mockResolvedValue(true),
+      };
+    }
+
+    it('should register inline query handler', async () => {
+      const { registerInlineQueries } = await import('../../src/telegram/inline.js');
+
+      const mockBot = {
+        on: vi.fn(),
+      };
+
+      registerInlineQueries(mockBot as any);
+
+      expect(mockBot.on).toHaveBeenCalledWith('inline_query', expect.any(Function));
+    });
+
+    it('should return not verified result for unverified users', async () => {
+      const { registerInlineQueries } = await import('../../src/telegram/inline.js');
+
+      vi.mocked(identityService.getMemberByPlatformId).mockResolvedValue(null);
+
+      const mockBot = {
+        on: vi.fn(),
+      };
+
+      registerInlineQueries(mockBot as any);
+
+      // Get the inline query handler
+      const [, handler] = mockBot.on.mock.calls.find(
+        ([event]) => event === 'inline_query'
+      );
+
+      const ctx = createMockInlineContext({ query: 'score' });
+      await handler(ctx);
+
+      expect(ctx.answerInlineQuery).toHaveBeenCalledOnce();
+      const [results] = ctx.answerInlineQuery.mock.calls[0];
+
+      // Should have not verified result
+      expect(results.length).toBeGreaterThan(0);
+    });
+
+    it('should return score result for verified users on empty query', async () => {
+      const { registerInlineQueries } = await import('../../src/telegram/inline.js');
+
+      // Mock verified member
+      vi.mocked(identityService.getMemberByPlatformId).mockResolvedValue({
+        memberId: 'member-123',
+        walletAddress: '0x1234567890abcdef1234567890abcdef12345678',
+        platforms: [],
+      });
+
+      // Mock eligibility
+      vi.mocked(getEligibilityByAddress).mockReturnValue({
+        address: '0x1234...',
+        bgtHeld: 100n * 10n ** 18n,
+        rank: 5,
+      });
+
+      // Mock profile
+      vi.mocked(getMemberProfileById).mockReturnValue({
+        member_id: 'member-123',
+        tier: 'naib',
+      } as any);
+
+      vi.mocked(getMemberBadgeCount).mockReturnValue(3);
+      vi.mocked(leaderboardService.getMemberRank).mockReturnValue(5);
+      vi.mocked(leaderboardService.getLeaderboard).mockResolvedValue([]);
+
+      const mockBot = {
+        on: vi.fn(),
+      };
+
+      registerInlineQueries(mockBot as any);
+
+      const [, handler] = mockBot.on.mock.calls.find(
+        ([event]) => event === 'inline_query'
+      );
+
+      const ctx = createMockInlineContext({ query: '' });
+      await handler(ctx);
+
+      expect(ctx.answerInlineQuery).toHaveBeenCalledOnce();
+      const [results, options] = ctx.answerInlineQuery.mock.calls[0];
+
+      // Should have multiple results for empty query
+      expect(results.length).toBeGreaterThan(1);
+      expect(options.is_personal).toBe(true);
+    });
+
+    it('should return leaderboard result on "leaderboard" query', async () => {
+      const { registerInlineQueries } = await import('../../src/telegram/inline.js');
+
+      vi.mocked(leaderboardService.getLeaderboard).mockResolvedValue([
+        { rank: 1, nym: 'alpha', tier: 'naib', badgeCount: 10, tenureCategory: 'veteran' },
+        { rank: 2, nym: 'beta', tier: 'fedaykin', badgeCount: 5, tenureCategory: 'established' },
+      ]);
+
+      const mockBot = {
+        on: vi.fn(),
+      };
+
+      registerInlineQueries(mockBot as any);
+
+      const [, handler] = mockBot.on.mock.calls.find(
+        ([event]) => event === 'inline_query'
+      );
+
+      const ctx = createMockInlineContext({ query: 'leaderboard' });
+      await handler(ctx);
+
+      expect(ctx.answerInlineQuery).toHaveBeenCalledOnce();
+      const [results] = ctx.answerInlineQuery.mock.calls[0];
+
+      expect(results.length).toBeGreaterThan(0);
+    });
+
+    it('should return help result on "help" query', async () => {
+      const { registerInlineQueries } = await import('../../src/telegram/inline.js');
+
+      const mockBot = {
+        on: vi.fn(),
+      };
+
+      registerInlineQueries(mockBot as any);
+
+      const [, handler] = mockBot.on.mock.calls.find(
+        ([event]) => event === 'inline_query'
+      );
+
+      const ctx = createMockInlineContext({ query: 'help' });
+      await handler(ctx);
+
+      expect(ctx.answerInlineQuery).toHaveBeenCalledOnce();
+      const [results] = ctx.answerInlineQuery.mock.calls[0];
+
+      expect(results.length).toBeGreaterThan(0);
+    });
+
+    it('should return help for unknown queries', async () => {
+      const { registerInlineQueries } = await import('../../src/telegram/inline.js');
+
+      const mockBot = {
+        on: vi.fn(),
+      };
+
+      registerInlineQueries(mockBot as any);
+
+      const [, handler] = mockBot.on.mock.calls.find(
+        ([event]) => event === 'inline_query'
+      );
+
+      const ctx = createMockInlineContext({ query: 'unknownquery123' });
+      await handler(ctx);
+
+      expect(ctx.answerInlineQuery).toHaveBeenCalledOnce();
+      const [results] = ctx.answerInlineQuery.mock.calls[0];
+
+      // Should still return results (help)
+      expect(results.length).toBeGreaterThan(0);
+    });
+
+    it('should handle errors gracefully', async () => {
+      const { registerInlineQueries } = await import('../../src/telegram/inline.js');
+
+      vi.mocked(identityService.getMemberByPlatformId).mockRejectedValue(
+        new Error('Database error')
+      );
+
+      const mockBot = {
+        on: vi.fn(),
+      };
+
+      registerInlineQueries(mockBot as any);
+
+      const [, handler] = mockBot.on.mock.calls.find(
+        ([event]) => event === 'inline_query'
+      );
+
+      const ctx = createMockInlineContext({ query: 'score' });
+      await handler(ctx);
+
+      // Should still answer with help result
+      expect(ctx.answerInlineQuery).toHaveBeenCalledOnce();
+      const [results, options] = ctx.answerInlineQuery.mock.calls[0];
+
+      expect(results.length).toBeGreaterThan(0);
+      expect(options.cache_time).toBe(0); // Error responses shouldn't be cached
+    });
+
+    it('should cache results with short TTL', async () => {
+      const { registerInlineQueries } = await import('../../src/telegram/inline.js');
+
+      vi.mocked(identityService.getMemberByPlatformId).mockResolvedValue(null);
+      vi.mocked(leaderboardService.getLeaderboard).mockResolvedValue([]);
+
+      const mockBot = {
+        on: vi.fn(),
+      };
+
+      registerInlineQueries(mockBot as any);
+
+      const [, handler] = mockBot.on.mock.calls.find(
+        ([event]) => event === 'inline_query'
+      );
+
+      const ctx = createMockInlineContext({ query: 'help' }); // Use 'help' to avoid leaderboard calls
+      await handler(ctx);
+
+      const [, options] = ctx.answerInlineQuery.mock.calls[0];
+
+      expect(options.cache_time).toBe(30);
+      expect(options.is_personal).toBe(true);
     });
   });
 });

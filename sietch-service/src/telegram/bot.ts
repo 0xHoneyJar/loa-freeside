@@ -146,7 +146,7 @@ export async function startTelegramBot(): Promise<void> {
     try {
       await b.api.setWebhook(webhookUrl, {
         secret_token: config.telegram.webhookSecret,
-        allowed_updates: ['message', 'callback_query'],
+        allowed_updates: ['message', 'callback_query', 'inline_query'],
       });
       logger.info({ webhookUrl }, 'Telegram webhook configured');
     } catch (error) {

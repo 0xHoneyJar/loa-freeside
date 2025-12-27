@@ -1,5 +1,5 @@
 /**
- * /help Command Handler (v4.1 - Sprint 32)
+ * /help Command Handler (v4.1 - Sprint 33)
  *
  * Displays help information and available commands.
  * Provides documentation for all bot features.
@@ -21,10 +21,17 @@ const HELP_MESSAGE = `
 📊 /score - View your conviction score
 🔗 /status - See linked platforms
 🏆 /leaderboard - View community rankings
+🔔 /alerts - Manage notification settings
 🔄 /refresh - Refresh your score data
 🔓 /unlink - Disconnect your wallet
 📖 /help - Show this help message
 🏠 /start - Welcome message
+
+*Inline Queries:*
+Type @SietchBot in any chat followed by:
+• score - Your conviction score
+• rank - Your current rank
+• leaderboard - Top 5 members
 
 ---
 
