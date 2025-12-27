@@ -574,3 +574,151 @@ npm run test:run -- tests/telegram/commands.test.ts
 ---
 
 **Ready for Re-Review**
+
+---
+
+## Re-Review Verification ✅
+
+**Re-Review Date**: 2025-12-27
+**Reviewer**: Senior Technical Lead
+**Verdict**: ✅ **APPROVED - ALL GOOD**
+
+### Authorization Fix Verification
+
+**Implementation Reviewed**:
+1. ✅ `verifyCallbackAuthorization()` helper function (lines 310-334)
+   - Properly checks ctx.from.id exists
+   - Verifies memberId matches authenticated user via identityService
+   - Logs unauthorized attempts with full context
+   - Returns boolean for clean authorization flow
+
+2. ✅ All 5 callback handlers updated with authorization checks:
+   - Line 373-381: `alerts_toggle_position` ✓
+   - Line 384-392: `alerts_toggle_atrisk` ✓
+   - Line 395-403: `alerts_toggle_naib` ✓
+   - Line 406-415: `alerts_freq_*` ✓
+   - Line 418-426: `alerts_disable_all` ✓
+
+**Authorization Logic Pattern** (consistent across all handlers):
+```typescript
+const memberId = ctx.match?.[1];
+if (!memberId || !(await verifyCallbackAuthorization(ctx, memberId))) {
+  await ctx.answerCallbackQuery('Unauthorized');
+  return;
+}
+// Only reaches here if authorized
+```
+
+**Security Controls Verified**:
+- Early return on authorization failure ✓
+- User feedback on unauthorized attempts ✓
+- Logging for security monitoring ✓
+- No processing if authorization fails ✓
+
+### Test Coverage Verification
+
+**Tests Run**: 58 tests passing (was 56, +2 authorization tests)
+
+**New Authorization Tests Verified**:
+
+1. ✅ **"should block unauthorized callback attempts (IDOR protection)"** (lines 1239-1274)
+   - Creates User B attempting to modify User A's preferences
+   - Verifies `answerCallbackQuery('Unauthorized')` is called
+   - Verifies `updatePreferences` is NOT called
+   - Properly tests the IDOR attack vector
+
+2. ✅ **"should allow authorized callback attempts"** (lines 1276-1322)
+   - User A modifying their own preferences
+   - Verifies authorization succeeds
+   - Verifies preferences are updated
+   - Verifies message refreshes correctly
+
+**Test Quality**: Both tests properly mock identityService to simulate different authorization scenarios. Tests verify both positive (authorized) and negative (unauthorized) cases.
+
+### Code Quality Assessment
+
+**Strengths of Fix**:
+1. DRY principle - single authorization function used by all handlers
+2. Consistent pattern - same check in every handler
+3. Good logging - includes userId, attemptedMemberId, actualMemberId for debugging
+4. User-friendly error - simple "Unauthorized" message (not leaking details)
+5. Fail-safe - early return prevents any processing on authorization failure
+
+**Security Effectiveness**:
+- ✅ Completely blocks IDOR attack vector
+- ✅ Prevents forwarded messages from allowing cross-user manipulation
+- ✅ Logs all unauthorized attempts for security monitoring
+- ✅ No sensitive information leaked in error responses
+
+### Build & Test Verification
+
+```bash
+# Build passes
+npm run build ✓
+
+# All tests pass
+npm run test:run -- tests/telegram/commands.test.ts
+58 tests passing ✓
+```
+
+### Acceptance Criteria Final Check
+
+**TASK-33.1: Implement /alerts command**:
+- ✅ Command shows notification preferences for verified users
+- ✅ Unverified users see "wallet not linked" message
+- ✅ Toggle buttons for position updates, at-risk warnings
+- ✅ Naib alerts toggle visible only for Naib members
+- ✅ Frequency selector (1x, 2x, 3x per week, daily)
+- ✅ "Disable All" button
+- ✅ **Authorization validation in callbacks** - NOW FIXED
+
+**Status**: ✅ **COMPLETE**
+
+**TASK-33.2: Implement inline query support**:
+- ✅ All acceptance criteria met (verified in initial review)
+
+**Status**: ✅ **COMPLETE**
+
+**TASK-33.3: Update webhook configuration**:
+- ✅ Webhook config includes inline_query
+
+**Status**: ✅ **COMPLETE**
+
+**TASK-33.4: Write unit tests**:
+- ✅ 58 tests passing (was 56, +2 authorization tests)
+- ✅ Authorization tests added and passing
+
+**Status**: ✅ **COMPLETE**
+
+---
+
+## Final Approval
+
+### Summary
+
+Sprint 33 implementation is **APPROVED FOR PRODUCTION**.
+
+**What Was Fixed**:
+- Critical IDOR vulnerability in alert callback handlers - COMPLETELY MITIGATED
+- Authorization tests added - COMPREHENSIVE COVERAGE
+
+**Quality Metrics**:
+- Code quality: EXCELLENT (clean, DRY, well-structured)
+- Test coverage: EXCELLENT (58 tests, all passing, authorization covered)
+- Security: SECURE (IDOR vulnerability eliminated)
+- Architecture: ALIGNED (follows project patterns)
+
+**Outstanding Work**: NONE - All critical issues resolved.
+
+**Next Steps**:
+1. ✅ Code review complete - APPROVED
+2. 🔄 Security audit (run `/audit-sprint 33` when ready)
+3. 🔄 Deploy to production after security audit approval
+
+---
+
+**Approval Signature**
+- **Reviewer**: Senior Technical Lead
+- **Date**: 2025-12-27
+- **Status**: ✅ APPROVED - ALL GOOD
+- **Risk Level**: LOW (down from CRITICAL after fix)
