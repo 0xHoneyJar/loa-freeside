@@ -200,3 +200,262 @@ export interface BudgetViolation {
   /** Amount over threshold */
   excessUsd: number;
 }
+
+// ============================================
+// HITL (Human-in-the-Loop) Approval Gate Types
+// ============================================
+
+/**
+ * Approval request status
+ */
+export type ApprovalStatus =
+  | 'pending'
+  | 'approved'
+  | 'rejected'
+  | 'expired'
+  | 'cancelled';
+
+/**
+ * Notification channel for approval requests
+ */
+export type NotificationChannel = 'slack' | 'discord' | 'both';
+
+/**
+ * Approval request for infrastructure changes
+ */
+export interface ApprovalRequest {
+  /** Unique request ID */
+  id: string;
+  /** Terraform plan being reviewed */
+  terraformPlan: TerraformPlan;
+  /** Pre-gate decision from PolicyAsCodePreGate */
+  preGateDecision: PreGateDecision;
+  /** Current status */
+  status: ApprovalStatus;
+  /** Who requested the change */
+  requester: ApprovalRequester;
+  /** Notification channel used */
+  notificationChannel: NotificationChannel;
+  /** Message IDs for tracking (Slack/Discord) */
+  notificationMessageIds: {
+    slack?: string;
+    discord?: string;
+  };
+  /** Whether MFA is required for this approval */
+  requiresMfa: boolean;
+  /** Creation timestamp */
+  createdAt: Date;
+  /** Expiration timestamp (24 hours from creation) */
+  expiresAt: Date;
+  /** Resolution timestamp (when approved/rejected/expired) */
+  resolvedAt?: Date;
+  /** Resolver information (who approved/rejected) */
+  resolver?: ApprovalResolver;
+  /** Audit trail entries */
+  auditTrail: ApprovalAuditEntry[];
+}
+
+/**
+ * Person or system requesting the infrastructure change
+ */
+export interface ApprovalRequester {
+  /** User ID (e.g., Slack/Discord user ID) */
+  userId: string;
+  /** Display name */
+  displayName: string;
+  /** Email (optional) */
+  email?: string;
+  /** Source system (e.g., 'terraform-cli', 'ci-cd') */
+  source: string;
+}
+
+/**
+ * Person who resolved the approval request
+ */
+export interface ApprovalResolver {
+  /** User ID */
+  userId: string;
+  /** Display name */
+  displayName: string;
+  /** Email (optional) */
+  email?: string;
+  /** Whether MFA was verified */
+  mfaVerified: boolean;
+  /** Resolution action */
+  action: 'approved' | 'rejected';
+  /** Optional reason for rejection */
+  reason?: string;
+}
+
+/**
+ * Audit trail entry for approval request
+ *
+ * SECURITY: Each entry includes an HMAC signature for tamper detection (MED-004).
+ * Use EnhancedHITLApprovalGate.verifyAuditTrail() to verify integrity.
+ */
+export interface ApprovalAuditEntry {
+  /** Entry timestamp */
+  timestamp: Date;
+  /** Action type */
+  action: ApprovalAuditAction;
+  /** Actor (user or system) */
+  actor: string;
+  /** Additional details */
+  details?: Record<string, unknown>;
+  /**
+   * HMAC-SHA256 signature for tamper detection (MED-004)
+   * Generated from: timestamp, action, actor, details
+   */
+  signature?: string;
+}
+
+/**
+ * Actions recorded in audit trail
+ */
+export type ApprovalAuditAction =
+  | 'request_created'
+  | 'notification_sent'
+  | 'notification_failed'
+  | 'mfa_requested'
+  | 'mfa_verified'
+  | 'mfa_failed'
+  | 'approved'
+  | 'rejected'
+  | 'expired'
+  | 'cancelled'
+  | 'reminder_sent';
+
+/**
+ * Configuration for EnhancedHITLApprovalGate
+ */
+export interface HITLConfig {
+  /** Slack webhook URL (optional) */
+  slackWebhookUrl?: string;
+  /** Slack channel ID for approvals */
+  slackChannelId?: string;
+  /** Discord webhook URL (optional) */
+  discordWebhookUrl?: string;
+  /** Approval timeout in milliseconds (default: 24 hours) */
+  approvalTimeoutMs: number;
+  /** Risk score threshold above which MFA is required */
+  mfaRiskThreshold: number;
+  /** Whether to require MFA for all approvals */
+  alwaysRequireMfa: boolean;
+  /** Notification channel preference */
+  notificationChannel: NotificationChannel;
+  /** Reminder intervals (ms from creation) */
+  reminderIntervals: number[];
+}
+
+/**
+ * Result of HITL approval process
+ */
+export interface HITLResult {
+  /** Whether the change was approved */
+  approved: boolean;
+  /** Full approval request with audit trail */
+  request: ApprovalRequest;
+  /** Summary message */
+  message: string;
+  /** Whether Terraform apply can proceed */
+  canProceed: boolean;
+}
+
+/**
+ * Slack Block Kit message for approval request
+ */
+export interface SlackApprovalMessage {
+  /** Channel to post to */
+  channel: string;
+  /** Block Kit blocks */
+  blocks: SlackBlock[];
+  /** Text fallback */
+  text: string;
+}
+
+/**
+ * Simplified Slack Block type
+ */
+export interface SlackBlock {
+  type: 'section' | 'divider' | 'actions' | 'context' | 'header';
+  text?: {
+    type: 'plain_text' | 'mrkdwn';
+    text: string;
+    emoji?: boolean;
+  };
+  fields?: Array<{
+    type: 'plain_text' | 'mrkdwn';
+    text: string;
+  }>;
+  elements?: Array<SlackBlockElement>;
+  accessory?: SlackBlockElement;
+  block_id?: string;
+}
+
+/**
+ * Slack Block element (button, etc.)
+ */
+export interface SlackBlockElement {
+  type: 'button' | 'static_select' | 'image';
+  text?: {
+    type: 'plain_text' | 'mrkdwn';
+    text: string;
+    emoji?: boolean;
+  };
+  action_id?: string;
+  value?: string;
+  style?: 'primary' | 'danger';
+  url?: string;
+  confirm?: {
+    title: { type: 'plain_text'; text: string };
+    text: { type: 'mrkdwn'; text: string };
+    confirm: { type: 'plain_text'; text: string };
+    deny: { type: 'plain_text'; text: string };
+    style?: 'primary' | 'danger';
+  };
+}
+
+/**
+ * Discord webhook message for approval request
+ */
+export interface DiscordApprovalMessage {
+  /** Message content */
+  content: string;
+  /** Embeds for rich formatting */
+  embeds: DiscordEmbed[];
+  /** Components for interactive buttons */
+  components: DiscordComponent[];
+}
+
+/**
+ * Discord embed for rich message formatting
+ */
+export interface DiscordEmbed {
+  title?: string;
+  description?: string;
+  color?: number;
+  fields?: Array<{
+    name: string;
+    value: string;
+    inline?: boolean;
+  }>;
+  footer?: {
+    text: string;
+  };
+  timestamp?: string;
+}
+
+/**
+ * Discord component (action row with buttons)
+ */
+export interface DiscordComponent {
+  type: 1; // Action Row
+  components: Array<{
+    type: 2; // Button
+    style: 1 | 2 | 3 | 4 | 5; // Primary, Secondary, Success, Danger, Link
+    label: string;
+    custom_id?: string;
+    url?: string;
+    disabled?: boolean;
+  }>;
+}
