@@ -37,6 +37,7 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.958.0",
     "@trigger.dev/sdk": "^3.0.0",
     "@types/ioredis": "^4.28.10",
     "better-sqlite3": "^11.6.0",
