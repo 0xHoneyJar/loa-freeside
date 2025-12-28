@@ -35,6 +35,15 @@ export type KillSwitchScope =
   | 'USER';       // Single user affected
 
 /**
+ * User roles for authorization
+ */
+export type UserRole =
+  | 'NAIB_COUNCIL'       // Top 7 governance (highest authority)
+  | 'PLATFORM_ADMIN'     // Platform-level administrators
+  | 'COMMUNITY_ADMIN'    // Community-level administrators
+  | 'USER';              // Regular users
+
+/**
  * Kill switch activation options
  */
 export interface KillSwitchOptions {
@@ -48,6 +57,8 @@ export interface KillSwitchOptions {
   userId?: string;
   /** Admin who activated kill switch */
   activatedBy: string;
+  /** Role of the activator (required for authorization) */
+  activatorRole: UserRole;
   /** Additional context */
   metadata?: Record<string, unknown>;
   /** Whether to send admin notification */

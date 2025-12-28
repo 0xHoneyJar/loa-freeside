@@ -482,6 +482,58 @@ export class VaultSigningAdapter implements ISigningAdapter {
   }
 
   /**
+   * Revoke Vault ACL policy
+   *
+   * Used by kill switch to revoke signing permissions
+   *
+   * @param policyName - Name of the policy to revoke
+   */
+  async revokePolicy(policyName: string): Promise<void> {
+    try {
+      this.log('info', 'Revoking Vault ACL policy', { policyName });
+
+      // Delete policy from Vault
+      await this.vault.delete(`/sys/policies/acl/${policyName}`);
+
+      this.log('info', 'Vault ACL policy revoked', { policyName });
+
+      // Audit log (using 'rotate' as closest match for policy operations)
+      this.addAuditLog({
+        operationId: crypto.randomUUID(),
+        timestamp: new Date(),
+        operation: 'rotate',
+        keyName: policyName,
+        success: true,
+        metadata: {
+          policyName,
+          operationType: 'REVOKE_POLICY',
+        },
+      });
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      this.log('error', 'Failed to revoke Vault ACL policy', {
+        policyName,
+        error: errorMsg,
+      });
+
+      // Audit log failure
+      this.addAuditLog({
+        operationId: crypto.randomUUID(),
+        timestamp: new Date(),
+        operation: 'rotate',
+        keyName: policyName,
+        success: false,
+        error: errorMsg,
+        metadata: {
+          operationType: 'REVOKE_POLICY',
+        },
+      });
+
+      throw new VaultUnavailableError(`Failed to revoke Vault policy: ${errorMsg}`, error as Error);
+    }
+  }
+
+  /**
    * Get audit logs
    */
   async getAuditLogs(limit: number = 100): Promise<SigningAuditLog[]> {

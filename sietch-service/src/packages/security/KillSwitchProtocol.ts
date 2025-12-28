@@ -130,6 +130,9 @@ export class KillSwitchProtocol {
       userId: options.userId,
     });
 
+    // Authorize activation FIRST (before validation)
+    this.authorizeActivation(options);
+
     // Validate options
     this.validateOptions(options);
 
@@ -249,14 +252,33 @@ export class KillSwitchProtocol {
 
   /**
    * Revoke all sessions globally (DANGEROUS)
+   *
+   * Uses Redis SCAN for non-blocking iteration instead of KEYS
    */
   private async revokeAllSessions(): Promise<number> {
-    // Delete all wizard session keys
-    const keys = await this.redis.keys('wizard:session:*');
-    if (keys.length > 0) {
-      await this.redis.del(...keys);
-    }
-    return keys.length;
+    let cursor = '0';
+    let count = 0;
+    const batchSize = 1000; // Process in batches
+
+    do {
+      // SCAN is non-blocking and cursor-based (production-safe)
+      const [nextCursor, keys] = await this.redis.scan(
+        cursor,
+        'MATCH',
+        'wizard:session:*',
+        'COUNT',
+        batchSize
+      );
+
+      if (keys.length > 0) {
+        await this.redis.del(...keys);
+        count += keys.length;
+      }
+
+      cursor = nextCursor;
+    } while (cursor !== '0');
+
+    return count;
   }
 
   /**
@@ -280,21 +302,36 @@ export class KillSwitchProtocol {
 
   /**
    * Revoke all sessions for a user
+   *
+   * Uses Redis SCAN for non-blocking iteration instead of KEYS
    */
   private async revokeUserSessions(userId: string): Promise<number> {
-    // Find all sessions for this user across all guilds
-    const keys = await this.redis.keys(`wizard:guild:*:user:${userId}`);
-
+    let cursor = '0';
     let revokedCount = 0;
-    for (const key of keys) {
-      const sessionId = await this.redis.get(key);
-      if (sessionId) {
-        const deleted = await this.sessionStore.delete(sessionId);
-        if (deleted) {
-          revokedCount++;
+    const batchSize = 1000; // Process in batches
+
+    do {
+      // SCAN is non-blocking and cursor-based (production-safe)
+      const [nextCursor, keys] = await this.redis.scan(
+        cursor,
+        'MATCH',
+        `wizard:guild:*:user:${userId}`,
+        'COUNT',
+        batchSize
+      );
+
+      for (const key of keys) {
+        const sessionId = await this.redis.get(key);
+        if (sessionId) {
+          const deleted = await this.sessionStore.delete(sessionId);
+          if (deleted) {
+            revokedCount++;
+          }
         }
       }
-    }
+
+      cursor = nextCursor;
+    } while (cursor !== '0');
 
     return revokedCount;
   }
@@ -308,12 +345,51 @@ export class KillSwitchProtocol {
       return 0;
     }
 
-    // Note: Actual Vault policy revocation would require additional Vault API calls
-    // This is a placeholder for the integration point
-    // In production, you'd call Vault's policies API to revoke specific policies
+    try {
+      let revokedCount = 0;
 
-    this.log('Vault policy revocation not yet implemented', { scope: options.scope });
-    return 0;
+      switch (options.scope) {
+        case 'GLOBAL':
+          // Revoke ALL signing policies (extreme caution)
+          // This revokes the main signing policy for all operations
+          await this.vaultAdapter.revokePolicy('arrakis-signing-policy');
+          revokedCount = 1;
+          this.log('Global Vault signing policy revoked', { scope: options.scope });
+          break;
+
+        case 'COMMUNITY':
+          // Revoke signing policy for specific community
+          if (options.communityId) {
+            const policyName = `arrakis-signing-${options.communityId}`;
+            await this.vaultAdapter.revokePolicy(policyName);
+            revokedCount = 1;
+            this.log('Community Vault signing policy revoked', {
+              scope: options.scope,
+              communityId: options.communityId,
+              policyName,
+            });
+          }
+          break;
+
+        case 'USER':
+          // Revoke user-specific signing delegation (if applicable)
+          // Note: This may not apply if only Naib Council has signing keys
+          // For now, we skip user-level policy revocation as users typically
+          // don't have individual Vault signing policies
+          this.log('User-level Vault policy revocation not applicable', {
+            scope: options.scope,
+            userId: options.userId,
+          });
+          break;
+      }
+
+      this.log('Vault policies revoked', { scope: options.scope, count: revokedCount });
+      return revokedCount;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      this.log('Vault policy revocation failed', { error: errorMsg, scope: options.scope });
+      throw new KillSwitchError('Vault policy revocation failed', 'VAULT_ERROR', options.scope);
+    }
   }
 
   /**
@@ -510,6 +586,60 @@ export class KillSwitchProtocol {
       LOW: 0x00ff00, // Green
     };
     return colors[severity];
+  }
+
+  /**
+   * Authorize kill switch activation based on role and scope
+   *
+   * Authorization rules:
+   * - GLOBAL scope: Only Naib Council (Top 7) or Platform Admins
+   * - COMMUNITY scope: Naib Council, Platform Admin, or Community Admin
+   * - USER scope: Naib Council, Platform Admin, Community Admin, or the affected user (self-revoke)
+   */
+  private authorizeActivation(options: KillSwitchOptions): void {
+    const { scope, activatorRole, activatedBy, userId } = options;
+
+    // GLOBAL scope: Highest privilege required
+    if (scope === 'GLOBAL') {
+      if (!['NAIB_COUNCIL', 'PLATFORM_ADMIN'].includes(activatorRole)) {
+        throw new KillSwitchError(
+          'GLOBAL kill switch requires Naib Council or Platform Admin role',
+          'UNAUTHORIZED',
+          scope
+        );
+      }
+    }
+
+    // COMMUNITY scope: Admin roles required
+    if (scope === 'COMMUNITY') {
+      if (!['NAIB_COUNCIL', 'PLATFORM_ADMIN', 'COMMUNITY_ADMIN'].includes(activatorRole)) {
+        throw new KillSwitchError(
+          'COMMUNITY kill switch requires Naib Council, Platform Admin, or Community Admin role',
+          'UNAUTHORIZED',
+          scope
+        );
+      }
+    }
+
+    // USER scope: Admin roles OR self-revoke
+    if (scope === 'USER') {
+      const isAdmin = ['NAIB_COUNCIL', 'PLATFORM_ADMIN', 'COMMUNITY_ADMIN'].includes(activatorRole);
+      const isSelfRevoke = activatedBy === userId;
+
+      if (!isAdmin && !isSelfRevoke) {
+        throw new KillSwitchError(
+          'USER kill switch requires admin role or must be self-initiated',
+          'UNAUTHORIZED',
+          scope
+        );
+      }
+    }
+
+    this.log('Kill switch activation authorized', {
+      scope,
+      activatorRole,
+      activatedBy,
+    });
   }
 
   /**

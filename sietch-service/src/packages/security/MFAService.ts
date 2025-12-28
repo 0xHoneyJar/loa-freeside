@@ -420,7 +420,9 @@ export class MFAService {
   }
 
   /**
-   * Base32 encode (simplified, no padding)
+   * Base32 encode with RFC 4648 padding
+   *
+   * Adds padding (=) to make length a multiple of 8 for TOTP compatibility
    */
   private base32Encode(buffer: Buffer): string {
     const base32Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -442,17 +444,26 @@ export class MFAService {
       output += base32Chars[(value << (5 - bits)) & 31];
     }
 
+    // RFC 4648: Pad to multiple of 8 characters
+    const paddingLength = (8 - (output.length % 8)) % 8;
+    output += '='.repeat(paddingLength);
+
     return output;
   }
 
   /**
-   * Base32 decode
+   * Base32 decode with RFC 4648 padding support
+   *
+   * Strips padding before decoding
    */
   private base32Decode(input: string): Buffer {
     const base32Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
     const output: number[] = [];
     let bits = 0;
     let value = 0;
+
+    // Strip padding characters (=)
+    input = input.replace(/=+$/, '');
 
     for (let i = 0; i < input.length; i++) {
       const charIndex = base32Chars.indexOf(input[i].toUpperCase());

@@ -51,6 +51,7 @@ describe('KillSwitchProtocol', () => {
         reason: 'CREDENTIAL_COMPROMISE',
         userId: 'user456',
         activatedBy: 'admin123',
+        activatorRole: 'PLATFORM_ADMIN',
         notifyAdmins: false,
       });
 
@@ -79,6 +80,7 @@ describe('KillSwitchProtocol', () => {
         reason: 'SECURITY_BREACH',
         communityId: 'guild123',
         activatedBy: 'admin123',
+        activatorRole: 'PLATFORM_ADMIN',
         notifyAdmins: false,
       });
 
@@ -105,6 +107,7 @@ describe('KillSwitchProtocol', () => {
         scope: 'GLOBAL',
         reason: 'EMERGENCY_MAINTENANCE',
         activatedBy: 'admin123',
+        activatorRole: 'PLATFORM_ADMIN',
         notifyAdmins: false,
       });
 
@@ -122,6 +125,7 @@ describe('KillSwitchProtocol', () => {
         reason: 'CREDENTIAL_COMPROMISE',
         userId: 'user456',
         activatedBy: 'admin123',
+        activatorRole: 'PLATFORM_ADMIN',
         notifyAdmins: false,
       });
 
@@ -137,6 +141,7 @@ describe('KillSwitchProtocol', () => {
           reason: 'SECURITY_BREACH',
           // Missing communityId
           activatedBy: 'admin123',
+        activatorRole: 'PLATFORM_ADMIN',
         } as any)
       ).rejects.toThrow(KillSwitchError);
     });
@@ -148,6 +153,7 @@ describe('KillSwitchProtocol', () => {
           reason: 'CREDENTIAL_COMPROMISE',
           // Missing userId
           activatedBy: 'admin123',
+        activatorRole: 'PLATFORM_ADMIN',
         } as any)
       ).rejects.toThrow(KillSwitchError);
     });
@@ -184,6 +190,7 @@ describe('KillSwitchProtocol', () => {
         reason: 'CREDENTIAL_COMPROMISE',
         userId,
         activatedBy: 'admin123',
+        activatorRole: 'PLATFORM_ADMIN',
         notifyAdmins: false,
       });
 
@@ -221,6 +228,7 @@ describe('KillSwitchProtocol', () => {
         reason: 'SECURITY_BREACH',
         communityId: guildId,
         activatedBy: 'admin123',
+        activatorRole: 'PLATFORM_ADMIN',
         notifyAdmins: false,
       });
 
@@ -233,6 +241,7 @@ describe('KillSwitchProtocol', () => {
         reason: 'CREDENTIAL_COMPROMISE',
         userId: 'nonexistent',
         activatedBy: 'admin123',
+        activatorRole: 'PLATFORM_ADMIN',
         notifyAdmins: false,
       });
 
@@ -250,6 +259,7 @@ describe('KillSwitchProtocol', () => {
         reason: 'SECURITY_BREACH',
         communityId,
         activatedBy: 'admin123',
+        activatorRole: 'PLATFORM_ADMIN',
         notifyAdmins: false,
       });
 
@@ -266,6 +276,7 @@ describe('KillSwitchProtocol', () => {
         scope: 'GLOBAL',
         reason: 'EMERGENCY_MAINTENANCE',
         activatedBy: 'admin123',
+        activatorRole: 'PLATFORM_ADMIN',
         notifyAdmins: false,
       });
 
@@ -286,6 +297,7 @@ describe('KillSwitchProtocol', () => {
         reason: 'SECURITY_BREACH',
         communityId,
         activatedBy: 'admin123',
+        activatorRole: 'PLATFORM_ADMIN',
         notifyAdmins: false,
       });
 
@@ -302,6 +314,7 @@ describe('KillSwitchProtocol', () => {
         scope: 'GLOBAL',
         reason: 'EMERGENCY_MAINTENANCE',
         activatedBy: 'admin123',
+        activatorRole: 'PLATFORM_ADMIN',
         notifyAdmins: false,
       });
 
@@ -325,6 +338,7 @@ describe('KillSwitchProtocol', () => {
         reason: 'CREDENTIAL_COMPROMISE',
         userId: 'user456',
         activatedBy: 'admin123',
+        activatorRole: 'PLATFORM_ADMIN',
         notifyAdmins: false,
       });
 
@@ -344,6 +358,7 @@ describe('KillSwitchProtocol', () => {
           reason: 'SECURITY_BREACH',
           // Missing communityId
           activatedBy: 'admin123',
+        activatorRole: 'PLATFORM_ADMIN',
         } as any);
       } catch (error) {
         // Expected to fail
@@ -374,6 +389,7 @@ describe('KillSwitchProtocol', () => {
         reason: 'CREDENTIAL_COMPROMISE',
         userId: 'user456',
         activatedBy: 'admin123',
+        activatorRole: 'PLATFORM_ADMIN',
         notifyAdmins: true, // Request notification
       });
 
@@ -400,13 +416,14 @@ describe('KillSwitchProtocol', () => {
         reason: 'CREDENTIAL_COMPROMISE',
         userId: 'user456',
         activatedBy: 'admin123',
+        activatorRole: 'PLATFORM_ADMIN',
         notifyAdmins: false, // Skip notification
       });
 
       expect(global.fetch).not.toHaveBeenCalled();
     });
 
-    it('should send notification if webhook configured and notifyAdmins is true', async () => {
+    it('should send Discord webhook notification with correct payload', async () => {
       const webhookUrl = 'https://discord.com/api/webhooks/test';
       const killSwitchWithWebhook = new KillSwitchProtocol({
         redis,
@@ -416,26 +433,240 @@ describe('KillSwitchProtocol', () => {
       });
 
       // Mock fetch
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-      } as Response);
+      const fetchMock = vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+        } as Response)
+      );
+      global.fetch = fetchMock;
 
       await killSwitchWithWebhook.activate({
-        scope: 'USER',
-        reason: 'CREDENTIAL_COMPROMISE',
-        userId: 'user456',
+        scope: 'COMMUNITY',
+        reason: 'SECURITY_BREACH',
+        communityId: 'guild123',
         activatedBy: 'admin123',
+        activatorRole: 'NAIB_COUNCIL',
         notifyAdmins: true,
       });
 
-      expect(global.fetch).toHaveBeenCalledWith(
+      // Verify webhook was called
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledWith(
         webhookUrl,
         expect.objectContaining({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
         })
       );
+
+      // Verify payload structure
+      const callArgs = fetchMock.mock.calls[0];
+      const payload = JSON.parse(callArgs[1].body as string);
+
+      expect(payload.embeds).toBeDefined();
+      expect(payload.embeds).toHaveLength(1);
+
+      const embed = payload.embeds[0];
+      expect(embed.title).toContain('Kill Switch Activated');
+      expect(embed.title).toContain('COMMUNITY');
+      expect(embed.description).toContain('SECURITY_BREACH');
+      expect(embed.description).toContain('admin123');
+      expect(embed.description).toContain('guild123');
+      expect(embed.color).toBe(0xff0000); // Red for CRITICAL
+      expect(embed.timestamp).toBeDefined();
+      expect(embed.footer).toBeDefined();
+      expect(embed.footer.text).toBe('Arrakis Security System');
+    });
+
+    it('should not break kill switch if webhook fails', async () => {
+      const fetchMock = vi.fn(() => Promise.reject(new Error('Network error')));
+      global.fetch = fetchMock;
+
+      const killSwitchWithWebhook = new KillSwitchProtocol({
+        redis,
+        sessionStore,
+        adminWebhookUrl: 'https://discord.com/api/webhooks/test',
+        debug: false,
+      });
+
+      // Should NOT throw even if webhook fails
+      const result = await killSwitchWithWebhook.activate({
+        scope: 'USER',
+        reason: 'CREDENTIAL_COMPROMISE',
+        userId: 'user123',
+        activatedBy: 'admin123',
+        activatorRole: 'PLATFORM_ADMIN',
+        notifyAdmins: true,
+      });
+
+      expect(result.success).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('should handle webhook HTTP errors gracefully', async () => {
+      const fetchMock = vi.fn(() =>
+        Promise.resolve({
+          ok: false,
+          status: 429, // Rate limited
+        } as Response)
+      );
+      global.fetch = fetchMock;
+
+      const killSwitchWithWebhook = new KillSwitchProtocol({
+        redis,
+        sessionStore,
+        adminWebhookUrl: 'https://discord.com/api/webhooks/test',
+        debug: false,
+      });
+
+      // Should complete successfully even if webhook returns error
+      const result = await killSwitchWithWebhook.activate({
+        scope: 'GLOBAL',
+        reason: 'EMERGENCY_MAINTENANCE',
+        activatedBy: 'admin123',
+        activatorRole: 'NAIB_COUNCIL',
+        notifyAdmins: true,
+      });
+
+      expect(result.success).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('should include correct severity color in webhook payload', async () => {
+      const webhookUrl = 'https://discord.com/api/webhooks/test';
+      const killSwitchWithWebhook = new KillSwitchProtocol({
+        redis,
+        sessionStore,
+        adminWebhookUrl: webhookUrl,
+        debug: false,
+      });
+
+      const fetchMock = vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+        } as Response)
+      );
+      global.fetch = fetchMock;
+
+      await killSwitchWithWebhook.activate({
+        scope: 'USER',
+        reason: 'CREDENTIAL_COMPROMISE',
+        userId: 'user456',
+        activatedBy: 'admin123',
+        activatorRole: 'PLATFORM_ADMIN',
+        notifyAdmins: true,
+      });
+
+      const callArgs = fetchMock.mock.calls[0];
+      const payload = JSON.parse(callArgs[1].body as string);
+      const embed = payload.embeds[0];
+
+      // CRITICAL severity should be red (0xff0000)
+      expect(embed.color).toBe(0xff0000);
+    });
+  });
+
+  describe('Authorization', () => {
+    it('should allow Naib Council to activate GLOBAL kill switch', async () => {
+      const result = await killSwitch.activate({
+        scope: 'GLOBAL',
+        reason: 'EMERGENCY_MAINTENANCE',
+        activatedBy: 'naib-member',
+        activatorRole: 'NAIB_COUNCIL',
+        notifyAdmins: false,
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should allow Platform Admin to activate GLOBAL kill switch', async () => {
+      const result = await killSwitch.activate({
+        scope: 'GLOBAL',
+        reason: 'EMERGENCY_MAINTENANCE',
+        activatedBy: 'platform-admin',
+        activatorRole: 'PLATFORM_ADMIN',
+        notifyAdmins: false,
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should deny Community Admin from activating GLOBAL kill switch', async () => {
+      await expect(
+        killSwitch.activate({
+          scope: 'GLOBAL',
+          reason: 'EMERGENCY_MAINTENANCE',
+          activatedBy: 'community-admin',
+          activatorRole: 'COMMUNITY_ADMIN',
+          notifyAdmins: false,
+        })
+      ).rejects.toThrow(KillSwitchError);
+    });
+
+    it('should deny regular USER from activating GLOBAL kill switch', async () => {
+      await expect(
+        killSwitch.activate({
+          scope: 'GLOBAL',
+          reason: 'EMERGENCY_MAINTENANCE',
+          activatedBy: 'regular-user',
+          activatorRole: 'USER',
+          notifyAdmins: false,
+        })
+      ).rejects.toThrow(KillSwitchError);
+    });
+
+    it('should allow Community Admin to activate COMMUNITY kill switch', async () => {
+      const result = await killSwitch.activate({
+        scope: 'COMMUNITY',
+        reason: 'SECURITY_BREACH',
+        communityId: 'guild123',
+        activatedBy: 'community-admin',
+        activatorRole: 'COMMUNITY_ADMIN',
+        notifyAdmins: false,
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should deny regular USER from activating COMMUNITY kill switch', async () => {
+      await expect(
+        killSwitch.activate({
+          scope: 'COMMUNITY',
+          reason: 'SECURITY_BREACH',
+          communityId: 'guild123',
+          activatedBy: 'regular-user',
+          activatorRole: 'USER',
+          notifyAdmins: false,
+        })
+      ).rejects.toThrow(KillSwitchError);
+    });
+
+    it('should allow user to self-revoke (USER scope)', async () => {
+      const result = await killSwitch.activate({
+        scope: 'USER',
+        reason: 'CREDENTIAL_COMPROMISE',
+        userId: 'user123',
+        activatedBy: 'user123', // Same as userId
+        activatorRole: 'USER',
+        notifyAdmins: false,
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should deny user from revoking another user without admin role', async () => {
+      await expect(
+        killSwitch.activate({
+          scope: 'USER',
+          reason: 'CREDENTIAL_COMPROMISE',
+          userId: 'user456',
+          activatedBy: 'user123', // Different user
+          activatorRole: 'USER',
+          notifyAdmins: false,
+        })
+      ).rejects.toThrow(KillSwitchError);
     });
   });
 
@@ -459,6 +690,7 @@ describe('KillSwitchProtocol', () => {
           reason: 'CREDENTIAL_COMPROMISE',
           userId: 'user456',
           activatedBy: 'admin123',
+        activatorRole: 'PLATFORM_ADMIN',
           notifyAdmins: false,
         })
       ).rejects.toThrow(KillSwitchError);
@@ -471,6 +703,7 @@ describe('KillSwitchProtocol', () => {
           reason: 'SECURITY_BREACH',
           // Missing communityId
           activatedBy: 'admin123',
+        activatorRole: 'PLATFORM_ADMIN',
         } as any);
       } catch (error) {
         expect(error).toBeInstanceOf(KillSwitchError);
