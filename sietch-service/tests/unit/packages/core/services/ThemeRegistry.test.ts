@@ -13,6 +13,7 @@ import {
   themeRegistry,
 } from '../../../../../src/packages/core/services/ThemeRegistry.js';
 import { BasicTheme } from '../../../../../src/packages/adapters/themes/BasicTheme.js';
+import { SietchTheme } from '../../../../../src/packages/adapters/themes/SietchTheme.js';
 import type { IThemeProvider, SubscriptionTier } from '../../../../../src/packages/core/ports/IThemeProvider.js';
 
 // Mock premium theme for testing
@@ -260,6 +261,86 @@ describe('ThemeRegistry', () => {
 
     it('themeRegistry singleton should be ThemeRegistry instance', () => {
       expect(themeRegistry).toBeInstanceOf(ThemeRegistry);
+    });
+  });
+
+  // =========================================================================
+  // Sprint 37: SietchTheme Integration Tests
+  // =========================================================================
+
+  describe('SietchTheme integration', () => {
+    let sietchTheme: SietchTheme;
+
+    beforeEach(() => {
+      sietchTheme = new SietchTheme();
+    });
+
+    it('should register SietchTheme', () => {
+      registry.register(sietchTheme);
+      expect(registry.has('sietch')).toBe(true);
+    });
+
+    it('should identify SietchTheme as premium tier', () => {
+      registry.register(sietchTheme);
+      const theme = registry.get('sietch');
+      expect(theme?.tier).toBe('premium');
+    });
+
+    it('should deny free tier access to SietchTheme', () => {
+      registry.register(sietchTheme);
+      const result = registry.validateAccess('sietch', 'free');
+      expect(result.allowed).toBe(false);
+      expect(result.requiredTier).toBe('premium');
+    });
+
+    it('should allow premium tier access to SietchTheme', () => {
+      registry.register(sietchTheme);
+      const result = registry.validateAccess('sietch', 'premium');
+      expect(result.allowed).toBe(true);
+    });
+
+    it('should allow enterprise tier access to SietchTheme', () => {
+      registry.register(sietchTheme);
+      const result = registry.validateAccess('sietch', 'enterprise');
+      expect(result.allowed).toBe(true);
+    });
+
+    it('should return SietchTheme in available themes for premium', () => {
+      registry.register(basicTheme);
+      registry.register(sietchTheme);
+      const available = registry.getAvailableThemes('premium');
+      const themeIds = available.map((t) => t.themeId);
+      expect(themeIds).toContain('sietch');
+      expect(themeIds).toContain('basic');
+    });
+
+    it('should not return SietchTheme in available themes for free tier', () => {
+      registry.register(basicTheme);
+      registry.register(sietchTheme);
+      const available = registry.getAvailableThemes('free');
+      const themeIds = available.map((t) => t.themeId);
+      expect(themeIds).toContain('basic');
+      expect(themeIds).not.toContain('sietch');
+    });
+
+    it('should work with getWithValidation for premium tier', () => {
+      registry.register(sietchTheme);
+      const theme = registry.getWithValidation('sietch', 'premium');
+      expect(theme).toBe(sietchTheme);
+    });
+
+    it('should throw with getWithValidation for free tier', () => {
+      registry.register(sietchTheme);
+      expect(() => registry.getWithValidation('sietch', 'free')).toThrow(
+        /requires premium subscription/
+      );
+    });
+
+    it('should register both BasicTheme and SietchTheme', () => {
+      registry.registerAll([basicTheme, sietchTheme]);
+      expect(registry.size).toBe(2);
+      expect(registry.get('basic')?.tier).toBe('free');
+      expect(registry.get('sietch')?.tier).toBe('premium');
     });
   });
 });
