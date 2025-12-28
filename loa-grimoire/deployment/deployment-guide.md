@@ -1,624 +1,1172 @@
-# Deployment Guide
+# Deployment Guide: Arrakis v5.0 SaaS Platform
 
-**Version**: 4.0 "The Unification"
-**Last Updated**: December 2025
+**Version**: 5.0 "The Transformation"
+**Date**: December 29, 2025
+**Status**: Production Ready
+**Deployment Time**: Approximately 2-3 hours
+
+---
+
+## Table of Contents
+
+1. [Prerequisites](#prerequisites)
+2. [Pre-Deployment Checklist](#pre-deployment-checklist)
+3. [Phase 1: AWS Infrastructure](#phase-1-aws-infrastructure)
+4. [Phase 2: HashiCorp Vault Setup](#phase-2-hashicorp-vault-setup)
+5. [Phase 3: Database Initialization](#phase-3-database-initialization)
+6. [Phase 4: EKS Deployment](#phase-4-eks-deployment)
+7. [Phase 5: Application Deployment](#phase-5-application-deployment)
+8. [Phase 6: Verification & Testing](#phase-6-verification--testing)
+9. [Post-Deployment](#post-deployment)
+10. [Rollback Procedures](#rollback-procedures)
+
+---
 
 ## Prerequisites
 
-- Ubuntu 22.04 LTS server
-- SSH access with sudo privileges
-- Domain name pointed to server IP
-- Discord bot token and guild ID
-- Berachain RPC URL
+### Required Access
 
-### v4.0 Additional Prerequisites
+- **AWS Account**: Production account with admin access
+- **GitHub**: Access to `0xHoneyJar/arrakis` repository
+- **HashiCorp Cloud Platform**: Account with billing enabled
+- **Domain**: DNS control for `arrakis.honeyjar.xyz`
+- **Discord**: Bot application with token
+- **Telegram**: Bot application with token (optional)
+- **Stripe**: Live account with webhook secret
 
-- **Stripe Account** (for billing features)
-  - Stripe Secret Key (sk_live_xxx or sk_test_xxx)
-  - Stripe Webhook Signing Secret (whsec_xxx)
-  - Stripe Price IDs for each subscription tier
-- **Upstash Redis** (for entitlement caching)
-  - Redis URL (redis://xxx.upstash.io:6379)
-  - Redis Password
-- **trigger.dev Account** (for scheduled tasks)
-  - Trigger.dev Secret Key
-
-## Quick Deploy
+### Required Tools
 
 ```bash
-# Clone and setup
+# AWS CLI v2
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
+
+# kubectl
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+
+# eksctl
+curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
+sudo mv /tmp/eksctl /usr/local/bin
+
+# Terraform v1.7+
+wget https://releases.hashicorp.com/terraform/1.7.0/terraform_1.7.0_linux_amd64.zip
+unzip terraform_1.7.0_linux_amd64.zip
+sudo mv terraform /usr/local/bin/
+
+# Helm v3
+curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+# jq (JSON processor)
+sudo apt install jq -y
+
+# Verify installations
+aws --version
+kubectl version --client
+eksctl version
+terraform version
+helm version
+jq --version
+```
+
+### Environment Setup
+
+```bash
+# Create deployment directory
+mkdir -p ~/arrakis-deployment
+cd ~/arrakis-deployment
+
+# Clone infrastructure repository
 git clone https://github.com/0xHoneyJar/arrakis.git
-cd arrakis/sietch-service
-npm install
-cp .env.example .env.local
-# Edit .env.local with your credentials
+cd arrakis
 
-# Build and start
-npm run build
-pm2 start ecosystem.config.cjs
-pm2 save
+# Checkout production branch
+git checkout main
+
+# Set AWS profile (if using multiple accounts)
+export AWS_PROFILE=arrakis-prod
+export AWS_REGION=us-east-1
+
+# Verify AWS access
+aws sts get-caller-identity
 ```
 
-## Full Deployment Steps
+---
 
-### 1. Server Setup
+## Pre-Deployment Checklist
 
-```bash
-# Update system
-sudo apt update && sudo apt upgrade -y
+### 1. Secrets Preparation
 
-# Install Node.js 20
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs
-
-# Install build tools
-sudo apt install -y build-essential git nginx certbot python3-certbot-nginx
-
-# Install PM2
-sudo npm install -g pm2
-```
-
-### 2. Application Setup
+Create a secure secrets file (DO NOT commit to git):
 
 ```bash
-# Create app user
-sudo useradd -m -s /bin/bash sietch
-sudo usermod -aG sudo sietch
-
-# Clone repository
-sudo -u sietch git clone https://github.com/0xHoneyJar/arrakis.git /home/sietch/arrakis
-cd /home/sietch/arrakis/sietch-service
-
-# Install dependencies
-sudo -u sietch npm install
-
-# Create data directory
-sudo mkdir -p /data
-sudo chown sietch:sietch /data
-```
-
-### 3. Environment Configuration
-
-```bash
-# Copy template
-cp .env.example .env.local
-
-# Edit with production values
-nano .env.local
-```
-
-Required environment variables:
-
-```bash
-# Server
-NODE_ENV=production
-PORT=3000
-API_KEY=<generate-secure-key>
-
-# Berachain
-BERACHAIN_RPC_URL=https://rpc.berachain.com
-
+# Create secrets template
+cat > ~/arrakis-secrets.env << 'EOF'
 # Discord
-DISCORD_BOT_TOKEN=<your-bot-token>
-DISCORD_GUILD_ID=<your-guild-id>
-DISCORD_ANNOUNCEMENTS_CHANNEL_ID=<channel-id>
-DISCORD_STORY_CHANNEL_ID=<channel-id>
+DISCORD_BOT_TOKEN=
+DISCORD_CLIENT_ID=
+DISCORD_CLIENT_SECRET=
 
-# Discord Roles (tier system)
-DISCORD_NAIB_ROLE_ID=<role-id>
-DISCORD_FEDAYKIN_ROLE_ID=<role-id>
-DISCORD_USUL_ROLE_ID=<role-id>
-DISCORD_REVEREND_MOTHER_ROLE_ID=<role-id>
-DISCORD_SANDRIDER_ROLE_ID=<role-id>
-DISCORD_SAYYADINA_ROLE_ID=<role-id>
-DISCORD_FREMEN_ROLE_ID=<role-id>
-DISCORD_ACOLYTE_ROLE_ID=<role-id>
-DISCORD_TRAVELER_ROLE_ID=<role-id>
+# Telegram (optional)
+TELEGRAM_BOT_TOKEN=
 
-# trigger.dev
-TRIGGER_SECRET_KEY=<your-trigger-key>
+# Stripe
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+STRIPE_PRICE_BASIC=
+STRIPE_PRICE_PREMIUM=
+STRIPE_PRICE_EXCLUSIVE=
+STRIPE_PRICE_ELITE=
 
-# ============================================
-# v4.0 Billing & Gatekeeper Configuration
-# ============================================
+# Score Service
+SCORE_API_KEY=
+SCORE_API_URL=https://score.honeyjar.xyz
 
-# Stripe (Required for billing features)
-STRIPE_SECRET_KEY=<sk_live_xxx or sk_test_xxx>
-STRIPE_WEBHOOK_SECRET=<whsec_xxx>
-STRIPE_PRICE_BASIC=<price_xxx>
-STRIPE_PRICE_PREMIUM=<price_xxx>
-STRIPE_PRICE_EXCLUSIVE=<price_xxx>
-STRIPE_PRICE_ELITE=<price_xxx>
-STRIPE_PRICE_ENTERPRISE=<price_xxx>
+# Blockchain RPCs
+BERACHAIN_RPC_URL=https://rpc.berachain.com
+ETHEREUM_RPC_URL=
 
-# Upstash Redis (Required for entitlement caching)
-REDIS_URL=<redis://xxx.upstash.io:6379>
-REDIS_PASSWORD=<your-redis-password>
-REDIS_MAX_RETRIES=3
-REDIS_CONNECT_TIMEOUT=5000
-REDIS_ENTITLEMENT_TTL=300
+# Audit Signing Key (generate new)
+AUDIT_SIGNING_KEY=$(openssl rand -hex 32)
 
-# Feature Flags
-BILLING_ENABLED=true
-GATEKEEPER_ENABLED=true
+# Database (will be generated by Terraform)
+DATABASE_URL=
+REDIS_URL=
 
-# Boost Configuration (Optional - defaults provided)
-BOOST_PRICE_PER_MONTH_CENTS=299
-BOOST_LEVEL1_THRESHOLD=2
-BOOST_LEVEL2_THRESHOLD=7
-BOOST_LEVEL3_THRESHOLD=15
+# Vault (will be generated by HCP)
+VAULT_ADDR=
+VAULT_TOKEN=
+EOF
 
-# Badge Pricing (Optional - defaults provided)
-BADGE_PRICE_CENTS=499
+# Edit with real values
+nano ~/arrakis-secrets.env
+
+# Lock down permissions
+chmod 600 ~/arrakis-secrets.env
 ```
 
-### 4. Build Application
+### 2. DNS Preparation
+
+Configure DNS records (Cloudflare or Route53):
+
+```
+Type: A
+Name: arrakis.honeyjar.xyz
+Value: (Will be ALB IP from Terraform output)
+TTL: 300
+Proxy: Enabled (if Cloudflare)
+
+Type: A
+Name: *.arrakis.honeyjar.xyz (wildcard)
+Value: (Same ALB IP)
+TTL: 300
+Proxy: Enabled
+```
+
+### 3. Cost Acknowledgment
+
+**Baseline Monthly Cost**: $2,575.85 (on-demand)
+**Optimized Cost**: $1,868 (with 1-year reserved instances)
+
+This deployment will incur costs immediately. Confirm budget approval before proceeding.
+
+---
+
+## Phase 1: AWS Infrastructure
+
+### Step 1.1: Create S3 Backend for Terraform State
 
 ```bash
-cd /home/sietch/arrakis/sietch-service
-sudo -u sietch npm run build
+# Create S3 bucket for Terraform state
+aws s3 mb s3://arrakis-terraform-state-prod --region us-east-1
+
+# Enable versioning
+aws s3api put-bucket-versioning \
+  --bucket arrakis-terraform-state-prod \
+  --versioning-configuration Status=Enabled
+
+# Enable encryption
+aws s3api put-bucket-encryption \
+  --bucket arrakis-terraform-state-prod \
+  --server-side-encryption-configuration '{
+    "Rules": [{
+      "ApplyServerSideEncryptionByDefault": {
+        "SSEAlgorithm": "AES256"
+      }
+    }]
+  }'
+
+# Create DynamoDB table for state locking
+aws dynamodb create-table \
+  --table-name arrakis-terraform-locks \
+  --attribute-definitions AttributeName=LockID,AttributeType=S \
+  --key-schema AttributeName=LockID,KeyType=HASH \
+  --billing-mode PAY_PER_REQUEST \
+  --region us-east-1
 ```
 
-### 5. PM2 Configuration
-
-Create `/home/sietch/arrakis/sietch-service/ecosystem.config.cjs`:
-
-```javascript
-module.exports = {
-  apps: [{
-    name: 'sietch-service',
-    script: 'dist/index.js',
-    cwd: '/home/sietch/arrakis/sietch-service',
-    instances: 1,
-    autorestart: true,
-    watch: false,
-    max_memory_restart: '1G',
-    env: {
-      NODE_ENV: 'production',
-    },
-    error_file: '/var/log/sietch/error.log',
-    out_file: '/var/log/sietch/out.log',
-    log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-  }]
-};
-```
-
-Start the application:
+### Step 1.2: Initialize Terraform
 
 ```bash
-# Create log directory
-sudo mkdir -p /var/log/sietch
-sudo chown sietch:sietch /var/log/sietch
+cd terraform/
 
-# Start with PM2
-cd /home/sietch/arrakis/sietch-service
-sudo -u sietch pm2 start ecosystem.config.cjs
-sudo -u sietch pm2 save
+# Create backend configuration
+cat > backend.tf << 'EOF'
+terraform {
+  backend "s3" {
+    bucket         = "arrakis-terraform-state-prod"
+    key            = "arrakis/production/terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "arrakis-terraform-locks"
+    encrypt        = true
+  }
+}
+EOF
 
-# Enable startup
-sudo -u sietch pm2 startup systemd -u sietch --hp /home/sietch
+# Initialize Terraform
+terraform init
 ```
 
-### 6. nginx Configuration
+### Step 1.3: Configure Terraform Variables
 
-First, add rate limiting zone to `/etc/nginx/nginx.conf` inside the `http` block:
+```bash
+# Create production variables file
+cat > terraform.tfvars << 'EOF'
+# Environment
+environment = "production"
+project_name = "arrakis"
 
-```nginx
-http {
-    # ... existing config ...
+# Region
+aws_region = "us-east-1"
+availability_zones = ["us-east-1a", "us-east-1b", "us-east-1c"]
 
-    # Rate limiting zone (must be in http context)
-    limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+# VPC
+vpc_cidr = "10.0.0.0/16"
 
-    # ... rest of config ...
+# EKS
+eks_cluster_version = "1.29"
+api_node_instance_type = "t3.medium"
+api_node_min_size = 3
+api_node_max_size = 20
+api_node_desired_size = 5
+
+worker_node_instance_type = "c6i.large"
+worker_node_min_size = 5
+worker_node_max_size = 50
+worker_node_desired_size = 10
+
+bot_node_instance_type = "t3.medium"
+bot_node_min_size = 2
+bot_node_max_size = 10
+bot_node_desired_size = 3
+
+# RDS
+rds_instance_class = "db.r6g.xlarge"
+rds_allocated_storage = 500
+rds_engine_version = "15.4"
+rds_backup_retention_period = 30
+rds_replica_count = 2
+
+# ElastiCache
+redis_node_type = "cache.r6g.large"
+redis_num_cache_nodes = 3
+
+# Domain
+domain_name = "arrakis.honeyjar.xyz"
+
+# Tags
+tags = {
+  Project     = "Arrakis"
+  Environment = "Production"
+  ManagedBy   = "Terraform"
+  Team        = "Platform"
+  CostCenter  = "Engineering"
 }
+EOF
 ```
 
-Then create `/etc/nginx/sites-available/sietch`:
+### Step 1.4: Plan and Apply Infrastructure
 
-```nginx
-server {
-    listen 80;
-    server_name sietch.yourdomain.com;
-    return 301 https://$server_name$request_uri;
+```bash
+# Validate Terraform configuration
+terraform validate
+
+# Generate execution plan (review carefully!)
+terraform plan -out=tfplan
+
+# Review the plan output
+# Expected resources: ~80-100 resources
+# - VPC, Subnets, Route Tables, Internet Gateway, NAT Gateways
+# - Security Groups, NACLs
+# - EKS Cluster, Node Groups, IAM Roles
+# - RDS Primary + Replicas, Subnet Group
+# - ElastiCache Cluster, Subnet Group
+# - S3 Buckets (manifests, backups)
+# - ALB, Target Groups
+# - CloudWatch Log Groups
+# - Secrets Manager secrets (empty, will populate later)
+# - IAM Service Accounts (IRSA)
+
+# Apply infrastructure (takes ~30-40 minutes)
+terraform apply tfplan
+
+# Save outputs to file
+terraform output -json > ~/terraform-outputs.json
+
+# Extract key values
+export EKS_CLUSTER_NAME=$(terraform output -raw eks_cluster_name)
+export RDS_ENDPOINT=$(terraform output -raw rds_endpoint)
+export REDIS_ENDPOINT=$(terraform output -raw redis_endpoint)
+export ALB_DNS=$(terraform output -raw alb_dns_name)
+export S3_MANIFESTS_BUCKET=$(terraform output -raw s3_manifests_bucket)
+export S3_BACKUPS_BUCKET=$(terraform output -raw s3_backups_bucket)
+
+echo "EKS Cluster: $EKS_CLUSTER_NAME"
+echo "RDS Endpoint: $RDS_ENDPOINT"
+echo "Redis Endpoint: $REDIS_ENDPOINT"
+echo "ALB DNS: $ALB_DNS"
+```
+
+### Step 1.5: Update DNS Records
+
+```bash
+# Get ALB IP address
+ALB_IP=$(dig +short $ALB_DNS | head -1)
+
+echo "Update DNS records:"
+echo "A record: arrakis.honeyjar.xyz → $ALB_IP"
+echo "A record: *.arrakis.honeyjar.xyz → $ALB_IP"
+
+# If using Route53 (automated):
+# Note: Requires Route53 hosted zone already configured
+HOSTED_ZONE_ID=$(aws route53 list-hosted-zones-by-name \
+  --dns-name honeyjar.xyz \
+  --query 'HostedZones[0].Id' \
+  --output text | cut -d'/' -f3)
+
+aws route53 change-resource-record-sets \
+  --hosted-zone-id $HOSTED_ZONE_ID \
+  --change-batch '{
+    "Changes": [
+      {
+        "Action": "UPSERT",
+        "ResourceRecordSet": {
+          "Name": "arrakis.honeyjar.xyz",
+          "Type": "A",
+          "TTL": 300,
+          "ResourceRecords": [{"Value": "'$ALB_IP'"}]
+        }
+      }
+    ]
+  }'
+
+# Wait for DNS propagation (5-10 minutes)
+watch -n 10 'dig +short arrakis.honeyjar.xyz'
+```
+
+---
+
+## Phase 2: HashiCorp Vault Setup
+
+### Step 2.1: Create HCP Vault Cluster
+
+```bash
+# Login to HCP (https://portal.cloud.hashicorp.com/)
+# Create new organization (if needed): "HoneyJar"
+# Create new project: "Arrakis Production"
+
+# Via HCP CLI (alternative to web UI):
+hcp auth login
+
+# Create Vault cluster
+hcp vault create \
+  --cluster-id=arrakis-prod-vault \
+  --tier=starter \
+  --region=us-east-1
+
+# Wait for provisioning (10-15 minutes)
+hcp vault wait arrakis-prod-vault
+
+# Get cluster details
+export VAULT_ADDR=$(hcp vault read arrakis-prod-vault --format=json | jq -r '.public_endpoint_url')
+export VAULT_NAMESPACE="admin"
+
+echo "Vault Address: $VAULT_ADDR"
+```
+
+### Step 2.2: Initialize Vault
+
+```bash
+# Generate root token (ONE TIME ONLY - save securely!)
+export VAULT_TOKEN=$(hcp vault generate-root-token arrakis-prod-vault --format=json | jq -r '.token')
+
+# Verify access
+vault status
+
+# Expected output:
+# Sealed: false
+# Version: 1.15.x+ent
+# Cluster ID: xxxx
+```
+
+### Step 2.3: Configure Transit Secrets Engine
+
+```bash
+# Enable transit secrets engine
+vault secrets enable transit
+
+# Create signing key for manifest signatures
+vault write -f transit/keys/arrakis-signing-key \
+  type=ed25519 \
+  exportable=false
+
+# Verify key created
+vault read transit/keys/arrakis-signing-key
+
+# Expected output:
+# type: ed25519
+# supports_signing: true
+# keys: {1: ...}
+```
+
+### Step 2.4: Create Vault Policy for EKS Pods
+
+```bash
+# Create policy file
+cat > arrakis-vault-policy.hcl << 'EOF'
+# Transit signing
+path "transit/sign/arrakis-signing-key" {
+  capabilities = ["create", "update"]
 }
 
-server {
-    listen 443 ssl http2;
-    server_name sietch.yourdomain.com;
+path "transit/verify/arrakis-signing-key" {
+  capabilities = ["create", "update"]
+}
 
-    # SSL (managed by certbot)
-    ssl_certificate /etc/letsencrypt/live/sietch.yourdomain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/sietch.yourdomain.com/privkey.pem;
-    include /etc/letsencrypt/options-ssl-nginx.conf;
-    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+# Read key metadata (not the key itself)
+path "transit/keys/arrakis-signing-key" {
+  capabilities = ["read"]
+}
+EOF
 
-    # Security headers
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
+# Apply policy
+vault policy write arrakis-prod arrakis-vault-policy.hcl
 
-    location / {
-        limit_req zone=api burst=20 nodelay;
-        proxy_pass http://127.0.0.1:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
+# Create service token for EKS pods
+export VAULT_SERVICE_TOKEN=$(vault token create \
+  -policy=arrakis-prod \
+  -period=768h \
+  -display-name=eks-arrakis-prod \
+  -format=json | jq -r '.auth.client_token')
+
+echo "Vault Service Token: $VAULT_SERVICE_TOKEN"
+echo "(Store in AWS Secrets Manager)"
+```
+
+---
+
+## Phase 3: Database Initialization
+
+### Step 3.1: Connect to RDS
+
+```bash
+# Install PostgreSQL client
+sudo apt install postgresql-client-15 -y
+
+# Test connection
+psql "postgresql://arrakis_admin:$(aws secretsmanager get-secret-value \
+  --secret-id arrakis/prod/database-password \
+  --query SecretString --output text)@$RDS_ENDPOINT:5432/arrakis?sslmode=require"
+
+# Expected: PostgreSQL prompt
+# arrakis=>
+```
+
+### Step 3.2: Run Drizzle Migrations
+
+```bash
+cd sietch-service/
+
+# Generate migration SQL
+npm run db:generate
+
+# Review generated migrations in drizzle/
+cat drizzle/*.sql
+
+# Apply migrations to production
+DATABASE_URL="postgresql://arrakis_admin:<password>@$RDS_ENDPOINT:5432/arrakis?sslmode=require" \
+  npm run db:migrate
+
+# Verify tables created
+psql "postgresql://..." -c "\dt"
+
+# Expected tables:
+# communities, profiles, shadow_state, fee_waivers, boost_logs, etc.
+```
+
+### Step 3.3: Enable Row-Level Security
+
+```bash
+# Connect as admin
+psql "postgresql://..."
+
+-- Enable RLS on all tenant tables
+ALTER TABLE communities ENABLE ROW LEVEL SECURITY;
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE shadow_state ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wizard_sessions ENABLE ROW LEVEL SECURITY;
+
+-- Create RLS policies
+CREATE POLICY tenant_isolation_communities ON communities
+    USING (id = current_setting('app.current_tenant')::UUID);
+
+CREATE POLICY tenant_isolation_profiles ON profiles
+    USING (community_id = current_setting('app.current_tenant')::UUID);
+
+CREATE POLICY tenant_isolation_shadow_state ON shadow_state
+    USING (community_id = current_setting('app.current_tenant')::UUID);
+
+-- Create admin role that bypasses RLS
+CREATE ROLE arrakis_admin WITH BYPASSRLS LOGIN PASSWORD '<secure-password>';
+
+-- Verify policies
+SELECT schemaname, tablename, policyname
+FROM pg_policies
+WHERE tablename IN ('communities', 'profiles', 'shadow_state');
+
+-- Exit
+\q
+```
+
+### Step 3.4: Seed Initial Data (Optional)
+
+```bash
+# Seed stories (if needed)
+DATABASE_URL="postgresql://..." npm run seed:stories
+
+# Create first community (Honey Jar)
+DATABASE_URL="postgresql://..." node -e "
+const { db } = require('./dist/db/index.js');
+const { communities } = require('./dist/db/schema.js');
+
+(async () => {
+  const community = await db.insert(communities).values({
+    name: 'Honey Jar',
+    discordGuildId: '1234567890', // Replace with real guild ID
+    status: 'active',
+    tier: 'enterprise',
+    manifest: {
+      theme: { id: 'bgt-holder', name: 'BGT Holder' }
     }
+  }).returning();
 
-    # Health check (no rate limit)
-    location /health {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-    }
-}
+  console.log('Created community:', community[0].id);
+})();
+"
 ```
 
-Enable and test:
+---
+
+## Phase 4: EKS Deployment
+
+### Step 4.1: Configure kubectl
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/sietch /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl restart nginx
+# Update kubeconfig
+aws eks update-kubeconfig \
+  --region us-east-1 \
+  --name $EKS_CLUSTER_NAME
+
+# Verify connection
+kubectl get nodes
+
+# Expected: 10 nodes (3 API + 5 workers + 2 bots)
+# All should be "Ready"
 ```
 
-### 7. SSL Certificate
+### Step 4.2: Install Kubernetes Add-ons
 
 ```bash
-sudo certbot --nginx -d sietch.yourdomain.com
+# Install AWS Load Balancer Controller
+kubectl apply -k "github.com/aws/eks-charts/stable/aws-load-balancer-controller//crds?ref=master"
+
+helm repo add eks https://aws.github.io/eks-charts
+helm repo update
+
+helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
+  -n kube-system \
+  --set clusterName=$EKS_CLUSTER_NAME \
+  --set serviceAccount.create=false \
+  --set serviceAccount.name=aws-load-balancer-controller
+
+# Install Metrics Server (for HPA)
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+
+# Verify metrics server
+kubectl top nodes
+kubectl top pods -A
+
+# Install Prometheus + Grafana (monitoring)
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+
+helm install prometheus prometheus-community/kube-prometheus-stack \
+  -n monitoring \
+  --create-namespace \
+  --set prometheus.prometheusSpec.retention=30d \
+  --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=100Gi \
+  --set grafana.adminPassword=<secure-password>
+
+# Verify monitoring stack
+kubectl get pods -n monitoring
 ```
 
-### 8. Firewall Setup
+### Step 4.3: Create Kubernetes Secrets
 
 ```bash
-sudo ufw default deny incoming
-sudo ufw default allow outgoing
-sudo ufw allow 22/tcp
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw enable
+# Load secrets from file
+source ~/arrakis-secrets.env
+
+# Create namespace
+kubectl create namespace arrakis-prod
+
+# Create secrets (from AWS Secrets Manager)
+kubectl create secret generic arrakis-secrets \
+  -n arrakis-prod \
+  --from-literal=database-url="postgresql://arrakis_admin:$DB_PASSWORD@$RDS_ENDPOINT:5432/arrakis?sslmode=require" \
+  --from-literal=redis-url="redis://$REDIS_ENDPOINT:6379" \
+  --from-literal=discord-bot-token="$DISCORD_BOT_TOKEN" \
+  --from-literal=telegram-bot-token="$TELEGRAM_BOT_TOKEN" \
+  --from-literal=stripe-secret-key="$STRIPE_SECRET_KEY" \
+  --from-literal=stripe-webhook-secret="$STRIPE_WEBHOOK_SECRET" \
+  --from-literal=score-api-key="$SCORE_API_KEY" \
+  --from-literal=vault-addr="$VAULT_ADDR" \
+  --from-literal=vault-token="$VAULT_SERVICE_TOKEN" \
+  --from-literal=audit-signing-key="$AUDIT_SIGNING_KEY"
+
+# Verify secrets
+kubectl get secrets -n arrakis-prod
 ```
 
-### 8a. SSH Hardening
+---
 
-Secure SSH access with key-only authentication:
+## Phase 5: Application Deployment
+
+### Step 5.1: Build and Push Docker Images
 
 ```bash
-# Ensure you have SSH key access before proceeding!
-# Test: ssh -i ~/.ssh/your_key sietch@server
+cd sietch-service/
 
-# Disable password authentication
-sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
-sudo sed -i 's/PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+# Login to ECR
+export ECR_REGISTRY=$(terraform output -raw ecr_registry)
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_REGISTRY
 
-# Disable root login
-sudo sed -i 's/#PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
-sudo sed -i 's/PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
-sudo sed -i 's/PermitRootLogin prohibit-password/PermitRootLogin no/' /etc/ssh/sshd_config
+# Build images
+docker build -t $ECR_REGISTRY/arrakis-api:v5.0.0 -f Dockerfile.api .
+docker build -t $ECR_REGISTRY/arrakis-worker:v5.0.0 -f Dockerfile.worker .
+docker build -t $ECR_REGISTRY/arrakis-bot:v5.0.0 -f Dockerfile.bot .
 
-# Restart SSH service
-sudo systemctl restart sshd
+# Push images
+docker push $ECR_REGISTRY/arrakis-api:v5.0.0
+docker push $ECR_REGISTRY/arrakis-worker:v5.0.0
+docker push $ECR_REGISTRY/arrakis-bot:v5.0.0
+
+# Tag as latest
+docker tag $ECR_REGISTRY/arrakis-api:v5.0.0 $ECR_REGISTRY/arrakis-api:latest
+docker tag $ECR_REGISTRY/arrakis-worker:v5.0.0 $ECR_REGISTRY/arrakis-worker:latest
+docker tag $ECR_REGISTRY/arrakis-bot:v5.0.0 $ECR_REGISTRY/arrakis-bot:latest
+
+docker push $ECR_REGISTRY/arrakis-api:latest
+docker push $ECR_REGISTRY/arrakis-worker:latest
+docker push $ECR_REGISTRY/arrakis-bot:latest
 ```
 
-**Warning**: Ensure you have working SSH key access before disabling password authentication, or you may lock yourself out!
-
-### 9. Seed Initial Data
+### Step 5.2: Deploy with Helm
 
 ```bash
-cd /home/sietch/arrakis/sietch-service
-sudo -u sietch npm run seed:stories
+cd k8s/helm/arrakis/
+
+# Update values.yaml with Terraform outputs
+cat > values-prod.yaml << EOF
+environment: production
+
+image:
+  registry: $ECR_REGISTRY
+  tag: v5.0.0
+
+replicaCount:
+  api: 3
+  worker: 5
+  bot: 2
+
+resources:
+  api:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  worker:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 1500m
+      memory: 2Gi
+  bot:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+hpa:
+  api:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+  worker:
+    enabled: true
+    minReplicas: 5
+    maxReplicas: 50
+    targetCPUUtilizationPercentage: 70
+  bot:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 60
+
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:xxxx
+  hosts:
+    - host: arrakis.honeyjar.xyz
+      paths:
+        - path: /api
+          pathType: Prefix
+          service: api
+        - path: /webhooks
+          pathType: Prefix
+          service: api
+        - path: /health
+          pathType: Prefix
+          service: api
+
+nodeSelector:
+  api:
+    workload: api
+  worker:
+    workload: worker
+  bot:
+    workload: bot
+
+tolerations:
+  worker:
+    - key: workload
+      operator: Equal
+      value: worker
+      effect: NoSchedule
+  bot:
+    - key: workload
+      operator: Equal
+      value: bot
+      effect: NoSchedule
+
+serviceAccount:
+  create: true
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::xxxx:role/arrakis-api-role
+EOF
+
+# Install Helm release
+helm install arrakis . \
+  -n arrakis-prod \
+  -f values-prod.yaml \
+  --wait \
+  --timeout 10m
+
+# Verify deployment
+kubectl get pods -n arrakis-prod
+kubectl get svc -n arrakis-prod
+kubectl get ingress -n arrakis-prod
 ```
 
-### 10. Verify Deployment
+### Step 5.3: Verify Pods are Running
 
 ```bash
-# Check service health
-curl https://sietch.yourdomain.com/health
+# Check pod status
+kubectl get pods -n arrakis-prod -o wide
 
-# Check PM2 status
-sudo -u sietch pm2 status
+# Expected: All pods "Running" with 1/1 ready
+# arrakis-api-xxx (3 pods)
+# arrakis-worker-xxx (5 pods)
+# arrakis-bot-xxx (2 pods)
 
 # Check logs
-sudo -u sietch pm2 logs sietch-service --lines 50
+kubectl logs -n arrakis-prod deployment/arrakis-api --tail=50
+kubectl logs -n arrakis-prod deployment/arrakis-worker --tail=50
+kubectl logs -n arrakis-prod deployment/arrakis-bot --tail=50
+
+# Check HPA status
+kubectl get hpa -n arrakis-prod
 ```
 
-## Updating
+---
 
-### Standard Update
+## Phase 6: Verification & Testing
+
+### Step 6.1: Health Check
 
 ```bash
-cd /home/sietch/arrakis
-sudo -u sietch git pull origin main
-cd sietch-service
-sudo -u sietch npm install
-sudo -u sietch npm run build
-sudo -u sietch pm2 restart sietch-service
+# Test health endpoint
+curl https://arrakis.honeyjar.xyz/health
+
+# Expected:
+# {"status":"ok","timestamp":"2025-12-29T12:00:00Z","database":"connected","redis":"connected","vault":"connected"}
 ```
 
-### Database Migration Update
+### Step 6.2: API Testing
 
 ```bash
-# Backup first
-sudo -u sietch cp /data/sietch.db /backups/sietch.db.$(date +%Y%m%d_%H%M%S)
+# Test API endpoint (requires API key)
+curl -H "X-API-Key: <admin-api-key>" \
+  https://arrakis.honeyjar.xyz/api/admin/status
 
-# Update
-cd /home/sietch/arrakis
-sudo -u sietch git pull origin main
-cd sietch-service
-sudo -u sietch npm install
-sudo -u sietch npm run build
+# Expected:
+# {"communities":1,"profiles":0,"workers":5,"queue_depth":0}
 
-# Migrations run automatically on startup
-sudo -u sietch pm2 restart sietch-service
+# Test eligibility check (with real wallet)
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"communityId":"<uuid>","walletAddress":"0x..."}' \
+  https://arrakis.honeyjar.xyz/api/eligibility
+
+# Expected:
+# {"eligible":true,"tier":"fremen","reason":"..."}
 ```
 
-## Rollback
+### Step 6.3: Discord Bot Testing
 
 ```bash
-# Stop service
-sudo -u sietch pm2 stop sietch-service
+# Check bot status in Discord
+# Bot should be online
 
-# Restore database if needed
-sudo -u sietch cp /backups/sietch.db.<timestamp> /data/sietch.db
+# Test slash commands:
+# /setup (start wizard)
+# /status (check community status)
+# /help (show commands)
 
-# Checkout previous version
-cd /home/sietch/arrakis
-sudo -u sietch git checkout v3.0.0  # or specific commit
-
-# Rebuild and restart
-cd sietch-service
-sudo -u sietch npm install
-sudo -u sietch npm run build
-sudo -u sietch pm2 restart sietch-service
+# Verify bot responds correctly
 ```
+
+### Step 6.4: Worker Queue Testing
+
+```bash
+# Trigger synthesis job (via API)
+curl -X POST \
+  -H "X-API-Key: <admin-api-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"communityId":"<uuid>"}' \
+  https://arrakis.honeyjar.xyz/api/admin/trigger-synthesis
+
+# Check queue depth in Redis
+kubectl exec -it -n arrakis-prod deployment/arrakis-worker -- redis-cli -h $REDIS_ENDPOINT -c LLEN bull:synthesis:wait
+
+# Check worker logs
+kubectl logs -n arrakis-prod deployment/arrakis-worker --follow
+```
+
+### Step 6.5: Monitoring Dashboard
+
+```bash
+# Get Grafana password
+kubectl get secret -n monitoring prometheus-grafana -o jsonpath="{.data.admin-password}" | base64 --decode
+
+# Port-forward Grafana
+kubectl port-forward -n monitoring svc/prometheus-grafana 3000:80
+
+# Open browser: http://localhost:3000
+# Login: admin / <password>
+# Verify dashboards:
+# - Kubernetes / Compute Resources / Cluster
+# - Kubernetes / Compute Resources / Namespace (arrakis-prod)
+```
+
+---
+
+## Post-Deployment
+
+### 1. SSL Certificate Setup
+
+```bash
+# If using AWS Certificate Manager (ACM):
+# Certificate should be auto-provisioned by Terraform
+
+# Verify certificate
+aws acm list-certificates --region us-east-1
+
+# If using Let's Encrypt (cert-manager):
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+
+# Create ClusterIssuer
+kubectl apply -f - << 'EOF'
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: devops@honeyjar.xyz
+    privateKeySecretRef:
+      name: letsencrypt-prod
+    solvers:
+    - http01:
+        ingress:
+          class: alb
+EOF
+```
+
+### 2. Configure Alerting
+
+```bash
+# Create PagerDuty integration
+kubectl apply -f - << 'EOF'
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pagerduty-config
+  namespace: monitoring
+type: Opaque
+stringData:
+  pagerduty.yaml: |
+    service_key: <pagerduty-service-key>
+EOF
+
+# Configure Prometheus AlertManager
+kubectl apply -f k8s/monitoring/alertmanager-config.yaml
+
+# Verify alerts
+kubectl get prometheusrules -n monitoring
+```
+
+### 3. Backup Verification
+
+```bash
+# Verify RDS automated backups
+aws rds describe-db-snapshots \
+  --db-instance-identifier arrakis-prod-rds \
+  --snapshot-type automated
+
+# Verify Redis snapshots
+aws elasticache describe-snapshots \
+  --cache-cluster-id arrakis-prod-redis
+
+# Test backup restore (in staging)
+# DO NOT run in production without review!
+# aws rds restore-db-instance-from-db-snapshot ...
+```
+
+### 4. Performance Testing
+
+```bash
+# Install k6 load testing tool
+wget https://github.com/grafana/k6/releases/download/v0.47.0/k6-v0.47.0-linux-amd64.tar.gz
+tar -xzf k6-v0.47.0-linux-amd64.tar.gz
+sudo mv k6-v0.47.0-linux-amd64/k6 /usr/local/bin/
+
+# Create load test script
+cat > load-test.js << 'EOF'
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+
+export let options = {
+  stages: [
+    { duration: '2m', target: 100 }, // Ramp up
+    { duration: '5m', target: 100 }, // Sustain
+    { duration: '2m', target: 0 },   // Ramp down
+  ],
+  thresholds: {
+    http_req_duration: ['p(95)<500'], // 95% of requests < 500ms
+    http_req_failed: ['rate<0.01'],   // Error rate < 1%
+  },
+};
+
+export default function () {
+  let res = http.get('https://arrakis.honeyjar.xyz/health');
+  check(res, { 'status is 200': (r) => r.status === 200 });
+  sleep(1);
+}
+EOF
+
+# Run load test
+k6 run load-test.js
+
+# Verify scaling
+watch -n 5 'kubectl get hpa -n arrakis-prod'
+```
+
+### 5. Documentation
+
+```bash
+# Create operational runbook
+cat > ~/arrakis-ops-runbook.md << 'EOF'
+# Arrakis v5.0 Operations Runbook
+
+## Key Contacts
+- On-Call: PagerDuty rotation
+- Escalation: Platform team lead
+- Emergency: CTO
+
+## Common Operations
+
+### Deploy New Version
+1. Build images: `docker build -t $ECR_REGISTRY/arrakis-api:vX.Y.Z .`
+2. Push images: `docker push $ECR_REGISTRY/arrakis-api:vX.Y.Z`
+3. Update Helm: `helm upgrade arrakis . -f values-prod.yaml --set image.tag=vX.Y.Z`
+
+### Scale Workers
+kubectl scale deployment arrakis-worker -n arrakis-prod --replicas=10
+
+### Restart Pods
+kubectl rollout restart deployment/arrakis-api -n arrakis-prod
+
+### Check Logs
+kubectl logs -n arrakis-prod deployment/arrakis-api --tail=100 --follow
+
+### Database Backup
+aws rds create-db-snapshot --db-instance-identifier arrakis-prod-rds --db-snapshot-identifier manual-$(date +%Y%m%d)
+
+## Incident Response
+See: loa-grimoire/deployment/runbooks/incident-response.md
+EOF
+```
+
+---
+
+## Rollback Procedures
+
+### Emergency Rollback (< 5 minutes)
+
+```bash
+# Rollback Helm release
+helm rollback arrakis -n arrakis-prod
+
+# Verify rollback
+kubectl get pods -n arrakis-prod
+kubectl logs -n arrakis-prod deployment/arrakis-api --tail=50
+```
+
+### Database Rollback
+
+```bash
+# Stop application
+kubectl scale deployment arrakis-api -n arrakis-prod --replicas=0
+kubectl scale deployment arrakis-worker -n arrakis-prod --replicas=0
+kubectl scale deployment arrakis-bot -n arrakis-prod --replicas=0
+
+# Restore from snapshot
+aws rds restore-db-instance-from-db-snapshot \
+  --db-instance-identifier arrakis-prod-rds-restored \
+  --db-snapshot-identifier <snapshot-id>
+
+# Wait for restore (~15-30 minutes)
+aws rds wait db-instance-available --db-instance-identifier arrakis-prod-rds-restored
+
+# Update connection string in secrets
+kubectl edit secret arrakis-secrets -n arrakis-prod
+
+# Restart application
+kubectl scale deployment arrakis-api -n arrakis-prod --replicas=3
+kubectl scale deployment arrakis-worker -n arrakis-prod --replicas=5
+kubectl scale deployment arrakis-bot -n arrakis-prod --replicas=2
+```
+
+### Full Infrastructure Rollback
+
+```bash
+# Destroy infrastructure (DANGEROUS!)
+cd terraform/
+terraform destroy -auto-approve
+
+# Restore from backup
+# Follow Phase 1-5 with backup data
+```
+
+---
 
 ## Troubleshooting
 
-### Service Won't Start
+### Pods CrashLooping
 
 ```bash
-# Check logs
-sudo -u sietch pm2 logs sietch-service --lines 100
+# Check pod logs
+kubectl logs -n arrakis-prod <pod-name> --previous
 
-# Check environment
-sudo -u sietch cat /home/sietch/arrakis/sietch-service/.env.local
+# Check events
+kubectl describe pod -n arrakis-prod <pod-name>
 
-# Test manually
-cd /home/sietch/arrakis/sietch-service
-sudo -u sietch node dist/index.js
+# Common issues:
+# - Database connection failure (check RDS security group)
+# - Redis connection failure (check ElastiCache security group)
+# - Secrets not found (check kubectl get secrets)
+# - OOM (increase memory limits)
 ```
 
-### Discord Bot Not Connecting
+### Database Connection Issues
 
 ```bash
-# Verify token
-curl -H "Authorization: Bot YOUR_TOKEN" https://discord.com/api/v10/users/@me
+# Test connection from pod
+kubectl run -it --rm debug --image=postgres:15 -n arrakis-prod -- psql "postgresql://..."
 
-# Check bot permissions in Discord Developer Portal
-# Ensure all required intents are enabled
+# Check RDS status
+aws rds describe-db-instances --db-instance-identifier arrakis-prod-rds
+
+# Check security groups
+aws ec2 describe-security-groups --group-ids <rds-sg-id>
 ```
 
-### Database Issues
+### High Latency
 
 ```bash
-# Check database file
-ls -la /data/sietch.db
+# Check HPA scaling
+kubectl get hpa -n arrakis-prod
 
-# Verify permissions
-sudo chown sietch:sietch /data/sietch.db
-sudo chmod 600 /data/sietch.db
+# Check node CPU/memory
+kubectl top nodes
 
-# Test database
-sqlite3 /data/sietch.db "SELECT COUNT(*) FROM members;"
-```
+# Check database connections
+psql "postgresql://..." -c "SELECT count(*) FROM pg_stat_activity;"
 
-### nginx Errors
-
-```bash
-# Check configuration
-sudo nginx -t
-
-# Check logs
-sudo tail -f /var/log/nginx/error.log
-
-# Check SSL certificate
-sudo certbot certificates
+# Check Redis memory
+redis-cli -h $REDIS_ENDPOINT INFO memory
 ```
 
 ---
 
-## v4.0 Specific Setup
+## Support
 
-### Stripe Setup
-
-1. **Create Stripe Account**
-   - Sign up at https://dashboard.stripe.com
-   - Complete business verification for production
-
-2. **Create Products & Prices**
-
-   In Stripe Dashboard → Products:
-
-   | Product | Monthly Price | Price ID Format |
-   |---------|--------------|-----------------|
-   | Basic | $15.00 | price_basic_xxx |
-   | Premium | $35.00 | price_premium_xxx |
-   | Exclusive | $149.00 | price_exclusive_xxx |
-   | Elite | $449.00 | price_elite_xxx |
-   | Enterprise | Custom | Contact sales |
-
-3. **Configure Webhook Endpoint**
-
-   In Stripe Dashboard → Developers → Webhooks:
-
-   - Click "Add endpoint"
-   - URL: `https://sietch.yourdomain.com/api/billing/webhook`
-   - Events to listen for:
-     - `checkout.session.completed`
-     - `customer.subscription.updated`
-     - `customer.subscription.deleted`
-     - `invoice.paid`
-     - `invoice.payment_failed`
-   - Copy the Signing Secret to `STRIPE_WEBHOOK_SECRET`
-
-4. **Test with Stripe CLI**
-
-   ```bash
-   # Install Stripe CLI
-   curl -s https://packages.stripe.dev/api/security/keypair/stripe-cli-gpg/public | gpg --dearmor | sudo tee /usr/share/keyrings/stripe.gpg
-   echo "deb [signed-by=/usr/share/keyrings/stripe.gpg] https://packages.stripe.dev/stripe-cli-debian-local stable main" | sudo tee -a /etc/apt/sources.list.d/stripe.list
-   sudo apt update && sudo apt install stripe
-
-   # Login and forward webhooks
-   stripe login
-   stripe listen --forward-to https://sietch.yourdomain.com/api/billing/webhook
-
-   # Test events
-   stripe trigger checkout.session.completed
-   stripe trigger invoice.payment_failed
-   ```
-
-### Upstash Redis Setup
-
-1. **Create Upstash Account**
-   - Sign up at https://console.upstash.com
-   - Create a new Redis database
-
-2. **Configure Database**
-   - Region: Choose closest to your server
-   - Eviction: No eviction (default)
-   - TLS: Enabled
-
-3. **Get Connection Details**
-   - Copy REST URL or Redis URL
-   - Copy password
-   - Add to environment variables
-
-4. **Test Connection**
-
-   ```bash
-   # Test Redis connection
-   redis-cli -u "$REDIS_URL" ping
-   # Should return: PONG
-   ```
-
-### V3 to V4 Migration
-
-For existing v3.0 deployments, run the migration script:
-
-```bash
-# Create backup first
-sudo -u sietch cp /data/sietch.db /backups/sietch.db.pre-v4
-
-# Preview migration (dry run)
-cd /home/sietch/arrakis/sietch-service
-sudo -u sietch npx tsx scripts/migrate-v3-to-v4.ts --dry-run
-
-# Run migration
-sudo -u sietch npx tsx scripts/migrate-v3-to-v4.ts --backup
-
-# Verify migration
-sqlite3 /data/sietch.db "SELECT COUNT(*) FROM communities;"
-sqlite3 /data/sietch.db "SELECT COUNT(*) FROM fee_waivers WHERE tier = 'enterprise';"
-```
-
-The migration script:
-- Creates a 'default' community for existing data
-- Assigns all members to the default community
-- Grants an enterprise waiver (free tier) for the internal community
-- Preserves all v3.0 data
-
-### Verify v4.0 Features
-
-```bash
-# Check billing endpoints
-curl https://sietch.yourdomain.com/api/billing/health
-
-# Check entitlements
-curl -H "X-API-Key: YOUR_API_KEY" \
-  https://sietch.yourdomain.com/api/entitlements
-
-# Check feature access
-curl -H "X-API-Key: YOUR_API_KEY" \
-  -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"feature": "stats_leaderboard"}' \
-  https://sietch.yourdomain.com/api/feature-check
-
-# Check admin endpoints
-curl -H "X-API-Key: YOUR_API_KEY" \
-  https://sietch.yourdomain.com/admin/status
-```
-
-### Scheduled Tasks (trigger.dev)
-
-1. **Deploy trigger.dev tasks**
-
-   ```bash
-   cd /home/sietch/arrakis/sietch-service
-   sudo -u sietch npm run trigger:deploy
-   ```
-
-2. **Verify tasks registered**
-
-   Check trigger.dev dashboard for:
-   - `sync-eligibility` - Hourly BGT sync
-   - `weekly-reset` - Weekly stats reset
-   - `boost-expiry` - Daily boost expiration check
-
-### Rollback from v4.0
-
-If issues occur after v4.0 deployment:
-
-```bash
-# Stop service
-sudo -u sietch pm2 stop sietch-service
-
-# Restore pre-v4 database
-sudo -u sietch cp /backups/sietch.db.pre-v4 /data/sietch.db
-
-# Checkout v3.0
-cd /home/sietch/arrakis
-sudo -u sietch git checkout v3.0.0
-
-# Rebuild and restart
-cd sietch-service
-sudo -u sietch npm install
-sudo -u sietch npm run build
-sudo -u sietch pm2 restart sietch-service
-```
+- **Documentation**: `/home/merlin/Documents/thj/code/arrakis/loa-grimoire/deployment/`
+- **Runbooks**: `/home/merlin/Documents/thj/code/arrakis/loa-grimoire/deployment/runbooks/`
+- **Monitoring**: https://grafana.arrakis.honeyjar.xyz
+- **Logs**: CloudWatch Logs or `kubectl logs`
+- **On-Call**: PagerDuty rotation
 
 ---
 
-## Production Checklist
+**Deployment Complete!**
 
-### Pre-Deployment
-
-- [ ] Backup existing database
-- [ ] Stripe products/prices created
-- [ ] Stripe webhook configured
-- [ ] Upstash Redis provisioned
-- [ ] All environment variables set
-- [ ] SSL certificate valid
-
-### Deployment
-
-- [ ] Run migration script (if upgrading from v3)
-- [ ] Deploy application
-- [ ] Verify health endpoint
-- [ ] Test webhook with Stripe CLI
-- [ ] Verify feature gating works
-
-### Post-Deployment
-
-- [ ] Monitor webhook delivery in Stripe dashboard
-- [ ] Check Redis cache hit rates
-- [ ] Verify scheduled tasks running
-- [ ] Review audit logs
-- [ ] Test subscription flow end-to-end
+Next steps:
+1. Monitor dashboards for 24 hours
+2. Run load tests during off-peak hours
+3. Schedule post-deployment review meeting
+4. Update cost tracking spreadsheet
+5. Create postmortem document (even if successful)
