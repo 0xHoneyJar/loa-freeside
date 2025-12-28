@@ -21,7 +21,9 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:check": "drizzle-kit check"
+    "db:check": "drizzle-kit check",
+    "migrate:sqlite": "tsx scripts/migrate-sqlite-to-postgres.ts",
+    "migrate:rollback": "tsx scripts/rollback-migration.ts"
   },
   "keywords": [
     "berachain",
