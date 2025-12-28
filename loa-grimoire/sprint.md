@@ -1,329 +1,989 @@
-# Sprint Plan: Sietch v4.1 "The Crossing"
+# Sprint Plan: Arrakis v5.0 "The Transformation"
 
-**Version**: 1.0
-**Date**: December 27, 2025
-**Status**: READY FOR IMPLEMENTATION
-**Team**: Loa Framework + Jani
+**Version:** 5.0
+**Date:** December 28, 2025
+**Status:** READY FOR IMPLEMENTATION
+**Team:** Loa Framework + Engineering
+**PRD Reference:** loa-grimoire/prd.md
+**SDD Reference:** loa-grimoire/sdd.md
+
+---
+
+## Executive Summary
+
+Transform Arrakis from a bespoke Berachain Discord bot into a **multi-tenant, chain-agnostic SaaS platform**. This plan breaks down 6 development phases into 16 weekly sprints (sprints 34-49), building on the foundation established in v4.1 (sprints 30-33).
+
+**Total Sprints:** 16 (Sprint 34-49)
+**Sprint Duration:** 1 week each
+**Estimated Completion:** 16 weeks from start
+**Target:** 100+ communities, SietchTheme parity, zero Discord 429 bans
 
 ---
 
 ## Sprint Overview
 
-| Parameter | Value |
-|-----------|-------|
-| Sprint Duration | 4-6 weeks |
-| Total Sprints | 4 sprints (30-33) |
-| Team Structure | Loa agentic framework guiding implementation |
-| Target | Telegram bot with cross-platform identity |
-| Current Sprint | Sprint 30 (Ready) |
-
-### Success Criteria
-
-- Telegram bot operational with 5 core commands
-- Wallet verification via Collab.Land working
-- Cross-platform identity linking functional
-- Zero regression in v4.0 functionality
-- All tests passing
-- Production deployment verified
+| Sprint | Phase | Theme | Key Deliverables | Dependencies |
+|--------|-------|-------|------------------|--------------|
+| 34-35 | 0 | Two-Tier Chain Provider | INativeReader, IScoreService, Circuit Breaker | None |
+| 36-37 | 1 | Themes System | IThemeProvider, BasicTheme, SietchTheme | Sprint 35 |
+| 38-41 | 2 | PostgreSQL + RLS | Drizzle Schema, RLS Policies, Data Migration | Sprint 37 |
+| 42-43 | 3 | Redis + Hybrid State | WizardEngine, Sessions, S3 Shadow | Sprint 41 |
+| 44-45 | 4 | BullMQ + Token Bucket | SynthesisQueue, GlobalTokenBucket, Reconciliation | Sprint 43 |
+| 46-47 | 5 | Vault Transit + Kill Switch | VaultSigningAdapter, KillSwitchProtocol | Sprint 45 |
+| 48-49 | 6 | OPA Pre-Gate + HITL | PolicyAsCodePreGate, HITLApprovalGate | Sprint 47 |
 
 ---
 
-## Sprint Breakdown
+## Phase 0: Two-Tier Chain Provider (Weeks 1-2)
 
-### Sprint 30: Foundation ⏳ READY
+### Sprint 34: Foundation - Native Reader & Interfaces
 
-**Goal**: Establish Telegram bot infrastructure and wallet verification
+**Duration:** 1 week
+**Dates:** Week 1
 
-**Dependencies**: None (foundation sprint)
+#### Sprint Goal
+Establish the port interfaces and implement Tier 1 Native Reader for binary blockchain checks that work without Score Service dependency.
 
-**Key Deliverables**:
-- grammy bot initialization with webhook support
-- `/start` command with welcome message
-- `/verify` command initiating Collab.Land flow
-- Database migration 012_telegram_identity.ts
-- IdentityService with core methods
-- Telegram API routes mounted
+#### Deliverables
+- [ ] `packages/core/ports/IChainProvider.ts` - Interface definitions
+- [ ] `packages/adapters/chain/NativeBlockchainReader.ts` - viem implementation
+- [ ] Unit tests for Native Reader (15+ test cases)
+- [ ] Package structure initialized
 
-**Tasks**:
+#### Acceptance Criteria
+- [ ] `hasBalance(address, token, minAmount)` returns boolean within 100ms
+- [ ] `ownsNFT(address, collection)` returns boolean
+- [ ] `getBalance(address, token)` returns bigint
+- [ ] No external dependencies beyond viem RPC
+- [ ] All methods work with Berachain RPC
 
-| ID | Task | Priority | Estimate | Acceptance Criteria |
-|----|------|----------|----------|---------------------|
-| TASK-30.1 | Add grammy dependency | P0 | 0.5h | `npm install grammy @grammyjs/runner` successful |
-| TASK-30.2 | Create config additions | P0 | 0.5h | TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, TELEGRAM_WEBHOOK_URL in config.ts |
-| TASK-30.3 | Create bot.ts initialization | P0 | 2h | Bot instance created, middleware stack configured, webhook/polling modes |
-| TASK-30.4 | Implement /start command | P0 | 1h | Welcome message displayed, help text included |
-| TASK-30.5 | Create migration 012_telegram_identity.ts | P0 | 1h | telegram_user_id column, telegram_verification_sessions table, indexes created |
-| TASK-30.6 | Implement IdentityService | P0 | 4h | getMemberByPlatformId, linkTelegram, createVerificationSession, completeVerification methods |
-| TASK-30.7 | Implement /verify command | P0 | 3h | Session created, Collab.Land URL returned with inline button |
-| TASK-30.8 | Create telegram.routes.ts | P0 | 2h | /telegram/webhook, /telegram/health, /telegram/verify/callback endpoints |
-| TASK-30.9 | Integrate bot into server.ts | P0 | 1h | Routes mounted, bot started on server init |
-| TASK-30.10 | Write unit tests for IdentityService | P0 | 3h | 15+ test cases covering all methods |
-| TASK-30.11 | Write unit tests for /start and /verify | P1 | 2h | Command handlers tested with mocked context |
+#### Technical Tasks
+- [ ] TASK-34.1: Create `packages/` directory structure per SDD §A
+- [ ] TASK-34.2: Define `INativeReader` interface
+- [ ] TASK-34.3: Define `IScoreService` interface
+- [ ] TASK-34.4: Define `IChainProvider` interface
+- [ ] TASK-34.5: Implement `NativeBlockchainReader` with viem
+- [ ] TASK-34.6: Write unit tests for binary checks
+- [ ] TASK-34.7: Add integration test with Berachain RPC
 
-**Files to Create**:
-- `src/telegram/bot.ts`
-- `src/telegram/commands/start.ts`
-- `src/telegram/commands/verify.ts`
-- `src/telegram/commands/index.ts`
-- `src/services/IdentityService.ts`
-- `src/api/telegram.routes.ts`
-- `src/db/migrations/012_telegram_identity.ts`
-- `tests/services/IdentityService.test.ts`
-- `tests/telegram/commands/start.test.ts`
-- `tests/telegram/commands/verify.test.ts`
+#### Dependencies
+- None (foundation sprint)
 
-**Files to Modify**:
-- `src/config.ts` - Add Telegram env vars
-- `src/api/server.ts` - Mount telegram routes
-- `src/index.ts` - Initialize Telegram bot
-- `package.json` - Add grammy dependency
-- `.env.example` - Add Telegram variables
+#### Risks & Mitigation
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| RPC rate limits | Medium | Medium | Use multiple RPC endpoints |
+| viem breaking changes | Low | Medium | Pin viem version |
 
-**Estimated LOC**: ~600
-
-**Risk Mitigation**:
-- Verify Collab.Land supports Telegram platform parameter before implementation
-- Test locally with polling mode before webhook deployment
+#### Success Metrics
+- 100% test coverage on INativeReader methods
+- <100ms average response time
 
 ---
 
-### Sprint 31: Core Commands ⏳ PENDING
+### Sprint 35: Score Service Adapter & Two-Tier Orchestration
 
-**Goal**: Implement all user-facing commands for score, leaderboard, and tier display
+**Duration:** 1 week
+**Dates:** Week 2
 
-**Dependencies**: Sprint 30 complete (IdentityService, bot infrastructure)
+#### Sprint Goal
+Implement Score Service adapter with circuit breaker and complete Two-Tier Chain Provider orchestration with graceful degradation.
 
-**Key Deliverables**:
-- `/score` command with tier display
-- `/leaderboard` command with pagination
-- `/tier` command showing entitlements
-- `/status` command showing linked platforms
-- `/help` command with command reference
-- Response caching for performance
+#### Deliverables
+- [ ] `packages/adapters/chain/ScoreServiceAdapter.ts`
+- [ ] `packages/adapters/chain/TwoTierChainProvider.ts`
+- [ ] Circuit breaker with opossum
+- [ ] Degradation matrix implementation
+- [ ] Delete legacy `src/services/chain.ts`
 
-**Tasks**:
+#### Acceptance Criteria
+- [ ] `checkBasicEligibility()` uses only Native Reader (Tier 1)
+- [ ] `checkAdvancedEligibility()` uses Score Service (Tier 2) with fallback
+- [ ] Circuit breaker opens at 50% error rate
+- [ ] Degraded mode returns `source: 'degraded'`
+- [ ] All 141 existing tests pass
+- [ ] Score timeout (5s) triggers fallback
 
-| ID | Task | Priority | Estimate | Acceptance Criteria |
-|----|------|----------|----------|---------------------|
-| TASK-31.1 | Create auth middleware | P0 | 1h | Checks verified status, returns prompt if not verified |
-| TASK-31.2 | Create formatters.ts | P0 | 1h | Score formatting, address truncation, tier emoji mapping |
-| TASK-31.3 | Implement /score command | P0 | 2h | Shows conviction score, tier, progress, truncated wallet |
-| TASK-31.4 | Implement /leaderboard command | P0 | 3h | Top 10 display, pagination, user position highlight |
-| TASK-31.5 | Implement /tier command | P0 | 2h | Effective tier, tier source, feature list, upgrade path |
-| TASK-31.6 | Implement /status command | P0 | 2h | Wallet, Discord link status, Telegram link status, dates |
-| TASK-31.7 | Implement /help command | P1 | 1h | Command reference with descriptions |
-| TASK-31.8 | Add platforms API endpoint | P1 | 1h | GET /api/member/{id}/platforms returns linked platforms |
-| TASK-31.9 | Implement response caching | P1 | 2h | 5-minute TTL for score and leaderboard responses |
-| TASK-31.10 | Write unit tests for commands | P0 | 4h | ~20 test cases for all commands |
-| TASK-31.11 | Integration test: score consistency | P1 | 2h | Verify Discord /check and Telegram /score return same value |
+#### Technical Tasks
+- [ ] TASK-35.1: Add opossum dependency
+- [ ] TASK-35.2: Implement `ScoreServiceAdapter` with HTTP client
+- [ ] TASK-35.3: Configure circuit breaker (50% threshold, 30s reset)
+- [ ] TASK-35.4: Implement `TwoTierChainProvider` orchestration
+- [ ] TASK-35.5: Add caching layer for fallback data
+- [ ] TASK-35.6: Implement degradation matrix per PRD §3.1
+- [ ] TASK-35.7: Write integration tests for circuit breaker
+- [ ] TASK-35.8: Migrate existing code to use new provider
+- [ ] TASK-35.9: Delete `src/services/chain.ts`
+- [ ] TASK-35.10: Update imports across codebase
 
-**Files to Create**:
-- `src/telegram/commands/score.ts`
-- `src/telegram/commands/leaderboard.ts`
-- `src/telegram/commands/tier.ts`
-- `src/telegram/commands/status.ts`
-- `src/telegram/commands/help.ts`
-- `src/telegram/middleware/auth.ts`
-- `src/telegram/utils/formatters.ts`
-- `tests/telegram/commands/score.test.ts`
-- `tests/telegram/commands/leaderboard.test.ts`
-- `tests/telegram/commands/tier.test.ts`
-- `tests/telegram/commands/status.test.ts`
-- `tests/telegram/integration/scoreConsistency.test.ts`
+#### Dependencies
+- Sprint 34: INativeReader interface
 
-**Estimated LOC**: ~500
+#### Risks & Mitigation
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Score API contract changes | Medium | High | Document API contract |
+| Circuit breaker too aggressive | Medium | Medium | Tune thresholds |
 
----
-
-### Sprint 32: Infrastructure ⏳ PENDING
-
-**Goal**: Production-ready infrastructure with error handling and rate limiting
-
-**Dependencies**: Sprint 31 complete (all commands working)
-
-**Key Deliverables**:
-- Webhook mode deployment configuration
-- Rate limiting middleware
-- Error boundary with user-friendly messages
-- nginx configuration for Telegram webhook
-- Health check endpoint
-- Logging and monitoring
-
-**Tasks**:
-
-| ID | Task | Priority | Estimate | Acceptance Criteria |
-|----|------|----------|----------|---------------------|
-| TASK-32.1 | Implement rate limiting middleware | P0 | 2h | Max 30 msg/sec, exponential backoff on 429 |
-| TASK-32.2 | Implement error boundary | P0 | 2h | User-friendly errors, no sensitive data exposed |
-| TASK-32.3 | Create webhook validation middleware | P0 | 1h | Validates X-Telegram-Bot-Api-Secret-Token header |
-| TASK-32.4 | Configure webhook auto-registration | P0 | 1h | Bot sets webhook on startup in production mode |
-| TASK-32.5 | Add nginx configuration | P0 | 1h | /telegram/webhook proxied to :3000, no buffering |
-| TASK-32.6 | Implement structured logging | P1 | 2h | Command usage, errors, verification events logged |
-| TASK-32.7 | Add Telegram to health check | P1 | 1h | /health includes bot status and webhook info |
-| TASK-32.8 | Create session cleanup task | P1 | 2h | trigger.dev task to clean expired verification sessions |
-| TASK-32.9 | Add TruffleHog pattern for Telegram token | P1 | 0.5h | CI detects Telegram bot tokens |
-| TASK-32.10 | Write middleware tests | P0 | 3h | Rate limiting and error handling tests |
-
-**Files to Create**:
-- `src/telegram/middleware/rateLimit.ts`
-- `src/telegram/middleware/errorBoundary.ts`
-- `src/telegram/middleware/webhookValidation.ts`
-- `src/trigger/telegramSessionCleanup.ts`
-- `tests/telegram/middleware/rateLimit.test.ts`
-- `tests/telegram/middleware/errorBoundary.test.ts`
-
-**Files to Modify**:
-- `src/telegram/bot.ts` - Add middleware stack
-- `ecosystem.config.cjs` - Verify config (should work as-is)
-- `.github/workflows/ci.yml` - Add Telegram token pattern
-
-**Configuration to Create**:
-- nginx config snippet for /telegram/webhook
-
-**Estimated LOC**: ~300
+#### Success Metrics
+- <1% degraded requests under normal load
+- Circuit breaker triggers correctly in tests
+- Zero regression in existing functionality
 
 ---
 
-### Sprint 33: Polish & Testing ⏳ PENDING
+## Phase 1: Themes System (Weeks 3-4)
 
-**Goal**: E2E testing, documentation, and production deployment verification
+### Sprint 36: Theme Interface & BasicTheme
 
-**Dependencies**: Sprint 32 complete (production infrastructure ready)
+**Duration:** 1 week
+**Dates:** Week 3
 
-**Key Deliverables**:
-- Comprehensive E2E test suite
-- Updated deployment guide
-- Admin broadcast command (P2)
-- v4.0 regression tests passing
-- Production deployment checklist
+#### Sprint Goal
+Define the IThemeProvider interface and implement BasicTheme as the free-tier configuration with 3 tiers and 5 badges.
 
-**Tasks**:
+#### Deliverables
+- [ ] `packages/core/ports/IThemeProvider.ts`
+- [ ] `packages/adapters/themes/BasicTheme.ts`
+- [ ] `packages/core/services/TierEvaluator.ts`
+- [ ] `packages/core/services/BadgeEvaluator.ts`
+- [ ] Unit tests for BasicTheme
 
-| ID | Task | Priority | Estimate | Acceptance Criteria |
-|----|------|----------|----------|---------------------|
-| TASK-33.1 | Write Telegram E2E tests | P0 | 4h | Full /verify → /score flow tested |
-| TASK-33.2 | Run v4.0 regression tests | P0 | 1h | All existing tests passing |
-| TASK-33.3 | Update deployment guide | P0 | 2h | Telegram bot setup, migration steps, verification |
-| TASK-33.4 | Create .env.example updates | P0 | 0.5h | All Telegram variables documented |
-| TASK-33.5 | Implement admin broadcast (P2) | P2 | 4h | /broadcast sends to all verified users with rate limiting |
-| TASK-33.6 | Create keyboards.ts for inline buttons | P1 | 1h | Verify button, help button, tier upgrade button |
-| TASK-33.7 | Add bot description to @BotFather | P1 | 0.5h | Description, commands list, profile picture |
-| TASK-33.8 | Production deployment dry-run | P0 | 2h | Deploy to staging, verify all flows |
-| TASK-33.9 | Update CI/CD for Telegram | P1 | 1h | Telegram tests included in CI pipeline |
-| TASK-33.10 | Create v4.1 release notes | P1 | 1h | Feature summary, migration notes, known issues |
+#### Acceptance Criteria
+- [ ] `getTierConfig()` returns 3 tiers: Gold (1-10), Silver (11-50), Bronze (51-100)
+- [ ] `getBadgeConfig()` returns 5 badges: Early Adopter, Veteran, Top Tier, Active, Contributor
+- [ ] `evaluateTier(rank)` returns correct tier for any rank
+- [ ] `evaluateBadges(member)` returns earned badges
+- [ ] Generic naming (no Dune terminology)
 
-**Files to Create**:
-- `tests/e2e/telegram.e2e.test.ts`
-- `src/telegram/commands/broadcast.ts` (P2)
-- `src/telegram/utils/keyboards.ts`
-- `docs/deployment/telegram-setup.md`
+#### Technical Tasks
+- [ ] TASK-36.1: Define `IThemeProvider` interface per SDD §4.2
+- [ ] TASK-36.2: Define `TierConfig`, `BadgeConfig`, `NamingConfig` types
+- [ ] TASK-36.3: Implement `BasicTheme` with 3-tier structure
+- [ ] TASK-36.4: Implement `TierEvaluator` service
+- [ ] TASK-36.5: Implement `BadgeEvaluator` service
+- [ ] TASK-36.6: Write unit tests (20+ cases)
+- [ ] TASK-36.7: Add subscription tier validation (free tier)
 
-**Files to Modify**:
-- `loa-grimoire/deployment/deployment-guide.md` - Add v4.1 section
-- `.env.example` - Add Telegram variables
-- `.github/workflows/ci.yml` - Add Telegram tests
+#### Dependencies
+- Sprint 35: Two-Tier Chain Provider
 
-**Estimated LOC**: ~400
+#### Risks & Mitigation
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Badge criteria too complex | Medium | Medium | Start simple, iterate |
 
----
-
-## Risk Mitigation
-
-| Risk | Mitigation | Sprint |
-|------|------------|--------|
-| Collab.Land Telegram support | Verify capability in Sprint 30, fallback to manual linking | 30 |
-| VPS memory constraints | Monitor during dev, ~64MB grammy budget | 32 |
-| Webhook delivery failures | grammy handles retries, health monitoring | 32 |
-| Cache key collisions | Platform-agnostic cache keys already designed | 31 |
-| Rate limit violations | Built-in grammy throttling | 32 |
+#### Success Metrics
+- 100% test coverage on BasicTheme
+- Tier evaluation <10ms
 
 ---
 
-## Dependencies Graph
+### Sprint 37: SietchTheme & Theme Registry
+
+**Duration:** 1 week
+**Dates:** Week 4
+
+#### Sprint Goal
+Implement SietchTheme with exact v4.1 parity and create ThemeRegistry for runtime theme selection.
+
+#### Deliverables
+- [ ] `packages/adapters/themes/SietchTheme.ts`
+- [ ] `packages/core/services/ThemeRegistry.ts`
+- [ ] Regression test suite against v4.1 logic
+- [ ] Channel template configuration
+
+#### Acceptance Criteria
+- [ ] 9 tiers: Naib (1-7), Fedaykin Elite (8-15), Fedaykin (16-30), Fremen (31-45), Wanderer (46-55), Initiate (56-62), Aspirant (63-66), Observer (67-69), Outsider (70+)
+- [ ] 10+ badges including Water Sharer lineage
+- [ ] **REGRESSION**: `evaluateTier()` produces IDENTICAL results to v4.1 hardcoded logic
+- [ ] Dune naming conventions (STILLSUIT, NAIB COUNCIL)
+- [ ] `ThemeRegistry.get(themeId)` returns theme instance
+- [ ] `getAvailableThemes(subscriptionTier)` filters by tier
+
+#### Technical Tasks
+- [ ] TASK-37.1: Extract tier logic from v4.1 `src/services/eligibility.ts`
+- [ ] TASK-37.2: Implement SietchTheme getTierConfig (9 tiers)
+- [ ] TASK-37.3: Implement SietchTheme getBadgeConfig (10+ badges)
+- [ ] TASK-37.4: Implement Water Sharer badge with lineage support
+- [ ] TASK-37.5: Implement SietchTheme getNamingConfig
+- [ ] TASK-37.6: Implement SietchTheme getChannelTemplate
+- [ ] TASK-37.7: Create ThemeRegistry singleton
+- [ ] TASK-37.8: Write v4.1 regression test suite (50+ cases)
+- [ ] TASK-37.9: Property-based tests for tier boundaries
+- [ ] TASK-37.10: Document theme customization API
+
+#### Dependencies
+- Sprint 36: IThemeProvider interface
+
+#### Risks & Mitigation
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Tier boundary regression | High | High | Exhaustive regression tests |
+| Water Sharer lineage complexity | Medium | Medium | Recursive CTE approach |
+
+#### Success Metrics
+- 100% parity with v4.1 tier assignments
+- Zero regression in existing member tiers
+
+---
+
+## Phase 2: PostgreSQL + RLS (Weeks 5-8)
+
+### Sprint 38: Drizzle Schema Design
+
+**Duration:** 1 week
+**Dates:** Week 5
+
+#### Sprint Goal
+Design and implement PostgreSQL schema with Drizzle ORM, focusing on multi-tenant structure with community_id foreign keys.
+
+#### Deliverables
+- [ ] `packages/adapters/storage/schema.ts`
+- [ ] `packages/adapters/storage/DrizzleStorageAdapter.ts` (partial)
+- [ ] Drizzle configuration and migrations setup
+- [ ] Schema tests
+
+#### Acceptance Criteria
+- [ ] `communities` table with `theme_id`, `subscription_tier`
+- [ ] `profiles` table with `community_id` FK
+- [ ] `badges` table with lineage support (`awarded_by`)
+- [ ] `manifests` table for configuration versioning
+- [ ] `shadow_states` table for reconciliation
+- [ ] All tables have proper indexes
+
+#### Technical Tasks
+- [ ] TASK-38.1: Add drizzle-orm and pg dependencies
+- [ ] TASK-38.2: Create Drizzle config file
+- [ ] TASK-38.3: Define `communities` table schema
+- [ ] TASK-38.4: Define `profiles` table schema with constraints
+- [ ] TASK-38.5: Define `badges` table with self-referencing FK
+- [ ] TASK-38.6: Define `manifests` table with JSONB
+- [ ] TASK-38.7: Define `shadow_states` table
+- [ ] TASK-38.8: Create initial migration
+- [ ] TASK-38.9: Write schema validation tests
+- [ ] TASK-38.10: Set up PostgreSQL dev environment (Docker)
+
+#### Dependencies
+- Sprint 37: Themes System
+
+#### Risks & Mitigation
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Schema design flaws | Medium | High | Review with SDD diagrams |
+| Migration complexity | Medium | Medium | Test on copy of prod data |
+
+#### Success Metrics
+- Schema validates against SDD §3.2
+- All constraints enforced
+
+---
+
+### Sprint 39: Row-Level Security Implementation
+
+**Duration:** 1 week
+**Dates:** Week 6
+
+#### Sprint Goal
+Enable RLS on all tenant tables and implement tenant context management for automatic data isolation.
+
+#### Deliverables
+- [ ] RLS policies on all tables
+- [ ] `packages/adapters/storage/TenantContext.ts`
+- [ ] RLS bypass for admin operations
+- [ ] RLS regression test suite
+
+#### Acceptance Criteria
+- [ ] RLS enabled on: `profiles`, `badges`, `manifests`, `shadow_states`
+- [ ] Policy: `community_id = current_setting('app.current_tenant')::UUID`
+- [ ] Tenant context set via `SET app.current_tenant = '{uuid}'`
+- [ ] **SECURITY**: Cross-tenant queries return empty results (not errors)
+- [ ] Admin bypass via `SET ROLE arrakis_admin`
+
+#### Technical Tasks
+- [ ] TASK-39.1: Create RLS migration for profiles table
+- [ ] TASK-39.2: Create RLS migration for badges table
+- [ ] TASK-39.3: Create RLS migration for manifests table
+- [ ] TASK-39.4: Create RLS migration for shadow_states table
+- [ ] TASK-39.5: Implement TenantContext class
+- [ ] TASK-39.6: Create admin role with bypass capability
+- [ ] TASK-39.7: Write RLS isolation tests (tenant A vs tenant B)
+- [ ] TASK-39.8: Write RLS regression test suite (15+ cases)
+- [ ] TASK-39.9: Add RLS check to CI pipeline
+- [ ] TASK-39.10: Document RLS debugging procedures
+
+#### Dependencies
+- Sprint 38: Schema design
+
+#### Risks & Mitigation
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| RLS bypass vulnerability | Low | Critical | Automated regression tests |
+| Performance degradation | Medium | Medium | Index optimization |
+
+#### Success Metrics
+- 100% RLS coverage on tenant tables
+- Zero cross-tenant data leaks in tests
+
+---
+
+### Sprint 40: Drizzle Storage Adapter
+
+**Duration:** 1 week
+**Dates:** Week 7
+
+#### Sprint Goal
+Complete DrizzleStorageAdapter implementing IStorageProvider interface with full tenant isolation.
+
+#### Deliverables
+- [ ] Complete `DrizzleStorageAdapter.ts`
+- [ ] Repository methods for all entities
+- [ ] Transaction support
+- [ ] Caching layer integration
+
+#### Acceptance Criteria
+- [ ] Implements `IStorageProvider` interface
+- [ ] Constructor receives `tenantId` parameter
+- [ ] All queries automatically scoped to tenant
+- [ ] Badge lineage queries work (recursive CTE)
+- [ ] Transaction rollback on errors
+- [ ] 5-minute cache TTL for profiles
+
+#### Technical Tasks
+- [ ] TASK-40.1: Implement community CRUD operations
+- [ ] TASK-40.2: Implement profile CRUD with tenant scoping
+- [ ] TASK-40.3: Implement badge operations with lineage
+- [ ] TASK-40.4: Implement manifest versioning operations
+- [ ] TASK-40.5: Implement shadow state operations
+- [ ] TASK-40.6: Add connection pooling (pg-pool)
+- [ ] TASK-40.7: Implement Redis caching layer
+- [ ] TASK-40.8: Write integration tests (30+ cases)
+- [ ] TASK-40.9: Performance benchmark vs SQLite
+- [ ] TASK-40.10: Add query logging for debugging
+
+#### Dependencies
+- Sprint 39: RLS implementation
+
+#### Risks & Mitigation
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Recursive CTE complexity | Medium | Medium | Test with deep lineage |
+| Connection pool exhaustion | Low | High | Monitor connections |
+
+#### Success Metrics
+- All existing tests pass with PostgreSQL
+- <50ms average query time
+
+---
+
+### Sprint 41: Data Migration & SQLite Removal
+
+**Duration:** 1 week
+**Dates:** Week 8
+
+#### Sprint Goal
+Migrate existing data from SQLite to PostgreSQL and remove SQLite dependency.
+
+#### Deliverables
+- [ ] Migration script from profiles.db
+- [ ] Data validation scripts
+- [ ] Rollback procedure
+- [ ] Delete `profiles.db`
+
+#### Acceptance Criteria
+- [ ] All existing profiles migrated with community_id backfill
+- [ ] All badges migrated with relationships intact
+- [ ] Data integrity verified (row counts match)
+- [ ] All 141+ tests pass with PostgreSQL
+- [ ] SQLite dependency removed from package.json
+- [ ] `profiles.db` deleted from repository
+
+#### Technical Tasks
+- [ ] TASK-41.1: Create migration script (read SQLite, write PostgreSQL)
+- [ ] TASK-41.2: Implement community_id backfill for existing data
+- [ ] TASK-41.3: Preserve badge timestamps and relationships
+- [ ] TASK-41.4: Create data validation script (count verification)
+- [ ] TASK-41.5: Create rollback procedure documentation
+- [ ] TASK-41.6: Run migration on staging environment
+- [ ] TASK-41.7: Verify all 141 tests pass
+- [ ] TASK-41.8: Remove better-sqlite3 dependency
+- [ ] TASK-41.9: Delete profiles.db and related code
+- [ ] TASK-41.10: Update deployment documentation
+
+#### Dependencies
+- Sprint 40: Storage adapter complete
+
+#### Risks & Mitigation
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Data loss during migration | Low | Critical | Full backup + rollback |
+| ID mapping issues | Medium | High | Preserve original IDs |
+
+#### Success Metrics
+- 100% data migration success
+- Zero downtime migration (blue-green)
+
+---
+
+## Phase 3: Redis + Hybrid State (Weeks 9-10)
+
+### Sprint 42: WizardEngine & Session Store
+
+**Duration:** 1 week
+**Dates:** Week 9
+
+#### Sprint Goal
+Implement WizardEngine state machine with Redis-backed session persistence that survives Discord 3-second timeout.
+
+#### Deliverables
+- [ ] `packages/wizard/WizardEngine.ts`
+- [ ] `packages/wizard/WizardSessionStore.ts`
+- [ ] 8-step wizard state definitions
+- [ ] `/resume` command for session recovery
+
+#### Acceptance Criteria
+- [ ] 8 wizard states: INIT → CHAIN_SELECT → ASSET_CONFIG → ELIGIBILITY_RULES → ROLE_MAPPING → CHANNEL_STRUCTURE → REVIEW → DEPLOY
+- [ ] Session saved to Redis with 15-minute TTL
+- [ ] Session ID is idempotency key
+- [ ] `deferReply()` called within 3 seconds
+- [ ] `/resume {session_id}` recovers wizard state
+- [ ] Session survives container restart
+
+#### Technical Tasks
+- [ ] TASK-42.1: Add ioredis dependency
+- [ ] TASK-42.2: Implement WizardSessionStore with Redis
+- [ ] TASK-42.3: Define WizardState enum
+- [ ] TASK-42.4: Define WizardSession interface
+- [ ] TASK-42.5: Implement WizardEngine state machine
+- [ ] TASK-42.6: Create step handlers for each state
+- [ ] TASK-42.7: Implement /onboard command entry point
+- [ ] TASK-42.8: Implement /resume command
+- [ ] TASK-42.9: Write state machine tests (25+ cases)
+- [ ] TASK-42.10: Write Redis integration tests
+
+#### Dependencies
+- Sprint 41: PostgreSQL migration complete
+
+#### Risks & Mitigation
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Discord timeout | High | Medium | Aggressive defer + Redis |
+| Redis connection loss | Low | Medium | Reconnection handling |
+
+#### Success Metrics
+- 95% wizard completion rate
+- Session resumption works 100%
+
+---
+
+### Sprint 43: Hybrid Manifest Repository
+
+**Duration:** 1 week
+**Dates:** Week 10
+
+#### Sprint Goal
+Implement hybrid state model with PostgreSQL for runtime and S3 for version history and disaster recovery.
+
+#### Deliverables
+- [ ] `packages/adapters/storage/HybridManifestRepository.ts`
+- [ ] S3 shadow bucket configuration
+- [ ] Manifest versioning system
+- [ ] Drift detection utilities
+
+#### Acceptance Criteria
+- [ ] Manifest saved to PostgreSQL (runtime reads)
+- [ ] Shadow copy written to S3 after each apply
+- [ ] Version history retrievable from S3
+- [ ] Drift detection compares: desired vs shadow vs actual
+- [ ] Disaster recovery from S3 possible
+- [ ] Checksum validation for integrity
+
+#### Technical Tasks
+- [ ] TASK-43.1: Add @aws-sdk/client-s3 dependency
+- [ ] TASK-43.2: Implement HybridManifestRepository
+- [ ] TASK-43.3: Create S3 bucket for shadow storage
+- [ ] TASK-43.4: Implement manifest versioning (increment on change)
+- [ ] TASK-43.5: Implement shadow write after apply
+- [ ] TASK-43.6: Implement drift detection logic
+- [ ] TASK-43.7: Implement disaster recovery restore
+- [ ] TASK-43.8: Add checksum generation and validation
+- [ ] TASK-43.9: Write integration tests
+- [ ] TASK-43.10: Document recovery procedures
+
+#### Dependencies
+- Sprint 42: WizardEngine
+
+#### Risks & Mitigation
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| S3 write latency | Low | Low | Async write after apply |
+| Checksum mismatch | Low | Medium | Alert on mismatch |
+
+#### Success Metrics
+- 100% shadow write success rate
+- Recovery tested and documented
+
+---
+
+## Phase 4: BullMQ + Global Token Bucket (Weeks 11-12)
+
+### Sprint 44: Synthesis Queue & Worker
+
+**Duration:** 1 week
+**Dates:** Week 11
+
+#### Sprint Goal
+Implement BullMQ-based synthesis queue for async Discord operations with retry logic.
+
+#### Deliverables
+- [ ] `packages/synthesis/SynthesisQueue.ts`
+- [ ] `packages/synthesis/SynthesisWorker.ts`
+- [ ] Job types for Discord operations
+- [ ] Retry and dead letter queue
+
+#### Acceptance Criteria
+- [ ] Queue name: `discord-synthesis`
+- [ ] 3 retry attempts with exponential backoff (5s, 25s, 125s)
+- [ ] Concurrency limit: 5 workers
+- [ ] Job rate limit: 10 jobs/sec
+- [ ] Dead letter queue for failed jobs
+- [ ] Job progress tracking
+
+#### Technical Tasks
+- [ ] TASK-44.1: Add bullmq dependency
+- [ ] TASK-44.2: Implement SynthesisQueue class
+- [ ] TASK-44.3: Define SynthesisJob types (CREATE_ROLE, CREATE_CHANNEL, etc.)
+- [ ] TASK-44.4: Implement SynthesisWorker with job handlers
+- [ ] TASK-44.5: Configure retry with exponential backoff
+- [ ] TASK-44.6: Set up dead letter queue
+- [ ] TASK-44.7: Implement job progress updates
+- [ ] TASK-44.8: Add queue monitoring dashboard
+- [ ] TASK-44.9: Write unit tests for queue operations
+- [ ] TASK-44.10: Write integration tests with Redis
+
+#### Dependencies
+- Sprint 43: Hybrid state repository
+
+#### Risks & Mitigation
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Redis memory pressure | Medium | Medium | Monitor queue depth |
+| Zombie jobs | Low | Medium | Job cleanup task |
+
+#### Success Metrics
+- 99.9% job completion rate
+- <5min average synthesis time
+
+---
+
+### Sprint 45: Global Token Bucket & Reconciliation
+
+**Duration:** 1 week
+**Dates:** Week 12
+
+#### Sprint Goal
+Implement platform-wide Discord rate limiting with global distributed token bucket and reconciliation controller.
+
+#### Deliverables
+- [ ] `packages/synthesis/GlobalTokenBucket.ts`
+- [ ] `packages/synthesis/GlobalRateLimitedSynthesisWorker.ts`
+- [ ] `packages/synthesis/ReconciliationController.ts`
+- [ ] Load test validation
+
+#### Acceptance Criteria
+- [ ] Global token bucket: 50 tokens/sec (Discord limit)
+- [ ] Shared across ALL workers and tenants
+- [ ] Atomic Lua script for token acquisition
+- [ ] `acquireWithWait()` blocks until available (30s timeout)
+- [ ] **CRITICAL**: 0 Discord 429 errors under load
+- [ ] Reconciliation every 6 hours via trigger.dev
+- [ ] On-demand `/reconcile` command
+
+#### Technical Tasks
+- [ ] TASK-45.1: Implement GlobalDiscordTokenBucket
+- [ ] TASK-45.2: Write Lua script for atomic token acquisition
+- [ ] TASK-45.3: Implement token refill loop (50 tokens/sec)
+- [ ] TASK-45.4: Create GlobalRateLimitedSynthesisWorker
+- [ ] TASK-45.5: Integrate bucket into all Discord API calls
+- [ ] TASK-45.6: Implement ReconciliationController
+- [ ] TASK-45.7: Add reconciliation trigger.dev task
+- [ ] TASK-45.8: Implement /reconcile command
+- [ ] TASK-45.9: Load test: 100 concurrent tenants
+- [ ] TASK-45.10: Verify 0 Discord 429 errors
+
+#### Dependencies
+- Sprint 44: Synthesis queue
+
+#### Risks & Mitigation
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Discord 429 ban | Medium | Critical | Conservative rate limit |
+| Token starvation | Medium | Medium | Fair scheduling |
+
+#### Success Metrics
+- 0 global Discord 429 bans
+- 100% reconciliation success rate
+
+---
+
+## Phase 5: Vault Transit + Kill Switch (Weeks 13-14)
+
+### Sprint 46: Vault Transit Integration
+
+**Duration:** 1 week
+**Dates:** Week 13
+
+#### Sprint Goal
+Integrate HashiCorp Vault Transit for HSM-backed cryptographic operations, eliminating PRIVATE_KEY from environment.
+
+#### Deliverables
+- [ ] `packages/adapters/vault/VaultSigningAdapter.ts`
+- [ ] Vault Transit key configuration
+- [ ] Audit logging for signing operations
+- [ ] Key rotation capability
+
+#### Acceptance Criteria
+- [ ] No `PRIVATE_KEY` in environment variables
+- [ ] All signing operations via Vault Transit API
+- [ ] Signing audit log in Vault
+- [ ] Key rotation without downtime
+- [ ] Service account authentication
+
+#### Technical Tasks
+- [ ] TASK-46.1: Add @hashicorp/vault-js dependency
+- [ ] TASK-46.2: Set up HCP Vault Transit engine
+- [ ] TASK-46.3: Create signing key in Vault
+- [ ] TASK-46.4: Implement VaultSigningAdapter
+- [ ] TASK-46.5: Replace all direct signing with Vault calls
+- [ ] TASK-46.6: Enable audit logging in Vault
+- [ ] TASK-46.7: Implement key rotation procedure
+- [ ] TASK-46.8: Remove PRIVATE_KEY from .env files
+- [ ] TASK-46.9: Write integration tests with Vault
+- [ ] TASK-46.10: Security audit: no secrets in env
+
+#### Dependencies
+- Sprint 45: Rate limiting complete
+
+#### Risks & Mitigation
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Vault unavailability | Low | High | Circuit breaker + cache |
+| Signing latency | Low | Medium | Async batch signing |
+
+#### Success Metrics
+- 0 PRIVATE_KEY in codebase
+- 100% signing via Vault
+
+---
+
+### Sprint 47: Kill Switch & MFA
+
+**Duration:** 1 week
+**Dates:** Week 14
+
+#### Sprint Goal
+Implement kill switch for emergency credential revocation and MFA for destructive operations.
+
+#### Deliverables
+- [ ] `packages/security/KillSwitchProtocol.ts`
+- [ ] `packages/security/NaibSecurityGuard.ts`
+- [ ] MFA integration for admin operations
+- [ ] Community freeze capability
+
+#### Acceptance Criteria
+- [ ] Kill switch revokes all signing permissions within 5 seconds
+- [ ] Community freeze suspends all synthesis operations
+- [ ] MFA required for: DELETE_CHANNEL, DELETE_ROLE, KILL_SWITCH
+- [ ] Admin notification on kill switch activation
+- [ ] Session revocation for compromised users
+- [ ] Vault policy revocation capability
+
+#### Technical Tasks
+- [ ] TASK-47.1: Implement KillSwitchProtocol class
+- [ ] TASK-47.2: Implement session revocation
+- [ ] TASK-47.3: Implement Vault policy revocation
+- [ ] TASK-47.4: Implement community freeze logic
+- [ ] TASK-47.5: Create NaibSecurityGuard middleware
+- [ ] TASK-47.6: Integrate MFA (TOTP or Discord OAuth)
+- [ ] TASK-47.7: Add admin notification (Discord webhook)
+- [ ] TASK-47.8: Write kill switch tests
+- [ ] TASK-47.9: Document incident response procedures
+- [ ] TASK-47.10: Quarterly kill switch drill schedule
+
+#### Dependencies
+- Sprint 46: Vault integration
+
+#### Risks & Mitigation
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Accidental kill switch | Low | High | MFA + confirmation |
+| Kill switch too slow | Low | High | Pre-warm revocation |
+
+#### Success Metrics
+- Kill switch <5s revocation time
+- 100% MFA coverage on destructive ops
+
+---
+
+## Phase 6: OPA Pre-Gate + HITL (Weeks 15-16)
+
+### Sprint 48: Policy-as-Code Pre-Gate
+
+**Duration:** 1 week
+**Dates:** Week 15
+
+#### Sprint Goal
+Implement OPA policy evaluation and Infracost budget checking before human review of Terraform plans.
+
+#### Deliverables
+- [ ] `packages/infrastructure/PolicyAsCodePreGate.ts`
+- [ ] `policies/arrakis-terraform.rego`
+- [ ] Infracost integration
+- [ ] Risk scoring system
+
+#### Acceptance Criteria
+- [ ] OPA hard blocks (human CANNOT override):
+  - Delete PersistentVolume → AUTO-REJECT
+  - Delete Database → AUTO-REJECT
+  - Disable RLS → AUTO-REJECT
+- [ ] Infracost: >$5k/mo increase → AUTO-REJECT
+- [ ] Risk score (0-100) for human context
+- [ ] Policy evaluation <10s
+
+#### Technical Tasks
+- [ ] TASK-48.1: Add @open-policy-agent/opa-wasm dependency
+- [ ] TASK-48.2: Create arrakis-terraform.rego policies
+- [ ] TASK-48.3: Implement hard block rules
+- [ ] TASK-48.4: Implement warning rules
+- [ ] TASK-48.5: Add Infracost API integration
+- [ ] TASK-48.6: Implement budget threshold check
+- [ ] TASK-48.7: Implement risk scoring algorithm
+- [ ] TASK-48.8: Create PolicyAsCodePreGate class
+- [ ] TASK-48.9: Write policy unit tests
+- [ ] TASK-48.10: Document policy customization
+
+#### Dependencies
+- Sprint 47: Security controls
+
+#### Risks & Mitigation
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Policy too restrictive | Medium | Medium | Staged rollout |
+| Infracost API limits | Low | Low | Cache estimates |
+
+#### Success Metrics
+- 100% of dangerous ops auto-rejected
+- 0 false negatives
+
+---
+
+### Sprint 49: HITL Approval Gate & Production Deployment
+
+**Duration:** 1 week
+**Dates:** Week 16
+
+#### Sprint Goal
+Complete Enhanced HITL Approval Gate and deploy full v5.0 infrastructure to production.
+
+#### Deliverables
+- [ ] `packages/infrastructure/EnhancedHITLApprovalGate.ts`
+- [ ] Slack/Discord approval workflow
+- [ ] Full production deployment
+- [ ] v5.0 release documentation
+
+#### Acceptance Criteria
+- [ ] Three-stage validation before human review
+- [ ] Terraform plan displayed in Slack with risk context
+- [ ] Approval required with 24-hour timeout
+- [ ] MFA for high-risk approvals
+- [ ] Audit trail of all approvals
+- [ ] All 6 phases deployed and operational
+- [ ] 141+ tests passing in production
+
+#### Technical Tasks
+- [ ] TASK-49.1: Implement EnhancedHITLApprovalGate
+- [ ] TASK-49.2: Create Slack approval workflow
+- [ ] TASK-49.3: Add Discord webhook alternative
+- [ ] TASK-49.4: Implement 24-hour timeout
+- [ ] TASK-49.5: Add MFA for high-risk approvals
+- [ ] TASK-49.6: Create approval audit log
+- [ ] TASK-49.7: Deploy full infrastructure
+- [ ] TASK-49.8: Run production smoke tests
+- [ ] TASK-49.9: Create v5.0 release notes
+- [ ] TASK-49.10: Update deployment documentation
+
+#### Dependencies
+- Sprint 48: OPA pre-gate
+
+#### Risks & Mitigation
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Production deployment issues | Medium | High | Blue-green deployment |
+| Approval workflow complexity | Low | Medium | Start with simple flow |
+
+#### Success Metrics
+- 100% infrastructure operational
+- v5.0 release complete
+
+---
+
+## Risk Register
+
+| ID | Risk | Phase | Probability | Impact | Mitigation | Owner |
+|----|------|-------|-------------|--------|------------|-------|
+| R1 | Score Service outage | 0 | Medium | High | Two-Tier architecture | Backend |
+| R2 | Discord 429 ban | 4 | Medium | Critical | Global token bucket | Platform |
+| R3 | Cross-tenant data leak | 2 | Low | Critical | RLS + regression tests | Security |
+| R4 | Naib credential compromise | 5 | Low | High | Kill switch + MFA | Security |
+| R5 | Terraform human error | 6 | Medium | High | OPA pre-gate | DevOps |
+| R6 | Migration data loss | 2 | Low | High | Backup + rollback | Backend |
+| R7 | Theme regression | 1 | Medium | High | Property-based tests | QA |
+| R8 | Wizard timeout | 3 | High | Medium | Redis sessions | Platform |
+
+---
+
+## Success Metrics Summary
+
+| Metric | Target | Measurement | Phase |
+|--------|--------|-------------|-------|
+| Score Service resilience | <1% degraded | Circuit breaker metrics | 0 |
+| Theme parity | 100% identical | Regression test suite | 1 |
+| RLS coverage | 100% tables | Security audit | 2 |
+| Wizard completion | >80% | Funnel analytics | 3 |
+| Discord 429 rate | 0 bans | API error logs | 4 |
+| Signing via Vault | 100% | Audit logs | 5 |
+| Dangerous ops blocked | 100% | OPA metrics | 6 |
+
+---
+
+## Dependencies Map
 
 ```
-Sprint 30 (Foundation)
-    │
-    ├── grammy bot init
-    ├── /start, /verify commands
-    ├── IdentityService
-    └── DB migration
+Phase 0 (Sprint 34-35)          Phase 1 (Sprint 36-37)
+  Two-Tier Chain Provider  ────▶  Themes System
+         │                              │
+         │                              │
+         ▼                              ▼
+Phase 2 (Sprint 38-41) ◀──────────────────
+  PostgreSQL + RLS
          │
          ▼
-Sprint 31 (Core Commands)
-    │
-    ├── /score, /leaderboard
-    ├── /tier, /status, /help
-    └── Response caching
+Phase 3 (Sprint 42-43)
+  Redis + Hybrid State
          │
          ▼
-Sprint 32 (Infrastructure)
-    │
-    ├── Rate limiting
-    ├── Error handling
-    ├── Webhook deployment
-    └── Monitoring
+Phase 4 (Sprint 44-45)
+  BullMQ + Token Bucket
          │
          ▼
-Sprint 33 (Polish & Testing)
-    │
-    ├── E2E tests
-    ├── Documentation
-    └── Production deployment
+Phase 5 (Sprint 46-47)
+  Vault + Kill Switch
          │
          ▼
-v4.1 COMPLETE
+Phase 6 (Sprint 48-49)
+  OPA + HITL
+         │
+         ▼
+v5.0 COMPLETE
 ```
 
 ---
 
-## MVP Definition
+## Appendix
 
-**Minimum Viable Product (Sprint 30-31)**:
-- Bot responds to commands
-- Wallet verification working
-- Score and leaderboard display
-- Tier information available
+### A. PRD Feature Mapping
 
-**Full v4.1 (Sprint 30-33)**:
-- All MVP features
-- Production-ready infrastructure
-- Error handling and rate limiting
-- Full test coverage
-- Admin tools
+| PRD Feature | Sprint | Status |
+|-------------|--------|--------|
+| FR-5.0.1: Native Blockchain Reader | 34 | Planned |
+| FR-5.0.2: Score Service Adapter | 35 | Planned |
+| FR-5.0.3: Two-Tier Orchestration | 35 | Planned |
+| FR-5.1.1: Theme Interface | 36 | Planned |
+| FR-5.1.2: BasicTheme | 36 | Planned |
+| FR-5.1.3: SietchTheme | 37 | Planned |
+| FR-5.1.4: Theme Registry | 37 | Planned |
+| FR-5.2.1: Database Migration | 38-41 | Planned |
+| FR-5.2.2: Row-Level Security | 39 | Planned |
+| FR-5.2.3: Drizzle Storage Adapter | 40 | Planned |
+| FR-5.3.1: Wizard Session Store | 42 | Planned |
+| FR-5.3.2: Hybrid State Model | 43 | Planned |
+| FR-5.4.1: Synthesis Queue | 44 | Planned |
+| FR-5.4.2: Global Token Bucket | 45 | Planned |
+| FR-5.4.3: Reconciliation Controller | 45 | Planned |
+| FR-5.5.1: Vault Transit | 46 | Planned |
+| FR-5.5.2: Kill Switch | 47 | Planned |
+| FR-5.6.1: Policy Pre-Gate | 48 | Planned |
+| FR-5.6.2: HITL Gate | 49 | Planned |
+| FR-5.7.1: WizardEngine | 42 | Planned |
 
----
+### B. SDD Component Mapping
 
-## Resource Estimates
+| SDD Component | Sprint | Status |
+|---------------|--------|--------|
+| TwoTierChainProvider | 34-35 | Planned |
+| INativeReader | 34 | Planned |
+| IScoreService | 35 | Planned |
+| CircuitBreaker | 35 | Planned |
+| IThemeProvider | 36 | Planned |
+| BasicTheme | 36 | Planned |
+| SietchTheme | 37 | Planned |
+| ThemeRegistry | 37 | Planned |
+| TierEvaluator | 36 | Planned |
+| BadgeEvaluator | 36 | Planned |
+| DrizzleStorageAdapter | 40 | Planned |
+| RLS Policies | 39 | Planned |
+| WizardEngine | 42 | Planned |
+| WizardSessionStore | 42 | Planned |
+| HybridManifestRepository | 43 | Planned |
+| SynthesisQueue | 44 | Planned |
+| SynthesisWorker | 44 | Planned |
+| GlobalDiscordTokenBucket | 45 | Planned |
+| ReconciliationController | 45 | Planned |
+| VaultSigningAdapter | 46 | Planned |
+| KillSwitchProtocol | 47 | Planned |
+| NaibSecurityGuard | 47 | Planned |
+| PolicyAsCodePreGate | 48 | Planned |
+| EnhancedHITLApprovalGate | 49 | Planned |
 
-| Sprint | LOC (Est.) | Tests (Est.) | Files (New) |
-|--------|------------|--------------|-------------|
-| Sprint 30 | ~600 | ~25 | 10 |
-| Sprint 31 | ~500 | ~25 | 12 |
-| Sprint 32 | ~300 | ~15 | 6 |
-| Sprint 33 | ~400 | ~10 | 4 |
-| **Total** | **~1,800** | **~75** | **32** |
+### C. Files to Delete After Migration
 
----
+| File | Phase | Condition |
+|------|-------|-----------|
+| `src/services/chain.ts` | 0 | After Sprint 35 tests pass |
+| `profiles.db` | 2 | After Sprint 41 migration complete |
 
-## Post-Sprint Activities
+### D. Environment Variables Change
 
-**After v4.1**:
-1. Monitor Telegram bot performance metrics
-2. Track cross-platform user adoption (target: 20%)
-3. Gather user feedback on verification flow
-4. Plan v4.2 features:
-   - Telegram Mini App
-   - Telegram notifications (opt-in)
-   - Group/channel management
-   - Inline bot queries
+**Remove (Phase 0):**
+- `BERACHAIN_RPC_URL` → Use Score Service
+- `DUNE_API_KEY` → Use Score Service
 
-**v4.1 Release Criteria**:
-- [ ] All 4 sprints (30-33) COMPLETED and APPROVED
-- [ ] Zero critical security issues
-- [ ] Cross-platform verification tested end-to-end
-- [ ] v4.0 regression tests all passing
-- [ ] Deployment guide updated
+**Add (Phase 0):**
+```bash
+SCORE_API_URL=https://score.honeyjar.xyz/api
+SCORE_API_KEY=sk_...
+```
+
+**Add (Phase 2):**
+```bash
+DATABASE_URL=postgresql://...
+```
+
+**Add (Phase 3):**
+```bash
+REDIS_URL=redis://...
+```
+
+**Add (Phase 5):**
+```bash
+VAULT_ADDR=https://vault.honeyjar.xyz
+VAULT_TOKEN=...
+```
+
+**Remove (Phase 5):**
+```bash
+PRIVATE_KEY  # Moved to Vault
+```
 
 ---
 
@@ -331,9 +991,10 @@ v4.1 COMPLETE
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 1.0 | 2025-12-27 | Initial sprint plan for v4.1 "The Crossing" |
+| 4.1 | 2025-12-27 | v4.1 "The Crossing" - Telegram integration (Sprints 30-33) |
+| 5.0 | 2025-12-28 | v5.0 "The Transformation" - SaaS platform (Sprints 34-49) |
 
 ---
 
-*Sprint Plan v1.0 generated by Loa planning workflow*
-*Based on: PRD v4.1, SDD v4.1, v4.0 completion status*
+*Sprint Plan v5.0 generated by Loa planning workflow*
+*Based on: PRD v5.0, SDD v5.0, Architecture Spec v5.5.1*
