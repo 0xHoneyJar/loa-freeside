@@ -1,0 +1,14 @@
+Sprint 35: Score Service Adapter & Two-Tier Orchestration
+Status: COMPLETED
+Date: 2025-12-28
+
+Implementation: APPROVED (Senior Technical Lead)
+Security Audit: APPROVED (Paranoid Cypherpunk Auditor)
+
+Deliverables:
+- ScoreServiceAdapter.ts (Tier 2 client with circuit breaker)
+- TwoTierChainProvider.ts (orchestration with graceful degradation)
+- 58 new unit tests
+
+Deferred to future sprint:
+- TASK-35.8, 35.9, 35.10 (legacy chain.ts migration)
