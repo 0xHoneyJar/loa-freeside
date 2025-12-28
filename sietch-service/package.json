@@ -41,6 +41,7 @@
     "@trigger.dev/sdk": "^3.0.0",
     "@types/ioredis": "^4.28.10",
     "better-sqlite3": "^11.6.0",
+    "bullmq": "^5.66.4",
     "discord.js": "^14.16.3",
     "dotenv": "^16.4.5",
     "drizzle-orm": "^0.45.1",
