@@ -2,8 +2,9 @@
  * Storage Adapters - Database Layer
  *
  * Sprint 38: Drizzle Schema Design
+ * Sprint 39: RLS Implementation
  *
- * Exports PostgreSQL schema and types for multi-tenant storage.
+ * Exports PostgreSQL schema, types, and tenant context for multi-tenant storage.
  *
  * @module packages/adapters/storage
  */
@@ -43,3 +44,12 @@ export {
   type ManifestCategory,
   type ShadowResources,
 } from './schema.js';
+
+// Tenant Context exports (Sprint 39)
+export {
+  TenantContext,
+  createTenantContext,
+  isValidTenantId,
+  type TenantContextOptions,
+  type TenantContextInfo,
+} from './TenantContext.js';
