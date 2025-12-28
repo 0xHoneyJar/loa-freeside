@@ -53,3 +53,9 @@ export {
   type TenantContextOptions,
   type TenantContextInfo,
 } from './TenantContext.js';
+
+// Storage Adapter exports (Sprint 40)
+export {
+  DrizzleStorageAdapter,
+  createDrizzleStorageAdapter,
+} from './DrizzleStorageAdapter.js';
