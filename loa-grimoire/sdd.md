@@ -1,1214 +1,1303 @@
-# Software Design Document: Sietch v4.1
+# Software Design Document: Arrakis SaaS Platform v5.0
 
-**Version**: 4.1
-**Date**: December 27, 2025
-**Status**: DRAFT
-**Codename**: The Crossing
-
----
-
-## Document Traceability
-
-| Section | Source | Reference |
-|---------|--------|-----------|
-| Requirements | loa-grimoire/prd.md | PRD v4.1 |
-| Existing Architecture | sdd-v4.0-completed.md | v4.0 SDD |
-| Reference Architecture | ARCHITECTURE_SPEC_v2.9.0.md | Enterprise spec |
-| grammy Patterns | grammy.dev documentation | Bot framework |
+**Version:** 5.0 "The Transformation"
+**Date:** 2025-12-28
+**Author:** Architecture Designer Agent
+**Status:** Draft
+**PRD Reference:** loa-grimoire/prd.md
+**Architecture Reference:** loa-grimoire/context/new-context/arrakis-saas-architecture.md
 
 ---
 
-## 1. Executive Summary
+## Table of Contents
 
-### 1.1 Document Purpose
-
-This Software Design Document (SDD) details the technical architecture for Sietch v4.1 "The Crossing". This release adds Telegram bot support with cross-platform identity bridging while preserving the stable v4.0 architecture.
-
-### 1.2 Scope
-
-This document covers:
-- Telegram bot integration using grammy
-- Cross-platform identity service design
-- Database schema extensions for Telegram
-- API endpoint specifications for Telegram
-- Verification flow with Collab.Land
-- Integration with existing v4.0 services
-
-### 1.3 Key Design Decisions
-
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| Bot Framework | grammy | Lightweight, TypeScript-native, active maintenance |
-| Process Model | Same process | Simpler deployment, shared state, lower resource usage |
-| Verification Flow | Deep link to web | Reuses existing Collab.Land flow, proven pattern |
-| Identity Model | Wallet-centric | Platform IDs link to wallet, not to each other |
-| Webhook Mode | Production only | Polling in dev for local testing |
-| Cache Strategy | Shared Redis | Platform-agnostic cache keys, existing infrastructure |
-
-### 1.4 Architecture Principles
-
-1. **Preserve v4.0 Stability**: All v4.0 features continue working unchanged
-2. **Platform Agnostic Services**: Services operate on member_id, not platform IDs
-3. **Shared Infrastructure**: Single database, single Redis, single deployment
-4. **Graceful Degradation**: Telegram failures don't affect Discord
-5. **Minimal New Dependencies**: Only grammy added to dependencies
+1. [Project Architecture](#1-project-architecture)
+2. [Software Stack](#2-software-stack)
+3. [Database Design](#3-database-design)
+4. [Component Design](#4-component-design)
+5. [API Specifications](#5-api-specifications)
+6. [Error Handling Strategy](#6-error-handling-strategy)
+7. [Testing Strategy](#7-testing-strategy)
+8. [Development Phases](#8-development-phases)
+9. [Known Risks and Mitigation](#9-known-risks-and-mitigation)
+10. [Open Questions](#10-open-questions)
+11. [Appendix](#11-appendix)
 
 ---
 
-## 2. System Architecture
+## 1. Project Architecture
 
-### 2.1 High-Level Architecture
+### 1.1 System Overview
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           SIETCH SERVICE v4.1                                │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  ┌───────────────────────────────────────────────────────────────────────┐ │
-│  │                     PLATFORM LAYER (v4.1 NEW)                         │ │
-│  │                                                                       │ │
-│  │  ┌─────────────────────────┐     ┌─────────────────────────┐         │ │
-│  │  │      Discord Bot        │     │     Telegram Bot        │         │ │
-│  │  │      (Discord.js)       │     │       (grammy)          │         │ │
-│  │  │                         │     │                         │         │ │
-│  │  │  • /check command       │     │  • /start command       │         │ │
-│  │  │  • /register command    │     │  • /verify command      │         │ │
-│  │  │  • Role management      │     │  • /score command       │         │ │
-│  │  │  • Notifications        │     │  • /leaderboard cmd     │         │ │
-│  │  │                         │     │  • /tier command        │         │ │
-│  │  │                         │     │  • /status command      │         │ │
-│  │  └────────────┬────────────┘     └────────────┬────────────┘         │ │
-│  │               │                               │                       │ │
-│  │               └───────────────┬───────────────┘                       │ │
-│  │                               │                                       │ │
-│  │                               ▼                                       │ │
-│  │               ┌───────────────────────────────┐                       │ │
-│  │               │     Identity Service (NEW)    │                       │ │
-│  │               │                               │                       │ │
-│  │               │  • Platform → Member lookup   │                       │ │
-│  │               │  • Cross-platform linking     │                       │ │
-│  │               │  • Verification sessions      │                       │ │
-│  │               └───────────────┬───────────────┘                       │ │
-│  │                               │                                       │ │
-│  └───────────────────────────────┼───────────────────────────────────────┘ │
-│                                  │                                         │
-│  ┌───────────────────────────────┼───────────────────────────────────────┐ │
-│  │                    PRESERVED SERVICES (v4.0)                          │ │
-│  │                               │                                       │ │
-│  │  ┌───────────────┐ ┌─────────┴─────────┐ ┌───────────────┐           │ │
-│  │  │  Gatekeeper   │ │    Stats          │ │    Boost      │           │ │
-│  │  │   Service     │ │    Service        │ │   Service     │           │ │
-│  │  │               │ │                   │ │               │           │ │
-│  │  │ • Tier lookup │ │ • Score query     │ │ • Level calc  │           │ │
-│  │  │ • Feature     │ │ • Leaderboard     │ │ • Perks       │           │ │
-│  │  │   gating      │ │ • Rankings        │ │               │           │ │
-│  │  └───────────────┘ └───────────────────┘ └───────────────┘           │ │
-│  │                                                                       │ │
-│  │  ┌───────────────┐ ┌───────────────────┐ ┌───────────────┐           │ │
-│  │  │    Stripe     │ │      Badge        │ │    Waiver     │           │ │
-│  │  │   Service     │ │     Service       │ │   Service     │           │ │
-│  │  └───────────────┘ └───────────────────┘ └───────────────┘           │ │
-│  │                                                                       │ │
-│  └───────────────────────────────────────────────────────────────────────┘ │
-│                                                                             │
-│  ┌───────────────────────────────────────────────────────────────────────┐ │
-│  │                           DATA LAYER                                   │ │
-│  │                                                                       │ │
-│  │  ┌─────────────────────────────┐   ┌─────────────────────────────┐   │ │
-│  │  │          SQLite             │   │       Upstash Redis         │   │ │
-│  │  │                             │   │                             │   │ │
-│  │  │ • member_profiles           │   │ • entitlement:{member_id}   │   │ │
-│  │  │   + telegram_user_id (NEW)  │   │ • score:{member_id}         │   │ │
-│  │  │ • telegram_verification_    │   │ • leaderboard:global        │   │ │
-│  │  │   sessions (NEW)            │   │ • webhook:{event_id}        │   │ │
-│  │  │ • All v4.0 tables           │   │                             │   │ │
-│  │  └─────────────────────────────┘   └─────────────────────────────┘   │ │
-│  │                                                                       │ │
-│  └───────────────────────────────────────────────────────────────────────┘ │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+Arrakis v5.0 is a **multi-tenant, chain-agnostic SaaS platform** for token-gated community management. The system transforms the existing Sietch bot (a bespoke Berachain Discord bot) into an enterprise-grade platform supporting 100+ concurrent communities.
 
-### 2.2 External Integrations
+**Core Capabilities:**
+- Token-gated access with configurable eligibility rules
+- 9-tier progression system with Dune-inspired theming
+- Real-time role management via Discord/Telegram
+- Self-service onboarding wizard
+- Asynchronous channel/role synthesis with rate limiting
+
+### 1.2 Architectural Pattern
+
+**Pattern:** Hexagonal Architecture (Ports and Adapters) + Event-Driven Synthesis
+
+**Justification:**
+- **Domain Isolation:** Core business logic (eligibility, tiers, badges) is decoupled from external systems
+- **Chain Agnosticism:** Two-Tier Chain Provider abstracts blockchain interactions behind Score Service
+- **Platform Independence:** Same domain logic works for Discord, Telegram, or future platforms
+- **Testability:** Ports enable complete unit testing without external dependencies
+
+### 1.3 System Architecture Diagram
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                          EXTERNAL SERVICES                                   │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐   │
-│  │  Telegram   │  │   Discord   │  │  Collab.Land │  │    Existing     │   │
-│  │   Bot API   │  │     API     │  │  AccountKit  │  │   (Stripe,etc)  │   │
-│  │             │  │             │  │              │  │                 │   │
-│  │ • getMe     │  │ • Bot API   │  │ • Verify URL │  │ • Unchanged     │   │
-│  │ • setWebhook│  │ • Roles     │  │ • Webhook    │  │                 │   │
-│  │ • sendMsg   │  │ • Messages  │  │ • Sessions   │  │                 │   │
-│  │ • Updates   │  │             │  │              │  │                 │   │
-│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └────────┬────────┘   │
-│         │                │                │                   │            │
-│         └────────────────┴────────┬───────┴───────────────────┘            │
-│                                   │                                        │
-│                                   ▼                                        │
-│                         ┌─────────────────────┐                            │
-│                         │   Sietch Service    │                            │
-│                         │       v4.1          │                            │
-│                         └─────────────────────┘                            │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-### 2.3 Process Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           PM2 PROCESS: sietch                                │
+│                        ARRAKIS SAAS PLATFORM v5.0                           │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                      Node.js Process (Single)                        │   │
-│  │                                                                       │   │
-│  │  ┌───────────────┐  ┌───────────────┐  ┌───────────────────────────┐ │   │
-│  │  │  HTTP Server  │  │  Discord.js   │  │      grammy Bot           │ │   │
-│  │  │    (Hono)     │  │     Client    │  │                           │ │   │
-│  │  │               │  │               │  │  • Webhook handler        │ │   │
-│  │  │ :3000         │  │  Gateway      │  │  • Command handlers       │ │   │
-│  │  │               │  │  connection   │  │  • Error boundary         │ │   │
-│  │  └───────────────┘  └───────────────┘  └───────────────────────────┘ │   │
-│  │                                                                       │   │
-│  │  Shared: Database connection, Redis client, Services                  │   │
-│  │                                                                       │   │
+│  │                         DOMAIN LAYER                                 │   │
+│  │  ┌──────────┐  ┌──────────────┐  ┌─────────┐  ┌───────────────┐    │   │
+│  │  │  Asset   │  │  Community   │  │  Role   │  │  Eligibility  │    │   │
+│  │  └──────────┘  └──────────────┘  └─────────┘  └───────────────┘    │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                    │                                        │
+│                                    ▼                                        │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                        SERVICE LAYER                                 │   │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌─────────────┐  ┌──────────┐ │   │
+│  │  │ WizardEngine │  │ SyncService  │  │ ThemeEngine │  │ TierEval │ │   │
+│  │  └──────────────┘  └──────────────┘  └─────────────┘  └──────────┘ │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                    │                                        │
+│                    ┌───────────────┼───────────────┐                       │
+│                    ▼               ▼               ▼                       │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                     INFRASTRUCTURE LAYER                             │   │
+│  │                                                                      │   │
+│  │  ┌────────────────────────────────────────────────────────────────┐ │   │
+│  │  │              TWO-TIER CHAIN PROVIDER                            │ │   │
+│  │  │  ┌─────────────────┐    ┌────────────────────────────────────┐ │ │   │
+│  │  │  │  Tier 1: Native │    │  Tier 2: Score Service             │ │ │   │
+│  │  │  │  (Binary checks)│    │  (Complex queries + Circuit Breaker)│ │ │   │
+│  │  │  │  • hasBalance   │    │  • getRankedHolders                │ │ │   │
+│  │  │  │  • ownsNFT      │    │  • getAddressRank                  │ │ │   │
+│  │  │  │  Direct viem    │    │  • getActivityScore                │ │ │   │
+│  │  │  └─────────────────┘    └────────────────────────────────────┘ │ │   │
+│  │  └────────────────────────────────────────────────────────────────┘ │   │
+│  │                                                                      │   │
+│  │  ┌──────────────┐  ┌───────────────┐  ┌──────────────────────────┐ │   │
+│  │  │ Discord      │  │ PostgreSQL    │  │ Redis                    │ │   │
+│  │  │ Adapter      │  │ + RLS         │  │ (Sessions + TokenBucket) │ │   │
+│  │  └──────────────┘  └───────────────┘  └──────────────────────────┘ │   │
+│  │                                                                      │   │
+│  │  ┌──────────────┐  ┌───────────────┐  ┌──────────────────────────┐ │   │
+│  │  │ BullMQ       │  │ Vault Transit │  │ S3 Shadow                │ │   │
+│  │  │ Synthesis    │  │ (Signing)     │  │ (Manifest Versions)      │ │   │
+│  │  └──────────────┘  └───────────────┘  └──────────────────────────┘ │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                             │
-│  Memory Budget: ~512MB (Discord ~256MB + Telegram ~64MB + API ~192MB)      │
-│                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
----
+### 1.4 System Components
 
-## 3. Component Design
+#### Two-Tier Chain Provider
+- **Purpose:** Resilient blockchain data access with graceful degradation
+- **Responsibilities:**
+  - Tier 1: Binary eligibility checks via native RPC (always available)
+  - Tier 2: Complex queries via Score Service with circuit breaker
+  - Automatic fallback when Score Service is unavailable
+- **Interfaces:** `IChainProvider`, `INativeReader`, `IScoreService`
+- **Dependencies:** viem (Tier 1), Score API (Tier 2), opossum (circuit breaker)
 
-### 3.1 Telegram Bot Component
+#### Theme Engine
+- **Purpose:** Injectable progression configurations for community customization
+- **Responsibilities:**
+  - Tier evaluation (rank → tier mapping)
+  - Badge evaluation (member context → earned badges)
+  - Naming/branding resolution
+- **Interfaces:** `IThemeProvider`
+- **Dependencies:** None (pure configuration)
 
-#### 3.1.1 Bot Initialization
+#### WizardEngine
+- **Purpose:** State-driven self-service onboarding via Discord interactions
+- **Responsibilities:**
+  - 8-step wizard state machine
+  - Session persistence with Redis
+  - Idempotency-keyed resumption
+- **Interfaces:** `ISessionStore`, `IWizardStep`
+- **Dependencies:** Redis, Discord.js
 
-**File**: `src/telegram/bot.ts`
+#### Synthesis Engine
+- **Purpose:** Asynchronous Discord operations with rate limiting
+- **Responsibilities:**
+  - BullMQ job queue for channel/role creation
+  - Global token bucket (50 req/sec across all tenants)
+  - Reconciliation controller (desired → actual state)
+- **Interfaces:** `ISynthesisQueue`, `IRateLimiter`
+- **Dependencies:** BullMQ, Redis
 
-```typescript
-import { Bot, webhookCallback, session } from 'grammy';
-import { config } from '../config.js';
-
-// Type definitions
-interface SessionData {
-  verificationAttempts: number;
-  lastCommandAt: number;
-}
-
-// Bot instance
-export const telegramBot = new Bot<Context>(config.TELEGRAM_BOT_TOKEN);
-
-// Middleware stack
-telegramBot.use(session({ initial: () => ({ verificationAttempts: 0, lastCommandAt: 0 }) }));
-telegramBot.use(rateLimitMiddleware());
-telegramBot.use(errorBoundary());
-
-// Command registration
-telegramBot.command('start', startHandler);
-telegramBot.command('verify', verifyHandler);
-telegramBot.command('score', scoreHandler);
-telegramBot.command('leaderboard', leaderboardHandler);
-telegramBot.command('tier', tierHandler);
-telegramBot.command('status', statusHandler);
-telegramBot.command('help', helpHandler);
-
-// Webhook handler export
-export const telegramWebhook = webhookCallback(telegramBot, 'hono');
-
-// Start function (called from main entry)
-export async function startTelegramBot(): Promise<void> {
-  if (config.NODE_ENV === 'development') {
-    // Polling mode for local development
-    await telegramBot.start();
-  } else {
-    // Webhook mode set during server startup
-    await telegramBot.api.setWebhook(config.TELEGRAM_WEBHOOK_URL);
-  }
-}
-```
-
-#### 3.1.2 Command Handlers
-
-**Directory Structure**:
-```
-src/telegram/
-├── bot.ts                    # Bot initialization
-├── commands/
-│   ├── index.ts              # Command exports
-│   ├── start.ts              # Welcome message
-│   ├── verify.ts             # Wallet verification
-│   ├── score.ts              # Score display
-│   ├── leaderboard.ts        # Rankings
-│   ├── tier.ts               # Subscription tier
-│   ├── status.ts             # Platform linking
-│   └── help.ts               # Command reference
-├── middleware/
-│   ├── rateLimit.ts          # Rate limiting
-│   ├── errorBoundary.ts      # Error handling
-│   └── auth.ts               # Verification check
-└── utils/
-    ├── formatters.ts         # Message formatting
-    └── keyboards.ts          # Inline keyboards
-```
-
-#### 3.1.3 Verify Command Flow
+### 1.5 Data Flow
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                       VERIFICATION FLOW                                      │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  User                 Telegram Bot         Identity Service    Collab.Land  │
-│   │                       │                      │                  │       │
-│   │  /verify              │                      │                  │       │
-│   │──────────────────────>│                      │                  │       │
-│   │                       │                      │                  │       │
-│   │                       │  createSession()     │                  │       │
-│   │                       │─────────────────────>│                  │       │
-│   │                       │                      │                  │       │
-│   │                       │                      │  generateURL()   │       │
-│   │                       │                      │─────────────────>│       │
-│   │                       │                      │                  │       │
-│   │                       │                      │<─────────────────│       │
-│   │                       │                      │  verifyURL       │       │
-│   │                       │<─────────────────────│                  │       │
-│   │                       │  { sessionId, url }  │                  │       │
-│   │                       │                      │                  │       │
-│   │  Inline Button: 🔗    │                      │                  │       │
-│   │  "Verify Wallet"      │                      │                  │       │
-│   │<──────────────────────│                      │                  │       │
-│   │                       │                      │                  │       │
-│   │  [User clicks, verifies in browser]          │                  │       │
-│   │                       │                      │                  │       │
-│   │                       │                      │  webhook:        │       │
-│   │                       │                      │  verification_   │       │
-│   │                       │                      │  complete        │       │
-│   │                       │                      │<─────────────────│       │
-│   │                       │                      │                  │       │
-│   │                       │  linkTelegram()      │                  │       │
-│   │                       │<─────────────────────│                  │       │
-│   │                       │                      │                  │       │
-│   │  ✅ Wallet linked!    │                      │                  │       │
-│   │  0x1234...5678        │                      │                  │       │
-│   │<──────────────────────│                      │                  │       │
-│   │                       │                      │                  │       │
-└─────────────────────────────────────────────────────────────────────────────┘
+User Request → Discord/Telegram → Platform Adapter
+                                        │
+                                        ▼
+                              ┌─────────────────┐
+                              │  Service Layer  │
+                              │  (Orchestration)│
+                              └────────┬────────┘
+                                       │
+           ┌───────────────────────────┼───────────────────────────┐
+           ▼                           ▼                           ▼
+    ┌──────────────┐          ┌──────────────┐          ┌──────────────┐
+    │ Theme Engine │          │ Chain        │          │ Storage      │
+    │ (Config)     │          │ Provider     │          │ (PostgreSQL) │
+    └──────────────┘          └──────────────┘          └──────────────┘
+                                    │
+                    ┌───────────────┴───────────────┐
+                    ▼                               ▼
+             ┌──────────────┐              ┌──────────────┐
+             │ Tier 1       │              │ Tier 2       │
+             │ Native Reader│              │ Score Service│
+             │ (viem RPC)   │              │ (+ Breaker)  │
+             └──────────────┘              └──────────────┘
 ```
 
-### 3.2 Identity Service Component
+### 1.6 External Integrations
 
-**File**: `src/services/IdentityService.ts`
+| Service | Purpose | API Type | Documentation |
+|---------|---------|----------|---------------|
+| Score Service | Blockchain data aggregation | REST | Internal API |
+| Discord | Community platform | REST + Gateway | discord.js |
+| Telegram | Alternative platform | REST | node-telegram-bot-api |
+| Collab.Land | Token gating rules | REST | Collab.Land TGR API |
+| Stripe | Subscription billing | REST | Stripe SDK |
+| HCP Vault | Cryptographic operations | REST | HashiCorp Vault |
 
-```typescript
-/**
- * IdentityService - Cross-platform identity management
- *
- * Handles wallet-centric identity model where:
- * - Wallet address is the canonical identifier
- * - Platform IDs (Discord, Telegram) link TO the wallet
- * - All services use member_id (derived from wallet)
- */
+### 1.7 Deployment Architecture
 
-export interface PlatformLink {
-  platform: 'discord' | 'telegram';
-  platformUserId: string;
-  linkedAt: Date;
-}
+**Target Environment:** Kubernetes on AWS (EKS)
 
-export interface MemberIdentity {
-  memberId: string;
-  walletAddress: string;
-  platforms: PlatformLink[];
-}
-
-export class IdentityService {
-  constructor(
-    private db: Database,
-    private redis: RedisService
-  ) {}
-
-  /**
-   * Look up member by any platform ID
-   */
-  async getMemberByPlatformId(
-    platform: 'discord' | 'telegram',
-    platformUserId: string
-  ): Promise<MemberIdentity | null> {
-    const cacheKey = `identity:${platform}:${platformUserId}`;
-    const cached = await this.redis.get(cacheKey);
-    if (cached) return JSON.parse(cached);
-
-    const column = platform === 'discord' ? 'discord_user_id' : 'telegram_user_id';
-    const member = await this.db.get(
-      `SELECT member_id, wallet_address, discord_user_id, telegram_user_id,
-              discord_linked_at, telegram_linked_at
-       FROM member_profiles
-       WHERE ${column} = ?`,
-      [platformUserId]
-    );
-
-    if (!member) return null;
-
-    const identity = this.mapToIdentity(member);
-    await this.redis.setex(cacheKey, 300, JSON.stringify(identity));
-    return identity;
-  }
-
-  /**
-   * Link Telegram account to existing member
-   */
-  async linkTelegram(
-    memberId: string,
-    telegramUserId: string
-  ): Promise<void> {
-    // Check for existing link
-    const existing = await this.db.get(
-      'SELECT member_id FROM member_profiles WHERE telegram_user_id = ?',
-      [telegramUserId]
-    );
-
-    if (existing && existing.member_id !== memberId) {
-      throw new Error('Telegram account already linked to another wallet');
-    }
-
-    await this.db.run(
-      `UPDATE member_profiles
-       SET telegram_user_id = ?, telegram_linked_at = ?
-       WHERE member_id = ?`,
-      [telegramUserId, Date.now(), memberId]
-    );
-
-    // Invalidate cache
-    await this.redis.del(`identity:telegram:${telegramUserId}`);
-  }
-
-  /**
-   * Create verification session for Telegram
-   */
-  async createVerificationSession(
-    telegramUserId: string
-  ): Promise<{ sessionId: string; verifyUrl: string }> {
-    const sessionId = generateId();
-    const expiresAt = Date.now() + 15 * 60 * 1000; // 15 minutes
-
-    await this.db.run(
-      `INSERT INTO telegram_verification_sessions
-       (id, telegram_user_id, status, created_at, expires_at)
-       VALUES (?, ?, 'pending', ?, ?)`,
-      [sessionId, telegramUserId, Date.now(), expiresAt]
-    );
-
-    // Generate Collab.Land verify URL with session reference
-    const verifyUrl = `${config.COLLABLAND_VERIFY_URL}?session=${sessionId}&platform=telegram`;
-
-    return { sessionId, verifyUrl };
-  }
-
-  /**
-   * Complete verification (called from webhook)
-   */
-  async completeVerification(
-    sessionId: string,
-    walletAddress: string
-  ): Promise<{ telegramUserId: string; memberId: string }> {
-    const session = await this.db.get(
-      `SELECT telegram_user_id, status, expires_at
-       FROM telegram_verification_sessions
-       WHERE id = ?`,
-      [sessionId]
-    );
-
-    if (!session) throw new Error('Session not found');
-    if (session.status !== 'pending') throw new Error('Session already processed');
-    if (session.expires_at < Date.now()) throw new Error('Session expired');
-
-    // Find or create member
-    let member = await this.db.get(
-      'SELECT member_id FROM member_profiles WHERE wallet_address = ?',
-      [walletAddress.toLowerCase()]
-    );
-
-    if (!member) {
-      // Create new member profile
-      const memberId = generateId();
-      await this.db.run(
-        `INSERT INTO member_profiles (member_id, wallet_address, created_at)
-         VALUES (?, ?, ?)`,
-        [memberId, walletAddress.toLowerCase(), Date.now()]
-      );
-      member = { member_id: memberId };
-    }
-
-    // Link Telegram
-    await this.linkTelegram(member.member_id, session.telegram_user_id);
-
-    // Mark session complete
-    await this.db.run(
-      `UPDATE telegram_verification_sessions
-       SET status = 'completed', completed_at = ?
-       WHERE id = ?`,
-      [Date.now(), sessionId]
-    );
-
-    return {
-      telegramUserId: session.telegram_user_id,
-      memberId: member.member_id
-    };
-  }
-
-  /**
-   * Get platform status for a member
-   */
-  async getPlatformStatus(memberId: string): Promise<{
-    wallet: string;
-    discord: { linked: boolean; at?: Date };
-    telegram: { linked: boolean; at?: Date };
-  }> {
-    const member = await this.db.get(
-      `SELECT wallet_address, discord_user_id, telegram_user_id,
-              discord_linked_at, telegram_linked_at
-       FROM member_profiles WHERE member_id = ?`,
-      [memberId]
-    );
-
-    if (!member) throw new Error('Member not found');
-
-    return {
-      wallet: member.wallet_address,
-      discord: {
-        linked: !!member.discord_user_id,
-        at: member.discord_linked_at ? new Date(member.discord_linked_at) : undefined
-      },
-      telegram: {
-        linked: !!member.telegram_user_id,
-        at: member.telegram_linked_at ? new Date(member.telegram_linked_at) : undefined
-      }
-    };
-  }
-}
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        AWS INFRASTRUCTURE                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                    EKS CLUSTER                           │    │
+│  │                                                          │    │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐   │    │
+│  │  │ API Pods     │  │ Worker Pods  │  │ Bot Pods     │   │    │
+│  │  │ (Hono)       │  │ (BullMQ)     │  │ (Discord.js) │   │    │
+│  │  │ Replicas: 3  │  │ Replicas: 5  │  │ Replicas: 2  │   │    │
+│  │  └──────────────┘  └──────────────┘  └──────────────┘   │    │
+│  │                                                          │    │
+│  │  HPA: Scale on CPU/Memory + Queue Depth                  │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                                                                  │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐           │
+│  │ RDS          │  │ ElastiCache  │  │ S3           │           │
+│  │ PostgreSQL   │  │ Redis        │  │ Manifests    │           │
+│  │ (Multi-AZ)   │  │ (Cluster)    │  │ (Versioned)  │           │
+│  └──────────────┘  └──────────────┘  └──────────────┘           │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### 3.3 API Routes Extension
+### 1.8 Scalability Strategy
 
-**File**: `src/api/telegram.routes.ts`
+- **Horizontal Scaling:**
+  - API pods scale based on request rate (HPA)
+  - Worker pods scale based on BullMQ queue depth
+  - Bot pods scale based on guild count per shard
 
-```typescript
-import { Hono } from 'hono';
-import { telegramWebhook } from '../telegram/bot.js';
-import { validateTelegramWebhook } from './middleware.js';
+- **Vertical Scaling:**
+  - PostgreSQL: Read replicas for query distribution
+  - Redis: Cluster mode for session distribution
 
-export const telegramRoutes = new Hono();
+- **Auto-scaling Triggers:**
+  - CPU > 70%: Scale up
+  - Queue depth > 1000: Add workers
+  - Memory > 80%: Scale up
 
-/**
- * POST /telegram/webhook
- * Telegram Bot API webhook endpoint
- */
-telegramRoutes.post('/webhook', validateTelegramWebhook, telegramWebhook);
+- **Load Balancing:**
+  - ALB for API traffic
+  - Redis Cluster for session distribution
+  - BullMQ for job distribution
 
-/**
- * GET /telegram/health
- * Health check for Telegram bot
- */
-telegramRoutes.get('/health', async (c) => {
-  try {
-    const me = await telegramBot.api.getMe();
-    return c.json({
-      status: 'healthy',
-      bot: {
-        id: me.id,
-        username: me.username,
-        canReadMessages: me.can_read_all_group_messages
-      }
-    });
-  } catch (error) {
-    return c.json({ status: 'unhealthy', error: error.message }, 503);
-  }
-});
+### 1.9 Security Architecture
 
-/**
- * POST /telegram/verify/callback
- * Collab.Land verification webhook
- */
-telegramRoutes.post('/verify/callback', async (c) => {
-  const { sessionId, walletAddress, signature } = await c.req.json();
+- **Authentication:**
+  - Discord OAuth2 for user identity
+  - API keys for service-to-service
+  - JWT tokens for session management
 
-  // Verify signature with Collab.Land
-  const isValid = await verifyCollabLandSignature(sessionId, walletAddress, signature);
-  if (!isValid) {
-    return c.json({ error: 'Invalid signature' }, 400);
-  }
+- **Authorization:**
+  - Role-Based Access Control (RBAC)
+  - Naib Council (Top 7) for admin operations
+  - MFA required for destructive operations
 
-  const result = await identityService.completeVerification(sessionId, walletAddress);
+- **Data Protection:**
+  - PostgreSQL RLS for tenant isolation
+  - Vault Transit for cryptographic operations
+  - TLS 1.3 for all external communication
 
-  // Send success message to Telegram user
-  await telegramBot.api.sendMessage(
-    result.telegramUserId,
-    `✅ Wallet linked successfully!\n\n` +
-    `Wallet: \`${truncateAddress(walletAddress)}\`\n\n` +
-    `Use /score to see your conviction score.`,
-    { parse_mode: 'Markdown' }
-  );
-
-  return c.json({ success: true });
-});
-```
+- **Kill Switch Protocol:**
+  - Instant session revocation
+  - Vault policy revocation
+  - Community freeze capability
 
 ---
 
-## 4. Data Architecture
+## 2. Software Stack
 
-### 4.1 Database Schema Extensions
+### 2.1 Backend Technologies
 
-**Migration**: `src/db/migrations/012_telegram_identity.ts`
+| Category | Technology | Version | Justification |
+|----------|------------|---------|---------------|
+| Runtime | Node.js | 20.x LTS | TypeScript support, async performance |
+| Language | TypeScript | 5.x | Type safety, better IDE support |
+| Framework | Hono | 4.x | Lightweight, edge-compatible |
+| ORM | Drizzle | 0.30.x | Type-safe, lightweight, PostgreSQL RLS support |
+| Queue | BullMQ | 5.x | Redis-backed, distributed, rate limiting |
+| Discord | discord.js | 14.x | Official SDK, sharding support |
+| Circuit Breaker | opossum | 8.x | Mature, well-documented |
+| Testing | Vitest | 1.x | Fast, ESM-native |
 
-```typescript
-import { Database } from 'better-sqlite3';
+**Key Libraries:**
+- `viem`: Tier 1 blockchain RPC calls
+- `ioredis`: Redis client for sessions and token bucket
+- `@hono/node-server`: HTTP server
+- `zod`: Runtime validation
+- `pino`: Structured logging
 
-export const up = (db: Database): void => {
-  // Add Telegram columns to member_profiles
-  db.exec(`
-    ALTER TABLE member_profiles
-    ADD COLUMN telegram_user_id TEXT UNIQUE;
-  `);
+### 2.2 Infrastructure & DevOps
 
-  db.exec(`
-    ALTER TABLE member_profiles
-    ADD COLUMN telegram_linked_at INTEGER;
-  `);
+| Category | Technology | Purpose |
+|----------|------------|---------|
+| Cloud Provider | AWS | Primary infrastructure |
+| Container Registry | ECR | Docker image storage |
+| Orchestration | EKS | Kubernetes management |
+| CI/CD | GitHub Actions | Build, test, deploy |
+| IaC | Terraform | Infrastructure provisioning |
+| Secrets | HCP Vault | Cryptographic operations |
+| Monitoring | Datadog | APM, logs, metrics |
+| Logging | CloudWatch | Log aggregation |
 
-  // Index for Telegram lookups
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_member_telegram
-    ON member_profiles(telegram_user_id);
-  `);
+### 2.3 Data Stores
 
-  // Verification sessions table
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS telegram_verification_sessions (
-      id TEXT PRIMARY KEY,
-      telegram_user_id TEXT NOT NULL,
-      collabland_session_id TEXT,
-      status TEXT NOT NULL DEFAULT 'pending'
-        CHECK (status IN ('pending', 'completed', 'expired', 'failed')),
-      wallet_address TEXT,
-      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-      expires_at INTEGER NOT NULL,
-      completed_at INTEGER,
-      error_message TEXT
-    );
-  `);
+| Store | Technology | Purpose |
+|-------|------------|---------|
+| Primary DB | PostgreSQL 15 | Tenant data with RLS |
+| Session Store | Redis 7 | Wizard sessions, token bucket |
+| Queue Backend | Redis 7 | BullMQ job persistence |
+| Object Storage | S3 | Manifest version history |
+| Cache | Redis 7 | Query result caching |
 
-  // Index for session cleanup and lookups
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_telegram_session_status
-    ON telegram_verification_sessions(status, expires_at);
-  `);
+---
 
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_telegram_session_user
-    ON telegram_verification_sessions(telegram_user_id, status);
-  `);
-};
+## 3. Database Design
 
-export const down = (db: Database): void => {
-  db.exec('DROP TABLE IF EXISTS telegram_verification_sessions');
-  db.exec('DROP INDEX IF EXISTS idx_member_telegram');
-  // Note: SQLite doesn't support DROP COLUMN, would need table rebuild
-};
-```
+### 3.1 Database Technology
 
-### 4.2 Complete Schema (Post-Migration)
+**Primary Database:** PostgreSQL 15
+**Version:** 15.x (AWS RDS)
+
+**Justification:**
+- Row-Level Security (RLS) for multi-tenant isolation
+- JSONB for flexible manifest storage
+- Recursive CTEs for badge lineage queries
+- Mature ecosystem, proven at scale
+
+### 3.2 Schema Design
+
+#### Communities Table
 
 ```sql
--- member_profiles (updated)
-CREATE TABLE member_profiles (
-  member_id TEXT PRIMARY KEY,
-  wallet_address TEXT UNIQUE NOT NULL,
-
-  -- Discord identity (existing)
-  discord_user_id TEXT UNIQUE,
-  discord_linked_at INTEGER,
-
-  -- Telegram identity (NEW v4.1)
-  telegram_user_id TEXT UNIQUE,
-  telegram_linked_at INTEGER,
-
-  -- Profile data
-  nym TEXT,
-  conviction_score REAL DEFAULT 0,
-  tier TEXT DEFAULT 'Wanderer',
-  tier_rank INTEGER DEFAULT 0,
-
-  -- Timestamps
-  created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-  updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+CREATE TABLE communities (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    theme_id TEXT NOT NULL DEFAULT 'basic',
+    subscription_tier TEXT NOT NULL DEFAULT 'free',
+    discord_guild_id TEXT UNIQUE,
+    telegram_chat_id TEXT UNIQUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Indexes
-CREATE INDEX idx_member_discord ON member_profiles(discord_user_id);
-CREATE INDEX idx_member_telegram ON member_profiles(telegram_user_id);
-CREATE INDEX idx_member_wallet ON member_profiles(wallet_address);
-CREATE INDEX idx_member_tier ON member_profiles(tier_rank DESC);
-
--- telegram_verification_sessions (NEW v4.1)
-CREATE TABLE telegram_verification_sessions (
-  id TEXT PRIMARY KEY,
-  telegram_user_id TEXT NOT NULL,
-  collabland_session_id TEXT,
-  status TEXT NOT NULL DEFAULT 'pending',
-  wallet_address TEXT,
-  created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-  expires_at INTEGER NOT NULL,
-  completed_at INTEGER,
-  error_message TEXT
-);
+CREATE INDEX idx_communities_theme ON communities(theme_id);
 ```
 
-### 4.3 Cache Strategy
+#### Profiles Table
 
-| Cache Key | Value | TTL | Purpose |
-|-----------|-------|-----|---------|
-| `identity:telegram:{userId}` | MemberIdentity JSON | 5 min | Fast platform lookup |
-| `identity:discord:{userId}` | MemberIdentity JSON | 5 min | Fast platform lookup |
-| `score:{memberId}` | ConvictionScore JSON | 5 min | Score display (unchanged) |
-| `leaderboard:global` | Top 100 members | 5 min | Leaderboard (unchanged) |
-| `entitlement:{communityId}` | Entitlements JSON | 5 min | Tier/features (unchanged) |
+```sql
+CREATE TABLE profiles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    community_id UUID NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+    discord_id TEXT,
+    telegram_id TEXT,
+    wallet_address TEXT,
+    tier TEXT,
+    current_rank INTEGER,
+    activity_score INTEGER DEFAULT 0,
+    joined_at TIMESTAMPTZ DEFAULT NOW(),
+    last_seen_at TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+    UNIQUE(community_id, discord_id),
+    UNIQUE(community_id, telegram_id)
+);
+
+CREATE INDEX idx_profiles_community ON profiles(community_id);
+CREATE INDEX idx_profiles_wallet ON profiles(wallet_address);
+CREATE INDEX idx_profiles_tier ON profiles(community_id, tier);
+
+-- Row-Level Security
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON profiles
+    USING (community_id = current_setting('app.current_tenant')::UUID);
+```
+
+#### Badges Table
+
+```sql
+CREATE TABLE badges (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    community_id UUID NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+    profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    badge_type TEXT NOT NULL,
+    awarded_at TIMESTAMPTZ DEFAULT NOW(),
+    awarded_by UUID REFERENCES profiles(id),  -- For lineage badges
+    metadata JSONB DEFAULT '{}'::jsonb,
+
+    UNIQUE(community_id, profile_id, badge_type)
+);
+
+CREATE INDEX idx_badges_profile ON badges(profile_id);
+CREATE INDEX idx_badges_type ON badges(community_id, badge_type);
+
+-- RLS for badges
+ALTER TABLE badges ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON badges
+    USING (community_id = current_setting('app.current_tenant')::UUID);
+```
+
+#### Manifests Table (Hybrid State)
+
+```sql
+CREATE TABLE manifests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    community_id UUID NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+    version INTEGER NOT NULL,
+    content JSONB NOT NULL,
+    checksum TEXT NOT NULL,
+    synthesized_at TIMESTAMPTZ DEFAULT NOW(),
+    synthesized_by TEXT,
+
+    UNIQUE(community_id, version)
+);
+
+CREATE INDEX idx_manifests_community ON manifests(community_id);
+
+-- RLS for manifests
+ALTER TABLE manifests ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON manifests
+    USING (community_id = current_setting('app.current_tenant')::UUID);
+```
+
+#### Shadow State Table
+
+```sql
+CREATE TABLE shadow_states (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    community_id UUID NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+    applied_at TIMESTAMPTZ DEFAULT NOW(),
+    applied_by TEXT,
+    resources JSONB NOT NULL,  -- Discord IDs mapped to manifest IDs
+    checksum TEXT NOT NULL
+);
+
+CREATE INDEX idx_shadow_community ON shadow_states(community_id);
+```
+
+#### Entity Relationships
+
+```
+communities ──1:N──▶ profiles
+communities ──1:N──▶ manifests
+communities ──1:N──▶ shadow_states
+profiles ──1:N──▶ badges
+profiles ──1:N──▶ badges (awarded_by - lineage)
+```
+
+### 3.3 Data Modeling Approach
+
+- **Normalization Level:** 3NF with strategic denormalization
+- **Denormalization Strategy:**
+  - `current_rank` on profiles (frequently queried)
+  - `activity_score` on profiles (avoid joins)
+  - `content` as JSONB in manifests (flexibility)
+
+### 3.4 Migration Strategy
+
+All migrations managed via Drizzle migrations:
+
+```typescript
+// drizzle/migrations/001_initial.sql
+// Generated by Drizzle Kit
+```
+
+Migration workflow:
+1. Generate migration: `npm run db:generate`
+2. Review SQL in `drizzle/migrations/`
+3. Apply migration: `npm run db:migrate`
+4. Verify RLS policies in place
+
+### 3.5 Data Access Patterns
+
+| Query | Frequency | Optimization |
+|-------|-----------|--------------|
+| Get profile by discord_id | Very High | Unique index + RLS |
+| Get community profiles | High | community_id index |
+| Get badge lineage | Medium | Recursive CTE |
+| Get manifest history | Low | community_id index |
+| Tier distribution stats | Medium | tier index |
+
+### 3.6 Caching Strategy
+
+- **Cache Provider:** Redis 7
+- **Cached Data:**
+  - Profile lookups (5 min TTL)
+  - Tier configurations (1 hour TTL)
+  - Community settings (15 min TTL)
+- **Invalidation:** Event-driven (on profile/manifest update)
+- **TTL:** Varies by data volatility
+
+### 3.7 Backup and Recovery
+
+- **Backup Frequency:** Continuous via RDS automated backups
+- **Retention Period:** 30 days
+- **Recovery Time Objective (RTO):** < 1 hour
+- **Recovery Point Objective (RPO):** < 5 minutes
+- **Shadow Repository:** S3 versioned bucket for manifest disaster recovery
 
 ---
 
-## 5. API Design
+## 4. Component Design
 
-### 5.1 New Endpoints
+### 4.1 Two-Tier Chain Provider
 
-| Method | Path | Description | Auth |
-|--------|------|-------------|------|
-| POST | `/telegram/webhook` | Telegram Bot API updates | Telegram signature |
-| GET | `/telegram/health` | Bot health check | None |
-| POST | `/telegram/verify/callback` | Collab.Land verification callback | Collab.Land signature |
-| GET | `/api/member/{id}/platforms` | Get linked platforms | API key |
+```typescript
+// packages/core/ports/IChainProvider.ts
 
-### 5.2 Platform Status Endpoint
+export interface INativeReader {
+  hasBalance(address: string, token: string, minAmount: bigint): Promise<boolean>;
+  ownsNFT(address: string, collection: string): Promise<boolean>;
+  getBalance(address: string, token: string): Promise<bigint>;
+}
 
-**GET /api/member/{id}/platforms**
+export interface IScoreService {
+  getRankedHolders(asset: string, limit: number): Promise<RankedHolder[]>;
+  getAddressRank(address: string, asset: string): Promise<number | null>;
+  getActivityScore(address: string): Promise<number>;
+  checkActionHistory(address: string, action: string): Promise<boolean>;
+}
 
-Response:
+export interface IChainProvider extends INativeReader {
+  checkBasicEligibility(address: string, criteria: BasicCriteria): Promise<EligibilityResult>;
+  checkAdvancedEligibility(address: string, criteria: AdvancedCriteria): Promise<EligibilityResult>;
+}
+```
+
+```typescript
+// packages/adapters/chain/TwoTierChainProvider.ts
+
+export class TwoTierChainProvider implements IChainProvider {
+  private nativeReader: INativeReader;
+  private scoreService: IScoreService;
+  private scoreBreaker: CircuitBreaker;
+
+  constructor(
+    nativeReader: INativeReader,
+    scoreService: IScoreService,
+    breakerOptions: CircuitBreakerOptions
+  ) {
+    this.nativeReader = nativeReader;
+    this.scoreService = scoreService;
+    this.scoreBreaker = new CircuitBreaker(
+      (fn: () => Promise<any>) => fn(),
+      {
+        errorThresholdPercentage: 50,
+        resetTimeout: 30000,
+        ...breakerOptions
+      }
+    );
+
+    this.scoreBreaker.fallback(() => this.getCachedOrDegraded());
+  }
+
+  // Tier 1: Always available - direct RPC
+  async checkBasicEligibility(
+    address: string,
+    criteria: BasicCriteria
+  ): Promise<EligibilityResult> {
+    if (criteria.type === 'TOKEN_BALANCE') {
+      const hasBalance = await this.nativeReader.hasBalance(
+        address,
+        criteria.token,
+        criteria.minAmount
+      );
+      return { eligible: hasBalance, source: 'native' };
+    }
+
+    if (criteria.type === 'NFT_OWNERSHIP') {
+      const ownsNFT = await this.nativeReader.ownsNFT(
+        address,
+        criteria.collection
+      );
+      return { eligible: ownsNFT, source: 'native' };
+    }
+
+    throw new Error(`Unknown basic criteria type: ${criteria.type}`);
+  }
+
+  // Tier 2: Complex queries with circuit breaker
+  async checkAdvancedEligibility(
+    address: string,
+    criteria: AdvancedCriteria
+  ): Promise<EligibilityResult> {
+    return this.scoreBreaker.fire(async () => {
+      if (criteria.type === 'RANK_THRESHOLD') {
+        const rank = await this.scoreService.getAddressRank(
+          address,
+          criteria.asset
+        );
+        return {
+          eligible: rank !== null && rank <= criteria.maxRank,
+          source: 'score',
+          rank
+        };
+      }
+
+      if (criteria.type === 'ACTIVITY_SCORE') {
+        const score = await this.scoreService.getActivityScore(address);
+        return {
+          eligible: score >= criteria.minScore,
+          source: 'score',
+          score
+        };
+      }
+
+      throw new Error(`Unknown advanced criteria type: ${criteria.type}`);
+    });
+  }
+
+  private async getCachedOrDegraded(): Promise<EligibilityResult> {
+    // Return cached data or degraded response
+    return { eligible: false, source: 'degraded', reason: 'Score service unavailable' };
+  }
+}
+```
+
+### 4.2 Theme System
+
+```typescript
+// packages/core/ports/IThemeProvider.ts
+
+export interface IThemeProvider {
+  readonly themeId: string;
+  readonly themeName: string;
+  readonly tier: 'free' | 'premium' | 'enterprise';
+
+  getTierConfig(): TierConfig;
+  getBadgeConfig(): BadgeConfig;
+  getNamingConfig(): NamingConfig;
+  getChannelTemplate(): ChannelTemplate;
+
+  evaluateTier(rank: number, totalHolders: number): TierResult;
+  evaluateBadges(member: MemberContext): EarnedBadge[];
+}
+
+export interface TierConfig {
+  tiers: TierDefinition[];
+  rankingStrategy: 'absolute' | 'percentage' | 'threshold';
+  demotionGracePeriod?: number;
+}
+
+export interface TierDefinition {
+  id: string;
+  name: string;
+  displayName: string;
+  minRank?: number;
+  maxRank?: number;
+  roleColor: string;
+  permissions: string[];
+}
+```
+
+```typescript
+// packages/adapters/themes/SietchTheme.ts
+
+export const SietchTheme: IThemeProvider = {
+  themeId: 'sietch',
+  themeName: 'Sietch (Dune)',
+  tier: 'premium',
+
+  getTierConfig: () => ({
+    tiers: [
+      { id: 'naib', displayName: 'Naib', minRank: 1, maxRank: 7, roleColor: '#FFD700' },
+      { id: 'fedaykin_elite', displayName: 'Fedaykin Elite', minRank: 8, maxRank: 15, roleColor: '#E6BE8A' },
+      { id: 'fedaykin', displayName: 'Fedaykin', minRank: 16, maxRank: 30, roleColor: '#C4A35A' },
+      { id: 'fremen', displayName: 'Fremen', minRank: 31, maxRank: 45, roleColor: '#A67C52' },
+      { id: 'wanderer', displayName: 'Wanderer', minRank: 46, maxRank: 55, roleColor: '#8B7355' },
+      { id: 'initiate', displayName: 'Initiate', minRank: 56, maxRank: 62, roleColor: '#6B5344' },
+      { id: 'aspirant', displayName: 'Aspirant', minRank: 63, maxRank: 66, roleColor: '#5D4E37' },
+      { id: 'observer', displayName: 'Observer', minRank: 67, maxRank: 69, roleColor: '#4A3728' },
+      { id: 'outsider', displayName: 'Outsider', minRank: 70, maxRank: null, roleColor: '#333333' },
+    ],
+    rankingStrategy: 'absolute',
+    demotionGracePeriod: 24
+  }),
+
+  evaluateTier(rank: number): TierResult {
+    const config = this.getTierConfig();
+    const tier = config.tiers.find(t =>
+      rank >= (t.minRank || 0) &&
+      (t.maxRank === null || rank <= t.maxRank)
+    );
+
+    return {
+      tierId: tier?.id || 'outsider',
+      tierName: tier?.displayName || 'Outsider',
+      roleColor: tier?.roleColor || '#333333'
+    };
+  },
+
+  getBadgeConfig: () => ({
+    categories: ['tenure', 'achievement', 'activity', 'special'],
+    badges: [
+      { id: 'first_wave', displayName: 'First Wave', emoji: '🌊', category: 'tenure',
+        criteria: { type: 'tenure', threshold: 30 } },
+      { id: 'veteran', displayName: 'Veteran', emoji: '⚔️', category: 'tenure',
+        criteria: { type: 'tenure', threshold: 90 } },
+      { id: 'diamond_hands', displayName: 'Diamond Hands', emoji: '💎', category: 'tenure',
+        criteria: { type: 'tenure', threshold: 180 } },
+      { id: 'council', displayName: 'Council', emoji: '👑', category: 'achievement',
+        criteria: { type: 'tier_reached', tierRequired: 'naib' } },
+      { id: 'water_sharer', displayName: 'Water Sharer', emoji: '💧', category: 'special',
+        criteria: { type: 'custom', customEvaluator: 'waterSharerLineage' } },
+    ]
+  }),
+
+  evaluateBadges(member: MemberContext): EarnedBadge[] {
+    const config = this.getBadgeConfig();
+    const earned: EarnedBadge[] = [];
+
+    for (const badge of config.badges) {
+      if (this.evaluateBadgeCriteria(badge.criteria, member)) {
+        earned.push({
+          badgeId: badge.id,
+          badgeName: badge.displayName,
+          emoji: badge.emoji,
+          earnedAt: new Date()
+        });
+      }
+    }
+
+    return earned;
+  },
+
+  getNamingConfig: () => ({
+    serverNameTemplate: 'Sietch {community}',
+    categoryNames: {
+      info: 'STILLSUIT',
+      council: 'NAIB COUNCIL',
+      general: 'SIETCH-COMMONS',
+      operations: 'WINDTRAP'
+    },
+    terminology: {
+      member: 'Fremen',
+      holder: 'Water Bearer',
+      admin: 'Naib'
+    }
+  }),
+
+  getChannelTemplate: () => ({
+    categories: [
+      {
+        id: 'stillsuit',
+        name: 'STILLSUIT',
+        channels: [
+          { name: 'water-discipline', type: 'text', readonly: true },
+          { name: 'census', type: 'text', readonly: true }
+        ]
+      },
+      {
+        id: 'council',
+        name: 'NAIB COUNCIL',
+        tierRestriction: 'naib',
+        channels: [
+          { name: 'council-rock', type: 'text' }
+        ]
+      }
+    ]
+  })
+};
+```
+
+### 4.3 WizardEngine
+
+```typescript
+// packages/wizard/WizardEngine.ts
+
+export enum WizardState {
+  INIT = 'init',
+  CHAIN_SELECT = 'chain_select',
+  ASSET_CONFIG = 'asset_config',
+  ELIGIBILITY_RULES = 'eligibility_rules',
+  ROLE_MAPPING = 'role_mapping',
+  CHANNEL_STRUCTURE = 'channel_structure',
+  REVIEW = 'review',
+  DEPLOY = 'deploy',
+  COMPLETE = 'complete'
+}
+
+export interface WizardSession {
+  id: string;
+  userId: string;
+  guildId: string;
+  currentStep: WizardState;
+  stepData: Record<string, any>;
+  idempotencyKey: string;
+  startedAt: Date;
+  lastInteractionAt: Date;
+}
+
+export class WizardEngine {
+  constructor(
+    private sessionStore: ISessionStore,
+    private synthesisQueue: ISynthesisQueue
+  ) {}
+
+  async handleInteraction(interaction: Interaction): Promise<void> {
+    // CRITICAL: Defer within 3 seconds
+    await interaction.deferReply({ ephemeral: true });
+
+    const sessionKey = `wizard:${interaction.user.id}:${interaction.guildId}`;
+    let session = await this.sessionStore.get(sessionKey);
+
+    if (!session) {
+      session = this.createSession(interaction.user.id, interaction.guildId!);
+    }
+
+    // Process current step
+    const handler = this.getStepHandler(session.currentStep);
+    const result = await handler.process(interaction, session);
+
+    if (result.advance) {
+      session.currentStep = this.getNextStep(session.currentStep);
+    }
+
+    session.stepData[session.currentStep] = result.data;
+    session.lastInteractionAt = new Date();
+
+    // Save with 15-minute TTL (Discord followup window)
+    await this.sessionStore.save(sessionKey, session, 900);
+
+    await interaction.editReply(result.response);
+  }
+
+  async resume(interaction: CommandInteraction): Promise<void> {
+    const sessionKey = `wizard:${interaction.user.id}:${interaction.guildId}`;
+    const session = await this.sessionStore.get(sessionKey);
+
+    if (!session) {
+      await interaction.reply({
+        content: 'No active onboarding session found. Start with `/onboard`.',
+        ephemeral: true
+      });
+      return;
+    }
+
+    await this.continueFromStep(interaction, session);
+  }
+
+  private createSession(userId: string, guildId: string): WizardSession {
+    return {
+      id: crypto.randomUUID(),
+      userId,
+      guildId,
+      currentStep: WizardState.INIT,
+      stepData: {},
+      idempotencyKey: crypto.randomUUID(),
+      startedAt: new Date(),
+      lastInteractionAt: new Date()
+    };
+  }
+}
+```
+
+### 4.4 Global Token Bucket
+
+```typescript
+// packages/synthesis/GlobalTokenBucket.ts
+
+export class GlobalDiscordTokenBucket {
+  private redis: Redis;
+  private readonly BUCKET_KEY = 'discord:global:tokens';
+  private readonly MAX_TOKENS = 50;        // Discord ~50 req/sec
+  private readonly REFILL_RATE = 50;       // Refill 50 tokens per second
+
+  constructor(redis: Redis) {
+    this.redis = redis;
+    this.startRefillLoop();
+  }
+
+  // Atomic token acquisition using Lua script
+  async acquire(tokens: number = 1): Promise<boolean> {
+    const script = `
+      local current = tonumber(redis.call('GET', KEYS[1]) or ARGV[1])
+      if current >= tonumber(ARGV[2]) then
+        redis.call('DECRBY', KEYS[1], ARGV[2])
+        return 1
+      end
+      return 0
+    `;
+
+    const result = await this.redis.eval(
+      script, 1, this.BUCKET_KEY, this.MAX_TOKENS.toString(), tokens.toString()
+    );
+
+    return result === 1;
+  }
+
+  // Wait until tokens are available (with timeout)
+  async acquireWithWait(tokens: number = 1, timeoutMs: number = 30000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    let backoff = 100;
+
+    while (Date.now() < deadline) {
+      if (await this.acquire(tokens)) {
+        return;
+      }
+
+      // Exponential backoff with jitter
+      await this.sleep(backoff + Math.random() * 100);
+      backoff = Math.min(backoff * 2, 1000);
+    }
+
+    throw new RateLimitExceededError('Global Discord rate limit timeout');
+  }
+
+  private startRefillLoop(): void {
+    setInterval(async () => {
+      const script = `
+        local current = tonumber(redis.call('GET', KEYS[1]) or 0)
+        local newVal = math.min(current + tonumber(ARGV[1]), tonumber(ARGV[2]))
+        redis.call('SET', KEYS[1], newVal)
+        return newVal
+      `;
+      await this.redis.eval(
+        script, 1, this.BUCKET_KEY,
+        this.REFILL_RATE.toString(), this.MAX_TOKENS.toString()
+      );
+    }, 1000);
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+}
+```
+
+### 4.5 Synthesis Engine
+
+```typescript
+// packages/synthesis/SynthesisQueue.ts
+
+export class SynthesisQueue {
+  private queue: Queue;
+  private globalBucket: GlobalDiscordTokenBucket;
+
+  constructor(redis: Redis) {
+    this.queue = new Queue('discord-synthesis', {
+      connection: redis,
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 }
+      }
+    });
+
+    this.globalBucket = new GlobalDiscordTokenBucket(redis);
+  }
+
+  async enqueueSynthesis(manifest: CommunityManifest): Promise<string> {
+    const job = await this.queue.add('synthesize', {
+      manifestId: manifest.community.id,
+      channels: manifest.channels,
+      roles: manifest.roles
+    });
+
+    return job.id!;
+  }
+
+  createWorker(): Worker {
+    return new Worker('discord-synthesis', async (job) => {
+      const { manifestId, channels, roles } = job.data;
+
+      // Create roles first (channels may reference them)
+      for (const role of roles) {
+        await this.globalBucket.acquireWithWait(1);
+        await this.createRole(manifestId, role);
+        await job.updateProgress((roles.indexOf(role) / roles.length) * 50);
+      }
+
+      // Create channels
+      for (const channel of channels) {
+        await this.globalBucket.acquireWithWait(1);
+        await this.createChannel(manifestId, channel);
+        await job.updateProgress(50 + (channels.indexOf(channel) / channels.length) * 50);
+      }
+
+      // Update shadow state
+      await this.updateShadowState(manifestId);
+    }, {
+      connection: this.queue.opts.connection,
+      concurrency: 5,
+      limiter: { max: 10, duration: 1000 }
+    });
+  }
+}
+```
+
+---
+
+## 5. API Specifications
+
+### 5.1 API Design Principles
+
+- **Style:** REST with JSON
+- **Versioning:** URL path (`/api/v1/...`)
+- **Authentication:** Bearer token (JWT) or API key
+- **Rate Limiting:** 100 req/min per tenant
+
+### 5.2 Community Endpoints
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| GET | /api/v1/communities | List communities for user | JWT |
+| GET | /api/v1/communities/:id | Get community details | JWT |
+| POST | /api/v1/communities | Create community | JWT |
+| PUT | /api/v1/communities/:id | Update community | JWT + Admin |
+| DELETE | /api/v1/communities/:id | Delete community | JWT + Admin + MFA |
+
+### 5.3 Profile Endpoints
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| GET | /api/v1/profiles/me | Get current user profile | JWT |
+| GET | /api/v1/profiles/:id | Get profile by ID | JWT |
+| PUT | /api/v1/profiles/me/wallet | Link wallet address | JWT |
+| GET | /api/v1/profiles/:id/badges | Get profile badges | JWT |
+
+### 5.4 Eligibility Endpoints
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| POST | /api/v1/eligibility/check | Check eligibility for criteria | JWT |
+| GET | /api/v1/eligibility/status | Get current eligibility status | JWT |
+
+### 5.5 Example: POST /api/v1/eligibility/check
+
+**Request:**
+```http
+POST /api/v1/eligibility/check
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "walletAddress": "0x1234...",
+  "criteria": {
+    "type": "RANK_THRESHOLD",
+    "asset": "bgt",
+    "maxRank": 69
+  }
+}
+```
+
+**Response (200 OK):**
 ```json
 {
-  "memberId": "member_abc123",
-  "wallet": "0x1234...5678",
-  "platforms": {
-    "discord": {
-      "linked": true,
-      "userId": "123456789",
-      "linkedAt": "2024-01-15T10:30:00Z"
-    },
-    "telegram": {
-      "linked": true,
-      "userId": "987654321",
-      "linkedAt": "2025-12-27T14:00:00Z"
+  "eligible": true,
+  "source": "score",
+  "rank": 42,
+  "tier": {
+    "id": "fremen",
+    "name": "Fremen",
+    "color": "#A67C52"
+  }
+}
+```
+
+**Error Response (503 Service Unavailable):**
+```json
+{
+  "error": {
+    "code": "SCORE_SERVICE_UNAVAILABLE",
+    "message": "Score service is temporarily unavailable",
+    "degraded": true,
+    "fallback": {
+      "eligible": false,
+      "source": "degraded"
     }
   }
 }
 ```
 
-### 5.3 Telegram Webhook Validation
-
-```typescript
-import crypto from 'crypto';
-
-export function validateTelegramWebhook(c: Context, next: Next) {
-  const secretToken = c.req.header('X-Telegram-Bot-Api-Secret-Token');
-
-  if (secretToken !== config.TELEGRAM_WEBHOOK_SECRET) {
-    return c.json({ error: 'Invalid webhook secret' }, 403);
-  }
-
-  return next();
-}
-```
-
 ---
 
-## 6. Security Architecture
+## 6. Error Handling Strategy
 
-### 6.1 Bot Token Security
+### 6.1 Error Categories
 
-| Concern | Mitigation |
-|---------|------------|
-| Token exposure | Environment variable only, never in code |
-| Token in logs | Token masked in all logging |
-| CI/CD leakage | TruffleHog pattern for Telegram tokens |
-| Webhook forgery | Secret token validation header |
+| Category | HTTP Status | Example |
+|----------|-------------|---------|
+| Validation | 400 | Invalid wallet address format |
+| Authentication | 401 | Expired or invalid token |
+| Authorization | 403 | Not a Naib, cannot access council |
+| Not Found | 404 | Community not found |
+| Rate Limited | 429 | Too many requests |
+| Service Degraded | 503 | Score service unavailable |
+| Server Error | 500 | Unexpected error |
 
-**TruffleHog Pattern Addition**:
-```yaml
-# .trufflehog.yml
-detectors:
-  - telegram_bot_token:
-      keywords: ["bot"]
-      regex: '\d{10}:[A-Za-z0-9_-]{35}'
-```
+### 6.2 Error Response Format
 
-### 6.2 Verification Security
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                 VERIFICATION SECURITY                            │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  1. Session Creation                                             │
-│     • Random session ID (UUIDv4)                                 │
-│     • 15-minute expiry                                           │
-│     • One session per Telegram user at a time                    │
-│                                                                  │
-│  2. Collab.Land Verification                                     │
-│     • User signs message with wallet                             │
-│     • Collab.Land validates signature                            │
-│     • Webhook includes Collab.Land signature                     │
-│                                                                  │
-│  3. Callback Validation                                          │
-│     • Verify Collab.Land webhook signature                       │
-│     • Check session exists and is pending                        │
-│     • Check session not expired                                  │
-│     • Mark session complete atomically                           │
-│                                                                  │
-│  4. Rate Limiting                                                │
-│     • Max 3 verification attempts per user per hour              │
-│     • Exponential backoff on failures                            │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### 6.3 Privacy Considerations
-
-| Data | Storage | Display |
-|------|---------|---------|
-| Telegram user ID | Database | Never shown publicly |
-| Telegram username | Not stored | N/A |
-| Wallet address | Database | Truncated (0x1234...5678) |
-| Message content | Not stored | N/A |
-| User commands | Logged (no PII) | N/A |
-
-### 6.4 GDPR Compliance
-
-**Data Subject Rights**:
-
-| Right | Implementation |
-|-------|----------------|
-| Access (Art. 15) | `/status` shows all linked data |
-| Rectification (Art. 16) | Re-verification updates link |
-| Erasure (Art. 17) | Delete removes telegram_user_id |
-| Portability (Art. 20) | Export includes Telegram link status |
-
----
-
-## 7. Performance Architecture
-
-### 7.1 Response Time Targets
-
-| Operation | Target | Implementation |
-|-----------|--------|----------------|
-| /start | <200ms | Static message |
-| /verify | <500ms | Session creation + URL generation |
-| /score | <100ms (cached) | Redis lookup |
-| /score | <500ms (uncached) | DB + cache write |
-| /leaderboard | <200ms | Redis cached list |
-| /tier | <100ms | GatekeeperService (cached) |
-
-### 7.2 Resource Budgets
-
-| Resource | Budget | Rationale |
-|----------|--------|-----------|
-| Memory (grammy) | ~64MB | Lightweight bot, no message storage |
-| CPU (idle) | <2% | Webhook mode, no polling |
-| CPU (peak) | <15% | Command processing burst |
-| Network | ~1MB/day | Text commands only, no media |
-| Database | +10MB | Sessions table, identity columns |
-
-### 7.3 Caching Strategy
-
-```typescript
-// Platform-agnostic cache keys
-const cacheKeys = {
-  // Identity lookups
-  identity: (platform: string, userId: string) =>
-    `identity:${platform}:${userId}`,
-
-  // Score (unchanged from v4.0)
-  score: (memberId: string) =>
-    `score:${memberId}`,
-
-  // Leaderboard (unchanged from v4.0)
-  leaderboard: (page: number) =>
-    `leaderboard:page:${page}`,
-};
-
-// Cache invalidation on identity change
-async function invalidateIdentityCache(memberId: string, platforms: string[]) {
-  const keys = platforms.map(p =>
-    cacheKeys.identity(p, getMemberPlatformId(memberId, p))
-  );
-  await redis.del(...keys);
-}
-```
-
----
-
-## 8. Integration Points
-
-### 8.1 grammy Integration
-
-**Dependencies**:
 ```json
 {
-  "grammy": "^1.21.0",
-  "@grammyjs/runner": "^2.0.0"
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human readable message",
+    "details": {},
+    "requestId": "uuid",
+    "degraded": false
+  }
 }
 ```
 
-**Webhook Setup**:
-```typescript
-// In server.ts
-import { telegramRoutes } from './api/telegram.routes.js';
-import { startTelegramBot } from './telegram/bot.js';
+### 6.3 Circuit Breaker States
 
-// Mount routes
-app.route('/telegram', telegramRoutes);
+| State | Behavior |
+|-------|----------|
+| CLOSED | Normal operation, requests pass through |
+| OPEN | All requests fail fast, return cached/degraded |
+| HALF_OPEN | Allow single test request to check recovery |
 
-// Start bot
-await startTelegramBot();
-```
+### 6.4 Logging Strategy
 
-### 8.2 Collab.Land Integration
-
-**Existing Integration** (reused):
-- Verification URL generation
-- Webhook handling for verification_complete
-- Signature validation
-
-**New Parameters**:
-```typescript
-// Add platform parameter to verification URL
-const verifyUrl = new URL(config.COLLABLAND_VERIFY_URL);
-verifyUrl.searchParams.set('session', sessionId);
-verifyUrl.searchParams.set('platform', 'telegram');
-verifyUrl.searchParams.set('callback', config.TELEGRAM_VERIFY_CALLBACK_URL);
-```
-
-### 8.3 Existing Service Integration
-
-| Service | Integration Point | Changes |
-|---------|-------------------|---------|
-| StatsService | getMemberStats() | None (uses member_id) |
-| GatekeeperService | getEntitlements() | None (uses community_id) |
-| BoostService | getBoostStatus() | None (uses community_id) |
-| BadgeService | getBadge() | None (uses member_id) |
-
-**Key Insight**: All existing services are already platform-agnostic because they use `member_id` as the identifier, not platform-specific IDs.
+- **Log Levels:** ERROR, WARN, INFO, DEBUG
+- **Structured Logging:** JSON format via pino
+- **Correlation IDs:** Request ID propagated through all services
+- **Sensitive Data:** Wallet addresses truncated, no private keys logged
 
 ---
 
-## 9. Deployment Architecture
+## 7. Testing Strategy
 
-### 9.1 Infrastructure (Unchanged)
+### 7.1 Testing Pyramid
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     OVH VPS (Unchanged)                          │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  ┌────────────────────────────────────────────────────────────┐ │
-│  │                       nginx                                  │ │
-│  │                                                              │ │
-│  │  location /telegram/webhook → :3000 (NEW)                    │ │
-│  │  location /api → :3000                                       │ │
-│  │  location /discord → :3000                                   │ │
-│  │                                                              │ │
-│  └────────────────────────────────────────────────────────────┘ │
-│                              │                                   │
-│                              ▼                                   │
-│  ┌────────────────────────────────────────────────────────────┐ │
-│  │                      PM2: sietch                             │ │
-│  │                                                              │ │
-│  │  Node.js process (unified Discord + Telegram + API)          │ │
-│  │                                                              │ │
-│  └────────────────────────────────────────────────────────────┘ │
-│                                                                  │
-│  ┌────────────────┐  ┌────────────────┐                        │
-│  │    SQLite      │  │     Data       │                        │
-│  │   sietch.db    │  │   /var/data    │                        │
-│  └────────────────┘  └────────────────┘                        │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
+| Level | Coverage Target | Tools |
+|-------|-----------------|-------|
+| Unit | 80% | Vitest |
+| Integration | Key flows | Vitest + testcontainers |
+| E2E | Critical paths | Playwright (web dashboard) |
 
-### 9.2 nginx Configuration Addition
+### 7.2 Testing Guidelines
 
-```nginx
-# Add to existing nginx config
-location /telegram/webhook {
-    proxy_pass http://127.0.0.1:3000;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+**Unit Tests:**
+- Test domain logic in isolation
+- Mock all external dependencies
+- Focus on edge cases and error paths
 
-    # Telegram sends updates quickly, don't buffer
-    proxy_buffering off;
-}
-```
+**Integration Tests:**
+- Test adapter implementations
+- Use testcontainers for PostgreSQL/Redis
+- Verify RLS tenant isolation
 
-### 9.3 Environment Variables
+**Theme Regression Tests:**
+- Sietch theme must produce identical results to v3.0 hardcoded logic
+- Property-based testing for tier evaluation
 
-```bash
-# .env additions for v4.1
-
-# Telegram Bot
-TELEGRAM_BOT_TOKEN=<from @BotFather>
-TELEGRAM_WEBHOOK_SECRET=<random 32-char string>
-TELEGRAM_WEBHOOK_URL=https://api.sietch.xyz/telegram/webhook
-TELEGRAM_VERIFY_CALLBACK_URL=https://api.sietch.xyz/telegram/verify/callback
-
-# Collab.Land (existing, may need update)
-COLLABLAND_VERIFY_URL=https://verify.collab.land/...
-```
-
-### 9.4 Deployment Checklist
-
-```markdown
-## v4.1 Deployment Checklist
-
-### Pre-deployment
-- [ ] Create Telegram bot via @BotFather
-- [ ] Generate TELEGRAM_WEBHOOK_SECRET
-- [ ] Update .env with Telegram variables
-- [ ] Run migration: 012_telegram_identity.ts
-- [ ] Test locally with polling mode
-
-### Deployment
-- [ ] Update nginx config with /telegram routes
-- [ ] Reload nginx: `sudo nginx -t && sudo nginx -s reload`
-- [ ] Deploy updated sietch service
-- [ ] Verify PM2 process restart: `pm2 status`
-
-### Post-deployment
-- [ ] Verify webhook registered: Check /telegram/health
-- [ ] Test /start command in Telegram
-- [ ] Test /verify flow end-to-end
-- [ ] Monitor logs for errors: `pm2 logs sietch`
-```
-
----
-
-## 10. Testing Architecture
-
-### 10.1 Test Structure
-
-```
-tests/
-├── telegram/
-│   ├── bot.test.ts           # Bot initialization tests
-│   ├── commands/
-│   │   ├── start.test.ts
-│   │   ├── verify.test.ts
-│   │   ├── score.test.ts
-│   │   ├── leaderboard.test.ts
-│   │   └── tier.test.ts
-│   ├── middleware/
-│   │   └── rateLimit.test.ts
-│   └── integration/
-│       └── verification.test.ts
-├── services/
-│   └── IdentityService.test.ts
-└── e2e/
-    └── telegram.e2e.test.ts
-```
-
-### 10.2 Test Categories
-
-| Category | Count | Focus |
-|----------|-------|-------|
-| Unit (commands) | ~25 | Individual command handlers |
-| Unit (IdentityService) | ~15 | Identity operations |
-| Integration | ~10 | Verification flow, service interaction |
-| E2E | ~5 | Full command flows with mocked Telegram API |
-
-### 10.3 grammy Test Utilities
+### 7.3 Critical Test Cases
 
 ```typescript
-import { Bot, Context } from 'grammy';
-import { createMockContext, createMockUpdate } from './testUtils.js';
+// Theme regression test
+describe('SietchTheme', () => {
+  it('should produce identical tier results to v3.0', () => {
+    const theme = SietchTheme;
 
-describe('score command', () => {
-  let bot: Bot;
-  let mockIdentityService: jest.Mocked<IdentityService>;
-  let mockStatsService: jest.Mocked<StatsService>;
-
-  beforeEach(() => {
-    mockIdentityService = createMockIdentityService();
-    mockStatsService = createMockStatsService();
-    bot = createTestBot({ identityService: mockIdentityService, statsService: mockStatsService });
+    expect(theme.evaluateTier(1).tierId).toBe('naib');
+    expect(theme.evaluateTier(7).tierId).toBe('naib');
+    expect(theme.evaluateTier(8).tierId).toBe('fedaykin_elite');
+    expect(theme.evaluateTier(70).tierId).toBe('outsider');
   });
+});
 
-  it('returns score for verified user', async () => {
-    mockIdentityService.getMemberByPlatformId.mockResolvedValue({
-      memberId: 'member_123',
-      walletAddress: '0x1234567890abcdef',
-      platforms: [{ platform: 'telegram', platformUserId: '12345', linkedAt: new Date() }]
-    });
+// RLS isolation test
+describe('TenantIsolation', () => {
+  it('should prevent cross-tenant data access', async () => {
+    await db.execute("SET app.current_tenant = 'tenant-a'");
+    await db.insert(profiles).values({ discord_id: '123', community_id: 'tenant-a' });
 
-    mockStatsService.getMemberStats.mockResolvedValue({
-      convictionScore: 85.5,
-      tier: 'Fremen Warrior',
-      tierProgress: 0.7
-    });
+    await db.execute("SET app.current_tenant = 'tenant-b'");
+    const result = await db.select().from(profiles);
 
-    const ctx = createMockContext({
-      message: { text: '/score', from: { id: 12345 } }
-    });
-
-    await scoreHandler(ctx);
-
-    expect(ctx.reply).toHaveBeenCalledWith(
-      expect.stringContaining('85.5'),
-      expect.any(Object)
-    );
+    expect(result).toHaveLength(0); // tenant-b cannot see tenant-a data
   });
+});
 
-  it('prompts verification for unverified user', async () => {
-    mockIdentityService.getMemberByPlatformId.mockResolvedValue(null);
+// Circuit breaker test
+describe('TwoTierChainProvider', () => {
+  it('should fall back to native reader when score service fails', async () => {
+    const scoreService = mockScoreService({ fail: true });
+    const provider = new TwoTierChainProvider(nativeReader, scoreService);
 
-    const ctx = createMockContext({
-      message: { text: '/score', from: { id: 99999 } }
-    });
+    const result = await provider.checkAdvancedEligibility(address, criteria);
 
-    await scoreHandler(ctx);
-
-    expect(ctx.reply).toHaveBeenCalledWith(
-      expect.stringContaining('verify'),
-      expect.any(Object)
-    );
+    expect(result.source).toBe('degraded');
+    expect(result.eligible).toBe(false);
   });
 });
 ```
 
----
+### 7.4 CI/CD Integration
 
-## 11. Technical Risks & Mitigation
-
-### 11.1 Risk Matrix
-
-| Risk | Likelihood | Impact | Mitigation |
-|------|------------|--------|------------|
-| Collab.Land Telegram support | Medium | High | Verify before Sprint 30, fallback to manual linking |
-| VPS memory exhaustion | Low | High | Memory monitoring, graceful shutdown on OOM |
-| Webhook delivery failures | Low | Medium | Telegram retries, health monitoring |
-| Rate limit violations | Low | Low | Built-in grammy throttling |
-| Cross-platform cache inconsistency | Low | Medium | Platform-agnostic cache keys |
-
-### 11.2 Fallback Strategies
-
-**Collab.Land Fallback**:
-If Collab.Land doesn't support Telegram platform parameter:
-1. Generate session without platform hint
-2. Store platform in local session
-3. On callback, use session to identify platform
-4. Manual flow: user copies code to bot
-
-**Memory Fallback**:
-```typescript
-// Monitor memory and warn
-setInterval(() => {
-  const used = process.memoryUsage();
-  if (used.heapUsed > 400 * 1024 * 1024) { // 400MB warning
-    logger.warn('High memory usage', { heapUsed: used.heapUsed });
-  }
-}, 60000);
-```
+- Tests run on every PR
+- Coverage reporting via Codecov
+- Required checks: lint, typecheck, test
+- Deployment blocked if tests fail
 
 ---
 
-## 12. Future Considerations
+## 8. Development Phases
 
-### 12.1 v4.2 Preparation
+### Phase 0: Two-Tier Chain Provider (Weeks 1-2)
+- [x] Design INativeReader, IScoreService interfaces
+- [ ] Implement NativeBlockchainReader (viem)
+- [ ] Implement ScoreServiceAdapter with circuit breaker
+- [ ] Implement TwoTierChainProvider orchestration
+- [ ] Write degradation matrix tests
+- [ ] Delete `src/services/chain.ts` when tests pass
 
-| Feature | v4.1 Foundation |
-|---------|-----------------|
-| Telegram Mini App | Identity schema ready, API endpoints available |
-| Telegram notifications | Telegram user ID stored, notification service can extend |
-| Group management | Bot permissions can be extended |
-| Inline queries | grammy supports, just add handlers |
+### Phase 1: Themes System (Weeks 3-4)
+- [ ] Implement IThemeProvider interface
+- [ ] Create BasicTheme (free tier)
+- [ ] Create SietchTheme (premium tier)
+- [ ] Implement TierEvaluator and BadgeEvaluator services
+- [ ] Regression test: Sietch identical to v3.0
+- [ ] Implement ThemeRegistry
 
-### 12.2 Technical Debt
+### Phase 2: PostgreSQL + RLS (Weeks 5-8)
+- [ ] Create Drizzle schema with tenant isolation
+- [ ] Enable RLS on all tables
+- [ ] Implement DrizzleStorageAdapter
+- [ ] Write RLS regression tests
+- [ ] Migrate data from SQLite
+- [ ] Delete `profiles.db`
 
-| Item | Priority | Notes |
-|------|----------|-------|
-| Session cleanup cron | Medium | Add trigger.dev task to clean expired sessions |
-| Platform abstraction | Low | Consider PlatformAdapter interface for future platforms |
-| Metrics collection | Low | Add Telegram-specific metrics (commands/hour, etc.) |
+### Phase 3: Redis + Hybrid State (Weeks 9-10)
+- [ ] Implement WizardSessionStore (Redis)
+- [ ] Implement WizardEngine state machine
+- [ ] Create HybridManifestRepository
+- [ ] Set up S3 shadow bucket
+- [ ] Test wizard survives Discord timeout
+- [ ] Test session resumption
 
----
+### Phase 4: BullMQ + Global Token Bucket (Weeks 11-12)
+- [ ] Implement SynthesisQueue (BullMQ)
+- [ ] Implement GlobalDiscordTokenBucket
+- [ ] Create GlobalRateLimitedSynthesisWorker
+- [ ] Implement ReconciliationController
+- [ ] Load test: 100 concurrent tenants
+- [ ] Verify no Discord 429 errors
 
-## 13. Implementation Summary
+### Phase 5: Vault Transit + Kill Switch (Weeks 13-14)
+- [ ] Set up HCP Vault Transit
+- [ ] Implement VaultSigningAdapter
+- [ ] Implement KillSwitchProtocol
+- [ ] Add MFA for destructive operations
+- [ ] Remove all PRIVATE_KEY from .env
+- [ ] Audit: verify all signing via Vault
 
-### 13.1 New Files
-
-| Path | LOC (Est.) | Purpose |
-|------|------------|---------|
-| `src/telegram/bot.ts` | ~100 | Bot initialization |
-| `src/telegram/commands/*.ts` | ~400 | Command handlers (7 files) |
-| `src/telegram/middleware/*.ts` | ~100 | Rate limiting, error handling |
-| `src/telegram/utils/*.ts` | ~80 | Formatters, keyboards |
-| `src/services/IdentityService.ts` | ~200 | Cross-platform identity |
-| `src/api/telegram.routes.ts` | ~80 | API routes |
-| `src/db/migrations/012_telegram_identity.ts` | ~50 | Schema migration |
-| `tests/telegram/**/*.ts` | ~500 | Test suite |
-
-**Total New Code**: ~1,500 LOC
-
-### 13.2 Modified Files
-
-| Path | Changes |
-|------|---------|
-| `src/api/server.ts` | Mount telegram routes |
-| `src/index.ts` | Initialize Telegram bot |
-| `src/config.ts` | Add Telegram env vars |
-| `package.json` | Add grammy dependency |
-| `ecosystem.config.cjs` | No changes (same process) |
-| `.env.example` | Add Telegram variables |
-
-### 13.3 Sprint Mapping
-
-| Sprint | Components | Tests |
-|--------|------------|-------|
-| Sprint 30 | Bot init, /start, /verify, migration, IdentityService | ~15 |
-| Sprint 31 | /score, /leaderboard, /tier, /status, /help | ~20 |
-| Sprint 32 | Webhook mode, rate limiting, error handling | ~10 |
-| Sprint 33 | E2E tests, docs, polish, admin broadcast | ~10 |
-
----
-
-## Document Metadata
-
-| Field | Value |
-|-------|-------|
-| Version | 4.1 |
-| Generated | December 27, 2025 |
-| Author | Loa Framework |
-| Classification | Internal |
-| Status | DRAFT |
-| PRD Reference | loa-grimoire/prd.md v4.1 |
-| Next Step | `/sprint-plan` to create sprint breakdown |
+### Phase 6: OPA Pre-Gate + HITL (Weeks 15-16)
+- [ ] Create OPA policies (Rego)
+- [ ] Implement PolicyAsCodePreGate
+- [ ] Integrate Infracost budget check
+- [ ] Create Enhanced HITL Approval Gate
+- [ ] Test: delete PV auto-rejected
+- [ ] Deploy full infrastructure
 
 ---
 
-*SDD v4.1 "The Crossing" generated by Loa architecture workflow*
-*Based on: PRD v4.1, sdd-v4.0-completed.md, ARCHITECTURE_SPEC_v2.9.0.md*
+## 9. Known Risks and Mitigation
+
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Score Service outage | Medium | High | Two-Tier architecture with native fallback |
+| Discord 429 ban | Medium | Critical | Global token bucket (50 req/sec) |
+| Cross-tenant data leak | Low | Critical | PostgreSQL RLS + automated regression tests |
+| Naib credential compromise | Low | High | Kill switch + MFA + Vault revocation |
+| Terraform human error | Medium | High | OPA pre-gate + auto-reject dangerous ops |
+| Migration data loss | Low | High | Hybrid state + S3 shadow backup |
+| Theme regression | Medium | Medium | Property-based testing + v3.0 comparison |
+
+---
+
+## 10. Open Questions
+
+| Question | Owner | Due Date | Status |
+|----------|-------|----------|--------|
+| Score Service API contract finalization | Backend Team | TBD | Open |
+| Collab.Land integration scope | Product | TBD | Open |
+| Enterprise theme customization limits | Product | TBD | Open |
+| Telegram feature parity timeline | Product | TBD | Open |
+
+---
+
+## 11. Appendix
+
+### A. Glossary
+
+| Term | Definition |
+|------|------------|
+| Naib | Top 7 ranked holders, community administrators |
+| Fedaykin | Ranks 8-30, trusted community members |
+| Sietch | Dune-inspired community space |
+| Water Sharer | Badge lineage system for member referrals |
+| RLS | Row-Level Security in PostgreSQL |
+| Circuit Breaker | Pattern to prevent cascade failures |
+| Shadow State | Record of last successfully applied Discord state |
+
+### B. References
+
+- [PRD v5.0](loa-grimoire/prd.md)
+- [Architecture Spec v5.5.1](loa-grimoire/context/new-context/arrakis-saas-architecture.md)
+- [Discord.js Documentation](https://discord.js.org/)
+- [Drizzle ORM](https://orm.drizzle.team/)
+- [BullMQ](https://docs.bullmq.io/)
+- [opossum Circuit Breaker](https://nodeshift.dev/opossum/)
+- [HashiCorp Vault Transit](https://developer.hashicorp.com/vault/docs/secrets/transit)
+
+### C. Change Log
+
+| Version | Date | Changes | Author |
+|---------|------|---------|--------|
+| 4.1 | 2025-12-27 | Telegram integration | Architecture Designer |
+| 5.0 | 2025-12-28 | SaaS transformation - complete redesign | Architecture Designer |
+
+---
+
+*Generated by Architecture Designer Agent*
+*Next Step: `/sprint-plan` to break down Phase 0-6 into actionable sprints*
