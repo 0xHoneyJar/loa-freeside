@@ -45,26 +45,26 @@ Transform Arrakis from a bespoke Berachain Discord bot into a **multi-tenant, ch
 Establish the port interfaces and implement Tier 1 Native Reader for binary blockchain checks that work without Score Service dependency.
 
 #### Deliverables
-- [ ] `packages/core/ports/IChainProvider.ts` - Interface definitions
-- [ ] `packages/adapters/chain/NativeBlockchainReader.ts` - viem implementation
-- [ ] Unit tests for Native Reader (15+ test cases)
-- [ ] Package structure initialized
+- [x] `packages/core/ports/IChainProvider.ts` - Interface definitions
+- [x] `packages/adapters/chain/NativeBlockchainReader.ts` - viem implementation
+- [x] Unit tests for Native Reader (15+ test cases)
+- [x] Package structure initialized
 
 #### Acceptance Criteria
-- [ ] `hasBalance(address, token, minAmount)` returns boolean within 100ms
-- [ ] `ownsNFT(address, collection)` returns boolean
-- [ ] `getBalance(address, token)` returns bigint
-- [ ] No external dependencies beyond viem RPC
-- [ ] All methods work with Berachain RPC
+- [x] `hasBalance(address, token, minAmount)` returns boolean within 100ms
+- [x] `ownsNFT(address, collection)` returns boolean
+- [x] `getBalance(address, token)` returns bigint
+- [x] No external dependencies beyond viem RPC
+- [x] All methods work with Berachain RPC
 
 #### Technical Tasks
-- [ ] TASK-34.1: Create `packages/` directory structure per SDD §A
-- [ ] TASK-34.2: Define `INativeReader` interface
-- [ ] TASK-34.3: Define `IScoreService` interface
-- [ ] TASK-34.4: Define `IChainProvider` interface
-- [ ] TASK-34.5: Implement `NativeBlockchainReader` with viem
-- [ ] TASK-34.6: Write unit tests for binary checks
-- [ ] TASK-34.7: Add integration test with Berachain RPC
+- [x] TASK-34.1: Create `packages/` directory structure per SDD §A
+- [x] TASK-34.2: Define `INativeReader` interface
+- [x] TASK-34.3: Define `IScoreService` interface
+- [x] TASK-34.4: Define `IChainProvider` interface
+- [x] TASK-34.5: Implement `NativeBlockchainReader` with viem
+- [x] TASK-34.6: Write unit tests for binary checks
+- [x] TASK-34.7: Add integration test with Berachain RPC
 
 #### Dependencies
 - None (foundation sprint)
