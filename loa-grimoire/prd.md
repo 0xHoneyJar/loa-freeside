@@ -1,8 +1,8 @@
 # Product Requirements Document: Arrakis v5.0
 
-**Version**: 5.0
-**Date**: December 28, 2025
-**Status**: DRAFT
+**Version**: 5.1
+**Date**: December 29, 2025
+**Status**: APPROVED - Post-Audit Hardening Required
 **Codename**: The Transformation
 
 ---
@@ -17,6 +17,7 @@
 | Hexagonal Architecture | arrakis-saas-architecture.md §5 | Loa framework patterns |
 | Infrastructure Phases | arrakis-saas-architecture.md §10 | Implementation prompt |
 | WizardEngine | arrakis-saas-architecture.md §7 | Discord API constraints |
+| Hardening Requirements | arrakis-v5-code-review.md §9 | KillSwitchProtocol.ts, ScoreServiceAdapter.ts |
 
 ---
 
@@ -561,7 +562,141 @@ rm profiles.db  # → PostgreSQL
 
 ---
 
-## 10. Appendices
+## 10. Hardening Requirements (Post-Audit)
+
+> Source: arrakis-v5-code-review.md (December 2025 External Code Review)
+
+Following external security review of v5.0.0 implementation, these hardening requirements are **mandatory before production deployment**.
+
+### 10.1 Critical Priority (P0) - Before Production
+
+#### HR-5.10.1: Audit Log Persistence
+
+**Problem**: In-memory audit logs in `KillSwitchProtocol.ts` are lost after 1000 entries or process restart.
+
+```typescript
+// Current (KillSwitchProtocol.ts:676-679) - INSECURE
+if (this.auditLogs.length > 1000) {
+  this.auditLogs.splice(0, this.auditLogs.length - 1000);
+}
+```
+
+**Acceptance Criteria**:
+- [ ] Audit logs persisted to PostgreSQL `audit_logs` table
+- [ ] Row-Level Security applied to audit logs
+- [ ] Retention policy: 7 years minimum for compliance
+- [ ] No in-memory limit on audit entries
+- [ ] Async persistence with write-ahead buffer
+
+#### HR-5.10.2: RLS Migration Validation
+
+**Problem**: PostgreSQL RLS policies exist but require penetration testing validation.
+
+**Acceptance Criteria**:
+- [ ] Penetration test validates all RLS policies
+- [ ] Cross-tenant access tests return empty results
+- [ ] TenantContext bypass attempts logged and blocked
+- [ ] RLS regression test coverage >95%
+- [ ] Security audit sign-off documented
+
+#### HR-5.10.3: API Key Rotation Mechanism
+
+**Problem**: API keys have no rotation mechanism, creating long-lived credential risk.
+
+**Acceptance Criteria**:
+- [ ] API key rotation via admin endpoint
+- [ ] Grace period for old keys (24 hours)
+- [ ] Automatic notification of impending expiration
+- [ ] Key usage audit trail
+- [ ] Emergency immediate revocation capability
+
+### 10.2 High Priority (P1) - Within 30 Days
+
+#### HR-5.10.4: Circuit Breaker Observability
+
+**Problem**: No metrics or alerting for circuit breaker state changes in ScoreServiceAdapter.
+
+**Acceptance Criteria**:
+- [ ] Prometheus metrics for circuit breaker state
+- [ ] Alert on circuit open (>5 minutes)
+- [ ] Dashboard visibility of degraded mode duration
+- [ ] Historical tracking of circuit state changes
+- [ ] SLA reporting for Score Service availability
+
+#### HR-5.10.5: Session Hijacking Prevention
+
+**Problem**: Wizard sessions lack IP binding or device fingerprinting.
+
+**Acceptance Criteria**:
+- [ ] Session bound to originating IP address
+- [ ] Device fingerprint stored with session
+- [ ] Mismatch triggers re-authentication
+- [ ] Rate limiting on session creation per IP
+- [ ] Suspicious session activity alerting
+
+#### HR-5.10.6: Error Response Standardization
+
+**Problem**: Inconsistent error response formats across API endpoints.
+
+**Acceptance Criteria**:
+- [ ] Unified `ApiError` response schema
+- [ ] Error codes documented in API spec
+- [ ] Internal details sanitized from responses
+- [ ] Stack traces removed in production
+- [ ] Error correlation IDs for debugging
+
+### 10.3 Medium Priority (P2) - Within 90 Days
+
+#### HR-5.10.7: Code Quality Standardization
+
+**Problem**: Mixed naming conventions (camelCase vs PascalCase for services).
+
+**Acceptance Criteria**:
+- [ ] ESLint rule for consistent file naming
+- [ ] All services use PascalCase (e.g., `TierService.ts`)
+- [ ] All utilities use camelCase (e.g., `helpers.ts`)
+- [ ] CI gate enforces naming convention
+
+#### HR-5.10.8: Dead Code Removal
+
+**Problem**: Commented-out code blocks and unused exports.
+
+**Acceptance Criteria**:
+- [ ] Remove all commented-out code blocks
+- [ ] Remove unused exports identified by TypeScript
+- [ ] Remove deprecated functions with no callers
+- [ ] CI gate for unused export detection
+
+#### HR-5.10.9: OpenAPI Documentation
+
+**Problem**: API documentation is minimal, no OpenAPI/Swagger spec.
+
+**Acceptance Criteria**:
+- [ ] OpenAPI 3.0 specification generated
+- [ ] All public endpoints documented
+- [ ] Request/response schemas defined
+- [ ] Swagger UI deployed for API exploration
+- [ ] API versioning strategy documented
+
+### 10.4 Hardening Validation Checklist
+
+Before marking hardening complete:
+
+| Requirement | Verified By | Date |
+|-------------|-------------|------|
+| Audit log persistence | Security Auditor | - |
+| RLS penetration test | External Pentester | - |
+| API key rotation works | DevOps | - |
+| Circuit breaker metrics live | SRE | - |
+| Session security enhanced | Security Auditor | - |
+| Error responses sanitized | Security Auditor | - |
+| Code quality gates pass | CI/CD | - |
+| Dead code removed | Tech Lead | - |
+| OpenAPI spec published | API Team | - |
+
+---
+
+## 11. Appendices
 
 ### Appendix A: Package Structure
 
@@ -609,6 +744,12 @@ VAULT_TOKEN=...
 
 ---
 
-**Document Status**: DRAFT - Pending stakeholder review
+**Document Status**: APPROVED - Post-Audit Hardening Required
 
-**Next Step**: `/architect` to create Software Design Document v5.0
+**Revision History**:
+| Version | Date | Changes |
+|---------|------|---------|
+| 5.0 | Dec 28, 2025 | Initial v5.0 PRD |
+| 5.1 | Dec 29, 2025 | Added Section 10: Hardening Requirements from external code review |
+
+**Next Step**: Implement hardening requirements (Section 10) before production deployment
