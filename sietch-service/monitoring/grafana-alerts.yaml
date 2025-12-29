@@ -1,0 +1,168 @@
+# Grafana Alerting Rules for Circuit Breaker Monitoring
+#
+# Sprint 51: High Priority Hardening (P1) - Observability & Session Security
+#
+# Alerts on circuit breaker state transitions and error rate thresholds.
+# Import this file into Grafana to enable automated alerting.
+#
+# Documentation: https://grafana.com/docs/grafana/latest/alerting/
+
+apiVersion: 1
+
+groups:
+  - name: circuit_breaker_alerts
+    interval: 30s
+    rules:
+      # Alert when circuit breaker opens (service degradation)
+      - alert: CircuitBreakerOpen
+        expr: arrakis_circuit_breaker_state{service="score_service"} == 2
+        for: 1m
+        labels:
+          severity: critical
+          service: score_service
+          component: circuit_breaker
+        annotations:
+          summary: "Circuit breaker is OPEN for {{ $labels.service }}"
+          description: "The circuit breaker for {{ $labels.service }} has been open for more than 1 minute. This indicates repeated failures in the Score Service API."
+          impact: "Users may experience degraded functionality or timeouts when checking eligibility."
+          action: "Check Score Service health, review error logs, and verify API connectivity."
+          runbook_url: "https://wiki.arrakis.io/runbooks/circuit-breaker-open"
+
+      # Alert when circuit breaker is half-open (recovery testing)
+      - alert: CircuitBreakerHalfOpen
+        expr: arrakis_circuit_breaker_state{service="score_service"} == 1
+        for: 2m
+        labels:
+          severity: warning
+          service: score_service
+          component: circuit_breaker
+        annotations:
+          summary: "Circuit breaker is HALF-OPEN for {{ $labels.service }}"
+          description: "The circuit breaker for {{ $labels.service }} is in half-open state, testing service recovery. If this persists, the circuit may reopen."
+          impact: "Reduced throughput as the service tests recovery."
+          action: "Monitor service health and error rates. Be prepared for circuit to reopen if tests fail."
+
+      # Alert on high error rate (approaching circuit breaker threshold)
+      - alert: HighCircuitBreakerErrorRate
+        expr: |
+          (
+            rate(arrakis_circuit_breaker_requests_total{service="score_service",result="failure"}[5m])
+            /
+            rate(arrakis_circuit_breaker_requests_total{service="score_service"}[5m])
+          ) > 0.3
+        for: 3m
+        labels:
+          severity: warning
+          service: score_service
+          component: circuit_breaker
+        annotations:
+          summary: "High error rate detected for {{ $labels.service }}"
+          description: "Error rate is {{ $value | humanizePercentage }} over the last 5 minutes. Circuit breaker opens at 50%."
+          impact: "Service may be degraded. Circuit breaker may open if error rate continues to increase."
+          action: "Investigate recent errors in Score Service logs. Check API health and network connectivity."
+
+      # Alert on excessive request rejections (circuit breaker is blocking requests)
+      - alert: ExcessiveCircuitBreakerRejections
+        expr: |
+          rate(arrakis_circuit_breaker_requests_total{service="score_service",result="rejected"}[5m]) > 5
+        for: 2m
+        labels:
+          severity: critical
+          service: score_service
+          component: circuit_breaker
+        annotations:
+          summary: "Circuit breaker is rejecting requests for {{ $labels.service }}"
+          description: "More than 5 requests per second are being rejected by the circuit breaker. Circuit is likely open."
+          impact: "Users cannot access Score Service functionality. Eligibility checks may fail or degrade."
+          action: "Verify Score Service is operational. Check circuit breaker state and recent error logs."
+
+      # Alert on high latency (p99 > 5 seconds)
+      - alert: HighCircuitBreakerLatency
+        expr: |
+          histogram_quantile(0.99, rate(arrakis_circuit_breaker_latency_seconds_bucket{service="score_service"}[5m])) > 5
+        for: 3m
+        labels:
+          severity: warning
+          service: score_service
+          component: circuit_breaker
+        annotations:
+          summary: "High latency detected for {{ $labels.service }}"
+          description: "P99 latency is {{ $value }}s over the last 5 minutes. Timeout threshold is 5s."
+          impact: "Slow response times may impact user experience and trigger timeouts."
+          action: "Check Score Service performance metrics. Investigate database queries and external API calls."
+
+      # Alert on frequent state transitions (flapping)
+      - alert: CircuitBreakerFlapping
+        expr: |
+          rate(arrakis_circuit_breaker_state_transitions_total{service="score_service"}[5m]) > 2
+        for: 5m
+        labels:
+          severity: warning
+          service: score_service
+          component: circuit_breaker
+        annotations:
+          summary: "Circuit breaker is flapping for {{ $labels.service }}"
+          description: "Circuit breaker is transitioning states more than 2 times per 5 minutes. This indicates an unstable service."
+          impact: "Unpredictable service behavior. Users may experience intermittent failures."
+          action: "Investigate root cause of service instability. Check for network issues or resource constraints."
+
+      # Alert on zero successful requests (complete outage)
+      - alert: CircuitBreakerNoSuccesses
+        expr: |
+          rate(arrakis_circuit_breaker_requests_total{service="score_service",result="success"}[5m]) == 0
+        for: 3m
+        labels:
+          severity: critical
+          service: score_service
+          component: circuit_breaker
+        annotations:
+          summary: "No successful requests for {{ $labels.service }}"
+          description: "Zero successful requests have been processed in the last 5 minutes. Service may be completely down."
+          impact: "Complete service outage. Users cannot access Score Service functionality."
+          action: "URGENT: Check Score Service status immediately. Verify API is running and accessible."
+
+      # Alert on timeout errors
+      - alert: HighCircuitBreakerTimeouts
+        expr: |
+          rate(arrakis_circuit_breaker_errors_total{service="score_service",error_type="timeout"}[5m]) > 1
+        for: 2m
+        labels:
+          severity: warning
+          service: score_service
+          component: circuit_breaker
+        annotations:
+          summary: "High timeout rate for {{ $labels.service }}"
+          description: "More than 1 timeout per second over the last 5 minutes. Service may be overloaded."
+          impact: "Slow response times and potential circuit breaker opening."
+          action: "Check Score Service performance and resource usage. Consider scaling or optimizing queries."
+
+# Notification channels (example configuration)
+# Configure these in Grafana UI or via provisioning
+notification_policies:
+  - name: circuit_breaker_critical
+    receiver: ops_team_pagerduty
+    matchers:
+      - severity = critical
+      - component = circuit_breaker
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+
+  - name: circuit_breaker_warning
+    receiver: ops_team_slack
+    matchers:
+      - severity = warning
+      - component = circuit_breaker
+    group_wait: 1m
+    group_interval: 10m
+    repeat_interval: 12h
+
+# Contact points (configure in Grafana UI)
+contact_points:
+  - name: ops_team_pagerduty
+    type: pagerduty
+    # Configure integration key in Grafana UI
+
+  - name: ops_team_slack
+    type: slack
+    # Configure webhook URL in Grafana UI

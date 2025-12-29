@@ -1,8 +1,9 @@
 /**
- * Security Package - Kill Switch, MFA, Audit Logs & API Keys
+ * Security Package - Kill Switch, MFA, Audit Logs, API Keys & Session Security
  *
  * Sprint 47: Kill Switch & MFA for Arrakis SaaS
  * Sprint 50: Post-Audit Hardening (P0)
+ * Sprint 51: Session Security Enhancements (P1)
  *
  * @module packages/security
  */
@@ -40,3 +41,13 @@ export type {
   KeyRotationResult,
   KeyValidationResult,
 } from './ApiKeyManager.js';
+
+// Secure Session Store (Sprint 51)
+export { SecureSessionStore, createSecureSessionStore } from './SecureSessionStore.js';
+export type {
+  SecureSessionStoreConfig,
+  SecureSession,
+  SessionSecurityContext,
+  SessionValidationResult,
+  RateLimitStatus,
+} from './SecureSessionStore.js';

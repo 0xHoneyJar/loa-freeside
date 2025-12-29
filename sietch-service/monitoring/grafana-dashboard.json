@@ -1,0 +1,174 @@
+{
+  "dashboard": {
+    "title": "Arrakis Circuit Breaker Observability",
+    "tags": ["circuit-breaker", "arrakis", "observability"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Circuit Breaker State",
+        "type": "stat",
+        "gridPos": { "x": 0, "y": 0, "w": 8, "h": 4 },
+        "targets": [
+          {
+            "expr": "arrakis_circuit_breaker_state{service=\"score_service\"}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "graphMode": "none",
+          "colorMode": "value",
+          "justifyMode": "center"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              { "value": 0, "text": "CLOSED", "color": "green" },
+              { "value": 1, "text": "HALF-OPEN", "color": "yellow" },
+              { "value": 2, "text": "OPEN", "color": "red" }
+            ],
+            "thresholds": {
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 1, "color": "yellow" },
+                { "value": 2, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Request Rate (by result)",
+        "type": "timeseries",
+        "gridPos": { "x": 8, "y": 0, "w": 16, "h": 8 },
+        "targets": [
+          {
+            "expr": "rate(arrakis_circuit_breaker_requests_total{service=\"score_service\"}[5m])",
+            "legendFormat": "{{result}}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "legend": { "displayMode": "table", "placement": "bottom" }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Error Rate (%)",
+        "type": "timeseries",
+        "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "(rate(arrakis_circuit_breaker_requests_total{service=\"score_service\",result=\"failure\"}[5m]) / rate(arrakis_circuit_breaker_requests_total{service=\"score_service\"}[5m])) * 100",
+            "legendFormat": "Error Rate",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "thresholds": {
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 30, "color": "yellow" },
+                { "value": 50, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Request Latency (p50, p90, p99)",
+        "type": "timeseries",
+        "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, rate(arrakis_circuit_breaker_latency_seconds_bucket{service=\"score_service\"}[5m]))",
+            "legendFormat": "p50",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.90, rate(arrakis_circuit_breaker_latency_seconds_bucket{service=\"score_service\"}[5m]))",
+            "legendFormat": "p90",
+            "refId": "B"
+          },
+          {
+            "expr": "histogram_quantile(0.99, rate(arrakis_circuit_breaker_latency_seconds_bucket{service=\"score_service\"}[5m]))",
+            "legendFormat": "p99",
+            "refId": "C"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "thresholds": {
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 2, "color": "yellow" },
+                { "value": 5, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "State Transitions (last 24h)",
+        "type": "table",
+        "gridPos": { "x": 0, "y": 16, "w": 12, "h": 6 },
+        "targets": [
+          {
+            "expr": "increase(arrakis_circuit_breaker_state_transitions_total{service=\"score_service\"}[24h])",
+            "format": "table",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Error Breakdown",
+        "type": "piechart",
+        "gridPos": { "x": 12, "y": 16, "w": 12, "h": 6 },
+        "targets": [
+          {
+            "expr": "sum by (error_type) (rate(arrakis_circuit_breaker_errors_total{service=\"score_service\"}[5m]))",
+            "legendFormat": "{{error_type}}",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Rejection Rate",
+        "type": "timeseries",
+        "gridPos": { "x": 0, "y": 22, "w": 24, "h": 6 },
+        "targets": [
+          {
+            "expr": "rate(arrakis_circuit_breaker_requests_total{service=\"score_service\",result=\"rejected\"}[5m])",
+            "legendFormat": "Rejections/sec",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "thresholds": {
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 1, "color": "yellow" },
+                { "value": 5, "color": "red" }
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "refresh": "10s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    }
+  }
+}
