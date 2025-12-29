@@ -1,11 +1,12 @@
 # Software Design Document: Arrakis SaaS Platform v5.0
 
-**Version:** 5.0 "The Transformation"
-**Date:** 2025-12-28
+**Version:** 5.1 "The Transformation"
+**Date:** 2025-12-29
 **Author:** Architecture Designer Agent
-**Status:** Draft
-**PRD Reference:** loa-grimoire/prd.md
+**Status:** Approved - Post-Audit Hardening Required
+**PRD Reference:** loa-grimoire/prd.md (v5.1)
 **Architecture Reference:** loa-grimoire/context/new-context/arrakis-saas-architecture.md
+**Code Review Reference:** loa-grimoire/context/arrakis-v5-code-review.md
 
 ---
 
@@ -20,8 +21,9 @@
 7. [Testing Strategy](#7-testing-strategy)
 8. [Development Phases](#8-development-phases)
 9. [Known Risks and Mitigation](#9-known-risks-and-mitigation)
-10. [Open Questions](#10-open-questions)
-11. [Appendix](#11-appendix)
+10. [Hardening Architecture (Post-Audit)](#10-hardening-architecture-post-audit)
+11. [Open Questions](#11-open-questions)
+12. [Appendix](#12-appendix)
 
 ---
 
@@ -1255,7 +1257,607 @@ describe('TwoTierChainProvider', () => {
 
 ---
 
-## 10. Open Questions
+## 10. Hardening Architecture (Post-Audit)
+
+> Reference: PRD v5.1 Section 10 - Hardening Requirements (arrakis-v5-code-review.md)
+
+This section details the technical architecture for addressing critical findings from the December 2025 external code review.
+
+### 10.1 Audit Log Persistence Architecture
+
+**Problem:** In-memory audit logs in `KillSwitchProtocol.ts` are lost after 1000 entries.
+
+**Solution:** Asynchronous database persistence with write-ahead buffer.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  AUDIT LOG PERSISTENCE                           │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐       │
+│  │ KillSwitch   │    │ Write-Ahead  │    │ PostgreSQL   │       │
+│  │ Protocol     │───▶│ Buffer       │───▶│ audit_logs   │       │
+│  │ (in-memory)  │    │ (Redis)      │    │ (persisted)  │       │
+│  └──────────────┘    └──────────────┘    └──────────────┘       │
+│         │                                        │               │
+│         │                                        ▼               │
+│         │                               ┌──────────────┐         │
+│         │                               │ S3 Archive   │         │
+│         └──────────────────────────────▶│ (cold)       │         │
+│                failover                  └──────────────┘         │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Database Schema:**
+
+```sql
+CREATE TABLE audit_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID REFERENCES communities(id),
+    event_type TEXT NOT NULL,  -- 'KILL_SWITCH_ACTIVATED', 'MFA_VERIFIED', etc.
+    actor_id TEXT NOT NULL,    -- User/service that triggered event
+    target_scope TEXT,         -- 'GLOBAL', 'COMMUNITY', 'USER'
+    target_id TEXT,            -- Affected entity ID
+    payload JSONB NOT NULL,    -- Event-specific data
+    hmac_signature TEXT NOT NULL,  -- Integrity verification
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+
+    CONSTRAINT valid_event_type CHECK (event_type IN (
+        'KILL_SWITCH_ACTIVATED', 'KILL_SWITCH_DEACTIVATED',
+        'MFA_VERIFIED', 'MFA_FAILED', 'SESSION_REVOKED',
+        'VAULT_POLICY_REVOKED', 'API_KEY_ROTATED'
+    ))
+);
+
+CREATE INDEX idx_audit_logs_tenant ON audit_logs(tenant_id);
+CREATE INDEX idx_audit_logs_type ON audit_logs(event_type);
+CREATE INDEX idx_audit_logs_created ON audit_logs(created_at);
+
+-- RLS for tenant-scoped audit logs
+ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON audit_logs
+    USING (tenant_id = current_setting('app.current_tenant')::UUID
+           OR tenant_id IS NULL);  -- Global events visible to all
+
+-- Retention: Partition by month for efficient archival
+CREATE TABLE audit_logs_y2025m12 PARTITION OF audit_logs
+    FOR VALUES FROM ('2025-12-01') TO ('2026-01-01');
+```
+
+**Implementation:**
+
+```typescript
+// packages/security/AuditLogPersistence.ts
+
+export class AuditLogPersistence {
+  private writeBuffer: Redis;
+  private db: DrizzleClient;
+  private flushIntervalMs = 1000;  // Flush every second
+
+  constructor(redis: Redis, db: DrizzleClient) {
+    this.writeBuffer = redis;
+    this.db = db;
+    this.startFlushLoop();
+  }
+
+  async log(entry: AuditLogEntry): Promise<void> {
+    // Sign entry for integrity
+    const signature = this.signEntry(entry);
+    const signedEntry = { ...entry, hmac_signature: signature };
+
+    // Write to Redis buffer first (fast path)
+    await this.writeBuffer.rpush('audit:buffer', JSON.stringify(signedEntry));
+  }
+
+  private async flushToDB(): Promise<void> {
+    const entries = await this.writeBuffer.lrange('audit:buffer', 0, 99);
+    if (entries.length === 0) return;
+
+    const parsed = entries.map(e => JSON.parse(e));
+
+    await this.db.insert(auditLogs).values(parsed);
+    await this.writeBuffer.ltrim('audit:buffer', entries.length, -1);
+  }
+
+  private signEntry(entry: AuditLogEntry): string {
+    const payload = JSON.stringify(entry);
+    return crypto.createHmac('sha256', process.env.AUDIT_HMAC_KEY!)
+      .update(payload)
+      .digest('hex');
+  }
+}
+```
+
+### 10.2 Circuit Breaker Observability
+
+**Problem:** No metrics for circuit breaker state changes in ScoreServiceAdapter.
+
+**Solution:** Prometheus metrics + alerting integration.
+
+```typescript
+// packages/adapters/chain/ScoreServiceAdapter.ts (enhanced)
+
+import { Counter, Gauge, Histogram } from 'prom-client';
+
+export class ScoreServiceAdapterMetrics {
+  // Circuit state gauge (0=closed, 1=half-open, 2=open)
+  static circuitState = new Gauge({
+    name: 'score_service_circuit_state',
+    help: 'Circuit breaker state (0=closed, 1=half-open, 2=open)',
+  });
+
+  // State transition counter
+  static stateTransitions = new Counter({
+    name: 'score_service_circuit_transitions_total',
+    help: 'Circuit breaker state transitions',
+    labelNames: ['from_state', 'to_state'],
+  });
+
+  // Request latency histogram
+  static requestLatency = new Histogram({
+    name: 'score_service_request_duration_seconds',
+    help: 'Score service request latency',
+    buckets: [0.1, 0.25, 0.5, 1, 2.5, 5],
+  });
+
+  // Fallback counter
+  static fallbackInvocations = new Counter({
+    name: 'score_service_fallback_total',
+    help: 'Number of times fallback was invoked',
+    labelNames: ['reason'],
+  });
+}
+
+// Register circuit breaker events
+this.scoreBreaker.on('open', () => {
+  ScoreServiceAdapterMetrics.circuitState.set(2);
+  ScoreServiceAdapterMetrics.stateTransitions.inc({
+    from_state: 'half_open', to_state: 'open'
+  });
+  logger.warn({ event: 'circuit_open' }, 'Score service circuit opened');
+});
+
+this.scoreBreaker.on('halfOpen', () => {
+  ScoreServiceAdapterMetrics.circuitState.set(1);
+  ScoreServiceAdapterMetrics.stateTransitions.inc({
+    from_state: 'open', to_state: 'half_open'
+  });
+});
+
+this.scoreBreaker.on('close', () => {
+  ScoreServiceAdapterMetrics.circuitState.set(0);
+  ScoreServiceAdapterMetrics.stateTransitions.inc({
+    from_state: 'half_open', to_state: 'closed'
+  });
+  logger.info({ event: 'circuit_closed' }, 'Score service circuit recovered');
+});
+
+this.scoreBreaker.on('fallback', () => {
+  ScoreServiceAdapterMetrics.fallbackInvocations.inc({ reason: 'circuit_open' });
+});
+```
+
+**Alerting Rules (Prometheus):**
+
+```yaml
+groups:
+  - name: score_service_alerts
+    rules:
+      - alert: ScoreServiceCircuitOpen
+        expr: score_service_circuit_state == 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Score service circuit breaker open for >5 minutes"
+          description: "The circuit breaker has been open, indicating Score Service degradation"
+
+      - alert: ScoreServiceHighLatency
+        expr: histogram_quantile(0.95, score_service_request_duration_seconds_bucket) > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Score service p95 latency >2s"
+```
+
+### 10.3 Session Security Enhancement
+
+**Problem:** Wizard sessions lack IP binding or device fingerprinting.
+
+**Solution:** Enhanced session with security context.
+
+```typescript
+// packages/wizard/SecureSession.ts
+
+export interface SecureSessionContext {
+  sessionId: string;
+  userId: string;
+  guildId: string;
+
+  // Security context
+  originIp: string;
+  deviceFingerprint: string;
+  userAgent: string;
+  createdAt: Date;
+  lastVerifiedAt: Date;
+}
+
+export class SecureSessionStore {
+  private redis: Redis;
+  private rateLimiter: RateLimiter;
+
+  async createSession(
+    interaction: Interaction,
+    request: Request
+  ): Promise<SecureSessionContext> {
+    const ip = this.extractClientIp(request);
+
+    // Rate limit: max 5 sessions per IP per hour
+    const rateKey = `session:rate:${ip}`;
+    const count = await this.redis.incr(rateKey);
+    if (count === 1) await this.redis.expire(rateKey, 3600);
+    if (count > 5) {
+      throw new RateLimitError('Too many session creations from this IP');
+    }
+
+    const session: SecureSessionContext = {
+      sessionId: crypto.randomUUID(),
+      userId: interaction.user.id,
+      guildId: interaction.guildId!,
+      originIp: ip,
+      deviceFingerprint: this.generateFingerprint(request),
+      userAgent: request.headers.get('user-agent') || 'unknown',
+      createdAt: new Date(),
+      lastVerifiedAt: new Date(),
+    };
+
+    await this.redis.set(
+      `session:${session.sessionId}`,
+      JSON.stringify(session),
+      'EX', 900  // 15 min TTL
+    );
+
+    return session;
+  }
+
+  async validateSession(
+    sessionId: string,
+    request: Request
+  ): Promise<SecureSessionContext> {
+    const session = await this.getSession(sessionId);
+    if (!session) {
+      throw new SessionNotFoundError('Session expired or not found');
+    }
+
+    const currentIp = this.extractClientIp(request);
+    const currentFingerprint = this.generateFingerprint(request);
+
+    // IP mismatch - suspicious activity
+    if (session.originIp !== currentIp) {
+      await this.logSecurityEvent('IP_MISMATCH', session, { currentIp });
+      throw new SessionSecurityError('Session IP mismatch - please restart wizard');
+    }
+
+    // Fingerprint mismatch - possible hijack attempt
+    if (session.deviceFingerprint !== currentFingerprint) {
+      await this.logSecurityEvent('FINGERPRINT_MISMATCH', session, { currentFingerprint });
+      throw new SessionSecurityError('Session device mismatch - please restart wizard');
+    }
+
+    // Update last verified timestamp
+    session.lastVerifiedAt = new Date();
+    await this.redis.set(
+      `session:${sessionId}`,
+      JSON.stringify(session),
+      'KEEPTTL'
+    );
+
+    return session;
+  }
+
+  private generateFingerprint(request: Request): string {
+    const components = [
+      request.headers.get('user-agent'),
+      request.headers.get('accept-language'),
+      request.headers.get('accept-encoding'),
+    ].filter(Boolean).join('|');
+
+    return crypto.createHash('sha256').update(components).digest('hex').slice(0, 16);
+  }
+}
+```
+
+### 10.4 API Key Rotation Mechanism
+
+**Problem:** API keys have no rotation mechanism.
+
+**Solution:** Key versioning with grace period.
+
+```typescript
+// packages/security/ApiKeyRotation.ts
+
+export interface ApiKeyRecord {
+  keyId: string;
+  keyHash: string;  // Never store plaintext
+  version: number;
+  tenantId: string;
+  createdAt: Date;
+  expiresAt: Date | null;
+  revokedAt: Date | null;
+  lastUsedAt: Date | null;
+}
+
+export class ApiKeyManager {
+  private db: DrizzleClient;
+  private gracePeriodHours = 24;
+
+  async rotateKey(tenantId: string): Promise<{ newKey: string; expiresOldAt: Date }> {
+    // Generate new key
+    const newKeyPlaintext = this.generateSecureKey();
+    const newKeyHash = await this.hashKey(newKeyPlaintext);
+    const keyId = `key_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
+
+    // Get current key version
+    const currentKey = await this.getCurrentKey(tenantId);
+    const newVersion = currentKey ? currentKey.version + 1 : 1;
+
+    // Set expiration on old key (grace period)
+    const oldExpiresAt = new Date(Date.now() + this.gracePeriodHours * 60 * 60 * 1000);
+
+    await this.db.transaction(async (tx) => {
+      // Mark old key as expiring
+      if (currentKey) {
+        await tx.update(apiKeys)
+          .set({ expiresAt: oldExpiresAt })
+          .where(eq(apiKeys.keyId, currentKey.keyId));
+      }
+
+      // Insert new key
+      await tx.insert(apiKeys).values({
+        keyId,
+        keyHash: newKeyHash,
+        version: newVersion,
+        tenantId,
+        createdAt: new Date(),
+        expiresAt: null,
+        revokedAt: null,
+      });
+    });
+
+    // Log rotation event
+    await this.auditLog.log({
+      event_type: 'API_KEY_ROTATED',
+      tenant_id: tenantId,
+      payload: { keyId, version: newVersion, oldExpiresAt },
+    });
+
+    // Notify tenant of rotation
+    await this.notifyKeyRotation(tenantId, oldExpiresAt);
+
+    return {
+      newKey: `${keyId}.${newKeyPlaintext}`,
+      expiresOldAt: oldExpiresAt,
+    };
+  }
+
+  async validateKey(apiKey: string): Promise<ApiKeyRecord | null> {
+    const [keyId, keyPlaintext] = apiKey.split('.');
+    if (!keyId || !keyPlaintext) return null;
+
+    const keyHash = await this.hashKey(keyPlaintext);
+
+    const record = await this.db.select()
+      .from(apiKeys)
+      .where(and(
+        eq(apiKeys.keyId, keyId),
+        eq(apiKeys.keyHash, keyHash),
+        isNull(apiKeys.revokedAt),
+        or(
+          isNull(apiKeys.expiresAt),
+          gt(apiKeys.expiresAt, new Date())
+        )
+      ))
+      .limit(1);
+
+    if (record.length === 0) return null;
+
+    // Update last used timestamp
+    await this.db.update(apiKeys)
+      .set({ lastUsedAt: new Date() })
+      .where(eq(apiKeys.keyId, keyId));
+
+    return record[0];
+  }
+
+  async revokeKey(keyId: string, reason: string): Promise<void> {
+    await this.db.update(apiKeys)
+      .set({ revokedAt: new Date() })
+      .where(eq(apiKeys.keyId, keyId));
+
+    await this.auditLog.log({
+      event_type: 'API_KEY_REVOKED',
+      payload: { keyId, reason },
+    });
+  }
+}
+```
+
+### 10.5 Error Response Standardization
+
+**Problem:** Inconsistent error response formats across endpoints.
+
+**Solution:** Unified `ApiError` schema with correlation IDs.
+
+```typescript
+// packages/core/errors/ApiError.ts
+
+export enum ErrorCode {
+  // Validation errors (400)
+  INVALID_INPUT = 'INVALID_INPUT',
+  INVALID_WALLET_ADDRESS = 'INVALID_WALLET_ADDRESS',
+  INVALID_CRITERIA = 'INVALID_CRITERIA',
+
+  // Auth errors (401)
+  UNAUTHORIZED = 'UNAUTHORIZED',
+  TOKEN_EXPIRED = 'TOKEN_EXPIRED',
+
+  // Permission errors (403)
+  FORBIDDEN = 'FORBIDDEN',
+  INSUFFICIENT_TIER = 'INSUFFICIENT_TIER',
+  MFA_REQUIRED = 'MFA_REQUIRED',
+
+  // Not found errors (404)
+  COMMUNITY_NOT_FOUND = 'COMMUNITY_NOT_FOUND',
+  PROFILE_NOT_FOUND = 'PROFILE_NOT_FOUND',
+
+  // Rate limit errors (429)
+  RATE_LIMITED = 'RATE_LIMITED',
+  GLOBAL_RATE_LIMITED = 'GLOBAL_RATE_LIMITED',
+
+  // Service errors (503)
+  SCORE_SERVICE_UNAVAILABLE = 'SCORE_SERVICE_UNAVAILABLE',
+  CIRCUIT_BREAKER_OPEN = 'CIRCUIT_BREAKER_OPEN',
+
+  // Server errors (500)
+  INTERNAL_ERROR = 'INTERNAL_ERROR',
+}
+
+export interface ApiErrorResponse {
+  error: {
+    code: ErrorCode;
+    message: string;
+    correlationId: string;
+    timestamp: string;
+    details?: Record<string, unknown>;
+    // Only in non-production
+    stack?: string;
+  };
+}
+
+export class ApiError extends Error {
+  constructor(
+    public code: ErrorCode,
+    message: string,
+    public statusCode: number,
+    public details?: Record<string, unknown>
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+
+  toResponse(correlationId: string, includeStack = false): ApiErrorResponse {
+    return {
+      error: {
+        code: this.code,
+        message: this.message,
+        correlationId,
+        timestamp: new Date().toISOString(),
+        details: this.details,
+        ...(includeStack && { stack: this.stack }),
+      },
+    };
+  }
+}
+
+// Middleware: Global error handler
+export function errorHandler(err: Error, c: Context): Response {
+  const correlationId = c.get('correlationId') || crypto.randomUUID();
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  if (err instanceof ApiError) {
+    return c.json(err.toResponse(correlationId, !isProduction), err.statusCode);
+  }
+
+  // Unknown error - sanitize in production
+  logger.error({ err, correlationId }, 'Unhandled error');
+
+  return c.json({
+    error: {
+      code: ErrorCode.INTERNAL_ERROR,
+      message: isProduction ? 'An unexpected error occurred' : err.message,
+      correlationId,
+      timestamp: new Date().toISOString(),
+      ...(!isProduction && { stack: err.stack }),
+    },
+  }, 500);
+}
+```
+
+### 10.6 Hardening Validation Tests
+
+```typescript
+// tests/hardening/audit-log-persistence.test.ts
+describe('Audit Log Persistence', () => {
+  it('should persist logs to PostgreSQL within 1 second', async () => {
+    const persistence = new AuditLogPersistence(redis, db);
+
+    await persistence.log({
+      event_type: 'KILL_SWITCH_ACTIVATED',
+      actor_id: 'user-123',
+      target_scope: 'COMMUNITY',
+      target_id: 'community-456',
+      payload: { reason: 'test' },
+    });
+
+    // Wait for flush
+    await new Promise(r => setTimeout(r, 1500));
+
+    const logs = await db.select().from(auditLogs);
+    expect(logs.length).toBe(1);
+    expect(logs[0].event_type).toBe('KILL_SWITCH_ACTIVATED');
+  });
+
+  it('should verify HMAC signature on retrieval', async () => {
+    // Insert log directly (simulating tampering)
+    await db.insert(auditLogs).values({
+      event_type: 'KILL_SWITCH_ACTIVATED',
+      actor_id: 'user-123',
+      payload: { reason: 'test' },
+      hmac_signature: 'invalid_signature',
+    });
+
+    const verifier = new AuditLogVerifier(db);
+    const result = await verifier.verifyIntegrity();
+
+    expect(result.valid).toBe(false);
+    expect(result.tamperedEntries.length).toBe(1);
+  });
+});
+
+// tests/hardening/session-security.test.ts
+describe('Session Security', () => {
+  it('should reject session from different IP', async () => {
+    const store = new SecureSessionStore(redis);
+
+    const session = await store.createSession(mockInteraction, mockRequest('1.2.3.4'));
+
+    await expect(
+      store.validateSession(session.sessionId, mockRequest('5.6.7.8'))
+    ).rejects.toThrow('Session IP mismatch');
+  });
+
+  it('should rate limit session creation per IP', async () => {
+    const store = new SecureSessionStore(redis);
+    const ip = '1.2.3.4';
+
+    // Create 5 sessions (limit)
+    for (let i = 0; i < 5; i++) {
+      await store.createSession(mockInteraction, mockRequest(ip));
+    }
+
+    // 6th should fail
+    await expect(
+      store.createSession(mockInteraction, mockRequest(ip))
+    ).rejects.toThrow('Too many session creations');
+  });
+});
+```
+
+---
+
+## 11. Open Questions
 
 | Question | Owner | Due Date | Status |
 |----------|-------|----------|--------|
@@ -1266,7 +1868,7 @@ describe('TwoTierChainProvider', () => {
 
 ---
 
-## 11. Appendix
+## 12. Appendix
 
 ### A. Glossary
 
@@ -1296,8 +1898,9 @@ describe('TwoTierChainProvider', () => {
 |---------|------|---------|--------|
 | 4.1 | 2025-12-27 | Telegram integration | Architecture Designer |
 | 5.0 | 2025-12-28 | SaaS transformation - complete redesign | Architecture Designer |
+| 5.1 | 2025-12-29 | Added Section 10: Hardening Architecture from external code review | Architecture Designer |
 
 ---
 
 *Generated by Architecture Designer Agent*
-*Next Step: `/sprint-plan` to break down Phase 0-6 into actionable sprints*
+*Next Step: Implement hardening requirements (Section 10) before production deployment*
