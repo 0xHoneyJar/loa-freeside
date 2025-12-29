@@ -3,7 +3,7 @@
 [![Version](https://img.shields.io/badge/version-5.0.0-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-green.svg)](LICENSE.md)
 
-A multi-tenant SaaS platform for token-gated communities on Berachain and beyond. Deploy wallet-based access control, tiered progression systems, and cross-platform bots through a self-service wizard.
+A multi-tenant SaaS platform for token-gated onchain communities and beyond. Deploy wallet-based access control, tiered progression systems, and cross-platform bots through a self-service wizard.
 
 **Version 5.0.0 "The Transformation"** - Complete SaaS architecture overhaul with multi-tenancy, chain abstraction, and enterprise-grade infrastructure.
 
