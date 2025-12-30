@@ -554,11 +554,22 @@ export class KillSwitchProtocol {
 
   /**
    * Send Discord webhook notification
+   *
+   * SECURITY: Sprint 66 (HIGH-002) - HMAC signature for webhook authentication
    */
   private async sendDiscordWebhook(notification: AdminNotificationOptions): Promise<void> {
     const webhookUrl = notification.webhookUrl ?? this.adminWebhookUrl;
     if (!webhookUrl) {
       return;
+    }
+
+    // HIGH-002: Validate webhook URL against whitelist
+    const allowedWebhooks = process.env.ALLOWED_WEBHOOKS?.split(',') || [];
+    if (allowedWebhooks.length > 0) {
+      const isAllowed = allowedWebhooks.some((allowed) => webhookUrl.startsWith(allowed.trim()));
+      if (!isAllowed) {
+        throw new Error(`Webhook URL not in whitelist: ${webhookUrl}`);
+      }
     }
 
     const payload = {
@@ -575,17 +586,36 @@ export class KillSwitchProtocol {
       ],
     };
 
+    const payloadString = JSON.stringify(payload);
+
+    // HIGH-002: Sign webhook payload with HMAC-SHA256
+    // SECURITY: Fail-closed - require explicit secret (no predictable default)
+    const webhookSecret = process.env.WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      throw new Error(
+        'WEBHOOK_SECRET environment variable is required for webhook authentication. ' +
+        'Generate one with: openssl rand -hex 32'
+      );
+    }
+    const signature = crypto.createHmac('sha256', webhookSecret)
+      .update(payloadString)
+      .digest('hex');
+
     const response = await fetch(webhookUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'X-Signature': signature,
+        'X-Timestamp': new Date().toISOString(),
       },
-      body: JSON.stringify(payload),
+      body: payloadString,
     });
 
     if (!response.ok) {
       throw new Error(`Webhook request failed: ${response.status}`);
     }
+
+    this.log('Webhook sent with HMAC signature', { webhookUrl: webhookUrl.substring(0, 50) });
   }
 
   /**

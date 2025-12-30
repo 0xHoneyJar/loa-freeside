@@ -29,9 +29,42 @@ export interface SessionSecurityContext {
   userAgent: string;
   /** Accept header */
   acceptHeader?: string;
+  /** Accept-Language header (Sprint 66 HIGH-006) */
+  acceptLanguage?: string;
+  /** Accept-Encoding header (Sprint 66 HIGH-006) */
+  acceptEncoding?: string;
+  /** Client Hints: sec-ch-ua (Sprint 66 HIGH-006) */
+  secChUa?: string;
+  /** Client Hints: sec-ch-ua-mobile (Sprint 66 HIGH-006) */
+  secChUaMobile?: string;
+  /** Client Hints: sec-ch-ua-platform (Sprint 66 HIGH-006) */
+  secChUaPlatform?: string;
   /** Additional context headers */
   customHeaders?: Record<string, string>;
 }
+
+/**
+ * Session tier levels (Sprint 66 HIGH-003)
+ *
+ * Different security tiers for different operation sensitivity:
+ * - STANDARD: Regular operations (900s TTL)
+ * - ELEVATED: Sensitive operations (300s TTL)
+ * - PRIVILEGED: Critical operations like kill switch, key rotation (60s TTL)
+ */
+export enum SessionTier {
+  STANDARD = 'STANDARD',
+  ELEVATED = 'ELEVATED',
+  PRIVILEGED = 'PRIVILEGED',
+}
+
+/**
+ * Session tier TTL configuration (seconds)
+ */
+export const SESSION_TIER_TTL: Record<SessionTier, number> = {
+  [SessionTier.STANDARD]: 900,    // 15 minutes
+  [SessionTier.ELEVATED]: 300,    // 5 minutes
+  [SessionTier.PRIVILEGED]: 60,   // 1 minute
+};
 
 /**
  * Secure session data
@@ -57,6 +90,10 @@ export interface SecureSession {
   expiresAt: Date;
   /** Failed validation attempts */
   failedAttempts: number;
+  /** Session security tier (Sprint 66 HIGH-003) */
+  tier: SessionTier;
+  /** Whether MFA was used for this session (Sprint 66 HIGH-003) */
+  mfaVerified: boolean;
 }
 
 /**
@@ -166,16 +203,30 @@ export class SecureSessionStore {
    *
    * Combines User-Agent and Accept headers to create unique device identifier.
    * Uses SHA256 hash for consistent fingerprint generation.
+   *
+   * SECURITY: Sprint 66 (HIGH-006) - Strengthened with additional headers
    */
   generateDeviceFingerprint(context: SessionSecurityContext): string {
     const components = [
       context.userAgent,
       context.acceptHeader ?? '',
-      // Additional headers can be added here for stronger fingerprinting
+      context.acceptLanguage ?? '',
+      context.acceptEncoding ?? '',
+      context.secChUa ?? '',
+      context.secChUaMobile ?? '',
+      context.secChUaPlatform ?? '',
     ].filter(Boolean);
 
     const fingerprintString = components.join('|');
-    return crypto.createHash('sha256').update(fingerprintString).digest('hex');
+    const fingerprint = crypto.createHash('sha256').update(fingerprintString).digest('hex');
+
+    // Log fingerprint for collision detection (HIGH-006)
+    this.logger.debug(
+      { fingerprint: fingerprint.substring(0, 8), components: components.length },
+      'Device fingerprint generated'
+    );
+
+    return fingerprint;
   }
 
   /**
@@ -185,8 +236,14 @@ export class SecureSessionStore {
     userId: string,
     guildId: string,
     context: SessionSecurityContext,
-    data: Record<string, unknown> = {}
+    data: Record<string, unknown> = {},
+    tier: SessionTier = SessionTier.STANDARD,
+    mfaVerified: boolean = false
   ): Promise<SecureSession> {
+    // HIGH-001: Validate inputs to prevent Redis glob injection
+    this.validateUserId(userId);
+    this.validateGuildId(guildId);
+
     // Check rate limit before creating session
     const rateLimitStatus = await this.checkRateLimit(userId, guildId);
     if (rateLimitStatus.limited) {
@@ -201,8 +258,10 @@ export class SecureSessionStore {
     // Generate device fingerprint
     const deviceFingerprint = this.generateDeviceFingerprint(context);
 
+    // HIGH-003: Use tier-based TTL
+    const tierTtl = SESSION_TIER_TTL[tier];
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + this.sessionTtl * 1000);
+    const expiresAt = new Date(now.getTime() + tierTtl * 1000);
 
     const session: SecureSession = {
       sessionId,
@@ -215,13 +274,20 @@ export class SecureSessionStore {
       lastAccessedAt: now,
       expiresAt,
       failedAttempts: 0,
+      tier,
+      mfaVerified,
     };
 
-    // Store session in Redis
+    // Store session in Redis with tier-based TTL
     await this.redis.setex(
       this.sessionKey(sessionId),
-      this.sessionTtl,
+      tierTtl,
       JSON.stringify(session)
+    );
+
+    this.logger.info(
+      { userId, guildId, sessionId, tier, mfaVerified },
+      'Session created with tier'
     );
 
     return session;
@@ -331,8 +397,14 @@ export class SecureSessionStore {
 
   /**
    * Revoke all sessions for a user (e.g., on password reset)
+   *
+   * SECURITY: Sprint 66 (HIGH-001) - Input validation prevents Redis glob injection
    */
   async revokeUserSessions(userId: string, guildId: string): Promise<number> {
+    // HIGH-001: Validate user ID format to prevent Redis glob injection
+    this.validateUserId(userId);
+    this.validateGuildId(guildId);
+
     // Scan for all sessions matching user + guild
     const pattern = `${this.keyPrefix}:*`;
     const keys = await this.scanKeys(pattern);
@@ -428,10 +500,151 @@ export class SecureSessionStore {
   }
 
   /**
+   * Elevate session to higher security tier
+   *
+   * SECURITY: Sprint 66 (HIGH-003)
+   * Requires MFA re-authentication for PRIVILEGED tier elevation
+   */
+  async elevateSession(
+    sessionId: string,
+    newTier: SessionTier,
+    mfaVerified: boolean = false
+  ): Promise<SecureSession> {
+    // Retrieve current session
+    const sessionData = await this.redis.get(this.sessionKey(sessionId));
+    if (!sessionData) {
+      throw new Error('Session not found');
+    }
+
+    const session: SecureSession = JSON.parse(sessionData);
+
+    // HIGH-003: Require MFA for PRIVILEGED tier
+    if (newTier === SessionTier.PRIVILEGED && !mfaVerified) {
+      throw new Error('MFA verification required for PRIVILEGED tier elevation');
+    }
+
+    // Prevent tier downgrade (security policy)
+    const tierHierarchy = {
+      [SessionTier.STANDARD]: 0,
+      [SessionTier.ELEVATED]: 1,
+      [SessionTier.PRIVILEGED]: 2,
+    };
+
+    if (tierHierarchy[newTier] < tierHierarchy[session.tier]) {
+      throw new Error(`Cannot downgrade session tier from ${session.tier} to ${newTier}`);
+    }
+
+    // Update session tier and TTL
+    const tierTtl = SESSION_TIER_TTL[newTier];
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + tierTtl * 1000);
+
+    const elevatedSession: SecureSession = {
+      ...session,
+      tier: newTier,
+      mfaVerified: mfaVerified || session.mfaVerified,
+      expiresAt,
+      lastAccessedAt: now,
+    };
+
+    // Store with new TTL
+    await this.redis.setex(
+      this.sessionKey(sessionId),
+      tierTtl,
+      JSON.stringify(elevatedSession)
+    );
+
+    this.logger.warn(
+      { sessionId, userId: session.userId, oldTier: session.tier, newTier, mfaVerified },
+      'Session tier elevated'
+    );
+
+    return elevatedSession;
+  }
+
+  /**
+   * Require minimum session tier for operation
+   *
+   * SECURITY: Sprint 66 (HIGH-003)
+   * Throws error if session tier is insufficient
+   */
+  async requireTier(sessionId: string, minimumTier: SessionTier): Promise<SecureSession> {
+    const sessionData = await this.redis.get(this.sessionKey(sessionId));
+    if (!sessionData) {
+      throw new Error('Session not found or expired');
+    }
+
+    const session: SecureSession = JSON.parse(sessionData);
+
+    const tierHierarchy = {
+      [SessionTier.STANDARD]: 0,
+      [SessionTier.ELEVATED]: 1,
+      [SessionTier.PRIVILEGED]: 2,
+    };
+
+    if (tierHierarchy[session.tier] < tierHierarchy[minimumTier]) {
+      throw new Error(
+        `Operation requires ${minimumTier} tier, but session has ${session.tier} tier. ` +
+        `Please elevate your session.`
+      );
+    }
+
+    return session;
+  }
+
+  /**
    * Generate cryptographically secure session ID
    */
   private generateSessionId(): string {
     return crypto.randomBytes(32).toString('hex');
+  }
+
+  /**
+   * Validate user ID format to prevent Redis glob injection
+   *
+   * SECURITY: Sprint 66 (HIGH-001)
+   * Discord snowflakes are numeric strings (17-20 digits)
+   * Also accept alphanumeric with underscore/hyphen for flexibility
+   */
+  private validateUserId(userId: string): void {
+    if (!userId || typeof userId !== 'string') {
+      throw new Error('Invalid userId: must be a non-empty string');
+    }
+
+    // Allow alphanumeric, underscore, and hyphen (no Redis glob wildcards)
+    if (!/^[a-zA-Z0-9_-]+$/.test(userId)) {
+      throw new Error(
+        'Invalid userId format: must contain only alphanumeric characters, underscore, or hyphen'
+      );
+    }
+
+    // Length check (Discord snowflakes are 17-20 chars, but allow flexibility)
+    if (userId.length > 100) {
+      throw new Error('Invalid userId: exceeds maximum length of 100 characters');
+    }
+  }
+
+  /**
+   * Validate guild ID format to prevent Redis glob injection
+   *
+   * SECURITY: Sprint 66 (HIGH-001)
+   */
+  private validateGuildId(guildId: string): void {
+    if (!guildId || typeof guildId !== 'string') {
+      throw new Error('Invalid guildId: must be a non-empty string');
+    }
+
+    // Allow alphanumeric, underscore, and hyphen (no Redis glob wildcards)
+    if (!/^[a-zA-Z0-9_-]+$/.test(guildId)) {
+      throw new Error(
+        'Invalid guildId format: must contain only alphanumeric characters, underscore, or hyphen'
+      );
+    }
+
+    // Length check
+    if (guildId.length > 100) {
+      throw new Error('Invalid guildId: exceeds maximum length of 100 characters');
+    }
   }
 
   /**

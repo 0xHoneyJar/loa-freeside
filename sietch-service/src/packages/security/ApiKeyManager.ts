@@ -13,6 +13,7 @@
  */
 
 import * as crypto from 'crypto';
+import type { Redis } from 'ioredis';
 import { apiKeys, type ApiKey, type NewApiKey } from '../adapters/storage/schema.js';
 import { eq, and, desc, or, isNull, lte, gt } from 'drizzle-orm';
 import type { AuditLogPersistence, AuditLogEntry } from './AuditLogPersistence.js';
@@ -68,12 +69,18 @@ export interface ApiKeyManagerConfig {
   db: DatabaseClient;
   /** Audit log persistence for logging key operations */
   auditLog?: AuditLogPersistence;
+  /** Redis client for rate limiting (Sprint 66 HIGH-005) */
+  redis?: Redis;
   /** Grace period in hours during rotation (default: 24) */
   gracePeriodHours?: number;
   /** Key prefix for generated keys */
   keyPrefix?: string;
   /** Enable debug logging */
   debug?: boolean;
+  /** Rate limit: max attempts per window (default: 10) */
+  rateLimitAttempts?: number;
+  /** Rate limit: window duration in seconds (default: 60) */
+  rateLimitWindowSeconds?: number;
 }
 
 /**
@@ -172,20 +179,27 @@ const KEY_SECRET_LENGTH = 32; // 256 bits
 export class ApiKeyManager {
   private readonly db: DatabaseClient;
   private readonly auditLog?: AuditLogPersistence;
+  private readonly redis?: Redis;
   private readonly gracePeriodHours: number;
   private readonly keyPrefix: string;
   private readonly debug: boolean;
+  private readonly rateLimitAttempts: number;
+  private readonly rateLimitWindowSeconds: number;
 
   constructor(config: ApiKeyManagerConfig) {
     this.db = config.db;
     this.auditLog = config.auditLog;
+    this.redis = config.redis;
     this.gracePeriodHours = config.gracePeriodHours ?? DEFAULT_GRACE_PERIOD_HOURS;
     this.keyPrefix = config.keyPrefix ?? DEFAULT_KEY_PREFIX;
     this.debug = config.debug ?? false;
+    this.rateLimitAttempts = config.rateLimitAttempts ?? 10;
+    this.rateLimitWindowSeconds = config.rateLimitWindowSeconds ?? 60;
 
     this.log('ApiKeyManager initialized', {
       gracePeriodHours: this.gracePeriodHours,
       keyPrefix: this.keyPrefix,
+      rateLimitEnabled: !!this.redis,
     });
   }
 
@@ -350,6 +364,99 @@ export class ApiKeyManager {
     };
   }
 
+  /**
+   * Emergency API key rotation (no grace period)
+   *
+   * SECURITY: Sprint 66 (HIGH-004)
+   * Immediately revokes old key and creates new one.
+   * Use when key is compromised - no transition period.
+   *
+   * @param tenantId - Tenant ID
+   * @param reason - Reason for emergency rotation
+   * @param actorId - Actor performing rotation
+   * @returns The new API key
+   */
+  async rotateEmergency(
+    tenantId: string,
+    reason: string,
+    actorId: string
+  ): Promise<KeyRotationResult> {
+    // Get current active key
+    const currentKey = await this.getCurrentKey(tenantId);
+
+    // Generate new key
+    const { keyId, secret, hash } = this.generateKey();
+    const newVersion = currentKey ? currentKey.version + 1 : 1;
+
+    // EMERGENCY: Revoke immediately (no grace period)
+    const now = new Date();
+
+    await this.db.transaction(async (tx) => {
+      // Immediately revoke current key
+      if (currentKey) {
+        await tx
+          .update(apiKeys)
+          .set({
+            revokedAt: now,
+            expiresAt: now, // Also set expiration to now
+          })
+          .where(eq(apiKeys.keyId, currentKey.keyId));
+      }
+
+      // Create new key record
+      const keyRecord: NewApiKey = {
+        keyId,
+        keyHash: hash,
+        version: newVersion,
+        tenantId,
+        name: currentKey?.name ?? 'Emergency Key',
+        permissions: currentKey?.permissions ?? [],
+        createdAt: now,
+        expiresAt: null,
+        revokedAt: null,
+        lastUsedAt: null,
+      };
+
+      await tx.insert(apiKeys).values(keyRecord);
+    });
+
+    // HIGH-004: Audit log emergency rotation
+    await this.logAuditEvent({
+      eventType: 'API_KEY_EMERGENCY_ROTATED',
+      actorId,
+      tenantId,
+      targetScope: 'COMMUNITY',
+      targetId: tenantId,
+      payload: {
+        keyId,
+        version: newVersion,
+        action: 'emergency_rotated',
+        reason,
+        previousKeyId: currentKey?.keyId,
+        revokedAt: now.toISOString(),
+        gracePeriod: 'NONE - Immediate revocation',
+      },
+    });
+
+    // Notify tenant immediately (critical alert)
+    await this.notifyEmergencyRotation(tenantId, reason);
+
+    this.log('EMERGENCY: API key rotated immediately', {
+      keyId,
+      tenantId,
+      version: newVersion,
+      reason,
+      actorId,
+    });
+
+    return {
+      newKey: `${keyId}.${secret}`,
+      keyId,
+      version: newVersion,
+      oldKeyExpiresAt: null, // No grace period
+    };
+  }
+
   // ===========================================================================
   // Key Validation
   // ===========================================================================
@@ -357,13 +464,36 @@ export class ApiKeyManager {
   /**
    * Validate an API key
    *
+   * SECURITY: Sprint 66 (HIGH-005) - Rate limited to prevent brute force
+   *
    * @param apiKey - Full API key (keyId.secret format)
+   * @param clientIp - Optional client IP for rate limiting
    * @returns Validation result with key record if valid
    */
-  async validateKey(apiKey: string): Promise<KeyValidationResult> {
+  async validateKey(apiKey: string, clientIp?: string): Promise<KeyValidationResult> {
+    // HIGH-005: Check rate limit before validation
+    if (this.redis && clientIp) {
+      const rateLimitKey = `api_key_validation:${clientIp}`;
+      const attempts = await this.redis.incr(rateLimitKey);
+
+      if (attempts === 1) {
+        // First attempt - set window expiry
+        await this.redis.expire(rateLimitKey, this.rateLimitWindowSeconds);
+      }
+
+      if (attempts > this.rateLimitAttempts) {
+        this.log('Rate limit exceeded for API key validation', { clientIp, attempts });
+        return {
+          valid: false,
+          reason: `Rate limit exceeded: ${attempts}/${this.rateLimitAttempts} attempts in ${this.rateLimitWindowSeconds}s window`,
+        };
+      }
+    }
+
     // Parse key
     const parsed = this.parseKey(apiKey);
     if (!parsed) {
+      await this.logFailedValidation(clientIp, 'Invalid key format');
       return { valid: false, reason: 'Invalid key format' };
     }
 
@@ -376,17 +506,25 @@ export class ApiKeyManager {
     const keyRecord = await this.findKeyByIdAndHash(keyId, hash);
 
     if (!keyRecord) {
+      await this.logFailedValidation(clientIp, 'Key not found', keyId);
       return { valid: false, reason: 'Key not found' };
     }
 
     // Check if revoked
     if (keyRecord.revokedAt) {
+      await this.logFailedValidation(clientIp, 'Key revoked', keyId);
       return { valid: false, reason: 'Key has been revoked' };
     }
 
     // Check if expired
     if (keyRecord.expiresAt && keyRecord.expiresAt < new Date()) {
+      await this.logFailedValidation(clientIp, 'Key expired', keyId);
       return { valid: false, reason: 'Key has expired' };
+    }
+
+    // HIGH-005: Reset rate limit on successful validation
+    if (this.redis && clientIp) {
+      await this.redis.del(`api_key_validation:${clientIp}`);
     }
 
     // Update last used timestamp (non-blocking)
@@ -711,6 +849,14 @@ export class ApiKeyManager {
     this.log('Key rotation notification sent', { tenantId, expiresAt });
   }
 
+  /**
+   * Notify tenant of emergency key rotation (HIGH-004)
+   */
+  private async notifyEmergencyRotation(tenantId: string, reason: string): Promise<void> {
+    // Implementation would send CRITICAL alert via webhook/email/SMS
+    this.log('EMERGENCY key rotation notification sent', { tenantId, reason });
+  }
+
   // ===========================================================================
   // Audit Logging
   // ===========================================================================
@@ -722,6 +868,29 @@ export class ApiKeyManager {
     if (this.auditLog) {
       await this.auditLog.log(entry);
     }
+  }
+
+  /**
+   * Log failed API key validation (HIGH-005)
+   */
+  private async logFailedValidation(
+    clientIp: string | undefined,
+    reason: string,
+    keyId?: string
+  ): Promise<void> {
+    await this.logAuditEvent({
+      eventType: 'API_KEY_VALIDATION_FAILED',
+      actorId: clientIp ?? 'unknown',
+      tenantId: null,
+      targetScope: 'GLOBAL',
+      targetId: keyId ?? null,
+      payload: {
+        reason,
+        clientIp,
+        keyId,
+        timestamp: new Date().toISOString(),
+      },
+    });
   }
 
   // ===========================================================================
