@@ -6,6 +6,7 @@
  * Sprint 58: Parallel Mode - Namespaced Role Management
  * Sprint 59: Parallel Mode - Channels & Conviction Gates
  * Sprint 61: Glimpse Mode - Social Layer Preview
+ * Sprint 62: Migration Engine - Strategy Selection & Execution
  *
  * This module provides adapters for coexisting with incumbent token-gating
  * solutions (Collab.Land, Matrica, Guild.xyz) during migration.
@@ -17,6 +18,7 @@
  * - ParallelRoleManager: Manages namespaced @arrakis-* roles in parallel mode
  * - ParallelChannelManager: Manages conviction-gated channels in parallel mode
  * - GlimpseMode: Shows blurred/locked previews of social features
+ * - MigrationEngine: Orchestrates migration with strategy selection and readiness checks
  *
  * @module packages/adapters/coexistence
  */
@@ -87,3 +89,20 @@ export {
   type UpgradeCTA,
   type TellAdminRequest,
 } from './GlimpseMode.js';
+
+// Migration engine (Sprint 62)
+export {
+  MigrationEngine,
+  createMigrationEngine,
+  MIN_SHADOW_DAYS,
+  MIN_ACCURACY_PERCENT,
+  DEFAULT_BATCH_SIZE,
+  DEFAULT_GRADUAL_DURATION_DAYS,
+  type ReadinessCheckResult,
+  type MigrationPlan,
+  type MigrationExecutionOptions,
+  type MigrationExecutionResult,
+  type GradualBatchInfo,
+  type ApplyRolesCallback,
+  type GetGuildMembersCallback,
+} from './MigrationEngine.js';
