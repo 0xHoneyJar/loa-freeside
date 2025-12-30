@@ -5,6 +5,7 @@
  * Sprint 57: Shadow Mode Foundation - Shadow Ledger & Sync
  * Sprint 58: Parallel Mode - Namespaced Role Management
  * Sprint 59: Parallel Mode - Channels & Conviction Gates
+ * Sprint 61: Glimpse Mode - Social Layer Preview
  *
  * This module provides adapters for coexisting with incumbent token-gating
  * solutions (Collab.Land, Matrica, Guild.xyz) during migration.
@@ -15,6 +16,7 @@
  * - ShadowLedger: Tracks divergences between incumbent and Arrakis access
  * - ParallelRoleManager: Manages namespaced @arrakis-* roles in parallel mode
  * - ParallelChannelManager: Manages conviction-gated channels in parallel mode
+ * - GlimpseMode: Shows blurred/locked previews of social features
  *
  * @module packages/adapters/coexistence
  */
@@ -72,3 +74,16 @@ export {
   type GetMemberConviction,
   type GetMemberConvictionsBatch,
 } from './ParallelChannelManager.js';
+
+// Glimpse mode (Sprint 61)
+export {
+  GlimpseMode,
+  createGlimpseMode,
+  type GlimpseProfile,
+  type LockedBadge,
+  type GlimpseBadgeShowcase,
+  type OwnPreviewProfile,
+  type ConvictionRankResult,
+  type UpgradeCTA,
+  type TellAdminRequest,
+} from './GlimpseMode.js';
