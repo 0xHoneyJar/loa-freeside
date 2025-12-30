@@ -573,7 +573,12 @@ export const incumbentConfigs = pgTable(
     lastHealthCheck: timestamp('last_health_check', { withTimezone: true }),
     healthStatus: text('health_status').notNull().default('unknown'), // 'healthy', 'degraded', 'offline', 'unknown'
     detectedRoles: jsonb('detected_roles').$type<DetectedRole[]>().default([]),
-    capabilities: jsonb('capabilities').$type<IncumbentCapabilities>().default({}),
+    capabilities: jsonb('capabilities').$type<IncumbentCapabilities>().default({
+    hasBalanceCheck: false,
+    hasConvictionScoring: false,
+    hasTierSystem: false,
+    hasSocialLayer: false,
+  }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -905,3 +910,217 @@ export const shadowPredictionsRelations = relations(shadowPredictions, ({ one })
 
 export type ShadowPrediction = typeof shadowPredictions.$inferSelect;
 export type NewShadowPrediction = typeof shadowPredictions.$inferInsert;
+
+// =============================================================================
+// Parallel Mode Tables (Sprint 58 - Namespaced Role Management)
+// =============================================================================
+
+/**
+ * Parallel Role Configuration - Namespaced role settings per community
+ *
+ * Stores configuration for Arrakis namespaced roles that coexist with
+ * incumbent roles in parallel mode. All Arrakis roles are prefixed with
+ * the namespace (default: @arrakis-*) and positioned below incumbent roles.
+ *
+ * RLS Policy: community_id = current_setting('app.current_tenant')::UUID
+ */
+export const parallelRoleConfigs = pgTable(
+  'parallel_role_configs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    communityId: uuid('community_id')
+      .notNull()
+      .references(() => communities.id, { onDelete: 'cascade' })
+      .unique(),
+
+    // Namespace configuration
+    namespace: text('namespace').notNull().default('@arrakis-'), // Role name prefix
+    enabled: boolean('enabled').notNull().default(false),
+
+    // Role positioning (relative to incumbent roles)
+    positionStrategy: text('position_strategy').notNull().default('below_incumbent'), // 'below_incumbent', 'lowest', 'manual'
+
+    // Tier-to-role mapping configuration
+    tierRoleMapping: jsonb('tier_role_mapping').$type<TierRoleMapping[]>().default([]),
+
+    // Custom role name overrides (community can customize while preserving namespace)
+    customRoleNames: jsonb('custom_role_names').$type<Record<string, string>>().default({}),
+
+    // Security: Arrakis roles should have NO permissions by default
+    grantPermissions: boolean('grant_permissions').notNull().default(false), // CRITICAL: Keep false
+
+    // Tracking
+    setupCompletedAt: timestamp('setup_completed_at', { withTimezone: true }),
+    lastSyncAt: timestamp('last_sync_at', { withTimezone: true }),
+    totalRolesCreated: integer('total_roles_created').notNull().default(0),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    communityIdx: index('idx_parallel_role_configs_community').on(table.communityId),
+    enabledIdx: index('idx_parallel_role_configs_enabled').on(table.enabled),
+  })
+);
+
+/**
+ * Tier to role mapping for parallel mode
+ */
+export interface TierRoleMapping {
+  /** Tier number (1-N) */
+  tier: number;
+  /** Base role name (without namespace) */
+  baseName: string;
+  /** Hex color for the role */
+  color: string;
+  /** Minimum conviction for this tier */
+  minConviction: number;
+  /** Description shown in Discord */
+  description?: string;
+}
+
+/**
+ * Valid position strategies for parallel roles
+ */
+export type RolePositionStrategy = 'below_incumbent' | 'lowest' | 'manual';
+
+/**
+ * Parallel role config relations
+ */
+export const parallelRoleConfigsRelations = relations(parallelRoleConfigs, ({ one }) => ({
+  community: one(communities, {
+    fields: [parallelRoleConfigs.communityId],
+    references: [communities.id],
+  }),
+}));
+
+export type ParallelRoleConfig = typeof parallelRoleConfigs.$inferSelect;
+export type NewParallelRoleConfig = typeof parallelRoleConfigs.$inferInsert;
+
+/**
+ * Parallel Roles - Tracks created Arrakis namespaced roles in Discord
+ *
+ * Each row represents an Arrakis role created in a guild during parallel mode.
+ * These roles coexist with incumbent roles and are used for comparison.
+ *
+ * RLS Policy: community_id = current_setting('app.current_tenant')::UUID
+ */
+export const parallelRoles = pgTable(
+  'parallel_roles',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    communityId: uuid('community_id')
+      .notNull()
+      .references(() => communities.id, { onDelete: 'cascade' }),
+
+    // Discord role information
+    discordRoleId: text('discord_role_id').notNull(), // Discord snowflake
+    roleName: text('role_name').notNull(), // Full name with namespace (e.g., @arrakis-tier-1)
+    baseName: text('base_name').notNull(), // Name without namespace (e.g., tier-1)
+
+    // Tier mapping
+    tier: integer('tier').notNull(),
+    minConviction: integer('min_conviction').notNull(),
+
+    // Position tracking
+    position: integer('position').notNull(), // Discord role position
+    incumbentReferenceId: text('incumbent_reference_id'), // Role ID we're positioned relative to
+
+    // Style
+    color: text('color'), // Hex color
+    mentionable: boolean('mentionable').notNull().default(false),
+    hoist: boolean('hoist').notNull().default(false), // Display separately
+
+    // Member count
+    memberCount: integer('member_count').notNull().default(0),
+    lastMemberCountUpdate: timestamp('last_member_count_update', { withTimezone: true }),
+
+    // Lifecycle
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    communityIdx: index('idx_parallel_roles_community').on(table.communityId),
+    discordRoleIdx: index('idx_parallel_roles_discord').on(table.discordRoleId),
+    tierIdx: index('idx_parallel_roles_tier').on(table.communityId, table.tier),
+    uniqueRole: uniqueIndex('idx_parallel_roles_unique').on(
+      table.communityId,
+      table.discordRoleId
+    ),
+  })
+);
+
+/**
+ * Parallel role relations
+ */
+export const parallelRolesRelations = relations(parallelRoles, ({ one }) => ({
+  community: one(communities, {
+    fields: [parallelRoles.communityId],
+    references: [communities.id],
+  }),
+}));
+
+export type ParallelRole = typeof parallelRoles.$inferSelect;
+export type NewParallelRole = typeof parallelRoles.$inferInsert;
+
+/**
+ * Parallel Member Assignments - Tracks which members have which Arrakis roles
+ *
+ * During parallel mode, we track which namespaced roles each member has.
+ * This is separate from shadow mode tracking (which doesn't create roles).
+ *
+ * RLS Policy: community_id = current_setting('app.current_tenant')::UUID
+ */
+export const parallelMemberAssignments = pgTable(
+  'parallel_member_assignments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    communityId: uuid('community_id')
+      .notNull()
+      .references(() => communities.id, { onDelete: 'cascade' }),
+    memberId: text('member_id').notNull(), // Discord user ID
+
+    // Current Arrakis assignment
+    assignedTier: integer('assigned_tier'), // null = no tier assigned
+    assignedRoleIds: jsonb('assigned_role_ids').$type<string[]>().default([]),
+    currentConviction: integer('current_conviction'), // 0-100
+
+    // Comparison with incumbent
+    incumbentTier: integer('incumbent_tier'),
+    incumbentRoleIds: jsonb('incumbent_role_ids').$type<string[]>().default([]),
+
+    // Assignment lifecycle
+    lastAssignmentAt: timestamp('last_assignment_at', { withTimezone: true }),
+    lastSyncAt: timestamp('last_sync_at', { withTimezone: true }).notNull().defaultNow(),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    communityMemberIdx: index('idx_parallel_member_assignments_community_member').on(
+      table.communityId,
+      table.memberId
+    ),
+    tierIdx: index('idx_parallel_member_assignments_tier').on(table.assignedTier),
+    uniqueMember: uniqueIndex('idx_parallel_member_assignments_unique').on(
+      table.communityId,
+      table.memberId
+    ),
+  })
+);
+
+/**
+ * Parallel member assignment relations
+ */
+export const parallelMemberAssignmentsRelations = relations(
+  parallelMemberAssignments,
+  ({ one }) => ({
+    community: one(communities, {
+      fields: [parallelMemberAssignments.communityId],
+      references: [communities.id],
+    }),
+  })
+);
+
+export type ParallelMemberAssignment = typeof parallelMemberAssignments.$inferSelect;
+export type NewParallelMemberAssignment = typeof parallelMemberAssignments.$inferInsert;

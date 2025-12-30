@@ -22,6 +22,8 @@ import type {
   IncumbentCapabilities,
   DivergenceType,
   ShadowStateSnapshot,
+  TierRoleMapping,
+  RolePositionStrategy,
 } from '../../adapters/storage/schema.js';
 
 // =============================================================================
@@ -405,6 +407,165 @@ export interface ICoexistenceStorage {
    * @param since - Only consider predictions after this date
    */
   calculateAccuracy(communityId: string, since?: Date): Promise<number>;
+
+  // =========================================================================
+  // Parallel Role Configuration Methods (Sprint 58)
+  // =========================================================================
+
+  /**
+   * Get parallel role configuration for a community
+   * @param communityId - Community UUID
+   */
+  getParallelRoleConfig(communityId: string): Promise<StoredParallelRoleConfig | null>;
+
+  /**
+   * Save or update parallel role configuration
+   * @param input - Configuration data
+   */
+  saveParallelRoleConfig(input: SaveParallelRoleConfigInput): Promise<StoredParallelRoleConfig>;
+
+  /**
+   * Delete parallel role configuration
+   * @param communityId - Community UUID
+   */
+  deleteParallelRoleConfig(communityId: string): Promise<void>;
+
+  /**
+   * Check if community has parallel mode enabled
+   * @param communityId - Community UUID
+   */
+  isParallelEnabled(communityId: string): Promise<boolean>;
+
+  // =========================================================================
+  // Parallel Role Methods (Sprint 58)
+  // =========================================================================
+
+  /**
+   * Get a parallel role by Discord role ID
+   * @param communityId - Community UUID
+   * @param discordRoleId - Discord role snowflake
+   */
+  getParallelRole(
+    communityId: string,
+    discordRoleId: string
+  ): Promise<StoredParallelRole | null>;
+
+  /**
+   * Get all parallel roles for a community
+   * @param communityId - Community UUID
+   */
+  getParallelRoles(communityId: string): Promise<StoredParallelRole[]>;
+
+  /**
+   * Get parallel role for a specific tier
+   * @param communityId - Community UUID
+   * @param tier - Tier number
+   */
+  getParallelRoleByTier(
+    communityId: string,
+    tier: number
+  ): Promise<StoredParallelRole | null>;
+
+  /**
+   * Save a new parallel role (created in Discord)
+   * @param input - Role data
+   */
+  saveParallelRole(input: SaveParallelRoleInput): Promise<StoredParallelRole>;
+
+  /**
+   * Update parallel role position
+   * @param communityId - Community UUID
+   * @param discordRoleId - Discord role snowflake
+   * @param position - New position
+   */
+  updateParallelRolePosition(
+    communityId: string,
+    discordRoleId: string,
+    position: number
+  ): Promise<void>;
+
+  /**
+   * Update parallel role member count
+   * @param communityId - Community UUID
+   * @param discordRoleId - Discord role snowflake
+   * @param memberCount - New member count
+   */
+  updateParallelRoleMemberCount(
+    communityId: string,
+    discordRoleId: string,
+    memberCount: number
+  ): Promise<void>;
+
+  /**
+   * Delete a parallel role (when removed from Discord)
+   * @param communityId - Community UUID
+   * @param discordRoleId - Discord role snowflake
+   */
+  deleteParallelRole(communityId: string, discordRoleId: string): Promise<void>;
+
+  /**
+   * Delete all parallel roles for a community
+   * @param communityId - Community UUID
+   */
+  deleteAllParallelRoles(communityId: string): Promise<void>;
+
+  // =========================================================================
+  // Parallel Member Assignment Methods (Sprint 58)
+  // =========================================================================
+
+  /**
+   * Get parallel member assignment
+   * @param communityId - Community UUID
+   * @param memberId - Discord member ID
+   */
+  getParallelMemberAssignment(
+    communityId: string,
+    memberId: string
+  ): Promise<StoredParallelMemberAssignment | null>;
+
+  /**
+   * Get all parallel member assignments for a community
+   * @param communityId - Community UUID
+   * @param options - Pagination options
+   */
+  getParallelMemberAssignments(
+    communityId: string,
+    options?: {
+      limit?: number;
+      offset?: number;
+      tier?: number;
+    }
+  ): Promise<StoredParallelMemberAssignment[]>;
+
+  /**
+   * Save or update parallel member assignment (upsert)
+   * @param input - Assignment data
+   */
+  saveParallelMemberAssignment(
+    input: SaveParallelMemberAssignmentInput
+  ): Promise<StoredParallelMemberAssignment>;
+
+  /**
+   * Batch save parallel member assignments
+   * @param inputs - Array of assignment data
+   */
+  batchSaveParallelMemberAssignments(
+    inputs: SaveParallelMemberAssignmentInput[]
+  ): Promise<void>;
+
+  /**
+   * Delete parallel member assignment
+   * @param communityId - Community UUID
+   * @param memberId - Discord member ID
+   */
+  deleteParallelMemberAssignment(communityId: string, memberId: string): Promise<void>;
+
+  /**
+   * Get members by assigned tier
+   * @param communityId - Community UUID
+   * @param tier - Tier number
+   */
+  getMembersByTier(communityId: string, tier: number): Promise<string[]>;
 }
 
 // =============================================================================
@@ -536,6 +697,116 @@ export interface DivergenceSummary {
   accuracyPercent: number;
 }
 
+// =============================================================================
+// Parallel Mode Types (Sprint 58)
+// =============================================================================
+
+/**
+ * Input for saving/updating parallel role configuration
+ */
+export interface SaveParallelRoleConfigInput {
+  communityId: string;
+  namespace?: string;
+  enabled?: boolean;
+  positionStrategy?: RolePositionStrategy;
+  tierRoleMapping?: TierRoleMapping[];
+  customRoleNames?: Record<string, string>;
+  grantPermissions?: boolean;
+  setupCompletedAt?: Date;
+  lastSyncAt?: Date;
+  totalRolesCreated?: number;
+}
+
+/**
+ * Stored parallel role configuration
+ */
+export interface StoredParallelRoleConfig {
+  id: string;
+  communityId: string;
+  namespace: string;
+  enabled: boolean;
+  positionStrategy: RolePositionStrategy;
+  tierRoleMapping: TierRoleMapping[];
+  customRoleNames: Record<string, string>;
+  grantPermissions: boolean;
+  setupCompletedAt: Date | null;
+  lastSyncAt: Date | null;
+  totalRolesCreated: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Input for saving a parallel role (created in Discord)
+ */
+export interface SaveParallelRoleInput {
+  communityId: string;
+  discordRoleId: string;
+  roleName: string;
+  baseName: string;
+  tier: number;
+  minConviction: number;
+  position: number;
+  incumbentReferenceId?: string;
+  color?: string;
+  mentionable?: boolean;
+  hoist?: boolean;
+}
+
+/**
+ * Stored parallel role record
+ */
+export interface StoredParallelRole {
+  id: string;
+  communityId: string;
+  discordRoleId: string;
+  roleName: string;
+  baseName: string;
+  tier: number;
+  minConviction: number;
+  position: number;
+  incumbentReferenceId: string | null;
+  color: string | null;
+  mentionable: boolean;
+  hoist: boolean;
+  memberCount: number;
+  lastMemberCountUpdate: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Input for saving/updating a parallel member assignment
+ */
+export interface SaveParallelMemberAssignmentInput {
+  communityId: string;
+  memberId: string;
+  assignedTier?: number | null;
+  assignedRoleIds?: string[];
+  currentConviction?: number | null;
+  incumbentTier?: number | null;
+  incumbentRoleIds?: string[];
+  lastAssignmentAt?: Date;
+}
+
+/**
+ * Stored parallel member assignment
+ */
+export interface StoredParallelMemberAssignment {
+  id: string;
+  communityId: string;
+  memberId: string;
+  assignedTier: number | null;
+  assignedRoleIds: string[];
+  currentConviction: number | null;
+  incumbentTier: number | null;
+  incumbentRoleIds: string[];
+  lastAssignmentAt: Date | null;
+  lastSyncAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 /**
  * Re-export schema types for convenience
  */
@@ -548,4 +819,6 @@ export type {
   IncumbentCapabilities,
   DivergenceType,
   ShadowStateSnapshot,
+  TierRoleMapping,
+  RolePositionStrategy,
 };
