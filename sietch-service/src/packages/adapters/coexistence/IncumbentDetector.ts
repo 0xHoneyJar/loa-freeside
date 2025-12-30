@@ -16,7 +16,7 @@
  * @module packages/adapters/coexistence/IncumbentDetector
  */
 
-import type { Client, Guild, Role } from 'discord.js';
+import type { Client, Guild } from 'discord.js';
 import type {
   ICoexistenceStorage,
   IncumbentInfo,
@@ -244,34 +244,34 @@ export class IncumbentDetector {
     await guild.members.fetch();
 
     // Try detection methods in order of confidence
-    let result = await this.detectByBotId(guild);
+    let result = this.detectByBotId(guild);
     if (result.detected) {
       if (analyzeRoles) {
-        result.info = await this.buildIncumbentInfo(guild, result.provider!, result.info?.bot ?? null);
+        result.info = this.buildIncumbentInfo(guild, result.provider!, result.info?.bot ?? null);
       }
       return result;
     }
 
-    result = await this.detectByUsername(guild);
+    result = this.detectByUsername(guild);
     if (result.detected) {
       if (analyzeRoles) {
-        result.info = await this.buildIncumbentInfo(guild, result.provider!, result.info?.bot ?? null);
+        result.info = this.buildIncumbentInfo(guild, result.provider!, result.info?.bot ?? null);
       }
       return result;
     }
 
-    result = await this.detectByChannel(guild);
+    result = this.detectByChannel(guild);
     if (result.detected) {
       if (analyzeRoles) {
-        result.info = await this.buildIncumbentInfo(guild, result.provider!, null);
+        result.info = this.buildIncumbentInfo(guild, result.provider!, null);
       }
       return result;
     }
 
-    result = await this.detectGenericSuspect(guild);
+    result = this.detectGenericSuspect(guild);
     if (result.detected) {
       if (analyzeRoles) {
-        result.info = await this.buildIncumbentInfo(guild, 'other', result.info?.bot ?? null);
+        result.info = this.buildIncumbentInfo(guild, 'other', result.info?.bot ?? null);
       }
       return result;
     }
@@ -294,11 +294,11 @@ export class IncumbentDetector {
    * @param provider - Incumbent provider type
    * @param botInfo - Bot info from detection (id, username, joinedAt) or null
    */
-  async buildIncumbentInfo(
+  buildIncumbentInfo(
     guild: Guild,
     provider: IncumbentProvider,
     botInfo: { id: string; username: string; joinedAt: Date } | null
-  ): Promise<IncumbentInfo> {
+  ): IncumbentInfo {
     const config = provider !== 'other'
       ? KNOWN_INCUMBENTS[provider]
       : KNOWN_INCUMBENTS.collabland; // Use collabland as default pattern source
@@ -395,7 +395,7 @@ export class IncumbentDetector {
   /**
    * Detect by known bot ID (highest confidence)
    */
-  private async detectByBotId(guild: Guild): Promise<DetectionResult> {
+  private detectByBotId(guild: Guild): DetectionResult {
     for (const [provider, config] of Object.entries(KNOWN_INCUMBENTS)) {
       for (const botId of config.botIds) {
         if (!botId) continue;
@@ -442,7 +442,7 @@ export class IncumbentDetector {
   /**
    * Detect by bot username pattern
    */
-  private async detectByUsername(guild: Guild): Promise<DetectionResult> {
+  private detectByUsername(guild: Guild): DetectionResult {
     for (const [provider, config] of Object.entries(KNOWN_INCUMBENTS)) {
       const botMember = guild.members.cache.find(
         (m) =>
@@ -492,7 +492,7 @@ export class IncumbentDetector {
   /**
    * Detect by verification channel pattern
    */
-  private async detectByChannel(guild: Guild): Promise<DetectionResult> {
+  private detectByChannel(guild: Guild): DetectionResult {
     for (const [provider, config] of Object.entries(KNOWN_INCUMBENTS)) {
       const channel = guild.channels.cache.find((c) =>
         config.channelPatterns.some((p) =>
@@ -536,7 +536,7 @@ export class IncumbentDetector {
   /**
    * Detect generic suspect bots (verify/token in name)
    */
-  private async detectGenericSuspect(guild: Guild): Promise<DetectionResult> {
+  private detectGenericSuspect(guild: Guild): DetectionResult {
     const suspectBot = guild.members.cache.find(
       (m) =>
         m.user.bot &&
