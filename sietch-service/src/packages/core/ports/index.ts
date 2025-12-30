@@ -12,3 +12,4 @@ export * from './IThemeProvider.js';
 export * from './IStorageProvider.js';
 export * from './IManifestProvider.js';
 export * from './ISigningAdapter.js';
+export * from './ICoexistenceStorage.js';

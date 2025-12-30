@@ -328,11 +328,14 @@ export interface ShadowResources {
 /**
  * Community relations
  */
-export const communitiesRelations = relations(communities, ({ many }) => ({
+export const communitiesRelations = relations(communities, ({ one, many }) => ({
   profiles: many(profiles),
   badges: many(badges),
   manifests: many(manifests),
   shadowStates: many(shadowStates),
+  // Coexistence relations (Sprint 56)
+  incumbentConfig: one(incumbentConfigs),
+  migrationState: one(migrationStates),
 }));
 
 /**
@@ -538,3 +541,167 @@ export const apiKeysRelations = relations(apiKeys, ({ one }) => ({
 
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type NewApiKey = typeof apiKeys.$inferInsert;
+
+// =============================================================================
+// Coexistence Tables (Sprint 56 - Shadow Mode Foundation)
+// =============================================================================
+
+/**
+ * Incumbent Bot Configuration - Tracks detected incumbent token-gating bots
+ *
+ * Stores information about incumbent solutions (Collab.Land, Matrica, Guild.xyz)
+ * detected in a guild. Used for shadow mode comparison and migration planning.
+ *
+ * RLS Policy: community_id = current_setting('app.current_tenant')::UUID
+ */
+export const incumbentConfigs = pgTable(
+  'incumbent_configs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    communityId: uuid('community_id')
+      .notNull()
+      .references(() => communities.id, { onDelete: 'cascade' })
+      .unique(),
+    provider: text('provider').notNull(), // 'collabland', 'matrica', 'guild.xyz', 'other'
+    botId: text('bot_id'),
+    botUsername: text('bot_username'),
+    verificationChannelId: text('verification_channel_id'),
+    detectedAt: timestamp('detected_at', { withTimezone: true }).notNull().defaultNow(),
+    confidence: integer('confidence').notNull().default(0), // 0-100 (stored as integer for precision)
+    manualOverride: boolean('manual_override').notNull().default(false),
+    lastHealthCheck: timestamp('last_health_check', { withTimezone: true }),
+    healthStatus: text('health_status').notNull().default('unknown'), // 'healthy', 'degraded', 'offline', 'unknown'
+    detectedRoles: jsonb('detected_roles').$type<DetectedRole[]>().default([]),
+    capabilities: jsonb('capabilities').$type<IncumbentCapabilities>().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    communityIdx: index('idx_incumbent_configs_community').on(table.communityId),
+    providerIdx: index('idx_incumbent_configs_provider').on(table.provider),
+    healthIdx: index('idx_incumbent_configs_health').on(table.healthStatus),
+  })
+);
+
+/**
+ * Detected role from incumbent bot
+ */
+export interface DetectedRole {
+  id: string;
+  name: string;
+  memberCount: number;
+  likelyTokenGated: boolean;
+  confidence: number;
+}
+
+/**
+ * Incumbent bot capabilities
+ */
+export interface IncumbentCapabilities {
+  hasBalanceCheck: boolean;
+  hasConvictionScoring: boolean;
+  hasTierSystem: boolean;
+  hasSocialLayer: boolean;
+}
+
+/**
+ * Valid incumbent providers
+ */
+export type IncumbentProvider = 'collabland' | 'matrica' | 'guild.xyz' | 'other';
+
+/**
+ * Valid health statuses
+ */
+export type HealthStatus = 'healthy' | 'degraded' | 'offline' | 'unknown';
+
+/**
+ * Incumbent config relations
+ */
+export const incumbentConfigsRelations = relations(incumbentConfigs, ({ one }) => ({
+  community: one(communities, {
+    fields: [incumbentConfigs.communityId],
+    references: [communities.id],
+  }),
+}));
+
+export type IncumbentConfig = typeof incumbentConfigs.$inferSelect;
+export type NewIncumbentConfig = typeof incumbentConfigs.$inferInsert;
+
+// =============================================================================
+// Migration States Table (Sprint 56 - Shadow Mode Foundation)
+// =============================================================================
+
+/**
+ * Migration States - Tracks coexistence mode and migration progress
+ *
+ * State Machine: shadow -> parallel -> primary -> exclusive
+ *
+ * - SHADOW: Observe only, no Discord mutations, track divergences
+ * - PARALLEL: Namespaced roles alongside incumbent (@arrakis-*)
+ * - PRIMARY: Arrakis authoritative, incumbent as backup
+ * - EXCLUSIVE: Full takeover, incumbent integration removed
+ *
+ * RLS Policy: community_id = current_setting('app.current_tenant')::UUID
+ */
+export const migrationStates = pgTable(
+  'migration_states',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    communityId: uuid('community_id')
+      .notNull()
+      .references(() => communities.id, { onDelete: 'cascade' })
+      .unique(),
+
+    // Current state machine position
+    currentMode: text('current_mode').notNull().default('shadow'), // CoexistenceMode enum
+    targetMode: text('target_mode'), // For gradual migrations
+    strategy: text('strategy'), // 'instant', 'gradual', 'parallel_forever', 'arrakis_primary'
+
+    // Timestamps for each mode transition
+    shadowStartedAt: timestamp('shadow_started_at', { withTimezone: true }),
+    parallelEnabledAt: timestamp('parallel_enabled_at', { withTimezone: true }),
+    primaryEnabledAt: timestamp('primary_enabled_at', { withTimezone: true }),
+    exclusiveEnabledAt: timestamp('exclusive_enabled_at', { withTimezone: true }),
+
+    // Rollback tracking
+    rollbackCount: integer('rollback_count').notNull().default(0),
+    lastRollbackAt: timestamp('last_rollback_at', { withTimezone: true }),
+    lastRollbackReason: text('last_rollback_reason'),
+
+    // Readiness metrics
+    readinessCheckPassed: boolean('readiness_check_passed').notNull().default(false),
+    accuracyPercent: integer('accuracy_percent'), // 0-10000 (stored as integer * 100 for 2 decimal precision)
+    shadowDays: integer('shadow_days').notNull().default(0),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    communityIdx: index('idx_migration_states_community').on(table.communityId),
+    modeIdx: index('idx_migration_states_mode').on(table.currentMode),
+    strategyIdx: index('idx_migration_states_strategy').on(table.strategy),
+  })
+);
+
+/**
+ * Valid coexistence modes
+ */
+export type CoexistenceMode = 'shadow' | 'parallel' | 'primary' | 'exclusive';
+
+/**
+ * Valid migration strategies
+ */
+export type MigrationStrategy = 'instant' | 'gradual' | 'parallel_forever' | 'arrakis_primary';
+
+/**
+ * Migration state relations
+ */
+export const migrationStatesRelations = relations(migrationStates, ({ one }) => ({
+  community: one(communities, {
+    fields: [migrationStates.communityId],
+    references: [communities.id],
+  }),
+}));
+
+export type MigrationState = typeof migrationStates.$inferSelect;
+export type NewMigrationState = typeof migrationStates.$inferInsert;
