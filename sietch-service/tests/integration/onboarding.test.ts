@@ -36,7 +36,7 @@ const mockCreateProfile = vi.fn();
 const mockUpdateProfile = vi.fn();
 const mockLogAuditEvent = vi.fn();
 
-vi.mock('../../src/db/queries.js', () => ({
+vi.mock('../../src/db/index.js', () => ({
   getMemberProfileById: mockGetProfile,
   getMemberProfileByDiscordId: vi.fn(),
   createMemberProfile: mockCreateProfile,

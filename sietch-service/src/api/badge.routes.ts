@@ -24,7 +24,7 @@ import {
 import { config } from '../config.js';
 import { badgeService } from '../services/badge/BadgeService.js';
 import { stripeService } from '../services/billing/StripeService.js';
-import { getMemberProfileById } from '../db/queries.js';
+import { getMemberProfileById } from '../db/index.js';
 import { logger } from '../utils/logger.js';
 import type {
   BadgeEntitlementResponse,

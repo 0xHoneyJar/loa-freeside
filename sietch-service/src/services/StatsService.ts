@@ -22,7 +22,7 @@ import {
   getMemberActivity,
   calculateTenureCategory,
   getMemberBadgeCount,
-} from '../db/queries.js';
+} from '../db/index.js';
 import { getOwnStats } from './activity.js';
 import { tierService } from './index.js';
 import { formatUnits } from 'viem';

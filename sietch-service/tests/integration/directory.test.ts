@@ -24,7 +24,7 @@ vi.mock('../../src/config.js', () => ({
 // Mock database
 const mockPrepare = vi.fn();
 
-vi.mock('../../src/db/queries.js', () => ({
+vi.mock('../../src/db/index.js', () => ({
   getMemberProfileById: vi.fn(),
   getDatabase: vi.fn(() => ({
     prepare: mockPrepare.mockReturnValue({

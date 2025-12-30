@@ -10,10 +10,10 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { notificationService } from '../../src/services/notification.js';
-import * as queries from '../../src/db/queries.js';
+import * as queries from '../../src/db/index.js';
 
 // Mock the database queries
-vi.mock('../../src/db/queries.js', () => {
+vi.mock('../../src/db/index.js', () => {
   return {
     getNotificationPreferences: vi.fn(),
     upsertNotificationPreferences: vi.fn(),

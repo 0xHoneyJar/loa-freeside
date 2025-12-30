@@ -18,7 +18,7 @@ import {
 import { logger } from '../../utils/logger.js';
 import { leaderboardService, statsService } from '../../services/index.js';
 import { directoryService } from '../../services/directory.js';
-import { getMemberProfileByDiscordId } from '../../db/queries.js';
+import { getMemberProfileByDiscordId } from '../../db/index.js';
 import { buildLeaderboardEmbed } from '../embeds/directory.js';
 import { buildTierLeaderboardEmbed } from '../embeds/stats.js';
 

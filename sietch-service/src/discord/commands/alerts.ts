@@ -18,7 +18,7 @@ import {
   ButtonStyle,
 } from 'discord.js';
 import { logger } from '../../utils/logger.js';
-import { getMemberProfileByDiscordId } from '../../db/queries.js';
+import { getMemberProfileByDiscordId } from '../../db/index.js';
 import { notificationService } from '../../services/notification.js';
 import { naibService } from '../../services/naib.js';
 import type { AlertFrequency } from '../../types/index.js';

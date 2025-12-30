@@ -38,7 +38,7 @@ import {
   getWalletByDiscordId,
   getWalletPosition,
   logAuditEvent,
-} from '../db/queries.js';
+} from '../db/index.js';
 import type {
   NotificationPreferences,
   AlertFrequency,

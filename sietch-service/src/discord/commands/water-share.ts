@@ -20,7 +20,7 @@ import {
   userMention,
 } from 'discord.js';
 import { logger } from '../../utils/logger.js';
-import { getMemberProfileByDiscordId, getMemberProfileByNym, searchMembersByNym } from '../../db/queries.js';
+import { getMemberProfileByDiscordId, getMemberProfileByNym, searchMembersByNym } from '../../db/index.js';
 import {
   canShare,
   shareBadge,

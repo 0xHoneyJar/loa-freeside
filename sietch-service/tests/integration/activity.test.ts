@@ -26,7 +26,7 @@ const mockPrepare = vi.fn();
 const mockRun = vi.fn();
 const mockGet = vi.fn();
 
-vi.mock('../../src/db/queries.js', () => ({
+vi.mock('../../src/db/index.js', () => ({
   getMemberProfileById: vi.fn(),
   getMemberProfileByDiscordId: vi.fn(),
   getDatabase: vi.fn(() => ({

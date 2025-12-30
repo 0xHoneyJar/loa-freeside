@@ -20,7 +20,7 @@ import {
 } from 'discord.js';
 import { logger } from '../../utils/logger.js';
 import { naibService } from '../../services/naib.js';
-import { getMemberProfileByDiscordId } from '../../db/queries.js';
+import { getMemberProfileByDiscordId } from '../../db/index.js';
 import {
   buildNaibOverviewEmbed,
   buildNaibCouncilEmbed,

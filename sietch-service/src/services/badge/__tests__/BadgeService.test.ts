@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { badgeService } from '../BadgeService.js';
 import * as badgeQueries from '../../../db/badge-queries.js';
-import * as queries from '../../../db/queries.js';
+import * as queries from '../../../db/index.js';
 import * as gatekeeperService from '../../billing/GatekeeperService.js';
 
 // Mock dependencies

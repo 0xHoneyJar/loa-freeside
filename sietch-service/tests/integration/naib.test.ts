@@ -11,10 +11,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { naibService } from '../../src/services/naib.js';
-import * as queries from '../../src/db/queries.js';
+import * as queries from '../../src/db/index.js';
 
 // Mock the database
-vi.mock('../../src/db/queries.js', () => {
+vi.mock('../../src/db/index.js', () => {
   return {
     getCurrentNaibSeats: vi.fn(),
     getActiveSeatByMember: vi.fn(),

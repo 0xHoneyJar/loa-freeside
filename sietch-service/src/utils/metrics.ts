@@ -5,7 +5,7 @@
  */
 
 import { getHealthStatus } from '../db/index.js';
-import * as queries from '../db/queries.js';
+import * as queries from '../db/index.js';
 
 // Simple in-memory counters and gauges
 interface Metrics {

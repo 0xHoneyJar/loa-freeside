@@ -18,7 +18,7 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import { logger } from '../../utils/logger.js';
-import { getMemberProfileByDiscordId } from '../../db/queries.js';
+import { getMemberProfileByDiscordId } from '../../db/index.js';
 import { statsService } from '../../services/index.js';
 import { buildPersonalStatsEmbed } from '../embeds/stats.js';
 

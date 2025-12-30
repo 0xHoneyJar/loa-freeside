@@ -13,7 +13,7 @@
  */
 
 import { logger } from '../utils/logger.js';
-import { logAuditEvent } from '../db/queries.js';
+import { logAuditEvent } from '../db/index.js';
 import {
   getCurrentNaibSeats,
   getActiveSeatByMember,
@@ -29,7 +29,7 @@ import {
   getMemberProfileById,
   getMemberCurrentBgt,
   getMemberEligibilityRank,
-} from '../db/queries.js';
+} from '../db/index.js';
 import type {
   NaibSeat,
   NaibMember,

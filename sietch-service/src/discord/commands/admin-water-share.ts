@@ -17,7 +17,7 @@ import {
   EmbedBuilder,
 } from 'discord.js';
 import { logger } from '../../utils/logger.js';
-import { getMemberProfileByNym, searchMembersByNym } from '../../db/queries.js';
+import { getMemberProfileByNym, searchMembersByNym } from '../../db/index.js';
 import {
   listAllActiveGrants,
   getGrantById,

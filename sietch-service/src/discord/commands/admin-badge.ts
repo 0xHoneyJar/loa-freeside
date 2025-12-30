@@ -20,7 +20,7 @@ import {
   getMemberBadges,
   searchMembersByNym,
   getAllBadges,
-} from '../../db/queries.js';
+} from '../../db/index.js';
 import {
   adminAwardBadge,
   revokeBadge,

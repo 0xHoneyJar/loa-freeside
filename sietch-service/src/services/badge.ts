@@ -25,7 +25,7 @@ import {
   getBadgeById,
   calculateTenureCategory,
   getDatabase,
-} from '../db/queries.js';
+} from '../db/index.js';
 import { ACTIVITY_BADGE_THRESHOLDS } from './activity.js';
 import type { Badge, MemberBadge, MemberProfile } from '../types/index.js';
 

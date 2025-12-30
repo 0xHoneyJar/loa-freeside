@@ -19,7 +19,7 @@ import {
   getMemberCount,
   getMemberCountByTier,
   getAllBadges,
-} from '../db/queries.js';
+} from '../db/index.js';
 import type {
   DirectoryFilters,
   DirectoryResult,

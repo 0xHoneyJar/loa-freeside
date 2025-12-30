@@ -18,7 +18,7 @@ import {
   addActivityPoints as dbAddActivityPoints,
   applyActivityDecay as dbApplyActivityDecay,
   getDatabase,
-} from '../db/queries.js';
+} from '../db/index.js';
 import type { MemberActivity } from '../types/index.js';
 
 // Rate limiting: Track last message time per user to prevent spam gaming

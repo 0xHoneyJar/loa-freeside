@@ -42,7 +42,7 @@ const mockGetRecentTierChanges = vi.fn();
 const mockGetTopActiveMembers = vi.fn();
 const mockInsertWeeklyDigest = vi.fn();
 
-vi.mock('../../src/db/queries.js', () => ({
+vi.mock('../../src/db/index.js', () => ({
   getDatabase: vi.fn(() => ({
     prepare: vi.fn(() => ({
       get: vi.fn(() => ({ count: 350 })),

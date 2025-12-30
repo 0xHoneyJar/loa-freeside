@@ -11,7 +11,7 @@ import {
   EmbedBuilder,
 } from 'discord.js';
 import { logger } from '../../utils/logger.js';
-import { getMemberProfileByDiscordId } from '../../db/queries.js';
+import { getMemberProfileByDiscordId } from '../../db/index.js';
 import { notificationService } from '../../services/notification.js';
 import type { AlertFrequency } from '../../types/index.js';
 

@@ -13,7 +13,7 @@
  */
 
 import { randomUUID } from 'crypto';
-import { getDatabase } from '../db/queries.js';
+import { getDatabase } from '../db/index.js';
 import { logger } from '../utils/logger.js';
 import {
   VERIFICATION_SESSION_EXPIRY_MS,

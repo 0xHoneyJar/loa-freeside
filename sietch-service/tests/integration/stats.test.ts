@@ -40,7 +40,7 @@ const mockGetTotalBgt = vi.fn();
 const mockCountWeeklyActive = vi.fn();
 const mockGetTierDistribution = vi.fn();
 
-vi.mock('../../src/db/queries.js', () => ({
+vi.mock('../../src/db/index.js', () => ({
   getMemberProfileById: mockGetMemberProfileById,
   getMemberActivity: mockGetMemberActivity,
   getMemberBadgeCount: mockGetMemberBadgeCount,

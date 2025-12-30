@@ -16,7 +16,7 @@ import {
   getDatabase,
   calculateTenureCategory,
   getMemberBadgeCount,
-} from '../db/queries.js';
+} from '../db/index.js';
 import { redisService } from './cache/RedisService.js';
 import type { LeaderboardEntry } from '../types/index.js';
 

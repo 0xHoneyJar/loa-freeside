@@ -22,7 +22,7 @@ vi.mock('../../src/config.js', () => ({
 }));
 
 // Mock database
-vi.mock('../../src/db/queries.js', () => ({
+vi.mock('../../src/db/index.js', () => ({
   getMemberProfileById: vi.fn(),
   getMemberProfileByNym: vi.fn(),
   getDatabase: vi.fn(() => ({

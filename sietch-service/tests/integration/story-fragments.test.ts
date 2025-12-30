@@ -36,7 +36,7 @@ const mockGetStoryFragments = vi.fn();
 const mockIncrementFragmentUsage = vi.fn();
 const mockGetFragmentStats = vi.fn();
 
-vi.mock('../../src/db/queries.js', () => ({
+vi.mock('../../src/db/index.js', () => ({
   getDatabase: vi.fn(() => ({
     prepare: vi.fn(() => ({
       all: vi.fn(),

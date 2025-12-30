@@ -25,7 +25,7 @@ const mockGetMemberBadges = vi.fn();
 const mockGetMemberActivity = vi.fn();
 const mockCalculateTenureCategory = vi.fn();
 
-vi.mock('../../src/db/queries.js', () => ({
+vi.mock('../../src/db/index.js', () => ({
   getDatabase: mockGetDatabase,
   getMemberProfileByDiscordId: mockGetMemberProfileByDiscordId,
   getMemberBadges: mockGetMemberBadges,

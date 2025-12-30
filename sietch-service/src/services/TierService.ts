@@ -15,7 +15,7 @@
 
 import { formatUnits, parseUnits } from 'viem';
 import { logger } from '../utils/logger.js';
-import { logAuditEvent } from '../db/queries.js';
+import { logAuditEvent } from '../db/index.js';
 import type { Tier, TierProgress, TierDistribution } from '../types/index.js';
 
 /**
@@ -352,7 +352,7 @@ class TierService {
       updateMemberTier: updateTierInDb,
       insertTierHistory,
       logAuditEvent,
-    } = await import('../db/queries.js');
+    } = await import('../db/index.js');
 
     // Fetch current tier if not provided
     if (oldTier === undefined) {
@@ -401,7 +401,7 @@ class TierService {
    * @returns Array of tier history entries
    */
   async getMemberTierHistory(memberId: string) {
-    const { getTierHistory } = await import('../db/queries.js');
+    const { getTierHistory } = await import('../db/index.js');
     return getTierHistory(memberId);
   }
 
@@ -411,7 +411,7 @@ class TierService {
    * @returns Object with member counts per tier
    */
   async getTierDistribution(): Promise<TierDistribution> {
-    const { getTierDistribution } = await import('../db/queries.js');
+    const { getTierDistribution } = await import('../db/index.js');
     return getTierDistribution();
   }
 
@@ -422,7 +422,7 @@ class TierService {
    * @returns Array of tier history entries
    */
   async getRecentTierChanges(limit: number = 50) {
-    const { getRecentTierChanges } = await import('../db/queries.js');
+    const { getRecentTierChanges } = await import('../db/index.js');
     return getRecentTierChanges(limit);
   }
 
@@ -435,7 +435,7 @@ class TierService {
    * @returns Array of tier history entries
    */
   async getTierChangesInDateRange(startDate: Date, endDate: Date) {
-    const { getTierChangesInDateRange } = await import('../db/queries.js');
+    const { getTierChangesInDateRange } = await import('../db/index.js');
     return getTierChangesInDateRange(startDate, endDate);
   }
 
@@ -447,7 +447,7 @@ class TierService {
    * @returns Count of promotions
    */
   async countTierPromotions(startDate: Date, endDate: Date): Promise<number> {
-    const { countTierPromotions } = await import('../db/queries.js');
+    const { countTierPromotions } = await import('../db/index.js');
     return countTierPromotions(startDate, endDate);
   }
 
@@ -458,7 +458,7 @@ class TierService {
    * @returns Array of member profiles
    */
   async getMembersByTier(tier: Tier) {
-    const { getMembersByTier } = await import('../db/queries.js');
+    const { getMembersByTier } = await import('../db/index.js');
     return getMembersByTier(tier);
   }
 }

@@ -7,7 +7,7 @@ import { thresholdService } from '../services/threshold.js';
 import { notificationService } from '../services/notification.js';
 import { storyService } from '../services/StoryService.js';
 import { tierService, syncTierRole, isTierRolesConfigured, TIER_INFO, awardBadge, BADGE_IDS } from '../services/index.js';
-import { memberHasBadge } from '../db/queries.js';
+import { memberHasBadge } from '../db/index.js';
 import {
   initDatabase,
   saveEligibilitySnapshot,

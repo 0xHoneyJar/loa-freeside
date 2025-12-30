@@ -21,7 +21,7 @@ import {
   getEligibilityByAddress,
   getMemberProfileById,
   getMemberBadgeCount,
-} from '../db/queries.js';
+} from '../db/index.js';
 import { formatBigInt } from '../utils/format.js';
 
 /**

@@ -28,7 +28,7 @@ import {
 } from 'discord.js';
 import { logger } from '../../utils/logger.js';
 import { directoryService } from '../../services/directory.js';
-import { getMemberProfileByDiscordId } from '../../db/queries.js';
+import { getMemberProfileByDiscordId } from '../../db/index.js';
 import { buildDirectoryEmbed } from '../embeds/directory.js';
 import type { DirectoryFilters } from '../../types/index.js';
 

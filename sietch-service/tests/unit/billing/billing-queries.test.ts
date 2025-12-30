@@ -16,7 +16,7 @@ import { BILLING_SCHEMA_SQL } from '../../../src/db/schema.js';
 let testDb: Database.Database;
 
 // Mock the getDatabase function to return our test database
-vi.mock('../../../src/db/queries.js', () => ({
+vi.mock('../../../src/db/connection.js', () => ({
   getDatabase: vi.fn(() => testDb),
 }));
 

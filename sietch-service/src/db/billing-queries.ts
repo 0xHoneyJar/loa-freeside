@@ -9,7 +9,7 @@
  */
 
 import { randomUUID } from 'crypto';
-import { getDatabase } from './queries.js';
+import { getDatabase } from './connection.js';
 import { logger } from '../utils/logger.js';
 import type {
   Subscription,

@@ -42,7 +42,7 @@ vi.mock('../../src/config.js', () => ({
 }));
 
 // Mock the database queries
-vi.mock('../../src/db/queries.js', () => ({
+vi.mock('../../src/db/index.js', () => ({
   getMemberProfileById: vi.fn(),
   getMemberBadgeCount: vi.fn(),
   getMemberActivity: vi.fn(),
@@ -84,7 +84,7 @@ import {
   assignOnboardedRole,
 } from '../../src/services/roleManager.js';
 import { checkRoleUpgrades } from '../../src/services/badge.js';
-import { getMemberProfileById } from '../../src/db/queries.js';
+import { getMemberProfileById } from '../../src/db/index.js';
 
 describe('Role Manager', () => {
   beforeEach(() => {

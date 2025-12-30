@@ -79,7 +79,7 @@ vi.mock('../../src/services/naib.js', () => ({
   },
 }));
 
-vi.mock('../../src/db/queries.js', () => ({
+vi.mock('../../src/db/index.js', () => ({
   getEligibilityByAddress: vi.fn(),
   getMemberProfileById: vi.fn(),
   getMemberBadgeCount: vi.fn(),
@@ -96,7 +96,7 @@ vi.mock('../../src/utils/format.js', () => ({
 
 import { identityService } from '../../src/services/IdentityService.js';
 import { leaderboardService } from '../../src/services/leaderboard.js';
-import { getEligibilityByAddress, getMemberProfileById, getMemberBadgeCount } from '../../src/db/queries.js';
+import { getEligibilityByAddress, getMemberProfileById, getMemberBadgeCount } from '../../src/db/index.js';
 
 // =============================================================================
 // Test Helpers

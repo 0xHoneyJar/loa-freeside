@@ -11,10 +11,10 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { thresholdService } from '../../src/services/threshold.js';
-import * as queries from '../../src/db/queries.js';
+import * as queries from '../../src/db/index.js';
 
 // Mock the database queries
-vi.mock('../../src/db/queries.js', () => {
+vi.mock('../../src/db/index.js', () => {
   return {
     insertWaitlistRegistration: vi.fn(),
     getWaitlistRegistrationByDiscord: vi.fn(),

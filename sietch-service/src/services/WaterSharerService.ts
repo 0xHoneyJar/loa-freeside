@@ -17,9 +17,9 @@
  */
 
 import { randomUUID } from 'crypto';
-import { getDatabase } from '../db/queries.js';
+import { getDatabase } from '../db/index.js';
 import { logger } from '../utils/logger.js';
-import { memberHasBadge, getMemberProfileById, getMemberProfileByDiscordId, logAuditEvent } from '../db/queries.js';
+import { memberHasBadge, getMemberProfileById, getMemberProfileByDiscordId, logAuditEvent } from '../db/index.js';
 import { awardBadge, BADGE_IDS } from './badge.js';
 import type { WaterSharerGrant, WaterSharerStatus, MemberProfile } from '../types/index.js';
 

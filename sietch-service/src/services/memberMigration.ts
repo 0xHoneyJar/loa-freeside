@@ -8,7 +8,7 @@
 import { EmbedBuilder } from 'discord.js';
 import { logger } from '../utils/logger.js';
 import { discordService } from './discord.js';
-import { getDatabase, logAuditEvent } from '../db/queries.js';
+import { getDatabase, logAuditEvent } from '../db/index.js';
 
 /**
  * Get members who have placeholder profiles (haven't completed onboarding)

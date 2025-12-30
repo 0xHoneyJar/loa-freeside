@@ -17,7 +17,7 @@ import {
   getWalletByDiscordId,
   getWalletPosition,
   getCurrentEligibility,
-} from '../../db/queries.js';
+} from '../../db/index.js';
 import { naibService } from '../../services/naib.js';
 import { thresholdService } from '../../services/threshold.js';
 import { notificationService } from '../../services/notification.js';

@@ -51,7 +51,7 @@ const mockGetTierHistory = vi.fn();
 const mockGetTierDistribution = vi.fn();
 const mockLogAuditEvent = vi.fn();
 
-vi.mock('../../src/db/queries.js', () => ({
+vi.mock('../../src/db/index.js', () => ({
   updateMemberTier: mockUpdateMemberTier,
   insertTierHistory: mockInsertTierHistory,
   getMemberProfileById: mockGetMemberProfileById,

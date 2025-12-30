@@ -41,7 +41,7 @@ const mockAwardBadgeToMember = vi.fn();
 const mockGetMemberProfileById = vi.fn();
 const mockLogAuditEvent = vi.fn();
 
-vi.mock('../../src/db/queries.js', () => ({
+vi.mock('../../src/db/index.js', () => ({
   memberHasBadge: mockMemberHasBadge,
   getWaterSharerGrantByGranter: mockGetWaterSharerGrant,
   insertWaterSharerGrant: mockInsertWaterSharerGrant,
@@ -310,8 +310,8 @@ describe('Water Sharer System Integration', () => {
 
       // Mock getDatabase to return our mock DB
       const mockGetDatabase = vi.fn().mockReturnValue(mockDb);
-      vi.mock('../../src/db/queries.js', async () => ({
-        ...(await vi.importActual('../../src/db/queries.js')),
+      vi.mock('../../src/db/index.js', async () => ({
+        ...(await vi.importActual('../../src/db/index.js')),
         getDatabase: mockGetDatabase,
         getMemberProfileById: mockGetMemberProfileById,
       }));

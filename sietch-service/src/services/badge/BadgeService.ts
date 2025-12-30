@@ -25,7 +25,7 @@ import {
   getBadgeSettings,
   upsertBadgeSettings,
 } from '../../db/badge-queries.js';
-import { getMemberProfileById, getMemberActivity } from '../../db/queries.js';
+import { getMemberProfileById, getMemberActivity } from '../../db/index.js';
 import { TIER_INFO, tierSatisfiesRequirement } from '../billing/featureMatrix.js';
 import type {
   BadgeEntitlementResult,

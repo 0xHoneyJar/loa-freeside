@@ -14,7 +14,7 @@
  */
 
 import { logger } from '../utils/logger.js';
-import { logAuditEvent } from '../db/queries.js';
+import { logAuditEvent } from '../db/index.js';
 import {
   insertWaitlistRegistration,
   getWaitlistRegistrationByDiscord,
@@ -31,7 +31,7 @@ import {
   getEntryThresholdBgt,
   getWalletPosition as getWalletPositionFromDb,
   getCurrentEligibility,
-} from '../db/queries.js';
+} from '../db/index.js';
 import type {
   WaitlistRegistration,
   ThresholdSnapshot,

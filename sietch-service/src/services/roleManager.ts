@@ -23,7 +23,7 @@ import {
   getMemberProfileById,
   getDatabase,
   logAuditEvent,
-} from '../db/queries.js';
+} from '../db/index.js';
 import type { Tier } from '../types/index.js';
 import { TIER_ORDER } from './TierService.js';
 

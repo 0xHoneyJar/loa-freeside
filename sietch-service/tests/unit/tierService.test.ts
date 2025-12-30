@@ -19,7 +19,7 @@ vi.mock('../../src/utils/logger.js', () => ({
 }));
 
 // Mock database queries (not used in core calculation tests)
-vi.mock('../../src/db/queries.js', () => ({
+vi.mock('../../src/db/index.js', () => ({
   logAuditEvent: vi.fn(),
   getMemberProfileById: vi.fn(),
   updateMemberTier: vi.fn(),

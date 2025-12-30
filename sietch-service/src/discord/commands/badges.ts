@@ -19,7 +19,7 @@ import {
   getMemberProfileByNym,
   getMemberBadges,
   searchMembersByNym,
-} from '../../db/queries.js';
+} from '../../db/index.js';
 import {
   buildOwnBadgesEmbed,
   buildPublicBadgesEmbed,
