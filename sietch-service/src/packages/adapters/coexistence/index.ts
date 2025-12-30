@@ -126,5 +126,25 @@ export {
   type TakeoverConfirmationState,
   type TakeoverResult,
   type RenameRolesCallback,
-  type NotifyAdminCallback,
+  type NotifyAdminCallback as MigrationNotifyAdminCallback,
 } from './MigrationEngine.js';
+
+// Incumbent health monitor (Sprint 64)
+export {
+  IncumbentHealthMonitor,
+  createIncumbentHealthMonitor,
+  // Constants
+  BOT_ONLINE_ALERT_MS,
+  ROLE_UPDATE_ALERT_MS,
+  ROLE_UPDATE_CRITICAL_MS,
+  CHANNEL_ACTIVITY_ALERT_MS,
+  ALERT_THROTTLE_MS,
+  MIN_CHANNEL_ACTIVITY_MESSAGES,
+  // Types
+  type HealthCheckResult,
+  type HealthReport,
+  type HealthAlert,
+  type NotifyAdminCallback,
+  type ActivateBackupCallback,
+  type HealthMonitorConfig,
+} from './IncumbentHealthMonitor.js';

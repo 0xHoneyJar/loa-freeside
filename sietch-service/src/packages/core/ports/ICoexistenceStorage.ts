@@ -268,15 +268,31 @@ export interface ICoexistenceStorage {
    */
   initializeShadowMode(communityId: string): Promise<StoredMigrationState>;
 
+  /**
+   * Update migration state (partial update)
+   * @param input - Fields to update
+   */
+  updateMigrationState(input: SaveMigrationStateInput): Promise<StoredMigrationState>;
+
+  // =========================================================================
+  // Community Query Methods (Sprint 64)
+  // =========================================================================
+
+  /**
+   * Get community basic info by ID
+   * @param communityId - Community UUID
+   */
+  getCommunity(communityId: string): Promise<StoredCommunityBasic | null>;
+
   // =========================================================================
   // Query Methods
   // =========================================================================
 
   /**
    * Get all communities in a specific mode
-   * @param mode - Coexistence mode to filter by
+   * @param mode - Coexistence mode to filter by (single or array)
    */
-  getCommunitiesByMode(mode: CoexistenceMode): Promise<string[]>;
+  getCommunitiesByMode(mode: CoexistenceMode | CoexistenceMode[]): Promise<StoredCommunityBasic[]>;
 
   /**
    * Get communities ready for migration (passed readiness check)
@@ -746,6 +762,23 @@ export interface ICoexistenceStorage {
     channelId: string,
     minConviction: number
   ): Promise<string[]>;
+}
+
+// =============================================================================
+// Community Basic Types (Sprint 64)
+// =============================================================================
+
+/**
+ * Basic community information for health monitoring
+ */
+export interface StoredCommunityBasic {
+  id: string;
+  name: string;
+  discordGuildId: string | null;
+  telegramChatId: string | null;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 // =============================================================================

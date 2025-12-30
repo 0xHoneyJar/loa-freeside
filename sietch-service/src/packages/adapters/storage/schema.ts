@@ -1370,3 +1370,62 @@ export const parallelChannelAccessRelations = relations(parallelChannelAccess, (
 
 export type ParallelChannelAccess = typeof parallelChannelAccess.$inferSelect;
 export type NewParallelChannelAccess = typeof parallelChannelAccess.$inferInsert;
+
+// =============================================================================
+// Incumbent Health Checks Table (Sprint 64 - Incumbent Health Monitoring)
+// =============================================================================
+
+/**
+ * Incumbent Health Checks - Historical health check records
+ *
+ * Tracks health check results over time for trending and analysis.
+ * Used by IncumbentHealthMonitor to store check results and alerts.
+ *
+ * RLS Policy: community_id = current_setting('app.current_tenant')::UUID
+ */
+export const incumbentHealthChecks = pgTable(
+  'incumbent_health_checks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    communityId: uuid('community_id')
+      .notNull()
+      .references(() => communities.id, { onDelete: 'cascade' }),
+
+    // Check results
+    overallStatus: text('overall_status').notNull(), // HealthStatus: 'healthy' | 'degraded' | 'offline' | 'unknown'
+    botOnlinePassed: boolean('bot_online_passed').notNull(),
+    botOnlineMessage: text('bot_online_message'),
+    roleUpdatePassed: boolean('role_update_passed').notNull(),
+    roleUpdateMessage: text('role_update_message'),
+    channelActivityPassed: boolean('channel_activity_passed').notNull(),
+    channelActivityMessage: text('channel_activity_message'),
+
+    // Alert tracking
+    alertSent: boolean('alert_sent').notNull().default(false),
+    alertThrottled: boolean('alert_throttled').notNull().default(false),
+    alertSeverity: text('alert_severity'), // 'warning' | 'critical'
+
+    // Timestamps
+    checkedAt: timestamp('checked_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    communityIdx: index('idx_incumbent_health_checks_community').on(table.communityId),
+    statusIdx: index('idx_incumbent_health_checks_status').on(table.overallStatus),
+    checkedAtIdx: index('idx_incumbent_health_checks_checked').on(table.checkedAt),
+    alertIdx: index('idx_incumbent_health_checks_alert').on(table.alertSent),
+  })
+);
+
+/**
+ * Incumbent health check relations
+ */
+export const incumbentHealthChecksRelations = relations(incumbentHealthChecks, ({ one }) => ({
+  community: one(communities, {
+    fields: [incumbentHealthChecks.communityId],
+    references: [communities.id],
+  }),
+}));
+
+export type IncumbentHealthCheck = typeof incumbentHealthChecks.$inferSelect;
+export type NewIncumbentHealthCheck = typeof incumbentHealthChecks.$inferInsert;
