@@ -7,6 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.0.1] - 2025-12-30
+
+### Added
+
+#### Coexistence Architecture - Shadow Mode (Sprint 56-65)
+
+Complete incumbent bot migration system enabling zero-downtime transitions from existing Discord bots.
+
+##### Shadow Mode Foundation (Sprint 56-57)
+- `IncumbentDetector` - Detects existing bots via role patterns, permissions, and activity heuristics
+- `ShadowLedger` - Tracks member state in shadow mode without affecting incumbent
+- `CoexistenceStorage` - PostgreSQL adapter with 6 dedicated coexistence tables
+- `ShadowSyncJob` - Scheduled sync every 6 hours with divergence tracking
+- Coexistence modes: `shadow` → `parallel` → `active` → `incumbent_retired`
+
+##### Parallel Mode (Sprint 58-59)
+- `NamespacedRoleManager` - Creates namespaced roles (e.g., `[Arrakis] Naib`) to run alongside incumbent
+- `ParallelChannelManager` - Creates parallel channel structure for side-by-side comparison
+- `ConvictionGate` - Token-gates parallel channels based on tier requirements
+- Mode transitions with automatic role/channel cleanup on rollback
+
+##### Verification Tiers & Glimpse Mode (Sprint 60-61)
+- 4-tier verification system: `shadow_only`, `incumbent_only`, `parallel_verified`, `full_migrated`
+- `GlimpseRenderer` - Blurred social previews for non-verified users
+- Feature gating based on verification tier
+- Upgrade CTAs with clear migration benefits
+
+##### Migration Engine (Sprint 62-63)
+- `MigrationEngine` - Orchestrates full migration lifecycle
+- Three migration strategies: `instant`, `gradual`, `parallel_extended`
+- Readiness checks before migration (divergence rate, health, permissions)
+- `RollbackWatcherJob` - Monitors for issues and auto-triggers rollback
+- `/admin-takeover` command for emergency incumbent takeover
+- Comprehensive rollback with state restoration
+
+##### Incumbent Monitoring & Social (Sprint 64-65)
+- `IncumbentHealthMonitor` - Continuous health checks (API latency, role sync, message delivery)
+- Health alert embeds for Discord notifications
+- `IncumbentHealthJob` - Scheduled monitoring with configurable thresholds
+- Full social layer activation in `active` mode
+- Coexistence status API endpoints
+
+#### Coexistence API Routes
+- `GET /api/v1/coexistence/status/:guildId` - Current coexistence mode and health
+- `POST /api/v1/coexistence/transition` - Trigger mode transition
+- `GET /api/v1/coexistence/divergence/:guildId` - Shadow ledger divergence report
+- `POST /api/v1/coexistence/rollback` - Emergency rollback trigger
+
+### Security
+
+#### Security Hardening (Sprint 66)
+- **HIGH-001**: Input validation for Discord user IDs - Prevents Redis glob injection attacks via regex validation (`^[a-zA-Z0-9_-]+$`)
+- **HIGH-002**: Webhook authentication - HMAC-SHA256 signatures + URL whitelist via `WEBHOOK_SECRET` and `ALLOWED_WEBHOOKS` env vars
+- **HIGH-003**: Session tier system - Three-tier hierarchy (STANDARD/ELEVATED/PRIVILEGED) with MFA requirement for critical operations
+- **HIGH-004**: Emergency API key rotation - Immediate revocation with no grace period for compromised keys
+- **HIGH-005**: API key validation rate limiting - Per-IP rate limiting (10 attempts/60s) to prevent brute force attacks
+- **HIGH-006**: Enhanced device fingerprinting - Expanded from 2 to 7 components (User-Agent, Accept headers, Client Hints)
+- **HIGH-007**: S3 audit log archival - Automated archival with checksum verification (implemented in Sprint 50)
+
+### Changed
+- All security implementations follow fail-closed design (no silent bypasses)
+- Required environment variables: `API_KEY_PEPPER`, `RATE_LIMIT_SALT`, `WEBHOOK_SECRET`
+- Optional environment variables: `ALLOWED_WEBHOOKS`, `REDIS_URL` (for rate limiting)
+
 ## [5.0.0] - 2025-12-29
 
 ### Added
@@ -345,6 +409,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Release Date | Codename | Key Features |
 |---------|--------------|----------|--------------|
+| 5.0.1 | 2025-12-30 | Coexistence & Security | Shadow mode, migration engine, incumbent monitoring, security hardening |
 | 5.0.0 | 2025-12-29 | The Transformation | Multi-tenant SaaS, hexagonal architecture, HITL approval |
 | 4.1.0 | 2025-12-27 | The Crossing | Telegram bot, inline queries, cross-platform identity |
 | 4.0.0 | 2025-12-26 | SaaS Foundation | Stripe billing, webhooks, gatekeeper, boosts |
@@ -353,7 +418,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | 2.0.0 | 2025-12-15 | Social Layer | Profiles, badges, directory, activity |
 | 1.0.0 | 2025-12-01 | MVP | Core eligibility, Discord bot, API |
 
-[Unreleased]: https://github.com/0xHoneyJar/arrakis/compare/v5.0.0...HEAD
+[Unreleased]: https://github.com/0xHoneyJar/arrakis/compare/v5.0.1...HEAD
+[5.0.1]: https://github.com/0xHoneyJar/arrakis/compare/v5.0.0...v5.0.1
 [5.0.0]: https://github.com/0xHoneyJar/arrakis/compare/v4.1.0...v5.0.0
 [4.1.0]: https://github.com/0xHoneyJar/arrakis/compare/v4.0.0...v4.1.0
 [4.0.0]: https://github.com/0xHoneyJar/arrakis/compare/v3.0.0...v4.0.0
