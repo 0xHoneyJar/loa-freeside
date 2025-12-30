@@ -1,8 +1,8 @@
 # Product Requirements Document: Arrakis v5.0
 
-**Version**: 5.1
-**Date**: December 29, 2025
-**Status**: APPROVED - Post-Audit Hardening Required
+**Version**: 5.2
+**Date**: December 30, 2025
+**Status**: APPROVED - Coexistence Architecture Added
 **Codename**: The Transformation
 
 ---
@@ -18,6 +18,7 @@
 | Infrastructure Phases | arrakis-saas-architecture.md §10 | Implementation prompt |
 | WizardEngine | arrakis-saas-architecture.md §7 | Discord API constraints |
 | Hardening Requirements | arrakis-v5-code-review.md §9 | KillSwitchProtocol.ts, ScoreServiceAdapter.ts |
+| Coexistence Architecture | ARRAKIS_COEXISTENCE_ARCHITECTURE.md | Collab.Land, Matrica, Guild.xyz docs |
 
 ---
 
@@ -696,7 +697,265 @@ Before marking hardening complete:
 
 ---
 
-## 11. Appendices
+## 11. Coexistence Architecture (Shadow Mode & Incumbent Migration)
+
+> Source: ARRAKIS_COEXISTENCE_ARCHITECTURE.md (December 2025)
+
+This section defines requirements for Arrakis to coexist alongside incumbent token-gating solutions (Collab.Land, Matrica, Guild.xyz) with a graceful migration path. Design philosophy: **"Low-friction entry, high-value destination"**.
+
+### 11.1 Design Principles
+
+1. **Zero-Risk Installation** - Arrakis never touches incumbent-managed roles in shadow mode
+2. **Progressive Trust Building** - Shadow mode proves accuracy before admin commits
+3. **Feature Differentiation First** - Lead with capabilities incumbents can't offer (conviction scoring, BGT-specific logic)
+4. **Graceful Degradation** - Rollback is always one click away
+
+### 11.2 Operating Modes
+
+| Mode | Role Management | Channel Management | Social Layer | Incumbent Status |
+|------|-----------------|-------------------|--------------|------------------|
+| **Shadow** | None - observe only | None | Glimpse only | Active, untouched |
+| **Parallel** | `@arrakis-*` roles | Optional parallel channels | Glimpse only | Active, untouched |
+| **Primary** | `@arrakis-*` roles (authoritative) | Full channel management | Full features | Optional backup |
+| **Exclusive** | Takes over incumbent roles | Full channel management | Full features | Removed |
+
+### 11.3 Phase 7: Shadow Mode
+
+#### FR-5.11.1: Incumbent Detection
+
+**Description**: Auto-detect existing token-gating bots on installation.
+
+**Acceptance Criteria**:
+- [ ] Detect Collab.Land, Matrica, Guild.xyz by bot ID patterns
+- [ ] Detect verification channels (`#collabland-join`, `#matrica-verify`)
+- [ ] Identify token-gated roles by naming patterns and membership
+- [ ] Confidence score (0-1) for detection accuracy
+- [ ] Manual override for `other` incumbents
+
+#### FR-5.11.2: Shadow Ledger
+
+**Description**: Track "what Arrakis would do" without executing any Discord changes.
+
+**Acceptance Criteria**:
+- [ ] `shadow_member_state` table with incumbent roles, Arrakis eligibility, conviction score
+- [ ] `shadow_divergences` table tracking differences between incumbent and Arrakis
+- [ ] `shadow_predictions` table for accuracy tracking
+- [ ] RLS policies scoped by `guild_id`
+- [ ] No Discord role mutations in shadow mode
+
+**Schema**:
+```typescript
+shadow_member_state: {
+  guild_id: string;
+  discord_id: string;
+  incumbent_roles: string[];
+  arrakis_wallet: string | null;
+  arrakis_eligibility: 'none' | 'naib' | 'fedaykin' | ...;
+  arrakis_conviction: number;  // 0-100
+  arrakis_would_assign: string[];
+  arrakis_would_revoke: string[];
+  divergence_status: 'match' | 'arrakis_higher' | 'arrakis_lower' | 'unknown';
+}
+```
+
+#### FR-5.11.3: Shadow Sync Job
+
+**Description**: Periodic comparison of incumbent state vs Arrakis calculations.
+
+**Acceptance Criteria**:
+- [ ] Runs every 6 hours (matching typical incumbent balance check interval)
+- [ ] Snapshots current Discord role state
+- [ ] Calculates Arrakis eligibility for verified wallets
+- [ ] Detects and records divergences
+- [ ] Validates previous predictions
+- [ ] Admin digest notification (opt-in)
+- [ ] **CRITICAL**: Zero Discord mutations in shadow mode
+
+### 11.4 Phase 7: Verification Tiers
+
+#### FR-5.12.1: Tiered Feature Access
+
+**Description**: Gate features based on verification status.
+
+**Acceptance Criteria**:
+- [ ] Tier 1 (`incumbent_only`): Shadow tracking, public leaderboard (wallet hidden)
+- [ ] Tier 2 (`arrakis_basic`): Tier 1 + profile view, conviction score preview
+- [ ] Tier 3 (`arrakis_full`): Full badges, tier progression, all social features
+- [ ] Tier migration on wallet connection
+- [ ] Feature gating enforced at service layer
+
+#### FR-5.12.2: Verification Flow UX
+
+**Description**: Encourage wallet connection without requiring it.
+
+**Acceptance Criteria**:
+- [ ] Detect existing incumbent verification
+- [ ] Offer "Quick Start" (incumbent tier) vs "Full Experience" (wallet connect)
+- [ ] Preview conviction score and tier after wallet connection
+- [ ] Clear messaging about locked features
+- [ ] Call-to-action for admin migration
+
+### 11.5 Phase 8: Parallel Mode
+
+#### FR-5.13.1: Namespaced Role Management
+
+**Description**: Create Arrakis roles that coexist with incumbent roles.
+
+**Acceptance Criteria**:
+- [ ] All Arrakis roles prefixed with `@arrakis-*`
+- [ ] Roles positioned below incumbent roles in hierarchy
+- [ ] Role sync independent of incumbent
+- [ ] No permissions granted to namespaced roles (security)
+- [ ] Admin can customize role names while preserving namespace
+
+#### FR-5.13.2: Parallel Channel Strategy
+
+**Description**: Admin-configurable channel creation strategy.
+
+**Acceptance Criteria**:
+- [ ] Strategy options: `none`, `additive_only`, `parallel_mirror`, `custom`
+- [ ] `additive_only` creates conviction-gated channels (incumbents can't offer)
+- [ ] Default additive channels: `#conviction-lounge` (80+), `#diamond-hands` (95+)
+- [ ] `parallel_mirror` creates Arrakis versions of incumbent channels
+- [ ] Channel permissions tied to Arrakis roles
+
+### 11.6 Phase 8: Glimpse Mode (Social Layer Preview)
+
+#### FR-5.14.1: Blurred Preview System
+
+**Description**: Show social features exist without full access.
+
+**Acceptance Criteria**:
+- [ ] Leaderboard visible, others' conviction scores hidden
+- [ ] Profile directory shows blurred profile cards
+- [ ] Badge showcase shows locked badge icons
+- [ ] "Your Preview Profile" shows own stats
+- [ ] Unlock messaging: "🔐 Full profiles unlock when your community completes migration"
+
+#### FR-5.14.2: Upgrade Call-to-Action
+
+**Description**: Create FOMO for full features.
+
+**Acceptance Criteria**:
+- [ ] "Tell Admin to Migrate" button on glimpse views
+- [ ] Badge count "ready to claim" displayed
+- [ ] Conviction rank position shown (e.g., "Top 15%")
+- [ ] Visual differentiation (blur, lock icons)
+- [ ] No harassment or manipulation - informational only
+
+### 11.7 Phase 9: Migration Engine
+
+#### FR-5.15.1: Migration Strategy Selection
+
+**Description**: Admin chooses migration approach.
+
+**Acceptance Criteria**:
+- [ ] Strategies: `instant`, `gradual`, `parallel_forever`, `arrakis_primary`
+- [ ] Readiness checks: min shadow days (14), min accuracy (95%)
+- [ ] `gradual` migrates new members immediately, existing over N days
+- [ ] `parallel_forever` keeps both systems indefinitely
+- [ ] Strategy selection via admin dashboard
+
+#### FR-5.15.2: Rollback System
+
+**Description**: Emergency revert capability.
+
+**Acceptance Criteria**:
+- [ ] One-click rollback to previous mode
+- [ ] Auto-trigger on: >5% access loss in 1 hour, error rate >10% in 15 min
+- [ ] Preserve incumbent roles during rollback
+- [ ] Admin notification on auto-rollback
+- [ ] Audit log of all rollback events
+
+#### FR-5.15.3: Role Takeover (Exclusive Mode)
+
+**Description**: Admin-triggered transition to exclusive Arrakis management.
+
+**Acceptance Criteria**:
+- [ ] Manual command only (`/arrakis takeover`)
+- [ ] Three-step confirmation (community name, acknowledge, rollback plan)
+- [ ] Rename namespaced roles to final names
+- [ ] Remove incumbent roles from members (optional)
+- [ ] Update channel permissions
+- [ ] **INCENTIVE**: 20% pricing discount for first year
+
+### 11.8 Phase 9: Incumbent Health Monitoring
+
+#### FR-5.16.1: Health Check System
+
+**Description**: Monitor incumbent bot health.
+
+**Acceptance Criteria**:
+- [ ] Check: Role update freshness (alert: 48h, critical: 72h)
+- [ ] Check: Bot online presence (alert: 1h)
+- [ ] Check: Verification channel activity (alert: 168h)
+- [ ] Health report per guild
+- [ ] Historical health data for trends
+
+#### FR-5.16.2: Admin Alert System
+
+**Description**: Notify admin of incumbent issues.
+
+**Acceptance Criteria**:
+- [ ] Alert channels: admin DM, audit channel
+- [ ] Throttle: 4 hours between alerts
+- [ ] Alert content: issue summary, Arrakis status, action buttons
+- [ ] "Activate Arrakis as Backup" button (non-automatic)
+- [ ] "Dismiss Alert" option
+
+#### FR-5.16.3: Emergency Backup Activation
+
+**Description**: Admin-triggered backup when incumbent fails.
+
+**Acceptance Criteria**:
+- [ ] Requires explicit confirmation
+- [ ] Transitions from shadow to parallel mode
+- [ ] Immediately syncs Arrakis roles
+- [ ] Does NOT remove incumbent roles
+- [ ] Does NOT remove incumbent bot
+- [ ] Audit log entry with health report metadata
+- [ ] Admin notification on completion
+
+### 11.9 Coexistence Sprint Roadmap
+
+| Sprint | Focus | Key Deliverables |
+|--------|-------|------------------|
+| 56 | Shadow Foundation | Incumbent detection, shadow ledger, basic sync |
+| 57 | Shadow Analytics | Divergence tracking, prediction engine, admin dashboard |
+| 58 | Parallel Roles | Namespaced role management, parallel role sync |
+| 59 | Parallel Channels | Additive channel creation, conviction-gated access |
+| 60 | Verification Tiers | Trust incumbent, tiered feature access, preview mode |
+| 61 | Glimpse Mode | Blurred profiles, locked badges, upgrade CTAs |
+| 62 | Migration Engine | Strategy selection, gradual migration, rollback system |
+| 63 | Incumbent Monitoring | Health checks, alerting, backup activation |
+| 64 | Full Social Layer | Post-migration profile unlock, badge system, directory |
+| 65 | Polish & Incentives | Pricing integration, takeover incentives, docs |
+
+### 11.10 Coexistence Success Metrics
+
+| Metric | Target | Measurement |
+|--------|--------|-------------|
+| Shadow mode accuracy | >95% agreement with incumbent | Divergence rate |
+| Parallel adoption | >50% members connect wallet | Verification tier tracking |
+| Migration completion rate | >80% of parallel communities | Mode transitions |
+| Rollback rate | <5% of migrations | Rollback event count |
+| Incumbent failure response time | <1 hour to backup activation | Alert-to-action tracking |
+| User satisfaction (NPS) | >50 post-migration | Survey |
+
+### 11.11 Coexistence Risks and Mitigations
+
+| Risk | Likelihood | Impact | Mitigation |
+|------|------------|--------|------------|
+| Incumbent legal action | Low | Medium | Namespaced roles, no role touching in shadow mode |
+| User confusion (two systems) | Medium | Medium | Clear messaging, visual differentiation, glimpse mode |
+| Admin abandons migration | Medium | Low | Parallel mode works indefinitely; no pressure |
+| Arrakis miscalculates eligibility | Low | High | Shadow mode proves accuracy before action |
+| Rollback needed post-migration | Medium | Medium | Incumbent roles preserved, one-click restore |
+| Incumbent recovers mid-backup | Low | Low | Admin decides; both can coexist |
+
+---
+
+## 12. Appendices
 
 ### Appendix A: Package Structure
 
@@ -739,17 +998,21 @@ VAULT_TOKEN=...
 |----------|----------|
 | Architecture Specification | `loa-grimoire/context/new-context/arrakis-saas-architecture.md` |
 | Implementation Prompt | `loa-grimoire/context/new-context/arrakis-implementation-prompt.md` |
+| Coexistence Architecture | `loa-grimoire/context/ARRAKIS_COEXISTENCE_ARCHITECTURE.md` |
 | v4.1 PRD | `loa-grimoire/prd-v4.0-completed.md` |
 | v4.1 SDD | `loa-grimoire/sdd-v4.0-completed.md` |
 
 ---
 
-**Document Status**: APPROVED - Post-Audit Hardening Required
+**Document Status**: APPROVED - Coexistence Architecture Added
 
 **Revision History**:
 | Version | Date | Changes |
 |---------|------|---------|
 | 5.0 | Dec 28, 2025 | Initial v5.0 PRD |
 | 5.1 | Dec 29, 2025 | Added Section 10: Hardening Requirements from external code review |
+| 5.2 | Dec 30, 2025 | Added Section 11: Coexistence Architecture (Shadow Mode & Incumbent Migration) |
 
-**Next Step**: Implement hardening requirements (Section 10) before production deployment
+**Next Steps**:
+1. Continue implementing hardening requirements (Section 10) before production
+2. Proceed with Coexistence Architecture sprints (56-65) after hardening complete

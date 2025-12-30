@@ -1,11 +1,12 @@
 # Software Design Document: Arrakis SaaS Platform v5.0
 
-**Version:** 5.1 "The Transformation"
-**Date:** 2025-12-29
+**Version:** 5.2 "The Transformation"
+**Date:** 2025-12-30
 **Author:** Architecture Designer Agent
-**Status:** Approved - Post-Audit Hardening Required
-**PRD Reference:** loa-grimoire/prd.md (v5.1)
+**Status:** Approved - Coexistence Architecture Added
+**PRD Reference:** loa-grimoire/prd.md (v5.2)
 **Architecture Reference:** loa-grimoire/context/new-context/arrakis-saas-architecture.md
+**Coexistence Reference:** loa-grimoire/context/ARRAKIS_COEXISTENCE_ARCHITECTURE.md
 **Code Review Reference:** loa-grimoire/context/arrakis-v5-code-review.md
 
 ---
@@ -22,8 +23,9 @@
 8. [Development Phases](#8-development-phases)
 9. [Known Risks and Mitigation](#9-known-risks-and-mitigation)
 10. [Hardening Architecture (Post-Audit)](#10-hardening-architecture-post-audit)
-11. [Open Questions](#11-open-questions)
-12. [Appendix](#12-appendix)
+11. [Coexistence Architecture](#11-coexistence-architecture)
+12. [Open Questions](#12-open-questions)
+13. [Appendix](#13-appendix)
 
 ---
 
@@ -1857,18 +1859,1184 @@ describe('Session Security', () => {
 
 ---
 
-## 11. Open Questions
+## 11. Coexistence Architecture
+
+> Implements PRD v5.2 Section 11: Shadow Mode & Incumbent Migration System
+
+This section defines the technical architecture for Arrakis to coexist alongside incumbent token-gating solutions (Collab.Land, Matrica, Guild.xyz) with progressive migration capabilities.
+
+### 11.1 System Mode State Machine
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         COEXISTENCE STATE MACHINE                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌──────────┐   enableParallel()   ┌──────────┐   setPrimary()   ┌───────┐ │
+│  │  SHADOW  │─────────────────────▶│ PARALLEL │─────────────────▶│PRIMARY│ │
+│  │          │◀─────────────────────│          │◀─────────────────│       │ │
+│  └──────────┘    rollback()        └──────────┘    rollback()    └───────┘ │
+│       │                                  │                            │     │
+│       │                                  │    takeover()              │     │
+│       │                                  ▼                            │     │
+│       │                           ┌───────────┐◀──────────────────────┘     │
+│       │                           │ EXCLUSIVE │  (irreversible)             │
+│       └──────────────────────────▶│           │                             │
+│           directTakeover()        └───────────┘                             │
+│           (admin override)                                                  │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+```typescript
+// packages/core/domain/CoexistenceMode.ts
+
+export enum CoexistenceMode {
+  SHADOW = 'shadow',      // Observe only, no Discord mutations
+  PARALLEL = 'parallel',  // Namespaced roles alongside incumbent
+  PRIMARY = 'primary',    // Arrakis authoritative, incumbent backup
+  EXCLUSIVE = 'exclusive' // Full takeover, incumbent removed
+}
+
+export interface CoexistenceState {
+  mode: CoexistenceMode;
+  incumbentProvider: IncumbentProvider | null;
+  shadowStartedAt: Date | null;
+  parallelEnabledAt: Date | null;
+  primaryEnabledAt: Date | null;
+  exclusiveEnabledAt: Date | null;
+  lastRollbackAt: Date | null;
+  rollbackCount: number;
+}
+
+export type IncumbentProvider = 'collabland' | 'matrica' | 'guild.xyz' | 'other';
+```
+
+### 11.2 Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    COEXISTENCE ARCHITECTURE OVERVIEW                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │                        COEXISTENCE LAYER                              │  │
+│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────┐   │  │
+│  │  │ IncumbentDetector│  │ ShadowLedger    │  │ MigrationEngine     │   │  │
+│  │  │ • Bot detection  │  │ • State tracking │  │ • Strategy exec    │   │  │
+│  │  │ • Role mapping   │  │ • Divergence log │  │ • Rollback system  │   │  │
+│  │  │ • Health monitor │  │ • Predictions    │  │ • Takeover flow    │   │  │
+│  │  └─────────────────┘  └─────────────────┘  └─────────────────────┘   │  │
+│  │                                                                       │  │
+│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────┐   │  │
+│  │  │ VerificationTiers│  │ GlimpseMode     │  │ ParallelRoleManager │   │  │
+│  │  │ • Feature gating │  │ • Blurred views │  │ • Namespace roles   │   │  │
+│  │  │ • Tier migration │  │ • Upgrade CTAs  │  │ • Position mgmt    │   │  │
+│  │  └─────────────────┘  └─────────────────┘  └─────────────────────┘   │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                    │                                        │
+│                                    ▼                                        │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │                    EXISTING SERVICE LAYER                             │  │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌─────────────┐  ┌──────────┐   │  │
+│  │  │ WizardEngine │  │ SyncService  │  │ ThemeEngine │  │ TierEval │   │  │
+│  │  └──────────────┘  └──────────────┘  └─────────────┘  └──────────┘   │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 11.3 Database Schema (Shadow Ledger)
+
+```sql
+-- Shadow Ledger Tables for Coexistence
+
+-- Incumbent tracking per guild
+CREATE TABLE incumbent_configs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    community_id UUID NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+    provider TEXT NOT NULL,  -- 'collabland', 'matrica', 'guild.xyz', 'other'
+    bot_id TEXT,
+    bot_username TEXT,
+    verification_channel_id TEXT,
+    detected_at TIMESTAMPTZ DEFAULT NOW(),
+    confidence DECIMAL(3,2) NOT NULL DEFAULT 0.00,  -- 0.00-1.00
+    manual_override BOOLEAN DEFAULT FALSE,
+    last_health_check TIMESTAMPTZ,
+    health_status TEXT DEFAULT 'unknown',  -- 'healthy', 'degraded', 'offline'
+
+    UNIQUE(community_id)
+);
+
+CREATE INDEX idx_incumbent_community ON incumbent_configs(community_id);
+ALTER TABLE incumbent_configs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON incumbent_configs
+    USING (community_id = current_setting('app.current_tenant')::UUID);
+
+-- Shadow member state (what Arrakis would do)
+CREATE TABLE shadow_member_states (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    community_id UUID NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+    discord_id TEXT NOT NULL,
+
+    -- Incumbent observation
+    incumbent_roles TEXT[] DEFAULT '{}',
+    incumbent_last_change TIMESTAMPTZ,
+
+    -- Arrakis calculation
+    arrakis_wallet TEXT,
+    arrakis_eligibility TEXT,  -- tier name or 'none'
+    arrakis_conviction INTEGER DEFAULT 0,  -- 0-100
+    arrakis_would_assign TEXT[] DEFAULT '{}',
+    arrakis_would_revoke TEXT[] DEFAULT '{}',
+
+    -- Comparison
+    divergence_status TEXT DEFAULT 'unknown',  -- 'match', 'arrakis_higher', 'arrakis_lower', 'unknown'
+    verification_tier TEXT DEFAULT 'incumbent_only',  -- 'incumbent_only', 'arrakis_basic', 'arrakis_full'
+
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+    UNIQUE(community_id, discord_id)
+);
+
+CREATE INDEX idx_shadow_member_community ON shadow_member_states(community_id);
+CREATE INDEX idx_shadow_member_divergence ON shadow_member_states(community_id, divergence_status);
+ALTER TABLE shadow_member_states ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON shadow_member_states
+    USING (community_id = current_setting('app.current_tenant')::UUID);
+
+-- Divergence history tracking
+CREATE TABLE shadow_divergences (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    community_id UUID NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+    discord_id TEXT NOT NULL,
+
+    divergence_type TEXT NOT NULL,  -- 'promotion', 'demotion', 'addition', 'removal'
+    incumbent_state TEXT NOT NULL,
+    arrakis_state TEXT NOT NULL,
+    reason TEXT,
+
+    detected_at TIMESTAMPTZ DEFAULT NOW(),
+    resolved_at TIMESTAMPTZ,
+    resolution TEXT  -- 'incumbent_matched', 'arrakis_wrong', 'still_divergent'
+);
+
+CREATE INDEX idx_divergence_community ON shadow_divergences(community_id);
+CREATE INDEX idx_divergence_detected ON shadow_divergences(detected_at);
+ALTER TABLE shadow_divergences ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON shadow_divergences
+    USING (community_id = current_setting('app.current_tenant')::UUID);
+
+-- Prediction accuracy tracking
+CREATE TABLE shadow_predictions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    community_id UUID NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+    discord_id TEXT NOT NULL,
+
+    prediction_type TEXT NOT NULL,  -- 'will_lose_role', 'will_gain_role', 'will_be_promoted'
+    predicted_at TIMESTAMPTZ DEFAULT NOW(),
+    prediction_details JSONB DEFAULT '{}',
+
+    outcome TEXT DEFAULT 'pending',  -- 'correct', 'incorrect', 'pending'
+    outcome_at TIMESTAMPTZ
+);
+
+CREATE INDEX idx_prediction_community ON shadow_predictions(community_id);
+CREATE INDEX idx_prediction_outcome ON shadow_predictions(outcome);
+ALTER TABLE shadow_predictions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON shadow_predictions
+    USING (community_id = current_setting('app.current_tenant')::UUID);
+
+-- Migration state tracking
+CREATE TABLE migration_states (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    community_id UUID NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+
+    current_mode TEXT NOT NULL DEFAULT 'shadow',  -- CoexistenceMode enum
+    target_mode TEXT,  -- For gradual migrations
+    strategy TEXT,  -- 'instant', 'gradual', 'parallel_forever', 'arrakis_primary'
+
+    shadow_started_at TIMESTAMPTZ,
+    parallel_enabled_at TIMESTAMPTZ,
+    primary_enabled_at TIMESTAMPTZ,
+    exclusive_enabled_at TIMESTAMPTZ,
+
+    rollback_count INTEGER DEFAULT 0,
+    last_rollback_at TIMESTAMPTZ,
+    last_rollback_reason TEXT,
+
+    readiness_check_passed BOOLEAN DEFAULT FALSE,
+    accuracy_percent DECIMAL(5,2),  -- 0.00-100.00
+    shadow_days INTEGER DEFAULT 0,
+
+    UNIQUE(community_id)
+);
+
+CREATE INDEX idx_migration_community ON migration_states(community_id);
+ALTER TABLE migration_states ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON migration_states
+    USING (community_id = current_setting('app.current_tenant')::UUID);
+
+-- Incumbent health check history
+CREATE TABLE incumbent_health_checks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    community_id UUID NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+
+    checked_at TIMESTAMPTZ DEFAULT NOW(),
+    bot_online BOOLEAN,
+    last_role_update TIMESTAMPTZ,
+    hours_since_role_update INTEGER,
+    verification_channel_active BOOLEAN,
+
+    status TEXT NOT NULL,  -- 'healthy', 'warning', 'critical'
+    issues JSONB DEFAULT '[]'  -- Array of detected issues
+);
+
+CREATE INDEX idx_health_community ON incumbent_health_checks(community_id);
+CREATE INDEX idx_health_checked ON incumbent_health_checks(checked_at);
+ALTER TABLE incumbent_health_checks ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON incumbent_health_checks
+    USING (community_id = current_setting('app.current_tenant')::UUID);
+```
+
+### 11.4 Component Design
+
+#### 11.4.1 IncumbentDetector
+
+```typescript
+// packages/adapters/coexistence/IncumbentDetector.ts
+
+export interface IncumbentInfo {
+  provider: IncumbentProvider;
+  confidence: number;
+  bot: { id: string; username: string; joinedAt: Date } | null;
+  channels: {
+    verification: string | null;
+    config: string | null;
+  };
+  roles: Array<{
+    id: string;
+    name: string;
+    memberCount: number;
+    likelyTokenGated: boolean;
+    confidence: number;
+  }>;
+  capabilities: {
+    hasBalanceCheck: boolean;
+    hasConvictionScoring: boolean;
+    hasTierSystem: boolean;
+    hasSocialLayer: boolean;
+  };
+}
+
+const KNOWN_INCUMBENTS = {
+  collabland: {
+    botIds: ['704521096837464076'],
+    channelPatterns: ['collabland-join', 'collabland-config', 'verify'],
+    rolePatterns: ['holder', 'verified', 'whale', 'member'],
+  },
+  matrica: {
+    botIds: [''], // Add known IDs
+    channelPatterns: ['matrica-verify', 'matrica'],
+    rolePatterns: ['verified', 'holder'],
+  },
+  'guild.xyz': {
+    botIds: [''], // Add known IDs
+    channelPatterns: ['guild-join', 'guild-verify'],
+    rolePatterns: ['guild-member', 'verified'],
+  },
+} as const;
+
+export class IncumbentDetector {
+  constructor(
+    private readonly storage: ICoexistenceStorage,
+    private readonly discordClient: Client
+  ) {}
+
+  async detectIncumbent(guildId: string): Promise<IncumbentInfo | null> {
+    const guild = await this.discordClient.guilds.fetch(guildId);
+
+    // 1. Check for known bot IDs
+    for (const [provider, config] of Object.entries(KNOWN_INCUMBENTS)) {
+      for (const botId of config.botIds) {
+        if (!botId) continue;
+        const member = guild.members.cache.get(botId);
+        if (member) {
+          return this.buildIncumbentInfo(guild, provider as IncumbentProvider, member);
+        }
+      }
+    }
+
+    // 2. Check for verification channels
+    for (const [provider, config] of Object.entries(KNOWN_INCUMBENTS)) {
+      for (const pattern of config.channelPatterns) {
+        const channel = guild.channels.cache.find(
+          c => c.name.toLowerCase().includes(pattern)
+        );
+        if (channel) {
+          return this.buildIncumbentInfo(guild, provider as IncumbentProvider, null);
+        }
+      }
+    }
+
+    // 3. Check for bot with "verify" or "token-gate" in name
+    const suspectBot = guild.members.cache.find(
+      m => m.user.bot &&
+           (m.user.username.toLowerCase().includes('verify') ||
+            m.user.username.toLowerCase().includes('token'))
+    );
+    if (suspectBot) {
+      return this.buildIncumbentInfo(guild, 'other', suspectBot);
+    }
+
+    return null;
+  }
+
+  private async buildIncumbentInfo(
+    guild: Guild,
+    provider: IncumbentProvider,
+    botMember: GuildMember | null
+  ): Promise<IncumbentInfo> {
+    const config = KNOWN_INCUMBENTS[provider] || KNOWN_INCUMBENTS.collabland;
+
+    // Find verification channel
+    const verificationChannel = guild.channels.cache.find(
+      c => config.channelPatterns.some(p => c.name.toLowerCase().includes(p))
+    );
+
+    // Find likely token-gated roles
+    const roles = guild.roles.cache
+      .filter(r => !r.managed && r.name !== '@everyone')
+      .map(r => ({
+        id: r.id,
+        name: r.name,
+        memberCount: r.members.size,
+        likelyTokenGated: config.rolePatterns.some(
+          p => r.name.toLowerCase().includes(p)
+        ),
+        confidence: config.rolePatterns.some(
+          p => r.name.toLowerCase().includes(p)
+        ) ? 0.8 : 0.3,
+      }));
+
+    return {
+      provider,
+      confidence: botMember ? 0.95 : 0.7,
+      bot: botMember ? {
+        id: botMember.id,
+        username: botMember.user.username,
+        joinedAt: botMember.joinedAt || new Date(),
+      } : null,
+      channels: {
+        verification: verificationChannel?.id || null,
+        config: null,
+      },
+      roles,
+      capabilities: {
+        hasBalanceCheck: true,
+        hasConvictionScoring: false,  // Incumbents don't have this
+        hasTierSystem: provider === 'collabland',
+        hasSocialLayer: false,
+      },
+    };
+  }
+}
+```
+
+#### 11.4.2 ShadowLedger
+
+```typescript
+// packages/adapters/coexistence/ShadowLedger.ts
+
+export interface ShadowSyncResult {
+  processed: number;
+  divergences: number;
+  predictions: number;
+  accuracy: number;
+}
+
+export class ShadowLedger {
+  constructor(
+    private readonly storage: ICoexistenceStorage,
+    private readonly chainProvider: IChainProvider,
+    private readonly themeEngine: IThemeProvider,
+    private readonly walletRegistry: IWalletRegistry
+  ) {}
+
+  async syncGuild(guildId: string): Promise<ShadowSyncResult> {
+    const config = await this.storage.getMigrationState(guildId);
+
+    // CRITICAL: Verify we're in shadow mode
+    if (config.current_mode !== 'shadow') {
+      throw new Error('Shadow sync only runs in shadow mode');
+    }
+
+    const guild = await this.discordClient.guilds.fetch(guildId);
+    const incumbent = await this.storage.getIncumbentConfig(guildId);
+    const members = await guild.members.fetch();
+
+    let processed = 0;
+    let divergences = 0;
+
+    for (const [memberId, member] of members) {
+      if (member.user.bot) continue;
+
+      // 1. Snapshot incumbent state
+      const incumbentRoles = member.roles.cache
+        .filter(r => incumbent.roles?.some(ir => ir.id === r.id))
+        .map(r => r.id);
+
+      // 2. Calculate Arrakis state (if wallet connected)
+      const wallet = await this.walletRegistry.getWalletForDiscord(memberId);
+      let arrakisState = {
+        eligibility: 'unknown',
+        conviction: 0,
+        wouldAssign: [] as string[],
+        wouldRevoke: [] as string[],
+      };
+
+      if (wallet) {
+        const eligibility = await this.chainProvider.evaluateEligibility(
+          wallet,
+          guildId
+        );
+        const tier = this.themeEngine.evaluateTier(eligibility.rank);
+
+        arrakisState = {
+          eligibility: tier.name,
+          conviction: eligibility.conviction || 0,
+          wouldAssign: [tier.roleId],
+          wouldRevoke: incumbentRoles.filter(r => !tier.roleId),
+        };
+      }
+
+      // 3. Detect divergence
+      const divergence = this.detectDivergence(incumbentRoles, arrakisState);
+      if (divergence) {
+        await this.storage.recordDivergence(guildId, memberId, divergence);
+        divergences++;
+      }
+
+      // 4. Update shadow state (NO DISCORD CHANGES)
+      await this.storage.updateShadowMemberState(guildId, memberId, {
+        incumbent_roles: incumbentRoles,
+        arrakis_wallet: wallet,
+        arrakis_eligibility: arrakisState.eligibility,
+        arrakis_conviction: arrakisState.conviction,
+        arrakis_would_assign: arrakisState.wouldAssign,
+        arrakis_would_revoke: arrakisState.wouldRevoke,
+        divergence_status: divergence?.type || 'match',
+      });
+
+      processed++;
+    }
+
+    // 5. Validate previous predictions
+    const predictions = await this.validatePredictions(guildId);
+
+    // 6. Calculate accuracy
+    const accuracy = await this.calculateAccuracy(guildId);
+
+    return { processed, divergences, predictions, accuracy };
+  }
+
+  private detectDivergence(
+    incumbentRoles: string[],
+    arrakisState: { eligibility: string; wouldAssign: string[] }
+  ): { type: string; details: string } | null {
+    if (arrakisState.eligibility === 'unknown') return null;
+
+    const hasIncumbentRole = incumbentRoles.length > 0;
+    const wouldHaveArrakisRole = arrakisState.wouldAssign.length > 0;
+
+    if (!hasIncumbentRole && wouldHaveArrakisRole) {
+      return { type: 'arrakis_higher', details: 'User qualifies but incumbent missed' };
+    }
+    if (hasIncumbentRole && !wouldHaveArrakisRole) {
+      return { type: 'arrakis_lower', details: 'Incumbent granted but user no longer qualifies' };
+    }
+    return null;
+  }
+
+  private async calculateAccuracy(guildId: string): Promise<number> {
+    const states = await this.storage.getShadowMemberStates(guildId);
+    const total = states.length;
+    const matches = states.filter(s => s.divergence_status === 'match').length;
+    return total > 0 ? (matches / total) * 100 : 100;
+  }
+}
+```
+
+#### 11.4.3 ParallelRoleManager
+
+```typescript
+// packages/adapters/coexistence/ParallelRoleManager.ts
+
+export interface ParallelRoleConfig {
+  namespace: string;  // Default: 'arrakis'
+  positioning: 'below_incumbent' | 'custom';
+  roles: Array<{
+    name: string;
+    color: string;
+    grantCondition: string;
+  }>;
+}
+
+export class ParallelRoleManager {
+  private readonly NAMESPACE = 'arrakis';
+
+  constructor(
+    private readonly storage: ICoexistenceStorage,
+    private readonly discordClient: Client
+  ) {}
+
+  async setupParallelRoles(guildId: string): Promise<void> {
+    const guild = await this.discordClient.guilds.fetch(guildId);
+    const incumbent = await this.storage.getIncumbentConfig(guildId);
+    const config = await this.getParallelConfig(guildId);
+
+    // Find incumbent's highest role for positioning
+    const incumbentHighestRole = guild.roles.cache
+      .filter(r => incumbent.roles?.some(ir => ir.id === r.id))
+      .sort((a, b) => b.position - a.position)
+      .first();
+
+    const targetPosition = incumbentHighestRole
+      ? incumbentHighestRole.position - 1
+      : 1;
+
+    for (const roleDef of config.roles) {
+      const roleName = `${this.NAMESPACE}-${roleDef.name}`;
+      const existing = guild.roles.cache.find(r => r.name === roleName);
+
+      if (!existing) {
+        await guild.roles.create({
+          name: roleName,
+          color: roleDef.color as ColorResolvable,
+          reason: 'Arrakis parallel mode setup',
+          position: targetPosition,
+          permissions: [],  // No special permissions (security)
+          hoist: false,
+          mentionable: false,
+        });
+      }
+    }
+  }
+
+  async syncParallelRoles(guildId: string): Promise<{ added: number; removed: number }> {
+    const guild = await this.discordClient.guilds.fetch(guildId);
+    const shadowStates = await this.storage.getShadowMemberStates(guildId);
+
+    let added = 0;
+    let removed = 0;
+
+    for (const state of shadowStates) {
+      if (state.verification_tier === 'incumbent_only') continue;
+
+      const member = await guild.members.fetch(state.discord_id).catch(() => null);
+      if (!member) continue;
+
+      // Add roles user should have
+      for (const roleName of state.arrakis_would_assign) {
+        const role = guild.roles.cache.find(
+          r => r.name === `${this.NAMESPACE}-${roleName}`
+        );
+        if (role && !member.roles.cache.has(role.id)) {
+          await member.roles.add(role, 'Arrakis parallel sync');
+          added++;
+        }
+      }
+
+      // Remove roles user shouldn't have
+      for (const role of member.roles.cache.values()) {
+        if (!role.name.startsWith(`${this.NAMESPACE}-`)) continue;
+
+        const baseName = role.name.replace(`${this.NAMESPACE}-`, '');
+        if (!state.arrakis_would_assign.includes(baseName)) {
+          await member.roles.remove(role, 'Arrakis parallel sync');
+          removed++;
+        }
+      }
+    }
+
+    return { added, removed };
+  }
+
+  private async getParallelConfig(guildId: string): Promise<ParallelRoleConfig> {
+    // Default configuration - could be customized per guild
+    return {
+      namespace: this.NAMESPACE,
+      positioning: 'below_incumbent',
+      roles: [
+        { name: 'verified', color: '#808080', grantCondition: 'wallet_connected' },
+        { name: 'naib', color: '#FFD700', grantCondition: 'tier >= naib' },
+        { name: 'fedaykin', color: '#C0C0C0', grantCondition: 'tier >= fedaykin' },
+        { name: 'diamond', color: '#00FFFF', grantCondition: 'conviction >= 90' },
+      ],
+    };
+  }
+}
+```
+
+#### 11.4.4 MigrationEngine
+
+```typescript
+// packages/adapters/coexistence/MigrationEngine.ts
+
+export type MigrationStrategy = 'instant' | 'gradual' | 'parallel_forever' | 'arrakis_primary';
+
+export interface MigrationPlan {
+  strategy: MigrationStrategy;
+  readinessChecks: {
+    minShadowDays: number;
+    minAccuracyPercent: number;
+    adminApproval: boolean;
+  };
+  rollback: {
+    enabled: boolean;
+    autoTrigger: boolean;
+    thresholds: {
+      accessLossPercent: number;
+      errorRatePercent: number;
+      windowMinutes: number;
+    };
+  };
+}
+
+export class MigrationEngine {
+  constructor(
+    private readonly storage: ICoexistenceStorage,
+    private readonly parallelRoleManager: ParallelRoleManager,
+    private readonly alertService: IAlertService
+  ) {}
+
+  async checkReadiness(guildId: string): Promise<{
+    ready: boolean;
+    checks: Record<string, { passed: boolean; value: any; required: any }>;
+  }> {
+    const state = await this.storage.getMigrationState(guildId);
+    const plan = await this.getMigrationPlan(guildId);
+
+    const shadowDays = state.shadow_started_at
+      ? Math.floor((Date.now() - state.shadow_started_at.getTime()) / (1000 * 60 * 60 * 24))
+      : 0;
+
+    const accuracy = state.accuracy_percent || 0;
+
+    const checks = {
+      shadowDuration: {
+        passed: shadowDays >= plan.readinessChecks.minShadowDays,
+        value: shadowDays,
+        required: plan.readinessChecks.minShadowDays,
+      },
+      accuracy: {
+        passed: accuracy >= plan.readinessChecks.minAccuracyPercent,
+        value: accuracy,
+        required: plan.readinessChecks.minAccuracyPercent,
+      },
+      zeroDivergencesRecent: {
+        passed: await this.checkRecentDivergences(guildId) === 0,
+        value: await this.checkRecentDivergences(guildId),
+        required: 0,
+      },
+    };
+
+    return {
+      ready: Object.values(checks).every(c => c.passed),
+      checks,
+    };
+  }
+
+  async executeMigration(
+    guildId: string,
+    strategy: MigrationStrategy,
+    adminId: string
+  ): Promise<void> {
+    const readiness = await this.checkReadiness(guildId);
+    if (!readiness.ready) {
+      throw new Error('Migration readiness checks not passed');
+    }
+
+    await this.storage.updateMigrationState(guildId, {
+      strategy,
+      target_mode: strategy === 'instant' ? 'exclusive' : 'parallel',
+    });
+
+    switch (strategy) {
+      case 'instant':
+        await this.executeInstantMigration(guildId, adminId);
+        break;
+      case 'gradual':
+        await this.executeGradualMigration(guildId, adminId);
+        break;
+      case 'parallel_forever':
+        await this.enableParallelMode(guildId, adminId);
+        break;
+      case 'arrakis_primary':
+        await this.enablePrimaryMode(guildId, adminId);
+        break;
+    }
+  }
+
+  async rollback(guildId: string, reason: string): Promise<void> {
+    const state = await this.storage.getMigrationState(guildId);
+
+    // Can't rollback from exclusive
+    if (state.current_mode === 'exclusive') {
+      throw new Error('Cannot rollback from exclusive mode');
+    }
+
+    // Determine target mode
+    const targetMode = state.current_mode === 'primary'
+      ? 'parallel'
+      : 'shadow';
+
+    await this.storage.updateMigrationState(guildId, {
+      current_mode: targetMode,
+      rollback_count: state.rollback_count + 1,
+      last_rollback_at: new Date(),
+      last_rollback_reason: reason,
+    });
+
+    // Notify admin
+    await this.alertService.sendAdminAlert(guildId, {
+      type: 'rollback_executed',
+      message: `Migration rolled back to ${targetMode} mode. Reason: ${reason}`,
+    });
+  }
+
+  private async checkRecentDivergences(guildId: string): Promise<number> {
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const divergences = await this.storage.getDivergences(guildId, sevenDaysAgo);
+    return divergences.length;
+  }
+}
+```
+
+#### 11.4.5 IncumbentHealthMonitor
+
+```typescript
+// packages/adapters/coexistence/IncumbentHealthMonitor.ts
+
+export interface HealthCheckResult {
+  guildId: string;
+  status: 'healthy' | 'warning' | 'critical';
+  issues: Array<{
+    severity: 'warning' | 'critical';
+    issue: string;
+    message: string;
+    detectedAt: Date;
+  }>;
+  checkedAt: Date;
+}
+
+const THRESHOLDS = {
+  roleUpdateFreshness: {
+    warning: 48 * 60 * 60 * 1000,   // 48 hours
+    critical: 72 * 60 * 60 * 1000,  // 72 hours
+  },
+  botOffline: {
+    warning: 60 * 60 * 1000,        // 1 hour
+    critical: 4 * 60 * 60 * 1000,   // 4 hours
+  },
+  verificationActivity: {
+    warning: 168 * 60 * 60 * 1000,  // 7 days
+  },
+};
+
+export class IncumbentHealthMonitor {
+  constructor(
+    private readonly storage: ICoexistenceStorage,
+    private readonly discordClient: Client,
+    private readonly alertService: IAlertService
+  ) {}
+
+  async checkHealth(guildId: string): Promise<HealthCheckResult> {
+    const guild = await this.discordClient.guilds.fetch(guildId);
+    const incumbent = await this.storage.getIncumbentConfig(guildId);
+    const issues: HealthCheckResult['issues'] = [];
+
+    if (!incumbent.bot_id) {
+      return { guildId, status: 'healthy', issues: [], checkedAt: new Date() };
+    }
+
+    // Check 1: Bot online
+    const botMember = guild.members.cache.get(incumbent.bot_id);
+    if (!botMember || botMember.presence?.status === 'offline') {
+      issues.push({
+        severity: 'warning',
+        issue: 'incumbent_bot_offline',
+        message: `${incumbent.provider} bot appears offline`,
+        detectedAt: new Date(),
+      });
+    }
+
+    // Check 2: Role update freshness
+    const lastRoleChange = await this.storage.getLastRoleChange(guildId);
+    if (lastRoleChange) {
+      const hoursSince = (Date.now() - lastRoleChange.getTime()) / (1000 * 60 * 60);
+
+      if (Date.now() - lastRoleChange.getTime() > THRESHOLDS.roleUpdateFreshness.critical) {
+        issues.push({
+          severity: 'critical',
+          issue: 'incumbent_stale',
+          message: `${incumbent.provider} hasn't updated roles in ${Math.floor(hoursSince)} hours`,
+          detectedAt: new Date(),
+        });
+      } else if (Date.now() - lastRoleChange.getTime() > THRESHOLDS.roleUpdateFreshness.warning) {
+        issues.push({
+          severity: 'warning',
+          issue: 'incumbent_slow',
+          message: `${incumbent.provider} role updates appear delayed`,
+          detectedAt: new Date(),
+        });
+      }
+    }
+
+    // Determine overall status
+    const status = issues.some(i => i.severity === 'critical') ? 'critical'
+      : issues.length > 0 ? 'warning'
+      : 'healthy';
+
+    // Store health check
+    await this.storage.recordHealthCheck(guildId, {
+      status,
+      issues,
+      bot_online: !!botMember?.presence?.status !== 'offline',
+      last_role_update: lastRoleChange,
+    });
+
+    // Alert admin if issues found
+    if (status !== 'healthy') {
+      await this.sendHealthAlert(guildId, { status, issues });
+    }
+
+    return { guildId, status, issues, checkedAt: new Date() };
+  }
+
+  private async sendHealthAlert(
+    guildId: string,
+    result: Pick<HealthCheckResult, 'status' | 'issues'>
+  ): Promise<void> {
+    const config = await this.storage.getMigrationState(guildId);
+
+    // Check throttle
+    const lastAlert = await this.storage.getLastHealthAlert(guildId);
+    if (lastAlert && Date.now() - lastAlert.getTime() < 4 * 60 * 60 * 1000) {
+      return; // 4 hour throttle
+    }
+
+    await this.alertService.sendAdminAlert(guildId, {
+      type: 'incumbent_health_issue',
+      status: result.status,
+      issues: result.issues,
+      arrakisReady: config.current_mode !== 'shadow' || config.readiness_check_passed,
+      actions: [
+        { label: 'Activate Arrakis Backup', action: 'activate_backup' },
+        { label: 'Dismiss', action: 'dismiss' },
+        { label: 'Check Incumbent Status', action: 'check_status' },
+      ],
+    });
+  }
+}
+```
+
+### 11.5 Verification Tiers Service
+
+```typescript
+// packages/core/services/VerificationTiersService.ts
+
+export type VerificationTier = 'incumbent_only' | 'arrakis_basic' | 'arrakis_full';
+
+export interface TierFeatures {
+  shadowTracking: boolean;
+  publicLeaderboard: boolean;
+  profileView: boolean;
+  badgesEarn: boolean;
+  convictionScore: boolean;
+  tierProgression: boolean | 'preview';
+}
+
+const TIER_FEATURES: Record<VerificationTier, TierFeatures> = {
+  incumbent_only: {
+    shadowTracking: true,
+    publicLeaderboard: true,  // Wallet hidden
+    profileView: false,
+    badgesEarn: false,
+    convictionScore: false,
+    tierProgression: false,
+  },
+  arrakis_basic: {
+    shadowTracking: true,
+    publicLeaderboard: true,
+    profileView: true,
+    badgesEarn: false,
+    convictionScore: true,
+    tierProgression: 'preview',
+  },
+  arrakis_full: {
+    shadowTracking: false,
+    publicLeaderboard: true,
+    profileView: true,
+    badgesEarn: true,
+    convictionScore: true,
+    tierProgression: true,
+  },
+};
+
+export class VerificationTiersService {
+  constructor(
+    private readonly storage: ICoexistenceStorage,
+    private readonly walletRegistry: IWalletRegistry
+  ) {}
+
+  async getMemberTier(guildId: string, discordId: string): Promise<VerificationTier> {
+    const state = await this.storage.getMigrationState(guildId);
+
+    // Full features if in primary or exclusive mode
+    if (state.current_mode === 'primary' || state.current_mode === 'exclusive') {
+      return 'arrakis_full';
+    }
+
+    // Check if wallet connected
+    const wallet = await this.walletRegistry.getWalletForDiscord(discordId);
+    if (wallet) {
+      return 'arrakis_basic';
+    }
+
+    return 'incumbent_only';
+  }
+
+  getFeatures(tier: VerificationTier): TierFeatures {
+    return TIER_FEATURES[tier];
+  }
+
+  async canAccess(
+    guildId: string,
+    discordId: string,
+    feature: keyof TierFeatures
+  ): Promise<boolean> {
+    const tier = await this.getMemberTier(guildId, discordId);
+    const features = this.getFeatures(tier);
+    return !!features[feature];
+  }
+}
+```
+
+### 11.6 Coexistence API Endpoints
+
+```typescript
+// packages/api/routes/coexistence.ts
+
+// GET /api/v1/coexistence/:guildId/status
+interface CoexistenceStatusResponse {
+  mode: CoexistenceMode;
+  incumbent: {
+    provider: string | null;
+    healthy: boolean;
+    lastCheck: string | null;
+  };
+  shadow: {
+    membersTracked: number;
+    accuracy: number;
+    divergences: number;
+  };
+  readiness: {
+    ready: boolean;
+    checks: Record<string, { passed: boolean; value: any; required: any }>;
+  };
+}
+
+// POST /api/v1/coexistence/:guildId/mode
+interface SetModeRequest {
+  mode: CoexistenceMode;
+  strategy?: MigrationStrategy;
+  confirmation?: {
+    communityName: string;
+    acknowledgeRollback: boolean;
+    adminId: string;
+  };
+}
+
+// POST /api/v1/coexistence/:guildId/rollback
+interface RollbackRequest {
+  reason: string;
+  adminId: string;
+}
+
+// GET /api/v1/coexistence/:guildId/shadow/divergences
+interface DivergencesResponse {
+  divergences: Array<{
+    discordId: string;
+    type: string;
+    incumbentState: string;
+    arrakisState: string;
+    detectedAt: string;
+  }>;
+  total: number;
+  accuracy: number;
+}
+
+// POST /api/v1/coexistence/:guildId/emergency-backup
+interface EmergencyBackupRequest {
+  adminId: string;
+  confirmation: boolean;
+}
+```
+
+### 11.7 Scheduled Jobs
+
+```typescript
+// packages/jobs/coexistence/ShadowSyncJob.ts
+
+// Runs every 6 hours via trigger.dev
+export const shadowSyncJob = task({
+  id: 'shadow-sync',
+  run: async (payload: { guildId: string }) => {
+    const shadowLedger = container.get(ShadowLedger);
+    const migrationState = await storage.getMigrationState(payload.guildId);
+
+    // Only run in shadow mode
+    if (migrationState.current_mode !== 'shadow') {
+      return { skipped: true, reason: 'Not in shadow mode' };
+    }
+
+    return shadowLedger.syncGuild(payload.guildId);
+  },
+  retry: {
+    maxAttempts: 3,
+    factor: 2,
+    minTimeout: 5000,
+  },
+});
+
+// Runs every hour
+export const incumbentHealthJob = task({
+  id: 'incumbent-health',
+  run: async (payload: { guildId: string }) => {
+    const healthMonitor = container.get(IncumbentHealthMonitor);
+    return healthMonitor.checkHealth(payload.guildId);
+  },
+  retry: {
+    maxAttempts: 2,
+    factor: 2,
+    minTimeout: 2000,
+  },
+});
+
+// Runs every hour - check for auto-rollback conditions
+export const rollbackWatcherJob = task({
+  id: 'rollback-watcher',
+  run: async (payload: { guildId: string }) => {
+    const migrationEngine = container.get(MigrationEngine);
+    const state = await storage.getMigrationState(payload.guildId);
+
+    // Only monitor during active migrations
+    if (state.current_mode === 'shadow' || state.current_mode === 'exclusive') {
+      return { skipped: true };
+    }
+
+    // Check for auto-rollback conditions
+    const metrics = await getRecentMigrationMetrics(payload.guildId);
+
+    if (metrics.accessLossPercent > 5 || metrics.errorRatePercent > 10) {
+      await migrationEngine.rollback(
+        payload.guildId,
+        `Auto-rollback triggered: access loss ${metrics.accessLossPercent}%, error rate ${metrics.errorRatePercent}%`
+      );
+      return { rolledBack: true, reason: 'threshold_exceeded' };
+    }
+
+    return { rolledBack: false };
+  },
+});
+```
+
+### 11.8 Coexistence Testing Strategy
+
+```typescript
+// tests/coexistence/shadow-ledger.test.ts
+describe('ShadowLedger', () => {
+  it('should never mutate Discord in shadow mode', async () => {
+    const discordSpy = vi.spyOn(discordClient.guilds, 'fetch');
+    const ledger = new ShadowLedger(storage, chainProvider, themeEngine, walletRegistry);
+
+    await ledger.syncGuild(testGuildId);
+
+    // Verify no role modifications were made
+    expect(discordSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ method: 'PATCH' })
+    );
+  });
+
+  it('should detect divergence when arrakis would grant higher tier', async () => {
+    // Setup: User has @Holder from incumbent
+    // Arrakis calculates they should be Fedaykin
+
+    const result = await ledger.syncGuild(testGuildId);
+
+    expect(result.divergences).toBe(1);
+    const divergence = await storage.getDivergences(testGuildId);
+    expect(divergence[0].divergence_type).toBe('arrakis_higher');
+  });
+});
+
+// tests/coexistence/migration-engine.test.ts
+describe('MigrationEngine', () => {
+  it('should block migration if readiness checks fail', async () => {
+    const engine = new MigrationEngine(storage, parallelRoleManager, alertService);
+
+    // Setup: Only 5 days in shadow mode (need 14)
+    await storage.updateMigrationState(testGuildId, {
+      shadow_started_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+    });
+
+    await expect(
+      engine.executeMigration(testGuildId, 'instant', 'admin-123')
+    ).rejects.toThrow('readiness checks not passed');
+  });
+
+  it('should auto-rollback when access loss exceeds threshold', async () => {
+    // Setup: 10% access loss in last hour
+    await simulateAccessLoss(testGuildId, 0.10);
+
+    await rollbackWatcherJob.trigger({ guildId: testGuildId });
+
+    const state = await storage.getMigrationState(testGuildId);
+    expect(state.current_mode).toBe('shadow');
+    expect(state.rollback_count).toBe(1);
+  });
+});
+```
+
+### 11.9 Coexistence Metrics
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `coexistence_mode` | gauge | Current mode per guild (0=shadow, 1=parallel, 2=primary, 3=exclusive) |
+| `shadow_sync_duration_seconds` | histogram | Time to complete shadow sync |
+| `shadow_divergences_total` | counter | Total divergences detected |
+| `shadow_accuracy_percent` | gauge | Current accuracy vs incumbent |
+| `migration_rollbacks_total` | counter | Number of rollbacks executed |
+| `incumbent_health_status` | gauge | Incumbent health (0=healthy, 1=warning, 2=critical) |
+| `verification_tier_distribution` | gauge | Members per verification tier |
+
+---
+
+## 12. Open Questions
 
 | Question | Owner | Due Date | Status |
 |----------|-------|----------|--------|
 | Score Service API contract finalization | Backend Team | TBD | Open |
-| Collab.Land integration scope | Product | TBD | Open |
+| Collab.Land integration scope | Product | TBD | Addressed (Section 11) |
 | Enterprise theme customization limits | Product | TBD | Open |
 | Telegram feature parity timeline | Product | TBD | Open |
+| Multi-incumbent handling (CL + Matrica) | Product | TBD | Open |
+| Conviction calculation scope (per-community vs global) | Product | TBD | Open |
 
 ---
 
-## 12. Appendix
+## 13. Appendix
 
 ### A. Glossary
 
@@ -1884,8 +3052,9 @@ describe('Session Security', () => {
 
 ### B. References
 
-- [PRD v5.0](loa-grimoire/prd.md)
+- [PRD v5.2](loa-grimoire/prd.md) - Includes Coexistence Architecture requirements
 - [Architecture Spec v5.5.1](loa-grimoire/context/new-context/arrakis-saas-architecture.md)
+- [Coexistence Architecture Spec](loa-grimoire/context/ARRAKIS_COEXISTENCE_ARCHITECTURE.md) - Shadow Mode & Incumbent Migration
 - [Discord.js Documentation](https://discord.js.org/)
 - [Drizzle ORM](https://orm.drizzle.team/)
 - [BullMQ](https://docs.bullmq.io/)
@@ -1899,8 +3068,11 @@ describe('Session Security', () => {
 | 4.1 | 2025-12-27 | Telegram integration | Architecture Designer |
 | 5.0 | 2025-12-28 | SaaS transformation - complete redesign | Architecture Designer |
 | 5.1 | 2025-12-29 | Added Section 10: Hardening Architecture from external code review | Architecture Designer |
+| 5.2 | 2025-12-30 | Added Section 11: Coexistence Architecture (Shadow Mode, Migration Engine, Incumbent Monitoring) | Architecture Designer |
 
 ---
 
 *Generated by Architecture Designer Agent*
-*Next Step: Implement hardening requirements (Section 10) before production deployment*
+*Next Steps:*
+1. *Complete hardening requirements (Section 10) sprints 51-55*
+2. *Implement Coexistence Architecture (Section 11) sprints 56-65*

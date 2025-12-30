@@ -1,24 +1,26 @@
-# Sprint Plan: Arrakis v5.1 "The Transformation"
+# Sprint Plan: Arrakis v5.2 "The Transformation"
 
-**Version:** 5.1
-**Date:** December 29, 2025
-**Status:** HARDENING PHASE
+**Version:** 5.3
+**Date:** December 30, 2025
+**Status:** COEXISTENCE PHASE
 **Team:** Loa Framework + Engineering
-**PRD Reference:** loa-grimoire/prd.md (v5.1)
-**SDD Reference:** loa-grimoire/sdd.md (v5.1)
+**PRD Reference:** loa-grimoire/prd.md (v5.2)
+**SDD Reference:** loa-grimoire/sdd.md (v5.2)
 
 ---
 
 ## Executive Summary
 
-Transform Arrakis from a bespoke Berachain Discord bot into a **multi-tenant, chain-agnostic SaaS platform**. This plan breaks down 7 development phases into 19 weekly sprints (sprints 34-52), building on the foundation established in v4.1 (sprints 30-33).
+Transform Arrakis from a bespoke Berachain Discord bot into a **multi-tenant, chain-agnostic SaaS platform**. This plan breaks down 9 development phases into 29 weekly sprints (sprints 34-65), building on the foundation established in v4.1 (sprints 30-33).
 
-**v5.1 Update:** Added Phase 7 (Sprints 50-52) to address findings from external code review.
+**v5.1 Update:** Added Phase 7 (Sprints 50-53) to address findings from external code review.
+**v5.2 Update:** Added Phase 8 (Sprints 54-55) for code organization refactoring.
+**v5.3 Update:** Added Phase 9 (Sprints 56-65) for Coexistence Architecture - Shadow Mode & Incumbent Migration.
 
-**Total Sprints:** 19 (Sprint 34-52)
+**Total Sprints:** 32 (Sprint 34-65)
 **Sprint Duration:** 1 week each
-**Estimated Completion:** 19 weeks from start
-**Target:** 100+ communities, SietchTheme parity, zero Discord 429 bans, enterprise security hardening
+**Estimated Completion:** 32 weeks from start
+**Target:** 100+ communities, incumbent coexistence, graceful migration, zero-risk installation
 
 ---
 
@@ -33,7 +35,13 @@ Transform Arrakis from a bespoke Berachain Discord bot into a **multi-tenant, ch
 | 44-45 | 4 | BullMQ + Token Bucket | SynthesisQueue, GlobalTokenBucket, Reconciliation | Sprint 43 |
 | 46-47 | 5 | Vault Transit + Kill Switch | VaultSigningAdapter, KillSwitchProtocol | Sprint 45 |
 | 48-49 | 6 | OPA Pre-Gate + HITL | PolicyAsCodePreGate, HITLApprovalGate | Sprint 47 |
-| 50-52 | 7 | Post-Audit Hardening | Audit Persistence, Circuit Breaker Metrics, API Docs | Sprint 49 |
+| 50-53 | 7 | Post-Audit Hardening | Audit Persistence, Circuit Breaker Metrics, API Docs | Sprint 49 |
+| 54-55 | 8 | Code Organization | Database/API/Discord decomposition, cleanup | Sprint 53 |
+| 56-57 | 9.1 | Shadow Mode Foundation | IncumbentDetector, ShadowLedger, Shadow Sync | Sprint 55 |
+| 58-59 | 9.2 | Parallel Mode | Namespaced roles, Parallel channels, Conviction gates | Sprint 57 |
+| 60-61 | 9.3 | Verification Tiers & Glimpse | Feature gating, Blurred previews, Upgrade CTAs | Sprint 59 |
+| 62-63 | 9.4 | Migration Engine | Strategy selection, Gradual migration, Rollback | Sprint 61 |
+| 64-65 | 9.5 | Incumbent Monitoring & Social | Health checks, Alerting, Full social layer | Sprint 63 |
 
 ---
 
@@ -1257,6 +1265,562 @@ Decompose `discord.ts` (1,192 lines), clean up nested directories, delete origin
 
 ---
 
+## Phase 9: Coexistence Architecture (Weeks 23-32)
+
+> **Source:** PRD v5.2 Section 11, SDD v5.2 Section 11
+> **Design Philosophy:** "Low-friction entry, high-value destination"
+
+This phase enables Arrakis to coexist alongside incumbent token-gating solutions (Collab.Land, Matrica, Guild.xyz) with a graceful migration path. Zero-risk installation that proves accuracy before admin commitment.
+
+### Sprint 56: Shadow Mode Foundation - Incumbent Detection
+
+**Duration:** 1 week
+**Dates:** Week 23
+**Status:** PLANNED
+**Type:** Coexistence (Phase 9.1)
+
+#### Sprint Goal
+Implement incumbent bot detection and the shadow ledger database schema for tracking "what Arrakis would do" without any Discord mutations.
+
+#### Deliverables
+- [ ] `packages/adapters/coexistence/IncumbentDetector.ts`
+- [ ] Shadow Ledger database schema (6 tables)
+- [ ] `packages/adapters/coexistence/storage/ICoexistenceStorage.ts`
+- [ ] `packages/adapters/coexistence/storage/CoexistenceStorage.ts`
+- [ ] Unit tests for incumbent detection
+
+#### Acceptance Criteria
+- [ ] Detect Collab.Land by bot ID `704521096837464076`
+- [ ] Detect verification channels (`#collabland-join`, `#matrica-verify`)
+- [ ] Confidence score (0-1) for detection accuracy
+- [ ] `incumbent_configs` table with RLS
+- [ ] `migration_states` table with mode enum
+- [ ] Manual override for `other` incumbents
+- [ ] Zero Discord role mutations in any code path
+
+#### Technical Tasks
+- [ ] TASK-56.1: Create Drizzle migration for `incumbent_configs` table
+- [ ] TASK-56.2: Create Drizzle migration for `migration_states` table
+- [ ] TASK-56.3: Add RLS policies for both tables
+- [ ] TASK-56.4: Define `ICoexistenceStorage` port interface
+- [ ] TASK-56.5: Implement `CoexistenceStorage` adapter
+- [ ] TASK-56.6: Define `KNOWN_INCUMBENTS` configuration
+- [ ] TASK-56.7: Implement `IncumbentDetector.detectIncumbent()`
+- [ ] TASK-56.8: Implement `IncumbentDetector.buildIncumbentInfo()`
+- [ ] TASK-56.9: Write unit tests for bot ID detection
+- [ ] TASK-56.10: Write unit tests for channel pattern detection
+- [ ] TASK-56.11: Write integration test with test guild
+
+#### Dependencies
+- Sprint 55: Discord service decomposition complete
+
+#### Risks & Mitigation
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Bot ID changes | Low | Medium | Multiple detection methods |
+| False positive detection | Medium | Low | Confidence scoring + manual override |
+| Legal concerns | Low | Medium | No incumbent interference |
+
+#### Success Metrics
+- >90% detection accuracy for known incumbents
+- Zero Discord mutations in shadow mode
+- <500ms detection time
+
+---
+
+### Sprint 57: Shadow Mode Foundation - Shadow Ledger & Sync
+
+**Duration:** 1 week
+**Dates:** Week 24
+**Status:** PLANNED
+**Type:** Coexistence (Phase 9.1)
+
+#### Sprint Goal
+Implement the ShadowLedger service for tracking member state and divergences, plus the scheduled sync job that runs every 6 hours.
+
+#### Deliverables
+- [ ] `packages/adapters/coexistence/ShadowLedger.ts`
+- [ ] Shadow member state tables (3 tables)
+- [ ] `packages/jobs/coexistence/ShadowSyncJob.ts`
+- [ ] Divergence tracking and prediction engine
+- [ ] Admin digest notifications
+
+#### Acceptance Criteria
+- [ ] `shadow_member_states` table with incumbent vs Arrakis comparison
+- [ ] `shadow_divergences` table for history tracking
+- [ ] `shadow_predictions` table for accuracy measurement
+- [ ] Shadow sync job runs every 6 hours
+- [ ] Divergence detection: `arrakis_higher`, `arrakis_lower`, `match`
+- [ ] **CRITICAL:** Zero Discord mutations in shadow mode
+- [ ] Admin opt-in digest notification
+
+#### Technical Tasks
+- [ ] TASK-57.1: Create Drizzle migration for `shadow_member_states`
+- [ ] TASK-57.2: Create Drizzle migration for `shadow_divergences`
+- [ ] TASK-57.3: Create Drizzle migration for `shadow_predictions`
+- [ ] TASK-57.4: Add RLS policies for shadow tables
+- [ ] TASK-57.5: Implement `ShadowLedger.syncGuild()` with mode check
+- [ ] TASK-57.6: Implement `ShadowLedger.detectDivergence()`
+- [ ] TASK-57.7: Implement `ShadowLedger.calculateAccuracy()`
+- [ ] TASK-57.8: Implement `ShadowLedger.validatePredictions()`
+- [ ] TASK-57.9: Create trigger.dev job for 6-hour sync
+- [ ] TASK-57.10: Implement admin digest notification (opt-in)
+- [ ] TASK-57.11: Write test: verify no Discord mutations
+- [ ] TASK-57.12: Write test: divergence detection accuracy
+
+#### Dependencies
+- Sprint 56: Incumbent detection, base schema
+
+#### Risks & Mitigation
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Sync job timeout | Medium | Medium | Batch processing, pagination |
+| Data volume | Medium | Low | Efficient queries, indexing |
+| Discord API rate limits | Low | Medium | Respect rate limits |
+
+#### Success Metrics
+- >95% divergence detection accuracy
+- <5 minute sync time for 1000 members
+- Zero Discord mutations verified in tests
+
+---
+
+### Sprint 58: Parallel Mode - Namespaced Role Management
+
+**Duration:** 1 week
+**Dates:** Week 25
+**Status:** PLANNED
+**Type:** Coexistence (Phase 9.2)
+
+#### Sprint Goal
+Implement parallel role management with `@arrakis-*` namespaced roles that coexist with incumbent roles without interference.
+
+#### Deliverables
+- [ ] `packages/adapters/coexistence/ParallelRoleManager.ts`
+- [ ] Role positioning logic (below incumbent roles)
+- [ ] Parallel role sync service
+- [ ] Role namespace configuration
+
+#### Acceptance Criteria
+- [ ] All Arrakis roles prefixed with `@arrakis-*`
+- [ ] Roles positioned below incumbent roles in hierarchy
+- [ ] Role sync independent of incumbent operations
+- [ ] No permissions granted to namespaced roles (security)
+- [ ] Admin can customize role names while preserving namespace
+- [ ] Mode transition: shadow → parallel
+
+#### Technical Tasks
+- [ ] TASK-58.1: Define `ParallelRoleConfig` interface
+- [ ] TASK-58.2: Implement `ParallelRoleManager.setupParallelRoles()`
+- [ ] TASK-58.3: Implement `ParallelRoleManager.syncParallelRoles()`
+- [ ] TASK-58.4: Implement `ParallelRoleManager.getParallelConfig()`
+- [ ] TASK-58.5: Implement role position calculation (below incumbent)
+- [ ] TASK-58.6: Add mode transition: `enableParallel()` in MigrationEngine
+- [ ] TASK-58.7: Add namespace configuration per community
+- [ ] TASK-58.8: Write test: role creation with correct namespace
+- [ ] TASK-58.9: Write test: role positioning below incumbent
+- [ ] TASK-58.10: Write test: sync adds/removes parallel roles correctly
+
+#### Dependencies
+- Sprint 57: Shadow ledger complete
+
+#### Risks & Mitigation
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Role position conflicts | Medium | Low | Dynamic positioning |
+| Role limit exceeded | Low | Medium | Combine tiers if needed |
+| Naming conflicts | Low | Low | Unique namespace per community |
+
+#### Success Metrics
+- 100% role namespace compliance
+- Zero permission grants to namespaced roles
+- Role sync accuracy >99%
+
+---
+
+### Sprint 59: Parallel Mode - Channels & Conviction Gates
+
+**Duration:** 1 week
+**Dates:** Week 26
+**Status:** PLANNED
+**Type:** Coexistence (Phase 9.2)
+
+#### Sprint Goal
+Implement parallel channel creation with conviction-gated access that incumbents cannot offer, creating differentiated value.
+
+#### Deliverables
+- [ ] `packages/adapters/coexistence/ParallelChannelManager.ts`
+- [ ] Channel strategy configuration
+- [ ] Conviction-gated channel access
+- [ ] Default additive channels (#conviction-lounge, #diamond-hands)
+
+#### Acceptance Criteria
+- [ ] Strategy options: `none`, `additive_only`, `parallel_mirror`, `custom`
+- [ ] `additive_only` creates conviction-gated channels only
+- [ ] Default channels: `#conviction-lounge` (80+), `#diamond-hands` (95+)
+- [ ] `parallel_mirror` creates Arrakis versions of incumbent channels
+- [ ] Channel permissions tied to Arrakis namespaced roles
+
+#### Technical Tasks
+- [ ] TASK-59.1: Define `ChannelStrategy` enum
+- [ ] TASK-59.2: Define `ParallelChannelConfig` interface
+- [ ] TASK-59.3: Implement `ParallelChannelManager.setupChannels()`
+- [ ] TASK-59.4: Implement `ParallelChannelManager.syncChannelAccess()`
+- [ ] TASK-59.5: Implement conviction threshold channel access
+- [ ] TASK-59.6: Create default channel templates (conviction-lounge, diamond-hands)
+- [ ] TASK-59.7: Implement parallel_mirror channel cloning
+- [ ] TASK-59.8: Add channel strategy admin configuration
+- [ ] TASK-59.9: Write test: additive channels created correctly
+- [ ] TASK-59.10: Write test: conviction gating enforced
+
+#### Dependencies
+- Sprint 58: Parallel role management
+
+#### Risks & Mitigation
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Channel limit exceeded | Low | Medium | Use categories efficiently |
+| Permission sync lag | Medium | Low | Event-driven updates |
+| Conviction data stale | Medium | Medium | Real-time conviction checks |
+
+#### Success Metrics
+- Conviction gate enforcement 100% accurate
+- Channel creation <1s per channel
+- Admin satisfaction with channel options
+
+---
+
+### Sprint 60: Verification Tiers - Feature Gating
+
+**Duration:** 1 week
+**Dates:** Week 27
+**Status:** PLANNED
+**Type:** Coexistence (Phase 9.3)
+
+#### Sprint Goal
+Implement verification tier system that gates features based on user's verification status (incumbent only, basic, full).
+
+#### Deliverables
+- [ ] `packages/core/services/VerificationTiersService.ts`
+- [ ] Tier feature matrix implementation
+- [ ] Feature gating middleware
+- [ ] Tier migration on wallet connection
+
+#### Acceptance Criteria
+- [ ] Tier 1 (`incumbent_only`): Shadow tracking, public leaderboard (wallet hidden)
+- [ ] Tier 2 (`arrakis_basic`): Tier 1 + profile view, conviction score preview
+- [ ] Tier 3 (`arrakis_full`): Full badges, tier progression, all social features
+- [ ] Automatic tier upgrade on wallet connection
+- [ ] Feature gating enforced at service layer
+
+#### Technical Tasks
+- [ ] TASK-60.1: Define `VerificationTier` enum
+- [ ] TASK-60.2: Define `TierFeatures` interface
+- [ ] TASK-60.3: Implement `VerificationTiersService.getMemberTier()`
+- [ ] TASK-60.4: Implement `VerificationTiersService.getFeatures()`
+- [ ] TASK-60.5: Implement `VerificationTiersService.canAccess()`
+- [ ] TASK-60.6: Create feature gating middleware
+- [ ] TASK-60.7: Integrate tier service with profile endpoints
+- [ ] TASK-60.8: Integrate tier service with leaderboard endpoints
+- [ ] TASK-60.9: Write test: tier 1 features only for incumbent_only
+- [ ] TASK-60.10: Write test: tier upgrade on wallet connect
+
+#### Dependencies
+- Sprint 59: Parallel channels complete
+
+#### Risks & Mitigation
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Feature confusion | Medium | Medium | Clear tier documentation |
+| Tier upgrade bugs | Low | Medium | Comprehensive tier tests |
+| Performance impact | Low | Low | Efficient tier checks |
+
+#### Success Metrics
+- 100% feature gating accuracy
+- Tier check <10ms
+- >50% users upgrade to arrakis_basic
+
+---
+
+### Sprint 61: Glimpse Mode - Social Layer Preview
+
+**Duration:** 1 week
+**Dates:** Week 28
+**Status:** PLANNED
+**Type:** Coexistence (Phase 9.3)
+
+#### Sprint Goal
+Implement "Glimpse Mode" that shows blurred/locked previews of social features to create FOMO and encourage migration.
+
+#### Deliverables
+- [ ] `packages/adapters/coexistence/GlimpseMode.ts`
+- [ ] Blurred profile card component
+- [ ] Locked badge showcase
+- [ ] Upgrade call-to-action system
+
+#### Acceptance Criteria
+- [ ] Leaderboard visible, others' conviction scores hidden
+- [ ] Profile directory shows blurred profile cards
+- [ ] Badge showcase shows locked badge icons
+- [ ] "Your Preview Profile" shows own stats
+- [ ] "Tell Admin to Migrate" button on glimpse views
+- [ ] Badge count "ready to claim" displayed
+- [ ] Conviction rank position shown (e.g., "Top 15%")
+- [ ] No harassment or manipulation - informational only
+
+#### Technical Tasks
+- [ ] TASK-61.1: Design glimpse UI components (embeds/modals)
+- [ ] TASK-61.2: Implement blurred profile card embed
+- [ ] TASK-61.3: Implement locked badge showcase
+- [ ] TASK-61.4: Implement "Your Preview Profile" view
+- [ ] TASK-61.5: Implement upgrade CTA button handler
+- [ ] TASK-61.6: Implement badge count preview
+- [ ] TASK-61.7: Implement conviction rank position calculation
+- [ ] TASK-61.8: Add unlock messaging with clear CTA
+- [ ] TASK-61.9: Write test: glimpse views show correct restrictions
+- [ ] TASK-61.10: Write test: CTA buttons function correctly
+
+#### Dependencies
+- Sprint 60: Verification tiers
+
+#### Risks & Mitigation
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Perceived as manipulative | Medium | Medium | Informational, not pushy |
+| UI complexity | Medium | Low | Simple blur/lock effects |
+| Admin fatigue | Low | Low | Throttle CTA requests |
+
+#### Success Metrics
+- >30% glimpse-to-upgrade conversion
+- Zero user complaints about manipulation
+- Admin migration requests tracked
+
+---
+
+### Sprint 62: Migration Engine - Strategy Selection & Execution
+
+**Duration:** 1 week
+**Dates:** Week 29
+**Status:** PLANNED
+**Type:** Coexistence (Phase 9.4)
+
+#### Sprint Goal
+Implement the migration engine with strategy selection, readiness checks, and execution logic for different migration paths.
+
+#### Deliverables
+- [ ] `packages/adapters/coexistence/MigrationEngine.ts`
+- [ ] Migration strategy configuration
+- [ ] Readiness check system
+- [ ] Strategy execution logic
+
+#### Acceptance Criteria
+- [ ] Strategies: `instant`, `gradual`, `parallel_forever`, `arrakis_primary`
+- [ ] Readiness checks: min shadow days (14), min accuracy (95%)
+- [ ] `gradual` migrates new members immediately, existing over N days
+- [ ] `parallel_forever` keeps both systems indefinitely
+- [ ] Strategy selection via admin dashboard/command
+
+#### Technical Tasks
+- [ ] TASK-62.1: Define `MigrationStrategy` type
+- [ ] TASK-62.2: Define `MigrationPlan` interface with readiness checks
+- [ ] TASK-62.3: Implement `MigrationEngine.checkReadiness()`
+- [ ] TASK-62.4: Implement `MigrationEngine.executeMigration()`
+- [ ] TASK-62.5: Implement `executeInstantMigration()` private method
+- [ ] TASK-62.6: Implement `executeGradualMigration()` private method
+- [ ] TASK-62.7: Implement `enableParallelMode()` private method
+- [ ] TASK-62.8: Implement `enablePrimaryMode()` private method
+- [ ] TASK-62.9: Create admin `/arrakis migrate` command
+- [ ] TASK-62.10: Write test: readiness check blocks unready migration
+- [ ] TASK-62.11: Write test: gradual migration batches correctly
+
+#### Dependencies
+- Sprint 61: Glimpse mode complete
+
+#### Risks & Mitigation
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Premature migration | Low | High | Strict readiness checks |
+| Strategy confusion | Medium | Medium | Clear documentation |
+| Batch migration failures | Medium | Medium | Transaction-safe batches |
+
+#### Success Metrics
+- 100% readiness check enforcement
+- Migration strategy selection in <30s
+- Zero premature migrations
+
+---
+
+### Sprint 63: Migration Engine - Rollback & Takeover
+
+**Duration:** 1 week
+**Dates:** Week 30
+**Status:** PLANNED
+**Type:** Coexistence (Phase 9.4)
+
+#### Sprint Goal
+Implement rollback system for emergency reverts and role takeover flow for exclusive mode transition.
+
+#### Deliverables
+- [ ] Rollback system implementation
+- [ ] Auto-rollback triggers
+- [ ] Role takeover flow (`/arrakis takeover`)
+- [ ] Three-step confirmation system
+
+#### Acceptance Criteria
+- [ ] One-click rollback to previous mode
+- [ ] Auto-trigger on: >5% access loss in 1 hour, error rate >10% in 15 min
+- [ ] Preserve incumbent roles during rollback
+- [ ] Admin notification on auto-rollback
+- [ ] Audit log of all rollback events
+- [ ] Manual takeover command only (`/arrakis takeover`)
+- [ ] Three-step confirmation (community name, acknowledge, rollback plan)
+- [ ] Rename namespaced roles to final names
+
+#### Technical Tasks
+- [ ] TASK-63.1: Implement `MigrationEngine.rollback()`
+- [ ] TASK-63.2: Create `rollbackWatcherJob` (hourly check)
+- [ ] TASK-63.3: Implement access loss detection
+- [ ] TASK-63.4: Implement error rate detection
+- [ ] TASK-63.5: Implement auto-rollback trigger logic
+- [ ] TASK-63.6: Create admin rollback notification
+- [ ] TASK-63.7: Implement `/arrakis takeover` command
+- [ ] TASK-63.8: Implement three-step confirmation modal
+- [ ] TASK-63.9: Implement role rename logic (remove namespace)
+- [ ] TASK-63.10: Write test: auto-rollback on threshold breach
+- [ ] TASK-63.11: Write test: takeover three-step confirmation
+- [ ] TASK-63.12: Write test: cannot rollback from exclusive mode
+
+#### Dependencies
+- Sprint 62: Migration strategy execution
+
+#### Risks & Mitigation
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Accidental takeover | Low | High | Three-step confirmation |
+| Rollback data loss | Low | Medium | Preserve all role data |
+| Auto-rollback too sensitive | Medium | Medium | Tunable thresholds |
+
+#### Success Metrics
+- <5% rollback rate
+- Zero accidental takeovers
+- Auto-rollback triggers correctly in tests
+
+---
+
+### Sprint 64: Incumbent Health Monitoring
+
+**Duration:** 1 week
+**Dates:** Week 31
+**Status:** PLANNED
+**Type:** Coexistence (Phase 9.5)
+
+#### Sprint Goal
+Implement incumbent bot health monitoring with alerting system and emergency backup activation.
+
+#### Deliverables
+- [ ] `packages/adapters/coexistence/IncumbentHealthMonitor.ts`
+- [ ] Health check scheduled job
+- [ ] Admin alert system
+- [ ] Emergency backup activation flow
+
+#### Acceptance Criteria
+- [ ] Check: Role update freshness (alert: 48h, critical: 72h)
+- [ ] Check: Bot online presence (alert: 1h)
+- [ ] Check: Verification channel activity (alert: 168h)
+- [ ] Health report per guild
+- [ ] Alert channels: admin DM, audit channel
+- [ ] Throttle: 4 hours between alerts
+- [ ] "Activate Arrakis as Backup" button (requires confirmation)
+- [ ] Backup activation transitions shadow → parallel
+
+#### Technical Tasks
+- [ ] TASK-64.1: Define health check thresholds
+- [ ] TASK-64.2: Implement `IncumbentHealthMonitor.checkHealth()`
+- [ ] TASK-64.3: Implement bot online detection
+- [ ] TASK-64.4: Implement role update freshness tracking
+- [ ] TASK-64.5: Implement verification channel activity tracking
+- [ ] TASK-64.6: Create `incumbentHealthJob` (hourly)
+- [ ] TASK-64.7: Implement alert throttling (4 hour cooldown)
+- [ ] TASK-64.8: Create health alert embed with action buttons
+- [ ] TASK-64.9: Implement emergency backup activation handler
+- [ ] TASK-64.10: Create `incumbent_health_checks` table
+- [ ] TASK-64.11: Write test: health check detects offline bot
+- [ ] TASK-64.12: Write test: alert throttling works correctly
+
+#### Dependencies
+- Sprint 63: Rollback system complete
+
+#### Risks & Mitigation
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| False positive health alerts | Medium | Medium | Multiple check methods |
+| Alert fatigue | Medium | Low | Throttling, clear actions |
+| Backup activation mistakes | Low | Medium | Confirmation required |
+
+#### Success Metrics
+- <1 hour incumbent failure detection
+- <5% false positive rate
+- Admin satisfaction with alerting
+
+---
+
+### Sprint 65: Full Social Layer & Polish
+
+**Duration:** 1 week
+**Dates:** Week 32
+**Status:** PLANNED
+**Type:** Coexistence (Phase 9.5)
+
+#### Sprint Goal
+Unlock full social layer features post-migration, add pricing integration for takeover incentive, and polish the entire coexistence experience.
+
+#### Deliverables
+- [ ] Full social layer unlock (profiles, badges, directory)
+- [ ] Coexistence API endpoints
+- [ ] Pricing integration (20% discount incentive)
+- [ ] Documentation and admin guide
+
+#### Acceptance Criteria
+- [ ] Full profile unlock when mode = primary or exclusive
+- [ ] Badge system fully functional
+- [ ] Profile directory searchable
+- [ ] Coexistence status API endpoint
+- [ ] 20% pricing discount for first year after takeover
+- [ ] Admin guide for coexistence setup
+- [ ] User documentation for tier system
+
+#### Technical Tasks
+- [ ] TASK-65.1: Implement full social layer unlock logic
+- [ ] TASK-65.2: Connect badge system to full verification tier
+- [ ] TASK-65.3: Enable profile directory for arrakis_full
+- [ ] TASK-65.4: Create `GET /api/v1/coexistence/:guildId/status`
+- [ ] TASK-65.5: Create `POST /api/v1/coexistence/:guildId/mode`
+- [ ] TASK-65.6: Create `POST /api/v1/coexistence/:guildId/rollback`
+- [ ] TASK-65.7: Create `GET /api/v1/coexistence/:guildId/shadow/divergences`
+- [ ] TASK-65.8: Create `POST /api/v1/coexistence/:guildId/emergency-backup`
+- [ ] TASK-65.9: Integrate takeover discount logic
+- [ ] TASK-65.10: Write admin setup guide
+- [ ] TASK-65.11: Write user tier documentation
+- [ ] TASK-65.12: Add Prometheus metrics for coexistence
+- [ ] TASK-65.13: Final integration testing
+
+#### Dependencies
+- Sprint 64: Health monitoring complete
+
+#### Risks & Mitigation
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Discount abuse | Low | Low | Track eligible communities |
+| Documentation gaps | Medium | Low | User feedback loop |
+| Integration bugs | Medium | Medium | Comprehensive testing |
+
+#### Success Metrics
+- >80% migration completion rate
+- <5% rollback rate
+- User satisfaction (NPS) >50
+
+---
+
 ## Risk Register
 
 | ID | Risk | Phase | Probability | Impact | Mitigation | Owner |
@@ -1272,6 +1836,13 @@ Decompose `discord.ts` (1,192 lines), clean up nested directories, delete origin
 | R9 | Audit log loss | 7 | Low | High | Redis WAL + PostgreSQL | Security |
 | R10 | Circuit breaker blind spot | 7 | Medium | Medium | Prometheus metrics | Platform |
 | R11 | API key compromise | 7 | Low | High | Key rotation mechanism | Security |
+| **Coexistence Risks (v5.3)** | | | | | | |
+| R12 | Incumbent detection false negative | 9 | Medium | High | Multiple detection heuristics | Backend |
+| R13 | Shadow ledger drift | 9 | Medium | Medium | Divergence tracking + alerts | Backend |
+| R14 | Migration rollback data loss | 9 | Low | Critical | Comprehensive snapshot + verification | Platform |
+| R15 | Role namespace collision | 9 | Low | High | `@arrakis-` prefix enforcement | Backend |
+| R16 | Incumbent becomes unresponsive | 9 | Medium | Medium | Health monitoring + auto-escalation | Platform |
+| R17 | Guild admin revokes permissions | 9 | High | High | Graceful degradation + admin notification | Platform |
 
 ---
 
@@ -1289,6 +1860,13 @@ Decompose `discord.ts` (1,192 lines), clean up nested directories, delete origin
 | Audit log durability | 0 loss | Failure scenario tests | 7 |
 | Circuit breaker visibility | 100% | Grafana dashboards | 7 |
 | Test coverage | 80% | CI coverage reports | 7 |
+| **Coexistence Metrics (v5.3)** | | | |
+| Incumbent detection accuracy | >99% | False negative rate | 9 |
+| Shadow ledger divergence | <1% | Divergence tracking | 9 |
+| Migration success rate | >99% | Rollback frequency | 9 |
+| Role namespace collision | 0 | Role audit logs | 9 |
+| Incumbent health monitoring | <5min detection | Health check latency | 9 |
+| Glimpse mode conversion | >10% | Upgrade funnel analytics | 9 |
 
 ---
 
@@ -1335,6 +1913,29 @@ Phase 8 (Sprint 54-55)
          │
          ▼
 v5.2 MAINTAINABLE
+         │
+         ▼
+Phase 9.1 (Sprint 56-57)
+  Shadow Mode Foundation
+         │
+         ▼
+Phase 9.2 (Sprint 58-59)
+  Parallel Mode
+         │
+         ▼
+Phase 9.3 (Sprint 60-61)
+  Verification Tiers & Glimpse
+         │
+         ▼
+Phase 9.4 (Sprint 62-63)
+  Migration Engine
+         │
+         ▼
+Phase 9.5 (Sprint 64-65)
+  Incumbent Monitoring & Social
+         │
+         ▼
+v5.3 COEXISTENCE
 ```
 
 ---
@@ -1375,6 +1976,25 @@ v5.2 MAINTAINABLE
 | HR-10.3.1: Code Quality | 52 | Planned |
 | HR-10.3.2: Test Coverage 80% | 52 | Planned |
 | HR-10.3.3: OpenAPI Documentation | 52 | Planned |
+| **Coexistence Requirements (v5.3)** | | |
+| FR-5.11.1: Incumbent Detection | 56 | Planned |
+| FR-5.11.2: Shadow Ledger | 57 | Planned |
+| FR-5.11.3: Shadow Sync | 57 | Planned |
+| FR-5.12.1: Namespaced Roles | 58 | Planned |
+| FR-5.12.2: Parallel Channels | 59 | Planned |
+| FR-5.12.3: Conviction Gates | 59 | Planned |
+| FR-5.13.1: Verification Tiers | 60 | Planned |
+| FR-5.13.2: Feature Gating | 60 | Planned |
+| FR-5.14.1: Glimpse Mode | 61 | Planned |
+| FR-5.14.2: Blurred Previews | 61 | Planned |
+| FR-5.14.3: Upgrade CTAs | 61 | Planned |
+| FR-5.15.1: Migration Strategies | 62 | Planned |
+| FR-5.15.2: Gradual Migration | 62 | Planned |
+| FR-5.15.3: Rollback System | 63 | Planned |
+| FR-5.15.4: Takeover Protocol | 63 | Planned |
+| FR-5.16.1: Incumbent Health Monitoring | 64 | Planned |
+| FR-5.16.2: Health Alerts | 64 | Planned |
+| FR-5.16.3: Full Social Layer | 65 | Planned |
 
 ### B. SDD Component Mapping
 
@@ -1418,6 +2038,24 @@ v5.2 MAINTAINABLE
 | `src/services/discord/operations/*.ts` | 55 | Planned |
 | `src/services/discord/embeds/*.ts` | 55 | Planned |
 | `src/services/discord/processors/*.ts` | 55 | Planned |
+| **Coexistence Components (v5.3)** | | |
+| IncumbentDetector | 56 | Planned |
+| ShadowLedger | 57 | Planned |
+| ShadowSyncService | 57 | Planned |
+| ParallelRoleManager | 58 | Planned |
+| ConvictionGateService | 59 | Planned |
+| VerificationTiersService | 60 | Planned |
+| GlimpseModeRenderer | 61 | Planned |
+| MigrationEngine | 62-63 | Planned |
+| RollbackService | 63 | Planned |
+| IncumbentHealthMonitor | 64 | Planned |
+| SocialLayerService | 65 | Planned |
+| `incumbent_configs` table | 56 | Planned |
+| `shadow_member_states` table | 57 | Planned |
+| `shadow_divergences` table | 57 | Planned |
+| `shadow_predictions` table | 57 | Planned |
+| `migration_states` table | 62 | Planned |
+| `incumbent_health_checks` table | 64 | Planned |
 
 ### C. Files to Delete After Migration
 
@@ -1473,8 +2111,9 @@ PRIVATE_KEY  # Moved to Vault
 | 5.0 | 2025-12-28 | v5.0 "The Transformation" - SaaS platform (Sprints 34-49) |
 | 5.1 | 2025-12-29 | v5.1 Post-Audit Hardening - Security hardening (Sprints 50-53) |
 | 5.2 | 2025-12-30 | v5.2 Code Organization - Structural refactoring (Sprints 54-55) |
+| 5.3 | 2025-12-30 | v5.3 Coexistence Architecture - Shadow Mode & Incumbent Migration (Sprints 56-65) |
 
 ---
 
-*Sprint Plan v5.2 generated by Loa planning workflow*
-*Based on: PRD v5.1, SDD v5.1, External Code Review (2025-12-29)*
+*Sprint Plan v5.3 generated by Loa planning workflow*
+*Based on: PRD v5.2, SDD v5.2, Coexistence Architecture (2025-12-30)*
