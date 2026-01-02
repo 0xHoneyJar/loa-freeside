@@ -5,7 +5,7 @@
 # Provides shared utilities for registry skill loading and license validation.
 #
 # Usage:
-#   source "$(dirname "$0")/registry-lib.sh"
+#   source "$(dirname "$0")/constructs-lib.sh"
 #
 # Sources: sdd.md:§5.3 (Registry Library), prd.md:FR-CFG-01, FR-CFG-02
 # =============================================================================

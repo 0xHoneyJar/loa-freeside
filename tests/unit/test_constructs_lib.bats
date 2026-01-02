@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Unit tests for .claude/scripts/registry-lib.sh
+# Unit tests for .claude/scripts/constructs-lib.sh
 # Test-first development: These tests define expected behavior
 
 # Test setup
@@ -10,8 +10,8 @@ setup() {
     FIXTURES_DIR="$PROJECT_ROOT/tests/fixtures"
 
     # Source the library (will fail until implemented)
-    if [[ -f "$PROJECT_ROOT/.claude/scripts/registry-lib.sh" ]]; then
-        source "$PROJECT_ROOT/.claude/scripts/registry-lib.sh"
+    if [[ -f "$PROJECT_ROOT/.claude/scripts/constructs-lib.sh" ]]; then
+        source "$PROJECT_ROOT/.claude/scripts/constructs-lib.sh"
     fi
 
     # Create temp directory for test artifacts
@@ -284,7 +284,7 @@ teardown() {
 
     unset NO_COLOR
     # Re-source to pick up color settings
-    source "$PROJECT_ROOT/.claude/scripts/registry-lib.sh"
+    source "$PROJECT_ROOT/.claude/scripts/constructs-lib.sh"
 
     [[ -n "$RED" ]]
     [[ -n "$GREEN" ]]
@@ -297,7 +297,7 @@ teardown() {
 
     export NO_COLOR=1
     # Re-source to pick up color settings
-    source "$PROJECT_ROOT/.claude/scripts/registry-lib.sh"
+    source "$PROJECT_ROOT/.claude/scripts/constructs-lib.sh"
 
     [[ -z "$RED" ]]
     [[ -z "$GREEN" ]]
@@ -318,7 +318,7 @@ teardown() {
     skip_if_not_implemented
 
     export NO_COLOR=1
-    source "$PROJECT_ROOT/.claude/scripts/registry-lib.sh"
+    source "$PROJECT_ROOT/.claude/scripts/constructs-lib.sh"
 
     result=$(print_status "$icon_valid" "Test message")
 
@@ -370,12 +370,12 @@ teardown() {
 # =============================================================================
 
 skip_if_not_implemented() {
-    if [[ ! -f "$PROJECT_ROOT/.claude/scripts/registry-lib.sh" ]]; then
-        skip "registry-lib.sh not yet implemented"
+    if [[ ! -f "$PROJECT_ROOT/.claude/scripts/constructs-lib.sh" ]]; then
+        skip "constructs-lib.sh not yet implemented"
     fi
 
     # Check if specific function exists
     if ! type -t get_registry_config &>/dev/null; then
-        skip "registry-lib.sh functions not yet defined"
+        skip "constructs-lib.sh functions not yet defined"
     fi
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Unit tests for .claude/scripts/registry-loader.sh
+# Unit tests for .claude/scripts/constructs-loader.sh
 # Test-first development: These tests define expected behavior
 #
 # Commands:
@@ -19,7 +19,7 @@ setup() {
     BATS_TEST_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
     PROJECT_ROOT="$(cd "$BATS_TEST_DIR/../.." && pwd)"
     FIXTURES_DIR="$PROJECT_ROOT/tests/fixtures"
-    LOADER="$PROJECT_ROOT/.claude/scripts/registry-loader.sh"
+    LOADER="$PROJECT_ROOT/.claude/scripts/constructs-loader.sh"
     VALIDATOR="$PROJECT_ROOT/.claude/scripts/license-validator.sh"
 
     # Create temp directory for test artifacts
@@ -50,8 +50,8 @@ setup() {
 EOF
 
     # Source registry-lib for shared functions
-    if [[ -f "$PROJECT_ROOT/.claude/scripts/registry-lib.sh" ]]; then
-        source "$PROJECT_ROOT/.claude/scripts/registry-lib.sh"
+    if [[ -f "$PROJECT_ROOT/.claude/scripts/constructs-lib.sh" ]]; then
+        source "$PROJECT_ROOT/.claude/scripts/constructs-lib.sh"
     fi
 }
 
@@ -65,10 +65,10 @@ teardown() {
 # Helper to skip if loader not implemented
 skip_if_not_implemented() {
     if [[ ! -f "$LOADER" ]]; then
-        skip "registry-loader.sh not yet implemented"
+        skip "constructs-loader.sh not yet implemented"
     fi
     if [[ ! -x "$LOADER" ]]; then
-        skip "registry-loader.sh not executable"
+        skip "constructs-loader.sh not executable"
     fi
 }
 

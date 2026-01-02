@@ -148,35 +148,35 @@ The registry supports offline operation with these behaviors:
 
 ## CLI Commands
 
-### registry-loader.sh
+### constructs-loader.sh
 
 ```bash
 # List all registry skills with license status
-registry-loader.sh list
+constructs-loader.sh list
 
 # List all registry packs with status
-registry-loader.sh list-packs
+constructs-loader.sh list-packs
 
 # Get paths of loadable skills (valid or grace period)
-registry-loader.sh loadable
+constructs-loader.sh loadable
 
 # Validate a single skill's license
-registry-loader.sh validate <skill-dir>
+constructs-loader.sh validate <skill-dir>
 
 # Validate a pack's license
-registry-loader.sh validate-pack <pack-dir>
+constructs-loader.sh validate-pack <pack-dir>
 
 # Pre-load hook for skill loading integration
-registry-loader.sh preload <skill-dir>
+constructs-loader.sh preload <skill-dir>
 
 # List skills in a pack
-registry-loader.sh list-pack-skills <pack-dir>
+constructs-loader.sh list-pack-skills <pack-dir>
 
 # Get pack version from manifest
-registry-loader.sh get-pack-version <pack-dir>
+constructs-loader.sh get-pack-version <pack-dir>
 
 # Check for available updates
-registry-loader.sh check-updates
+constructs-loader.sh check-updates
 ```
 
 ### license-validator.sh
@@ -305,7 +305,7 @@ During `/setup` command execution:
 
 ```bash
 # Example /setup integration
-loadable_skills=$(registry-loader.sh loadable)
+loadable_skills=$(constructs-loader.sh loadable)
 for skill_path in $loadable_skills; do
     # Load skill into framework
 done
@@ -348,10 +348,10 @@ The `.registry-meta.json` file tracks installation state:
 
 ### Skill Not Loading
 
-1. Check license status: `registry-loader.sh validate <skill-dir>`
+1. Check license status: `constructs-loader.sh validate <skill-dir>`
 2. Verify file exists: `ls -la <skill-dir>/.license.json`
 3. Check key cache: `ls ~/.loa/cache/public-keys/`
-4. Try offline mode: `LOA_OFFLINE=1 registry-loader.sh validate <skill-dir>`
+4. Try offline mode: `LOA_OFFLINE=1 constructs-loader.sh validate <skill-dir>`
 
 ### License Validation Fails
 
@@ -362,9 +362,9 @@ The `.registry-meta.json` file tracks installation state:
 
 ### Pack Skills Not Found
 
-1. Verify pack license: `registry-loader.sh validate-pack <pack-dir>`
+1. Verify pack license: `constructs-loader.sh validate-pack <pack-dir>`
 2. Check manifest: `cat <pack-dir>/manifest.yaml`
-3. List pack skills: `registry-loader.sh list-pack-skills <pack-dir>`
+3. List pack skills: `constructs-loader.sh list-pack-skills <pack-dir>`
 
 ## Related Documents
 

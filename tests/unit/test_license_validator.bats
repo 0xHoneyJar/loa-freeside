@@ -39,8 +39,8 @@ setup() {
 EOF
 
     # Source registry-lib for shared functions
-    if [[ -f "$PROJECT_ROOT/.claude/scripts/registry-lib.sh" ]]; then
-        source "$PROJECT_ROOT/.claude/scripts/registry-lib.sh"
+    if [[ -f "$PROJECT_ROOT/.claude/scripts/constructs-lib.sh" ]]; then
+        source "$PROJECT_ROOT/.claude/scripts/constructs-lib.sh"
     fi
 }
 

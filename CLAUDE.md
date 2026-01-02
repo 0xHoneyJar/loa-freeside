@@ -289,8 +289,8 @@ Use `.claude/scripts/context-check.sh` for assessment.
 ├── validate-sprint-id.sh     # Sprint ID validation
 ├── mcp-registry.sh           # MCP registry queries
 ├── validate-mcp.sh           # MCP configuration validation
-├── registry-loader.sh        # Registry skill loader
-├── registry-lib.sh           # Registry shared utilities
+├── constructs-loader.sh      # Loa Constructs skill loader
+├── constructs-lib.sh         # Loa Constructs shared utilities
 └── license-validator.sh      # JWT license validation
 ```
 
@@ -379,10 +379,10 @@ Local skills always win. Conflicts resolved silently by priority.
 ### CLI Commands
 
 ```bash
-registry-loader.sh list              # Show skills with status
-registry-loader.sh loadable          # Get loadable skill paths
-registry-loader.sh validate <dir>    # Validate single skill
-registry-loader.sh check-updates     # Check for updates
+constructs-loader.sh list              # Show skills with status
+constructs-loader.sh loadable          # Get loadable skill paths
+constructs-loader.sh validate <dir>    # Validate single skill
+constructs-loader.sh check-updates     # Check for updates
 ```
 
 ### Configuration
@@ -401,7 +401,7 @@ registry:
 - `LOA_REGISTRY_ENABLED` - Master toggle
 - `LOA_OFFLINE=1` - Force offline mode
 
-**Protocol**: See `.claude/protocols/registry-integration.md`
+**Protocol**: See `.claude/protocols/constructs-integration.md`
 
 ## Key Conventions
 
@@ -422,7 +422,7 @@ registry:
   - `feedback-loops.md` - Quality gates
   - `git-safety.md` - Template protection
   - `change-validation.md` - Pre-implementation validation
-  - `registry-integration.md` - Registry skill loading
+  - `constructs-integration.md` - Loa Constructs skill loading
   - **v0.9.0 Lossless Ledger Protocol**:
   - `session-continuity.md` - Session lifecycle and recovery
   - `grounding-enforcement.md` - Citation requirements

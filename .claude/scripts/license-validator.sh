@@ -23,14 +23,14 @@
 
 set -euo pipefail
 
-# Get script directory for sourcing registry-lib
+# Get script directory for sourcing constructs-lib
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source shared library
-if [[ -f "$SCRIPT_DIR/registry-lib.sh" ]]; then
-    source "$SCRIPT_DIR/registry-lib.sh"
+if [[ -f "$SCRIPT_DIR/constructs-lib.sh" ]]; then
+    source "$SCRIPT_DIR/constructs-lib.sh"
 else
-    echo "ERROR: registry-lib.sh not found" >&2
+    echo "ERROR: constructs-lib.sh not found" >&2
     exit 5
 fi
 

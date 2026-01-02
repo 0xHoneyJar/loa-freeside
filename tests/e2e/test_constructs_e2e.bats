@@ -15,9 +15,9 @@ setup() {
     BATS_TEST_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
     PROJECT_ROOT="$(cd "$BATS_TEST_DIR/../.." && pwd)"
     FIXTURES_DIR="$PROJECT_ROOT/tests/fixtures"
-    LOADER="$PROJECT_ROOT/.claude/scripts/registry-loader.sh"
+    LOADER="$PROJECT_ROOT/.claude/scripts/constructs-loader.sh"
     VALIDATOR="$PROJECT_ROOT/.claude/scripts/license-validator.sh"
-    LIB="$PROJECT_ROOT/.claude/scripts/registry-lib.sh"
+    LIB="$PROJECT_ROOT/.claude/scripts/constructs-lib.sh"
 
     # Create temp directory for test artifacts
     export BATS_TMPDIR="${BATS_TMPDIR:-/tmp}"
@@ -76,7 +76,7 @@ teardown() {
 # Helper to skip if scripts not available
 skip_if_not_available() {
     if [[ ! -f "$LOADER" ]] || [[ ! -x "$LOADER" ]]; then
-        skip "registry-loader.sh not available"
+        skip "constructs-loader.sh not available"
     fi
     if [[ ! -f "$VALIDATOR" ]] || [[ ! -x "$VALIDATOR" ]]; then
         skip "license-validator.sh not available"
@@ -521,10 +521,10 @@ EOF
 }
 
 @test "E2E: Protocol document exists" {
-    [[ -f "$PROJECT_ROOT/.claude/protocols/registry-integration.md" ]]
+    [[ -f "$PROJECT_ROOT/.claude/protocols/constructs-integration.md" ]]
 }
 
 @test "E2E: CLAUDE.md has registry section" {
     grep -q "Registry Integration" "$PROJECT_ROOT/CLAUDE.md"
-    grep -q "registry-loader.sh" "$PROJECT_ROOT/CLAUDE.md"
+    grep -q "constructs-loader.sh" "$PROJECT_ROOT/CLAUDE.md"
 }

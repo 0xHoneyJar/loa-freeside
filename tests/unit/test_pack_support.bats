@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Unit tests for Pack Support in registry-loader.sh
+# Unit tests for Pack Support in constructs-loader.sh
 # Sprint 4: Pack Support & Preload Hook
 #
 # Test coverage:
@@ -14,7 +14,7 @@ setup() {
     BATS_TEST_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
     PROJECT_ROOT="$(cd "$BATS_TEST_DIR/../.." && pwd)"
     FIXTURES_DIR="$PROJECT_ROOT/tests/fixtures"
-    LOADER="$PROJECT_ROOT/.claude/scripts/registry-loader.sh"
+    LOADER="$PROJECT_ROOT/.claude/scripts/constructs-loader.sh"
     VALIDATOR="$PROJECT_ROOT/.claude/scripts/license-validator.sh"
 
     # Create temp directory for test artifacts
@@ -43,8 +43,8 @@ setup() {
 EOF
 
     # Source registry-lib for shared functions
-    if [[ -f "$PROJECT_ROOT/.claude/scripts/registry-lib.sh" ]]; then
-        source "$PROJECT_ROOT/.claude/scripts/registry-lib.sh"
+    if [[ -f "$PROJECT_ROOT/.claude/scripts/constructs-lib.sh" ]]; then
+        source "$PROJECT_ROOT/.claude/scripts/constructs-lib.sh"
     fi
 }
 
@@ -57,7 +57,7 @@ teardown() {
 # Helper to skip if loader not implemented
 skip_if_not_implemented() {
     if [[ ! -f "$LOADER" ]] || [[ ! -x "$LOADER" ]]; then
-        skip "registry-loader.sh not available"
+        skip "constructs-loader.sh not available"
     fi
 }
 

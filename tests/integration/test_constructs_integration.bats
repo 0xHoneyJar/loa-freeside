@@ -21,7 +21,7 @@ setup() {
     BATS_TEST_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
     PROJECT_ROOT="$(cd "$BATS_TEST_DIR/../.." && pwd)"
     FIXTURES_DIR="$PROJECT_ROOT/tests/fixtures"
-    LOADER="$PROJECT_ROOT/.claude/scripts/registry-loader.sh"
+    LOADER="$PROJECT_ROOT/.claude/scripts/constructs-loader.sh"
     VALIDATOR="$PROJECT_ROOT/.claude/scripts/license-validator.sh"
 
     # Check for prerequisites
@@ -75,8 +75,8 @@ setup() {
 EOF
 
     # Source registry-lib for shared functions
-    if [[ -f "$PROJECT_ROOT/.claude/scripts/registry-lib.sh" ]]; then
-        source "$PROJECT_ROOT/.claude/scripts/registry-lib.sh"
+    if [[ -f "$PROJECT_ROOT/.claude/scripts/constructs-lib.sh" ]]; then
+        source "$PROJECT_ROOT/.claude/scripts/constructs-lib.sh"
     fi
 }
 

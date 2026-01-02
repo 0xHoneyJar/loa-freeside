@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# registry-loader.sh - Main skill loader for Loa Constructs
+# constructs-loader.sh - Main skill loader for Loa Constructs
 #
 # Usage:
-#   registry-loader.sh list                 - Show all registry skills with status
-#   registry-loader.sh list-packs           - Show all registry packs with status
-#   registry-loader.sh loadable             - Return paths of loadable skills
-#   registry-loader.sh validate <skill-dir> - Validate single skill's license
-#   registry-loader.sh validate-pack <dir>  - Validate a pack's license
-#   registry-loader.sh preload <skill-dir>  - Pre-load hook for skill loading
-#   registry-loader.sh list-pack-skills <d> - List skills in a pack
-#   registry-loader.sh get-pack-version <d> - Get pack version from manifest
-#   registry-loader.sh check-updates        - Check for available updates
+#   constructs-loader.sh list                 - Show all skills with status
+#   constructs-loader.sh list-packs           - Show all packs with status
+#   constructs-loader.sh loadable             - Return paths of loadable skills
+#   constructs-loader.sh validate <skill-dir> - Validate single skill's license
+#   constructs-loader.sh validate-pack <dir>  - Validate a pack's license
+#   constructs-loader.sh preload <skill-dir>  - Pre-load hook for skill loading
+#   constructs-loader.sh list-pack-skills <d> - List skills in a pack
+#   constructs-loader.sh get-pack-version <d> - Get pack version from manifest
+#   constructs-loader.sh check-updates        - Check for available updates
 #
 # Exit Codes (for validate/preload):
 #   0 = valid
@@ -34,10 +34,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source shared library
-if [[ -f "$SCRIPT_DIR/registry-lib.sh" ]]; then
-    source "$SCRIPT_DIR/registry-lib.sh"
+if [[ -f "$SCRIPT_DIR/constructs-lib.sh" ]]; then
+    source "$SCRIPT_DIR/constructs-lib.sh"
 else
-    echo "ERROR: registry-lib.sh not found" >&2
+    echo "ERROR: constructs-lib.sh not found" >&2
     exit 5
 fi
 
@@ -1224,18 +1224,18 @@ do_check_updates() {
 
 show_usage() {
     cat << 'EOF'
-Usage: registry-loader.sh <command> [arguments]
+Usage: constructs-loader.sh <command> [arguments]
 
 Commands:
-    list                    Show all registry skills with license status
-    list-packs              Show all registry packs with status
+    list                    Show all skills with license status
+    list-packs              Show all packs with status
     loadable                Return paths of loadable skills (valid or grace)
     validate <skill-dir>    Validate a single skill's license
     validate-pack <dir>     Validate a pack's license
     preload <skill-dir>     Pre-load hook for skill loading integration
     list-pack-skills <dir>  List skills in a pack
     get-pack-version <dir>  Get pack version from manifest
-    check-updates           Check for available updates (Sprint 5)
+    check-updates           Check for available updates
 
 Exit Codes (validate/preload):
     0 = valid
@@ -1252,12 +1252,12 @@ Environment Variables:
     NO_COLOR           Disable colored output
 
 Examples:
-    registry-loader.sh list
-    registry-loader.sh list-packs
-    registry-loader.sh loadable | xargs -I {} echo "Loading: {}"
-    registry-loader.sh validate .claude/registry/skills/vendor/skill
-    registry-loader.sh validate-pack .claude/registry/packs/my-pack
-    registry-loader.sh preload .claude/registry/skills/vendor/skill
+    constructs-loader.sh list
+    constructs-loader.sh list-packs
+    constructs-loader.sh loadable | xargs -I {} echo "Loading: {}"
+    constructs-loader.sh validate .claude/registry/skills/vendor/skill
+    constructs-loader.sh validate-pack .claude/registry/packs/my-pack
+    constructs-loader.sh preload .claude/registry/skills/vendor/skill
 EOF
 }
 
