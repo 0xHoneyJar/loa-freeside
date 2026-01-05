@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { AsciiNoise } from '@/components/AsciiNoise';
 
 const ARRAKIS_ASCII = `
     ___    ____  ____  ___    __ __ ________
@@ -24,8 +25,19 @@ const WORM_ASCII = `
 export default function HomePage() {
   return (
     <div className="space-y-16">
-      {/* Hero */}
-      <section>
+      {/* Hero with ASCII Noise */}
+      <section className="relative">
+        {/* Animated noise background */}
+        <div className="absolute inset-0 -z-10 opacity-[0.07] overflow-hidden pointer-events-none hidden md:block">
+          <AsciiNoise
+            width={100}
+            height={20}
+            speed={0.0005}
+            scale={0.04}
+            className="text-spice text-[8px]"
+          />
+        </div>
+
         <pre className="text-spice text-xs sm:text-sm leading-none hidden sm:block">
           {ARRAKIS_ASCII}
         </pre>
@@ -231,6 +243,26 @@ export default function HomePage() {
               - enterprise-grade community infrastructure
             </span>
           </Link>
+        </div>
+      </section>
+
+      {/* Spice Flow Visualization */}
+      <section className="relative overflow-hidden">
+        <div className="text-sand-dim text-xs mb-4">// the_spice_flow</div>
+        <div className="border border-sand-dim/30 relative">
+          <div className="absolute inset-0 flex items-center justify-center opacity-30">
+            <AsciiNoise
+              width={80}
+              height={8}
+              speed={0.0008}
+              scale={0.05}
+              className="text-spice text-[10px]"
+            />
+          </div>
+          <div className="relative p-6 text-center backdrop-blur-[1px]">
+            <p className="text-sand-bright text-sm mb-2">real-time conviction data flows through arrakis</p>
+            <p className="text-sand-dim text-xs">the spice must flow</p>
+          </div>
         </div>
       </section>
 
