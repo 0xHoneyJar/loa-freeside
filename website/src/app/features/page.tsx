@@ -4,7 +4,7 @@ import Link from 'next/link';
 export const metadata: Metadata = {
   title: 'features // ARRAKIS',
   description:
-    'Conviction scoring, 9-tier progression, badge gamification, and zero-risk adoption for Web3 communities.',
+    'Extend Collab.Land with conviction scoring, 9-tier progression, badge gamification. Built on Collab.Land, available through their marketplace.',
 };
 
 export default function FeaturesPage() {
@@ -14,10 +14,14 @@ export default function FeaturesPage() {
       <section>
         <div className="text-sand-dim text-xs mb-2">// features</div>
         <h1 className="text-2xl text-sand-bright">
-          engagement intelligence for web3
+          engagement intelligence for collab.land
         </h1>
         <p className="text-sand mt-2">
-          go beyond token-gating. identify, reward, engage.
+          extend collab.land with conviction scoring, tiered progression, and badge
+          gamification. same trust, more intelligence.
+        </p>
+        <p className="text-spice text-sm mt-4">
+          available through the collab.land marketplace
         </p>
       </section>
 
@@ -41,7 +45,7 @@ export default function FeaturesPage() {
             <span className="text-spice">&gt;</span> multi_chain
           </a>
           <a href="#setup" className="block text-sand hover:text-sand-bright">
-            <span className="text-spice">&gt;</span> self_service_setup
+            <span className="text-spice">&gt;</span> marketplace_install
           </a>
           <a href="#enterprise" className="block text-sand hover:text-sand-bright">
             <span className="text-spice">&gt;</span> enterprise_security
@@ -189,28 +193,27 @@ export default function FeaturesPage() {
       <section id="shadow">
         <div className="text-sand-dim text-xs mb-4">// shadow_mode [zero-risk]</div>
         <div className="border border-sand-dim/30 p-4">
-          <h2 className="text-spice text-lg mb-4">try alongside your current setup</h2>
+          <h2 className="text-spice text-lg mb-4">validate before committing</h2>
           <p className="text-sand mb-6">
-            already using collab.land or guild.xyz? run arrakis in parallel.
-            see conviction data, validate accuracy, switch when ready.
+            install arrakis from the collab.land marketplace, run in shadow mode
+            first. see conviction data, validate accuracy, enable when ready.
           </p>
 
           <pre className="text-sand text-xs">
 {`┌────────────────────────────────────────────────────────┐
-│                    MIGRATION PATH                      │
+│                    ACTIVATION PATH                     │
 ├────────────────────────────────────────────────────────┤
 │  SHADOW   → observe only, see data      [zero risk]   │
 │  PARALLEL → namespaced roles alongside  [low risk]    │
-│  PRIMARY  → arrakis becomes authority   [medium]      │
-│  EXCLUSIVE→ full takeover               [full switch] │
+│  PRIMARY  → arrakis manages roles       [full value]  │
 └────────────────────────────────────────────────────────┘`}
           </pre>
 
           <div className="mt-4 text-sm text-sand">
-            <span className="text-spice">step 1:</span> install, observe data{' '}
-            <span className="text-spice">step 2:</span> validate accuracy{' '}
-            <span className="text-spice">step 3:</span> test parallel{' '}
-            <span className="text-spice">step 4:</span> switch when confident
+            <span className="text-spice">step 1:</span> install from marketplace{' '}
+            <span className="text-spice">step 2:</span> observe data{' '}
+            <span className="text-spice">step 3:</span> validate accuracy{' '}
+            <span className="text-spice">step 4:</span> enable when confident
           </div>
         </div>
       </section>
@@ -237,28 +240,25 @@ export default function FeaturesPage() {
         </div>
       </section>
 
-      {/* Self-Service Setup */}
+      {/* Marketplace Setup */}
       <section id="setup">
-        <div className="text-sand-dim text-xs mb-4">// self_service_setup</div>
+        <div className="text-sand-dim text-xs mb-4">// marketplace_install</div>
         <div className="border border-sand-dim/30 p-4">
-          <h2 className="text-spice text-lg mb-4">set up in 15 minutes. no code required.</h2>
+          <h2 className="text-spice text-lg mb-4">install from collab.land marketplace</h2>
 
           <div className="text-sm space-y-1 text-sand">
-            <p><span className="text-sand-dim">[1]</span> welcome - name community, choose theme</p>
-            <p><span className="text-sand-dim">[2]</span> select_chain - choose blockchain(s)</p>
-            <p><span className="text-sand-dim">[3]</span> configure_asset - enter contract address</p>
-            <p><span className="text-sand-dim">[4]</span> set_rules - min balance, thresholds</p>
-            <p><span className="text-sand-dim">[5]</span> map_roles - discord roles to tiers</p>
-            <p><span className="text-sand-dim">[6]</span> channels - template or custom</p>
-            <p><span className="text-sand-dim">[7]</span> review - preview configuration</p>
-            <p><span className="text-sand-dim">[8]</span> deploy - one click activation</p>
+            <p><span className="text-sand-dim">[1]</span> find arrakis in the collab.land marketplace</p>
+            <p><span className="text-sand-dim">[2]</span> one-click install (uses your existing collab.land setup)</p>
+            <p><span className="text-sand-dim">[3]</span> configure tiers and conviction thresholds</p>
+            <p><span className="text-sand-dim">[4]</span> map discord roles to tiers</p>
+            <p><span className="text-sand-dim">[5]</span> enable when ready</p>
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-4 text-xs text-sand-dim">
-            <div>setup_time: ~15 min</div>
+            <div>setup_time: ~10 min</div>
             <div>code_required: none</div>
-            <div>permissions: manage_roles, manage_channels</div>
-            <div>session_recovery: /resume</div>
+            <div>migration: none</div>
+            <div>collab.land: required</div>
           </div>
         </div>
       </section>
@@ -339,21 +339,24 @@ export default function FeaturesPage() {
 
       {/* CTA */}
       <section className="border border-spice/50 p-6 text-center">
-        <p className="text-sand-bright text-lg mb-2">ready to go beyond token-gating?</p>
+        <p className="text-sand-bright text-lg mb-2">ready to extend collab.land?</p>
         <p className="text-sand-dim text-sm mb-6">
-          start free. see conviction data in shadow mode. upgrade when ready.
+          install from the collab.land marketplace. same trust, more intelligence.
         </p>
         <div className="flex flex-wrap justify-center gap-4 text-sm">
           <Link
             href="https://discord.gg/thehoneyjar"
             className="text-spice hover:text-spice-bright"
           >
-            [start free]
+            [join discord]
           </Link>
           <Link href="/pricing" className="text-sand hover:text-sand-bright">
             [view pricing]
           </Link>
         </div>
+        <p className="text-sand-dim text-xs mt-4">
+          built on collab.land • available through their marketplace
+        </p>
       </section>
     </div>
   );

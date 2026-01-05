@@ -4,9 +4,9 @@ import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 
 export const metadata: Metadata = {
-  title: 'ARRAKIS // Engagement Intelligence',
+  title: 'ARRAKIS // The Engagement Layer for Collab.Land',
   description:
-    'Know your community, not just your holders. Conviction scoring, 9-tier progression, and zero-risk adoption.',
+    'Built on Collab.Land, available through their marketplace. Conviction scoring and tiered progression for the token-gating you already trust.',
   icons: {
     icon: [
       { url: '/favicon.svg', type: 'image/svg+xml' },

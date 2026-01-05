@@ -60,22 +60,25 @@ export default function HomePage() {
 
             <div className="space-y-4 mb-8">
               <p className="text-sand-bright text-lg">
-                engagement intelligence for web3 communities
+                the engagement layer for collab.land
               </p>
               <p className="text-sand">
-                know your community, not just your holders.
+                built on collab.land. available through their marketplace.
+              </p>
+              <p className="text-sand-dim text-sm">
+                you trust collab.land — we just make it smarter.
               </p>
             </div>
 
             <div className="space-y-2 text-sm mb-8">
               <p className="text-sand-dim">
-                <span className="text-spice">$</span> arrakis --help
+                <span className="text-spice">$</span> arrakis --features
               </p>
               <div className="pl-4 text-sand space-y-1">
+                <p>&gt; trust-inheritance - same collab.land security</p>
                 <p>&gt; conviction-scoring - identify diamond hands</p>
                 <p>&gt; tier-progression - 9 levels from outsider to naib</p>
                 <p>&gt; badge-system - gamified achievements</p>
-                <p>&gt; shadow-mode - zero-risk parallel deployment</p>
               </div>
             </div>
 
@@ -115,14 +118,41 @@ export default function HomePage() {
 
       {/* Rest of content */}
       <div className="space-y-16">
+        {/* Trust Section */}
+        <section>
+          <div className="text-sand-dim text-xs mb-4">// trust_inheritance</div>
+          <div className="border border-spice/30 p-4 space-y-4">
+            <p className="text-spice">
+              you don&apos;t need to trust anything beyond collab.land
+            </p>
+            <div className="space-y-3 text-sm text-sand">
+              <p>
+                <span className="text-sand-dim">[+]</span> wallet verification — uses collab.land&apos;s proven infrastructure
+              </p>
+              <p>
+                <span className="text-sand-dim">[+]</span> token checking — builds on collab.land&apos;s verification
+              </p>
+              <p>
+                <span className="text-sand-dim">[+]</span> security model — inherits collab.land&apos;s trust assumptions
+              </p>
+              <p>
+                <span className="text-sand-dim">[+]</span> marketplace distribution — available through official collab.land marketplace
+              </p>
+            </div>
+            <p className="text-sand-dim text-xs pt-2 border-t border-sand-dim/20">
+              result: same security you already rely on. new intelligence on top.
+            </p>
+          </div>
+        </section>
+
         {/* Problem Statement */}
         <section>
-          <div className="text-sand-dim text-xs mb-4">// the problem</div>
+          <div className="text-sand-dim text-xs mb-4">// the_problem</div>
           <div className="border border-sand-dim/30 p-4 space-y-4">
             <p className="text-sand-bright">
-              token-gating is table stakes.
+              collab.land tells you who holds.
               <br />
-              engagement intelligence is the future.
+              arrakis tells you who believes.
             </p>
             <div className="space-y-3 text-sm text-sand">
               <p>
@@ -144,7 +174,7 @@ export default function HomePage() {
 
         {/* Solution */}
         <section>
-          <div className="text-sand-dim text-xs mb-4">// the solution</div>
+          <div className="text-sand-dim text-xs mb-4">// what_arrakis_adds</div>
 
           <pre className="text-sand-dim text-xs leading-tight mb-6 hidden md:block">
             {WORM_ASCII}
@@ -176,10 +206,10 @@ export default function HomePage() {
             </div>
 
             <div className="border border-sand-dim/30 p-4">
-              <div className="text-spice text-sm mb-2">zero_risk_adoption</div>
+              <div className="text-spice text-sm mb-2">marketplace_install</div>
               <p className="text-sand text-sm">
-                shadow mode runs alongside collab.land or guild.xyz. validate
-                accuracy, switch when ready.
+                install from the collab.land marketplace. no migration needed.
+                your existing setup gains intelligence instantly.
               </p>
             </div>
           </div>
@@ -190,25 +220,24 @@ export default function HomePage() {
           <div className="text-sand-dim text-xs mb-4">// quickstart</div>
           <div className="font-mono text-sm space-y-2">
             <p className="text-sand-dim">
-              <span className="text-spice">$</span> arrakis init
+              <span className="text-spice">$</span> arrakis install
             </p>
             <div className="pl-4 text-sand space-y-1">
               <p>
-                <span className="text-sand-dim">[step 1]</span> connect your token
-                contract
+                <span className="text-sand-dim">[step 1]</span> find arrakis in the
+                collab.land marketplace
               </p>
               <p>
-                <span className="text-sand-dim">[step 2]</span> configure tiers
-                (basic or sietch theme)
+                <span className="text-sand-dim">[step 2]</span> one-click install
+                (uses your existing collab.land setup)
               </p>
               <p>
-                <span className="text-sand-dim">[step 3]</span> deploy - roles and
-                channels auto-created
+                <span className="text-sand-dim">[step 3]</span> configure tiers and
+                conviction thresholds
               </p>
             </div>
             <p className="text-sand-dim mt-4">
-              <span className="text-spice">$</span> # setup complete in ~15
-              minutes
+              <span className="text-spice">$</span> # no migration. same trust. more intelligence.
             </p>
           </div>
         </section>
@@ -286,9 +315,13 @@ export default function HomePage() {
           <div className="text-sand-dim text-xs mb-4">// credentials</div>
           <div className="border border-sand-dim/30 p-4">
             <p className="text-sand-bright mb-4">
-              built by the #1 starred team on dune analytics
+              built on collab.land. by the #1 team on dune analytics.
             </p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center text-sm">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center text-sm">
+              <div>
+                <div className="text-spice text-xl">CL</div>
+                <div className="text-sand-dim">built on</div>
+              </div>
               <div>
                 <div className="text-spice text-xl">65+</div>
                 <div className="text-sand-dim">sprints</div>
@@ -311,23 +344,23 @@ export default function HomePage() {
 
         {/* CTA */}
         <section className="border border-spice/50 p-6 text-center">
-          <p className="text-sand-bright text-lg mb-2">ready to know your community?</p>
+          <p className="text-sand-bright text-lg mb-2">ready to extend collab.land?</p>
           <p className="text-sand-dim text-sm mb-6">
-            start free. see conviction data in shadow mode. upgrade when confident.
+            install from the collab.land marketplace. same trust, more intelligence.
           </p>
           <div className="flex flex-wrap justify-center gap-4 text-sm">
             <Link
               href="https://discord.gg/thehoneyjar"
               className="text-spice hover:text-spice-bright"
             >
-              [join discord - no credit card]
+              [join discord]
             </Link>
-            <Link href="/about" className="text-sand hover:text-sand-bright">
+            <Link href="/collab-land" className="text-sand hover:text-sand-bright">
               [learn more]
             </Link>
           </div>
           <p className="text-sand-dim text-xs mt-4">
-            founding 50 spots remaining
+            built on collab.land • available through their marketplace
           </p>
         </section>
       </div>

@@ -4,7 +4,7 @@ import Link from 'next/link';
 export const metadata: Metadata = {
   title: 'about // ARRAKIS',
   description:
-    'Built by the #1 team on Dune Analytics. 65+ sprints of development.',
+    'Built on Collab.Land by the #1 team on Dune Analytics. 65+ sprints of development.',
 };
 
 export default function AboutPage() {
@@ -14,11 +14,14 @@ export default function AboutPage() {
       <section>
         <div className="text-sand-dim text-xs mb-2">// about</div>
         <h1 className="text-2xl text-sand-bright">
-          built by the #1 team on dune analytics
+          built on collab.land. by the #1 team on dune analytics.
         </h1>
         <p className="text-sand mt-2">
-          we&apos;ve spent years analyzing on-chain behavior. arrakis is where we apply
-          that expertise.
+          arrakis extends collab.land with engagement intelligence. you trust
+          collab.land — we just make it smarter.
+        </p>
+        <p className="text-spice text-sm mt-4">
+          available through the collab.land marketplace
         </p>
       </section>
 
@@ -27,25 +30,25 @@ export default function AboutPage() {
         <div className="text-sand-dim text-xs mb-4">// mission</div>
         <div className="border border-sand-dim/30 p-4 space-y-4 text-sand">
           <p>
-            web3 communities deserve better than binary access control. they deserve to
-            know who actually believes in their project — not just who holds their token.
+            collab.land solved token-gating. but communities deserve more than binary
+            access control — they deserve to know who actually believes in their project.
           </p>
           <p className="text-spice">
-            we&apos;re building engagement intelligence for web3.
+            we&apos;re extending collab.land with engagement intelligence.
           </p>
           <p>
-            every community operator faces the same problem: token-gating tells you who
-            can enter, but not who matters. your biggest supporters look the same as
-            day-one flippers. your airdrops go to farmers. your governance has 5%
-            participation.
+            you don&apos;t need to trust anything beyond collab.land. arrakis uses their
+            infrastructure for wallet verification and token checking. we just add
+            conviction scoring and tiered progression on top.
           </p>
           <p>
-            arrakis fixes this. we analyze on-chain behavior to identify conviction.
-            then we create tiered experiences that reward that commitment.
+            we analyze on-chain behavior to identify conviction — holding duration,
+            trading patterns, accumulation history. then we create tiered experiences
+            that reward that commitment.
           </p>
           <p className="text-sand-bright">
-            result: communities that know their believers, reward their supporters,
-            and drive real engagement.
+            result: the same collab.land trust you rely on, with the intelligence
+            to know who your real community actually is.
           </p>
         </div>
       </section>
@@ -87,19 +90,29 @@ export default function AboutPage() {
             <div className="text-spice mb-2">the solution we built</div>
             <p className="text-sand">
               we realized the same on-chain intelligence we used for analytics could be
-              applied to community management. what if you could score conviction? what
-              if tiers reflected commitment, not just balance?
+              applied to community management. but we didn&apos;t want to build yet another
+              platform requiring new trust. so we built on top of collab.land.
             </p>
-            <p className="text-spice mt-4">arrakis was born from these questions.</p>
+            <p className="text-sand mt-4">
+              arrakis extends collab.land with conviction scoring and tiered progression.
+              you don&apos;t need to trust anything new — we use their infrastructure for
+              wallet verification.
+            </p>
+            <p className="text-spice mt-4">
+              arrakis: the engagement layer for collab.land.
+            </p>
           </div>
 
           <div className="border border-sand-dim/30 p-4">
             <div className="text-spice mb-2">65+ sprints of building</div>
             <p className="text-sand mb-4">
               this isn&apos;t a weekend project. arrakis has been through 65+ development
-              sprints:
+              sprints building on top of collab.land:
             </p>
             <div className="text-sm text-sand space-y-1">
+              <p>
+                <span className="text-spice">+</span> collab.land marketplace integration
+              </p>
               <p>
                 <span className="text-spice">+</span> enterprise-grade postgresql with
                 row-level security
@@ -116,13 +129,9 @@ export default function AboutPage() {
                 <span className="text-spice">+</span> conviction scoring powered by dune
                 expertise
               </p>
-              <p>
-                <span className="text-spice">+</span> shadow mode for zero-risk adoption
-              </p>
             </div>
             <p className="text-sand-bright mt-4">
-              we&apos;ve built something serious because communities deserve serious
-              infrastructure.
+              we&apos;ve built something serious on a foundation you already trust.
             </p>
           </div>
         </div>
@@ -265,9 +274,9 @@ export default function AboutPage() {
 
       {/* CTA */}
       <section className="border border-spice/50 p-6 text-center">
-        <p className="text-sand-bright text-lg mb-2">ready to know your community?</p>
+        <p className="text-sand-bright text-lg mb-2">ready to extend collab.land?</p>
         <p className="text-sand-dim text-sm mb-6">
-          start free. see conviction data. upgrade when the value is clear.
+          install from the collab.land marketplace. same trust, more intelligence.
         </p>
         <div className="flex flex-wrap justify-center gap-4 text-sm">
           <Link
@@ -280,6 +289,9 @@ export default function AboutPage() {
             [view pricing]
           </Link>
         </div>
+        <p className="text-sand-dim text-xs mt-4">
+          built on collab.land • available through their marketplace
+        </p>
       </section>
     </div>
   );
