@@ -92,6 +92,12 @@ export interface WebhookQueueOptions {
   rateLimitInterval?: number;
   /** Custom logger */
   logger?: ILogger;
+  /**
+   * Enable graceful degradation: fall back to direct processing if queue unavailable.
+   * When true and a processor is set, enqueue() will process directly if Redis fails.
+   * (default: false)
+   */
+  enableDirectFallback?: boolean;
 }
 
 /**
@@ -131,6 +137,7 @@ export class WebhookQueue {
   private options: Required<Omit<WebhookQueueOptions, 'connection' | 'logger'>> & {
     connection: ConnectionOptions;
   };
+  private directFallbackEnabled: boolean;
 
   // Internal metrics
   private metrics: QueueMetrics = {
@@ -152,7 +159,10 @@ export class WebhookQueue {
       retryDelay: options.retryDelay ?? 1000,
       rateLimitMax: options.rateLimitMax ?? 100,
       rateLimitInterval: options.rateLimitInterval ?? 1000,
+      enableDirectFallback: options.enableDirectFallback ?? false,
     };
+
+    this.directFallbackEnabled = this.options.enableDirectFallback;
 
     this.logger = options.logger ?? createLogger({ service: 'webhook-queue' });
 
@@ -194,10 +204,13 @@ export class WebhookQueue {
   /**
    * Add a webhook to the queue for processing
    *
+   * If `enableDirectFallback` is true and the queue is unavailable,
+   * falls back to direct processing using the registered processor.
+   *
    * @param data - Webhook job data
-   * @returns Job instance
+   * @returns Job instance (or a synthetic job-like object for direct processing)
    */
-  async enqueue(data: Omit<WebhookJobData, 'trace'>): Promise<Job<WebhookJobData, WebhookProcessResult>> {
+  async enqueue(data: Omit<WebhookJobData, 'trace'>): Promise<Job<WebhookJobData, WebhookProcessResult> | { id: string; data: WebhookJobData; processedDirectly: true }> {
     // Capture current trace context
     const traceId = getTraceId();
     const spanId = getSpanId();
@@ -207,28 +220,93 @@ export class WebhookQueue {
       trace: traceId !== 'no-trace' ? { traceId, spanId } : undefined,
     };
 
-    const job = await this.queue.add(
-      `webhook:${data.eventType}`,
-      jobData,
-      {
-        jobId: data.eventId, // Use event ID for deduplication
-        priority: this.getPriority(data.eventType),
+    try {
+      const job = await this.queue.add(
+        `webhook:${data.eventType}`,
+        jobData,
+        {
+          jobId: data.eventId, // Use event ID for deduplication
+          priority: this.getPriority(data.eventType),
+        }
+      );
+
+      this.metrics.jobsAdded++;
+
+      this.logger.debug(
+        {
+          eventId: data.eventId,
+          eventType: data.eventType,
+          jobId: job.id,
+          traceId,
+        },
+        'Webhook enqueued'
+      );
+
+      return job;
+    } catch (error) {
+      // Graceful degradation: fall back to direct processing if enabled
+      if (this.directFallbackEnabled && this.processor) {
+        this.logger.warn(
+          {
+            eventId: data.eventId,
+            eventType: data.eventType,
+            error: (error as Error).message,
+          },
+          'Queue unavailable, falling back to direct processing'
+        );
+
+        const result = await this.processDirectly(jobData);
+        this.metrics.jobsCompleted++;
+
+        return {
+          id: `direct:${data.eventId}`,
+          data: jobData,
+          processedDirectly: true as const,
+        };
       }
-    );
 
-    this.metrics.jobsAdded++;
+      // Re-throw if fallback not enabled or no processor
+      throw error;
+    }
+  }
 
-    this.logger.debug(
-      {
-        eventId: data.eventId,
-        eventType: data.eventType,
-        jobId: job.id,
-        traceId,
-      },
-      'Webhook enqueued'
-    );
+  /**
+   * Process a webhook directly (bypassing the queue)
+   * Used for graceful degradation when Redis is unavailable.
+   */
+  private async processDirectly(data: WebhookJobData): Promise<WebhookProcessResult> {
+    const startTime = performance.now();
 
-    return job;
+    // Restore trace context if available
+    const traceOptions: CreateTraceOptions | undefined = data.trace
+      ? {
+          traceId: data.trace.traceId,
+          parentSpanId: data.trace.spanId,
+          tenantId: data.trace.tenantId,
+        }
+      : undefined;
+
+    const context = createTraceContext(traceOptions);
+
+    return runWithTraceAsync(context, async () => {
+      const result = await this.processor!(data);
+      const duration = performance.now() - startTime;
+
+      this.logger.info(
+        {
+          eventId: data.eventId,
+          eventType: data.eventType,
+          duration,
+          direct: true,
+        },
+        'Webhook processed directly'
+      );
+
+      return {
+        ...result,
+        duration,
+      };
+    });
   }
 
   /**
@@ -286,6 +364,17 @@ export class WebhookQueue {
   // ---------------------------------------------------------------------------
   // Worker Management
   // ---------------------------------------------------------------------------
+
+  /**
+   * Set the processor for direct fallback processing
+   * This allows enqueue() to fall back to direct processing when Redis is unavailable.
+   *
+   * @param processor - Function to process webhook jobs
+   */
+  setProcessor(processor: WebhookProcessor): void {
+    this.processor = processor;
+    this.logger.debug('Processor registered for direct fallback');
+  }
 
   /**
    * Start the queue worker

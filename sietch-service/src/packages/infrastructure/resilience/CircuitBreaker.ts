@@ -327,6 +327,29 @@ export class CircuitBreaker<TArgs extends unknown[], TResult> {
   // ---------------------------------------------------------------------------
 
   /**
+   * Get circuit state as numeric value for Prometheus gauge
+   *
+   * @returns 0 = closed (healthy), 0.5 = half-open (testing), 1 = open (unhealthy)
+   *
+   * @example
+   * ```typescript
+   * // Export to Prometheus
+   * const gauge = new Gauge({
+   *   name: 'sietch_paddle_circuit_state',
+   *   help: 'Circuit breaker state (0=closed, 0.5=half-open, 1=open)',
+   *   labelNames: ['circuit_name'],
+   * });
+   *
+   * gauge.set({ circuit_name: 'paddle-api' }, paddleCircuit.getPrometheusState());
+   * ```
+   */
+  getPrometheusState(): number {
+    if (this.breaker.opened) return 1;
+    if (this.breaker.halfOpen) return 0.5;
+    return 0;
+  }
+
+  /**
    * Get circuit metrics
    */
   getMetrics(): CircuitMetrics {

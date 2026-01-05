@@ -373,3 +373,131 @@ describe('WebhookQueue Priority', () => {
     );
   });
 });
+
+describe('WebhookQueue Graceful Degradation', () => {
+  let webhookQueue: WebhookQueue;
+
+  afterEach(async () => {
+    if (webhookQueue) {
+      await webhookQueue.close();
+    }
+  });
+
+  it('falls back to direct processing when queue unavailable and fallback enabled', async () => {
+    vi.clearAllMocks();
+
+    const processor = vi.fn().mockResolvedValue({ status: 'processed' as const });
+
+    webhookQueue = createWebhookQueue({
+      connection: { host: 'localhost', port: 6379 },
+      queueName: 'test-fallback',
+      enableDirectFallback: true,
+    });
+
+    // Set the processor for direct fallback
+    webhookQueue.setProcessor(processor);
+
+    // Make the queue.add throw an error to simulate Redis being unavailable
+    const mockQueue = Queue as Mock;
+    const mockInstance = mockQueue.mock.results[0].value;
+    mockInstance.add.mockRejectedValueOnce(new Error('Redis connection failed'));
+
+    const jobData = {
+      eventId: 'evt_fallback',
+      eventType: 'subscription.created',
+      payload: '{}',
+      provider: 'paddle',
+      receivedAt: Date.now(),
+    };
+
+    const result = await webhookQueue.enqueue(jobData);
+
+    // Should have processed directly
+    expect(processor).toHaveBeenCalled();
+    expect((result as any).processedDirectly).toBe(true);
+    expect(result.id).toBe('direct:evt_fallback');
+  });
+
+  it('throws error when queue unavailable and fallback disabled', async () => {
+    vi.clearAllMocks();
+
+    webhookQueue = createWebhookQueue({
+      connection: { host: 'localhost', port: 6379 },
+      queueName: 'test-no-fallback',
+      enableDirectFallback: false, // Disabled
+    });
+
+    // Make the queue.add throw an error
+    const mockQueue = Queue as Mock;
+    const mockInstance = mockQueue.mock.results[0].value;
+    mockInstance.add.mockRejectedValueOnce(new Error('Redis connection failed'));
+
+    const jobData = {
+      eventId: 'evt_error',
+      eventType: 'subscription.created',
+      payload: '{}',
+      provider: 'paddle',
+      receivedAt: Date.now(),
+    };
+
+    await expect(webhookQueue.enqueue(jobData)).rejects.toThrow('Redis connection failed');
+  });
+
+  it('throws error when fallback enabled but no processor set', async () => {
+    vi.clearAllMocks();
+
+    webhookQueue = createWebhookQueue({
+      connection: { host: 'localhost', port: 6379 },
+      queueName: 'test-no-processor',
+      enableDirectFallback: true,
+    });
+
+    // Don't set processor - webhookQueue.setProcessor() not called
+
+    // Make the queue.add throw an error
+    const mockQueue = Queue as Mock;
+    const mockInstance = mockQueue.mock.results[0].value;
+    mockInstance.add.mockRejectedValueOnce(new Error('Redis connection failed'));
+
+    const jobData = {
+      eventId: 'evt_no_proc',
+      eventType: 'subscription.created',
+      payload: '{}',
+      provider: 'paddle',
+      receivedAt: Date.now(),
+    };
+
+    await expect(webhookQueue.enqueue(jobData)).rejects.toThrow('Redis connection failed');
+  });
+
+  it('setProcessor allows direct processing without starting worker', async () => {
+    vi.clearAllMocks();
+
+    const processor = vi.fn().mockResolvedValue({ status: 'processed' as const });
+
+    webhookQueue = createWebhookQueue({
+      connection: { host: 'localhost', port: 6379 },
+      queueName: 'test-set-processor',
+      enableDirectFallback: true,
+    });
+
+    // Just set processor, don't start worker
+    webhookQueue.setProcessor(processor);
+
+    // Make queue unavailable
+    const mockQueue = Queue as Mock;
+    const mockInstance = mockQueue.mock.results[0].value;
+    mockInstance.add.mockRejectedValueOnce(new Error('Redis down'));
+
+    const result = await webhookQueue.enqueue({
+      eventId: 'evt_set_proc',
+      eventType: 'payment.completed',
+      payload: '{}',
+      provider: 'paddle',
+      receivedAt: Date.now(),
+    });
+
+    expect(processor).toHaveBeenCalled();
+    expect((result as any).processedDirectly).toBe(true);
+  });
+});
