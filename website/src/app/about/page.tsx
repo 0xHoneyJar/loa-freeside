@@ -256,7 +256,7 @@ export default function AboutPage() {
                   rel="noopener noreferrer"
                   className="text-sand hover:text-sand-bright"
                 >
-                  <span className="text-spice">&gt;</span> discord.gg/thehoneyjar
+                  <span className="text-spice">&gt;</span> dune.com/thj
                 </a>
               </div>
               <div>
