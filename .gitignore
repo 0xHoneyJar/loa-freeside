@@ -11,6 +11,11 @@ coverage/
 build/
 dist/
 out/
+.next/
+
+# Archive files (compressed backups)
+*.tar.gz
+*.zip
 
 # Environment variables
 .env
