@@ -1,0 +1,13 @@
+{
+  "/_not-found/page": "/_not-found",
+  "/api/page": "/api",
+  "/faq/page": "/faq",
+  "/features/analytics/page": "/features/analytics",
+  "/features/badges/page": "/features/badges",
+  "/features/conviction-scoring/page": "/features/conviction-scoring",
+  "/features/page": "/features",
+  "/features/shadow-mode/page": "/features/shadow-mode",
+  "/getting-started/page": "/getting-started",
+  "/features/tiers/page": "/features/tiers",
+  "/page": "/"
+}

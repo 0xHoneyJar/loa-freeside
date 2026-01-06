@@ -1,0 +1,108 @@
+# API Reference
+
+The ARRAKIS API provides programmatic access to conviction data and community analytics.
+
+## Authentication
+
+All API requests require an API key:
+
+```bash
+curl -H "Authorization: Bearer YOUR_API_KEY" \
+  https://api.arrakis.community/v1/members
+```
+
+Get your API key from the dashboard under **Settings > API**.
+
+## Base URL
+
+```
+https://api.arrakis.community/v1
+```
+
+## Rate Limits
+
+| Plan | Requests/minute |
+|------|-----------------|
+| Growth | 60 |
+| Enterprise | 600 |
+
+## Endpoints
+
+### Members
+
+#### List Members
+```http
+GET /members
+```
+
+Query parameters:
+- `tier` - Filter by tier (1-9)
+- `min_conviction` - Minimum conviction score
+- `limit` - Results per page (default: 50, max: 100)
+- `offset` - Pagination offset
+
+#### Get Member
+```http
+GET /members/:discord_id
+```
+
+Returns detailed member information including conviction breakdown and tier history.
+
+### Tiers
+
+#### Get Tier Distribution
+```http
+GET /tiers/distribution
+```
+
+Returns member count per tier.
+
+### Analytics
+
+#### Community Summary
+```http
+GET /analytics/summary
+```
+
+Returns aggregate community metrics.
+
+#### Conviction Trends
+```http
+GET /analytics/trends?period=30d
+```
+
+Returns conviction trend data over specified period.
+
+### Webhooks
+
+Configure webhooks to receive real-time updates.
+
+#### Events
+- `member.verified` - New wallet verification
+- `member.tier_changed` - Tier promotion/demotion
+- `member.badge_earned` - Badge awarded
+
+## Error Codes
+
+| Code | Description |
+|------|-------------|
+| `unauthorized` | Invalid or missing API key |
+| `forbidden` | API key lacks required permissions |
+| `not_found` | Resource not found |
+| `rate_limited` | Too many requests |
+| `server_error` | Internal server error |
+
+## SDKs
+
+Official SDKs coming soon:
+- TypeScript/JavaScript
+- Python
+
+## Plan Availability
+
+| Feature | Growth | Enterprise |
+|---------|--------|------------|
+| Read API | ✅ | ✅ |
+| Write API | ❌ | ✅ |
+| Webhooks | ❌ | ✅ |
+| Rate Limit | 60/min | 600/min |

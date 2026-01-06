@@ -40,7 +40,7 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-screen bg-black font-mono">
-        <AsciiBackground opacity={0.10} speed={0.0006} wordDensity={0.035} />
+        <AsciiBackground opacity={0.10} speed={0.000286} wordDensity={0.035} />
         <ScrambleProvider className="relative z-10 mx-auto max-w-4xl px-6 py-8">
           <Header />
           <main className="mt-12">{children}</main>

@@ -19,7 +19,7 @@ export function Footer() {
             <ScrambleLink href="/pricing" className="block text-sand hover:text-sand-bright">
               pricing
             </ScrambleLink>
-            <ScrambleLink href="https://docs.arrakis.gg" className="block text-sand hover:text-sand-bright" external>
+            <ScrambleLink href="https://docs.arrakis.community" className="block text-sand hover:text-sand-bright" external>
               docs
             </ScrambleLink>
           </div>

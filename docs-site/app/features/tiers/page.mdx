@@ -1,0 +1,64 @@
+# Tier System
+
+ARRAKIS supports up to 9 progression tiers, providing granular segmentation beyond simple "holder" vs "non-holder" distinctions.
+
+## Default Tiers
+
+Out of the box, ARRAKIS uses Dune-inspired tier names:
+
+| Tier | Name | Description |
+|------|------|-------------|
+| 1 | Initiate | New members, any token balance |
+| 2 | Acolyte | Early accumulation phase |
+| 3 | Adherent | Consistent holder |
+| 4 | Disciple | Building conviction |
+| 5 | Zealot | Dedicated community member |
+| 6 | Elder | Long-term holder |
+| 7 | Oracle | High conviction, community leader |
+| 8 | Prophet | Top-tier commitment |
+| 9 | Kwisatz Haderach | Legendary status |
+
+## Customization
+
+### Tier Names
+Customize tier names to match your community's theme.
+
+### Threshold Types
+
+**Balance-Based** (Starter plan)
+Simple token balance thresholds.
+
+**Conviction-Based** (Growth/Enterprise)
+Thresholds based on conviction score.
+
+**Hybrid**
+Combine balance AND conviction requirements.
+
+## Discord Role Mapping
+
+Each tier maps to a Discord role. ARRAKIS automatically:
+1. Creates roles if they don't exist
+2. Assigns appropriate permissions
+3. Orders roles in the hierarchy
+4. Updates members based on their tier
+
+## Tier Transitions
+
+When a member's status changes:
+- **Promotion**: Old tier role removed, new tier role added
+- **Demotion**: Handled gracefully with optional notifications
+- **Cooldown**: Optional cooldown period prevents rapid tier changes
+
+## Best Practices
+
+### Start Conservative
+Begin with fewer tiers (3-5) and expand as your community grows.
+
+### Meaningful Gaps
+Ensure each tier represents a meaningful distinction. Avoid tiers that feel arbitrary.
+
+### Clear Benefits
+Document what each tier unlocks. Members should understand why progression matters.
+
+### Balance Exclusivity
+Top tiers should feel exclusive but not impossible to achieve.

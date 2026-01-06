@@ -1,0 +1,67 @@
+# Analytics
+
+The ARRAKIS analytics dashboard provides insights into your community's composition and behavior.
+
+## Dashboard Overview
+
+### Community Health Score
+A single metric summarizing overall community conviction.
+
+### Tier Distribution
+Visual breakdown of members across tiers.
+
+### Conviction Trends
+Track how community conviction changes over time.
+
+## Key Metrics
+
+### Holder Metrics
+- **Total Holders**: Unique wallets with token balance
+- **Verified Members**: Discord members who've connected wallets
+- **Verification Rate**: % of token holders who've verified
+
+### Conviction Metrics
+- **Average Conviction**: Mean conviction score across all members
+- **Median Conviction**: Median score (less affected by outliers)
+- **Conviction Gini**: Measure of conviction distribution equality
+
+### Retention Metrics
+- **30-Day Retention**: % of members maintaining tier for 30+ days
+- **Tier Stability**: Average days at current tier
+- **Churn Rate**: % of members who dropped tiers
+
+## Reports
+
+### Weekly Summary
+Automated weekly report sent to admins:
+- New verifications
+- Tier changes
+- Notable conviction movements
+- Community health trend
+
+### Member Export
+Export member data for analysis in CSV format.
+
+### Conviction Changelog
+Track all conviction score changes over time.
+
+## API Access
+
+Analytics data is available via API (Growth/Enterprise plans).
+
+See [API Reference](/api) for details.
+
+## Privacy
+
+Analytics are aggregate by default. Individual member data is only visible to server admins with appropriate permissions.
+
+## Plan Availability
+
+| Feature | Starter | Growth | Enterprise |
+|---------|---------|--------|------------|
+| Basic Dashboard | ❌ | ✅ | ✅ |
+| Trend Analysis | ❌ | ✅ | ✅ |
+| Weekly Reports | ❌ | ✅ | ✅ |
+| Data Export | ❌ | ✅ | ✅ |
+| API Access | ❌ | Read | Full |
+| Custom Reports | ❌ | ❌ | ✅ |

@@ -1,0 +1,13 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/page": "app/api/page.js",
+  "/faq/page": "app/faq/page.js",
+  "/features/analytics/page": "app/features/analytics/page.js",
+  "/features/badges/page": "app/features/badges/page.js",
+  "/features/conviction-scoring/page": "app/features/conviction-scoring/page.js",
+  "/features/page": "app/features/page.js",
+  "/features/shadow-mode/page": "app/features/shadow-mode/page.js",
+  "/getting-started/page": "app/getting-started/page.js",
+  "/features/tiers/page": "app/features/tiers/page.js",
+  "/page": "app/page.js"
+}
