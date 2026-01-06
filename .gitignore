@@ -111,6 +111,10 @@ loa-grimoire/analytics/*
 loa-grimoire/research/*
 !loa-grimoire/research/README.md
 
+# Artifacts (grounded docs, handoffs, audits - generated per-project)
+loa-grimoire/artifacts/*
+!loa-grimoire/artifacts/README.md
+
 # =============================================================================
 # LOA CONSTRUCTS (licensed skills, user-specific)
 # =============================================================================
