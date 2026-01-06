@@ -1,35 +1,50 @@
 # Arrakis
 
-[![Version](https://img.shields.io/badge/version-5.0.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-5.1.0-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-green.svg)](LICENSE.md)
+[![Docs](https://img.shields.io/badge/docs-arrakis.community-orange.svg)](https://docs.arrakis.community)
 
 A multi-tenant SaaS platform for token-gated onchain communities and beyond. Deploy wallet-based access control, tiered progression systems, and cross-platform bots through a self-service wizard.
 
-**Version 5.0.0 "The Transformation"** - Complete SaaS architecture overhaul with multi-tenancy, chain abstraction, and enterprise-grade infrastructure.
+**Version 5.1.0 "The Merchant"** - Paddle billing integration, documentation site, marketing website, and infrastructure resilience improvements.
+
+🌐 **Website**: [arrakis.community](https://arrakis.community)
+📚 **Documentation**: [docs.arrakis.community](https://docs.arrakis.community)
 
 ## Overview
 
 Arrakis transforms token-gated community management from bespoke bot development into a self-service platform. Communities can deploy Discord/Telegram bots with configurable eligibility rules, tiered role systems, and real-time wallet scoring—all without writing code.
 
-### What's New in v5.0
+### What's New in v5.1
 
-#### Multi-Tenant SaaS Architecture (Sprints 34-49)
-- **PostgreSQL with Row-Level Security** - Complete tenant isolation at database level
-- **Hexagonal Architecture** - Clean separation of domain, service, and infrastructure layers
-- **Theme System** - Pluggable theme engine (BasicTheme free, SietchTheme premium)
-- **Two-Tier Chain Provider** - Chain-agnostic scoring via Score Service with viem fallback
+#### Paddle Billing Integration
+- **PaddleBillingAdapter** - Complete migration from Stripe to Paddle
+- Subscription management with pause/resume support
+- One-time payments for badges and boosts
+- Customer portal for self-service billing management
+- Webhook processing with signature verification
 
-#### Infrastructure Components
-- **Policy-as-Code Pre-Gate** - OPA-based Terraform plan validation with risk scoring
-- **Enhanced HITL Approval Gate** - Slack/Discord notifications, MFA for high-risk changes, 24-hour timeout
-- **Infracost Integration** - Cost estimation for infrastructure changes
-- **Audit Trail with HMAC Signatures** - Tamper-proof audit logging
+#### Documentation & Marketing
+- **docs.arrakis.community** - Comprehensive developer documentation powered by Nextra 4
+- **arrakis.community** - Marketing website with Dune-themed ASCII aesthetic
+- Feature documentation, API reference, and getting started guides
+- Use case pages and competitor comparisons
 
-#### Enterprise Security
-- **HashiCorp Vault Transit** - Ed25519 signing without key exposure
-- **AWS EKS Deployment** - Kubernetes with proper network isolation
-- **Defense in Depth** - 6-layer security model (WAF, VPC, Pod Security, RLS, Vault, Audit)
-- **Webhook URL Validation** - Domain allowlist for Slack/Discord webhooks
+#### Infrastructure Resilience
+- **CircuitBreaker** - Fault tolerance for external service calls
+- **Distributed Tracing** - W3C Trace Context support with TracedDatabase and TracedRedis
+- **WebhookQueue** - BullMQ-based reliable webhook processing
+- **MFA Integration** - Duo Security support via MfaRouterService
+
+### Previous Releases
+
+#### v5.0 - Multi-Tenant SaaS Architecture
+- PostgreSQL with Row-Level Security for tenant isolation
+- Hexagonal Architecture with ports and adapters
+- Theme System (BasicTheme free, SietchTheme premium)
+- Two-Tier Chain Provider for chain-agnostic scoring
+- Policy-as-Code Pre-Gate with OPA validation
+- Enhanced HITL Approval Gate with MFA support
 
 ### Previous Features (v4.x)
 
@@ -147,7 +162,9 @@ npm run test:run
 | `API_KEY_PEPPER` | HMAC pepper for API key hashing (generate: `openssl rand -base64 32`) | Production |
 | `RATE_LIMIT_SALT` | Salt for rate limit key hashing (generate: `openssl rand -hex 16`) | Production |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token | Optional |
-| `STRIPE_SECRET_KEY` | Stripe API key | Optional |
+| `PADDLE_API_KEY` | Paddle API key | Optional |
+| `PADDLE_WEBHOOK_SECRET` | Paddle webhook secret | Optional |
+| `PADDLE_ENVIRONMENT` | `sandbox` or `production` | Optional |
 | `SCORE_SERVICE_URL` | Score Service endpoint | Optional |
 | `VAULT_ADDR` | HashiCorp Vault address | Production |
 | `VAULT_TOKEN` | Vault authentication token | Production |
@@ -176,7 +193,7 @@ Arrakis implements a 6-layer Defense in Depth model:
 
 ```
 GET /health
-{ "status": "healthy", "version": "5.0.0" }
+{ "status": "healthy", "version": "5.1.0" }
 
 GET /api/v1/eligibility
 GET /api/v1/eligibility/:wallet

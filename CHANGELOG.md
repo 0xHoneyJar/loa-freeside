@@ -7,6 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.1.0] - 2026-01-06
+
+### Added
+
+#### Documentation Site
+- **Nextra 4 Documentation** - New developer documentation site at `docs.arrakis.community`
+- Comprehensive feature documentation (Conviction Scoring, Tiers, Badges, Shadow Mode, Analytics)
+- Getting Started guide for community operators
+- API Reference documentation
+- FAQ section
+- Dark/light theme support
+- Full-text search
+
+#### Marketing Website
+- **arrakis.community** - New marketing website with Dune-themed ASCII aesthetic
+- Features page with interactive demonstrations
+- Use case pages (DAOs, NFT Projects, DeFi Protocols)
+- Comparison pages (vs Collab.Land, vs Guild, vs Matrica)
+- Pricing page with tier breakdown
+- Legal pages (Terms, Privacy, Refund Policy)
+- ASCII background animation with configurable speed
+
+#### Paddle Billing Migration (Sprint 69)
+- **PaddleBillingAdapter** - Complete Paddle SDK integration replacing Stripe
+- Subscription management (create, update, cancel, pause, resume)
+- One-time payment support for badges and boosts
+- Webhook handling with signature verification
+- Customer portal generation
+- Price and product management
+- Proration handling for plan changes
+- Trial period support
+
+#### Infrastructure Enhancements
+- **CircuitBreaker** - Resilience pattern for external service calls with configurable thresholds
+- **TraceContext** - Distributed tracing with W3C Trace Context support
+- **TracedDatabase** - Automatic query tracing and performance monitoring
+- **TracedRedis** - Redis operation tracing
+- **WebhookQueue** - BullMQ-based webhook processing with retry logic
+- **DuoMfaVerifier** - Duo Security MFA integration
+- **MfaRouterService** - Pluggable MFA provider routing
+
+#### Security Enhancements
+- Enhanced API middleware with rate limiting and input validation
+- Security breach detection middleware
+- Local rate limiter with Redis backend
+- Metrics collection for monitoring and alerting
+
+### Changed
+- Migrated from Stripe to Paddle for all billing operations
+- Updated billing routes for Paddle webhook format
+- Enhanced webhook service with Paddle event handling
+- Improved logging infrastructure with structured context
+- Updated environment configuration for Paddle credentials
+
+### Removed
+- `StripeService` - Replaced by `PaddleBillingAdapter`
+- Stripe-specific webhook handlers
+- Stripe environment variables
+
+### Migration Guide
+
+#### Environment Variables
+Replace Stripe variables with Paddle:
+```bash
+# Remove
+STRIPE_SECRET_KEY=...
+STRIPE_WEBHOOK_SECRET=...
+
+# Add
+PADDLE_API_KEY=...
+PADDLE_WEBHOOK_SECRET=...
+PADDLE_ENVIRONMENT=sandbox|production
+PADDLE_SELLER_ID=...
+```
+
+#### Webhook Endpoints
+Update webhook URL in Paddle dashboard:
+- Old: `/api/v1/billing/webhook/stripe`
+- New: `/api/v1/billing/webhook/paddle`
+
 ## [5.0.1] - 2025-12-30
 
 ### Added
@@ -409,6 +489,7 @@ Complete incumbent bot migration system enabling zero-downtime transitions from 
 
 | Version | Release Date | Codename | Key Features |
 |---------|--------------|----------|--------------|
+| 5.1.0 | 2026-01-06 | The Merchant | Paddle billing, docs site, marketing website, infrastructure resilience |
 | 5.0.1 | 2025-12-30 | Coexistence & Security | Shadow mode, migration engine, incumbent monitoring, security hardening |
 | 5.0.0 | 2025-12-29 | The Transformation | Multi-tenant SaaS, hexagonal architecture, HITL approval |
 | 4.1.0 | 2025-12-27 | The Crossing | Telegram bot, inline queries, cross-platform identity |
@@ -418,7 +499,8 @@ Complete incumbent bot migration system enabling zero-downtime transitions from 
 | 2.0.0 | 2025-12-15 | Social Layer | Profiles, badges, directory, activity |
 | 1.0.0 | 2025-12-01 | MVP | Core eligibility, Discord bot, API |
 
-[Unreleased]: https://github.com/0xHoneyJar/arrakis/compare/v5.0.1...HEAD
+[Unreleased]: https://github.com/0xHoneyJar/arrakis/compare/v5.1.0...HEAD
+[5.1.0]: https://github.com/0xHoneyJar/arrakis/compare/v5.0.1...v5.1.0
 [5.0.1]: https://github.com/0xHoneyJar/arrakis/compare/v5.0.0...v5.0.1
 [5.0.0]: https://github.com/0xHoneyJar/arrakis/compare/v4.1.0...v5.0.0
 [4.1.0]: https://github.com/0xHoneyJar/arrakis/compare/v4.0.0...v4.1.0
