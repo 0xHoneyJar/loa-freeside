@@ -249,7 +249,7 @@ sietch-service/
 │   ├── unit/         # Unit tests
 │   └── integration/  # Integration tests
 ├── scripts/          # Utility scripts
-└── docs/             # Documentation
+└── loa-grimoire/     # Product documentation (PRD, SDD, sprints)
 ```
 
 ## Getting Help
