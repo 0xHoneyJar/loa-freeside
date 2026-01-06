@@ -226,11 +226,8 @@ GET /admin/analytics
 
 | Document | Description |
 |----------|-------------|
+| [docs.arrakis.community](https://docs.arrakis.community) | Full documentation site |
 | [sietch-service/README.md](sietch-service/README.md) | Service setup & development |
-| [loa-grimoire/prd.md](loa-grimoire/prd.md) | Product Requirements Document |
-| [loa-grimoire/sdd.md](loa-grimoire/sdd.md) | Software Design Document |
-| [loa-grimoire/sprint.md](loa-grimoire/sprint.md) | Sprint Plan (49 sprints) |
-| [loa-grimoire/deployment/](loa-grimoire/deployment/) | Deployment documentation |
 | [PROCESS.md](PROCESS.md) | Development workflow |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |
 
