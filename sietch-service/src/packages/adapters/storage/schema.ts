@@ -1429,3 +1429,59 @@ export const incumbentHealthChecksRelations = relations(incumbentHealthChecks, (
 
 export type IncumbentHealthCheck = typeof incumbentHealthChecks.$inferSelect;
 export type NewIncumbentHealthCheck = typeof incumbentHealthChecks.$inferInsert;
+
+// =============================================================================
+// API Key Usage Audit Trail (Sprint 73 - HIGH-1)
+// =============================================================================
+
+/**
+ * API Key Usage - Audit trail for API key validation attempts
+ *
+ * Sprint 73: API Key Security (HIGH-1)
+ *
+ * Logs all API key validation attempts (success and failure) for security
+ * monitoring and incident response. Never stores full keys - only hints.
+ *
+ * Features:
+ * - Success/failure tracking for anomaly detection
+ * - IP address and user agent for forensics
+ * - 90-day retention policy support via created_at index
+ *
+ * No RLS: Platform-wide security audit table visible to platform admins only.
+ */
+export const apiKeyUsage = pgTable(
+  'api_key_usage',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+
+    // Key identification (never store full key!)
+    keyHint: text('key_hint').notNull(), // First 8 chars after prefix
+    adminName: text('admin_name'), // Admin name if validation succeeded
+
+    // Request context
+    endpoint: text('endpoint').notNull(),
+    method: text('method').notNull().default('GET'),
+    ipAddress: text('ip_address').notNull(),
+    userAgent: text('user_agent'),
+
+    // Validation result
+    success: boolean('success').notNull().default(false),
+    failureReason: text('failure_reason'),
+
+    // Timestamps
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    // Index for querying by date range (retention policy)
+    createdAtIdx: index('idx_api_key_usage_created').on(table.createdAt),
+    // Index for querying by key hint
+    keyHintIdx: index('idx_api_key_usage_key_hint').on(table.keyHint),
+    // Index for querying by IP (security analysis)
+    ipIdx: index('idx_api_key_usage_ip').on(table.ipAddress),
+    // Index for querying failed attempts (security monitoring)
+    failuresIdx: index('idx_api_key_usage_failures').on(table.success, table.createdAt),
+  })
+);
+
+export type ApiKeyUsage = typeof apiKeyUsage.$inferSelect;
+export type NewApiKeyUsage = typeof apiKeyUsage.$inferInsert;
