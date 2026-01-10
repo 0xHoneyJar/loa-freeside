@@ -1,11 +1,50 @@
 # Dependabot Configuration for Automated Dependency Updates
 # LOW-004: Security fix for automated dependency monitoring
+# Sprint 75: MED-1 - Dependency vulnerability scanning
 #
 # This configuration enables Dependabot to automatically check for and create
-# pull requests for dependency updates in the integration layer.
+# pull requests for dependency updates across all services.
 
 version: 2
 updates:
+  # Sietch Service (main application - Sprint 75)
+  - package-ecosystem: "npm"
+    directory: "/sietch-service"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "0xHoneyJar"
+    labels:
+      - "dependencies"
+      - "security"
+      - "sietch-service"
+    # Group non-security updates to reduce PR noise
+    groups:
+      development-dependencies:
+        dependency-type: "development"
+        patterns:
+          - "*"
+      production-dependencies:
+        dependency-type: "production"
+        patterns:
+          - "*"
+    # Allow both direct and indirect dependency updates
+    versioning-strategy: "increase"
+    # Automatically rebase pull requests when base branch is updated
+    rebase-strategy: "auto"
+    # Commit message prefix
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+      include: "scope"
+    # Ignore major updates that may break compatibility
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
   # Integration layer (Discord bot, Linear integration, webhooks)
   - package-ecosystem: "npm"
     directory: "/integration"
@@ -15,7 +54,7 @@ updates:
       time: "09:00"
     open-pull-requests-limit: 10
     reviewers:
-      - "your-team"
+      - "0xHoneyJar"
     labels:
       - "dependencies"
       - "security"

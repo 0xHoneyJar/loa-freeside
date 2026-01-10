@@ -3,6 +3,7 @@
  *
  * Sprint 56: Shadow Mode Foundation
  * Sprint 69: Trace Context Integration
+ * Sprint 75: PII Log Scrubbing (MED-2)
  *
  * Simple logging interface for packages. Uses console with
  * structured logging format until a more sophisticated solution
@@ -15,6 +16,21 @@
  */
 
 import { getTraceLogFields } from '../tracing';
+
+// Export PII scrubbing utilities
+export {
+  PIIScrubber,
+  scrubPII,
+  scrubPIIObject,
+  createPinoSerializer,
+  createPinoHooks,
+  defaultScrubber,
+  DEFAULT_PII_PATTERNS,
+  DEFAULT_SENSITIVE_FIELDS,
+  type PIIPattern,
+  type PIIScrubberConfig,
+  type ScrubResult,
+} from './pii-scrubber.js';
 
 /**
  * Log level types
