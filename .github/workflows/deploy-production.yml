@@ -1,0 +1,222 @@
+# =============================================================================
+# Production Deployment Workflow
+# =============================================================================
+# Builds and deploys sietch-service to AWS ECS
+#
+# Triggers:
+#   - Push to main branch (auto-deploy)
+#   - Manual workflow dispatch
+#
+# Required Secrets:
+#   - AWS_ACCESS_KEY_ID
+#   - AWS_SECRET_ACCESS_KEY
+# =============================================================================
+
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'sietch-service/**'
+      - '.github/workflows/deploy-production.yml'
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Image tag to deploy'
+        required: false
+        default: 'latest'
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: arrakis-production-api
+  ECS_CLUSTER: arrakis-production-cluster
+  ECS_SERVICE_API: arrakis-production-api
+  ECS_SERVICE_WORKER: arrakis-production-worker
+
+jobs:
+  # ===========================================================================
+  # Build and Push
+  # ===========================================================================
+  build:
+    name: Build & Push to ECR
+    runs-on: ubuntu-latest
+
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tags }}
+      image_sha: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ github.event.inputs.image_tag || 'latest' }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./sietch-service
+          file: ./sietch-service/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            GIT_SHA=${{ github.sha }}
+
+      - name: Output image details
+        run: |
+          echo "### Docker Image Built :whale:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Repository:** \`${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags:** \`${{ steps.meta.outputs.tags }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Digest:** \`${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # Deploy to ECS
+  # ===========================================================================
+  deploy:
+    name: Deploy to ECS
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update ECS API Service
+        run: |
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE_API }} \
+            --force-new-deployment \
+            --query 'service.deployments[0].{status:status,running:runningCount,desired:desiredCount}' \
+            --output table
+
+      - name: Update ECS Worker Service
+        run: |
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE_WORKER }} \
+            --force-new-deployment \
+            --query 'service.deployments[0].{status:status,running:runningCount,desired:desiredCount}' \
+            --output table
+
+      - name: Wait for API service stability
+        run: |
+          echo "Waiting for API service to stabilize..."
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE_API }}
+          echo "API service is stable!"
+
+      - name: Wait for Worker service stability
+        run: |
+          echo "Waiting for Worker service to stabilize..."
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE_WORKER }}
+          echo "Worker service is stable!"
+
+      - name: Deployment Summary
+        run: |
+          echo "### Deployment Complete :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Get service status
+          API_STATUS=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE_API }} \
+            --query 'services[0].{Running:runningCount,Desired:desiredCount}' \
+            --output json)
+
+          WORKER_STATUS=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE_WORKER }} \
+            --query 'services[0].{Running:runningCount,Desired:desiredCount}' \
+            --output json)
+
+          echo "**API Service:** $API_STATUS" >> $GITHUB_STEP_SUMMARY
+          echo "**Worker Service:** $WORKER_STATUS" >> $GITHUB_STEP_SUMMARY
+
+          # Get ALB DNS
+          ALB_DNS=$(aws elbv2 describe-load-balancers \
+            --names arrakis-production-alb \
+            --query 'LoadBalancers[0].DNSName' \
+            --output text 2>/dev/null || echo "Unknown")
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Load Balancer:** \`$ALB_DNS\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Health Check:** https://$ALB_DNS/health" >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # Health Check
+  # ===========================================================================
+  health-check:
+    name: Verify Health
+    runs-on: ubuntu-latest
+    needs: deploy
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get ALB DNS
+        id: alb
+        run: |
+          ALB_DNS=$(aws elbv2 describe-load-balancers \
+            --names arrakis-production-alb \
+            --query 'LoadBalancers[0].DNSName' \
+            --output text)
+          echo "dns=$ALB_DNS" >> $GITHUB_OUTPUT
+
+      - name: Wait for service to be ready
+        run: sleep 30
+
+      - name: Health check
+        run: |
+          echo "Testing health endpoint..."
+          for i in {1..5}; do
+            if curl -sf "https://${{ steps.alb.outputs.dns }}/health" -o /dev/null; then
+              echo "Health check passed!"
+              exit 0
+            fi
+            echo "Attempt $i failed, retrying in 10s..."
+            sleep 10
+          done
+          echo "Health check failed after 5 attempts"
+          exit 1
