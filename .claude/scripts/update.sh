@@ -246,7 +246,7 @@ apply_stealth_mode() {
     local gitignore=".gitignore"
     touch "$gitignore"
 
-    grep -qxF 'loa-grimoire/' "$gitignore" 2>/dev/null || echo 'loa-grimoire/' >> "$gitignore"
+    grep -qxF 'grimoires/loa/' "$gitignore" 2>/dev/null || echo 'grimoires/loa/' >> "$gitignore"
     grep -qxF '.beads/' "$gitignore" 2>/dev/null || echo '.beads/' >> "$gitignore"
     grep -qxF '.loa-version.json' "$gitignore" 2>/dev/null || echo '.loa-version.json' >> "$gitignore"
     grep -qxF '.loa.config.yaml' "$gitignore" 2>/dev/null || echo '.loa.config.yaml' >> "$gitignore"
@@ -281,7 +281,7 @@ main() {
   "framework_version": "0.0.0",
   "schema_version": 1,
   "last_sync": null,
-  "zones": {"system": ".claude", "state": ["loa-grimoire", ".beads"], "app": ["src", "lib", "app"]},
+  "zones": {"system": ".claude", "state": ["grimoires/loa", ".beads"], "app": ["src", "lib", "app"]},
   "migrations_applied": [],
   "integrity": {"enforcement": "strict", "last_verified": null}
 }
@@ -367,12 +367,31 @@ EOF
 
   # === STAGE 10: Regenerate Config Snapshot ===
   if [[ -f "$CONFIG_FILE" ]]; then
-    mkdir -p loa-grimoire/context
-    yq_to_json "$CONFIG_FILE" > loa-grimoire/context/config_snapshot.json 2>/dev/null || true
+    mkdir -p grimoires/loa/context
+    yq_to_json "$CONFIG_FILE" > grimoires/loa/context/config_snapshot.json 2>/dev/null || true
   fi
 
   # Cleanup old backups (keep 3)
   ls -dt .claude.backup.* 2>/dev/null | tail -n +4 | xargs rm -rf 2>/dev/null || true
+
+  # === STAGE 11: Check for Grimoire Migration ===
+  local migrate_script="$SYSTEM_DIR/scripts/migrate-grimoires.sh"
+  if [[ -x "$migrate_script" ]]; then
+    if "$migrate_script" check --json 2>/dev/null | grep -q '"needs_migration": true'; then
+      log ""
+      log "======================================================================="
+      log "  MIGRATION AVAILABLE: Grimoires Restructure"
+      log "======================================================================="
+      log ""
+      log "Your project uses the legacy 'loa-grimoire/' path."
+      log "The new structure uses 'grimoires/loa/' (private) and 'grimoires/pub/' (public)."
+      log ""
+      log "Run the migration:"
+      log "  .claude/scripts/migrate-grimoires.sh plan    # Preview changes"
+      log "  .claude/scripts/migrate-grimoires.sh run     # Execute migration"
+      log ""
+    fi
+  fi
 
   log ""
   log "======================================================================="

@@ -36,7 +36,7 @@ disabled_agents: []
 # Custom Paths
 # =============================================================================
 paths:
-  grimoire: loa-grimoire
+  grimoire: grimoires/loa
   beads: .beads
 
 # =============================================================================
@@ -44,9 +44,9 @@ paths:
 # =============================================================================
 memory:
   # Persistent working memory file
-  notes_file: loa-grimoire/NOTES.md
+  notes_file: grimoires/loa/NOTES.md
   # Trajectory logs for ADK-style evaluation
-  trajectory_dir: loa-grimoire/a2a/trajectory
+  trajectory_dir: grimoires/loa/a2a/trajectory
   # Auto-compact trajectory logs older than N days
   trajectory_retention_days: 30
   # Restore context from NOTES.md on session start
@@ -86,7 +86,7 @@ drift_detection:
   # Directories to watch for changes
   watch_paths:
     - ".claude/"
-    - "loa-grimoire/"
+    - "grimoires/loa/"
     # Add custom directories as needed:
     # - ".meta/"
     # - "docs/architecture/"
@@ -108,7 +108,7 @@ context_filtering:
   enable_filtering: true
 
   # Archive zone - automatically excluded from all searches
-  archive_zone: "loa-grimoire/archive/"
+  archive_zone: "grimoires/loa/archive/"
 
   # Signal threshold: exclude documents below this level
   # Options: low, medium, high
@@ -232,6 +232,138 @@ registry:
     - riding-codebase
     - mounting-framework
     - translating-for-executives
+
+# =============================================================================
+# Structured Outputs (Claude Platform Integration)
+# =============================================================================
+# JSON Schema validation for agent outputs
+structured_outputs:
+  # Master toggle for structured output validation
+  enabled: true
+  # Validation mode: strict (block on invalid), warn (warn only), disabled
+  validation_mode: "warn"
+  # Schema directory path (relative to .claude/)
+  schema_dir: "schemas"
+  # Schema mappings (file patterns -> schema names)
+  schemas:
+    prd: "prd.schema.json"
+    sdd: "sdd.schema.json"
+    sprint: "sprint.schema.json"
+    trajectory: "trajectory-entry.schema.json"
+  # Auto-validate outputs before writing
+  auto_validate: true
+
+# =============================================================================
+# Extended Thinking (Claude Platform Integration)
+# =============================================================================
+# Extended thinking for complex reasoning agents
+extended_thinking:
+  # Master toggle for extended thinking features
+  enabled: true
+  # Budget tokens for thinking (0 = model decides, max 32000)
+  budget_tokens: 16000
+  # Agents that use extended thinking by default
+  enabled_agents:
+    - designing-architecture
+    - reviewing-code
+    - auditing-security
+    - planning-sprints
+  # Log thinking traces to trajectory
+  log_thinking: true
+  # Include thinking summary in output
+  include_summary: true
+  # Thinking step types to capture
+  step_types:
+    - analysis
+    - hypothesis
+    - evaluation
+    - decision
+    - reflection
+
+# =============================================================================
+# Trajectory Logging (Claude Platform Integration)
+# =============================================================================
+# ADK-style trajectory evaluation with extended thinking support
+trajectory:
+  # Enable trajectory logging
+  enabled: true
+  # Output directory for trajectory files
+  output_dir: "grimoires/loa/a2a/trajectory"
+  # File naming pattern: {agent}-{date}.jsonl
+  file_pattern: "{agent}-{date}.jsonl"
+  # Include extended thinking traces
+  include_thinking: true
+  # Grounding requirements
+  grounding:
+    # Require grounding for all claims
+    required: true
+    # Types of grounding to capture
+    types:
+      - citation
+      - code_reference
+      - assumption
+      - user_input
+      - inference
+    # Minimum confidence for ungrounded claims
+    min_confidence: 0.8
+  # Retention settings
+  retention:
+    # Days to keep trajectory files (0 = forever)
+    days: 30
+    # Archive old files instead of deleting
+    archive: true
+
+# =============================================================================
+# Tool Search (Claude Platform Integration)
+# =============================================================================
+# Dynamic tool discovery for MCP servers and Loa Constructs
+tool_search:
+  # Master toggle for tool search features
+  enabled: true
+  # Auto-discover available tools on startup
+  auto_discover: true
+  # Cache TTL in hours (0 = no caching)
+  cache_ttl_hours: 24
+  # Cache directory (default: ~/.loa/cache/tool-search)
+  # cache_dir: ~/.loa/cache/tool-search
+  # Include Loa Constructs in search results
+  include_constructs: true
+  # Default result limit for searches
+  default_limit: 10
+  # Search ranking weights (name match > description > scope)
+  ranking:
+    name_weight: 100
+    description_weight: 50
+    scope_weight: 30
+
+# =============================================================================
+# Context Management (Claude Platform Integration v0.11.0)
+# =============================================================================
+# Client-side compaction with Lossless Ledger Protocol
+context_management:
+  # Enable client-side compaction integration
+  client_compaction: true
+  # Always preserve NOTES.md critical sections
+  preserve_notes_md: true
+  # Use simplified 3-step checkpoint (vs full 7-step)
+  simplified_checkpoint: true
+  # Auto-log thinking blocks to trajectory before compaction
+  auto_trajectory_log: true
+  # Preservation rules (what survives compaction)
+  preservation_rules:
+    # Items that ALWAYS survive compaction
+    always_preserve:
+      - notes_session_continuity
+      - notes_decision_log
+      - trajectory_entries
+      - active_beads
+    # Items that CAN be compacted after use
+    compactable:
+      - tool_results
+      - thinking_blocks
+      - verbose_debug
+      - redundant_file_reads
+      - intermediate_outputs
 
 # =============================================================================
 # Behavior Preferences

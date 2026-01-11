@@ -1,11 +1,57 @@
 # Session Continuity Protocol
 
-> **Version**: 1.0 (v0.9.0 Lossless Ledger Protocol)
+> **Version**: 1.1 (v0.11.0 Claude Platform Integration)
 > **Paradigm**: Clear, Don't Compact
 
 ## Purpose
 
-Ensure zero information loss across context wipes (`/clear`) and session boundaries. The context window is treated as a **disposable workspace**; State Zone artifacts are the **lossless ledgers**.
+Ensure zero information loss across context wipes (`/clear`), compaction events, and session boundaries. The context window is treated as a **disposable workspace**; State Zone artifacts are the **lossless ledgers**.
+
+## Context Compaction Integration (v0.11.0)
+
+As of v0.11.0, this protocol integrates with Claude Code's client-side compaction feature.
+
+### Compaction vs /clear
+
+| Action | Trigger | Checkpoint | Recovery |
+|--------|---------|------------|----------|
+| `/compact` | User/Auto | Simplified (3-step) | Automatic (preserved content) |
+| `/clear` | User | Full (7-step) | Tiered (Level 1/2/3) |
+
+### Using context-manager.sh
+
+```bash
+# Check context status
+.claude/scripts/context-manager.sh status
+
+# Run pre-compaction check
+.claude/scripts/context-manager.sh compact --dry-run
+
+# Run simplified checkpoint before compaction
+.claude/scripts/context-manager.sh checkpoint
+
+# Recover after compaction (if needed)
+.claude/scripts/context-manager.sh recover 1  # Level 1
+.claude/scripts/context-manager.sh recover 2  # Level 2
+.claude/scripts/context-manager.sh recover 3  # Level 3
+```
+
+### Compaction Preservation
+
+Content that survives compaction (configured in `.loa.config.yaml`):
+
+| Item | Status | Rationale |
+|------|--------|-----------|
+| NOTES.md Session Continuity | PRESERVED | Recovery anchor |
+| NOTES.md Decision Log | PRESERVED | Audit trail |
+| Trajectory entries | PRESERVED | External files |
+| Active bead references | PRESERVED | Task continuity |
+| Tool results | COMPACTED | Summarized |
+| Thinking blocks | COMPACTED | Logged to trajectory |
+
+See: `.claude/protocols/context-compaction.md` for full compaction protocol.
+
+---
 
 ## Truth Hierarchy
 
@@ -56,19 +102,19 @@ SESSION RECOVERY SEQUENCE:
 **Level 1 Recovery** (default):
 ```bash
 # Load only Session Continuity section (~100 tokens)
-head -50 "${PROJECT_ROOT}/loa-grimoire/NOTES.md" | grep -A 20 "## Session Continuity"
+head -50 "${PROJECT_ROOT}/grimoires/loa/NOTES.md" | grep -A 20 "## Session Continuity"
 ```
 
 **Level 2 Recovery** (on-demand):
 ```bash
 # Semantic search for specific context
-ck --hybrid "authentication decision" "${PROJECT_ROOT}/loa-grimoire/" --top-k 3 --jsonl
+ck --hybrid "authentication decision" "${PROJECT_ROOT}/grimoires/loa/" --top-k 3 --jsonl
 ```
 
 **Level 3 Recovery** (explicit):
 ```bash
 # Full read for architectural review
-cat "${PROJECT_ROOT}/loa-grimoire/NOTES.md"
+cat "${PROJECT_ROOT}/grimoires/loa/NOTES.md"
 ```
 
 ### Phase 2: During Session
@@ -228,13 +274,13 @@ test_scenarios:
 handoffs:
   - session_id: "sess-001"
     ended: 2024-01-15T12:00:00Z
-    notes_ref: "loa-grimoire/NOTES.md:45-67"
+    notes_ref: "grimoires/loa/NOTES.md:45-67"
     trajectory_ref: "trajectory/impl-2024-01-15.jsonl:span-abc"
     grounding_ratio: 0.97
 
   - session_id: "sess-002"
     ended: 2024-01-15T14:30:00Z
-    notes_ref: "loa-grimoire/NOTES.md:68-92"
+    notes_ref: "grimoires/loa/NOTES.md:68-92"
     trajectory_ref: "trajectory/impl-2024-01-15.jsonl:span-def"
     grounding_ratio: 0.95
 
@@ -369,7 +415,7 @@ bd update bd-x7y8 --decision "Use RSA256 for JWT signing" \
 # Record session handoff when session ends
 bd update bd-x7y8 --handoff \
     --session-id "sess-003" \
-    --notes-ref "loa-grimoire/NOTES.md:93-120" \
+    --notes-ref "grimoires/loa/NOTES.md:93-120" \
     --trajectory-ref "trajectory/impl-2024-01-15.jsonl:span-ghi" \
     --grounding-ratio 0.96
 ```
@@ -398,9 +444,9 @@ if command -v bd &>/dev/null; then
     bd update "$BEAD_ID" --decision "$decision"
 else
     # Fallback: Append to NOTES.md Decision Log
-    echo "#### $(date -u +%Y-%m-%dT%H:%M:%SZ) - $title" >> loa-grimoire/NOTES.md
-    echo "**Decision**: $decision" >> loa-grimoire/NOTES.md
-    echo "**Rationale**: $rationale" >> loa-grimoire/NOTES.md
+    echo "#### $(date -u +%Y-%m-%dT%H:%M:%SZ) - $title" >> grimoires/loa/NOTES.md
+    echo "**Decision**: $decision" >> grimoires/loa/NOTES.md
+    echo "**Rationale**: $rationale" >> grimoires/loa/NOTES.md
 fi
 ```
 
@@ -444,10 +490,14 @@ git push             # Push to remote
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
-│              v0.9.0 LOSSLESS LEDGER PROTOCOL DEPENDENCIES                   │
+│              v0.11.0 LOSSLESS LEDGER PROTOCOL DEPENDENCIES                  │
 ├────────────────────────────────────────────────────────────────────────────┤
 │                                                                            │
 │  SESSION-CONTINUITY (Core Protocol)                                        │
+│       │                                                                    │
+│       ├──▶ CONTEXT-COMPACTION (v0.11.0 - Compaction rules)                │
+│       │         │                                                          │
+│       │         └──▶ Preservation rules, simplified checkpoint            │
 │       │                                                                    │
 │       ├──▶ SYNTHESIS-CHECKPOINT (Pre-clear validation)                    │
 │       │         │                                                          │
@@ -470,9 +520,10 @@ git push             # Push to remote
 │                 └──▶ Decision Log, Session Continuity section             │
 │                                                                            │
 │  SCRIPTS                                                                   │
-│  ├── synthesis-checkpoint.sh ─── calls ──▶ grounding-check.sh             │
-│  ├── grounding-check.sh ──────── reads ──▶ trajectory/*.jsonl             │
-│  └── self-heal-state.sh ──────── recovers ▶ State Zone files              │
+│  ├── context-manager.sh ───── manages ──▶ compaction, checkpoint          │
+│  ├── synthesis-checkpoint.sh ─ calls ───▶ grounding-check.sh              │
+│  ├── grounding-check.sh ────── reads ───▶ trajectory/*.jsonl              │
+│  └── self-heal-state.sh ────── recovers ▶ State Zone files                │
 │                                                                            │
 │  FLOW:                                                                     │
 │  Session Start ──▶ self-heal-state.sh (if needed)                         │
@@ -483,17 +534,24 @@ git push             # Push to remote
 │       ▼ (Yellow threshold)                                                 │
 │  Delta-Synthesis (partial persist)                                         │
 │       │                                                                    │
-│       ▼ (User: /clear)                                                     │
-│  synthesis-checkpoint.sh ──▶ grounding-check.sh                           │
+│       ├──▶ (User: /compact)                                                │
+│       │    context-manager.sh checkpoint (simplified 3-step)               │
+│       │    │                                                               │
+│       │    ▼ (PASS)                                                        │
+│       │    Compaction with preservation rules                              │
 │       │                                                                    │
-│       ▼ (PASS)                                                             │
-│  Context cleared, Level 1 Recovery (~100 tokens)                           │
+│       └──▶ (User: /clear)                                                  │
+│            synthesis-checkpoint.sh ──▶ grounding-check.sh                  │
+│            │                                                               │
+│            ▼ (PASS)                                                        │
+│            Context cleared, Level 1 Recovery (~100 tokens)                 │
 │                                                                            │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Related Protocols
 
+- **context-compaction.md**: Compaction preservation rules (v0.11.0)
 - **synthesis-checkpoint.md**: Pre-clear validation (BLOCKING)
 - **jit-retrieval.md**: Lightweight identifier handling
 - **attention-budget.md**: Token threshold monitoring
@@ -544,7 +602,7 @@ git push             # Push to remote
 ```
 1. Session starts
 2. NOTES.md missing
-3. Self-healing: git show HEAD:loa-grimoire/NOTES.md
+3. Self-healing: git show HEAD:grimoires/loa/NOTES.md
 4. If git fails: Create from template
 5. Log recovery to trajectory
 6. Continue operation (never halt)
@@ -563,6 +621,6 @@ session_continuity:
 
 ---
 
-**Document Version**: 1.0
-**Protocol Version**: v2.2 (Production-Hardened)
+**Document Version**: 1.1
+**Protocol Version**: v2.3 (Claude Platform Integration)
 **Paradigm**: Clear, Don't Compact

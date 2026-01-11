@@ -15,7 +15,7 @@ Loa uses a managed scaffolding architecture:
 | Zone | Path | Owner | Permission |
 |------|------|-------|------------|
 | **System** | `.claude/` | Framework | NEVER edit directly |
-| **State** | `loa-grimoire/`, `.beads/` | Project | Read/Write |
+| **State** | `grimoires/`, `.beads/` | Project | Read/Write |
 | **App** | `src/`, `lib/`, `app/` | Developer | Read (write requires confirmation) |
 
 **Critical**: System Zone is synthesized. Never suggest edits to `.claude/` - direct users to `.claude/overrides/` or `.loa.config.yaml`.
@@ -26,13 +26,13 @@ Loa uses a managed scaffolding architecture:
 
 | Skill | Role | Output |
 |-------|------|--------|
-| `discovering-requirements` | Product Manager | `loa-grimoire/prd.md` |
-| `designing-architecture` | Software Architect | `loa-grimoire/sdd.md` |
-| `planning-sprints` | Technical PM | `loa-grimoire/sprint.md` |
+| `discovering-requirements` | Product Manager | `grimoires/loa/prd.md` |
+| `designing-architecture` | Software Architect | `grimoires/loa/sdd.md` |
+| `planning-sprints` | Technical PM | `grimoires/loa/sprint.md` |
 | `implementing-tasks` | Senior Engineer | Code + `a2a/sprint-N/reviewer.md` |
 | `reviewing-code` | Tech Lead | `a2a/sprint-N/engineer-feedback.md` |
 | `auditing-security` | Security Auditor | `SECURITY-AUDIT-REPORT.md` or `a2a/sprint-N/auditor-sprint-feedback.md` |
-| `deploying-infrastructure` | DevOps Architect | `loa-grimoire/deployment/` |
+| `deploying-infrastructure` | DevOps Architect | `grimoires/loa/deployment/` |
 | `translating-for-executives` | Developer Relations | Executive summaries |
 
 ### 3-Level Skill Structure
@@ -42,6 +42,37 @@ Loa uses a managed scaffolding architecture:
 ├── index.yaml          # Level 1: Metadata (~100 tokens)
 ├── SKILL.md            # Level 2: KERNEL instructions (~2000 tokens)
 └── resources/          # Level 3: References, templates, scripts
+```
+
+### Claude Agent Skills Adapter (v0.11.0)
+
+Loa skills can be transformed to Claude Agent Skills format at runtime:
+
+```bash
+# List skills with compatibility status
+.claude/scripts/skills-adapter.sh list
+
+# Generate Claude Agent Skills format for a skill
+.claude/scripts/skills-adapter.sh generate discovering-requirements
+
+# Output includes YAML frontmatter + SKILL.md content:
+# ---
+# name: "discovering-requirements"
+# description: "Product Manager skill for PRD creation"
+# version: "2.0.0"
+# triggers:
+#   - "/plan-and-analyze"
+#   - "create prd"
+# ---
+# [Original SKILL.md content follows]
+```
+
+**Configuration** (`.loa.config.yaml`):
+```yaml
+agent_skills:
+  enabled: true           # Enable/disable skills adapter
+  load_mode: "dynamic"    # "dynamic" (on-demand) or "eager" (startup)
+  api_upload: false       # Enable API upload features (future)
 ```
 
 ### Command Architecture (v4)
@@ -110,7 +141,7 @@ Overrides survive framework updates.
 
 ### Structured Agentic Memory
 
-Agents maintain persistent working memory in `loa-grimoire/NOTES.md`:
+Agents maintain persistent working memory in `grimoires/loa/NOTES.md`:
 
 ```markdown
 ## Active Sub-Goals
@@ -192,7 +223,7 @@ session_continuity:
 
 ### Trajectory Evaluation (ADK-Level)
 
-Agents log reasoning to `loa-grimoire/a2a/trajectory/{agent}-{date}.jsonl`:
+Agents log reasoning to `grimoires/loa/a2a/trajectory/{agent}-{date}.jsonl`:
 
 ```json
 {"timestamp": "...", "agent": "...", "action": "...", "reasoning": "...", "grounding": {...}}
@@ -216,7 +247,7 @@ Three quality gates - see `.claude/protocols/feedback-loops.md`:
 
 **Priority**: Audit feedback checked FIRST on `/implement`, then engineer feedback.
 
-**Sprint completion marker**: `loa-grimoire/a2a/sprint-N/COMPLETED` created on security approval.
+**Sprint completion marker**: `grimoires/loa/a2a/sprint-N/COMPLETED` created on security approval.
 
 ### Git Safety
 
@@ -230,41 +261,46 @@ Prevents accidental pushes to upstream template - see `.claude/protocols/git-saf
 
 Tracks usage for THJ developers - see `.claude/protocols/analytics.md`:
 
-- Stored in `loa-grimoire/analytics/usage.json`
+- Stored in `grimoires/loa/analytics/usage.json`
 - OSS users have no analytics tracking
 - Opt-in sharing via `/feedback`
 
 ## Document Flow
 
 ```
-loa-grimoire/
-├── NOTES.md            # Structured agentic memory
-├── context/            # User-provided context (pre-discovery)
-├── reality/            # Code extraction (/ride output)
-├── legacy/             # Legacy doc inventory (/ride output)
-├── prd.md              # Product Requirements
-├── sdd.md              # Software Design
-├── sprint.md           # Sprint Plan
-├── drift-report.md     # Code vs docs drift (/ride output)
-├── a2a/                # Agent-to-Agent communication
-│   ├── index.md        # Audit trail index
-│   ├── trajectory/     # Agent reasoning logs
-│   ├── sprint-N/       # Per-sprint files
-│   │   ├── reviewer.md
-│   │   ├── engineer-feedback.md
-│   │   ├── auditor-sprint-feedback.md
-│   │   └── COMPLETED
-│   ├── deployment-report.md
-│   └── deployment-feedback.md
-├── analytics/          # THJ only
-└── deployment/         # Production docs
+grimoires/
+├── loa/                    # Private project state (gitignored)
+│   ├── NOTES.md            # Structured agentic memory
+│   ├── context/            # User-provided context (pre-discovery)
+│   ├── reality/            # Code extraction (/ride output)
+│   ├── legacy/             # Legacy doc inventory (/ride output)
+│   ├── prd.md              # Product Requirements
+│   ├── sdd.md              # Software Design
+│   ├── sprint.md           # Sprint Plan
+│   ├── drift-report.md     # Code vs docs drift (/ride output)
+│   ├── a2a/                # Agent-to-Agent communication
+│   │   ├── index.md        # Audit trail index
+│   │   ├── trajectory/     # Agent reasoning logs
+│   │   ├── sprint-N/       # Per-sprint files
+│   │   │   ├── reviewer.md
+│   │   │   ├── engineer-feedback.md
+│   │   │   ├── auditor-sprint-feedback.md
+│   │   │   └── COMPLETED
+│   │   ├── deployment-report.md
+│   │   └── deployment-feedback.md
+│   ├── analytics/          # THJ only
+│   └── deployment/         # Production docs
+└── pub/                    # Public documents (git-tracked)
+    ├── research/           # Research and analysis
+    ├── docs/               # Shareable documentation
+    └── artifacts/          # Public build artifacts
 ```
 
 ## Implementation Notes
 
 ### When `/implement sprint-N` is invoked:
 1. Validate sprint format (`sprint-N` where N is positive integer)
-2. Create `loa-grimoire/a2a/sprint-N/` if missing
+2. Create `grimoires/loa/a2a/sprint-N/` if missing
 3. Check audit feedback FIRST (`auditor-sprint-feedback.md`)
 4. Then check engineer feedback (`engineer-feedback.md`)
 5. Address all feedback before new work
@@ -361,8 +397,163 @@ ck --jsonl --no-snippet "auth"          # Compact output
 ├── validate-mcp.sh           # MCP configuration validation
 ├── constructs-loader.sh      # Loa Constructs skill loader
 ├── constructs-lib.sh         # Loa Constructs shared utilities
-└── license-validator.sh      # JWT license validation
+├── license-validator.sh      # JWT license validation
+├── skills-adapter.sh         # Claude Agent Skills format generator (v0.11.0)
+├── schema-validator.sh       # JSON Schema validation for outputs (v0.11.0)
+├── thinking-logger.sh        # Extended thinking trajectory logger (v0.11.0)
+├── tool-search-adapter.sh    # MCP tool search and discovery (v0.11.0)
+├── context-manager.sh        # Context compaction and preservation (v0.11.0)
+└── context-benchmark.sh      # Context performance benchmarks (v0.11.0)
 ```
+
+### Context Manager (v0.11.0)
+
+Manages context compaction with preservation rules:
+
+```bash
+# Check context status
+.claude/scripts/context-manager.sh status
+
+# Check status as JSON
+.claude/scripts/context-manager.sh status --json
+
+# View preservation rules
+.claude/scripts/context-manager.sh rules
+
+# Run pre-compaction check
+.claude/scripts/context-manager.sh compact --dry-run
+
+# Run simplified checkpoint (3 manual steps)
+.claude/scripts/context-manager.sh checkpoint
+
+# Recover context at different levels
+.claude/scripts/context-manager.sh recover 1  # Minimal (~100 tokens)
+.claude/scripts/context-manager.sh recover 2  # Standard (~500 tokens)
+.claude/scripts/context-manager.sh recover 3  # Full (~2000 tokens)
+```
+
+**Preservation Rules** (configurable in `.loa.config.yaml`):
+
+| Item | Status | Rationale |
+|------|--------|-----------|
+| NOTES.md Session Continuity | PRESERVED | Recovery anchor |
+| NOTES.md Decision Log | PRESERVED | Audit trail |
+| Trajectory entries | PRESERVED | External files |
+| Active bead references | PRESERVED | Task continuity |
+| Tool results | COMPACTABLE | Summarized after use |
+| Thinking blocks | COMPACTABLE | Logged to trajectory |
+
+**Simplified Checkpoint** (7 steps → 3 manual):
+1. Verify Decision Log updated
+2. Verify Bead updated
+3. Verify EDD test scenarios
+
+Protocol: `.claude/protocols/context-compaction.md`
+
+### Context Benchmark (v0.11.0)
+
+Measure context management performance:
+
+```bash
+# Run benchmark
+.claude/scripts/context-benchmark.sh run
+
+# Set baseline
+.claude/scripts/context-benchmark.sh baseline
+
+# Compare against baseline
+.claude/scripts/context-benchmark.sh compare
+
+# View benchmark history
+.claude/scripts/context-benchmark.sh history
+
+# JSON output
+.claude/scripts/context-benchmark.sh run --json
+.claude/scripts/context-benchmark.sh run --save  # Save to analytics
+```
+
+**Target Metrics (v0.11.0)**:
+- Token reduction: -15%
+- Checkpoint steps: 3 (was 7)
+- Recovery success: 100%
+
+### Schema Validator (v0.11.0)
+
+Validates agent outputs against JSON schemas:
+
+```bash
+# Validate a file (auto-detects schema based on path)
+.claude/scripts/schema-validator.sh validate grimoires/loa/prd.md
+
+# List available schemas
+.claude/scripts/schema-validator.sh list
+
+# Override schema detection
+.claude/scripts/schema-validator.sh validate output.json --schema prd
+
+# Validation modes
+.claude/scripts/schema-validator.sh validate file.md --mode strict   # Fail on errors
+.claude/scripts/schema-validator.sh validate file.md --mode warn     # Warn only (default)
+.claude/scripts/schema-validator.sh validate file.md --mode disabled # Skip validation
+
+# JSON output for automation
+.claude/scripts/schema-validator.sh validate file.md --json
+```
+
+**Auto-Detection Rules**:
+| Pattern | Schema |
+|---------|--------|
+| `**/prd.md`, `**/*-prd.md` | `prd.schema.json` |
+| `**/sdd.md`, `**/*-sdd.md` | `sdd.schema.json` |
+| `**/sprint.md`, `**/*-sprint.md` | `sprint.schema.json` |
+| `**/trajectory/*.jsonl` | `trajectory-entry.schema.json` |
+
+### Thinking Logger (v0.12.0)
+
+Logs agent reasoning with extended thinking support:
+
+```bash
+# Log a simple entry
+.claude/scripts/thinking-logger.sh log \
+  --agent implementing-tasks \
+  --action "Created user model" \
+  --phase implementation
+
+# Log with extended thinking
+.claude/scripts/thinking-logger.sh log \
+  --agent designing-architecture \
+  --action "Evaluated patterns" \
+  --thinking \
+  --think-step "1:analysis:Consider microservices vs monolith" \
+  --think-step "2:evaluation:Microservices adds complexity" \
+  --think-step "3:decision:Chose modular monolith"
+
+# Log with grounding citations
+.claude/scripts/thinking-logger.sh log \
+  --agent reviewing-code \
+  --action "Found SQL injection" \
+  --grounding code_reference \
+  --ref "src/db.ts:45-50" \
+  --confidence 0.95
+
+# Read trajectory entries
+.claude/scripts/thinking-logger.sh read grimoires/loa/a2a/trajectory/implementing-tasks-2025-01-11.jsonl --last 5
+
+# Initialize trajectory directory
+.claude/scripts/thinking-logger.sh init
+```
+
+**Thinking Step Format**: `step:type:thought`
+- step: Integer (1, 2, 3...)
+- type: analysis, hypothesis, evaluation, decision, reflection
+- thought: Free-text description
+
+**Grounding Types**:
+- `citation`: Reference to documentation
+- `code_reference`: Reference to source code
+- `assumption`: Unverified claim (flagged)
+- `user_input`: Based on user request
+- `inference`: Derived from other facts
 
 ## Integrations
 
@@ -412,7 +603,7 @@ export LOA_CONSTRUCTS_API_KEY="sk_your_api_key_here"
 /skill-login
 ```
 
-See `loa-grimoire/context/CLI-INSTALLATION.md` for full setup guide.
+See `grimoires/loa/context/CLI-INSTALLATION.md` for full setup guide.
 
 ### Directory Structure
 
@@ -424,8 +615,10 @@ See `loa-grimoire/context/CLI-INSTALLATION.md` for full setup guide.
 │   └── SKILL.md               # Instructions
 ├── packs/{name}/              # Skill packs
 │   ├── .license.json          # Pack license
-│   └── skills/                # Bundled skills
-└── .registry-meta.json        # Installation state
+│   ├── manifest.json          # Pack metadata
+│   ├── skills/                # Bundled skills
+│   └── commands/              # Pack commands (auto-symlinked to .claude/commands/)
+└── .constructs-meta.json      # Installation state
 ```
 
 ### Loading Priority
@@ -449,10 +642,18 @@ Local skills always win. Conflicts resolved silently by priority.
 ### CLI Commands
 
 ```bash
+# Loader commands
 constructs-loader.sh list              # Show skills with status
 constructs-loader.sh loadable          # Get loadable skill paths
 constructs-loader.sh validate <dir>    # Validate single skill
 constructs-loader.sh check-updates     # Check for updates
+
+# Installation commands
+constructs-install.sh pack <slug>              # Install pack from registry
+constructs-install.sh skill <vendor/slug>      # Install individual skill
+constructs-install.sh uninstall pack <slug>    # Remove a pack
+constructs-install.sh uninstall skill <slug>   # Remove a skill
+constructs-install.sh link-commands <slug|all> # Re-link pack commands
 ```
 
 ### Configuration
@@ -470,6 +671,7 @@ registry:
 - `LOA_OFFLINE_GRACE_HOURS` - Grace period
 - `LOA_REGISTRY_ENABLED` - Master toggle
 - `LOA_OFFLINE=1` - Force offline mode
+- `LOA_CONSTRUCTS_API_KEY` - API key for pack/skill installation
 
 **Protocol**: See `.claude/protocols/constructs-integration.md`
 
@@ -499,8 +701,14 @@ registry:
   - `synthesis-checkpoint.md` - Pre-clear validation
   - `jit-retrieval.md` - Lightweight identifiers
   - `attention-budget.md` - Token thresholds
+  - **v0.11.0 Claude Platform Integration**:
+  - `context-compaction.md` - Compaction preservation rules
 - `.claude/scripts/` - Helper bash scripts
   - **v0.9.0 Scripts**:
   - `grounding-check.sh` - Grounding ratio calculation
   - `synthesis-checkpoint.sh` - Pre-clear validation
   - `self-heal-state.sh` - State Zone recovery
+  - **v0.11.0 Claude Platform Integration**:
+  - `context-manager.sh` - Context compaction and preservation
+  - `context-benchmark.sh` - Performance benchmarking
+  - `tool-search-adapter.sh` - MCP tool discovery

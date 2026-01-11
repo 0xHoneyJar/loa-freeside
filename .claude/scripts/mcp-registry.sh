@@ -13,6 +13,7 @@
 #   check <server>    - Check if server is configured
 #   group <name>      - List servers in a group
 #   groups            - List all available groups
+#   search <query>    - Search servers by name, description, or scope
 
 set -euo pipefail
 
@@ -140,6 +141,63 @@ list_groups() {
     yq -r '.groups | to_entries | .[] | "  \(.key)\t\(.value.description)"' "$REGISTRY" | column -t -s $'\t'
 }
 
+# Search servers by query
+search_servers() {
+    local query="$1"
+    local query_lower
+    query_lower=$(echo "$query" | tr '[:upper:]' '[:lower:]')
+
+    echo "Search results for '$query':"
+    echo ""
+
+    local found=0
+    local servers
+    servers=$(yq -r '.servers | keys | .[]' "$REGISTRY" 2>/dev/null || echo "")
+
+    for server in $servers; do
+        local name description scopes
+        name=$(yq -r ".servers.[\"${server}\"].name // \"$server\"" "$REGISTRY" 2>/dev/null || echo "$server")
+        description=$(yq -r ".servers.[\"${server}\"].description // \"\"" "$REGISTRY" 2>/dev/null || echo "")
+        scopes=$(yq -r ".servers.[\"${server}\"].scopes // [] | join(\",\")" "$REGISTRY" 2>/dev/null || echo "")
+
+        local name_lower desc_lower scopes_lower
+        name_lower=$(echo "$name" | tr '[:upper:]' '[:lower:]')
+        desc_lower=$(echo "$description" | tr '[:upper:]' '[:lower:]')
+        scopes_lower=$(echo "$scopes" | tr '[:upper:]' '[:lower:]')
+
+        # Check for matches
+        local match=0
+        if [[ "$name_lower" == *"$query_lower"* ]]; then
+            match=1
+        elif [[ "$server" == *"$query_lower"* ]]; then
+            match=1
+        elif [[ "$desc_lower" == *"$query_lower"* ]]; then
+            match=1
+        elif [[ "$scopes_lower" == *"$query_lower"* ]]; then
+            match=1
+        fi
+
+        if [[ $match -eq 1 ]]; then
+            found=$((found + 1))
+            # Check if configured
+            local status="NOT CONFIGURED"
+            if [ -f "$SETTINGS" ] && grep -q "\"${server}\"" "$SETTINGS" 2>/dev/null; then
+                status="CONFIGURED"
+            fi
+            echo "  $name ($server)"
+            echo "    $description"
+            echo "    Status: $status"
+            echo ""
+        fi
+    done
+
+    if [[ $found -eq 0 ]]; then
+        echo "  No servers found matching '$query'"
+    else
+        echo "Found $found server(s)"
+    fi
+}
+
 # Main command handler
 case "${1:-}" in
     list)
@@ -182,6 +240,14 @@ case "${1:-}" in
         list_groups
         ;;
 
+    search)
+        if [ -z "${2:-}" ]; then
+            echo "Usage: $0 search <query>" >&2
+            exit 1
+        fi
+        search_servers "$2"
+        ;;
+
     *)
         echo "MCP Registry Query Tool"
         echo ""
@@ -196,12 +262,14 @@ case "${1:-}" in
         echo "  check <server>    Check if server is configured"
         echo "  group <name>      List servers in a group"
         echo "  groups            List all available groups"
+        echo "  search <query>    Search servers by name, description, or scope"
         echo ""
         echo "Examples:"
         echo "  $0 list"
         echo "  $0 info linear"
         echo "  $0 setup github"
         echo "  $0 group essential"
+        echo "  $0 search github"
         exit 1
         ;;
 esac

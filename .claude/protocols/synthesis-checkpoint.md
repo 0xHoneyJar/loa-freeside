@@ -1,12 +1,60 @@
 # Synthesis Checkpoint Protocol
 
-> **Version**: 1.0 (v0.9.0 Lossless Ledger Protocol)
+> **Version**: 1.1 (v0.11.0 Claude Platform Integration)
 > **Paradigm**: Clear, Don't Compact
 > **Mode**: Blocking (pre-clear validation)
 
 ## Purpose
 
 Mandatory validation before any `/clear` command to ensure zero information loss. The synthesis checkpoint verifies grounding quality, persists work to lossless ledgers, and creates a complete audit trail.
+
+## Simplified Checkpoint (Recommended)
+
+As of v0.11.0, the checkpoint can be simplified from 7 steps to **3 manual steps**, with Steps 1, 2, 5, and 6 automated by the context manager.
+
+### Running Simplified Checkpoint
+
+```bash
+# Run automated checks + show manual steps
+.claude/scripts/context-manager.sh checkpoint
+```
+
+### 3 Manual Steps
+
+| Step | Action | Verification |
+|------|--------|--------------|
+| **1** | Verify Decision Log updated | Check NOTES.md has today's key decisions |
+| **2** | Verify Bead updated | Run `bd list --status=in_progress` |
+| **3** | Verify EDD test scenarios | At least 3 test scenarios per decision |
+
+### Automated Checks
+
+The `context-manager.sh checkpoint` command automatically verifies:
+
+- ✅ Trajectory logged (entries exist for today)
+- ✅ Session Continuity section present in NOTES.md
+- ✅ Decision Log section present in NOTES.md
+- ✅ Beads synchronized (if bd CLI available)
+
+### When to Use Simplified Checkpoint
+
+| Scenario | Use Simplified | Use Full 7-Step |
+|----------|----------------|-----------------|
+| Regular development | ✅ Yes | No |
+| Before `/compact` | ✅ Yes | No |
+| Before `/clear` (strict mode) | No | ✅ Yes |
+| Security-sensitive work | No | ✅ Yes |
+| Production deployments | No | ✅ Yes |
+
+### Configuration
+
+```yaml
+# .loa.config.yaml
+context_management:
+  simplified_checkpoint: true  # Enable 3-step checkpoint
+```
+
+---
 
 ## 7-Step Checkpoint Process
 
@@ -111,7 +159,7 @@ Persist decisions to NOTES.md:
 
 ```bash
 # Append decisions to NOTES.md Decision Log
-cat >> "${PROJECT_ROOT}/loa-grimoire/NOTES.md" << EOF
+cat >> "${PROJECT_ROOT}/grimoires/loa/NOTES.md" << EOF
 
 ### Session ${SESSION_ID} Decisions (${TIMESTAMP})
 $(extract_session_decisions "$TRAJECTORY")
@@ -160,7 +208,7 @@ Create trajectory entry for session handoff:
   "grounding_ratio": 0.97,
   "decisions_count": 5,
   "notes_refs": [
-    "${PROJECT_ROOT}/loa-grimoire/NOTES.md:45-67"
+    "${PROJECT_ROOT}/grimoires/loa/NOTES.md:45-67"
   ],
   "next_session_hints": [
     "Continue with token revocation",
