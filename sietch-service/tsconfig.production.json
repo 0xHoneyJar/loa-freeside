@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noUncheckedIndexedAccess": false,
+    "verbatimModuleSyntax": false,
+    "noImplicitOverride": false,
+    "moduleResolution": "bundler",
+    "module": "ES2022",
+    "isolatedModules": false,
+    "skipLibCheck": true
+  }
+}

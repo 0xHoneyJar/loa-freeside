@@ -37,6 +37,7 @@ import type {
   BillingAuditEventType,
 } from '../types/billing.js';
 import { VaultSigningAdapter, VaultSecretError } from '../packages/adapters/vault/index.js';
+import type { SigningAuditLog } from '../packages/core/ports/ISigningAdapter.js';
 import { AdminApiKeyService } from '../services/security/AdminApiKeyService.js';
 
 // =============================================================================
@@ -710,7 +711,7 @@ adminRouter.post(
         logger,
       });
 
-      await adapter.initialize();
+      // VaultSigningAdapter is ready after construction - no initialize() needed
       const result = await adapter.rotateKey();
 
       // Log audit event
@@ -718,7 +719,7 @@ adminRouter.post(
         'key_rotated' as BillingAuditEventType,
         {
           keyName,
-          oldVersion: result.oldVersion,
+          oldVersion: result.previousVersion,
           newVersion: result.newVersion,
           reason: body.reason,
           force: body.force,
@@ -728,7 +729,7 @@ adminRouter.post(
       );
 
       logger.warn(
-        { keyName, oldVersion: result.oldVersion, newVersion: result.newVersion, actor },
+        { keyName, oldVersion: result.previousVersion, newVersion: result.newVersion, actor },
         'Signing key rotated successfully'
       );
 
@@ -736,7 +737,7 @@ adminRouter.post(
         success: true,
         rotation: {
           key_name: keyName,
-          old_version: result.oldVersion,
+          old_version: result.previousVersion,
           new_version: result.newVersion,
           rotated_at: result.rotatedAt.toISOString(),
           grace_period_ends: new Date(result.rotatedAt.getTime() + 24 * 60 * 60 * 1000).toISOString(),
@@ -817,11 +818,10 @@ adminRouter.post(
         logger,
       });
 
-      await adapter.initialize();
-
+      // VaultSigningAdapter is ready after construction - no initialize() needed
       // Revoke the policy for this key version (makes it unusable)
       // Note: Actual key deletion would require Vault admin permissions
-      await adapter.revokePolicy(body.key_version);
+      await adapter.revokePolicy(String(body.key_version));
 
       // Log audit event
       logBillingAuditEvent(
@@ -900,9 +900,9 @@ adminRouter.get(
         logger,
       });
 
-      await adapter.initialize();
+      // VaultSigningAdapter is ready after construction - no initialize() needed
       const publicKey = await adapter.getPublicKey();
-      const auditLogs = adapter.getAuditLogs();
+      const auditLogs = await adapter.getAuditLogs();
 
       res.json({
         success: true,
@@ -910,7 +910,7 @@ adminRouter.get(
           vault_addr: vaultConfig.addr,
           key_name: vaultConfig.signingKeyName,
           public_key: publicKey,
-          recent_operations: auditLogs.slice(-10).map((log) => ({
+          recent_operations: auditLogs.slice(-10).map((log: SigningAuditLog) => ({
             timestamp: log.timestamp.toISOString(),
             operation: log.operation,
             key_version: log.keyVersion,
