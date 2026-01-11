@@ -16,19 +16,27 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Install build dependencies for native modules (bcrypt, sharp, better-sqlite3)
-# node-gyp is required for sharp to build from source
-RUN apk add --no-cache python3 make g++ vips-dev pkgconfig
+# Full build toolchain including node-gyp dependencies
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    vips-dev \
+    pkgconfig \
+    && npm install -g node-gyp
 
 # Copy package files first (layer caching optimization)
 COPY package*.json ./
 
-# Install node-gyp globally first (required by sharp)
-RUN npm install -g node-gyp
+# Install dependencies with --ignore-scripts to prevent partial builds
+# Then manually rebuild native modules in correct order
+RUN npm ci --ignore-scripts
 
-# Install all dependencies (including devDependencies for build)
-# Use npm ci for reproducible builds, then rebuild native modules
-RUN npm ci && \
-    npm rebuild bcrypt better-sqlite3
+# Rebuild native modules that require compilation
+# Sharp uses prebuilt binaries when available, falls back to node-gyp
+RUN npm rebuild sharp || npm install sharp --build-from-source
+RUN npm rebuild bcrypt
+RUN npm rebuild better-sqlite3
 
 # Copy source code
 COPY tsconfig.json ./
