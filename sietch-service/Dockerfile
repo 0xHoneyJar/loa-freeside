@@ -38,8 +38,8 @@ RUN npm rebuild sharp || npm install sharp --build-from-source
 RUN npm rebuild bcrypt
 RUN npm rebuild better-sqlite3
 
-# Copy source code
-COPY tsconfig.json ./
+# Copy source code and TypeScript configs
+COPY tsconfig.json tsconfig.production.json ./
 COPY src ./src
 
 # Build TypeScript
