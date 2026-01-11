@@ -79,11 +79,13 @@ COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nodejs:nodejs /app/package.json ./
 
 # Security: Remove unnecessary files from node_modules
+# Note: Be careful not to remove package directories named "test" (e.g., viem/_esm/actions/test)
 RUN find node_modules -name "*.md" -delete 2>/dev/null || true && \
-    find node_modules -name "*.ts" -delete 2>/dev/null || true && \
+    find node_modules -name "*.ts" -not -path "*/node_modules/.pnpm/*" -delete 2>/dev/null || true && \
     find node_modules -name ".git*" -delete 2>/dev/null || true && \
-    find node_modules -name "test*" -type d -exec rm -rf {} + 2>/dev/null || true && \
-    find node_modules -name "docs" -type d -exec rm -rf {} + 2>/dev/null || true
+    find node_modules -maxdepth 2 -name "__tests__" -type d -exec rm -rf {} + 2>/dev/null || true && \
+    find node_modules -maxdepth 2 -name "tests" -type d -exec rm -rf {} + 2>/dev/null || true && \
+    find node_modules -maxdepth 2 -name "docs" -type d -exec rm -rf {} + 2>/dev/null || true
 
 # Set production environment
 ENV NODE_ENV=production \
