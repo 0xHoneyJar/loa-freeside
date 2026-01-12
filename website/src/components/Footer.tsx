@@ -27,11 +27,11 @@ export function Footer() {
       </div>
 
       <div className="border-t border-sand-dim/20 relative">
-        {/* Fremen navigator character - positioned to be cut off by footer below */}
+        {/* Hooded figure with gemstones - positioned to be cut off by footer below */}
         <div
           className="absolute right-6 lg:right-[calc(50%-29rem)] -top-64 w-72 h-80 hidden lg:block pointer-events-none z-0"
           style={{
-            backgroundImage: 'url(/images/fremen-navigator.png)',
+            backgroundImage: 'url(/images/footer-figure.png)',
             backgroundSize: 'contain',
             backgroundRepeat: 'no-repeat',
             backgroundPosition: 'bottom right'
