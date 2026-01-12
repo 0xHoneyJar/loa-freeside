@@ -30,7 +30,7 @@ Sietch Service implements security controls across five SOC 2 trust service cate
 |---------|---------------|-------------------|
 | CC1.1 COSO Principle 1 | Organization demonstrates commitment to integrity | `SECURITY-AUDIT-REPORT.md` |
 | CC1.2 COSO Principle 2 | Board oversight of security | Security review process in sprints |
-| CC1.3 COSO Principle 3 | Management establishes structures | `loa-grimoire/sdd.md` architecture |
+| CC1.3 COSO Principle 3 | Management establishes structures | `grimoires/loa/sdd.md` architecture |
 | CC1.4 COSO Principle 4 | Commitment to competence | Code review in `a2a/sprint-N/` |
 | CC1.5 COSO Principle 5 | Accountability for controls | Audit trail in `audit_logs` table |
 
@@ -49,7 +49,7 @@ Sietch Service implements security controls across five SOC 2 trust service cate
 | CC3.1 Risk objectives | Security audit findings categorized | Sprint audit feedback files |
 | CC3.2 Risk identification | OWASP Top 10 analysis | `SECURITY-AUDIT-REPORT.md` |
 | CC3.3 Fraud consideration | Input validation, rate limiting | `src/packages/core/validation/` |
-| CC3.4 Change analysis | Sprint-based development with reviews | `loa-grimoire/sprint.md` |
+| CC3.4 Change analysis | Sprint-based development with reviews | `grimoires/loa/sprint.md` |
 
 ### CC4: Monitoring Activities
 
@@ -232,8 +232,8 @@ Redacted PII Types:
 | Artifact | Location | Description |
 |----------|----------|-------------|
 | Security Audit Report | `SECURITY-AUDIT-REPORT.md` | Comprehensive security assessment |
-| Architecture Documentation | `loa-grimoire/sdd.md` | System design and security controls |
-| Sprint Audit Trail | `loa-grimoire/a2a/sprint-N/` | Per-sprint security reviews |
+| Architecture Documentation | `grimoires/loa/sdd.md` | System design and security controls |
+| Sprint Audit Trail | `grimoires/loa/a2a/sprint-N/` | Per-sprint security reviews |
 | API Key Management | `src/packages/security/ApiKeyManager.ts` | Access control implementation |
 | Audit Log Implementation | `src/packages/security/AuditLogPersistence.ts` | Immutable audit trail |
 | PII Scrubber | `src/packages/infrastructure/logging/pii-scrubber.ts` | Data protection |

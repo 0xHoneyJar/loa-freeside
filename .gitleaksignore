@@ -11,10 +11,10 @@ app/config/*.example
 app/.env.example
 app/.env.*.example
 
-# Loa process artifacts (loa-grimoire/)
-loa-grimoire/deployment/SECRETS-SETUP-GUIDE.md
-loa-grimoire/deployment/runbooks/secrets-rotation.md
-loa-grimoire/audits/**/*.md
+# Loa process artifacts (grimoires/loa/)
+grimoires/loa/deployment/SECRETS-SETUP-GUIDE.md
+grimoires/loa/deployment/runbooks/secrets-rotation.md
+grimoires/loa/audits/**/*.md
 
 # Security audit reports (contain example patterns for testing)
 SECURITY-AUDIT-REPORT.md

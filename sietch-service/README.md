@@ -68,9 +68,9 @@ API_KEY=                  # API authentication key
 | Document | Location | Description |
 |----------|----------|-------------|
 | Project Overview | [../README.md](../README.md) | Tier system, badges, API |
-| PRD | [../loa-grimoire/prd.md](../loa-grimoire/prd.md) | Product requirements |
-| SDD | [../loa-grimoire/sdd.md](../loa-grimoire/sdd.md) | System design |
-| Sprint Plan | [../loa-grimoire/sprint.md](../loa-grimoire/sprint.md) | Development sprints |
+| PRD | [../grimoires/loa/prd.md](../grimoires/loa/prd.md) | Product requirements |
+| SDD | [../grimoires/loa/sdd.md](../grimoires/loa/sdd.md) | System design |
+| Sprint Plan | [../grimoires/loa/sprint.md](../grimoires/loa/sprint.md) | Development sprints |
 | Deployment | [docs/deployment/](docs/deployment/) | Operational guides |
 | Discord Permissions | [docs/discord/PERMISSION_MATRIX.md](docs/discord/PERMISSION_MATRIX.md) | Role permissions |
 
