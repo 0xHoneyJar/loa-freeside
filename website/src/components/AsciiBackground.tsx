@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useState, useCallback, memo } from 'react';
 
 // Simplex noise implementation for organic movement
 function createNoise(seed: number) {
@@ -112,27 +112,28 @@ function createNoise(seed: number) {
 // Characters for noise fill
 const NOISE_CHARS = '.·:;+=xX#@';
 
-// Brand colors for gems
-const GEM_RUBY = '#c45c4a';
-const GEM_BLUE = '#5b8fb9';
+// Brand colors for gems (full brightness to stand out)
+const GEM_RUBY = '#e07060';
+const GEM_BLUE = '#70a8d0';
+
+// Sand color - subtle so gems stand out
+const SAND_COLOR = 'rgba(244, 164, 96, 0.28)';
 
 interface CharData {
   char: string;
-  color?: string;
   isGem?: boolean;
+  isRuby?: boolean;
 }
 
 interface AsciiBackgroundProps {
   className?: string;
-  opacity?: number;
   speed?: number;
   stripWidth?: number;
 }
 
 export function AsciiBackground({
   className = '',
-  opacity = 0.28,
-  speed = 0.0004,
+  speed = 0.0003,
   stripWidth = 360,
 }: AsciiBackgroundProps) {
   const [leftGrid, setLeftGrid] = useState<CharData[][]>([]);
@@ -142,6 +143,7 @@ export function AsciiBackground({
   const gemNoiseRef = useRef<ReturnType<typeof createNoise> | null>(null);
   const animationRef = useRef<number | null>(null);
   const timeRef = useRef<number>(0);
+  const lastFrameRef = useRef<number>(0);
 
   // Handle sizing
   useEffect(() => {
@@ -172,29 +174,26 @@ export function AsciiBackground({
     for (let y = 0; y < rows; y++) {
       grid[y] = [];
       for (let x = 0; x < cols; x++) {
-        // Vary time based on position - creates faster/slower flowing areas
-        // Like sand dunes with different wind speeds
+        // Vary time based on position for organic flow
         const flowVariation = gemNoiseRef.current.noise3D(x * 0.02, y * 0.02, 0) * 0.5 + 0.5;
-        const localTime = time * (0.6 + flowVariation * 0.8); // 0.6x to 1.4x speed variation
+        const localTime = time * (0.6 + flowVariation * 0.8);
 
         const nx = (x + offsetX) * 0.04;
         const ny = y * 0.025;
         const value = noiseRef.current.noise3D(nx, ny, localTime);
         const normalized = value * 0.5 + 0.5;
 
-        // Secondary noise for gem placement - very sparse
-        const gemValue = gemNoiseRef.current.noise3D(nx * 3, ny * 3, time * 0.3);
+        // Check for rare gem placement - use high frequency noise for scatter
+        // Higher frequency = more chaotic, less clustering
+        const gemValue = gemNoiseRef.current.noise3D(nx * 2.5, ny * 2.5, time * 0.03);
         const gemNormalized = gemValue * 0.5 + 0.5;
 
-        // Gems very rare - subtle accent only (threshold 0.94 = ~6% of noise peaks)
-        if (gemNormalized > 0.94 && normalized > 0.55) {
+        // Very rare - only sharp peaks get gems (scattered singles)
+        if (gemNormalized > 0.96) {
           const isRuby = gemNoiseRef.current.noise3D(x * 0.1, y * 0.1, 0) > 0;
-          grid[y][x] = {
-            char: '◆',
-            color: isRuby ? GEM_RUBY : GEM_BLUE,
-            isGem: true,
-          };
+          grid[y][x] = { char: '◆', isGem: true, isRuby };
         } else if (normalized > 0.5) {
+          // ASCII sand characters
           const index = Math.floor((normalized - 0.5) / 0.5 * NOISE_CHARS.length);
           const char = NOISE_CHARS[Math.min(index, NOISE_CHARS.length - 1)];
           grid[y][x] = { char };
@@ -207,16 +206,21 @@ export function AsciiBackground({
     return grid;
   }, []);
 
-  // Animation loop
+  // Throttled animation loop (target ~20fps for smooth feel without perf hit)
   useEffect(() => {
     noiseRef.current = createNoise(42);
-    gemNoiseRef.current = createNoise(123); // Different seed for gems
+    gemNoiseRef.current = createNoise(123);
 
-    const animate = () => {
-      timeRef.current += speed;
-      const { cols, rows } = dimensions;
-      setLeftGrid(renderStrip(cols, rows, 0, timeRef.current));
-      setRightGrid(renderStrip(cols, rows, 100, timeRef.current));
+    const targetInterval = 50; // ~20fps
+
+    const animate = (timestamp: number) => {
+      if (timestamp - lastFrameRef.current >= targetInterval) {
+        lastFrameRef.current = timestamp;
+        timeRef.current += speed * targetInterval;
+        const { cols, rows } = dimensions;
+        setLeftGrid(renderStrip(cols, rows, 0, timeRef.current));
+        setRightGrid(renderStrip(cols, rows, 100, timeRef.current));
+      }
       animationRef.current = requestAnimationFrame(animate);
     };
 
@@ -237,30 +241,20 @@ export function AsciiBackground({
     padding: 0,
   };
 
-  // Render ASCII only (gems replaced with space)
-  const renderAsciiContent = (grid: CharData[][]) => {
+  // Render grid - no container opacity, colors have opacity baked in
+  const renderGridContent = (grid: CharData[][]) => {
     return grid.map((row, y) => (
       <div key={y} style={{ height: '15px' }}>
         {row.map((cell, x) => (
           cell.isGem ? (
-            <span key={x}> </span>
+            <span
+              key={x}
+              style={{ color: cell.isRuby ? GEM_RUBY : GEM_BLUE }}
+            >
+              {cell.char}
+            </span>
           ) : (
-            <span key={x}>{cell.char}</span>
-          )
-        ))}
-      </div>
-    ));
-  };
-
-  // Render gems only (ASCII replaced with space to maintain positioning)
-  const renderGemsContent = (grid: CharData[][]) => {
-    return grid.map((row, y) => (
-      <div key={y} style={{ height: '15px' }}>
-        {row.map((cell, x) => (
-          cell.isGem ? (
-            <span key={x} style={{ color: cell.color }}>{cell.char}</span>
-          ) : (
-            <span key={x}>{cell.char === ' ' ? ' ' : '\u00A0'}</span>
+            <span key={x} style={{ color: SAND_COLOR }}>{cell.char}</span>
           )
         ))}
       </div>
@@ -269,58 +263,38 @@ export function AsciiBackground({
 
   return (
     <div className={`fixed inset-0 pointer-events-none overflow-hidden z-0 ${className}`}>
-      {/* Left Strip - ASCII with fade */}
+      {/* Left Strip - no container opacity */}
       <div
         className="absolute top-0 left-0 h-full overflow-hidden"
-        style={{ width: stripWidth, opacity }}
+        style={{ width: stripWidth }}
       >
-        <div className="font-mono text-spice whitespace-pre select-none" style={preStyle}>
-          {renderAsciiContent(leftGrid)}
+        <div className="font-mono whitespace-pre select-none" style={preStyle}>
+          {renderGridContent(leftGrid)}
         </div>
         {/* Fade to black on the right edge */}
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
-            background: 'linear-gradient(to right, transparent 0%, transparent 20%, #0a0a0a 100%)',
+            background: 'linear-gradient(to right, transparent 0%, transparent 30%, #0a0a0a 100%)',
           }}
         />
       </div>
 
-      {/* Left Strip - Gems without fade (more opaque than ASCII) */}
-      <div
-        className="absolute top-0 left-0 h-full overflow-hidden"
-        style={{ width: stripWidth * 0.3, opacity: 0.65 }}
-      >
-        <div className="font-mono whitespace-pre select-none" style={preStyle}>
-          {renderGemsContent(leftGrid)}
-        </div>
-      </div>
-
-      {/* Right Strip - ASCII with fade */}
+      {/* Right Strip - no container opacity */}
       <div
         className="absolute top-0 right-0 h-full overflow-hidden"
-        style={{ width: stripWidth, opacity }}
+        style={{ width: stripWidth }}
       >
-        <div className="font-mono text-spice whitespace-pre select-none" style={preStyle}>
-          {renderAsciiContent(rightGrid)}
+        <div className="font-mono whitespace-pre select-none" style={preStyle}>
+          {renderGridContent(rightGrid)}
         </div>
         {/* Fade to black on the left edge */}
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
-            background: 'linear-gradient(to left, transparent 0%, transparent 20%, #0a0a0a 100%)',
+            background: 'linear-gradient(to left, transparent 0%, transparent 30%, #0a0a0a 100%)',
           }}
         />
-      </div>
-
-      {/* Right Strip - Gems without fade (more opaque than ASCII) */}
-      <div
-        className="absolute top-0 right-0 h-full overflow-hidden"
-        style={{ width: stripWidth * 0.3, opacity: 0.65 }}
-      >
-        <div className="font-mono whitespace-pre select-none text-right" style={preStyle}>
-          {renderGemsContent(rightGrid)}
-        </div>
       </div>
     </div>
   );
