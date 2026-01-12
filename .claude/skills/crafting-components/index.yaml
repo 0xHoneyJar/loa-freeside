@@ -1,0 +1,28 @@
+name: "crafting-components"
+version: "11.1.0"
+model: "sonnet"
+color: "blue"
+
+description: |
+  Generate UI components with design physics. Infers effect type (financial,
+  destructive, standard, local) from keywords and applies correct physics
+  (timing, sync strategy, confirmation patterns, animation curves).
+
+triggers:
+  - "/craft"
+  - "create a button"
+  - "generate a component"
+  - "build a form"
+  - "make a card"
+  - "craft a"
+
+examples:
+  - context: "User needs a financial action button"
+    user_says: "/craft claim button for rewards pool"
+    agent_action: "Generate button with pessimistic sync, 800ms timing, two-phase confirmation"
+  - context: "User wants standard interaction"
+    user_says: "/craft like button"
+    agent_action: "Generate button with optimistic sync, 200ms timing, no confirmation"
+  - context: "User wants local state toggle"
+    user_says: "/craft dark mode toggle"
+    agent_action: "Generate toggle with immediate sync, 100ms spring animation"

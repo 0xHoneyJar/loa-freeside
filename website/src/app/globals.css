@@ -10,11 +10,26 @@
     --fg-bright: #e8ddb5;
     --accent: #f4a460;
     --border: #3d3a2e;
+
+    /* Emil Kowalski easing curves */
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+    --ease-out-expo: cubic-bezier(0.19, 1, 0.22, 1);
   }
 
   ::selection {
     background: var(--fg);
     color: var(--bg);
+  }
+
+  /* Smooth scroll with Emil Kowalski principles */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Scroll padding for fixed header */
+  html {
+    scroll-padding-top: 100px;
   }
 
   body {
@@ -24,13 +39,15 @@
     letter-spacing: 0.02em;
   }
 
+  /* Links: ease-out for responsive feel */
   a {
-    @apply text-sand-bright hover:text-spice transition-colors duration-150;
+    @apply text-sand-bright hover:text-spice;
     text-decoration: none;
+    transition: color 150ms var(--ease-out);
   }
 
   a:hover {
-    text-decoration: underline;
+    text-decoration: none;
   }
 }
 

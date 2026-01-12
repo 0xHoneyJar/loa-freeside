@@ -1,380 +1,141 @@
 import Link from 'next/link';
-import { AsciiNoise } from '@/components/AsciiNoise';
-
-const ARRAKIS_ASCII = `
-    ___    ____  ____  ___    __ __ ________
-   /   |  / __ \\/ __ \\/   |  / //_//  _/ ___/
-  / /| | / /_/ / /_/ / /| | / ,<   / / \\__ \\
- / ___ |/ _, _/ _, _/ ___ |/ /| |_/ / ___/ /
-/_/  |_/_/ |_/_/ |_/_/  |_/_/ |_/___//____/
-`;
-
-const WORM_ASCII = `
-                    .---.
-                   /     \\
-                  | () () |
-                   \\  ^  /
-              .-----'---'-----.
-             /                  \\
-            |   ~~~~~~~~~~~~~~~   |
-             \\                  /
-              '----------------'
-                  SHAI-HULUD
-`;
+import { HeroFeatures } from '@/components/HeroFeatures';
+import { StatsGrid } from '@/components/StatsGrid';
+import { ConvictionBoard } from '@/components/ConvictionBoard';
+import { TierCards } from '@/components/TierCards';
+import { ChartLineUp, Diamond, Medal } from '@phosphor-icons/react/dist/ssr';
 
 export default function HomePage() {
   return (
     <div>
-      {/* Hero Section - Split Layout */}
-      <section className="relative -mx-6 -mt-12 mb-16">
-        <div className="flex flex-col lg:flex-row min-h-[80vh]">
-          {/* Left Half - Full ASCII Noise */}
-          <div className="hidden lg:block lg:w-1/2 bg-black relative overflow-hidden border-r border-sand-dim/20">
-            <div className="absolute inset-0 flex items-center justify-center">
-              <AsciiNoise
-                autoSize
-                speed={0.0006}
-                scale={0.04}
-                charWidth={7}
-                charHeight={14}
-                className="text-spice/80 text-[11px]"
-              />
-            </div>
-            {/* Overlay gradient for text readability */}
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-black/50" />
-            {/* Centered label */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-center">
-                <div className="text-sand-dim/40 text-xs mb-2">// the_spice_flow</div>
-                <div className="text-sand/30 text-[10px] tracking-widest">REAL-TIME CONVICTION DATA</div>
-              </div>
-            </div>
-          </div>
+      {/* Hero Section */}
+      <section className="relative min-h-[55vh] overflow-hidden">
+        {/* Content */}
+        <div className="relative z-10 mx-auto max-w-4xl px-6 min-h-[55vh] flex items-center">
+          <div className="flex flex-col justify-center max-w-2xl">
+            <p className="text-sand-dim text-xs font-mono mb-4 uppercase tracking-wider">
+              from the #1 dune team
+            </p>
 
-          {/* Right Half - Content */}
-          <div className="lg:w-1/2 flex flex-col justify-center px-6 lg:px-12 py-12 lg:py-0">
-            <pre className="text-spice text-xs sm:text-sm leading-none hidden sm:block mb-8">
-              {ARRAKIS_ASCII}
-            </pre>
-            <h1 className="sm:hidden text-2xl text-sand-bright mb-8">ARRAKIS</h1>
+            <h1 className="font-display text-4xl lg:text-5xl text-sand-bright mb-6">
+              Dune analytics power.
+              <br />
+              Zero code required.
+            </h1>
 
-            <div className="space-y-4 mb-8">
-              <p className="text-sand-bright text-lg">
-                dune analytics power. zero code required.
-              </p>
-              <p className="text-sand">
-                the #1 dune team brings on-chain intelligence to your discord —
-                no SQL, no dashboards, no data analysts needed.
-              </p>
-              <p className="text-sand-dim text-sm">
-                built on collab.land. powered by dune expertise.
-              </p>
-            </div>
+            <p className="text-sand text-base mb-8 max-w-lg">
+              On-chain intelligence for your Discord, built on Collab.Land — no SQL, no dashboards needed.
+            </p>
 
-            <div className="space-y-2 text-sm mb-8">
-              <p className="text-sand-dim">
-                <span className="text-spice">$</span> arrakis --features
-              </p>
-              <div className="pl-4 text-sand space-y-1">
-                <p>&gt; dune-powered - on-chain analytics, no queries</p>
-                <p>&gt; conviction-scoring - identify diamond hands</p>
-                <p>&gt; tier-progression - insights as discord roles</p>
-                <p>&gt; zero-code - 15 minute setup, anyone can use it</p>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-4 text-sm">
+            <div className="flex flex-wrap gap-4">
               <Link
                 href="https://discord.gg/thehoneyjar"
-                className="text-spice hover:text-spice-bright"
+                className="px-5 py-2.5 bg-spice text-black font-mono text-sm uppercase tracking-wider hover:bg-spice-bright transition-colors duration-150 flex items-center gap-2"
               >
-                [join discord]
+                Add to Discord
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"/>
+                </svg>
               </Link>
-              <Link href="/pricing" className="text-sand hover:text-sand-bright">
-                [view pricing]
-              </Link>
-              <Link href="/features" className="text-sand hover:text-sand-bright">
-                [features]
+              <Link
+                href="/demo"
+                className="px-5 py-2.5 border border-sand-dim/40 text-sand font-mono text-sm uppercase tracking-wider hover:border-sand hover:text-sand-bright transition-colors duration-150"
+              >
+                View Demo
               </Link>
             </div>
           </div>
         </div>
 
-        {/* Mobile ASCII Noise Banner */}
-        <div className="lg:hidden border-y border-sand-dim/20 bg-black/50 overflow-hidden">
-          <div className="relative h-32">
-            <AsciiNoise
-              width={60}
-              height={8}
-              speed={0.0006}
-              scale={0.05}
-              className="text-spice/60 text-[10px]"
-            />
-            <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-              <div className="text-sand-dim/50 text-xs">// the spice must flow</div>
-            </div>
-          </div>
-        </div>
+        {/* Interactive hero image + features strip */}
+        <HeroFeatures />
       </section>
 
-      {/* Rest of content */}
-      <div className="space-y-16">
-        {/* Dune Power Section */}
-        <section>
-          <div className="text-sand-dim text-xs mb-4">// the_dune_advantage</div>
-          <div className="border border-spice/30 p-4 space-y-4">
-            <p className="text-spice">
-              a dune wizard embedded in your discord
-            </p>
-            <p className="text-sand text-sm mb-4">
-              think of it this way: dune analytics is the bloomberg terminal for crypto — powerful, but requires expertise.
-              arrakis is that bloomberg data delivered as a simple app on your phone.
-            </p>
-            <div className="space-y-3 text-sm text-sand">
-              <p>
-                <span className="text-sand-dim">[+]</span> no SQL required — we&apos;ve done the hard work
-              </p>
-              <p>
-                <span className="text-sand-dim">[+]</span> curated insights — pre-built conviction scoring
-              </p>
-              <p>
-                <span className="text-sand-dim">[+]</span> discord roles — analytics delivered where you engage
-              </p>
-              <p>
-                <span className="text-sand-dim">[+]</span> dynamic updates — refreshes every 6 hours automatically
-              </p>
+      <div className="space-y-48 relative z-10 mt-20">
+        {/* Feature 1: On-chain Analytics */}
+        <section className="mx-auto max-w-4xl px-6">
+          <div className="flex items-center gap-2 mb-6">
+            <div
+              className="w-6 h-6 flex items-center justify-center"
+              style={{ backgroundColor: '#f4a460' }}
+            >
+              <ChartLineUp weight="fill" className="w-4 h-4 text-black" />
             </div>
-            <p className="text-sand-dim text-xs pt-2 border-t border-sand-dim/20">
-              the #1 dune team spent years mastering on-chain analytics. now that expertise is packaged into a 15-minute setup.
-            </p>
+            <span className="text-sand-bright text-xs font-mono uppercase tracking-wider">On-chain Analytics</span>
           </div>
-        </section>
-
-        {/* Problem Statement */}
-        <section>
-          <div className="text-sand-dim text-xs mb-4">// the_problem</div>
-          <div className="border border-sand-dim/30 p-4 space-y-4">
-            <p className="text-sand-bright">
-              on-chain data is powerful.
-              <br />
-              but who has time for SQL?
-            </p>
-            <div className="space-y-3 text-sm text-sand">
-              <p>
-                <span className="text-sand-dim">[1]</span> you need a data analyst
-                - getting conviction insights requires dune queries and dashboards
-              </p>
-              <p>
-                <span className="text-sand-dim">[2]</span> airdrops go to farmers
-                - without on-chain intelligence, you can&apos;t tell diamond hands from day traders
-              </p>
-              <p>
-                <span className="text-sand-dim">[3]</span> analytics stay in spreadsheets
-                - insights live in CSVs, not where your community engages
-              </p>
-              <p>
-                <span className="text-sand-dim">[4]</span> data gets stale
-                - one-time snapshots don&apos;t capture dynamic community changes
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* Solution */}
-        <section>
-          <div className="text-sand-dim text-xs mb-4">// what_arrakis_delivers</div>
-
-          <pre className="text-sand-dim text-xs leading-tight mb-6 hidden md:block">
-            {WORM_ASCII}
-          </pre>
-
-          <div className="grid md:grid-cols-2 gap-6">
-            <div className="border border-sand-dim/30 p-4">
-              <div className="text-spice text-sm mb-2">zero_code_analytics</div>
-              <p className="text-sand text-sm">
-                we&apos;ve spent years mastering dune queries. now that expertise is
-                packaged into a 15-minute setup anyone can use.
-              </p>
-            </div>
-
-            <div className="border border-sand-dim/30 p-4">
-              <div className="text-spice text-sm mb-2">conviction_scoring</div>
-              <p className="text-sand text-sm">
-                holding duration, trading patterns, on-chain activity — all
-                curated into a single conviction score. no dashboards needed.
-              </p>
-            </div>
-
-            <div className="border border-sand-dim/30 p-4">
-              <div className="text-spice text-sm mb-2">tier_progression</div>
-              <p className="text-sand text-sm">
-                from outsider to naib council. insights delivered as discord
-                roles that update automatically every 6 hours.
-              </p>
-            </div>
-
-            <div className="border border-sand-dim/30 p-4">
-              <div className="text-spice text-sm mb-2">collab.land_foundation</div>
-              <p className="text-sand text-sm">
-                built on collab.land&apos;s trusted infrastructure. same security
-                you already rely on, with intelligence on top.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* How It Works */}
-        <section>
-          <div className="text-sand-dim text-xs mb-4">// quickstart</div>
-          <div className="font-mono text-sm space-y-2">
-            <p className="text-sand-dim">
-              <span className="text-spice">$</span> arrakis install
-            </p>
-            <div className="pl-4 text-sand space-y-1">
-              <p>
-                <span className="text-sand-dim">[step 1]</span> find arrakis in the
-                collab.land marketplace
-              </p>
-              <p>
-                <span className="text-sand-dim">[step 2]</span> one-click install
-                (uses your existing collab.land setup)
-              </p>
-              <p>
-                <span className="text-sand-dim">[step 3]</span> configure tiers and
-                conviction thresholds
-              </p>
-            </div>
-            <p className="text-sand-dim mt-4">
-              <span className="text-spice">$</span> # no migration. same trust. more intelligence.
-            </p>
-          </div>
-        </section>
-
-        {/* Pricing Preview */}
-        <section>
-          <div className="text-sand-dim text-xs mb-4">// pricing</div>
-          <pre className="text-sand text-xs overflow-x-auto">
-            {`
-┌─────────────────────────────────────────────────────────────┐
-│                                                             │
-│   STARTER        GROWTH          ENTERPRISE                 │
-│   $0/mo          $99/mo          $399/mo                    │
-│                                                             │
-│   - 3 tiers      - 9 tiers       - custom themes            │
-│   - 1 server     - conviction    - unlimited servers        │
-│   - basic gate   - analytics     - api access               │
-│   - shadow mode  - 5 servers     - dedicated support        │
-│                                                             │
-│   [start free]   [upgrade]       [contact]                  │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-            `}
-          </pre>
-          <p className="text-spice text-sm mt-4">
-            * founding 50: first 50 premium customers get 50% off for life
+          <h2 className="font-display text-3xl lg:text-4xl text-sand-bright mb-4">
+            Dune queries. Zero SQL.
+          </h2>
+          <p className="text-sand text-base mb-8 max-w-2xl">
+            Years of Dune expertise in a 15-minute setup. Wallet activity, trading patterns, holding duration — no SQL required.
           </p>
           <Link
-            href="/pricing"
-            className="inline-block mt-4 text-sand-dim hover:text-sand text-sm"
+            href="#features"
+            className="inline-flex items-center gap-2 text-spice hover:text-spice-bright font-mono text-sm transition-colors duration-150"
           >
-            [view full pricing]
+            Learn more
+            <span>→</span>
           </Link>
+          {/* Visual */}
+          <StatsGrid />
         </section>
 
-        {/* Use Cases */}
-        <section>
-          <div className="text-sand-dim text-xs mb-4">// use-cases</div>
-          <div className="space-y-4 text-sm">
-            <Link
-              href="/use-cases/daos"
-              className="block border border-sand-dim/30 p-4 hover:border-sand-dim"
+        {/* Feature 2: Conviction Scoring */}
+        <section className="mx-auto max-w-4xl px-6">
+          <div className="flex items-center gap-2 mb-6">
+            <div
+              className="w-6 h-6 flex items-center justify-center"
+              style={{ backgroundColor: '#c45c4a' }}
             >
-              <span className="text-spice">&gt;</span>{' '}
-              <span className="text-sand-bright">daos</span>
-              <span className="text-sand-dim ml-4">
-                - find diamond hands before governance votes
-              </span>
-            </Link>
-            <Link
-              href="/use-cases/nft-projects"
-              className="block border border-sand-dim/30 p-4 hover:border-sand-dim"
-            >
-              <span className="text-spice">&gt;</span>{' '}
-              <span className="text-sand-bright">nft-projects</span>
-              <span className="text-sand-dim ml-4">
-                - turn post-mint silence into collector culture
-              </span>
-            </Link>
-            <Link
-              href="/use-cases/defi-protocols"
-              className="block border border-sand-dim/30 p-4 hover:border-sand-dim"
-            >
-              <span className="text-spice">&gt;</span>{' '}
-              <span className="text-sand-bright">defi-protocols</span>
-              <span className="text-sand-dim ml-4">
-                - enterprise-grade community infrastructure
-              </span>
-            </Link>
-          </div>
-        </section>
-
-        {/* Credibility */}
-        <section>
-          <div className="text-sand-dim text-xs mb-4">// why_trust_us</div>
-          <div className="border border-sand-dim/30 p-4">
-            <p className="text-sand-bright mb-4">
-              the #1 dune team. now powering your discord.
-            </p>
-            <p className="text-sand text-sm mb-4">
-              we&apos;ve spent years analyzing on-chain data for protocols, DAOs, and NFT projects.
-              now that expertise is packaged into a tool anyone can use — no SQL, no dashboards, no data engineers.
-            </p>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center text-sm">
-              <div>
-                <div className="text-spice text-xl">#1</div>
-                <div className="text-sand-dim">dune team</div>
-              </div>
-              <div>
-                <div className="text-spice text-xl">0</div>
-                <div className="text-sand-dim">code needed</div>
-              </div>
-              <div>
-                <div className="text-spice text-xl">15</div>
-                <div className="text-sand-dim">min setup</div>
-              </div>
-              <div>
-                <div className="text-spice text-xl">6h</div>
-                <div className="text-sand-dim">auto-refresh</div>
-              </div>
-              <div>
-                <div className="text-spice text-xl">CL</div>
-                <div className="text-sand-dim">foundation</div>
-              </div>
+              <Diamond weight="fill" className="w-4 h-4 text-black" />
             </div>
+            <span className="text-sand-bright text-xs font-mono uppercase tracking-wider">Conviction Scoring</span>
           </div>
+          <h2 className="font-display text-3xl lg:text-4xl text-sand-bright mb-4">
+            Diamond hands. Quantified.
+          </h2>
+          <p className="text-sand text-base mb-8 max-w-2xl">
+            Score holder commitment by holding duration, trading patterns, and on-chain activity. Reward believers, not flippers.
+          </p>
+          <Link
+            href="#features"
+            className="inline-flex items-center gap-2 text-spice hover:text-spice-bright font-mono text-sm transition-colors duration-150"
+          >
+            Learn more
+            <span>→</span>
+          </Link>
+          {/* Visual */}
+          <ConvictionBoard />
         </section>
 
-        {/* CTA */}
-        <section className="border border-spice/50 p-6 text-center">
-          <p className="text-sand-bright text-lg mb-2">ready for dune-powered community intelligence?</p>
-          <p className="text-sand-dim text-sm mb-6">
-            15 minutes to setup. no SQL required. no data analysts needed.
-          </p>
-          <div className="flex flex-wrap justify-center gap-4 text-sm">
-            <Link
-              href="https://discord.gg/thehoneyjar"
-              className="text-spice hover:text-spice-bright"
+        {/* Feature 3: Tier Progression */}
+        <section className="mx-auto max-w-4xl px-6">
+          <div className="flex items-center gap-2 mb-6">
+            <div
+              className="w-6 h-6 flex items-center justify-center"
+              style={{ backgroundColor: '#5b8fb9' }}
             >
-              [start free]
-            </Link>
-            <Link href="/features" className="text-sand hover:text-sand-bright">
-              [see features]
-            </Link>
+              <Medal weight="fill" className="w-4 h-4 text-black" />
+            </div>
+            <span className="text-sand-bright text-xs font-mono uppercase tracking-wider">Tier Progression</span>
           </div>
-          <p className="text-sand-dim text-xs mt-4">
-            powered by dune expertise • built on collab.land • zero code required
+          <h2 className="font-display text-3xl lg:text-4xl text-sand-bright mb-4">
+            From Outsider to Naib Council.
+          </h2>
+          <p className="text-sand text-base mb-8 max-w-2xl">
+            Discord roles that reflect real conviction. Members climb tiers automatically — updates every 6 hours.
           </p>
+          <Link
+            href="#features"
+            className="inline-flex items-center gap-2 text-spice hover:text-spice-bright font-mono text-sm transition-colors duration-150"
+          >
+            Learn more
+            <span>→</span>
+          </Link>
+          {/* Visual */}
+          <TierCards />
         </section>
+
       </div>
     </div>
   );

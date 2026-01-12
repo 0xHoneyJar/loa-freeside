@@ -1,0 +1,8 @@
+name: gardener
+version: "11.0.0"
+description: Monitor pattern usage and report component authority
+triggers:
+  - /garden
+  - "check pattern health"
+  - "component authority"
+  - "what's canonical"

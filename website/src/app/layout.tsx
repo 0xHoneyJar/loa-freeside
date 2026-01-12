@@ -1,14 +1,22 @@
 import type { Metadata } from 'next';
+import localFont from 'next/font/local';
+import { GeistMono } from 'geist/font/mono';
 import './globals.css';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { AsciiBackground } from '@/components/AsciiBackground';
-import { ScrambleProvider } from '@/components/TextScramble';
+import { PromoCard } from '@/components/PromoCard';
+
+const adhesion = localFont({
+  src: '../assets/fonts/Adhesion-Regular.woff2',
+  variable: '--font-adhesion',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
-  title: 'ARRAKIS // The Engagement Layer for Collab.Land',
+  title: 'ARRAKIS // Dune Analytics for Discord',
   description:
-    'Built on Collab.Land, available through their marketplace. Conviction scoring and tiered progression for the token-gating you already trust.',
+    'The #1 Dune team brings on-chain intelligence to your Discord. Zero code required. 15-minute setup.',
   icons: {
     icon: [
       { url: '/favicon.svg', type: 'image/svg+xml' },
@@ -17,9 +25,9 @@ export const metadata: Metadata = {
     apple: '/icon.svg',
   },
   openGraph: {
-    title: 'ARRAKIS // Engagement Intelligence',
+    title: 'ARRAKIS // Dune Analytics for Discord',
     description:
-      'Know your community, not just your holders. Conviction scoring, 9-tier progression, and zero-risk adoption.',
+      'Conviction scoring. Tier progression. Zero SQL. The #1 Dune team, now powering your community.',
     type: 'website',
   },
 };
@@ -30,22 +38,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap"
-          rel="stylesheet"
-        />
-      </head>
+    <html lang="en" className={`${adhesion.variable} ${GeistMono.variable}`}>
       <body className="min-h-screen bg-black font-mono">
-        <AsciiBackground opacity={0.10} speed={0.000286} wordDensity={0.035} />
-        <ScrambleProvider className="relative z-10 mx-auto max-w-4xl px-6 py-8">
-          <Header />
-          <main className="mt-12">{children}</main>
-          <Footer />
-        </ScrambleProvider>
+        <AsciiBackground opacity={0.08} />
+        <Header />
+        <PromoCard />
+        <div className="relative z-10 pt-16">
+          <main>{children}</main>
+          <div className="mx-auto max-w-4xl px-6 py-8">
+            <Footer />
+          </div>
+        </div>
       </body>
     </html>
   );

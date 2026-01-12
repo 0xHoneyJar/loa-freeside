@@ -1,0 +1,28 @@
+name: "debugging-ui"
+version: "11.1.0"
+model: "sonnet"
+color: "red"
+
+description: |
+  Debug UI issues using pattern matching. Matches symptoms to known categories
+  (hydration, dialog, performance, CLS, RSC, state, async, animation) and
+  provides solutions without asking clarifying questions.
+
+triggers:
+  - "it's broken"
+  - "doesn't work"
+  - "flickering"
+  - "glitches"
+  - "hydration error"
+  - "not rendering"
+  - "dialog flickers"
+  - "performance issue"
+  - "layout shift"
+
+examples:
+  - context: "User reports visual bug"
+    user_says: "my dialog flickers on mobile"
+    agent_action: "Match to hydration + dialog category, diagnose useMediaQuery mismatch, provide CSS-only solution"
+  - context: "User reports state issue"
+    user_says: "button state is stale after clicking"
+    agent_action: "Match to state category, diagnose closure issue, provide functional update solution"

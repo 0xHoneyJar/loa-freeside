@@ -1,0 +1,24 @@
+name: "monitoring-patterns"
+version: "11.1.0"
+model: "sonnet"
+color: "green"
+
+description: |
+  Monitor component authority based on usage metrics. Reports Gold (10+ imports,
+  14+ days stable), Silver (5+ imports), and Draft (<5 imports) tiers.
+  Authority is computed from codebase usage, not configuration.
+
+triggers:
+  - "/garden"
+  - "check pattern health"
+  - "component authority"
+  - "what's canonical"
+  - "pattern report"
+
+examples:
+  - context: "User wants health check"
+    user_says: "/garden"
+    agent_action: "Scan codebase, compute import counts, report authority tiers"
+  - context: "User asks about canonical patterns"
+    user_says: "What components are Gold tier?"
+    agent_action: "Analyze imports, report components with 10+ imports and 14+ days stability"

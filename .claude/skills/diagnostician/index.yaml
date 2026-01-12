@@ -1,0 +1,10 @@
+name: diagnostician
+version: "11.0.0"
+description: Debug UI issues with pattern matching
+triggers:
+  - "it's broken"
+  - "doesn't work"
+  - "flickering"
+  - "glitches"
+  - "hydration error"
+  - "not rendering"

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 // Simplex noise implementation for organic movement
 function createNoise(seed: number) {
@@ -109,109 +109,65 @@ function createNoise(seed: number) {
   return { noise3D };
 }
 
-// Words that will appear in the background - themed around the brand
-const WORDS = ['SPICE', 'DUNE', 'HONEY', 'FLOW', 'DATA', 'HODL', 'WEB3', 'CHAIN'];
-
-// Characters for noise fill - more varied and visible
-const NOISE_CHARS = '.·:;+=xX#@$%&*░▒▓█';
+// Characters for noise fill - simplified for readability
+const NOISE_CHARS = '.·:;+=';
 
 interface AsciiBackgroundProps {
   className?: string;
   opacity?: number;
   speed?: number;
-  wordDensity?: number;
+  stripWidth?: number;
 }
 
 export function AsciiBackground({
   className = '',
-  opacity = 0.15,
-  speed = 0.0005,
-  wordDensity = 0.025,
+  opacity = 0.12,
+  speed = 0.0003, // Slower, more subtle movement
+  stripWidth = 280,
 }: AsciiBackgroundProps) {
-  const [output, setOutput] = useState<string>('');
-  const [dimensions, setDimensions] = useState({ cols: 120, rows: 40 });
+  const [leftOutput, setLeftOutput] = useState<string>('');
+  const [rightOutput, setRightOutput] = useState<string>('');
+  const [dimensions, setDimensions] = useState({ cols: 40, rows: 60 });
   const noiseRef = useRef<ReturnType<typeof createNoise> | null>(null);
-  const wordPositionsRef = useRef<Array<{
-    word: string;
-    x: number;
-    y: number;
-    vx: number;
-    vy: number;
-  }>>([]);
 
-  // Initialize word positions
-  const initWords = useCallback((cols: number, rows: number) => {
-    const numWords = Math.floor(cols * rows * wordDensity / 5);
-    wordPositionsRef.current = [];
-
-    for (let i = 0; i < numWords; i++) {
-      wordPositionsRef.current.push({
-        word: WORDS[Math.floor(Math.random() * WORDS.length)],
-        x: Math.random() * cols,
-        y: Math.random() * rows,
-        vx: (Math.random() - 0.5) * 0.3,
-        vy: (Math.random() - 0.5) * 0.15,
-      });
-    }
-  }, [wordDensity]);
-
-  // Handle sizing - ensure full viewport coverage
+  // Handle sizing
   useEffect(() => {
     const updateSize = () => {
-      // Character dimensions for 10px JetBrains Mono (monospace ~0.6 ratio)
       const charWidth = 6;
       const charHeight = 14;
-      // Use full viewport width/height
-      const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
-      // Calculate columns needed, add buffer for safety
-      const cols = Math.ceil(viewportWidth / charWidth) + 10;
+      const cols = Math.ceil(stripWidth / charWidth) + 5;
       const rows = Math.ceil(viewportHeight / charHeight) + 5;
-      setDimensions({
-        cols: Math.max(200, cols),  // Ensure minimum wide coverage
-        rows: Math.max(60, rows)
-      });
+      setDimensions({ cols: Math.max(40, cols), rows: Math.max(60, rows) });
     };
 
     updateSize();
     window.addEventListener('resize', updateSize);
-    return () => {
-      window.removeEventListener('resize', updateSize);
-    };
-  }, []);
+    return () => window.removeEventListener('resize', updateSize);
+  }, [stripWidth]);
 
-  // Initialize words when dimensions change
+  // Static noise pattern - no animation, just render once
   useEffect(() => {
-    initWords(dimensions.cols, dimensions.rows);
-  }, [dimensions.cols, dimensions.rows, initWords]);
+    noiseRef.current = createNoise(42); // Fixed seed for consistent pattern
 
-  // Animation loop
-  useEffect(() => {
-    noiseRef.current = createNoise(Date.now());
+    function renderStrip(
+      cols: number,
+      rows: number,
+      offsetX: number
+    ): string {
+      if (!noiseRef.current) return '';
 
-    let animationId: number;
-    const startTime = performance.now();
-
-    function render() {
-      if (!noiseRef.current) return;
-
-      const t = (performance.now() - startTime) * speed;
-      const { cols, rows } = dimensions;
-
-      // Create a 2D grid
       const grid: string[][] = [];
       for (let y = 0; y < rows; y++) {
         grid[y] = [];
         for (let x = 0; x < cols; x++) {
-          // Use noise to determine character
-          const nx = x * 0.04;
-          const ny = y * 0.025 + t;
-          const value = noiseRef.current.noise3D(nx, ny, t * 2);
+          const nx = (x + offsetX) * 0.05;
+          const ny = y * 0.03;
+          const value = noiseRef.current.noise3D(nx, ny, 0);
           const normalized = value * 0.5 + 0.5;
 
-          // More noise characters visible - lower threshold
-          if (normalized > 0.45) {
-            const index = Math.floor((normalized - 0.45) / 0.55 * NOISE_CHARS.length);
+          if (normalized > 0.55) {
+            const index = Math.floor((normalized - 0.55) / 0.45 * NOISE_CHARS.length);
             grid[y][x] = NOISE_CHARS[Math.min(index, NOISE_CHARS.length - 1)];
           } else {
             grid[y][x] = ' ';
@@ -219,65 +175,57 @@ export function AsciiBackground({
         }
       }
 
-      // Update and render floating words
-      wordPositionsRef.current.forEach((wp) => {
-        // Update position
-        wp.x += wp.vx;
-        wp.y += wp.vy;
-
-        // Wrap around edges
-        if (wp.x < -wp.word.length) wp.x = cols;
-        if (wp.x > cols) wp.x = -wp.word.length;
-        if (wp.y < 0) wp.y = rows - 1;
-        if (wp.y >= rows) wp.y = 0;
-
-        // Render word onto grid
-        const wordX = Math.floor(wp.x);
-        const wordY = Math.floor(wp.y);
-
-        for (let i = 0; i < wp.word.length; i++) {
-          const x = wordX + i;
-          if (x >= 0 && x < cols && wordY >= 0 && wordY < rows) {
-            grid[wordY][x] = wp.word[i];
-          }
-        }
-      });
-
-      // Convert grid to string
-      const lines = grid.map(row => row.join(''));
-      setOutput(lines.join('\n'));
-
-      animationId = requestAnimationFrame(render);
+      return grid.map(row => row.join('')).join('\n');
     }
 
-    render();
+    const { cols, rows } = dimensions;
+    setLeftOutput(renderStrip(cols, rows, 0));
+    setRightOutput(renderStrip(cols, rows, 100));
+  }, [dimensions.cols, dimensions.rows]);
 
-    return () => {
-      cancelAnimationFrame(animationId);
-    };
-  }, [dimensions.cols, dimensions.rows, speed]);
+  const preStyle = {
+    fontFamily: 'var(--font-geist-mono), monospace',
+    fontSize: '10px',
+    lineHeight: '14px',
+    margin: 0,
+    padding: 0,
+  };
 
   return (
-    <div
-      className={`fixed top-0 left-0 pointer-events-none overflow-hidden z-0 ${className}`}
-      style={{
-        opacity,
-        width: '100vw',
-        height: '100vh',
-      }}
-    >
-      <pre
-        className="font-mono text-spice whitespace-pre select-none"
-        style={{
-          fontFamily: 'JetBrains Mono, monospace',
-          fontSize: '10px',
-          lineHeight: '14px',
-          margin: 0,
-          padding: 0,
-        }}
+    <div className={`fixed inset-0 pointer-events-none overflow-hidden z-0 ${className}`}>
+      {/* Left Strip */}
+      <div
+        className="absolute top-0 left-0 h-full overflow-hidden"
+        style={{ width: stripWidth, opacity }}
       >
-        {output}
-      </pre>
+        <pre className="font-mono text-spice whitespace-pre select-none" style={preStyle}>
+          {leftOutput}
+        </pre>
+        {/* Fade to black on the right edge */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background: 'linear-gradient(to right, transparent 0%, transparent 30%, #0a0a0a 100%)',
+          }}
+        />
+      </div>
+
+      {/* Right Strip */}
+      <div
+        className="absolute top-0 right-0 h-full overflow-hidden"
+        style={{ width: stripWidth, opacity }}
+      >
+        <pre className="font-mono text-spice whitespace-pre select-none" style={preStyle}>
+          {rightOutput}
+        </pre>
+        {/* Fade to black on the left edge */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background: 'linear-gradient(to left, transparent 0%, transparent 30%, #0a0a0a 100%)',
+          }}
+        />
+      </div>
     </div>
   );
 }

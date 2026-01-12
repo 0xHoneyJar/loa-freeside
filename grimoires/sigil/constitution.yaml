@@ -1,0 +1,239 @@
+# Sigil Constitution
+# The physics rules for this project
+
+# =============================================================================
+# EFFECTS → PHYSICS
+# =============================================================================
+# Physics are determined by effect (what code does), not adjectives.
+# Modify these values to match your product's feel.
+
+effects:
+  financial_mutation:
+    description: Operations involving money, tokens, or value transfer
+    keywords: [claim, deposit, withdraw, transfer, swap, send, pay, purchase, mint, burn, stake, unstake]
+    types: [Money, Currency, Balance, Amount, Wei, Token, BigInt]
+    physics:
+      sync: pessimistic
+      timing_ms: 800
+      easing: ease-out
+      confirmation: required
+      simulation: recommended  # Show preview of outcome
+      escape_hatch: required   # Cancel must be available
+    rationale: >
+      Financial operations are irreversible and high-stakes.
+      Users need time to verify, explicit confirmation, and a way out.
+
+  destructive_mutation:
+    description: Permanent deletions or revocations
+    keywords: [delete, remove, destroy, revoke, terminate, close, end]
+    physics:
+      sync: pessimistic
+      timing_ms: 600
+      easing: ease-out
+      confirmation: required
+      escape_hatch: required
+    rationale: >
+      Destructive operations cannot be undone.
+      Slower timing signals gravity. Confirmation prevents accidents.
+
+  soft_delete:
+    description: Reversible deletions with undo
+    keywords: [archive, hide, trash, soft-delete]
+    physics:
+      sync: optimistic
+      timing_ms: 200
+      easing: spring
+      confirmation: toast_with_undo
+      undo_window_ms: 5000
+    rationale: >
+      When undo exists, we can be optimistic.
+      Faster feel, with safety net visible in toast.
+
+  standard_mutation:
+    description: Regular create/update operations
+    keywords: [save, update, edit, create, add, toggle, like, follow, bookmark]
+    physics:
+      sync: optimistic
+      timing_ms: 200
+      easing: spring
+      confirmation: none
+      escape_hatch: optional
+    rationale: >
+      Low-stakes, reversible operations should feel snappy.
+      Optimistic updates with rollback on error.
+
+  navigation:
+    description: Route changes and page transitions
+    keywords: [navigate, route, link, go, back, forward, redirect]
+    physics:
+      sync: immediate
+      timing_ms: 150
+      easing: ease
+      confirmation: none
+    rationale: >
+      Navigation should feel instant.
+      The destination content provides the feedback.
+
+  query:
+    description: Data fetching without state changes
+    keywords: [fetch, load, get, list, search, find, query, read]
+    physics:
+      sync: optimistic
+      timing_ms: 150
+      easing: fade
+      loading_state: skeleton_or_spinner
+    rationale: >
+      Reads are safe. Show loading state, then reveal data.
+
+  local_state:
+    description: Client-only state changes
+    keywords: [toggle, switch, expand, collapse, select, focus, hover]
+    physics:
+      sync: immediate
+      timing_ms: 100
+      easing: spring
+      confirmation: none
+    rationale: >
+      No server round-trip. Instant feedback expected.
+
+  display:
+    description: Pure rendering, no interaction
+    physics:
+      sync: none
+      timing_ms: 0
+      confirmation: none
+    rationale: >
+      Static content needs no physics.
+
+# =============================================================================
+# AUTHORITY
+# =============================================================================
+# How to identify canonical patterns in the codebase.
+
+authority:
+  gold:
+    description: Canonical patterns to learn from
+    criteria:
+      min_imports: 10      # Used in 10+ places
+      min_age_days: 14     # Stable for 2+ weeks
+    behavior: >
+      Prefer these components as templates.
+      Match their structure, patterns, and conventions.
+
+  silver:
+    description: Established but still evolving
+    criteria:
+      min_imports: 5
+    behavior: >
+      Use if no Gold alternative exists.
+      May have patterns worth adopting.
+
+  draft:
+    description: New or experimental
+    criteria:
+      imports: "<5"
+    behavior: >
+      Don't learn from these.
+      They haven't proven themselves.
+
+# =============================================================================
+# PROTECTED CAPABILITIES
+# =============================================================================
+# These must ALWAYS work, regardless of other constraints.
+
+protected:
+  - id: withdraw
+    description: Users must always be able to withdraw funds
+    constraint: always_reachable
+
+  - id: cancel
+    description: Every destructive/financial flow needs an escape hatch
+    constraint: always_visible
+
+  - id: balance
+    description: Users must always see their current balance
+    constraint: always_accurate
+
+  - id: error_recovery
+    description: No dead ends - always a path forward from errors
+    constraint: always_available
+
+# =============================================================================
+# VOCABULARY
+# =============================================================================
+# Product-specific terms mapped to effects.
+# Add your product's terminology here.
+
+vocabulary:
+  # DeFi examples
+  claim:
+    maps_to: financial_mutation
+    description: Withdraw earned rewards
+
+  deposit:
+    maps_to: financial_mutation
+    description: Add funds to protocol
+
+  stake:
+    maps_to: financial_mutation
+    description: Lock tokens for rewards
+
+  swap:
+    maps_to: financial_mutation
+    description: Exchange one token for another
+
+  # Gaming examples
+  purchase:
+    maps_to: financial_mutation
+    description: Buy with real or in-game currency
+
+  # General
+  save:
+    maps_to: standard_mutation
+    description: Persist changes
+
+  delete:
+    maps_to: destructive_mutation
+    description: Permanent removal
+
+# =============================================================================
+# ANIMATION PRESETS
+# =============================================================================
+# Reusable animation configurations.
+
+animations:
+  deliberate:
+    description: For financial/destructive operations
+    duration: 800
+    easing: "cubic-bezier(0.4, 0, 0.2, 1)"
+
+  snappy:
+    description: For standard interactions
+    spring:
+      stiffness: 500
+      damping: 30
+
+  instant:
+    description: For local state
+    spring:
+      stiffness: 700
+      damping: 35
+
+  fade:
+    description: For content loading
+    duration: 200
+    easing: "ease-out"
+
+# =============================================================================
+# PROJECT CONVENTIONS
+# =============================================================================
+# Discovered patterns from this codebase.
+# Updated as you learn the project.
+
+conventions:
+  animation_library: null      # framer-motion, react-spring, css, etc.
+  data_fetching: null          # tanstack-query, swr, fetch, etc.
+  state_management: null       # zustand, jotai, context, etc.
+  component_structure: null    # folder pattern, naming, etc.
+
+  # These get populated as you explore the codebase

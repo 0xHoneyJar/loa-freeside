@@ -1,276 +1,187 @@
-import type { Metadata } from 'next';
 import Link from 'next/link';
-import { AsciiAccent, AsciiDivider } from '@/components/AsciiAccent';
-import { RandomAsciiChars } from '@/components/RandomAsciiChars';
+import type { Metadata } from 'next';
+import { Medal, ChartLineUp, Users, Gear, Clock, ShieldCheck, Diamond } from '@phosphor-icons/react/dist/ssr';
+import { FAQAccordion } from '@/components/FAQAccordion';
 
 export const metadata: Metadata = {
-  title: 'pricing // ARRAKIS',
-  description:
-    'Start free, upgrade when ready. Conviction scoring and 9-tier progression for Web3 communities.',
+  title: 'Pricing // ARRAKIS',
+  description: 'Simple pricing for Dune-powered community intelligence. Start free, scale as you grow.',
 };
 
 export default function PricingPage() {
   return (
-    <div className="space-y-16">
-      {/* Header */}
-      <section className="relative">
-        <RandomAsciiChars count={10} variant="dune" className="text-sand-dim" />
-        <div className="text-sand-dim text-xs mb-2">// pricing</div>
-        <h1 className="text-2xl text-sand-bright">
-          simple pricing for communities of all sizes
-        </h1>
-        <p className="text-sand mt-2">
-          start free with basictheme. upgrade to premium for conviction scoring.
-        </p>
-      </section>
-
-      <AsciiAccent variant="subtle" />
-
-      {/* Pricing Table */}
-      <section>
-        <pre className="text-sand text-xs overflow-x-auto whitespace-pre">
-{`┌──────────────────────────────────────────────────────────────────────────────┐
-│                              PRICING TIERS                                   │
-├────────────────────┬────────────────────┬────────────────────────────────────┤
-│                    │                    │                                    │
-│   STARTER          │   GROWTH           │   ENTERPRISE                       │
-│   $0/mo            │   $99/mo           │   $399/mo                          │
-│   ─────────        │   ────────         │   ───────────                      │
-│                    │                    │                                    │
-│   [+] token-gate   │   [+] everything   │   [+] everything in growth         │
-│   [+] 3 tiers      │       in starter   │   [+] custom themes                │
-│   [+] 5 badges     │   [+] conviction   │   [+] unlimited servers            │
-│   [+] 1 server     │       scoring      │   [+] full api access              │
-│   [+] shadow mode  │   [+] 9 tiers      │   [+] audit trail                  │
-│   [+] 24h refresh  │   [+] 10+ badges   │   [+] white-label                  │
-│                    │   [+] analytics    │   [+] 1h refresh                   │
-│   limits:          │   [+] 3 servers    │   [+] dedicated slack              │
-│   - no analytics   │   [+] 6h refresh   │   [+] sla 4h response              │
-│   - no conviction  │                    │                                    │
-│                    │   * founding 50:   │   custom pricing                   │
-│                    │     50% off life   │   for 10+ communities              │
-│                    │     = $49/mo       │                                    │
-│                    │                    │                                    │
-└────────────────────┴────────────────────┴────────────────────────────────────┘`}
-        </pre>
-
-        <div className="mt-8 flex flex-wrap gap-4 text-sm">
-          <Link
-            href="https://discord.gg/thehoneyjar"
-            className="text-spice hover:text-spice-bright"
-          >
-            [start free]
-          </Link>
-          <Link
-            href="https://discord.gg/thehoneyjar"
-            className="text-sand hover:text-sand-bright"
-          >
-            [upgrade to growth]
-          </Link>
-          <Link
-            href="mailto:henlo@0xhoneyjar.xyz"
-            className="text-sand hover:text-sand-bright"
-          >
-            [contact sales]
-          </Link>
+    <div className="mx-auto max-w-4xl px-6 pb-20">
+      {/* Header + Pricing Grid - full viewport */}
+      <div className="min-h-[calc(100vh-4rem)] flex flex-col justify-center">
+        <div className="mb-12">
+          <h1 className="font-display text-3xl lg:text-4xl text-sand-bright mb-4">
+            Simple pricing. Scale as you grow.
+          </h1>
+          <p className="text-sand text-base max-w-lg">
+            Start free with essential features. Upgrade when you need conviction scoring,
+            more tiers, or multi-server support.
+          </p>
         </div>
-      </section>
 
-      {/* Feature Comparison */}
-      <section>
-        <div className="text-sand-dim text-xs mb-4">// feature comparison</div>
-        <div className="border border-sand-dim/30 overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-sand-dim/30">
-                <th className="text-left p-3 text-sand-dim">feature</th>
-                <th className="text-center p-3 text-sand-dim">starter</th>
-                <th className="text-center p-3 text-spice">growth</th>
-                <th className="text-center p-3 text-sand-dim">enterprise</th>
-              </tr>
-            </thead>
-            <tbody className="text-sand">
-              <tr className="border-b border-sand-dim/20">
-                <td colSpan={4} className="p-2 text-sand-dim text-xs">
-                  // token-gating
-                </td>
-              </tr>
-              <FeatureRow feature="erc20 gating" starter="+" growth="+" enterprise="+" />
-              <FeatureRow feature="nft gating" starter="+" growth="+" enterprise="+" />
-              <FeatureRow feature="multi-chain" starter="+" growth="+" enterprise="+" />
-              <FeatureRow feature="shadow mode" starter="+" growth="+" enterprise="+" />
+        {/* Pricing Grid */}
+        <div className="grid md:grid-cols-3 gap-0">
+        {/* Starter */}
+        <div className="flex flex-col">
+          <div className="border border-sand-dim/30 p-8 flex flex-col flex-1">
+            <div className="font-display text-xl text-sand-bright mb-2">Starter</div>
+            <div className="flex items-baseline gap-1 mb-6">
+              <span className="font-display text-4xl text-sand-bright">$0</span>
+              <span className="text-sand-dim text-sm">per month</span>
+            </div>
 
-              <tr className="border-b border-sand-dim/20">
-                <td colSpan={4} className="p-2 text-sand-dim text-xs">
-                  // progression
-                </td>
-              </tr>
-              <FeatureRow feature="tier system" starter="3" growth="9" enterprise="custom" />
-              <FeatureRow feature="badges" starter="5" growth="10+" enterprise="unlimited" />
-              <FeatureRow feature="badge lineage" starter="-" growth="+" enterprise="+" />
+            {/* Features - aligned with other columns */}
+            <div className="space-y-4 text-sm flex-1">
+              <div className="flex items-center gap-3">
+                <Medal weight="fill" className="w-4 h-4 text-sand-dim shrink-0" />
+                <span className="text-sand">3 tiers</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <Users weight="fill" className="w-4 h-4 text-sand-dim shrink-0" />
+                <span className="text-sand">1 server</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <Clock weight="fill" className="w-4 h-4 text-sand-dim shrink-0" />
+                <span className="text-sand">24h data refresh</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <ShieldCheck weight="fill" className="w-4 h-4 text-sand-dim shrink-0" />
+                <span className="text-sand">Basic token gating</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <Gear weight="fill" className="w-4 h-4 text-sand-dim shrink-0" />
+                <span className="text-sand">Shadow mode</span>
+              </div>
+            </div>
 
-              <tr className="border-b border-sand-dim/20">
-                <td colSpan={4} className="p-2 text-sand-dim text-xs">
-                  // intelligence
-                </td>
-              </tr>
-              <FeatureRow feature="conviction score" starter="-" growth="+" enterprise="+" />
-              <FeatureRow feature="analytics" starter="-" growth="+" enterprise="+" />
-              <FeatureRow feature="holder insights" starter="-" growth="+" enterprise="+" />
-
-              <tr className="border-b border-sand-dim/20">
-                <td colSpan={4} className="p-2 text-sand-dim text-xs">
-                  // platform
-                </td>
-              </tr>
-              <FeatureRow feature="discord servers" starter="1" growth="3" enterprise="unlimited" />
-              <FeatureRow feature="telegram groups" starter="-" growth="1" enterprise="unlimited" />
-              <FeatureRow feature="balance refresh" starter="24h" growth="6h" enterprise="1h" />
-              <FeatureRow feature="api access" starter="-" growth="read" enterprise="full" />
-
-              <tr className="border-b border-sand-dim/20">
-                <td colSpan={4} className="p-2 text-sand-dim text-xs">
-                  // security
-                </td>
-              </tr>
-              <FeatureRow feature="row-level security" starter="+" growth="+" enterprise="+" />
-              <FeatureRow feature="audit trail" starter="-" growth="-" enterprise="+" />
-              <FeatureRow feature="white-label" starter="-" growth="-" enterprise="+" />
-            </tbody>
-          </table>
+            <Link
+              href="https://discord.gg/thehoneyjar"
+              className="block w-full text-center px-4 py-3 border border-sand-dim/40 text-sand font-mono text-sm uppercase tracking-wider hover:border-sand hover:text-sand-bright transition-colors duration-150 mt-8"
+            >
+              Start Free
+            </Link>
+          </div>
+          {/* Empty footer to align with other columns */}
+          <div className="h-10" />
         </div>
-      </section>
 
-      <AsciiDivider />
+        {/* Growth - Popular */}
+        <div className="flex flex-col">
+          <div className="border-y border-x md:border border-sand-dim/30 md:border-spice/50 p-8 relative flex flex-col flex-1 bg-sand-dim/5">
+            <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-spice px-3 py-1 text-xs text-black font-mono tracking-wider">
+              POPULAR
+            </div>
+            <div className="font-display text-xl text-sand-bright mb-2">Growth</div>
+            <div className="flex items-baseline gap-1 mb-6">
+              <span className="font-display text-4xl text-sand-bright">$99</span>
+              <span className="text-sand-dim text-sm">per month</span>
+            </div>
 
-      {/* Add-ons */}
-      <section>
-        <div className="text-sand-dim text-xs mb-4">// add-ons</div>
-        <div className="space-y-2 text-sm">
-          <div className="flex justify-between border-b border-sand-dim/20 pb-2">
-            <span className="text-sand">additional discord server</span>
-            <span className="text-spice">$29/mo</span>
+            {/* Features - aligned with other columns */}
+            <div className="space-y-4 text-sm flex-1">
+              <div className="flex items-center gap-3">
+                <Medal weight="fill" className="w-4 h-4 text-sand-dim shrink-0" />
+                <span className="text-sand-bright">9 tiers</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <Users weight="fill" className="w-4 h-4 text-sand-dim shrink-0" />
+                <span className="text-sand-bright">5 servers</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <Clock weight="fill" className="w-4 h-4 text-sand-dim shrink-0" />
+                <span className="text-sand-bright">6h data refresh</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <ChartLineUp weight="fill" className="w-4 h-4 text-sand-dim shrink-0" />
+                <span className="text-sand">Analytics dashboard</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <ShieldCheck weight="fill" className="w-4 h-4 text-sand-dim shrink-0" />
+                <span className="text-sand">Priority support</span>
+              </div>
+            </div>
+
+            <Link
+              href="https://discord.gg/thehoneyjar"
+              className="block w-full text-center px-4 py-3 bg-spice text-black font-mono text-sm uppercase tracking-wider hover:bg-spice-bright transition-colors duration-150 mt-8"
+            >
+              Get Started
+            </Link>
           </div>
-          <div className="flex justify-between border-b border-sand-dim/20 pb-2">
-            <span className="text-sand">additional telegram group</span>
-            <span className="text-spice">$19/mo</span>
-          </div>
-          <div className="flex justify-between border-b border-sand-dim/20 pb-2">
-            <span className="text-sand">custom badge design</span>
-            <span className="text-spice">$199 one-time</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-sand">theme customization</span>
-            <span className="text-spice">$499 one-time</span>
+          {/* Includes Conviction Scoring - outside card */}
+          <div className="flex items-center justify-center gap-2 py-3 border border-t-0 border-sand-dim/30">
+            <div className="w-4 h-4 flex items-center justify-center shrink-0" style={{ backgroundColor: '#c45c4a' }}>
+              <Diamond weight="fill" className="w-2.5 h-2.5 text-black" />
+            </div>
+            <span className="text-sand-dim text-xs">Includes</span>
+            <span className="text-sand-bright text-xs font-semibold">Conviction Scoring</span>
           </div>
         </div>
-      </section>
 
-      <AsciiAccent variant="default" height={2} />
+        {/* Enterprise */}
+        <div className="flex flex-col">
+          <div className="border border-l-0 md:border-l border-sand-dim/30 p-8 flex flex-col flex-1">
+            <div className="font-display text-xl text-sand-bright mb-2">Enterprise</div>
+            <div className="flex items-baseline gap-1 mb-6">
+              <span className="font-display text-4xl text-sand-bright">$399</span>
+              <span className="text-sand-dim text-sm">per month</span>
+            </div>
 
-      {/* FAQ */}
-      <section>
-        <div className="text-sand-dim text-xs mb-4">// faq</div>
-        <div className="space-y-6 text-sm">
-          <div>
-            <p className="text-sand-bright">
-              <span className="text-spice">Q:</span> can i try premium before paying?
-            </p>
-            <p className="text-sand mt-1">
-              <span className="text-sand-dim">A:</span> yes - shadow mode shows conviction data on
-              free tier. upgrade when ready.
-            </p>
+            {/* Features - aligned with other columns */}
+            <div className="space-y-4 text-sm flex-1">
+              <div className="flex items-center gap-3">
+                <Medal weight="fill" className="w-4 h-4 text-sand-dim shrink-0" />
+                <span className="text-sand-bright">Unlimited tiers</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <Users weight="fill" className="w-4 h-4 text-sand-dim shrink-0" />
+                <span className="text-sand-bright">Unlimited servers</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <Clock weight="fill" className="w-4 h-4 text-sand-dim shrink-0" />
+                <span className="text-sand-bright">1h data refresh</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <Gear weight="fill" className="w-4 h-4 text-sand-dim shrink-0" />
+                <span className="text-sand">Custom branding</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <ChartLineUp weight="fill" className="w-4 h-4 text-sand-dim shrink-0" />
+                <span className="text-sand">API access</span>
+              </div>
+            </div>
+
+            <Link
+              href="https://discord.gg/thehoneyjar"
+              className="block w-full text-center px-4 py-3 border border-sand-dim/40 text-sand font-mono text-sm uppercase tracking-wider hover:border-sand hover:text-sand-bright transition-colors duration-150 mt-8"
+            >
+              Contact Us
+            </Link>
           </div>
-          <div>
-            <p className="text-sand-bright">
-              <span className="text-spice">Q:</span> what chains do you support?
-            </p>
-            <p className="text-sand mt-1">
-              <span className="text-sand-dim">A:</span> all major evm chains - ethereum, polygon,
-              arbitrum, optimism, base, and more.
-            </p>
-          </div>
-          <div>
-            <p className="text-sand-bright">
-              <span className="text-spice">Q:</span> can i use arrakis alongside collab.land?
-            </p>
-            <p className="text-sand mt-1">
-              <span className="text-sand-dim">A:</span> yes - shadow mode runs in parallel. zero
-              risk. switch when confident.
-            </p>
-          </div>
-          <div>
-            <p className="text-sand-bright">
-              <span className="text-spice">Q:</span> what&apos;s the founding 50 offer?
-            </p>
-            <p className="text-sand mt-1">
-              <span className="text-sand-dim">A:</span> first 50 premium customers get 50% off for
-              life. $49/mo instead of $99/mo.
-            </p>
-          </div>
-          <div>
-            <p className="text-sand-bright">
-              <span className="text-spice">Q:</span> is my data secure?
-            </p>
-            <p className="text-sand mt-1">
-              <span className="text-sand-dim">A:</span> postgresql with row-level security.
-              enterprise tier includes full audit trails.
-            </p>
+          {/* Includes Conviction Scoring - outside card */}
+          <div className="flex items-center justify-center gap-2 py-3 border border-t-0 border-sand-dim/30">
+            <div className="w-4 h-4 flex items-center justify-center shrink-0" style={{ backgroundColor: '#c45c4a' }}>
+              <Diamond weight="fill" className="w-2.5 h-2.5 text-black" />
+            </div>
+            <span className="text-sand-dim text-xs">Includes</span>
+            <span className="text-sand-bright text-xs font-semibold">Conviction Scoring</span>
           </div>
         </div>
-      </section>
-
-      <AsciiAccent variant="bright" height={3} />
-
-      {/* CTA */}
-      <section className="relative border border-spice/50 p-6 text-center overflow-hidden">
-        <RandomAsciiChars count={8} variant="spice" className="text-spice" minOpacity={0.05} maxOpacity={0.15} />
-        <p className="text-sand-bright text-lg mb-2">ready to start?</p>
-        <p className="text-sand-dim text-sm mb-6">
-          free forever to get started. upgrade when conviction data proves value.
-        </p>
-        <div className="flex flex-wrap justify-center gap-4 text-sm">
-          <Link
-            href="https://discord.gg/thehoneyjar"
-            className="text-spice hover:text-spice-bright"
-          >
-            [start free - no credit card]
-          </Link>
-          <Link
-            href="mailto:henlo@0xhoneyjar.xyz"
-            className="text-sand hover:text-sand-bright"
-          >
-            [contact sales]
-          </Link>
         </div>
-      </section>
+      </div>
+
+      {/* FAQ Section */}
+      <div className="mb-16">
+        <h2 className="font-display text-2xl text-sand-bright mb-8">
+          Frequently asked questions
+        </h2>
+        <FAQAccordion />
+      </div>
+
     </div>
-  );
-}
-
-function FeatureRow({
-  feature,
-  starter,
-  growth,
-  enterprise,
-}: {
-  feature: string;
-  starter: string;
-  growth: string;
-  enterprise: string;
-}) {
-  const formatValue = (val: string) => {
-    if (val === '+') return <span className="text-spice">+</span>;
-    if (val === '-') return <span className="text-sand-dim">-</span>;
-    return <span>{val}</span>;
-  };
-
-  return (
-    <tr className="border-b border-sand-dim/10">
-      <td className="p-2 text-sand">{feature}</td>
-      <td className="p-2 text-center">{formatValue(starter)}</td>
-      <td className="p-2 text-center">{formatValue(growth)}</td>
-      <td className="p-2 text-center">{formatValue(enterprise)}</td>
-    </tr>
   );
 }

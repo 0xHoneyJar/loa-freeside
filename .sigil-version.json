@@ -1,0 +1,10 @@
+{
+  "version": "11.1.0",
+  "codename": "Pure Craft",
+  "mounted_at": "2026-01-12T09:35:01Z",
+  "updated_at": "2026-01-12T09:35:01Z",
+  "sigil_home": "/Users/zksoju/.sigil/sigil",
+  "branch": "main",
+  "architecture": "prompt-only",
+  "note": "Sigil uses .claude/rules/ - does not modify root CLAUDE.md"
+}

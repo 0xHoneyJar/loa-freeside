@@ -1,0 +1,9 @@
+name: mason
+version: "11.0.0"
+description: Generate UI components with design physics
+triggers:
+  - /craft
+  - "create a button"
+  - "generate a component"
+  - "build a form"
+  - "make a card"
