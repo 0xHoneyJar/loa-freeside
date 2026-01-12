@@ -119,6 +119,7 @@ const GEM_BLUE = '#5b8fb9';
 interface CharData {
   char: string;
   color?: string;
+  isGem?: boolean;
 }
 
 interface AsciiBackgroundProps {
@@ -158,7 +159,7 @@ export function AsciiBackground({
     return () => window.removeEventListener('resize', updateSize);
   }, [stripWidth]);
 
-  // Render function
+  // Render function with organic flow variation
   const renderStrip = useCallback((
     cols: number,
     rows: number,
@@ -171,31 +172,32 @@ export function AsciiBackground({
     for (let y = 0; y < rows; y++) {
       grid[y] = [];
       for (let x = 0; x < cols; x++) {
+        // Vary time based on position - creates faster/slower flowing areas
+        // Like sand dunes with different wind speeds
+        const flowVariation = gemNoiseRef.current.noise3D(x * 0.02, y * 0.02, 0) * 0.5 + 0.5;
+        const localTime = time * (0.6 + flowVariation * 0.8); // 0.6x to 1.4x speed variation
+
         const nx = (x + offsetX) * 0.04;
         const ny = y * 0.025;
-        const nz = time;
-        const value = noiseRef.current.noise3D(nx, ny, nz);
+        const value = noiseRef.current.noise3D(nx, ny, localTime);
         const normalized = value * 0.5 + 0.5;
 
-        // Secondary noise for gem placement (different frequency)
-        const gemValue = gemNoiseRef.current.noise3D(nx * 2, ny * 2, nz * 0.5);
+        // Secondary noise for gem placement - very sparse
+        const gemValue = gemNoiseRef.current.noise3D(nx * 3, ny * 3, time * 0.3);
         const gemNormalized = gemValue * 0.5 + 0.5;
 
-        if (normalized > 0.5) {
+        // Gems very rare - subtle accent only (threshold 0.94 = ~6% of noise peaks)
+        if (gemNormalized > 0.94 && normalized > 0.55) {
+          const isRuby = gemNoiseRef.current.noise3D(x * 0.1, y * 0.1, 0) > 0;
+          grid[y][x] = {
+            char: '◆',
+            color: isRuby ? GEM_RUBY : GEM_BLUE,
+            isGem: true,
+          };
+        } else if (normalized > 0.5) {
           const index = Math.floor((normalized - 0.5) / 0.5 * NOISE_CHARS.length);
           const char = NOISE_CHARS[Math.min(index, NOISE_CHARS.length - 1)];
-
-          // Scatter gems in denser areas
-          if (normalized > 0.75 && gemNormalized > 0.85) {
-            // Use gem noise to determine color
-            const isRuby = gemNoiseRef.current.noise3D(x * 0.1, y * 0.1, 0) > 0;
-            grid[y][x] = {
-              char: '●',
-              color: isRuby ? GEM_RUBY : GEM_BLUE,
-            };
-          } else {
-            grid[y][x] = { char };
-          }
+          grid[y][x] = { char };
         } else {
           grid[y][x] = { char: ' ' };
         }
@@ -235,13 +237,13 @@ export function AsciiBackground({
     padding: 0,
   };
 
-  // Render grid with colored gems
-  const renderGridContent = (grid: CharData[][]) => {
+  // Render ASCII only (gems replaced with space)
+  const renderAsciiContent = (grid: CharData[][]) => {
     return grid.map((row, y) => (
       <div key={y} style={{ height: '15px' }}>
         {row.map((cell, x) => (
-          cell.color ? (
-            <span key={x} style={{ color: cell.color }}>{cell.char}</span>
+          cell.isGem ? (
+            <span key={x}> </span>
           ) : (
             <span key={x}>{cell.char}</span>
           )
@@ -250,15 +252,30 @@ export function AsciiBackground({
     ));
   };
 
+  // Render gems only (ASCII replaced with space to maintain positioning)
+  const renderGemsContent = (grid: CharData[][]) => {
+    return grid.map((row, y) => (
+      <div key={y} style={{ height: '15px' }}>
+        {row.map((cell, x) => (
+          cell.isGem ? (
+            <span key={x} style={{ color: cell.color }}>{cell.char}</span>
+          ) : (
+            <span key={x}>{cell.char === ' ' ? ' ' : '\u00A0'}</span>
+          )
+        ))}
+      </div>
+    ));
+  };
+
   return (
     <div className={`fixed inset-0 pointer-events-none overflow-hidden z-0 ${className}`}>
-      {/* Left Strip */}
+      {/* Left Strip - ASCII with fade */}
       <div
         className="absolute top-0 left-0 h-full overflow-hidden"
         style={{ width: stripWidth, opacity }}
       >
         <div className="font-mono text-spice whitespace-pre select-none" style={preStyle}>
-          {renderGridContent(leftGrid)}
+          {renderAsciiContent(leftGrid)}
         </div>
         {/* Fade to black on the right edge */}
         <div
@@ -269,13 +286,23 @@ export function AsciiBackground({
         />
       </div>
 
-      {/* Right Strip */}
+      {/* Left Strip - Gems without fade (more opaque than ASCII) */}
+      <div
+        className="absolute top-0 left-0 h-full overflow-hidden"
+        style={{ width: stripWidth * 0.3, opacity: 0.65 }}
+      >
+        <div className="font-mono whitespace-pre select-none" style={preStyle}>
+          {renderGemsContent(leftGrid)}
+        </div>
+      </div>
+
+      {/* Right Strip - ASCII with fade */}
       <div
         className="absolute top-0 right-0 h-full overflow-hidden"
         style={{ width: stripWidth, opacity }}
       >
         <div className="font-mono text-spice whitespace-pre select-none" style={preStyle}>
-          {renderGridContent(rightGrid)}
+          {renderAsciiContent(rightGrid)}
         </div>
         {/* Fade to black on the left edge */}
         <div
@@ -284,6 +311,16 @@ export function AsciiBackground({
             background: 'linear-gradient(to left, transparent 0%, transparent 20%, #0a0a0a 100%)',
           }}
         />
+      </div>
+
+      {/* Right Strip - Gems without fade (more opaque than ASCII) */}
+      <div
+        className="absolute top-0 right-0 h-full overflow-hidden"
+        style={{ width: stripWidth * 0.3, opacity: 0.65 }}
+      >
+        <div className="font-mono whitespace-pre select-none text-right" style={preStyle}>
+          {renderGemsContent(rightGrid)}
+        </div>
       </div>
     </div>
   );
