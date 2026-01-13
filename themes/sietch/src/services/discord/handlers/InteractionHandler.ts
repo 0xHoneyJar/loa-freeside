@@ -28,6 +28,7 @@ import {
   handleRegisterWaitlistCommand,
   handleWaterShareCommand,
   handleAdminWaterShareCommand,
+  handleVerifyCommand,
   DIRECTORY_INTERACTIONS,
 } from '../../../discord/commands/index.js';
 import {
@@ -119,6 +120,9 @@ async function handleSlashCommand(interaction: ChatInputCommandInteraction): Pro
       break;
     case 'admin-water-share':
       await handleAdminWaterShareCommand(interaction);
+      break;
+    case 'verify':
+      await handleVerifyCommand(interaction);
       break;
     default:
       logger.warn({ commandName }, 'Unknown slash command');

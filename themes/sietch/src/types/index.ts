@@ -145,7 +145,10 @@ export interface AuditLogEntry {
     | 'weekly_digest_failed'
     | 'weekly_digest_error'
     // Sprint 28: Boost event types
-    | 'boost_expiry_check';
+    | 'boost_expiry_check'
+    // Sprint 79: Native Wallet Verification event types
+    | 'wallet_verification'
+    | 'wallet_verification_failed';
   /** Event-specific data */
   eventData: Record<string, unknown>;
   /** When the event occurred */

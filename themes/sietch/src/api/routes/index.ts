@@ -63,3 +63,12 @@ export {
   badgeRouter,
   boostRouter,
 };
+
+/**
+ * Verification routes (Sprint 79 - Native Wallet Verification)
+ * These are factory functions that require dependency injection
+ */
+export { createVerifyRouter } from './verify.routes.js';
+export { createVerifyIntegration } from './verify.integration.js';
+export type { VerifyRouter } from './verify.routes.js';
+export type { VerificationIntegrationDeps, VerifyIntegration } from './verify.integration.js';

@@ -1,6 +1,8 @@
 import express, { type Application, type Request, type Response, type NextFunction } from 'express';
 import { pinoHttp } from 'pino-http';
 import helmet from 'helmet';
+import postgres from 'postgres';
+import { drizzle } from 'drizzle-orm/postgres-js';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
@@ -9,11 +11,13 @@ import { publicRouter, adminRouter, memberRouter, billingRouter, badgeRouter, bo
 import { telegramRouter } from './telegram.routes.js';
 import { adminRouter as billingAdminRouter } from './admin.routes.js';
 import { docsRouter } from './docs/swagger.js';
+import { createVerifyIntegration } from './routes/verify.integration.js';
 import {
   errorHandler,
   notFoundHandler,
   requestIdMiddleware,
 } from './middleware.js';
+import { saveWalletMapping, logAuditEvent } from '../db/index.js';
 
 /**
  * Express application instance
@@ -24,6 +28,11 @@ let app: Application | null = null;
  * HTTP server instance
  */
 let server: ReturnType<Application['listen']> | null = null;
+
+/**
+ * PostgreSQL client for verification routes (Sprint 79)
+ */
+let verifyPostgresClient: ReturnType<typeof postgres> | null = null;
 
 /**
  * Create and configure the Express application
@@ -162,6 +171,58 @@ function createApp(): Application {
   // Telegram routes (v4.1 - Sprint 30)
   expressApp.use('/telegram', telegramRouter);
 
+  // ==========================================================================
+  // Verification Routes (Sprint 79 - Native Wallet Verification)
+  // ==========================================================================
+  // Only mount if PostgreSQL is configured (required for RLS)
+  if (config.database.url) {
+    // Create dedicated PostgreSQL connection for verification
+    verifyPostgresClient = postgres(config.database.url, {
+      max: 5, // Small pool for verification routes
+      idle_timeout: 20,
+      connect_timeout: 10,
+    });
+
+    const verifyDb = drizzle(verifyPostgresClient);
+    const verifyRouter = createVerifyIntegration({
+      db: verifyDb,
+      onWalletLinked: async ({ communityId, discordUserId, walletAddress }) => {
+        // Sprint 79.4: Save wallet mapping to SQLite (legacy) and log audit event
+        try {
+          saveWalletMapping(discordUserId, walletAddress);
+          logAuditEvent('wallet_verification', {
+            actorType: 'user',
+            actorId: discordUserId,
+            action: 'wallet_verification_completed',
+            targetType: 'wallet',
+            targetId: walletAddress,
+            communityId,
+            method: 'native_eip191',
+          });
+          logger.info(
+            { communityId, discordUserId, walletAddress },
+            'Wallet verified and linked to Discord user'
+          );
+        } catch (error) {
+          logger.error(
+            { error, discordUserId, walletAddress },
+            'Failed to save wallet mapping after verification'
+          );
+          // Don't throw - verification is still complete, just logging failed
+        }
+      },
+      onAuditEvent: async (event) => {
+        // Log audit events for compliance tracking
+        logger.info({ event }, 'Verification audit event');
+      },
+    });
+
+    expressApp.use('/verify', verifyRouter);
+    logger.info('Verification routes mounted at /verify');
+  } else {
+    logger.warn('Verification routes disabled - DATABASE_URL not configured');
+  }
+
   // Admin routes (under /admin prefix)
   expressApp.use('/admin', adminRouter);
 
@@ -236,8 +297,15 @@ export async function stopServer(): Promise<void> {
     }, 10000);
   });
 
-  // Close database connection
+  // Close database connections
   closeDatabase();
+
+  // Close verification PostgreSQL connection (Sprint 79)
+  if (verifyPostgresClient) {
+    await verifyPostgresClient.end();
+    verifyPostgresClient = null;
+    logger.info('Verification PostgreSQL connection closed');
+  }
 
   server = null;
   app = null;

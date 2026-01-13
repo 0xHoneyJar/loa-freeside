@@ -19,6 +19,8 @@ import { positionCommand } from './position.js';
 import { waterShareCommand } from './water-share.js';
 import { adminWaterShareCommand } from './admin-water-share.js';
 import { adminStatsCommand } from './admin-stats.js';
+// Sprint 79: Native Wallet Verification
+import { verifyCommand } from './verify.js';
 
 /**
  * All registered slash commands
@@ -42,6 +44,8 @@ export const commands: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
   adminWaterShareCommand.toJSON(),
   // Sprint 21: Admin analytics dashboard
   adminStatsCommand.toJSON(),
+  // Sprint 79: Native Wallet Verification
+  verifyCommand,
 ];
 
 /**
@@ -80,6 +84,9 @@ export { handleAdminWaterShareCommand, handleAdminWaterShareAutocomplete } from 
 
 // Sprint 21: Admin analytics dashboard
 export { handleAdminStatsCommand } from './admin-stats.js';
+
+// Sprint 79: Native Wallet Verification
+export { handleVerifyCommand, cleanupVerifyCommand } from './verify.js';
 
 /**
  * Register slash commands with Discord API

@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wallet Verification</title>
+  <style>
+    :root {
+      --bg-primary: #0f0f23;
+      --bg-secondary: #1a1a2e;
+      --bg-card: #16213e;
+      --text-primary: #e4e4e7;
+      --text-secondary: #a1a1aa;
+      --accent: #5865f2;
+      --accent-hover: #4752c4;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --error: #ef4444;
+      --border: #27272a;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 480px;
+      width: 100%;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border-radius: 16px;
+      padding: 32px;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .header h1 {
+      font-size: 24px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .header p {
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 500;
+      margin-top: 12px;
+    }
+
+    .status-pending { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
+    .status-completed { background: rgba(34, 197, 94, 0.2); color: var(--success); }
+    .status-failed { background: rgba(239, 68, 68, 0.2); color: var(--error); }
+    .status-expired { background: rgba(161, 161, 170, 0.2); color: var(--text-secondary); }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .info-row:last-child {
+      border-bottom: none;
+    }
+
+    .info-label {
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+
+    .info-value {
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .message-box {
+      background: var(--bg-secondary);
+      border-radius: 8px;
+      padding: 16px;
+      margin: 20px 0;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 13px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      border: 1px solid var(--border);
+    }
+
+    .btn {
+      width: 100%;
+      padding: 14px 24px;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background: var(--accent-hover);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+      margin-top: 12px;
+    }
+
+    .btn-secondary:hover {
+      background: var(--border);
+    }
+
+    .error-message {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid var(--error);
+      color: var(--error);
+      padding: 12px;
+      border-radius: 8px;
+      margin-top: 16px;
+      font-size: 14px;
+    }
+
+    .success-message {
+      background: rgba(34, 197, 94, 0.1);
+      border: 1px solid var(--success);
+      color: var(--success);
+      padding: 16px;
+      border-radius: 8px;
+      text-align: center;
+    }
+
+    .success-message h3 {
+      margin-bottom: 8px;
+    }
+
+    .wallet-address {
+      font-family: monospace;
+      font-size: 14px;
+      word-break: break-all;
+      margin-top: 8px;
+      padding: 8px;
+      background: var(--bg-secondary);
+      border-radius: 4px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 16px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .footer {
+      text-align: center;
+      margin-top: 24px;
+      color: var(--text-secondary);
+      font-size: 12px;
+    }
+
+    .footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .attempts-warning {
+      color: var(--warning);
+    }
+
+    .step {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px 0;
+    }
+
+    .step-number {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+
+    .step-content {
+      font-size: 14px;
+    }
+
+    .step-content strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .step-content span {
+      color: var(--text-secondary);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <!-- Loading state -->
+      <div id="loading-state" class="loading">
+        <div class="spinner"></div>
+        <p>Loading verification session...</p>
+      </div>
+
+      <!-- Error state -->
+      <div id="error-state" class="hidden">
+        <div class="header">
+          <h1>Session Not Found</h1>
+          <p>This verification link may have expired or is invalid.</p>
+        </div>
+        <p style="text-align: center; color: var(--text-secondary);">
+          Please use <code>/verify start</code> in Discord to create a new session.
+        </p>
+      </div>
+
+      <!-- Expired state -->
+      <div id="expired-state" class="hidden">
+        <div class="header">
+          <h1>Session Expired</h1>
+          <p id="expired-username"></p>
+          <span class="status-badge status-expired">Expired</span>
+        </div>
+        <p style="text-align: center; color: var(--text-secondary); margin-top: 16px;">
+          This verification session has expired.<br>
+          Use <code>/verify start</code> in Discord to create a new session.
+        </p>
+      </div>
+
+      <!-- Failed state -->
+      <div id="failed-state" class="hidden">
+        <div class="header">
+          <h1>Verification Failed</h1>
+          <p id="failed-username"></p>
+          <span class="status-badge status-failed">Failed</span>
+        </div>
+        <div class="error-message" id="failed-reason"></div>
+        <p style="text-align: center; color: var(--text-secondary); margin-top: 16px;">
+          Contact an admin to reset your verification.
+        </p>
+      </div>
+
+      <!-- Success state -->
+      <div id="success-state" class="hidden">
+        <div class="success-message">
+          <h3>Wallet Verified!</h3>
+          <p>Your wallet has been linked to your Discord account.</p>
+          <div class="wallet-address" id="verified-wallet"></div>
+        </div>
+        <p style="text-align: center; color: var(--text-secondary); margin-top: 16px;">
+          You can close this window and return to Discord.
+        </p>
+      </div>
+
+      <!-- Pending state - main verification flow -->
+      <div id="pending-state" class="hidden">
+        <div class="header">
+          <h1>Wallet Verification</h1>
+          <p>Verifying as <strong id="discord-username"></strong></p>
+          <span class="status-badge status-pending">Pending</span>
+        </div>
+
+        <div class="info-row">
+          <span class="info-label">Expires</span>
+          <span class="info-value" id="expires-at"></span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Attempts Remaining</span>
+          <span class="info-value" id="attempts-remaining"></span>
+        </div>
+
+        <!-- Step 1: Connect Wallet -->
+        <div id="step-connect" class="hidden">
+          <div class="step">
+            <span class="step-number">1</span>
+            <div class="step-content">
+              <strong>Connect Your Wallet</strong>
+              <span>Connect a wallet to sign the verification message</span>
+            </div>
+          </div>
+          <button id="connect-btn" class="btn btn-primary">
+            Connect Wallet
+          </button>
+        </div>
+
+        <!-- Step 2: Sign Message -->
+        <div id="step-sign" class="hidden">
+          <div class="step">
+            <span class="step-number">1</span>
+            <div class="step-content">
+              <strong>Wallet Connected</strong>
+              <span id="connected-wallet"></span>
+            </div>
+          </div>
+          <div class="step">
+            <span class="step-number">2</span>
+            <div class="step-content">
+              <strong>Sign Verification Message</strong>
+              <span>Click below to sign with your wallet</span>
+            </div>
+          </div>
+
+          <div class="message-box" id="signing-message"></div>
+
+          <button id="sign-btn" class="btn btn-primary">
+            Sign Message
+          </button>
+          <button id="disconnect-btn" class="btn btn-secondary">
+            Disconnect Wallet
+          </button>
+        </div>
+
+        <!-- Verification in progress -->
+        <div id="step-verifying" class="hidden">
+          <div class="loading">
+            <div class="spinner"></div>
+            <p>Verifying signature...</p>
+          </div>
+        </div>
+
+        <!-- Error during verification -->
+        <div id="verification-error" class="hidden error-message"></div>
+      </div>
+    </div>
+
+    <div class="footer">
+      Powered by <a href="https://arrakis.community" target="_blank">Arrakis</a>
+    </div>
+  </div>
+
+  <script type="module">
+    // ==========================================================================
+    // State Management
+    // ==========================================================================
+    const state = {
+      sessionId: null,
+      session: null,
+      walletAddress: null,
+      provider: null,
+      signer: null,
+    };
+
+    // ==========================================================================
+    // DOM Elements
+    // ==========================================================================
+    const elements = {
+      loadingState: document.getElementById('loading-state'),
+      errorState: document.getElementById('error-state'),
+      expiredState: document.getElementById('expired-state'),
+      failedState: document.getElementById('failed-state'),
+      successState: document.getElementById('success-state'),
+      pendingState: document.getElementById('pending-state'),
+      stepConnect: document.getElementById('step-connect'),
+      stepSign: document.getElementById('step-sign'),
+      stepVerifying: document.getElementById('step-verifying'),
+      discordUsername: document.getElementById('discord-username'),
+      expiresAt: document.getElementById('expires-at'),
+      attemptsRemaining: document.getElementById('attempts-remaining'),
+      connectBtn: document.getElementById('connect-btn'),
+      signBtn: document.getElementById('sign-btn'),
+      disconnectBtn: document.getElementById('disconnect-btn'),
+      connectedWallet: document.getElementById('connected-wallet'),
+      signingMessage: document.getElementById('signing-message'),
+      verificationError: document.getElementById('verification-error'),
+      verifiedWallet: document.getElementById('verified-wallet'),
+      expiredUsername: document.getElementById('expired-username'),
+      failedUsername: document.getElementById('failed-username'),
+      failedReason: document.getElementById('failed-reason'),
+    };
+
+    // ==========================================================================
+    // Helpers
+    // ==========================================================================
+    function hideAll() {
+      elements.loadingState.classList.add('hidden');
+      elements.errorState.classList.add('hidden');
+      elements.expiredState.classList.add('hidden');
+      elements.failedState.classList.add('hidden');
+      elements.successState.classList.add('hidden');
+      elements.pendingState.classList.add('hidden');
+    }
+
+    function showState(name) {
+      hideAll();
+      const el = elements[`${name}State`];
+      if (el) el.classList.remove('hidden');
+    }
+
+    function formatTimeRemaining(expiresAt) {
+      const now = Date.now();
+      const diff = new Date(expiresAt).getTime() - now;
+      if (diff <= 0) return 'Expired';
+      const minutes = Math.floor(diff / 60000);
+      if (minutes < 1) return 'Less than a minute';
+      return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+    }
+
+    function shortenAddress(address) {
+      if (!address) return '';
+      return `${address.slice(0, 6)}...${address.slice(-4)}`;
+    }
+
+    // ==========================================================================
+    // API Calls
+    // ==========================================================================
+    async function fetchSession(sessionId) {
+      const response = await fetch(`/verify/${sessionId}?format=json`);
+      if (!response.ok) {
+        throw new Error('Session not found');
+      }
+      return response.json();
+    }
+
+    async function submitSignature(sessionId, signature, walletAddress) {
+      const response = await fetch(`/verify/${sessionId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ signature, walletAddress }),
+      });
+      return response.json();
+    }
+
+    // ==========================================================================
+    // Wallet Connection (uses window.ethereum)
+    // ==========================================================================
+    async function connectWallet() {
+      if (typeof window.ethereum === 'undefined') {
+        throw new Error('No Ethereum wallet detected. Please install MetaMask or a compatible wallet.');
+      }
+
+      try {
+        // Request accounts
+        const accounts = await window.ethereum.request({
+          method: 'eth_requestAccounts'
+        });
+
+        if (!accounts || accounts.length === 0) {
+          throw new Error('No accounts found. Please connect your wallet.');
+        }
+
+        state.walletAddress = accounts[0].toLowerCase();
+        return state.walletAddress;
+      } catch (error) {
+        if (error.code === 4001) {
+          throw new Error('Connection rejected. Please approve the connection in your wallet.');
+        }
+        throw error;
+      }
+    }
+
+    async function signMessage(message) {
+      if (!state.walletAddress) {
+        throw new Error('Wallet not connected');
+      }
+
+      try {
+        // Use personal_sign for EIP-191 message signing
+        const signature = await window.ethereum.request({
+          method: 'personal_sign',
+          params: [message, state.walletAddress],
+        });
+
+        return signature;
+      } catch (error) {
+        if (error.code === 4001) {
+          throw new Error('Signature rejected. Please approve the signature in your wallet.');
+        }
+        throw error;
+      }
+    }
+
+    function disconnectWallet() {
+      state.walletAddress = null;
+    }
+
+    // ==========================================================================
+    // UI Updates
+    // ==========================================================================
+    function showPendingState(session) {
+      state.session = session;
+      showState('pending');
+
+      elements.discordUsername.textContent = session.discordUsername;
+      elements.expiresAt.textContent = formatTimeRemaining(session.expiresAt);
+      elements.attemptsRemaining.textContent = session.attemptsRemaining;
+
+      if (session.attemptsRemaining <= 1) {
+        elements.attemptsRemaining.classList.add('attempts-warning');
+      }
+
+      // Show connect step
+      elements.stepConnect.classList.remove('hidden');
+      elements.stepSign.classList.add('hidden');
+      elements.stepVerifying.classList.add('hidden');
+      elements.verificationError.classList.add('hidden');
+    }
+
+    function showSignStep() {
+      elements.stepConnect.classList.add('hidden');
+      elements.stepSign.classList.remove('hidden');
+      elements.connectedWallet.textContent = shortenAddress(state.walletAddress);
+      elements.signingMessage.textContent = state.session.message || 'Loading message...';
+    }
+
+    function showVerifying() {
+      elements.stepSign.classList.add('hidden');
+      elements.stepVerifying.classList.remove('hidden');
+      elements.verificationError.classList.add('hidden');
+    }
+
+    function showVerificationError(message) {
+      elements.stepVerifying.classList.add('hidden');
+      elements.stepSign.classList.remove('hidden');
+      elements.verificationError.textContent = message;
+      elements.verificationError.classList.remove('hidden');
+    }
+
+    // ==========================================================================
+    // Event Handlers
+    // ==========================================================================
+    async function handleConnect() {
+      elements.connectBtn.disabled = true;
+      elements.connectBtn.textContent = 'Connecting...';
+
+      try {
+        await connectWallet();
+        showSignStep();
+      } catch (error) {
+        elements.verificationError.textContent = error.message;
+        elements.verificationError.classList.remove('hidden');
+      } finally {
+        elements.connectBtn.disabled = false;
+        elements.connectBtn.textContent = 'Connect Wallet';
+      }
+    }
+
+    async function handleSign() {
+      elements.signBtn.disabled = true;
+      elements.signBtn.textContent = 'Signing...';
+
+      try {
+        showVerifying();
+
+        const signature = await signMessage(state.session.message);
+        const result = await submitSignature(
+          state.sessionId,
+          signature,
+          state.walletAddress
+        );
+
+        if (result.success) {
+          elements.verifiedWallet.textContent = result.walletAddress;
+          showState('success');
+        } else {
+          // Check if session is now failed/expired
+          if (result.sessionStatus === 'failed') {
+            elements.failedUsername.textContent = `for ${state.session.discordUsername}`;
+            elements.failedReason.textContent = result.error || 'Maximum attempts exceeded';
+            showState('failed');
+          } else if (result.sessionStatus === 'expired') {
+            elements.expiredUsername.textContent = `for ${state.session.discordUsername}`;
+            showState('expired');
+          } else {
+            // Still pending - show error and allow retry
+            showVerificationError(result.error || 'Verification failed. Please try again.');
+            // Refresh session to get updated attempts
+            const updatedSession = await fetchSession(state.sessionId);
+            state.session = updatedSession;
+            elements.attemptsRemaining.textContent = updatedSession.attemptsRemaining;
+            if (updatedSession.attemptsRemaining <= 1) {
+              elements.attemptsRemaining.classList.add('attempts-warning');
+            }
+          }
+        }
+      } catch (error) {
+        showVerificationError(error.message);
+      } finally {
+        elements.signBtn.disabled = false;
+        elements.signBtn.textContent = 'Sign Message';
+      }
+    }
+
+    function handleDisconnect() {
+      disconnectWallet();
+      elements.stepSign.classList.add('hidden');
+      elements.stepConnect.classList.remove('hidden');
+      elements.verificationError.classList.add('hidden');
+    }
+
+    // ==========================================================================
+    // Initialization
+    // ==========================================================================
+    async function init() {
+      // Extract session ID from URL
+      const pathParts = window.location.pathname.split('/');
+      const sessionId = pathParts[pathParts.length - 1];
+
+      if (!sessionId || sessionId.length !== 36) {
+        showState('error');
+        return;
+      }
+
+      state.sessionId = sessionId;
+
+      try {
+        const session = await fetchSession(sessionId);
+
+        switch (session.status) {
+          case 'pending':
+            showPendingState(session);
+            break;
+          case 'completed':
+            elements.verifiedWallet.textContent = session.walletAddress;
+            showState('success');
+            break;
+          case 'expired':
+            elements.expiredUsername.textContent = `for ${session.discordUsername}`;
+            showState('expired');
+            break;
+          case 'failed':
+            elements.failedUsername.textContent = `for ${session.discordUsername}`;
+            elements.failedReason.textContent = 'Maximum verification attempts exceeded';
+            showState('failed');
+            break;
+          default:
+            showState('error');
+        }
+      } catch (error) {
+        console.error('Failed to fetch session:', error);
+        showState('error');
+      }
+    }
+
+    // Attach event listeners
+    elements.connectBtn.addEventListener('click', handleConnect);
+    elements.signBtn.addEventListener('click', handleSign);
+    elements.disconnectBtn.addEventListener('click', handleDisconnect);
+
+    // Listen for account changes
+    if (window.ethereum) {
+      window.ethereum.on('accountsChanged', (accounts) => {
+        if (accounts.length === 0) {
+          handleDisconnect();
+        } else {
+          state.walletAddress = accounts[0].toLowerCase();
+          elements.connectedWallet.textContent = shortenAddress(state.walletAddress);
+        }
+      });
+    }
+
+    // Initialize
+    init();
+  </script>
+</body>
+</html>

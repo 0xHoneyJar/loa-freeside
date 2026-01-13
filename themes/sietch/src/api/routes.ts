@@ -28,3 +28,9 @@ export {
 export { billingRouter } from './billing.routes.js';
 export { badgeRouter } from './badge.routes.js';
 export { boostRouter } from './boost.routes.js';
+
+// =============================================================================
+// Verification Routes (Sprint 79 - Native Wallet Verification)
+// =============================================================================
+export { createVerifyRouter, createVerifyIntegration } from './routes/index.js';
+export type { VerifyRouter, VerificationIntegrationDeps, VerifyIntegration } from './routes/index.js';
