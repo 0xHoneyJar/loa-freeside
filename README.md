@@ -33,13 +33,14 @@ Instead of binary "has token / doesn't have token" gates, Arrakis creates dynami
 
 ### Conviction Scoring
 
-Not all holders are equal. Someone who's held for 6 months through a bear market is more valuable than a whale who bought yesterday.
+Not all holders are the same. Someone who's held for 6 months through a bear market is different to a whale who bought yesterday.
 
 Arrakis tracks **conviction over time**:
 - How long they've held
 - Have they ever sold (paper hands detection)
 - Their position relative to other holders
 - Activity and engagement metrics
+- Onchain activities over time
 
 ### Tiered Progression
 
