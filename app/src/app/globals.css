@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #0a0a0a;
+  --fg: #c2b280;
+  --fg-dim: #6b6245;
+  --fg-bright: #e8ddb5;
+  --accent: #f4a460;
+  --border: #3d3a2e;
+
+  /* Emil Kowalski easing curves */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-out-expo: cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--fg);
+  --color-sand: #c2b280;
+  --color-sand-dim: #6b6245;
+  --color-sand-bright: #e8ddb5;
+  --color-spice: #f4a460;
+  --color-black: #0a0a0a;
+  --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-adhesion);
+}
+
+::selection {
+  background: var(--fg);
+  color: var(--bg);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-mono), monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0a0a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3d3a2e;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #6b6245;
+}

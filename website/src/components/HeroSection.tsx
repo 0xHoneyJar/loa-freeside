@@ -94,6 +94,21 @@ export function HeroSection() {
               View Demo
             </Link>
           </motion.div>
+
+          {/* Campaign CTA */}
+          <motion.div
+            className="mt-8 pt-6 border-t border-sand-dim/20"
+            variants={item}
+          >
+            <a
+              href="https://app.arrakis.community/losers"
+              className="inline-flex items-center gap-3 text-sand hover:text-spice transition-colors duration-150 group"
+            >
+              <span className="text-xs font-mono uppercase tracking-wider">New</span>
+              <span className="text-sm">Losers of Berachain</span>
+              <span className="text-spice group-hover:translate-x-1 transition-transform duration-150">→</span>
+            </a>
+          </motion.div>
         </motion.div>
       </div>
 

@@ -117,7 +117,7 @@ const GEM_RUBY = '#e07060';
 const GEM_BLUE = '#70a8d0';
 
 // Sand color - subtle background texture
-const SAND_COLOR = 'rgba(244, 164, 96, 0.15)';
+// SAND_COLOR is now derived from the opacity prop in the component
 
 interface CharData {
   char: string;
@@ -125,17 +125,22 @@ interface CharData {
   isRuby?: boolean;
 }
 
-interface AsciiBackgroundProps {
+export interface AsciiBackgroundProps {
   className?: string;
   speed?: number;
   stripWidth?: number;
+  opacity?: number;
 }
 
 export function AsciiBackground({
   className = '',
   speed = 0.0003,
   stripWidth = 360,
+  opacity = 0.15,
 }: AsciiBackgroundProps) {
+  // Derive sand color from opacity prop
+  const sandColor = `rgba(244, 164, 96, ${opacity})`;
+
   const [leftGrid, setLeftGrid] = useState<CharData[][]>([]);
   const [rightGrid, setRightGrid] = useState<CharData[][]>([]);
   const [dimensions, setDimensions] = useState({ cols: 52, rows: 70 });
@@ -246,7 +251,7 @@ export function AsciiBackground({
               {cell.char}
             </span>
           ) : (
-            <span key={x} style={{ color: SAND_COLOR }}>{cell.char}</span>
+            <span key={x} style={{ color: sandColor }}>{cell.char}</span>
           )
         ))}
       </div>

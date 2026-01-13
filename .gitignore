@@ -134,14 +134,18 @@ grimoires/loa/artifacts/*
 # Uncomment to keep local-only:
 # .beads/
 
-# Application artifacts (app/)
-app/src/
-app/tests/
-app/config/
-app/package.json
-app/package-lock.json
-app/tsconfig.json
-app/ecosystem.config.js
+# Application artifacts - REMOVED: app/ is now a real project
+# app/src/
+# app/tests/
+# app/config/
+# app/package.json
+# app/package-lock.json
+# app/tsconfig.json
+# app/ecosystem.config.js
+
+# App-specific ignores (node_modules, .next already covered above)
+app/.env.local
+app/.env
 
 # GTM artifacts (private - not for public repos)
 gtm-grimoire/

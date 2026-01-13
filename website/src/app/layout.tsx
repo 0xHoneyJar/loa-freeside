@@ -3,7 +3,7 @@ import localFont from 'next/font/local';
 import { GeistMono } from 'geist/font/mono';
 import './globals.css';
 import { Header } from '@/components/Header';
-import { Footer } from '@/components/Footer';
+import { FooterWrapper } from '@/components/FooterWrapper';
 import { AsciiBackground } from '@/components/AsciiBackground';
 import { PromoCard } from '@/components/PromoCard';
 
@@ -45,9 +45,7 @@ export default function RootLayout({
         <PromoCard />
         <div className="relative z-10 pt-16">
           <main>{children}</main>
-          <div className="mx-auto max-w-4xl px-6 py-8">
-            <Footer />
-          </div>
+          <FooterWrapper />
         </div>
       </body>
     </html>
