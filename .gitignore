@@ -54,67 +54,9 @@ temp/
 # Each developer runs setup independently, so this should not be shared
 .loa-setup-complete
 
-# User context files (discovery inputs, uploaded docs, extracted content)
-# These are user-specific inputs that should never be committed
-# The README.md is tracked to explain the directory's purpose
-grimoires/loa/context/*
-!grimoires/loa/context/README.md
-
 # ck semantic search state (embeddings cache, indexes)
 # Large machine-specific files that rebuild automatically
 .ck/
-
-# Agent trajectory logs (reasoning audit trails)
-# JSONL format logs for development/debugging, not needed in version control
-grimoires/loa/a2a/trajectory/*.jsonl
-
-# Pending feedback (temporary file for failed Linear submissions)
-# Kept in case /feedback fails to submit to Linear - automatically retried
-grimoires/loa/analytics/pending-feedback.json
-
-# Server audit reports (contain sensitive deployment info)
-grimoires/loa/deployment/SERVER-REALITY-AUDIT.md
-
-# =============================================================================
-# LOA TEMPLATE EXCLUSIONS
-# =============================================================================
-# These files are ALWAYS excluded from the template repository.
-# They are generated per-project and must never be committed to the main loa repo.
-
-# Generated documentation artifacts
-grimoires/loa/prd.md
-grimoires/loa/sdd.md
-grimoires/loa/sprint.md
-grimoires/loa/NOTES.md
-
-# Agent-to-Agent communication (sprint-specific, generated)
-# README.md files are kept to explain the directory purpose
-grimoires/loa/a2a/*
-!grimoires/loa/a2a/README.md
-!grimoires/loa/a2a/trajectory/
-grimoires/loa/a2a/trajectory/*
-!grimoires/loa/a2a/trajectory/README.md
-
-# Deployment artifacts (project-specific)
-grimoires/loa/deployment/*
-!grimoires/loa/deployment/README.md
-
-# Reality extraction (codebase-specific)
-grimoires/loa/reality/*
-!grimoires/loa/reality/README.md
-
-# Analytics (usage tracking, developer-specific)
-grimoires/loa/analytics/*
-!grimoires/loa/analytics/README.md
-
-# Research files (project-specific discoveries)
-# NOTE: Public research should go to grimoires/pub/research/ (git-tracked)
-grimoires/loa/research/*
-!grimoires/loa/research/README.md
-
-# Artifacts (grounded docs, handoffs, audits - generated per-project)
-grimoires/loa/artifacts/*
-!grimoires/loa/artifacts/README.md
 
 # =============================================================================
 # LOA CONSTRUCTS (licensed skills, user-specific)
@@ -146,6 +88,9 @@ app/ecosystem.config.js
 # GTM artifacts (private - not for public repos)
 grimoires/gtm/
 
+# Loa grimoire artifacts (private - contains PRDs, SDDs, security audits)
+grimoires/loa/
+
 # GTM commands (installed from constructs packs, not for public repos)
 .claude/commands/analyze-market.md
 .claude/commands/announce-release.md
@@ -161,11 +106,6 @@ grimoires/gtm/
 .claude/commands/review-gtm.md
 .claude/commands/sync-from-dev.md
 .claude/commands/sync-from-gtm.md
-
-# Reap migration artifacts (abandoned in favor of Paddle)
-grimoires/loa/prd-reap-migration.md
-grimoires/loa/sdd-reap-migration.md
-grimoires/loa/sprint-reap-migration.md
 
 # Legacy grimoire directory (migrated to grimoires/loa/)
 loa-grimoire/
