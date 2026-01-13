@@ -1,7 +1,7 @@
 # =============================================================================
 # Production Deployment Workflow
 # =============================================================================
-# Builds and deploys sietch-service to AWS ECS
+# Builds and deploys themes/sietch to AWS ECS
 #
 # Triggers:
 #   - Push to main branch (auto-deploy)
@@ -19,7 +19,7 @@ on:
     branches:
       - main
     paths:
-      - 'sietch-service/**'
+      - 'themes/sietch/**'
       - '.github/workflows/deploy-production.yml'
   workflow_dispatch:
     inputs:
@@ -79,8 +79,8 @@ jobs:
         id: build
         uses: docker/build-push-action@v5
         with:
-          context: ./sietch-service
-          file: ./sietch-service/Dockerfile
+          context: ./themes/sietch
+          file: ./themes/sietch/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

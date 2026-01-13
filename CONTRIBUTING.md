@@ -33,7 +33,7 @@ Thank you for your interest in contributing to Sietch! This document provides gu
 
 2. **Install dependencies**
    ```bash
-   cd sietch-service
+   cd themes/sietch
    npm install
    ```
 
@@ -237,19 +237,26 @@ Follow [Keep a Changelog](https://keepachangelog.com/):
 ## Project Structure
 
 ```
-sietch-service/
-├── src/
-│   ├── api/          # REST API routes
-│   ├── db/           # Database schema and queries
-│   ├── discord/      # Discord bot commands and embeds
-│   ├── services/     # Business logic services
-│   ├── trigger/      # Scheduled tasks
-│   └── types/        # TypeScript type definitions
-├── tests/
-│   ├── unit/         # Unit tests
-│   └── integration/  # Integration tests
-├── scripts/          # Utility scripts
-└── grimoires/loa/    # Product documentation (PRD, SDD, sprints)
+arrakis/
+├── sites/                  # Web properties
+│   ├── docs/               # Documentation site (Nextra)
+│   └── web/                # Marketing website (Next.js)
+├── themes/                 # Theme-specific backend services
+│   └── sietch/             # Arrakis/Dune theme
+│       ├── src/
+│       │   ├── api/        # REST API routes
+│       │   ├── db/         # Database schema and queries
+│       │   ├── discord/    # Discord bot commands and embeds
+│       │   ├── services/   # Business logic services
+│       │   ├── trigger/    # Scheduled tasks
+│       │   └── types/      # TypeScript type definitions
+│       └── tests/
+│           ├── unit/       # Unit tests
+│           └── integration/# Integration tests
+├── packages/               # Shared libraries
+│   └── core/               # Common types and utilities
+├── infrastructure/         # Terraform configs
+└── grimoires/              # Loa framework state
 ```
 
 ## Getting Help

@@ -135,7 +135,7 @@ All v4.1 features are preserved via the SietchTheme:
 ```bash
 # Clone and install
 git clone https://github.com/0xHoneyJar/arrakis.git
-cd arrakis/sietch-service
+cd arrakis/themes/sietch
 npm install
 
 # Configure environment
@@ -227,7 +227,7 @@ GET /admin/analytics
 | Document | Description |
 |----------|-------------|
 | [docs.arrakis.community](https://docs.arrakis.community) | Full documentation site |
-| [sietch-service/README.md](sietch-service/README.md) | Service setup & development |
+| [themes/sietch/README.md](themes/sietch/README.md) | Sietch theme setup & development |
 | [PROCESS.md](PROCESS.md) | Development workflow |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |
 
