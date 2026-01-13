@@ -1,141 +1,103 @@
 # Arrakis
 
-[![Version](https://img.shields.io/badge/version-5.1.1-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-6.0.0-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-green.svg)](LICENSE.md)
 [![Docs](https://img.shields.io/badge/docs-arrakis.community-orange.svg)](https://docs.arrakis.community)
 
-A multi-tenant SaaS platform for token-gated onchain communities and beyond. Deploy wallet-based access control, tiered progression systems, and cross-platform bots through a self-service wizard.
+**Stop losing your best holders to silence. Start building communities that actually retain.**
 
-**Version 5.1.0 "The Merchant"** - Paddle billing integration, documentation site, marketing website, and infrastructure resilience improvements.
+Most token-gated communities are ghost towns. Members verify once, then vanish. Arrakis turns passive holders into engaged participants through conviction scoring, tiered progression, and cross-platform engagement—all without writing a single line of code.
 
-🌐 **Website**: [arrakis.community](https://arrakis.community)
-📚 **Documentation**: [docs.arrakis.community](https://docs.arrakis.community)
+**Website**: [arrakis.community](https://arrakis.community) | **Documentation**: [docs.arrakis.community](https://docs.arrakis.community)
 
-## Overview
+---
 
-Arrakis transforms token-gated community management from bespoke bot development into a self-service platform. Communities can deploy Discord/Telegram bots with configurable eligibility rules, tiered role systems, and real-time wallet scoring—all without writing code.
+## The Problem
 
-### What's New in v5.1
+You've built a community. You've got token gates. But your Discord is still dead.
 
-#### Paddle Billing Integration
-- **PaddleBillingAdapter** - Complete migration from Stripe to Paddle
-- Subscription management with pause/resume support
-- One-time payments for badges and boosts
-- Customer portal for self-service billing management
-- Webhook processing with signature verification
+- **Holders verify and disappear** — No reason to come back
+- **Whales and shrimps treated the same** — No recognition for conviction
+- **No visibility into who matters** — Can't identify your true believers
+- **Bots are dumb** — They check balances, nothing more
 
-#### Documentation & Marketing
-- **docs.arrakis.community** - Comprehensive developer documentation powered by Nextra 4
-- **arrakis.community** - Marketing website with Dune-themed ASCII aesthetic
-- Feature documentation, API reference, and getting started guides
-- Use case pages and competitor comparisons
+## The Solution
 
-#### Infrastructure Resilience
-- **CircuitBreaker** - Fault tolerance for external service calls
-- **Distributed Tracing** - W3C Trace Context support with TracedDatabase and TracedRedis
-- **WebhookQueue** - BullMQ-based reliable webhook processing
-- **MFA Integration** - Duo Security support via MfaRouterService
+Arrakis transforms token-gated access into **conviction-scored communities**.
 
-### Previous Releases
+Instead of binary "has token / doesn't have token" gates, Arrakis creates dynamic, engaging communities where **holding longer matters**, **showing up counts**, and **contribution is recognized**.
 
-#### v5.0 - Multi-Tenant SaaS Architecture
-- PostgreSQL with Row-Level Security for tenant isolation
-- Hexagonal Architecture with ports and adapters
-- Theme System (BasicTheme free, SietchTheme premium)
-- Two-Tier Chain Provider for chain-agnostic scoring
-- Policy-as-Code Pre-Gate with OPA validation
-- Enhanced HITL Approval Gate with MFA support
+---
 
-### Previous Features (v4.x)
+## Why Arrakis?
 
-All v4.1 features are preserved via the SietchTheme:
-- 9-tier Dune-themed progression system
-- 10 badge types across tenure, achievement, and activity
-- Weekly digest with community metrics
-- Telegram bot with inline queries
-- Stripe billing integration
-- Cross-platform identity (Discord + Telegram)
+### Conviction Scoring
 
-## Architecture
+Not all holders are equal. Someone who's held for 6 months through a bear market is more valuable than a whale who bought yesterday.
+
+Arrakis tracks **conviction over time**:
+- How long they've held
+- Have they ever sold (paper hands detection)
+- Their position relative to other holders
+- Activity and engagement metrics
+
+### Tiered Progression
+
+Give your community something to climb. Arrakis includes a 9-tier progression system that rewards long-term holders:
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                        ARRAKIS SAAS PLATFORM v5.0                           │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                         DOMAIN LAYER                                 │   │
-│  │  ┌──────────┐  ┌──────────────┐  ┌─────────┐  ┌───────────────┐    │   │
-│  │  │  Asset   │  │  Community   │  │  Role   │  │  Eligibility  │    │   │
-│  │  └──────────┘  └──────────────┘  └─────────┘  └───────────────┘    │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                                    │                                        │
-│                                    ▼                                        │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                        SERVICE LAYER                                 │   │
-│  │  ┌──────────────┐  ┌──────────────┐  ┌─────────────┐  ┌──────────┐ │   │
-│  │  │ WizardEngine │  │ SyncService  │  │ ThemeEngine │  │ TierEval │ │   │
-│  │  └──────────────┘  └──────────────┘  └─────────────┘  └──────────┘ │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                                    │                                        │
-│                    ┌───────────────┼───────────────┐                       │
-│                    ▼               ▼               ▼                       │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                     INFRASTRUCTURE LAYER                             │   │
-│  │                                                                      │   │
-│  │  ┌────────────────────────────────────────────────────────────────┐ │   │
-│  │  │              TWO-TIER CHAIN PROVIDER                            │ │   │
-│  │  │  ┌─────────────────┐    ┌────────────────────────────────────┐ │ │   │
-│  │  │  │  Tier 1: Native │    │  Tier 2: Score Service             │ │ │   │
-│  │  │  │  (Binary checks)│    │  (Complex queries + Circuit Breaker)│ │ │   │
-│  │  │  │  • hasBalance   │    │  • getRankedHolders                │ │ │   │
-│  │  │  │  • ownsNFT      │    │  • getAddressRank                  │ │ │   │
-│  │  │  │  Direct viem    │    │  • getActivityScore                │ │ │   │
-│  │  │  └─────────────────┘    └────────────────────────────────────┘ │ │   │
-│  │  └────────────────────────────────────────────────────────────────┘ │   │
-│  │                                                                      │   │
-│  │  ┌──────────────┐  ┌───────────────┐  ┌──────────────────────────┐ │   │
-│  │  │ Discord      │  │ PostgreSQL    │  │ Redis                    │ │   │
-│  │  │ Adapter      │  │ + RLS         │  │ (Sessions + TokenBucket) │ │   │
-│  │  └──────────────┘  └───────────────┘  └──────────────────────────┘ │   │
-│  │                                                                      │   │
-│  │  ┌──────────────┐  ┌───────────────┐  ┌──────────────────────────┐ │   │
-│  │  │ BullMQ       │  │ Vault Transit │  │ S3 Shadow                │ │   │
-│  │  │ Synthesis    │  │ (Signing)     │  │ (Manifest Versions)      │ │   │
-│  │  └──────────────┘  └───────────────┘  └──────────────────────────┘ │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
+Traveler → Acolyte → Fremen → Sayyadina → Sandrider → Reverend Mother → Usul → Fedaykin → Naib
 ```
 
-### Key Components
+Each tier unlocks new channels, permissions, and recognition. Members see their progress and have clear goals.
 
-| Component | Purpose |
-|-----------|---------|
-| **Two-Tier Chain Provider** | Score Service for complex queries, viem fallback for binary checks |
-| **Theme Engine** | Pluggable tier/badge/notification configurations |
-| **WizardEngine** | Self-service community onboarding |
-| **PolicyAsCodePreGate** | OPA-based Terraform validation |
-| **EnhancedHITLApprovalGate** | Human approval workflow with MFA |
-| **RiskScorer** | Infrastructure change risk assessment |
-| **InfracostClient** | Cost estimation integration |
+### Multi-Platform
+
+Your community lives on Discord. And Telegram. And maybe more. Arrakis unifies identity across platforms:
+
+- **Discord bot** with slash commands, role sync, and rich embeds
+- **Telegram bot** with inline queries and mobile-first design
+- **Unified wallet identity** — Link once, recognized everywhere
+
+### Zero-Downtime Migration
+
+Already using Collab.Land or Guild? Arrakis includes **Shadow Mode** — run alongside your existing bot, compare results, and migrate when ready. No disruption to your community.
+
+---
+
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| **Conviction Scoring** | Time-weighted holder scoring that rewards loyalty |
+| **9-Tier System** | Progression system with automatic role sync |
+| **10 Badge Types** | Achievement, tenure, and activity-based recognition |
+| **Weekly Digest** | Automated community health reports |
+| **Shadow Mode** | Risk-free migration from existing bots |
+| **Cross-Platform** | Discord + Telegram with unified identity |
+| **Self-Service Setup** | Wizard-based onboarding, no code required |
+| **Real-Time Sync** | Automatic eligibility and tier updates |
+
+---
 
 ## Quick Start
 
 ### For Community Operators
 
-1. Invite the Arrakis bot to your Discord server
-2. Run `/setup` to launch the onboarding wizard
-3. Configure your eligibility rules (token, chain, threshold)
-4. Select a theme (BasicTheme or SietchTheme)
-5. Bot automatically creates channels, roles, and starts syncing
+1. **Invite the bot** to your Discord server
+2. **Run `/setup`** to launch the onboarding wizard
+3. **Configure eligibility** — token address, chain, minimum threshold
+4. **Choose a theme** — Basic (free) or Sietch (premium)
+5. **Done** — Bot creates channels, roles, and starts syncing
 
 ### For Developers
 
 ```bash
-# Clone and install
+# Clone the repository
 git clone https://github.com/0xHoneyJar/arrakis.git
 cd arrakis/themes/sietch
+
+# Install dependencies
 npm install
 
 # Configure environment
@@ -149,87 +111,99 @@ npm run dev
 npm run test:run
 ```
 
-## Configuration
+---
 
-### Environment Variables
+## Architecture
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `DATABASE_URL` | PostgreSQL connection string | Yes |
-| `REDIS_URL` | Redis connection string | Yes |
-| `DISCORD_TOKEN` | Discord bot token | Yes |
-| `DISCORD_CLIENT_ID` | Discord application ID | Yes |
-| `API_KEY_PEPPER` | HMAC pepper for API key hashing (generate: `openssl rand -base64 32`) | Production |
-| `RATE_LIMIT_SALT` | Salt for rate limit key hashing (generate: `openssl rand -hex 16`) | Production |
-| `TELEGRAM_BOT_TOKEN` | Telegram bot token | Optional |
-| `PADDLE_API_KEY` | Paddle API key | Optional |
-| `PADDLE_WEBHOOK_SECRET` | Paddle webhook secret | Optional |
-| `PADDLE_ENVIRONMENT` | `sandbox` or `production` | Optional |
-| `SCORE_SERVICE_URL` | Score Service endpoint | Optional |
-| `VAULT_ADDR` | HashiCorp Vault address | Production |
-| `VAULT_TOKEN` | Vault authentication token | Production |
-
-## Security
-
-Arrakis implements a 6-layer Defense in Depth model:
-
-1. **WAF (CloudFront)** - Rate limiting, SQL injection, XSS protection
-2. **Network (VPC)** - Private subnets, security groups, VPC endpoints
-3. **Application (EKS)** - Non-root containers, read-only filesystem, RBAC
-4. **Data (PostgreSQL)** - Row-Level Security for tenant isolation
-5. **Secrets (Vault)** - Transit engine for signing, no key exposure
-6. **Audit (CloudWatch)** - Comprehensive logging with HMAC signatures
-
-### Infrastructure Security
-
-- **Terraform Plan Validation** - OPA policies block dangerous changes
-- **Risk Scoring** - Automatic assessment of infrastructure changes
-- **Human Approval** - MFA-verified approvals for high-risk changes
-- **Audit Trail** - HMAC-signed entries prevent tampering
-
-## API Endpoints
-
-### Public
+Arrakis is built as a **monorepo** with clear separation of concerns:
 
 ```
-GET /health
-{ "status": "healthy", "version": "5.1.0" }
-
-GET /api/v1/eligibility
-GET /api/v1/eligibility/:wallet
+arrakis/
+├── sites/              # Web properties
+│   ├── docs/           # Documentation (Nextra)
+│   └── web/            # Marketing site (Next.js)
+├── themes/             # Backend services
+│   └── sietch/         # Arrakis theme service
+├── packages/           # Shared libraries
+│   └── core/           # Common types and utilities
+└── infrastructure/     # Terraform configs
 ```
 
-### Authenticated
+### Technical Highlights
 
-```
-GET /me/stats
-GET /me/tier-progress
-GET /stats/community
-GET /admin/analytics
-```
+- **Hexagonal Architecture** — Ports and adapters for clean domain boundaries
+- **PostgreSQL + RLS** — Row-level security for tenant isolation
+- **Two-Tier Chain Provider** — Score Service for complex queries, viem for binary checks
+- **BullMQ Synthesis** — Reliable job processing for role sync
+- **Circuit Breakers** — Resilient external service integration
+- **W3C Distributed Tracing** — Full observability across services
 
-## Theme System
+### Security
 
-### BasicTheme (Free)
-- 3-tier progression (Member, Active, VIP)
-- Token-gated access
-- Basic notifications
+6-layer Defense in Depth:
 
-### SietchTheme (Premium)
-- 9-tier Dune-themed progression
-- 10 badge types
-- Weekly digest
-- Story fragments
-- Water Sharer badge system
+1. **WAF** — Rate limiting, injection protection
+2. **Network** — VPC isolation, security groups
+3. **Application** — Input validation, sanitization
+4. **Data** — Row-level security, encryption at rest
+5. **Secrets** — HashiCorp Vault integration
+6. **Audit** — HMAC-signed audit trail
+
+---
+
+## Pricing
+
+| Tier | Price | Features |
+|------|-------|----------|
+| **Basic** | Free | 3-tier system, token gates, basic notifications |
+| **Pro** | $49/mo | 9-tier system, badges, weekly digest, priority sync |
+| **Enterprise** | Custom | White-label, custom tiers, dedicated support, SLA |
+
+See [arrakis.community/pricing](https://arrakis.community/pricing) for details.
+
+---
+
+## Comparison
+
+| Feature | Arrakis | Collab.Land | Guild.xyz | Matrica |
+|---------|---------|-------------|-----------|---------|
+| Conviction Scoring | Yes | No | No | No |
+| Tiered Progression | 9 tiers | No | Custom | Limited |
+| Cross-Platform | Discord + Telegram | Discord only | Discord + Telegram | Discord only |
+| Shadow Mode Migration | Yes | N/A | No | No |
+| Self-Service Setup | Yes | Yes | Yes | Yes |
+| Open Source | Yes (AGPL-3.0) | No | Partial | No |
+
+---
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [docs.arrakis.community](https://docs.arrakis.community) | Full documentation site |
-| [themes/sietch/README.md](themes/sietch/README.md) | Sietch theme setup & development |
-| [PROCESS.md](PROCESS.md) | Development workflow |
-| [CHANGELOG.md](CHANGELOG.md) | Version history |
+- **[Getting Started](https://docs.arrakis.community/getting-started)** — Setup guide for operators
+- **[Features](https://docs.arrakis.community/features)** — Deep dive into capabilities
+- **[API Reference](https://docs.arrakis.community/api)** — REST API documentation
+- **[FAQ](https://docs.arrakis.community/faq)** — Common questions answered
+
+---
+
+## Contributing
+
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+```bash
+# Development setup
+cd themes/sietch
+npm install
+npm run dev
+
+# Run tests
+npm run test:run
+
+# Lint and typecheck
+npm run lint
+npm run typecheck
+```
+
+---
 
 ## Built With
 
@@ -241,8 +215,18 @@ GET /admin/analytics
 - **Telegram**: Grammy
 - **Blockchain**: viem
 - **Testing**: Vitest
-- **Framework**: [Loa](https://github.com/0xHoneyJar/loa) agent-driven development
+- **Infrastructure**: Terraform, AWS ECS
+
+---
 
 ## License
 
-AGPL-3.0 - See [LICENSE.md](LICENSE.md) for details.
+AGPL-3.0 — See [LICENSE.md](LICENSE.md) for details.
+
+---
+
+<p align="center">
+  <strong>Stop managing holders. Start building believers.</strong>
+  <br>
+  <a href="https://arrakis.community">arrakis.community</a>
+</p>

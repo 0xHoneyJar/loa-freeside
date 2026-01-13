@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0] - 2026-01-13
+
+### Added
+
+#### Monorepo Architecture
+- **Complete repository restructure** for separation of concerns
+- `sites/` directory for web properties (docs, marketing website)
+- `themes/` directory for backend services (sietch theme)
+- `packages/` directory for shared libraries (core utilities)
+- Clear ownership boundaries and self-documenting structure
+
+#### Marketing-Focused Documentation
+- **Rewritten README** with value proposition and problem/solution framing
+- Conviction scoring positioning as key differentiator
+- Competitor comparison table (Collab.Land, Guild.xyz, Matrica)
+- Simplified quick start for both operators and developers
+
+### Changed
+
+#### Directory Structure
+| Before | After |
+|--------|-------|
+| `docs-site/` | `sites/docs/` |
+| `website/` | `sites/web/` |
+| `sietch-service/` | `themes/sietch/` |
+| `tests/` (Loa framework) | `.claude/tests/` |
+
+- Updated CI/CD workflow paths for new structure
+- Updated all documentation references
+- Added READMEs explaining intent for each top-level directory
+
+### Why Major Version?
+
+This release represents a **fundamental architectural change** to the repository structure. While no breaking API changes exist, the directory reorganization:
+- Changes all import paths for anyone extending the codebase
+- Reorganizes the mental model for contributors
+- Establishes the pattern for future themes and packages
+- Signals maturity and intentional design
+
+**Migration**: If you have local branches, rebase onto main to pick up the new structure.
+
 ## [5.1.1] - 2026-01-06
 
 ### Changed
@@ -517,6 +558,7 @@ Complete incumbent bot migration system enabling zero-downtime transitions from 
 
 | Version | Release Date | Codename | Key Features |
 |---------|--------------|----------|--------------|
+| 6.0.0 | 2026-01-13 | The Architects | Monorepo restructure, marketing README, separation of concerns |
 | 5.1.1 | 2026-01-06 | Housekeeping | Stripe removal, gitignore cleanup, provider-agnostic billing |
 | 5.1.0 | 2026-01-06 | The Merchant | Paddle billing, docs site, marketing website, infrastructure resilience |
 | 5.0.1 | 2025-12-30 | Coexistence & Security | Shadow mode, migration engine, incumbent monitoring, security hardening |
@@ -528,7 +570,8 @@ Complete incumbent bot migration system enabling zero-downtime transitions from 
 | 2.0.0 | 2025-12-15 | Social Layer | Profiles, badges, directory, activity |
 | 1.0.0 | 2025-12-01 | MVP | Core eligibility, Discord bot, API |
 
-[Unreleased]: https://github.com/0xHoneyJar/arrakis/compare/v5.1.1...HEAD
+[Unreleased]: https://github.com/0xHoneyJar/arrakis/compare/v6.0.0...HEAD
+[6.0.0]: https://github.com/0xHoneyJar/arrakis/compare/v5.1.1...v6.0.0
 [5.1.1]: https://github.com/0xHoneyJar/arrakis/compare/v5.1.0...v5.1.1
 [5.1.0]: https://github.com/0xHoneyJar/arrakis/compare/v5.0.1...v5.1.0
 [5.0.1]: https://github.com/0xHoneyJar/arrakis/compare/v5.0.0...v5.0.1
