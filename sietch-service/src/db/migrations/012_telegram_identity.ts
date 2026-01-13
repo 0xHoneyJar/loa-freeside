@@ -59,6 +59,10 @@ CREATE INDEX IF NOT EXISTS idx_telegram_verification_sessions_collabland
  * Safe SQL that handles cases where columns already exist
  * SQLite will error on ALTER TABLE ADD COLUMN if column exists
  * We use this alternative approach
+ *
+ * NOTE: The idx_member_profiles_telegram index is created separately
+ * in connection.ts AFTER the telegram_user_id column is added,
+ * because this migration runs before the column exists.
  */
 export const TELEGRAM_IDENTITY_SAFE_SQL = `
 -- Create telegram_verification_sessions table
@@ -85,10 +89,6 @@ CREATE INDEX IF NOT EXISTS idx_telegram_verification_sessions_user
 
 CREATE INDEX IF NOT EXISTS idx_telegram_verification_sessions_collabland
   ON telegram_verification_sessions(collabland_session_id);
-
--- Index for member_profiles telegram lookups
-CREATE INDEX IF NOT EXISTS idx_member_profiles_telegram
-  ON member_profiles(telegram_user_id);
 `;
 
 /**

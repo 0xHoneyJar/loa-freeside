@@ -195,6 +195,9 @@ export function initDatabase(): Database.Database {
     if (columnExists.count === 0) {
       db.exec('ALTER TABLE member_profiles ADD COLUMN telegram_user_id TEXT UNIQUE');
       db.exec('ALTER TABLE member_profiles ADD COLUMN telegram_linked_at INTEGER');
+      // Create index after column exists
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_member_profiles_telegram
+        ON member_profiles(telegram_user_id)`);
       logger.info('Added telegram columns to member_profiles');
     }
   } catch (error) {
