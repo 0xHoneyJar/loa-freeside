@@ -20,7 +20,7 @@ import {
   getCurrentTrace,
   createSpan,
   getTraceSqlComment,
-} from './TraceContext';
+} from './TraceContext.js';
 
 // =============================================================================
 // Types

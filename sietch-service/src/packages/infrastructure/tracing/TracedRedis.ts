@@ -20,7 +20,7 @@ import {
   createSpan,
   getTraceId,
   getSpanId,
-} from './TraceContext';
+} from './TraceContext.js';
 
 // =============================================================================
 // Types
