@@ -109,7 +109,14 @@ const configSchema = z.object({
   chain: z.object({
     rpcUrls: urlListSchema, // Support multiple RPC URLs for resilience
     bgtAddress: addressSchema,
-    rewardVaultAddresses: addressListSchema,
+    // DEPRECATED: rewardVaultAddresses is no longer used
+    // Eligibility is now determined by balanceOf + burn detection
+    rewardVaultAddresses: z
+      .string()
+      .optional()
+      .default('')
+      .transform((val) => (val ? val.split(',').map((addr) => addr.trim()).filter(Boolean) : []))
+      .pipe(z.array(addressSchema.or(z.string().length(0)))),
   }),
 
   // trigger.dev Configuration
@@ -459,6 +466,7 @@ export interface Config {
   chain: {
     rpcUrls: string[];
     bgtAddress: Address;
+    /** @deprecated No longer used - eligibility now uses balanceOf + burn detection */
     rewardVaultAddresses: Address[];
   };
   triggerDev: {

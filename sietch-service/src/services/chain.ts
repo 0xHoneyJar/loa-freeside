@@ -9,24 +9,11 @@ import {
 import { berachain } from 'viem/chains';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
-import type { EligibilityEntry, ClaimEvent, BurnEvent } from '../types/index.js';
-
-/**
- * RewardPaid event ABI from reward vaults
- * Emitted when a user claims BGT rewards
- */
-const REWARD_PAID_EVENT = {
-  type: 'event',
-  name: 'RewardPaid',
-  inputs: [
-    { name: 'user', type: 'address', indexed: true },
-    { name: 'reward', type: 'uint256', indexed: false },
-  ],
-} as const satisfies AbiEvent;
+import type { EligibilityEntry, BurnEvent } from '../types/index.js';
 
 /**
  * Transfer event ABI from BGT token
- * Used to detect burns (transfers to 0x0)
+ * Used to detect burns (transfers to 0x0) and incoming transfers
  */
 const TRANSFER_EVENT = {
   type: 'event',
@@ -37,6 +24,19 @@ const TRANSFER_EVENT = {
     { name: 'value', type: 'uint256', indexed: false },
   ],
 } as const satisfies AbiEvent;
+
+/**
+ * ERC20 balanceOf ABI for querying BGT holdings
+ */
+const BALANCE_OF_ABI = [
+  {
+    type: 'function',
+    name: 'balanceOf',
+    stateMutability: 'view',
+    inputs: [{ name: 'account', type: 'address' }],
+    outputs: [{ name: 'balance', type: 'uint256' }],
+  },
+] as const;
 
 /**
  * Zero address for burn detection
@@ -63,7 +63,14 @@ interface RpcEndpointHealth {
  * Chain Service
  *
  * Queries Berachain RPC via viem to fetch BGT eligibility data.
- * Fetches claim events from reward vaults and burn events from BGT transfers.
+ *
+ * Eligibility is determined by:
+ * 1. BGT balance (via balanceOf on BGT token) - how much BGT a wallet holds
+ * 2. Burn history (Transfer events to 0x0) - wallets that have EVER burned BGT are ineligible
+ *
+ * This approach is simpler than tracking claim events from reward vaults,
+ * as we only care about current holdings and whether the wallet has ever redeemed.
+ *
  * Supports multiple RPC endpoints with automatic fallback.
  */
 class ChainService {
@@ -144,36 +151,62 @@ class ChainService {
   /**
    * Fetch complete eligibility data from chain
    *
+   * Strategy:
+   * 1. Get all wallets that have ever received BGT (Transfer events TO addresses)
+   * 2. Get all wallets that have ever burned BGT (Transfer events to 0x0)
+   * 3. Filter out wallets that have burned (ineligible forever)
+   * 4. Query current balanceOf for remaining wallets
+   * 5. Sort by BGT held and assign ranks/roles
+   *
    * @returns Sorted list of eligible wallets (no burns, sorted by BGT held desc)
    */
   async fetchEligibilityData(): Promise<EligibilityEntry[]> {
     logger.info('Starting eligibility data fetch from chain');
 
-    // 1. Get all BGT claim events from reward vaults
-    const claimEvents = await this.fetchClaimEvents();
-    logger.info({ count: claimEvents.length }, 'Fetched claim events');
-
-    // 2. Get all BGT burn events (transfers to 0x0)
+    // 1. Get all BGT burn events (transfers to 0x0)
+    // These wallets are permanently ineligible
     const burnEvents = await this.fetchBurnEvents();
-    logger.info({ count: burnEvents.length }, 'Fetched burn events');
+    const burnedWallets = new Set<string>();
+    let totalBurned = 0n;
+    for (const burn of burnEvents) {
+      burnedWallets.add(burn.from.toLowerCase());
+      totalBurned += burn.amount;
+    }
+    logger.info(
+      { burnedWalletCount: burnedWallets.size, totalBurnedWei: totalBurned.toString() },
+      'Fetched burn events - these wallets are ineligible'
+    );
 
-    // 3. Aggregate by wallet
-    const walletData = this.aggregateWalletData(claimEvents, burnEvents);
-    logger.info({ wallets: walletData.length }, 'Aggregated wallet data');
+    // 2. Get all wallets that have ever received BGT
+    const receivedWallets = await this.fetchBgtRecipients();
+    logger.info({ count: receivedWallets.size }, 'Found wallets that have received BGT');
 
-    // 4. Filter out wallets that have burned any BGT
-    const eligibleWallets = walletData.filter((w) => w.bgtBurned === 0n);
-    logger.info({ eligible: eligibleWallets.length }, 'Filtered eligible wallets');
+    // 3. Filter out wallets that have burned
+    const eligibleAddresses: Address[] = [];
+    for (const address of receivedWallets) {
+      if (!burnedWallets.has(address.toLowerCase())) {
+        eligibleAddresses.push(address as Address);
+      }
+    }
+    logger.info(
+      { eligible: eligibleAddresses.length, filtered: receivedWallets.size - eligibleAddresses.length },
+      'Filtered eligible wallets (no burns)'
+    );
 
-    // 5. Sort by BGT held descending
-    eligibleWallets.sort((a, b) => {
+    // 4. Query current balances for eligible wallets
+    const walletData = await this.fetchBalances(eligibleAddresses);
+    logger.info({ wallets: walletData.length }, 'Fetched current balances');
+
+    // 5. Filter out zero balances and sort by BGT held descending
+    const nonZeroWallets = walletData.filter((w) => w.bgtHeld > 0n);
+    nonZeroWallets.sort((a, b) => {
       if (b.bgtHeld > a.bgtHeld) return 1;
       if (b.bgtHeld < a.bgtHeld) return -1;
       return 0;
     });
 
     // 6. Assign ranks and roles
-    const ranked = this.assignRanksAndRoles(eligibleWallets);
+    const ranked = this.assignRanksAndRoles(nonZeroWallets);
 
     logger.info(
       {
@@ -188,20 +221,100 @@ class ChainService {
   }
 
   /**
-   * Fetch RewardPaid events from all configured reward vaults
+   * Fetch all wallets that have ever received BGT
+   * Queries Transfer events where 'to' is not 0x0
    */
-  async fetchClaimEvents(): Promise<ClaimEvent[]> {
-    const events: ClaimEvent[] = [];
+  async fetchBgtRecipients(): Promise<Set<Address>> {
     const currentBlock = await this.client.getBlockNumber();
+    const recipients = new Set<Address>();
+    let fromBlock = 0n;
 
-    for (const vaultAddress of config.chain.rewardVaultAddresses) {
-      logger.debug({ vault: vaultAddress }, 'Fetching claim events from vault');
+    logger.info('Fetching all BGT recipients from Transfer events');
 
-      const vaultEvents = await this.fetchRewardPaidLogs(vaultAddress, currentBlock);
-      events.push(...vaultEvents);
+    while (fromBlock <= currentBlock) {
+      const endBlock = fromBlock + BLOCK_RANGE - 1n > currentBlock ? currentBlock : fromBlock + BLOCK_RANGE - 1n;
+
+      try {
+        const batchLogs = await this.client.getLogs({
+          address: config.chain.bgtAddress as Address,
+          event: TRANSFER_EVENT,
+          fromBlock,
+          toBlock: endBlock,
+        });
+
+        for (const log of batchLogs) {
+          // Only track recipients (not burns to 0x0)
+          if (log.args.to && log.args.to !== ZERO_ADDRESS) {
+            recipients.add(log.args.to.toLowerCase() as Address);
+          }
+        }
+
+        logger.debug(
+          { fromBlock, toBlock: endBlock, count: batchLogs.length, uniqueRecipients: recipients.size },
+          'Fetched Transfer log batch'
+        );
+      } catch (error) {
+        logger.warn({ fromBlock, toBlock: endBlock, error }, 'Error fetching Transfer logs');
+        throw error;
+      }
+
+      fromBlock = endBlock + 1n;
     }
 
-    return events;
+    return recipients;
+  }
+
+  /**
+   * Fetch current BGT balances for a list of addresses
+   * Uses multicall for efficiency
+   */
+  async fetchBalances(addresses: Address[]): Promise<EligibilityEntry[]> {
+    if (addresses.length === 0) {
+      return [];
+    }
+
+    const entries: EligibilityEntry[] = [];
+    const batchSize = 100; // Multicall batch size
+
+    for (let i = 0; i < addresses.length; i += batchSize) {
+      const batch = addresses.slice(i, i + batchSize);
+
+      try {
+        const results = await this.client.multicall({
+          contracts: batch.map((address) => ({
+            address: config.chain.bgtAddress as Address,
+            abi: BALANCE_OF_ABI,
+            functionName: 'balanceOf',
+            args: [address],
+          })),
+        });
+
+        for (let j = 0; j < batch.length; j++) {
+          const result = results[j];
+          const batchAddress = batch[j];
+          if (result && result.status === 'success' && batchAddress) {
+            const balance = result.result as bigint;
+            entries.push({
+              address: batchAddress,
+              bgtClaimed: balance, // Using balance as "claimed" for backwards compatibility
+              bgtBurned: 0n, // We already filtered out burners
+              bgtHeld: balance,
+              role: 'none' as const,
+            });
+          }
+        }
+
+        logger.debug(
+          { batchStart: i, batchEnd: i + batch.length, successful: entries.length },
+          'Fetched balance batch'
+        );
+      } catch (error) {
+        logger.warn({ batchStart: i, error }, 'Error fetching balance batch');
+        throw error;
+      }
+    }
+
+    return entries;
   }
 
   /**
@@ -211,58 +324,10 @@ class ChainService {
     const currentBlock = await this.client.getBlockNumber();
 
     return this.fetchTransferLogs(
-      config.chain.bgtAddress,
+      config.chain.bgtAddress as Address,
       currentBlock,
       ZERO_ADDRESS
     );
-  }
-
-  /**
-   * Fetch RewardPaid logs with pagination
-   */
-  private async fetchRewardPaidLogs(
-    address: Address,
-    toBlock: bigint
-  ): Promise<ClaimEvent[]> {
-    const events: ClaimEvent[] = [];
-    let fromBlock = 0n;
-
-    while (fromBlock <= toBlock) {
-      const endBlock = fromBlock + BLOCK_RANGE - 1n > toBlock ? toBlock : fromBlock + BLOCK_RANGE - 1n;
-
-      try {
-        const batchLogs = await this.client.getLogs({
-          address,
-          event: REWARD_PAID_EVENT,
-          fromBlock,
-          toBlock: endBlock,
-        });
-
-        for (const log of batchLogs) {
-          if (log.args.user && log.args.reward !== undefined) {
-            events.push({
-              recipient: log.args.user,
-              amount: log.args.reward,
-            });
-          }
-        }
-
-        logger.debug(
-          { fromBlock, toBlock: endBlock, count: batchLogs.length },
-          'Fetched RewardPaid log batch'
-        );
-      } catch (error) {
-        logger.warn(
-          { fromBlock, toBlock: endBlock, error },
-          'Error fetching RewardPaid logs'
-        );
-        throw error;
-      }
-
-      fromBlock = endBlock + 1n;
-    }
-
-    return events;
   }
 
   /**
@@ -316,37 +381,94 @@ class ChainService {
   }
 
   /**
-   * Aggregate claim and burn events by wallet
+   * Check if a specific wallet has ever burned BGT
+   *
+   * @param address - Wallet address to check
+   * @returns true if the wallet has burned any BGT, false otherwise
    */
-  aggregateWalletData(claims: ClaimEvent[], burns: BurnEvent[]): EligibilityEntry[] {
-    const wallets = new Map<Address, EligibilityEntry>();
+  async hasWalletBurnedBgt(address: Address): Promise<boolean> {
+    const currentBlock = await this.client.getBlockNumber();
+    let fromBlock = 0n;
 
-    // Sum up claims
-    for (const claim of claims) {
-      const address = claim.recipient.toLowerCase() as Address;
-      const existing = wallets.get(address) ?? {
-        address,
-        bgtClaimed: 0n,
-        bgtBurned: 0n,
-        bgtHeld: 0n,
-        role: 'none' as const,
-      };
-      existing.bgtClaimed += claim.amount;
-      existing.bgtHeld = existing.bgtClaimed - existing.bgtBurned;
-      wallets.set(address, existing);
-    }
+    while (fromBlock <= currentBlock) {
+      const endBlock = fromBlock + BLOCK_RANGE - 1n > currentBlock ? currentBlock : fromBlock + BLOCK_RANGE - 1n;
 
-    // Sum up burns
-    for (const burn of burns) {
-      const address = burn.from.toLowerCase() as Address;
-      const existing = wallets.get(address);
-      if (existing) {
-        existing.bgtBurned += burn.amount;
-        existing.bgtHeld = existing.bgtClaimed - existing.bgtBurned;
+      try {
+        const logs = await this.client.getLogs({
+          address: config.chain.bgtAddress as Address,
+          event: TRANSFER_EVENT,
+          args: { from: address, to: ZERO_ADDRESS },
+          fromBlock,
+          toBlock: endBlock,
+        });
+
+        // If we find any burn event, return true immediately
+        if (logs.length > 0) {
+          return true;
+        }
+      } catch (error) {
+        logger.warn({ address, fromBlock, toBlock: endBlock, error }, 'Error checking burn history');
+        throw error;
       }
+
+      fromBlock = endBlock + 1n;
     }
 
-    return Array.from(wallets.values());
+    return false;
+  }
+
+  /**
+   * Get the current BGT balance for a specific wallet
+   *
+   * @param address - Wallet address to check
+   * @returns BGT balance in wei
+   */
+  async getWalletBgtBalance(address: Address): Promise<bigint> {
+    try {
+      const balance = await this.client.readContract({
+        address: config.chain.bgtAddress as Address,
+        abi: BALANCE_OF_ABI,
+        functionName: 'balanceOf',
+        args: [address],
+      });
+      return balance as bigint;
+    } catch (error) {
+      logger.warn({ address, error }, 'Error fetching BGT balance');
+      throw error;
+    }
+  }
+
+  /**
+   * Check eligibility for a specific wallet
+   * A wallet is eligible if:
+   * 1. It has a non-zero BGT balance
+   * 2. It has NEVER burned any BGT
+   *
+   * @param address - Wallet address to check
+   * @returns Eligibility entry or null if ineligible
+   */
+  async checkWalletEligibility(address: Address): Promise<EligibilityEntry | null> {
+    // First check if they've ever burned BGT
+    const hasBurned = await this.hasWalletBurnedBgt(address);
+    if (hasBurned) {
+      logger.debug({ address }, 'Wallet has burned BGT - ineligible');
+      return null;
+    }
+
+    // Then check their current balance
+    const balance = await this.getWalletBgtBalance(address);
+    if (balance === 0n) {
+      logger.debug({ address }, 'Wallet has zero BGT balance - ineligible');
+      return null;
+    }
+
+    return {
+      address,
+      bgtClaimed: balance,
+      bgtBurned: 0n,
+      bgtHeld: balance,
+      role: 'none',
+    };
   }
 
   /**
