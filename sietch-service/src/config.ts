@@ -12,6 +12,19 @@ dotenvConfig({ path: '.env.local' });
 dotenvConfig(); // Fallback to .env
 
 /**
+ * Zod schema for parsing string booleans from environment variables
+ * Properly handles "true"/"false" strings unlike z.coerce.boolean()
+ * which incorrectly coerces "false" to true (any non-empty string is truthy)
+ */
+const envBooleanSchema = z
+  .union([z.boolean(), z.string()])
+  .transform((val) => {
+    if (typeof val === 'boolean') return val;
+    const lower = val.toLowerCase().trim();
+    return lower === 'true' || lower === '1' || lower === 'yes';
+  });
+
+/**
  * Zod schema for validating Ethereum addresses
  */
 const addressSchema = z.string().regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid Ethereum address');
@@ -169,19 +182,21 @@ const configSchema = z.object({
   }),
 
   // Feature Flags (v4.0 - Sprint 23)
+  // NOTE: Uses envBooleanSchema instead of z.coerce.boolean() because
+  // z.coerce.boolean() incorrectly coerces "false" string to true
   features: z.object({
     // Enable Paddle billing integration
-    billingEnabled: z.coerce.boolean().default(false),
+    billingEnabled: envBooleanSchema.default(false),
     // Enable Gatekeeper feature gating
-    gatekeeperEnabled: z.coerce.boolean().default(false),
+    gatekeeperEnabled: envBooleanSchema.default(false),
     // Enable Redis caching
-    redisEnabled: z.coerce.boolean().default(false),
+    redisEnabled: envBooleanSchema.default(false),
     // Enable score badges (Sprint 27)
-    badgesEnabled: z.coerce.boolean().default(true),
+    badgesEnabled: envBooleanSchema.default(true),
     // Enable Telegram bot (v4.1 - Sprint 30)
-    telegramEnabled: z.coerce.boolean().default(false),
+    telegramEnabled: envBooleanSchema.default(false),
     // Enable Vault secrets management (Sprint 71)
-    vaultEnabled: z.coerce.boolean().default(false),
+    vaultEnabled: envBooleanSchema.default(false),
   }),
 
   // Telegram Configuration (v4.1 - Sprint 30)
