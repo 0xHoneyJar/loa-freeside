@@ -39,6 +39,118 @@ export const DEFAULT_PROTECTED_OPERATIONS: ProtectedOperation[] = [
   'ADMIN_OVERRIDE',
 ];
 
+// =============================================================================
+// MFA Verification Metrics (Sprint 83 - LOW-3)
+// =============================================================================
+
+/**
+ * MFA verification metrics for monitoring and alerting
+ *
+ * Sprint 83 (LOW-3): Track MFA success/failure for security monitoring
+ */
+export interface MFAVerificationMetrics {
+  /** Total successful verifications */
+  successCount: number;
+  /** Total failed verifications */
+  failureCount: number;
+  /** Failures by user (for repeated failure alerting) */
+  failuresByUser: Map<string, number>;
+  /** Failures by operation */
+  failuresByOperation: Map<string, number>;
+  /** Timestamp of last failure (for alert windows) */
+  lastFailureAt?: Date;
+}
+
+// Global metrics instance
+const mfaMetrics: MFAVerificationMetrics = {
+  successCount: 0,
+  failureCount: 0,
+  failuresByUser: new Map(),
+  failuresByOperation: new Map(),
+};
+
+/**
+ * Get MFA verification metrics
+ *
+ * Sprint 83 (LOW-3): Returns current MFA metrics for monitoring
+ */
+export function getMFAVerificationMetrics(): {
+  successCount: number;
+  failureCount: number;
+  totalCount: number;
+  successRate: number;
+  lastFailureAt?: Date;
+} {
+  const totalCount = mfaMetrics.successCount + mfaMetrics.failureCount;
+  return {
+    successCount: mfaMetrics.successCount,
+    failureCount: mfaMetrics.failureCount,
+    totalCount,
+    successRate: totalCount > 0 ? mfaMetrics.successCount / totalCount : 1,
+    lastFailureAt: mfaMetrics.lastFailureAt,
+  };
+}
+
+/**
+ * Get repeated failure alerts
+ *
+ * Sprint 83 (LOW-3): Returns users with repeated MFA failures
+ * Default threshold: 5 failures triggers alert
+ *
+ * @param threshold - Number of failures to trigger alert (default: 5)
+ */
+export function getMFAFailureAlerts(threshold = 5): Array<{
+  userId: string;
+  failureCount: number;
+}> {
+  const alerts: Array<{ userId: string; failureCount: number }> = [];
+  for (const [userId, count] of mfaMetrics.failuresByUser) {
+    if (count >= threshold) {
+      alerts.push({ userId, failureCount: count });
+    }
+  }
+  return alerts;
+}
+
+/**
+ * Reset MFA metrics (for testing)
+ */
+export function resetMFAVerificationMetrics(): void {
+  mfaMetrics.successCount = 0;
+  mfaMetrics.failureCount = 0;
+  mfaMetrics.failuresByUser.clear();
+  mfaMetrics.failuresByOperation.clear();
+  mfaMetrics.lastFailureAt = undefined;
+}
+
+/**
+ * Record MFA verification result
+ *
+ * @internal Called by NaibSecurityGuard.verify()
+ */
+function recordMFAMetric(
+  success: boolean,
+  userId: string,
+  operation: ProtectedOperation
+): void {
+  if (success) {
+    mfaMetrics.successCount++;
+    // Reset user failure count on success
+    mfaMetrics.failuresByUser.delete(userId);
+  } else {
+    mfaMetrics.failureCount++;
+    mfaMetrics.lastFailureAt = new Date();
+
+    // Track per-user failures
+    const userFailures = mfaMetrics.failuresByUser.get(userId) ?? 0;
+    mfaMetrics.failuresByUser.set(userId, userFailures + 1);
+
+    // Track per-operation failures
+    const opFailures = mfaMetrics.failuresByOperation.get(operation) ?? 0;
+    mfaMetrics.failuresByOperation.set(operation, opFailures + 1);
+  }
+}
+
 /**
  * Security guard error
  */
@@ -131,6 +243,9 @@ export class NaibSecurityGuard {
     // Verify MFA
     const mfaResult = await this.mfaService.verify(request.mfaVerification);
 
+    // Sprint 83 (LOW-3): Record MFA metrics for monitoring
+    recordMFAMetric(mfaResult.valid, request.userId, request.operation);
+
     const result: SecurityGuardResult = {
       allowed: mfaResult.valid,
       verifiedAt,
@@ -154,6 +269,7 @@ export class NaibSecurityGuard {
       error: mfaResult.valid ? undefined : mfaResult.error,
       metadata: {
         mfaMethod: mfaResult.method,
+        metric: mfaResult.valid ? 'sietch_mfa_verification_success_total' : 'sietch_mfa_verification_failure_total',
         ...request.metadata,
       },
     });

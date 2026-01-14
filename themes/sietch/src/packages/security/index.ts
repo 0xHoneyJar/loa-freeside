@@ -23,8 +23,16 @@ export type { MFAServiceConfig } from './MFAService.js';
 export { KillSwitchProtocol, KillSwitchError } from './KillSwitchProtocol.js';
 export type { KillSwitchProtocolConfig } from './KillSwitchProtocol.js';
 
-// Security Guard
-export { NaibSecurityGuard, SecurityGuardError, DEFAULT_PROTECTED_OPERATIONS } from './NaibSecurityGuard.js';
+// Security Guard (Sprint 83: Added MFA metrics)
+export {
+  NaibSecurityGuard,
+  SecurityGuardError,
+  DEFAULT_PROTECTED_OPERATIONS,
+  getMFAVerificationMetrics,
+  getMFAFailureAlerts,
+  resetMFAVerificationMetrics,
+} from './NaibSecurityGuard.js';
+export type { MFAVerificationMetrics } from './NaibSecurityGuard.js';
 
 // Audit Log Persistence (Sprint 50)
 export { AuditLogPersistence, createAuditLogPersistence } from './AuditLogPersistence.js';

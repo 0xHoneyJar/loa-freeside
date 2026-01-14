@@ -901,6 +901,60 @@ function validateStartupConfig(cfg: typeof parsedConfig): void {
         'Consider setting CORS_ALLOWED_ORIGINS to specific domains in production.'
     );
   }
+
+  // ==========================================================================
+  // Sprint 83: Example Value Validation (LOW-2)
+  // ==========================================================================
+
+  if (isProduction) {
+    // Patterns that indicate placeholder/example values
+    const examplePatterns = [
+      /^your_.*_here$/i,     // your_secret_here, your_token_here
+      /^change_?me$/i,       // changeme, change_me
+      /^example$/i,          // example
+      /^xxx+$/i,             // xxx, xxxx
+      /^placeholder$/i,      // placeholder
+      /^test_?secret$/i,     // testsecret, test_secret
+      /^todo$/i,             // todo
+      /^replace_?me$/i,      // replaceme, replace_me
+    ];
+
+    /**
+     * Check if a value matches any example pattern
+     */
+    const isExampleValue = (value: string | undefined): boolean => {
+      if (!value) return false;
+      return examplePatterns.some((pattern) => pattern.test(value));
+    };
+
+    // Check sensitive configuration values
+    const sensitiveFields: Array<{ name: string; value: string | undefined }> = [
+      { name: 'DISCORD_BOT_TOKEN', value: cfg.discord.botToken },
+      { name: 'PADDLE_API_KEY', value: cfg.paddle.apiKey },
+      { name: 'PADDLE_WEBHOOK_SECRET', value: cfg.paddle.webhookSecret },
+      { name: 'TELEGRAM_BOT_TOKEN', value: cfg.telegram.botToken },
+      { name: 'TELEGRAM_WEBHOOK_SECRET', value: cfg.telegram.webhookSecret },
+      { name: 'VAULT_TOKEN', value: cfg.vault.token },
+      { name: 'RATE_LIMIT_SALT', value: cfg.security.rateLimitSalt },
+      { name: 'WEBHOOK_SECRET', value: cfg.security.webhookSecret },
+      { name: 'DUO_SECRET_KEY', value: cfg.mfa.duo.secretKey },
+    ];
+
+    for (const field of sensitiveFields) {
+      if (isExampleValue(field.value)) {
+        logger.fatal(
+          { field: field.name },
+          `SECURITY ERROR: ${field.name} appears to be a placeholder value`
+        );
+        throw new Error(
+          `SECURITY ERROR: ${field.name} is set to a placeholder value (e.g., "your_*_here", "changeme"). ` +
+            'Replace with a real secret before deploying to production.'
+        );
+      }
+    }
+
+    logger.info('Sprint 83 (LOW-2): Example value validation passed');
+  }
 }
 
 // Run startup validation
@@ -962,14 +1016,45 @@ function getApiKeyService(): AdminApiKeyService {
  * @param apiKey - API key to validate
  * @returns Admin name if valid plaintext key, undefined otherwise
  */
+// Sprint 83 (LOW-1): Legacy API key sunset tracking
+// Sunset date: 90 days from January 14, 2026 = April 14, 2026
+const LEGACY_KEY_SUNSET_DATE = '2026-04-14';
+let legacyKeyUsageCount = 0;
+
+/**
+ * Get legacy key usage metrics
+ *
+ * Sprint 83 (LOW-1): Track legacy key usage for monitoring
+ *
+ * @returns Current legacy key usage count
+ */
+export function getLegacyKeyUsageCount(): number {
+  return legacyKeyUsageCount;
+}
+
+/**
+ * Reset legacy key usage count (for testing)
+ */
+export function resetLegacyKeyUsageCount(): void {
+  legacyKeyUsageCount = 0;
+}
+
 export function validateApiKey(apiKey: string): string | undefined {
   // Sprint 73: Only check legacy keys synchronously
   // Log warning if legacy keys are being used
   const adminName = config.api.adminApiKeys.legacyKeys.get(apiKey);
   if (adminName) {
+    // Sprint 83 (LOW-1): Enhanced warning with sunset date
+    legacyKeyUsageCount++;
     logger.warn(
-      { adminName, keyHint: apiKey.substring(0, 8) },
-      'SECURITY WARNING: Using legacy plaintext API key. Migrate to bcrypt-hashed keys.'
+      {
+        adminName,
+        keyHint: apiKey.substring(0, 8),
+        sunsetDate: LEGACY_KEY_SUNSET_DATE,
+        usageCount: legacyKeyUsageCount,
+        metric: 'sietch_legacy_api_key_usage_total',
+      },
+      `DEPRECATION WARNING: Using legacy plaintext API key. Support ends ${LEGACY_KEY_SUNSET_DATE}. Migrate to bcrypt-hashed keys.`
     );
   }
   return adminName;
@@ -1005,9 +1090,17 @@ export async function validateApiKeyAsync(apiKey: string): Promise<string | unde
   // Fall back to legacy plaintext keys (deprecated)
   const legacyAdmin = legacyKeys.get(apiKey);
   if (legacyAdmin) {
+    // Sprint 83 (LOW-1): Enhanced warning with sunset date
+    legacyKeyUsageCount++;
     logger.warn(
-      { adminName: legacyAdmin, keyHint: apiKey.substring(0, 8) },
-      'SECURITY WARNING: Using legacy plaintext API key. Migrate to bcrypt-hashed keys.'
+      {
+        adminName: legacyAdmin,
+        keyHint: apiKey.substring(0, 8),
+        sunsetDate: LEGACY_KEY_SUNSET_DATE,
+        usageCount: legacyKeyUsageCount,
+        metric: 'sietch_legacy_api_key_usage_total',
+      },
+      `DEPRECATION WARNING: Using legacy plaintext API key. Support ends ${LEGACY_KEY_SUNSET_DATE}. Migrate to bcrypt-hashed keys.`
     );
     return legacyAdmin;
   }
