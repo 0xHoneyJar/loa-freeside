@@ -553,12 +553,12 @@ resource "aws_ecs_task_definition" "ingestor" {
 }
 
 # Ingestor Service
-# Note: Starts with desired_count=0 until Ingestor code is ready (Sprint 2)
+# Sprint GW-2: Ingestor code ready - enable service with desired count
 resource "aws_ecs_service" "ingestor" {
   name            = "${local.name_prefix}-ingestor"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.ingestor.arn
-  desired_count   = 0 # Set to var.ingestor_desired_count when ready
+  desired_count   = var.ingestor_desired_count # Enabled in Sprint GW-2
   launch_type     = "FARGATE"
 
   network_configuration {

@@ -1,0 +1,42 @@
+{
+  "name": "@arrakis/ingestor",
+  "version": "1.0.0",
+  "description": "Lightweight Discord Gateway listener for Gateway Proxy pattern",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "discord",
+    "gateway",
+    "rabbitmq",
+    "ingestor"
+  ],
+  "author": "0xHoneyJar",
+  "license": "AGPL-3.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "amqplib": "^0.10.4",
+    "discord.js": "^14.16.3",
+    "pino": "^9.5.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/amqplib": "^0.10.5",
+    "@types/node": "^22.19.5",
+    "@vitest/coverage-v8": "^2.1.9",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.5"
+  }
+}

@@ -1,0 +1,14 @@
+node_modules
+dist
+.git
+.gitignore
+*.md
+.env*
+.DS_Store
+coverage
+tests
+*.test.ts
+*.spec.ts
+tsconfig.json
+.eslintrc*
+.prettierrc*
