@@ -7,8 +7,11 @@ module "vpc" {
   cidr = var.vpc_cidr
 
   azs             = var.availability_zones
-  private_subnets = ["10.0.1.0/24", "10.0.2.0/24"]
-  public_subnets  = ["10.0.101.0/24", "10.0.102.0/24"]
+  # Dynamic subnet calculation based on VPC CIDR (first octet pair determines base)
+  # For 10.0.0.0/16: private=[10.0.1.0/24, 10.0.2.0/24], public=[10.0.101.0/24, 10.0.102.0/24]
+  # For 10.1.0.0/16: private=[10.1.1.0/24, 10.1.2.0/24], public=[10.1.101.0/24, 10.1.102.0/24]
+  private_subnets = [cidrsubnet(var.vpc_cidr, 8, 1), cidrsubnet(var.vpc_cidr, 8, 2)]
+  public_subnets  = [cidrsubnet(var.vpc_cidr, 8, 101), cidrsubnet(var.vpc_cidr, 8, 102)]
 
   enable_nat_gateway     = true
   single_nat_gateway     = true  # Cost optimization for small scale
