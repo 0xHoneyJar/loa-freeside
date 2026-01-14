@@ -1,0 +1,291 @@
+# =============================================================================
+# Ingestor Deployment Workflow (Gateway Proxy Pattern)
+# =============================================================================
+# Builds and deploys apps/ingestor to AWS ECS
+#
+# The Ingestor is the lightweight Discord Gateway listener that:
+# - Receives all Discord events via WebSocket
+# - Publishes events to RabbitMQ with minimal latency
+# - Has ZERO business logic (no database, no blockchain calls)
+#
+# Triggers:
+#   - Push to staging/main when apps/ingestor/** changes
+#   - Manual workflow dispatch
+#
+# Required Secrets:
+#   - AWS_ACCESS_KEY_ID
+#   - AWS_SECRET_ACCESS_KEY
+# =============================================================================
+
+name: Deploy Ingestor
+
+on:
+  push:
+    branches:
+      - staging
+      - main
+    paths:
+      - 'apps/ingestor/**'
+      - '.github/workflows/deploy-ingestor.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      image_tag:
+        description: 'Image tag to deploy'
+        required: false
+        default: ''
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  # ===========================================================================
+  # Build and Push Ingestor
+  # ===========================================================================
+  build:
+    name: Build Ingestor Image
+    runs-on: ubuntu-latest
+
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tags }}
+      image_sha: ${{ steps.build.outputs.digest }}
+      environment: ${{ steps.env.outputs.environment }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Determine environment
+        id: env
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            ENV="${{ github.event.inputs.environment }}"
+          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            ENV="production"
+          else
+            ENV="staging"
+          fi
+          echo "environment=$ENV" >> $GITHUB_OUTPUT
+          echo "Deploying to: $ENV"
+
+      - name: Set environment variables
+        id: vars
+        run: |
+          ENV="${{ steps.env.outputs.environment }}"
+          echo "ecr_repository=arrakis-${ENV}-ingestor" >> $GITHUB_OUTPUT
+          echo "ecs_cluster=arrakis-${ENV}-cluster" >> $GITHUB_OUTPUT
+          echo "ecs_service=arrakis-${ENV}-ingestor" >> $GITHUB_OUTPUT
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.login-ecr.outputs.registry }}/${{ steps.vars.outputs.ecr_repository }}
+          tags: |
+            type=sha,prefix=
+            type=raw,value=${{ steps.env.outputs.environment }}
+            type=raw,value=${{ github.event.inputs.image_tag || steps.env.outputs.environment }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/ingestor
+          file: ./apps/ingestor/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            GIT_SHA=${{ github.sha }}
+
+      - name: Output image details
+        run: |
+          echo "### Ingestor Image Built :ear:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** \`${{ steps.env.outputs.environment }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Repository:** \`${{ steps.login-ecr.outputs.registry }}/${{ steps.vars.outputs.ecr_repository }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags:** \`${{ steps.meta.outputs.tags }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Digest:** \`${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # Deploy Ingestor to ECS
+  # ===========================================================================
+  deploy:
+    name: Deploy Ingestor to ECS
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Set environment variables
+        id: vars
+        run: |
+          ENV="${{ needs.build.outputs.environment }}"
+          echo "ecr_repository=arrakis-${ENV}-ingestor" >> $GITHUB_OUTPUT
+          echo "ecs_cluster=arrakis-${ENV}-cluster" >> $GITHUB_OUTPUT
+          echo "ecs_service=arrakis-${ENV}-ingestor" >> $GITHUB_OUTPUT
+          echo "task_definition=arrakis-${ENV}-ingestor" >> $GITHUB_OUTPUT
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Get current Ingestor task definition
+        id: task-def
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ steps.vars.outputs.task_definition }} \
+            --query 'taskDefinition' \
+            --output json > task-definition.json
+          jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' \
+            task-definition.json > task-definition-clean.json
+
+      - name: Update task definition with new image
+        id: task-def-update
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          NEW_IMAGE="${{ steps.login-ecr.outputs.registry }}/${{ steps.vars.outputs.ecr_repository }}:${SHORT_SHA}"
+          echo "Updating Ingestor task definition with image: $NEW_IMAGE"
+
+          jq --arg IMAGE "$NEW_IMAGE" \
+            '.containerDefinitions[0].image = $IMAGE' \
+            task-definition-clean.json > task-definition-new.json
+
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://task-definition-new.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          echo "New Ingestor task definition: $NEW_TASK_DEF_ARN"
+          echo "task_definition_arn=$NEW_TASK_DEF_ARN" >> $GITHUB_OUTPUT
+
+      - name: Update ECS Ingestor Service
+        run: |
+          aws ecs update-service \
+            --cluster ${{ steps.vars.outputs.ecs_cluster }} \
+            --service ${{ steps.vars.outputs.ecs_service }} \
+            --task-definition ${{ steps.task-def-update.outputs.task_definition_arn }} \
+            --force-new-deployment \
+            --query 'service.deployments[0].{status:status,running:runningCount,desired:desiredCount}' \
+            --output table
+
+      - name: Wait for service stability
+        run: |
+          echo "Waiting for Ingestor service to stabilize..."
+          aws ecs wait services-stable \
+            --cluster ${{ steps.vars.outputs.ecs_cluster }} \
+            --services ${{ steps.vars.outputs.ecs_service }}
+          echo "Ingestor service is stable!"
+
+      - name: Deployment Summary
+        run: |
+          echo "### Ingestor Deployment Complete :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          SERVICE_STATUS=$(aws ecs describe-services \
+            --cluster ${{ steps.vars.outputs.ecs_cluster }} \
+            --services ${{ steps.vars.outputs.ecs_service }} \
+            --query 'services[0].{Running:runningCount,Desired:desiredCount,Status:status}' \
+            --output json)
+
+          echo "**Environment:** \`${{ needs.build.outputs.environment }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Service Status:** $SERVICE_STATUS" >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # Verify Ingestor Health
+  # ===========================================================================
+  health-check:
+    name: Verify Ingestor Health
+    runs-on: ubuntu-latest
+    needs: [build, deploy]
+
+    steps:
+      - name: Set environment variables
+        id: vars
+        run: |
+          ENV="${{ needs.build.outputs.environment }}"
+          echo "ecs_cluster=arrakis-${ENV}-cluster" >> $GITHUB_OUTPUT
+          echo "ecs_service=arrakis-${ENV}-ingestor" >> $GITHUB_OUTPUT
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Wait for service to be ready
+        run: sleep 30
+
+      - name: Check ECS task health
+        run: |
+          echo "Checking Ingestor task health..."
+
+          # Get running tasks
+          TASKS=$(aws ecs list-tasks \
+            --cluster ${{ steps.vars.outputs.ecs_cluster }} \
+            --service-name ${{ steps.vars.outputs.ecs_service }} \
+            --desired-status RUNNING \
+            --query 'taskArns[]' \
+            --output json)
+
+          if [[ "$TASKS" == "[]" ]]; then
+            echo "No running tasks found. Service may be scaled to 0."
+            echo "### Ingestor Health Check :warning:" >> $GITHUB_STEP_SUMMARY
+            echo "No running tasks (service may be scaled to 0)" >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+
+          # Check task health
+          TASK_ARN=$(echo $TASKS | jq -r '.[0]')
+          HEALTH=$(aws ecs describe-tasks \
+            --cluster ${{ steps.vars.outputs.ecs_cluster }} \
+            --tasks "$TASK_ARN" \
+            --query 'tasks[0].containers[0].healthStatus' \
+            --output text)
+
+          echo "Task health status: $HEALTH"
+
+          if [[ "$HEALTH" == "HEALTHY" ]]; then
+            echo "### Ingestor Health Check :white_check_mark:" >> $GITHUB_STEP_SUMMARY
+            echo "Status: HEALTHY" >> $GITHUB_STEP_SUMMARY
+            exit 0
+          elif [[ "$HEALTH" == "UNKNOWN" ]]; then
+            echo "### Ingestor Health Check :hourglass:" >> $GITHUB_STEP_SUMMARY
+            echo "Status: UNKNOWN (health check may still be initializing)" >> $GITHUB_STEP_SUMMARY
+            exit 0
+          else
+            echo "### Ingestor Health Check :x:" >> $GITHUB_STEP_SUMMARY
+            echo "Status: $HEALTH" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi

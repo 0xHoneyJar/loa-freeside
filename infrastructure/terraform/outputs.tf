@@ -49,3 +49,31 @@ output "redis_credentials_secret_arn" {
   description = "ARN of the Redis credentials secret"
   value       = aws_secretsmanager_secret.redis_credentials.arn
 }
+
+# Gateway Proxy Pattern - RabbitMQ
+output "rabbitmq_broker_id" {
+  description = "Amazon MQ RabbitMQ broker ID"
+  value       = aws_mq_broker.rabbitmq.id
+}
+
+output "rabbitmq_endpoint" {
+  description = "RabbitMQ AMQPS endpoint"
+  value       = aws_mq_broker.rabbitmq.instances[0].endpoints[0]
+  sensitive   = true
+}
+
+output "rabbitmq_management_url" {
+  description = "RabbitMQ management console URL"
+  value       = aws_mq_broker.rabbitmq.instances[0].console_url
+}
+
+output "rabbitmq_credentials_secret_arn" {
+  description = "ARN of the RabbitMQ credentials secret"
+  value       = aws_secretsmanager_secret.rabbitmq_credentials.arn
+}
+
+# Gateway Proxy Pattern - Ingestor
+output "ingestor_ecr_repository_url" {
+  description = "Ingestor ECR repository URL"
+  value       = aws_ecr_repository.ingestor.repository_url
+}

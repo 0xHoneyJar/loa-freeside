@@ -1,0 +1,119 @@
+{
+  "rabbit_version": "3.12",
+  "users": [],
+  "vhosts": [
+    {
+      "name": "/"
+    }
+  ],
+  "permissions": [],
+  "parameters": [],
+  "global_parameters": [],
+  "policies": [
+    {
+      "vhost": "/",
+      "name": "dlq-policy",
+      "pattern": "^arrakis\\.(interactions|events\\.guild)$",
+      "apply-to": "queues",
+      "definition": {
+        "dead-letter-exchange": "arrakis.dlx",
+        "dead-letter-routing-key": "dead"
+      },
+      "priority": 0
+    },
+    {
+      "vhost": "/",
+      "name": "dlq-ttl-policy",
+      "pattern": "^arrakis\\.dlq$",
+      "apply-to": "queues",
+      "definition": {
+        "message-ttl": 604800000
+      },
+      "priority": 0
+    }
+  ],
+  "queues": [
+    {
+      "name": "arrakis.interactions",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-max-priority": 10,
+        "x-queue-type": "classic"
+      }
+    },
+    {
+      "name": "arrakis.events.guild",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "classic"
+      }
+    },
+    {
+      "name": "arrakis.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "classic"
+      }
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "arrakis.events",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "arrakis.dlx",
+      "vhost": "/",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "arrakis.events",
+      "vhost": "/",
+      "destination": "arrakis.interactions",
+      "destination_type": "queue",
+      "routing_key": "interaction.#",
+      "arguments": {}
+    },
+    {
+      "source": "arrakis.events",
+      "vhost": "/",
+      "destination": "arrakis.events.guild",
+      "destination_type": "queue",
+      "routing_key": "member.#",
+      "arguments": {}
+    },
+    {
+      "source": "arrakis.events",
+      "vhost": "/",
+      "destination": "arrakis.events.guild",
+      "destination_type": "queue",
+      "routing_key": "guild.#",
+      "arguments": {}
+    },
+    {
+      "source": "arrakis.dlx",
+      "vhost": "/",
+      "destination": "arrakis.dlq",
+      "destination_type": "queue",
+      "routing_key": "dead",
+      "arguments": {}
+    }
+  ]
+}

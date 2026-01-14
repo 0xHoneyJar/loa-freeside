@@ -393,3 +393,191 @@ resource "aws_ecr_lifecycle_policy" "api" {
     }]
   })
 }
+
+# =============================================================================
+# Gateway Proxy Pattern - Ingestor Service
+# =============================================================================
+# The Ingestor ("The Ear") is a lightweight Discord Gateway listener that
+# publishes events to RabbitMQ. It has ZERO business logic and minimal caching.
+
+# CloudWatch Log Group for Ingestor
+resource "aws_cloudwatch_log_group" "ingestor" {
+  name              = "/ecs/${local.name_prefix}/ingestor"
+  retention_in_days = 30
+
+  tags = local.common_tags
+}
+
+# ECR Repository for Ingestor
+resource "aws_ecr_repository" "ingestor" {
+  name                 = "${local.name_prefix}-ingestor"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  encryption_configuration {
+    encryption_type = "AES256"
+  }
+
+  tags = merge(local.common_tags, {
+    Service = "GatewayProxy"
+  })
+}
+
+# ECR Lifecycle Policy for Ingestor
+resource "aws_ecr_lifecycle_policy" "ingestor" {
+  repository = aws_ecr_repository.ingestor.name
+
+  policy = jsonencode({
+    rules = [{
+      rulePriority = 1
+      description  = "Keep last 10 images"
+      selection = {
+        tagStatus   = "any"
+        countType   = "imageCountMoreThan"
+        countNumber = 10
+      }
+      action = {
+        type = "expire"
+      }
+    }]
+  })
+}
+
+# Security Group for Ingestor
+# Minimal attack surface: No ingress, only egress to Discord Gateway and RabbitMQ
+resource "aws_security_group" "ingestor" {
+  name_prefix = "${local.name_prefix}-ingestor-"
+  vpc_id      = module.vpc.vpc_id
+  description = "Security group for Ingestor service - Discord Gateway listener"
+
+  # No ingress rules - Ingestor only makes outbound connections
+
+  # Egress to RabbitMQ (AMQPS)
+  egress {
+    description     = "AMQPS to RabbitMQ"
+    from_port       = 5671
+    to_port         = 5671
+    protocol        = "tcp"
+    security_groups = [aws_security_group.rabbitmq.id]
+  }
+
+  # Egress to Discord Gateway and CloudWatch (HTTPS)
+  egress {
+    description = "HTTPS for Discord Gateway and CloudWatch"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Egress for health check endpoint (internal)
+  egress {
+    description = "Health check HTTP"
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    self        = true
+  }
+
+  tags = merge(local.common_tags, {
+    Name    = "${local.name_prefix}-ingestor-sg"
+    Service = "GatewayProxy"
+  })
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# Ingestor Task Definition
+resource "aws_ecs_task_definition" "ingestor" {
+  family                   = "${local.name_prefix}-ingestor"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = var.ingestor_cpu
+  memory                   = var.ingestor_memory
+  execution_role_arn       = aws_iam_role.ecs_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
+
+  container_definitions = jsonencode([
+    {
+      name  = "ingestor"
+      image = "${aws_ecr_repository.ingestor.repository_url}:latest"
+
+      # Health check port
+      portMappings = [{
+        containerPort = 8080
+        protocol      = "tcp"
+      }]
+
+      environment = [
+        { name = "NODE_ENV", value = "production" },
+        { name = "LOG_LEVEL", value = "info" },
+        { name = "HEALTH_PORT", value = "8080" },
+        { name = "SHARD_COUNT", value = "1" }, # Auto-shard when >2500 guilds
+        { name = "MEMORY_THRESHOLD_MB", value = "75" }
+      ]
+
+      secrets = [
+        # ONLY Discord bot token - Ingestor has minimal secrets
+        { name = "DISCORD_BOT_TOKEN", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:DISCORD_BOT_TOKEN::" },
+        # RabbitMQ connection for publishing events
+        { name = "RABBITMQ_URL", valueFrom = "${aws_secretsmanager_secret.rabbitmq_credentials.arn}:url::" }
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.ingestor.name
+          "awslogs-region"        = var.aws_region
+          "awslogs-stream-prefix" = "ingestor"
+        }
+      }
+
+      healthCheck = {
+        command     = ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+        interval    = 30
+        timeout     = 5
+        retries     = 3
+        startPeriod = 60
+      }
+    }
+  ])
+
+  tags = merge(local.common_tags, {
+    Service = "GatewayProxy"
+  })
+}
+
+# Ingestor Service
+# Note: Starts with desired_count=0 until Ingestor code is ready (Sprint 2)
+resource "aws_ecs_service" "ingestor" {
+  name            = "${local.name_prefix}-ingestor"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.ingestor.arn
+  desired_count   = 0 # Set to var.ingestor_desired_count when ready
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    subnets          = module.vpc.private_subnets
+    security_groups  = [aws_security_group.ingestor.id]
+    assign_public_ip = false
+  }
+
+  # No load balancer - Ingestor only makes outbound connections
+
+  deployment_maximum_percent         = 200
+  deployment_minimum_healthy_percent = 100
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
+  tags = merge(local.common_tags, {
+    Service = "GatewayProxy"
+  })
+}

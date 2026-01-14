@@ -83,3 +83,29 @@ variable "domain_name" {
   type        = string
   default     = "api.arrakis.community"
 }
+
+# Amazon MQ (RabbitMQ) for Gateway Proxy Pattern
+variable "rabbitmq_instance_type" {
+  description = "Amazon MQ RabbitMQ instance type"
+  type        = string
+  default     = "mq.t3.micro" # Small for staging, mq.m5.large for production
+}
+
+# Ingestor Service
+variable "ingestor_cpu" {
+  description = "Ingestor task CPU units"
+  type        = number
+  default     = 256
+}
+
+variable "ingestor_memory" {
+  description = "Ingestor task memory (MB)"
+  type        = number
+  default     = 512
+}
+
+variable "ingestor_desired_count" {
+  description = "Desired Ingestor task count (1 per Discord shard group)"
+  type        = number
+  default     = 1
+}
