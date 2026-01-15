@@ -27,7 +27,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@arrakis/core": "workspace:*",
+    "@arrakis/core": "file:../core",
     "opossum": "^8.1.0",
     "viem": "^2.21.0"
   },
