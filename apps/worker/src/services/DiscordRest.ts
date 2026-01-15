@@ -131,6 +131,66 @@ export class DiscordRestService {
   }
 
   /**
+   * Defer a component interaction (button/select) by acknowledging
+   * Use this when processing will take time
+   */
+  async deferUpdate(
+    interactionId: string,
+    interactionToken: string
+  ): Promise<DeferResult> {
+    try {
+      const body: RESTPostAPIInteractionCallbackJSONBody = {
+        type: InteractionResponseType.DeferredMessageUpdate,
+      };
+
+      await this.rest.post(
+        Routes.interactionCallback(interactionId, interactionToken),
+        { body, auth: false }
+      );
+
+      this.log.debug({ interactionId }, 'Deferred component update');
+      return { success: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      this.log.error({ error, interactionId }, 'Failed to defer component update');
+      return { success: false, error: message };
+    }
+  }
+
+  /**
+   * Update the message that contains the component (for buttons/selects)
+   * This is an immediate response, not deferred
+   */
+  async updateMessage(
+    interactionId: string,
+    interactionToken: string,
+    options: FollowupOptions
+  ): Promise<DeferResult> {
+    try {
+      const body: RESTPostAPIInteractionCallbackJSONBody = {
+        type: InteractionResponseType.UpdateMessage,
+        data: {
+          content: options.content,
+          embeds: options.embeds as any,
+          components: options.components as any,
+        },
+      };
+
+      await this.rest.post(
+        Routes.interactionCallback(interactionId, interactionToken),
+        { body, auth: false }
+      );
+
+      this.log.debug({ interactionId }, 'Updated message with component');
+      return { success: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      this.log.error({ error, interactionId }, 'Failed to update message');
+      return { success: false, error: message };
+    }
+  }
+
+  /**
    * Set the bot token for role management operations
    * This must be called before assignRole/removeRole/sendDM
    */
@@ -247,6 +307,37 @@ export class DiscordRestService {
     } catch (error) {
       this.log.error({ error, guildId, userId }, 'Failed to get guild member');
       return null;
+    }
+  }
+
+  /**
+   * Respond to an autocomplete interaction
+   * Uses the interaction token, NOT bot token
+   */
+  async respondAutocomplete(
+    interactionId: string,
+    interactionToken: string,
+    choices: Array<{ name: string; value: string }>
+  ): Promise<DeferResult> {
+    try {
+      const body: RESTPostAPIInteractionCallbackJSONBody = {
+        type: InteractionResponseType.ApplicationCommandAutocompleteResult,
+        data: {
+          choices: choices.slice(0, 25), // Discord max 25 choices
+        },
+      };
+
+      await this.rest.post(
+        Routes.interactionCallback(interactionId, interactionToken),
+        { body, auth: false }
+      );
+
+      this.log.debug({ interactionId, choiceCount: choices.length }, 'Responded to autocomplete');
+      return { success: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      this.log.error({ error, interactionId }, 'Failed to respond to autocomplete');
+      return { success: false, error: message };
     }
   }
 }

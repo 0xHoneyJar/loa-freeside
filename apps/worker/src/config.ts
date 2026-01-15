@@ -19,7 +19,11 @@ const configSchema = z.object({
 
   // Discord REST
   discordApplicationId: z.string().min(1, 'DISCORD_APPLICATION_ID is required'),
-  // Note: Worker does NOT need bot token - uses interaction tokens for responses
+  discordBotToken: z.string().optional(), // For role management operations
+  // Note: Worker primarily uses interaction tokens for responses
+
+  // Database (PostgreSQL)
+  databaseUrl: z.string().url('DATABASE_URL must be a valid PostgreSQL URL'),
 
   // Redis
   redisUrl: z.string().default('redis://localhost:6379'),
@@ -57,6 +61,8 @@ export function loadConfig(): Config {
       ? parseInt(env['EVENT_PREFETCH'], 10)
       : 20,
     discordApplicationId: env['DISCORD_APPLICATION_ID'],
+    databaseUrl: env['DATABASE_URL'],
+    discordBotToken: env['DISCORD_BOT_TOKEN'],
     redisUrl: env['REDIS_URL'] || 'redis://localhost:6379',
     healthPort: env['PORT'] ? parseInt(env['PORT'], 10) : 8080,
     memoryThresholdMb: env['MEMORY_THRESHOLD_MB']

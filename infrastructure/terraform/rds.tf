@@ -33,7 +33,7 @@ resource "aws_db_parameter_group" "main" {
 
   parameter {
     name  = "log_min_duration_statement"
-    value = "1000"  # Log queries > 1s
+    value = "1000" # Log queries > 1s
   }
 
   parameter {
@@ -47,19 +47,19 @@ resource "aws_db_parameter_group" "main" {
 resource "aws_db_instance" "main" {
   identifier = "${local.name_prefix}-postgres"
 
-  engine               = "postgres"
-  engine_version       = "15.10"
-  instance_class       = var.db_instance_class
-  allocated_storage    = var.db_allocated_storage
-  max_allocated_storage = 100  # Auto-scaling up to 100GB
-  storage_type         = "gp3"
-  storage_encrypted    = true
+  engine                = "postgres"
+  engine_version        = "15.10"
+  instance_class        = var.db_instance_class
+  allocated_storage     = var.db_allocated_storage
+  max_allocated_storage = 100 # Auto-scaling up to 100GB
+  storage_type          = "gp3"
+  storage_encrypted     = true
 
   db_name  = "arrakis"
   username = "arrakis_admin"
   password = random_password.db_password.result
 
-  multi_az               = false  # Single AZ for small scale
+  multi_az               = false # Single AZ for small scale
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.rds.id]
   parameter_group_name   = aws_db_parameter_group.main.name
@@ -68,8 +68,8 @@ resource "aws_db_instance" "main" {
   backup_window           = "03:00-04:00"
   maintenance_window      = "Mon:04:00-Mon:05:00"
 
-  deletion_protection      = true
-  skip_final_snapshot      = false
+  deletion_protection       = true
+  skip_final_snapshot       = false
   final_snapshot_identifier = "${local.name_prefix}-final-snapshot"
 
   performance_insights_enabled = true
@@ -79,7 +79,7 @@ resource "aws_db_instance" "main" {
 
 resource "random_password" "db_password" {
   length  = 32
-  special = false  # Avoid special chars for connection string compatibility
+  special = false # Avoid special chars for connection string compatibility
 }
 
 # Store DB credentials in AWS Secrets Manager (backup to Vault)

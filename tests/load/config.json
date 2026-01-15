@@ -1,0 +1,97 @@
+{
+  "description": "Gateway Proxy Load Test Configuration",
+  "version": "1.0.0",
+
+  "environments": {
+    "local": {
+      "ingestorHealthUrl": "http://localhost:8080/health",
+      "workerHealthUrl": "http://localhost:8081/health",
+      "rabbitmqManagementUrl": "http://localhost:15672",
+      "rabbitmqUser": "guest",
+      "rabbitmqPass": "guest"
+    },
+    "staging": {
+      "ingestorHealthUrl": "http://arrakis-staging-ingestor.internal:8080/health",
+      "workerHealthUrl": "http://arrakis-staging-gp-worker.internal:8081/health",
+      "rabbitmqManagementUrl": "https://arrakis-staging-rabbitmq.mq.us-east-1.amazonaws.com:443",
+      "rabbitmqUser": "arrakis",
+      "rabbitmqPass": "${RABBITMQ_PASSWORD}"
+    }
+  },
+
+  "profiles": {
+    "smoke": {
+      "description": "Quick smoke test to verify setup",
+      "stages": [
+        { "duration": "30s", "target": 10 }
+      ],
+      "thresholds": {
+        "message_publish_latency_ms": ["p(99)<100"],
+        "error_rate": ["rate<0.01"]
+      }
+    },
+    "baseline": {
+      "description": "Baseline performance test",
+      "stages": [
+        { "duration": "1m", "target": 50 },
+        { "duration": "3m", "target": 100 },
+        { "duration": "1m", "target": 0 }
+      ],
+      "thresholds": {
+        "message_publish_latency_ms": ["p(99)<50"],
+        "message_process_latency_ms": ["p(99)<100"],
+        "error_rate": ["rate<0.001"]
+      }
+    },
+    "standard": {
+      "description": "Standard load test per SDD Section 10.3",
+      "stages": [
+        { "duration": "1m", "target": 100 },
+        { "duration": "5m", "target": 1000 },
+        { "duration": "1m", "target": 5000 },
+        { "duration": "5m", "target": 1000 },
+        { "duration": "1m", "target": 0 }
+      ],
+      "thresholds": {
+        "message_publish_latency_ms": ["p(99)<50"],
+        "message_process_latency_ms": ["p(99)<100"],
+        "error_rate": ["rate<0.001"]
+      }
+    },
+    "stress": {
+      "description": "Stress test to find breaking point",
+      "stages": [
+        { "duration": "2m", "target": 1000 },
+        { "duration": "2m", "target": 3000 },
+        { "duration": "2m", "target": 5000 },
+        { "duration": "2m", "target": 7000 },
+        { "duration": "2m", "target": 10000 },
+        { "duration": "2m", "target": 0 }
+      ],
+      "thresholds": {
+        "error_rate": ["rate<0.05"]
+      }
+    },
+    "soak": {
+      "description": "Long-running test to detect memory leaks",
+      "stages": [
+        { "duration": "5m", "target": 500 },
+        { "duration": "60m", "target": 500 },
+        { "duration": "5m", "target": 0 }
+      ],
+      "thresholds": {
+        "message_publish_latency_ms": ["p(99)<50"],
+        "message_process_latency_ms": ["p(99)<100"],
+        "error_rate": ["rate<0.001"]
+      }
+    }
+  },
+
+  "sddPerformanceTargets": {
+    "ingestorLatencyP99Ms": 50,
+    "workerLatencyP99Ms": 100,
+    "errorRatePercent": 0.1,
+    "queueDepthWarning": 100,
+    "queueDepthCritical": 1000
+  }
+}

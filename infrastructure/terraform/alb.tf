@@ -36,7 +36,7 @@ resource "aws_lb" "main" {
   security_groups    = [aws_security_group.alb.id]
   subnets            = module.vpc.public_subnets
 
-  enable_deletion_protection = false  # Set to true for production
+  enable_deletion_protection = false # Set to true for production
 
   tags = local.common_tags
 }

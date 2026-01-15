@@ -22,10 +22,17 @@ async function main() {
   await startServer();
 
   // Initialize Discord bot (non-blocking - errors don't prevent service startup)
-  if (config.discord.botToken) {
+  // Sprint GW-5: Gateway Proxy mode delegates Gateway to Ingestor service
+  if (config.features.gatewayProxyEnabled) {
+    logger.info('Gateway Proxy mode enabled - Discord Gateway handled by Ingestor');
+    logger.info('Events will flow: Ingestor -> RabbitMQ -> Worker');
+    // In Gateway Proxy mode, sietch doesn't connect to Discord Gateway
+    // The Ingestor service handles the WebSocket connection and publishes events to RabbitMQ
+    // Worker service consumes from RabbitMQ and responds via Discord REST API
+  } else if (config.discord.botToken) {
     try {
       await discordService.connect();
-      logger.info('Discord bot connected successfully');
+      logger.info('Discord bot connected successfully (legacy mode)');
     } catch (error) {
       logger.error({ error }, 'Failed to connect Discord bot - service will continue without Discord');
     }

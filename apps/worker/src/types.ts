@@ -7,10 +7,10 @@ export interface DiscordEventPayload {
   eventId: string;
   eventType: string;
   timestamp: number;
-  shardId: number;
+  shardId?: number;
 
   // Routing
-  guildId: string;
+  guildId?: string;
   channelId?: string;
   userId?: string;
 
@@ -18,8 +18,17 @@ export interface DiscordEventPayload {
   interactionId?: string;
   interactionToken?: string;
 
+  // Parsed command data (for convenience, extracted from data)
+  commandName?: string;
+  subcommand?: string;
+
+  // Component interaction data (buttons/selects)
+  customId?: string;
+  componentType?: number;
+  selectedValues?: string[];
+
   // Raw payload data
-  data: Record<string, unknown>;
+  data?: Record<string, unknown>;
 }
 
 /**

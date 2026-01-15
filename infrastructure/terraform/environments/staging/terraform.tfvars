@@ -29,3 +29,17 @@ redis_node_type = "cache.t3.micro"
 
 # Domain - Staging subdomain
 domain_name = "staging.api.arrakis.community"
+
+# Gateway Proxy - Ingestor (Sprint GW-2)
+ingestor_cpu           = 256
+ingestor_memory        = 512
+ingestor_desired_count = 1  # Enable for Gateway Proxy testing
+
+# Gateway Proxy - Worker (Sprint GW-3)
+gp_worker_cpu           = 512
+gp_worker_memory        = 1024
+gp_worker_desired_count = 1  # Enable for Gateway Proxy testing
+
+# RabbitMQ (Sprint GW-1)
+rabbitmq_instance_type   = "mq.t3.micro"
+rabbitmq_deployment_mode = "SINGLE_INSTANCE"  # Single instance for staging

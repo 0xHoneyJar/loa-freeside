@@ -200,6 +200,9 @@ const configSchema = z.object({
     telegramEnabled: envBooleanSchema.default(false),
     // Enable Vault secrets management (Sprint 71)
     vaultEnabled: envBooleanSchema.default(false),
+    // Enable Gateway Proxy pattern (Sprint GW-5)
+    // When enabled, sietch delegates Discord Gateway to Ingestor service
+    gatewayProxyEnabled: envBooleanSchema.default(false),
   }),
 
   // Telegram Configuration (v4.1 - Sprint 30)
@@ -466,6 +469,7 @@ function parseConfig() {
       redisEnabled: process.env.FEATURE_REDIS_ENABLED ?? 'false',
       telegramEnabled: process.env.FEATURE_TELEGRAM_ENABLED ?? 'false',
       vaultEnabled: process.env.FEATURE_VAULT_ENABLED ?? 'false',
+      gatewayProxyEnabled: process.env.USE_GATEWAY_PROXY ?? 'false',
     },
     // Telegram Configuration (v4.1 - Sprint 30)
     telegram: {

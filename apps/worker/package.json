@@ -30,8 +30,10 @@
     "@discordjs/rest": "^2.4.0",
     "amqplib": "^0.10.4",
     "discord-api-types": "^0.37.100",
+    "drizzle-orm": "^0.35.3",
     "ioredis": "^5.4.1",
     "pino": "^9.5.0",
+    "postgres": "^3.4.4",
     "zod": "^3.23.8"
   },
   "devDependencies": {
