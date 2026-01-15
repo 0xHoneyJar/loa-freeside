@@ -4,10 +4,10 @@ import { z } from 'zod';
  * Configuration schema with validation
  */
 const configSchema = z.object({
-  // Message Broker (NATS or RabbitMQ)
-  // NATS is preferred for Sprint S-5+; RabbitMQ for backwards compatibility
-  natsUrl: z.string().optional(), // NATS JetStream URL(s), comma-separated
-  rabbitmqUrl: z.string().url('RABBITMQ_URL must be a valid URL').optional(), // Legacy
+  // Message Broker (NATS - Sprint S-7+)
+  // RabbitMQ has been deprecated as of Sprint S-7
+  natsUrl: z.string().min(1, 'NATS_URL is required'), // NATS JetStream URL(s), comma-separated
+  // rabbitmqUrl deprecated - use NATS_URL instead
 
   // RPC Pool (Sprint S-2)
   rpcProviders: z.array(z.object({
@@ -79,7 +79,7 @@ export function loadConfig(): Config {
 
   const raw = {
     natsUrl: env['NATS_URL'],
-    rabbitmqUrl: env['RABBITMQ_URL'],
+    // rabbitmqUrl deprecated - removed in Sprint S-7
     rpcProviders,
     rpcTimeoutMs: env['RPC_TIMEOUT_MS'] ? parseInt(env['RPC_TIMEOUT_MS'], 10) : 10000,
     rpcErrorThreshold: env['RPC_ERROR_THRESHOLD'] ? parseInt(env['RPC_ERROR_THRESHOLD'], 10) : 50,

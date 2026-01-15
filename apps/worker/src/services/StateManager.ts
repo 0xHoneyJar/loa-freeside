@@ -304,4 +304,108 @@ export class StateManager {
     const count = await this.client.zcard(key);
     return count;
   }
+
+  // ========== Sorted Set Operations (Sprint S-7) ==========
+
+  /**
+   * Remove members from sorted set by score range
+   */
+  async zremrangebyscore(key: string, min: number, max: number): Promise<number> {
+    if (!this.client) {
+      throw new Error('Redis not connected');
+    }
+    return this.client.zremrangebyscore(key, min, max);
+  }
+
+  /**
+   * Get cardinality of sorted set
+   */
+  async zcard(key: string): Promise<number> {
+    if (!this.client) {
+      throw new Error('Redis not connected');
+    }
+    return this.client.zcard(key);
+  }
+
+  /**
+   * Add member to sorted set with score
+   */
+  async zadd(key: string, score: number, member: string): Promise<number> {
+    if (!this.client) {
+      throw new Error('Redis not connected');
+    }
+    return this.client.zadd(key, score, member);
+  }
+
+  /**
+   * Get members from sorted set by score range
+   */
+  async zrangebyscore(
+    key: string,
+    min: number | string,
+    max: number | string,
+    offset?: number,
+    count?: number
+  ): Promise<string[]> {
+    if (!this.client) {
+      throw new Error('Redis not connected');
+    }
+    if (offset !== undefined && count !== undefined) {
+      return this.client.zrangebyscore(key, min, max, 'LIMIT', offset, count);
+    }
+    return this.client.zrangebyscore(key, min, max);
+  }
+
+  /**
+   * Set key expiry in seconds
+   */
+  async expire(key: string, seconds: number): Promise<boolean> {
+    if (!this.client) {
+      throw new Error('Redis not connected');
+    }
+    const result = await this.client.expire(key, seconds);
+    return result === 1;
+  }
+
+  // ========== Pub/Sub Operations (Sprint S-7: Config Hot-Reload) ==========
+
+  /**
+   * Publish message to channel
+   */
+  async publish(channel: string, message: string): Promise<number> {
+    if (!this.client) {
+      throw new Error('Redis not connected');
+    }
+    return this.client.publish(channel, message);
+  }
+
+  /**
+   * Subscribe to channel
+   * Returns unsubscribe function
+   */
+  subscribe(channel: string, callback: (message: string) => void): () => void {
+    if (!this.client) {
+      throw new Error('Redis not connected');
+    }
+
+    // Create duplicate connection for subscription
+    const subClient = this.client.duplicate();
+
+    subClient.subscribe(channel).catch((err) => {
+      this.log.error({ error: err, channel }, 'Failed to subscribe');
+    });
+
+    subClient.on('message', (ch: string, msg: string) => {
+      if (ch === channel) {
+        callback(msg);
+      }
+    });
+
+    // Return unsubscribe function
+    return () => {
+      subClient.unsubscribe(channel).then(() => {
+        subClient.quit().catch(() => {});
+      }).catch(() => {});
+    };
+  }
 }
