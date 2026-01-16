@@ -29,6 +29,14 @@
     "./synthesis": {
       "import": "./dist/synthesis/index.js",
       "types": "./dist/synthesis/index.d.ts"
+    },
+    "./security": {
+      "import": "./dist/security/index.js",
+      "types": "./dist/security/index.d.ts"
+    },
+    "./coexistence": {
+      "import": "./dist/coexistence/index.js",
+      "types": "./dist/coexistence/index.d.ts"
     }
   },
   "files": [

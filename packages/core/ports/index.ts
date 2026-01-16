@@ -7,6 +7,7 @@
  * Sprint S-20: Wizard Session Store & State Model
  * Sprint S-21: Synthesis Engine & Rate Limiting
  * Sprint S-22: Vault Integration & Kill Switch
+ * Sprint S-24: Shadow Ledger & Incumbent Detection
  *
  * Exports all port interfaces (contracts) for the application.
  * Ports define the boundaries between the core domain and external adapters.
@@ -49,3 +50,6 @@ export * from './synthesis-engine.js';
 
 // Vault Client Interface
 export * from './vault-client.js';
+
+// Shadow Ledger Interface (Sprint S-24)
+export * from './shadow-ledger.js';
