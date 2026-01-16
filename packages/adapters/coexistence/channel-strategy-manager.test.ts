@@ -113,19 +113,28 @@ describe('ChannelStrategyManager', () => {
   });
 
   describe('createCategory', () => {
-    it('should create new category if not exists', async () => {
+    it('should queue category creation via synthesis if not exists', async () => {
       vi.mocked(discord.getGuildChannels).mockResolvedValue([]);
-      vi.mocked(discord.createChannel).mockResolvedValue(
-        createMockChannel('cat-123', 'Arrakis', 4)
-      );
 
       const categoryId = await manager.createCategory('guild-123', 'Arrakis');
 
-      expect(categoryId).toBe('cat-123');
-      expect(discord.createChannel).toHaveBeenCalledWith('guild-123', {
-        name: 'Arrakis',
-        type: 4,
-      });
+      // Returns pending ID for eventual consistency
+      expect(categoryId).toBe('pending-category:guild-123:Arrakis');
+      // Uses synthesis queue instead of direct Discord call
+      expect(synthesis.add).toHaveBeenCalledWith(
+        'create-category:guild-123:Arrakis',
+        expect.objectContaining({
+          type: 'create_channel',
+          guildId: 'guild-123',
+          payload: expect.objectContaining({
+            name: 'Arrakis',
+            type: 4,
+          }),
+          idempotencyKey: 'create-category:guild-123:Arrakis',
+        })
+      );
+      // Should NOT call discord directly (rate limiting compliance)
+      expect(discord.createChannel).not.toHaveBeenCalled();
     });
 
     it('should return existing category if found', async () => {
@@ -136,6 +145,7 @@ describe('ChannelStrategyManager', () => {
       const categoryId = await manager.createCategory('guild-123', 'Arrakis');
 
       expect(categoryId).toBe('cat-existing');
+      expect(synthesis.add).not.toHaveBeenCalled();
       expect(discord.createChannel).not.toHaveBeenCalled();
     });
   });
@@ -158,9 +168,6 @@ describe('ChannelStrategyManager', () => {
   describe('createChannels - additive_only strategy', () => {
     it('should create default additive channels', async () => {
       vi.mocked(discord.getGuildChannels).mockResolvedValue([]);
-      vi.mocked(discord.createChannel).mockResolvedValue(
-        createMockChannel('cat-123', 'Arrakis', 4)
-      );
 
       const config: ChannelStrategyConfig = {
         ...DEFAULT_CHANNEL_STRATEGY_CONFIG,
@@ -172,7 +179,20 @@ describe('ChannelStrategyManager', () => {
 
       // Should have created 2 default channels
       expect(channelIds).toHaveLength(2);
-      expect(synthesis.add).toHaveBeenCalledTimes(2);
+      // 3 synthesis calls: 1 category + 2 channels (all rate-limited)
+      expect(synthesis.add).toHaveBeenCalledTimes(3);
+
+      // Verify category creation via synthesis
+      expect(synthesis.add).toHaveBeenCalledWith(
+        'create-category:guild-123:Arrakis',
+        expect.objectContaining({
+          type: 'create_channel',
+          payload: expect.objectContaining({
+            name: 'Arrakis',
+            type: 4,
+          }),
+        })
+      );
 
       // Verify conviction-lounge channel
       expect(synthesis.add).toHaveBeenCalledWith(

@@ -270,17 +270,29 @@ export class ChannelStrategyManager implements IChannelStrategyManager {
       return existing.id;
     }
 
-    const category = await this.discord.createChannel(guildId, {
-      name: categoryName,
-      type: 4, // GUILD_CATEGORY
+    // Use synthesis queue for rate-limited category creation
+    // Generate a deterministic ID for the pending category
+    const pendingCategoryId = `pending-category:${guildId}:${categoryName}`;
+
+    await this.synthesis.add(`create-category:${guildId}:${categoryName}`, {
+      type: 'create_channel',
+      guildId,
+      communityId: 'system', // Category is guild-level, not community-specific
+      payload: {
+        name: categoryName,
+        type: 4, // GUILD_CATEGORY
+      },
+      idempotencyKey: `create-category:${guildId}:${categoryName}`,
     });
 
     this.log.info(
-      { guildId, categoryId: category.id, categoryName },
-      'Created Arrakis category'
+      { guildId, categoryName },
+      'Queued Arrakis category creation via synthesis'
     );
 
-    return category.id;
+    // Return pending ID - caller should poll for actual category
+    // or use eventual consistency pattern
+    return pendingCategoryId;
   }
 
   /**
