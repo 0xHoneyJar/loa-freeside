@@ -5,6 +5,7 @@
  * Sprint S-24: Incumbent Detection & Shadow Ledger
  * Sprint S-25: Shadow Sync Job & Verification Tiers
  * Sprint S-26: Namespaced Roles & Parallel Channels
+ * Sprint S-27: Glimpse Mode & Migration Readiness
  *
  * Exports all domain types and models for the application.
  * Domain types represent core business concepts independent of infrastructure.
@@ -21,3 +22,6 @@ export * from './verification-tiers.js';
 
 // Parallel Mode Domain Types (Sprint S-26)
 export * from './parallel-mode.js';
+
+// Glimpse Mode Domain Types (Sprint S-27)
+export * from './glimpse-mode.js';

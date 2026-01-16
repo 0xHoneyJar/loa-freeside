@@ -4,6 +4,7 @@
  * Sprint S-24: Incumbent Detection & Shadow Ledger
  * Sprint S-25: Shadow Sync Job & Verification Tiers
  * Sprint S-26: Namespaced Roles & Parallel Channels
+ * Sprint S-27: Glimpse Mode & Migration Readiness
  *
  * Adapters for coexistence including:
  * - IncumbentDetector: Auto-detection of Collab.Land, Matrica, Guild.xyz
@@ -13,9 +14,11 @@
  * - NamespacedRoleManager: Arrakis role management in parallel mode
  * - ChannelStrategyManager: Conviction-gated channel management
  * - ParallelModeOrchestrator: Coordination of parallel mode operations
+ * - GlimpseManager: Glimpse mode previews and migration readiness
  *
  * @see SDD §7.1 Shadow Mode Architecture
  * @see SDD §7.2 Parallel Mode Architecture
+ * @see SDD §7.2.3 Glimpse Mode
  */
 
 // Sprint S-24: Incumbent Detection
@@ -94,3 +97,17 @@ export {
   type IParallelModeOrchestratorMetrics,
   type ParallelModeOrchestratorOptions,
 } from './parallel-mode-orchestrator.js';
+
+// Sprint S-27: Glimpse Mode & Migration Readiness
+export {
+  GlimpseManager,
+  createGlimpseManager,
+  type ILeaderboardDataSource,
+  type IProfileDataSource,
+  type IBadgeDataSource,
+  type ICommunityVerificationSource,
+  type IShadowStats,
+  type IGlimpseConfigStore,
+  type IGlimpseMetrics,
+  type GlimpseManagerOptions,
+} from './glimpse-manager.js';
