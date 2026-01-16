@@ -37,3 +37,15 @@ export {
 export { createPositionHotPathHandler } from './position-hotpath.js';
 export { createThresholdHotPathHandler } from './threshold-hotpath.js';
 export { createConvictionLeaderboardHandler } from './conviction-leaderboard.js';
+
+// Sprint S-23: Wizard Commands
+export {
+  createSetupHandler,
+  createWizardButtonHandler,
+  createWizardSelectHandler,
+} from './setup.js';
+export {
+  createResumeHandler,
+  createCancelSetupHandler,
+  createSetupStatusHandler,
+} from './resume.js';

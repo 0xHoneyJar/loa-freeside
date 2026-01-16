@@ -41,6 +41,9 @@ export {
 // Wizard Session Store Interface
 export * from './wizard-session-store.js';
 
+// Wizard Engine Interface (Sprint S-23)
+export * from './wizard-engine.js';
+
 // Synthesis Engine Interface
 export * from './synthesis-engine.js';
 
