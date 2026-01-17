@@ -37,6 +37,16 @@ export interface StreamConfig {
 }
 
 /**
+ * Get replica count based on environment.
+ * Production uses 3 replicas for high availability (NATS cluster).
+ * Staging/development use 1 replica (standalone NATS).
+ */
+const getReplicaCount = (prodReplicas: number): number => {
+  const env = process.env.ENVIRONMENT || process.env.NODE_ENV || 'development';
+  return env === 'production' ? prodReplicas : 1;
+};
+
+/**
  * Stream configurations per SDD §7.1.1
  * - COMMANDS: Slash commands, 60s retention, memory storage
  * - EVENTS: Guild/member events, 5min retention, memory storage
@@ -51,7 +61,7 @@ export const STREAM_CONFIGS: StreamConfig[] = [
     storage: StorageType.Memory,
     maxAge: 60 * 1_000_000_000, // 60 seconds in nanoseconds
     maxMsgs: 100_000,
-    replicas: 3,
+    replicas: getReplicaCount(3),
     description: 'Slash command interactions from Discord',
   },
   {
@@ -61,7 +71,7 @@ export const STREAM_CONFIGS: StreamConfig[] = [
     storage: StorageType.Memory,
     maxAge: 5 * 60 * 1_000_000_000, // 5 minutes
     maxMsgs: 500_000,
-    replicas: 3,
+    replicas: getReplicaCount(3),
     description: 'Guild and member lifecycle events',
   },
   {
@@ -71,7 +81,7 @@ export const STREAM_CONFIGS: StreamConfig[] = [
     storage: StorageType.File, // Persistent for auditing
     maxAge: 7 * 24 * 60 * 60 * 1_000_000_000, // 7 days
     maxBytes: 1_000_000_000, // 1GB
-    replicas: 3,
+    replicas: getReplicaCount(3),
     description: 'Token eligibility checks and results',
   },
   {

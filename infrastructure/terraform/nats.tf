@@ -22,12 +22,8 @@ resource "aws_ecs_task_definition" "nats" {
       essential = true
 
       command = [
-        "-js",          # Enable JetStream
-        "-sd", "/data", # Storage directory
-        "-m", "8222",   # HTTP monitoring port
-        "--cluster_name", "arrakis-nats",
-        "--cluster", "nats://0.0.0.0:6222",
-        "--routes", "nats://nats-0.${local.name_prefix}:6222,nats://nats-1.${local.name_prefix}:6222,nats://nats-2.${local.name_prefix}:6222"
+        "-js",         # Enable JetStream
+        "-m", "8222"   # HTTP monitoring port
       ]
 
       portMappings = [
@@ -58,13 +54,7 @@ resource "aws_ecs_task_definition" "nats" {
         }
       ]
 
-      mountPoints = [
-        {
-          sourceVolume  = "nats-data"
-          containerPath = "/data"
-          readOnly      = false
-        }
-      ]
+      mountPoints = []
 
       logConfiguration = {
         logDriver = "awslogs"
@@ -175,19 +165,11 @@ resource "aws_ecs_service" "nats" {
     assign_public_ip = false
   }
 
-  service_connect_configuration {
-    enabled   = true
-    namespace = var.enable_service_discovery ? aws_service_discovery_private_dns_namespace.main[0].arn : null
-
-    service {
-      port_name      = "client"
-      discovery_name = "nats"
-      client_alias {
-        port     = 4222
-        dns_name = "nats.${local.name_prefix}"
-      }
-    }
-  }
+  # NOTE: Service Discovery disabled temporarily due to ECS Cloud Map permission issues
+  # Using manual registration as workaround until ECS-CloudMap integration is fixed
+  # service_registries {
+  #   registry_arn = aws_service_discovery_service.nats.arn
+  # }
 
   deployment_circuit_breaker {
     enable   = true
@@ -412,10 +394,32 @@ resource "aws_cloudwatch_log_group" "nats" {
 # --------------------------------------------------------------------------
 # Service Discovery for NATS (used by Gateway and Workers)
 # --------------------------------------------------------------------------
-# NOTE: NATS service discovery is managed by ECS Service Connect
-# The service_connect_configuration in aws_ecs_service.nats automatically
-# registers the service with discovery_name = "nats" in the namespace.
-# Do NOT create a standalone aws_service_discovery_service as it conflicts.
+# Using DNS-based service discovery instead of Service Connect.
+# Service Connect's Envoy proxy has issues with raw TCP protocols like NATS,
+# causing 503 errors. DNS-based discovery provides direct IP resolution.
+
+resource "aws_service_discovery_service" "nats" {
+  name = "nats"
+
+  dns_config {
+    namespace_id   = var.enable_service_discovery ? aws_service_discovery_private_dns_namespace.main[0].id : null
+    routing_policy = "MULTIVALUE"
+
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+  }
+
+  health_check_custom_config {
+    failure_threshold = 1
+  }
+
+  tags = merge(local.common_tags, {
+    Service = "NATS"
+    Sprint  = "S-5"
+  })
+}
 
 # --------------------------------------------------------------------------
 # Secrets Manager for NATS Configuration
@@ -435,9 +439,9 @@ resource "aws_secretsmanager_secret" "nats" {
 resource "aws_secretsmanager_secret_version" "nats" {
   secret_id = aws_secretsmanager_secret.nats.id
   secret_string = jsonencode({
-    url          = "nats://nats.${local.name_prefix}:4222"
+    url          = "nats://nats.${local.name_prefix}.local:4222"
     cluster_name = "arrakis-nats"
-    monitor_url  = "http://nats.${local.name_prefix}:8222"
+    monitor_url  = "http://nats.${local.name_prefix}.local:8222"
   })
 }
 
