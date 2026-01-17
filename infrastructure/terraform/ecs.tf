@@ -787,7 +787,7 @@ resource "aws_ecs_task_definition" "gp_worker" {
         },
         {
           name      = "REDIS_URL"
-          valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:REDIS_URL::"
+          valueFrom = "${aws_secretsmanager_secret.redis_credentials.arn}:url::"
         },
         {
           name      = "DATABASE_URL"
