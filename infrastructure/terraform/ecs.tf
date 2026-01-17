@@ -90,8 +90,44 @@ resource "aws_iam_role_policy" "ecs_execution_secrets" {
           data.aws_secretsmanager_secret.vault_token.arn,
           data.aws_secretsmanager_secret.app_config.arn,
           aws_secretsmanager_secret.db_credentials.arn,
-          aws_secretsmanager_secret.redis_credentials.arn
+          aws_secretsmanager_secret.redis_credentials.arn,
+          aws_secretsmanager_secret.rabbitmq_credentials.arn
         ]
+      }
+    ]
+  })
+}
+
+# Cloud Map / Service Discovery permissions for ECS services
+# Required for DNS-based service discovery (NATS, etc.)
+resource "aws_iam_role_policy" "ecs_execution_servicediscovery" {
+  name = "${local.name_prefix}-ecs-execution-servicediscovery"
+  role = aws_iam_role.ecs_execution.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "servicediscovery:RegisterInstance",
+          "servicediscovery:DeregisterInstance",
+          "servicediscovery:DiscoverInstances",
+          "servicediscovery:GetInstancesHealthStatus",
+          "servicediscovery:GetOperation",
+          "servicediscovery:GetService",
+          "servicediscovery:ListInstances"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "route53:GetHostedZone",
+          "route53:ListResourceRecordSets",
+          "route53:ChangeResourceRecordSets"
+        ]
+        Resource = "*"
       }
     ]
   })
@@ -703,6 +739,28 @@ resource "aws_security_group_rule" "gp_worker_https" {
   description       = "Allow HTTPS for Discord REST API"
 }
 
+# Worker egress to NATS
+resource "aws_security_group_rule" "gp_worker_to_nats" {
+  type                     = "egress"
+  from_port                = 4222
+  to_port                  = 4222
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.gp_worker.id
+  source_security_group_id = aws_security_group.nats.id
+  description              = "Allow NATS access"
+}
+
+# Allow NATS ingress from GP Worker
+resource "aws_security_group_rule" "nats_from_gp_worker" {
+  type                     = "ingress"
+  from_port                = 4222
+  to_port                  = 4222
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.nats.id
+  source_security_group_id = aws_security_group.gp_worker.id
+  description              = "NATS client from GP worker"
+}
+
 # Allow RabbitMQ ingress from Worker
 resource "aws_security_group_rule" "rabbitmq_from_gp_worker" {
   type                     = "ingress"
@@ -777,6 +835,11 @@ resource "aws_ecs_task_definition" "gp_worker" {
         {
           name  = "EVENT_PREFETCH"
           value = "10"
+        },
+        # NATS connection via DNS-based service discovery
+        {
+          name  = "NATS_URL"
+          value = "nats://nats.${local.name_prefix}.local:4222"
         }
       ]
 
@@ -791,7 +854,7 @@ resource "aws_ecs_task_definition" "gp_worker" {
         },
         {
           name      = "DATABASE_URL"
-          valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:DATABASE_URL::"
+          valueFrom = "${aws_secretsmanager_secret.db_credentials.arn}:url::"
         },
         {
           name      = "DISCORD_APPLICATION_ID"
@@ -858,6 +921,8 @@ resource "aws_ecs_service" "gp_worker" {
     enable   = true
     rollback = true
   }
+
+  # No Service Connect needed - using DNS-based service discovery for NATS
 
   tags = merge(local.common_tags, {
     Service = "GatewayProxy"

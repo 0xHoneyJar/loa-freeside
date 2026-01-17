@@ -143,7 +143,7 @@ resource "aws_ecs_task_definition" "gateway" {
         # NATS connection via service discovery
         {
           name  = "NATS_URL"
-          value = "nats://nats.${local.name_prefix}:4222"
+          value = "nats://nats.${local.name_prefix}.local:4222"
         }
       ]
 
