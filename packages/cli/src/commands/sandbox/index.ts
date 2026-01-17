@@ -4,6 +4,7 @@
  * Sprint 85: Discord Server Sandboxes - CLI Commands
  * Sprint 86: Discord Server Sandboxes - Event Routing
  * Sprint 87: Discord Server Sandboxes - Cleanup & Polish
+ * Sprint 88: Discord Server Sandboxes - CLI Best Practices Compliance
  *
  * Registers the `bd sandbox` command group with all subcommands.
  *
@@ -12,6 +13,8 @@
  */
 
 import { Command } from 'commander';
+import chalk from 'chalk';
+import { shouldUseColor } from './utils.js';
 
 /**
  * Creates the sandbox command group
@@ -21,6 +24,16 @@ import { Command } from 'commander';
 export function createSandboxCommand(): Command {
   const sandbox = new Command('sandbox')
     .description('Manage Discord server sandboxes for isolated testing')
+    // Sprint 88: Color control (clig.dev compliance)
+    .option('--no-color', 'Disable colored output')
+    .option('-q, --quiet', 'Suppress non-essential output')
+    .hook('preAction', (thisCommand) => {
+      const opts = thisCommand.optsWithGlobals();
+      // Disable colors if --no-color flag, NO_COLOR env, TERM=dumb, or non-TTY
+      if (opts.noColor || !shouldUseColor()) {
+        chalk.level = 0;
+      }
+    })
     .addHelpText(
       'after',
       `
@@ -64,9 +77,12 @@ function registerCreateCommand(parent: Command): void {
     .option('-t, --ttl <duration>', 'Time-to-live (e.g., 24h, 7d)', '24h')
     .option('-g, --guild <id>', 'Discord guild ID to register')
     .option('--json', 'Output as JSON')
+    .option('-n, --dry-run', 'Show what would be created without doing it')
     .action(async (name: string | undefined, options) => {
       const { createCommand } = await import('./create.js');
-      await createCommand(name, options);
+      // Merge global options (quiet) with command options
+      const globalOpts = parent.optsWithGlobals();
+      await createCommand(name, { ...options, quiet: globalOpts.quiet });
     });
 }
 
@@ -84,7 +100,9 @@ function registerListCommand(parent: Command): void {
     .option('--json', 'Output as JSON')
     .action(async (options) => {
       const { listCommand } = await import('./list.js');
-      await listCommand(options);
+      // Merge global options (quiet) with command options
+      const globalOpts = parent.optsWithGlobals();
+      await listCommand({ ...options, quiet: globalOpts.quiet });
     });
 }
 
@@ -98,9 +116,12 @@ function registerDestroyCommand(parent: Command): void {
     .description('Destroy a sandbox')
     .option('-y, --yes', 'Skip confirmation prompt')
     .option('--json', 'Output as JSON')
+    .option('-n, --dry-run', 'Show what would be destroyed without doing it')
     .action(async (name: string, options) => {
       const { destroyCommand } = await import('./destroy.js');
-      await destroyCommand(name, options);
+      // Merge global options (quiet) with command options
+      const globalOpts = parent.optsWithGlobals();
+      await destroyCommand(name, { ...options, quiet: globalOpts.quiet });
     });
 }
 
@@ -114,7 +135,9 @@ function registerConnectCommand(parent: Command): void {
     .option('--json', 'Output as JSON instead of shell exports')
     .action(async (name: string, options) => {
       const { connectCommand } = await import('./connect.js');
-      await connectCommand(name, options);
+      // Merge global options (quiet) with command options
+      const globalOpts = parent.optsWithGlobals();
+      await connectCommand(name, { ...options, quiet: globalOpts.quiet });
     });
 }
 
@@ -130,7 +153,9 @@ function registerRegisterGuildCommand(parent: Command): void {
     .option('--json', 'Output as JSON')
     .action(async (sandbox: string, guildId: string, options) => {
       const { registerCommand } = await import('./register.js');
-      await registerCommand(sandbox, guildId, options);
+      // Merge global options (quiet) with command options
+      const globalOpts = parent.optsWithGlobals();
+      await registerCommand(sandbox, guildId, { ...options, quiet: globalOpts.quiet });
     });
 }
 
@@ -146,7 +171,9 @@ function registerUnregisterGuildCommand(parent: Command): void {
     .option('--json', 'Output as JSON')
     .action(async (sandbox: string, guildId: string, options) => {
       const { unregisterCommand } = await import('./unregister.js');
-      await unregisterCommand(sandbox, guildId, options);
+      // Merge global options (quiet) with command options
+      const globalOpts = parent.optsWithGlobals();
+      await unregisterCommand(sandbox, guildId, { ...options, quiet: globalOpts.quiet });
     });
 }
 
@@ -163,9 +190,12 @@ function registerStatusCommand(parent: Command): void {
     .option('-i, --interval <seconds>', 'Refresh interval in seconds (default: 5)', '5')
     .action(async (name: string, options) => {
       const { statusCommand } = await import('./status.js');
+      // Merge global options (quiet) with command options
+      const globalOpts = parent.optsWithGlobals();
       await statusCommand(name, {
         ...options,
         interval: parseInt(options.interval, 10),
+        quiet: globalOpts.quiet,
       });
     });
 }

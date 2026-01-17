@@ -29,6 +29,7 @@ export interface ListCommandOptions {
   status?: string;
   all?: boolean;
   json?: boolean;
+  quiet?: boolean;
 }
 
 /**
@@ -107,8 +108,18 @@ export async function listCommand(options: ListCommandOptions): Promise<void> {
     }
 
     if (sandboxes.length === 0) {
-      console.log(chalk.yellow('No sandboxes found.'));
-      console.log(chalk.dim('Create one with: bd sandbox create'));
+      if (!options.quiet) {
+        console.log(chalk.yellow('No sandboxes found.'));
+        console.log(chalk.dim('Create one with: bd sandbox create'));
+      }
+      return;
+    }
+
+    // Sprint 88: Quiet mode - just output names
+    if (options.quiet) {
+      for (const sandbox of sandboxes) {
+        console.log(sandbox.name);
+      }
       return;
     }
 

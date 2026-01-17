@@ -20,6 +20,7 @@ import {
   timeUntil,
   handleError,
   createSilentLogger,
+  isInteractive,
 } from './utils.js';
 
 /**
@@ -29,6 +30,8 @@ export interface CreateCommandOptions {
   ttl: string;
   guild?: string;
   json?: boolean;
+  quiet?: boolean;
+  dryRun?: boolean;
 }
 
 /**
@@ -41,15 +44,40 @@ export async function createCommand(
   name: string | undefined,
   options: CreateCommandOptions
 ): Promise<void> {
-  const spinner = ora();
+  // Only show spinner in interactive TTY mode, not in quiet mode (Sprint 88: clig.dev compliance)
+  const spinner = isInteractive() && !options.json && !options.quiet
+    ? ora('Creating sandbox...').start()
+    : null;
 
   try {
     // Parse TTL
     const ttlHours = parseTTL(options.ttl);
     const owner = getCurrentUser();
 
-    if (!options.json) {
-      spinner.start('Creating sandbox...');
+    // Sprint 88: Dry-run mode - show what would be created without doing it
+    if (options.dryRun) {
+      if (options.json) {
+        console.log(JSON.stringify({
+          dryRun: true,
+          wouldCreate: {
+            name: name || '(auto-generated)',
+            owner,
+            ttlHours,
+            guildIds: options.guild ? [options.guild] : [],
+          },
+        }, null, 2));
+      } else {
+        console.log(chalk.yellow('DRY RUN - No changes will be made'));
+        console.log();
+        console.log('Would create sandbox:');
+        console.log(`  Name:   ${chalk.cyan(name || '(auto-generated)')}`);
+        console.log(`  Owner:  ${owner}`);
+        console.log(`  TTL:    ${ttlHours} hours`);
+        if (options.guild) {
+          console.log(`  Guild:  ${options.guild}`);
+        }
+      }
+      process.exit(0);
     }
 
     const logger = createSilentLogger();
@@ -90,8 +118,11 @@ export async function createCommand(
           2
         )
       );
+    } else if (options.quiet) {
+      // Sprint 88: Quiet mode - only output essential info (sandbox name)
+      console.log(result.sandbox.name);
     } else {
-      spinner.succeed(chalk.green('Sandbox created successfully!'));
+      spinner?.succeed(chalk.green('Sandbox created successfully!'));
       console.log();
       console.log(chalk.bold('Sandbox Details:'));
       console.log(`  ID:      ${result.sandbox.id}`);
@@ -111,9 +142,7 @@ export async function createCommand(
       console.log(chalk.dim(`  eval $(bd sandbox connect ${result.sandbox.name})`));
     }
   } catch (error) {
-    if (!options.json) {
-      spinner.fail(chalk.red('Failed to create sandbox'));
-    }
+    spinner?.fail(chalk.red('Failed to create sandbox'));
     handleError(error, options.json);
   }
 }

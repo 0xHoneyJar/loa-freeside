@@ -15,6 +15,7 @@ import {
   getSandboxManager,
   getCurrentUser,
   handleError,
+  isInteractive,
 } from './utils.js';
 
 /**
@@ -22,6 +23,7 @@ import {
  */
 interface RegisterOptions {
   json?: boolean;
+  quiet?: boolean;
 }
 
 /**
@@ -32,7 +34,10 @@ export async function registerCommand(
   guildId: string,
   options: RegisterOptions
 ): Promise<void> {
-  const spinner = options.json ? null : ora('Registering guild...').start();
+  // Only show spinner in interactive TTY mode, not in quiet mode (Sprint 88: clig.dev compliance)
+  const spinner = isInteractive() && !options.json && !options.quiet
+    ? ora('Registering guild...').start()
+    : null;
 
   try {
     const manager = getSandboxManager();
@@ -127,6 +132,9 @@ export async function registerCommand(
           2
         )
       );
+    } else if (options.quiet) {
+      // Sprint 88: Quiet mode - minimal output
+      console.log(`registered: ${guildId} -> ${sandboxName}`);
     } else {
       spinner?.succeed(chalk.green(`Guild ${guildId} registered to sandbox '${sandboxName}'`));
       console.log('');

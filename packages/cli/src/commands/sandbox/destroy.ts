@@ -17,6 +17,8 @@ import {
   getCurrentUser,
   handleError,
   createSilentLogger,
+  isInteractive,
+  canPrompt,
 } from './utils.js';
 
 /**
@@ -25,6 +27,8 @@ import {
 export interface DestroyCommandOptions {
   yes?: boolean;
   json?: boolean;
+  quiet?: boolean;
+  dryRun?: boolean;
 }
 
 /**
@@ -57,7 +61,8 @@ export async function destroyCommand(
   name: string,
   options: DestroyCommandOptions
 ): Promise<void> {
-  const spinner = ora();
+  // Only show spinner in interactive TTY mode, not in quiet mode (Sprint 88: clig.dev compliance)
+  const spinner = isInteractive() && !options.json && !options.quiet ? ora() : null;
 
   try {
     const logger = createSilentLogger();
@@ -110,8 +115,40 @@ export async function destroyCommand(
       process.exit(0);
     }
 
+    // Sprint 88: Dry-run mode - show what would be destroyed without doing it
+    if (options.dryRun) {
+      if (options.json) {
+        console.log(JSON.stringify({
+          dryRun: true,
+          wouldDestroy: {
+            id: sandbox.id,
+            name: sandbox.name,
+            owner: sandbox.owner,
+            schemaName: sandbox.schemaName,
+            guildIds: sandbox.guildIds,
+          },
+        }, null, 2));
+      } else {
+        console.log(chalk.yellow('DRY RUN - No changes will be made'));
+        console.log();
+        console.log('Would destroy sandbox:');
+        console.log(`  Name:   ${chalk.cyan(sandbox.name)}`);
+        console.log(`  ID:     ${sandbox.id}`);
+        console.log(`  Schema: ${sandbox.schemaName}`);
+        console.log(`  Guilds: ${sandbox.guildIds.length}`);
+      }
+      process.exit(0);
+    }
+
     // Confirm destruction
     if (!options.yes && !options.json) {
+      // Sprint 88: Check for TTY before prompting (clig.dev compliance)
+      if (!canPrompt()) {
+        console.error(chalk.red('Error: Cannot prompt for confirmation in non-interactive mode.'));
+        console.error(chalk.yellow('Use --yes to skip confirmation.'));
+        process.exit(1);
+      }
+
       console.log(chalk.bold('\nSandbox to destroy:'));
       console.log(`  Name:   ${chalk.cyan(sandbox.name)}`);
       console.log(`  Owner:  ${sandbox.owner}`);
@@ -131,9 +168,7 @@ export async function destroyCommand(
       }
     }
 
-    if (!options.json) {
-      spinner.start('Destroying sandbox...');
-    }
+    spinner?.start('Destroying sandbox...');
 
     // Destroy sandbox
     await manager.destroy(sandbox.id, actor);
@@ -154,13 +189,14 @@ export async function destroyCommand(
           2
         )
       );
+    } else if (options.quiet) {
+      // Sprint 88: Quiet mode - minimal output
+      console.log(`destroyed: ${name}`);
     } else {
-      spinner.succeed(chalk.green(`Sandbox '${name}' destroyed successfully.`));
+      spinner?.succeed(chalk.green(`Sandbox '${name}' destroyed successfully.`));
     }
   } catch (error) {
-    if (!options.json) {
-      spinner.fail(chalk.red('Failed to destroy sandbox'));
-    }
+    spinner?.fail(chalk.red('Failed to destroy sandbox'));
     handleError(error, options.json);
   }
 }

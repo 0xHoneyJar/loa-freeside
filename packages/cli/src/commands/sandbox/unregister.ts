@@ -15,6 +15,7 @@ import {
   getSandboxManager,
   getCurrentUser,
   handleError,
+  isInteractive,
 } from './utils.js';
 
 /**
@@ -22,6 +23,7 @@ import {
  */
 interface UnregisterOptions {
   json?: boolean;
+  quiet?: boolean;
 }
 
 /**
@@ -32,7 +34,10 @@ export async function unregisterCommand(
   guildId: string,
   options: UnregisterOptions
 ): Promise<void> {
-  const spinner = options.json ? null : ora('Unregistering guild...').start();
+  // Only show spinner in interactive TTY mode, not in quiet mode (Sprint 88: clig.dev compliance)
+  const spinner = isInteractive() && !options.json && !options.quiet
+    ? ora('Unregistering guild...').start()
+    : null;
 
   try {
     const manager = getSandboxManager();
@@ -104,6 +109,9 @@ export async function unregisterCommand(
           2
         )
       );
+    } else if (options.quiet) {
+      // Sprint 88: Quiet mode - minimal output
+      console.log(`unregistered: ${guildId} <- ${sandboxName}`);
     } else {
       spinner?.succeed(
         chalk.green(`Guild ${guildId} unregistered from sandbox '${sandboxName}'`)

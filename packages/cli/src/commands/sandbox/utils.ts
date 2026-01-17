@@ -275,6 +275,48 @@ export function handleError(error: unknown, json: boolean = false): never {
 }
 
 // =============================================================================
+// TTY Detection & Color Control (Sprint 88: CLI Best Practices)
+// =============================================================================
+
+/**
+ * Determines if colors should be used in output
+ *
+ * Checks environment variables and TTY status per clig.dev guidelines:
+ * - NO_COLOR env var set → no color
+ * - TERM=dumb → no color
+ * - stdout is not a TTY → no color
+ *
+ * @see https://clig.dev/ "Disable color if NO_COLOR env var is set"
+ * @returns true if colors should be used
+ */
+export function shouldUseColor(): boolean {
+  if (process.env.NO_COLOR !== undefined) return false;
+  if (process.env.TERM === 'dumb') return false;
+  if (!process.stdout.isTTY) return false;
+  return true;
+}
+
+/**
+ * Determines if the terminal supports interactive features
+ *
+ * Used to decide whether to show spinners, prompts, etc.
+ *
+ * @returns true if running in an interactive TTY
+ */
+export function isInteractive(): boolean {
+  return process.stdout.isTTY === true;
+}
+
+/**
+ * Determines if stdin is available for prompts
+ *
+ * @returns true if stdin is a TTY (can accept user input)
+ */
+export function canPrompt(): boolean {
+  return process.stdin.isTTY === true;
+}
+
+// =============================================================================
 // Silent Logger
 // =============================================================================
 

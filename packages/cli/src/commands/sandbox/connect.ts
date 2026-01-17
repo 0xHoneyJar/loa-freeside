@@ -21,6 +21,7 @@ import {
  */
 export interface ConnectCommandOptions {
   json?: boolean;
+  quiet?: boolean;
 }
 
 /**
@@ -122,11 +123,14 @@ export async function connectCommand(
         console.log(`export ${key}="${value}"`);
       }
 
-      // Helpful comment (stderr so eval doesn't capture)
-      console.error(chalk.dim(`# Connected to sandbox: ${sandbox.name}`));
-      console.error(chalk.dim(`# Schema: ${details.schemaName}`));
-      console.error(chalk.dim(`# Redis prefix: ${details.redisPrefix}`));
-      console.error(chalk.dim(`# NATS prefix: ${details.natsPrefix}`));
+      // Sprint 88: Quiet mode - suppress stderr comments
+      if (!options.quiet) {
+        // Helpful comment (stderr so eval doesn't capture)
+        console.error(chalk.dim(`# Connected to sandbox: ${sandbox.name}`));
+        console.error(chalk.dim(`# Schema: ${details.schemaName}`));
+        console.error(chalk.dim(`# Redis prefix: ${details.redisPrefix}`));
+        console.error(chalk.dim(`# NATS prefix: ${details.natsPrefix}`));
+      }
     }
   } catch (error) {
     handleError(error, options.json);

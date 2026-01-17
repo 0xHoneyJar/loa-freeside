@@ -20,6 +20,7 @@ import {
   timeUntil,
   handleError,
   createSilentLogger,
+  isInteractive,
 } from './utils.js';
 
 /**
@@ -29,6 +30,7 @@ export interface StatusCommandOptions {
   json?: boolean;
   watch?: boolean;
   interval?: number;
+  quiet?: boolean;
 }
 
 /**
@@ -149,7 +151,10 @@ export async function statusCommand(
   name: string,
   options: StatusCommandOptions
 ): Promise<void> {
-  const spinner = !options.json ? ora('Fetching sandbox status...').start() : null;
+  // Only show spinner in interactive TTY mode, not in quiet mode (Sprint 88: clig.dev compliance)
+  const spinner = isInteractive() && !options.json && !options.quiet
+    ? ora('Fetching sandbox status...').start()
+    : null;
 
   try {
     const logger = createSilentLogger();
@@ -198,6 +203,12 @@ export async function statusCommand(
           checkedAt: health.checkedAt.toISOString(),
         },
       }, null, 2));
+      return;
+    }
+
+    // Sprint 88: Quiet mode - just output health status
+    if (options.quiet) {
+      console.log(`${health.sandbox.name}: ${health.overallHealth}`);
       return;
     }
 
