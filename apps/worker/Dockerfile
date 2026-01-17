@@ -5,15 +5,27 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # ============================================
-# Stage 1: Build @arrakis/core
+# Stage 1: Install Worker Dependencies First
+# (This provides shared deps like ioredis)
+# ============================================
+WORKDIR /app/apps/worker
+
+# Copy package files
+COPY apps/worker/package.json apps/worker/package-lock.json* ./
+
+# Install all dependencies
+RUN npm ci --ignore-scripts || npm install --ignore-scripts
+
+# ============================================
+# Stage 2: Build @arrakis/core
 # ============================================
 WORKDIR /app/packages/core
 
 # Copy package files
 COPY packages/core/package.json packages/core/package-lock.json* ./
 
-# Install dependencies
-RUN npm ci
+# Install dev dependencies for build
+RUN npm ci || npm install
 
 # Copy source (core uses domain/ and ports/, not src/)
 COPY packages/core/domain ./domain
@@ -24,37 +36,38 @@ COPY packages/core/tsconfig.json ./
 RUN npm run build
 
 # ============================================
-# Stage 2: Build @arrakis/sandbox
+# Stage 3: Build @arrakis/sandbox
 # ============================================
 WORKDIR /app/packages/sandbox
 
 # Copy package files
 COPY packages/sandbox/package.json packages/sandbox/package-lock.json* ./
 
-# Install dependencies (excluding @arrakis/core which we'll link)
-RUN npm ci --ignore-scripts || npm install --ignore-scripts
+# Create node_modules structure and link shared deps from worker
+# This ensures sandbox uses the SAME ioredis, pino, etc. as worker
+RUN mkdir -p node_modules/@arrakis && \
+    ln -sf /app/packages/core node_modules/@arrakis/core && \
+    ln -sf /app/apps/worker/node_modules/ioredis node_modules/ioredis && \
+    ln -sf /app/apps/worker/node_modules/nats node_modules/nats && \
+    ln -sf /app/apps/worker/node_modules/pino node_modules/pino && \
+    ln -sf /app/apps/worker/node_modules/prom-client node_modules/prom-client && \
+    ln -sf /app/apps/worker/node_modules/drizzle-orm node_modules/drizzle-orm && \
+    ln -sf /app/apps/worker/node_modules/postgres node_modules/postgres
+
+# Install remaining sandbox dependencies (drizzle-orm, nanoid, postgres, typescript)
+RUN npm install --ignore-scripts nanoid typescript 2>/dev/null || true
 
 # Copy source
 COPY packages/sandbox/src ./src
 COPY packages/sandbox/tsconfig.json ./
 
-# Link @arrakis/core
-RUN mkdir -p node_modules/@arrakis && \
-    ln -sf /app/packages/core node_modules/@arrakis/core
-
 # Build sandbox package
 RUN npm run build
 
 # ============================================
-# Stage 3: Build Worker
+# Stage 4: Build Worker
 # ============================================
 WORKDIR /app/apps/worker
-
-# Copy package files
-COPY apps/worker/package.json apps/worker/package-lock.json* ./
-
-# Install dependencies (excluding workspace packages which we'll link)
-RUN npm ci --ignore-scripts || npm install --ignore-scripts
 
 # Link workspace packages
 RUN mkdir -p node_modules/@arrakis && \
@@ -68,7 +81,9 @@ COPY apps/worker/tsconfig.json ./
 # Build worker
 RUN npm run build
 
+# ============================================
 # Production stage
+# ============================================
 FROM node:20-alpine AS production
 
 # Create non-root user for security
@@ -80,7 +95,7 @@ WORKDIR /app
 # Copy package files from worker
 COPY apps/worker/package.json apps/worker/package-lock.json* ./
 
-# Copy built workspace packages (with their node_modules for any transitive deps)
+# Copy built workspace packages
 COPY --from=builder /app/packages/core/dist ./node_modules/@arrakis/core/dist
 COPY --from=builder /app/packages/core/package.json ./node_modules/@arrakis/core/
 COPY --from=builder /app/packages/sandbox/dist ./node_modules/@arrakis/sandbox/dist
