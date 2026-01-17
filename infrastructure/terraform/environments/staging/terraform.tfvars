@@ -40,6 +40,40 @@ gp_worker_cpu           = 512
 gp_worker_memory        = 1024
 gp_worker_desired_count = 1  # Enable for Gateway Proxy testing
 
-# RabbitMQ (Sprint GW-1)
+# RabbitMQ (Sprint GW-1) - Legacy, will be replaced by NATS
 rabbitmq_instance_type   = "mq.t3.micro"
 rabbitmq_deployment_mode = "SINGLE_INSTANCE"  # Single instance for staging
+
+# =============================================================================
+# Part II SaaS Platform - New Infrastructure (Sprints S-1 to S-28)
+# =============================================================================
+
+# NATS JetStream (Sprint S-5) - Replaces RabbitMQ
+nats_cpu           = 256
+nats_memory        = 512
+nats_desired_count = 1  # Single node for staging (3 for production)
+
+# Rust Twilight Gateway (Sprint S-5) - Replaces Node.js Discord client
+gateway_cpu           = 256
+gateway_memory        = 512
+gateway_desired_count = 1
+
+# PgBouncer Connection Pooling (Sprint S-1)
+pgbouncer_cpu               = 256
+pgbouncer_memory            = 512
+pgbouncer_desired_count     = 1
+pgbouncer_max_client_conn   = 100
+pgbouncer_default_pool_size = 10
+
+# Service Discovery (Part II)
+enable_service_discovery = true
+
+# Auto-scaling (Sprint S-11)
+autoscaling_cpu_target         = 70
+autoscaling_memory_target      = 80
+autoscaling_scale_in_cooldown  = 300
+autoscaling_scale_out_cooldown = 60
+
+# Coexistence Mode (Sprint S-22 to S-28)
+# Possible values: shadow, parallel, arrakis_primary, instant
+coexistence_mode = "shadow"  # Start with shadow mode for safe testing
