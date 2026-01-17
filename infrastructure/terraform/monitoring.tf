@@ -623,3 +623,294 @@ resource "aws_cloudwatch_metric_alarm" "gp_worker_no_tasks" {
     Service = "GatewayProxy"
   })
 }
+
+# =============================================================================
+# Discord Server Sandbox CloudWatch Alarms
+# Sprint 87: Cleanup & Polish
+# =============================================================================
+
+# Sandbox Cleanup Job Failures
+resource "aws_cloudwatch_metric_alarm" "sandbox_cleanup_failures" {
+  alarm_name          = "${local.name_prefix}-sandbox-cleanup-failures"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "CleanupFailures"
+  namespace           = "Arrakis/Sandbox"
+  period              = 900 # 15 minutes (cleanup job interval)
+  statistic           = "Sum"
+  threshold           = 0
+  alarm_description   = "Sandbox cleanup job has failures - sandboxes may not be properly cleaned up"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    Environment = var.environment
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+
+  tags = merge(local.common_tags, {
+    Service = "Sandbox"
+  })
+}
+
+# Sandbox Orphaned Resources Detected
+resource "aws_cloudwatch_metric_alarm" "sandbox_orphaned_resources" {
+  alarm_name          = "${local.name_prefix}-sandbox-orphaned-resources"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 4 # 4 cleanup cycles (1 hour)
+  metric_name         = "OrphanedResourceCount"
+  namespace           = "Arrakis/Sandbox"
+  period              = 900 # 15 minutes
+  statistic           = "Maximum"
+  threshold           = 5
+  alarm_description   = "Sandbox orphaned resources > 5 for 1 hour - manual cleanup may be required"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    Environment = var.environment
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+
+  tags = merge(local.common_tags, {
+    Service = "Sandbox"
+  })
+}
+
+# Sandbox Schema Creation Failures
+resource "aws_cloudwatch_metric_alarm" "sandbox_schema_failures" {
+  alarm_name          = "${local.name_prefix}-sandbox-schema-failures"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "SchemaCreationErrors"
+  namespace           = "Arrakis/Sandbox"
+  period              = 300 # 5 minutes
+  statistic           = "Sum"
+  threshold           = 3
+  alarm_description   = "Multiple sandbox schema creation failures - PostgreSQL may have issues"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    Environment = var.environment
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+
+  tags = merge(local.common_tags, {
+    Service = "Sandbox"
+  })
+}
+
+# Sandbox Event Routing Errors (high rate)
+resource "aws_cloudwatch_metric_alarm" "sandbox_routing_errors" {
+  alarm_name          = "${local.name_prefix}-sandbox-routing-errors"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "EventRoutingErrors"
+  namespace           = "Arrakis/Sandbox"
+  period              = 300 # 5 minutes
+  statistic           = "Sum"
+  threshold           = 50
+  alarm_description   = "High sandbox event routing error rate - events may not be reaching sandboxes"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    Environment = var.environment
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+
+  tags = merge(local.common_tags, {
+    Service = "Sandbox"
+  })
+}
+
+# Sandbox Active Count Too High (resource exhaustion prevention)
+resource "aws_cloudwatch_metric_alarm" "sandbox_count_high" {
+  alarm_name          = "${local.name_prefix}-sandbox-count-high"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "ActiveSandboxCount"
+  namespace           = "Arrakis/Sandbox"
+  period              = 300 # 5 minutes
+  statistic           = "Maximum"
+  threshold           = 100 # Alert if > 100 active sandboxes
+  alarm_description   = "High number of active sandboxes - may impact database performance"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    Environment = var.environment
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+
+  tags = merge(local.common_tags, {
+    Service = "Sandbox"
+  })
+}
+
+# =============================================================================
+# Sandbox CloudWatch Dashboard
+# Sprint 87: Cleanup & Polish
+# =============================================================================
+
+resource "aws_cloudwatch_dashboard" "sandbox" {
+  dashboard_name = "${local.name_prefix}-sandbox"
+
+  dashboard_body = jsonencode({
+    widgets = [
+      # Row 0: Header
+      {
+        type   = "text"
+        x      = 0
+        y      = 0
+        width  = 24
+        height = 1
+        properties = {
+          markdown = "# Discord Server Sandboxes - Operational Dashboard\n**Purpose:** Isolated testing environments for Discord bot functionality"
+        }
+      },
+
+      # Row 1: Sandbox Lifecycle
+      {
+        type   = "metric"
+        x      = 0
+        y      = 1
+        width  = 8
+        height = 6
+        properties = {
+          title  = "Active Sandboxes"
+          region = var.aws_region
+          stat   = "Average"
+          period = 60
+          metrics = [
+            ["Arrakis/Sandbox", "ActiveSandboxCount", "Environment", var.environment, { label = "Active Sandboxes" }]
+          ]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 8
+        y      = 1
+        width  = 8
+        height = 6
+        properties = {
+          title  = "Sandbox Lifecycle"
+          region = var.aws_region
+          stat   = "Sum"
+          period = 300
+          metrics = [
+            ["Arrakis/Sandbox", "SandboxesCreated", "Environment", var.environment, { label = "Created", color = "#2ca02c" }],
+            [".", "SandboxesDestroyed", ".", ".", { label = "Destroyed", color = "#d62728" }]
+          ]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 16
+        y      = 1
+        width  = 8
+        height = 6
+        properties = {
+          title  = "Guild Mappings"
+          region = var.aws_region
+          stat   = "Average"
+          period = 60
+          metrics = [
+            ["Arrakis/Sandbox", "GuildMappingCount", "Environment", var.environment, { label = "Active Mappings" }]
+          ]
+        }
+      },
+
+      # Row 2: Cleanup Metrics
+      {
+        type   = "metric"
+        x      = 0
+        y      = 7
+        width  = 8
+        height = 6
+        properties = {
+          title  = "Cleanup Job"
+          region = var.aws_region
+          stat   = "Sum"
+          period = 900
+          metrics = [
+            ["Arrakis/Sandbox", "SandboxesCleanedUp", "Environment", var.environment, { label = "Sandboxes Cleaned" }],
+            [".", "CleanupFailures", ".", ".", { label = "Cleanup Failures", color = "#d62728" }]
+          ]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 8
+        y      = 7
+        width  = 8
+        height = 6
+        properties = {
+          title  = "Cleanup Duration"
+          region = var.aws_region
+          stat   = "Average"
+          period = 900
+          metrics = [
+            ["Arrakis/Sandbox", "CleanupDurationMs", "Environment", var.environment, { label = "Duration (ms)" }]
+          ]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 16
+        y      = 7
+        width  = 8
+        height = 6
+        properties = {
+          title  = "Orphaned Resources"
+          region = var.aws_region
+          stat   = "Maximum"
+          period = 900
+          metrics = [
+            ["Arrakis/Sandbox", "OrphanedSchemas", "Environment", var.environment, { label = "Orphaned Schemas" }],
+            [".", "OrphanedRedisKeys", ".", ".", { label = "Orphaned Redis Keys" }]
+          ]
+        }
+      },
+
+      # Row 3: Event Routing
+      {
+        type   = "metric"
+        x      = 0
+        y      = 13
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Event Routing"
+          region = var.aws_region
+          stat   = "Sum"
+          period = 60
+          metrics = [
+            ["Arrakis/Sandbox", "EventsRoutedToSandbox", "Environment", var.environment, { label = "To Sandbox" }],
+            [".", "EventsRoutedToProduction", ".", ".", { label = "To Production" }],
+            [".", "EventRoutingErrors", ".", ".", { label = "Errors", color = "#d62728" }]
+          ]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 13
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Route Lookup Performance"
+          region = var.aws_region
+          stat   = "Average"
+          period = 60
+          metrics = [
+            ["Arrakis/Sandbox", "RouteLookupDurationMs", "Environment", var.environment, { label = "Lookup Duration (ms)" }],
+            [".", "CacheHitRate", ".", ".", { label = "Cache Hit Rate %" }]
+          ]
+        }
+      }
+    ]
+  })
+}

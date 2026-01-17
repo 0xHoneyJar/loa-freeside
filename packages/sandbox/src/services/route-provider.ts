@@ -12,7 +12,7 @@
 
 import type { Logger } from 'pino';
 import type postgres from 'postgres';
-import type Redis from 'ioredis';
+import type { Redis } from 'ioredis';
 
 // =============================================================================
 // Types

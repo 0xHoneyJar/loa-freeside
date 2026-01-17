@@ -3,6 +3,7 @@
  *
  * Sprint 84: Discord Server Sandboxes - Foundation
  * Sprint 86: Discord Server Sandboxes - Event Routing
+ * Sprint 87: Discord Server Sandboxes - Cleanup & Polish
  *
  * @module packages/sandbox/services
  */
@@ -35,3 +36,13 @@ export type {
   RoutingStats,
   RoutingResult,
 } from './event-router.js';
+
+// Sprint 87: Cleanup & Polish
+export { CleanupProvider } from './cleanup-provider.js';
+export type {
+  CleanupProviderConfig,
+  CleanupResult,
+  CleanupStep,
+  OrphanedResources,
+  CleanupStats,
+} from './cleanup-provider.js';

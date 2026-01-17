@@ -12,6 +12,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('nats', () => ({
   AckPolicy: { Explicit: 'explicit' },
   DeliverPolicy: { All: 'all' },
+  RetentionPolicy: { Limits: 'limits', Interest: 'interest', WorkQueue: 'workqueue' },
+  StorageType: { File: 'file', Memory: 'memory' },
 }));
 
 import { EventRouter, SANDBOX_STREAM_CONFIG } from '../services/event-router.js';
@@ -330,7 +332,7 @@ describe('SANDBOX_STREAM_CONFIG', () => {
   });
 
   it('should use memory storage', () => {
-    expect(SANDBOX_STREAM_CONFIG.storage).toBe(0);
+    expect(SANDBOX_STREAM_CONFIG.storage).toBe('memory');
   });
 
   it('should have 3 replicas', () => {

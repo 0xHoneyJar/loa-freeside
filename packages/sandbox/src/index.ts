@@ -3,6 +3,7 @@
  *
  * Sprint 84: Discord Server Sandboxes - Foundation
  * Sprint 86: Discord Server Sandboxes - Event Routing
+ * Sprint 87: Discord Server Sandboxes - Cleanup & Polish
  *
  * Provides isolated testing environments for Arrakis Discord functionality.
  * Each sandbox gets its own PostgreSQL schema, Redis key prefix, and NATS subjects.
@@ -65,6 +66,7 @@ export {
   RouteProvider,
   EventRouter,
   SANDBOX_STREAM_CONFIG,
+  CleanupProvider,
 } from './services/index.js';
 
 export type {
@@ -80,4 +82,45 @@ export type {
   DiscordEvent,
   RoutingStats,
   RoutingResult,
+  CleanupProviderConfig,
+  CleanupResult,
+  CleanupStep,
+  OrphanedResources,
+  CleanupStats,
 } from './services/index.js';
+
+// =============================================================================
+// Metrics Exports (Sprint 87)
+// =============================================================================
+
+export {
+  sandboxRegistry,
+  sandboxesCreated,
+  sandboxesDestroyed,
+  sandboxesActive,
+  sandboxCreationDuration,
+  cleanupJobRuns,
+  cleanupSandboxes,
+  cleanupDuration,
+  orphanedResourcesFound,
+  schemasCreated,
+  schemasDropped,
+  schemaOperationDuration,
+  routeLookups,
+  routeLookupDuration,
+  guildMappings,
+  eventsRouted,
+  eventRoutingDuration,
+  eventRoutingErrors,
+  sandboxHealthStatus,
+  recordSandboxCreated,
+  recordSandboxDestroyed,
+  recordCleanupRun,
+  recordRouteLookup,
+  recordEventRouted,
+  updateSandboxHealth,
+  updateActiveSandboxCount,
+  updateGuildMappingCount,
+  updateOrphanedResources,
+  collectSandboxMetrics,
+} from './metrics.js';

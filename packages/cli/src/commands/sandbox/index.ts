@@ -3,6 +3,7 @@
  *
  * Sprint 85: Discord Server Sandboxes - CLI Commands
  * Sprint 86: Discord Server Sandboxes - Event Routing
+ * Sprint 87: Discord Server Sandboxes - Cleanup & Polish
  *
  * Registers the `bd sandbox` command group with all subcommands.
  *
@@ -29,6 +30,8 @@ Examples:
   $ bd sandbox create --guild 123456     Create sandbox and register guild
   $ bd sandbox list                      List your running sandboxes
   $ bd sandbox list --all                List all statuses including destroyed
+  $ bd sandbox status my-sandbox         Show detailed status and health checks
+  $ bd sandbox status my-sandbox --watch Watch status in real-time
   $ bd sandbox destroy my-sandbox        Destroy a sandbox by name
   $ bd sandbox connect my-sandbox        Get connection environment variables
   $ eval $(bd sandbox connect my-sandbox)  Export env vars to shell
@@ -45,6 +48,8 @@ Examples:
   // Sprint 86: Event Routing commands
   registerRegisterGuildCommand(sandbox);
   registerUnregisterGuildCommand(sandbox);
+  // Sprint 87: Cleanup & Polish commands
+  registerStatusCommand(sandbox);
 
   return sandbox;
 }
@@ -142,6 +147,26 @@ function registerUnregisterGuildCommand(parent: Command): void {
     .action(async (sandbox: string, guildId: string, options) => {
       const { unregisterCommand } = await import('./unregister.js');
       await unregisterCommand(sandbox, guildId, options);
+    });
+}
+
+/**
+ * Registers the 'status' subcommand
+ * Sprint 87: Cleanup & Polish
+ */
+function registerStatusCommand(parent: Command): void {
+  parent
+    .command('status <name>')
+    .description('Show detailed status and health checks for a sandbox')
+    .option('--json', 'Output as JSON')
+    .option('-w, --watch', 'Watch mode - refresh status periodically')
+    .option('-i, --interval <seconds>', 'Refresh interval in seconds (default: 5)', '5')
+    .action(async (name: string, options) => {
+      const { statusCommand } = await import('./status.js');
+      await statusCommand(name, {
+        ...options,
+        interval: parseInt(options.interval, 10),
+      });
     });
 }
 

@@ -11,8 +11,8 @@
  */
 
 import type { Logger } from 'pino';
-import type { JetStreamClient, JetStreamManager, ConsumerMessages, JsMsg } from 'nats';
-import { AckPolicy, DeliverPolicy } from 'nats';
+import type { JetStreamClient, JetStreamManager, ConsumerMessages, JsMsg, Consumer } from 'nats';
+import { AckPolicy, DeliverPolicy, RetentionPolicy, StorageType } from 'nats';
 import { RouteProvider } from './route-provider.js';
 
 // =============================================================================
@@ -175,8 +175,8 @@ export class EventRouter {
       await this.jsm.streams.add({
         name: SANDBOX_STREAM_NAME,
         subjects: SANDBOX_STREAM_SUBJECTS,
-        retention: 1, // Limits
-        storage: 0, // Memory
+        retention: RetentionPolicy.Limits,
+        storage: StorageType.Memory,
         max_age: SANDBOX_STREAM_MAX_AGE_NS,
         max_msgs: SANDBOX_STREAM_MAX_MSGS,
         num_replicas: 3,
@@ -247,7 +247,8 @@ export class EventRouter {
     await this.ensureConsumer();
 
     // Get consumer
-    this.consumer = await this.jetstream.consumers.get('EVENTS', this.consumerName).consume();
+    const consumer: Consumer = await this.jetstream.consumers.get('EVENTS', this.consumerName);
+    this.consumer = await consumer.consume();
     this.running = true;
 
     // Process messages
@@ -317,7 +318,6 @@ export class EventRouter {
 
     // Extract guild_id
     const guildId = this.extractGuildId(event);
-    const eventType = this.extractEventType(msg.subject, event);
 
     let sandboxId: string | null = null;
     let targetSubject: string;
@@ -419,24 +419,6 @@ export class EventRouter {
   }
 
   /**
-   * Extract event type from subject or event
-   */
-  private extractEventType(subject: string, event: DiscordEvent): string {
-    // Try to get from event first
-    if (event.t) {
-      return event.t;
-    }
-
-    // Extract from subject: events.{type}
-    const parts = subject.split('.');
-    if (parts.length >= 2) {
-      return parts.slice(1).join('.');
-    }
-
-    return 'unknown';
-  }
-
-  /**
    * Update latency statistics using rolling average
    *
    * Uses a fixed-size circular buffer to prevent unbounded memory growth.
@@ -504,8 +486,8 @@ export class EventRouter {
 export const SANDBOX_STREAM_CONFIG = {
   name: SANDBOX_STREAM_NAME,
   subjects: SANDBOX_STREAM_SUBJECTS,
-  retention: 1, // Limits
-  storage: 0, // Memory
+  retention: RetentionPolicy.Limits,
+  storage: StorageType.Memory,
   maxAge: SANDBOX_STREAM_MAX_AGE_NS,
   maxMsgs: SANDBOX_STREAM_MAX_MSGS,
   replicas: 3,
