@@ -109,3 +109,35 @@ grimoires/loa/
 
 # Legacy grimoire directory (migrated to grimoires/loa/)
 loa-grimoire/
+
+# =============================================================================
+# TERRAFORM
+# =============================================================================
+# Local .terraform directories
+**/.terraform/*
+
+# Terraform state files (should be in remote backend)
+*.tfstate
+*.tfstate.*
+
+# Crash log files
+crash.log
+crash.*.log
+
+# Exclude all .tfvars files, which may contain sensitive data
+*.tfvars
+*.tfvars.json
+
+# Override files as they are usually used for local development
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Terraform plan files (may contain sensitive data)
+*.tfplan
+*.plan
+
+# Terraform lock file (can be committed for consistent provider versions)
+# Uncomment if you want to ignore it:
+# .terraform.lock.hcl
