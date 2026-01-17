@@ -1,0 +1,16 @@
+# Grafana Dashboard Provisioning
+# Sprint S-3: ScyllaDB & Observability Foundation
+
+apiVersion: 1
+
+providers:
+  - name: 'Arrakis Dashboards'
+    orgId: 1
+    folder: 'Arrakis Scaling'
+    folderUid: 'arrakis-scaling'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards/arrakis

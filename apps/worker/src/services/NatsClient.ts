@@ -151,6 +151,8 @@ export interface NatsClientConfig {
   name?: string;
   maxReconnectAttempts?: number;
   reconnectTimeWait?: number;
+  /** If true, require TLS for all connections (enforced in production) */
+  requireTLS?: boolean;
 }
 
 export class NatsClient {
@@ -167,12 +169,35 @@ export class NatsClient {
   }
 
   /**
+   * Check if any server URL uses TLS
+   * SEC-4.4: Used to enforce TLS in production
+   */
+  private hasTLSServers(): boolean {
+    return this.config.servers.some(
+      (s) => s.startsWith('tls://') || s.startsWith('nats+tls://') || s.startsWith('wss://')
+    );
+  }
+
+  /**
    * Connect to NATS and initialize JetStream
+   * SEC-4.4: Enforces TLS in production to prevent MITM attacks (L-3)
    */
   async connect(): Promise<void> {
     const podName = process.env['POD_NAME'] || process.env['HOSTNAME'] || 'local';
+    const isProduction = process.env['NODE_ENV'] === 'production';
 
-    this.log.info({ servers: this.config.servers }, 'Connecting to NATS');
+    // SEC-4.4: Enforce TLS in production
+    if ((isProduction || this.config.requireTLS) && !this.hasTLSServers()) {
+      throw new Error(
+        'NATS TLS required in production. Use tls:// or nats+tls:// URL scheme. ' +
+        'Current servers: ' + this.config.servers.join(', ')
+      );
+    }
+
+    this.log.info(
+      { servers: this.config.servers, tls: this.hasTLSServers() },
+      'Connecting to NATS'
+    );
 
     this.connection = await connect({
       servers: this.config.servers,

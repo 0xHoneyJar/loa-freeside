@@ -1,0 +1,131 @@
+# Prometheus Configuration
+# Sprint S-3: ScyllaDB & Observability Foundation
+# Per SDD §10.1
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'arrakis-scaling'
+    environment: 'staging'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+# Rule files
+rule_files:
+  - /etc/prometheus/alerts/*.yml
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Gateway (Rust) metrics
+  - job_name: 'gateway'
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+            - arrakis
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: arrakis-gateway
+      - source_labels: [__meta_kubernetes_pod_container_port_name]
+        action: keep
+        regex: metrics
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+      - source_labels: [__meta_kubernetes_pod_label_pool_id]
+        target_label: pool_id
+
+  # Workers (TypeScript) metrics
+  - job_name: 'worker'
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+            - arrakis
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: arrakis-worker.*
+      - source_labels: [__meta_kubernetes_pod_container_port_name]
+        action: keep
+        regex: metrics
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+      - source_labels: [__meta_kubernetes_pod_label_consumer_type]
+        target_label: consumer_type
+
+  # NATS JetStream metrics
+  - job_name: 'nats'
+    static_configs:
+      - targets:
+        - nats-0.nats:8222
+        - nats-1.nats:8222
+        - nats-2.nats:8222
+    metrics_path: /metrics
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: '(.+):.*'
+        target_label: nats_node
+        replacement: '${1}'
+
+  # Redis Cluster (via redis_exporter)
+  - job_name: 'redis'
+    static_configs:
+      - targets:
+        - redis-exporter:9121
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: redis_instance
+
+  # PostgreSQL (via postgres_exporter)
+  - job_name: 'postgresql'
+    static_configs:
+      - targets:
+        - postgres-exporter:9187
+
+  # ScyllaDB Cloud (if exposed, or use push gateway)
+  - job_name: 'scylladb'
+    honor_labels: true
+    static_configs:
+      - targets:
+        - scylla-exporter:9180
+
+  # Kubernetes Node metrics
+  - job_name: 'kubernetes-nodes'
+    scheme: https
+    tls_config:
+      ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+    kubernetes_sd_configs:
+      - role: node
+    relabel_configs:
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+      - target_label: __address__
+        replacement: kubernetes.default.svc:443
+      - source_labels: [__meta_kubernetes_node_name]
+        regex: (.+)
+        target_label: __metrics_path__
+        replacement: /api/v1/nodes/${1}/proxy/metrics
+
+# Remote write (for long-term storage, optional)
+# remote_write:
+#   - url: "https://prometheus-remote-write.example.com/api/v1/write"
+#     basic_auth:
+#       username: ${REMOTE_WRITE_USERNAME}
+#       password: ${REMOTE_WRITE_PASSWORD}

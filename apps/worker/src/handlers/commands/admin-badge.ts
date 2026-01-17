@@ -7,13 +7,15 @@
  * - /admin-badge award [nym] [badge] [reason] - Award a badge
  * - /admin-badge revoke [nym] [badge] - Revoke a badge
  *
- * Admin only - requires administrator permissions (checked by Discord).
+ * Admin only - requires administrator permissions.
+ * Authorization verified server-side (Sprint SEC-1, Finding H-2).
  * Ephemeral - only visible to the admin.
  */
 
 import type { Logger } from 'pino';
 import type { DiscordEventPayload, ConsumeResult } from '../../types.js';
 import type { DiscordRestService } from '../../services/DiscordRest.js';
+import { requireAdministrator } from '../../utils/authorization.js';
 import {
   getCommunityByGuildId,
   getProfileByDiscordId,
@@ -77,6 +79,16 @@ export function createAdminBadgeHandler(discord: DiscordRestService) {
       const deferResult = await discord.deferReply(interactionId, interactionToken, true);
       if (!deferResult.success) {
         log.error({ error: deferResult.error }, 'Failed to defer reply');
+        return 'ack';
+      }
+
+      // SEC-1.3: Server-side authorization check (Finding H-2)
+      const authResult = requireAdministrator(payload);
+      if (!authResult.authorized) {
+        log.warn({ userId }, 'Unauthorized admin-badge attempt');
+        await discord.editOriginal(interactionToken, {
+          embeds: [createErrorEmbed(authResult.reason ?? 'Insufficient permissions.')],
+        });
         return 'ack';
       }
 

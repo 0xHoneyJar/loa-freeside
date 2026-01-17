@@ -1,0 +1,45 @@
+# Docker Compose for Grafana Tempo
+# Sprint S-13: Distributed Tracing
+#
+# Use: docker-compose -f infrastructure/observability/tempo/docker-compose.yaml up -d
+
+version: "3.9"
+
+services:
+  tempo:
+    image: grafana/tempo:2.3.1
+    container_name: arrakis-tempo
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    ports:
+      # Tempo Query API
+      - "3200:3200"
+      # OTLP gRPC
+      - "4317:4317"
+      # OTLP HTTP
+      - "4318:4318"
+      # Tempo gRPC (internal)
+      - "9095:9095"
+    networks:
+      - arrakis-observability
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3200/ready"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "app.arrakis.component=tracing"
+      - "app.arrakis.sprint=S-13"
+
+volumes:
+  tempo-data:
+    driver: local
+
+networks:
+  arrakis-observability:
+    external: true
+    name: arrakis-observability

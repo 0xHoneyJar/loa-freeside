@@ -4,13 +4,15 @@
  * Displays community analytics dashboard for administrators.
  * Shows member counts, tier distribution, activity metrics, and recent events.
  *
- * Admin only - requires administrator permissions (checked by Discord).
+ * Admin only - requires administrator permissions.
+ * Authorization verified server-side (Sprint SEC-1, Finding H-2).
  * Ephemeral - only visible to the admin.
  */
 
 import type { Logger } from 'pino';
 import type { DiscordEventPayload, ConsumeResult } from '../../types.js';
 import type { DiscordRestService } from '../../services/DiscordRest.js';
+import { requireAdministrator } from '../../utils/authorization.js';
 import {
   getCommunityByGuildId,
   getCommunityAnalytics,
@@ -50,6 +52,16 @@ export function createAdminStatsHandler(discord: DiscordRestService) {
       const deferResult = await discord.deferReply(interactionId, interactionToken, true);
       if (!deferResult.success) {
         log.error({ error: deferResult.error }, 'Failed to defer reply');
+        return 'ack';
+      }
+
+      // Step 1.5: SEC-1.4: Server-side authorization check (Finding H-2)
+      const authResult = requireAdministrator(payload);
+      if (!authResult.authorized) {
+        log.warn({ userId }, 'Unauthorized admin-stats attempt');
+        await discord.editOriginal(interactionToken, {
+          embeds: [createErrorEmbed(authResult.reason ?? 'Insufficient permissions.')],
+        });
         return 'ack';
       }
 

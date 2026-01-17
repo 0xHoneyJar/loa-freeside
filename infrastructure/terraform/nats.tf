@@ -22,9 +22,9 @@ resource "aws_ecs_task_definition" "nats" {
       essential = true
 
       command = [
-        "-js",                           # Enable JetStream
-        "-sd", "/data",                  # Storage directory
-        "-m", "8222",                    # HTTP monitoring port
+        "-js",          # Enable JetStream
+        "-sd", "/data", # Storage directory
+        "-m", "8222",   # HTTP monitoring port
         "--cluster_name", "arrakis-nats",
         "--cluster", "nats://0.0.0.0:6222",
         "--routes", "nats://nats-0.${local.name_prefix}:6222,nats://nats-1.${local.name_prefix}:6222,nats://nats-2.${local.name_prefix}:6222"
@@ -225,14 +225,8 @@ resource "aws_security_group" "nats" {
     security_groups = [aws_security_group.ecs_tasks.id]
   }
 
-  # Client connections from Gateway
-  ingress {
-    description     = "NATS client from Gateway"
-    from_port       = 4222
-    to_port         = 4222
-    protocol        = "tcp"
-    security_groups = [aws_security_group.gateway.id]
-  }
+  # Note: Gateway ingress rule is defined as separate aws_security_group_rule
+  # to avoid circular dependency between nats and gateway security groups
 
   # Cluster routing (NATS-to-NATS)
   ingress {
@@ -268,6 +262,17 @@ resource "aws_security_group" "nats" {
   lifecycle {
     create_before_destroy = true
   }
+}
+
+# Separate rule to allow Gateway -> NATS connection (breaks circular dependency)
+resource "aws_security_group_rule" "nats_from_gateway" {
+  type                     = "ingress"
+  from_port                = 4222
+  to_port                  = 4222
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.nats.id
+  source_security_group_id = aws_security_group.gateway.id
+  description              = "NATS client from Gateway"
 }
 
 resource "aws_security_group" "nats_efs" {

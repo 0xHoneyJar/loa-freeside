@@ -1,0 +1,199 @@
+name: Container Security Scan
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/worker/**'
+      - 'apps/gateway/**'
+      - 'Dockerfile*'
+      - '.github/workflows/container-security.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/worker/**'
+      - 'apps/gateway/**'
+      - 'Dockerfile*'
+  schedule:
+    # Run weekly on Sunday at midnight UTC
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  WORKER_IMAGE: 0xhoneyjar/arrakis-worker
+
+jobs:
+  # =============================================================================
+  # SEC-4.5: Container Image Scanning with Trivy
+  # Addresses finding L-2: Missing Dockerfile Security Hardening
+  # =============================================================================
+  trivy-scan:
+    name: Trivy Container Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      packages: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check if Dockerfile exists
+        id: check-dockerfile
+        run: |
+          if [ -f "apps/worker/Dockerfile" ]; then
+            echo "has_dockerfile=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_dockerfile=false" >> $GITHUB_OUTPUT
+            echo "::notice::No Dockerfile found - skipping container scan"
+          fi
+
+      - name: Set up Docker Buildx
+        if: steps.check-dockerfile.outputs.has_dockerfile == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build worker image for scanning
+        if: steps.check-dockerfile.outputs.has_dockerfile == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/worker
+          push: false
+          load: true
+          tags: ${{ env.WORKER_IMAGE }}:scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Trivy vulnerability scanner
+        if: steps.check-dockerfile.outputs.has_dockerfile == 'true'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.WORKER_IMAGE }}:scan'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          vuln-type: 'os,library'
+          ignore-unfixed: true
+
+      - name: Upload Trivy scan results to GitHub Security
+        if: steps.check-dockerfile.outputs.has_dockerfile == 'true'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Run Trivy vulnerability scanner (table format for logs)
+        if: steps.check-dockerfile.outputs.has_dockerfile == 'true'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.WORKER_IMAGE }}:scan'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          vuln-type: 'os,library'
+          exit-code: '1'
+          ignore-unfixed: true
+        continue-on-error: true
+
+      - name: Trivy scan summary
+        if: steps.check-dockerfile.outputs.has_dockerfile == 'true' && always()
+        run: |
+          echo "## Container Security Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Image scanned: \`${{ env.WORKER_IMAGE }}:scan\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "View detailed results in the Security tab of this repository." >> $GITHUB_STEP_SUMMARY
+
+  # =============================================================================
+  # Dockerfile Best Practices Scan
+  # =============================================================================
+  hadolint:
+    name: Dockerfile Linting
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check if Dockerfile exists
+        id: check-dockerfile
+        run: |
+          if [ -f "apps/worker/Dockerfile" ]; then
+            echo "has_dockerfile=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_dockerfile=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run Hadolint
+        if: steps.check-dockerfile.outputs.has_dockerfile == 'true'
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: apps/worker/Dockerfile
+          failure-threshold: warning
+          format: sarif
+          output-file: hadolint-results.sarif
+
+      - name: Upload Hadolint results
+        if: steps.check-dockerfile.outputs.has_dockerfile == 'true'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: hadolint-results.sarif
+        continue-on-error: true
+
+  # =============================================================================
+  # Image Size and Layer Analysis
+  # =============================================================================
+  dive-analysis:
+    name: Image Efficiency Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check if Dockerfile exists
+        id: check-dockerfile
+        run: |
+          if [ -f "apps/worker/Dockerfile" ]; then
+            echo "has_dockerfile=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_dockerfile=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Docker Buildx
+        if: steps.check-dockerfile.outputs.has_dockerfile == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image for analysis
+        if: steps.check-dockerfile.outputs.has_dockerfile == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/worker
+          push: false
+          load: true
+          tags: ${{ env.WORKER_IMAGE }}:dive
+
+      - name: Install dive
+        if: steps.check-dockerfile.outputs.has_dockerfile == 'true'
+        run: |
+          wget https://github.com/wagoodman/dive/releases/download/v0.12.0/dive_0.12.0_linux_amd64.deb
+          sudo apt install ./dive_0.12.0_linux_amd64.deb
+
+      - name: Run dive analysis
+        if: steps.check-dockerfile.outputs.has_dockerfile == 'true'
+        run: |
+          CI=true dive ${{ env.WORKER_IMAGE }}:dive --ci-config .dive-ci.yaml || true
+
+      - name: Create dive config if not exists
+        if: steps.check-dockerfile.outputs.has_dockerfile == 'true'
+        run: |
+          if [ ! -f ".dive-ci.yaml" ]; then
+            cat > .dive-ci.yaml << 'EOF'
+          rules:
+            # Fail if image efficiency is less than 90%
+            lowestEfficiency: 0.90
+            # Fail if wasted space is more than 50MB
+            highestWastedBytes: 50000000
+            # Fail if there are more than 5 wasted file paths
+            highestUserWastedPercent: 0.05
+          EOF
+          fi

@@ -156,19 +156,26 @@ export async function getProfileByWallet(
 }
 
 /**
+ * Maximum allowed limit for pagination queries to prevent memory exhaustion (L-1)
+ */
+export const MAX_PAGINATION_LIMIT = 1000;
+
+/**
  * Get profiles ranked by conviction score (for leaderboard/position)
+ * SEC-4.1: Limit capped at MAX_PAGINATION_LIMIT to prevent memory exhaustion
  */
 export async function getProfilesByRank(
   communityId: string,
   limit: number = 100
 ): Promise<schema.Profile[]> {
   const db = getDatabase();
+  const safeLimit = Math.min(Math.max(1, limit), MAX_PAGINATION_LIMIT);
   return db
     .select()
     .from(schema.profiles)
     .where(eq(schema.profiles.communityId, communityId))
     .orderBy(desc(schema.profiles.convictionScore), asc(schema.profiles.currentRank))
-    .limit(limit);
+    .limit(safeLimit);
 }
 
 /**
@@ -210,11 +217,14 @@ export async function getProfileRank(
 
 /**
  * Get badges for a profile
+ * SEC-4.2: Limit capped at MAX_PAGINATION_LIMIT to prevent memory exhaustion
  */
 export async function getProfileBadges(
-  profileId: string
+  profileId: string,
+  limit: number = 100
 ): Promise<schema.Badge[]> {
   const db = getDatabase();
+  const safeLimit = Math.min(Math.max(1, limit), MAX_PAGINATION_LIMIT);
   return db
     .select()
     .from(schema.badges)
@@ -224,7 +234,8 @@ export async function getProfileBadges(
         sql`${schema.badges.revokedAt} IS NULL`
       )
     )
-    .orderBy(desc(schema.badges.awardedAt));
+    .orderBy(desc(schema.badges.awardedAt))
+    .limit(safeLimit);
 }
 
 /**
@@ -490,12 +501,14 @@ function calculateTenureCategory(joinedAt: Date): string {
 
 /**
  * Get badge leaderboard (ranked by badge count)
+ * SEC-4.2: Limit capped at MAX_PAGINATION_LIMIT to prevent memory exhaustion
  */
 export async function getBadgeLeaderboard(
   communityId: string,
   limit: number = 10
 ): Promise<BadgeLeaderboardEntry[]> {
   const db = getDatabase();
+  const safeLimit = Math.min(Math.max(1, limit), MAX_PAGINATION_LIMIT);
 
   // Get profiles with badge counts
   const results = await db
@@ -521,7 +534,7 @@ export async function getBadgeLeaderboard(
       ) DESC`,
       asc(schema.profiles.joinedAt)
     )
-    .limit(limit);
+    .limit(safeLimit);
 
   return results.map((row, index) => ({
     rank: index + 1,
@@ -591,14 +604,17 @@ function getNextTier(currentTier: string): string | null {
 /**
  * Get tier progression leaderboard (closest to next tier promotion)
  * Excludes Fedaykin and Naib (rank-based tiers)
+ * SEC-4.2: Limit capped at MAX_PAGINATION_LIMIT to prevent memory exhaustion
  */
 export async function getTierProgressionLeaderboard(
   communityId: string,
   limit: number = 10
 ): Promise<TierProgressionEntry[]> {
   const db = getDatabase();
+  const safeLimit = Math.min(Math.max(1, limit), MAX_PAGINATION_LIMIT);
 
   // Get all profiles that are not yet Fedaykin/Naib (BGT-based progression)
+  // SEC-4.2: Apply limit to initial query to prevent fetching all profiles
   const profiles = await db
     .select()
     .from(schema.profiles)
@@ -608,7 +624,8 @@ export async function getTierProgressionLeaderboard(
         sql`${schema.profiles.tier} NOT IN ('fedaykin', 'naib')`
       )
     )
-    .orderBy(desc(schema.profiles.convictionScore));
+    .orderBy(desc(schema.profiles.convictionScore))
+    .limit(MAX_PAGINATION_LIMIT);
 
   // Calculate progression for each profile
   const withProgression = profiles
@@ -635,8 +652,8 @@ export async function getTierProgressionLeaderboard(
   // Sort by distance to next tier (closest first)
   withProgression.sort((a, b) => a.distanceToNextTier - b.distanceToNextTier);
 
-  // Add ranks and limit
-  return withProgression.slice(0, limit).map((entry, index) => ({
+  // Add ranks and limit (using safeLimit)
+  return withProgression.slice(0, safeLimit).map((entry, index) => ({
     ...entry,
     rank: index + 1,
   }));
@@ -708,6 +725,7 @@ export interface DirectoryResult {
 
 /**
  * Get directory listing with pagination and filters
+ * SEC-4.2: Page size capped at MAX_PAGINATION_LIMIT to prevent memory exhaustion
  */
 export async function getDirectory(
   communityId: string,
@@ -715,8 +733,8 @@ export async function getDirectory(
 ): Promise<DirectoryResult> {
   const db = getDatabase();
 
-  const page = filters.page ?? 1;
-  const pageSize = filters.pageSize ?? 10;
+  const page = Math.max(1, filters.page ?? 1);
+  const pageSize = Math.min(Math.max(1, filters.pageSize ?? 10), MAX_PAGINATION_LIMIT);
   const offset = (page - 1) * pageSize;
 
   // Build where clause
@@ -873,6 +891,7 @@ export async function getProfileByNym(
 
 /**
  * Search profiles by nym (for autocomplete)
+ * SEC-4.2: Limit capped at 100 for autocomplete (lower than MAX_PAGINATION_LIMIT)
  */
 export async function searchProfilesByNym(
   communityId: string,
@@ -880,6 +899,8 @@ export async function searchProfilesByNym(
   limit: number = 25
 ): Promise<Array<{ nym: string; tier: string | null }>> {
   const db = getDatabase();
+  // Autocomplete results should be smaller - cap at 100
+  const safeLimit = Math.min(Math.max(1, limit), 100);
 
   const results = await db
     .select({
@@ -896,7 +917,7 @@ export async function searchProfilesByNym(
         )`
       )
     )
-    .limit(limit);
+    .limit(safeLimit);
 
   return results.map((row) => ({
     nym: row.metadata?.displayName ?? row.metadata?.username ?? 'Unknown',
@@ -1603,12 +1624,14 @@ export async function getTierDistributionSummary(communityId: string): Promise<s
 
 /**
  * Get top active members for the week
+ * SEC-4.2: Limit capped at MAX_PAGINATION_LIMIT to prevent memory exhaustion
  */
 export async function getTopActiveMembers(
   communityId: string,
   limit: number = 5
 ): Promise<TopActiveMember[]> {
   const db = getDatabase();
+  const safeLimit = Math.min(Math.max(1, limit), MAX_PAGINATION_LIMIT);
 
   const results = await db
     .select({
@@ -1624,7 +1647,7 @@ export async function getTopActiveMembers(
       )
     )
     .orderBy(desc(schema.profiles.activityScore))
-    .limit(limit);
+    .limit(safeLimit);
 
   return results.map((row) => ({
     nym: row.metadata?.displayName ?? row.metadata?.username ?? 'Unknown',

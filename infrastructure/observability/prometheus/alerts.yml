@@ -1,0 +1,289 @@
+# Alerting Rules
+# Sprint S-3: ScyllaDB & Observability Foundation
+# Sprint S-5: NATS JetStream Deployment
+# Per SDD §10.3
+
+groups:
+  # =============================================================================
+  # Gateway Alerts
+  # =============================================================================
+  - name: arrakis-gateway
+    rules:
+      - alert: GatewayHighLatency
+        expr: histogram_quantile(0.99, rate(gateway_event_route_duration_seconds_bucket[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: gateway
+        annotations:
+          summary: "Gateway routing latency above 50ms p99"
+          description: "Gateway {{ $labels.pod }} has p99 routing latency of {{ $value | humanizeDuration }} over the last 5 minutes."
+          runbook_url: "https://wiki.internal/runbooks/gateway-latency"
+
+      - alert: GatewayShardDown
+        expr: gateway_shards_ready == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: gateway
+        annotations:
+          summary: "Gateway shard is down"
+          description: "Gateway pod {{ $labels.pod }} has no ready shards."
+          runbook_url: "https://wiki.internal/runbooks/gateway-shard-recovery"
+
+      - alert: GatewayNATSPublishFailures
+        expr: rate(gateway_nats_publish_failures_total[5m]) > 0.01
+        for: 2m
+        labels:
+          severity: warning
+          component: gateway
+        annotations:
+          summary: "Gateway failing to publish to NATS"
+          description: "Gateway {{ $labels.pod }} has NATS publish failure rate of {{ $value | humanizePercentage }}."
+
+      - alert: GatewayMemoryHigh
+        expr: process_resident_memory_bytes{job="gateway"} > 200 * 1024 * 1024
+        for: 5m
+        labels:
+          severity: warning
+          component: gateway
+        annotations:
+          summary: "Gateway memory usage above 200MB"
+          description: "Gateway {{ $labels.pod }} is using {{ $value | humanize1024 }} memory."
+
+  # =============================================================================
+  # Worker Alerts
+  # =============================================================================
+  - name: arrakis-worker
+    rules:
+      - alert: WorkerHighErrorRate
+        expr: |
+          (
+            rate(worker_messages_processed_total{status="error"}[5m])
+            /
+            rate(worker_messages_processed_total[5m])
+          ) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+          component: worker
+        annotations:
+          summary: "Worker error rate above 1%"
+          description: "Worker {{ $labels.pod }} ({{ $labels.consumer }}) has error rate of {{ $value | humanizePercentage }}."
+          runbook_url: "https://wiki.internal/runbooks/worker-errors"
+
+      - alert: WorkerProcessingLatencyHigh
+        expr: histogram_quantile(0.95, rate(worker_message_processing_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+          component: worker
+        annotations:
+          summary: "Worker processing latency above 2s p95"
+          description: "Worker {{ $labels.pod }} has p95 processing latency of {{ $value | humanizeDuration }}."
+
+      - alert: WorkerConsumerLag
+        expr: nats_consumer_pending_messages > 1000
+        for: 5m
+        labels:
+          severity: warning
+          component: worker
+        annotations:
+          summary: "NATS consumer has high message lag"
+          description: "Consumer {{ $labels.consumer }} on stream {{ $labels.stream }} has {{ $value }} pending messages."
+
+  # =============================================================================
+  # RPC Pool Alerts
+  # =============================================================================
+  - name: arrakis-rpc
+    rules:
+      - alert: RPCProviderCircuitOpen
+        expr: rpc_circuit_breaker_state == 2
+        for: 2m
+        labels:
+          severity: warning
+          component: rpc
+        annotations:
+          summary: "RPC provider circuit breaker is open"
+          description: "Provider {{ $labels.provider }} circuit breaker has been open for 2+ minutes."
+          runbook_url: "https://wiki.internal/runbooks/rpc-failover"
+
+      - alert: RPCAllProvidersDown
+        expr: sum(rpc_circuit_breaker_state == 2) by (job) == count(rpc_circuit_breaker_state) by (job)
+        for: 1m
+        labels:
+          severity: critical
+          component: rpc
+        annotations:
+          summary: "All RPC providers are down"
+          description: "All RPC provider circuits are open. Eligibility checks will use cached data."
+          runbook_url: "https://wiki.internal/runbooks/rpc-outage"
+
+      - alert: RPCHighLatency
+        expr: histogram_quantile(0.95, rate(rpc_request_duration_ms_bucket[5m])) > 5000
+        for: 5m
+        labels:
+          severity: warning
+          component: rpc
+        annotations:
+          summary: "RPC request latency above 5s p95"
+          description: "Provider {{ $labels.provider }} has p95 latency of {{ $value }}ms."
+
+  # =============================================================================
+  # ScyllaDB Alerts
+  # =============================================================================
+  - name: arrakis-scylladb
+    rules:
+      - alert: ScyllaDBConnectionFailure
+        expr: increase(scylla_connection_failures_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          component: scylladb
+        annotations:
+          summary: "ScyllaDB connection failures detected"
+          description: "{{ $value }} ScyllaDB connection failures in the last 5 minutes."
+
+      - alert: ScyllaDBQueryLatencyHigh
+        expr: histogram_quantile(0.95, rate(scylla_query_duration_ms_bucket[5m])) > 100
+        for: 5m
+        labels:
+          severity: warning
+          component: scylladb
+        annotations:
+          summary: "ScyllaDB query latency above 100ms p95"
+          description: "Operation {{ $labels.operation }} has p95 latency of {{ $value }}ms."
+
+      - alert: ScyllaDBQueryErrorRate
+        expr: |
+          (
+            rate(scylla_queries_failed_total[5m])
+            /
+            rate(scylla_queries_total[5m])
+          ) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+          component: scylladb
+        annotations:
+          summary: "ScyllaDB query error rate above 1%"
+          description: "Operation {{ $labels.operation }} has error rate of {{ $value | humanizePercentage }}."
+
+  # =============================================================================
+  # NATS Alerts (Enhanced Sprint S-5)
+  # =============================================================================
+  - name: arrakis-nats
+    rules:
+      - alert: NATSConnectionLost
+        expr: up{job="nats"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: nats
+        annotations:
+          summary: "NATS node is unreachable"
+          description: "NATS node {{ $labels.nats_node }} is not responding to health checks."
+          runbook_url: "https://wiki.internal/runbooks/nats-recovery"
+
+      - alert: NATSStreamStorageHigh
+        expr: nats_jetstream_stream_bytes > 1073741824
+        for: 10m
+        labels:
+          severity: warning
+          component: nats
+        annotations:
+          summary: "NATS stream storage above 1GB"
+          description: "Stream {{ $labels.stream }} is using {{ $value | humanize1024 }} storage."
+
+      - alert: NATSConsumerLagHigh
+        expr: nats_consumer_lag > 1000
+        for: 5m
+        labels:
+          severity: warning
+          component: nats
+        annotations:
+          summary: "NATS consumer lag above 1000 messages"
+          description: "Consumer {{ $labels.consumer }} has {{ $value }} pending messages."
+          runbook_url: "https://wiki.internal/runbooks/nats-consumer-lag"
+
+      - alert: NATSConsumerProcessingErrors
+        expr: rate(nats_consumer_messages_processed_total{status="failed"}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: nats
+        annotations:
+          summary: "NATS consumer experiencing processing errors"
+          description: "Consumer {{ $labels.consumer }} has {{ $value | humanizePercentage }} error rate."
+
+      - alert: NATSClusterQuorumLost
+        expr: count(up{job="nats"} == 1) < 2
+        for: 1m
+        labels:
+          severity: critical
+          component: nats
+        annotations:
+          summary: "NATS cluster has lost quorum"
+          description: "Less than 2 NATS nodes are healthy. JetStream may be unavailable."
+          runbook_url: "https://wiki.internal/runbooks/nats-cluster-recovery"
+
+      - alert: NATSCommandStreamDepthHigh
+        expr: nats_stream_messages{stream="COMMANDS"} > 10000
+        for: 2m
+        labels:
+          severity: warning
+          component: nats
+        annotations:
+          summary: "COMMANDS stream has high message backlog"
+          description: "COMMANDS stream has {{ $value }} pending messages. Discord responses may timeout."
+          runbook_url: "https://wiki.internal/runbooks/scale-command-workers"
+
+  # =============================================================================
+  # PostgreSQL Alerts
+  # =============================================================================
+  - name: arrakis-postgresql
+    rules:
+      - alert: PostgreSQLConnectionPoolExhausted
+        expr: pg_stat_activity_count / pg_settings_max_connections > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          component: postgresql
+        annotations:
+          summary: "PostgreSQL connection pool above 80%"
+          description: "PostgreSQL is using {{ $value | humanizePercentage }} of available connections."
+
+      - alert: PostgreSQLReplicationLag
+        expr: pg_replication_lag > 30
+        for: 5m
+        labels:
+          severity: warning
+          component: postgresql
+        annotations:
+          summary: "PostgreSQL replication lag above 30s"
+          description: "Replica lag is {{ $value | humanizeDuration }}."
+
+  # =============================================================================
+  # Redis Alerts
+  # =============================================================================
+  - name: arrakis-redis
+    rules:
+      - alert: RedisMemoryHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          component: redis
+        annotations:
+          summary: "Redis memory usage above 80%"
+          description: "Redis is using {{ $value | humanizePercentage }} of max memory."
+
+      - alert: RedisConnectionsHigh
+        expr: redis_connected_clients > 1000
+        for: 5m
+        labels:
+          severity: warning
+          component: redis
+        annotations:
+          summary: "Redis has over 1000 connected clients"
+          description: "Redis has {{ $value }} connected clients."

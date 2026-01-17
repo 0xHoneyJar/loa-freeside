@@ -5,6 +5,7 @@
  * Sprint S-25: Shadow Sync Job & Verification Tiers
  * Sprint S-26: Namespaced Roles & Parallel Channels
  * Sprint S-27: Glimpse Mode & Migration Readiness
+ * Sprint S-28: Migration Strategies & Rollback
  *
  * Adapters for coexistence including:
  * - IncumbentDetector: Auto-detection of Collab.Land, Matrica, Guild.xyz
@@ -15,10 +16,12 @@
  * - ChannelStrategyManager: Conviction-gated channel management
  * - ParallelModeOrchestrator: Coordination of parallel mode operations
  * - GlimpseManager: Glimpse mode previews and migration readiness
+ * - MigrationManager: Migration strategies, rollback, and backup activation
  *
  * @see SDD §7.1 Shadow Mode Architecture
  * @see SDD §7.2 Parallel Mode Architecture
  * @see SDD §7.2.3 Glimpse Mode
+ * @see SDD §7.3 Migration Engine
  */
 
 // Sprint S-24: Incumbent Detection
@@ -111,3 +114,19 @@ export {
   type IGlimpseMetrics,
   type GlimpseManagerOptions,
 } from './glimpse-manager.js';
+
+// Sprint S-28: Migration Strategies & Rollback
+export {
+  MigrationManager,
+  createMigrationManager,
+  InMemoryMigrationStateStore,
+  InMemorySnapshotStore,
+  InMemoryMigrationAuditTrail,
+  type IShadowLedgerForMigration,
+  type IDiscordMigrationService,
+  type IRoleMappingService,
+  type IMigrationCommunityService,
+  type IMigrationNotificationService,
+  type IMigrationMetrics,
+  type MigrationManagerOptions,
+} from './migration-manager.js';

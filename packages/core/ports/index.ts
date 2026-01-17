@@ -11,6 +11,7 @@
  * Sprint S-25: Shadow Sync Job & Verification Tiers
  * Sprint S-26: Namespaced Roles & Parallel Channels
  * Sprint S-27: Glimpse Mode & Migration Readiness
+ * Sprint S-28: Migration Strategies & Rollback
  *
  * Exports all port interfaces (contracts) for the application.
  * Ports define the boundaries between the core domain and external adapters.
@@ -68,3 +69,6 @@ export * from './parallel-mode.js';
 
 // Glimpse Mode Interface (Sprint S-27)
 export * from './glimpse-mode.js';
+
+// Migration Interface (Sprint S-28)
+export * from './migration.js';

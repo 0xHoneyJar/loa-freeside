@@ -40,6 +40,12 @@ describe('admin-stats command handler', () => {
     interactionId: 'int-123',
     interactionToken: 'token-123',
     commandName: 'admin-stats',
+    // SEC-1: Include admin permissions for authorization check
+    data: {
+      member: {
+        permissions: '8', // ADMINISTRATOR bit
+      },
+    },
   };
 
   const mockCommunity = {
@@ -240,6 +246,56 @@ describe('admin-stats command handler', () => {
     expect(mockLogger.info).toHaveBeenCalledWith(
       expect.objectContaining({ totalMembers: 150 }),
       'Admin stats served'
+    );
+  });
+
+  // SEC-1.4: Test unauthorized access (Finding H-2)
+  it('should reject non-administrator users', async () => {
+    const nonAdminPayload = {
+      ...basePayload,
+      data: {
+        member: {
+          permissions: '2048', // SEND_MESSAGES only, no ADMINISTRATOR
+        },
+      },
+    };
+
+    const result = await handler(nonAdminPayload, mockLogger);
+
+    expect(result).toBe('ack');
+    expect(getCommunityByGuildId).not.toHaveBeenCalled();
+    expect(mockDiscord.editOriginal).toHaveBeenCalledWith(
+      'token-123',
+      expect.objectContaining({
+        embeds: expect.arrayContaining([
+          expect.objectContaining({
+            description: expect.stringContaining('Administrator permissions'),
+          }),
+        ]),
+      })
+    );
+    expect(mockLogger.warn).toHaveBeenCalled();
+  });
+
+  it('should reject users with missing permissions', async () => {
+    const noPermissionsPayload = {
+      ...basePayload,
+      data: {}, // No member permissions
+    };
+
+    const result = await handler(noPermissionsPayload, mockLogger);
+
+    expect(result).toBe('ack');
+    expect(getCommunityByGuildId).not.toHaveBeenCalled();
+    expect(mockDiscord.editOriginal).toHaveBeenCalledWith(
+      'token-123',
+      expect.objectContaining({
+        embeds: expect.arrayContaining([
+          expect.objectContaining({
+            description: expect.stringContaining('Administrator permissions'),
+          }),
+        ]),
+      })
     );
   });
 });

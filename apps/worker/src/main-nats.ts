@@ -24,11 +24,16 @@ import {
 } from './consumers/index.js';
 import { registerAllCommandHandlers } from './handlers/registration.js';
 import { createNatsHealthServer, type NatsHealthChecker } from './health-nats.js';
+import { logSerializers } from './utils/log-sanitizer.js';
 
-// Initialize logger first
+// Initialize logger first with sanitization serializers (SEC-2.6)
 const env = process.env;
 const logger = pino({
   level: env['LOG_LEVEL'] || 'info',
+  serializers: {
+    ...pino.stdSerializers,
+    ...logSerializers,
+  },
   transport:
     env['NODE_ENV'] === 'development'
       ? { target: 'pino-pretty', options: { colorize: true } }

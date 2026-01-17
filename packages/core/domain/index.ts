@@ -6,6 +6,7 @@
  * Sprint S-25: Shadow Sync Job & Verification Tiers
  * Sprint S-26: Namespaced Roles & Parallel Channels
  * Sprint S-27: Glimpse Mode & Migration Readiness
+ * Sprint S-28: Migration Strategies & Rollback
  *
  * Exports all domain types and models for the application.
  * Domain types represent core business concepts independent of infrastructure.
@@ -25,3 +26,6 @@ export * from './parallel-mode.js';
 
 // Glimpse Mode Domain Types (Sprint S-27)
 export * from './glimpse-mode.js';
+
+// Migration Domain Types (Sprint S-28)
+export * from './migration.js';

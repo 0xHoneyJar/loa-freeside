@@ -1,0 +1,65 @@
+# Grafana Tempo Configuration
+# Sprint S-13: Distributed Tracing
+#
+# Tempo is a high-scale, cost-effective distributed tracing backend.
+# This configuration is optimized for single-node development/staging.
+# For production, consider Tempo scalable deployment with S3/GCS backend.
+
+server:
+  http_listen_port: 3200
+  grpc_listen_port: 9095
+
+# Query frontend configuration
+query_frontend:
+  search:
+    duration_slo: 5s
+    throughput_bytes_slo: 1.073741824e+09
+
+# Distributor configuration - receives traces
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+# Ingester configuration - writes traces to backend
+ingester:
+  max_block_duration: 5m
+
+# Compactor configuration - merges blocks
+compactor:
+  compaction:
+    block_retention: 48h
+
+# Metrics generator - generates RED metrics from traces
+metrics_generator:
+  registry:
+    external_labels:
+      source: tempo
+      cluster: arrakis-dev
+  storage:
+    path: /var/tempo/generator/wal
+    remote_write:
+      - url: http://prometheus:9090/api/v1/write
+        send_exemplars: true
+
+# Storage configuration - local filesystem for development
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo/blocks
+    pool:
+      max_workers: 100
+      queue_depth: 10000
+
+# Overrides configuration
+overrides:
+  defaults:
+    metrics_generator:
+      processors: [service-graphs, span-metrics]

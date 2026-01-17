@@ -1,0 +1,39 @@
+# Arrakis Gateway Configuration
+# Environment variables override these values
+
+# Shard configuration
+shard:
+  # This shard's ID (0-indexed)
+  id: 0
+  # Total number of shards
+  total: 1
+  # Shards per pool (for multi-pool deployments)
+  per_pool: 25
+
+# Discord intents
+intents:
+  - GUILDS
+  - GUILD_MEMBERS
+  # GUILD_MESSAGES only needed for message-based commands
+  # - GUILD_MESSAGES
+
+# NATS configuration (for production)
+nats:
+  # NATS server URL
+  url: "nats://localhost:4222"
+  # Connection name
+  name: "arrakis-gateway"
+  # Reconnection settings
+  reconnect:
+    max_attempts: -1  # Unlimited
+    wait_ms: 1000
+
+# Metrics configuration
+metrics:
+  port: 9090
+  path: "/metrics"
+
+# Logging configuration
+logging:
+  level: "info"
+  format: "json"

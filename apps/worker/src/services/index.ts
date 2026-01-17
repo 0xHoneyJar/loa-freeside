@@ -55,3 +55,13 @@ export {
   createPostgresScoreSync,
   type PostgresScoreSyncConfig,
 } from './PostgresScoreSync.js';
+
+// Sprint SEC-3: Rate Limiting & DoS Protection
+export {
+  RateLimiterService,
+  createRateLimiterService,
+  getRateLimitMessage,
+  type RateLimitCheckResult,
+  type RateLimitConfig,
+  type RateLimitType,
+} from './RateLimiterService.js';

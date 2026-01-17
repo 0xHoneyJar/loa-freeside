@@ -52,6 +52,10 @@ describe('admin-badge command handler', () => {
     interactionToken: 'token-123',
     commandName: 'admin-badge',
     data: {
+      // SEC-1: Include admin permissions for authorization check
+      member: {
+        permissions: '8', // ADMINISTRATOR bit
+      },
       options: [
         {
           name: 'award',
@@ -171,6 +175,7 @@ describe('admin-badge command handler', () => {
       const payloadTenureBadge = {
         ...basePayload,
         data: {
+          member: { permissions: '8' }, // Admin permissions
           options: [
             {
               name: 'award',
@@ -243,6 +248,7 @@ describe('admin-badge command handler', () => {
     const revokePayload: DiscordEventPayload = {
       ...basePayload,
       data: {
+        member: { permissions: '8' }, // Admin permissions
         options: [
           {
             name: 'revoke',
@@ -334,6 +340,59 @@ describe('admin-badge command handler', () => {
 
       expect(result).toBe('ack');
       expect(mockLogger.error).toHaveBeenCalled();
+    });
+
+    // SEC-1.3: Test unauthorized access (Finding H-2)
+    it('should reject non-administrator users', async () => {
+      const nonAdminPayload = {
+        ...basePayload,
+        data: {
+          member: {
+            permissions: '2048', // SEND_MESSAGES only, no ADMINISTRATOR
+          },
+          options: basePayload.data?.['options'],
+        },
+      };
+
+      const result = await handler(nonAdminPayload, mockLogger);
+
+      expect(result).toBe('ack');
+      expect(getCommunityByGuildId).not.toHaveBeenCalled();
+      expect(mockDiscord.editOriginal).toHaveBeenCalledWith(
+        'token-123',
+        expect.objectContaining({
+          embeds: expect.arrayContaining([
+            expect.objectContaining({
+              description: expect.stringContaining('Administrator permissions'),
+            }),
+          ]),
+        })
+      );
+      expect(mockLogger.warn).toHaveBeenCalled();
+    });
+
+    it('should reject users with missing permissions', async () => {
+      const noPermissionsPayload = {
+        ...basePayload,
+        data: {
+          options: basePayload.data?.['options'],
+        },
+      };
+
+      const result = await handler(noPermissionsPayload, mockLogger);
+
+      expect(result).toBe('ack');
+      expect(getCommunityByGuildId).not.toHaveBeenCalled();
+      expect(mockDiscord.editOriginal).toHaveBeenCalledWith(
+        'token-123',
+        expect.objectContaining({
+          embeds: expect.arrayContaining([
+            expect.objectContaining({
+              description: expect.stringContaining('Administrator permissions'),
+            }),
+          ]),
+        })
+      );
     });
   });
 });

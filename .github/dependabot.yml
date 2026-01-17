@@ -1,12 +1,62 @@
 # Dependabot Configuration for Automated Dependency Updates
 # LOW-004: Security fix for automated dependency monitoring
 # Sprint 75: MED-1 - Dependency vulnerability scanning
+# Sprint SEC-1: H-1 - Automated security monitoring for dependencies
 #
 # This configuration enables Dependabot to automatically check for and create
 # pull requests for dependency updates across all services.
 
 version: 2
 updates:
+  # Worker Service (Discord bot event processing - Sprint SEC-1)
+  - package-ecosystem: "npm"
+    directory: "/apps/worker"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "0xHoneyJar"
+    labels:
+      - "dependencies"
+      - "security"
+      - "worker"
+    groups:
+      development-dependencies:
+        dependency-type: "development"
+        patterns:
+          - "*"
+      production-dependencies:
+        dependency-type: "production"
+        patterns:
+          - "*"
+    versioning-strategy: "increase"
+    rebase-strategy: "auto"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+      include: "scope"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  # Gateway Service (Rust - future Twilight gateway)
+  - package-ecosystem: "cargo"
+    directory: "/apps/gateway"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "security"
+      - "gateway"
+      - "rust"
+    commit-message:
+      prefix: "chore(deps)"
+
   # Sietch Service (main application - Sprint 75)
   - package-ecosystem: "npm"
     directory: "/sietch-service"

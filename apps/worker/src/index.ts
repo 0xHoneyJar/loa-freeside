@@ -9,9 +9,15 @@
  */
 
 import pino from 'pino';
+import { logSerializers } from './utils/log-sanitizer.js';
 
+// SEC-2.6: Logger with sanitization serializers
 const logger = pino({
   level: process.env['LOG_LEVEL'] || 'info',
+  serializers: {
+    ...pino.stdSerializers,
+    ...logSerializers,
+  },
   transport:
     process.env['NODE_ENV'] === 'development'
       ? { target: 'pino-pretty', options: { colorize: true } }

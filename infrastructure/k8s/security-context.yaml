@@ -1,0 +1,344 @@
+# Kubernetes Security Context Configuration
+# Sprint SEC-4.3: Infrastructure Hardening
+# Addresses finding L-2: Missing Dockerfile Security Hardening
+#
+# This file provides security context templates that should be applied
+# to all Arrakis deployments to harden container security.
+#
+# Usage: Include these snippets in your Deployment/Pod specifications
+# or use as a reference for Helm values.
+
+---
+# Pod Security Context
+# Apply at the pod level (spec.securityContext)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: arrakis-security-context-template
+  namespace: arrakis
+  labels:
+    app.kubernetes.io/name: arrakis
+    app.kubernetes.io/component: security
+data:
+  pod-security-context.yaml: |
+    # Pod-level security context
+    securityContext:
+      # Run as non-root user (matches Dockerfile USER 1001)
+      runAsNonRoot: true
+      runAsUser: 1001
+      runAsGroup: 1001
+      fsGroup: 1001
+      # Secure /proc mount
+      seccompProfile:
+        type: RuntimeDefault
+
+  container-security-context.yaml: |
+    # Container-level security context
+    securityContext:
+      # Prevent privilege escalation
+      allowPrivilegeEscalation: false
+      # Drop all capabilities
+      capabilities:
+        drop:
+          - ALL
+      # Read-only root filesystem
+      readOnlyRootFilesystem: true
+      # Run as non-root
+      runAsNonRoot: true
+      runAsUser: 1001
+
+---
+# Example Worker Deployment with full security context
+# This serves as a reference implementation
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: arrakis-worker
+  namespace: arrakis
+  labels:
+    app.kubernetes.io/name: arrakis
+    app.kubernetes.io/component: worker
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: arrakis
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: arrakis
+        app.kubernetes.io/component: worker
+    spec:
+      # Pod security context
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+
+      # Service account with minimal permissions
+      serviceAccountName: arrakis-worker
+      automountServiceAccountToken: false
+
+      containers:
+        - name: worker
+          image: ghcr.io/0xhoneyjar/arrakis-worker:latest
+          imagePullPolicy: Always
+
+          # Container security context
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1001
+
+          # Resource limits (required for production)
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+          # Health checks
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+
+          # Environment from secrets
+          envFrom:
+            - secretRef:
+                name: arrakis-secrets
+
+          # Writable directories (since readOnlyRootFilesystem: true)
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: cache
+              mountPath: /home/node/.cache
+
+      volumes:
+        # EmptyDir volumes for writable directories
+        - name: tmp
+          emptyDir:
+            sizeLimit: 100Mi
+        - name: cache
+          emptyDir:
+            sizeLimit: 50Mi
+
+      # Pod disruption budget for high availability
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: arrakis
+              app.kubernetes.io/component: worker
+
+---
+# Example Gateway Deployment with full security context
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: twilight-gateway
+  namespace: arrakis
+  labels:
+    app.kubernetes.io/name: arrakis
+    app.kubernetes.io/component: gateway
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: arrakis
+      app.kubernetes.io/component: gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: arrakis
+        app.kubernetes.io/component: gateway
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+
+      serviceAccountName: twilight-gateway
+      automountServiceAccountToken: false
+
+      containers:
+        - name: gateway
+          image: ghcr.io/0xhoneyjar/twilight-gateway:latest
+          imagePullPolicy: Always
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1001
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 5
+
+          envFrom:
+            - secretRef:
+                name: arrakis-secrets
+
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 50Mi
+
+---
+# NetworkPolicy to restrict traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: arrakis-network-policy
+  namespace: arrakis
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: arrakis
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow traffic from ingress controller
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 3000
+        - protocol: TCP
+          port: 8080
+    # Allow traffic within namespace
+    - from:
+        - podSelector: {}
+  egress:
+    # Allow DNS
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+    # Allow NATS (cluster internal)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: nats
+      ports:
+        - protocol: TCP
+          port: 4222
+    # Allow PostgreSQL
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8  # Update with your DB subnet
+      ports:
+        - protocol: TCP
+          port: 5432
+    # Allow Redis
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8  # Update with your Redis subnet
+      ports:
+        - protocol: TCP
+          port: 6379
+    # Allow Discord API (external)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+
+---
+# Pod Security Policy (for clusters that support it)
+# Note: PSPs are deprecated in K8s 1.21+, use Pod Security Standards instead
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: arrakis-restricted
+spec:
+  privileged: false
+  allowPrivilegeEscalation: false
+  requiredDropCapabilities:
+    - ALL
+  volumes:
+    - 'configMap'
+    - 'emptyDir'
+    - 'projected'
+    - 'secret'
+    - 'downwardAPI'
+    - 'persistentVolumeClaim'
+  hostNetwork: false
+  hostIPC: false
+  hostPID: false
+  runAsUser:
+    rule: MustRunAsNonRoot
+  seLinux:
+    rule: RunAsAny
+  supplementalGroups:
+    rule: MustRunAs
+    ranges:
+      - min: 1
+        max: 65535
+  fsGroup:
+    rule: MustRunAs
+    ranges:
+      - min: 1
+        max: 65535
+  readOnlyRootFilesystem: true
