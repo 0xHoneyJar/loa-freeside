@@ -17,22 +17,13 @@ resource "aws_security_group" "pgbouncer" {
   name_prefix = "${local.name_prefix}-pgbouncer-"
   vpc_id      = module.vpc.vpc_id
 
-  # Allow connections from ECS tasks
+  # Allow connections from ECS tasks (includes workers)
   ingress {
     from_port       = 6432
     to_port         = 6432
     protocol        = "tcp"
     security_groups = [aws_security_group.ecs_tasks.id]
     description     = "PgBouncer from ECS tasks"
-  }
-
-  # Allow connections from workers specifically
-  ingress {
-    from_port       = 6432
-    to_port         = 6432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.ecs_tasks.id]
-    description     = "PgBouncer from workers"
   }
 
   # Allow outbound to RDS

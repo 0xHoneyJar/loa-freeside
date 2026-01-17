@@ -412,29 +412,10 @@ resource "aws_cloudwatch_log_group" "nats" {
 # --------------------------------------------------------------------------
 # Service Discovery for NATS (used by Gateway and Workers)
 # --------------------------------------------------------------------------
-
-resource "aws_service_discovery_service" "nats" {
-  name = "nats"
-
-  dns_config {
-    namespace_id   = var.enable_service_discovery ? aws_service_discovery_private_dns_namespace.main[0].id : null
-    routing_policy = "MULTIVALUE"
-
-    dns_records {
-      ttl  = 10
-      type = "A"
-    }
-  }
-
-  health_check_custom_config {
-    failure_threshold = 1
-  }
-
-  tags = merge(local.common_tags, {
-    Service = "NATS"
-    Sprint  = "S-5"
-  })
-}
+# NOTE: NATS service discovery is managed by ECS Service Connect
+# The service_connect_configuration in aws_ecs_service.nats automatically
+# registers the service with discovery_name = "nats" in the namespace.
+# Do NOT create a standalone aws_service_discovery_service as it conflicts.
 
 # --------------------------------------------------------------------------
 # Secrets Manager for NATS Configuration

@@ -6,7 +6,7 @@ resource "aws_mq_broker" "rabbitmq" {
   broker_name = "${local.name_prefix}-rabbitmq"
 
   engine_type         = "RabbitMQ"
-  engine_version      = "3.12"
+  engine_version      = "3.13"
   host_instance_type  = var.rabbitmq_instance_type
   deployment_mode     = var.environment == "production" ? "CLUSTER_MULTI_AZ" : "SINGLE_INSTANCE"
   publicly_accessible = false
