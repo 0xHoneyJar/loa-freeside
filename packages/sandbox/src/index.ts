@@ -2,6 +2,7 @@
  * Sandbox Package - Discord Server Sandboxes
  *
  * Sprint 84: Discord Server Sandboxes - Foundation
+ * Sprint 86: Discord Server Sandboxes - Event Routing
  *
  * Provides isolated testing environments for Arrakis Discord functionality.
  * Each sandbox gets its own PostgreSQL schema, Redis key prefix, and NATS subjects.
@@ -58,11 +59,25 @@ export type {
 // Service Exports
 // =============================================================================
 
-export { SchemaProvisioner, SandboxManager } from './services/index.js';
+export {
+  SchemaProvisioner,
+  SandboxManager,
+  RouteProvider,
+  EventRouter,
+  SANDBOX_STREAM_CONFIG,
+} from './services/index.js';
+
 export type {
   SchemaProvisionerConfig,
   SchemaCreateResult,
   SchemaDropResult,
   SandboxManagerConfig,
   SandboxCreateResult,
+  RouteProviderConfig,
+  RouteLookupResult,
+  RouteMapping,
+  EventRouterConfig,
+  DiscordEvent,
+  RoutingStats,
+  RoutingResult,
 } from './services/index.js';

@@ -2,6 +2,7 @@
  * Sandbox Services - Service Layer Exports
  *
  * Sprint 84: Discord Server Sandboxes - Foundation
+ * Sprint 86: Discord Server Sandboxes - Event Routing
  *
  * @module packages/sandbox/services
  */
@@ -18,3 +19,19 @@ export type {
   SandboxManagerConfig,
   SandboxCreateResult,
 } from './sandbox-manager.js';
+
+// Sprint 86: Event Routing
+export { RouteProvider } from './route-provider.js';
+export type {
+  RouteProviderConfig,
+  RouteLookupResult,
+  RouteMapping,
+} from './route-provider.js';
+
+export { EventRouter, SANDBOX_STREAM_CONFIG } from './event-router.js';
+export type {
+  EventRouterConfig,
+  DiscordEvent,
+  RoutingStats,
+  RoutingResult,
+} from './event-router.js';

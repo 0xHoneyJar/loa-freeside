@@ -2,6 +2,7 @@
  * Sandbox Command Group
  *
  * Sprint 85: Discord Server Sandboxes - CLI Commands
+ * Sprint 86: Discord Server Sandboxes - Event Routing
  *
  * Registers the `bd sandbox` command group with all subcommands.
  *
@@ -31,15 +32,19 @@ Examples:
   $ bd sandbox destroy my-sandbox        Destroy a sandbox by name
   $ bd sandbox connect my-sandbox        Get connection environment variables
   $ eval $(bd sandbox connect my-sandbox)  Export env vars to shell
+  $ bd sandbox register-guild my-sandbox 123456789012345678  Register guild
+  $ bd sandbox unregister-guild my-sandbox 123456789012345678  Unregister guild
 `
     );
 
   // Import and register subcommands
-  // These will be implemented in subsequent tasks (85.2-85.5)
   registerCreateCommand(sandbox);
   registerListCommand(sandbox);
   registerDestroyCommand(sandbox);
   registerConnectCommand(sandbox);
+  // Sprint 86: Event Routing commands
+  registerRegisterGuildCommand(sandbox);
+  registerUnregisterGuildCommand(sandbox);
 
   return sandbox;
 }
@@ -105,6 +110,38 @@ function registerConnectCommand(parent: Command): void {
     .action(async (name: string, options) => {
       const { connectCommand } = await import('./connect.js');
       await connectCommand(name, options);
+    });
+}
+
+/**
+ * Registers the 'register-guild' subcommand
+ * Sprint 86: Event Routing
+ */
+function registerRegisterGuildCommand(parent: Command): void {
+  parent
+    .command('register-guild <sandbox> <guildId>')
+    .alias('reg')
+    .description('Register a Discord guild to route events to a sandbox')
+    .option('--json', 'Output as JSON')
+    .action(async (sandbox: string, guildId: string, options) => {
+      const { registerCommand } = await import('./register.js');
+      await registerCommand(sandbox, guildId, options);
+    });
+}
+
+/**
+ * Registers the 'unregister-guild' subcommand
+ * Sprint 86: Event Routing
+ */
+function registerUnregisterGuildCommand(parent: Command): void {
+  parent
+    .command('unregister-guild <sandbox> <guildId>')
+    .alias('unreg')
+    .description('Unregister a Discord guild from a sandbox')
+    .option('--json', 'Output as JSON')
+    .action(async (sandbox: string, guildId: string, options) => {
+      const { unregisterCommand } = await import('./unregister.js');
+      await unregisterCommand(sandbox, guildId, options);
     });
 }
 
