@@ -122,7 +122,6 @@ Overrides survive framework updates.
 
 | Phase | Command | Agent | Output |
 |-------|---------|-------|--------|
-| 0 | `/setup` | wizard | `.loa-setup-complete` |
 | 1 | `/plan-and-analyze` | discovering-requirements | `prd.md` |
 | 2 | `/architect` | designing-architecture | `sdd.md` |
 | 3 | `/sprint-plan` | planning-sprints | `sprint.md` |
@@ -133,7 +132,9 @@ Overrides survive framework updates.
 
 **Mount & Ride** (existing codebases): `/mount`, `/ride`
 
-**Ad-hoc**: `/audit`, `/audit-deployment`, `/translate @doc for audience`, `/contribute`, `/update`, `/feedback` (THJ only), `/config` (THJ only)
+**Ad-hoc**: `/audit`, `/audit-deployment`, `/translate @doc for audience`, `/contribute`, `/update`, `/feedback` (THJ only)
+
+**THJ Detection** (v0.15.0+): THJ membership is detected via `LOA_CONSTRUCTS_API_KEY` environment variable. No setup required - start with `/plan-and-analyze` immediately after cloning.
 
 **Execution modes**: Foreground (default) or background (`/implement sprint-1 background`)
 
@@ -403,8 +404,69 @@ ck --jsonl --no-snippet "auth"          # Compact output
 ├── thinking-logger.sh        # Extended thinking trajectory logger (v0.11.0)
 ├── tool-search-adapter.sh    # MCP tool search and discovery (v0.11.0)
 ├── context-manager.sh        # Context compaction and preservation (v0.11.0)
-└── context-benchmark.sh      # Context performance benchmarks (v0.11.0)
+├── context-benchmark.sh      # Context performance benchmarks (v0.11.0)
+├── anthropic-oracle.sh       # Anthropic updates monitoring (v0.13.0)
+└── check-updates.sh          # Automatic version checking (v0.14.0)
 ```
+
+### Update Check (v0.14.0)
+
+Automatic version checking on session start:
+
+```bash
+.claude/scripts/check-updates.sh --notify   # Check and notify (default for hooks)
+.claude/scripts/check-updates.sh --check    # Force check (bypass cache)
+.claude/scripts/check-updates.sh --json     # JSON output for scripting
+.claude/scripts/check-updates.sh --quiet    # Suppress non-error output
+```
+
+**Exit Codes**:
+- `0`: Up to date or check disabled/skipped
+- `1`: Update available
+- `2`: Error
+
+**Configuration** (`.loa.config.yaml`):
+```yaml
+update_check:
+  enabled: true                    # Master toggle
+  cache_ttl_hours: 24              # Cache TTL (default: 24)
+  notification_style: banner       # banner | line | silent
+  include_prereleases: false       # Include pre-release versions
+  upstream_repo: "0xHoneyJar/loa"  # GitHub repo to check
+```
+
+**Environment Variables** (override config):
+- `LOA_DISABLE_UPDATE_CHECK=1` - Disable all checks
+- `LOA_UPDATE_CHECK_TTL=48` - Cache TTL in hours
+- `LOA_UPSTREAM_REPO=owner/repo` - Custom upstream
+- `LOA_UPDATE_NOTIFICATION=line` - Notification style
+
+**Features**:
+- Runs automatically on session start via SessionStart hook
+- Auto-skips in CI environments (GitHub Actions, GitLab CI, Jenkins, etc.)
+- Caches results to minimize API calls (24h default)
+- Shows major version warnings
+- Silent failure on network errors
+
+### Anthropic Oracle (v0.13.0)
+
+Monitors Anthropic official sources for updates relevant to Loa:
+
+```bash
+.claude/scripts/anthropic-oracle.sh check     # Fetch latest sources
+.claude/scripts/anthropic-oracle.sh sources   # List monitored URLs
+.claude/scripts/anthropic-oracle.sh history   # View check history
+```
+
+**Workflow**:
+1. Run `anthropic-oracle.sh check` to fetch sources
+2. Run `/oracle-analyze` to analyze with Claude
+3. Generate research document at `grimoires/pub/research/`
+
+**Automated**: Weekly GitHub Actions workflow creates issues for review.
+
+See: `.claude/protocols/recommended-hooks.md` for hook patterns.
+See: `.claude/protocols/risk-analysis.md` for pre-mortem analysis framework.
 
 ### Context Manager (v0.11.0)
 

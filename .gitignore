@@ -11,11 +11,6 @@ coverage/
 build/
 dist/
 out/
-.next/
-
-# Archive files (compressed backups)
-*.tar.gz
-*.zip
 
 # Environment variables
 .env
@@ -49,14 +44,73 @@ tmp/
 temp/
 *.tmp
 
-# Loa Framework State
-# Created by /setup command when first-time configuration completes
-# Each developer runs setup independently, so this should not be shared
+# Loa Framework State (Legacy - v0.14.0 and earlier)
+# The .loa-setup-complete file is no longer created as of v0.15.0.
+# THJ membership is now detected via LOA_CONSTRUCTS_API_KEY environment variable.
+# This entry remains for backward compatibility with projects using older versions.
 .loa-setup-complete
+
+# User context files (discovery inputs, uploaded docs, extracted content)
+# These are user-specific inputs that should never be committed
+# The README.md is tracked to explain the directory's purpose
+grimoires/loa/context/*
+!grimoires/loa/context/README.md
 
 # ck semantic search state (embeddings cache, indexes)
 # Large machine-specific files that rebuild automatically
 .ck/
+
+# Agent trajectory logs (reasoning audit trails)
+# JSONL format logs for development/debugging, not needed in version control
+grimoires/loa/a2a/trajectory/*.jsonl
+
+# Pending feedback (temporary file for failed Linear submissions)
+# Kept in case /feedback fails to submit to Linear - automatically retried
+grimoires/loa/analytics/pending-feedback.json
+
+# Server audit reports (contain sensitive deployment info)
+grimoires/loa/deployment/SERVER-REALITY-AUDIT.md
+
+# =============================================================================
+# LOA TEMPLATE EXCLUSIONS
+# =============================================================================
+# These files are ALWAYS excluded from the template repository.
+# They are generated per-project and must never be committed to the main loa repo.
+
+# Generated documentation artifacts
+grimoires/loa/prd.md
+grimoires/loa/sdd.md
+grimoires/loa/sprint.md
+grimoires/loa/NOTES.md
+
+# Agent-to-Agent communication (sprint-specific, generated)
+# README.md files are kept to explain the directory purpose
+grimoires/loa/a2a/*
+!grimoires/loa/a2a/README.md
+!grimoires/loa/a2a/trajectory/
+grimoires/loa/a2a/trajectory/*
+!grimoires/loa/a2a/trajectory/README.md
+
+# Deployment artifacts (project-specific)
+grimoires/loa/deployment/*
+!grimoires/loa/deployment/README.md
+
+# Reality extraction (codebase-specific)
+grimoires/loa/reality/*
+!grimoires/loa/reality/README.md
+
+# Analytics (usage tracking, developer-specific)
+grimoires/loa/analytics/*
+!grimoires/loa/analytics/README.md
+
+# Research files (project-specific discoveries)
+grimoires/loa/research/*
+!grimoires/loa/research/README.md
+
+# Public grimoires (project-specific outputs, not template content)
+# Only README.md files are tracked to preserve directory structure
+grimoires/pub/**/*
+!grimoires/pub/**/README.md
 
 # =============================================================================
 # LOA CONSTRUCTS (licensed skills, user-specific)
@@ -84,60 +138,3 @@ app/package.json
 app/package-lock.json
 app/tsconfig.json
 app/ecosystem.config.js
-
-# GTM artifacts (private - not for public repos)
-grimoires/gtm/
-
-# Loa grimoire artifacts (private - contains PRDs, SDDs, security audits)
-grimoires/loa/
-
-# GTM commands (installed from constructs packs, not for public repos)
-.claude/commands/analyze-market.md
-.claude/commands/announce-release.md
-.claude/commands/create-deck.md
-.claude/commands/gtm-adopt.md
-.claude/commands/gtm-feature-requests.md
-.claude/commands/gtm-setup.md
-.claude/commands/plan-devrel.md
-.claude/commands/plan-launch.md
-.claude/commands/plan-partnerships.md
-.claude/commands/position.md
-.claude/commands/price.md
-.claude/commands/review-gtm.md
-.claude/commands/sync-from-dev.md
-.claude/commands/sync-from-gtm.md
-
-# Legacy grimoire directory (migrated to grimoires/loa/)
-loa-grimoire/
-
-# =============================================================================
-# TERRAFORM
-# =============================================================================
-# Local .terraform directories
-**/.terraform/*
-
-# Terraform state files (should be in remote backend)
-*.tfstate
-*.tfstate.*
-
-# Crash log files
-crash.log
-crash.*.log
-
-# Exclude all .tfvars files, which may contain sensitive data
-*.tfvars
-*.tfvars.json
-
-# Override files as they are usually used for local development
-override.tf
-override.tf.json
-*_override.tf
-*_override.tf.json
-
-# Terraform plan files (may contain sensitive data)
-*.tfplan
-*.plan
-
-# Terraform lock file (can be committed for consistent provider versions)
-# Uncomment if you want to ignore it:
-# .terraform.lock.hcl

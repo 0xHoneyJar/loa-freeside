@@ -366,6 +366,22 @@ context_management:
       - intermediate_outputs
 
 # =============================================================================
+# Update Check (v0.14.0)
+# =============================================================================
+# Automatic version checking on session start
+update_check:
+  # Master toggle - set to false to disable all update checks
+  enabled: true
+  # Cache TTL in hours (0 = check every time)
+  cache_ttl_hours: 24
+  # Notification style: banner | line | silent
+  notification_style: banner
+  # Include pre-release versions in update checks
+  include_prereleases: false
+  # Custom upstream repo (for forks)
+  upstream_repo: "0xHoneyJar/loa"
+
+# =============================================================================
 # Behavior Preferences
 # =============================================================================
 preferences:
