@@ -364,3 +364,4 @@ WHERE created_at < NOW() - INTERVAL '90 days';
 - **On-call Engineer:** Check PagerDuty
 - **Slack Channel:** #arrakis-alerts
 - **Documentation:** `/docs/sandbox-*.md`
+- **CLI Reference:** `/docs/cli.md`
