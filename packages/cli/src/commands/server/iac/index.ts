@@ -147,6 +147,35 @@ export {
   type ResourceIdMap,
 } from './StateWriter.js';
 
+// State locking (Sprint 98)
+export {
+  StateLock,
+  createStateLock,
+  formatLockInfo,
+  isLockStale,
+  type LockOperation,
+  type AcquireLockOptions,
+  type LockedOperationResult,
+} from './StateLock.js';
+
+// Apply engine (Sprint 98)
+export {
+  ApplyEngine,
+  createApplyEngine,
+  createApplyEngineFromEnv,
+  type ApplyEngineOptions,
+  type ApplyEngineResult,
+} from './ApplyEngine.js';
+
+// Destroy engine (Sprint 98)
+export {
+  DestroyEngine,
+  createDestroyEngine,
+  createDestroyEngineFromEnv,
+  type DestroyEngineOptions,
+  type DestroyEngineResult,
+} from './DestroyEngine.js';
+
 // Backend schemas (Sprint 96)
 export {
   LocalBackendSchema,

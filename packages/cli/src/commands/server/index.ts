@@ -3,6 +3,7 @@
  *
  * Sprint 93: Discord Infrastructure-as-Code - CLI Commands & Polish
  * Sprint 97: Workspace Management
+ * Sprint 98: Apply & Destroy Operations
  *
  * Registers the `gaib server` command group with all subcommands.
  * Provides Terraform-like workflow for Discord server configuration.
@@ -44,6 +45,9 @@ Examples:
   $ gaib server plan -f config.yaml          Plan from specific config file
   $ gaib server diff                         Show detailed diff of changes
   $ gaib server diff --json                  Output diff as JSON
+  $ gaib server apply                        Apply changes to Discord
+  $ gaib server apply --auto-approve         Apply without confirmation
+  $ gaib server destroy                      Destroy all managed resources
   $ gaib server export                       Export current Discord state to YAML
   $ gaib server export --guild 123456789     Export specific guild
 
@@ -53,6 +57,10 @@ Workspace Commands:
   $ gaib server workspace select staging     Switch to workspace
   $ gaib server workspace show               Show current workspace details
   $ gaib server workspace delete staging     Delete a workspace
+
+State Management:
+  $ gaib server lock-status                  Show lock status for workspace
+  $ gaib server force-unlock                 Force release a stuck lock
 `
     );
 
@@ -60,8 +68,12 @@ Workspace Commands:
   registerInitCommand(server);
   registerPlanCommand(server);
   registerDiffCommand(server);
+  registerApplyCommand(server);
+  registerDestroyCommand(server);
   registerExportCommand(server);
   registerWorkspaceCommand(server);
+  registerLockStatusCommand(server);
+  registerForceUnlockCommand(server);
 
   return server;
 }
@@ -142,6 +154,69 @@ function registerDiffCommand(parent: Command): void {
         const { diffCommand } = await import('./diff.js');
         const globalOpts = parent.optsWithGlobals();
         await diffCommand({ ...options, quiet: globalOpts.quiet });
+      } catch (error) {
+        handleError(error, options.json);
+      }
+    });
+}
+
+/**
+ * Registers the 'apply' subcommand
+ *
+ * Applies configuration changes to Discord with state locking.
+ * Similar to `terraform apply`.
+ *
+ * @see Sprint 98: Apply & Destroy Operations
+ */
+function registerApplyCommand(parent: Command): void {
+  parent
+    .command('apply')
+    .description('Apply configuration changes to Discord')
+    .option('-f, --file <path>', 'Configuration file path', 'discord-server.yaml')
+    .option('-g, --guild <id>', 'Override guild ID from config')
+    .option('-w, --workspace <name>', 'Override current workspace')
+    .option('--json', 'Output result as JSON')
+    .option('--auto-approve', 'Skip interactive confirmation')
+    .option('--dry-run', 'Show what would be applied without making changes')
+    .option('--managed-only', 'Only apply to IaC-managed resources', true)
+    .action(async (options) => {
+      try {
+        const { applyCommand } = await import('./apply.js');
+        const globalOpts = parent.optsWithGlobals();
+        await applyCommand({ ...options, quiet: globalOpts.quiet });
+      } catch (error) {
+        handleError(error, options.json);
+      }
+    });
+}
+
+/**
+ * Registers the 'destroy' subcommand
+ *
+ * Destroys all managed resources in a workspace.
+ * Similar to `terraform destroy`.
+ *
+ * @see Sprint 98: Apply & Destroy Operations
+ */
+function registerDestroyCommand(parent: Command): void {
+  parent
+    .command('destroy')
+    .description('Destroy all managed resources in the workspace')
+    .option('-g, --guild <id>', 'Discord guild/server ID (required)')
+    .option('-w, --workspace <name>', 'Override current workspace')
+    .option('--json', 'Output result as JSON')
+    .option('--auto-approve', 'Skip interactive confirmation')
+    .option('--dry-run', 'Show what would be destroyed without making changes')
+    .option('-t, --target <types...>', 'Target specific resource types (role, category, channel)')
+    .action(async (options) => {
+      try {
+        const { destroyCommand } = await import('./destroy.js');
+        const globalOpts = parent.optsWithGlobals();
+        await destroyCommand({
+          ...options,
+          quiet: globalOpts.quiet,
+          targetTypes: options.target,
+        });
       } catch (error) {
         handleError(error, options.json);
       }
@@ -259,6 +334,55 @@ function registerWorkspaceCommand(parent: Command): void {
         const { workspaceDeleteCommand } = await import('./workspace.js');
         const globalOpts = parent.optsWithGlobals();
         await workspaceDeleteCommand(name, { ...options, quiet: globalOpts.quiet });
+      } catch (error) {
+        handleError(error, options.json);
+      }
+    });
+}
+
+/**
+ * Registers the 'lock-status' subcommand
+ *
+ * Shows the current lock status for a workspace.
+ *
+ * @see Sprint 98: Apply & Destroy Operations
+ */
+function registerLockStatusCommand(parent: Command): void {
+  parent
+    .command('lock-status')
+    .description('Show lock status for the current workspace')
+    .option('-w, --workspace <name>', 'Override current workspace')
+    .option('--json', 'Output result as JSON')
+    .action(async (options) => {
+      try {
+        const { lockStatusCommand } = await import('./force-unlock.js');
+        const globalOpts = parent.optsWithGlobals();
+        await lockStatusCommand({ ...options, quiet: globalOpts.quiet });
+      } catch (error) {
+        handleError(error, options.json);
+      }
+    });
+}
+
+/**
+ * Registers the 'force-unlock' subcommand
+ *
+ * Manually releases a state lock on a workspace.
+ *
+ * @see Sprint 98: Apply & Destroy Operations
+ */
+function registerForceUnlockCommand(parent: Command): void {
+  parent
+    .command('force-unlock')
+    .description('Force release a stuck state lock (use with caution)')
+    .option('-w, --workspace <name>', 'Override current workspace')
+    .option('-y, --yes', 'Skip confirmation prompt')
+    .option('--json', 'Output result as JSON')
+    .action(async (options) => {
+      try {
+        const { forceUnlockCommand } = await import('./force-unlock.js');
+        const globalOpts = parent.optsWithGlobals();
+        await forceUnlockCommand({ ...options, quiet: globalOpts.quiet });
       } catch (error) {
         handleError(error, options.json);
       }
