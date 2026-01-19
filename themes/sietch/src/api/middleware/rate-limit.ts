@@ -29,14 +29,24 @@ export interface RateLimitConfig {
   keyPrefix: string;
   /** Whether to include standard rate limit headers */
   standardHeaders?: boolean;
+  /**
+   * Sprint 135 (MED-004): Maximum entries in the rate limit store
+   * Prevents unbounded memory growth from malicious actors
+   * @default 10000
+   */
+  maxEntries?: number;
 }
 
 /**
  * Rate limit window tracking
+ *
+ * Sprint 135 (MED-004): Added lastAccessedAt for LRU eviction
  */
 interface RateLimitWindow {
   count: number;
   resetAt: number;
+  /** Sprint 135 (MED-004): Last access time for LRU eviction */
+  lastAccessedAt: number;
 }
 
 // =============================================================================
@@ -75,18 +85,28 @@ export const RATE_LIMIT_CONFIGS = {
 // =============================================================================
 
 /**
+ * Sprint 135 (MED-004): Default maximum entries in rate limit store
+ */
+const DEFAULT_MAX_ENTRIES = 10000;
+
+/**
  * In-memory sliding window rate limiter
  *
  * Thread-safe for single-process Node.js applications.
  * For distributed systems, consider using Redis-based limiting.
+ *
+ * Sprint 135 (MED-004): Implements LRU eviction to prevent memory exhaustion
  */
 export class RateLimiter {
   private windows = new Map<string, RateLimitWindow>();
   private cleanupInterval: NodeJS.Timeout | null = null;
+  /** Sprint 135 (MED-004): Maximum entries before LRU eviction */
+  private readonly maxEntries: number;
 
   constructor(
     private readonly config: RateLimitConfig
   ) {
+    this.maxEntries = config.maxEntries ?? DEFAULT_MAX_ENTRIES;
     // Start periodic cleanup
     this.startCleanup();
   }
@@ -104,11 +124,20 @@ export class RateLimiter {
 
     // Create new window if none exists or expired
     if (!window || now > window.resetAt) {
+      // Sprint 135 (MED-004): Check if we need to evict before adding
+      if (!window && this.windows.size >= this.maxEntries) {
+        this.evictLRU();
+      }
+
       window = {
         count: 0,
         resetAt: now + this.config.windowMs,
+        lastAccessedAt: now,
       };
       this.windows.set(fullKey, window);
+    } else {
+      // Sprint 135 (MED-004): Update last accessed time for LRU tracking
+      window.lastAccessedAt = now;
     }
 
     // Check if limit exceeded
@@ -128,6 +157,33 @@ export class RateLimiter {
       remaining: this.config.max - window.count,
       resetAt: window.resetAt,
     };
+  }
+
+  /**
+   * Sprint 135 (MED-004): Evict least recently used entries
+   *
+   * Removes 10% of entries when at capacity to amortize eviction cost.
+   */
+  private evictLRU(): void {
+    const evictCount = Math.max(1, Math.floor(this.maxEntries * 0.1));
+
+    // Convert to array and sort by lastAccessedAt (oldest first)
+    const entries = Array.from(this.windows.entries())
+      .sort((a, b) => a[1].lastAccessedAt - b[1].lastAccessedAt);
+
+    // Remove oldest entries
+    for (let i = 0; i < evictCount && i < entries.length; i++) {
+      this.windows.delete(entries[i][0]);
+    }
+
+    logger.debug(
+      {
+        keyPrefix: this.config.keyPrefix,
+        evicted: Math.min(evictCount, entries.length),
+        remaining: this.windows.size,
+      },
+      'Rate limiter LRU eviction'
+    );
   }
 
   /**
@@ -184,6 +240,20 @@ export class RateLimiter {
       return 0;
     }
     return window.count;
+  }
+
+  /**
+   * Sprint 135 (MED-004): Get current number of entries (for monitoring/testing)
+   */
+  getSize(): number {
+    return this.windows.size;
+  }
+
+  /**
+   * Sprint 135 (MED-004): Get maximum entries configuration (for testing)
+   */
+  getMaxEntries(): number {
+    return this.maxEntries;
   }
 }
 

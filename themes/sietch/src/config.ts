@@ -898,12 +898,26 @@ function validateStartupConfig(cfg: typeof parsedConfig): void {
     );
   }
 
-  // MED-7: Warn about wildcard CORS in production
+  // Sprint 133 (HIGH-001): CORS wildcard check - ENFORCE in production
+  // MED-7 upgraded to HIGH-001: Wildcard CORS must not be allowed in production
   if (isProduction && cfg.cors.allowedOrigins.includes('*')) {
-    logger.warn(
-      'SECURITY WARNING: CORS is configured to allow all origins (*). ' +
-        'Consider setting CORS_ALLOWED_ORIGINS to specific domains in production.'
-    );
+    // Allow bypass via explicit environment variable
+    if (process.env.CORS_ALLOW_WILDCARD_IN_PRODUCTION === 'true') {
+      logger.warn(
+        'SECURITY WARNING: CORS wildcard (*) explicitly allowed in production via CORS_ALLOW_WILDCARD_IN_PRODUCTION. ' +
+          'This is NOT recommended and exposes the API to cross-origin attacks.'
+      );
+    } else {
+      logger.fatal(
+        'SECURITY ERROR: CORS is configured to allow all origins (*) in production. ' +
+          'Set CORS_ALLOWED_ORIGINS to specific domains (comma-separated) or ' +
+          'set CORS_ALLOW_WILDCARD_IN_PRODUCTION=true to bypass (NOT recommended).'
+      );
+      throw new Error(
+        'CORS_ALLOWED_ORIGINS must not be wildcard (*) in production. ' +
+          'Configure specific allowed origins or set CORS_ALLOW_WILDCARD_IN_PRODUCTION=true to bypass.'
+      );
+    }
   }
 
   // ==========================================================================

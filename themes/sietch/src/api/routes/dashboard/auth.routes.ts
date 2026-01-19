@@ -20,6 +20,7 @@ import type { Request, Response } from 'express';
 import crypto from 'crypto';
 import { z } from 'zod';
 import { logger } from '../../../utils/logger.js';
+import { getCorrelationId, getClientIp } from '../../middleware/securityHeaders.js';
 
 // =============================================================================
 // Types
@@ -76,6 +77,8 @@ export interface DashboardSession {
   }>;
   createdAt: number;
   lastActivity: number;
+  /** Sprint 134 (MED-002): CSRF token for state-changing operations */
+  csrfToken?: string;
 }
 
 /**
@@ -255,12 +258,31 @@ function hasAdminPermissions(permissions: string): boolean {
 // =============================================================================
 
 /**
+ * Sprint 134 (MED-001): Production mode check for session store
+ */
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
+/**
  * In-memory session store (fallback when Redis unavailable)
+ *
+ * WARNING: In-memory store should ONLY be used in development.
+ * Production requires Redis for proper session persistence and scaling.
  */
 const memorySessionStore = new Map<string, DashboardSession>();
 
 /**
+ * Track if we've warned about in-memory session usage in production
+ */
+let memorySessionWarningLogged = false;
+
+/**
  * Store session data
+ *
+ * Sprint 134 (MED-001): Fail fast in production if Redis is unavailable.
+ * In-memory sessions are not suitable for production as they:
+ * - Don't persist across restarts
+ * - Don't work with multiple instances
+ * - Can cause memory leaks under load
  */
 async function storeSession(
   sessionId: string,
@@ -274,6 +296,24 @@ async function storeSession(
       EX: SESSION_TTL_SECONDS,
     });
   } else {
+    // Sprint 134 (MED-001): Fail in production without Redis
+    if (IS_PRODUCTION) {
+      logger.fatal('SESSION_STORE_ERROR: Redis is required for production session management');
+      throw new Error(
+        'Redis is required for production session management. ' +
+          'Configure REDIS_URL environment variable or set FEATURE_REDIS_ENABLED=true.'
+      );
+    }
+
+    // Log warning once in development
+    if (!memorySessionWarningLogged) {
+      logger.warn(
+        'Using in-memory session store - sessions will not persist across restarts. ' +
+          'Configure Redis for production use.'
+      );
+      memorySessionWarningLogged = true;
+    }
+
     memorySessionStore.set(sessionId, session);
     // Schedule cleanup
     setTimeout(() => {
@@ -308,6 +348,47 @@ async function deleteSession(
     await redis.del(`dashboard:session:${sessionId}`);
   } else {
     memorySessionStore.delete(sessionId);
+  }
+}
+
+// =============================================================================
+// Sprint 134 (MED-002): CSRF Validation
+// =============================================================================
+
+/** CSRF token header name */
+const CSRF_HEADER = 'x-csrf-token';
+
+/**
+ * Validate CSRF token from request header against session token
+ *
+ * Sprint 134 (MED-002): Protects state-changing operations from CSRF attacks.
+ * Uses constant-time comparison to prevent timing attacks.
+ *
+ * @returns true if valid, false otherwise
+ */
+function validateCsrfToken(
+  req: Request,
+  session: DashboardSession
+): boolean {
+  const headerToken = req.headers[CSRF_HEADER] as string | undefined;
+
+  if (!headerToken || !session.csrfToken) {
+    return false;
+  }
+
+  // Use constant-time comparison to prevent timing attacks
+  try {
+    const tokenBuffer = Buffer.from(headerToken, 'utf-8');
+    const sessionBuffer = Buffer.from(session.csrfToken, 'utf-8');
+
+    // Lengths must match for timingSafeEqual
+    if (tokenBuffer.length !== sessionBuffer.length) {
+      return false;
+    }
+
+    return crypto.timingSafeEqual(tokenBuffer, sessionBuffer);
+  } catch {
+    return false;
   }
 }
 
@@ -458,8 +539,15 @@ export function createDashboardAuthRouter(deps: DashboardAuthDeps): Router {
       const hasTargetGuildAccess = adminGuilds.some((g) => g.id === guildId);
 
       if (!hasTargetGuildAccess) {
+        // Sprint 136 (LOW-001): Enhanced audit logging for security events
         logger.warn(
-          { userId: user.id, guildId, adminGuildIds: adminGuilds.map((g) => g.id) },
+          {
+            userId: user.id,
+            guildId,
+            adminGuildIds: adminGuilds.map((g) => g.id),
+            correlationId: getCorrelationId(req),
+            clientIp: getClientIp(req),
+          },
           'User does not have admin access to target guild'
         );
         // Redirect to login page with error
@@ -470,7 +558,9 @@ export function createDashboardAuthRouter(deps: DashboardAuthDeps): Router {
       }
 
       // Create session
+      // Sprint 134 (MED-002): Generate CSRF token for state-changing operations
       const sessionId = generateSessionId();
+      const csrfToken = crypto.randomBytes(32).toString('hex');
       const session: DashboardSession = {
         userId: user.id,
         username: user.global_name || user.username,
@@ -485,6 +575,7 @@ export function createDashboardAuthRouter(deps: DashboardAuthDeps): Router {
         })),
         createdAt: Date.now(),
         lastActivity: Date.now(),
+        csrfToken,
       };
 
       // Store session
@@ -499,11 +590,14 @@ export function createDashboardAuthRouter(deps: DashboardAuthDeps): Router {
         path: '/',
       });
 
+      // Sprint 136 (LOW-001): Enhanced audit logging with correlation ID and IP
       logger.info(
         {
           userId: user.id,
           username: session.username,
           adminGuildCount: adminGuilds.length,
+          correlationId: getCorrelationId(req),
+          clientIp: getClientIp(req),
         },
         'Dashboard login successful'
       );
@@ -524,12 +618,25 @@ export function createDashboardAuthRouter(deps: DashboardAuthDeps): Router {
    * POST /api/dashboard/auth/logout
    *
    * Terminates user session
+   *
+   * Sprint 134 (MED-002): Requires CSRF token validation
    */
   router.post('/logout', async (req: Request, res: Response) => {
     try {
       const sessionId = req.cookies[SESSION_COOKIE_NAME];
 
+      // Sprint 134 (MED-002): Validate CSRF token before logout
       if (sessionId) {
+        const session = await getSession(sessionId, redis);
+
+        if (session && !validateCsrfToken(req, session)) {
+          res.status(403).json({
+            error: 'CSRF_INVALID',
+            message: 'Invalid or missing CSRF token',
+          });
+          return;
+        }
+
         await deleteSession(sessionId, redis);
       }
 
@@ -541,7 +648,15 @@ export function createDashboardAuthRouter(deps: DashboardAuthDeps): Router {
         path: '/',
       });
 
-      logger.debug({ sessionId: sessionId?.substring(0, 8) }, 'Dashboard logout');
+      // Sprint 136 (LOW-001): Enhanced audit logging
+      logger.info(
+        {
+          sessionId: sessionId?.substring(0, 8),
+          correlationId: getCorrelationId(req),
+          clientIp: getClientIp(req),
+        },
+        'Dashboard logout'
+      );
 
       res.json({ success: true });
     } catch (error) {
@@ -554,6 +669,8 @@ export function createDashboardAuthRouter(deps: DashboardAuthDeps): Router {
    * GET /api/dashboard/auth/me
    *
    * Returns current user info if authenticated
+   *
+   * Sprint 134 (MED-002): Also returns CSRF token for client-side usage
    */
   router.get('/me', async (req: Request, res: Response) => {
     try {
@@ -578,11 +695,13 @@ export function createDashboardAuthRouter(deps: DashboardAuthDeps): Router {
       await storeSession(sessionId, session, redis);
 
       // Return user info (without sensitive data)
+      // Sprint 134 (MED-002): Include CSRF token for state-changing operations
       res.json({
         id: session.userId,
         username: session.username,
         avatar: session.avatar,
         adminGuilds: session.adminGuilds,
+        csrfToken: session.csrfToken,
       });
     } catch (error) {
       logger.error({ error }, 'Failed to fetch user info');
@@ -594,6 +713,8 @@ export function createDashboardAuthRouter(deps: DashboardAuthDeps): Router {
    * POST /api/dashboard/auth/refresh
    *
    * Refresh the Discord access token
+   *
+   * Sprint 134 (MED-002): Requires CSRF token validation
    */
   router.post('/refresh', async (req: Request, res: Response) => {
     try {
@@ -608,6 +729,15 @@ export function createDashboardAuthRouter(deps: DashboardAuthDeps): Router {
 
       if (!session) {
         res.status(401).json({ error: 'Session expired' });
+        return;
+      }
+
+      // Sprint 134 (MED-002): Validate CSRF token before refresh
+      if (!validateCsrfToken(req, session)) {
+        res.status(403).json({
+          error: 'CSRF_INVALID',
+          message: 'Invalid or missing CSRF token',
+        });
         return;
       }
 
@@ -678,4 +808,6 @@ export {
   deleteSession,
   SESSION_COOKIE_NAME,
   hasAdminPermissions,
+  /** Sprint 134 (MED-002): CSRF header name for client-side usage */
+  CSRF_HEADER,
 };

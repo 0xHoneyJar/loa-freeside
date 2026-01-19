@@ -13,6 +13,7 @@
 import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
+import crypto from 'crypto';
 import { logger } from '../../../utils/logger.js';
 import type { IConfigService } from '../../../services/config/ConfigService.js';
 import {
@@ -28,6 +29,26 @@ import { NotFoundError, BadRequestError } from '../../errors.js';
 // Types
 // =============================================================================
 
+/**
+ * Redis interface for confirmation code storage
+ * Sprint 133 (CRIT-001): Secure confirmation code state management
+ */
+export interface RestoreRedisClient {
+  get: (key: string) => Promise<string | null>;
+  set: (key: string, value: string, options?: { EX?: number }) => Promise<void>;
+  del: (key: string) => Promise<void>;
+}
+
+/**
+ * Confirmation code attempt tracking
+ * Sprint 133 (CRIT-001): Track failed attempts per session
+ */
+interface ConfirmationAttemptRecord {
+  code: string;
+  attempts: number;
+  createdAt: number;
+}
+
 export interface RestoreRoutesDeps {
   /** ConfigService for fetching/updating configuration */
   configService: IConfigService;
@@ -35,6 +56,8 @@ export interface RestoreRoutesDeps {
   logger?: typeof logger;
   /** Optional custom ImpactAnalyzer */
   impactAnalyzer?: IImpactAnalyzer;
+  /** Redis client for confirmation code storage (Sprint 133 - CRIT-001) */
+  redis?: RestoreRedisClient;
 }
 
 interface RestoreRequest extends AuthenticatedDashboardRequest {
@@ -63,10 +86,143 @@ const executeRequestSchema = z.object({
 /**
  * Create restore routes for dashboard API
  */
+// =============================================================================
+// Constants (Sprint 133 - CRIT-001)
+// =============================================================================
+
+/** Confirmation code TTL in seconds (10 minutes) */
+const CONFIRMATION_CODE_TTL = 10 * 60;
+
+/** Maximum failed confirmation attempts before invalidation */
+const MAX_CONFIRMATION_ATTEMPTS = 3;
+
+/** Redis key prefix for confirmation codes */
+const CONFIRMATION_CODE_PREFIX = 'restore:confirm:';
+
+// =============================================================================
+// Route Factory
+// =============================================================================
+
 export function createRestoreRoutes(deps: RestoreRoutesDeps): Router {
   const router = Router();
   const log = deps.logger ?? logger;
   const impactAnalyzer = deps.impactAnalyzer ?? createImpactAnalyzer();
+  const redis = deps.redis;
+
+  /**
+   * Generate confirmation code Redis key
+   * Sprint 133 (CRIT-001): Unique per server, user, and checkpoint
+   */
+  function getConfirmationCodeKey(serverId: string, userId: string, checkpointId: string): string {
+    return `${CONFIRMATION_CODE_PREFIX}${serverId}:${userId}:${checkpointId}`;
+  }
+
+  /**
+   * Store confirmation code in Redis with TTL
+   * Sprint 133 (CRIT-001): Secure confirmation code state management
+   */
+  async function storeConfirmationCode(
+    serverId: string,
+    userId: string,
+    checkpointId: string,
+    code: string
+  ): Promise<void> {
+    if (!redis) {
+      log.warn('Redis not available, confirmation code cannot be stored securely');
+      return;
+    }
+
+    const key = getConfirmationCodeKey(serverId, userId, checkpointId);
+    const record: ConfirmationAttemptRecord = {
+      code,
+      attempts: 0,
+      createdAt: Date.now(),
+    };
+
+    await redis.set(key, JSON.stringify(record), { EX: CONFIRMATION_CODE_TTL });
+    log.debug({ serverId, userId, checkpointId }, 'Confirmation code stored');
+  }
+
+  /**
+   * Validate confirmation code with constant-time comparison
+   * Sprint 133 (CRIT-001): Secure validation with attempt tracking
+   *
+   * @returns true if valid, throws BadRequestError if invalid
+   */
+  async function validateConfirmationCode(
+    serverId: string,
+    userId: string,
+    checkpointId: string,
+    submittedCode: string
+  ): Promise<void> {
+    if (!redis) {
+      // Fallback: Accept code if Redis is not available (log warning)
+      log.warn(
+        { serverId, userId, checkpointId },
+        'Redis not available, skipping secure confirmation code validation'
+      );
+      if (!submittedCode || submittedCode.length < 6) {
+        throw new BadRequestError('Confirmation code required for high-impact restores');
+      }
+      return;
+    }
+
+    const key = getConfirmationCodeKey(serverId, userId, checkpointId);
+    const stored = await redis.get(key);
+
+    if (!stored) {
+      log.warn(
+        { serverId, userId, checkpointId },
+        'Confirmation code validation failed: code not found or expired'
+      );
+      throw new BadRequestError(
+        'Confirmation code expired or not found. Please request a new preview.'
+      );
+    }
+
+    const record: ConfirmationAttemptRecord = JSON.parse(stored);
+
+    // Check if max attempts exceeded
+    if (record.attempts >= MAX_CONFIRMATION_ATTEMPTS) {
+      await redis.del(key);
+      log.warn(
+        { serverId, userId, checkpointId, attempts: record.attempts },
+        'Confirmation code validation failed: max attempts exceeded'
+      );
+      throw new BadRequestError(
+        'Maximum confirmation attempts exceeded. Please request a new preview.'
+      );
+    }
+
+    // Constant-time comparison to prevent timing attacks
+    const storedBuffer = Buffer.from(record.code, 'utf8');
+    const submittedBuffer = Buffer.from(submittedCode, 'utf8');
+
+    // Pad to same length for constant-time comparison
+    const maxLength = Math.max(storedBuffer.length, submittedBuffer.length);
+    const paddedStored = Buffer.alloc(maxLength);
+    const paddedSubmitted = Buffer.alloc(maxLength);
+    storedBuffer.copy(paddedStored);
+    submittedBuffer.copy(paddedSubmitted);
+
+    const isValid = crypto.timingSafeEqual(paddedStored, paddedSubmitted);
+
+    if (!isValid) {
+      // Increment attempt counter
+      record.attempts += 1;
+      await redis.set(key, JSON.stringify(record), { EX: CONFIRMATION_CODE_TTL });
+
+      log.warn(
+        { serverId, userId, checkpointId, attempts: record.attempts },
+        'Confirmation code validation failed: invalid code'
+      );
+      throw new BadRequestError('Invalid confirmation code');
+    }
+
+    // Valid code - delete it (single use)
+    await redis.del(key);
+    log.info({ serverId, userId, checkpointId }, 'Confirmation code validated successfully');
+  }
 
   /**
    * GET /servers/:serverId/restore/checkpoints
@@ -175,9 +331,15 @@ export function createRestoreRoutes(deps: RestoreRoutesDeps): Router {
         const report = impactAnalyzer.analyzeCheckpointRestore(currentConfig, checkpoint);
 
         // Generate confirmation code if high-impact
-        const confirmationCode = report.isHighImpact
-          ? generateConfirmationCode()
-          : null;
+        // Sprint 133 (CRIT-001): Use crypto.randomBytes instead of Math.random
+        let confirmationCode: string | null = null;
+        if (report.isHighImpact) {
+          confirmationCode = generateConfirmationCode();
+          const userId = restoreReq.dashboardSession?.userId ?? 'unknown';
+
+          // Store code in Redis with TTL (Sprint 133 - CRIT-001)
+          await storeConfirmationCode(serverId, userId, checkpointId, confirmationCode);
+        }
 
         res.json({
           ...formatImpactReport(report),
@@ -260,14 +422,15 @@ export function createRestoreRoutes(deps: RestoreRoutesDeps): Router {
         const report = impactAnalyzer.analyzeCheckpointRestore(currentConfig, checkpoint);
 
         // Verify confirmation code for high-impact restores
+        // Sprint 133 (CRIT-001): Secure validation with Redis state
         if (report.isHighImpact) {
-          if (!confirmationCode || confirmationCode.length < 4) {
+          if (!confirmationCode || confirmationCode.length < 6) {
             throw new BadRequestError(
               'Confirmation code required for high-impact restores'
             );
           }
-          // Note: In production, we'd verify the code matches the one from preview
-          // For now, we accept any valid-looking code
+          // Validate code with constant-time comparison (Sprint 133 - CRIT-001)
+          await validateConfirmationCode(serverId, userId, checkpointId, confirmationCode);
         }
 
         // Execute the restore by updating all configuration sections
@@ -360,9 +523,17 @@ async function getCheckpointById(
 
 /**
  * Generate a 6-digit confirmation code
+ *
+ * Sprint 133 (MED-003): Use crypto.randomBytes instead of Math.random
+ * for cryptographically secure random number generation.
  */
 function generateConfirmationCode(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  // Generate 4 random bytes and convert to a number
+  const randomBytes = crypto.randomBytes(4);
+  const randomNumber = randomBytes.readUInt32BE(0);
+  // Convert to 6-digit code (100000-999999)
+  const code = 100000 + (randomNumber % 900000);
+  return code.toString();
 }
 
 /**

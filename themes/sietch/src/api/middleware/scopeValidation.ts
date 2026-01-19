@@ -78,6 +78,11 @@ export interface ScopeValidationResult {
 
 const DISCORD_API_BASE = 'https://discord.com/api/v10';
 
+/**
+ * Sprint 134 (HIGH-002): Production mode check for error sanitization
+ */
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
 // Cache user roles for 5 minutes
 const USER_ROLES_CACHE = new Map<
   string,
@@ -478,7 +483,7 @@ export function createScopeValidator(config: ScopeValidationConfig) {
         // Record metric
         recordScopeViolation();
 
-        // Log the violation attempt
+        // Log the violation attempt (always log full details server-side)
         log.warn(
           {
             userId: dashboardSession.userId,
@@ -486,21 +491,32 @@ export function createScopeValidator(config: ScopeValidationConfig) {
             userTierId: tierId,
             userTierIndex: tierIndex,
             attemptedTiers: validation.blockedTierIds,
+            allowedTiers: allowedTierIds,
           },
           'Scope validation failed - privilege escalation attempt blocked'
         );
 
-        // Return 403 Forbidden
-        const blockedTiersList = validation.blockedTierIds.join(', ');
-        res.status(403).json({
-          error: 'SCOPE_VIOLATION',
-          message: `Cannot modify tier(s): ${blockedTiersList}. You can only modify tiers at or below your current level.`,
-          details: {
-            userTierId: tierId,
-            blockedTiers: validation.blockedTierIds,
-            allowedTiers: allowedTierIds,
-          },
-        });
+        // Sprint 134 (HIGH-002): Sanitize error response in production
+        // In production, return generic error message without tier details
+        // In development, return detailed error for debugging
+        if (IS_PRODUCTION) {
+          res.status(403).json({
+            error: 'SCOPE_VIOLATION',
+            message: 'You do not have permission to modify the requested resources.',
+          });
+        } else {
+          // Development mode - include details for debugging
+          const blockedTiersList = validation.blockedTierIds.join(', ');
+          res.status(403).json({
+            error: 'SCOPE_VIOLATION',
+            message: `Cannot modify tier(s): ${blockedTiersList}. You can only modify tiers at or below your current level.`,
+            details: {
+              userTierId: tierId,
+              blockedTiers: validation.blockedTierIds,
+              allowedTiers: allowedTierIds,
+            },
+          });
+        }
         return;
       }
 

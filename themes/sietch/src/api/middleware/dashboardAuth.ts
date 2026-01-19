@@ -35,14 +35,20 @@ export interface AuthenticatedDashboardRequest extends Request {
 }
 
 /**
+ * Redis interface for session management
+ * Sprint 133 (HIGH-003): Added setNX for distributed locking
+ */
+export interface DashboardAuthRedis {
+  get: (key: string) => Promise<string | null>;
+  set: (key: string, value: string, options?: { EX?: number; NX?: boolean }) => Promise<string | null>;
+  del: (key: string) => Promise<void>;
+}
+
+/**
  * Dependencies for dashboard auth middleware
  */
 export interface DashboardAuthMiddlewareDeps {
-  redis?: {
-    get: (key: string) => Promise<string | null>;
-    set: (key: string, value: string, options?: { EX?: number }) => Promise<void>;
-    del: (key: string) => Promise<void>;
-  };
+  redis?: DashboardAuthRedis;
   guildId: string;
 }
 
@@ -52,15 +58,52 @@ export interface DashboardAuthMiddlewareDeps {
 
 const DISCORD_API_BASE = 'https://discord.com/api/v10';
 
-// Cache live admin check results for 5 minutes
-const LIVE_ADMIN_CHECK_CACHE = new Map<
-  string,
-  {
-    isAdmin: boolean;
-    checkedAt: number;
-  }
->();
-const LIVE_ADMIN_CHECK_TTL = 5 * 60 * 1000; // 5 minutes
+/**
+ * Sprint 135 (MED-005): Reduced TTL for admin check cache
+ *
+ * Previously 5 minutes, now 90 seconds to balance performance vs security.
+ * This allows faster response to Discord permission changes while still
+ * reducing API load.
+ */
+const LIVE_ADMIN_CHECK_TTL = 90 * 1000; // 90 seconds (was 5 minutes)
+
+/**
+ * Sprint 135 (MED-004): Maximum entries in admin check cache
+ * Prevents unbounded memory growth
+ */
+const LIVE_ADMIN_CHECK_MAX_ENTRIES = 1000;
+
+/**
+ * Admin check cache entry
+ */
+interface AdminCheckCacheEntry {
+  isAdmin: boolean;
+  checkedAt: number;
+  /** Sprint 135 (MED-004): Last access time for LRU eviction */
+  lastAccessedAt: number;
+}
+
+/**
+ * Cache live admin check results
+ * Sprint 135 (MED-004): Now with LRU eviction support
+ */
+const LIVE_ADMIN_CHECK_CACHE = new Map<string, AdminCheckCacheEntry>();
+
+// =============================================================================
+// Sprint 133 (HIGH-003): Session Refresh Distributed Locking
+// =============================================================================
+
+/** Session refresh lock TTL in seconds */
+const SESSION_REFRESH_LOCK_TTL = 30;
+
+/** Session refresh lock key prefix */
+const SESSION_REFRESH_LOCK_PREFIX = 'session:refresh:lock:';
+
+/** Maximum retry attempts for acquiring lock */
+const SESSION_REFRESH_LOCK_RETRIES = 3;
+
+/** Retry delay in milliseconds (with exponential backoff) */
+const SESSION_REFRESH_LOCK_RETRY_DELAY = 100;
 
 // =============================================================================
 // Middleware Factory
@@ -140,10 +183,32 @@ export function createDashboardAuthMiddleware(deps: DashboardAuthMiddlewareDeps)
   }
 
   /**
+   * Sprint 135 (MED-004): Evict least recently used admin check cache entries
+   */
+  function evictAdminCheckCacheLRU(): void {
+    const evictCount = Math.max(1, Math.floor(LIVE_ADMIN_CHECK_MAX_ENTRIES * 0.1));
+
+    const entries = Array.from(LIVE_ADMIN_CHECK_CACHE.entries())
+      .sort((a, b) => a[1].lastAccessedAt - b[1].lastAccessedAt);
+
+    for (let i = 0; i < evictCount && i < entries.length; i++) {
+      LIVE_ADMIN_CHECK_CACHE.delete(entries[i][0]);
+    }
+
+    logger.debug(
+      { evicted: Math.min(evictCount, entries.length), remaining: LIVE_ADMIN_CHECK_CACHE.size },
+      'Admin check cache LRU eviction'
+    );
+  }
+
+  /**
    * Live admin check middleware
    *
    * Re-verifies that the user still has admin permissions in Discord.
    * Should be used for write operations to prevent stale permission usage.
+   *
+   * Sprint 135 (MED-005): Reduced TTL from 5 minutes to 90 seconds
+   * Sprint 135 (MED-004): Added LRU eviction for memory protection
    *
    * @example
    * router.post('/config', requireDashboardAuth, liveAdminCheck, handler);
@@ -167,10 +232,14 @@ export function createDashboardAuthMiddleware(deps: DashboardAuthMiddlewareDeps)
 
       const serverId = req.params.serverId || guildId;
       const cacheKey = `${dashboardSession.userId}:${serverId}`;
+      const now = Date.now();
 
       // Check cache first
       const cached = LIVE_ADMIN_CHECK_CACHE.get(cacheKey);
-      if (cached && Date.now() - cached.checkedAt < LIVE_ADMIN_CHECK_TTL) {
+      if (cached && now - cached.checkedAt < LIVE_ADMIN_CHECK_TTL) {
+        // Sprint 135 (MED-004): Update last accessed time for LRU
+        cached.lastAccessedAt = now;
+
         if (!cached.isAdmin) {
           res.status(403).json({
             error: 'PERMISSION_REVOKED',
@@ -211,10 +280,16 @@ export function createDashboardAuthMiddleware(deps: DashboardAuthMiddlewareDeps)
 
       const isAdmin = targetGuild ? hasAdminPermissions(targetGuild.permissions) : false;
 
-      // Update cache
+      // Sprint 135 (MED-004): Check if we need to evict before adding new entry
+      if (!cached && LIVE_ADMIN_CHECK_CACHE.size >= LIVE_ADMIN_CHECK_MAX_ENTRIES) {
+        evictAdminCheckCacheLRU();
+      }
+
+      // Update cache with LRU tracking
       LIVE_ADMIN_CHECK_CACHE.set(cacheKey, {
         isAdmin,
-        checkedAt: Date.now(),
+        checkedAt: now,
+        lastAccessedAt: now,
       });
 
       if (!isAdmin) {
@@ -257,10 +332,65 @@ export function createDashboardAuthMiddleware(deps: DashboardAuthMiddlewareDeps)
   }
 
   /**
+   * Acquire a distributed lock for session refresh
+   * Sprint 133 (HIGH-003): Prevents race conditions during token refresh
+   *
+   * @returns Lock ID if acquired, null if lock is held by another process
+   */
+  async function acquireSessionRefreshLock(sessionId: string): Promise<string | null> {
+    if (!redis) {
+      // No Redis, return dummy lock (no distributed locking)
+      return 'no-redis-lock';
+    }
+
+    const lockKey = `${SESSION_REFRESH_LOCK_PREFIX}${sessionId}`;
+    const lockId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    for (let attempt = 0; attempt < SESSION_REFRESH_LOCK_RETRIES; attempt++) {
+      // Try to acquire lock with SET NX EX
+      const result = await redis.set(lockKey, lockId, {
+        EX: SESSION_REFRESH_LOCK_TTL,
+        NX: true,
+      });
+
+      if (result !== null) {
+        return lockId;
+      }
+
+      // Wait with exponential backoff before retry
+      const delay = SESSION_REFRESH_LOCK_RETRY_DELAY * Math.pow(2, attempt);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+
+    logger.debug({ sessionId }, 'Failed to acquire session refresh lock');
+    return null;
+  }
+
+  /**
+   * Release a distributed lock for session refresh
+   * Sprint 133 (HIGH-003): Only releases if we still hold the lock
+   */
+  async function releaseSessionRefreshLock(sessionId: string, lockId: string): Promise<void> {
+    if (!redis || lockId === 'no-redis-lock') {
+      return;
+    }
+
+    const lockKey = `${SESSION_REFRESH_LOCK_PREFIX}${sessionId}`;
+
+    // Only delete if we hold the lock (compare lock ID)
+    const currentLock = await redis.get(lockKey);
+    if (currentLock === lockId) {
+      await redis.del(lockKey);
+    }
+  }
+
+  /**
    * Session refresh middleware
    *
    * Extends session on activity. Optionally refreshes Discord token
    * if it's close to expiry.
+   *
+   * Sprint 133 (HIGH-003): Uses distributed locking to prevent race conditions
    */
   async function sessionRefresh(
     req: Request,
@@ -289,16 +419,38 @@ export function createDashboardAuthMiddleware(deps: DashboardAuthMiddlewareDeps)
         dashboardSession.tokenExpiresAt - Date.now() < refreshThreshold;
 
       if (shouldRefreshToken) {
-        try {
-          await refreshDiscordToken(dashboardSession);
-        } catch (error) {
-          // Log but don't fail the request - token refresh will be retried
-          logger.warn({ error, userId: dashboardSession.userId }, 'Token refresh failed');
-        }
-      }
+        // Sprint 133 (HIGH-003): Acquire distributed lock before token refresh
+        const lockId = await acquireSessionRefreshLock(sessionId);
 
-      // Save updated session
-      await storeSession(sessionId, dashboardSession, redis);
+        if (lockId) {
+          try {
+            // Re-fetch session to check if another process already refreshed
+            const currentSession = await getSession(sessionId, redis);
+
+            if (currentSession && currentSession.tokenExpiresAt > dashboardSession.tokenExpiresAt) {
+              // Another process already refreshed the token
+              logger.debug({ userId: dashboardSession.userId }, 'Token already refreshed by another process');
+              dashboardReq.dashboardSession = currentSession;
+            } else {
+              // Perform the refresh
+              await refreshDiscordToken(dashboardSession);
+              // Save updated session
+              await storeSession(sessionId, dashboardSession, redis);
+            }
+          } catch (error) {
+            // Log but don't fail the request - token refresh will be retried
+            logger.warn({ error, userId: dashboardSession.userId }, 'Token refresh failed');
+          } finally {
+            // Always release the lock
+            await releaseSessionRefreshLock(sessionId, lockId);
+          }
+        } else {
+          logger.debug({ userId: dashboardSession.userId }, 'Skipping token refresh - lock held by another process');
+        }
+      } else {
+        // Just save the updated last activity
+        await storeSession(sessionId, dashboardSession, redis);
+      }
 
       next();
     } catch (error) {

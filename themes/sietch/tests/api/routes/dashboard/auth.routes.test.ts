@@ -10,7 +10,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 import cookieParser from 'cookie-parser';
-import { createDashboardAuthRouter, SESSION_COOKIE_NAME } from '../../../../src/api/routes/dashboard/auth.routes.js';
+import { createDashboardAuthRouter, SESSION_COOKIE_NAME, CSRF_HEADER } from '../../../../src/api/routes/dashboard/auth.routes.js';
 
 // =============================================================================
 // Mocks
@@ -268,6 +268,7 @@ describe('POST /api/dashboard/auth/refresh', () => {
   it('should skip refresh if token not expiring soon', async () => {
     const { app, mockRedis } = createTestApp();
 
+    const csrfToken = 'test-csrf-token-12345';
     const mockSession = {
       userId: 'user-123',
       username: 'TestUser',
@@ -279,6 +280,7 @@ describe('POST /api/dashboard/auth/refresh', () => {
       adminGuilds: [],
       createdAt: Date.now(),
       lastActivity: Date.now(),
+      csrfToken, // Sprint 134 (MED-002): Include CSRF token
     };
 
     mockRedis.get.mockResolvedValueOnce(JSON.stringify(mockSession));
@@ -286,6 +288,7 @@ describe('POST /api/dashboard/auth/refresh', () => {
     const response = await request(app)
       .post('/api/dashboard/auth/refresh')
       .set('Cookie', `${SESSION_COOKIE_NAME}=valid-session-id`)
+      .set(CSRF_HEADER, csrfToken) // Sprint 134 (MED-002): Include CSRF header
       .expect(200);
 
     expect(response.body.refreshed).toBe(false);
@@ -325,6 +328,122 @@ describe('Session Cookie Security', () => {
 
     const cookies = response.headers['set-cookie'];
     expect(cookies[0]).toContain('SameSite=Lax');
+  });
+});
+
+// =============================================================================
+// Tests: CSRF Protection (Sprint 134 MED-002)
+// =============================================================================
+
+describe('CSRF Protection', () => {
+  it('should reject refresh without CSRF token', async () => {
+    const { app, mockRedis } = createTestApp();
+
+    const mockSession = {
+      userId: 'user-123',
+      username: 'TestUser',
+      avatar: null,
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+      tokenExpiresAt: Date.now() + 60 * 60 * 1000,
+      adminGuilds: [],
+      createdAt: Date.now(),
+      lastActivity: Date.now(),
+      csrfToken: 'valid-csrf-token',
+    };
+
+    mockRedis.get.mockResolvedValueOnce(JSON.stringify(mockSession));
+
+    const response = await request(app)
+      .post('/api/dashboard/auth/refresh')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=valid-session-id`)
+      // No CSRF header
+      .expect(403);
+
+    expect(response.body.error).toBe('CSRF_INVALID');
+  });
+
+  it('should reject refresh with invalid CSRF token', async () => {
+    const { app, mockRedis } = createTestApp();
+
+    const mockSession = {
+      userId: 'user-123',
+      username: 'TestUser',
+      avatar: null,
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+      tokenExpiresAt: Date.now() + 60 * 60 * 1000,
+      adminGuilds: [],
+      createdAt: Date.now(),
+      lastActivity: Date.now(),
+      csrfToken: 'valid-csrf-token',
+    };
+
+    mockRedis.get.mockResolvedValueOnce(JSON.stringify(mockSession));
+
+    const response = await request(app)
+      .post('/api/dashboard/auth/refresh')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=valid-session-id`)
+      .set(CSRF_HEADER, 'wrong-csrf-token')
+      .expect(403);
+
+    expect(response.body.error).toBe('CSRF_INVALID');
+  });
+
+  it('should reject logout with invalid CSRF token when session exists', async () => {
+    const { app, mockRedis } = createTestApp();
+
+    const mockSession = {
+      userId: 'user-123',
+      username: 'TestUser',
+      avatar: null,
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+      tokenExpiresAt: Date.now() + 60 * 60 * 1000,
+      adminGuilds: [],
+      createdAt: Date.now(),
+      lastActivity: Date.now(),
+      csrfToken: 'valid-csrf-token',
+    };
+
+    mockRedis.get.mockResolvedValueOnce(JSON.stringify(mockSession));
+
+    const response = await request(app)
+      .post('/api/dashboard/auth/logout')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=valid-session-id`)
+      .set(CSRF_HEADER, 'wrong-csrf-token')
+      .expect(403);
+
+    expect(response.body.error).toBe('CSRF_INVALID');
+  });
+
+  it('should include csrfToken in /me response', async () => {
+    const { app, mockRedis } = createTestApp();
+
+    const csrfToken = 'test-csrf-token-for-me-endpoint';
+    const mockSession = {
+      userId: 'user-123',
+      username: 'TestUser',
+      avatar: 'test-avatar',
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+      tokenExpiresAt: Date.now() + 60 * 60 * 1000,
+      adminGuilds: [{ id: 'guild-1', name: 'Test Guild', icon: null }],
+      createdAt: Date.now(),
+      lastActivity: Date.now(),
+      csrfToken,
+    };
+
+    mockRedis.get.mockResolvedValueOnce(JSON.stringify(mockSession));
+
+    const response = await request(app)
+      .get('/api/dashboard/auth/me')
+      .set('Cookie', `${SESSION_COOKIE_NAME}=valid-session-id`)
+      .expect(200);
+
+    expect(response.body.csrfToken).toBe(csrfToken);
+    expect(response.body.id).toBe('user-123');
+    expect(response.body.username).toBe('TestUser');
   });
 });
 
