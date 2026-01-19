@@ -50,6 +50,11 @@ temp/
 # This entry remains for backward compatibility with projects using older versions.
 .loa-setup-complete
 
+# Run Mode state (v0.18.0)
+# Contains execution state, circuit breaker, and tracking files
+# Must be preserved locally for resume capability but not committed
+.run/
+
 # User context files (discovery inputs, uploaded docs, extracted content)
 # These are user-specific inputs that should never be committed
 # The README.md is tracked to explain the directory's purpose
@@ -68,6 +73,10 @@ grimoires/loa/a2a/trajectory/*.jsonl
 # Kept in case /feedback fails to submit to Linear - automatically retried
 grimoires/loa/analytics/pending-feedback.json
 
+# Permission audit log (user-specific HITL approval history)
+# Used by /permission-audit to suggest settings.json additions
+grimoires/loa/analytics/permission-requests.jsonl
+
 # Server audit reports (contain sensitive deployment info)
 grimoires/loa/deployment/SERVER-REALITY-AUDIT.md
 
@@ -82,6 +91,11 @@ grimoires/loa/prd.md
 grimoires/loa/sdd.md
 grimoires/loa/sprint.md
 grimoires/loa/NOTES.md
+
+# Sprint Ledger (project-specific cycle/sprint history)
+# Created by /plan-and-analyze, tracks development cycles per-project
+grimoires/loa/ledger.json
+grimoires/loa/ledger.json.bak
 
 # Agent-to-Agent communication (sprint-specific, generated)
 # README.md files are kept to explain the directory purpose
@@ -108,9 +122,15 @@ grimoires/loa/research/*
 !grimoires/loa/research/README.md
 
 # Public grimoires (project-specific outputs, not template content)
-# Only README.md files are tracked to preserve directory structure
+# Only README.md files and research documents are tracked
+# Research documents contain reusable framework insights
 grimoires/pub/**/*
 !grimoires/pub/**/README.md
+# Re-include research markdown files (framework improvement research)
+!grimoires/pub/research/
+grimoires/pub/research/*
+!grimoires/pub/research/README.md
+!grimoires/pub/research/*.md
 
 # =============================================================================
 # LOA CONSTRUCTS (licensed skills, user-specific)

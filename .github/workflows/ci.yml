@@ -30,6 +30,8 @@ jobs:
             "grimoires/loa/sdd.md"
             "grimoires/loa/sprint.md"
             "grimoires/loa/NOTES.md"
+            "grimoires/loa/ledger.json"
+            "grimoires/loa/ledger.json.bak"
           )
 
           FORBIDDEN_DIRS=(
@@ -149,7 +151,7 @@ jobs:
             ".claude/commands/deploy-production.md"
             ".claude/commands/audit.md"
             ".claude/commands/feedback.md"
-            ".claude/commands/update.md"
+            ".claude/commands/update-loa.md"
           )
           for cmd in "${COMMANDS[@]}"; do
             if [ ! -f "$cmd" ]; then

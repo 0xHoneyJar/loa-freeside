@@ -4,7 +4,7 @@ Guidance for Claude Code when working in this repository.
 
 ## Project Overview
 
-Agent-driven development framework that orchestrates the complete product lifecycle using 8 specialized AI agents (skills). Built with enterprise-grade managed scaffolding inspired by AWS Projen, Copier, and Google's ADK.
+Agent-driven development framework that orchestrates the complete product lifecycle using 9 specialized AI agents (skills). Built with enterprise-grade managed scaffolding inspired by AWS Projen, Copier, and Google's ADK.
 
 ## Architecture
 
@@ -22,7 +22,7 @@ Loa uses a managed scaffolding architecture:
 
 ### Skills System
 
-8 agent skills in `.claude/skills/` using 3-level architecture:
+9 agent skills in `.claude/skills/` using 3-level architecture:
 
 | Skill | Role | Output |
 |-------|------|--------|
@@ -34,6 +34,7 @@ Loa uses a managed scaffolding architecture:
 | `auditing-security` | Security Auditor | `SECURITY-AUDIT-REPORT.md` or `a2a/sprint-N/auditor-sprint-feedback.md` |
 | `deploying-infrastructure` | DevOps Architect | `grimoires/loa/deployment/` |
 | `translating-for-executives` | Developer Relations | Executive summaries |
+| `run-mode` | Autonomous Executor | Draft PR + `.run/` state |
 
 ### 3-Level Skill Structure
 
@@ -132,32 +133,155 @@ Overrides survive framework updates.
 
 **Mount & Ride** (existing codebases): `/mount`, `/ride`
 
-**Ad-hoc**: `/audit`, `/audit-deployment`, `/translate @doc for audience`, `/contribute`, `/update`, `/feedback` (THJ only)
+**Ad-hoc**: `/audit`, `/audit-deployment`, `/translate @doc for audience`, `/contribute`, `/update-loa`, `/validate`, `/feedback` (THJ only)
+
+**Continuous Learning** (v0.17.0): `/retrospective`, `/skill-audit`
+
+**Run Mode** (v0.18.0): `/run sprint-N`, `/run sprint-plan`, `/run-status`, `/run-halt`, `/run-resume`
 
 **THJ Detection** (v0.15.0+): THJ membership is detected via `LOA_CONSTRUCTS_API_KEY` environment variable. No setup required - start with `/plan-and-analyze` immediately after cloning.
 
 **Execution modes**: Foreground (default) or background (`/implement sprint-1 background`)
 
+## Intelligent Subagents (v0.16.0)
+
+Specialized validation subagents that can be invoked independently or integrated into the review workflow.
+
+### Available Subagents
+
+| Subagent | Purpose | Triggers | Verdict Levels |
+|----------|---------|----------|----------------|
+| `architecture-validator` | SDD compliance checking | After implementation | COMPLIANT, DRIFT_DETECTED, CRITICAL_VIOLATION |
+| `security-scanner` | OWASP Top 10 vulnerability detection | After auth/input/API changes | CRITICAL, HIGH, MEDIUM, LOW |
+| `test-adequacy-reviewer` | Test quality assessment | After test implementation | STRONG, ADEQUATE, WEAK, INSUFFICIENT |
+| `documentation-coherence` | Per-task documentation validation | During review/audit/deploy | COHERENT, NEEDS_UPDATE, ACTION_REQUIRED |
+
+### /validate Command
+
+```bash
+/validate                    # Run all subagents
+/validate architecture       # Architecture compliance only
+/validate security           # Security scan only
+/validate tests              # Test adequacy only
+/validate docs               # Documentation coherence only
+/validate security src/auth  # Scoped to specific directory
+```
+
+**Output**: Reports written to `grimoires/loa/a2a/subagent-reports/`
+
+**Integration**: `/review-sprint` checks subagent reports and blocks approval on:
+- `CRITICAL_VIOLATION` (architecture)
+- `CRITICAL` or `HIGH` (security)
+- `INSUFFICIENT` (tests)
+- `ACTION_REQUIRED` (documentation)
+
+**Subagent definitions**: `.claude/subagents/`
+
+**Protocol**: See `.claude/protocols/subagent-invocation.md`
+
+## Continuous Learning Skill (v0.17.0)
+
+Autonomous skill extraction that detects non-obvious discoveries during implementation and extracts them into reusable skills.
+
+### Skill Lifecycle
+
+```
+Discovery → Quality Gates → NOTES.md Check → Extract → skills-pending/
+                                                            ↓
+                                               /skill-audit --approve
+                                                            ↓
+                                                        skills/
+```
+
+### Commands
+
+| Command | Purpose | Output |
+|---------|---------|--------|
+| `/retrospective` | Manual skill extraction from session | Pending skills |
+| `/skill-audit --pending` | List skills awaiting approval | Status table |
+| `/skill-audit --approve <name>` | Move skill to active | Confirmation |
+| `/skill-audit --reject <name>` | Archive skill with reason | Confirmation |
+| `/skill-audit --prune` | Review unused skills | Pruning report |
+| `/skill-audit --stats` | Show skill statistics | Usage metrics |
+
+### Quality Gates
+
+All four gates must pass for extraction:
+
+| Gate | Question | Pass Criteria |
+|------|----------|---------------|
+| Discovery Depth | Was this non-obvious? | Multiple investigation steps |
+| Reusability | Will this help future sessions? | Generalizable pattern |
+| Trigger Clarity | Can triggers be precisely described? | Clear error messages |
+| Verification | Was solution tested? | Confirmed working |
+
+### Phase Activation
+
+| Phase | Active | Rationale |
+|-------|--------|-----------|
+| `/implement`, `/review-sprint`, `/audit-sprint` | YES | Primary discovery context |
+| `/deploy-production`, `/ride` | YES | Infrastructure/codebase discoveries |
+| `/plan-and-analyze`, `/architect`, `/sprint-plan` | NO | Planning, not implementation |
+
+### Directory Structure
+
+```
+grimoires/loa/
+├── skills/                # Active extracted skills
+├── skills-pending/        # Awaiting approval
+└── skills-archived/       # Rejected or pruned
+```
+
+### Configuration
+
+```yaml
+# .loa.config.yaml
+continuous_learning:
+  enabled: true
+  auto_extract: true       # false = /retrospective only
+  require_approval: true   # false = skip pending
+  quality_gates:
+    min_discovery_depth: 2 # 1-3 scale
+    require_verification: true
+  pruning:
+    prune_after_days: 90
+    prune_min_matches: 2
+```
+
+**Skill definition**: `.claude/skills/continuous-learning/`
+
+**Protocol**: See `.claude/protocols/continuous-learning.md`
+
 ## Key Protocols
 
-### Structured Agentic Memory
+### Structured Agentic Memory (v0.16.0)
 
 Agents maintain persistent working memory in `grimoires/loa/NOTES.md`:
 
+**Required Sections**:
 ```markdown
-## Active Sub-Goals
-## Discovered Technical Debt
-## Blockers & Dependencies
-## Session Continuity
-## Decision Log
+## Current Focus      # Active task, status, blocked by, next action
+## Session Log        # Append-only event history table
+## Decisions          # Architecture/implementation decisions table
+## Blockers           # Checkbox list with [RESOLVED] marking
+## Technical Debt     # Issues for future attention (ID, severity, sprint)
+## Learnings          # Project-specific knowledge bullet list
+## Session Continuity # Recovery anchor (v0.9.0)
 ```
+
+**Template**: `.claude/templates/NOTES.md.template`
 
 **Protocol**: See `.claude/protocols/structured-memory.md`
 
-- Read NOTES.md on session start
-- Log decisions during execution
-- Summarize before compaction/session end
-- Apply Tool Result Clearing after heavy operations
+**Agent Discipline** (when to update NOTES.md):
+
+| Event | Sections to Update |
+|-------|-------------------|
+| Session start | Session Log |
+| Decision made | Decisions, Session Log |
+| Blocker hit/resolved | Blockers, Current Focus |
+| Session end | Session Log, Current Focus |
+| Mistake discovered | Learnings, Technical Debt |
 
 ### Lossless Ledger Protocol (v0.9.0)
 
@@ -170,34 +294,6 @@ The "Clear, Don't Compact" paradigm for context management:
 4. TRAJECTORY - Audit trail, handoffs
 5. PRD/SDD - Design intent
 6. CONTEXT WINDOW - Transient, never authoritative
-
-### Beads Task Tracking (bd CLI)
-
-**IMPORTANT**: Use `bd` for tracking multi-session work, dependencies, and discovered issues.
-
-```bash
-# Finding work
-bd ready                              # Show issues ready to work (no blockers)
-bd list --status=open                 # All open issues
-bd show <id>                          # Detailed issue view
-
-# Creating & updating
-bd create --title="..." --type=task --priority=2  # New issue (priority 0-4)
-bd update <id> --status=in_progress   # Claim work
-bd close <id>                         # Mark complete
-
-# Dependencies
-bd dep add <issue> <depends-on>       # Add dependency
-bd blocked                            # Show blocked issues
-
-# Session management
-bd sync                               # Sync with git (run at session end)
-bd stats                              # Project statistics
-```
-
-**When to use bd vs TodoWrite**:
-- **bd**: Multi-session work, dependencies, discovered issues, persistent tracking
-- **TodoWrite**: Single-session execution, simple task lists, immediate work
 
 **Key Protocols**:
 - `session-continuity.md` - Tiered recovery, fork detection
@@ -266,15 +362,77 @@ Tracks usage for THJ developers - see `.claude/protocols/analytics.md`:
 - OSS users have no analytics tracking
 - Opt-in sharing via `/feedback`
 
+### Sprint Ledger (v0.13.0)
+
+Provides global sprint numbering across multiple development cycles:
+
+**Location**: `grimoires/loa/ledger.json` (State Zone)
+
+**Purpose**: Prevents sprint directory collisions when starting new `/plan-and-analyze` cycles. Sprint-1 in cycle-2 becomes global sprint-4, maintaining unique `a2a/sprint-N/` directories.
+
+**Schema**:
+```json
+{
+  "version": "1.0.0",
+  "next_sprint_number": 7,
+  "active_cycle": "cycle-002",
+  "cycles": [{
+    "id": "cycle-001",
+    "label": "MVP Development",
+    "status": "archived",
+    "sprints": [
+      {"global_id": 1, "local_label": "sprint-1", "status": "completed"},
+      {"global_id": 2, "local_label": "sprint-2", "status": "completed"}
+    ]
+  }]
+}
+```
+
+**Commands**:
+| Command | Purpose |
+|---------|---------|
+| `/ledger` | Show current ledger status |
+| `/ledger init` | Initialize ledger for existing project |
+| `/ledger history` | Show all cycles and sprints |
+| `/archive-cycle "label"` | Archive current cycle |
+
+**Sprint Resolution**:
+- `/implement sprint-1` resolves local label to global ID
+- Commands use `$RESOLVED_SPRINT_ID` for a2a directory paths
+- Backward compatible: works without ledger (legacy mode)
+
+**Workflow**:
+```bash
+/plan-and-analyze     # Creates ledger + cycle-001
+/sprint-plan          # Registers sprint-1,2,3 as global 1,2,3
+/implement sprint-1   # Uses a2a/sprint-1/
+# ... complete cycle ...
+/archive-cycle "MVP"  # Archives to grimoires/loa/archive/YYYY-MM-DD-mvp/
+/plan-and-analyze     # Creates cycle-002
+/sprint-plan          # sprint-1 now maps to global 4
+/implement sprint-1   # Uses a2a/sprint-4/
+```
+
+**Key Scripts**:
+- `ledger-lib.sh` - Core ledger functions
+- `validate-sprint-id.sh` - Resolves local to global IDs
+
 ## Document Flow
 
 ```
 grimoires/
 ├── loa/                    # Private project state (gitignored)
 │   ├── NOTES.md            # Structured agentic memory
+│   ├── ledger.json         # Sprint Ledger (global sprint numbering)
 │   ├── context/            # User-provided context (pre-discovery)
 │   ├── reality/            # Code extraction (/ride output)
 │   ├── legacy/             # Legacy doc inventory (/ride output)
+│   ├── archive/            # Archived development cycles
+│   │   └── YYYY-MM-DD-slug/  # Dated cycle archives
+│   │       ├── prd.md
+│   │       ├── sdd.md
+│   │       ├── sprint.md
+│   │       └── a2a/
 │   ├── prd.md              # Product Requirements
 │   ├── sdd.md              # Software Design
 │   ├── sprint.md           # Sprint Plan
@@ -282,6 +440,10 @@ grimoires/
 │   ├── a2a/                # Agent-to-Agent communication
 │   │   ├── index.md        # Audit trail index
 │   │   ├── trajectory/     # Agent reasoning logs
+│   │   ├── audits/         # Codebase audits (/audit)
+│   │   │   └── YYYY-MM-DD/ # Dated audit directories
+│   │   │       ├── SECURITY-AUDIT-REPORT.md
+│   │   │       └── remediation/
 │   │   ├── sprint-N/       # Per-sprint files
 │   │   │   ├── reviewer.md
 │   │   │   ├── engineer-feedback.md
@@ -334,47 +496,86 @@ Skills assess context size and split into parallel sub-tasks when needed.
 
 Use `.claude/scripts/context-check.sh` for assessment.
 
-## Code Search with ck (seek)
+## Run Mode (v0.18.0)
 
-**IMPORTANT**: Use `ck` for code search instead of standard grep. It provides semantic search capabilities.
+Autonomous sprint execution with human-in-the-loop shifted to PR review.
 
-### When to Use ck
+### Commands
 
-- **Exploring unfamiliar code**: `ck --sem "authentication flow" src/`
-- **Finding related implementations**: `ck --sem "error handling" .`
-- **Understanding concepts**: `ck --hybrid "database connection" .`
-- **Standard text search**: `ck "TODO" src/` (drop-in grep replacement)
+| Command | Description | Example |
+|---------|-------------|---------|
+| `/run sprint-N` | Execute single sprint autonomously | `/run sprint-1 --max-cycles 10` |
+| `/run sprint-plan` | Execute all sprints sequentially | `/run sprint-plan --from 2 --to 4` |
+| `/run-status` | Display current run progress | `/run-status --json` |
+| `/run-halt` | Gracefully stop execution | `/run-halt --reason "Need review"` |
+| `/run-resume` | Continue from checkpoint | `/run-resume --reset-ice` |
 
-### Common Commands
+### Safety Model (4-Level Defense)
 
-```bash
-# Semantic search (finds conceptually similar code)
-ck --sem "error handling" src/          # Find error handling patterns
-ck --sem "authentication" --limit 10    # Top 10 auth-related files
-ck --sem "database query" --threshold 0.7  # High-confidence matches
+1. **ICE Layer**: All git operations wrapped with safety checks via `run-mode-ice.sh`
+2. **Circuit Breaker**: Automatic halt on repeated failures or lack of progress
+3. **Opt-In**: Requires explicit `run_mode.enabled: true` in config
+4. **Visibility**: Draft PRs only, deleted files prominently displayed
 
-# Hybrid search (regex + semantic)
-ck --hybrid "async function" .          # Best of both worlds
+### State Machine
 
-# Basic text search (grep replacement)
-ck "pattern" src/                       # Simple text search
-ck -i "TODO" .                          # Case-insensitive
-ck -n "import" file.ts                  # With line numbers
-ck -C 3 "error" .                       # 3 lines context
-
-# Index management
-ck --status .                           # Check index status
-ck --index .                            # Pre-build index
+```
+READY → JACK_IN → RUNNING → COMPLETE/HALTED → JACKED_OUT
 ```
 
-### For AI/Agent Output
+### Circuit Breaker Triggers
 
-```bash
-ck --jsonl --sem "bug fix" src/         # JSONL format for agents
-ck --jsonl --no-snippet "auth"          # Compact output
+| Trigger | Default | Description |
+|---------|---------|-------------|
+| Same Issue | 3 | Same finding hash repeated N times |
+| No Progress | 5 | Cycles without file changes |
+| Cycle Limit | 20 | Maximum total cycles |
+| Timeout | 8h | Maximum runtime |
+
+### State Files
+
+All state stored in `.run/` directory (gitignored):
+
+| File | Purpose |
+|------|---------|
+| `state.json` | Run progress, metrics, options |
+| `circuit-breaker.json` | Trigger counts, trip history |
+| `deleted-files.log` | Deletions for PR body |
+| `rate-limit.json` | API call tracking |
+
+### Configuration
+
+```yaml
+# .loa.config.yaml
+run_mode:
+  enabled: false  # IMPORTANT: Explicit opt-in required
+  defaults:
+    max_cycles: 20
+    timeout_hours: 8
+  rate_limiting:
+    calls_per_hour: 100
+  circuit_breaker:
+    same_issue_threshold: 3
+    no_progress_threshold: 5
+  git:
+    branch_prefix: "feature/"
+    create_draft_pr: true
 ```
 
-**Prefer `ck --sem` or `ck --hybrid`** over basic grep when exploring code semantically.
+### Protected Operations
+
+ICE **always blocks**:
+- Push to protected branches (main, master, staging, production, etc.)
+- All merge operations
+- Branch deletion
+- PR merge
+
+### Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `run-mode-ice.sh` | Git operation safety wrapper |
+| `check-permissions.sh` | Pre-flight permission validation |
 
 ## Helper Scripts
 
@@ -405,9 +606,70 @@ ck --jsonl --no-snippet "auth"          # Compact output
 ├── tool-search-adapter.sh    # MCP tool search and discovery (v0.11.0)
 ├── context-manager.sh        # Context compaction and preservation (v0.11.0)
 ├── context-benchmark.sh      # Context performance benchmarks (v0.11.0)
+├── rlm-benchmark.sh          # RLM pattern benchmark and validation (v0.15.0)
 ├── anthropic-oracle.sh       # Anthropic updates monitoring (v0.13.0)
-└── check-updates.sh          # Automatic version checking (v0.14.0)
+├── check-updates.sh          # Automatic version checking (v0.14.0)
+├── permission-audit.sh       # Permission request logging and analysis (v0.18.0)
+└── cleanup-context.sh        # Discovery context cleanup for cycle completion (v0.19.0)
 ```
+
+### Permission Audit (v0.18.0)
+
+Logs and analyzes permission requests that required HITL (human-in-the-loop) approval:
+
+```bash
+.claude/scripts/permission-audit.sh view       # View permission request log
+.claude/scripts/permission-audit.sh analyze    # Analyze patterns and frequency
+.claude/scripts/permission-audit.sh suggest    # Get suggestions for settings.json
+.claude/scripts/permission-audit.sh clear      # Clear the log
+```
+
+**Slash Command**: `/permission-audit` for easy access
+
+**How It Works**:
+1. A `PermissionRequest` hook logs every command that requires approval
+2. Log stored at `grimoires/loa/analytics/permission-requests.jsonl`
+3. `suggest` command recommends permissions to add based on frequency
+
+**Example Workflow**:
+```bash
+# After a session with many permission prompts
+/permission-audit suggest
+
+# Output shows frequently requested commands:
+# [suggest] "Bash(flyctl:*)" (12 times)
+# [suggest] "Bash(pm2:*)" (8 times)
+
+# Add suggested permissions to settings.json
+```
+
+### Context Cleanup (v0.19.0)
+
+Archives and cleans discovery context directory after sprint plan completion:
+
+```bash
+.claude/scripts/cleanup-context.sh              # Archive then clean
+.claude/scripts/cleanup-context.sh --dry-run    # Preview without changes
+.claude/scripts/cleanup-context.sh --verbose    # Show detailed output
+.claude/scripts/cleanup-context.sh --no-archive # Just delete (not recommended)
+```
+
+**Automatic**: Called by `/run sprint-plan` on successful completion.
+
+**Manual**: Can be run before starting a new `/plan-and-analyze` cycle.
+
+**Behavior**:
+1. **Archive**: Copies all context files to `{archive-path}/context/`
+2. **Clean**: Removes all files from `grimoires/loa/context/` except `README.md`
+3. **Preserve**: `README.md` explaining the directory is always kept
+
+**Archive Location Priority**:
+1. Active cycle's archive_path from ledger.json
+2. Most recent archived cycle's path from ledger.json
+3. Most recent `grimoires/loa/archive/20*` directory
+4. Fallback: `grimoires/loa/archive/{date}-context-archive/`
+
+**Why**: Discovery context is valuable for reference but stale for new work. Archiving preserves it while ensuring fresh context for the next cycle.
 
 ### Update Check (v0.14.0)
 
@@ -470,7 +732,7 @@ See: `.claude/protocols/risk-analysis.md` for pre-mortem analysis framework.
 
 ### Context Manager (v0.11.0)
 
-Manages context compaction with preservation rules:
+Manages context compaction with preservation rules and RLM probe-before-load pattern:
 
 ```bash
 # Check context status
@@ -492,7 +754,21 @@ Manages context compaction with preservation rules:
 .claude/scripts/context-manager.sh recover 1  # Minimal (~100 tokens)
 .claude/scripts/context-manager.sh recover 2  # Standard (~500 tokens)
 .claude/scripts/context-manager.sh recover 3  # Full (~2000 tokens)
+
+# RLM Pattern: Probe before loading
+.claude/scripts/context-manager.sh probe src/           # Probe directory
+.claude/scripts/context-manager.sh probe file.ts --json # Probe file with JSON output
+.claude/scripts/context-manager.sh should-load file.ts  # Get load/skip decision
 ```
+
+**Probe Output Fields**:
+| Field | Description |
+|-------|-------------|
+| `file` / `files` | File path(s) probed |
+| `lines` | Line count |
+| `estimated_tokens` | Token estimate for context budget |
+| `extension` | File extension |
+| `total_files` | File count (directory probe) |
 
 **Preservation Rules** (configurable in `.loa.config.yaml`):
 
@@ -539,6 +815,38 @@ Measure context management performance:
 - Checkpoint steps: 3 (was 7)
 - Recovery success: 100%
 
+### RLM Benchmark (v0.15.0)
+
+Benchmarks RLM (Relevance-based Loading Method) pattern effectiveness:
+
+```bash
+# Run benchmark on target codebase
+.claude/scripts/rlm-benchmark.sh run --target ./src --json
+
+# Create baseline for comparison
+.claude/scripts/rlm-benchmark.sh baseline --target ./src
+
+# Compare against baseline
+.claude/scripts/rlm-benchmark.sh compare --target ./src --json
+
+# Generate detailed report
+.claude/scripts/rlm-benchmark.sh report --target ./src
+
+# Multiple iterations for stability
+.claude/scripts/rlm-benchmark.sh run --target ./src --iterations 3 --json
+```
+
+**Output Metrics**:
+| Metric | Description |
+|--------|-------------|
+| `current_pattern.tokens` | Full-load token count |
+| `current_pattern.files` | Total files analyzed |
+| `rlm_pattern.tokens` | RLM-optimized token count |
+| `rlm_pattern.savings_pct` | Token reduction percentage |
+| `deltas.rlm_tokens` | Change from baseline |
+
+**PRD Success Criteria**: ≥15% token reduction on realistic codebases.
+
 ### Schema Validator (v0.11.0)
 
 Validates agent outputs against JSON schemas:
@@ -560,7 +868,16 @@ Validates agent outputs against JSON schemas:
 
 # JSON output for automation
 .claude/scripts/schema-validator.sh validate file.md --json
+
+# Programmatic assertions (for testing/automation)
+.claude/scripts/schema-validator.sh assert file.json --schema prd --json
+# Returns: {"status": "passed", "assertions": [...]} or {"status": "failed", "errors": [...]}
 ```
+
+**Assert Command**: Programmatic validation for CI/CD and testing:
+- Exit code 0 = passed, non-zero = failed
+- JSON output includes `status`, `assertions`, `errors` fields
+- Validates required fields, semver format, status enums
 
 **Auto-Detection Rules**:
 | Pattern | Schema |
@@ -637,10 +954,35 @@ Skills declare integrations in their `index.yaml`:
 integrations:
   required: []
   optional:
-    - name: "github"
-      reason: "Sync issues to GitHub"
-      fallback: "Issues remain local"
+    - name: "linear"
+      reason: "Sync tasks to Linear"
+      fallback: "Tasks remain local"
 ```
+
+### MCP Configuration Examples (v0.16.0)
+
+Pre-built MCP server configurations for power users in `.claude/mcp-examples/`:
+
+| Example | Service | Risk Level | Access |
+|---------|---------|------------|--------|
+| `slack.json` | Slack | HIGH | Read + Write |
+| `github.json` | GitHub | MEDIUM | Read + Write |
+| `sentry.json` | Sentry | LOW | Read only |
+| `postgres.json` | PostgreSQL | CRITICAL | Configurable |
+
+**Security**: All examples include security notes, required scopes, and setup steps. Use read-only tokens where possible.
+
+**Installation**:
+```bash
+# Review security notes first
+cat .claude/mcp-examples/github.json
+
+# Copy config to Claude Code settings
+# Set required environment variables
+export GITHUB_PERSONAL_ACCESS_TOKEN="ghp_..."
+```
+
+See `.claude/mcp-examples/README.md` for full documentation.
 
 ## Registry Integration
 
