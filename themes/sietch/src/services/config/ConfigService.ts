@@ -374,11 +374,18 @@ export class ConfigService implements IConfigService {
         if (!thresholds[change.tierId]) {
           thresholds[change.tierId] = {};
         }
-        thresholds[change.tierId][change.field] = change.newValue;
+        const tierThresholds = thresholds[change.tierId];
+        if (tierThresholds) {
+          tierThresholds[change.field] = change.newValue;
+        }
       }
 
       // 3. Update head pointer with optimistic lock
-      const lastRecordId = records[records.length - 1].id;
+      const lastRecord = records[records.length - 1];
+      if (!lastRecord) {
+        throw new Error('No records created');
+      }
+      const lastRecordId = lastRecord.id;
       const result = stmts.updateCurrentConfigThresholds.run(
         JSON.stringify(thresholds),
         lastRecordId,
@@ -481,7 +488,11 @@ export class ConfigService implements IConfigService {
         };
       }
 
-      const lastRecordId = records[records.length - 1].id;
+      const lastRecord = records[records.length - 1];
+      if (!lastRecord) {
+        throw new Error('No records created');
+      }
+      const lastRecordId = lastRecord.id;
       const result = stmts.updateCurrentConfigFeatureGates.run(
         JSON.stringify(featureGates),
         lastRecordId,
@@ -595,7 +606,11 @@ export class ConfigService implements IConfigService {
         }
       }
 
-      const lastRecordId = records[records.length - 1].id;
+      const lastRecord = records[records.length - 1];
+      if (!lastRecord) {
+        throw new Error('No records created');
+      }
+      const lastRecordId = lastRecord.id;
       const result = stmts.updateCurrentConfigRoleMappings.run(
         JSON.stringify(roleMappings),
         lastRecordId,

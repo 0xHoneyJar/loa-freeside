@@ -665,6 +665,8 @@ export interface Config {
     badgesEnabled: boolean;
     telegramEnabled: boolean;
     vaultEnabled: boolean;
+    /** Enable Gateway Proxy pattern (Sprint GW-5) */
+    gatewayProxyEnabled: boolean;
   };
   // Telegram Configuration (v4.1 - Sprint 30)
   telegram: {

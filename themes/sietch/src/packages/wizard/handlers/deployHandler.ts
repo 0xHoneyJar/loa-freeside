@@ -9,9 +9,9 @@
  * @module packages/wizard/handlers/deployHandler
  */
 
-import { WizardSession, DeploymentResult } from '../WizardSession.js';
+import type { WizardSession, DeploymentResult } from '../WizardSession.js';
 import { WizardState } from '../WizardState.js';
-import { StepHandler, StepHandlerResult, StepInput } from '../WizardEngine.js';
+import type { StepHandler, StepHandlerResult, StepInput } from '../WizardEngine.js';
 
 /**
  * Deployment step interface.

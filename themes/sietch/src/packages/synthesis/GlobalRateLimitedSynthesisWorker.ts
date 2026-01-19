@@ -19,7 +19,8 @@
  * - MED-004: Failed acquisitions trigger job retry
  */
 
-import { Worker, Job, WorkerOptions } from 'bullmq';
+import { Worker, Job } from 'bullmq';
+import type { WorkerOptions } from 'bullmq';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const Redis = require('ioredis');
@@ -32,16 +33,15 @@ import type {
 } from './types.js';
 import {
   SynthesisWorker,
-  SynthesisWorkerConfig,
   SynthesisError,
   DiscordAPIError,
 } from './SynthesisWorker.js';
+import type { SynthesisWorkerConfig } from './SynthesisWorker.js';
 import {
   GlobalDiscordTokenBucket,
   RateLimitExceededError,
-  TokenBucketConfig,
-  Logger,
 } from './GlobalDiscordTokenBucket.js';
+import type { TokenBucketConfig, Logger } from './GlobalDiscordTokenBucket.js';
 
 // =============================================================================
 // Configuration

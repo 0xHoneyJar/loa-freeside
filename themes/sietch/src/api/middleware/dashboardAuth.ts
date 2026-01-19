@@ -40,8 +40,8 @@ export interface AuthenticatedDashboardRequest extends Request {
  */
 export interface DashboardAuthRedis {
   get: (key: string) => Promise<string | null>;
-  set: (key: string, value: string, options?: { EX?: number; NX?: boolean }) => Promise<string | null>;
-  del: (key: string) => Promise<void>;
+  set: (key: string, value: string, options?: { EX?: number; NX?: boolean }) => Promise<unknown>;
+  del: (key: string) => Promise<unknown>;
 }
 
 /**
@@ -192,7 +192,10 @@ export function createDashboardAuthMiddleware(deps: DashboardAuthMiddlewareDeps)
       .sort((a, b) => a[1].lastAccessedAt - b[1].lastAccessedAt);
 
     for (let i = 0; i < evictCount && i < entries.length; i++) {
-      LIVE_ADMIN_CHECK_CACHE.delete(entries[i][0]);
+      const entry = entries[i];
+      if (entry) {
+        LIVE_ADMIN_CHECK_CACHE.delete(entry[0]);
+      }
     }
 
     logger.debug(
@@ -506,6 +509,7 @@ export function createDashboardAuthMiddleware(deps: DashboardAuthMiddlewareDeps)
 
   return {
     requireDashboardAuth,
+    requireServerAccess: liveAdminCheck, // Alias for route compatibility
     liveAdminCheck,
     sessionRefresh,
     invalidateAdminCheckCache,

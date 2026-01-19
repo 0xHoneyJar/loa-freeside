@@ -21,8 +21,7 @@ import {
   type IImpactAnalyzer,
   type RestoreImpactReport,
 } from '../../../services/restore/ImpactAnalyzer.js';
-import { requireDashboardAuth, requireServerAccess } from '../../middleware/dashboardAuth.js';
-import type { AuthenticatedDashboardRequest } from '../../middleware/dashboardAuth.js';
+import type { AuthenticatedDashboardRequest, DashboardAuthMiddleware } from '../../middleware/dashboardAuth.js';
 import { NotFoundError, BadRequestError } from '../../errors.js';
 
 // =============================================================================
@@ -52,6 +51,8 @@ interface ConfirmationAttemptRecord {
 export interface RestoreRoutesDeps {
   /** ConfigService for fetching/updating configuration */
   configService: IConfigService;
+  /** Dashboard auth middleware */
+  dashboardAuth: DashboardAuthMiddleware;
   /** Optional custom logger */
   logger?: typeof logger;
   /** Optional custom ImpactAnalyzer */
@@ -108,6 +109,7 @@ export function createRestoreRoutes(deps: RestoreRoutesDeps): Router {
   const log = deps.logger ?? logger;
   const impactAnalyzer = deps.impactAnalyzer ?? createImpactAnalyzer();
   const redis = deps.redis;
+  const { requireDashboardAuth, requireServerAccess } = deps.dashboardAuth;
 
   /**
    * Generate confirmation code Redis key
@@ -301,7 +303,7 @@ export function createRestoreRoutes(deps: RestoreRoutesDeps): Router {
         // Validate request body
         const parseResult = previewRequestSchema.safeParse(req.body);
         if (!parseResult.success) {
-          throw new BadRequestError(parseResult.error.issues[0].message);
+          throw new BadRequestError(parseResult.error.issues[0]?.message ?? 'Validation error');
         }
 
         const { checkpointId } = parseResult.data;
@@ -392,7 +394,7 @@ export function createRestoreRoutes(deps: RestoreRoutesDeps): Router {
         // Validate request body
         const parseResult = executeRequestSchema.safeParse(req.body);
         if (!parseResult.success) {
-          throw new BadRequestError(parseResult.error.issues[0].message);
+          throw new BadRequestError(parseResult.error.issues[0]?.message ?? 'Validation error');
         }
 
         const { checkpointId, confirmationCode } = parseResult.data;
@@ -436,13 +438,16 @@ export function createRestoreRoutes(deps: RestoreRoutesDeps): Router {
         // Execute the restore by updating all configuration sections
         const targetState = checkpoint.fullStateJson;
 
+        // Get current version for optimistic locking
+        const currentVersion = currentConfig.version;
+
         // Update thresholds
         if (targetState.thresholds) {
           await deps.configService.updateThresholds(
             serverId,
             userId,
-            targetState.thresholds as Record<string, any>,
-            { restoredFrom: checkpointId }
+            targetState.thresholds as unknown as Parameters<typeof deps.configService.updateThresholds>[2],
+            currentVersion
           );
         }
 
@@ -451,8 +456,8 @@ export function createRestoreRoutes(deps: RestoreRoutesDeps): Router {
           await deps.configService.updateFeatureGates(
             serverId,
             userId,
-            targetState.featureGates as Record<string, any>,
-            { restoredFrom: checkpointId }
+            targetState.featureGates as unknown as Parameters<typeof deps.configService.updateFeatureGates>[2],
+            currentVersion
           );
         }
 
@@ -461,8 +466,8 @@ export function createRestoreRoutes(deps: RestoreRoutesDeps): Router {
           await deps.configService.updateRoleMappings(
             serverId,
             userId,
-            targetState.roleMappings as Record<string, any>,
-            { restoredFrom: checkpointId }
+            targetState.roleMappings as unknown as Parameters<typeof deps.configService.updateRoleMappings>[2],
+            currentVersion
           );
         }
 

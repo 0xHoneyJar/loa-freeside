@@ -8,9 +8,9 @@
  * @module packages/wizard/handlers/channelStructureHandler
  */
 
-import { WizardSession, ChannelConfig } from '../WizardSession.js';
+import type { WizardSession, ChannelConfig } from '../WizardSession.js';
 import { WizardState } from '../WizardState.js';
-import { StepHandler, StepHandlerResult, StepInput } from '../WizardEngine.js';
+import type { StepHandler, StepHandlerResult, StepInput } from '../WizardEngine.js';
 
 /**
  * Default channel templates.
@@ -57,6 +57,12 @@ export const channelStructureHandler: StepHandler = async (
   // Handle template selection
   if (input?.type === 'select' && input.customId?.includes('channel-template') && input.values?.length) {
     const templateId = input.values[0];
+    if (!templateId) {
+      return {
+        success: false,
+        error: 'No template selected',
+      };
+    }
     const template = CHANNEL_TEMPLATES[templateId];
 
     if (!template) {
@@ -68,9 +74,9 @@ export const channelStructureHandler: StepHandler = async (
 
     // Map template tiers to actual tier names
     const tiers = session.data.tiers ?? [];
-    const mappedChannels = template.map((channel) => ({
+    const mappedChannels = template.map((channel: ChannelConfig) => ({
       ...channel,
-      accessTiers: channel.accessTiers.map((t) => {
+      accessTiers: channel.accessTiers.map((t: string) => {
         if (t === '*') return '*'; // All tiers
         if (t.startsWith('tier-')) {
           const tierIndex = parseInt(t.replace('tier-', ''), 10) - 1;

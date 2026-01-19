@@ -5,7 +5,8 @@
  * https://www.infracost.io/docs/features/cli_commands/#breakdown
  */
 
-import axios, { AxiosInstance } from 'axios';
+import axios from 'axios';
+import type { AxiosInstance } from 'axios';
 import type { TerraformPlan, InfracostEstimate, InfracostResource } from './types.js';
 
 /**

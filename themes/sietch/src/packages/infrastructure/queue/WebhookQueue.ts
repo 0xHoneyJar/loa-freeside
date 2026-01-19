@@ -23,9 +23,10 @@ import {
   runWithTraceAsync,
   getTraceId,
   getSpanId,
-  CreateTraceOptions,
-} from '../tracing';
-import { createLogger, ILogger } from '../logging';
+} from '../tracing/index.js';
+import type { CreateTraceOptions } from '../tracing/index.js';
+import { createLogger } from '../logging/index.js';
+import type { ILogger } from '../logging/index.js';
 
 // =============================================================================
 // Types

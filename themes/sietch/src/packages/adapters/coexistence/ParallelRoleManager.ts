@@ -227,6 +227,7 @@ export class ParallelRoleManager {
       // Create roles for each tier
       for (let i = 0; i < tierRoleMappings.length; i++) {
         const mapping = tierRoleMappings[i];
+        if (!mapping) continue;
         const roleName = this.buildRoleName(namespace, mapping.baseName);
 
         try {

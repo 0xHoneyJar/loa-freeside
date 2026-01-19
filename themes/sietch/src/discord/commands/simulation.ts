@@ -362,7 +362,7 @@ function buildStageChoices(): Array<{ name: string; value: string }> {
   ];
 }
 
-import type { MinimalRedis } from '../../../../../packages/sandbox/src/types.js';
+import type { MinimalRedis } from '../../services/sandbox/index.js';
 
 // =============================================================================
 // Types
@@ -401,7 +401,7 @@ export function initializeSimulationCommand(deps: SimulationDependencies): void 
  * Build tier choices for the assume subcommand
  */
 function buildTierChoices(): Array<{ name: string; value: string }> {
-  const choices = TIER_ORDER.map((tierId) => ({
+  const choices: Array<{ name: string; value: string }> = TIER_ORDER.map((tierId) => ({
     name: TIER_DISPLAY_NAMES[tierId],
     value: tierId,
   }));

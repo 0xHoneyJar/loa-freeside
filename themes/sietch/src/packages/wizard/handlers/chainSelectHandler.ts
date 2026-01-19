@@ -8,9 +8,9 @@
  * @module packages/wizard/handlers/chainSelectHandler
  */
 
-import { WizardSession, ChainId } from '../WizardSession.js';
+import type { WizardSession, ChainId } from '../WizardSession.js';
 import { WizardState } from '../WizardState.js';
-import { StepHandler, StepHandlerResult, StepInput, WizardSelectComponent } from '../WizardEngine.js';
+import type { StepHandler, StepHandlerResult, StepInput, WizardSelectComponent } from '../WizardEngine.js';
 
 /**
  * Supported chains with metadata.

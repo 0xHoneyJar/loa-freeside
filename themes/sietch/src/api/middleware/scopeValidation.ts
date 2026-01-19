@@ -280,7 +280,10 @@ export function getUserHighestTierLevel(
       .sort((a, b) => b[1] - a[1]);
 
     for (let i = 0; i < sortedTiers.length; i++) {
-      hierarchy.set(sortedTiers[i][0], i);
+      const tier = sortedTiers[i];
+      if (tier) {
+        hierarchy.set(tier[0], i);
+      }
     }
   }
 
@@ -341,7 +344,10 @@ export function getAllowedTierIds(
       .sort((a, b) => b[1] - a[1]);
 
     for (let i = 0; i < sortedTiers.length; i++) {
-      hierarchy.set(sortedTiers[i][0], i);
+      const tier = sortedTiers[i];
+      if (tier) {
+        hierarchy.set(tier[0], i);
+      }
     }
   }
 

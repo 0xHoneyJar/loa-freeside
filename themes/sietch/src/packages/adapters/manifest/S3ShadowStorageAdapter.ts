@@ -108,13 +108,16 @@ export interface ManifestSnapshot {
  * Error thrown by S3 operations
  */
 export class S3ShadowStorageError extends Error {
+  public readonly code: string;
+
   constructor(
     message: string,
-    public readonly code: string,
-    public readonly cause?: Error
+    code: string,
+    public override readonly cause?: Error
   ) {
     super(message);
     this.name = 'S3ShadowStorageError';
+    this.code = code;
   }
 }
 
@@ -453,7 +456,7 @@ export class S3ShadowStorageAdapter {
 
           // Parse version from key
           const match = obj.Key.match(/v(\d+)\.json$/);
-          if (!match) continue;
+          if (!match || !match[1]) continue;
 
           const version = parseInt(match[1], 10);
 

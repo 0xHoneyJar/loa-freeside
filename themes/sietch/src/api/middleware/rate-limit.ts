@@ -261,7 +261,10 @@ export class RateLimiter {
 
     // Remove oldest entries
     for (let i = 0; i < evictCount && i < entries.length; i++) {
-      this.windows.delete(entries[i][0]);
+      const entry = entries[i];
+      if (entry) {
+        this.windows.delete(entry[0]);
+      }
     }
 
     logger.debug(

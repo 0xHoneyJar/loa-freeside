@@ -17,11 +17,11 @@ export {
   PAYMENT_API_CONFIG,
   WEBHOOK_DELIVERY_CONFIG,
   CRITICAL_API_CONFIG,
-} from './CircuitBreaker';
+} from './CircuitBreaker.js';
 
 export type {
   CircuitState,
   CircuitEvent,
   CircuitMetrics,
   CircuitBreakerOptions,
-} from './CircuitBreaker';
+} from './CircuitBreaker.js';

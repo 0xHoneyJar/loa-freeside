@@ -6,11 +6,9 @@
  * @module packages/core/errors
  */
 
-export {
-  ApiError,
+export { ApiError, HTTP_STATUS_MAP, apiErrorHandler } from './ApiError.js';
+export type {
   ApiErrorCode,
   ApiErrorMetadata,
   ErrorSeverity,
-  HTTP_STATUS_MAP,
-  apiErrorHandler,
 } from './ApiError.js';

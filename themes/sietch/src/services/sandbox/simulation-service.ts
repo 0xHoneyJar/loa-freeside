@@ -12,7 +12,33 @@
  */
 
 import { createLogger, type ILogger } from '../../packages/infrastructure/logging/index.js';
-import type { MinimalRedis } from '../../../../../packages/sandbox/src/types.js';
+
+/**
+ * Minimal Redis interface for sandbox operations.
+ * Avoids importing ioredis types directly to prevent version mismatch issues
+ * and rootDir issues in monorepo builds.
+ */
+export interface MinimalRedis {
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string): Promise<'OK'>;
+  set(key: string, value: string, mode: 'EX' | 'PX', duration: number): Promise<'OK'>;
+  del(...keys: string[]): Promise<number>;
+  keys(pattern: string): Promise<string[]>;
+  scan(
+    cursor: number | string,
+    ...args: (string | number)[]
+  ): Promise<[string, string[]]>;
+  exists(...keys: string[]): Promise<number>;
+  hget(key: string, field: string): Promise<string | null>;
+  hset(key: string, field: string, value: string): Promise<number>;
+  hdel(key: string, ...fields: string[]): Promise<number>;
+  hgetall(key: string): Promise<Record<string, string>>;
+  sadd(key: string, ...members: string[]): Promise<number>;
+  srem(key: string, ...members: string[]): Promise<number>;
+  smembers(key: string): Promise<string[]>;
+  expire(key: string, seconds: number): Promise<number>;
+  ttl(key: string): Promise<number>;
+}
 import {
   type SimulationContext,
   type SimulatedMemberState,
@@ -892,7 +918,7 @@ export class SimulationService {
     // Get or create context
     const result = await this.getOrCreateContext(sandboxId, userId);
     if (!result.success || !result.data) {
-      return result as SimulationResult<WhoamiResult>;
+      return result as unknown as SimulationResult<WhoamiResult>;
     }
 
     const context = result.data;
@@ -958,7 +984,7 @@ export class SimulationService {
   ): Promise<SimulationResult<SimulatedMemberState>> {
     const result = await this.getContext(sandboxId, userId);
     if (!result.success) {
-      return result as SimulationResult<SimulatedMemberState>;
+      return result as unknown as SimulationResult<SimulatedMemberState>;
     }
 
     if (!result.data) {
@@ -1001,7 +1027,7 @@ export class SimulationService {
     // Use updateMemberState for validation and storage
     const result = await this.updateMemberState(sandboxId, userId, updates, options);
     if (!result.success || !result.data) {
-      return result as SimulationResult<StateUpdateResult>;
+      return result as unknown as SimulationResult<StateUpdateResult>;
     }
 
     const context = result.data;
@@ -1308,7 +1334,7 @@ export class SimulationService {
     // Get or create context
     const result = await this.getOrCreateContext(sandboxId, userId);
     if (!result.success || !result.data) {
-      return result as SimulationResult<AccessCheckResult>;
+      return result as unknown as SimulationResult<AccessCheckResult>;
     }
 
     const context = result.data;
@@ -1396,7 +1422,7 @@ export class SimulationService {
     // Get or create context
     const result = await this.getOrCreateContext(sandboxId, userId);
     if (!result.success || !result.data) {
-      return result as SimulationResult<AccessCheckResult>;
+      return result as unknown as SimulationResult<AccessCheckResult>;
     }
 
     const context = result.data;
@@ -1452,7 +1478,7 @@ export class SimulationService {
     // Get or create context
     const result = await this.getOrCreateContext(sandboxId, userId);
     if (!result.success || !result.data) {
-      return result as SimulationResult<TierCheckResult>;
+      return result as unknown as SimulationResult<TierCheckResult>;
     }
 
     const context = result.data;
@@ -1514,7 +1540,7 @@ export class SimulationService {
     // Get or create context
     const result = await this.getOrCreateContext(sandboxId, userId);
     if (!result.success || !result.data) {
-      return result as SimulationResult<BadgeCheckResult[]>;
+      return result as unknown as SimulationResult<BadgeCheckResult[]>;
     }
 
     const context = result.data;

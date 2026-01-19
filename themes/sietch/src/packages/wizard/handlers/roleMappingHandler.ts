@@ -8,9 +8,9 @@
  * @module packages/wizard/handlers/roleMappingHandler
  */
 
-import { WizardSession, RoleMapping } from '../WizardSession.js';
+import type { WizardSession, RoleMapping } from '../WizardSession.js';
 import { WizardState } from '../WizardState.js';
-import { StepHandler, StepHandlerResult, StepInput } from '../WizardEngine.js';
+import type { StepHandler, StepHandlerResult, StepInput } from '../WizardEngine.js';
 
 /**
  * Role mapping step handler.
@@ -62,7 +62,7 @@ export const roleMappingHandler: StepHandler = async (
     const existingIndex = currentMappings.findIndex((m) => m.tierName === tierName);
     const newMapping: RoleMapping = {
       tierName,
-      roleId: selectedRoleId === 'create_new' ? '' : selectedRoleId,
+      roleId: selectedRoleId === 'create_new' ? '' : (selectedRoleId ?? ''),
       createNew: selectedRoleId === 'create_new',
       roleName: selectedRoleId === 'create_new' ? tierName : undefined,
       roleColor: tiers.find((t) => t.name === tierName)?.color,

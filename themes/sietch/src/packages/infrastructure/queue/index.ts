@@ -12,7 +12,7 @@
 export {
   WebhookQueue,
   createWebhookQueue,
-} from './WebhookQueue';
+} from './WebhookQueue.js';
 
 export type {
   WebhookJobData,
@@ -20,4 +20,4 @@ export type {
   WebhookProcessor,
   WebhookQueueOptions,
   QueueMetrics,
-} from './WebhookQueue';
+} from './WebhookQueue.js';

@@ -209,7 +209,7 @@ export function getClientIp(req: Request): string {
     const ips = Array.isArray(forwardedFor)
       ? forwardedFor[0]
       : forwardedFor.split(',')[0];
-    return ips.trim();
+    return ips?.trim() ?? 'unknown';
   }
 
   return req.ip || 'unknown';

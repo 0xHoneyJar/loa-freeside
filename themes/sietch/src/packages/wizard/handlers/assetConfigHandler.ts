@@ -8,9 +8,9 @@
  * @module packages/wizard/handlers/assetConfigHandler
  */
 
-import { WizardSession, AssetConfig, AssetType } from '../WizardSession.js';
+import type { WizardSession, AssetConfig, AssetType } from '../WizardSession.js';
 import { WizardState } from '../WizardState.js';
-import { StepHandler, StepHandlerResult, StepInput } from '../WizardEngine.js';
+import type { StepHandler, StepHandlerResult, StepInput } from '../WizardEngine.js';
 
 /**
  * Common asset templates.

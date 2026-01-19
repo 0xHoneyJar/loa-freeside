@@ -633,8 +633,8 @@ export class GlimpseMode {
     const unlockFeatures = this.getFeaturesToUnlock(currentTier).map((f) => f.displayName);
 
     return {
-      title: message.title,
-      description: message.description,
+      title: message?.title ?? 'Complete Verification',
+      description: message?.description ?? 'Verify to unlock more features',
       buttonLabel: isWalletStep ? 'Connect Wallet' : 'Complete Verification',
       actionType: isWalletStep ? 'connect_wallet' : 'complete_verification',
       unlockFeatures,

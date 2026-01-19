@@ -197,7 +197,7 @@ export function createOptimisticLockMiddleware(options: OptimisticLockOptions = 
 
       // Parse actual version from error message
       const match = error.message.match(/got (\d+)/);
-      const actualVersion = match ? parseInt(match[1], 10) : 0;
+      const actualVersion = match && match[1] ? parseInt(match[1], 10) : 0;
 
       // Record metric
       recordVersionConflict();

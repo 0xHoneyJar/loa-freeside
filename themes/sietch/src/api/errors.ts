@@ -225,7 +225,7 @@ export function toApiError(error: unknown): ApiError {
     if (error.name === 'OptimisticLockError') {
       // Parse version numbers from error message
       const match = error.message.match(/expected (\d+), got (\d+)/);
-      if (match) {
+      if (match && match[1] && match[2]) {
         const expected = parseInt(match[1], 10);
         const actual = parseInt(match[2], 10);
         const serverMatch = error.message.match(/server ([a-zA-Z0-9-]+)/);

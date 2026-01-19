@@ -21,8 +21,7 @@ import {
   type DriftReport,
   type IDriftDetector,
 } from '../../../services/config/DriftDetector.js';
-import { requireDashboardAuth, requireServerAccess } from '../../middleware/dashboardAuth.js';
-import type { AuthenticatedDashboardRequest } from '../../middleware/dashboardAuth.js';
+import type { AuthenticatedDashboardRequest, DashboardAuthMiddleware } from '../../middleware/dashboardAuth.js';
 import { NotFoundError, InternalServerError } from '../../errors.js';
 
 // =============================================================================
@@ -34,6 +33,8 @@ export interface DriftRoutesDeps {
   guild: Guild;
   /** ConfigService for fetching configuration */
   configService: IConfigService;
+  /** Dashboard auth middleware */
+  dashboardAuth: DashboardAuthMiddleware;
   /** Optional custom logger */
   logger?: typeof logger;
 }
@@ -91,6 +92,7 @@ function formatDriftResponse(report: DriftReport) {
 export function createDriftRoutes(deps: DriftRoutesDeps): Router {
   const router = Router();
   const log = deps.logger ?? logger;
+  const { requireDashboardAuth, requireServerAccess } = deps.dashboardAuth;
 
   // Create drift detector
   const driftDetector = createDriftDetector({

@@ -95,8 +95,8 @@ export interface DashboardAuthDeps {
   /** Redis client for session storage */
   redis?: {
     get: (key: string) => Promise<string | null>;
-    set: (key: string, value: string, options?: { EX?: number }) => Promise<void>;
-    del: (key: string) => Promise<void>;
+    set: (key: string, value: string, options?: { EX?: number }) => Promise<unknown>;
+    del: (key: string) => Promise<unknown>;
   };
   /** Discord bot's guild ID (the guild we're managing) */
   guildId: string;
