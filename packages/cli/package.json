@@ -28,6 +28,9 @@
   },
   "dependencies": {
     "@arrakis/sandbox": "file:../sandbox",
+    "@aws-sdk/client-dynamodb": "^3.700.0",
+    "@aws-sdk/client-s3": "^3.700.0",
+    "@aws-sdk/credential-providers": "^3.700.0",
     "@discordjs/rest": "^2.4.0",
     "commander": "^12.1.0",
     "chalk": "^5.3.0",
@@ -37,6 +40,7 @@
     "ora": "^8.0.1",
     "ms": "^2.1.3",
     "postgres": "^3.4.0",
+    "yaml": "^2.6.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

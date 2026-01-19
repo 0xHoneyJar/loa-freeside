@@ -509,3 +509,129 @@ export function removeManagedMarker(description: string | undefined): string {
   }
   return description.replace(MANAGED_MARKER, '').trim();
 }
+
+// ============================================================================
+// Backend Configuration Schemas (Sprint 96)
+// ============================================================================
+
+/**
+ * Local backend configuration schema
+ */
+export const LocalBackendSchema = z.object({
+  type: z.literal('local'),
+  /** Path to state directory (default: .gaib/) */
+  path: z.string().optional(),
+});
+
+export type LocalBackendConfig = z.infer<typeof LocalBackendSchema>;
+
+/**
+ * S3 backend configuration schema
+ */
+export const S3BackendSchema = z.object({
+  type: z.literal('s3'),
+  /** S3 bucket name */
+  bucket: z.string().min(3, 'Bucket name must be at least 3 characters'),
+  /** Key pattern (supports ${workspace} variable) */
+  key: z.string().default('servers/${workspace}/terraform.tfstate'),
+  /** AWS region */
+  region: z.string().default('us-east-1'),
+  /** DynamoDB table for state locking */
+  dynamodb_table: z.string().default('gaib-locks'),
+  /** Enable server-side encryption */
+  encrypt: z.boolean().optional().default(true),
+  /** KMS key ID for encryption */
+  kms_key_id: z.string().optional(),
+  /** AWS profile name */
+  profile: z.string().optional(),
+  /** Custom endpoint (for LocalStack, etc.) */
+  endpoint: z.string().url().optional(),
+});
+
+export type S3BackendConfigSchema = z.infer<typeof S3BackendSchema>;
+
+/**
+ * Backend configuration (union of all backend types)
+ */
+export const BackendSchema = z.discriminatedUnion('type', [
+  LocalBackendSchema,
+  S3BackendSchema,
+]);
+
+export type BackendConfig = z.infer<typeof BackendSchema>;
+
+// ============================================================================
+// Full Gaib Configuration Schema (Sprint 96)
+// ============================================================================
+
+/**
+ * Discord configuration section
+ */
+export const DiscordConfigSchema = z.object({
+  /** Discord bot token (supports environment variable syntax) */
+  bot_token: z.string().optional(),
+});
+
+export type DiscordConfig = z.infer<typeof DiscordConfigSchema>;
+
+/**
+ * Output definition schema
+ */
+export const OutputSchema = z.object({
+  /** Output value (supports variable interpolation) */
+  value: z.string(),
+  /** Whether this output is sensitive */
+  sensitive: z.boolean().optional().default(false),
+  /** Description of the output */
+  description: z.string().optional(),
+});
+
+export type OutputConfig = z.infer<typeof OutputSchema>;
+
+/**
+ * Complete Gaib configuration file schema
+ */
+export const GaibConfigSchema = z.object({
+  /** Configuration version */
+  version: z.literal('1').optional().default('1'),
+
+  /** Project name */
+  name: z.string().min(1).max(100).optional(),
+
+  /** Backend configuration */
+  backend: BackendSchema.optional(),
+
+  /** Discord configuration */
+  discord: DiscordConfigSchema.optional(),
+
+  /** Server metadata */
+  server: ServerMetadataSchema.optional(),
+
+  /** Role definitions */
+  roles: z.array(RoleSchema).optional().default([]),
+
+  /** Category definitions */
+  categories: z.array(CategorySchema).optional().default([]),
+
+  /** Channel definitions */
+  channels: z.array(ChannelSchema).optional().default([]),
+
+  /** Output definitions */
+  outputs: z.record(OutputSchema).optional().default({}),
+});
+
+export type GaibConfigFile = z.infer<typeof GaibConfigSchema>;
+
+/**
+ * Parse and validate a Gaib configuration file
+ */
+export function parseGaibConfig(content: unknown): GaibConfigFile {
+  return GaibConfigSchema.parse(content);
+}
+
+/**
+ * Safely parse a Gaib configuration file with error handling
+ */
+export function safeParseGaibConfig(content: unknown): z.SafeParseReturnType<unknown, GaibConfigFile> {
+  return GaibConfigSchema.safeParse(content);
+}

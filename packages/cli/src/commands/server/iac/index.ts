@@ -3,6 +3,7 @@
  *
  * Sprint 91: Discord Infrastructure-as-Code - Config Parsing & State Reading
  * Sprint 92: Discord Infrastructure-as-Code - Diff Calculation & State Application
+ * Sprint 96: Remote State Backend - Pluggable Backend Architecture
  *
  * Exports all IaC components for managing Discord server configuration
  * as declarative YAML files.
@@ -145,3 +146,69 @@ export {
   type ApplyOptions,
   type ResourceIdMap,
 } from './StateWriter.js';
+
+// Backend schemas (Sprint 96)
+export {
+  LocalBackendSchema,
+  S3BackendSchema,
+  BackendSchema,
+  DiscordConfigSchema,
+  OutputSchema,
+  GaibConfigSchema,
+  parseGaibConfig,
+  safeParseGaibConfig,
+  type LocalBackendConfig,
+  type S3BackendConfigSchema,
+  type BackendConfig,
+  type DiscordConfig,
+  type OutputConfig,
+  type GaibConfigFile,
+} from './schemas.js';
+
+// State backends (Sprint 96)
+export {
+  // Types
+  type GaibState,
+  type StateResource,
+  type StateResourceInstance,
+  type StateOutput,
+  type LockInfo,
+  type LockResult,
+  type LockOptions,
+  type StateBackend,
+  type BackendType,
+  type CreateStateOptions,
+  type GaibConfig,
+
+  // Utilities
+  createEmptyState,
+  generateLineage,
+  generateLockId,
+  isValidState,
+  isValidBackendConfig,
+
+  // Errors
+  BackendError,
+  StateLockError,
+  StateLineageError,
+  StateSerialError,
+  BackendConfigError,
+
+  // LocalBackend
+  LocalBackend,
+  createLocalBackend,
+  getCurrentWorkspace,
+  setCurrentWorkspace,
+
+  // S3Backend
+  S3Backend,
+  createS3Backend,
+  createS3BackendFromEnv,
+
+  // BackendFactory
+  BackendFactory,
+  findConfigFile,
+  loadConfigFile,
+  withBackend,
+  withLock,
+} from './backends/index.js';
