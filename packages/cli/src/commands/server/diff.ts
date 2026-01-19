@@ -2,6 +2,7 @@
  * Server Diff Command
  *
  * Sprint 93: Discord Infrastructure-as-Code - CLI Commands & Polish
+ * Sprint 97: Workspace Management - Added workspace context
  *
  * Shows detailed diff between configuration and current Discord state.
  *
@@ -24,6 +25,7 @@ import {
   readServerState,
   calculateDiff,
 } from './iac/index.js';
+import { createWorkspaceManager } from './iac/WorkspaceManager.js';
 
 /**
  * Options for the diff command
@@ -31,6 +33,7 @@ import {
 export interface DiffCommandOptions {
   file: string;
   guild?: string;
+  workspace?: string;
   json?: boolean;
   permissions?: boolean;
   managedOnly?: boolean;
@@ -48,6 +51,11 @@ export interface DiffCommandOptions {
 export async function diffCommand(options: DiffCommandOptions): Promise<void> {
   // Validate environment
   getDiscordToken();
+
+  // Get current workspace context
+  const manager = await createWorkspaceManager();
+  const workspace = options.workspace ?? await manager.current();
+  await manager.getBackend().close();
 
   // Read and parse configuration
   const configContent = readConfigFile(options.file);
@@ -69,6 +77,7 @@ export async function diffCommand(options: DiffCommandOptions): Promise<void> {
   }
 
   if (!options.quiet) {
+    formatInfo(`Workspace: ${workspace}`);
     formatInfo(`Calculating diff for guild ${guildId}...`);
   }
 
@@ -94,6 +103,7 @@ export async function diffCommand(options: DiffCommandOptions): Promise<void> {
       JSON.stringify(
         {
           success: true,
+          workspace,
           guildId,
           serverName: currentState.name,
           hasChanges: diff.hasChanges,

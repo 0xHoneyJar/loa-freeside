@@ -2,6 +2,7 @@
  * Server Plan Command
  *
  * Sprint 93: Discord Infrastructure-as-Code - CLI Commands & Polish
+ * Sprint 97: Workspace Management - Added workspace context
  *
  * Shows what changes would be applied without making them.
  * Similar to `terraform plan`.
@@ -26,6 +27,7 @@ import {
   calculateDiff,
   type DiffOptions,
 } from './iac/index.js';
+import { createWorkspaceManager } from './iac/WorkspaceManager.js';
 
 /**
  * Options for the plan command
@@ -33,6 +35,7 @@ import {
 export interface PlanOptions {
   file: string;
   guild?: string;
+  workspace?: string;
   json?: boolean;
   managedOnly?: boolean;
   quiet?: boolean;
@@ -49,6 +52,11 @@ export interface PlanOptions {
 export async function planCommand(options: PlanOptions): Promise<void> {
   // Validate environment
   getDiscordToken();
+
+  // Get current workspace context
+  const manager = await createWorkspaceManager();
+  const workspace = options.workspace ?? await manager.current();
+  await manager.getBackend().close();
 
   // Read and parse configuration
   const configContent = readConfigFile(options.file);
@@ -70,6 +78,7 @@ export async function planCommand(options: PlanOptions): Promise<void> {
   }
 
   if (!options.quiet) {
+    formatInfo(`Workspace: ${workspace}`);
     formatInfo(`Planning changes for guild ${guildId}...`);
   }
 
@@ -95,6 +104,7 @@ export async function planCommand(options: PlanOptions): Promise<void> {
       JSON.stringify(
         {
           success: true,
+          workspace,
           guildId,
           serverName: currentState.name,
           hasChanges: diff.hasChanges,

@@ -2,6 +2,7 @@
  * Server Command Group
  *
  * Sprint 93: Discord Infrastructure-as-Code - CLI Commands & Polish
+ * Sprint 97: Workspace Management
  *
  * Registers the `gaib server` command group with all subcommands.
  * Provides Terraform-like workflow for Discord server configuration.
@@ -45,6 +46,13 @@ Examples:
   $ gaib server diff --json                  Output diff as JSON
   $ gaib server export                       Export current Discord state to YAML
   $ gaib server export --guild 123456789     Export specific guild
+
+Workspace Commands:
+  $ gaib server workspace list               List all workspaces
+  $ gaib server workspace new staging        Create new workspace
+  $ gaib server workspace select staging     Switch to workspace
+  $ gaib server workspace show               Show current workspace details
+  $ gaib server workspace delete staging     Delete a workspace
 `
     );
 
@@ -53,6 +61,7 @@ Examples:
   registerPlanCommand(server);
   registerDiffCommand(server);
   registerExportCommand(server);
+  registerWorkspaceCommand(server);
 
   return server;
 }
@@ -97,6 +106,7 @@ function registerPlanCommand(parent: Command): void {
     .description('Preview changes without applying them (dry-run)')
     .option('-f, --file <path>', 'Configuration file path', 'discord-server.yaml')
     .option('-g, --guild <id>', 'Override guild ID from config')
+    .option('-w, --workspace <name>', 'Override current workspace')
     .option('--json', 'Output result as JSON')
     .option('--managed-only', 'Only show IaC-managed resources', true)
     .action(async (options) => {
@@ -123,6 +133,7 @@ function registerDiffCommand(parent: Command): void {
     .description('Show detailed diff between config and current state')
     .option('-f, --file <path>', 'Configuration file path', 'discord-server.yaml')
     .option('-g, --guild <id>', 'Override guild ID from config')
+    .option('-w, --workspace <name>', 'Override current workspace')
     .option('--json', 'Output diff as JSON')
     .option('--no-permissions', 'Exclude permission changes from diff')
     .option('--managed-only', 'Only show IaC-managed resources', true)
@@ -157,6 +168,97 @@ function registerExportCommand(parent: Command): void {
         const { exportCommand } = await import('./export.js');
         const globalOpts = parent.optsWithGlobals();
         await exportCommand({ ...options, quiet: globalOpts.quiet });
+      } catch (error) {
+        handleError(error, options.json);
+      }
+    });
+}
+
+/**
+ * Registers the 'workspace' subcommand group
+ *
+ * Manages workspaces for environment isolation.
+ *
+ * @see Sprint 97: Workspace Management
+ */
+function registerWorkspaceCommand(parent: Command): void {
+  const workspace = parent
+    .command('workspace')
+    .description('Manage workspaces for environment isolation');
+
+  // workspace list
+  workspace
+    .command('list')
+    .description('List all workspaces')
+    .option('--json', 'Output result as JSON')
+    .action(async (options) => {
+      try {
+        const { workspaceListCommand } = await import('./workspace.js');
+        const globalOpts = parent.optsWithGlobals();
+        await workspaceListCommand({ ...options, quiet: globalOpts.quiet });
+      } catch (error) {
+        handleError(error, options.json);
+      }
+    });
+
+  // workspace new
+  workspace
+    .command('new <name>')
+    .description('Create a new workspace and switch to it')
+    .option('--json', 'Output result as JSON')
+    .action(async (name, options) => {
+      try {
+        const { workspaceNewCommand } = await import('./workspace.js');
+        const globalOpts = parent.optsWithGlobals();
+        await workspaceNewCommand(name, { ...options, quiet: globalOpts.quiet });
+      } catch (error) {
+        handleError(error, options.json);
+      }
+    });
+
+  // workspace select
+  workspace
+    .command('select <name>')
+    .description('Switch to a workspace')
+    .option('-c, --create', 'Create workspace if it does not exist')
+    .option('--json', 'Output result as JSON')
+    .action(async (name, options) => {
+      try {
+        const { workspaceSelectCommand } = await import('./workspace.js');
+        const globalOpts = parent.optsWithGlobals();
+        await workspaceSelectCommand(name, { ...options, quiet: globalOpts.quiet });
+      } catch (error) {
+        handleError(error, options.json);
+      }
+    });
+
+  // workspace show
+  workspace
+    .command('show [name]')
+    .description('Show workspace details (defaults to current workspace)')
+    .option('--json', 'Output result as JSON')
+    .action(async (name, options) => {
+      try {
+        const { workspaceShowCommand } = await import('./workspace.js');
+        const globalOpts = parent.optsWithGlobals();
+        await workspaceShowCommand(name, { ...options, quiet: globalOpts.quiet });
+      } catch (error) {
+        handleError(error, options.json);
+      }
+    });
+
+  // workspace delete
+  workspace
+    .command('delete <name>')
+    .description('Delete a workspace')
+    .option('-f, --force', 'Force delete even if workspace has resources')
+    .option('-y, --yes', 'Skip confirmation prompt')
+    .option('--json', 'Output result as JSON')
+    .action(async (name, options) => {
+      try {
+        const { workspaceDeleteCommand } = await import('./workspace.js');
+        const globalOpts = parent.optsWithGlobals();
+        await workspaceDeleteCommand(name, { ...options, quiet: globalOpts.quiet });
       } catch (error) {
         handleError(error, options.json);
       }
