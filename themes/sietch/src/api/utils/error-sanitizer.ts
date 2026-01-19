@@ -68,10 +68,25 @@ export interface ErrorContext {
 // =============================================================================
 
 /**
- * Check if we're in development mode
+ * Check if we're in development mode (verbose errors allowed)
+ *
+ * Sprint 138 (MED-002): Only development and test environments get verbose errors.
+ * Staging and production environments get sanitized errors to prevent information leakage.
  */
 function isDevelopment(): boolean {
   return process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
+}
+
+/**
+ * Check if error details should be included in response
+ *
+ * Sprint 138 (MED-002): Staging environments now get sanitized errors like production.
+ * Only development and test environments show detailed error information.
+ */
+function shouldIncludeErrorDetails(): boolean {
+  const env = process.env.NODE_ENV;
+  // Only development and test get details - staging and production do not
+  return env === 'development' || env === 'test';
 }
 
 // =============================================================================
@@ -165,7 +180,9 @@ export function sanitizeError(
   context: ErrorContext = {}
 ): { response: SanitizedErrorResponse; logEntry: ErrorLogEntry } {
   const errorRef = generateErrorRef();
-  const devMode = isDevelopment();
+  // Sprint 138 (MED-002): Use shouldIncludeErrorDetails instead of isDevelopment
+  // This ensures staging gets sanitized errors like production
+  const includeDetails = shouldIncludeErrorDetails();
 
   // Default values
   let userMessage = GENERIC_ERROR_MESSAGES.INTERNAL.message;
@@ -227,8 +244,8 @@ export function sanitizeError(
     status,
   };
 
-  // In development, include original details
-  if (devMode) {
+  // Sprint 138 (MED-002): Only include details in development/test, not staging/production
+  if (includeDetails) {
     response.details = {
       originalMessage,
       code,

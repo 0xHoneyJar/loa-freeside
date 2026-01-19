@@ -105,21 +105,56 @@ For production deployments with strict security requirements, use HashiCorp Vaul
 - **Dynamic secrets**: Generate database credentials on-demand
 - **Encryption as a service**: Transit engine for data encryption
 
-#### Emergency Key Rotation
+#### Emergency Key Rotation (Sprint 138)
 
-For compromised API keys, use zero-grace-period rotation:
+For compromised API keys, use zero-grace-period rotation to immediately invalidate the old key:
 
+**API Key Pepper Compromise:**
 ```bash
-# 1. Revoke old key immediately in database
-# 2. Generate new key
-openssl rand -hex 32
+# 1. Generate new pepper immediately (do NOT wait)
+NEW_PEPPER=$(openssl rand -hex 32)
+echo "New pepper: $NEW_PEPPER"
 
-# 3. Update Vault
-vault kv put secret/sietch/security api_key_pepper="new-pepper-value"
+# 2. Update Vault (skip grace period)
+vault kv put secret/sietch/security api_key_pepper="$NEW_PEPPER"
+
+# 3. Restart service to apply new pepper
+pm2 restart sietch-service
+
+# 4. All existing API keys are now invalid!
+# Users must re-authenticate and get new keys
+```
+
+**Dashboard API Key Compromise:**
+```bash
+# 1. Identify compromised key in database
+# 2. Revoke immediately (zero grace period)
+psql -c "UPDATE dashboard_api_keys SET revoked_at = NOW(), revoked_reason = 'EMERGENCY_ROTATION' WHERE key_hash = 'compromised-hash';"
+
+# 3. Notify affected user to regenerate key
+# 4. Review audit logs for unauthorized access
+```
+
+**Discord Bot Token Compromise:**
+```bash
+# 1. Regenerate token in Discord Developer Portal immediately
+# 2. Update environment variable
+export DISCORD_BOT_TOKEN="new-token-here"
+
+# 3. If using Vault:
+vault kv put secret/sietch/discord bot_token="new-token-here"
 
 # 4. Restart service
 pm2 restart sietch-service
+
+# 5. Review Discord audit logs for unauthorized actions
 ```
+
+**Important:** During emergency rotation:
+- **Zero grace period**: Old credentials are invalid immediately
+- **User impact**: All sessions using old credentials will fail
+- **Audit**: Document the incident and review access logs
+- **Communication**: Notify affected users of required re-authentication
 
 ### Environment Variables
 

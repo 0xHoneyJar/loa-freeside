@@ -90,6 +90,88 @@ export const RATE_LIMIT_CONFIGS = {
 const DEFAULT_MAX_ENTRIES = 10000;
 
 /**
+ * Sprint 138 (MED-003): Global rate limiter budget
+ *
+ * Tracks total memory usage across all rate limiter instances to prevent
+ * unbounded memory growth from creating many rate limiter instances.
+ */
+const GLOBAL_MAX_ENTRIES = 50000; // Maximum total entries across all limiters
+const GLOBAL_WARNING_THRESHOLD = 0.8; // 80% warning threshold
+let globalEntryCount = 0;
+const allLimiters: Set<RateLimiter> = new Set();
+
+/**
+ * Sprint 138 (MED-003): Get global rate limiter statistics
+ */
+export function getGlobalRateLimiterStats(): {
+  totalEntries: number;
+  maxEntries: number;
+  utilization: number;
+  instanceCount: number;
+  warning: boolean;
+} {
+  // Recalculate from all limiter instances
+  globalEntryCount = 0;
+  for (const limiter of allLimiters) {
+    globalEntryCount += limiter.getSize();
+  }
+
+  const utilization = globalEntryCount / GLOBAL_MAX_ENTRIES;
+
+  return {
+    totalEntries: globalEntryCount,
+    maxEntries: GLOBAL_MAX_ENTRIES,
+    utilization,
+    instanceCount: allLimiters.size,
+    warning: utilization >= GLOBAL_WARNING_THRESHOLD,
+  };
+}
+
+/**
+ * Sprint 138 (MED-003): Register limiter for global tracking
+ */
+function registerLimiter(limiter: RateLimiter): void {
+  allLimiters.add(limiter);
+}
+
+/**
+ * Sprint 138 (MED-003): Unregister limiter from global tracking
+ */
+function unregisterLimiter(limiter: RateLimiter): void {
+  allLimiters.delete(limiter);
+}
+
+/** Sprint 138 (MED-003): Track if we've already warned about budget */
+let globalBudgetWarningLogged = false;
+
+/**
+ * Sprint 138 (MED-003): Check if adding entries would exceed global budget
+ * Logs warning once when approaching threshold
+ */
+function checkGlobalBudget(): boolean {
+  const stats = getGlobalRateLimiterStats();
+
+  // Log warning once when exceeding threshold
+  if (stats.warning && !globalBudgetWarningLogged) {
+    globalBudgetWarningLogged = true;
+    logger.warn(
+      {
+        totalEntries: stats.totalEntries,
+        maxEntries: stats.maxEntries,
+        utilization: Math.round(stats.utilization * 100),
+        instanceCount: stats.instanceCount,
+      },
+      'Rate limiter approaching global memory budget'
+    );
+  } else if (!stats.warning && globalBudgetWarningLogged) {
+    // Reset warning flag if utilization drops below threshold
+    globalBudgetWarningLogged = false;
+  }
+
+  return stats.totalEntries < GLOBAL_MAX_ENTRIES;
+}
+
+/**
  * In-memory sliding window rate limiter
  *
  * Thread-safe for single-process Node.js applications.
@@ -107,6 +189,8 @@ export class RateLimiter {
     private readonly config: RateLimitConfig
   ) {
     this.maxEntries = config.maxEntries ?? DEFAULT_MAX_ENTRIES;
+    // Sprint 138 (MED-003): Register with global tracking
+    registerLimiter(this);
     // Start periodic cleanup
     this.startCleanup();
   }
@@ -126,6 +210,10 @@ export class RateLimiter {
     if (!window || now > window.resetAt) {
       // Sprint 135 (MED-004): Check if we need to evict before adding
       if (!window && this.windows.size >= this.maxEntries) {
+        this.evictLRU();
+      }
+      // Sprint 138 (MED-003): Check global budget and trigger eviction if needed
+      if (!window && !checkGlobalBudget()) {
         this.evictLRU();
       }
 
@@ -215,12 +303,15 @@ export class RateLimiter {
 
   /**
    * Stop the cleanup interval (for testing/shutdown)
+   * Sprint 138 (MED-003): Also unregisters from global tracking
    */
   stop(): void {
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = null;
     }
+    // Sprint 138 (MED-003): Unregister from global tracking
+    unregisterLimiter(this);
   }
 
   /**
