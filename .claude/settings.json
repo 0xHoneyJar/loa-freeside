@@ -387,7 +387,8 @@
       "Bash(.:*)",
       "Bash(bash:*)",
       "Bash(sh:*)",
-      "Bash(zsh:*)"
+      "Bash(zsh:*)",
+      "Bash(cd:*)"
     ],
     "deny": [
       "Bash(sudo:*)",
