@@ -8,7 +8,8 @@ resource "aws_mq_broker" "rabbitmq" {
   engine_type         = "RabbitMQ"
   engine_version      = "3.13"
   host_instance_type  = var.rabbitmq_instance_type
-  deployment_mode     = var.environment == "production" ? "CLUSTER_MULTI_AZ" : "SINGLE_INSTANCE"
+  # CLUSTER_MULTI_AZ requires mq.m5.large or larger; t3.micro only supports SINGLE_INSTANCE
+  deployment_mode     = can(regex("^mq\\.(m5|m6|r5|r6)", var.rabbitmq_instance_type)) && var.environment == "production" ? "CLUSTER_MULTI_AZ" : "SINGLE_INSTANCE"
   publicly_accessible = false
 
   # Authentication
@@ -17,8 +18,8 @@ resource "aws_mq_broker" "rabbitmq" {
     password = random_password.rabbitmq_password.result
   }
 
-  # Network configuration
-  subnet_ids      = var.environment == "production" ? module.vpc.private_subnets : [module.vpc.private_subnets[0]]
+  # Network configuration - SINGLE_INSTANCE requires single subnet, CLUSTER_MULTI_AZ requires multiple
+  subnet_ids      = can(regex("^mq\\.(m5|m6|r5|r6)", var.rabbitmq_instance_type)) && var.environment == "production" ? module.vpc.private_subnets : [module.vpc.private_subnets[0]]
   security_groups = [aws_security_group.rabbitmq.id]
 
   # Maintenance window (early morning UTC)

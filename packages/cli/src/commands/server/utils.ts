@@ -35,17 +35,75 @@ export function getDiscordToken(): string {
 }
 
 /**
- * Gets the guild ID from options or config
+ * Discord Snowflake ID validation regex
+ * Discord IDs are 17-19 digit integers (snowflakes)
+ *
+ * Sprint 94 (H-3): Input validation to prevent SSRF and injection attacks
+ *
+ * @see https://discord.com/developers/docs/reference#snowflakes
+ */
+const GUILD_ID_REGEX = /^\d{17,19}$/;
+
+/**
+ * CLI error codes for sanitized error messages
+ *
+ * Sprint 94 (H-3): Use error codes instead of detailed messages
+ */
+export const GuildValidationErrors = {
+  INVALID_FORMAT: 'E1001',
+  MISSING_GUILD: 'E1002',
+} as const;
+
+/**
+ * Validates a Discord guild ID (snowflake format)
+ *
+ * Discord snowflakes are 64-bit integers represented as strings.
+ * Valid snowflakes are 17-19 digits long.
+ *
+ * Sprint 94 (H-3): Guild ID validation to prevent SSRF and injection
+ *
+ * @param guildId - The guild ID to validate
+ * @returns true if valid, false otherwise
+ *
+ * @example
+ * validateGuildId('123456789012345678')  // true
+ * validateGuildId('12345')               // false (too short)
+ * validateGuildId('abc')                 // false (non-numeric)
+ * validateGuildId('123-456')             // false (invalid characters)
+ */
+export function validateGuildId(guildId: string): boolean {
+  return GUILD_ID_REGEX.test(guildId);
+}
+
+/**
+ * Gets and validates the guild ID from options or config
  *
  * Resolution order:
  * 1. --guild CLI option
  * 2. DISCORD_GUILD_ID environment variable
  *
+ * Sprint 94 (H-3): Validates guild ID format to prevent SSRF/injection
+ *
  * @param options - CLI options
- * @returns Guild ID or undefined
+ * @returns Guild ID or undefined if not provided
+ * @throws Error with sanitized error code if guild ID is invalid format
  */
 export function getGuildId(options: { guild?: string }): string | undefined {
-  return options.guild || process.env.DISCORD_GUILD_ID;
+  const guildId = options.guild || process.env.DISCORD_GUILD_ID;
+
+  // No guild ID provided - not an error, some commands don't require it
+  if (!guildId) {
+    return undefined;
+  }
+
+  // Sprint 94 (H-3): Validate guild ID format
+  if (!validateGuildId(guildId)) {
+    const error = new Error(`Invalid guild ID format [${GuildValidationErrors.INVALID_FORMAT}]`);
+    (error as Error & { code: string }).code = GuildValidationErrors.INVALID_FORMAT;
+    throw error;
+  }
+
+  return guildId;
 }
 
 /**

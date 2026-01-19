@@ -26,6 +26,8 @@ import {
   generateDefaultConfig,
   getDiscordToken,
   getGuildId,
+  validateGuildId,
+  GuildValidationErrors,
   resolveConfigPath,
   configExists,
 } from '../utils.js';
@@ -161,16 +163,120 @@ describe('Environment Variables (S-93.8)', () => {
 
   describe('getGuildId', () => {
     it('should prefer CLI option over environment variable', () => {
-      process.env.DISCORD_GUILD_ID = 'env-guild';
-      expect(getGuildId({ guild: 'cli-guild' })).toBe('cli-guild');
+      process.env.DISCORD_GUILD_ID = '123456789012345678';
+      expect(getGuildId({ guild: '987654321098765432' })).toBe('987654321098765432');
     });
 
     it('should fallback to environment variable', () => {
-      process.env.DISCORD_GUILD_ID = 'env-guild';
-      expect(getGuildId({})).toBe('env-guild');
+      process.env.DISCORD_GUILD_ID = '123456789012345678';
+      expect(getGuildId({})).toBe('123456789012345678');
     });
 
     it('should return undefined when neither is set', () => {
+      delete process.env.DISCORD_GUILD_ID;
+      expect(getGuildId({})).toBeUndefined();
+    });
+  });
+});
+
+// =============================================================================
+// Guild ID Validation Tests (Sprint 94 - H-3)
+// =============================================================================
+
+describe('Guild ID Validation (S-94.3)', () => {
+  const originalEnv = { ...process.env };
+
+  afterEach(() => {
+    process.env.DISCORD_GUILD_ID = originalEnv.DISCORD_GUILD_ID;
+  });
+
+  describe('validateGuildId', () => {
+    it('should accept valid 17-digit snowflake IDs', () => {
+      expect(validateGuildId('12345678901234567')).toBe(true);
+    });
+
+    it('should accept valid 18-digit snowflake IDs', () => {
+      expect(validateGuildId('123456789012345678')).toBe(true);
+    });
+
+    it('should accept valid 19-digit snowflake IDs', () => {
+      expect(validateGuildId('1234567890123456789')).toBe(true);
+    });
+
+    it('should reject IDs that are too short', () => {
+      expect(validateGuildId('1234567890123456')).toBe(false); // 16 digits
+      expect(validateGuildId('12345')).toBe(false);
+      expect(validateGuildId('')).toBe(false);
+    });
+
+    it('should reject IDs that are too long', () => {
+      expect(validateGuildId('12345678901234567890')).toBe(false); // 20 digits
+    });
+
+    it('should reject non-numeric IDs', () => {
+      expect(validateGuildId('abc123456789012345')).toBe(false);
+      expect(validateGuildId('1234567890abcdefgh')).toBe(false);
+    });
+
+    it('should reject IDs with special characters', () => {
+      expect(validateGuildId('123456789-12345678')).toBe(false);
+      expect(validateGuildId('123456789_12345678')).toBe(false);
+      expect(validateGuildId('123456789.12345678')).toBe(false);
+    });
+
+    it('should reject IDs with whitespace', () => {
+      expect(validateGuildId(' 123456789012345678')).toBe(false);
+      expect(validateGuildId('123456789012345678 ')).toBe(false);
+      expect(validateGuildId('12345678 9012345678')).toBe(false);
+    });
+
+    it('should reject potential injection attempts', () => {
+      // SQL injection attempts
+      expect(validateGuildId("123' OR '1'='1")).toBe(false);
+      expect(validateGuildId('123; DROP TABLE users;')).toBe(false);
+
+      // Path traversal attempts
+      expect(validateGuildId('../../../etc/passwd')).toBe(false);
+
+      // XSS attempts
+      expect(validateGuildId('<script>alert(1)</script>')).toBe(false);
+
+      // Command injection attempts
+      expect(validateGuildId('$(whoami)')).toBe(false);
+      expect(validateGuildId('`id`')).toBe(false);
+    });
+  });
+
+  describe('getGuildId with validation', () => {
+    it('should throw error with code for invalid CLI option', () => {
+      expect(() => getGuildId({ guild: 'invalid-guild' })).toThrow();
+      try {
+        getGuildId({ guild: 'invalid-guild' });
+      } catch (error) {
+        expect((error as Error & { code: string }).code).toBe(GuildValidationErrors.INVALID_FORMAT);
+      }
+    });
+
+    it('should throw error with code for invalid environment variable', () => {
+      delete process.env.DISCORD_GUILD_ID;
+      process.env.DISCORD_GUILD_ID = 'malicious-input';
+      expect(() => getGuildId({})).toThrow();
+      try {
+        getGuildId({});
+      } catch (error) {
+        expect((error as Error & { code: string }).code).toBe(GuildValidationErrors.INVALID_FORMAT);
+      }
+    });
+
+    it('should include error code in error message', () => {
+      expect(() => getGuildId({ guild: 'invalid' })).toThrow(/E1001/);
+    });
+
+    it('should accept valid snowflake IDs', () => {
+      expect(getGuildId({ guild: '123456789012345678' })).toBe('123456789012345678');
+    });
+
+    it('should return undefined for missing guild ID (not an error)', () => {
       delete process.env.DISCORD_GUILD_ID;
       expect(getGuildId({})).toBeUndefined();
     });

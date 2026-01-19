@@ -1,0 +1,1 @@
+../constructs/packs/gtm-collective/commands/gtm-setup.md

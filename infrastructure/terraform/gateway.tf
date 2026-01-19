@@ -95,7 +95,7 @@ resource "aws_ecs_task_definition" "gateway" {
   network_mode             = "awsvpc"
   cpu                      = var.gateway_cpu
   memory                   = var.gateway_memory
-  execution_role_arn       = aws_iam_role.ecs_execution.arn
+  execution_role_arn       = aws_iam_role.ecs_execution_gateway.arn # Sprint 94: Least-privilege IAM
   task_role_arn            = aws_iam_role.ecs_task.arn
 
   container_definitions = jsonencode([

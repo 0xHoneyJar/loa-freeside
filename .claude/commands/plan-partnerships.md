@@ -1,0 +1,1 @@
+../constructs/packs/gtm-collective/commands/plan-partnerships.md

@@ -1,0 +1,1 @@
+../constructs/packs/gtm-collective/commands/review-gtm.md
