@@ -1,0 +1,28 @@
+{
+  "slug": "collabland",
+  "name": "Collab.Land",
+  "botIds": ["704521096837464076"],
+  "channelPatterns": [
+    "collabland-join",
+    "collabland-config",
+    "collab-land",
+    "verify",
+    "verification"
+  ],
+  "rolePatterns": [
+    "holder",
+    "verified",
+    "whale",
+    "member",
+    "nft-holder",
+    "token-holder"
+  ],
+  "usernamePatterns": ["collab.land", "collabland"],
+  "capabilities": {
+    "hasBalanceCheck": true,
+    "hasConvictionScoring": false,
+    "hasTierSystem": true,
+    "hasSocialLayer": false
+  },
+  "weight": 1.0
+}

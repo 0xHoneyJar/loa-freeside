@@ -1,0 +1,23 @@
+{
+  "slug": "matrica",
+  "name": "Matrica",
+  "botIds": [],
+  "channelPatterns": [
+    "matrica-verify",
+    "matrica",
+    "matrica-join"
+  ],
+  "rolePatterns": [
+    "verified",
+    "holder",
+    "matrica-verified"
+  ],
+  "usernamePatterns": ["matrica"],
+  "capabilities": {
+    "hasBalanceCheck": true,
+    "hasConvictionScoring": false,
+    "hasTierSystem": false,
+    "hasSocialLayer": false
+  },
+  "weight": 0.9
+}

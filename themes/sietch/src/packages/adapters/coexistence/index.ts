@@ -149,6 +149,16 @@ export {
   type HealthMonitorConfig,
 } from './IncumbentHealthMonitor.js';
 
+// Provider registry (Sprint 103)
+export {
+  ProviderRegistry,
+  createProviderRegistry,
+  MATCH_CONFIDENCE,
+  type ProviderDefinition,
+  type CustomProviderRecord,
+  type ProviderMatch,
+} from './ProviderRegistry.js';
+
 // Coexistence metrics (Sprint 65)
 export {
   // Recording functions
