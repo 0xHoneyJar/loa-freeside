@@ -1,0 +1,23 @@
+{
+  "slug": "guild.xyz",
+  "name": "Guild.xyz",
+  "botIds": [],
+  "channelPatterns": [
+    "guild-join",
+    "guild-verify",
+    "guild"
+  ],
+  "rolePatterns": [
+    "guild-member",
+    "verified",
+    "guild-verified"
+  ],
+  "usernamePatterns": ["guild.xyz", "guild"],
+  "capabilities": {
+    "hasBalanceCheck": true,
+    "hasConvictionScoring": false,
+    "hasTierSystem": true,
+    "hasSocialLayer": false
+  },
+  "weight": 0.9
+}

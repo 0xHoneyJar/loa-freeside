@@ -25,6 +25,9 @@ import {
   recordReactionReceived,
 } from '../../activity.js';
 import { handleInteraction } from './InteractionHandler.js';
+// Sprint 102: Import ready for full integration when storage adapter is wired
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { createGuildJoinHandler, type OnboardingResult } from './GuildJoinHandler.js';
 
 /**
  * Set up Discord client event handlers
@@ -108,6 +111,12 @@ export function setupEventHandlers(
   // Activity tracking: reaction remove
   client.on('messageReactionRemove', async (reaction, user) => {
     await handleReactionRemove(reaction, user);
+  });
+
+  // Sprint 102: Intelligent Onboarding - Guild Join Handler
+  // Note: guildCreate fires when bot joins a NEW guild (not on reconnect)
+  client.on('guildCreate', async (guild) => {
+    await handleGuildCreate(guild);
   });
 }
 
@@ -238,4 +247,46 @@ async function handleReactionRemove(
   // Activity points are cumulative and don't decrease on reaction removal
   // The decay system handles activity reduction over time
   logger.debug({ userId: user.id, messageId: reaction.message.id }, 'Reaction removed (not tracked)');
+}
+
+// ==========================================================================
+// Guild Join Handler (Sprint 102: Sandworm Sense)
+// ==========================================================================
+
+/**
+ * Handle guild create event for intelligent onboarding
+ *
+ * This fires when the bot joins a NEW guild. It triggers incumbent detection
+ * and mode selection (shadow/greenfield/hybrid).
+ *
+ * @see GuildJoinHandler for full implementation
+ */
+async function handleGuildCreate(guild: Guild): Promise<void> {
+  logger.info(
+    { guildId: guild.id, guildName: guild.name, memberCount: guild.memberCount },
+    'Bot joined new guild, initiating intelligent onboarding'
+  );
+
+  try {
+    // For now, we log the event. Full integration requires:
+    // 1. ICoexistenceStorage implementation for SQLite
+    // 2. Wiring up the createGuildJoinHandler factory
+    //
+    // The GuildJoinHandler is ready and tested - this is the integration point.
+    //
+    // TODO: Wire up full GuildJoinHandler when storage adapter is ready
+    // const handler = createGuildJoinHandler(coexistenceStorage, client);
+    // const result = await handler.handleGuildJoin(guild);
+    // logger.info({ result }, 'Intelligent onboarding complete');
+
+    logger.info(
+      { guildId: guild.id },
+      'Guild join logged. Full detection pending storage adapter integration.'
+    );
+  } catch (error) {
+    logger.error(
+      { error, guildId: guild.id },
+      'Failed to handle guild join event'
+    );
+  }
 }
