@@ -184,7 +184,11 @@ export class DrizzleStorageAdapter implements IStorageProvider {
   async createCommunity(data: NewCommunity): Promise<Community> {
     this.log('createCommunity', { data });
     const result = await this.db.insert(communities).values(data).returning();
-    return result[0];
+    const community = result[0];
+    if (!community) {
+      throw new Error('Failed to create community - no result returned');
+    }
+    return community;
   }
 
   async updateCommunity(
@@ -344,7 +348,11 @@ export class DrizzleStorageAdapter implements IStorageProvider {
       };
 
       const result = await this.db.insert(profiles).values(profileData).returning();
-      return result[0];
+      const profile = result[0];
+      if (!profile) {
+        throw new Error('Failed to create profile - no result returned');
+      }
+      return profile;
     });
   }
 
@@ -489,7 +497,11 @@ export class DrizzleStorageAdapter implements IStorageProvider {
       };
 
       const result = await this.db.insert(badges).values(badgeData).returning();
-      return result[0];
+      const badge = result[0];
+      if (!badge) {
+        throw new Error('Failed to award badge - no result returned');
+      }
+      return badge;
     });
   }
 
@@ -653,7 +665,11 @@ export class DrizzleStorageAdapter implements IStorageProvider {
         .values(manifestData)
         .returning();
 
-      return result[0];
+      const manifest = result[0];
+      if (!manifest) {
+        throw new Error('Failed to create manifest - no result returned');
+      }
+      return manifest;
     });
   }
 
@@ -713,7 +729,11 @@ export class DrizzleStorageAdapter implements IStorageProvider {
         .values(shadowData)
         .returning();
 
-      return result[0];
+      const shadowState = result[0];
+      if (!shadowState) {
+        throw new Error('Failed to create shadow state - no result returned');
+      }
+      return shadowState;
     });
   }
 

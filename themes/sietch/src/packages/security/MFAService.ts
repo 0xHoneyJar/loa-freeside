@@ -407,12 +407,20 @@ export class MFAService {
     const hmacResult = hmac.digest();
 
     // Dynamic truncation (RFC 4226)
-    const offset = hmacResult[hmacResult.length - 1] & 0x0f;
+    const lastByte = hmacResult[hmacResult.length - 1];
+    if (lastByte === undefined) {
+      throw new Error('Invalid HMAC result');
+    }
+    const offset = lastByte & 0x0f;
+    const b0 = hmacResult[offset] ?? 0;
+    const b1 = hmacResult[offset + 1] ?? 0;
+    const b2 = hmacResult[offset + 2] ?? 0;
+    const b3 = hmacResult[offset + 3] ?? 0;
     const truncated =
-      ((hmacResult[offset] & 0x7f) << 24) |
-      ((hmacResult[offset + 1] & 0xff) << 16) |
-      ((hmacResult[offset + 2] & 0xff) << 8) |
-      (hmacResult[offset + 3] & 0xff);
+      ((b0 & 0x7f) << 24) |
+      ((b1 & 0xff) << 16) |
+      ((b2 & 0xff) << 8) |
+      (b3 & 0xff);
 
     // Generate 6-digit code
     const code = (truncated % 1000000).toString().padStart(6, '0');
@@ -431,7 +439,7 @@ export class MFAService {
     let output = '';
 
     for (let i = 0; i < buffer.length; i++) {
-      value = (value << 8) | buffer[i];
+      value = (value << 8) | (buffer[i] ?? 0);
       bits += 8;
 
       while (bits >= 5) {
@@ -466,7 +474,9 @@ export class MFAService {
     input = input.replace(/=+$/, '');
 
     for (let i = 0; i < input.length; i++) {
-      const charIndex = base32Chars.indexOf(input[i].toUpperCase());
+      const char = input[i];
+      if (!char) continue;
+      const charIndex = base32Chars.indexOf(char.toUpperCase());
       if (charIndex === -1) continue;
 
       value = (value << 5) | charIndex;

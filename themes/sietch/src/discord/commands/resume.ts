@@ -25,12 +25,11 @@ import {
   WizardEngine,
   WizardSessionStore,
   stepHandlers,
-  WizardSession,
-  StepHandlerResult,
   WizardState,
   isSessionExpired,
   STATE_DISPLAY_NAMES,
 } from '../../packages/wizard/index.js';
+import type { WizardSession, StepHandlerResult } from '../../packages/wizard/index.js';
 
 // Reference the same instances from onboard.ts
 // In a real implementation, these would be from a shared service

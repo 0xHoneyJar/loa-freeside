@@ -1,0 +1,12 @@
+Sprint 85 - Discord Server Sandboxes - CLI Commands
+Completed: 2026-01-17
+
+Senior Lead Review: All good (engineer-feedback.md)
+Security Audit: APPROVED - LET'S FUCKING GO (auditor-sprint-feedback.md)
+
+Implementation Summary:
+- @arrakis/cli package created
+- bd sandbox create/list/destroy/connect commands
+- 50 unit tests passing
+- TypeScript strict mode enabled
+- Shell-safe eval pattern for connect command

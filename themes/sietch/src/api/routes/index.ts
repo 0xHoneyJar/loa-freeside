@@ -79,3 +79,15 @@ export type { VerificationIntegrationDeps, VerifyIntegration } from './verify.in
  */
 export { createSimulationRouter } from './simulation.routes.js';
 export type { SimulationRouterDeps } from './simulation.routes.js';
+
+/**
+ * Dashboard routes (Sprint 114 - Web Configuration Dashboard)
+ * Factory function that requires Redis and guildId dependency injection
+ */
+export { createDashboardRouter, createDashboardAuthRouter } from './dashboard/index.js';
+export type {
+  DashboardRouterDeps,
+  DashboardAuthDeps,
+  DashboardSession,
+  DashboardAuthRequest,
+} from './dashboard/index.js';

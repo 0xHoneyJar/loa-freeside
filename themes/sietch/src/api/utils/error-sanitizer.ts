@@ -68,10 +68,25 @@ export interface ErrorContext {
 // =============================================================================
 
 /**
- * Check if we're in development mode
+ * Check if we're in development mode (verbose errors allowed)
+ *
+ * Sprint 138 (MED-002): Only development and test environments get verbose errors.
+ * Staging and production environments get sanitized errors to prevent information leakage.
  */
 function isDevelopment(): boolean {
   return process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
+}
+
+/**
+ * Check if error details should be included in response
+ *
+ * Sprint 138 (MED-002): Staging environments now get sanitized errors like production.
+ * Only development and test environments show detailed error information.
+ */
+function shouldIncludeErrorDetails(): boolean {
+  const env = process.env.NODE_ENV;
+  // Only development and test get details - staging and production do not
+  return env === 'development' || env === 'test';
 }
 
 // =============================================================================
@@ -165,10 +180,12 @@ export function sanitizeError(
   context: ErrorContext = {}
 ): { response: SanitizedErrorResponse; logEntry: ErrorLogEntry } {
   const errorRef = generateErrorRef();
-  const devMode = isDevelopment();
+  // Sprint 138 (MED-002): Use shouldIncludeErrorDetails instead of isDevelopment
+  // This ensures staging gets sanitized errors like production
+  const includeDetails = shouldIncludeErrorDetails();
 
   // Default values
-  let userMessage = GENERIC_ERROR_MESSAGES.INTERNAL.message;
+  let userMessage = GENERIC_ERROR_MESSAGES.INTERNAL?.message ?? 'An unexpected error occurred. Please try again later.';
   let status = 500;
   let code: string | undefined;
   let originalMessage = 'Unknown error';
@@ -227,8 +244,8 @@ export function sanitizeError(
     status,
   };
 
-  // In development, include original details
-  if (devMode) {
+  // Sprint 138 (MED-002): Only include details in development/test, not staging/production
+  if (includeDetails) {
     response.details = {
       originalMessage,
       code,
@@ -326,9 +343,9 @@ export function unauthorizedError(context: ErrorContext = {}): SanitizedErrorRes
   );
 
   return {
-    error: GENERIC_ERROR_MESSAGES.UNAUTHORIZED.message,
+    error: GENERIC_ERROR_MESSAGES.UNAUTHORIZED?.message ?? 'Authentication is required.',
     errorRef,
-    status: GENERIC_ERROR_MESSAGES.UNAUTHORIZED.status,
+    status: GENERIC_ERROR_MESSAGES.UNAUTHORIZED?.status ?? 401,
   };
 }
 
@@ -344,9 +361,9 @@ export function forbiddenError(context: ErrorContext = {}): SanitizedErrorRespon
   );
 
   return {
-    error: GENERIC_ERROR_MESSAGES.FORBIDDEN.message,
+    error: GENERIC_ERROR_MESSAGES.FORBIDDEN?.message ?? 'You do not have permission to perform this action.',
     errorRef,
-    status: GENERIC_ERROR_MESSAGES.FORBIDDEN.status,
+    status: GENERIC_ERROR_MESSAGES.FORBIDDEN?.status ?? 403,
   };
 }
 
@@ -357,9 +374,9 @@ export function notFoundError(context: ErrorContext = {}): SanitizedErrorRespons
   const errorRef = generateErrorRef();
 
   return {
-    error: GENERIC_ERROR_MESSAGES.NOT_FOUND.message,
+    error: GENERIC_ERROR_MESSAGES.NOT_FOUND?.message ?? 'The requested resource was not found.',
     errorRef,
-    status: GENERIC_ERROR_MESSAGES.NOT_FOUND.status,
+    status: GENERIC_ERROR_MESSAGES.NOT_FOUND?.status ?? 404,
   };
 }
 
@@ -378,8 +395,8 @@ export function rateLimitedError(
   );
 
   return {
-    error: `${GENERIC_ERROR_MESSAGES.RATE_LIMITED.message} Try again in ${retryAfter} seconds.`,
+    error: `${GENERIC_ERROR_MESSAGES.RATE_LIMITED?.message ?? 'Too many requests. Please try again later.'} Try again in ${retryAfter} seconds.`,
     errorRef,
-    status: GENERIC_ERROR_MESSAGES.RATE_LIMITED.status,
+    status: GENERIC_ERROR_MESSAGES.RATE_LIMITED?.status ?? 429,
   };
 }

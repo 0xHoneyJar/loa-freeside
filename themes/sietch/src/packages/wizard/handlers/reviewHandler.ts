@@ -8,9 +8,9 @@
  * @module packages/wizard/handlers/reviewHandler
  */
 
-import { WizardSession } from '../WizardSession.js';
+import type { WizardSession } from '../WizardSession.js';
 import { WizardState } from '../WizardState.js';
-import { StepHandler, StepHandlerResult, StepInput, WizardEmbed } from '../WizardEngine.js';
+import type { StepHandler, StepHandlerResult, StepInput, WizardEmbed } from '../WizardEngine.js';
 
 /**
  * Review step handler.

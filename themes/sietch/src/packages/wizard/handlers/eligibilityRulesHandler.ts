@@ -8,9 +8,9 @@
  * @module packages/wizard/handlers/eligibilityRulesHandler
  */
 
-import { WizardSession, TierConfig } from '../WizardSession.js';
+import type { WizardSession, TierConfig } from '../WizardSession.js';
 import { WizardState } from '../WizardState.js';
-import { StepHandler, StepHandlerResult, StepInput } from '../WizardEngine.js';
+import type { StepHandler, StepHandlerResult, StepInput } from '../WizardEngine.js';
 
 /**
  * Default tier templates.
@@ -55,6 +55,12 @@ export const eligibilityRulesHandler: StepHandler = async (
   // Handle template selection
   if (input?.type === 'select' && input.customId?.includes('tier-template') && input.values?.length) {
     const templateId = input.values[0];
+    if (!templateId) {
+      return {
+        success: false,
+        error: 'No template selected',
+      };
+    }
     const template = DEFAULT_TIER_TEMPLATES[templateId];
 
     if (!template) {

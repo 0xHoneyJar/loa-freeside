@@ -1,0 +1,28 @@
+Sprint S-27: Glimpse Mode & Migration Readiness
+
+Completed: 2026-01-17
+Security Audit: APPROVED - LET'S FUCKING GO
+
+Implementation commits:
+- dfe200e feat(packages): implement Sprint S-27 - Glimpse Mode & Migration Readiness
+- 9177373 fix(packages): address Sprint S-27 security audit findings (MED-1, MED-2, LOW-3)
+
+Files:
+- packages/core/domain/glimpse-mode.ts
+- packages/core/ports/glimpse-mode.ts
+- packages/adapters/coexistence/glimpse-manager.ts
+- packages/adapters/coexistence/glimpse-manager.test.ts
+
+Features:
+- S-27.1: Leaderboard Glimpse
+- S-27.2: Profile Directory Glimpse
+- S-27.3: Badge Showcase Glimpse
+- S-27.4: Preview Profile
+- S-27.5: Unlock Messaging
+- S-27.6: Readiness Checks
+- S-27.7: Comprehensive Tests (80 tests)
+
+Security:
+- Input validation on all query parameters
+- Authorization requirements documented
+- Rate limiting recommendations documented

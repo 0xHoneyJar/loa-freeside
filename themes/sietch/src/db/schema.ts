@@ -173,3 +173,9 @@ export {
   TELEGRAM_IDENTITY_SAFE_SQL,
   TELEGRAM_IDENTITY_ROLLBACK_SQL,
 } from './migrations/012_telegram_identity.js';
+
+// Re-export Dashboard Config schema for cycle-004 (Sprint 117)
+export {
+  DASHBOARD_CONFIG_SCHEMA_SQL,
+  DASHBOARD_CONFIG_ROLLBACK_SQL,
+} from './migrations/019_dashboard_config.js';

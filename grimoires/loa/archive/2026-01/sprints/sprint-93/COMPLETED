@@ -1,0 +1,17 @@
+Sprint 93: CLI Commands & Polish
+Completed: 2026-01-18
+
+Implementation: APPROVED by Senior Technical Lead
+Security Audit: APPROVED by Paranoid Cypherpunk Auditor
+
+Files Created:
+- packages/cli/src/commands/server/index.ts
+- packages/cli/src/commands/server/utils.ts
+- packages/cli/src/commands/server/init.ts
+- packages/cli/src/commands/server/plan.ts
+- packages/cli/src/commands/server/diff.ts
+- packages/cli/src/commands/server/export.ts
+- packages/cli/src/commands/server/__tests__/cli-compliance.test.ts
+- docs/iac.md
+
+Tests: 226 passing, 26 skipped (integration)

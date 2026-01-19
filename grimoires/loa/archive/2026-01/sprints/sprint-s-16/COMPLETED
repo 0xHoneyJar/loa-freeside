@@ -1,0 +1,15 @@
+Sprint S-16: Score Service & Two-Tier Orchestration
+Completed: 2026-01-16
+
+Implementation: APPROVED (Senior Technical Lead)
+Security Audit: APPROVED (Paranoid Cypherpunk Auditor)
+
+Deliverables:
+- Score Service protocol types (packages/core/ports/score-service.ts)
+- ScoreServiceClient with circuit breaker (packages/adapters/chain/score-service-client.ts)
+- TwoTierChainProvider orchestrator (packages/adapters/chain/two-tier-provider.ts)
+- Prometheus metrics (packages/adapters/chain/metrics.ts)
+- Degradation logic per SDD §6.1.6
+- 158 tests passing (47 core + 111 adapters)
+
+Phase 5 (Two-Tier Chain Provider) complete.

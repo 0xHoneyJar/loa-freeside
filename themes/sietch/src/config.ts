@@ -665,6 +665,8 @@ export interface Config {
     badgesEnabled: boolean;
     telegramEnabled: boolean;
     vaultEnabled: boolean;
+    /** Enable Gateway Proxy pattern (Sprint GW-5) */
+    gatewayProxyEnabled: boolean;
   };
   // Telegram Configuration (v4.1 - Sprint 30)
   telegram: {
@@ -867,6 +869,34 @@ function validateStartupConfig(cfg: typeof parsedConfig): void {
   }
 
   // ==========================================================================
+  // Sprint 137: Redis Session Store Startup Validation (MED-001)
+  // ==========================================================================
+  // Dashboard sessions require Redis in production to prevent in-memory fallback
+  // which would cause session loss on restarts and security issues with scaling
+
+  if (isProduction && cfg.features.redisEnabled) {
+    // Validate Redis URL is configured when Redis is enabled
+    if (!cfg.redis.url) {
+      logger.fatal('REDIS_URL is required when FEATURE_REDIS_ENABLED=true in production');
+      throw new Error(
+        'SECURITY ERROR: Redis is enabled (FEATURE_REDIS_ENABLED=true) but REDIS_URL is not configured. ' +
+          'Redis is required for secure session management in production. ' +
+          'Set REDIS_URL or disable Redis with FEATURE_REDIS_ENABLED=false (not recommended for dashboard).'
+      );
+    }
+    logger.info('Sprint 137 (MED-001): Redis session store configuration validated');
+  }
+
+  // Sprint 137: Warn if Redis is NOT enabled in production (recommended for dashboard)
+  if (isProduction && !cfg.features.redisEnabled) {
+    logger.warn(
+      'SECURITY WARNING: Redis is disabled in production. Dashboard sessions will use in-memory storage ' +
+        'which does not persist across restarts and cannot scale across multiple instances. ' +
+        'Set FEATURE_REDIS_ENABLED=true and configure REDIS_URL for production deployments.'
+    );
+  }
+
+  // ==========================================================================
   // Sprint 81: Security Configuration Validation
   // ==========================================================================
 
@@ -898,12 +928,26 @@ function validateStartupConfig(cfg: typeof parsedConfig): void {
     );
   }
 
-  // MED-7: Warn about wildcard CORS in production
+  // Sprint 133 (HIGH-001): CORS wildcard check - ENFORCE in production
+  // MED-7 upgraded to HIGH-001: Wildcard CORS must not be allowed in production
   if (isProduction && cfg.cors.allowedOrigins.includes('*')) {
-    logger.warn(
-      'SECURITY WARNING: CORS is configured to allow all origins (*). ' +
-        'Consider setting CORS_ALLOWED_ORIGINS to specific domains in production.'
-    );
+    // Allow bypass via explicit environment variable
+    if (process.env.CORS_ALLOW_WILDCARD_IN_PRODUCTION === 'true') {
+      logger.warn(
+        'SECURITY WARNING: CORS wildcard (*) explicitly allowed in production via CORS_ALLOW_WILDCARD_IN_PRODUCTION. ' +
+          'This is NOT recommended and exposes the API to cross-origin attacks.'
+      );
+    } else {
+      logger.fatal(
+        'SECURITY ERROR: CORS is configured to allow all origins (*) in production. ' +
+          'Set CORS_ALLOWED_ORIGINS to specific domains (comma-separated) or ' +
+          'set CORS_ALLOW_WILDCARD_IN_PRODUCTION=true to bypass (NOT recommended).'
+      );
+      throw new Error(
+        'CORS_ALLOWED_ORIGINS must not be wildcard (*) in production. ' +
+          'Configure specific allowed origins or set CORS_ALLOW_WILDCARD_IN_PRODUCTION=true to bypass.'
+      );
+    }
   }
 
   // ==========================================================================

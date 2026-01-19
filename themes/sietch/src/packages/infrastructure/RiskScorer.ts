@@ -154,15 +154,15 @@ export class RiskScorer {
       // Determine operation type
       let opRisk = 0;
       if (actions.includes('delete') && actions.includes('create')) {
-        opRisk = OPERATION_RISK['delete-then-create'];
+        opRisk = OPERATION_RISK['delete-then-create'] ?? 0;
       } else if (actions.includes('delete')) {
-        opRisk = OPERATION_RISK.delete;
+        opRisk = OPERATION_RISK.delete ?? 0;
       } else if (actions.includes('update')) {
-        opRisk = OPERATION_RISK.update;
+        opRisk = OPERATION_RISK.update ?? 0;
       } else if (actions.includes('create')) {
-        opRisk = OPERATION_RISK.create;
+        opRisk = OPERATION_RISK.create ?? 0;
       } else {
-        opRisk = OPERATION_RISK['no-op'];
+        opRisk = OPERATION_RISK['no-op'] ?? 0;
       }
 
       maxRisk = Math.max(maxRisk, opRisk);

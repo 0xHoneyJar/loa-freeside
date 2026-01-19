@@ -60,6 +60,8 @@ export {
   type AccessCheckResult,
   type TierCheckResult,
   type BadgeCheckResult,
+  // MinimalRedis interface for sandbox operations
+  type MinimalRedis,
   // Serialization
   serializeContext,
   deserializeContext,

@@ -195,13 +195,16 @@ export interface ISigningAdapter {
  * Signing adapter error types
  */
 export class SigningError extends Error {
+  public readonly code: string;
+
   constructor(
     message: string,
-    public readonly code: string,
-    public readonly cause?: Error
+    code: string,
+    public override readonly cause?: Error
   ) {
     super(message);
     this.name = 'SigningError';
+    this.code = code;
   }
 }
 

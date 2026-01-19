@@ -178,7 +178,7 @@ export function getNextState(current: WizardState): WizardState | null {
   if (currentIndex === -1 || currentIndex >= order.length - 1) {
     return null;
   }
-  return order[currentIndex + 1];
+  return order[currentIndex + 1] ?? null;
 }
 
 /**
@@ -204,5 +204,5 @@ export function getPreviousState(current: WizardState): WizardState | null {
   if (currentIndex <= 0) {
     return null;
   }
-  return order[currentIndex - 1];
+  return order[currentIndex - 1] ?? null;
 }

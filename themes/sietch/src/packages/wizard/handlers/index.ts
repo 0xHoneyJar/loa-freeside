@@ -21,7 +21,7 @@ export { reviewHandler } from './reviewHandler.js';
 export { deployHandler } from './deployHandler.js';
 
 import { WizardState } from '../WizardState.js';
-import { StepHandler } from '../WizardEngine.js';
+import type { StepHandler } from '../WizardEngine.js';
 import { initHandler } from './initHandler.js';
 import { chainSelectHandler } from './chainSelectHandler.js';
 import { assetConfigHandler } from './assetConfigHandler.js';

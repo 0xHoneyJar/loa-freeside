@@ -327,16 +327,16 @@ export function parseRedisKey(key: string): {
   const parts = key.split(':');
 
   if (parts.length === 1) {
-    return { prefix: parts[0] };
+    return { prefix: parts[0] ?? '' };
   }
 
   if (parts.length === 2) {
-    return { prefix: parts[0], identifier: parts[1] };
+    return { prefix: parts[0] ?? '', identifier: parts[1] ?? '' };
   }
 
   return {
-    prefix: parts[0],
-    subtype: parts[1],
+    prefix: parts[0] ?? '',
+    subtype: parts[1] ?? '',
     identifier: parts.slice(2).join(':'),
   };
 }

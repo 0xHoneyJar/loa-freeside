@@ -25,9 +25,10 @@ import {
   createSimulationService,
   SimulationErrorCode,
   type TierId,
+  type BadgeId,
+  type MinimalRedis,
 } from '../../services/sandbox/index.js';
 import { isValidTierId } from '../../services/sandbox/simulation-context.js';
-import type { MinimalRedis } from '../../../../../packages/sandbox/src/types.js';
 import {
   requireAuth,
   requireSandboxAccess,
@@ -218,10 +219,10 @@ export function createSimulationRouter(deps: SimulationRouterDeps): Router {
       const { tierId, rank, badges, note, version } = parseResult.data;
 
       const result = await simulationService!.assumeRole(
-        sandboxId!,
-        userId,
+        sandboxId ?? '',
+        userId ?? '',
         tierId as TierId,
-        { rank, badges, note, expectedVersion: version }
+        { rank, badges: badges as BadgeId[] | undefined, note, expectedVersion: version }
       );
 
       if (!result.success) {
@@ -260,7 +261,7 @@ export function createSimulationRouter(deps: SimulationRouterDeps): Router {
       const { sandboxId, simulationService } = req;
       const { userId } = req.params;
 
-      const result = await simulationService!.clearRole(sandboxId!, userId);
+      const result = await simulationService!.clearRole(sandboxId ?? '', userId ?? '');
 
       if (!result.success) {
         res.status(getHttpStatus(result.error!.code)).json({
@@ -298,7 +299,7 @@ export function createSimulationRouter(deps: SimulationRouterDeps): Router {
       const { sandboxId, simulationService } = req;
       const { userId } = req.params;
 
-      const result = await simulationService!.whoami(sandboxId!, userId);
+      const result = await simulationService!.whoami(sandboxId ?? '', userId ?? '');
 
       if (!result.success) {
         res.status(getHttpStatus(result.error!.code)).json({
@@ -329,7 +330,7 @@ export function createSimulationRouter(deps: SimulationRouterDeps): Router {
       const { sandboxId, simulationService } = req;
       const { userId } = req.params;
 
-      const result = await simulationService!.getState(sandboxId!, userId);
+      const result = await simulationService!.getState(sandboxId ?? '', userId ?? '');
 
       if (!result.success) {
         res.status(getHttpStatus(result.error!.code)).json({
@@ -375,8 +376,8 @@ export function createSimulationRouter(deps: SimulationRouterDeps): Router {
       const { version, ...stateUpdates } = parseResult.data;
 
       const result = await simulationService!.setState(
-        sandboxId!,
-        userId,
+        sandboxId ?? '',
+        userId ?? '',
         stateUpdates,
         { expectedVersion: version }
       );
@@ -417,7 +418,7 @@ export function createSimulationRouter(deps: SimulationRouterDeps): Router {
       const { sandboxId, simulationService } = req;
       const { userId } = req.params;
 
-      const result = await simulationService!.deleteContext(sandboxId!, userId);
+      const result = await simulationService!.deleteContext(sandboxId ?? '', userId ?? '');
 
       if (!result.success) {
         res.status(getHttpStatus(result.error!.code)).json({
@@ -478,8 +479,8 @@ export function createSimulationRouter(deps: SimulationRouterDeps): Router {
             return;
           }
           result = await simulationService!.checkChannelAccess(
-            sandboxId!,
-            userId,
+            sandboxId ?? '',
+            userId ?? '',
             target
           );
           break;
@@ -493,18 +494,18 @@ export function createSimulationRouter(deps: SimulationRouterDeps): Router {
             return;
           }
           result = await simulationService!.checkFeatureAccess(
-            sandboxId!,
-            userId,
+            sandboxId ?? '',
+            userId ?? '',
             target
           );
           break;
 
         case 'tier':
-          result = await simulationService!.checkTier(sandboxId!, userId);
+          result = await simulationService!.checkTier(sandboxId ?? '', userId ?? '');
           break;
 
         case 'badges':
-          result = await simulationService!.checkBadges(sandboxId!, userId);
+          result = await simulationService!.checkBadges(sandboxId ?? '', userId ?? '');
           break;
 
         default:
@@ -550,8 +551,8 @@ export function createSimulationRouter(deps: SimulationRouterDeps): Router {
       const { userId } = req.params;
 
       const result = await simulationService!.getThresholdOverrides(
-        sandboxId!,
-        userId
+        sandboxId ?? '',
+        userId ?? ''
       );
 
       if (!result.success) {
@@ -600,8 +601,8 @@ export function createSimulationRouter(deps: SimulationRouterDeps): Router {
       const { version, ...thresholdOverrides } = parseResult.data;
 
       const result = await simulationService!.setThresholdOverrides(
-        sandboxId!,
-        userId,
+        sandboxId ?? '',
+        userId ?? '',
         thresholdOverrides,
         { expectedVersion: version }
       );
@@ -645,8 +646,8 @@ export function createSimulationRouter(deps: SimulationRouterDeps): Router {
       const { userId } = req.params;
 
       const result = await simulationService!.clearThresholdOverrides(
-        sandboxId!,
-        userId
+        sandboxId ?? '',
+        userId ?? ''
       );
 
       if (!result.success) {
@@ -684,11 +685,14 @@ export function createSimulationRouter(deps: SimulationRouterDeps): Router {
       });
 
       // Send sanitized response to client
-      res.status(sanitizedResponse.status).json({
+      const responseBody: Record<string, unknown> = {
         error: sanitizedResponse.error,
         errorRef: sanitizedResponse.errorRef,
-        ...(sanitizedResponse.details && { details: sanitizedResponse.details }),
-      });
+      };
+      if (sanitizedResponse.details) {
+        responseBody.details = sanitizedResponse.details;
+      }
+      res.status(sanitizedResponse.status).json(responseBody);
     }
   );
 
