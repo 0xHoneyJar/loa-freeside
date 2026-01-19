@@ -20,7 +20,6 @@ import {
   formatInfo,
   handleError,
   ExitCodes,
-  OperationSymbols,
 } from './utils.js';
 import { createClientFromEnv } from './iac/index.js';
 import { createWorkspaceManager } from './iac/WorkspaceManager.js';

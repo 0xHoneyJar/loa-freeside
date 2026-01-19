@@ -33,7 +33,6 @@ import {
 import { createWorkspaceManager } from './iac/WorkspaceManager.js';
 import { ApplyEngine } from './iac/ApplyEngine.js';
 import { BackendFactory } from './iac/backends/BackendFactory.js';
-import { formatLockInfo } from './iac/StateLock.js';
 import type { ApplyResult } from './iac/types.js';
 
 /**

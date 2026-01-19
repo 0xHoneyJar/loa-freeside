@@ -109,7 +109,8 @@ export class StateLock {
     if (!result.acquired) {
       throw new StateLockError(
         result.error ?? 'Failed to acquire state lock',
-        result.lockInfo
+        result.lockInfo!,
+        this.backend.type
       );
     }
 
@@ -240,7 +241,8 @@ export class StateLock {
     if (lockInfo) {
       throw new StateLockError(
         `Workspace "${workspace}" is locked by another process`,
-        lockInfo
+        lockInfo,
+        this.backend.type
       );
     }
 

@@ -13,7 +13,7 @@
 import type { StateBackend, GaibState } from './backends/types.js';
 import type { ServerDiff, ApplyBatchResult, Snowflake } from './types.js';
 import { StateWriter, type ApplyOptions } from './StateWriter.js';
-import { StateLock, formatLockInfo, type AcquireLockOptions } from './StateLock.js';
+import { StateLock, type AcquireLockOptions } from './StateLock.js';
 import { DiscordClient } from './DiscordClient.js';
 import { createEmptyState } from './backends/types.js';
 
@@ -80,13 +80,11 @@ export interface ApplyEngineResult {
  */
 export class ApplyEngine {
   private readonly backend: StateBackend;
-  private readonly client: DiscordClient;
   private readonly writer: StateWriter;
   private readonly stateLock: StateLock;
 
   constructor(backend: StateBackend, client: DiscordClient, writer?: StateWriter) {
     this.backend = backend;
-    this.client = client;
     this.writer = writer ?? new StateWriter(client);
     this.stateLock = new StateLock(backend);
   }
@@ -177,7 +175,7 @@ export class ApplyEngine {
    */
   private async updateState(
     workspace: string,
-    guildId: Snowflake,
+    _guildId: Snowflake,
     diff: ServerDiff,
     applyResult: ApplyBatchResult
   ): Promise<number> {
@@ -193,7 +191,6 @@ export class ApplyEngine {
     // Update metadata
     state.serial += 1;
     state.lastModified = new Date().toISOString();
-    state.guildId = guildId;
 
     // Persist state
     await this.backend.setState(workspace, state);
@@ -395,13 +392,15 @@ export function createApplyEngine(
 
 /**
  * Create an ApplyEngine from environment variables
+ *
+ * Accepts either DISCORD_BOT_TOKEN or DISCORD_TOKEN for flexibility
  */
 export function createApplyEngineFromEnv(backend: StateBackend): ApplyEngine {
-  const token = process.env.DISCORD_BOT_TOKEN;
+  const token = process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN;
   if (!token) {
     throw new Error(
-      'DISCORD_BOT_TOKEN environment variable is required.\n' +
-        'Set it with: export DISCORD_BOT_TOKEN="your-bot-token"'
+      'Discord bot token not found.\n' +
+        'Set DISCORD_BOT_TOKEN or DISCORD_TOKEN environment variable.'
     );
   }
   const client = new DiscordClient({ token });

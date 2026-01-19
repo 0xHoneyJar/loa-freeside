@@ -49,6 +49,7 @@ Examples:
   $ gaib server apply                        Apply changes to Discord
   $ gaib server apply --auto-approve         Apply without confirmation
   $ gaib server destroy                      Destroy all managed resources
+  $ gaib server teardown --confirm-teardown  ⚠️ DANGEROUS: Delete ALL server resources
   $ gaib server export                       Export current Discord state to YAML
   $ gaib server export --guild 123456789     Export specific guild
 
@@ -81,6 +82,7 @@ Theme Commands:
   registerDiffCommand(server);
   registerApplyCommand(server);
   registerDestroyCommand(server);
+  registerTeardownCommand(server);
   registerExportCommand(server);
   registerWorkspaceCommand(server);
   registerImportCommand(server);
@@ -231,6 +233,68 @@ function registerDestroyCommand(parent: Command): void {
           ...options,
           quiet: globalOpts.quiet,
           targetTypes: options.target,
+        });
+      } catch (error) {
+        handleError(error, options.json);
+      }
+    });
+}
+
+/**
+ * Registers the 'teardown' subcommand
+ *
+ * DANGEROUS: Destroys ALL Discord server resources (not just managed ones).
+ * Designed for resetting test/sandbox servers only.
+ *
+ * Safety measures:
+ * - Requires explicit --confirm-teardown flag
+ * - Server name must be typed exactly
+ * - Random 6-digit confirmation code
+ * - Final "TEARDOWN" keyword confirmation
+ */
+function registerTeardownCommand(parent: Command): void {
+  parent
+    .command('teardown')
+    .description('⚠️ DANGEROUS: Delete ALL server resources (roles, categories, channels)')
+    .option('-g, --guild <id>', 'Discord guild/server ID (required)')
+    .option('--json', 'Output result as JSON')
+    .option('--confirm-teardown', 'Required flag to enable teardown (safety measure)')
+    .option('--dry-run', 'Show what would be deleted without making changes')
+    .option('--preserve-categories <names...>', 'Category names to preserve (not delete)')
+    .option('--force', 'Skip interactive prompts (requires --confirm-teardown and --json)')
+    .addHelpText(
+      'after',
+      `
+${chalk.red.bold('⚠️  WARNING: This command is EXTREMELY DANGEROUS!')}
+
+This command will ${chalk.red('PERMANENTLY DELETE')} all:
+  • Roles (except bot-managed and @everyone)
+  • Categories
+  • Channels (text, voice, forum, etc.)
+
+${chalk.yellow('Safety Requirements:')}
+  1. You MUST pass --confirm-teardown flag
+  2. You MUST type the server name exactly
+  3. You MUST enter a random 6-digit confirmation code
+  4. You MUST type "TEARDOWN" to execute
+
+${chalk.cyan('Examples:')}
+  $ gaib server teardown --guild 123456789 --dry-run
+  $ gaib server teardown --guild 123456789 --confirm-teardown
+  $ gaib server teardown --guild 123456789 --confirm-teardown --preserve-categories "archived"
+
+${chalk.dim('This command is intended for resetting test/sandbox servers only.')}
+`
+    )
+    .action(async (options) => {
+      try {
+        const { teardownCommand } = await import('./teardown.js');
+        const globalOpts = parent.optsWithGlobals();
+        await teardownCommand({
+          ...options,
+          quiet: globalOpts.quiet,
+          preserveCategories: options.preserveCategories,
+          force: options.force,
         });
       } catch (error) {
         handleError(error, options.json);

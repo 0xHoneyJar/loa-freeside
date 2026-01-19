@@ -320,6 +320,141 @@ export class DiscordClient {
     }
   }
 
+  // ============================================================================
+  // Resource Fetching Methods (Sprint 99)
+  // ============================================================================
+
+  /**
+   * Fetch a single role by ID
+   *
+   * @param guildId - Discord guild ID
+   * @param roleId - Discord role ID
+   * @returns Role data or null if not found
+   */
+  async fetchRole(guildId: Snowflake, roleId: Snowflake): Promise<APIRole | null> {
+    try {
+      const roles = await this.fetchRoles(guildId);
+      return roles.find((r) => r.id === roleId) ?? null;
+    } catch (error) {
+      throw this.handleError(error, `Failed to fetch role ${roleId} in guild ${guildId}`);
+    }
+  }
+
+  /**
+   * Fetch a single channel by ID
+   *
+   * @param channelId - Discord channel ID
+   * @returns Channel data
+   */
+  async fetchChannel(channelId: Snowflake): Promise<APIChannel> {
+    try {
+      return (await this.rest.get(Routes.channel(channelId))) as APIChannel;
+    } catch (error) {
+      throw this.handleError(error, `Failed to fetch channel ${channelId}`);
+    }
+  }
+
+  /**
+   * Fetch a resource by type and ID
+   *
+   * @param guildId - Discord guild ID
+   * @param type - Resource type (role, channel, category)
+   * @param resourceId - Discord resource ID
+   * @returns Fetched resource in state-compatible format
+   * @throws DiscordApiError if resource not found or permission denied
+   */
+  async fetchResource(
+    guildId: Snowflake,
+    type: 'role' | 'channel' | 'category',
+    resourceId: Snowflake
+  ): Promise<FetchedResource> {
+    switch (type) {
+      case 'role': {
+        const role = await this.fetchRole(guildId, resourceId);
+        if (!role) {
+          throw new DiscordApiError(
+            `Role ${resourceId} not found in guild ${guildId}`,
+            DiscordErrorCode.GUILD_NOT_FOUND,
+            404
+          );
+        }
+        return {
+          type: 'role',
+          id: role.id,
+          name: role.name,
+          attributes: {
+            id: role.id,
+            name: role.name,
+            color: `#${role.color.toString(16).padStart(6, '0')}`,
+            hoist: role.hoist,
+            mentionable: role.mentionable,
+            permissions: role.permissions,
+            position: role.position,
+          },
+        };
+      }
+
+      case 'channel':
+      case 'category': {
+        const channel = await this.fetchChannel(resourceId);
+        const isChannelCategory = channel.type === DiscordChannelType.GuildCategory;
+
+        // Validate type matches
+        if (type === 'category' && !isChannelCategory) {
+          throw new DiscordApiError(
+            `Resource ${resourceId} is a channel, not a category`,
+            DiscordErrorCode.API_ERROR,
+            400
+          );
+        }
+        if (type === 'channel' && isChannelCategory) {
+          throw new DiscordApiError(
+            `Resource ${resourceId} is a category, not a channel`,
+            DiscordErrorCode.API_ERROR,
+            400
+          );
+        }
+
+        const channelType = mapChannelType(channel.type);
+
+        if (isChannelCategory) {
+          return {
+            type: 'category',
+            id: channel.id,
+            name: channel.name ?? 'unknown',
+            attributes: {
+              id: channel.id,
+              name: channel.name,
+              position: 'position' in channel ? channel.position : 0,
+            },
+          };
+        }
+
+        return {
+          type: 'channel',
+          id: channel.id,
+          name: channel.name ?? 'unknown',
+          attributes: {
+            id: channel.id,
+            name: channel.name,
+            type: channelType ?? 'text',
+            position: 'position' in channel ? channel.position : 0,
+            parent_id: 'parent_id' in channel ? channel.parent_id : null,
+            topic: 'topic' in channel ? channel.topic : null,
+            nsfw: 'nsfw' in channel ? channel.nsfw : false,
+          },
+        };
+      }
+
+      default:
+        throw new DiscordApiError(
+          `Unsupported resource type: ${type}`,
+          DiscordErrorCode.API_ERROR,
+          400
+        );
+    }
+  }
+
   /**
    * Handle Discord API errors
    */
@@ -410,15 +545,17 @@ export class DiscordClient {
 /**
  * Create a Discord client from environment variable
  *
+ * Accepts either DISCORD_BOT_TOKEN or DISCORD_TOKEN for flexibility
+ *
  * @returns DiscordClient instance
- * @throws Error if DISCORD_BOT_TOKEN is not set
+ * @throws Error if neither DISCORD_BOT_TOKEN nor DISCORD_TOKEN is set
  */
 export function createClientFromEnv(): DiscordClient {
-  const token = process.env.DISCORD_BOT_TOKEN;
+  const token = process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN;
   if (!token) {
     throw new Error(
-      'DISCORD_BOT_TOKEN environment variable is required.\n' +
-        'Set it with: export DISCORD_BOT_TOKEN="your-bot-token"'
+      'Discord bot token not found.\n' +
+        'Set DISCORD_BOT_TOKEN or DISCORD_TOKEN environment variable.'
     );
   }
   return new DiscordClient({ token });
@@ -465,4 +602,27 @@ export function mapChannelType(
     default:
       return null; // Unsupported channel type
   }
+}
+
+// ============================================================================
+// Resource Types (Sprint 99)
+// ============================================================================
+
+/**
+ * Supported resource types for import and state operations
+ */
+export type ResourceType = 'role' | 'channel' | 'category';
+
+/**
+ * Fetched resource in state-compatible format
+ */
+export interface FetchedResource {
+  /** Resource type */
+  type: ResourceType;
+  /** Resource ID (Discord snowflake) */
+  id: string;
+  /** Resource name */
+  name: string;
+  /** Resource attributes for state */
+  attributes: Record<string, unknown>;
 }

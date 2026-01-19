@@ -21,14 +21,16 @@ import type { ServerDiff, ResourceChange, PermissionChange } from './iac/types.j
 /**
  * Gets the Discord bot token from environment
  *
- * @throws Error if DISCORD_BOT_TOKEN is not set
+ * Accepts either DISCORD_BOT_TOKEN or DISCORD_TOKEN for flexibility
+ *
+ * @throws Error if neither DISCORD_BOT_TOKEN nor DISCORD_TOKEN is set
  */
 export function getDiscordToken(): string {
-  const token = process.env.DISCORD_BOT_TOKEN;
+  const token = process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN;
   if (!token) {
     throw new Error(
-      'DISCORD_BOT_TOKEN environment variable is not set.\n' +
-        'Please set it to your Discord bot token with appropriate permissions.'
+      'Discord bot token not found.\n' +
+        'Please set DISCORD_BOT_TOKEN or DISCORD_TOKEN environment variable.'
     );
   }
   return token;

@@ -23,7 +23,6 @@ import type {
 import { StateWriter, type ApplyOptions } from './StateWriter.js';
 import { StateLock, type AcquireLockOptions } from './StateLock.js';
 import { DiscordClient } from './DiscordClient.js';
-import { createEmptyState } from './backends/types.js';
 
 // ============================================================================
 // Types
@@ -99,13 +98,11 @@ interface StateResource {
  */
 export class DestroyEngine {
   private readonly backend: StateBackend;
-  private readonly client: DiscordClient;
   private readonly writer: StateWriter;
   private readonly stateLock: StateLock;
 
   constructor(backend: StateBackend, client: DiscordClient, writer?: StateWriter) {
     this.backend = backend;
-    this.client = client;
     this.writer = writer ?? new StateWriter(client);
     this.stateLock = new StateLock(backend);
   }
@@ -284,10 +281,14 @@ export class DestroyEngine {
           current: {
             id: resource.id,
             name: resource.attributes.name as string,
-            color: resource.attributes.color as string,
-            hoist: resource.attributes.hoist as boolean,
-            mentionable: resource.attributes.mentionable as boolean,
-            permissions: resource.attributes.permissions as string[],
+            color: (resource.attributes.color as string) ?? '#000000',
+            hoist: (resource.attributes.hoist as boolean) ?? false,
+            mentionable: (resource.attributes.mentionable as boolean) ?? false,
+            permissions: (resource.attributes.permissions ?? []) as import('./types.js').RoleState['permissions'],
+            position: (resource.attributes.position as number) ?? 0,
+            managed: false,
+            isEveryone: false,
+            isIacManaged: true,
           },
         });
       } else if (resource.type === 'category') {
@@ -297,7 +298,9 @@ export class DestroyEngine {
           current: {
             id: resource.id,
             name: resource.attributes.name as string,
-            position: resource.attributes.position as number,
+            position: (resource.attributes.position as number) ?? 0,
+            permissionOverwrites: [],
+            isIacManaged: true,
           },
         });
       } else if (resource.type === 'channel') {
@@ -311,11 +314,13 @@ export class DestroyEngine {
             parentId: resource.attributes.parent_id as string | undefined,
             parentName: resource.attributes.parent_name as string | undefined,
             topic: resource.attributes.topic as string | undefined,
-            nsfw: resource.attributes.nsfw as boolean | undefined,
-            slowmode: resource.attributes.slowmode as number | undefined,
-            position: resource.attributes.position as number | undefined,
+            nsfw: (resource.attributes.nsfw as boolean) ?? false,
+            slowmode: (resource.attributes.slowmode as number) ?? 0,
+            position: (resource.attributes.position as number) ?? 0,
             bitrate: resource.attributes.bitrate as number | undefined,
             userLimit: resource.attributes.user_limit as number | undefined,
+            permissionOverwrites: [],
+            isIacManaged: true,
           },
         });
       }
@@ -324,6 +329,7 @@ export class DestroyEngine {
     const total = roles.length + categories.length + channels.length;
 
     return {
+      guildId: '', // Will be set during apply
       roles,
       categories,
       channels,
@@ -333,6 +339,7 @@ export class DestroyEngine {
         create: 0,
         update: 0,
         delete: total,
+        noop: 0,
         total,
       },
     };
@@ -343,6 +350,7 @@ export class DestroyEngine {
    */
   private createEmptyDiff(): ServerDiff {
     return {
+      guildId: '',
       roles: [],
       categories: [],
       channels: [],
@@ -352,6 +360,7 @@ export class DestroyEngine {
         create: 0,
         update: 0,
         delete: 0,
+        noop: 0,
         total: 0,
       },
     };
@@ -363,7 +372,7 @@ export class DestroyEngine {
   private async updateState(
     workspace: string,
     state: GaibState,
-    destroyedResources: StateResource[],
+    _destroyedResources: StateResource[],
     applyResult: ApplyBatchResult
   ): Promise<number> {
     // Build set of successfully destroyed resources
@@ -431,13 +440,15 @@ export function createDestroyEngine(
 
 /**
  * Create a DestroyEngine from environment variables
+ *
+ * Accepts either DISCORD_BOT_TOKEN or DISCORD_TOKEN for flexibility
  */
 export function createDestroyEngineFromEnv(backend: StateBackend): DestroyEngine {
-  const token = process.env.DISCORD_BOT_TOKEN;
+  const token = process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN;
   if (!token) {
     throw new Error(
-      'DISCORD_BOT_TOKEN environment variable is required.\n' +
-        'Set it with: export DISCORD_BOT_TOKEN="your-bot-token"'
+      'Discord bot token not found.\n' +
+        'Set DISCORD_BOT_TOKEN or DISCORD_TOKEN environment variable.'
     );
   }
   const client = new DiscordClient({ token });

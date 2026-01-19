@@ -784,13 +784,15 @@ export class StateWriter {
 
 /**
  * Create a StateWriter from environment
+ *
+ * Accepts either DISCORD_BOT_TOKEN or DISCORD_TOKEN for flexibility
  */
 export function createWriterFromEnv(): StateWriter {
-  const token = process.env.DISCORD_BOT_TOKEN;
+  const token = process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN;
   if (!token) {
     throw new Error(
-      'DISCORD_BOT_TOKEN environment variable is required.\n' +
-        'Set it with: export DISCORD_BOT_TOKEN="your-bot-token"'
+      'Discord bot token not found.\n' +
+        'Set DISCORD_BOT_TOKEN or DISCORD_TOKEN environment variable.'
     );
   }
   const client = new DiscordClient({ token });
