@@ -30,7 +30,7 @@ vi.mock('chalk', () => ({
   },
 }));
 
-import { connectCommand } from '../connect.js';
+import { connectCommand } from '../env.js';
 import * as utils from '../utils.js';
 
 describe('connectCommand', () => {

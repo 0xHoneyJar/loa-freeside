@@ -47,7 +47,7 @@ vi.mock('cli-table3', () => ({
   })),
 }));
 
-import { listCommand } from '../list.js';
+import { listCommand } from '../ls.js';
 import * as utils from '../utils.js';
 
 describe('listCommand', () => {

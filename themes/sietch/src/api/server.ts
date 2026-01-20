@@ -4,7 +4,7 @@ import helmet from 'helmet';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import type { IncomingMessage, ServerResponse } from 'http';
-import { config } from '../config.js';
+import { config, hasLegacyKeys, LEGACY_KEY_SUNSET_DATE } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { initDatabase, closeDatabase } from '../db/index.js';
 import { publicRouter, adminRouter, memberRouter, billingRouter, badgeRouter, boostRouter } from './routes.js';
@@ -281,6 +281,25 @@ export async function startServer(): Promise<void> {
 
   // Create Express app
   app = createApp();
+
+  // ==========================================================================
+  // Sprint 152: Security startup checks
+  // ==========================================================================
+
+  // M-4: Log startup warning for legacy plaintext API keys
+  if (hasLegacyKeys()) {
+    const legacyKeyCount = config.api.adminApiKeys.legacyKeys.size;
+    logger.warn(
+      {
+        legacyKeyCount,
+        sunsetDate: LEGACY_KEY_SUNSET_DATE,
+        metric: 'sietch_legacy_api_keys_configured',
+      },
+      `SECURITY WARNING: ${legacyKeyCount} legacy plaintext API key(s) configured. ` +
+        `Migrate to bcrypt-hashed keys before ${LEGACY_KEY_SUNSET_DATE}. ` +
+        'Use POST /admin/api-keys/rotate to generate secure bcrypt-hashed keys.'
+    );
+  }
 
   // Start listening
   const { port, host } = config.api;

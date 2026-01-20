@@ -22,6 +22,8 @@ vi.mock('../utils.js', () => ({
     fatal: vi.fn(),
     child: vi.fn().mockReturnThis(),
   })),
+  isInteractive: vi.fn(() => false),
+  canPrompt: vi.fn(() => false),
 }));
 
 vi.mock('ora', () => ({
@@ -50,7 +52,7 @@ vi.mock('readline', () => ({
   })),
 }));
 
-import { destroyCommand } from '../destroy.js';
+import { destroyCommand } from '../rm.js';
 import * as utils from '../utils.js';
 
 describe('destroyCommand', () => {

@@ -31,6 +31,7 @@ vi.mock('../utils.js', () => ({
     fatal: vi.fn(),
     child: vi.fn().mockReturnThis(),
   })),
+  isInteractive: vi.fn(() => false),
 }));
 
 vi.mock('ora', () => ({
@@ -51,7 +52,7 @@ vi.mock('chalk', () => ({
   },
 }));
 
-import { createCommand } from '../create.js';
+import { createCommand } from '../new.js';
 import * as utils from '../utils.js';
 
 describe('createCommand', () => {

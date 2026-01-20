@@ -355,15 +355,20 @@ describeIntegration('Discord API Integration', () => {
 
 describe('DiscordClient utilities', () => {
   describe('createClientFromEnv', () => {
-    it('should throw if DISCORD_BOT_TOKEN not set', () => {
-      const originalToken = process.env.DISCORD_BOT_TOKEN;
+    it('should throw if DISCORD_BOT_TOKEN and DISCORD_TOKEN not set', () => {
+      const originalBotToken = process.env.DISCORD_BOT_TOKEN;
+      const originalToken = process.env.DISCORD_TOKEN;
       delete process.env.DISCORD_BOT_TOKEN;
+      delete process.env.DISCORD_TOKEN;
 
       try {
-        expect(() => createClientFromEnv()).toThrow('DISCORD_BOT_TOKEN');
+        expect(() => createClientFromEnv()).toThrow('Discord bot token not found');
       } finally {
+        if (originalBotToken) {
+          process.env.DISCORD_BOT_TOKEN = originalBotToken;
+        }
         if (originalToken) {
-          process.env.DISCORD_BOT_TOKEN = originalToken;
+          process.env.DISCORD_TOKEN = originalToken;
         }
       }
     });

@@ -146,13 +146,15 @@ describe('Environment Variables (S-93.8)', () => {
 
   afterEach(() => {
     process.env.DISCORD_BOT_TOKEN = originalEnv.DISCORD_BOT_TOKEN;
+    process.env.DISCORD_TOKEN = originalEnv.DISCORD_TOKEN;
     process.env.DISCORD_GUILD_ID = originalEnv.DISCORD_GUILD_ID;
   });
 
   describe('getDiscordToken', () => {
-    it('should throw when DISCORD_BOT_TOKEN is not set', () => {
+    it('should throw when neither DISCORD_BOT_TOKEN nor DISCORD_TOKEN is set', () => {
       delete process.env.DISCORD_BOT_TOKEN;
-      expect(() => getDiscordToken()).toThrow('DISCORD_BOT_TOKEN');
+      delete process.env.DISCORD_TOKEN;
+      expect(() => getDiscordToken()).toThrow('Discord bot token not found');
     });
 
     it('should return token when set', () => {
