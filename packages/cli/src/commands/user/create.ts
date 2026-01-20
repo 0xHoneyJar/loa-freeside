@@ -155,6 +155,13 @@ export async function createCommand(options: CreateOptions): Promise<void> {
         console.log();
         console.log(chalk.dim('User will be required to change password on first login.'));
       }
+
+      // Sprint 148: Next-step suggestion
+      if (!quiet && process.stdout.isTTY) {
+        console.log();
+        console.log(chalk.dim('Next step:'));
+        console.log(`  ${chalk.cyan(`gaib user grant ${data.user?.id} <sandbox-id>`)}  ${chalk.dim('- Grant sandbox access')}`);
+      }
     }
   } catch (error) {
     spinner?.fail('Request failed');

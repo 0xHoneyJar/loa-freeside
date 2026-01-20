@@ -6,10 +6,12 @@
  * Sprint 87: Discord Server Sandboxes - Cleanup & Polish
  * Sprint 88: Discord Server Sandboxes - CLI Best Practices Compliance
  * Sprint 90: CLI Rename (bd → gaib)
+ * Sprint 146: CLI Ergonomics Refactoring (Crysknife Edge)
  *
  * Registers the `gaib sandbox` command group with all subcommands.
  *
  * @see SDD §6.0 CLI Commands
+ * @see grimoires/loa/prd.md §15 Crysknife Edge (CLI Ergonomics)
  * @module packages/cli/commands/sandbox
  */
 
@@ -39,29 +41,29 @@ export function createSandboxCommand(): Command {
       'after',
       `
 Examples:
-  $ gaib sandbox create                    Create sandbox with defaults (24h TTL)
-  $ gaib sandbox create --ttl 48h          Create sandbox with 48 hour TTL
-  $ gaib sandbox create --guild 123456     Create sandbox and register guild
-  $ gaib sandbox list                      List your running sandboxes
-  $ gaib sandbox list --all                List all statuses including destroyed
+  $ gaib sandbox new                       Create sandbox with defaults (24h TTL)
+  $ gaib sandbox new --ttl 48h             Create sandbox with 48 hour TTL
+  $ gaib sandbox new --guild 123456        Create sandbox and register guild
+  $ gaib sandbox ls                        List your running sandboxes
+  $ gaib sandbox ls --all                  List all statuses including destroyed
   $ gaib sandbox status my-sandbox         Show detailed status and health checks
   $ gaib sandbox status my-sandbox --watch Watch status in real-time
-  $ gaib sandbox destroy my-sandbox        Destroy a sandbox by name
-  $ gaib sandbox connect my-sandbox        Get connection environment variables
-  $ eval $(gaib sandbox connect my-sandbox)  Export env vars to shell
-  $ gaib sandbox register-guild my-sandbox 123456789012345678  Register guild
-  $ gaib sandbox unregister-guild my-sandbox 123456789012345678  Unregister guild
+  $ gaib sandbox rm my-sandbox             Destroy a sandbox by name
+  $ gaib sandbox env my-sandbox            Get connection environment variables
+  $ eval $(gaib sandbox env my-sandbox)    Export env vars to shell
+  $ gaib sandbox link my-sandbox 123456789012345678    Register guild
+  $ gaib sandbox unlink my-sandbox 123456789012345678  Unregister guild
 `
     );
 
   // Import and register subcommands
-  registerCreateCommand(sandbox);
-  registerListCommand(sandbox);
-  registerDestroyCommand(sandbox);
-  registerConnectCommand(sandbox);
+  registerNewCommand(sandbox);
+  registerLsCommand(sandbox);
+  registerRmCommand(sandbox);
+  registerEnvCommand(sandbox);
   // Sprint 86: Event Routing commands
-  registerRegisterGuildCommand(sandbox);
-  registerUnregisterGuildCommand(sandbox);
+  registerLinkCommand(sandbox);
+  registerUnlinkCommand(sandbox);
   // Sprint 87: Cleanup & Polish commands
   registerStatusCommand(sandbox);
 
@@ -69,18 +71,18 @@ Examples:
 }
 
 /**
- * Registers the 'create' subcommand
+ * Registers the 'new' subcommand (create sandbox)
  */
-function registerCreateCommand(parent: Command): void {
+function registerNewCommand(parent: Command): void {
   parent
-    .command('create [name]')
+    .command('new [name]')
     .description('Create a new sandbox environment')
     .option('-t, --ttl <duration>', 'Time-to-live (e.g., 24h, 7d)', '24h')
     .option('-g, --guild <id>', 'Discord guild ID to register')
     .option('--json', 'Output as JSON')
     .option('-n, --dry-run', 'Show what would be created without doing it')
     .action(async (name: string | undefined, options) => {
-      const { createCommand } = await import('./create.js');
+      const { createCommand } = await import('./new.js');
       // Merge global options (quiet) with command options
       const globalOpts = parent.optsWithGlobals();
       await createCommand(name, { ...options, quiet: globalOpts.quiet });
@@ -88,19 +90,18 @@ function registerCreateCommand(parent: Command): void {
 }
 
 /**
- * Registers the 'list' subcommand
+ * Registers the 'ls' subcommand (list sandboxes)
  */
-function registerListCommand(parent: Command): void {
+function registerLsCommand(parent: Command): void {
   parent
-    .command('list')
-    .alias('ls')
+    .command('ls')
     .description('List sandboxes')
     .option('-o, --owner <username>', 'Filter by owner (default: current user)')
     .option('-s, --status <status>', 'Filter by status (running, expired, etc.)')
     .option('-a, --all', 'Include all statuses including destroyed')
     .option('--json', 'Output as JSON')
     .action(async (options) => {
-      const { listCommand } = await import('./list.js');
+      const { listCommand } = await import('./ls.js');
       // Merge global options (quiet) with command options
       const globalOpts = parent.optsWithGlobals();
       await listCommand({ ...options, quiet: globalOpts.quiet });
@@ -108,18 +109,17 @@ function registerListCommand(parent: Command): void {
 }
 
 /**
- * Registers the 'destroy' subcommand
+ * Registers the 'rm' subcommand (destroy sandbox)
  */
-function registerDestroyCommand(parent: Command): void {
+function registerRmCommand(parent: Command): void {
   parent
-    .command('destroy <name>')
-    .alias('rm')
+    .command('rm <name>')
     .description('Destroy a sandbox')
     .option('-y, --yes', 'Skip confirmation prompt')
     .option('--json', 'Output as JSON')
     .option('-n, --dry-run', 'Show what would be destroyed without doing it')
     .action(async (name: string, options) => {
-      const { destroyCommand } = await import('./destroy.js');
+      const { destroyCommand } = await import('./rm.js');
       // Merge global options (quiet) with command options
       const globalOpts = parent.optsWithGlobals();
       await destroyCommand(name, { ...options, quiet: globalOpts.quiet });
@@ -127,15 +127,15 @@ function registerDestroyCommand(parent: Command): void {
 }
 
 /**
- * Registers the 'connect' subcommand
+ * Registers the 'env' subcommand (connection environment)
  */
-function registerConnectCommand(parent: Command): void {
+function registerEnvCommand(parent: Command): void {
   parent
-    .command('connect <name>')
+    .command('env <name>')
     .description('Get connection environment variables for a sandbox')
     .option('--json', 'Output as JSON instead of shell exports')
     .action(async (name: string, options) => {
-      const { connectCommand } = await import('./connect.js');
+      const { connectCommand } = await import('./env.js');
       // Merge global options (quiet) with command options
       const globalOpts = parent.optsWithGlobals();
       await connectCommand(name, { ...options, quiet: globalOpts.quiet });
@@ -143,17 +143,16 @@ function registerConnectCommand(parent: Command): void {
 }
 
 /**
- * Registers the 'register-guild' subcommand
+ * Registers the 'link' subcommand (register guild)
  * Sprint 86: Event Routing
  */
-function registerRegisterGuildCommand(parent: Command): void {
+function registerLinkCommand(parent: Command): void {
   parent
-    .command('register-guild <sandbox> <guildId>')
-    .alias('reg')
+    .command('link <sandbox> <guildId>')
     .description('Register a Discord guild to route events to a sandbox')
     .option('--json', 'Output as JSON')
     .action(async (sandbox: string, guildId: string, options) => {
-      const { registerCommand } = await import('./register.js');
+      const { registerCommand } = await import('./link.js');
       // Merge global options (quiet) with command options
       const globalOpts = parent.optsWithGlobals();
       await registerCommand(sandbox, guildId, { ...options, quiet: globalOpts.quiet });
@@ -161,17 +160,16 @@ function registerRegisterGuildCommand(parent: Command): void {
 }
 
 /**
- * Registers the 'unregister-guild' subcommand
+ * Registers the 'unlink' subcommand (unregister guild)
  * Sprint 86: Event Routing
  */
-function registerUnregisterGuildCommand(parent: Command): void {
+function registerUnlinkCommand(parent: Command): void {
   parent
-    .command('unregister-guild <sandbox> <guildId>')
-    .alias('unreg')
+    .command('unlink <sandbox> <guildId>')
     .description('Unregister a Discord guild from a sandbox')
     .option('--json', 'Output as JSON')
     .action(async (sandbox: string, guildId: string, options) => {
-      const { unregisterCommand } = await import('./unregister.js');
+      const { unregisterCommand } = await import('./unlink.js');
       // Merge global options (quiet) with command options
       const globalOpts = parent.optsWithGlobals();
       await unregisterCommand(sandbox, guildId, { ...options, quiet: globalOpts.quiet });

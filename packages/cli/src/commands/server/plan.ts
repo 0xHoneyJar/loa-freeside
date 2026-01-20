@@ -19,6 +19,7 @@ import {
   formatPlanOutput,
   formatInfo,
   ExitCodes,
+  showNextStep,
 } from './utils.js';
 import {
   parseConfigWithTheme,
@@ -120,6 +121,15 @@ export async function planCommand(options: PlanOptions): Promise<void> {
     );
   } else {
     console.log(formatPlanOutput(diff));
+
+    // Sprint 148: Next-step suggestion
+    if (diff.hasChanges) {
+      showNextStep(
+        `gaib server apply -f ${options.file}`,
+        'Apply the planned changes',
+        options
+      );
+    }
   }
 
   // Exit with appropriate code

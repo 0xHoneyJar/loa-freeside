@@ -2,11 +2,13 @@
  * User Command Group
  *
  * Sprint 142: CLI User Management Commands
+ * Sprint 146: CLI Ergonomics Refactoring (Crysknife Edge)
  *
  * Registers the `gaib user` command group with CRUD subcommands.
  *
  * @see grimoires/loa/sdd.md §13.3.4 CLI User Management Commands
  * @see grimoires/loa/prd.md §12 Gom Jabbar
+ * @see grimoires/loa/prd.md §15 Crysknife Edge (CLI Ergonomics)
  * @module packages/cli/commands/user
  */
 
@@ -59,17 +61,17 @@ export function createUserCommand(): Command {
       `
 Examples:
   $ gaib user create --username testuser --roles qa_tester
-  $ gaib user list
-  $ gaib user list --role qa_tester --active
+  $ gaib user ls
+  $ gaib user ls --role qa_tester --active
   $ gaib user show <user-id>
-  $ gaib user update <user-id> --roles qa_admin
-  $ gaib user disable <user-id>
-  $ gaib user enable <user-id>
-  $ gaib user delete <user-id> --force
-  $ gaib user reset-password <user-id>
-  $ gaib user sandboxes <user-id>
-  $ gaib user grant-sandbox <user-id> <sandbox-id>
-  $ gaib user revoke-sandbox <user-id> <sandbox-id>
+  $ gaib user set <user-id> --roles qa_admin
+  $ gaib user off <user-id>
+  $ gaib user on <user-id>
+  $ gaib user rm <user-id> --force
+  $ gaib user passwd <user-id>
+  $ gaib user access <user-id>
+  $ gaib user grant <user-id> <sandbox-id>
+  $ gaib user revoke <user-id> <sandbox-id>
 
 Environment:
   GAIB_API_URL   API server URL (default: ${DEFAULT_SERVER_URL})
@@ -78,16 +80,16 @@ Environment:
 
   // Register subcommands
   registerCreateCommand(user);
-  registerListCommand(user);
+  registerLsCommand(user);
   registerShowCommand(user);
-  registerUpdateCommand(user);
-  registerDisableCommand(user);
-  registerEnableCommand(user);
-  registerDeleteCommand(user);
-  registerResetPasswordCommand(user);
-  registerSandboxesCommand(user);
-  registerGrantSandboxCommand(user);
-  registerRevokeSandboxCommand(user);
+  registerSetCommand(user);
+  registerOffCommand(user);
+  registerOnCommand(user);
+  registerRmCommand(user);
+  registerPasswdCommand(user);
+  registerAccessCommand(user);
+  registerGrantCommand(user);
+  registerRevokeCommand(user);
 
   return user;
 }
@@ -116,11 +118,11 @@ function registerCreateCommand(parent: Command): void {
 }
 
 /**
- * Registers the 'list' subcommand
+ * Registers the 'ls' subcommand (list users)
  */
-function registerListCommand(parent: Command): void {
+function registerLsCommand(parent: Command): void {
   parent
-    .command('list')
+    .command('ls')
     .description('List users')
     .option('--role <role>', 'Filter by role (qa_tester, qa_admin, admin)')
     .option('--active', 'Show only active users')
@@ -130,7 +132,7 @@ function registerListCommand(parent: Command): void {
     .option('--offset <number>', 'Skip first N results', '0')
     .option('--json', 'Output as JSON')
     .action(async (options) => {
-      const { listCommand } = await import('./list.js');
+      const { listCommand } = await import('./ls.js');
       const globalOpts = parent.optsWithGlobals();
       await listCommand({ ...options, server: globalOpts.server, quiet: globalOpts.quiet });
     });
@@ -152,124 +154,124 @@ function registerShowCommand(parent: Command): void {
 }
 
 /**
- * Registers the 'update' subcommand
+ * Registers the 'set' subcommand (update user)
  */
-function registerUpdateCommand(parent: Command): void {
+function registerSetCommand(parent: Command): void {
   parent
-    .command('update <user-id>')
+    .command('set <user-id>')
     .description('Update user properties')
     .option('--roles <roles>', 'Comma-separated roles (qa_tester, qa_admin, admin)')
     .option('--display-name <name>', 'Display name')
     .option('--sandbox-access <ids>', 'Comma-separated sandbox IDs (replaces existing)')
     .option('--json', 'Output as JSON')
     .action(async (userId, options) => {
-      const { updateCommand } = await import('./update.js');
+      const { updateCommand } = await import('./set.js');
       const globalOpts = parent.optsWithGlobals();
       await updateCommand({ userId, ...options, server: globalOpts.server, quiet: globalOpts.quiet });
     });
 }
 
 /**
- * Registers the 'disable' subcommand
+ * Registers the 'off' subcommand (disable user)
  */
-function registerDisableCommand(parent: Command): void {
+function registerOffCommand(parent: Command): void {
   parent
-    .command('disable <user-id>')
+    .command('off <user-id>')
     .description('Disable a user account')
     .option('--json', 'Output as JSON')
     .action(async (userId, options) => {
-      const { disableCommand } = await import('./disable.js');
+      const { disableCommand } = await import('./off.js');
       const globalOpts = parent.optsWithGlobals();
       await disableCommand({ userId, ...options, server: globalOpts.server, quiet: globalOpts.quiet });
     });
 }
 
 /**
- * Registers the 'enable' subcommand
+ * Registers the 'on' subcommand (enable user)
  */
-function registerEnableCommand(parent: Command): void {
+function registerOnCommand(parent: Command): void {
   parent
-    .command('enable <user-id>')
+    .command('on <user-id>')
     .description('Enable a user account')
     .option('--json', 'Output as JSON')
     .action(async (userId, options) => {
-      const { enableCommand } = await import('./enable.js');
+      const { enableCommand } = await import('./on.js');
       const globalOpts = parent.optsWithGlobals();
       await enableCommand({ userId, ...options, server: globalOpts.server, quiet: globalOpts.quiet });
     });
 }
 
 /**
- * Registers the 'delete' subcommand
+ * Registers the 'rm' subcommand (delete user)
  */
-function registerDeleteCommand(parent: Command): void {
+function registerRmCommand(parent: Command): void {
   parent
-    .command('delete <user-id>')
+    .command('rm <user-id>')
     .description('Delete a user account (admin only)')
     .option('--force', 'Skip confirmation prompt')
     .option('--json', 'Output as JSON')
     .action(async (userId, options) => {
-      const { deleteCommand } = await import('./delete.js');
+      const { deleteCommand } = await import('./rm.js');
       const globalOpts = parent.optsWithGlobals();
       await deleteCommand({ userId, ...options, server: globalOpts.server, quiet: globalOpts.quiet });
     });
 }
 
 /**
- * Registers the 'reset-password' subcommand
+ * Registers the 'passwd' subcommand (reset password)
  */
-function registerResetPasswordCommand(parent: Command): void {
+function registerPasswdCommand(parent: Command): void {
   parent
-    .command('reset-password <user-id>')
+    .command('passwd <user-id>')
     .description('Reset user password (generates new password)')
     .option('--json', 'Output as JSON')
     .action(async (userId, options) => {
-      const { resetPasswordCommand } = await import('./reset-password.js');
+      const { resetPasswordCommand } = await import('./passwd.js');
       const globalOpts = parent.optsWithGlobals();
       await resetPasswordCommand({ userId, ...options, server: globalOpts.server, quiet: globalOpts.quiet });
     });
 }
 
 /**
- * Registers the 'sandboxes' subcommand
+ * Registers the 'access' subcommand (list user's sandboxes)
  */
-function registerSandboxesCommand(parent: Command): void {
+function registerAccessCommand(parent: Command): void {
   parent
-    .command('sandboxes <user-id>')
+    .command('access <user-id>')
     .description('List user\'s sandbox access')
     .option('--json', 'Output as JSON')
     .action(async (userId, options) => {
-      const { sandboxesCommand } = await import('./sandboxes.js');
+      const { sandboxesCommand } = await import('./access.js');
       const globalOpts = parent.optsWithGlobals();
       await sandboxesCommand({ userId, ...options, server: globalOpts.server, quiet: globalOpts.quiet });
     });
 }
 
 /**
- * Registers the 'grant-sandbox' subcommand
+ * Registers the 'grant' subcommand (grant sandbox access)
  */
-function registerGrantSandboxCommand(parent: Command): void {
+function registerGrantCommand(parent: Command): void {
   parent
-    .command('grant-sandbox <user-id> <sandbox-id>')
+    .command('grant <user-id> <sandbox-id>')
     .description('Grant user access to a sandbox')
     .option('--json', 'Output as JSON')
     .action(async (userId, sandboxId, options) => {
-      const { grantSandboxCommand } = await import('./grant-sandbox.js');
+      const { grantSandboxCommand } = await import('./grant.js');
       const globalOpts = parent.optsWithGlobals();
       await grantSandboxCommand({ userId, sandboxId, ...options, server: globalOpts.server, quiet: globalOpts.quiet });
     });
 }
 
 /**
- * Registers the 'revoke-sandbox' subcommand
+ * Registers the 'revoke' subcommand (revoke sandbox access)
  */
-function registerRevokeSandboxCommand(parent: Command): void {
+function registerRevokeCommand(parent: Command): void {
   parent
-    .command('revoke-sandbox <user-id> <sandbox-id>')
+    .command('revoke <user-id> <sandbox-id>')
     .description('Revoke user access from a sandbox')
     .option('--json', 'Output as JSON')
     .action(async (userId, sandboxId, options) => {
-      const { revokeSandboxCommand } = await import('./revoke-sandbox.js');
+      const { revokeSandboxCommand } = await import('./revoke.js');
       const globalOpts = parent.optsWithGlobals();
       await revokeSandboxCommand({ userId, sandboxId, ...options, server: globalOpts.server, quiet: globalOpts.quiet });
     });

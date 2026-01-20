@@ -22,6 +22,7 @@ import {
   handleError,
   createSilentLogger,
   isInteractive,
+  showNextStep,
 } from './utils.js';
 
 /**
@@ -140,7 +141,14 @@ export async function createCommand(
 
       console.log();
       console.log(chalk.dim('To connect workers to this sandbox:'));
-      console.log(chalk.dim(`  eval $(gaib sandbox connect ${result.sandbox.name})`));
+      console.log(chalk.dim(`  eval $(gaib sandbox env ${result.sandbox.name})`));
+
+      // Sprint 148: Next-step suggestion
+      showNextStep(
+        `gaib sandbox env ${result.sandbox.name}`,
+        'Get connection environment variables',
+        options
+      );
     }
   } catch (error) {
     spinner?.fail(chalk.red('Failed to create sandbox'));

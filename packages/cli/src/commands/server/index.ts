@@ -5,12 +5,14 @@
  * Sprint 97: Workspace Management
  * Sprint 98: Apply & Destroy Operations
  * Sprint 99: Import & State Commands
+ * Sprint 147: CLI Ergonomics Refactoring (Crysknife Edge)
  *
  * Registers the `gaib server` command group with all subcommands.
  * Provides Terraform-like workflow for Discord server configuration.
  *
  * @see SDD §6.0 CLI Commands
  * @see PRD §3.1 Infrastructure-as-Code
+ * @see grimoires/loa/prd.md §15 Crysknife Edge (CLI Ergonomics)
  * @module packages/cli/commands/server
  */
 
@@ -49,30 +51,28 @@ Examples:
   $ gaib server apply                        Apply changes to Discord
   $ gaib server apply --auto-approve         Apply without confirmation
   $ gaib server destroy                      Destroy all managed resources
-  $ gaib server teardown --confirm-teardown  ⚠️ DANGEROUS: Delete ALL server resources
-  $ gaib server export                       Export current Discord state to YAML
-  $ gaib server export --guild 123456789     Export specific guild
+  $ gaib server teardown --confirm-teardown  DANGEROUS: Delete ALL server resources
 
 Workspace Commands:
-  $ gaib server workspace list               List all workspaces
-  $ gaib server workspace new staging        Create new workspace
-  $ gaib server workspace select staging     Switch to workspace
-  $ gaib server workspace show               Show current workspace details
-  $ gaib server workspace delete staging     Delete a workspace
+  $ gaib server ws ls                        List all workspaces
+  $ gaib server ws new staging               Create new workspace
+  $ gaib server ws use staging               Switch to workspace
+  $ gaib server ws show                      Show current workspace details
+  $ gaib server ws rm staging                Delete a workspace
 
 State Management:
   $ gaib server import <address> <id>        Import existing Discord resource
-  $ gaib server state list                   List all resources in state
-  $ gaib server state show <address>         Show resource details
-  $ gaib server state rm <address>           Remove resource from state
-  $ gaib server state mv <src> <dest>        Rename resource address
-  $ gaib server state pull                   Refresh state from Discord
-  $ gaib server lock-status                  Show lock status for workspace
-  $ gaib server force-unlock                 Force release a stuck lock
+  $ gaib server st ls                        List all resources in state
+  $ gaib server st show <address>            Show resource details
+  $ gaib server st rm <address>              Remove resource from state
+  $ gaib server st mv <src> <dest>           Rename resource address
+  $ gaib server st pull                      Refresh state from Discord
+  $ gaib server locks                        Show lock status for workspace
+  $ gaib server unlock                       Force release a stuck lock
 
 Theme Commands:
-  $ gaib server theme list                   List available themes
-  $ gaib server theme info <name>            Show detailed theme information
+  $ gaib server th ls                        List available themes
+  $ gaib server th info <name>               Show detailed theme information
 `
     );
 
@@ -84,12 +84,12 @@ Theme Commands:
   registerDestroyCommand(server);
   registerTeardownCommand(server);
   registerExportCommand(server);
-  registerWorkspaceCommand(server);
+  registerWsCommand(server);
   registerImportCommand(server);
-  registerStateCommand(server);
-  registerLockStatusCommand(server);
-  registerForceUnlockCommand(server);
-  registerThemeCommand(server);
+  registerStCommand(server);
+  registerLocksCommand(server);
+  registerUnlockCommand(server);
+  registerThCommand(server);
 
   return server;
 }
@@ -255,7 +255,7 @@ function registerDestroyCommand(parent: Command): void {
 function registerTeardownCommand(parent: Command): void {
   parent
     .command('teardown')
-    .description('⚠️ DANGEROUS: Delete ALL server resources (roles, categories, channels)')
+    .description('DANGEROUS: Delete ALL server resources (roles, categories, channels)')
     .option('-g, --guild <id>', 'Discord guild/server ID (required)')
     .option('--json', 'Output result as JSON')
     .option('--confirm-teardown', 'Required flag to enable teardown (safety measure)')
@@ -265,12 +265,12 @@ function registerTeardownCommand(parent: Command): void {
     .addHelpText(
       'after',
       `
-${chalk.red.bold('⚠️  WARNING: This command is EXTREMELY DANGEROUS!')}
+${chalk.red.bold('WARNING: This command is EXTREMELY DANGEROUS!')}
 
 This command will ${chalk.red('PERMANENTLY DELETE')} all:
-  • Roles (except bot-managed and @everyone)
-  • Categories
-  • Channels (text, voice, forum, etc.)
+  - Roles (except bot-managed and @everyone)
+  - Categories
+  - Channels (text, voice, forum, etc.)
 
 ${chalk.yellow('Safety Requirements:')}
   1. You MUST pass --confirm-teardown flag
@@ -329,20 +329,21 @@ function registerExportCommand(parent: Command): void {
 }
 
 /**
- * Registers the 'workspace' subcommand group
+ * Registers the 'ws' subcommand group (workspace management)
  *
  * Manages workspaces for environment isolation.
  *
  * @see Sprint 97: Workspace Management
+ * @see Sprint 147: CLI Ergonomics (renamed from 'workspace' to 'ws')
  */
-function registerWorkspaceCommand(parent: Command): void {
-  const workspace = parent
-    .command('workspace')
+function registerWsCommand(parent: Command): void {
+  const ws = parent
+    .command('ws')
     .description('Manage workspaces for environment isolation');
 
-  // workspace list
-  workspace
-    .command('list')
+  // ws ls (list)
+  ws
+    .command('ls')
     .description('List all workspaces')
     .option('--json', 'Output result as JSON')
     .action(async (options) => {
@@ -355,8 +356,8 @@ function registerWorkspaceCommand(parent: Command): void {
       }
     });
 
-  // workspace new
-  workspace
+  // ws new
+  ws
     .command('new <name>')
     .description('Create a new workspace and switch to it')
     .option('--json', 'Output result as JSON')
@@ -370,9 +371,9 @@ function registerWorkspaceCommand(parent: Command): void {
       }
     });
 
-  // workspace select
-  workspace
-    .command('select <name>')
+  // ws use (was 'select')
+  ws
+    .command('use <name>')
     .description('Switch to a workspace')
     .option('-c, --create', 'Create workspace if it does not exist')
     .option('--json', 'Output result as JSON')
@@ -386,8 +387,8 @@ function registerWorkspaceCommand(parent: Command): void {
       }
     });
 
-  // workspace show
-  workspace
+  // ws show
+  ws
     .command('show [name]')
     .description('Show workspace details (defaults to current workspace)')
     .option('--json', 'Output result as JSON')
@@ -401,9 +402,9 @@ function registerWorkspaceCommand(parent: Command): void {
       }
     });
 
-  // workspace delete
-  workspace
-    .command('delete <name>')
+  // ws rm (was 'delete')
+  ws
+    .command('rm <name>')
     .description('Delete a workspace')
     .option('-f, --force', 'Force delete even if workspace has resources')
     .option('-y, --yes', 'Skip confirmation prompt')
@@ -445,20 +446,21 @@ function registerImportCommand(parent: Command): void {
 }
 
 /**
- * Registers the 'state' subcommand group
+ * Registers the 'st' subcommand group (state management)
  *
  * Provides commands for managing state resources directly.
  *
  * @see Sprint 99: Import & State Commands
+ * @see Sprint 147: CLI Ergonomics (renamed from 'state' to 'st')
  */
-function registerStateCommand(parent: Command): void {
-  const state = parent
-    .command('state')
+function registerStCommand(parent: Command): void {
+  const st = parent
+    .command('st')
     .description('Manage state resources directly');
 
-  // state list
-  state
-    .command('list')
+  // st ls (list)
+  st
+    .command('ls')
     .description('List all resources in state')
     .option('-w, --workspace <name>', 'Override current workspace')
     .option('--json', 'Output result as JSON')
@@ -472,8 +474,8 @@ function registerStateCommand(parent: Command): void {
       }
     });
 
-  // state show
-  state
+  // st show
+  st
     .command('show <address>')
     .description('Show detailed information about a resource')
     .option('-w, --workspace <name>', 'Override current workspace')
@@ -488,8 +490,8 @@ function registerStateCommand(parent: Command): void {
       }
     });
 
-  // state rm
-  state
+  // st rm
+  st
     .command('rm <address>')
     .description('Remove a resource from state (does not delete from Discord)')
     .option('-w, --workspace <name>', 'Override current workspace')
@@ -505,8 +507,8 @@ function registerStateCommand(parent: Command): void {
       }
     });
 
-  // state mv
-  state
+  // st mv
+  st
     .command('mv <source> <destination>')
     .description('Move/rename a resource address in state')
     .option('-w, --workspace <name>', 'Override current workspace')
@@ -521,8 +523,8 @@ function registerStateCommand(parent: Command): void {
       }
     });
 
-  // state pull
-  state
+  // st pull
+  st
     .command('pull')
     .description('Refresh state from Discord (updates all resource attributes)')
     .option('-g, --guild <id>', 'Discord guild/server ID (required)')
@@ -540,15 +542,16 @@ function registerStateCommand(parent: Command): void {
 }
 
 /**
- * Registers the 'lock-status' subcommand
+ * Registers the 'locks' subcommand (was 'lock-status')
  *
  * Shows the current lock status for a workspace.
  *
  * @see Sprint 98: Apply & Destroy Operations
+ * @see Sprint 147: CLI Ergonomics (renamed from 'lock-status' to 'locks')
  */
-function registerLockStatusCommand(parent: Command): void {
+function registerLocksCommand(parent: Command): void {
   parent
-    .command('lock-status')
+    .command('locks')
     .description('Show lock status for the current workspace')
     .option('-w, --workspace <name>', 'Override current workspace')
     .option('--json', 'Output result as JSON')
@@ -564,15 +567,16 @@ function registerLockStatusCommand(parent: Command): void {
 }
 
 /**
- * Registers the 'force-unlock' subcommand
+ * Registers the 'unlock' subcommand (was 'force-unlock')
  *
  * Manually releases a state lock on a workspace.
  *
  * @see Sprint 98: Apply & Destroy Operations
+ * @see Sprint 147: CLI Ergonomics (renamed from 'force-unlock' to 'unlock')
  */
-function registerForceUnlockCommand(parent: Command): void {
+function registerUnlockCommand(parent: Command): void {
   parent
-    .command('force-unlock')
+    .command('unlock')
     .description('Force release a stuck state lock (use with caution)')
     .option('-w, --workspace <name>', 'Override current workspace')
     .option('-y, --yes', 'Skip confirmation prompt')
@@ -589,20 +593,21 @@ function registerForceUnlockCommand(parent: Command): void {
 }
 
 /**
- * Registers the 'theme' subcommand group
+ * Registers the 'th' subcommand group (theme management)
  *
  * Commands for listing and inspecting themes.
  *
  * @see Sprint 100: Theme System
+ * @see Sprint 147: CLI Ergonomics (renamed from 'theme' to 'th')
  */
-function registerThemeCommand(parent: Command): void {
-  const theme = parent
-    .command('theme')
+function registerThCommand(parent: Command): void {
+  const th = parent
+    .command('th')
     .description('Manage Discord server themes');
 
-  // theme list
-  theme
-    .command('list')
+  // th ls (list)
+  th
+    .command('ls')
     .description('List available themes')
     .option('--json', 'Output result as JSON')
     .action(async (options) => {
@@ -615,8 +620,8 @@ function registerThemeCommand(parent: Command): void {
       }
     });
 
-  // theme info
-  theme
+  // th info
+  th
     .command('info <name>')
     .description('Show detailed information about a theme')
     .option('--json', 'Output result as JSON')

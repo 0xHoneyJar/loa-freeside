@@ -18,6 +18,7 @@ import {
   formatDiffOutput,
   formatInfo,
   ExitCodes,
+  showNextStep,
 } from './utils.js';
 import {
   parseConfigString,
@@ -121,6 +122,15 @@ export async function diffCommand(options: DiffCommandOptions): Promise<void> {
     );
   } else {
     console.log(formatDiffOutput(diff));
+
+    // Sprint 148: Next-step suggestion
+    if (diff.hasChanges) {
+      showNextStep(
+        `gaib server apply -f ${options.file}`,
+        'Apply the detected changes',
+        options
+      );
+    }
   }
 
   // Exit with appropriate code

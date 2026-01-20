@@ -589,3 +589,36 @@ theme:
 
   return config;
 }
+
+// =============================================================================
+// Next-Step Suggestions (Sprint 148: CLI Ergonomics)
+// =============================================================================
+
+/**
+ * Shows a next-step suggestion to the user
+ *
+ * Respects quiet mode and JSON output mode - only shows in interactive mode.
+ *
+ * @param nextCommand - The suggested next command to run
+ * @param description - Brief description of what the command does
+ * @param options - Command options (checks json and quiet flags)
+ */
+export function showNextStep(
+  nextCommand: string,
+  description: string,
+  options: { json?: boolean; quiet?: boolean }
+): void {
+  // Skip suggestions in JSON or quiet mode
+  if (options.json || options.quiet) {
+    return;
+  }
+
+  // Only show in interactive TTY
+  if (!process.stdout.isTTY) {
+    return;
+  }
+
+  console.log();
+  console.log(chalk.dim('Next step:'));
+  console.log(`  ${chalk.cyan(nextCommand)}  ${chalk.dim(`- ${description}`)}`);
+}

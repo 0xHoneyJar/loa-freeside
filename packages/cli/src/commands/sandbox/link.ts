@@ -17,6 +17,7 @@ import {
   getCurrentUser,
   handleError,
   isInteractive,
+  showNextStep,
 } from './utils.js';
 
 /**
@@ -143,7 +144,13 @@ export async function registerCommand(
       console.log(`  Guild:   ${chalk.cyan(guildId)}`);
       console.log('');
       console.log('  Events from this guild will now be routed to this sandbox.');
-      console.log('');
+
+      // Sprint 148: Next-step suggestion
+      showNextStep(
+        `gaib sandbox env ${sandboxName}`,
+        'Get connection environment variables',
+        options
+      );
     }
   } catch (error) {
     spinner?.stop();

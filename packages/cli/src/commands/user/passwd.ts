@@ -97,6 +97,13 @@ export async function resetPasswordCommand(options: ResetPasswordOptions): Promi
         console.log(chalk.bold(data.generatedPassword));
         console.log();
         console.log(chalk.dim('User will be required to change password on next login.'));
+
+        // Sprint 148: Next-step suggestion
+        if (!quiet && process.stdout.isTTY) {
+          console.log();
+          console.log(chalk.dim('Next step:'));
+          console.log(`  ${chalk.cyan('gaib auth login')}  ${chalk.dim('- Log in with new credentials')}`);
+        }
       }
     }
   } catch (error) {
