@@ -246,6 +246,7 @@ if [[ "$MODE" == "--full" || "$MODE" == "full" ]]; then
 
   # Create temporary file for results
   TEMP_FILE=$(mktemp)
+  trap "rm -f '$TEMP_FILE'" EXIT
 
   # Check for new files since last ride
   if [[ -f "$PROJECT_ROOT/grimoires/loa/drift-report.md" ]]; then
@@ -284,8 +285,6 @@ if [[ "$MODE" == "--full" || "$MODE" == "full" ]]; then
       fi
     done < "$PROJECT_ROOT/grimoires/loa/legacy/doc-files.txt"
   fi
-
-  rm -f "$TEMP_FILE"
 fi
 
 echo ""

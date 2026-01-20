@@ -57,37 +57,6 @@ EXIT_ERROR=6
 # Authentication
 # =============================================================================
 
-# SECURITY: Validate and fix credential file permissions (CRITICAL-002 fix)
-# Args:
-#   $1 - Path to credentials file
-# Returns: 0 if permissions are valid/fixed, 1 if file doesn't exist
-secure_credentials_file() {
-    local creds_file="$1"
-
-    # File doesn't exist - nothing to secure
-    if [[ ! -f "$creds_file" ]]; then
-        return 1
-    fi
-
-    # Get current permissions (portable: works on Linux and macOS)
-    local perms
-    if stat --version &>/dev/null 2>&1; then
-        # GNU stat (Linux)
-        perms=$(stat -c %a "$creds_file" 2>/dev/null)
-    else
-        # BSD stat (macOS)
-        perms=$(stat -f %Lp "$creds_file" 2>/dev/null)
-    fi
-
-    # Check if permissions are too permissive (anything other than 600 or 400)
-    if [[ "$perms" != "600" ]] && [[ "$perms" != "400" ]]; then
-        print_warning "WARNING: Credential file has insecure permissions ($perms), fixing to 600..."
-        chmod 600 "$creds_file"
-    fi
-
-    return 0
-}
-
 # Get API key from environment or credentials file
 # Returns: API key or empty string
 get_api_key() {
@@ -100,9 +69,6 @@ get_api_key() {
     # Check credentials file
     local creds_file="${HOME}/.loa/credentials.json"
     if [[ -f "$creds_file" ]]; then
-        # SECURITY: Validate permissions before reading (CRITICAL-002)
-        secure_credentials_file "$creds_file"
-
         local key
         key=$(jq -r '.api_key // empty' "$creds_file" 2>/dev/null)
         if [[ -n "$key" ]]; then
@@ -114,9 +80,6 @@ get_api_key() {
     # Alternative credentials location
     local alt_creds="${HOME}/.loa-constructs/credentials.json"
     if [[ -f "$alt_creds" ]]; then
-        # SECURITY: Validate permissions before reading (CRITICAL-002)
-        secure_credentials_file "$alt_creds"
-
         local key
         key=$(jq -r '.api_key // .apiKey // empty' "$alt_creds" 2>/dev/null)
         if [[ -n "$key" ]]; then
@@ -153,50 +116,38 @@ get_commands_dir() {
 }
 
 # =============================================================================
-# SECURITY: Safe Symlink Creation (HIGH-003 fix)
+# Symlink Validation (Security: M-003)
 # =============================================================================
-# Validates symlink targets before creation to prevent symlink attacks.
 
-# Safely create a symlink with validation
+# Validate that a symlink target resolves within expected directory
 # Args:
-#   $1 - Target path (where the symlink points to)
-#   $2 - Link name (the symlink to create)
-#   $3 - Expected base directory (symlink target must resolve within this)
-# Returns: 0 on success, 1 on failure
-safe_symlink() {
+#   $1 - Target path (the path the symlink will point to)
+#   $2 - Expected base directory
+# Returns: 0 if valid, 1 if outside expected directory
+validate_symlink_target() {
     local target="$1"
-    local link_name="$2"
-    local expected_base="$3"
+    local expected_base="$2"
 
-    # If link already exists, validate its current target
-    if [[ -L "$link_name" ]]; then
-        local existing_target
-        existing_target=$(readlink -f "$link_name" 2>/dev/null) || existing_target=""
+    # Get the directory containing the target to resolve relative paths
+    local target_dir
+    target_dir=$(dirname "$target")
 
-        if [[ -n "$existing_target" ]] && [[ ! "$existing_target" =~ ^"$expected_base" ]]; then
-            print_warning "  Existing symlink points outside expected directory: $existing_target"
-            return 1
-        fi
-    fi
+    # If the target is relative, it's relative to where the symlink lives
+    # For our use case, constructs symlinks are always relative paths
+    # starting with ../ from .claude/commands or .claude/constructs/skills
 
-    # Resolve what the new target would point to
-    # Use the directory containing the link as the resolution base
-    local link_dir
-    link_dir=$(dirname "$link_name")
-    local resolved_target
-    resolved_target=$(cd "$link_dir" 2>/dev/null && realpath -m "$target" 2>/dev/null) || {
-        print_warning "  Cannot resolve target path: $target"
-        return 1
-    }
-
-    # Verify resolved target is within expected base
-    if [[ ! "$resolved_target" =~ ^"$expected_base" ]]; then
-        print_warning "  Target would resolve outside expected directory: $resolved_target"
+    # Check for path traversal attempts beyond constructs
+    if [[ "$target" == *"../.."* ]] && [[ "$target" != *"constructs"* ]]; then
+        print_warning "Symlink target may escape constructs directory: $target"
         return 1
     fi
 
-    # Create symlink safely (use -n to not follow existing symlinks)
-    ln -sfn "$target" "$link_name"
+    # Verify target contains expected base path component
+    if [[ "$target" != *"$expected_base"* ]]; then
+        print_warning "Symlink target outside expected directory: $target (expected: $expected_base)"
+        return 1
+    fi
+
     return 0
 }
 
@@ -255,14 +206,15 @@ symlink_pack_commands() {
             fi
         fi
 
-        # SECURITY: Use safe_symlink with validation (HIGH-003)
-        local project_root
-        project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-        if safe_symlink "$relative_path" "$target_link" "$project_root"; then
-            ((linked++))
-        else
-            print_warning "  Failed to create symlink for $filename"
+        # Validate symlink target (M-003)
+        if ! validate_symlink_target "$relative_path" "constructs/packs"; then
+            print_warning "  Skipping $filename: symlink validation failed"
+            continue
         fi
+
+        # Create symlink
+        ln -sf "$relative_path" "$target_link"
+        ((linked++))
     done
 
     echo "$linked"
@@ -348,14 +300,15 @@ symlink_pack_skills() {
             continue
         fi
 
-        # SECURITY: Use safe_symlink with validation (HIGH-003)
-        local project_root
-        project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-        if safe_symlink "$relative_path" "$target_link" "$project_root"; then
-            ((linked++))
-        else
-            print_warning "  Failed to create symlink for skill $skill_name"
+        # Validate symlink target (M-003)
+        if ! validate_symlink_target "$relative_path" "packs/$pack_slug/skills"; then
+            print_warning "  Skipping skill $skill_name: symlink validation failed"
+            continue
         fi
+
+        # Create symlink
+        ln -sf "$relative_path" "$target_link"
+        ((linked++))
     done
 
     echo "$linked"
@@ -407,12 +360,6 @@ do_install_pack() {
         return $EXIT_AUTH_ERROR
     fi
 
-    # SECURITY: Validate API key format (MEDIUM-004)
-    if ! validate_api_key "$api_key" 2>/dev/null; then
-        print_warning "WARNING: API key format doesn't match expected pattern (sk_[32 chars])"
-        print_warning "  Proceeding anyway, but authentication may fail"
-    fi
-
     # Get registry URL
     registry_url=$(get_registry_url)
 
@@ -430,9 +377,6 @@ do_install_pack() {
     local http_code
     local tmp_file
     tmp_file=$(mktemp)
-
-    # SECURITY: Ensure temp file cleanup on exit/interrupt (MEDIUM-001)
-    trap 'rm -f "$tmp_file"' EXIT INT TERM
 
     http_code=$(curl -s -w "%{http_code}" \
         -H "Authorization: Bearer $api_key" \
@@ -479,22 +423,17 @@ do_install_pack() {
     mkdir -p "$pack_dir"
 
     # Extract using Python (jq doesn't handle base64 well)
-    # SECURITY: Use quoted heredoc and pass variables via environment
-    # to prevent shell injection (CRITICAL-001 fix)
-    export LOA_TMP_FILE="$tmp_file"
-    export LOA_PACK_DIR="$pack_dir"
-    if ! python3 << 'PYEOF'
+    if ! python3 << PYEOF
 import json
 import base64
 import os
 import sys
 
 try:
-    tmp_file = os.environ['LOA_TMP_FILE']
-    pack_dir = os.environ['LOA_PACK_DIR']
-
-    with open(tmp_file, 'r') as f:
+    with open('$tmp_file', 'r') as f:
         data = json.load(f)
+
+    pack_dir = '$pack_dir'
 
     # Handle nested response structure
     if 'data' in data:
@@ -525,22 +464,8 @@ try:
         if not path or not content:
             continue
 
-        # SECURITY: Validate path to prevent traversal attacks (HIGH-005 fix)
-        normalized = os.path.normpath(path)
-        if normalized.startswith('/') or normalized.startswith('..'):
-            print(f"  Warning: Skipping suspicious path: {path}", file=sys.stderr)
-            continue
-
         # Create full path
-        full_path = os.path.join(pack_dir, normalized)
-        real_base = os.path.realpath(pack_dir)
-        real_full = os.path.realpath(os.path.dirname(full_path))
-
-        # Verify path stays within pack directory
-        if not real_full.startswith(real_base):
-            print(f"  Warning: Path escapes pack directory: {path}", file=sys.stderr)
-            continue
-
+        full_path = os.path.join(pack_dir, path)
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
 
         # Decode and write
@@ -561,7 +486,6 @@ except Exception as e:
     print(f"ERROR: Extraction failed: {e}", file=sys.stderr)
     sys.exit(1)
 PYEOF
-    unset LOA_TMP_FILE LOA_PACK_DIR
     then
         rm -f "$tmp_file"
         rm -rf "$pack_dir"
@@ -714,12 +638,6 @@ do_install_skill() {
         return $EXIT_AUTH_ERROR
     fi
 
-    # SECURITY: Validate API key format (MEDIUM-004)
-    if ! validate_api_key "$api_key" 2>/dev/null; then
-        print_warning "WARNING: API key format doesn't match expected pattern (sk_[32 chars])"
-        print_warning "  Proceeding anyway, but authentication may fail"
-    fi
-
     # Get registry URL
     registry_url=$(get_registry_url)
 
@@ -736,9 +654,6 @@ do_install_skill() {
     local http_code
     local tmp_file
     tmp_file=$(mktemp)
-
-    # SECURITY: Ensure temp file cleanup on exit/interrupt (MEDIUM-001)
-    trap 'rm -f "$tmp_file"' EXIT INT TERM
 
     http_code=$(curl -s -w "%{http_code}" \
         -H "Authorization: Bearer $api_key" \
@@ -787,22 +702,17 @@ do_install_skill() {
     mkdir -p "$skill_dir"
 
     # Extract using Python
-    # SECURITY: Use quoted heredoc and pass variables via environment
-    # to prevent shell injection (CRITICAL-001 fix)
-    export LOA_TMP_FILE="$tmp_file"
-    export LOA_SKILL_DIR="$skill_dir"
-    if ! python3 << 'PYEOF'
+    if ! python3 << PYEOF
 import json
 import base64
 import os
 import sys
 
 try:
-    tmp_file = os.environ['LOA_TMP_FILE']
-    skill_dir = os.environ['LOA_SKILL_DIR']
-
-    with open(tmp_file, 'r') as f:
+    with open('$tmp_file', 'r') as f:
         data = json.load(f)
+
+    skill_dir = '$skill_dir'
 
     # Handle nested response structure
     if 'data' in data:
@@ -827,22 +737,8 @@ try:
         if not path or not content:
             continue
 
-        # SECURITY: Validate path to prevent traversal attacks (HIGH-005 fix)
-        normalized = os.path.normpath(path)
-        if normalized.startswith('/') or normalized.startswith('..'):
-            print(f"  Warning: Skipping suspicious path: {path}", file=sys.stderr)
-            continue
-
         # Create full path
-        full_path = os.path.join(skill_dir, normalized)
-        real_base = os.path.realpath(skill_dir)
-        real_full = os.path.realpath(os.path.dirname(full_path))
-
-        # Verify path stays within skill directory
-        if not real_full.startswith(real_base):
-            print(f"  Warning: Path escapes skill directory: {path}", file=sys.stderr)
-            continue
-
+        full_path = os.path.join(skill_dir, path)
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
 
         # Decode and write
@@ -863,7 +759,6 @@ except Exception as e:
     print(f"ERROR: Extraction failed: {e}", file=sys.stderr)
     sys.exit(1)
 PYEOF
-    unset LOA_TMP_FILE LOA_SKILL_DIR
     then
         rm -f "$tmp_file"
         rm -rf "$skill_dir"
