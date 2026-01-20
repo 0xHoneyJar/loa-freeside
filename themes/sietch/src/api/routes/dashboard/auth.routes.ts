@@ -2,12 +2,15 @@
  * Dashboard Authentication Routes
  *
  * Sprint 114: Authentication Core
+ * Sprint 144: Dashboard Login Integration
  *
  * Implements Discord OAuth2 authentication flow with PKCE support for the
- * web configuration dashboard.
+ * web configuration dashboard, plus username/password authentication for
+ * QA testers and administrators.
  *
  * Features:
  * - Discord OAuth2 with PKCE (code verifier/challenge)
+ * - Local username/password authentication (Sprint 144)
  * - Secure session cookie management
  * - User profile + guild fetching
  * - Admin guild filtering
@@ -21,6 +24,7 @@ import crypto from 'crypto';
 import { z } from 'zod';
 import { logger } from '../../../utils/logger.js';
 import { getCorrelationId, getClientIp } from '../../middleware/securityHeaders.js';
+import { getAuthService } from '../../../services/auth/AuthService.js';
 
 // =============================================================================
 // Types
@@ -130,6 +134,14 @@ const DISCORD_MANAGE_GUILD_PERMISSION = BigInt(0x20);
 const callbackQuerySchema = z.object({
   code: z.string().min(1),
   state: z.string().min(1),
+});
+
+/**
+ * Sprint 144: Local login credentials schema
+ */
+const localLoginSchema = z.object({
+  username: z.string().min(3).max(32),
+  password: z.string().min(8),
 });
 
 // =============================================================================
@@ -615,29 +627,133 @@ export function createDashboardAuthRouter(deps: DashboardAuthDeps): Router {
   });
 
   /**
+   * POST /api/dashboard/auth/login
+   *
+   * Sprint 144: Local username/password authentication
+   *
+   * Authenticates QA testers and administrators using local credentials.
+   */
+  router.post('/login', async (req: Request, res: Response) => {
+    try {
+      const parseResult = localLoginSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        res.status(400).json({
+          success: false,
+          error: 'Invalid credentials format',
+        });
+        return;
+      }
+
+      const { username, password } = parseResult.data;
+      const authService = getAuthService();
+
+      // Authenticate user
+      const result = await authService.login({
+        username,
+        password,
+        sessionType: 'dashboard',
+        ipAddress: getClientIp(req),
+        userAgent: req.headers['user-agent'],
+      });
+
+      if (!result.success || !result.token || !result.user) {
+        // Sprint 136 (LOW-001): Enhanced audit logging for failed logins
+        logger.warn(
+          {
+            username,
+            error: result.error,
+            remainingAttempts: result.remainingAttempts,
+            lockedUntil: result.lockedUntil,
+            correlationId: getCorrelationId(req),
+            clientIp: getClientIp(req),
+          },
+          'Local login failed'
+        );
+
+        res.status(401).json({
+          success: false,
+          error: result.error || 'Invalid credentials',
+          remainingAttempts: result.remainingAttempts,
+          lockedUntil: result.lockedUntil,
+        });
+        return;
+      }
+
+      // Set session cookie
+      res.cookie(SESSION_COOKIE_NAME, result.token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: SESSION_TTL_MS,
+        path: '/',
+      });
+
+      // Sprint 136 (LOW-001): Enhanced audit logging
+      logger.info(
+        {
+          userId: result.user.id,
+          username: result.user.username,
+          roles: result.user.roles,
+          correlationId: getCorrelationId(req),
+          clientIp: getClientIp(req),
+        },
+        'Local login successful'
+      );
+
+      // Return user info (format matching dashboard User type)
+      res.json({
+        success: true,
+        user: {
+          id: result.user.id,
+          username: result.user.username,
+          authType: 'local' as const,
+          displayName: result.user.displayName,
+          roles: result.user.roles,
+          sandboxAccess: result.user.sandboxAccess,
+          requirePasswordChange: result.user.requirePasswordChange,
+        },
+        requirePasswordChange: result.user.requirePasswordChange,
+      });
+    } catch (error) {
+      logger.error({ error }, 'Local login error');
+      res.status(500).json({
+        success: false,
+        error: 'Authentication service error',
+      });
+    }
+  });
+
+  /**
    * POST /api/dashboard/auth/logout
    *
    * Terminates user session
    *
-   * Sprint 134 (MED-002): Requires CSRF token validation
+   * Sprint 134 (MED-002): Requires CSRF token validation for Discord sessions
+   * Sprint 144: Also handles local session logout
    */
   router.post('/logout', async (req: Request, res: Response) => {
     try {
-      const sessionId = req.cookies[SESSION_COOKIE_NAME];
+      const sessionToken = req.cookies[SESSION_COOKIE_NAME];
 
-      // Sprint 134 (MED-002): Validate CSRF token before logout
-      if (sessionId) {
-        const session = await getSession(sessionId, redis);
+      if (sessionToken) {
+        // Try Discord session first
+        const discordSession = await getSession(sessionToken, redis);
 
-        if (session && !validateCsrfToken(req, session)) {
-          res.status(403).json({
-            error: 'CSRF_INVALID',
-            message: 'Invalid or missing CSRF token',
-          });
-          return;
+        if (discordSession) {
+          // Sprint 134 (MED-002): Validate CSRF token before logout
+          if (!validateCsrfToken(req, discordSession)) {
+            res.status(403).json({
+              error: 'CSRF_INVALID',
+              message: 'Invalid or missing CSRF token',
+            });
+            return;
+          }
+          await deleteSession(sessionToken, redis);
+        } else {
+          // Try local session (Sprint 144)
+          const authService = getAuthService();
+          await authService.logout(sessionToken);
         }
-
-        await deleteSession(sessionId, redis);
       }
 
       // Clear cookie
@@ -651,7 +767,7 @@ export function createDashboardAuthRouter(deps: DashboardAuthDeps): Router {
       // Sprint 136 (LOW-001): Enhanced audit logging
       logger.info(
         {
-          sessionId: sessionId?.substring(0, 8),
+          sessionToken: sessionToken?.substring(0, 8),
           correlationId: getCorrelationId(req),
           clientIp: getClientIp(req),
         },
@@ -671,38 +787,63 @@ export function createDashboardAuthRouter(deps: DashboardAuthDeps): Router {
    * Returns current user info if authenticated
    *
    * Sprint 134 (MED-002): Also returns CSRF token for client-side usage
+   * Sprint 144: Supports both Discord OAuth and local sessions
    */
   router.get('/me', async (req: Request, res: Response) => {
     try {
-      const sessionId = req.cookies[SESSION_COOKIE_NAME];
+      const sessionToken = req.cookies[SESSION_COOKIE_NAME];
 
-      if (!sessionId) {
+      if (!sessionToken) {
         res.status(401).json({ error: 'Not authenticated' });
         return;
       }
 
-      const session = await getSession(sessionId, redis);
+      // Try Discord session first (legacy format)
+      const discordSession = await getSession(sessionToken, redis);
 
-      if (!session) {
-        // Clear invalid cookie
-        res.clearCookie(SESSION_COOKIE_NAME);
-        res.status(401).json({ error: 'Session expired' });
+      if (discordSession) {
+        // Update last activity
+        discordSession.lastActivity = Date.now();
+        await storeSession(sessionToken, discordSession, redis);
+
+        // Return Discord user info
+        res.json({
+          id: discordSession.userId,
+          username: discordSession.username,
+          authType: 'discord' as const,
+          avatar: discordSession.avatar,
+          adminGuilds: discordSession.adminGuilds,
+          csrfToken: discordSession.csrfToken,
+        });
         return;
       }
 
-      // Update last activity
-      session.lastActivity = Date.now();
-      await storeSession(sessionId, session, redis);
+      // Try local session (Sprint 144)
+      const authService = getAuthService();
+      const authContext = await authService.getAuthContext(sessionToken);
 
-      // Return user info (without sensitive data)
-      // Sprint 134 (MED-002): Include CSRF token for state-changing operations
-      res.json({
-        id: session.userId,
-        username: session.username,
-        avatar: session.avatar,
-        adminGuilds: session.adminGuilds,
-        csrfToken: session.csrfToken,
-      });
+      if (authContext) {
+        // Get full user info for local users
+        const userService = await import('../../../services/auth/UserService.js');
+        const user = userService.getUserService().getUser(authContext.userId);
+
+        if (user) {
+          res.json({
+            id: user.id,
+            username: user.username,
+            authType: 'local' as const,
+            displayName: user.displayName,
+            roles: user.roles,
+            sandboxAccess: user.sandboxAccess,
+            requirePasswordChange: user.requirePasswordChange,
+          });
+          return;
+        }
+      }
+
+      // Clear invalid cookie
+      res.clearCookie(SESSION_COOKIE_NAME);
+      res.status(401).json({ error: 'Session expired' });
     } catch (error) {
       logger.error({ error }, 'Failed to fetch user info');
       res.status(500).json({ error: 'Failed to fetch user info' });
@@ -792,6 +933,128 @@ export function createDashboardAuthRouter(deps: DashboardAuthDeps): Router {
     } catch (error) {
       logger.error({ error }, 'Token refresh failed');
       res.status(500).json({ error: 'Token refresh failed' });
+    }
+  });
+
+  /**
+   * POST /api/dashboard/auth/change-password
+   *
+   * Changes the current user's password (local auth only)
+   *
+   * Sprint 145: Change password endpoint for local users
+   */
+  const changePasswordSchema = z.object({
+    currentPassword: z.string().min(1),
+    newPassword: z.string().min(12),
+  });
+
+  router.post('/change-password', async (req: Request, res: Response) => {
+    try {
+      const sessionToken = req.cookies[SESSION_COOKIE_NAME];
+
+      if (!sessionToken) {
+        res.status(401).json({ error: 'Not authenticated' });
+        return;
+      }
+
+      // Only local sessions can change password
+      const authService = getAuthService();
+      const authContext = await authService.getAuthContext(sessionToken);
+
+      if (!authContext || authContext.authType !== 'local') {
+        res.status(403).json({
+          error: 'DISCORD_USER',
+          message: 'Password change not available for Discord users',
+        });
+        return;
+      }
+
+      // Validate request body
+      const parseResult = changePasswordSchema.safeParse(req.body);
+
+      if (!parseResult.success) {
+        res.status(400).json({
+          error: 'VALIDATION_ERROR',
+          message: 'Invalid request body',
+          details: parseResult.error.flatten().fieldErrors,
+        });
+        return;
+      }
+
+      const { currentPassword, newPassword } = parseResult.data;
+
+      // Attempt password change via UserService
+      const userService = await import('../../../services/auth/UserService.js');
+      const service = userService.getUserService();
+
+      try {
+        await service.changePassword(
+          authContext.userId,
+          {
+            currentPassword,
+            newPassword,
+          },
+          {
+            userId: authContext.userId,
+            username: authContext.username,
+            ip: getClientIp(req),
+          }
+        );
+
+        // Sprint 145 (LOW-001): Enhanced audit logging
+        logger.info(
+          {
+            userId: authContext.userId,
+            username: authContext.username,
+            correlationId: getCorrelationId(req),
+            clientIp: getClientIp(req),
+          },
+          'Password changed via dashboard'
+        );
+
+        res.json({
+          success: true,
+          message: 'Password changed successfully',
+        });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+        // Log password change failure
+        logger.warn(
+          {
+            userId: authContext.userId,
+            username: authContext.username,
+            error: errorMessage,
+            correlationId: getCorrelationId(req),
+            clientIp: getClientIp(req),
+          },
+          'Password change failed'
+        );
+
+        // Return appropriate error
+        if (errorMessage.includes('Current password is incorrect')) {
+          res.status(401).json({
+            error: 'INVALID_PASSWORD',
+            message: 'Current password is incorrect',
+          });
+        } else if (errorMessage.includes('does not meet requirements')) {
+          res.status(400).json({
+            error: 'WEAK_PASSWORD',
+            message: errorMessage,
+          });
+        } else {
+          res.status(400).json({
+            error: 'PASSWORD_CHANGE_FAILED',
+            message: errorMessage,
+          });
+        }
+      }
+    } catch (error) {
+      logger.error({ error }, 'Password change error');
+      res.status(500).json({
+        error: 'SERVER_ERROR',
+        message: 'Password change service error',
+      });
     }
   });
 

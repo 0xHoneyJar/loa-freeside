@@ -2,11 +2,13 @@
  * Dashboard Overview Page
  *
  * Sprint 116: Dashboard Shell
+ * Sprint 144: Dashboard Login Integration
  *
  * Main dashboard overview page showing server configuration summary.
+ * Supports both Discord OAuth and local authentication users.
  */
 
-import { useAuthStore } from '@/stores/authStore';
+import { useAuthStore, isDiscordUser, isLocalUser, type Guild } from '@/stores/authStore';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Layers, ToggleLeft, Shield, Users } from 'lucide-react';
@@ -15,14 +17,22 @@ export function DashboardPage() {
   const { user } = useAuth();
   const selectedGuildId = useAuthStore((state) => state.selectedGuildId);
 
-  const selectedGuild = user?.adminGuilds.find((g) => g.id === selectedGuildId);
+  // Get selected guild for Discord users only
+  const selectedGuild: Guild | undefined = isDiscordUser(user)
+    ? user.adminGuilds.find((g: Guild) => g.id === selectedGuildId)
+    : undefined;
+
+  // Get display name based on auth type
+  const displayName = isLocalUser(user)
+    ? (user.displayName || user.username)
+    : selectedGuild?.name || 'your server';
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Dashboard</h1>
         <p className="text-muted-foreground">
-          Overview of {selectedGuild?.name || 'your server'} configuration
+          Overview of {displayName} configuration
         </p>
       </div>
 

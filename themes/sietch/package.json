@@ -46,6 +46,7 @@
     "@trigger.dev/sdk": "^3.0.0",
     "@types/cookie-parser": "^1.4.10",
     "@types/ioredis": "^5.0.0",
+    "argon2": "^0.44.0",
     "axios": "^1.7.9",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^11.6.0",
@@ -75,6 +76,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/argon2": "^0.14.1",
     "@types/bcrypt": "^6.0.0",
     "@types/better-sqlite3": "^7.6.11",
     "@types/express": "^5.0.0",

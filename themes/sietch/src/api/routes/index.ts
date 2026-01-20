@@ -91,3 +91,16 @@ export type {
   DashboardSession,
   DashboardAuthRequest,
 } from './dashboard/index.js';
+
+/**
+ * Local authentication routes (Sprint 141 - Gom Jabbar CLI Authentication)
+ * Username/password authentication for CLI and dashboard
+ */
+export { createAuthRouter, requireLocalAuth, requireRoles } from './auth.routes.js';
+export type { AuthenticatedRequest } from './auth.routes.js';
+
+/**
+ * User management routes (Sprint 142 - Gom Jabbar CLI User Management)
+ * Admin endpoints for managing local user accounts
+ */
+export { createUsersRouter } from './users.routes.js';

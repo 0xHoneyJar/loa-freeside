@@ -2,8 +2,10 @@
  * Auth Store
  *
  * Sprint 116: Dashboard Shell
+ * Sprint 144: Dashboard Login Integration
  *
  * Zustand store for authentication state management.
+ * Supports both Discord OAuth and local username/password authentication.
  */
 
 import { create } from 'zustand';
@@ -15,11 +17,61 @@ export interface Guild {
   icon: string | null;
 }
 
-export interface User {
+/**
+ * Auth type discriminator
+ */
+export type AuthType = 'discord' | 'local';
+
+/**
+ * User roles for local authentication
+ */
+export type UserRole = 'admin' | 'qa_admin' | 'qa_tester';
+
+/**
+ * Base user properties
+ */
+interface BaseUser {
   id: string;
   username: string;
+}
+
+/**
+ * Discord-authenticated user
+ */
+export interface DiscordUser extends BaseUser {
+  authType: 'discord';
   avatar: string | null;
   adminGuilds: Guild[];
+}
+
+/**
+ * Local-authenticated user (QA/Admin)
+ */
+export interface LocalUser extends BaseUser {
+  authType: 'local';
+  displayName: string | null;
+  roles: UserRole[];
+  sandboxAccess: string[];
+  requirePasswordChange?: boolean;
+}
+
+/**
+ * Union type for all user types
+ */
+export type User = DiscordUser | LocalUser;
+
+/**
+ * Type guard for Discord users
+ */
+export function isDiscordUser(user: User | null): user is DiscordUser {
+  return user?.authType === 'discord';
+}
+
+/**
+ * Type guard for Local users
+ */
+export function isLocalUser(user: User | null): user is LocalUser {
+  return user?.authType === 'local';
 }
 
 interface AuthState {

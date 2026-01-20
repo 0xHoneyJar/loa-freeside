@@ -2,10 +2,11 @@
  * Auth Store Tests
  *
  * Sprint 116: Dashboard Shell
+ * Sprint 144: Dashboard Login Integration
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useAuthStore } from './authStore';
+import { useAuthStore, isDiscordUser, isLocalUser, type DiscordUser, type LocalUser } from './authStore';
 
 describe('authStore', () => {
   beforeEach(() => {
@@ -26,8 +27,9 @@ describe('authStore', () => {
     expect(state.error).toBeNull();
   });
 
-  it('should set user', () => {
-    const testUser = {
+  it('should set Discord user', () => {
+    const testUser: DiscordUser = {
+      authType: 'discord',
       id: 'user-123',
       username: 'TestUser',
       avatar: null,
@@ -39,6 +41,27 @@ describe('authStore', () => {
     const state = useAuthStore.getState();
     expect(state.user).toEqual(testUser);
     expect(state.error).toBeNull();
+    expect(isDiscordUser(state.user)).toBe(true);
+    expect(isLocalUser(state.user)).toBe(false);
+  });
+
+  it('should set local user', () => {
+    const testUser: LocalUser = {
+      authType: 'local',
+      id: 'user-456',
+      username: 'qa_tester',
+      displayName: 'QA Tester',
+      roles: ['qa_tester'],
+      sandboxAccess: ['sandbox-1'],
+    };
+
+    useAuthStore.getState().setUser(testUser);
+
+    const state = useAuthStore.getState();
+    expect(state.user).toEqual(testUser);
+    expect(state.error).toBeNull();
+    expect(isLocalUser(state.user)).toBe(true);
+    expect(isDiscordUser(state.user)).toBe(false);
   });
 
   it('should select guild', () => {
@@ -65,6 +88,7 @@ describe('authStore', () => {
   it('should logout and clear state', () => {
     // Set up some state
     useAuthStore.getState().setUser({
+      authType: 'discord',
       id: 'user-123',
       username: 'TestUser',
       avatar: null,

@@ -80,3 +80,16 @@ export {
   sanitizeWithWarnings,
   type SanitizationResult,
 } from './sanitization.js';
+// Sprint 139: Password Hashing (Gom Jabbar)
+export {
+  hashPassword,
+  verifyPassword,
+  needsRehash,
+  validatePasswordStrength,
+  generateRandomPassword,
+  generateSessionToken,
+  hashSessionToken,
+  DEFAULT_PASSWORD_REQUIREMENTS,
+  type PasswordRequirements,
+  type PasswordValidationResult,
+} from './password.js';

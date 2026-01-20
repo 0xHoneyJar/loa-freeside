@@ -209,3 +209,60 @@ export {
   countTierPromotions,
   getMembersByTier,
 } from './tier-queries.js';
+
+// =============================================================================
+// User Management Queries (Sprint 139: Gom Jabbar)
+// =============================================================================
+export {
+  // User CRUD
+  createUser,
+  getUserById,
+  getUserByUsername,
+  listUsers,
+  updateUser,
+  updateUserPassword,
+  updateLastLogin,
+  deleteUser,
+  // Session Management
+  createSession,
+  getSessionById,
+  getSessionByTokenHash,
+  getActiveSession,
+  getUserSessions,
+  updateSessionActivity,
+  revokeSession,
+  revokeAllUserSessions,
+  cleanupExpiredSessions,
+  // Audit Logging
+  logUserAuditEvent,
+  queryUserAuditLog,
+  getRecentLoginFailures,
+  // Rate Limiting
+  getRateLimitStatus,
+  recordFailedLogin,
+  clearRateLimit,
+  isRateLimited,
+  cleanupOldRateLimits,
+} from './user-queries.js';
+
+// Re-export user types
+export type {
+  User,
+  UserPublic,
+  UserSession,
+  UserAuditEntry,
+  LoginRateLimit,
+  UserRole,
+  SessionType,
+  AuditAction,
+  AuditMetadata,
+  CreateUserInput,
+  UpdateUserInput,
+  ChangePasswordInput,
+  ResetPasswordInput,
+  LoginInput,
+  LoginResult,
+  ListUsersQuery,
+  AuditLogQuery,
+  PaginatedResult,
+} from '../types/user.types.js';

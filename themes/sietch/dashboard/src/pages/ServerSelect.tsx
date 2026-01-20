@@ -2,13 +2,15 @@
  * Server Select Page
  *
  * Sprint 116: Dashboard Shell
+ * Sprint 144: Dashboard Login Integration
  *
  * Lists servers where the user is an admin for selection.
+ * Local users are redirected directly to dashboard (no guild selection).
  */
 
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { useAuthStore } from '@/stores/authStore';
+import { useAuthStore, isDiscordUser, isLocalUser, type Guild } from '@/stores/authStore';
 import { getGuildIconUrl } from '@/lib/utils';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -31,10 +33,18 @@ export function ServerSelectPage() {
     return <Navigate to="/login" replace />;
   }
 
+  // Local users don't have guilds - redirect to dashboard
+  if (isLocalUser(user)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
   const handleSelectServer = (guildId: string) => {
     selectGuild(guildId);
     navigate('/dashboard');
   };
+
+  // Get admin guilds for Discord users
+  const adminGuilds: Guild[] = isDiscordUser(user) ? user.adminGuilds : [];
 
   return (
     <div className="min-h-screen bg-background">
@@ -48,7 +58,7 @@ export function ServerSelectPage() {
             </p>
           </div>
 
-          {user?.adminGuilds.length === 0 ? (
+          {adminGuilds.length === 0 ? (
             <Card>
               <CardContent className="py-8 text-center">
                 <p className="text-muted-foreground">
@@ -58,7 +68,7 @@ export function ServerSelectPage() {
             </Card>
           ) : (
             <div className="grid gap-4">
-              {user?.adminGuilds.map((guild) => (
+              {adminGuilds.map((guild: Guild) => (
                 <Card
                   key={guild.id}
                   className="cursor-pointer transition-colors hover:bg-accent"

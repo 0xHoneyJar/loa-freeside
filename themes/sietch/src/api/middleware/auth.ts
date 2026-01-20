@@ -2,12 +2,14 @@
  * Authentication and Authorization Middleware
  *
  * Sprint 111: Security Remediation (CRITICAL-002)
+ * Sprint 143: Sandbox Access Management (Bearer token support)
  *
  * Provides authentication and authorization for REST API endpoints,
  * specifically for the simulation/sandbox testing system.
  *
  * Features:
  * - API key authentication (for service-to-service and QA testing)
+ * - Bearer token authentication (for local user sessions)
  * - Caller identity extraction
  * - Sandbox access verification
  * - Self-or-admin authorization
@@ -17,6 +19,7 @@
 
 import type { Request, Response, NextFunction } from 'express';
 import { logger } from '../../utils/logger.js';
+import { getAuthService } from '../../services/auth/AuthService.js';
 
 // =============================================================================
 // Types
@@ -201,14 +204,37 @@ export async function requireAuth(
     return;
   }
 
-  // Try Bearer token authentication (JWT support placeholder)
+  // Try Bearer token authentication (local user sessions)
   const authHeader = req.headers.authorization;
 
   if (authHeader?.startsWith('Bearer ')) {
-    // JWT validation would go here
-    // For now, reject Bearer tokens until JWT is implemented
-    res.status(401).json({ error: 'Bearer token authentication not yet supported' });
-    return;
+    const token = authHeader.slice(7); // Remove 'Bearer ' prefix
+
+    try {
+      const authService = getAuthService();
+      const authContext = await authService.getAuthContext(token);
+
+      if (authContext) {
+        req.caller = {
+          userId: authContext.userId,
+          roles: authContext.roles,
+          sandboxAccess: authContext.sandboxAccess,
+        };
+        return next();
+      }
+
+      // Invalid or expired session token
+      logger.warn(
+        { tokenPrefix: token.substring(0, 8) + '...' },
+        'Invalid or expired session token'
+      );
+      res.status(401).json({ error: 'Invalid or expired session' });
+      return;
+    } catch (error) {
+      logger.error({ error }, 'Session validation error');
+      res.status(500).json({ error: 'Authentication service error' });
+      return;
+    }
   }
 
   // No authentication provided
