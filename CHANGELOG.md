@@ -5,6 +5,77 @@ All notable changes to Loa will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-01-20 — Simstim Telegram Bridge
+
+### Why This Release
+
+This release introduces **Simstim**, a Telegram bridge for remote monitoring and control of Loa (Claude Code) sessions. Named after the neural interface technology in William Gibson's Sprawl trilogy, Simstim lets you experience your AI agent workflows from anywhere—approve permissions, monitor phases, and control execution from your phone.
+
+### Added
+
+- **Simstim Package** (`simstim/`)
+  - Full Python package with CLI interface
+  - Telegram bot integration for permission relay
+  - Auto-approve policy engine with pattern matching
+  - Phase transition and quality gate notifications
+  - Offline queue with automatic reconnection
+  - Comprehensive JSONL audit logging
+
+- **Permission Features**
+  - One-tap approve/deny from Telegram
+  - Configurable timeout with default action
+  - Rate limiting per user
+  - Denial backoff for abuse prevention
+
+- **Policy Engine**
+  - TOML-based policy configuration
+  - Pattern matching for file paths and commands
+  - Allowlist/blocklist support
+  - Fail-closed defaults for security
+
+- **Monitoring Capabilities**
+  - Phase transition notifications
+  - Quality gate alerts (review/audit)
+  - NOTES.md update detection
+  - Sprint progress tracking
+
+### Security Hardening
+
+Comprehensive security audit identified and remediated 9 vulnerabilities:
+
+| Finding | Severity | CWE | Fix |
+|---------|----------|-----|-----|
+| SIMSTIM-001 | CRITICAL | CWE-522 | SafeSecretStr for token protection |
+| SIMSTIM-002 | CRITICAL | CWE-78 | Command allowlist, shell=False enforcement |
+| SIMSTIM-003 | HIGH | CWE-285 | Fail-closed authorization by default |
+| SIMSTIM-004 | HIGH | CWE-312 | Credential redaction in notifications |
+| SIMSTIM-005 | HIGH | CWE-943 | Literal-only policy value comparisons |
+| SIMSTIM-006 | MEDIUM | CWE-208 | Constant-time rate limit evaluation |
+| SIMSTIM-007 | MEDIUM | CWE-200 | Extended redaction (30+ patterns, JWT, AWS keys) |
+| SIMSTIM-008 | MEDIUM | CWE-778 | HMAC-SHA256 audit log hash chain |
+| SIMSTIM-009 | MEDIUM | CWE-74 | Environment variable whitelist |
+
+**Security Grade: A** (Production-ready)
+
+**221 Security Tests** covering all vulnerability remediations.
+
+### Technical Details
+
+- **Architecture**: Bridge pattern with event queue
+- **Dependencies**: Python 3.11+, python-telegram-bot, pydantic
+- **Configuration**: TOML-based with environment variable expansion
+- **Logging**: Structured JSONL with tamper-evident hash chains
+
+### Installation
+
+```bash
+pip install simstim
+simstim config --init
+simstim start -- /implement sprint-1
+```
+
+See `simstim/README.md` for full documentation.
+
 ## [1.2.0] - 2026-01-20 — Beads Migration & Security Hardening
 
 ### Why This Release
