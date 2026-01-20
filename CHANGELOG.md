@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+#### CLI Noun Clarity Refactoring (Sprint 154)
+- **Reverted abbreviated noun subcommands** in `gaib server` to full forms for discoverability
+  - `gaib server ws` → `gaib server workspace`
+  - `gaib server st` → `gaib server state`
+  - `gaib server th` → `gaib server theme`
+- **Hidden aliases** for backward compatibility (`ws`, `st`, `th` still work but emit deprecation warning)
+- **Preserved Unix verb abbreviations** (`ls`, `rm`, `new`) as-is
+- Follows CLI design principles from [clig.dev](https://clig.dev):
+  - Frequency-proportional brevity (universal verbs abbreviated, domain nouns spelled out)
+  - Ambiguity avoidance (`st` commonly means `status`, not `state`)
+  - The sentence rule (`gaib server state import` reads as natural language)
+
 ## [6.0.0] - 2026-01-13
 
 ### Added

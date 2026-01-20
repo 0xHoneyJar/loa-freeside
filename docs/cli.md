@@ -437,26 +437,26 @@ gaib server plan
 gaib server apply
 
 # Workspace management
-gaib server ws ls
-gaib server ws new staging
-gaib server ws use staging
-gaib server ws rm staging
+gaib server workspace ls
+gaib server workspace new staging
+gaib server workspace use staging
+gaib server workspace rm staging
 
 # State management
 gaib server import <address> <id>
-gaib server st ls
-gaib server st show <address>
-gaib server st rm <address>
-gaib server st mv <src> <dest>
-gaib server st pull
+gaib server state ls
+gaib server state show <address>
+gaib server state rm <address>
+gaib server state mv <src> <dest>
+gaib server state pull
 
 # Lock management
 gaib server locks
 gaib server unlock
 
 # Theme management
-gaib server th ls
-gaib server th info <name>
+gaib server theme ls
+gaib server theme info <name>
 ```
 
 ---

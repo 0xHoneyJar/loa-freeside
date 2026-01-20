@@ -215,37 +215,37 @@ gaib server export [options]
 
 ## Workspace Commands
 
-Workspace management commands are under `gaib server ws`.
+Workspace management commands are under `gaib server workspace`.
 
-### gaib server ws ls
+### gaib server workspace ls
 
 List all workspaces.
 
 ```bash
-gaib server ws ls [options]
+gaib server workspace ls [options]
 ```
 
-### gaib server ws new
+### gaib server workspace new
 
 Create a new workspace and switch to it.
 
 ```bash
-gaib server ws new <name> [options]
+gaib server workspace new <name> [options]
 ```
 
 **Examples:**
 
 ```bash
 # Create staging workspace
-gaib server ws new staging
+gaib server workspace new staging
 ```
 
-### gaib server ws use
+### gaib server workspace use
 
 Switch to a workspace.
 
 ```bash
-gaib server ws use <name> [options]
+gaib server workspace use <name> [options]
 ```
 
 **Options:**
@@ -259,26 +259,26 @@ gaib server ws use <name> [options]
 
 ```bash
 # Switch to staging
-gaib server ws use staging
+gaib server workspace use staging
 
 # Switch or create
-gaib server ws use staging --create
+gaib server workspace use staging --create
 ```
 
-### gaib server ws show
+### gaib server workspace show
 
 Show workspace details (defaults to current workspace).
 
 ```bash
-gaib server ws show [name] [options]
+gaib server workspace show [name] [options]
 ```
 
-### gaib server ws rm
+### gaib server workspace rm
 
 Delete a workspace.
 
 ```bash
-gaib server ws rm <name> [options]
+gaib server workspace rm <name> [options]
 ```
 
 **Options:**
@@ -293,14 +293,14 @@ gaib server ws rm <name> [options]
 
 ## State Commands
 
-State management commands are under `gaib server st`.
+State management commands are under `gaib server state`.
 
-### gaib server st ls
+### gaib server state ls
 
 List all resources in state.
 
 ```bash
-gaib server st ls [options]
+gaib server state ls [options]
 ```
 
 **Options:**
@@ -310,12 +310,12 @@ gaib server st ls [options]
 | `-w, --workspace <name>` | Use specific workspace | `default` |
 | `--json` | Output in JSON format | false |
 
-### gaib server st show
+### gaib server state show
 
 Show detailed information about a resource.
 
 ```bash
-gaib server st show <address> [options]
+gaib server state show <address> [options]
 ```
 
 **Arguments:**
@@ -328,18 +328,18 @@ gaib server st show <address> [options]
 
 ```bash
 # Show role details
-gaib server st show "role.Admin [managed-by:arrakis-iac]"
+gaib server state show "role.Admin [managed-by:arrakis-iac]"
 
 # Show channel details
-gaib server st show channel.general
+gaib server state show channel.general
 ```
 
-### gaib server st rm
+### gaib server state rm
 
 Remove a resource from state (does not delete from Discord).
 
 ```bash
-gaib server st rm <address> [options]
+gaib server state rm <address> [options]
 ```
 
 **Options:**
@@ -350,20 +350,20 @@ gaib server st rm <address> [options]
 | `-y, --yes` | Skip confirmation prompt |
 | `--json` | Output as JSON |
 
-### gaib server st mv
+### gaib server state mv
 
 Move/rename a resource address in state.
 
 ```bash
-gaib server st mv <source> <destination> [options]
+gaib server state mv <source> <destination> [options]
 ```
 
-### gaib server st pull
+### gaib server state pull
 
 Refresh state from Discord (updates all resource attributes).
 
 ```bash
-gaib server st pull [options]
+gaib server state pull [options]
 ```
 
 **Options:**
@@ -449,22 +449,22 @@ gaib server unlock [options]
 
 ## Theme Commands
 
-Theme management commands are under `gaib server th`.
+Theme management commands are under `gaib server theme`.
 
-### gaib server th ls
+### gaib server theme ls
 
 List available themes.
 
 ```bash
-gaib server th ls [options]
+gaib server theme ls [options]
 ```
 
-### gaib server th info
+### gaib server theme info
 
 Show detailed information about a theme.
 
 ```bash
-gaib server th info <name> [options]
+gaib server theme info <name> [options]
 ```
 
 ---

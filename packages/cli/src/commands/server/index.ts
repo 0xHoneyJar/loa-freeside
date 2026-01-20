@@ -54,25 +54,25 @@ Examples:
   $ gaib server teardown --confirm-teardown  DANGEROUS: Delete ALL server resources
 
 Workspace Commands:
-  $ gaib server ws ls                        List all workspaces
-  $ gaib server ws new staging               Create new workspace
-  $ gaib server ws use staging               Switch to workspace
-  $ gaib server ws show                      Show current workspace details
-  $ gaib server ws rm staging                Delete a workspace
+  $ gaib server workspace ls                 List all workspaces
+  $ gaib server workspace new staging        Create new workspace
+  $ gaib server workspace use staging        Switch to workspace
+  $ gaib server workspace show               Show current workspace details
+  $ gaib server workspace rm staging         Delete a workspace
 
 State Management:
   $ gaib server import <address> <id>        Import existing Discord resource
-  $ gaib server st ls                        List all resources in state
-  $ gaib server st show <address>            Show resource details
-  $ gaib server st rm <address>              Remove resource from state
-  $ gaib server st mv <src> <dest>           Rename resource address
-  $ gaib server st pull                      Refresh state from Discord
+  $ gaib server state ls                     List all resources in state
+  $ gaib server state show <address>         Show resource details
+  $ gaib server state rm <address>           Remove resource from state
+  $ gaib server state mv <src> <dest>        Rename resource address
+  $ gaib server state pull                   Refresh state from Discord
   $ gaib server locks                        Show lock status for workspace
   $ gaib server unlock                       Force release a stuck lock
 
 Theme Commands:
-  $ gaib server th ls                        List available themes
-  $ gaib server th info <name>               Show detailed theme information
+  $ gaib server theme ls                     List available themes
+  $ gaib server theme info <name>            Show detailed theme information
 `
     );
 
@@ -84,12 +84,15 @@ Theme Commands:
   registerDestroyCommand(server);
   registerTeardownCommand(server);
   registerExportCommand(server);
-  registerWsCommand(server);
+  registerWorkspaceCommand(server);
   registerImportCommand(server);
-  registerStCommand(server);
+  registerStateCommand(server);
   registerLocksCommand(server);
   registerUnlockCommand(server);
-  registerThCommand(server);
+  registerThemeCommand(server);
+
+  // Register hidden aliases for backward compatibility (Sprint 154)
+  registerHiddenAliases(server);
 
   return server;
 }
@@ -329,20 +332,20 @@ function registerExportCommand(parent: Command): void {
 }
 
 /**
- * Registers the 'ws' subcommand group (workspace management)
+ * Registers the 'workspace' subcommand group (workspace management)
  *
  * Manages workspaces for environment isolation.
  *
  * @see Sprint 97: Workspace Management
- * @see Sprint 147: CLI Ergonomics (renamed from 'workspace' to 'ws')
+ * @see Sprint 154: CLI Noun Clarity (reverted from 'ws' to 'workspace')
  */
-function registerWsCommand(parent: Command): void {
-  const ws = parent
-    .command('ws')
+function registerWorkspaceCommand(parent: Command): void {
+  const workspace = parent
+    .command('workspace')
     .description('Manage workspaces for environment isolation');
 
-  // ws ls (list)
-  ws
+  // workspace ls (list)
+  workspace
     .command('ls')
     .description('List all workspaces')
     .option('--json', 'Output result as JSON')
@@ -356,8 +359,8 @@ function registerWsCommand(parent: Command): void {
       }
     });
 
-  // ws new
-  ws
+  // workspace new
+  workspace
     .command('new <name>')
     .description('Create a new workspace and switch to it')
     .option('--json', 'Output result as JSON')
@@ -371,8 +374,8 @@ function registerWsCommand(parent: Command): void {
       }
     });
 
-  // ws use (was 'select')
-  ws
+  // workspace use (was 'select')
+  workspace
     .command('use <name>')
     .description('Switch to a workspace')
     .option('-c, --create', 'Create workspace if it does not exist')
@@ -387,8 +390,8 @@ function registerWsCommand(parent: Command): void {
       }
     });
 
-  // ws show
-  ws
+  // workspace show
+  workspace
     .command('show [name]')
     .description('Show workspace details (defaults to current workspace)')
     .option('--json', 'Output result as JSON')
@@ -402,8 +405,8 @@ function registerWsCommand(parent: Command): void {
       }
     });
 
-  // ws rm (was 'delete')
-  ws
+  // workspace rm (was 'delete')
+  workspace
     .command('rm <name>')
     .description('Delete a workspace')
     .option('-f, --force', 'Force delete even if workspace has resources')
@@ -446,20 +449,20 @@ function registerImportCommand(parent: Command): void {
 }
 
 /**
- * Registers the 'st' subcommand group (state management)
+ * Registers the 'state' subcommand group (state management)
  *
  * Provides commands for managing state resources directly.
  *
  * @see Sprint 99: Import & State Commands
- * @see Sprint 147: CLI Ergonomics (renamed from 'state' to 'st')
+ * @see Sprint 154: CLI Noun Clarity (reverted from 'st' to 'state')
  */
-function registerStCommand(parent: Command): void {
-  const st = parent
-    .command('st')
+function registerStateCommand(parent: Command): void {
+  const state = parent
+    .command('state')
     .description('Manage state resources directly');
 
-  // st ls (list)
-  st
+  // state ls (list)
+  state
     .command('ls')
     .description('List all resources in state')
     .option('-w, --workspace <name>', 'Override current workspace')
@@ -474,8 +477,8 @@ function registerStCommand(parent: Command): void {
       }
     });
 
-  // st show
-  st
+  // state show
+  state
     .command('show <address>')
     .description('Show detailed information about a resource')
     .option('-w, --workspace <name>', 'Override current workspace')
@@ -490,8 +493,8 @@ function registerStCommand(parent: Command): void {
       }
     });
 
-  // st rm
-  st
+  // state rm
+  state
     .command('rm <address>')
     .description('Remove a resource from state (does not delete from Discord)')
     .option('-w, --workspace <name>', 'Override current workspace')
@@ -507,8 +510,8 @@ function registerStCommand(parent: Command): void {
       }
     });
 
-  // st mv
-  st
+  // state mv
+  state
     .command('mv <source> <destination>')
     .description('Move/rename a resource address in state')
     .option('-w, --workspace <name>', 'Override current workspace')
@@ -523,8 +526,8 @@ function registerStCommand(parent: Command): void {
       }
     });
 
-  // st pull
-  st
+  // state pull
+  state
     .command('pull')
     .description('Refresh state from Discord (updates all resource attributes)')
     .option('-g, --guild <id>', 'Discord guild/server ID (required)')
@@ -593,20 +596,20 @@ function registerUnlockCommand(parent: Command): void {
 }
 
 /**
- * Registers the 'th' subcommand group (theme management)
+ * Registers the 'theme' subcommand group (theme management)
  *
  * Commands for listing and inspecting themes.
  *
  * @see Sprint 100: Theme System
- * @see Sprint 147: CLI Ergonomics (renamed from 'theme' to 'th')
+ * @see Sprint 154: CLI Noun Clarity (reverted from 'th' to 'theme')
  */
-function registerThCommand(parent: Command): void {
-  const th = parent
-    .command('th')
+function registerThemeCommand(parent: Command): void {
+  const theme = parent
+    .command('theme')
     .description('Manage Discord server themes');
 
-  // th ls (list)
-  th
+  // theme ls (list)
+  theme
     .command('ls')
     .description('List available themes')
     .option('--json', 'Output result as JSON')
@@ -620,8 +623,8 @@ function registerThCommand(parent: Command): void {
       }
     });
 
-  // th info
-  th
+  // theme info
+  theme
     .command('info <name>')
     .description('Show detailed information about a theme')
     .option('--json', 'Output result as JSON')
@@ -634,6 +637,105 @@ function registerThCommand(parent: Command): void {
         handleError(error, options.json);
       }
     });
+}
+
+/**
+ * Registers hidden aliases for backward compatibility
+ *
+ * Supports abbreviated forms (ws, st, th) that still work but don't appear in help.
+ * Displays deprecation warning to stderr when used interactively.
+ *
+ * @see Sprint 154: CLI Noun Clarity
+ */
+function registerHiddenAliases(parent: Command): void {
+  /**
+   * Emit deprecation warning to stderr (TTY only)
+   */
+  function warnDeprecation(oldName: string, newName: string): void {
+    if (process.stderr.isTTY) {
+      console.error(
+        chalk.yellow(`⚠️  '${oldName}' is deprecated, use '${newName}' instead.`)
+      );
+    }
+  }
+
+  // Hidden 'ws' alias for 'workspace'
+  const wsAlias = parent
+    .command('ws', { hidden: true })
+    .description('Alias for workspace (deprecated)');
+
+  wsAlias.command('ls').action(async (options) => {
+    warnDeprecation('ws', 'workspace');
+    const { workspaceListCommand } = await import('./workspace.js');
+    await workspaceListCommand(options);
+  });
+  wsAlias.command('new <name>').action(async (name, options) => {
+    warnDeprecation('ws', 'workspace');
+    const { workspaceNewCommand } = await import('./workspace.js');
+    await workspaceNewCommand(name, options);
+  });
+  wsAlias.command('use <name>').action(async (name, options) => {
+    warnDeprecation('ws', 'workspace');
+    const { workspaceSelectCommand } = await import('./workspace.js');
+    await workspaceSelectCommand(name, options);
+  });
+  wsAlias.command('show [name]').action(async (name, options) => {
+    warnDeprecation('ws', 'workspace');
+    const { workspaceShowCommand } = await import('./workspace.js');
+    await workspaceShowCommand(name, options);
+  });
+  wsAlias.command('rm <name>').action(async (name, options) => {
+    warnDeprecation('ws', 'workspace');
+    const { workspaceDeleteCommand } = await import('./workspace.js');
+    await workspaceDeleteCommand(name, options);
+  });
+
+  // Hidden 'st' alias for 'state'
+  const stAlias = parent
+    .command('st', { hidden: true })
+    .description('Alias for state (deprecated)');
+
+  stAlias.command('ls').action(async (options) => {
+    warnDeprecation('st', 'state');
+    const { stateListCommand } = await import('./state.js');
+    await stateListCommand(options);
+  });
+  stAlias.command('show <address>').action(async (address, options) => {
+    warnDeprecation('st', 'state');
+    const { stateShowCommand } = await import('./state.js');
+    await stateShowCommand(address, options);
+  });
+  stAlias.command('rm <address>').action(async (address, options) => {
+    warnDeprecation('st', 'state');
+    const { stateRmCommand } = await import('./state.js');
+    await stateRmCommand(address, options);
+  });
+  stAlias.command('mv <source> <destination>').action(async (source, destination, options) => {
+    warnDeprecation('st', 'state');
+    const { stateMvCommand } = await import('./state.js');
+    await stateMvCommand(source, destination, options);
+  });
+  stAlias.command('pull').action(async (options) => {
+    warnDeprecation('st', 'state');
+    const { statePullCommand } = await import('./state.js');
+    await statePullCommand(options);
+  });
+
+  // Hidden 'th' alias for 'theme'
+  const thAlias = parent
+    .command('th', { hidden: true })
+    .description('Alias for theme (deprecated)');
+
+  thAlias.command('ls').action(async (options) => {
+    warnDeprecation('th', 'theme');
+    const { themeListCommand } = await import('./theme.js');
+    await themeListCommand(options);
+  });
+  thAlias.command('info <name>').action(async (name, options) => {
+    warnDeprecation('th', 'theme');
+    const { themeInfoCommand } = await import('./theme.js');
+    await themeInfoCommand(name, options);
+  });
 }
 
 export default createServerCommand;
