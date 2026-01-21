@@ -266,3 +266,31 @@ export type {
   AuditLogQuery,
   PaginatedResult,
 } from '../types/user.types.js';
+
+// =============================================================================
+// Theme Builder Queries (Sprint 1 - WYSIWYG Theme Builder)
+// =============================================================================
+export {
+  // Theme CRUD
+  createTheme,
+  getThemeById,
+  getThemesByCommunity,
+  listThemes,
+  updateTheme,
+  updateThemeConfig,
+  publishTheme,
+  unpublishTheme,
+  deleteTheme,
+  // Theme Versions
+  getThemeVersions,
+  getThemeVersion,
+  rollbackTheme,
+  // Theme Audit Log
+  getThemeAuditLog,
+  getAuditLogByActor,
+  // Utilities
+  themeExists,
+  communityHasThemes,
+  getPublishedTheme,
+  countThemesByStatus,
+} from './theme-queries.js';

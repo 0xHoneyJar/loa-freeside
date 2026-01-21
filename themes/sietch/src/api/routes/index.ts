@@ -16,6 +16,7 @@ import { notificationRouter } from './notification.routes.js';
 import { billingRouter } from '../billing.routes.js';
 import { badgeRouter } from '../badge.routes.js';
 import { boostRouter } from '../boost.routes.js';
+import { themeRouter } from './theme.routes.js';
 
 /**
  * Combined API router that mounts all sub-routers
@@ -49,6 +50,9 @@ apiRouter.use('/badges', badgeRouter);
 // Mount boost routes at /boost (v4.0 - Sprint 28)
 apiRouter.use('/boost', boostRouter);
 
+// Mount theme builder routes at /themes (Sprint 1 - WYSIWYG Theme Builder)
+apiRouter.use('/themes', themeRouter);
+
 /**
  * Re-export individual routers for backward compatibility and direct access
  */
@@ -62,6 +66,7 @@ export {
   billingRouter,
   badgeRouter,
   boostRouter,
+  themeRouter,
 };
 
 /**
@@ -96,7 +101,7 @@ export type {
  * Local authentication routes (Sprint 141 - Gom Jabbar CLI Authentication)
  * Username/password authentication for CLI and dashboard
  */
-export { createAuthRouter, requireLocalAuth, requireRoles } from './auth.routes.js';
+export { createAuthRouter, requireLocalAuth, requireRoles, addApiKeyVerifyRoute } from './auth.routes.js';
 export type { AuthenticatedRequest } from './auth.routes.js';
 
 /**
