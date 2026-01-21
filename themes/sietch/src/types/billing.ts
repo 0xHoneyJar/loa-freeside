@@ -6,6 +6,7 @@
  * - Paddle integration types
  * - Entitlement system types
  * - Fee waiver types
+ * - Crypto payment types (Sprint 155: NOWPayments Integration)
  */
 
 // =============================================================================
@@ -105,8 +106,11 @@ export interface AccessResult {
 
 /**
  * Supported payment providers
+ * - paddle: Recurring fiat subscriptions
+ * - stripe: Legacy (migrated to Paddle)
+ * - nowpayments: One-time crypto payments (Sprint 155)
  */
-export type PaymentProvider = 'paddle' | 'stripe';
+export type PaymentProvider = 'paddle' | 'stripe' | 'nowpayments';
 
 // =============================================================================
 // Subscription
@@ -152,6 +156,10 @@ export interface CreateSubscriptionParams {
   paymentProvider?: PaymentProvider;
   tier?: SubscriptionTier;
   status?: SubscriptionStatus;
+  /** Billing period start (optional, for crypto payments) */
+  currentPeriodStart?: Date;
+  /** Billing period end (optional, for crypto payments) */
+  currentPeriodEnd?: Date;
 }
 
 /**
@@ -352,7 +360,16 @@ export type BillingAuditEventType =
   | 'feature_denied'
   | 'entitlement_cached'
   | 'webhook_processed'
-  | 'webhook_failed';
+  | 'webhook_failed'
+  // Crypto payment events (Sprint 157: NOWPayments Integration)
+  | 'crypto_payment_created'
+  | 'crypto_payment_status_updated'
+  | 'crypto_payment_completed'
+  | 'crypto_payment_failed'
+  | 'crypto_payment_expired'
+  | 'crypto_webhook_received'
+  | 'crypto_webhook_failed'
+  | 'subscription_activated_crypto';
 
 // =============================================================================
 // Billing Service Types
@@ -851,4 +868,123 @@ export interface BoosterPerksResponse {
   communityPerks: string[];
   /** Boost expiry date (if booster) */
   boostExpiry?: string;
+}
+
+// =============================================================================
+// Crypto Payment Types (Sprint 155: NOWPayments Integration)
+// =============================================================================
+
+/**
+ * Supported cryptocurrencies for payment
+ */
+export type CryptoCurrency =
+  | 'btc'    // Bitcoin
+  | 'eth'    // Ethereum
+  | 'usdt'   // Tether (ERC-20)
+  | 'usdc'   // USD Coin
+  | 'ltc'    // Litecoin
+  | 'doge'   // Dogecoin
+  | 'matic'  // Polygon
+  | 'sol';   // Solana
+
+/**
+ * Crypto payment status (NOWPayments statuses)
+ */
+export type CryptoPaymentStatus =
+  | 'waiting'        // Waiting for customer payment
+  | 'confirming'     // Payment received, waiting for confirmations
+  | 'confirmed'      // Payment confirmed, not yet credited
+  | 'sending'        // Sending funds to merchant
+  | 'partially_paid' // Partial payment received
+  | 'finished'       // Payment completed successfully
+  | 'failed'         // Payment failed
+  | 'refunded'       // Payment refunded
+  | 'expired';       // Payment expired
+
+/**
+ * Crypto payment record stored in database
+ */
+export interface CryptoPayment {
+  /** Internal UUID (cp_xxx prefix) */
+  id: string;
+  /** NOWPayments payment_id */
+  paymentId: string;
+  /** Target community for subscription */
+  communityId: string;
+  /** Subscription tier being purchased */
+  tier: SubscriptionTier;
+  /** Price amount in USD */
+  priceAmount: number;
+  /** Price currency (always 'usd') */
+  priceCurrency: 'usd';
+  /** Expected crypto amount */
+  payAmount?: number;
+  /** Crypto currency code */
+  payCurrency?: CryptoCurrency;
+  /** Blockchain address to pay to */
+  payAddress?: string;
+  /** Payment status */
+  status: CryptoPaymentStatus;
+  /** Actual amount received (may differ from payAmount) */
+  actuallyPaid?: number;
+  /** Our order reference for tracking */
+  orderId?: string;
+  /** Record creation timestamp */
+  createdAt: Date;
+  /** Record update timestamp */
+  updatedAt: Date;
+  /** Payment expiration timestamp */
+  expiresAt?: Date;
+  /** Timestamp when payment completed */
+  finishedAt?: Date;
+}
+
+/**
+ * Crypto payment creation parameters
+ */
+export interface CreateCryptoPaymentParams {
+  /** NOWPayments payment_id */
+  paymentId: string;
+  /** Target community */
+  communityId: string;
+  /** Subscription tier */
+  tier: SubscriptionTier;
+  /** Price in USD */
+  priceAmount: number;
+  /** Expected crypto amount */
+  payAmount?: number;
+  /** Crypto currency */
+  payCurrency?: CryptoCurrency;
+  /** Payment address */
+  payAddress?: string;
+  /** Our order reference */
+  orderId?: string;
+  /** Payment expiration */
+  expiresAt?: Date;
+}
+
+/**
+ * Crypto payment status update parameters
+ */
+export interface UpdateCryptoPaymentParams {
+  /** New payment status */
+  status?: CryptoPaymentStatus;
+  /** Actual amount received */
+  actuallyPaid?: number;
+  /** Timestamp when payment completed */
+  finishedAt?: Date;
+}
+
+/**
+ * Crypto payment list options
+ */
+export interface ListCryptoPaymentsOptions {
+  /** Filter by community */
+  communityId?: string;
+  /** Filter by status */
+  status?: CryptoPaymentStatus;
+  /** Limit results */
+  limit?: number;
+  /** Offset for pagination */
+  offset?: number;
 }
