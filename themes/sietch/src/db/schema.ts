@@ -185,3 +185,9 @@ export {
   GOM_JABBAR_USERS_SCHEMA_SQL,
   GOM_JABBAR_USERS_ROLLBACK_SQL,
 } from './migrations/020_gom_jabbar_users.js';
+
+// Re-export Crypto Payments schema for cycle-005 (Sprint 155: NOWPayments Integration)
+export {
+  CRYPTO_PAYMENTS_SCHEMA_SQL,
+  CRYPTO_PAYMENTS_ROLLBACK_SQL,
+} from './migrations/021_crypto_payments.js';

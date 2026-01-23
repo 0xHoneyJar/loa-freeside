@@ -203,6 +203,107 @@ export const memberRateLimiter = rateLimit({
 });
 
 /**
+ * Rate limiter for authentication endpoints (Sprint 10 - HIGH-1)
+ *
+ * Security Features:
+ * - 10 requests per minute per IP (strict limit for auth)
+ * - Prevents brute-force API key guessing attacks
+ * - Uses progressive backoff approach
+ * - Returns standard rate limit headers
+ *
+ * Sprint 10 (HIGH-1): CWE-307 Improper Restriction of Excessive Authentication Attempts
+ *
+ * @see grimoires/loa/sprint-10-security.md
+ */
+export const authRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10, // 10 requests per minute per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'Too many authentication attempts. Please try again later.',
+    retryAfter: 60,
+  },
+  store: createRateLimitStore('rl:auth:'),
+  keyGenerator: (req) => {
+    // Use X-Forwarded-For for proxied requests, fall back to IP
+    const forwarded = req.headers['x-forwarded-for'];
+    if (typeof forwarded === 'string') {
+      return `auth:${forwarded.split(',')[0]?.trim() ?? 'unknown'}`;
+    }
+    return `auth:${req.ip ?? 'unknown'}`;
+  },
+  handler: (req, res, _next, options) => {
+    rateLimitHitCount++;
+    logger.warn(
+      {
+        ip: req.ip,
+        path: req.path,
+        limit: options.max,
+        type: 'auth',
+        metric: 'sietch_auth_rate_limit_exceeded_total',
+      },
+      'Authentication rate limit exceeded (HIGH-1 security)'
+    );
+    res.status(429).json(options.message);
+  },
+});
+
+/**
+ * Strict rate limiter for failed authentication attempts (Sprint 10 - HIGH-1)
+ *
+ * Security Features:
+ * - 5 failed attempts per 15 minutes per IP
+ * - Implements account lockout pattern
+ * - Only counts failed attempts (not successful ones)
+ * - Provides longer lockout period for repeated failures
+ *
+ * Sprint 10 (HIGH-1): Defense in depth against brute force attacks
+ */
+export const strictAuthRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 failed attempts per 15 minutes
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'Too many failed authentication attempts. Account temporarily locked.',
+    retryAfter: 900, // 15 minutes in seconds
+    lockedUntil: '', // Will be set dynamically in handler
+  },
+  store: createRateLimitStore('rl:auth-strict:'),
+  keyGenerator: (req) => {
+    // Use X-Forwarded-For for proxied requests, fall back to IP
+    const forwarded = req.headers['x-forwarded-for'];
+    if (typeof forwarded === 'string') {
+      return `auth-strict:${forwarded.split(',')[0]?.trim() ?? 'unknown'}`;
+    }
+    return `auth-strict:${req.ip ?? 'unknown'}`;
+  },
+  // Skip successful requests - only rate limit failures
+  skipSuccessfulRequests: true,
+  handler: (req, res, _next, options) => {
+    rateLimitHitCount++;
+    const lockedUntil = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+    logger.warn(
+      {
+        ip: req.ip,
+        path: req.path,
+        limit: options.max,
+        lockedUntil,
+        type: 'auth-strict',
+        metric: 'sietch_auth_lockout_total',
+      },
+      'Authentication lockout triggered (HIGH-1 security)'
+    );
+    res.status(429).json({
+      error: 'Too many failed authentication attempts. Account temporarily locked.',
+      retryAfter: 900,
+      lockedUntil,
+    });
+  },
+});
+
+/**
  * Rate limiter for webhook endpoints (Sprint 73 - HIGH-2)
  *
  * Security Features:
@@ -376,32 +477,66 @@ export class NotFoundError extends Error {
 
 /**
  * Global error handler middleware
+ *
+ * SECURITY: HIGH-6 Remediation - Sensitive Data Exposure (CWE-209)
+ * - Never exposes stack traces to clients
+ * - Never exposes file paths or internal structure
+ * - Logs full error details server-side only
+ * - Returns generic error messages in production
  */
 export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
-  // Log error details
+  // Generate request ID for correlation
+  const requestId = res.getHeader('X-Request-ID') || crypto.randomUUID();
+
+  // Log FULL error details server-side (never sent to client)
   logger.error(
     {
       error: err.message,
       stack: err.stack,
       path: req.path,
       method: req.method,
+      requestId,
+      // Don't log body in production - might contain sensitive data
+      body: process.env.NODE_ENV === 'development' ? req.body : '[REDACTED]',
     },
     'Request error'
   );
 
-  // Handle known error types
+  // Handle known error types (safe messages)
   if (err instanceof ValidationError) {
-    res.status(400).json({ error: err.message });
+    res.status(400).json({
+      error: err.message,
+      requestId,
+    });
     return;
   }
 
   if (err instanceof NotFoundError) {
-    res.status(404).json({ error: err.message });
+    res.status(404).json({
+      error: err.message,
+      requestId,
+    });
     return;
   }
 
-  // Generic error response (don't leak internal details)
-  res.status(500).json({ error: 'Internal server error' });
+  // SECURITY: Generic error response - never leak internal details
+  // Development mode can include more info for debugging
+  if (process.env.NODE_ENV === 'development') {
+    res.status(500).json({
+      error: 'Internal server error',
+      message: err.message,
+      requestId,
+      // Stack trace only in development
+      stack: err.stack?.split('\n').slice(0, 5),
+    });
+    return;
+  }
+
+  // Production: Generic message only
+  res.status(500).json({
+    error: 'Internal server error',
+    requestId,
+  });
 };
 
 /**

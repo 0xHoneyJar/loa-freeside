@@ -3,6 +3,11 @@ import type { Address } from 'viem';
 // Re-export billing types (v4.0 - Sprint 23)
 export * from './billing.js';
 
+// Re-export theme builder types (Sprint 1 - WYSIWYG Theme Builder)
+export * from './theme.types.js';
+export * from './theme-component.types.js';
+export * from './theme-web3.types.js';
+
 /**
  * BGT eligibility entry representing a wallet's claim/burn status
  */

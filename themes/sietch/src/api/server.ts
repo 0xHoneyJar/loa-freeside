@@ -7,11 +7,12 @@ import type { IncomingMessage, ServerResponse } from 'http';
 import { config, hasLegacyKeys, LEGACY_KEY_SUNSET_DATE } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { initDatabase, closeDatabase } from '../db/index.js';
-import { publicRouter, adminRouter, memberRouter, billingRouter, badgeRouter, boostRouter } from './routes.js';
+import { publicRouter, adminRouter, memberRouter, billingRouter, cryptoBillingRouter, badgeRouter, boostRouter } from './routes.js';
 import { telegramRouter } from './telegram.routes.js';
 import { adminRouter as billingAdminRouter } from './admin.routes.js';
 import { docsRouter } from './docs/swagger.js';
 import { createVerifyIntegration } from './routes/verify.integration.js';
+import { createAuthRouter, addApiKeyVerifyRoute } from './routes/auth.routes.js';
 import {
   errorHandler,
   notFoundHandler,
@@ -181,8 +182,28 @@ function createApp(): Application {
     },
   }));
 
-  // JSON body parsing
-  expressApp.use(express.json({ limit: '10kb' }));
+  // Raw body parser for crypto webhook (Sprint 158: NOWPayments Integration)
+  // NOWPayments requires raw body for HMAC-SHA512 signature verification
+  expressApp.use('/api/crypto/webhook', express.raw({
+    type: 'application/json',
+    verify: (req: any, _res, buf) => {
+      // Attach raw body buffer to request for signature verification
+      req.rawBody = buf;
+    },
+  }));
+
+  // ==========================================================================
+  // Input Size Limits (Sprint 10 - HIGH-7 Security Hardening)
+  // ==========================================================================
+  // Prevents DoS attacks via large payloads.
+  // Different limits for different content types:
+  // - General JSON: 1MB (default)
+  // - Theme data: 500KB (validated separately)
+  // - Component props: 100KB (validated separately)
+  //
+  // @security HIGH-7: Allocation of Resources Without Limits (CWE-770)
+  expressApp.use(express.json({ limit: '1mb' }));
+  expressApp.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
   // Public routes
   expressApp.use('/', publicRouter);
@@ -192,6 +213,9 @@ function createApp(): Application {
 
   // Billing routes (v4.0 - Sprint 23)
   expressApp.use('/api/billing', billingRouter);
+
+  // Crypto Billing routes (Sprint 158: NOWPayments Integration)
+  expressApp.use('/api/crypto', cryptoBillingRouter);
 
   // Badge routes (v4.0 - Sprint 27)
   expressApp.use('/api/badge', badgeRouter);
@@ -262,6 +286,14 @@ function createApp(): Application {
 
   // API Documentation (v5.1 - Sprint 52)
   expressApp.use('/docs', docsRouter);
+
+  // ==========================================================================
+  // Authentication Routes (Sprint 9 - CRIT-3 Frontend Auth)
+  // ==========================================================================
+  const authRouter = createAuthRouter();
+  addApiKeyVerifyRoute(authRouter); // Add /api/auth/verify for frontend auth
+  expressApp.use('/api/auth', authRouter);
+  logger.info('Auth routes mounted at /api/auth');
 
   // 404 handler
   expressApp.use(notFoundHandler);

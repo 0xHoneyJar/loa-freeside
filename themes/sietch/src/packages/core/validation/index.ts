@@ -6,3 +6,4 @@
 
 export * from './discord-schemas.js';
 export * from './file-validation.js';
+export * from './theme-schemas.js';

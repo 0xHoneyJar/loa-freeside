@@ -1,0 +1,106 @@
+{
+  "version": "1.0.0",
+  "next_sprint_number": 12,
+  "active_cycle": "cycle-001",
+  "cycles": [
+    {
+      "id": "cycle-001",
+      "label": "WYSIWYG Theme Builder MVP",
+      "status": "active",
+      "created_at": "2026-01-21T00:00:00Z",
+      "prd": "grimoires/loa/prd.md",
+      "sdd": "grimoires/loa/sdd.md",
+      "sprints": [
+        {
+          "global_id": 1,
+          "local_label": "sprint-1",
+          "title": "Foundation - Database Schema & Types",
+          "status": "completed",
+          "registered_at": "2026-01-21T00:00:00Z",
+          "completed_at": "2026-01-21T12:30:00Z"
+        },
+        {
+          "global_id": 2,
+          "local_label": "sprint-2",
+          "title": "Foundation - Theme CRUD API",
+          "status": "completed",
+          "registered_at": "2026-01-21T00:00:00Z",
+          "completed_at": "2026-01-21T12:50:00Z"
+        },
+        {
+          "global_id": 3,
+          "local_label": "sprint-3",
+          "title": "Web3 Layer - Chain Service",
+          "status": "completed",
+          "registered_at": "2026-01-21T00:00:00Z",
+          "completed_at": "2026-01-21T13:25:00Z"
+        },
+        {
+          "global_id": 4,
+          "local_label": "sprint-4",
+          "title": "Web3 Layer - Contract Binding API",
+          "status": "completed",
+          "registered_at": "2026-01-21T00:00:00Z",
+          "completed_at": "2026-01-21T13:40:00Z"
+        },
+        {
+          "global_id": 5,
+          "local_label": "sprint-5",
+          "title": "Component System - Registry & Validators",
+          "status": "completed",
+          "registered_at": "2026-01-21T00:00:00Z",
+          "completed_at": "2026-01-21T13:47:00Z"
+        },
+        {
+          "global_id": 6,
+          "local_label": "sprint-6",
+          "title": "Component System - Preview Engine",
+          "status": "completed",
+          "registered_at": "2026-01-21T00:00:00Z",
+          "completed_at": "2026-01-21T13:54:00Z"
+        },
+        {
+          "global_id": 7,
+          "local_label": "sprint-7",
+          "title": "Builder UI - Visual Editor (Part 1)",
+          "status": "completed",
+          "registered_at": "2026-01-21T00:00:00Z",
+          "completed_at": "2026-01-21T15:00:00Z"
+        },
+        {
+          "global_id": 8,
+          "local_label": "sprint-8",
+          "title": "Builder UI - Visual Editor (Part 2)",
+          "status": "completed",
+          "registered_at": "2026-01-21T00:00:00Z",
+          "completed_at": "2026-01-21T15:30:00Z"
+        },
+        {
+          "global_id": 9,
+          "local_label": "sprint-9",
+          "title": "Security Remediation (P0 Critical)",
+          "status": "completed",
+          "registered_at": "2026-01-21T16:00:00Z",
+          "completed_at": "2026-01-21T17:35:00Z"
+        },
+        {
+          "global_id": 10,
+          "local_label": "sprint-10",
+          "title": "Security Hardening (HIGH Priority)",
+          "status": "completed",
+          "registered_at": "2026-01-21T18:00:00Z",
+          "completed_at": "2026-01-21T21:55:00Z"
+        },
+        {
+          "global_id": 11,
+          "local_label": "sprint-11",
+          "title": "Security Hardening (MEDIUM Priority)",
+          "status": "completed",
+          "registered_at": "2026-01-21T18:00:00Z",
+          "completed_at": "2026-01-21T22:15:00Z",
+          "notes": "All 12 MEDIUM issues already remediated in prior sprints (74, 81, 82, 133, 134, 135, 138)"
+        }
+      ]
+    }
+  ]
+}

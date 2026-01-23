@@ -21,6 +21,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { logger } from '../../utils/logger.js';
 import { getAuthService, type LoginRequest, type SessionType } from '../../services/auth/index.js';
+import { authRateLimiter, strictAuthRateLimiter } from '../middleware.js';
 
 // =============================================================================
 // Types
@@ -92,8 +93,12 @@ export function createAuthRouter(): Router {
    * POST /api/auth/login
    *
    * Authenticate user with username/password
+   *
+   * Sprint 10 (HIGH-1): Rate limited to prevent brute force attacks
+   * - 10 requests per minute per IP (authRateLimiter)
+   * - 5 failed attempts per 15 minutes (strictAuthRateLimiter)
    */
-  router.post('/login', async (req: Request, res: Response) => {
+  router.post('/login', authRateLimiter, strictAuthRateLimiter, async (req: Request, res: Response) => {
     try {
       // Validate request body
       const parseResult = loginSchema.safeParse(req.body);
@@ -445,6 +450,70 @@ export function requireRoles(...roles: string[]) {
 
     next();
   };
+}
+
+// =============================================================================
+// API Key Verification (CRIT-3 Frontend Auth)
+// =============================================================================
+
+/**
+ * GET /api/auth/verify
+ *
+ * Verify API key for frontend authentication.
+ * SECURITY: Part of CRIT-3 frontend auth remediation.
+ *
+ * Uses x-api-key header (same as other API routes).
+ *
+ * Sprint 10 (HIGH-1): Rate limited to prevent brute force attacks
+ * - 10 requests per minute per IP (authRateLimiter)
+ * - 5 failed attempts per 15 minutes (strictAuthRateLimiter)
+ *
+ * @see grimoires/loa/a2a/audits/2026-01-21/SECURITY-AUDIT-REPORT.md
+ * @see grimoires/loa/sprint-10-security.md
+ */
+export function addApiKeyVerifyRoute(router: Router): void {
+  router.get('/verify', authRateLimiter, strictAuthRateLimiter, (req: Request, res: Response) => {
+    // API key is validated by requireApiKey middleware before this route
+    // If we reach here, the key is valid
+    const apiKey = req.headers['x-api-key'];
+
+    if (!apiKey || typeof apiKey !== 'string') {
+      res.status(401).json({
+        success: false,
+        error: 'API key required',
+      });
+      return;
+    }
+
+    // Check against environment variable
+    const validApiKey = process.env.SIETCH_API_KEY ?? process.env.API_KEY;
+
+    if (!validApiKey) {
+      logger.warn('No API key configured - set SIETCH_API_KEY or API_KEY environment variable');
+      res.status(500).json({
+        success: false,
+        error: 'Server misconfiguration',
+      });
+      return;
+    }
+
+    // Constant-time comparison to prevent timing attacks
+    const isValid = apiKey.length === validApiKey.length &&
+      apiKey.split('').every((char, i) => char === validApiKey[i]);
+
+    if (!isValid) {
+      res.status(403).json({
+        success: false,
+        error: 'Invalid API key',
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      message: 'API key verified',
+    });
+  });
 }
 
 // =============================================================================
