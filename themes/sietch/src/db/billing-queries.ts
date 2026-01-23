@@ -24,6 +24,12 @@ import type {
   BillingAuditEventType,
   SubscriptionTier,
   SubscriptionStatus,
+  CryptoPayment,
+  CryptoPaymentStatus,
+  CryptoCurrency,
+  CreateCryptoPaymentParams,
+  UpdateCryptoPaymentParams,
+  ListCryptoPaymentsOptions,
 } from '../types/billing.js';
 
 // =============================================================================
@@ -81,6 +87,26 @@ interface BillingAuditRow {
   created_at: string;
 }
 
+// Sprint 155: Crypto Payment Row
+interface CryptoPaymentRow {
+  id: string;
+  payment_id: string;
+  community_id: string;
+  tier: string;
+  price_amount: string;
+  price_currency: string;
+  pay_amount: string | null;
+  pay_currency: string | null;
+  pay_address: string | null;
+  status: string;
+  actually_paid: string | null;
+  order_id: string | null;
+  created_at: string;
+  updated_at: string;
+  expires_at: string | null;
+  finished_at: string | null;
+}
+
 // =============================================================================
 // Row to Object Converters
 // =============================================================================
@@ -91,7 +117,7 @@ function rowToSubscription(row: SubscriptionRow): Subscription {
     communityId: row.community_id,
     paymentCustomerId: row.payment_customer_id ?? undefined,
     paymentSubscriptionId: row.payment_subscription_id ?? undefined,
-    paymentProvider: row.payment_provider as 'paddle' | 'stripe',
+    paymentProvider: row.payment_provider as 'paddle' | 'stripe' | 'nowpayments',
     tier: row.tier as SubscriptionTier,
     status: row.status as SubscriptionStatus,
     graceUntil: row.grace_until ? new Date(row.grace_until * 1000) : undefined,
@@ -145,6 +171,28 @@ function rowToBillingAuditEntry(row: BillingAuditRow): BillingAuditEntry {
     eventData: JSON.parse(row.event_data),
     actor: row.actor ?? undefined,
     createdAt: new Date(row.created_at),
+  };
+}
+
+// Sprint 155: Crypto Payment Converter
+function rowToCryptoPayment(row: CryptoPaymentRow): CryptoPayment {
+  return {
+    id: row.id,
+    paymentId: row.payment_id,
+    communityId: row.community_id,
+    tier: row.tier as SubscriptionTier,
+    priceAmount: parseFloat(row.price_amount),
+    priceCurrency: row.price_currency as 'usd',
+    payAmount: row.pay_amount ? parseFloat(row.pay_amount) : undefined,
+    payCurrency: row.pay_currency ? (row.pay_currency as CryptoCurrency) : undefined,
+    payAddress: row.pay_address ?? undefined,
+    status: row.status as CryptoPaymentStatus,
+    actuallyPaid: row.actually_paid ? parseFloat(row.actually_paid) : undefined,
+    orderId: row.order_id ?? undefined,
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+    expiresAt: row.expires_at ? new Date(row.expires_at) : undefined,
+    finishedAt: row.finished_at ? new Date(row.finished_at) : undefined,
   };
 }
 
@@ -204,8 +252,9 @@ export function createSubscription(params: CreateSubscriptionParams): string {
 
   db.prepare(`
     INSERT INTO subscriptions (
-      id, community_id, payment_customer_id, payment_subscription_id, payment_provider, tier, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      id, community_id, payment_customer_id, payment_subscription_id, payment_provider, tier, status,
+      current_period_start, current_period_end
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     params.communityId,
@@ -213,7 +262,9 @@ export function createSubscription(params: CreateSubscriptionParams): string {
     params.paymentSubscriptionId ?? null,
     params.paymentProvider ?? 'paddle',
     params.tier ?? 'starter',
-    params.status ?? 'active'
+    params.status ?? 'active',
+    params.currentPeriodStart ? Math.floor(params.currentPeriodStart.getTime() / 1000) : null,
+    params.currentPeriodEnd ? Math.floor(params.currentPeriodEnd.getTime() / 1000) : null
   );
 
   logger.info({ id, communityId: params.communityId }, 'Created subscription');
@@ -675,4 +726,233 @@ export function getEffectiveTier(
 
   // Default to free tier
   return { tier: 'starter', source: 'free' };
+}
+
+// =============================================================================
+// Crypto Payment Queries (Sprint 155: NOWPayments Integration)
+// =============================================================================
+
+/**
+ * Create a new crypto payment record
+ * Called when a payment is created via NOWPayments API
+ */
+export function createCryptoPayment(params: CreateCryptoPaymentParams): string {
+  const db = getDatabase();
+  const id = `cp_${randomUUID()}`;
+
+  db.prepare(`
+    INSERT INTO crypto_payments (
+      id, payment_id, community_id, tier, price_amount, price_currency,
+      pay_amount, pay_currency, pay_address, status, order_id, expires_at
+    ) VALUES (?, ?, ?, ?, ?, 'usd', ?, ?, ?, 'waiting', ?, ?)
+  `).run(
+    id,
+    params.paymentId,
+    params.communityId,
+    params.tier,
+    params.priceAmount,
+    params.payAmount ?? null,
+    params.payCurrency ?? null,
+    params.payAddress ?? null,
+    params.orderId ?? null,
+    params.expiresAt?.toISOString() ?? null
+  );
+
+  logger.info(
+    { id, paymentId: params.paymentId, communityId: params.communityId, tier: params.tier },
+    'Created crypto payment'
+  );
+
+  return id;
+}
+
+/**
+ * Get crypto payment by NOWPayments payment_id
+ * Used for webhook processing to find the associated payment
+ */
+export function getCryptoPaymentByPaymentId(paymentId: string): CryptoPayment | null {
+  const db = getDatabase();
+
+  const row = db
+    .prepare('SELECT * FROM crypto_payments WHERE payment_id = ?')
+    .get(paymentId) as CryptoPaymentRow | undefined;
+
+  return row ? rowToCryptoPayment(row) : null;
+}
+
+/**
+ * Get crypto payment by internal ID (cp_xxx)
+ */
+export function getCryptoPaymentById(id: string): CryptoPayment | null {
+  const db = getDatabase();
+
+  const row = db
+    .prepare('SELECT * FROM crypto_payments WHERE id = ?')
+    .get(id) as CryptoPaymentRow | undefined;
+
+  return row ? rowToCryptoPayment(row) : null;
+}
+
+/**
+ * Get crypto payment by order ID (our internal reference)
+ */
+export function getCryptoPaymentByOrderId(orderId: string): CryptoPayment | null {
+  const db = getDatabase();
+
+  const row = db
+    .prepare('SELECT * FROM crypto_payments WHERE order_id = ?')
+    .get(orderId) as CryptoPaymentRow | undefined;
+
+  return row ? rowToCryptoPayment(row) : null;
+}
+
+/**
+ * Update crypto payment status
+ * Called when webhook receives status update from NOWPayments
+ */
+export function updateCryptoPaymentStatus(
+  paymentId: string,
+  params: UpdateCryptoPaymentParams
+): boolean {
+  const db = getDatabase();
+
+  const sets: string[] = ["updated_at = datetime('now')"];
+  const values: (string | number | null)[] = [];
+
+  if (params.status !== undefined) {
+    sets.push('status = ?');
+    values.push(params.status);
+  }
+
+  if (params.actuallyPaid !== undefined) {
+    sets.push('actually_paid = ?');
+    values.push(params.actuallyPaid);
+  }
+
+  if (params.finishedAt !== undefined) {
+    sets.push('finished_at = ?');
+    values.push(params.finishedAt.toISOString());
+  }
+
+  values.push(paymentId);
+
+  const result = db
+    .prepare(`UPDATE crypto_payments SET ${sets.join(', ')} WHERE payment_id = ?`)
+    .run(...values);
+
+  if (result.changes > 0) {
+    logger.info({ paymentId, ...params }, 'Updated crypto payment status');
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * List crypto payments with optional filters
+ */
+export function listCryptoPayments(options: ListCryptoPaymentsOptions = {}): CryptoPayment[] {
+  const db = getDatabase();
+  const { communityId, status, limit = 100, offset = 0 } = options;
+
+  let query = 'SELECT * FROM crypto_payments WHERE 1=1';
+  const params: (string | number)[] = [];
+
+  if (communityId) {
+    query += ' AND community_id = ?';
+    params.push(communityId);
+  }
+
+  if (status) {
+    query += ' AND status = ?';
+    params.push(status);
+  }
+
+  query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+  params.push(limit, offset);
+
+  const rows = db.prepare(query).all(...params) as CryptoPaymentRow[];
+
+  return rows.map(rowToCryptoPayment);
+}
+
+/**
+ * Get pending crypto payments for a community
+ * Useful for checking if there's an existing pending payment
+ */
+export function getPendingCryptoPayments(communityId: string): CryptoPayment[] {
+  const db = getDatabase();
+
+  const rows = db
+    .prepare(`
+      SELECT * FROM crypto_payments
+      WHERE community_id = ?
+        AND status IN ('waiting', 'confirming', 'confirmed', 'sending')
+        AND (expires_at IS NULL OR expires_at > datetime('now'))
+      ORDER BY created_at DESC
+    `)
+    .all(communityId) as CryptoPaymentRow[];
+
+  return rows.map(rowToCryptoPayment);
+}
+
+/**
+ * Get expired crypto payments that need cleanup
+ */
+export function getExpiredCryptoPayments(): CryptoPayment[] {
+  const db = getDatabase();
+
+  const rows = db
+    .prepare(`
+      SELECT * FROM crypto_payments
+      WHERE status = 'waiting'
+        AND expires_at IS NOT NULL
+        AND expires_at <= datetime('now')
+      ORDER BY expires_at ASC
+    `)
+    .all() as CryptoPaymentRow[];
+
+  return rows.map(rowToCryptoPayment);
+}
+
+/**
+ * Mark expired payments as expired
+ * Called periodically to clean up stale payments
+ */
+export function markExpiredCryptoPayments(): number {
+  const db = getDatabase();
+
+  const result = db
+    .prepare(`
+      UPDATE crypto_payments
+      SET status = 'expired', updated_at = datetime('now')
+      WHERE status = 'waiting'
+        AND expires_at IS NOT NULL
+        AND expires_at <= datetime('now')
+    `)
+    .run();
+
+  if (result.changes > 0) {
+    logger.info({ count: result.changes }, 'Marked crypto payments as expired');
+  }
+
+  return result.changes;
+}
+
+/**
+ * Get successfully completed crypto payments for a community
+ */
+export function getCompletedCryptoPayments(communityId: string): CryptoPayment[] {
+  const db = getDatabase();
+
+  const rows = db
+    .prepare(`
+      SELECT * FROM crypto_payments
+      WHERE community_id = ?
+        AND status = 'finished'
+      ORDER BY finished_at DESC
+    `)
+    .all(communityId) as CryptoPaymentRow[];
+
+  return rows.map(rowToCryptoPayment);
 }

@@ -26,6 +26,7 @@ export {
 // Re-export existing separate route files for backward compatibility
 // =============================================================================
 export { billingRouter } from './billing.routes.js';
+export { cryptoBillingRouter } from './crypto-billing.routes.js';
 export { badgeRouter } from './badge.routes.js';
 export { boostRouter } from './boost.routes.js';
 

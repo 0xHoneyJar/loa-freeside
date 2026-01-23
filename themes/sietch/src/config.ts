@@ -159,6 +159,24 @@ const configSchema = z.object({
     }),
   }),
 
+  // NOWPayments Configuration (Sprint 155: Crypto Payment Integration)
+  // Parallel payment provider for cryptocurrency payments
+  nowpayments: z.object({
+    // API key for NOWPayments authentication
+    apiKey: z.string().min(1).optional(),
+    // IPN secret key for webhook signature verification (HMAC-SHA512)
+    // SECURITY: Required when crypto payments are enabled
+    ipnSecretKey: z.string().min(1).optional(),
+    // Public key for client-side operations (optional)
+    publicKey: z.string().min(1).optional(),
+    // Environment: sandbox for testing, production for live payments
+    environment: z.enum(['sandbox', 'production']).default('sandbox'),
+    // Default cryptocurrency for payments (btc, eth, usdt, etc.)
+    defaultPayCurrency: z.string().min(1).default('btc'),
+    // Payment expiration in minutes (NOWPayments default is 20)
+    paymentExpirationMinutes: z.coerce.number().int().min(5).max(1440).default(20),
+  }),
+
   // Redis Configuration (v4.0 - Sprint 23)
   redis: z.object({
     url: z.string().url().optional(),
@@ -203,6 +221,8 @@ const configSchema = z.object({
     // Enable Gateway Proxy pattern (Sprint GW-5)
     // When enabled, sietch delegates Discord Gateway to Ingestor service
     gatewayProxyEnabled: envBooleanSchema.default(false),
+    // Enable NOWPayments crypto payment integration (Sprint 155)
+    cryptoPaymentsEnabled: envBooleanSchema.default(false),
   }),
 
   // Telegram Configuration (v4.1 - Sprint 30)
@@ -446,6 +466,15 @@ function parseConfig() {
         boost12Month: process.env.PADDLE_BOOST_12_MONTH_PRICE_ID,
       },
     },
+    // NOWPayments Configuration (Sprint 155: Crypto Payment Integration)
+    nowpayments: {
+      apiKey: process.env.NOWPAYMENTS_API_KEY,
+      ipnSecretKey: process.env.NOWPAYMENTS_IPN_SECRET,
+      publicKey: process.env.NOWPAYMENTS_PUBLIC_KEY,
+      environment: process.env.NOWPAYMENTS_ENVIRONMENT ?? 'sandbox',
+      defaultPayCurrency: process.env.NOWPAYMENTS_DEFAULT_PAY_CURRENCY ?? 'btc',
+      paymentExpirationMinutes: process.env.NOWPAYMENTS_PAYMENT_EXPIRATION_MINUTES ?? '20',
+    },
     // Redis Configuration (v4.0 - Sprint 23)
     redis: {
       url: process.env.REDIS_URL,
@@ -470,6 +499,7 @@ function parseConfig() {
       telegramEnabled: process.env.FEATURE_TELEGRAM_ENABLED ?? 'false',
       vaultEnabled: process.env.FEATURE_VAULT_ENABLED ?? 'false',
       gatewayProxyEnabled: process.env.USE_GATEWAY_PROXY ?? 'false',
+      cryptoPaymentsEnabled: process.env.FEATURE_CRYPTO_PAYMENTS_ENABLED ?? 'false',
     },
     // Telegram Configuration (v4.1 - Sprint 30)
     telegram: {
@@ -641,6 +671,15 @@ export interface Config {
       boost12Month?: string;
     };
   };
+  // NOWPayments Configuration (Sprint 155: Crypto Payment Integration)
+  nowpayments: {
+    apiKey?: string;
+    ipnSecretKey?: string;
+    publicKey?: string;
+    environment: 'sandbox' | 'production';
+    defaultPayCurrency: string;
+    paymentExpirationMinutes: number;
+  };
   // Redis Configuration (v4.0 - Sprint 23)
   redis: {
     url?: string;
@@ -667,6 +706,8 @@ export interface Config {
     vaultEnabled: boolean;
     /** Enable Gateway Proxy pattern (Sprint GW-5) */
     gatewayProxyEnabled: boolean;
+    /** Enable NOWPayments crypto payment integration (Sprint 155) */
+    cryptoPaymentsEnabled: boolean;
   };
   // Telegram Configuration (v4.1 - Sprint 30)
   telegram: {
@@ -928,6 +969,29 @@ function validateStartupConfig(cfg: typeof parsedConfig): void {
     );
   }
 
+  // ==========================================================================
+  // Sprint 155: NOWPayments Crypto Payment Validation
+  // ==========================================================================
+
+  // SECURITY: Require IPN secret when crypto payments are enabled
+  if (cfg.features.cryptoPaymentsEnabled && cfg.nowpayments.apiKey && !cfg.nowpayments.ipnSecretKey) {
+    logger.fatal('NOWPAYMENTS_IPN_SECRET is required when crypto payments are enabled');
+    throw new Error(
+      'Missing required configuration: NOWPAYMENTS_IPN_SECRET must be set when ' +
+        'FEATURE_CRYPTO_PAYMENTS_ENABLED=true and NOWPAYMENTS_API_KEY is configured. ' +
+        'This prevents forged webhook calls from malicious actors.'
+    );
+  }
+
+  // SECURITY: Validate crypto payments config completeness when enabled
+  if (cfg.features.cryptoPaymentsEnabled && !cfg.nowpayments.apiKey) {
+    logger.fatal('NOWPAYMENTS_API_KEY is required when crypto payments are enabled');
+    throw new Error(
+      'Missing required configuration: NOWPAYMENTS_API_KEY must be set when ' +
+        'FEATURE_CRYPTO_PAYMENTS_ENABLED=true.'
+    );
+  }
+
   // Sprint 133 (HIGH-001): CORS wildcard check - ENFORCE in production
   // MED-7 upgraded to HIGH-001: Wildcard CORS must not be allowed in production
   if (isProduction && cfg.cors.allowedOrigins.includes('*')) {
@@ -986,6 +1050,9 @@ function validateStartupConfig(cfg: typeof parsedConfig): void {
       { name: 'RATE_LIMIT_SALT', value: cfg.security.rateLimitSalt },
       { name: 'WEBHOOK_SECRET', value: cfg.security.webhookSecret },
       { name: 'DUO_SECRET_KEY', value: cfg.mfa.duo.secretKey },
+      // Sprint 155: NOWPayments sensitive fields
+      { name: 'NOWPAYMENTS_API_KEY', value: cfg.nowpayments.apiKey },
+      { name: 'NOWPAYMENTS_IPN_SECRET', value: cfg.nowpayments.ipnSecretKey },
     ];
 
     for (const field of sensitiveFields) {
@@ -1019,6 +1086,7 @@ export const config: Config = {
   },
   triggerDev: parsedConfig.triggerDev,
   paddle: parsedConfig.paddle,
+  nowpayments: parsedConfig.nowpayments,
   redis: parsedConfig.redis,
   vault: parsedConfig.vault,
   features: parsedConfig.features,
@@ -1538,4 +1606,87 @@ export function getVaultClientConfig(): VaultClientConfig {
     requestTimeout: config.vault.requestTimeout,
     secretCacheTtl: config.vault.secretCacheTtl,
   };
+}
+
+// =============================================================================
+// NOWPayments Configuration Helpers (Sprint 155: Crypto Payment Integration)
+// =============================================================================
+
+/**
+ * Check if NOWPayments crypto payments are enabled and configured
+ */
+export function isCryptoPaymentsEnabled(): boolean {
+  return config.features.cryptoPaymentsEnabled && !!config.nowpayments.apiKey;
+}
+
+/**
+ * Check if all required NOWPayments configuration is present
+ * Returns list of missing configuration keys
+ */
+export function getMissingNOWPaymentsConfig(): string[] {
+  const missing: string[] = [];
+
+  if (!config.nowpayments.apiKey) missing.push('NOWPAYMENTS_API_KEY');
+  if (!config.nowpayments.ipnSecretKey) missing.push('NOWPAYMENTS_IPN_SECRET');
+
+  return missing;
+}
+
+/**
+ * Get NOWPayments API URL based on environment
+ * Returns sandbox URL for sandbox environment, production URL otherwise
+ */
+export function getNOWPaymentsApiUrl(): string {
+  return config.nowpayments.environment === 'sandbox'
+    ? 'https://api-sandbox.nowpayments.io/v1'
+    : 'https://api.nowpayments.io/v1';
+}
+
+/**
+ * NOWPayments configuration for creating adapters
+ */
+export interface NOWPaymentsClientConfig {
+  apiKey: string;
+  ipnSecretKey: string;
+  publicKey?: string;
+  environment: 'sandbox' | 'production';
+  defaultPayCurrency: string;
+  paymentExpirationMinutes: number;
+  apiUrl: string;
+}
+
+/**
+ * Get complete NOWPayments client configuration
+ * Throws if NOWPayments is not properly configured
+ */
+export function getNOWPaymentsClientConfig(): NOWPaymentsClientConfig {
+  if (!config.nowpayments.apiKey) {
+    throw new Error(
+      'NOWPayments is not configured. Set NOWPAYMENTS_API_KEY environment variable.'
+    );
+  }
+  if (!config.nowpayments.ipnSecretKey) {
+    throw new Error(
+      'NOWPayments IPN secret is not configured. Set NOWPAYMENTS_IPN_SECRET environment variable.'
+    );
+  }
+
+  return {
+    apiKey: config.nowpayments.apiKey,
+    ipnSecretKey: config.nowpayments.ipnSecretKey,
+    publicKey: config.nowpayments.publicKey,
+    environment: config.nowpayments.environment,
+    defaultPayCurrency: config.nowpayments.defaultPayCurrency,
+    paymentExpirationMinutes: config.nowpayments.paymentExpirationMinutes,
+    apiUrl: getNOWPaymentsApiUrl(),
+  };
+}
+
+/**
+ * Get subscription tier price in USD for crypto payments
+ * Uses same pricing as Paddle tiers
+ */
+export function getCryptoPaymentPrice(tier: string): number | undefined {
+  const tierInfo = getSubscriptionTierInfo(tier);
+  return tierInfo?.price;
 }

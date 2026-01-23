@@ -21,6 +21,7 @@ import {
   BOOSTS_SCHEMA_SQL,
   TELEGRAM_IDENTITY_SAFE_SQL,
   GOM_JABBAR_USERS_SCHEMA_SQL,
+  CRYPTO_PAYMENTS_SCHEMA_SQL,
 } from './schema.js';
 
 let db: Database.Database | null = null;
@@ -227,6 +228,10 @@ export function initDatabase(): Database.Database {
   // Run Gom Jabbar user management schema (Sprint 139)
   db.exec(GOM_JABBAR_USERS_SCHEMA_SQL);
   logger.info('Gom Jabbar user management schema initialized');
+
+  // Run crypto payments schema (Sprint 155: NOWPayments Integration)
+  db.exec(CRYPTO_PAYMENTS_SCHEMA_SQL);
+  logger.info('Crypto payments schema initialized');
 
   return db;
 }
