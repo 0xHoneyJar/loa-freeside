@@ -33,6 +33,37 @@ disabled_agents: []
 #   - translating-for-executives
 
 # =============================================================================
+# Goal Traceability (v1.7.0)
+# =============================================================================
+# Prevents silent goal failures by mapping PRD goals through sprint tasks
+goal_traceability:
+  enabled: true              # Enable goal ID system
+  require_goal_ids: true     # Require G-N IDs in PRD
+  auto_assign_ids: true      # Auto-assign if missing
+  generate_appendix_c: true  # Generate goal mapping in sprint
+  generate_e2e_task: true    # Auto-generate E2E validation task
+
+goal_validation:
+  enabled: true              # Enable goal validation
+  block_on_at_risk: false    # Block review on AT_RISK (default: warn)
+  block_on_blocked: true     # Block review on BLOCKED
+  require_e2e_task: true     # Require E2E task in final sprint
+
+# =============================================================================
+# Tool Preferences (Enforcement)
+# =============================================================================
+# These preferences are enforced via CLAUDE.md instructions
+tool_preferences:
+  # Use br (beads_rust) instead of bd (beads python)
+  beads_cli: br
+  # Use ck (seek) instead of grep for code search
+  search_cli: ck
+  # Deprecation warnings
+  deprecated_tools:
+    - bd   # Use br instead
+    - grep # Use ck instead
+
+# =============================================================================
 # Custom Paths
 # =============================================================================
 paths:

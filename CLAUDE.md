@@ -2,6 +2,53 @@
 
 Guidance for Claude Code when working in this repository.
 
+## CRITICAL: Tool Enforcement Rules
+
+**These rules are MANDATORY. Violations will result in incorrect behavior.**
+
+### 1. Task Management: Use `br` (NOT `bd`)
+
+```bash
+# CORRECT - Use br (beads_rust)
+br create --title "..." --type task
+br ready
+br update <id> --status in_progress
+br close <id>
+br sync
+
+# WRONG - Never use bd
+bd create ...  # ❌ DEPRECATED
+bd list ...    # ❌ DEPRECATED
+```
+
+### 2. Code Search: Use `ck` (NOT `grep`)
+
+```bash
+# CORRECT - Use ck (seek) for all code search
+ck "pattern" src/                    # Basic search
+ck --sem "error handling" src/       # Semantic search
+ck --lex "user authentication"       # Full-text search
+
+# WRONG - Never use grep for code search
+grep -r "pattern" src/  # ❌ DEPRECATED - use ck instead
+rg "pattern" src/       # ❌ DEPRECATED - use ck instead
+```
+
+### 3. Goal Tracking: All PRD Goals MUST Have IDs
+
+```markdown
+## Goals
+
+| ID | Goal | Metric |
+|----|------|--------|
+| G-1 | Enable parallel development | 2+ simultaneous PRs |
+| G-2 | Reduce context window | -60% tokens |
+```
+
+Every goal in the PRD must have a `G-N` identifier for traceability.
+
+---
+
 ## Project Overview
 
 Agent-driven development framework that orchestrates the complete product lifecycle using 9 specialized AI agents (skills). Built with enterprise-grade managed scaffolding inspired by AWS Projen, Copier, and Google's ADK.
