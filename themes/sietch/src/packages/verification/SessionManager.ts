@@ -15,7 +15,7 @@
  * @module packages/verification/SessionManager
  */
 
-import { eq, and, lt, sql } from 'drizzle-orm';
+import { eq, and, lt, gt, sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 
 import {
@@ -292,7 +292,7 @@ export class SessionManager {
           and(
             eq(walletVerificationSessions.discordUserId, discordUserId),
             eq(walletVerificationSessions.status, 'pending'),
-            sql`${walletVerificationSessions.expiresAt} > ${now}`
+            gt(walletVerificationSessions.expiresAt, now)
           )
         )
         .limit(1);
