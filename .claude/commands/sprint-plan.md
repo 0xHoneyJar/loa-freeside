@@ -1,9 +1,10 @@
 ---
 name: "sprint-plan"
-version: "1.1.0"
+version: "1.2.0"
 description: |
   Create comprehensive sprint plan based on PRD and SDD.
   Task breakdown, prioritization, acceptance criteria, assignments.
+  Registers sprints in the Sprint Ledger for global numbering.
   Optionally integrates with Beads for task graph management.
 
 arguments: []
@@ -21,12 +22,11 @@ context_files:
   - path: "grimoires/loa/a2a/integration-context.md"
     required: false
     purpose: "Organizational context and knowledge sources"
+  - path: "grimoires/loa/ledger.json"
+    required: false
+    purpose: "Sprint Ledger for global sprint numbering"
 
 pre_flight:
-  - check: "file_exists"
-    path: ".loa-setup-complete"
-    error: "Loa setup has not been completed. Run /setup first."
-
   - check: "file_exists"
     path: "grimoires/loa/prd.md"
     error: "PRD not found. Run /plan-and-analyze first."
@@ -37,23 +37,26 @@ pre_flight:
 
 # Optional dependency check with HITL gate
 optional_dependencies:
-  - name: "beads"
-    check_script: ".claude/scripts/check-beads.sh --quiet"
-    description: "Beads (bd CLI) - Git-backed task graph management"
+  - name: "beads_rust"
+    check_script: ".claude/scripts/beads/check-beads.sh --quiet"
+    description: "beads_rust (br CLI) - Non-invasive task graph management"
     benefits:
       - "Git-backed task graph (replaces markdown parsing)"
-      - "Dependency tracking (blocks, related, discovered-from)"
+      - "Dependency tracking (blocks) with semantic labels"
       - "Session persistence across context windows"
-      - "JIT task retrieval with bd ready"
+      - "JIT task retrieval with br ready"
     install_options:
-      - "brew install steveyegge/beads/bd"
-      - "npm install -g @beads/bd"
+      - ".claude/scripts/beads/install-br.sh"
+      - "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/beads_rust/main/install.sh | bash"
     fallback: "Sprint plan will use markdown-based tracking only"
 
 outputs:
   - path: "grimoires/loa/sprint.md"
     type: "file"
     description: "Sprint plan with tasks and acceptance criteria"
+  - path: "grimoires/loa/ledger.json"
+    type: "file"
+    description: "Updated Sprint Ledger with registered sprints"
 
 mode:
   default: "foreground"
@@ -81,7 +84,6 @@ See: `skills/planning-sprints/SKILL.md` for full workflow details.
 
 ## Prerequisites
 
-- Setup completed (`.loa-setup-complete` exists)
 - PRD created (`grimoires/loa/prd.md` exists)
 - SDD created (`grimoires/loa/sdd.md` exists)
 
@@ -141,7 +143,6 @@ Each task includes:
 
 | Error | Cause | Resolution |
 |-------|-------|------------|
-| "Loa setup has not been completed" | Missing `.loa-setup-complete` | Run `/setup` first |
 | "PRD not found" | Missing prd.md | Run `/plan-and-analyze` first |
 | "SDD not found" | Missing sdd.md | Run `/architect` first |
 
@@ -153,6 +154,29 @@ The planner will:
 - Present options for sequencing and dependencies
 - Only generate plan when confident in breakdown
 
+## Sprint Ledger Integration
+
+When a Sprint Ledger exists (`grimoires/loa/ledger.json`):
+
+1. **Registers Sprints**: Each sprint in the plan is registered with `add_sprint()`
+2. **Global Numbering**: Sprints receive globally unique IDs across cycles
+3. **Logging**: Shows "Registered sprint-1 as global sprint-N" for each sprint
+4. **SDD Reference**: Updates the cycle's `sdd` field with `grimoires/loa/sdd.md`
+
+### Example Output
+
+```
+Creating sprint plan...
+Registered sprint-1 as global sprint-4
+Registered sprint-2 as global sprint-5
+Registered sprint-3 as global sprint-6
+Sprint plan created with 3 sprints (global IDs: 4-6)
+```
+
+### Legacy Mode
+
+Without a ledger, sprint-plan works exactly as before using local sprint numbers.
+
 ## Next Step
 
 After sprint plan is complete:
@@ -161,7 +185,17 @@ After sprint plan is complete:
 ```
 
 That's it. The implement command handles everything:
-- If Beads is installed: Automatically manages task lifecycle (bd ready, update, close)
-- If Beads is not installed: Uses markdown-based tracking from sprint.md
+- **With Ledger**: Resolves sprint-1 to global ID, uses correct a2a directory
+- **With beads_rust**: Automatically manages task lifecycle (br ready, update, close)
+- **Without either**: Uses markdown-based tracking from sprint.md
 
-**No manual `bd` commands required.** The agent handles task state internally.
+**No manual `br` commands required.** The agent handles task state internally.
+
+## beads_rust Integration
+
+When beads_rust is installed, the agent will:
+1. **Session Start**: `br sync --import-only` to import latest state
+2. **Create Structure**: Use helper scripts for epic/task creation
+3. **Session End**: `br sync --flush-only` before commit
+
+**Protocol Reference**: See `.claude/protocols/beads-integration.md`

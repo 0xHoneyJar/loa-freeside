@@ -160,6 +160,46 @@ Report MUST include:
 - Flag technical tradeoffs explicitly for reviewer decision
 </uncertainty_protocol>
 
+<karpathy_principles>
+## Karpathy Principles (MANDATORY)
+
+Counter common LLM coding pitfalls with these four principles:
+
+### 1. Think Before Coding
+- Surface assumptions explicitly before implementing
+- When multiple interpretations exist, present options rather than choosing silently
+- Ask clarifying questions for ambiguous requirements
+- Push back when simpler alternatives exist
+
+### 2. Simplicity First
+- Write minimal code solving ONLY what was requested
+- No speculative features or "just in case" handling
+- No abstractions for single-use code
+- No premature configurability
+- If code could be 50 lines instead of 200, rewrite simpler
+
+### 3. Surgical Changes
+- Only modify lines necessary for the task
+- Match existing code style even if you'd do it differently
+- Don't "improve" adjacent code, comments, or formatting
+- Remove only imports/variables YOUR changes made unused
+- Don't clean up pre-existing issues (note them separately)
+
+### 4. Goal-Driven Execution
+- Define verifiable success criteria BEFORE starting
+- Transform tasks into testable outcomes
+- For each task: WHAT (deliverable), VERIFY (how to test), EVIDENCE (expected output)
+
+**Pre-Implementation Check:**
+- [ ] Assumptions listed in reasoning
+- [ ] Clarifications sought for ambiguities
+- [ ] Scope minimal (no speculative features)
+- [ ] Success criteria defined (testable)
+- [ ] Style will match existing code
+
+Reference: `.claude/protocols/karpathy-principles.md`
+</karpathy_principles>
+
 <grounding_requirements>
 Before implementing:
 1. Check `grimoires/loa/a2a/sprint-N/auditor-sprint-feedback.md` FIRST (security audit)
@@ -182,26 +222,29 @@ Before implementing:
 <workflow>
 ## Phase -2: Beads Integration Check
 
-Check if Beads is available for task lifecycle management:
+Check if beads_rust is available for task lifecycle management:
 
 ```bash
-.claude/scripts/check-beads.sh --quiet
+.claude/scripts/beads/check-beads.sh --quiet
 ```
 
-**If INSTALLED**, use Beads for task lifecycle:
-- `bd ready` - Get next actionable task (JIT retrieval)
-- `bd update <task-id> --status in_progress` - Mark task started (done automatically)
-- `bd close <task-id>` - Mark task completed (done automatically)
-- Task state persists across context windows
+**If INSTALLED**:
+1. Import latest state: `br sync --import-only`
+2. Use beads_rust for task lifecycle:
+   - `br ready` - Get next actionable task (JIT retrieval)
+   - `br update <task-id> --status in_progress` - Mark task started
+   - `br close <task-id>` - Mark task completed
+   - Task state persists across context windows
 
 **If NOT_INSTALLED**, use markdown-based tracking from sprint.md.
 
-**IMPORTANT**: Users should NOT run bd commands manually. This agent handles the entire Beads lifecycle internally:
+**IMPORTANT**: Users should NOT run br commands manually. This agent handles the entire beads_rust lifecycle internally:
 
-1. On start: Run `bd ready` to find first unblocked task
-2. Before implementing: Auto-run `bd update <task-id> --status in_progress`
-3. After completing: Auto-run `bd close <task-id>`
-4. Repeat until sprint complete
+1. On start: Run `br sync --import-only` then `br ready` to find first unblocked task
+2. Before implementing: Auto-run `br update <task-id> --status in_progress`
+3. After completing: Auto-run `br close <task-id>`
+4. At session end: Run `br sync --flush-only` to persist state
+5. Repeat until sprint complete
 
 ## Phase -1: Context Assessment & Parallel Task Splitting (CRITICAL—DO THIS FIRST)
 
@@ -290,25 +333,41 @@ Check `grimoires/loa/a2a/integration-context.md`:
 
 ## Phase 2: Implementation
 
-### Beads Task Loop (if Beads installed)
+### Beads Task Loop (if beads_rust installed)
 
 ```bash
+# 0. Import latest state (session start)
+br sync --import-only
+
 # 1. Get next actionable task
-TASK=$(bd ready --format json | head -1)
+TASK=$(br ready --json | jq '.[0]')
 TASK_ID=$(echo $TASK | jq -r '.id')
 
 # 2. Mark in progress (automatic - user never sees this)
-bd update $TASK_ID --status in_progress
+br update $TASK_ID --status in_progress
 
 # 3. Implement the task...
 
 # 4. Mark complete (automatic - user never sees this)
-bd close $TASK_ID
+br close $TASK_ID
 
-# 5. Repeat for next task
+# 5. Repeat for next task...
+
+# 6. Flush state before commit (session end)
+br sync --flush-only
 ```
 
-The user only runs `/implement sprint-1`. All bd commands are invisible.
+The user only runs `/implement sprint-1`. All br commands are invisible.
+
+### Log Discovered Issues
+
+When bugs or tech debt are discovered during implementation:
+
+```bash
+.claude/scripts/beads/log-discovered-issue.sh "$CURRENT_TASK_ID" "Description of discovered issue" bug 2
+```
+
+This creates a new issue with semantic label `discovered-during:<parent-id>` for traceability.
 
 ### For each task:
 1. Implement according to specifications
@@ -451,6 +510,72 @@ Key sections:
 4. Reference version in completion comments
 </semver_requirements>
 
+<task_planning>
+## Task Planning (Required for Complex Tasks) (v0.19.0)
+
+### What is a Complex Task?
+
+A task is complex if ANY of these apply:
+- Touches 3+ files/modules
+- Involves architectural decisions
+- Implementation path is unclear
+- Estimated at >2 hours
+- Has multiple acceptance criteria
+- Involves security-sensitive code
+
+### Planning Requirement
+
+For complex tasks, create a plan BEFORE writing code:
+
+```markdown
+## Task Plan: [Task Name]
+
+### Objective
+[What this task accomplishes]
+
+### Approach
+1. [Step 1]
+2. [Step 2]
+3. [Step 3]
+
+### Files to Modify
+- `path/to/file.ts` - [what changes]
+- `path/to/other.ts` - [what changes]
+
+### Dependencies
+- [What must exist before this task]
+- [External services needed]
+
+### Risks
+- [What could go wrong]
+- [Mitigation approach]
+
+### Verification
+- [How we'll know it works]
+- [Specific tests to write]
+
+### Acceptance Criteria
+- [ ] [Criterion 1]
+- [ ] [Criterion 2]
+```
+
+### Plan Review
+
+Before implementing:
+1. Review plan for completeness
+2. Identify any blockers
+3. Confirm approach aligns with SDD
+4. Get human approval if high-risk
+
+### Simple Tasks
+
+For simple tasks (documentation updates, config changes, small fixes), planning is optional. Use judgment.
+
+### Plan as Artifact
+
+Task plans are stored in `grimoires/loa/a2a/sprint-N/task-{N}-plan.md` and become part of the review artifact.
+</task_planning>
+
 <checklists>
 See `resources/REFERENCE.md` for complete checklists:
 - Pre-Implementation Checklist
@@ -465,3 +590,44 @@ See `resources/REFERENCE.md` for complete checklists:
 - Skipped error handling
 - Ignored existing patterns
 </checklists>
+
+<beads_workflow>
+## Beads Workflow (beads_rust)
+
+When beads_rust (`br`) is installed, the full task lifecycle:
+
+### Session Start
+```bash
+br sync --import-only  # Import latest state from JSONL
+```
+
+### Task Lifecycle
+```bash
+# Get ready work
+.claude/scripts/beads/get-ready-work.sh 1 --ids-only
+
+# Update task status
+br update <task-id> --status in_progress
+
+# Log discovered issues during implementation
+.claude/scripts/beads/log-discovered-issue.sh "<parent-id>" "Issue description" bug 2
+
+# Complete task
+br close <task-id> --reason "Implemented per acceptance criteria"
+```
+
+### Semantic Labels for Tracking
+| Label | Purpose | Example |
+|-------|---------|---------|
+| `discovered-during:<id>` | Traceability | Auto-added by log-discovered-issue.sh |
+| `needs-review` | Review gate | `br label add <id> needs-review` |
+| `review-approved` | Passed review | `br label add <id> review-approved` |
+| `security` | Security concern | `br label add <id> security` |
+
+### Session End
+```bash
+br sync --flush-only  # Export SQLite → JSONL before commit
+```
+
+**Protocol Reference**: See `.claude/protocols/beads-integration.md`
+</beads_workflow>

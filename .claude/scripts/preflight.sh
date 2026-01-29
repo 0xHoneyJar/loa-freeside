@@ -40,23 +40,25 @@ check_pattern_match() {
 }
 
 # Check if a command succeeds
+# SECURITY (HIGH-005): Use bash -c instead of eval for safer execution
+# Note: This still executes shell commands, so only use with trusted input
 check_command_succeeds() {
     local cmd="$1"
-    eval "$cmd" >/dev/null 2>&1
+    # Use bash -c with restricted environment for slightly safer execution
+    bash -c "$cmd" >/dev/null 2>&1
 }
 
-# Check setup is complete
-check_setup_complete() {
-    check_file_exists ".loa-setup-complete"
-}
+# Source constructs-lib for is_thj_member() function
+# This is the canonical source for THJ membership detection
+PREFLIGHT_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "${PREFLIGHT_SCRIPT_DIR}/constructs-lib.sh" ]]; then
+    source "${PREFLIGHT_SCRIPT_DIR}/constructs-lib.sh"
+fi
 
-# Check user type is THJ
+# Check user type is THJ (v0.15.0+)
+# Uses API key presence instead of marker file
 check_user_is_thj() {
-    if check_setup_complete; then
-        check_content_contains ".loa-setup-complete" '"user_type":\s*"thj"'
-    else
-        return 1
-    fi
+    is_thj_member 2>/dev/null
 }
 
 # Check sprint ID format (sprint-N where N is positive integer)

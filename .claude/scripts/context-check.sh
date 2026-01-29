@@ -1,6 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Context size assessment for parallel execution decisions
 # Used by agents to determine if work should be split
+
+set -euo pipefail
 
 # Get total line count for context files
 get_context_size() {

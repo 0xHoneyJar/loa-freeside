@@ -81,6 +81,22 @@ get_registry_url() {
 }
 
 # =============================================================================
+# THJ Membership Detection
+# =============================================================================
+# Replaces marker-file-based detection (.loa-setup-complete) with API key
+# presence check. Zero network dependency - checks environment variable only.
+#
+# This is the canonical source for THJ membership detection across Loa.
+# Other scripts should source this file and use is_thj_member().
+# =============================================================================
+
+# Check if user is a THJ member (has constructs API key)
+# Returns: 0 if THJ member (API key present and non-empty), 1 otherwise
+is_thj_member() {
+    [[ -n "${LOA_CONSTRUCTS_API_KEY:-}" ]]
+}
+
+# =============================================================================
 # Directory Functions
 # =============================================================================
 
@@ -408,6 +424,7 @@ get_registry_meta() {
 }
 
 # Update registry meta file
+# SECURITY (MED-007): Includes backup before jq modification
 # Args:
 #   $1 - JSON path to update
 #   $2 - New value (as JSON)
@@ -419,8 +436,20 @@ update_registry_meta() {
 
     init_registry_meta
 
-    local tmp_file="${meta_path}.tmp"
-    jq "$json_path = $value" "$meta_path" > "$tmp_file" && mv "$tmp_file" "$meta_path"
+    # Create backup before modification
+    local backup_file="${meta_path}.bak"
+    cp "$meta_path" "$backup_file" 2>/dev/null || true
+
+    local tmp_file="${meta_path}.tmp.$$"
+    if jq "$json_path = $value" "$meta_path" > "$tmp_file"; then
+        mv "$tmp_file" "$meta_path"
+    else
+        # Restore from backup on failure
+        print_warning "jq modification failed, restoring backup"
+        [[ -f "$backup_file" ]] && mv "$backup_file" "$meta_path"
+        rm -f "$tmp_file"
+        return 1
+    fi
 }
 
 # =============================================================================
@@ -583,6 +612,236 @@ is_constructs_gitignored() {
 }
 
 # =============================================================================
+# SECURITY: Input Validation (MEDIUM-002, MEDIUM-004 fixes)
+# =============================================================================
+# Reusable validation functions for common input types.
+
+# Validate API key format
+# Args:
+#   $1 - API key to validate
+# Returns: 0 if valid, 1 if invalid
+validate_api_key() {
+    local key="$1"
+
+    # Empty check
+    if [[ -z "$key" ]]; then
+        print_error "API key is empty"
+        return 1
+    fi
+
+    # Loa API keys: sk_ prefix followed by 32 alphanumeric characters
+    if [[ ! "$key" =~ ^sk_[a-zA-Z0-9]{32}$ ]]; then
+        print_error "Invalid API key format (expected sk_ followed by 32 alphanumeric chars)"
+        return 1
+    fi
+
+    return 0
+}
+
+# Validate URL format
+# Args:
+#   $1 - URL to validate
+# Returns: 0 if valid, 1 if invalid
+validate_url() {
+    local url="$1"
+
+    # Basic URL validation (must start with http:// or https://)
+    if [[ ! "$url" =~ ^https?:// ]]; then
+        print_error "Invalid URL format: must start with http:// or https://"
+        return 1
+    fi
+
+    # Reject URLs with shell metacharacters
+    if [[ "$url" =~ [\;\|\&\$\`\\] ]]; then
+        print_error "Invalid URL: contains shell metacharacters"
+        return 1
+    fi
+
+    return 0
+}
+
+# Validate identifier (safe for filesystem and shell use)
+# Args:
+#   $1 - Identifier to validate
+# Returns: 0 if valid, 1 if invalid
+validate_safe_identifier() {
+    local id="$1"
+
+    # Must be non-empty
+    if [[ -z "$id" ]]; then
+        print_error "Identifier cannot be empty"
+        return 1
+    fi
+
+    # Must be alphanumeric with dashes and underscores only
+    # Also allow forward slash for vendor/skill patterns
+    if [[ ! "$id" =~ ^[a-zA-Z0-9/_-]+$ ]]; then
+        print_error "Invalid identifier: must be alphanumeric with dashes/underscores only"
+        return 1
+    fi
+
+    # Cannot start or end with slash
+    if [[ "$id" =~ ^/ ]] || [[ "$id" =~ /$ ]]; then
+        print_error "Invalid identifier: cannot start or end with /"
+        return 1
+    fi
+
+    # Cannot contain ..
+    if [[ "$id" == *".."* ]]; then
+        print_error "Invalid identifier: cannot contain .."
+        return 1
+    fi
+
+    return 0
+}
+
+# Sanitize string for jq use (escape special characters)
+# Args:
+#   $1 - String to sanitize
+# Returns: Sanitized string on stdout
+sanitize_for_jq() {
+    local input="$1"
+    # Use jq's built-in escaping
+    printf '%s' "$input" | jq -Rs '.'
+}
+
+# =============================================================================
+# SECURITY: Content Verification (HIGH-004 fix)
+# =============================================================================
+# SHA256 verification for downloaded content.
+
+# Verify file content hash
+# Args:
+#   $1 - File path to verify
+#   $2 - Expected SHA256 hash (optional - warns if not provided)
+# Returns: 0 if valid/skipped, 1 if mismatch
+verify_content_hash() {
+    local file="$1"
+    local expected_hash="${2:-}"
+
+    # If no hash provided, warn but allow (graceful degradation)
+    if [[ -z "$expected_hash" ]]; then
+        print_warning "  No content hash provided, skipping verification"
+        return 0
+    fi
+
+    # Verify file exists
+    if [[ ! -f "$file" ]]; then
+        print_error "  Cannot verify hash: file not found: $file"
+        return 1
+    fi
+
+    # Calculate SHA256 (portable: works on Linux and macOS)
+    local actual_hash
+    if command -v sha256sum &>/dev/null; then
+        # Linux
+        actual_hash=$(sha256sum "$file" | cut -d' ' -f1)
+    elif command -v shasum &>/dev/null; then
+        # macOS
+        actual_hash=$(shasum -a 256 "$file" | cut -d' ' -f1)
+    else
+        print_warning "  No SHA256 tool available, skipping verification"
+        return 0
+    fi
+
+    # Compare hashes (case-insensitive)
+    if [[ "${actual_hash,,}" != "${expected_hash,,}" ]]; then
+        print_error "  Content hash mismatch!"
+        print_error "    Expected: $expected_hash"
+        print_error "    Got:      $actual_hash"
+        return 1
+    fi
+
+    return 0
+}
+
+# Calculate SHA256 hash of a file
+# Args:
+#   $1 - File path
+# Returns: SHA256 hash on stdout
+calculate_file_hash() {
+    local file="$1"
+
+    if [[ ! -f "$file" ]]; then
+        echo ""
+        return 1
+    fi
+
+    if command -v sha256sum &>/dev/null; then
+        sha256sum "$file" | cut -d' ' -f1
+    elif command -v shasum &>/dev/null; then
+        shasum -a 256 "$file" | cut -d' ' -f1
+    else
+        echo ""
+        return 1
+    fi
+}
+
+# =============================================================================
+# Rate Limiting (LOW-003 fix)
+# =============================================================================
+# Basic rate limiting for API calls.
+
+# Rate limit cache directory
+RATE_LIMIT_DIR="${HOME}/.loa/cache/rate-limit"
+
+# Check rate limit before making API call
+# Args:
+#   $1 - Operation name (e.g., "pack-download")
+#   $2 - Max calls per hour (default: 100)
+# Returns: 0 if allowed, 1 if rate limited
+check_rate_limit() {
+    local operation="${1:-default}"
+    local max_per_hour="${2:-100}"
+    local now
+    local rate_file
+
+    now=$(date +%s)
+    mkdir -p "$RATE_LIMIT_DIR"
+    rate_file="$RATE_LIMIT_DIR/${operation}.count"
+
+    # If no rate file, allow
+    if [[ ! -f "$rate_file" ]]; then
+        echo "$now:1" > "$rate_file"
+        return 0
+    fi
+
+    # Read last check time and count
+    local last_time last_count
+    IFS=':' read -r last_time last_count < "$rate_file"
+
+    # If more than an hour passed, reset
+    local elapsed=$((now - last_time))
+    if [[ $elapsed -gt 3600 ]]; then
+        echo "$now:1" > "$rate_file"
+        return 0
+    fi
+
+    # Increment count
+    last_count=$((last_count + 1))
+
+    # Check if over limit
+    if [[ $last_count -gt $max_per_hour ]]; then
+        local remaining=$((3600 - elapsed))
+        print_warning "Rate limit exceeded for $operation. Try again in $(humanize_duration $remaining)."
+        return 1
+    fi
+
+    # Update count
+    echo "$last_time:$last_count" > "$rate_file"
+    return 0
+}
+
+# Reset rate limit for an operation
+# Args:
+#   $1 - Operation name
+reset_rate_limit() {
+    local operation="${1:-default}"
+    local rate_file="$RATE_LIMIT_DIR/${operation}.count"
+    rm -f "$rate_file"
+}
+
+# =============================================================================
 # Version Comparison (Sprint 5)
 # =============================================================================
 
@@ -656,4 +915,76 @@ is_update_available() {
     local result
     result=$(compare_versions "$1" "$2")
     [[ "$result" == "1" ]]
+}
+
+# =============================================================================
+# Secure File Operations (MED-005)
+# =============================================================================
+
+# Write file with secure permissions
+# SECURITY (MED-005): Standardizes state file permissions
+# Args:
+#   $1 - File path
+#   $2 - Content
+#   $3 - Permission mode (default: 600 for state files)
+# Returns: 0 on success, 1 on failure
+secure_write_file() {
+    local file_path="$1"
+    local content="$2"
+    local mode="${3:-600}"
+
+    # Ensure parent directory exists
+    local parent_dir
+    parent_dir=$(dirname "$file_path")
+    mkdir -p "$parent_dir"
+
+    # Write to temp file first
+    local tmp_file="${file_path}.tmp.$$"
+
+    # Set umask for secure file creation
+    local old_umask
+    old_umask=$(umask)
+    umask 077  # Only owner can read/write
+
+    if ! echo "$content" > "$tmp_file"; then
+        umask "$old_umask"
+        rm -f "$tmp_file"
+        return 1
+    fi
+
+    # Atomic move
+    if ! mv "$tmp_file" "$file_path"; then
+        umask "$old_umask"
+        rm -f "$tmp_file"
+        return 1
+    fi
+
+    # Set explicit permissions
+    chmod "$mode" "$file_path"
+
+    umask "$old_umask"
+    return 0
+}
+
+# Write JSON file with validation and secure permissions
+# Args:
+#   $1 - File path
+#   $2 - JSON content
+#   $3 - Permission mode (default: 600)
+# Returns: 0 on success, 1 on failure
+secure_write_json() {
+    local file_path="$1"
+    local content="$2"
+    local mode="${3:-600}"
+
+    # Validate JSON first
+    if ! echo "$content" | jq empty 2>/dev/null; then
+        print_error "Invalid JSON content"
+        return 1
+    fi
+
+    # Pretty-print and write
+    local formatted
+    formatted=$(echo "$content" | jq '.')
+    secure_write_file "$file_path" "$formatted" "$mode"
 }

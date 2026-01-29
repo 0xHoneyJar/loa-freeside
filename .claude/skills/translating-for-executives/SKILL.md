@@ -57,7 +57,7 @@ fi
 |                                                                   |
 |  Resolution:                                                      |
 |    1. Move customizations to .claude/overrides/                   |
-|    2. Run: /update --force-restore                                |
+|    2. Run: /update-loa --force-restore                                |
 |    3. Or set: integrity_enforcement: warn                         |
 +===================================================================+
 ```
@@ -218,9 +218,9 @@ After processing heavy reports (500+ lines):
    - Decision log entries
    - Prior translation audiences/dates
 
-3. **Check Beads for related issues**:
+3. **Check beads_rust for related issues**:
    ```bash
-   bd list --label translation --label drift 2>/dev/null
+   br list --label translation --label drift 2>/dev/null
    ```
 
 ### During Execution
@@ -233,10 +233,12 @@ After processing heavy reports (500+ lines):
    | {now} | Emphasized compliance gaps | Board presentation | Board |
    ```
 
-2. **Create Beads for Strategic Liabilities**:
+2. **Create beads_rust issues for Strategic Liabilities**:
    ```bash
    # When hygiene report reveals critical tech debt
-   bd create "Strategic Liability: {Issue}" -p 1 -l strategic-liability,from-ride
+   br create "Strategic Liability: {Issue}" --priority 1
+   br label add <id> strategic-liability
+   br label add <id> from-ride
    ```
 
 3. **Apply Tool Result Clearing** after each artifact
@@ -374,16 +376,17 @@ Create `EXECUTIVE-INDEX.md` with:
 5. **Investment Summary** (effort estimates)
 6. **Decisions Requested** (from leadership)
 
-### Phase 6: Beads Integration
+### Phase 6: beads_rust Integration
 
 For Strategic Liabilities found:
 
 ```bash
-# Auto-suggest Bead creation
-bd create "Strategic Liability: [Issue from hygiene]" \
-  -p 1 \
-  -l strategic-liability,from-ride,requires-decision \
-  -d "Source: hygiene-report.md:L{N}"
+# Auto-suggest beads_rust issue creation
+ISSUE_ID=$(br create "Strategic Liability: [Issue from hygiene]" --priority 1 --json | jq -r '.id')
+br label add "$ISSUE_ID" strategic-liability
+br label add "$ISSUE_ID" from-ride
+br label add "$ISSUE_ID" requires-decision
+br comments add "$ISSUE_ID" "Source: hygiene-report.md:L{N}"
 ```
 
 ### Phase 7: Trajectory Self-Audit (MANDATORY)
@@ -491,7 +494,7 @@ Before marking complete, execute this audit:
 ```markdown
 ## Drift Score: 34%
 ### Ghosts
-| "OAuth Integration" | legacy/api.md:L45 | grep -r "OAuth" = 0 | GHOST |
+| "OAuth Integration" | legacy/api.md:L45 | search-orchestrator.sh hybrid "OAuth" = 0 | GHOST |
 ```
 
 **Board Translation:**
@@ -543,7 +546,7 @@ uncertainty.
 
 **Recommended Action:** Schedule 30-min decision session with Engineering Lead.
 
-**Bead Created:** `bd create "Strategic Liability: Resolve 23 temp files" -p 2`
+**Issue Created:** `br create "Strategic Liability: Resolve 23 temp files" --priority 2`
 ```
 </example_translations>
 

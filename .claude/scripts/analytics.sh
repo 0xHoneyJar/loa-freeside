@@ -1,6 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Analytics helper functions for Loa framework
 # These functions are designed to work cross-platform and fail gracefully
+
+set -euo pipefail
 
 # Get framework version from package.json or CHANGELOG.md
 get_framework_version() {
@@ -79,22 +81,33 @@ update_analytics_field() {
     local file="grimoires/loa/analytics/usage.json"
 
     if command -v jq &>/dev/null; then
-        local tmp=$(mktemp)
+        local tmp
+        tmp=$(mktemp)
+        trap "rm -f '$tmp'" EXIT
         jq "$field = $value" "$file" > "$tmp" && mv "$tmp" "$file"
+        trap - EXIT  # Clear trap after successful move
     fi
 }
 
-# Check user type from setup marker
+# Source constructs-lib for is_thj_member() function
+# This is the canonical source for THJ membership detection
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+if [[ -f "${SCRIPT_DIR}/constructs-lib.sh" ]]; then
+    source "${SCRIPT_DIR}/constructs-lib.sh"
+fi
+
+# Get user type based on API key presence
+# Returns "thj" if LOA_CONSTRUCTS_API_KEY is set, "oss" otherwise
 get_user_type() {
-    if [ -f ".loa-setup-complete" ]; then
-        grep -o '"user_type": *"[^"]*"' .loa-setup-complete 2>/dev/null | cut -d'"' -f4
+    if is_thj_member 2>/dev/null; then
+        echo "thj"
     else
-        echo "unknown"
+        echo "oss"
     fi
 }
 
 # Check if analytics should be tracked (THJ users only)
+# Uses API key presence as the detection mechanism
 should_track_analytics() {
-    local user_type=$(get_user_type)
-    [ "$user_type" = "thj" ]
+    is_thj_member 2>/dev/null
 }

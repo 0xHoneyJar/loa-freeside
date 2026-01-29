@@ -1,10 +1,11 @@
 ---
 name: "implement"
-version: "1.1.0"
+version: "1.2.0"
 description: |
   Execute sprint tasks with production-quality code and tests.
   Automatically checks for and addresses audit/review feedback before new work.
-  If Beads is installed, handles task lifecycle automatically (no manual bd commands).
+  Resolves local sprint IDs to global IDs via Sprint Ledger.
+  If beads_rust is installed, handles task lifecycle automatically (no manual br commands).
 
 arguments:
   - name: "sprint_id"
@@ -30,6 +31,9 @@ context_files:
   - path: "grimoires/loa/sprint.md"
     required: true
     purpose: "Sprint tasks and acceptance criteria"
+  - path: "grimoires/loa/ledger.json"
+    required: false
+    purpose: "Sprint Ledger for ID resolution"
   - path: "grimoires/loa/a2a/$ARGUMENTS.sprint_id/auditor-sprint-feedback.md"
     required: false
     priority: 1
@@ -40,10 +44,6 @@ context_files:
     purpose: "Senior lead feedback"
 
 pre_flight:
-  - check: "file_exists"
-    path: ".loa-setup-complete"
-    error: "Loa setup has not been completed. Run /setup first."
-
   - check: "pattern_match"
     value: "$ARGUMENTS.sprint_id"
     pattern: "^sprint-[0-9]+$"
@@ -66,20 +66,25 @@ pre_flight:
     pattern: "$ARGUMENTS.sprint_id"
     error: "Sprint $ARGUMENTS.sprint_id not found in sprint.md"
 
-  - check: "file_not_exists"
-    path: "grimoires/loa/a2a/$ARGUMENTS.sprint_id/COMPLETED"
-    error: "Sprint $ARGUMENTS.sprint_id is already COMPLETED."
+  - check: "script"
+    script: ".claude/scripts/validate-sprint-id.sh"
+    args: ["$ARGUMENTS.sprint_id"]
+    store_result: "sprint_resolution"
+    purpose: "Resolve local sprint ID to global ID via ledger"
 
 outputs:
-  - path: "grimoires/loa/a2a/$ARGUMENTS.sprint_id/"
+  - path: "grimoires/loa/a2a/$RESOLVED_SPRINT_ID/"
     type: "directory"
-    description: "Sprint A2A directory (created if needed)"
-  - path: "grimoires/loa/a2a/$ARGUMENTS.sprint_id/reviewer.md"
+    description: "Sprint A2A directory (uses global ID)"
+  - path: "grimoires/loa/a2a/$RESOLVED_SPRINT_ID/reviewer.md"
     type: "file"
     description: "Implementation report for senior review"
   - path: "grimoires/loa/a2a/index.md"
     type: "file"
     description: "Sprint index (updated)"
+  - path: "grimoires/loa/ledger.json"
+    type: "file"
+    description: "Sprint Ledger (status updated)"
   - path: "app/src/**/*"
     type: "glob"
     description: "Implementation code and tests"
@@ -138,13 +143,35 @@ See: `skills/implementing-tasks/SKILL.md` for full workflow details.
 
 | Error | Cause | Resolution |
 |-------|-------|------------|
-| "Loa setup has not been completed" | Missing `.loa-setup-complete` | Run `/setup` first |
 | "Invalid sprint ID" | Wrong format | Use `sprint-N` format |
 | "PRD not found" | Missing prd.md | Run `/plan-and-analyze` first |
 | "SDD not found" | Missing sdd.md | Run `/architect` first |
 | "Sprint plan not found" | Missing sprint.md | Run `/sprint-plan` first |
 | "Sprint not found in sprint.md" | Sprint doesn't exist | Verify sprint number |
 | "Sprint is already COMPLETED" | COMPLETED marker exists | Move to next sprint |
+
+## Sprint Ledger Integration
+
+When a Sprint Ledger exists (`grimoires/loa/ledger.json`):
+
+1. **ID Resolution**: Resolves `sprint-1` (local) to global ID (e.g., `3`)
+2. **Directory Mapping**: Uses `a2a/sprint-3/` instead of `a2a/sprint-1/`
+3. **Status Update**: Sets sprint status to `in_progress` in ledger
+4. **Completion**: On approval, status updated to `completed`
+
+### Example Resolution
+
+```bash
+# In cycle-002, sprint-1 maps to global sprint-3
+/implement sprint-1
+# → Resolving sprint-1 to global sprint-3
+# → Using directory: grimoires/loa/a2a/sprint-3/
+# → Setting status: in_progress
+```
+
+### Legacy Mode
+
+Without a ledger, sprint IDs are used directly (sprint-1 → a2a/sprint-1/).
 
 ## Feedback Loop
 
@@ -160,3 +187,18 @@ See: `skills/implementing-tasks/SKILL.md` for full workflow details.
 If feedback: /implement sprint-N (addresses feedback)
 If approved: /audit-sprint sprint-N
 ```
+
+## beads_rust Integration
+
+When beads_rust is installed, the agent handles task lifecycle:
+
+1. **Session Start**: `br sync --import-only` to import latest state
+2. **Get Work**: `br ready` to find unblocked tasks
+3. **Claim Task**: `br update <id> --status in_progress`
+4. **Log Discoveries**: `.claude/scripts/beads/log-discovered-issue.sh` for found bugs
+5. **Complete Task**: `br close <id> --reason "..."`
+6. **Session End**: `br sync --flush-only` before commit
+
+**No manual `br` commands required.** The agent handles everything internally.
+
+**Protocol Reference**: See `.claude/protocols/beads-integration.md`

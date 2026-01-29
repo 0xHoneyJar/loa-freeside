@@ -155,11 +155,11 @@ Create `.claude/checksums.json` with SHA256 hashes of all System Zone files.
 
 Create `.loa.config.yaml` if not exists (preserve if present).
 
-### Phase 7: Initialize Beads (Optional)
+### Phase 7: Initialize beads_rust (Optional)
 
-If `bd` CLI available and not `--skip-beads`:
+If `br` CLI available and not `--skip-beads`:
 ```bash
-bd init --quiet
+br init --quiet
 ```
 
 ## Stealth Mode
@@ -189,7 +189,7 @@ Zone structure:
 Next steps:
   1. Run 'claude' to start Claude Code
   2. Issue '/ride' to analyze this codebase
-  3. Or '/setup' for guided configuration
+  3. Or '/plan-and-analyze' for greenfield development
 
 ⚠️ STRICT ENFORCEMENT: Direct edits to .claude/ will block execution.
    Use .claude/overrides/ for customizations.

@@ -24,7 +24,7 @@ As of v0.11.0, the checkpoint can be simplified from 7 steps to **3 manual steps
 | Step | Action | Verification |
 |------|--------|--------------|
 | **1** | Verify Decision Log updated | Check NOTES.md has today's key decisions |
-| **2** | Verify Bead updated | Run `bd list --status=in_progress` |
+| **2** | Verify Bead updated | Run `br list --status=in_progress` |
 | **3** | Verify EDD test scenarios | At least 3 test scenarios per decision |
 
 ### Automated Checks
@@ -34,7 +34,7 @@ The `context-manager.sh checkpoint` command automatically verifies:
 - ✅ Trajectory logged (entries exist for today)
 - ✅ Session Continuity section present in NOTES.md
 - ✅ Decision Log section present in NOTES.md
-- ✅ Beads synchronized (if bd CLI available)
+- ✅ Beads synchronized (if br CLI available)
 
 ### When to Use Simplified Checkpoint
 
@@ -181,12 +181,12 @@ Append to active Bead's decisions[] and next_steps[]:
 
 ```bash
 # If beads available
-if command -v bd &>/dev/null; then
+if command -v br &>/dev/null; then
     # Get active bead
-    active_bead=$(bd show --active --json | jq -r '.id')
+    active_bead=$(br show --active --json | jq -r '.id')
 
     # Update with session decisions
-    bd update "$active_bead" \
+    br update "$active_bead" \
         --add-decision "Implemented JWT refresh: ${PROJECT_ROOT}/src/auth/refresh.ts:12-45" \
         --add-next-step "Add token revocation endpoint"
 fi
@@ -204,7 +204,7 @@ Create trajectory entry for session handoff:
   "phase": "session_handoff",
   "session_id": "abc123",
   "root_span_id": "span-456",
-  "bead_id": "bd-x7y8",
+  "bead_id": "beads-x7y8",
   "grounding_ratio": 0.97,
   "decisions_count": 5,
   "notes_refs": [
@@ -276,7 +276,7 @@ User: /clear
 │  └── NOTES.md appended                  │
 │                                          │
 │  Step 4: Bead Updated                   │
-│  └── bd-x7y8 decisions[] appended       │
+│  └── beads-x7y8 decisions[] appended    │
 │                                          │
 │  Step 5: Session Handoff Logged         │
 │  └── Trajectory entry created           │
@@ -407,9 +407,9 @@ hooks:
 
 ### Unverified Ghost Features
 
-1. **Run second query**:
+1. **Run second query** (ck v0.7.0+ syntax):
    ```bash
-   ck --semantic "alternative terminology for feature" "${PROJECT_ROOT}/src/"
+   ck --sem "alternative terminology for feature" --jsonl "${PROJECT_ROOT}/src/"
    ```
 
 2. **Document verification**:

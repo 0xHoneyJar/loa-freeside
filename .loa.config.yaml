@@ -52,6 +52,65 @@ memory:
   # Restore context from NOTES.md on session start
   auto_restore: true
 
+  # -------------------------------------------------------------------------
+  # NOTES.md Learnings Sync (v1.8.0)
+  # -------------------------------------------------------------------------
+  # Auto-sync learnings from NOTES.md to vector database on session start
+  auto_sync: false
+
+  # -------------------------------------------------------------------------
+  # PreToolUse Hook - Mid-Stream Memory Injection (v1.8.0)
+  # -------------------------------------------------------------------------
+  pretooluse_hook:
+    # Master toggle for mid-stream injection
+    enabled: false
+    # Characters to extract from thinking block
+    thinking_chars: 1500
+    # Minimum similarity score for memory recall
+    similarity_threshold: 0.35
+    # Maximum memories to inject per tool use
+    max_memories: 3
+    # Hard timeout for entire hook execution (milliseconds)
+    timeout_ms: 500
+    # Tools that trigger the hook
+    tools:
+      - Read
+      - Glob
+      - Grep
+      - WebFetch
+      - WebSearch
+
+  # -------------------------------------------------------------------------
+  # Vector Database Configuration
+  # -------------------------------------------------------------------------
+  vector_db:
+    # Database file location (relative to project root)
+    path: .loa/memory.db
+    # Embedding model (sentence-transformers)
+    model: all-MiniLM-L6-v2
+    # Embedding dimension (must match model)
+    dimension: 384
+
+  # -------------------------------------------------------------------------
+  # QMD Integration - Document Search (v1.8.0)
+  # -------------------------------------------------------------------------
+  qmd:
+    # Master toggle for QMD integration
+    enabled: false
+    # QMD binary path (or just 'qmd' for PATH)
+    binary: qmd
+    # Index storage location
+    index_dir: .loa/qmd
+    # Collections to index
+    collections:
+      - path: grimoires/loa
+        name: loa-state
+        include: ["*.md"]
+        exclude: ["archive/**", "a2a/trajectory/**"]
+      - path: grimoires/loa/reality
+        name: loa-reality
+        include: ["*.md"]
+
 # =============================================================================
 # Evaluation-Driven Development (ADK-Level)
 # =============================================================================
@@ -364,6 +423,252 @@ context_management:
       - verbose_debug
       - redundant_file_reads
       - intermediate_outputs
+
+  # -------------------------------------------------------------------------
+  # Probe-Before-Load (RLM Pattern) - v0.14.0
+  # -------------------------------------------------------------------------
+  # Enable probe-before-load pattern (check file metadata before full read)
+  probe_before_load: true
+  # Files under this line count are loaded immediately without probe
+  max_eager_load_lines: 500
+  # Require relevance check for files exceeding threshold
+  require_relevance_check: true
+  # Keywords that increase relevance score (used for large file decisions)
+  relevance_keywords:
+    - export
+    - class
+    - interface
+    - function
+    - async
+    - api
+    - route
+    - handler
+  # Patterns to exclude from probing (always skipped)
+  exclude_patterns:
+    - "*.test.ts"
+    - "*.spec.ts"
+    - "node_modules/**"
+    - "dist/**"
+    - "build/**"
+    - ".git/**"
+  # Token budgets for loading strategy decisions
+  token_budget:
+    # Codebases under this are "small" - load all files
+    small_codebase: 30000
+    # Codebases under this are "medium" - prioritized loading
+    medium_codebase: 150000
+    # Codebases over medium are "large" - probe + excerpts only
+    large_codebase: 500000
+
+# =============================================================================
+# Update Check (v0.14.0)
+# =============================================================================
+# Automatic version checking on session start
+update_check:
+  # Master toggle - set to false to disable all update checks
+  enabled: true
+  # Cache TTL in hours (0 = check every time)
+  cache_ttl_hours: 24
+  # Notification style: banner | line | silent
+  notification_style: banner
+  # Include pre-release versions in update checks
+  include_prereleases: false
+  # Custom upstream repo (for forks)
+  upstream_repo: "0xHoneyJar/loa"
+
+# =============================================================================
+# Continuous Learning (v0.17.0)
+# =============================================================================
+# Autonomous skill extraction from debugging discoveries
+continuous_learning:
+  # Master toggle - set to false to disable all continuous learning
+  enabled: true
+  # Auto-extract skills during implementation phases (false = /retrospective only)
+  auto_extract: true
+  # Require manual approval before skills become active
+  require_approval: true
+  # Directories for skill lifecycle management (all in State Zone)
+  skills_dir: grimoires/loa/skills
+  pending_dir: grimoires/loa/skills-pending
+  archive_dir: grimoires/loa/skills-archived
+  # Quality gate thresholds
+  quality_gates:
+    # Minimum discovery depth: 1=any, 2=moderate, 3=significant
+    min_discovery_depth: 2
+    # Require solution verification before extraction
+    require_verification: true
+  # NOTES.md integration
+  notes_integration:
+    # Check NOTES.md for duplicate knowledge before extraction
+    check_notes_md: true
+    # Deduplicate against existing skills
+    deduplicate: true
+  # Pruning settings for /skill-audit --prune
+  pruning:
+    # Archive skills with no matches after N days
+    prune_after_days: 90
+    # Minimum match count to retain skill
+    prune_min_matches: 2
+    # Require confirmation before pruning
+    auto_prune: false
+
+# =============================================================================
+# Run Mode (v0.18.0)
+# =============================================================================
+# Autonomous implementation with human-in-the-loop at PR review
+run_mode:
+  # Master toggle - set to false to disable Run Mode
+  # IMPORTANT: Run Mode requires explicit opt-in for safety
+  enabled: true
+  # Default options for /run command
+  defaults:
+    # Maximum cycles before circuit breaker trips
+    max_cycles: 20
+    # Maximum runtime in hours before timeout
+    timeout_hours: 8
+  # Rate limiting to prevent API exhaustion
+  rate_limiting:
+    # Maximum API calls per hour during Run Mode
+    calls_per_hour: 100
+  # Circuit breaker thresholds
+  circuit_breaker:
+    # Halt after same finding appears N times
+    same_issue_threshold: 3
+    # Halt after N cycles with no file changes
+    no_progress_threshold: 5
+  # Git safety settings
+  git:
+    # Prefix for auto-created feature branches
+    branch_prefix: "feature/"
+    # Always create draft PRs (never ready for review)
+    create_draft_pr: true
+  # Sprint plan settings
+  sprint_plan:
+    # Default branch name for multi-sprint execution
+    default_branch_name: "release"
+
+# =============================================================================
+# Recursive JIT Context System (v0.20.0)
+# =============================================================================
+# Semantic result caching and condensation for recursive subagent patterns
+recursive_jit:
+  # -------------------------------------------------------------------------
+  # Semantic Result Cache
+  # -------------------------------------------------------------------------
+  cache:
+    # Master toggle for semantic cache
+    enabled: true
+    # Maximum cache size in MB (LRU eviction when exceeded)
+    max_size_mb: 100
+    # Time-to-live in days (entries expire after this period)
+    ttl_days: 30
+
+  # -------------------------------------------------------------------------
+  # Condensation Engine
+  # -------------------------------------------------------------------------
+  condensation:
+    # Default strategy for result condensation
+    # Options: structured_verdict, identifiers_only, summary
+    default_strategy: structured_verdict
+    # Maximum tokens for condensed results
+    max_condensed_tokens: 50
+    # Preserve these fields in structured_verdict strategy
+    preserve_fields:
+      - verdict
+      - severity_counts
+      - top_findings
+
+  # -------------------------------------------------------------------------
+  # Semantic Recovery Enhancement
+  # -------------------------------------------------------------------------
+  recovery:
+    # Enable semantic (query-based) recovery
+    semantic_enabled: true
+    # Fall back to positional recovery if semantic search fails
+    fallback_to_positional: true
+    # Prefer ck for semantic search when available
+    prefer_ck: true
+
+  # -------------------------------------------------------------------------
+  # Early-Exit Coordination
+  # -------------------------------------------------------------------------
+  early_exit:
+    # Enable early-exit protocol for parallel subagents
+    enabled: true
+    # Grace period in seconds before cleanup
+    grace_period_seconds: 5
+
+  # -------------------------------------------------------------------------
+  # Continuous Synthesis (Anti-Platform-Summarization)
+  # -------------------------------------------------------------------------
+  # Automatically externalize data to ledgers when RLM operations occur.
+  # This ensures critical information survives Claude Code's automatic
+  # context summarization by writing to NOTES.md/trajectory at every
+  # natural checkpoint (cache writes, condensation, early-exit signals).
+  continuous_synthesis:
+    # Master toggle for auto-synthesis
+    enabled: true
+    # Write to NOTES.md Decision Log on cache set operations
+    on_cache_set: true
+    # Log condensation decisions to trajectory
+    on_condense: true
+    # Log milestone completions on early-exit signals
+    on_early_exit: true
+    # Target for synthesis writes
+    target: notes_decision_log
+    # Also update active bead (if beads_rust available)
+    update_bead: true
+
+# =============================================================================
+# Plan and Analyze Configuration (v1.6.0)
+# =============================================================================
+# Codebase grounding integration with /ride for brownfield projects
+plan_and_analyze:
+  codebase_grounding:
+    # Master toggle - set to false to disable codebase grounding entirely
+    enabled: true
+    # Days before reality files are considered stale (prompt user to re-run)
+    reality_staleness_days: 7
+    # Timeout in minutes for /ride execution
+    ride_timeout_minutes: 20
+    # Auto-skip to Phase -1 if /ride fails (not recommended)
+    skip_on_ride_error: false
+
+# =============================================================================
+# Claude Code 2.1.x Features (v1.9.0)
+# =============================================================================
+# Alignment with Claude Code 2.1.x platform capabilities
+
+# Setup Hook - triggered on `claude --init`
+setup_hook:
+  # Run upgrade-health-check.sh on initialization
+  enabled: true
+  # Run full health check (vs quick check)
+  run_health_check: true
+
+# Skill Forking - isolated execution for read-only skills
+skill_forking:
+  # Master toggle for skill forking features
+  enabled: true
+  # Fork read-only skills (ride, validators) by default
+  fork_read_only_skills: true
+
+# One-Time Hooks - prevent duplicate hook execution
+hooks:
+  # Run update check only once per session (not on resume)
+  check_updates_once: true
+
+# Trajectory Session ID - cross-session correlation
+trajectory_session_id:
+  # Include CLAUDE_SESSION_ID in trajectory entries
+  enabled: true
+
+# File Read Limits (Claude Code environment variable)
+# Set CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS to limit file read output
+# Default: 4000 tokens
+# Example: export CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS=8000
+file_read_limits:
+  max_output_tokens: 4000
 
 # =============================================================================
 # Behavior Preferences

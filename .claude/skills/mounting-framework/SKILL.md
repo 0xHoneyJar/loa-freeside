@@ -32,7 +32,7 @@ echo "✓ Git repository detected"
 if [[ -f ".loa-version.json" ]]; then
   VERSION=$(jq -r '.framework_version' .loa-version.json 2>/dev/null)
   echo "⚠️ Loa already mounted (v$VERSION)"
-  echo "Use '/update' to sync framework, or continue to remount"
+  echo "Use '/update-loa' to sync framework, or continue to remount"
   # Use AskUserQuestion to confirm remount
 fi
 ```
@@ -195,17 +195,17 @@ else
 fi
 ```
 
-### Step 7: Initialize Beads (Optional)
+### Step 7: Initialize beads_rust (Optional)
 
 ```bash
-if command -v bd &> /dev/null; then
-  if [[ ! -f ".beads/graph.jsonl" ]]; then
-    bd init --quiet 2>/dev/null && echo "✓ Beads initialized"
+if command -v br &> /dev/null; then
+  if [[ ! -f ".beads/beads.db" ]]; then
+    br init --quiet 2>/dev/null && echo "✓ beads_rust initialized"
   else
-    echo "✓ Beads already initialized"
+    echo "✓ beads_rust already initialized"
   fi
 else
-  echo "⚠️ Beads CLI not found - skipping (install: https://github.com/steveyegge/beads)"
+  echo "⚠️ beads_rust (br) not found - skipping (install: .claude/scripts/beads/install-br.sh)"
 fi
 ```
 
@@ -242,7 +242,7 @@ Zone structure:
 Next steps:
   1. Run 'claude' to start Claude Code
   2. Issue '/ride' to analyze this codebase
-  3. Or '/setup' for guided configuration
+  3. Or '/plan-and-analyze' for greenfield development
 
 ⚠️ STRICT ENFORCEMENT: Direct edits to .claude/ will block execution.
    Use .claude/overrides/ for customizations.
@@ -276,7 +276,7 @@ echo "✓ State files added to .gitignore"
 | "Not a git repository" | No `.git` directory | Run `git init` first |
 | "jq required" | Missing jq | Install jq (`brew install jq` / `apt install jq`) |
 | "Failed to checkout .claude/" | Network/auth issue | Check remote URL and credentials |
-| "Loa already mounted" | `.loa-version.json` exists | Use `/update` or confirm remount |
+| "Loa already mounted" | `.loa-version.json` exists | Use `/update-loa` or confirm remount |
 
 ---
 

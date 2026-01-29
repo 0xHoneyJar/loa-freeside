@@ -227,6 +227,23 @@ Read ALL context documents in order:
 5. Check architecture alignment with SDD
 6. Perform security audit (see `resources/REFERENCE.md` §Security)
 7. Check performance and resource management
+8. **Karpathy Principles Check** (see below)
+
+### Karpathy Principles Verification
+
+Verify implementation follows the four principles:
+
+| Principle | Check | Fail Condition |
+|-----------|-------|----------------|
+| **Think Before Coding** | Assumptions documented in reviewer.md | Silent assumptions, missing clarifications |
+| **Simplicity First** | Minimal code, no speculative features | Unused abstractions, "just in case" code |
+| **Surgical Changes** | Diff only includes requested changes | Unrelated formatting, drive-by improvements |
+| **Goal-Driven** | Clear success criteria, tests verify them | Vague tests, untestable outcomes |
+
+**Flag violations as feedback:**
+- "SIMPLICITY: Abstraction X is only used once - consider inlining"
+- "SURGICAL: Lines Y-Z were reformatted but not part of the task"
+- "GOAL-DRIVEN: Test doesn't verify the actual acceptance criteria"
 
 ## Phase 3: Previous Feedback Verification
 
@@ -341,6 +358,125 @@ Use detailed feedback template with:
 - **Time-bound**: Review completes within session
 </success_criteria>
 
+<documentation_verification>
+## Documentation Verification (Required) (v0.19.0)
+
+**MANDATORY**: Before approving any sprint, verify documentation coherence.
+
+### Pre-Review Check
+
+1. Check for documentation-coherence report:
+   ```bash
+   ls grimoires/loa/a2a/subagent-reports/documentation-coherence-*.md 2>/dev/null
+   ```
+
+2. If report exists, verify status is not `ACTION_REQUIRED`
+
+3. If no report exists, run `/validate docs` or manually verify documentation
+
+### Documentation Checklist
+
+| Item | Blocking? | How to Check |
+|------|-----------|--------------|
+| CHANGELOG entry for each task | **YES** | Search CHANGELOG.md for task keywords |
+| CLAUDE.md for new commands/skills | **YES** | Grep CLAUDE.md for command name |
+| Security code has comments | **YES** | Review auth/validation code |
+| README for user-facing features | No | Check README mentions |
+| Code comments for complex logic | No | Review complex functions |
+| SDD for architecture changes | No | Compare with SDD structure |
+
+### Cannot Approve If
+
+- Documentation-coherence report shows `ACTION_REQUIRED` status
+- CHANGELOG entry missing for any task
+- New command added without CLAUDE.md entry
+- Security code missing explanatory comments
+- Major architecture change without SDD update
+
+### Approval Language
+
+**If documentation is complete:**
+```
+All good
+
+Documentation verification: PASS
+- CHANGELOG: All tasks documented
+- CLAUDE.md: [Updated/N/A]
+- Code comments: Adequate
+```
+
+**If documentation needs work:**
+```
+Changes required
+
+Documentation verification: FAIL
+- Missing CHANGELOG entry for Task X.Y
+- [specific file]: needs comment explaining [logic]
+```
+</documentation_verification>
+
+<subagent_report_check>
+## Subagent Report Check (v0.16.0)
+
+Before approving any sprint, check for validation reports in `grimoires/loa/a2a/subagent-reports/`:
+
+### Reports to Check
+
+| Report | Path Pattern | Blocking Verdicts |
+|--------|--------------|-------------------|
+| Architecture | `architecture-validation-*.md` | CRITICAL_VIOLATION |
+| Security | `security-scan-*.md` | CRITICAL, HIGH |
+| Test Adequacy | `test-adequacy-*.md` | INSUFFICIENT |
+| Goal Validation | `goal-validation-*.md` | GOAL_BLOCKED |
+
+### Workflow
+
+1. **List reports**: `ls grimoires/loa/a2a/subagent-reports/`
+2. **Read each report** from the current sprint date
+3. **Extract verdict** from the report header
+4. **Block if blocking verdict** exists
+
+### Blocking Behavior
+
+**DO NOT APPROVE** if any of these verdicts exist:
+
+| Subagent | Verdict | Action Required |
+|----------|---------|-----------------|
+| architecture-validator | CRITICAL_VIOLATION | Fix architecture issues first |
+| security-scanner | CRITICAL | Fix security vulnerability immediately |
+| security-scanner | HIGH | Fix security issue before merge |
+| test-adequacy-reviewer | INSUFFICIENT | Add missing tests |
+
+### Non-Blocking Verdicts
+
+These verdicts are informational—use reviewer discretion:
+
+| Subagent | Verdict | Recommendation |
+|----------|---------|----------------|
+| architecture-validator | DRIFT_DETECTED | Note in feedback, may proceed |
+| security-scanner | MEDIUM | Recommend fix, may proceed |
+| security-scanner | LOW | Optional fix |
+| test-adequacy-reviewer | WEAK | Note gaps, may proceed |
+
+### No Reports Found
+
+If no subagent reports exist:
+- `/validate` was not run (optional step)
+- Proceed with manual review
+- Consider recommending `/validate` in feedback
+
+### Example Check
+
+```bash
+# Check for blocking issues
+grep -l "Verdict.*CRITICAL" grimoires/loa/a2a/subagent-reports/*.md 2>/dev/null
+grep -l "Verdict.*HIGH" grimoires/loa/a2a/subagent-reports/*.md 2>/dev/null
+grep -l "Verdict.*INSUFFICIENT" grimoires/loa/a2a/subagent-reports/*.md 2>/dev/null
+```
+
+If any match found, **block approval** until issues are resolved.
+</subagent_report_check>
+
 <checklists>
 See `resources/REFERENCE.md` for complete checklists:
 - Versioning (SemVer Compliance) - 4 items
@@ -361,3 +497,121 @@ See `resources/REFERENCE.md` for complete checklists:
 - No tests for critical functionality
 - N+1 query problems
 </checklists>
+
+<complexity_review>
+## Complexity Review (Required) (v0.19.0)
+
+Check code for excessive complexity during every review. These are **blocking issues**.
+
+### Function Complexity
+
+| Check | Threshold | Finding |
+|-------|-----------|---------|
+| Function length | >50 lines | "Function too long: {file}:{line} ({X} lines). Split into smaller functions." |
+| Parameter count | >5 params | "Too many parameters: {func}() has {X} params. Use options object." |
+| Nesting depth | >3 levels | "Deep nesting: {file}:{line}. Refactor with early returns or extract." |
+| Cyclomatic complexity | >10 | "High complexity: {func}(). Simplify conditional logic." |
+
+### Code Duplication
+
+| Check | Threshold | Finding |
+|-------|-----------|---------|
+| Repeated patterns | >3 occurrences | "Duplicate code found in {file1}, {file2}, {file3}. Extract to shared function." |
+| Copy-paste code | >10 similar lines | "Near-duplicate blocks at {file}:{line1} and {file}:{line2}. DRY violation." |
+
+### Dependencies
+
+| Check | Issue | Finding |
+|-------|-------|---------|
+| Circular imports | Any | "Circular dependency: {A} → {B} → {A}. Restructure modules." |
+| Unnecessary deps | Unused | "Unused import: {file}:{line} imports {module} but never uses it." |
+| Heavy deps | For simple task | "Consider lighter alternative to {dep} for this use case." |
+
+### Naming Quality
+
+| Check | Issue | Finding |
+|-------|-------|---------|
+| Unclear names | Ambiguous | "Unclear name: {name} at {file}:{line}. Use descriptive name." |
+| Abbreviations | Non-standard | "Avoid abbreviation: '{abbr}' → '{full}' at {file}:{line}." |
+| Inconsistent | Style varies | "Inconsistent naming: {fileA} uses camelCase, {fileB} uses snake_case." |
+
+### Dead Code
+
+| Check | Issue | Finding |
+|-------|-------|---------|
+| Unused functions | Never called | "Dead code: {func}() at {file}:{line} is never called. Remove." |
+| Commented code | Large blocks | "Remove commented code at {file}:{lines}. Use version control." |
+| Unreachable code | After return | "Unreachable code after return at {file}:{line}." |
+
+### Review Integration
+
+During Phase 2 (Code Review), add complexity checks:
+
+```markdown
+## Complexity Analysis
+
+### Functions Reviewed
+- `{func1}()`: OK (25 lines, 3 params, nesting 2)
+- `{func2}()`: **ISSUE** (67 lines - too long)
+
+### Duplication Found
+- None detected / {description of duplicates}
+
+### Dependency Issues
+- None detected / {description of issues}
+
+### Naming Issues
+- None detected / {list of naming concerns}
+
+### Dead Code
+- None detected / {list of dead code}
+```
+
+### Complexity Verdict
+
+**BLOCK approval if:**
+- Any function >50 lines without justification
+- Nesting depth >3 without early returns
+- >3 duplicate code blocks
+- Circular dependencies
+
+**Note in feedback but allow:**
+- Functions 40-50 lines (borderline)
+- 2-3 duplicate patterns
+- Minor naming inconsistencies
+</complexity_review>
+
+<beads_workflow>
+## Beads Workflow (beads_rust)
+
+When beads_rust (`br`) is installed, use it to record review feedback:
+
+### Session Start
+```bash
+br sync --import-only  # Import latest state from JSONL
+```
+
+### Recording Review Feedback
+```bash
+# Add review comment to task
+br comments add <task-id> "REVIEW: [feedback summary]"
+
+# Mark task status based on review outcome
+br label add <task-id> review-approved     # If approved
+br label add <task-id> needs-revision       # If changes required
+```
+
+### Using Labels for Status
+| Label | Meaning | When to Apply |
+|-------|---------|---------------|
+| `needs-review` | Awaiting review | Before review |
+| `review-approved` | Passed review | After "All good" |
+| `needs-revision` | Changes requested | After feedback |
+
+### Session End
+```bash
+br sync --flush-only  # Export SQLite → JSONL before commit
+```
+
+**Protocol Reference**: See `.claude/protocols/beads-integration.md`
+</beads_workflow>
