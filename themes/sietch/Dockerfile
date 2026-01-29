@@ -47,6 +47,9 @@ COPY drizzle.config.ts ./
 # Build TypeScript
 RUN npm run build
 
+# Copy static files to dist (not compiled by TypeScript)
+RUN cp -r src/static dist/static 2>/dev/null || true
+
 # Prune dev dependencies for smaller production image
 RUN npm prune --production
 
