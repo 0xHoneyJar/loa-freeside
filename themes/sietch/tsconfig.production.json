@@ -8,5 +8,6 @@
     "module": "ES2022",
     "isolatedModules": false,
     "skipLibCheck": true
-  }
+  },
+  "exclude": ["node_modules", "dist", "tests", "trigger", "src/ui/**", "src/test-utils/**", "src/**/*.test.ts", "src/**/*.spec.ts"]
 }
