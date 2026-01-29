@@ -37,9 +37,39 @@ env:
 
 jobs:
   # ===========================================================================
+  # Run Database Migrations
+  # ===========================================================================
+  migrate:
+    name: Run Database Migrations
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: ./themes/sietch
+        run: npm ci
+
+      - name: Run migrations
+        working-directory: ./themes/sietch
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          echo "Running database migrations..."
+          npx drizzle-kit push --force
+          echo "Migrations complete!"
+
+  # ===========================================================================
   # Build and Push
   # ===========================================================================
   build:
+    needs: migrate
     name: Build & Push to ECR
     runs-on: ubuntu-latest
 
