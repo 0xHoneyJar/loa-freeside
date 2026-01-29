@@ -1,0 +1,130 @@
+{
+  "version": "1.0.0",
+  "next_sprint_number": 175,
+  "active_cycle": "cycle-007",
+  "cycles": [
+    {
+      "id": "cycle-001",
+      "label": "Arrakis Genesis v2.0",
+      "status": "archived",
+      "created": "2026-01-15T00:00:00Z",
+      "archived": "2026-01-19T19:44:00Z",
+      "archive_path": "grimoires/loa/archive/2026-01-19-arrakis-genesis-v2",
+      "sprints": [
+        {"global_id": 94, "local_label": "sprint-94", "status": "completed"},
+        {"global_id": 96, "local_label": "sprint-96", "status": "completed"},
+        {"global_id": 97, "local_label": "sprint-97", "status": "completed"},
+        {"global_id": 98, "local_label": "sprint-98", "status": "completed"},
+        {"global_id": 99, "local_label": "sprint-99", "status": "completed"},
+        {"global_id": 100, "local_label": "sprint-100", "status": "completed"},
+        {"global_id": 101, "local_label": "sprint-101", "status": "completed"}
+      ]
+    },
+    {
+      "id": "cycle-002",
+      "label": "Sandworm Sense - Intelligent Onboarding",
+      "status": "archived",
+      "created": "2026-01-19T19:50:00Z",
+      "archived": "2026-01-19T22:00:00Z",
+      "archive_path": "grimoires/loa/archive/2026-01-19-sandworm-sense",
+      "sprints": [
+        {"global_id": 102, "local_label": "sprint-102", "status": "completed"},
+        {"global_id": 103, "local_label": "sprint-103", "status": "completed"},
+        {"global_id": 104, "local_label": "sprint-104", "status": "completed"},
+        {"global_id": 105, "local_label": "sprint-105", "status": "completed"}
+      ]
+    },
+    {
+      "id": "cycle-003",
+      "label": "Crysknife - QA Sandbox Testing System",
+      "status": "archived",
+      "created": "2026-01-19T22:00:00Z",
+      "archived": "2026-01-19T23:30:00Z",
+      "archive_path": "grimoires/loa/archive/2026-01-19-crysknife-qa-sandbox",
+      "prd": "grimoires/loa/archive/2026-01-19-crysknife-qa-sandbox/prd.md",
+      "sdd": "grimoires/loa/archive/2026-01-19-crysknife-qa-sandbox/sdd.md",
+      "sprints": [
+        {"global_id": 106, "local_label": "sprint-106", "status": "completed"},
+        {"global_id": 107, "local_label": "sprint-107", "status": "completed"},
+        {"global_id": 108, "local_label": "sprint-108", "status": "completed"},
+        {"global_id": 109, "local_label": "sprint-109", "status": "completed"},
+        {"global_id": 110, "local_label": "sprint-110", "status": "completed"},
+        {"global_id": 111, "local_label": "sprint-111", "status": "completed"},
+        {"global_id": 112, "local_label": "sprint-112", "status": "completed"},
+        {"global_id": 113, "local_label": "sprint-113", "status": "completed"}
+      ]
+    },
+    {
+      "id": "cycle-004",
+      "label": "Crysknife Edge + Sietch Vault",
+      "status": "archived",
+      "created": "2026-01-19T23:30:00Z",
+      "archived": "2026-01-20T12:00:00Z",
+      "archive_path": "grimoires/loa/archive/2026-01-20-crysknife-edge-sietch-vault",
+      "prd": "grimoires/loa/archive/2026-01-20-crysknife-edge-sietch-vault/prd.md",
+      "sdd": "grimoires/loa/archive/2026-01-20-crysknife-edge-sietch-vault/sdd.md",
+      "sprints": [
+        {"global_id": 146, "local_label": "sprint-146", "status": "completed"},
+        {"global_id": 147, "local_label": "sprint-147", "status": "completed"},
+        {"global_id": 148, "local_label": "sprint-148", "status": "completed"},
+        {"global_id": 149, "local_label": "sprint-149", "status": "completed"},
+        {"global_id": 150, "local_label": "sprint-150", "status": "completed"},
+        {"global_id": 154, "local_label": "sprint-154", "status": "completed"}
+      ]
+    },
+    {
+      "id": "cycle-005",
+      "label": "Spice Melange - NOWPayments Crypto Integration",
+      "status": "archived",
+      "created": "2026-01-20T12:00:00Z",
+      "archived": "2026-01-24T13:18:00Z",
+      "archive_path": "grimoires/loa/archive/2026-01-24-spice-melange-nowpayments",
+      "prd": "grimoires/loa/archive/2026-01-24-spice-melange-nowpayments/prd.md",
+      "sdd": "grimoires/loa/archive/2026-01-24-spice-melange-nowpayments/sdd.md",
+      "sprints": [
+        {"global_id": 155, "local_label": "sprint-155", "status": "completed"},
+        {"global_id": 156, "local_label": "sprint-156", "status": "completed"},
+        {"global_id": 157, "local_label": "sprint-157", "status": "completed"},
+        {"global_id": 158, "local_label": "sprint-158", "status": "completed"},
+        {"global_id": 159, "local_label": "sprint-159", "status": "completed"}
+      ]
+    },
+    {
+      "id": "cycle-006",
+      "label": "Sietch Sites - UI Repository Extraction",
+      "status": "archived",
+      "created": "2026-01-24T13:20:00Z",
+      "archived": "2026-01-29T02:30:00Z",
+      "archive_path": "grimoires/loa/archive/2026-01-29-sietch-sites-paused",
+      "prd": "grimoires/loa/archive/2026-01-29-sietch-sites-paused/prd.md",
+      "sdd": "grimoires/loa/archive/2026-01-29-sietch-sites-paused/sdd.md",
+      "sprints": [
+        {"global_id": 160, "local_label": "sprint-1", "status": "pending"},
+        {"global_id": 161, "local_label": "sprint-2", "status": "pending"},
+        {"global_id": 162, "local_label": "sprint-3", "status": "pending"},
+        {"global_id": 163, "local_label": "sprint-4", "status": "pending"}
+      ]
+    },
+    {
+      "id": "cycle-007",
+      "label": "Gaib Discord IaC - Full Sietch Theme + Backup System",
+      "status": "active",
+      "created": "2026-01-29T03:00:00Z",
+      "prd": "grimoires/loa/prd.md",
+      "sdd": "grimoires/loa/sdd.md",
+      "sprints": [
+        {"global_id": 164, "local_label": "sprint-1", "status": "completed"},
+        {"global_id": 165, "local_label": "sprint-2", "status": "completed"},
+        {"global_id": 166, "local_label": "sprint-3", "status": "completed"},
+        {"global_id": 167, "local_label": "sprint-4", "status": "completed"},
+        {"global_id": 168, "local_label": "sprint-5", "status": "completed"},
+        {"global_id": 169, "local_label": "sprint-6", "status": "completed"},
+        {"global_id": 170, "local_label": "sprint-7", "status": "completed"},
+        {"global_id": 171, "local_label": "sprint-8", "status": "completed"},
+        {"global_id": 172, "local_label": "sprint-9", "status": "completed"},
+        {"global_id": 173, "local_label": "sprint-10", "status": "completed"},
+        {"global_id": 174, "local_label": "sprint-11", "status": "completed"}
+      ]
+    }
+  ]
+}

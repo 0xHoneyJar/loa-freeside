@@ -1,0 +1,29 @@
+{
+  "plan_id": "plan-20260129-tier-testing",
+  "branch": "feature/gaib-iac-sietch-v3",
+  "state": "JACKED_OUT",
+  "timestamps": {
+    "started": "2026-01-29T19:00:00Z",
+    "last_activity": "2026-01-29T06:15:00Z"
+  },
+  "sprints": {
+    "total": 2,
+    "completed": 2,
+    "current": null,
+    "list": [
+      {"id": "sprint-10", "global_id": 173, "status": "completed", "cycles": 1},
+      {"id": "sprint-11", "global_id": 174, "status": "completed", "cycles": 1}
+    ]
+  },
+  "options": {
+    "from": 10,
+    "to": 10,
+    "max_cycles": 20,
+    "timeout_hours": 8
+  },
+  "metrics": {
+    "total_cycles": 1,
+    "total_files_changed": 4,
+    "total_findings_fixed": 0
+  }
+}

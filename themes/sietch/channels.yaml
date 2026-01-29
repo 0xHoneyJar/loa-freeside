@@ -1,44 +1,171 @@
-# Sietch Theme - Channel Structure
+# Sietch Theme - Channel Structure v3.0
 #
-# Categories and channels reflecting sietch life:
-# - The Gathering: Community gathering spaces
-# - The Stillsuit: Resources and information
-# - The Spice Fields: Discussion areas
-# - The Caves: Voice channels (optional)
-# - Leadership Chambers: Staff areas
+# Full tiered channel structure with progressive access based on BGT holdings.
+# Higher tiers can see all channels from lower tiers (additive model).
+#
+# Categories:
+#   📜 STILLSUIT - Public info (everyone)
+#   🚪 CAVE ENTRANCE - Tier 0 (6.9+ BGT)
+#   🕳️ THE DEPTHS - Tier 2 (222+ BGT)
+#   ⚡ INNER SANCTUM - Tier 3 (888+ BGT)
+#   ⚔️ FEDAYKIN COMMONS - Top 69
+#   🏛️ NAIB COUNCIL - Top 7 only
+#   🏛️ NAIB ARCHIVES - Naib + Former Naib
+#   💧 BADGE CHANNELS - Badge holders only
+#   🛠️ SUPPORT - Fedaykin+
+#
+# Reference: grimoires/pub/docs/DISCORD-SETUP-GUIDE.md
 
 categories:
-  - name: "The Gathering"
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 📜 STILLSUIT - Public Info (Everyone can view)
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: "📜 STILLSUIT"
     position: 0
     permissions:
       "@everyone":
         allow:
           - VIEW_CHANNEL
           - READ_MESSAGE_HISTORY
+        deny:
+          - SEND_MESSAGES
 
-  - name: "The Stillsuit"
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🚪 CAVE ENTRANCE - Tier 0 (6.9+ BGT)
+  # Hajra: read-only, Ichwan+: read/write
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: "🚪 CAVE ENTRANCE"
     position: 1
     permissions:
       "@everyone":
+        deny:
+          - VIEW_CHANNEL
+      Hajra:
         allow:
           - VIEW_CHANNEL
           - READ_MESSAGE_HISTORY
         deny:
           - SEND_MESSAGES
+      Ichwan:
+        allow:
+          - VIEW_CHANNEL
+          - SEND_MESSAGES
+          - READ_MESSAGE_HISTORY
+          - ADD_REACTIONS
+      Qanat:
+        allow:
+          - VIEW_CHANNEL
+          - SEND_MESSAGES
+          - READ_MESSAGE_HISTORY
+          - ADD_REACTIONS
+      Sihaya:
+        allow:
+          - VIEW_CHANNEL
+          - SEND_MESSAGES
+          - READ_MESSAGE_HISTORY
+          - ADD_REACTIONS
+      Mushtamal:
+        allow:
+          - VIEW_CHANNEL
+          - SEND_MESSAGES
+          - READ_MESSAGE_HISTORY
+          - ADD_REACTIONS
+      Sayyadina:
+        allow:
+          - VIEW_CHANNEL
+          - SEND_MESSAGES
+          - READ_MESSAGE_HISTORY
+          - ADD_REACTIONS
+      Usul:
+        allow:
+          - VIEW_CHANNEL
+          - SEND_MESSAGES
+          - READ_MESSAGE_HISTORY
+          - ADD_REACTIONS
+      Fedaykin:
+        allow:
+          - VIEW_CHANNEL
+          - SEND_MESSAGES
+          - READ_MESSAGE_HISTORY
+          - ADD_REACTIONS
+      Naib:
+        allow:
+          - VIEW_CHANNEL
+          - SEND_MESSAGES
+          - READ_MESSAGE_HISTORY
+          - ADD_REACTIONS
+          - MANAGE_MESSAGES
 
-  - name: "The Spice Fields"
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🕳️ THE DEPTHS - Tier 2 (222+ BGT)
+  # Qanat: read-only, Sihaya+: read/write
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: "🕳️ THE DEPTHS"
     position: 2
     permissions:
-      Pilgrim:
+      "@everyone":
+        deny:
+          - VIEW_CHANNEL
+      Qanat:
+        allow:
+          - VIEW_CHANNEL
+          - READ_MESSAGE_HISTORY
         deny:
           - SEND_MESSAGES
+      Sihaya:
+        allow:
+          - VIEW_CHANNEL
+          - SEND_MESSAGES
+          - READ_MESSAGE_HISTORY
           - ADD_REACTIONS
+      Mushtamal:
+        allow:
+          - VIEW_CHANNEL
+          - SEND_MESSAGES
+          - READ_MESSAGE_HISTORY
+          - ADD_REACTIONS
+          - CONNECT
+          - SPEAK
+      Sayyadina:
+        allow:
+          - VIEW_CHANNEL
+          - SEND_MESSAGES
+          - READ_MESSAGE_HISTORY
+          - ADD_REACTIONS
+          - CONNECT
+          - SPEAK
+      Usul:
+        allow:
+          - VIEW_CHANNEL
+          - SEND_MESSAGES
+          - READ_MESSAGE_HISTORY
+          - ADD_REACTIONS
+          - CONNECT
+          - SPEAK
+      Fedaykin:
+        allow:
+          - VIEW_CHANNEL
+          - SEND_MESSAGES
+          - READ_MESSAGE_HISTORY
+          - ADD_REACTIONS
+          - CONNECT
+          - SPEAK
+      Naib:
+        allow:
+          - VIEW_CHANNEL
+          - SEND_MESSAGES
+          - READ_MESSAGE_HISTORY
+          - ADD_REACTIONS
+          - CONNECT
+          - SPEAK
+          - MANAGE_MESSAGES
 
-  - name: "The Caves"
+  # ═══════════════════════════════════════════════════════════════════════════
+  # ⚡ INNER SANCTUM - Tier 3 (888+ BGT)
+  # Sayyadina+: full access
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: "⚡ INNER SANCTUM"
     position: 3
-
-  - name: "Leadership Chambers"
-    position: 4
     permissions:
       "@everyone":
         deny:
@@ -48,144 +175,411 @@ categories:
           - VIEW_CHANNEL
           - SEND_MESSAGES
           - READ_MESSAGE_HISTORY
+          - ADD_REACTIONS
+      Usul:
+        allow:
+          - VIEW_CHANNEL
+          - SEND_MESSAGES
+          - READ_MESSAGE_HISTORY
+          - ADD_REACTIONS
+          - CONNECT
+          - SPEAK
+      Fedaykin:
+        allow:
+          - VIEW_CHANNEL
+          - SEND_MESSAGES
+          - READ_MESSAGE_HISTORY
+          - ADD_REACTIONS
+          - CONNECT
+          - SPEAK
       Naib:
         allow:
           - VIEW_CHANNEL
           - SEND_MESSAGES
           - READ_MESSAGE_HISTORY
+          - ADD_REACTIONS
+          - CONNECT
+          - SPEAK
           - MANAGE_MESSAGES
 
-channels:
-  # The Gathering - Welcome and announcements
-  - name: welcome
-    type: text
-    category: "The Gathering"
-    topic: "Welcome to ${community_name}. May your water be clean."
-    position: 0
+  # ═══════════════════════════════════════════════════════════════════════════
+  # ⚔️ FEDAYKIN COMMONS - Top 69
+  # Fedaykin and Naib only
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: "⚔️ FEDAYKIN COMMONS"
+    position: 4
     permissions:
       "@everyone":
         deny:
+          - VIEW_CHANNEL
+      Fedaykin:
+        allow:
+          - VIEW_CHANNEL
           - SEND_MESSAGES
+          - READ_MESSAGE_HISTORY
+          - ADD_REACTIONS
+          - EMBED_LINKS
+          - ATTACH_FILES
+          - USE_EXTERNAL_EMOJIS
+          - CONNECT
+          - SPEAK
+          - STREAM
+      Naib:
+        allow:
+          - VIEW_CHANNEL
+          - SEND_MESSAGES
+          - READ_MESSAGE_HISTORY
+          - ADD_REACTIONS
+          - EMBED_LINKS
+          - ATTACH_FILES
+          - USE_EXTERNAL_EMOJIS
+          - CONNECT
+          - SPEAK
+          - STREAM
+          - MANAGE_MESSAGES
+      Shai-Hulud:
+        allow:
+          - VIEW_CHANNEL
+          - SEND_MESSAGES
+          - READ_MESSAGE_HISTORY
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🏛️ NAIB COUNCIL - Top 7 Only
+  # Private Naib discussion
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: "🏛️ NAIB COUNCIL"
+    position: 5
+    permissions:
+      "@everyone":
+        deny:
+          - VIEW_CHANNEL
+      Naib:
+        allow:
+          - VIEW_CHANNEL
+          - SEND_MESSAGES
+          - READ_MESSAGE_HISTORY
+          - ADD_REACTIONS
+          - EMBED_LINKS
+          - ATTACH_FILES
+          - CONNECT
+          - SPEAK
+          - MANAGE_MESSAGES
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🏛️ NAIB ARCHIVES - Naib + Former Naib
+  # Historical discussions
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: "🏛️ NAIB ARCHIVES"
+    position: 6
+    permissions:
+      "@everyone":
+        deny:
+          - VIEW_CHANNEL
+      Naib:
+        allow:
+          - VIEW_CHANNEL
+          - SEND_MESSAGES
+          - READ_MESSAGE_HISTORY
+          - ADD_REACTIONS
+      "Former Naib":
+        allow:
+          - VIEW_CHANNEL
+          - SEND_MESSAGES
+          - READ_MESSAGE_HISTORY
+          - ADD_REACTIONS
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 💧 BADGE CHANNELS - Badge holders only
+  # Exclusive spaces for achievement holders
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: "💧 BADGE CHANNELS"
+    position: 7
+    permissions:
+      "@everyone":
+        deny:
+          - VIEW_CHANNEL
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🛠️ SUPPORT - Fedaykin+
+  # Help and bot interaction
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: "🛠️ SUPPORT"
+    position: 8
+    permissions:
+      "@everyone":
+        deny:
+          - VIEW_CHANNEL
+      Fedaykin:
+        allow:
+          - VIEW_CHANNEL
+          - SEND_MESSAGES
+          - READ_MESSAGE_HISTORY
+          - ADD_REACTIONS
+      Naib:
+        allow:
+          - VIEW_CHANNEL
+          - SEND_MESSAGES
+          - READ_MESSAGE_HISTORY
+          - ADD_REACTIONS
+          - MANAGE_MESSAGES
+      Shai-Hulud:
+        allow:
+          - VIEW_CHANNEL
+          - SEND_MESSAGES
+          - READ_MESSAGE_HISTORY
+
+channels:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 📜 STILLSUIT - Public Info
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: water-discipline
+    type: text
+    category: "📜 STILLSUIT"
+    topic: "Welcome to ${community_name}. May your water be clean."
+    position: 0
+    permissions:
       Naib:
         allow:
           - SEND_MESSAGES
 
   - name: announcements
     type: announcement
-    category: "The Gathering"
+    category: "📜 STILLSUIT"
     topic: "Important news from the tribal council"
     position: 1
     permissions:
-      "@everyone":
-        deny:
+      Naib:
+        allow:
           - SEND_MESSAGES
-      Sayyadina:
+      Shai-Hulud:
         allow:
           - SEND_MESSAGES
 
-  - name: rules
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🚪 CAVE ENTRANCE - Tier 0 (6.9+ BGT)
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: cave-entrance
     type: text
-    category: "The Gathering"
-    topic: "The water discipline - community guidelines"
-    position: 2
-    permissions:
-      "@everyone":
-        deny:
-          - SEND_MESSAGES
-
-  # The Stillsuit - Resources
-  - name: roles
-    type: text
-    category: "The Stillsuit"
-    topic: "Select your roles and customize your profile"
+    category: "🚪 CAVE ENTRANCE"
+    topic: "Entry-level discussion for new members"
     position: 0
 
-  - name: resources
-    type: text
-    category: "The Stillsuit"
-    topic: "Useful links and information"
+  - name: cave-voices
+    type: voice
+    category: "🚪 CAVE ENTRANCE"
     position: 1
+    bitrate: 64000
+    userLimit: 0
+    permissions:
+      Hajra:
+        deny:
+          - CONNECT
+      Ichwan:
+        allow:
+          - CONNECT
+          - SPEAK
 
-  - name: faq
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🕳️ THE DEPTHS - Tier 2 (222+ BGT)
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: the-depths
     type: text
-    category: "The Stillsuit"
-    topic: "Frequently asked questions"
-    position: 2
+    category: "🕳️ THE DEPTHS"
+    topic: "Deeper discussions for committed members"
+    position: 0
 
-  # The Spice Fields - Discussion
+  - name: depth-voices
+    type: voice
+    category: "🕳️ THE DEPTHS"
+    position: 1
+    bitrate: 64000
+    userLimit: 0
+    permissions:
+      Qanat:
+        deny:
+          - CONNECT
+          - SPEAK
+      Sihaya:
+        deny:
+          - CONNECT
+          - SPEAK
+      Mushtamal:
+        allow:
+          - CONNECT
+          - SPEAK
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # ⚡ INNER SANCTUM - Tier 3 (888+ BGT)
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: inner-sanctum
+    type: text
+    category: "⚡ INNER SANCTUM"
+    topic: "Elite discussions for high-tier members"
+    position: 0
+
+  - name: sanctum-voices
+    type: voice
+    category: "⚡ INNER SANCTUM"
+    position: 1
+    bitrate: 96000
+    userLimit: 0
+    permissions:
+      Sayyadina:
+        allow:
+          - VIEW_CHANNEL
+        deny:
+          - SPEAK
+      Usul:
+        allow:
+          - VIEW_CHANNEL
+          - CONNECT
+          - SPEAK
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # ⚔️ FEDAYKIN COMMONS - Top 69
+  # ═══════════════════════════════════════════════════════════════════════════
   - name: general
     type: text
-    category: "The Spice Fields"
-    topic: "General discussion for the tribe"
+    category: "⚔️ FEDAYKIN COMMONS"
+    topic: "Main discussion for the Fedaykin"
     position: 0
-    slowmode: 0
+
+  - name: spice
+    type: text
+    category: "⚔️ FEDAYKIN COMMONS"
+    topic: "Market insights and alpha"
+    position: 1
+
+  - name: water-shares
+    type: text
+    category: "⚔️ FEDAYKIN COMMONS"
+    topic: "Ideas and proposals"
+    position: 2
 
   - name: introductions
     type: text
-    category: "The Spice Fields"
+    category: "⚔️ FEDAYKIN COMMONS"
     topic: "Introduce yourself to the sietch"
-    position: 1
+    position: 3
     slowmode: 300
 
-  - name: off-topic
+  - name: census
     type: text
-    category: "The Spice Fields"
-    topic: "Desert wanderings - anything goes"
-    position: 2
-
-  - name: media
-    type: text
-    category: "The Spice Fields"
-    topic: "Share images, videos, and spice visions"
-    position: 3
-
-  - name: bot-commands
-    type: text
-    category: "The Spice Fields"
-    topic: "Summon the sandworm - bot commands here"
+    category: "⚔️ FEDAYKIN COMMONS"
+    topic: "Live leaderboard and rankings"
     position: 4
+    permissions:
+      Fedaykin:
+        deny:
+          - SEND_MESSAGES
+      Naib:
+        deny:
+          - SEND_MESSAGES
+      Shai-Hulud:
+        allow:
+          - SEND_MESSAGES
 
-  # The Caves - Voice
-  - name: campfire
+  - name: the-door
+    type: text
+    category: "⚔️ FEDAYKIN COMMONS"
+    topic: "Join/leave notices and story fragments"
+    position: 5
+    permissions:
+      Fedaykin:
+        deny:
+          - SEND_MESSAGES
+      Naib:
+        deny:
+          - SEND_MESSAGES
+      Shai-Hulud:
+        allow:
+          - SEND_MESSAGES
+
+  - name: fedaykin-voices
     type: voice
-    category: "The Caves"
-    topic: "Casual voice chat around the fire"
-    position: 0
-    bitrate: 64000
+    category: "⚔️ FEDAYKIN COMMONS"
+    position: 6
+    bitrate: 96000
     userLimit: 0
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🏛️ NAIB COUNCIL - Top 7
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: council-rock
+    type: text
+    category: "🏛️ NAIB COUNCIL"
+    topic: "Private discussion for the Naib"
+    position: 0
 
   - name: council-chamber
     type: voice
-    category: "The Caves"
-    topic: "Formal voice discussions"
+    category: "🏛️ NAIB COUNCIL"
     position: 1
     bitrate: 96000
-    userLimit: 10
+    userLimit: 7
 
-  - name: meditation
-    type: voice
-    category: "The Caves"
-    topic: "Quiet contemplation and focus"
-    position: 2
-    bitrate: 64000
-    userLimit: 5
-
-  # Leadership Chambers - Staff
-  - name: staff-chat
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🏛️ NAIB ARCHIVES
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: naib-archives
     type: text
-    category: "Leadership Chambers"
-    topic: "Private discussion for tribal leadership"
+    category: "🏛️ NAIB ARCHIVES"
+    topic: "Historical discussions from past Naibs"
     position: 0
 
-  - name: mod-logs
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 💧 BADGE CHANNELS
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: the-oasis
     type: text
-    category: "Leadership Chambers"
-    topic: "Moderation action logs"
-    position: 1
+    category: "💧 BADGE CHANNELS"
+    topic: "Water Sharer exclusive space"
+    position: 0
+    permissions:
+      "Water Sharer":
+        allow:
+          - VIEW_CHANNEL
+          - SEND_MESSAGES
+          - READ_MESSAGE_HISTORY
+          - ADD_REACTIONS
 
-  - name: staff-voice
-    type: voice
-    category: "Leadership Chambers"
-    topic: "Private voice for staff"
+  - name: deep-desert
+    type: text
+    category: "💧 BADGE CHANNELS"
+    topic: "Engaged badge holders space"
+    position: 1
+    permissions:
+      Engaged:
+        allow:
+          - VIEW_CHANNEL
+          - SEND_MESSAGES
+          - READ_MESSAGE_HISTORY
+          - ADD_REACTIONS
+
+  - name: stillsuit-lounge
+    type: text
+    category: "💧 BADGE CHANNELS"
+    topic: "Veteran members lounge"
     position: 2
-    bitrate: 96000
+    permissions:
+      Veteran:
+        allow:
+          - VIEW_CHANNEL
+          - SEND_MESSAGES
+          - READ_MESSAGE_HISTORY
+          - ADD_REACTIONS
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🛠️ SUPPORT
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: support
+    type: text
+    category: "🛠️ SUPPORT"
+    topic: "Get help with the sietch"
+    position: 0
+
+  - name: bot-commands
+    type: text
+    category: "🛠️ SUPPORT"
+    topic: "Interact with Shai-Hulud"
+    position: 1

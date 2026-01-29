@@ -23,7 +23,7 @@ Sietch is the cross-platform community for BGT holders on Berachain. Track your 
 To access your score and community features, you need to link your wallet:
 
 1. Use /verify to start the verification process
-2. Connect your wallet via Collab.Land
+2. Connect your wallet and sign a message
 3. Once verified, use /score to see your conviction
 
 *Available Commands*

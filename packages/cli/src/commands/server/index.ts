@@ -265,6 +265,7 @@ function registerTeardownCommand(parent: Command): void {
     .option('--dry-run', 'Show what would be deleted without making changes')
     .option('--preserve-categories <names...>', 'Category names to preserve (not delete)')
     .option('--force', 'Skip interactive prompts (requires --confirm-teardown and --json)')
+    .option('--skip-checkpoint', 'Skip checkpoint creation before teardown (DANGEROUS)')
     .addHelpText(
       'after',
       `
@@ -298,6 +299,7 @@ ${chalk.dim('This command is intended for resetting test/sandbox servers only.')
           quiet: globalOpts.quiet,
           preserveCategories: options.preserveCategories,
           force: options.force,
+          skipCheckpoint: options.skipCheckpoint,
         });
       } catch (error) {
         handleError(error, options.json);

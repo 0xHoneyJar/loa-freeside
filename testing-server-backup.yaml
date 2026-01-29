@@ -1,0 +1,250 @@
+# Discord Server Configuration
+# Exported from: Arrakis Sandbox
+# Guild ID: 1460247581312549049
+# Exported at: 2026-01-29T07:11:46.278Z
+
+version: '1.0'
+server:
+  name: Arrakis Sandbox
+  id: '1460247581312549049'
+roles:
+  - name: Naib
+    color: '#FFD700'
+    permissions:
+      - ADMINISTRATOR
+    hoist: true
+    mentionable: true
+  - name: Sayyadina
+    color: '#6610F2'
+    hoist: true
+    mentionable: true
+  - name: Fedaykin
+    color: '#4169E1'
+    permissions:
+      - ADD_REACTIONS
+      - STREAM
+      - VIEW_CHANNEL
+      - SEND_MESSAGES
+      - EMBED_LINKS
+      - ATTACH_FILES
+      - READ_MESSAGE_HISTORY
+      - USE_EXTERNAL_EMOJIS
+      - CONNECT
+      - SPEAK
+      - USE_VAD
+      - CREATE_PUBLIC_THREADS
+      - SEND_MESSAGES_IN_THREADS
+    hoist: true
+    mentionable: true
+  - name: Fremen
+    color: '#7B8D6C'
+    permissions:
+      - ADD_REACTIONS
+      - STREAM
+      - VIEW_CHANNEL
+      - SEND_MESSAGES
+      - EMBED_LINKS
+      - ATTACH_FILES
+      - READ_MESSAGE_HISTORY
+      - USE_EXTERNAL_EMOJIS
+      - CONNECT
+      - SPEAK
+      - USE_VAD
+      - CREATE_PUBLIC_THREADS
+    hoist: true
+  - name: Pilgrim
+    color: '#9B9B9B'
+    permissions:
+      - ADD_REACTIONS
+      - VIEW_CHANNEL
+      - SEND_MESSAGES
+      - READ_MESSAGE_HISTORY
+      - CONNECT
+      - SPEAK
+  - name: Shai-Hulud
+    color: '#FFD700'
+    permissions:
+      - MANAGE_CHANNELS
+      - ADD_REACTIONS
+      - VIEW_CHANNEL
+      - SEND_MESSAGES
+      - MANAGE_MESSAGES
+      - EMBED_LINKS
+      - ATTACH_FILES
+      - READ_MESSAGE_HISTORY
+      - MANAGE_ROLES
+      - USE_APPLICATION_COMMANDS
+  - name: Usul
+    color: '#9B59B6'
+    hoist: true
+    mentionable: true
+  - name: Mushtamal
+    color: '#20C997'
+    hoist: true
+    mentionable: true
+  - name: Sihaya
+    color: '#28A745'
+    hoist: true
+    mentionable: true
+  - name: Qanat
+    color: '#17A2B8'
+    hoist: true
+    mentionable: true
+  - name: Ichwan
+    color: '#FD7E14'
+    hoist: true
+    mentionable: true
+  - name: Hajra
+    color: '#C2B280'
+    hoist: true
+  - name: Former Naib
+    color: '#C0C0C0'
+  - name: Taqwa
+    color: '#C2B280'
+  - name: Water Sharer
+    color: '#00D4FF'
+  - name: Engaged
+    color: '#28A745'
+  - name: Veteran
+    color: '#9B59B6'
+categories:
+  - name: The Gathering
+    position: 0
+  - name: 📜 STILLSUIT
+    position: 0
+  - name: The Stillsuit
+    position: 1
+  - name: 🚪 CAVE ENTRANCE
+    position: 1
+  - name: The Spice Fields
+    position: 2
+  - name: 🕳️ THE DEPTHS
+    position: 2
+  - name: The Caves
+    position: 3
+  - name: ⚡ INNER SANCTUM
+    position: 3
+  - name: Leadership Chambers
+    position: 4
+  - name: ⚔️ FEDAYKIN COMMONS
+    position: 4
+  - name: 🏛️ NAIB COUNCIL
+    position: 5
+  - name: 🏛️ NAIB ARCHIVES
+    position: 6
+  - name: 💧 BADGE CHANNELS
+    position: 7
+  - name: 🛠️ SUPPORT
+    position: 8
+channels:
+  - name: general
+    type: text
+    topic: Main discussion for the Fedaykin [managed-by:arrakis-iac]
+    category: ⚔️ FEDAYKIN COMMONS
+  - name: campfire
+    type: voice
+    category: The Caves
+    bitrate: 64000
+  - name: rules
+    type: text
+  - name: moderator-only
+    type: text
+  - name: water-discipline
+    type: text
+    topic: Welcome to Sietch. May your water be clean. [managed-by:arrakis-iac]
+    category: 📜 STILLSUIT
+  - name: cave-entrance
+    type: text
+    topic: Entry-level discussion for new members [managed-by:arrakis-iac]
+    category: 🚪 CAVE ENTRANCE
+  - name: the-depths
+    type: text
+    topic: Deeper discussions for committed members [managed-by:arrakis-iac]
+    category: 🕳️ THE DEPTHS
+  - name: inner-sanctum
+    type: text
+    topic: Elite discussions for high-tier members [managed-by:arrakis-iac]
+    category: ⚡ INNER SANCTUM
+  - name: council-rock
+    type: text
+    topic: Private discussion for the Naib [managed-by:arrakis-iac]
+    category: 🏛️ NAIB COUNCIL
+  - name: naib-archives
+    type: text
+    topic: Historical discussions from past Naibs [managed-by:arrakis-iac]
+    category: 🏛️ NAIB ARCHIVES
+  - name: the-oasis
+    type: text
+    topic: Water Sharer exclusive space [managed-by:arrakis-iac]
+    category: 💧 BADGE CHANNELS
+  - name: support
+    type: text
+    topic: Get help with the sietch [managed-by:arrakis-iac]
+    category: 🛠️ SUPPORT
+  - name: bot-commands
+    type: text
+    topic: Interact with Shai-Hulud [managed-by:arrakis-iac]
+    category: 🛠️ SUPPORT
+  - name: council-chamber
+    type: voice
+    category: 🏛️ NAIB COUNCIL
+    bitrate: 96000
+    userLimit: 7
+  - name: announcements
+    type: announcement
+    topic: Important news from the tribal council [managed-by:arrakis-iac]
+    category: 📜 STILLSUIT
+  - name: cave-voices
+    type: voice
+    category: 🚪 CAVE ENTRANCE
+    bitrate: 64000
+  - name: depth-voices
+    type: voice
+    category: 🕳️ THE DEPTHS
+    bitrate: 64000
+  - name: sanctum-voices
+    type: voice
+    category: ⚡ INNER SANCTUM
+    bitrate: 96000
+  - name: spice
+    type: text
+    topic: Market insights and alpha [managed-by:arrakis-iac]
+    category: ⚔️ FEDAYKIN COMMONS
+  - name: deep-desert
+    type: text
+    topic: Engaged badge holders space [managed-by:arrakis-iac]
+    category: 💧 BADGE CHANNELS
+  - name: meditation
+    type: voice
+    category: The Caves
+    bitrate: 64000
+    userLimit: 5
+  - name: staff-voice
+    type: voice
+    category: Leadership Chambers
+    bitrate: 96000
+  - name: water-shares
+    type: text
+    topic: Ideas and proposals [managed-by:arrakis-iac]
+    category: ⚔️ FEDAYKIN COMMONS
+  - name: stillsuit-lounge
+    type: text
+    topic: Veteran members lounge [managed-by:arrakis-iac]
+    category: 💧 BADGE CHANNELS
+  - name: introductions
+    type: text
+    topic: Introduce yourself to the sietch [managed-by:arrakis-iac]
+    category: ⚔️ FEDAYKIN COMMONS
+    slowmode: 300
+  - name: census
+    type: text
+    topic: Live leaderboard and rankings [managed-by:arrakis-iac]
+    category: ⚔️ FEDAYKIN COMMONS
+  - name: the-door
+    type: text
+    topic: Join/leave notices and story fragments [managed-by:arrakis-iac]
+    category: ⚔️ FEDAYKIN COMMONS
+  - name: fedaykin-voices
+    type: voice
+    category: ⚔️ FEDAYKIN COMMONS
+    bitrate: 96000

@@ -44,7 +44,7 @@ export function registerAllCommands(bot: Bot<BotContext>): void {
   // Set bot commands for the menu
   bot.api.setMyCommands([
     { command: 'start', description: 'Start the bot and see welcome message' },
-    { command: 'verify', description: 'Link your wallet via Collab.Land' },
+    { command: 'verify', description: 'Link your wallet' },
     { command: 'score', description: 'View your conviction score' },
     { command: 'leaderboard', description: 'See community rankings' },
     { command: 'status', description: 'See linked platforms' },

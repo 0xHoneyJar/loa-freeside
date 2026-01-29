@@ -17,7 +17,7 @@ const HELP_MESSAGE = `
 
 *Available Commands:*
 
-🔗 /verify - Link your wallet via Collab.Land
+🔗 /verify - Link your wallet
 📊 /score - View your conviction score
 🔗 /status - See linked platforms
 🏆 /leaderboard - View community rankings

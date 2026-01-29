@@ -15,6 +15,7 @@
 import { randomUUID } from 'crypto';
 import { getDatabase } from '../db/index.js';
 import { logger } from '../utils/logger.js';
+import { config } from '../config.js';
 import {
   VERIFICATION_SESSION_EXPIRY_MS,
   MAX_VERIFICATION_ATTEMPTS_PER_HOUR,
@@ -339,9 +340,12 @@ class IdentityService {
       VALUES (?, ?, ?, 'pending', ?, ?)
     `).run(sessionId, telegramUserId, telegramUsername || null, now, expiresAt);
 
-    // Generate Collab.Land verify URL with session reference
-    // The actual URL structure depends on your Collab.Land integration
-    const verifyUrl = `https://connect.collab.land/verify?session=${sessionId}&platform=telegram`;
+    // Generate in-house verification URL (Sprint 172 - replaces Collab.Land)
+    const baseUrl = config.verification.baseUrl;
+    if (!baseUrl) {
+      throw new Error('VERIFY_BASE_URL not configured. Set it in environment variables.');
+    }
+    const verifyUrl = `${baseUrl}/verify/${sessionId}?platform=telegram`;
 
     logger.info(
       { sessionId, telegramUserId },

@@ -1,13 +1,14 @@
 /**
- * /verify Command Handler (v4.1 - Sprint 30)
+ * /verify Command Handler (v4.1 - Sprint 30, Updated Sprint 172)
  *
- * Initiates wallet verification via Collab.Land.
+ * Initiates wallet verification via in-house EIP-191 signature verification.
  * Creates a verification session and provides user with a link to verify.
  */
 
 import type { Bot } from 'grammy';
 import type { BotContext } from '../bot.js';
 import { identityService } from '../../services/IdentityService.js';
+import { config } from '../../config.js';
 import { logger } from '../../utils/logger.js';
 
 /**
@@ -91,7 +92,7 @@ export async function handleVerifyCommand(ctx: BotContext): Promise<void> {
               [
                 {
                   text: '🔗 Continue Verification',
-                  url: `https://connect.collab.land/verify?session=${pendingSession.id}&platform=telegram`,
+                  url: `${config.verification.baseUrl}/verify/${pendingSession.id}?platform=telegram`,
                 },
               ],
               [
@@ -119,10 +120,10 @@ export async function handleVerifyCommand(ctx: BotContext): Promise<void> {
 
     await ctx.reply(
       `🔗 *Wallet Verification*\n\n` +
-      `To link your wallet and access your conviction score, you need to verify through Collab.Land.\n\n` +
+      `To link your wallet and access your conviction score, verify by signing a message.\n\n` +
       `*Steps:*\n` +
       `1. Click the button below\n` +
-      `2. Connect your wallet\n` +
+      `2. Connect your wallet (MetaMask, etc.)\n` +
       `3. Sign the verification message\n` +
       `4. Return here for confirmation\n\n` +
       `⏱️ This link expires in 15 minutes.`,
@@ -132,7 +133,7 @@ export async function handleVerifyCommand(ctx: BotContext): Promise<void> {
           inline_keyboard: [
             [
               {
-                text: '🔗 Verify with Collab.Land',
+                text: '🔗 Verify Wallet',
                 url: verifyUrl,
               },
             ],
@@ -197,7 +198,7 @@ export function registerVerifyCommand(bot: Bot<BotContext>): void {
       `*What is wallet verification?*\n` +
       `Linking your wallet allows us to check your BGT holdings and calculate your conviction score.\n\n` +
       `*Is it safe?*\n` +
-      `Yes! Collab.Land only verifies wallet ownership. It cannot access your funds or make transactions.\n\n` +
+      `Yes! Signing a verification message only proves wallet ownership. It cannot access your funds or make transactions.\n\n` +
       `*What wallet should I use?*\n` +
       `Use the wallet that holds your BGT tokens on Berachain.\n\n` +
       `*What if verification fails?*\n` +

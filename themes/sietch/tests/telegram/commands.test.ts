@@ -312,10 +312,10 @@ describe('Telegram Commands', () => {
       // No pending session
       vi.mocked(identityService.getPendingSession).mockResolvedValue(null);
 
-      // Create new session
+      // Create new session (Sprint 172: in-house verification)
       vi.mocked(identityService.createVerificationSession).mockResolvedValue({
         sessionId: 'new-session-123',
-        verifyUrl: 'https://connect.collab.land/verify?session=new-session-123&platform=telegram',
+        verifyUrl: 'http://localhost:3000/verify/new-session-123?platform=telegram',
       });
 
       const ctx = createMockContext({ username: 'testuser' });
@@ -330,7 +330,7 @@ describe('Telegram Commands', () => {
       const [message, options] = ctx.reply.mock.calls[0];
 
       expect(message).toContain('Wallet Verification');
-      expect(message).toContain('Collab.Land');
+      expect(message).toContain('sign');  // Updated: in-house uses signing, not Collab.Land
       expect(options.reply_markup.inline_keyboard[0][0]).toHaveProperty('url');
     });
 
@@ -389,7 +389,7 @@ describe('Telegram Commands', () => {
       vi.mocked(identityService.getPendingSession).mockResolvedValue(null);
       vi.mocked(identityService.createVerificationSession).mockResolvedValue({
         sessionId: 'new-session-123',
-        verifyUrl: 'https://connect.collab.land/verify?session=new-session-123',
+        verifyUrl: 'http://localhost:3000/verify/new-session-123?platform=telegram',
       });
 
       const ctx = createMockContext({ session: { verificationAttempts: 2 } });
@@ -452,7 +452,7 @@ describe('Telegram Commands', () => {
       const [message] = ctx.reply.mock.calls[0];
 
       expect(message).toContain('Verification Help');
-      expect(message).toContain('Collab.Land');
+      expect(message).toContain('wallet ownership');  // Updated: in-house verification messaging
     });
 
     it('should handle verify_new callback', async () => {
