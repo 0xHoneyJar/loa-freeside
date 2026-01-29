@@ -52,9 +52,8 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install dependencies
-        working-directory: ./themes/sietch
-        run: npm ci
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
       - name: Run migrations
         working-directory: ./themes/sietch
@@ -62,7 +61,9 @@ jobs:
           DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
         run: |
           echo "Running database migrations..."
-          npx drizzle-kit push --force
+          # Run the eligibility tables migration directly (Sprint 175)
+          # Using psql to execute the SQL file since drizzle schema is split
+          psql "$DATABASE_URL" -f drizzle/migrations/0005_eligibility_tables.sql
           echo "Migrations complete!"
 
   # ===========================================================================
