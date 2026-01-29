@@ -379,18 +379,45 @@ async function handleVerifyStatus(
   await interaction.deferReply({ ephemeral: true });
 
   try {
-    const communityId = guildId;
+    // Get database connection
+    logger.info({ guildId }, 'verify status: getting db connection');
+    const db = getDb();
+    if (!db) {
+      logger.warn({ guildId }, 'verify status: db is null');
+      await interaction.editReply({
+        content: 'Database connection is not available. Please try again later.',
+      });
+      return;
+    }
+    logger.info({ guildId }, 'verify status: db connection obtained');
+
+    // Look up community ID from guild ID
+    const guildName = interaction.guild?.name ?? 'Unknown Server';
+    logger.info({ guildId, guildName }, 'verify status: looking up community');
+    const communityId = await getOrCreateCommunity(db, guildId, guildName);
+
+    if (!communityId) {
+      logger.warn({ guildId }, 'verify status: communityId is null');
+      await interaction.editReply({
+        content: 'Community not found. Try `/verify start` first.',
+      });
+      return;
+    }
+    logger.info({ guildId, communityId }, 'verify status: community found');
+
     const service = getVerificationService(communityId);
 
     if (!service) {
+      logger.warn({ guildId, communityId, isPostgreSQLEnabled: isPostgreSQLEnabled() }, 'verify status: service is null');
       await interaction.editReply({
         content: 'Verification service is not available.',
       });
       return;
     }
+    logger.info({ guildId, communityId }, 'verify status: service obtained');
 
-    // Check for any session (pending or completed)
-    const session = await service.getPendingSession(discordUserId);
+    // Check for any session (pending, completed, failed, or expired)
+    const session = await service.getLatestSession(discordUserId);
 
     if (!session) {
       // No pending session - user either hasn't started or has completed

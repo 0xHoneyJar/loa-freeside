@@ -19,6 +19,8 @@ import {
   requestIdMiddleware,
 } from './middleware.js';
 import { saveWalletMapping, logAuditEvent } from '../db/index.js';
+import { discordService } from '../services/discord.js';
+import { EmbedBuilder } from 'discord.js';
 
 /**
  * Express application instance
@@ -264,6 +266,40 @@ function createApp(): Application {
             { communityId, discordUserId, walletAddress },
             'Wallet verified and linked to Discord user'
           );
+
+          // Send Discord DM notification to user
+          if (discordService.isConnected()) {
+            try {
+              const client = discordService.getClient();
+              const user = await client.users.fetch(discordUserId);
+
+              if (user) {
+                const truncatedAddress = `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`;
+                const embed = new EmbedBuilder()
+                  .setTitle('✅ Wallet Verified!')
+                  .setDescription(
+                    `Your wallet has been successfully linked to your Discord account.\n\n` +
+                    `**Wallet:** \`${truncatedAddress}\`\n\n` +
+                    `**What's Next?**\n` +
+                    `If your wallet is in the top 69 BGT holders, you'll receive an ` +
+                    `onboarding wizard to set up your Sietch profile (nym, PFP, bio).\n\n` +
+                    `Use \`/verify status\` to check your verification status.`
+                  )
+                  .setColor(0x00FF00) // Green
+                  .setTimestamp()
+                  .setFooter({ text: 'Powered by Arrakis' });
+
+                await user.send({ embeds: [embed] });
+                logger.info({ discordUserId }, 'Sent verification success DM to user');
+              }
+            } catch (dmError) {
+              // User may have DMs disabled - this is fine
+              logger.warn(
+                { error: dmError, discordUserId },
+                'Could not send verification success DM (user may have DMs disabled)'
+              );
+            }
+          }
         } catch (error) {
           logger.error(
             { error, discordUserId, walletAddress },

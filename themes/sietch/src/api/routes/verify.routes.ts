@@ -379,6 +379,22 @@ export function createVerifyRouter(deps: {
         // The page will fetch session data via API
         const staticPath = path.resolve(__dirname, '../../static/verify.html');
         await ensureConstantTime(startTime);
+
+        // Set permissive CSP for verification page (allows inline scripts for wallet connection)
+        // This overrides the global restrictive CSP from securityHeaders middleware
+        res.setHeader(
+          'Content-Security-Policy',
+          [
+            "default-src 'self'",
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net",
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+            "font-src 'self' https://fonts.gstatic.com",
+            "connect-src 'self' wss: https:",
+            "img-src 'self' data: https:",
+            "frame-src 'self' https:",
+          ].join('; ')
+        );
+
         res.sendFile(staticPath);
       }
     } catch (error) {

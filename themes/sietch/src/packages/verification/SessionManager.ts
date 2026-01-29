@@ -301,6 +301,32 @@ export class SessionManager {
     });
   }
 
+  /**
+   * Get the most recent session for a user regardless of status
+   *
+   * Returns the most recent session (pending, completed, failed, or expired).
+   * Useful for showing verification status to users.
+   *
+   * @param discordUserId - Discord user ID
+   * @returns Most recent session if found, null otherwise
+   */
+  async getLatestForUser(
+    discordUserId: string
+  ): Promise<WalletVerificationSession | null> {
+    this.log('getLatestForUser', { discordUserId });
+
+    return this.withTenant(async () => {
+      const result = await this.db
+        .select()
+        .from(walletVerificationSessions)
+        .where(eq(walletVerificationSessions.discordUserId, discordUserId))
+        .orderBy(sql`${walletVerificationSessions.createdAt} DESC`)
+        .limit(1);
+
+      return result[0] ?? null;
+    });
+  }
+
   // ===========================================================================
   // Update Operations
   // ===========================================================================

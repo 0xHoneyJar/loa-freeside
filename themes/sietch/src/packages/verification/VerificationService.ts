@@ -559,6 +559,19 @@ export class WalletVerificationService {
     return this.mapSessionToInfo(session);
   }
 
+  /**
+   * Get the most recent session for a user (any status)
+   *
+   * @param discordUserId - Discord user ID
+   * @returns Session info if found, null otherwise
+   */
+  async getLatestSession(discordUserId: string): Promise<SessionInfo | null> {
+    const session = await this.sessionManager.getLatestForUser(discordUserId);
+    if (!session) return null;
+
+    return this.mapSessionToInfo(session);
+  }
+
   // ===========================================================================
   // Private Helpers
   // ===========================================================================
