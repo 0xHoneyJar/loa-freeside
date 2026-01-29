@@ -17,6 +17,12 @@ README.md merge=ours
 CHANGELOG.md merge=ours
 
 # =============================================================================
+# BEADS TASK TRACKING
+# =============================================================================
+# Use bd merge for beads JSONL files
+.beads/issues.jsonl merge=beads
+
+# =============================================================================
 # LINE ENDING NORMALIZATION
 # =============================================================================
 # Ensure consistent line endings across platforms

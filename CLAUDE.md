@@ -107,6 +107,8 @@ plan_and_analyze:
 
 **Mount & Ride** (manual control): `/mount`, `/ride`
 
+**Guided Workflow** (v0.21.0): `/loa` - Shows current state and suggests next command
+
 **Ad-hoc**: `/audit`, `/audit-deployment`, `/translate`, `/contribute`, `/update-loa`, `/validate`
 
 **Run Mode**: `/run sprint-N`, `/run sprint-plan`, `/run-status`, `/run-halt`, `/run-resume`
@@ -121,8 +123,40 @@ plan_and_analyze:
 | `security-scanner` | OWASP Top 10 vulnerability detection | CRITICAL, HIGH, MEDIUM, LOW |
 | `test-adequacy-reviewer` | Test quality assessment | STRONG, ADEQUATE, WEAK, INSUFFICIENT |
 | `documentation-coherence` | Per-task documentation validation | COHERENT, NEEDS_UPDATE, ACTION_REQUIRED |
+| `goal-validator` | PRD goal achievement verification | GOAL_ACHIEVED, GOAL_AT_RISK, GOAL_BLOCKED |
 
-**Usage**: `/validate`, `/validate architecture`, `/validate security`
+**Usage**: `/validate`, `/validate architecture`, `/validate security`, `/validate goals`
+
+### Goal Traceability (v0.21.0)
+
+Prevents silent goal failures by mapping PRD goals through sprint tasks to validation:
+
+**Components**:
+- **Goal IDs**: PRD goals identified as G-1, G-2, etc.
+- **Appendix C**: Sprint plan section mapping goals to contributing tasks
+- **E2E Validation Task**: Auto-generated in final sprint
+- **Goal Validator**: Subagent verifying goals are achieved
+
+**Configuration** (`.loa.config.yaml`):
+```yaml
+goal_traceability:
+  enabled: true              # Enable goal ID system
+  require_goal_ids: false    # Require G-N IDs in PRD (backward compat)
+  auto_assign_ids: true      # Auto-assign if missing
+  generate_appendix_c: true  # Generate goal mapping in sprint
+  generate_e2e_task: true    # Auto-generate E2E validation task
+
+goal_validation:
+  enabled: true              # Enable goal validation
+  block_on_at_risk: false    # Block review on AT_RISK (default: warn)
+  block_on_blocked: true     # Block review on BLOCKED
+  require_e2e_task: true     # Require E2E task in final sprint
+```
+
+**Workflow Integration**:
+- `/sprint-plan`: Generates Appendix C + E2E task
+- `/review-sprint`: Invokes goal-validator on final sprint
+- `/validate goals`: Manual goal validation
 
 ## Key Protocols
 
@@ -134,6 +168,7 @@ Agents maintain persistent working memory in `grimoires/loa/NOTES.md`:
 - **Decisions**: Architecture/implementation decisions table
 - **Blockers**: Checkbox list with [RESOLVED] marking
 - **Technical Debt**: Issues for future attention
+- **Goal Status**: PRD goal achievement tracking (v0.21.0)
 - **Learnings**: Project-specific knowledge
 - **Session Continuity**: Recovery anchor
 
@@ -191,6 +226,57 @@ Three quality gates:
 3. **Deployment Loop**: DevOps <-> Auditor until infrastructure approved
 
 **Priority**: Audit feedback checked FIRST on `/implement`, then engineer feedback.
+
+### Karpathy Principles (v1.8.0)
+
+Four behavioral principles to counter common LLM coding pitfalls:
+
+| Principle | Problem Addressed | Implementation |
+|-----------|-------------------|----------------|
+| **Think Before Coding** | Silent assumptions | Surface assumptions, ask clarifying questions |
+| **Simplicity First** | Overcomplicated code | No speculative features, minimal abstractions |
+| **Surgical Changes** | Unrelated modifications | Only touch necessary lines, preserve style |
+| **Goal-Driven** | Vague success criteria | Define testable outcomes before starting |
+
+**Pre-Implementation Check**:
+- [ ] Assumptions listed
+- [ ] Scope minimal (no extras)
+- [ ] Success criteria defined
+- [ ] Style will match existing
+
+**Protocol**: See `.claude/protocols/karpathy-principles.md`
+
+### Claude Code 2.1.x Features (v1.9.0)
+
+Alignment with Claude Code 2.1.x platform capabilities:
+
+| Feature | Description | Configuration |
+|---------|-------------|---------------|
+| **Setup Hook** | `claude --init` triggers health check | `.claude/settings.json` |
+| **Skill Forking** | Read-only skills use `context: fork` | Skill frontmatter |
+| **One-Time Hooks** | `once: true` prevents duplicate runs | `.claude/settings.json` |
+| **Session ID Tracking** | `${CLAUDE_SESSION_ID}` in trajectory | Automatic |
+
+**Setup Hook**: Runs `upgrade-health-check.sh` on `claude --init` for framework validation.
+
+**Skill Forking**: `/ride` and validators use `context: fork` with `agent: Explore` for isolated execution:
+```yaml
+---
+name: ride
+context: fork
+agent: Explore
+allowed-tools: Read, Grep, Glob, Bash(git *)
+---
+```
+
+**One-Time Hooks**: Update check only runs once per session:
+```json
+{"command": ".claude/scripts/check-updates.sh", "async": true, "once": true}
+```
+
+**Session ID**: Trajectory logs include `session_id` for cross-session correlation.
+
+**Protocols**: See `.claude/protocols/recommended-hooks.md`, `.claude/protocols/skill-forking.md`
 
 ### Git Safety
 
