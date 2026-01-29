@@ -37,42 +37,13 @@ env:
 
 jobs:
   # ===========================================================================
-  # Run Database Migrations
-  # ===========================================================================
-  migrate:
-    name: Run Database Migrations
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-
-      - name: Install PostgreSQL client
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
-
-      - name: Run migrations
-        working-directory: ./themes/sietch
-        run: |
-          echo "Fetching database credentials from AWS Secrets Manager..."
-          DATABASE_URL=$(aws secretsmanager get-secret-value --secret-id arrakis-staging/database --query 'SecretString' --output text | jq -r '.url // .DATABASE_URL // .')
-          echo "Running database migrations..."
-          # Run the eligibility tables migration directly (Sprint 175)
-          # Using psql to execute the SQL file since drizzle schema is split
-          psql "$DATABASE_URL" -f drizzle/migrations/0005_eligibility_tables.sql
-          echo "Migrations complete!"
-
-  # ===========================================================================
   # Build and Push
   # ===========================================================================
+  # NOTE: Database migrations must be run manually via ECS Exec before first deploy
+  # The RDS is in a private VPC and not accessible from GitHub Actions runners.
+  # Run: aws ecs execute-command --cluster arrakis-staging-cluster --task <task-id> \
+  #      --container api --interactive --command "psql $DATABASE_URL -f drizzle/migrations/0005_eligibility_tables.sql"
   build:
-    needs: migrate
     name: Build & Push to ECR
     runs-on: ubuntu-latest
 
