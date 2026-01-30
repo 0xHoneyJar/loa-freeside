@@ -830,19 +830,18 @@ export class DuneSimClient implements IChainProvider {
     this.metrics.endpoints.tokenHolders.requests++;
 
     try {
-      const params: Record<string, string | number | boolean> = {
-        chain_ids: options.chainId,
-      };
+      const params: Record<string, string | number | boolean> = {};
 
       if (options.limit) {
         params.limit = options.limit;
       }
       if (options.cursor) {
-        params.cursor = options.cursor;
+        params.offset = options.cursor; // API uses 'offset' not 'cursor'
       }
 
+      // Correct endpoint: /v1/evm/token-holders/{chain_id}/{token_address}
       const rawResponse = await this.request<unknown>(
-        `/v1/evm/token/${normalizedToken}/holders`,
+        `/v1/evm/token-holders/${options.chainId}/${normalizedToken}`,
         { params }
       );
 
@@ -852,19 +851,20 @@ export class DuneSimClient implements IChainProvider {
       // Use provided decimals or default to 18 (MEDIUM-4 remediation)
       const decimals = options.decimals ?? 18;
 
-      const holders: TokenHolder[] = response.holders.map((holder) => ({
-        address: holder.address,
+      // API returns holders sorted by balance desc, compute ranks from index
+      const holders: TokenHolder[] = response.holders.map((holder, index) => ({
+        address: holder.wallet_address,
         balance: this.parseAmount(holder.balance, decimals),
-        rank: holder.rank,
-        percentage: holder.percentage,
-        valueUsd: holder.value_usd,
+        rank: index + 1, // Rank computed from sorted order
+        percentage: undefined, // Not provided by API
+        valueUsd: null, // Not provided by API
       }));
 
       const result: TokenHoldersResult = {
         tokenAddress: response.token_address,
         holders,
-        totalHolders: response.total_holders,
-        nextCursor: response.next_cursor,
+        totalHolders: holders.length, // API doesn't return total, use returned count
+        nextCursor: response.next_offset,
       };
 
       // Cache for 5 minutes (holder rankings change less frequently)
@@ -875,7 +875,6 @@ export class DuneSimClient implements IChainProvider {
           tokenAddress: normalizedToken,
           chainId: options.chainId,
           holdersReturned: holders.length,
-          totalHolders: response.total_holders,
         },
         'Fetched token holders from Dune Sim'
       );

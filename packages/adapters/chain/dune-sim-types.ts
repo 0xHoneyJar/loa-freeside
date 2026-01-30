@@ -388,18 +388,16 @@ export interface ParsedActivity {
 /** Single token holder entry from Dune Sim API */
 export interface DuneTokenHolderEntry {
   /** Holder wallet address */
-  address: string;
+  wallet_address: string;
   /** Token balance as string (high precision) */
   balance: string;
-  /** Rank by balance (1 = highest) */
-  rank: number;
-  /** Percentage of total supply held */
-  percentage?: number;
-  /** USD value of holdings (null if unavailable) */
-  value_usd: number | null;
+  /** When the holder first acquired the token */
+  first_acquired: string;
+  /** Whether the holder has initiated any transfers */
+  has_initiated_transfer: boolean;
 }
 
-/** Response from /v1/evm/token/{contract_address}/holders */
+/** Response from /v1/evm/token-holders/{chain_id}/{contract_address} */
 export interface DuneTokenHoldersResponse {
   /** Token contract address queried */
   token_address: string;
@@ -407,12 +405,8 @@ export interface DuneTokenHoldersResponse {
   chain_id: number;
   /** List of token holders sorted by balance descending */
   holders: DuneTokenHolderEntry[];
-  /** Total number of holders */
-  total_holders: number;
-  /** Pagination cursor for next page */
-  next_cursor: string | null;
-  /** Any warnings about the response */
-  warnings?: DuneWarning[];
+  /** Pagination offset for next page */
+  next_offset: string | null;
 }
 
 /** Parsed token holder with typed fields */
@@ -470,11 +464,10 @@ export const EthereumAddressSchema = z.string().regex(
 
 /** Zod schema for Token Holder entry */
 export const DuneTokenHolderEntrySchema = z.object({
-  address: EthereumAddressSchema,
+  wallet_address: EthereumAddressSchema,
   balance: z.string(),
-  rank: z.number().int().positive(),
-  percentage: z.number().optional(),
-  value_usd: z.number().nullable(),
+  first_acquired: z.string(),
+  has_initiated_transfer: z.boolean(),
 });
 
 /** Zod schema for Token Holders API response */
@@ -482,13 +475,7 @@ export const DuneTokenHoldersResponseSchema = z.object({
   token_address: EthereumAddressSchema,
   chain_id: z.number().int().positive(),
   holders: z.array(DuneTokenHolderEntrySchema),
-  total_holders: z.number().int().nonnegative(),
-  next_cursor: z.string().nullable(),
-  warnings: z.array(z.object({
-    code: z.string(),
-    message: z.string(),
-    details: z.record(z.unknown()).optional(),
-  })).optional(),
+  next_offset: z.string().nullable(),
 });
 
 /** Zod schema for Balance entry */
