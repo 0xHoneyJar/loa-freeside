@@ -2,6 +2,7 @@ import {
   createPublicClient,
   http,
   fallback,
+  isAddress,
   type Address,
   type PublicClient,
   type AbiEvent,
@@ -10,6 +11,11 @@ import { berachain } from 'viem/chains';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import type { EligibilityEntry, BurnEvent } from '../types/index.js';
+import {
+  HybridChainProvider,
+  createChainProvider,
+  type BalanceWithUSD,
+} from '@arrakis/adapters/chain';
 
 /**
  * Transfer event ABI from BGT token
@@ -50,6 +56,11 @@ const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as Address;
 const BLOCK_RANGE = 10000n;
 
 /**
+ * Berachain chain ID
+ */
+const BERACHAIN_CHAIN_ID = 80094;
+
+/**
  * RPC endpoint health tracking
  */
 interface RpcEndpointHealth {
@@ -60,16 +71,32 @@ interface RpcEndpointHealth {
 }
 
 /**
+ * Top holders result from Dune Sim Token Holders API
+ */
+interface TopHoldersResult {
+  holders: Array<{
+    address: Address;
+    balance: bigint;
+    rank: number;
+  }>;
+  totalHolders: number;
+}
+
+/**
  * Chain Service
  *
- * Queries Berachain RPC via viem to fetch BGT eligibility data.
+ * Sprint 17: Dune Sim Migration
+ *
+ * Queries Berachain to fetch BGT eligibility data. Supports two modes:
+ *
+ * 1. **Dune Sim Mode** (hybrid/dune_sim): Uses Token Holders API for pre-ranked
+ *    holder lists with RPC fallback for burn detection. Much faster and simpler.
+ *
+ * 2. **RPC Mode** (rpc): Uses direct viem RPC calls for full backward compatibility.
  *
  * Eligibility is determined by:
  * 1. BGT balance (via balanceOf on BGT token) - how much BGT a wallet holds
  * 2. Burn history (Transfer events to 0x0) - wallets that have EVER burned BGT are ineligible
- *
- * This approach is simpler than tracking claim events from reward vaults,
- * as we only care about current holdings and whether the wallet has ever redeemed.
  *
  * Supports multiple RPC endpoints with automatic fallback.
  */
@@ -77,6 +104,10 @@ class ChainService {
   private client: PublicClient;
   private rpcHealth: Map<string, RpcEndpointHealth> = new Map();
   private currentRpcIndex: number = 0;
+
+  // Dune Sim provider (Sprint 17)
+  private provider: HybridChainProvider | null = null;
+  private providerMode: 'rpc' | 'dune_sim' | 'hybrid';
 
   constructor() {
     // Initialize health tracking for all configured RPCs
@@ -107,10 +138,49 @@ class ChainService {
       }),
     });
 
+    // Initialize Dune Sim provider if configured (Sprint 17)
+    this.providerMode = config.chain.provider;
+    if (this.providerMode === 'hybrid' || this.providerMode === 'dune_sim') {
+      try {
+        const result = createChainProvider(logger, { mode: this.providerMode });
+        this.provider = result.provider as HybridChainProvider;
+        logger.info(
+          { mode: result.mode, configSummary: result.configSummary },
+          'Dune Sim provider initialized for Sietch chain service'
+        );
+      } catch (error) {
+        logger.warn(
+          { error: (error as Error).message, mode: this.providerMode },
+          'Failed to initialize Dune Sim provider, falling back to RPC'
+        );
+        this.providerMode = 'rpc';
+        this.provider = null;
+      }
+    }
+
     logger.info(
-      { rpcUrls: config.chain.rpcUrls, count: config.chain.rpcUrls.length },
-      'Chain service initialized with multiple RPC endpoints'
+      {
+        rpcUrls: config.chain.rpcUrls,
+        count: config.chain.rpcUrls.length,
+        providerMode: this.providerMode,
+        duneSimEnabled: this.provider !== null,
+      },
+      'Chain service initialized'
     );
+  }
+
+  /**
+   * Get the current provider mode
+   */
+  getProviderMode(): 'rpc' | 'dune_sim' | 'hybrid' {
+    return this.providerMode;
+  }
+
+  /**
+   * Check if Dune Sim provider is available
+   */
+  isDuneSimAvailable(): boolean {
+    return this.provider !== null;
   }
 
   /**
@@ -148,10 +218,173 @@ class ChainService {
     }
   }
 
+  // ==========================================================================
+  // Dune Sim Methods (Sprint 17)
+  // ==========================================================================
+
+  /**
+   * Get top BGT holders using Dune Sim Token Holders API
+   *
+   * Returns pre-ranked holders sorted by balance descending.
+   * This is the key optimization - replaces complex Transfer event
+   * scanning + multicall balance queries with a single API call.
+   *
+   * @param limit - Maximum number of holders to return (default: 100)
+   * @returns Pre-ranked holders with balances
+   * @throws Error if Dune Sim provider is not available
+   */
+  async getTopBgtHolders(limit: number = 100): Promise<TopHoldersResult> {
+    if (!this.provider) {
+      throw new Error('Token Holders API not available - Dune Sim provider not configured');
+    }
+
+    const result = await this.provider.getTopTokenHolders(
+      config.chain.bgtAddress as Address,
+      {
+        chainId: BERACHAIN_CHAIN_ID,
+        limit,
+        decimals: 18, // BGT uses 18 decimals (MEDIUM-4 remediation)
+      }
+    );
+
+    return {
+      holders: result.holders.map((h) => ({
+        address: h.address as Address,
+        balance: h.balance,
+        rank: h.rank,
+      })),
+      totalHolders: result.totalHolders,
+    };
+  }
+
+  /**
+   * Validate Ethereum address at runtime (MEDIUM-2 remediation)
+   * @throws Error if address is invalid
+   */
+  private validateAddress(address: string): Address {
+    if (!isAddress(address)) {
+      throw new Error(`Invalid Ethereum address: ${address}`);
+    }
+    return address as Address;
+  }
+
+  /**
+   * Get wallet BGT balance with USD pricing (Dune Sim exclusive)
+   *
+   * @param address - Wallet address to check
+   * @returns Balance with USD pricing information
+   * @throws Error if Dune Sim provider is not available or address is invalid
+   */
+  async getWalletBgtBalanceWithUSD(address: Address): Promise<BalanceWithUSD> {
+    // Input validation (MEDIUM-2 remediation)
+    this.validateAddress(address);
+
+    if (!this.provider) {
+      throw new Error('Balance with USD not available - Dune Sim provider not configured');
+    }
+
+    return this.provider.getBalanceWithUSD(
+      BERACHAIN_CHAIN_ID,
+      address,
+      config.chain.bgtAddress as Address
+    );
+  }
+
+  /**
+   * Fetch burned wallets as a Set (helper for Dune Sim flow)
+   *
+   * Queries RPC for Transfer events to 0x0 and returns the set
+   * of wallet addresses that have ever burned BGT.
+   */
+  async fetchBurnedWalletsSet(): Promise<Set<string>> {
+    const burnEvents = await this.fetchBurnEvents();
+    const burnedWallets = new Set<string>();
+    for (const burn of burnEvents) {
+      burnedWallets.add(burn.from.toLowerCase());
+    }
+    return burnedWallets;
+  }
+
+  // ==========================================================================
+  // Main Eligibility Methods
+  // ==========================================================================
+
   /**
    * Fetch complete eligibility data from chain
    *
-   * Strategy:
+   * Automatically uses Dune Sim Token Holders API when available,
+   * falling back to RPC-based approach if not configured.
+   *
+   * @returns Sorted list of eligible wallets (no burns, sorted by BGT held desc)
+   */
+  async fetchEligibilityData(): Promise<EligibilityEntry[]> {
+    // Use Dune Sim if available
+    if (this.provider) {
+      return this.fetchEligibilityDataViaDuneSim();
+    }
+
+    // Fallback to RPC-based approach
+    return this.fetchEligibilityDataViaRPC();
+  }
+
+  /**
+   * Fetch eligibility data using Dune Sim Token Holders API
+   *
+   * New simplified flow (Sprint 17):
+   * 1. Get top 100 holders from Token Holders API (pre-ranked!)
+   * 2. Get burned wallets from RPC (reliable historical data)
+   * 3. Filter out burned wallets
+   * 4. Take top 69 and assign roles
+   *
+   * Performance: ~500ms vs 2-5 seconds with RPC
+   */
+  private async fetchEligibilityDataViaDuneSim(): Promise<EligibilityEntry[]> {
+    logger.info({ mode: 'dune_sim' }, 'Fetching eligibility via Dune Sim Token Holders API');
+
+    const startTime = Date.now();
+
+    // 1. Get top 100 holders (need extra for burn filtering)
+    const { holders, totalHolders } = await this.getTopBgtHolders(100);
+
+    // 2. Get burned wallets (keep RPC - reliable historical data)
+    const burnedWallets = await this.fetchBurnedWalletsSet();
+
+    // 3. Filter out burned wallets and take top 69
+    const eligible = holders
+      .filter((h) => !burnedWallets.has(h.address.toLowerCase()))
+      .slice(0, 69)
+      .map((holder, idx) => ({
+        address: holder.address,
+        bgtClaimed: holder.balance,
+        bgtBurned: 0n,
+        bgtHeld: holder.balance,
+        rank: idx + 1,
+        role: (idx < 7 ? 'naib' : 'fedaykin') as 'naib' | 'fedaykin' | 'none',
+      }));
+
+    const duration = Date.now() - startTime;
+
+    logger.info(
+      {
+        mode: 'dune_sim',
+        totalHolders,
+        holdersChecked: holders.length,
+        burnedFiltered: holders.length - eligible.length,
+        eligible: eligible.length,
+        naib: eligible.filter((e) => e.role === 'naib').length,
+        fedaykin: eligible.filter((e) => e.role === 'fedaykin').length,
+        durationMs: duration,
+      },
+      'Eligibility data fetched via Dune Sim'
+    );
+
+    return eligible;
+  }
+
+  /**
+   * Fetch eligibility data using RPC (fallback path)
+   *
+   * Original RPC-based flow:
    * 1. Get all wallets that have ever received BGT (Transfer events TO addresses)
    * 2. Get all wallets that have ever burned BGT (Transfer events to 0x0)
    * 3. Filter out wallets that have burned (ineligible forever)
@@ -160,8 +393,10 @@ class ChainService {
    *
    * @returns Sorted list of eligible wallets (no burns, sorted by BGT held desc)
    */
-  async fetchEligibilityData(): Promise<EligibilityEntry[]> {
-    logger.info('Starting eligibility data fetch from chain');
+  private async fetchEligibilityDataViaRPC(): Promise<EligibilityEntry[]> {
+    logger.info({ mode: 'rpc' }, 'Fetching eligibility via RPC (fallback)');
+
+    const startTime = Date.now();
 
     // 1. Get all BGT burn events (transfers to 0x0)
     // These wallets are permanently ineligible
@@ -208,24 +443,32 @@ class ChainService {
     // 6. Assign ranks and roles
     const ranked = this.assignRanksAndRoles(nonZeroWallets);
 
+    const duration = Date.now() - startTime;
+
     logger.info(
       {
+        mode: 'rpc',
         totalEligible: ranked.length,
         naib: ranked.filter((w) => w.role === 'naib').length,
         fedaykin: ranked.filter((w) => w.role === 'fedaykin').length,
+        durationMs: duration,
       },
-      'Eligibility data fetch complete'
+      'Eligibility data fetch complete (RPC)'
     );
 
     return ranked;
   }
+
+  // ==========================================================================
+  // RPC Methods (kept for burn detection and fallback)
+  // ==========================================================================
 
   /**
    * Fetch all wallets that have ever received BGT
    * Queries Transfer events where 'to' is not 0x0
    *
    * Uses startBlock from config to limit historical queries.
-   * Default behavior: query last 2 million blocks if startBlock is 0.
+   * Default behavior: query last 50K blocks if startBlock is 0.
    */
   async fetchBgtRecipients(): Promise<Set<Address>> {
     const currentBlock = await this.client.getBlockNumber();
@@ -359,7 +602,7 @@ class ChainService {
   ): Promise<BurnEvent[]> {
     const events: BurnEvent[] = [];
 
-    // Use configured start block, or default to last 100K blocks
+    // Use configured start block, or default to last 50K blocks
     const DEFAULT_LOOKBACK = 50_000n;
     let fromBlock: bigint;
     if (config.chain.startBlock > 0) {
@@ -415,11 +658,15 @@ class ChainService {
    *
    * @param address - Wallet address to check
    * @returns true if the wallet has burned any BGT, false otherwise
+   * @throws Error if address is invalid
    */
   async hasWalletBurnedBgt(address: Address): Promise<boolean> {
+    // Input validation (MEDIUM-2 remediation)
+    this.validateAddress(address);
+
     const currentBlock = await this.client.getBlockNumber();
 
-    // Use configured start block, or default to last 100K blocks
+    // Use configured start block, or default to last 50K blocks
     const DEFAULT_LOOKBACK = 50_000n;
     let fromBlock: bigint;
     if (config.chain.startBlock > 0) {
@@ -460,8 +707,27 @@ class ChainService {
    *
    * @param address - Wallet address to check
    * @returns BGT balance in wei
+   * @throws Error if address is invalid
    */
   async getWalletBgtBalance(address: Address): Promise<bigint> {
+    // Input validation (MEDIUM-2 remediation)
+    this.validateAddress(address);
+
+    // Use Dune Sim if available for faster response
+    if (this.provider) {
+      try {
+        const balance = await this.provider.getBalance(
+          BERACHAIN_CHAIN_ID,
+          address,
+          config.chain.bgtAddress as Address
+        );
+        return balance;
+      } catch (error) {
+        logger.warn({ address, error: (error as Error).message }, 'Dune Sim balance check failed, falling back to RPC');
+      }
+    }
+
+    // RPC fallback
     try {
       const balance = await this.client.readContract({
         address: config.chain.bgtAddress as Address,
@@ -484,8 +750,12 @@ class ChainService {
    *
    * @param address - Wallet address to check
    * @returns Eligibility entry or null if ineligible
+   * @throws Error if address is invalid
    */
   async checkWalletEligibility(address: Address): Promise<EligibilityEntry | null> {
+    // Input validation (MEDIUM-2 remediation)
+    this.validateAddress(address);
+
     // First check if they've ever burned BGT
     const hasBurned = await this.hasWalletBurnedBgt(address);
     if (hasBurned) {
@@ -548,6 +818,25 @@ class ChainService {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Get detailed health status including Dune Sim
+   */
+  async getDetailedHealth(): Promise<{
+    healthy: boolean;
+    rpc: { healthy: boolean };
+    duneSim: { available: boolean; mode: string };
+  }> {
+    const rpcHealthy = await this.isHealthy();
+    return {
+      healthy: rpcHealthy || this.provider !== null,
+      rpc: { healthy: rpcHealthy },
+      duneSim: {
+        available: this.provider !== null,
+        mode: this.providerMode,
+      },
+    };
   }
 }
 

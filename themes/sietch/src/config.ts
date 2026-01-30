@@ -126,6 +126,11 @@ const configSchema = z.object({
     // This prevents timeout when querying from block 0 on long-running chains
     // Set to 0 to query all history (may timeout on public RPCs)
     startBlock: z.coerce.number().int().min(0).default(0),
+    // Chain provider mode (Sprint 17: Dune Sim Migration)
+    // - 'rpc': Direct RPC calls via viem (default, no API key needed)
+    // - 'dune_sim': Dune Sim API exclusively (best performance, requires API key)
+    // - 'hybrid': Dune Sim primary with RPC fallback (production recommended)
+    provider: z.enum(['rpc', 'dune_sim', 'hybrid']).default('rpc'),
     // DEPRECATED: rewardVaultAddresses is no longer used
     // Eligibility is now determined by balanceOf + burn detection
     rewardVaultAddresses: z
@@ -449,6 +454,7 @@ function parseConfig() {
       rpcUrls: process.env.BERACHAIN_RPC_URLS ?? process.env.BERACHAIN_RPC_URL ?? '',
       bgtAddress: process.env.BGT_ADDRESS ?? '',
       rewardVaultAddresses: process.env.REWARD_VAULT_ADDRESSES ?? '',
+      provider: process.env.CHAIN_PROVIDER ?? 'rpc',
     },
     triggerDev: {
       projectId: process.env.TRIGGER_PROJECT_ID ?? '',
@@ -679,6 +685,8 @@ export interface Config {
     bgtAddress: Address;
     /** Start block for historical event queries (0 = use default 2M block lookback) */
     startBlock: number;
+    /** Chain provider mode: 'rpc', 'dune_sim', or 'hybrid' */
+    provider: 'rpc' | 'dune_sim' | 'hybrid';
     /** @deprecated No longer used - eligibility now uses balanceOf + burn detection */
     rewardVaultAddresses: Address[];
   };
@@ -1117,6 +1125,7 @@ export const config: Config = {
     rpcUrls: parsedConfig.chain.rpcUrls,
     bgtAddress: parsedConfig.chain.bgtAddress as Address,
     startBlock: parsedConfig.chain.startBlock,
+    provider: parsedConfig.chain.provider,
     rewardVaultAddresses: parsedConfig.chain.rewardVaultAddresses as Address[],
   },
   triggerDev: parsedConfig.triggerDev,
