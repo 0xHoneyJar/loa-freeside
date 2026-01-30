@@ -203,7 +203,7 @@ export class DuneSimPrometheusMetrics {
    */
   syncFromHybridMetrics(metrics: HybridProviderMetrics): void {
     // Record fallback reasons
-    for (const [reason, count] of Object.entries(metrics.fallbackReasons)) {
+    for (const [_reason, _count] of Object.entries(metrics.fallbackReasons)) {
       // Note: This may create duplicate counts if called repeatedly
       // In production, use delta tracking
     }

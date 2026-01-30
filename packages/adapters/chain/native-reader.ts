@@ -34,11 +34,9 @@ import type {
   RankedHolder,
   CrossChainScore,
   ActionHistoryConfig,
-  EligibilityResult,
   ChainConfig,
   ChainProviderOptions,
-  CHAIN_CONFIGS,
-} from '../../core/ports/chain-provider.js';
+} from '@arrakis/core/ports';
 
 // --------------------------------------------------------------------------
 // ABIs
@@ -157,7 +155,6 @@ const VIEM_CHAINS: Record<number, Chain> = {
 const DEFAULT_CONFIG: Required<Omit<ChainProviderOptions, 'chains' | 'scoreServiceUrl'>> & {
   scoreServiceUrl: string | undefined;
 } = {
-  chains: [],
   cacheTtlMs: 300_000, // 5 minutes
   timeoutMs: 10_000, // 10 seconds
   enableScoreService: false,

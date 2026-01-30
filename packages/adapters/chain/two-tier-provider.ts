@@ -26,9 +26,8 @@ import type {
   CrossChainScore,
   ActionHistoryConfig,
   EligibilityResult,
-} from '../../core/ports/chain-provider.js';
-import type { IScoreServiceClient } from '../../core/ports/score-service.js';
-import type { NativeBlockchainReader } from './native-reader.js';
+} from '@arrakis/core/ports';
+import type { IScoreServiceClient } from '@arrakis/core/ports';
 
 // --------------------------------------------------------------------------
 // Types
@@ -146,11 +145,17 @@ export class TwoTierChainProvider implements IChainProvider {
   private readonly log: Logger;
   private readonly scoreServiceBreaker: CircuitBreaker<unknown[], unknown>;
 
-  // Default chain for single-chain operations
-  private readonly defaultChainId: ChainId = 80094; // Berachain
-
+  /**
+   * Create a TwoTierChainProvider
+   *
+   * @param tier1Provider - Tier 1 chain provider (NativeBlockchainReader, DuneSimClient, or HybridChainProvider)
+   * @param scoreServiceClient - Score Service client for Tier 2 queries
+   * @param cache - Cache implementation
+   * @param metrics - Prometheus metrics (optional)
+   * @param logger - Pino logger instance
+   */
   constructor(
-    private readonly nativeReader: NativeBlockchainReader,
+    private readonly tier1Provider: IChainProvider,
     private readonly scoreServiceClient: IScoreServiceClient,
     private readonly cache: ICache,
     private readonly metrics: TwoTierProviderMetrics | null,
@@ -212,7 +217,7 @@ export class TwoTierChainProvider implements IChainProvider {
       switch (rule.ruleType) {
         case 'token_balance': {
           const minAmount = BigInt(rule.parameters.minAmount ?? '0');
-          const hasBalance = await this.nativeReader.hasBalance(
+          const hasBalance = await this.tier1Provider.hasBalance(
             rule.chainId,
             address,
             rule.contractAddress,
@@ -236,7 +241,7 @@ export class TwoTierChainProvider implements IChainProvider {
           const tokenId = rule.parameters.tokenId
             ? BigInt(rule.parameters.tokenId)
             : undefined;
-          const ownsNFT = await this.nativeReader.ownsNFT(
+          const ownsNFT = await this.tier1Provider.ownsNFT(
             rule.chainId,
             address,
             rule.contractAddress,
@@ -394,7 +399,7 @@ export class TwoTierChainProvider implements IChainProvider {
       case 'score_threshold': {
         // Permissive fallback: Check if user has any balance
         // This errs on the side of granting access when Score Service is down
-        const hasAnyBalance = await this.nativeReader.hasBalance(
+        const hasAnyBalance = await this.tier1Provider.hasBalance(
           rule.chainId,
           address,
           rule.contractAddress,
@@ -439,7 +444,7 @@ export class TwoTierChainProvider implements IChainProvider {
     token: Address,
     minAmount: bigint
   ): Promise<boolean> {
-    return this.nativeReader.hasBalance(chainId, address, token, minAmount);
+    return this.tier1Provider.hasBalance(chainId, address, token, minAmount);
   }
 
   async ownsNFT(
@@ -448,7 +453,7 @@ export class TwoTierChainProvider implements IChainProvider {
     collection: Address,
     tokenId?: bigint
   ): Promise<boolean> {
-    return this.nativeReader.ownsNFT(chainId, address, collection, tokenId);
+    return this.tier1Provider.ownsNFT(chainId, address, collection, tokenId);
   }
 
   async getBalance(
@@ -456,11 +461,11 @@ export class TwoTierChainProvider implements IChainProvider {
     address: Address,
     token: Address
   ): Promise<bigint> {
-    return this.nativeReader.getBalance(chainId, address, token);
+    return this.tier1Provider.getBalance(chainId, address, token);
   }
 
   async getNativeBalance(chainId: ChainId, address: Address): Promise<bigint> {
-    return this.nativeReader.getNativeBalance(chainId, address);
+    return this.tier1Provider.getNativeBalance(chainId, address);
   }
 
   // --------------------------------------------------------------------------
@@ -571,7 +576,7 @@ export class TwoTierChainProvider implements IChainProvider {
   }
 
   getSupportedChains(): ChainId[] {
-    return this.nativeReader.getSupportedChains();
+    return this.tier1Provider.getSupportedChains();
   }
 
   // --------------------------------------------------------------------------
@@ -588,10 +593,20 @@ export class TwoTierChainProvider implements IChainProvider {
   }
 
   /**
-   * Get the underlying Native Reader for direct access
+   * Get the underlying Tier 1 provider for direct access
+   *
+   * Note: The returned provider may be NativeBlockchainReader, DuneSimClient,
+   * or HybridChainProvider depending on configuration.
    */
-  getNativeReader(): NativeBlockchainReader {
-    return this.nativeReader;
+  getTier1Provider(): IChainProvider {
+    return this.tier1Provider;
+  }
+
+  /**
+   * @deprecated Use getTier1Provider() instead
+   */
+  getNativeReader(): IChainProvider {
+    return this.tier1Provider;
   }
 
   /**

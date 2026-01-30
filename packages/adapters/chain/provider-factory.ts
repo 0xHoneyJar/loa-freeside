@@ -10,7 +10,7 @@
  */
 
 import type { Logger } from 'pino';
-import type { IChainProvider } from '../../core/ports/chain-provider.js';
+import type { IChainProvider } from '@arrakis/core/ports';
 import { NativeBlockchainReader } from './native-reader.js';
 import { DuneSimClient } from './dune-sim-client.js';
 import { HybridChainProvider } from './hybrid-provider.js';

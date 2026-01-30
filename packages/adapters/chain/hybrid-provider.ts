@@ -19,15 +19,15 @@ import type {
   RankedHolder,
   CrossChainScore,
   ActionHistoryConfig,
-} from '../../core/ports/chain-provider.js';
+  ChainProviderOptions,
+} from '@arrakis/core/ports';
 import type {
   TokenHoldersQueryOptions,
   TokenHoldersResult,
+  DuneSimConfig,
 } from './dune-sim-types.js';
 import { DuneSimClient } from './dune-sim-client.js';
 import { NativeBlockchainReader } from './native-reader.js';
-import type { DuneSimConfig } from './dune-sim-types.js';
-import type { ChainProviderOptions } from '../../core/ports/chain-provider.js';
 
 // --------------------------------------------------------------------------
 // Types

@@ -29,7 +29,7 @@ import {
   type CrossChainScoreResponse,
   type HealthCheckRequest,
   type HealthCheckResponse,
-} from '../../core/ports/score-service.js';
+} from '@arrakis/core/ports';
 
 // --------------------------------------------------------------------------
 // Types
@@ -356,8 +356,8 @@ export class MockScoreServiceClient implements IScoreServiceClient {
   private shouldFail = false;
   private latencyMs = 50;
 
-  constructor(private readonly log: Logger) {
-    this.log = log.child({ component: 'MockScoreServiceClient' });
+  constructor(_logger: Logger) {
+    // Logger available for future debugging
   }
 
   async getRankedHolders(request: RankedHoldersRequest): Promise<RankedHoldersResponse> {

@@ -22,7 +22,7 @@ import type {
   RankedHolder,
   CrossChainScore,
   ActionHistoryConfig,
-} from '../../core/ports/chain-provider.js';
+} from '@arrakis/core/ports';
 import type {
   DuneSimConfig,
   ResolvedDuneSimConfig,

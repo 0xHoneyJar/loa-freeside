@@ -161,9 +161,20 @@ export class ChainProviderMetrics implements TwoTierProviderMetrics, ScoreServic
 
   /**
    * Record circuit breaker state change
+   * Supports both interface signatures:
+   * - ScoreServiceMetrics: recordCircuitState(state: CircuitState)
+   * - TwoTierProviderMetrics: recordCircuitState(service: string, state: number)
    */
-  recordCircuitState(service: string, state: number): void {
-    this.circuitBreakerState.set({ service }, state);
+  recordCircuitState(stateOrService: string, state?: number): void {
+    if (state !== undefined) {
+      // TwoTierProviderMetrics signature: (service, state)
+      this.circuitBreakerState.set({ service: stateOrService }, state);
+    } else {
+      // ScoreServiceMetrics signature: (state as CircuitState)
+      const stateMap: Record<string, number> = { closed: 0, halfOpen: 1, open: 2 };
+      const numericState = stateMap[stateOrService] ?? 0;
+      this.circuitBreakerState.set({ service: 'score_service' }, numericState);
+    }
   }
 
   /**
@@ -282,8 +293,13 @@ export class TestMetrics implements TwoTierProviderMetrics, ScoreServiceMetrics 
     this.eligibilityChecks.push({ ruleType, source, eligible, latencyMs });
   }
 
-  recordCircuitState(service: string, state: number): void {
-    this.circuitStates.push({ service, state });
+  recordCircuitState(stateOrService: string, state?: number): void {
+    if (state !== undefined) {
+      this.circuitStates.push({ service: stateOrService, state });
+    } else {
+      const stateMap: Record<string, number> = { closed: 0, halfOpen: 1, open: 2 };
+      this.circuitStates.push({ service: 'score_service', state: stateMap[stateOrService] ?? 0 });
+    }
   }
 
   recordDegradation(ruleType: string, reason: string): void {
