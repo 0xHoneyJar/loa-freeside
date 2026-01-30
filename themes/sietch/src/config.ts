@@ -631,6 +631,31 @@ function parseConfig() {
   const result = configSchema.safeParse(rawConfig);
 
   if (!result.success) {
+    // Skip validation errors during Trigger.dev builds (env vars not available at build time)
+    if (process.env.TRIGGER_BUILD === 'true' || process.env.BUILDING === 'true') {
+      logger.warn('Skipping config validation during build (TRIGGER_BUILD=true)');
+      // Return a minimal config for build-time type checking
+      // Apply necessary transformations for array fields to avoid runtime errors
+      const buildConfig = {
+        ...rawConfig,
+        chain: {
+          ...rawConfig.chain,
+          rpcUrls: typeof rawConfig.chain.rpcUrls === 'string'
+            ? rawConfig.chain.rpcUrls.split(',').map((s: string) => s.trim()).filter(Boolean)
+            : rawConfig.chain.rpcUrls,
+          rewardVaultAddresses: typeof rawConfig.chain.rewardVaultAddresses === 'string'
+            ? rawConfig.chain.rewardVaultAddresses.split(',').map((s: string) => s.trim()).filter(Boolean)
+            : rawConfig.chain.rewardVaultAddresses,
+        },
+        cors: {
+          ...rawConfig.cors,
+          allowedOrigins: typeof rawConfig.cors.allowedOrigins === 'string'
+            ? rawConfig.cors.allowedOrigins.split(',').map((s: string) => s.trim()).filter(Boolean)
+            : rawConfig.cors.allowedOrigins,
+        },
+      };
+      return buildConfig as unknown as ReturnType<typeof configSchema.parse>;
+    }
     const errors = result.error.issues.map(
       (issue) => `  - ${issue.path.join('.')}: ${issue.message}`
     );
@@ -871,23 +896,26 @@ function validateStartupConfig(cfg: typeof parsedConfig): void {
   // Sprint 70: Validate DATABASE_URL is set in production (when not in test mode)
   const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true';
   const isProduction = process.env.NODE_ENV === 'production';
-  if (isProduction && !cfg.database.url) {
+  // Skip database validation during Trigger.dev builds (env vars not available)
+  const isBuild = process.env.TRIGGER_BUILD === 'true' || process.env.BUILDING === 'true';
+
+  if (isProduction && !cfg.database.url && !isBuild) {
     logger.fatal('DATABASE_URL is required in production for PostgreSQL with RLS');
     throw new Error(
       'Missing required configuration: DATABASE_URL must be set in production. PostgreSQL with Row-Level Security is required for multi-tenant isolation.'
     );
   }
 
-  // Sprint 70: Validate one database config is present (except in test mode)
-  if (!isTest && !cfg.database.url && !cfg.database.path) {
+  // Sprint 70: Validate one database config is present (except in test mode or build)
+  if (!isTest && !isBuild && !cfg.database.url && !cfg.database.path) {
     logger.fatal('No database configuration provided');
     throw new Error(
       'Missing required configuration: Either DATABASE_URL (PostgreSQL) or DATABASE_PATH (SQLite - deprecated) must be set.'
     );
   }
 
-  // Sprint 71: Validate Vault configuration when enabled
-  if (cfg.features.vaultEnabled) {
+  // Sprint 71: Validate Vault configuration when enabled (skip during builds)
+  if (cfg.features.vaultEnabled && !isBuild) {
     if (!cfg.vault.addr) {
       logger.fatal('VAULT_ADDR is required when Vault is enabled');
       throw new Error(
@@ -973,8 +1001,8 @@ function validateStartupConfig(cfg: typeof parsedConfig): void {
   // Sprint 155: NOWPayments Crypto Payment Validation
   // ==========================================================================
 
-  // SECURITY: Require IPN secret when crypto payments are enabled
-  if (cfg.features.cryptoPaymentsEnabled && cfg.nowpayments.apiKey && !cfg.nowpayments.ipnSecretKey) {
+  // SECURITY: Require IPN secret when crypto payments are enabled (skip during builds)
+  if (!isBuild && cfg.features.cryptoPaymentsEnabled && cfg.nowpayments.apiKey && !cfg.nowpayments.ipnSecretKey) {
     logger.fatal('NOWPAYMENTS_IPN_SECRET is required when crypto payments are enabled');
     throw new Error(
       'Missing required configuration: NOWPAYMENTS_IPN_SECRET must be set when ' +
@@ -983,8 +1011,8 @@ function validateStartupConfig(cfg: typeof parsedConfig): void {
     );
   }
 
-  // SECURITY: Validate crypto payments config completeness when enabled
-  if (cfg.features.cryptoPaymentsEnabled && !cfg.nowpayments.apiKey) {
+  // SECURITY: Validate crypto payments config completeness when enabled (skip during builds)
+  if (!isBuild && cfg.features.cryptoPaymentsEnabled && !cfg.nowpayments.apiKey) {
     logger.fatal('NOWPAYMENTS_API_KEY is required when crypto payments are enabled');
     throw new Error(
       'Missing required configuration: NOWPAYMENTS_API_KEY must be set when ' +

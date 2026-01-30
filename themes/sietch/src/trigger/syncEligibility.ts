@@ -51,6 +51,9 @@ export const syncEligibilityTask = schedules.task({
     initDatabase();
 
     // Initialize PostgreSQL for eligibility persistence (Sprint 175)
+    // NOTE: Tables are created by the sietch server on ECS startup, not here.
+    // Trigger.dev workers cannot connect to RDS (VPC isolation), so db operations
+    // are handled through the API or by the ECS server which has VPC access.
     if (config.database.url && !isEligibilityPgDbInitialized()) {
       const pgClient = postgres(config.database.url, {
         max: 5,
