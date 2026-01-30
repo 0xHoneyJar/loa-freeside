@@ -83,7 +83,8 @@ jobs:
         id: build
         uses: docker/build-push-action@v5
         with:
-          context: ./themes/sietch
+          # Sprint 17: Build from repo root to include @arrakis/adapters dependency
+          context: .
           file: ./themes/sietch/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
