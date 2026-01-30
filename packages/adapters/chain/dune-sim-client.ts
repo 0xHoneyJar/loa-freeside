@@ -218,7 +218,9 @@ export class DuneSimClient implements IChainProvider {
           this.metrics.errors++;
           const error = await response.json() as DuneErrorResponse;
           // Sanitize error message to prevent potential key leakage
-          const sanitizedMessage = this.sanitizeErrorMessage(error.message);
+          // Handle both "message" and "error" fields (API returns different formats)
+          const errorText = error.message ?? error.error ?? 'Unknown auth error';
+          const sanitizedMessage = this.sanitizeErrorMessage(errorText);
           throw new Error(`Authentication failed: ${sanitizedMessage}`);
         }
 
@@ -227,7 +229,9 @@ export class DuneSimClient implements IChainProvider {
           this.metrics.errors++;
           const error = await response.json() as DuneErrorResponse;
           // Sanitize error message to prevent sensitive data leakage
-          const sanitizedMessage = this.sanitizeErrorMessage(error.message);
+          // Handle both "message" and "error" fields (API returns different formats)
+          const errorText = error.message ?? error.error ?? 'Unknown error';
+          const sanitizedMessage = this.sanitizeErrorMessage(errorText);
           throw new Error(`Dune Sim API error: ${sanitizedMessage} (${response.status})`);
         }
 
