@@ -170,6 +170,12 @@ export type WalletLinkCallback = (params: {
   discordUserId: string;
   discordGuildId: string;
   walletAddress: string;
+  /** Discord username (Sprint 176: User Registry) */
+  discordUsername?: string;
+  /** Signature used for verification (Sprint 176: User Registry) */
+  signature?: string;
+  /** Message that was signed (Sprint 176: User Registry) */
+  message?: string;
 }) => Promise<void>;
 
 /**
@@ -480,10 +486,20 @@ export class WalletVerificationService {
     // Call wallet link callback
     if (this.onWalletLink) {
       try {
+        // Build the signing message for User Registry (Sprint 176)
+        const message = this.messageBuilder.buildFromNonce(
+          session!.nonce,
+          session!.discordUsername
+        );
+
         await this.onWalletLink({
           discordUserId: session!.discordUserId,
           discordGuildId: session!.discordGuildId,
           walletAddress: params.walletAddress,
+          // Sprint 176: Additional fields for User Registry
+          discordUsername: session!.discordUsername,
+          signature: params.signature,
+          message,
         });
       } catch (error) {
         this.log('Failed to call onWalletLink', { error });

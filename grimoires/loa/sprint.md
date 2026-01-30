@@ -1,12 +1,12 @@
 # Sprint Plan: Gaib Discord IaC - Full Sietch Theme + Backup System
 
-**Version**: 2.0.0
+**Version**: 2.1.0
 **Status**: Active
 **Created**: 2026-01-29
-**Updated**: 2026-01-29
+**Updated**: 2026-01-30
 **Cycle**: cycle-007
-**PRD Reference**: grimoires/loa/prd.md (v2.0)
-**SDD Reference**: grimoires/loa/sdd.md (v2.0)
+**PRD Reference**: grimoires/loa/prd.md (v2.1)
+**SDD Reference**: grimoires/loa/sdd.md (v2.1)
 
 ---
 
@@ -29,8 +29,10 @@ This sprint plan covers two phases:
 | Sprint 9 | Wallet Verification Integration | 172 | ✅ Complete |
 | Sprint 10 | Comprehensive Tier Testing Suite | 173 | ✅ Complete |
 | Sprint 11 | Backup/Restore E2E Validation | 174 | ✅ Complete |
+| Sprint 12 | Eligibility Data Migration | 175 | ✅ Complete |
+| Sprint 13 | Global User Registry Foundation | 176 | 🔲 Pending |
 
-**Total Estimated Effort**: ~2,500 LOC (new backup system)
+**Total Estimated Effort**: ~3,200 LOC (backup system + user registry)
 
 ---
 
@@ -1508,6 +1510,620 @@ If restoration fails:
 1. Re-apply export: `gaib apply testing-server-backup.yaml --guild {GUILD_ID}`
 2. Checkpoint remains available for 30 days
 3. Can manually recreate from theme: `gaib server apply --theme sietch`
+
+---
+
+## Sprint 12: Eligibility Data Migration (Global ID: 175)
+
+**Goal**: Migrate eligibility data from in-memory SQLite to PostgreSQL for persistence across container restarts, enabling the onboarding flow to work correctly.
+
+**Dependencies**: Sprint 9 complete (wallet verification), PostgreSQL configured (Neon)
+
+**PRD Reference**: §6.8 Eligibility Data Migration
+
+### Background
+
+Eligibility data (top 69 BGT holders) is currently stored in an in-memory SQLite database that is lost on every container restart. This breaks the onboarding flow because `/verify` cannot check eligibility after a restart (until the next 6-hour sync).
+
+The solution is to migrate eligibility data to the existing PostgreSQL database (Neon) that already stores profiles, communities, and other persistent data.
+
+### Design Decision
+
+Eligibility is **global chain-level data** (same across all communities), so:
+- Tables are **global** (no `community_id` foreign key)
+- **No RLS policies** (unlike tenant-scoped tables)
+- Direct queries without TenantContext wrapper
+
+### Tasks
+
+#### Task 12.1: Create PostgreSQL Schema
+
+**File**: `themes/sietch/src/db/pg-schema.ts`
+
+**Description**: Define Drizzle ORM table definitions for 7 eligibility tables.
+
+**Tables**:
+| Table | Purpose |
+|-------|---------|
+| `eligibility_current` | Fast lookups (address PK, rank, bgt_held, role) |
+| `eligibility_snapshots` | Historical JSON snapshots |
+| `eligibility_admin_overrides` | Manual add/remove adjustments |
+| `eligibility_health_status` | Service health tracking (singleton) |
+| `wallet_verifications` | Discord → wallet mappings |
+| `eligibility_claim_events` | RPC sync cache (claim events) |
+| `eligibility_burn_events` | RPC sync cache (burn events) |
+
+**Acceptance Criteria**:
+- [ ] All 7 tables defined with correct column types
+- [ ] BigInt columns use `{ mode: 'bigint' }` for proper handling
+- [ ] Composite primary keys for event tables
+- [ ] Timestamps default to `NOW()`
+- [ ] Exports all table definitions
+
+**Estimated LOC**: ~150
+
+---
+
+#### Task 12.2: Create SQL Migration
+
+**File**: `drizzle/migrations/0005_eligibility_tables.sql`
+
+**Description**: SQL migration file for creating eligibility tables.
+
+**Acceptance Criteria**:
+- [ ] Creates all 7 tables with `IF NOT EXISTS`
+- [ ] Creates indexes for common query patterns
+- [ ] Compatible with drizzle-kit push
+
+**Estimated LOC**: ~80
+
+---
+
+#### Task 12.3: Implement PostgreSQL Query Layer
+
+**File**: `themes/sietch/src/db/queries/pg-eligibility-queries.ts`
+
+**Description**: PostgreSQL implementations of all eligibility queries.
+
+**Functions**:
+| Function | Purpose |
+|----------|---------|
+| `setEligibilityPgDb()` / `getEligibilityPgDb()` | Database instance management |
+| `saveEligibilitySnapshotPg()` | Save snapshot + update current eligibility (atomic) |
+| `getLatestEligibilitySnapshotPg()` | Get most recent snapshot |
+| `getEligibilityByAddressPg()` | Fast lookup by wallet address |
+| `getCurrentEligibilityPg()` | Get all current eligible entries |
+| `updateHealthStatusSuccessPg()` | Mark sync success |
+| `updateHealthStatusFailurePg()` | Mark sync failure |
+| `getActiveAdminOverridesPg()` | Get active overrides |
+| `saveWalletVerificationPg()` | Save wallet verification |
+| `getWalletByDiscordIdPg()` | Lookup wallet by Discord ID |
+
+**Acceptance Criteria**:
+- [ ] All functions implemented with proper Drizzle ORM queries
+- [ ] BigInt conversion handled correctly (string ↔ bigint)
+- [ ] Addresses normalized to lowercase
+- [ ] Atomic transactions where needed
+- [ ] Proper error handling
+
+**Estimated LOC**: ~300
+
+---
+
+#### Task 12.4: Update Sync Job
+
+**File**: `themes/sietch/src/trigger/syncEligibility.ts`
+
+**Description**: Update the Trigger.dev sync job to use PostgreSQL queries.
+
+**Changes**:
+```typescript
+// Replace imports
+import {
+  saveEligibilitySnapshotPg as saveEligibilitySnapshot,
+  getLatestEligibilitySnapshotPg as getLatestEligibilitySnapshot,
+  updateHealthStatusSuccessPg as updateHealthStatusSuccess,
+  updateHealthStatusFailurePg as updateHealthStatusFailure,
+} from '../db/queries/pg-eligibility-queries.js';
+```
+
+**Acceptance Criteria**:
+- [ ] All SQLite imports replaced with PostgreSQL equivalents
+- [ ] Sync job runs successfully
+- [ ] Data written to PostgreSQL tables
+- [ ] Health status updated correctly
+
+**Estimated LOC**: ~20
+
+---
+
+#### Task 12.5: Update Server Initialization
+
+**File**: `themes/sietch/src/api/server.ts`
+
+**Description**: Initialize PostgreSQL connection for eligibility queries at startup.
+
+**Changes**:
+```typescript
+import { setEligibilityPgDb } from '../db/queries/pg-eligibility-queries.js';
+
+// In startServer()
+if (config.database.url) {
+  const pgClient = postgres(config.database.url);
+  const pgDb = drizzle(pgClient);
+  setEligibilityPgDb(pgDb);
+  logger.info('PostgreSQL initialized for eligibility queries');
+}
+```
+
+**Acceptance Criteria**:
+- [ ] PostgreSQL connection initialized on startup
+- [ ] Eligibility database set before routes load
+- [ ] Proper logging of initialization
+- [ ] Graceful handling if DATABASE_URL not set
+
+**Estimated LOC**: ~30
+
+---
+
+#### Task 12.6: Update Verify Command
+
+**File**: `themes/sietch/src/discord/commands/verify.ts`
+
+**Description**: Update Discord verify command to use PostgreSQL eligibility check.
+
+**Changes**:
+- Import `getEligibilityByAddressPg` instead of SQLite version
+- Update `onWalletLinked` callback to use PostgreSQL lookup
+
+**Acceptance Criteria**:
+- [ ] `/verify start` creates session correctly
+- [ ] Wallet linking checks eligibility via PostgreSQL
+- [ ] Eligibility result determines onboarding flow
+
+**Estimated LOC**: ~20
+
+---
+
+#### Task 12.7: Update Public Routes
+
+**File**: `src/api/routes/public.routes.ts`
+
+**Description**: Update `/eligibility` endpoint to use PostgreSQL queries.
+
+**Acceptance Criteria**:
+- [ ] `/eligibility` returns data from PostgreSQL
+- [ ] Response format unchanged
+- [ ] Empty response handled gracefully (returns empty array)
+
+**Estimated LOC**: ~20
+
+---
+
+#### Task 12.8: Update Eligibility Service
+
+**File**: `src/services/eligibility.ts`
+
+**Description**: Update eligibility service to use PostgreSQL for admin overrides.
+
+**Acceptance Criteria**:
+- [ ] `getActiveAdminOverrides()` queries PostgreSQL
+- [ ] Admin overrides applied correctly during sync
+- [ ] Override expiration handled
+
+**Estimated LOC**: ~20
+
+---
+
+#### Task 12.9: Update Index Exports
+
+**File**: `themes/sietch/src/db/index.ts`
+
+**Description**: Export PostgreSQL queries alongside SQLite (for gradual migration).
+
+**Acceptance Criteria**:
+- [ ] All PostgreSQL query functions exported
+- [ ] SQLite queries still available (rollback safety)
+- [ ] Clear naming to distinguish PG vs SQLite
+
+**Estimated LOC**: ~10
+
+---
+
+#### Task 12.10: Run Migration and Test
+
+**Description**: Deploy migration and verify data flow.
+
+**Steps**:
+```bash
+# 1. Run migration
+cd themes/sietch && npx drizzle-kit push
+
+# 2. Deploy to staging
+# (via normal deployment process)
+
+# 3. Trigger sync job
+# Either wait 6 hours or manually trigger via Trigger.dev dashboard
+
+# 4. Verify data populated
+curl https://staging-api.example.com/eligibility | jq '.wallets | length'
+# Expected: 69
+
+# 5. Test verify command
+# /verify start → verify wallet → check eligibility
+```
+
+**Acceptance Criteria**:
+- [ ] Migration runs without errors
+- [ ] Tables created in PostgreSQL
+- [ ] Sync job populates data
+- [ ] `/eligibility` returns 69 wallets
+- [ ] `/verify` command checks eligibility correctly
+
+---
+
+### Sprint 12 Deliverables
+
+| File | Action | LOC |
+|------|--------|-----|
+| `themes/sietch/src/db/pg-schema.ts` | CREATE | ~150 |
+| `drizzle/migrations/0005_eligibility_tables.sql` | CREATE | ~80 |
+| `themes/sietch/src/db/queries/pg-eligibility-queries.ts` | CREATE | ~300 |
+| `themes/sietch/src/trigger/syncEligibility.ts` | MODIFY | ~20 |
+| `themes/sietch/src/api/server.ts` | MODIFY | ~30 |
+| `themes/sietch/src/discord/commands/verify.ts` | MODIFY | ~20 |
+| `src/api/routes/public.routes.ts` | MODIFY | ~20 |
+| `src/services/eligibility.ts` | MODIFY | ~20 |
+| `themes/sietch/src/db/index.ts` | MODIFY | ~10 |
+| **Total** | | **~650** |
+
+### Success Criteria
+
+| Metric | Target |
+|--------|--------|
+| Data persists after restart | 100% |
+| `/verify` eligibility check works | 100% |
+| Onboarding flow completes | E2E test passes |
+| Sync job populates PG tables | Top 69 wallets present |
+| Migration time | <5 minutes |
+
+### Rollback Plan
+
+If issues occur:
+1. **Code rollback**: Revert imports to use `eligibility-queries.ts` (SQLite)
+2. **Tables remain**: PostgreSQL tables stay (no data loss, no cleanup needed)
+3. **Sync recovery**: Next sync job will repopulate SQLite
+
+No data migration needed because SQLite is ephemeral (regenerated every 6 hours).
+
+---
+
+---
+
+# PHASE 4: Global User Registry (Sprint 13)
+
+---
+
+## Sprint 13: Global User Registry Foundation (Global ID: 176)
+
+**Goal**: Implement an append-only, event-sourced identity store that aggregates user identities across all verification sources with financial-grade audit trails.
+
+**Dependencies**: Sprint 12 complete (eligibility migration), PostgreSQL configured
+
+**PRD Reference**: §6.9 Global User Registry
+
+**SDD Reference**: Section 24 - Global User Registry Architecture
+
+### Background
+
+The Global User Registry provides:
+- **Unified identity**: One identity per Discord user, with multiple wallets
+- **Event sourcing**: Every change recorded as an immutable event
+- **Append-only guarantees**: Database triggers prevent DELETE/UPDATE on events
+- **Admin visibility**: Full user registry with search and event history
+- **Foundation for reputation**: Future portable scorecard system
+
+### Tasks
+
+#### Task 13.1: Create SQL Migration
+
+**File**: `drizzle/migrations/0006_user_registry.sql`
+
+**Description**: SQL migration for user registry tables with append-only guarantees.
+
+**Tables**:
+| Table | Purpose |
+|-------|---------|
+| `user_identities` | Current state cache (Discord ID, primary wallet, status) |
+| `identity_events` | Append-only event log (immutable, with triggers) |
+| `identity_wallets` | Verified wallets (globally unique addresses) |
+
+**Acceptance Criteria**:
+- [ ] `user_identities` table with UUID PK, Discord ID unique constraint
+- [ ] `identity_events` table with event_type enum check
+- [ ] `identity_wallets` table with unique address constraint (when active)
+- [ ] DELETE prevention trigger on `identity_events`
+- [ ] UPDATE prevention trigger on `identity_events`
+- [ ] Indexes for common query patterns (discord_id, address, event_type)
+
+**Estimated LOC**: ~120
+
+---
+
+#### Task 13.2: Create Drizzle Schema Definitions
+
+**File**: `themes/sietch/src/db/pg-schema.ts` (extend)
+
+**Description**: Add Drizzle ORM table definitions for user registry.
+
+**Acceptance Criteria**:
+- [ ] `userIdentities` table definition with all columns
+- [ ] `identityEvents` table definition with JSONB event_data
+- [ ] `identityWallets` table definition with verification metadata
+- [ ] UUID columns use `uuid().defaultRandom()`
+- [ ] Proper TypeScript types for all tables
+
+**Estimated LOC**: ~100
+
+---
+
+#### Task 13.3: Create Event Type Definitions
+
+**File**: `themes/sietch/src/services/user-registry/types.ts`
+
+**Description**: TypeScript types for identity events and payloads.
+
+**Event Types**:
+| Event | Payload Fields |
+|-------|----------------|
+| `IDENTITY_CREATED` | discord_id, discord_username |
+| `DISCORD_LINKED` | discord_id, discord_username |
+| `WALLET_VERIFIED` | wallet_address, chain_id, signature, is_primary |
+| `WALLET_REMOVED` | wallet_address, reason |
+| `WALLET_SET_PRIMARY` | wallet_address |
+| `IDENTITY_SUSPENDED` | reason, suspended_by, expires_at |
+| `IDENTITY_RESTORED` | reason, restored_by |
+
+**Acceptance Criteria**:
+- [ ] `IdentityEventType` enum with all event types
+- [ ] `EventSource` type for event origins
+- [ ] Typed payloads for each event type
+- [ ] Union type `IdentityEventData` for all payloads
+
+**Estimated LOC**: ~80
+
+---
+
+#### Task 13.4: Implement UserRegistryService Core
+
+**File**: `themes/sietch/src/services/user-registry/UserRegistryService.ts`
+
+**Description**: Core service for identity management with event sourcing.
+
+**Methods**:
+| Method | Purpose |
+|--------|---------|
+| `createIdentity()` | Create new identity + IDENTITY_CREATED event |
+| `getIdentityByDiscordId()` | Lookup by Discord ID |
+| `getIdentityByWallet()` | Lookup by wallet address |
+| `verifyWallet()` | Add wallet + WALLET_VERIFIED event |
+| `getWallets()` | Get all wallets for identity |
+| `getEventHistory()` | Get complete event log |
+| `suspendIdentity()` | Admin action + event |
+| `restoreIdentity()` | Admin action + event |
+
+**Acceptance Criteria**:
+- [ ] All methods use Drizzle ORM transactions
+- [ ] Events recorded atomically with state changes
+- [ ] Wallet addresses normalized to lowercase
+- [ ] Duplicate wallet detection (already linked to another identity)
+- [ ] Proper error handling with typed exceptions
+
+**Estimated LOC**: ~350
+
+---
+
+#### Task 13.5: Implement Event Replay for Recovery
+
+**File**: `themes/sietch/src/services/user-registry/recovery.ts`
+
+**Description**: Point-in-time recovery via event replay.
+
+**Acceptance Criteria**:
+- [ ] `recoverIdentityAtTimestamp()` - Replay events up to date
+- [ ] Reconstruct state from event history
+- [ ] Handle all event types correctly
+- [ ] Return computed state at target timestamp
+
+**Estimated LOC**: ~80
+
+---
+
+#### Task 13.6: Integrate with Verify Command
+
+**File**: `themes/sietch/src/discord/commands/verify.ts` (modify)
+
+**Description**: Update wallet verification to create/update user registry.
+
+**Changes**:
+```typescript
+// In handleWalletLinked:
+const identityId = await userRegistryService.createIdentity({...});
+await userRegistryService.verifyWallet({identityId, ...});
+```
+
+**Acceptance Criteria**:
+- [ ] New verifications create identity if not exists
+- [ ] Wallet added to existing identity if exists
+- [ ] First wallet set as primary
+- [ ] Events recorded with source='discord_verification'
+
+**Estimated LOC**: ~40
+
+---
+
+#### Task 13.7: Create Admin API Endpoints
+
+**File**: `themes/sietch/src/api/routes/admin.routes.ts` (extend)
+
+**Description**: Admin endpoints for user registry.
+
+**Endpoints**:
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/admin/users` | List users with pagination, search |
+| GET | `/admin/users/:id` | Get user details + event history |
+| POST | `/admin/users/:id/suspend` | Suspend identity |
+| POST | `/admin/users/:id/restore` | Restore identity |
+| GET | `/admin/users/export` | Export user data (JSON/CSV) |
+
+**Acceptance Criteria**:
+- [ ] All endpoints require admin authentication
+- [ ] Search by discord_id, username, wallet address
+- [ ] Pagination with page/limit query params
+- [ ] Event history included in user detail response
+- [ ] Suspend/restore create audit events
+
+**Estimated LOC**: ~150
+
+---
+
+#### Task 13.8: Export Service and Initialize
+
+**File**: `themes/sietch/src/services/index.ts` (modify)
+**File**: `themes/sietch/src/api/server.ts` (modify)
+
+**Description**: Export service and initialize on server startup.
+
+**Acceptance Criteria**:
+- [ ] `userRegistryService` exported from services index
+- [ ] Service initialized with PostgreSQL connection on startup
+- [ ] Proper logging of initialization
+
+**Estimated LOC**: ~30
+
+---
+
+#### Task 13.9: Create Unit Tests
+
+**File**: `themes/sietch/src/services/user-registry/__tests__/UserRegistryService.test.ts`
+
+**Description**: Comprehensive tests for user registry service.
+
+**Test Cases**:
+- [ ] `createIdentity()` - New identity with event
+- [ ] `createIdentity()` - Returns existing identity if discord_id exists
+- [ ] `verifyWallet()` - Adds wallet with event
+- [ ] `verifyWallet()` - Rejects wallet linked to another identity
+- [ ] `suspendIdentity()` - Updates status and creates event
+- [ ] `getEventHistory()` - Returns all events in order
+- [ ] `recoverIdentityAtTimestamp()` - Reconstructs correct state
+
+**Acceptance Criteria**:
+- [ ] Test coverage >= 85%
+- [ ] All event types covered
+- [ ] Error cases tested
+
+**Estimated LOC**: ~250
+
+---
+
+#### Task 13.10: Create Migration Script for Existing Data
+
+**File**: `drizzle/migrations/0006_user_registry_migration.sql`
+
+**Description**: Migrate existing wallet_verifications to user_identities.
+
+**Migration Steps**:
+1. Insert identities from wallet_verifications
+2. Create corresponding identity_wallets entries
+3. Create IDENTITY_CREATED events for audit trail
+
+**Acceptance Criteria**:
+- [ ] Idempotent (safe to run multiple times)
+- [ ] Preserves verification timestamps
+- [ ] Creates proper audit trail events
+- [ ] Logs migration counts
+
+**Estimated LOC**: ~50
+
+---
+
+### Sprint 13 Deliverables
+
+| File | Action | LOC |
+|------|--------|-----|
+| `drizzle/migrations/0006_user_registry.sql` | CREATE | ~120 |
+| `themes/sietch/src/db/pg-schema.ts` | MODIFY | ~100 |
+| `themes/sietch/src/services/user-registry/types.ts` | CREATE | ~80 |
+| `themes/sietch/src/services/user-registry/UserRegistryService.ts` | CREATE | ~350 |
+| `themes/sietch/src/services/user-registry/recovery.ts` | CREATE | ~80 |
+| `themes/sietch/src/discord/commands/verify.ts` | MODIFY | ~40 |
+| `themes/sietch/src/api/routes/admin.routes.ts` | MODIFY | ~150 |
+| `themes/sietch/src/services/index.ts` | MODIFY | ~15 |
+| `themes/sietch/src/api/server.ts` | MODIFY | ~15 |
+| `themes/sietch/src/services/user-registry/__tests__/UserRegistryService.test.ts` | CREATE | ~250 |
+| `drizzle/migrations/0006_user_registry_migration.sql` | CREATE | ~50 |
+| **Total** | | **~1,250** |
+
+---
+
+### Success Criteria
+
+| Metric | Target |
+|--------|--------|
+| Event append works | Events saved atomically with state |
+| Delete prevention | Database trigger blocks DELETE on events |
+| Verify integration | New verifications create identity + events |
+| Admin list users | Paginated list with search |
+| Admin user detail | Full event history visible |
+| Data migration | Existing verifications migrated |
+| Test coverage | >= 85% on UserRegistryService |
+
+---
+
+### Security Checklist
+
+| Item | Status |
+|------|--------|
+| DELETE trigger on identity_events | 🔲 |
+| UPDATE trigger on identity_events | 🔲 |
+| Admin endpoints require auth | 🔲 |
+| Wallet addresses lowercase | 🔲 |
+| No plaintext secrets in events | 🔲 |
+| Audit trail for admin actions | 🔲 |
+
+---
+
+### Rollback Plan
+
+If issues occur:
+1. **Code rollback**: Revert verify.ts changes, service integration
+2. **Tables remain**: Registry tables stay (no data loss)
+3. **Existing flow**: wallet_verifications still works as before
+
+---
+
+### Future Sprints (Out of Scope)
+
+| Sprint | Feature | Description |
+|--------|---------|-------------|
+| Sprint 14 | Admin Dashboard UI | Web interface for user management |
+| Sprint 15 | Twitter OAuth | Link Twitter accounts |
+| Sprint 16 | Telegram linking | Link Telegram accounts |
+| Sprint 17 | Reputation score | Computed score from activity |
+
+---
+
+## Appendix C: Goal Traceability
+
+| Goal ID | PRD Goal | Contributing Tasks |
+|---------|----------|-------------------|
+| G-5 | Financial-grade audit trail | 13.1, 13.2, 13.4 (event sourcing) |
+| G-6 | Append-only guarantees | 13.1 (triggers), 13.4 (service) |
+| G-7 | Admin visibility | 13.7 (admin endpoints) |
+| G-8 | Integration with verify | 13.6 (verify command) |
+| G-9 | Point-in-time recovery | 13.5 (event replay) |
 
 ---
 

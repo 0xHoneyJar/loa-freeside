@@ -27,6 +27,14 @@ import {
   getEligibilityByAddressPg,
   isEligibilityPgDbInitialized,
 } from '../db/index.js';
+// Sprint 176: User Registry Service
+import {
+  setUserRegistryDb,
+  isUserRegistryServiceInitialized,
+  getUserRegistryService,
+  IdentityAlreadyExistsError,
+  WalletAlreadyLinkedError,
+} from '../services/user-registry/index.js';
 import { discordService } from '../services/discord.js';
 import { onboardingService } from '../services/onboarding.js';
 import { profileService } from '../services/profile.js';
@@ -263,9 +271,16 @@ function createApp(): Application {
       setEligibilityPgDb(verifyDb);
       logger.info('PostgreSQL initialized for eligibility queries');
     }
+
+    // Sprint 176: Initialize User Registry Service
+    if (!isUserRegistryServiceInitialized()) {
+      setUserRegistryDb(verifyDb);
+      logger.info('User Registry Service initialized');
+    }
+
     const verifyRouter = createVerifyIntegration({
       db: verifyDb,
-      onWalletLinked: async ({ communityId, discordUserId, walletAddress }) => {
+      onWalletLinked: async ({ communityId, discordUserId, walletAddress, discordUsername, signature, message }) => {
         // Sprint 79.4: Save wallet mapping to SQLite (legacy) and log audit event
         try {
           saveWalletMapping(discordUserId, walletAddress);
@@ -282,6 +297,57 @@ function createApp(): Application {
             { communityId, discordUserId, walletAddress },
             'Wallet verified and linked to Discord user'
           );
+
+          // Sprint 176: Create/update identity in User Registry
+          if (isUserRegistryServiceInitialized()) {
+            try {
+              const userRegistry = getUserRegistryService();
+
+              // Try to get existing identity
+              let identityWithWallets = await userRegistry.getIdentityByDiscordId(discordUserId);
+
+              if (!identityWithWallets) {
+                // Create new identity
+                identityWithWallets = await userRegistry.createIdentity({
+                  discordId: discordUserId,
+                  discordUsername: discordUsername || 'unknown',
+                  source: 'discord_verification',
+                  actorId: discordUserId,
+                });
+                logger.info(
+                  { identityId: identityWithWallets.identity.identityId, discordUserId },
+                  'Created new identity in User Registry'
+                );
+              }
+
+              // Verify wallet for the identity
+              await userRegistry.verifyWallet({
+                identityId: identityWithWallets.identity.identityId,
+                walletAddress,
+                signature: signature || 'verification_completed',
+                message: message || 'wallet_verification',
+                isPrimary: true, // First wallet is always primary
+                source: 'discord_verification',
+                actorId: discordUserId,
+              });
+              logger.info(
+                { identityId: identityWithWallets.identity.identityId, walletAddress },
+                'Wallet verified in User Registry'
+              );
+            } catch (registryError) {
+              if (registryError instanceof IdentityAlreadyExistsError) {
+                logger.debug({ discordUserId }, 'Identity already exists in User Registry');
+              } else if (registryError instanceof WalletAlreadyLinkedError) {
+                logger.warn({ walletAddress, discordUserId }, 'Wallet already linked to another identity');
+              } else {
+                logger.error(
+                  { error: registryError, discordUserId, walletAddress },
+                  'Failed to update User Registry'
+                );
+              }
+              // Don't fail the overall verification - registry is supplementary
+            }
+          }
 
           // Send Discord DM notification to user
           if (discordService.isConnected()) {

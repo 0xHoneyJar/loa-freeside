@@ -1120,3 +1120,496 @@ adminRouter.get(
     }
   }
 );
+
+// =============================================================================
+// User Registry Routes (Sprint 176)
+// =============================================================================
+
+import {
+  getUserRegistryService,
+  isUserRegistryServiceInitialized,
+  IdentityNotFoundError,
+  UserRegistryError,
+} from '../services/user-registry/index.js';
+
+/**
+ * Middleware: Check User Registry Enabled
+ */
+function requireUserRegistryEnabled(req: AuthenticatedRequest, res: Response, next: Function) {
+  if (!isUserRegistryServiceInitialized()) {
+    res.status(503).json({
+      error: 'User Registry not enabled',
+      message: 'The User Registry service is not initialized. PostgreSQL may not be configured.',
+    });
+    return;
+  }
+  next();
+}
+
+/**
+ * List users query schema
+ */
+const listUsersSchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  search: z.string().optional(),
+  status: z.enum(['active', 'suspended', 'deleted']).optional(),
+});
+
+/**
+ * Suspend identity request schema
+ */
+const suspendIdentitySchema = z.object({
+  reason: z.string().min(10).max(500),
+  expires_at: z.string().datetime().optional(),
+});
+
+/**
+ * Restore identity request schema
+ */
+const restoreIdentitySchema = z.object({
+  reason: z.string().min(10).max(500),
+});
+
+/**
+ * GET /admin/users
+ * List all user identities with pagination
+ */
+adminRouter.get(
+  '/users',
+  requireUserRegistryEnabled,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const query = listUsersSchema.parse(req.query);
+      const userRegistry = getUserRegistryService();
+
+      const result = await userRegistry.listUsers({
+        page: query.page,
+        limit: query.limit,
+        search: query.search,
+        status: query.status,
+      });
+
+      res.json({
+        success: true,
+        users: result.items.map((item) => ({
+          identity_id: item.identity.identityId,
+          discord_id: item.identity.discordId,
+          discord_username: item.identity.discordUsername,
+          primary_wallet: item.identity.primaryWallet,
+          status: item.identity.status,
+          created_at: item.identity.createdAt.toISOString(),
+          updated_at: item.identity.updatedAt.toISOString(),
+          wallet_count: item.wallets.length,
+        })),
+        pagination: {
+          page: result.page,
+          limit: result.limit,
+          total: result.total,
+          has_more: result.hasMore,
+        },
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({
+          error: 'Validation failed',
+          details: error.errors,
+        });
+        return;
+      }
+
+      logger.error({ error: (error as Error).message }, 'Failed to list users');
+      res.status(500).json({
+        error: 'Internal server error',
+        message: (error as Error).message,
+      });
+    }
+  }
+);
+
+/**
+ * GET /admin/users/stats
+ * Get user registry statistics
+ */
+adminRouter.get(
+  '/users/stats',
+  requireUserRegistryEnabled,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userRegistry = getUserRegistryService();
+      const totalIdentities = await userRegistry.getIdentityCount();
+
+      res.json({
+        success: true,
+        stats: {
+          total_identities: totalIdentities,
+        },
+      });
+    } catch (error) {
+      logger.error({ error: (error as Error).message }, 'Failed to get user stats');
+      res.status(500).json({
+        error: 'Internal server error',
+        message: (error as Error).message,
+      });
+    }
+  }
+);
+
+/**
+ * GET /admin/users/by-discord/:discordId
+ * Lookup identity by Discord ID
+ */
+adminRouter.get(
+  '/users/by-discord/:discordId',
+  requireUserRegistryEnabled,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { discordId } = req.params;
+
+      if (!discordId) {
+        res.status(400).json({ error: 'Discord ID is required' });
+        return;
+      }
+
+      const userRegistry = getUserRegistryService();
+      const identity = await userRegistry.getIdentityByDiscordId(discordId);
+
+      if (!identity) {
+        res.status(404).json({
+          error: 'Not found',
+          message: `No identity found for Discord ID ${discordId}`,
+        });
+        return;
+      }
+
+      res.json({
+        success: true,
+        identity: {
+          identity_id: identity.identity.identityId,
+          discord_id: identity.identity.discordId,
+          discord_username: identity.identity.discordUsername,
+          primary_wallet: identity.identity.primaryWallet,
+          status: identity.identity.status,
+          created_at: identity.identity.createdAt.toISOString(),
+          wallet_count: identity.wallets.length,
+        },
+      });
+    } catch (error) {
+      logger.error({ error: (error as Error).message }, 'Failed to lookup user by Discord ID');
+      res.status(500).json({
+        error: 'Internal server error',
+        message: (error as Error).message,
+      });
+    }
+  }
+);
+
+/**
+ * GET /admin/users/by-wallet/:walletAddress
+ * Lookup identity by wallet address
+ */
+adminRouter.get(
+  '/users/by-wallet/:walletAddress',
+  requireUserRegistryEnabled,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { walletAddress } = req.params;
+
+      if (!walletAddress) {
+        res.status(400).json({ error: 'Wallet address is required' });
+        return;
+      }
+
+      const userRegistry = getUserRegistryService();
+      const identity = await userRegistry.getIdentityByWallet(walletAddress);
+
+      if (!identity) {
+        res.status(404).json({
+          error: 'Not found',
+          message: `No identity found for wallet ${walletAddress}`,
+        });
+        return;
+      }
+
+      res.json({
+        success: true,
+        identity: {
+          identity_id: identity.identity.identityId,
+          discord_id: identity.identity.discordId,
+          discord_username: identity.identity.discordUsername,
+          primary_wallet: identity.identity.primaryWallet,
+          status: identity.identity.status,
+          created_at: identity.identity.createdAt.toISOString(),
+          wallet_count: identity.wallets.length,
+        },
+      });
+    } catch (error) {
+      logger.error({ error: (error as Error).message }, 'Failed to lookup user by wallet');
+      res.status(500).json({
+        error: 'Internal server error',
+        message: (error as Error).message,
+      });
+    }
+  }
+);
+
+/**
+ * GET /admin/users/:identityId
+ * Get detailed identity information including wallets and event history
+ */
+adminRouter.get(
+  '/users/:identityId',
+  requireUserRegistryEnabled,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { identityId } = req.params;
+
+      if (!identityId) {
+        res.status(400).json({ error: 'Identity ID is required' });
+        return;
+      }
+
+      const userRegistry = getUserRegistryService();
+      const identity = await userRegistry.getIdentityById(identityId);
+
+      if (!identity) {
+        res.status(404).json({
+          error: 'Not found',
+          message: `Identity ${identityId} not found`,
+        });
+        return;
+      }
+
+      // Get event history
+      const events = await userRegistry.getEventHistory(identityId);
+
+      res.json({
+        success: true,
+        identity: {
+          identity_id: identity.identity.identityId,
+          discord_id: identity.identity.discordId,
+          discord_username: identity.identity.discordUsername,
+          discord_discriminator: identity.identity.discordDiscriminator,
+          discord_avatar_hash: identity.identity.discordAvatarHash,
+          primary_wallet: identity.identity.primaryWallet,
+          twitter_handle: identity.identity.twitterHandle,
+          telegram_id: identity.identity.telegramId,
+          status: identity.identity.status,
+          created_at: identity.identity.createdAt.toISOString(),
+          updated_at: identity.identity.updatedAt.toISOString(),
+          version: identity.identity.version,
+        },
+        wallets: identity.wallets.map((w) => ({
+          wallet_id: w.walletId,
+          address: w.address,
+          chain_id: w.chainId,
+          is_primary: w.isPrimary,
+          verified_at: w.verifiedAt.toISOString(),
+          verification_source: w.verificationSource,
+          status: w.status,
+        })),
+        events: events.slice(-50).map((e) => ({
+          event_id: e.eventId,
+          event_type: e.eventType,
+          occurred_at: e.occurredAt.toISOString(),
+          source: e.source,
+          actor_id: e.actorId,
+        })),
+        event_count: events.length,
+      });
+    } catch (error) {
+      logger.error({ error: (error as Error).message }, 'Failed to get user identity');
+      res.status(500).json({
+        error: 'Internal server error',
+        message: (error as Error).message,
+      });
+    }
+  }
+);
+
+/**
+ * POST /admin/users/:identityId/suspend
+ * Suspend a user identity (admin action)
+ */
+adminRouter.post(
+  '/users/:identityId/suspend',
+  requireUserRegistryEnabled,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { identityId } = req.params;
+
+      if (!identityId) {
+        res.status(400).json({ error: 'Identity ID is required' });
+        return;
+      }
+
+      const body = suspendIdentitySchema.parse(req.body);
+      const actor = req.apiKeyId ?? req.adminName ?? 'admin-api';
+
+      const userRegistry = getUserRegistryService();
+
+      // Verify identity exists
+      const existing = await userRegistry.getIdentityById(identityId);
+      if (!existing) {
+        res.status(404).json({
+          error: 'Not found',
+          message: `Identity ${identityId} not found`,
+        });
+        return;
+      }
+
+      await userRegistry.suspendIdentity({
+        identityId,
+        reason: body.reason,
+        suspendedBy: actor,
+        expiresAt: body.expires_at ? new Date(body.expires_at) : undefined,
+        source: 'admin_api',
+      });
+
+      logger.warn(
+        { identityId, actor, reason: body.reason },
+        'Admin suspended user identity'
+      );
+
+      res.json({
+        success: true,
+        message: 'Identity suspended successfully',
+        identity_id: identityId,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({
+          error: 'Validation failed',
+          details: error.errors,
+        });
+        return;
+      }
+
+      logger.error({ error: (error as Error).message }, 'Failed to suspend identity');
+      res.status(500).json({
+        error: 'Internal server error',
+        message: (error as Error).message,
+      });
+    }
+  }
+);
+
+/**
+ * POST /admin/users/:identityId/restore
+ * Restore a suspended user identity
+ */
+adminRouter.post(
+  '/users/:identityId/restore',
+  requireUserRegistryEnabled,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { identityId } = req.params;
+
+      if (!identityId) {
+        res.status(400).json({ error: 'Identity ID is required' });
+        return;
+      }
+
+      const body = restoreIdentitySchema.parse(req.body);
+      const actor = req.apiKeyId ?? req.adminName ?? 'admin-api';
+
+      const userRegistry = getUserRegistryService();
+
+      // Verify identity exists
+      const existing = await userRegistry.getIdentityById(identityId);
+      if (!existing) {
+        res.status(404).json({
+          error: 'Not found',
+          message: `Identity ${identityId} not found`,
+        });
+        return;
+      }
+
+      await userRegistry.restoreIdentity({
+        identityId,
+        reason: body.reason,
+        restoredBy: actor,
+        source: 'admin_api',
+      });
+
+      logger.info(
+        { identityId, actor, reason: body.reason },
+        'Admin restored user identity'
+      );
+
+      res.json({
+        success: true,
+        message: 'Identity restored successfully',
+        identity_id: identityId,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({
+          error: 'Validation failed',
+          details: error.errors,
+        });
+        return;
+      }
+
+      logger.error({ error: (error as Error).message }, 'Failed to restore identity');
+      res.status(500).json({
+        error: 'Internal server error',
+        message: (error as Error).message,
+      });
+    }
+  }
+);
+
+/**
+ * GET /admin/users/:identityId/events
+ * Get full event history for an identity
+ */
+adminRouter.get(
+  '/users/:identityId/events',
+  requireUserRegistryEnabled,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { identityId } = req.params;
+
+      if (!identityId) {
+        res.status(400).json({ error: 'Identity ID is required' });
+        return;
+      }
+
+      const userRegistry = getUserRegistryService();
+
+      // Verify identity exists
+      const existing = await userRegistry.getIdentityById(identityId);
+      if (!existing) {
+        res.status(404).json({
+          error: 'Not found',
+          message: `Identity ${identityId} not found`,
+        });
+        return;
+      }
+
+      const events = await userRegistry.getEventHistory(identityId);
+
+      res.json({
+        success: true,
+        identity_id: identityId,
+        event_count: events.length,
+        events: events.map((e) => ({
+          event_id: e.eventId,
+          event_type: e.eventType,
+          event_data: e.eventData,
+          occurred_at: e.occurredAt.toISOString(),
+          source: e.source,
+          actor_id: e.actorId,
+          request_id: e.requestId,
+        })),
+      });
+    } catch (error) {
+      logger.error({ error: (error as Error).message }, 'Failed to get event history');
+      res.status(500).json({
+        error: 'Internal server error',
+        message: (error as Error).message,
+      });
+    }
+  }
+);

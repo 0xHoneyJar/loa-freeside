@@ -81,7 +81,7 @@ async function getOrCreateCommunity(db: PostgresJsDatabase, guildId: string, gui
       .where(eq(communities.discordGuildId, guildId))
       .limit(1);
 
-    if (existing.length > 0) {
+    if (existing.length > 0 && existing[0]) {
       return existing[0].id;
     }
 
@@ -96,7 +96,7 @@ async function getOrCreateCommunity(db: PostgresJsDatabase, guildId: string, gui
       })
       .returning({ id: communities.id });
 
-    if (newCommunity.length > 0) {
+    if (newCommunity.length > 0 && newCommunity[0]) {
       logger.info({ guildId, communityId: newCommunity[0].id }, 'Created community record for Discord guild');
       return newCommunity[0].id;
     }

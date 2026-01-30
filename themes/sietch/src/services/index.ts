@@ -145,3 +145,36 @@ export {
   type AuthContext,
   type AuthServiceConfig,
 } from './auth/index.js';
+
+// Sprint 176: Global User Registry
+export {
+  // Service
+  UserRegistryService,
+  setUserRegistryDb,
+  getUserRegistryService,
+  isUserRegistryServiceInitialized,
+  // Recovery
+  recoverIdentityAtTimestamp,
+  rebuildIdentityFromEvents,
+  verifyIdentityIntegrity,
+  // Types
+  IdentityEventType,
+  type EventSource,
+  type IdentityStatus,
+  type WalletStatus,
+  type CreateIdentityParams,
+  type VerifyWalletParams,
+  type SuspendIdentityParams,
+  type RestoreIdentityParams,
+  type ListUsersParams,
+  type PaginatedResult,
+  type IdentityWithWallets,
+  type IdentityEventRecord,
+  type RecoveredIdentityState,
+  // Errors
+  UserRegistryError,
+  IdentityNotFoundError,
+  WalletAlreadyLinkedError,
+  IdentityAlreadyExistsError,
+  IdentitySuspendedError,
+} from './user-registry/index.js';

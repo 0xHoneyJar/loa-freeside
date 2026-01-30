@@ -48,6 +48,12 @@ export interface VerificationIntegrationDeps {
     communityId: string;
     discordUserId: string;
     walletAddress: string;
+    /** Discord username (Sprint 176: User Registry) */
+    discordUsername?: string;
+    /** Signature used for verification (Sprint 176: User Registry) */
+    signature?: string;
+    /** Message that was signed (Sprint 176: User Registry) */
+    message?: string;
   }) => Promise<void>;
   /** Optional audit event callback */
   onAuditEvent?: (event: {
@@ -138,8 +144,16 @@ export function createVerifyIntegration(deps: VerificationIntegrationDeps) {
     // Create new service - WalletVerificationService constructor: (db, communityId, options)
     const service = new WalletVerificationService(db, communityId, {
       onWalletLink: onWalletLinked
-        ? async ({ discordUserId, walletAddress }) => {
-            await onWalletLinked({ communityId, discordUserId, walletAddress });
+        ? async ({ discordUserId, walletAddress, discordUsername, signature, message }) => {
+            await onWalletLinked({
+              communityId,
+              discordUserId,
+              walletAddress,
+              // Sprint 176: Additional fields for User Registry
+              discordUsername,
+              signature,
+              message,
+            });
           }
         : undefined,
       onAuditEvent: onAuditEvent

@@ -1,9 +1,9 @@
 /**
- * PostgreSQL Schema for Eligibility Tables (Sprint 175)
+ * PostgreSQL Schema for Global Tables (Sprint 175, 176)
  *
- * These tables are GLOBAL (no community_id foreign key) because eligibility
- * is chain-level data (top 69 BGT holders on Berachain) - the same across
- * all communities.
+ * These tables are GLOBAL (no community_id foreign key) because they store:
+ * - Eligibility: Chain-level data (top 69 BGT holders on Berachain)
+ * - User Registry: Global identity across all communities
  *
  * No RLS policies - direct queries without TenantContext wrapper.
  *
@@ -20,6 +20,8 @@ import {
   bigint,
   primaryKey,
   check,
+  uuid,
+  inet,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
@@ -175,3 +177,129 @@ export const eligibilityBurnEvents = pgTable('eligibility_burn_events', {
 }, (table) => ({
   pk: primaryKey({ columns: [table.txHash, table.logIndex] }),
 }));
+
+// =============================================================================
+// SPRINT 176: Global User Registry Tables
+// =============================================================================
+
+/**
+ * T-8: User identities (current state cache)
+ *
+ * This table holds the computed current state of each identity.
+ * The source of truth is the identity_events table.
+ * Sprint 176: Global User Registry
+ */
+export const userIdentities = pgTable('user_identities', {
+  /** UUID primary key */
+  identityId: uuid('identity_id').primaryKey().defaultRandom(),
+
+  /** Discord user ID (unique) */
+  discordId: text('discord_id').unique().notNull(),
+  /** Discord username */
+  discordUsername: text('discord_username'),
+  /** Discord discriminator (legacy, may be null) */
+  discordDiscriminator: text('discord_discriminator'),
+  /** Discord avatar hash */
+  discordAvatarHash: text('discord_avatar_hash'),
+
+  /** Primary wallet address (convenience field) */
+  primaryWallet: text('primary_wallet'),
+
+  /** Future social identities (nullable) */
+  twitterHandle: text('twitter_handle'),
+  telegramId: text('telegram_id'),
+
+  /** Status: active, suspended, deleted */
+  status: text('status').default('active').notNull(),
+
+  /** Timestamps */
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+
+  /** Version for optimistic locking */
+  version: integer('version').default(1).notNull(),
+});
+
+/**
+ * T-9: Identity events (append-only audit log)
+ *
+ * SOURCE OF TRUTH for all identity changes.
+ * Has database-level triggers preventing DELETE/UPDATE.
+ * Sprint 176: Global User Registry
+ */
+export const identityEvents = pgTable('identity_events', {
+  /** UUID primary key */
+  eventId: uuid('event_id').primaryKey().defaultRandom(),
+
+  /** Foreign key to identity */
+  identityId: uuid('identity_id').notNull().references(() => userIdentities.identityId),
+
+  /** Event type (enum enforced at DB level) */
+  eventType: text('event_type').notNull(),
+
+  /** Event payload (varies by event_type) */
+  eventData: jsonb('event_data').notNull(),
+
+  /** When the event occurred */
+  occurredAt: timestamp('occurred_at', { withTimezone: true }).defaultNow().notNull(),
+
+  /** Event source: discord_verification, admin_dashboard, admin_api, oauth_flow, system */
+  source: text('source').notNull(),
+
+  /** Who triggered: discord_id, admin_id, 'system' */
+  actorId: text('actor_id'),
+
+  /** Request correlation ID */
+  requestId: text('request_id'),
+
+  /** Client IP address (optional) */
+  ipAddress: text('ip_address'),
+
+  /** Client user agent (optional) */
+  userAgent: text('user_agent'),
+});
+
+/**
+ * T-10: Identity wallets (verified wallet mapping)
+ *
+ * Maps verified wallets to identities.
+ * Unique constraint ensures one active wallet = one identity globally.
+ * Sprint 176: Global User Registry
+ */
+export const identityWallets = pgTable('identity_wallets', {
+  /** UUID primary key */
+  walletId: uuid('wallet_id').primaryKey().defaultRandom(),
+
+  /** Foreign key to identity */
+  identityId: uuid('identity_id').notNull().references(() => userIdentities.identityId),
+
+  /** Wallet address (lowercase) */
+  address: text('address').notNull(),
+
+  /** Chain ID (default: Berachain 80094) */
+  chainId: integer('chain_id').default(80094).notNull(),
+
+  /** Whether this is the primary wallet */
+  isPrimary: boolean('is_primary').default(false).notNull(),
+
+  /** When verification completed */
+  verifiedAt: timestamp('verified_at', { withTimezone: true }).defaultNow().notNull(),
+
+  /** Verification source: sietch, gaib_web, migration, etc. */
+  verificationSource: text('verification_source').notNull(),
+
+  /** EIP-191 signature (for audit) */
+  verificationSignature: text('verification_signature'),
+
+  /** Signed message (for audit) */
+  verificationMessage: text('verification_message'),
+
+  /** Status: active, removed */
+  status: text('status').default('active').notNull(),
+
+  /** When wallet was removed (if removed) */
+  removedAt: timestamp('removed_at', { withTimezone: true }),
+
+  /** Reason for removal (if removed) */
+  removedReason: text('removed_reason'),
+});
