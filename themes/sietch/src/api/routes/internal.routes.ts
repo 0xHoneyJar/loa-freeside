@@ -131,13 +131,16 @@ internalRouter.post('/run-migration', async (_req: Request, res: Response) => {
 
   try {
     // T-1: Current eligibility
+    // Use NUMERIC for BGT values - BIGINT overflows with wei amounts (18 decimals)
+    // Drop and recreate to fix schema if columns were previously BIGINT
+    await sql`DROP TABLE IF EXISTS eligibility_current`;
     await sql`
-      CREATE TABLE IF NOT EXISTS eligibility_current (
+      CREATE TABLE eligibility_current (
         address TEXT PRIMARY KEY,
         rank INTEGER NOT NULL,
-        bgt_claimed BIGINT NOT NULL,
-        bgt_burned BIGINT NOT NULL,
-        bgt_held BIGINT NOT NULL,
+        bgt_claimed NUMERIC NOT NULL,
+        bgt_burned NUMERIC NOT NULL,
+        bgt_held NUMERIC NOT NULL,
         role TEXT NOT NULL CHECK (role IN ('naib', 'fedaykin', 'none')),
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
       )

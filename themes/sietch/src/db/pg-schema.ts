@@ -18,6 +18,7 @@ import {
   boolean,
   jsonb,
   bigint,
+  numeric,
   primaryKey,
   check,
   uuid,
@@ -36,12 +37,12 @@ export const eligibilityCurrent = pgTable('eligibility_current', {
   address: text('address').primaryKey(),
   /** Rank 1-69 in the eligibility list */
   rank: integer('rank').notNull(),
-  /** Total BGT claimed from reward vaults */
-  bgtClaimed: bigint('bgt_claimed', { mode: 'bigint' }).notNull(),
-  /** Total BGT burned (redeemed for BERA) */
-  bgtBurned: bigint('bgt_burned', { mode: 'bigint' }).notNull(),
-  /** Net BGT held (claimed - burned) */
-  bgtHeld: bigint('bgt_held', { mode: 'bigint' }).notNull(),
+  /** Total BGT claimed from reward vaults - uses NUMERIC for wei amounts (18 decimals) */
+  bgtClaimed: numeric('bgt_claimed').notNull(),
+  /** Total BGT burned (redeemed for BERA) - uses NUMERIC for wei amounts (18 decimals) */
+  bgtBurned: numeric('bgt_burned').notNull(),
+  /** Net BGT held (claimed - burned) - uses NUMERIC for wei amounts (18 decimals) */
+  bgtHeld: numeric('bgt_held').notNull(),
   /** Assigned role based on rank: naib (1-7), fedaykin (8-69), none (70+) */
   role: text('role').notNull(),
   /** When this entry was last updated */

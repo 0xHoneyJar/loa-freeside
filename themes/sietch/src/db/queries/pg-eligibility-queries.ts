@@ -107,12 +107,12 @@ export async function saveEligibilitySnapshotPg(entries: EligibilityEntry[]): Pr
     await tx.delete(eligibilityCurrent);
 
     // 3. Insert current eligibility (only rank <= 69)
-    // Note: Use raw SQL for BigInt values - postgres.js handles bigint string literals correctly
+    // Note: Use NUMERIC for BigInt values - BIGINT overflows with wei amounts (18 decimals)
     const eligibleEntries = entries.filter((e) => e.rank !== undefined && e.rank <= 69);
     if (eligibleEntries.length > 0) {
-      // Build VALUES clause with proper bigint casting
+      // Build VALUES clause with NUMERIC casting (handles arbitrary precision)
       const values = eligibleEntries.map((entry) =>
-        `('${entry.address.toLowerCase()}', ${entry.rank}, ${entry.bgtClaimed.toString()}::bigint, ${entry.bgtBurned.toString()}::bigint, ${entry.bgtHeld.toString()}::bigint, '${entry.role}', NOW())`
+        `('${entry.address.toLowerCase()}', ${entry.rank}, ${entry.bgtClaimed.toString()}::numeric, ${entry.bgtBurned.toString()}::numeric, ${entry.bgtHeld.toString()}::numeric, '${entry.role}', NOW())`
       ).join(', ');
 
       await tx.execute(drizzleSql.raw(`
@@ -180,11 +180,12 @@ export async function getEligibilityByAddressPg(address: string): Promise<Eligib
     return null;
   }
 
+  // Convert numeric strings back to BigInt (Drizzle returns strings for numeric type)
   return {
     address: row.address as `0x${string}`,
-    bgtClaimed: row.bgtClaimed,
-    bgtBurned: row.bgtBurned,
-    bgtHeld: row.bgtHeld,
+    bgtClaimed: BigInt(row.bgtClaimed),
+    bgtBurned: BigInt(row.bgtBurned),
+    bgtHeld: BigInt(row.bgtHeld),
     rank: row.rank,
     role: row.role as 'naib' | 'fedaykin' | 'none',
   };
@@ -244,11 +245,12 @@ export async function getCurrentEligibilityPg(): Promise<EligibilityEntry[]> {
     .from(eligibilityCurrent)
     .orderBy(eligibilityCurrent.rank);
 
+  // Convert numeric strings back to BigInt (Drizzle returns strings for numeric type)
   return rows.map((row) => ({
     address: row.address as `0x${string}`,
-    bgtClaimed: row.bgtClaimed,
-    bgtBurned: row.bgtBurned,
-    bgtHeld: row.bgtHeld,
+    bgtClaimed: BigInt(row.bgtClaimed),
+    bgtBurned: BigInt(row.bgtBurned),
+    bgtHeld: BigInt(row.bgtHeld),
     rank: row.rank,
     role: row.role as 'naib' | 'fedaykin' | 'none',
   }));
