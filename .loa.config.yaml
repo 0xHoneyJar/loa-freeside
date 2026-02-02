@@ -790,6 +790,31 @@ recursive_jit:
     update_bead: true
 
 # =============================================================================
+# GPT 5.2 Cross-Model Review (v0.20.0)
+# =============================================================================
+# GPT review for catching issues Claude might miss
+gpt_review:
+  # Master toggle - set to false to disable all GPT reviews
+  # Note: Requires OPENAI_API_KEY environment variable (or in .env file)
+  enabled: false
+  # API timeout in seconds
+  timeout_seconds: 300
+  # Maximum review iterations before auto-approve
+  max_iterations: 3
+  # Model selection
+  models:
+    # Model for document reviews (PRD, SDD, Sprint)
+    documents: "gpt-5.2"
+    # Model for code reviews (uses Responses API)
+    code: "gpt-5.2-codex"
+  # Per-phase toggles (only used when enabled: true)
+  phases:
+    prd: true
+    sdd: true
+    sprint: true
+    implementation: true
+
+# =============================================================================
 # Plan and Analyze Configuration (v1.6.0)
 # =============================================================================
 # Codebase grounding integration with /ride for brownfield projects
