@@ -1,0 +1,19 @@
+Sprint 11 (Global ID 174) - Backup/Restore E2E Validation
+Completed: 2026-01-29T07:25:00Z
+
+E2E Test: PASS
+Senior Review: PENDING
+Security Audit: N/A (manual validation sprint)
+
+Test Results:
+- Export: PASS (17 roles, 14 categories, 28 channels)
+- Teardown: PASS (with 2 expected community server exceptions)
+- Restore: PASS (100% resources recreated)
+- Verification: PASS (backup matches restored)
+
+Total Recovery Time: 9.4 minutes
+
+Files Changed:
+- packages/cli/src/commands/server/index.ts (added --skip-checkpoint option)
+- testing-server-backup.yaml (created)
+- testing-server-restored.yaml (created)

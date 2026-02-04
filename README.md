@@ -1,6 +1,6 @@
 # Arrakis
 
-[![Version](https://img.shields.io/badge/version-7.0.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-6.0.0-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-green.svg)](LICENSE.md)
 
 Engagement intelligence platform for Web3 communities. Conviction scoring and tiered progression delivered as Discord roles.
@@ -101,126 +101,36 @@ All major EVM chains:
 
 | Tool | Required | Purpose |
 |------|----------|---------|
-| Docker | Yes | Containerized development |
-| Docker Compose | Yes | Service orchestration |
-| Node.js 20+ | Optional | Native development (without Docker) |
+| Node.js 20+ | Yes | Runtime |
+| pnpm | Yes | Package manager |
+| PostgreSQL | Yes | Database |
+| Redis | Yes | Caching |
 
-### Quick Start (Docker - Recommended)
+### Quick Start
 
 ```bash
-# Clone
+# Clone and install
 git clone https://github.com/0xHoneyJar/arrakis.git
 cd arrakis
-
-# Setup environment
-cp .env.development.example .env.development
-# Edit .env.development with your Discord credentials
+pnpm install
 
 # Start development
-make dev
-```
-
-That's it! The entire development environment starts with a single command.
-
-- **Edit files** in `themes/sietch/src/` and changes reflect in ~5 seconds
-- **Database** (PostgreSQL) and **cache** (Redis) are managed automatically
-- **Hot-reload** works out of the box
-
-### Development Commands
-
-```bash
-make help         # Show all available commands
-make dev          # Start development environment
-make dev-build    # Rebuild containers (after package/* changes)
-make dev-logs     # Tail logs
-make dev-shell    # Open shell in container
-make dev-db       # Open Drizzle Studio
-make test         # Run tests
-make lint         # Run linting
-make clean        # Stop and remove containers
-```
-
-### Known Limitations
-
-| Limitation | Workaround |
-|------------|------------|
-| Only `themes/sietch/src` is hot-reloaded | Run `make dev-build` after editing `packages/*` |
-| macOS is ~8s vs Linux ~5s for hot-reload | Enable VirtioFS in Docker Desktop settings |
-| Discord token required for full features | Get token from Discord Developer Portal |
-
-### Troubleshooting
-
-#### Container won't start
-
-```bash
-make dev-logs          # Check logs for errors
-make clean && make dev-build && make dev  # Full rebuild
-```
-
-#### Hot-reload not working
-
-```bash
-# Verify entr is installed in container
-docker compose -f docker-compose.dev.yml exec sietch-dev which entr
-
-# If editing packages/*, hot-reload WON'T work (by design)
-# Run: make dev-build
-```
-
-#### macOS performance issues
-
-1. Open Docker Desktop → Settings → General
-2. Enable **VirtioFS** file sharing
-3. Restart Docker Desktop
-4. Expected performance: ~8s (vs ~5s on Linux)
-
-#### Database connection failed
-
-```bash
-# Check PostgreSQL health
-docker compose -f docker-compose.dev.yml ps postgres
-
-# Test connection
-docker compose -f docker-compose.dev.yml exec sietch-dev \
-    sh -c "pg_isready -h postgres -U arrakis"
-```
-
-#### Port already in use
-
-```bash
-# Stop existing services first
-docker compose -f themes/sietch/docker-compose.yml down  # Old compose
-make clean  # Then start fresh
-make dev
-```
-
-### Native Development (Without Docker)
-
-If you prefer native development:
-
-```bash
-# Install dependencies
-npm install
-
-# Start database services
 cd themes/sietch
-docker-compose up -d  # PostgreSQL + Redis only
-
-# Run application
-npm run dev
+cp .env.example .env
+pnpm dev
 ```
 
 ### Testing
 
 ```bash
 # Run all tests
-make test
+pnpm test
 
 # Run with coverage
-make test-coverage
+pnpm test:coverage
 
 # Type checking
-make typecheck
+pnpm typecheck
 ```
 
 ## Documentation
