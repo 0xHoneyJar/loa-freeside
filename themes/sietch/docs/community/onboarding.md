@@ -11,8 +11,8 @@ Sietch is a token-gated Discord community that brings together the most committe
 To join Sietch, you must:
 
 1. **Hold BGT tokens** that you've never redeemed (burned for BERA)
-2. **Rank in the top 69** of all unredeemed BGT holders
-3. **Verify your wallet** through Collab.Land
+2. **Meet the BGT threshold** for your desired tier (or rank in top 69)
+3. **Verify your wallet** using the `/verify` command
 
 ### How Eligibility is Calculated
 
@@ -23,27 +23,48 @@ To join Sietch, you must:
 
 ### Tiers
 
-| Tier | Ranks | Role | Benefits |
-|------|-------|------|----------|
-| **Naib** | 1-7 | Naib | Access to all channels including Naib Council |
-| **Fedaykin** | 8-69 | Fedaykin | Access to general Sietch channels |
+Sietch uses a 9-tier membership system. The top tiers are **rank-based** (your position among all holders), while lower tiers are **BGT-based** (your total unredeemed BGT).
+
+| Tier | Requirement | Role | Description |
+|------|-------------|------|-------------|
+| **Naib** | Rank 1-7 | @Naib | Tribal leaders - access to all channels |
+| **Fedaykin** | Rank 8-69 | @Fedaykin | Elite warriors - full community access |
+| **Usul** | 1,111+ BGT | @Usul | Base of the pillar - innermost identity |
+| **Sayyadina** | 888+ BGT | @Sayyadina | Spiritual guide - near-leader status |
+| **Mushtamal** | 690+ BGT | @Mushtamal | Inner garden - trusted inner space |
+| **Sihaya** | 420+ BGT | @Sihaya | Desert spring - precious, life-giving |
+| **Qanat** | 222+ BGT | @Qanat | Underground channels - access to hidden depths |
+| **Ichwan** | 69+ BGT | @Ichwan | Brotherhood - first acceptance |
+| **Hajra** | 6.9+ BGT | @Hajra | Journey of seeking - on the path |
+
+**Note**: Rank-based tiers (Naib, Fedaykin) override BGT-based tiers. If you're in the top 69 by rank, you get Fedaykin regardless of your BGT amount.
 
 ---
 
 ## How to Join
 
-### Step 1: Connect Your Wallet
+### Step 1: Start Verification
 
 1. Join the Sietch Discord server (invite link from team)
-2. Go to the verification channel
-3. Click the "Let's Go!" button from Collab.Land
-4. Connect your wallet that holds BGT
+2. In any channel, use the slash command:
+   ```
+   /verify start
+   ```
+3. The bot will send you a verification link
 
-### Step 2: Verify Eligibility
+### Step 2: Connect Your Wallet
 
-1. Collab.Land will check your wallet against our eligibility API
-2. If you're in the top 69, you'll receive your role automatically
-3. If you're in the top 7, you'll receive the Naib role
+1. Click the verification link (expires in **15 minutes**)
+2. Connect your wallet that holds BGT
+3. Sign the verification message with your wallet
+4. Return to Discord - your role is assigned automatically
+
+**Verification States**:
+- `pending` → You've started but haven't clicked the link yet
+- `awaiting_signature` → Link clicked, waiting for wallet signature
+- `verified` → Success! Role assigned
+- `expired` → Link timed out (run `/verify start` again)
+- `failed` → Signature rejected (retry with fresh session)
 
 ### Step 3: Explore the Community
 
@@ -62,25 +83,41 @@ If you're a Naib (top 7), you also have access to:
 
 ## Verification Troubleshooting
 
-### "Verification Failed"
+### "Verification Link Expired"
+
+The verification link expires after 15 minutes. If you see this:
+1. Run `/verify start` again to get a fresh link
+2. Complete the process within 15 minutes
+3. Make sure your system clock is correct
+
+### "Signature Invalid"
+
+This means the wallet signature was rejected:
+1. Make sure you're signing in the same browser session
+2. Don't modify the message being signed
+3. Run `/verify start` for a fresh session and try again
+
+### "Not Eligible"
 
 This usually means:
-1. Your wallet isn't in the top 69 - Check the #census leaderboard
-2. You connected the wrong wallet - Try again with the correct wallet
-3. Your BGT was redeemed/burned - Burned BGT doesn't count
+1. Your BGT balance is below 6.9 BGT (minimum for Hajra tier)
+2. Your wallet isn't in the top 69 by rank
+3. Your BGT was redeemed/burned - burned BGT doesn't count
+4. Check the #census leaderboard for current rankings
 
 ### "Wallet Not Found"
 
-1. Make sure you're connecting the wallet that received BGT rewards
-2. The wallet must have claimed from a Berachain reward vault
-3. Try disconnecting and reconnecting your wallet
+1. Make sure you're connecting the wallet that holds BGT
+2. The wallet must have claimed BGT rewards
+3. Try disconnecting and reconnecting your wallet in the verification page
 
 ### Lost Your Role?
 
 Roles are updated every 6 hours. If you lost your role:
-1. Your rank may have dropped below 69
+1. Your rank or BGT balance may have dropped below your tier threshold
 2. Check #census for current rankings
-3. Contact support if you believe there's an error
+3. There's a 24-hour grace period before role removal
+4. Contact support in #support if you believe there's an error
 
 ---
 

@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "next_sprint_number": 177,
+  "next_sprint_number": 178,
   "active_cycle": "cycle-007",
   "cycles": [
     {
@@ -126,6 +126,17 @@
         {"global_id": 174, "local_label": "sprint-11", "status": "completed"},
         {"global_id": 175, "local_label": "sprint-12", "status": "completed"},
         {"global_id": 176, "local_label": "sprint-13", "status": "pending"}
+      ]
+    },
+    {
+      "id": "cycle-009",
+      "label": "Water Discipline - Test Community Documentation Sprint",
+      "status": "active",
+      "created": "2026-02-04T05:30:00Z",
+      "prd": "grimoires/loa/prd-docs-sprint.md",
+      "sdd": "grimoires/loa/sdd-docs-sprint.md",
+      "sprints": [
+        {"global_id": 177, "local_label": "sprint-1", "status": "pending"}
       ]
     }
   ]
