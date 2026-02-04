@@ -9,7 +9,7 @@ repository = "https://github.com/0xHoneyJar/arrakis"
 
 [dependencies]
 # Twilight ecosystem
-twilight-gateway = "0.15"
+twilight-gateway = "0.17"
 twilight-model = "0.15"
 twilight-http = "0.15"
 
