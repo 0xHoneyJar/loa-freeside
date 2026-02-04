@@ -38,7 +38,7 @@ axum = "0.7"
 
 # Error handling
 anyhow = "1"
-thiserror = "1"
+thiserror = "2"
 
 # UUID generation
 uuid = { version = "1", features = ["v4"] }
