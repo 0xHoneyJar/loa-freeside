@@ -1,0 +1,56 @@
+# =============================================================================
+# Stillsuit Base Image Dockerfile
+# =============================================================================
+# Pre-built base image containing all npm dependencies.
+# Rebuilt weekly + on package-lock.json changes.
+#
+# This image is ~500MB but rarely changes, allowing fast staging deploys
+# that only need to copy code (~10MB) on top of the base.
+#
+# Build: docker build -f Dockerfile.base -t arrakis-base:latest .
+# Push:  See .github/workflows/build-base-image.yml
+# =============================================================================
+
+FROM node:20-alpine
+
+# Install build dependencies for native modules
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    vips-dev \
+    pkgconfig \
+    curl
+
+# Use /repo to match production structure
+WORKDIR /repo
+
+# -----------------------------------------------------------------------------
+# Copy package files for dependency installation
+# -----------------------------------------------------------------------------
+# Root package.json (for workspace config)
+COPY package*.json ./
+
+# Workspace package files
+COPY packages/core/package*.json ./packages/core/
+COPY packages/adapters/package*.json ./packages/adapters/
+COPY themes/sietch/package*.json ./themes/sietch/
+
+# -----------------------------------------------------------------------------
+# Install all dependencies
+# -----------------------------------------------------------------------------
+RUN npm ci --ignore-scripts
+
+# Rebuild native modules for Alpine
+WORKDIR /repo/themes/sietch
+RUN npm rebuild sharp || npm install sharp --build-from-source
+RUN npm rebuild bcrypt
+RUN npm rebuild better-sqlite3 || true
+
+# Return to repo root
+WORKDIR /repo
+
+# Metadata
+LABEL org.opencontainers.image.title="Arrakis Base"
+LABEL org.opencontainers.image.description="Pre-built dependencies for fast staging deploys"
+LABEL org.opencontainers.image.vendor="0xHoneyJar"

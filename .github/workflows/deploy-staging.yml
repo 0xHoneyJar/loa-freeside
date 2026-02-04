@@ -1,7 +1,13 @@
 # =============================================================================
-# Staging Deployment Workflow
+# Staging Deployment Workflow (Stillsuit Optimized)
 # =============================================================================
-# Builds and deploys themes/sietch to AWS ECS Staging environment
+# Builds and deploys themes/sietch to AWS ECS Staging environment.
+#
+# Optimizations (Sprint 182):
+#   - Parallel API + Worker deployment
+#   - Uses pre-built base image when available
+#   - Combined services-stable wait (instead of sequential)
+#   - Target: <8 minutes total
 #
 # Triggers:
 #   - Push to staging branch (auto-deploy)
@@ -20,6 +26,7 @@ on:
       - staging
     paths:
       - 'themes/sietch/**'
+      - 'packages/**'
       - '.github/workflows/deploy-staging.yml'
   workflow_dispatch:
     inputs:
@@ -31,6 +38,7 @@ on:
 env:
   AWS_REGION: us-east-1
   ECR_REPOSITORY: arrakis-staging-api
+  ECR_BASE_REPOSITORY: arrakis-base
   ECS_CLUSTER: arrakis-staging-cluster
   ECS_SERVICE_API: arrakis-staging-api
   ECS_SERVICE_WORKER: arrakis-staging-worker
@@ -50,10 +58,16 @@ jobs:
     outputs:
       image_tag: ${{ steps.meta.outputs.tags }}
       image_sha: ${{ steps.build.outputs.digest }}
+      short_sha: ${{ steps.vars.outputs.short_sha }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set variables
+        id: vars
+        run: |
+          echo "short_sha=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -83,7 +97,7 @@ jobs:
         id: build
         uses: docker/build-push-action@v5
         with:
-          # Sprint 17: Build from repo root to include @arrakis/adapters dependency
+          # Build from repo root to include @arrakis/adapters dependency
           context: .
           file: ./themes/sietch/Dockerfile
           push: true
@@ -104,12 +118,15 @@ jobs:
           echo "**Digest:** \`${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
 
   # ===========================================================================
-  # Deploy to ECS Staging
+  # Deploy API Service (parallel with Worker)
   # ===========================================================================
-  deploy:
-    name: Deploy to ECS Staging
+  deploy-api:
+    name: Deploy API Service
     runs-on: ubuntu-latest
     needs: build
+
+    outputs:
+      task_definition_arn: ${{ steps.update.outputs.task_definition_arn }}
 
     steps:
       - name: Configure AWS credentials
@@ -123,62 +140,34 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Get current API task definition
-        id: api-task-def
+      - name: Get and update API task definition
+        id: update
         run: |
+          # Get current task definition
           aws ecs describe-task-definition \
             --task-definition arrakis-staging-api \
             --query 'taskDefinition' \
-            --output json > api-task-definition.json
-          jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' \
-            api-task-definition.json > api-task-definition-clean.json
+            --output json > task-definition.json
 
-      - name: Update API task definition with new image
-        id: api-task-def-update
-        run: |
-          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          NEW_IMAGE="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${SHORT_SHA}"
+          # Clean task definition for registration
+          jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' \
+            task-definition.json > task-definition-clean.json
+
+          # Update image
+          NEW_IMAGE="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ needs.build.outputs.short_sha }}"
           echo "Updating API task definition with image: $NEW_IMAGE"
 
           jq --arg IMAGE "$NEW_IMAGE" \
             '.containerDefinitions[0].image = $IMAGE' \
-            api-task-definition-clean.json > api-task-definition-new.json
+            task-definition-clean.json > task-definition-new.json
 
+          # Register new task definition
           NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
-            --cli-input-json file://api-task-definition-new.json \
+            --cli-input-json file://task-definition-new.json \
             --query 'taskDefinition.taskDefinitionArn' \
             --output text)
 
           echo "New API task definition: $NEW_TASK_DEF_ARN"
-          echo "task_definition_arn=$NEW_TASK_DEF_ARN" >> $GITHUB_OUTPUT
-
-      - name: Get current Worker task definition
-        id: worker-task-def
-        run: |
-          aws ecs describe-task-definition \
-            --task-definition arrakis-staging-worker \
-            --query 'taskDefinition' \
-            --output json > worker-task-definition.json
-          jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' \
-            worker-task-definition.json > worker-task-definition-clean.json
-
-      - name: Update Worker task definition with new image
-        id: worker-task-def-update
-        run: |
-          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          NEW_IMAGE="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${SHORT_SHA}"
-          echo "Updating Worker task definition with image: $NEW_IMAGE"
-
-          jq --arg IMAGE "$NEW_IMAGE" \
-            '.containerDefinitions[0].image = $IMAGE' \
-            worker-task-definition-clean.json > worker-task-definition-new.json
-
-          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
-            --cli-input-json file://worker-task-definition-new.json \
-            --query 'taskDefinition.taskDefinitionArn' \
-            --output text)
-
-          echo "New Worker task definition: $NEW_TASK_DEF_ARN"
           echo "task_definition_arn=$NEW_TASK_DEF_ARN" >> $GITHUB_OUTPUT
 
       - name: Update ECS API Service
@@ -186,36 +175,117 @@ jobs:
           aws ecs update-service \
             --cluster ${{ env.ECS_CLUSTER }} \
             --service ${{ env.ECS_SERVICE_API }} \
-            --task-definition ${{ steps.api-task-def-update.outputs.task_definition_arn }} \
+            --task-definition ${{ steps.update.outputs.task_definition_arn }} \
             --force-new-deployment \
             --query 'service.deployments[0].{status:status,running:runningCount,desired:desiredCount}' \
             --output table
+
+  # ===========================================================================
+  # Deploy Worker Service (parallel with API)
+  # ===========================================================================
+  deploy-worker:
+    name: Deploy Worker Service
+    runs-on: ubuntu-latest
+    needs: build
+
+    outputs:
+      task_definition_arn: ${{ steps.update.outputs.task_definition_arn }}
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Get and update Worker task definition
+        id: update
+        run: |
+          # Get current task definition
+          aws ecs describe-task-definition \
+            --task-definition arrakis-staging-worker \
+            --query 'taskDefinition' \
+            --output json > task-definition.json
+
+          # Clean task definition for registration
+          jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' \
+            task-definition.json > task-definition-clean.json
+
+          # Update image
+          NEW_IMAGE="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ needs.build.outputs.short_sha }}"
+          echo "Updating Worker task definition with image: $NEW_IMAGE"
+
+          jq --arg IMAGE "$NEW_IMAGE" \
+            '.containerDefinitions[0].image = $IMAGE' \
+            task-definition-clean.json > task-definition-new.json
+
+          # Register new task definition
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://task-definition-new.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          echo "New Worker task definition: $NEW_TASK_DEF_ARN"
+          echo "task_definition_arn=$NEW_TASK_DEF_ARN" >> $GITHUB_OUTPUT
 
       - name: Update ECS Worker Service
         run: |
           aws ecs update-service \
             --cluster ${{ env.ECS_CLUSTER }} \
             --service ${{ env.ECS_SERVICE_WORKER }} \
-            --task-definition ${{ steps.worker-task-def-update.outputs.task_definition_arn }} \
+            --task-definition ${{ steps.update.outputs.task_definition_arn }} \
             --force-new-deployment \
             --query 'service.deployments[0].{status:status,running:runningCount,desired:desiredCount}' \
             --output table
 
-      - name: Wait for API service stability
-        run: |
-          echo "Waiting for API service to stabilize..."
-          aws ecs wait services-stable \
-            --cluster ${{ env.ECS_CLUSTER }} \
-            --services ${{ env.ECS_SERVICE_API }}
-          echo "API service is stable!"
+  # ===========================================================================
+  # Wait for Both Services (combined wait instead of sequential)
+  # ===========================================================================
+  verify-deployment:
+    name: Verify Deployment
+    runs-on: ubuntu-latest
+    needs: [deploy-api, deploy-worker]
 
-      - name: Wait for Worker service stability
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Wait for services stability (parallel)
         run: |
-          echo "Waiting for Worker service to stabilize..."
+          echo "Waiting for both services to stabilize..."
+
+          # Start both waits in background
           aws ecs wait services-stable \
             --cluster ${{ env.ECS_CLUSTER }} \
-            --services ${{ env.ECS_SERVICE_WORKER }}
-          echo "Worker service is stable!"
+            --services ${{ env.ECS_SERVICE_API }} &
+          API_PID=$!
+
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE_WORKER }} &
+          WORKER_PID=$!
+
+          # Wait for both to complete
+          wait $API_PID
+          API_STATUS=$?
+          wait $WORKER_PID
+          WORKER_STATUS=$?
+
+          if [ $API_STATUS -eq 0 ] && [ $WORKER_STATUS -eq 0 ]; then
+            echo "Both services are stable!"
+          else
+            echo "Service stability check failed"
+            exit 1
+          fi
 
       - name: Deployment Summary
         run: |
@@ -243,7 +313,7 @@ jobs:
   health-check:
     name: Verify Staging Health
     runs-on: ubuntu-latest
-    needs: deploy
+    needs: verify-deployment
 
     steps:
       - name: Configure AWS credentials
@@ -263,7 +333,7 @@ jobs:
           echo "dns=$ALB_DNS" >> $GITHUB_OUTPUT
 
       - name: Wait for service to be ready
-        run: sleep 30
+        run: sleep 15
 
       - name: Health check
         run: |

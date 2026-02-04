@@ -1,0 +1,134 @@
+# =============================================================================
+# Base Image Builder
+# =============================================================================
+# Builds and pushes arrakis-base:latest to ECR.
+# This image contains all npm dependencies (~500MB) and rarely changes.
+#
+# Triggers:
+#   - Weekly (Sunday 00:00 UTC) for security patches
+#   - On push to package-lock.json files
+#   - Manual workflow dispatch
+#
+# Required Secrets:
+#   - AWS_ACCESS_KEY_ID
+#   - AWS_SECRET_ACCESS_KEY
+# =============================================================================
+
+name: Build Base Image
+
+on:
+  schedule:
+    # Weekly rebuild on Sunday at midnight UTC
+    - cron: '0 0 * * 0'
+
+  push:
+    branches:
+      - main
+      - staging
+    paths:
+      - 'package-lock.json'
+      - 'packages/*/package-lock.json'
+      - 'themes/sietch/package-lock.json'
+      - 'Dockerfile.base'
+
+  workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: 'Force rebuild even if no changes'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: arrakis-base
+
+jobs:
+  build-base:
+    name: Build Base Image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Check if ECR repository exists
+        id: check-repo
+        run: |
+          if aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }} 2>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create ECR repository if not exists
+        if: steps.check-repo.outputs.exists == 'false'
+        run: |
+          aws ecr create-repository \
+            --repository-name ${{ env.ECR_REPOSITORY }} \
+            --image-scanning-configuration scanOnPush=true \
+            --encryption-configuration encryptionType=AES256
+
+          # Add lifecycle policy to retain only last 5 images
+          aws ecr put-lifecycle-policy \
+            --repository-name ${{ env.ECR_REPOSITORY }} \
+            --lifecycle-policy-text '{
+              "rules": [
+                {
+                  "rulePriority": 1,
+                  "description": "Keep only last 5 images",
+                  "selection": {
+                    "tagStatus": "any",
+                    "countType": "imageCountMoreThan",
+                    "countNumber": 5
+                  },
+                  "action": {
+                    "type": "expire"
+                  }
+                }
+              ]
+            }'
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=
+            type=raw,value={{date 'YYYYMMDD'}}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push base image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.base
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Output build summary
+        run: |
+          echo "### Base Image Built :whale:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Repository:** \`${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags:** \`${{ steps.meta.outputs.tags }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "This base image will be used by staging/production deploys." >> $GITHUB_STEP_SUMMARY
