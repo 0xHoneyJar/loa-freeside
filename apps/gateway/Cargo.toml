@@ -17,7 +17,7 @@ twilight-http = "0.15"
 tokio = { version = "1", features = ["full", "signal"] }
 
 # NATS messaging (Sprint S-4)
-async-nats = "0.33"
+async-nats = "0.46"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
