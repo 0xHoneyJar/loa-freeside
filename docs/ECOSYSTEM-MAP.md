@@ -1,317 +1,206 @@
 # Arrakis Ecosystem Map
 
-> Generated: 2026-02-04
-> Purpose: Document how all Arrakis repositories work together
+> Updated: 2026-02-04
+> Architecture: Monorepo + Independent Marketing Site
 
 ## Overview
 
-The Arrakis platform is being split into multiple repositories to enable parallel development. This document maps the relationships between all components.
+The Arrakis platform uses a **monorepo architecture** for all tightly-coupled components, with the marketing website extracted to its own repository for independent deployment.
 
 ---
 
-## Repository Status
+## Repository Structure
 
-| Repository | Status | Location in Monorepo | Purpose |
-|------------|--------|---------------------|---------|
-| [arrakis](https://github.com/0xHoneyJar/arrakis) | **Active** | Root | Core platform monorepo |
-| [arrakis-types](https://github.com/0xHoneyJar/arrakis-types) | **Empty** | `packages/core` | Shared TypeScript types |
-| [arrakis-dashboard](https://github.com/0xHoneyJar/arrakis-dashboard) | **Empty** | `themes/sietch/dashboard` | Admin dashboard |
-| [arrakis-builder](https://github.com/0xHoneyJar/arrakis-builder) | **Empty** | `themes/sietch/src/ui/builder` | WYSIWYG theme builder |
-| [arrakis-web](https://github.com/0xHoneyJar/arrakis-web) | **Empty** | `sites/web` | Marketing website |
+| Repository | Purpose | Status |
+|------------|---------|--------|
+| [arrakis](https://github.com/0xHoneyJar/arrakis) | Core platform (bot, dashboard, builder, backend) | **Active** |
+| [arrakis-web](https://github.com/0xHoneyJar/arrakis-web) | Marketing website (Next.js) | **Active** |
 
-**Note**: The extracted repos were created but never had code pushed to them. All code currently lives in the monorepo.
+### Archived Repositories
+
+The following repositories were created but never used and have been **archived**:
+
+| Repository | Original Intent | Why Archived |
+|------------|----------------|--------------|
+| `arrakis-types` | Shared TypeScript types | Types belong with the code that defines them |
+| `arrakis-dashboard` | Admin dashboard | Dashboard needs backend types; too tightly coupled |
+| `arrakis-builder` | Theme builder | Builder needs backend types; too tightly coupled |
 
 ---
 
 ## Architecture Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           ARRAKIS ECOSYSTEM                              │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐     │
-│  │  arrakis-web    │    │ arrakis-builder │    │arrakis-dashboard│     │
-│  │  (Marketing)    │    │ (Theme Editor)  │    │ (Admin Panel)   │     │
-│  │  Next.js        │    │ React + Vite    │    │ React + Vite    │     │
-│  │  sites/web      │    │ ui/builder      │    │ dashboard       │     │
-│  └────────┬────────┘    └────────┬────────┘    └────────┬────────┘     │
-│           │                      │                      │               │
-│           └──────────────────────┼──────────────────────┘               │
-│                                  │                                       │
-│                                  ▼                                       │
-│                    ┌─────────────────────────┐                          │
-│                    │     arrakis-types       │                          │
-│                    │   (Shared Types/DTOs)   │                          │
-│                    │     packages/core       │                          │
-│                    └─────────────┬───────────┘                          │
-│                                  │                                       │
-│                                  ▼                                       │
-│  ┌───────────────────────────────────────────────────────────────────┐  │
-│  │                        ARRAKIS (Monorepo)                          │  │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐                │  │
-│  │  │themes/sietch│  │apps/gateway │  │ apps/worker │                │  │
-│  │  │ (Discord Bot│  │ (API GW)    │  │ (Jobs)      │                │  │
-│  │  └─────────────┘  └─────────────┘  └─────────────┘                │  │
-│  │                                                                    │  │
-│  │  ┌─────────────────────────────────────────────────────────────┐  │  │
-│  │  │                    packages/adapters                         │  │  │
-│  │  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐    │  │  │
-│  │  │  │  chain   │  │ security │  │  themes  │  │ storage  │    │  │  │
-│  │  │  └──────────┘  └──────────┘  └──────────┘  └──────────┘    │  │  │
-│  │  └─────────────────────────────────────────────────────────────┘  │  │
-│  └───────────────────────────────────────────────────────────────────┘  │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                    ARRAKIS ECOSYSTEM                         │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌─────────────────┐                                        │
+│  │  arrakis-web    │  ← Independent (Vercel deployment)     │
+│  │  (Marketing)    │                                        │
+│  │  Next.js 14     │                                        │
+│  └─────────────────┘                                        │
+│                                                              │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │              ARRAKIS MONOREPO                        │   │
+│  │                                                      │   │
+│  │  ┌────────────────────────────────────────────────┐ │   │
+│  │  │              packages/                          │ │   │
+│  │  │  ┌──────────┐  ┌──────────────────────────┐   │ │   │
+│  │  │  │   core   │  │        adapters          │   │ │   │
+│  │  │  │ (types)  │  │ chain | security | themes│   │ │   │
+│  │  │  └──────────┘  └──────────────────────────┘   │ │   │
+│  │  └────────────────────────────────────────────────┘ │   │
+│  │                                                      │   │
+│  │  ┌────────────────────────────────────────────────┐ │   │
+│  │  │              themes/sietch/                     │ │   │
+│  │  │  ┌──────────┐  ┌───────────┐  ┌───────────┐  │ │   │
+│  │  │  │ Discord  │  │ Dashboard │  │  Builder  │  │ │   │
+│  │  │  │   Bot    │  │   (UI)    │  │   (UI)    │  │ │   │
+│  │  │  └──────────┘  └───────────┘  └───────────┘  │ │   │
+│  │  └────────────────────────────────────────────────┘ │   │
+│  │                                                      │   │
+│  │  ┌────────────────────────────────────────────────┐ │   │
+│  │  │              apps/                              │ │   │
+│  │  │  ┌──────────┐  ┌──────────┐  ┌──────────┐    │ │   │
+│  │  │  │ gateway  │  │  worker  │  │ ingestor │    │ │   │
+│  │  │  └──────────┘  └──────────┘  └──────────┘    │ │   │
+│  │  └────────────────────────────────────────────────┘ │   │
+│  │                                                      │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Component Details
+## Monorepo Structure (arrakis)
 
-### 1. arrakis (Monorepo) - Active
-
-**Purpose**: Core platform containing all backend services and the Discord bot.
-
-| Directory | Purpose | Extract Target |
-|-----------|---------|----------------|
-| `packages/core` | Domain models, ports, interfaces | `arrakis-types` |
-| `packages/adapters` | Chain providers, security, themes | Stays in monorepo |
-| `themes/sietch` | Discord bot application | Stays in monorepo |
-| `themes/sietch/dashboard` | Admin dashboard UI | `arrakis-dashboard` |
-| `themes/sietch/src/ui/builder` | Theme builder UI | `arrakis-builder` |
-| `apps/gateway` | API gateway | Stays in monorepo |
-| `apps/worker` | Background jobs | Stays in monorepo |
-| `sites/web` | Marketing website | `arrakis-web` |
-| `sites/docs` | Documentation site | Stays in monorepo |
-
-### 2. arrakis-types - To Be Extracted
-
-**Source**: `packages/core`
-**Package Name**: `@arrakis/core`
-
-**Contents**:
-- Domain models (`domain/*.ts`)
-- Port interfaces (`ports/*.ts`)
-- Type definitions
-
-**Dependents**:
-- arrakis-dashboard
-- arrakis-builder
-- arrakis (adapters, themes)
-
-### 3. arrakis-dashboard - To Be Extracted
-
-**Source**: `themes/sietch/dashboard`
-**Package Name**: `@stilgar/dashboard`
-**Tech Stack**: React 18, Vite, Radix UI, TanStack Query, Zustand
-
-**Features**:
-- Admin authentication (`api/auth.ts`, `hooks/useAuth.ts`)
-- Server selection (`pages/ServerSelect.tsx`)
-- Configuration management:
-  - Tier hierarchy (`components/config/TierHierarchy.tsx`)
-  - Threshold editor (`components/config/ThresholdEditor.tsx`)
-  - Feature gate matrix (`components/config/FeatureGateMatrix.tsx`)
-  - Role mapping (`components/config/RoleMappingTable.tsx`)
-- Sandbox testing (`pages/Sandbox.tsx`)
-  - Decision trace viewer (`components/sandbox/DecisionTrace.tsx`)
-  - Permission result viewer (`components/sandbox/PermissionResult.tsx`)
-  - State editor (`components/sandbox/StateEditor.tsx`)
-- Configuration history:
-  - Timeline view (`components/history/Timeline.tsx`)
-  - Diff viewer (`components/history/DiffViewer.tsx`)
-  - Restore modal (`components/history/RestoreModal.tsx`)
-
-**Dependencies**:
-- `arrakis-types` (for DTOs)
-- Arrakis API (backend)
-
-### 4. arrakis-builder - To Be Extracted
-
-**Source**: `themes/sietch/src/ui/builder`
-**Package Name**: `@sietch/theme-builder`
-**Tech Stack**: React 18, Vite, dnd-kit, TanStack Query, Zustand
-
-**Features**:
-- Drag-and-drop canvas (`components/canvas/Canvas.tsx`)
-- Component palette (`components/palette/ComponentPalette.tsx`)
-- Properties panel (`components/properties/PropertiesPanel.tsx`)
-- Branding editor (`components/branding/BrandingEditor.tsx`)
-  - Color picker
-  - Font selector
-- Preview panel (`components/preview/PreviewPanel.tsx`)
-- Toolbar (`components/toolbar/EditorToolbar.tsx`)
-  - Publish dialog
-  - Version history
-
-**State Management**:
-- `stores/themeStore.ts` - Theme configuration
-- `stores/editorStore.ts` - Editor state
-- `stores/componentStore.ts` - Component instances
-
-**Dependencies**:
-- `arrakis-types` (for theme schemas)
-- Arrakis API (for saving/loading themes)
-
-### 5. arrakis-web - To Be Extracted
-
-**Source**: `sites/web`
-**Package Name**: `arrakis-website`
-**Tech Stack**: Next.js 14, React 18, Tailwind CSS
-
-**Purpose**: Marketing website for Arrakis platform.
-
-**Dependencies**: None (standalone marketing site)
+| Directory | Purpose | Team |
+|-----------|---------|------|
+| `packages/core` | Domain models, ports, interfaces | Core |
+| `packages/adapters` | Chain providers, security, themes | Core |
+| `packages/cli` | Command-line interface | Core |
+| `themes/sietch` | Discord bot application | Core |
+| `themes/sietch/dashboard` | Admin dashboard UI | Frontend |
+| `themes/sietch/src/ui/builder` | Theme builder UI | Frontend |
+| `apps/gateway` | API gateway microservice | Core |
+| `apps/worker` | Background jobs | Core |
+| `infrastructure/terraform` | AWS IaC | Infra |
+| `docs/` | Documentation | Core |
 
 ---
 
-## Extraction Plan
+## Why Monorepo?
 
-### Phase 1: Extract Shared Types (`arrakis-types`)
+### Benefits for Arrakis
 
-```bash
-# 1. Initialize the repo
-git clone git@github.com:0xHoneyJar/arrakis-types.git
-cd arrakis-types
+1. **Atomic changes** - Backend API + Frontend can change in single PR
+2. **Shared types** - No npm publishing, no version drift
+3. **Single CI/CD** - One pipeline, consistent testing
+4. **Easier refactoring** - Move code between packages freely
+5. **AI-friendly** - Claude can see full context for cross-cutting changes
 
-# 2. Copy core package
-cp -r ../arrakis/packages/core/* .
+### When We Might Split
 
-# 3. Update package.json
-# - Change name to @arrakis/types
-# - Add npm publish config
-# - Remove internal dependencies
+Consider extracting when:
+- Dedicated team (3+) works exclusively on a component
+- API is stable and versioned (v1.0+)
+- Components deploy on different schedules
+- Access control requirements differ
 
-# 4. Publish to npm (or GitHub Packages)
-npm publish
-```
-
-### Phase 2: Extract Dashboard (`arrakis-dashboard`)
-
-```bash
-# 1. Copy dashboard
-cp -r ../arrakis/themes/sietch/dashboard/* .
-
-# 2. Add arrakis-types dependency
-npm install @arrakis/types
-
-# 3. Update imports to use @arrakis/types
-
-# 4. Configure API base URL via environment
-```
-
-### Phase 3: Extract Builder (`arrakis-builder`)
-
-```bash
-# 1. Copy builder
-cp -r ../arrakis/themes/sietch/src/ui/builder/* .
-
-# 2. Add arrakis-types dependency
-npm install @arrakis/types
-
-# 3. Update imports to use @arrakis/types
-```
-
-### Phase 4: Extract Marketing Site (`arrakis-web`)
-
-```bash
-# 1. Copy web site
-cp -r ../arrakis/sites/web/* .
-
-# 2. No type dependencies needed (standalone)
-```
+**Current state**: None of these conditions are met.
 
 ---
 
-## Integration Points
+## arrakis-web (Marketing Site)
 
-### API Contracts
+**Why extracted?**
+- No dependencies on backend types
+- Can be maintained by non-engineers
+- Deploys independently via Vercel
+- Different tech stack (pure Next.js, no backend)
 
-The extracted frontends will communicate with the Arrakis backend via REST API:
+**Repository**: https://github.com/0xHoneyJar/arrakis-web
 
-| Endpoint Group | Consumer | Description |
-|----------------|----------|-------------|
-| `/api/auth/*` | Dashboard | OAuth flow, session management |
-| `/api/config/*` | Dashboard | Tier/threshold configuration |
-| `/api/sandbox/*` | Dashboard | Permission testing |
-| `/api/themes/*` | Builder | Theme CRUD operations |
-| `/api/components/*` | Builder | Component library |
+**Tech Stack**:
+- Next.js 14
+- React 18
+- Tailwind CSS
+- TypeScript
 
-### Shared Types
+**Pages**:
+- Homepage
+- Features
+- Pricing
+- Use cases (NFT Projects, DeFi, DAOs)
+- Competitor comparisons
+- Legal (Terms, Privacy, Refund)
 
-After extraction, types should be consumed like:
+---
 
-```typescript
-// In arrakis-dashboard
-import { TierConfig, ThresholdRule } from '@arrakis/types';
+## CODEOWNERS
 
-// In arrakis-builder
-import { ThemeSchema, ComponentDefinition } from '@arrakis/types';
-```
+The monorepo uses [CODEOWNERS](../.github/CODEOWNERS) for notification routing:
 
-### Environment Configuration
-
-Each extracted repo needs:
-
-```bash
-# arrakis-dashboard/.env
-VITE_API_URL=https://api.arrakis.example.com
-VITE_DISCORD_CLIENT_ID=...
-
-# arrakis-builder/.env
-VITE_API_URL=https://api.arrakis.example.com
-
-# arrakis-web/.env
-NEXT_PUBLIC_APP_URL=https://app.arrakis.example.com
-```
+| Path | Team |
+|------|------|
+| `*` (default) | @0xHoneyJar/core |
+| `infrastructure/` | @0xHoneyJar/infra |
+| `themes/sietch/dashboard/` | @0xHoneyJar/frontend |
+| `themes/sietch/src/ui/builder/` | @0xHoneyJar/frontend |
 
 ---
 
 ## Development Workflow
 
-### Before Extraction (Current)
+### For Backend/Bot Changes
 
-```
-arrakis/
-├── packages/core/          # Types
-├── themes/sietch/
-│   ├── dashboard/          # Admin UI
-│   └── src/ui/builder/     # Theme builder
-└── sites/web/              # Marketing
-```
+```bash
+# Clone monorepo
+git clone git@github.com:0xHoneyJar/arrakis.git
+cd arrakis
 
-All in one repo, changes require coordinating in single PR.
-
-### After Extraction (Target)
-
-```
-arrakis/                    # Backend + bot (main devs)
-arrakis-types/              # Shared types (semver, npm)
-arrakis-dashboard/          # Admin UI (frontend team)
-arrakis-builder/            # Theme builder (design team)
-arrakis-web/                # Marketing (marketing team)
+# Start local dev
+make dev
 ```
 
-Teams can work independently, coordinate via:
-1. Type updates → bump `@arrakis/types` version
-2. API changes → versioned API or feature flags
-3. Deployment → independent CI/CD pipelines
+### For Dashboard/Builder Changes
+
+```bash
+# Same monorepo
+cd arrakis/themes/sietch/dashboard
+npm run dev
+```
+
+### For Marketing Site Changes
+
+```bash
+# Separate repo
+git clone git@github.com:0xHoneyJar/arrakis-web.git
+cd arrakis-web
+npm install
+npm run dev
+```
 
 ---
 
-## Next Steps
+## AI Context Tips
 
-1. **Decide extraction priority** - Which repo to extract first?
-2. **Set up npm publishing** - For `@arrakis/types` package
-3. **Create CI/CD templates** - For extracted repos
-4. **Document API contracts** - OpenAPI spec for frontend/backend coordination
-5. **Plan migration** - Gradual cutover vs big bang
+When working with Claude/GPT on the monorepo, scope your prompts:
+
+```
+"Focus only on themes/sietch/dashboard/ for this task"
+"Only modify files in packages/adapters/chain/"
+"This change should only affect the Discord bot in themes/sietch/"
+```
+
+This gives AI the benefit of seeing the full codebase while focusing on relevant files.
 
 ---
 
 ## Related Documentation
 
-- [CODEBASE-ANALYSIS.md](CODEBASE-ANALYSIS.md) - Full codebase reference
+- [CODEBASE-ANALYSIS.md](CODEBASE-ANALYSIS.md) - Full technical reference
 - [STILLSUIT.md](STILLSUIT.md) - Development workflow
-- [grimoires/loa/prd.md](../grimoires/loa/prd.md) - Product requirements
+- [CODEOWNERS](../.github/CODEOWNERS) - Team ownership

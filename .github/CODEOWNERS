@@ -1,0 +1,30 @@
+# Arrakis CODEOWNERS
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owners for everything
+* @0xHoneyJar/core
+
+# Infrastructure
+infrastructure/ @0xHoneyJar/infra
+.github/workflows/ @0xHoneyJar/infra
+
+# Core packages
+packages/core/ @0xHoneyJar/core
+packages/adapters/chain/ @0xHoneyJar/core
+packages/adapters/security/ @0xHoneyJar/core
+
+# Bot theme
+themes/sietch/ @0xHoneyJar/core
+
+# Dashboard UI
+themes/sietch/dashboard/ @0xHoneyJar/frontend
+
+# Theme builder UI
+themes/sietch/src/ui/builder/ @0xHoneyJar/frontend
+
+# Documentation
+docs/ @0xHoneyJar/core
+grimoires/ @0xHoneyJar/core
+
+# Loa framework files (managed by framework)
+.claude/loa/ @0xHoneyJar/core
