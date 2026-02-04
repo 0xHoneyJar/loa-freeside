@@ -1,0 +1,98 @@
+# =============================================================================
+# Stillsuit Development Dockerfile
+# =============================================================================
+# IMPORTANT: Uses /repo structure to match production Dockerfile.
+# This ensures file:../../packages/adapters dependency resolution works.
+#
+# Build: docker build -f Dockerfile.dev -t arrakis-dev .
+# =============================================================================
+
+FROM node:20-alpine
+
+# Install development dependencies
+# - entr: File watching for hot-reload (proven in loa-beauvoir)
+# - python3/make/g++: Native module compilation
+# - vips-dev: Sharp image processing
+# - postgresql-client: Database connectivity tools
+# - redis: Redis CLI for debugging
+# - curl/git: General utilities
+RUN apk add --no-cache \
+    entr \
+    curl \
+    git \
+    python3 \
+    make \
+    g++ \
+    vips-dev \
+    pkgconfig \
+    postgresql-client \
+    redis
+
+# Use /repo to match production structure
+# This is critical for file:../../packages/adapters resolution
+WORKDIR /repo
+
+# -----------------------------------------------------------------------------
+# Install all dependencies (cached layer)
+# -----------------------------------------------------------------------------
+COPY package*.json ./
+COPY packages/core/package*.json ./packages/core/
+COPY packages/adapters/package*.json ./packages/adapters/
+COPY themes/sietch/package*.json ./themes/sietch/
+
+# Install all workspace dependencies
+RUN npm ci --ignore-scripts
+
+# Rebuild native modules
+WORKDIR /repo/themes/sietch
+RUN npm rebuild sharp || npm install sharp --build-from-source
+RUN npm rebuild bcrypt
+RUN npm rebuild better-sqlite3 || true
+
+# -----------------------------------------------------------------------------
+# Build workspace packages (these are NOT hot-reloaded)
+# Per ADR-006: Hot-reload limited to sietch/src only
+# -----------------------------------------------------------------------------
+WORKDIR /repo/packages/core
+COPY packages/core/tsconfig.json ./
+COPY packages/core/ports ./ports
+COPY packages/core/domain ./domain
+RUN npm run build
+
+WORKDIR /repo/packages/adapters
+COPY packages/adapters/tsconfig.json ./
+COPY packages/adapters/chain ./chain
+COPY packages/adapters/storage ./storage
+COPY packages/adapters/themes ./themes
+COPY packages/adapters/wizard ./wizard
+COPY packages/adapters/synthesis ./synthesis
+COPY packages/adapters/security ./security
+COPY packages/adapters/coexistence ./coexistence
+RUN npm run build
+
+# -----------------------------------------------------------------------------
+# Setup sietch (source is volume mounted for hot-reload)
+# -----------------------------------------------------------------------------
+WORKDIR /repo/themes/sietch
+
+# Copy config files (read-only in compose)
+COPY themes/sietch/tsconfig.json ./
+COPY themes/sietch/tsconfig.production.json ./
+COPY themes/sietch/drizzle.config.ts ./
+
+# Copy startup script
+COPY scripts/start-dev.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/start-dev.sh
+
+# Environment
+ENV NODE_ENV=development \
+    PORT=3000 \
+    LOG_LEVEL=debug
+
+EXPOSE 3000
+
+# Health check with faster intervals for development
+HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:3000/health || exit 1
+
+CMD ["/usr/local/bin/start-dev.sh"]

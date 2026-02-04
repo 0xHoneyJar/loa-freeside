@@ -1,0 +1,110 @@
+# =============================================================================
+# Stillsuit Development Stack
+# =============================================================================
+# Full local development environment with hot-reload for sietch application.
+#
+# Usage:
+#   docker compose -f docker-compose.dev.yml up        # Start all services
+#   docker compose -f docker-compose.dev.yml up -d     # Start in background
+#   docker compose -f docker-compose.dev.yml down      # Stop services
+#   docker compose -f docker-compose.dev.yml down -v   # Stop and remove volumes
+#
+# NOTE: Uses ports 3000, 5432, 6379. Stop existing docker-compose.yml first.
+# =============================================================================
+
+services:
+  sietch-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: arrakis-sietch-dev
+    ports:
+      - "3000:3000"
+    environment:
+      # Database - auto-configured for docker network
+      DATABASE_URL: postgresql://arrakis:arrakis@postgres:5432/arrakis
+      # Redis - auto-configured for docker network
+      REDIS_URL: redis://redis:6379
+      # Application settings
+      NODE_ENV: development
+      LOG_LEVEL: debug
+      PORT: 3000
+      # Discord - user must provide via .env.development
+      DISCORD_TOKEN: ${DISCORD_TOKEN:-}
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
+      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
+      # Chain provider
+      CHAIN_PROVIDER: ${CHAIN_PROVIDER:-rpc}
+      DUNE_SIM_API_KEY: ${DUNE_SIM_API_KEY:-}
+    volumes:
+      # =======================================================================
+      # HOT-RELOADED: sietch source only (per ADR-006)
+      # =======================================================================
+      # :cached flag improves macOS performance via VirtioFS
+      - ./themes/sietch/src:/repo/themes/sietch/src:cached
+      - ./themes/sietch/drizzle:/repo/themes/sietch/drizzle:cached
+      # =======================================================================
+      # READ-ONLY: Config files (shouldn't change during dev)
+      # =======================================================================
+      - ./themes/sietch/tsconfig.json:/repo/themes/sietch/tsconfig.json:ro
+      # =======================================================================
+      # NOT MOUNTED: These are pre-built in the image
+      # - node_modules (avoids platform-specific issues)
+      # - packages/* (workspace packages require rebuild: make dev-build)
+      # =======================================================================
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - arrakis-dev
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: "2"
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: arrakis-postgres-dev
+    environment:
+      POSTGRES_USER: arrakis
+      POSTGRES_PASSWORD: arrakis
+      POSTGRES_DB: arrakis
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./themes/sietch/drizzle/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arrakis -d arrakis"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - arrakis-dev
+
+  redis:
+    image: redis:7-alpine
+    container_name: arrakis-redis-dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_dev_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - arrakis-dev
+
+volumes:
+  postgres_dev_data:
+  redis_dev_data:
+
+networks:
+  arrakis-dev:
+    driver: bridge
