@@ -22,7 +22,7 @@ In William Gibson's Sprawl trilogy, Loa are AI entities that "ride" humans throu
 ## Quick Start (~2 minutes)
 
 ```bash
-# Install (one command, any repo)
+# Install (one command, any existing repo)
 curl -fsSL https://raw.githubusercontent.com/0xHoneyJar/loa/main/.claude/scripts/mount-loa.sh | bash
 
 # Start Claude Code
