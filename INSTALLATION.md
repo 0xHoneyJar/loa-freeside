@@ -7,8 +7,8 @@ Loa can be installed in two ways: **mounting onto an existing repository** (reco
 ## Contents
 
 - [Prerequisites](#prerequisites)
-- [Method 1: Mount onto Existing Repository](#method-1-mount-onto-existing-repository-recommended)
-- [Method 2: Clone Template](#method-2-clone-template)
+- [Method 1: Mount onto Existing Repository](#method-1-mount-onto-existing-repository-recommended) (you want to adopt loa in an existing project)
+- [Method 2: Clone Template](#method-2-clone-template) (start a new project from scratch using loa)
 - [Ownership Model](#ownership-model-v1150)
 - [Configuration](#configuration)
 - [Updates](#updates)
