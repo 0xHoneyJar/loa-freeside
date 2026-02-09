@@ -1,33 +1,29 @@
 {
-  "plan_id": "plan-20260209-spicegate",
+  "plan_id": "plan-20260209-hardening",
   "branch": "feature/spice-gate-phase4",
-  "state": "JACKED_OUT",
+  "state": "RUNNING",
   "timestamps": {
-    "started": "2026-02-09T05:50:00Z",
-    "last_activity": "2026-02-09T10:00:00Z"
+    "started": "2026-02-09T12:00:00Z",
+    "last_activity": "2026-02-09T12:00:00Z"
   },
   "sprints": {
-    "total": 6,
-    "completed": 6,
-    "current": null,
+    "total": 2,
+    "completed": 0,
+    "current": "sprint-6",
     "list": [
-      {"id": "sprint-0", "global_id": 178, "status": "completed", "cycles": 1, "files_changed": 1},
-      {"id": "sprint-1", "global_id": 179, "status": "completed", "cycles": 1, "files_changed": 12},
-      {"id": "sprint-2", "global_id": 180, "status": "completed", "cycles": 1, "files_changed": 6},
-      {"id": "sprint-3", "global_id": 181, "status": "completed", "cycles": 1, "files_changed": 10},
-      {"id": "sprint-4", "global_id": 182, "status": "completed", "cycles": 1, "files_changed": 10},
-      {"id": "sprint-5", "global_id": 183, "status": "completed", "cycles": 1, "files_changed": 15}
+      {"id": "sprint-6", "global_id": 184, "status": "in_progress", "cycles": 0, "files_changed": 0},
+      {"id": "sprint-7", "global_id": 185, "status": "pending", "cycles": 0, "files_changed": 0}
     ]
   },
   "options": {
-    "from": 0,
-    "to": 5,
+    "from": 6,
+    "to": 7,
     "max_cycles": 20,
     "timeout_hours": 8
   },
   "metrics": {
-    "total_cycles": 6,
-    "total_files_changed": 54,
-    "total_findings_fixed": 38
+    "total_cycles": 0,
+    "total_files_changed": 0,
+    "total_findings_fixed": 0
   }
 }
