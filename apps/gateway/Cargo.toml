@@ -31,7 +31,7 @@ dotenvy = "0.15"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 metrics = "0.21"
-metrics-exporter-prometheus = "0.12"
+metrics-exporter-prometheus = "0.18"
 
 # HTTP server for health endpoints (Sprint S-4)
 axum = "0.8"
