@@ -6,11 +6,16 @@
  * Returns 429 with Retry-After header before any JWT/auth processing.
  * In-memory only — no Redis dependency for this layer.
  *
+ * Hardening (Sprint S0-T1): Validated IP extraction with loopback isolation.
+ * Behind ALB, Express must have `trust proxy` set so req.ip reflects the
+ * rightmost client IP from X-Forwarded-For (1 trusted hop).
+ *
  * @see SDD §4.5 Pre-Auth IP Rate Limiter
  */
 
 import type { Request, Response, NextFunction } from 'express';
 import type { Logger } from 'pino';
+import { isIP } from 'node:net';
 
 // --------------------------------------------------------------------------
 // Types
@@ -42,6 +47,52 @@ const DEFAULT_CONFIG: IpRateLimitConfig = {
   burstCapacity: 20,
   maxEntries: 10_000,
 };
+
+// --------------------------------------------------------------------------
+// IP Extraction — Hardening (Sprint S0-T1)
+// --------------------------------------------------------------------------
+
+/** Well-known loopback CIDRs (IPv4 + IPv6) */
+const LOOPBACK_PATTERNS = /^(127\.\d{1,3}\.\d{1,3}\.\d{1,3}|::1|::ffff:127\.\d{1,3}\.\d{1,3}\.\d{1,3})$/;
+
+/** Dedicated bucket keys for non-client traffic */
+const BUCKET_LOOPBACK = '__loopback__';
+const BUCKET_UNIDENTIFIED = '__unidentified__';
+
+/**
+ * Extract and validate client IP from an Express request.
+ *
+ * Requires `app.set('trust proxy', 1)` so req.ip reflects the rightmost
+ * untrusted hop from X-Forwarded-For (the real client IP behind ALB).
+ *
+ * Returns:
+ *  - A validated IP string for normal traffic
+ *  - `__loopback__` for health-check/localhost traffic (prevents shared bucket)
+ *  - `__unidentified__` if no valid IP can be determined (rate-limited separately)
+ */
+export function extractIp(req: Request): string {
+  // req.ip is set by Express when trust proxy is configured
+  const raw = req.ip || req.socket.remoteAddress;
+
+  if (!raw) {
+    return BUCKET_UNIDENTIFIED;
+  }
+
+  // Normalize IPv4-mapped IPv6 (::ffff:1.2.3.4 → 1.2.3.4)
+  const normalized = raw.startsWith('::ffff:') ? raw.slice(7) : raw;
+
+  // Validate IP format to reject garbage/spoofed non-IP strings
+  if (isIP(normalized) === 0) {
+    return BUCKET_UNIDENTIFIED;
+  }
+
+  // Isolate loopback traffic (health checks, internal probes)
+  if (LOOPBACK_PATTERNS.test(raw)) {
+    return BUCKET_LOOPBACK;
+  }
+
+  return normalized;
+}
 
 // --------------------------------------------------------------------------
 // IP Rate Limiter
@@ -116,7 +167,7 @@ export class IpRateLimiter {
    */
   middleware(): (req: Request, res: Response, next: NextFunction) => void {
     return (req: Request, res: Response, next: NextFunction) => {
-      const ip = req.ip || req.socket.remoteAddress || 'unknown';
+      const ip = extractIp(req);
       const result = this.check(ip);
 
       if (!result.allowed) {
