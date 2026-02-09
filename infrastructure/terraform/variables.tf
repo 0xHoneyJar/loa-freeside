@@ -198,6 +198,22 @@ variable "gateway_desired_count" {
   default     = 1
 }
 
+# =============================================================================
+# Hounfour Phase 4: Agent Gateway
+# =============================================================================
+
+variable "agent_enabled" {
+  description = "Enable agent gateway (AGENT_ENABLED env var)"
+  type        = string
+  default     = "false"
+}
+
+variable "loa_finn_base_url" {
+  description = "loa-finn service base URL"
+  type        = string
+  default     = "http://loa-finn:3000"
+}
+
 # Observability
 variable "log_retention_days" {
   description = "CloudWatch log retention in days"

@@ -101,3 +101,18 @@ export {
 
 // Gateway Factory
 export { createAgentGateway, type CreateAgentGatewayOptions } from './factory.js';
+
+// Observability
+export {
+  createAgentLogger,
+  hashWallet,
+  logAgentRequest,
+  LogMetricEmitter,
+  NoopMetricEmitter,
+  AGENT_METRICS,
+  AGENT_REDACTION_PATHS,
+  type MetricEmitter,
+  type MetricUnit,
+  type MetricDimensions,
+  type AgentRequestLog,
+} from './observability.js';

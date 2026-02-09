@@ -129,7 +129,8 @@ resource "aws_iam_role_policy" "ecs_execution_api_secrets" {
           data.aws_secretsmanager_secret.vault_token.arn,
           data.aws_secretsmanager_secret.app_config.arn,
           aws_secretsmanager_secret.db_credentials.arn,
-          aws_secretsmanager_secret.redis_credentials.arn
+          aws_secretsmanager_secret.redis_credentials.arn,
+          aws_secretsmanager_secret.agent_jwt_signing_key.arn  # Hounfour Phase 4
         ]
       }
     ]
@@ -469,7 +470,10 @@ resource "aws_ecs_task_definition" "api" {
         { name = "FEATURE_REDIS_ENABLED", value = "true" },
         { name = "FEATURE_TELEGRAM_ENABLED", value = "false" },
         # Sprint 172: In-house wallet verification base URL (derived from domain)
-        { name = "VERIFY_BASE_URL", value = "https://${var.domain_name}" }
+        { name = "VERIFY_BASE_URL", value = "https://${var.domain_name}" },
+        # Hounfour Phase 4: Agent gateway
+        { name = "AGENT_ENABLED", value = var.agent_enabled },
+        { name = "LOA_FINN_BASE_URL", value = var.loa_finn_base_url }
       ]
 
       secrets = [
@@ -496,7 +500,10 @@ resource "aws_ecs_task_definition" "api" {
         { name = "DUNE_SIM_API_KEY", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:DUNE_SIM_API_KEY::" },
         { name = "CHAIN_PROVIDER", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:CHAIN_PROVIDER::" },
         { name = "CHAIN_PROVIDER_FALLBACK_ENABLED", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:CHAIN_PROVIDER_FALLBACK_ENABLED::" },
-        { name = "CORS_ALLOWED_ORIGINS", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:CORS_ALLOWED_ORIGINS::" }
+        { name = "CORS_ALLOWED_ORIGINS", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:CORS_ALLOWED_ORIGINS::" },
+        # Hounfour Phase 4: Agent gateway configuration
+        { name = "AGENT_JWT_SIGNING_KEY", valueFrom = aws_secretsmanager_secret.agent_jwt_signing_key.arn },
+        { name = "AGENT_JWT_KEY_ID", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:AGENT_JWT_KEY_ID::" }
       ]
 
       logConfiguration = {
@@ -515,10 +522,28 @@ resource "aws_ecs_task_definition" "api" {
         retries     = 3
         startPeriod = 60
       }
+
+      # Hounfour Phase 4 (IMP-003): Allow SSE stream drain before SIGKILL
+      stopTimeout = 120
     }
   ])
 
   tags = local.common_tags
+}
+
+# =============================================================================
+# Hounfour Phase 4: Agent Gateway Secrets
+# =============================================================================
+
+# JWT signing key for agent gateway (RS256 private key in PEM format)
+resource "aws_secretsmanager_secret" "agent_jwt_signing_key" {
+  name        = "${local.name_prefix}/agent-jwt-signing-key"
+  description = "RS256 private key for signing agent gateway JWTs"
+  kms_key_id  = aws_kms_key.secrets.arn
+
+  tags = merge(local.common_tags, {
+    Sprint = "Hounfour-Phase4"
+  })
 }
 
 # Worker Task Definition

@@ -85,6 +85,73 @@ resource "aws_cloudwatch_metric_alarm" "alb_5xx_errors" {
   tags = local.common_tags
 }
 
+# =============================================================================
+# Hounfour Phase 4: Agent Gateway Alarms
+# =============================================================================
+
+resource "aws_cloudwatch_metric_alarm" "agent_redis_cpu_high" {
+  alarm_name          = "${local.name_prefix}-agent-redis-cpu-high"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "EngineCPUUtilization"
+  namespace           = "AWS/ElastiCache"
+  period              = 300
+  statistic           = "Average"
+  threshold           = 70
+  alarm_description   = "Agent Redis CPU > 70% — budget enforcement at risk"
+
+  dimensions = {
+    CacheClusterId = aws_elasticache_cluster.redis.id
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+
+  tags = local.common_tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "agent_redis_connections_high" {
+  alarm_name          = "${local.name_prefix}-agent-redis-connections-high"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "CurrConnections"
+  namespace           = "AWS/ElastiCache"
+  period              = 300
+  statistic           = "Average"
+  threshold           = 500
+  alarm_description   = "Agent Redis connections > 500 — connection pool exhaustion risk"
+
+  dimensions = {
+    CacheClusterId = aws_elasticache_cluster.redis.id
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+
+  tags = local.common_tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "agent_redis_evictions" {
+  alarm_name          = "${local.name_prefix}-agent-redis-evictions"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "Evictions"
+  namespace           = "AWS/ElastiCache"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 0
+  alarm_description   = "Agent Redis evictions detected — budget keys may be lost"
+
+  dimensions = {
+    CacheClusterId = aws_elasticache_cluster.redis.id
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+
+  tags = local.common_tags
+}
+
 # SNS Topic for alerts
 resource "aws_sns_topic" "alerts" {
   name = "${local.name_prefix}-alerts"
