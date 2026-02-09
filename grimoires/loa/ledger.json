@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "next_sprint_number": 178,
-  "active_cycle": "cycle-007",
+  "next_sprint_number": 184,
+  "active_cycle": "cycle-010",
   "cycles": [
     {
       "id": "cycle-001",
@@ -137,6 +137,22 @@
       "sdd": "grimoires/loa/sdd-docs-sprint.md",
       "sprints": [
         {"global_id": 177, "local_label": "sprint-1", "status": "pending"}
+      ]
+    },
+    {
+      "id": "cycle-010",
+      "label": "Spice Gate - Hounfour Phase 4 Distribution Layer",
+      "status": "active",
+      "created": "2026-02-09T04:40:00Z",
+      "prd": "grimoires/loa/prd-hounfour-phase4.md",
+      "sdd": "grimoires/loa/sdd-hounfour-phase4.md",
+      "sprints": [
+        {"global_id": 178, "local_label": "sprint-0", "status": "pending"},
+        {"global_id": 179, "local_label": "sprint-1", "status": "pending"},
+        {"global_id": 180, "local_label": "sprint-2", "status": "pending"},
+        {"global_id": 181, "local_label": "sprint-3", "status": "pending"},
+        {"global_id": 182, "local_label": "sprint-4", "status": "pending"},
+        {"global_id": 183, "local_label": "sprint-5", "status": "pending"}
       ]
     }
   ]
