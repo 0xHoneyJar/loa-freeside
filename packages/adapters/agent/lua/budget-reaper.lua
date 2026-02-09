@@ -1,8 +1,12 @@
 -- Budget Reaper Script
--- Sprint S3-T3: Clean expired reservations and reclaim reserved budget
+-- Sprint S3-T3 + S8-T3: Clean expired reservations and reclaim reserved budget
 --
--- Iterates expired members in the expiry ZSET, reads estimated_cost
--- from reservation hashes, deletes them, and decrements reserved counter.
+-- Iterates expired members in the expiry ZSET, claims each reservation via DEL,
+-- and only decrements reserved for reservations we successfully claim.
+--
+-- Race condition fix (S8-T3): Uses DEL return value as atomic claim signal.
+-- If finalize already DEL'd the reservation key, DEL here returns 0 and we
+-- skip the DECRBY for that entry. This guarantees exactly-once decrement.
 --
 -- @see SDD §8.4 Budget Reaper Script
 
@@ -38,17 +42,19 @@ for i = 1, #expired do
   -- Reconstruct reservation key from prefix + member
   local reservationKey = reservationKeyPrefix .. member
 
-  -- Read estimated_cost from reservation hash (may already be deleted by finalize)
+  -- Claim: read estimated_cost, then DEL to claim the reservation.
+  -- DEL returns 1 if we deleted (we won the claim), 0 if finalize already claimed it.
   local estimatedCostRaw = redis.call('HGET', reservationKey, 'estimated_cost')
-  if estimatedCostRaw then
+  local claimed = redis.call('DEL', reservationKey)
+
+  if claimed == 1 then
+    -- We won the claim: include in totalReclaimed for DECRBY
     local estimatedCost = tonumber(estimatedCostRaw) or 0
     if estimatedCost < 0 then estimatedCost = 0 end
     estimatedCost = math.floor(estimatedCost)
     totalReclaimed = totalReclaimed + estimatedCost
   end
-
-  -- Always delete the reservation hash (DEL is safe on missing keys)
-  redis.call('DEL', reservationKey)
+  -- If claimed == 0: finalize already handled this reservation, skip DECRBY
 
   reapedCount = reapedCount + 1
 end
@@ -56,12 +62,13 @@ end
 -- Remove all expired members from the ZSET
 redis.call('ZREMRANGEBYSCORE', KEYS[2], 0, nowMs)
 
--- Decrement reserved counter by total reclaimed; clamp to 0 (ACCOUNTING_DRIFT detection — S1-T2)
+-- Decrement reserved counter by total reclaimed (only for reservations we claimed)
 if totalReclaimed > 0 then
   redis.call('DECRBY', KEYS[1], totalReclaimed)
+  -- Safety clamp: should never go negative with claim-via-DEL,
+  -- but clamp as defense-in-depth
   local reserved = tonumber(redis.call('GET', KEYS[1]) or '0') or 0
   if reserved < 0 then
-    -- Drift detected: reserved went negative after reap, indicating finalize/reaper overlap
     redis.log(redis.LOG_WARNING, 'ACCOUNTING_DRIFT reaper drift_cents=' .. tostring(math.abs(reserved)) .. ' operation=reap')
     redis.call('SET', KEYS[1], '0')
   end

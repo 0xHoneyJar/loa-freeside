@@ -17,7 +17,7 @@
 
 import type { Request, Response, NextFunction } from 'express';
 import type { Logger } from 'pino';
-import { isIP } from 'node:net';
+import { isIP, isIPv4 } from 'node:net';
 
 // --------------------------------------------------------------------------
 // Types
@@ -54,12 +54,52 @@ const DEFAULT_CONFIG: IpRateLimitConfig = {
 // IP Extraction — Hardening (Sprint S0-T1)
 // --------------------------------------------------------------------------
 
-/** Well-known loopback CIDRs (IPv4 + IPv6) */
-const LOOPBACK_PATTERNS = /^(127\.\d{1,3}\.\d{1,3}\.\d{1,3}|::1|::ffff:127\.\d{1,3}\.\d{1,3}\.\d{1,3})$/;
+/** IPv4 loopback: 127.0.0.0/8 */
+const LOOPBACK_V4 = /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
+
+/** IPv4-mapped IPv6 prefix (case-insensitive via lowercase normalization) */
+const IPV4_MAPPED_PREFIX = '::ffff:';
 
 /** Dedicated bucket keys for non-client traffic */
 const BUCKET_LOOPBACK = '__loopback__';
 const BUCKET_UNIDENTIFIED = '__unidentified__';
+
+/**
+ * Normalize an IPv6 address to a canonical lowercase form.
+ * Handles: uppercase hex, leading zeros, IPv4-mapped addresses.
+ *
+ * For IPv4-mapped IPv6 (::ffff:x.x.x.x), extracts the IPv4 address.
+ * For pure IPv6, lowercases and collapses leading zeros per segment
+ * to produce a consistent bucket key.
+ *
+ * Note: This does not implement full RFC 5952 zero-compression (::),
+ * but since we only need consistent bucket keys (not display), lowercasing
+ * + leading-zero removal per segment is sufficient for deduplication.
+ */
+function normalizeIp(raw: string): string {
+  // Lowercase first — handles ::FFFF:, 2001:0DB8::, etc.
+  const lower = raw.toLowerCase();
+
+  // Handle IPv4-mapped IPv6: ::ffff:1.2.3.4 → 1.2.3.4
+  if (lower.startsWith(IPV4_MAPPED_PREFIX)) {
+    const v4Part = lower.slice(IPV4_MAPPED_PREFIX.length);
+    // Validate extracted part is actually IPv4
+    if (isIPv4(v4Part)) return v4Part;
+  }
+
+  // Pure IPv4 — already lowercase (digits), return as-is
+  if (isIPv4(lower)) return lower;
+
+  // Pure IPv6 — normalize each segment to remove leading zeros
+  // Split on ':', handle :: expansion
+  const parts = lower.split(':');
+  const normalized = parts.map((seg) => {
+    if (seg === '') return seg; // empty segments from :: expansion
+    // Remove leading zeros: '0db8' → 'db8', '0000' → '0'
+    return seg.replace(/^0+(?=.)/, '');
+  });
+  return normalized.join(':');
+}
 
 /**
  * Extract and validate client IP from an Express request.
@@ -68,7 +108,7 @@ const BUCKET_UNIDENTIFIED = '__unidentified__';
  * untrusted hop from X-Forwarded-For (the real client IP behind ALB).
  *
  * Returns:
- *  - A validated IP string for normal traffic
+ *  - A validated, normalized IP string for normal traffic
  *  - `__loopback__` for health-check/localhost traffic (prevents shared bucket)
  *  - `__unidentified__` if no valid IP can be determined (rate-limited separately)
  */
@@ -80,16 +120,16 @@ export function extractIp(req: Request): string {
     return BUCKET_UNIDENTIFIED;
   }
 
-  // Normalize IPv4-mapped IPv6 (::ffff:1.2.3.4 → 1.2.3.4)
-  const normalized = raw.startsWith('::ffff:') ? raw.slice(7) : raw;
-
-  // Validate IP format to reject garbage/spoofed non-IP strings
-  if (isIP(normalized) === 0) {
+  // Validate IP format first (works case-insensitively)
+  if (isIP(raw) === 0) {
     return BUCKET_UNIDENTIFIED;
   }
 
+  // Normalize to canonical lowercase form, extract IPv4 from mapped addresses
+  const normalized = normalizeIp(raw);
+
   // Isolate loopback traffic (health checks, internal probes)
-  if (LOOPBACK_PATTERNS.test(raw)) {
+  if (normalized === '::1' || LOOPBACK_V4.test(normalized)) {
     return BUCKET_LOOPBACK;
   }
 

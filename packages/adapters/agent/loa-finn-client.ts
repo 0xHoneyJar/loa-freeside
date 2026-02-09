@@ -32,7 +32,7 @@ import type { LoaFinnConfig } from './config.js';
 // --------------------------------------------------------------------------
 
 /** Function to mint a fresh JWT for a request (new jti per call) */
-export type JwtMinter = (request: AgentInvokeRequest) => Promise<string>;
+export type JwtMinter = (request: AgentInvokeRequest, rawBody: string) => Promise<string>;
 
 /** loa-finn client dependencies */
 export interface LoaFinnClientDeps {
@@ -136,13 +136,14 @@ export class LoaFinnClient {
   async invoke(request: AgentInvokeRequest): Promise<AgentInvokeResponse> {
     const url = `${this.config.baseUrl}/v1/agents/invoke`;
     const body = this.buildRequestBody(request);
+    const rawBody = JSON.stringify(body);
 
-    return this.withRetry(request, async (jwt: string) => {
+    return this.withRetry(request, rawBody, async (jwt: string) => {
       const response = await this.breaker.fire(async () =>
         fetch(url, {
           method: 'POST',
           headers: this.buildHeaders(jwt, request),
-          body: JSON.stringify(body),
+          body: rawBody,
           signal: AbortSignal.timeout(this.config.timeoutMs || 120_000),
         }),
       );
@@ -162,13 +163,14 @@ export class LoaFinnClient {
   async *stream(request: AgentInvokeRequest): AsyncGenerator<AgentStreamEvent> {
     const url = `${this.config.baseUrl}/v1/agents/stream`;
     const body = this.buildRequestBody(request);
-    const jwt = await this.mintJwt(request);
+    const rawBody = JSON.stringify(body);
+    const jwt = await this.mintJwt(request, rawBody);
 
     // No circuit breaker on streams — no auto-retry per FR-4.7
     const response = await fetch(url, {
       method: 'POST',
       headers: this.buildHeaders(jwt, request),
-      body: JSON.stringify(body),
+      body: rawBody,
       signal: AbortSignal.timeout(this.config.timeoutMs || 120_000),
     });
 
@@ -339,6 +341,7 @@ export class LoaFinnClient {
 
   private async withRetry<T>(
     request: AgentInvokeRequest,
+    rawBody: string,
     fn: (jwt: string) => Promise<T>,
   ): Promise<T> {
     let lastError: unknown;
@@ -346,7 +349,8 @@ export class LoaFinnClient {
     for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
       try {
         // Mint fresh JWT per attempt (new jti, same idempotencyKey) — FR-4.5
-        const jwt = await this.mintJwt(request);
+        // rawBody is the exact bytes forwarded to loa-finn, used for req_hash binding
+        const jwt = await this.mintJwt(request, rawBody);
         return await fn(jwt);
       } catch (err) {
         lastError = err;

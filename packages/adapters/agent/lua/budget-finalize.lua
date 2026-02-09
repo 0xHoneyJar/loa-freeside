@@ -1,10 +1,14 @@
 -- Budget Finalization Script (Idempotent)
--- Sprint S3-T2: Move cost from reserved→committed with idempotency marker
+-- Sprint S3-T2 + S8-T3: Move cost from reserved→committed with idempotency marker
 --
 -- Handles three cases:
--- 1. Normal finalize: reservation exists → move reserved→committed
--- 2. Late finalize: reservation expired → add directly to committed
+-- 1. Normal finalize: reservation exists, we claim it → move reserved→committed
+-- 2. Late finalize: reservation already claimed by reaper → add directly to committed
 -- 3. Already finalized: finalization marker exists → return ALREADY_FINALIZED
+--
+-- Race condition fix (S8-T3): Uses DEL return value as atomic claim signal.
+-- Within this EVALSHA, HGET+DEL is atomic. Between EVALSHA calls (finalize vs reaper),
+-- only one DEL can return 1 for a given key — that script "wins" the right to DECRBY.
 --
 -- @see SDD §8.3 Budget Finalization Script
 
@@ -36,24 +40,26 @@ if alreadyFinalized == 1 then
   return {'ALREADY_FINALIZED', '0'}
 end
 
--- 2. Check if reservation exists (normal path) or expired (late path)
-local reservationExists = redis.call('EXISTS', KEYS[3])
 local monthlyTtlMs = 35 * 24 * 60 * 60 * 1000
 
-if reservationExists == 1 then
-  -- Normal finalize: read estimated cost, move reserved→committed
-  local estimatedCostRaw = redis.call('HGET', KEYS[3], 'estimated_cost')
+-- 2. Claim the reservation atomically: read estimated_cost, then DEL to claim
+-- HGET + DEL within a single EVALSHA is atomic (no other script can interleave).
+-- DEL returns 1 if we deleted the key (we won the claim), 0 if already gone.
+local estimatedCostRaw = redis.call('HGET', KEYS[3], 'estimated_cost')
+local claimed = redis.call('DEL', KEYS[3])
+
+if claimed == 1 then
+  -- Normal finalize: we claimed the reservation → DECRBY reserved, INCRBY committed
   local estimatedCost = tonumber(estimatedCostRaw) or 0
   if estimatedCost < 0 then estimatedCost = 0 end
   estimatedCost = math.floor(estimatedCost)
 
-  -- Decrement reserved by estimated cost
+  -- Decrement reserved by estimated cost (only we can do this — we won the claim)
   redis.call('DECRBY', KEYS[2], estimatedCost)
-  -- Clamp reserved to 0 if negative (ACCOUNTING_DRIFT detection — S1-T2)
+  -- Safety clamp: reserved should never go negative with claim-via-DEL,
+  -- but clamp as defense-in-depth and log if it happens
   local reserved = tonumber(redis.call('GET', KEYS[2]) or '0') or 0
   if reserved < 0 then
-    -- Drift detected: reserved went negative, indicating a double-decrement race
-    -- or reaper/finalize overlap. Log magnitude for observability.
     redis.log(redis.LOG_WARNING, 'ACCOUNTING_DRIFT finalize community=' .. ARGV[2] .. ' drift_cents=' .. tostring(math.abs(reserved)) .. ' operation=finalize')
     redis.call('SET', KEYS[2], '0')
     redis.call('PEXPIRE', KEYS[2], monthlyTtlMs)
@@ -64,8 +70,7 @@ if reservationExists == 1 then
   redis.call('PEXPIRE', KEYS[1], monthlyTtlMs)
   redis.call('PEXPIRE', KEYS[2], monthlyTtlMs)
 
-  -- Clean up reservation hash and expiry member
-  redis.call('DEL', KEYS[3])
+  -- Clean up expiry member
   redis.call('ZREM', KEYS[4], expiryMember)
 
   -- Set finalized marker (24h TTL)
@@ -73,8 +78,8 @@ if reservationExists == 1 then
 
   return {'FINALIZED', tostring(actualCost)}
 else
-  -- Late finalize: reservation expired (reaper may or may not have cleaned it)
-  -- Add actual cost directly to committed
+  -- Late finalize: reservation already claimed by reaper (or never existed).
+  -- Reaper already decremented reserved, so we only add actual cost to committed.
   redis.call('INCRBY', KEYS[1], actualCost)
   redis.call('PEXPIRE', KEYS[1], monthlyTtlMs)
 

@@ -81,14 +81,15 @@ export class AgentGateway implements IAgentGateway {
       throw new AgentGatewayError('MODEL_NOT_ALLOWED', `Model '${request.modelAlias}' is not available for your tier`, 403);
     }
 
-    // 2. Rate limit check
-    const rateLimitResult = await this.rateLimiter.checkRateLimit({
+    // 2. Rate limit check (all 4 dimensions: community, user, channel, burst)
+    const rateLimitResult = await this.rateLimiter.check({
       communityId: context.tenantId,
       userId: context.userId,
+      channelId: context.channelId,
       accessLevel: context.accessLevel,
     });
 
-    if (rateLimitResult.dimension !== 'none') {
+    if (!rateLimitResult.allowed) {
       throw new AgentGatewayError(
         'RATE_LIMITED',
         'Rate limit exceeded',
@@ -179,14 +180,15 @@ export class AgentGateway implements IAgentGateway {
       throw new AgentGatewayError('MODEL_NOT_ALLOWED', `Model '${request.modelAlias}' is not available for your tier`, 403);
     }
 
-    // 2. Rate limit check
-    const rateLimitResult = await this.rateLimiter.checkRateLimit({
+    // 2. Rate limit check (all 4 dimensions: community, user, channel, burst)
+    const rateLimitResult = await this.rateLimiter.check({
       communityId: context.tenantId,
       userId: context.userId,
+      channelId: context.channelId,
       accessLevel: context.accessLevel,
     });
 
-    if (rateLimitResult.dimension !== 'none') {
+    if (!rateLimitResult.allowed) {
       throw new AgentGatewayError('RATE_LIMITED', 'Rate limit exceeded', 429, {
         dimension: rateLimitResult.dimension,
         retryAfterMs: rateLimitResult.retryAfterMs,

@@ -56,6 +56,9 @@ const CONVICTION_TIMEOUT_MS = 5_000;
 // 60s: Tier changes are infrequent (NFT-based). 60s cache reduces conviction service
 // load by ~60x while keeping tier changes responsive within 1 minute.
 const CONVICTION_CACHE_TTL_MS = 60_000;
+// 10s: On conviction timeout/error, cache tier 1 with shorter TTL. Limits retry storms
+// to at most 1 per 10s per user while recovering quickly when service returns.
+const CONVICTION_ERROR_CACHE_TTL_MS = 10_000;
 
 // --------------------------------------------------------------------------
 // Conviction Score Cache (in-memory, per-process)
@@ -82,14 +85,14 @@ function getCachedTier(communityId: string, userId: string): number | null {
   return entry.tier;
 }
 
-function setCachedTier(communityId: string, userId: string, tier: number): void {
+function setCachedTier(communityId: string, userId: string, tier: number, ttlMs = CONVICTION_CACHE_TTL_MS): void {
   const key = `${communityId}:${userId}`;
   // Evict oldest if over 10K entries
   if (tierCache.size >= 10_000) {
     const oldest = tierCache.keys().next().value;
     if (oldest !== undefined) tierCache.delete(oldest);
   }
-  tierCache.set(key, { tier, expiresAt: Date.now() + CONVICTION_CACHE_TTL_MS });
+  tierCache.set(key, { tier, expiresAt: Date.now() + ttlMs });
 }
 
 // --------------------------------------------------------------------------
@@ -227,16 +230,30 @@ async function resolveTier(
         });
     });
 
-    // Validate tier range
-    const validTier = Math.max(1, Math.min(9, Math.trunc(tier)));
+    // Validate tier range (fail-closed on invalid values)
+    const truncated = Math.trunc(tier);
+    const validTier = Number.isFinite(truncated)
+      ? Math.max(1, Math.min(9, truncated))
+      : 1;
+
+    if (!Number.isFinite(truncated)) {
+      logger.warn(
+        { tier, communityId, userId },
+        'AgentAuth: conviction scorer returned invalid tier — fail-closed to tier 1',
+      );
+    }
+
     setCachedTier(communityId, userId, validTier);
     return validTier;
   } catch (err) {
-    // Fail-closed to lowest tier (most restrictive access)
+    // Fail-closed to lowest tier (most restrictive access).
+    // Cache tier 1 with short TTL to prevent retry storms when service is degraded.
+    // Without this cache, every request retries the 5s timeout → cascading delays.
     logger.warn(
       { err, communityId, userId },
-      'AgentAuth: conviction scoring unavailable — fail-closed to tier 1',
+      'AgentAuth: conviction scoring unavailable — fail-closed to tier 1 (cached 10s)',
     );
+    setCachedTier(communityId, userId, 1, CONVICTION_ERROR_CACHE_TTL_MS);
     return 1;
   }
 }
