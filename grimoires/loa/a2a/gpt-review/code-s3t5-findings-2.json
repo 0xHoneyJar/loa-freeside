@@ -1,0 +1,18 @@
+{
+  "verdict": "APPROVED",
+  "summary": "Previous issues were addressed: 404/202 are now handled via getUsage returning null and USD-to-cents conversion uses rounding.",
+  "previous_issues_status": [
+    {
+      "original_issue": "getUsage() errors (404/202) not handled, causing incorrect retries instead of deferring to reaper",
+      "status": "fixed",
+      "notes": "Worker now treats not-found/in-progress as null (per comment), so it logs and defers to reaper rather than retrying. This resolves the issue even though handling is moved to the client."
+    },
+    {
+      "original_issue": "Unsafe float conversion for cents leading to financial inaccuracies",
+      "status": "fixed",
+      "notes": "Conversion now uses Math.round(usage.costUsd * 100) before finalize and logging."
+    }
+  ],
+  "new_blocking_concerns": [],
+  "iteration": 2
+}

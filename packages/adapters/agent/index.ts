@@ -46,3 +46,41 @@ export { IpRateLimiter, type IpRateLimitConfig } from './ip-rate-limiter.js';
 
 // loa-finn Client
 export { LoaFinnClient, LoaFinnError, type JwtMinter, type LoaFinnClientDeps } from './loa-finn-client.js';
+
+// Budget Manager
+export {
+  BudgetManager,
+  parseBudgetResult,
+  parseFinalizeResult,
+  parseReaperResult,
+  getCurrentMonth,
+  type BudgetResult,
+  type FinalizeResult,
+  type ReaperResult,
+  type AuditLogEntry,
+} from './budget-manager.js';
+
+// Stream Reconciliation Worker
+export { StreamReconciliationWorker, type StreamReconciliationJob } from './stream-reconciliation-worker.js';
+
+// Budget Reaper Job
+export {
+  BudgetReaperJob,
+  REAPER_JOB_CONFIG,
+  type ActiveCommunityProvider,
+  type ReaperJobResult,
+} from './budget-reaper-job.js';
+
+// Budget Config Provider
+export {
+  BudgetConfigProvider,
+  BUDGET_SYNC_JOB_CONFIG,
+  BUDGET_MONTHLY_RESET_JOB_CONFIG,
+  type BudgetConfigSource,
+  type CommunityBudgetConfig,
+  type BudgetSyncResult,
+  type MonthlyResetResult,
+} from './budget-config-provider.js';
+
+// Tier Override Types (re-export from mapper)
+export { type TierOverrideProvider } from './tier-access-mapper.js';

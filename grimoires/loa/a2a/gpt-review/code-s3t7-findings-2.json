@@ -1,0 +1,13 @@
+{
+  "verdict": "APPROVED",
+  "summary": "The per-community logging now occurs for all communities, addressing the prior spec violation.",
+  "previous_issues_status": [
+    {
+      "original_issue": "Per-community logs were only emitted when result.count > 0, violating requirement to log for each community",
+      "status": "fixed",
+      "notes": "Logging now happens for every community (info for nonzero, debug for zero), satisfying the requirement."
+    }
+  ],
+  "new_blocking_concerns": [],
+  "iteration": 2
+}
