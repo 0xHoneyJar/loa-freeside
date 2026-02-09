@@ -117,6 +117,18 @@ export class TierAccessMapper {
   }
 
   /**
+   * Get default model aliases for a given tier (no community overrides).
+   * Used by getAvailableModels() which has no community context.
+   *
+   * @param tier - Community tier (1-9)
+   * @returns Default model aliases for the tier, or ['cheap'] if tier invalid
+   */
+  getDefaultModels(tier: number): ModelAlias[] {
+    const mapping = this.config.defaults[tier];
+    return mapping ? [...mapping.aliases] : ['cheap'];
+  }
+
+  /**
    * Validate that a requested model alias is allowed for the user's access level.
    *
    * @param alias - Requested model alias

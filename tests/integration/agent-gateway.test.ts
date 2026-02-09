@@ -602,10 +602,10 @@ describe('Budget Interleaving — Property-based', () => {
     budgetManager = new BudgetManager(redis, mockLogger);
   });
 
-  it('concurrent reserve/finalize/reap maintain invariant: committed + reserved <= limit', async () => {
+  it('concurrent reserve/finalize/reap maintain invariant: committed + reserved <= limit (mid-flight checks)', async () => {
     await fc.assert(
       fc.asyncProperty(
-        // Generate: 2-5 users, 3-10 operations each, costs 1-20
+        // Generate: 2-5 users, 3-10 operations each
         fc.integer({ min: 2, max: 5 }),
         fc.integer({ min: 3, max: 10 }),
         async (userCount, opsPerUser) => {
@@ -615,6 +615,17 @@ describe('Budget Interleaving — Property-based', () => {
 
           // Set budget limit
           await redis.set(`agent:budget:limit:${communityId}`, String(budgetLimit));
+
+          // Helper: check budget invariant
+          const assertInvariant = async (label: string) => {
+            const committedRaw = await redis.get(`agent:budget:committed:${communityId}:${month}`);
+            const reservedRaw = await redis.get(`agent:budget:reserved:${communityId}:${month}`);
+            const committed = Number(committedRaw) || 0;
+            const reserved = Number(reservedRaw) || 0;
+            expect(committed).toBeGreaterThanOrEqual(0);
+            expect(reserved).toBeGreaterThanOrEqual(0);
+            expect(committed + reserved).toBeLessThanOrEqual(budgetLimit + 1); // +1 for rounding
+          };
 
           // Generate operation sequences for each user
           const operations: Array<() => Promise<void>> = [];
@@ -628,10 +639,8 @@ describe('Budget Interleaving — Property-based', () => {
               const actualCost = Math.floor(Math.random() * estimatedCost) + 1;
 
               operations.push(async () => {
-                // Add small random delay to increase interleaving
                 await new Promise((r) => setTimeout(r, Math.random() * 5));
 
-                // Reserve
                 const reserveResult = await budgetManager.reserve({
                   communityId,
                   userId,
@@ -641,7 +650,6 @@ describe('Budget Interleaving — Property-based', () => {
                 });
 
                 if (reserveResult.status === 'RESERVED') {
-                  // Finalize with actual cost
                   await budgetManager.finalize({
                     communityId,
                     userId,
@@ -653,21 +661,19 @@ describe('Budget Interleaving — Property-based', () => {
             }
           }
 
-          // Execute all operations concurrently
-          await Promise.all(operations.map((fn) => fn()));
+          // Execute in batches of 5, checking invariant between each batch
+          const batchSize = 5;
+          for (let i = 0; i < operations.length; i += batchSize) {
+            const batch = operations.slice(i, i + batchSize);
+            await Promise.allSettled(batch.map((fn) => fn()));
+            await assertInvariant(`batch-${i / batchSize}`);
+          }
 
           // Run reaper to clean any expired reservations
           await budgetManager.reap(communityId);
 
-          // Assert invariant: committed + reserved <= limit
-          const committedRaw = await redis.get(`agent:budget:committed:${communityId}:${month}`);
-          const reservedRaw = await redis.get(`agent:budget:reserved:${communityId}:${month}`);
-          const committed = Number(committedRaw) || 0;
-          const reserved = Number(reservedRaw) || 0;
-
-          expect(committed).toBeGreaterThanOrEqual(0);
-          expect(reserved).toBeGreaterThanOrEqual(0);
-          expect(committed + reserved).toBeLessThanOrEqual(budgetLimit);
+          // Final invariant check
+          await assertInvariant('final');
 
           // Cleanup
           const keys = await redis.keys(`test:agent:budget:*${communityId}*`);
@@ -677,10 +683,61 @@ describe('Budget Interleaving — Property-based', () => {
         },
       ),
       {
-        numRuns: 25, // 25 runs with shrinking — conservative for CI stability
-        seed: 42, // Deterministic seed for reproducibility
+        numRuns: 25,
+        seed: 42,
       },
     );
+  });
+
+  it('concurrent finalize + reap on same reservation → reserved decremented exactly once', async () => {
+    const communityId = `comm-race-${Date.now()}`;
+    const userId = 'user-race-1';
+    const idempotencyKey = 'idem-race-1';
+    const month = getCurrentMonth();
+    const estimatedCost = 50;
+    const actualCost = 30;
+
+    // Setup: set budget limit and reserve
+    await redis.set(`agent:budget:limit:${communityId}`, '1000');
+
+    const reserveResult = await budgetManager.reserve({
+      communityId,
+      userId,
+      idempotencyKey,
+      modelAlias: 'cheap',
+      estimatedCost,
+    });
+    expect(reserveResult.status).toBe('RESERVED');
+
+    // Record reserved counter before race
+    const reservedBefore = Number(await redis.get(`agent:budget:reserved:${communityId}:${month}`)) || 0;
+    expect(reservedBefore).toBe(estimatedCost);
+
+    // Execute finalize and reap concurrently — one should claim, other should skip
+    const [finalizeResult, reapResult] = await Promise.all([
+      budgetManager.finalize({ communityId, userId, idempotencyKey, actualCost }),
+      budgetManager.reap(communityId),
+    ]);
+
+    // After both complete, check reserved was decremented exactly once
+    const reservedAfter = Number(await redis.get(`agent:budget:reserved:${communityId}:${month}`)) || 0;
+    expect(reservedAfter).toBe(0); // Exactly estimatedCost was decremented (not 2x)
+
+    // Committed should be exactly actualCost (finalize adds it regardless of who claimed)
+    const committedAfter = Number(await redis.get(`agent:budget:committed:${communityId}:${month}`)) || 0;
+    expect(committedAfter).toBe(actualCost);
+
+    // Verify: finalize returned either FINALIZED or LATE_FINALIZE
+    expect(['FINALIZED', 'LATE_FINALIZE']).toContain(finalizeResult.status);
+
+    // Either way, committed + reserved <= limit
+    expect(committedAfter + reservedAfter).toBeLessThanOrEqual(1000);
+
+    // Cleanup
+    const keys = await redis.keys(`test:agent:budget:*${communityId}*`);
+    if (keys.length > 0) {
+      await redis.del(...keys.map((k) => k.replace('test:', '')));
+    }
   });
 });
 

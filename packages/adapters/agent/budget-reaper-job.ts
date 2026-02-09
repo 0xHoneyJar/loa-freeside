@@ -62,19 +62,21 @@ export class BudgetReaperJob {
     let totalReaped = 0;
     let totalReclaimed = 0;
     let errors = 0;
+    let communitiesAttempted = 0;
     let circuitBroken = false;
 
     for (const communityId of communityIds) {
-      // Circuit breaker: if >50% of processed communities failed, abort remaining
-      const processed = totalReaped + totalReclaimed + errors;
-      if (processed > 0 && errors / (processed + errors) >= CIRCUIT_BREAKER_THRESHOLD) {
+      // Circuit breaker: if >50% of attempted communities failed, abort remaining
+      if (communitiesAttempted > 0 && errors / communitiesAttempted >= CIRCUIT_BREAKER_THRESHOLD) {
         circuitBroken = true;
         this.logger.error(
-          { errors, processed: processed + errors, total: communityIds.length },
+          { errors, communitiesAttempted, total: communityIds.length },
           'budget-reaper: circuit breaker tripped — >50% failure rate, skipping remaining communities',
         );
         break;
       }
+
+      communitiesAttempted++;
 
       const start = Date.now();
       try {

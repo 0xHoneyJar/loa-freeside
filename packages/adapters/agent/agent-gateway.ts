@@ -270,12 +270,11 @@ export class AgentGateway implements IAgentGateway {
   // --------------------------------------------------------------------------
 
   getAvailableModels(accessLevel: AccessLevel): ModelAlias[] {
-    // Resolve from default tier mapping: find first tier that matches this access level
+    // Returns default models for the access level (no community context).
+    // Per-community overrides are resolved per-request via context.allowedModelAliases.
     const tierForAccess: Record<AccessLevel, number> = { free: 1, pro: 4, enterprise: 7 };
     const tier = tierForAccess[accessLevel] ?? 1;
-    // Use sync path (no communityId = no overrides)
-    const mapping = this.tierMapper['config'].defaults[tier];
-    return mapping ? [...mapping.aliases] : ['cheap'];
+    return this.tierMapper.getDefaultModels(tier);
   }
 
   // --------------------------------------------------------------------------

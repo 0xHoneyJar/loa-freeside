@@ -76,7 +76,7 @@ All 8 tasks completed. Discord and Telegram bot handlers, Terraform infrastructu
 - Budget stress: 100 concurrent × 5 communities for overspend testing
 
 #### S5-T7: Security Hardening
-- Key rotation script: generates RS256 key pair, updates Secrets Manager
+- Key rotation script: generates ES256 (P-256) key pair, updates Secrets Manager
 - 48h overlap window with previous key preserved
 - Dry-run mode for validation
 - Post-rotation verification step
