@@ -1,0 +1,38 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Plan covers all 9 findings, but a few proposed fixes are technically incorrect/underspecified in ways that can leave the high/medium issues unfixed or introduce new runtime failures—likely causing the sprint to miss acceptance criteria.",
+  "blocking_issues": [
+    {
+      "location": "Sprint 8 — S8-T1: Fix Factory JwtService Wiring + req_hash Binding",
+      "issue": "req_hash binding uses `JSON.stringify(request)` instead of a canonical, stable request body representation, and may hash the wrong object (full request wrapper vs the actual upstream payload).",
+      "why_blocking": "If the verifier computes req_hash over a different canonicalization than the minter, tokens will fail validation (or the binding becomes meaningless). This can break auth in production and fail the security requirement “req_hash binding.”",
+      "fix": "Define and implement a single canonicalization function used by both minting and verification (e.g., hash the exact raw HTTP body bytes as received, or a strict canonical JSON serialization of the upstream payload only). Add an explicit acceptance test: same request body => same req_hash; different body => different req_hash; and a negative test where body tampering is rejected."
+    },
+    {
+      "location": "Sprint 8 — S8-T3: Fix Finalize/Reaper Race Condition",
+      "issue": "The proposed Lua changes reference impossible operations on the reservation key (mixes hash operations like HGET/HDEL with deleting the whole reservation hash key) and doesn’t specify an atomic “claim” mechanism that guarantees exactly-once decrement across scripts.",
+      "why_blocking": "As written, the fix is likely to be implemented incorrectly (e.g., using HDEL on a key rather than a field, or relying on non-atomic sequences), leaving the double-decrement race in place. This directly fails the medium-severity finding and can violate the two-counter invariant.",
+      "fix": "Specify a concrete, implementable atomic claim pattern. Example: store each reservation as its own Redis hash key `resv:{id}` with fields `{estimated, ...}`; in both finalize and reaper do `local est = redis.call('HGET', key, 'estimated'); if not est then return ALREADY_CLAIMED end; redis.call('DEL', key);` and only then `DECRBY reserved est` (or use `GETDEL` on a string key holding est). Ensure both scripts use the same claim primitive (DEL/GETDEL) so only one can win. Add an integration test that forces interleaving (finalize and reaper concurrent on same reservation) and asserts reserved decremented exactly once."
+    },
+    {
+      "location": "Sprint 8 — S8-T4: Fix IPv6 Normalization Case Sensitivity",
+      "issue": "Lowercasing alone is insufficient for RFC 5952 normalization and may still create multiple buckets for equivalent IPv6 forms (e.g., zero compression variants), and the plan doesn’t address Express `trust proxy`/`X-Forwarded-For` parsing correctness which affects what `raw` even is.",
+      "why_blocking": "The finding is about correctness of IP bucketing; if equivalent addresses still map to different keys, rate limiting can be bypassed. Also, if `trust proxy` is misconfigured, you may rate-limit the proxy IP or accept spoofed XFF—breaking pre-auth protection.",
+      "fix": "Use a real IP parser/normalizer (e.g., `ipaddr.js`) to canonicalize IPv6 per RFC 5952 and to reliably detect IPv4-mapped IPv6. Add explicit tests for multiple equivalent IPv6 strings mapping to the same bucket. Also add/confirm a task or acceptance check that Express `trust proxy` is set appropriately for the deployment and that `extractIp()` uses the correct source (req.ip vs XFF) in a non-spoofable way."
+    },
+    {
+      "location": "Sprint 9 — S9-T1: Fix getAvailableModels() Abstraction Leak",
+      "issue": "Acceptance criteria says “Returns correct model aliases per access level” but the proposed method `getDefaultModels(tier)` explicitly avoids override resolution; this can’t satisfy “correct” if correctness includes per-community overrides (which the finding text implies is currently broken).",
+      "why_blocking": "This is a mismatch between the stated problem (overrides never returned) and the proposed fix (still doesn’t return overrides). That risks shipping with the same functional bug and failing the medium-severity finding’s intent.",
+      "fix": "Clarify expected behavior for `getAvailableModels()`: (A) defaults-only is acceptable for this endpoint, or (B) it must include per-community overrides. If (B), change the fix to call `tierMapper.resolveAccess({communityId, tier, ...})` (or add a public method that returns resolved models for a community) and add a test covering an override case."
+    },
+    {
+      "location": "Sprint 9 — S9-T3: Strengthen Property-Based Budget Tests",
+      "issue": "Plan doesn’t ensure the test can actually observe “during interleaving” invariants given Redis scripts are atomic per call; without a controllable scheduler or injected delays/hooks, the mid-flight checks may still only sample between atomic operations and miss the problematic window.",
+      "why_blocking": "If the test can’t reproduce/observe the race, it won’t prevent regressions and may not validate the S8-T3 fix—risking reintroducing the bug and failing the testing finding.",
+      "fix": "Add a deterministic concurrency harness: run finalize and reaper in parallel against the same reservation with barriers (e.g., instrument scripts with optional debug hooks/keys for tests, or split finalize into two phases in test-only mode). Alternatively, use fast-check’s `scheduler` to control promise interleavings at the Node layer plus a purpose-built test that asserts exactly-once decrement by checking reservation key deletion semantics and reserved delta."
+    }
+  ],
+  "question": "",
+  "iteration": 1
+}
