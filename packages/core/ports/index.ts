@@ -72,3 +72,6 @@ export * from './glimpse-mode.js';
 
 // Migration Interface (Sprint S-28)
 export * from './migration.js';
+
+// Agent Gateway Interface (Hounfour Phase 4 — Spice Gate)
+export * from './agent-gateway.js';

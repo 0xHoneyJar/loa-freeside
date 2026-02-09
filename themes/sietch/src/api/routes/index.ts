@@ -116,3 +116,17 @@ export type { AuthenticatedRequest } from './auth.routes.js';
  * Admin endpoints for managing local user accounts
  */
 export { createUsersRouter } from './users.routes.js';
+
+/**
+ * Agent gateway routes (Hounfour Phase 4 — Spice Gate)
+ * Sprint 1: JWKS endpoint. Sprint 4: Agent API routes.
+ */
+export { createAgentRoutes } from './agents.routes.js';
+export type { AgentRoutesDeps } from './agents.routes.js';
+
+/**
+ * Agent config admin routes (Hounfour Phase 4 — Spice Gate)
+ * Sprint 4: Community agent config CRUD.
+ */
+export { createAgentConfigRoutes } from './admin/agent-config.js';
+export type { AgentConfigRoutesDeps, AgentConfigStore, AgentConfigAuditLogger, BudgetRefreshTrigger } from './admin/agent-config.js';

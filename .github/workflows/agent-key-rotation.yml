@@ -1,0 +1,75 @@
+# Agent JWT Key Rotation — Quarterly Automated
+# S1-T4: Bridgebuilder Finding #6 — automate key rotation
+#
+# Runs quarterly (1st of month, every 3 months) at 03:00 UTC.
+# Dry-run first, then execute if dry-run passes.
+# Uses OIDC for AWS authentication (no static keys).
+
+name: Agent Key Rotation
+
+on:
+  schedule:
+    # Quarterly: 03:00 UTC on Jan 1, Apr 1, Jul 1, Oct 1
+    - cron: '0 3 1 1,4,7,10 *'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      dry_run:
+        description: 'Dry run only (no changes)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  rotate-key:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment: ${{ github.event_name == 'workflow_dispatch' && fromJSON(format('["{0}"]', inputs.environment)) || fromJSON('["staging", "production"]') }}
+    environment: ${{ matrix.environment }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q jq openssl
+
+      - name: Dry run
+        id: dry-run
+        run: |
+          ./scripts/agent-key-rotation.sh \
+            --dry-run \
+            --env "${{ matrix.environment }}" \
+            --region "${{ vars.AWS_REGION || 'us-east-1' }}"
+
+      - name: Execute rotation
+        if: ${{ !inputs.dry_run }}
+        run: |
+          ./scripts/agent-key-rotation.sh \
+            --env "${{ matrix.environment }}" \
+            --region "${{ vars.AWS_REGION || 'us-east-1' }}"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::Key rotation failed for ${{ matrix.environment }}. Manual rotation required."

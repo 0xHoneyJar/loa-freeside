@@ -1,0 +1,38 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Missing JWT secret configuration and unsafe env parsing create security risk and incorrect defaults.",
+  "issues": [
+    {
+      "severity": "critical",
+      "file": "agent-gateway-config.ts",
+      "line": 134,
+      "description": "JWT secret ID env var is declared but never used, leaving the JWT service without required secret/JWKS reference. This breaks ES256 trust setup and can lead to unsigned or mis-signed tokens being accepted depending on downstream defaults.",
+      "current_code": "```typescript\n    jwt: {\n      keyId: env[ENV_VARS.AGENT_JWT_KEY_ID] ?? 'arrakis-key-1',\n      expirySec: parseInt(env[ENV_VARS.AGENT_JWT_EXPIRY_SEC] ?? '', 10) || DEFAULTS.jwtExpirySec,\n      ...overrides?.jwt,\n    },\n```",
+      "fixed_code": "```typescript\n    jwt: {\n      keyId: env[ENV_VARS.AGENT_JWT_KEY_ID] ?? overrides?.jwt?.keyId ?? 'arrakis-key-1',\n      secretId: env[ENV_VARS.AGENT_JWT_SECRET_ID] ?? overrides?.jwt?.secretId,\n      expirySec: parseIntEnv(env[ENV_VARS.AGENT_JWT_EXPIRY_SEC], DEFAULTS.jwtExpirySec),\n      ...overrides?.jwt,\n    },\n```",
+      "explanation": "This ensures the configured JWKS/secret identifier is actually used. The secretId is sourced from env (or override), preventing silent misconfiguration and aligning with ES256 key rotation requirements."
+    },
+    {
+      "severity": "major",
+      "file": "agent-gateway-config.ts",
+      "line": 128,
+      "description": "Boolean env parsing uses `env === 'true' || DEFAULTS.enabled`, which ignores explicit 'false' when defaults are true and does not respect other truthy/falsey values. Additionally, numeric parsing uses `parseInt(...) || default`, which will incorrectly replace valid 0 values with defaults and does not validate NaN.",
+      "current_code": "```typescript\n  const config: AgentGatewayConfig = {\n    enabled: env[ENV_VARS.AGENT_ENABLED] === 'true' || DEFAULTS.enabled,\n\n    jwt: {\n      keyId: env[ENV_VARS.AGENT_JWT_KEY_ID] ?? 'arrakis-key-1',\n      expirySec: parseInt(env[ENV_VARS.AGENT_JWT_EXPIRY_SEC] ?? '', 10) || DEFAULTS.jwtExpirySec,\n      ...overrides?.jwt,\n    },\n\n    loaFinn: {\n      baseUrl: env[ENV_VARS.LOA_FINN_BASE_URL] ?? DEFAULTS.loaFinnBaseUrl,\n      timeoutMs: parseInt(env[ENV_VARS.LOA_FINN_TIMEOUT_MS] ?? '', 10) || DEFAULTS.loaFinnTimeoutMs,\n      circuitBreakerThreshold: DEFAULTS.circuitBreakerThreshold,\n      circuitBreakerResetMs: DEFAULTS.circuitBreakerResetMs,\n      ...overrides?.loaFinn,\n    },\n\n    rateLimits: {\n      preAuthPerMinute: parseInt(env[ENV_VARS.AGENT_PREAUTH_RATE_LIMIT_PER_MIN] ?? '', 10) || DEFAULTS.preAuthPerMinute,\n      userPerMinute: parseInt(env[ENV_VARS.AGENT_RATE_LIMIT_USER_PER_MIN] ?? '', 10) || DEFAULTS.userPerMinute,\n      communityPerMinute: parseInt(env[ENV_VARS.AGENT_RATE_LIMIT_COMMUNITY_PER_MIN] ?? '', 10) || DEFAULTS.communityPerMinute,\n      channelPerMinute: parseInt(env[ENV_VARS.AGENT_RATE_LIMIT_CHANNEL_PER_MIN] ?? '', 10) || DEFAULTS.channelPerMinute,\n      burstLimit: parseInt(env[ENV_VARS.AGENT_RATE_LIMIT_BURST] ?? '', 10) || DEFAULTS.burstLimit,\n      ...overrides?.rateLimits,\n    },\n  };\n```",
+      "fixed_code": "```typescript\n  const parseBoolEnv = (value: string | undefined, fallback: boolean): boolean => {\n    if (value == null) return fallback;\n    if (value === 'true') return true;\n    if (value === 'false') return false;\n    return fallback;\n  };\n\n  const parseIntEnv = (value: string | undefined, fallback: number): number => {\n    if (value == null || value.trim() === '') return fallback;\n    const parsed = Number.parseInt(value, 10);\n    return Number.isNaN(parsed) ? fallback : parsed;\n  };\n\n  const config: AgentGatewayConfig = {\n    enabled: parseBoolEnv(env[ENV_VARS.AGENT_ENABLED], DEFAULTS.enabled),\n\n    jwt: {\n      keyId: env[ENV_VARS.AGENT_JWT_KEY_ID] ?? overrides?.jwt?.keyId ?? 'arrakis-key-1',\n      secretId: env[ENV_VARS.AGENT_JWT_SECRET_ID] ?? overrides?.jwt?.secretId,\n      expirySec: parseIntEnv(env[ENV_VARS.AGENT_JWT_EXPIRY_SEC], DEFAULTS.jwtExpirySec),\n      ...overrides?.jwt,\n    },\n\n    loaFinn: {\n      baseUrl: env[ENV_VARS.LOA_FINN_BASE_URL] ?? DEFAULTS.loaFinnBaseUrl,\n      timeoutMs: parseIntEnv(env[ENV_VARS.LOA_FINN_TIMEOUT_MS], DEFAULTS.loaFinnTimeoutMs),\n      circuitBreakerThreshold: DEFAULTS.circuitBreakerThreshold,\n      circuitBreakerResetMs: DEFAULTS.circuitBreakerResetMs,\n      ...overrides?.loaFinn,\n    },\n\n    rateLimits: {\n      preAuthPerMinute: parseIntEnv(env[ENV_VARS.AGENT_PREAUTH_RATE_LIMIT_PER_MIN], DEFAULTS.preAuthPerMinute),\n      userPerMinute: parseIntEnv(env[ENV_VARS.AGENT_RATE_LIMIT_USER_PER_MIN], DEFAULTS.userPerMinute),\n      communityPerMinute: parseIntEnv(env[ENV_VARS.AGENT_RATE_LIMIT_COMMUNITY_PER_MIN], DEFAULTS.communityPerMinute),\n      channelPerMinute: parseIntEnv(env[ENV_VARS.AGENT_RATE_LIMIT_CHANNEL_PER_MIN], DEFAULTS.channelPerMinute),\n      burstLimit: parseIntEnv(env[ENV_VARS.AGENT_RATE_LIMIT_BURST], DEFAULTS.burstLimit),\n      ...overrides?.rateLimits,\n    },\n  };\n```",
+      "explanation": "Explicit boolean parsing respects 'false' and avoids unintended defaults. Safe numeric parsing preserves 0 and guards against NaN, preventing silent misconfiguration of rate limits or timeouts."
+    },
+    {
+      "severity": "major",
+      "file": "agent-gateway-config.ts",
+      "line": 124,
+      "description": "Missing runtime validation that required JWT secretId exists. The loader can return an invalid configuration without surfacing errors, causing runtime failures or insecure fallback in downstream JWT handling.",
+      "current_code": "```typescript\n  const config: AgentGatewayConfig = {\n    enabled: env[ENV_VARS.AGENT_ENABLED] === 'true' || DEFAULTS.enabled,\n\n    jwt: {\n      keyId: env[ENV_VARS.AGENT_JWT_KEY_ID] ?? 'arrakis-key-1',\n      expirySec: parseInt(env[ENV_VARS.AGENT_JWT_EXPIRY_SEC] ?? '', 10) || DEFAULTS.jwtExpirySec,\n      ...overrides?.jwt,\n    },\n    // ...\n  };\n\n  return config;\n}\n```",
+      "fixed_code": "```typescript\n  const config: AgentGatewayConfig = {\n    enabled: parseBoolEnv(env[ENV_VARS.AGENT_ENABLED], DEFAULTS.enabled),\n\n    jwt: {\n      keyId: env[ENV_VARS.AGENT_JWT_KEY_ID] ?? overrides?.jwt?.keyId ?? 'arrakis-key-1',\n      secretId: env[ENV_VARS.AGENT_JWT_SECRET_ID] ?? overrides?.jwt?.secretId,\n      expirySec: parseIntEnv(env[ENV_VARS.AGENT_JWT_EXPIRY_SEC], DEFAULTS.jwtExpirySec),\n      ...overrides?.jwt,\n    },\n    // ...\n  };\n\n  if (!config.jwt.secretId) {\n    throw new Error('Missing required env var AGENT_JWT_SECRET_ID');\n  }\n\n  return config;\n}\n```",
+      "explanation": "This ensures the configuration fails fast when a critical JWT secret reference is absent, preventing insecure or undefined behavior at runtime."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

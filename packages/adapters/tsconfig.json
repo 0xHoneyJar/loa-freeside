@@ -20,6 +20,6 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true
   },
-  "include": ["chain/**/*.ts"],
+  "include": ["chain/**/*.ts", "agent/**/*.ts"],
   "exclude": ["node_modules", "dist", "**/__tests__/**"]
 }

@@ -1,0 +1,29 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "JWKS route risks leaking private key material and does not implement conditional requests with safe ETag comparison.",
+  "issues": [
+    {
+      "severity": "critical",
+      "file": "agentRoutes.ts",
+      "line": 39,
+      "description": "JWKS response returns raw JWKs from the service, which may include private key fields (e.g., d, p, q, k). This can leak private material through the public endpoint.",
+      "current_code": "```typescript\n  router.get('/.well-known/jwks.json', (_req: Request, res: Response) => {\n    const jwks = deps.getJwks();\n    const body = JSON.stringify(jwks);\n\n    // ETag for conditional requests (If-None-Match)\n    const etag = `W/\"${createHash('sha256').update(body).digest('hex').slice(0, 16)}\"`;\n\n    res.setHeader('Content-Type', 'application/json');\n    res.setHeader('Cache-Control', 'public, max-age=3600');\n    res.setHeader('ETag', etag);\n\n    res.send(body);\n  });\n```",
+      "fixed_code": "```typescript\n  router.get('/.well-known/jwks.json', (req: Request, res: Response) => {\n    const jwks = deps.getJwks();\n    const publicJwks = {\n      keys: jwks.keys.map(stripPrivateJwk)\n    };\n    const body = JSON.stringify(publicJwks);\n\n    // ETag for conditional requests (If-None-Match)\n    const etag = `W/\"${createHash('sha256').update(body).digest('hex').slice(0, 16)}\"`;\n\n    res.setHeader('Content-Type', 'application/json');\n    res.setHeader('Cache-Control', 'public, max-age=3600');\n    res.setHeader('ETag', etag);\n\n    const ifNoneMatch = req.headers['if-none-match'];\n    if (matchesEtag(ifNoneMatch, etag)) {\n      res.status(304).end();\n      return;\n    }\n\n    res.send(body);\n  });\n\n  function stripPrivateJwk(jwk: JWK): JWK {\n    // Remove known private key fields (RSA/EC/OKP/symmetric)\n    const {\n      d,\n      p,\n      q,\n      dp,\n      dq,\n      qi,\n      oth,\n      k,\n      ...pub\n    } = jwk as Record<string, unknown>;\n    return pub as JWK;\n  }\n\n  function matchesEtag(header: string | string[] | undefined, etag: string): boolean {\n    if (!header) return false;\n    const values = Array.isArray(header)\n      ? header\n      : header.split(',').map(v => v.trim());\n\n    for (const candidate of values) {\n      // timingSafeEqual requires same length\n      if (candidate.length !== etag.length) continue;\n      if (timingSafeEqual(Buffer.from(candidate), Buffer.from(etag))) {\n        return true;\n      }\n    }\n    return false;\n  }\n```",
+      "explanation": "This strips private key fields before serialization, ensuring only public JWKs are served. It also implements conditional GET handling with a constant-time ETag comparison to prevent subtle timing issues and correctly returns 304 when appropriate."
+    },
+    {
+      "severity": "major",
+      "file": "agentRoutes.ts",
+      "line": 5,
+      "description": "ETag comparison uses no conditional handling at all; the endpoint always sends the body even when If-None-Match matches. This violates conditional request behavior and wastes bandwidth.",
+      "current_code": "```typescript\nimport { createHash } from 'node:crypto';\n```",
+      "fixed_code": "```typescript\nimport { createHash, timingSafeEqual } from 'node:crypto';\n```",
+      "explanation": "Adding timingSafeEqual enables safe ETag comparison in the conditional request handling logic."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

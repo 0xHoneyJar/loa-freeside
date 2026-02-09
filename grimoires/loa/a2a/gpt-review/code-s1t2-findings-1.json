@@ -1,0 +1,29 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "JWKS currently leaks private key material by exporting JWK from the private key; must derive a public key before export.",
+  "issues": [
+    {
+      "severity": "critical",
+      "file": "src/jwt/JwtService.ts",
+      "line": 63,
+      "description": "exportJWK is called on the private key, which includes private parameters (e.g., `d`) and exposes them via JWKS.",
+      "current_code": "```typescript\n  async initialize(): Promise<void> {\n    const pem = await this.keyLoader.load();\n    this.privateKey = await importPKCS8(pem, 'ES256');\n    this.publicJwk = await exportJWK(this.privateKey);\n    this.initialized = true;\n  }\n```",
+      "fixed_code": "```typescript\n  async initialize(): Promise<void> {\n    const pem = await this.keyLoader.load();\n    this.privateKey = await importPKCS8(pem, 'ES256');\n\n    // Derive a public key object and export only public JWK parameters\n    const publicKey = createPublicKey(this.privateKey as KeyObject);\n    this.publicJwk = await exportJWK(publicKey);\n\n    this.initialized = true;\n  }\n```",
+      "explanation": "exportJWK on a private key includes private fields like `d`. By deriving a public key first and exporting that, the JWKS contains only public parameters and avoids leaking private key material."
+    },
+    {
+      "severity": "major",
+      "file": "src/jwt/JwtService.ts",
+      "line": 15,
+      "description": "Missing imports needed for deriving the public key when fixing JWKS leak.",
+      "current_code": "```typescript\nimport { createHash } from 'node:crypto';\n```",
+      "fixed_code": "```typescript\nimport { createHash, createPublicKey, type KeyObject } from 'node:crypto';\n```",
+      "explanation": "The fix uses createPublicKey and KeyObject to derive a public key for JWKS export. These imports are required for the updated implementation to compile."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

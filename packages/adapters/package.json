@@ -37,6 +37,10 @@
     "./coexistence": {
       "import": "./dist/coexistence/index.js",
       "types": "./dist/coexistence/index.d.ts"
+    },
+    "./agent": {
+      "import": "./dist/agent/index.js",
+      "types": "./dist/agent/index.d.ts"
     }
   },
   "files": [
@@ -53,14 +57,20 @@
   "dependencies": {
     "@arrakis/core": "file:../core",
     "drizzle-orm": "^0.33.0",
+    "ioredis": "^5.9.2",
+    "jose": "^5.10.0",
     "opossum": "^8.1.0",
     "postgres": "^3.4.0",
+    "uuid": "^11.1.0",
     "viem": "^2.21.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^20.0.0",
     "@types/opossum": "^8.1.7",
+    "@types/uuid": "^10.0.0",
+    "fast-check": "^4.5.3",
     "pino": "^9.0.0",
     "typescript": "^5.3.0",
     "vitest": "^1.0.0"

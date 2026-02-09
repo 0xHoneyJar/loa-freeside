@@ -1,0 +1,38 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Found adapter leakage, inconsistent ID naming for budgets, and a tool_call stream payload mismatch that can break downstream consumers.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "packages/agent-gateway/ports/agent-gateway.ts",
+      "line": 116,
+      "description": "The tool_call stream event uses `args: Record<string, unknown>` instead of the `arguments: string` shape used everywhere else, causing runtime mismatches between streamed tool calls and synchronous ToolCall payloads.",
+      "current_code": "```typescript\nexport type AgentStreamEvent =\n  | { type: 'content'; data: { text: string }; id?: string }\n  | { type: 'thinking'; data: { text: string }; id?: string }\n  | { type: 'tool_call'; data: { name: string; args: Record<string, unknown> }; id?: string }\n  | { type: 'usage'; data: UsageInfo; id?: string }\n  | { type: 'done'; data: null; id?: string }\n  | { type: 'error'; data: { code: string; message: string }; id?: string };\n```",
+      "fixed_code": "```typescript\nexport type AgentStreamEvent =\n  | { type: 'content'; data: { text: string }; id?: string }\n  | { type: 'thinking'; data: { text: string }; id?: string }\n  | { type: 'tool_call'; data: ToolCall; id?: string }\n  | { type: 'usage'; data: UsageInfo; id?: string }\n  | { type: 'done'; data: null; id?: string }\n  | { type: 'error'; data: { code: string; message: string }; id?: string };\n```",
+      "explanation": "Aligning the stream payload with the ToolCall interface prevents consumers from failing when they expect `arguments: string` and an `id`, and keeps the stream and sync payloads consistent."
+    },
+    {
+      "severity": "major",
+      "file": "packages/agent-gateway/ports/agent-gateway.ts",
+      "line": 145,
+      "description": "BudgetStatus and getBudgetStatus use `communityId` while the rest of the port uses `tenantId` for the same identifier. This inconsistency causes mapping bugs and confusion in multi-tenant contexts.",
+      "current_code": "```typescript\nexport interface BudgetStatus {\n  communityId: string;\n  monthlyLimitCents: number;\n  currentSpendCents: number;\n  remainingCents: number;\n  percentUsed: number;\n  warningThresholdReached: boolean;\n}\n\n// ...\n\ngetBudgetStatus(communityId: string): Promise<BudgetStatus>;\n```",
+      "fixed_code": "```typescript\nexport interface BudgetStatus {\n  tenantId: string;\n  monthlyLimitCents: number;\n  currentSpendCents: number;\n  remainingCents: number;\n  percentUsed: number;\n  warningThresholdReached: boolean;\n}\n\n// ...\n\ngetBudgetStatus(tenantId: string): Promise<BudgetStatus>;\n```",
+      "explanation": "Using `tenantId` consistently across the port avoids subtle bugs where implementations pass a tenant ID but consumers expect a community ID field name."
+    },
+    {
+      "severity": "major",
+      "file": "packages/agent-gateway/ports/agent-gateway.ts",
+      "line": 192,
+      "description": "AgentGatewayOptions leaks adapter details (Redis URL, loa-finn URL, AWS Secrets Manager secretId). Port definitions should remain adapter-agnostic. This violates the hexagonal boundary and makes tests depend on infra config.",
+      "current_code": "```typescript\nexport interface AgentGatewayOptions {\n  /** loa-finn base URL */\n  loaFinnUrl: string;\n  /** Redis connection URL */\n  redisUrl: string;\n  /** JWT service configuration */\n  jwt: {\n    /** AWS Secrets Manager secret ID for the signing key */\n    secretId: string;\n    /** Key ID (kid) for JWKS */\n    keyId: string;\n    /** Token expiry in seconds (default: 120) */\n    expirySec?: number;\n  };\n  /** Request timeout in milliseconds */\n  timeoutMs?: number;\n}\n```",
+      "fixed_code": "```typescript\n// --------------------------------------------------------------------------\n// Factory Types (Port-safe abstractions)\n// --------------------------------------------------------------------------\n\nexport interface JwtSignerPort {\n  sign(\n    claims: Record<string, unknown>,\n    options: { keyId: string; expiresInSec: number }\n  ): Promise<string>;\n}\n\nexport interface BudgetStorePort {\n  getStatus(tenantId: string): Promise<BudgetStatus>;\n}\n\nexport interface ProviderClientPort {\n  invoke(request: AgentInvokeRequest): Promise<AgentInvokeResponse>;\n  stream(request: AgentInvokeRequest): AsyncIterable<AgentStreamEvent>;\n  getHealth(): Promise<{ healthy: boolean; latencyMs: number }>;\n}\n\n/** Options for creating an agent gateway */\nexport interface AgentGatewayOptions {\n  /** Provider client (loa-finn adapter) */\n  provider: ProviderClientPort;\n  /** Budget store port (e.g., Redis adapter) */\n  budgetStore: BudgetStorePort;\n  /** JWT signer port (JWKS/ES256 adapter) */\n  jwtSigner: JwtSignerPort;\n  /** Request timeout in milliseconds */\n  timeoutMs?: number;\n}\n```",
+      "explanation": "Replacing URLs and secret IDs with abstract ports prevents infrastructure leakage into the port layer, preserves the hexagonal boundary, and supports testing and swapping adapters without changing the port interface."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}
