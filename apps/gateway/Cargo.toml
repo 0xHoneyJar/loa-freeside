@@ -34,7 +34,7 @@ metrics = "0.21"
 metrics-exporter-prometheus = "0.12"
 
 # HTTP server for health endpoints (Sprint S-4)
-axum = "0.7"
+axum = "0.8"
 
 # Error handling
 anyhow = "1"
