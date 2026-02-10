@@ -1,5 +1,8 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import {
+  GitProviderError,
+} from "../ports/git-provider.js";
 import type {
   IGitProvider,
   PullRequest,
@@ -7,6 +10,7 @@ import type {
   PRReview,
   PreflightResult,
   RepoPreflightResult,
+  CommitCompareResult,
 } from "../ports/git-provider.js";
 import type {
   IReviewPoster,
@@ -22,6 +26,15 @@ const execFileAsync = promisify(execFile);
 // If throughput becomes a bottleneck, swap to Octokit behind IGitProvider port.
 const GH_TIMEOUT_MS = 30_000;
 
+/** Error from gh CLI that carries the HTTP status code when available. */
+class GhApiError extends GitProviderError {
+  readonly httpStatus: number | undefined;
+  constructor(code: GitProviderError["code"], message: string, httpStatus?: number) {
+    super(code, message);
+    this.httpStatus = httpStatus;
+  }
+}
+
 // SECURITY: Adding endpoints here requires review — each is an attack surface expansion.
 // Every regex must anchor start (^) and end ($), use [^/]+ (not .*) for path segments,
 // and escape query parameters literally. New entries should get their own PR with justification.
@@ -32,6 +45,8 @@ const ALLOWED_API_ENDPOINTS: ReadonlyArray<RegExp> = [
   /^\/repos\/[^/]+\/[^/]+\/pulls\/\d+\/files\?per_page=100$/,
   /^\/repos\/[^/]+\/[^/]+\/pulls\/\d+\/reviews\?per_page=100$/,
   /^\/repos\/[^/]+\/[^/]+\/pulls\/\d+\/reviews$/,
+  // V3-1: compare commits for incremental review
+  /^\/repos\/[^/]+\/[^/]+\/compare\/[a-f0-9]{7,40}\.\.\.[a-f0-9]{7,40}$/,
 ];
 
 /**
@@ -151,13 +166,19 @@ async function gh(
       code?: string | number;
     };
     if (e.code === "ENOENT") {
-      throw new Error(
+      throw new GitProviderError(
+        "NETWORK",
         "GitHub CLI (gh) required. Install: https://cli.github.com/ and run 'gh auth login'.",
       );
     }
     // Do not include stderr/message — may contain tokens or sensitive repo info
     const code = typeof e.code === "string" || typeof e.code === "number" ? String(e.code) : "unknown";
-    throw new Error(`gh command failed (code=${code})`);
+    // Classify by exit code: 1 = general failure, 4 = auth/forbidden in gh
+    const errorCode = code === "4" ? "FORBIDDEN" : "NETWORK";
+    // Extract HTTP status from gh stderr: "gh: ... (HTTP NNN)"
+    const httpMatch = e.stderr?.match(/\(HTTP (\d{3})\)/);
+    const httpStatus = httpMatch ? parseInt(httpMatch[1], 10) : undefined;
+    throw new GhApiError(errorCode, `gh command failed (code=${code})`, httpStatus);
   }
 }
 
@@ -166,7 +187,7 @@ function parseJson<T>(raw: string, context: string): T {
     return JSON.parse(raw) as T;
   } catch {
     // Do not include raw response — may contain sensitive data
-    throw new Error(`Failed to parse gh JSON for ${context}`);
+    throw new GitProviderError("NETWORK", `Failed to parse gh JSON for ${context}`);
   }
 }
 
@@ -285,6 +306,27 @@ export class GitHubCLIAdapter implements IGitProvider, IReviewPoster {
     }
   }
 
+  async getCommitDiff(
+    owner: string,
+    repo: string,
+    base: string,
+    head: string,
+  ): Promise<CommitCompareResult> {
+    const raw = await gh([
+      "api",
+      `/repos/${owner}/${repo}/compare/${base}...${head}`,
+    ]);
+    const data = parseJson<Record<string, unknown>>(
+      raw,
+      `getCommitDiff(${owner}/${repo}, ${base.slice(0, 7)}...${head.slice(0, 7)})`,
+    );
+    const files = (data.files as Array<Record<string, unknown>> | undefined) ?? [];
+    return {
+      filesChanged: files.map((f) => f.filename as string),
+      totalCommits: (data.total_commits as number) ?? 0,
+    };
+  }
+
   async hasExistingReview(
     owner: string,
     repo: string,
@@ -300,7 +342,7 @@ export class GitHubCLIAdapter implements IGitProvider, IReviewPoster {
     const marker = `\n\n<!-- ${this.marker}: ${input.headSha} -->`;
     const body = input.body + marker;
 
-    await gh([
+    const makeArgs = (event: string): string[] => [
       "api",
       `/repos/${input.owner}/${input.repo}/pulls/${input.prNumber}/reviews`,
       "-X",
@@ -308,10 +350,26 @@ export class GitHubCLIAdapter implements IGitProvider, IReviewPoster {
       "--raw-field",
       `body=${body}`,
       "-f",
-      `event=${input.event}`,
+      `event=${event}`,
       "-f",
       `commit_id=${input.headSha}`,
-    ]);
+    ];
+
+    try {
+      await gh(makeArgs(input.event));
+    } catch (err) {
+      // GitHub returns 422 when REQUEST_CHANGES targets own PR.
+      // Fall back to COMMENT so the review content is still posted.
+      if (
+        input.event === "REQUEST_CHANGES" &&
+        err instanceof GhApiError &&
+        err.httpStatus === 422
+      ) {
+        await gh(makeArgs("COMMENT"));
+        return true;
+      }
+      throw err;
+    }
 
     return true;
   }

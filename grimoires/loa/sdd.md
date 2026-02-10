@@ -1,539 +1,509 @@
-# SDD: RTFM Testing — Documentation Quality via Fresh Agent Spawns
+# SDD: Skill Benchmark Audit — Anthropic Best Practices Alignment
 
 **Version**: 1.0.0
 **Status**: Draft
 **Author**: Architecture Phase (architect)
 **Date**: 2026-02-09
-**PRD**: grimoires/loa/prd.md
+**PRD**: grimoires/loa/prd.md (v1.1.0)
+**Issue**: #261
 
 ---
 
 ## 1. Executive Summary
 
-The `/rtfm` skill tests documentation usability by spawning isolated zero-context agents that attempt tasks using only the provided docs. It is a pure Loa skill — SKILL.md + command file + tester prompt — with no build step, no compiled artifacts, and no runtime dependencies beyond Claude Code's `Task` tool.
+Bring all 19 Loa skills into compliance with Anthropic's "Complete Guide to Building Skills for Claude" through a structural validation test suite, SKILL.md size refactoring, description standardization, and error handling improvements. All changes are documentation-only — no application code is modified.
 
-The architecture follows three principles:
-1. **Hermetic isolation** — the tester agent has zero project context
-2. **Structured output** — gaps are machine-parseable for future pipeline integration
-3. **Minimal surface** — ~3 files total, all markdown/YAML
+The primary deliverable is a CI-runnable test script (`validate-skill-benchmarks.sh`) that enforces Anthropic's standards as a regression gate, plus targeted refactoring of the 1 over-limit skill and 5 under-documented skills.
 
 ---
 
 ## 2. System Architecture
 
-### Component Overview
+### 2.1 Component Diagram
 
 ```
-┌─────────────────────────────────────────────────┐
-│                 /rtfm Command                    │
-│            .claude/commands/rtfm.md              │
-│                                                  │
-│  1. Parse args (docs, task, flags)               │
-│  2. Bundle doc contents                          │
-│  3. Select task template (or custom)             │
-│  4. Spawn tester subagent                        │
-│  5. Parse gap report                             │
-│  6. Present results                              │
-│  7. Track iteration / write report               │
-└──────────────────────┬──────────────────────────┘
-                       │
-                       │ Task(subagent_type="general-purpose")
-                       │
-          ┌────────────▼─────────────┐
-          │    Tester Subagent       │
-          │                          │
-          │  Prompt = capabilities   │
-          │        + rules           │
-          │        + bundled docs    │
-          │        + task            │
-          │                          │
-          │  Output = structured     │
-          │          gap report      │
-          └──────────┬───────────────┘
-                     │
-                     ▼
-          ┌──────────────────────────┐
-          │   Gap Report Parser      │
-          │                          │
-          │  Extract [GAP] markers   │
-          │  Count by type/severity  │
-          │  Determine verdict       │
-          └──────────┬───────────────┘
-                     │
-                     ▼
-          ┌──────────────────────────┐
-          │   Report Writer          │
-          │                          │
-          │  grimoires/loa/a2a/rtfm/ │
-          │  ├── report-{date}.md    │
-          │  └── baselines.yaml      │
-          └──────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│                    CI Pipeline                           │
+│                                                         │
+│  validate-skills.sh ──→ index.yaml schema checks        │
+│         (existing)       (name, version, triggers)      │
+│                                                         │
+│  validate-skill-benchmarks.sh ──→ SKILL.md checks  NEW │
+│         (new script)              (word count, desc,    │
+│                                    structure, errors)   │
+│                                                         │
+│  Both scripts: exit 0 = pass, exit 1 = fail             │
+└─────────────────────────────────────────────────────────┘
+         │                           │
+         ▼                           ▼
+┌─────────────────┐     ┌──────────────────────────┐
+│  .claude/skills/ │     │  .claude/schemas/         │
+│  ├── skill-a/    │     │  ├── skill-index.schema   │
+│  │   ├── SKILL.md│     │  └── skill-benchmark.json │
+│  │   ├── index.yaml     │         (new)             │
+│  │   └── resources/│    └──────────────────────────┘
+│  ├── skill-b/    │
+│  └── ...         │
+└─────────────────┘
 ```
 
-### Data Flow
+### 2.2 Relationship to Existing Infrastructure
 
-```
-User invokes /rtfm README.md --task "Install Loa"
-  │
-  ├── Read README.md contents → doc_bundle string
-  │
-  ├── Load tester prompt from SKILL.md <tester_prompt> section
-  │     ├── Capabilities manifest (what tester knows/doesn't know)
-  │     ├── Rules (no inference, be literal, report gaps)
-  │     ├── Gap format template
-  │     └── Output format template
-  │
-  ├── Assemble full prompt = tester_prompt + task + doc_bundle
-  │
-  ├── Task(prompt=assembled, subagent_type="general-purpose", model="sonnet")
-  │     └── Returns: structured text with [GAP] markers and verdict
-  │
-  ├── Parse response:
-  │     ├── Extract all [GAP] blocks
-  │     ├── Count: total, blocking, degraded, minor
-  │     ├── Determine verdict: SUCCESS / PARTIAL / FAILURE
-  │     └── Calculate Cold Start Score (blocking count)
-  │
-  ├── Display summary to user
-  │
-  └── Write report to grimoires/loa/a2a/rtfm/report-{date}.md
-```
+| Existing | New | Relationship |
+|----------|-----|-------------|
+| `validate-skills.sh` | `validate-skill-benchmarks.sh` | Complementary — existing checks index.yaml, new checks SKILL.md |
+| `skill-index.schema.json` | `skill-benchmark.json` | Complementary — existing validates YAML structure, new defines Anthropic benchmark thresholds |
+| `validate-e2e.sh` | — | Unchanged — end-to-end tests are a separate concern |
 
 ---
 
-## 3. File Structure
+## 3. Component Design
 
-```
-.claude/
-├── skills/
-│   └── rtfm-testing/
-│       ├── SKILL.md           # Skill definition with tester prompt
-│       └── index.yaml         # Skill metadata and triggers
-├── commands/
-│   └── rtfm.md                # Command definition with args/preflight
-```
+### 3.1 Structural Validation Script (FR-4b)
 
-```
-grimoires/loa/a2a/rtfm/
-├── report-2026-02-09.md       # Test reports (one per run)
-└── baselines.yaml             # Baseline registry (Phase 2)
-```
+**File**: `.claude/scripts/validate-skill-benchmarks.sh`
 
-Total: **3 files** to create (SKILL.md, index.yaml, rtfm.md), plus reports generated at runtime.
+**Purpose**: Automated CI-runnable checks for all SKILL.md files against Anthropic's benchmarks.
 
----
+#### 3.1.1 Check Suite
 
-## 4. Component Design
+| # | Check | Pass Criteria | Exit on Fail |
+|---|-------|---------------|-------------|
+| 1 | SKILL.md exists | File present in skill folder | Yes |
+| 2 | Word count | `wc -w` ≤ 5,000 | Yes |
+| 3 | No README.md | `README.md` absent from skill folder | Yes |
+| 4 | Folder kebab-case | Folder name matches `^[a-z][a-z0-9-]+$` | Yes |
+| 5 | Name matches folder | `name` field in frontmatter == folder name | Yes |
+| 6 | No XML in frontmatter | No `<` or `>` in YAML frontmatter block | Yes |
+| 7 | Description length | ≤ 1,024 characters (from index.yaml) | Yes |
+| 8 | Description has WHEN | Contains "Use when" or "Use this" pattern | Warning |
+| 9 | Error handling present | ≥ 5 error/troubleshoot/fail references | Warning |
+| 10 | Frontmatter valid | YAML between `---` delimiters parses correctly | Yes |
 
-### 4.1 Command File: `.claude/commands/rtfm.md`
-
-```yaml
----
-name: "rtfm"
-version: "1.0.0"
-description: "Test documentation usability by spawning zero-context agents"
-
-arguments:
-  - name: "docs"
-    type: "string[]"
-    required: false
-    description: "Documentation files to test"
-    examples: ["README.md", "INSTALLATION.md"]
-  - name: "task"
-    type: "string"
-    required: false
-    description: "Custom task for the tester to attempt"
-    flag: "--task"
-  - name: "template"
-    type: "string"
-    required: false
-    description: "Pre-built task template ID"
-    flag: "--template"
-    examples: ["install", "quickstart", "mount"]
-  - name: "auto"
-    type: "boolean"
-    required: false
-    description: "Auto-detect docs changed in current sprint"
-    flag: "--auto"
-  - name: "model"
-    type: "string"
-    required: false
-    description: "Model for tester subagent"
-    flag: "--model"
-    default: "sonnet"
-
-agent: "rtfm-testing"
-agent_path: "skills/rtfm-testing/"
-
-pre_flight:
-  - check: "file_exists_any"
-    paths: ["$ARGUMENTS.docs"]
-    error: "No documentation files found. Provide file paths or use --auto."
-
-outputs:
-  - path: "grimoires/loa/a2a/rtfm/"
-    type: "directory"
-    description: "RTFM test reports"
-
-mode:
-  default: "foreground"
-  allow_background: false
----
-```
-
-### 4.2 Skill Metadata: `.claude/skills/rtfm-testing/index.yaml`
-
-```yaml
-name: "rtfm-testing"
-version: "1.0.0"
-model: "sonnet"
-color: "cyan"
-
-effort_hint: low
-danger_level: safe
-categories:
-  - quality
-
-description: |
-  Test documentation usability by spawning fresh zero-context agents.
-  Identifies gaps that human reviewers miss due to the curse of knowledge.
-
-triggers:
-  - "/rtfm"
-  - "test documentation"
-  - "validate docs usability"
-
-inputs:
-  - name: "docs"
-    type: "string[]"
-    required: false
-  - name: "task"
-    type: "string"
-    required: false
-
-outputs:
-  - path: "grimoires/loa/a2a/rtfm/report-{date}.md"
-    description: "RTFM test report with gaps and verdict"
-    format: detailed
-```
-
-### 4.3 SKILL.md Structure
-
-The SKILL.md contains these sections:
-
-#### Objective
-
-Spawn a zero-context agent to test documentation. Parse structured gap report. Track iterations. Write report.
-
-#### Tester Capabilities Manifest
-
-Embedded YAML defining the tester's "knowledge floor" (from PRD FR-2).
-
-#### Tester Prompt (Cleanroom)
-
-The prompt that instructs the tester agent. Key rules:
-1. Use ONLY the docs — no prior knowledge
-2. Be literal — ambiguity = gap
-3. No inference — "install dependencies" without a command = gap
-4. Report every gap in `[GAP]` format
-5. Return structured output with verdict
-
-#### Task Templates
-
-Lookup table mapping template IDs to task descriptions and default doc files.
-
-#### Gap Parser Logic
-
-Instructions for extracting `[GAP]` markers, counting by type/severity, determining verdict.
-
-#### Report Template
-
-Markdown template for output.
-
-#### Workflow
-
-```
-Phase 0: Argument Resolution
-  - If --auto: detect doc files changed in current sprint
-  - If --template: resolve to task + doc files
-  - If positional args: use as doc file paths
-  - If --task: use as custom task
-  - Default: infer from primary doc filename
-
-Phase 1: Document Bundling
-  - Read each doc file
-  - Concatenate with headers: "=== FILE: README.md ==="
-  - Verify total size < 50KB (reject if larger)
-  - Include context isolation canary
-
-Phase 2: Tester Spawn
-  - Assemble tester prompt + task + bundled docs
-  - Task(prompt, subagent_type="general-purpose", model=config.model)
-  - Wait for response
-
-Phase 3: Gap Parsing
-  - Parse [GAP] markers from response
-  - Extract: type, location, problem, impact, severity, suggestion
-  - Count totals
-  - Determine verdict (SUCCESS/PARTIAL/FAILURE)
-
-Phase 4: Report & Display
-  - Write report to grimoires/loa/a2a/rtfm/report-{date}.md
-  - Display summary: gap count, blocking count, verdict
-  - If FAILURE/PARTIAL: suggest user fix gaps and re-run
-  - Track iteration number
-
-Phase 5: Baseline Check (Phase 2 scope)
-  - If baselines.yaml exists and doc has baseline
-  - If doc SHA differs from certified SHA
-  - Warn about potential regression
-```
-
-### 4.4 Context Isolation Canary (Two-Layer)
-
-#### Layer 1: Self-Report (Suggestive)
-
-Embedded in the tester prompt — asks the tester to honestly report whether it recognizes the project from training data.
-
-**Limitation**: LLMs cannot reliably distinguish "I know this from training data" from "I learned this from the docs." This is suggestive but not deterministic.
-
-#### Layer 2: Planted Canary (Deterministic)
-
-A fictitious project name is injected into the doc bundle via a `=== PROJECT CONTEXT ===` header. The gap parser checks whether the tester references the planted name or the real one.
-
-- Uses the planted name → PASS (isolation verified mechanically)
-- Uses the real name → COMPROMISED (prior knowledge detected)
-- Uses neither → INCONCLUSIVE (fall back to Layer 1 result)
-
-**Combined result** determines the canary status in the report: PASS, WARNING, or COMPROMISED. See SKILL.md `<planted_canary>` section for the full decision matrix.
-
----
-
-## 5. Tester Prompt Design
-
-### Structure
-
-```
-[CAPABILITIES MANIFEST]
-You know: {knows list}
-You do NOT know: {does_not_know list}
-
-[RULES]
-1. Use ONLY the docs below
-2. Be literal — ambiguity = gap
-3. No inference — missing how = gap
-4. {canary check}
-
-[GAP FORMAT]
-[GAP] <TYPE>
-Location: <where in docs>
-Problem: <what's wrong>
-Impact: <what you can't do>
-Severity: BLOCKING | DEGRADED | MINOR
-Suggestion: <what docs should say>
-
-[OUTPUT FORMAT]
-## Canary Check
-{answer}
-
-## Task Attempted
-{restate task}
-
-## Execution Log
-{step by step}
-
-## Gaps Found
-{all [GAP] reports}
-
-## Result
-SUCCESS | PARTIAL | FAILURE
-
-## Cold Start Score
-{blocking gap count}
-
-## Summary
-{brief assessment}
-
----
-
-TASK: {task}
-
----
-
-DOCUMENTATION:
-
-{bundled docs}
-```
-
-### Prompt Size Budget
-
-| Component | Estimated Tokens |
-|-----------|-----------------|
-| Capabilities + rules + format | ~800 |
-| Task description | ~50 |
-| Bundled docs (README only) | ~1,500 |
-| Bundled docs (INSTALLATION only) | ~5,000 |
-| **Total (README only)** | **~2,350** |
-| **Total (both docs)** | **~7,350** |
-
-Response budget: ~2,000-4,000 tokens. Total cost: ~$0.02-0.04/iteration with sonnet.
-
----
-
-## 6. Gap Report Schema
-
-### Raw Format (from tester)
-
-```
-[GAP] MISSING_PREREQ
-Location: Step 1 "Clone the repository"
-Problem: No repository URL specified
-Impact: Cannot clone the repository
-Severity: BLOCKING
-Suggestion: Add: git clone https://github.com/org/repo.git
-```
-
-### Parsed Summary
-
-```markdown
-| # | Type | Severity | Location | Problem |
-|---|------|----------|----------|---------|
-| 1 | MISSING_PREREQ | BLOCKING | Step 1 | No repo URL |
-```
-
-### Verdict Rules
-
-| Condition | Verdict |
-|-----------|---------|
-| 0 blocking gaps | SUCCESS |
-| >0 blocking but tester made partial progress | PARTIAL |
-| Tester could not start or gave up | FAILURE |
-
----
-
-## 7. Task Templates
-
-```yaml
-templates:
-  install:
-    task: "Install this tool on a fresh repository following only the documentation below."
-    docs: ["INSTALLATION.md"]
-  quickstart:
-    task: "Follow the quick start guide to run your first development cycle."
-    docs: ["README.md"]
-  mount:
-    task: "Install this framework onto an existing project repository."
-    docs: ["README.md", "INSTALLATION.md"]
-  beads:
-    task: "Set up the beads_rust task tracking tool."
-    docs: ["INSTALLATION.md"]
-  gpt-review:
-    task: "Configure the GPT cross-model review feature."
-    docs: ["INSTALLATION.md"]
-  update:
-    task: "Update this framework to the latest version."
-    docs: ["INSTALLATION.md"]
-```
-
-Default inference: `README.md` → `quickstart`, `INSTALLATION.md` → `install`, other → generic.
-
----
-
-## 8. `/review` Integration (Phase 2)
-
-### Doc Change Detection
+#### 3.1.2 Script Structure
 
 ```bash
-git diff main...HEAD --name-only | grep -E '\.(md|txt|rst)$'
+#!/usr/bin/env bash
+# validate-skill-benchmarks.sh - Anthropic skill benchmarks (Issue #261)
+set -euo pipefail
+
+SKILLS_DIR=".claude/skills"
+MAX_WORDS=5000
+MAX_DESC_CHARS=1024
+MIN_ERROR_REFS=5
+
+total=0; passed=0; failed=0; warnings=0
+
+for skill_dir in "$SKILLS_DIR"/*/; do
+    skill_name=$(basename "$skill_dir")
+    ((total++))
+    errors=()
+    warns=()
+
+    # Check 1: SKILL.md exists
+    # Check 2: Word count
+    # Check 3: No README.md
+    # Check 4: Folder kebab-case
+    # Check 5: Name matches folder (frontmatter)
+    # Check 6: No XML in frontmatter
+    # Check 7: Description length (from index.yaml)
+    # Check 8: Description has trigger context
+    # Check 9: Error handling references
+    # Check 10: Frontmatter parses
+
+    # Report per-skill
+done
+
+# Summary with exit code
 ```
 
-Filter to known doc files: README.md, INSTALLATION.md, PROCESS.md, docs/**/*.md.
+#### 3.1.3 Output Format
 
-### Golden Path Extension
+Matches existing `validate-skills.sh` output format for consistency:
 
-`/review` would call `/rtfm --auto` after `/review-sprint` + `/audit-sprint`. Phase 2 scope.
+```
+Skill Benchmark Validation (Anthropic Guide)
+=============================================
 
----
+PASS: auditing-security (4,548 words)
+PASS: autonomous-agent (4,134 words)
+  WARN: bridgebuilder-review - only 2 error refs (min: 5)
+PASS: browsing-constructs (1,562 words)
+...
+FAIL: riding-codebase (6,905 words > 5,000 limit)
 
-## 9. Baseline Registry (Phase 2)
-
-### File: `grimoires/loa/a2a/rtfm/baselines.yaml`
-
-```yaml
-baselines:
-  README.md:
-    task: "quickstart"
-    cold_start_score: 1
-    certified_date: "2026-02-15T10:30:00Z"
-    certified_sha: "abc123def456"
-    model: "sonnet"
+Summary
+-------
+Total: 19
+Passed: 18
+Failed: 1
+Warnings: 3
 ```
 
-On SUCCESS: update baseline. On doc change since certification: warn about drift.
+#### 3.1.4 Configuration File
+
+**File**: `.claude/schemas/skill-benchmark.json`
+
+```json
+{
+  "max_words": 5000,
+  "max_description_chars": 1024,
+  "min_error_references": 5,
+  "description_trigger_patterns": [
+    "Use when",
+    "Use this",
+    "Use if",
+    "Invoke when",
+    "Trigger when"
+  ],
+  "forbidden_frontmatter_patterns": ["<[a-zA-Z]", "</[a-zA-Z]"],
+  "folder_name_pattern": "^[a-z][a-z0-9-]+$"
+}
+```
+
+Thresholds are configurable so they can evolve without code changes.
+
+### 3.2 Schema Update
+
+**File**: `.claude/schemas/skill-index.schema.json`
+
+Update the `description` field constraints:
+
+```json
+// Before
+"description": {
+  "type": "string",
+  "minLength": 50,
+  "maxLength": 500
+}
+
+// After
+"description": {
+  "type": "string",
+  "minLength": 50,
+  "maxLength": 1024
+}
+```
+
+This aligns with Anthropic's 1,024-character limit for descriptions.
+
+### 3.3 SKILL.md Size Refactoring (FR-1)
+
+#### 3.3.1 riding-codebase (6,905 → ≤4,500 words)
+
+**Strategy**: Extract phase-specific reference material to linked files.
+
+**Current structure analysis**:
+```
+riding-codebase/SKILL.md (6,905 words)
+├── Core Principles (~200 words)           ← Keep inline
+├── Phase 0: Preflight (~400 words)        ← Keep inline
+├── Phase 1: Discovery (~800 words)        ← Keep inline (core instructions)
+├── Phase 2: Deep Analysis (~1,200 words)  ← Extract templates
+├── Phase 3: Synthesis (~1,000 words)      ← Extract output formats
+├── Phase 4: Validation (~800 words)       ← Extract checklists
+├── Output Format Templates (~1,500 words) ← Extract entirely
+└── Edge Cases & Recovery (~800 words)     ← Keep inline
+```
+
+**Extraction plan**:
+```
+riding-codebase/
+├── SKILL.md                      (≤4,500 words — instructions only)
+├── resources/
+│   └── references/
+│       ├── output-formats.md     (~1,500 words — PRD/SDD templates)
+│       ├── analysis-checklists.md (~800 words — Phase 2-4 checklists)
+│       └── deep-analysis-guide.md (~600 words — Phase 2 detailed steps)
+└── index.yaml                    (unchanged)
+```
+
+**Link pattern in SKILL.md**:
+```markdown
+## Phase 2: Deep Analysis
+
+[Core instructions remain here — what to analyze and why]
+
+For detailed analysis steps and checklists, see:
+`resources/references/deep-analysis-guide.md`
+```
+
+**Backup**: Create `SKILL.md.bak` before refactoring. Retain for 7 days per R-5 rollback strategy.
+
+#### 3.3.2 Near-Limit Skills (Audit Only)
+
+For skills between 4,000-5,000 words (auditing-security, implementing-tasks, reviewing-code, autonomous-agent):
+
+- **No immediate refactoring** — they're under the limit
+- **Document** which sections could be extracted if they grow
+- **Add comments** in SKILL.md: `<!-- extractable: ~800 words -->` near large sections
+
+This gives future maintainers a roadmap without introducing changes that could regress behavior.
+
+### 3.4 Description Standardization (FR-2)
+
+#### 3.4.1 Update Locations
+
+Each skill has descriptions in two places:
+
+| Location | Format | Used By |
+|----------|--------|---------|
+| `index.yaml` `description` field | Multi-line YAML string | Skill matching engine, `validate-skills.sh` |
+| `SKILL.md` frontmatter `description` field | YAML string (optional) | Some skills only |
+
+**Decision**: Update `index.yaml` as the source of truth. SKILL.md frontmatter descriptions are optional and may differ (they're loaded at different disclosure levels).
+
+#### 3.4.2 Description Template
+
+```
+Line 1: [WHAT] — action verb, user-facing outcome
+Line 2: [WHEN] — "Use when..." with 1-2 specific trigger contexts
+Line 3: [CAPABILITIES] — 2-3 concrete things it handles
+```
+
+**Constraints**:
+- Total ≤ 1,024 characters
+- Must preserve existing trigger file paths (per PRD Finding 5)
+- Existing `triggers` array in index.yaml remains unchanged
+
+#### 3.4.3 All 19 Descriptions (Before/After)
+
+Descriptions will be drafted per-skill during implementation. Each follows the template above. The implementer will:
+
+1. Read the existing description
+2. Read the SKILL.md to understand actual behavior
+3. Draft new description following template
+4. Verify no trigger file paths are dropped
+5. Update `index.yaml`
+
+### 3.5 Error Handling Audit (FR-3)
+
+#### 3.5.1 Target Skills
+
+5 skills with <5 error references need an `## Error Handling` section added to their SKILL.md:
+
+| Skill | Current Refs | Additions Needed |
+|-------|-------------|-----------------|
+| bridgebuilder-review | 2 | API failures, auth errors, rate limits, dry-run edge cases, large PR handling |
+| designing-architecture | 3 | PRD not found, clarification loop timeout, SDD generation failure |
+| flatline-knowledge | 4 | NotebookLM auth, API timeout, cache miss, model unavailable |
+| mounting-framework | 4 | Permission denied, existing mount, partial install, version mismatch |
+| planning-sprints | 2 | PRD/SDD missing, capacity estimation, dependency cycles, empty sprint |
+
+#### 3.5.2 Error Section Template
+
+```markdown
+## Error Handling
+
+| Error | Cause | Resolution |
+|-------|-------|------------|
+| "description" | What triggers it | How to fix |
+
+### Troubleshooting
+
+**Skill doesn't trigger**: [specific guidance]
+**Unexpected output**: [specific guidance]
+**Mid-execution failure**: [recovery steps]
+```
+
+#### 3.5.3 Word Budget
+
+Each error handling section adds ~150-300 words. For near-limit skills, this must be accounted for in the word budget:
+
+| Skill | Current Words | + Error Section | New Total | Under Limit? |
+|-------|-------------|-----------------|-----------|-------------|
+| bridgebuilder-review | 327 | +250 | 577 | Yes |
+| designing-architecture | 1,637 | +200 | 1,837 | Yes |
+| flatline-knowledge | 687 | +200 | 887 | Yes |
+| mounting-framework | 921 | +200 | 1,121 | Yes |
+| planning-sprints | 2,586 | +200 | 2,786 | Yes |
+
+None of the target skills are at risk of exceeding the 5,000-word limit after additions.
+
+### 3.6 Negative Trigger Audit (FR-5)
+
+#### 3.6.1 Design Decision
+
+Anthropic's guide recommends `negative_triggers` to prevent misfires. However, Loa's current skill matching architecture uses `triggers` arrays in index.yaml — there is no `negative_triggers` field in the schema.
+
+**Decision**: Add `negative_triggers` as an optional field to the schema. The validation script will check for their presence (warning only, not blocking). Implementation of actual negative trigger matching is deferred — the field serves as documentation for now.
+
+```json
+// Addition to skill-index.schema.json
+"negative_triggers": {
+  "type": "array",
+  "items": { "type": "string" },
+  "description": "Phrases that should NOT trigger this skill (advisory)"
+}
+```
+
+### 3.7 Progressive Disclosure Analysis (FR-6)
+
+#### 3.7.1 Current Disclosure Levels
+
+| Level | Mechanism | Current Usage |
+|-------|-----------|--------------|
+| L1: Frontmatter | YAML between `---` in SKILL.md | 19/19 skills use frontmatter |
+| L2: SKILL.md body | Full file loaded on trigger | 19/19 — this IS the instruction set |
+| L3: Linked references | `resources/references/*.md` | 0/19 use explicit references/ links |
+
+**Gap**: Level 3 is unused. All content is either in frontmatter (L1) or the SKILL.md body (L2). No skill currently links to reference files for on-demand loading.
+
+#### 3.7.2 L3 Candidates (>3,000 words)
+
+| Skill | Words | Extractable Content | Estimated Savings |
+|-------|-------|--------------------|--------------------|
+| riding-codebase | 6,905 | Output templates, analysis checklists | ~2,400 words |
+| implementing-tasks | 4,596 | Feedback templates, beads integration details | ~800 words |
+| auditing-security | 4,548 | Security checklists, OWASP reference | ~700 words |
+| reviewing-code | 4,468 | Review rubrics, quality checklists | ~600 words |
+| autonomous-agent | 4,134 | State machine diagrams, recovery procedures | ~500 words |
+| deploying-infrastructure | 3,880 | IaC templates, monitoring setup | ~400 words |
+| discovering-requirements | 3,138 | Interview templates, context synthesis guides | ~300 words |
+| translating-for-executives | 3,019 | Output format templates | ~200 words |
+
+**Sprint scope**: Only riding-codebase (the over-limit skill) will be refactored in this issue. Near-limit skills are documented with extractable sections for future work.
 
 ---
 
-## 10. Configuration
+## 4. Data Architecture
 
-```yaml
-# .loa.config.yaml
-rtfm:
-  enabled: true
-  model: "sonnet"
-  max_doc_size_kb: 50
-  capabilities_override:
-    knows: []
-    does_not_know: []
-  auto:
-    enabled: true
-    doc_patterns:
-      - "README.md"
-      - "INSTALLATION.md"
-      - "PROCESS.md"
-      - "docs/**/*.md"
+No databases or persistent storage. All data is in:
+- SKILL.md files (markdown)
+- index.yaml files (YAML)
+- skill-benchmark.json (JSON configuration)
+- skill-index.schema.json (JSON Schema)
+
+---
+
+## 5. File Inventory
+
+### 5.1 New Files
+
+| File | Purpose | Size |
+|------|---------|------|
+| `.claude/scripts/validate-skill-benchmarks.sh` | Structural validation script | ~200 lines |
+| `.claude/schemas/skill-benchmark.json` | Benchmark thresholds config | ~20 lines |
+| `.claude/skills/riding-codebase/resources/references/output-formats.md` | Extracted output templates | ~1,500 words |
+| `.claude/skills/riding-codebase/resources/references/analysis-checklists.md` | Extracted checklists | ~800 words |
+| `.claude/skills/riding-codebase/resources/references/deep-analysis-guide.md` | Extracted analysis steps | ~600 words |
+
+### 5.2 Modified Files
+
+| File | Changes |
+|------|---------|
+| `.claude/schemas/skill-index.schema.json` | Raise description maxLength 500→1024, add negative_triggers field |
+| `.claude/skills/riding-codebase/SKILL.md` | Reduce from 6,905 to ≤4,500 words via extraction |
+| `.claude/skills/*/index.yaml` (19 files) | Update descriptions to WHAT+WHEN+capabilities formula |
+| `.claude/skills/bridgebuilder-review/SKILL.md` | Add error handling section |
+| `.claude/skills/designing-architecture/SKILL.md` | Add error handling section |
+| `.claude/skills/flatline-knowledge/SKILL.md` | Add error handling section |
+| `.claude/skills/mounting-framework/SKILL.md` | Add error handling section |
+| `.claude/skills/planning-sprints/SKILL.md` | Add error handling section |
+
+### 5.3 Unchanged Files
+
+| File | Reason |
+|------|--------|
+| `.claude/scripts/validate-skills.sh` | Existing script is complementary, not replaced |
+| All other SKILL.md files | No changes needed (under limits, sufficient error handling) |
+
+---
+
+## 6. Testing Strategy
+
+### 6.1 Test Script Self-Validation
+
+The validation script must pass on the repository after all changes are complete:
+
+```bash
+# Must exit 0 after all refactoring
+.claude/scripts/validate-skill-benchmarks.sh
+```
+
+### 6.2 Regression Testing
+
+Before and after each skill modification:
+
+```bash
+# Capture baseline
+.claude/scripts/validate-skills.sh       # Existing — must still pass
+.claude/scripts/validate-skill-benchmarks.sh  # New — captures current state
+```
+
+### 6.3 Rollback Verification
+
+```bash
+# Each modified SKILL.md has a .bak copy
+ls .claude/skills/riding-codebase/SKILL.md.bak
+# Restore: cp SKILL.md.bak SKILL.md
+```
+
+### 6.4 Word Count Verification
+
+```bash
+# Verify riding-codebase is under limit after refactoring
+words=$(wc -w < .claude/skills/riding-codebase/SKILL.md)
+test "$words" -le 5000 && echo "PASS: $words words" || echo "FAIL: $words words"
 ```
 
 ---
 
-## 11. Security Considerations
+## 7. Implementation Order
 
-1. **Prompt injection via docs** — Tester has no elevated permissions, output is parsed not executed. Rules 7-8 in the tester prompt explicitly instruct the agent to treat docs as untrusted input and refuse conflicting instructions.
-2. **Context isolation — Two-layer canary architecture**:
-   - **Layer 1 (Self-report, suggestive)**: Tester is asked to report if it recognizes the project from training data. Limitation: LLMs cannot reliably introspect on knowledge provenance (Goodhart's Law). The smoke test confirmed this — the tester recognized Loa from training data.
-   - **Layer 2 (Planted canary, deterministic)**: A fictitious project name is injected into the doc bundle. The parser mechanically checks whether the tester references the planted name or the real one. This catches name-level knowledge leakage without relying on self-reporting.
-   - **Limitations**: Neither layer catches concept-level leakage (e.g., knowing what "grimoires" means without the docs explaining it). Planted names may coincidentally match real project names. Both layers together provide meaningful but not complete coverage.
-3. **No file writes by tester** — The `general-purpose` subagent spawned via Task tool returns text output only and cannot write files in the parent session. This is an implementation characteristic of Claude Code's Task tool, not an explicitly enforced security boundary.
-4. **Gap parser resilience** — The parser accepts format variants (bold markers, synonym severities) and falls back to MANUAL_REVIEW on unparseable output rather than silently dropping gaps. This prevents a compromised tester from hiding findings by using non-standard formatting.
+| Task | Dependencies | Files | Estimated Effort |
+|------|-------------|-------|-----------------|
+| T1: Create benchmark config | None | `skill-benchmark.json` | Small |
+| T2: Create validation script | T1 | `validate-skill-benchmarks.sh` | Medium |
+| T3: Update schema | None | `skill-index.schema.json` | Small |
+| T4: Refactor riding-codebase | T2 (to verify) | SKILL.md + 3 reference files | Medium |
+| T5: Standardize 19 descriptions | T3 | 19 index.yaml files | Medium |
+| T6: Add error handling (5 skills) | T2 (to verify) | 5 SKILL.md files | Medium |
+| T7: Run full validation | T1-T6 | — | Small |
 
----
-
-## 12. Testing Strategy
-
-1. Run `/rtfm README.md` — verify gaps found
-2. Run `/rtfm INSTALLATION.md` — verify gaps found
-3. Run `/rtfm README.md INSTALLATION.md` — verify combined flow
-4. Run `/rtfm --template install` — verify template resolution
-5. Run `/rtfm --task "custom" README.md` — verify custom tasks
-6. Verify canary catches context leakage
-7. Verify reports written to correct path
-8. Model comparison: sonnet vs haiku gap counts (NFR-2)
+**Critical path**: T1 → T2 → T4 (validation script must exist before refactoring to verify compliance).
 
 ---
 
-## 13. Implementation Estimate
+## 8. Security Considerations
 
-| Component | Files | Effort |
-|-----------|-------|--------|
-| SKILL.md | 1 | Medium |
-| index.yaml | 1 | Low |
-| rtfm.md command | 1 | Low |
-| **Total** | **3 files** | **Low-Medium** |
+| Concern | Mitigation |
+|---------|-----------|
+| Script injection via skill names | Folder names validated against `^[a-z][a-z0-9-]+$` regex |
+| Temp file races | Script uses read-only operations (no temp files needed) |
+| Path traversal | All paths are relative to `.claude/skills/`, validated to exist |
 
 ---
 
-## 14. References
+## 9. Performance Budget
 
-- PRD: `grimoires/loa/prd.md`
-- Bridgebuilder Review: PR #256 comments
-- Skill reference: `.claude/skills/reviewing-code/` (architecture pattern)
-- Command reference: `.claude/commands/validate.md` (command pattern)
+| Operation | Target | Approach |
+|-----------|--------|----------|
+| Full benchmark validation (19 skills) | <3s | Sequential iteration, no external API calls |
+| Single skill validation | <200ms | Direct file reads, `wc -w` + `grep -c` |
+
+---
+
+## 10. Dependencies
+
+| Dependency | Required? | Purpose | Fallback |
+|------------|-----------|---------|----------|
+| `bash` 4+ | Yes | Script execution | None |
+| `wc` | Yes | Word counting | POSIX standard |
+| `grep` | Yes | Pattern matching | POSIX standard |
+| `jq` | Yes | JSON config parsing | None (exit with error) |
+| `yq` | No | YAML parsing (for descriptions) | `grep`-based extraction |
+
+No new external dependencies. All tools are already required by existing Loa scripts.
+
+---
+
+## 11. References
+
+| Document | Relevance |
+|----------|-----------|
+| PRD v1.1.0 (`grimoires/loa/prd.md`) | All requirements and priorities |
+| `validate-skills.sh` | Existing validation pattern to follow |
+| `skill-index.schema.json` | Existing schema to extend |
+| Anthropic "Complete Guide to Building Skills for Claude" | Primary benchmark source |
+| PR #264 review feedback | Priority adjustments and rollback strategy |

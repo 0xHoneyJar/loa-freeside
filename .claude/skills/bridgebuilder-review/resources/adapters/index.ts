@@ -38,10 +38,18 @@ export function createLocalAdapters(
     reviewMarker: config.reviewMarker,
   });
 
+  // Tiered timeout: 120s default, 180s for medium prompts, 300s for large.
+  // Anthropic API p95 latency scales with prompt size; fixed thresholds
+  // avoid under-serving the 50K-128K range.
+  const timeoutMs =
+    config.maxInputTokens > 100_000 ? 300_000 :
+    config.maxInputTokens > 50_000 ? 180_000 :
+    120_000;
+
   return {
     git: ghAdapter,
     poster: ghAdapter,
-    llm: new AnthropicAdapter(anthropicApiKey, config.model),
+    llm: new AnthropicAdapter(anthropicApiKey, config.model, timeoutMs),
     sanitizer: new PatternSanitizer(),
     hasher: new NodeHasher(),
     logger: new ConsoleLogger(),

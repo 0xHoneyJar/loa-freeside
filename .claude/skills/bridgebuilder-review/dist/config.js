@@ -8,9 +8,9 @@ const DEFAULTS = {
     model: "claude-sonnet-4-5-20250929",
     maxPrs: 10,
     maxFilesPerPr: 50,
-    maxDiffBytes: 100_000,
-    maxInputTokens: 8_000,
-    maxOutputTokens: 4_000,
+    maxDiffBytes: 512_000,
+    maxInputTokens: 128_000,
+    maxOutputTokens: 16_000,
     dimensions: ["security", "quality", "test-coverage"],
     reviewMarker: "bridgebuilder-review",
     personaPath: "grimoires/bridgebuilder/BEAUVOIR.md",
@@ -42,6 +42,37 @@ export function parseCLIArgs(argv) {
                 throw new Error(`Invalid --pr value: ${argv[i]}. Must be a positive integer.`);
             }
             args.pr = n;
+        }
+        else if (arg === "--max-input-tokens" && i + 1 < argv.length) {
+            const n = Number(argv[++i]);
+            if (isNaN(n) || n <= 0) {
+                throw new Error(`Invalid --max-input-tokens value: ${argv[i]}. Must be a positive integer.`);
+            }
+            args.maxInputTokens = n;
+        }
+        else if (arg === "--max-output-tokens" && i + 1 < argv.length) {
+            const n = Number(argv[++i]);
+            if (isNaN(n) || n <= 0) {
+                throw new Error(`Invalid --max-output-tokens value: ${argv[i]}. Must be a positive integer.`);
+            }
+            args.maxOutputTokens = n;
+        }
+        else if (arg === "--max-diff-bytes" && i + 1 < argv.length) {
+            const n = Number(argv[++i]);
+            if (isNaN(n) || n <= 0) {
+                throw new Error(`Invalid --max-diff-bytes value: ${argv[i]}. Must be a positive integer.`);
+            }
+            args.maxDiffBytes = n;
+        }
+        else if (arg === "--model" && i + 1 < argv.length) {
+            args.model = argv[++i];
+        }
+        else if (arg === "--persona" && i + 1 < argv.length) {
+            args.persona = argv[++i];
+        }
+        else if (arg === "--exclude" && i + 1 < argv.length) {
+            args.exclude = args.exclude ?? [];
+            args.exclude.push(argv[++i]);
         }
     }
     return args;
@@ -164,6 +195,12 @@ async function loadYamlConfig() {
                 case "max_runtime_minutes":
                     config.max_runtime_minutes = Number(value);
                     break;
+                case "loa_aware":
+                    config.loa_aware = value === "true";
+                    break;
+                case "persona":
+                    config.persona = value;
+                    break;
             }
         }
         return config;
@@ -220,42 +257,73 @@ export async function resolveConfig(cliArgs, env, yamlConfig) {
     if (repos.length === 0) {
         throw new Error("No repos configured. Use --repo owner/repo, set BRIDGEBUILDER_REPOS, or run from a git repo.");
     }
-    // Track model provenance
-    const modelSource = env.BRIDGEBUILDER_MODEL
-        ? "env"
-        : yaml.model
-            ? "yaml"
-            : "default";
+    // Track model provenance (CLI > env > yaml > default)
+    const modelSource = cliArgs.model
+        ? "cli"
+        : env.BRIDGEBUILDER_MODEL
+            ? "env"
+            : yaml.model
+                ? "yaml"
+                : "default";
     // Track dryRun provenance
     const dryRunSource = cliArgs.dryRun != null
         ? "cli"
         : env.BRIDGEBUILDER_DRY_RUN === "true"
             ? "env"
             : "default";
+    // Track token/size provenance
+    const maxInputTokensSource = cliArgs.maxInputTokens != null
+        ? "cli"
+        : yaml.max_input_tokens != null
+            ? "yaml"
+            : "default";
+    const maxOutputTokensSource = cliArgs.maxOutputTokens != null
+        ? "cli"
+        : yaml.max_output_tokens != null
+            ? "yaml"
+            : "default";
+    const maxDiffBytesSource = cliArgs.maxDiffBytes != null
+        ? "cli"
+        : yaml.max_diff_bytes != null
+            ? "yaml"
+            : "default";
     // Resolve remaining fields: CLI > env > yaml > defaults
     const config = {
         repos,
-        model: env.BRIDGEBUILDER_MODEL ?? yaml.model ?? DEFAULTS.model,
+        model: cliArgs.model ?? env.BRIDGEBUILDER_MODEL ?? yaml.model ?? DEFAULTS.model,
         maxPrs: yaml.max_prs ?? DEFAULTS.maxPrs,
         maxFilesPerPr: yaml.max_files_per_pr ?? DEFAULTS.maxFilesPerPr,
-        maxDiffBytes: yaml.max_diff_bytes ?? DEFAULTS.maxDiffBytes,
-        maxInputTokens: yaml.max_input_tokens ?? DEFAULTS.maxInputTokens,
-        maxOutputTokens: yaml.max_output_tokens ?? DEFAULTS.maxOutputTokens,
+        maxDiffBytes: cliArgs.maxDiffBytes ?? yaml.max_diff_bytes ?? DEFAULTS.maxDiffBytes,
+        maxInputTokens: cliArgs.maxInputTokens ?? yaml.max_input_tokens ?? DEFAULTS.maxInputTokens,
+        maxOutputTokens: cliArgs.maxOutputTokens ?? yaml.max_output_tokens ?? DEFAULTS.maxOutputTokens,
         dimensions: yaml.dimensions ?? DEFAULTS.dimensions,
         reviewMarker: yaml.review_marker ?? DEFAULTS.reviewMarker,
         personaPath: yaml.persona_path ?? DEFAULTS.personaPath,
         dryRun: cliArgs.dryRun ??
             (env.BRIDGEBUILDER_DRY_RUN === "true" ? true : undefined) ??
             DEFAULTS.dryRun,
-        excludePatterns: yaml.exclude_patterns ?? DEFAULTS.excludePatterns,
+        excludePatterns: [
+            ...(yaml.exclude_patterns ?? []),
+            ...(cliArgs.exclude ?? []),
+        ],
         sanitizerMode: yaml.sanitizer_mode ?? DEFAULTS.sanitizerMode,
         maxRuntimeMinutes: yaml.max_runtime_minutes ?? DEFAULTS.maxRuntimeMinutes,
         ...(cliArgs.pr != null ? { targetPr: cliArgs.pr } : {}),
+        ...(yaml.loa_aware != null ? { loaAware: yaml.loa_aware } : {}),
+        ...(cliArgs.persona != null || yaml.persona != null
+            ? { persona: cliArgs.persona ?? yaml.persona }
+            : {}),
+        ...(yaml.persona_path != null
+            ? { personaFilePath: yaml.persona_path }
+            : {}),
     };
     const provenance = {
         repos: reposSource,
         model: modelSource,
         dryRun: dryRunSource,
+        maxInputTokens: maxInputTokensSource,
+        maxOutputTokens: maxOutputTokensSource,
+        maxDiffBytes: maxDiffBytesSource,
     };
     return { config, provenance };
 }
@@ -282,8 +350,19 @@ export function formatEffectiveConfig(config, provenance) {
     const modelSrc = p ? ` (${p.model})` : "";
     const drySrc = p ? ` (${p.dryRun})` : "";
     const prFilter = config.targetPr != null ? `, target_pr=#${config.targetPr}` : "";
+    const inputSrc = p ? ` (${p.maxInputTokens})` : "";
+    const outputSrc = p ? ` (${p.maxOutputTokens})` : "";
+    const diffSrc = p ? ` (${p.maxDiffBytes})` : "";
+    const personaInfo = config.persona ? `, persona=${config.persona}` : "";
+    const excludeInfo = config.excludePatterns.length > 0
+        ? `, exclude_patterns=[${config.excludePatterns.join(", ")}]`
+        : "";
     return (`[bridgebuilder] Config: repos=[${repoNames}]${repoSrc}, ` +
         `model=${config.model}${modelSrc}, max_prs=${config.maxPrs}, ` +
-        `dry_run=${config.dryRun}${drySrc}, sanitizer_mode=${config.sanitizerMode}${prFilter}`);
+        `max_input_tokens=${config.maxInputTokens}${inputSrc}, ` +
+        `max_output_tokens=${config.maxOutputTokens}${outputSrc}, ` +
+        `max_diff_bytes=${config.maxDiffBytes}${diffSrc}, ` +
+        `dry_run=${config.dryRun}${drySrc}, sanitizer_mode=${config.sanitizerMode}${prFilter}` +
+        `${personaInfo}${excludeInfo}`);
 }
 //# sourceMappingURL=config.js.map
