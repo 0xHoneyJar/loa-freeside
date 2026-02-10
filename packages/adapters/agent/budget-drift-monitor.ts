@@ -13,7 +13,7 @@
 
 import type { Logger } from 'pino';
 import type { Redis } from 'ioredis';
-import type { Clock } from './jwt-service.js';
+import { REAL_CLOCK, type Clock } from './clock.js';
 
 // --------------------------------------------------------------------------
 // Types
@@ -59,8 +59,7 @@ const PER_COMMUNITY_TIMEOUT_MS = 10_000;
 // Drift Monitor Job Processor
 // --------------------------------------------------------------------------
 
-/** Default clock using Date.now() */
-const REAL_CLOCK: Clock = { now: () => Date.now() };
+// REAL_CLOCK imported from ./clock.js (S13-T2: shared types extraction)
 
 export class BudgetDriftMonitor {
   private readonly clock: Clock;

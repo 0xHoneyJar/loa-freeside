@@ -14,6 +14,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { createPublicKey, type KeyObject } from 'node:crypto';
 import type { AgentRequestContext } from '@arrakis/core/ports';
 import { computeReqHash } from './req-hash.js';
+import { REAL_CLOCK, type Clock } from './clock.js';
 
 // --------------------------------------------------------------------------
 // Tier Name Mapping
@@ -64,14 +65,7 @@ export interface KeyLoader {
   load(): Promise<string>;
 }
 
-/** Injectable clock for testability (S12-T2: JWKS TTL verification) */
-export interface Clock {
-  /** Returns current time in milliseconds since epoch */
-  now(): number;
-}
-
-/** Default clock using Date.now() */
-const REAL_CLOCK: Clock = { now: () => Date.now() };
+// Clock interface and REAL_CLOCK imported from ./clock.js (S13-T2: shared types extraction)
 
 // --------------------------------------------------------------------------
 // JWT Service

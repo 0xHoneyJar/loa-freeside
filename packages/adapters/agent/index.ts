@@ -5,8 +5,11 @@
  * Exports all agent adapter components for the gateway system.
  */
 
+// Clock (shared time interface — S13-T2)
+export { REAL_CLOCK, type Clock } from './clock.js';
+
 // JWT Service
-export { JwtService, type JwtServiceConfig, type PreviousKeyConfig, type KeyLoader, type Clock } from './jwt-service.js';
+export { JwtService, type JwtServiceConfig, type PreviousKeyConfig, type KeyLoader } from './jwt-service.js';
 
 // Tier→Access Mapper
 export { TierAccessMapper, DEFAULT_TIER_MAP, type TierMappingConfig, type TierMapping } from './tier-access-mapper.js';

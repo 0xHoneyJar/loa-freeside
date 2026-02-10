@@ -15,8 +15,13 @@
 /** Community subscription tier mapped to access level */
 export type AccessLevel = 'free' | 'pro' | 'enterprise';
 
-/** Model alias abstraction — maps to provider-specific model IDs in loa-finn */
-export type ModelAlias = 'cheap' | 'fast-code' | 'reviewer' | 'reasoning' | 'native';
+/**
+ * Model alias abstraction — maps to provider-specific model IDs in loa-finn.
+ * Single source of truth: both the type and runtime validation derive from this tuple.
+ */
+// TODO(hounfour): When ModelPort lands, make MODEL_ALIAS_VALUES config-driven or derive from provider capabilities
+export const MODEL_ALIAS_VALUES = ['cheap', 'fast-code', 'reviewer', 'reasoning', 'native'] as const;
+export type ModelAlias = (typeof MODEL_ALIAS_VALUES)[number];
 
 /** Platform where the agent request originated */
 export type AgentPlatform = 'discord' | 'telegram';

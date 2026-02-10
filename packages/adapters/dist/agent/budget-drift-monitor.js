@@ -10,12 +10,12 @@
  *
  * @see SDD §4.5.1 Budget Drift Detection
  */
+import { REAL_CLOCK } from './clock.js';
 /** 500,000 micro-cents = $0.50 — threshold for BUDGET_ACCOUNTING_DRIFT alarm */
 export const DRIFT_THRESHOLD_MICRO_CENTS = 500000;
 /** Per-community query timeout */
 const PER_COMMUNITY_TIMEOUT_MS = 10000;
-/** Default clock using Date.now() */
-const REAL_CLOCK = { now: () => Date.now() };
+// REAL_CLOCK imported from ./clock.js (S13-T2)
 export class BudgetDriftMonitor {
     redis;
     communityProvider;

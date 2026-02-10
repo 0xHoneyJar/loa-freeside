@@ -12,6 +12,7 @@ import { SignJWT, importPKCS8, exportJWK } from 'jose';
 import { v4 as uuidv4 } from 'uuid';
 import { createPublicKey } from 'node:crypto';
 import { computeReqHash } from './req-hash.js';
+import { REAL_CLOCK } from './clock.js';
 // --------------------------------------------------------------------------
 // Tier Name Mapping
 // --------------------------------------------------------------------------
@@ -27,8 +28,7 @@ const TIER_NAMES = {
     8: 'Sovereign',
     9: 'Oracle',
 };
-/** Default clock using Date.now() */
-const REAL_CLOCK = { now: () => Date.now() };
+// Clock interface and REAL_CLOCK imported from ./clock.js (S13-T2)
 // --------------------------------------------------------------------------
 // JWT Service
 // --------------------------------------------------------------------------

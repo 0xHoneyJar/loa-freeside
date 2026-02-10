@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "next_sprint_number": 189,
+  "next_sprint_number": 191,
   "active_cycle": "cycle-007",
   "cycles": [
     {
@@ -169,7 +169,9 @@
       "sprints": [
         {"global_id": 186, "local_label": "sprint-10", "status": "completed"},
         {"global_id": 187, "local_label": "sprint-11", "status": "completed"},
-        {"global_id": 188, "local_label": "sprint-12", "status": "completed"}
+        {"global_id": 188, "local_label": "sprint-12", "status": "completed"},
+        {"global_id": 189, "local_label": "sprint-13", "status": "completed"},
+        {"global_id": 190, "local_label": "sprint-14", "status": "pending"}
       ]
     }
   ]

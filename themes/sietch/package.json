@@ -25,7 +25,10 @@
     "db:studio": "drizzle-kit studio",
     "db:check": "drizzle-kit check",
     "migrate:sqlite": "tsx scripts/migrate-sqlite-to-postgres.ts",
-    "migrate:rollback": "tsx scripts/rollback-migration.ts"
+    "migrate:rollback": "tsx scripts/rollback-migration.ts",
+    "bench:ci": "npx tsx tests/bench/jwt-benchmark.ts --ci && npx tsx tests/bench/gateway-overhead-benchmark.ts --ci",
+    "bench:staging": "npx tsx tests/bench/jwt-benchmark.ts --staging && npx tsx tests/bench/gateway-overhead-benchmark.ts --staging",
+    "dist:verify": "npx tsx tests/bench/dist-verify.ts"
   },
   "keywords": [
     "berachain",

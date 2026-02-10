@@ -9,6 +9,7 @@
  */
 
 import { z } from 'zod';
+import { MODEL_ALIAS_VALUES } from '@arrakis/core/ports';
 import type { JwtServiceConfig } from './jwt-service.js';
 import type { TierMappingConfig } from './tier-access-mapper.js';
 import { DEFAULT_TIER_MAP } from './tier-access-mapper.js';
@@ -185,17 +186,11 @@ export const AGENT_MAX_IDEMPOTENCY_KEY_LENGTH = 128;
 const PRINTABLE_ASCII = /^[\x20-\x7e]+$/;
 
 /**
- * Known model aliases — data-driven for Hounfour multi-model extensibility.
- * Add new aliases here when onboarding providers (Claude, GPT, Gemini, DeepSeek, Ollama).
- * Validated at request time, not compile time, so new models don't require schema changes.
+ * Known model aliases — derived from MODEL_ALIAS_VALUES (single source of truth in core ports).
+ * Data-driven for Hounfour multi-model extensibility.
+ * Add new aliases in MODEL_ALIAS_VALUES (packages/core/ports/agent-gateway.ts).
  */
-export const KNOWN_MODEL_ALIASES = new Set([
-  'cheap',
-  'fast-code',
-  'reviewer',
-  'reasoning',
-  'native',
-]);
+export const KNOWN_MODEL_ALIASES: ReadonlySet<string> = new Set<string>(MODEL_ALIAS_VALUES);
 
 /** Schema for agent invoke request body — limits per SDD §7.4 */
 export const agentInvokeRequestSchema = z.object({
