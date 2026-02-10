@@ -160,18 +160,33 @@ export class LoaFinnClient {
   // stream() — SSE streaming with contract enforcement (no auto-retry)
   // --------------------------------------------------------------------------
 
-  async *stream(request: AgentInvokeRequest): AsyncGenerator<AgentStreamEvent> {
+  async *stream(
+    request: AgentInvokeRequest,
+    options?: { signal?: AbortSignal; lastEventId?: string },
+  ): AsyncGenerator<AgentStreamEvent> {
     const url = `${this.config.baseUrl}/v1/agents/stream`;
     const body = this.buildRequestBody(request);
     const rawBody = JSON.stringify(body);
     const jwt = await this.mintJwt(request, rawBody);
 
+    // Compose downstream abort signal with timeout (SDD §4.7 — abort propagation)
+    const timeoutSignal = AbortSignal.timeout(this.config.timeoutMs || 120_000);
+    const signal = options?.signal
+      ? AbortSignal.any([options.signal, timeoutSignal])
+      : timeoutSignal;
+
+    const headers = this.buildHeaders(jwt, request);
+    // Forward Last-Event-ID for SSE resume (S11-T1, SDD §4.6.1)
+    if (options?.lastEventId) {
+      headers['Last-Event-ID'] = options.lastEventId;
+    }
+
     // No circuit breaker on streams — no auto-retry per FR-4.7
     const response = await fetch(url, {
       method: 'POST',
-      headers: this.buildHeaders(jwt, request),
+      headers,
       body: rawBody,
-      signal: AbortSignal.timeout(this.config.timeoutMs || 120_000),
+      signal,
     });
 
     if (!response.ok) {
@@ -248,8 +263,8 @@ export class LoaFinnClient {
         const line = buffer.slice(0, lineEnd).replace(/\r$/, '');
         buffer = buffer.slice(lineEnd + 1);
 
-        // Bounded buffer check (Flatline SKP-003)
-        if (eventData.length > MAX_SSE_EVENT_BYTES) {
+        // Bounded buffer check (Flatline SKP-003) — byte-accurate for multibyte UTF-8
+        if (Buffer.byteLength(eventData, 'utf8') > MAX_SSE_EVENT_BYTES) {
           throw new LoaFinnError(
             `SSE event data exceeds ${MAX_SSE_EVENT_BYTES} byte limit`,
             'SSE_OVERFLOW',
@@ -295,8 +310,8 @@ export class LoaFinnClient {
         // Ignore comments (lines starting with ':') and unknown fields
       }
 
-      // Check remaining buffer size (partial frame protection)
-      if (buffer.length > MAX_SSE_EVENT_BYTES) {
+      // Check remaining buffer size (partial frame protection) — byte-accurate
+      if (Buffer.byteLength(buffer, 'utf8') > MAX_SSE_EVENT_BYTES) {
         throw new LoaFinnError(
           `SSE buffer exceeds ${MAX_SSE_EVENT_BYTES} byte limit (no newline found)`,
           'SSE_OVERFLOW',
@@ -315,6 +330,11 @@ export class LoaFinnClient {
         if (value) yield value;
       }
     } finally {
+      try {
+        await reader.cancel();
+      } catch {
+        // ignore cancel errors (stream may already be closed)
+      }
       reader.releaseLock();
     }
   }
@@ -354,6 +374,23 @@ export class LoaFinnClient {
         return await fn(jwt);
       } catch (err) {
         lastError = err;
+
+        // STREAM_RESUME_LOST: never retry — caller must mint new idempotency key (S11-T1)
+        if (err instanceof StreamResumeLostError) {
+          throw err;
+        }
+
+        // JTI replay (409 without STREAM_RESUME_LOST): re-mint JWT and retry immediately (S11-T1)
+        if (err instanceof JtiReplayError) {
+          if (attempt < RETRY_DELAYS_MS.length) {
+            this.log.info(
+              { attempt: attempt + 1 },
+              'loa-finn jti replay — re-minting JWT',
+            );
+            continue; // no backoff needed — just needs fresh jti
+          }
+          throw err;
+        }
 
         if (err instanceof LoaFinnError && RETRYABLE_STATUS_CODES.has(err.statusCode ?? 0)) {
           if (attempt < RETRY_DELAYS_MS.length) {
@@ -405,6 +442,29 @@ export class LoaFinnClient {
       body = await response.text();
     } catch { /* ignore */ }
 
+    // 400 REQ_HASH_MISMATCH — wire bytes don't match req_hash claim (S11-T3)
+    if (response.status === 400 && body.includes('REQ_HASH_MISMATCH')) {
+      this.log.warn(
+        { traceId: response.headers.get('x-trace-id'), bodyPrefix: body.slice(0, 200) },
+        'req_hash mismatch detected',
+      );
+      throw new ReqHashMismatchError(
+        `loa-finn req_hash mismatch: ${body.slice(0, 500)}`,
+      );
+    }
+
+    // 409 Conflict — differentiate STREAM_RESUME_LOST from jti replay (S11-T1)
+    if (response.status === 409) {
+      if (body.includes('STREAM_RESUME_LOST')) {
+        throw new StreamResumeLostError(
+          `loa-finn stream context expired: ${body.slice(0, 500)}`,
+        );
+      }
+      throw new JtiReplayError(
+        `loa-finn jti replay detected: ${body.slice(0, 500)}`,
+      );
+    }
+
     throw new LoaFinnError(
       `loa-finn responded with ${response.status}: ${body.slice(0, 500)}`,
       'UPSTREAM_ERROR',
@@ -425,6 +485,40 @@ export class LoaFinnError extends Error {
   ) {
     super(message);
     this.name = 'LoaFinnError';
+  }
+}
+
+/**
+ * 400 with REQ_HASH_MISMATCH — wire bytes don't match req_hash JWT claim.
+ * Non-retryable — indicates serialization divergence or proxy tampering.
+ */
+export class ReqHashMismatchError extends LoaFinnError {
+  constructor(message: string) {
+    super(message, 'REQ_HASH_MISMATCH', 400);
+    this.name = 'ReqHashMismatchError';
+  }
+}
+
+/**
+ * 409 with STREAM_RESUME_LOST in body — loa-finn stream context expired.
+ * Caller must mint a NEW idempotency key for fresh execution (S11-T0 state machine).
+ * NOT retryable — propagates to caller.
+ */
+export class StreamResumeLostError extends LoaFinnError {
+  constructor(message: string) {
+    super(message, 'STREAM_RESUME_LOST', 409);
+    this.name = 'StreamResumeLostError';
+  }
+}
+
+/**
+ * 409 without STREAM_RESUME_LOST — jti replay detected.
+ * Retryable by minting a new JWT with fresh jti (same idempotency key).
+ */
+export class JtiReplayError extends LoaFinnError {
+  constructor(message: string) {
+    super(message, 'JTI_REPLAY', 409);
+    this.name = 'JtiReplayError';
   }
 }
 

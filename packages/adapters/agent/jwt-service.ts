@@ -63,6 +63,15 @@ export interface KeyLoader {
   load(): Promise<string>;
 }
 
+/** Injectable clock for testability (S12-T2: JWKS TTL verification) */
+export interface Clock {
+  /** Returns current time in milliseconds since epoch */
+  now(): number;
+}
+
+/** Default clock using Date.now() */
+const REAL_CLOCK: Clock = { now: () => Date.now() };
+
 // --------------------------------------------------------------------------
 // JWT Service
 // --------------------------------------------------------------------------
@@ -71,11 +80,15 @@ export class JwtService {
   private privateKey!: KeyLike;
   private publicJwk!: JWK;
   private initialized = false;
+  private readonly clock: Clock;
 
   constructor(
     private readonly config: JwtServiceConfig,
     private readonly keyLoader: KeyLoader,
-  ) {}
+    clock?: Clock,
+  ) {
+    this.clock = clock ?? REAL_CLOCK;
+  }
 
   /**
    * Initialize the service by loading the private key and exporting the public JWK.
@@ -107,7 +120,7 @@ export class JwtService {
   async sign(context: AgentRequestContext, requestBody: string): Promise<string> {
     this.assertInitialized();
 
-    const now = Math.floor(Date.now() / 1000);
+    const now = Math.floor(this.clock.now() / 1000);
     const reqHash = computeReqHash(requestBody);
 
     return new SignJWT({
@@ -145,9 +158,11 @@ export class JwtService {
       { ...this.publicJwk, kid: this.config.keyId, use: 'sig', alg: 'ES256', kty: 'EC', crv: 'P-256' },
     ];
 
-    if (this.config.previousKey && this.config.previousKey.expiresAt > new Date()) {
+    if (this.config.previousKey && this.config.previousKey.expiresAt.getTime() > this.clock.now()) {
+      // Strip private parameters (defense-in-depth: publicJwk should already be public-only)
+      const { d: _d, ...publicOnly } = this.config.previousKey.publicJwk;
       keys.push({
-        ...this.config.previousKey.publicJwk,
+        ...publicOnly,
         kid: this.config.previousKey.keyId,
         use: 'sig',
         alg: 'ES256',

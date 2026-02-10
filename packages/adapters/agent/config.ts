@@ -156,20 +156,45 @@ function parseIntEnv(value: string | undefined, fallback: number): number {
 }
 
 // --------------------------------------------------------------------------
-// Zod Schemas for Request Validation
+// Input Validation Constants (SDD §7.4)
 // --------------------------------------------------------------------------
 
-/** Schema for agent invoke request body */
+/** Maximum request body size for agent endpoints */
+export const AGENT_BODY_LIMIT = '128kb';
+
+/** Maximum messages per request */
+export const AGENT_MAX_MESSAGES = 50;
+
+/** Maximum content length per message (chars) */
+export const AGENT_MAX_CONTENT_LENGTH = 32_000;
+
+/** Maximum model alias length (chars) */
+export const AGENT_MAX_MODEL_ALIAS_LENGTH = 64;
+
+/** Maximum tools per request */
+export const AGENT_MAX_TOOLS = 20;
+
+/** Maximum idempotency key length (chars) */
+export const AGENT_MAX_IDEMPOTENCY_KEY_LENGTH = 128;
+
+// --------------------------------------------------------------------------
+// Zod Schemas for Request Validation (SDD §7.4)
+// --------------------------------------------------------------------------
+
+/** Printable ASCII pattern for idempotency keys (0x20-0x7E) */
+const PRINTABLE_ASCII = /^[\x20-\x7e]+$/;
+
+/** Schema for agent invoke request body — limits per SDD §7.4 */
 export const agentInvokeRequestSchema = z.object({
   agent: z.string().min(1).max(256),
   messages: z.array(z.object({
     role: z.enum(['user', 'assistant', 'system']),
-    content: z.string().min(1).max(100_000),
-  })).min(1).max(100),
+    content: z.string().min(1).max(AGENT_MAX_CONTENT_LENGTH),
+  })).min(1).max(AGENT_MAX_MESSAGES),
   modelAlias: z.enum(['cheap', 'fast-code', 'reviewer', 'reasoning', 'native']).optional(),
-  tools: z.array(z.string().min(1).max(256)).max(50).optional(),
+  tools: z.array(z.string().min(1).max(256)).max(AGENT_MAX_TOOLS).optional(),
   metadata: z.record(z.unknown()).optional(),
-  idempotencyKey: z.string().uuid().optional(),
+  idempotencyKey: z.string().min(1).max(AGENT_MAX_IDEMPOTENCY_KEY_LENGTH).regex(PRINTABLE_ASCII).optional(),
 });
 
 export type AgentInvokeRequestBody = z.infer<typeof agentInvokeRequestSchema>;

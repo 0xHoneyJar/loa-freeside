@@ -14,6 +14,7 @@ import { logger } from '../../utils/logger.js';
 import type { IAgentGateway, AgentRequestContext } from '@arrakis/core/ports';
 import { formatErrorMessage } from '@arrakis/adapters/agent';
 import type { AgentErrorCode } from '@arrakis/adapters/agent';
+import { deriveIdempotencyKey } from '@arrakis/adapters/agent/idempotency';
 
 // --------------------------------------------------------------------------
 // Constants
@@ -81,6 +82,12 @@ async function handleAgentCommand(ctx: BotContext): Promise<void> {
   try {
     const agentContext = await contextBuilder(ctx);
 
+    // Per-platform deterministic idempotency key (S11-T2, SDD §9.4)
+    agentContext.idempotencyKey = deriveIdempotencyKey({
+      platform: 'telegram',
+      eventId: `update:${ctx.update.update_id}`,
+    });
+
     let fullContent = '';
     let lastEditTime = 0;
     let budgetWarning = false;
@@ -144,7 +151,17 @@ async function handleAgentCommand(ctx: BotContext): Promise<void> {
       finalContent,
     );
   } catch (err: unknown) {
-    const error = err as { code?: string; statusCode?: number; details?: Record<string, unknown> };
+    const error = err as { code?: string; statusCode?: number; details?: Record<string, unknown>; name?: string };
+
+    // STREAM_RESUME_LOST: notify user (S11-T1)
+    if (error.name === 'StreamResumeLostError') {
+      await ctx.api.editMessageText(
+        sentMessage.chat.id,
+        sentMessage.message_id,
+        'Stream context expired. Please try again. (restarted)',
+      );
+      return;
+    }
 
     if (error.code) {
       const errorCode = error.code as AgentErrorCode;

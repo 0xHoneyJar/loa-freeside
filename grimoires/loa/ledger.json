@@ -167,9 +167,9 @@
       "prd": "grimoires/loa/prd-hounfour-phase4.md",
       "sdd": "grimoires/loa/sdd-hounfour-phase4.md",
       "sprints": [
-        {"global_id": 186, "local_label": "sprint-10", "status": "pending"},
-        {"global_id": 187, "local_label": "sprint-11", "status": "pending"},
-        {"global_id": 188, "local_label": "sprint-12", "status": "pending"}
+        {"global_id": 186, "local_label": "sprint-10", "status": "completed"},
+        {"global_id": 187, "local_label": "sprint-11", "status": "completed"},
+        {"global_id": 188, "local_label": "sprint-12", "status": "completed"}
       ]
     }
   ]

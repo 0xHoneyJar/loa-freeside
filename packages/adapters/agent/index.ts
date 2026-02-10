@@ -6,7 +6,7 @@
  */
 
 // JWT Service
-export { JwtService, type JwtServiceConfig, type PreviousKeyConfig, type KeyLoader } from './jwt-service.js';
+export { JwtService, type JwtServiceConfig, type PreviousKeyConfig, type KeyLoader, type Clock } from './jwt-service.js';
 
 // Tier→Access Mapper
 export { TierAccessMapper, DEFAULT_TIER_MAP, type TierMappingConfig, type TierMapping } from './tier-access-mapper.js';
@@ -18,6 +18,12 @@ export {
   RESERVATION_TTL_MS,
   FINALIZED_MARKER_TTL_S,
   BUDGET_WARNING_THRESHOLD,
+  AGENT_BODY_LIMIT,
+  AGENT_MAX_MESSAGES,
+  AGENT_MAX_CONTENT_LENGTH,
+  AGENT_MAX_MODEL_ALIAS_LENGTH,
+  AGENT_MAX_TOOLS,
+  AGENT_MAX_IDEMPOTENCY_KEY_LENGTH,
   type AgentGatewayConfig,
   type AgentInvokeRequestBody,
   type LoaFinnConfig,
@@ -101,6 +107,17 @@ export {
 
 // Gateway Factory
 export { createAgentGateway, type CreateAgentGatewayOptions } from './factory.js';
+
+// Budget Drift Monitor
+export {
+  BudgetDriftMonitor,
+  DRIFT_THRESHOLD_MICRO_CENTS,
+  DRIFT_MONITOR_JOB_CONFIG,
+  type DriftActiveCommunityProvider,
+  type BudgetUsageQueryProvider,
+  type DriftMonitorResult,
+  type CommunityDrift,
+} from './budget-drift-monitor.js';
 
 // Observability
 export {

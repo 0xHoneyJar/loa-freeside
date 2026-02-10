@@ -129,6 +129,11 @@ export class AgentGateway implements IAgentGateway {
       throw new AgentGatewayError('BUDGET_ERROR', 'Budget reservation failed', 500);
     }
 
+    // Log idempotent hit (S10-T4: IMP-001)
+    if (reserveResult.status === 'ALREADY_RESERVED') {
+      log.debug({ idempotencyKey: context.idempotencyKey }, 'budget-reserve: idempotent hit');
+    }
+
     // Emit budget warning if threshold reached
     if (reserveResult.warning) {
       log.warn(
@@ -137,20 +142,31 @@ export class AgentGateway implements IAgentGateway {
       );
     }
 
-    // 4. Execute via loa-finn
+    // 4. Set max-cost ceiling in metadata (S11-T5, SDD §4.5.1)
+    // 3× estimated cost in micro-cents — loa-finn enforces this ceiling
+    const maxCostMicroCents = estimatedCost * 3 * 100; // cents → micro-cents (×100)
+    request = {
+      ...request,
+      metadata: { ...request.metadata, max_cost_micro_cents: maxCostMicroCents },
+    };
+
+    // 5. Execute via loa-finn
     try {
       const response = await this.loaFinn.invoke(request);
 
-      // 5. Finalize budget with actual cost
+      // 6. Finalize budget with actual cost + drift detection
+      const actualCostCents = Math.round(response.usage.costUsd * 100);
       await this.budget.finalize({
         communityId: context.tenantId,
         userId: context.userId,
         idempotencyKey: context.idempotencyKey,
-        actualCost: Math.round(response.usage.costUsd * 100),
+        actualCost: actualCostCents,
         usage: response.usage,
         modelAlias: request.modelAlias,
         traceId: context.traceId,
       });
+
+      this.checkBudgetDrift(actualCostCents, estimatedCost, context.traceId, log);
 
       return response;
     } catch (err) {
@@ -171,7 +187,10 @@ export class AgentGateway implements IAgentGateway {
   // stream() — SSE streaming lifecycle
   // --------------------------------------------------------------------------
 
-  async *stream(request: AgentInvokeRequest): AsyncGenerator<AgentStreamEvent> {
+  async *stream(
+    request: AgentInvokeRequest,
+    options?: { signal?: AbortSignal; lastEventId?: string },
+  ): AsyncGenerator<AgentStreamEvent> {
     const { context } = request;
     const log = this.logger.child({ traceId: context.traceId, communityId: context.tenantId });
 
@@ -223,6 +242,11 @@ export class AgentGateway implements IAgentGateway {
       throw new AgentGatewayError('BUDGET_ERROR', 'Budget reservation failed', 500);
     }
 
+    // Log idempotent hit (S10-T4: IMP-001)
+    if (reserveResult.status === 'ALREADY_RESERVED') {
+      log.debug({ idempotencyKey: context.idempotencyKey }, 'budget-reserve: idempotent hit');
+    }
+
     if (reserveResult.warning) {
       log.warn(
         { remaining: reserveResult.remaining, limit: reserveResult.limit },
@@ -230,38 +254,43 @@ export class AgentGateway implements IAgentGateway {
       );
     }
 
-    // 4. Stream from loa-finn with finalize-once semantics
+    // 4. Set max-cost ceiling in metadata (S11-T5, SDD §4.5.1)
+    const maxCostMicroCents = estimatedCost * 3 * 100; // cents → micro-cents (×100)
+    request = {
+      ...request,
+      metadata: { ...request.metadata, max_cost_micro_cents: maxCostMicroCents },
+    };
+
+    // 5. Stream from loa-finn with finalize-once semantics
+    //    Pass downstream signal for abort propagation (SDD §4.7)
     let finalized = false;
 
     try {
-      for await (const event of this.loaFinn.stream(request)) {
+      for await (const event of this.loaFinn.stream(request, { signal: options?.signal, lastEventId: options?.lastEventId })) {
         // Finalize on usage event (exactly once)
         if (event.type === 'usage' && !finalized) {
-          finalized = true;
+          const actualCostCents = Math.round(event.data.costUsd * 100);
           await this.budget.finalize({
             communityId: context.tenantId,
             userId: context.userId,
             idempotencyKey: context.idempotencyKey,
-            actualCost: Math.round(event.data.costUsd * 100),
+            actualCost: actualCostCents,
             usage: event.data,
             modelAlias: request.modelAlias,
             traceId: context.traceId,
           });
+          finalized = true;
+
+          this.checkBudgetDrift(actualCostCents, estimatedCost, context.traceId, log);
         }
 
         yield event;
       }
-    } catch (err) {
-      // Stream error — schedule reconciliation if not yet finalized
+    } finally {
+      // Reconciliation in finally block ensures budget accounting even on abort (S10-T2)
       if (!finalized) {
         await this.scheduleReconciliation(context, log);
       }
-      throw err;
-    }
-
-    // If stream completed but no usage event received, schedule reconciliation
-    if (!finalized) {
-      await this.scheduleReconciliation(context, log);
     }
   }
 
@@ -322,6 +351,55 @@ export class AgentGateway implements IAgentGateway {
   // --------------------------------------------------------------------------
   // Private Helpers
   // --------------------------------------------------------------------------
+
+  /**
+   * Detect budget drift between estimated and actual cost (S11-T5, SDD §4.5.1).
+   * - any overrun → emit agent_budget_drift_micro_cents metric via structured log
+   * - actual > 2× estimate → warn log
+   * - actual > 3× estimate → BUDGET_DRIFT_HIGH alarm (error log)
+   */
+  private checkBudgetDrift(
+    actualCostCents: number,
+    estimatedCostCents: number,
+    traceId: string,
+    log: Logger,
+  ): void {
+    if (estimatedCostCents <= 0 || actualCostCents <= estimatedCostCents) return;
+
+    const driftMicroCents = (actualCostCents - estimatedCostCents) * 100;
+    const ratio = actualCostCents / estimatedCostCents;
+
+    // Emit drift metric on any overrun (scraped by log-based metrics pipeline)
+    log.info(
+      { traceId, metric: 'agent_budget_drift_micro_cents', value: driftMicroCents, ratio: ratio.toFixed(2) },
+      'budget drift metric',
+    );
+
+    if (ratio > 3) {
+      log.error(
+        {
+          traceId,
+          actualCostCents,
+          estimatedCostCents,
+          ratio: ratio.toFixed(2),
+          driftMicroCents,
+          alarm: 'BUDGET_DRIFT_HIGH',
+        },
+        'BUDGET_DRIFT_HIGH: actual cost exceeds 3× estimate',
+      );
+    } else if (ratio > 2) {
+      log.warn(
+        {
+          traceId,
+          actualCostCents,
+          estimatedCostCents,
+          ratio: ratio.toFixed(2),
+          driftMicroCents,
+        },
+        'Budget drift detected: actual cost exceeds 2× estimate',
+      );
+    }
+  }
 
   private estimateInputTokens(request: AgentInvokeRequest): number {
     // Rough estimate: ~4 chars per token

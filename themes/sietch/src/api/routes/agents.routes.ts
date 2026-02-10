@@ -16,7 +16,8 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import type { JWK } from 'jose';
 import type { IAgentGateway } from '@arrakis/core/ports';
 import type { AgentAuthenticatedRequest } from '@arrakis/adapters/agent/agent-auth-middleware';
-import { agentInvokeRequestSchema } from '@arrakis/adapters/agent/config';
+import { agentInvokeRequestSchema, AGENT_BODY_LIMIT, AGENT_MAX_IDEMPOTENCY_KEY_LENGTH } from '@arrakis/adapters/agent/config';
+import express from 'express';
 
 // --------------------------------------------------------------------------
 // Types
@@ -91,6 +92,35 @@ function killSwitch(enabled: boolean) {
   };
 }
 
+/** URL-safe charset for idempotency keys (SDD §7.4) */
+const IDEMPOTENCY_KEY_CHARSET = /^[\x20-\x7e]+$/;
+
+/**
+ * Validate X-Idempotency-Key header. Returns true if valid (or absent), false if rejected.
+ * Rejects: duplicate headers, oversized keys, non-printable characters.
+ */
+function validateIdempotencyKeyHeader(req: Request, res: Response): boolean {
+  const header = req.headers['x-idempotency-key'];
+  if (header == null) return true;
+
+  if (Array.isArray(header)) {
+    res.status(400).json({ error: 'INVALID_REQUEST', message: 'X-Idempotency-Key must be a single value' });
+    return false;
+  }
+
+  if (header.length > AGENT_MAX_IDEMPOTENCY_KEY_LENGTH) {
+    res.status(400).json({ error: 'INVALID_REQUEST', message: 'X-Idempotency-Key exceeds maximum length' });
+    return false;
+  }
+
+  if (!IDEMPOTENCY_KEY_CHARSET.test(header)) {
+    res.status(400).json({ error: 'INVALID_REQUEST', message: 'X-Idempotency-Key contains invalid characters' });
+    return false;
+  }
+
+  return true;
+}
+
 /**
  * Create agent gateway routes.
  * Sprint 1: JWKS endpoint.
@@ -132,6 +162,18 @@ export function createAgentRoutes(deps: AgentRoutesDeps): Router {
   const agentEnabled = deps.agentEnabled ?? true;
   const middlewares: Array<(req: Request, res: Response, next: NextFunction) => void> = [];
 
+  // Default X-RateLimit-Policy header on all agent responses (SDD §6.1, FR-3.3)
+  const setDefaultRateLimitPolicy = (_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('X-RateLimit-Policy', 'none');
+    next();
+  };
+
+  // Agent-specific body size limit (SDD §7.4) — overrides global 1MB limit
+  middlewares.push(express.json({ limit: AGENT_BODY_LIMIT }) as unknown as (req: Request, res: Response, next: NextFunction) => void);
+
+  // Ensure header is present even on kill-switch / rate-limit responses
+  middlewares.push(setDefaultRateLimitPolicy);
+
   // Kill switch
   middlewares.push(killSwitch(agentEnabled));
 
@@ -142,7 +184,7 @@ export function createAgentRoutes(deps: AgentRoutesDeps): Router {
   // GET /api/agents/health — no auth required
   // --------------------------------------------------------------------------
 
-  router.get('/api/agents/health', killSwitch(agentEnabled), async (_req: Request, res: Response) => {
+  router.get('/api/agents/health', setDefaultRateLimitPolicy, killSwitch(agentEnabled), async (_req: Request, res: Response) => {
     try {
       const health = await gateway.getHealth();
       res.json(health);
@@ -162,6 +204,9 @@ export function createAgentRoutes(deps: AgentRoutesDeps): Router {
 
   router.post('/api/agents/invoke', ...authMiddlewares, async (req: Request, res: Response) => {
     try {
+      // Validate X-Idempotency-Key header (SDD §7.4)
+      if (!validateIdempotencyKeyHeader(req, res)) return;
+
       const parsed = agentInvokeRequestSchema.safeParse(req.body);
       if (!parsed.success) {
         res.status(400).json({ error: 'INVALID_REQUEST', message: 'Invalid request' });
@@ -169,6 +214,11 @@ export function createAgentRoutes(deps: AgentRoutesDeps): Router {
       }
 
       const agentReq = req as AgentAuthenticatedRequest;
+
+      // Echo idempotency key in response (S11-T4, SDD §9.4)
+      // Enables clients to retry with server-generated key when header was absent
+      res.setHeader('X-Idempotency-Key', agentReq.agentContext.idempotencyKey);
+
       const response = await gateway.invoke({
         context: agentReq.agentContext,
         ...parsed.data,
@@ -186,6 +236,9 @@ export function createAgentRoutes(deps: AgentRoutesDeps): Router {
 
   router.post('/api/agents/stream', ...authMiddlewares, async (req: Request, res: Response) => {
     try {
+      // Validate X-Idempotency-Key header (SDD §7.4)
+      if (!validateIdempotencyKeyHeader(req, res)) return;
+
       const parsed = agentInvokeRequestSchema.safeParse(req.body);
       if (!parsed.success) {
         res.status(400).json({ error: 'INVALID_REQUEST', message: 'Invalid request' });
@@ -198,6 +251,8 @@ export function createAgentRoutes(deps: AgentRoutesDeps): Router {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
+      // Echo idempotency key in response (S11-T4, SDD §9.4)
+      res.setHeader('X-Idempotency-Key', agentReq.agentContext.idempotencyKey);
       res.flushHeaders();
 
       // Heartbeat interval (15s keepalive)
@@ -215,10 +270,15 @@ export function createAgentRoutes(deps: AgentRoutesDeps): Router {
       res.on('close', onClose);
 
       try {
+        // Forward Last-Event-ID for SSE resume (S11-T1, SDD §4.6.1)
+        const lastEventId = typeof req.headers['last-event-id'] === 'string'
+          ? req.headers['last-event-id']
+          : undefined;
+
         for await (const event of gateway.stream({
           context: agentReq.agentContext,
           ...parsed.data,
-        })) {
+        }, { signal: abort.signal, lastEventId })) {
           if (abort.signal.aborted) break;
 
           res.write(`event: ${event.type}\n`);
@@ -289,6 +349,8 @@ function handleGatewayError(err: unknown, res: Response): void {
       BUDGET_EXCEEDED: 'Community budget exhausted',
       MODEL_NOT_ALLOWED: 'Model not available for your tier',
       BUDGET_ERROR: 'Budget reservation failed',
+      STREAM_RESUME_LOST: 'Stream context expired — retry with new idempotency key',
+      REQ_HASH_MISMATCH: 'Request body integrity check failed',
     };
     const safeMessage = SAFE_MESSAGES[error.code] ?? (error.statusCode < 500 ? 'Request failed' : 'An unexpected error occurred');
 
@@ -303,6 +365,12 @@ function handleGatewayError(err: unknown, res: Response): void {
       if (error.details.remaining != null) res.setHeader('X-RateLimit-Remaining', String(error.details.remaining));
       if (error.details.retryAfterMs != null) {
         res.setHeader('Retry-After', String(Math.ceil(Number(error.details.retryAfterMs) / 1000)));
+      }
+      // Override default 'none' with constraining dimension (FR-3.3)
+      const dimension = typeof error.details.dimension === 'string' ? error.details.dimension : undefined;
+      const ALLOWED_DIMENSIONS = new Set(['community', 'user', 'channel', 'burst']);
+      if (dimension && ALLOWED_DIMENSIONS.has(dimension)) {
+        res.setHeader('X-RateLimit-Policy', dimension);
       }
     }
 

@@ -41,6 +41,26 @@
     "./agent": {
       "import": "./dist/agent/index.js",
       "types": "./dist/agent/index.d.ts"
+    },
+    "./agent/config": {
+      "import": "./dist/agent/config.js",
+      "types": "./dist/agent/config.d.ts"
+    },
+    "./agent/agent-auth-middleware": {
+      "import": "./dist/agent/agent-auth-middleware.js",
+      "types": "./dist/agent/agent-auth-middleware.d.ts"
+    },
+    "./agent/budget-manager": {
+      "import": "./dist/agent/budget-manager.js",
+      "types": "./dist/agent/budget-manager.d.ts"
+    },
+    "./agent/idempotency": {
+      "import": "./dist/agent/idempotency.js",
+      "types": "./dist/agent/idempotency.d.ts"
+    },
+    "./agent/req-hash": {
+      "import": "./dist/agent/req-hash.js",
+      "types": "./dist/agent/req-hash.d.ts"
     }
   },
   "files": [

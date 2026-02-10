@@ -1,0 +1,55 @@
+{
+  "_version": "1.0.0",
+  "_description": "Two-layer authorization test fixtures: 9 tiers × 3 access levels. SDD §7.2.3, FR-2.6. Arrakis per-community policy ∩ loa-finn global ceiling = effective aliases.",
+  "model_aliases": ["cheap", "fast-code", "reviewer", "reasoning", "native"],
+  "tiers": {
+    "1": { "accessLevel": "free", "allowedModelAliases": ["cheap"] },
+    "2": { "accessLevel": "free", "allowedModelAliases": ["cheap"] },
+    "3": { "accessLevel": "free", "allowedModelAliases": ["cheap"] },
+    "4": { "accessLevel": "pro", "allowedModelAliases": ["cheap", "fast-code", "reviewer"] },
+    "5": { "accessLevel": "pro", "allowedModelAliases": ["cheap", "fast-code", "reviewer"] },
+    "6": { "accessLevel": "pro", "allowedModelAliases": ["cheap", "fast-code", "reviewer"] },
+    "7": { "accessLevel": "enterprise", "allowedModelAliases": ["cheap", "fast-code", "reviewer", "reasoning", "native"] },
+    "8": { "accessLevel": "enterprise", "allowedModelAliases": ["cheap", "fast-code", "reviewer", "reasoning", "native"] },
+    "9": { "accessLevel": "enterprise", "allowedModelAliases": ["cheap", "fast-code", "reviewer", "reasoning", "native"] }
+  },
+  "access_levels": {
+    "free": { "aliases": ["cheap"] },
+    "pro": { "aliases": ["cheap", "fast-code", "reviewer"] },
+    "enterprise": { "aliases": ["cheap", "fast-code", "reviewer", "reasoning", "native"] }
+  },
+  "ceiling_policy": {
+    "_description": "Global ceiling from loa-finn: the maximum set of aliases permitted per access level, regardless of community overrides",
+    "free": ["cheap"],
+    "pro": ["cheap", "fast-code", "reviewer"],
+    "enterprise": ["cheap", "fast-code", "reviewer", "reasoning", "native"]
+  },
+  "expected_effective": {
+    "_description": "Expected effective aliases for each tier. Effective = tier_allowed ∩ ceiling[accessLevel].",
+    "1": ["cheap"],
+    "2": ["cheap"],
+    "3": ["cheap"],
+    "4": ["cheap", "fast-code", "reviewer"],
+    "5": ["cheap", "fast-code", "reviewer"],
+    "6": ["cheap", "fast-code", "reviewer"],
+    "7": ["cheap", "fast-code", "reviewer", "reasoning", "native"],
+    "8": ["cheap", "fast-code", "reviewer", "reasoning", "native"],
+    "9": ["cheap", "fast-code", "reviewer", "reasoning", "native"]
+  },
+  "override_scenarios": {
+    "restrict_within_ceiling": {
+      "_description": "Community override restricts pro tier to only 'cheap' — within ceiling, so honored",
+      "tier": 5,
+      "override": { "allowedModelAliases": ["cheap"] },
+      "expected": ["cheap"]
+    },
+    "expand_beyond_ceiling": {
+      "_description": "Community override attempts to give free tier 'reasoning' — beyond ceiling, so ceiling enforced",
+      "tier": 2,
+      "override": { "allowedModelAliases": ["cheap", "reasoning"] },
+      "ceiling_allows": ["cheap"],
+      "expected_effective": ["cheap"],
+      "expected_rejected": ["reasoning"]
+    }
+  }
+}

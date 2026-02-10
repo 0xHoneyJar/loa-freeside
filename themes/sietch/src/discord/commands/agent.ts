@@ -16,6 +16,7 @@ import { logger } from '../../utils/logger.js';
 import type { IAgentGateway, AgentRequestContext } from '@arrakis/core/ports';
 import { formatErrorMessage } from '@arrakis/adapters/agent';
 import type { AgentErrorCode } from '@arrakis/adapters/agent';
+import { deriveIdempotencyKey } from '@arrakis/adapters/agent/idempotency';
 
 // --------------------------------------------------------------------------
 // Constants
@@ -106,6 +107,12 @@ export async function handleAgentCommand(
   try {
     const context = await buildContext(interaction);
 
+    // Per-platform deterministic idempotency key (S11-T2, SDD §9.4)
+    context.idempotencyKey = deriveIdempotencyKey({
+      platform: 'discord',
+      eventId: `interaction:${interaction.id}`,
+    });
+
     let fullContent = '';
     let lastEditTime = 0;
     let budgetWarning = false;
@@ -153,7 +160,15 @@ export async function handleAgentCommand(
 
     await interaction.editReply({ content: finalContent });
   } catch (err: unknown) {
-    const error = err as { code?: string; statusCode?: number; details?: Record<string, unknown> };
+    const error = err as { code?: string; statusCode?: number; details?: Record<string, unknown>; name?: string };
+
+    // STREAM_RESUME_LOST: generate new key and notify user (S11-T1)
+    if (error.name === 'StreamResumeLostError') {
+      await interaction.editReply({
+        content: 'Stream context expired. Please try again. (restarted)',
+      });
+      return;
+    }
 
     if (error.code) {
       const errorCode = error.code as AgentErrorCode;
