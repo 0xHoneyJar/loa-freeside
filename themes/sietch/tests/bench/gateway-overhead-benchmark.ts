@@ -13,6 +13,15 @@
  * All dependencies are mocked in-memory (no Redis, no network, no BullMQ).
  * Stabilization: 50 warmup iterations (discarded), 500 measured.
  *
+ * F-4 Disclaimer: This benchmark measures **gateway middleware computation cost**
+ * with all I/O mocked (instant Redis, instant PG, instant loa-finn). It does NOT
+ * measure: real Redis round-trip latency, PG connection pool contention, network
+ * I/O to loa-finn, GC pauses under memory pressure, or OS scheduling jitter.
+ * Results are valid as a **regression detector** — if p95 doubles between commits,
+ * something changed in the middleware path. For production latency validation
+ * under realistic concurrency (50-200 concurrent requests), use k6 load tests
+ * against staging with real Redis/PG backends.
+ *
  * Usage:
  *   npx tsx tests/bench/gateway-overhead-benchmark.ts --ci
  *   npx tsx tests/bench/gateway-overhead-benchmark.ts --staging

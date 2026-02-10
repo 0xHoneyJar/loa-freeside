@@ -1,6 +1,22 @@
 import { defineConfig } from 'vitest/config';
+import path from 'node:path';
 
 export default defineConfig({
+  // F-1 Fix: Resolve @arrakis/adapters to TypeScript source instead of dist/
+  // This eliminates manual dist sync for test correctness. Tests always run
+  // against fresh TS source; dist-verify.ts validates build artifacts separately.
+  resolve: {
+    alias: [
+      {
+        find: /^@arrakis\/adapters\/(.*)/,
+        replacement: path.resolve(__dirname, '../../packages/adapters/$1'),
+      },
+      {
+        find: '@arrakis/adapters',
+        replacement: path.resolve(__dirname, '../../packages/adapters'),
+      },
+    ],
+  },
   test: {
     globals: true,
     environment: 'node',

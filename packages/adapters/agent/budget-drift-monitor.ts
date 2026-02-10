@@ -44,7 +44,8 @@ export interface CommunityDrift {
   redisMicroCents: number;
   pgMicroCents: number;
   driftMicroCents: number;
-  driftDirection: 'redis_over' | 'pg_over' | 'none';
+  /** redis_missing: Redis key absent but PG has data (possible key expiry/restart) */
+  driftDirection: 'redis_over' | 'pg_over' | 'redis_missing' | 'none';
 }
 
 // --------------------------------------------------------------------------
@@ -137,9 +138,25 @@ export class BudgetDriftMonitor {
           'budget-drift-monitor: community check',
         );
 
-        // Hard overspend rule (S14-T2): PG > Redis means actual spend exceeds tracking
-        // Fire alarm unconditionally — this is never lag, it's a real accounting error
-        if (drift.driftDirection === 'pg_over' && drift.pgMicroCents > drift.redisMicroCents) {
+        // F-2 Fix: Redis key missing is a distinct failure mode from hard overspend.
+        // Key expiry, Redis restart, or memory eviction should not flood BUDGET_HARD_OVERSPEND.
+        if (drift.driftDirection === 'redis_missing') {
+          driftDetected++;
+          this.logger.error(
+            {
+              communityId,
+              redisMicroCents: drift.redisMicroCents,
+              pgMicroCents: drift.pgMicroCents,
+              driftMicroCents: drift.driftMicroCents,
+              driftDirection: drift.driftDirection,
+              month,
+              alarm: 'BUDGET_REDIS_KEY_MISSING',
+            },
+            'BUDGET_REDIS_KEY_MISSING: Redis committed key absent but PG has data — possible key expiry or Redis restart',
+          );
+        } else if (drift.driftDirection === 'pg_over' && drift.pgMicroCents > drift.redisMicroCents) {
+          // Hard overspend rule (S14-T2): PG > Redis (with Redis key present)
+          // Fire alarm unconditionally — this is never lag, it's a real accounting error
           driftDetected++;
           this.logger.error(
             {
@@ -237,8 +254,13 @@ export class BudgetDriftMonitor {
     const pgMicroCents = await this.usageQuery.getCommittedMicroCents(communityId, month);
 
     const driftMicroCents = redisMicroCents - pgMicroCents;
+    // F-2 Fix: Distinguish Redis key absence from genuine PG overspend.
+    // When Redis returns null but PG has data, it's likely key expiry or Redis restart,
+    // not an accounting error. Different alarm → different runbook response.
     const driftDirection: CommunityDrift['driftDirection'] =
-      driftMicroCents > 0 ? 'redis_over' : driftMicroCents < 0 ? 'pg_over' : 'none';
+      redisStr === null && pgMicroCents > 0 ? 'redis_missing' :
+      driftMicroCents > 0 ? 'redis_over' :
+      driftMicroCents < 0 ? 'pg_over' : 'none';
 
     return {
       communityId,

@@ -68,9 +68,21 @@ export class BudgetDriftMonitor {
                     avgCostMicroCents,
                     month,
                 }, 'budget-drift-monitor: community check');
-                // Hard overspend rule (S14-T2): PG > Redis means actual spend exceeds tracking
-                // Fire alarm unconditionally — this is never lag, it's a real accounting error
-                if (drift.driftDirection === 'pg_over' && drift.pgMicroCents > drift.redisMicroCents) {
+                // F-2 Fix: Redis key missing is a distinct failure mode from hard overspend
+                if (drift.driftDirection === 'redis_missing') {
+                    driftDetected++;
+                    this.logger.error({
+                        communityId,
+                        redisMicroCents: drift.redisMicroCents,
+                        pgMicroCents: drift.pgMicroCents,
+                        driftMicroCents: drift.driftMicroCents,
+                        driftDirection: drift.driftDirection,
+                        month,
+                        alarm: 'BUDGET_REDIS_KEY_MISSING',
+                    }, 'BUDGET_REDIS_KEY_MISSING: Redis committed key absent but PG has data — possible key expiry or Redis restart');
+                }
+                else if (drift.driftDirection === 'pg_over' && drift.pgMicroCents > drift.redisMicroCents) {
+                    // Hard overspend rule: PG > Redis (with Redis key present)
                     driftDetected++;
                     this.logger.error({
                         communityId,
@@ -146,7 +158,9 @@ export class BudgetDriftMonitor {
         // Query PostgreSQL for sum of cost_micro_cents
         const pgMicroCents = await this.usageQuery.getCommittedMicroCents(communityId, month);
         const driftMicroCents = redisMicroCents - pgMicroCents;
-        const driftDirection = driftMicroCents > 0 ? 'redis_over' : driftMicroCents < 0 ? 'pg_over' : 'none';
+        // F-2 Fix: Distinguish Redis key absence from genuine PG overspend
+        const driftDirection = redisStr === null && pgMicroCents > 0 ? 'redis_missing' :
+            driftMicroCents > 0 ? 'redis_over' : driftMicroCents < 0 ? 'pg_over' : 'none';
         return {
             communityId,
             redisMicroCents,

@@ -10,6 +10,13 @@
  * Stabilization: 100 warmup iterations (discarded), 1000 measured.
  * Single-threaded, no external deps (in-memory key generation).
  *
+ * F-4 Disclaimer: This benchmark measures **crypto computation cost only**.
+ * It does NOT measure: network I/O, GC pressure under memory contention,
+ * connection pool overhead, TLS handshake costs, or Linux kernel scheduling
+ * jitter under load. Results are valid as a **regression detector** — if p95
+ * doubles between commits, something changed. For production latency validation
+ * under realistic concurrency, use k6 load tests against staging.
+ *
  * Usage:
  *   npx tsx tests/bench/jwt-benchmark.ts --ci
  *   npx tsx tests/bench/jwt-benchmark.ts --staging

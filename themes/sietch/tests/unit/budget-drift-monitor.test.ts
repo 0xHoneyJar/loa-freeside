@@ -190,8 +190,9 @@ describe('BudgetDriftMonitor', () => {
     });
 
     it('drift uses absolute value — PG over Redis also triggers', async () => {
-      // Redis: 0 cents; PG: 500,001 → drift = -500,001 → |drift| > threshold
-      const redis = mockRedis({});
+      // Redis: explicit '0' (not null); PG: 500,001 → drift = -500,001 → |drift| > threshold
+      // Uses '0' instead of absent key to test pg_over direction (F-2: null = redis_missing)
+      const redis = mockRedis({ [redisKey('comm-1', month)]: '0' });
       const usageQuery = mockUsageQuery({ 'comm-1': 500_001 });
       const logger = mockLogger();
       const monitor = new BudgetDriftMonitor(
@@ -354,8 +355,8 @@ describe('BudgetDriftMonitor', () => {
       expect(logger.debug).toHaveBeenCalledTimes(2);
     });
 
-    it('Redis returning null treated as 0 cents', async () => {
-      const redis = mockRedis({}); // no keys at all
+    it('Redis returning null fires BUDGET_REDIS_KEY_MISSING (F-2: not hard overspend)', async () => {
+      const redis = mockRedis({}); // no keys at all → null
       const usageQuery = mockUsageQuery({ 'comm-1': 100_000 });
       const logger = mockLogger();
       const monitor = new BudgetDriftMonitor(
@@ -367,10 +368,17 @@ describe('BudgetDriftMonitor', () => {
 
       const result = await monitor.process();
 
-      // 0 × 10,000 = 0; 0 - 100,000 = -100,000 → pg_over
-      // S14-T2: PG > Redis fires BUDGET_HARD_OVERSPEND unconditionally
+      // Redis null + PG > 0 → redis_missing → BUDGET_REDIS_KEY_MISSING
       expect(result.maxDriftMicroCents).toBe(100_000);
       expect(result.driftDetected).toBe(1);
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.objectContaining({
+          communityId: 'comm-1',
+          driftDirection: 'redis_missing',
+          alarm: 'BUDGET_REDIS_KEY_MISSING',
+        }),
+        expect.stringContaining('BUDGET_REDIS_KEY_MISSING'),
+      );
     });
   });
 
@@ -817,8 +825,9 @@ describe('BudgetDriftMonitor', () => {
 
   describe('hard overspend rule (S14-T2)', () => {
     it('PG > Redis fires BUDGET_HARD_OVERSPEND alarm unconditionally', async () => {
-      // Redis: 0 cents; PG: 1,000,000 μ¢ → PG over Redis → hard overspend
-      const redis = mockRedis({});
+      // Redis: 5 cents = 50,000 μ¢; PG: 1,000,000 μ¢ → PG over Redis → hard overspend
+      // Uses non-null Redis value — null Redis triggers BUDGET_REDIS_KEY_MISSING (F-2)
+      const redis = mockRedis({ [redisKey('comm-1', month)]: '5' });
       const usageQuery = mockUsageQuery(
         { 'comm-1': 1_000_000 },
         { 'comm-1': { ratePerMinute: 0, avgCostMicroCents: 0 } },
@@ -894,6 +903,31 @@ describe('BudgetDriftMonitor', () => {
           alarm: 'BUDGET_ACCOUNTING_DRIFT',
         }),
         expect.stringContaining('BUDGET_ACCOUNTING_DRIFT'),
+      );
+    });
+
+    it('Redis null + PG = 0 does not trigger redis_missing (no data to be missing)', async () => {
+      const redis = mockRedis({}); // null
+      const usageQuery = mockUsageQuery(
+        { 'comm-1': 0 },
+        { 'comm-1': { ratePerMinute: 0, avgCostMicroCents: 0 } },
+      );
+      const logger = mockLogger();
+      const monitor = new BudgetDriftMonitor(
+        redis,
+        mockCommunityProvider(['comm-1']),
+        usageQuery,
+        logger,
+      );
+
+      const result = await monitor.process();
+
+      // Redis null but PG also 0 → direction = 'none' (not redis_missing)
+      expect(result.driftDetected).toBe(0);
+      expect(logger.error).not.toHaveBeenCalled();
+      expect(logger.debug).toHaveBeenCalledWith(
+        expect.objectContaining({ driftDirection: 'none' }),
+        expect.any(String),
       );
     });
 

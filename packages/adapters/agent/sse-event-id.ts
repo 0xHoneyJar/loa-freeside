@@ -101,6 +101,13 @@ export class MonotonicEventIdGenerator implements SseEventIdGenerator {
  *
  * Clients can detect server switches by comparing the serverId prefix.
  * Cross-server reconnect defers to STREAM_RESUME_LOST FSM (no replay buffer).
+ *
+ * F-3 Contract: serverId MUST be a short, stable identifier (e.g., AWS region
+ * like "us-east-1" or a hostname slug). Recommended max length: 32 chars.
+ * The SSE spec does not define a max length for the `id` field, but some client
+ * libraries may truncate long IDs. Avoid UUIDs or other long-form identifiers.
+ * The sequence portion uses JavaScript `number` (safe to 2^53 - 1 = ~285,616
+ * years at 1000 events/sec).
  */
 export class CompositeEventIdGenerator implements SseEventIdGenerator {
   private seq: number;
