@@ -1,46 +1,23 @@
 {
-  "verdict": "CHANGES_REQUIRED",
-  "summary": "Most prior blocking items are addressed (race claim pattern, getAvailableModels intent, and stronger tests), but req_hash canonicalization is still underspecified/incorrect and IPv6 normalization is not fixed to the required security bar (and the plan’s rationale is wrong), leaving two prior blocking findings effectively unfixed.",
+  "verdict": "APPROVED",
+  "summary": "All previously blocking issues are addressed: the plan now explicitly scopes Arrakis vs. loa-finn enforcement with a tracked cross-repo dependency, and the integration tests are made feasible via an existing JWKS/key + injectable logger seam; the validatePoolClaims contract/ACs are now consistent and canonicalized.",
   "previous_issues_status": [
     {
-      "original_issue": "req_hash binding uses non-canonical/unstable JSON.stringify(request) and may hash the wrong object; need one canonicalization shared by minter+verifier",
-      "status": "not_fixed",
-      "notes": "The plan improves intent (hash upstream payload, not full request wrapper) but the proposed canonicalization `JSON.stringify(payload, Object.keys(payload).sort())` is not a correct deep canonical JSON strategy: it only sorts top-level keys, can drop nested keys ordering determinism, and can omit keys not present in the top-level key list for nested objects. Also it conflicts with the earlier statement “use raw HTTP body bytes (exact JSON string)”—those two approaches are mutually exclusive. Without a single, precise canonicalization that loa-finn also uses, req_hash will still mismatch in production or become meaningless."
-    },
-    {
-      "original_issue": "Finalize/Reaper race condition fix was underspecified and risked impossible Redis ops; need an implementable atomic claim mechanism guaranteeing exactly-once decrement",
+      "original_issue": "F-5 trust-boundary enforcement scope: sprint claimed trust-boundary fix but had no loa-finn deliverable/dependency, leaving confused-deputy gap",
       "status": "fixed",
-      "notes": "The claim-via-DEL pattern is now concrete and implementable: both finalize and reaper use DEL’s return value as the claim signal and only the winner decrements reserved. This addresses the TOCTOU/double-decrement window between separate EVALSHA calls. Acceptance criteria includes a concurrent finalize+reap test validating exactly-once reserved decrement."
+      "notes": "The plan now clearly states Arrakis is detection-only (warn-only) and adds a Blocking Dependencies section plus an explicit Sprint 2 task (2.6) to file a loa-finn enforcement issue, and SDD language (2.2) that loa-finn MUST re-validate and SHOULD reject. This resolves the scope/handshake problem without pretending the vulnerability is fully closed in Arrakis alone."
     },
     {
-      "original_issue": "IPv6 normalization: lowercasing alone insufficient; need real canonicalization and address trust proxy/XFF correctness",
-      "status": "not_fixed",
-      "notes": "The plan only lowercases to catch ::FFFF: prefix case variants and explicitly claims full RFC5952 canonicalization is unnecessary because Express/net.isIP produce consistent output. That rationale is not reliable: equivalent IPv6 textual forms (zero-compression/leading zeros/IPv4-embedded variants) can still map to different strings and therefore different buckets, enabling rate-limit bypass. The plan does add a trust proxy check/test (good), but it does not actually canonicalize IPv6 to a single normalized form."
-    },
-    {
-      "original_issue": "getAvailableModels() abstraction leak: proposed fix didn’t resolve overrides; acceptance said 'correct' aliases per access level",
-      "status": "rejected_with_valid_reason",
-      "notes": "The revised plan explicitly constrains getAvailableModels() to defaults-only because the port lacks communityId, and documents that per-community overrides are applied per-request via context.allowedModelAliases. Given that interface constraint, this is a valid resolution and aligns acceptance criteria to 'defaults'."
-    },
-    {
-      "original_issue": "Property-based budget tests: plan didn’t ensure it can observe interleaving invariants given Redis scripts are atomic; needed a deterministic concurrency harness or a direct exactly-once test",
+      "original_issue": "Integration tests were untestable: no specified way to sign a forged-but-verifiable JWT and no deterministic log assertion seam",
       "status": "fixed",
-      "notes": "The plan adds (a) between-batch invariant checks and (b) a dedicated concurrent finalize+reaper test that directly validates the claim-via-DEL behavior. Using fast-check scheduler at the Node layer is reasonable for exploring ordering of client calls; the dedicated race test is the key piece that makes this robust."
+      "notes": "Task 2.4 now anchors on existing test infrastructure: JWKS test server + deterministic key generation/signing helpers, and a createPipeline/logger helper with spyable warn/info. AC-H2.5/2.6 assertions are on structured log events rather than free-text, removing flakiness and making the test path reachable past JWS verification."
+    },
+    {
+      "original_issue": "validatePoolClaims contract inconsistency (boolean vs {valid, reason}) and underspecified ordering/representation rules for allowed_pools",
+      "status": "fixed",
+      "notes": "AC-H1.3/H1.4 now match the `{ valid: boolean; reason?: string }` return type, and the canonicalization rule is explicitly defined (sorted + deduped set comparison; order-independent membership). This makes implementation/test expectations unambiguous and stable across systems."
     }
   ],
-  "new_blocking_concerns": [
-    {
-      "location": "Sprint 8 — S8-T1: canonicalizeRequestBody() / req_hash definition",
-      "description": "Proposed canonicalization function is technically incorrect (not deep-canonical, conflicting definition vs 'raw bytes') and will likely cause req_hash mismatches between Arrakis and loa-finn or allow ambiguous bindings.",
-      "why_blocking": "req_hash binding is a critical security requirement. If Arrakis and loa-finn hash different representations, valid requests will fail auth (outage) or the binding won’t actually bind the forwarded payload (security hole). The current plan contains two incompatible approaches and an incorrect implementation of the JSON.stringify replacer that will not produce stable canonical JSON for nested structures.",
-      "fix": "Pick ONE binding scheme and specify it precisely for both sides:\n- Preferred: hash the exact raw HTTP request body bytes that Arrakis forwards upstream (capture rawBody in Express before parsing; forward the same bytes; compute SHA-256 over those bytes; base64url).\n- If canonical JSON is required: use a real RFC 8785 JCS canonicalization (or a proven library) and explicitly state it; ensure both Arrakis and loa-finn use the same library/version and test vectors.\nUpdate acceptance tests to include nested-object key-order cases and ensure minter/verifier compute identical req_hash."
-    },
-    {
-      "location": "Sprint 8 — S8-T4: IP rate limiter IPv6 normalization",
-      "description": "Lowercasing only addresses ::FFFF: case, not canonicalization of equivalent IPv6 textual forms; plan’s note that Express/net.isIP ensures consistency is incorrect for security bucketing.",
-      "why_blocking": "This is a pre-auth, fail-closed protection. If equivalent IPv6 addresses can map to different keys, attackers can bypass IP-based rate limiting by varying textual representation (especially when upstream/proxies provide different formatting), undermining a core safety control.",
-      "fix": "Canonicalize IPs using a real parser/normalizer (e.g., ipaddr.js): parse(req.ip), convert IPv4-mapped IPv6 to IPv4, and for IPv6 emit a normalized RFC5952-like string (ipaddr.js toNormalizedString()). Add tests for multiple equivalent IPv6 forms (zero compression, leading zeros, mixed case) mapping to the same bucket. Keep the trust proxy requirement/test."
-    }
-  ],
+  "new_blocking_concerns": [],
   "iteration": 2
 }

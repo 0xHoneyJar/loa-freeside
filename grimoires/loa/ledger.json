@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "next_sprint_number": 195,
+  "next_sprint_number": 197,
   "active_cycle": "cycle-007",
   "cycles": [
     {
@@ -188,6 +188,19 @@
         {"global_id": 192, "local_label": "sprint-2", "status": "pending"},
         {"global_id": 193, "local_label": "sprint-3", "status": "pending"},
         {"global_id": 194, "local_label": "sprint-4", "status": "pending"}
+      ]
+    },
+    {
+      "id": "cycle-013",
+      "label": "Bridgebuilder Hardening — PR #51 Review Feedback",
+      "status": "active",
+      "created": "2026-02-11T04:00:00Z",
+      "prd": "grimoires/loa/prd-hounfour-integration.md",
+      "sdd": "grimoires/loa/sdd-hounfour-integration.md",
+      "sprint_plan": "grimoires/loa/sprint-bridgebuilder-hardening.md",
+      "sprints": [
+        {"global_id": 195, "local_label": "sprint-1", "status": "pending"},
+        {"global_id": 196, "local_label": "sprint-2", "status": "pending"}
       ]
     }
   ]

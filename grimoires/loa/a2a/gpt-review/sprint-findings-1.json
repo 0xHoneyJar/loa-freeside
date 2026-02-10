@@ -1,36 +1,24 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "Plan covers all 9 findings, but a few proposed fixes are technically incorrect/underspecified in ways that can leave the high/medium issues unfixed or introduce new runtime failures—likely causing the sprint to miss acceptance criteria.",
+  "summary": "This plan is close, but two items (trust-boundary enforcement scope and an untestable integration test setup) can realistically cause the sprint to fail to deliver the intended security hardening.",
   "blocking_issues": [
     {
-      "location": "Sprint 8 — S8-T1: Fix Factory JwtService Wiring + req_hash Binding",
-      "issue": "req_hash binding uses `JSON.stringify(request)` instead of a canonical, stable request body representation, and may hash the wrong object (full request wrapper vs the actual upstream payload).",
-      "why_blocking": "If the verifier computes req_hash over a different canonicalization than the minter, tokens will fail validation (or the binding becomes meaningless). This can break auth in production and fail the security requirement “req_hash binding.”",
-      "fix": "Define and implement a single canonicalization function used by both minting and verification (e.g., hash the exact raw HTTP body bytes as received, or a strict canonical JSON serialization of the upstream payload only). Add an explicit acceptance test: same request body => same req_hash; different body => different req_hash; and a negative test where body tampering is rejected."
+      "location": "Sprint 1 – Task 1.3 + Acceptance Criteria AC-H1.5; Sprint 2 – Task 2.4/AC-H2.5-2.6",
+      "issue": "F-5 requires loa-finn to re-validate pool claims, but the sprint only implements Arrakis-side validation (warn-only) and does not include any loa-finn work item or a concrete cross-repo dependency/handshake to ensure the security fix actually lands.",
+      "why_blocking": "The high-severity finding is explicitly about the trust boundary: loa-finn must independently verify. If the sprint ships only Arrakis warn-logs, the core vulnerability remains and the sprint’s stated purpose (“trust boundary fixes”) is not met. This is a classic confused-deputy gap: the relying party (loa-finn) still trusts convenience claims without re-derivation.",
+      "fix": "Add an explicit deliverable/task (and dependency) for loa-finn: implement `validatePoolClaims`-equivalent enforcement in loa-finn’s JWT intake/routing path with a defined behavior (e.g., reject 403 on mismatch). If cross-repo work cannot be done in this cycle, change scope/wording to “Arrakis-side detection only” and add a tracked blocking dependency (issue + owner + target date) so the sprint can be considered complete without claiming the trust-boundary fix is done."
     },
     {
-      "location": "Sprint 8 — S8-T3: Fix Finalize/Reaper Race Condition",
-      "issue": "The proposed Lua changes reference impossible operations on the reservation key (mixes hash operations like HGET/HDEL with deleting the whole reservation hash key) and doesn’t specify an atomic “claim” mechanism that guarantees exactly-once decrement across scripts.",
-      "why_blocking": "As written, the fix is likely to be implemented incorrectly (e.g., using HDEL on a key rather than a field, or relying on non-atomic sequences), leaving the double-decrement race in place. This directly fails the medium-severity finding and can violate the two-counter invariant.",
-      "fix": "Specify a concrete, implementable atomic claim pattern. Example: store each reservation as its own Redis hash key `resv:{id}` with fields `{estimated, ...}`; in both finalize and reaper do `local est = redis.call('HGET', key, 'estimated'); if not est then return ALREADY_CLAIMED end; redis.call('DEL', key);` and only then `DECRBY reserved est` (or use `GETDEL` on a string key holding est). Ensure both scripts use the same claim primitive (DEL/GETDEL) so only one can win. Add an integration test that forces interleaving (finalize and reaper concurrent on same reservation) and asserts reserved decremented exactly once."
+      "location": "Sprint 2 – Task 2.4 (Contract integration tests) and AC-H2.5/AC-H2.6",
+      "issue": "The proposed integration tests depend on being able to create a “forged inconsistent claims” JWT that still passes S2S verification, but the plan does not specify how the test will sign it (key material/JWKS injection) nor how logs are captured deterministically.",
+      "why_blocking": "Without a test seam to sign tokens with a test key that the verifier trusts (or to inject a JWKS), the test cannot reach the validation code path because JWS verification will fail earlier. Similarly, asserting “warning is logged” is flaky unless the logger is injectable/spied in the test harness. This can stall Sprint 2 or lead to non-deterministic CI failures.",
+      "fix": "Add a prerequisite task to create a deterministic test harness: (1) inject JWKS/JWT verifier keyset for tests (e.g., in-memory JWKS or env-configured test keypair) so the usage receiver accepts the token; (2) make logger injectable or expose a test sink so assertions can reliably detect warning/no-warning. Update AC-H2.5/2.6 to assert on a structured log event or counter rather than free-text logs."
     },
     {
-      "location": "Sprint 8 — S8-T4: Fix IPv6 Normalization Case Sensitivity",
-      "issue": "Lowercasing alone is insufficient for RFC 5952 normalization and may still create multiple buckets for equivalent IPv6 forms (e.g., zero compression variants), and the plan doesn’t address Express `trust proxy`/`X-Forwarded-For` parsing correctness which affects what `raw` even is.",
-      "why_blocking": "The finding is about correctness of IP bucketing; if equivalent addresses still map to different keys, rate limiting can be bypassed. Also, if `trust proxy` is misconfigured, you may rate-limit the proxy IP or accept spoofed XFF—breaking pre-auth protection.",
-      "fix": "Use a real IP parser/normalizer (e.g., `ipaddr.js`) to canonicalize IPv6 per RFC 5952 and to reliably detect IPv4-mapped IPv6. Add explicit tests for multiple equivalent IPv6 strings mapping to the same bucket. Also add/confirm a task or acceptance check that Express `trust proxy` is set appropriately for the deployment and that `extractIp()` uses the correct source (req.ip vs XFF) in a non-spoofable way."
-    },
-    {
-      "location": "Sprint 9 — S9-T1: Fix getAvailableModels() Abstraction Leak",
-      "issue": "Acceptance criteria says “Returns correct model aliases per access level” but the proposed method `getDefaultModels(tier)` explicitly avoids override resolution; this can’t satisfy “correct” if correctness includes per-community overrides (which the finding text implies is currently broken).",
-      "why_blocking": "This is a mismatch between the stated problem (overrides never returned) and the proposed fix (still doesn’t return overrides). That risks shipping with the same functional bug and failing the medium-severity finding’s intent.",
-      "fix": "Clarify expected behavior for `getAvailableModels()`: (A) defaults-only is acceptable for this endpoint, or (B) it must include per-community overrides. If (B), change the fix to call `tierMapper.resolveAccess({communityId, tier, ...})` (or add a public method that returns resolved models for a community) and add a test covering an override case."
-    },
-    {
-      "location": "Sprint 9 — S9-T3: Strengthen Property-Based Budget Tests",
-      "issue": "Plan doesn’t ensure the test can actually observe “during interleaving” invariants given Redis scripts are atomic per call; without a controllable scheduler or injected delays/hooks, the mid-flight checks may still only sample between atomic operations and miss the problematic window.",
-      "why_blocking": "If the test can’t reproduce/observe the race, it won’t prevent regressions and may not validate the S8-T3 fix—risking reintroducing the bug and failing the testing finding.",
-      "fix": "Add a deterministic concurrency harness: run finalize and reaper in parallel against the same reservation with barriers (e.g., instrument scripts with optional debug hooks/keys for tests, or split finalize into two phases in test-only mode). Alternatively, use fast-check’s `scheduler` to control promise interleavings at the Node layer plus a purpose-built test that asserts exactly-once decrement by checking reservation key deletion semantics and reserved delta."
+      "location": "Sprint 1 – Task 1.2 validatePoolClaims() + AC-H1.3/AC-H1.4",
+      "issue": "Acceptance criteria and function contract are internally inconsistent: AC says “returns true/false”, but the task defines `{ valid: boolean; reason?: string }`. Also the validation rule “allowed_pools matches tier exactly” is underspecified about ordering/representation, which can cause false negatives and churn.",
+      "why_blocking": "Engineers won’t know what to implement/test against, and tests may fail depending on array ordering or serialization differences between systems. This is especially risky because the function is intended as a cross-system contract; ambiguity here can block completion or create brittle behavior.",
+      "fix": "Normalize the contract: update AC-H1.3/H1.4 to match `{ valid, reason }` (or change function to boolean). Specify canonicalization: treat `allowed_pools` as a set (order-independent) and define exact expected set per access level (e.g., compare sorted unique arrays). Add explicit AC for ordering-insensitivity and duplicate handling."
     }
   ],
   "question": "",
