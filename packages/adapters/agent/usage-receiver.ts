@@ -20,6 +20,7 @@ import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import type { Logger } from 'pino'
 import type { S2SJwtValidator, S2SJwtPayload } from './s2s-jwt-validator.js'
 import { microUsdToMicroCents, parseMicroUnit, MAX_MICRO_USD } from './budget-unit-bridge.js'
+import { validatePoolClaims } from './pool-mapping.js'
 import { agentUsageLog } from '../storage/agent-schema.js'
 
 // --------------------------------------------------------------------------
@@ -49,6 +50,8 @@ export interface UsageReport {
   completion_tokens: number
   cost_micro: number | string
   pool_id?: string
+  access_level?: string
+  allowed_pools?: string[]
 }
 
 export interface UsageReceiverResult {
@@ -71,6 +74,8 @@ const usageReportSchema = z.object({
   completion_tokens: z.number().int().nonnegative().max(MAX_TOKENS),
   cost_micro: z.union([z.number().int().nonnegative(), z.string().regex(/^\d+$/)]),
   pool_id: z.string().min(1).max(128).optional(),
+  access_level: z.string().min(1).max(64).optional(),
+  allowed_pools: z.array(z.string().min(1).max(128)).optional(),
 })
 
 // --------------------------------------------------------------------------
@@ -157,6 +162,28 @@ export class UsageReceiver {
         `report_id mismatch: JWT="${jwtReportId}" vs payload="${report.report_id}"`,
         400,
       )
+    }
+
+    // Step 5b: Pool claim cross-validation (F-5 defense-in-depth, warn-only)
+    if (report.pool_id && report.access_level && report.allowed_pools) {
+      const claimResult = validatePoolClaims(
+        report.pool_id,
+        report.allowed_pools,
+        report.access_level as any,
+      )
+      if (!claimResult.valid) {
+        this.logger.warn(
+          {
+            event: 'pool-claim-mismatch',
+            reportId: report.report_id,
+            poolId: report.pool_id,
+            accessLevel: report.access_level,
+            allowedPools: report.allowed_pools,
+            reason: claimResult.reason,
+          },
+          'Pool claim validation failed — possible key compromise or config drift',
+        )
+      }
     }
 
     // Convert micro-USD → micro-cents for arrakis storage

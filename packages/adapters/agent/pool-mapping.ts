@@ -50,6 +50,62 @@ const NATIVE_POOL: Record<AccessLevel, PoolId> = {
 };
 
 // --------------------------------------------------------------------------
+// Pool Claim Validation (F-5: confused deputy prevention)
+// --------------------------------------------------------------------------
+
+export interface PoolClaimValidation {
+  valid: boolean;
+  reason?: string;
+}
+
+/**
+ * Cross-validate pool claims against tier expectations.
+ * Catches inconsistent claims (e.g., access_level: "free" with pool_id: "architect").
+ *
+ * Canonicalization: both allowedPools and expected set are sorted lexicographically
+ * and deduplicated before comparison (order-independent, duplicate-tolerant).
+ *
+ * @see Hounfour RFC #31 §12 Agent Distribution via Arrakis
+ */
+export function validatePoolClaims(
+  poolId: string,
+  allowedPools: string[],
+  accessLevel: AccessLevel,
+): PoolClaimValidation {
+  // 1. poolId must be a known pool ID
+  if (!VALID_POOL_IDS.has(poolId)) {
+    return { valid: false, reason: `unknown pool_id '${poolId}'` };
+  }
+
+  // 2. poolId must be in allowedPools (set membership, order-independent)
+  if (!allowedPools.includes(poolId)) {
+    return { valid: false, reason: `pool_id '${poolId}' not in allowed_pools [${allowedPools.join(', ')}]` };
+  }
+
+  // 3. allowedPools must match tier expectations (canonicalized set comparison)
+  const tierConfig = ACCESS_LEVEL_POOLS[accessLevel];
+  if (!tierConfig) {
+    return { valid: false, reason: `unknown access_level '${accessLevel}'` };
+  }
+
+  const canonicalize = (arr: readonly string[]): string[] => [...new Set(arr)].sort();
+  const expectedSorted = canonicalize(tierConfig.allowed);
+  const actualSorted = canonicalize(allowedPools);
+
+  if (
+    expectedSorted.length !== actualSorted.length ||
+    !expectedSorted.every((v, i) => v === actualSorted[i])
+  ) {
+    return {
+      valid: false,
+      reason: `allowed_pools mismatch for tier '${accessLevel}': expected [${expectedSorted.join(', ')}], got [${actualSorted.join(', ')}]`,
+    };
+  }
+
+  return { valid: true };
+}
+
+// --------------------------------------------------------------------------
 // Pool Resolution
 // --------------------------------------------------------------------------
 

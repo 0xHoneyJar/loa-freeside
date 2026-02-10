@@ -11,6 +11,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   resolvePoolId,
+  validatePoolClaims,
   ACCESS_LEVEL_POOLS,
   POOL_IDS,
   VALID_POOL_IDS,
@@ -197,6 +198,110 @@ describe('resolvePoolId — full matrix', () => {
         expect(result.allowedPools.length).toBeGreaterThan(0)
         for (const pool of result.allowedPools) {
           expect(VALID_POOL_IDS.has(pool)).toBe(true)
+        }
+      })
+    }
+  }
+})
+
+// --------------------------------------------------------------------------
+// validatePoolClaims — confused deputy prevention (F-5)
+// --------------------------------------------------------------------------
+
+describe('validatePoolClaims — valid claims', () => {
+  it('free tier: cheap in [cheap] → valid', () => {
+    const result = validatePoolClaims('cheap', ['cheap'], 'free')
+    expect(result).toEqual({ valid: true })
+  })
+
+  it('pro tier: fast-code in [cheap, fast-code, reviewer] → valid', () => {
+    const result = validatePoolClaims('fast-code', ['cheap', 'fast-code', 'reviewer'], 'pro')
+    expect(result).toEqual({ valid: true })
+  })
+
+  it('enterprise tier: architect in all 5 pools → valid', () => {
+    const result = validatePoolClaims(
+      'architect',
+      ['cheap', 'fast-code', 'reviewer', 'reasoning', 'architect'],
+      'enterprise',
+    )
+    expect(result).toEqual({ valid: true })
+  })
+
+  it('order-independent: reversed allowedPools still valid', () => {
+    const result = validatePoolClaims(
+      'architect',
+      ['architect', 'reasoning', 'reviewer', 'fast-code', 'cheap'],
+      'enterprise',
+    )
+    expect(result).toEqual({ valid: true })
+  })
+
+  it('duplicate-tolerant: duplicated allowedPools still valid', () => {
+    const result = validatePoolClaims(
+      'cheap',
+      ['cheap', 'cheap'],
+      'free',
+    )
+    expect(result).toEqual({ valid: true })
+  })
+})
+
+describe('validatePoolClaims — invalid claims (AC-H1.4)', () => {
+  it('unknown pool_id', () => {
+    const result = validatePoolClaims('nonexistent', ['cheap'], 'free')
+    expect(result.valid).toBe(false)
+    expect(result.reason).toContain("unknown pool_id 'nonexistent'")
+  })
+
+  it('pool_id not in allowedPools', () => {
+    const result = validatePoolClaims('architect', ['cheap'], 'free')
+    expect(result.valid).toBe(false)
+    expect(result.reason).toContain("pool_id 'architect' not in allowed_pools")
+  })
+
+  it('architect on free tier: pool_id valid but allowedPools mismatch', () => {
+    const result = validatePoolClaims(
+      'architect',
+      ['cheap', 'fast-code', 'reviewer', 'reasoning', 'architect'],
+      'free',
+    )
+    expect(result.valid).toBe(false)
+    expect(result.reason).toContain("allowed_pools mismatch for tier 'free'")
+  })
+
+  it('cheap on enterprise with wrong allowedPools', () => {
+    const result = validatePoolClaims('cheap', ['cheap'], 'enterprise')
+    expect(result.valid).toBe(false)
+    expect(result.reason).toContain("allowed_pools mismatch for tier 'enterprise'")
+  })
+
+  it('pro tier with enterprise allowedPools', () => {
+    const result = validatePoolClaims(
+      'fast-code',
+      ['cheap', 'fast-code', 'reviewer', 'reasoning', 'architect'],
+      'pro',
+    )
+    expect(result.valid).toBe(false)
+    expect(result.reason).toContain("allowed_pools mismatch for tier 'pro'")
+  })
+})
+
+describe('validatePoolClaims — all 5 pools × 3 tiers (AC-H1.3)', () => {
+  const tiers: AccessLevel[] = ['free', 'pro', 'enterprise']
+
+  for (const tier of tiers) {
+    const { allowed } = ACCESS_LEVEL_POOLS[tier]
+
+    for (const poolId of POOL_IDS) {
+      const isAllowed = allowed.includes(poolId)
+      it(`${poolId} on ${tier}: ${isAllowed ? 'valid' : 'pool_id not in allowed set'}`, () => {
+        const result = validatePoolClaims(poolId, allowed, tier)
+        if (isAllowed) {
+          expect(result).toEqual({ valid: true })
+        } else {
+          expect(result.valid).toBe(false)
+          expect(result.reason).toContain('not in allowed_pools')
         }
       })
     }
