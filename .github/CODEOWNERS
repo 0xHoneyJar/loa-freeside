@@ -1,30 +1,42 @@
-# Arrakis CODEOWNERS
+# CODEOWNERS — Auto-assign reviewers on PRs
 # https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# When a PR touches files matching these patterns, GitHub automatically
+# requests review from the listed owners. Pair with the branch protection
+# rule "Require review from Code Owners" for enforcement.
 
-# Default owners for everything
-* @0xHoneyJar/core
+# ─────────────────────────────────────────────────────────────────────────────
+# Default owner — catch-all for any file not matched below
+# ─────────────────────────────────────────────────────────────────────────────
+*                               @janitooor
 
-# Infrastructure
-infrastructure/ @0xHoneyJar/infra
-.github/workflows/ @0xHoneyJar/infra
+# ─────────────────────────────────────────────────────────────────────────────
+# Framework core (System Zone)
+# ─────────────────────────────────────────────────────────────────────────────
+.claude/                        @janitooor
+.loa.config.yaml                @janitooor
+.loa.config.yaml.example        @janitooor
 
-# Core packages
-packages/core/ @0xHoneyJar/core
-packages/adapters/chain/ @0xHoneyJar/core
-packages/adapters/security/ @0xHoneyJar/core
+# ─────────────────────────────────────────────────────────────────────────────
+# Project configuration & documentation
+# ─────────────────────────────────────────────────────────────────────────────
+CLAUDE.md                       @janitooor
+PROCESS.md                      @janitooor
+CONTRIBUTING.md                 @janitooor
+SECURITY.md                     @janitooor
+CHANGELOG.md                    @janitooor
 
-# Bot theme
-themes/sietch/ @0xHoneyJar/core
+# ─────────────────────────────────────────────────────────────────────────────
+# CI / GitHub configuration
+# ─────────────────────────────────────────────────────────────────────────────
+.github/                        @janitooor
 
-# Dashboard UI
-themes/sietch/dashboard/ @0xHoneyJar/frontend
+# ─────────────────────────────────────────────────────────────────────────────
+# Eval baselines (require explicit review for regression threshold changes)
+# ─────────────────────────────────────────────────────────────────────────────
+evals/baselines/                @janitooor
 
-# Theme builder UI
-themes/sietch/src/ui/builder/ @0xHoneyJar/frontend
-
-# Documentation
-docs/ @0xHoneyJar/core
-grimoires/ @0xHoneyJar/core
-
-# Loa framework files (managed by framework)
-.claude/loa/ @0xHoneyJar/core
+# ─────────────────────────────────────────────────────────────────────────────
+# Grimoire state (State Zone)
+# ─────────────────────────────────────────────────────────────────────────────
+grimoires/                      @janitooor

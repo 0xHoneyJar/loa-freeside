@@ -215,8 +215,8 @@ load_tasks() {
 
       # Resolve glob pattern relative to evals/
       # Use bash globbing with globstar for ** patterns
-      local had_globstar=false
-      shopt -q globstar 2>/dev/null && had_globstar=true
+      local prev_globstar
+      prev_globstar="$(shopt -p globstar 2>/dev/null || echo "shopt -u globstar")"
       shopt -s globstar 2>/dev/null || true
 
       local glob_expanded=false
@@ -228,9 +228,7 @@ load_tasks() {
       done
 
       # Restore globstar
-      if [[ "$had_globstar" == "false" ]]; then
-        shopt -u globstar 2>/dev/null || true
-      fi
+      eval "$prev_globstar" 2>/dev/null || true
 
       # Fallback: if glob didn't match, try find in the directory
       if [[ "$glob_expanded" == "false" ]]; then
