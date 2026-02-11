@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "next_sprint_number": 205,
+  "next_sprint_number": 207,
   "active_cycle": "cycle-007",
   "cycles": [
     {
@@ -247,6 +247,19 @@
       "sprints": [
         {"global_id": 203, "local_label": "sprint-1", "status": "completed"},
         {"global_id": 204, "local_label": "sprint-2", "status": "completed"}
+      ]
+    },
+    {
+      "id": "cycle-017",
+      "label": "The Water of Life — Hounfour Finish Line (RFC #31 Close-Out)",
+      "status": "active",
+      "created": "2026-02-11T22:30:00Z",
+      "prd": "grimoires/loa/prd-hounfour-finish-line.md",
+      "sdd": "grimoires/loa/sdd-hounfour-finish-line.md",
+      "sprint_plan": "grimoires/loa/sprint-hounfour-finish-line.md",
+      "sprints": [
+        {"global_id": 205, "local_label": "sprint-1", "status": "pending"},
+        {"global_id": 206, "local_label": "sprint-2", "status": "pending"}
       ]
     }
   ]

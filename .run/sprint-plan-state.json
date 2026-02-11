@@ -1,18 +1,18 @@
 {
-  "plan_id": "plan-20260211-bridgebuilder-round3",
+  "plan_id": "plan-20260211-hounfour-finish-line",
   "branch": "feature/hounfour-endgame",
   "state": "JACKED_OUT",
   "timestamps": {
-    "started": "2026-02-11T14:30:00Z",
-    "last_activity": "2026-02-11T17:44:00Z"
+    "started": "2026-02-12T00:15:00Z",
+    "last_activity": "2026-02-12T01:00:37Z"
   },
   "sprints": {
     "total": 2,
     "completed": 2,
     "current": null,
     "list": [
-      {"id": "sprint-1", "status": "completed", "cycles": 1, "files_changed": 3},
-      {"id": "sprint-2", "status": "completed", "cycles": 1, "files_changed": 5}
+      {"id": "sprint-1", "status": "completed", "cycles": 1, "global_id": 205},
+      {"id": "sprint-2", "status": "completed", "cycles": 1, "global_id": 206}
     ]
   },
   "options": {
@@ -24,12 +24,12 @@
   "metrics": {
     "total_cycles": 2,
     "total_files_changed": 8,
-    "total_findings_fixed": 7
+    "total_findings_fixed": 6
   },
   "context": {
-    "sprint_plan": "grimoires/loa/sprint-bridgebuilder-round3.md",
-    "ledger_cycle": "cycle-016",
-    "global_sprint_ids": [203, 204],
-    "source": "Bridgebuilder Round 3 — PR #52 Review Findings"
+    "sprint_plan": "grimoires/loa/sprint-hounfour-finish-line.md",
+    "ledger_cycle": "cycle-017",
+    "global_sprint_ids": [205, 206],
+    "source": "The Water of Life — Hounfour Finish Line (RFC #31 Close-Out)"
   }
 }

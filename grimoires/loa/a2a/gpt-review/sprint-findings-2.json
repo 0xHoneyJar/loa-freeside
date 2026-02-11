@@ -1,21 +1,36 @@
 {
   "verdict": "APPROVED",
-  "summary": "All previously blocking issues are addressed: the plan now explicitly scopes Arrakis vs. loa-finn enforcement with a tracked cross-repo dependency, and the integration tests are made feasible via an existing JWKS/key + injectable logger seam; the validatePoolClaims contract/ACs are now consistent and canonicalized.",
+  "summary": "All six previously blocking dependency/acceptance-criteria gaps are addressed in a testable way, and the revisions do not introduce any new truly blocking problems.",
   "previous_issues_status": [
     {
-      "original_issue": "F-5 trust-boundary enforcement scope: sprint claimed trust-boundary fix but had no loa-finn deliverable/dependency, leaving confused-deputy gap",
+      "original_issue": "Compose depended on an unspecified/missing arrakis Dockerfile `e2e` target and on LOA_FINN_DIR being available, but neither prerequisite was captured",
       "status": "fixed",
-      "notes": "The plan now clearly states Arrakis is detection-only (warn-only) and adds a Blocking Dependencies section plus an explicit Sprint 2 task (2.6) to file a loa-finn enforcement issue, and SDD language (2.2) that loa-finn MUST re-validate and SHOULD reject. This resolves the scope/handshake problem without pretending the vulnerability is fully closed in Arrakis alone."
+      "notes": "Task 1.0 explicitly adds/verifies the Dockerfile `e2e` target with build/run/JWKS export ACs, and Task 1.1 now states LOA_FINN_DIR is an absolute path set by the runner plus includes `docker compose build` success criteria."
     },
     {
-      "original_issue": "Integration tests were untestable: no specified way to sign a forged-but-verifiable JWT and no deterministic log assertion seam",
+      "original_issue": "Runner clones loa-finn at pinned SHA but compose builds from `${LOA_FINN_DIR}`; contract between script and compose was undefined/untestable",
       "status": "fixed",
-      "notes": "Task 2.4 now anchors on existing test infrastructure: JWKS test server + deterministic key generation/signing helpers, and a createPipeline/logger helper with spyable warn/info. AC-H2.5/2.6 assertions are on structured log events rather than free-text, removing flakiness and making the test path reachable past JWS verification."
+      "notes": "Task 1.2 defines the runner as the single source of truth, exports LOA_FINN_DIR as an absolute path, and invokes compose after exporting it; Task 1.1 ACs validate compose config/build with LOA_FINN_DIR set."
     },
     {
-      "original_issue": "validatePoolClaims contract inconsistency (boolean vs {valid, reason}) and underspecified ordering/representation rules for allowed_pools",
+      "original_issue": "NFR-1 timing (<5 min) was ambiguous and lacked a measurement boundary; could fail due to clone/build time",
       "status": "fixed",
-      "notes": "AC-H1.3/H1.4 now match the `{ valid: boolean; reason?: string }` return type, and the canonicalization rule is explicitly defined (sorted + deduped set comparison; order-independent membership). This makes implementation/test expectations unambiguous and stable across systems."
+      "notes": "Task 1.4 clarifies warm-cache expectation (<3 min with SKIP_BUILD=1) and explicitly allows cold build to exceed; Task 1.2 adds timing summary output to make it measurable."
+    },
+    {
+      "original_issue": "Staging validation required CloudWatch but IAM permissions/region/log group/metric discovery were unspecified, making ACs potentially unexecutable",
+      "status": "fixed",
+      "notes": "Task 2.1 now specifies `--region` behavior, hardcoded log group and metric namespace (tied to Terraform/EMF), minimal IAM actions, and requires actionable error output on permission failures; idle datapoints behavior is defined as WARN."
+    },
+    {
+      "original_issue": "Goal G-2 was 'Automate staging verification' but goal check only covered localhost; no planned staging execution/verification",
+      "status": "fixed",
+      "notes": "Task 2.3 adds Part B staging execution and SC-2b explicitly covers staging-tier behavior (PASS/WARN) and also defines the fallback behavior if staging is unavailable (clear FAIL + documented command)."
+    },
+    {
+      "original_issue": "Conflict: risk mitigation said auto-generate dev keypair if missing, but Task 2.1 AC said missing `--test-key` skips invoke check with warning",
+      "status": "fixed",
+      "notes": "Appendix C and Task 2.1 AC-2.5 are aligned to the skip-with-WARN behavior; auto-generation is removed."
     }
   ],
   "new_blocking_concerns": [],
