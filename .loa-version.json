@@ -1,10 +1,10 @@
 {
-  "framework_version": "1.39.1",
+  "framework_version": "1.33.0",
   "schema_version": 2,
   "last_sync": null,
   "zones": {
     "system": ".claude",
-    "state": ["grimoires", ".beads", ".ck", ".run"],
+    "state": ["grimoires", ".beads", ".ck"],
     "app": ["src", "lib", "app"]
   },
   "migrations_applied": ["1.1.0-beads-rust"],
