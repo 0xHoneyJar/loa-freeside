@@ -268,8 +268,8 @@ export class LoaFinnE2EStub {
       return;
     }
 
-    // Match test vector by access_level + pool_id from JWT claims
-    const vector = this.matchVector(claims);
+    // Match test vector by access_level + pool_id from JWT claims + body
+    const vector = this.matchVector(claims, parsed);
     const responseBody = vector?.response.body ?? {
       content: 'Default E2E stub response',
       usage: { prompt_tokens: 10, completion_tokens: 20, cost_usd: 0.001 },
@@ -461,6 +461,7 @@ export class LoaFinnE2EStub {
 
   private matchVector(
     claims: Record<string, unknown> | null,
+    body?: Record<string, unknown>,
   ): TestVector | undefined {
     if (!claims) return undefined;
 
@@ -468,12 +469,20 @@ export class LoaFinnE2EStub {
     const poolId = claims.pool_id as string;
     const byok = claims.byok as boolean | undefined;
     const ensemble = claims.ensemble_strategy as string | undefined;
+    const bodyEnsemble = body?.ensemble as
+      | { strategy?: string; simulate_partial_failure?: boolean }
+      | undefined;
 
-    // Match by specificity: BYOK > ensemble > pool routing > free tier
+    // Match by specificity: BYOK > ensemble (body-routed) > pool routing > free tier
     if (byok) {
       return TEST_VECTORS.vectors.find((v) => v.name === 'invoke_byok');
     }
-    if (ensemble) {
+    if (ensemble || bodyEnsemble?.strategy) {
+      if (bodyEnsemble?.simulate_partial_failure) {
+        return TEST_VECTORS.vectors.find(
+          (v) => v.name === 'invoke_ensemble_partial_failure',
+        );
+      }
       return TEST_VECTORS.vectors.find(
         (v) => v.name === 'invoke_ensemble_best_of_n',
       );

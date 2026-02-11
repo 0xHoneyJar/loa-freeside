@@ -105,10 +105,18 @@ export class EnsembleMapper {
       quorum = Math.max(quorum, 2); // Minimum quorum of 2
     }
 
-    // Budget multiplier: reserve N × base cost for all strategies
-    // best_of_n: N parallel calls
-    // consensus: N parallel calls
-    // fallback: worst-case all N models tried sequentially
+    // Budget multiplier: reserve N × base cost for ALL strategies.
+    //
+    // best_of_n : N parallel calls → exactly N × cost
+    // consensus : N parallel calls → exactly N × cost
+    // fallback  : worst-case all N models tried sequentially → up to N × cost
+    //
+    // Fallback could theoretically use a smaller multiplier (e.g. 1×) and
+    // incrementally reserve before each retry. However, loa-finn orchestrates
+    // fallback steps internally — arrakis has no per-step callback to extend
+    // the reservation. Under-reserving risks violating the invariant:
+    //   committed ≤ reserved
+    // So we conservatively reserve N× for fallback as well.
     const budgetMultiplier = n;
 
     // Validate models array length matches n

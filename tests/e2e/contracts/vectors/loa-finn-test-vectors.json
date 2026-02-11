@@ -363,7 +363,12 @@
           "agent": "default",
           "messages": [
             { "role": "user", "content": "Give me your best answer (partial failure expected)" }
-          ]
+          ],
+          "ensemble": {
+            "strategy": "best_of_n",
+            "n": 3,
+            "simulate_partial_failure": true
+          }
         }
       },
       "response": {

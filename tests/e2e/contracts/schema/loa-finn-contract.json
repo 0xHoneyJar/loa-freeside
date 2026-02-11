@@ -86,7 +86,10 @@
           },
           "additionalProperties": false
         },
-        "metadata": { "type": "object" }
+        "metadata": { "type": "object" },
+        "ensemble_partial_failure": { "type": "boolean", "description": "True when ensemble had partial model failures" },
+        "ensemble_succeeded": { "type": "integer", "minimum": 0, "description": "Number of models that succeeded" },
+        "ensemble_failed": { "type": "integer", "minimum": 0, "description": "Number of models that failed" }
       },
       "additionalProperties": false
     },

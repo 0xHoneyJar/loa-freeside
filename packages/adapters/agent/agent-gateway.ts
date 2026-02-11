@@ -59,6 +59,19 @@ export interface AgentGatewayDeps {
 }
 
 // --------------------------------------------------------------------------
+// Prepared Invocation (BB4-1: shared pre-flight result)
+// --------------------------------------------------------------------------
+
+/** Result of prepareInvocation() — everything needed for execution + finalization */
+interface PreparedInvocation {
+  request: AgentInvokeRequest;
+  estimatedCostCents: number;
+  isByok: boolean;
+  ensembleResult?: EnsembleValidationResult;
+  log: Logger;
+}
+
+// --------------------------------------------------------------------------
 // Gateway Implementation
 // --------------------------------------------------------------------------
 
@@ -91,10 +104,25 @@ export class AgentGateway implements IAgentGateway {
   }
 
   // --------------------------------------------------------------------------
-  // invoke() — synchronous request lifecycle
+  // prepareInvocation() — shared pre-flight for invoke + stream (BB4-1)
   // --------------------------------------------------------------------------
 
-  async invoke(request: AgentInvokeRequest): Promise<AgentInvokeResponse> {
+  /**
+   * Shared pre-flight for both invoke() and stream().
+   *
+   * Steps: validate model → rate limit → pool resolution → ensemble validation →
+   *        BYOK check → budget estimation + reservation → metadata enrichment.
+   *
+   * The only parametric difference between invoke and stream is estimatedOutputTokens:
+   *   - invoke: 1000 tokens (conservative sync estimate, covers p90)
+   *   - stream: 2000 tokens (stream responses tend longer — multi-turn, tool use)
+   *
+   * @see BB4-1: Extracted from duplicated invoke/stream pre-flight (~80% shared code)
+   */
+  private async prepareInvocation(
+    request: AgentInvokeRequest,
+    estimatedOutputTokens: number,
+  ): Promise<PreparedInvocation> {
     const { context } = request;
     const log = this.logger.child({ traceId: context.traceId, communityId: context.tenantId });
 
@@ -181,9 +209,7 @@ export class AgentGateway implements IAgentGateway {
     const baseCostCents = isByok ? 0 : this.budget.estimateCost({
       modelAlias: poolId,
       estimatedInputTokens: this.estimateInputTokens(request),
-      // 1000: Conservative sync estimate. Median Claude response is ~500 tokens;
-      // 1000 covers p90 without over-reserving budget. See SDD §4.3.
-      estimatedOutputTokens: 1000,
+      estimatedOutputTokens,
       hasTools: (request.tools?.length ?? 0) > 0,
     });
     const estimatedCostCents = baseCostCents * budgetMultiplier;
@@ -221,7 +247,7 @@ export class AgentGateway implements IAgentGateway {
     // 3× estimated cost (cents) × 100 → micro-cents. loa-finn enforces this ceiling.
     // BYOK: max_cost = 0 (community pays provider directly)
     const maxCostMicroCents = estimatedCostCents * 3 * 100;
-    request = {
+    const enrichedRequest: AgentInvokeRequest = {
       ...request,
       context: { ...context, poolId, allowedPools },
       metadata: {
@@ -233,25 +259,38 @@ export class AgentGateway implements IAgentGateway {
       },
     };
 
-    // 6. Execute via loa-finn
-    try {
-      const response = await this.loaFinn.invoke(request);
+    return { request: enrichedRequest, estimatedCostCents, isByok, ensembleResult, log };
+  }
 
-      // 6. Finalize budget with actual cost + drift detection
+  // --------------------------------------------------------------------------
+  // invoke() — synchronous request lifecycle
+  // --------------------------------------------------------------------------
+
+  async invoke(request: AgentInvokeRequest): Promise<AgentInvokeResponse> {
+    // Pre-flight: validate, rate limit, pool resolve, ensemble, BYOK, budget reserve
+    // 1000: Conservative sync estimate. Median Claude response is ~500 tokens;
+    // 1000 covers p90 without over-reserving budget. See SDD §4.3.
+    const prepared = await this.prepareInvocation(request, 1000);
+
+    // Execute via loa-finn
+    try {
+      const response = await this.loaFinn.invoke(prepared.request);
+
+      // Finalize budget with actual cost + drift detection
       // AC-4.7 + AC-4.8: BYOK uses $0 cost (community pays provider directly)
-      const actualCostCents = isByok ? 0 : Math.round(response.usage.costUsd * 100);
+      const actualCostCents = prepared.isByok ? 0 : Math.round(response.usage.costUsd * 100);
       await this.budget.finalize({
-        communityId: context.tenantId,
-        userId: context.userId,
-        idempotencyKey: context.idempotencyKey,
+        communityId: prepared.request.context.tenantId,
+        userId: prepared.request.context.userId,
+        idempotencyKey: prepared.request.context.idempotencyKey,
         actualCost: actualCostCents,
         usage: response.usage,
-        modelAlias: request.modelAlias,
-        traceId: context.traceId,
+        modelAlias: prepared.request.modelAlias,
+        traceId: prepared.request.context.traceId,
       });
 
-      this.checkBudgetDrift(actualCostCents, estimatedCostCents, context.traceId, log, {
-        ensembleN: ensembleResult?.jwtClaims?.ensemble_n,
+      this.checkBudgetDrift(actualCostCents, prepared.estimatedCostCents, prepared.request.context.traceId, prepared.log, {
+        ensembleN: prepared.ensembleResult?.jwtClaims?.ensemble_n,
       });
 
       return response;
@@ -260,9 +299,9 @@ export class AgentGateway implements IAgentGateway {
       // On retryable failure: reservation expires via TTL (Flatline IMP-001)
       if (err instanceof Error && isNonRetryable(err)) {
         await this.budget.cancelReservation({
-          communityId: context.tenantId,
-          userId: context.userId,
-          idempotencyKey: context.idempotencyKey,
+          communityId: prepared.request.context.tenantId,
+          userId: prepared.request.context.userId,
+          idempotencyKey: prepared.request.context.idempotencyKey,
         });
       }
       throw err;
@@ -277,155 +316,33 @@ export class AgentGateway implements IAgentGateway {
     request: AgentInvokeRequest,
     options?: { signal?: AbortSignal; lastEventId?: string },
   ): AsyncGenerator<AgentStreamEvent> {
-    const { context } = request;
-    const log = this.logger.child({ traceId: context.traceId, communityId: context.tenantId });
+    // Pre-flight: validate, rate limit, pool resolve, ensemble, BYOK, budget reserve
+    // 2000: Stream requests tend to produce longer responses (multi-turn, tool use).
+    // 2x sync estimate balances budget accuracy vs over-reservation. See SDD §4.3.
+    const prepared = await this.prepareInvocation(request, 2000);
 
-    // 1. Validate model alias
-    if (request.modelAlias && !context.allowedModelAliases.includes(request.modelAlias)) {
-      throw new AgentGatewayError('MODEL_NOT_ALLOWED', `Model '${request.modelAlias}' is not available for your tier`, 403);
-    }
-
-    // 2. Rate limit check (all 4 dimensions: community, user, channel, burst)
-    const rateLimitResult = await this.rateLimiter.check({
-      communityId: context.tenantId,
-      userId: context.userId,
-      channelId: context.channelId,
-      accessLevel: context.accessLevel,
-    });
-
-    if (!rateLimitResult.allowed) {
-      throw new AgentGatewayError('RATE_LIMITED', 'Rate limit exceeded', 429, {
-        dimension: rateLimitResult.dimension,
-        retryAfterMs: rateLimitResult.retryAfterMs,
-        limit: rateLimitResult.limit,
-        remaining: rateLimitResult.remaining,
-      });
-    }
-
-    // 3. Pool resolution — tier-aware model→pool mapping (Sprint 3)
-    //    Must run BEFORE budget estimation so cost uses resolved pool pricing (F-2)
-    const { poolId, allowedPools } = resolvePoolId(request.modelAlias, context.accessLevel);
-
-    // Log pool fallback when resolved pool differs from requested alias (F-4)
-    if (request.modelAlias && poolId !== ALIAS_TO_POOL[request.modelAlias]) {
-      log.info(
-        { requested: request.modelAlias, resolved: poolId, accessLevel: context.accessLevel },
-        'pool-fallback: resolved pool differs from requested alias',
-      );
-    }
-
-    // 3b. Ensemble validation — between pool resolution and budget reservation (FR-3)
-    let ensembleResult: EnsembleValidationResult | undefined;
-    let budgetMultiplier = 1;
-
-    if (request.ensemble) {
-      if (!this.ensembleEnabled) {
-        throw new AgentGatewayError('ENSEMBLE_DISABLED', 'Ensemble orchestration is not enabled', 400);
-      }
-
-      const validation = this.ensembleMapper.validate(request.ensemble, context.accessLevel);
-      if (!validation.valid) {
-        throw new AgentGatewayError(validation.code, validation.message, validation.statusCode);
-      }
-
-      ensembleResult = validation;
-      budgetMultiplier = validation.budgetMultiplier;
-    }
-
-    // 3c. BYOK check — between ensemble and budget (FR-4)
-    //     Provider resolved via pool→provider hint mapping (BB3-1)
-    let isByok = false;
-    let byokProvider: string | undefined;
-
-    if (this.byokEnabled && this.byokManager) {
-      const resolved = await this.resolveByokProvider(context.tenantId, poolId, log);
-
-      if (resolved) {
-        isByok = true;
-        byokProvider = resolved;
-        // AC-4.30: BYOK daily quota enforcement (atomic INCR — BB3-2)
-        await this.checkByokQuota(context.tenantId, log);
-        log.info({ provider: byokProvider }, 'BYOK key active — zero-cost accounting');
-      }
-    }
-
-    // 4. Reserve budget (using resolved poolId, not raw alias)
-    //    BYOK_NO_BUDGET: reserve $0 when using community's own key (AC-4.7)
-    //    Budget multiplier applied for ensemble strategies (N × base cost)
-    const baseCostCents = isByok ? 0 : this.budget.estimateCost({
-      modelAlias: poolId,
-      estimatedInputTokens: this.estimateInputTokens(request),
-      // 2000: Stream requests tend to produce longer responses (multi-turn, tool use).
-      // 2x sync estimate balances budget accuracy vs over-reservation. See SDD §4.3.
-      estimatedOutputTokens: 2000,
-      hasTools: (request.tools?.length ?? 0) > 0,
-    });
-    const estimatedCostCents = baseCostCents * budgetMultiplier;
-
-    const reserveResult = await this.budget.reserve({
-      communityId: context.tenantId,
-      userId: context.userId,
-      idempotencyKey: context.idempotencyKey,
-      modelAlias: poolId,
-      estimatedCost: estimatedCostCents,
-    });
-
-    if (reserveResult.status === 'BUDGET_EXCEEDED') {
-      throw new AgentGatewayError('BUDGET_EXCEEDED', 'Community budget exhausted', 402);
-    }
-
-    if (reserveResult.status !== 'RESERVED' && reserveResult.status !== 'ALREADY_RESERVED') {
-      throw new AgentGatewayError('BUDGET_ERROR', 'Budget reservation failed', 500);
-    }
-
-    // Log idempotent hit (S10-T4: IMP-001)
-    if (reserveResult.status === 'ALREADY_RESERVED') {
-      log.debug({ idempotencyKey: context.idempotencyKey }, 'budget-reserve: idempotent hit');
-    }
-
-    if (reserveResult.warning) {
-      log.warn(
-        { remaining: reserveResult.remaining, limit: reserveResult.limit },
-        'Budget warning threshold reached',
-      );
-    }
-
-    // 5. Set max-cost ceiling in metadata (S11-T5, SDD §4.5.1)
-    // 3× estimated cost (cents) × 100 → micro-cents. loa-finn enforces this ceiling.
-    const maxCostMicroCents = estimatedCostCents * 3 * 100;
-    request = {
-      ...request,
-      context: { ...context, poolId, allowedPools },
-      metadata: {
-        ...request.metadata,
-        max_cost_micro_cents: maxCostMicroCents,
-        ...(ensembleResult ? { ensemble: ensembleResult.jwtClaims } : {}),
-        ...(isByok ? { byok: true, byok_provider: byokProvider } : {}),
-      },
-    };
-
-    // 6. Stream from loa-finn with finalize-once semantics
-    //    Pass downstream signal for abort propagation (SDD §4.7)
+    // Stream from loa-finn with finalize-once semantics
+    // Pass downstream signal for abort propagation (SDD §4.7)
     let finalized = false;
 
     try {
-      for await (const event of this.loaFinn.stream(request, { signal: options?.signal, lastEventId: options?.lastEventId })) {
+      for await (const event of this.loaFinn.stream(prepared.request, { signal: options?.signal, lastEventId: options?.lastEventId })) {
         // Finalize on usage event (exactly once)
         if (event.type === 'usage' && !finalized) {
-          const actualCostCents = isByok ? 0 : Math.round(event.data.costUsd * 100);
+          const actualCostCents = prepared.isByok ? 0 : Math.round(event.data.costUsd * 100);
           await this.budget.finalize({
-            communityId: context.tenantId,
-            userId: context.userId,
-            idempotencyKey: context.idempotencyKey,
+            communityId: prepared.request.context.tenantId,
+            userId: prepared.request.context.userId,
+            idempotencyKey: prepared.request.context.idempotencyKey,
             actualCost: actualCostCents,
             usage: event.data,
-            modelAlias: request.modelAlias,
-            traceId: context.traceId,
+            modelAlias: prepared.request.modelAlias,
+            traceId: prepared.request.context.traceId,
           });
           finalized = true;
 
-          this.checkBudgetDrift(actualCostCents, estimatedCostCents, context.traceId, log, {
-            ensembleN: ensembleResult?.jwtClaims?.ensemble_n,
+          this.checkBudgetDrift(actualCostCents, prepared.estimatedCostCents, prepared.request.context.traceId, prepared.log, {
+            ensembleN: prepared.ensembleResult?.jwtClaims?.ensemble_n,
           });
         }
 
@@ -434,7 +351,7 @@ export class AgentGateway implements IAgentGateway {
     } finally {
       // Reconciliation in finally block ensures budget accounting even on abort (S10-T2)
       if (!finalized) {
-        await this.scheduleReconciliation(context, log);
+        await this.scheduleReconciliation(prepared.request.context, prepared.log);
       }
     }
   }

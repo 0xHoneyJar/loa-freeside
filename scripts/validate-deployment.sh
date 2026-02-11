@@ -194,33 +194,9 @@ if [ -n "$TEST_KEY" ]; then
   else
     start=$(timer_ms)
 
-    # Sign a test JWT using jose (correct ES256 raw r||s format)
-    token=$(node -e "
-      const { importPKCS8, SignJWT } = require('jose');
-      const fs = require('fs');
-      const key = fs.readFileSync('$TEST_KEY', 'utf8');
-      (async () => {
-        const pk = await importPKCS8(key, 'ES256');
-        const jwt = await new SignJWT({
-          v: 1,
-          tenant_id: 'test-tenant',
-          access_level: 'free',
-          pool_id: 'cheap',
-          allowed_pools: ['cheap'],
-          platform: 'test',
-          channel_id: 'test-channel',
-          pool_mapping_version: '1.0.0'
-        })
-        .setProtectedHeader({ alg: 'ES256', typ: 'JWT' })
-        .setIssuer('arrakis')
-        .setAudience('arrakis')
-        .setIssuedAt()
-        .setExpirationTime('5m')
-        .setJti(require('crypto').randomUUID())
-        .sign(pk);
-        process.stdout.write(jwt);
-      })();
-    " 2>/dev/null) && jwt_ok=true || jwt_ok=false
+    # Sign a test JWT using standalone script (ES256 raw r||s via jose)
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    token=$(node "$SCRIPT_DIR/sign-test-jwt.js" "$TEST_KEY" 2>/dev/null) && jwt_ok=true || jwt_ok=false
 
     if ! $jwt_ok || [ -z "$token" ]; then
       elapsed=$(( $(timer_ms) - start ))
