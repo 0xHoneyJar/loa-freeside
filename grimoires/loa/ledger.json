@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
   "next_sprint_number": 205,
-  "active_cycle": "cycle-016",
+  "active_cycle": "cycle-007",
   "cycles": [
     {
       "id": "cycle-001",
@@ -178,7 +178,8 @@
     {
       "id": "cycle-012",
       "label": "Hounfour Integration — Arrakis x loa-finn Cross-System Bridge",
-      "status": "active",
+      "status": "archived",
+      "archived": "2026-02-11T18:00:00Z",
       "created": "2026-02-10T22:00:00Z",
       "prd": "grimoires/loa/prd-hounfour-integration.md",
       "sdd": "grimoires/loa/sdd-hounfour-integration.md",
@@ -193,7 +194,8 @@
     {
       "id": "cycle-013",
       "label": "Bridgebuilder Hardening — PR #51 Review Feedback",
-      "status": "active",
+      "status": "archived",
+      "archived": "2026-02-11T18:00:00Z",
       "created": "2026-02-11T04:00:00Z",
       "prd": "grimoires/loa/prd-hounfour-integration.md",
       "sdd": "grimoires/loa/sdd-hounfour-integration.md",
@@ -206,7 +208,8 @@
     {
       "id": "cycle-014",
       "label": "Bridgebuilder Round 2 — Protocol Versioning & Capability Architecture",
-      "status": "active",
+      "status": "archived",
+      "archived": "2026-02-11T18:00:00Z",
       "created": "2026-02-11T09:00:00Z",
       "prd": "grimoires/loa/prd-hounfour-integration.md",
       "sdd": "grimoires/loa/sdd-hounfour-integration.md",
@@ -219,7 +222,8 @@
     {
       "id": "cycle-015",
       "label": "The Last Spice — Hounfour Endgame (RFC #31 Final 20%)",
-      "status": "active",
+      "status": "archived",
+      "archived": "2026-02-11T18:00:00Z",
       "created": "2026-02-11T11:42:00Z",
       "prd": "grimoires/loa/prd-hounfour-endgame.md",
       "sdd": "grimoires/loa/sdd-hounfour-endgame.md",
@@ -234,7 +238,8 @@
     {
       "id": "cycle-016",
       "label": "Bridgebuilder Round 3 — PR #52 Review Findings",
-      "status": "active",
+      "status": "archived",
+      "archived": "2026-02-11T18:00:00Z",
       "created": "2026-02-11T14:30:00Z",
       "prd": "grimoires/loa/prd-hounfour-endgame.md",
       "sdd": "grimoires/loa/sdd-hounfour-endgame.md",
