@@ -31,6 +31,8 @@ import type { StreamReconciliationJob } from './stream-reconciliation-worker.js'
 import { getCurrentMonth } from './budget-manager.js';
 import { BUDGET_WARNING_THRESHOLD } from './config.js';
 import { resolvePoolId, ALIAS_TO_POOL } from './pool-mapping.js';
+import { EnsembleMapper } from './ensemble-mapper.js';
+import type { EnsembleValidationResult } from './ensemble-mapper.js';
 
 // --------------------------------------------------------------------------
 // Types
@@ -44,6 +46,8 @@ export interface AgentGatewayDeps {
   redis: Redis;
   logger: Logger;
   reconciliationQueue?: Queue<StreamReconciliationJob>;
+  /** Whether ensemble orchestration is enabled (ENSEMBLE_ENABLED env var) */
+  ensembleEnabled?: boolean;
 }
 
 // --------------------------------------------------------------------------
@@ -58,6 +62,8 @@ export class AgentGateway implements IAgentGateway {
   private readonly redis: Redis;
   private readonly logger: Logger;
   private readonly reconciliationQueue?: Queue<StreamReconciliationJob>;
+  private readonly ensembleMapper = new EnsembleMapper();
+  private readonly ensembleEnabled: boolean;
 
   constructor(deps: AgentGatewayDeps) {
     this.budget = deps.budgetManager;
@@ -67,6 +73,7 @@ export class AgentGateway implements IAgentGateway {
     this.redis = deps.redis;
     this.logger = deps.logger;
     this.reconciliationQueue = deps.reconciliationQueue;
+    this.ensembleEnabled = deps.ensembleEnabled ?? false;
   }
 
   // --------------------------------------------------------------------------
@@ -116,8 +123,27 @@ export class AgentGateway implements IAgentGateway {
       );
     }
 
+    // 3b. Ensemble validation — between pool resolution and budget reservation (FR-3)
+    let ensembleResult: EnsembleValidationResult | undefined;
+    let budgetMultiplier = 1;
+
+    if (request.ensemble) {
+      if (!this.ensembleEnabled) {
+        throw new AgentGatewayError('ENSEMBLE_DISABLED', 'Ensemble orchestration is not enabled', 400);
+      }
+
+      const validation = this.ensembleMapper.validate(request.ensemble, context.accessLevel);
+      if (!validation.valid) {
+        throw new AgentGatewayError(validation.code, validation.message, validation.statusCode);
+      }
+
+      ensembleResult = validation;
+      budgetMultiplier = validation.budgetMultiplier;
+    }
+
     // 4. Estimate cost and reserve budget (using resolved poolId, not raw alias)
-    const estimatedCostCents = this.budget.estimateCost({
+    //    Budget multiplier applied for ensemble strategies (N × base cost)
+    const baseCostCents = this.budget.estimateCost({
       modelAlias: poolId,
       estimatedInputTokens: this.estimateInputTokens(request),
       // 1000: Conservative sync estimate. Median Claude response is ~500 tokens;
@@ -125,6 +151,7 @@ export class AgentGateway implements IAgentGateway {
       estimatedOutputTokens: 1000,
       hasTools: (request.tools?.length ?? 0) > 0,
     });
+    const estimatedCostCents = baseCostCents * budgetMultiplier;
 
     const reserveResult = await this.budget.reserve({
       communityId: context.tenantId,
@@ -161,7 +188,11 @@ export class AgentGateway implements IAgentGateway {
     request = {
       ...request,
       context: { ...context, poolId, allowedPools },
-      metadata: { ...request.metadata, max_cost_micro_cents: maxCostMicroCents },
+      metadata: {
+        ...request.metadata,
+        max_cost_micro_cents: maxCostMicroCents,
+        ...(ensembleResult ? { ensemble: ensembleResult.jwtClaims } : {}),
+      },
     };
 
     // 6. Execute via loa-finn
@@ -242,8 +273,27 @@ export class AgentGateway implements IAgentGateway {
       );
     }
 
+    // 3b. Ensemble validation — between pool resolution and budget reservation (FR-3)
+    let ensembleResult: EnsembleValidationResult | undefined;
+    let budgetMultiplier = 1;
+
+    if (request.ensemble) {
+      if (!this.ensembleEnabled) {
+        throw new AgentGatewayError('ENSEMBLE_DISABLED', 'Ensemble orchestration is not enabled', 400);
+      }
+
+      const validation = this.ensembleMapper.validate(request.ensemble, context.accessLevel);
+      if (!validation.valid) {
+        throw new AgentGatewayError(validation.code, validation.message, validation.statusCode);
+      }
+
+      ensembleResult = validation;
+      budgetMultiplier = validation.budgetMultiplier;
+    }
+
     // 4. Reserve budget (using resolved poolId, not raw alias)
-    const estimatedCostCents = this.budget.estimateCost({
+    //    Budget multiplier applied for ensemble strategies (N × base cost)
+    const baseCostCents = this.budget.estimateCost({
       modelAlias: poolId,
       estimatedInputTokens: this.estimateInputTokens(request),
       // 2000: Stream requests tend to produce longer responses (multi-turn, tool use).
@@ -251,6 +301,7 @@ export class AgentGateway implements IAgentGateway {
       estimatedOutputTokens: 2000,
       hasTools: (request.tools?.length ?? 0) > 0,
     });
+    const estimatedCostCents = baseCostCents * budgetMultiplier;
 
     const reserveResult = await this.budget.reserve({
       communityId: context.tenantId,
@@ -286,7 +337,11 @@ export class AgentGateway implements IAgentGateway {
     request = {
       ...request,
       context: { ...context, poolId, allowedPools },
-      metadata: { ...request.metadata, max_cost_micro_cents: maxCostMicroCents },
+      metadata: {
+        ...request.metadata,
+        max_cost_micro_cents: maxCostMicroCents,
+        ...(ensembleResult ? { ensemble: ensembleResult.jwtClaims } : {}),
+      },
     };
 
     // 6. Stream from loa-finn with finalize-once semantics

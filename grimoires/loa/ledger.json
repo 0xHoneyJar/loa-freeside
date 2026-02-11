@@ -226,7 +226,7 @@
       "sprint_plan": "grimoires/loa/sprint-hounfour-endgame.md",
       "sprints": [
         {"global_id": 199, "local_label": "sprint-1", "status": "completed"},
-        {"global_id": 200, "local_label": "sprint-2", "status": "pending"},
+        {"global_id": 200, "local_label": "sprint-2", "status": "completed"},
         {"global_id": 201, "local_label": "sprint-3", "status": "pending"},
         {"global_id": 202, "local_label": "sprint-4", "status": "pending"}
       ]

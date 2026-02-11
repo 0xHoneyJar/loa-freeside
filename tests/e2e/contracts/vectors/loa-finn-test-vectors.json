@@ -337,6 +337,62 @@
         "cost_micro": 2250,
         "accounting_mode": "PLATFORM_BUDGET"
       }
+    },
+    {
+      "name": "invoke_ensemble_partial_failure",
+      "description": "Ensemble partial failure — 1 of 3 models fails. Committed = sum of successful costs (≤ reserved)",
+      "request": {
+        "jwt_claims": {
+          "tenant_id": "community_enterprise_001",
+          "nft_id": "nft_ent_001",
+          "tier": 8,
+          "tier_name": "Sovereign",
+          "access_level": "enterprise",
+          "allowed_model_aliases": ["cheap", "fast-code", "reviewer", "reasoning", "native"],
+          "pool_id": "architect",
+          "allowed_pools": ["cheap", "fast-code", "reviewer", "reasoning", "architect"],
+          "platform": "discord",
+          "channel_id": "ch_test_009",
+          "idempotency_key": "idem-ensemble-partial-001",
+          "pool_mapping_version": "1.0.0",
+          "ensemble_strategy": "best_of_n",
+          "ensemble_n": 3,
+          "ensemble_models": ["fast-code", "reviewer", "reasoning"]
+        },
+        "body": {
+          "agent": "default",
+          "messages": [
+            { "role": "user", "content": "Give me your best answer (partial failure expected)" }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "content": "Best response from 2 of 3 models",
+          "usage": {
+            "prompt_tokens": 200,
+            "completion_tokens": 300,
+            "cost_usd": 0.015
+          },
+          "ensemble_partial_failure": true,
+          "ensemble_succeeded": 2,
+          "ensemble_failed": 1
+        }
+      },
+      "usage_report_payload": {
+        "pool_id": "architect",
+        "input_tokens": 200,
+        "output_tokens": 300,
+        "cost_micro": 1500,
+        "accounting_mode": "PLATFORM_BUDGET",
+        "ensemble_partial_failure": true,
+        "ensemble_model_results": [
+          { "model": "fast-code", "succeeded": true, "cost_micro": 800 },
+          { "model": "reviewer", "succeeded": true, "cost_micro": 700 },
+          { "model": "reasoning", "succeeded": false, "cost_micro": 0 }
+        ]
+      }
     }
   ]
 }

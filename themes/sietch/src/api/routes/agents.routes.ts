@@ -439,6 +439,8 @@ function handleGatewayError(err: unknown, res: Response): void {
       BUDGET_ERROR: 'Budget reservation failed',
       STREAM_RESUME_LOST: 'Stream context expired — retry with new idempotency key',
       REQ_HASH_MISMATCH: 'Request body integrity check failed',
+      ENSEMBLE_DISABLED: 'Ensemble orchestration is not enabled',
+      ENSEMBLE_NOT_AVAILABLE: 'Ensemble orchestration is not available for your tier',
     };
     const safeMessage = SAFE_MESSAGES[error.code] ?? (error.statusCode < 500 ? 'Request failed' : 'An unexpected error occurred');
 

@@ -121,6 +121,8 @@ export interface UsageReceiverConfig {
 export interface AgentGatewayConfig {
   /** Whether agent gateway is enabled */
   enabled: boolean;
+  /** Whether ensemble orchestration is enabled (ENSEMBLE_ENABLED, default: false) */
+  ensembleEnabled: boolean;
   /** AWS Secrets Manager secret ID for JWT signing key (used by factory to create KeyLoader) */
   jwtSecretId: string;
   /** JWT service configuration */
@@ -145,6 +147,7 @@ export interface AgentGatewayConfig {
 
 const ENV_VARS = {
   AGENT_ENABLED: 'AGENT_ENABLED',
+  ENSEMBLE_ENABLED: 'ENSEMBLE_ENABLED',
   LOA_FINN_BASE_URL: 'LOA_FINN_BASE_URL',
   LOA_FINN_TIMEOUT_MS: 'LOA_FINN_TIMEOUT_MS',
   AGENT_JWT_SECRET_ID: 'AGENT_JWT_SECRET_ID',
@@ -267,6 +270,14 @@ const PRINTABLE_ASCII = /^[\x20-\x7e]+$/;
  */
 export const KNOWN_MODEL_ALIASES: ReadonlySet<string> = new Set<string>(MODEL_ALIAS_VALUES);
 
+/** Ensemble request schema — FR-3 multi-model orchestration */
+export const ensembleRequestSchema = z.object({
+  strategy: z.enum(['best_of_n', 'consensus', 'fallback']),
+  models: z.array(z.string().min(1).max(256)).max(5).optional(),
+  n: z.number().int().min(2).max(10).optional(),
+  quorum: z.number().int().min(2).max(10).optional(),
+});
+
 /** Schema for agent invoke request body — limits per SDD §7.4 */
 export const agentInvokeRequestSchema = z.object({
   agent: z.string().min(1).max(256),
@@ -281,6 +292,7 @@ export const agentInvokeRequestSchema = z.object({
   tools: z.array(z.string().min(1).max(256)).max(AGENT_MAX_TOOLS).optional(),
   metadata: z.record(z.unknown()).optional(),
   idempotencyKey: z.string().min(1).max(AGENT_MAX_IDEMPOTENCY_KEY_LENGTH).regex(PRINTABLE_ASCII).optional(),
+  ensemble: ensembleRequestSchema.optional(),
 });
 
 export type AgentInvokeRequestBody = z.infer<typeof agentInvokeRequestSchema>;
@@ -302,6 +314,7 @@ export function loadAgentGatewayConfig(
   const env = process.env;
 
   const enabled = parseBoolEnv(env[ENV_VARS.AGENT_ENABLED], DEFAULTS.enabled);
+  const ensembleEnabled = parseBoolEnv(env[ENV_VARS.ENSEMBLE_ENABLED], false);
   const jwtSecretId = env[ENV_VARS.AGENT_JWT_SECRET_ID] ?? overrides?.jwtSecretId ?? '';
 
   if (enabled && !jwtSecretId) {
@@ -313,6 +326,7 @@ export function loadAgentGatewayConfig(
 
   const config: AgentGatewayConfig = {
     enabled,
+    ensembleEnabled,
     jwtSecretId,
 
     jwt: {

@@ -244,6 +244,42 @@ describe.skipIf(SKIP_E2E)('Agent Gateway E2E', () => {
   });
 
   // --------------------------------------------------------------------------
+  // Scenario: invoke_ensemble_partial_failure — partial failure reconciliation
+  // --------------------------------------------------------------------------
+
+  describe('invoke_ensemble_partial_failure', () => {
+    it('should handle partial failure with committed ≤ reserved (drift = 0)', async () => {
+      const vector = getVector('invoke_ensemble_partial_failure');
+      const response = await fetch(`${stub.getBaseUrl()}/v1/agents/invoke`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${createMockJwt(vector.request.jwt_claims)}`,
+        },
+        body: JSON.stringify(vector.request.body),
+      });
+
+      expect(response.status).toBe(200);
+
+      const body = await response.json();
+      expect(body.ensemble_partial_failure).toBe(true);
+      expect(body.ensemble_succeeded).toBe(2);
+      expect(body.ensemble_failed).toBe(1);
+
+      const reports = stub.getUsageReports();
+      expect(reports.length).toBe(1);
+
+      // Committed cost = sum of successful model costs (1500 micro)
+      expect(reports[0].costMicro).toBe(1500);
+
+      // Reserved was 3 × single model estimate. Committed ≤ reserved.
+      const estimatedPerModel = 2250; // from best_of_n vector cost_micro
+      const reserved = 3 * estimatedPerModel;
+      expect(reports[0].costMicro).toBeLessThanOrEqual(reserved);
+    });
+  });
+
+  // --------------------------------------------------------------------------
   // Contract Version
   // --------------------------------------------------------------------------
 
@@ -353,6 +389,7 @@ function getTestVectors() {
     'stream_abort_reconciliation',
     'invoke_byok',
     'invoke_ensemble_best_of_n',
+    'invoke_ensemble_partial_failure',
   ];
   return names.map((n) => getVector(n));
 }
