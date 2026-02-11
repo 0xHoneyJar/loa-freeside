@@ -1,0 +1,38 @@
+{
+  "name": "@arrakis/loa-finn-contract",
+  "version": "1.0.0",
+  "description": "Contract artifacts for arrakis ↔ loa-finn integration: JSON Schema + test vectors",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./schema": {
+      "import": "./schema/loa-finn-contract.json",
+      "types": "./dist/schema-types.d.ts"
+    },
+    "./vectors": {
+      "import": "./vectors/loa-finn-test-vectors.json"
+    }
+  },
+  "files": [
+    "dist",
+    "schema",
+    "vectors"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "validate": "node --import tsx src/validate.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "license": "UNLICENSED"
+}

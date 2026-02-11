@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "next_sprint_number": 199,
+  "next_sprint_number": 205,
   "active_cycle": "cycle-007",
   "cycles": [
     {
@@ -178,22 +178,24 @@
     {
       "id": "cycle-012",
       "label": "Hounfour Integration — Arrakis x loa-finn Cross-System Bridge",
-      "status": "active",
+      "status": "archived",
+      "archived": "2026-02-11T18:00:00Z",
       "created": "2026-02-10T22:00:00Z",
       "prd": "grimoires/loa/prd-hounfour-integration.md",
       "sdd": "grimoires/loa/sdd-hounfour-integration.md",
       "sprint_plan": "grimoires/loa/sprint-hounfour-integration.md",
       "sprints": [
-        {"global_id": 191, "local_label": "sprint-1", "status": "pending"},
-        {"global_id": 192, "local_label": "sprint-2", "status": "pending"},
-        {"global_id": 193, "local_label": "sprint-3", "status": "pending"},
-        {"global_id": 194, "local_label": "sprint-4", "status": "pending"}
+        {"global_id": 191, "local_label": "sprint-1", "status": "completed"},
+        {"global_id": 192, "local_label": "sprint-2", "status": "completed"},
+        {"global_id": 193, "local_label": "sprint-3", "status": "completed"},
+        {"global_id": 194, "local_label": "sprint-4", "status": "completed"}
       ]
     },
     {
       "id": "cycle-013",
       "label": "Bridgebuilder Hardening — PR #51 Review Feedback",
-      "status": "active",
+      "status": "archived",
+      "archived": "2026-02-11T18:00:00Z",
       "created": "2026-02-11T04:00:00Z",
       "prd": "grimoires/loa/prd-hounfour-integration.md",
       "sdd": "grimoires/loa/sdd-hounfour-integration.md",
@@ -206,7 +208,8 @@
     {
       "id": "cycle-014",
       "label": "Bridgebuilder Round 2 — Protocol Versioning & Capability Architecture",
-      "status": "active",
+      "status": "archived",
+      "archived": "2026-02-11T18:00:00Z",
       "created": "2026-02-11T09:00:00Z",
       "prd": "grimoires/loa/prd-hounfour-integration.md",
       "sdd": "grimoires/loa/sdd-hounfour-integration.md",
@@ -214,6 +217,36 @@
       "sprints": [
         {"global_id": 197, "local_label": "sprint-1", "status": "completed"},
         {"global_id": 198, "local_label": "sprint-2", "status": "completed"}
+      ]
+    },
+    {
+      "id": "cycle-015",
+      "label": "The Last Spice — Hounfour Endgame (RFC #31 Final 20%)",
+      "status": "archived",
+      "archived": "2026-02-11T18:00:00Z",
+      "created": "2026-02-11T11:42:00Z",
+      "prd": "grimoires/loa/prd-hounfour-endgame.md",
+      "sdd": "grimoires/loa/sdd-hounfour-endgame.md",
+      "sprint_plan": "grimoires/loa/sprint-hounfour-endgame.md",
+      "sprints": [
+        {"global_id": 199, "local_label": "sprint-1", "status": "completed"},
+        {"global_id": 200, "local_label": "sprint-2", "status": "completed"},
+        {"global_id": 201, "local_label": "sprint-3", "status": "completed"},
+        {"global_id": 202, "local_label": "sprint-4", "status": "completed"}
+      ]
+    },
+    {
+      "id": "cycle-016",
+      "label": "Bridgebuilder Round 3 — PR #52 Review Findings",
+      "status": "archived",
+      "archived": "2026-02-11T18:00:00Z",
+      "created": "2026-02-11T14:30:00Z",
+      "prd": "grimoires/loa/prd-hounfour-endgame.md",
+      "sdd": "grimoires/loa/sdd-hounfour-endgame.md",
+      "sprint_plan": "grimoires/loa/sprint-bridgebuilder-round3.md",
+      "sprints": [
+        {"global_id": 203, "local_label": "sprint-1", "status": "completed"},
+        {"global_id": 204, "local_label": "sprint-2", "status": "completed"}
       ]
     }
   ]

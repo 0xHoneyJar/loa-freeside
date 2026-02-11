@@ -473,6 +473,8 @@ resource "aws_ecs_task_definition" "api" {
         { name = "VERIFY_BASE_URL", value = "https://${var.domain_name}" },
         # Hounfour Phase 4: Agent gateway
         { name = "AGENT_ENABLED", value = var.agent_enabled },
+        { name = "ENSEMBLE_ENABLED", value = var.ensemble_enabled },
+        { name = "BYOK_ENABLED", value = var.byok_enabled ? "true" : "false" },
         { name = "LOA_FINN_BASE_URL", value = var.loa_finn_base_url }
       ]
 

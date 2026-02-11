@@ -72,6 +72,17 @@ export interface AgentMessage {
 // Request Types
 // --------------------------------------------------------------------------
 
+/** Ensemble strategy for multi-model orchestration */
+export type EnsembleStrategy = 'best_of_n' | 'consensus' | 'fallback';
+
+/** Ensemble request parameters (optional — omit for single-model invocation) */
+export interface EnsembleParams {
+  strategy: EnsembleStrategy;
+  models?: string[];
+  n?: number;
+  quorum?: number;
+}
+
 /** Request payload for agent invocation (sync or stream) */
 export interface AgentInvokeRequest {
   /** Full request context */
@@ -86,6 +97,8 @@ export interface AgentInvokeRequest {
   tools?: string[];
   /** Arbitrary metadata passed through to loa-finn */
   metadata?: Record<string, unknown>;
+  /** Optional ensemble parameters for multi-model orchestration (FR-3) */
+  ensemble?: EnsembleParams;
 }
 
 // --------------------------------------------------------------------------

@@ -30,7 +30,11 @@ import type { TierAccessMapper } from './tier-access-mapper.js';
 import type { StreamReconciliationJob } from './stream-reconciliation-worker.js';
 import { getCurrentMonth } from './budget-manager.js';
 import { BUDGET_WARNING_THRESHOLD } from './config.js';
-import { resolvePoolId, ALIAS_TO_POOL } from './pool-mapping.js';
+import { resolvePoolId, ALIAS_TO_POOL, POOL_PROVIDER_HINT } from './pool-mapping.js';
+import type { PoolId } from './pool-mapping.js';
+import { EnsembleMapper } from './ensemble-mapper.js';
+import type { EnsembleValidationResult } from './ensemble-mapper.js';
+import type { BYOKManager } from './byok-manager.js';
 
 // --------------------------------------------------------------------------
 // Types
@@ -44,6 +48,14 @@ export interface AgentGatewayDeps {
   redis: Redis;
   logger: Logger;
   reconciliationQueue?: Queue<StreamReconciliationJob>;
+  /** Whether ensemble orchestration is enabled (ENSEMBLE_ENABLED env var) */
+  ensembleEnabled?: boolean;
+  /** Whether BYOK is enabled (BYOK_ENABLED env var) */
+  byokEnabled?: boolean;
+  /** BYOK manager instance (required when byokEnabled) */
+  byokManager?: BYOKManager;
+  /** BYOK daily request quota per community (default: 10_000) */
+  byokDailyQuota?: number;
 }
 
 // --------------------------------------------------------------------------
@@ -58,6 +70,11 @@ export class AgentGateway implements IAgentGateway {
   private readonly redis: Redis;
   private readonly logger: Logger;
   private readonly reconciliationQueue?: Queue<StreamReconciliationJob>;
+  private readonly ensembleMapper = new EnsembleMapper();
+  private readonly ensembleEnabled: boolean;
+  private readonly byokEnabled: boolean;
+  private readonly byokManager?: BYOKManager;
+  private readonly byokDailyQuota: number;
 
   constructor(deps: AgentGatewayDeps) {
     this.budget = deps.budgetManager;
@@ -67,6 +84,10 @@ export class AgentGateway implements IAgentGateway {
     this.redis = deps.redis;
     this.logger = deps.logger;
     this.reconciliationQueue = deps.reconciliationQueue;
+    this.ensembleEnabled = deps.ensembleEnabled ?? false;
+    this.byokEnabled = deps.byokEnabled ?? false;
+    this.byokManager = deps.byokManager;
+    this.byokDailyQuota = deps.byokDailyQuota ?? 10_000;
   }
 
   // --------------------------------------------------------------------------
@@ -116,8 +137,48 @@ export class AgentGateway implements IAgentGateway {
       );
     }
 
+    // 3b. Ensemble validation — between pool resolution and budget reservation (FR-3)
+    let ensembleResult: EnsembleValidationResult | undefined;
+    let budgetMultiplier = 1;
+
+    if (request.ensemble) {
+      if (!this.ensembleEnabled) {
+        throw new AgentGatewayError('ENSEMBLE_DISABLED', 'Ensemble orchestration is not enabled', 400);
+      }
+
+      const validation = this.ensembleMapper.validate(request.ensemble, context.accessLevel);
+      if (!validation.valid) {
+        throw new AgentGatewayError(validation.code, validation.message, validation.statusCode);
+      }
+
+      ensembleResult = validation;
+      budgetMultiplier = validation.budgetMultiplier;
+    }
+
+    // 3c. BYOK check — between ensemble and budget (FR-4)
+    //     Server-side eligibility: derive from BYOK key existence, NOT from client claims (AC-4.31)
+    //     Provider resolved via pool→provider hint mapping (BB3-1)
+    let isByok = false;
+    let byokProvider: string | undefined;
+
+    if (this.byokEnabled && this.byokManager) {
+      const resolved = await this.resolveByokProvider(context.tenantId, poolId, log);
+
+      if (resolved) {
+        isByok = true;
+        byokProvider = resolved;
+
+        // AC-4.30: BYOK daily quota enforcement (atomic INCR — BB3-2)
+        await this.checkByokQuota(context.tenantId, log);
+
+        log.info({ provider: byokProvider }, 'BYOK key active — zero-cost accounting');
+      }
+    }
+
     // 4. Estimate cost and reserve budget (using resolved poolId, not raw alias)
-    const estimatedCostCents = this.budget.estimateCost({
+    //    BYOK_NO_BUDGET: reserve $0 when using community's own key (AC-4.7)
+    //    Budget multiplier applied for ensemble strategies (N × base cost)
+    const baseCostCents = isByok ? 0 : this.budget.estimateCost({
       modelAlias: poolId,
       estimatedInputTokens: this.estimateInputTokens(request),
       // 1000: Conservative sync estimate. Median Claude response is ~500 tokens;
@@ -125,6 +186,7 @@ export class AgentGateway implements IAgentGateway {
       estimatedOutputTokens: 1000,
       hasTools: (request.tools?.length ?? 0) > 0,
     });
+    const estimatedCostCents = baseCostCents * budgetMultiplier;
 
     const reserveResult = await this.budget.reserve({
       communityId: context.tenantId,
@@ -157,11 +219,18 @@ export class AgentGateway implements IAgentGateway {
 
     // 5. Set max-cost ceiling in metadata (S11-T5, SDD §4.5.1)
     // 3× estimated cost (cents) × 100 → micro-cents. loa-finn enforces this ceiling.
+    // BYOK: max_cost = 0 (community pays provider directly)
     const maxCostMicroCents = estimatedCostCents * 3 * 100;
     request = {
       ...request,
       context: { ...context, poolId, allowedPools },
-      metadata: { ...request.metadata, max_cost_micro_cents: maxCostMicroCents },
+      metadata: {
+        ...request.metadata,
+        max_cost_micro_cents: maxCostMicroCents,
+        ...(ensembleResult ? { ensemble: ensembleResult.jwtClaims } : {}),
+        // AC-4.4: BYOK JWT claims — server-side derived, never from client
+        ...(isByok ? { byok: true, byok_provider: byokProvider } : {}),
+      },
     };
 
     // 6. Execute via loa-finn
@@ -169,7 +238,8 @@ export class AgentGateway implements IAgentGateway {
       const response = await this.loaFinn.invoke(request);
 
       // 6. Finalize budget with actual cost + drift detection
-      const actualCostCents = Math.round(response.usage.costUsd * 100);
+      // AC-4.7 + AC-4.8: BYOK uses $0 cost (community pays provider directly)
+      const actualCostCents = isByok ? 0 : Math.round(response.usage.costUsd * 100);
       await this.budget.finalize({
         communityId: context.tenantId,
         userId: context.userId,
@@ -180,7 +250,9 @@ export class AgentGateway implements IAgentGateway {
         traceId: context.traceId,
       });
 
-      this.checkBudgetDrift(actualCostCents, estimatedCostCents, context.traceId, log);
+      this.checkBudgetDrift(actualCostCents, estimatedCostCents, context.traceId, log, {
+        ensembleN: ensembleResult?.jwtClaims?.ensemble_n,
+      });
 
       return response;
     } catch (err) {
@@ -242,8 +314,45 @@ export class AgentGateway implements IAgentGateway {
       );
     }
 
+    // 3b. Ensemble validation — between pool resolution and budget reservation (FR-3)
+    let ensembleResult: EnsembleValidationResult | undefined;
+    let budgetMultiplier = 1;
+
+    if (request.ensemble) {
+      if (!this.ensembleEnabled) {
+        throw new AgentGatewayError('ENSEMBLE_DISABLED', 'Ensemble orchestration is not enabled', 400);
+      }
+
+      const validation = this.ensembleMapper.validate(request.ensemble, context.accessLevel);
+      if (!validation.valid) {
+        throw new AgentGatewayError(validation.code, validation.message, validation.statusCode);
+      }
+
+      ensembleResult = validation;
+      budgetMultiplier = validation.budgetMultiplier;
+    }
+
+    // 3c. BYOK check — between ensemble and budget (FR-4)
+    //     Provider resolved via pool→provider hint mapping (BB3-1)
+    let isByok = false;
+    let byokProvider: string | undefined;
+
+    if (this.byokEnabled && this.byokManager) {
+      const resolved = await this.resolveByokProvider(context.tenantId, poolId, log);
+
+      if (resolved) {
+        isByok = true;
+        byokProvider = resolved;
+        // AC-4.30: BYOK daily quota enforcement (atomic INCR — BB3-2)
+        await this.checkByokQuota(context.tenantId, log);
+        log.info({ provider: byokProvider }, 'BYOK key active — zero-cost accounting');
+      }
+    }
+
     // 4. Reserve budget (using resolved poolId, not raw alias)
-    const estimatedCostCents = this.budget.estimateCost({
+    //    BYOK_NO_BUDGET: reserve $0 when using community's own key (AC-4.7)
+    //    Budget multiplier applied for ensemble strategies (N × base cost)
+    const baseCostCents = isByok ? 0 : this.budget.estimateCost({
       modelAlias: poolId,
       estimatedInputTokens: this.estimateInputTokens(request),
       // 2000: Stream requests tend to produce longer responses (multi-turn, tool use).
@@ -251,6 +360,7 @@ export class AgentGateway implements IAgentGateway {
       estimatedOutputTokens: 2000,
       hasTools: (request.tools?.length ?? 0) > 0,
     });
+    const estimatedCostCents = baseCostCents * budgetMultiplier;
 
     const reserveResult = await this.budget.reserve({
       communityId: context.tenantId,
@@ -286,7 +396,12 @@ export class AgentGateway implements IAgentGateway {
     request = {
       ...request,
       context: { ...context, poolId, allowedPools },
-      metadata: { ...request.metadata, max_cost_micro_cents: maxCostMicroCents },
+      metadata: {
+        ...request.metadata,
+        max_cost_micro_cents: maxCostMicroCents,
+        ...(ensembleResult ? { ensemble: ensembleResult.jwtClaims } : {}),
+        ...(isByok ? { byok: true, byok_provider: byokProvider } : {}),
+      },
     };
 
     // 6. Stream from loa-finn with finalize-once semantics
@@ -297,7 +412,7 @@ export class AgentGateway implements IAgentGateway {
       for await (const event of this.loaFinn.stream(request, { signal: options?.signal, lastEventId: options?.lastEventId })) {
         // Finalize on usage event (exactly once)
         if (event.type === 'usage' && !finalized) {
-          const actualCostCents = Math.round(event.data.costUsd * 100);
+          const actualCostCents = isByok ? 0 : Math.round(event.data.costUsd * 100);
           await this.budget.finalize({
             communityId: context.tenantId,
             userId: context.userId,
@@ -309,7 +424,9 @@ export class AgentGateway implements IAgentGateway {
           });
           finalized = true;
 
-          this.checkBudgetDrift(actualCostCents, estimatedCostCents, context.traceId, log);
+          this.checkBudgetDrift(actualCostCents, estimatedCostCents, context.traceId, log, {
+            ensembleN: ensembleResult?.jwtClaims?.ensemble_n,
+          });
         }
 
         yield event;
@@ -385,13 +502,31 @@ export class AgentGateway implements IAgentGateway {
    * - any overrun → emit agent_budget_drift_micro_cents metric via structured log
    * - actual > 2× estimate → warn log
    * - actual > 3× estimate → BUDGET_DRIFT_HIGH alarm (error log)
+   * - ensemble invariant: actual ≤ reserved (N × base estimate) (BB3-6)
    */
   private checkBudgetDrift(
     actualCostCents: number,
     estimatedCostCents: number,
     traceId: string,
     log: Logger,
+    opts?: { ensembleN?: number },
   ): void {
+    // BB3-6: Ensemble budget assertion — committed ≤ reserved invariant
+    // estimatedCostCents already includes the N× multiplier from ensemble-mapper.
+    // If actual exceeds reserved, it means loa-finn's max_cost ceiling was breached.
+    if (opts?.ensembleN && opts.ensembleN > 1 && actualCostCents > estimatedCostCents && estimatedCostCents > 0) {
+      log.error(
+        {
+          traceId,
+          actualCostCents,
+          reservedCostCents: estimatedCostCents,
+          ensembleN: opts.ensembleN,
+          alarm: 'ENSEMBLE_BUDGET_OVERRUN',
+        },
+        'ENSEMBLE_BUDGET_OVERRUN: actual cost exceeds N× reserved ceiling — investigate loa-finn max_cost enforcement',
+      );
+    }
+
     if (estimatedCostCents <= 0 || actualCostCents <= estimatedCostCents) return;
 
     const driftMicroCents = (actualCostCents - estimatedCostCents) * 100;
@@ -465,6 +600,79 @@ export class AgentGateway implements IAgentGateway {
     } catch (err) {
       log.error({ err }, 'Failed to schedule stream reconciliation');
     }
+  }
+
+  /**
+   * Resolve which BYOK provider to use for this community and pool.
+   *
+   * Strategy:
+   * 1. Use pool→provider hint (reasoning/architect → anthropic, cheap/fast-code/reviewer → openai)
+   * 2. Fall back to checking all known providers if hint has no key
+   * 3. Return undefined if no BYOK keys exist for any provider
+   *
+   * @see Bridgebuilder BB3-1 — fixes poolId.startsWith('anthropic') always being false
+   * @see POOL_PROVIDER_HINT in pool-mapping.ts
+   */
+  private async resolveByokProvider(
+    tenantId: string,
+    poolId: string,
+    log: Logger,
+  ): Promise<string | undefined> {
+    if (!this.byokManager) return undefined;
+
+    // Prefer the provider matching this pool's intent
+    const hint = POOL_PROVIDER_HINT[poolId as PoolId];
+    if (hint) {
+      const hasKey = await this.byokManager.hasBYOKKey(tenantId, hint);
+      if (hasKey) return hint;
+    }
+
+    // Fallback: check all known providers (skip the hint we already checked)
+    const providers = ['openai', 'anthropic'] as const;
+    for (const provider of providers) {
+      if (provider === hint) continue;
+      const hasKey = await this.byokManager.hasBYOKKey(tenantId, provider);
+      if (hasKey) return provider;
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Check and increment BYOK daily quota per community (AC-4.30).
+   * Uses atomic Redis INCR for race-condition-free quota enforcement.
+   * Fail-closed on Redis error (IMP-010).
+   *
+   * @see Bridgebuilder BB3-2 — fixes GET-then-INCR race condition
+   */
+  private async checkByokQuota(communityId: string, log: Logger): Promise<void> {
+    try {
+      const key = `agent:byok:count:${communityId}:${this.currentDay()}`;
+      const newCount = await this.redis.incr(key);
+
+      // Set 24h TTL on first increment (daily counter auto-expiry)
+      if (newCount === 1) {
+        await this.redis.expire(key, 86400);
+      }
+
+      if (newCount > this.byokDailyQuota) {
+        throw new AgentGatewayError(
+          'BYOK_QUOTA_EXCEEDED',
+          'Daily BYOK request quota exceeded',
+          429,
+        );
+      }
+    } catch (err) {
+      if (err instanceof AgentGatewayError) throw err;
+      // Redis unavailable → fail-closed for BYOK routing (IMP-010)
+      log.error({ err }, 'Redis unavailable for BYOK quota check — fail-closed');
+      throw new AgentGatewayError('BYOK_SERVICE_UNAVAILABLE', 'BYOK quota check unavailable', 503);
+    }
+  }
+
+  /** Current UTC date string for daily counters (YYYY-MM-DD) */
+  private currentDay(): string {
+    return new Date().toISOString().slice(0, 10);
   }
 
   private async pingRedis(): Promise<{ healthy: boolean; latencyMs: number }> {

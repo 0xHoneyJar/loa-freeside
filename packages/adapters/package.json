@@ -76,6 +76,7 @@
   },
   "dependencies": {
     "@arrakis/core": "file:../core",
+    "@arrakis/loa-finn-contract": "file:../../tests/e2e/contracts",
     "drizzle-orm": "^0.33.0",
     "ioredis": "^5.9.2",
     "jose": "^5.10.0",

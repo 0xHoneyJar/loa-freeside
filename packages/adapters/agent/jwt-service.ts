@@ -16,6 +16,7 @@ import { createPublicKey, type KeyObject } from 'node:crypto';
 import type { AgentRequestContext } from '@arrakis/core/ports';
 import { computeReqHash } from './req-hash.js';
 import { REAL_CLOCK, type Clock } from './clock.js';
+import { CONTRACT_VERSION } from './contract-version.js';
 
 // --------------------------------------------------------------------------
 // Tier Name Mapping
@@ -108,13 +109,24 @@ export class JwtService {
    *
    * Claims include: tenant_id, nft_id, tier, tier_name, access_level,
    * allowed_model_aliases, pool_id, allowed_pools, platform, channel_id,
-   * idempotency_key, req_hash.
+   * idempotency_key, req_hash, pool_mapping_version, ensemble_strategy,
+   * ensemble_n, ensemble_quorum, ensemble_models.
    *
    * @param context - Agent request context
    * @param requestBody - Canonical request body for req_hash binding
+   * @param ensembleClaims - Optional ensemble JWT claims (FR-3)
    * @returns Signed JWT string
    */
-  async sign(context: AgentRequestContext, requestBody: string): Promise<string> {
+  async sign(
+    context: AgentRequestContext,
+    requestBody: string,
+    ensembleClaims?: {
+      ensemble_strategy: string;
+      ensemble_n: number;
+      ensemble_quorum?: number;
+      ensemble_models?: string[];
+    },
+  ): Promise<string> {
     this.assertInitialized();
 
     const now = Math.floor(this.clock.now() / 1000);
@@ -133,7 +145,10 @@ export class JwtService {
       channel_id: context.channelId,
       idempotency_key: context.idempotencyKey,
       req_hash: reqHash,
+      pool_mapping_version: CONTRACT_VERSION,
       v: 1, // JWT schema version — @see Bridgebuilder F-10
+      // Ensemble claims (FR-3) — only included when ensemble is requested
+      ...(ensembleClaims ?? {}),
     })
       .setProtectedHeader({ alg: 'ES256', kid: this.config.keyId, typ: 'JWT' })
       .setIssuer('arrakis')

@@ -1,0 +1,191 @@
+{
+  "version": "1.0.0",
+  "description": "arrakis ↔ loa-finn integration contract — JSON Schema definitions and tier pool mapping",
+  "schemas": {
+    "jwt_claims": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "required": [
+        "iss", "sub", "aud", "iat", "exp", "jti", "v",
+        "tenant_id", "tier", "tier_name", "access_level",
+        "allowed_model_aliases", "platform", "channel_id",
+        "idempotency_key", "req_hash", "pool_mapping_version"
+      ],
+      "properties": {
+        "iss": { "type": "string", "const": "arrakis" },
+        "sub": { "type": "string", "minLength": 1, "description": "User wallet address" },
+        "aud": { "type": "string", "const": "loa-finn" },
+        "iat": { "type": "integer", "minimum": 0 },
+        "exp": { "type": "integer", "minimum": 0 },
+        "jti": { "type": "string", "format": "uuid" },
+        "v": { "type": "integer", "const": 1, "description": "JWT schema version" },
+        "tenant_id": { "type": "string", "minLength": 1, "description": "Community ID" },
+        "nft_id": { "type": ["string", "null"], "description": "NFT token ID or null" },
+        "tier": { "type": "integer", "minimum": 1, "maximum": 9 },
+        "tier_name": { "type": "string", "minLength": 1 },
+        "access_level": { "type": "string", "enum": ["free", "pro", "enterprise"] },
+        "allowed_model_aliases": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["cheap", "fast-code", "reviewer", "reasoning", "native"] },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "pool_id": { "type": "string", "enum": ["cheap", "fast-code", "reviewer", "reasoning", "architect"] },
+        "allowed_pools": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["cheap", "fast-code", "reviewer", "reasoning", "architect"] },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "platform": { "type": "string", "enum": ["discord", "telegram"] },
+        "channel_id": { "type": "string", "minLength": 1 },
+        "idempotency_key": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[\\x20-\\x7e]+$" },
+        "req_hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "pool_mapping_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$", "description": "Semver from @arrakis/loa-finn-contract" },
+        "ensemble_strategy": { "type": "string", "enum": ["best_of_n", "consensus", "fallback"] },
+        "ensemble_n": { "type": "integer", "minimum": 2, "maximum": 5 },
+        "ensemble_quorum": { "type": "integer", "minimum": 2, "maximum": 5 },
+        "ensemble_models": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 2
+        },
+        "byok": { "type": "boolean" },
+        "byok_provider": { "type": "string", "enum": ["openai", "anthropic"] },
+        "byok_operation": { "type": "string", "enum": ["chat_completions", "messages"] }
+      },
+      "additionalProperties": false
+    },
+    "invoke_response": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "required": ["content", "usage"],
+      "properties": {
+        "content": { "type": "string" },
+        "thinking": { "type": "string" },
+        "tool_calls": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "name", "arguments"],
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "arguments": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "usage": {
+          "type": "object",
+          "required": ["prompt_tokens", "completion_tokens", "cost_usd"],
+          "properties": {
+            "prompt_tokens": { "type": "integer", "minimum": 0 },
+            "completion_tokens": { "type": "integer", "minimum": 0 },
+            "cost_usd": { "type": "number", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "metadata": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "usage_report": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "required": ["report_id", "jti", "tenant_id", "pool_id", "input_tokens", "output_tokens", "cost_micro", "timestamp"],
+      "properties": {
+        "report_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "jti": { "type": "string", "format": "uuid", "description": "Correlates back to original request JWT" },
+        "tenant_id": { "type": "string", "minLength": 1 },
+        "pool_id": { "type": "string", "enum": ["cheap", "fast-code", "reviewer", "reasoning", "architect"] },
+        "input_tokens": { "type": "integer", "minimum": 0 },
+        "output_tokens": { "type": "integer", "minimum": 0 },
+        "cost_micro": { "type": "integer", "minimum": 0, "description": "Cost in micro-USD" },
+        "accounting_mode": {
+          "type": "string",
+          "enum": ["PLATFORM_BUDGET", "BYOK_NO_BUDGET"],
+          "default": "PLATFORM_BUDGET"
+        },
+        "usage_tokens": { "type": "integer", "minimum": 0, "description": "Total tokens for BYOK metering" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "stream_events": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "required": ["type"],
+      "discriminator": { "propertyName": "type" },
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "data"],
+          "properties": {
+            "type": { "const": "content" },
+            "data": { "type": "object", "required": ["text"], "properties": { "text": { "type": "string" } } },
+            "id": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "data"],
+          "properties": {
+            "type": { "const": "thinking" },
+            "data": { "type": "object", "required": ["text"], "properties": { "text": { "type": "string" } } },
+            "id": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "data"],
+          "properties": {
+            "type": { "const": "tool_call" },
+            "data": { "type": "object", "required": ["name", "args"], "properties": { "name": { "type": "string" }, "args": { "type": "object" } } },
+            "id": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "data"],
+          "properties": {
+            "type": { "const": "usage" },
+            "data": {
+              "type": "object",
+              "required": ["prompt_tokens", "completion_tokens", "cost_usd"],
+              "properties": {
+                "prompt_tokens": { "type": "integer", "minimum": 0 },
+                "completion_tokens": { "type": "integer", "minimum": 0 },
+                "cost_usd": { "type": "number", "minimum": 0 }
+              }
+            },
+            "id": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "data"],
+          "properties": {
+            "type": { "const": "done" },
+            "data": { "const": null },
+            "id": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "data"],
+          "properties": {
+            "type": { "const": "error" },
+            "data": { "type": "object", "required": ["code", "message"], "properties": { "code": { "type": "string" }, "message": { "type": "string" } } },
+            "id": { "type": "string" }
+          }
+        }
+      ]
+    }
+  },
+  "tier_pool_mapping": {
+    "free": { "default": "cheap", "allowed": ["cheap"] },
+    "pro": { "default": "fast-code", "allowed": ["cheap", "fast-code", "reviewer"] },
+    "enterprise": { "default": "architect", "allowed": ["cheap", "fast-code", "reviewer", "reasoning", "architect"] }
+  }
+}

@@ -77,3 +77,16 @@ autoscaling_scale_out_cooldown = 60
 # Coexistence Mode (Sprint S-22 to S-28)
 # Possible values: shadow, parallel, arrakis_primary, instant
 coexistence_mode = "shadow"  # Start with shadow mode for safe testing
+
+# =============================================================================
+# Hounfour Phase 4: Agent Gateway Feature Flags
+# =============================================================================
+
+# Agent gateway (baseline model routing)
+agent_enabled = "true"
+
+# Ensemble orchestration (multi-model routing)
+ensemble_enabled = "true"
+
+# BYOK key management (bring-your-own-key with Network Firewall)
+byok_enabled = true

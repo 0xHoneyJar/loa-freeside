@@ -24,6 +24,22 @@ export type PoolId = (typeof POOL_IDS)[number];
 /** Set for O(1) validation */
 export const VALID_POOL_IDS: ReadonlySet<string> = new Set(POOL_IDS);
 
+/**
+ * Pool → Provider hint mapping.
+ * Determines which AI provider a pool ID is intended for,
+ * used by BYOK to route community keys to the correct provider endpoint.
+ *
+ * @see Bridgebuilder BB3-1 — fixes provider inference from poolId.startsWith()
+ * @see byok-provider-endpoints.ts for supported providers
+ */
+export const POOL_PROVIDER_HINT: Record<PoolId, 'openai' | 'anthropic'> = {
+  cheap: 'openai',
+  'fast-code': 'openai',
+  reviewer: 'openai',
+  reasoning: 'anthropic',
+  architect: 'anthropic',
+};
+
 // --------------------------------------------------------------------------
 // Access Level → Pool mapping (from PRD §2.1)
 // --------------------------------------------------------------------------
