@@ -1,18 +1,18 @@
 {
   "plan_id": "plan-20260212-bridgebuilder-round4",
   "branch": "feature/hounfour-endgame",
-  "state": "RUNNING",
+  "state": "JACKED_OUT",
   "timestamps": {
     "started": "2026-02-12T03:00:00Z",
-    "last_activity": "2026-02-12T03:00:00Z"
+    "last_activity": "2026-02-12T08:50:00Z"
   },
   "sprints": {
     "total": 2,
-    "completed": 0,
-    "current": "sprint-1",
+    "completed": 2,
+    "current": null,
     "list": [
-      {"id": "sprint-1", "status": "pending", "cycles": 0, "global_id": 207},
-      {"id": "sprint-2", "status": "pending", "cycles": 0, "global_id": 208}
+      {"id": "sprint-1", "status": "completed", "cycles": 1, "global_id": 207, "files_changed": 5},
+      {"id": "sprint-2", "status": "completed", "cycles": 1, "global_id": 208, "files_changed": 4}
     ]
   },
   "options": {
@@ -22,9 +22,9 @@
     "timeout_hours": 8
   },
   "metrics": {
-    "total_cycles": 0,
-    "total_files_changed": 0,
-    "total_findings_fixed": 0
+    "total_cycles": 2,
+    "total_files_changed": 9,
+    "total_findings_fixed": 6
   },
   "context": {
     "sprint_plan": "grimoires/loa/sprint-bridgebuilder-round4.md",

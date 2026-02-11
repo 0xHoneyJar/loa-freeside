@@ -272,8 +272,8 @@
       "sdd": "grimoires/loa/sdd-hounfour-finish-line.md",
       "sprint_plan": "grimoires/loa/sprint-bridgebuilder-round4.md",
       "sprints": [
-        {"global_id": 207, "local_label": "sprint-1", "status": "pending"},
-        {"global_id": 208, "local_label": "sprint-2", "status": "pending"}
+        {"global_id": 207, "local_label": "sprint-1", "status": "completed"},
+        {"global_id": 208, "local_label": "sprint-2", "status": "completed"}
       ]
     }
   ]
