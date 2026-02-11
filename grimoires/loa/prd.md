@@ -1,498 +1,485 @@
-# PRD: Launch Readiness — Production Stack, Payments & Agent Surfaces
+# PRD: Bug Mode — Lightweight Bug-Fixing Workflow for Loa
 
-**Version:** 1.1.0
-**Date:** 2026-02-20
-**Status:** Active
-**Cycle:** cycle-036
-**Predecessor:** cycle-035 "The Neuromancer Codex" (archived — documentation complete)
-**Source:** [loa-finn#66](https://github.com/0xHoneyJar/loa-finn/issues/66) (Launch Readiness RFC), Issues [#77](https://github.com/0xHoneyJar/loa-freeside/issues/77)–[#85](https://github.com/0xHoneyJar/loa-freeside/issues/85)
-
----
-
-## 0. The Question Behind the Question
-
-The request is "deploy and launch." The real problem is **the last mile between infrastructure and revenue**.
-
-52 global sprints across 20 cycles produced a complete multi-model inference platform: 5-pool model routing, budget-atomic accounting, token-gated access, 9-tier conviction scoring, ensemble strategies, BYOK encryption, and a full NOWPayments crypto billing adapter with 95 passing tests. The documentation is now production-grade (cycle-035).
-
-But none of it is deployed. The NOWPayments adapter is feature-flagged off. The loa-finn inference engine has no production container. Users can't buy credits, can't talk to their NFT agents, and community admins can't see what's happening.
-
-This is the "last mile" problem that kills platforms. Stripe had the best payment API in 2011 — but it didn't matter until developers could `curl` it from production. We have the agent economy infrastructure. This cycle makes it real.
-
-> The gap between "infrastructure ready" and "users can use it" — loa-finn#66 §6
+**Version**: 1.1.0
+**Status**: Draft (revised per Flatline Protocol review)
+**Author**: Discovery Phase (plan-and-analyze)
+**Issue**: [loa #278](https://github.com/0xHoneyJar/loa/issues/278)
+**Date**: 2026-02-11
 
 ---
 
 ## 1. Problem Statement
 
-| ID | Problem | Evidence |
-|----|---------|----------|
-| P-1 | Neither loa-finn nor loa-freeside is deployed to production | Issue #77 — "Neither loa-finn nor loa-freeside is deployed to production" |
-| P-2 | No way to collect money despite fully-built billing adapter | Issue #79 — "We have no way to collect money" (loa-freeside#62) |
-| P-3 | No production monitoring — failures detected in code but no human alerting | Issue #78 — "The code detects failures; nothing alerts humans about them" |
-| P-4 | NFT personality routing bridge doesn't exist between loa-freeside and loa-finn | Issue #80 — "The bridge between them doesn't exist yet" |
-| P-5 | No per-NFT conversational spaces in Discord | Issue #81 — each NFT agent needs its own thread |
-| P-6 | Community admins have zero visibility into spend, usage, or model allocation | Issue #82 — "Without a dashboard, communities can't manage their agent budgets" |
-| P-7 | No audit trail or pool enforcement transparency | Issue #83 — "Communities won't adopt infrastructure they can't audit" |
-| P-8 | No self-service developer onboarding for the API platform (Product B) | Issue #84 — developers need API keys without manual intervention |
-| P-9 | No web surface for non-Discord users | Issue #85 — "Not all users are on Discord" |
+Loa's workflow enforces a full **PRD → SDD → Sprint Plan → Implement → Review → Audit** pipeline for every code change. This is correct for feature development but creates significant friction for the most common post-deployment activity: **fixing bugs**.
 
----
+The real-world pattern (reported by zergucci in issue #278):
+
+1. User builds features with Loa's full workflow — works great
+2. User deploys and tests production code
+3. User discovers bugs (edge cases, runtime errors, logic issues)
+4. User invokes Loa to fix the bug
+5. **Loa demands full plan-and-analyze** — a PRD for a null pointer fix
+6. User bypasses Loa entirely and talks to "raw Claude"
+7. All quality gates (test-first, review, audit) are lost
+
+**The gap**: There is no path between "full ceremony" and "no ceremony." The NEVER rules in `CLAUDE.loa.md` explicitly block writing application code outside `/implement`, and there's no configuration to bypass PRD/SDD for lightweight fixes. Users who need to fix bugs are forced to either:
+
+- **Option A**: Run the full 6-phase workflow for a one-line fix (30+ minutes of planning overhead)
+- **Option B**: Abandon Loa's quality gates entirely (lose test-first, review, and audit)
+
+Neither option is acceptable. Bug fixing needs its own workflow that's **lightweight on planning** but **preserves quality gates**.
+
+> Source: [Issue #278](https://github.com/0xHoneyJar/loa/issues/278), zergucci Discord transcript (2026-02-11)
 
 ## 2. Goals & Success Metrics
 
-| ID | Goal | Metric | Source |
-|----|------|--------|--------|
-| G-1 | Deploy full stack to production on existing AWS ECS infrastructure | Both services responding on HTTPS with health checks | #77 |
-| G-2 | Enable crypto payment revenue collection | First real credit pack purchase via NOWPayments | #79 |
-| G-3 | Production observability with human alerting | Conservation guard failure triggers alert within 60s | #78 |
-| G-4 | Per-NFT personality-driven inference routing | Two different NFTs get different model pool selections | #80 |
-| G-5 | Per-NFT Discord conversational spaces | NFT holder invokes `/my-agent` and gets dedicated thread | #81 |
-| G-6 | Community admin budget visibility | Admin views spend breakdown by model pool | #82 |
-| G-7 | Auditable billing and pool enforcement | Community downloads JSONL audit trail of all credit operations | #83 |
-| G-8 | Self-service developer API keys | Developer creates key, makes inference request, zero manual intervention | #84 |
-| G-9 | Web chat surface for agents | Embeddable widget streams responses via WebSocket | #85 |
+### Goals
 
-### Timeline
+| # | Goal | Measurable Outcome |
+|---|------|-------------------|
+| G1 | Provide a lightweight bug-fixing workflow that skips PRD/SDD/Sprint Plan | `/bug` command goes from description to implementation in <2 minutes of triage |
+| G2 | Preserve all quality gates (test-first, review, audit) | Bug fixes go through implement → review → audit cycle, same as feature sprints |
+| G3 | Integrate with sprint lifecycle and beads task tracking | Bugs tracked as sprint tasks in beads, visible in ledger |
+| G4 | Support both interactive and autonomous execution | Interactive by default, `/run --bug` for autonomous batch fixing |
+| G5 | Use test-driven bug fixing (reproduce → fix → verify) | Every bug fix starts with a failing test, fix is validated by test passing |
 
-**Target: 1-2 weeks to Product A launch (NFT agents live in Discord with billing).**
-Product B (API platform) and web chat widget are in-scope but can trail by days.
+### Success Metrics
 
-### Critical Path (P0 Minimum Viable Launch)
-
-The 1-2 week target is achievable ONLY if P0 is scoped to the true critical path. If any item below slips, the entire launch slips:
-
-1. **Deploy** — loa-freeside + loa-finn on ECS with health checks (FR-0.1, FR-0.3)
-2. **S2S Auth** — JWT exchange validated in staging (FR-0.3, go/no-go gate)
-3. **Basic Discord chat** — `/my-agent` → streamed inference via personality bridge (FR-3.1, FR-2.1)
-4. **Payment + credit mint** — NOWPayments checkout → webhook → credits arrive (FR-1.2, FR-1.4)
-5. **Minimal alerting** — Conservation guard failure → Slack within 60s (FR-0.7)
-
-Everything else (dashboards, audit exports, web widget, API portal, Telegram) follows in P1/P2 and MUST NOT block the P0 launch date. If cross-repo blockers (loa-finn Dockerfile, personality derivation) slip >3 days, escalate to loa-finn team immediately.
-
----
+| # | Metric | Current | Target |
+|---|--------|---------|--------|
+| M1 | Time from bug report to implementation start | 30+ min (full planning) | <2 min (triage only) |
+| M2 | Bug fixes going through quality gates | ~0% (users bypass Loa) | 100% (review + audit enforced) |
+| M3 | Bug fixes with automated reproduction | Unknown (no tracking) | 100% (at least one automated check per fix) |
+| M4 | Sprint/beads traceability for bug fixes | 0% (bypassed) | 100% (ledger + beads tracked) |
 
 ## 3. User & Stakeholder Context
 
-### Primary Personas
+### Primary Persona: Loa Power User (zergucci)
 
-| Persona | Description | Key Needs |
-|---------|-------------|-----------|
-| **NFT Holder** | Owns a finnNFT, wants to interact with their agent | Chat with their NFT personality, see it respond uniquely, buy credits |
-| **Community Admin** | Manages a Discord community using Loa platform | Budget visibility, usage dashboards, audit trails, tier configuration |
-| **Developer** | Building on the Loa API (Product B) | Self-service API keys, sandbox testing, clear documentation |
-| **Platform Operator** | THJ team deploying and maintaining infrastructure | Production monitoring, alerting, deployment automation |
+Developers who use Loa's full workflow for feature development and are comfortable with `/run sprint-plan`, beads, and the implement/review/audit cycle. They deploy features, test in production, and need to fix bugs quickly **without leaving the Loa ecosystem**.
 
-### User Journeys
+**Pain points**:
+- Full plan-and-analyze is overkill for bug fixes
+- After context compaction, Loa forgets sprint completion status
+- Resorting to "raw Claude" loses all quality gates and traceability
 
-**NFT Holder Journey:**
-1. Verify wallet in Discord → tier assigned based on conviction score
-2. `/my-agent` → dedicated Discord thread created with NFT personality
-3. Chat with agent → personality-routed inference through correct model pool
-4. Credits run low → `/buy-credits 10` → NOWPayments checkout → credits arrive
-5. Continue chatting
+**Needs**:
+- Describe bug → Loa investigates → test-first fix → review → audit
+- Bugs tracked in beads with full lifecycle
+- Autonomous mode for batch bug fixing
 
-**Developer Journey (Product B):**
-1. Sign up via web form → get sandbox API key (`lf_test_...`)
-2. Make first inference request against `cheap` pool (free tier)
-3. Verify it works → upgrade to production key (`lf_live_...`)
-4. View usage dashboard → manage rate limits and budget
+### Secondary Persona: Loa New User
 
-**Community Admin Journey:**
-1. View budget dashboard → see spend by model pool
-2. Download audit trail as JSONL → verify conservation invariants
-3. See pool enforcement decisions → understand why a request was routed where
-4. Set budget caps → control community spending
-
----
+Developers exploring Loa who hit their first bug. The `/bug` truename provides a safe entry point that's less intimidating than the full workflow while still teaching Loa's quality culture (test-first, review gates).
 
 ## 4. Functional Requirements
 
-### Track 0: Make It Run (Issues #77, #78)
+### FR1: Bug Triage Phase (replaces PRD/SDD/Sprint Plan)
 
-| ID | Requirement | Acceptance Criteria | Source |
-|----|-------------|---------------------|--------|
-| FR-0.1 | Deploy loa-finn as ECS service in existing AWS cluster | ECS task definition, service, ALB target group, health check passing | #77 |
-| FR-0.2 | Docker Compose for local full-stack development | `docker compose up` starts loa-freeside + loa-finn + Redis + PostgreSQL | #77 |
-| FR-0.3 | S2S JWT exchange working in production | loa-freeside signs ES256 JWT (`iss: loa-freeside`, `aud: loa-finn`) → loa-finn validates via JWKS; loa-finn rejects all requests without valid S2S JWT | #77 |
-| FR-0.4 | At least one model pool responds to inference in production | Discord `/agent` → streamed response via loa-finn | #77 |
-| FR-0.5 | Metrics collection from both services | Amazon Managed Prometheus (AMP) workspace with ADOT collector sidecar containers on each ECS task; ADOT discovers targets via ECS task metadata endpoint; existing CloudWatch Container Insights remain for ECS-level metrics | #78 |
-| FR-0.6 | CloudWatch dashboards for unified service health | Inference latency, error rate, billing flow, auth failures, conservation guard panels; sourced from AMP via CloudWatch data source or Grafana on AMP | #78 |
-| FR-0.7 | Alerting on conservation guard failure and service downtime | AMP alerting rules → SNS topic → Slack webhook; fires within 60s of conservation guard failure or service health check failure | #78 |
+The triage phase is a **hybrid interview**: accept free-form input first, then ask structured follow-ups for any gaps.
 
-**CRITICAL CONSTRAINT:** Use existing Terraform/AWS ECS infrastructure. No Fly.io. loa-finn deploys as a new ECS service in the existing cluster, behind the existing ALB, using existing RDS/ElastiCache/VPC/Route53. Reference: `infrastructure/terraform/ecs.tf`, `alb.tf`, `variables.tf`.
+#### FR1.0: Bug Eligibility Policy
 
-**S2S TRUST MODEL:** loa-finn is internal-only — not directly reachable from the internet. loa-freeside is the sole public-facing gateway. Network enforcement: loa-finn's security group allows inbound only from loa-freeside's security group (no public ALB listener rule for finn). loa-freeside calls loa-finn via internal service discovery (`finn.arrakis-{env}.local`) or private ALB target group. JWKS endpoint hosted by loa-freeside (the issuer), not loa-finn (the verifier). JWT claims: `iss: loa-freeside`, `aud: loa-finn`, TTL: 60s. Key rotation: ES256 keypair in Secrets Manager, rotated via scheduled Lambda (quarterly). loa-finn MUST reject all requests without valid S2S JWT bearing correct `aud`.
+**CRITICAL**: `/bug` is strictly for defects, not features. The triage phase enforces eligibility before proceeding.
 
-### Track 1A: Make It Pay (Issue #79)
+**Eligibility criteria** (at least one required):
+- References an **observed failure** (error message, crash, incorrect output)
+- Includes a **stack trace** or error log
+- Describes a **regression** from a known working baseline (version/commit)
+- References a **failing test** by name
 
-| ID | Requirement | Acceptance Criteria | Source |
-|----|-------------|---------------------|--------|
-| FR-1.1 | Enable NOWPayments feature flag in production | `FEATURE_CRYPTO_PAYMENTS_ENABLED=true`, API key + IPN secret configured | #79 |
-| FR-1.2 | Wire NOWPayments webhook to credit mint | `POST https://api.{domain}/api/crypto/webhook` (loa-freeside, public via ALB) receives IPN; HMAC-SHA512 verified against `NOWPAYMENTS_IPN_SECRET`; idempotency key = `payment_id` (UNIQUE constraint in `crypto_payments` table); replay of identical payload = HTTP 200, no additional credit lots; payment `finished` → credit lot created, conservation guard verifies | #79 |
-| FR-1.3 | Credit pack tiers defined in config | $5 Starter, $10 Basic, $25 Pro (configurable, not hardcoded) | #79 |
-| FR-1.4 | Discord `/buy-credits [amount]` command | Returns NOWPayments checkout URL, confirms on completion | #79 |
-| FR-1.5 | Telegram `/buy-credits` equivalent | Same flow as Discord | #79 |
-| FR-1.6 | Idempotent double-payment handling | Same payment ID = no duplicate credits | #79 |
+**Rejection criteria** (any one triggers escalation):
+- Request describes **new behavior** not previously implemented
+- No observable failure can be articulated
+- Triage cannot produce a **reproducible failing condition** within the triage phase
+- Request involves **architectural changes** to multiple systems
 
-**PAYMENT STATE MACHINE:** NOWPayments IPN delivers status transitions. The platform must handle all edge states:
+**Escalation path**: If input fails eligibility, triage terminates with:
+> "This looks like a feature request, not a bug. Use `/plan` to start the full workflow."
 
-| IPN Status | Action | Credit Outcome | User-Facing |
-|------------|--------|---------------|-------------|
-| `waiting` | Record payment, show pending | None | "Payment pending — waiting for confirmation" |
-| `confirming` | Update status | None | "Payment detected — confirming on-chain" |
-| `confirmed` | Update status | None | "Payment confirmed — processing" |
-| `finished` | Mint credits, conservation guard | Credits created | "Credits added to your account!" |
-| `partially_paid` | Record underpayment, notify | None (require full payment) | "Underpaid — send remaining or contact support" |
-| `failed` | Record failure, allow retry | None | "Payment failed — please try again" |
-| `expired` | Mark expired, allow new checkout | None | "Invoice expired — use /buy-credits for a new one" |
-| `refunded` | Reverse credits if minted | Credits reversed | "Refund processed" |
+The classification decision (accepted/rejected + reasoning) is logged in `triage.md` for audit trail.
 
-**Edge cases:**
-- **Double IPN delivery:** Idempotency on `payment_id` (UNIQUE constraint) — replay returns 200, no duplicate credits.
-- **Out-of-order delivery:** Accept any valid status transition; ignore stale/backward transitions (e.g., `finished` then `confirming`).
-- **Timeout without IPN:** Reconciliation job polls NOWPayments API by `payment_id` every 5 minutes for invoices >15 min old, resolves stuck payments.
-- **Currency conversion:** Credit lot denomination is always in USD equivalent; NOWPayments handles crypto→USD conversion; platform records both crypto amount and USD equivalent.
-- **Retry after failure:** User can invoke `/buy-credits` again; new `payment_id` generated; old failed record retained for audit.
+#### FR1.1: Free-Form Input
 
-**Reconciliation & admin tools:**
-- **Reconciliation job:** Scheduled task (every 5 min) polls NOWPayments API for invoices with `waiting`/`confirming` status older than 15 minutes. Resolves stuck payments by fetching current status and processing any missed IPN transitions.
-- **Supported currencies:** All currencies supported by NOWPayments (BTC, ETH, USDT, USDC, etc.); credit lot always denominated in USD equivalent using NOWPayments' conversion rate at `finished` time.
-- **Rounding rules:** Credit lots rounded DOWN to nearest micro-USD (floor). Platform never over-credits.
-- **Admin repair endpoint:** `POST /api/v1/admin/payments/:paymentId/reconcile` — manually triggers status check against NOWPayments API and processes any missed transitions. Requires admin auth. Logs all manual reconciliations to audit trail.
-- **Admin payment dashboard:** `GET /api/v1/admin/payments?status=stuck` — lists payments in limbo (>30 min without `finished`/`failed`/`expired`).
+The user provides initial bug description in any format:
 
-**EXISTING ASSETS:** NOWPayments adapter fully built (557 LOC, 23 tests). CryptoWebhookService with LVVER pattern (486 LOC, 26 tests). Database migration `021_crypto_payments.ts` ready. Routes at `/api/crypto/*` implemented (440 LOC, 7 tests). Total: 95 tests passing. NOWPayments account exists, API key available as env var.
+```bash
+/bug "Login fails when email contains a + character"
+/bug "API returns 500 on empty cart checkout"
+/bug   # Interactive — prompts for description
+```
 
-### Track 2: Make It Personal (Issue #80)
+Accepted input formats:
+- Plain text description
+- Error message / stack trace (paste)
+- GitHub issue reference (`/bug --from-issue 42`)
+- Test failure name (`/bug "test_checkout_empty_cart fails"`)
 
-| ID | Requirement | Acceptance Criteria | Source |
-|----|-------------|---------------------|--------|
-| FR-2.1 | Inference request enrichment with NFT context | loa-freeside includes `nft_id` + `tier` + `budget_reservation_id` in S2S JWT claims sent to loa-finn; loa-finn resolves personality and selects pool | #80 |
-| FR-2.2 | Pool/personality metadata in inference response | loa-finn returns `X-Pool-Used` + `X-Personality-Id` headers; loa-freeside uses these for budget finalization and audit logging | #80 |
-| FR-2.3 | Anti-narration enforcement | No forbidden identity terms appear in streamed responses; loa-finn's reviewer-adapter anti-narration rules respected | #80 |
-| FR-2.4 | Two different NFTs get different model pool routing | Verified in integration test — different `nft_id` values produce different `X-Pool-Used` and `X-Personality-Id` | #80 |
+#### FR1.2: Structured Follow-Up
 
-**PERSONALITY OWNERSHIP:** loa-finn owns personality derivation (it has the NFT metadata, BEAUVOIR.md loader, and NameKDF). loa-freeside passes `nft_id` from JWT claims in the inference request; loa-finn's inference endpoint selects the personality, chooses the pool, and returns pool/personality metadata in the response for auditability. loa-freeside does NOT independently look up personality — it trusts loa-finn's routing decision. This avoids circular dependencies (freeside needs finn for personality; finn needs freeside for auth/budget).
+After parsing the free-form input, Loa identifies gaps and asks targeted follow-ups. Maximum 3-5 questions covering:
 
-**Call flow:** User → loa-freeside (auth, budget reservation, tier check) → S2S JWT with `nft_id` + `tier` + `budget_reservation_id` → loa-finn (personality lookup, pool selection, inference) → streamed response with `X-Pool-Used` + `X-Personality-Id` headers → loa-freeside (budget finalization, audit).
+| Field | Question If Missing | Priority |
+|-------|-------------------|----------|
+| Reproduction steps | "How do you trigger this bug?" | Required |
+| Expected vs actual behavior | "What should happen vs what happens?" | Required |
+| Severity | "Is this blocking production?" | Required |
+| Affected area | "Which part of the codebase?" | Optional (Loa can analyze) |
+| Environment | "Local, staging, or production?" | Optional |
 
-**STREAMING BUDGET LIFECYCLE:** Inference requests use streaming, which requires explicit reservation→finalization semantics to prevent credit leakage or double-spend:
+#### FR1.3: Codebase Analysis
 
-| Phase | Trigger | Action |
-|-------|---------|--------|
-| **Reserve** | loa-freeside receives inference request | Create `budget_reservation_id`, deduct estimated max cost from available balance (pessimistic reserve based on `max_tokens` or pool default) |
-| **Stream** | loa-finn begins streaming tokens | Token count tracked in real-time via `X-Token-Count` trailer or post-stream summary |
-| **Finalize** | Stream completes (200 OK + final chunk) | Calculate actual cost from real token usage; release unused reservation back to balance; write audit record |
-| **Partial completion** | Client disconnect or upstream error mid-stream | Charge for tokens actually delivered (loa-finn returns partial token count in error response or trailer); release remainder |
-| **Retry** | Client retries same request | New `budget_reservation_id` — original reservation finalized (partial or zero); no double-spend because each reservation is independent |
-| **Timeout** | No response from loa-finn within 60s | Release full reservation; log timeout; return error to user |
-| **Orphan cleanup** | Reservation >5 min without finalization | Scheduled job releases orphaned reservations back to balance; logs anomaly |
+After triage, Loa performs targeted codebase analysis:
 
-**Idempotency:** Each inference request carries a unique `budget_reservation_id` in the S2S JWT. loa-finn includes this ID in response headers. loa-freeside uses it for finalization — duplicate finalization requests are no-ops.
+1. **Error trace analysis**: Parse stack traces to locate source files
+2. **Keyword search**: Search codebase for relevant functions/modules
+3. **Dependency mapping**: Identify related files that may need changes
+4. **Test discovery**: Find existing tests for the affected area
 
-**DEPENDENCY:** loa-finn#88 (static personality config) or loa-finn#86 (dynamic derivation) must provide personality selection within the inference endpoint. No separate personality lookup endpoint needed.
+Output: A structured **bug analysis** document (not a PRD) containing:
+- Bug classification (runtime error, logic bug, edge case, integration issue)
+- Affected files with line references
+- Existing test coverage assessment
+- Proposed fix strategy
 
-### Track 3: Make It Visible (Issues #81, #82, #85)
+#### FR1.3.1: Triage→Implement Handoff Contract
 
-| ID | Requirement | Acceptance Criteria | Source |
-|----|-------------|---------------------|--------|
-| FR-3.1 | `/my-agent` creates dedicated Discord thread per NFT | Public thread in designated agent channel; bot-enforced access control (bot responds only to verified holder in that thread); thread name = agent name or `Agent #[tokenId]`; if server supports private threads (boost level 2+), use private thread; otherwise public with bot-level gating; **token transfer handling:** bot re-verifies ownership on every message (cached 60s); if ownership changed, bot posts "ownership transferred" notice, stops responding to old holder, and creates new thread for new holder on their next `/my-agent`; **re-verification cadence:** wallet verification refreshed every 24h via background job — stale verifications (>48h) revoke thread access; **bot permissions required:** `MANAGE_THREADS`, `SEND_MESSAGES_IN_THREADS`, `READ_MESSAGE_HISTORY`; bot degrades gracefully if permissions missing (responds with "missing permissions" instead of silent failure) | #81 |
-| FR-3.2 | Thread messages routed through personality bridge | Personality tier + emphasis applied to every message | #81 |
-| FR-3.3 | `/agent-info` shows personality summary | Anti-narration-safe display, no identity labels | #81 |
-| FR-3.4 | Community admin usage dashboard | Total spend, per-pool breakdown, per-user breakdown, projected depletion | #82 |
-| FR-3.5 | Admin API endpoints for usage/billing/agents | `GET /api/v1/admin/community/:id/{usage,billing,agents}` | #82 |
-| FR-3.6 | Embeddable web chat widget | Single `<script>` tag, WebSocket streaming, personality-aware styling; auth via SIWE wallet login → server-issued short-lived session token (no API keys in browser); community-embedded widgets use server-side API key (not client-exposed); unauthenticated users see read-only agent profile | #85 |
-| FR-3.7 | Standalone chat page at `/chat/:tokenId` | Shareable URL, mobile-responsive; read-only mode (personality display, past public interactions) without auth; SIWE login required to send messages; rate-limited per session | #85 |
+The triage phase produces a structured handoff document (`triage.md`) with **required fields** that the implement phase consumes:
 
-### Track 4: Make It Trustworthy (Issue #83)
+| Field | Required | Description |
+|-------|----------|-------------|
+| `bug_id` | Yes | Stable identifier (timestamp + short hash) |
+| `title` | Yes | One-line summary |
+| `classification` | Yes | `runtime_error` \| `logic_bug` \| `edge_case` \| `integration_issue` \| `regression` |
+| `reproduction_steps` | Yes | Numbered steps to trigger the bug |
+| `expected_behavior` | Yes | What should happen |
+| `actual_behavior` | Yes | What actually happens |
+| `suspected_files` | Yes | List of files with line references |
+| `test_target` | Yes | What the failing test should assert |
+| `test_type` | Yes | `unit` \| `integration` \| `e2e` \| `contract` (see FR2) |
+| `severity` | Yes | `critical` \| `high` \| `medium` \| `low` |
+| `environment` | No | Where the bug was observed |
+| `constraints` | No | Areas that must NOT be modified |
+| `related_tests` | No | Existing tests in the affected area |
 
-| ID | Requirement | Acceptance Criteria | Source |
-|----|-------------|---------------------|--------|
-| FR-4.1 | Billing audit trail export as JSONL | Includes timestamp, operation type, amount, pool, user, conservation result | #83 |
-| FR-4.2 | Pool enforcement transparency | Admins see which pools agents access and why | #83 |
-| FR-4.3 | Conservation guard status endpoint | `GET /api/v1/admin/community/:id/conservation` with current status + history | #83 |
-| FR-4.4 | No PII in audit exports | Wallet addresses only (pseudonymous) | #83 |
+If the implement phase receives a `triage.md` missing required fields, it halts with an error and returns to triage.
 
-### Product B: API Platform (Issue #84)
+#### FR1.4: Sprint Integration
 
-| ID | Requirement | Acceptance Criteria | Source |
-|----|-------------|---------------------|--------|
-| FR-5.1 | API key generation | Scoped keys: `lf_live_...` (prod), `lf_test_...` (sandbox), shown once | #84 |
-| FR-5.2 | API key authentication on inference requests | `Authorization: Bearer lf_live_...` → pool access + rate limits | #84 |
-| FR-5.3 | Rate limiting per API key | Requests/minute and tokens/day configurable per key | #84 |
-| FR-5.4 | Self-service portal | Key creation, rotation, revocation, usage dashboard | #84 |
-| FR-5.5 | Developer onboarding flow | Sign up → sandbox key → free inference → upgrade to production | #84 |
+After triage completes:
 
----
+| Scenario | Action |
+|----------|--------|
+| Active sprint exists | Add bug as priority task to current sprint's task list |
+| No active sprint | Create a **micro-sprint** with a single bug-fix task |
+
+**Active Sprint Integration Rules**:
+- Bug task is **prepended** to the task queue (not appended) — bugs are priority
+- Bug task gets its own **branch** (`bugfix/{bug_id}`) even within an active sprint
+- Review/audit of the bug fix is **scoped to the bug task only**, not the entire sprint
+- Active sprint progress is **paused** during bug fix, then resumed
+- If the active sprint is mid-review or mid-audit, the bug fix creates a separate review/audit pass
+
+**Micro-sprint** structure:
+- Minimal `grimoires/loa/sprint.md` with one task
+- Registered in Sprint Ledger as a full cycle (type: `bugfix`)
+- Single beads task created (if beads available)
+- Branch: `bugfix/{bug_id}` (not `feature/`)
+
+**Micro-sprint Lifecycle**:
+
+| State | Condition | Marker |
+|-------|-----------|--------|
+| Created | Triage completes, sprint.md written | `triage.md` exists |
+| In Progress | `/implement` begins | beads task `in_progress` |
+| Review | Implementation complete | `reviewer.md` exists |
+| Audit | Review passes | `auditor-sprint-feedback.md` exists |
+| Completed | Audit passes | `COMPLETED` marker created |
+
+**Naming convention**: `sprint-bug-{NNN}` where NNN is a global counter from the Sprint Ledger.
+
+**Interaction with active sprints**: A micro-sprint is **independent** — it has its own review/audit cycle, its own COMPLETED marker, and its own ledger entry. It does not block or modify the active feature sprint.
+
+### FR2: Test-First Execution
+
+Bug mode enforces **test-driven debugging** (zergucci's core request). Test-first is **non-negotiable** — there is no degraded "fix-only" mode.
+
+1. **Write failing test**: Create a test that reproduces the bug
+2. **Verify test fails**: Run the test to confirm it captures the bug
+3. **Implement fix**: Modify source code to fix the root cause
+4. **Verify test passes**: Run the test to confirm the fix works
+5. **Run full test suite**: Ensure no regressions
+
+This is delegated to `/implement` with a `--bug` context flag that instructs the implementing skill to follow the test-first protocol.
+
+#### FR2.1: Acceptable Test Types
+
+The triage phase determines the appropriate test type based on bug classification:
+
+| Test Type | When To Use | Example |
+|-----------|-------------|---------|
+| **Unit test** | Isolated logic bugs, pure function errors | Wrong calculation, bad parsing |
+| **Integration test** | Cross-module failures, API contract violations | Service A calls Service B incorrectly |
+| **E2E test** | User-facing workflow failures | Checkout flow breaks on edge case |
+| **Contract test** | API response format changes, schema drift | Endpoint returns unexpected shape |
+
+**Hierarchy of evidence** (minimum requirement):
+1. At least one **automated test** that reproduces the bug (any type from above)
+2. Plus a **documented reproduction script** in `triage.md` (human-readable steps)
+
+**If no test infrastructure exists**: Bug mode halts during triage with:
+> "No test runner detected. Set up test infrastructure before using /bug. See your framework's testing guide."
+
+This is not a soft warning — test-first is a hard requirement. Projects without tests should use `/plan` to set up testing as a feature first.
+
+### FR3: Quality Gates (Review + Audit)
+
+After implementation, the standard quality gates execute:
+
+1. **`/review-sprint`**: Code review of the bug fix
+   - Verifies test adequately captures the bug
+   - Checks fix doesn't introduce new issues
+   - Validates fix addresses root cause (not just symptoms)
+
+2. **`/audit-sprint`**: Security and quality audit
+   - Standard audit checklist
+   - Creates `COMPLETED` marker on approval
+
+This reuses existing skill infrastructure — no new review/audit skills needed.
+
+### FR4: Autonomous Mode
+
+Bug mode supports autonomous execution through `/run`:
+
+```bash
+# Fix a single bug autonomously
+/run --bug "Login fails with + in email"
+
+# Fix bug from GitHub issue autonomously
+/run --bug --from-issue 42
+```
+
+Autonomous mode follows the same circuit breaker rules as sprint execution:
+- Same Issue: 3 cycles max
+- No Progress: 5 cycles max
+- Cycle Limit: 10 (reduced from 20 for bug scope)
+- Timeout: 2 hours (reduced from 8 for bug scope)
+
+**Human checkpoint requirement**: Autonomous mode creates a **draft PR** but does NOT mark it as ready for merge. The PR enters a `ready-for-human-review` state where the user must:
+1. Review the fix, test, and audit artifacts
+2. Explicitly approve (convert draft → ready)
+
+**Confidence signals** included in the PR description:
+- Reproduction strength: How reliably the test reproduces the bug
+- Test type used (unit/integration/e2e/contract)
+- Files touched and lines changed
+- Risk level: `low` (isolated change) / `medium` (cross-module) / `high` (auth, payments, data)
+
+**High-risk area blocking**: For bugs in sensitive areas (authentication, payments, data migrations, encryption), autonomous mode requires explicit user opt-in via `--allow-high`. Without it, autonomous mode halts after triage with:
+> "Bug is in a high-risk area ({area}). Use `/run --bug --allow-high` to proceed autonomously, or fix interactively with `/bug`."
+
+### FR5: Artifact Trail
+
+Bug mode creates a traceable artifact trail:
+
+```
+grimoires/loa/a2a/bug-{id}/
+├── triage.md              # Bug analysis from triage phase (handoff contract)
+├── reviewer.md            # Review findings
+├── auditor-sprint-feedback.md  # Audit findings
+└── COMPLETED              # Completion marker
+```
+
+**ID scheme**: `{timestamp}-{short_hash}` (e.g., `20260211-a3f2b1`). The timestamp is `YYYYMMDD` and the short hash is 6 hex characters derived from the bug title + timestamp. This ensures:
+- **Uniqueness**: No collisions even for same-titled bugs on different days
+- **Stability**: ID doesn't change if title is edited
+- **Safety**: No user-provided text in filesystem paths (human-readable title stored inside `triage.md`)
+- **Sortability**: Chronological ordering by directory name
+
+If `--from-issue N` is used, the ID also includes the issue number: `20260211-i42-a3f2b1`.
+
+### FR6: Process Compliance Amendment
+
+The NEVER rule "NEVER skip from sprint plan directly to implementation" must be amended to allow bug mode's lightweight path:
+
+**Current**: Code cannot be written without a sprint plan created by `/sprint-plan`
+**Amended**: Code cannot be written without either (a) a sprint plan from `/sprint-plan`, OR (b) a bug triage from `/bug`
+
+This is the **only** process compliance change. All other NEVER/ALWAYS rules remain intact.
 
 ## 5. Technical & Non-Functional Requirements
 
-### Infrastructure (MANDATORY: Existing AWS Stack)
+### TNF1: New Skill — `bug-triage`
 
-| Requirement | Implementation | Reference |
-|-------------|----------------|-----------|
-| loa-finn runs as ECS Fargate service | New task definition in `ecs.tf`, same cluster | `infrastructure/terraform/ecs.tf` |
-| ALB routes to loa-finn | Path-based (`/finn/*`) or subdomain (`finn.{domain}`) routing | `infrastructure/terraform/alb.tf` |
-| Shared Redis (ElastiCache) | loa-finn connects to existing cache.t3.micro Redis 7.0; **capacity plan:** maxmemory-policy `allkeys-lru`; key TTLs enforced (rate-limit: 60s, session: 1h, cache: 5m); expected QPS: <100 at launch; upgrade to cache.t3.small if memory >80% sustained; **circuit breaker:** Redis unavailability degrades rate limiting to in-memory fallback, does NOT block inference | `infrastructure/terraform/elasticache.tf` |
-| Shared PostgreSQL (RDS) | loa-finn connects via existing PgBouncer (port 6432); **capacity plan:** PgBouncer pool_size=20 (per service), max_client_conn=100; expected concurrent connections: <30 at launch; **isolation:** loa-finn uses read-only connection for queries, separate connection pool from loa-freeside writes; **backpressure:** connection queue timeout 5s, return 503 instead of blocking indefinitely | `infrastructure/terraform/rds.tf`, `pgbouncer.tf` |
-| ECR repository for loa-finn | `arrakis-{env}-loa-finn` container registry | `infrastructure/terraform/ecr.tf` |
-| Secrets via AWS Secrets Manager | Model API keys, ES256 keypair, NOWPayments creds | `infrastructure/terraform/secrets.tf` |
-| CloudWatch logging | `/ecs/arrakis-{env}/loa-finn` log group | `infrastructure/terraform/monitoring.tf` |
-| Route53 DNS | Subdomain for loa-finn endpoint | `infrastructure/terraform/route53.tf` |
+A new skill directory at `.claude/skills/bug-triage/`:
 
-### Performance
+| File | Purpose |
+|------|---------|
+| `index.yaml` | Metadata: `danger_level: moderate`, `effort_hint: medium`, `categories: [quality, debugging]` |
+| `SKILL.md` | Triage workflow: input parsing, gap analysis, codebase analysis, sprint integration |
+| `resources/templates/triage.md` | Template for bug analysis document |
 
-| Metric | Target | Rationale |
-|--------|--------|-----------|
-| Inference latency (p95) | <30s (model-dependent) | Streaming mitigates perceived latency |
-| Health check response | <200ms | ALB health check interval |
-| Credit creation latency | <2s from webhook receipt | Conservation guard + DB write |
-| Dashboard data freshness | <60s | Near-real-time spend visibility |
+**Triggers**: `/bug`, `debug bug`, `fix bug`, `bug report`
 
-### Security
+### TNF2: Run Mode Extension
 
-| Requirement | Implementation |
-|-------------|----------------|
-| S2S JWT (ES256) | loa-freeside signs, loa-finn validates via JWKS |
-| NOWPayments webhook HMAC-SHA512 | Existing LVVER pattern in CryptoWebhookService |
-| API keys hashed at rest | Cleartext shown once at creation only |
-| Rate limiting | 4-dimension (community/user/channel/burst) + per-API-key |
-| BYOK key isolation | Envelope encryption (AES-256-GCM + KMS) — already built |
-| Audit trail immutability | Append-only JSONL with conservation guard results |
+Extend `.claude/skills/run-mode/SKILL.md` to support `--bug` flag:
 
-### Existing Assets (DO NOT REBUILD)
+- New entry point: `/run --bug "description"`
+- Reduced circuit breaker limits (10 cycles, 2h timeout)
+- Single-sprint loop: triage → implement → review → audit
+- Same ICE git safety, draft PR creation, post-PR validation
 
-| Asset | Status | Tests | Location |
-|-------|--------|-------|----------|
-| NOWPayments adapter | Production-ready, feature-flagged off | 23 | `themes/sietch/src/packages/adapters/billing/NOWPaymentsAdapter.ts` |
-| Crypto webhook service (LVVER) | Production-ready | 26 | `themes/sietch/src/services/billing/CryptoWebhookService.ts` |
-| Crypto billing routes | Production-ready | 7 | `themes/sietch/src/api/crypto-billing.routes.ts` |
-| Credit pack system | Production-ready | 39 | `themes/sietch/src/packages/core/billing/credit-packs.ts` |
-| Budget manager (BigInt) | Production-ready | Covered | `packages/adapters/agent/budget-manager.ts` |
-| Pool mapping (5 pools) | Production-ready | Covered | `packages/adapters/agent/pool-mapping.ts` |
-| Ensemble accounting | Production-ready | Covered | `packages/adapters/agent/ensemble-accounting.ts` |
-| BYOK encryption | Production-ready | Covered | `packages/adapters/agent/byok-manager.ts` |
-| Discord 22+ commands | Production-ready | Covered | `themes/sietch/src/discord/commands/` |
-| Telegram 10+ commands | Production-ready | Covered | `themes/sietch/src/telegram/commands/` |
-| Terraform (20 modules, 81 .tf files) | Staging-ready | N/A | `infrastructure/terraform/` |
-| Conservation guard | Production-ready | Covered | Multiple locations |
+### TNF3: Sprint Ledger Integration
 
----
+Micro-sprints registered in `grimoires/loa/ledger.json`:
+
+```json
+{
+  "type": "bugfix",
+  "label": "Bug: Login fails with + in email",
+  "sprints": ["sprint-bug-1"],
+  "source_issue": "#42"
+}
+```
+
+### TNF4: Beads Integration
+
+If beads_rust (`br`) is available:
+
+- Create task from triage output: `br create "Fix: {bug_title}" --label bug`
+- Track lifecycle: `br update {id} --status in_progress` → `br close {id}`
+- Link to parent sprint if adding to existing sprint
+
+### TNF5: Golden Path Awareness
+
+While `/bug` is a truename (not a golden path command), the golden path should be **aware** of it:
+
+- `/loa` status should show active bug fixes
+- `/build` should not conflict with active bug micro-sprints
+- `golden-path.sh` state detection should recognize bug cycles
+
+### TNF6: Performance
+
+| Metric | Target |
+|--------|--------|
+| Triage phase completion | <2 minutes (with follow-ups) |
+| Total bug fix cycle (interactive) | <15 minutes for simple bugs |
+| Total bug fix cycle (autonomous) | <30 minutes including review + audit |
 
 ## 6. Scope & Prioritization
 
-### In Scope (P0 — Must Ship)
+### MVP (Sprint 1)
 
-| Track | Issues | What | Why |
-|-------|--------|------|-----|
-| Track 0 | #77, #78 | Production deployment + monitoring | Nothing works without this |
-| Track 1A | #79 | NOWPayments credit purchase flow | Revenue — "we have no way to collect money" |
-| Track 2 | #80 | Per-NFT personality routing bridge | Core differentiator — "talk to your NFT" |
-| Track 3 | #81, #82 | Discord threads + budget dashboard | User surface + admin visibility |
-| Track 4 | #83 | Audit trail + pool transparency | Trust — communities won't adopt without it |
+| # | Feature | Priority |
+|---|---------|----------|
+| 1 | `/bug` command with hybrid triage | P0 |
+| 2 | Micro-sprint creation (when no active sprint) | P0 |
+| 3 | Test-first execution via `/implement --bug` | P0 |
+| 4 | Review + audit gates (reuse existing) | P0 |
+| 5 | Artifact trail in `grimoires/loa/a2a/bug-{id}/` | P0 |
+| 6 | Process compliance amendment | P0 |
+| 7 | Beads integration | P1 |
 
-### In Scope (P1 — Ship Within Days of P0)
+### Sprint 2
 
-| Track | Issues | What | Why |
-|-------|--------|------|-----|
-| Product B | #84 | API key management + developer onboarding | Second revenue stream |
-| Track 3 | #85 | Embeddable web chat widget | Non-Discord user acquisition |
+| # | Feature | Priority |
+|---|---------|----------|
+| 1 | Autonomous mode (`/run --bug`) | P0 |
+| 2 | Sprint Ledger integration (bugfix cycle type) | P0 |
+| 3 | `--from-issue` GitHub issue intake | P1 |
+| 4 | Golden path awareness (`/loa` shows bug status) | P1 |
 
-### Out of Scope (This Cycle)
+### Out of Scope
 
-| Feature | Why Deferred | Reference |
-|---------|-------------|-----------|
-| Soul memory (persistent knowledge) | Post-launch flagship | loa-finn#27 Phase 1 |
-| Inbox privacy (encrypted owner-scoped conversations) | Post-launch | loa-finn#27 Phase 2 |
-| Personality evolution (compound learning) | Post-launch | loa-finn#27 Phase 3 |
-| On-chain autonomous actions (ERC-6551 TBA) | Post-launch | loa-finn#27 Phase 4 |
-| Voice transcription (Whisper) | P2 feature | loa-finn#66 §6 |
-| Natural language scheduling | P2 feature | loa-finn#66 §6 |
-| Agent social network | P2+ feature | loa-finn#66 §6 |
-| WhatsApp/Slack adapters | P2 channel expansion | loa-finn#66 §4 |
-
----
+| Feature | Reason |
+|---------|--------|
+| Bug mode as golden path command | Keeps 5-command golden path pristine; truename for power users |
+| Automated bug detection | Bug mode is reactive (user reports bug), not proactive |
+| Multi-bug batch triage | One bug per `/bug` invocation; use `/run --bug` for sequential autonomous fixes |
+| Integration with external bug trackers (Jira, Linear) | Future consideration; GitHub issues via `--from-issue` is sufficient for MVP |
 
 ## 7. Risks & Dependencies
 
-### Cross-Repo Dependencies
+### Risks
 
-| Dependency | Owner | Status | Blocks |
-|------------|-------|--------|--------|
-| loa-finn Dockerfile | loa-finn#84 | Needed | FR-0.1 (ECS deployment) |
-| loa-finn Prometheus metrics endpoint | loa-finn#90 | Needed | FR-0.5 (monitoring) |
-| loa-finn personality derivation within inference endpoint (returns `X-Pool-Used`/`X-Personality-Id` headers) | loa-finn#88 or #86 | Needed | FR-2.1 (inference enrichment) |
-| loa-finn OpenAPI spec | loa-finn#91 | Needed | FR-5.1 (developer onboarding) |
-| loa-finn x402 permissionless auth | loa-finn#85 | Nice-to-have | FR-3.6 (widget permissionless mode) |
+| # | Risk | Impact | Mitigation |
+|---|------|--------|------------|
+| R1 | Process compliance amendment creates a "loophole" for bypassing planning | Users might use `/bug` for features to skip PRD | Strict bug eligibility policy (FR1.0): must reference observed failure, regression, or stack trace. Classification logged in triage.md. Escalation to `/plan` if not a bug. |
+| R2 | Micro-sprints pollute the Sprint Ledger | Ledger fills with single-task cycles | Ledger type field (`bugfix` vs `feature`) enables filtering. `/ledger` shows counts by type. |
+| R3 | Test-first enforcement blocks codebases without test infrastructure | Bug mode halts if project has no test runner | Triage detects missing test infrastructure and halts with guidance to set up tests via `/plan`. No degraded fix-only mode — test-first is non-negotiable. |
+| R4 | Autonomous bug fixing may loop on hard-to-reproduce bugs | Circuit breaker triggers, wasting compute | Reduced limits (10 cycles, 2h) and enhanced circuit breaker: detect "flaky test" patterns and halt early. |
+| R5 | Autonomous mode produces incorrect fixes without human verification | Wrong patch merged with a misleading test | Draft PR with `ready-for-human-review` state. Confidence signals in PR description. High-risk areas require `--allow-high` opt-in. |
 
-### Technical Risks
+### Dependencies
 
-| Risk | Likelihood | Impact | Mitigation |
-|------|-----------|--------|------------|
-| loa-finn Dockerfile not ready | Medium | Blocks all of Track 0 | Can create Dockerfile from freeside side if needed |
-| ES256 key rotation in production | Low | Auth failures | Test key rotation in staging first |
-| NOWPayments webhook delivery reliability | Low | Missed payments | LVVER pattern + dead-letter + reconciliation already built |
-| Redis memory pressure (shared instance) | Low | Latency | Monitor via CloudWatch, upgrade cache class if needed |
-| ALB path routing conflicts | Low | 502 errors | Test routing rules in staging before production |
+| # | Dependency | Type | Status |
+|---|-----------|------|--------|
+| D1 | Existing `/implement` skill | Reuse | Available |
+| D2 | Existing `/review-sprint` skill | Reuse | Available |
+| D3 | Existing `/audit-sprint` skill | Reuse | Available |
+| D4 | Existing `/run` mode infrastructure | Extend | Available |
+| D5 | Sprint Ledger (`grimoires/loa/ledger.json`) | Extend | Available |
+| D6 | beads_rust (`br`) | Optional integration | Available where installed |
+| D7 | Process compliance rules in `CLAUDE.loa.md` | Amendment needed | Controlled by framework |
 
-### Environment Variables (New for This Cycle)
+## 8. User Stories
 
-```bash
-# NOWPayments (account exists, keys available)
-FEATURE_CRYPTO_PAYMENTS_ENABLED=true
-NOWPAYMENTS_API_KEY=<from env>
-NOWPAYMENTS_IPN_SECRET=<from env>
-NOWPAYMENTS_ENVIRONMENT=production
+### US1: Interactive Bug Fix (Primary Flow)
 
-# loa-finn service (internal only — not public-facing)
-LOA_FINN_URL=http://finn.arrakis-{env}.local:3000  # ECS service discovery, NOT public ALB
-# JWKS hosted by freeside (the JWT issuer), consumed by finn (the verifier)
-FREESIDE_JWKS_URL=https://api.{domain}/.well-known/jwks.json  # finn reads this to validate S2S JWTs
+**As a** Loa power user,
+**I want to** describe a bug and have Loa investigate, write a test, fix it, and review it,
+**So that** I can fix production bugs quickly without losing quality gates.
 
-# Model API keys (in Secrets Manager)
-OPENAI_API_KEY=<secrets manager>
-ANTHROPIC_API_KEY=<secrets manager>
-```
+**Acceptance Criteria**:
+- `/bug "description"` triggers eligibility check then hybrid triage (<2 min)
+- Feature-shaped requests are rejected with escalation to `/plan`
+- Codebase analysis identifies affected files
+- Triage produces complete handoff contract (all required fields in triage.md)
+- Appropriate test type selected based on bug classification
+- Failing test written before fix attempted
+- Fix validated by test passing
+- `/review-sprint` and `/audit-sprint` execute
+- Artifacts saved to `grimoires/loa/a2a/bug-{timestamp}-{hash}/`
 
----
+### US2: Bug Fix During Active Sprint
 
-## 8. Launch Readiness Requirements
+**As a** developer mid-sprint,
+**I want to** fix a production bug without derailing my current sprint,
+**So that** the bug is tracked alongside sprint work.
 
-### Rollback & Disaster Recovery (IMP-001)
+**Acceptance Criteria**:
+- `/bug` detects active sprint and adds bug as priority task
+- Bug task is trackable in beads alongside sprint tasks
+- Review/audit covers bug fix as part of sprint review
+- Sprint completion not blocked by bug task completion
 
-First production deploy requires explicit rollback procedures:
+### US3: Autonomous Bug Fix
 
-| Component | Rollback Strategy |
-|-----------|------------------|
-| ECS task definition | Revert to previous task def revision (`aws ecs update-service --task-definition <prev>`) |
-| Database migrations | Forward-only migrations with expand/contract pattern — no `DROP` in initial migration; old columns retained for 1 cycle |
-| Feature flags | Kill switch for NOWPayments (`FEATURE_CRYPTO_PAYMENTS_ENABLED=false`), personality routing, Discord thread creation |
-| DNS/ALB | Route53 weighted routing for blue/green; ALB target group swap |
-| Secrets rotation | Previous ES256 keypair retained in Secrets Manager for JWT validation overlap window (24h) |
-| Full rollback | Revert ECS services to previous task def, disable feature flags, no schema rollback needed (forward-only) |
+**As a** developer with a known bug,
+**I want to** kick off an autonomous fix cycle and walk away,
+**So that** the bug is fixed, tested, reviewed, and ready for my PR review.
 
-**RTO target:** <15 minutes for ECS rollback, <5 minutes for feature flag kill switch.
+**Acceptance Criteria**:
+- `/run --bug "description"` runs triage → implement → review → audit autonomously
+- Circuit breaker halts on stuck bugs (10 cycles, 2h timeout)
+- Draft PR created in `ready-for-human-review` state (not auto-merged)
+- PR includes confidence signals (reproduction strength, test type, risk level)
+- High-risk areas (auth, payments, data) blocked unless `--allow-high` flag used
+- ICE git safety prevents push to protected branches
 
-### Database Migration Strategy (IMP-006)
+### US4: Bug Fix from GitHub Issue
 
-ECS rolling deploys with shared database require:
+**As a** developer triaging GitHub issues,
+**I want to** feed a GitHub issue directly into bug mode,
+**So that** issue context (title, body, comments) informs the triage.
 
-| Rule | Implementation |
-|------|---------------|
-| Forward-only migrations | No `DROP COLUMN`, `DROP TABLE`, or destructive DDL in initial deploy |
-| Expand/contract pattern | Phase 1: add new columns/tables (backward-compatible). Phase 2 (next cycle): remove deprecated columns |
-| Pre-deploy migration step | Migrations run as ECS task (one-shot) before service update, not during app startup |
-| Zero-downtime constraint | Old code must work with new schema; new code must work with old schema during rolling update |
-| Migration ownership | loa-freeside owns all schema migrations; loa-finn reads only via views or explicit grants |
-| Rollback testing | Every migration tested in staging with rollback to previous task def to verify backward compatibility |
-
-### Go/No-Go Launch Gate (IMP-002)
-
-Before production deploy, an explicit checklist must pass:
-
-| Gate | Verification | Pass Criteria |
-|------|-------------|---------------|
-| E2E payment | NOWPayments sandbox → webhook → credit mint | Credits appear in account, conservation guard passes |
-| S2S JWT exchange | loa-freeside → loa-finn authenticated inference via real ALB/service discovery in staging | Streamed response received, JWT claims (`iss`, `aud`, `exp`) validated; finn rejects expired/wrong-aud tokens |
-| JWT rotation | Rotate ES256 keypair in Secrets Manager, verify both old and new keys work during overlap window | Old key valid for 24h after rotation; new key used for signing; finn fetches updated JWKS within 60s |
-| Personality routing | Two different NFTs → different pool/personality | `X-Pool-Used` and `X-Personality-Id` differ |
-| Webhook delivery | NOWPayments IPN → ALB → credit mint | Idempotent replay returns 200, no duplicates |
-| Monitoring | Conservation guard failure → alert | Slack notification within 60s |
-| Health checks | Both services pass ALB health checks | 200 on `/health` for 5 consecutive checks |
-| Rollback | Feature flag kill switch tested | Payments disabled within 5 minutes |
-| Load baseline | Staging load test (10 concurrent users) | No 5xx errors, p95 latency within targets |
-
-**Decision:** All gates must pass in staging before production deploy. Any failure = no-go.
+**Acceptance Criteria**:
+- `/bug --from-issue 42` fetches issue via `gh issue view`
+- Issue title, body, and comments parsed as triage input
+- Follow-up questions only for gaps not covered by issue
 
 ---
 
-## 9. Dependency Graph
-
-```
-Track 0: Deploy (#77)
-    ├── FR-0.1: ECS task def + service (loa-finn)
-    ├── FR-0.2: Docker Compose (local dev)
-    ├── FR-0.3: S2S JWT exchange
-    └── FR-0.4: First inference in production
-         │
-         ├──► Track 0: Monitor (#78)
-         │    ├── FR-0.5: Prometheus
-         │    ├── FR-0.6: CloudWatch dashboards
-         │    └── FR-0.7: Alerting
-         │
-         ├──► Track 1A: Pay (#79)
-         │    ├── FR-1.1: Enable NOWPayments flag
-         │    ├── FR-1.2: Wire webhook → credit mint
-         │    ├── FR-1.3: Credit pack tiers
-         │    ├── FR-1.4: Discord /buy-credits
-         │    └── FR-1.5: Telegram /buy-credits
-         │
-         ├──► Track 2: Personalize (#80)
-         │    ├── FR-2.1: Inference request enrichment (nft_id in JWT)
-         │    ├── FR-2.2: Pool/personality metadata headers in response
-         │    └── FR-2.3: Anti-narration enforcement
-         │         │
-         │         └──► Track 3: Discord Threads (#81)
-         │              ├── FR-3.1: /my-agent thread creation
-         │              ├── FR-3.2: Thread routing
-         │              └── FR-3.3: /agent-info
-         │
-         ├──► Track 3: Dashboard (#82)
-         │    ├── FR-3.4: Usage dashboard
-         │    └── FR-3.5: Admin API endpoints
-         │
-         ├──► Track 4: Audit (#83)
-         │    ├── FR-4.1: JSONL audit trail
-         │    ├── FR-4.2: Pool transparency
-         │    └── FR-4.3: Conservation endpoint
-         │
-         ├──► Product B: API Keys (#84)
-         │    ├── FR-5.1: Key generation
-         │    ├── FR-5.2: Key auth on inference
-         │    ├── FR-5.3: Per-key rate limits
-         │    └── FR-5.4: Self-service portal
-         │
-         └──► Track 3: Web Chat (#85)
-              ├── FR-3.6: Embeddable widget
-              └── FR-3.7: Standalone chat page
-```
-
-**Critical path:** Deploy (#77) → Pay (#79) + Personalize (#80) → Discord Threads (#81)
-
----
-
-## 10. The Competitive Positioning
-
-From loa-finn#66 §9:
-
-```
-Our moat is the intersection of:
-  1. On-chain identity      → Token-gated model access (conviction scoring)
-  2. Multi-model orchestration → 5 pools, ensemble strategies, per-model cost attribution
-  3. Cost governance         → BigInt micro-USD, conservation invariants, budget atomicity
-
-No competitor offers all three.
-```
-
-**vs. Nanobot:** They have 9 channels, we have 2 (Discord, Telegram) + API. But they have no cost governance, no token-gating, no NFT identity. We win on infrastructure depth.
-
-**vs. Hive:** They have goal-driven agent generation and self-improvement. But they have no NFT identity, no on-chain gating, no formal economic verification. We win on the capability market model.
-
-**This cycle closes the gap between "infrastructure advantage" and "users can experience it."**
-
----
-
-## Appendix A: Issue Index
-
-| Issue | Track | Title | Blocked By |
-|-------|-------|-------|------------|
-| [#77](https://github.com/0xHoneyJar/loa-freeside/issues/77) | Track 0 | Production Deployment | loa-finn#84 (Dockerfile) |
-| [#78](https://github.com/0xHoneyJar/loa-freeside/issues/78) | Track 0 | Production Monitoring | #77 |
-| [#79](https://github.com/0xHoneyJar/loa-freeside/issues/79) | Track 1A | NOWPayments Credit Purchase | Nothing (adapter built) |
-| [#80](https://github.com/0xHoneyJar/loa-freeside/issues/80) | Track 2 | Per-NFT Personality Routing | loa-finn#88 or #86 (personality derivation in inference endpoint) |
-| [#81](https://github.com/0xHoneyJar/loa-freeside/issues/81) | Track 3 | Per-NFT Discord Threads | #80, #77 |
-| [#82](https://github.com/0xHoneyJar/loa-freeside/issues/82) | Track 3 | Community Budget Dashboard | #77 |
-| [#83](https://github.com/0xHoneyJar/loa-freeside/issues/83) | Track 4 | Billing Audit Trail | #77 |
-| [#84](https://github.com/0xHoneyJar/loa-freeside/issues/84) | Product B | API Key Management | #77, loa-finn#91 |
-| [#85](https://github.com/0xHoneyJar/loa-freeside/issues/85) | Track 3 | Web Chat Widget | #77, #80 |
+*Generated by Loa plan-and-analyze from Issue #278 (zergucci) with codebase grounding.*
+*Revised per Flatline Protocol review: 3 HIGH_CONSENSUS auto-integrated, 1 DISPUTED resolved (remove fix-only mode), 5 BLOCKERS addressed (eligibility policy, test hierarchy, micro-sprint lifecycle, safe IDs, human checkpoint).*
