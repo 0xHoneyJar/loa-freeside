@@ -1,35 +1,37 @@
 {
-  "plan_id": "plan-20260211-bridgebuilder-round2",
-  "branch": "feature/hounfour-integration",
-  "state": "JACKED_OUT",
+  "plan_id": "plan-20260211-hounfour-endgame",
+  "branch": "feature/hounfour-endgame",
+  "state": "RUNNING",
   "timestamps": {
-    "started": "2026-02-11T09:30:00Z",
-    "last_activity": "2026-02-11T10:15:00Z"
+    "started": "2026-02-11T02:10:00Z",
+    "last_activity": "2026-02-11T02:10:00Z"
   },
   "sprints": {
-    "total": 2,
-    "completed": 2,
-    "current": null,
+    "total": 4,
+    "completed": 0,
+    "current": "sprint-1",
     "list": [
-      {"id": "sprint-1", "status": "completed", "cycles": 1},
-      {"id": "sprint-2", "status": "completed", "cycles": 1}
+      {"id": "sprint-1", "status": "pending", "cycles": 0},
+      {"id": "sprint-2", "status": "pending", "cycles": 0},
+      {"id": "sprint-3", "status": "pending", "cycles": 0},
+      {"id": "sprint-4", "status": "pending", "cycles": 0}
     ]
   },
   "options": {
     "from": 1,
-    "to": 2,
+    "to": 4,
     "max_cycles": 20,
     "timeout_hours": 8
   },
   "metrics": {
-    "total_cycles": 2,
-    "total_files_changed": 22,
-    "total_findings_fixed": 6
+    "total_cycles": 0,
+    "total_files_changed": 0,
+    "total_findings_fixed": 0
   },
   "context": {
-    "sprint_plan": "grimoires/loa/sprint-bridgebuilder-round2.md",
-    "ledger_cycle": "cycle-014",
-    "global_sprint_ids": [197, 198],
-    "source": "Bridgebuilder Round 2 — Protocol Versioning & Capability Architecture"
+    "sprint_plan": "grimoires/loa/sprint-hounfour-endgame.md",
+    "ledger_cycle": "cycle-015",
+    "global_sprint_ids": [199, 200, 201, 202],
+    "source": "The Last Spice — Hounfour Endgame (RFC #31 Final 20%)"
   }
 }

@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "next_sprint_number": 199,
-  "active_cycle": "cycle-007",
+  "next_sprint_number": 203,
+  "active_cycle": "cycle-015",
   "cycles": [
     {
       "id": "cycle-001",
@@ -214,6 +214,21 @@
       "sprints": [
         {"global_id": 197, "local_label": "sprint-1", "status": "completed"},
         {"global_id": 198, "local_label": "sprint-2", "status": "completed"}
+      ]
+    },
+    {
+      "id": "cycle-015",
+      "label": "The Last Spice — Hounfour Endgame (RFC #31 Final 20%)",
+      "status": "active",
+      "created": "2026-02-11T11:42:00Z",
+      "prd": "grimoires/loa/prd-hounfour-endgame.md",
+      "sdd": "grimoires/loa/sdd-hounfour-endgame.md",
+      "sprint_plan": "grimoires/loa/sprint-hounfour-endgame.md",
+      "sprints": [
+        {"global_id": 199, "local_label": "sprint-1", "status": "pending"},
+        {"global_id": 200, "local_label": "sprint-2", "status": "pending"},
+        {"global_id": 201, "local_label": "sprint-3", "status": "pending"},
+        {"global_id": 202, "local_label": "sprint-4", "status": "pending"}
       ]
     }
   ]
