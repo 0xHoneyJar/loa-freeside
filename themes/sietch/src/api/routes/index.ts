@@ -130,3 +130,10 @@ export type { AgentRoutesDeps, InternalAgentRoutesDeps } from './agents.routes.j
  */
 export { createAgentConfigRoutes } from './admin/agent-config.js';
 export type { AgentConfigRoutesDeps, AgentConfigStore, AgentConfigAuditLogger, BudgetRefreshTrigger } from './admin/agent-config.js';
+
+/**
+ * BYOK admin routes (Hounfour Endgame — Sprint 3)
+ * CRUD for community BYOK API key management.
+ */
+export { createBYOKRoutes } from './admin/byok.routes.js';
+export type { BYOKRoutesDeps } from './admin/byok.routes.js';

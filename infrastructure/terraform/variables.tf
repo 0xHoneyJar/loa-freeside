@@ -208,10 +208,23 @@ variable "agent_enabled" {
   default     = "false"
 }
 
+variable "ensemble_enabled" {
+  description = "Enable ensemble orchestration (ENSEMBLE_ENABLED env var)"
+  type        = string
+  default     = "false"
+}
+
 variable "loa_finn_base_url" {
   description = "loa-finn service base URL"
   type        = string
   default     = "http://loa-finn:3000"
+}
+
+# SNS Alarm Topic
+variable "sns_alarm_topic_arn" {
+  description = "SNS topic ARN for CloudWatch alarm notifications (empty = no notifications)"
+  type        = string
+  default     = ""
 }
 
 # Observability

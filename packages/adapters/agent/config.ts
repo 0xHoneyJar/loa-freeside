@@ -117,6 +117,14 @@ export interface UsageReceiverConfig {
   poolClaimEnforcement: PoolClaimEnforcement;
 }
 
+/** BYOK configuration */
+export interface BYOKConfig {
+  /** Whether BYOK is enabled (BYOK_ENABLED, default: false) */
+  enabled: boolean;
+  /** Daily request quota per community (BYOK_DAILY_QUOTA, default: 10_000) */
+  dailyQuota: number;
+}
+
 /** Full agent gateway configuration */
 export interface AgentGatewayConfig {
   /** Whether agent gateway is enabled */
@@ -139,6 +147,8 @@ export interface AgentGatewayConfig {
   s2sValidation: S2SValidationConfig;
   /** Usage receiver */
   usageReceiver: UsageReceiverConfig;
+  /** BYOK (Bring Your Own Key) configuration — FR-4 */
+  byok: BYOKConfig;
 }
 
 // --------------------------------------------------------------------------
@@ -170,6 +180,9 @@ const ENV_VARS = {
   USAGE_MAX_REPORT_ID_LENGTH: 'USAGE_MAX_REPORT_ID_LENGTH',
   // Pool claim enforcement (F-14)
   AGENT_POOL_CLAIM_ENFORCEMENT: 'AGENT_POOL_CLAIM_ENFORCEMENT',
+  // BYOK (FR-4)
+  BYOK_ENABLED: 'BYOK_ENABLED',
+  BYOK_DAILY_QUOTA: 'BYOK_DAILY_QUOTA',
 } as const;
 
 // --------------------------------------------------------------------------
@@ -198,7 +211,10 @@ const DEFAULTS = {
   // Usage receiver defaults
   usageMaxCostMicroUsd: 100_000_000_000n, // $100K (PRD cap)
   usageMaxReportIdLength: 256,
-  poolClaimEnforcement: 'warn' as PoolClaimEnforcement,
+  poolClaimEnforcement: 'reject' as PoolClaimEnforcement,
+  // BYOK defaults (FR-4)
+  byokEnabled: false,
+  byokDailyQuota: 10_000,
 };
 
 // --------------------------------------------------------------------------
@@ -377,6 +393,12 @@ export function loadAgentGatewayConfig(
       maxReportIdLength: parseIntEnv(env[ENV_VARS.USAGE_MAX_REPORT_ID_LENGTH], DEFAULTS.usageMaxReportIdLength),
       poolClaimEnforcement: parsePoolClaimEnforcement(env[ENV_VARS.AGENT_POOL_CLAIM_ENFORCEMENT]),
       ...overrides?.usageReceiver,
+    },
+
+    byok: {
+      enabled: parseBoolEnv(env[ENV_VARS.BYOK_ENABLED], DEFAULTS.byokEnabled),
+      dailyQuota: parseIntEnv(env[ENV_VARS.BYOK_DAILY_QUOTA], DEFAULTS.byokDailyQuota),
+      ...overrides?.byok,
     },
   };
 

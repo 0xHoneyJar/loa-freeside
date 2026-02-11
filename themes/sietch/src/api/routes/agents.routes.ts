@@ -441,6 +441,12 @@ function handleGatewayError(err: unknown, res: Response): void {
       REQ_HASH_MISMATCH: 'Request body integrity check failed',
       ENSEMBLE_DISABLED: 'Ensemble orchestration is not enabled',
       ENSEMBLE_NOT_AVAILABLE: 'Ensemble orchestration is not available for your tier',
+      BYOK_QUOTA_EXCEEDED: 'Daily BYOK request quota exceeded',
+      BYOK_SERVICE_UNAVAILABLE: 'BYOK service temporarily unavailable',
+      BYOK_UNKNOWN_PROVIDER: 'Unknown BYOK provider',
+      BYOK_UNKNOWN_OPERATION: 'Unknown BYOK operation',
+      BYOK_SSRF_BLOCKED: 'Request blocked by security policy',
+      BYOK_REPLAY_DETECTED: 'Duplicate request detected',
     };
     const safeMessage = SAFE_MESSAGES[error.code] ?? (error.statusCode < 500 ? 'Request failed' : 'An unexpected error occurred');
 
