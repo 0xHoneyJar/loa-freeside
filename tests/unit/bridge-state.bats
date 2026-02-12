@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # Unit tests for bridge-state.sh - Bridge state management
 # Sprint 2: Bridge Core — state transitions, flatline, resume
+# Sprint 1 cycle-006: flock atomic updates, crash safety, praise in by_severity
 
 setup() {
     BATS_TEST_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
@@ -48,7 +49,7 @@ skip_if_deps_missing() {
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-test-123" 3
+    init_bridge_state "bridge-20260213-a00001" 3
 
     [ -f "$TEST_TMPDIR/.run/bridge-state.json" ]
     local state
@@ -60,13 +61,13 @@ skip_if_deps_missing() {
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-abc" 5
+    init_bridge_state "bridge-20260213-a00002" 5
 
     local bridge_id depth
     bridge_id=$(jq -r '.bridge_id' "$TEST_TMPDIR/.run/bridge-state.json")
     depth=$(jq '.config.depth' "$TEST_TMPDIR/.run/bridge-state.json")
 
-    [ "$bridge_id" = "bridge-abc" ]
+    [ "$bridge_id" = "bridge-20260213-a00002" ]
     [ "$depth" = "5" ]
 }
 
@@ -74,7 +75,7 @@ skip_if_deps_missing() {
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-v" 3
+    init_bridge_state "bridge-20260213-a00003" 3
 
     local schema
     schema=$(jq '.schema_version' "$TEST_TMPDIR/.run/bridge-state.json")
@@ -89,7 +90,7 @@ skip_if_deps_missing() {
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-t1" 3
+    init_bridge_state "bridge-20260213-a00011" 3
     run update_bridge_state "JACK_IN"
     [ "$status" -eq 0 ]
 
@@ -102,7 +103,7 @@ skip_if_deps_missing() {
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-t2" 3
+    init_bridge_state "bridge-20260213-a00012" 3
     update_bridge_state "JACK_IN"
     run update_bridge_state "ITERATING"
     [ "$status" -eq 0 ]
@@ -116,7 +117,7 @@ skip_if_deps_missing() {
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-t3" 3
+    init_bridge_state "bridge-20260213-a00013" 3
     update_bridge_state "JACK_IN"
     update_bridge_state "ITERATING"
     run update_bridge_state "FINALIZING"
@@ -127,7 +128,7 @@ skip_if_deps_missing() {
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-t4" 3
+    init_bridge_state "bridge-20260213-a00014" 3
     update_bridge_state "JACK_IN"
     update_bridge_state "ITERATING"
     update_bridge_state "FINALIZING"
@@ -143,7 +144,7 @@ skip_if_deps_missing() {
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-t5" 3
+    init_bridge_state "bridge-20260213-a00015" 3
     run update_bridge_state "ITERATING"
     [ "$status" -ne 0 ]
 }
@@ -152,7 +153,7 @@ skip_if_deps_missing() {
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-h1" 3
+    init_bridge_state "bridge-20260213-bb0001" 3
     update_bridge_state "JACK_IN"
     run update_bridge_state "HALTED"
     [ "$status" -eq 0 ]
@@ -166,7 +167,7 @@ skip_if_deps_missing() {
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-h2" 3
+    init_bridge_state "bridge-20260213-bb0002" 3
     update_bridge_state "JACK_IN"
     update_bridge_state "ITERATING"
     run update_bridge_state "HALTED"
@@ -181,7 +182,7 @@ skip_if_deps_missing() {
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-h3" 3
+    init_bridge_state "bridge-20260213-bb0003" 3
     update_bridge_state "JACK_IN"
     update_bridge_state "ITERATING"
     update_bridge_state "FINALIZING"
@@ -193,7 +194,7 @@ skip_if_deps_missing() {
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-h4" 3
+    init_bridge_state "bridge-20260213-bb0004" 3
     update_bridge_state "JACK_IN"
     update_bridge_state "HALTED"
     run update_bridge_state "ITERATING"
@@ -208,7 +209,7 @@ skip_if_deps_missing() {
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-h5" 3
+    init_bridge_state "bridge-20260213-bb0005" 3
     update_bridge_state "JACK_IN"
     update_bridge_state "HALTED"
     run update_bridge_state "JACKED_OUT"
@@ -223,7 +224,7 @@ skip_if_deps_missing() {
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-s1" 3
+    init_bridge_state "bridge-20260213-cc0001" 3
     update_bridge_state "JACK_IN"
     update_bridge_state "ITERATING"
     run update_bridge_state "ITERATING"
@@ -238,7 +239,7 @@ skip_if_deps_missing() {
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-t6" 3
+    init_bridge_state "bridge-20260213-a00016" 3
     update_bridge_state "JACK_IN"
     update_bridge_state "ITERATING"
     update_bridge_state "FINALIZING"
@@ -255,7 +256,7 @@ skip_if_deps_missing() {
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-i1" 3
+    init_bridge_state "bridge-20260213-dd0001" 3
     update_iteration 1 "in_progress" "existing"
 
     local count
@@ -271,7 +272,7 @@ skip_if_deps_missing() {
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-i2" 3
+    init_bridge_state "bridge-20260213-dd0002" 3
     update_iteration 1 "in_progress" "existing"
     update_iteration 1 "completed" "existing"
 
@@ -282,6 +283,18 @@ skip_if_deps_missing() {
     [ "$state" = "completed" ]
 }
 
+@test "bridge-state: new iteration includes praise in by_severity" {
+    skip_if_deps_missing
+    source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
+
+    init_bridge_state "bridge-20260213-dd0003" 3
+    update_iteration 1 "in_progress" "existing"
+
+    local praise
+    praise=$(jq '.iterations[0].bridgebuilder.by_severity.praise // "missing"' "$TEST_TMPDIR/.run/bridge-state.json")
+    [ "$praise" = "0" ]
+}
+
 # =============================================================================
 # Iteration Findings
 # =============================================================================
@@ -290,14 +303,14 @@ skip_if_deps_missing() {
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-if1" 3
+    init_bridge_state "bridge-20260213-ee0001" 3
     update_iteration 1 "in_progress" "existing"
 
     # Create findings summary JSON
     cat > "$TEST_TMPDIR/findings.json" <<'EOF'
 {
     "total": 10,
-    "by_severity": {"critical": 2, "high": 3, "medium": 3, "low": 1, "vision": 1},
+    "by_severity": {"critical": 2, "high": 3, "medium": 3, "low": 1, "vision": 1, "praise": 0},
     "severity_weighted_score": 42
 }
 EOF
@@ -315,13 +328,13 @@ EOF
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-if2" 3
+    init_bridge_state "bridge-20260213-ee0002" 3
     update_iteration 1 "in_progress" "existing"
 
     cat > "$TEST_TMPDIR/findings.json" <<'EOF'
 {
     "total": 5,
-    "by_severity": {"critical": 1, "high": 2, "medium": 1, "low": 0, "vision": 1},
+    "by_severity": {"critical": 1, "high": 2, "medium": 1, "low": 0, "vision": 1, "praise": 0},
     "severity_weighted_score": 22
 }
 EOF
@@ -337,11 +350,33 @@ EOF
     [ "$vision" = "1" ]
 }
 
+@test "bridge-state: update_iteration_findings sets praise count" {
+    skip_if_deps_missing
+    source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
+
+    init_bridge_state "bridge-20260213-ee0003" 3
+    update_iteration 1 "in_progress" "existing"
+
+    cat > "$TEST_TMPDIR/findings.json" <<'EOF'
+{
+    "total": 3,
+    "by_severity": {"critical": 0, "high": 1, "medium": 0, "low": 0, "vision": 0, "praise": 2},
+    "severity_weighted_score": 5
+}
+EOF
+
+    update_iteration_findings 1 "$TEST_TMPDIR/findings.json"
+
+    local praise
+    praise=$(jq '.iterations[0].bridgebuilder.by_severity.praise' "$TEST_TMPDIR/.run/bridge-state.json")
+    [ "$praise" = "2" ]
+}
+
 @test "bridge-state: update_iteration_findings fails with missing files" {
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-if3" 3
+    init_bridge_state "bridge-20260213-ee0004" 3
 
     run update_iteration_findings 1 "/nonexistent/findings.json"
     [ "$status" -ne 0 ]
@@ -355,7 +390,7 @@ EOF
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-f1" 3
+    init_bridge_state "bridge-20260213-ff0001" 3
     local result
     result=$(is_flatlined 2)
     [ "$result" = "false" ]
@@ -365,7 +400,7 @@ EOF
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-f2" 3
+    init_bridge_state "bridge-20260213-ff0002" 3
     update_flatline 15.5 1
 
     local initial
@@ -377,7 +412,7 @@ EOF
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-f3" 3 false 0.05
+    init_bridge_state "bridge-20260213-ff0003" 3 false 0.05
     update_flatline 100 1  # Initial score
     update_flatline 3 2    # 3/100 = 0.03 < 0.05 → below threshold
     update_flatline 2 3    # 2/100 = 0.02 < 0.05 → below threshold again
@@ -391,7 +426,7 @@ EOF
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-f4" 3 false 0.05
+    init_bridge_state "bridge-20260213-ff0004" 3 false 0.05
     update_flatline 100 1  # Initial score
     update_flatline 3 2    # Below threshold
     update_flatline 50 3   # 50/100 = 0.50 > 0.05 → above threshold (resets)
@@ -409,7 +444,7 @@ EOF
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-m1" 3
+    init_bridge_state "bridge-20260213-ab0001" 3
     update_metrics 3 10 5 1
     update_metrics 2 8 3 0
 
@@ -433,7 +468,7 @@ EOF
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-r1" 3
+    init_bridge_state "bridge-20260213-ab0011" 3
     run read_bridge_state
     [ "$status" -eq 0 ]
 }
@@ -442,7 +477,7 @@ EOF
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-r2" 3
+    init_bridge_state "bridge-20260213-ab0012" 3
     # Corrupt schema version
     jq '.schema_version = 999' "$TEST_TMPDIR/.run/bridge-state.json" > "$TEST_TMPDIR/.run/bridge-state.json.tmp"
     mv "$TEST_TMPDIR/.run/bridge-state.json.tmp" "$TEST_TMPDIR/.run/bridge-state.json"
@@ -455,17 +490,17 @@ EOF
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-g1" 3
+    init_bridge_state "bridge-20260213-ab0021" 3
     local id
     id=$(get_bridge_id)
-    [ "$id" = "bridge-g1" ]
+    [ "$id" = "bridge-20260213-ab0021" ]
 }
 
 @test "bridge-state: get_bridge_state returns current state" {
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-g2" 3
+    init_bridge_state "bridge-20260213-ab0022" 3
     local state
     state=$(get_bridge_state)
     [ "$state" = "PREFLIGHT" ]
@@ -475,21 +510,21 @@ EOF
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-a1" 3
+    init_bridge_state "bridge-20260213-ab0031" 3
 
     # Verify no .tmp files remain
     [ ! -f "$TEST_TMPDIR/.run/bridge-state.json.tmp" ]
 }
 
 # =============================================================================
-# last_score tracking (iteration 3 test addition)
+# last_score tracking
 # =============================================================================
 
 @test "bridge-state: update_flatline sets last_score on iteration 1" {
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-ls1" 3
+    init_bridge_state "bridge-20260213-ac0001" 3
     update_flatline 15.5 1
 
     local last_score
@@ -501,7 +536,7 @@ EOF
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-ls2" 3 false 0.05
+    init_bridge_state "bridge-20260213-ac0002" 3 false 0.05
     update_flatline 100 1
     update_flatline 50 2
 
@@ -514,7 +549,7 @@ EOF
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-ls3" 3 false 0.05
+    init_bridge_state "bridge-20260213-ac0003" 3 false 0.05
     update_flatline 100 1
     update_flatline 3 2    # Below threshold
 
@@ -524,14 +559,14 @@ EOF
 }
 
 # =============================================================================
-# get_current_iteration (iteration 3 test addition)
+# get_current_iteration
 # =============================================================================
 
 @test "bridge-state: get_current_iteration returns 0 with no iterations" {
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-ci1" 3
+    init_bridge_state "bridge-20260213-ad0001" 3
     local count
     count=$(get_current_iteration)
     [ "$count" = "0" ]
@@ -541,7 +576,7 @@ EOF
     skip_if_deps_missing
     source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
 
-    init_bridge_state "bridge-ci2" 3
+    init_bridge_state "bridge-20260213-ad0002" 3
     update_bridge_state "JACK_IN"
     update_bridge_state "ITERATING"
     update_iteration 1 "completed" "existing"
@@ -550,4 +585,109 @@ EOF
     local count
     count=$(get_current_iteration)
     [ "$count" = "2" ]
+}
+
+# =============================================================================
+# Flock Atomic Updates (cycle-006)
+# =============================================================================
+
+@test "bridge-state: atomic_state_update creates and removes lock" {
+    skip_if_deps_missing
+    if ! command -v flock &>/dev/null; then
+        skip "flock not available"
+    fi
+    source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
+
+    init_bridge_state "bridge-20260213-ae0001" 3
+
+    # Perform an atomic update
+    atomic_state_update '.state = "test"'
+
+    # Verify state changed
+    local state
+    state=$(jq -r '.state' "$TEST_TMPDIR/.run/bridge-state.json")
+    [ "$state" = "test" ]
+}
+
+@test "bridge-state: atomic_state_update no tmp files remain after success" {
+    skip_if_deps_missing
+    if ! command -v flock &>/dev/null; then
+        skip "flock not available"
+    fi
+    source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
+
+    init_bridge_state "bridge-20260213-ae0002" 3
+    atomic_state_update '.state = "test"'
+
+    # No temporary files should remain (use find to avoid pipefail issues with ls glob)
+    local tmp_count
+    tmp_count=$(find "$TEST_TMPDIR/.run" -name "bridge-state.json.tmp*" 2>/dev/null | wc -l)
+    [ "$tmp_count" = "0" ]
+}
+
+@test "bridge-state: atomic_state_update fails gracefully on bad jq filter" {
+    skip_if_deps_missing
+    if ! command -v flock &>/dev/null; then
+        skip "flock not available"
+    fi
+    source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
+
+    init_bridge_state "bridge-20260213-ae0003" 3
+
+    # Bad jq filter should fail and not corrupt state
+    run atomic_state_update '.this.is.invalid | explode'
+    [ "$status" -ne 0 ]
+
+    # Original state should be unchanged
+    local state
+    state=$(jq -r '.state' "$TEST_TMPDIR/.run/bridge-state.json")
+    [ "$state" = "PREFLIGHT" ]
+}
+
+@test "bridge-state: update_bridge_state uses flock when available" {
+    skip_if_deps_missing
+    if ! command -v flock &>/dev/null; then
+        skip "flock not available"
+    fi
+    source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
+
+    init_bridge_state "bridge-20260213-ae0004" 3
+
+    # This should use atomic_state_update internally
+    update_bridge_state "JACK_IN"
+
+    local state
+    state=$(jq -r '.state' "$TEST_TMPDIR/.run/bridge-state.json")
+    [ "$state" = "JACK_IN" ]
+}
+
+@test "bridge-state: crash safety - no corruption on failed jq" {
+    skip_if_deps_missing
+    if ! command -v flock &>/dev/null; then
+        skip "flock not available"
+    fi
+    source "$TEST_TMPDIR/.claude/scripts/bridge-state.sh"
+
+    init_bridge_state "bridge-20260213-ae0005" 3
+    update_bridge_state "JACK_IN"
+    update_bridge_state "ITERATING"
+
+    # Get current state before crash attempt
+    local before
+    before=$(jq -r '.state' "$TEST_TMPDIR/.run/bridge-state.json")
+    [ "$before" = "ITERATING" ]
+
+    # Attempt a bad atomic update (should fail)
+    run atomic_state_update 'invalid_filter'
+    [ "$status" -ne 0 ]
+
+    # State should be unchanged after failed write
+    local after
+    after=$(jq -r '.state' "$TEST_TMPDIR/.run/bridge-state.json")
+    [ "$after" = "ITERATING" ]
+
+    # No temp files left behind (use find to avoid pipefail issues with ls glob)
+    local tmp_count
+    tmp_count=$(find "$TEST_TMPDIR/.run" -name "bridge-state.json.tmp*" 2>/dev/null | wc -l)
+    [ "$tmp_count" = "0" ]
 }
