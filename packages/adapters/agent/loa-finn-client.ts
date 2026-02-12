@@ -26,6 +26,7 @@ import type {
   UsageInfo,
 } from '@arrakis/core/ports';
 import type { LoaFinnConfig } from './config.js';
+import { CONTRACT_VERSION, validateContractCompatibility } from './contract-version.js';
 
 // --------------------------------------------------------------------------
 // Types
@@ -152,6 +153,9 @@ export class LoaFinnClient {
         await this.throwOnError(response);
       }
 
+      // AC-2.21: fail-fast contract version negotiation
+      this.validatePeerContractVersion(response);
+
       return (await response.json()) as AgentInvokeResponse;
     });
   }
@@ -192,6 +196,9 @@ export class LoaFinnClient {
     if (!response.ok) {
       await this.throwOnError(response);
     }
+
+    // AC-2.21: fail-fast contract version negotiation
+    this.validatePeerContractVersion(response);
 
     if (!response.body) {
       throw new LoaFinnError('Stream response has no body', 'STREAM_ERROR');
@@ -436,6 +443,31 @@ export class LoaFinnClient {
     };
   }
 
+  /**
+   * Validate peer contract version from response header (AC-2.21).
+   * Fail-fast: if loa-finn declares an incompatible contract version,
+   * throw immediately rather than processing a potentially malformed response.
+   *
+   * Missing header is tolerated (backward compat with older loa-finn).
+   */
+  private validatePeerContractVersion(response: Response): void {
+    const peerVersion = response.headers.get('x-contract-version');
+    if (!peerVersion) return; // Header absent — older loa-finn, tolerate
+
+    const result = validateContractCompatibility(CONTRACT_VERSION, peerVersion);
+    if (!result.compatible) {
+      this.log.error(
+        { ourVersion: CONTRACT_VERSION, peerVersion, reason: result.reason },
+        'CONTRACT_VERSION_MISMATCH: incompatible loa-finn contract version',
+      );
+      throw new ContractVersionMismatchError(
+        `Contract version mismatch: ours=${CONTRACT_VERSION}, peer=${peerVersion} — ${result.reason}`,
+        CONTRACT_VERSION,
+        peerVersion,
+      );
+    }
+  }
+
   private async throwOnError(response: Response): Promise<never> {
     let body = '';
     try {
@@ -519,6 +551,22 @@ export class JtiReplayError extends LoaFinnError {
   constructor(message: string) {
     super(message, 'JTI_REPLAY', 409);
     this.name = 'JtiReplayError';
+  }
+}
+
+/**
+ * Contract version mismatch — arrakis and loa-finn have incompatible contract versions.
+ * Non-retryable. Requires deployment coordination to resolve.
+ * @see AC-2.21 — fail-fast version negotiation
+ */
+export class ContractVersionMismatchError extends LoaFinnError {
+  constructor(
+    message: string,
+    public readonly ourVersion: string,
+    public readonly peerVersion: string,
+  ) {
+    super(message, 'CONTRACT_VERSION_MISMATCH', 409);
+    this.name = 'ContractVersionMismatchError';
   }
 }
 

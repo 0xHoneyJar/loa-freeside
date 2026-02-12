@@ -146,6 +146,8 @@ export class JwtService {
       idempotency_key: context.idempotencyKey,
       req_hash: reqHash,
       pool_mapping_version: CONTRACT_VERSION,
+      contract_version: CONTRACT_VERSION, // AC-2.20: fail-fast version negotiation
+      delegated_by: null, // AC-2.17: federation seed — reserved for cross-community delegation
       v: 1, // JWT schema version — @see Bridgebuilder F-10
       // Ensemble claims (FR-3) — only included when ensemble is requested
       ...(ensembleClaims ?? {}),

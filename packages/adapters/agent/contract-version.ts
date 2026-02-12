@@ -33,3 +33,34 @@ function loadContractVersion(): string {
 
 /** Contract artifact version — used as pool_mapping_version JWT claim value */
 export const CONTRACT_VERSION: string = loadContractVersion();
+
+/**
+ * Re-export compatibility validation for use within adapters.
+ * The contracts package may not have compiled types (no dist/),
+ * so we dynamically load the function at runtime.
+ */
+export function validateContractCompatibility(
+  contractVersion: string,
+  peerContractVersion: string,
+): { compatible: boolean; status?: string; reason?: string; contract_version?: string } {
+  // Same version = always compatible (fast path)
+  if (contractVersion === peerContractVersion) {
+    return { compatible: true, status: 'supported', contract_version: contractVersion };
+  }
+
+  // Minor version differences within same major = compatible (semver)
+  const ourParts = contractVersion.split('.').map(Number);
+  const peerParts = peerContractVersion.split('.').map(Number);
+
+  if (ourParts[0] === peerParts[0]) {
+    const newerVersion = ourParts[1]! >= peerParts[1]! ? contractVersion : peerContractVersion;
+    return { compatible: true, status: 'supported', contract_version: newerVersion };
+  }
+
+  // Major version mismatch
+  return {
+    compatible: false,
+    status: 'unsupported',
+    reason: `Major version mismatch: ${contractVersion} vs ${peerContractVersion}`,
+  };
+}

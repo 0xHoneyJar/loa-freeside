@@ -25,20 +25,80 @@ export type PoolId = (typeof POOL_IDS)[number];
 export const VALID_POOL_IDS: ReadonlySet<string> = new Set(POOL_IDS);
 
 /**
- * Pool → Provider hint mapping.
- * Determines which AI provider a pool ID is intended for,
- * used by BYOK to route community keys to the correct provider endpoint.
+ * Default pool → provider hint mapping.
+ * Used as fallback when POOL_PROVIDER_HINTS env var is not set or invalid.
  *
  * @see Bridgebuilder BB3-1 — fixes provider inference from poolId.startsWith()
  * @see byok-provider-endpoints.ts for supported providers
  */
-export const POOL_PROVIDER_HINT: Record<PoolId, 'openai' | 'anthropic'> = {
+export const DEFAULT_POOL_PROVIDER_HINTS: Record<PoolId, 'openai' | 'anthropic'> = {
   cheap: 'openai',
   'fast-code': 'openai',
   reviewer: 'openai',
   reasoning: 'anthropic',
   architect: 'anthropic',
 };
+
+const VALID_PROVIDERS = new Set(['openai', 'anthropic']);
+
+/**
+ * Load pool → provider hints from POOL_PROVIDER_HINTS env var (JSON).
+ * Falls back to defaults when env var is absent or invalid.
+ *
+ * Validation (AC-2.13, AC-2.14):
+ * - Invalid JSON → warning + defaults used (AC-2.12)
+ * - Unknown pool ID → warning (non-fatal, AC-2.13)
+ * - Invalid provider value → fatal error (security boundary, AC-2.14)
+ *
+ * @see Bridgebuilder Round 6, Finding #5 — Provider Policy
+ */
+function loadPoolProviderHints(): Record<PoolId, 'openai' | 'anthropic'> {
+  const raw = process.env['POOL_PROVIDER_HINTS'];
+  if (!raw) return { ...DEFAULT_POOL_PROVIDER_HINTS };
+
+  let parsed: Record<string, string>;
+  try {
+    parsed = JSON.parse(raw) as Record<string, string>;
+  } catch {
+    // AC-2.12: Invalid JSON → startup warning + defaults used
+    console.warn('[pool-mapping] POOL_PROVIDER_HINTS env var is not valid JSON — using defaults');
+    return { ...DEFAULT_POOL_PROVIDER_HINTS };
+  }
+
+  const result = { ...DEFAULT_POOL_PROVIDER_HINTS };
+
+  for (const [poolId, provider] of Object.entries(parsed)) {
+    // AC-2.14: Invalid provider value → fatal (security boundary)
+    if (!VALID_PROVIDERS.has(provider)) {
+      throw new Error(
+        `[pool-mapping] POOL_PROVIDER_HINTS: invalid provider '${provider}' for pool '${poolId}'. ` +
+        `Valid providers: ${[...VALID_PROVIDERS].join(', ')}`,
+      );
+    }
+
+    // AC-2.13: Unknown pool ID → warning (non-fatal)
+    if (!VALID_POOL_IDS.has(poolId)) {
+      console.warn(`[pool-mapping] POOL_PROVIDER_HINTS: unknown pool ID '${poolId}' — ignoring`);
+      continue;
+    }
+
+    result[poolId as PoolId] = provider as 'openai' | 'anthropic';
+  }
+
+  return result;
+}
+
+/**
+ * Pool → Provider hint mapping (configurable via POOL_PROVIDER_HINTS env var).
+ * Determines which AI provider a pool ID is intended for,
+ * used by BYOK to route community keys to the correct provider endpoint.
+ *
+ * Format: JSON object mapping pool IDs to providers.
+ * Example: POOL_PROVIDER_HINTS='{"cheap":"openai","reasoning":"anthropic"}'
+ *
+ * @see Bridgebuilder BB3-1, BB6 Finding #5
+ */
+export const POOL_PROVIDER_HINT: Record<PoolId, 'openai' | 'anthropic'> = loadPoolProviderHints();
 
 // --------------------------------------------------------------------------
 // Access Level → Pool mapping (from PRD §2.1)

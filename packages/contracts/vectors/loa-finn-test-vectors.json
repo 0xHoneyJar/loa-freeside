@@ -1,0 +1,583 @@
+{
+  "version": "1.1.0",
+  "description": "Decoded payload templates for E2E test scenarios — NOT pre-signed JWS. Stub signs at runtime with ephemeral ES256 key.",
+  "vectors": [
+    {
+      "name": "invoke_free_tier",
+      "description": "Basic free-tier round-trip: JWT signing, usage report, budget finalize",
+      "request": {
+        "jwt_claims": {
+          "tenant_id": "community_free_001",
+          "nft_id": "nft_12345",
+          "tier": 2,
+          "tier_name": "Worker",
+          "access_level": "free",
+          "allowed_model_aliases": ["cheap"],
+          "pool_id": "cheap",
+          "allowed_pools": ["cheap"],
+          "platform": "discord",
+          "channel_id": "ch_test_001",
+          "idempotency_key": "idem-free-001",
+          "pool_mapping_version": "1.0.0"
+        },
+        "body": {
+          "agent": "default",
+          "messages": [
+            { "role": "user", "content": "Hello, what is the weather today?" }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "content": "I'm an AI assistant and don't have access to real-time weather data.",
+          "usage": {
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "cost_usd": 0.00015
+          }
+        }
+      },
+      "usage_report_payload": {
+        "pool_id": "cheap",
+        "input_tokens": 100,
+        "output_tokens": 50,
+        "cost_micro": 15,
+        "accounting_mode": "PLATFORM_BUDGET"
+      }
+    },
+    {
+      "name": "invoke_pro_pool_routing",
+      "description": "Pro-tier with explicit pool claim in JWT — validates pool routing",
+      "request": {
+        "jwt_claims": {
+          "tenant_id": "community_pro_001",
+          "nft_id": "nft_67890",
+          "tier": 5,
+          "tier_name": "Elder",
+          "access_level": "pro",
+          "allowed_model_aliases": ["cheap", "fast-code", "reviewer"],
+          "pool_id": "fast-code",
+          "allowed_pools": ["cheap", "fast-code", "reviewer"],
+          "platform": "discord",
+          "channel_id": "ch_test_002",
+          "idempotency_key": "idem-pro-001",
+          "pool_mapping_version": "1.0.0"
+        },
+        "body": {
+          "agent": "coder",
+          "messages": [
+            { "role": "user", "content": "Write a function to sort an array" }
+          ],
+          "modelAlias": "fast-code"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "content": "function sort(arr) { return arr.sort((a, b) => a - b); }",
+          "usage": {
+            "prompt_tokens": 80,
+            "completion_tokens": 120,
+            "cost_usd": 0.0024
+          }
+        }
+      },
+      "usage_report_payload": {
+        "pool_id": "fast-code",
+        "input_tokens": 80,
+        "output_tokens": 120,
+        "cost_micro": 240,
+        "accounting_mode": "PLATFORM_BUDGET"
+      }
+    },
+    {
+      "name": "invoke_stream_sse",
+      "description": "Streaming SSE round-trip — validates event order: content* → usage → done",
+      "request": {
+        "jwt_claims": {
+          "tenant_id": "community_pro_001",
+          "nft_id": "nft_67890",
+          "tier": 5,
+          "tier_name": "Elder",
+          "access_level": "pro",
+          "allowed_model_aliases": ["cheap", "fast-code", "reviewer"],
+          "pool_id": "fast-code",
+          "allowed_pools": ["cheap", "fast-code", "reviewer"],
+          "platform": "discord",
+          "channel_id": "ch_test_003",
+          "idempotency_key": "idem-stream-001",
+          "pool_mapping_version": "1.0.0"
+        },
+        "body": {
+          "agent": "default",
+          "messages": [
+            { "role": "user", "content": "Tell me a short story" }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "stream_events": [
+          { "type": "content", "data": { "text": "Once upon " } },
+          { "type": "content", "data": { "text": "a time..." } },
+          { "type": "usage", "data": { "prompt_tokens": 50, "completion_tokens": 200, "cost_usd": 0.003 } },
+          { "type": "done", "data": null }
+        ]
+      },
+      "usage_report_payload": {
+        "pool_id": "fast-code",
+        "input_tokens": 50,
+        "output_tokens": 200,
+        "cost_micro": 300,
+        "accounting_mode": "PLATFORM_BUDGET"
+      }
+    },
+    {
+      "name": "invoke_rate_limited",
+      "description": "Rate-limited request — expects 429 with retry-after header",
+      "request": {
+        "jwt_claims": {
+          "tenant_id": "community_free_001",
+          "nft_id": null,
+          "tier": 1,
+          "tier_name": "Cub",
+          "access_level": "free",
+          "allowed_model_aliases": ["cheap"],
+          "pool_id": "cheap",
+          "allowed_pools": ["cheap"],
+          "platform": "discord",
+          "channel_id": "ch_test_004",
+          "idempotency_key": "idem-rate-001",
+          "pool_mapping_version": "1.0.0"
+        },
+        "body": {
+          "agent": "default",
+          "messages": [
+            { "role": "user", "content": "Spam request" }
+          ]
+        }
+      },
+      "response": {
+        "status": 429,
+        "headers": {
+          "retry-after": "60"
+        },
+        "body": {
+          "error": { "code": "RATE_LIMITED", "message": "Rate limit exceeded" }
+        }
+      },
+      "usage_report_payload": null
+    },
+    {
+      "name": "invoke_budget_exceeded",
+      "description": "Budget exceeded — expects 402 budget rejection",
+      "request": {
+        "jwt_claims": {
+          "tenant_id": "community_budget_exhausted",
+          "nft_id": "nft_99999",
+          "tier": 3,
+          "tier_name": "Scout",
+          "access_level": "free",
+          "allowed_model_aliases": ["cheap"],
+          "pool_id": "cheap",
+          "allowed_pools": ["cheap"],
+          "platform": "discord",
+          "channel_id": "ch_test_005",
+          "idempotency_key": "idem-budget-001",
+          "pool_mapping_version": "1.0.0"
+        },
+        "body": {
+          "agent": "default",
+          "messages": [
+            { "role": "user", "content": "This should fail" }
+          ]
+        }
+      },
+      "response": {
+        "status": 402,
+        "body": {
+          "error": { "code": "BUDGET_EXCEEDED", "message": "Community budget exhausted" }
+        }
+      },
+      "usage_report_payload": null
+    },
+    {
+      "name": "stream_abort_reconciliation",
+      "description": "Abort mid-stream — validates reconciliation is scheduled",
+      "request": {
+        "jwt_claims": {
+          "tenant_id": "community_pro_001",
+          "nft_id": "nft_67890",
+          "tier": 5,
+          "tier_name": "Elder",
+          "access_level": "pro",
+          "allowed_model_aliases": ["cheap", "fast-code", "reviewer"],
+          "pool_id": "fast-code",
+          "allowed_pools": ["cheap", "fast-code", "reviewer"],
+          "platform": "discord",
+          "channel_id": "ch_test_006",
+          "idempotency_key": "idem-abort-001",
+          "pool_mapping_version": "1.0.0"
+        },
+        "body": {
+          "agent": "default",
+          "messages": [
+            { "role": "user", "content": "Start a long response" }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "stream_events": [
+          { "type": "content", "data": { "text": "Starting..." } }
+        ],
+        "abort_after_events": 1,
+        "expect_reconciliation": true
+      },
+      "usage_report_payload": {
+        "pool_id": "fast-code",
+        "input_tokens": 50,
+        "output_tokens": 10,
+        "cost_micro": 60,
+        "accounting_mode": "PLATFORM_BUDGET"
+      }
+    },
+    {
+      "name": "invoke_byok",
+      "description": "BYOK request — validates BYOK_NO_BUDGET accounting mode and zero platform cost",
+      "request": {
+        "jwt_claims": {
+          "tenant_id": "community_enterprise_001",
+          "nft_id": "nft_ent_001",
+          "tier": 8,
+          "tier_name": "Sovereign",
+          "access_level": "enterprise",
+          "allowed_model_aliases": ["cheap", "fast-code", "reviewer", "reasoning", "native"],
+          "pool_id": "architect",
+          "allowed_pools": ["cheap", "fast-code", "reviewer", "reasoning", "architect"],
+          "platform": "discord",
+          "channel_id": "ch_test_007",
+          "idempotency_key": "idem-byok-001",
+          "pool_mapping_version": "1.0.0",
+          "byok": true,
+          "byok_provider": "openai",
+          "byok_operation": "chat_completions"
+        },
+        "body": {
+          "agent": "default",
+          "messages": [
+            { "role": "user", "content": "Using my own key" }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "content": "Response using BYOK key",
+          "usage": {
+            "prompt_tokens": 200,
+            "completion_tokens": 300,
+            "cost_usd": 0
+          }
+        }
+      },
+      "usage_report_payload": {
+        "pool_id": "architect",
+        "input_tokens": 200,
+        "output_tokens": 300,
+        "cost_micro": 0,
+        "accounting_mode": "BYOK_NO_BUDGET",
+        "usage_tokens": 500
+      }
+    },
+    {
+      "name": "invoke_ensemble_best_of_n",
+      "description": "Ensemble best_of_n strategy — validates ensemble claims and budget multiplier",
+      "request": {
+        "jwt_claims": {
+          "tenant_id": "community_enterprise_001",
+          "nft_id": "nft_ent_001",
+          "tier": 8,
+          "tier_name": "Sovereign",
+          "access_level": "enterprise",
+          "allowed_model_aliases": ["cheap", "fast-code", "reviewer", "reasoning", "native"],
+          "pool_id": "architect",
+          "allowed_pools": ["cheap", "fast-code", "reviewer", "reasoning", "architect"],
+          "platform": "discord",
+          "channel_id": "ch_test_008",
+          "idempotency_key": "idem-ensemble-001",
+          "pool_mapping_version": "1.0.0",
+          "ensemble_strategy": "best_of_n",
+          "ensemble_n": 3,
+          "ensemble_models": ["fast-code", "reviewer", "reasoning"]
+        },
+        "body": {
+          "agent": "default",
+          "messages": [
+            { "role": "user", "content": "Give me your best answer" }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "content": "Best ensemble response selected",
+          "usage": {
+            "prompt_tokens": 300,
+            "completion_tokens": 450,
+            "cost_usd": 0.0225
+          }
+        }
+      },
+      "usage_report_payload": {
+        "pool_id": "architect",
+        "input_tokens": 300,
+        "output_tokens": 450,
+        "cost_micro": 2250,
+        "accounting_mode": "PLATFORM_BUDGET"
+      }
+    },
+    {
+      "name": "invoke_ensemble_partial_failure",
+      "description": "Ensemble partial failure — 1 of 3 models fails. Committed = sum of successful costs (≤ reserved)",
+      "request": {
+        "jwt_claims": {
+          "tenant_id": "community_enterprise_001",
+          "nft_id": "nft_ent_001",
+          "tier": 8,
+          "tier_name": "Sovereign",
+          "access_level": "enterprise",
+          "allowed_model_aliases": ["cheap", "fast-code", "reviewer", "reasoning", "native"],
+          "pool_id": "architect",
+          "allowed_pools": ["cheap", "fast-code", "reviewer", "reasoning", "architect"],
+          "platform": "discord",
+          "channel_id": "ch_test_009",
+          "idempotency_key": "idem-ensemble-partial-001",
+          "pool_mapping_version": "1.0.0",
+          "ensemble_strategy": "best_of_n",
+          "ensemble_n": 3,
+          "ensemble_models": ["fast-code", "reviewer", "reasoning"]
+        },
+        "body": {
+          "agent": "default",
+          "messages": [
+            { "role": "user", "content": "Give me your best answer (partial failure expected)" }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "content": "Best response from 2 of 3 models",
+          "usage": {
+            "prompt_tokens": 200,
+            "completion_tokens": 300,
+            "cost_usd": 0.015
+          },
+          "ensemble_partial_failure": true,
+          "ensemble_succeeded": 2,
+          "ensemble_failed": 1
+        }
+      },
+      "usage_report_payload": {
+        "pool_id": "architect",
+        "input_tokens": 200,
+        "output_tokens": 300,
+        "cost_micro": 1500,
+        "accounting_mode": "PLATFORM_BUDGET",
+        "ensemble_partial_failure": true,
+        "ensemble_model_results": [
+          { "model": "fast-code", "succeeded": true, "cost_micro": 800 },
+          { "model": "reviewer", "succeeded": true, "cost_micro": 700 },
+          { "model": "reasoning", "succeeded": false, "cost_micro": 0 }
+        ]
+      }
+    },
+    {
+      "name": "invoke_ensemble_hybrid_byok",
+      "description": "Hybrid BYOK/platform ensemble: 3-model best_of_n with 1 BYOK (anthropic) + 2 platform. Validates per-model model_breakdown with mixed accounting_mode. Budget reserves 2× (not 3×).",
+      "request": {
+        "jwt_claims": {
+          "tenant_id": "community_enterprise_001",
+          "nft_id": "nft_ent_001",
+          "tier": 8,
+          "tier_name": "Sovereign",
+          "access_level": "enterprise",
+          "allowed_model_aliases": ["cheap", "fast-code", "reviewer", "reasoning", "native"],
+          "pool_id": "architect",
+          "allowed_pools": ["cheap", "fast-code", "reviewer", "reasoning", "architect"],
+          "platform": "discord",
+          "channel_id": "ch_test_010",
+          "idempotency_key": "idem-hybrid-byok-001",
+          "pool_mapping_version": "1.1.0",
+          "ensemble_strategy": "best_of_n",
+          "ensemble_n": 3,
+          "ensemble_models": ["reasoning", "fast-code", "reviewer"],
+          "byok": true,
+          "byok_provider": "anthropic",
+          "byok_operation": "messages"
+        },
+        "body": {
+          "agent": "default",
+          "messages": [
+            { "role": "user", "content": "Hybrid BYOK/platform ensemble test" }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "content": "Best response from hybrid ensemble",
+          "usage": {
+            "prompt_tokens": 250,
+            "completion_tokens": 400,
+            "cost_usd": 0.013
+          }
+        }
+      },
+      "usage_report_payload": {
+        "pool_id": "architect",
+        "input_tokens": 250,
+        "output_tokens": 400,
+        "cost_micro": 1300,
+        "accounting_mode": "PLATFORM_BUDGET",
+        "model_breakdown": [
+          {
+            "model_id": "reasoning",
+            "provider": "anthropic",
+            "succeeded": true,
+            "input_tokens": 250,
+            "output_tokens": 400,
+            "cost_micro": 0,
+            "accounting_mode": "BYOK_NO_BUDGET",
+            "latency_ms": 1200
+          },
+          {
+            "model_id": "fast-code",
+            "provider": "openai",
+            "succeeded": true,
+            "input_tokens": 250,
+            "output_tokens": 380,
+            "cost_micro": 700,
+            "accounting_mode": "PLATFORM_BUDGET",
+            "latency_ms": 800
+          },
+          {
+            "model_id": "reviewer",
+            "provider": "openai",
+            "succeeded": true,
+            "input_tokens": 250,
+            "output_tokens": 350,
+            "cost_micro": 600,
+            "accounting_mode": "PLATFORM_BUDGET",
+            "latency_ms": 900
+          }
+        ],
+        "ensemble_accounting": {
+          "strategy": "best_of_n",
+          "n_requested": 3,
+          "n_succeeded": 3,
+          "n_failed": 0,
+          "total_cost_micro": 1300,
+          "platform_cost_micro": 1300,
+          "byok_cost_micro": 0,
+          "reserved_cost_micro": 2600,
+          "savings_micro": 1300
+        }
+      }
+    },
+    {
+      "name": "invoke_ensemble_per_model_partial",
+      "description": "Per-model partial failure: 3-model consensus with model A succeeds, model B fails, model C succeeds. Validates model_breakdown with n_succeeded=2, n_failed=1, cost = A + C only.",
+      "request": {
+        "jwt_claims": {
+          "tenant_id": "community_enterprise_001",
+          "nft_id": "nft_ent_001",
+          "tier": 8,
+          "tier_name": "Sovereign",
+          "access_level": "enterprise",
+          "allowed_model_aliases": ["cheap", "fast-code", "reviewer", "reasoning", "native"],
+          "pool_id": "architect",
+          "allowed_pools": ["cheap", "fast-code", "reviewer", "reasoning", "architect"],
+          "platform": "discord",
+          "channel_id": "ch_test_011",
+          "idempotency_key": "idem-partial-model-001",
+          "pool_mapping_version": "1.1.0",
+          "ensemble_strategy": "consensus",
+          "ensemble_n": 3,
+          "ensemble_quorum": 2,
+          "ensemble_models": ["fast-code", "reviewer", "reasoning"]
+        },
+        "body": {
+          "agent": "default",
+          "messages": [
+            { "role": "user", "content": "Consensus with partial failure" }
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "content": "Consensus response from 2 of 3 models",
+          "usage": {
+            "prompt_tokens": 200,
+            "completion_tokens": 280,
+            "cost_usd": 0.0096
+          }
+        }
+      },
+      "usage_report_payload": {
+        "pool_id": "architect",
+        "input_tokens": 200,
+        "output_tokens": 280,
+        "cost_micro": 960,
+        "accounting_mode": "PLATFORM_BUDGET",
+        "model_breakdown": [
+          {
+            "model_id": "fast-code",
+            "provider": "openai",
+            "succeeded": true,
+            "input_tokens": 200,
+            "output_tokens": 300,
+            "cost_micro": 500,
+            "accounting_mode": "PLATFORM_BUDGET",
+            "latency_ms": 750
+          },
+          {
+            "model_id": "reviewer",
+            "provider": "openai",
+            "succeeded": false,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micro": 0,
+            "accounting_mode": "PLATFORM_BUDGET",
+            "latency_ms": 200,
+            "error_code": "MODEL_TIMEOUT"
+          },
+          {
+            "model_id": "reasoning",
+            "provider": "anthropic",
+            "succeeded": true,
+            "input_tokens": 200,
+            "output_tokens": 260,
+            "cost_micro": 460,
+            "accounting_mode": "PLATFORM_BUDGET",
+            "latency_ms": 1100
+          }
+        ],
+        "ensemble_accounting": {
+          "strategy": "consensus",
+          "n_requested": 3,
+          "n_succeeded": 2,
+          "n_failed": 1,
+          "total_cost_micro": 960,
+          "platform_cost_micro": 960,
+          "byok_cost_micro": 0,
+          "reserved_cost_micro": 2880,
+          "savings_micro": 1920
+        }
+      }
+    }
+  ]
+}

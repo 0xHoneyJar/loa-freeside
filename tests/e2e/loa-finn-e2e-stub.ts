@@ -30,7 +30,7 @@ import {
   type KeyLike,
 } from 'jose';
 
-import { CONTRACT_SCHEMA, TEST_VECTORS, type TestVector } from '../e2e/contracts/src/index.js';
+import { CONTRACT_SCHEMA, TEST_VECTORS, type TestVector } from '../../packages/contracts/src/index.js';
 
 // --------------------------------------------------------------------------
 // Types
@@ -295,7 +295,10 @@ export class LoaFinnE2EStub {
     }
 
     const statusCode = vector?.response.status ?? 200;
-    res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+    res.writeHead(statusCode, {
+      'Content-Type': 'application/json',
+      'X-Contract-Version': CONTRACT_SCHEMA.version,
+    });
     res.end(JSON.stringify(responseBody));
   }
 
@@ -331,6 +334,7 @@ export class LoaFinnE2EStub {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
+      'X-Contract-Version': CONTRACT_SCHEMA.version,
     });
 
     // Emit events
