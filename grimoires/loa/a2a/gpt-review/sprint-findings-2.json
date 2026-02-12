@@ -1,23 +1,40 @@
 {
-  "verdict": "APPROVED",
-  "summary": "All previously blocking issues are addressed: the plan now explicitly scopes Arrakis vs. loa-finn enforcement with a tracked cross-repo dependency, and the integration tests are made feasible via an existing JWKS/key + injectable logger seam; the validatePoolClaims contract/ACs are now consistent and canonicalized.",
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Most prior blockers were addressed (sorted-set AC alignment, audit validation tests, and safer JSON loading), but the mixed-fleet migration fix introduces a truly blocking correctness risk for fleet-wide circuit breaking during rollout.",
   "previous_issues_status": [
     {
-      "original_issue": "F-5 trust-boundary enforcement scope: sprint claimed trust-boundary fix but had no loa-finn deliverable/dependency, leaving confused-deputy gap",
+      "original_issue": "AC-1.1 required `ZRANGEBYSCORE` but implementation used `ZREMRANGEBYSCORE` + `ZCARD` (AC/implementation mismatch)",
       "status": "fixed",
-      "notes": "The plan now clearly states Arrakis is detection-only (warn-only) and adds a Blocking Dependencies section plus an explicit Sprint 2 task (2.6) to file a loa-finn enforcement issue, and SDD language (2.2) that loa-finn MUST re-validate and SHOULD reject. This resolves the scope/handshake problem without pretending the vulnerability is fully closed in Arrakis alone."
+      "notes": "AC-1.1 is now aligned to the intended algorithm (`ZREMRANGEBYSCORE` + `ZADD` + `ZCARD`)."
     },
     {
-      "original_issue": "Integration tests were untestable: no specified way to sign a forged-but-verifiable JWT and no deterministic log assertion seam",
-      "status": "fixed",
-      "notes": "Task 2.4 now anchors on existing test infrastructure: JWKS test server + deterministic key generation/signing helpers, and a createPipeline/logger helper with spyable warn/info. AC-H2.5/2.6 assertions are on structured log events rather than free-text, removing flakiness and making the test path reachable past JWS verification."
+      "original_issue": "Zero-downtime migration underspecified for mixed-fleet concurrency; risk of lost/duplicated failures during rollout",
+      "status": "not_fixed",
+      "notes": "A mixed-fleet strategy was added, but it explicitly allows old and new fleets to write to different stores and not see each other’s failures. That breaks the core requirement of fleet-wide circuit breaking during the rollout window."
     },
     {
-      "original_issue": "validatePoolClaims contract inconsistency (boolean vs {valid, reason}) and underspecified ordering/representation rules for allowed_pools",
+      "original_issue": "Compatibility matrix loading via `readFileSync` at module init is brittle in packaged/bundled Node environments",
       "status": "fixed",
-      "notes": "AC-H1.3/H1.4 now match the `{ valid: boolean; reason?: string }` return type, and the canonicalization rule is explicitly defined (sorted + deduped set comparison; order-independent membership). This makes implementation/test expectations unambiguous and stable across systems."
+      "notes": "Switched to JSON module import with `resolveJsonModule`, avoiding runtime path resolution and file I/O."
+    },
+    {
+      "original_issue": "AC-1.19 was unrealistic as written (implied no rebuild/redeploy needed for data changes)",
+      "status": "fixed",
+      "notes": "Reworded to a testable claim: only `compatibility.json` needs editing (no TS source changes). This is reasonable in a normal publish/redeploy model."
+    },
+    {
+      "original_issue": "Audit runtime validation lacked explicit tests to prove warn+skip behavior and log shape",
+      "status": "fixed",
+      "notes": "Added AC-1.21 and AC-1.22 to require unit tests for invalid/valid events and to assert warn/info behavior."
     }
   ],
-  "new_blocking_concerns": [],
+  "new_blocking_concerns": [
+    {
+      "location": "Task 1.1: Mixed-Fleet Deployment Strategy (new containers write only ZSET; old containers write only CSV hash field)",
+      "description": "During a rolling deploy, failure events are split across two independent stores, so neither version observes the full fleet failure rate. This violates fleet-wide circuit breaking semantics at the exact time you most need them (deploys), and can prevent the breaker from opening under real cascading failure conditions.",
+      "why_blocking": "Fleet-wide circuit breaking is a critical requirement. The proposed strategy knowingly degrades correctness (not just sensitivity) for ~deployment duration, and the failure mode is dangerous: the breaker may stay closed when it should open, enabling cascading failures and budget/accounting blowups. This is not a minor tradeoff; it undermines the core safety mechanism during rollout.",
+      "fix": "Adopt a mixed-version compatible write/read strategy for at least one window duration:\n- Two-phase deploy: Phase A (compat mode): new code writes to BOTH CSV hash field and ZSET, and reads/counts from ZSET (or reads both and takes max) while leaving CSV intact. Phase B (after full rollout + >windowMs): stop writing CSV and perform cleanup (HDEL) safely.\nOR\n- Dual-read during transition: new code counts failures from ZSET plus (if present) parses CSV as a fallback and uses the maximum/union count, then gradually removes CSV after rollout.\nAdd/adjust AC-1.20 to require a mixed-fleet simulation test (old-writer + new-writer) proving the breaker opens at the same threshold as single-version behavior."
+    }
+  ],
   "iteration": 2
 }

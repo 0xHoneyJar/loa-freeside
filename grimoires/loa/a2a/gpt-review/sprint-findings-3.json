@@ -1,31 +1,31 @@
 {
   "verdict": "APPROVED",
-  "summary": "The two previously-blocking items (req_hash canonicalization ambiguity and IPv6 normalization) are now specified in a single, implementable way, and the earlier race-condition fix remains correct without introducing new blocking issues.",
+  "summary": "All previously raised blockers are now addressed, and the mixed-fleet circuit breaker migration is corrected to preserve fleet-wide semantics during rolling deploys without introducing new blocking risks.",
   "previous_issues_status": [
     {
-      "original_issue": "req_hash binding uses non-canonical/unstable JSON.stringify(request) and may hash the wrong object; need one canonicalization shared by minter+verifier",
+      "original_issue": "AC-1.1 required `ZRANGEBYSCORE` but implementation used `ZREMRANGEBYSCORE` + `ZCARD` (AC/implementation mismatch)",
       "status": "fixed",
-      "notes": "S8-T1 now picks one unambiguous binding scheme: hash the exact raw HTTP body bytes that Arrakis forwards upstream, and require loa-finn to hash the received body bytes. This removes JSON canonicalization pitfalls entirely and is precise/testable (same bytes => same hash; tamper => mismatch)."
+      "notes": "AC-1.1 is aligned to the intended sliding-window algorithm (`ZREMRANGEBYSCORE` + `ZADD` + `ZCARD`) and the plan text matches it."
     },
     {
-      "original_issue": "Finalize/Reaper race condition fix was underspecified and risked impossible Redis ops; need an implementable atomic claim mechanism guaranteeing exactly-once decrement",
+      "original_issue": "Zero-downtime migration underspecified for mixed-fleet concurrency; risk of lost/duplicated failures during rollout",
       "status": "fixed",
-      "notes": "S8-T3 keeps the claim-via-DEL approach with clear semantics (DEL return value as the claim signal) and adds an explicit concurrent finalize+reaper test in S9-T3 to validate exactly-once reserved decrement. This is implementable with Redis EVALSHA atomicity and addresses the double-DECRBY window."
+      "notes": "Task 1.1 now specifies a two-phase rollout where new code dual-writes (ZSET + CSV) and also migrates CSV→ZSET on each call, plus clears both on success. This ensures old and new containers observe the same fleet-wide failure stream during the rollout window, which resolves the prior correctness risk. AC-1.20 and AC-1.23 explicitly cover mixed-fleet safety and require a simulation test."
     },
     {
-      "original_issue": "IPv6 normalization: lowercasing alone insufficient; need real canonicalization and address trust proxy/XFF correctness",
+      "original_issue": "Compatibility matrix loading via `readFileSync` at module init is brittle in packaged/bundled Node environments",
       "status": "fixed",
-      "notes": "S8-T4 replaces string-prefix logic with ipaddr.js parsing + normalization, converts IPv4-mapped IPv6 to IPv4, and adds tests for equivalent IPv6 textual forms mapping to the same bucket. It also explicitly tests that req.ip (trust proxy mediated) is used rather than raw XFF, preventing spoofing."
+      "notes": "The plan uses TS JSON module import with `resolveJsonModule`, avoiding runtime file I/O and path resolution issues."
     },
     {
-      "original_issue": "getAvailableModels() abstraction leak: proposed fix didn’t resolve overrides; acceptance said 'correct' aliases per access level",
-      "status": "rejected_with_valid_reason",
-      "notes": "S9-T1 explicitly constrains getAvailableModels() to defaults-only because the port lacks communityId, and documents that overrides are applied per-request via context.allowedModelAliases. This is a reasonable resolution given the interface constraint and stays within 'fixes only' scope."
+      "original_issue": "AC-1.19 was unrealistic as written (implied no rebuild/redeploy needed for data changes)",
+      "status": "fixed",
+      "notes": "AC-1.19 is now scoped to 'edit only compatibility.json (no TS source changes)', which is testable and reasonable under normal publish/redeploy."
     },
     {
-      "original_issue": "Property-based budget tests: plan didn’t ensure it can observe interleaving invariants given Redis scripts are atomic; needed a deterministic concurrency harness or a direct exactly-once test",
+      "original_issue": "Audit runtime validation lacked explicit tests to prove warn+skip behavior and log shape",
       "status": "fixed",
-      "notes": "S9-T3 adds between-batch invariant checks and, critically, a dedicated concurrent finalize+reaper test that directly exercises the prior race. Using fast-check scheduler for Node-level interleavings is acceptable as an additional exploration mechanism."
+      "notes": "AC-1.21 and AC-1.22 require unit tests for invalid/valid events asserting warn+skip vs info emission, matching the non-blocking audit requirement."
     }
   ],
   "new_blocking_concerns": [],

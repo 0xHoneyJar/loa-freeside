@@ -60,11 +60,42 @@ export class CapabilityAuditLogger {
   }
 
   /**
+   * Validate required fields before emission (BB7 R7-3).
+   * CloudWatch Log Metric Filters silently drop events with missing fields.
+   * Guard warns + skips rather than throwing — audit must never crash requests.
+   */
+  private validateRequiredFields(event: CapabilityAuditEvent): boolean {
+    const required: Array<[string, unknown]> = [
+      ['trace_id', event.trace_id],
+      ['community_id', event.community_id],
+      ['event_type', event.event_type],
+      ['pool_id', event.pool_id],
+    ];
+
+    for (const [field, value] of required) {
+      if (typeof value !== 'string' || value.length === 0) {
+        this.log.warn(
+          { field, event_type: event.event_type || 'unknown' },
+          'audit_event_validation_failure',
+        );
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /**
    * Emit a capability audit event (AC-4.8).
    * All events are structured JSON for CloudWatch Log Metric Filters.
    * No PII or message content is ever included (AC-4.12).
+   * Required fields validated before emission (BB7 R7-3, AC-1.8).
    */
   emit(event: CapabilityAuditEvent): void {
+    if (!this.validateRequiredFields(event)) {
+      return;
+    }
+
     this.log.info(
       {
         audit: {

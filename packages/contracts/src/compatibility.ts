@@ -5,10 +5,15 @@
  * Provides version compatibility checking between arrakis and loa-finn,
  * wired into the JWT claims path for fail-fast negotiation.
  *
+ * BB7 R7-4: Matrix loaded from schema/compatibility.json (data-driven).
+ * Adding a new entry requires editing only the JSON file — no TS changes.
+ *
  * @see Bridgebuilder Round 6, Finding #2 — Contract Protocol Nucleus
+ * @see Bridgebuilder Round 7, Finding R7-4 — Data-Driven Matrix
  */
 
 import { satisfies } from './semver-lite.js';
+import matrixData from '../schema/compatibility.json' with { type: 'json' };
 
 // --------------------------------------------------------------------------
 // Types
@@ -32,25 +37,39 @@ export interface CompatibilityResult {
 }
 
 // --------------------------------------------------------------------------
-// Compatibility Data
+// Compatibility Data (loaded from JSON — BB7 R7-4, AC-1.13/AC-1.14)
 // --------------------------------------------------------------------------
 
-const COMPATIBILITY_MATRIX: CompatibilityEntry[] = [
-  {
-    arrakis_version: '>=0.1.0',
-    loa_finn_version: '>=0.1.0',
-    contract_version: '1.0.0',
-    status: 'supported',
-    notes: 'Initial contract — base pool mapping, JWT claims, usage reports',
-  },
-  {
-    arrakis_version: '>=0.1.0',
-    loa_finn_version: '>=0.1.0',
-    contract_version: '1.1.0',
-    status: 'supported',
-    notes: 'Per-model accounting — model_breakdown in usage reports (backward-compatible)',
-  },
-];
+/** Validate required fields at load time — fail-fast on malformed data (AC-1.15) */
+function validateMatrix(data: unknown): CompatibilityEntry[] {
+  if (!Array.isArray(data)) {
+    throw new Error('compatibility.json: root must be an array');
+  }
+
+  const requiredFields = ['arrakis_version', 'loa_finn_version', 'contract_version', 'status'] as const;
+  const validStatuses = new Set(['supported', 'deprecated', 'unsupported']);
+
+  for (let i = 0; i < data.length; i++) {
+    const entry = data[i] as unknown;
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new Error(`compatibility.json entry[${i}]: must be an object`);
+    }
+
+    const record = entry as Record<string, unknown>;
+    for (const field of requiredFields) {
+      if (typeof record[field] !== 'string' || (record[field] as string).length === 0) {
+        throw new Error(`compatibility.json entry[${i}]: missing or empty required field "${field}"`);
+      }
+    }
+    if (!validStatuses.has(record.status as string)) {
+      throw new Error(`compatibility.json entry[${i}]: invalid status "${record.status as string}"`);
+    }
+  }
+
+  return data as CompatibilityEntry[];
+}
+
+const COMPATIBILITY_MATRIX: readonly CompatibilityEntry[] = validateMatrix(matrixData);
 
 // --------------------------------------------------------------------------
 // Functions

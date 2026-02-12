@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "next_sprint_number": 213,
-  "active_cycle": "cycle-019",
+  "next_sprint_number": 214,
+  "active_cycle": "cycle-020",
   "cycles": [
     {
       "id": "cycle-001",
@@ -280,16 +280,29 @@
     {
       "id": "cycle-019",
       "label": "The Capability Mesh — Per-Model Accounting & Protocol Architecture (BB6)",
-      "status": "active",
+      "status": "archived",
       "created": "2026-02-12T12:00:00Z",
+      "archived": "2026-02-12T23:30:00Z",
       "prd": "grimoires/loa/prd-hounfour-endgame.md",
       "sdd": "grimoires/loa/sdd-hounfour-endgame.md",
       "sprint_plan": "grimoires/loa/sprint.md",
       "sprints": [
-        {"global_id": 209, "local_label": "sprint-1", "status": "pending"},
-        {"global_id": 210, "local_label": "sprint-2", "status": "pending"},
-        {"global_id": 211, "local_label": "sprint-3", "status": "pending"},
-        {"global_id": 212, "local_label": "sprint-4", "status": "pending"}
+        {"global_id": 209, "local_label": "sprint-1", "status": "completed"},
+        {"global_id": 210, "local_label": "sprint-2", "status": "completed"},
+        {"global_id": 211, "local_label": "sprint-3", "status": "completed"},
+        {"global_id": 212, "local_label": "sprint-4", "status": "completed"}
+      ]
+    },
+    {
+      "id": "cycle-020",
+      "label": "Bridgebuilder Round 7 — Protocol Refinement (BB7)",
+      "status": "active",
+      "created": "2026-02-12T23:45:00Z",
+      "prd": "grimoires/loa/prd-hounfour-endgame.md",
+      "sdd": "grimoires/loa/sdd-hounfour-endgame.md",
+      "sprint_plan": "grimoires/loa/sprint.md",
+      "sprints": [
+        {"global_id": 213, "local_label": "sprint-1", "status": "pending"}
       ]
     }
   ]

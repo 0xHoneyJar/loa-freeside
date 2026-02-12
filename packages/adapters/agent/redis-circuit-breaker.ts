@@ -70,23 +70,30 @@ return {1, 'half-open'}
  * ON_SUCCESS Lua script:
  * - If half-open → transition to closed, clear failures
  * - If closed → clear failures
+ * BB7 R7-1: Uses sorted set key for failure tracking (+ legacy CSV cleanup)
  */
 const LUA_SUCCESS = `
 local key = KEYS[1]
 local state = redis.call('HGET', key, 'state')
 if state == 'half-open' then
   redis.call('HSET', key, 'state', 'closed')
-  redis.call('HDEL', key, 'openedAt', 'failures')
+  redis.call('HDEL', key, 'openedAt')
+  redis.call('DEL', key .. ':failures')
+  -- Phase A cleanup: remove legacy CSV field if present
+  redis.call('HDEL', key, 'failures')
   return 'closed'
 end
+redis.call('DEL', key .. ':failures')
+-- Phase A cleanup: remove legacy CSV field if present
 redis.call('HDEL', key, 'failures')
 return state or 'closed'
 `;
 
 /**
- * ON_FAILURE Lua script:
+ * ON_FAILURE Lua script (BB7 R7-1: sorted set migration):
  * - If half-open → re-open immediately
- * - If closed → increment failures; if >= threshold → open
+ * - If closed → record failure in sorted set; if count >= threshold → open
+ * - Phase A dual-write: migrates legacy CSV → sorted set, writes CSV for old readers
  * Returns: new state
  */
 const LUA_FAILURE = `
@@ -94,6 +101,7 @@ local key = KEYS[1]
 local threshold = tonumber(ARGV[1])
 local windowMs = tonumber(ARGV[2])
 local nowMs = tonumber(ARGV[3])
+local failKey = key .. ':failures'
 
 local state = redis.call('HGET', key, 'state')
 
@@ -102,23 +110,32 @@ if state == 'half-open' then
   return 'open'
 end
 
--- Closed (or nil): record failure
-local failures = redis.call('HGET', key, 'failures')
-local failList = {}
-if failures then
-  for ts in string.gmatch(failures, '([^,]+)') do
+-- Phase A: migrate legacy CSV hash field → sorted set (one-time per key)
+local legacyCsv = redis.call('HGET', key, 'failures')
+if legacyCsv then
+  for ts in string.gmatch(legacyCsv, '([^,]+)') do
     local t = tonumber(ts)
-    if (nowMs - t) < windowMs then
-      table.insert(failList, ts)
+    if t and (nowMs - t) < windowMs then
+      redis.call('ZADD', failKey, t, tostring(t))
     end
   end
+  redis.call('HDEL', key, 'failures')
 end
-table.insert(failList, tostring(nowMs))
 
-local newFailures = table.concat(failList, ',')
-redis.call('HSET', key, 'failures', newFailures)
+-- Sorted set: trim expired, add new, count (O(log n) — AC-1.1)
+redis.call('ZREMRANGEBYSCORE', failKey, '-inf', nowMs - windowMs)
+redis.call('ZADD', failKey, nowMs, tostring(nowMs))
+local count = redis.call('ZCARD', failKey)
 
-if #failList >= threshold then
+-- Phase A dual-write: rebuild CSV for old containers still reading hash field
+local remaining = redis.call('ZRANGEBYSCORE', failKey, '-inf', '+inf')
+if #remaining > 0 then
+  redis.call('HSET', key, 'failures', table.concat(remaining, ','))
+else
+  redis.call('HDEL', key, 'failures')
+end
+
+if count >= threshold then
   redis.call('HSET', key, 'state', 'open', 'openedAt', nowMs)
   return 'open'
 end

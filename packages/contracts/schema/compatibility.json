@@ -1,0 +1,16 @@
+[
+  {
+    "arrakis_version": ">=0.1.0",
+    "loa_finn_version": ">=0.1.0",
+    "contract_version": "1.0.0",
+    "status": "supported",
+    "notes": "Initial contract — base pool mapping, JWT claims, usage reports"
+  },
+  {
+    "arrakis_version": ">=0.1.0",
+    "loa_finn_version": ">=0.1.0",
+    "contract_version": "1.1.0",
+    "status": "supported",
+    "notes": "Per-model accounting — model_breakdown in usage reports (backward-compatible)"
+  }
+]
