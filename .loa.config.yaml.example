@@ -19,24 +19,6 @@ ride:
   # prompted to skip or re-analyze. Use --fresh flag to bypass.
   staleness_days: 7
 
-  # Enrichment phases (v1.39.0) — opt-in depth for /ride
-  # These phases run after the standard ride when --with-gaps, --with-decisions,
-  # --with-terms, or --enriched flags are passed. No flags = standard ride unchanged.
-  enrichment:
-    gaps:
-      # Maximum open gaps before error. Prevents gap tracker from growing unbounded.
-      max_open: 200
-      # Warning threshold. Logs a warning when open gaps reach this count.
-      warn_at: 150
-    decisions:
-      # Months before an ADR is flagged as stale and recommended for reconfirmation.
-      stale_months: 12
-      # Additional ADR directory paths to scan (beyond the 5 built-in patterns).
-      extra_paths: []
-    terminology:
-      # Maximum terms to extract from source code. Ranked by frequency, capped here.
-      max_terms: 50
-
 # -----------------------------------------------------------------------------
 # Configurable Paths (v1.27.0)
 # -----------------------------------------------------------------------------
@@ -390,25 +372,6 @@ feedback:
     enabled: true           # Enable smart routing
     auto_classify: true     # Auto-detect target repo
     require_confirmation: true  # Always confirm with user
-
-    # Construct routing (v1.40.0 / cycle-025)
-    # Routes feedback about installed construct packs/skills to their source repos.
-    # Requires constructs to declare source_repo in manifest.yaml.
-    construct_routing:
-      enabled: true               # Master toggle for construct feedback routing
-      attribution_threshold: 0.33 # Minimum confidence to suggest construct routing (0.0-1.0)
-      redaction:
-        strip_absolute_paths: true   # Redact /home/user/... paths
-        strip_secrets: true          # Redact AWS keys, tokens, JWTs
-        strip_env_vars: true         # Redact environment variable assignments
-        include_snippets: false      # Code blocks stripped for external repos (default: off)
-        include_file_refs: true      # File references kept but paths made relative
-        include_environment: false   # Environment/system info section stripped (default: off)
-      rate_limits:
-        per_repo_daily: 5           # Warn after N issues to same repo in 24h
-        per_repo_daily_hard: 20     # Block at N issues to same repo in 24h
-        dedup_window_hours: 24      # Fingerprint dedup window in hours
-
   labels:
     graceful_missing: true  # Don't fail on missing labels
 
@@ -446,83 +409,6 @@ run_mode:
     auto_push: true
     # Always create PRs as drafts - this is hardcoded and cannot be changed
     create_draft_pr: true
-
-# -----------------------------------------------------------------------------
-# BUTTERFREEZONE — Agent-Grounded README (v1.35.0)
-# -----------------------------------------------------------------------------
-# Generates BUTTERFREEZONE.md: a provenance-tagged, checksum-verified,
-# token-efficient project summary for AI agent consumption.
-# "The zone where only truth survives — no butter, no hype."
-butterfreezone:
-  enabled: true                         # On by default, opt-out via false
-  output_path: BUTTERFREEZONE.md        # Relative to repo root
-  word_budget:
-    total: 3200                         # ~8000 tokens (model-agnostic)
-    per_section: 800                    # ~2000 tokens per section
-  staleness_days: 7                     # Advisory freshness window
-  hooks:
-    run_bridge: true                    # Regenerate in bridge FINALIZING phase
-    run_sprint_plan: false              # Phase 2: regenerate after sprint plan
-    post_merge: false                   # Phase 2: regenerate on merge to main
-    ride: false                         # Future: regenerate after /ride
-    ship: false                         # Phase 2: regenerate on /ship
-  rtfm:
-    check_enabled: true                 # Include in RTFM validation
-    strict_mode: false                  # false=advisory warnings, true=hard gate
-  ecosystem:                              # Cross-repo discovery graph (v1.40.0)
-    # Each entry declares a related repository with its role and interface.
-    # Agents traverse these links to build a multi-repo capability graph.
-    # Schema per entry:
-    #   repo (required):     GitHub slug — machine-resolvable via gh
-    #   role (required):     semantic relationship (runtime, protocol, distribution, billing, client, library)
-    #   interface (required): integration surface (hounfour-router, npm-package, jwt-auth, etc.)
-    #   protocol (optional): shared contract version from a common package
-    - repo: 0xHoneyJar/loa-finn
-      role: runtime
-      interface: hounfour-router
-      protocol: loa-hounfour@4.6.0
-    - repo: 0xHoneyJar/loa-hounfour
-      role: protocol
-      interface: npm-package
-      protocol: loa-hounfour@4.6.0
-    - repo: 0xHoneyJar/arrakis
-      role: distribution
-      interface: jwt-auth
-      protocol: loa-hounfour@4.6.0
-  culture:                                # Cultural BUTTERFREEZONE (v1.40.0)
-    # Optional section communicating project principles, naming, methodology.
-    # Provenance: OPERATIONAL. Omitted when not configured.
-    naming_etymology: "Vodou terminology as cognitive hooks for framework concepts"
-    principles:
-      - "Think Before Coding — plan and analyze before implementing"
-      - "Simplicity First — minimum complexity for the current task"
-    methodology: "Agent-driven development with iterative excellence loops"
-  manual_sections:
-    sentinel_start: "<!-- manual-start -->"
-    sentinel_end: "<!-- manual-end -->"
-  # Capability overrides — manual adjustments to inferred capabilities (v1.40.0)
-  # The generator infers capabilities from SKILL.md keyword analysis. These
-  # overrides let you suppress false positives or add capabilities the
-  # inference engine cannot detect.
-  capability_overrides:
-    # Suppress: list of strings to remove from inferred capabilities.
-    # Uses grep -Fv (fixed-string, case-sensitive, substring match).
-    # A value of "ci" removes ANY capability line containing "ci"
-    # (e.g., "ci-deploy" but also "specificity-analysis").
-    # Values are NOT regexes — special characters are treated literally.
-    suppress: []
-    # Examples:
-    #   suppress:
-    #     - "network: read"           # Remove inferred network read capability
-    #     - "model: invoke"           # Remove inferred model invocation
-    #
-    # Add: list of capability strings to force-include.
-    # add: []
-    # Examples:
-    #   add:
-    #     - "filesystem: write (scope: app)"
-  security:
-    redaction_enabled: true             # Gitleaks-pattern secret redaction
 
 # -----------------------------------------------------------------------------
 # Beads-First Infrastructure (v1.29.0)
@@ -578,30 +464,11 @@ beads:
 # only override values you want to change here.
 #
 # Architecture: SDD §4.1.2 (Config Schema), §4.2 (Routing), §4.5 (Metering)
-# Feature flags and metering — Hounfour Model-Heterogeneous Agent Routing
+# Feature flag: hounfour.flatline_routing controls Sprint 2 routing path
 hounfour:
-  # Top-level flag — controls whether Flatline uses Hounfour routing
+  # Feature flag — controls whether Flatline uses Hounfour routing (Sprint 2)
   # or the legacy direct-call path. Set to true when ready to migrate.
   flatline_routing: false
-
-  # Per-subsystem feature flags (all default true — opt-out, not opt-in)
-  feature_flags:
-    google_adapter: true     # Enable Google provider adapter
-    deep_research: true      # Enable Deep Research models (Interactions API)
-    flatline_routing: false   # Route Flatline through Hounfour
-    metering: true           # Enable BudgetEnforcer cost tracking
-    thinking_traces: true    # Include thinking config in request bodies
-    jam_geometry: false      # Enable Jam multi-model parallel review (opt-in)
-    context_filtering: false # Epistemic context filtering: false | "audit" | "enforce"
-
-  # Metering — cost tracking and budget enforcement (SDD §4.3)
-  metering:
-    enabled: true
-    ledger_path: .run/cost-ledger.jsonl      # JSONL append-only cost ledger
-    budget:
-      daily_micro_usd: 500000000             # $500/day (500M micro-USD)
-      warn_at_percent: 80                    # Warn when spending exceeds this %
-      on_exceeded: downgrade                 # block | downgrade | warn
 
   # Provider registry — override endpoints, auth, or add new providers
   # Providers not listed here use system defaults from model-config.yaml
@@ -624,24 +491,6 @@ hounfour:
             input_per_mtok: 15000000
             output_per_mtok: 60000000
 
-    google:
-      # type: google                    # Provider SDK type
-      # endpoint: "https://generativelanguage.googleapis.com/v1beta"
-      auth: "{env:GOOGLE_API_KEY}"      # Requires GOOGLE_API_KEY environment variable
-      models:
-        gemini-2.5-flash:
-          capabilities: [chat]
-          context_window: 1048576
-          pricing:
-            input_per_mtok: 150000      # $0.15/M tokens (integer micro-USD)
-            output_per_mtok: 600000     # $0.60/M tokens
-        gemini-2.5-pro:
-          capabilities: [chat, thinking_traces]
-          context_window: 1048576
-          pricing:
-            input_per_mtok: 1250000     # $1.25/M tokens
-            output_per_mtok: 10000000   # $10.00/M tokens
-
     anthropic:
       auth: "{env:ANTHROPIC_API_KEY}"
       models:
@@ -657,10 +506,6 @@ hounfour:
           pricing:
             input_per_mtok: 3000000
             output_per_mtok: 15000000
-
-  # Flatline tertiary model — enables 3-model triangular cross-scoring
-  # Requires GOOGLE_API_KEY to be set in environment
-  # flatline_tertiary_model: gemini-2.5-flash
 
   # Aliases — short names mapping to provider:model-id
   aliases:
@@ -1435,142 +1280,6 @@ run_bridge:
     categories:
       - mibera
       - neuromancer
-
-  # Bridgebuilder persona enrichment (v1.35.0)
-  bridgebuilder:
-    # Enable persona-driven enriched reviews
-    persona_enabled: true
-    # Path to persona definition file
-    persona_path: .claude/data/bridgebuilder-persona.md
-    # Include enriched fields (faang_parallel, metaphor, teachable_moment, connection)
-    enriched_findings: true
-    # Generate insights stream (rich prose surrounding findings)
-    insights_stream: true
-    # Include PRAISE severity findings for good engineering decisions
-    praise_findings: true
-    # Verify persona file integrity against base branch
-    integrity_check: true
-    # Token budget for review output
-    token_budget:
-      # Maximum tokens for findings JSON stream
-      findings_tokens: 5000
-      # Maximum tokens for insights prose stream
-      insights_tokens: 25000
-      # Maximum total tokens (both streams)
-      total_tokens: 30000
-    # Size limits for PR comments
-    size_limits:
-      # Truncate preserving findings JSON (65KB)
-      truncate_bytes: 66560
-      # Findings-only emergency fallback (256KB)
-      findings_only_bytes: 262144
-    # Security content redaction
-    redaction:
-      # Enable gitleaks-inspired pattern redaction
-      enabled: true
-      # Block posting if secrets remain after redaction
-      post_redaction_safety: true
-
-# =============================================================================
-# Agent Teams Compatibility (v1.39.0)
-# =============================================================================
-# Experimental: Requires CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
-# Enables multi-agent orchestration with Loa's workflow.
-# See: .claude/loa/reference/agent-teams-reference.md
-agent_teams:
-  # Detection mode: auto (use if available), true (require), false (disable)
-  enabled: auto
-
-  # Beads access model: Only the team lead runs br commands;
-  # teammates report task status via SendMessage
-  beads_access: lead_only
-
-  # State file behavior when Agent Teams is active
-  state_files:
-    # Use teammate-scoped state files (.run/*.{name}.json)
-    scoped: true
-    # Lead merges teammate state into canonical files on TeamDelete
-    merge_on_shutdown: true
-
-# =============================================================================
-# Post-Merge Automation Pipeline (v1.36.0)
-# =============================================================================
-# Automated post-merge pipeline triggered on push to main.
-# 3-layer architecture: GH Actions → claude-code-action → shell orchestrator.
-post_merge:
-  # Master toggle — must be true for GH Actions workflow to process merges
-  enabled: false
-
-  # Phase matrix for each PR type
-  # cycle: all 8 phases (classify, semver, changelog, gt_regen, rtfm, tag, release, notify)
-  # bugfix: 4 phases (classify, semver, tag, notify)
-  # other: 4 phases (classify, semver, tag, notify)
-
-  # claude-code-action configuration
-  claude_code_action:
-    # Model for cycle pipeline execution
-    model: "claude-sonnet-4-5-20250929"
-    # Maximum conversation turns
-    max_turns: 15
-    # Tool allowlist
-    allowed_tools: "Bash(bash),Read,Write,Glob,Grep"
-
-  # Timeouts
-  timeouts:
-    # Full pipeline timeout in minutes (GH Actions job timeout)
-    full_pipeline_minutes: 30
-
-  # Phase-specific options
-  phases:
-    # Skip ground truth regeneration
-    skip_gt: false
-    # Skip RTFM validation
-    skip_rtfm: false
-
-  # Notification
-  notify:
-    # Post pipeline summary as PR comment
-    pr_comment: true
-    # Discord notification on failure (requires DISCORD_WEBHOOK_URL secret)
-    discord_on_failure: true
-
-# =============================================================================
-# Harness Engineering — Safety Hooks, Deny Rules, Audit (v1.37.0)
-# =============================================================================
-# Defense-in-depth configuration for agent safety. Hooks operate at the Claude
-# Code platform level, providing protection across all modes (interactive,
-# autonomous, simstim). Source: Trail of Bits + OpenAI harness patterns.
-harness:
-  # Safety hooks — PreToolUse:Bash destructive command blocking
-  safety_hooks:
-    enabled: true                         # Master toggle for safety hook
-    # Individual pattern toggles (all true by default)
-    block_rm_rf: true                     # Block rm -rf (suggest trash)
-    block_force_push: true                # Block git push --force (suggest --force-with-lease)
-    block_reset_hard: true                # Block git reset --hard (suggest git stash)
-    block_git_clean: true                 # Block git clean -f without -n dry-run
-
-  # Deny rules — platform-level file access blocking
-  deny_rules:
-    # Auto-install during /mount (blocks ~/.ssh, ~/.aws, ~/.kube, etc.)
-    auto_install: true                    # Set false to skip during /mount
-    # Template: .claude/hooks/settings.deny.json
-    # Installer: .claude/scripts/install-deny-rules.sh
-
-  # Audit logging — PostToolUse:Bash mutation logger
-  audit_logging:
-    enabled: true                         # Log mutating commands to .run/audit.jsonl
-    max_file_size_mb: 10                  # Rotate when audit log exceeds this size
-
-  # Stop guard — prevent premature exit during autonomous runs
-  stop_guard:
-    enabled: true                         # Check for active /run, /run-bridge, /simstim
-
-  # Invariant linter — mechanical validation of Loa structure
-  invariant_linting:
-    enabled: true                         # Enable lint-invariants.sh
-    on_mount: true                        # Run after /mount
-    on_run_preflight: true                # Run during /run preflight
 
 # =============================================================================
 # Bridgebuilder — Autonomous PR Review
