@@ -1,0 +1,96 @@
+name: Agent Subsystem CI
+
+on:
+  pull_request:
+    paths:
+      - 'packages/**'
+      - 'tests/unit/**'
+      - 'tests/integration/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+  push:
+    branches: [main]
+    paths:
+      - 'packages/**'
+      - 'tests/unit/**'
+      - 'tests/integration/**'
+
+concurrency:
+  group: agent-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  agent-ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      NATS_URL: nats://127.0.0.1:4222
+      REDIS_URL: redis://127.0.0.1:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Start NATS with JetStream
+        run: |
+          docker run -d --name nats \
+            -p 4222:4222 -p 8222:8222 \
+            nats:2 -js -m 8222
+
+      - name: Verify service connectivity
+        run: |
+          # Wait for NATS JetStream
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8222/jsz > /dev/null 2>&1; then
+              echo "NATS JetStream ready"
+              break
+            fi
+            echo "Waiting for NATS JetStream... ($i/30)"
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:8222/jsz || (echo "NATS JetStream not available" && exit 1)
+
+          # Verify Redis
+          redis-cli -h 127.0.0.1 ping || (echo "Redis not available" && exit 1)
+
+      - name: Type check
+        run: npx tsc --noEmit
+        working-directory: packages/adapters
+
+      - name: Unit tests
+        run: npx vitest run tests/unit/
+
+      - name: Integration tests
+        run: npx vitest run tests/integration/

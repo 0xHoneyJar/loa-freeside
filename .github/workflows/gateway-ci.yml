@@ -1,0 +1,51 @@
+name: Gateway CI
+
+on:
+  pull_request:
+    paths:
+      - 'apps/gateway/**'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/gateway/**'
+
+concurrency:
+  group: gateway-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gateway-ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    defaults:
+      run:
+        working-directory: apps/gateway
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/gateway/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('apps/gateway/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Cargo check
+        run: cargo check --locked
+
+      - name: Cargo clippy
+        run: cargo clippy --locked -- -D warnings
+
+      - name: Cargo test
+        run: cargo test --locked
+
+      - name: Docker build
+        run: docker build -f Dockerfile .
