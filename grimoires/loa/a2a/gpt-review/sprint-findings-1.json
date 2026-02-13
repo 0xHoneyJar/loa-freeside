@@ -1,36 +1,24 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "The plan covers the three BB7 findings, but two tasks contain acceptance criteria/approaches that are either impossible as written or likely to break production packaging/runtime, which can cause the sprint to fail at integration time.",
+  "summary": "The plan maps to all 8 findings, but a few tasks have hidden prerequisites/assumptions (jq/openssl availability, POSIX vs bash semantics, and an unresolvable commit SHA) that can break implementation or make acceptance criteria untestable in CI.",
   "blocking_issues": [
     {
-      "location": "Task 1.1: Migrate Circuit Breaker Failure Tracking from CSV to Sorted Sets (AC-1.1 vs proposed Lua snippet)",
-      "issue": "Acceptance criteria requires `ZRANGEBYSCORE`, but the proposed implementation uses `ZREMRANGEBYSCORE` + `ZCARD` and does not actually call `ZRANGEBYSCORE`.",
-      "why_blocking": "You cannot satisfy AC-1.1 with the described implementation; this will fail the sprint’s own DoD/AC gate even if the code is correct and performant.",
-      "fix": "Either (a) update AC-1.1 to match the intended algorithm (`ZREMRANGEBYSCORE` + `ZADD` + `ZCARD`), or (b) change the script to use `ZRANGEBYSCORE` (e.g., `local failures = redis.call('ZRANGEBYSCORE', ...)` then `#failures`)—but that’s typically worse than `ZCARD` after trimming."
+      "location": "Sprint 1 / Task 1.3 (arrakis-r9-3) — Atomic JWKS write with JSON validation",
+      "issue": "Assumes `jq` exists in the e2e runtime container but does not include an explicit task to add/verify it in the correct image/stage used by `tests/e2e/e2e-entrypoint.sh`.",
+      "why_blocking": "If `jq` is missing in the container that runs `e2e-entrypoint.sh`, the entrypoint will fail at runtime and E2E will not start; AC-1.3.5 becomes impossible to satisfy without modifying Docker build artifacts, which is not currently a planned task.",
+      "fix": "Add an explicit subtask (or separate task) to locate the Dockerfile/image used for the e2e entrypoint and ensure `jq` is installed there (and not only in a different stage). Update acceptance to include a concrete check, e.g., `docker run --rm <e2e-image> jq --version` or `command -v jq` executed in the entrypoint before use."
     },
     {
-      "location": "Task 1.1: Migration logic in `LUA_FAILURE`",
-      "issue": "Zero-downtime migration is underspecified for mixed-fleet concurrency: old code may still be writing the CSV hash field while new code migrates/deletes it, causing lost/duplicated failure records and inconsistent breaker state during rollout.",
-      "why_blocking": "Fleet-wide circuit breaking is a critical requirement; inconsistent failure counts during deployment can cause either false opens (outage) or failure to open (cascading failures). Without a defined mixed-version strategy, the rollout itself can break production behavior.",
-      "fix": "Add an explicit mixed-fleet compatibility plan: either (1) two-phase deploy (phase A: new code writes both CSV+ZSET; phase B: after full rollout, stop CSV and delete field), or (2) keep the CSV field as a shadow for one window duration before deletion, or (3) version the keyspace (e.g., `:failures_v2`) and have new code read both during transition. Add AC to prove mixed-version safety (simulate old+new writers)."
+      "location": "Sprint 2 / Task 2.1 (arrakis-r9-5) — TLS certificate expiry check",
+      "issue": "Uses bash-specific `[[ ... ]]` and assumes `openssl` is available, but the plan doesn’t confirm the script’s shell/runtime in CI nor add a concrete prerequisite check path that won’t hard-fail when `openssl` is absent.",
+      "why_blocking": "If `validate-deployment.sh` is executed under `sh` (or bash < expected) in CI, `[[` will syntax error and the validator will fail immediately. Separately, if `openssl` is missing, the current snippet still attempts to run it (and only later warns), which can cause confusing failures depending on `set -e`/pipefail settings in the script.",
+      "fix": "1) Confirm and document the required interpreter (`#!/usr/bin/env bash`) and add a sprint task to enforce it (or rewrite conditionals to POSIX `[ ]`). 2) Add an explicit `command -v openssl` gate inside the HTTPS block: if missing, emit WARN and skip retrieval. Update AC-2.1.4 to be testable (e.g., simulate missing openssl in CI and assert WARN + exit 0)."
     },
     {
-      "location": "Task 1.3: Make Compatibility Matrix Data-Driven (implementation approach: `readFileSync` at module init)",
-      "issue": "`readFileSync` from a relative path at runtime is brittle in Node package distribution (compiled `dist/` layout, ESM/CJS differences, bundlers, pnpm workspace symlinks). The JSON may not be resolvable at runtime even if it is included in `npm pack`.",
-      "why_blocking": "This can cause startup failures in production (explicitly called out in your “What to Verify” #5). A fail-fast throw (AC-1.15) combined with a path-resolution mistake will hard-fail services after deploy.",
-      "fix": "Define a robust loading strategy and add a test for it: e.g., import JSON as a module (Node supports JSON imports with proper config) or resolve via `new URL('../schema/compatibility.json', import.meta.url)` (ESM) / `path.join(__dirname, '../schema/...')` (CJS) depending on build output. Alternatively, copy JSON into `dist/` during build and reference it relative to the compiled file. Add AC: “works when installed as a packed tarball and executed from dist output” (integration test using `npm pack` + install in a temp dir)."
-    },
-    {
-      "location": "Task 1.3: AC-1.19",
-      "issue": "AC-1.19 claims “Adding a new compatibility entry requires only a JSON file change (no TS recompile for data changes)”, but the proposed approach loads JSON at module init from the package filesystem. In typical deployments, changing a file inside an installed package still requires rebuilding/redeploying the artifact; and if you ship compiled JS, you still need to publish a new package version for consumers.",
-      "why_blocking": "As written, AC-1.19 is not realistically testable/true in the normal npm/package release model, so the sprint can fail its own acceptance criteria even if the feature is implemented correctly.",
-      "fix": "Reword AC-1.19 to something testable and accurate, e.g., “Adding a new compatibility entry requires editing only `compatibility.json` (no TS code changes)” and/or “matrix updates do not require changing TypeScript source beyond the JSON file.” If you truly need runtime-updatable data without republish, that’s a different design (external config source) and should be explicitly scoped."
-    },
-    {
-      "location": "Task 1.2: Add Runtime Schema Enforcement for Audit Events (testing coverage)",
-      "issue": "No explicit task/AC to add or update tests for the new runtime validation behavior (warn + skip). Existing tests may pass without modification even if the guard is broken or never triggered, and there’s no defined way to verify CloudWatch-filter-safe structure beyond local logs.",
-      "why_blocking": "This change is specifically to prevent silent drops in CloudWatch; without a deterministic test asserting the guard behavior and emitted structure, you can ship a regression that still silently drops events, failing the purpose of the sprint.",
-      "fix": "Add explicit AC and a unit test: (1) invalid event → `log.warn` called with `audit_event_validation_failure` and `log.info` not called; (2) valid event → `log.info` called with required fields present. If you have a log-shape contract, assert the JSON keys exactly (snake_case vs camelCase)."
+      "location": "Sprint 2 / Task 2.4 (arrakis-r9-8) — Compatibility matrix content-addressable refs",
+      "issue": "Hardcodes an example commit SHA (`f93c1e8`) and version (`v1.33.0`) without a task to determine the correct immutable reference from the repo history/tags; the plan also mixes tag+short SHA, which may be ambiguous.",
+      "why_blocking": "If that tag/SHA is wrong or not present in the repo, the task cannot be completed correctly and reviewers will block the PR (and AC-2.4.2 becomes unverifiable). This is especially likely if tags differ across repos or the merge commit SHA is not known at implementation time.",
+      "fix": "Add a concrete step/task to resolve the correct reference from git (e.g., `git tag --contains <merge_commit>` or `git rev-parse <tag>`), and require full 40-char commit SHA (or an annotated tag only). Update acceptance to require that the referenced SHA exists in the repo (`git cat-file -e <sha>^{commit}`) and that tags are real (`git show-ref --tags <tag>`)."
     }
   ],
   "question": "",

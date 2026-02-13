@@ -1,40 +1,23 @@
 {
-  "verdict": "CHANGES_REQUIRED",
-  "summary": "Most prior blockers were addressed (sorted-set AC alignment, audit validation tests, and safer JSON loading), but the mixed-fleet migration fix introduces a truly blocking correctness risk for fleet-wide circuit breaking during rollout.",
+  "verdict": "APPROVED",
+  "summary": "All three previously-blocking prerequisites/assumptions (jq availability, bash/openssl gating, and unresolvable hardcoded SHA) are addressed with concrete, testable steps and do not introduce new blocking issues.",
   "previous_issues_status": [
     {
-      "original_issue": "AC-1.1 required `ZRANGEBYSCORE` but implementation used `ZREMRANGEBYSCORE` + `ZCARD` (AC/implementation mismatch)",
+      "original_issue": "Task 1.3 assumed `jq` exists in the e2e runtime container but didn’t include an explicit task to add/verify it in the correct image/stage used by `tests/e2e/e2e-entrypoint.sh`.",
       "status": "fixed",
-      "notes": "AC-1.1 is now aligned to the intended algorithm (`ZREMRANGEBYSCORE` + `ZADD` + `ZCARD`)."
+      "notes": "Task 1.3 now explicitly adds/ensures `jq` in the E2E Docker image stage (prefers adding in e2e stage to keep production minimal), adds a `command -v jq` guard, and adds a verifiable check (`docker run --rm <e2e-image> jq --version`). This makes AC-1.3.5/1.3.6 testable and prevents runtime hard-fail if jq is absent."
     },
     {
-      "original_issue": "Zero-downtime migration underspecified for mixed-fleet concurrency; risk of lost/duplicated failures during rollout",
-      "status": "not_fixed",
-      "notes": "A mixed-fleet strategy was added, but it explicitly allows old and new fleets to write to different stores and not see each other’s failures. That breaks the core requirement of fleet-wide circuit breaking during the rollout window."
+      "original_issue": "Task 2.1 used bash-specific `[[ ... ]]` and assumed `openssl` availability without a robust gate; risk of syntax error under `sh` and confusing failures under `set -e`.",
+      "status": "fixed",
+      "notes": "Task 2.1 now states the script uses bash shebang already, avoids `[[` in the new TLS block (uses `case` + `[ ]`), and adds an explicit `command -v openssl` gate that WARNs and skips. AC-2.1.4 includes a concrete test (`PATH= bash ...`) to ensure it won’t crash when openssl is missing."
     },
     {
-      "original_issue": "Compatibility matrix loading via `readFileSync` at module init is brittle in packaged/bundled Node environments",
+      "original_issue": "Task 2.4 hardcoded an example short SHA/tag without a step to resolve the correct immutable reference; acceptance was unverifiable if the SHA/tag didn’t exist.",
       "status": "fixed",
-      "notes": "Switched to JSON module import with `resolveJsonModule`, avoiding runtime path resolution and file I/O."
-    },
-    {
-      "original_issue": "AC-1.19 was unrealistic as written (implied no rebuild/redeploy needed for data changes)",
-      "status": "fixed",
-      "notes": "Reworded to a testable claim: only `compatibility.json` needs editing (no TS source changes). This is reasonable in a normal publish/redeploy model."
-    },
-    {
-      "original_issue": "Audit runtime validation lacked explicit tests to prove warn+skip behavior and log shape",
-      "status": "fixed",
-      "notes": "Added AC-1.21 and AC-1.22 to require unit tests for invalid/valid events and to assert warn/info behavior."
+      "notes": "Task 2.4 now includes an explicit git-resolution step (find merge commit via grep, expand to full SHA, verify with `git cat-file -e`, and optionally resolve tags via `git tag --contains` / `git show-ref`). Acceptance criteria now require verifiable SHA/tag rather than a hardcoded placeholder."
     }
   ],
-  "new_blocking_concerns": [
-    {
-      "location": "Task 1.1: Mixed-Fleet Deployment Strategy (new containers write only ZSET; old containers write only CSV hash field)",
-      "description": "During a rolling deploy, failure events are split across two independent stores, so neither version observes the full fleet failure rate. This violates fleet-wide circuit breaking semantics at the exact time you most need them (deploys), and can prevent the breaker from opening under real cascading failure conditions.",
-      "why_blocking": "Fleet-wide circuit breaking is a critical requirement. The proposed strategy knowingly degrades correctness (not just sensitivity) for ~deployment duration, and the failure mode is dangerous: the breaker may stay closed when it should open, enabling cascading failures and budget/accounting blowups. This is not a minor tradeoff; it undermines the core safety mechanism during rollout.",
-      "fix": "Adopt a mixed-version compatible write/read strategy for at least one window duration:\n- Two-phase deploy: Phase A (compat mode): new code writes to BOTH CSV hash field and ZSET, and reads/counts from ZSET (or reads both and takes max) while leaving CSV intact. Phase B (after full rollout + >windowMs): stop writing CSV and perform cleanup (HDEL) safely.\nOR\n- Dual-read during transition: new code counts failures from ZSET plus (if present) parses CSV as a fallback and uses the maximum/union count, then gradually removes CSV after rollout.\nAdd/adjust AC-1.20 to require a mixed-fleet simulation test (old-writer + new-writer) proving the breaker opens at the same threshold as single-version behavior."
-    }
-  ],
+  "new_blocking_concerns": [],
   "iteration": 2
 }
