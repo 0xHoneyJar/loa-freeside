@@ -30,7 +30,7 @@ import {
   type KeyLike,
 } from 'jose';
 
-import { CONTRACT_SCHEMA, TEST_VECTORS, type TestVector } from '../e2e/contracts/src/index.js';
+import { CONTRACT_SCHEMA, TEST_VECTORS, type TestVector } from '../../packages/contracts/src/index.js';
 
 // --------------------------------------------------------------------------
 // Types
@@ -56,6 +56,20 @@ export interface UsageReport {
   accountingMode: string;
   usageTokens?: number;
   timestamp: string;
+  /** Per-model cost breakdown (contract v1.1.0, cycle-019 BB6 Finding #6) */
+  modelBreakdown?: Array<{
+    model_id: string;
+    provider: string;
+    succeeded: boolean;
+    input_tokens?: number;
+    output_tokens?: number;
+    cost_micro: number;
+    accounting_mode: string;
+    latency_ms?: number;
+    error_code?: string;
+  }>;
+  /** Aggregate ensemble accounting (contract v1.1.0) */
+  ensembleAccounting?: Record<string, unknown>;
 }
 
 // --------------------------------------------------------------------------
@@ -281,7 +295,10 @@ export class LoaFinnE2EStub {
     }
 
     const statusCode = vector?.response.status ?? 200;
-    res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+    res.writeHead(statusCode, {
+      'Content-Type': 'application/json',
+      'X-Contract-Version': CONTRACT_SCHEMA.version,
+    });
     res.end(JSON.stringify(responseBody));
   }
 
@@ -317,6 +334,7 @@ export class LoaFinnE2EStub {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
+      'X-Contract-Version': CONTRACT_SCHEMA.version,
     });
 
     // Emit events
@@ -339,19 +357,42 @@ export class LoaFinnE2EStub {
   // Usage Report Receiver (for testing arrakis → loa-finn usage flow)
   // --------------------------------------------------------------------------
 
+  /**
+   * Receive usage reports from arrakis.
+   * Accepts both v1.0.0 (no model_breakdown) and v1.1.0 (with model_breakdown) payloads.
+   * Unknown fields are silently accepted (additionalProperties tolerance — AC-1.19).
+   */
   private async handleUsageReport(
     body: string,
     res: ServerResponse,
   ): Promise<void> {
-    const parsed = this.safeJsonParse(body) as UsageReport | null;
+    const parsed = this.safeJsonParse(body) as Record<string, unknown> | null;
     if (!parsed) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'BAD_REQUEST', message: 'Invalid JSON' }));
       return;
     }
-    this.usageReports.push(parsed);
+
+    // Build UsageReport, tolerating unknown/new fields (backward-compatible)
+    const report: UsageReport = {
+      reportId: (parsed.reportId as string) ?? (parsed.report_id as string) ?? '',
+      jti: (parsed.jti as string) ?? '',
+      tenantId: (parsed.tenantId as string) ?? (parsed.tenant_id as string) ?? '',
+      poolId: (parsed.poolId as string) ?? (parsed.pool_id as string) ?? '',
+      inputTokens: (parsed.inputTokens as number) ?? (parsed.input_tokens as number) ?? 0,
+      outputTokens: (parsed.outputTokens as number) ?? (parsed.output_tokens as number) ?? 0,
+      costMicro: (parsed.costMicro as number) ?? (parsed.cost_micro as number) ?? 0,
+      accountingMode: (parsed.accountingMode as string) ?? (parsed.accounting_mode as string) ?? 'PLATFORM_BUDGET',
+      usageTokens: (parsed.usageTokens as number) ?? (parsed.usage_tokens as number) ?? undefined,
+      timestamp: (parsed.timestamp as string) ?? new Date().toISOString(),
+      // v1.1.0 fields — optional, ignored if absent
+      modelBreakdown: parsed.model_breakdown as UsageReport['modelBreakdown'],
+      ensembleAccounting: parsed.ensemble_accounting as Record<string, unknown> | undefined,
+    };
+
+    this.usageReports.push(report);
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'accepted' }));
+    res.end(JSON.stringify({ status: 'accepted', contract_version: CONTRACT_SCHEMA.version }));
   }
 
   // --------------------------------------------------------------------------
@@ -441,6 +482,9 @@ export class LoaFinnE2EStub {
         (vectorPayload.accounting_mode as string) ?? 'PLATFORM_BUDGET',
       usageTokens: vectorPayload.usage_tokens as number | undefined,
       timestamp: new Date().toISOString(),
+      // Contract v1.1.0: per-model breakdown (optional, backward-compatible)
+      modelBreakdown: vectorPayload.model_breakdown as UsageReport['modelBreakdown'],
+      ensembleAccounting: vectorPayload.ensemble_accounting as Record<string, unknown> | undefined,
     };
 
     // Sign as JWS (for S2S verification)
@@ -469,11 +513,20 @@ export class LoaFinnE2EStub {
     const byok = claims.byok as boolean | undefined;
     const ensemble = claims.ensemble_strategy as string | undefined;
 
-    // Match by specificity: BYOK > ensemble > pool routing > free tier
+    // Match by specificity: hybrid BYOK+ensemble > BYOK > ensemble partial > ensemble > pool routing > free tier
+    if (byok && ensemble) {
+      // Hybrid BYOK/platform ensemble (cycle-019 BB6)
+      return TEST_VECTORS.vectors.find((v) => v.name === 'invoke_ensemble_hybrid_byok');
+    }
     if (byok) {
       return TEST_VECTORS.vectors.find((v) => v.name === 'invoke_byok');
     }
     if (ensemble) {
+      // Match by idempotency key for specific ensemble scenarios
+      const idemKey = claims.idempotency_key as string | undefined;
+      if (idemKey?.includes('partial-model')) {
+        return TEST_VECTORS.vectors.find((v) => v.name === 'invoke_ensemble_per_model_partial');
+      }
       return TEST_VECTORS.vectors.find(
         (v) => v.name === 'invoke_ensemble_best_of_n',
       );

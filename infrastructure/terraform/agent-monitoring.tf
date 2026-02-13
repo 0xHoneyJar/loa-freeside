@@ -283,6 +283,176 @@ resource "aws_cloudwatch_dashboard" "agent_gateway" {
             left = { label = "count", min = 0 }
           }
         }
+      },
+
+      # =====================================================================
+      # Cycle-019 Capability Mesh Widgets (Sprint 4 — AC-4.13)
+      # =====================================================================
+
+      # Row 5: Header
+      {
+        type   = "text"
+        x      = 0
+        y      = 25
+        width  = 24
+        height = 1
+        properties = {
+          markdown = "## Capability Mesh — Per-Model Accounting & Observability\n**Cycle:** 019 | **Source:** Bridgebuilder Round 6"
+        }
+      },
+
+      # Row 6: Per-Model Cost Distribution (stacked bar by model_id)
+      {
+        type   = "metric"
+        x      = 0
+        y      = 26
+        width  = 8
+        height = 6
+        properties = {
+          title  = "Per-Model Cost Distribution"
+          region = var.aws_region
+          stat   = "Sum"
+          period = 300
+          view   = "bar"
+          stacked = true
+          metrics = [
+            ["Arrakis/AgentGateway", "PerModelCost", "model_id", "cheap", { label = "cheap" }],
+            [".", ".", ".", "fast-code", { label = "fast-code" }],
+            [".", ".", ".", "reviewer", { label = "reviewer" }],
+            [".", ".", ".", "reasoning", { label = "reasoning" }],
+            [".", ".", ".", "architect", { label = "architect" }]
+          ]
+          yAxis = {
+            left = { label = "micro-USD", min = 0 }
+          }
+        }
+      },
+
+      # Row 6: BYOK vs Platform Accounting Mode
+      {
+        type   = "metric"
+        x      = 8
+        y      = 26
+        width  = 8
+        height = 6
+        properties = {
+          title  = "BYOK vs Platform Accounting"
+          region = var.aws_region
+          stat   = "Sum"
+          period = 300
+          view   = "pie"
+          metrics = [
+            ["Arrakis/AgentGateway", "PerModelCost", "accounting_mode", "PLATFORM_BUDGET", { label = "Platform Budget" }],
+            [".", ".", ".", "BYOK_NO_BUDGET", { label = "BYOK (No Budget)" }]
+          ]
+        }
+      },
+
+      # Row 6: Ensemble Savings (reservation vs committed delta)
+      {
+        type   = "metric"
+        x      = 16
+        y      = 26
+        width  = 8
+        height = 6
+        properties = {
+          title  = "Ensemble Savings (Reservation Headroom)"
+          region = var.aws_region
+          stat   = "Average"
+          period = 60
+          view   = "timeSeries"
+          metrics = [
+            ["Arrakis/AgentGateway", "EnsembleSavings", { label = "savings (micro-USD)", color = "#2ca02c" }]
+          ]
+          annotations = {
+            horizontal = [
+              { value = 0, label = "Break-even", color = "#ff7f0e" }
+            ]
+          }
+          yAxis = {
+            left = { label = "micro-USD" }
+          }
+        }
+      },
+
+      # Row 7: Token Estimate Accuracy
+      {
+        type   = "metric"
+        x      = 0
+        y      = 32
+        width  = 8
+        height = 6
+        properties = {
+          title  = "Token Estimate Accuracy"
+          region = var.aws_region
+          stat   = "Average"
+          period = 300
+          view   = "timeSeries"
+          metrics = [
+            ["Arrakis/AgentGateway", "TokenEstimateDrift", { label = "Mean Error %", color = "#ff7f0e" }]
+          ]
+          annotations = {
+            horizontal = [
+              { value = 100, label = "Alarm 100%", color = "#d62728" },
+              { value = 50, label = "Warning 50%", color = "#ff7f0e" }
+            ]
+          }
+          yAxis = {
+            left = { label = "%", min = 0 }
+          }
+        }
+      },
+
+      # Row 7: Lifecycle State Distribution
+      {
+        type   = "metric"
+        x      = 8
+        y      = 32
+        width  = 8
+        height = 6
+        properties = {
+          title  = "Lifecycle Final State"
+          region = var.aws_region
+          stat   = "Sum"
+          period = 300
+          view   = "bar"
+          metrics = [
+            ["Arrakis/AgentGateway", "LifecycleFinalState", "final_state", "FINALIZED", { label = "Finalized", color = "#2ca02c" }],
+            [".", ".", ".", "FAILED", { label = "Failed", color = "#d62728" }]
+          ]
+          yAxis = {
+            left = { label = "count", min = 0 }
+          }
+        }
+      },
+
+      # Row 7: Fleet Circuit Breaker (Redis-backed, shared state)
+      {
+        type   = "metric"
+        x      = 16
+        y      = 32
+        width  = 8
+        height = 6
+        properties = {
+          title  = "Fleet Circuit Breaker (Redis)"
+          region = var.aws_region
+          stat   = "Maximum"
+          period = 60
+          view   = "timeSeries"
+          metrics = [
+            ["Arrakis/AgentGateway", "CircuitBreakerState", "component", "kms", { label = "KMS (fleet-wide)" }],
+            [".", ".", ".", "loa-finn", { label = "loa-finn" }]
+          ]
+          annotations = {
+            horizontal = [
+              { value = 2, label = "OPEN", color = "#d62728" },
+              { value = 1, label = "HALF-OPEN", color = "#ff7f0e" }
+            ]
+          }
+          yAxis = {
+            left = { min = 0, max = 3 }
+          }
+        }
       }
     ]
   })
@@ -440,6 +610,50 @@ resource "aws_cloudwatch_metric_alarm" "agent_finalize_failures" {
   statistic           = "Sum"
   threshold           = 0
   alarm_description   = "Agent Gateway finalize failures persisting for 10 minutes — budget may not be releasing reservations"
+  treat_missing_data  = "notBreaching"
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+
+  tags = merge(local.common_tags, {
+    Service  = "AgentGateway"
+    Severity = "critical"
+  })
+}
+
+# 7. Token estimate drift > 100% for 15 minutes (AC-4.14)
+resource "aws_cloudwatch_metric_alarm" "agent_token_estimate_drift" {
+  alarm_name          = "${local.name_prefix}-agent-token-estimate-drift"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 15
+  metric_name         = "TokenEstimateDrift"
+  namespace           = "Arrakis/AgentGateway"
+  period              = 60
+  statistic           = "Average"
+  threshold           = 100
+  alarm_description   = "Agent Gateway token estimate drift > 100% for 15 minutes — TokenEstimator chars-per-token ratio needs recalibration"
+  treat_missing_data  = "notBreaching"
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+
+  tags = merge(local.common_tags, {
+    Service  = "AgentGateway"
+    Severity = "high"
+  })
+}
+
+# 8. Ensemble budget overrun (savings < 0) for any request (AC-4.14)
+resource "aws_cloudwatch_metric_alarm" "agent_ensemble_budget_overrun" {
+  alarm_name          = "${local.name_prefix}-agent-ensemble-budget-overrun"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "EnsembleSavings"
+  namespace           = "Arrakis/AgentGateway"
+  period              = 60
+  statistic           = "Minimum"
+  threshold           = 0
+  alarm_description   = "Agent Gateway ensemble savings < 0 — committed cost exceeded reservation, budget invariant violated"
   treat_missing_data  = "notBreaching"
 
   alarm_actions = [aws_sns_topic.alerts.arn]

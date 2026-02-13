@@ -1,10 +1,16 @@
-# E2E Test Infrastructure — Redis + PostgreSQL
-# Sprint 1, Task 1.3: Agent Gateway E2E Tests
+# E2E Test Infrastructure — Full Cross-System Stack
+# Cycle-017: Containerized E2E (arrakis + loa-finn + Redis)
 #
-# Base images pinned by digest per AC-2.11.
-# Usage: docker compose -f tests/e2e/docker-compose.e2e.yml up -d
+# JWKS Bootstrap: arrakis writes JWKS to a shared volume on startup.
+# loa-finn reads JWKS from the mounted file (ARRAKIS_JWKS_FILE),
+# breaking the circular HTTP dependency.
 #
-# @see SDD §3.2.1 E2E Test Infrastructure
+# Usage:
+#   LOA_FINN_DIR=/path/to/loa-finn docker compose -f tests/e2e/docker-compose.e2e.yml up -d
+#
+# The runner script (scripts/run-e2e.sh) sets LOA_FINN_DIR automatically.
+#
+# @see SDD §2.1.1 Docker Compose Topology
 
 services:
   redis-e2e:
@@ -13,28 +19,67 @@ services:
     ports:
       - "6399:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 2s
+      test: ["CMD", "redis-cli", "-h", "localhost", "ping"]
+      interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 20
       start_period: 5s
     tmpfs:
       - /data
 
-  postgres-e2e:
-    # PostgreSQL 15 — pinned by digest for reproducibility
-    image: postgres:15@sha256:68b988a164c8bdf0752fa7a4ae2d4b34a058a21c6327e3b0a80f3c6f4a6b1c4a
-    ports:
-      - "5499:5432"
+  arrakis-e2e:
+    build:
+      context: ../..
+      dockerfile: themes/sietch/Dockerfile
+      target: e2e
     environment:
-      POSTGRES_USER: arrakis_e2e
-      POSTGRES_PASSWORD: arrakis_e2e
-      POSTGRES_DB: arrakis_e2e
+      - REDIS_URL=redis://redis-e2e:6379
+      - LOA_FINN_BASE_URL=http://loa-finn-e2e:8080
+      - NODE_ENV=test
+      - API_PORT=3000
+      - API_HOST=0.0.0.0
+      - AGENT_ENABLED=true
+      - AGENT_JWT_PRIVATE_KEY=${AGENT_JWT_PRIVATE_KEY:-}
+      - AGENT_JWT_KEY_ID=e2e-test-key
+      - JWKS_EXPORT_PATH=/shared/arrakis-jwks.json
+    ports:
+      - "3099:3000"
+    depends_on:
+      redis-e2e:
+        condition: service_healthy
+    volumes:
+      - jwks-shared:/shared
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U arrakis_e2e"]
-      interval: 2s
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 5s
       timeout: 3s
-      retries: 5
-      start_period: 5s
-    tmpfs:
-      - /var/lib/postgresql/data
+      retries: 10
+      start_period: 10s
+
+  loa-finn-e2e:
+    build:
+      context: ${LOA_FINN_DIR:-.loa-finn-checkout}
+      dockerfile: Dockerfile
+    environment:
+      - REDIS_URL=redis://redis-e2e:6379
+      - PORT=8080
+      - POOL_CLAIM_MODE=warn
+      - ARRAKIS_JWKS_FILE=/shared/arrakis-jwks.json
+    ports:
+      - "8099:8080"
+    depends_on:
+      redis-e2e:
+        condition: service_healthy
+      arrakis-e2e:
+        condition: service_healthy
+    volumes:
+      - jwks-shared:/shared:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  jwks-shared:

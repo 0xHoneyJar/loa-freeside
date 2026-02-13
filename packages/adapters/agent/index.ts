@@ -91,6 +91,13 @@ export {
 // Pre-Auth IP Rate Limiting
 export { IpRateLimiter, type IpRateLimitConfig } from './ip-rate-limiter.js';
 
+// Redis Circuit Breaker (fleet-wide shared state — Sprint 3 Task 3.3)
+export {
+  RedisCircuitBreaker,
+  type CircuitState,
+  type RedisCircuitBreakerConfig,
+} from './redis-circuit-breaker.js';
+
 // loa-finn Client
 export { LoaFinnClient, LoaFinnError, type JwtMinter, type LoaFinnClientDeps } from './loa-finn-client.js';
 
@@ -204,3 +211,43 @@ export {
   type AgentRequestLog,
   type PoolClaimValidationLog,
 } from './observability.js';
+
+// Agent Metrics (EMF — CloudWatch)
+export { AgentMetrics, type RequestMetrics, type BudgetMetrics, type CircuitBreakerMetrics, type PoolClaimMetrics } from './agent-metrics.js';
+
+// Capability Audit Log (cycle-019 Sprint 4 — observability)
+export {
+  CapabilityAuditLogger,
+  type CapabilityAuditEvent,
+  type CapabilityEventType,
+} from './capability-audit.js';
+
+// Ensemble Accounting (cycle-019 BB6 Finding #6 — per-model cost attribution)
+export {
+  computeEnsembleAccounting,
+  computeHybridMultiplier,
+  type ModelInvocationResult,
+  type EnsembleAccountingResult,
+  type AccountingMode,
+} from './ensemble-accounting.js';
+
+// Token Estimator (cycle-019 BB6 Finding #7 — calibration harness)
+export {
+  TokenEstimator,
+  type TokenEstimatorConfig,
+  type CalibrationStats,
+} from './token-estimator.js';
+
+// Request Lifecycle (cycle-019 BB6 Finding #1 — state machine extraction)
+export {
+  RequestLifecycle,
+  LifecycleError,
+  type LifecycleState,
+  type LifecycleEvent,
+} from './request-lifecycle.js';
+
+// Contract Version + Compatibility (cycle-019 BB6 Finding #2)
+export { CONTRACT_VERSION, validateContractCompatibility } from './contract-version.js';
+
+// Contract Version Mismatch Error (cycle-019 AC-2.21)
+export { ContractVersionMismatchError } from './loa-finn-client.js';

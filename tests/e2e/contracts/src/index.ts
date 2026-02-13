@@ -52,6 +52,40 @@ export const CONTRACT_SCHEMA: ContractSchema =
 // Test Vectors
 // --------------------------------------------------------------------------
 
+// --------------------------------------------------------------------------
+// Per-Model Breakdown Types (contract v1.1.0, cycle-019 BB6 Finding #6)
+// --------------------------------------------------------------------------
+
+/** Per-model cost entry in usage report model_breakdown array */
+export interface ModelBreakdownEntry {
+  model_id: string;
+  provider: 'openai' | 'anthropic';
+  succeeded: boolean;
+  input_tokens?: number;
+  output_tokens?: number;
+  cost_micro: number;
+  accounting_mode: 'PLATFORM_BUDGET' | 'BYOK_NO_BUDGET';
+  latency_ms?: number;
+  error_code?: string;
+}
+
+/** Aggregate ensemble accounting in usage reports */
+export interface EnsembleAccountingSummary {
+  strategy: 'best_of_n' | 'consensus' | 'fallback';
+  n_requested: number;
+  n_succeeded: number;
+  n_failed: number;
+  total_cost_micro: number;
+  platform_cost_micro: number;
+  byok_cost_micro: number;
+  reserved_cost_micro: number;
+  savings_micro: number;
+}
+
+// --------------------------------------------------------------------------
+// Test Vector Types
+// --------------------------------------------------------------------------
+
 export interface TestVectorUsageReport {
   pool_id: string;
   input_tokens: number;
@@ -59,6 +93,8 @@ export interface TestVectorUsageReport {
   cost_micro: number;
   accounting_mode?: string;
   usage_tokens?: number;
+  model_breakdown?: ModelBreakdownEntry[];
+  ensemble_accounting?: EnsembleAccountingSummary;
 }
 
 export interface TestVector {

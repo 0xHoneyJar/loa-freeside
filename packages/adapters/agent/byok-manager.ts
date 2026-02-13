@@ -14,6 +14,7 @@
 import { randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
 import type { Logger } from 'pino';
 import type { Redis } from 'ioredis';
+import { RedisCircuitBreaker } from './redis-circuit-breaker.js';
 
 // --------------------------------------------------------------------------
 // Types
@@ -149,77 +150,6 @@ class SecureLRUCache {
 }
 
 // --------------------------------------------------------------------------
-// Circuit Breaker
-// --------------------------------------------------------------------------
-
-type CircuitState = 'closed' | 'open' | 'half-open';
-
-class CircuitBreaker {
-  private state: CircuitState = 'closed';
-  private failures: number[] = [];
-  private readonly threshold: number;
-  private readonly windowMs: number;
-  private readonly resetMs: number;
-  private openedAt = 0;
-
-  constructor(threshold: number, windowMs: number, resetMs: number) {
-    this.threshold = threshold;
-    this.windowMs = windowMs;
-    this.resetMs = resetMs;
-  }
-
-  /** Check if the circuit allows requests */
-  isAllowed(): boolean {
-    if (this.state === 'closed') return true;
-
-    if (this.state === 'open') {
-      // Check if reset timeout has elapsed → transition to half-open
-      if (Date.now() - this.openedAt >= this.resetMs) {
-        this.state = 'half-open';
-        return true; // Allow probe request
-      }
-      return false;
-    }
-
-    // half-open: allow one probe
-    return true;
-  }
-
-  /** Record a successful call */
-  onSuccess(): void {
-    if (this.state === 'half-open') {
-      this.state = 'closed';
-    }
-    this.failures = [];
-  }
-
-  /** Record a failed call */
-  onFailure(): void {
-    const now = Date.now();
-
-    if (this.state === 'half-open') {
-      // Probe failed → re-open
-      this.state = 'open';
-      this.openedAt = now;
-      return;
-    }
-
-    // Prune old failures outside window
-    this.failures = this.failures.filter((t) => now - t < this.windowMs);
-    this.failures.push(now);
-
-    if (this.failures.length >= this.threshold) {
-      this.state = 'open';
-      this.openedAt = now;
-    }
-  }
-
-  getState(): CircuitState {
-    return this.state;
-  }
-}
-
-// --------------------------------------------------------------------------
 // BYOK Manager
 // --------------------------------------------------------------------------
 
@@ -229,7 +159,7 @@ export class BYOKManager {
   private readonly redis: Redis;
   private readonly logger: Logger;
   private readonly cache: SecureLRUCache;
-  private readonly cb: CircuitBreaker;
+  private readonly cb: RedisCircuitBreaker;
 
   constructor(
     kms: KMSAdapter,
@@ -246,11 +176,11 @@ export class BYOKManager {
       config?.cacheMaxSize ?? 100,
       config?.cacheTtlMs ?? 60_000,
     );
-    this.cb = new CircuitBreaker(
-      config?.cbFailureThreshold ?? 3,
-      config?.cbWindowMs ?? 30_000,
-      config?.cbResetMs ?? 60_000,
-    );
+    this.cb = new RedisCircuitBreaker(redis, 'kms', logger, {
+      failureThreshold: config?.cbFailureThreshold ?? 3,
+      windowMs: config?.cbWindowMs ?? 30_000,
+      resetMs: config?.cbResetMs ?? 60_000,
+    });
   }
 
   /**
@@ -267,7 +197,7 @@ export class BYOKManager {
     apiKey: Buffer,
     createdBy: string,
   ): Promise<BYOKKeyInfo> {
-    this.assertCircuitClosed('storeKey');
+    await this.assertCircuitClosed('storeKey');
 
     // Generate DEK
     const dek = randomBytes(32);
@@ -407,7 +337,7 @@ export class BYOKManager {
     newApiKey: Buffer,
     createdBy: string,
   ): Promise<BYOKKeyInfo> {
-    this.assertCircuitClosed('rotateKey');
+    await this.assertCircuitClosed('rotateKey');
 
     // Verify old key exists and get provider
     const records = await this.store.listByCommunity(communityId);
@@ -480,39 +410,41 @@ export class BYOKManager {
   // --------------------------------------------------------------------------
 
   private async kmsEncrypt(plaintext: Buffer): Promise<Buffer> {
-    if (!this.cb.isAllowed()) {
+    if (!(await this.cb.isAllowed())) {
       throw new BYOKManagerError('KMS_CIRCUIT_OPEN', 'KMS circuit breaker is open', 503);
     }
 
     try {
       const result = await this.kms.encrypt(plaintext);
-      this.cb.onSuccess();
+      await this.cb.onSuccess();
       return result;
     } catch (err) {
-      this.cb.onFailure();
-      this.logger.error({ err, state: this.cb.getState() }, 'KMS encrypt failed');
+      await this.cb.onFailure();
+      const state = await this.cb.getState();
+      this.logger.error({ err, state }, 'KMS encrypt failed');
       throw err;
     }
   }
 
   private async kmsDecrypt(ciphertext: Buffer): Promise<Buffer> {
-    if (!this.cb.isAllowed()) {
+    if (!(await this.cb.isAllowed())) {
       throw new BYOKManagerError('KMS_CIRCUIT_OPEN', 'KMS circuit breaker is open', 503);
     }
 
     try {
       const result = await this.kms.decrypt(ciphertext);
-      this.cb.onSuccess();
+      await this.cb.onSuccess();
       return result;
     } catch (err) {
-      this.cb.onFailure();
-      this.logger.error({ err, state: this.cb.getState() }, 'KMS decrypt failed');
+      await this.cb.onFailure();
+      const state = await this.cb.getState();
+      this.logger.error({ err, state }, 'KMS decrypt failed');
       throw err;
     }
   }
 
-  private assertCircuitClosed(operation: string): void {
-    if (!this.cb.isAllowed()) {
+  private async assertCircuitClosed(operation: string): Promise<void> {
+    if (!(await this.cb.isAllowed())) {
       throw new BYOKManagerError(
         'KMS_CIRCUIT_OPEN',
         `KMS circuit breaker is open — ${operation} rejected (fail-closed)`,

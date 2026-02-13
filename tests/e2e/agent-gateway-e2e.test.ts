@@ -12,7 +12,7 @@
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { LoaFinnE2EStub } from './loa-finn-e2e-stub.js';
-import { getVector, CONTRACT_VERSION } from './contracts/src/index.js';
+import { getVector, CONTRACT_VERSION, validateContractCompatibility } from '../../packages/contracts/src/index.js';
 
 // --------------------------------------------------------------------------
 // Environment
@@ -313,6 +313,42 @@ describe.skipIf(SKIP_E2E)('Agent Gateway E2E', () => {
           `Vector ${vector.name} missing pool_mapping_version`,
         ).toBeDefined();
       }
+    });
+
+    // AC-2.22: Version negotiation — stub returns X-Contract-Version header
+    it('should return X-Contract-Version header in invoke response', async () => {
+      const vector = getVector('invoke_free_tier');
+      const response = await fetch(`${stub.getBaseUrl()}/v1/agents/invoke`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${createMockJwt(vector.request.jwt_claims)}`,
+        },
+        body: JSON.stringify(vector.request.body),
+      });
+
+      expect(response.status).toBe(200);
+      const peerVersion = response.headers.get('x-contract-version');
+      expect(peerVersion).toBe(CONTRACT_VERSION);
+
+      // Validate compatibility succeeds
+      const compat = validateContractCompatibility(CONTRACT_VERSION, peerVersion!);
+      expect(compat.compatible).toBe(true);
+      expect(compat.status).toBe('supported');
+    });
+
+    // AC-2.23: Version mismatch — explicit error, not silent fallthrough
+    it('should detect version mismatch with incompatible major version', () => {
+      const result = validateContractCompatibility('1.1.0', '2.0.0');
+      expect(result.compatible).toBe(false);
+      expect(result.status).toBe('unsupported');
+      expect(result.reason).toContain('Major version mismatch');
+    });
+
+    it('should allow minor version differences within same major', () => {
+      const result = validateContractCompatibility('1.0.0', '1.1.0');
+      expect(result.compatible).toBe(true);
+      expect(result.contract_version).toBe('1.1.0'); // newer of the two
     });
   });
 });

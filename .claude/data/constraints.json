@@ -87,7 +87,7 @@
           "validate": "exists"
         }
       ],
-      "error_code": "E111",
+      "error_code": "E115",
       "severity": "critical",
       "source_incident": "#216"
     },
@@ -213,7 +213,7 @@
           "validate": "exists"
         }
       ],
-      "error_code": "E113",
+      "error_code": "E116",
       "severity": "high"
     },
     {
@@ -823,6 +823,199 @@
         }
       ],
       "severity": "medium"
+    },
+    {
+      "id": "C-BRIDGE-001",
+      "name": "bridge_uses_run_sprint_plan",
+      "category": "bridge",
+      "rule_type": "ALWAYS",
+      "text": "use `/run sprint-plan` (not direct `/implement`) within bridge iterations",
+      "text_variants": {
+        "claude-loa-md": "ALWAYS use `/run sprint-plan` (not direct `/implement`) within bridge iterations",
+        "skill-md": "DO use `/run sprint-plan` within bridge iterations, never direct `/implement`"
+      },
+      "why": "Bridge iterations must inherit the implement→review→audit cycle with circuit breaker protection",
+      "order": 0,
+      "layers": [
+        {
+          "target": "claude-loa-md",
+          "section": "bridge_constraints",
+          "render_as": "table_row"
+        },
+        {
+          "target": "skill-md",
+          "skills": ["run-bridge"],
+          "render_as": "constraint_rule"
+        }
+      ],
+      "severity": "critical"
+    },
+    {
+      "id": "C-BRIDGE-002",
+      "name": "bridge_github_trail",
+      "category": "bridge",
+      "rule_type": "ALWAYS",
+      "text": "post Bridgebuilder review as PR comment after each bridge iteration",
+      "text_variants": {
+        "claude-loa-md": "ALWAYS post Bridgebuilder review as PR comment after each bridge iteration",
+        "skill-md": "DO post Bridgebuilder review as PR comment after each bridge iteration"
+      },
+      "why": "GitHub trail provides auditable history of iterative improvement decisions",
+      "order": 1,
+      "layers": [
+        {
+          "target": "claude-loa-md",
+          "section": "bridge_constraints",
+          "render_as": "table_row"
+        },
+        {
+          "target": "skill-md",
+          "skills": ["run-bridge"],
+          "render_as": "constraint_rule"
+        }
+      ],
+      "severity": "high"
+    },
+    {
+      "id": "C-BRIDGE-003",
+      "name": "gt_grounding_required",
+      "category": "bridge",
+      "rule_type": "ALWAYS",
+      "text": "ensure Grounded Truth claims cite `file:line` source references",
+      "text_variants": {
+        "claude-loa-md": "ALWAYS ensure Grounded Truth claims cite `file:line` source references",
+        "skill-md": "DO ensure all GT claims cite `file:line` source references"
+      },
+      "why": "Ungrounded claims in GT files propagate misinformation across sessions and agents",
+      "order": 2,
+      "layers": [
+        {
+          "target": "claude-loa-md",
+          "section": "bridge_constraints",
+          "render_as": "table_row"
+        },
+        {
+          "target": "skill-md",
+          "skills": ["run-bridge", "riding-codebase"],
+          "render_as": "constraint_rule"
+        }
+      ],
+      "severity": "high"
+    },
+    {
+      "id": "C-BRIDGE-004",
+      "name": "lore_yaml_format",
+      "category": "bridge",
+      "rule_type": "ALWAYS",
+      "text": "use YAML format for lore entries with `id`, `term`, `short`, `context`, `source`, `tags` fields",
+      "text_variants": {
+        "claude-loa-md": "ALWAYS use YAML format for lore entries with `id`, `term`, `short`, `context`, `source`, `tags` fields",
+        "skill-md": "DO use YAML format with required schema fields for all lore entries"
+      },
+      "why": "Consistent schema enables programmatic lore queries and cross-skill integration",
+      "order": 3,
+      "layers": [
+        {
+          "target": "claude-loa-md",
+          "section": "bridge_constraints",
+          "render_as": "table_row"
+        }
+      ],
+      "severity": "medium"
+    },
+    {
+      "id": "C-BRIDGE-005",
+      "name": "vision_traceability",
+      "category": "bridge",
+      "rule_type": "ALWAYS",
+      "text": "include source bridge iteration and PR in vision entries",
+      "text_variants": {
+        "claude-loa-md": "ALWAYS include source bridge iteration and PR in vision entries",
+        "skill-md": "DO include source bridge iteration and PR in every vision entry"
+      },
+      "why": "Vision entries without provenance cannot be traced back to the context that inspired them",
+      "order": 4,
+      "layers": [
+        {
+          "target": "claude-loa-md",
+          "section": "bridge_constraints",
+          "render_as": "table_row"
+        },
+        {
+          "target": "skill-md",
+          "skills": ["run-bridge"],
+          "render_as": "constraint_rule"
+        }
+      ],
+      "severity": "medium"
+    },
+    {
+      "id": "C-BRIDGE-006",
+      "name": "load_persona",
+      "category": "bridge",
+      "rule_type": "ALWAYS",
+      "text": "load and validate bridgebuilder-persona.md before enriched review iterations",
+      "text_variants": {
+        "claude-loa-md": "ALWAYS load and validate bridgebuilder-persona.md before enriched review iterations",
+        "skill-md": "DO load and validate persona file (integrity + content check) before every review iteration"
+      },
+      "why": "Persona-less reviews produce convergence-only output without educational depth",
+      "order": 5,
+      "layers": [
+        {
+          "target": "claude-loa-md",
+          "section": "bridge_constraints",
+          "render_as": "table_row"
+        },
+        {
+          "target": "skill-md",
+          "skills": ["run-bridge"],
+          "render_as": "constraint_rule"
+        }
+      ],
+      "severity": "high"
+    },
+    {
+      "id": "C-BRIDGE-007",
+      "name": "praise_quality",
+      "category": "bridge",
+      "rule_type": "SHOULD",
+      "text": "include PRAISE findings only when warranted by genuinely good engineering decisions",
+      "text_variants": {
+        "claude-loa-md": "SHOULD include PRAISE findings only when warranted by genuinely good engineering decisions",
+        "skill-md": "SHOULD include PRAISE findings — authentic recognition is more valuable than formulaic praise"
+      },
+      "why": "Forced praise dilutes the signal; authentic recognition of quality reinforces good patterns",
+      "order": 6,
+      "layers": [
+        {
+          "target": "claude-loa-md",
+          "section": "bridge_constraints",
+          "render_as": "table_row"
+        }
+      ],
+      "severity": "low"
+    },
+    {
+      "id": "C-BRIDGE-008",
+      "name": "educational_fields",
+      "category": "bridge",
+      "rule_type": "SHOULD",
+      "text": "populate educational fields (faang_parallel, metaphor, teachable_moment) only with confident, specific insights",
+      "text_variants": {
+        "claude-loa-md": "SHOULD populate educational fields (faang_parallel, metaphor, teachable_moment) only with confident, specific insights",
+        "skill-md": "SHOULD populate enriched fields — an empty field is better than a formulaic one"
+      },
+      "why": "Generic educational content wastes reviewer attention; depth over coverage",
+      "order": 7,
+      "layers": [
+        {
+          "target": "claude-loa-md",
+          "section": "bridge_constraints",
+          "render_as": "table_row"
+        }
+      ],
+      "severity": "low"
     }
   ]
 }

@@ -56,6 +56,7 @@ COPY packages/adapters/wizard ./wizard
 COPY packages/adapters/synthesis ./synthesis
 COPY packages/adapters/security ./security
 COPY packages/adapters/coexistence ./coexistence
+COPY packages/adapters/agent ./agent
 RUN npm run build
 
 # -----------------------------------------------------------------------------
@@ -166,3 +167,23 @@ ENTRYPOINT ["dumb-init", "--"]
 
 # Start application
 CMD ["node", "dist/index.js"]
+
+# -----------------------------------------------------------------------------
+# Stage 3: E2E Testing
+# -----------------------------------------------------------------------------
+# Extends production with JWKS export capability for Docker Compose E2E tests.
+# Writes JWKS to a shared volume on startup so loa-finn can read it without
+# an HTTP fetch (breaks circular dependency).
+#
+# Build: docker build --target e2e -f themes/sietch/Dockerfile .
+# -----------------------------------------------------------------------------
+FROM production AS e2e
+
+USER root
+# Install jq for JWKS JSON validation in e2e-entrypoint.sh (R9-3)
+RUN apk add --no-cache jq
+COPY tests/e2e/e2e-entrypoint.sh /app/e2e-entrypoint.sh
+RUN chmod +x /app/e2e-entrypoint.sh
+USER nodejs
+
+CMD ["/app/e2e-entrypoint.sh"]

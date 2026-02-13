@@ -10,6 +10,7 @@
  */
 
 import type { AccessLevel } from '@arrakis/core/ports';
+import type { ModelInvocationResult } from './ensemble-accounting.js';
 
 // --------------------------------------------------------------------------
 // Types
@@ -105,11 +106,11 @@ export class EnsembleMapper {
       quorum = Math.max(quorum, 2); // Minimum quorum of 2
     }
 
-    // Budget multiplier: reserve N × base cost for all strategies
-    // best_of_n: N parallel calls
-    // consensus: N parallel calls
-    // fallback: worst-case all N models tried sequentially
-    const budgetMultiplier = n;
+    // Budget multiplier for initial reservation:
+    // best_of_n: N× (parallel — all run simultaneously)
+    // consensus: N× (parallel — all run simultaneously)
+    // fallback: 1× (incremental — reserve more per failed attempt, AC-4.1)
+    const budgetMultiplier = ensemble.strategy === 'fallback' ? 1 : n;
 
     // Validate models array length matches n
     const models = ensemble.models?.slice(0, n);
@@ -147,5 +148,82 @@ export class EnsembleMapper {
     return results
       .filter((r) => r.succeeded)
       .reduce((sum, r) => sum + r.costCents, 0);
+  }
+
+  /**
+   * Compute per-model partial cost with breakdown by accounting mode.
+   * Returns platform-only committed cost (for budget finalization) plus full breakdown.
+   *
+   * @see cycle-019 BB6 Finding #6 — per-model ensemble accounting
+   */
+  computePartialCostWithBreakdown(
+    results: ReadonlyArray<ModelInvocationResult>,
+  ): { platformCostMicro: number; totalCostMicro: number; breakdown: ModelInvocationResult[] } {
+    const succeeded = results.filter((r) => r.succeeded);
+    const platformCostMicro = succeeded
+      .filter((r) => r.accounting_mode === 'PLATFORM_BUDGET')
+      .reduce((sum, r) => sum + r.cost_micro, 0);
+    const totalCostMicro = succeeded.reduce((sum, r) => sum + r.cost_micro, 0);
+
+    return { platformCostMicro, totalCostMicro, breakdown: [...results] };
+  }
+
+  /**
+   * Compute budget multiplier for hybrid BYOK/platform ensembles.
+   * Only PLATFORM_BUDGET models count toward the reservation.
+   *
+   * @param totalN - Total number of models in ensemble
+   * @param byokModelCount - Number of models using BYOK keys
+   * @returns Multiplier for budget reservation (platform models only)
+   */
+  computeHybridMultiplier(totalN: number, byokModelCount: number): number {
+    const platformCount = totalN - byokModelCount;
+    return Math.max(platformCount, 0);
+  }
+
+  /**
+   * Compute incremental reservation for fallback strategy (AC-4.1–AC-4.4).
+   *
+   * Fallback: reserve 1× initially, add 1× per failed platform attempt.
+   * BYOK attempts skip reservation (cost 0 for platform budget).
+   * best_of_n / consensus: return 0 (they use N× upfront, no incremental).
+   *
+   * Invariant: total reserved never exceeds platformModelCount × baseCost.
+   *
+   * @param strategy - Ensemble strategy
+   * @param attemptNumber - 1-indexed, counts only platform model attempts
+   * @param platformModelCount - Number of non-BYOK models in ensemble
+   * @param baseCost - Estimated cost for a single model invocation
+   * @param accountingMode - Whether current attempt is platform or BYOK
+   */
+  computeIncrementalReservation(
+    strategy: EnsembleStrategy,
+    attemptNumber: number,
+    platformModelCount: number,
+    baseCost: number,
+    accountingMode: 'PLATFORM_BUDGET' | 'BYOK_NO_BUDGET',
+  ): { reserveAdditional: number; releaseCapacity: number } {
+    // Only fallback uses incremental reservation (AC-4.5)
+    if (strategy !== 'fallback') {
+      return { reserveAdditional: 0, releaseCapacity: 0 };
+    }
+
+    // BYOK attempts don't affect platform budget reservation (AC-4.22/AC-4.23)
+    if (accountingMode === 'BYOK_NO_BUDGET') {
+      return { reserveAdditional: 0, releaseCapacity: 0 };
+    }
+
+    // First platform attempt: reserve 1×
+    // Subsequent platform attempts: reserve 1× additional
+    // Invariant: attemptNumber × baseCost ≤ platformModelCount × baseCost (AC-4.4)
+    const clampedAttempt = Math.min(attemptNumber, platformModelCount);
+    const reserveAdditional = clampedAttempt === attemptNumber ? baseCost : 0;
+
+    // Release capacity when attempt succeeds (called separately)
+    // Here we calculate what WOULD be released if this attempt succeeds
+    const remainingAfterSuccess = platformModelCount - clampedAttempt;
+    const releaseCapacity = remainingAfterSuccess * baseCost;
+
+    return { reserveAdditional, releaseCapacity };
   }
 }

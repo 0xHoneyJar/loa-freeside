@@ -285,17 +285,13 @@ export class BYOKProxyHandler {
     // 7. Execute request (by IP, no redirects) (AC-4.23)
     const url = `https://${resolvedIP}:${endpoint.port}${endpoint.pathTemplate}`;
 
-    // Build headers — strip internals, set auth
+    // Build headers — strip internals (auth set inside isolation boundary)
     const outHeaders: Record<string, string> = {
       'content-type': 'application/json',
       'host': endpoint.hostname, // SNI: real hostname in Host header
     };
 
-    // Provider-specific auth header
-    if (req.provider === 'openai') {
-      outHeaders['authorization'] = `Bearer ${apiKey.toString('utf8')}`;
-    } else if (req.provider === 'anthropic') {
-      outHeaders['x-api-key'] = apiKey.toString('utf8');
+    if (req.provider === 'anthropic') {
       outHeaders['anthropic-version'] = '2023-06-01';
     }
 
@@ -308,19 +304,17 @@ export class BYOKProxyHandler {
       }
     }
 
-    // Zero API key buffer after use
-    apiKey.fill(0);
-
     log.info({ resolvedIP, hostname: endpoint.hostname }, 'BYOK egress request');
 
     try {
-      const response = await this.httpFetch(url, {
-        method: endpoint.method,
-        headers: outHeaders,
-        body: req.body,
-        redirect: 'error', // AC-4.23: reject all redirects
-        signal: AbortSignal.timeout(30_000),
-      });
+      // @security AC-3.8/AC-3.9/AC-3.10: API key isolation boundary.
+      // String materialization is confined to dispatchWithKey(). The key string
+      // is set on the headers object, used for fetch(), then the reference is
+      // nulled and the Buffer zeroed in the finally block. This minimizes the
+      // window during which the key exists as a V8 heap string.
+      const response = await this.dispatchWithKey(
+        apiKey, req.provider, url, endpoint.method, outHeaders, req.body,
+      );
 
       // AC-4.13: Check response size
       const contentLength = response.headers.get('content-length');
@@ -434,6 +428,61 @@ export class BYOKProxyHandler {
     const selected = addresses[0].address;
     log.info({ hostname, resolvedIP: selected }, 'DNS resolved for BYOK egress');
     return selected;
+  }
+
+  /**
+   * @security AC-3.8/AC-3.9/AC-3.10: Isolation boundary for API key string materialization.
+   *
+   * The API key is kept as a Buffer (encrypted memory) until this method, where
+   * it is converted to a UTF-8 string only long enough to set the auth header
+   * and dispatch the HTTP request. After dispatch:
+   * - The local string variable is nulled (allows GC to collect the V8 heap string)
+   * - The Buffer is zeroed via fill(0) in the finally block
+   *
+   * Why not undici: undici is not a dependency of @arrakis/adapters. The isolation
+   * boundary approach achieves AC-3.8 (no toString outside dispatch) and AC-3.10
+   * (Buffer zeroed + references nulled). Full zero-copy would require undici's
+   * dispatcher with Buffer header support — documented as a future enhancement.
+   * (AC-3.24)
+   */
+  private async dispatchWithKey(
+    apiKey: Buffer,
+    provider: string,
+    url: string,
+    method: string,
+    headers: Record<string, string>,
+    body: string,
+  ): Promise<Response> {
+    let keyStr: string | null = null;
+    try {
+      // Materialize string only here — smallest possible scope
+      keyStr = apiKey.toString('utf8');
+
+      // Set auth header based on provider convention
+      if (provider === 'anthropic') {
+        headers['x-api-key'] = keyStr;
+      } else {
+        headers['authorization'] = `Bearer ${keyStr}`;
+      }
+
+      // Dispatch — redirect: 'error' prevents SSRF via redirect (AC-4.23)
+      const response = await this.httpFetch(url, {
+        method,
+        headers,
+        body,
+        redirect: 'error',
+      });
+
+      return response;
+    } finally {
+      // Null string reference so V8 can GC the heap string
+      keyStr = null;
+      // Scrub auth header from the headers object (caller still holds a reference)
+      delete headers['authorization'];
+      delete headers['x-api-key'];
+      // Zero the Buffer to clear the raw key bytes
+      apiKey.fill(0);
+    }
   }
 
   /** Read response body with size limit (AC-4.13) */

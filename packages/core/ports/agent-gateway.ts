@@ -126,6 +126,29 @@ export interface AgentInvokeResponse {
   toolCalls?: ToolCall[];
   usage: UsageInfo;
   metadata?: Record<string, unknown>;
+  /** Per-model cost breakdown for ensemble requests (cycle-019, BB6 Finding #6) */
+  ensemble_accounting?: {
+    strategy: EnsembleStrategy;
+    n_requested: number;
+    n_succeeded: number;
+    n_failed: number;
+    model_breakdown: Array<{
+      model_id: string;
+      provider: 'openai' | 'anthropic';
+      succeeded: boolean;
+      input_tokens: number;
+      output_tokens: number;
+      cost_micro: number;
+      accounting_mode: 'PLATFORM_BUDGET' | 'BYOK_NO_BUDGET';
+      latency_ms: number;
+      error_code?: string;
+    }>;
+    total_cost_micro: number;
+    platform_cost_micro: number;
+    byok_cost_micro: number;
+    reserved_cost_micro: number;
+    savings_micro: number;
+  };
 }
 
 // --------------------------------------------------------------------------

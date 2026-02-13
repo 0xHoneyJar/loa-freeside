@@ -250,6 +250,50 @@ export class AgentMetrics {
     }
   }
 
+  /**
+   * Emit per-model cost metric for ensemble accounting (cycle-019, BB6 Finding #6).
+   * Dimensions: model_id, provider, accounting_mode
+   */
+  async emitPerModelCost(metrics: {
+    modelId: string;
+    provider: string;
+    accountingMode: string;
+    costMicro: number;
+  }): Promise<void> {
+    try {
+      const m = this.createLogger();
+      m.setNamespace(NAMESPACE);
+      m.setDimensions({
+        model_id: metrics.modelId,
+        provider: metrics.provider,
+        accounting_mode: metrics.accountingMode,
+      });
+      m.putMetric('PerModelCost', metrics.costMicro, Unit.Count, StorageResolution.Standard);
+      await m.flush();
+    } catch (err) {
+      this.logger.warn({ err }, 'Failed to emit per-model cost metric');
+    }
+  }
+
+  /**
+   * Emit ensemble savings metric (cycle-019, BB6 Finding #6).
+   * savings_micro = reserved - total (unused reservation capacity)
+   */
+  async emitEnsembleSavings(metrics: {
+    strategy: string;
+    savingsMicro: number;
+  }): Promise<void> {
+    try {
+      const m = this.createLogger();
+      m.setNamespace(NAMESPACE);
+      m.setDimensions({ strategy: metrics.strategy });
+      m.putMetric('EnsembleSavings', metrics.savingsMicro, Unit.Count, StorageResolution.Standard);
+      await m.flush();
+    } catch (err) {
+      this.logger.warn({ err }, 'Failed to emit ensemble savings metric');
+    }
+  }
+
   /** @internal Visible for testing */
   createLogger(): MetricsLogger {
     return createMetricsLogger();
