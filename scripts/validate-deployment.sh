@@ -105,18 +105,26 @@ check_warn() {
   TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
 }
 
+# Detect timer precision once at startup (R9-6, BB10 low-3)
+_TIMER_MODE="posix"
+if [ -n "${EPOCHREALTIME:-}" ]; then
+  _TIMER_MODE="epochrealtime"
+elif date +%s%N > /dev/null 2>&1 && [ "$(date +%s%N)" != "%s%N" ]; then
+  _TIMER_MODE="gnu_nano"
+fi
+
 timer_ms() {
-  # Three-tier precision fallback (R9-6)
-  if [ -n "${EPOCHREALTIME:-}" ]; then
-    # Bash 5+ — true millisecond precision
-    echo "${EPOCHREALTIME/./}" | cut -c1-13
-  elif date +%s%N > /dev/null 2>&1 && [ "$(date +%s%N)" != "%s%N" ]; then
-    # GNU date — nanosecond precision, truncate to ms
-    echo "$(( $(date +%s%N) / 1000000 ))"
-  else
-    # POSIX fallback — second precision (±1000ms)
-    echo "$(($(date +%s) * 1000))"
-  fi
+  case "$_TIMER_MODE" in
+    epochrealtime)
+      echo "${EPOCHREALTIME/./}" | cut -c1-13
+      ;;
+    gnu_nano)
+      echo "$(( $(date +%s%N) / 1000000 ))"
+      ;;
+    *)
+      echo "$(($(date +%s) * 1000))"
+      ;;
+  esac
 }
 
 # ---------------------------------------------------------------------------
@@ -134,11 +142,9 @@ echo "  Region:      $REGION"
 echo ""
 
 # Timer precision notice (R9-6)
-if [ -z "${EPOCHREALTIME:-}" ]; then
-  if ! date +%s%N > /dev/null 2>&1 || [ "$(date +%s%N)" = "%s%N" ]; then
-    echo "  NOTE  Timing precision: ±1000ms (upgrade to bash 5+ for millisecond precision)"
-    echo ""
-  fi
+if [ "$_TIMER_MODE" = "posix" ]; then
+  echo "  NOTE  Timing precision: ±1000ms (upgrade to bash 5+ for millisecond precision)"
+  echo ""
 fi
 
 # ===========================================================================
@@ -177,11 +183,14 @@ case "$URL" in
       case "$tls_host" in
         *:*) tls_port="${tls_host##*:}"; tls_host="${tls_host%%:*}" ;;
       esac
+      # Expected openssl output format: "notAfter=Jan 15 14:30:00 2027 GMT"
+      # After cut: "Jan 15 14:30:00 2027 GMT"
       cert_expiry=$(echo | openssl s_client -connect "${tls_host}:${tls_port}" -servername "${tls_host}" 2>/dev/null \
         | openssl x509 -noout -enddate 2>/dev/null \
         | cut -d= -f2)
       elapsed=$(( $(timer_ms) - start ))
       if [ -n "$cert_expiry" ]; then
+        # GNU date (-d) with macOS BSD date (-jf) fallback
         expiry_epoch=$(date -d "$cert_expiry" +%s 2>/dev/null || date -jf "%b %d %T %Y %Z" "$cert_expiry" +%s 2>/dev/null || echo 0)
         if [ "$expiry_epoch" -gt 0 ]; then
           days_remaining=$(( (expiry_epoch - $(date +%s)) / 86400 ))
@@ -191,7 +200,7 @@ case "$URL" in
             check_pass "TLS certificate (expires in ${days_remaining} days)" "$elapsed"
           fi
         else
-          check_warn "TLS certificate" "$elapsed" "could not parse expiry date"
+          check_warn "TLS certificate" "$elapsed" "could not parse expiry date: '$cert_expiry'"
         fi
       else
         check_warn "TLS certificate" "$elapsed" "could not retrieve certificate"

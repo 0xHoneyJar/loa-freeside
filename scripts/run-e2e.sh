@@ -61,10 +61,10 @@ cleanup() {
   echo "═══════════════════════════════════════════════════════"
   echo "  Tearing down Docker Compose stack..."
   echo "═══════════════════════════════════════════════════════"
-  # Shred ephemeral key material before Docker teardown (R9-2)
+  # Remove ephemeral key material before Docker teardown (R9-2)
   if [ -d "$REPO_ROOT/.e2e-keys" ]; then
     rm -rf "$REPO_ROOT/.e2e-keys"
-    echo "[run-e2e] Ephemeral keys shredded"
+    echo "[run-e2e] Ephemeral keys removed"
   fi
   docker compose -f "$COMPOSE_FILE" down -v --remove-orphans 2>/dev/null || true
 }
@@ -75,7 +75,7 @@ trap cleanup EXIT
 # ---------------------------------------------------------------------------
 
 generate_test_keypair() {
-  # Lifecycle: generate → use → shred (keys removed in cleanup() trap)
+  # Lifecycle: generate → use → remove (keys deleted in cleanup() trap)
   echo "[run-e2e] Generating ES256 test keypair..."
   local key_dir="$REPO_ROOT/.e2e-keys"
   mkdir -p "$key_dir"
