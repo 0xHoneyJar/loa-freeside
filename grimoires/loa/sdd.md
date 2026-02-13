@@ -1,509 +1,575 @@
-# SDD: Skill Benchmark Audit — Anthropic Best Practices Alignment
+# SDD: The Golden Path — E2E Vector Migration & Launch Validation
 
-**Version**: 1.0.0
-**Status**: Draft
-**Author**: Architecture Phase (architect)
-**Date**: 2026-02-09
-**PRD**: grimoires/loa/prd.md (v1.1.0)
-**Issue**: #261
+**Version:** 1.1.0
+**Cycle:** 024
+**Date:** 2026-02-13
+**PRD:** [The Golden Path PRD](grimoires/loa/prd.md)
 
 ---
 
 ## 1. Executive Summary
 
-Bring all 19 Loa skills into compliance with Anthropic's "Complete Guide to Building Skills for Claude" through a structural validation test suite, SKILL.md size refactoring, description standardization, and error handling improvements. All changes are documentation-only — no application code is modified.
-
-The primary deliverable is a CI-runnable test script (`validate-skill-benchmarks.sh`) that enforces Anthropic's standards as a regression gate, plus targeted refactoring of the 1 over-limit skill and 5 under-documented skills.
+Wire loa-hounfour v1.1.0 golden test vectors into Arrakis's disabled E2E test suite, add conformance test suites for budget calculation and JWT validation, and validate the full Docker Compose round-trip. No new modules, no new dependencies — only connecting existing infrastructure.
 
 ---
 
 ## 2. System Architecture
 
-### 2.1 Component Diagram
+### 2.1 High-Level Component Map
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    CI Pipeline                           │
-│                                                         │
-│  validate-skills.sh ──→ index.yaml schema checks        │
-│         (existing)       (name, version, triggers)      │
-│                                                         │
-│  validate-skill-benchmarks.sh ──→ SKILL.md checks  NEW │
-│         (new script)              (word count, desc,    │
-│                                    structure, errors)   │
-│                                                         │
-│  Both scripts: exit 0 = pass, exit 1 = fail             │
-└─────────────────────────────────────────────────────────┘
-         │                           │
-         ▼                           ▼
-┌─────────────────┐     ┌──────────────────────────┐
-│  .claude/skills/ │     │  .claude/schemas/         │
-│  ├── skill-a/    │     │  ├── skill-index.schema   │
-│  │   ├── SKILL.md│     │  └── skill-benchmark.json │
-│  │   ├── index.yaml     │         (new)             │
-│  │   └── resources/│    └──────────────────────────┘
-│  ├── skill-b/    │
-│  └── ...         │
-└─────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                        TEST INFRASTRUCTURE                          │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ┌─────────────────────┐     ┌──────────────────────────────────┐  │
+│  │ tests/e2e/vectors/  │     │ tests/conformance/               │  │
+│  │                     │     │                                  │  │
+│  │  index.ts           │     │  budget-vectors.test.ts          │  │
+│  │  (vector loader +   │     │  jwt-vectors.test.ts             │  │
+│  │   getVector() API)  │     │  jwks-test-server.ts             │  │
+│  └────────┬────────────┘     └──────────┬───────────────────────┘  │
+│           │                              │                          │
+│           │  loads vectors via fs        │  imports functions from  │
+│           ▼                              ▼                          │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │  node_modules/@0xhoneyjar/loa-hounfour/                     │   │
+│  │                                                             │   │
+│  │  dist/index.js          ← validators, computeReqHash,      │   │
+│  │                           CONTRACT_VERSION, POOL_IDS, etc.  │   │
+│  │  vectors/budget/*.json  ← 56 golden budget vectors          │   │
+│  │  vectors/jwt/*.json     ← 6 golden JWT vectors              │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                                                                     │
+├─────────────────────────────────────────────────────────────────────┤
+│                        E2E TEST HARNESS                             │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ┌──────────────────────────┐    ┌──────────────────────────────┐  │
+│  │ agent-gateway-e2e.test.ts│    │ loa-finn-e2e-stub.ts         │  │
+│  │                          │    │                              │  │
+│  │ 9 scenarios:             │    │ HTTP server (port 0):        │  │
+│  │  - invoke_free_tier      │───→│  /.well-known/jwks.json      │  │
+│  │  - invoke_pro_pool_routing    │  /v1/agents/invoke           │  │
+│  │  - invoke_stream_sse     │    │  /v1/agents/stream           │  │
+│  │  - invoke_rate_limited   │    │  /v1/usage/report            │  │
+│  │  - invoke_budget_exceeded│    │  /v1/health                  │  │
+│  │  - stream_abort_recon    │    │                              │  │
+│  │  - invoke_byok           │    │ Validates:                   │  │
+│  │  - invoke_ensemble_bon   │    │  - JWT sig (optional)        │  │
+│  │  - invoke_ensemble_pf    │    │  - req_hash agreement        │  │
+│  │                          │    │  - schema conformance        │  │
+│  │ VECTORS_AVAILABLE = true │    │  - version compatibility     │  │
+│  └──────────────────────────┘    └──────────────────────────────┘  │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-### 2.2 Relationship to Existing Infrastructure
+### 2.2 Existing Infrastructure (No Changes)
 
-| Existing | New | Relationship |
-|----------|-----|-------------|
-| `validate-skills.sh` | `validate-skill-benchmarks.sh` | Complementary — existing checks index.yaml, new checks SKILL.md |
-| `skill-index.schema.json` | `skill-benchmark.json` | Complementary — existing validates YAML structure, new defines Anthropic benchmark thresholds |
-| `validate-e2e.sh` | — | Unchanged — end-to-end tests are a separate concern |
+| Component | Path | Role |
+|-----------|------|------|
+| JWT Service | `packages/adapters/agent/jwt-service.ts` | Signs JWTs with `computeReqHash()` from loa-hounfour |
+| Budget Manager | `packages/adapters/agent/budget-manager.ts` | Two-counter reserve/finalize via Lua scripts |
+| Budget Lua | `packages/adapters/agent/lua/*.lua` | 4 Redis Lua scripts (reserve, finalize, reaper, rate-limit) |
+| NATS Schemas | `packages/shared/nats-schemas/` | 6 fixtures + 18 tests + fixture-conformance pattern |
+| Docker Compose | `tests/e2e/docker-compose.e2e.yml` | Redis(6399), arrakis(3099), loa-finn stub(8099) |
+| E2E Runner | `scripts/run-e2e.sh` | Clones loa-finn, generates ES256 keypair, builds Docker images |
 
 ---
 
 ## 3. Component Design
 
-### 3.1 Structural Validation Script (FR-4b)
+### 3.1 Vector Loader (`tests/e2e/vectors/index.ts`)
 
-**File**: `.claude/scripts/validate-skill-benchmarks.sh`
+**Purpose:** Load loa-hounfour golden vectors from filesystem and expose `getVector(name)` API.
 
-**Purpose**: Automated CI-runnable checks for all SKILL.md files against Anthropic's benchmarks.
+**Design:**
 
-#### 3.1.1 Check Suite
+```typescript
+// Module: tests/e2e/vectors/index.ts
 
-| # | Check | Pass Criteria | Exit on Fail |
-|---|-------|---------------|-------------|
-| 1 | SKILL.md exists | File present in skill folder | Yes |
-| 2 | Word count | `wc -w` ≤ 5,000 | Yes |
-| 3 | No README.md | `README.md` absent from skill folder | Yes |
-| 4 | Folder kebab-case | Folder name matches `^[a-z][a-z0-9-]+$` | Yes |
-| 5 | Name matches folder | `name` field in frontmatter == folder name | Yes |
-| 6 | No XML in frontmatter | No `<` or `>` in YAML frontmatter block | Yes |
-| 7 | Description length | ≤ 1,024 characters (from index.yaml) | Yes |
-| 8 | Description has WHEN | Contains "Use when" or "Use this" pattern | Warning |
-| 9 | Error handling present | ≥ 5 error/troubleshoot/fail references | Warning |
-| 10 | Frontmatter valid | YAML between `---` delimiters parses correctly | Yes |
+import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 
-#### 3.1.2 Script Structure
+const require = createRequire(import.meta.url);
+const HOUNFOUR_ROOT = dirname(
+  require.resolve('@0xhoneyjar/loa-hounfour/package.json')
+);
 
-```bash
-#!/usr/bin/env bash
-# validate-skill-benchmarks.sh - Anthropic skill benchmarks (Issue #261)
-set -euo pipefail
-
-SKILLS_DIR=".claude/skills"
-MAX_WORDS=5000
-MAX_DESC_CHARS=1024
-MIN_ERROR_REFS=5
-
-total=0; passed=0; failed=0; warnings=0
-
-for skill_dir in "$SKILLS_DIR"/*/; do
-    skill_name=$(basename "$skill_dir")
-    ((total++))
-    errors=()
-    warns=()
-
-    # Check 1: SKILL.md exists
-    # Check 2: Word count
-    # Check 3: No README.md
-    # Check 4: Folder kebab-case
-    # Check 5: Name matches folder (frontmatter)
-    # Check 6: No XML in frontmatter
-    # Check 7: Description length (from index.yaml)
-    # Check 8: Description has trigger context
-    # Check 9: Error handling references
-    # Check 10: Frontmatter parses
-
-    # Report per-skill
-done
-
-# Summary with exit code
-```
-
-#### 3.1.3 Output Format
-
-Matches existing `validate-skills.sh` output format for consistency:
-
-```
-Skill Benchmark Validation (Anthropic Guide)
-=============================================
-
-PASS: auditing-security (4,548 words)
-PASS: autonomous-agent (4,134 words)
-  WARN: bridgebuilder-review - only 2 error refs (min: 5)
-PASS: browsing-constructs (1,562 words)
-...
-FAIL: riding-codebase (6,905 words > 5,000 limit)
-
-Summary
--------
-Total: 19
-Passed: 18
-Failed: 1
-Warnings: 3
-```
-
-#### 3.1.4 Configuration File
-
-**File**: `.claude/schemas/skill-benchmark.json`
-
-```json
-{
-  "max_words": 5000,
-  "max_description_chars": 1024,
-  "min_error_references": 5,
-  "description_trigger_patterns": [
-    "Use when",
-    "Use this",
-    "Use if",
-    "Invoke when",
-    "Trigger when"
-  ],
-  "forbidden_frontmatter_patterns": ["<[a-zA-Z]", "</[a-zA-Z]"],
-  "folder_name_pattern": "^[a-z][a-z0-9-]+$"
+function loadVectorFile<T>(relativePath: string): T {
+  return JSON.parse(
+    readFileSync(join(HOUNFOUR_ROOT, relativePath), 'utf-8')
+  ) as T;
 }
 ```
 
-Thresholds are configurable so they can evolve without code changes.
+**Vector registry:** A `Map<string, TestVector>` built at module load time, mapping E2E scenario names to their vector data.
 
-### 3.2 Schema Update
+**Category A vectors** (6 golden): Loaded directly from loa-hounfour JSON files, transformed into the `TestVector` shape the E2E harness expects:
 
-**File**: `.claude/schemas/skill-index.schema.json`
-
-Update the `description` field constraints:
-
-```json
-// Before
-"description": {
-  "type": "string",
-  "minLength": 50,
-  "maxLength": 500
-}
-
-// After
-"description": {
-  "type": "string",
-  "minLength": 50,
-  "maxLength": 1024
-}
-```
-
-This aligns with Anthropic's 1,024-character limit for descriptions.
-
-### 3.3 SKILL.md Size Refactoring (FR-1)
-
-#### 3.3.1 riding-codebase (6,905 → ≤4,500 words)
-
-**Strategy**: Extract phase-specific reference material to linked files.
-
-**Current structure analysis**:
-```
-riding-codebase/SKILL.md (6,905 words)
-├── Core Principles (~200 words)           ← Keep inline
-├── Phase 0: Preflight (~400 words)        ← Keep inline
-├── Phase 1: Discovery (~800 words)        ← Keep inline (core instructions)
-├── Phase 2: Deep Analysis (~1,200 words)  ← Extract templates
-├── Phase 3: Synthesis (~1,000 words)      ← Extract output formats
-├── Phase 4: Validation (~800 words)       ← Extract checklists
-├── Output Format Templates (~1,500 words) ← Extract entirely
-└── Edge Cases & Recovery (~800 words)     ← Keep inline
-```
-
-**Extraction plan**:
-```
-riding-codebase/
-├── SKILL.md                      (≤4,500 words — instructions only)
-├── resources/
-│   └── references/
-│       ├── output-formats.md     (~1,500 words — PRD/SDD templates)
-│       ├── analysis-checklists.md (~800 words — Phase 2-4 checklists)
-│       └── deep-analysis-guide.md (~600 words — Phase 2 detailed steps)
-└── index.yaml                    (unchanged)
-```
-
-**Link pattern in SKILL.md**:
-```markdown
-## Phase 2: Deep Analysis
-
-[Core instructions remain here — what to analyze and why]
-
-For detailed analysis steps and checklists, see:
-`resources/references/deep-analysis-guide.md`
-```
-
-**Backup**: Create `SKILL.md.bak` before refactoring. Retain for 7 days per R-5 rollback strategy.
-
-#### 3.3.2 Near-Limit Skills (Audit Only)
-
-For skills between 4,000-5,000 words (auditing-security, implementing-tasks, reviewing-code, autonomous-agent):
-
-- **No immediate refactoring** — they're under the limit
-- **Document** which sections could be extracted if they grow
-- **Add comments** in SKILL.md: `<!-- extractable: ~800 words -->` near large sections
-
-This gives future maintainers a roadmap without introducing changes that could regress behavior.
-
-### 3.4 Description Standardization (FR-2)
-
-#### 3.4.1 Update Locations
-
-Each skill has descriptions in two places:
-
-| Location | Format | Used By |
-|----------|--------|---------|
-| `index.yaml` `description` field | Multi-line YAML string | Skill matching engine, `validate-skills.sh` |
-| `SKILL.md` frontmatter `description` field | YAML string (optional) | Some skills only |
-
-**Decision**: Update `index.yaml` as the source of truth. SKILL.md frontmatter descriptions are optional and may differ (they're loaded at different disclosure levels).
-
-#### 3.4.2 Description Template
-
-```
-Line 1: [WHAT] — action verb, user-facing outcome
-Line 2: [WHEN] — "Use when..." with 1-2 specific trigger contexts
-Line 3: [CAPABILITIES] — 2-3 concrete things it handles
-```
-
-**Constraints**:
-- Total ≤ 1,024 characters
-- Must preserve existing trigger file paths (per PRD Finding 5)
-- Existing `triggers` array in index.yaml remains unchanged
-
-#### 3.4.3 All 19 Descriptions (Before/After)
-
-Descriptions will be drafted per-skill during implementation. Each follows the template above. The implementer will:
-
-1. Read the existing description
-2. Read the SKILL.md to understand actual behavior
-3. Draft new description following template
-4. Verify no trigger file paths are dropped
-5. Update `index.yaml`
-
-### 3.5 Error Handling Audit (FR-3)
-
-#### 3.5.1 Target Skills
-
-5 skills with <5 error references need an `## Error Handling` section added to their SKILL.md:
-
-| Skill | Current Refs | Additions Needed |
-|-------|-------------|-----------------|
-| bridgebuilder-review | 2 | API failures, auth errors, rate limits, dry-run edge cases, large PR handling |
-| designing-architecture | 3 | PRD not found, clarification loop timeout, SDD generation failure |
-| flatline-knowledge | 4 | NotebookLM auth, API timeout, cache miss, model unavailable |
-| mounting-framework | 4 | Permission denied, existing mount, partial install, version mismatch |
-| planning-sprints | 2 | PRD/SDD missing, capacity estimation, dependency cycles, empty sprint |
-
-#### 3.5.2 Error Section Template
-
-```markdown
-## Error Handling
-
-| Error | Cause | Resolution |
-|-------|-------|------------|
-| "description" | What triggers it | How to fix |
-
-### Troubleshooting
-
-**Skill doesn't trigger**: [specific guidance]
-**Unexpected output**: [specific guidance]
-**Mid-execution failure**: [recovery steps]
-```
-
-#### 3.5.3 Word Budget
-
-Each error handling section adds ~150-300 words. For near-limit skills, this must be accounted for in the word budget:
-
-| Skill | Current Words | + Error Section | New Total | Under Limit? |
-|-------|-------------|-----------------|-----------|-------------|
-| bridgebuilder-review | 327 | +250 | 577 | Yes |
-| designing-architecture | 1,637 | +200 | 1,837 | Yes |
-| flatline-knowledge | 687 | +200 | 887 | Yes |
-| mounting-framework | 921 | +200 | 1,121 | Yes |
-| planning-sprints | 2,586 | +200 | 2,786 | Yes |
-
-None of the target skills are at risk of exceeding the 5,000-word limit after additions.
-
-### 3.6 Negative Trigger Audit (FR-5)
-
-#### 3.6.1 Design Decision
-
-Anthropic's guide recommends `negative_triggers` to prevent misfires. However, Loa's current skill matching architecture uses `triggers` arrays in index.yaml — there is no `negative_triggers` field in the schema.
-
-**Decision**: Add `negative_triggers` as an optional field to the schema. The validation script will check for their presence (warning only, not blocking). Implementation of actual negative trigger matching is deferred — the field serves as documentation for now.
-
-```json
-// Addition to skill-index.schema.json
-"negative_triggers": {
-  "type": "array",
-  "items": { "type": "string" },
-  "description": "Phrases that should NOT trigger this skill (advisory)"
+```typescript
+interface TestVector {
+  name: string;
+  description: string;
+  request: {
+    jwt_claims: Record<string, unknown>;
+    body: Record<string, unknown>;
+  };
+  response: {
+    status: number;
+    headers?: Record<string, string>;
+    body?: Record<string, unknown>;
+    stream_events?: Array<{ type: string; data: unknown }>;
+    abort_after_events?: number;
+    expect_reconciliation?: boolean;
+  };
+  usage_report_payload: Record<string, unknown> | null;
 }
 ```
 
-### 3.7 Progressive Disclosure Analysis (FR-6)
+**Category B vectors** (3 locally constructed): Built from loa-hounfour schemas and vocabulary, validated against `validators` before registration. Each Category B vector includes a `_constructed: true` metadata flag.
 
-#### 3.7.1 Current Disclosure Levels
+**Exports:**
 
-| Level | Mechanism | Current Usage |
-|-------|-----------|--------------|
-| L1: Frontmatter | YAML between `---` in SKILL.md | 19/19 skills use frontmatter |
-| L2: SKILL.md body | Full file loaded on trigger | 19/19 — this IS the instruction set |
-| L3: Linked references | `resources/references/*.md` | 0/19 use explicit references/ links |
+| Export | Signature | Description |
+|--------|-----------|-------------|
+| `getVector` | `(name: string) => TestVector` | Returns named vector; throws if not found |
+| `getTestVectors` | `() => TestVector[]` | Returns all 9 vectors |
+| `VECTORS_AVAILABLE` | `boolean` | Always `true` — hardcoded |
 
-**Gap**: Level 3 is unused. All content is either in frontmatter (L1) or the SKILL.md body (L2). No skill currently links to reference files for on-demand loading.
+### 3.2 E2E Test Modifications (`tests/e2e/agent-gateway-e2e.test.ts`)
 
-#### 3.7.2 L3 Candidates (>3,000 words)
+**Changes (minimal — surgical edits to existing file):**
 
-| Skill | Words | Extractable Content | Estimated Savings |
-|-------|-------|--------------------|--------------------|
-| riding-codebase | 6,905 | Output templates, analysis checklists | ~2,400 words |
-| implementing-tasks | 4,596 | Feedback templates, beads integration details | ~800 words |
-| auditing-security | 4,548 | Security checklists, OWASP reference | ~700 words |
-| reviewing-code | 4,468 | Review rubrics, quality checklists | ~600 words |
-| autonomous-agent | 4,134 | State machine diagrams, recovery procedures | ~500 words |
-| deploying-infrastructure | 3,880 | IaC templates, monitoring setup | ~400 words |
-| discovering-requirements | 3,138 | Interview templates, context synthesis guides | ~300 words |
-| translating-for-executives | 3,019 | Output format templates | ~200 words |
+1. **Line 16-17:** Replace commented import with:
+   ```typescript
+   import { getVector, getTestVectors, VECTORS_AVAILABLE } from './vectors/index.js';
+   ```
 
-**Sprint scope**: Only riding-codebase (the over-limit skill) will be refactored in this issue. Near-limit skills are documented with extractable sections for future work.
+2. **Line 26:** Change `const VECTORS_AVAILABLE = false;` to remove (now imported).
+
+3. **Line 27:** Simplify to `const SHOULD_SKIP = SKIP_E2E;` (VECTORS_AVAILABLE is always true from import).
+
+4. **Lines 316, 436:** `getTestVectors()` function at bottom of file can be removed — imported from vectors module.
+
+**No changes to test logic.** The 9 test scenarios, helpers (`createMockJwt`, `parseSSEEvents`), and assertion logic remain identical. Only the vector source changes.
+
+### 3.3 E2E Stub Modifications (`tests/e2e/loa-finn-e2e-stub.ts`)
+
+**Changes:**
+
+1. **Lines 33-38:** Replace placeholder imports with real loa-hounfour imports:
+   ```typescript
+   import {
+     CONTRACT_VERSION,
+     validators,
+     computeReqHash,
+     verifyReqHash,
+     POOL_IDS,
+     TIER_POOL_ACCESS,
+     ERROR_CODES,
+   } from '@0xhoneyjar/loa-hounfour';
+   import { getVector, getTestVectors } from './vectors/index.js';
+   ```
+
+2. **Line 305, 343, 400:** Replace `CONTRACT_SCHEMA.version` with `CONTRACT_VERSION` (direct import).
+
+3. **Vector matching (lines 511-552):** Update `matchVector()` and `matchStreamVector()` to use `getTestVectors()` instead of `TEST_VECTORS.vectors`.
+
+4. **Raw body preservation:** The existing `readBody()` method (line 558) already accumulates `Buffer` chunks and calls `Buffer.concat(chunks)`. Add a `rawBody: Buffer` field alongside the string body to preserve exact wire bytes for hashing:
+   ```typescript
+   // In readBody(), return both raw Buffer and string:
+   private readBody(req: IncomingMessage): Promise<{ raw: Buffer; text: string }> {
+     return new Promise((resolve, reject) => {
+       const chunks: Buffer[] = [];
+       req.on('data', (chunk: Buffer) => chunks.push(chunk));
+       req.on('end', () => {
+         const raw = Buffer.concat(chunks);
+         resolve({ raw, text: raw.toString('utf-8') });
+       });
+       req.on('error', reject);
+     });
+   }
+   ```
+
+5. **Request validation (handleInvoke, line 267):** Add `computeReqHash()` agreement check using **raw bytes** (not re-encoded string):
+   ```typescript
+   // CRITICAL: Hash the raw wire bytes, not the re-encoded string.
+   // This matches how Arrakis computes the hash before sending.
+   const computedHash = computeReqHash(rawBody);  // rawBody is the Buffer from readBody()
+   const jwtHash = claims?.req_hash as string;
+   if (jwtHash && computedHash !== jwtHash) {
+     res.writeHead(409, { 'Content-Type': 'application/json' });
+     res.end(JSON.stringify({
+       error: 'HASH_MISMATCH',
+       computed: computedHash,
+       jwt: jwtHash
+     }));
+     return;
+   }
+   ```
+   **Why raw bytes:** `computeReqHash()` canonicalizes and hashes the HTTP request body. If we converted to string and back to Buffer, whitespace or encoding differences could cause hash divergence even when the request is correct. The raw Buffer from `req.on('data')` is the exact byte sequence Arrakis sent.
+
+### 3.4 Budget Conformance Suite (`tests/conformance/budget-vectors.test.ts`)
+
+**Purpose:** Parametrized tests running 56 loa-hounfour budget vectors against Arrakis budget calculation logic.
+
+**Design:**
+
+```
+tests/conformance/
+├── budget-vectors.test.ts    ← Parametrized budget tests
+├── jwt-vectors.test.ts       ← Parametrized JWT tests
+└── jwks-test-server.ts       ← Local JWKS server for behavioral tests
+```
+
+**Budget test structure:**
+
+```typescript
+describe('Budget Conformance — basic-pricing', () => {
+  const vectors = loadVectorFile<BasicPricingVectors>(
+    'vectors/budget/basic-pricing.json'
+  );
+
+  describe('single_cost_vectors', () => {
+    for (const v of vectors.single_cost_vectors) {
+      it(`${v.id}: ${v.note}`, () => {
+        const result = calculateSingleCost(v.tokens, v.price_micro_per_million);
+        expect(result.cost_micro).toBe(v.expected_cost_micro);
+        expect(result.remainder_micro).toBe(v.expected_remainder_micro);
+      });
+    }
+  });
+
+  describe('total_cost_vectors', () => {
+    for (const v of vectors.total_cost_vectors) {
+      it(`${v.id}: ${v.note}`, () => {
+        const result = calculateTotalCost(v.input);
+        expect(result.input_cost_micro).toBe(v.expected.input_cost_micro);
+        expect(result.output_cost_micro).toBe(v.expected.output_cost_micro);
+        expect(result.total_cost_micro).toBe(v.expected.total_cost_micro);
+      });
+    }
+  });
+});
+```
+
+**`calculateSingleCost` implementation:**
+
+The budget vectors define a pure arithmetic function:
+```
+cost_micro = floor(tokens * price_micro_per_million / 1_000_000)
+remainder_micro = (tokens * price_micro_per_million) % 1_000_000
+```
+
+This function is extracted from the budget manager's `estimateCost()` path.
+
+**JSON numeric parsing (CRITICAL):** JSON cannot represent `bigint`. The extreme-tokens vectors encode large values in two ways:
+- `"tokens": 9007199254740992` — exceeds `MAX_SAFE_INTEGER`, lossy as JS `number`
+- `"expected_cost_micro_string": "900719925474099200"` — string representation for BigInt-required values
+
+**Parsing layer:** All vector numeric fields MUST be parsed through a safe conversion function:
+
+```typescript
+/** Parse a vector numeric field to BigInt, handling both number and string inputs */
+function toBigInt(value: number | string): bigint {
+  if (typeof value === 'string') return BigInt(value);
+  // Guard: reject numbers that exceed MAX_SAFE_INTEGER (lossy from JSON)
+  if (!Number.isSafeInteger(value)) {
+    throw new Error(`Unsafe integer ${value} — use string representation`);
+  }
+  return BigInt(value);
+}
+
+function calculateSingleCost(tokens: number | string, priceMicroPerMillion: number | string) {
+  const t = toBigInt(tokens);
+  const p = toBigInt(priceMicroPerMillion);
+  const product = t * p;
+  const MILLION = 1_000_000n;
+  return {
+    cost_micro: product / MILLION,
+    remainder_micro: product % MILLION,
+  };
+}
+```
+
+**Assertion strategy:** Compare BigInt to BigInt. For vectors with `expected_cost_micro_string`, parse expected as `BigInt(string)`. For vectors with `expected_cost_micro` as a safe integer, compare with `BigInt(expected)`:
+
+```typescript
+const expected = v.expected_cost_micro_string
+  ? BigInt(v.expected_cost_micro_string)
+  : BigInt(v.expected_cost_micro);
+expect(result.cost_micro).toBe(expected);
+```
+
+**Integer guard:** Every test includes:
+```typescript
+// Result is always BigInt from our calculation
+expect(typeof result.cost_micro).toBe('bigint');
+```
+
+### 3.5 JWT Conformance Suite (`tests/conformance/jwt-vectors.test.ts`)
+
+**Purpose:** Parametrized tests for 6 JWT conformance vectors — 4 static claim validation + 2 JWKS behavioral.
+
+**Static claim tests:**
+
+```typescript
+describe('JWT Conformance — static claims', () => {
+  let testKey: { privateKey: KeyLike; publicJwk: JWK };
+
+  beforeAll(async () => {
+    testKey = await generateTestES256Key();
+  });
+
+  for (const vector of staticVectors) {
+    it(`${vector.id}: ${vector.description}`, async () => {
+      // Sign the claims from the vector with test key
+      const token = await signClaims(vector.claims, testKey.privateKey);
+
+      // Validate using Arrakis JWT validation logic
+      const result = await validateJwt(token, testKey.publicJwk);
+
+      if (vector.expected === 'valid') {
+        expect(result.valid).toBe(true);
+      } else {
+        expect(result.valid).toBe(false);
+        expect(result.error).toBe(vector.error);
+      }
+    });
+  }
+
+  // Hash agreement: validate req_hash is well-formed and consistent
+  // NOTE: Only assert empty-body hash for vectors that don't include a body field.
+  // Vectors with explicit body material should have their hash computed from that body.
+  it('req_hash in body-less vectors matches computeReqHash(empty)', () => {
+    const emptyHash = computeReqHash(Buffer.alloc(0));
+    for (const v of staticVectors) {
+      if (!v.body && !v.req_body_bytes_base64) {
+        // Vector has no explicit body → req_hash must be the empty-body canonical hash
+        expect(v.claims.req_hash).toBe(emptyHash);
+      } else if (v.req_body_bytes_base64) {
+        // Vector includes explicit body bytes → compute hash from those bytes
+        const bodyBuf = Buffer.from(v.req_body_bytes_base64, 'base64');
+        const expectedHash = computeReqHash(bodyBuf);
+        expect(v.claims.req_hash).toBe(expectedHash);
+      }
+      // If vector has body but no base64 bytes, skip hash assertion —
+      // rely on E2E stub hash agreement for end-to-end validation
+    }
+  });
+});
+```
+
+### 3.6 JWKS Test Server (`tests/conformance/jwks-test-server.ts`)
+
+**Purpose:** Local HTTP server for deterministic JWKS rotation and timeout simulation.
+
+**API:**
+
+```typescript
+class JwksTestServer {
+  constructor();
+
+  // Lifecycle
+  async start(): Promise<void>;        // Listen on random port
+  async stop(): Promise<void>;
+  getJwksUri(): string;                 // http://127.0.0.1:{port}/.well-known/jwks.json
+
+  // Key management
+  async addKey(kid: string): Promise<{ privateKey: KeyLike; publicJwk: JWK }>;
+  removeKey(kid: string): void;
+  getKeys(): JWK[];
+
+  // Fault injection
+  setBlocked(blocked: boolean): void;   // 503 responses
+  setDelay(ms: number): void;           // Artificial latency
+  resetFaults(): void;
+}
+```
+
+**JWKS endpoint behavior:**
+- Normal: Returns `{ keys: [...] }` with all registered keys
+- Blocked (`setBlocked(true)`): Returns 503 Service Unavailable
+- Delayed (`setDelay(10000)`): Responds after delay (triggers client timeout)
+
+**Test choreography for jwt-rotated-key:**
+
+**JWKS refresh semantics:** The test MUST configure the validator to refetch JWKS on unknown `kid` (kid-miss refresh), not just on TTL expiry. This is the production behavior — `jose`'s `createRemoteJWKSet()` does this by default. The `cacheTtl` parameter only controls how often the full keyset is refreshed proactively; kid-miss triggers an immediate refetch regardless of TTL.
+
+For the **rotation test**, set `cacheTtl: 0` to guarantee no stale cache interference:
+
+```typescript
+it('jwt-rotated-key: accepts after rotation, rejects old key', async () => {
+  const server = new JwksTestServer();
+  await server.start();
+
+  // Step 1: Register K1
+  const k1 = await server.addKey('k1');
+  // cacheTtl=0 ensures JWKS is always fetched fresh — removes TTL flakiness
+  const jwtService = createJwtValidator({
+    jwksUri: server.getJwksUri(),
+    cacheTtl: 0,
+    refreshTimeout: 2000,
+  });
+
+  // Step 2: Validate K1 token — PASS (fetches JWKS, finds K1)
+  const t1 = await signToken(validClaims, k1.privateKey, 'k1');
+  expect(await jwtService.validate(t1)).toHaveProperty('valid', true);
+
+  // Step 3: Rotate to K2
+  server.removeKey('k1');
+  const k2 = await server.addKey('k2');
+
+  // Step 4: Validate K2 token — PASS (kid-miss triggers refetch, finds K2)
+  const t2 = await signToken(validClaims, k2.privateKey, 'k2');
+  expect(await jwtService.validate(t2)).toHaveProperty('valid', true);
+
+  // Step 5: Validate K1 token — REJECT (refetch returns only K2)
+  const t3 = await signToken(validClaims, k1.privateKey, 'k1');
+  expect(await jwtService.validate(t3)).toHaveProperty('valid', false);
+
+  await server.stop();
+});
+```
+
+For the **timeout test**, set `cacheTtl: 5000` so cache is populated before blocking:
+
+```typescript
+it('jwt-jwks-timeout: DEGRADED mode with cached vs unknown kid', async () => {
+  const server = new JwksTestServer();
+  await server.start();
+
+  // Step 1: Register K1, populate cache
+  const k1 = await server.addKey('k1');
+  const jwtService = createJwtValidator({
+    jwksUri: server.getJwksUri(),
+    cacheTtl: 5000,
+    refreshTimeout: 2000,
+  });
+  const t1 = await signToken(validClaims, k1.privateKey, 'k1');
+  expect(await jwtService.validate(t1)).toHaveProperty('valid', true);
+
+  // Step 2: Block JWKS endpoint
+  server.setBlocked(true);
+
+  // Step 3: Cached kid=k1 — ACCEPT (DEGRADED, serves from cache)
+  const t2 = await signToken(validClaims, k1.privateKey, 'k1');
+  expect(await jwtService.validate(t2)).toHaveProperty('valid', true);
+
+  // Step 4: Unknown kid=k3 — REJECT (cannot refresh, kid not in cache)
+  const k3 = await generateTestES256Key('k3');
+  const t3 = await signToken(validClaims, k3.privateKey, 'k3');
+  expect(await jwtService.validate(t3)).toHaveProperty('valid', false);
+
+  server.resetFaults();
+  await server.stop();
+});
+```
 
 ---
 
 ## 4. Data Architecture
 
-No databases or persistent storage. All data is in:
-- SKILL.md files (markdown)
-- index.yaml files (YAML)
-- skill-benchmark.json (JSON configuration)
-- skill-index.schema.json (JSON Schema)
+No database changes. All test data comes from:
+
+| Source | Format | Size |
+|--------|--------|------|
+| `loa-hounfour/vectors/budget/*.json` | JSON (5 files) | ~56 vectors |
+| `loa-hounfour/vectors/jwt/conformance.json` | JSON (1 file) | 6 vectors |
+| Category B fixtures | TypeScript objects | 3 constructed vectors |
 
 ---
 
-## 5. File Inventory
+## 5. Security Architecture
 
-### 5.1 New Files
+### 5.1 Hash Agreement (Core Contract)
 
-| File | Purpose | Size |
-|------|---------|------|
-| `.claude/scripts/validate-skill-benchmarks.sh` | Structural validation script | ~200 lines |
-| `.claude/schemas/skill-benchmark.json` | Benchmark thresholds config | ~20 lines |
-| `.claude/skills/riding-codebase/resources/references/output-formats.md` | Extracted output templates | ~1,500 words |
-| `.claude/skills/riding-codebase/resources/references/analysis-checklists.md` | Extracted checklists | ~800 words |
-| `.claude/skills/riding-codebase/resources/references/deep-analysis-guide.md` | Extracted analysis steps | ~600 words |
+The `req_hash` is the cryptographic lynchpin of the arrakis ↔ loa-finn protocol:
 
-### 5.2 Modified Files
+```
+Arrakis:   reqHash = computeReqHash(requestBody)
+           JWT.req_hash = reqHash
 
-| File | Changes |
-|------|---------|
-| `.claude/schemas/skill-index.schema.json` | Raise description maxLength 500→1024, add negative_triggers field |
-| `.claude/skills/riding-codebase/SKILL.md` | Reduce from 6,905 to ≤4,500 words via extraction |
-| `.claude/skills/*/index.yaml` (19 files) | Update descriptions to WHAT+WHEN+capabilities formula |
-| `.claude/skills/bridgebuilder-review/SKILL.md` | Add error handling section |
-| `.claude/skills/designing-architecture/SKILL.md` | Add error handling section |
-| `.claude/skills/flatline-knowledge/SKILL.md` | Add error handling section |
-| `.claude/skills/mounting-framework/SKILL.md` | Add error handling section |
-| `.claude/skills/planning-sprints/SKILL.md` | Add error handling section |
-
-### 5.3 Unchanged Files
-
-| File | Reason |
-|------|--------|
-| `.claude/scripts/validate-skills.sh` | Existing script is complementary, not replaced |
-| All other SKILL.md files | No changes needed (under limits, sufficient error handling) |
-
----
-
-## 6. Testing Strategy
-
-### 6.1 Test Script Self-Validation
-
-The validation script must pass on the repository after all changes are complete:
-
-```bash
-# Must exit 0 after all refactoring
-.claude/scripts/validate-skill-benchmarks.sh
+loa-finn:  computedHash = computeReqHash(receivedBody)
+           assert(JWT.req_hash === computedHash)
 ```
 
-### 6.2 Regression Testing
+If hashes diverge → idempotency keys diverge → duplicate or lost requests.
 
-Before and after each skill modification:
+The E2E tests validate this by:
+1. Stub receives request body as Buffer
+2. Calls `computeReqHash(body)` independently
+3. Compares against `req_hash` claim extracted from JWT
+4. Returns 409 HASH_MISMATCH on divergence (fail-loud)
+
+### 5.2 Version Negotiation
+
+`validateCompatibility(local, remote)` enforces semver N/N-1:
+- Same major + minor within 1: `compatible: true`
+- Major version mismatch: `compatible: false, reason: "Major version mismatch"`
+- Minor version gap > 1: `compatible: false`
+
+Tested via existing contract version tests in E2E suite (lines 292-359).
+
+---
+
+## 6. File Manifest
+
+### New Files
+
+| Path | Purpose | Lines (est.) |
+|------|---------|-------------|
+| `tests/e2e/vectors/index.ts` | Vector loader + getVector() API | ~180 |
+| `tests/conformance/budget-vectors.test.ts` | 56 budget conformance tests | ~200 |
+| `tests/conformance/jwt-vectors.test.ts` | 6 JWT conformance tests | ~250 |
+| `tests/conformance/jwks-test-server.ts` | Local JWKS server for behavioral tests | ~120 |
+
+### Modified Files
+
+| Path | Change | Impact |
+|------|--------|--------|
+| `tests/e2e/agent-gateway-e2e.test.ts` | Replace vector import, remove VECTORS_AVAILABLE const | 4 lines changed |
+| `tests/e2e/loa-finn-e2e-stub.ts` | Replace placeholders with loa-hounfour imports, add hash check | ~20 lines changed |
+
+### Unchanged Files (Verified on Main)
+
+All 36 agent modules, 4 Lua scripts, jwt-service.ts, budget-manager.ts, NATS schemas, Rust gateway — no modifications needed.
+
+---
+
+## 7. Technical Risks & Mitigations
+
+| Risk | Impact | Mitigation | PRD Ref |
+|------|--------|------------|---------|
+| Budget manager uses cents internally, vectors use micro-USD | High | Extract pure arithmetic function that operates in micro-USD; existing manager calls it with unit conversion | §4.2 |
+| Extreme-tokens vectors overflow JS number | Medium | BigInt path for values > MAX_SAFE_INTEGER; integer guard rejects floats | §4.2 |
+| JWKS cache timing makes rotation tests flaky | Medium | Fixed cache TTL=5s, refresh timeout=2s, deterministic choreography | §4.3 |
+| Category B fixtures drift from loa-hounfour schemas | Low | Each fixture validated against loa-hounfour validators at test setup | §4.1.1 |
+
+---
+
+## 8. Development Workflow
+
+### Test Execution Order
 
 ```bash
-# Capture baseline
-.claude/scripts/validate-skills.sh       # Existing — must still pass
-.claude/scripts/validate-skill-benchmarks.sh  # New — captures current state
+# 1. Conformance tests (fast, no Docker)
+npx vitest run tests/conformance/
+
+# 2. E2E tests (requires stub, no Docker)
+SKIP_E2E=false npx vitest run tests/e2e/agent-gateway-e2e.test.ts
+
+# 3. Docker Compose E2E (full round-trip)
+./scripts/run-e2e.sh
 ```
 
-### 6.3 Rollback Verification
+### Definition of Done
 
-```bash
-# Each modified SKILL.md has a .bak copy
-ls .claude/skills/riding-codebase/SKILL.md.bak
-# Restore: cp SKILL.md.bak SKILL.md
-```
-
-### 6.4 Word Count Verification
-
-```bash
-# Verify riding-codebase is under limit after refactoring
-words=$(wc -w < .claude/skills/riding-codebase/SKILL.md)
-test "$words" -le 5000 && echo "PASS: $words words" || echo "FAIL: $words words"
-```
+Per PRD §8 — all conformance vectors pass, VECTORS_AVAILABLE=true, hash agreement verified, Docker Compose round-trip passes.
 
 ---
 
-## 7. Implementation Order
-
-| Task | Dependencies | Files | Estimated Effort |
-|------|-------------|-------|-----------------|
-| T1: Create benchmark config | None | `skill-benchmark.json` | Small |
-| T2: Create validation script | T1 | `validate-skill-benchmarks.sh` | Medium |
-| T3: Update schema | None | `skill-index.schema.json` | Small |
-| T4: Refactor riding-codebase | T2 (to verify) | SKILL.md + 3 reference files | Medium |
-| T5: Standardize 19 descriptions | T3 | 19 index.yaml files | Medium |
-| T6: Add error handling (5 skills) | T2 (to verify) | 5 SKILL.md files | Medium |
-| T7: Run full validation | T1-T6 | — | Small |
-
-**Critical path**: T1 → T2 → T4 (validation script must exist before refactoring to verify compliance).
-
----
-
-## 8. Security Considerations
-
-| Concern | Mitigation |
-|---------|-----------|
-| Script injection via skill names | Folder names validated against `^[a-z][a-z0-9-]+$` regex |
-| Temp file races | Script uses read-only operations (no temp files needed) |
-| Path traversal | All paths are relative to `.claude/skills/`, validated to exist |
-
----
-
-## 9. Performance Budget
-
-| Operation | Target | Approach |
-|-----------|--------|----------|
-| Full benchmark validation (19 skills) | <3s | Sequential iteration, no external API calls |
-| Single skill validation | <200ms | Direct file reads, `wc -w` + `grep -c` |
-
----
-
-## 10. Dependencies
-
-| Dependency | Required? | Purpose | Fallback |
-|------------|-----------|---------|----------|
-| `bash` 4+ | Yes | Script execution | None |
-| `wc` | Yes | Word counting | POSIX standard |
-| `grep` | Yes | Pattern matching | POSIX standard |
-| `jq` | Yes | JSON config parsing | None (exit with error) |
-| `yq` | No | YAML parsing (for descriptions) | `grep`-based extraction |
-
-No new external dependencies. All tools are already required by existing Loa scripts.
-
----
-
-## 11. References
-
-| Document | Relevance |
-|----------|-----------|
-| PRD v1.1.0 (`grimoires/loa/prd.md`) | All requirements and priorities |
-| `validate-skills.sh` | Existing validation pattern to follow |
-| `skill-index.schema.json` | Existing schema to extend |
-| Anthropic "Complete Guide to Building Skills for Claude" | Primary benchmark source |
-| PR #264 review feedback | Priority adjustments and rollback strategy |
+*This SDD describes connecting existing infrastructure, not building new systems. The architecture adds ~750 lines of test code to wire 62 golden vectors into an already-complete 20,000-line codebase.*
