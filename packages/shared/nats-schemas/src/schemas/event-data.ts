@@ -13,8 +13,15 @@ import { z } from 'zod';
 
 /**
  * data payload for event_type = "guild.join"
- * Rust serializes the full guild object via serde_json::to_value(guild).
- * We validate only the fields the worker currently reads.
+ *
+ * Rust serializes the full Twilight guild object via `serde_json::to_value(guild)`,
+ * which produces 40+ fields. This schema validates only the fields the worker
+ * currently reads. `.passthrough()` is intentional: it allows unknown fields
+ * through without stripping them, so the fixture represents the **minimum
+ * contract** — not the full envelope.
+ *
+ * This mirrors Stripe's API team pattern where the public SDK validates a subset
+ * of the wire payload and forwards the rest untouched. (BB60-S5-2)
  */
 export const GuildJoinDataSchema = z
   .object({

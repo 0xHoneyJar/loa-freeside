@@ -15,6 +15,7 @@ use tokio::signal;
 use tracing::{error, info};
 
 mod config;
+pub mod error;
 mod events;
 mod health;
 mod metrics;

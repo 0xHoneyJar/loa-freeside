@@ -4,10 +4,12 @@ on:
   pull_request:
     paths:
       - 'apps/gateway/**'
+      - 'packages/shared/nats-schemas/fixtures/**'
   push:
     branches: [main]
     paths:
       - 'apps/gateway/**'
+      - 'packages/shared/nats-schemas/fixtures/**'
 
 concurrency:
   group: gateway-ci-${{ github.ref }}
@@ -46,6 +48,25 @@ jobs:
 
       - name: Cargo test
         run: cargo test --locked
+
+      - name: Lint — anyhow boundary enforcement
+        run: |
+          # GatewayError is the domain error type. anyhow is only allowed in main.rs (process boundary).
+          if grep -rn 'anyhow::Result\|anyhow::Context\|anyhow::Error\|anyhow::bail\|anyhow::ensure' src/ --include='*.rs' | grep -v 'main.rs'; then
+            echo "::error::anyhow usage found outside main.rs — use GatewayError instead"
+            exit 1
+          fi
+
+      - name: Wire format fixture freshness
+        working-directory: .
+        run: |
+          # Regenerate fixtures from Rust, then check for drift
+          cd apps/gateway && REGENERATE_FIXTURES=1 cargo test --locked --test wire_format 2>&1 || true
+          cd ../..
+          if ! git diff --exit-code packages/shared/nats-schemas/fixtures/; then
+            echo "::error::Wire format fixtures are stale. Regenerate and commit."
+            exit 1
+          fi
 
       - name: Docker build
         run: docker build -f Dockerfile .

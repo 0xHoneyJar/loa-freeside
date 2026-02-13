@@ -2,8 +2,8 @@
 //!
 //! Sprint S-4: Publishes serialized events to NATS JetStream
 
+use crate::error::GatewayError;
 use crate::events::serialize::GatewayEvent;
-use anyhow::{Context, Result};
 use async_nats::jetstream::{self, Context as JsContext};
 use async_nats::Client;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -43,12 +43,12 @@ pub struct NatsPublisher {
 
 impl NatsPublisher {
     /// Connect to NATS server
-    pub async fn connect(servers: &str) -> Result<Arc<Self>> {
+    pub async fn connect(servers: &str) -> Result<Arc<Self>, GatewayError> {
         info!(servers, "Connecting to NATS");
 
         let client = async_nats::connect(servers)
             .await
-            .context("Failed to connect to NATS")?;
+            .map_err(|e| GatewayError::NatsConnectionFailed(Box::new(e)))?;
 
         let jetstream = jetstream::new(client.clone());
 
@@ -79,9 +79,13 @@ impl NatsPublisher {
     }
 
     /// Publish a gateway event to the appropriate stream
-    pub async fn publish_event(&self, event: &GatewayEvent) -> Result<()> {
+    pub async fn publish_event(&self, event: &GatewayEvent) -> Result<(), GatewayError> {
         let subject = self.route_event(event);
-        let payload = serde_json::to_vec(event).context("Failed to serialize event")?;
+        let payload = serde_json::to_vec(event).map_err(|e| GatewayError::SerializationFailed {
+            event_type: event.event_type.clone(),
+            shard_id: event.shard_id,
+            source: e,
+        })?;
 
         debug!(
             event_type = %event.event_type,
@@ -108,14 +112,20 @@ impl NatsPublisher {
                     Err(e) => {
                         self.publish_failures.fetch_add(1, Ordering::Relaxed);
                         warn!(subject, error = %e, "Failed to get publish acknowledgment");
-                        Err(e.into())
+                        Err(GatewayError::NatsPublishFailed {
+                            subject,
+                            source: Box::new(e),
+                        })
                     }
                 }
             }
             Err(e) => {
                 self.publish_failures.fetch_add(1, Ordering::Relaxed);
                 warn!(subject, error = %e, "Failed to publish event");
-                Err(e.into())
+                Err(GatewayError::NatsPublishFailed {
+                    subject,
+                    source: Box::new(e),
+                })
             }
         }
     }
@@ -152,7 +162,7 @@ impl NatsPublisher {
 /// Ensure streams exist with correct configuration
 ///
 /// This is typically run during startup or by a separate setup job.
-pub async fn ensure_streams(js: &JsContext) -> Result<()> {
+pub async fn ensure_streams(js: &JsContext) -> Result<(), GatewayError> {
     use async_nats::jetstream::stream::{Config, RetentionPolicy, StorageType};
 
     // COMMANDS stream - memory storage, 60s retention for fast command processing
@@ -172,7 +182,7 @@ pub async fn ensure_streams(js: &JsContext) -> Result<()> {
         }
         Err(e) => {
             error!(error = %e, "Failed to create COMMANDS stream");
-            return Err(e.into());
+            return Err(GatewayError::Config(format!("Failed to create COMMANDS stream: {e}")));
         }
     }
 
@@ -193,7 +203,7 @@ pub async fn ensure_streams(js: &JsContext) -> Result<()> {
         }
         Err(e) => {
             error!(error = %e, "Failed to create EVENTS stream");
-            return Err(e.into());
+            return Err(GatewayError::Config(format!("Failed to create EVENTS stream: {e}")));
         }
     }
 

@@ -126,11 +126,12 @@ impl GatewayMetrics {
         .increment(1);
     }
 
-    /// Record gateway error
-    pub fn record_error(&self, shard_id: u64) {
+    /// Record gateway error with structured error type label
+    pub fn record_error(&self, shard_id: u64, error_type: &str) {
         counter!(
             "gateway_errors_total",
-            "shard_id" => shard_id.to_string()
+            "shard_id" => shard_id.to_string(),
+            "error_type" => error_type.to_string()
         )
         .increment(1);
     }

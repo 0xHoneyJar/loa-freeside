@@ -6,8 +6,22 @@
  * both Rust serialization tests and these Zod schemas validate against them.
  */
 
-export { GatewayEventSchema, type GatewayEvent, type GatewayEventPayload } from './schemas/gateway-event.js';
-export { InteractionPayloadSchema, type InteractionPayload } from './schemas/interaction-payload.js';
+export {
+  GatewayEventSchema,
+  KNOWN_EVENT_TYPES,
+  isKnownEventType,
+  type GatewayEvent,
+  type GatewayEventPayload,
+  type KnownEventType,
+} from './schemas/gateway-event.js';
+export {
+  InteractionPayloadSchema,
+  InteractionTransportPayloadSchema,
+  InteractionTransportDataSchema,
+  EnrichedInteractionDataSchema,
+  type InteractionPayload,
+  type InteractionTransportPayload,
+} from './schemas/interaction-payload.js';
 export {
   GuildJoinDataSchema,
   GuildLeaveDataSchema,

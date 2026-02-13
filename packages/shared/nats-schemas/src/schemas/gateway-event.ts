@@ -29,6 +29,18 @@ export const GatewayEventSchema = z.object({
   guild_id: z.string().nullable(),
   channel_id: z.string().nullable(),
   user_id: z.string().nullable(),
+  /**
+   * Event-specific payload. Currently typed as `z.unknown()` for forward
+   * compatibility: new event types from the Rust gateway are accepted without
+   * schema changes on the TypeScript side.
+   *
+   * Future (v2): Replace with a Zod discriminated union keyed on `event_type`,
+   * mapping each event type to its specific data schema (e.g., GuildJoinDataSchema
+   * for "guild.join"). This would provide compile-time exhaustiveness checking
+   * but requires updating this schema every time the gateway adds a new event.
+   * The current design is correct — `z.unknown()` is the right default for
+   * forward compatibility. (BB60-S5-4)
+   */
   data: z.unknown(),
 });
 
@@ -41,3 +53,26 @@ export type GatewayEvent = z.infer<typeof GatewayEventSchema>;
  * this alias lets consumers migrate without renaming all references.
  */
 export type GatewayEventPayload = GatewayEvent;
+
+/**
+ * Known event types produced by the Rust gateway.
+ * Consumers can use {@link isKnownEventType} to log warnings on unrecognized
+ * event types without rejecting them. This provides a dispatch safety guard
+ * without the full discriminated union refactor. (BB60-S5-4)
+ */
+export const KNOWN_EVENT_TYPES = [
+  'guild.join',
+  'guild.leave',
+  'guild.update',
+  'member.join',
+  'member.leave',
+  'member.update',
+  'interaction.create',
+] as const;
+
+export type KnownEventType = (typeof KNOWN_EVENT_TYPES)[number];
+
+/** Returns true if the event type is in the known set. */
+export function isKnownEventType(type: string): type is KnownEventType {
+  return (KNOWN_EVENT_TYPES as readonly string[]).includes(type);
+}

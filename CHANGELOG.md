@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### The Spice Must Flow: Production Readiness & Protocol Unification (PR #60)
+
+Cross-language wire format safety and Rust gateway hardening.
+
+- **`@arrakis/nats-schemas`** shared package with Zod schemas for NATS wire format (Sprint 5)
+- **6 event data schemas** with committed JSON fixtures as neutral contract
+- **BB60-20 regression guard** ensuring `interaction_token` field naming
+- **Routing conformance tests** — Rust constants validated against `nats-routing.json`
+- **`GatewayError` enum** (thiserror) replacing anyhow in Rust gateway (Sprint 6)
+- **7 structured error variants** with `error_type_label()` for Prometheus metrics
+- **CI anyhow boundary lint** — enforces domain errors outside main.rs
+- **Transport/enrichment schema separation** (BB60-S5-1) — `InteractionTransportPayloadSchema` for strict wire validation, `InteractionPayloadSchema` for backward-compatible enriched validation
+- **`KNOWN_EVENT_TYPES`** constant and `isKnownEventType()` helper for dispatch safety (BB60-S5-4)
+- **Schema governance documentation** (`SCHEMA-GOVERNANCE.md`)
+- **Prometheus metrics documentation** (`METRICS.md`)
+
+### Changed
+
+- Enterprise default pool changed from `'architect'` to `'reviewer'` (TIER_DEFAULT_POOL from loa-hounfour) — aligns with updated tier model where `reviewer` is the appropriate default for enterprise access level (BB60-10)
+- Pinned pnpm version via `packageManager` field in root package.json (BB60-11)
+- `gateway_errors_total` Prometheus counter now carries `error_type` label for per-error-type monitoring
+
 #### Hounfour: Agent Gateway (PRs #40, #47, #51, #52)
 
 AI-powered community interaction gateway with budget management and multi-model routing.

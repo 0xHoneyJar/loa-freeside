@@ -5,8 +5,8 @@
 **SDD:** grimoires/loa/sdd.md v1.0.0
 **Team:** 1 AI agent (autonomous)
 **Sprint Duration:** Single session each
-**Total Sprints:** 7 (4 completed + 3 new)
-**Bridge Reference:** [PR #60](https://github.com/0xHoneyJar/arrakis/pull/60) — Bridgebuilder review converged 26 → 6 → 0
+**Total Sprints:** 7 (7 completed + 0 remaining)
+**Bridge Reference:** [PR #60](https://github.com/0xHoneyJar/arrakis/pull/60) — Bridgebuilder review converged 26 → 6 → 0, then Sprint 5 review yielded 4 actionable + 4 praise
 
 ---
 
@@ -20,14 +20,19 @@
 > | Sprint 2 | Protocol Unification (Import Migration) | COMPLETED |
 > | Sprint 3 | Gateway Resurrection | COMPLETED |
 > | Sprint 4 | CI/CD Hardening | COMPLETED |
+> | Sprint 5 | NATS Wire Schema Contract | COMPLETED |
+> | Sprint 6 | Rust Domain Error Types | COMPLETED |
+> | Sprint 7 | Wire Format Safety & BB60 Polish | COMPLETED |
 >
-> **Bridge findings addressed:** 10 of 18 findings resolved across iterations. Remaining architectural recommendations and low-priority findings are addressed in Sprints 5–7 below.
+> **Bridge findings addressed:** 10 of 18 original findings resolved in Sprints 1–4. Sprint 5 created `@arrakis/nats-schemas`, fixed BB60-20, added trust boundary validation (25 tests: 15 TS + 10 Rust). Bridgebuilder Sprint 5 review yielded 4 actionable findings (BB60-S5-1 through S5-4) addressed in Sprint 7 below.
 
 ---
 
-## Sprint 5: NATS Wire Schema Contract
+## Sprint 5: NATS Wire Schema Contract — COMPLETED
 
 **Goal:** Eliminate the cross-language type duplication between the Rust gateway and TypeScript worker by creating a shared schema package. Prevent future BB60-20-class wire format bugs (field renames, type mismatches) through mechanical enforcement rather than code review.
+
+**Status:** COMPLETED — Commit `a6236e9` on `feature/spice-must-flow`. Implementation report: `grimoires/loa/a2a/sprint-224/reviewer.md`. Bridgebuilder review posted to [PR #60](https://github.com/0xHoneyJar/arrakis/pull/60#issuecomment-3895748604).
 
 **Bridgebuilder Reference:** Meditation §II (Wire Format Lesson), Meditation §2.1 (Schema Registry investment), BB60-20 (interaction_token field rename caught by review — should be caught by tests)
 
@@ -207,9 +212,11 @@ export const NATS_SUBJECTS = routing.subjects;
 
 ---
 
-## Sprint 6: Rust Domain Error Types
+## Sprint 6: Rust Domain Error Types — COMPLETED
 
 **Goal:** Replace `anyhow::Result` with `thiserror`-based domain error types in the Rust gateway. Make the error space navigable for on-call engineers and enable compile-time exhaustive handling.
+
+**Commit:** (pending — will be committed with Sprint 7)
 
 **Bridgebuilder Reference:** Meditation §V.1 (Rust Error Taxonomy Gap), Meditation §2.2 (Domain Error Types investment)
 
@@ -349,11 +356,11 @@ impl GatewayError {
 
 ---
 
-## Sprint 7: Wire Format Safety & BB60 Polish
+## Sprint 7: Wire Format Safety & BB60 Polish — COMPLETED
 
 **Goal:** Add integration-level wire format tests, address remaining low-priority Bridgebuilder findings, and document the cross-language schema governance for future contributors.
 
-**Bridgebuilder Reference:** BB60-3 (shard ID cast), BB60-8 (access level fallback logging), BB60-10 (enterprise pool changelog), BB60-11 (pnpm version pinning), Meditation §V.3 (Observability — NOTE: Prometheus metrics already exist; this sprint focuses on documentation, not implementation)
+**Bridgebuilder Reference:** BB60-3 (shard ID cast), BB60-8 (access level fallback logging), BB60-10 (enterprise pool changelog), BB60-11 (pnpm version pinning), Meditation §V.3 (Observability — NOTE: Prometheus metrics already exist; this sprint focuses on documentation, not implementation), **BB60-S5-1** (schema boundary blur), **BB60-S5-2** (.passthrough() hole), **BB60-S5-3** (CI fixture freshness guard), **BB60-S5-4** (discriminated union for event dispatch)
 
 ### Tasks
 
@@ -385,13 +392,14 @@ git diff --exit-code packages/shared/nats-schemas/fixtures/ || {
 - Committed fixtures exist in `packages/shared/nats-schemas/fixtures/` (from S5-T2): `interaction_create.json`, `guild_create.json`, `guild_delete.json`
 - Rust test in `apps/gateway/tests/wire_format.rs` asserts serialization output matches committed fixtures (byte-identical comparison)
 - Rust test supports `--generate-fixtures` flag to overwrite fixture files (for intentional updates)
+- **Path resolution**: Rust test computes fixture directory via `CARGO_MANIFEST_DIR` + known relative path (`../../packages/shared/nats-schemas/fixtures/`), asserts fixture directory exists before writing, and fails with a clear error if the path is wrong. CI working directory is repo root (consistent with existing `gateway-ci.yml`).
 - TypeScript test in `tests/unit/wire-format-roundtrip.test.ts` loads fixtures and validates with Zod schemas
 - `scripts/test-wireformat.sh` runs both sides and checks for staleness
 - CI step in `gateway-ci.yml` runs the freshness check
 - At least 3 event types covered with deterministic inputs (fixed UUID `00000000-0000-4000-8000-000000000001`, fixed timestamp `1707868800000`)
 
 **Effort:** Large
-**Dependencies:** Sprint 5 complete (schemas and fixtures must exist), Sprint 6 complete (error types used in serialization)
+**Dependencies:** Sprint 5 complete (schemas and fixtures must exist). **No dependency on Sprint 6** — wire format tests target the current serialization surface in `serialize.rs`, which is unaffected by the `anyhow` → `thiserror` migration (Sprint 6 changes error propagation, not serialization output).
 
 #### S7-T2: Document cross-language schema governance
 
@@ -421,11 +429,17 @@ git diff --exit-code packages/shared/nats-schemas/fixtures/ || {
 1. **BB60-11 — pnpm version pinning in CI:** Add `packageManager: "pnpm@9.x"` to root `package.json` to ensure CI uses a consistent pnpm version via corepack
 2. **BB60-8 — Access level fallback logging:** In `pool-mapping.ts`, add `logger.warn()` when `resolvePoolId` falls back to default pool for an unknown access level, with the original access level value for debugging
 3. **BB60-10 — Enterprise pool changelog:** Add a CHANGELOG entry documenting the enterprise default pool change from `'architect'` to `'reviewer'` (TIER_DEFAULT_POOL from loa-hounfour)
+4. **BB60-S5-2 — Document `.passthrough()` rationale in GuildJoinData:** Add JSDoc comment to `GuildJoinDataSchema` in `event-data.ts` explaining that `.passthrough()` is intentional because Rust serializes the full Twilight guild object (40+ fields), the schema validates only the fields the worker reads, and the fixture represents the minimum contract — not the full envelope. Reference the Bridgebuilder's "schema coverage gap" parallel with Stripe's API team.
+5. **BB60-S5-4 — Document discriminated union as v2 enhancement + add event_type validation:** The Bridgebuilder review explicitly rated this Low severity and stated: *"This is a v2 enhancement, not a blocker. The current design is correct — `data: z.unknown()` is the right default for forward compatibility."* Resolution is documentation-only for the discriminated union, plus a minimal runtime guard. Add a `// Future: discriminated union` comment block in `gateway-event.ts` above `data: z.unknown()` explaining the design choice and upgrade path. Additionally, add an `KNOWN_EVENT_TYPES` constant array and a helper function `isKnownEventType(type: string): boolean` that consumers can optionally use to log warnings on unrecognized event types — this provides a measurable dispatch safety guard without the full discriminated union refactor.
 
 **Acceptance Criteria:**
 - Root `package.json` has `"packageManager"` field
 - `resolvePoolId()` logs a warning on access level fallback with the original value
 - CHANGELOG.md has an entry for the enterprise pool default change
+- `GuildJoinDataSchema` has JSDoc documenting `.passthrough()` rationale with BB60-S5-2 reference
+- `GatewayEventSchema` has comment block documenting discriminated union upgrade path with BB60-S5-4 reference
+- `KNOWN_EVENT_TYPES` constant array exported from `@arrakis/nats-schemas`
+- `isKnownEventType()` helper function exported
 - All existing tests pass
 
 **Effort:** Small
@@ -444,26 +458,60 @@ git diff --exit-code packages/shared/nats-schemas/fixtures/ || {
 **Effort:** Small
 **Dependencies:** S6-T5 (error type labels must be added first)
 
+#### S7-T5: Separate transport and enrichment schemas (BB60-S5-1)
+
+**Description:** The Bridgebuilder review identified that `InteractionPayloadSchema` in `interaction-payload.ts` mixes **transport** fields (the 3 base fields Rust produces: `interaction_id`, `interaction_type`, `interaction_token`) with **enrichment** fields (3 optional fields TypeScript adds: `command_name`, `subcommand`, `options`). This is the same design tension Confluent's Schema Registry team documented — mixing what's on the wire with what the application works with.
+
+**FAANG Parallel:** Confluent's [2019 schema governance post-mortem](https://www.confluent.io/blog/schemas-contracts-compatibility/) showed that mixing transport and application schemas causes evolution problems: changing a transport field breaks consumers, and changing an enrichment field pollutes the wire contract.
+
+**Hounfour Connection:** When the ModelPort interface (loa-finn#31 §5.3) reaches implementation, the same transport-vs-application distinction matters for tool call normalization across OpenAI/Moonshot/Claude formats. Establishing this separation now builds the pattern vocabulary the multi-model future requires.
+
+**Migration strategy (backward compatible):**
+The current `InteractionPayloadSchema` accepts enrichment fields because `InteractionDataSchema` extends transport with optional enrichment fields. This is permissive — it never rejects transport-only payloads. The refactoring preserves this permissiveness at the existing boundary while making the separation explicit.
+
+**Changes:**
+1. Rename internal `InteractionDataSchema` to `EnrichedInteractionDataSchema` in `interaction-payload.ts` — this preserves the current permissive shape (transport + optional enrichment)
+2. Create `InteractionTransportDataSchema` as a new strict export — only the 3 Rust-produced fields, no `.extend()`
+3. Add JSDoc documenting the boundary: transport schema = Rust wire format (strict), enriched schema = worker post-enrichment (permissive)
+4. **Keep `InteractionPayloadSchema.data` using `EnrichedInteractionDataSchema`** — this is backward compatible; existing consumers continue to work unchanged
+5. Create new `InteractionTransportPayloadSchema` with strict `data: InteractionTransportDataSchema` for consumers that want strict validation at the wire boundary
+6. Export all schemas from `src/index.ts` with clear naming
+7. Migrate `CommandNatsConsumer.ts` call sites: document which call sites use transport vs enriched, but do NOT change validation behavior (migration is opt-in for strict mode)
+
+**Acceptance Criteria:**
+- `InteractionTransportDataSchema` exported (3 required fields from Rust, strict)
+- `EnrichedInteractionDataSchema` exported (transport + 3 optional enrichment fields, permissive)
+- `InteractionTransportPayloadSchema` exported for strict wire boundary validation
+- **Existing `InteractionPayloadSchema` preserved** — still uses enriched data, backward compatible
+- JSDoc on all schemas documents the boundary with BB60-S5-1 reference
+- `CommandNatsConsumer.ts` call sites documented (which use transport vs enriched)
+- All existing tests pass unchanged (no breaking changes)
+- BB60-20 regression guard still passes (interaction_token required in both transport and enriched schemas)
+
+**Effort:** Medium
+**Dependencies:** None (can execute independently)
+
 ---
 
 ## Dependency Graph (Sprints 5–7)
 
 ```
-Sprint 5:  S5-T1 ──▶ S5-T2 ──┬──▶ S5-T3 ──▶ S5-T5
-                               ├──▶ S5-T4 ──▶ S5-T5
-                               └──▶ S5-T6
+Sprint 5:  COMPLETED ✓ (all tasks done, commit a6236e9)
 
 Sprint 6:  S6-T0 ──▶ S6-T1 ──┬──▶ S6-T2 ──┐
                                ├──▶ S6-T3 ──┼──▶ S6-T5
                                └──▶ S6-T4   │
                                              │
 Sprint 7:  S7-T3 (no deps)                  │
-           S7-T1 (needs Sprint 5 + Sprint 6)
-           S7-T2 (needs S7-T1)
-           S7-T4 (needs S6-T5)
+           S7-T5 (no deps — BB60-S5-1)      │
+           S7-T1 (needs Sprint 5 ✓ only)    │
+           S7-T2 (needs S7-T1)              │
+           S7-T4 (needs S6-T5) ─────────────┘
 ```
 
-**Sprint 5 and Sprint 6 are independent** — they can be executed in parallel or in either order. Sprint 7 depends on both being complete (for wire format round-trip tests).
+**Sprint 6 is next** — independent of Sprint 5's BB60-S5 findings. Sprint 7 can begin in parallel for tasks S7-T1, S7-T3, and S7-T5 (none depend on Sprint 6). Only S7-T4 (metrics docs) depends on S6-T5 (error type labels).
+
+**Sprint 7 internal parallelism:** S7-T3 (low-priority fixes + BB60-S5-2/S5-4), S7-T5 (schema boundary separation, BB60-S5-1), and S7-T1 (CI freshness, BB60-S5-3) are all independent — they can execute in parallel. S7-T2 depends on S7-T1. S7-T4 depends on S6-T5.
 
 **Schema ownership model:** Committed JSON fixtures are the neutral contract. Rust tests assert output matches fixtures. TypeScript Zod schemas validate fixtures parse correctly. CI freshness checks prevent silent drift on either side.
 
@@ -471,14 +519,16 @@ Sprint 7:  S7-T3 (no deps)                  │
 
 ## Success Metrics (Sprints 5–7)
 
-| Goal | Metric | Sprint |
-|------|--------|--------|
-| G-6 | Zero inline NATS type definitions in consumer files | Sprint 5 |
-| G-7 | All NATS messages validated via Zod at trust boundary | Sprint 5 |
-| G-8 | Zero `anyhow::Result` in gateway application code; only `main.rs` allowed (CI-enforced via rg lint) | Sprint 6 |
-| G-9 | `gateway_errors_total` counter carries `error_type` label | Sprint 6 |
-| G-10 | Cross-language wire format validated by CI tests | Sprint 7 |
-| G-11 | All BB60 findings addressed (score remains at 0) | Sprint 7 |
+| Goal | Metric | Sprint | Status |
+|------|--------|--------|--------|
+| G-6 | Zero inline NATS type definitions in consumer files | Sprint 5 | ✓ DONE |
+| G-7 | All NATS messages validated via Zod at trust boundary | Sprint 5 | ✓ DONE |
+| G-8 | Zero `anyhow::Result` in gateway application code; only `main.rs` allowed (CI-enforced via rg lint) | Sprint 6 | ✓ DONE |
+| G-9 | `gateway_errors_total` counter carries `error_type` label | Sprint 6 | ✓ DONE |
+| G-10 | Cross-language wire format validated by CI tests | Sprint 7 | ✓ DONE |
+| G-11 | All BB60 findings addressed (score remains at 0) | Sprint 7 | ✓ DONE (BB60-8 out of scope — loa-hounfour) |
+| G-12 | Transport and enrichment schemas separated (BB60-S5-1) | Sprint 7 | ✓ DONE |
+| G-13 | All BB60-S5 findings documented or addressed (S5-1 through S5-4) | Sprint 7 | ✓ DONE |
 
 ---
 
@@ -486,10 +536,11 @@ Sprint 7:  S7-T3 (no deps)                  │
 
 | Risk | Sprint | Mitigation |
 |------|--------|------------|
-| Zod validation rejects valid gateway payloads | Sprint 5 | Use `.passthrough()` for `data` field; snapshot fixtures from real gateway output |
+| Zod validation rejects valid gateway payloads | Sprint 5 ✓ | Used `.passthrough()` for `data` field; snapshot fixtures from real gateway output — **validated, no rejections** |
 | thiserror migration introduces runtime behavior change | Sprint 6 | Error messages preserved; only the type structure changes |
 | Cross-language fixture tests are fragile | Sprint 7 | Use deterministic UUIDs and timestamps in fixtures; document update process |
 | pnpm version pin breaks existing contributors | Sprint 7 | Pin to `9.x` range, not exact version; corepack handles resolution |
+| Schema boundary separation breaks existing consumers | Sprint 7 | **No breaking changes**: Existing `InteractionPayloadSchema` preserved unchanged (still uses enriched data). New `InteractionTransportPayloadSchema` is opt-in strict mode. Migration to strict validation is opt-in per consumer — no call sites change unless explicitly migrated. |
 
 ---
 
@@ -497,9 +548,22 @@ Sprint 7:  S7-T3 (no deps)                  │
 
 | Investment | Status | Sprint |
 |-----------|--------|--------|
-| 1. Wire Format Schema Registry | **Addressed** — `packages/shared/nats-schemas/` | Sprint 5 |
-| 2. Domain Error Types in Gateway | **Addressed** — `thiserror`-based `GatewayError` | Sprint 6 |
-| 3. Prometheus Metrics in Gateway | **Already exists** — `metrics-exporter-prometheus 0.18` with 9 metrics | Sprint 7 (docs only) |
+| 1. Wire Format Schema Registry | **Delivered** — `packages/shared/nats-schemas/` with 25 tests (15 TS + 10 Rust) | Sprint 5 ✓ |
+| 2. Domain Error Types in Gateway | **Delivered** — `thiserror`-based `GatewayError` with 7 variants + CI lint | Sprint 6 ✓ |
+| 3. Prometheus Metrics in Gateway | **Documented** — METRICS.md with all 9 metrics + error_type labels | Sprint 7 ✓ |
+
+## Bridgebuilder Sprint 5 Findings — Status
+
+| Finding | Severity | Status | Sprint |
+|---------|----------|--------|--------|
+| BB60-S5-1: Schema boundary blur (transport + enrichment) | Medium | ✓ **Resolved** — Transport/enrichment schemas separated | Sprint 7 |
+| BB60-S5-2: `.passthrough()` hole in GuildJoinData | Low | ✓ **Documented** — JSDoc explains rationale | Sprint 7 |
+| BB60-S5-3: Missing CI fixture freshness guard | Medium | ✓ **Resolved** — CI step + integration tests | Sprint 7 |
+| BB60-S5-4: No discriminated union for event dispatch | Low | ✓ **Documented** — v2 comment + KNOWN_EVENT_TYPES guard | Sprint 7 |
+| BB60-S5-5: BB60-20 regression guard pattern | Praise | ✓ **Delivered** | Sprint 5 |
+| BB60-S5-6: Committed fixtures as neutral contract | Praise | ✓ **Delivered** | Sprint 5 |
+| BB60-S5-7: Trust boundary validation | Praise | ✓ **Delivered** | Sprint 5 |
+| BB60-S5-8: Silent `token` bug fix | Praise | ✓ **Delivered** | Sprint 5 |
 
 ---
 

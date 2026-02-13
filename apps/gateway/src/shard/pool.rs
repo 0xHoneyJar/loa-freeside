@@ -3,12 +3,12 @@
 //! Sprint S-4: Twilight Gateway Core
 //! Manages multiple Discord shards per process per SDD §5.1.3
 
+use crate::error::GatewayError;
 use crate::events::serialize::serialize_event;
 use crate::metrics::GatewayMetrics;
 use crate::nats::NatsPublisher;
 use crate::shard::state::{ShardHealth, ShardState};
 
-use anyhow::Result;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::broadcast;
@@ -46,7 +46,7 @@ impl ShardPool {
         intents: Intents,
         nats: Option<Arc<NatsPublisher>>,
         metrics: Arc<GatewayMetrics>,
-    ) -> Result<Self> {
+    ) -> Result<Self, GatewayError> {
         let start_shard = pool_id * SHARDS_PER_POOL;
         let end_shard = ((pool_id + 1) * SHARDS_PER_POOL).min(total_shards);
 
@@ -62,12 +62,18 @@ impl ShardPool {
 
         let state = ShardState::new(pool_id, shard_ids.iter().copied(), total_shards);
 
+        // BB60-19: Safe u64 → u32 cast at Twilight API boundary
+        let total_shards_u32 = u32::try_from(total_shards)
+            .map_err(|_| GatewayError::ShardIdOverflow { value: total_shards })?;
+
         let mut shards = Vec::with_capacity(shard_ids.len());
 
         for shard_id in shard_ids {
+            let shard_id_u32 = u32::try_from(shard_id)
+                .map_err(|_| GatewayError::ShardIdOverflow { value: shard_id })?;
             let config = Config::new(token.clone(), intents);
 
-            let shard = Shard::with_config(ShardId::new(shard_id as u32, total_shards as u32), config);
+            let shard = Shard::with_config(ShardId::new(shard_id_u32, total_shards_u32), config);
 
             shards.push(shard);
         }
@@ -97,7 +103,7 @@ impl ShardPool {
     /// Run all shards in the pool
     ///
     /// This spawns a task for each shard and waits for all to complete.
-    pub async fn run(self) -> Result<()> {
+    pub async fn run(self) -> Result<(), GatewayError> {
         let mut handles = Vec::with_capacity(self.shards.len());
 
         for shard in self.shards {
@@ -144,7 +150,7 @@ async fn run_shard(
     nats: Option<Arc<NatsPublisher>>,
     state: ShardState,
     metrics: Arc<GatewayMetrics>,
-) -> Result<()> {
+) -> Result<(), GatewayError> {
     let shard_id: u64 = shard.id().number().into();
     let pool_id = state.pool_id();
 
@@ -165,22 +171,34 @@ async fn run_shard(
             Err(source) => {
                 consecutive_errors += 1;
                 warn!(shard_id, error = %source, consecutive = consecutive_errors, "Error receiving event");
-                metrics.record_error(shard_id);
 
                 // Immediate fatal: reconnect failure
                 if matches!(source.kind(), twilight_gateway::error::ReceiveMessageErrorType::Reconnect) {
+                    let err = GatewayError::ShardReconnectFailed {
+                        shard_id,
+                        source: Box::new(source),
+                    };
+                    metrics.record_error(shard_id, err.error_type_label());
                     state.set_health(shard_id, ShardHealth::Dead);
                     error!(shard_id, "Fatal gateway error (reconnect failed)");
-                    return Err(source.into());
+                    return Err(err);
                 }
 
                 // Circuit breaker: too many consecutive errors
                 if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
+                    let err = GatewayError::ShardCircuitBroken {
+                        shard_id,
+                        count: consecutive_errors,
+                        max: MAX_CONSECUTIVE_ERRORS,
+                    };
+                    metrics.record_error(shard_id, err.error_type_label());
                     state.set_health(shard_id, ShardHealth::Dead);
                     error!(shard_id, consecutive = consecutive_errors, "Shard dead: consecutive error threshold exceeded");
-                    return Err(source.into());
+                    return Err(err);
                 }
 
+                // Non-fatal transient error
+                metrics.record_error(shard_id, "receive_error");
                 state.set_health(shard_id, ShardHealth::Disconnected);
                 continue;
             }
