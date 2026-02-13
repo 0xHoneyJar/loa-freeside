@@ -1,13 +1,22 @@
 # Arrakis
 
-[![Version](https://img.shields.io/badge/version-6.0.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-7.0.0-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-green.svg)](LICENSE.md)
 
-Engagement intelligence platform for Web3 communities. Conviction scoring and tiered progression delivered as Discord roles.
+Engagement intelligence platform for Web3 communities. Conviction scoring and tiered progression delivered as Discord and Telegram roles.
 
-## Capabilities
+## What is Arrakis?
+
+Arrakis is a multi-tenant community infrastructure platform built for Web3. It connects to your Discord server and Telegram group, reads on-chain token holdings (BGT on Berachain), and automatically assigns roles based on a 9-tier progression system.
+
+Members earn conviction scores based on holding duration, accumulation patterns, and on-chain activity. Scores drive tier placement, which drives role assignment, which drives channel access. The entire pipeline is automated — communities configure their rules once and Arrakis handles the rest.
+
+For communities running existing verification bots (Collab.Land, Matrica, Guild.xyz), Arrakis offers a Shadow Mode that runs in parallel without disrupting your current setup. Compare role assignments in real-time, tune thresholds, and switch over when ready.
+
+## Features
 
 ### Conviction Scoring
+
 Algorithmic scoring based on on-chain behavior:
 - **Holding Duration** — Longer holding periods increase score
 - **Accumulation Pattern** — Buying during dips shows conviction
@@ -15,129 +24,179 @@ Algorithmic scoring based on on-chain behavior:
 - **On-Chain Activity** — Governance participation, staking, protocol interactions
 
 ### 9-Tier Progression System
-Granular member segmentation with Dune-themed tiers:
 
-| Tier | Name | Description |
-|------|------|-------------|
-| 1 | Sandworm | New community members |
-| 2 | Fremen | Established holders |
-| 3 | Fedaykin | Active community participants |
-| 4 | Naib | Community leaders |
-| 5 | Sayyadina | Trusted advisors |
-| 6 | Reverend Mother | Core contributors |
-| 7 | Mentat | Strategic thinkers |
-| 8 | Guild Navigator | Ecosystem connectors |
-| 9 | Kwisatz Haderach | Legendary status |
+Dune-themed tiers based on BGT holdings and community rank:
+
+| Tier | Name | BGT Threshold | Rank Range |
+|------|------|--------------|------------|
+| 1 | Naib | (by rank) | Top 1–7 |
+| 2 | Fedaykin | (by rank) | Top 8–69 |
+| 3 | Usul | 1,111 BGT | 70–100 |
+| 4 | Sayyadina | 888 BGT | 101–150 |
+| 5 | Mushtamal | 690 BGT | 151–200 |
+| 6 | Sihaya | 420 BGT | 201–300 |
+| 7 | Qanat | 222 BGT | 301–500 |
+| 8 | Ichwan | 69 BGT | 501–1,000 |
+| 9 | Hajra | 6.9 BGT | 1,001+ |
 
 ### Badge System
+
 Achievement badges for community milestones:
-- OG Holder — Early adopter recognition
-- Diamond Hands — Held through volatility
-- Accumulator — Bought during dips
-- Governance Active — Participated in votes
+- **Water Sharer** — Referral chain tracking with recursive lineage
+- **Engaged** — Consistent community participation
+- **Veteran** — Long-term membership tenure
+- **Former Naib** — Previously held top leadership rank
+- **Taqwa** — Community recognition badge
+
+### Agent Gateway (Hounfour)
+
+AI-powered community interactions with budget management:
+- Per-community monthly budgets with two-counter atomicity
+- 5 model tiers: cheap, fast-code, reviewer, reasoning, native
+- Rate limiting (community, user, channel, burst dimensions)
+- Streaming via SSE with reconciliation for dropped connections
 
 ### Shadow Mode
-Test alongside existing Collab.Land setup:
-- Compare role assignments in real-time
+
+Test alongside existing verification bots:
+- Compare role assignments in real-time against Collab.Land/Matrica/Guild.xyz
+- Divergence tracking via shadow ledger
 - Tune thresholds before going live
 - Zero disruption to existing setup
 
 ### QA Sandbox
-Interactive testing for administrators:
+
+Interactive testing environment for administrators:
 - Assume any tier/role combination
-- Test permission gates
-- Validate threshold configurations
+- Test permission gates and threshold configurations
+- Schema provisioning per sandbox instance
 - Visual tier hierarchy
 
 ## Architecture
 
 ```
 arrakis/
-├── themes/sietch/          # Discord bot service
+├── packages/
+│   ├── core/               # Port interfaces + domain types
+│   │   ├── ports/          # IChainProvider, IStorageProvider, etc.
+│   │   └── domain/         # WizardSession, CommunityManifest
+│   ├── adapters/           # 9 adapter modules
+│   │   ├── agent/          # AgentGateway, BudgetManager
+│   │   ├── chain/          # RPC, Dune Sim, hybrid provider
+│   │   ├── storage/        # Drizzle ORM + PostgreSQL + RLS
+│   │   ├── synthesis/      # BullMQ queue for Discord API
+│   │   ├── wizard/         # 8-step onboarding orchestrator
+│   │   ├── themes/         # ThemeRegistry, SietchTheme
+│   │   ├── security/       # Vault, KillSwitch, MFA
+│   │   └── coexistence/    # Shadow mode, migration
+│   ├── cli/                # Gaib CLI (auth, sandbox, server IaC)
+│   └── sandbox/            # Schema provisioning, event routing
+├── themes/sietch/          # Main Discord/Telegram bot service
 │   ├── src/
-│   │   ├── api/            # REST API (Express)
-│   │   ├── discord/        # Discord.js bot
-│   │   ├── packages/       # Core business logic
-│   │   │   ├── adapters/   # Theme providers
-│   │   │   ├── core/       # Tier evaluation, badges
-│   │   │   └── ...
-│   │   └── services/       # Redis, database, sandbox
-│   └── tests/              # Vitest test suites
-├── packages/cli/           # Admin CLI tool
-├── sites/
-│   ├── docs/               # Documentation (Nextra)
-│   └── web/                # Marketing site (Next.js)
-└── infrastructure/         # Deployment configs
+│   │   ├── api/            # Express REST API (80+ routes)
+│   │   ├── discord/        # Slash commands (22+)
+│   │   ├── telegram/       # Grammy bot (9 commands)
+│   │   └── trigger/        # Scheduled tasks (7 cron jobs)
+│   └── drizzle/            # Database migrations
+├── apps/
+│   ├── gateway/            # Rust/Axum Discord gateway proxy
+│   ├── ingestor/           # Event ingestion service
+│   └── worker/             # Background job worker
+└── infrastructure/
+    └── terraform/          # AWS ECS deployment (IaC)
 ```
 
 ## Technology Stack
 
 | Layer | Technology |
 |-------|------------|
-| Bot Runtime | Node.js, discord.js |
-| API | Express, Zod validation |
-| Database | PostgreSQL (Drizzle ORM) |
-| Cache | Redis |
-| Background Jobs | Trigger.dev |
-| Deployment | Fly.io |
+| Runtime | Node.js 20+, Rust (gateway) |
+| Language | TypeScript (strict), Rust |
+| Bot Frameworks | discord.js v14, Grammy (Telegram) |
+| API | Express, Zod validation (1,737-line config schema) |
+| Database | PostgreSQL 15 + Drizzle ORM + Row-Level Security |
+| Cache | Redis 7 (ioredis) |
+| Queue | BullMQ (synthesis, reaper), Trigger.dev (cron) |
+| Blockchain | viem (RPC), Dune Sim API (hybrid mode) |
+| Infrastructure | Terraform, AWS ECS, Docker |
+| Testing | Vitest |
 
-## Chain Support
+## Quick Start
 
-All major EVM chains:
-- Ethereum, Polygon, Arbitrum, Optimism
-- Base, Avalanche, BNB Chain
-- Berachain (native BGT support)
+```bash
+# Clone
+git clone https://github.com/0xHoneyJar/arrakis.git
+cd arrakis
 
-## Token Standards
+# Install dependencies
+npm install
 
-- **ERC-20** — Fungible tokens with balance-based tiers
-- **ERC-721** — NFT ownership verification
-- **ERC-1155** — Multi-token support
-- **BGT** — Native Berachain governance token
+# Set up environment
+cp themes/sietch/.env.example themes/sietch/.env
+# Edit .env with your Discord bot token, database URL, etc.
+
+# Run database migrations
+cd themes/sietch
+npx drizzle-kit push
+
+# Start development server
+npm run dev
+```
+
+See [INSTALLATION.md](INSTALLATION.md) for detailed setup including Docker, database, Redis, and deployment configuration.
+
+## Configuration
+
+Key environment variables (see INSTALLATION.md for full list):
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| DISCORD_BOT_TOKEN | Yes | Discord bot token |
+| DISCORD_GUILD_ID | Yes | Discord server ID |
+| DATABASE_URL | Yes | PostgreSQL connection URL |
+| BERACHAIN_RPC_URLS | Yes | Comma-separated RPC endpoints |
+| BGT_ADDRESS | Yes | BGT token contract address |
+
+Feature flags control optional subsystems:
+
+| Flag | Default | Enables |
+|------|---------|---------|
+| FEATURE_BILLING_ENABLED | false | Paddle billing integration |
+| FEATURE_REDIS_ENABLED | false | Redis caching layer |
+| FEATURE_TELEGRAM_ENABLED | false | Telegram bot bridge |
+| FEATURE_VAULT_ENABLED | false | HashiCorp Vault secrets |
+| FEATURE_CRYPTO_PAYMENTS_ENABLED | false | NOWPayments crypto billing |
 
 ## Development
 
-### Prerequisites
-
-| Tool | Required | Purpose |
-|------|----------|---------|
-| Node.js 20+ | Yes | Runtime |
-| pnpm | Yes | Package manager |
-| PostgreSQL | Yes | Database |
-| Redis | Yes | Caching |
-
-### Quick Start
-
 ```bash
-# Clone and install
-git clone https://github.com/0xHoneyJar/arrakis.git
-cd arrakis
-pnpm install
+# Build
+npm run build
 
-# Start development
-cd themes/sietch
-cp .env.example .env
-pnpm dev
-```
-
-### Testing
-
-```bash
-# Run all tests
-pnpm test
-
-# Run with coverage
-pnpm test:coverage
+# Run tests
+npm test
 
 # Type checking
-pnpm typecheck
+npm run typecheck
+
+# Start with hot reload
+npm run dev
 ```
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/my-feature`)
+3. Commit your changes with conventional commit messages
+4. Push to the branch and open a Pull Request
 
 ## Documentation
 
-- [docs.arrakis.community](https://docs.arrakis.community) — Full documentation
-- [Getting Started](https://docs.arrakis.community/getting-started) — Installation guide
-- [API Reference](https://docs.arrakis.community/api) — REST API docs
+| Document | Audience | Description |
+|----------|----------|-------------|
+| [AGENTREADME.md](AGENTREADME.md) | AI agents | Machine-readable project overview with source citations |
+| [INSTALLATION.md](INSTALLATION.md) | Developers | Detailed setup and deployment guide |
+| [CHANGELOG.md](CHANGELOG.md) | Everyone | Version history and release notes |
 
 ## License
 
@@ -145,6 +204,5 @@ pnpm typecheck
 
 ## Links
 
-- [Documentation](https://docs.arrakis.community)
 - [Discord](https://discord.gg/thehoneyjar)
 - [The HoneyJar](https://thehoneyjar.xyz)
