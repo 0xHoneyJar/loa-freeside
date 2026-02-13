@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+#### Hounfour: Agent Gateway (PRs #40, #47, #51, #52)
+
+AI-powered community interaction gateway with budget management and multi-model routing.
+
+- **AgentGateway** with request lifecycle management (RECEIVED → RESERVED → EXECUTING → FINALIZED)
+- **BudgetManager** with two-counter atomicity (committed + reserved) via Redis Lua scripts
+- **5 model tiers**: cheap, fast-code, reviewer, reasoning, native
+- **Rate limiting** across 4 dimensions (community, user, channel, burst)
+- **Streaming responses** via SSE with reconnection and reconciliation
+- **BudgetReaperJob** for reclaiming expired reservations (60s interval)
+- **StreamReconciliationWorker** for finalizing dropped SSE connections
+- **Tier-based access policies** with free, pro, enterprise access levels
+- **Request hashing** for idempotency and deduplication
+- **Cross-system bridge** with loa-finn via S2S JWT authentication
+- **Usage tracking** with pool-based model mapping
+- **BYOK** (Bring Your Own Key) for community-supplied API keys
+- **Ensemble strategy** for multi-model routing
+- **Production monitoring** dashboards
+- Discord `/agent` slash command for AI interactions
+- Telegram `/agent` command for AI interactions
+- Agent REST API routes (`/api/agents/*`)
+- Admin BYOK management routes (`/admin/byok/*`)
+- Database migration `0006_agent_usage_hounfour.sql` — agent usage logging tables
+- Database migration `0007_community_byok_keys.sql` — BYOK key storage
+
+#### Stillsuit: Gateway Infrastructure & Crypto Payments (PR #29)
+
+Distributed event handling and cryptocurrency payment support.
+
+- **Rust/Axum Discord gateway proxy** (`apps/gateway/`) for sharded event distribution
+- **Event ingestor service** (`apps/ingestor/`) for queue-based event processing
+- **Background worker service** (`apps/worker/`) for scheduled job execution
+- **Amazon MQ (RabbitMQ)** queue topology with topic exchange, priority queues, and dead-letter handling
+- **NOWPayments** cryptocurrency payment adapter (`FEATURE_CRYPTO_PAYMENTS_ENABLED`)
+  - IPN (Instant Payment Notification) webhook processing with signature verification
+  - Crypto payment status tracking and confirmation callbacks
+
+#### Multi-Repo Architecture
+
+- Extracted `sites/web/` to dedicated `arrakis-web` repository
+- Ecosystem map documentation for multi-repo layout
+
+#### Admin Documentation (PR #38)
+
+- Admin documentation for test community onboarding workflows
+
+### Changed
+
+- Simplified repository to single-service focus after sites extraction
+- Removed Simstim Telegram bridge (experimental feature, PR #37)
+- Upgraded Rust gateway dependencies: twilight-gateway 0.17, async-nats 0.46, axum 0.8, thiserror 2, config 0.15
+- Updated worker production dependencies
+- Updated GitHub Actions: checkout v6, upload-artifact v6, codeql-action v4
+
 ## [7.0.0] - 2026-01-20
 
 ### Added
@@ -627,6 +683,7 @@ Complete incumbent bot migration system enabling zero-downtime transitions from 
 
 | Version | Release Date | Codename | Key Features |
 |---------|--------------|----------|--------------|
+| 7.0.0 | 2026-01-20 | Crysknife Edge | Gaib CLI, checkpoint safety, QA authentication |
 | 6.0.0 | 2026-01-13 | The Architects | Monorepo restructure, marketing README, separation of concerns |
 | 5.1.1 | 2026-01-06 | Housekeeping | Stripe removal, gitignore cleanup, provider-agnostic billing |
 | 5.1.0 | 2026-01-06 | The Merchant | Paddle billing, docs site, marketing website, infrastructure resilience |
@@ -640,6 +697,7 @@ Complete incumbent bot migration system enabling zero-downtime transitions from 
 | 1.0.0 | 2025-12-01 | MVP | Core eligibility, Discord bot, API |
 
 [Unreleased]: https://github.com/0xHoneyJar/arrakis/compare/v6.0.0...HEAD
+[7.0.0]: https://github.com/0xHoneyJar/arrakis/compare/v6.0.0...HEAD
 [6.0.0]: https://github.com/0xHoneyJar/arrakis/compare/v5.1.1...v6.0.0
 [5.1.1]: https://github.com/0xHoneyJar/arrakis/compare/v5.1.0...v5.1.1
 [5.1.0]: https://github.com/0xHoneyJar/arrakis/compare/v5.0.1...v5.1.0

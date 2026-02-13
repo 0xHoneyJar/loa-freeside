@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "next_sprint_number": 216,
-  "active_cycle": "cycle-021",
+  "next_sprint_number": 220,
+  "active_cycle": "cycle-022",
   "cycles": [
     {
       "id": "cycle-001",
@@ -108,8 +108,9 @@
     {
       "id": "cycle-007",
       "label": "Gaib Discord IaC - Full Sietch Theme + Backup System",
-      "status": "active",
+      "status": "archived",
       "created": "2026-01-29T03:00:00Z",
+      "archived": "2026-02-13T12:00:00Z",
       "prd": "grimoires/loa/prd.md",
       "sdd": "grimoires/loa/sdd.md",
       "sprints": [
@@ -131,8 +132,9 @@
     {
       "id": "cycle-009",
       "label": "Water Discipline - Test Community Documentation Sprint",
-      "status": "active",
+      "status": "archived",
       "created": "2026-02-04T05:30:00Z",
+      "archived": "2026-02-13T12:00:00Z",
       "prd": "grimoires/loa/prd-docs-sprint.md",
       "sdd": "grimoires/loa/sdd-docs-sprint.md",
       "sprints": [
@@ -309,14 +311,31 @@
     {
       "id": "cycle-021",
       "label": "Bridgebuilder Round 9 — E2E Infrastructure Hardening (BB9)",
-      "status": "active",
+      "status": "archived",
       "created": "2026-02-13T00:30:00Z",
+      "archived": "2026-02-13T12:00:00Z",
+      "archive_path": "grimoires/loa/archive/2026-02-13-e2e-infrastructure-hardening",
       "prd": "grimoires/loa/prd-hounfour-finish-line.md",
       "sdd": "grimoires/loa/sdd-hounfour-finish-line.md",
       "sprint_plan": "grimoires/loa/sprint.md",
       "sprints": [
-        {"global_id": 214, "local_label": "sprint-1", "status": "pending"},
-        {"global_id": 215, "local_label": "sprint-2", "status": "pending"}
+        {"global_id": 214, "local_label": "sprint-1", "status": "completed"},
+        {"global_id": 215, "local_label": "sprint-2", "status": "completed"}
+      ]
+    },
+    {
+      "id": "cycle-022",
+      "label": "The Litany — Documentation Overhaul (AGENTREADME + README + CHANGELOG)",
+      "status": "active",
+      "created": "2026-02-13T12:15:00Z",
+      "prd": "grimoires/loa/prd-docs-overhaul.md",
+      "sdd": "grimoires/loa/sdd-docs-overhaul.md",
+      "sprint_plan": "grimoires/loa/sprint.md",
+      "sprints": [
+        {"global_id": 216, "local_label": "sprint-1", "status": "pending"},
+        {"global_id": 217, "local_label": "sprint-2", "status": "pending"},
+        {"global_id": 218, "local_label": "sprint-3", "status": "pending"},
+        {"global_id": 219, "local_label": "sprint-4", "status": "pending"}
       ]
     }
   ]
