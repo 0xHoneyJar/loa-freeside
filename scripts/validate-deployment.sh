@@ -106,10 +106,15 @@ check_warn() {
 }
 
 timer_ms() {
-  # Returns milliseconds since epoch (bash 5+ with EPOCHREALTIME, fallback to seconds)
+  # Three-tier precision fallback (R9-6)
   if [ -n "${EPOCHREALTIME:-}" ]; then
+    # Bash 5+ — true millisecond precision
     echo "${EPOCHREALTIME/./}" | cut -c1-13
+  elif date +%s%N > /dev/null 2>&1 && [ "$(date +%s%N)" != "%s%N" ]; then
+    # GNU date — nanosecond precision, truncate to ms
+    echo "$(( $(date +%s%N) / 1000000 ))"
   else
+    # POSIX fallback — second precision (±1000ms)
     echo "$(($(date +%s) * 1000))"
   fi
 }
@@ -127,6 +132,14 @@ echo "  Test Key:    ${TEST_KEY:-<none — invoke check skipped>}"
 echo "  AWS Profile: ${AWS_PROFILE:-<none — local tier only>}"
 echo "  Region:      $REGION"
 echo ""
+
+# Timer precision notice (R9-6)
+if [ -z "${EPOCHREALTIME:-}" ]; then
+  if ! date +%s%N > /dev/null 2>&1 || [ "$(date +%s%N)" = "%s%N" ]; then
+    echo "  NOTE  Timing precision: ±1000ms (upgrade to bash 5+ for millisecond precision)"
+    echo ""
+  fi
+fi
 
 # ===========================================================================
 # LOCAL TIER
@@ -150,6 +163,42 @@ if $health_ok; then
 else
   check_fail "Health endpoint (/health)" "$elapsed" "unreachable or error"
 fi
+
+# Check 1b: TLS certificate expiry — HTTPS only (R9-5)
+case "$URL" in
+  https://*)
+    if ! command -v openssl > /dev/null 2>&1; then
+      check_warn "TLS certificate" "0" "openssl not found — skipping certificate check"
+    else
+      start=$(timer_ms)
+      tls_host="${URL#https://}"
+      tls_host="${tls_host%%/*}"
+      tls_port=443
+      case "$tls_host" in
+        *:*) tls_port="${tls_host##*:}"; tls_host="${tls_host%%:*}" ;;
+      esac
+      cert_expiry=$(echo | openssl s_client -connect "${tls_host}:${tls_port}" -servername "${tls_host}" 2>/dev/null \
+        | openssl x509 -noout -enddate 2>/dev/null \
+        | cut -d= -f2)
+      elapsed=$(( $(timer_ms) - start ))
+      if [ -n "$cert_expiry" ]; then
+        expiry_epoch=$(date -d "$cert_expiry" +%s 2>/dev/null || date -jf "%b %d %T %Y %Z" "$cert_expiry" +%s 2>/dev/null || echo 0)
+        if [ "$expiry_epoch" -gt 0 ]; then
+          days_remaining=$(( (expiry_epoch - $(date +%s)) / 86400 ))
+          if [ "$days_remaining" -lt 7 ]; then
+            check_warn "TLS certificate" "$elapsed" "expires in ${days_remaining} days ($cert_expiry)"
+          else
+            check_pass "TLS certificate (expires in ${days_remaining} days)" "$elapsed"
+          fi
+        else
+          check_warn "TLS certificate" "$elapsed" "could not parse expiry date"
+        fi
+      else
+        check_warn "TLS certificate" "$elapsed" "could not retrieve certificate"
+      fi
+    fi
+    ;;
+esac
 
 # Check 2: Agent health (Redis connectivity)
 start=$(timer_ms)
@@ -196,7 +245,7 @@ if [ -n "$TEST_KEY" ]; then
 
     # Sign a test JWT using standalone script (ES256 raw r||s via jose)
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    token=$(node "$SCRIPT_DIR/sign-test-jwt.js" "$TEST_KEY" 2>/dev/null) && jwt_ok=true || jwt_ok=false
+    token=$(node "$SCRIPT_DIR/sign-test-jwt.mjs" "$TEST_KEY" 2>/dev/null) && jwt_ok=true || jwt_ok=false
 
     if ! $jwt_ok || [ -z "$token" ]; then
       elapsed=$(( $(timer_ms) - start ))

@@ -61,6 +61,11 @@ cleanup() {
   echo "═══════════════════════════════════════════════════════"
   echo "  Tearing down Docker Compose stack..."
   echo "═══════════════════════════════════════════════════════"
+  # Shred ephemeral key material before Docker teardown (R9-2)
+  if [ -d "$REPO_ROOT/.e2e-keys" ]; then
+    rm -rf "$REPO_ROOT/.e2e-keys"
+    echo "[run-e2e] Ephemeral keys shredded"
+  fi
   docker compose -f "$COMPOSE_FILE" down -v --remove-orphans 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -70,6 +75,7 @@ trap cleanup EXIT
 # ---------------------------------------------------------------------------
 
 generate_test_keypair() {
+  # Lifecycle: generate → use → shred (keys removed in cleanup() trap)
   echo "[run-e2e] Generating ES256 test keypair..."
   local key_dir="$REPO_ROOT/.e2e-keys"
   mkdir -p "$key_dir"
@@ -110,6 +116,13 @@ if [ -d "$CHECKOUT_DIR/.git" ]; then
     echo "[run-e2e] ERROR: SHA $LOA_FINN_SHA not found"
     exit 2
   }
+  # Verify checkout integrity (R9-1: supply chain)
+  actual_sha=$(git rev-parse HEAD)
+  if [ "$actual_sha" != "$LOA_FINN_SHA" ]; then
+    echo "[run-e2e] INTEGRITY VIOLATION: expected $LOA_FINN_SHA, got $actual_sha"
+    exit 2
+  fi
+  echo "[run-e2e] SHA verified: $actual_sha (tree: $(git rev-parse HEAD^{tree}))"
   cd "$REPO_ROOT"
 else
   echo "[run-e2e] Cloning loa-finn at $LOA_FINN_SHA..."
@@ -122,6 +135,13 @@ else
     echo "[run-e2e] ERROR: SHA $LOA_FINN_SHA not found after clone"
     exit 2
   }
+  # Verify checkout integrity (R9-1: supply chain)
+  actual_sha=$(git rev-parse HEAD)
+  if [ "$actual_sha" != "$LOA_FINN_SHA" ]; then
+    echo "[run-e2e] INTEGRITY VIOLATION: expected $LOA_FINN_SHA, got $actual_sha"
+    exit 2
+  fi
+  echo "[run-e2e] SHA verified: $actual_sha (tree: $(git rev-parse HEAD^{tree}))"
   cd "$REPO_ROOT"
 fi
 
@@ -167,12 +187,16 @@ echo "[run-e2e] Waiting for all services to be healthy (timeout: ${HEALTH_TIMEOU
 elapsed=0
 while [ $elapsed -lt "$HEALTH_TIMEOUT" ]; do
   # Check if all services are healthy
+  # NOTE: Docker Compose v2 --format json output varies by version:
+  #   v2.20-v2.23: NDJSON (one JSON object per line)
+  #   v2.24+: may emit a JSON array
+  # slurp + flatten(1) normalizes both: NDJSON → [obj,...] and [[obj,...]] → [obj,...]
   unhealthy=$(docker compose -f "$COMPOSE_FILE" ps --format json 2>/dev/null \
-    | jq -r 'select(.Health != "healthy" and .Health != "") | .Name' 2>/dev/null \
+    | jq -s 'flatten(1)[] | select(.Health != "healthy" and .Health != "") | .Name' 2>/dev/null \
     | wc -l)
 
   all_running=$(docker compose -f "$COMPOSE_FILE" ps --format json 2>/dev/null \
-    | jq -r 'select(.State == "running") | .Name' 2>/dev/null \
+    | jq -s 'flatten(1)[] | select(.State == "running") | .Name' 2>/dev/null \
     | wc -l)
 
   if [ "$unhealthy" -eq 0 ] && [ "$all_running" -ge 3 ]; then

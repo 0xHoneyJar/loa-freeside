@@ -2,8 +2,8 @@
   "contract_version": "1.0.0",
   "compatibility": [
     {
-      "arrakis": ">=PR#52",
-      "loa_finn": ">=PR#53 (pending)",
+      "arrakis": ">=f93c1e8bc6f517f13914787b572683331f25b458",
+      "loa_finn": "pending (see RFC #31 Gate 12)",
       "contract": "1.0.0",
       "notes": "Initial contract — pool claims, ensemble, BYOK, streaming"
     }

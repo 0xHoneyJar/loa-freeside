@@ -46,12 +46,14 @@ Add a new entry to `compatibility.json` whenever the contract version changes:
 
 ```json
 {
-  "arrakis": ">=PR#N",
-  "loa_finn": ">=PR#M",
+  "arrakis": ">=<commit-sha-or-version-tag>",
+  "loa_finn": ">=<commit-sha-or-version-tag>",
   "contract": "X.Y.Z",
   "notes": "Description of what changed"
 }
 ```
+
+Use content-addressable references (full 40-character commit SHA or semver tag), not PR numbers.
 
 ## Programmatic Access
 

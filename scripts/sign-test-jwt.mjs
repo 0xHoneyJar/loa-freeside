@@ -1,28 +1,26 @@
 #!/usr/bin/env node
 /**
- * sign-test-jwt.js — Sign a test JWT for deployment validation.
+ * sign-test-jwt.mjs — Sign a test JWT for deployment validation.
  *
  * Usage:
- *   node scripts/sign-test-jwt.js <path-to-es256-private-key.pem>
+ *   node scripts/sign-test-jwt.mjs <path-to-es256-private-key.pem>
  *
  * Outputs a signed JWT to stdout. Uses jose for ES256 signing with
  * correct raw r||s format expected by loa-finn JWKS verification.
  */
 
-'use strict';
-
-const { importPKCS8, SignJWT } = require('jose');
-const fs = require('fs');
-const crypto = require('crypto');
+import { importPKCS8, SignJWT } from 'jose';
+import { readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 
 async function main() {
   const keyPath = process.argv[2];
   if (!keyPath) {
-    process.stderr.write('Usage: sign-test-jwt.js <private-key.pem>\n');
+    process.stderr.write('Usage: sign-test-jwt.mjs <private-key.pem>\n');
     process.exit(2);
   }
 
-  const key = fs.readFileSync(keyPath, 'utf8');
+  const key = readFileSync(keyPath, 'utf8');
   const pk = await importPKCS8(key, 'ES256');
 
   const jwt = await new SignJWT({
@@ -40,7 +38,7 @@ async function main() {
     .setAudience('arrakis')
     .setIssuedAt()
     .setExpirationTime('5m')
-    .setJti(crypto.randomUUID())
+    .setJti(randomUUID())
     .sign(pk);
 
   process.stdout.write(jwt);

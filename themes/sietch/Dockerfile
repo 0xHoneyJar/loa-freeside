@@ -180,6 +180,8 @@ CMD ["node", "dist/index.js"]
 FROM production AS e2e
 
 USER root
+# Install jq for JWKS JSON validation in e2e-entrypoint.sh (R9-3)
+RUN apk add --no-cache jq
 COPY tests/e2e/e2e-entrypoint.sh /app/e2e-entrypoint.sh
 RUN chmod +x /app/e2e-entrypoint.sh
 USER nodejs
