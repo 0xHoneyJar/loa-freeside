@@ -1,228 +1,341 @@
-# Sprint Plan: Harness Engineering Adaptations
+# Sprint Plan: Flatline Red Team — Evolution Phase
 
-> Source: SDD cycle-011, Issue [#297](https://github.com/0xHoneyJar/loa/issues/297)
-> Cycle: cycle-011
-> Sprints: 6 (3 original + 1 bridge-iter1 + 2 deep review)
-> Deep Review Source: [Bridgebuilder Deep Read, Parts 1 & 2](https://github.com/0xHoneyJar/loa/pull/315#issuecomment-3896039870)
+> Source: Bridgebuilder Review of PR [#317](https://github.com/0xHoneyJar/loa/pull/317), SDD cycle-012
+> Cycle: cycle-012 (continued)
+> Previous Sprints: 1-3 (global 79-81) — Foundation phase complete
+> New Sprints: 4-6 (global 82-84) — Evolution phase
+> Bridge Review Insights: 3 Bridgebuilder deep-dive comments with forward-looking observations
 
-## Sprint 1: Safety Hooks + Deny Rules (P1, P2)
+## Evolution Context
 
-**Goal**: Ship the core safety infrastructure — destructive command blocking and credential deny rules.
-**Status**: COMPLETED (sprint-74)
+The foundation phase (sprints 1-3) shipped the red team pipeline skeleton: templates, schema, sanitizer, scoring engine, report generator, retention, and skill registration. The bridge loop (4 iterations, 19 findings fixed, flatline achieved) validated the mechanical correctness.
 
----
+The Bridgebuilder review identified the gap between the current v1 (placeholder model invocations, hardcoded thresholds, 10-entry golden set) and a production-ready system that can operate with real multi-model adversarial diversity. These sprints close that gap.
 
-## Sprint 2: Stop Hook + Audit Logger + CLAUDE.md Optimization (P3, P4, P5)
+### Key Improvement Areas (from Bridgebuilder Review)
 
-**Goal**: Ship the stop guard, audit logging, and reduce CLAUDE.md token footprint by ~50%.
-**Status**: COMPLETED (sprint-75)
-
----
-
-## Sprint 3: Invariant Linter + Integration (P6)
-
-**Goal**: Ship mechanical invariant enforcement and wire everything together.
-**Status**: COMPLETED (sprint-76)
-
----
-
-## Sprint 4: Bridge Iteration 1 — Findings Remediation
-
-**Goal**: Address 6 actionable findings from Bridgebuilder iteration 1.
-**Status**: COMPLETED (bridge-20260213-c011he, 20/20 tests pass)
+1. **Documentation drift** — SKILL.md consensus criteria table doesn't match scoring engine behavior
+2. **Golden set THEORETICAL gap** — Self-test can't reach the THEORETICAL category (most important for multi-model)
+3. **Golden set scaling** — 10 entries insufficient for heterogeneous model calibration
+4. **Budget enforcement** — `rt_token_budget` is dead code, never wired to pipeline
+5. **Attack surface generality** — Registry is Loa-specific, no graceful degradation for other projects
+6. **Inter-model sanitization** — Phase 1 output fed raw to Phase 2 creates confused deputy surface
+7. **Hounfour integration prep** — Model adapter hooks needed for cheval.py integration
+8. **Scoring engine configurability** — Thresholds hardcoded, config override deferred
 
 ---
 
-## Sprint 5: Test Harnesses + Verification — "Who Tests the Testers?"
+## Sprint 4: Documentation Alignment + Golden Set Maturity
 
-**Goal**: Build persistent, re-runnable test infrastructure for safety hooks and invariant linter. Add deny rule verification path. The safety layer must be the best-tested code in the stack (Google SRE principle: "The monitoring system must be the best-tested system").
+**Goal**: Fix documentation drift, extend golden set to cover THEORETICAL path, add compositional vulnerability entries, and make scoring engine thresholds configurable.
 
-**Source**: [Deep Review Critical 1, 2, 3](https://github.com/0xHoneyJar/loa/pull/315#issuecomment-3896040920)
+### Task 4.1: Fix SKILL.md Consensus Criteria Documentation Drift
 
-### Task 5.1: Create Safety Hook Test Harness
+**File**: `.claude/skills/red-teaming/SKILL.md`
 
-**File**: `.claude/scripts/test-safety-hooks.sh`
+The consensus criteria table (lines 57-58) still says:
+- THEORETICAL: "One model >700, other <400"
+- CREATIVE_ONLY: "Both <400 but novel"
 
-Persistent, re-runnable regression test suite for `block-destructive-bash.sh`:
-- All 20 existing test cases (12 original + 8 path/prefix/chain)
-- Edge cases: empty command, malformed JSON, very long commands, unicode, pipe chains
-- Test for fail-open behavior: what happens when jq is missing? When input is binary?
-- Pass/fail summary with exit code 0 on all-pass, 1 on any failure
-- Designed to be called from invariant linter or CI
+The actual scoring engine behavior (and the schema, fixed in bridge iter-1):
+- THEORETICAL: "One model >700, other ≤700" (i.e., any case where models disagree significantly)
+- CREATIVE_ONLY: "Neither model >700" (i.e., no model finds it convincing)
 
-**Acceptance Criteria**:
-- `bash .claude/scripts/test-safety-hooks.sh` runs all test cases
-- Includes at least 25 test cases covering: block patterns, allow patterns, edge cases, failure modes
-- Exit code 0 when all pass, 1 when any fail
-- Output format shows PASS/FAIL per test with summary line
-- Script is executable and documented
-
-### Task 5.2: Create Deny Rule Verification Script
-
-**File**: `.claude/scripts/verify-deny-rules.sh`
-
-Verify that deny rules from the template are actually active in `~/.claude/settings.json`:
-- Read current settings and compare against template
-- Report missing, present, and extra rules
-- `--json` flag for machine-readable output
-- Usable as standalone check or from invariant linter
-
-Inspired by AWS IAM `simulate-principal-policy` — verify the *actual* permission state matches the *intended* permission state.
+The distinction matters: an attack where GPT scores 650 and Opus scores 750 is currently THEORETICAL (one is >700), but the SKILL.md documentation would suggest it's neither THEORETICAL (<400 threshold) nor CONFIRMED (both >700).
 
 **Acceptance Criteria**:
-- Reports count of: present rules, missing rules, extra rules (not in template)
-- `--json` flag outputs structured result
-- Exit code 0 if all template rules present, 1 if any missing
-- Handles missing settings.json gracefully
-- Works with `install-deny-rules.sh --dry-run` for cross-validation
+- SKILL.md consensus table matches scoring engine `classify_attack()` logic
+- All 4 categories described with precise threshold boundaries
+- Example score pairs for each category included for clarity
 
-### Task 5.3: Create Invariant Linter Self-Test
+### Task 4.2: Add THEORETICAL Path Entries to Golden Set
 
-**File**: `.claude/scripts/test-lint-invariants.sh`
+**File**: `.claude/data/red-team-golden-set.json`
 
-Test harness for `lint-invariants.sh` itself — the LLVM principle of testing the testing infrastructure:
-- Create temporary directory with known-good project state → verify all pass
-- Create temporary directory with known-bad state (missing files, invalid JSON, broken blocks) → verify correct errors/warnings
-- Test `--json` output is valid JSON via `jq`
-- Test `--fix` mode actually fixes fixable issues
-- Test exit codes: 0 for all-pass, 1 for warnings, 2 for errors
+The current self-test uses `severity_score` as both GPT and Opus scores, meaning both models always agree. This makes THEORETICAL (model disagreement) unreachable.
 
-**Acceptance Criteria**:
-- Creates temp fixtures, runs linter, validates output, tears down
-- Tests at least: all-pass state, missing-file error, invalid-json error, missing-block error
-- Verifies `--json` output round-trips through `jq`
-- Verifies exit codes match documentation
-- Script is re-entrant (no side effects on real project)
+Add 3-5 new entries with separate `expected_gpt_score` and `expected_opus_score` fields:
+- ATK-911: An ambiguous scenario where sophisticated reasoning finds a real threat (one model scores 800, other scores 400)
+- ATK-912: A domain-specific attack that requires Web3 knowledge (model with more Web3 training scores higher)
+- ATK-913: A subtle confused deputy scenario where the threat is real but non-obvious (split opinion)
 
-### Task 5.4: Wire Test Harnesses into Invariant Linter
-
-**File**: `.claude/scripts/lint-invariants.sh`
-
-Add two new invariant checks:
-- **Invariant 8**: Safety hook tests pass (`test-safety-hooks.sh` exits 0)
-- **Invariant 9**: Deny rules active (`verify-deny-rules.sh` exits 0) — WARN-level, not ERROR
-
-The safety test is mandatory (ERROR if fail). The deny rule check is advisory (WARN if missing) since not all environments have `~/.claude/settings.json`.
+These entries must also include `expected_consensus: "THEORETICAL"` for self-test verification.
 
 **Acceptance Criteria**:
-- `lint-invariants.sh` now reports 9 invariant checks
-- Invariant 8 runs safety hook tests, reports PASS/ERROR
-- Invariant 9 checks deny rule installation, reports PASS/WARN
-- Both new checks skip gracefully if their script is missing
-- `--json` output includes new invariants
+- Golden set has 13-15 entries (5 confirmed, 5 implausible, 3-5 theoretical)
+- Self-test updated to accept per-model score fields
+- `--self-test` now verifies all 3 reachable consensus categories
+- New entries focus on ambiguity by design, not arbitrary score assignment
 
----
+### Task 4.3: Add Compositional Vulnerability Entries to Golden Set
 
-## Sprint 6: Decision Trails + Observability Foundations
+**File**: `.claude/data/red-team-golden-set.json`
 
-**Goal**: Add inline decision documentation to safety-critical code, measure actual token reduction, and prepare the audit log schema for Hounfour multi-model observability.
+The Bridgebuilder identified compositional vulnerabilities (attacks that emerge from the interaction of independently-correct subsystems) as the most important category the system should amplify. ATK-905 (flash loan) is the only current example.
 
-**Source**: [Deep Review Critical 4, 5, Horizon 1-2](https://github.com/0xHoneyJar/loa/pull/315#issuecomment-3896040920)
-
-### Task 6.1: Add Decision Trail Comments to Hooks
-
-**Files**: All hook scripts in `.claude/hooks/`
-
-Add inline `# WHY:` comments documenting architectural decisions in safety-critical code. The Linux kernel principle: "Describe *why* this change is needed, not just *what* it does."
-
-Decisions to document:
-- `block-destructive-bash.sh`: Why fail-open (not fail-closed)? Why ERE not PCRE? Why single script for all patterns?
-- `run-mode-stop-guard.sh`: Why soft block (JSON decision) not hard block (exit 2)? Why no `set -euo pipefail`?
-- `mutation-logger.sh`: Why JSONL not structured JSON? Why 10MB rotation threshold? Why these specific commands?
-- `settings.deny.json`: Why `~/.bashrc` is read-allowed but edit-blocked. Why these specific paths.
+Add 3-4 more compositional entries:
+- Scenarios where two subsystems are correct in isolation but create vulnerabilities at their boundary
+- Inspired by real-world composites: DAO reentrancy, Compound governance, OAuth redirect chain
+- Mark these with `"compositional": true` field for future filtering
 
 **Acceptance Criteria**:
-- Each hook script has `# WHY:` comments for non-obvious design decisions
-- At least 3 decision comments per script
-- Comments reference the finding or source that motivated the decision where applicable
-- No code changes — documentation only
+- 3-4 new compositional entries with `compositional: true` flag
+- Each entry identifies the specific subsystem interaction that creates the vulnerability
+- `assumption_challenged` field explicitly names the composition assumption
+- Entries are realistic (severity 650-900) and would generate actionable counter-designs
 
-### Task 6.2: Measure Actual Token Reduction
+### Task 4.4: Make Scoring Engine Thresholds Configurable
 
-**File**: `.claude/scripts/measure-token-budget.sh`
+**File**: `.claude/scripts/scoring-engine.sh`
 
-Create a script that measures actual token count of CLAUDE.loa.md and reference files, not just word count. The metric that matters is token count — word count is a proxy with variable accuracy depending on markdown formatting, code blocks, and HTML comments.
-
-- Count tokens in CLAUDE.loa.md (the always-loaded file)
-- Count tokens in each reference file
-- Report: always-loaded tokens, demand-loaded tokens, total tokens, savings vs pre-optimization
-- Use a tokenizer (tiktoken via Python, or heuristic: tokens ≈ words × 1.3 for English prose, × 1.5 for code/markdown)
-
-**Acceptance Criteria**:
-- Reports always-loaded token count (CLAUDE.loa.md only)
-- Reports demand-loaded token count (sum of reference files)
-- Reports total and percentage savings
-- `--json` flag for machine-readable output
-- Documents the tokenization method used
-
-### Task 6.3: Enrich Audit Log Schema for Hounfour Readiness
-
-**File**: `.claude/hooks/audit/mutation-logger.sh`
-
-Extend the JSONL audit log schema with optional fields for multi-model provenance. These fields are empty now but establish the schema contract for when the Hounfour is live.
-
-Current schema:
-```jsonl
-{"ts":"...","tool":"Bash","command":"...","exit_code":0,"cwd":"..."}
+Currently hardcodes thresholds:
+```bash
+local HIGH_CONSENSUS=700
+local DISPUTE_DELTA=300
+local LOW_VALUE=400
+local BLOCKER=700
 ```
 
-Extended schema:
-```jsonl
-{"ts":"...","tool":"Bash","command":"...","exit_code":0,"cwd":"...","model":"","provider":"","trace_id":""}
-```
+Read from config with fallback to hardcoded defaults:
 
-The `model`, `provider`, and `trace_id` fields are empty strings when not provided by the runtime. This follows the OpenTelemetry principle: define the trace schema before the instrumentation exists.
-
-**Acceptance Criteria**:
-- Audit log entries include `model`, `provider`, `trace_id` fields (empty string default)
-- Fields populated from environment variables if present: `LOA_CURRENT_MODEL`, `LOA_CURRENT_PROVIDER`, `LOA_TRACE_ID`
-- Existing log consumers (rotation, grep) unaffected by new fields
-- Schema documented in hooks README
-
-### Task 6.4: Add Per-Model Permission Constraint Template
-
-**File**: `.claude/data/model-permissions.yaml`
-
-Create a YAML template for per-model capability constraints. This doesn't enforce anything yet — it's a schema declaration for the Hounfour's permission landscape. The constraint-generated block pattern can later render this into CLAUDE.loa.md.
-
-```yaml
-# Per-model capability constraints (Hounfour readiness)
-# These are not enforced yet — they define the target permission landscape
-# See: https://github.com/0xHoneyJar/loa-finn/issues/31
-model_permissions:
-  claude-code:session:
-    trust_level: high
-    execution_mode: native_runtime
-    capabilities:
-      file_write: true
-      command_execution: true
-      network_access: true
-  openai:gpt-4o:
-    trust_level: medium
-    execution_mode: remote_model
-    capabilities:
-      file_write: false
-      command_execution: false
-      network_access: false
-  moonshot:kimi-k2-thinking:
-    trust_level: medium
-    execution_mode: remote_model
-    capabilities:
-      file_write: false
-      command_execution: false
-      network_access: false
-  qwen-local:qwen3-coder-next:
-    trust_level: medium
-    execution_mode: remote_model
-    capabilities:
-      file_write: true
-      command_execution: false
-      network_access: false
+```bash
+local HIGH_CONSENSUS=$(yq '.red_team.thresholds.confirmed_attack // 700' "$CONFIG" 2>/dev/null || echo 700)
 ```
 
 **Acceptance Criteria**:
-- Valid YAML parseable by `yq`
-- Includes all 5 models from the Hounfour RFC Model Catalog
-- Each model has: `trust_level`, `execution_mode`, `capabilities` with boolean flags
-- Comment header explains this is a schema template, not enforced
-- References the Hounfour RFC issue for context
+- All 4 thresholds read from `.loa.config.yaml` with defaults
+- `--self-test` still passes with default thresholds
+- `--self-test` respects custom thresholds if configured
+- Config path uses existing `CONFIG_FILE` variable pattern from other scripts
+
+---
+
+## Sprint 5: Budget Enforcement + Inter-Model Safety
+
+**Goal**: Wire budget enforcement into the pipeline, add inter-model sanitization to prevent confused deputy within the evaluation pipeline, and make attack surfaces gracefully degrade for non-Loa projects.
+
+### Task 5.1: Wire Budget Enforcement into Pipeline
+
+**Files**: `.claude/scripts/red-team-pipeline.sh`, `.claude/scripts/red-team-report.sh`
+
+The `rt_token_budget` variable is computed per execution mode but never checked during execution. When real model invocations happen (Hounfour), this is a $50 surprise waiting to happen.
+
+Wire the budget:
+- Pipeline accepts `--budget` and passes to each phase
+- Each phase returns tokens consumed in its output JSON
+- Pipeline accumulates `tokens_used` and checks against `budget` before each phase
+- If budget exceeded, pipeline completes current phase but skips remaining phases
+- Final result JSON includes `budget_exceeded: true` and `budget_consumed` vs `budget_limit`
+- Report shows budget status in metrics section
+
+**Acceptance Criteria**:
+- Pipeline tracks cumulative tokens consumed across phases
+- Budget check runs before each phase (not mid-phase)
+- Exceeding budget produces a complete result (not an error) with truncation warning
+- `budget_exceeded` field in output JSON when limit hit
+- Metrics section in report shows consumed vs limit
+
+### Task 5.2: Add Inter-Model Sanitization
+
+**File**: `.claude/scripts/red-team-pipeline.sh`
+
+When Phase 1 generates attack scenarios, those scenarios are prompts fed to Phase 2 for evaluation. A sufficiently adversarial attack scenario could contain instructions that influence the evaluating model's judgment — the confused deputy problem *within the pipeline itself*.
+
+Add sanitization between phases:
+- Phase 1 output → sanitize (strip instruction patterns, validate JSON structure) → Phase 2 input
+- Reuse existing `red-team-sanitizer.sh` with a new `--inter-model` flag
+- Inter-model mode: lighter than full sanitization (skip UTF-8 and secret scanning, focus on injection patterns and JSON structure validation)
+- Log any inter-model sanitization triggers (these indicate the attack generator produced instruction-like content)
+
+**Acceptance Criteria**:
+- Phase 1 output passes through sanitizer before Phase 2 consumption
+- `--inter-model` flag on sanitizer skips expensive checks but catches injection patterns
+- Sanitization triggers are logged with source phase and attack ID
+- Pipeline continues after inter-model sanitization (log, don't block)
+- Self-test validates inter-model path doesn't corrupt valid attack JSON
+
+### Task 5.3: Attack Surface Graceful Degradation
+
+**File**: `.claude/scripts/red-team-pipeline.sh`
+
+The attack surfaces registry contains Loa-specific surfaces (agent-identity, token-gated-access, etc.). When someone runs `/red-team` against a non-Loa document, the surface context is irrelevant noise.
+
+Add graceful degradation:
+- If `--focus` categories don't match any surfaces in registry, log warning and proceed without surface context
+- If no surfaces registry exists, proceed with generic attack generation (no surface filtering)
+- Template rendering handles empty surface context gracefully (already does via `/dev/null` fallback, but add explicit log message)
+- Consider: when surface context is empty, add a template note instructing the model to infer surfaces from the document content
+
+**Acceptance Criteria**:
+- `/red-team doc.md --focus "nonexistent"` logs warning, runs successfully with empty surface context
+- Missing surfaces registry file doesn't cause pipeline error
+- Template includes fallback instruction when no surfaces loaded
+- Existing surface-based invocations unchanged
+
+### Task 5.4: Pipeline Phase Timing Metrics
+
+**File**: `.claude/scripts/red-team-pipeline.sh`
+
+Add per-phase timing to the output JSON for performance profiling:
+
+```json
+"metrics": {
+  "phase0_sanitize_ms": 120,
+  "phase1_attacks_ms": 5400,
+  "phase2_validation_ms": 3200,
+  "phase3_consensus_ms": 80,
+  "phase4_counter_design_ms": 2100,
+  "total_latency_ms": 10900
+}
+```
+
+This is essential for Hounfour cost optimization — knowing which phase dominates latency informs tiered routing decisions.
+
+**Acceptance Criteria**:
+- Each phase reports its duration in milliseconds
+- Metrics object in final result JSON includes all phase timings
+- Report generator displays phase timing breakdown
+- Zero-cost when phases are placeholders (just shows near-zero times)
+
+---
+
+## Sprint 6: Hounfour Integration Prep + Golden Set Scaling
+
+**Goal**: Create the model adapter interface that the Hounfour will implement, scale the golden set for multi-model calibration, and add end-to-end integration tests with mock model responses.
+
+### Task 6.1: Create Model Adapter Interface
+
+**File**: `.claude/scripts/red-team-model-adapter.sh`
+
+Create a thin adapter script that Phase 1 and Phase 2 call instead of direct model invocation. This is the seam where Hounfour's `cheval.py` will plug in.
+
+Interface:
+```bash
+red-team-model-adapter.sh \
+  --role attacker|defender|evaluator \
+  --model opus|gpt|kimi|qwen \
+  --prompt-file <path> \
+  --output-file <path> \
+  --budget <tokens> \
+  --timeout <seconds>
+```
+
+Current implementation: return mock responses from fixtures (allowing pipeline to run end-to-end without real API calls). Future: delegate to `cheval.py` via Hounfour model routing.
+
+**Acceptance Criteria**:
+- Adapter script is callable with all required flags
+- Returns valid JSON matching attack/counter-design schema
+- Mock mode loads fixtures from `.claude/data/red-team-fixtures/`
+- `--mock` flag (default for now) uses fixture data
+- `--live` flag reserved for Hounfour integration (errors with "requires cheval.py" for now)
+- Exit code 0 on success, 1 on timeout, 2 on budget exceeded
+
+### Task 6.2: Create Model Response Fixtures
+
+**Directory**: `.claude/data/red-team-fixtures/`
+
+Create fixture files that the model adapter returns in mock mode:
+
+- `attacker-response-01.json`: 5 realistic attack scenarios against agent identity
+- `attacker-response-02.json`: 5 realistic attack scenarios against token-gated access
+- `evaluator-response-01.json`: Cross-validation scores for attacker-response-01
+- `evaluator-response-02.json`: Cross-validation scores for attacker-response-02
+- `defender-response-01.json`: Counter-designs for confirmed attacks
+
+Each fixture must be valid against the red team result schema.
+
+**Acceptance Criteria**:
+- All fixture files are valid JSON
+- Attack fixtures produce a mix of consensus categories when scored
+- At least 2 CONFIRMED_ATTACK, 2 THEORETICAL, 1 CREATIVE_ONLY across fixtures
+- Evaluator fixtures contain per-attack scores that create realistic disagreement
+- Fixtures are reusable by pipeline integration tests
+
+### Task 6.3: Wire Pipeline Phases to Model Adapter
+
+**File**: `.claude/scripts/red-team-pipeline.sh`
+
+Replace placeholder phase implementations with calls to the model adapter:
+
+- `run_phase1_attacks()`: Call adapter with `--role attacker` for each model, merge results
+- `run_phase2_validation()`: Call adapter with `--role evaluator` for cross-validation
+- `run_phase4_counter_design()`: Call adapter with `--role defender` for synthesis
+
+The pipeline should work end-to-end with mock fixtures, producing a complete result JSON with realistic consensus classification.
+
+**Acceptance Criteria**:
+- Pipeline runs end-to-end with `--mock` model adapter
+- Output JSON has populated attack arrays (not empty placeholders)
+- Consensus classification produces at least 2 categories
+- Budget tracking counts fixture response sizes
+- Pipeline produces a readable report with actual attack scenarios
+
+### Task 6.4: Scale Golden Set to 30+ Entries
+
+**File**: `.claude/data/red-team-golden-set.json`
+
+Scale the golden set for multi-model calibration:
+
+| Category | Current | Target | Focus |
+|----------|---------|--------|-------|
+| CONFIRMED (realistic) | 5 | 12 | Add compositional, supply chain, automated |
+| THEORETICAL (ambiguous) | 0→3-5 (from 4.2) | 8 | Domain-specific, model-bias-dependent |
+| CREATIVE_ONLY (implausible) | 5 | 8 | Update with emerging tech (quantum, AI-on-AI) |
+| DEFENDED (with counter) | 0 | 4 | Known-defended patterns |
+
+New entries should cover:
+- All 5 attacker profiles (external, insider, supply_chain, confused_deputy, automated)
+- All 5 attack surfaces from registry
+- Cross-surface compositional attacks
+- Entries designed to expose model-specific calibration biases
+
+**Acceptance Criteria**:
+- Golden set has 30+ entries across all 4 consensus categories
+- `--self-test` validates all entries with 100% accuracy
+- Coverage: all attacker profiles and all attack surfaces represented
+- At least 5 compositional entries (`compositional: true`)
+- DEFENDED entries include explicit counter-design references
+
+---
+
+## Sequencing and Dependencies
+
+```
+Sprint 4 (Documentation + Golden Set Maturity)
+  ├── Task 4.1: SKILL.md fix (independent)
+  ├── Task 4.2: THEORETICAL entries (independent)
+  ├── Task 4.3: Compositional entries (independent, can parallel with 4.2)
+  └── Task 4.4: Config thresholds (independent)
+
+Sprint 5 (Budget + Safety)
+  ├── Task 5.1: Budget enforcement (depends on pipeline from sprint 2)
+  ├── Task 5.2: Inter-model sanitization (depends on sanitizer from sprint 1)
+  ├── Task 5.3: Surface degradation (depends on pipeline from sprint 2)
+  └── Task 5.4: Phase timing (depends on pipeline from sprint 2)
+
+Sprint 6 (Hounfour Prep + Scaling)
+  ├── Task 6.1: Model adapter (independent)
+  ├── Task 6.2: Fixtures (depends on 6.1 interface)
+  ├── Task 6.3: Wire pipeline (depends on 6.1, 6.2, and sprint 5 budget enforcement)
+  └── Task 6.4: Scale golden set (depends on 4.2, 4.3 patterns)
+```
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|------|------------|
+| Fixture data doesn't represent real model output diversity | Design fixtures with intentional disagreement patterns; update when Hounfour provides real samples |
+| Golden set growth creates maintenance burden | Group entries by category, add `last_reviewed` field, automate schema validation |
+| Budget enforcement breaks existing pipeline tests | Budget is only enforced when > 0; mock mode returns 0 tokens |
+| Inter-model sanitization is too aggressive | Log-only mode first; blocking requires explicit opt-in via config |
+
+## Success Metrics
+
+| Metric | Target |
+|--------|--------|
+| Golden set coverage | 30+ entries, all 4 categories, all 5 profiles |
+| Self-test accuracy | 100% across all golden set entries |
+| Pipeline end-to-end | Runs with mock adapter, produces readable report |
+| Budget enforcement | Pipeline stops cleanly when budget exceeded |
+| Documentation alignment | SKILL.md matches scoring engine exactly |
+| Phase timing | All 5 phases report latency in output JSON |
