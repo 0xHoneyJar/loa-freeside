@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "git_sha": "39be5b7",
+  "git_sha_full": null,
+  "branch": "main",
+  "generated_at": "2026-02-13T13:30:00Z",
+  "generator": "manual-ride-equivalent",
+  "files": {
+    "index.md": { "words": 195, "estimated_tokens": 260, "status": "required" },
+    "structure.md": { "words": 364, "estimated_tokens": 485, "status": "required" },
+    "api.md": { "words": 332, "estimated_tokens": 442, "status": "required" },
+    "services.md": { "words": 417, "estimated_tokens": 556, "status": "required" },
+    "database.md": { "words": 397, "estimated_tokens": 529, "status": "required" },
+    "commands.md": { "words": 245, "estimated_tokens": 326, "status": "required" },
+    "environment.md": { "words": 389, "estimated_tokens": 518, "status": "required" },
+    "triggers.md": { "words": 295, "estimated_tokens": 393, "status": "optional" }
+  },
+  "total_estimated_tokens": 3509,
+  "validation": {
+    "required_surfaces": ["structure.md", "api.md", "services.md", "database.md", "commands.md", "environment.md"],
+    "all_required_present": true,
+    "optional_surfaces": ["triggers.md"],
+    "sha_on_main": true
+  }
+}
