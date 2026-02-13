@@ -30,8 +30,8 @@ dotenvy = "0.15"
 # Observability (Sprint S-4)
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-metrics = "0.21"
-metrics-exporter-prometheus = "0.12"
+metrics = "0.24"
+metrics-exporter-prometheus = "0.18"
 
 # HTTP server for health endpoints (Sprint S-4)
 axum = "0.8"
@@ -44,7 +44,7 @@ thiserror = "2"
 uuid = { version = "1", features = ["v4"] }
 
 # Concurrent data structures (Sprint S-4)
-dashmap = "5"
+dashmap = "6"
 
 [dev-dependencies]
 tokio-test = "0.4"
