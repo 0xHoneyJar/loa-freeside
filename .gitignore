@@ -217,6 +217,10 @@ docs/screenshots/
 evals/results/*
 !evals/results/.gitkeep
 
+# Eval results (run-specific, gitignored except baselines and .gitkeep)
+evals/results/*
+!evals/results/.gitkeep
+
 # Application artifacts (app/)
 app/src/
 app/tests/

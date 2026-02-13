@@ -263,7 +263,16 @@ _gp_journey_position() {
 
 # Render the visual journey bar.
 # Uses Unicode box drawing and bold markers.
+# Dispatches to bug journey when bug_active state detected.
 golden_format_journey() {
+    # Bug-active state gets its own journey visualization
+    local active_bug_ref bug_id
+    if active_bug_ref=$(golden_detect_active_bug 2>/dev/null); then
+        bug_id=$(golden_parse_bug_id "${active_bug_ref}")
+        golden_format_bug_journey "${bug_id}"
+        return
+    fi
+
     local position
     position=$(_gp_journey_position)
 
@@ -298,6 +307,263 @@ golden_format_journey() {
     esac
 
     echo "/plan ${plan_seg}━━━━━ /build ${build_seg}━━━━━ /review ${review_seg}━━━━━ /ship ${ship_seg}"
+}
+
+# Map bug state to a bug lifecycle position.
+# Returns: "triage" | "fix" | "review" | "close"
+_gp_bug_journey_position() {
+    local bug_id="${1:-}"
+    if [[ -z "${bug_id}" ]]; then
+        echo "fix"
+        return
+    fi
+
+    local state_file="${PROJECT_ROOT}/.run/bugs/${bug_id}/state.json"
+    if [[ ! -f "${state_file}" ]]; then
+        echo "fix"
+        return
+    fi
+
+    local bug_state
+    bug_state=$(jq -r '.state // "IMPLEMENTING"' "${state_file}" 2>/dev/null)
+    case "${bug_state}" in
+        TRIAGE)       echo "triage" ;;
+        IMPLEMENTING) echo "fix" ;;
+        REVIEWING)    echo "review" ;;
+        AUDITING)     echo "review" ;;
+        COMPLETED)    echo "close" ;;
+        HALTED)       echo "fix" ;;
+        *)            echo "fix" ;;
+    esac
+}
+
+# Render a bug-specific journey bar.
+# Shows: /triage ━━━ /fix ━━━ /review ━━━ /close
+golden_format_bug_journey() {
+    local bug_id="${1:-}"
+    local position
+    position=$(_gp_bug_journey_position "${bug_id}")
+
+    local triage_seg fix_seg review_seg close_seg
+    local marker="●"
+
+    case "${position}" in
+        triage)
+            triage_seg="${marker}"
+            fix_seg="─"
+            review_seg="─"
+            close_seg="─"
+            ;;
+        fix)
+            triage_seg="━"
+            fix_seg="${marker}"
+            review_seg="─"
+            close_seg="─"
+            ;;
+        review)
+            triage_seg="━"
+            fix_seg="━"
+            review_seg="${marker}"
+            close_seg="─"
+            ;;
+        close)
+            triage_seg="━"
+            fix_seg="━"
+            review_seg="━"
+            close_seg="${marker}"
+            ;;
+    esac
+
+    echo "/triage ${triage_seg}━━━━━ /fix ${fix_seg}━━━━━ /review ${review_seg}━━━━━ /close ${close_seg}"
+}
+
+# ─────────────────────────────────────────────────────────────
+# Workflow State Detection (v1.34.0 — Onboarding UX)
+# ─────────────────────────────────────────────────────────────
+
+# Detect unified workflow state as a single string.
+# Returns one of 9 states with deterministic priority:
+#   1. bug_active      — Active bug fix in .run/bugs/ (overrides all)
+#   2. initial         — No PRD exists
+#   3. prd_created     — PRD exists, no SDD
+#   4. sdd_created     — SDD exists, no sprint plan
+#   5. implementing    — Incomplete sprint, not yet reviewed
+#   6. reviewing       — Sprint needs review
+#   7. auditing        — Sprint reviewed, needs audit
+#   8. complete        — All sprints reviewed + audited
+#   9. sprint_planned  — Sprint plan exists, no work started (fallback)
+golden_detect_workflow_state() {
+    # Priority 1: Active bug overrides everything
+    if golden_detect_active_bug >/dev/null 2>&1; then
+        echo "bug_active"
+        return
+    fi
+
+    # Priority 2-4: Planning phases
+    local plan_phase
+    plan_phase=$(golden_detect_plan_phase)
+    case "${plan_phase}" in
+        discovery) echo "initial"; return ;;
+        architecture) echo "prd_created"; return ;;
+        sprint_planning) echo "sdd_created"; return ;;
+    esac
+
+    # Priority 5-8: Sprint execution states
+    local sprint review_target
+    sprint=$(golden_detect_sprint)
+    review_target=$(golden_detect_review_target)
+
+    if [[ -z "${sprint}" ]]; then
+        # All sprints done — check ship readiness
+        if golden_check_ship_ready >/dev/null 2>&1; then
+            echo "complete"
+        else
+            # WHY: ship_ready fails when reviews/audits are incomplete, OR
+            # on ledger issues, missing markers, etc. "reviewing" is
+            # intentionally conservative — it prompts investigation rather
+            # than falsely reporting "complete". The /review command will
+            # surface the specific blocker.
+            echo "reviewing"
+        fi
+        return
+    fi
+
+    local sprint_dir="${_GP_A2A_DIR}/${sprint}"
+    if [[ ! -d "${sprint_dir}" ]]; then
+        # Sprint plan exists but no work started
+        echo "sprint_planned"
+        return
+    fi
+
+    # Sprint dir exists — check if it needs review or audit
+    if [[ -n "${review_target}" ]]; then
+        if _gp_sprint_is_reviewed "${review_target}" 2>/dev/null && \
+           ! _gp_sprint_is_audited "${review_target}" 2>/dev/null; then
+            echo "auditing"
+        else
+            echo "reviewing"
+        fi
+    else
+        echo "implementing"
+    fi
+}
+
+# ─────────────────────────────────────────────────────────────
+# Context-Aware Menu Options (v1.34.0 — Onboarding UX)
+# ─────────────────────────────────────────────────────────────
+
+# Generate menu options for AskUserQuestion integration.
+# Each line is pipe-delimited: label|description|action
+# With --json flag, outputs a JSON array instead.
+# Action values: plan, build, review, ship, loa-setup, loa-doctor,
+#   archive-cycle, read:PATH, help-full
+golden_menu_options() {
+    local json_mode=false
+    if [[ "${1:-}" == "--json" ]]; then
+        json_mode=true
+    fi
+
+    local state
+    state=$(golden_detect_workflow_state)
+
+    # Collect pipe-delimited lines in an array
+    local -a lines=()
+
+    case "${state}" in
+        initial)
+            lines+=("Plan a new project|Gather requirements and design your project|plan")
+            lines+=("Run setup wizard|Check dependencies and configure Loa|loa-setup")
+            lines+=("Check system health|Run full diagnostic check|loa-doctor")
+            ;;
+        prd_created)
+            lines+=("Continue planning (architecture)|Design system architecture from PRD|plan")
+            lines+=("View PRD|Read the current requirements document|read:${_GP_PRD_FILE}")
+            lines+=("Check system health|Run full diagnostic check|loa-doctor")
+            ;;
+        sdd_created)
+            lines+=("Continue planning (sprints)|Create sprint plan from architecture|plan")
+            lines+=("View architecture|Read the current design document|read:${_GP_SDD_FILE}")
+            lines+=("Check system health|Run full diagnostic check|loa-doctor")
+            ;;
+        sprint_planned)
+            lines+=("Build sprint-1|Start implementing the first sprint|build")
+            lines+=("Review sprint plan|Read the sprint breakdown|read:${_GP_SPRINT_FILE}")
+            lines+=("Check system health|Run full diagnostic check|loa-doctor")
+            ;;
+        implementing)
+            local sprint
+            sprint=$(golden_detect_sprint)
+            local review_target
+            review_target=$(golden_detect_review_target)
+            lines+=("Build ${sprint}|Continue implementing the current sprint|build")
+            if [[ -n "${review_target}" && "${review_target}" != "${sprint}" ]]; then
+                lines+=("Review ${review_target}|Code review and security audit|review")
+            else
+                lines+=("Check progress|View detailed sprint status|loa-doctor")
+            fi
+            lines+=("Check system health|Run full diagnostic check|loa-doctor")
+            ;;
+        reviewing|auditing)
+            local review_target
+            review_target=$(golden_detect_review_target)
+            lines+=("Review ${review_target:-current sprint}|Code review and security audit|review")
+            lines+=("Continue building|Resume sprint implementation|build")
+            lines+=("Check system health|Run full diagnostic check|loa-doctor")
+            ;;
+        complete)
+            lines+=("Ship this release|Deploy to production and archive cycle|ship")
+            lines+=("Plan new cycle|Archive current cycle and start fresh|archive-cycle")
+            lines+=("Check system health|Run full diagnostic check|loa-doctor")
+            ;;
+        bug_active)
+            local active_bug_ref bug_id bug_title
+            if active_bug_ref=$(golden_detect_active_bug 2>/dev/null); then
+                bug_id=$(golden_parse_bug_id "${active_bug_ref}")
+                local state_file="${PROJECT_ROOT}/.run/bugs/${bug_id}/state.json"
+                bug_title=$(jq -r '.bug_title // "Unknown bug"' "${state_file}" 2>/dev/null)
+                # Truncate title to 40 chars
+                if [[ ${#bug_title} -gt 40 ]]; then
+                    bug_title="${bug_title:0:37}..."
+                fi
+                # Sanitize pipe chars to prevent delimiter collision
+                bug_title="${bug_title//|/-}"
+            else
+                bug_title="Active bug"
+            fi
+            lines+=("Fix bug: ${bug_title}|Continue bug fix implementation|build")
+            lines+=("Return to feature sprint|Switch back to planned work|build")
+            lines+=("Check system health|Run full diagnostic check|loa-doctor")
+            ;;
+    esac
+
+    # Slot 4 is always present
+    lines+=("View all commands|See all available Loa commands|help-full")
+
+    if [[ "${json_mode}" == "true" ]]; then
+        # Convert pipe-delimited lines to JSON array via jq
+        local json_arr="[]"
+        local idx=0
+        for line in "${lines[@]}"; do
+            local label desc action recommended
+            label="${line%%|*}"
+            local rest="${line#*|}"
+            desc="${rest%%|*}"
+            action="${rest#*|}"
+            recommended=$( (( idx == 0 )) && echo "true" || echo "false" )
+            json_arr=$(echo "${json_arr}" | jq \
+                --arg l "${label}" \
+                --arg d "${desc}" \
+                --arg a "${action}" \
+                --argjson r "${recommended}" \
+                '. + [{"label":$l,"description":$d,"action":$a,"recommended":$r}]')
+            idx=$((idx + 1))
+        done
+        echo "${json_arr}"
+    else
+        for line in "${lines[@]}"; do
+            echo "${line}"
+        done
+    fi
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -482,6 +748,58 @@ golden_bug_check_deps() {
         return 1
     fi
     return 0
+}
+
+# ─────────────────────────────────────────────────────────────
+# Bridge State Detection (v1.34.0 — Issue #292)
+# ─────────────────────────────────────────────────────────────
+
+# Detect bridge loop state from .run/bridge-state.json.
+# Returns: state string ("ITERATING", "HALTED", "FINALIZING", etc.) or "none"
+golden_detect_bridge_state() {
+    local bridge_file="${PROJECT_ROOT}/.run/bridge-state.json"
+    if [[ -f "${bridge_file}" ]]; then
+        local state
+        state=$(jq -r '.state // "none"' "${bridge_file}" 2>/dev/null) || state="none"
+        echo "${state}"
+    else
+        echo "none"
+    fi
+}
+
+# Get bridge progress details for /loa display.
+# Returns: human-readable progress string or empty.
+golden_bridge_progress() {
+    local bridge_file="${PROJECT_ROOT}/.run/bridge-state.json"
+    [[ -f "${bridge_file}" ]] || return 0
+
+    local state bridge_id depth
+    state=$(jq -r '.state // "none"' "${bridge_file}" 2>/dev/null) || return 0
+    [[ "${state}" == "none" || "${state}" == "JACKED_OUT" ]] && return 0
+
+    bridge_id=$(jq -r '.bridge_id // "unknown"' "${bridge_file}" 2>/dev/null)
+    depth=$(jq '.config.depth // 0' "${bridge_file}" 2>/dev/null)
+
+    local iteration
+    iteration=$(jq '.iterations | length' "${bridge_file}" 2>/dev/null || echo "0")
+
+    case "${state}" in
+        ITERATING)
+            local score initial
+            score=$(jq '.flatline.last_score // 0' "${bridge_file}" 2>/dev/null)
+            initial=$(jq '.flatline.initial_score // 0' "${bridge_file}" 2>/dev/null)
+            echo "Bridge Loop: Iteration ${iteration}/${depth} (score: ${score}, initial: ${initial})"
+            ;;
+        HALTED)
+            echo "Bridge HALTED at iteration ${iteration}/${depth}. Resume with /run-bridge --resume"
+            ;;
+        FINALIZING)
+            echo "Bridge finalizing after ${iteration} iterations..."
+            ;;
+        PREFLIGHT|JACK_IN)
+            echo "Bridge starting up (${state})..."
+            ;;
+    esac
 }
 
 # ─────────────────────────────────────────────────────────────

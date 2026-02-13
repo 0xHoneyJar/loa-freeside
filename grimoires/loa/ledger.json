@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "next_sprint_number": 214,
-  "active_cycle": "cycle-020",
+  "next_sprint_number": 216,
+  "active_cycle": "cycle-021",
   "cycles": [
     {
       "id": "cycle-001",
@@ -296,13 +296,27 @@
     {
       "id": "cycle-020",
       "label": "Bridgebuilder Round 7 — Protocol Refinement (BB7)",
-      "status": "active",
+      "status": "archived",
       "created": "2026-02-12T23:45:00Z",
+      "archived": "2026-02-13T00:30:00Z",
       "prd": "grimoires/loa/prd-hounfour-endgame.md",
       "sdd": "grimoires/loa/sdd-hounfour-endgame.md",
       "sprint_plan": "grimoires/loa/sprint.md",
       "sprints": [
         {"global_id": 213, "local_label": "sprint-1", "status": "pending"}
+      ]
+    },
+    {
+      "id": "cycle-021",
+      "label": "Bridgebuilder Round 9 — E2E Infrastructure Hardening (BB9)",
+      "status": "active",
+      "created": "2026-02-13T00:30:00Z",
+      "prd": "grimoires/loa/prd-hounfour-finish-line.md",
+      "sdd": "grimoires/loa/sdd-hounfour-finish-line.md",
+      "sprint_plan": "grimoires/loa/sprint.md",
+      "sprints": [
+        {"global_id": 214, "local_label": "sprint-1", "status": "pending"},
+        {"global_id": 215, "local_label": "sprint-2", "status": "pending"}
       ]
     }
   ]

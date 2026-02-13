@@ -156,6 +156,7 @@ All Loa Commands
     /run-status              Check run progress
     /run-halt                Stop active run
     /run-resume              Resume halted run
+    /run-bridge              Iterative excellence loop (bridge)
     /autonomous              Full autonomous workflow
     /simstim                 HITL accelerated workflow
 
@@ -199,19 +200,47 @@ The workflow-state.sh script detects states, and golden-path.sh maps them to gol
 
 **Note**: `bug_active` takes priority over all other states. When a bug fix is in progress, `/loa` shows bug status and `/build` routes to the bug's micro-sprint.
 
-## User Prompts
+## User Prompts (v1.34.0 — Context-Aware Menu)
 
-After displaying status, prompt the user using AskUserQuestion:
+After displaying status, generate a dynamic menu from the workflow state:
+
+1. Run `golden_menu_options` from `golden-path.sh` to get state-aware options
+2. Parse the pipe-delimited output (format: `label|description|action`)
+3. Build AskUserQuestion with the parsed options
+4. The first option is always the recommended action — append "(Recommended)" to its label
+5. The last option is always "View all commands"
+
+### Routing
+
+When the user selects an option, invoke the corresponding action:
+
+| Action Value | How to Handle |
+|-------------|---------------|
+| `plan` | Invoke the `/plan` skill |
+| `build` | Invoke the `/build` skill |
+| `review` | Invoke the `/review` skill |
+| `ship` | Invoke the `/ship` skill |
+| `loa-setup` | Invoke the `/loa setup` skill |
+| `loa-doctor` | Run `.claude/scripts/loa-doctor.sh` and display results |
+| `archive-cycle` | **Confirm first**: "This will archive the current cycle and prepare for a new one. The archive is recoverable. Continue?" — then invoke `/archive-cycle` |
+| `read:PATH` | Read the file at PATH and display its contents |
+| `help-full` | Display the `/loa --help-full` output (see below) |
+
+**Fallback**: If a skill invocation is denied or fails, display the equivalent command as a copyable code block so the user can invoke it manually. Example: "Run `/plan` to continue."
+
+### Example Menu (implementing state)
 
 ```yaml
 question: "What would you like to do?"
 options:
-  - label: "Run suggested"
-    description: "Execute /build (continue implementing sprint-2)"
-  - label: "Show all commands"
-    description: "See all available commands"
-  - label: "Run doctor"
-    description: "Full system health check"
+  - label: "Build sprint-2 (Recommended)"
+    description: "Continue implementing the current sprint"
+  - label: "Review sprint-1"
+    description: "Code review and security audit"
+  - label: "Check system health"
+    description: "Run full diagnostic check"
+  - label: "View all commands"
+    description: "See all available Loa commands"
 ```
 
 ## Implementation Notes
@@ -242,6 +271,23 @@ options:
    fi
    ```
    If an active bug is detected, display it prominently before the journey bar.
+
+2c. **Check for active bridge loop** (v1.34.0 — Issue #292):
+   ```bash
+   source .claude/scripts/golden-path.sh
+   bridge_state=$(golden_detect_bridge_state)
+   if [[ "$bridge_state" != "none" && "$bridge_state" != "JACKED_OUT" ]]; then
+     bridge_progress=$(golden_bridge_progress)
+     # Display: "$bridge_progress"
+   fi
+   ```
+   If a bridge is active, display its progress after bug detection but before the journey bar.
+
+2d. **Lore context for naming** (v1.34.0):
+   When displaying command names or framework concepts, reference the Lore Knowledge Base
+   (`.claude/data/lore/`) for naming context. For example, if a user asks "why is it called
+   a bridge?" or "what does 'jacked out' mean?", load the relevant glossary entry from
+   `.claude/data/lore/mibera/glossary.yaml` and use the `short` field for inline explanation.
 
 3. **Health summary** (quick check):
    ```bash
