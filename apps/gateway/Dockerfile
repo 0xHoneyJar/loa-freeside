@@ -3,10 +3,10 @@
 # Optimized for minimal image size (<50MB target)
 
 # Build stage
-FROM rust:1.75-alpine AS builder
+FROM rust:1.89-alpine AS builder
 
 # Install build dependencies
-RUN apk add --no-cache musl-dev pkgconfig openssl-dev openssl-libs-static
+RUN apk add --no-cache build-base musl-dev pkgconf openssl-dev openssl-libs-static ca-certificates
 
 WORKDIR /app
 
@@ -16,14 +16,14 @@ COPY Cargo.toml Cargo.lock* ./
 # Create dummy main.rs to build dependencies
 RUN mkdir -p src && \
     echo "fn main() {}" > src/main.rs && \
-    cargo build --release && \
+    cargo build --release --locked && \
     rm -rf src
 
 # Copy actual source code
 COPY src ./src
 
 # Build the actual application with optimizations
-RUN touch src/main.rs && cargo build --release
+RUN touch src/main.rs && cargo build --release --locked
 
 # Verify binary size
 RUN ls -lh target/release/arrakis-gateway

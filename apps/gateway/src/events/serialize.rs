@@ -45,20 +45,21 @@ pub fn serialize_event(event: &Event, shard_id: u64) -> Option<GatewayEvent> {
         .as_millis() as u64;
 
     match event {
-        Event::GuildCreate(guild) => Some(GatewayEvent {
-            event_id: Uuid::new_v4().to_string(),
-            event_type: "guild.join".to_string(),
-            shard_id,
-            timestamp,
-            guild_id: Some(guild.id.to_string()),
-            channel_id: None,
-            user_id: None,
-            data: serde_json::json!({
-                "name": guild.name,
-                "member_count": guild.member_count,
-                "owner_id": guild.owner_id.to_string(),
-            }),
-        }),
+        Event::GuildCreate(guild) => {
+            // GuildCreate is an enum in twilight-model 0.17; extract data via serde
+            let guild_data = serde_json::to_value(guild.as_ref())
+                .unwrap_or(serde_json::Value::Null);
+            Some(GatewayEvent {
+                event_id: Uuid::new_v4().to_string(),
+                event_type: "guild.join".to_string(),
+                shard_id,
+                timestamp,
+                guild_id: Some(guild.id().to_string()),
+                channel_id: None,
+                user_id: None,
+                data: guild_data,
+            })
+        }
 
         Event::GuildDelete(guild) => Some(GatewayEvent {
             event_id: Uuid::new_v4().to_string(),
@@ -132,7 +133,7 @@ pub fn serialize_event(event: &Event, shard_id: u64) -> Option<GatewayEvent> {
         }
 
         // Events we don't forward
-        Event::GatewayHeartbeat(_)
+        Event::GatewayHeartbeat
         | Event::GatewayHeartbeatAck
         | Event::GatewayHello(_)
         | Event::GatewayInvalidateSession(_)

@@ -91,15 +91,26 @@ impl NatsPublisher {
         );
 
         match self.jetstream.publish(subject.clone(), payload.into()).await {
-            Ok(ack) => {
-                self.messages_published.fetch_add(1, Ordering::Relaxed);
-                debug!(
-                    subject,
-                    stream = %ack.stream,
-                    seq = ack.sequence,
-                    "Event published"
-                );
-                Ok(())
+            Ok(ack_future) => {
+                // In async-nats 0.46, publish returns a PublishAckFuture
+                // that must be awaited to get the actual acknowledgment
+                match ack_future.await {
+                    Ok(ack) => {
+                        self.messages_published.fetch_add(1, Ordering::Relaxed);
+                        debug!(
+                            subject,
+                            stream = %ack.stream,
+                            seq = ack.sequence,
+                            "Event published"
+                        );
+                        Ok(())
+                    }
+                    Err(e) => {
+                        self.publish_failures.fetch_add(1, Ordering::Relaxed);
+                        warn!(subject, error = %e, "Failed to get publish acknowledgment");
+                        Err(e.into())
+                    }
+                }
             }
             Err(e) => {
                 self.publish_failures.fetch_add(1, Ordering::Relaxed);
