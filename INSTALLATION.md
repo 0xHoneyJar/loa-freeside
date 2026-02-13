@@ -41,11 +41,16 @@ cd arrakis
 npm install
 ```
 
-This installs all workspace packages: `packages/core`, `packages/adapters`, `packages/cli`, `packages/sandbox`, `themes/sietch`, and `apps/*`.
+Then install the main service dependencies:
+
+```bash
+cd themes/sietch
+npm install
+```
 
 ## Environment Setup
 
-Arrakis uses Zod-validated environment variables (1,737-line schema in `themes/sietch/src/config.ts`).
+Arrakis uses Zod-validated environment variables (1,736-line schema in `themes/sietch/src/config.ts`).
 
 ### Quick Setup
 
@@ -265,10 +270,10 @@ cd infrastructure/terraform
 terraform init
 
 # Plan changes
-terraform plan -var-file=production.tfvars
+terraform plan -var-file=production.tfvars  # create from team-provided template
 
 # Apply
-terraform apply -var-file=production.tfvars
+terraform apply -var-file=production.tfvars  # contains sensitive values, not committed
 ```
 
 Or use the Gaib CLI:
@@ -281,18 +286,22 @@ gaib server apply
 
 ## Testing
 
+Run from `themes/sietch/`:
+
 ```bash
+cd themes/sietch
+
 # Run all tests (Vitest)
-npm test
+npx vitest run
 
 # Run with coverage
-npm run test:coverage
+npx vitest run --coverage
 
 # Type checking
-npm run typecheck
+npx tsc --noEmit
 
 # Build
-npm run build
+npx tsc -p tsconfig.production.json
 ```
 
 ## Troubleshooting

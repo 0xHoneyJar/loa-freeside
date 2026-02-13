@@ -26,7 +26,7 @@ Monorepo with 4 workspace packages (src: packages/core/ports/index.ts:L1):
 
 | Package | Contents | Ref |
 |---------|----------|-----|
-| core/ports/ | 12 port interface files | (src: packages/core/ports/index.ts:L1) |
+| core/ports/ | 15 port interface files | (src: packages/core/ports/index.ts:L1) |
 | adapters/agent/ | AgentGateway, BudgetManager, rate limiting, BYOK | (src: packages/adapters/agent/index.ts:L1) |
 | adapters/chain/ | RPC, Dune Sim, hybrid, two-tier provider | (src: packages/adapters/chain/index.ts:L1) |
 | adapters/storage/ | Drizzle ORM + PostgreSQL + RLS | (src: packages/adapters/storage/index.ts:L1) |

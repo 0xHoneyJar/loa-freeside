@@ -2,7 +2,7 @@
 
 > SHA: 39be5b7 | Generated: 2026-02-13
 
-Multi-tenant community infrastructure for Discord and Telegram — conviction scoring, 9-tier BGT-based progression, agent gateway, CLI tooling (src: packages/core/ports/index.ts:L1). Hexagonal architecture (ports & adapters) with PostgreSQL + RLS multi-tenancy (src: packages/adapters/storage/tenant-context.ts:L120).
+Multi-tenant community infrastructure for Discord and Telegram — conviction scoring, 9-tier progression (2 rank-based + 7 BGT-based), agent gateway, CLI tooling (src: packages/core/ports/index.ts:L1). Hexagonal architecture (ports & adapters) with PostgreSQL + RLS multi-tenancy (src: packages/adapters/storage/tenant-context.ts:L120).
 
 ## Project Overview
 
@@ -10,8 +10,8 @@ Monorepo: 4 workspace packages, ~236K LoC TypeScript + Rust (src: packages/core/
 
 | Package | Purpose | Entry |
 |---------|---------|-------|
-| core | Port interfaces (12 files) + domain types | (src: packages/core/ports/index.ts:L1) |
-| adapters | 9 modules implementing core ports | (src: packages/adapters/agent/index.ts:L1) |
+| core | Port interfaces (15 files) + domain types | (src: packages/core/ports/index.ts:L1) |
+| adapters | 8 modules implementing core ports | (src: packages/adapters/agent/index.ts:L1) |
 | cli | Gaib CLI: auth, user, sandbox, server IaC | (src: packages/cli/src/commands/index.ts:L24) |
 | sandbox | Schema provisioning, event routing, cleanup | (src: packages/adapters/storage/schema.ts:L47) |
 
@@ -37,7 +37,7 @@ DI pattern: constructors receive typed interfaces (src: packages/adapters/agent/
 **REST:** 80+ Express routes — public `/`, member `/api`, billing `/api/billing`, admin `/admin` (src: themes/sietch/src/api/server.ts:L242).
 **Webhooks:** Paddle, NOWPayments, Telegram — all signature-verified (src: themes/sietch/src/api/billing.routes.ts:L438).
 **Discord:** 22+ slash commands — registry at (src: themes/sietch/src/discord/commands/index.ts:L30).
-**Telegram:** 9 commands via Grammy — registration at (src: themes/sietch/src/telegram/commands/index.ts:L23).
+**Telegram:** 10 commands via Grammy — registration at (src: themes/sietch/src/telegram/commands/index.ts:L23).
 **CLI:** `gaib auth|user|sandbox|server` — 40+ subcommands (src: packages/cli/src/commands/index.ts:L24).
 See [api-surface.md](grimoires/loa/ground-truth/api-surface.md) for full route map and handler references (src: themes/sietch/src/api/routes/index.ts:L26).
 
@@ -45,14 +45,14 @@ See [api-surface.md](grimoires/loa/ground-truth/api-surface.md) for full route m
 
 **Database:** 5 tables via Drizzle ORM — communities, profiles, badges, community_agent_config, agent_usage_log (src: packages/adapters/storage/schema.ts:L47).
 **Core types:** Community (src: packages/core/ports/storage-provider.ts:L25), Profile (src: packages/core/ports/storage-provider.ts:L57), Badge (src: packages/core/ports/storage-provider.ts:L109).
-**Tier system:** 9 BGT-based tiers (Naib→Hajra) with rank boundaries (src: themes/sietch/src/packages/adapters/themes/SietchTheme.ts:L47).
+**Tier system:** 9 tiers (Naib, Fedaykin rank-based + Usul→Hajra BGT-based) with rank boundaries (src: themes/sietch/src/packages/adapters/themes/SietchTheme.ts:L47).
 **Agent types:** ModelAlias (cheap/fast-code/reviewer/reasoning/native), AccessLevel (free/pro/enterprise) (src: packages/core/ports/agent-gateway.ts:L24).
 **RLS:** All tenant tables scoped by `app.current_tenant` (src: packages/adapters/storage/tenant-context.ts:L120).
 See [contracts.md](grimoires/loa/ground-truth/contracts.md) for full schema, type definitions, and Zod validation (src: packages/adapters/storage/schema.ts:L47).
 
 ## Configuration
 
-Zod schema: 1,737 lines at (src: themes/sietch/src/config.ts:L120). Feature flags at (src: themes/sietch/src/config.ts:L217).
+Zod schema: 1,736 lines at (src: themes/sietch/src/config.ts:L120). Feature flags at (src: themes/sietch/src/config.ts:L217).
 
 | Category | Key Variables | Ref |
 |----------|--------------|-----|
@@ -65,7 +65,7 @@ See [behaviors.md](grimoires/loa/ground-truth/behaviors.md) for env var details 
 
 ## Behaviors (Index)
 
-**Scheduled:** 7 Trigger.dev cron tasks — eligibility sync (6h), activity decay (6h), weekly digest, badge check, boost expiry, weekly reset, session cleanup (src: themes/sietch/src/trigger/syncEligibility.ts:L41).
+**Scheduled:** 7 Trigger.dev cron tasks + 1 on-demand migration task — eligibility sync (6h), activity decay (6h), weekly digest, badge check, boost expiry, weekly reset, session cleanup (src: themes/sietch/src/trigger/syncEligibility.ts:L41).
 **Events:** Discord ready/interactionCreate/guildMemberUpdate/messageCreate/messageReactionAdd (src: themes/sietch/src/services/discord/handlers/EventHandler.ts:L44).
 **Jobs:** BudgetReaperJob (60s), StreamReconciliationWorker (on-demand) via BullMQ (src: packages/adapters/agent/budget-reaper-job.ts:L46).
 See [behaviors.md](grimoires/loa/ground-truth/behaviors.md) for cron schedules, handler details, and lifecycle flows (src: packages/adapters/agent/agent-gateway.ts:L65).

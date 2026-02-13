@@ -80,7 +80,7 @@ arrakis/
 │   ├── core/               # Port interfaces + domain types
 │   │   ├── ports/          # IChainProvider, IStorageProvider, etc.
 │   │   └── domain/         # WizardSession, CommunityManifest
-│   ├── adapters/           # 9 adapter modules
+│   ├── adapters/           # 8 adapter modules
 │   │   ├── agent/          # AgentGateway, BudgetManager
 │   │   ├── chain/          # RPC, Dune Sim, hybrid provider
 │   │   ├── storage/        # Drizzle ORM + PostgreSQL + RLS
@@ -95,7 +95,7 @@ arrakis/
 │   ├── src/
 │   │   ├── api/            # Express REST API (80+ routes)
 │   │   ├── discord/        # Slash commands (22+)
-│   │   ├── telegram/       # Grammy bot (9 commands)
+│   │   ├── telegram/       # Grammy bot (10 commands)
 │   │   └── trigger/        # Scheduled tasks (7 cron jobs)
 │   └── drizzle/            # Database migrations
 ├── apps/
@@ -113,7 +113,7 @@ arrakis/
 | Runtime | Node.js 20+, Rust (gateway) |
 | Language | TypeScript (strict), Rust |
 | Bot Frameworks | discord.js v14, Grammy (Telegram) |
-| API | Express, Zod validation (1,737-line config schema) |
+| API | Express, Zod validation (1,736-line config schema) |
 | Database | PostgreSQL 15 + Drizzle ORM + Row-Level Security |
 | Cache | Redis 7 (ioredis) |
 | Queue | BullMQ (synthesis, reaper), Trigger.dev (cron) |

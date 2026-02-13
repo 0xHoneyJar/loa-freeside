@@ -59,10 +59,7 @@ Distributed event handling and cryptocurrency payment support.
 
 - Simplified repository to single-service focus after sites extraction
 - Removed Simstim Telegram bridge (experimental feature, PR #37)
-
-### Dependencies
-
-- Upgraded Rust gateway: twilight-gateway 0.17, async-nats 0.46, axum 0.8, thiserror 2, config 0.15
+- Upgraded Rust gateway dependencies: twilight-gateway 0.17, async-nats 0.46, axum 0.8, thiserror 2, config 0.15
 - Updated worker production dependencies
 - Updated GitHub Actions: checkout v6, upload-artifact v6, codeql-action v4
 
