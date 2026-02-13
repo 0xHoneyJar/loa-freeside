@@ -4,6 +4,47 @@ Audit trail for the Arrakis Scaling Initiative.
 
 ## Active Sprints
 
+### Sprint 229 (Sprint 3): Docker Compose E2E + Final Integration
+- **Status**: COMPLETED
+- **Phase**: The Golden Path (cycle-024)
+- **Started**: 2026-02-13
+- **Completed**: 2026-02-13
+- **Documents**:
+  - [reviewer.md](sprint-229/reviewer.md) - Validation report
+- **Deliverables**:
+  - Infrastructure validation (run-e2e.sh, docker-compose.e2e.yml)
+  - No code changes required — existing infrastructure compatible with Sprint 1/2
+  - Command Deck Round 9 posted to loa-finn#31 (RFC at 100%)
+
+### Sprint 228 (Sprint 2): Conformance Test Suites
+- **Status**: COMPLETED
+- **Phase**: The Golden Path (cycle-024)
+- **Started**: 2026-02-13
+- **Completed**: 2026-02-13
+- **Documents**:
+  - [reviewer.md](sprint-228/reviewer.md) - Implementation report
+- **Deliverables**:
+  - Budget conformance suite (56 vectors, BigInt arithmetic, remainder accumulator)
+  - JWKS test server (ES256 keypair generation, fault injection)
+  - JWT conformance suite (4 static + 2 behavioral vectors)
+  - GPT-5.2 reviewed: APPROVED (3 files, 2 iterations, 3 findings fixed)
+
+### Sprint 227 (Sprint 1): Vector Adapter + E2E Wire-Up
+- **Status**: COMPLETED
+- **Phase**: The Golden Path (cycle-024)
+- **Started**: 2026-02-13
+- **Completed**: 2026-02-13
+- **Documents**:
+  - [reviewer.md](sprint-227/reviewer.md) - Implementation report
+- **Deliverables**:
+  - Vector adapter (tests/e2e/vectors/index.ts) bridging packages/contracts + loa-hounfour
+  - E2E test imports rewired to vector adapter
+  - loa-finn stub wired with computeReqHash, validateCompatibility, CONTRACT_VERSION
+  - readBody() returns { raw: Buffer; text: string } for hash agreement
+  - GPT-5.2 reviewed: APPROVED (3 files, 2 iterations, 4 findings fixed)
+
+---
+
 ### Sprint 200 (Sprint 2): Ensemble Strategy Exposure — FR-3
 - **Status**: COMPLETED
 - **Phase**: Hounfour Endgame (cycle-015)
