@@ -75,6 +75,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@0xhoneyjar/loa-hounfour": "github:0xHoneyJar/loa-hounfour#v1.1.0",
     "@arrakis/core": "file:../core",
     "@arrakis/loa-finn-contract": "file:../contracts",
     "drizzle-orm": "^0.33.0",
@@ -100,7 +101,7 @@
     "pino": ">=8.0.0"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22"
   },
   "license": "UNLICENSED"
 }

@@ -262,6 +262,12 @@ app/ecosystem.config.js
 .claude/settings.local.json.bak
 
 # =============================================================================
+# DEAD CODE / REMOVED PROJECTS
+# =============================================================================
+# sites/web/ removed in cycle-023 (no source code, only Next.js artifacts)
+sites/web/
+
+# =============================================================================
 # BINARY / GENERATED FILES
 # =============================================================================
 # Next.js build output and artifacts (moved repos / stale builds)
