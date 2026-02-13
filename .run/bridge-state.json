@@ -1,114 +1,75 @@
 {
   "schema_version": 1,
-  "bridge_id": "bridge-20260222-1d94d2",
+  "bridge_id": "bridge-20260213-c010bf",
   "state": "JACKED_OUT",
   "config": {
     "depth": 3,
     "mode": "full",
     "flatline_threshold": 0.05,
     "per_sprint": false,
-    "branch": "feature/launch-readiness",
-    "repo": ""
+    "branch": "feature/cycle-010-bridgebuilder-filtering"
   },
   "timestamps": {
-    "started": "2026-02-22T00:59:37Z",
-    "last_activity": "2026-02-22T05:43:00Z"
+    "started": "2026-02-13T09:35:00Z",
+    "last_activity": "2026-02-13T10:35:00Z",
+    "completed": "2026-02-13T10:35:00Z"
   },
   "iterations": [
     {
       "iteration": 1,
-      "state": "completed",
-      "sprint_plan_source": "existing",
-      "sprints_executed": 1,
-      "bridgebuilder": {
-        "total_findings": 10,
-        "by_severity": {
-          "critical": 0,
-          "high": 3,
-          "medium": 3,
-          "low": 1,
-          "vision": 0,
-          "praise": 3
-        },
-        "severity_weighted_score": 19,
-        "pr_comment_url": "https://github.com/0xHoneyJar/loa-freeside/pull/88#issuecomment-3939829065"
+      "review_comment_url": "https://github.com/0xHoneyJar/loa/pull/313#issuecomment-3895555719",
+      "review_file": ".run/bridge-reviews/bridge-20260213-c010bf-iter1-full.md",
+      "findings": {
+        "total": 6,
+        "by_severity": { "MEDIUM": 2, "LOW": 2, "PRAISE": 2 },
+        "score": 0.32,
+        "actionable": ["medium-1", "medium-2", "low-1", "low-2"]
       },
-      "enrichment": {
-        "persona_loaded": true,
-        "persona_validation": "passed",
-        "findings_format": "json",
-        "field_fill_rates": {
-          "faang_parallel": 0.86,
-          "metaphor": 0.43,
-          "teachable_moment": 1.0,
-          "connection": 0.0
-        },
-        "praise_count": 3,
-        "insights_size_bytes": 8200,
-        "redactions_applied": 0
-      },
-      "visions_captured": 0,
-      "started_at": "2026-02-22T01:00:00Z",
-      "updated_at": "2026-02-22T01:10:00Z"
+      "sprint_generated": true,
+      "timestamp": "2026-02-13T10:05:00Z"
     },
     {
       "iteration": 2,
-      "state": "completed",
-      "sprint_plan_source": "generated_from_findings",
-      "sprints_executed": 1,
-      "bridgebuilder": {
-        "total_findings": 4,
-        "by_severity": {
-          "critical": 0,
-          "high": 0,
-          "medium": 0,
-          "low": 1,
-          "vision": 0,
-          "praise": 3
-        },
-        "severity_weighted_score": 1,
-        "pr_comment_url": "https://github.com/0xHoneyJar/loa-freeside/pull/88#issuecomment-3940228629"
+      "review_comment_url": "https://github.com/0xHoneyJar/loa/pull/313#issuecomment-3895578798",
+      "review_file": ".run/bridge-reviews/bridge-20260213-c010bf-iter2-full.md",
+      "findings": {
+        "total": 4,
+        "by_severity": { "LOW": 1, "PRAISE": 3 },
+        "score": 0.05,
+        "actionable": []
       },
-      "enrichment": {
-        "persona_loaded": true,
-        "persona_validation": "passed",
-        "findings_format": "json",
-        "field_fill_rates": {
-          "faang_parallel": 0.25,
-          "metaphor": 0.0,
-          "teachable_moment": 0.75,
-          "connection": 0.0
-        },
-        "praise_count": 3,
-        "insights_size_bytes": 3200,
-        "redactions_applied": 0
+      "sprint_generated": false,
+      "timestamp": "2026-02-13T10:20:00Z"
+    },
+    {
+      "iteration": 3,
+      "review_comment_url": "https://github.com/0xHoneyJar/loa/pull/313#issuecomment-3895581378",
+      "review_file": ".run/bridge-reviews/bridge-20260213-c010bf-iter3-full.md",
+      "findings": {
+        "total": 1,
+        "by_severity": { "PRAISE": 1 },
+        "score": 0.00,
+        "actionable": []
       },
-      "visions_captured": 0,
-      "started_at": "2026-02-22T01:10:00Z",
-      "updated_at": "2026-02-22T05:43:00Z"
+      "sprint_generated": false,
+      "timestamp": "2026-02-13T10:30:00Z"
     }
   ],
   "flatline": {
-    "initial_score": 19,
-    "last_score": 1,
-    "scores": [19, 1],
-    "consecutive_below_threshold": 1,
-    "termination_reason": "kaironic_convergence",
-    "convergence_rate": 0.947
+    "initial_score": 0.32,
+    "last_score": 0.00,
+    "consecutive_below_threshold": 2,
+    "flatlined": true
   },
   "metrics": {
-    "total_sprints_executed": 2,
-    "total_files_changed": 37,
-    "total_findings_addressed": 6,
+    "total_sprints_executed": 3,
+    "total_files_changed": 45,
+    "total_findings_addressed": 4,
     "total_visions_captured": 0
   },
   "finalization": {
-    "ground_truth_updated": true,
-    "ground_truth_files": 13,
-    "ground_truth_sha": "cf1a84bf975f5d5cc3ec491f99a6e4c6c8725204",
-    "rtfm_passed": true,
-    "pr_url": "https://github.com/0xHoneyJar/loa-freeside/pull/88",
-    "butterfreezone_generated": true,
-    "finalized_at": "2026-02-22T05:43:00Z"
+    "ground_truth_updated": false,
+    "rtfm_passed": false,
+    "pr_url": "https://github.com/0xHoneyJar/loa/pull/313"
   }
 }
