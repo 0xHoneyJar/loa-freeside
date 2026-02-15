@@ -33,21 +33,13 @@ import { InMemoryCounterBackend } from './counters/InMemoryCounterBackend.js';
 import type Database from 'better-sqlite3';
 
 // =============================================================================
-// Redis Interface (Task 9.4, extended Sprint 241 Task 3.3)
+// Redis Interface — Re-exported from Shared Package (Sprint 254 Task 3.2)
 // =============================================================================
 
-/** Redis interface for daily spending persistence with INCRBY support */
-export interface AgentRedisClient {
-  get(key: string): Promise<string | null>;
-  set(key: string, value: string): Promise<string>;
-  /** Set key with TTL in seconds */
-  setex?(key: string, seconds: number, value: string): Promise<string>;
-  expire?(key: string, seconds: number): Promise<number>;
-  /** Atomic increment — returns new value after increment */
-  incrby?(key: string, increment: number): Promise<number>;
-  /** Execute Lua script for atomic INCRBY + EXPIREAT */
-  eval?(script: string, numkeys: number, ...args: (string | number)[]): Promise<unknown>;
-}
+import type { IRedisClient } from '../../shared/atomic-counter/types.js';
+
+/** @deprecated Use IRedisClient from packages/shared/atomic-counter instead */
+export type AgentRedisClient = IRedisClient;
 
 // =============================================================================
 // Types

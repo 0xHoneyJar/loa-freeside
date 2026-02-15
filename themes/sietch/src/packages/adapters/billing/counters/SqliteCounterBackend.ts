@@ -1,81 +1,9 @@
 /**
- * SQLite Counter Backend
+ * SQLite Counter Backend — Re-export from Shared Package
  *
- * Persistent counter using ON CONFLICT DO UPDATE SET total = total + ?.
- * Extracted from AgentWalletPrototype's SQLite daily spending logic.
- *
- * Uses the daily_agent_spending table from migration 036.
- *
- * Sprint refs: Task 2.3
+ * Sprint 254 Task 3.3: Extraction to shared package
  *
  * @module packages/adapters/billing/counters/SqliteCounterBackend
  */
 
-import type { ICounterBackend } from '../../../core/protocol/atomic-counter.js';
-import type Database from 'better-sqlite3';
-
-// =============================================================================
-// Implementation
-// =============================================================================
-
-export class SqliteCounterBackend implements ICounterBackend {
-  private db: Database.Database;
-
-  constructor(db: Database.Database) {
-    this.db = db;
-  }
-
-  async increment(key: string, amount: bigint): Promise<bigint> {
-    const { accountId, date } = this.parseKey(key);
-
-    this.db.prepare(`
-      INSERT INTO daily_agent_spending (agent_account_id, spending_date, total_spent_micro, updated_at)
-      VALUES (?, ?, ?, datetime('now'))
-      ON CONFLICT(agent_account_id, spending_date) DO UPDATE SET
-        total_spent_micro = total_spent_micro + excluded.total_spent_micro,
-        updated_at = datetime('now')
-    `).run(accountId, date, amount.toString());
-
-    // Read back the new total
-    const row = this.db.prepare(
-      `SELECT total_spent_micro FROM daily_agent_spending
-       WHERE agent_account_id = ? AND spending_date = ?`
-    ).get(accountId, date) as { total_spent_micro: number | string } | undefined;
-
-    return row ? BigInt(row.total_spent_micro) : amount;
-  }
-
-  async get(key: string): Promise<bigint> {
-    const { accountId, date } = this.parseKey(key);
-
-    const row = this.db.prepare(
-      `SELECT total_spent_micro FROM daily_agent_spending
-       WHERE agent_account_id = ? AND spending_date = ?`
-    ).get(accountId, date) as { total_spent_micro: number | string } | undefined;
-
-    return row ? BigInt(row.total_spent_micro) : 0n;
-  }
-
-  async reset(key: string): Promise<void> {
-    const { accountId, date } = this.parseKey(key);
-
-    this.db.prepare(
-      `DELETE FROM daily_agent_spending
-       WHERE agent_account_id = ? AND spending_date = ?`
-    ).run(accountId, date);
-  }
-
-  /**
-   * Parse composite key "accountId:YYYY-MM-DD" into components.
-   */
-  private parseKey(key: string): { accountId: string; date: string } {
-    const lastColon = key.lastIndexOf(':');
-    if (lastColon === -1) {
-      return { accountId: key, date: new Date().toISOString().slice(0, 10) };
-    }
-    return {
-      accountId: key.substring(0, lastColon),
-      date: key.substring(lastColon + 1),
-    };
-  }
-}
+export { SqliteCounterBackend } from '../../../shared/atomic-counter/SqliteCounterBackend.js';
