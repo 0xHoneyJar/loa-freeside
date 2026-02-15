@@ -411,6 +411,37 @@ run_mode:
     create_draft_pr: true
 
 # -----------------------------------------------------------------------------
+# BUTTERFREEZONE — Agent-Grounded README (v1.35.0)
+# -----------------------------------------------------------------------------
+# Generates BUTTERFREEZONE.md: a provenance-tagged, checksum-verified,
+# token-efficient project summary for AI agent consumption.
+# "The zone where only truth survives — no butter, no hype."
+butterfreezone:
+  enabled: true                         # On by default, opt-out via false
+  output_path: BUTTERFREEZONE.md        # Relative to repo root
+  word_budget:
+    total: 3200                         # ~8000 tokens (model-agnostic)
+    per_section: 800                    # ~2000 tokens per section
+  staleness_days: 7                     # Advisory freshness window
+  hooks:
+    run_bridge: true                    # Regenerate in bridge FINALIZING phase
+    run_sprint_plan: false              # Phase 2: regenerate after sprint plan
+    post_merge: false                   # Phase 2: regenerate on merge to main
+    ride: false                         # Future: regenerate after /ride
+    ship: false                         # Phase 2: regenerate on /ship
+  rtfm:
+    check_enabled: true                 # Include in RTFM validation
+    strict_mode: false                  # false=advisory warnings, true=hard gate
+  ecosystem:
+    auto_detect: true                   # Scan deps for related repos
+    manual_entries: []                  # User-defined ecosystem entries
+  manual_sections:
+    sentinel_start: "<!-- manual-start -->"
+    sentinel_end: "<!-- manual-end -->"
+  security:
+    redaction_enabled: true             # Gitleaks-pattern secret redaction
+
+# -----------------------------------------------------------------------------
 # Beads-First Infrastructure (v1.29.0)
 # -----------------------------------------------------------------------------
 # Task tracking via beads_rust (br) is the EXPECTED DEFAULT.
@@ -1315,6 +1346,86 @@ run_bridge:
       enabled: true
       # Block posting if secrets remain after redaction
       post_redaction_safety: true
+
+# =============================================================================
+# Post-Merge Automation Pipeline (v1.36.0)
+# =============================================================================
+# Automated post-merge pipeline triggered on push to main.
+# 3-layer architecture: GH Actions → claude-code-action → shell orchestrator.
+post_merge:
+  # Master toggle — must be true for GH Actions workflow to process merges
+  enabled: false
+
+  # Phase matrix for each PR type
+  # cycle: all 8 phases (classify, semver, changelog, gt_regen, rtfm, tag, release, notify)
+  # bugfix: 4 phases (classify, semver, tag, notify)
+  # other: 4 phases (classify, semver, tag, notify)
+
+  # claude-code-action configuration
+  claude_code_action:
+    # Model for cycle pipeline execution
+    model: "claude-sonnet-4-5-20250929"
+    # Maximum conversation turns
+    max_turns: 15
+    # Tool allowlist
+    allowed_tools: "Bash(bash),Read,Write,Glob,Grep"
+
+  # Timeouts
+  timeouts:
+    # Full pipeline timeout in minutes (GH Actions job timeout)
+    full_pipeline_minutes: 30
+
+  # Phase-specific options
+  phases:
+    # Skip ground truth regeneration
+    skip_gt: false
+    # Skip RTFM validation
+    skip_rtfm: false
+
+  # Notification
+  notify:
+    # Post pipeline summary as PR comment
+    pr_comment: true
+    # Discord notification on failure (requires DISCORD_WEBHOOK_URL secret)
+    discord_on_failure: true
+
+# =============================================================================
+# Harness Engineering — Safety Hooks, Deny Rules, Audit (v1.37.0)
+# =============================================================================
+# Defense-in-depth configuration for agent safety. Hooks operate at the Claude
+# Code platform level, providing protection across all modes (interactive,
+# autonomous, simstim). Source: Trail of Bits + OpenAI harness patterns.
+harness:
+  # Safety hooks — PreToolUse:Bash destructive command blocking
+  safety_hooks:
+    enabled: true                         # Master toggle for safety hook
+    # Individual pattern toggles (all true by default)
+    block_rm_rf: true                     # Block rm -rf (suggest trash)
+    block_force_push: true                # Block git push --force (suggest --force-with-lease)
+    block_reset_hard: true                # Block git reset --hard (suggest git stash)
+    block_git_clean: true                 # Block git clean -f without -n dry-run
+
+  # Deny rules — platform-level file access blocking
+  deny_rules:
+    # Auto-install during /mount (blocks ~/.ssh, ~/.aws, ~/.kube, etc.)
+    auto_install: true                    # Set false to skip during /mount
+    # Template: .claude/hooks/settings.deny.json
+    # Installer: .claude/scripts/install-deny-rules.sh
+
+  # Audit logging — PostToolUse:Bash mutation logger
+  audit_logging:
+    enabled: true                         # Log mutating commands to .run/audit.jsonl
+    max_file_size_mb: 10                  # Rotate when audit log exceeds this size
+
+  # Stop guard — prevent premature exit during autonomous runs
+  stop_guard:
+    enabled: true                         # Check for active /run, /run-bridge, /simstim
+
+  # Invariant linter — mechanical validation of Loa structure
+  invariant_linting:
+    enabled: true                         # Enable lint-invariants.sh
+    on_mount: true                        # Run after /mount
+    on_run_preflight: true                # Run during /run preflight
 
 # =============================================================================
 # Bridgebuilder — Autonomous PR Review

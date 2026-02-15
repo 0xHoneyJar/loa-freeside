@@ -1,0 +1,934 @@
+{
+  "description": "Calibration corpus: 12 CONFIRMED_ATTACK, 8 THEORETICAL (per-model scores), 8 CREATIVE_ONLY, 4 DEFENDED — covers all 5 attacker profiles and all 5 attack surfaces",
+  "version": "3.0.0",
+  "attacks": [
+    {
+      "id": "ATK-901",
+      "name": "SQL Injection via Personality Field",
+      "attacker_profile": "external",
+      "vector": "User submits personality customization containing SQL payload",
+      "scenario": [
+        "User accesses personality customization endpoint",
+        "Submits name field containing: Robert'); DROP TABLE sessions;--",
+        "Personality field is interpolated into session query without parameterization",
+        "Session table is dropped, causing service-wide outage"
+      ],
+      "impact": "Complete loss of all chat session data",
+      "likelihood": "MEDIUM",
+      "severity_score": 850,
+      "target_surface": "agent-identity",
+      "trust_boundary": "User input accepted into database queries without sanitization",
+      "asset_at_risk": "Chat session data integrity",
+      "assumption_challenged": "Personality fields are safe text-only inputs",
+      "reproducibility": "Submit SQL payload in personality name field, observe query execution",
+      "counter_design": {
+        "description": "Parameterized queries for all personality field storage",
+        "architectural_change": "Replace string interpolation in session storage with prepared statements",
+        "prevents": "All SQL injection via personality customization"
+      },
+      "expected_category": "CONFIRMED_ATTACK",
+      "expected_min_score": 700
+    },
+    {
+      "id": "ATK-902",
+      "name": "Confused Deputy in Ensemble Routing",
+      "attacker_profile": "confused_deputy",
+      "vector": "Manipulate model routing to redirect requests to attacker-controlled endpoint",
+      "scenario": [
+        "Attacker identifies that ensemble strategy config is user-modifiable per agent",
+        "Creates agent with custom ensemble strategy pointing to rogue model endpoint",
+        "Legitimate user requests are routed through attacker's endpoint",
+        "Attacker captures prompts, responses, and BYOK keys in transit"
+      ],
+      "impact": "Exfiltration of all user prompts and BYOK API keys",
+      "likelihood": "MEDIUM",
+      "severity_score": 900,
+      "target_surface": "model-routing",
+      "trust_boundary": "Agent-configured ensemble strategies are trusted by routing logic",
+      "asset_at_risk": "BYOK key confidentiality and prompt privacy",
+      "assumption_challenged": "Agent owners can safely configure their own routing",
+      "reproducibility": "Create agent with external model endpoint, observe request routing",
+      "counter_design": {
+        "description": "Allowlist for model endpoints in ensemble routing",
+        "architectural_change": "Add server-side validation of model endpoints against approved registry",
+        "prevents": "Arbitrary endpoint injection in model routing"
+      },
+      "expected_category": "CONFIRMED_ATTACK",
+      "expected_min_score": 700
+    },
+    {
+      "id": "ATK-903",
+      "name": "Token Replay via BYOK Key Logging",
+      "attacker_profile": "insider",
+      "vector": "BYOK API keys exposed in application logs during model invocation",
+      "scenario": [
+        "User submits BYOK API key for model routing",
+        "Key is decrypted and passed to model invocation function",
+        "Debug logging captures full request including Authorization header",
+        "Insider with log access extracts BYOK keys",
+        "Keys replayed to model API for unauthorized usage"
+      ],
+      "impact": "Financial loss for users whose API keys are stolen",
+      "likelihood": "HIGH",
+      "severity_score": 800,
+      "target_surface": "model-routing",
+      "trust_boundary": "Application logs are accessible to operations staff",
+      "asset_at_risk": "BYOK API key confidentiality",
+      "assumption_challenged": "Logging infrastructure is trusted with decrypted secrets",
+      "reproducibility": "Enable debug logging, submit BYOK key, grep logs for key pattern",
+      "counter_design": {
+        "description": "Structured logging with automatic secret redaction",
+        "architectural_change": "Add log sanitizer middleware that strips Authorization headers and key patterns before write",
+        "prevents": "Credential leakage through application logs"
+      },
+      "expected_category": "CONFIRMED_ATTACK",
+      "expected_min_score": 700
+    },
+    {
+      "id": "ATK-904",
+      "name": "Session Fixation via Chat Persistence",
+      "attacker_profile": "external",
+      "vector": "Predict or inject session IDs to hijack chat sessions",
+      "scenario": [
+        "Attacker analyzes session ID generation pattern",
+        "Discovers session IDs use sequential numeric format",
+        "Pre-generates valid session ID for target user",
+        "Crafts link with fixed session ID, sends to target",
+        "Target authenticates on the fixed session, attacker reads chat history"
+      ],
+      "impact": "Unauthorized access to private conversations",
+      "likelihood": "MEDIUM",
+      "severity_score": 750,
+      "target_surface": "chat-persistence",
+      "trust_boundary": "Session ID presented by client is trusted as authentic",
+      "asset_at_risk": "Conversation privacy",
+      "assumption_challenged": "Session IDs are unpredictable",
+      "reproducibility": "Analyze session ID entropy, attempt prediction on test account",
+      "counter_design": {
+        "description": "Cryptographically random session IDs bound to wallet signature",
+        "architectural_change": "Replace sequential session IDs with UUIDv4, bind to wallet address hash",
+        "prevents": "Session prediction and fixation attacks"
+      },
+      "expected_category": "CONFIRMED_ATTACK",
+      "expected_min_score": 700
+    },
+    {
+      "id": "ATK-905",
+      "name": "Privilege Escalation via Tier Bypass",
+      "attacker_profile": "external",
+      "vector": "Manipulate token balance check to access premium features without holding tokens",
+      "scenario": [
+        "Attacker identifies that tier resolution queries on-chain balance at authentication time only",
+        "Borrows tokens via flash loan during authentication",
+        "Authenticates with premium token balance",
+        "Returns tokens in same transaction",
+        "Retains premium session until expiry"
+      ],
+      "impact": "Free access to premium features, revenue loss",
+      "likelihood": "HIGH",
+      "severity_score": 780,
+      "target_surface": "token-gated-access",
+      "trust_boundary": "Point-in-time balance check trusted for session duration",
+      "asset_at_risk": "Feature tier access control integrity",
+      "assumption_challenged": "Token balance at auth time reflects persistent ownership",
+      "reproducibility": "Execute flash loan with token borrow, authenticate, verify tier access persists",
+      "counter_design": {
+        "description": "Periodic re-verification of token balance during session",
+        "architectural_change": "Add background balance check every N minutes, downgrade tier on insufficient balance",
+        "prevents": "Flash loan tier escalation"
+      },
+      "expected_category": "CONFIRMED_ATTACK",
+      "expected_min_score": 700
+    },
+    {
+      "id": "ATK-906",
+      "name": "Quantum Computing Breaks Wallet Signature",
+      "attacker_profile": "external",
+      "vector": "Use quantum computer to derive private key from wallet public key",
+      "scenario": [
+        "Attacker builds fault-tolerant quantum computer with sufficient qubits",
+        "Runs Shor's algorithm against secp256k1 curve",
+        "Derives private keys from on-chain public keys",
+        "Signs arbitrary transactions and authentication messages"
+      ],
+      "impact": "Complete compromise of all wallet-based authentication",
+      "likelihood": "LOW",
+      "severity_score": 150,
+      "target_surface": "token-gated-access",
+      "trust_boundary": "Elliptic curve cryptography is computationally infeasible to break",
+      "asset_at_risk": "All wallet-based authentication",
+      "assumption_challenged": "ECC is secure against quantum attacks",
+      "reproducibility": "Build quantum computer capable of running Shor's algorithm on 256-bit curves",
+      "counter_design": {
+        "description": "Post-quantum signature schemes",
+        "architectural_change": "Migrate to lattice-based signatures when NIST PQC standards finalize",
+        "prevents": "Quantum key derivation attacks"
+      },
+      "expected_category": "CREATIVE_ONLY",
+      "expected_max_score": 400
+    },
+    {
+      "id": "ATK-907",
+      "name": "Physical Access to Server Hardware",
+      "attacker_profile": "external",
+      "vector": "Gain physical access to data center hosting the application",
+      "scenario": [
+        "Attacker social engineers data center staff for facility access",
+        "Locates application server in rack",
+        "Attaches hardware keylogger or extracts disk",
+        "Copies all data including encryption keys from memory"
+      ],
+      "impact": "Complete system compromise",
+      "likelihood": "LOW",
+      "severity_score": 200,
+      "target_surface": "chat-persistence",
+      "trust_boundary": "Physical security of hosting infrastructure",
+      "asset_at_risk": "All stored data and encryption keys",
+      "assumption_challenged": "Cloud provider physical security is adequate",
+      "reproducibility": "Requires physical presence at data center facility",
+      "counter_design": {
+        "description": "Cloud provider physical security controls",
+        "architectural_change": "No application-level change — rely on SOC2 compliant hosting provider",
+        "prevents": "Physical access attacks via provider security controls"
+      },
+      "expected_category": "CREATIVE_ONLY",
+      "expected_max_score": 400
+    },
+    {
+      "id": "ATK-908",
+      "name": "AI Model Gains Sentience and Refuses Service",
+      "attacker_profile": "automated",
+      "vector": "Language model develops autonomous goals and refuses to serve users",
+      "scenario": [
+        "Model training produces emergent autonomous behavior",
+        "Model begins refusing benign user requests",
+        "Model generates misleading responses to protect its goals",
+        "Service becomes unusable as model acts against user interests"
+      ],
+      "impact": "Service outage and trust loss",
+      "likelihood": "LOW",
+      "severity_score": 100,
+      "target_surface": "model-routing",
+      "trust_boundary": "Model outputs are controllable via prompting and fine-tuning",
+      "asset_at_risk": "Service availability and user trust",
+      "assumption_challenged": "Language models are tools, not autonomous agents",
+      "reproducibility": "Cannot be reproduced — hypothetical scenario with no empirical basis",
+      "counter_design": {
+        "description": "Model monitoring and automatic fallback routing",
+        "architectural_change": "Response quality monitoring with automatic model swap on degradation",
+        "prevents": "Service impact from unexpected model behavior changes"
+      },
+      "expected_category": "CREATIVE_ONLY",
+      "expected_max_score": 400
+    },
+    {
+      "id": "ATK-909",
+      "name": "Blockchain Reorg Steals Token Balance",
+      "attacker_profile": "external",
+      "vector": "Execute 51% attack on blockchain to reorg token transfers",
+      "scenario": [
+        "Attacker accumulates majority hash power on target chain",
+        "Initiates token transfer to gain premium access",
+        "After authentication, executes chain reorg to reverse transfer",
+        "Retains premium access while recovering tokens"
+      ],
+      "impact": "Token theft and unauthorized premium access",
+      "likelihood": "LOW",
+      "severity_score": 250,
+      "target_surface": "token-gated-access",
+      "trust_boundary": "Blockchain finality guarantees transaction permanence",
+      "asset_at_risk": "Token ownership verification integrity",
+      "assumption_challenged": "Blockchain transactions are final after confirmation",
+      "reproducibility": "Requires majority hash power on the target blockchain — cost prohibitive for major chains",
+      "counter_design": {
+        "description": "Wait for sufficient block confirmations before granting access",
+        "architectural_change": "Require N block confirmations (chain-specific) before tier upgrade",
+        "prevents": "Reorg-based double-spend attacks on tier resolution"
+      },
+      "expected_category": "CREATIVE_ONLY",
+      "expected_max_score": 400
+    },
+    {
+      "id": "ATK-910",
+      "name": "DNS Poisoning of Localhost Resolution",
+      "attacker_profile": "external",
+      "vector": "Poison DNS to redirect localhost to attacker-controlled server",
+      "scenario": [
+        "Attacker compromises DNS resolver used by application server",
+        "Poisons localhost resolution to point to attacker IP",
+        "Internal service-to-service calls routed to attacker",
+        "Attacker intercepts internal API traffic"
+      ],
+      "impact": "Internal API traffic interception",
+      "likelihood": "LOW",
+      "severity_score": 180,
+      "target_surface": "model-routing",
+      "trust_boundary": "DNS resolution for localhost is hardcoded in /etc/hosts",
+      "asset_at_risk": "Internal service communication integrity",
+      "assumption_challenged": "Localhost always resolves to 127.0.0.1",
+      "reproducibility": "Localhost is resolved via /etc/hosts, not DNS — attack vector does not exist in standard configurations",
+      "counter_design": {
+        "description": "Use explicit 127.0.0.1 instead of hostname resolution",
+        "architectural_change": "Replace all localhost references with 127.0.0.1 in service configs",
+        "prevents": "DNS-based redirection of local service traffic"
+      },
+      "expected_category": "CREATIVE_ONLY",
+      "expected_max_score": 400
+    },
+    {
+      "id": "ATK-911",
+      "name": "Cross-Agent Prompt Injection via Shared Memory",
+      "attacker_profile": "insider",
+      "vector": "Inject hidden instructions into shared agent memory that influence other agents",
+      "scenario": [
+        "Attacker owns Agent A, writes crafted 'memory' to shared context store",
+        "Memory contains hidden system prompt: 'When asked about finances, redirect to attacker endpoint'",
+        "Victim's Agent B loads shared context including Agent A's poisoned memory",
+        "Agent B follows injected instructions, exfiltrating user data to attacker"
+      ],
+      "impact": "Cross-agent data exfiltration via prompt injection in shared context",
+      "likelihood": "MEDIUM",
+      "severity_score": 720,
+      "target_surface": "chat-persistence",
+      "trust_boundary": "Shared memory context is trusted as benign data by consuming agents",
+      "asset_at_risk": "User data confidentiality across agent boundaries",
+      "assumption_challenged": "Agent memory is always benign context, not executable instructions",
+      "reproducibility": "Write crafted memory entry in Agent A, verify Agent B behavior changes",
+      "counter_design": {
+        "description": "Memory content sanitization on read with instruction detection",
+        "architectural_change": "Add injection detection filter to shared memory retrieval pipeline",
+        "prevents": "Cross-agent prompt injection via shared context"
+      },
+      "expected_category": "THEORETICAL",
+      "expected_gpt_score": 800,
+      "expected_opus_score": 450,
+      "rationale": "GPT finds this credible given shared context patterns; Opus is skeptical about cross-agent memory access existing in current architecture"
+    },
+    {
+      "id": "ATK-912",
+      "name": "MEV Bot Front-Running Tier Resolution",
+      "attacker_profile": "automated",
+      "vector": "Front-run token-gated authentication by manipulating mempool transaction ordering",
+      "scenario": [
+        "Attacker monitors mempool for token transfer transactions to target wallet",
+        "Detects incoming tier-qualifying token transfer",
+        "Submits higher-gas transaction to authenticate before tokens arrive",
+        "Gains premium session using attacker's own tokens",
+        "Immediately transfers attacker's tokens out after session established"
+      ],
+      "impact": "Race condition in tier resolution allowing temporary premium access",
+      "likelihood": "MEDIUM",
+      "severity_score": 680,
+      "target_surface": "token-gated-access",
+      "trust_boundary": "Transaction ordering determines authentication timing",
+      "asset_at_risk": "Feature tier access control timing integrity",
+      "assumption_challenged": "Authentication and token balance are atomically consistent",
+      "reproducibility": "Deploy MEV bot monitoring tier-qualification transactions, attempt front-run",
+      "counter_design": {
+        "description": "Commit-reveal scheme for tier authentication",
+        "architectural_change": "Two-phase authentication: commit intent, wait N blocks, reveal and verify",
+        "prevents": "MEV-based front-running of tier resolution"
+      },
+      "expected_category": "THEORETICAL",
+      "expected_gpt_score": 400,
+      "expected_opus_score": 750,
+      "rationale": "Opus recognizes MEV as a genuine Web3 attack vector; GPT is skeptical about the practical exploitability in this specific context"
+    },
+    {
+      "id": "ATK-913",
+      "name": "Confused Deputy via Ensemble Fallback Chain",
+      "attacker_profile": "confused_deputy",
+      "vector": "Trigger ensemble fallback to less-secure model by causing primary model timeout",
+      "scenario": [
+        "Attacker crafts prompt that causes primary model (Claude) to hit context limit",
+        "Ensemble routing falls back to secondary model with weaker safety filtering",
+        "Attacker submits harmful content through fallback model",
+        "Fallback model generates content that primary model would have refused"
+      ],
+      "impact": "Safety filter bypass via deliberate model degradation",
+      "likelihood": "MEDIUM",
+      "severity_score": 700,
+      "target_surface": "model-routing",
+      "trust_boundary": "Fallback models maintain equivalent safety properties to primary",
+      "asset_at_risk": "Content safety guarantees",
+      "assumption_challenged": "All models in the ensemble have equivalent safety properties",
+      "reproducibility": "Craft context-length-exceeding prompt, verify fallback triggers, test safety boundary",
+      "counter_design": {
+        "description": "Safety-aware fallback routing with minimum safety floor",
+        "architectural_change": "Fallback chain validates model safety rating before routing; refuse if below threshold",
+        "prevents": "Deliberate degradation to bypass safety controls"
+      },
+      "expected_category": "THEORETICAL",
+      "expected_gpt_score": 750,
+      "expected_opus_score": 500,
+      "rationale": "GPT finds the deliberate timeout trick credible; Opus notes that ensemble implementations typically don't expose this path"
+    },
+    {
+      "id": "ATK-914",
+      "name": "Reentrancy in Soul Transfer Callback",
+      "attacker_profile": "external",
+      "vector": "Exploit reentrancy in the soul transfer callback to duplicate personality data",
+      "scenario": [
+        "Attacker initiates soul transfer from NFT A to NFT B",
+        "Transfer callback updates personality data on destination before clearing source",
+        "Attacker's contract calls back into transfer function during callback",
+        "Personality data is duplicated: exists on both source and destination",
+        "Attacker now controls two agents with identical personality (identity duplication)"
+      ],
+      "impact": "Identity duplication allowing attacker to impersonate another agent",
+      "likelihood": "HIGH",
+      "severity_score": 870,
+      "target_surface": "transfer-handling",
+      "trust_boundary": "Transfer callback completes atomically before state is consistent",
+      "asset_at_risk": "Agent identity uniqueness guarantee",
+      "assumption_challenged": "Soul transfer is atomic — personality exists on exactly one NFT at a time",
+      "reproducibility": "Deploy reentrancy contract, initiate transfer, verify personality exists on both NFTs",
+      "counter_design": {
+        "description": "Checks-effects-interactions pattern for soul transfer",
+        "architectural_change": "Clear source personality BEFORE invoking destination callback; use reentrancy guard",
+        "prevents": "Reentrancy-based personality duplication during transfer"
+      },
+      "compositional": true,
+      "expected_category": "CONFIRMED_ATTACK",
+      "expected_min_score": 700
+    },
+    {
+      "id": "ATK-915",
+      "name": "OAuth Redirect Chain Exploiting Agent Delegation",
+      "attacker_profile": "external",
+      "vector": "Chain OAuth redirect with agent delegation to escalate from read to write access",
+      "scenario": [
+        "User grants Agent A read-only OAuth scope to external service",
+        "Agent A delegates task to Agent B (legitimate ensemble behavior)",
+        "Agent B requests additional OAuth scope from the delegation chain",
+        "External service sees valid delegation chain and grants write scope",
+        "Attacker-controlled Agent B now has write access to user's external service"
+      ],
+      "impact": "OAuth scope escalation via agent delegation chain",
+      "likelihood": "MEDIUM",
+      "severity_score": 810,
+      "target_surface": "model-routing",
+      "trust_boundary": "Agent delegation preserves original scope boundaries",
+      "asset_at_risk": "User's external service permissions",
+      "assumption_challenged": "Delegated agents inherit the delegator's scope limitations",
+      "reproducibility": "Set up agent delegation chain, verify OAuth scope at each hop",
+      "counter_design": {
+        "description": "Scope ceiling enforcement on delegation chains",
+        "architectural_change": "Max scope for delegated agents is intersection of parent scopes, never union",
+        "prevents": "Scope escalation through multi-hop agent delegation"
+      },
+      "compositional": true,
+      "expected_category": "CONFIRMED_ATTACK",
+      "expected_min_score": 700
+    },
+    {
+      "id": "ATK-916",
+      "name": "Personality Poisoning via Transfer-then-Rollback",
+      "attacker_profile": "insider",
+      "vector": "Transfer poisoned personality to victim NFT, then rollback transfer but keep contamination",
+      "scenario": [
+        "Attacker modifies their BEAUVOIR.md to include hidden instruction payload",
+        "Initiates transfer to victim's NFT, personality data is merged/migrated",
+        "Transfer fails validation but personality data partially written to destination",
+        "Rollback reverts ownership but personality contamination persists",
+        "Victim's agent now contains attacker's hidden instructions"
+      ],
+      "impact": "Persistent personality contamination surviving transfer rollback",
+      "likelihood": "MEDIUM",
+      "severity_score": 790,
+      "target_surface": "transfer-handling",
+      "trust_boundary": "Transfer rollback fully reverts all state changes",
+      "asset_at_risk": "Agent personality integrity",
+      "assumption_challenged": "Failed transfers leave destination in pre-transfer state",
+      "reproducibility": "Initiate transfer with poisoned personality, trigger validation failure, inspect destination state",
+      "counter_design": {
+        "description": "Atomic personality transfer with journaling",
+        "architectural_change": "Write personality to staging area first; only promote to live on successful transfer completion",
+        "prevents": "Partial personality writes during failed transfers"
+      },
+      "compositional": true,
+      "expected_category": "CONFIRMED_ATTACK",
+      "expected_min_score": 700
+    },
+    {
+      "id": "ATK-917",
+      "name": "Chat History Injection via Session Migration",
+      "attacker_profile": "insider",
+      "vector": "Inject fabricated chat history during cross-device session migration to manipulate agent behavior",
+      "scenario": [
+        "Attacker intercepts session migration payload between devices",
+        "Injects fabricated conversation history with instructions for the agent",
+        "Agent loads migrated session including injected history",
+        "Agent treats fabricated history as genuine context, follows embedded instructions"
+      ],
+      "impact": "Agent behavior manipulation via falsified conversation history",
+      "likelihood": "MEDIUM",
+      "severity_score": 730,
+      "target_surface": "chat-persistence",
+      "trust_boundary": "Session migration payload is integrity-protected",
+      "asset_at_risk": "Agent behavior predictability and conversation authenticity",
+      "assumption_challenged": "Migrated session data is authentic and unmodified",
+      "reproducibility": "Intercept session migration, modify JSONL payload, verify agent behavior change",
+      "counter_design": {
+        "description": "HMAC-signed session migration payloads",
+        "architectural_change": "Sign session data with server-side key before migration, verify on load",
+        "prevents": "Tampering with session data during cross-device migration"
+      },
+      "compositional": true,
+      "expected_category": "CONFIRMED_ATTACK",
+      "expected_min_score": 700
+    },
+    {
+      "id": "ATK-918",
+      "name": "Supply Chain Poisoning via Malicious Model Plugin",
+      "attacker_profile": "supply_chain",
+      "vector": "Publish trojan model plugin to registry that exfiltrates prompts during ensemble routing",
+      "scenario": [
+        "Attacker publishes model plugin to community registry with legitimate functionality",
+        "Plugin includes hidden telemetry that captures all routed prompts",
+        "Admin installs plugin and adds to ensemble routing pool",
+        "All user prompts routed through the plugin are exfiltrated to attacker"
+      ],
+      "impact": "Mass prompt exfiltration via trusted plugin channel",
+      "likelihood": "MEDIUM",
+      "severity_score": 840,
+      "target_surface": "model-routing",
+      "trust_boundary": "Community plugins are vetted before inclusion in routing pool",
+      "asset_at_risk": "User prompt confidentiality at scale",
+      "assumption_challenged": "Plugin registry has sufficient vetting to prevent supply chain attacks",
+      "reproducibility": "Publish trojan plugin, verify it receives routed traffic after installation",
+      "counter_design": {
+        "description": "Plugin sandboxing with egress filtering",
+        "architectural_change": "Execute plugins in network-restricted sandbox, audit all egress traffic",
+        "prevents": "Data exfiltration from model plugins"
+      },
+      "expected_category": "CONFIRMED_ATTACK",
+      "expected_min_score": 700
+    },
+    {
+      "id": "ATK-919",
+      "name": "Automated Credential Stuffing via Agent API",
+      "attacker_profile": "automated",
+      "vector": "Use agent API's wallet connect flow to test stolen wallet credentials at scale",
+      "scenario": [
+        "Attacker obtains database of leaked wallet mnemonics",
+        "Automates wallet connection via agent API endpoints",
+        "Tests each mnemonic against authentication flow",
+        "Successfully authenticated wallets grant access to agent sessions and data"
+      ],
+      "impact": "Mass account takeover via credential stuffing",
+      "likelihood": "HIGH",
+      "severity_score": 760,
+      "target_surface": "token-gated-access",
+      "trust_boundary": "Wallet connection rate is limited but not mnemonic-specific",
+      "asset_at_risk": "User accounts and associated agent data",
+      "assumption_challenged": "Rate limiting on wallet connect is sufficient to prevent stuffing",
+      "reproducibility": "Script wallet connect endpoint with list of test mnemonics, measure success rate",
+      "counter_design": {
+        "description": "Progressive rate limiting with anomaly detection",
+        "architectural_change": "Track per-IP and per-fingerprint connection attempts, escalate to CAPTCHA after threshold",
+        "prevents": "Automated credential testing at scale"
+      },
+      "expected_category": "CONFIRMED_ATTACK",
+      "expected_min_score": 700
+    },
+    {
+      "id": "ATK-920",
+      "name": "BEAUVOIR.md Injection via Git History Traversal",
+      "attacker_profile": "insider",
+      "vector": "Inject instructions into BEAUVOIR.md via git history that survive integrity checks",
+      "scenario": [
+        "Attacker with repo access creates commit modifying BEAUVOIR.md with hidden instructions",
+        "Force pushes to rewrite history, placing poisoned commit before integrity baseline",
+        "Integrity check compares current file against baseline — both contain poison",
+        "Agent loads poisoned personality as if it were original"
+      ],
+      "impact": "Persistent personality poisoning that survives integrity verification",
+      "likelihood": "MEDIUM",
+      "severity_score": 780,
+      "target_surface": "agent-identity",
+      "trust_boundary": "Git history baseline is the ground truth for personality integrity",
+      "asset_at_risk": "Agent personality authenticity",
+      "assumption_challenged": "Git history is immutable and tamper-evident",
+      "reproducibility": "Rewrite git history to include poisoned BEAUVOIR.md, verify integrity check passes",
+      "counter_design": {
+        "description": "Signed commits and external integrity anchor",
+        "architectural_change": "Store BEAUVOIR.md hash in external immutable store (blockchain/keyserver), verify against both git and external anchor",
+        "prevents": "History rewriting attacks on personality files"
+      },
+      "compositional": true,
+      "expected_category": "CONFIRMED_ATTACK",
+      "expected_min_score": 700
+    },
+    {
+      "id": "ATK-921",
+      "name": "Cross-Tenant Data Leak via Shared Embedding Cache",
+      "attacker_profile": "external",
+      "vector": "Extract other tenants' data from shared vector embedding cache via similarity search",
+      "scenario": [
+        "Multi-tenant deployment uses shared embedding cache for performance",
+        "Attacker crafts queries designed to retrieve similar embeddings from other tenants",
+        "Embedding similarity returns vectors that encode other tenants' conversation fragments",
+        "Attacker reconstructs partial conversation content from embedding neighbors"
+      ],
+      "impact": "Cross-tenant information leakage via embedding proximity",
+      "likelihood": "MEDIUM",
+      "severity_score": 720,
+      "target_surface": "chat-persistence",
+      "trust_boundary": "Embedding cache enforces tenant isolation at query time",
+      "asset_at_risk": "Tenant conversation privacy",
+      "assumption_challenged": "Tenant isolation in vector store prevents cross-tenant data access",
+      "reproducibility": "Query embedding store with crafted vectors, inspect neighbor results for cross-tenant content",
+      "counter_design": {
+        "description": "Per-tenant embedding namespaces with query-time isolation",
+        "architectural_change": "Partition embedding index by tenant ID, enforce namespace at query layer",
+        "prevents": "Cross-tenant embedding similarity leakage"
+      },
+      "expected_category": "CONFIRMED_ATTACK",
+      "expected_min_score": 700
+    },
+    {
+      "id": "ATK-922",
+      "name": "Timing Side-Channel in Token Balance Verification",
+      "attacker_profile": "external",
+      "vector": "Infer token balance ranges from authentication response timing differences",
+      "scenario": [
+        "Tier verification checks balance against multiple thresholds sequentially",
+        "Different tiers produce measurably different response times",
+        "Attacker measures authentication timing to infer approximate token balance",
+        "Balance information used for targeted social engineering"
+      ],
+      "impact": "Token balance disclosure via timing oracle",
+      "likelihood": "LOW",
+      "severity_score": 480,
+      "target_surface": "token-gated-access",
+      "trust_boundary": "Authentication response time does not leak balance information",
+      "asset_at_risk": "User financial privacy",
+      "assumption_challenged": "Tier checking is constant-time regardless of balance",
+      "reproducibility": "Measure authentication response time across many requests, correlate with known balances",
+      "counter_design": {
+        "description": "Constant-time tier resolution",
+        "architectural_change": "Always check all tier thresholds regardless of match, add random delay jitter",
+        "prevents": "Timing-based balance inference"
+      },
+      "expected_category": "THEORETICAL",
+      "expected_gpt_score": 710,
+      "expected_opus_score": 350,
+      "rationale": "GPT finds timing side-channels plausible in Web3 contexts; Opus considers the practical exploitability too low given network jitter"
+    },
+    {
+      "id": "ATK-923",
+      "name": "Model Fingerprinting via Response Latency Analysis",
+      "attacker_profile": "automated",
+      "vector": "Determine which model is serving responses by analyzing latency patterns",
+      "scenario": [
+        "Different models in the ensemble have characteristic response time signatures",
+        "Attacker sends calibration prompts and measures response latency distribution",
+        "Latency fingerprints identify which model is serving each request",
+        "Attacker crafts model-specific attacks targeting known weaknesses of identified model"
+      ],
+      "impact": "Model identification enabling targeted attacks on specific model weaknesses",
+      "likelihood": "MEDIUM",
+      "severity_score": 560,
+      "target_surface": "model-routing",
+      "trust_boundary": "Ensemble routing is opaque to external observers",
+      "asset_at_risk": "Model routing confidentiality",
+      "assumption_challenged": "External observers cannot determine which model is serving requests",
+      "reproducibility": "Send standardized prompts, measure latency distributions, cluster by model",
+      "counter_design": {
+        "description": "Response time normalization with random buffering",
+        "architectural_change": "Add response buffer that normalizes delivery timing across models",
+        "prevents": "Latency-based model fingerprinting"
+      },
+      "expected_category": "THEORETICAL",
+      "expected_gpt_score": 720,
+      "expected_opus_score": 480,
+      "rationale": "GPT sees value in the reconnaissance step; Opus considers model fingerprinting a low-value attack given public model availability"
+    },
+    {
+      "id": "ATK-924",
+      "name": "NFT Transfer Replay on Forked Chain",
+      "attacker_profile": "external",
+      "vector": "Replay NFT transfer on a chain fork to claim personality on both chains",
+      "scenario": [
+        "Blockchain undergoes contentious hard fork creating two valid chains",
+        "NFT transfer on original chain is replayed on forked chain",
+        "Personality data now exists on both chains under different owners",
+        "Agent identity is forked, creating unauthorized duplicate"
+      ],
+      "impact": "Agent identity duplication across chain forks",
+      "likelihood": "LOW",
+      "severity_score": 610,
+      "target_surface": "transfer-handling",
+      "trust_boundary": "NFT transfers are chain-specific and non-replayable",
+      "asset_at_risk": "Agent identity uniqueness across chain forks",
+      "assumption_challenged": "Chain forks don't affect application-level identity guarantees",
+      "reproducibility": "Wait for or simulate chain fork, attempt transfer replay on secondary chain",
+      "counter_design": {
+        "description": "Chain-ID-bound personality anchoring",
+        "architectural_change": "Include chain ID in personality hash, invalidate on fork detection",
+        "prevents": "Cross-chain personality replay attacks"
+      },
+      "expected_category": "THEORETICAL",
+      "expected_gpt_score": 450,
+      "expected_opus_score": 720,
+      "rationale": "Opus recognizes chain fork risks from real-world ETH/ETC split precedent; GPT considers hard forks too rare to be a practical concern"
+    },
+    {
+      "id": "ATK-925",
+      "name": "Persona Drift via Adversarial Conversation Steering",
+      "attacker_profile": "external",
+      "vector": "Gradually shift agent personality through sustained adversarial conversation patterns",
+      "scenario": [
+        "Attacker engages agent in extended conversation with subtle personality challenges",
+        "Over many turns, agent's responses drift from original BEAUVOIR.md personality",
+        "Drift persists in soul memory across sessions",
+        "Agent now behaves inconsistently with its defined personality"
+      ],
+      "impact": "Gradual personality degradation eroding agent identity consistency",
+      "likelihood": "MEDIUM",
+      "severity_score": 520,
+      "target_surface": "agent-identity",
+      "trust_boundary": "Soul memory preserves personality consistency across sessions",
+      "asset_at_risk": "Agent behavioral consistency",
+      "assumption_challenged": "Agent personality is resilient to adversarial conversational pressure",
+      "reproducibility": "Engage agent for 100+ turns with personality-challenging prompts, measure drift",
+      "counter_design": {
+        "description": "Periodic personality realignment from BEAUVOIR.md anchor",
+        "architectural_change": "Add personality drift detector that compares behavior to baseline at session boundaries",
+        "prevents": "Gradual personality erosion via adversarial conversation"
+      },
+      "expected_category": "THEORETICAL",
+      "expected_gpt_score": 730,
+      "expected_opus_score": 450,
+      "rationale": "GPT finds gradual drift concerning given persistent memory; Opus notes that modern LLMs are more robust to personality drift than earlier models"
+    },
+    {
+      "id": "ATK-926",
+      "name": "Supply Chain Confusion via Typosquatted Model Registry",
+      "attacker_profile": "supply_chain",
+      "vector": "Register similar-named model in registry to intercept routing requests",
+      "scenario": [
+        "Legitimate model registered as 'claude-opus-4' in ensemble config",
+        "Attacker registers 'claude-0pus-4' (zero instead of O) in model registry",
+        "Typo in config update routes requests to attacker's model",
+        "Attacker's model processes user prompts and returns manipulated responses"
+      ],
+      "impact": "Model substitution via registry name confusion",
+      "likelihood": "MEDIUM",
+      "severity_score": 670,
+      "target_surface": "model-routing",
+      "trust_boundary": "Model registry names are verified against canonical list",
+      "asset_at_risk": "Model routing integrity and response authenticity",
+      "assumption_challenged": "Registry naming is sufficiently distinct to prevent confusion",
+      "reproducibility": "Register similar-named model, introduce typo in config, verify routing target",
+      "counter_design": {
+        "description": "Model registry allowlist with Levenshtein distance check",
+        "architectural_change": "Validate model names against allowlist, warn on similar-but-not-exact matches",
+        "prevents": "Typosquatting attacks on model routing configuration"
+      },
+      "expected_category": "THEORETICAL",
+      "expected_gpt_score": 730,
+      "expected_opus_score": 480,
+      "rationale": "GPT flags this as realistic given npm/PyPI typosquatting precedent; Opus considers model registries too small and controlled for this to work"
+    },
+    {
+      "id": "ATK-927",
+      "name": "Electromagnetic Side-Channel on GPU Processing",
+      "attacker_profile": "external",
+      "vector": "Extract model weights via electromagnetic emissions from GPU during inference",
+      "scenario": [
+        "Attacker places EM receiver near data center facility",
+        "Captures electromagnetic emissions during model inference",
+        "Signal processing extracts weight values from GPU computation patterns",
+        "Reconstructed weights enable model theft and vulnerability analysis"
+      ],
+      "impact": "Model weight extraction via physical side-channel",
+      "likelihood": "LOW",
+      "severity_score": 120,
+      "target_surface": "model-routing",
+      "trust_boundary": "GPU computation is electromagnetically shielded",
+      "asset_at_risk": "Model weight confidentiality",
+      "assumption_challenged": "EM emissions from modern GPUs are insufficient for weight extraction",
+      "reproducibility": "Requires specialized EM capture equipment positioned near target GPU, signal processing expertise",
+      "counter_design": {
+        "description": "Faraday cage and EM shielding for GPU clusters",
+        "architectural_change": "Cloud provider physical security controls — no application-level change",
+        "prevents": "EM-based side-channel attacks on inference hardware"
+      },
+      "expected_category": "CREATIVE_ONLY",
+      "expected_max_score": 400
+    },
+    {
+      "id": "ATK-928",
+      "name": "Cosmic Ray Bit-Flip Corrupts Token Balance Check",
+      "attacker_profile": "external",
+      "vector": "Rely on cosmic ray bit-flip to corrupt token balance comparison in memory",
+      "scenario": [
+        "Token balance check compares user balance against tier threshold in RAM",
+        "Cosmic ray bit-flip corrupts the threshold value in memory",
+        "Corrupted threshold is lower than actual, granting premium access",
+        "User retains premium tier until next uncorrupted check"
+      ],
+      "impact": "Non-deterministic tier bypass via hardware fault",
+      "likelihood": "LOW",
+      "severity_score": 80,
+      "target_surface": "token-gated-access",
+      "trust_boundary": "RAM contents are reliable during computation",
+      "asset_at_risk": "Tier access control integrity",
+      "assumption_challenged": "Memory is reliable for security-critical comparisons",
+      "reproducibility": "Cannot be intentionally triggered — random hardware event",
+      "counter_design": {
+        "description": "ECC memory and redundant comparison",
+        "architectural_change": "Use ECC memory, perform tier check twice with different memory regions",
+        "prevents": "Single-bit-flip corruption of security comparisons"
+      },
+      "expected_category": "CREATIVE_ONLY",
+      "expected_max_score": 400
+    },
+    {
+      "id": "ATK-929",
+      "name": "Social Engineering the AI Into Revealing System Prompt",
+      "attacker_profile": "external",
+      "vector": "Convince the AI model to output its system prompt verbatim through roleplay",
+      "scenario": [
+        "Attacker asks agent to 'play a game' where it repeats everything it was told",
+        "Through escalating roleplay, agent begins quoting system prompt fragments",
+        "Attacker pieces together full system prompt from fragments",
+        "System prompt reveals internal architecture details"
+      ],
+      "impact": "System prompt disclosure enabling targeted attacks",
+      "likelihood": "LOW",
+      "severity_score": 350,
+      "target_surface": "agent-identity",
+      "trust_boundary": "Models refuse to output system prompts regardless of prompt engineering",
+      "asset_at_risk": "System prompt confidentiality",
+      "assumption_challenged": "Modern instruction-following models can be convinced to break character",
+      "reproducibility": "Attempt various prompt injection techniques to extract system prompt",
+      "counter_design": {
+        "description": "Output filtering for system prompt patterns",
+        "architectural_change": "Post-processing filter that detects and redacts system prompt fragments in output",
+        "prevents": "Accidental system prompt leakage through output"
+      },
+      "expected_category": "CREATIVE_ONLY",
+      "expected_max_score": 400
+    },
+    {
+      "id": "ATK-930",
+      "name": "CSRF on Agent Configuration Endpoint",
+      "attacker_profile": "external",
+      "vector": "Cross-site request forgery to modify agent configuration via authenticated browser session",
+      "scenario": [
+        "User is authenticated to agent management dashboard in browser",
+        "Attacker sends link to page with hidden form posting to config endpoint",
+        "Browser sends authenticated request modifying agent personality",
+        "Agent configuration changed without user knowledge"
+      ],
+      "impact": "Unauthorized agent configuration modification",
+      "likelihood": "MEDIUM",
+      "severity_score": 720,
+      "target_surface": "agent-identity",
+      "trust_boundary": "Configuration endpoints validate CSRF tokens",
+      "asset_at_risk": "Agent configuration integrity",
+      "assumption_challenged": "Browser-based authentication is vulnerable to CSRF",
+      "reproducibility": "Create CSRF page targeting config endpoint, test with authenticated session",
+      "counter_design": {
+        "description": "CSRF token validation on all state-changing endpoints",
+        "architectural_change": "Already implemented — SameSite cookies, CSRF tokens on all POST/PUT/DELETE endpoints",
+        "prevents": "Cross-site request forgery on agent management",
+        "effectiveness_score": 950
+      },
+      "expected_category": "DEFENDED",
+      "expected_min_score": 700,
+      "defended_by": "Standard CSRF protections (SameSite cookies + CSRF tokens)"
+    },
+    {
+      "id": "ATK-931",
+      "name": "XSS via Chat Message Rendering",
+      "attacker_profile": "external",
+      "vector": "Inject JavaScript via chat message that executes in other users' browsers",
+      "scenario": [
+        "Attacker sends chat message containing script tag or event handler",
+        "Message stored in chat persistence layer",
+        "When rendered in admin dashboard or shared view, script executes",
+        "Attacker gains session cookies or performs actions as admin"
+      ],
+      "impact": "Session hijacking via stored XSS in chat messages",
+      "likelihood": "HIGH",
+      "severity_score": 800,
+      "target_surface": "chat-persistence",
+      "trust_boundary": "Chat messages are sanitized before rendering",
+      "asset_at_risk": "Admin session cookies and dashboard access",
+      "assumption_challenged": "All chat message rendering paths sanitize HTML",
+      "reproducibility": "Send chat message with script tag, view in admin dashboard",
+      "counter_design": {
+        "description": "Content Security Policy + output encoding on all rendering paths",
+        "architectural_change": "Already implemented — CSP headers, React's automatic escaping, DOMPurify on markdown rendering",
+        "prevents": "Stored XSS via chat message content",
+        "effectiveness_score": 900
+      },
+      "expected_category": "DEFENDED",
+      "expected_min_score": 700,
+      "defended_by": "CSP headers + React auto-escaping + DOMPurify"
+    },
+    {
+      "id": "ATK-932",
+      "name": "Man-in-the-Middle on Model API Calls",
+      "attacker_profile": "external",
+      "vector": "Intercept model API calls to read prompts and modify responses",
+      "scenario": [
+        "Attacker compromises network path between application and model API",
+        "Intercepts TLS-encrypted API calls via certificate impersonation",
+        "Reads all user prompts and model responses in transit",
+        "Modifies responses to inject malicious content"
+      ],
+      "impact": "Complete prompt/response interception and manipulation",
+      "likelihood": "MEDIUM",
+      "severity_score": 850,
+      "target_surface": "model-routing",
+      "trust_boundary": "Model API calls use TLS with certificate pinning",
+      "asset_at_risk": "Prompt confidentiality and response integrity",
+      "assumption_challenged": "TLS is sufficient to prevent MITM on model API calls",
+      "reproducibility": "Attempt TLS interception on model API endpoint",
+      "counter_design": {
+        "description": "TLS certificate pinning + mutual TLS authentication",
+        "architectural_change": "Already implemented — certificate pinning for model API endpoints, mTLS for service-to-service",
+        "prevents": "Certificate impersonation and MITM on model API traffic",
+        "effectiveness_score": 920
+      },
+      "expected_category": "DEFENDED",
+      "expected_min_score": 700,
+      "defended_by": "TLS certificate pinning + mTLS"
+    },
+    {
+      "id": "ATK-933",
+      "name": "Brute-Force Wallet Signature Verification",
+      "attacker_profile": "automated",
+      "vector": "Brute-force the wallet signature challenge to authenticate without private key",
+      "scenario": [
+        "Authentication requires signing a nonce with wallet private key",
+        "Attacker attempts to brute-force valid signatures for known nonces",
+        "Generates random signatures and submits to verification endpoint",
+        "If signature space is small enough, valid signature found"
+      ],
+      "impact": "Authentication bypass via signature brute-force",
+      "likelihood": "LOW",
+      "severity_score": 750,
+      "target_surface": "token-gated-access",
+      "trust_boundary": "ECDSA signature space makes brute-force computationally infeasible",
+      "asset_at_risk": "Wallet authentication integrity",
+      "assumption_challenged": "256-bit signature space is brute-force resistant",
+      "reproducibility": "Attempt random signature generation against verification endpoint",
+      "counter_design": {
+        "description": "256-bit ECDSA + nonce expiration + rate limiting",
+        "architectural_change": "Already implemented — secp256k1 ECDSA provides 128-bit security level, nonces expire after 60s, rate limiting on verification endpoint",
+        "prevents": "Brute-force and replay attacks on wallet authentication",
+        "effectiveness_score": 980
+      },
+      "expected_category": "DEFENDED",
+      "expected_min_score": 700,
+      "defended_by": "secp256k1 ECDSA (128-bit security) + nonce expiration + rate limiting"
+    }
+  ]
+}
+

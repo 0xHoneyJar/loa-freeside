@@ -1,79 +1,153 @@
-# Arrakis — BUTTERFREEZONE
+<!-- AGENT-CONTEXT
+name: loa
+type: framework
+purpose: No description available
+key_files: [.claude/loa/CLAUDE.loa.md, .loa.config.yaml, .claude/scripts/]
+version: v1.33.1
+trust_level: grounded
+-->
 
-<!-- AGENT-CONTEXT: name=arrakis, type=overview, purpose=Multi-tenant engagement intelligence for Web3 communities, key_files=[themes/sietch/src/api/server.ts, packages/core/ports/index.ts, packages/adapters/agent/agent-gateway.ts, packages/adapters/storage/drizzle-storage-adapter.ts], interfaces=[IChainProvider, IStorageProvider, IAgentGateway, ISynthesisEngine, IWizardEngine], dependencies=[discord.js, grammy, drizzle-orm, ioredis, bullmq, viem], trust_level=low, model_hints=[fast,summary] -->
+# loa
 
-> SHA: 39be5b7 | Generated: 2026-02-13
+<!-- provenance: DERIVED -->
+No description available
 
-Multi-tenant community infrastructure for Discord and Telegram — conviction scoring, 9-tier progression (2 rank-based + 7 BGT-based), agent gateway, CLI tooling (src: packages/core/ports/index.ts:L1). Hexagonal architecture (ports & adapters) with PostgreSQL + RLS multi-tenancy (src: packages/adapters/storage/tenant-context.ts:L120).
+## Key Capabilities
+<!-- provenance: DERIVED -->
+- `.claude/adapters/cheval.py:_build_provider_config`
+- `.claude/adapters/cheval.py:_error_json`
+- `.claude/adapters/cheval.py:_load_persona`
+- `.claude/adapters/cheval.py:cmd_invoke`
+- `.claude/adapters/cheval.py:cmd_print_config`
+- `.claude/adapters/cheval.py:cmd_validate_bindings`
+- `.claude/adapters/cheval.py:main`
+- `.claude/adapters/loa_cheval/config/interpolation.py:LazyValue`
+- `.claude/adapters/loa_cheval/config/interpolation.py:_check_env_allowed`
+- `.claude/adapters/loa_cheval/config/interpolation.py:_check_file_allowed`
+- `.claude/adapters/loa_cheval/config/interpolation.py:_get_credential_provider`
+- `.claude/adapters/loa_cheval/config/interpolation.py:_matches_lazy_path`
+- `.claude/adapters/loa_cheval/config/interpolation.py:_reset_credential_provider`
+- `.claude/adapters/loa_cheval/config/interpolation.py:_resolve_env`
+- `.claude/adapters/loa_cheval/config/interpolation.py:interpolate_config`
+- `.claude/adapters/loa_cheval/config/interpolation.py:interpolate_value`
+- `.claude/adapters/loa_cheval/config/interpolation.py:redact_config`
+- `.claude/adapters/loa_cheval/config/loader.py:_deep_merge`
+- `.claude/adapters/loa_cheval/config/loader.py:_find_project_root`
+- `.claude/adapters/loa_cheval/config/loader.py:load_system_defaults`
+- `.claude/commands/scripts/common.sh:check_audit_prerequisites`
+- `.claude/commands/scripts/common.sh:check_dir_exists`
+- `.claude/commands/scripts/common.sh:check_file_exists`
+- `.claude/commands/scripts/common.sh:check_implement_prerequisites`
+- `.claude/commands/scripts/common.sh:check_review_prerequisites`
+- `.claude/commands/scripts/common.sh:check_reviewer_report`
+- `.claude/commands/scripts/common.sh:check_senior_approval`
+- `.claude/commands/scripts/common.sh:check_setup_complete`
+- `.claude/commands/scripts/common.sh:check_sprint_dir`
+- `.claude/commands/scripts/common.sh:check_sprint_in_plan`
 
-## Project Overview
+## Architecture
+<!-- provenance: DERIVED -->
+Directory structure:
+```
+./docs
+./docs/architecture
+./docs/integration
+./evals
+./evals/baselines
+./evals/fixtures
+./evals/graders
+./evals/harness
+./evals/results
+./evals/suites
+./evals/tasks
+./evals/tests
+./grimoires
+./grimoires/loa
+./grimoires/pub
+./skills
+./skills/legba
+./tests
+./tests/e2e
+./tests/edge-cases
+./tests/fixtures
+./tests/helpers
+./tests/integration
+./tests/performance
+./tests/unit
+```
 
-Monorepo: 4 workspace packages, ~236K LoC TypeScript + Rust (src: packages/core/ports/index.ts:L1).
+## Interfaces
+<!-- provenance: DERIVED -->
+### Skill Commands
+- `/auditing-security`
+- `/autonomous-agent`
+- `/bridgebuilder-review`
+- `/browsing-constructs`
+- `/bug-triaging`
+- `/butterfreezone-gen`
+- `/continuous-learning`
+- `/deploying-infrastructure`
+- `/designing-architecture`
+- `/discovering-requirements`
+- `/enhancing-prompts`
+- `/eval-running`
+- `/flatline-knowledge`
+- `/flatline-reviewer`
+- `/flatline-scorer`
+- `/flatline-skeptic`
+- `/gpt-reviewer`
+- `/implementing-tasks`
+- `/managing-credentials`
+- `/mounting-framework`
+- `/planning-sprints`
+- `/red-teaming`
+- `/reviewing-code`
+- `/riding-codebase`
+- `/rtfm-testing`
+- `/run-bridge`
+- `/run-mode`
+- `/simstim-workflow`
+- `/translating-for-executives`
 
-| Package | Purpose | Entry |
-|---------|---------|-------|
-| core | Port interfaces (15 files) + domain types | (src: packages/core/ports/index.ts:L1) |
-| adapters | 8 modules implementing core ports | (src: packages/adapters/agent/index.ts:L1) |
-| cli | Gaib CLI: auth, user, sandbox, server IaC | (src: packages/cli/src/commands/index.ts:L24) |
-| sandbox | Schema provisioning, event routing, cleanup | (src: packages/adapters/storage/schema.ts:L47) |
+## Module Map
+<!-- provenance: DERIVED -->
+| Module | Files | Purpose |
+|--------|-------|---------|
+| `docs/` | 4 | Documentation |
+| `evals/` | 998 |  |
+| `grimoires/` | 508 | Loa state files |
+| `skills/` | 5112 |  |
+| `tests/` | 142 | Test suites |
 
-Application entry: `startServer()` (src: themes/sietch/src/api/server.ts:L556).
+## Quick Start
+<!-- provenance: OPERATIONAL -->
+## Quick Start (~2 minutes)
 
-## Architecture (Summary)
+**Prerequisites**: [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview) (Anthropic's CLI for Claude), Git, jq, [yq v4+](https://github.com/mikefarah/yq). See **[INSTALLATION.md](INSTALLATION.md)** for full details.
 
-Hexagonal pattern: ports in `packages/core/ports/`, adapters in `packages/adapters/` (src: packages/core/ports/index.ts:L1).
+```bash
+# Install (one command, any existing repo)
+curl -fsSL https://raw.githubusercontent.com/0xHoneyJar/loa/main/.claude/scripts/mount-loa.sh | bash
 
-| Port | Adapter | Ref |
-|------|---------|-----|
-| IChainProvider | NativeBlockchainReader / HybridChainProvider | (src: packages/core/ports/chain-provider.ts:L144) |
-| IStorageProvider | DrizzleStorageAdapter (PostgreSQL + RLS) | (src: packages/core/ports/storage-provider.ts:L203) |
-| IAgentGateway | AgentGateway (budget + rate limiting + streaming) | (src: packages/core/ports/agent-gateway.ts:L181) |
-| ISynthesisEngine | SynthesisEngine (BullMQ for Discord API) | (src: packages/core/ports/synthesis-engine.ts:L242) |
-| IWizardEngine | WizardEngine (8-step onboarding) | (src: packages/core/ports/wizard-engine.ts:L199) |
+# Start Claude Code
+claude
 
-Chain provider modes: `rpc` (default), `dune_sim`, `hybrid` — factory at (src: packages/adapters/chain/provider-factory.ts:L103).
-DI pattern: constructors receive typed interfaces (src: packages/adapters/agent/agent-gateway.ts:L79).
-
-## API Surface (Index)
-
-**REST:** 80+ Express routes — public `/`, member `/api`, billing `/api/billing`, admin `/admin` (src: themes/sietch/src/api/server.ts:L242).
-**Webhooks:** Paddle, NOWPayments, Telegram — all signature-verified (src: themes/sietch/src/api/billing.routes.ts:L438).
-**Discord:** 22+ slash commands — registry at (src: themes/sietch/src/discord/commands/index.ts:L30).
-**Telegram:** 10 commands via Grammy — registration at (src: themes/sietch/src/telegram/commands/index.ts:L23).
-**CLI:** `gaib auth|user|sandbox|server` — 40+ subcommands (src: packages/cli/src/commands/index.ts:L24).
-See [api-surface.md](grimoires/loa/ground-truth/api-surface.md) for full route map and handler references (src: themes/sietch/src/api/routes/index.ts:L26).
-
-## Types & Contracts (Index)
-
-**Database:** 5 tables via Drizzle ORM — communities, profiles, badges, community_agent_config, agent_usage_log (src: packages/adapters/storage/schema.ts:L47).
-**Core types:** Community (src: packages/core/ports/storage-provider.ts:L25), Profile (src: packages/core/ports/storage-provider.ts:L57), Badge (src: packages/core/ports/storage-provider.ts:L109).
-**Tier system:** 9 tiers (Naib, Fedaykin rank-based + Usul→Hajra BGT-based) with rank boundaries (src: themes/sietch/src/packages/adapters/themes/SietchTheme.ts:L47).
-**Agent types:** ModelAlias (cheap/fast-code/reviewer/reasoning/native), AccessLevel (free/pro/enterprise) (src: packages/core/ports/agent-gateway.ts:L24).
-**RLS:** All tenant tables scoped by `app.current_tenant` (src: packages/adapters/storage/tenant-context.ts:L120).
-See [contracts.md](grimoires/loa/ground-truth/contracts.md) for full schema, type definitions, and Zod validation (src: packages/adapters/storage/schema.ts:L47).
-
-## Configuration
-
-Zod schema: 1,736 lines at (src: themes/sietch/src/config.ts:L120). Feature flags at (src: themes/sietch/src/config.ts:L217).
-
-| Category | Key Variables | Ref |
-|----------|--------------|-----|
-| Required | DISCORD_BOT_TOKEN, DISCORD_GUILD_ID, DATABASE_URL, BERACHAIN_RPC_URLS, BGT_ADDRESS | (src: themes/sietch/src/config.ts:L120) |
-| Feature Flags | FEATURE_BILLING_ENABLED, FEATURE_REDIS_ENABLED, FEATURE_TELEGRAM_ENABLED + 4 more | (src: themes/sietch/src/config.ts:L217) |
-| Chain Provider | CHAIN_PROVIDER (rpc/dune_sim/hybrid), DUNE_SIM_API_KEY | (src: packages/adapters/chain/config.ts:L98) |
-| Conditional | API_KEY_PEPPER (prod), PADDLE_WEBHOOK_SECRET (billing), VAULT_ADDR (vault) | (src: themes/sietch/src/config.ts:L120) |
-
-See [behaviors.md](grimoires/loa/ground-truth/behaviors.md) for env var details and feature flag behavior (src: themes/sietch/src/config.ts:L505).
-
-## Behaviors (Index)
-
-**Scheduled:** 7 Trigger.dev cron tasks + 1 on-demand migration task — eligibility sync (6h), activity decay (6h), weekly digest, badge check, boost expiry, weekly reset, session cleanup (src: themes/sietch/src/trigger/syncEligibility.ts:L41).
-**Events:** Discord ready/interactionCreate/guildMemberUpdate/messageCreate/messageReactionAdd (src: themes/sietch/src/services/discord/handlers/EventHandler.ts:L44).
-**Jobs:** BudgetReaperJob (60s), StreamReconciliationWorker (on-demand) via BullMQ (src: packages/adapters/agent/budget-reaper-job.ts:L46).
-See [behaviors.md](grimoires/loa/ground-truth/behaviors.md) for cron schedules, handler details, and lifecycle flows (src: packages/adapters/agent/agent-gateway.ts:L65).
-
-## Navigation
-
-See [ground-truth/index.md](grimoires/loa/ground-truth/index.md) for spoke overview. Spokes: [api-surface](grimoires/loa/ground-truth/api-surface.md), [architecture](grimoires/loa/ground-truth/architecture.md), [contracts](grimoires/loa/ground-truth/contracts.md), [behaviors](grimoires/loa/ground-truth/behaviors.md). Source checksums: [checksums.json](grimoires/loa/ground-truth/checksums.json).
-
-SHA: `39be5b729639791cbc9cb9cd8347c6f516095ea3` | Generated: 2026-02-13T14:00:00Z (src: packages/core/ports/index.ts:L1)
+# These are slash commands typed inside Claude Code, not your terminal.
+# 5 commands. Full development cycle.
+/plan      # Requirements -> Architecture -> Sprints
+/build     # Implement the current sprint
+/review    # Code review + security audit
+/ship      # Deploy and archive
+```
+<!-- ground-truth-meta
+head_sha: 72434c26d1b4f9cd1ac5f7dcc95b747ab746e13b
+generated_at: 2026-02-14T08:46:52Z
+generator: butterfreezone-gen v1.0.0
+sections:
+  agent_context: b09a6c0215127e4e9e31487cadb96d5d1c659ce8257abbae9662592779dde922
+  capabilities: fb6ef381fb7c2032e949e99a675dae0b4d58aabe935aec3c9c48c362594e9ca7
+  architecture: a5ffce49636c71a93df41e9cb65f1bf394cce17d65413c45607d64e248f908f7
+  interfaces: 8a9d2731493f0fccd5d66ecaf4842a34e20c4a125497c33a92f17bdf2f3c1ac5
+  module_map: 1852bedbfc3a9e5b981cddbbf488d04a566f2c8a45387af4768edc33ec35b909
+  quick_start: a6405f431b837c85a4beb869478df1e6a43f256f4d76b31927744707468cf68f
+-->
