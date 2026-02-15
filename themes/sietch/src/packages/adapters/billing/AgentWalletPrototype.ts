@@ -25,6 +25,19 @@ import type {
 } from '../../core/ports/ICreditLedgerService.js';
 
 // =============================================================================
+// Redis Interface (Task 9.4)
+// =============================================================================
+
+/** Minimal Redis interface for daily spending persistence */
+interface AgentRedisClient {
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string): Promise<string>;
+  /** Set key with TTL in seconds */
+  setex?(key: string, seconds: number, value: string): Promise<string>;
+  expire?(key: string, seconds: number): Promise<number>;
+}
+
+// =============================================================================
 // Types
 // =============================================================================
 
@@ -37,6 +50,8 @@ export interface AgentWalletConfig {
   refillThresholdMicro: bigint;
   /** Owner address (NFT holder) */
   ownerAddress: string;
+  /** Optional NFT-based identity anchor hash (loa-hounfour sybil resistance) */
+  identityAnchor?: string;
 }
 
 export interface AgentWallet {
@@ -65,12 +80,17 @@ export interface AgentFinalizeResult {
 // AgentWalletPrototype
 // =============================================================================
 
+/** Redis key prefix for agent daily spending */
+const DAILY_SPEND_PREFIX = 'billing:agent:daily:';
+
 export class AgentWalletPrototype {
   private ledger: ICreditLedgerService;
   private dailySpent: Map<string, bigint> = new Map();
+  private redis: AgentRedisClient | null;
 
-  constructor(ledger: ICreditLedgerService) {
+  constructor(ledger: ICreditLedgerService, redis?: AgentRedisClient | null) {
     this.ledger = ledger;
+    this.redis = redis ?? null;
   }
 
   /**
@@ -80,14 +100,25 @@ export class AgentWalletPrototype {
   async createAgentWallet(config: AgentWalletConfig): Promise<AgentWallet> {
     const account = await this.ledger.getOrCreateAccount('agent', `finn-${config.tokenId}`);
 
-    // Simulate deterministic TBA address (in production, derived from ERC-6551 Registry)
-    const tbaAddress = `0x${Buffer.from(`tba-${config.tokenId}`).toString('hex').padStart(40, '0').slice(0, 40)}`;
+    // Include identity anchor in TBA address derivation if provided (Task 9.3)
+    const tbaInput = config.identityAnchor
+      ? `tba-${config.tokenId}-${config.identityAnchor}`
+      : `tba-${config.tokenId}`;
+    const tbaAddress = `0x${Buffer.from(tbaInput).toString('hex').padStart(40, '0').slice(0, 40)}`;
 
     return {
       account,
       config,
       tbaAddress,
     };
+  }
+
+  /**
+   * Verify that a wallet's identity anchor matches the expected value.
+   * Used for sybil resistance — ensures agent wallet is bound to a verified NFT identity.
+   */
+  verifyIdentityBinding(wallet: AgentWallet, expectedAnchor: string): boolean {
+    return wallet.config.identityAnchor === expectedAnchor;
   }
 
   /**
@@ -127,9 +158,9 @@ export class AgentWalletPrototype {
     wallet: AgentWallet,
     estimatedCostMicro: bigint,
   ): Promise<AgentSpendResult> {
-    // Check daily cap
+    // Check daily cap — read from Redis first, fallback to in-memory
     const todayKey = `${wallet.account.id}:${new Date().toISOString().slice(0, 10)}`;
-    const spent = this.dailySpent.get(todayKey) ?? 0n;
+    const spent = await this.getDailySpent(todayKey);
 
     if (spent + estimatedCostMicro > wallet.config.dailyCapMicro) {
       throw new Error(
@@ -167,10 +198,12 @@ export class AgentWalletPrototype {
   ): Promise<AgentFinalizeResult> {
     const result = await this.ledger.finalize(reservationId, actualCostMicro);
 
-    // Track daily spending
+    // Track daily spending — persist to Redis + in-memory
     const todayKey = `${wallet.account.id}:${new Date().toISOString().slice(0, 10)}`;
-    const currentSpent = this.dailySpent.get(todayKey) ?? 0n;
-    this.dailySpent.set(todayKey, currentSpent + result.actualCostMicro);
+    const currentSpent = await this.getDailySpent(todayKey);
+    const newSpent = currentSpent + result.actualCostMicro;
+    this.dailySpent.set(todayKey, newSpent);
+    await this.setDailySpent(todayKey, newSpent);
 
     const balance = await this.ledger.getBalance(wallet.account.id);
 
@@ -199,11 +232,63 @@ export class AgentWalletPrototype {
 
   /**
    * Get remaining daily budget for an agent.
+   * Reads from Redis first, falls back to in-memory.
    */
-  getRemainingDailyBudget(wallet: AgentWallet): bigint {
+  async getRemainingDailyBudget(wallet: AgentWallet): Promise<bigint> {
     const todayKey = `${wallet.account.id}:${new Date().toISOString().slice(0, 10)}`;
-    const spent = this.dailySpent.get(todayKey) ?? 0n;
+    const spent = await this.getDailySpent(todayKey);
     const remaining = wallet.config.dailyCapMicro - spent;
     return remaining > 0n ? remaining : 0n;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Private: Redis-backed daily spending (Task 9.4)
+  // ---------------------------------------------------------------------------
+
+  /** Read daily spent from Redis first, fallback to in-memory Map */
+  private async getDailySpent(todayKey: string): Promise<bigint> {
+    if (this.redis) {
+      try {
+        const redisKey = `${DAILY_SPEND_PREFIX}${todayKey}`;
+        const val = await this.redis.get(redisKey);
+        if (val !== null) {
+          const parsed = BigInt(val);
+          // Sync to in-memory for consistency
+          this.dailySpent.set(todayKey, parsed);
+          return parsed;
+        }
+      } catch {
+        // Redis unavailable — fall through to in-memory
+      }
+    }
+    return this.dailySpent.get(todayKey) ?? 0n;
+  }
+
+  /** Write daily spent to Redis with end-of-day TTL */
+  private async setDailySpent(todayKey: string, amount: bigint): Promise<void> {
+    if (!this.redis) return;
+    try {
+      const redisKey = `${DAILY_SPEND_PREFIX}${todayKey}`;
+      const ttl = this.secondsUntilMidnightUtc();
+      if (this.redis.setex) {
+        await this.redis.setex(redisKey, ttl, amount.toString());
+      } else {
+        await this.redis.set(redisKey, amount.toString());
+        if (this.redis.expire) {
+          await this.redis.expire(redisKey, ttl);
+        }
+      }
+    } catch {
+      // Redis unavailable — in-memory Map is still updated by caller
+    }
+  }
+
+  /** Seconds remaining until midnight UTC */
+  private secondsUntilMidnightUtc(): number {
+    const now = new Date();
+    const midnight = new Date(Date.UTC(
+      now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1,
+    ));
+    return Math.max(1, Math.floor((midnight.getTime() - now.getTime()) / 1000));
   }
 }

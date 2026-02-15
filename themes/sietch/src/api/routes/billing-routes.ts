@@ -19,6 +19,7 @@ import { createHmac } from 'crypto';
 import { requireAuth } from '../middleware/auth.js';
 import { memberRateLimiter } from '../middleware.js';
 import { serializeBigInt } from '../../packages/core/utils/micro-usd.js';
+import { s2sFinalizeRequestSchema, historyQuerySchema } from '../../packages/core/contracts/s2s-billing.js';
 import { logger } from '../../utils/logger.js';
 import type { IPaymentService } from '../../packages/core/ports/IPaymentService.js';
 import type { ICreditLedgerService } from '../../packages/core/ports/ICreditLedgerService.js';
@@ -315,18 +316,8 @@ const s2sRateLimiter = rateLimit({
 // Schemas (Sprint 5)
 // =============================================================================
 
-const finalizeSchema = z.object({
-  reservationId: z.string().min(1),
-  actualCostMicro: z.string().regex(/^\d+$/, 'Must be a positive integer string'),
-  accountId: z.string().min(1).optional(),
-});
-
-const historyQuerySchema = z.object({
-  poolId: z.string().optional(),
-  entryType: z.string().optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
-});
+// Schemas imported from packages/core/contracts/s2s-billing.ts (Task 9.2)
+const finalizeSchema = s2sFinalizeRequestSchema;
 
 // =============================================================================
 // POST /api/internal/billing/finalize — S2S Finalize (Task 5.1)

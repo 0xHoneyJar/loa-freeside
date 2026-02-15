@@ -1,12 +1,12 @@
 /**
  * Agent Wallet Prototype Tests
  *
- * Validates Sprint 6: ERC-6551 agent wallet prototype including
+ * Validates Sprint 6 + Sprint 9: ERC-6551 agent wallet prototype including
  * agent account creation, TBA deposit simulation, inference spending,
- * daily cap enforcement, and refill detection.
+ * daily cap enforcement, refill detection, identity binding, and Redis spending.
  *
  * SDD refs: §8 Sprint 6
- * Sprint refs: Tasks 6.1–6.2
+ * Sprint refs: Tasks 6.1–6.2, 9.3, 9.4
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -168,6 +168,91 @@ describe('Agent Wallet Prototype', () => {
 
       const needsRefill = await agentWallets.needsRefill(wallet);
       expect(needsRefill).toBe(true);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Task 9.3: Identity Anchor Binding
+  // ---------------------------------------------------------------------------
+
+  describe('identity-binding', () => {
+    it('creates wallet with identity anchor and verifies binding', async () => {
+      const config: AgentWalletConfig = {
+        ...defaultConfig,
+        identityAnchor: 'anchor-hash-abc123',
+      };
+      const wallet = await agentWallets.createAgentWallet(config);
+
+      expect(wallet.config.identityAnchor).toBe('anchor-hash-abc123');
+      expect(wallet.tbaAddress).toMatch(/^0x[a-f0-9]{40}$/);
+
+      // Verify binding
+      expect(agentWallets.verifyIdentityBinding(wallet, 'anchor-hash-abc123')).toBe(true);
+      expect(agentWallets.verifyIdentityBinding(wallet, 'wrong-anchor')).toBe(false);
+    });
+
+    it('identity anchor changes TBA address derivation', async () => {
+      const walletNoAnchor = await agentWallets.createAgentWallet(defaultConfig);
+      const walletWithAnchor = await agentWallets.createAgentWallet({
+        ...defaultConfig,
+        identityAnchor: 'my-anchor',
+      });
+
+      // TBA addresses should differ when anchor is included
+      expect(walletNoAnchor.tbaAddress).not.toBe(walletWithAnchor.tbaAddress);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Task 9.4: Redis-Backed Daily Spending
+  // ---------------------------------------------------------------------------
+
+  describe('redis-daily-spending', () => {
+    it('persists daily spending to Redis and reads back', async () => {
+      // Create a mock Redis client
+      const store = new Map<string, string>();
+      const mockRedis = {
+        get: async (key: string) => store.get(key) ?? null,
+        set: async (key: string, value: string) => { store.set(key, value); return 'OK'; },
+        setex: async (key: string, _seconds: number, value: string) => { store.set(key, value); return 'OK'; },
+        expire: async (_key: string, _seconds: number) => 1,
+      };
+
+      const redisWallets = new AgentWalletPrototype(ledger, mockRedis);
+      const wallet = await redisWallets.createAgentWallet(defaultConfig);
+      await redisWallets.simulateTbaDeposit(wallet, 20_000_000n, '0xredis1');
+
+      // Reserve and finalize — should write to Redis
+      const spend = await redisWallets.reserveForInference(wallet, 1_000_000n);
+      await redisWallets.finalizeInference(wallet, spend.reservationId, 800_000n);
+
+      // Verify Redis has the daily spend value
+      const todayKey = `${wallet.account.id}:${new Date().toISOString().slice(0, 10)}`;
+      const redisVal = store.get(`billing:agent:daily:${todayKey}`);
+      expect(redisVal).toBe('800000');
+
+      // getRemainingDailyBudget reads from Redis
+      const remaining = await redisWallets.getRemainingDailyBudget(wallet);
+      expect(remaining).toBe(10_000_000n - 800_000n);
+    });
+
+    it('falls back to in-memory when Redis unavailable', async () => {
+      // Create a failing Redis client
+      const failRedis = {
+        get: async () => { throw new Error('Connection refused'); },
+        set: async () => { throw new Error('Connection refused'); },
+      };
+
+      const fallbackWallets = new AgentWalletPrototype(ledger, failRedis as any);
+      const wallet = await fallbackWallets.createAgentWallet(defaultConfig);
+      await fallbackWallets.simulateTbaDeposit(wallet, 20_000_000n, '0xfallback1');
+
+      // Should work via in-memory fallback
+      const spend = await fallbackWallets.reserveForInference(wallet, 500_000n);
+      await fallbackWallets.finalizeInference(wallet, spend.reservationId, 500_000n);
+
+      const remaining = await fallbackWallets.getRemainingDailyBudget(wallet);
+      expect(remaining).toBe(10_000_000n - 500_000n);
     });
   });
 });

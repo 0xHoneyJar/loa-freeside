@@ -40,6 +40,8 @@ export interface DailyReconciliationResult {
   passed: boolean;
   checks: ReconciliationCheck[];
   durationMs: number;
+  /** Monotonic generation counter — increments on each successful run */
+  generation: number;
 }
 
 // =============================================================================
@@ -207,11 +209,36 @@ export function createDailyReconciliation(config: DailyReconciliationConfig) {
     const allPassed = checks.every(c => c.passed);
     const durationMs = Date.now() - start;
 
+    // -----------------------------------------------------------------------
+    // Generation counter (Task 9.5)
+    // -----------------------------------------------------------------------
+    let generation = 0;
+    try {
+      const genRow = config.db.prepare(
+        `SELECT value FROM billing_config WHERE key = 'reconciliation_generation'`
+      ).get() as { value: string } | undefined;
+
+      generation = genRow ? parseInt(genRow.value, 10) + 1 : 1;
+
+      if (genRow) {
+        config.db.prepare(
+          `UPDATE billing_config SET value = ?, updated_at = ? WHERE key = 'reconciliation_generation'`
+        ).run(String(generation), now);
+      } else {
+        config.db.prepare(
+          `INSERT INTO billing_config (key, value, updated_at) VALUES ('reconciliation_generation', ?, ?)`
+        ).run(String(generation), now);
+      }
+    } catch (err) {
+      logger.warn({ err }, 'Failed to update reconciliation generation counter');
+    }
+
     const result: DailyReconciliationResult = {
       timestamp: now,
       passed: allPassed,
       checks,
       durationMs,
+      generation,
     };
 
     try {
@@ -231,6 +258,7 @@ export function createDailyReconciliation(config: DailyReconciliationConfig) {
       passed: allPassed,
       checks: checks.map(c => ({ name: c.name, passed: c.passed })),
       durationMs,
+      generation,
     }, `Daily reconciliation ${allPassed ? 'PASSED' : 'FAILED'}`);
 
     return result;
