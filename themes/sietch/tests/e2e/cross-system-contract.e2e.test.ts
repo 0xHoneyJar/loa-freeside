@@ -40,7 +40,7 @@ function createS2SToken(sub = 'e2e-test-service'): string {
     aud: 'arrakis-internal',
     iss: 'loa-finn',
     iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(Date.now() / 1000) + 3600,
+    exp: Math.floor(Date.now() / 1000) + 300,
   })).toString('base64url');
 
   const signature = createHmac('sha256', S2S_JWT_SECRET)
