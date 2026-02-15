@@ -1,257 +1,300 @@
-# Sprint Plan: Hounfour Hardening — Bridge Review Residuals
+# Sprint Plan: Environment Design Hardening — Bridgebuilder Review Response
 
-> Source: Bridgebuilder Review iterations 1 & 2, PR #324
-> Cycle: cycle-013 (continuation)
-> PR: https://github.com/0xHoneyJar/loa/pull/324
-> Bridge ID: bridge-20260214-e8fa94
-> Global Sprint Counter: starts at 89
-> Findings: 3 MEDIUM + 7 LOW remaining from 2 bridge iterations
+> Source: Bridgebuilder review of PR #326 — 3 MEDIUM, 3 LOW, 4 PRAISE, 3 SPECULATION
+> Cycle: cycle-014 (continued)
+> Issue: https://github.com/0xHoneyJar/loa/issues/325
+> PR: https://github.com/0xHoneyJar/loa/pull/326
+> Global Sprint Counter: starts at 94
+> Motivation: "Fix what the review found wrong. Build what the review found possible."
 
 ## Context
 
-PR #324 completed a 2-iteration bridge loop. Iteration 1 found 18 findings (1 HIGH, 5 MEDIUM, 5 LOW, 1 vision, 6 praise). Iteration 2 fixed 4 findings (BB-007, BB-010, BB-011, BB-013) and found 3 new LOWs. Flatline declared at -90.6% severity reduction.
+Sprints 91-93 implemented the four environment design advances (trajectory narrative, bidirectional lore, vision sprints, speculation channel). The Bridgebuilder review of PR #326 identified 3 MEDIUM findings, 3 LOW findings, and 3 SPECULATION opportunities. Additionally, 7 framework eval tests are failing because the eval fixture is stale.
 
-This sprint plan addresses the **10 remaining actionable findings** — 3 MEDIUMs and 7 LOWs. All are improvements, not blockers. Organized by code-change risk: Sprint 1 handles functional changes, Sprint 2 handles test/docs hardening.
+### Findings Summary
 
----
-
-## Sprint 1: Code Hardening — Functional Fixes
-
-**Goal**: Address all 3 MEDIUM findings and 2 LOWs that require functional code changes. These are correctness and robustness improvements to production code paths.
-
-**Global Sprint**: sprint-89
-
-### Task 1.1: Document sed Fallback Limitation + Add Edge Case Test (BB-004)
-
-**Finding**: BB-004 (MEDIUM) — sed fallback in Step 5 of `normalize_json_response()` may miss the correct JSON when multiple fragments exist.
-
-**File**: `.claude/scripts/lib/normalize-json.sh:91-102`
-
-**Changes**:
-- Add a function header comment on lines 91-92 documenting that Step 5 is a last-resort fallback that only fires when python3 is unavailable
-- Note that the sed pattern `s/^[^{[]*//;s/[^}\]]*$//` is greedy and may select incorrect fragments
-- Add test fixture `fixtures/mock-responses/multi-fragment.txt` containing: `"Result: {x} and also {"real": "json"}`
-- Add test case verifying behavior (either extraction succeeds via earlier steps, or failure is graceful)
-
-**Acceptance Criteria**:
-- [ ] Function header documents Step 5 limitations explicitly
-- [ ] New fixture `multi-fragment.txt` exercises the multi-fragment edge case
-- [ ] Test passes (Step 4 python3 handles it correctly; if python3 unavailable, graceful failure)
-- [ ] Existing tests still pass
+| ID | Severity | Title | Sprint |
+|----|----------|-------|--------|
+| M-1 | MEDIUM | Trajectory generation lacks staleness indicator | 4 |
+| M-2 | MEDIUM | Lore discovery overwrites instead of accumulating | 4 |
+| M-3 | MEDIUM | Vision sprint timeout advisory, not enforced | 4 |
+| L-1 | LOW | grep -c exit code semantics undocumented | 4 |
+| L-2 | LOW | EXPLORING state not in resume state machine | 5 |
+| L-3 | LOW | Prose pattern extraction not labeled experimental | 4 |
+| EVAL-1-7 | CI | 7 framework eval failures (fixture stale) | 4 |
+| S-1 | SPECULATION | Trajectory as Manje wrapper for multi-model | 5 |
+| S-2 | SPECULATION | Discovered lore as model selection signal | 5 |
+| S-3 | SPECULATION | Vision Registry as agent's dream journal | 5 |
 
 ---
 
-### Task 1.2: Broaden LazyValue Exception Handling (BB-005)
+## Sprint 4: Hardening — Fix All Findings + Eval Compliance
 
-**Finding**: BB-005 (MEDIUM) — `_get_auth_header()` catches only `(KeyError, OSError)` but LazyValue resolution may raise other types.
+**Goal**: Address every MEDIUM and LOW finding from the Bridgebuilder review. Fix all 7 framework eval failures. Zero regressions, zero new failures.
 
-**File**: `.claude/adapters/loa_cheval/providers/base.py:183-189`
+**Global Sprint**: sprint-94
 
-**Changes**:
-- Broaden the exception catch to `except Exception as exc` with a descriptive "Failed to resolve auth credential" message
-- Log the original exception type for debugging
-- Add a docstring to the method documenting the LazyValue resolution contract: callers should expect `ConfigError` on any resolution failure
+### Task 4.1: Add Staleness Indicator to Trajectory Narrative (M-1)
 
-**Acceptance Criteria**:
-- [ ] `_get_auth_header()` catches `Exception` (not just `KeyError, OSError`)
-- [ ] Error message includes the original exception type name
-- [ ] Docstring documents the LazyValue contract
-- [ ] Existing behavior unchanged for KeyError/OSError cases
-- [ ] The outer `cmd_invoke()` handler at line 314 remains as defense-in-depth
-
----
-
-### Task 1.3: Persist --repo in Bridge State JSON (BB-008)
-
-**Finding**: BB-008 (MEDIUM) — Bridge signal emissions don't include repo context. Consuming agents must discover repo from environment.
-
-**File**: `.claude/scripts/bridge-orchestrator.sh:336-344`
-
-**Changes**:
-- Add `"repo": "$BRIDGE_REPO"` to the bridge state JSON `config` object (written by `init_bridge_state()`)
-- When `BRIDGE_REPO` is empty, write `""` (already the case in current state)
-- Signal consumers can now read repo from `.run/bridge-state.json` config.repo
-
-**Acceptance Criteria**:
-- [ ] `init_bridge_state()` writes `config.repo` field in bridge state JSON
-- [ ] Field is populated from `--repo` argument when provided
-- [ ] Field defaults to `""` when `--repo` not provided
-- [ ] Bridge state JSON schema remains valid (no breaking changes)
-
----
-
-### Task 1.4: Tighten sed Comment Pattern to Require Space Before # (BB-019)
-
-**Finding**: BB-019 (LOW) — `sed 's/ *#.*//'` matches `#` with zero leading spaces, which is more aggressive than standard dotenv parsers.
-
-**File**: `.claude/scripts/gpt-review-api.sh:785,792`
-
-**Changes**:
-- Change both occurrences from `sed 's/ *#.*//'` to `sed 's/ \+#.*//'` (require at least one space before `#`)
-- This matches the behavior of standard dotenv libraries (direnv, dotenv-ruby, python-dotenv)
-- Update the test fixture `inline-comment.env` to ensure it has a space before `#`
-
-**Acceptance Criteria**:
-- [ ] Both `.env` and `.env.local` parsing use `sed 's/ \+#.*//'`
-- [ ] Values containing `#` without a preceding space are preserved (e.g., hypothetical `sk-abc#def` stays intact)
-- [ ] Test 5 in `test-env-loading.sh` still passes with space-prefixed comment
-- [ ] All existing env loading tests pass
-
----
-
-### Task 1.5: Randomize Allowlist Sentinel Suffixes (BB-015)
-
-**Finding**: BB-015 (LOW) — Deterministic `__ALLOWLIST_SENTINEL_N__` format has theoretical collision risk with real content.
-
-**File**: `.claude/scripts/bridge-github-trail.sh:108-119`
-
-**Changes**:
-- Generate a random suffix per invocation: `SENTINEL_SALT=$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n')`
-- Change sentinel format from `__ALLOWLIST_SENTINEL_${idx}__` to `__ALLOWLIST_${SENTINEL_SALT}_${idx}__`
-- Both the pre-redaction swap and post-redaction restoration use the same salt
-
-**Acceptance Criteria**:
-- [ ] Sentinels include a random component unique per invocation
-- [ ] Pre-swap and post-restoration use matching sentinel format
-- [ ] Allowlisted content (sha256 hashes, base64 URLs) survives redaction
-- [ ] No raw sentinels remain in final output
-
----
-
-## Sprint 2: Test & Documentation Hardening
-
-**Goal**: Strengthen test coverage and add documentation for the 5 remaining LOW findings. No functional code changes to production paths — only tests, comments, and metadata.
-
-**Global Sprint**: sprint-90
-
-### Task 2.1: Add BOM Hex Verification Assertion (BB-020)
-
-**Finding**: BB-020 (LOW) — BOM fixture may not contain actual BOM bytes, making Test 7 a potential false positive.
-
-**File**: `.claude/tests/hounfour/test-normalize-json.sh:84-87`, `.claude/tests/hounfour/fixtures/mock-responses/bom-prefixed-json.txt`
-
-**Changes**:
-- Before Test 7, add an assertion that the fixture file starts with BOM bytes:
-  ```bash
-  # Verify fixture actually contains BOM prefix
-  bom_check=$(head -c 3 "$FIXTURES/bom-prefixed-json.txt" | od -An -tx1 | tr -d ' \n')
-  assert_eq "BOM fixture has BOM bytes" "efbbbf" "$bom_check"
-  ```
-- If the fixture lacks BOM bytes, recreate it with proper BOM prefix using `printf '\xef\xbb\xbf'`
-- Add a negative assertion that raw `jq` parsing of the BOM-prefixed file fails (confirming BOM strip is exercised)
-
-**Acceptance Criteria**:
-- [ ] Test verifies fixture contains actual EF BB BF bytes
-- [ ] Test verifies raw `jq` rejects BOM-prefixed content (confirming Step 1 is exercised)
-- [ ] Test 7 (BOM extraction) still passes via the BOM-strip code path
-- [ ] All 25+ existing assertions still pass
-
----
-
-### Task 2.2: Add Quoted Values + Inline Comments Test (BB-021)
-
-**Finding**: BB-021 (LOW) — Test suite doesn't cover the interaction between quoted values and inline comments.
-
-**File**: `.claude/tests/hounfour/test-env-loading.sh`, `.claude/tests/hounfour/fixtures/env/`
-
-**Changes**:
-- Create fixture `quoted-inline-comment.env` containing: `OPENAI_API_KEY="sk-test-key-456" # staging key`
-- Add Test 6: Parse the fixture through the same pipeline as gpt-review-api.sh
-- Assert the result is `sk-test-key-456` (sed strips ` # staging key`, then tr strips quotes)
-
-**Acceptance Criteria**:
-- [ ] New fixture exists with quoted value + inline comment
-- [ ] Test 6 validates correct extraction: `sk-test-key-456`
-- [ ] Processing order confirmed: sed comment strip → tr quote strip
-- [ ] All existing tests still pass
-
----
-
-### Task 2.3: Document Redaction Pattern Coverage (BB-006)
-
-**Finding**: BB-006 (LOW) — The `sk-*` pattern implicitly covers `sk-ant-*` but this isn't documented.
-
-**File**: `.claude/scripts/lib/invoke-diagnostics.sh:28-38`
-
-**Changes**:
-- Add inline comments documenting pattern coverage:
-  ```bash
-  # sk-* covers: OpenAI (sk-proj-*), Anthropic (sk-ant-*), generic (sk-*)
-  # ghp_/gho_/ghs_/ghr_* covers: GitHub PATs, OAuth, Apps, Refresh tokens
-  # AKIA* covers: AWS access key IDs
-  # eyJ* covers: JWT/JWS tokens (base64-encoded JSON header)
-  ```
-- Add a `# Pattern Maintenance` comment block noting that new provider key prefixes (e.g., `xai-*` for X.AI) should be added as the routing layer expands
-
-**Acceptance Criteria**:
-- [ ] Each pattern has an inline comment explaining what it covers
-- [ ] Pattern maintenance note exists for future provider additions
-- [ ] No functional changes — comments only
-
----
-
-### Task 2.4: Add Version Headers to Persona Files (BB-009)
-
-**Finding**: BB-009 (LOW) — All persona files lack version headers, preventing drift detection across providers.
+**Description**: Trajectory synthesizes data from multiple sources (ledger, memory, visions) without indicating when each was last updated. Stale memory data could mislead agents. Add freshness tracking.
 
 **Files**:
-- `.claude/skills/flatline-reviewer/persona.md`
-- `.claude/skills/flatline-skeptic/persona.md`
-- `.claude/skills/flatline-scorer/persona.md`
-- `.claude/skills/gpt-reviewer/persona.md`
-- `.claude/data/bridgebuilder-persona.md`
+- `.claude/scripts/trajectory-gen.sh` (modify)
 
 **Changes**:
-- Add a version header comment to each file: `<!-- persona-version: 1.0.0 | agent: <agent-name> | created: 2026-02-14 -->`
-- Update Phase 4 of `run-tests.sh` to validate that all persona files contain the `persona-version` metadata
+- In `extract_memory()`: capture the timestamp of the most recent observation
+- In `extract_visions()`: capture the most recent vision date from entry files
+- In `generate_prose()`: add freshness parenthetical after each section (e.g., "Recent learnings (2h ago):")
+- In `generate_json()`: add `freshness` object with `memory_age_hours`, `visions_last_updated`, `ledger_last_modified`
+- In `generate_condensed()`: append staleness warning only if any source > 7 days old
 
 **Acceptance Criteria**:
-- [ ] All 5 persona files have version header comments
-- [ ] Headers follow consistent format: `<!-- persona-version: X.Y.Z | agent: NAME | created: DATE -->`
-- [ ] Test runner Phase 4 validates version headers exist
-- [ ] All tests pass
+- [ ] JSON output includes `freshness` object with per-source ages
+- [ ] Prose output shows age parenthetical when source > 1 day old
+- [ ] Condensed output appends "(stale: memory)" warning when source > 7 days old
+- [ ] No output change when all sources are fresh (< 1 day)
+- [ ] `--json` freshness includes ISO timestamps, not just relative ages
 
 ---
 
-### Task 2.5: Optimize jq Pipe Invocations in normalize_json_response (BB-017)
+### Task 4.2: Accumulative Lore Discovery — Append with Dedup (M-2)
 
-**Finding**: BB-017 (LOW) — Steps 2 and 3 each pipe input through `echo "$input" | ...` separately, creating redundant subprocess invocations.
+**Description**: `lore-discover.sh` overwrites `patterns.yaml` each run. For a knowledge accumulation system, destructive writes are architecturally inconsistent. Change to append-with-dedup.
 
-**File**: `.claude/scripts/lib/normalize-json.sh:45-58`
+**Files**:
+- `.claude/scripts/lore-discover.sh` (modify)
 
 **Changes**:
-- Combine the markdown fence check (Step 2) and raw JSON check (Step 3) into a single `echo "$input"` pipeline where feasible
-- Store the fence-extracted result in a variable before `jq` validation to avoid re-piping
-- Add comment explaining the optimization rationale
+- Before writing, read existing `patterns.yaml` and extract existing IDs
+- Compare new candidates against existing IDs — skip duplicates
+- Append only genuinely new entries to the existing file
+- Preserve the file header and manually-seeded entries
+- Add `--overwrite` flag for explicit destructive behavior (not default)
+- Output summary: "3 new, 2 duplicates skipped, 11 total"
 
 **Acceptance Criteria**:
-- [ ] Steps 2-3 reduce from 4+ subprocess invocations to 2-3
-- [ ] All 25+ existing test assertions still pass
-- [ ] No behavioral changes — pure performance optimization
-- [ ] Large input (50K+ chars) completes without measurable regression
+- [ ] Running twice with same bridge-id produces no duplicates
+- [ ] Manually-seeded entries (graceful-degradation-cascade, etc.) are never overwritten
+- [ ] New entries are appended after existing entries
+- [ ] `--overwrite` flag restores original overwrite behavior
+- [ ] Summary output shows new/duplicate/total counts
+
+---
+
+### Task 4.3: Vision Sprint Timeout Enforcement (M-3)
+
+**Description**: The orchestrator emits `SIGNAL:VISION_SPRINT_TIMEOUT` but doesn't enforce it. Add a hard timeout at the orchestrator level as defense-in-depth.
+
+**Files**:
+- `.claude/scripts/bridge-orchestrator.sh` (modify — EXPLORING section)
+
+**Changes**:
+- Wrap the vision sprint signal emission and wait in a `timeout` command
+- Use `timeout --signal=TERM ${vision_timeout}m` as a hard backstop
+- On timeout: log warning, record `vision_sprint_timeout: true` in bridge state, continue to FINALIZING
+- The skill layer can still handle its own timeout gracefully within the hard limit
+
+**Acceptance Criteria**:
+- [ ] Vision sprint phase is bounded by `timeout` command at orchestrator level
+- [ ] Timeout triggers SIGTERM, not SIGKILL (allows cleanup)
+- [ ] Bridge state records `vision_sprint_timeout: true` on timeout
+- [ ] Successful completion within limit is unaffected
+- [ ] Default timeout matches config value (`run_bridge.vision_sprint.timeout_minutes`)
+
+---
+
+### Task 4.4: Documentation Polish — grep Semantics + Experimental Labels (L-1, L-3)
+
+**Description**: Add explanatory comments for the grep -c exit code behavior and label the prose pattern extraction as experimental.
+
+**Files**:
+- `.claude/scripts/trajectory-gen.sh` (modify — add comments at lines 99-102)
+- `.claude/scripts/lore-discover.sh` (modify — add experimental label at line 155)
+
+**Changes**:
+- `trajectory-gen.sh`: Add comment block above `grep -c` calls explaining that grep -c exits 1 on zero matches (a valid result, not an error), and why `|| var=0` is needed
+- `lore-discover.sh`: Add comment at `extract_prose_patterns()` labeling it as `# EXPERIMENTAL: keyword-based extraction, expect noise. Future: ML-based or LLM-assisted extraction`
+
+**Acceptance Criteria**:
+- [ ] Comment explains grep -c exit code semantics for future maintainers
+- [ ] Prose extraction function labeled as experimental
+- [ ] No functional changes — documentation only
+
+---
+
+### Task 4.5: Sync Eval Fixture with Repo Structure (EVAL-1 through EVAL-7)
+
+**Description**: 7 framework eval tests fail because the `evals/fixtures/loa-skill-dir/` fixture is stale — it lacks the bridge scripts, lore directory, vision scripts, and ground-truth generator added in recent cycles.
+
+**Files**:
+- `evals/fixtures/loa-skill-dir/.claude/scripts/` (add missing scripts)
+- `evals/fixtures/loa-skill-dir/.claude/data/lore/` (create structure)
+
+**Changes**:
+Sync the fixture with the actual repo structure. Copy minimal versions of:
+1. `bridge-findings-parser.sh` — needs `bridge-findings-start` pattern
+2. `bridge-state.sh` — needs `init_bridge_state` function
+3. `ground-truth-gen.sh` — needs `checksums` pattern
+4. `bridge-vision-capture.sh` — needs `vision-` pattern
+5. `golden-path.sh` — update fixture copy to include `golden_detect_bridge_state` and `golden_bridge_progress` functions
+6. `lore/index.yaml` — needs `version:` and `categories:` fields
+7. `lore/mibera/core.yaml` — needs `id:`, `term:`, `short:`, `context:` fields
+
+**Acceptance Criteria**:
+- [ ] `bridge-findings-parser-works` eval passes (file exists + marker pattern)
+- [ ] `bridge-state-schema-valid` eval passes (file exists + init function)
+- [ ] `golden-path-bridge-detection` eval passes (bridge state detection functions)
+- [ ] `gt-checksums-match` eval passes (file exists + checksums pattern)
+- [ ] `lore-entries-schema` eval passes (required fields in core.yaml)
+- [ ] `lore-index-valid` eval passes (version + categories in index.yaml)
+- [ ] `vision-entries-traceability` eval passes (file exists + vision pattern)
+- [ ] All 32 previously-passing framework evals still pass
+- [ ] Run `evals/harness/run-eval.sh --suite framework` confirms 39/39 pass
+
+---
+
+## Sprint 5: Enhancement — State Recovery + Speculation Primitives
+
+**Goal**: Implement the EXPLORING state recovery path and build the most impactful speculation primitives: source model attribution, vision revisitation tracking, and lore freshness in the trajectory narrative.
+
+**Global Sprint**: sprint-95
+
+### Task 5.1: EXPLORING State Resume Recovery (L-2)
+
+**Description**: Crash during the EXPLORING phase has no recovery path. The resume logic handles ITERATING but not EXPLORING. Since convergence was already achieved when EXPLORING starts, the simplest and safest recovery is to skip to FINALIZING.
+
+**Files**:
+- `.claude/scripts/bridge-orchestrator.sh` (modify — resume section)
+
+**Changes**:
+- Add `EXPLORING` to the resume state machine
+- On resume from EXPLORING: log "Convergence was achieved. Skipping exploration, proceeding to finalization."
+- Set state to FINALIZING and continue
+- Record `vision_sprint_skipped: "resumed"` in bridge state
+
+**Acceptance Criteria**:
+- [ ] `--resume` from EXPLORING state proceeds to FINALIZING
+- [ ] Bridge state records that exploration was skipped due to resume
+- [ ] No data loss — convergence findings from prior iterations are preserved
+- [ ] Log message explains why exploration was skipped
+
+---
+
+### Task 5.2: Source Model Attribution in Discovered Lore (S-2 Prep)
+
+**Description**: Add `source_model` field to discovered lore entries, recording which model produced the PRAISE finding or insight. This enables future model-affinity routing in the Hounfour.
+
+**Files**:
+- `.claude/scripts/lore-discover.sh` (modify — add source_model extraction)
+- `.claude/data/lore/discovered/patterns.yaml` (modify — add source_model to seeded entries)
+
+**Changes**:
+- In `extract_praise_patterns()`: look for model attribution in findings JSON (if present)
+- Add `source_model` field to YAML output: `source_model: "claude-opus-4"` or `source_model: "unknown"`
+- Update the 3 seeded patterns with `source_model: "claude-opus-4"` (they came from the Claude-powered Bridgebuilder)
+- Field is optional — missing model info defaults to `"unknown"`
+
+**Acceptance Criteria**:
+- [ ] New lore entries include `source_model` field when model info is available
+- [ ] Seeded patterns have `source_model: "claude-opus-4"`
+- [ ] Missing model info produces `source_model: "unknown"` (not an error)
+- [ ] Field is documented in discovered/patterns.yaml header comment
+
+---
+
+### Task 5.3: Vision Revisitation Frequency Tracking (S-3 Partial)
+
+**Description**: Track how often visions are referenced in bridge reviews. High-frequency references suggest the vision is becoming a pattern that should be elevated to lore. This is the "spaced repetition for architectural ideas" concept.
+
+**Files**:
+- `.claude/scripts/bridge-vision-capture.sh` (modify — add `--record-reference` mode)
+- `grimoires/loa/visions/index.md` (modify — add Refs column)
+
+**Changes**:
+- New subcommand: `bridge-vision-capture.sh --record-reference <vision-id> <bridge-id>`
+- Increments a reference counter for the specified vision in index.md
+- Add `| Refs |` column to the Active Visions table
+- When ref count exceeds threshold (default: 3), emit a log suggesting lore elevation
+- Bridge orchestrator can call this after each review iteration when a vision is mentioned
+
+**Acceptance Criteria**:
+- [ ] `--record-reference` increments the ref counter for a vision
+- [ ] Ref count is visible in the Active Visions table
+- [ ] Threshold crossing emits a log message: "vision-001 referenced 4 times — consider elevating to lore"
+- [ ] Existing visions start at ref count 0
+
+---
+
+### Task 5.4: Lore Freshness in Trajectory Narrative
+
+**Description**: Extend the trajectory narrative to include a one-line lore summary: how many discovered patterns exist, when the last one was discovered, and whether any visions have high revisitation counts.
+
+**Files**:
+- `.claude/scripts/trajectory-gen.sh` (modify — add `extract_lore()` function)
+
+**Changes**:
+- New function `extract_lore()`: reads `discovered/patterns.yaml`, counts entries, gets latest source date
+- In prose mode: add "**Discovered patterns** (N total, latest from bridge-YYYYMMDD): [top 2 pattern names]"
+- In JSON mode: add `lore` object with `discovered_count`, `latest_bridge`, `high_revisit_visions[]`
+- In condensed mode: append "N patterns discovered" to the one-liner
+
+**Acceptance Criteria**:
+- [ ] Prose trajectory includes discovered lore summary
+- [ ] JSON trajectory includes lore object
+- [ ] Condensed trajectory appends pattern count
+- [ ] Graceful degradation when no discovered patterns exist
+- [ ] High-revisitation visions (ref > 3) are highlighted
 
 ---
 
 ## Summary
 
-| Sprint | Global ID | Tasks | Severity Coverage | Theme |
-|--------|-----------|-------|-------------------|-------|
-| Sprint 1 | sprint-89 | 5 | 3 MEDIUM + 2 LOW | Code hardening — functional fixes |
-| Sprint 2 | sprint-90 | 5 | 5 LOW | Test & documentation hardening |
-| **Total** | | **10** | **3 MEDIUM + 7 LOW** | |
+| Sprint | Global ID | Tasks | Theme |
+|--------|-----------|-------|-------|
+| Sprint 4 | sprint-94 | 5 | Fix all findings + eval compliance |
+| Sprint 5 | sprint-95 | 4 | State recovery + speculation primitives |
+| **Total** | | **9** | Bridgebuilder review response |
+
+### Relationship to Previous Sprints
+
+```
+Sprint 91-93 (COMPLETED): Build the four environment advances
+  └── Sprint 94 (HARDENING): Fix every finding from Bridgebuilder review
+  └── Sprint 95 (ENHANCEMENT): Build the most impactful speculations
+```
 
 ### Dependencies
 
-- Sprint 1 tasks are independent of each other (can be implemented in any order)
-- Sprint 2 tasks are independent of each other
-- Sprint 2 Task 2.1 (BOM test) builds on Sprint 1 Task 1.4 only if both touch test-env-loading.sh (they don't — separate test files)
+```
+Sprint 4 (Hardening) — all tasks independent, can run in any order
+  └── Task 4.1 (staleness) — standalone
+  └── Task 4.2 (accumulative lore) — standalone
+  └── Task 4.3 (timeout enforcement) — standalone
+  └── Task 4.4 (docs) — standalone
+  └── Task 4.5 (eval fixture) — standalone
+
+Sprint 5 (Enhancement) — depends on Sprint 4 completion
+  └── Task 5.1 (EXPLORING recovery) — standalone
+  └── Task 5.2 (source model) — depends on 4.2 (accumulative lore)
+  └── Task 5.3 (revisitation) — standalone
+  └── Task 5.4 (lore in trajectory) — depends on 5.2 (source model) and 5.3 (revisitation)
+```
+
+### Success Criteria
+
+- [ ] All 3 MEDIUM findings resolved
+- [ ] All 3 LOW findings resolved
+- [ ] Framework eval suite: 39/39 passing (was 32/39)
+- [ ] No regressions in hounfour test suite (15/15)
+- [ ] Source model attribution in discovered lore entries
+- [ ] Vision revisitation tracking operational
+- [ ] Trajectory narrative includes lore freshness
 
 ### Risk Assessment
 
-- **Low risk**: All changes are surgical — single-function modifications, comment additions, or test additions
-- **No breaking changes**: All functional modifications maintain backward compatibility
-- **Test coverage**: Sprint 2 exclusively adds test coverage, reducing future regression risk
-
-### Branch Strategy
-
-Continue on `fix/hounfour-hardening-c013` branch, targeting PR #324.
+| Risk | Likelihood | Impact | Mitigation |
+|------|-----------|--------|------------|
+| Eval fixture sync breaks existing tests | Low | Medium | Run full suite before and after |
+| Accumulative lore produces merge conflicts | Low | Low | Per-entry dedup by ID |
+| Vision ref counter regex fails on new table format | Low | Low | Test against all 3 existing visions |
+| Source model field breaks lore schema consumers | Low | Low | Field is optional, defaults to "unknown" |
