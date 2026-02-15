@@ -15,14 +15,20 @@
  */
 
 import { Router, type Request, type Response } from 'express';
-import { z } from 'zod';
-import { randomUUID, createHmac } from 'crypto';
+import { randomUUID, createHmac, timingSafeEqual } from 'crypto';
 import { logger } from '../../utils/logger.js';
 import { serializeBigInt } from '../../packages/core/protocol/arithmetic.js';
 import type { ICampaignService, GrantInput } from '../../packages/core/ports/ICampaignService.js';
 import type { ICreditLedgerService } from '../../packages/core/ports/ICreditLedgerService.js';
 import type { IRevenueRulesService } from '../../packages/core/ports/IRevenueRulesService.js';
 import type Database from 'better-sqlite3';
+import {
+  batchGrantSchema,
+  adminMintSchema as mintSchema,
+  proposeRuleSchema,
+  rejectRuleSchema,
+  overrideCooldownSchema,
+} from '../../packages/core/contracts/admin-billing.js';
 
 // =============================================================================
 // Router Setup
@@ -95,7 +101,10 @@ function verifyHS256(token: string, secret: string): AdminTokenPayload | null {
       .update(headerPayload)
       .digest('base64url');
 
-    if (signature !== parts[2]) return null;
+    const expected = Buffer.from(signature, 'utf-8');
+    const actual = Buffer.from(parts[2], 'utf-8');
+    if (expected.length !== actual.length) return null;
+    if (!timingSafeEqual(expected, actual)) return null;
 
     const payload = JSON.parse(
       Buffer.from(parts[1], 'base64url').toString('utf-8')
@@ -188,44 +197,6 @@ const adminRateLimiter = rateLimit({
       message: 'Admin rate limit: maximum 30 requests per minute.',
     });
   },
-});
-
-// =============================================================================
-// Schemas
-// =============================================================================
-
-const batchGrantSchema = z.object({
-  grants: z.array(z.object({
-    accountId: z.string().min(1),
-    amountMicro: z.string().regex(/^\d+$/, 'Must be a positive integer string'),
-    formulaInput: z.record(z.unknown()).optional(),
-  })).min(1).max(1000),
-});
-
-const mintSchema = z.object({
-  amountMicro: z.string().regex(/^\d+$/, 'Must be a positive integer string'),
-  sourceType: z.enum(['grant', 'deposit']).default('grant'),
-  description: z.string().max(500).optional(),
-  poolId: z.string().default('general'),
-});
-
-const proposeRuleSchema = z.object({
-  name: z.string().min(1).max(200),
-  commonsBps: z.number().int().min(0).max(10000),
-  communityBps: z.number().int().min(0).max(10000),
-  foundationBps: z.number().int().min(0).max(10000),
-  notes: z.string().max(1000).optional(),
-}).refine(
-  d => d.commonsBps + d.communityBps + d.foundationBps === 10000,
-  { message: 'Basis points must sum to 10000 (100%)' },
-);
-
-const rejectRuleSchema = z.object({
-  reason: z.string().min(1).max(1000),
-});
-
-const overrideCooldownSchema = z.object({
-  reason: z.string().min(1).max(1000),
 });
 
 // =============================================================================
@@ -391,9 +362,10 @@ billingAdminRouter.get(
 // Revenue Rules Endpoints (Sprint 8, Task 8.3)
 // =============================================================================
 
-function getRevenueRulesService(): IRevenueRulesService {
+function getRevenueRulesService(res: Response): IRevenueRulesService | null {
   if (!revenueRulesService) {
-    throw new Error('Revenue rules service not initialized');
+    res.status(503).json({ error: 'Revenue rules service not initialized' });
+    return null;
   }
   return revenueRulesService;
 }
@@ -404,7 +376,8 @@ billingAdminRouter.post(
   requireAdminAuth,
   adminRateLimiter,
   async (req: Request, res: Response) => {
-    const service = getRevenueRulesService();
+    const service = getRevenueRulesService(res);
+    if (!service) return;
     const result = proposeRuleSchema.safeParse(req.body);
     if (!result.success) {
       res.status(400).json({
@@ -446,7 +419,8 @@ billingAdminRouter.patch(
   requireAdminAuth,
   adminRateLimiter,
   async (req: Request, res: Response) => {
-    const service = getRevenueRulesService();
+    const service = getRevenueRulesService(res);
+    if (!service) return;
     try {
       const rule = await service.submitForApproval(
         req.params.id,
@@ -465,7 +439,8 @@ billingAdminRouter.patch(
   requireAdminAuth,
   adminRateLimiter,
   async (req: Request, res: Response) => {
-    const service = getRevenueRulesService();
+    const service = getRevenueRulesService(res);
+    if (!service) return;
     try {
       const rule = await service.approveRule(
         req.params.id,
@@ -491,7 +466,8 @@ billingAdminRouter.patch(
   requireAdminAuth,
   adminRateLimiter,
   async (req: Request, res: Response) => {
-    const service = getRevenueRulesService();
+    const service = getRevenueRulesService(res);
+    if (!service) return;
     const result = rejectRuleSchema.safeParse(req.body);
     if (!result.success) {
       res.status(400).json({
@@ -530,7 +506,8 @@ billingAdminRouter.patch(
   requireAdminAuth,
   adminRateLimiter,
   async (req: Request, res: Response) => {
-    const service = getRevenueRulesService();
+    const service = getRevenueRulesService(res);
+    if (!service) return;
     const result = overrideCooldownSchema.safeParse(req.body);
     if (!result.success) {
       res.status(400).json({
@@ -569,14 +546,16 @@ billingAdminRouter.get(
   requireAdminAuth,
   adminRateLimiter,
   async (req: Request, res: Response) => {
-    const service = getRevenueRulesService();
+    const service = getRevenueRulesService(res);
+    if (!service) return;
     try {
       const status = req.query.status as string | undefined;
       if (status === 'pending') {
         const rules = await service.getPendingRules();
         res.json({ rules });
       } else {
-        const limit = parseInt(req.query.limit as string, 10) || 50;
+        const rawLimit = Number.parseInt(req.query.limit as string, 10);
+        const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 100) : 50;
         const rules = await service.getRuleHistory(limit);
         res.json({ rules });
       }
@@ -594,7 +573,8 @@ billingAdminRouter.get(
   requireAdminAuth,
   adminRateLimiter,
   async (_req: Request, res: Response) => {
-    const service = getRevenueRulesService();
+    const service = getRevenueRulesService(res);
+    if (!service) return;
     try {
       const rule = await service.getActiveRule();
       if (!rule) {
@@ -616,7 +596,8 @@ billingAdminRouter.get(
   requireAdminAuth,
   adminRateLimiter,
   async (req: Request, res: Response) => {
-    const service = getRevenueRulesService();
+    const service = getRevenueRulesService(res);
+    if (!service) return;
     try {
       const entries = await service.getRuleAudit(req.params.id);
       res.json({ ruleId: req.params.id, entries });
