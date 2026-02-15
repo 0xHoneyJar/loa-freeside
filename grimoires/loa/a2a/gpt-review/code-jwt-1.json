@@ -1,0 +1,38 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Found test logic bugs that can invalidate vectors and miss required conformance checks.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "tests/conformance/jwt-vectors.test.ts",
+      "line": 86,
+      "description": "Falsy checks overwrite explicitly provided iat/exp (e.g., 0), breaking vectors that intentionally set boundary values.",
+      "current_code": "```typescript\n      if (!claims.iat) claims.iat = now;\n      if (!claims.exp) claims.exp = now + 300;\n```",
+      "fixed_code": "```typescript\n      if (claims.iat === undefined) claims.iat = now;\n      if (claims.exp === undefined) claims.exp = now + 300;\n```",
+      "explanation": "Using strict undefined checks preserves intentional falsy values while still defaulting when fields are missing."
+    },
+    {
+      "severity": "major",
+      "file": "tests/conformance/jwt-vectors.test.ts",
+      "line": 96,
+      "description": "Validator is hardcoded to fixed issuer/audience instead of vector values, violating conformance requirement and potentially masking failures.",
+      "current_code": "```typescript\n      const validator = createTestValidator(server.getJwksUri(), {\n        jwksCacheTtlMs: 0, // No cache for static tests\n        jwksRefreshCooldownMs: 0,\n        expectedIssuer: 'https://auth.honeyjar.xyz',\n        expectedAudience: 'loa-finn',\n      });\n```",
+      "fixed_code": "```typescript\n      const expectedIssuer = typeof claims.iss === 'string'\n        ? claims.iss\n        : 'https://auth.honeyjar.xyz';\n      const expectedAudience = (typeof claims.aud === 'string' || Array.isArray(claims.aud))\n        ? (claims.aud as string | string[])\n        : 'loa-finn';\n\n      const validator = createTestValidator(server.getJwksUri(), {\n        jwksCacheTtlMs: 0, // No cache for static tests\n        jwksRefreshCooldownMs: 0,\n        expectedIssuer,\n        expectedAudience,\n      });\n```",
+      "explanation": "Aligns validator expectations with vector claims, satisfying conformance requirements while still providing sane defaults when claims are absent."
+    },
+    {
+      "severity": "major",
+      "file": "tests/conformance/jwt-vectors.test.ts",
+      "line": 132,
+      "description": "req_hash consistency test ignores non-empty bodies and silently skips vectors that include req_body_bytes_base64.",
+      "current_code": "```typescript\n        // For vectors without explicit body bytes, test empty body hash\n        const bodyBytes = Buffer.alloc(0);\n        const computed = computeReqHash(bodyBytes);\n\n        // If vector defines req_hash for empty body, it should match\n        if (vector.claims.req_hash && !vector.claims.req_body_bytes_base64) {\n          expect(computed).toBe(vector.claims.req_hash);\n        }\n```",
+      "fixed_code": "```typescript\n        const bodyBytes = vector.claims.req_body_bytes_base64\n          ? Buffer.from(String(vector.claims.req_body_bytes_base64), 'base64')\n          : Buffer.alloc(0);\n        const computed = computeReqHash(bodyBytes);\n\n        if (vector.claims.req_hash) {\n          expect(computed).toBe(vector.claims.req_hash);\n        }\n```",
+      "explanation": "Computes the hash against the correct body bytes for every vector, ensuring the test validates the actual vector data."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

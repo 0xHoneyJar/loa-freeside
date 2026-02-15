@@ -1,0 +1,29 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Tests do not compile because &str does not implement std::error::Error for Box<dyn Error> sources; replace with real error types.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "src/gateway_error.rs",
+      "line": 108,
+      "description": "Tests attempt to convert &str into Box<dyn Error + Send + Sync>, which does not compile.",
+      "current_code": "```rust\n        let labels = [\n            GatewayError::ShardCircuitBroken { shard_id: 0, count: 10, max: 10 }\n                .error_type_label(),\n            GatewayError::ShardReconnectFailed {\n                shard_id: 0,\n                source: \"test\".into(),\n            }\n            .error_type_label(),\n            GatewayError::NatsPublishFailed {\n                subject: \"test\".to_string(),\n                source: \"test\".into(),\n            }\n            .error_type_label(),\n            GatewayError::NatsConnectionFailed(\"test\".into()).error_type_label(),\n            GatewayError::SerializationFailed {\n                event_type: \"test\".to_string(),\n                shard_id: 0,\n                source: serde_json::from_str::<()>(\"invalid\").unwrap_err(),\n            }\n            .error_type_label(),\n            GatewayError::Config(\"test\".to_string()).error_type_label(),\n            GatewayError::ShardIdOverflow { value: u64::MAX }.error_type_label(),\n        ];\n```",
+      "fixed_code": "```rust\n        fn test_error() -> Box<dyn std::error::Error + Send + Sync> {\n            Box::new(std::io::Error::new(std::io::ErrorKind::Other, \"test\"))\n        }\n\n        let labels = [\n            GatewayError::ShardCircuitBroken { shard_id: 0, count: 10, max: 10 }\n                .error_type_label(),\n            GatewayError::ShardReconnectFailed {\n                shard_id: 0,\n                source: test_error(),\n            }\n            .error_type_label(),\n            GatewayError::NatsPublishFailed {\n                subject: \"test\".to_string(),\n                source: test_error(),\n            }\n            .error_type_label(),\n            GatewayError::NatsConnectionFailed(test_error()).error_type_label(),\n            GatewayError::SerializationFailed {\n                event_type: \"test\".to_string(),\n                shard_id: 0,\n                source: serde_json::from_str::<()>(\"invalid\").unwrap_err(),\n            }\n            .error_type_label(),\n            GatewayError::Config(\"test\".to_string()).error_type_label(),\n            GatewayError::ShardIdOverflow { value: u64::MAX }.error_type_label(),\n        ];\n```",
+      "explanation": "Box<dyn Error> requires a concrete error type. Using std::io::Error provides a real Error that is Send + Sync, allowing the tests to compile and still exercise the error variants."
+    },
+    {
+      "severity": "major",
+      "file": "src/gateway_error.rs",
+      "line": 148,
+      "description": "Tests use &str as Box<dyn Error + Send + Sync> sources, which does not compile.",
+      "current_code": "```rust\n        let err = GatewayError::NatsPublishFailed {\n            subject: \"commands.interaction\".to_string(),\n            source: \"timeout\".into(),\n        };\n        assert!(err.to_string().contains(\"commands.interaction\"));\n```",
+      "fixed_code": "```rust\n        let err = GatewayError::NatsPublishFailed {\n            subject: \"commands.interaction\".to_string(),\n            source: Box::new(std::io::Error::new(std::io::ErrorKind::TimedOut, \"timeout\")),\n        };\n        assert!(err.to_string().contains(\"commands.interaction\"));\n```",
+      "explanation": "Replacing the &str with a real std::io::Error fixes the type mismatch and preserves the intended test behavior."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

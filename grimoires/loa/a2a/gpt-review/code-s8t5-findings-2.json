@@ -1,0 +1,13 @@
+{
+  "verdict": "APPROVED",
+  "summary": "The invalid tier handling was fixed to fail-closed and prevent NaN/Infinity from being cached, with no new blocking issues introduced.",
+  "previous_issues_status": [
+    {
+      "original_issue": "Tier normalization does not handle NaN/Infinity/non-numeric values, allowing invalid tiers to be cached and returned.",
+      "status": "fixed",
+      "notes": "The new logic checks for finiteness and fails closed to tier 1, logging the anomaly and preventing invalid values from being cached."
+    }
+  ],
+  "new_blocking_concerns": [],
+  "iteration": 2
+}

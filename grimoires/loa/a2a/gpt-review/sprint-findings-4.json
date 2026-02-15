@@ -1,0 +1,38 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Most of the plan is implementable, but a few schema/state-machine and dependency gaps will cause hard failures or non-shippable governance behavior unless corrected.",
+  "blocking_issues": [
+    {
+      "location": "Sprint 8 — Revenue Rules state machine (Tasks 8.1–8.4)",
+      "issue": "State machine is internally inconsistent and missing required transitions/handlers: 8.1 defines statuses ('approved', 'cooling_down') but 8.2 describes transitions 'draft → pending_approval → approved → cooling_down → active' while approveRule() “moves to cooling_down”; there is no task/acceptance criteria for moving draft→pending_approval, nor for handling rejection from each pre-active state, nor for what 'approved' means if cooldown starts immediately.",
+      "why_blocking": "Implementation will stall in ambiguity: engineers won’t know which statuses are real, which transitions are allowed, and tests will be impossible to write deterministically. This also risks multiple “approved but not cooling” rules accumulating with no activation path.",
+      "fix": "Pick one canonical lifecycle and encode it everywhere (migration CHECK, adapter transition table, tests, docs). Example fix: remove 'approved' status entirely and use 'pending_approval' → 'cooling_down' on approve; or keep 'approved' but define explicit action 'startCooldown' that sets activates_at and moves to cooling_down. Add explicit acceptance criteria for: (a) submit-for-approval transition (draft→pending_approval), (b) reject transitions allowed from pending_approval and cooling_down, (c) supersede behavior when a cooling_down rule is rejected/overridden, (d) terminal states definition and getPendingRules() semantics."
+    },
+    {
+      "location": "Sprint 8 — Revenue Rules uniqueness constraint (Task 8.1)",
+      "issue": "“Unique partial index: only one rule with status='active' at a time” is not implementable in SQLite as written if status is a TEXT column without an expression index strategy; also the plan doesn’t specify the exact index definition needed to enforce single-active safely under concurrency.",
+      "why_blocking": "Without a correct DB-level guard, concurrent activations (job + manual override, or two job runners) can produce two active rules, breaking deterministic distribution and auditability. Relying only on application logic is fragile.",
+      "fix": "Specify the exact SQLite DDL: e.g. `CREATE UNIQUE INDEX revenue_rules_one_active ON revenue_rules(1) WHERE status='active';` (or on a constant) and ensure activator uses `BEGIN IMMEDIATE` + update with a predicate that fails if another active exists. Add an integration test that simulates two activations racing and asserts only one active rule exists."
+    },
+    {
+      "location": "Sprint 7 — Pre/Post Balance Audit Trail (Task 7.5)",
+      "issue": "Acceptance criteria requires CHECK `post_balance_micro >= 0` but Sprint 3 explicitly supports soft mode allowing negative balances on overrun; also 7.5 says populate pre/post via getBalance() “before and after the operation”, which is not well-defined for multi-step operations inside a transaction (reserve touches multiple lots; finalize posts distribution triad).",
+      "why_blocking": "This will either (a) fail at runtime in soft mode when post balance goes negative (constraint violation), or (b) force a behavior change that contradicts Sprint 3 requirements. Additionally, naive getBalance() calls inside the same transaction can be expensive and/or inconsistent if it reads via Redis or uses separate statements without clear snapshot semantics.",
+      "fix": "Align audit constraints with billing modes: either remove the non-negative CHECK, or make it conditional (not really possible in SQLite CHECK without referencing mode), or define that audit trail is recorded on “available balance” only and can be negative in soft mode. Also define precisely what balance is audited: per (account_id,pool_id) at the time of each ledger entry insert, computed from SQLite within the same transaction (no Redis). Add acceptance criteria: audit uses a single SQL aggregation query against lots within the current transaction; and add tests for soft-mode negative post_balance."
+    },
+    {
+      "location": "Sprint 7 — Bridgebuilder findings coverage claim vs map",
+      "issue": "The plan claims “fix 14 findings … plus new Revenue Rules governance system”, but Appendix E includes both finding #7 “Revenue distribution governance model” and #14 “Revenue Rules (user-requested feature)” which are the same work (8.1–8.5). This creates a traceability mismatch against the acceptance criterion “Every Bridgebuilder finding … has a corresponding task”.",
+      "why_blocking": "This will fail review/acceptance: you can’t demonstrate all findings are covered if the mapping double-counts one item and the count is used as a completion gate.",
+      "fix": "Normalize the findings list: either keep #7 as the Bridgebuilder finding and move #14 out of the “Bridgebuilder findings” count (label it “new feature”), or add the missing actual 14th Bridgebuilder item if one exists. Update Appendix E and the top-level acceptance criteria wording to match."
+    },
+    {
+      "location": "Dependency chain (Overview) vs Sprint 7 dependencies",
+      "issue": "Overview says “Sprint 7 depends on Sprint 5 (fixes Sprint 5 endpoints)”, but Sprint 7 tasks also depend on Sprint 4 admin auth (for code scanning fixes may touch admin routes) and Sprint 3 soft-mode behavior (7.5 audit constraint conflict). More importantly, Sprint 7 Task 7.5 lists dependency on Sprint 5 (history endpoint) but it actually modifies `credit_ledger` writes in Sprint 1 adapter and affects Sprint 3 middleware flows; if Sprint 7 is scheduled after Sprint 5, you risk shipping endpoints that later break when audit columns are introduced.",
+      "why_blocking": "Sequencing risk: adding columns + changing write paths late can break already-integrated flows and require backporting fixes across multiple sprints, causing sprint failure or destabilizing releases.",
+      "fix": "Make 7.5 explicitly depend on (and be validated against) Sprint 3 finalize+distribution wiring and Sprint 1 ledger adapter, not Sprint 5. If Sprint 7 must remain after Sprint 5, add an explicit compatibility task/AC: migration 034 is backward compatible and endpoints tolerate NULLs; plus run E2E-BILLING after 7.5 to ensure no regression."
+    }
+  ],
+  "question": "",
+  "iteration": 1
+}

@@ -1,0 +1,29 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Two runtime-safety issues: env JSON parsing can crash on non-object values, and resolvePoolId can throw on invalid access levels.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "pool-mapping.ts",
+      "line": 48,
+      "description": "POOL_PROVIDER_HINTS parsing assumes JSON is an object; values like `null` or `[]` will make Object.entries throw and crash startup instead of falling back to defaults.",
+      "current_code": "```typescript\n  let parsed: Record<string, string>;\n  try {\n    parsed = JSON.parse(raw) as Record<string, string>;\n  } catch {\n    // AC-2.12: Invalid JSON → startup warning + defaults used\n    console.warn('[pool-mapping] POOL_PROVIDER_HINTS env var is not valid JSON — using defaults');\n    return { ...DEFAULT_POOL_PROVIDER_HINTS };\n  }\n\n  const result = { ...DEFAULT_POOL_PROVIDER_HINTS };\n\n  for (const [poolId, provider] of Object.entries(parsed)) {\n```",
+      "fixed_code": "```typescript\n  let parsedUnknown: unknown;\n  try {\n    parsedUnknown = JSON.parse(raw);\n  } catch {\n    // AC-2.12: Invalid JSON → startup warning + defaults used\n    console.warn('[pool-mapping] POOL_PROVIDER_HINTS env var is not valid JSON — using defaults');\n    return { ...DEFAULT_POOL_PROVIDER_HINTS };\n  }\n\n  if (!parsedUnknown || typeof parsedUnknown !== 'object' || Array.isArray(parsedUnknown)) {\n    console.warn('[pool-mapping] POOL_PROVIDER_HINTS must be a JSON object — using defaults');\n    return { ...DEFAULT_POOL_PROVIDER_HINTS };\n  }\n\n  const parsed = parsedUnknown as Record<string, string>;\n  const result = { ...DEFAULT_POOL_PROVIDER_HINTS };\n\n  for (const [poolId, provider] of Object.entries(parsed)) {\n```",
+      "explanation": "Validates that parsed JSON is an object before iterating, preventing a runtime crash and preserving the documented fallback behavior."
+    },
+    {
+      "severity": "major",
+      "file": "pool-mapping.ts",
+      "line": 172,
+      "description": "resolvePoolId destructures ACCESS_LEVEL_POOLS[accessLevel] without guarding; a malformed access level will throw at runtime and bypass safe fallback behavior.",
+      "current_code": "```typescript\nexport function resolvePoolId(\n  modelAlias: ModelAlias | undefined,\n  accessLevel: AccessLevel,\n): PoolResolution {\n  const { default: defaultPool, allowed: allowedPools } = ACCESS_LEVEL_POOLS[accessLevel];\n\n  // No alias → use tier default\n  if (!modelAlias) {\n    return { poolId: defaultPool, allowedPools };\n  }\n\n  // native → tier-aware resolution\n  if (modelAlias === 'native') {\n    return { poolId: NATIVE_POOL[accessLevel], allowedPools };\n  }\n```",
+      "fixed_code": "```typescript\nexport function resolvePoolId(\n  modelAlias: ModelAlias | undefined,\n  accessLevel: AccessLevel,\n): PoolResolution {\n  const level: AccessLevel = isAccessLevel(accessLevel as string) ? accessLevel : 'free';\n  const { default: defaultPool, allowed: allowedPools } = ACCESS_LEVEL_POOLS[level];\n\n  // No alias → use tier default\n  if (!modelAlias) {\n    return { poolId: defaultPool, allowedPools };\n  }\n\n  // native → tier-aware resolution\n  if (modelAlias === 'native') {\n    return { poolId: NATIVE_POOL[level], allowedPools };\n  }\n```",
+      "explanation": "Guards against invalid access levels at runtime and safely defaults to the least-privileged tier instead of throwing."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

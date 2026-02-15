@@ -1,0 +1,83 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Multiple critical correctness issues: unsafe number handling for bigint money, incorrect original_jti persistence, and config constraints not enforced.",
+  "issues": [
+    {
+      "severity": "critical",
+      "file": "UsageReceiver.ts",
+      "line": 93,
+      "description": "Unsafe numeric handling: cost_micro can be a number larger than MAX_SAFE_INTEGER, causing precision loss when converted to bigint. This breaks end-to-end bigint safety for money.",
+      "current_code": "```typescript\n    const report = parsed.data\n\n    // Bounds check: cost_micro within safety cap\n    const costMicroUsd = parseMicroUnit(report.cost_micro, 'cost_micro')\n```",
+      "fixed_code": "```typescript\n    const report = parsed.data\n\n    // Enforce bigint-safe numeric input before parsing\n    if (typeof report.cost_micro === 'number' && !Number.isSafeInteger(report.cost_micro)) {\n      throw new UsageReceiverError('cost_micro must be a safe integer', 400)\n    }\n\n    // Bounds check: cost_micro within safety cap (parse as string for bigint safety)\n    const costMicroUsd = parseMicroUnit(\n      typeof report.cost_micro === 'number' ? report.cost_micro.toString() : report.cost_micro,\n      'cost_micro',\n    )\n```",
+      "explanation": "This blocks unsafe number inputs that would lose precision and ensures parsing uses a string, preserving full bigint precision end-to-end."
+    },
+    {
+      "severity": "major",
+      "file": "UsageReceiver.ts",
+      "line": 71,
+      "description": "JWT claim constraints not enforced and config.maxReportIdLength is unused. A too-long report_id could bypass configured limits and hit DB constraints unexpectedly.",
+      "current_code": "```typescript\n    const jwtReportId = jwtClaims.report_id\n    if (!jwtReportId) {\n      throw new UsageReceiverError('JWT missing report_id claim', 400)\n    }\n```",
+      "fixed_code": "```typescript\n    const jwtReportId = jwtClaims.report_id\n    if (!jwtReportId) {\n      throw new UsageReceiverError('JWT missing report_id claim', 400)\n    }\n    if (jwtReportId.length > this.config.maxReportIdLength) {\n      throw new UsageReceiverError('JWT report_id exceeds max length', 400)\n    }\n\n    const jwtJti = jwtClaims.jti\n    if (!jwtJti) {\n      throw new UsageReceiverError('JWT missing jti claim', 400)\n    }\n```",
+      "explanation": "Enforces configured limits and ensures original_jti exists before persisting, preventing unexpected DB errors and meeting the requirement to store original_jti."
+    },
+    {
+      "severity": "major",
+      "file": "UsageReceiver.ts",
+      "line": 109,
+      "description": "Payload report_id is not validated against configurable length (maxReportIdLength).",
+      "current_code": "```typescript\n    const report = parsed.data\n\n    // Bounds check: cost_micro within safety cap\n    const costMicroUsd = parseMicroUnit(report.cost_micro, 'cost_micro')\n```",
+      "fixed_code": "```typescript\n    const report = parsed.data\n\n    if (report.report_id.length > this.config.maxReportIdLength) {\n      throw new UsageReceiverError('report_id exceeds max length', 400)\n    }\n\n    // Bounds check: cost_micro within safety cap\n    const costMicroUsd = parseMicroUnit(\n      typeof report.cost_micro === 'number' ? report.cost_micro.toString() : report.cost_micro,\n      'cost_micro',\n    )\n```",
+      "explanation": "Applies the configured maximum length to payload report_id, preventing oversized ids from bypassing config and DB constraints."
+    },
+    {
+      "severity": "critical",
+      "file": "UsageReceiver.ts",
+      "line": 146,
+      "description": "originalJti is incorrectly populated with report_id instead of JWT jti, violating the requirement to store original_jti and breaking auditability.",
+      "current_code": "```typescript\n          costMicroUsd,\n          originalJti: jwtClaims.report_id,\n        })\n```",
+      "fixed_code": "```typescript\n          costMicroUsd,\n          originalJti: jwtClaims.jti,\n        })\n```",
+      "explanation": "Stores the correct JWT jti value for original_jti, preserving traceability and meeting AC-1.7."
+    },
+    {
+      "severity": "major",
+      "file": "UsageReceiver.ts",
+      "line": 133,
+      "description": "estimatedCostCents is a number literal but should be bigint to match money columns and avoid implicit casts/overflow.",
+      "current_code": "```typescript\n          costCents: costMicroCents,\n          estimatedCostCents: 0,\n          idempotencyKey: report.report_id,\n```",
+      "fixed_code": "```typescript\n          costCents: costMicroCents,\n          estimatedCostCents: 0n,\n          idempotencyKey: report.report_id,\n```",
+      "explanation": "Uses bigint consistently for money fields, avoiding implicit conversion or precision issues."
+    },
+    {
+      "severity": "major",
+      "file": "UsageReceiver.ts",
+      "line": 124,
+      "description": "insertUsageLog uses jwtClaims directly; after adding JWT jti validation, the function should receive jti explicitly to avoid accidental mismatch or undefined usage.",
+      "current_code": "```typescript\n    const isDuplicate = await this.insertUsageLog(report, costMicroUsd, costMicroCents, jwtClaims)\n```",
+      "fixed_code": "```typescript\n    const isDuplicate = await this.insertUsageLog(report, costMicroUsd, costMicroCents, jwtJti)\n```",
+      "explanation": "Passes the validated jti explicitly, preventing undefined or incorrect values from being stored."
+    },
+    {
+      "severity": "major",
+      "file": "UsageReceiver.ts",
+      "line": 137,
+      "description": "insertUsageLog signature accepts full jwtClaims and uses report_id as originalJti; update to accept validated jti string instead.",
+      "current_code": "```typescript\n  private async insertUsageLog(\n    report: UsageReport,\n    costMicroUsd: bigint,\n    costMicroCents: bigint,\n    jwtClaims: S2SJwtPayload,\n  ): Promise<boolean> {\n```",
+      "fixed_code": "```typescript\n  private async insertUsageLog(\n    report: UsageReport,\n    costMicroUsd: bigint,\n    costMicroCents: bigint,\n    jwtJti: string,\n  ): Promise<boolean> {\n```",
+      "explanation": "Takes only the required, validated JWT jti value, reducing misuse and ensuring correct data persistence."
+    },
+    {
+      "severity": "major",
+      "file": "UsageReceiver.ts",
+      "line": 146,
+      "description": "insertUsageLog still references jwtClaims after signature change; must use jwtJti parameter.",
+      "current_code": "```typescript\n          costMicroUsd,\n          originalJti: jwtClaims.jti,\n        })\n```",
+      "fixed_code": "```typescript\n          costMicroUsd,\n          originalJti: jwtJti,\n        })\n```",
+      "explanation": "Aligns with the updated function signature and guarantees the stored original_jti is the validated jti."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

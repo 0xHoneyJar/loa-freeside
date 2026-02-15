@@ -1,0 +1,20 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "One blocking bug found: failed budget finalization can prevent reconciliation due to premature finalized flag.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "agent-gateway.ts",
+      "line": 167,
+      "description": "The `finalized` flag is set before `budget.finalize()` completes. If `finalize()` throws, reconciliation is skipped in `finally`, leaving reservations stranded.",
+      "current_code": "```typescript\n        if (event.type === 'usage' && !finalized) {\n          finalized = true;\n          await this.budget.finalize({\n            communityId: context.tenantId,\n            userId: context.userId,\n            idempotencyKey: context.idempotencyKey,\n            actualCost: Math.round(event.data.costUsd * 100),\n            usage: event.data,\n            modelAlias: request.modelAlias,\n            traceId: context.traceId,\n          });\n        }\n```",
+      "fixed_code": "```typescript\n        if (event.type === 'usage' && !finalized) {\n          await this.budget.finalize({\n            communityId: context.tenantId,\n            userId: context.userId,\n            idempotencyKey: context.idempotencyKey,\n            actualCost: Math.round(event.data.costUsd * 100),\n            usage: event.data,\n            modelAlias: request.modelAlias,\n            traceId: context.traceId,\n          });\n          finalized = true;\n        }\n```",
+      "explanation": "By only setting `finalized` after `budget.finalize()` succeeds, any thrown error will allow the `finally` block to schedule reconciliation, preventing leaked reservations."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

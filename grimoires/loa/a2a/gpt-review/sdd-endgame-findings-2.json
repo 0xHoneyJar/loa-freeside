@@ -1,0 +1,48 @@
+{
+  "verdict": "APPROVED",
+  "summary": "All previously blocking issues were addressed in a way that preserves the trust boundary, makes tests reproducible, hardens the BYOK proxy against SSRF/confused-deputy, and restores budget invariants/monitoring implementability without introducing new blocking problems.",
+  "previous_issues_status": [
+    {
+      "original_issue": "Tier-1 deterministic stub used pre-signed JWS test vectors (would expire / not exercise real signing path)",
+      "status": "fixed",
+      "notes": "Stub now signs usage reports at runtime with its own ES256 keypair, publishes JWKS, and uses decoded payload templates with frozen clock + deterministic IDs. This correctly exercises Arrakis S2S validation and avoids expiry brittleness."
+    },
+    {
+      "original_issue": "Tier-2 real container test used loa-finn :latest and did not pin contract artifact version (contract drift / non-reproducible failures)",
+      "status": "fixed",
+      "notes": "Tier-2 compose now pins loa-finn by digest/semver (explicitly not :latest) and pins the contract artifact version with a PR-driven bump process. This meets the versioned-contract requirement and makes nightly failures actionable."
+    },
+    {
+      "original_issue": "BYOKProxyHandler accepted provider/endpoint from request body and mixed it with JWT-derived provider (confused deputy within allowlist)",
+      "status": "fixed",
+      "notes": "Routing is now capability-based: provider + operation are derived exclusively from validated S2S JWT claims; request body contains only payload. URL is constructed from a fixed per-provider/per-operation map, eliminating body-driven routing."
+    },
+    {
+      "original_issue": "SSRF prevention incomplete (DNS rebinding / resolution-to-private-IP, redirect disabling, port/userinfo constraints)",
+      "status": "fixed",
+      "notes": "validateTargetUrl now includes DNS resolution and blocks private/loopback/link-local, enforces https and port 443, disallows userinfo, and proxy client is specified to disable redirects (maxRedirects=0). This closes the previously identified SSRF gaps for this proxy pattern."
+    },
+    {
+      "original_issue": "BYOK budget bypass semantics unclear; risk of drift alarms or loss of auditability when usage reports carry non-zero cost",
+      "status": "fixed",
+      "notes": "Accounting contract is now explicit: BYOK_NO_BUDGET reserves/commits 0; UsageReceiver must reject non-zero cost_micro_usd for BYOK; tokens may be reported for observability; drift metric excludes BYOK by accounting_mode. This prevents persistent delta while retaining non-billing usage visibility."
+    },
+    {
+      "original_issue": "Ensemble fallback reserved multiplier=1 despite possible cascades (committed could exceed reserved, breaking finalize-once invariants)",
+      "status": "fixed",
+      "notes": "Multiplier calculation now reserves worst-case for fallback (multiplier = n), with explicit rationale that excess reservation is released on finalize. This restores the invariant committed ≤ reserved for non-BYOK flows."
+    },
+    {
+      "original_issue": "Pool mapping drift prevention was CI-only; staggered deploys could cause outages when switching warn→reject",
+      "status": "fixed",
+      "notes": "Adds runtime compatibility via pool_mapping_version claim, loa-finn known-version set with forced-warn grace behavior, mismatch metric, and a pre-reject healthcheck endpoint. This is a valid runtime drift prevention mechanism for independent deploys."
+    },
+    {
+      "original_issue": "Monitoring metrics not implementable via CloudWatch Log Metric Filters (percentiles/ratios)",
+      "status": "fixed",
+      "notes": "Switches to EMF for latency distributions/gauges and uses metric math for error rate from two count metrics. This makes the 10 metrics + 6 alarms implementable in CloudWatch."
+    }
+  ],
+  "new_blocking_concerns": [],
+  "iteration": 2
+}

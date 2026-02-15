@@ -1,0 +1,20 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Invalid tier values (NaN/Infinity/non-numeric) can be cached and propagated, breaking access logic and violating fail-closed behavior.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "path/to/file.ts",
+      "line": 167,
+      "description": "Tier normalization does not handle NaN/Infinity/non-numeric values. Math.trunc(NaN) yields NaN, which then gets cached and returned, potentially breaking access mapping and violating fail-closed guarantees.",
+      "current_code": "```typescript\n    // Validate tier range\n    const validTier = Math.max(1, Math.min(9, Math.trunc(tier)));\n    setCachedTier(communityId, userId, validTier);\n    return validTier;\n```",
+      "fixed_code": "```typescript\n    // Validate tier range (fail-closed on invalid values)\n    const normalized = Number.isFinite(tier) ? Math.trunc(tier) : NaN;\n    const validTier = Number.isFinite(normalized)\n      ? Math.max(1, Math.min(9, normalized))\n      : 1;\n\n    if (!Number.isFinite(normalized)) {\n      logger.warn(\n        { tier, communityId, userId },\n        'AgentAuth: conviction scorer returned invalid tier — fail-closed to tier 1',\n      );\n    }\n\n    setCachedTier(communityId, userId, validTier);\n    return validTier;\n```",
+      "explanation": "This ensures any invalid tier value is treated as tier 1 (fail-closed), preventing NaN from being cached/returned and preserving security and stability."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "bridge_id": "bridge-20260215-2faa8f",
-  "state": "ITERATING",
+  "state": "JACKED_OUT",
   "config": {
     "depth": 3,
     "mode": "full",
@@ -13,26 +13,79 @@
   },
   "timestamps": {
     "started": "2026-02-15T20:00:00Z",
-    "last_activity": "2026-02-15T20:00:00Z"
+    "last_activity": "2026-02-15T22:20:00Z"
   },
-  "iterations": [],
+  "iterations": [
+    {
+      "iteration": 1,
+      "type": "sprint_plan",
+      "sprints_executed": 5,
+      "findings": {
+        "praise": 3,
+        "critical": 0,
+        "high": 0,
+        "medium": 2,
+        "low": 2,
+        "speculation": 2,
+        "gpt_critical": 2
+      },
+      "findings_addressed": 4,
+      "severity_score": 8.0,
+      "files_changed": 34,
+      "review_url": "https://github.com/0xHoneyJar/arrakis/pull/63#issuecomment-3903780631"
+    },
+    {
+      "iteration": 2,
+      "type": "fix",
+      "sprints_executed": 0,
+      "findings": {
+        "praise": 0,
+        "critical": 0,
+        "high": 0,
+        "medium": 1,
+        "low": 0,
+        "speculation": 0
+      },
+      "findings_addressed": 1,
+      "severity_score": 3.0,
+      "files_changed": 3,
+      "review_url": "https://github.com/0xHoneyJar/arrakis/pull/63#issuecomment-3903792824"
+    },
+    {
+      "iteration": 3,
+      "type": "fix",
+      "sprints_executed": 0,
+      "findings": {
+        "praise": 0,
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "speculation": 0
+      },
+      "findings_addressed": 0,
+      "severity_score": 0.0,
+      "files_changed": 1,
+      "review_url": "https://github.com/0xHoneyJar/arrakis/pull/63#issuecomment-3903806026"
+    }
+  ],
   "flatline": {
-    "initial_score": null,
-    "last_score": null,
-    "consecutive_below_threshold": 0,
-    "flatline_detected": false,
-    "flatline_iteration": null
+    "initial_score": 8.0,
+    "last_score": 0.0,
+    "consecutive_below_threshold": 1,
+    "flatline_detected": true,
+    "flatline_iteration": 3
   },
   "metrics": {
-    "total_sprints_executed": 0,
-    "total_files_changed": 0,
-    "total_findings_addressed": 0,
+    "total_sprints_executed": 5,
+    "total_files_changed": 38,
+    "total_findings_addressed": 5,
     "total_visions_captured": 0
   },
   "finalization": {
     "ground_truth_updated": false,
     "rtfm_passed": false,
     "pr_url": "https://github.com/0xHoneyJar/arrakis/pull/63",
-    "butterfreezone_generated": false
+    "butterfreezone_generated": true
   }
 }

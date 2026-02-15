@@ -1,0 +1,23 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Two of the three prior issues were fixed, but validator expectations are still hardcoded instead of using vector iss/aud.",
+  "previous_issues_status": [
+    {
+      "original_issue": "Falsy checks overwrite explicitly provided iat/exp (e.g., 0), breaking vectors that intentionally set boundary values.",
+      "status": "fixed",
+      "notes": "Updated to strict undefined checks for iat/exp."
+    },
+    {
+      "original_issue": "Validator is hardcoded to fixed issuer/audience instead of vector values, violating conformance requirement and potentially masking failures.",
+      "status": "not_fixed",
+      "notes": "Static tests still pass hardcoded expectedIssuer/expectedAudience instead of using vector claims."
+    },
+    {
+      "original_issue": "req_hash consistency test ignores non-empty bodies and silently skips vectors that include req_body_bytes_base64.",
+      "status": "fixed",
+      "notes": "Now computes hash from req_body_bytes_base64 when present."
+    }
+  ],
+  "new_blocking_concerns": [],
+  "iteration": 2
+}

@@ -1,0 +1,29 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Amount validation incorrectly allows zero despite requiring positive integer strings.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "packages/core/contracts/admin-billing.ts",
+      "line": 21,
+      "description": "amountMicro regex allows \"0\" even though the error message and domain require a positive integer string (>0).",
+      "current_code": "```typescript\namountMicro: z.string().regex(/^\\d+$/, 'Must be a positive integer string'),\n```",
+      "fixed_code": "```typescript\namountMicro: z.string().regex(/^(?:[1-9]\\d*)$/, 'Must be a positive integer string'),\n```",
+      "explanation": "The revised regex enforces strictly positive integers by disallowing zero and leading zeros-only values, matching the stated requirement."
+    },
+    {
+      "severity": "major",
+      "file": "packages/core/contracts/admin-billing.ts",
+      "line": 35,
+      "description": "amountMicro regex allows \"0\" even though the error message and domain require a positive integer string (>0).",
+      "current_code": "```typescript\namountMicro: z.string().regex(/^\\d+$/, 'Must be a positive integer string'),\n```",
+      "fixed_code": "```typescript\namountMicro: z.string().regex(/^(?:[1-9]\\d*)$/, 'Must be a positive integer string'),\n```",
+      "explanation": "The revised regex enforces strictly positive integers by disallowing zero and leading zeros-only values, matching the stated requirement."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

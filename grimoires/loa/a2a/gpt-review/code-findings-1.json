@@ -1,0 +1,29 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Found S2S JWT verification weaknesses: non‑constant time signature comparison and missing required exp/iat/TTL validation.",
+  "issues": [
+    {
+      "severity": "critical",
+      "file": "api/routes/billing-routes.ts",
+      "line": 123,
+      "description": "JWT signature is compared with plain string equality, enabling timing attacks and potentially accepting mismatched lengths.",
+      "current_code": "```typescript\n    const signature = createHmac('sha256', secret)\n      .update(headerPayload)\n      .digest('base64url');\n\n    if (signature !== parts[2]) return null;\n```",
+      "fixed_code": "```typescript\n    const signature = createHmac('sha256', secret)\n      .update(headerPayload)\n      .digest('base64url');\n\n    const provided = parts[2];\n    if (signature.length !== provided.length) return null;\n    const sigBuf = Buffer.from(signature, 'utf8');\n    const provBuf = Buffer.from(provided, 'utf8');\n    if (!timingSafeEqual(sigBuf, provBuf)) return null;\n```",
+      "explanation": "Uses constant‑time comparison (timingSafeEqual) and length check to prevent timing attacks and malformed signature bypass."
+    },
+    {
+      "severity": "critical",
+      "file": "api/routes/billing-routes.ts",
+      "line": 130,
+      "description": "S2S JWTs without exp/iat are accepted and max 5‑minute TTL is not enforced, allowing long‑lived or non‑expiring tokens.",
+      "current_code": "```typescript\n    if (payload.aud !== 'arrakis-internal') return null;\n    if (payload.iss !== 'loa-finn') return null;\n\n    const now = Math.floor(Date.now() / 1000);\n    const clockSkew = 30;\n    if (payload.exp < now - clockSkew) return null;\n\n    return payload;\n```",
+      "fixed_code": "```typescript\n    if (payload.aud !== 'arrakis-internal') return null;\n    if (payload.iss !== 'loa-finn') return null;\n\n    const now = Math.floor(Date.now() / 1000);\n    const clockSkew = 30;\n\n    if (!Number.isFinite(payload.exp) || !Number.isFinite(payload.iat)) return null;\n    if (payload.iat > now + clockSkew) return null; // issued in the future\n    if (payload.exp < now - clockSkew) return null; // expired\n\n    // Enforce max 5 minute TTL\n    if (payload.exp - payload.iat > 5 * 60) return null;\n\n    return payload;\n```",
+      "explanation": "Requires exp/iat claims, rejects future‑issued tokens, enforces expiration, and guarantees the documented 5‑minute maximum TTL."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

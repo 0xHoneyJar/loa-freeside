@@ -1,0 +1,38 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Found input validation and numeric handling bugs that can cause runtime errors or counter drift; fixes provided.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "budget_finalize.lua",
+      "line": 23,
+      "description": "actualCost is not forced to an integer; INCRBY will error on floats and negative values are only clamped, not floored.",
+      "current_code": "```lua\nlocal actualCost = tonumber(ARGV[1])\nlocal expiryMember = ARGV[2]\n\n-- Validate input\nif (not actualCost) or (actualCost < 0) then\n  actualCost = 0\nend\n```",
+      "fixed_code": "```lua\nlocal actualCost = tonumber(ARGV[1])\nlocal expiryMember = ARGV[2]\n\n-- Validate input\nif not actualCost then\n  actualCost = 0\nelse\n  if actualCost < 0 then actualCost = 0 end\n  actualCost = math.floor(actualCost)\nend\n```",
+      "explanation": "INCRBY requires an integer. Flooring ensures valid integer input and prevents runtime errors or unintended fractional increments."
+    },
+    {
+      "severity": "major",
+      "file": "budget_finalize.lua",
+      "line": 24,
+      "description": "expiryMember is required for ZREM; if ARGV[2] is missing or nil, redis.call('ZREM', ...) will throw an argument error and abort the script.",
+      "current_code": "```lua\nlocal expiryMember = ARGV[2]\n```",
+      "fixed_code": "```lua\nlocal expiryMember = ARGV[2]\nif not expiryMember then\n  return {'ERR_MISSING_EXPIRY_MEMBER', '0'}\nend\n```",
+      "explanation": "Validates required input and avoids a hard Redis error that would abort the script without a structured return."
+    },
+    {
+      "severity": "major",
+      "file": "budget_finalize.lua",
+      "line": 44,
+      "description": "estimated_cost is not validated; non-numeric or negative values can increase reserved or skip decrement, causing counter drift.",
+      "current_code": "```lua\n  local estimatedCost = tonumber(redis.call('HGET', KEYS[3], 'estimated_cost')) or 0\n\n  -- Decrement reserved by estimated cost\n  redis.call('DECRBY', KEYS[2], estimatedCost)\n```",
+      "fixed_code": "```lua\n  local estimatedCostStr = redis.call('HGET', KEYS[3], 'estimated_cost')\n  if not estimatedCostStr then\n    return {'ERR_MISSING_ESTIMATED_COST', '0'}\n  end\n  local estimatedCost = tonumber(estimatedCostStr)\n  if not estimatedCost then\n    return {'ERR_INVALID_ESTIMATED_COST', '0'}\n  end\n  if estimatedCost < 0 then estimatedCost = 0 end\n  estimatedCost = math.floor(estimatedCost)\n\n  -- Decrement reserved by estimated cost\n  redis.call('DECRBY', KEYS[2], estimatedCost)\n```",
+      "explanation": "Prevents invalid or negative estimated costs from corrupting reserved counters, and ensures the decrement is an integer."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

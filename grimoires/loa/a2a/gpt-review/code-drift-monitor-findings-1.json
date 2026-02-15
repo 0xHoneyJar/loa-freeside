@@ -1,0 +1,38 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Found a unit conversion bug and a timer leak in timeout handling that can cause incorrect drift detection and resource leaks.",
+  "issues": [
+    {
+      "severity": "critical",
+      "file": "budget-drift-monitor.ts",
+      "line": 118,
+      "description": "Incorrect unit conversion from cents to micro-cents (should be ×10,000, not ×100), causing drift comparisons to be off by 100×.",
+      "current_code": "```typescript\n    // Convert cents to micro-cents for comparison (1 cent = 100 micro-cents)\n    const redisMicroCents = safeInt(redisStr) * 100;\n```",
+      "fixed_code": "```typescript\n    // Convert cents to micro-cents for comparison (1 cent = 10,000 micro-cents)\n    const redisMicroCents = safeInt(redisStr) * 10_000;\n```",
+      "explanation": "Micro-cents are 1e-6 dollars; therefore 1 cent ($0.01) equals 10,000 micro-cents. This fix aligns Redis values with PG values for accurate drift detection."
+    },
+    {
+      "severity": "major",
+      "file": "budget-drift-monitor.ts",
+      "line": 62,
+      "description": "Timeout handling leaks timers because `rejectAfterTimeout` is never cleared when `checkCommunity` resolves; this can accumulate and waste resources.",
+      "current_code": "```typescript\n        const drift = await Promise.race([\n          this.checkCommunity(communityId, month),\n          rejectAfterTimeout(PER_COMMUNITY_TIMEOUT_MS, communityId),\n        ]);\n```",
+      "fixed_code": "```typescript\n        const drift = await withTimeout(\n          this.checkCommunity(communityId, month),\n          PER_COMMUNITY_TIMEOUT_MS,\n          communityId,\n        );\n```",
+      "explanation": "Using a timeout wrapper that clears the timer prevents leaking timeouts for communities that complete quickly."
+    },
+    {
+      "severity": "major",
+      "file": "budget-drift-monitor.ts",
+      "line": 176,
+      "description": "`rejectAfterTimeout` does not clear timers, which creates a resource leak. Replace it with a timeout helper that always clears the timer.",
+      "current_code": "```typescript\nfunction rejectAfterTimeout(ms: number, communityId: string): Promise<never> {\n  return new Promise((_, reject) =>\n    setTimeout(() => reject(new Error(`drift check timed out after ${ms}ms for ${communityId}`)), ms),\n  );\n}\n```",
+      "fixed_code": "```typescript\nfunction withTimeout<T>(promise: Promise<T>, ms: number, communityId: string): Promise<T> {\n  let timeoutId: ReturnType<typeof setTimeout> | undefined;\n\n  const timeoutPromise = new Promise<never>((_, reject) => {\n    timeoutId = setTimeout(\n      () => reject(new Error(`drift check timed out after ${ms}ms for ${communityId}`)),\n      ms,\n    );\n  });\n\n  return Promise.race([promise, timeoutPromise]).finally(() => {\n    if (timeoutId) clearTimeout(timeoutId);\n  });\n}\n```",
+      "explanation": "This ensures timers are cleared regardless of whether the community check or the timeout completes first, avoiding leaks during repeated job cycles."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

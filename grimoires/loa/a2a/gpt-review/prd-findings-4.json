@@ -1,0 +1,7 @@
+{
+  "verdict": "APPROVED",
+  "summary": "Auto-approved after 3 iterations (max_iterations reached)",
+  "auto_approved": true,
+  "iteration": 4,
+  "note": "Review converged by iteration limit. Consider adjusting max_iterations in config if needed."
+}

@@ -1,0 +1,56 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Core shape is sound, but several security/accounting/test-contract details as written will either break integration or violate the trust/budget requirements in ways that can fail production.",
+  "blocking_issues": [
+    {
+      "location": "§3.2.1 Deterministic stub + §3.2.3 test vectors (FR-2)",
+      "issue": "Stub sends usage reports using “pre-signed JWS from test vectors”, which cannot be valid if the JWS includes request-specific fields (jti/iat/exp, request_id, cost, timestamps) and/or if keys rotate; it will either fail validation or stop testing the real signing path.",
+      "why_blocking": "FR-2 requires cross-system verification of the real S2S validation path. Pre-signed JWS makes the test brittle (expires) and/or meaningless (not exercising signing). This will cause CI to flake or, worse, pass while production fails on real usage reports.",
+      "fix": "Have the stub SIGN usage reports at runtime with a stub private key and publish the stub JWKS for arrakis to validate (or configure arrakis to trust the stub JWKS in test). Keep test vectors as payload templates (decoded JSON), not as pre-signed JWS. If you need determinism, fix iat/exp via a frozen clock in the stub and include deterministic request_id/jti generation."
+    },
+    {
+      "location": "§3.2.2 Tier 2 real container test (FR-2)",
+      "issue": "Tier 2 uses `ghcr.io/.../loa-finn:latest` and does not pin the contract artifact version; this reintroduces contract drift and non-reproducible nightly failures.",
+      "why_blocking": "A moving `latest` image + unpinned contract means tests can start failing without any repo change, blocking releases and making failures non-actionable. This directly undermines the “versioned contract artifact” requirement.",
+      "fix": "Pin the loa-finn image by digest (or semver tag) and pin the contract artifact version in arrakis tests. Add a CI job that updates the pinned version intentionally (PR-driven) when loa-finn publishes a new contract."
+    },
+    {
+      "location": "§3.4.5 BYOKProxyHandler request handling (FR-4, trust boundary)",
+      "issue": "Proxy derives `provider` from S2S JWT (`claims.byok_provider`) but also accepts `provider`/`endpoint` from request body and uses `buildProviderUrl(provider, req.body)`; the design does not explicitly ignore/override body provider/endpoint, enabling confused-deputy style request smuggling within the allowlist (e.g., hitting unintended endpoints or mixing provider/body).",
+      "why_blocking": "This is a classic trust-boundary violation: loa-finn becomes a deputy that can ask arrakis to call arbitrary allowlisted endpoints with a tenant’s key. Even if hosts are allowlisted, endpoint-level abuse (unexpected paths, methods, or API versions) can cause data exfiltration or key misuse and is hard to detect.",
+      "fix": "Make the proxy contract capability-based: the S2S JWT must carry an explicit, validated capability such as `{provider, operation}` or `{provider, endpoint_template_id}` and arrakis must construct the full URL/path from that capability only. Ignore `req.body.provider` and restrict `endpoint` to a small allowlisted set per provider (exact paths), not arbitrary strings."
+    },
+    {
+      "location": "§3.4.5 SSRF prevention details (FR-4)",
+      "issue": "SSRF controls are incomplete as specified: `validateTargetUrl` only checks hostname allowlist and mentions private IP blocking, but does not address DNS rebinding / resolution-to-private-IP, nor does it specify redirect disabling at the HTTP client layer in a verifiable way.",
+      "why_blocking": "In practice, hostname allowlists without resolution checks can be bypassed via DNS tricks or misconfiguration; redirect following can turn an allowlisted host into a pivot. This is a production security failure mode for a proxy that holds decrypted API keys.",
+      "fix": "Implement and document: (1) resolve hostname and block if any A/AAAA resolves to private/link-local/loopback; (2) enforce `maxRedirects=0` (or equivalent) in the HTTP client; (3) disallow userinfo, non-443 ports unless explicitly required; (4) re-validate on every redirect attempt (should be none). Add unit tests for DNS-to-private and redirect cases."
+    },
+    {
+      "location": "§3.4.6 BYOK budget bypass + overall budget model (FR-4, budget accuracy)",
+      "issue": "BYOK path reserves $0 and sets `accountingMode: 'BYOK_NO_BUDGET'`, but the SDD does not specify how finalize-once semantics behave when actual usage reports arrive with non-zero provider usage (tokens) but cost is forced to 0, nor how this interacts with drift detection (`agent_committed_vs_reported_delta`).",
+      "why_blocking": "If usage reports include non-zero `cost_micro_usd` while reservation/commit is 0, reconciliation will show persistent drift (violating “zero drift” requirement) or you’ll be forced to special-case drift logic later. Conversely, if you force reported cost to 0, you lose an auditable record of BYOK usage and can’t detect abuse.",
+      "fix": "Define a strict accounting contract: for BYOK_NO_BUDGET, usage reports must carry `cost_micro_usd=0` but may carry separate `usage_units` (tokens) for observability; reconciliation must compare committed vs reported cost within the same accounting mode. Alternatively, store provider-reported cost in a separate non-billing field and keep billing cost at 0. Update UsageReceiver validation rules accordingly."
+    },
+    {
+      "location": "§3.3 EnsembleMapper multiplier + §2.2 budget reserve (FR-3, budget accuracy)",
+      "issue": "`fallback` reserves multiplier=1 “may cascade” but does not reserve worst-case; this can exceed reserved budget and break finalize-once invariants or cause negative available budget depending on how finalize handles overages.",
+      "why_blocking": "Your budget system is two-counter reserved+committed with finalize-once semantics. If actual committed cost can exceed reserved cost for a request, you either (a) allow overspend (violates budget accuracy/limits) or (b) fail finalize (breaks accounting pipeline). Either can cause production incidents.",
+      "fix": "Make reservation conservative: for `fallback`, reserve up to max attempts (tier-gated) or reserve `n` if fallback can try up to `n` models. If you intentionally want optimistic reservation, you must specify and implement an atomic “top-up reservation” step before each additional fallback attempt (requires loa-finn↔arrakis budget API call) to keep invariants."
+    },
+    {
+      "location": "§3.1 PoolClaimValidator + §3.2.3 contract artifact mapping (FR-1, multi-repo drift)",
+      "issue": "SDD claims `PoolRegistry` in loa-finn is authoritative and publishes mapping for arrakis “to consume in CI”, but arrakis runtime still resolves pools and signs `pool_id/allowed_pools`. There is no runtime drift prevention mechanism; only CI-time checks. If mappings diverge in production deployments (staggered releases), requests can be rejected or silently rerouted.",
+      "why_blocking": "In warn→reject migration, any drift between arrakis and loa-finn will cause widespread 403s when reject is enabled, effectively an outage. CI-only drift prevention is insufficient in multi-repo, independently deployed systems.",
+      "fix": "Add a runtime compatibility mechanism: include a `pool_mapping_version` claim signed by arrakis and have loa-finn accept only known versions (with a grace window), or have loa-finn ignore arrakis `pool_id` entirely and re-resolve from alias/access_level (treat arrakis pool selection as a hint only). At minimum, add a healthcheck/metric that detects mapping version mismatch before flipping to reject."
+    },
+    {
+      "location": "§3.5.1 Metrics/alarms (FR-5)",
+      "issue": "Several listed metrics are not implementable as CloudWatch Log Metric Filters as described (e.g., `agent_request_latency_p99`, `agent_redis_latency_p99`, and especially `agent_error_rate` as a ratio). CloudWatch metric filters emit counts/sums; percentile statistics require EMF or custom metrics, and ratios require math expressions over two metrics.",
+      "why_blocking": "FR-5 requires a working dashboard with 10 metrics and 6 alarms. If the metric extraction approach can’t produce the metrics, alarms/dashboards won’t function, leaving production blind and failing acceptance.",
+      "fix": "Switch to CloudWatch Embedded Metric Format (EMF) for latency distributions (or emit custom metrics via PutMetricData). For error rate, emit `requests_total` and `requests_5xx` as separate metrics and create a CloudWatch metric math expression alarm. Update terraform accordingly."
+    }
+  ],
+  "question": "",
+  "iteration": 1
+}

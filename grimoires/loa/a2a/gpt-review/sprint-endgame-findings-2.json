@@ -1,0 +1,48 @@
+{
+  "verdict": "APPROVED",
+  "summary": "All previously-blocking contradictions and missing cross-repo/security/integration tasks were addressed with testable acceptance criteria, and no new truly-blocking issues were introduced.",
+  "previous_issues_status": [
+    {
+      "original_issue": "Task 1.1 acceptance criteria contradicted enforcement mode (warn vs 403 reject).",
+      "status": "fixed",
+      "notes": "AC-1.6 is now correctly split into AC-1.6a (warn: proceed + event/metric) and AC-1.6b (reject: 403 with POOL_CLAIM_MISMATCH), with tests covering both modes."
+    },
+    {
+      "original_issue": "Task 1.2 missing/unclear cross-repo dependency and ownership (arrakis emits claim; loa-finn validates + 24h grace).",
+      "status": "fixed",
+      "notes": "Task 1.2 is explicitly cross-repo with 1.2a (arrakis emits pool_mapping_version) and 1.2b (loa-finn first-seen persistence + forced warn + reject after 24h), plus an E2E grace-window assertion via clock injection and a healthcheck endpoint."
+    },
+    {
+      "original_issue": "FR-2/SDD requirement for versioned contract artifacts (npm package) and digest pinning was missing, blocking reliable pool_mapping_version derivation and stable E2E artifacts.",
+      "status": "fixed",
+      "notes": "Task 1.4 adds an npm workspace contract package with semver, makes both the stub and pool_mapping_version derive from it, and pins docker-compose base images by digest."
+    },
+    {
+      "original_issue": "Task 2.1 Ensemble Mapper acceptance criteria were incomplete/inconsistent and did not testably assert budget multiplier=N and partial failure reconciliation/invariants.",
+      "status": "fixed",
+      "notes": "Task 2.1 now includes explicit ACs for reservation multiplier=N across strategies (including fallback) and unit tests asserting committed ≤ reserved under partial failure and stream abort; Sprint 2.4 adds an E2E partial-failure drift=0 scenario."
+    },
+    {
+      "original_issue": "Task 3.2 vs 3.3 had coupled/incorrect acceptance criteria (manager claiming CRUD endpoints), risking a non-working feature due to missing wiring/integration task.",
+      "status": "fixed",
+      "notes": "Task 3.2 acceptance is now class-level (encryption round-trip, cache wipe, circuit breaker, atomic rotation) and Task 3.3 owns end-to-end CRUD + explicit wiring routes→manager→DB→KMS with an integration test."
+    },
+    {
+      "original_issue": "Task 3.4 lacked a concrete provider/operation allowlist (PROVIDER_ENDPOINTS) and negative tests, blocking SSRF/confused-deputy prevention verification.",
+      "status": "fixed",
+      "notes": "Task 3.4 adds a dedicated byok-provider-endpoints module with explicit hostnames/operations/methods and includes negative unit tests for unknown provider/operation, host mismatch, DNS-to-private-IP, and redirects."
+    },
+    {
+      "original_issue": "Task 3.7 network-layer SSRF defense was infeasible/undefined (SG to provider IPs; runtime unspecified), blocking infra completion.",
+      "status": "fixed",
+      "notes": "Runtime is now explicitly ECS Fargate in VPC, with egress routed through AWS Network Firewall using domain allowlisting, plus SG port-443 restriction, deny logging, and a staging terraform plan acceptance check."
+    },
+    {
+      "original_issue": "Sprint 4 monitoring lacked feature-specific and pool-claim metrics needed for safe enablement and warn→reject graduation.",
+      "status": "fixed",
+      "notes": "Task 4.1 now emits EMF metrics with a feature dimension (baseline|ensemble|byok), adds pool_claim_mismatch/pool_claim_reject counters with pool_id dimension, and Task 4.2 includes the mismatch-rate widget and alarms; Task 4.4 adds a concrete preflight gate (mismatch=0 for 24h)."
+    }
+  ],
+  "new_blocking_concerns": [],
+  "iteration": 2
+}

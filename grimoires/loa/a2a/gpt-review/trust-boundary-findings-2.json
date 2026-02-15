@@ -1,0 +1,38 @@
+{
+  "verdict": "APPROVED",
+  "summary": "All 6 previously-blocking trust-boundary and token-validation gaps appear to be addressed correctly in v1.1.0, and the changes do not introduce any new truly-blocking problems.",
+  "previous_issues_status": [
+    {
+      "original_issue": "Missing binding between JWT and the actual request payload (no payload hash / nonce binding), enabling payload swapping within token validity window and breaking idempotency semantics",
+      "status": "fixed",
+      "notes": "The `req_hash` claim was added and explicitly defined as `base64url(SHA-256(canonical_request_body))`, and loa-finn is required to verify it matches the received payload before processing/caching. This closes the semantic replay/payload swap gap and aligns with the idempotency definition."
+    },
+    {
+      "original_issue": "Idempotency/replay protections not explicitly scoped in loa-finn, enabling cross-tenant or cross-user cache poisoning if loa-finn keyed only on idempotencyKey",
+      "status": "fixed",
+      "notes": "loa-finn now MUST key idempotency as `idem:{tenant_id}:{sub}:{idempotency_key}:{req_hash}`. This is the right minimum scope for multi-tenant isolation and prevents collisions across tenants/users and across different payloads."
+    },
+    {
+      "original_issue": "Incomplete JWT validation rules (no explicit alg pinning, kid requirements, typ guidance, and rejection of none/algorithm confusion)",
+      "status": "fixed",
+      "notes": "Validation rules now explicitly pin `alg=ES256`, require non-empty `kid`, recommend `typ=JWT`, and explicitly reject `none`/HMAC/other algorithms. This is sufficient to prevent common JWT verification misconfigurations."
+    },
+    {
+      "original_issue": "JWKS trust model underspecified; risk of key substitution without pinned JWKS URI and stronger transport trust",
+      "status": "fixed",
+      "notes": "Document now requires a hard-pinned JWKS URI (internal service discovery name, not public internet), validates JWK parameters (`kty=EC`, `crv=P-256`, `use=sig`), and states mTLS is preferred for all calls including JWKS fetch. This is an acceptable and correctly targeted mitigation for the stated threat."
+    },
+    {
+      "original_issue": "Pre-auth IP limiter described as in-memory while Redis is the hard dependency; risk of bypass under horizontal scaling/restarts",
+      "status": "fixed",
+      "notes": "The in-memory limiter is now explicitly documented as best-effort per-replica only (not global), and the doc clarifies Redis-based limits apply before expensive work (session lookup, budget reservation, SSE setup). This resolves the earlier misleading 'first line' implication and avoids a false sense of protection."
+    },
+    {
+      "original_issue": "Replay protection SETNX key not scoped for env/issuer/tenant; risk of collisions across environments/issuers and operational failures",
+      "status": "fixed",
+      "notes": "loa-finn now uses `agent:jti:{env}:{iss}:{tenant_id}:{jti}` and requires UUIDv4 format validation before using `jti` in Redis keys. This is the correct scoping and input validation to prevent cross-env collisions and keyspace abuse."
+    }
+  ],
+  "new_blocking_concerns": [],
+  "iteration": 2
+}

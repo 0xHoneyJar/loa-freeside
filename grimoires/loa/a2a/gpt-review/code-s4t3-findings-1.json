@@ -1,0 +1,47 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Found security and streaming bugs: error info leakage, missing abort propagation, and rate-limit header bugs.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "agent-routes.ts",
+      "line": 137,
+      "description": "Validation errors expose internal schema details via parsed.error.message, which can leak implementation details.",
+      "current_code": "```typescript\nconst parsed = agentInvokeRequestSchema.safeParse(req.body);\nif (!parsed.success) {\n  res.status(400).json({ error: 'INVALID_REQUEST', message: parsed.error.message });\n  return;\n}\n```",
+      "fixed_code": "```typescript\nconst parsed = agentInvokeRequestSchema.safeParse(req.body);\nif (!parsed.success) {\n  res.status(400).json({ error: 'INVALID_REQUEST', message: 'Invalid request' });\n  return;\n}\n```",
+      "explanation": "Returns a generic message to avoid leaking schema or validation internals while still signaling a bad request."
+    },
+    {
+      "severity": "major",
+      "file": "agent-routes.ts",
+      "line": 164,
+      "description": "Validation errors in SSE route leak details in the same way as invoke.",
+      "current_code": "```typescript\nconst parsed = agentInvokeRequestSchema.safeParse(req.body);\nif (!parsed.success) {\n  res.status(400).json({ error: 'INVALID_REQUEST', message: parsed.error.message });\n  return;\n}\n```",
+      "fixed_code": "```typescript\nconst parsed = agentInvokeRequestSchema.safeParse(req.body);\nif (!parsed.success) {\n  res.status(400).json({ error: 'INVALID_REQUEST', message: 'Invalid request' });\n  return;\n}\n```",
+      "explanation": "Prevents schema details from being exposed over the streaming endpoint."
+    },
+    {
+      "severity": "critical",
+      "file": "agent-routes.ts",
+      "line": 197,
+      "description": "Abort controller is created but its signal is never passed to gateway.stream, so the generator may keep running after client disconnect (resource leak).",
+      "current_code": "```typescript\n// Abort controller for client disconnect\nconst abort = new AbortController();\nreq.on('close', () => {\n  abort.abort();\n  clearInterval(heartbeat);\n});\n\ntry {\n  for await (const event of gateway.stream({\n    context: agentReq.agentContext,\n    ...parsed.data,\n  })) {\n    if (abort.signal.aborted) break;\n\n    res.write(`event: ${event.type}\\n`);\n    res.write(`data: ${JSON.stringify(event.data)}\\n\\n`);\n  }\n} finally {\n  clearInterval(heartbeat);\n}\n```",
+      "fixed_code": "```typescript\n// Abort controller for client disconnect\nconst abort = new AbortController();\nconst onClose = () => {\n  abort.abort();\n  clearInterval(heartbeat);\n};\nreq.on('close', onClose);\nres.on('close', onClose);\n\ntry {\n  for await (const event of gateway.stream({\n    context: agentReq.agentContext,\n    ...parsed.data,\n    signal: abort.signal,\n  })) {\n    if (abort.signal.aborted) break;\n\n    res.write(`event: ${event.type}\\n`);\n    res.write(`data: ${JSON.stringify(event.data)}\\n\\n`);\n  }\n} finally {\n  clearInterval(heartbeat);\n}\n```",
+      "explanation": "Passing the abort signal allows the gateway to stop generating events and release resources when the client disconnects. Listening to both req/res close events improves disconnect detection."
+    },
+    {
+      "severity": "major",
+      "file": "agent-routes.ts",
+      "line": 250,
+      "description": "handleGatewayError leaks internal error.message to clients and rate-limit headers are not set when values are 0 due to truthy checks.",
+      "current_code": "```typescript\nif (error.statusCode && error.code) {\n  const response: Record<string, unknown> = {\n    error: error.code,\n    message: error.message,\n  };\n\n  // Add rate limit headers on 429\n  if (error.statusCode === 429 && error.details) {\n    if (error.details.limit) res.setHeader('X-RateLimit-Limit', String(error.details.limit));\n    if (error.details.remaining != null) res.setHeader('X-RateLimit-Remaining', String(error.details.remaining));\n    if (error.details.retryAfterMs) res.setHeader('Retry-After', String(Math.ceil(Number(error.details.retryAfterMs) / 1000)));\n  }\n\n  res.status(error.statusCode).json(response);\n  return;\n}\n```",
+      "fixed_code": "```typescript\nif (error.statusCode && error.code) {\n  let safeMessage = 'An unexpected error occurred';\n  if (error.statusCode < 500) {\n    safeMessage = error.statusCode === 429 ? 'Rate limit exceeded' : 'Request failed';\n  }\n\n  const response: Record<string, unknown> = {\n    error: error.code,\n    message: safeMessage,\n  };\n\n  // Add rate limit headers on 429\n  if (error.statusCode === 429 && error.details) {\n    if (error.details.limit != null) res.setHeader('X-RateLimit-Limit', String(error.details.limit));\n    if (error.details.remaining != null) res.setHeader('X-RateLimit-Remaining', String(error.details.remaining));\n    if (error.details.retryAfterMs != null) {\n      res.setHeader('Retry-After', String(Math.ceil(Number(error.details.retryAfterMs) / 1000)));\n    }\n  }\n\n  res.status(error.statusCode).json(response);\n  return;\n}\n```",
+      "explanation": "Replaces potentially sensitive error messages with safe generic messages and ensures rate-limit headers are set even when values are 0."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

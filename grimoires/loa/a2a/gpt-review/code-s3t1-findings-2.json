@@ -1,0 +1,18 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Input validation was added, but the limit key still does not receive a TTL as previously required.",
+  "previous_issues_status": [
+    {
+      "original_issue": "Missing validation for numeric inputs allows nil/NaN arithmetic errors and negative estimatedCost to reduce reserved counter and bypass budget limits.",
+      "status": "fixed",
+      "notes": "Numeric inputs are now validated and negative costs rejected."
+    },
+    {
+      "original_issue": "Limit key never receives a TTL, violating the requirement to set PEXPIRE on all keys and risking memory leaks.",
+      "status": "not_fixed",
+      "notes": "PEXPIRE is set on committed, reserved, reservation, and expiry ZSET keys but still not on the limit key (KEYS[3])."
+    }
+  ],
+  "new_blocking_concerns": [],
+  "iteration": 2
+}

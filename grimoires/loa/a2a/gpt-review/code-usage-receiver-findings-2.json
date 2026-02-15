@@ -1,0 +1,43 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Several prior critical/major issues remain unresolved, notably bigint-safe cost handling and JWT jti enforcement.",
+  "previous_issues_status": [
+    {
+      "original_issue": "Unsafe numeric handling for cost_micro allowing precision loss when numbers exceed MAX_SAFE_INTEGER",
+      "status": "not_fixed",
+      "notes": "cost_micro numbers are still accepted and converted to string without a safe-integer check; precision can already be lost before parsing."
+    },
+    {
+      "original_issue": "JWT claim constraints not enforced (maxReportIdLength and required jti)",
+      "status": "not_fixed",
+      "notes": "report_id length is enforced, but jti is not required; code falls back to report_id when jti is absent."
+    },
+    {
+      "original_issue": "Payload report_id not validated against maxReportIdLength",
+      "status": "fixed",
+      "notes": ""
+    },
+    {
+      "original_issue": "original_jti incorrectly populated with report_id instead of JWT jti",
+      "status": "not_fixed",
+      "notes": "originalJti falls back to report_id when jti is missing, violating requirement to store the JWT jti."
+    },
+    {
+      "original_issue": "estimatedCostCents should be bigint",
+      "status": "not_fixed",
+      "notes": "estimatedCostCents is still set to numeric 0 rather than 0n."
+    },
+    {
+      "original_issue": "insertUsageLog should take validated jti explicitly",
+      "status": "fixed",
+      "notes": ""
+    },
+    {
+      "original_issue": "insertUsageLog references jwtClaims after signature change",
+      "status": "fixed",
+      "notes": ""
+    }
+  ],
+  "new_blocking_concerns": [],
+  "iteration": 2
+}

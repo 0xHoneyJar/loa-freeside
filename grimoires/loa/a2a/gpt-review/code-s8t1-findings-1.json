@@ -1,0 +1,29 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Found a critical wiring bug: the factory passes a non-existent config field to the KeyLoader, causing runtime failure to load signing keys.",
+  "issues": [
+    {
+      "severity": "critical",
+      "file": "packages/adapters/agent/factory.ts",
+      "line": 52,
+      "description": "Factory passes config.jwtSecretId (non-existent) to createKeyLoader; results in undefined secretId and KeyLoader failure in production.",
+      "current_code": "```typescript\n  const keyLoader: KeyLoader = createKeyLoader(config.jwtSecretId, logger);\n```",
+      "fixed_code": "```typescript\n  const keyLoader: KeyLoader = createKeyLoader(config.jwt.secretId, logger);\n```",
+      "explanation": "Uses the correct config path (config.jwt.secretId) so KeyLoader can resolve the AWS Secrets Manager secret ID; prevents fail-open or runtime errors when env var is absent."
+    },
+    {
+      "severity": "major",
+      "file": "packages/adapters/agent/factory.ts",
+      "line": 116,
+      "description": "createKeyLoader signature requires a string, but the caller may pass undefined when no secretId is configured; this is a type/runtime hazard.",
+      "current_code": "```typescript\nfunction createKeyLoader(secretId: string, logger: Logger): KeyLoader {\n```",
+      "fixed_code": "```typescript\nfunction createKeyLoader(secretId: string | undefined, logger: Logger): KeyLoader {\n```",
+      "explanation": "Matches the actual runtime/typing reality and allows the function’s internal check to throw a clear error when secretId is missing."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

@@ -1,0 +1,20 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Factory does not accept or pass optional config overrides as required, preventing runtime configuration adjustments.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "agent-gateway-factory.ts",
+      "line": 23,
+      "description": "Factory options do not include config overrides and loadAgentGatewayConfig() is called without passing overrides, violating the acceptance criteria and preventing runtime configuration changes.",
+      "current_code": "```typescript\nexport interface CreateAgentGatewayOptions {\n  redis: Redis;\n  logger: Logger;\n  reconciliationQueue?: Queue<StreamReconciliationJob>;\n  overrideProvider?: TierOverrideProvider;\n  enqueueAuditLog?: (entry: import('./budget-manager.js').AuditLogEntry) => void;\n}\n\nexport async function createAgentGateway(\n  options: CreateAgentGatewayOptions,\n): Promise<AgentGatewayResult> {\n  const { redis, logger, reconciliationQueue, overrideProvider, enqueueAuditLog } = options;\n  const config = loadAgentGatewayConfig();\n```",
+      "fixed_code": "```typescript\nexport interface CreateAgentGatewayOptions {\n  redis: Redis;\n  logger: Logger;\n  reconciliationQueue?: Queue<StreamReconciliationJob>;\n  overrideProvider?: TierOverrideProvider;\n  enqueueAuditLog?: (entry: import('./budget-manager.js').AuditLogEntry) => void;\n  configOverrides?: Parameters<typeof loadAgentGatewayConfig>[0];\n}\n\nexport async function createAgentGateway(\n  options: CreateAgentGatewayOptions,\n): Promise<AgentGatewayResult> {\n  const { redis, logger, reconciliationQueue, overrideProvider, enqueueAuditLog, configOverrides } = options;\n  const config = loadAgentGatewayConfig(configOverrides);\n```",
+      "explanation": "Adds the missing optional config overrides to the factory options and forwards them into loadAgentGatewayConfig(), satisfying the acceptance criteria and enabling runtime configuration customization."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

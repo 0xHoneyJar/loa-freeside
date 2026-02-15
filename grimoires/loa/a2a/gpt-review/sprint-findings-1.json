@@ -1,0 +1,38 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "The iteration-3 narrative is mostly consistent with the stated 1-line TTL fix, but the machine-readable findings JSON and iteration accounting are internally inconsistent in ways that will break bridge tracking and convergence verification.",
+  "blocking_issues": [
+    {
+      "location": "Findings JSON block (Iteration 3) + 'Resolved From Iteration 2' section",
+      "issue": "Findings JSON reports `findings: []` but also claims `by_status.resolved: 1` without listing the resolved finding (medium-3) in a machine-readable way.",
+      "why_blocking": "Bridge protocols require traceable lifecycle tracking across iterations; a parser cannot reconcile an empty findings array with a nonzero resolved count, and cannot verify that medium-3 was actually resolved in this iteration. This breaks automated convergence/closure checks.",
+      "fix": "Include a resolved finding entry for medium-3 in the JSON (e.g., with `id`, `severity`, `status: \"resolved\"`, `resolved_in_iteration: 3`, `evidence` pointing to file/line/commit), or set `by_status.resolved` to 0 and move resolution accounting into a separate `resolved_findings` array. Ensure counts match the arrays."
+    },
+    {
+      "location": "Convergence Assessment → Final State bullets",
+      "issue": "Claims 'All medium findings: Resolved (3/3 resolved)' and 'All low findings: Resolved (2/2 resolved)' which contradicts the earlier iteration history (Iter-1: 9 findings with 4 actionable) and Iter-2: 1 medium finding; there is no documented basis for 3 medium + 2 low totals.",
+      "why_blocking": "This makes the iteration history non-auditable: reviewers and automation cannot verify totals, resolution rate, or severity reduction claims. In bridge reviews, incorrect rollups invalidate the convergence assessment and approval logic.",
+      "fix": "Replace the '3/3' and '2/2' rollups with numbers that are derivable from the recorded findings across iterations (or explicitly enumerate the severities from Iter-1 findings). If you don’t have severity breakdown for Iter-1 in this document, remove these aggregate claims or add a table listing all Iter-1 findings with severities and statuses."
+    },
+    {
+      "location": "Approval Recommendation + Metadata → Review Statistics",
+      "issue": "States 'All 7 actionable findings from iterations 1-2 successfully resolved' and 'Findings resolved: 7 actionable + 3 advisory' while Iteration 1 says 9 findings (4 actionable) and Iteration 2 says 1 finding (1 actionable). The actionable/advisory math does not reconcile with the iteration summaries provided.",
+      "why_blocking": "If the counts are wrong, the 'final resolution rate: 100%' and convergence claims are not trustworthy. This can cause sprint/merge gating to fail when the bridge system cross-checks totals against prior iterations.",
+      "fix": "Recompute and restate totals using only the documented iteration data (or include the missing Iter-1 finding list and classification). Ensure: (a) total findings across all iterations, (b) actionable vs advisory, (c) resolved counts, and (d) 'new findings introduced' all reconcile with the per-iteration records."
+    },
+    {
+      "location": "Executive Summary / Diff Analysis verification claims",
+      "issue": "As written, the document asserts factual verification ('Line 43 now uses +300 instead of +3600', 'Risk: None') but does not include a diff snippet or a reference to the exact pre-change line, and the timestamp is a placeholder (`2026-02-15T[timestamp]`).",
+      "why_blocking": "This is a final convergence check; without concrete evidence (diff hunk or before/after) and complete metadata, the review cannot be independently verified or machine-audited, which can block merge in governance workflows.",
+      "fix": "Add a minimal diff hunk (before/after) for line 43 and replace the timestamp placeholder with the actual timestamp. Keep the 'no new findings' claim, but ground it in the explicit 1-line diff evidence."
+    },
+    {
+      "location": "Flatline Detection logic",
+      "issue": "Declares 'FLATLINE DETECTED' based on score < 2.0, but the stated rule requires score < 2.0 for two consecutive iterations; Iter-2 score is 3.0, so the condition is not met from the provided history.",
+      "why_blocking": "This is a gating criterion. Misapplying the flatline rule can cause an automated quality gate to reject the merge or create an audit discrepancy.",
+      "fix": "Either (a) correct the flatline declaration to reflect the actual rule (no flatline yet, but convergence achieved via score=0.0), or (b) if your process allows flatline on final iteration only, update the rule statement in the document to match the actual gate and apply it consistently."
+    }
+  ],
+  "question": "",
+  "iteration": 1
+}

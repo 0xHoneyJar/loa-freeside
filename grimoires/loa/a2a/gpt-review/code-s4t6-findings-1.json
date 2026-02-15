@@ -1,0 +1,38 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Found critical timeout handling bug and missing header normalization that can cause unhandled rejections and incorrect idempotency/channel behavior.",
+  "issues": [
+    {
+      "severity": "critical",
+      "file": "agent-auth-middleware.ts",
+      "line": 150,
+      "description": "Conviction scoring timeout uses Promise.race without clearing the timer, which can trigger unhandled rejections after the race resolves and leak timers under load.",
+      "current_code": "```typescript\n    const tier = await Promise.race([\n      scorer.getTier(communityId, userId),\n      new Promise<never>((_, reject) =>\n        setTimeout(() => reject(new Error('Conviction scoring timeout')), CONVICTION_TIMEOUT_MS),\n      ),\n    ]);\n```",
+      "fixed_code": "```typescript\n    const tier = await new Promise<number>((resolve, reject) => {\n      const timeout = setTimeout(\n        () => reject(new Error('Conviction scoring timeout')),\n        CONVICTION_TIMEOUT_MS,\n      );\n\n      scorer\n        .getTier(communityId, userId)\n        .then((t) => {\n          clearTimeout(timeout);\n          resolve(t);\n        })\n        .catch((err) => {\n          clearTimeout(timeout);\n          reject(err);\n        });\n    });\n```",
+      "explanation": "This clears the timeout on both success and failure, preventing unhandled rejections and timer leaks while preserving the 5s fail-closed behavior."
+    },
+    {
+      "severity": "major",
+      "file": "agent-auth-middleware.ts",
+      "line": 103,
+      "description": "Idempotency key extraction blindly casts the header to string. If the header is an array or empty string, it will be accepted as-is, violating the requirement to generate a UUID when not provided.",
+      "current_code": "```typescript\n  const idempotencyKey =\n    (req.headers['x-idempotency-key'] as string) || randomUUID();\n```",
+      "fixed_code": "```typescript\n  const rawIdempotency = req.headers['x-idempotency-key'];\n  const idempotencyKey =\n    (typeof rawIdempotency === 'string' && rawIdempotency.trim()) ||\n    (Array.isArray(rawIdempotency) && rawIdempotency[0]?.trim()) ||\n    randomUUID();\n```",
+      "explanation": "This ensures a non-empty string is used; otherwise a UUIDv4 is generated, satisfying the idempotency requirement safely for both string and array header shapes."
+    },
+    {
+      "severity": "major",
+      "file": "agent-auth-middleware.ts",
+      "line": 116,
+      "description": "channelId is only taken from session, but acceptance criteria require it to be set from request headers or session context. Missing header handling breaks expected behavior for HTTP/API callers.",
+      "current_code": "```typescript\n    channelId: session.channelId,\n```",
+      "fixed_code": "```typescript\n  const rawChannelId = req.headers['x-channel-id'];\n  const channelId =\n    (typeof rawChannelId === 'string' && rawChannelId.trim()) ||\n    (Array.isArray(rawChannelId) && rawChannelId[0]?.trim()) ||\n    session.channelId;\n\n  return {\n    tenantId: session.communityId,\n    userId: session.walletAddress,\n    nftId: session.nftId ?? null,\n    tier,\n    accessLevel,\n    allowedModelAliases,\n    platform: session.platform,\n    channelId,\n    idempotencyKey,\n    traceId,\n  };\n```",
+      "explanation": "This implements header-based channelId extraction with safe fallback to session, fulfilling the requirement for both HTTP and bot contexts."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

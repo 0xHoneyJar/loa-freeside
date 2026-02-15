@@ -1,0 +1,56 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Found critical rate-limit misconfiguration, NOSCRIPT handling gap, and unsafe parsing that can cause NaN or runtime errors.",
+  "issues": [
+    {
+      "severity": "critical",
+      "file": "agent-rate-limiter.ts",
+      "line": 55,
+      "description": "Enterprise tier user limit is incorrect (100 instead of required 10), violating sprint plan and allowing excessive requests.",
+      "current_code": "```typescript\n// Tier Limits (from sprint plan: free: 60/10/20, pro: 300/30/60, enterprise: 1000/100/200)\n\n/** Default rate limits by access level */\nexport const TIER_LIMITS: Record<AccessLevel, TierLimits> = {\n  free: {\n    community: 60,\n    user: 10,\n    channel: 20,\n    burstCapacity: 3,\n    burstRefillRatePerMs: 3 / 60_000, // 3 tokens per minute\n  },\n  pro: {\n    community: 300,\n    user: 30,\n    channel: 60,\n    burstCapacity: 5,\n    burstRefillRatePerMs: 5 / 60_000, // 5 tokens per minute\n  },\n  enterprise: {\n    community: 1000,\n    user: 100,\n    channel: 200,\n    burstCapacity: 10,\n    burstRefillRatePerMs: 10 / 60_000, // 10 tokens per minute\n  },\n};\n```",
+      "fixed_code": "```typescript\n// Tier Limits (from sprint plan: free: 60/10/20, pro: 300/30/60, enterprise: 1000/10/200)\n\n/** Default rate limits by access level */\nexport const TIER_LIMITS: Record<AccessLevel, TierLimits> = {\n  free: {\n    community: 60,\n    user: 10,\n    channel: 20,\n    burstCapacity: 3,\n    burstRefillRatePerMs: 3 / 60_000, // 3 tokens per minute\n  },\n  pro: {\n    community: 300,\n    user: 30,\n    channel: 60,\n    burstCapacity: 5,\n    burstRefillRatePerMs: 5 / 60_000, // 5 tokens per minute\n  },\n  enterprise: {\n    community: 1000,\n    user: 10,\n    channel: 200,\n    burstCapacity: 10,\n    burstRefillRatePerMs: 10 / 60_000, // 10 tokens per minute\n  },\n};\n```",
+      "explanation": "Aligns enterprise user limit with the sprint plan (1000/10/200), preventing unintended rate-limit bypass."
+    },
+    {
+      "severity": "major",
+      "file": "agent-rate-limiter.ts",
+      "line": 23,
+      "description": "Uses crypto.randomUUID() without importing crypto; can throw at runtime in environments where crypto isn't global.",
+      "current_code": "```typescript\nimport { readFileSync } from 'node:fs';\nimport { join, dirname } from 'node:path';\nimport { fileURLToPath } from 'node:url';\nimport type { Redis } from 'ioredis';\nimport type { Logger } from 'pino';\nimport type { AccessLevel } from '@arrakis/core/ports';\n```\n",
+      "fixed_code": "```typescript\nimport { readFileSync } from 'node:fs';\nimport { join, dirname } from 'node:path';\nimport { fileURLToPath } from 'node:url';\nimport { randomUUID } from 'node:crypto';\nimport type { Redis } from 'ioredis';\nimport type { Logger } from 'pino';\nimport type { AccessLevel } from '@arrakis/core/ports';\n```\n",
+      "explanation": "Ensures randomUUID is available across supported Node.js versions without relying on a global."
+    },
+    {
+      "severity": "major",
+      "file": "agent-rate-limiter.ts",
+      "line": 95,
+      "description": "Does not handle Redis NOSCRIPT errors; if Redis evicts the script, evalsha fails and requests are denied unnecessarily.",
+      "current_code": "```typescript\n    try {\n      const sha = await this.ensureScript();\n\n      const result = await this.redis.evalsha(\n        sha,\n        4, // number of keys\n        `agent:rl:community:${params.communityId}:${windowMs}`,\n        `agent:rl:user:${params.userId}:${windowMs}`,\n        `agent:rl:channel:${params.channelId}:${windowMs}`,\n        `agent:rl:burst:${params.userId}`,\n        // ARGV: limits for each dimension\n        String(limits.community),\n        String(limits.user),\n        String(limits.channel),\n        String(limits.burstCapacity),\n        String(limits.burstRefillRatePerMs),\n        String(nowMs),\n        requestId,\n        String(windowMs),\n      ) as string[];\n\n      return parseRateLimitResult(result);\n    } catch (error) {\n      // Fail-closed: deny request on Redis error (FR-3.7)\n      this.logger.error({ err: error }, 'Rate limiter Redis error — fail-closed');\n      return {\n        allowed: false,\n        dimension: null,\n        remaining: 0,\n        limit: 0,\n        retryAfterMs: 5000, // suggest retry in 5s\n        resetAtMs: nowMs + 5000,\n      };\n    }\n```\n",
+      "fixed_code": "```typescript\n    try {\n      let sha = await this.ensureScript();\n\n      const evalArgs: (string | number)[] = [\n        sha,\n        4,\n        `agent:rl:community:${params.communityId}:${windowMs}`,\n        `agent:rl:user:${params.userId}:${windowMs}`,\n        `agent:rl:channel:${params.channelId}:${windowMs}`,\n        `agent:rl:burst:${params.userId}`,\n        // ARGV: limits for each dimension\n        String(limits.community),\n        String(limits.user),\n        String(limits.channel),\n        String(limits.burstCapacity),\n        String(limits.burstRefillRatePerMs),\n        String(nowMs),\n        requestId,\n        String(windowMs),\n      ];\n\n      let result: string[];\n      try {\n        result = (await this.redis.evalsha(...evalArgs)) as string[];\n      } catch (err: any) {\n        if (typeof err?.message === 'string' && err.message.includes('NOSCRIPT')) {\n          // Script was evicted; reload and retry once\n          this.scriptSha = null;\n          sha = await this.ensureScript();\n          evalArgs[0] = sha;\n          result = (await this.redis.evalsha(...evalArgs)) as string[];\n        } else {\n          throw err;\n        }\n      }\n\n      return parseRateLimitResult(result);\n    } catch (error) {\n      // Fail-closed: deny request on Redis error (FR-3.7)\n      this.logger.error({ err: error }, 'Rate limiter Redis error — fail-closed');\n      return {\n        allowed: false,\n        dimension: null,\n        remaining: 0,\n        limit: 0,\n        retryAfterMs: 5000, // suggest retry in 5s\n        resetAtMs: nowMs + 5000,\n      };\n    }\n```\n",
+      "explanation": "Retries evalsha after reloading the script on NOSCRIPT, avoiding unnecessary denies while preserving fail-closed behavior for other errors."
+    },
+    {
+      "severity": "major",
+      "file": "agent-rate-limiter.ts",
+      "line": 150,
+      "description": "parseRateLimitResult can return NaN for numeric fields or accept unexpected dimension values, causing incorrect rate-limit decisions.",
+      "current_code": "```typescript\nexport function parseRateLimitResult(raw: string[]): RateLimitResult {\n  const [dimension, remaining, limit, retryAfterMs, resetAtMs] = raw;\n\n  if (dimension === 'ok') {\n    return {\n      allowed: true,\n      dimension: null,\n      remaining: parseInt(remaining!, 10),\n      limit: parseInt(limit!, 10),\n      retryAfterMs: 0,\n      resetAtMs: parseInt(resetAtMs!, 10),\n    };\n  }\n\n  return {\n    allowed: false,\n    dimension: dimension as RateLimitDimension,\n    remaining: parseInt(remaining!, 10),\n    limit: parseInt(limit!, 10),\n    retryAfterMs: parseInt(retryAfterMs!, 10),\n    resetAtMs: parseInt(resetAtMs!, 10),\n  };\n}\n```",
+      "fixed_code": "```typescript\nexport function parseRateLimitResult(raw: string[]): RateLimitResult {\n  const toInt = (v: unknown, def = 0) => {\n    const n = Number(v);\n    return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : def;\n  };\n\n  const dimension = raw?.[0];\n  const remaining = toInt(raw?.[1]);\n  const limit = toInt(raw?.[2]);\n  const retryAfterMs = toInt(raw?.[3]);\n  const resetAtMs = toInt(raw?.[4]);\n\n  if (dimension === 'ok') {\n    return {\n      allowed: true,\n      dimension: null,\n      remaining,\n      limit,\n      retryAfterMs: 0,\n      resetAtMs,\n    };\n  }\n\n  if (\n    dimension !== 'community' &&\n    dimension !== 'user' &&\n    dimension !== 'channel' &&\n    dimension !== 'burst'\n  ) {\n    // Fail-closed on malformed/unknown response\n    return {\n      allowed: false,\n      dimension: null,\n      remaining: 0,\n      limit: 0,\n      retryAfterMs: 5000,\n      resetAtMs: Date.now() + 5000,\n    };\n  }\n\n  return {\n    allowed: false,\n    dimension: dimension as RateLimitDimension,\n    remaining,\n    limit,\n    retryAfterMs,\n    resetAtMs,\n  };\n}\n```",
+      "explanation": "Prevents NaN values and rejects malformed dimensions to avoid unsafe or inconsistent rate-limit outcomes; clamps to non-negative integers."
+    },
+    {
+      "severity": "major",
+      "file": "agent-rate-limiter.ts",
+      "line": 87,
+      "description": "Uses crypto.randomUUID() but still references `crypto` identifier; must use imported randomUUID to avoid undefined identifier after import fix.",
+      "current_code": "```typescript\n    const requestId = crypto.randomUUID();\n```",
+      "fixed_code": "```typescript\n    const requestId = randomUUID();\n```",
+      "explanation": "Matches the explicit import and avoids reliance on a global `crypto` object."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

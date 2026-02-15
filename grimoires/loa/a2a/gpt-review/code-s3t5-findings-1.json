@@ -1,0 +1,20 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Worker misses explicit handling for 404/202 from loa-finn and uses unsafe float conversion for cents, which can cause retries and financial inaccuracies.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "stream-reconciliation-worker.ts",
+      "line": 52,
+      "description": "getUsage() errors (404/202) are not handled; if loa-finn throws for not-found/in-progress, the job will retry incorrectly instead of deferring to the reaper.",
+      "current_code": "```typescript\n    const usage = await this.loaFinnClient.getUsage(idempotencyKey);\n\n    if (usage) {\n      // loa-finn processed the request — finalize with actual cost\n      await this.budgetManager.finalize({\n        communityId,\n        userId,\n        idempotencyKey,\n        actualCost: usage.costUsd * 100, // convert USD to cents\n        usage,\n        traceId,\n        modelAlias: undefined,\n      });\n\n      this.logger.info(\n        { idempotencyKey, communityId, traceId, costCents: usage.costUsd * 100 },\n        'stream-reconciliation: finalized with actual cost',\n      );\n    } else {\n      // loa-finn has no record — request was never processed or still in progress.\n      // Reservation will be cleaned up by reaper (§8.4) on TTL expiry.\n      this.logger.info(\n        { idempotencyKey, communityId, traceId },\n        'stream-reconciliation: no usage found, deferring to reaper',\n      );\n    }\n```",
+      "fixed_code": "```typescript\n    let usage: Awaited<ReturnType<LoaFinnClient['getUsage']>> | null = null;\n    try {\n      usage = await this.loaFinnClient.getUsage(idempotencyKey);\n    } catch (err: any) {\n      const status = err?.status ?? err?.statusCode ?? err?.response?.status;\n      if (status === 404 || status === 202) {\n        this.logger.info(\n          { idempotencyKey, communityId, traceId, status },\n          'stream-reconciliation: no usage found, deferring to reaper',\n        );\n        return;\n      }\n      throw err; // propagate other errors for BullMQ retry\n    }\n\n    if (usage) {\n      const costCents = Math.round(usage.costUsd * 100); // convert USD to cents safely\n\n      await this.budgetManager.finalize({\n        communityId,\n        userId,\n        idempotencyKey,\n        actualCost: costCents,\n        usage,\n        traceId,\n        modelAlias: undefined,\n      });\n\n      this.logger.info(\n        { idempotencyKey, communityId, traceId, costCents },\n        'stream-reconciliation: finalized with actual cost',\n      );\n    } else {\n      this.logger.info(\n        { idempotencyKey, communityId, traceId },\n        'stream-reconciliation: no usage found, deferring to reaper',\n      );\n    }\n```",
+      "explanation": "Catching 404/202 prevents unnecessary retries and aligns with the requirement to defer to the reaper. Other errors are rethrown for BullMQ retry. The cents conversion now uses rounding to avoid floating-point precision errors and logs the computed value consistently."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

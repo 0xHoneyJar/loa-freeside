@@ -1,0 +1,38 @@
+{
+  "verdict": "APPROVED",
+  "summary": "All six previously blocking issues are addressed in a way that is internally consistent with the stated architecture (SQLite-authoritative, Redis acceleration, ES256 S2S, HS256 admin) and no new truly-blocking problems were introduced by the fixes.",
+  "previous_issues_status": [
+    {
+      "original_issue": "SQLite daily spending increment used invalid syntax / OR REPLACE semantics (non-atomic, clobber risk)",
+      "status": "fixed",
+      "notes": "Replaced with a correct SQLite UPSERT using ON CONFLICT DO UPDATE and an atomic increment expression referencing the existing row plus excluded value, executed inside BEGIN IMMEDIATE."
+    },
+    {
+      "original_issue": "BigInt micro-USD precision vs SQLite/Redis/JS number overflow and Redis INCRBY 64-bit limits",
+      "status": "fixed",
+      "notes": "Documented explicit daily-cap bounds that fit int64, and updated the Redis adapter boundary to use string types (and string return) to avoid JS Number precision loss. This aligns with Redis INCRBY’s int64 constraint and SQLite INTEGER behavior."
+    },
+    {
+      "original_issue": "Reserve-time cap check could be bypassed because authoritative counter only updated at finalize",
+      "status": "fixed",
+      "notes": "Design is now explicitly ‘finalized-spend cap’; enforcement moved into finalize within the SQLite transaction, with reserve-time checks clearly labeled advisory. This resolves the earlier mismatch between requirement and implementation by making the semantics explicit and enforcing at the authoritative point."
+    },
+    {
+      "original_issue": "Redis TTL to midnight UTC was specified but not reliably set (keys could persist across days)",
+      "status": "fixed",
+      "notes": "Added an atomic Lua script that performs INCRBY and sets EXPIREAT on first write (detecting new key by comparing return value to increment). This makes TTL deterministic and avoids cross-day inflation."
+    },
+    {
+      "original_issue": "Finalize schema allowed optional accountId but verification used it, risking anchor check bypass/misapplication",
+      "status": "fixed",
+      "notes": "Removed accountId from the finalize request schema and derives accountId from reservationId server-side; anchor is required at runtime if an anchor exists for that derived account, and mismatch returns 403 without leaking stored anchor."
+    },
+    {
+      "original_issue": "Admin JWT HS256 lacked strict iss/aud/etc validation and rotation guidance (confused deputy / secret sprawl risk)",
+      "status": "fixed",
+      "notes": "Now mandates iss/aud/exp/sub/scope validation, uses a dedicated secret not shared with other JWT systems, and documents rotation triggers/procedure at the SDD level."
+    }
+  ],
+  "new_blocking_concerns": [],
+  "iteration": 2
+}

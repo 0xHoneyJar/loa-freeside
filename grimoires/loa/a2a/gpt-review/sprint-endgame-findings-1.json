@@ -1,0 +1,56 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "This plan is close, but several tasks have acceptance criteria that can’t be met with the described work and a few critical SDD/PRD requirements are either missing or sequenced in a way that will break integration.",
+  "blocking_issues": [
+    {
+      "location": "Sprint 1 / Task 1.1 Pool Claim Validator (loa-finn)",
+      "issue": "Acceptance criteria contradict the planned enforcement mode: Task says POOL_CLAIM_MODE is 'warn' for Sprint 1, but AC-1.6 requires 403 on mismatch.",
+      "why_blocking": "You won’t be able to declare the task done because the system can’t both warn-only and return 403 for mismatches in the same mode; this will stall Sprint 1 sign-off and blocks downstream work that depends on E2E validation.",
+      "fix": "Split AC by mode: in 'warn' mode, request proceeds and emits event + metric; in 'reject' mode, return 403 with POOL_CLAIM_MISMATCH. Add explicit tests for both modes and make AC-1.6 conditional on reject mode."
+    },
+    {
+      "location": "Sprint 1 / Task 1.2 Pool Mapping Version Claim",
+      "issue": "Dependency is missing/unclear: Task 1.2 modifies arrakis to add a claim, but the Sprint 1 task list labels Task 1.1 as loa-finn-only while Task 1.2 requires coordinated changes in both repos (arrakis JWT issuance + loa-finn validation + time-based grace behavior).",
+      "why_blocking": "Cross-repo coordination is required for integration; without explicitly owning the loa-finn side of version validation and the time-based 24h grace logic, you risk shipping only half the mechanism and failing the drift-prevention requirement (FR-1).",
+      "fix": "Make Task 1.2 explicitly cross-repo with two subtasks: (a) arrakis: emit pool_mapping_version derived from contract artifact version; (b) loa-finn: persist first-seen timestamp per unknown version (or equivalent) and enforce warn→reject after 24h. Add an integration/E2E assertion that unknown version is allowed during grace and rejected after grace (can be simulated by clock injection)."
+    },
+    {
+      "location": "Sprint 1 / Task 1.3 E2E Test Infrastructure (FR-2)",
+      "issue": "PRD/SDD requirement 'contract as npm package' and 'image pinned by digest' is not represented as a task, yet Task 1.2 depends on contract artifact versioning and Task 1.3 depends on stable artifacts.",
+      "why_blocking": "Without a versioned, publishable contract artifact (or an explicit alternative with versioning semantics), pool_mapping_version cannot be reliably derived and the 'versioned contract artifacts' requirement (FR-2) will fail acceptance in practice.",
+      "fix": "Add a Sprint 1 task (or extend 1.3) to: (1) package contracts as an npm workspace package (even if private) with semantic version; (2) have both arrakis and the stub import that package; (3) pin the stub container image by digest in docker-compose (or document why digest pinning is not applicable if built locally, and instead pin base images by digest). Update Task 1.2 to derive pool_mapping_version from that package version."
+    },
+    {
+      "location": "Sprint 2 / Task 2.1 Ensemble Mapper",
+      "issue": "Acceptance criteria numbering is inconsistent/missing (AC-3.4/3.6/3.7 only) and key PRD requirement 'budget multiplier = N (worst-case for fallback)' is not testably asserted anywhere beyond a single statement; partial failure reconciliation is only 'documented' not implemented/tested.",
+      "why_blocking": "This is likely to ship an ensemble feature that passes unit tests but breaks budget invariants or reconciliation in production (especially for partial failures/stream aborts), causing the end-to-end system to fail the 'zero-drift accounting' requirement.",
+      "fix": "Add explicit, testable ACs and tasks: (a) implement reconciliation behavior for partial failures (what gets committed vs reported) in code, not just docs; (b) add unit tests that assert reservation multiplier for each strategy and that committed ≤ reserved holds under partial failure; (c) add/extend E2E scenario to simulate one model failing and verify committed/reported delta stays 0."
+    },
+    {
+      "location": "Sprint 3 / Task 3.2 BYOK Manager + Task 3.3 BYOK Admin Routes",
+      "issue": "Task 3.2 AC-4.1 says 'CRUD endpoints functional' but endpoints are defined in Task 3.3; Task 3.2 itself is a library/service class. Ownership and done-ness are coupled across tasks without an integration task tying routes → manager → DB → KMS.",
+      "why_blocking": "You can complete 3.2 and 3.3 independently yet still have a non-working feature (e.g., routes compile but don’t correctly encrypt/store/rotate, or manager works but routes don’t wire it). This is a common multi-layer integration gap that causes sprint failure at staging time.",
+      "fix": "Move 'CRUD endpoints functional' acceptance to Task 3.3 (routes) and give Task 3.2 acceptance criteria that are unit/integration-testable at the class level (encrypt/decrypt round-trip, cache hit behavior, circuit breaker open/half-open/closed transitions, rotation atomicity). Add an explicit Task 3.x 'Wire BYOK routes to BYOKManager + DB + KMS adapter' with an integration test using a mock KMS."
+    },
+    {
+      "location": "Sprint 3 / Task 3.4 BYOK Proxy Handler (SSRF + replay protection)",
+      "issue": "Critical dependency missing: the plan requires 'capability-based URL resolution from JWT claims only' and 'PROVIDER_ENDPOINTS map' (SDD §3.4), but there is no task to define/maintain that provider allowlist and operations mapping, nor tests that prove unknown providers/operations are rejected.",
+      "why_blocking": "Without a concrete provider/operation allowlist and negative tests, the proxy can’t be safely implemented or verified; SSRF prevention and confused-deputy prevention for BYOK routing will be incomplete and will block security sign-off.",
+      "fix": "Add a task (or extend 3.4) to implement PROVIDER_ENDPOINTS + operation mapping (including exact hostnames, paths, and method constraints) and add tests: unknown provider/operation rejected, host mismatch rejected, redirects rejected, DNS to private IP rejected, and connect-by-IP behavior verified (at least via unit tests with mocked DNS/HTTP client)."
+    },
+    {
+      "location": "Sprint 3 / Task 3.7 BYOK Network-Layer SSRF Defense",
+      "issue": "Acceptance criteria are not realistically satisfiable as written: 'security group limits egress to known provider IPs' is often infeasible because major providers use dynamic IP ranges and/or CDNs; also the plan doesn’t specify how the BYOK proxy runs (ECS task? Lambda? k8s?) so the SG attachment point is undefined.",
+      "why_blocking": "This will stall Sprint 3 because you can’t complete the infra task without an implementable network control design and a defined deployment target; it’s a hard blocker for the 'network-layer SSRF' requirement (FR-4).",
+      "fix": "Make the network-layer control concrete for your runtime: (a) if ECS in VPC: route BYOK egress through a dedicated NAT + AWS Network Firewall / proxy with domain allowlisting (or use VPC Lattice/egress proxy) and attach SGs accordingly; (b) if Lambda: use VPC + egress controls similarly. Update AC to something testable: e.g., 'all BYOK egress must traverse egress proxy/firewall; firewall policy allows only provider FQDNs; deny logs/metrics emitted on blocked egress' plus a terraform plan/apply validation in staging."
+    },
+    {
+      "location": "Sprint 4 / Task 4.5 Feature Flag Enablement",
+      "issue": "Sprint 4 assumes monitoring can observe 'feature-specific metrics' but Sprint 4.1 only defines generic gateway metrics; there are no tasks to add dimensions/metrics that distinguish ensemble vs BYOK traffic (or to emit the pool-claim validation metrics needed for the warn→reject graduation).",
+      "why_blocking": "You won’t be able to verify safe enablement in staging (a stated acceptance criterion) because dashboards/alarms won’t separate baseline traffic from ensemble/BYOK traffic, and you can’t validate pool-claim mismatch rates before switching to reject.",
+      "fix": "Extend Task 4.1 to emit metrics with dimensions: {feature=baseline|ensemble|byok}, {pool_id}, and a dedicated counter for pool_claim_mismatch (warn) and pool_claim_reject (reject). Update Task 4.2 dashboard/alarms to include these breakdowns and add an explicit preflight check for mismatch rate == 0 before Task 4.4/4.5."
+    }
+  ],
+  "question": "",
+  "iteration": 1
+}

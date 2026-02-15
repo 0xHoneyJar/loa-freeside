@@ -1,0 +1,20 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Validation is missing for monthly budget cents, allowing negative or non-finite values to be written to Redis, violating the 'no financial values can go negative' requirement.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "budget-config-provider.ts",
+      "line": 58,
+      "description": "monthlyBudgetCents is written to Redis without validation, allowing negative or non-finite values. This violates the requirement that no financial values can go negative and can corrupt enforcement keys.",
+      "current_code": "```typescript\n    for (const config of configs) {\n      try {\n        const limitKey = `agent:budget:limit:${config.communityId}`;\n        // Persistent key — no TTL. Only updated by sync job.\n        await this.redis.set(limitKey, String(config.monthlyBudgetCents));\n        synced++;\n      } catch (err) {\n        errors++;\n        this.logger.error(\n          { err, communityId: config.communityId },\n          'budget-config: error syncing limit — continuing',\n        );\n      }\n    }\n```",
+      "fixed_code": "```typescript\n    for (const config of configs) {\n      try {\n        const limitKey = `agent:budget:limit:${config.communityId}`;\n\n        const { value: normalizedBudget, hadError } = normalizeBudgetCents(\n          config.monthlyBudgetCents,\n          config.communityId,\n          this.logger,\n        );\n        if (hadError) {\n          errors++;\n        }\n\n        // Persistent key — no TTL. Only updated by sync job.\n        await this.redis.set(limitKey, String(normalizedBudget));\n        synced++;\n      } catch (err) {\n        errors++;\n        this.logger.error(\n          { err, communityId: config.communityId },\n          'budget-config: error syncing limit — continuing',\n        );\n      }\n    }\n```\n\n```typescript\n// Add this helper near the top of the file (e.g., after constants)\nfunction normalizeBudgetCents(\n  input: number,\n  communityId: string,\n  logger: Logger,\n): { value: number; hadError: boolean } {\n  if (!Number.isFinite(input)) {\n    logger.error(\n      { communityId, monthlyBudgetCents: input },\n      'budget-config: invalid monthlyBudgetCents (non-finite) — clamping to 0',\n    );\n    return { value: 0, hadError: true };\n  }\n  if (input < 0) {\n    logger.error(\n      { communityId, monthlyBudgetCents: input },\n      'budget-config: invalid monthlyBudgetCents (negative) — clamping to 0',\n    );\n    return { value: 0, hadError: true };\n  }\n  return { value: Math.trunc(input), hadError: false };\n}\n```",
+      "explanation": "This fix enforces non-negative, finite budget values before writing to Redis. It prevents negative financial values from being stored, logs invalid input, and clamps to 0 to keep enforcement keys safe and consistent."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

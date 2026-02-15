@@ -1,0 +1,32 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "This plan is close, but a few missing/unclear pieces around backward compatibility, observability acceptance criteria, and testability of log/metrics behavior could realistically block implementation or make “done” unverifiable.",
+  "blocking_issues": [
+    {
+      "location": "Sprint 1 — Task 1.1 (Add JWT Schema Version Claim)",
+      "issue": "Backward-compatibility is asserted but not actually verified against the real trust boundary (loa-finn) or against any strict-claim validation behavior.",
+      "why_blocking": "If loa-finn (or any intermediate validator) uses a strict schema/allowlist of claims, adding `v` can cause production breakage even though JWT libraries “ignore unknown claims.” The sprint could “complete” locally but fail at integration/deploy time, which is a sprint failure for an integration-focused finding (F-10).",
+      "fix": "Add an explicit compatibility task or acceptance criterion that proves the new token is accepted by the current loa-finn validator behavior. Options: (a) add/extend an integration test that runs the existing loa-finn verification logic (or a pinned contract test fixture) against a token containing `v`; or (b) add a contract test that asserts Arrakis’ outbound JWT claim set is a superset tolerated by loa-finn (documented allowlist/denylist). At minimum, add an integration test case in T2.5 (or new T1.6) that exercises a full request path with `v` present."
+    },
+    {
+      "location": "Sprint 2 — Task 2.4 (Add Observability for Enforcement Promotion)",
+      "issue": "Acceptance criteria rely on “log-scraping query can compute…” and “metrics provide sufficient signal,” but no concrete, testable definition of the log schema or where/how metrics are emitted exists.",
+      "why_blocking": "Engineers won’t have an objective way to know they implemented the right fields consistently across all relevant log events. This tends to slip, and then the warn→reject promotion path (F-14/Suggestion 3) can’t be safely executed because the required observability isn’t actually in place.",
+      "fix": "Make the log/metric contract explicit and testable: define the exact event names and required keys (including types) in one place (e.g., a `PoolClaimValidationLog` schema via Zod or a TS type + runtime validator). Update AC to: (1) all pool-claim validation code paths emit exactly one of a defined set of events; (2) each event includes required fields with correct types; (3) add a unit/integration test that asserts the structured log object matches the schema for valid/mismatch/unknown/missing-claims paths."
+    },
+    {
+      "location": "Sprint 2 — Task 2.2 (Implement Warn/Reject Branching) + Sprint 1 — Task 1.4 (Type guard / unknown access level path)",
+      "issue": "The plan introduces multiple distinct outcomes (missing claims skip, unknown access level logs separate, mismatch warn/reject), but Sprint 2 tests/AC don’t cover the full cross-product of these cases—especially in reject mode.",
+      "why_blocking": "In reject mode, it’s easy to accidentally reject “unknown access level” or “missing claims” due to refactors around Step 5b. If that happens, you can break backward compatibility or start rejecting legitimate reports, which is exactly what the enforcement promotion is trying to avoid. Without explicit tests, this is likely to regress during implementation.",
+      "fix": "Expand T2.5 to include explicit cases for: (a) reject mode + unknown access level => accepted + `pool-claim-unknown-access-level` logged (not 403); (b) reject mode + missing claims => accepted (already listed) AND asserts no mismatch/unknown event emitted; (c) reject mode + mismatch => 403 AND asserts the error includes a stable `reason` code (not just a freeform string). Update T2.2 AC to explicitly state behavior for unknown access level and missing claims in both modes."
+    },
+    {
+      "location": "Sprint 1 — Task 1.5 (Unit Tests) and Sprint 2 — Task 2.5 (Integration Tests)",
+      "issue": "“Minimum X new test assertions” is not a reliable completion gate for security-sensitive behavior, and “100% of Sprint 1 code changes covered” is not concretely measurable as written (coverage tooling/config not specified).",
+      "why_blocking": "Teams often can’t objectively prove “100% of changes covered” without an agreed mechanism (coverage report, diff coverage tool, or explicit list of changed branches). This can stall the sprint at the end in review, or worse, allow critical branches (reject path) to ship untested while still meeting an assertion-count target.",
+      "fix": "Replace/augment with verifiable gates: (a) require specific branch/path coverage via named test cases (e.g., list the exact behavioral branches that must be asserted); (b) if you truly want coverage, specify the tool and threshold (e.g., `vitest --coverage` with per-file thresholds for touched files) or remove the “100% of changes” claim and instead enumerate required behaviors. Keep assertion minimums as secondary, not primary."
+    }
+  ],
+  "question": "",
+  "iteration": 1
+}

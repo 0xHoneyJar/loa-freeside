@@ -1,0 +1,29 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Found stale exports and a path traversal risk in vector loader that must be fixed.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "tests/e2e/vectors/index.ts",
+      "line": 20,
+      "description": "Stale exports (CONTRACT_SCHEMA, TEST_VECTORS) and wrong compatibility export name violate acceptance criteria and cause downstream imports to break.",
+      "current_code": "```typescript\nexport {\n  getVector,\n  CONTRACT_VERSION,\n  CONTRACT_SCHEMA,\n  TEST_VECTORS,\n  validateContractCompatibility,\n  type TestVector,\n  type TestVectors,\n  type ContractSchema,\n} from '../../../packages/contracts/src/index.js';\n```",
+      "fixed_code": "```typescript\nexport {\n  getVector,\n  CONTRACT_VERSION,\n  validateCompatibility,\n  type TestVector,\n  type TestVectors,\n} from '../../../packages/contracts/src/index.js';\n```",
+      "explanation": "Removes stale exports (CONTRACT_SCHEMA, TEST_VECTORS) per requirements and re-exports the correct single-arg compatibility function expected by the stub."
+    },
+    {
+      "severity": "major",
+      "file": "tests/e2e/vectors/index.ts",
+      "line": 55,
+      "description": "loadVectorFile() allows path traversal via relativePath, which can read arbitrary files outside the package root.",
+      "current_code": "```typescript\nexport function loadVectorFile<T>(relativePath: string): T {\n  const raw = readFileSync(join(HOUNFOUR_ROOT, relativePath), 'utf-8');\n  return JSON.parse(raw) as T;\n}\n```",
+      "fixed_code": "```typescript\nimport { join, dirname, resolve, sep } from 'node:path';\n\nexport function loadVectorFile<T>(relativePath: string): T {\n  const fullPath = resolve(join(HOUNFOUR_ROOT, relativePath));\n  const root = resolve(HOUNFOUR_ROOT) + sep;\n  if (!fullPath.startsWith(root)) {\n    throw new Error('Invalid vector path');\n  }\n  const raw = readFileSync(fullPath, 'utf-8');\n  return JSON.parse(raw) as T;\n}\n```",
+      "explanation": "Normalizes and validates the final path to ensure it remains within the loa-hounfour package root, preventing traversal outside the expected directory."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

@@ -1,0 +1,20 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Remainder accumulator tests compute per-step cost but compare against an accumulated value, causing mismatches across sequences.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "tests/conformance/budget-vectors.test.ts",
+      "line": 188,
+      "description": "Remainder accumulator sequence does not track cumulative cost across steps; it compares only the current step's cost+rollover against expected_accumulated, which implies an accumulated total.",
+      "current_code": "```typescript\n    it.each(basicPricing.remainder_accumulator_sequences)(\n      '$id: $note',\n      (sequence) => {\n        let carry = 0n;\n\n        for (const step of sequence.steps) {\n          const result = calculateSingleCost(step.tokens, step.price_micro_per_million);\n          carry = carry + result.remainder_micro;\n\n          // If carry exceeds 1_000_000, roll over\n          const rolledCost = carry / 1_000_000n;\n          carry = carry % 1_000_000n;\n\n          expect(carry).toBe(toBigInt(step.expected_carry));\n          expect(\n            result.cost_micro + rolledCost,\n          ).toBe(toBigInt(step.expected_accumulated));\n        }\n      },\n    );\n```",
+      "fixed_code": "```typescript\n    it.each(basicPricing.remainder_accumulator_sequences)(\n      '$id: $note',\n      (sequence) => {\n        let carry = 0n;\n        let totalCost = 0n;\n\n        for (const step of sequence.steps) {\n          const result = calculateSingleCost(step.tokens, step.price_micro_per_million);\n          carry = carry + result.remainder_micro;\n\n          // If carry exceeds 1_000_000, roll over\n          const rolledCost = carry / 1_000_000n;\n          carry = carry % 1_000_000n;\n\n          totalCost += result.cost_micro + rolledCost;\n\n          expect(carry).toBe(toBigInt(step.expected_carry));\n          expect(totalCost).toBe(toBigInt(step.expected_accumulated));\n        }\n      },\n    );\n```",
+      "explanation": "expected_accumulated represents the running total across steps; accumulating into totalCost ensures the comparison reflects the intended carry-forward behavior across the sequence."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

@@ -1,0 +1,38 @@
+{
+  "verdict": "APPROVED",
+  "summary": "All six previously blocking issues are addressed with concrete, implementable tasks/ACs and no new truly blocking problems were introduced.",
+  "previous_issues_status": [
+    {
+      "original_issue": "Missing explicit arrakis ↔ loa-finn boundary validation for contract/schema changes (Sprint 1 + rollback referenced loa-finn but no integration task existed).",
+      "status": "fixed",
+      "notes": "Task 1.5 adds an explicit compatibility verification step (v1.0.0 and v1.1.0 payloads) and a documented cross-repo dependency path if strict validation exists in loa-finn. This makes Sprint 1 verifiable and makes the rollback trigger meaningful."
+    },
+    {
+      "original_issue": "“Version negotiation” existed only in the contract package; no wiring into the real request/handshake path (Sprint 2 Task 2.2).",
+      "status": "fixed",
+      "notes": "AC-2.20–2.23 explicitly wire `contract_version` into JWT claims, require validation on the response version, and add E2E mismatch tests with a fail-fast `CONTRACT_VERSION_MISMATCH` error. This closes the end-to-end gap."
+    },
+    {
+      "original_issue": "Buffer-through API key header requirement was not feasible with Node/undici/fetch; ACs were not implementable as written (Sprint 3 Task 3.2).",
+      "status": "fixed",
+      "notes": "Task 3.2 is rewritten to a feasible isolation-boundary approach with testable properties (scope minimization + heap snapshot regression with an explicit undici exemption). The ACs are now implementable in Node.js."
+    },
+    {
+      "original_issue": "Dashboards/alarms referenced metrics that were not defined/emitted anywhere (Sprint 4 Task 4.3).",
+      "status": "fixed",
+      "notes": "Metric names/units/dimensions are now defined and scheduled to be emitted in Sprint 1 (PerModelCost, EnsembleSavings) and Sprint 3 (LifecycleFinalState, CircuitBreakerState, TokenEstimateDrift) before Sprint 4 references them, and AC-4.21 adds a concrete “no orphan widgets” validation."
+    },
+    {
+      "original_issue": "Incremental reservation for fallback was underspecified for mixed BYOK/platform attempts and could violate two-counter invariants (Sprint 4 Task 4.1 + Sprint 1 Task 1.3 interaction).",
+      "status": "fixed",
+      "notes": "Task 4.1 now specifies reservation units as platform-only, BYOK attempts skip reservation, and `attemptNumber` counts platform attempts only, plus explicit mixed vectors and invariant tests (AC-4.22–4.24). This is sufficient to implement without ambiguity."
+    },
+    {
+      "original_issue": "Circuit breaker cross-instance test AC was vague (“two simulated containers”) with no harness plan (Sprint 3 Task 3.3).",
+      "status": "fixed",
+      "notes": "AC-3.18 is now concrete: two breaker instances with distinct `instance_id` against a real Redis via testcontainers, asserting shared transitions. This is achievable in CI and matches the requirement."
+    }
+  ],
+  "new_blocking_concerns": [],
+  "iteration": 2
+}
