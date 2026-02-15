@@ -200,3 +200,85 @@ Feature flag `enabled: false` by default for backward compatibility. Purchase en
 
 - **Flat trust (no graduation):** Simpler, but anchor requirement on all operations creates friction for low-value usage. Graduated model matches risk profile.
 - **DID-based identity:** W3C Decentralized Identifiers provide richer identity. Over-engineered for current NFT-bound agent model. Migration path exists if needed.
+
+---
+
+## ADR-009: SQLite→PostgreSQL Migration Path
+
+**Status:** Accepted
+**Date:** 2026-02-15
+**SDD ref:** &sect;3.1 Data Architecture
+**Sprint ref:** 250 (Task 6.3)
+
+### Context
+
+The credit ledger uses SQLite with WAL mode. SQLite's single-writer model provides serializable isolation with ~1K-5K writes/sec throughput. This is adequate for current traffic but has a known scaling ceiling.
+
+### Current State
+
+- SQLite WAL mode: single-writer, concurrent reads
+- Throughput: ~1,000-5,000 writes/sec (depending on transaction complexity)
+- Single-process deployment: no write contention from multiple servers
+- Adequate for < 500 concurrent inference requests/sec (~1,000 writes/sec with reserve+finalize pairs)
+
+### Trigger Threshold
+
+Migrate when sustained traffic exceeds **500 concurrent inference requests/sec**. At this level, reserve+finalize pairs produce ~1,000 writes/sec, approaching SQLite's practical ceiling with transaction overhead.
+
+Leading indicators to monitor:
+- Reserve latency P99 > 50ms (currently ~5ms)
+- WAL file size sustained > 100MB
+- Transaction retry rate > 1%
+
+### Migration Strategy
+
+1. **Implement `PostgresCreditLedgerAdapter`** behind the existing `ICreditLedgerService` port. The port interface is database-agnostic — no consumer code changes required.
+
+2. **Dual-write phase** (2 weeks minimum):
+   - SQLite remains primary for reads and writes
+   - Postgres receives shadow writes (same transactions, fire-and-forget)
+   - Compare read results periodically (shadow reconciliation)
+   - Monitor Postgres latency and error rates
+
+3. **Cutover**:
+   - Switch primary from SQLite to Postgres
+   - SQLite becomes read-only fallback
+   - 7-day validation window before decommissioning SQLite
+
+### Data Migration
+
+```bash
+# 1. Export from SQLite
+sqlite3 billing.db ".mode csv" ".output credit_lots.csv" "SELECT * FROM credit_lots;"
+# Repeat for all tables in dependency order
+
+# 2. Import to Postgres
+psql billing_db -c "\\COPY credit_lots FROM 'credit_lots.csv' WITH CSV HEADER"
+
+# 3. Verify lot invariants post-migration
+npx tsx scripts/verify-lot-invariants.ts --postgres postgres://localhost/billing_db
+```
+
+### Lot Invariant Verification
+
+Post-migration verification is critical. Run `scripts/verify-lot-invariants.ts` against Postgres to confirm:
+- `available_micro + reserved_micro + consumed_micro = original_micro` for every lot
+- Total available across all lots matches `credit_balances` cache
+- No orphaned reservation_lots referencing non-existent reservations
+
+### Rollback
+
+- Keep SQLite database file intact during 7-day validation window
+- Rollback: point `ICreditLedgerService` back to `CreditLedgerAdapter` (SQLite)
+- No data loss: SQLite was the primary during dual-write phase
+
+### Consequences
+
+- **Positive:** Postgres supports horizontal read scaling (replicas), higher write throughput (10K+ writes/sec), richer query capabilities (JSONB, window functions), native connection pooling.
+- **Negative:** Operational complexity (connection pooling, backup strategy, separate process), network latency on queries, requires DevOps capability for Postgres management.
+
+### Alternatives Considered
+
+- **CockroachDB:** Distributed SQL with strong consistency. Over-engineered for single-region deployment. Consider if multi-region becomes necessary.
+- **TiKV + TiDB:** Distributed KV with SQL layer. Same over-engineering concern as CockroachDB.
+- **Sharded SQLite:** Multiple SQLite files partitioned by account. Increases complexity without solving single-writer bottleneck per shard.
