@@ -1,0 +1,157 @@
+name: Billing E2E Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'themes/sietch/src/api/routes/billing-*.ts'
+      - 'themes/sietch/src/api/routes/credit-pack-routes.ts'
+      - 'themes/sietch/src/api/routes/spending-visibility.ts'
+      - 'themes/sietch/src/api/middleware/billing-guard.ts'
+      - 'themes/sietch/src/packages/adapters/billing/**'
+      - 'themes/sietch/src/packages/adapters/middleware/**'
+      - 'themes/sietch/src/packages/adapters/payment/**'
+      - 'themes/sietch/src/packages/core/billing/**'
+      - 'themes/sietch/src/packages/core/contracts/**'
+      - 'themes/sietch/src/packages/core/ports/**'
+      - 'themes/sietch/src/db/migrations/**'
+      - 'tests/e2e/billing-*'
+      - 'tests/e2e/docker-compose.e2e.yml'
+      - 'tests/e2e/contract-validator/**'
+      - 'themes/sietch/tests/e2e/cross-system-*.ts'
+  pull_request:
+    paths:
+      - 'themes/sietch/src/api/routes/billing-*.ts'
+      - 'themes/sietch/src/api/routes/credit-pack-routes.ts'
+      - 'themes/sietch/src/api/routes/spending-visibility.ts'
+      - 'themes/sietch/src/api/middleware/billing-guard.ts'
+      - 'themes/sietch/src/packages/adapters/billing/**'
+      - 'themes/sietch/src/packages/adapters/middleware/**'
+      - 'themes/sietch/src/packages/adapters/payment/**'
+      - 'themes/sietch/src/packages/core/billing/**'
+      - 'themes/sietch/src/packages/core/contracts/**'
+      - 'themes/sietch/src/packages/core/ports/**'
+      - 'themes/sietch/src/db/migrations/**'
+      - 'tests/e2e/billing-*'
+      - 'tests/e2e/docker-compose.e2e.yml'
+      - 'tests/e2e/contract-validator/**'
+      - 'themes/sietch/tests/e2e/cross-system-*.ts'
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-billing-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  billing-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      BILLING_ADMIN_JWT_SECRET: e2e-admin-jwt-secret-for-testing-only-32ch
+      BILLING_INTERNAL_JWT_SECRET: e2e-s2s-jwt-secret-for-testing-only-32chr
+      BILLING_MODE: live
+      X402_ENABLED: 'true'
+      X402_RECIPIENT_ADDRESS: '0xe2eTestRecipient000000000000000000000001'
+      IDENTITY_ANCHOR_ENABLED: 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Generate ES256 test keypair
+        run: |
+          ./scripts/e2e-keygen.sh
+          echo "AGENT_JWT_PRIVATE_KEY<<KEYPAIR_EOF" >> "$GITHUB_ENV"
+          cat .e2e-keys/arrakis-private.pem >> "$GITHUB_ENV"
+          echo "KEYPAIR_EOF" >> "$GITHUB_ENV"
+
+      - name: Build and start Docker Compose stack
+        run: |
+          docker compose -f tests/e2e/docker-compose.e2e.yml build arrakis-e2e contract-validator
+          docker compose -f tests/e2e/docker-compose.e2e.yml up -d redis-e2e arrakis-e2e contract-validator
+
+      - name: Wait for services to be healthy
+        run: |
+          echo "Waiting for arrakis to be healthy..."
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:3099/health > /dev/null 2>&1; then
+              echo "Arrakis healthy after ${i}s"
+              break
+            fi
+            if [ "$i" -eq 60 ]; then
+              echo "Timeout waiting for arrakis"
+              docker compose -f tests/e2e/docker-compose.e2e.yml logs arrakis-e2e
+              exit 1
+            fi
+            sleep 1
+          done
+          echo "Waiting for contract-validator to be healthy..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3199/health > /dev/null 2>&1; then
+              echo "Contract validator healthy after ${i}s"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "Timeout waiting for contract-validator"
+              docker compose -f tests/e2e/docker-compose.e2e.yml logs contract-validator
+              exit 1
+            fi
+            sleep 1
+          done
+
+      - name: Install test dependencies
+        working-directory: themes/sietch
+        run: npm ci
+
+      - name: Run billing E2E smoke tests
+        run: |
+          cd themes/sietch
+          SKIP_E2E=false \
+          ARRAKIS_BASE_URL=http://localhost:3099 \
+          COMPOSE_FILE=../../tests/e2e/docker-compose.e2e.yml \
+            npx vitest run ../../tests/e2e/billing-smoke.e2e.test.ts \
+              --reporter=verbose
+        env:
+          SKIP_E2E: 'false'
+
+      - name: Run full-loop billing E2E tests
+        run: |
+          cd themes/sietch
+          SKIP_E2E=false \
+          ARRAKIS_BASE_URL=http://localhost:3099 \
+          COMPOSE_FILE=../../tests/e2e/docker-compose.e2e.yml \
+            npx vitest run ../../tests/e2e/billing-full-loop.e2e.test.ts \
+              --reporter=verbose
+        env:
+          SKIP_E2E: 'false'
+
+      # Sprint 256, Task 5.4: Cross-system contract validation tests
+      - name: Run cross-system contract tests
+        run: |
+          cd themes/sietch
+          ARRAKIS_E2E_URL=http://localhost:3099 \
+          VALIDATOR_E2E_URL=http://localhost:3199 \
+            npx vitest run tests/e2e/cross-system-contract.e2e.test.ts \
+              --reporter=verbose
+        env:
+          BILLING_INTERNAL_JWT_SECRET: e2e-s2s-jwt-secret-for-testing-only-32chr
+
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          echo "=== arrakis-e2e logs ==="
+          docker compose -f tests/e2e/docker-compose.e2e.yml logs --tail=100 arrakis-e2e
+          echo "=== redis-e2e logs ==="
+          docker compose -f tests/e2e/docker-compose.e2e.yml logs --tail=50 redis-e2e
+          echo "=== contract-validator logs ==="
+          docker compose -f tests/e2e/docker-compose.e2e.yml logs --tail=50 contract-validator
+
+      - name: Tear down
+        if: always()
+        run: |
+          docker compose -f tests/e2e/docker-compose.e2e.yml down -v --remove-orphans
+          rm -rf .e2e-keys

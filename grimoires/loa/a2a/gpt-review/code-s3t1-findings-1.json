@@ -1,0 +1,29 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Found missing TTL on limit key and lack of input validation that can cause arithmetic errors or budget bypass via negative costs.",
+  "issues": [
+    {
+      "severity": "critical",
+      "file": "budget_reserve.lua",
+      "line": 20,
+      "description": "Missing validation for numeric inputs allows nil/NaN arithmetic errors and negative estimatedCost to reduce reserved counter and bypass budget limits.",
+      "current_code": "```lua\nlocal estimatedCost = tonumber(ARGV[1])\nlocal userId = ARGV[2]\nlocal idempotencyKey = ARGV[3]\nlocal communityId = ARGV[4]\nlocal modelAlias = ARGV[5]\nlocal nowMs = tonumber(ARGV[6])\nlocal reservationTtlMs = tonumber(ARGV[7])\n```",
+      "fixed_code": "```lua\nlocal estimatedCost = tonumber(ARGV[1])\nlocal userId = ARGV[2]\nlocal idempotencyKey = ARGV[3]\nlocal communityId = ARGV[4]\nlocal modelAlias = ARGV[5]\nlocal nowMs = tonumber(ARGV[6])\nlocal reservationTtlMs = tonumber(ARGV[7])\n\n-- Validate numeric inputs to prevent arithmetic errors and budget bypass\nif (not estimatedCost) or (estimatedCost < 0) then\n  return {'INVALID_COST', '0', '0', '0'}\nend\nif (not nowMs) or (nowMs < 0) or (not reservationTtlMs) or (reservationTtlMs <= 0) then\n  return {'INVALID_TIMESTAMP', '0', '0', '0'}\nend\n```",
+      "explanation": "Ensures all numeric inputs are valid and non-negative, preventing Lua arithmetic errors and negative reservations that could reduce the reserved counter and allow overspend."
+    },
+    {
+      "severity": "major",
+      "file": "budget_reserve.lua",
+      "line": 46,
+      "description": "Limit key never receives a TTL, violating the requirement to set PEXPIRE on all keys and risking memory leaks.",
+      "current_code": "```lua\n-- Set TTL on budget counters (35 days for monthly rollover safety)\nredis.call('PEXPIRE', KEYS[1], 35 * 24 * 60 * 60 * 1000)\nredis.call('PEXPIRE', KEYS[2], 35 * 24 * 60 * 60 * 1000)\n```",
+      "fixed_code": "```lua\n-- Set TTL on budget counters and limit (35 days for monthly rollover safety)\nlocal monthlyTtlMs = 35 * 24 * 60 * 60 * 1000\nredis.call('PEXPIRE', KEYS[1], monthlyTtlMs)\nredis.call('PEXPIRE', KEYS[2], monthlyTtlMs)\nredis.call('PEXPIRE', KEYS[3], monthlyTtlMs)\n```",
+      "explanation": "Applies TTL consistently to all budget-related keys as required, preventing leaked limit keys."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

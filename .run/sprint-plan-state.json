@@ -1,0 +1,32 @@
+{
+  "plan_id": "plan-20260215-2faa8f",
+  "branch": "feature/billing-payments-release",
+  "state": "RUNNING",
+  "timestamps": {
+    "started": "2026-02-15T20:00:00Z",
+    "last_activity": "2026-02-15T20:27:30Z"
+  },
+  "sprints": {
+    "total": 5,
+    "completed": 5,
+    "current": null,
+    "list": [
+      {"id": "sprint-1", "status": "completed", "cycles": 1, "files_changed": 4},
+      {"id": "sprint-2", "status": "completed", "cycles": 1, "files_changed": 4},
+      {"id": "sprint-3", "status": "completed", "cycles": 1, "files_changed": 12},
+      {"id": "sprint-4", "status": "completed", "cycles": 1, "files_changed": 5},
+      {"id": "sprint-5", "status": "completed", "cycles": 1, "files_changed": 6}
+    ]
+  },
+  "options": {
+    "from": 1,
+    "to": 5,
+    "max_cycles": 20,
+    "timeout_hours": 8
+  },
+  "metrics": {
+    "total_cycles": 5,
+    "total_files_changed": 31,
+    "total_findings_fixed": 5
+  }
+}

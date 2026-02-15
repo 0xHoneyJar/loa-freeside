@@ -1,0 +1,43 @@
+{
+  "verdict": "APPROVED",
+  "summary": "All previously blocking trust-boundary and accounting contradictions were resolved in a way that preserves fail-closed security, prevents confused-deputy escalation, and makes the E2E/monitoring gates meaningfully testable without introducing new blocking issues.",
+  "previous_issues_status": [
+    {
+      "original_issue": "Pool-claim backward-compat vs fail-closed contradiction (missing claims accepted with default pool)",
+      "status": "fixed",
+      "notes": "FR-1 now requires `access_level` (missing → 401 reject), re-derives allowed pools server-side, and only defaults `pool_id` when it can be deterministically derived from `access_level` to the least-privileged pool. This removes the downgrade/bypass path while keeping compatibility."
+    },
+    {
+      "original_issue": "Ensemble strategy propagation via JWT claims could be treated as authoritative (confused deputy / spend amplification)",
+      "status": "fixed",
+      "notes": "FR-3 explicitly reframes this as “arrakis sends an ensemble request; loa-finn authorizes/derives final plan,” with tier gating, clamping of `n/quorum`, model validation against derived allowed pools, and audit events on clamp/deny. This closes the escalation vector."
+    },
+    {
+      "original_issue": "Ensemble reservation vs 'zero drift' invariant ambiguity (reserved vs finalized/committed)",
+      "status": "fixed",
+      "notes": "FR-3 + FR-5 now clarify the invariant as committed == usage_reported (micro-USD, exact conversion), while reserved is an upper bound. Monitoring explicitly treats reserved-committed as estimation margin, not drift."
+    },
+    {
+      "original_issue": "BYOK routing controlled by JWT claim without explicit capability binding and replay/swap protection on callback",
+      "status": "fixed",
+      "notes": "FR-4 now binds BYOK proxy lookup to the authenticated S2S JWT identity (derive community server-side), adds JTI + 30s TTL + req_hash binding, and avoids request-param deputy issues. This is the missing capability-style binding for the callback path."
+    },
+    {
+      "original_issue": "BYOK budget/usage semantics undefined vs reserve→usage-report→finalize pipeline (finalize-once, drift alarms)",
+      "status": "fixed",
+      "notes": "FR-4 defines a consistent accounting mode (`BYOK_NO_BUDGET`) with $0 reserve/$0 finalize, no Redis counter mutation, and explicit exclusion from drift metrics. This prevents finalize failures and keeps finalize-once semantics coherent."
+    },
+    {
+      "original_issue": "E2E smoke test relied on a stub that could drift from real loa-finn behavior",
+      "status": "fixed",
+      "notes": "FR-2 is now two-tier: (1) deterministic stub that imports loa-finn signer + schemas (reduces contract drift), and (2) nightly/pre-release test against a real loa-finn container exercising real JWT validation, pool enforcement, streaming, and usage report signing."
+    },
+    {
+      "original_issue": "Monitoring drift metric definition/thresholds inconsistent with two-counter model (e.g., finalized/reserved > 3x)",
+      "status": "fixed",
+      "notes": "FR-5 replaces the incorrect ratio with actionable invariants/metrics: reserved_not_finalized_age_p99, finalize_failures_total, and committed_vs_reported_delta (abs) with a concrete threshold. This aligns alarms with the actual accounting model."
+    }
+  ],
+  "new_blocking_concerns": [],
+  "iteration": 2
+}

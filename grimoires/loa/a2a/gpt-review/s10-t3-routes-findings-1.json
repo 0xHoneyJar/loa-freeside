@@ -1,0 +1,29 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Two blocking issues found: X-RateLimit-Policy is missing on some agent responses (health/kill-switch) and the policy header can be set from unvalidated error details.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "agents.routes.ts",
+      "line": 131,
+      "description": "X-RateLimit-Policy is not guaranteed on all agent responses. The kill switch can return 503 before the header middleware runs, and the /api/agents/health route never sets the header at all.",
+      "current_code": "```typescript\n  // Agent-specific body size limit (SDD §7.4) — overrides global 1MB limit\n  middlewares.push(express.json({ limit: AGENT_BODY_LIMIT }) as unknown as (req: Request, res: Response, next: NextFunction) => void);\n\n  // Kill switch\n  middlewares.push(killSwitch(agentEnabled));\n\n  // Pre-auth IP rate limiter\n  if (deps.ipRateLimiter) middlewares.push(deps.ipRateLimiter);\n\n  // --------------------------------------------------------------------------\n  // GET /api/agents/health — no auth required\n  // --------------------------------------------------------------------------\n\n  router.get('/api/agents/health', killSwitch(agentEnabled), async (_req: Request, res: Response) => {\n    try {\n      const health = await gateway.getHealth();\n      res.json(health);\n    } catch {\n      res.status(503).json({ error: 'HEALTH_CHECK_FAILED' });\n    }\n  });\n\n  // Auth-required routes\n  if (!deps.requireAuth) return router;\n\n  // Default X-RateLimit-Policy header on all agent responses (SDD §6.1, FR-3.3)\n  middlewares.push((_req: Request, res: Response, next: NextFunction) => {\n    res.setHeader('X-RateLimit-Policy', 'none');\n    next();\n  });\n```",
+      "fixed_code": "```typescript\n  // Default X-RateLimit-Policy header on all agent responses (SDD §6.1, FR-3.3)\n  const setDefaultRateLimitPolicy = (_req: Request, res: Response, next: NextFunction) => {\n    res.setHeader('X-RateLimit-Policy', 'none');\n    next();\n  };\n\n  // Agent-specific body size limit (SDD §7.4) — overrides global 1MB limit\n  middlewares.push(express.json({ limit: AGENT_BODY_LIMIT }) as unknown as (req: Request, res: Response, next: NextFunction) => void);\n\n  // Ensure header is present even on kill-switch / rate-limit responses\n  middlewares.push(setDefaultRateLimitPolicy);\n\n  // Kill switch\n  middlewares.push(killSwitch(agentEnabled));\n\n  // Pre-auth IP rate limiter\n  if (deps.ipRateLimiter) middlewares.push(deps.ipRateLimiter);\n\n  // --------------------------------------------------------------------------\n  // GET /api/agents/health — no auth required\n  // --------------------------------------------------------------------------\n\n  router.get('/api/agents/health', setDefaultRateLimitPolicy, killSwitch(agentEnabled), async (_req: Request, res: Response) => {\n    try {\n      const health = await gateway.getHealth();\n      res.json(health);\n    } catch {\n      res.status(503).json({ error: 'HEALTH_CHECK_FAILED' });\n    }\n  });\n\n  // Auth-required routes\n  if (!deps.requireAuth) return router;\n```",
+      "explanation": "By setting the header before the kill switch and explicitly on the health route, all agent responses (including 503s) will include X-RateLimit-Policy while still honoring the required middleware ordering (after body parser, before auth)."
+    },
+    {
+      "severity": "major",
+      "file": "agents.routes.ts",
+      "line": 248,
+      "description": "The X-RateLimit-Policy override uses error.details.dimension directly, which can be influenced by upstream data and allows arbitrary header values. It must be constrained to known dimensions.",
+      "current_code": "```typescript\n    if (error.statusCode === 429 && error.details) {\n      if (error.details.limit != null) res.setHeader('X-RateLimit-Limit', String(error.details.limit));\n      if (error.details.remaining != null) res.setHeader('X-RateLimit-Remaining', String(error.details.remaining));\n      if (error.details.retryAfterMs != null) {\n        res.setHeader('Retry-After', String(Math.ceil(Number(error.details.retryAfterMs) / 1000)));\n      }\n      // Override default 'none' with constraining dimension (FR-3.3)\n      if (error.details.dimension) {\n        res.setHeader('X-RateLimit-Policy', String(error.details.dimension));\n      }\n    }\n```",
+      "fixed_code": "```typescript\n    if (error.statusCode === 429 && error.details) {\n      if (error.details.limit != null) res.setHeader('X-RateLimit-Limit', String(error.details.limit));\n      if (error.details.remaining != null) res.setHeader('X-RateLimit-Remaining', String(error.details.remaining));\n      if (error.details.retryAfterMs != null) {\n        res.setHeader('Retry-After', String(Math.ceil(Number(error.details.retryAfterMs) / 1000)));\n      }\n      // Override default 'none' with constraining dimension (FR-3.3)\n      const dimension = typeof error.details.dimension === 'string' ? error.details.dimension : undefined;\n      const ALLOWED_DIMENSIONS = new Set(['community', 'user', 'channel', 'burst']);\n      if (dimension && ALLOWED_DIMENSIONS.has(dimension)) {\n        res.setHeader('X-RateLimit-Policy', dimension);\n      }\n    }\n```",
+      "explanation": "This validates the dimension against a fixed allowlist, preventing arbitrary or malicious header values while still allowing legitimate policy overrides."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

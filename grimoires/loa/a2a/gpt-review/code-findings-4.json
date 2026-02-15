@@ -1,0 +1,38 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Found unhandled service initialization errors, a JWT signature comparison vulnerability, and unsafe pagination limits that can cause failures or DoS.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "api/routes/billing-admin-routes.ts",
+      "line": 208,
+      "description": "getRevenueRulesService throws outside of try/catch in multiple handlers, causing unhandled exceptions and potential process crashes when the service is not initialized.",
+      "current_code": "```typescript\nfunction getRevenueRulesService(): IRevenueRulesService {\n  if (!revenueRulesService) {\n    throw new Error('Revenue rules service not initialized');\n  }\n  return revenueRulesService;\n}\n```\n\n```typescript\nconst service = getRevenueRulesService();\n```\n",
+      "fixed_code": "```typescript\nfunction getRevenueRulesService(res: Response): IRevenueRulesService | null {\n  if (!revenueRulesService) {\n    res.status(503).json({ error: 'Revenue rules service not initialized' });\n    return null;\n  }\n  return revenueRulesService;\n}\n```\n\n```typescript\nconst service = getRevenueRulesService(res);\nif (!service) return;\n```\n",
+      "explanation": "Returning a 503 instead of throwing prevents unhandled exceptions and ensures all revenue-rules endpoints respond deterministically when the service is not configured."
+    },
+    {
+      "severity": "major",
+      "file": "api/routes/billing-admin-routes.ts",
+      "line": 62,
+      "description": "JWT signature comparison uses a direct string comparison, which is not timing-safe and can leak information via timing attacks.",
+      "current_code": "```typescript\nimport { randomUUID, createHmac } from 'crypto';\n\n// ...\n\n    const signature = createHmac('sha256', secret)\n      .update(headerPayload)\n      .digest('base64url');\n\n    if (signature !== parts[2]) return null;\n```\n",
+      "fixed_code": "```typescript\nimport { randomUUID, createHmac, timingSafeEqual } from 'crypto';\n\n// ...\n\n    const signature = createHmac('sha256', secret)\n      .update(headerPayload)\n      .digest('base64url');\n\n    const expected = Buffer.from(signature, 'base64url');\n    const actual = Buffer.from(parts[2], 'base64url');\n    if (expected.length !== actual.length) return null;\n    if (!timingSafeEqual(expected, actual)) return null;\n```\n",
+      "explanation": "Using timingSafeEqual prevents timing side-channel attacks while preserving correct signature validation."
+    },
+    {
+      "severity": "major",
+      "file": "api/routes/billing-admin-routes.ts",
+      "line": 328,
+      "description": "The `limit` query parameter is not validated or bounded, allowing negative values or extremely large limits that can cause excessive load or unexpected service behavior.",
+      "current_code": "```typescript\nconst limit = parseInt(req.query.limit as string, 10) || 50;\nconst rules = await service.getRuleHistory(limit);\n```\n",
+      "fixed_code": "```typescript\nconst rawLimit = Number.parseInt(req.query.limit as string, 10);\nconst limit = Number.isFinite(rawLimit)\n  ? Math.min(Math.max(rawLimit, 1), 100)\n  : 50;\nconst rules = await service.getRuleHistory(limit);\n```\n",
+      "explanation": "Clamping the limit to a safe range prevents negative or oversized values from causing DoS or invalid queries."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

@@ -1,575 +1,658 @@
-# SDD: The Golden Path — E2E Vector Migration & Launch Validation
+# SDD: The Stillsuit — Cross-System Integration & Revenue Rules
 
-**Version:** 1.1.0
-**Cycle:** 024
-**Date:** 2026-02-13
-**PRD:** [The Golden Path PRD](grimoires/loa/prd.md)
-
----
-
-## 1. Executive Summary
-
-Wire loa-hounfour v1.1.0 golden test vectors into Arrakis's disabled E2E test suite, add conformance test suites for budget calculation and JWT validation, and validate the full Docker Compose round-trip. No new modules, no new dependencies — only connecting existing infrastructure.
+**Version:** 1.0.0
+**Cycle:** 026
+**Date:** 2026-02-15
+**PRD:** [The Stillsuit PRD v1.0.0](grimoires/loa/prd.md)
 
 ---
 
-## 2. System Architecture
+## 1. System Architecture
 
-### 2.1 High-Level Component Map
+### 1.1 Overview
+
+This cycle extends the billing system (Cycle 025) with cross-system integration, production hardening, and operational governance. No new services or deployments — all changes are within the existing Sietch API monolith and its test infrastructure.
+
+**Architectural changes this cycle:**
+- New vendored protocol types (`packages/core/protocol/`)
+- New SQLite table (`daily_agent_spending`)
+- New SQLite triggers (audit log immutability)
+- New admin API endpoints (revenue rules lifecycle)
+- New Docker Compose E2E test infrastructure
+- Extended S2S contract with identity anchor verification
+
+### 1.2 Existing Architecture (Preserved)
+
+**Pattern:** Modular Monolith with Ports & Adapters (Hexagonal)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                        TEST INFRASTRUCTURE                          │
+│                      SIETCH API (Express)                           │
 ├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  ┌─────────────────────┐     ┌──────────────────────────────────┐  │
-│  │ tests/e2e/vectors/  │     │ tests/conformance/               │  │
-│  │                     │     │                                  │  │
-│  │  index.ts           │     │  budget-vectors.test.ts          │  │
-│  │  (vector loader +   │     │  jwt-vectors.test.ts             │  │
-│  │   getVector() API)  │     │  jwks-test-server.ts             │  │
-│  └────────┬────────────┘     └──────────┬───────────────────────┘  │
-│           │                              │                          │
-│           │  loads vectors via fs        │  imports functions from  │
-│           ▼                              ▼                          │
-│  ┌─────────────────────────────────────────────────────────────┐   │
-│  │  node_modules/@0xhoneyjar/loa-hounfour/                     │   │
-│  │                                                             │   │
-│  │  dist/index.js          ← validators, computeReqHash,      │   │
-│  │                           CONTRACT_VERSION, POOL_IDS, etc.  │   │
-│  │  vectors/budget/*.json  ← 56 golden budget vectors          │   │
-│  │  vectors/jwt/*.json     ← 6 golden JWT vectors              │   │
-│  └─────────────────────────────────────────────────────────────┘   │
-│                                                                     │
-├─────────────────────────────────────────────────────────────────────┤
-│                        E2E TEST HARNESS                             │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  ┌──────────────────────────┐    ┌──────────────────────────────┐  │
-│  │ agent-gateway-e2e.test.ts│    │ loa-finn-e2e-stub.ts         │  │
-│  │                          │    │                              │  │
-│  │ 9 scenarios:             │    │ HTTP server (port 0):        │  │
-│  │  - invoke_free_tier      │───→│  /.well-known/jwks.json      │  │
-│  │  - invoke_pro_pool_routing    │  /v1/agents/invoke           │  │
-│  │  - invoke_stream_sse     │    │  /v1/agents/stream           │  │
-│  │  - invoke_rate_limited   │    │  /v1/usage/report            │  │
-│  │  - invoke_budget_exceeded│    │  /v1/health                  │  │
-│  │  - stream_abort_recon    │    │                              │  │
-│  │  - invoke_byok           │    │ Validates:                   │  │
-│  │  - invoke_ensemble_bon   │    │  - JWT sig (optional)        │  │
-│  │  - invoke_ensemble_pf    │    │  - req_hash agreement        │  │
-│  │                          │    │  - schema conformance        │  │
-│  │ VECTORS_AVAILABLE = true │    │  - version compatibility     │  │
-│  └──────────────────────────┘    └──────────────────────────────┘  │
-│                                                                     │
+│  Routes: billing-routes.ts | billing-admin-routes.ts                │
+│       ↓                           ↓                                 │
+│  ┌──────────────────────────────────────────────────┐               │
+│  │              CORE SERVICES (Ports)                │               │
+│  │  ICreditLedgerService | IRevenueRulesService      │               │
+│  │  IPaymentService      | ICampaignService          │               │
+│  └──────────────────┬───────────────────────────────┘               │
+│                     ↓                                                │
+│  ┌──────────────────────────────────────────────────┐               │
+│  │              ADAPTERS (Implementations)           │               │
+│  │  CreditLedgerAdapter  | RevenueRulesAdapter       │               │
+│  │  AgentWalletPrototype | RevenueDistributionSvc    │               │
+│  └──────────────────┬───────────────────────────────┘               │
+│                     ↓                                                │
+│  ┌─────────┐  ┌─────────┐  ┌──────────────────────┐                │
+│  │ SQLite  │  │  Redis   │  │ Vendored Protocol    │                │
+│  │ (truth) │  │ (accel)  │  │ (loa-hounfour types) │                │
+│  └─────────┘  └─────────┘  └──────────────────────┘                │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-### 2.2 Existing Infrastructure (No Changes)
+### 1.3 New: Cross-System E2E Architecture
 
-| Component | Path | Role |
-|-----------|------|------|
-| JWT Service | `packages/adapters/agent/jwt-service.ts` | Signs JWTs with `computeReqHash()` from loa-hounfour |
-| Budget Manager | `packages/adapters/agent/budget-manager.ts` | Two-counter reserve/finalize via Lua scripts |
-| Budget Lua | `packages/adapters/agent/lua/*.lua` | 4 Redis Lua scripts (reserve, finalize, reaper, rate-limit) |
-| NATS Schemas | `packages/shared/nats-schemas/` | 6 fixtures + 18 tests + fixture-conformance pattern |
-| Docker Compose | `tests/e2e/docker-compose.e2e.yml` | Redis(6399), arrakis(3099), loa-finn stub(8099) |
-| E2E Runner | `scripts/run-e2e.sh` | Clones loa-finn, generates ES256 keypair, builds Docker images |
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    Docker Compose Network                            │
+│                                                                     │
+│  ┌──────────────────────┐      ┌──────────────────────┐            │
+│  │   arrakis container   │      │  loa-finn container   │            │
+│  │                       │      │                       │            │
+│  │  Sietch API (Express) │      │  Hounfour (FastAPI)   │            │
+│  │  SQLite (internal)    │◄────►│  (no local DB)        │            │
+│  │                       │ S2S  │                       │            │
+│  │  ES256 private key    │ JWT  │  ES256 private key    │            │
+│  │  loa-finn public key  │      │  arrakis public key   │            │
+│  └───────────┬───────────┘      └───────────┬───────────┘            │
+│              │                               │                       │
+│              └───────────┬───────────────────┘                       │
+│                          ▼                                           │
+│                   ┌─────────────┐                                    │
+│                   │    Redis    │                                    │
+│                   │  (shared)   │                                    │
+│                   └─────────────┘                                    │
+└─────────────────────────────────────────────────────────────────────┘
+
+JWT Trust Flows:
+  1. Tenant JWT:  arrakis signs → loa-finn verifies (authorizes inference)
+  2. S2S JWT:     loa-finn signs → arrakis verifies (authorizes finalize)
+
+Key Provisioning:
+  - scripts/e2e-keygen.sh generates ES256 keypairs at compose build
+  - Public keys mounted read-only into verifying container
+  - Private keys mounted only into signing container
+```
 
 ---
 
-## 3. Component Design
+## 2. Component Design
 
-### 3.1 Vector Loader (`tests/e2e/vectors/index.ts`)
+### 2.1 Vendored Protocol Types (`packages/core/protocol/`)
 
-**Purpose:** Load loa-hounfour golden vectors from filesystem and expose `getVector(name)` API.
+**Purpose:** Provide loa-hounfour shared types without depending on unpublished npm package.
 
-**Design:**
+**Structure:**
+```
+packages/core/protocol/
+├── index.ts                 # Re-exports all protocol types
+├── billing-types.ts         # AgentBillingConfig, CreditBalance, UsageRecord
+├── guard-types.ts           # GuardResult, BillingGuardResponse
+├── state-machines.ts        # STATE_MACHINES (escrow, stake, credit)
+├── arithmetic.ts            # BigInt micro-USD helpers
+├── compatibility.ts         # validateCompatibility()
+└── VENDORED.md              # Pinned commit hash, upgrade instructions
+```
 
+**Integration pattern:**
 ```typescript
-// Module: tests/e2e/vectors/index.ts
+// Local port extends protocol type
+import { CreditBalance } from '../../protocol/billing-types.js';
 
-import { createRequire } from 'node:module';
-import { readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+export interface ICreditLedgerService {
+  getBalance(accountId: string): Promise<CreditBalance>;
+  // ... existing methods
+}
+```
 
-const require = createRequire(import.meta.url);
-const HOUNFOUR_ROOT = dirname(
-  require.resolve('@0xhoneyjar/loa-hounfour/package.json')
+**Compatibility check (cross-service, not dependency-present):**
+```typescript
+// At startup, exchange version with loa-finn
+const compat = validateCompatibility(
+  ARRAKIS_PROTOCOL_VERSION,  // local vendored version
+  finnProtocolVersion,        // received from loa-finn /health
 );
-
-function loadVectorFile<T>(relativePath: string): T {
-  return JSON.parse(
-    readFileSync(join(HOUNFOUR_ROOT, relativePath), 'utf-8')
-  ) as T;
+if (!compat.compatible) {
+  logger.error({ compat }, 'Protocol version mismatch with loa-finn');
+  process.exit(1);
 }
 ```
 
-**Vector registry:** A `Map<string, TestVector>` built at module load time, mapping E2E scenario names to their vector data.
+### 2.2 Revenue Rules Admin API
 
-**Category A vectors** (6 golden): Loaded directly from loa-hounfour JSON files, transformed into the `TestVector` shape the E2E harness expects:
+**New endpoints on `billing-admin-routes.ts`:**
 
+| Method | Path | Scope | Action |
+|--------|------|-------|--------|
+| POST | `/admin/billing/revenue-rules` | `admin:rules:write` | Create draft rule |
+| POST | `/admin/billing/revenue-rules/:id/submit` | `admin:rules:write` | Submit for approval |
+| POST | `/admin/billing/revenue-rules/:id/approve` | `admin:rules:approve` | Approve (start cooldown) |
+| POST | `/admin/billing/revenue-rules/:id/activate` | `admin:rules:approve` | Activate (after cooldown) |
+| POST | `/admin/billing/revenue-rules/:id/reject` | `admin:rules:approve` | Reject with reason |
+| POST | `/admin/billing/revenue-rules/:id/emergency-activate` | `admin:rules:emergency` | Override cooldown |
+| GET | `/admin/billing/revenue-rules` | `admin:rules:read` | List rules (filterable) |
+| GET | `/admin/billing/revenue-rules/:id/audit` | `admin:rules:read` | Audit trail |
+| GET | `/admin/billing/notifications` | `admin:rules:read` | Notification history |
+
+**Four-eyes enforcement:**
 ```typescript
-interface TestVector {
-  name: string;
-  description: string;
-  request: {
-    jwt_claims: Record<string, unknown>;
-    body: Record<string, unknown>;
-  };
-  response: {
-    status: number;
-    headers?: Record<string, string>;
-    body?: Record<string, unknown>;
-    stream_events?: Array<{ type: string; data: unknown }>;
-    abort_after_events?: number;
-    expect_reconciliation?: boolean;
-  };
-  usage_report_payload: Record<string, unknown> | null;
-}
-```
+// In approve handler
+const actorId = req.auth.sub; // From authenticated JWT
+const rule = await revenueRules.getRule(req.params.id);
 
-**Category B vectors** (3 locally constructed): Built from loa-hounfour schemas and vocabulary, validated against `validators` before registration. Each Category B vector includes a `_constructed: true` metadata flag.
-
-**Exports:**
-
-| Export | Signature | Description |
-|--------|-----------|-------------|
-| `getVector` | `(name: string) => TestVector` | Returns named vector; throws if not found |
-| `getTestVectors` | `() => TestVector[]` | Returns all 9 vectors |
-| `VECTORS_AVAILABLE` | `boolean` | Always `true` — hardcoded |
-
-### 3.2 E2E Test Modifications (`tests/e2e/agent-gateway-e2e.test.ts`)
-
-**Changes (minimal — surgical edits to existing file):**
-
-1. **Line 16-17:** Replace commented import with:
-   ```typescript
-   import { getVector, getTestVectors, VECTORS_AVAILABLE } from './vectors/index.js';
-   ```
-
-2. **Line 26:** Change `const VECTORS_AVAILABLE = false;` to remove (now imported).
-
-3. **Line 27:** Simplify to `const SHOULD_SKIP = SKIP_E2E;` (VECTORS_AVAILABLE is always true from import).
-
-4. **Lines 316, 436:** `getTestVectors()` function at bottom of file can be removed — imported from vectors module.
-
-**No changes to test logic.** The 9 test scenarios, helpers (`createMockJwt`, `parseSSEEvents`), and assertion logic remain identical. Only the vector source changes.
-
-### 3.3 E2E Stub Modifications (`tests/e2e/loa-finn-e2e-stub.ts`)
-
-**Changes:**
-
-1. **Lines 33-38:** Replace placeholder imports with real loa-hounfour imports:
-   ```typescript
-   import {
-     CONTRACT_VERSION,
-     validators,
-     computeReqHash,
-     verifyReqHash,
-     POOL_IDS,
-     TIER_POOL_ACCESS,
-     ERROR_CODES,
-   } from '@0xhoneyjar/loa-hounfour';
-   import { getVector, getTestVectors } from './vectors/index.js';
-   ```
-
-2. **Line 305, 343, 400:** Replace `CONTRACT_SCHEMA.version` with `CONTRACT_VERSION` (direct import).
-
-3. **Vector matching (lines 511-552):** Update `matchVector()` and `matchStreamVector()` to use `getTestVectors()` instead of `TEST_VECTORS.vectors`.
-
-4. **Raw body preservation:** The existing `readBody()` method (line 558) already accumulates `Buffer` chunks and calls `Buffer.concat(chunks)`. Add a `rawBody: Buffer` field alongside the string body to preserve exact wire bytes for hashing:
-   ```typescript
-   // In readBody(), return both raw Buffer and string:
-   private readBody(req: IncomingMessage): Promise<{ raw: Buffer; text: string }> {
-     return new Promise((resolve, reject) => {
-       const chunks: Buffer[] = [];
-       req.on('data', (chunk: Buffer) => chunks.push(chunk));
-       req.on('end', () => {
-         const raw = Buffer.concat(chunks);
-         resolve({ raw, text: raw.toString('utf-8') });
-       });
-       req.on('error', reject);
-     });
-   }
-   ```
-
-5. **Request validation (handleInvoke, line 267):** Add `computeReqHash()` agreement check using **raw bytes** (not re-encoded string):
-   ```typescript
-   // CRITICAL: Hash the raw wire bytes, not the re-encoded string.
-   // This matches how Arrakis computes the hash before sending.
-   const computedHash = computeReqHash(rawBody);  // rawBody is the Buffer from readBody()
-   const jwtHash = claims?.req_hash as string;
-   if (jwtHash && computedHash !== jwtHash) {
-     res.writeHead(409, { 'Content-Type': 'application/json' });
-     res.end(JSON.stringify({
-       error: 'HASH_MISMATCH',
-       computed: computedHash,
-       jwt: jwtHash
-     }));
-     return;
-   }
-   ```
-   **Why raw bytes:** `computeReqHash()` canonicalizes and hashes the HTTP request body. If we converted to string and back to Buffer, whitespace or encoding differences could cause hash divergence even when the request is correct. The raw Buffer from `req.on('data')` is the exact byte sequence Arrakis sent.
-
-### 3.4 Budget Conformance Suite (`tests/conformance/budget-vectors.test.ts`)
-
-**Purpose:** Parametrized tests running 56 loa-hounfour budget vectors against Arrakis budget calculation logic.
-
-**Design:**
-
-```
-tests/conformance/
-├── budget-vectors.test.ts    ← Parametrized budget tests
-├── jwt-vectors.test.ts       ← Parametrized JWT tests
-└── jwks-test-server.ts       ← Local JWKS server for behavioral tests
-```
-
-**Budget test structure:**
-
-```typescript
-describe('Budget Conformance — basic-pricing', () => {
-  const vectors = loadVectorFile<BasicPricingVectors>(
-    'vectors/budget/basic-pricing.json'
-  );
-
-  describe('single_cost_vectors', () => {
-    for (const v of vectors.single_cost_vectors) {
-      it(`${v.id}: ${v.note}`, () => {
-        const result = calculateSingleCost(v.tokens, v.price_micro_per_million);
-        expect(result.cost_micro).toBe(v.expected_cost_micro);
-        expect(result.remainder_micro).toBe(v.expected_remainder_micro);
-      });
-    }
+if (actorId === rule.created_by) {
+  return res.status(403).json({
+    error: 'four_eyes_violation',
+    message: 'Creator cannot approve their own rule',
   });
-
-  describe('total_cost_vectors', () => {
-    for (const v of vectors.total_cost_vectors) {
-      it(`${v.id}: ${v.note}`, () => {
-        const result = calculateTotalCost(v.input);
-        expect(result.input_cost_micro).toBe(v.expected.input_cost_micro);
-        expect(result.output_cost_micro).toBe(v.expected.output_cost_micro);
-        expect(result.total_cost_micro).toBe(v.expected.total_cost_micro);
-      });
-    }
-  });
-});
-```
-
-**`calculateSingleCost` implementation:**
-
-The budget vectors define a pure arithmetic function:
-```
-cost_micro = floor(tokens * price_micro_per_million / 1_000_000)
-remainder_micro = (tokens * price_micro_per_million) % 1_000_000
-```
-
-This function is extracted from the budget manager's `estimateCost()` path.
-
-**JSON numeric parsing (CRITICAL):** JSON cannot represent `bigint`. The extreme-tokens vectors encode large values in two ways:
-- `"tokens": 9007199254740992` — exceeds `MAX_SAFE_INTEGER`, lossy as JS `number`
-- `"expected_cost_micro_string": "900719925474099200"` — string representation for BigInt-required values
-
-**Parsing layer:** All vector numeric fields MUST be parsed through a safe conversion function:
-
-```typescript
-/** Parse a vector numeric field to BigInt, handling both number and string inputs */
-function toBigInt(value: number | string): bigint {
-  if (typeof value === 'string') return BigInt(value);
-  // Guard: reject numbers that exceed MAX_SAFE_INTEGER (lossy from JSON)
-  if (!Number.isSafeInteger(value)) {
-    throw new Error(`Unsafe integer ${value} — use string representation`);
-  }
-  return BigInt(value);
-}
-
-function calculateSingleCost(tokens: number | string, priceMicroPerMillion: number | string) {
-  const t = toBigInt(tokens);
-  const p = toBigInt(priceMicroPerMillion);
-  const product = t * p;
-  const MILLION = 1_000_000n;
-  return {
-    cost_micro: product / MILLION,
-    remainder_micro: product % MILLION,
-  };
 }
 ```
 
-**Assertion strategy:** Compare BigInt to BigInt. For vectors with `expected_cost_micro_string`, parse expected as `BigInt(string)`. For vectors with `expected_cost_micro` as a safe integer, compare with `BigInt(expected)`:
+**State machine validation:** All transitions validated against `ALLOWED_TRANSITIONS` map in `RevenueRulesAdapter`. Invalid transitions return 409 Conflict.
 
-```typescript
-const expected = v.expected_cost_micro_string
-  ? BigInt(v.expected_cost_micro_string)
-  : BigInt(v.expected_cost_micro);
-expect(result.cost_micro).toBe(expected);
+### 2.3 Atomic Daily Spending (SQLite-Authoritative)
+
+**New migration: `036_daily_agent_spending.ts`**
+
+```sql
+CREATE TABLE IF NOT EXISTS daily_agent_spending (
+  agent_account_id TEXT NOT NULL,
+  spending_date    TEXT NOT NULL,  -- YYYY-MM-DD
+  total_spent_micro INTEGER NOT NULL DEFAULT 0,
+  updated_at       TEXT NOT NULL,
+  PRIMARY KEY (agent_account_id, spending_date),
+  FOREIGN KEY (agent_account_id) REFERENCES credit_accounts(id)
+);
 ```
 
-**Integer guard:** Every test includes:
-```typescript
-// Result is always BigInt from our calculation
-expect(typeof result.cost_micro).toBe('bigint');
+**Write path (finalize) — atomic UPSERT:**
+```
+AgentWalletPrototype.finalizeInference()
+  → BEGIN IMMEDIATE (same transaction as ledger entries)
+  → INSERT INTO daily_agent_spending(agent_account_id, spending_date, total_spent_micro, updated_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(agent_account_id, spending_date)
+      DO UPDATE SET
+        total_spent_micro = daily_agent_spending.total_spent_micro + excluded.total_spent_micro,
+        updated_at = excluded.updated_at
+  → COMMIT
+  → Redis: Lua script for atomic INCRBY + EXPIREAT:
+      EVAL "local v = redis.call('INCRBY', KEYS[1], ARGV[1])
+            if v == tonumber(ARGV[1]) then
+              redis.call('EXPIREAT', KEYS[1], ARGV[2])
+            end
+            return v"
+      1 billing:agent:daily:{key} {amount} {midnightUnixTimestamp}
 ```
 
-### 3.5 JWT Conformance Suite (`tests/conformance/jwt-vectors.test.ts`)
+**Cap enforcement model: Finalized-spend cap (explicit design choice)**
 
-**Purpose:** Parametrized tests for 6 JWT conformance vectors — 4 static claim validation + 2 JWKS behavioral.
+The daily cap applies to *finalized spend*, not reservations. This means concurrent reservations can temporarily oversubscribe the cap, but each finalize checks cumulative finalized spend and rejects/caps if the limit is exceeded. This is acceptable because:
+- SQLite single-writer serializes all finalizations
+- Reserve amounts are typically small relative to daily cap
+- A finalize that would exceed the cap is capped at `MIN(actualCost, remainingBudget)`
 
-**Static claim tests:**
+If stricter reserve-time enforcement is needed (V2), add a separate `daily_reserved_micro` counter.
+
+**Read path (cap check at finalize):**
+```
+AgentWalletPrototype.finalizeInference()
+  → Within BEGIN IMMEDIATE transaction:
+    → SELECT total_spent_micro FROM daily_agent_spending WHERE ...
+    → If total_spent + actualCost > dailyCap:
+        actualCost = dailyCap - total_spent  (cap to remaining)
+        If actualCost <= 0: reject finalize ('daily cap exceeded')
+    → UPSERT daily_agent_spending (as above)
+```
+
+**Reserve-time soft check (advisory, not authoritative):**
+```
+AgentWalletPrototype.reserveForInference()
+  → Try Redis GET billing:agent:daily:{key}
+  → On Redis failure: SELECT total_spent_micro FROM daily_agent_spending
+  → If spent + estimatedCost > dailyCap: throw 'daily cap exceeded'
+  → (Advisory: may allow slight oversubscription under concurrency)
+```
+
+**Numeric precision bounds:**
+
+Daily spending values are bounded by daily caps (max practical: $10,000/day = 10,000,000,000 micro-USD). This fits safely within:
+- SQLite INTEGER: signed 64-bit (max 9.2 × 10^18)
+- Redis INCRBY: signed 64-bit
+- JavaScript: Values up to $9.007 trillion fit in Number.MAX_SAFE_INTEGER (2^53-1)
+
+The Redis adapter uses `string` for all BigInt values to avoid JS Number precision loss:
+
+**Redis interface extension:**
+```typescript
+interface AgentRedisClient {
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string): Promise<string>;
+  setex?(key: string, seconds: number, value: string): Promise<string>;
+  expire?(key: string, seconds: number): Promise<number>;
+  incrby?(key: string, increment: string | number): Promise<string>;  // NEW: returns string
+  eval?(script: string, numkeys: number, ...args: string[]): Promise<unknown>;  // NEW: Lua scripts
+}
+```
+
+### 2.4 Identity Anchor Verification
+
+**Database: Add UNIQUE constraint to agent wallets**
+
+If agent_wallets table doesn't exist yet (currently in-memory in prototype), create migration `037_agent_identity.ts`:
+
+```sql
+CREATE TABLE IF NOT EXISTS agent_identity_anchors (
+  agent_account_id  TEXT NOT NULL PRIMARY KEY,
+  identity_anchor   TEXT NOT NULL UNIQUE,
+  created_at        TEXT NOT NULL,
+  rotated_at        TEXT,
+  rotated_by        TEXT,
+  FOREIGN KEY (agent_account_id) REFERENCES credit_accounts(id)
+);
+```
+
+**S2S finalize verification (in billing-routes.ts):**
+
+The `accountId` is **derived from the reservation**, not accepted from the request body. This prevents confused-deputy where a caller claims a different account:
 
 ```typescript
-describe('JWT Conformance — static claims', () => {
-  let testKey: { privateKey: KeyLike; publicJwk: JWK };
+// 1. Validate S2S JWT (loa-finn service identity)
+// 2. Look up reservation → derive accountId
+const reservation = db.prepare(
+  'SELECT account_id FROM credit_reservations WHERE id = ?'
+).get(body.reservationId);
+if (!reservation) return res.status(404).json({ error: 'reservation_not_found' });
 
-  beforeAll(async () => {
-    testKey = await generateTestES256Key();
-  });
+const accountId = reservation.account_id;
 
-  for (const vector of staticVectors) {
-    it(`${vector.id}: ${vector.description}`, async () => {
-      // Sign the claims from the vector with test key
-      const token = await signClaims(vector.claims, testKey.privateKey);
+// 3. If account has an identity anchor, request MUST include it and it MUST match
+const anchor = db.prepare(
+  'SELECT identity_anchor FROM agent_identity_anchors WHERE agent_account_id = ?'
+).get(accountId);
 
-      // Validate using Arrakis JWT validation logic
-      const result = await validateJwt(token, testKey.publicJwk);
-
-      if (vector.expected === 'valid') {
-        expect(result.valid).toBe(true);
-      } else {
-        expect(result.valid).toBe(false);
-        expect(result.error).toBe(vector.error);
-      }
+if (anchor) {
+  if (!body.identity_anchor) {
+    return res.status(403).json({
+      error: 'identity_anchor_required',
+      message: 'This account requires identity anchor verification',
     });
   }
-
-  // Hash agreement: validate req_hash is well-formed and consistent
-  // NOTE: Only assert empty-body hash for vectors that don't include a body field.
-  // Vectors with explicit body material should have their hash computed from that body.
-  it('req_hash in body-less vectors matches computeReqHash(empty)', () => {
-    const emptyHash = computeReqHash(Buffer.alloc(0));
-    for (const v of staticVectors) {
-      if (!v.body && !v.req_body_bytes_base64) {
-        // Vector has no explicit body → req_hash must be the empty-body canonical hash
-        expect(v.claims.req_hash).toBe(emptyHash);
-      } else if (v.req_body_bytes_base64) {
-        // Vector includes explicit body bytes → compute hash from those bytes
-        const bodyBuf = Buffer.from(v.req_body_bytes_base64, 'base64');
-        const expectedHash = computeReqHash(bodyBuf);
-        expect(v.claims.req_hash).toBe(expectedHash);
-      }
-      // If vector has body but no base64 bytes, skip hash assertion —
-      // rely on E2E stub hash agreement for end-to-end validation
-    }
-  });
-});
-```
-
-### 3.6 JWKS Test Server (`tests/conformance/jwks-test-server.ts`)
-
-**Purpose:** Local HTTP server for deterministic JWKS rotation and timeout simulation.
-
-**API:**
-
-```typescript
-class JwksTestServer {
-  constructor();
-
-  // Lifecycle
-  async start(): Promise<void>;        // Listen on random port
-  async stop(): Promise<void>;
-  getJwksUri(): string;                 // http://127.0.0.1:{port}/.well-known/jwks.json
-
-  // Key management
-  async addKey(kid: string): Promise<{ privateKey: KeyLike; publicJwk: JWK }>;
-  removeKey(kid: string): void;
-  getKeys(): JWK[];
-
-  // Fault injection
-  setBlocked(blocked: boolean): void;   // 503 responses
-  setDelay(ms: number): void;           // Artificial latency
-  resetFaults(): void;
+  if (anchor.identity_anchor !== body.identity_anchor) {
+    return res.status(403).json({
+      error: 'identity_anchor_mismatch',
+      // Do NOT return the stored anchor (information leak)
+    });
+  }
 }
 ```
 
-**JWKS endpoint behavior:**
-- Normal: Returns `{ keys: [...] }` with all registered keys
-- Blocked (`setBlocked(true)`): Returns 503 Service Unavailable
-- Delayed (`setDelay(10000)`): Responds after delay (triggers client timeout)
+### 2.5 Admin Contract Extraction
 
-**Test choreography for jwt-rotated-key:**
+**New file: `packages/core/contracts/admin-billing.ts`**
 
-**JWKS refresh semantics:** The test MUST configure the validator to refetch JWKS on unknown `kid` (kid-miss refresh), not just on TTL expiry. This is the production behavior — `jose`'s `createRemoteJWKSet()` does this by default. The `cacheTtl` parameter only controls how often the full keyset is refreshed proactively; kid-miss triggers an immediate refetch regardless of TTL.
-
-For the **rotation test**, set `cacheTtl: 0` to guarantee no stale cache interference:
+Extract all Zod schemas from `billing-admin-routes.ts`:
 
 ```typescript
-it('jwt-rotated-key: accepts after rotation, rejects old key', async () => {
-  const server = new JwksTestServer();
-  await server.start();
+import { z } from 'zod';
 
-  // Step 1: Register K1
-  const k1 = await server.addKey('k1');
-  // cacheTtl=0 ensures JWKS is always fetched fresh — removes TTL flakiness
-  const jwtService = createJwtValidator({
-    jwksUri: server.getJwksUri(),
-    cacheTtl: 0,
-    refreshTimeout: 2000,
-  });
-
-  // Step 2: Validate K1 token — PASS (fetches JWKS, finds K1)
-  const t1 = await signToken(validClaims, k1.privateKey, 'k1');
-  expect(await jwtService.validate(t1)).toHaveProperty('valid', true);
-
-  // Step 3: Rotate to K2
-  server.removeKey('k1');
-  const k2 = await server.addKey('k2');
-
-  // Step 4: Validate K2 token — PASS (kid-miss triggers refetch, finds K2)
-  const t2 = await signToken(validClaims, k2.privateKey, 'k2');
-  expect(await jwtService.validate(t2)).toHaveProperty('valid', true);
-
-  // Step 5: Validate K1 token — REJECT (refetch returns only K2)
-  const t3 = await signToken(validClaims, k1.privateKey, 'k1');
-  expect(await jwtService.validate(t3)).toHaveProperty('valid', false);
-
-  await server.stop();
+// Revenue Rules
+export const createRuleSchema = z.object({
+  commons_bps: z.number().int().min(0).max(10000),
+  community_bps: z.number().int().min(0).max(10000),
+  foundation_bps: z.number().int().min(0).max(10000),
+  description: z.string().min(1).max(500),
+}).refine(d => d.commons_bps + d.community_bps + d.foundation_bps === 10000, {
+  message: 'Basis points must sum to 10000',
 });
+
+export const rejectRuleSchema = z.object({
+  reason: z.string().min(10).max(1000),
+});
+
+export const emergencyActivateSchema = z.object({
+  justification: z.string().min(20).max(2000),
+});
+
+// Batch grants, mint, etc. — extracted from existing inline schemas
+export const batchGrantSchema = z.object({ /* ... */ });
+export const adminMintSchema = z.object({ /* ... */ });
+
+// Type exports
+export type CreateRuleRequest = z.infer<typeof createRuleSchema>;
+export type RejectRuleRequest = z.infer<typeof rejectRuleSchema>;
+export type EmergencyActivateRequest = z.infer<typeof emergencyActivateSchema>;
 ```
 
-For the **timeout test**, set `cacheTtl: 5000` so cache is populated before blocking:
+### 2.6 Audit Log Immutability (SQLite Triggers)
 
-```typescript
-it('jwt-jwks-timeout: DEGRADED mode with cached vs unknown kid', async () => {
-  const server = new JwksTestServer();
-  await server.start();
+**Added to migration `035_revenue_rules.ts` (or new migration `038_audit_immutability.ts`):**
 
-  // Step 1: Register K1, populate cache
-  const k1 = await server.addKey('k1');
-  const jwtService = createJwtValidator({
-    jwksUri: server.getJwksUri(),
-    cacheTtl: 5000,
-    refreshTimeout: 2000,
-  });
-  const t1 = await signToken(validClaims, k1.privateKey, 'k1');
-  expect(await jwtService.validate(t1)).toHaveProperty('valid', true);
+```sql
+CREATE TRIGGER IF NOT EXISTS audit_log_no_update
+  BEFORE UPDATE ON revenue_rule_audit_log
+  BEGIN
+    SELECT RAISE(ABORT, 'audit log is immutable: updates are prohibited');
+  END;
 
-  // Step 2: Block JWKS endpoint
-  server.setBlocked(true);
-
-  // Step 3: Cached kid=k1 — ACCEPT (DEGRADED, serves from cache)
-  const t2 = await signToken(validClaims, k1.privateKey, 'k1');
-  expect(await jwtService.validate(t2)).toHaveProperty('valid', true);
-
-  // Step 4: Unknown kid=k3 — REJECT (cannot refresh, kid not in cache)
-  const k3 = await generateTestES256Key('k3');
-  const t3 = await signToken(validClaims, k3.privateKey, 'k3');
-  expect(await jwtService.validate(t3)).toHaveProperty('valid', false);
-
-  server.resetFaults();
-  await server.stop();
-});
+CREATE TRIGGER IF NOT EXISTS audit_log_no_delete
+  BEFORE DELETE ON revenue_rule_audit_log
+  BEGIN
+    SELECT RAISE(ABORT, 'audit log is immutable: deletes are prohibited');
+  END;
 ```
+
+### 2.7 Notification System
+
+**New table in `038_audit_immutability.ts` migration:**
+
+```sql
+CREATE TABLE IF NOT EXISTS billing_notifications (
+  id          TEXT PRIMARY KEY,
+  rule_id     TEXT NOT NULL,
+  transition  TEXT NOT NULL,
+  old_splits  TEXT,  -- JSON: {commons_bps, community_bps, foundation_bps}
+  new_splits  TEXT,  -- JSON: {commons_bps, community_bps, foundation_bps}
+  actor_id    TEXT NOT NULL,
+  urgency     TEXT NOT NULL DEFAULT 'normal' CHECK(urgency IN ('normal', 'urgent')),
+  created_at  TEXT NOT NULL,
+  FOREIGN KEY (rule_id) REFERENCES revenue_rules(id)
+);
+```
+
+Notifications are created as part of the `activate` and `emergency-activate` transitions. Emergency activations create `urgency = 'urgent'` notifications.
 
 ---
 
-## 4. Data Architecture
+## 3. Data Architecture
 
-No database changes. All test data comes from:
+### 3.1 New Tables Summary
 
-| Source | Format | Size |
-|--------|--------|------|
-| `loa-hounfour/vectors/budget/*.json` | JSON (5 files) | ~56 vectors |
-| `loa-hounfour/vectors/jwt/conformance.json` | JSON (1 file) | 6 vectors |
-| Category B fixtures | TypeScript objects | 3 constructed vectors |
+| Table | Migration | Purpose |
+|-------|-----------|---------|
+| `daily_agent_spending` | 036 | SQLite-authoritative daily spending counter |
+| `agent_identity_anchors` | 037 | Identity anchor storage with UNIQUE constraint |
+| `billing_notifications` | 038 | Revenue rule change notifications |
+
+### 3.2 New SQLite Triggers
+
+| Trigger | Table | Action |
+|---------|-------|--------|
+| `audit_log_no_update` | `revenue_rule_audit_log` | ABORT on UPDATE |
+| `audit_log_no_delete` | `revenue_rule_audit_log` | ABORT on DELETE |
+
+### 3.3 Redis Keys (Unchanged Pattern)
+
+| Key Pattern | Type | TTL | Purpose |
+|-------------|------|-----|---------|
+| `billing:agent:daily:{accountId}:{date}` | String (integer) | Midnight UTC | Daily spending acceleration |
+
+Redis operations change from `SET` to `INCRBY` for atomic increments.
+
+---
+
+## 4. API Design
+
+### 4.1 Revenue Rules Lifecycle API
+
+**Create Draft:**
+```
+POST /admin/billing/revenue-rules
+Authorization: Bearer <admin JWT with admin:rules:write>
+Content-Type: application/json
+
+{
+  "commons_bps": 500,
+  "community_bps": 7000,
+  "foundation_bps": 2500,
+  "description": "Increase community share for Q2 growth"
+}
+
+Response 201:
+{
+  "id": "rule-uuid",
+  "status": "draft",
+  "created_by": "<JWT sub>",
+  "created_at": "2026-02-15T12:00:00Z"
+}
+```
+
+**Submit for Approval:**
+```
+POST /admin/billing/revenue-rules/:id/submit
+Authorization: Bearer <admin JWT with admin:rules:write>
+
+Response 200:
+{
+  "id": "rule-uuid",
+  "status": "pending_approval",
+  "submitted_at": "2026-02-15T12:05:00Z"
+}
+```
+
+**Approve (Start Cooldown):**
+```
+POST /admin/billing/revenue-rules/:id/approve
+Authorization: Bearer <admin JWT with admin:rules:approve>
+
+Response 200:
+{
+  "id": "rule-uuid",
+  "status": "cooling_down",
+  "cooldown_expires_at": "2026-02-17T12:10:00Z",
+  "approved_by": "<JWT sub>"
+}
+
+Response 403 (four-eyes violation):
+{
+  "error": "four_eyes_violation",
+  "message": "Creator cannot approve their own rule"
+}
+```
+
+**Activate (After Cooldown):**
+```
+POST /admin/billing/revenue-rules/:id/activate
+Authorization: Bearer <admin JWT with admin:rules:approve>
+
+Response 200:
+{
+  "id": "rule-uuid",
+  "status": "active",
+  "superseded_rule_id": "old-rule-uuid",
+  "activated_at": "2026-02-17T12:15:00Z"
+}
+
+Response 409 (cooldown not expired):
+{
+  "error": "cooldown_active",
+  "cooldown_expires_at": "2026-02-17T12:10:00Z"
+}
+```
+
+**Emergency Activate:**
+```
+POST /admin/billing/revenue-rules/:id/emergency-activate
+Authorization: Bearer <admin JWT with admin:rules:emergency>
+Content-Type: application/json
+
+{
+  "justification": "Critical revenue split error discovered in production"
+}
+
+Response 200:
+{
+  "id": "rule-uuid",
+  "status": "active",
+  "emergency": true,
+  "activated_at": "2026-02-15T12:20:00Z"
+}
+```
+
+### 4.2 S2S Finalize Contract (Extended)
+
+**Updated request body (from `s2s-billing.ts`):**
+
+`accountId` is removed from the request schema — it is derived from the reservation server-side (prevents confused-deputy). `identity_anchor` is optional in the schema but required at runtime if the derived account has a stored anchor.
+
+```typescript
+export const s2sFinalizeRequestSchema = z.object({
+  reservationId: z.string().min(1),
+  actualCostMicro: z.string().regex(/^\d+$/),
+  identity_anchor: z.string().optional(),  // Required if account has stored anchor
+});
+```
 
 ---
 
 ## 5. Security Architecture
 
-### 5.1 Hash Agreement (Core Contract)
+### 5.1 JWT Trust Boundaries
 
-The `req_hash` is the cryptographic lynchpin of the arrakis ↔ loa-finn protocol:
+| JWT Type | Issuer (`iss`) | Audience (`aud`) | Signing | Key Management |
+|----------|----------------|-------------------|---------|----------------|
+| Admin JWT | `arrakis-admin` | `arrakis-billing-admin` | HS256 (ADR-004) | `BILLING_ADMIN_JWT_SECRET` — dedicated secret, not shared with any other service |
+| Tenant JWT | `arrakis` | `loa-finn` | ES256 | Keypair per environment, public key distributed to loa-finn |
+| S2S JWT | `loa-finn` | `arrakis-s2s` | ES256 | Keypair per environment, public key distributed to arrakis |
 
-```
-Arrakis:   reqHash = computeReqHash(requestBody)
-           JWT.req_hash = reqHash
+**Admin JWT validation requirements (mandatory checks):**
+- `iss` MUST equal `arrakis-admin` (reject others)
+- `aud` MUST equal `arrakis-billing-admin` (reject others)
+- `exp` MUST be present and not expired
+- `sub` MUST be present (used as `actor_id` in audit logs)
+- `scope` MUST contain the required scope for the endpoint
+- Secret MUST NOT be shared with S2S or tenant JWT systems
+- **Key rotation**: Document rotation procedure in runbook; rotate on personnel change or suspected compromise
 
-loa-finn:  computedHash = computeReqHash(receivedBody)
-           assert(JWT.req_hash === computedHash)
-```
+### 5.2 Four-Eyes Principle
 
-If hashes diverge → idempotency keys diverge → duplicate or lost requests.
+Revenue rules governance enforces separation of duties:
+- Creator: `admin:rules:write` scope, cannot approve own rules
+- Approver: `admin:rules:approve` scope, different `sub` than creator
+- Emergency: `admin:rules:emergency` scope, creates urgent audit entry
 
-The E2E tests validate this by:
-1. Stub receives request body as Buffer
-2. Calls `computeReqHash(body)` independently
-3. Compares against `req_hash` claim extracted from JWT
-4. Returns 409 HASH_MISMATCH on divergence (fail-loud)
+### 5.3 Audit Immutability
 
-### 5.2 Version Negotiation
+- SQLite triggers prevent UPDATE/DELETE on `revenue_rule_audit_log`
+- Application code only INSERTs audit entries
+- Tests verify trigger behavior (attempt UPDATE → expect error)
 
-`validateCompatibility(local, remote)` enforces semver N/N-1:
-- Same major + minor within 1: `compatible: true`
-- Major version mismatch: `compatible: false, reason: "Major version mismatch"`
-- Minor version gap > 1: `compatible: false`
+### 5.4 Identity Anchor Security
 
-Tested via existing contract version tests in E2E suite (lines 292-359).
-
----
-
-## 6. File Manifest
-
-### New Files
-
-| Path | Purpose | Lines (est.) |
-|------|---------|-------------|
-| `tests/e2e/vectors/index.ts` | Vector loader + getVector() API | ~180 |
-| `tests/conformance/budget-vectors.test.ts` | 56 budget conformance tests | ~200 |
-| `tests/conformance/jwt-vectors.test.ts` | 6 JWT conformance tests | ~250 |
-| `tests/conformance/jwks-test-server.ts` | Local JWKS server for behavioral tests | ~120 |
-
-### Modified Files
-
-| Path | Change | Impact |
-|------|--------|--------|
-| `tests/e2e/agent-gateway-e2e.test.ts` | Replace vector import, remove VECTORS_AVAILABLE const | 4 lines changed |
-| `tests/e2e/loa-finn-e2e-stub.ts` | Replace placeholders with loa-hounfour imports, add hash check | ~20 lines changed |
-
-### Unchanged Files (Verified on Main)
-
-All 36 agent modules, 4 Lua scripts, jwt-service.ts, budget-manager.ts, NATS schemas, Rust gateway — no modifications needed.
+- Anchor stored with UNIQUE constraint (one anchor = one agent)
+- Anchor verified on S2S finalize (mismatch → 403)
+- Stored anchor never returned in error responses (information leak prevention)
+- Rotation requires admin four-eyes approval
 
 ---
 
-## 7. Technical Risks & Mitigations
+## 6. Testing Strategy
 
-| Risk | Impact | Mitigation | PRD Ref |
-|------|--------|------------|---------|
-| Budget manager uses cents internally, vectors use micro-USD | High | Extract pure arithmetic function that operates in micro-USD; existing manager calls it with unit conversion | §4.2 |
-| Extreme-tokens vectors overflow JS number | Medium | BigInt path for values > MAX_SAFE_INTEGER; integer guard rejects floats | §4.2 |
-| JWKS cache timing makes rotation tests flaky | Medium | Fixed cache TTL=5s, refresh timeout=2s, deterministic choreography | §4.3 |
-| Category B fixtures drift from loa-hounfour schemas | Low | Each fixture validated against loa-hounfour validators at test setup | §4.1.1 |
+### 6.1 Unit Tests
+
+| Component | Test Focus | Est. Count |
+|-----------|-----------|------------|
+| Vendored protocol types | Type compatibility, arithmetic helpers | 8 |
+| Revenue rules admin | State machine transitions, four-eyes, cooldown | 15 |
+| Atomic daily spending | SQLite transactional update, Redis INCRBY | 8 |
+| Admin contract schemas | Zod validation, type exports | 6 |
+| Identity anchor | UNIQUE constraint, verification, rotation | 8 |
+| Audit immutability | Trigger prevents UPDATE/DELETE | 4 |
+| Notifications | Created on transitions, urgency levels | 5 |
+
+### 6.2 Integration Tests
+
+| Test Suite | Focus | Est. Count |
+|-----------|-------|------------|
+| Revenue rules lifecycle | Full create→submit→approve→activate flow | 6 |
+| Concurrent daily spending | 10 parallel finalizations, sum correctness | 3 |
+| Identity anchor E2E | Create wallet → deposit → finalize with anchor | 4 |
+| Redis fallback | Daily spending enforcement with Redis down | 3 |
+
+### 6.3 E2E Smoke Tests (Docker Compose)
+
+| Test | Flow | Verification |
+|------|------|-------------|
+| Happy path | Create account → deposit → reserve → inference → finalize | Revenue distribution entries correct |
+| Overrun (shadow) | Reserve 1M → finalize 1.5M in shadow mode | Logged as shadow_finalize |
+| Overrun (live) | Reserve 1M → finalize 1.5M in live mode | Capped at reserved amount |
+| Identity anchor | Agent finalize with correct/incorrect anchor | 200 vs 403 |
+| JWT validation | Invalid/expired JWT | 401 response |
+
+**Estimated new tests:** 70
 
 ---
 
-## 8. Development Workflow
+## 7. Migration Plan
 
-### Test Execution Order
+### 7.1 Database Migrations
 
-```bash
-# 1. Conformance tests (fast, no Docker)
-npx vitest run tests/conformance/
+| Migration | Tables/Triggers | Dependencies |
+|-----------|----------------|-------------|
+| 036_daily_agent_spending | `daily_agent_spending` | 030_credit_ledger |
+| 037_agent_identity | `agent_identity_anchors` | 030_credit_ledger |
+| 038_audit_immutability | Triggers + `billing_notifications` | 035_revenue_rules |
 
-# 2. E2E tests (requires stub, no Docker)
-SKIP_E2E=false npx vitest run tests/e2e/agent-gateway-e2e.test.ts
+### 7.2 File Changes Summary
 
-# 3. Docker Compose E2E (full round-trip)
-./scripts/run-e2e.sh
-```
-
-### Definition of Done
-
-Per PRD §8 — all conformance vectors pass, VECTORS_AVAILABLE=true, hash agreement verified, Docker Compose round-trip passes.
+| Area | Files Modified | Files Created |
+|------|---------------|--------------|
+| Protocol types | 0 | 6 (`packages/core/protocol/*`) |
+| Migrations | 0 | 3 (036, 037, 038) |
+| Adapters | 2 (AgentWallet, RevenueRules) | 0 |
+| Routes | 1 (billing-admin-routes) | 0 |
+| Contracts | 1 (s2s-billing) | 1 (admin-billing) |
+| Tests | 2 (existing extended) | 5 (new test files) |
+| E2E infra | 0 | 4 (Dockerfile, compose, keygen, test script) |
+| **Total** | **6** | **19** |
 
 ---
 
-*This SDD describes connecting existing infrastructure, not building new systems. The architecture adds ~750 lines of test code to wire 62 golden vectors into an already-complete 20,000-line codebase.*
+## 8. Sprint Mapping
+
+| Sprint | SDD Sections | Key Deliverables |
+|--------|-------------|-----------------|
+| 1 | §2.1 | Vendored protocol types, type alignment, compatibility check |
+| 2 | §2.2, §2.6, §4.1 | Revenue rules admin API, four-eyes, audit triggers |
+| 3 | §2.3, §3.1 | SQLite daily spending table, Redis INCRBY, fallback chain |
+| 4 | §2.5, §2.7 | Admin contract extraction, notification system |
+| 5 | §2.4, §4.2 | Identity anchor table, S2S verification, rotation |
+| 6 | §1.3, §6.3 | Docker Compose, E2E keygen, smoke tests |
+
+---
+
+## 9. ADR Additions
+
+### ADR-006: SQLite-Authoritative Daily Spending with Redis Acceleration
+
+**Context:** Bridgebuilder low-2 identified get-then-set race condition. Redis alone is insufficient because it's a cache layer — single-instance Redis failure would bypass spending limits.
+
+**Decision:** Persist daily spending in SQLite (`daily_agent_spending` table) transactionally during finalize. Use Redis INCRBY as acceleration for hot-path reads. Fallback chain: Redis → SQLite (not in-memory).
+
+**Consequences:** Slightly more complex write path (SQLite + Redis), but correctness guaranteed under all failure modes.
+
+### ADR-007: Vendored Protocol Types over npm Dependency
+
+**Context:** loa-hounfour PRs #1 and #2 are still OPEN. Can't depend on unpublished npm package.
+
+**Decision:** Vendor a pinned snapshot of protocol types into `packages/core/protocol/`. Replace with npm package when published.
+
+**Consequences:** Temporary code duplication until loa-hounfour publishes. Pinned commit hash ensures deterministic builds. `VENDORED.md` documents upgrade path.
+
+### ADR-008: Identity Anchor in Request Body, Not JWT Claims
+
+**Context:** GPT review identified risk of dual-source (JWT claims + request body) for identity anchor.
+
+**Decision:** Identity anchor travels in the S2S finalize request body only. JWT authenticates the service; body carries agent-specific payload. Single canonical source prevents precedence ambiguity.
+
+**Consequences:** Simpler verification logic. Anchor is implicitly authenticated by the JWT signature over the request.

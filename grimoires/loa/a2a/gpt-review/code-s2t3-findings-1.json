@@ -1,0 +1,38 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Found LRU eviction bug and missing config validation that can break rate limiting; fixes provided.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "ip-rate-limiter.ts",
+      "line": 52,
+      "description": "LRU eviction is not actually LRU because Map insertion order is never updated on access; active IPs can be evicted while stale ones remain.",
+      "current_code": "```typescript\n    let bucket = this.buckets.get(ip);\n\n    if (!bucket) {\n      // Evict LRU if at capacity\n      if (this.buckets.size >= this.config.maxEntries) {\n        this.evictOldest();\n      }\n      bucket = { tokens: this.config.burstCapacity, lastRefillMs: now };\n      this.buckets.set(ip, bucket);\n    }\n```",
+      "fixed_code": "```typescript\n    let bucket = this.buckets.get(ip);\n\n    if (!bucket) {\n      // Evict LRU if at capacity\n      if (this.buckets.size >= this.config.maxEntries) {\n        this.evictOldest();\n      }\n      bucket = { tokens: this.config.burstCapacity, lastRefillMs: now };\n      this.buckets.set(ip, bucket);\n    } else {\n      // Touch entry to maintain LRU order (most recently used at end)\n      this.buckets.delete(ip);\n      this.buckets.set(ip, bucket);\n    }\n```",
+      "explanation": "Map preserves insertion order; without re-inserting on access, eviction removes oldest insertion, not least recently used. This update makes eviction true LRU."
+    },
+    {
+      "severity": "critical",
+      "file": "ip-rate-limiter.ts",
+      "line": 35,
+      "description": "Configuration values are not validated; windowMs or maxPerWindow can be zero/negative causing division by zero and NaN/Infinity tokens, effectively disabling rate limiting.",
+      "current_code": "```typescript\n  constructor(\n    private readonly logger: Logger,\n    config?: Partial<IpRateLimitConfig>,\n  ) {\n    this.config = { ...DEFAULT_CONFIG, ...config };\n    this.refillRatePerMs = this.config.maxPerWindow / this.config.windowMs;\n    this.startCleanup();\n  }\n```",
+      "fixed_code": "```typescript\n  constructor(\n    private readonly logger: Logger,\n    config?: Partial<IpRateLimitConfig>,\n  ) {\n    const merged = { ...DEFAULT_CONFIG, ...config };\n    if (merged.windowMs <= 0 || merged.maxPerWindow <= 0 || merged.burstCapacity <= 0 || merged.maxEntries <= 0) {\n      throw new Error('Invalid IpRateLimitConfig: values must be > 0');\n    }\n    this.config = merged;\n    this.refillRatePerMs = this.config.maxPerWindow / this.config.windowMs;\n    this.startCleanup();\n  }\n```",
+      "explanation": "Validating configuration prevents division by zero and invalid token math that could disable rate limiting or cause NaN/Infinity state."
+    },
+    {
+      "severity": "major",
+      "file": "ip-rate-limiter.ts",
+      "line": 67,
+      "description": "Elapsed time can be negative if system clock moves backward, causing token subtraction and negative refill behavior.",
+      "current_code": "```typescript\n    const elapsedMs = now - bucket.lastRefillMs;\n    bucket.tokens = Math.min(\n      this.config.burstCapacity,\n      bucket.tokens + elapsedMs * this.refillRatePerMs,\n    );\n```",
+      "fixed_code": "```typescript\n    const elapsedMs = Math.max(0, now - bucket.lastRefillMs);\n    bucket.tokens = Math.min(\n      this.config.burstCapacity,\n      bucket.tokens + elapsedMs * this.refillRatePerMs,\n    );\n```",
+      "explanation": "Clamping elapsed time prevents negative refill calculations if the system clock moves backwards."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

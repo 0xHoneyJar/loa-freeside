@@ -1,0 +1,20 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Trigger error messages do not meet the required acceptance text, causing mismatch with expected audit immutability enforcement.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "migrations/038_audit_immutability.ts",
+      "line": 22,
+      "description": "Trigger RAISE messages must be exactly \"audit log is immutable\" per acceptance criteria; current messages include extra text and operation type.",
+      "current_code": "```typescript\nCREATE TRIGGER IF NOT EXISTS trg_audit_log_no_update\n  BEFORE UPDATE ON revenue_rule_audit_log\nBEGIN\n  SELECT RAISE(ABORT, 'audit log is immutable: UPDATE not allowed');\nEND;\n\nCREATE TRIGGER IF NOT EXISTS trg_audit_log_no_delete\n  BEFORE DELETE ON revenue_rule_audit_log\nBEGIN\n  SELECT RAISE(ABORT, 'audit log is immutable: DELETE not allowed');\nEND;\n```",
+      "fixed_code": "```typescript\nCREATE TRIGGER IF NOT EXISTS trg_audit_log_no_update\n  BEFORE UPDATE ON revenue_rule_audit_log\nBEGIN\n  SELECT RAISE(ABORT, 'audit log is immutable');\nEND;\n\nCREATE TRIGGER IF NOT EXISTS trg_audit_log_no_delete\n  BEFORE DELETE ON revenue_rule_audit_log\nBEGIN\n  SELECT RAISE(ABORT, 'audit log is immutable');\nEND;\n```",
+      "explanation": "Using the exact error message required by the acceptance criteria ensures tests and audit policy checks match the enforced immutability behavior."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

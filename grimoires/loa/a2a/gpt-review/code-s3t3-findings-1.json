@@ -1,0 +1,20 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Found a cleanup bug where expired reservation hashes are not deleted if `estimated_cost` is missing, causing potential data leakage and inconsistent cleanup.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "s3-t3-budget-reaper.lua",
+      "line": 38,
+      "description": "Expired reservation hashes are only deleted when `estimated_cost` exists; if the hash exists but the field is missing/corrupt, the hash will leak and never be cleaned.",
+      "current_code": "```lua\n  local estimatedCostRaw = redis.call('HGET', reservationKey, 'estimated_cost')\n  if estimatedCostRaw then\n    local estimatedCost = tonumber(estimatedCostRaw) or 0\n    if estimatedCost < 0 then estimatedCost = 0 end\n    estimatedCost = math.floor(estimatedCost)\n    totalReclaimed = totalReclaimed + estimatedCost\n\n    -- Delete the reservation hash\n    redis.call('DEL', reservationKey)\n  end\n  -- If hash doesn't exist, finalize already cleaned it — just remove from ZSET\n```",
+      "fixed_code": "```lua\n  local estimatedCostRaw = redis.call('HGET', reservationKey, 'estimated_cost')\n  if estimatedCostRaw then\n    local estimatedCost = tonumber(estimatedCostRaw) or 0\n    if estimatedCost < 0 then estimatedCost = 0 end\n    estimatedCost = math.floor(estimatedCost)\n    totalReclaimed = totalReclaimed + estimatedCost\n  end\n\n  -- Always delete the reservation hash (DEL is safe on missing keys)\n  redis.call('DEL', reservationKey)\n  -- If hash doesn't exist, finalize already cleaned it — just remove from ZSET\n```",
+      "explanation": "DEL on a missing key is safe, so moving it outside the conditional guarantees expired hashes are removed even if `estimated_cost` is missing or malformed, preventing data leaks and inconsistent cleanup."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

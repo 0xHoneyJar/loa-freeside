@@ -1,0 +1,18 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "One of the two prior issues remains: default expiry handling is still missing; JWKS private key sanitization is fixed.",
+  "previous_issues_status": [
+    {
+      "original_issue": "Expiry default documented as 120 seconds but not enforced; undefined expirySec leads to invalid exp",
+      "status": "not_fixed",
+      "notes": "Constructor still assigns config directly without applying default expirySec; sign() uses this.config.expirySec as-is."
+    },
+    {
+      "original_issue": "JWKS could expose private key material from previousKey.publicJwk (e.g., `d`)",
+      "status": "fixed",
+      "notes": "Code now strips `d` before publishing previous key in JWKS."
+    }
+  ],
+  "new_blocking_concerns": [],
+  "iteration": 2
+}

@@ -191,3 +191,9 @@ export {
   CRYPTO_PAYMENTS_SCHEMA_SQL,
   CRYPTO_PAYMENTS_ROLLBACK_SQL,
 } from './migrations/021_crypto_payments.js';
+
+// Re-export Credit Ledger schema for cycle-025 (Sprint 230: Billing & Payments)
+export {
+  CREDIT_LEDGER_SCHEMA_SQL,
+  CREDIT_LEDGER_ROLLBACK_SQL,
+} from './migrations/030_credit_ledger.js';

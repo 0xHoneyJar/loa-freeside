@@ -1,0 +1,28 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Two of the previous issues remain unresolved: abort propagation is still missing in SSE streaming and error messages can still leak internal details.",
+  "previous_issues_status": [
+    {
+      "original_issue": "Validation errors expose internal schema details via parsed.error.message (invoke route)",
+      "status": "fixed",
+      "notes": "Now returns a generic 'Invalid request' message."
+    },
+    {
+      "original_issue": "Validation errors in SSE route leak details in the same way as invoke",
+      "status": "fixed",
+      "notes": "Now returns a generic 'Invalid request' message."
+    },
+    {
+      "original_issue": "Abort controller created but signal never passed to gateway.stream, causing potential resource leak",
+      "status": "not_fixed",
+      "notes": "AbortController is created and close handlers are wired, but gateway.stream is still called without signal: abort.signal is never passed."
+    },
+    {
+      "original_issue": "handleGatewayError leaks internal error.message to clients and rate-limit headers not set when values are 0",
+      "status": "not_fixed",
+      "notes": "Rate-limit header checks were fixed, but error.message is still used for non-429 <500 responses, which can leak internal details."
+    }
+  ],
+  "new_blocking_concerns": [],
+  "iteration": 2
+}

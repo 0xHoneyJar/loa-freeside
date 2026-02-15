@@ -1,0 +1,50 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "As written, this PRD risks building an uncollectable/incorrect payments path and an unenforceable identity gate, and it contains a few hard contradictions that will break implementation and verification.",
+  "blocking_issues": [
+    {
+      "location": "FR-4 (x402 Payment Middleware) + FR-5 (Credit Pack Purchase Flow) + Goals G-5/G-6",
+      "issue": "Payment flow is internally inconsistent: x402 is described as a 402 challenge on insufficient credits, but acceptance criteria also says “Mock payment verification creates credit lot” without defining where the payment reference comes from, how it maps to a credit pack SKU/amount, or how the system prevents crediting without an authenticated payer/account binding.",
+      "why_blocking": "You can implement a 402 response and a purchase endpoint separately, but you cannot safely connect “payment → credit lot creation” without a defined binding between (a) the payer identity, (b) the Arrakis account/agent wallet to credit, (c) the amount/SKU, and (d) an idempotency key that is cryptographically tied to the payment. Without this, you either ship a flow that can’t actually collect money (no way to complete the loop) or you ship one that can be exploited to mint credits (wrong product / financial loss).",
+      "fix": "Define a single canonical payment-to-credit contract:\n- Specify the payment object fields: `paymentReference`, `amountMicrousd`, `asset` (USDC), `recipientAddress`, `payerAddress` (or equivalent), `issuedAt/expiry`, and a signed proof (x402 receipt/attestation).\n- Specify binding rules: which authenticated Arrakis principal is credited (accountId) and how it is encoded in the x402 payment metadata (e.g., `memo`/`metadata` containing `accountId` + `sku` + nonce) and validated server-side.\n- Specify idempotency: key = hash(paymentReference + recipient + amount + accountId) stored in SQLite with UNIQUE constraint.\n- Clarify whether x402 is used only as “pay-to-continue inference” (top-up on demand) or only for explicit credit pack purchase, or both; if both, define precedence and shared verifier interface."
+    },
+    {
+      "location": "FR-5 Acceptance Criteria + NFRs (Markup multiplier range 1.0x-10.0x) + FR-5 Requirements (fixed tiers $5/$10/$25)",
+      "issue": "Contradiction between fixed credit pack tiers and dynamic “price = inference_cost × markup_factor”. A pack has a fixed price and variable credits, while the formula implies variable price derived from cost.",
+      "why_blocking": "Teams will implement opposite interpretations: (A) fixed USD price packs that mint variable credits based on current cost model, or (B) variable-priced purchases based on estimated inference cost. These are different products and will break accounting, UX, and tests.",
+      "fix": "Choose one model and make it explicit:\n- Option 1 (typical): fixed price tiers in USDC; credits minted = floor(priceMicrousd / (costPerCreditMicrousd * markupFactor)) with rounding rules.\n- Option 2: fixed credit amounts; price computed from cost*markup.\nDocument rounding, minimum credit issuance, and how cost estimator inputs are frozen at purchase time."
+    },
+    {
+      "location": "FR-2 (Identity-Economy Bridge) + FR-5/FR-4 payment endpoints + Security context (“confused deputy prevention on S2S finalize”)",
+      "issue": "“High-value operations require identity anchor” is not defined in terms of which operations and which principal. It also conflicts with the need for an unauthenticated/externally-authenticated payment callback/verification flow (x402) that must credit an account.",
+      "why_blocking": "If you gate “purchase/top-up” behind identity anchors, you may block first-time users from ever acquiring credits (deadlock). If you don’t gate it, you risk sybil abuse and credit minting. Without a precise policy matrix, you’ll either ship an unusable system or an insecure one.",
+      "fix": "Define an explicit authorization matrix:\n- List endpoints/operations (reserve, finalize, admin revenue changes, purchase/top-up, spending summary, etc.).\n- For each, specify required auth: S2S ES256, admin-scoped JWT, user JWT, and whether identity anchor is required.\n- Define what “high-value” means (e.g., per-request microusd threshold, daily spend threshold, or cumulative lifetime) and where it is enforced (billing-guard vs purchase route).\n- For payment crediting, define how an external payment proof is mapped to an internal authenticated account without requiring the payer to already be anchored (or explicitly require anchoring and accept the UX cost)."
+    },
+    {
+      "location": "FR-1 (Formal Temporal Property Tests) + Goal G-1 + Existing system description (FIFO lot-based accounting, reserve/finalize/expire)",
+      "issue": "Key invariants are underspecified/incorrect for a lot-based ledger: “available + reserved + consumed = original” is ambiguous across multiple lots and across time, and “every reservation eventually reaches a terminal state” is not a property the system can guarantee without a scheduler/expiry mechanism in the model.",
+      "why_blocking": "Property tests will either be written against the wrong model (false confidence) or will be unprovable/flaky because the system does not control “eventually” without modeling time and an actor that triggers expiry/finalize. This can stall the cycle or produce meaningless verification.",
+      "fix": "Tighten properties to match implementable semantics:\n- Define state variables precisely per lot and per reservation, and whether conservation is per-lot, per-account, or global.\n- For liveness, either (a) model an explicit “tick/expiry worker” action in the generator and assert that under fairness assumptions reservations become terminal, or (b) replace with a safety property like “a reservation cannot be finalized after it is expired” and “terminal states are absorbing.”\n- Add explicit property for FIFO consumption ordering if FIFO is a core requirement (otherwise clarify FIFO is best-effort)."
+    },
+    {
+      "location": "FR-7 (Full-Loop E2E) requirement 3: “Revenue distribution governance versioning (schema version field)”",
+      "issue": "Governance “schema version field” is introduced as a requirement but not defined anywhere else (what object, where stored, how used, how migrated, what compatibility rules).",
+      "why_blocking": "This is a cross-cutting data contract change that can easily break existing admin workflows and distribution correctness. Without a definition, implementation will be arbitrary and may invalidate previous governance state or make E2E assertions meaningless.",
+      "fix": "Specify the versioning mechanism:\n- What is versioned (revenue rule set? distribution algorithm? admin contract schema?).\n- Where the version is stored (SQLite table/column) and how it is incremented (four-eyes approval event).\n- Compatibility rules for finalize/distribute (e.g., finalize uses the active version at reservation time vs at finalize time)."
+    },
+    {
+      "location": "NFRs: “BigInt max 10^15 micro-USD ($1B)”",
+      "issue": "Numeric mismatch: 10^15 micro-USD equals $1,000,000,000 (1B) only if micro-USD means 1e-6 USD; but earlier you also mention BigInt micro-USD precision and overflow/underflow guards without defining signedness and bounds across operations (multiplication for markup, division for credits).",
+      "why_blocking": "If bounds/units aren’t consistent, you can ship arithmetic that silently truncates/rounds incorrectly or rejects valid amounts. This is a direct financial correctness risk (lost credits or incorrect pricing).",
+      "fix": "Define a single unit convention and arithmetic policy:\n- Confirm `microusd = 10^-6 USD` everywhere.\n- Define max/min for each field (lot amount, reservation amount, daily spend, price) and whether values are unsigned.\n- Specify rounding rules for conversions (USDC decimals vs microusd, markup multiplication, credit issuance division) and test them with property-based tests."
+    },
+    {
+      "location": "FR-6 (Operational Hardening) + Technical Constraints #4 (Rate limiting: in-memory acceptable) + Cross-service trust model",
+      "issue": "In-memory rate limiting conflicts with a multi-service / horizontally scalable production billing system and can be bypassed across instances; also not tied to identity anchors or JWT principals (keying strategy unspecified).",
+      "why_blocking": "This can fail the stated security goal (“production-grade billing with real money path”) because rate limiting that is trivially bypassed is not meaningful protection for payment/billing endpoints. It also risks blocking legitimate traffic if keyed incorrectly (e.g., by IP behind Discord/Cloudflare).",
+      "fix": "Specify rate-limit keying and deployment assumptions:\n- Key by authenticated principal (accountId / admin subject) + route, not just IP.\n- If single-instance is truly assumed, state it explicitly as a release constraint; otherwise require Redis-backed limiter for billing/admin.\n- Add acceptance criteria that demonstrate non-bypass in the intended deployment topology."
+    }
+  ],
+  "question": "",
+  "iteration": 1
+}

@@ -1,5 +1,9 @@
 # E2E Test Infrastructure — Full Cross-System Stack
 # Cycle-017: Containerized E2E (arrakis + loa-finn + Redis)
+# Cycle-026: Added billing E2E env vars (Sprint 244, Task 6.1)
+# Cycle-027: Full-loop billing E2E (Sprint 251, Task 7.1)
+#             — x402 config, identity anchor graduated trust, revenue versioning
+# Cycle-028: Added contract-validator for cross-system schema testing (Sprint 256, Task 5.2)
 #
 # JWKS Bootstrap: arrakis writes JWKS to a shared volume on startup.
 # loa-finn reads JWKS from the mounted file (ARRAKIS_JWKS_FILE),
@@ -11,6 +15,7 @@
 # The runner script (scripts/run-e2e.sh) sets LOA_FINN_DIR automatically.
 #
 # @see SDD §2.1.1 Docker Compose Topology
+# @see SDD §6.3 E2E Architecture
 
 services:
   redis-e2e:
@@ -42,6 +47,19 @@ services:
       - AGENT_JWT_PRIVATE_KEY=${AGENT_JWT_PRIVATE_KEY:-}
       - AGENT_JWT_KEY_ID=e2e-test-key
       - JWKS_EXPORT_PATH=/shared/arrakis-jwks.json
+      # Billing E2E (Sprint 244, Task 6.1)
+      - FEATURE_BILLING_ENABLED=true
+      - BILLING_MODE=${BILLING_MODE:-live}
+      - BILLING_ADMIN_JWT_SECRET=${BILLING_ADMIN_JWT_SECRET:-e2e-admin-jwt-secret-for-testing-only-32ch}
+      - BILLING_INTERNAL_JWT_SECRET=${BILLING_INTERNAL_JWT_SECRET:-e2e-s2s-jwt-secret-for-testing-only-32chr}
+      - DATABASE_PATH=/data/billing.db
+      # x402 Payment Middleware (Sprint 251, Task 7.1)
+      - X402_ENABLED=${X402_ENABLED:-true}
+      - X402_RECIPIENT_ADDRESS=${X402_RECIPIENT_ADDRESS:-0xe2eTestRecipient000000000000000000000001}
+      - X402_NONCE_TTL_SECONDS=300
+      # Identity Anchor Graduated Trust (Sprint 251, Task 7.1)
+      - IDENTITY_ANCHOR_ENABLED=${IDENTITY_ANCHOR_ENABLED:-true}
+      - IDENTITY_ANCHOR_HIGH_VALUE_THRESHOLD_MICRO=100000000
     ports:
       - "3099:3000"
     depends_on:
@@ -49,6 +67,7 @@ services:
         condition: service_healthy
     volumes:
       - jwks-shared:/shared
+      - billing-data:/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 5s
@@ -65,6 +84,8 @@ services:
       - PORT=8080
       - POOL_CLAIM_MODE=warn
       - ARRAKIS_JWKS_FILE=/shared/arrakis-jwks.json
+      - ARRAKIS_FINALIZE_URL=http://arrakis-e2e:3000/api/internal/finalize
+      - BILLING_INTERNAL_JWT_SECRET=${BILLING_INTERNAL_JWT_SECRET:-e2e-s2s-jwt-secret-for-testing-only-32chr}
     ports:
       - "8099:8080"
     depends_on:
@@ -81,5 +102,20 @@ services:
       retries: 10
       start_period: 10s
 
+  # Sprint 256, Task 5.2: Contract validator for cross-system schema testing
+  contract-validator:
+    build:
+      context: ./contract-validator
+      dockerfile: Dockerfile
+    ports:
+      - "3199:3100"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3100/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
 volumes:
   jwks-shared:
+  billing-data:

@@ -1,0 +1,20 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Tests use crypto.randomUUID without importing crypto, which can break in Node ESM environments.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "tests/e2e/agent-gateway-e2e.test.ts",
+      "line": 1,
+      "description": "createMockJwt() calls crypto.randomUUID but crypto is not imported; in Node ESM, global crypto may be unavailable, causing ReferenceError.",
+      "current_code": "```typescript\nimport { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';\nimport { LoaFinnE2EStub } from './loa-finn-e2e-stub.js';\nimport {\n  getVector,\n  getTestVectors,\n  CONTRACT_VERSION,\n  validateContractCompatibility,\n} from './vectors/index.js';\n```\n\n```typescript\n      jti: crypto.randomUUID(),\n```",
+      "fixed_code": "```typescript\nimport { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';\nimport { randomUUID } from 'crypto';\nimport { LoaFinnE2EStub } from './loa-finn-e2e-stub.js';\nimport {\n  getVector,\n  getTestVectors,\n  CONTRACT_VERSION,\n  validateContractCompatibility,\n} from './vectors/index.js';\n```\n\n```typescript\n      jti: randomUUID(),\n```",
+      "explanation": "Importing randomUUID from Node's crypto module guarantees availability in ESM and avoids relying on a possibly-missing global crypto object."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

@@ -1,0 +1,29 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Two arithmetic guard flaws: divideWithFloor is not a true floor for negatives, and subtractMicroUSD allows negative operands that can bypass invariants.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "packages/core/protocol/arithmetic.ts",
+      "line": 95,
+      "description": "divideWithFloor is documented as floor but BigInt division truncates toward zero; for negative values this returns the wrong result.",
+      "current_code": "```typescript\nexport function divideWithFloor(a: bigint, b: bigint): bigint {\n  if (b === 0n) throw new SafeArithmeticError('divideWithFloor', [a, b], 'division by zero');\n  return a / b;\n}\n```",
+      "fixed_code": "```typescript\nexport function divideWithFloor(a: bigint, b: bigint): bigint {\n  if (b === 0n) throw new SafeArithmeticError('divideWithFloor', [a, b], 'division by zero');\n  const q = a / b;\n  const r = a % b;\n  // BigInt division truncates toward zero; adjust to true floor for negatives\n  if (r !== 0n && ((a < 0n && b > 0n) || (a > 0n && b < 0n))) {\n    return q - 1n;\n  }\n  return q;\n}\n```",
+      "explanation": "BigInt division truncates toward zero, which differs from floor for negative values. The fix adjusts the quotient by -1 when there is a remainder and operands have opposite signs, producing a true mathematical floor without changing behavior for non-negative values."
+    },
+    {
+      "severity": "major",
+      "file": "packages/core/protocol/arithmetic.ts",
+      "line": 65,
+      "description": "subtractMicroUSD allows negative operands; a negative subtrahend can bypass addMicroUSD's MAX_MICRO_USD guard and inflate balances.",
+      "current_code": "```typescript\nexport function subtractMicroUSD(a: bigint, b: bigint): bigint {\n  const result = a - b;\n  if (result < 0n) {\n    throw new SafeArithmeticError('subtractMicroUSD', [a, b], `result would be negative: ${a} - ${b} = ${result}`);\n  }\n  return result;\n}\n```",
+      "fixed_code": "```typescript\nexport function subtractMicroUSD(a: bigint, b: bigint): bigint {\n  if (a < 0n) throw new SafeArithmeticError('subtractMicroUSD', [a, b], `first operand is negative: ${a}`);\n  if (b < 0n) throw new SafeArithmeticError('subtractMicroUSD', [a, b], `second operand is negative: ${b}`);\n  const result = a - b;\n  if (result < 0n) {\n    throw new SafeArithmeticError('subtractMicroUSD', [a, b], `result would be negative: ${a} - ${b} = ${result}`);\n  }\n  return result;\n}\n```",
+      "explanation": "Micro-USD amounts must be non-negative. Without operand validation, subtracting a negative value effectively performs unchecked addition and can exceed system ceilings. These guards enforce invariants and prevent bypassing addMicroUSD limits."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

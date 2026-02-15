@@ -1,0 +1,28 @@
+{
+  "verdict": "APPROVED",
+  "summary": "All four previously-blocking items are now addressed with concrete, testable acceptance criteria and the mode×claim-state cross-product is complete, with no new truly-blocking issues introduced.",
+  "previous_issues_status": [
+    {
+      "original_issue": "JWT `v` claim backward-compatibility was asserted but not proven against the real trust boundary (loa-finn-style strict validation risk).",
+      "status": "fixed",
+      "notes": "Task 1.1 now includes an explicit contract test that signs with JwtService (including `v:1`) and validates via S2SJwtValidator.validateJwt(), which is the right kind of round-trip proof for “unknown claim tolerated” in the actual verification chain."
+    },
+    {
+      "original_issue": "Observability acceptance criteria were not concrete/testable (no explicit log schema/event contract; risk that warn→reject promotion can’t be safely executed).",
+      "status": "fixed",
+      "notes": "Task 2.4 defines a 4-event contract with required fields per event and adds an explicit requirement for a type/schema plus unit tests asserting each path emits a schema-conformant structured log object. That makes “done” objectively verifiable."
+    },
+    {
+      "original_issue": "Warn/reject branching introduced multiple outcomes but tests/AC didn’t cover the full cross-product, especially reject-mode handling of unknown access_level and missing claims.",
+      "status": "fixed",
+      "notes": "Tasks 2.2 and 2.5 now enumerate and require all 8 combinations (mode × claim state), explicitly stating reject-mode behavior for unknown access_level (accept + warn) and missing claims (accept + skipped). This closes the regression risk that reject mode accidentally blocks legacy/unknown cases."
+    },
+    {
+      "original_issue": "Test completion gates were not verifiable (assertion counts / vague “100% of changes covered”).",
+      "status": "fixed",
+      "notes": "Task 1.5 now enumerates 8 named behavioral branches with required named tests, replacing assertion-count gating. That’s a concrete, reviewable completion criterion aligned with the security-sensitive branches."
+    }
+  ],
+  "new_blocking_concerns": [],
+  "iteration": 2
+}

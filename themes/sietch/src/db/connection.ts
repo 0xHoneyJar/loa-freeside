@@ -22,6 +22,7 @@ import {
   TELEGRAM_IDENTITY_SAFE_SQL,
   GOM_JABBAR_USERS_SCHEMA_SQL,
   CRYPTO_PAYMENTS_SCHEMA_SQL,
+  CREDIT_LEDGER_SCHEMA_SQL,
 } from './schema.js';
 
 let db: Database.Database | null = null;
@@ -232,6 +233,10 @@ export function initDatabase(): Database.Database {
   // Run crypto payments schema (Sprint 155: NOWPayments Integration)
   db.exec(CRYPTO_PAYMENTS_SCHEMA_SQL);
   logger.info('Crypto payments schema initialized');
+
+  // Run credit ledger schema (Sprint 230: Billing & Payments)
+  db.exec(CREDIT_LEDGER_SCHEMA_SQL);
+  logger.info('Credit ledger schema initialized');
 
   return db;
 }

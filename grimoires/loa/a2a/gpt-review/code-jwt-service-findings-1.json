@@ -1,0 +1,29 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Found security and logic issues: missing default expiry handling and potential private key leakage in JWKS.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "jwt-service.ts",
+      "line": 74,
+      "description": "Expiry default is documented as 120 seconds but never enforced; if expirySec is undefined at runtime, exp becomes NaN and tokens become invalid.",
+      "current_code": "```typescript\n  constructor(\n    private readonly config: JwtServiceConfig,\n    private readonly keyLoader: KeyLoader,\n    clock?: Clock,\n  ) {\n    this.clock = clock ?? REAL_CLOCK;\n  }\n```",
+      "fixed_code": "```typescript\n  constructor(\n    private readonly config: JwtServiceConfig,\n    private readonly keyLoader: KeyLoader,\n    clock?: Clock,\n  ) {\n    // Enforce documented default expiry of 120s if not provided\n    this.config = { ...config, expirySec: config.expirySec ?? 120 };\n    this.clock = clock ?? REAL_CLOCK;\n  }\n```",
+      "explanation": "Ensures exp is always a valid number and matches the documented default behavior, preventing NaN expiration timestamps."
+    },
+    {
+      "severity": "critical",
+      "file": "jwt-service.ts",
+      "line": 122,
+      "description": "JWKS can accidentally expose private key material if previousKey.publicJwk contains private parameters (e.g., `d`). There is no sanitization.",
+      "current_code": "```typescript\n    if (this.config.previousKey && this.config.previousKey.expiresAt.getTime() > this.clock.now()) {\n      keys.push({\n        ...this.config.previousKey.publicJwk,\n        kid: this.config.previousKey.keyId,\n        use: 'sig',\n        alg: 'ES256',\n        kty: 'EC',\n        crv: 'P-256',\n      });\n    }\n```",
+      "fixed_code": "```typescript\n    if (this.config.previousKey && this.config.previousKey.expiresAt.getTime() > this.clock.now()) {\n      // Sanitize to ensure no private key material (e.g., `d`) is exposed\n      const { d: _d, ...publicOnly } = this.config.previousKey.publicJwk as JWK & { d?: string };\n      keys.push({\n        ...publicOnly,\n        kid: this.config.previousKey.keyId,\n        use: 'sig',\n        alg: 'ES256',\n        kty: 'EC',\n        crv: 'P-256',\n      });\n    }\n```",
+      "explanation": "Strips private parameters from any supplied JWK to prevent accidental private key leakage via the JWKS endpoint."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

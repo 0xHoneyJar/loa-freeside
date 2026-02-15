@@ -1,0 +1,44 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "The plan is close, but several tasks have hidden cross-repo/runtime dependencies and a few acceptance criteria are not implementable as written, which is likely to cause at least one sprint to stall or ship unverified changes.",
+  "blocking_issues": [
+    {
+      "location": "Sprint 1 (Tasks 1.2–1.4) + Rollback section",
+      "issue": "Contract/schema changes are planned only in arrakis test vectors/schema, but the real consumer/producer boundary is arrakis ↔ loa-finn; there is no task to update loa-finn (or to prove it already tolerates the new fields/version bump).",
+      "why_blocking": "AC-1.5–1.8 and the Sprint 1 rollback trigger explicitly mention loa-finn consumption, but the sprint scope says 'Repos: arrakis (primary)' and contains no integration step to ensure loa-finn accepts contract v1.1.0, ignores unknown fields, and/or participates in version negotiation. If loa-finn is strict about schema or contract version, Sprint 1 can’t be validated and rollback criteria can’t be meaningfully exercised.",
+      "fix": "Add an explicit integration task (either in Sprint 1 or Sprint 2) that: (a) verifies loa-finn behavior against contract v1.1.0 (e.g., run loa-finn stub/real in CI, or add a compatibility test that simulates loa-finn validation), and (b) documents/implements the expected tolerance rules. If cross-repo changes are required, add a dependent loa-finn PR/task and make it a named dependency in the graph."
+    },
+    {
+      "location": "Sprint 2 Task 2.2 (Compatibility matrix + version negotiation)",
+      "issue": "“Version negotiation” is specified but only implemented inside the contract package; there is no task to wire negotiation into the actual arrakis↔loa-finn request/handshake path.",
+      "why_blocking": "As written, Sprint 2 can complete with a library that is never invoked, leaving the system still vulnerable to the exact mismatch failures negotiation is meant to prevent. This is a classic sprint-failure mode: acceptance criteria pass locally, but the finding is not actually implemented end-to-end.",
+      "fix": "Add a concrete wiring task and acceptance criteria: where arrakis sends its arrakis_version/contract_version (header/JWT claim/body), where loa-finn responds with its version, and what arrakis does on incompatible pairs (fail fast with explicit error). If loa-finn changes are out of scope, re-scope Task 2.2 to “compatibility utilities only” and remove “negotiation” wording/AC, or add a stubbed negotiation in E2E that proves enforcement."
+    },
+    {
+      "location": "Sprint 3 Task 3.2 (API key Buffer-through for auth headers)",
+      "issue": "Acceptance criteria require “no string representation exists at any point” and “headers set via Buffer-compatible API”, but Node/undici/fetch header APIs generally coerce header values to string; the plan doesn’t specify a feasible mechanism that preserves HTTP semantics while guaranteeing no string copies.",
+      "why_blocking": "This is likely to dead-end during implementation: either you can’t send the request without a string conversion somewhere in the stack, or you can’t prove AC-3.8/AC-3.12. The rollback says revert to strings, which would mean the sprint can’t meet its stated goal/AC and will fail its own DoD.",
+      "fix": "Change the task to a verifiable, feasible security property and implementation: e.g., (a) keep the key encrypted in memory and only materialize a string at the last possible moment, (b) isolate the string in a short-lived worker/process, or (c) use a native addon / lower-level client that demonstrably avoids JS string copies. Update AC to something testable (e.g., “no application-level toString() on key Buffer; key is zeroed; header construction occurs in isolated boundary; heap snapshot test shows no key substring”). Also explicitly choose the HTTP client/library that supports the chosen approach."
+    },
+    {
+      "location": "Sprint 4 Task 4.3 (Dashboard + alarm updates)",
+      "issue": "Dashboard widgets/alarms are specified for metrics that are not defined as being emitted anywhere in the plan (e.g., per-model cost distribution, accounting_mode distribution, ensemble savings, lifecycle state distribution, fleet circuit breaker gauge).",
+      "why_blocking": "Terraform can be updated, but the widgets will be broken/empty because the EMF metric names/dimensions aren’t specified or implemented. This commonly causes Sprint 4 to fail acceptance (you can’t validate the dashboard/alarms without the metrics existing).",
+      "fix": "Add explicit tasks (likely Sprint 1/3/4) to emit CloudWatch EMF metrics with exact names, units, and dimensions for: model_id/provider/accounting_mode, savings_micro, lifecycle final state, circuit breaker state, token_estimate_drift. Then update AC-4.13–4.16 to validate against those exact metric definitions (e.g., via snapshot of EMF log lines in tests or a local EMF encoder unit test)."
+    },
+    {
+      "location": "Sprint 4 Task 4.1 (Incremental reservation release) + Sprint 1 Task 1.3 (hybrid reservation multiplier)",
+      "issue": "Incremental reservation logic is described for fallback, but it doesn’t specify how it composes with mixed BYOK/platform per-model reservation (Sprint 1) and with the existing two-counter Redis accounting invariants.",
+      "why_blocking": "Without a specified algorithm for “reserve additional” when some attempts are BYOK and some are platform (or when fallback tries different providers/models), you can easily violate invariants (committed ≤ reserved for platform) or reserve the wrong amount. This is especially risky because Sprint 1 changes reservation multiplier based on non-BYOK models, while Sprint 4 changes reservation timing; the interaction is underspecified and can stall implementation/testing.",
+      "fix": "Add explicit rules and tests: define reservation unit for fallback as “platform-attempt cost estimate” only, and specify how attemptNumber maps to platform-only attempts (e.g., reserve on each platform attempt, skip BYOK attempts). Add E2E/unit vectors for fallback with mixed BYOK/platform across attempts and partial failures, asserting reserved/committed counters and savings_micro behavior."
+    },
+    {
+      "location": "Sprint 3 Task 3.3 (Fleet-wide Redis circuit breaker)",
+      "issue": "AC-3.18 requires an integration test with “two simulated containers share circuit state”, but the plan doesn’t include a harness approach (e.g., docker-compose Redis + two node processes) and the repo is described as arrakis-only.",
+      "why_blocking": "This acceptance criterion is likely not achievable within the sprint timebox without an explicit test harness plan; it risks either being skipped (failing DoD) or consuming the sprint. It’s also unclear how “simulated containers” will be represented in CI.",
+      "fix": "Add a concrete integration test harness task: e.g., vitest that spins up a real Redis (testcontainer) and instantiates two breaker instances with distinct instance IDs, asserting shared state transitions. Or relax AC-3.18 to a deterministic Redis-backed test without “container” language, while keeping the cross-instance guarantee."
+    }
+  ],
+  "question": "",
+  "iteration": 1
+}

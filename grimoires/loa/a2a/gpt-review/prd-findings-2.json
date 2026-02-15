@@ -1,0 +1,43 @@
+{
+  "verdict": "APPROVED",
+  "summary": "All previously blocking contradictions around x402↔purchase binding, pricing model, identity gating, property-test semantics, governance versioning, numeric units, and rate limiting have been resolved in a way that is implementable and verifiable.",
+  "previous_issues_status": [
+    {
+      "original_issue": "Payment flow inconsistent / missing canonical payment→credit binding, SKU/amount mapping, and idempotency tied to payer/account",
+      "status": "fixed",
+      "notes": "FR-4 now defines a canonical PaymentProof contract, explicit binding rules (account_id from authenticated JWT, memo includes accountId:nonce for inline), recipient validation, and a concrete idempotency key stored with UNIQUE constraint. FR-4/FR-5 also unify inline and explicit purchase modes behind IPaymentVerifier."
+    },
+    {
+      "original_issue": "Contradiction between fixed tiers and dynamic price = inference_cost × markup_factor",
+      "status": "fixed",
+      "notes": "FR-5 explicitly chooses one model: fixed USDC price tiers with variable credits minted via floor(price/markup). It also clarifies markup is applied at purchase time and cost estimator affects consumption later."
+    },
+    {
+      "original_issue": "Identity anchor requirement underspecified and conflicted with purchase/top-up flow (deadlock vs sybil risk)",
+      "status": "fixed",
+      "notes": "FR-2 adds an explicit authorization matrix and defines 'high-value' as a per-request threshold enforced at reserve time. It explicitly exempts purchase from anchoring to avoid deadlock while still gating high-value reserve."
+    },
+    {
+      "original_issue": "Property-based invariants underspecified for lot-based ledger; liveness 'eventually' not modelable without time/worker",
+      "status": "fixed",
+      "notes": "FR-1 now defines per-lot conservation precisely, adds FIFO as an explicit safety property, and handles liveness correctly by requiring an explicit expiry tick action plus a weaker safety fallback when fairness isn’t assumed."
+    },
+    {
+      "original_issue": "Governance schema version field required but undefined (what/where/how used)",
+      "status": "fixed",
+      "notes": "FR-7 defines what is versioned (revenue rule set schema), where stored (revenue_rules.schema_version with migration 040), how used (recorded in distribution entries), and compatibility semantics (finalize uses active rule at finalize time; old entries remain valid)."
+    },
+    {
+      "original_issue": "Numeric mismatch / unit ambiguity for micro-USD bounds and arithmetic/rounding policies",
+      "status": "fixed",
+      "notes": "FR-1 establishes microusd=1e-6 USD, unsigned bigint, MAX_MICRO_USD=1e15=$1B, floor rounding, and USDC 6-decimal 1:1 mapping. It also requires centralized arithmetic guards with explicit error behavior."
+    },
+    {
+      "original_issue": "In-memory rate limiting bypass risk in multi-instance deployments; keying strategy unspecified",
+      "status": "fixed",
+      "notes": "FR-6 specifies per-principal keying (service_id/sub/account_id) with an IP fallback only for unauthenticated requests, and explicitly constrains deployment to single-instance with a documented requirement to move to Redis if horizontally scaled."
+    }
+  ],
+  "new_blocking_concerns": [],
+  "iteration": 2
+}

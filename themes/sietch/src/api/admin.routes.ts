@@ -16,8 +16,9 @@ import { z } from 'zod';
 import type { Response } from 'express';
 import type { AuthenticatedRequest } from './middleware.js';
 import {
-  requireApiKey,
-  memberRateLimiter,
+  adminRateLimiter,
+  authRateLimiter,
+  requireApiKeyAsync,
   ValidationError,
   NotFoundError,
 } from './middleware.js';
@@ -46,9 +47,12 @@ import { AdminApiKeyService } from '../services/security/AdminApiKeyService.js';
 
 export const adminRouter = Router();
 
-// Note: Authentication and rate limiting are applied in routes.ts
-// The parent adminRouter already has requireApiKey and adminRateLimiter
-// We don't duplicate those middlewares here
+// Sprint 252 (G-1): Explicit rate limiting and authentication on this router.
+// Previously relied on middleware from the preceding adminRouter mount in server.ts,
+// which was correct but fragile — if mount order changed, these routes would be
+// unprotected. Defense-in-depth: apply directly so this router is self-contained.
+adminRouter.use(requireApiKeyAsync);
+adminRouter.use(adminRateLimiter);
 
 // =============================================================================
 // Middleware: Check Billing Enabled
@@ -686,6 +690,7 @@ function requireVaultEnabled(req: AuthenticatedRequest, res: Response, next: Fun
 adminRouter.post(
   '/keys/rotate',
   requireVaultEnabled,
+  authRateLimiter, // Sprint 252: Stricter 10 req/min for key operations
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       // Validate request body
@@ -783,6 +788,7 @@ adminRouter.post(
 adminRouter.post(
   '/keys/revoke',
   requireVaultEnabled,
+  authRateLimiter, // Sprint 252: Stricter 10 req/min for key operations
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       // Validate request body
@@ -1022,6 +1028,7 @@ const rotateApiKeySchema = z.object({
  */
 adminRouter.post(
   '/api-keys/rotate',
+  authRateLimiter, // Sprint 252: Stricter 10 req/min for key operations
   async (req: AuthenticatedRequest, res: Response) => {
     const result = rotateApiKeySchema.safeParse(req.body);
 

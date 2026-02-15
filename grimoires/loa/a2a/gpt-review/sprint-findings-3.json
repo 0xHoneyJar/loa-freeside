@@ -1,31 +1,46 @@
 {
   "verdict": "APPROVED",
-  "summary": "All previously raised blockers are now addressed, and the mixed-fleet circuit breaker migration is corrected to preserve fleet-wide semantics during rolling deploys without introducing new blocking risks.",
+  "summary": "All 12 Flatline findings appear integrated as specified, Task 1.4b fits the dependency chain cleanly, and the two override rationales are documented and consistent with the stated SDD constraints without introducing new truly blocking inconsistencies.",
   "previous_issues_status": [
     {
-      "original_issue": "AC-1.1 required `ZRANGEBYSCORE` but implementation used `ZREMRANGEBYSCORE` + `ZCARD` (AC/implementation mismatch)",
+      "original_issue": "Revenue distribution recipient accounts not defined/seeded/configured",
       "status": "fixed",
-      "notes": "AC-1.1 is aligned to the intended sliding-window algorithm (`ZREMRANGEBYSCORE` + `ZADD` + `ZCARD`) and the plan text matches it."
+      "notes": "Still correctly addressed: Task 3.5 seeds the three system credit_accounts and stores their account_ids in billing_config; Task 3.3 reads those keys and posts the triad."
     },
     {
-      "original_issue": "Zero-downtime migration underspecified for mixed-fleet concurrency; risk of lost/duplicated failures during rollout",
+      "original_issue": "Task 1.3 depended on billing_config which was only created later",
       "status": "fixed",
-      "notes": "Task 1.1 now specifies a two-phase rollout where new code dual-writes (ZSET + CSV) and also migrates CSV→ZSET on each call, plus clears both on success. This ensures old and new containers observe the same fleet-wide failure stream during the rollout window, which resolves the prior correctness risk. AC-1.20 and AC-1.23 explicitly cover mixed-fleet safety and require a simulation test."
+      "notes": "Still correctly addressed: Task 1.3 uses BILLING_CEILING_MICRO env var now and explicitly defers billing_config override to Sprint 3."
     },
     {
-      "original_issue": "Compatibility matrix loading via `readFileSync` at module init is brittle in packaged/bundled Node environments",
+      "original_issue": "Migration ordering conflict (033 before 032) despite required 030→031→032→033",
       "status": "fixed",
-      "notes": "The plan uses TS JSON module import with `resolveJsonModule`, avoiding runtime file I/O and path resolution issues."
+      "notes": "Still correctly addressed: Sprint 3 ships 032_billing_ops and Sprint 4 ships 033_campaigns; ordering is consistent throughout the doc."
     },
     {
-      "original_issue": "AC-1.19 was unrealistic as written (implied no rebuild/redeploy needed for data changes)",
+      "original_issue": "billing-routes.ts scope confusion across sprints causing likely merge/scope conflicts",
       "status": "fixed",
-      "notes": "AC-1.19 is now scoped to 'edit only compatibility.json (no TS source changes)', which is testable and reasonable under normal publish/redeploy."
+      "notes": "Still correctly addressed: Sprint 2 creates billing-routes with explicit 501 stubs; Sprint 5 replaces stubs with implementations."
     },
     {
-      "original_issue": "Audit runtime validation lacked explicit tests to prove warn+skip behavior and log shape",
+      "original_issue": "RevenueDistributionService not wired into finalize() transaction path",
       "status": "fixed",
-      "notes": "AC-1.21 and AC-1.22 require unit tests for invalid/valid events asserting warn+skip vs info emission, matching the non-blocking audit requirement."
+      "notes": "Still correctly addressed: Task 3.3 explicitly requires wiring into CreditLedgerAdapter.finalize() within the same BEGIN IMMEDIATE transaction and asserts rollback behavior."
+    },
+    {
+      "original_issue": "SQLite generated column requirement for payment_id likely incompatible",
+      "status": "fixed",
+      "notes": "Still correctly addressed: Migration 031 uses a normal payment_id column populated during INSERT...SELECT plus a trigger to keep it synced."
+    },
+    {
+      "original_issue": "SQLite RETURNING usage for seq allocation may be incompatible",
+      "status": "fixed",
+      "notes": "Still correctly addressed: Task 1.5 specifies UPDATE + SELECT within the same BEGIN IMMEDIATE transaction (no RETURNING)."
+    },
+    {
+      "original_issue": "HMAC strategy determination not locked into code for Sprint 2 dependency",
+      "status": "fixed",
+      "notes": "Still correctly addressed: Task 1.8 determines and implements a single strategy and locks it via NOWPAYMENTS_HMAC_STRATEGY; Sprint 2 depends on only one strategy deployed."
     }
   ],
   "new_blocking_concerns": [],

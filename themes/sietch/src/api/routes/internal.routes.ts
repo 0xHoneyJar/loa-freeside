@@ -52,6 +52,18 @@ function requireInternalApiKey(req: Request, res: Response, next: NextFunction):
 // Apply internal API key requirement to all routes
 internalRouter.use(requireInternalApiKey);
 
+// =============================================================================
+// Rate Limiting Exemption (Sprint 252, Task 1.3)
+//
+// Internal routes are NOT rate limited because:
+//   1. Authentication is via INTERNAL_API_KEY (shared secret, VPC-internal only)
+//   2. Callers are Trigger.dev workers within the same VPC — not internet-facing
+//   3. Traffic is job-driven (eligibility sync), not user-driven
+//   4. VPC network policies provide the primary access control layer
+//
+// If these routes become internet-facing, add s2sRateLimiter (200 req/min).
+// =============================================================================
+
 /**
  * POST /internal/sync-eligibility
  * Trigger eligibility sync job from Trigger.dev

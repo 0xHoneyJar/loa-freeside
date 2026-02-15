@@ -10,6 +10,7 @@ import {
   publicRateLimiter,
   ValidationError,
 } from '../middleware.js';
+import { PROTOCOL_VERSION } from '../../packages/core/protocol/compatibility.js';
 import {
   // SQLite queries (fallback)
   getCurrentEligibility,
@@ -147,11 +148,12 @@ publicRouter.get('/health', async (_req: Request, res: Response) => {
   const lastQuery = lastSuccessTime ?? new Date();
   const nextQuery = new Date(lastQuery.getTime() + 6 * 60 * 60 * 1000);
 
-  const response: HealthResponse = {
+  const response: HealthResponse & { protocol_version?: string } = {
     status: health.inGracePeriod ? 'degraded' : 'healthy',
     last_successful_query: lastSuccessTime?.toISOString() ?? null,
     next_query: nextQuery.toISOString(),
     grace_period: health.inGracePeriod,
+    protocol_version: PROTOCOL_VERSION,
   };
 
   // Use 200 even for degraded - it's still functioning

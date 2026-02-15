@@ -1,0 +1,50 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "This PRD is close, but it contains a few trust-boundary and accounting contradictions (pool-claim backward-compat, ensemble strategy propagation, and BYOK budget/usage semantics) that could ship an insecure or financially incorrect system.",
+  "blocking_issues": [
+    {
+      "location": "FR-1 Step 5 / AC-1.5 (Pool Claim Enforcement): “On missing claims: accept with default pool (backward compatibility)” vs NFR-2 “fail-closed”",
+      "issue": "The requirement simultaneously mandates fail-closed pool-claim enforcement and allows missing claims to pass with a default pool.",
+      "why_blocking": "This creates an exploitable downgrade path: an attacker (or buggy gateway) can omit claims to bypass enforcement logic and potentially land in a permissive default. It also makes it unclear what “enforced” means for SC-1/G-1, so you can “pass” acceptance while still being vulnerable.",
+      "fix": "Define an explicit compatibility policy that is still fail-closed: (a) require `access_level` always; if missing, reject; (b) allow missing `allowed_pools`/`pool_id` only if loa-finn can deterministically derive a safe default from server-side identity (e.g., `sub`/tenant) and that default is the *least-privileged* pool; and (c) add an enforcement mode flag (`warn`/`reject`) with a timeboxed migration plan, but make SC-1 specify the final mode required for RFC closure."
+    },
+    {
+      "location": "FR-3 (Ensemble Strategy Exposure): “strategy: 'best_of_n' | 'consensus' | 'fallback'” and AC-3.2 “forwarded in JWT claims to loa-finn”; plus §7.2 says ensemble is a routing hint and loa-finn selects tactically",
+      "issue": "The PRD assumes loa-finn reads ensemble strategy from JWT claims, but earlier security framing says loa-finn must not trust authorization/routing decisions from JWT hints (confused deputy prevention). Ensemble selection is a capability/entitlement decision (and can amplify spend), not just a hint.",
+      "why_blocking": "If loa-finn treats JWT-provided ensemble parameters as authoritative, a compromised/misconfigured arrakis (or a future bug in claim construction) can escalate execution fanout (N) and model set selection, causing budget bypass or DoS. Conversely, if loa-finn ignores these claims (more secure), the feature won’t work as specified—leading to “built but not working.”",
+      "fix": "Move ensemble authorization and parameter validation to loa-finn intake similarly to pool claims: arrakis may request `ensemble_request`, but loa-finn must (1) re-derive whether ensemble is allowed from server-side tenant/access-level, (2) clamp `n/quorum` to tier-specific maxima, (3) validate model IDs against the derived allowed pools/models, and (4) emit an audit event when clamping/denying. Update AC-3.2 to “arrakis sends request; loa-finn validates/derives final ensemble plan.”"
+    },
+    {
+      "location": "FR-3 AC-3.3 + Risks R-4 (Ensemble budget estimation) vs core requirement “budget accuracy (micro-USD ↔ micro-cents with zero drift)”",
+      "issue": "Ensemble budgeting is specified as “reservation multiplied by model count” and “conservative estimate (N * max single-model cost), reconcile on finalize,” but the system’s critical requirement demands zero drift and finalize-once semantics.",
+      "why_blocking": "A conservative over-reservation reconciled later can still be “accurate” eventually, but it can also (a) cause systematic false budget exhaustion (blocking legitimate requests), and (b) create drift alarms/noise if reserved vs finalized diverges by design. If “zero drift” is interpreted as reserved==finalized, ensemble as written violates it; if it means committed==reported, then the PRD’s drift metric/threshold (FR-5) is mis-specified.",
+      "fix": "Clarify the invariant: typically it should be “committed == usage_reported (in micro-USD) with exact unit conversion,” not “reserved == finalized.” Then: (1) define reservation semantics for ensemble (reservation is an upper bound; committed is exact), (2) ensure finalize uses exact reported cost per sub-call, and (3) update `agent_budget_drift_ratio` to measure something meaningful (e.g., committed/reserved over a window, expected to be <=1, alarm on sustained <<1 only if it indicates systematic over-reservation or stuck finalizations)."
+    },
+    {
+      "location": "FR-4 Routing integration: “JWT includes `byok: true` claim; loa-finn reads `byok` claim and routes to BYOKProxyClient” + NFR-2 “BYOK keys must never leave arrakis trust boundary”",
+      "issue": "BYOK routing is controlled by a JWT claim from arrakis, but there is no requirement that loa-finn independently verifies BYOK eligibility/ownership for the tenant/provider, nor that the callback to arrakis BYOK proxy is capability-bound to the same tenant/community context.",
+      "why_blocking": "Without a capability check, a bug or forged internal request could flip `byok: true` and cause loa-finn to route through the BYOK proxy path incorrectly. More importantly, the callback from loa-finn to arrakis becomes a confused-deputy surface unless arrakis validates that the caller is authorized to use a specific community’s BYOK key (pool claim validation alone doesn’t cover BYOK key selection). This can lead to cross-tenant key use—catastrophic.",
+      "fix": "Add explicit capability-based binding: (1) loa-finn must include a non-forgeable community/tenant identifier in the BYOK proxy request (already in JWT `sub`/community_id) and arrakis must re-derive the community from the validated S2S JWT, not from request params; (2) require a `byok_key_id` or provider+community lookup that is performed server-side in arrakis based on the authenticated tenant; (3) add replay protection for the BYOK proxy call (JTI + short TTL) and require `req_hash` binding to prevent request swapping."
+    },
+    {
+      "location": "FR-4: “BYOK requests bypass community budget (user pays their own provider)” + “Usage still logged (cost=0)” + existing finalize-once/budget pipeline in FR-2",
+      "issue": "The PRD doesn’t define how BYOK interacts with the existing reserve→usage-report→finalize pipeline, especially for finalize-once semantics and drift detection.",
+      "why_blocking": "If BYOK bypasses reservation but still emits usage reports, the finalize step may fail (no reservation to finalize) or create negative/zero-cost commits that break invariants and alarms. This can cause production incidents (stuck reservations, inconsistent counters) and make E2E tests non-representative.",
+      "fix": "Specify one consistent accounting mode for BYOK: either (A) still reserve/finalize but at $0 with explicit “BYOK” budget bucket (so pipeline remains consistent), or (B) skip reserve/finalize entirely and mark usage reports as `accounting_mode=BYOK_NO_BUDGET`, with code paths that do not touch Redis counters. Update FR-2 E2E to include a BYOK scenario if BYOK is in-scope for RFC closure."
+    },
+    {
+      "location": "FR-2 E2E Smoke Test: “loa-finn stub server … validates JWT … sends usage report” vs Acceptance Criteria SC-2 “proves cross-system request flow works” and remaining gap list includes “Staging deployment validation”",
+      "issue": "The E2E test as specified does not validate real loa-finn behavior for the most failure-prone parts (streaming semantics, usage report signing format, pool claim enforcement integration, circuit breaker interactions). A stub can accidentally encode the wrong contract and still pass.",
+      "why_blocking": "You can get a green CI signal while the real arrakis↔loa-finn integration is broken in production (exactly the failure mode this cycle is meant to prevent). This risks shipping “verified” integration that isn’t actually compatible.",
+      "fix": "Make the E2E suite two-tiered: (1) deterministic stub test (fast CI) and (2) a contract test against a real loa-finn container image in CI/nightly (even if it uses a stub provider). At minimum, require the stub to be generated from/shared with loa-finn’s actual request/response schemas and JWS usage-report code (or import the signer/verifier modules) so it cannot drift."
+    },
+    {
+      "location": "FR-5 Monitoring: metric definitions and thresholds, especially `agent_budget_drift_ratio` described as “(finalized/reserved) > 3x for 10 min”",
+      "issue": "The drift metric definition is internally inconsistent with the two-counter model: finalized should not exceed reserved in normal operation; “>3x” suggests either the ratio is inverted or the counters are not what the metric name implies.",
+      "why_blocking": "If the metric is wrong, alarms will be meaningless (either never fire or always fire), undermining the “production readiness” gate. This is a classic way projects fail post-launch: dashboards exist but don’t detect real issues.",
+      "fix": "Define precisely: which counters (reserved, committed, finalized) and their expected relationships over time windows. Then set thresholds consistent with those invariants (e.g., reserved_not_finalized_age_p99, finalize_failures_total, committed_minus_reported_abs_micro_usd). Update the 8 metrics list accordingly so AC-5.1/5.2 are testable and correct."
+    }
+  ],
+  "question": "",
+  "iteration": 1
+}

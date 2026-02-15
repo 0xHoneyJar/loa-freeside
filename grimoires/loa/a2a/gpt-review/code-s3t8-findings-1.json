@@ -1,0 +1,29 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Two logic bugs: invalid tiers can bypass validation via overrides, and cached overrides are ignored when the DB provider is not injected.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "TierAccessMapper.ts",
+      "line": 71,
+      "description": "Invalid tiers can bypass the range check if an override exists, because validation happens after override resolution.",
+      "current_code": "```typescript\n  async resolveAccess(\n    tier: number,\n    communityId?: string,\n  ): Promise<{ accessLevel: AccessLevel; allowedModelAliases: ModelAlias[] }> {\n    // Check per-community overrides if communityId provided and provider available\n    if (communityId && this.overrideProvider) {\n      const override = await this.getOverride(communityId, tier);\n      if (override) {\n        return {\n          accessLevel: override.accessLevel,\n          allowedModelAliases: [...override.aliases],\n        };\n      }\n    }\n\n    // Fall through to default mapping\n    const mapping = this.config.defaults[tier];\n    if (!mapping) {\n      throw new Error(`Invalid tier: ${tier}. Expected 1-9.`);\n    }\n    return {\n      accessLevel: mapping.accessLevel,\n      allowedModelAliases: [...mapping.aliases],\n    };\n  }\n```",
+      "fixed_code": "```typescript\n  async resolveAccess(\n    tier: number,\n    communityId?: string,\n  ): Promise<{ accessLevel: AccessLevel; allowedModelAliases: ModelAlias[] }> {\n    // Validate tier before any override resolution to prevent bypass\n    const mapping = this.config.defaults[tier];\n    if (!mapping) {\n      throw new Error(`Invalid tier: ${tier}. Expected 1-9.`);\n    }\n\n    // Check per-community overrides if communityId provided and cache/provider available\n    if (communityId && (this.redis || this.overrideProvider)) {\n      const override = await this.getOverride(communityId, tier);\n      if (override) {\n        return {\n          accessLevel: override.accessLevel,\n          allowedModelAliases: [...override.aliases],\n        };\n      }\n    }\n\n    // Fall through to default mapping\n    return {\n      accessLevel: mapping.accessLevel,\n      allowedModelAliases: [...mapping.aliases],\n    };\n  }\n```",
+      "explanation": "Validating the tier before applying overrides ensures out-of-range values cannot bypass the error via a malicious or misconfigured override. The default mapping is still used when no override applies."
+    },
+    {
+      "severity": "major",
+      "file": "TierAccessMapper.ts",
+      "line": 71,
+      "description": "Cached overrides are ignored when overrideProvider is undefined, even if Redis contains valid cached overrides.",
+      "current_code": "```typescript\n    // Check per-community overrides if communityId provided and provider available\n    if (communityId && this.overrideProvider) {\n      const override = await this.getOverride(communityId, tier);\n      if (override) {\n        return {\n          accessLevel: override.accessLevel,\n          allowedModelAliases: [...override.aliases],\n        };\n      }\n    }\n```",
+      "fixed_code": "```typescript\n    // Check per-community overrides if communityId provided and cache/provider available\n    if (communityId && (this.redis || this.overrideProvider)) {\n      const override = await this.getOverride(communityId, tier);\n      if (override) {\n        return {\n          accessLevel: override.accessLevel,\n          allowedModelAliases: [...override.aliases],\n        };\n      }\n    }\n```",
+      "explanation": "This allows using Redis-cached overrides even when the DB provider is not injected, satisfying the cache hit path and preventing unexpected fallback to defaults."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

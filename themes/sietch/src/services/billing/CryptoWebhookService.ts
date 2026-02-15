@@ -90,10 +90,26 @@ class CryptoWebhookService {
   private cryptoProvider: ICryptoPaymentProvider | null = null;
 
   /**
+   * Credit ledger hook — called when a payment finishes to create a credit lot.
+   * Set via setCreditLedgerHook() during server init when FEATURE_BILLING_ENABLED=true.
+   * Sprint 2 Task 2.6: Wire NOWPayments webhook to credit ledger.
+   */
+  private creditLedgerHook: ((event: CryptoWebhookEvent, communityId: string, priceUsd: number) => Promise<{ lotId: string; amountUsdMicro: bigint }>) | null = null;
+
+  /**
    * Set the crypto payment provider (dependency injection)
    */
   setCryptoProvider(provider: ICryptoPaymentProvider): void {
     this.cryptoProvider = provider;
+  }
+
+  /**
+   * Set the credit ledger hook for lot creation on payment finish.
+   * Called during server init when FEATURE_BILLING_ENABLED=true.
+   * Sprint refs: Task 2.6
+   */
+  setCreditLedgerHook(hook: (event: CryptoWebhookEvent, communityId: string, priceUsd: number) => Promise<{ lotId: string; amountUsdMicro: bigint }>): void {
+    this.creditLedgerHook = hook;
   }
 
   /**
@@ -276,9 +292,31 @@ class CryptoWebhookService {
         finishedAt: isCompleted ? new Date() : undefined,
       });
 
-      // If payment finished, activate subscription
+      // If payment finished, activate subscription + credit ledger
       if (isCompleted) {
         await this.activateSubscription(existingPayment.communityId, existingPayment.tier);
+
+        // Sprint 2 Task 2.6: Wire to credit ledger if hook is configured
+        if (this.creditLedgerHook) {
+          try {
+            const priceUsd = event.priceAmount ?? existingPayment.priceAmount ?? 0;
+            const ledgerResult = await this.creditLedgerHook(event, existingPayment.communityId, priceUsd);
+            logger.info({
+              paymentId,
+              lotId: ledgerResult.lotId,
+              amountUsdMicro: ledgerResult.amountUsdMicro.toString(),
+              event: 'billing.webhook.lot_created',
+            }, 'Credit lot created from NOWPayments webhook');
+          } catch (ledgerErr) {
+            // Credit ledger failure should not block subscription activation
+            // Failed deposits go to DLQ in Sprint 3
+            logger.error({
+              paymentId,
+              err: ledgerErr,
+              event: 'billing.webhook.lot_failed',
+            }, 'Failed to create credit lot from webhook — will retry via DLQ');
+          }
+        }
       }
 
       // Log audit event - use appropriate event type based on status

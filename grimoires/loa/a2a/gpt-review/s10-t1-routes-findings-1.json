@@ -1,0 +1,29 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Idempotency key validation is incomplete (charset + multiple header values) and must be fixed on both invoke and stream routes.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "agents.routes.ts",
+      "line": 70,
+      "description": "X-Idempotency-Key validation does not reject multiple header values and does not validate allowed charset, allowing malformed or potentially dangerous keys.",
+      "current_code": "```typescript\n      // Validate X-Idempotency-Key header (SDD §7.4)\n      const idempotencyKeyHeader = req.headers['x-idempotency-key'];\n      if (idempotencyKeyHeader != null) {\n        const key = Array.isArray(idempotencyKeyHeader) ? idempotencyKeyHeader[0] : idempotencyKeyHeader;\n        if (key.length > AGENT_MAX_IDEMPOTENCY_KEY_LENGTH) {\n          res.status(400).json({ error: 'INVALID_REQUEST', message: 'X-Idempotency-Key exceeds maximum length' });\n          return;\n        }\n      }\n```",
+      "fixed_code": "```typescript\n  // --------------------------------------------------------------------------\n  // Helpers\n  // --------------------------------------------------------------------------\n\n  const IDEMPOTENCY_KEY_REGEX = /^[A-Za-z0-9_-]+$/; // URL-safe, no spaces\n\n  function validateIdempotencyKey(req: Request, res: Response): boolean {\n    const header = req.headers['x-idempotency-key'];\n    if (header == null) return true;\n\n    if (Array.isArray(header)) {\n      res.status(400).json({ error: 'INVALID_REQUEST', message: 'X-Idempotency-Key must be a single header value' });\n      return false;\n    }\n\n    const key = header;\n    if (key.length > AGENT_MAX_IDEMPOTENCY_KEY_LENGTH) {\n      res.status(400).json({ error: 'INVALID_REQUEST', message: 'X-Idempotency-Key exceeds maximum length' });\n      return false;\n    }\n    if (!IDEMPOTENCY_KEY_REGEX.test(key)) {\n      res.status(400).json({ error: 'INVALID_REQUEST', message: 'X-Idempotency-Key contains invalid characters' });\n      return false;\n    }\n\n    return true;\n  }\n\n  // ... inside POST /api/agents/invoke handler\n  // Validate X-Idempotency-Key header (SDD §7.4)\n  if (!validateIdempotencyKey(req, res)) return;\n```",
+      "explanation": "This fix rejects duplicate header values (string[]), enforces a safe charset, and preserves the maximum length requirement. It prevents malformed keys and header smuggling patterns from passing validation."
+    },
+    {
+      "severity": "major",
+      "file": "agents.routes.ts",
+      "line": 105,
+      "description": "The stream endpoint repeats the same incomplete validation; it must use the shared validation to reject multiple values and invalid characters.",
+      "current_code": "```typescript\n      // Validate X-Idempotency-Key header (SDD §7.4)\n      const idempotencyKeyHeader = req.headers['x-idempotency-key'];\n      if (idempotencyKeyHeader != null) {\n        const key = Array.isArray(idempotencyKeyHeader) ? idempotencyKeyHeader[0] : idempotencyKeyHeader;\n        if (key.length > AGENT_MAX_IDEMPOTENCY_KEY_LENGTH) {\n          res.status(400).json({ error: 'INVALID_REQUEST', message: 'X-Idempotency-Key exceeds maximum length' });\n          return;\n        }\n      }\n```",
+      "fixed_code": "```typescript\n      // Validate X-Idempotency-Key header (SDD §7.4)\n      if (!validateIdempotencyKey(req, res)) return;\n```",
+      "explanation": "Reusing the shared validator guarantees consistent security checks on both endpoints, including rejection of header arrays and invalid characters."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

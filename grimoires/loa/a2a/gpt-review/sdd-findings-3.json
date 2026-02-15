@@ -1,0 +1,55 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "The two iteration-2 blockers (BigInt mapping and partial unique index) are addressed correctly, but there is still at least one truly blocking schema/DDL mismatch remaining (credit_reservations indexes), so I can’t approve yet.",
+  "previous_issues_status": [
+    {
+      "original_issue": "BigInt precision: SQLite INTEGER + Drizzle integer() risks JS number precision loss; REAL money columns unsafe",
+      "status": "fixed",
+      "notes": "Confirmed: DDL uses INTEGER for all *_micro columns and Drizzle uses integer(name, { mode: 'bigint' }) via microUSD(). In drizzle-orm 0.45.1 this is a valid sqlite-core API and returns TS bigint while storing as SQLite INTEGER affinity. This resolves the prior BLOB-affinity mismatch and the JS number precision risk (assuming code avoids Number coercion, which the SDD states)."
+    },
+    {
+      "original_issue": "Entry sequence allocation via MAX()+1 is unsafe under concurrency",
+      "status": "fixed",
+      "notes": "Still fixed: credit_account_seq counter table with UPDATE...RETURNING inside BEGIN IMMEDIATE is concurrency-safe and O(1)."
+    },
+    {
+      "original_issue": "Lots cannot represent consumption (missing consumed_micro)",
+      "status": "fixed",
+      "notes": "Still fixed: consumed_micro exists in DDL and Drizzle, with invariant described."
+    },
+    {
+      "original_issue": "Webhook deposit idempotency underspecified; UNIQUE(provider_payment_id) doesn’t prevent duplicate lots/ledger deposits",
+      "status": "fixed",
+      "notes": "Confirmed: partial unique index CREATE UNIQUE INDEX idx_credit_lots_source ON (source_type, source_id) WHERE source_id IS NOT NULL exists in migration 030 DDL. Drizzle schema intentionally omits it with an explicit comment explaining Drizzle’s limitation and avoids adding a wrong non-partial unique index. This is an acceptable and correct resolution as long as migrations are the source of truth for that constraint (as stated)."
+    },
+    {
+      "original_issue": "Refund/clawback for partially consumed lots not implementable (no refund_debt model)",
+      "status": "fixed",
+      "notes": "Still fixed: credit_debts model exists and is described consistently."
+    },
+    {
+      "original_issue": "Revenue distribution rounding drift due to decimal string rates",
+      "status": "fixed",
+      "notes": "Still fixed: basis points + integer math + remainder to foundation preserves exact zero-sum."
+    },
+    {
+      "original_issue": "Migration 031 drop/recreate risks compatibility and missing constraints/indexes/FKs",
+      "status": "fixed",
+      "notes": "Still fixed: table recreation with PRAGMA foreign_keys OFF/ON, generated alias payment_id, and index recreation + verification queries is reasonable."
+    },
+    {
+      "original_issue": "Missing credit_reservations header table makes reserve/finalize/release fragile",
+      "status": "fixed",
+      "notes": "Still fixed: credit_reservations table exists in DDL and Drizzle with status lifecycle and idempotency_key."
+    }
+  ],
+  "new_blocking_concerns": [
+    {
+      "location": "DB Design §3.2 (Migration 030) vs §3.5 (Drizzle schema): credit_reservations indexes",
+      "description": "The DDL defines partial/conditional indexes on credit_reservations (idx_credit_reservations_expiry WHERE status='pending'), but the Drizzle schema defines a non-partial index idx_credit_reservations_expiry on (expires_at) with no predicate and does not document that the real index is partial/created via raw SQL. This is a schema/DDL mismatch on a hot-path maintenance query (sweeper) and can cause migration drift depending on whether environments rely on Drizzle-generated migrations vs raw SQL migrations.",
+      "why_blocking": "If Drizzle migrations are used to create schema (or to diff/push), you can end up without the intended partial index, which can degrade sweeper performance from scanning all reservations to scanning only pending ones. At scale, that can break reservation expiry/release timeliness, leading to stuck reserved balances (effectively a denial of service on spending). This is operationally blocking for a billing system because it can lock user funds and cascade into support incidents.",
+      "fix": "Make the approach consistent with the deposit idempotency fix: create the partial index via raw SQL in migration 030 and (a) remove the non-partial Drizzle index definition, and (b) add an explicit comment in the Drizzle schema noting the partial index is created in the migration. Alternatively, if you keep the Drizzle index, then change the DDL to match (non-partial) and accept the perf hit—but that would be a product risk. Best: keep the partial index in DDL and document omission in Drizzle, mirroring the credit_lots_source handling."
+    }
+  ],
+  "iteration": 3
+}

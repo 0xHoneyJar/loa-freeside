@@ -1,0 +1,83 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Found cost calculation bugs, unsafe numeric handling, and fail-closed behavior issues that can cause overspend or incorrect charging.",
+  "issues": [
+    {
+      "severity": "critical",
+      "file": "budget-manager.ts",
+      "line": 122,
+      "description": "reserve() rounds estimated cost and allows NaN, which can under-reserve or pass 'NaN' to Lua; this can allow overspend.",
+      "current_code": "```typescript\nconst argv = [\n  String(Math.max(0, Math.round(params.estimatedCost))),\n  params.userId,\n  params.idempotencyKey,\n  params.communityId,\n  params.modelAlias,\n  String(nowMs),\n  String(RESERVATION_TTL_MS),\n];\n```",
+      "fixed_code": "```typescript\nconst argv = [\n  String(normalizeCostCents(params.estimatedCost)),\n  params.userId,\n  params.idempotencyKey,\n  params.communityId,\n  params.modelAlias,\n  String(nowMs),\n  String(RESERVATION_TTL_MS),\n];\n```",
+      "explanation": "normalizeCostCents() clamps negatives, rejects NaN/Infinity, and rounds up to avoid under-reserving."
+    },
+    {
+      "severity": "major",
+      "file": "budget-manager.ts",
+      "line": 143,
+      "description": "Fail-closed on Redis error should deny budget use; returning INVALID_INPUT can be interpreted as a caller error instead of a budget block.",
+      "current_code": "```typescript\nreturn { status: 'INVALID_INPUT', remaining: 0, limit: 0, warning: false };\n```",
+      "fixed_code": "```typescript\nreturn { status: 'BUDGET_EXCEEDED', remaining: 0, limit: 0, warning: false };\n```",
+      "explanation": "BUDGET_EXCEEDED is an explicit deny; this enforces fail-closed behavior even when Redis is unavailable."
+    },
+    {
+      "severity": "critical",
+      "file": "budget-manager.ts",
+      "line": 176,
+      "description": "finalize() rounds and allows NaN for actualCost; can undercharge or pass 'NaN' to Lua.",
+      "current_code": "```typescript\nconst argv = [\n  String(Math.max(0, Math.round(params.actualCost))),\n  expiryMember,\n];\n```",
+      "fixed_code": "```typescript\nconst argv = [\n  String(normalizeCostCents(params.actualCost)),\n  expiryMember,\n];\n```",
+      "explanation": "normalizeCostCents() ensures a non-negative integer and prevents NaN from reaching Lua."
+    },
+    {
+      "severity": "major",
+      "file": "budget-manager.ts",
+      "line": 210,
+      "description": "Fail-open finalize() returns Math.round(params.actualCost) which can be NaN/negative; it should be normalized.",
+      "current_code": "```typescript\nreturn { status: 'FINALIZED', actualCost: Math.max(0, Math.round(params.actualCost)) };\n```",
+      "fixed_code": "```typescript\nreturn { status: 'FINALIZED', actualCost: normalizeCostCents(params.actualCost) };\n```",
+      "explanation": "Keeps fail-open behavior but ensures a valid non-negative integer cost."
+    },
+    {
+      "severity": "critical",
+      "file": "budget-manager.ts",
+      "line": 196,
+      "description": "Audit log costCents may include NaN/negative due to Math.round; should use same normalization to avoid corrupting audit records.",
+      "current_code": "```typescript\ncostCents: Math.round(params.actualCost),\n```",
+      "fixed_code": "```typescript\ncostCents: normalizeCostCents(params.actualCost),\n```",
+      "explanation": "Keeps audit logs consistent and non-negative."
+    },
+    {
+      "severity": "critical",
+      "file": "budget-manager.ts",
+      "line": 249,
+      "description": "estimateCost() multiplies by 100 even though pricing table is already in cents, inflating costs by 100x; it also allows negative token counts.",
+      "current_code": "```typescript\nconst inputCost = (params.estimatedInputTokens / 1000) * pricing.inputPer1k;\nconst outputCost = (params.estimatedOutputTokens / 1000) * pricing.outputPer1k;\nconst base = inputCost + outputCost;\nconst multiplier = params.hasTools ? 2 : 1;\n// Return cost in cents, rounded up\nreturn Math.ceil(base * multiplier * 100);\n```",
+      "fixed_code": "```typescript\nconst inputTokens = Math.max(0, params.estimatedInputTokens);\nconst outputTokens = Math.max(0, params.estimatedOutputTokens);\nconst inputCost = (inputTokens / 1000) * pricing.inputPer1k;\nconst outputCost = (outputTokens / 1000) * pricing.outputPer1k;\nconst base = inputCost + outputCost;\nconst multiplier = params.hasTools ? 2 : 1;\n// Return cost in cents, rounded up\nreturn Math.ceil(base * multiplier);\n```",
+      "explanation": "Pricing is already in cents; removing *100 prevents 100x overcharge and clamping tokens prevents negative costs."
+    },
+    {
+      "severity": "major",
+      "file": "budget-manager.ts",
+      "line": 329,
+      "description": "parseReaperResult() skips raw[0], likely dropping the count and shifting indices, producing incorrect counts/reclaimed totals.",
+      "current_code": "```typescript\nreturn {\n  status: 'REAPED',\n  count: safeInt(raw?.[1]),\n  totalReclaimed: safeInt(raw?.[2]),\n};\n```",
+      "fixed_code": "```typescript\nreturn {\n  status: 'REAPED',\n  count: safeInt(raw?.[0]),\n  totalReclaimed: safeInt(raw?.[1]),\n};\n```",
+      "explanation": "Most Lua scripts return a 2-element array; this reads count and totalReclaimed from the correct indices."
+    },
+    {
+      "severity": "major",
+      "file": "budget-manager.ts",
+      "line": 350,
+      "description": "No central normalization helper exists; repeated Math.round calls cause inconsistency. Add a cost normalization helper.",
+      "current_code": "```typescript\nfunction safeInt(v: unknown, def = 0): number {\n  const n = Number(v);\n  return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : def;\n}\n```",
+      "fixed_code": "```typescript\nfunction safeInt(v: unknown, def = 0): number {\n  const n = Number(v);\n  return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : def;\n}\n\nfunction normalizeCostCents(v: unknown): number {\n  const n = Number(v);\n  if (!Number.isFinite(n)) return 0;\n  return Math.max(0, Math.ceil(n));\n}\n```",
+      "explanation": "Adds a dedicated normalization function used by reserve/finalize/audit to prevent undercharging and invalid values."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

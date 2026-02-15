@@ -1,0 +1,29 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Found two major issues: byte-size enforcement is incorrect (can exceed limits) and stream reader is not canceled on early termination, risking resource leaks.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "loa-finn-client.ts",
+      "line": 190,
+      "description": "SSE size limits are enforced using string length, which counts UTF-16 code units, not bytes. Multibyte UTF‑8 data can exceed MAX_SSE_EVENT_BYTES without triggering the limit, enabling oversized payloads (DoS risk).",
+      "current_code": "```typescript\n        // Bounded buffer check (Flatline SKP-003)\n        if (eventData.length > MAX_SSE_EVENT_BYTES) {\n          throw new LoaFinnError(\n            `SSE event data exceeds ${MAX_SSE_EVENT_BYTES} byte limit`,\n            'SSE_OVERFLOW',\n          );\n        }\n```\n\n```typescript\n      // Check remaining buffer size (partial frame protection)\n      if (buffer.length > MAX_SSE_EVENT_BYTES) {\n        throw new LoaFinnError(\n          `SSE buffer exceeds ${MAX_SSE_EVENT_BYTES} byte limit (no newline found)`,\n          'SSE_OVERFLOW',\n        );\n      }\n```",
+      "fixed_code": "```typescript\n        // Bounded buffer check (Flatline SKP-003)\n        if (Buffer.byteLength(eventData, 'utf8') > MAX_SSE_EVENT_BYTES) {\n          throw new LoaFinnError(\n            `SSE event data exceeds ${MAX_SSE_EVENT_BYTES} byte limit`,\n            'SSE_OVERFLOW',\n          );\n        }\n```\n\n```typescript\n      // Check remaining buffer size (partial frame protection)\n      if (Buffer.byteLength(buffer, 'utf8') > MAX_SSE_EVENT_BYTES) {\n        throw new LoaFinnError(\n          `SSE buffer exceeds ${MAX_SSE_EVENT_BYTES} byte limit (no newline found)`,\n          'SSE_OVERFLOW',\n        );\n      }\n```",
+      "explanation": "Using Buffer.byteLength enforces the actual byte size of UTF‑8 data, preventing oversized multibyte payloads from bypassing the limit."
+    },
+    {
+      "severity": "major",
+      "file": "loa-finn-client.ts",
+      "line": 241,
+      "description": "The stream reader is only released but never canceled. If the consumer stops early (abort, error, or break), the underlying stream may remain open, causing resource leaks.",
+      "current_code": "```typescript\n  private async *readStream(stream: ReadableStream<Uint8Array>): AsyncGenerator<Uint8Array> {\n    const reader = stream.getReader();\n    try {\n      while (true) {\n        const { done, value } = await reader.read();\n        if (done) break;\n        if (value) yield value;\n      }\n    } finally {\n      reader.releaseLock();\n    }\n  }\n```",
+      "fixed_code": "```typescript\n  private async *readStream(stream: ReadableStream<Uint8Array>): AsyncGenerator<Uint8Array> {\n    const reader = stream.getReader();\n    try {\n      while (true) {\n        const { done, value } = await reader.read();\n        if (done) break;\n        if (value) yield value;\n      }\n    } finally {\n      try {\n        await reader.cancel();\n      } catch {\n        // ignore cancel errors (stream may already be closed)\n      }\n      reader.releaseLock();\n    }\n  }\n```",
+      "explanation": "Canceling the reader ensures the underlying stream is closed when iteration ends early, preventing socket/resource leaks."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

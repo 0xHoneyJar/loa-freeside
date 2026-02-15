@@ -1,0 +1,44 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Mostly sound, but there are a few trust-boundary and token-validation gaps that can lead to cross-tenant abuse, replay/idempotency inconsistencies, and key-rotation/JWKS trust failures in real deployments.",
+  "blocking_issues": [
+    {
+      "location": "§3.2 JWT Claims Specification / §3.1 Assertions (Arrakis → loa-finn)",
+      "issue": "Missing binding between JWT and the actual request payload (no payload hash / nonce binding), while idempotency is specified as “same idempotencyKey + same payload = same response”.",
+      "why_blocking": "As written, an attacker (or buggy client) can reuse a valid JWT + idempotency_key with a different payload within the 120s window. jti dedup only prevents exact token replay, not semantic replay or payload swapping. This can cause incorrect cached responses, double execution, or billing/reconciliation mismatches—especially for SSE where partial execution may occur before dedup/caching logic completes.",
+      "fix": "Add a signed request binding claim, e.g. `req_hash` = base64url(SHA-256(canonical_request_body)) and require loa-finn to verify it matches the received payload before processing/caching. Alternatively, define idempotency as keyed on `(tenant_id, sub, idempotency_key, req_hash)` and require Arrakis to compute and sign `req_hash`."
+    },
+    {
+      "location": "§5.2 Required Behaviors (Idempotency) + §3.1 Assertions (jti uniqueness) + §2.2 (Idempotency collision)",
+      "issue": "Idempotency and replay protections are split across services without a complete uniqueness scope, enabling cross-tenant or cross-user cache poisoning if loa-finn’s idempotency store is not explicitly scoped.",
+      "why_blocking": "The document scopes idempotency in Arrakis (`communityId:userId:key`) but does not require loa-finn to scope idempotency the same way. If loa-finn caches by `idempotencyKey` alone (a common implementation), a user in tenant A can collide with tenant B and receive the wrong cached response or suppress execution (confused deputy / cross-tenant data exposure). This is a project-failure class incident in a multi-tenant gateway.",
+      "fix": "Make the loa-finn contract explicit: idempotency cache key MUST include `tenant_id` and `sub` at minimum, e.g. `idem:{tenant_id}:{sub}:{idempotency_key}:{req_hash}`. Also require Arrakis to generate `idempotency_key` server-side or enforce a minimum entropy/format if caller-generated remains."
+    },
+    {
+      "location": "§3.2 JWT Claims Specification (Validation rules)",
+      "issue": "Critical JWT validation rules are incomplete: no requirement to validate `alg`, `kid` presence/format, signature algorithm pinning, and no explicit prohibition of `none`/algorithm confusion.",
+      "why_blocking": "In practice, JWT libraries can be misconfigured; without explicit algorithm pinning and header validation, teams ship vulnerable verification (alg=none or HS/ES confusion). That becomes a full auth bypass between Arrakis and loa-finn.",
+      "fix": "Add explicit loa-finn requirements: (1) accept only `alg=ES256`; (2) require `typ=JWT` (optional but recommended) and a present `kid`; (3) reject tokens with missing/unknown `kid` after a bounded JWKS refresh; (4) do not allow JWKs with unexpected `kty/crv/use` (must be EC/P-256, sig)."
+    },
+    {
+      "location": "§3.3 Attack Vectors (JWKS poisoning) / §4 Key Rotation Timeline",
+      "issue": "JWKS trust model is underspecified for service-to-service: “JWKS served from Arrakis origin (same TLS cert)” is not sufficient to prevent key substitution in compromised DNS/TLS termination or misrouted internal traffic; also no mention of mTLS or pinned issuer/JWKS URI.",
+      "why_blocking": "If loa-finn fetches JWKS over the network without a pinned JWKS URI and without additional trust controls, a routing/DNS/TLS termination compromise can swap keys and enable JWT forgery. This is a single-point catastrophic failure for the gateway boundary.",
+      "fix": "Define a hard-pinned JWKS URL (exact scheme/host/path) and require loa-finn to only fetch that. Prefer mTLS between Arrakis and loa-finn for all calls (including JWKS), or pin the JWKS signing cert/public key (certificate pinning) in loa-finn if mTLS is not feasible. At minimum, require JWKS fetch from an internal service discovery name not reachable from the public internet."
+    },
+    {
+      "location": "§2.2 Attack Vectors (Rate limit bypass) / §8 Redis as Security-Critical Infrastructure",
+      "issue": "Pre-auth IP limiter is described as “in-memory” while Redis is the hard dependency for rate limiting; this creates a bypass under horizontal scaling and during restarts.",
+      "why_blocking": "An in-memory limiter on Arrakis replicas does not provide global enforcement. Attackers can spray across replicas (or force restarts) to multiply allowed throughput, leading to resource exhaustion and budget abuse upstream (SSE connections are especially expensive). This can take the system down even if Redis-based limits exist, because the pre-auth limiter is the first line for unauthenticated volumetric traffic.",
+      "fix": "Make pre-auth limiting distributed (Redis/ElastiCache or a dedicated edge/WAF rate limit) or explicitly move the “first line” to an edge control (CloudFront/WAF/ALB). If you keep in-memory, document it as best-effort only and ensure Redis-based limits apply before expensive work (OAuth/session lookup, SSE setup)."
+    },
+    {
+      "location": "§3.1 Assertions / §5.2 Required Behaviors (JWT replay protection)",
+      "issue": "Replay protection relies on Redis `SETNX agent:jti:{jti}` but does not specify namespace scoping or collision resistance across issuers/environments.",
+      "why_blocking": "If multiple environments (staging/prod) or multiple issuers ever share a Redis cluster/namespace, jti collisions can cause false positives (denial of service) or, worse, allow replay if keys collide in unexpected ways due to prefixing mistakes. This is a common operational failure mode when Redis is shared.",
+      "fix": "Require the dedup key to include `iss` and environment and tenant: `jti:{env}:{iss}:{tenant_id}:{jti}`. Also require UUIDv4 validation and minimum length checks before using it in Redis keys."
+    }
+  ],
+  "question": "",
+  "iteration": 1
+}

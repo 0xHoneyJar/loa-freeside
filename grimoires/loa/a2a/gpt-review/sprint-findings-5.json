@@ -1,0 +1,33 @@
+{
+  "verdict": "APPROVED",
+  "summary": "All five previously-blocking issues were addressed in a way that is internally consistent, implementable in SQLite, and testable; no new truly-blocking problems were introduced by the fixes.",
+  "previous_issues_status": [
+    {
+      "original_issue": "Revenue Rules state machine inconsistent/missing transitions/handlers",
+      "status": "fixed",
+      "notes": "Sprint 8 now defines a single canonical lifecycle everywhere: `draft → pending_approval → cooling_down → active → superseded` with terminal `rejected/superseded`, removes the ambiguous `approved` state, and explicitly specifies submit/approve/reject/override/auto-activate behaviors plus `getPendingRules()` semantics. This resolves the prior ambiguity and makes deterministic tests feasible."
+    },
+    {
+      "original_issue": "Unique active rule constraint not implementable/specified safely in SQLite",
+      "status": "fixed",
+      "notes": "The plan now includes correct SQLite DDL (`CREATE UNIQUE INDEX revenue_rules_one_active ON revenue_rules(1) WHERE status='active';`) and a concurrency-safe activator update guarded by `BEGIN IMMEDIATE` + `NOT EXISTS (SELECT 1 ... status='active')`, plus an explicit race integration test. This is sufficient to prevent dual-active rules under concurrent runners."
+    },
+    {
+      "original_issue": "Pre/post balance CHECK conflicted with soft mode; balance capture method underspecified",
+      "status": "fixed",
+      "notes": "The non-negative CHECK is removed (allowing soft-mode negatives), and the plan now requires in-transaction SQL aggregation against `credit_lots` (not Redis / not `getBalance()`), with a specific soft-mode negative post-balance test. This aligns with Sprint 3 soft mode and defines snapshot semantics clearly."
+    },
+    {
+      "original_issue": "Bridgebuilder findings count/mapping double-counted governance work",
+      "status": "fixed",
+      "notes": "Appendix E is normalized into “Bridgebuilder Findings (13)” plus “User-Requested Feature (F-1)”, and it explicitly explains that findings #7 and #13 are different facets resolved by the same Sprint 8 work. This removes the traceability/count mismatch that would have failed acceptance."
+    },
+    {
+      "original_issue": "Dependency chain for Task 7.5 incorrect / sequencing risk with endpoints and write-path changes",
+      "status": "fixed",
+      "notes": "Task 7.5 dependencies now correctly include Sprint 1 (adapter/write paths), Sprint 3 (finalize+distribution + soft mode), and Sprint 5 (history endpoint tolerance), and it adds explicit backward-compat criteria (nullable columns) plus an E2E-BILLING regression run. This addresses the sequencing/regression risk."
+    }
+  ],
+  "new_blocking_concerns": [],
+  "iteration": 2
+}

@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "next_sprint_number": 230,
-  "active_cycle": "cycle-024",
+  "next_sprint_number": 257,
+  "active_cycle": "cycle-028",
   "cycles": [
     {
       "id": "cycle-001",
@@ -751,7 +751,7 @@
     {
       "id": "cycle-024",
       "label": "The Golden Path — E2E Vector Migration & Launch Validation",
-      "status": "active",
+      "status": "archived",
       "created": "2026-02-13T18:00:00Z",
       "prd": "grimoires/loa/prd.md",
       "sdd": "grimoires/loa/sdd.md",
@@ -771,6 +771,193 @@
           "global_id": 229,
           "local_label": "sprint-3",
           "status": "pending"
+        }
+      ],
+      "archived": "2026-02-14T07:32:03Z",
+      "archive_path": "grimoires/loa/archive/2026-02-14-golden-path-complete"
+    },
+    {
+      "id": "cycle-025",
+      "label": "Billing & Payments — Path to Revenue",
+      "status": "archived",
+      "created": "2026-02-14T07:32:03Z",
+      "archived": "2026-02-15T12:00:00Z",
+      "archive_path": "grimoires/loa/archive/2026-02-15-billing-payments-complete",
+      "prd": "grimoires/loa/archive/2026-02-15-billing-payments-complete/prd.md",
+      "sdd": "grimoires/loa/archive/2026-02-15-billing-payments-complete/sdd.md",
+      "sprint_plan": "grimoires/loa/archive/2026-02-15-billing-payments-complete/sprint.md",
+      "sprints": [
+        {
+          "global_id": 230,
+          "local_label": "sprint-1",
+          "status": "completed"
+        },
+        {
+          "global_id": 231,
+          "local_label": "sprint-2",
+          "status": "completed"
+        },
+        {
+          "global_id": 232,
+          "local_label": "sprint-3",
+          "status": "completed"
+        },
+        {
+          "global_id": 233,
+          "local_label": "sprint-4",
+          "status": "completed"
+        },
+        {
+          "global_id": 234,
+          "local_label": "sprint-5",
+          "status": "completed"
+        },
+        {
+          "global_id": 235,
+          "local_label": "sprint-6",
+          "status": "completed"
+        },
+        {
+          "global_id": 236,
+          "local_label": "sprint-7",
+          "status": "completed"
+        },
+        {
+          "global_id": 237,
+          "local_label": "sprint-8",
+          "status": "completed"
+        },
+        {
+          "global_id": 238,
+          "local_label": "sprint-9",
+          "status": "completed"
+        }
+      ]
+    },
+    {
+      "id": "cycle-026",
+      "label": "The Stillsuit — Cross-System Integration & Revenue Rules",
+      "status": "archived",
+      "created": "2026-02-15T12:00:00Z",
+      "prd": "grimoires/loa/prd.md",
+      "sdd": "grimoires/loa/sdd.md",
+      "sprint_plan": "grimoires/loa/sprint.md",
+      "sprints": [
+        {
+          "global_id": 239,
+          "local_label": "sprint-1",
+          "status": "completed"
+        },
+        {
+          "global_id": 240,
+          "local_label": "sprint-2",
+          "status": "completed"
+        },
+        {
+          "global_id": 241,
+          "local_label": "sprint-3",
+          "status": "completed"
+        },
+        {
+          "global_id": 242,
+          "local_label": "sprint-4",
+          "status": "completed"
+        },
+        {
+          "global_id": 243,
+          "local_label": "sprint-5",
+          "status": "completed"
+        },
+        {
+          "global_id": 244,
+          "local_label": "sprint-6",
+          "status": "completed"
+        }
+      ],
+      "archived": "2026-02-15T18:00:00Z",
+      "archive_path": "grimoires/loa/archive/2026-02-15-the-stillsuit-complete"
+    },
+    {
+      "id": "cycle-027",
+      "label": "Shai-Hulud — The Eternal Maker",
+      "status": "archived",
+      "created": "2026-02-15T18:00:00Z",
+      "archived": "2026-02-15T20:00:00Z",
+      "archive_path": "grimoires/loa/archive/2026-02-15-shai-hulud-complete",
+      "prd": "grimoires/loa/archive/2026-02-15-shai-hulud-complete/prd.md",
+      "sdd": "grimoires/loa/archive/2026-02-15-shai-hulud-complete/sdd.md",
+      "sprint_plan": "grimoires/loa/archive/2026-02-15-shai-hulud-complete/sprint.md",
+      "sprints": [
+        {
+          "global_id": 245,
+          "local_label": "sprint-1",
+          "status": "completed"
+        },
+        {
+          "global_id": 246,
+          "local_label": "sprint-2",
+          "status": "completed"
+        },
+        {
+          "global_id": 247,
+          "local_label": "sprint-3",
+          "status": "completed"
+        },
+        {
+          "global_id": 248,
+          "local_label": "sprint-4",
+          "status": "completed"
+        },
+        {
+          "global_id": 249,
+          "local_label": "sprint-5",
+          "status": "completed"
+        },
+        {
+          "global_id": 250,
+          "local_label": "sprint-6",
+          "status": "completed"
+        },
+        {
+          "global_id": 251,
+          "local_label": "sprint-7",
+          "status": "completed"
+        }
+      ]
+    },
+    {
+      "id": "cycle-028",
+      "label": "The Forward Path — Strategic Excellence & Cross-System Hardening",
+      "status": "active",
+      "created": "2026-02-15T20:00:00Z",
+      "prd": "grimoires/loa/prd.md",
+      "sdd": "grimoires/loa/sdd.md",
+      "sprint_plan": "grimoires/loa/sprint.md",
+      "sprints": [
+        {
+          "global_id": 252,
+          "local_label": "sprint-1",
+          "status": "completed"
+        },
+        {
+          "global_id": 253,
+          "local_label": "sprint-2",
+          "status": "completed"
+        },
+        {
+          "global_id": 254,
+          "local_label": "sprint-3",
+          "status": "completed"
+        },
+        {
+          "global_id": 255,
+          "local_label": "sprint-4",
+          "status": "completed"
+        },
+        {
+          "global_id": 256,
+          "local_label": "sprint-5",
+          "status": "completed"
         }
       ]
     }

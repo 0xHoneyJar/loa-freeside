@@ -1,0 +1,20 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "One spec violation: per-community logging is skipped when no reservations are reaped.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "budget-reaper-job.ts",
+      "line": 55,
+      "description": "Per-community logs are only emitted when result.count > 0, which violates the requirement to log community_id, reaped_count, reclaimed_cents for each community.",
+      "current_code": "```typescript\n        if (result.count > 0) {\n          this.logger.info(\n            {\n              communityId,\n              reaped_count: result.count,\n              reclaimed_cents: result.totalReclaimed,\n            },\n            'budget-reaper: reaped expired reservations',\n          );\n        }\n\n        totalReaped += result.count;\n        totalReclaimed += result.totalReclaimed;\n```",
+      "fixed_code": "```typescript\n        this.logger.info(\n          {\n            communityId,\n            reaped_count: result.count,\n            reclaimed_cents: result.totalReclaimed,\n          },\n          'budget-reaper: reaped expired reservations',\n        );\n\n        totalReaped += result.count;\n        totalReclaimed += result.totalReclaimed;\n```",
+      "explanation": "Always logging per community satisfies the requirement and still preserves totals; zero reaps are now visible without changing business logic."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

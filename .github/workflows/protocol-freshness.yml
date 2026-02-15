@@ -1,0 +1,104 @@
+name: Protocol Freshness Check
+
+on:
+  schedule:
+    - cron: '0 9 * * 1' # Monday 9am UTC
+  workflow_dispatch: # Manual trigger
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract local protocol version
+        id: local
+        run: |
+          VERSION=$(grep -oP "PROTOCOL_VERSION\s*=\s*'(\K[^']+)" \
+            themes/sietch/src/packages/core/protocol/compatibility.ts)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Local protocol version: $VERSION"
+
+      - name: Fetch latest loa-hounfour tag
+        id: remote
+        run: |
+          # Get latest tag from loa-hounfour (public repo)
+          LATEST=$(gh api repos/0xHoneyJar/loa-hounfour/tags --jq '.[0].name' 2>/dev/null || echo "")
+          # Strip leading 'v' if present
+          LATEST="${LATEST#v}"
+          echo "version=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "Remote protocol version: $LATEST"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compare versions
+        id: compare
+        run: |
+          LOCAL="${{ steps.local.outputs.version }}"
+          REMOTE="${{ steps.remote.outputs.version }}"
+
+          if [ -z "$REMOTE" ]; then
+            echo "drift=unknown" >> "$GITHUB_OUTPUT"
+            echo "Could not fetch remote version"
+            exit 0
+          fi
+
+          LOCAL_MAJOR=$(echo "$LOCAL" | cut -d. -f1)
+          LOCAL_MINOR=$(echo "$LOCAL" | cut -d. -f2)
+          REMOTE_MAJOR=$(echo "$REMOTE" | cut -d. -f1)
+          REMOTE_MINOR=$(echo "$REMOTE" | cut -d. -f2)
+
+          if [ "$LOCAL" = "$REMOTE" ]; then
+            echo "drift=none" >> "$GITHUB_OUTPUT"
+            echo "Versions match: $LOCAL"
+          elif [ "$LOCAL_MAJOR" = "$REMOTE_MAJOR" ] && [ "$LOCAL_MINOR" = "$REMOTE_MINOR" ]; then
+            echo "drift=patch" >> "$GITHUB_OUTPUT"
+            echo "Patch drift: local=$LOCAL remote=$REMOTE"
+          elif [ "$LOCAL_MAJOR" = "$REMOTE_MAJOR" ]; then
+            echo "drift=minor" >> "$GITHUB_OUTPUT"
+            echo "Minor drift: local=$LOCAL remote=$REMOTE"
+          else
+            echo "drift=major" >> "$GITHUB_OUTPUT"
+            echo "Major drift: local=$LOCAL remote=$REMOTE"
+          fi
+
+      - name: Create advisory issue on drift
+        if: steps.compare.outputs.drift == 'minor' || steps.compare.outputs.drift == 'major'
+        run: |
+          DRIFT="${{ steps.compare.outputs.drift }}"
+          LOCAL="${{ steps.local.outputs.version }}"
+          REMOTE="${{ steps.remote.outputs.version }}"
+
+          # Check for existing open issue
+          EXISTING=$(gh issue list --label protocol-drift --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [ -n "$EXISTING" ]; then
+            echo "Advisory issue #$EXISTING already open — skipping"
+            exit 0
+          fi
+
+          gh issue create \
+            --title "Protocol drift detected: local=$LOCAL remote=$REMOTE ($DRIFT)" \
+            --label "protocol-drift" \
+            --body "## Protocol Version Drift
+
+          | | Version |
+          |---|---------|
+          | **Local (vendored)** | \`$LOCAL\` |
+          | **Remote (loa-hounfour)** | \`$REMOTE\` |
+          | **Drift level** | \`$DRIFT\` |
+
+          ### Action Required
+
+          Review the [loa-hounfour changelog](https://github.com/0xHoneyJar/loa-hounfour/releases) and update vendored types if needed.
+
+          \`\`\`bash
+          # Update vendored protocol types
+          /update-loa
+          \`\`\`
+
+          ---
+          *Created automatically by protocol-freshness CI check.*"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
