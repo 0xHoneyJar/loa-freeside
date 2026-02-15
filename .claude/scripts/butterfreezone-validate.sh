@@ -30,6 +30,7 @@ CONFIG_FILE=".loa.config.yaml"
 STRICT="false"
 JSON_OUT="false"
 QUIET="false"
+LIVE_CHECK="false"
 
 FAILURES=0
 WARNINGS=0
@@ -123,6 +124,10 @@ parse_args() {
                 QUIET="true"
                 shift
                 ;;
+            --live)
+                LIVE_CHECK="true"
+                shift
+                ;;
             --help)
                 usage 0
                 ;;
@@ -181,6 +186,13 @@ validate_agent_context() {
         if ! echo "$context_block" | grep -q "^${field}:" 2>/dev/null; then
             log_fail "agent_context" "AGENT-CONTEXT missing required field: $field" "missing field: $field"
             return 1
+        fi
+    done
+
+    # Advisory checks for recommended fields (SDD §3.1.5)
+    for field in interfaces dependencies; do
+        if ! echo "$context_block" | grep -q "^${field}:" 2>/dev/null; then
+            log_warn "agent_context_ext" "AGENT-CONTEXT missing recommended field: $field" "missing: $field"
         fi
     done
 
@@ -338,7 +350,74 @@ validate_meta() {
     return 0
 }
 
-# Check 7: Freshness
+# Check 7a: Architecture narrative (SDD §3.1.4)
+validate_architecture_narrative() {
+    if ! grep -q "^## Architecture" "$FILE" 2>/dev/null; then
+        return 0
+    fi
+
+    local arch_content
+    arch_content=$(sed -n '/^## Architecture/,/^## /p' "$FILE" 2>/dev/null | sed '$d')
+
+    # Count narrative text lines (not code blocks, diagrams, headers, provenance)
+    local narrative_lines
+    narrative_lines=$(echo "$arch_content" | grep -v '^[#|`<]' | grep -v '^\s*$' | \
+        grep -v '^---' | grep -v 'provenance:' | grep -v 'graph TD' | wc -l)
+
+    if (( narrative_lines < 2 )); then
+        log_fail "arch_narrative" "Architecture section lacks narrative (only $narrative_lines text lines)" "sparse"
+    else
+        log_pass "arch_narrative" "Architecture section has narrative ($narrative_lines text lines)"
+    fi
+}
+
+# Check 7b: Capability descriptions (SDD §3.1.1)
+validate_capability_descriptions() {
+    if ! grep -q "^## Key Capabilities" "$FILE" 2>/dev/null; then
+        log_warn "cap_desc" "Missing Key Capabilities section" "section missing"
+        return 0
+    fi
+
+    local bare_caps
+    bare_caps=$(sed -n '/^## Key Capabilities/,/^## /p' "$FILE" 2>/dev/null | \
+        grep -cE '^- `[^`]+`$') || bare_caps=0
+
+    if (( bare_caps > 0 )); then
+        log_fail "cap_desc" "$bare_caps capabilities without descriptions" "bare caps: $bare_caps"
+    else
+        log_pass "cap_desc" "All capabilities have descriptions"
+    fi
+}
+
+# Check 7c: Module map purposes (SDD §3.1.2)
+validate_module_purposes() {
+    if ! grep -q "^## Module Map" "$FILE" 2>/dev/null; then
+        log_warn "mod_purpose" "Missing Module Map section" "section missing"
+        return 0
+    fi
+
+    local empty_purposes
+    empty_purposes=$(sed -n '/^## Module Map/,/^## /p' "$FILE" 2>/dev/null | \
+        grep -E '^\|' | grep -v '^\|[-]' | grep -v '^| Module' | \
+        awk -F'|' '{gsub(/[[:space:]]/,"",$4); if($4=="") print}' | wc -l)
+
+    if (( empty_purposes > 0 )); then
+        log_fail "mod_purpose" "$empty_purposes modules with empty Purpose column" "empty: $empty_purposes"
+    else
+        log_pass "mod_purpose" "All modules have Purpose descriptions"
+    fi
+}
+
+# Check 7d: No stub descriptions (SDD §3.1.3)
+validate_no_description_available() {
+    if grep -q "No description available" "$FILE" 2>/dev/null; then
+        log_fail "no_desc" "Contains 'No description available' — header extraction failed" "found stub"
+    else
+        log_pass "no_desc" "No stub descriptions found"
+    fi
+}
+
+# Check 8: Freshness
 validate_freshness() {
     local generated_at
     generated_at=$(sed -n '/<!-- ground-truth-meta/,/-->/p' "$FILE" 2>/dev/null \
@@ -401,6 +480,227 @@ EOF
 }
 
 # =============================================================================
+# Cross-Repo Agent Legibility Validators (cycle-017)
+# =============================================================================
+
+# Advisory: ecosystem field validation
+validate_ecosystem() {
+    local context_block
+    context_block=$(sed -n '/<!-- AGENT-CONTEXT/,/-->/p' "$FILE" 2>/dev/null) || true
+
+    if echo "$context_block" | grep -q "^ecosystem:" 2>/dev/null; then
+        # Check each entry has repo and role
+        local eco_block
+        eco_block=$(echo "$context_block" | sed -n '/^ecosystem:/,/^[a-z]/p' | sed '$d')
+        local repos
+        repos=$(echo "$eco_block" | grep -c '^\s*- repo:' 2>/dev/null) || repos=0
+        local roles
+        roles=$(echo "$eco_block" | grep -c '^\s*role:' 2>/dev/null) || roles=0
+
+        if (( repos > 0 && repos == roles )); then
+            # Validate repo format (owner/name)
+            local bad_repos
+            bad_repos=$(echo "$eco_block" | grep '^\s*- repo:' | grep -cvE '^\s*- repo: [a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+' 2>/dev/null) || bad_repos=0
+            if (( bad_repos > 0 )); then
+                log_warn "ecosystem" "${bad_repos} ecosystem entries with malformed repo slug" "bad repos: ${bad_repos}"
+            else
+                log_pass "ecosystem" "Ecosystem field valid (${repos} entries, all with repo/role)"
+            fi
+        elif (( repos > 0 )); then
+            log_warn "ecosystem" "Ecosystem entries missing role field (repos: ${repos}, roles: ${roles})" "incomplete"
+        fi
+    else
+        # Check if config declares ecosystem but AGENT-CONTEXT doesn't have it
+        if [[ -f ".loa.config.yaml" ]] && command -v yq &>/dev/null; then
+            local config_eco
+            config_eco=$(yq '.butterfreezone.ecosystem | length // 0' .loa.config.yaml 2>/dev/null) || config_eco=0
+            if (( config_eco > 0 )); then
+                log_warn "ecosystem" "Config has ${config_eco} ecosystem entries but AGENT-CONTEXT missing ecosystem field (stale generation?)" "stale"
+            fi
+        fi
+    fi
+}
+
+# Advisory: capability_requirements validation
+validate_capability_requirements() {
+    local context_block
+    context_block=$(sed -n '/<!-- AGENT-CONTEXT/,/-->/p' "$FILE" 2>/dev/null) || true
+
+    if echo "$context_block" | grep -q "^capability_requirements:" 2>/dev/null; then
+        local valid_caps="filesystem|git|shell|github_api|network"
+        local cap_entries
+        cap_entries=$(echo "$context_block" | sed -n '/^capability_requirements:/,/^[a-z]/p' | \
+            grep '^\s*-' | wc -l | tr -d ' ')
+        local bad_caps
+        bad_caps=$(echo "$context_block" | sed -n '/^capability_requirements:/,/^[a-z]/p' | \
+            grep '^\s*-' | grep -cvE "^\s*- (${valid_caps}):" 2>/dev/null) || bad_caps=0
+
+        if (( bad_caps > 0 )); then
+            log_warn "cap_req" "${bad_caps} capability entries with unknown vocabulary" "bad: ${bad_caps}"
+        else
+            log_pass "cap_req" "Capability requirements valid (${cap_entries} entries)"
+        fi
+    fi
+}
+
+# Advisory: verification section validation
+validate_verification_section() {
+    if ! grep -q "^## Verification" "$FILE" 2>/dev/null; then
+        return 0  # Optional section, silent skip
+    fi
+
+    local verif_content
+    verif_content=$(sed -n '/^## Verification/,/^## /p' "$FILE" 2>/dev/null | sed '$d')
+
+    # Check provenance tag
+    if ! echo "$verif_content" | grep -q 'provenance:' 2>/dev/null; then
+        log_warn "verification" "Verification section missing provenance tag" "no provenance"
+    fi
+
+    # Check for at least one metric line
+    local metric_lines
+    metric_lines=$(echo "$verif_content" | grep -c '^-' 2>/dev/null) || metric_lines=0
+    if (( metric_lines == 0 )); then
+        log_warn "verification" "Verification section has no metric lines" "empty"
+    else
+        log_pass "verification" "Verification section valid (${metric_lines} metrics)"
+    fi
+}
+
+# Ecosystem staleness detection (sprint-110, Section IX Criticism 1)
+validate_ecosystem_staleness() {
+    local config=".loa.config.yaml"
+    [[ ! -f "$config" ]] && return 0
+    ! command -v yq &>/dev/null && return 0
+
+    local config_count bfz_count
+    config_count=$(yq '.butterfreezone.ecosystem | length' "$config" 2>/dev/null) || config_count=0
+    bfz_count=$(sed -n '/<!-- AGENT-CONTEXT/,/-->/p' "$FILE" 2>/dev/null | \
+        grep -c '^\s*- repo:') || bfz_count=0
+
+    if [[ "$config_count" -gt 0 && "$bfz_count" -eq 0 ]]; then
+        log_warn "eco_stale" "Config has $config_count ecosystem entries but AGENT-CONTEXT has none (stale generation)" "stale"
+    elif [[ "$config_count" -eq 0 && "$bfz_count" -gt 0 ]]; then
+        log_warn "eco_stale" "AGENT-CONTEXT has ecosystem entries but config has none (orphaned)" "orphaned"
+    elif [[ "$config_count" -ne "$bfz_count" ]]; then
+        log_warn "eco_stale" "Config has $config_count ecosystem entries but AGENT-CONTEXT has $bfz_count (count mismatch)" "mismatch"
+    elif [[ "$config_count" -gt 0 ]]; then
+        # Check specific repo slugs match
+        local config_repos bfz_repos
+        config_repos=$(yq '.butterfreezone.ecosystem[].repo' "$config" 2>/dev/null | sort)
+        bfz_repos=$(sed -n '/<!-- AGENT-CONTEXT/,/-->/p' "$FILE" 2>/dev/null | \
+            grep '^\s*- repo:' | sed 's/.*repo: *//' | sort)
+        if [[ "$config_repos" != "$bfz_repos" ]]; then
+            log_warn "eco_stale" "Ecosystem repo slugs differ between config and AGENT-CONTEXT" "slug_drift"
+        else
+            log_pass "eco_stale" "Ecosystem entries match config ($config_count entries, slugs verified)"
+        fi
+    fi
+}
+
+# Live ecosystem verification (sprint-112, Task 7.1)
+validate_ecosystem_live() {
+    [[ "$LIVE_CHECK" != "true" ]] && return 0
+
+    if ! command -v gh &>/dev/null || ! gh auth status &>/dev/null 2>&1; then
+        log_warn "eco_live" "gh not authenticated — skipping live ecosystem check" "no_auth"
+        return 0
+    fi
+
+    local eco_repos
+    eco_repos=$(sed -n '/<!-- AGENT-CONTEXT/,/-->/p' "$FILE" 2>/dev/null | \
+        grep '^\s*- repo:' | sed 's/.*repo: *//') || true
+
+    [[ -z "$eco_repos" ]] && return 0
+
+    local total=0 found=0 missing=0 no_bfz=0
+    while IFS= read -r repo <&3; do
+        [[ -z "$repo" ]] && continue
+        total=$((total + 1))
+
+        if ! gh repo view "$repo" &>/dev/null 2>&1; then
+            # Live checks are always advisory (WARN not FAIL, even in strict mode)
+            WARNINGS=$((WARNINGS + 1))
+            CHECKS+=("$(jq -nc --arg name "eco_live" --arg status "warn" --arg detail "missing_repo" '{name: $name, status: $status, detail: $detail}')")
+            [[ "$QUIET" != "true" ]] && echo "  WARN: Ecosystem repo not found: $repo"
+            missing=$((missing + 1))
+            continue
+        fi
+
+        if ! gh api "repos/${repo}/contents/BUTTERFREEZONE.md" &>/dev/null 2>&1; then
+            # Live checks are always advisory (WARN not FAIL, even in strict mode)
+            WARNINGS=$((WARNINGS + 1))
+            CHECKS+=("$(jq -nc --arg name "eco_live" --arg status "warn" --arg detail "no_bfz" '{name: $name, status: $status, detail: $detail}')")
+            [[ "$QUIET" != "true" ]] && echo "  WARN: No BUTTERFREEZONE.md in: $repo"
+            no_bfz=$((no_bfz + 1))
+            continue
+        fi
+
+        found=$((found + 1))
+    done 3<<< "$eco_repos"
+
+    if [[ "$missing" -eq 0 && "$no_bfz" -eq 0 && "$total" -gt 0 ]]; then
+        log_pass "eco_live" "All $total ecosystem repos verified with BUTTERFREEZONE.md"
+    fi
+}
+
+# Protocol version staleness advisory (sprint-113, Task 8.2)
+# Compares declared protocol versions against published npm package versions.
+# Advisory only — WARN on mismatch, graceful skip when offline.
+validate_protocol_version() {
+    [[ "$LIVE_CHECK" != "true" ]] && return 0
+
+    local config=".loa.config.yaml"
+    [[ ! -f "$config" ]] && return 0
+    ! command -v yq &>/dev/null && return 0
+
+    local eco_count
+    eco_count=$(yq '.butterfreezone.ecosystem | length' "$config" 2>/dev/null) || eco_count=0
+    [[ "$eco_count" -eq 0 ]] && return 0
+
+    local i=0 checked=0 stale=0
+    while [[ $i -lt $eco_count ]]; do
+        local protocol
+        protocol=$(yq ".butterfreezone.ecosystem[$i].protocol // \"\"" "$config" 2>/dev/null) || protocol=""
+        i=$((i + 1))
+        [[ -z "$protocol" ]] && continue
+
+        # Parse protocol: "pkg-name@version" → package name and declared version
+        local pkg_name declared_version
+        pkg_name=$(echo "$protocol" | sed 's/@[^@]*$//')
+        declared_version=$(echo "$protocol" | grep -o '@[^@]*$' | sed 's/@//')
+        [[ -z "$pkg_name" || -z "$declared_version" ]] && continue
+
+        # Try npm view first (most reliable for npm packages)
+        local live_version=""
+        if command -v npm &>/dev/null; then
+            live_version=$(npm view "@0xhoneyjar/${pkg_name}" version 2>/dev/null) || live_version=""
+        fi
+
+        # Fallback: check GitHub releases via gh api
+        if [[ -z "$live_version" ]] && command -v gh &>/dev/null; then
+            live_version=$(gh api "repos/0xHoneyJar/${pkg_name}/releases/latest" --jq '.tag_name' 2>/dev/null | sed 's/^v//') || live_version=""
+        fi
+
+        # No live version available — skip gracefully
+        [[ -z "$live_version" ]] && continue
+
+        checked=$((checked + 1))
+        if [[ "$declared_version" != "$live_version" ]]; then
+            stale=$((stale + 1))
+            # Always advisory — WARN not FAIL, even in strict mode
+            WARNINGS=$((WARNINGS + 1))
+            CHECKS+=("$(jq -nc --arg name "proto_version" --arg status "warn" --arg detail "stale:${pkg_name}@${declared_version}->$live_version" '{name: $name, status: $status, detail: $detail}')")
+            [[ "$QUIET" != "true" ]] && echo "  WARN: Protocol version drift: ${pkg_name}@${declared_version} declared, ${live_version} published"
+        fi
+    done
+
+    if [[ "$checked" -gt 0 && "$stale" -eq 0 ]]; then
+        log_pass "proto_version" "All $checked protocol versions match published ($eco_count ecosystem entries)"
+    fi
+}
+
+# =============================================================================
 # Main
 # =============================================================================
 
@@ -421,6 +721,16 @@ main() {
         validate_word_budget || true
         validate_min_words || true
         validate_architecture_diagram || true
+        validate_architecture_narrative || true
+        validate_capability_descriptions || true
+        validate_module_purposes || true
+        validate_no_description_available || true
+        validate_ecosystem || true
+        validate_ecosystem_staleness || true
+        validate_ecosystem_live || true
+        validate_protocol_version || true
+        validate_capability_requirements || true
+        validate_verification_section || true
         validate_meta || true
         validate_freshness || true
     fi
