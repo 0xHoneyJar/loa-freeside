@@ -3,7 +3,7 @@ name: arrakis
 type: framework
 purpose: No description available
 key_files: [.claude/loa/CLAUDE.loa.md, .loa.config.yaml, .claude/scripts/, package.json]
-version: v6.0.0
+version: v1.32.0
 trust_level: grounded
 -->
 
@@ -157,13 +157,13 @@ packages/cli/src/commands/sandbox/index.ts:185:    .command('status <name>')
 | `docs/` | 28 | Documentation |
 | `drizzle/` | 1 |  |
 | `evals/` | 122 |  |
-| `grimoires/` | 962 | Loa state files |
+| `grimoires/` | 971 | Loa state files |
 | `infrastructure/` | 181 |  |
 | `packages/` | 57581 |  |
 | `scripts/` | 10 | Utility scripts |
 | `sites/` | 28151 |  |
-| `tests/` | 79 | Test suites |
-| `themes/` | 65825 |  |
+| `tests/` | 83 | Test suites |
+| `themes/` | 65863 |  |
 
 ## Ecosystem
 <!-- provenance: OPERATIONAL -->
@@ -200,15 +200,15 @@ npx drizzle-kit push
 
 # Start development server
 <!-- ground-truth-meta
-head_sha: 0d28fb4745ea21efb605b515eebb944076c5c875
-generated_at: 2026-02-15T05:56:20Z
+head_sha: 0fa6a7805769beda28feffff5a39c08f0cea833d
+generated_at: 2026-02-15T11:39:28Z
 generator: butterfreezone-gen v1.0.0
 sections:
-  agent_context: de6f6bb02d57dbbca499e864ef92bd6730bae8b2256fd306e4c4d147e8cc602e
+  agent_context: 8e6e81f20ee2d5a669227a7d14f18b33f71bfb5fafaf62d3e80e4b7fa3cd9590
   capabilities: fb6ef381fb7c2032e949e99a675dae0b4d58aabe935aec3c9c48c362594e9ca7
   architecture: ac0df8c3054b47de4a589106e66d40cd9ac67a53a68f20b02cef3ce1bed2beea
   interfaces: ad3885132bd141b5cc8707fa779d267bfe28bcd3fafb5b0bcf1d9f3b32bb71af
-  module_map: b484b528e883480d5f91f82d452ea6aca6fce42cd271944ac331e379f2792a44
+  module_map: 97194de1a408b1f004b2c217039af54beafae77016a6afd0b0aaeff5bc19cf19
   ecosystem: 29fc390a2a77ec8d5bdbe657182dd47a2a5cd0c0c36c74c763c9e65cfad170e3
   quick_start: e26d726aebbf5e8317bee1b55fe4e7979ca39f8a9eee91f7c3b47373a268ff8d
 -->
