@@ -17,9 +17,14 @@
  */
 
 import type { Request, Response, NextFunction } from 'express';
+import { randomUUID } from 'crypto';
 import type { ICreditLedgerService, ReservationResult, FinalizeResult } from '../../packages/core/ports/ICreditLedgerService.js';
 import type { IdentityTrustConfig } from '../../packages/core/protocol/identity-trust.js';
+import type { IPaymentVerifier, PaymentProof } from '../../packages/core/ports/IPaymentVerifier.js';
 import { DEFAULT_IDENTITY_TRUST, evaluateIdentityTrust } from '../../packages/core/protocol/identity-trust.js';
+import type { X402Config } from '../../packages/core/billing/x402-config.js';
+import { DEFAULT_X402_CONFIG, NonceCache } from '../../packages/core/billing/x402-config.js';
+import { resolveCreditPack, CREDIT_PACK_TIERS, DEFAULT_MARKUP_FACTOR } from '../../packages/core/billing/credit-packs.js';
 import { logger } from '../../utils/logger.js';
 
 // =============================================================================
@@ -45,6 +50,14 @@ export interface BillingGuardConfig {
   getStoredAnchor?: (accountId: string) => string | null;
   /** Whether this guard is mounted on a purchase route (exempt from anchor check) */
   isPurchaseRoute?: boolean;
+  /** x402 payment configuration (Sprint 249, Task 5.1) */
+  x402?: X402Config;
+  /** Payment verifier for inline payment flow (Sprint 249, Task 5.3) */
+  paymentVerifier?: IPaymentVerifier;
+  /** Markup factor for inline credit pack purchases */
+  markupFactor?: number;
+  /** Database for recording inline purchases */
+  billingDb?: import('better-sqlite3').Database;
 }
 
 export interface BillingContext {
@@ -107,6 +120,179 @@ function estimateCostMicro(req: Request, safetyMultiplier: number): bigint {
 // Pre-Inference Middleware (Reserve)
 // =============================================================================
 
+// Shared nonce cache for x402 replay prevention (singleton per process)
+let sharedNonceCache: NonceCache | null = null;
+
+function getNonceCache(ttlSeconds: number): NonceCache {
+  if (!sharedNonceCache) {
+    sharedNonceCache = new NonceCache(ttlSeconds);
+  }
+  return sharedNonceCache;
+}
+
+/**
+ * Format micro-USD as USDC display string.
+ * 1 USDC = 1,000,000 micro-USD (exact mapping per FR-1).
+ */
+function formatAmountUsdc(amountMicro: bigint): string {
+  const dollars = amountMicro / 1_000_000n;
+  const remainder = amountMicro % 1_000_000n;
+  return `${dollars}.${remainder.toString().padStart(6, '0')}`;
+}
+
+/**
+ * Build x402 payment response body.
+ */
+function buildX402Response(
+  accountId: string,
+  estimatedCostMicro: bigint,
+  x402Config: X402Config,
+  nonceCache: NonceCache,
+): Record<string, unknown> {
+  const nonce = randomUUID();
+  nonceCache.set(nonce, accountId);
+
+  return {
+    error: 'insufficient_credits',
+    paymentRequired: true,
+    x402: {
+      amount_micro: estimatedCostMicro.toString(),
+      amount_usdc: formatAmountUsdc(estimatedCostMicro),
+      currency: 'USDC',
+      network: 'base',
+      recipient: x402Config.recipient_address,
+      memo: `${accountId}:${nonce}`,
+      instructions: 'Send USDC to recipient address with memo to continue',
+    },
+  };
+}
+
+/**
+ * Try to process an inline X-Payment-Proof header.
+ * Returns true if payment was processed and credits reserved, false otherwise.
+ */
+async function tryInlinePayment(
+  req: BillingRequest,
+  config: BillingGuardConfig,
+  accountId: string,
+  estimatedCost: bigint,
+  nonceCache: NonceCache,
+): Promise<boolean> {
+  const paymentHeader = req.headers['x-payment-proof'];
+  if (!paymentHeader || typeof paymentHeader !== 'string') return false;
+  if (!config.paymentVerifier || !config.x402) return false;
+
+  let proof: PaymentProof;
+  try {
+    const decoded = JSON.parse(Buffer.from(paymentHeader, 'base64').toString('utf-8'));
+    proof = {
+      reference: decoded.reference,
+      recipient_address: decoded.recipient_address,
+      amount_micro: BigInt(decoded.amount_micro),
+      payer: decoded.payer,
+      chain_id: decoded.chain_id,
+    };
+  } catch {
+    logger.warn({ event: 'billing.x402.parse_error', accountId }, 'Invalid X-Payment-Proof header');
+    return false;
+  }
+
+  // Validate nonce from memo (format: "accountId:nonce")
+  const memo = `${accountId}:`;
+  const memoField = (req.body?.memo || proof.reference.split(':').slice(1).join(':') || '');
+  // Extract nonce from the payment — check if reference contains the nonce
+  const noncePart = proof.reference.includes(':')
+    ? proof.reference.split(':').pop()!
+    : null;
+
+  // Try to extract nonce from memo in request body or from the proof reference
+  let nonceValid = false;
+  if (noncePart && nonceCache.consume(noncePart, accountId)) {
+    nonceValid = true;
+  }
+
+  if (!nonceValid) {
+    logger.warn({ event: 'billing.x402.nonce_invalid', accountId }, 'Nonce validation failed');
+    return false;
+  }
+
+  // Verify payment proof
+  const verification = await config.paymentVerifier.verify(proof);
+  if (!verification.valid) {
+    logger.warn({
+      event: 'billing.x402.verify_failed',
+      accountId,
+      reason: verification.reason,
+    }, 'Inline payment verification failed');
+    return false;
+  }
+
+  // Find matching tier or use inline custom lot
+  const markup = config.markupFactor ?? DEFAULT_MARKUP_FACTOR;
+  let packId = 'inline';
+  for (const tier of [...CREDIT_PACK_TIERS].reverse()) {
+    if (tier.priceMicro <= proof.amount_micro) {
+      packId = tier.id;
+      break;
+    }
+  }
+
+  const resolved = resolveCreditPack(packId, markup);
+  const creditsMicro = resolved
+    ? resolved.creditsMicro
+    : proof.amount_micro; // Custom lot: credits = payment amount at 1:1
+
+  try {
+    // Mint credits via ledger
+    await config.ledger.mintLot(
+      accountId,
+      creditsMicro,
+      'purchase',
+      {
+        poolId: 'general',
+        description: `Inline x402 payment: ${packId}`,
+      },
+    );
+
+    // Record in credit_lot_purchases if DB available
+    if (config.billingDb) {
+      const { createHash } = await import('crypto');
+      const idempotencyKey = createHash('sha256')
+        .update(`${proof.reference}:${proof.recipient_address}:${proof.amount_micro.toString()}:${accountId}`)
+        .digest('hex');
+
+      try {
+        config.billingDb.prepare(`
+          INSERT OR IGNORE INTO credit_lot_purchases (id, account_id, pack_id, payment_reference, idempotency_key, lot_id, amount_micro)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          `pur_inline_${idempotencyKey.substring(0, 16)}`,
+          accountId,
+          packId,
+          proof.reference,
+          idempotencyKey,
+          'inline', // lot_id set to inline — actual lot ID from mintLot is internal
+          creditsMicro.toString(),
+        );
+      } catch {
+        // Idempotency: if UNIQUE constraint fires, this is a duplicate — that's fine
+      }
+    }
+
+    logger.info({
+      event: 'billing.x402.inline_purchase',
+      accountId,
+      packId,
+      creditsMicro: creditsMicro.toString(),
+    }, 'Inline x402 payment processed');
+
+    return true;
+  } catch (err) {
+    logger.error({ event: 'billing.x402.mint_error', accountId, err }, 'Failed to mint inline credits');
+    return false;
+  }
+}
+
 /**
  * Create pre-inference billing middleware.
  * Runs BEFORE the inference handler to reserve credits.
@@ -115,6 +301,8 @@ export function createBillingReserveMiddleware(config: BillingGuardConfig) {
   const mode = resolveBillingMode(config.mode);
   const safetyMultiplier = config.safetyMultiplier ?? 1.1;
   const reserveTtl = config.reserveTtlSeconds ?? 300;
+  const x402Config = config.x402 ?? DEFAULT_X402_CONFIG;
+  const nonceCache = getNonceCache(x402Config.nonce_ttl_seconds);
 
   return async function billingReserve(
     req: BillingRequest,
@@ -206,6 +394,36 @@ export function createBillingReserveMiddleware(config: BillingGuardConfig) {
       const errorMessage = (err as Error).message;
 
       if (mode === 'live' && errorMessage.includes('insufficient')) {
+        // Sprint 249, Task 5.3: Try inline payment if X-Payment-Proof header present
+        if (config.paymentVerifier && x402Config.enabled) {
+          const inlineSuccess = await tryInlinePayment(req, config, accountId, estimatedCost, nonceCache);
+          if (inlineSuccess) {
+            // Re-attempt reservation after inline payment
+            try {
+              const reservation = await config.ledger.reserve(
+                accountId,
+                poolId,
+                estimatedCost,
+                { ttlSeconds: reserveTtl, billingMode: mode },
+              );
+
+              req.billing = {
+                mode,
+                accountId,
+                poolId,
+                estimatedCostMicro: estimatedCost,
+                reservation,
+                startedAt,
+              };
+
+              next();
+              return;
+            } catch {
+              // Still insufficient after inline payment — fall through to 402
+            }
+          }
+        }
+
         // Live mode: reject with 402
         logger.warn({
           event: 'billing.live.insufficient',
@@ -213,11 +431,17 @@ export function createBillingReserveMiddleware(config: BillingGuardConfig) {
           estimatedCostMicro: estimatedCost.toString(),
         }, 'Insufficient credits — request blocked');
 
-        res.status(402).json({
-          error: 'Insufficient Credits',
-          message: 'Your account does not have enough credits for this request.',
-          estimatedCostMicro: estimatedCost.toString(),
-        });
+        if (x402Config.enabled) {
+          // Sprint 249, Task 5.1: x402 Payment Required response
+          res.status(402).json(buildX402Response(accountId, estimatedCost, x402Config, nonceCache));
+        } else {
+          // Generic 402 without x402 payment instructions
+          const balance = await config.ledger.getBalance(accountId).catch(() => null);
+          res.status(402).json({
+            error: 'insufficient_credits',
+            balance_micro: balance ? balance.availableMicro.toString() : '0',
+          });
+        }
         return;
       }
 
