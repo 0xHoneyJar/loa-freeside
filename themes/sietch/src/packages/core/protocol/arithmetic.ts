@@ -27,6 +27,86 @@ export const MICRO_USD_PER_DOLLAR = 1_000_000n;
 /** Default ceiling: $1,000,000 in micro-USD */
 const DEFAULT_CEILING_MICRO = 1_000_000_000_000n; // $1M
 
+/** PRD-defined maximum: $1,000,000,000 (1 billion USD) in micro-USD */
+export const MAX_MICRO_USD = 1_000_000_000_000_000n; // $1B
+
+// =============================================================================
+// SafeArithmeticError
+// =============================================================================
+
+/**
+ * Error thrown when a guarded arithmetic operation detects an invariant violation.
+ * Includes operation name and operands for diagnostics.
+ */
+export class SafeArithmeticError extends Error {
+  readonly operation: string;
+  readonly operands: readonly bigint[];
+
+  constructor(operation: string, operands: readonly bigint[], message: string) {
+    super(`SafeArithmeticError [${operation}]: ${message} (operands: ${operands.map(String).join(', ')})`);
+    this.name = 'SafeArithmeticError';
+    this.operation = operation;
+    this.operands = operands;
+  }
+}
+
+// =============================================================================
+// Guarded Arithmetic Operations
+// =============================================================================
+
+/**
+ * Safe addition of two micro-USD values.
+ * @throws {SafeArithmeticError} if either input < 0 or result > MAX_MICRO_USD
+ */
+export function addMicroUSD(a: bigint, b: bigint): bigint {
+  if (a < 0n) throw new SafeArithmeticError('addMicroUSD', [a, b], `first operand is negative: ${a}`);
+  if (b < 0n) throw new SafeArithmeticError('addMicroUSD', [a, b], `second operand is negative: ${b}`);
+  const result = a + b;
+  if (result > MAX_MICRO_USD) {
+    throw new SafeArithmeticError('addMicroUSD', [a, b], `result ${result} exceeds MAX_MICRO_USD ${MAX_MICRO_USD}`);
+  }
+  return result;
+}
+
+/**
+ * Safe subtraction of two micro-USD values.
+ * @throws {SafeArithmeticError} if result < 0
+ */
+export function subtractMicroUSD(a: bigint, b: bigint): bigint {
+  if (a < 0n) throw new SafeArithmeticError('subtractMicroUSD', [a, b], `first operand is negative: ${a}`);
+  if (b < 0n) throw new SafeArithmeticError('subtractMicroUSD', [a, b], `second operand is negative: ${b}`);
+  const result = a - b;
+  if (result < 0n) {
+    throw new SafeArithmeticError('subtractMicroUSD', [a, b], `result would be negative: ${a} - ${b} = ${result}`);
+  }
+  return result;
+}
+
+/**
+ * Safe BPS multiplication.
+ * @throws {SafeArithmeticError} if bps not in [0, 10000]
+ */
+export function multiplyBPS(amount: bigint, bps: bigint): bigint {
+  if (bps < 0n) throw new SafeArithmeticError('multiplyBPS', [amount, bps], `bps is negative: ${bps}`);
+  if (bps > TOTAL_BPS) throw new SafeArithmeticError('multiplyBPS', [amount, bps], `bps exceeds 10000: ${bps}`);
+  return (amount * bps) / TOTAL_BPS;
+}
+
+/**
+ * Safe integer division with floor (BigInt division is floor by default).
+ * @throws {SafeArithmeticError} if divisor is 0
+ */
+export function divideWithFloor(a: bigint, b: bigint): bigint {
+  if (b === 0n) throw new SafeArithmeticError('divideWithFloor', [a, b], 'division by zero');
+  const q = a / b;
+  const r = a % b;
+  // BigInt division truncates toward zero; adjust to true floor for negative results
+  if (r !== 0n && ((a < 0n && b > 0n) || (a > 0n && b < 0n))) {
+    return q - 1n;
+  }
+  return q;
+}
+
 // =============================================================================
 // Conversion Functions
 // =============================================================================
