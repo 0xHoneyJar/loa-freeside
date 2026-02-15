@@ -17,6 +17,8 @@ on:
       - 'themes/sietch/src/db/migrations/**'
       - 'tests/e2e/billing-*'
       - 'tests/e2e/docker-compose.e2e.yml'
+      - 'tests/e2e/contract-validator/**'
+      - 'themes/sietch/tests/e2e/cross-system-*.ts'
   pull_request:
     paths:
       - 'themes/sietch/src/api/routes/billing-*.ts'
@@ -32,6 +34,8 @@ on:
       - 'themes/sietch/src/db/migrations/**'
       - 'tests/e2e/billing-*'
       - 'tests/e2e/docker-compose.e2e.yml'
+      - 'tests/e2e/contract-validator/**'
+      - 'themes/sietch/tests/e2e/cross-system-*.ts'
   workflow_dispatch:
 
 concurrency:
@@ -67,8 +71,8 @@ jobs:
 
       - name: Build and start Docker Compose stack
         run: |
-          docker compose -f tests/e2e/docker-compose.e2e.yml build arrakis-e2e
-          docker compose -f tests/e2e/docker-compose.e2e.yml up -d redis-e2e arrakis-e2e
+          docker compose -f tests/e2e/docker-compose.e2e.yml build arrakis-e2e contract-validator
+          docker compose -f tests/e2e/docker-compose.e2e.yml up -d redis-e2e arrakis-e2e contract-validator
 
       - name: Wait for services to be healthy
         run: |
@@ -81,6 +85,19 @@ jobs:
             if [ "$i" -eq 60 ]; then
               echo "Timeout waiting for arrakis"
               docker compose -f tests/e2e/docker-compose.e2e.yml logs arrakis-e2e
+              exit 1
+            fi
+            sleep 1
+          done
+          echo "Waiting for contract-validator to be healthy..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3199/health > /dev/null 2>&1; then
+              echo "Contract validator healthy after ${i}s"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "Timeout waiting for contract-validator"
+              docker compose -f tests/e2e/docker-compose.e2e.yml logs contract-validator
               exit 1
             fi
             sleep 1
@@ -112,6 +129,17 @@ jobs:
         env:
           SKIP_E2E: 'false'
 
+      # Sprint 256, Task 5.4: Cross-system contract validation tests
+      - name: Run cross-system contract tests
+        run: |
+          cd themes/sietch
+          ARRAKIS_E2E_URL=http://localhost:3099 \
+          VALIDATOR_E2E_URL=http://localhost:3199 \
+            npx vitest run tests/e2e/cross-system-contract.e2e.test.ts \
+              --reporter=verbose
+        env:
+          BILLING_INTERNAL_JWT_SECRET: e2e-s2s-jwt-secret-for-testing-only-32chr
+
       - name: Collect logs on failure
         if: failure()
         run: |
@@ -119,6 +147,8 @@ jobs:
           docker compose -f tests/e2e/docker-compose.e2e.yml logs --tail=100 arrakis-e2e
           echo "=== redis-e2e logs ==="
           docker compose -f tests/e2e/docker-compose.e2e.yml logs --tail=50 redis-e2e
+          echo "=== contract-validator logs ==="
+          docker compose -f tests/e2e/docker-compose.e2e.yml logs --tail=50 contract-validator
 
       - name: Tear down
         if: always()

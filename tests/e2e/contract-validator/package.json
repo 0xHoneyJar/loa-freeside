@@ -1,0 +1,15 @@
+{
+  "name": "contract-validator",
+  "version": "1.0.0",
+  "description": "JSON Schema validator for cross-system contract testing",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "express": "^4.21.0"
+  }
+}

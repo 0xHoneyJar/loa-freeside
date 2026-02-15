@@ -3,6 +3,7 @@
 # Cycle-026: Added billing E2E env vars (Sprint 244, Task 6.1)
 # Cycle-027: Full-loop billing E2E (Sprint 251, Task 7.1)
 #             — x402 config, identity anchor graduated trust, revenue versioning
+# Cycle-028: Added contract-validator for cross-system schema testing (Sprint 256, Task 5.2)
 #
 # JWKS Bootstrap: arrakis writes JWKS to a shared volume on startup.
 # loa-finn reads JWKS from the mounted file (ARRAKIS_JWKS_FILE),
@@ -100,6 +101,20 @@ services:
       timeout: 3s
       retries: 10
       start_period: 10s
+
+  # Sprint 256, Task 5.2: Contract validator for cross-system schema testing
+  contract-validator:
+    build:
+      context: ./contract-validator
+      dockerfile: Dockerfile
+    ports:
+      - "3199:3100"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3100/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
 volumes:
   jwks-shared:
