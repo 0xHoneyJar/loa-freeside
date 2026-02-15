@@ -8,6 +8,13 @@
  * Single-instance deployment constraint: move to Redis INCRBY with TTL
  * if horizontally scaling (per FR-6).
  *
+ * LIMITATION (Bridge Review, finding medium-2):
+ * In-memory state is lost on process restart, allowing a burst of requests
+ * through the reset window. For single-instance deployments this is an
+ * accepted risk. The RedisCounterBackend from protocol/atomic-counter.ts
+ * can serve as the persistent backend when scaling horizontally — both
+ * the restart-burst and horizontal-scaling cases share the same fix.
+ *
  * Sprint refs: Task 6.1
  *
  * @module packages/adapters/middleware/rate-limiter

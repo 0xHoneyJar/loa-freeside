@@ -6,6 +6,13 @@
  *
  * Extracted from AgentWalletPrototype's 3-layer daily spending counter.
  *
+ * EXTRACTION CANDIDATE (Bridge Review, strategic finding strategic-2):
+ * This module and its backends (InMemory, SQLite, Redis) are domain-agnostic.
+ * Moving to packages/shared/atomic-counter/ would allow loa-finn, gateway,
+ * and future services to reuse the same rate-limiting and spending-tracking
+ * primitives without reimplementation. The interface is already clean and
+ * the implementations have zero billing-specific dependencies.
+ *
  * Sprint refs: Task 2.1
  *
  * @module packages/core/protocol/atomic-counter

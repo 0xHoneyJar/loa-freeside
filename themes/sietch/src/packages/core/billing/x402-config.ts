@@ -58,6 +58,18 @@ export function validateX402Config(config: X402Config): void {
 // =============================================================================
 // Nonce Cache — Short-lived replay prevention
 // =============================================================================
+//
+// LIMITATION (Bridge Review, strategic finding medium-1):
+// This cache is in-memory and does not survive process restarts. A client
+// that received a 402 response with a nonce before a restart will have that
+// nonce rejected after restart. With a 5-minute TTL this creates a small
+// window for payment failures during deploys.
+//
+// Path to v2: Replace Map with Redis SETEX (key=nonce, value=accountId,
+// TTL=nonce_ttl_seconds). The IAtomicCounterBackend pattern from
+// protocol/atomic-counter.ts could be adapted: INonceCacheBackend with
+// InMemory, Redis implementations behind the same interface.
+// =============================================================================
 
 export class NonceCache {
   private readonly cache = new Map<string, { accountId: string; expiresAt: number }>();

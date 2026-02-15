@@ -6,6 +6,23 @@
  * - Above threshold: identity anchor required
  * - Feature flag disabled: all operations pass regardless
  *
+ * CROSS-SYSTEM VERIFICATION (Bridge Review, strategic finding strategic-1):
+ * Currently identity anchor verification happens within arrakis only. For
+ * multi-service deployments where loa-finn or other services need to verify
+ * anchors, two approaches exist:
+ *
+ * 1. JWT-embedded anchors (preferred for latency):
+ *    Include `identity_anchor_hash` in JWT claims. Services verify the claim
+ *    statelessly without calling back to arrakis. Suitable for low-value ops.
+ *
+ * 2. Synchronous S2S endpoint (for high-value ops):
+ *    Define POST /api/internal/verify-anchor accepting { accountId, anchor }.
+ *    Services call arrakis for real-time verification. Higher latency but
+ *    guarantees current anchor state (handles rotation, revocation).
+ *
+ * The graduated trust model maps naturally: low-value → JWT-embedded (fast),
+ * high-value → synchronous verification (authoritative).
+ *
  * Sprint refs: Task 3.1
  *
  * @module packages/core/protocol/identity-trust
