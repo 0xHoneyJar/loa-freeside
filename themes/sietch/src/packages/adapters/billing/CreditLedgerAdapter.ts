@@ -105,6 +105,16 @@ export class ConflictError extends Error {
   }
 }
 
+export class FourEyesViolationError extends Error {
+  constructor(ruleId: string, actor: string) {
+    super(
+      `Four-eyes violation on rule ${ruleId}: ` +
+      `actor '${actor}' cannot approve their own proposal`
+    );
+    this.name = 'FourEyesViolationError';
+  }
+}
+
 // =============================================================================
 // Redis Interface (minimal for balance cache)
 // =============================================================================

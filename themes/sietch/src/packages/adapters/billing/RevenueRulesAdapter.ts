@@ -23,7 +23,7 @@ import type {
   RuleStatus,
 } from '../../core/ports/IRevenueRulesService.js';
 import { ALLOWED_TRANSITIONS } from '../../core/ports/IRevenueRulesService.js';
-import { InvalidStateError } from './CreditLedgerAdapter.js';
+import { InvalidStateError, FourEyesViolationError } from './CreditLedgerAdapter.js';
 import { logger } from '../../../utils/logger.js';
 
 // =============================================================================
@@ -167,6 +167,11 @@ export class RevenueRulesAdapter implements IRevenueRulesService {
       const rule = this.getRuleRow(ruleId);
       this.assertTransition(rule.status as RuleStatus, 'cooling_down', ruleId);
 
+      // Four-eyes enforcement: approver must differ from proposer
+      if (rule.proposed_by === approvedBy) {
+        throw new FourEyesViolationError(ruleId, approvedBy);
+      }
+
       this.db.prepare(`
         UPDATE revenue_rules
         SET status = 'cooling_down',
@@ -232,6 +237,9 @@ export class RevenueRulesAdapter implements IRevenueRulesService {
       `).run(now, now, ruleId);
 
       this.logAudit(ruleId, 'cooldown_overridden', actor, reason, 'cooling_down', 'active');
+
+      // Urgent notification for emergency activation
+      this.createNotification(ruleId, 'emergency_activate', actor, 'urgent', rule);
 
       logger.warn({
         event: 'billing.revenue_rules.cooldown_override',
@@ -316,6 +324,9 @@ export class RevenueRulesAdapter implements IRevenueRulesService {
 
         if (result.changes > 0) {
           this.logAudit(row.id, 'activated', 'system', null, 'cooling_down', 'active');
+
+          // Normal notification for scheduled activation
+          this.createNotification(row.id, 'activate', 'system', 'normal', row);
 
           logger.info({
             event: 'billing.revenue_rules.activated',
@@ -415,6 +426,45 @@ export class RevenueRulesAdapter implements IRevenueRulesService {
         (id, rule_id, action, actor, reason, previous_status, new_status, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
     `).run(randomUUID(), ruleId, action, actor, reason, previousStatus, newStatus);
+  }
+
+  /**
+   * Create a billing notification for governance events.
+   * Called on activate and emergency-activate transitions.
+   */
+  private createNotification(
+    ruleId: string,
+    transition: string,
+    actor: string,
+    urgency: 'normal' | 'urgent',
+    newRule: RevenueRuleRow,
+  ): void {
+    try {
+      // Get the old (superseded) rule's splits for comparison
+      const oldActive = this.db.prepare(
+        `SELECT commons_bps, community_bps, foundation_bps FROM revenue_rules
+         WHERE status = 'superseded' AND superseded_by = ? LIMIT 1`
+      ).get(ruleId) as { commons_bps: number; community_bps: number; foundation_bps: number } | undefined;
+
+      const oldSplits = oldActive
+        ? JSON.stringify({ commons_bps: oldActive.commons_bps, community_bps: oldActive.community_bps, foundation_bps: oldActive.foundation_bps })
+        : null;
+
+      const newSplits = JSON.stringify({
+        commons_bps: newRule.commons_bps,
+        community_bps: newRule.community_bps,
+        foundation_bps: newRule.foundation_bps,
+      });
+
+      this.db.prepare(`
+        INSERT INTO billing_notifications
+          (id, rule_id, transition, old_splits, new_splits, actor_id, urgency)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(randomUUID(), ruleId, transition, oldSplits, newSplits, actor, urgency);
+    } catch (err) {
+      // Notification failure must not break activation
+      logger.warn({ err, ruleId, transition }, 'Failed to create billing notification');
+    }
   }
 
   private getCooldownHours(): number {

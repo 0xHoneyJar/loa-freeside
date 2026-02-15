@@ -101,11 +101,13 @@ function verifyHS256(token: string, secret: string): AdminTokenPayload | null {
       Buffer.from(parts[1], 'base64url').toString('utf-8')
     ) as AdminTokenPayload;
 
-    // Validate audience and expiry
+    // Validate required claims: iss, aud, exp, sub
+    if (!payload.sub) return null;
+    if (!payload.iss || payload.iss !== 'arrakis-admin') return null;
     if (payload.aud !== 'arrakis-billing-admin') return null;
     const now = Math.floor(Date.now() / 1000);
     const clockSkew = 30;
-    if (payload.exp < now - clockSkew) return null;
+    if (!payload.exp || payload.exp < now - clockSkew) return null;
 
     return payload;
   } catch {
@@ -626,10 +628,60 @@ billingAdminRouter.get(
   },
 );
 
+// =============================================================================
+// GET /admin/billing/notifications — governance event notifications
+// =============================================================================
+
+billingAdminRouter.get(
+  '/notifications',
+  requireAdminAuth,
+  adminRateLimiter,
+  (_req: Request, res: Response) => {
+    if (!adminDb) {
+      res.status(503).json({ error: 'Database not initialized' });
+      return;
+    }
+
+    try {
+      const rows = adminDb.prepare(
+        `SELECT id, rule_id, transition, old_splits, new_splits,
+                actor_id, urgency, created_at
+         FROM billing_notifications
+         ORDER BY created_at DESC
+         LIMIT 100`
+      ).all() as Array<{
+        id: string; rule_id: string; transition: string;
+        old_splits: string | null; new_splits: string;
+        actor_id: string; urgency: string; created_at: string;
+      }>;
+
+      const notifications = rows.map(r => ({
+        id: r.id,
+        ruleId: r.rule_id,
+        transition: r.transition,
+        oldSplits: r.old_splits ? JSON.parse(r.old_splits) : null,
+        newSplits: JSON.parse(r.new_splits),
+        actorId: r.actor_id,
+        urgency: r.urgency,
+        createdAt: r.created_at,
+      }));
+
+      res.json({ notifications });
+    } catch (err) {
+      logger.error({ event: 'admin.notifications.list.error', err },
+        (err as Error).message);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
 // Error handler for revenue rule operations
 function handleRuleError(err: unknown, res: Response): void {
   const msg = (err as Error).message;
-  if (msg.includes('not found')) {
+  const name = (err as Error).name;
+  if (name === 'FourEyesViolationError') {
+    res.status(403).json({ error: 'four_eyes_violation', message: msg });
+  } else if (msg.includes('not found')) {
     res.status(404).json({ error: 'Revenue rule not found' });
   } else if (msg.includes('Invalid state') || msg.includes('Cannot')) {
     res.status(409).json({ error: 'Invalid state transition', message: msg });
