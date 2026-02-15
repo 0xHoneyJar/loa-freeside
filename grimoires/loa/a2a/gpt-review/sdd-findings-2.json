@@ -1,38 +1,71 @@
 {
-  "verdict": "APPROVED",
-  "summary": "All six previously blocking issues are addressed in a way that is internally consistent with the stated architecture (SQLite-authoritative, Redis acceleration, ES256 S2S, HS256 admin) and no new truly-blocking problems were introduced by the fixes.",
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Most of the 10 prior blockers were fixed as described, but two fixes are incomplete/contradictory in ways that would still break solvency/idempotency under real concurrency (reserve backing not actually conserved in the shown flow; payout execution concurrency contradicts the new locking model).",
   "previous_issues_status": [
     {
-      "original_issue": "SQLite daily spending increment used invalid syntax / OR REPLACE semantics (non-atomic, clobber risk)",
-      "status": "fixed",
-      "notes": "Replaced with a correct SQLite UPSERT using ON CONFLICT DO UPDATE and an atomic increment expression referencing the existing row plus excluded value, executed inside BEGIN IMMEDIATE."
+      "original_issue": "Treasury reserve double-mint (reserve funded by minting instead of allocating existing proceeds)",
+      "status": "not_fixed",
+      "notes": "The text in §3.3 claims conservation and says reserve is funded by transferring from the foundation share, but the §4.2 code still mints the referrer lot (increasing supply) and separately mints the 3-way lots, while also doing a transfer from foundation to treasury. As written, this double-counts: total minted = referrerShare + commonsShare + communityShare + foundationShare = totalMicro, and then an additional internal transfer moves value from foundation to treasury without reducing minted supply. Unless the existing system already mints charge proceeds into a source account and these are actually transfers (not mints), the snippet violates conservation/solvency. The fix is only correct if the ledger operation is a split of a single source-of-funds, not multiple mints."
     },
     {
-      "original_issue": "BigInt micro-USD precision vs SQLite/Redis/JS number overflow and Redis INCRBY 64-bit limits",
+      "original_issue": "Revenue distribution idempotency + atomicity (race can double-mint)",
       "status": "fixed",
-      "notes": "Documented explicit daily-cap bounds that fit int64, and updated the Redis adapter boundary to use string types (and string return) to avoid JS Number precision loss. This aligns with Redis INCRBY’s int64 constraint and SQLite INTEGER behavior."
+      "notes": "The referrer block is now wrapped in a single BEGIN IMMEDIATE transaction and uses INSERT ... ON CONFLICT DO NOTHING as the first write keyed by (inference_charge_id, rule_version). That addresses the double-mint race for the referrer side effects, assuming ledger calls participate in the same SQLite connection/transaction context."
     },
     {
-      "original_issue": "Reserve-time cap check could be bypassed because authoritative counter only updated at finalize",
+      "original_issue": "SQLite SELECT FOR UPDATE misuse; payout concurrency unsafe",
       "status": "fixed",
-      "notes": "Design is now explicitly ‘finalized-spend cap’; enforcement moved into finalize within the SQLite transaction, with reserve-time checks clearly labeled advisory. This resolves the earlier mismatch between requirement and implementation by making the semantics explicit and enforcing at the authoritative point."
+      "notes": "Replaced with BEGIN IMMEDIATE and an OCC version column on treasury_state. Also states payout-execution worker concurrency should be 1, which is consistent with SQLite writer serialization and reduces risk."
     },
     {
-      "original_issue": "Redis TTL to midnight UTC was specified but not reliably set (keys could persist across days)",
+      "original_issue": "Payout flow burns/debits before provider creation; no compensating path",
       "status": "fixed",
-      "notes": "Added an atomic Lua script that performs INCRBY and sets EXPIREAT on first write (detecting new key by comparing return value to increment). This makes TTL deterministic and avoids cross-day inflation."
+      "notes": "Two-phase HOLD (escrow pools) then FINALIZE/RELEASE on webhook is the right pattern and includes a compensating release path for terminal failures and stalled reconciliation."
     },
     {
-      "original_issue": "Finalize schema allowed optional accountId but verification used it, risking anchor check bypass/misapplication",
+      "original_issue": "Clawback linkage between earning and reserve; unsafe lot consumption",
       "status": "fixed",
-      "notes": "Removed accountId from the finalize request schema and derives accountId from reservationId server-side; anchor is required at runtime if an anchor exists for that derived account, and mismatch returns 403 without leaking stored anchor."
+      "notes": "Added earning_lot_id and reserve_entry_id linkage and uses postCompensatingEntry referencing originals, which is the correct reversible/auditable approach."
     },
     {
-      "original_issue": "Admin JWT HS256 lacked strict iss/aud/etc validation and rotation guidance (confused deputy / secret sprawl risk)",
+      "original_issue": "Settlement finality not represented in ledger (mutable table only)",
       "status": "fixed",
-      "notes": "Now mandates iss/aud/exp/sub/scope validation, uses a dedicated secret not shared with other JWT systems, and documents rotation triggers/procedure at the SDD level."
+      "notes": "SettlementService now writes a settlement ledger entry with idempotencyKey settlement:<earning.id> and metadata linking earning/lot, making ledger authoritative for finality."
+    },
+    {
+      "original_issue": "Wallet linking nonce issuance + JSON.stringify canonicalization problems",
+      "status": "fixed",
+      "notes": "Introduces wallet_link_nonces with expiry/used_at and consumes nonce atomically via UPDATE ... RETURNING; message format is deterministic SIWE-style string rather than JSON.stringify."
+    },
+    {
+      "original_issue": "isAttributionActive type mismatch (string vs Date; wrong parameter)",
+      "status": "fixed",
+      "notes": "Interface now uses isAttributionActive(registration: ReferralRegistration, at: Date) and the call site matches."
+    },
+    {
+      "original_issue": "referral_bonuses missing FKs and idempotency constraints",
+      "status": "fixed",
+      "notes": "Both account columns now reference credit_accounts(id) and UNIQUE(referee_account_id, qualifying_action, qualifying_action_id) provides retry safety for bonus granting."
+    },
+    {
+      "original_issue": "FraudCheckService required signals but no persistence model",
+      "status": "fixed",
+      "notes": "Adds referral_events with hashed IP/UA/fingerprint, indexes for clustering queries, and a retention policy with cleanup cron. This is sufficient to support delayed fraud evaluation."
     }
   ],
-  "new_blocking_concerns": [],
+  "new_blocking_concerns": [
+    {
+      "location": "§4.2 RevenueDistributionService Extension + §3.3 Treasury Account (conservation invariant)",
+      "description": "The revised narrative says reserve backing is an allocation of existing proceeds, but the provided code path still uses mintLot for referrer/commons/community/foundation and then additionally transfers from foundation to treasury, which (unless the existing ledger semantics are different than shown) breaks conservation and makes treasury solvency accounting incoherent.",
+      "why_blocking": "If mintLot is a true mint (creates new credits not tied to a debited source), then every charge both (a) mints totalMicro across recipients and (b) moves part of foundation’s minted amount into treasury, meaning the treasury is funded by minted credits rather than by a conserved split of the original charge proceeds. This reintroduces the original solvency hole in a different form: the system can appear fully reserved while still not being backed by real inflows, and reconciliation against payment processor receipts will not balance.",
+      "fix": "Make the distribution of a finalized charge a single conserved flow from a charge-proceeds source. Concretely either: (A) create/identify a \"charge proceeds\" account/lot credited exactly once for totalMicro when the payment finalizes, then use transferInternal to move slices to referrer/commons/community/foundation/treasury (no mintLot in postDistribution); or (B) if mintLot is being used as a convenience wrapper for \"credit from charge source\", rename/replace it with a transfer-from-source API and ensure the sum of all credits equals totalMicro with no additional reserve transfer beyond that split. If treasury backing is meant to come out of foundationShare, then reduce the foundation credit by shareMicro (i.e., foundation receives foundationShare - shareMicro and treasury receives shareMicro) so the overall credited amounts still sum to totalMicro."
+    },
+    {
+      "location": "§7.1 BullMQ Queues vs §4.3 CreatorPayoutService (payout-execution concurrency)",
+      "description": "Queue table still specifies payout-execution concurrency = 2, while §4.3 states concurrency = 1 for correctness.",
+      "why_blocking": "This is not a cosmetic doc mismatch: if implemented as per §7.1 (concurrency 2), two payout executions can run concurrently and contend on treasury_state/escrow transitions. Even with BEGIN IMMEDIATE, you can still get duplicated provider calls and inconsistent state transitions unless every step is strictly idempotent and serialized per payout id. The design intent explicitly relies on serialization as a safety measure.",
+      "fix": "Set payout-execution concurrency to 1 everywhere (SDD + config). If you truly need >1, then require strict per-payout idempotency at the worker level (dedupe by payout_request_id), and ensure all state transitions are guarded by conditional updates (e.g., UPDATE ... WHERE status = 'pending') so concurrent workers cannot both advance the same payout."
+    }
+  ],
   "iteration": 2
 }

@@ -1,41 +1,41 @@
 {
   "verdict": "APPROVED",
-  "summary": "All previously blocking contradictions around x402↔purchase binding, pricing model, identity gating, property-test semantics, governance versioning, numeric units, and rate limiting have been resolved in a way that is implementable and verifiable.",
+  "summary": "All previously blocking inconsistencies (split math, signup bonus trigger, credit backing/withdrawability, Score pool liability, identity binding, attribution anchoring/idempotency, and NOWPayments async+security) are addressed in a way that is implementable and financially reconcilable.",
   "previous_issues_status": [
     {
-      "original_issue": "Payment flow inconsistent / missing canonical payment→credit binding, SKU/amount mapping, and idempotency tied to payer/account",
+      "original_issue": "Revenue-share math inconsistent vs existing governed 3-way split (referrer cut applied then 3-way split example changed effective shares)",
       "status": "fixed",
-      "notes": "FR-4 now defines a canonical PaymentProof contract, explicit binding rules (account_id from authenticated JWT, memo includes accountId:nonce for inline), recipient validation, and a concrete idempotency key stored with UNIQUE constraint. FR-4/FR-5 also unify inline and explicit purchase modes behind IPaymentVerifier."
+      "notes": "FR-3.2 explicitly chooses the model: referrer is a 4th slice taken off the top, and the 3-way split is redefined as % of the remainder when a referrer is present; Section 9 example matches and adds a conservation invariant with deterministic rounding (foundation absorbs remainder)."
     },
     {
-      "original_issue": "Contradiction between fixed tiers and dynamic price = inference_cost × markup_factor",
+      "original_issue": "Signup bonus trigger contradictory (could imply two $5 bonuses) vs one-bonus rule",
       "status": "fixed",
-      "notes": "FR-5 explicitly chooses one model: fixed USDC price tiers with variable credits minted via floor(price/markup). It also clarifies markup is applied at purchase time and cost estimator affects consumption later."
+      "notes": "FR-2.1 clarifies first qualifying action (dNFT OR first purchase, whichever first) and FR-2.2 enforces one bonus per referee with idempotency/uniqueness; user journey now aligns."
     },
     {
-      "original_issue": "Identity anchor requirement underspecified and conflicted with purchase/top-up flow (deadlock vs sybil risk)",
+      "original_issue": "Payout flow not reconcilable: unclear what credits represent, which are withdrawable, and how NOWPayments is funded/backed",
       "status": "fixed",
-      "notes": "FR-2 adds an explicit authorization matrix and defines 'high-value' as a per-request threshold enforced at reserve time. It explicitly exempts purchase from anchoring to avoid deadlock while still gating high-value reserve."
+      "notes": "FR-6.4 defines withdrawable vs non-withdrawable credit classes via pool tags; FR-6.5 introduces a treasury reserve backing model and a solvency invariant tying withdrawable balances to treasury:payout_reserve; FR-6.6 makes payout an atomic burn + treasury debit."
     },
     {
-      "original_issue": "Property-based invariants underspecified for lot-based ledger; liveness 'eventually' not modelable without time/worker",
+      "original_issue": "Score-weighted rewards pool liability not bounded / unclear funding source and withdrawability",
       "status": "fixed",
-      "notes": "FR-1 now defines per-lot conservation precisely, adds FIFO as an explicit safety property, and handles liveness correctly by requiring an explicit expiry tick action plus a weaker safety fallback when fairness isn’t assumed."
+      "notes": "FR-5.2/5.3 hard-cap pool size to min(config, available balance) and require a dedicated funding account/pool with enforcement; FR-5.4 makes Score rewards non-withdrawable, preventing treasury drain."
     },
     {
-      "original_issue": "Governance schema version field required but undefined (what/where/how used)",
+      "original_issue": "Score identity resolution undefined and Sybil via wallet splitting not addressed",
       "status": "fixed",
-      "notes": "FR-7 defines what is versioned (revenue rule set schema), where stored (revenue_rules.schema_version with migration 040), how used (recorded in distribution entries), and compatibility semantics (finalize uses active rule at finalize time; old entries remain valid)."
+      "notes": "FR-5.1 defines canonical identifier as EVM address, requires wallet linking with signature verification, and accrues per-account across linked wallets; FR-5.5 adds per-wallet and per-account minimum thresholds to mitigate wallet-splitting/dust."
     },
     {
-      "original_issue": "Numeric mismatch / unit ambiguity for micro-USD bounds and arithmetic/rounding policies",
+      "original_issue": "12-month attribution window lacked precise anchor and idempotent finalization behavior",
       "status": "fixed",
-      "notes": "FR-1 establishes microusd=1e-6 USD, unsigned bigint, MAX_MICRO_USD=1e15=$1B, floor rounding, and USDC 6-decimal 1:1 mapping. It also requires centralized arithmetic guards with explicit error behavior."
+      "notes": "FR-3.3 anchors expiry to referral_registrations.created_at and specifies the eligibility check at finalization; FR-3.4 adds idempotency keyed by (inference_charge_id, rule_version) to prevent replay/backfill double-pay."
     },
     {
-      "original_issue": "In-memory rate limiting bypass risk in multi-instance deployments; keying strategy unspecified",
+      "original_issue": "NOWPayments payout execution mixed synchronous latency targets and lacked idempotency/webhook verification/fee handling",
       "status": "fixed",
-      "notes": "FR-6 specifies per-principal keying (service_id/sub/account_id) with an IP fallback only for unauthenticated requests, and explicitly constrains deployment to single-instance with a documented requirement to move to Redis if horizontally scaled."
+      "notes": "FR-6.7 makes payout execution async via BullMQ with idempotency key; FR-6.8 requires HMAC verification for callbacks; FR-6.9 specifies fee accounting and gross vs net; NFR-4 explicitly excludes provider latency from API p99."
     }
   ],
   "new_blocking_concerns": [],

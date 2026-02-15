@@ -1,31 +1,36 @@
 {
   "verdict": "APPROVED",
-  "summary": "All previously blocking bridge-tracking inconsistencies are corrected (traceable resolved finding, reconciled rollups, grounded diff evidence, and corrected flatline language), with no new truly blocking issues introduced.",
+  "summary": "All previously blocking issues are addressed with concrete resequencing, explicit non-withdrawable pool enforcement, clarified Phase 1A vs 1B semantics, defined manual review operations, implemented cleanup jobs before validation, and an idempotent treasury seed approach—no new blocking problems introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "Findings JSON had `findings: []` but claimed a nonzero resolved count without listing the resolved finding in a machine-readable way",
+      "original_issue": "Migration numbering/order inconsistent (046 before 043; violated monotonic ordering requirement)",
       "status": "fixed",
-      "notes": "JSON now includes a `resolved_findings` array containing `medium-3` with `status: resolved`, `resolved_in_iteration: 3`, and concrete evidence (file/line/commit/before/after). `by_status.resolved: 1` now matches the array."
+      "notes": "Migrations are now strictly monotonic and aligned to sprint order: 042 (S1) → 043 (S2) → 044 (S3) → 045 (S8) → 046 (S11). Dependency diagram and references match."
     },
     {
-      "original_issue": "Convergence Assessment rollups claimed '3/3 medium' and '2/2 low' without basis in the recorded iteration history",
+      "original_issue": "CampaignAdapter/pool isolation for `referral:signup` non-withdrawable not explicitly implemented/tested",
       "status": "fixed",
-      "notes": "Final State rollups are now derivable from the provided history: medium findings are explicitly '1 from iter-2' and critical/high are 0. The unsupported 3/3 and 2/2 claims are removed."
+      "notes": "Sprint 3.4 explicitly registers pool IDs, configures `referral:signup` and `score:rewards` as non-withdrawable, verifies CampaignAdapter recognition, and adds an automated test proving exclusion from withdrawable queries."
     },
     {
-      "original_issue": "Approval/Metadata statistics did not reconcile (e.g., '7 actionable' vs iter summaries of 4 actionable in iter-1 and 1 actionable in iter-2)",
+      "original_issue": "Phase 1A 'non-withdrawable' contradicted by Sprint 6/7 withdrawable semantics",
       "status": "fixed",
-      "notes": "Totals are now consistent with the stated iteration context: total findings 10 (9+1) and actionable resolved 5 (4+1). Resolution rate 100% (5/5) is now auditable from the table."
+      "notes": "Sprint 6 now explicitly labels Phase 1A as `settled_available_micro` (non-withdrawable) and defers the withdrawable concept to Phase 1B (Sprint 9). The dashboard and query ACs reflect this boundary."
     },
     {
-      "original_issue": "Verification claims lacked concrete diff evidence and timestamp was a placeholder",
+      "original_issue": "Manual review queue referenced but not defined (no persistence/surfacing/approve-deny flow)",
       "status": "fixed",
-      "notes": "A minimal diff hunk is included showing `+3600` → `+300`, and timestamp is now a concrete value (`2026-02-15T15:30:00Z`). Evidence is also duplicated in the resolved finding JSON."
+      "notes": "Sprint 4.5 defines storage fields, admin list endpoint, approve/deny endpoints, and an integration test covering both flows with correct CampaignAdapter/ledger behavior."
     },
     {
-      "original_issue": "Flatline detection was misapplied (rule stated two consecutive iterations < 2.0, but iter-2 score was 3.0)",
+      "original_issue": "Cleanup validation existed without earlier implementation tasks (nonce cleanup + referral_events retention)",
       "status": "fixed",
-      "notes": "The document no longer asserts 'FLATLINE DETECTED' under the two-iteration rule; it instead states quality gate passed and convergence achieved at final score 0.0, which matches the provided history."
+      "notes": "Referral events retention cleanup is implemented in Sprint 7.5 and nonce cleanup in Sprint 11.4; Sprint 13.3 now correctly validates those implemented crons."
+    },
+    {
+      "original_issue": "Treasury account creation in migration not concretely specified/idempotent across environments",
+      "status": "fixed",
+      "notes": "Sprint 8.1 specifies a deterministic SQL seed using `ON CONFLICT DO NOTHING` and adds an explicit AC that running the migration twice yields exactly one treasury account with the expected entity_id."
     }
   ],
   "new_blocking_concerns": [],

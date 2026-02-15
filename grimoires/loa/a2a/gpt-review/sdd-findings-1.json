@@ -1,42 +1,66 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "Core direction is workable, but the daily spending write path as specified is not atomic/correct in SQLite and the Redis/SQLite counter types will overflow or diverge, which will break cap enforcement under load.",
+  "summary": "Core direction is workable, but there are several ledger/settlement/treasury and payout-state design flaws that will break conservation/solvency or make refunds and retries unsafe in production.",
   "blocking_issues": [
     {
-      "location": "§2.3 Atomic Daily Spending (SQLite-Authoritative) — finalize write path + migration 036",
-      "issue": "The SQL shown uses `INSERT OR REPLACE ... SET total_spent_micro = total_spent_micro + actualCost`, which is not valid SQLite syntax, and `OR REPLACE` would delete+reinsert the row (resetting unspecified columns) rather than atomically incrementing.",
-      "why_blocking": "This will either fail at runtime (syntax) or, if implemented with REPLACE semantics, can clobber `updated_at`/other fields and is prone to lost-update behavior if the increment is implemented as read-modify-write. Under concurrency, daily totals can be wrong, causing false rejects or cap bypass.",
-      "fix": "Use a single atomic UPSERT statement inside the same `BEGIN IMMEDIATE` transaction, e.g. `INSERT INTO daily_agent_spending(agent_account_id, spending_date, total_spent_micro, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(agent_account_id, spending_date) DO UPDATE SET total_spent_micro = daily_agent_spending.total_spent_micro + excluded.total_spent_micro, updated_at = excluded.updated_at;` (and ensure `spending_date` is computed consistently in UTC)."
+      "location": "§3.3 Treasury Account + §4.2 RevenueDistributionService Extension (reserve funding)",
+      "issue": "Treasury reserve is funded by minting new credits (`reserve_funding`) at the same time referrer earnings are minted, which violates conservation and makes solvency meaningless (you can always “fund” the reserve by minting).",
+      "why_blocking": "Payout solvency cannot be enforced if the reserve is not backed by real inflows. This creates an accounting hole: every referral earning increases both creator withdrawable supply and reserve supply without any corresponding debit from the original charge proceeds. Under load, you will pay out more than you actually collected.",
+      "fix": "Model the reserve as an allocation of the existing charge proceeds, not a second mint. Concretely: when distributing a finalized charge, split the single `totalMicro` into (referrer + commons + community + foundation + reserve if needed) such that the sum equals `totalMicro`, and post ledger entries that move value from the payer/charge source into each destination exactly once. If you need a reserve to back withdrawals, fund it from the foundation share (or a defined fee) by transferring from foundation’s credited amount into the reserve account (a debit+credit pair), not by minting."
     },
     {
-      "location": "§2.3 / §3.3 Daily spending numeric types (SQLite + Redis INCRBY) and BigInt micro-USD precision",
-      "issue": "`total_spent_micro INTEGER` in SQLite and `incrby?(key, increment: number)` in Redis client are incompatible with the stated BigInt micro-USD precision and will overflow/lose precision for sufficiently large values; Redis INCRBY is 64-bit signed, and JS `number` cannot safely represent 64-bit integers.",
-      "why_blocking": "Once values exceed 2^53-1 in JS or 2^63-1 in Redis, counters become incorrect. Incorrect counters directly break spending caps (either blocking legitimate usage or allowing overspend). This is a correctness failure, not an optimization issue.",
-      "fix": "Define and enforce bounds (max daily cap) that fit safely in 64-bit signed, and represent amounts as strings/BigInt in the app boundary. Change Redis adapter to accept/return `string` (or `bigint`) and use a Redis client that supports 64-bit integer replies without JS number coercion. In SQLite, keep INTEGER but treat it as signed 64-bit and validate inputs; if truly unbounded is required, store as TEXT decimal and do arithmetic in app (slower) or enforce caps to stay within int64."
+      "location": "§4.2 RevenueDistributionService Extension (idempotency + atomicity)",
+      "issue": "Idempotency is checked via `SELECT` on `referrer_earnings`, but the subsequent minting and insert are not shown as a single transaction; concurrent calls can double-mint lots and/or double-fund reserve even if the `referrer_earnings` insert later fails.",
+      "why_blocking": "Revenue distribution is a hot path; retries and concurrent finalization events happen. A race here creates permanent ledger inflation that cannot be cleanly repaired because the ledger is append-only and the idempotency key is not guaranteed to cover all side effects.",
+      "fix": "Wrap the entire referrer-share block in one SQLite transaction with a write lock, and make the `referrer_earnings` row the first write using `INSERT ... ON CONFLICT DO NOTHING` keyed by `(inference_charge_id, rule_version)`. Only if the insert succeeds should you mint the lot(s). Alternatively, rely solely on ledger-level idempotency by enforcing a UNIQUE constraint on `credit_ledger.idempotency_key` (or equivalent) and use that as the single source of truth."
     },
     {
-      "location": "§2.3 Read path (cap check) vs write path (finalize) — reserve/finalize consistency",
-      "issue": "Cap enforcement reads Redis/SQLite daily totals during `reserveForInference()`, but the authoritative increment occurs at `finalizeInference()`. This allows unlimited concurrent reservations before any finalize updates the daily counter.",
-      "why_blocking": "An attacker or high-concurrency workload can reserve many inferences early in the day and exceed the daily cap before any finalize occurs, effectively bypassing the cap until later. If PRD expects the cap to constrain *spend commitments* at reserve time, this design will not meet the requirement.",
-      "fix": "Either (A) enforce the daily cap on reservation by incrementing a separate authoritative 'daily_reserved_micro' counter transactionally at reserve time (and decrement/adjust on finalize/cancel), or (B) explicitly define the cap as applying only to finalized spend and accept oversubscription risk. If (B) is intended, document it and add a hard stop at finalize that can reject/cap charges when the daily cap would be exceeded."
+      "location": "§4.3 CreatorPayoutService (payout request transaction + “SELECT FOR UPDATE”)",
+      "issue": "SQLite does not support `SELECT ... FOR UPDATE` semantics as written; the design assumes row-level locking/OCC that is not specified in schema, and payout concurrency is >1 (BullMQ concurrency 2).",
+      "why_blocking": "Without correct locking, two payout requests can both observe sufficient treasury balance and both debit, or one can partially apply debits and then fail, leaving inconsistent state. This directly breaks the treasury solvency invariant under concurrent access.",
+      "fix": "Use SQLite transaction modes explicitly: `BEGIN IMMEDIATE` (or `BEGIN EXCLUSIVE` if needed) for the payout-request critical section so only one writer can proceed. If you want OCC, add a `version INTEGER NOT NULL` column on the treasury account row (or a dedicated `treasury_state` table) and update with `WHERE version = ?` to guarantee atomic compare-and-swap. Also set BullMQ payout execution concurrency to 1 unless you can prove correctness with the chosen locking strategy."
     },
     {
-      "location": "§2.3 Redis TTL spec vs implementation",
-      "issue": "Redis key TTL is specified as 'Midnight UTC', but the design only shows `GET` on read and `INCRBY` on write 'async, best-effort' with no guaranteed `EXPIRE`/`EXPIREAT` on first write.",
-      "why_blocking": "Without a reliable TTL set, keys can persist across days and inflate totals, causing systematic false cap exceedance (production outage) or require manual cache flushes. 'Best-effort async' makes this nondeterministic and hard to debug.",
-      "fix": "On the write path, after a successful INCRBY, ensure TTL is set deterministically when the key is new (or always set EXPIREAT to next midnight UTC). Use a Lua script or MULTI/EXEC to `INCRBY` + `EXPIREAT` atomically, or `SET key 0 EXAT <midnight> NX` before INCRBY."
+      "location": "§4.3 Payout flow + `payout_requests` schema",
+      "issue": "Funds are debited (creator + reserve) before the external payout is created, but there is no compensating credit path for terminal failures/cancellations, and no clear state machine guaranteeing exactly-once burn vs payout execution.",
+      "why_blocking": "If NOWPayments call fails permanently, webhook never arrives, or the job crashes after debiting but before creating the provider payout, user funds are stuck/burned. This will cause irrecoverable balance loss and support escalations.",
+      "fix": "Implement a two-phase accounting model: (1) place funds in an internal escrow/hold (move from withdrawable lot pool to `withdrawal:pending` pool; similarly reserve to `reserve:held`) and create `payout_requests` in `pending`; (2) only on provider acceptance transition to `processing`; (3) on terminal failure/cancel, release escrow back to original pools via ledger transfers; (4) on completion, finalize by burning/marking withdrawn. Ensure every transition is idempotent and driven by a unique `payout_requests.id`."
     },
     {
-      "location": "§2.4 Identity Anchor Verification + §4.2 S2S Finalize Contract",
-      "issue": "`accountId` is optional in the finalize schema, but the verification code queries `WHERE agent_account_id = ?` using `body.accountId`. If `accountId` is omitted, behavior is undefined (query with NULL/undefined) and the anchor check can be skipped or misapplied.",
-      "why_blocking": "This creates an authz gap where identity anchor verification may silently not run or may run against the wrong account, enabling cross-account finalize or bypass of anchor constraints depending on how ownership is otherwise checked.",
-      "fix": "Make `accountId` required for finalize (or derive it unambiguously from `reservationId` inside the same transaction and never accept it from the body). Then perform anchor verification against the derived account id. Also require `identity_anchor` when an anchor exists for that account (i.e., if stored anchor is present and request omits it → 403)."
+      "location": "§4.4 SettlementService (clawback implementation) + §4.3 withdrawable balance query",
+      "issue": "Clawback uses `ledger.consumeLot()` on a minted lot and also `ledger.debitAccount()` on treasury, but the treasury side was minted as a separate lot with its own idempotency key and is not linked to the earning; also `consumeLot` implies spending from a lot, which may violate FIFO/lot invariants if the lot has already been partially consumed or if lots are immutable.",
+      "why_blocking": "Refunds/clawbacks are guaranteed to happen. Without a correct reversible linkage between earning lots and reserve backing, you cannot reliably reverse pending earnings, and you risk negative balances or broken lot accounting. Additionally, the withdrawable query ties withdrawability to `referrer_earnings.status='settled'` but does not ensure the corresponding lot still has `available_micro` (it might have been consumed by payout/other operations).",
+      "fix": "Create an explicit linkage table/columns: store both `earning_lot_id` and `reserve_lot_id` (or ledger entry ids) in `referrer_earnings`. For clawback, post compensating ledger entries that reverse the exact original entries (by referencing those ids) rather than “consume” generically. For withdrawable balance, compute from lots’ `available_micro` filtered by pool and a settled marker, but ensure the settled marker is on the lot/ledger entry itself (e.g., `referrer_earnings.settlement_at` + join on lot id) and that payout consumption reduces `available_micro` correctly."
     },
     {
-      "location": "§5.1 JWT Trust Boundaries / §1.3 E2E key provisioning",
-      "issue": "Admin JWT uses HS256 with a shared secret in env var, while other JWTs are ES256 with keypairs. The SDD does not define issuer/audience validation rules for Admin JWT nor key rotation strategy; HS256 increases risk of confused-deputy and secret sprawl across environments/containers.",
-      "why_blocking": "If issuer/audience are not strictly validated, any party with the secret (including CI logs, misconfigured container, or another service) can mint admin tokens. That is a catastrophic governance failure (four-eyes bypass via token forgery).",
-      "fix": "Explicitly require and validate `iss`, `aud`, `exp`, and scopes for Admin JWT; restrict verification to a dedicated secret not shared with any other service; document rotation procedure. Consider moving Admin JWT to ES256 as well (public-key verify) if multiple components need to verify without sharing a minting secret."
+      "location": "§3.2 credit_ledger entry types + §4.4 settlement markers",
+      "issue": "Design introduces `settlement` as an entry type “marker” but settlement is implemented only by updating `referrer_earnings.status`; there is no ledger-level finality record, so the ledger is not the authoritative audit trail for settlement state.",
+      "why_blocking": "You explicitly rely on the ledger as immutable audit for financial operations. If settlement/finality lives only in a mutable table, you lose auditability and can’t reconcile balances vs settlement state after incidents or partial restores.",
+      "fix": "Either (A) remove the `settlement` ledger type and treat `referrer_earnings` as the authoritative settlement state (then update the SDD and ensure reconciliation tooling), or (B) actually write a ledger entry on settlement that references the earning (e.g., `settlement` entry with metadata `{earning_id, lot_id}`) and make withdrawability depend on presence of that ledger entry (or a derived materialized view)."
+    },
+    {
+      "location": "§3.1 `wallet_links` + §4.5 Wallet link verification (EIP-191)",
+      "issue": "`wallet_links.verified_at` is `NOT NULL`, but the flow describes inserting after verifying nonce/timestamp; there is no table to issue nonces prior to verification, and storing the nonce only in `wallet_links` makes it impossible to enforce single-use before insert without a separate nonce registry. Also message canonicalization via `JSON.stringify` is not stable across clients (field order/whitespace), causing signature verification failures.",
+      "why_blocking": "Wallet linking will fail intermittently across clients and you cannot safely prevent replay without a proper nonce issuance/consumption mechanism. This becomes a security and UX failure for score rewards attribution.",
+      "fix": "Add a `wallet_link_nonces` (or `auth_nonces`) table: `(nonce PRIMARY KEY, account_id, wallet_address, chain_id, issued_at, expires_at, used_at)`; API issues nonce, client signs a canonical string. Use a deterministic message format (EIP-4361 SIWE-style string, or a fixed template string with newline separators) rather than JSON. Insert `wallet_links` with `verified_at` set at verification time; allow `verified_at` nullable only if you support pending links."
+    },
+    {
+      "location": "§4.2 Referral attribution active check (type mismatch) + §4.2 code snippet",
+      "issue": "`isAttributionActive(registrationId: string, atTimestamp: string): boolean` does not match usage `this.isAttributionActive(referral, opts.finalizedAt)` and the timestamp types are inconsistent (string vs Date).",
+      "why_blocking": "This will ship broken or be “fixed in code” inconsistently, and attribution windows are core to revenue share correctness. Small mismatches here lead to silent misattribution and payout disputes.",
+      "fix": "Define a single contract: `isAttributionActive(reg: ReferralRegistration, at: Date): boolean` (or both strings) and enforce UTC parsing. Add tests for boundary conditions (exact expiry instant)."
+    },
+    {
+      "location": "§3.1 `referral_bonuses` table",
+      "issue": "Missing foreign keys to `credit_accounts` for `referee_account_id` and `referrer_account_id`, and missing uniqueness/idempotency constraints for `qualifying_action` + `qualifying_action_id` (or per referee) to prevent duplicate bonus grants on retries.",
+      "why_blocking": "Bonus granting is asynchronous with retries; without idempotency constraints you will double-grant money. Missing FKs will allow orphaned rows and break joins/analytics/fraud review.",
+      "fix": "Add `REFERENCES credit_accounts(id)` for both account columns. Add `UNIQUE(referee_account_id, qualifying_action, qualifying_action_id)` (or whatever the true idempotency key is). If multiple bonuses per referee are allowed, scope uniqueness accordingly and include `campaign_id` if needed."
+    },
+    {
+      "location": "§4.7 FraudCheckService risk signals",
+      "issue": "Fraud signals require IP/user-agent/fingerprint data, but no data model or event capture path is specified (no table/columns, no request context persistence).",
+      "why_blocking": "Signup bonus fraud prevention is a stated requirement and a dependency for delayed granting. Without persisted signals, the fraud system cannot function beyond the current request, and cron-based delayed processing cannot evaluate historical clusters.",
+      "fix": "Add an `auth_events`/`referral_events` table capturing `account_id`, `ip`, `ip_prefix`, `user_agent_hash`, `fingerprint_hash`, `event_type`, `created_at`, and indexes for the cluster queries. Ensure privacy constraints (hashing + retention policy). Wire API layer to write these events."
     }
   ],
   "question": null,

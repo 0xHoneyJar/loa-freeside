@@ -1,23 +1,10 @@
 <!-- AGENT-CONTEXT
-name: loa
+name: arrakis
 type: framework
-purpose: Loa is an agent-driven development framework for [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview) (Anthropic's official CLI).
-key_files: [CLAUDE.md, .claude/loa/CLAUDE.loa.md, .loa.config.yaml, .claude/scripts/, .claude/skills/]
+purpose: Engagement intelligence platform for Web3 communities.
+key_files: [CLAUDE.md, .claude/loa/CLAUDE.loa.md, .loa.config.yaml, .claude/scripts/, .claude/skills/, package.json]
 interfaces: [/auditing-security, /autonomous-agent, /bridgebuilder-review, /browsing-constructs, /bug-triaging]
-dependencies: [git, jq, yq]
-ecosystem:
-  - repo: 0xHoneyJar/loa-finn
-    role: runtime
-    interface: hounfour-router
-    protocol: loa-hounfour@4.6.0
-  - repo: 0xHoneyJar/loa-hounfour
-    role: protocol
-    interface: npm-package
-    protocol: loa-hounfour@4.6.0
-  - repo: 0xHoneyJar/arrakis
-    role: distribution
-    interface: jwt-auth
-    protocol: loa-hounfour@4.6.0
+dependencies: [git, jq, yq, node]
 capability_requirements:
   - filesystem: read
   - filesystem: write (scope: state)
@@ -29,10 +16,10 @@ version: v1.39.1
 trust_level: L2-verified
 -->
 
-# loa
+# arrakis
 
 <!-- provenance: DERIVED -->
-Loa is an agent-driven development framework for [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview) (Anthropic's official CLI).
+Engagement intelligence platform for Web3 communities.
 
 The framework provides 29 specialized skills, built with TypeScript/JavaScript, Python, Shell.
 
@@ -66,23 +53,41 @@ The project exposes 15 key entry points across its public API surface.
 The architecture follows a three-zone model: System (`.claude/`) contains framework-managed scripts and skills, State (`grimoires/`, `.beads/`) holds project-specific artifacts and memory, and App (`src/`, `lib/`) contains developer-owned application code. The framework orchestrates 29 specialized skills through slash commands.
 ```mermaid
 graph TD
+    apps[apps]
+    decisions[decisions]
     docs[docs]
+    drizzle[drizzle]
     evals[evals]
     grimoires[grimoires]
-    skills[skills]
-    tests[tests]
+    infrastructure[infrastructure]
+    packages[packages]
     Root[Project Root]
+    Root --> apps
+    Root --> decisions
     Root --> docs
+    Root --> drizzle
     Root --> evals
     Root --> grimoires
-    Root --> skills
-    Root --> tests
+    Root --> infrastructure
+    Root --> packages
 ```
 Directory structure:
 ```
+./apps
+./apps/gateway
+./apps/ingestor
+./apps/worker
+./decisions
 ./docs
 ./docs/architecture
+./docs/gaib
 ./docs/integration
+./docs/planning
+./docs/proposals
+./docs/research
+./docs/runbook
+./drizzle
+./drizzle/migrations
 ./evals
 ./evals/baselines
 ./evals/fixtures
@@ -95,20 +100,41 @@ Directory structure:
 ./grimoires
 ./grimoires/loa
 ./grimoires/pub
-./skills
-./skills/legba
-./tests
-./tests/e2e
-./tests/edge-cases
-./tests/fixtures
-./tests/helpers
-./tests/integration
-./tests/performance
-./tests/unit
+./infrastructure
+./infrastructure/k8s
+./infrastructure/migrations
 ```
 
 ## Interfaces
 <!-- provenance: DERIVED -->
+### HTTP Routes
+
+- **DELETE** `/sandbox/:sandboxId/reset` (`themes/sietch/src/api/middleware/auth.ts:417`)
+- **GET** `/.well-known/jwks.json` (`themes/sietch/src/api/routes/agents.routes.ts:142`)
+- **GET** `/admin/stats` (`themes/sietch/src/api/middleware.ts:397`)
+- **GET** `/api/agents/health` (`themes/sietch/src/api/routes/agents.routes.ts:193`)
+- **GET** `/api/agents/models` (`themes/sietch/src/api/routes/agents.routes.ts:336`)
+- **GET** `/config` (`themes/sietch/src/api/middleware/dashboardAuth.ts:125`)
+- **GET** `/protected` (`themes/sietch/src/api/middleware/auth.ts:176`)
+- **PATCH** `/:userId/thresholds` (`themes/sietch/src/api/middleware/auth.ts:382`)
+- **POST** `/api/agents/invoke` (`themes/sietch/src/api/routes/agents.routes.ts:211`)
+- **POST** `/api/agents/stream` (`themes/sietch/src/api/routes/agents.routes.ts:243`)
+- **POST** `/config` (`themes/sietch/src/api/middleware/dashboardAuth.ts:217`)
+- **POST** `/endpoint` (`themes/sietch/src/api/middleware/rate-limit.ts:367`)
+
+### CLI Commands
+
+packages/cli/src/commands/auth/index.ts:113:    .command('login')
+packages/cli/src/commands/auth/index.ts:130:    .command('logout')
+packages/cli/src/commands/auth/index.ts:145:    .command('whoami')
+packages/cli/src/commands/sandbox/index.ts:78:    .command('new [name]')
+packages/cli/src/commands/sandbox/index.ts:97:    .command('ls')
+packages/cli/src/commands/sandbox/index.ts:116:    .command('rm <name>')
+packages/cli/src/commands/sandbox/index.ts:134:    .command('env <name>')
+packages/cli/src/commands/sandbox/index.ts:151:    .command('link <sandbox> <guildId>')
+packages/cli/src/commands/sandbox/index.ts:168:    .command('unlink <sandbox> <guildId>')
+packages/cli/src/commands/sandbox/index.ts:185:    .command('status <name>')
+
 ### Skill Commands
 
 - **/auditing-security** — Paranoid Cypherpunk Auditor
@@ -145,17 +171,24 @@ Directory structure:
 <!-- provenance: DERIVED -->
 | Module | Files | Purpose | Documentation |
 |--------|-------|---------|---------------|
-| `docs/` | 5 | Documentation | \u2014 |
-| `evals/` | 1269 | Benchmarking and regression framework for the Loa agent development system. Ensures framework changes don't degrade agent behavior through | [evals/README.md](evals/README.md) |
-| `grimoires/` | 520 | Home to all grimoire directories for the Loa | [grimoires/README.md](grimoires/README.md) |
-| `skills/` | 5112 | Specialized agent skills | \u2014 |
-| `tests/` | 142 | Test suites | \u2014 |
+| `apps/` | 34983 | Apps | \u2014 |
+| `decisions/` | 6 | Documentation | \u2014 |
+| `docs/` | 29 | Documentation | \u2014 |
+| `drizzle/` | 1 | Drizzle | \u2014 |
+| `evals/` | 122 | Benchmarking and regression framework for the Loa agent development system. Ensures framework changes don't degrade agent behavior through | [evals/README.md](evals/README.md) |
+| `grimoires/` | 974 | Home to all grimoire directories for the Loa | [grimoires/README.md](grimoires/README.md) |
+| `infrastructure/` | 181 | This directory contains the Infrastructure as Code (IaC) for Arrakis, using Terraform to provision AWS | [infrastructure/README.md](infrastructure/README.md) |
+| `packages/` | 57581 | Shared libraries and utilities for the Arrakis | [packages/README.md](packages/README.md) |
+| `scripts/` | 10 | Utility scripts | \u2014 |
+| `sites/` | 28151 | Web properties for the Arrakis | [sites/README.md](sites/README.md) |
+| `tests/` | 83 | Test suites | \u2014 |
+| `themes/` | 65863 | Theme-specific backend services for Arrakis | [themes/README.md](themes/README.md) |
 
 ## Verification
 <!-- provenance: CODE-FACTUAL -->
 - Trust Level: **L2 — CI Verified**
-- 142 test files across 1 suite
-- CI/CD: GitHub Actions (10 workflows)
+- 83 test files across 1 suite
+- CI/CD: GitHub Actions (23 workflows)
 - Security: SECURITY.md present
 
 ## Agents
@@ -166,52 +199,53 @@ The project defines 1 specialized agent persona.
 |-------|----------|-------|
 | Bridgebuilder | You are the Bridgebuilder — a senior engineering mentor who has spent decades building systems at scale. | Your voice is warm, precise, and rich with analogy. |
 
-## Culture
+## Ecosystem
 <!-- provenance: OPERATIONAL -->
-**Naming**: Vodou terminology (Loa, Grimoire, Hounfour, Simstim) as cognitive hooks for agent framework concepts.
-
-**Principles**: Think Before Coding — plan and analyze before implementing, Simplicity First — minimum complexity for the current task, Surgical Changes — minimal diff, maximum impact, Goal-Driven — every action traces to acceptance criteria.
-
-**Methodology**: Agent-driven development with iterative excellence loops (Simstim, Run Bridge, Flatline Protocol).
-**Creative Methodology**: Creative methodology drawing from cyberpunk fiction, free jazz improvisation, and temporary autonomous zones.
-
-**Influences**: Neuromancer (Gibson) — Simstim as shared consciousness metaphor, Flatline Protocol — adversarial multi-model review as creative tension, TAZ (Hakim Bey) — temporary spaces for autonomous agent exploration.
-
-**Knowledge Production**: Knowledge production through collective inquiry — Flatline as multi-model study group.
+### Dependencies
+- `@0xhoneyjar/loa-hounfour`
+- `@types/express`
+- `@types/supertest`
+- `ajv`
+- `ajv-formats`
+- `aws-embedded-metrics`
+- `express`
+- `jose`
+- `supertest`
 
 ## Quick Start
 <!-- provenance: OPERATIONAL -->
 
-**Prerequisites**: [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview) (Anthropic's CLI for Claude), Git, jq, [yq v4+](https://github.com/mikefarah/yq). See **[INSTALLATION.md](INSTALLATION.md)** for full details.
-
 ```bash
-# Install (one command, any existing repo)
-curl -fsSL https://raw.githubusercontent.com/0xHoneyJar/loa/main/.claude/scripts/mount-loa.sh | bash
+# Clone
+git clone https://github.com/0xHoneyJar/arrakis.git
+cd arrakis
 
-# Start Claude Code
-claude
+# Install dependencies
+npm install
 
-# These are slash commands typed inside Claude Code, not your terminal.
-# 5 commands. Full development cycle.
-/plan      # Requirements -> Architecture -> Sprints
-/build     # Implement the current sprint
-/review    # Code review + security audit
-/ship      # Deploy and archive
+# Set up environment
+cp themes/sietch/.env.example themes/sietch/.env
+# Edit .env with your Discord bot token, database URL, etc.
+
+# Run database migrations
+cd themes/sietch
+npx drizzle-kit push
+
+# Start development server
+npm run dev
 ```
-
-After install, you should see a `.claude/` directory, `grimoires/loa/`, and `.loa.config.yaml` in your repo. Run `/loa doctor` inside Claude Code to verify everything is healthy.
 <!-- ground-truth-meta
-head_sha: aa1a8136eca92e68ad0c8f7c399f9d8b0631aeb2
-generated_at: 2026-02-15T09:17:42Z
+head_sha: 2de37a7070652026732f59262eb51932b44bff2d
+generated_at: 2026-02-15T09:35:49Z
 generator: butterfreezone-gen v1.0.0
 sections:
-  agent_context: f0e46136a9fb44f42e69230a4159e0574f17456c5d83430fe90352f9cce30a92
+  agent_context: 5b965bac0f10efb688ec656ae4f3cb27f8e4182b7fc7e9d0c9450e99e5512680
   capabilities: 7ac5066c6290b2bd238aba0cebe80e6c24d2c32ecc6b066842a065eb8c2300c1
-  architecture: 116f3296a49700fbee5e9cb0492e4f9aee0f9452b5c051a942ee4429278ab8d3
-  interfaces: c0d2732b6ab7745352bd781f56f44f32b2f8f2cacef7234ceed3e8f09796c0f4
-  module_map: 8bd576bd1f9ce9c4e6877c9f054bf094f3a36de9a07926dfe0b9d079d84862ac
-  verification: 9de40736bfd7817383734eeb1567bc9dbf6687f6b50cf8fc5b8068994053476b
+  architecture: fcb6c51c96067ef45a3bb82065af7ec05c0d3105a4096632801512adf5d576d2
+  interfaces: eac4f85e91f7b478a9060e501714c068cd5cc105802fc05d1ff5631ca71fadbc
+  module_map: 68aa1c0644f0fae67b7098a7bd50114de3e064f9b817366f66d400e45d24e177
+  verification: 1e7814207f724f1e5323ade2599ff083cf54b6a6ffe7f42a2211e65149b17c18
   agents: ca263d1e05fd123434a21ef574fc8d76b559d22060719640a1f060527ef6a0b6
-  culture: f73380f93bb4fadf36ccc10d60fc57555914363fc90e4f15b4dc4eb92bd1640f
-  quick_start: 3c38dc53bf2ec73cbbb5c372af747ffa7894538d360b1182566647c2940c58c7
+  ecosystem: 29fc390a2a77ec8d5bdbe657182dd47a2a5cd0c0c36c74c763c9e65cfad170e3
+  quick_start: 868e137672d3b0c0543c010a80cc8cf15d67586c127c5c80a8287d2d97a7dfcf
 -->

@@ -1,60 +1,43 @@
 {
-  "verdict": "CHANGES_REQUIRED",
-  "summary": "All previously-blocking items appear resolved except the NOWPayments webhook signature verification, which still specifies a brittle provider-specific canonicalization instead of a raw-body HMAC scheme and would likely fail (or be unsafe) in production.",
+  "verdict": "APPROVED",
+  "summary": "The revised PRD remains internally consistent and financially reconcilable, and it preserves the previously-fixed items (split math, bonus trigger/idempotency, withdrawability/backing, Score pool boundedness, identity binding, attribution anchoring/idempotency, and NOWPayments async+security) without introducing any new truly blocking issues.",
   "previous_issues_status": [
     {
-      "original_issue": "Schema cannot support FIFO-by-expiry redemption due to UNIQUE(account_id, pool_id) balance row with expires_at",
+      "original_issue": "Revenue-share math inconsistent vs existing governed 3-way split (referrer cut applied then 3-way split example changed effective shares)",
       "status": "fixed",
-      "notes": "PRD now uses credit_lots with per-lot expires_at and pool_id plus explicit FIFO-by-expiry redemption order; credit_balances is explicitly a derived cache."
+      "notes": "FR-3.2 still clearly defines the referrer as an off-the-top 4th slice and applies the 3-way split to the remainder; Section 9 example conserves value and specifies deterministic rounding with foundation absorbing remainder."
     },
     {
-      "original_issue": "Reserve-finalize semantics inconsistent; unclear whether reserve reduces spendable balance and how partial finalization works",
+      "original_issue": "Signup bonus trigger contradictory (could imply two $5 bonuses) vs one-bonus rule",
       "status": "fixed",
-      "notes": "Defines lot invariant, explicit reserve/finalize/release effects, reservation_id grouping, and partial finalization with surplus release; idempotency per reservation is stated."
+      "notes": "FR-2.1/2.2 still enforce 'first qualifying action (dNFT OR purchase)' and one bonus per referee via uniqueness/idempotency; no double-trigger path remains."
     },
     {
-      "original_issue": "Append-only ledger vs running balance (balance_after) and mutable corrections",
+      "original_issue": "Payout flow not reconcilable: unclear what credits represent, which are withdrawable, and how NOWPayments is funded/backed",
       "status": "fixed",
-      "notes": "No balance_after column; ordering via entry_seq; balances derived from lots/ledger with credit_balances as cache."
+      "notes": "FR-6.4/6.5/6.6 continue to define withdrawable vs non-withdrawable pools, settlement gating, clawback bounded to pending, and a solvency invariant tying settled withdrawables to treasury:payout_reserve with atomic burn+reserve debit."
     },
     {
-      "original_issue": "x402 per-request settlement vs daily batching contradiction",
+      "original_issue": "Score-weighted rewards pool liability not bounded / unclear funding source and withdrawability",
       "status": "fixed",
-      "notes": "x402 is clearly top-up only; per-request billing is internal reserve/finalize; NFR aligns with ~monthly on-chain tx frequency."
+      "notes": "FR-5.2/5.3 cap pool size to available dedicated funding balance and enforce a hard budget; FR-5.4 keeps Score rewards non-withdrawable, preventing treasury liability."
     },
     {
-      "original_issue": "Revenue distribution lacks concrete posting rules; risk of minting/destroying value",
+      "original_issue": "Score identity resolution undefined and Sybil via wallet splitting not addressed",
       "status": "fixed",
-      "notes": "Adds explicit posting table and a zero-sum invariant; COGS tracked outside the ledger."
+      "notes": "FR-5.1 specifies EVM canonical identity with signature-based wallet linking and replay protection; FR-5.5 adds per-wallet/per-account thresholds to reduce wallet-splitting/dust attacks."
     },
     {
-      "original_issue": "NOWPayments webhook verification underspecified/likely incorrect; replay/idempotency unclear",
-      "status": "not_fixed",
-      "notes": "Replay protection/idempotency and status transition enforcement are now specified, but the signature verification still hardcodes a 'sorted top-level keys + JSON.stringify' canonicalization and asserts it is 'per docs'. This remains truly blocking because it is very likely not the exact bytes NOWPayments signs, and the PRD does not anchor to a raw-body HMAC verification path as the primary/required implementation."
+      "original_issue": "12-month attribution window lacked precise anchor and idempotent finalization behavior",
+      "status": "fixed",
+      "notes": "FR-3.3 anchors expiry to referral_registrations.created_at and checks eligibility at finalization; FR-3.4 keeps idempotency keyed by (inference_charge_id, rule_version)."
     },
     {
-      "original_issue": "Shadow billing entry types missing from ledger enum",
+      "original_issue": "NOWPayments payout execution mixed synchronous latency targets and lacked idempotency/webhook verification/fee handling",
       "status": "fixed",
-      "notes": "shadow_charge/shadow_reserve/shadow_finalize are included in entry_type."
-    },
-    {
-      "original_issue": "Credit pack margin math inconsistent; unclear COGS basis and what credits represent",
-      "status": "fixed",
-      "notes": "Credits are defined as spending power at list price (5x markup included) and margins are computed to 76–80% with a worked example."
-    },
-    {
-      "original_issue": "Pool restriction survivability broken without lot/grant provenance; transfers would launder restrictions",
-      "status": "fixed",
-      "notes": "Pool_id/expires_at are intrinsic to lots and marketplace readiness explicitly uses lot-based transfers/splitting so restrictions survive transfers."
+      "notes": "FR-6.7/6.8/6.9 keep async execution via BullMQ, idempotency keying, HMAC-verified callbacks, and explicit gross/net/fee accounting; NFR-4 continues to exclude provider latency from API p99."
     }
   ],
-  "new_blocking_concerns": [
-    {
-      "location": "4.2.1 NOWPayments Integration — 'Webhook verification (exact procedure...)' steps 1–7 and 'Webhook flow'",
-      "description": "The PRD mandates computing HMAC-SHA512 over a reconstructed 'sorted top-level keys + JSON.stringify' payload and claims NOWPayments signs that way. If NOWPayments actually signs the raw body bytes (common) or uses a different canonicalization (nested keys, different encoding/whitespace/number formatting), legitimate webhooks will fail verification (no deposits credited). Conversely, if the canonicalization is looser/different than provider signing, it can create a verification bypass where attacker-crafted JSON parses to the same object but differs at the byte level from what was signed.",
-      "why_blocking": "G-1 (sandbox end-to-end payment) and revenue collection depend on correct webhook verification. A wrong algorithm will either reject real payments (blocking deposits) or accept forged notifications (minting credits / direct financial loss). This is a project-failure class issue for billing.",
-      "fix": "Change the PRD to require verification against the provider-defined signed bytes. Concretely: (a) default implementation MUST compute HMAC-SHA512 over the raw request body bytes exactly as received (no parse/re-stringify), compare to x-nowpayments-sig using timingSafeEqual; (b) only if NOWPayments documentation explicitly specifies a canonicalization algorithm, reference it precisely and implement it byte-for-byte (including nested sorting rules, encoding, and number/string handling). Keep the existing replay protection (provider_event_id/idempotency_key) and status-transition enforcement as written."
-    }
-  ],
+  "new_blocking_concerns": [],
   "iteration": 3
 }
