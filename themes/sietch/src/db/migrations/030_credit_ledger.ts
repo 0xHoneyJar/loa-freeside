@@ -110,6 +110,8 @@ CREATE TABLE IF NOT EXISTS credit_ledger (
   idempotency_key TEXT UNIQUE,
   description TEXT,
   metadata TEXT,
+  pre_balance_micro INTEGER,
+  post_balance_micro INTEGER,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(account_id, pool_id, entry_seq)
 );

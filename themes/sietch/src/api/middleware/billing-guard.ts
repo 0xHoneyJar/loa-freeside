@@ -17,7 +17,7 @@
  */
 
 import type { Request, Response, NextFunction } from 'express';
-import type { ICreditLedgerService, ReserveResult, FinalizeResult } from '../../packages/core/ports/ICreditLedgerService.js';
+import type { ICreditLedgerService, ReservationResult, FinalizeResult } from '../../packages/core/ports/ICreditLedgerService.js';
 import { logger } from '../../utils/logger.js';
 
 // =============================================================================
@@ -49,7 +49,7 @@ export interface BillingContext {
   /** Estimated cost in micro-USD */
   estimatedCostMicro: bigint;
   /** Reservation result (null in shadow mode) */
-  reservation: ReserveResult | null;
+  reservation: ReservationResult | null;
   /** Start time for billing overhead measurement */
   startedAt: number;
 }
@@ -106,7 +106,6 @@ function estimateCostMicro(req: Request, safetyMultiplier: number): bigint {
 export function createBillingReserveMiddleware(config: BillingGuardConfig) {
   const mode = resolveBillingMode(config.mode);
   const safetyMultiplier = config.safetyMultiplier ?? 1.1;
-  const overrunThreshold = config.overrunAlertThresholdPct ?? 5;
   const reserveTtl = config.reserveTtlSeconds ?? 300;
 
   return async function billingReserve(

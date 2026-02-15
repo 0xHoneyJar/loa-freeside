@@ -50,9 +50,6 @@ const DEFAULT_TTL_SECONDS = 300;
 /** SQLite BUSY retry backoff schedule (ms) */
 const BUSY_RETRY_DELAYS = [10, 50, 200];
 
-/** Redis connect timeout (ms) */
-const REDIS_CONNECT_TIMEOUT_MS = 500;
-
 /** Redis command timeout (ms) */
 const REDIS_COMMAND_TIMEOUT_MS = 200;
 
@@ -217,16 +214,24 @@ export class CreditLedgerAdapter implements ICreditLedgerService {
         // Allocate entry_seq
         const entrySeq = this.allocateSeq(accountId, poolId);
 
+        // Audit trail: snapshot balance before and after lot creation
+        // Pre-balance is computed AFTER the lot INSERT (lot exists but hasn't been counted yet in prior balance)
+        // Since we just inserted the lot, the current available_micro includes the new lot
+        const postBalance = this.snapshotBalance(accountId, poolId);
+        const preBalance = postBalance - amountMicro;
+
         // Create ledger entry
         const entryId = randomUUID();
         const entryType = sourceType === 'grant' ? 'grant' : 'deposit';
         this.db.prepare(
           `INSERT INTO credit_ledger
            (id, account_id, pool_id, lot_id, entry_seq, entry_type,
-            amount_micro, idempotency_key, description, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            amount_micro, idempotency_key, description,
+            pre_balance_micro, post_balance_micro, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         ).run(entryId, accountId, poolId, lotId, entrySeq, entryType,
-          amountMicro.toString(), idempotencyKey, description, now);
+          amountMicro.toString(), idempotencyKey, description,
+          preBalance.toString(), postBalance.toString(), now);
 
         // Update balance cache
         this.upsertBalance(accountId, poolId);
@@ -286,6 +291,7 @@ export class CreditLedgerAdapter implements ICreditLedgerService {
         const expiresAt = sqliteFuture(ttlSeconds);
 
         // FIFO lot selection: pool-restricted first, expiring first, oldest first
+        // safeIntegers(true) ensures monetary columns return BigInt (no silent truncation above 2^53)
         const lots = this.db.prepare(`
           SELECT id, available_micro
           FROM credit_lots
@@ -298,7 +304,7 @@ export class CreditLedgerAdapter implements ICreditLedgerService {
             CASE WHEN expires_at IS NOT NULL THEN 0 ELSE 1 END ASC,
             expires_at ASC,
             created_at ASC
-        `).all(accountId, effectivePool, effectivePool) as Array<{ id: string; available_micro: string }>;
+        `).safeIntegers(true).all(accountId, effectivePool, effectivePool) as Array<{ id: string; available_micro: bigint }>;
 
         // Iterate lots, allocating until requested amount is fulfilled
         let remaining = amountMicro;
@@ -307,7 +313,7 @@ export class CreditLedgerAdapter implements ICreditLedgerService {
         for (const lot of lots) {
           if (remaining <= 0n) break;
 
-          const available = BigInt(lot.available_micro);
+          const available = BigInt(lot.available_micro); // no-op when already BigInt via safeIntegers
           const take = remaining < available ? remaining : available;
 
           // Update lot: move from available to reserved
@@ -347,15 +353,21 @@ export class CreditLedgerAdapter implements ICreditLedgerService {
           insertLot.run(reservationId, alloc.lotId, alloc.reservedMicro.toString(), nowStr);
         }
 
+        // Audit trail: balance after lots have been debited
+        const postBalance = this.snapshotBalance(accountId, effectivePool);
+        const preBalance = postBalance + amountMicro; // lots were already debited above
+
         // Create ledger entry
         const entrySeq = this.allocateSeq(accountId, effectivePool);
         this.db.prepare(
           `INSERT INTO credit_ledger
            (id, account_id, pool_id, reservation_id, entry_seq, entry_type,
-            amount_micro, idempotency_key, description, metadata, created_at)
-           VALUES (?, ?, ?, ?, ?, 'reserve', ?, ?, ?, ?, ?)`
+            amount_micro, idempotency_key, description, metadata,
+            pre_balance_micro, post_balance_micro, created_at)
+           VALUES (?, ?, ?, ?, ?, 'reserve', ?, ?, ?, ?, ?, ?, ?)`
         ).run(randomUUID(), accountId, effectivePool, reservationId, entrySeq,
-          (-amountMicro).toString(), idempotencyKey, description, metadata, nowStr);
+          (-amountMicro).toString(), idempotencyKey, description, metadata,
+          preBalance.toString(), postBalance.toString(), nowStr);
 
         // Update balance cache
         this.upsertBalance(accountId, effectivePool);
@@ -472,11 +484,11 @@ export class CreditLedgerAdapter implements ICreditLedgerService {
         const resLots = this.db.prepare(
           `SELECT lot_id, reserved_micro FROM reservation_lots
            WHERE reservation_id = ?`
-        ).all(reservationId) as Array<{ lot_id: string; reserved_micro: string }>;
+        ).safeIntegers(true).all(reservationId) as Array<{ lot_id: string; reserved_micro: bigint }>;
 
         let costRemaining = effectiveCost;
         for (const rl of resLots) {
-          const lotReserved = BigInt(rl.reserved_micro);
+          const lotReserved = BigInt(rl.reserved_micro); // no-op when already BigInt via safeIntegers
           const consume = costRemaining < lotReserved ? costRemaining : lotReserved;
           const release = lotReserved - consume;
 
@@ -499,17 +511,25 @@ export class CreditLedgerAdapter implements ICreditLedgerService {
            WHERE id = ?`
         ).run(now, reservationId);
 
+        // Audit trail: balance after lots consumed/surplus released
+        const postBalance = this.snapshotBalance(accountId, poolId);
+        // Pre-balance: before finalize, the surplus was still reserved (not available)
+        // and the consumed portion was also reserved. So pre = post - surplusReleased
+        const preBalance = postBalance - surplusReleasedMicro;
+
         // Create ledger entry for finalize
         const entrySeq = this.allocateSeq(accountId, poolId);
         this.db.prepare(
           `INSERT INTO credit_ledger
            (id, account_id, pool_id, reservation_id, entry_seq, entry_type,
-            amount_micro, idempotency_key, description, metadata, created_at)
-           VALUES (?, ?, ?, ?, ?, 'finalize', ?, ?, ?, ?, ?)`
+            amount_micro, idempotency_key, description, metadata,
+            pre_balance_micro, post_balance_micro, created_at)
+           VALUES (?, ?, ?, ?, ?, 'finalize', ?, ?, ?, ?, ?, ?, ?)`
         ).run(randomUUID(), accountId, poolId, reservationId, entrySeq,
           (-effectiveCost).toString(), idempotencyKey,
           options?.description ?? 'finalize',
-          options?.metadata ?? null, now);
+          options?.metadata ?? null,
+          preBalance.toString(), postBalance.toString(), now);
 
         // Update balance cache
         this.upsertBalance(accountId, poolId);
@@ -557,7 +577,7 @@ export class CreditLedgerAdapter implements ICreditLedgerService {
         const resLots = this.db.prepare(
           `SELECT lot_id, reserved_micro FROM reservation_lots
            WHERE reservation_id = ?`
-        ).all(reservationId) as Array<{ lot_id: string; reserved_micro: string }>;
+        ).safeIntegers(true).all(reservationId) as Array<{ lot_id: string; reserved_micro: bigint }>;
 
         for (const rl of resLots) {
           this.db.prepare(
@@ -573,16 +593,22 @@ export class CreditLedgerAdapter implements ICreditLedgerService {
           `UPDATE credit_reservations SET status = 'released' WHERE id = ?`
         ).run(reservationId);
 
-        // Create ledger entry
+        // Audit trail: balance after reserved amounts returned to lots
         const now = sqliteNow();
+        const postBalance = this.snapshotBalance(accountId, poolId);
+        const preBalance = postBalance - totalReserved; // lots were just credited above
+
+        // Create ledger entry
         const entrySeq = this.allocateSeq(accountId, poolId);
         this.db.prepare(
           `INSERT INTO credit_ledger
            (id, account_id, pool_id, reservation_id, entry_seq, entry_type,
-            amount_micro, description, created_at)
-           VALUES (?, ?, ?, ?, ?, 'release', ?, ?, ?)`
+            amount_micro, description,
+            pre_balance_micro, post_balance_micro, created_at)
+           VALUES (?, ?, ?, ?, ?, 'release', ?, ?, ?, ?, ?)`
         ).run(randomUUID(), accountId, poolId, reservationId, entrySeq,
-          totalReserved.toString(), options?.description ?? 'release', now);
+          totalReserved.toString(), options?.description ?? 'release',
+          preBalance.toString(), postBalance.toString(), now);
 
         // Update balance cache
         this.upsertBalance(accountId, poolId);
@@ -644,11 +670,31 @@ export class CreditLedgerAdapter implements ICreditLedgerService {
       params.push(options.entryType);
     }
 
-    sql += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`;
+    sql += ` ORDER BY created_at DESC, entry_seq DESC LIMIT ? OFFSET ?`;
     params.push(limit, offset);
 
     const rows = this.db.prepare(sql).all(...params) as CreditLedgerRow[];
     return rows.map(rowToLedgerEntry);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Internal: Balance Snapshot (Task 7.5 Audit Trail)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Compute available balance from credit_lots within the current transaction.
+   * Used for pre/post balance audit trail on ledger entries.
+   * MUST be called within a BEGIN IMMEDIATE transaction for snapshot consistency.
+   */
+  private snapshotBalance(accountId: string, poolId: string): bigint {
+    const row = this.db.prepare(
+      `SELECT COALESCE(SUM(available_micro), 0) as balance
+       FROM credit_lots
+       WHERE account_id = ?
+         AND (pool_id = ? OR pool_id IS NULL OR pool_id = 'general')
+         AND (expires_at IS NULL OR expires_at > datetime('now'))`
+    ).safeIntegers(true).get(accountId, poolId) as { balance: bigint };
+    return BigInt(row.balance);
   }
 
   // ---------------------------------------------------------------------------
@@ -724,10 +770,10 @@ export class CreditLedgerAdapter implements ICreditLedgerService {
        WHERE account_id = ?
          AND (pool_id = ? OR pool_id IS NULL OR pool_id = 'general')
          AND (expires_at IS NULL OR expires_at > datetime('now'))`
-    ).get(accountId, poolId) as { available_micro: string; reserved_micro: string };
+    ).safeIntegers(true).get(accountId, poolId) as { available_micro: bigint; reserved_micro: bigint };
 
     return {
-      availableMicro: BigInt(row.available_micro),
+      availableMicro: BigInt(row.available_micro), // no-op when already BigInt via safeIntegers
       reservedMicro: BigInt(row.reserved_micro),
     };
   }
@@ -917,6 +963,8 @@ interface CreditLedgerRow {
   idempotency_key: string | null;
   description: string | null;
   metadata: string | null;
+  pre_balance_micro: string | null;
+  post_balance_micro: string | null;
   created_at: string;
 }
 
@@ -964,6 +1012,8 @@ function rowToLedgerEntry(row: CreditLedgerRow): LedgerEntry {
     idempotencyKey: row.idempotency_key,
     description: row.description,
     metadata: row.metadata,
+    preBalanceMicro: row.pre_balance_micro != null ? BigInt(row.pre_balance_micro) : null,
+    postBalanceMicro: row.post_balance_micro != null ? BigInt(row.post_balance_micro) : null,
     createdAt: row.created_at,
   };
 }

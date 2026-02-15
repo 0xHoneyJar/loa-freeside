@@ -99,6 +99,10 @@ export interface LedgerEntry {
   idempotencyKey: string | null;
   description: string | null;
   metadata: string | null;
+  /** Pre-operation balance (null for rows created before migration 034) */
+  preBalanceMicro: bigint | null;
+  /** Post-operation balance (null for rows created before migration 034) */
+  postBalanceMicro: bigint | null;
   createdAt: string;
 }
 

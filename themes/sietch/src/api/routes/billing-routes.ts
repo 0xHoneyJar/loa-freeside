@@ -18,7 +18,6 @@ import { z } from 'zod';
 import { createHmac } from 'crypto';
 import { requireAuth } from '../middleware/auth.js';
 import { memberRateLimiter } from '../middleware.js';
-import { createOptionalX402Middleware, type X402Request } from '../middleware/x402-middleware.js';
 import { serializeBigInt } from '../../packages/core/utils/micro-usd.js';
 import { logger } from '../../utils/logger.js';
 import type { IPaymentService } from '../../packages/core/ports/IPaymentService.js';
@@ -319,6 +318,7 @@ const s2sRateLimiter = rateLimit({
 const finalizeSchema = z.object({
   reservationId: z.string().min(1),
   actualCostMicro: z.string().regex(/^\d+$/, 'Must be a positive integer string'),
+  accountId: z.string().min(1).optional(),
 });
 
 const historyQuerySchema = z.object({
@@ -352,7 +352,30 @@ creditBillingRouter.post(
       return;
     }
 
-    const { reservationId, actualCostMicro } = result.data;
+    const { reservationId, actualCostMicro, accountId } = result.data;
+
+    // Task 7.1: Confused deputy prevention — verify account ownership
+    if (accountId && billingDb) {
+      const reservation = billingDb.prepare(
+        `SELECT account_id FROM credit_reservations WHERE id = ?`
+      ).get(reservationId) as { account_id: string } | undefined;
+
+      if (reservation && reservation.account_id !== accountId) {
+        logger.warn({
+          event: 'billing.s2s.finalize.confused_deputy',
+          reservationId,
+          claimedAccountId: accountId,
+          actualAccountId: reservation.account_id,
+          serviceId: (req as any).internalServiceId,
+        }, 'Confused deputy: account mismatch on finalize');
+
+        res.status(403).json({
+          error: 'Forbidden',
+          message: 'Account mismatch: reservation belongs to a different account',
+        });
+        return;
+      }
+    }
 
     try {
       const finalizeResult = await ledger.finalize(
@@ -476,6 +499,8 @@ creditBillingRouter.get(
           poolId: e.poolId,
           reservationId: e.reservationId,
           description: e.description,
+          preBalanceMicro: e.preBalanceMicro,
+          postBalanceMicro: e.postBalanceMicro,
           createdAt: e.createdAt,
         })),
         pagination: {
