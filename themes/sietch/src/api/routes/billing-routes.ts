@@ -112,6 +112,21 @@ const topupRateLimiter = rateLimit({
   },
 });
 
+// Public rate limiter: 100 per minute per IP (for unauthenticated endpoints)
+const publicRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => req.ip ?? 'unknown',
+  handler: (_req, res) => {
+    res.status(429).json({
+      error: 'Too Many Requests',
+      message: 'Rate limit: maximum 100 requests per minute.',
+    });
+  },
+});
+
 // =============================================================================
 // Schemas
 // =============================================================================
@@ -385,6 +400,7 @@ creditBillingRouter.post(
 creditBillingRouter.get(
   '/balance',
   requireBillingFeature,
+  memberRateLimiter,
   requireAuth,
   async (req: Request, res: Response) => {
     const ledger = getLedgerService();
@@ -420,6 +436,7 @@ creditBillingRouter.get(
 creditBillingRouter.get(
   '/history',
   requireBillingFeature,
+  memberRateLimiter,
   requireAuth,
   async (req: Request, res: Response) => {
     const ledger = getLedgerService();
@@ -482,6 +499,7 @@ creditBillingRouter.get(
 creditBillingRouter.get(
   '/pricing',
   requireBillingFeature,
+  publicRateLimiter,
   (_req: Request, res: Response) => {
     // Load pricing from billing_config if available, else return defaults
     const pricing = loadPricingConfig();
