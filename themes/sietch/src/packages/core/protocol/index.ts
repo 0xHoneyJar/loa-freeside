@@ -82,9 +82,22 @@ export { createAtomicCounter } from './atomic-counter.js';
 export type {
   IdentityTrustConfig,
   IdentityCheckResult,
+  AnchorVerificationResult,
+  AnchorLookupFn,
 } from './identity-trust.js';
 
 export {
   DEFAULT_IDENTITY_TRUST,
   evaluateIdentityTrust,
+  verifyIdentityAnchor,
 } from './identity-trust.js';
+
+// BillingEntry — loa-hounfour protocol type
+export type {
+  BillingEntry,
+  ProtocolEntryType,
+} from './billing-entry.js';
+
+export {
+  BILLING_ENTRY_CONTRACT_VERSION,
+} from './billing-entry.js';

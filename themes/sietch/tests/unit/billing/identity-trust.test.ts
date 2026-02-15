@@ -2,17 +2,22 @@
  * Identity-Economy Bridge Tests
  *
  * Tests for graduated trust, identity anchor checks,
- * and four-eyes rotation model.
+ * four-eyes rotation model, and S2S anchor verification.
  *
- * Sprint refs: Tasks 3.4, 3.5
+ * Sprint refs: Tasks 3.4, 3.5; Sprint 253 Task 2.3
  */
 
 import { describe, it, expect } from 'vitest';
+import { createHash } from 'crypto';
 import {
   evaluateIdentityTrust,
   DEFAULT_IDENTITY_TRUST,
+  verifyIdentityAnchor,
 } from '../../../src/packages/core/protocol/identity-trust.js';
-import type { IdentityTrustConfig } from '../../../src/packages/core/protocol/identity-trust.js';
+import type {
+  IdentityTrustConfig,
+  AnchorLookupFn,
+} from '../../../src/packages/core/protocol/identity-trust.js';
 import Database from 'better-sqlite3';
 import { CREDIT_LEDGER_SCHEMA_SQL } from '../../../src/db/migrations/030_credit_ledger.js';
 import { AGENT_IDENTITY_SCHEMA_SQL } from '../../../src/db/migrations/037_agent_identity.js';
@@ -183,5 +188,87 @@ describe('Four-Eyes Anchor Rotation', () => {
     } finally {
       db.close();
     }
+  });
+});
+
+// =============================================================================
+// verifyIdentityAnchor — S2S Anchor Verification (Sprint 253, Task 2.3)
+// =============================================================================
+
+describe('verifyIdentityAnchor', () => {
+  const STORED_ANCHOR = 'test-anchor-value-abc123';
+
+  const lookupWithAnchor: AnchorLookupFn = (id) => {
+    if (id === 'acct-1') return { anchor: STORED_ANCHOR };
+    return null;
+  };
+
+  const lookupNoAnchor: AnchorLookupFn = (id) => {
+    if (id === 'acct-1') return { anchor: '' };
+    return null;
+  };
+
+  it('valid anchor returns verified=true with correct SHA-256 hash', () => {
+    const result = verifyIdentityAnchor('acct-1', STORED_ANCHOR, lookupWithAnchor);
+
+    expect(result.verified).toBe(true);
+    expect(result.reason).toBeUndefined();
+    expect(result.checkedAt).toBeDefined();
+
+    // Verify the hash is correct
+    const expectedHash = 'sha256:' + createHash('sha256').update(STORED_ANCHOR).digest('hex');
+    expect(result.anchorHash).toBe(expectedHash);
+  });
+
+  it('invalid anchor returns verified=false with anchor_mismatch', () => {
+    const result = verifyIdentityAnchor('acct-1', 'wrong-anchor', lookupWithAnchor);
+
+    expect(result.verified).toBe(false);
+    expect(result.reason).toBe('anchor_mismatch');
+    expect(result.anchorHash).toBeUndefined();
+    expect(result.checkedAt).toBeDefined();
+  });
+
+  it('account with no anchor bound returns verified=false with no_anchor_bound', () => {
+    const result = verifyIdentityAnchor('acct-1', 'any-anchor', lookupNoAnchor);
+
+    expect(result.verified).toBe(false);
+    expect(result.reason).toBe('no_anchor_bound');
+    expect(result.anchorHash).toBeUndefined();
+  });
+
+  it('nonexistent account returns verified=false with account_not_found', () => {
+    const result = verifyIdentityAnchor('nonexistent-account', 'any-anchor', lookupWithAnchor);
+
+    expect(result.verified).toBe(false);
+    expect(result.reason).toBe('account_not_found');
+    expect(result.anchorHash).toBeUndefined();
+  });
+
+  it('SHA-256 derivation is deterministic and matches crypto module', () => {
+    const result1 = verifyIdentityAnchor('acct-1', STORED_ANCHOR, lookupWithAnchor);
+    const result2 = verifyIdentityAnchor('acct-1', STORED_ANCHOR, lookupWithAnchor);
+
+    expect(result1.anchorHash).toBe(result2.anchorHash);
+
+    // Cross-verify with raw crypto
+    const rawHash = createHash('sha256').update(STORED_ANCHOR).digest('hex');
+    expect(result1.anchorHash).toBe(`sha256:${rawHash}`);
+  });
+
+  it('checkedAt is valid ISO 8601 timestamp', () => {
+    const result = verifyIdentityAnchor('acct-1', STORED_ANCHOR, lookupWithAnchor);
+
+    const parsed = new Date(result.checkedAt);
+    expect(parsed.toISOString()).toBe(result.checkedAt);
+    expect(parsed.getTime()).toBeGreaterThan(0);
+  });
+
+  it('lookup returning undefined treated as account_not_found', () => {
+    const lookupUndefined: AnchorLookupFn = () => undefined;
+    const result = verifyIdentityAnchor('acct-1', 'any', lookupUndefined);
+
+    expect(result.verified).toBe(false);
+    expect(result.reason).toBe('account_not_found');
   });
 });

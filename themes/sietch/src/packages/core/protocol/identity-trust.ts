@@ -28,6 +28,8 @@
  * @module packages/core/protocol/identity-trust
  */
 
+import { createHash } from 'crypto';
+
 // =============================================================================
 // Configuration
 // =============================================================================
@@ -59,6 +61,69 @@ export interface IdentityCheckResult {
   reason?: string;
   /** Whether identity was actually checked (false if feature flag off or below threshold) */
   checked: boolean;
+}
+
+// =============================================================================
+// Anchor Verification (Sprint 253, Task 2.2)
+// =============================================================================
+
+/** Typed result from anchor verification — decoupled from HTTP layer */
+export interface AnchorVerificationResult {
+  /** Whether the provided anchor matches the stored one */
+  verified: boolean;
+  /** SHA-256 hash of the stored anchor (for cross-system reference via JWT claims) */
+  anchorHash?: string;
+  /** ISO 8601 timestamp of when verification was performed */
+  checkedAt: string;
+  /** Reason code when verification fails */
+  reason?: 'anchor_mismatch' | 'no_anchor_bound' | 'account_not_found';
+}
+
+/** Lookup function signature — injected for testability */
+export type AnchorLookupFn = (accountId: string) => { anchor: string } | null | undefined;
+
+/**
+ * Verify an identity anchor against the stored value for an account.
+ *
+ * Design decisions:
+ * - Accepts a lookup function rather than DB dependency for testability
+ * - Compares raw anchors (matching existing finalize endpoint behavior)
+ * - Returns SHA-256 hash in result for cross-system JWT embedding
+ * - `account_not_found` vs `no_anchor_bound` distinction lets callers
+ *   differentiate "bad account ID" from "account exists but no anchor set"
+ *
+ * @param accountId - The agent account ID to verify against
+ * @param anchor - The anchor string provided by the calling service
+ * @param lookupAnchor - Function to look up stored anchor by accountId
+ */
+export function verifyIdentityAnchor(
+  accountId: string,
+  anchor: string,
+  lookupAnchor: AnchorLookupFn,
+): AnchorVerificationResult {
+  const checkedAt = new Date().toISOString();
+
+  const stored = lookupAnchor(accountId);
+
+  // Account not found or lookup returned null
+  if (stored === null || stored === undefined) {
+    return { verified: false, checkedAt, reason: 'account_not_found' };
+  }
+
+  // Account exists but no anchor bound
+  if (!stored.anchor) {
+    return { verified: false, checkedAt, reason: 'no_anchor_bound' };
+  }
+
+  // Compare raw anchors (consistent with finalize endpoint at billing-routes.ts:443)
+  if (anchor !== stored.anchor) {
+    return { verified: false, checkedAt, reason: 'anchor_mismatch' };
+  }
+
+  // Derive SHA-256 hash for cross-system reference
+  const anchorHash = 'sha256:' + createHash('sha256').update(stored.anchor).digest('hex');
+
+  return { verified: true, anchorHash, checkedAt };
 }
 
 // =============================================================================
