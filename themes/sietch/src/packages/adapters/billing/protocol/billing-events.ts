@@ -333,6 +333,31 @@ export interface WalletUnlinked extends BillingEventBase {
 }
 
 // ---------------------------------------------------------------------------
+// Budget events
+// ---------------------------------------------------------------------------
+
+export interface AgentBudgetWarning extends BillingEventBase {
+  type: 'AgentBudgetWarning';
+  aggregateType: 'account';
+  payload: {
+    accountId: string;
+    currentSpendMicro: string;
+    dailyCapMicro: string;
+    pctUsed: number;
+  };
+}
+
+export interface AgentBudgetExhausted extends BillingEventBase {
+  type: 'AgentBudgetExhausted';
+  aggregateType: 'account';
+  payload: {
+    accountId: string;
+    currentSpendMicro: string;
+    dailyCapMicro: string;
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Discriminated union
 // ---------------------------------------------------------------------------
 
@@ -353,6 +378,8 @@ export type BillingEvent =
   | AgentSettlementInstant
   | AgentClawbackPartial
   | AgentClawbackReceivableCreated
+  | AgentBudgetWarning
+  | AgentBudgetExhausted
   | PayoutRequested
   | PayoutApproved
   | PayoutProcessing
@@ -383,6 +410,8 @@ export const BILLING_EVENT_TYPES = [
   'AgentSettlementInstant',
   'AgentClawbackPartial',
   'AgentClawbackReceivableCreated',
+  'AgentBudgetWarning',
+  'AgentBudgetExhausted',
   'PayoutRequested',
   'PayoutApproved',
   'PayoutProcessing',

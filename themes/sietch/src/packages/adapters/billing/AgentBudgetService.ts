@@ -25,6 +25,7 @@ import type {
   SpendingLimit,
   CircuitState,
 } from '../../core/ports/IAgentBudgetService.js';
+import type { BillingEventEmitter } from './BillingEventEmitter.js';
 
 // =============================================================================
 // Constants
@@ -56,10 +57,12 @@ interface IRedisClient {
 export class AgentBudgetService implements IAgentBudgetService {
   private db: Database.Database;
   private redis: IRedisClient | null;
+  private eventEmitter: BillingEventEmitter | null;
 
-  constructor(db: Database.Database, redis?: IRedisClient) {
+  constructor(db: Database.Database, redis?: IRedisClient, eventEmitter?: BillingEventEmitter) {
     this.db = db;
     this.redis = redis ?? null;
+    this.eventEmitter = eventEmitter ?? null;
   }
 
   async setDailyCap(accountId: string, capMicro: bigint): Promise<void> {
@@ -259,6 +262,38 @@ export class AgentBudgetService implements IAgentBudgetService {
       SET current_spend_micro = ?, circuit_state = ?, updated_at = ?
       WHERE id = ?
     `).run(Number(newSpend), newState, now, limit.id);
+
+    // Emit circuit breaker events
+    if (this.eventEmitter) {
+      if (newState === 'warning') {
+        this.eventEmitter.emit({
+          type: 'AgentBudgetWarning',
+          aggregateType: 'account',
+          aggregateId: accountId,
+          timestamp: now,
+          causationId: `budget:finalize:${reservationId}`,
+          payload: {
+            accountId,
+            currentSpendMicro: newSpend.toString(),
+            dailyCapMicro: cap.toString(),
+            pctUsed,
+          },
+        }, { db: tx as any });
+      } else if (newState === 'open') {
+        this.eventEmitter.emit({
+          type: 'AgentBudgetExhausted',
+          aggregateType: 'account',
+          aggregateId: accountId,
+          timestamp: now,
+          causationId: `budget:finalize:${reservationId}`,
+          payload: {
+            accountId,
+            currentSpendMicro: newSpend.toString(),
+            dailyCapMicro: cap.toString(),
+          },
+        }, { db: tx as any });
+      }
+    }
 
     logger.info({
       event: 'budget.finalization_recorded',
