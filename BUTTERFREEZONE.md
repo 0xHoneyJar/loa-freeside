@@ -176,13 +176,13 @@ packages/cli/src/commands/sandbox/index.ts:185:    .command('status <name>')
 | `docs/` | 29 | Documentation | \u2014 |
 | `drizzle/` | 1 | Drizzle | \u2014 |
 | `evals/` | 122 | Benchmarking and regression framework for the Loa agent development system. Ensures framework changes don't degrade agent behavior through | [evals/README.md](evals/README.md) |
-| `grimoires/` | 1001 | Home to all grimoire directories for the Loa | [grimoires/README.md](grimoires/README.md) |
+| `grimoires/` | 1016 | Home to all grimoire directories for the Loa | [grimoires/README.md](grimoires/README.md) |
 | `infrastructure/` | 181 | This directory contains the Infrastructure as Code (IaC) for Arrakis, using Terraform to provision AWS | [infrastructure/README.md](infrastructure/README.md) |
 | `packages/` | 57581 | Shared libraries and utilities for the Arrakis | [packages/README.md](packages/README.md) |
 | `scripts/` | 10 | Utility scripts | \u2014 |
 | `sites/` | 28151 | Web properties for the Arrakis | [sites/README.md](sites/README.md) |
 | `tests/` | 83 | Test suites | \u2014 |
-| `themes/` | 65906 | Theme-specific backend services for Arrakis | [themes/README.md](themes/README.md) |
+| `themes/` | 65920 | Theme-specific backend services for Arrakis | [themes/README.md](themes/README.md) |
 
 ## Verification
 <!-- provenance: CODE-FACTUAL -->
@@ -235,15 +235,15 @@ npx drizzle-kit push
 npm run dev
 ```
 <!-- ground-truth-meta
-head_sha: 229f36bc29cf707d390d7cbb2097da3a7b27d22f
-generated_at: 2026-02-16T01:50:01Z
+head_sha: ecf5eec8067a22b7b49c41102751357036614748
+generated_at: 2026-02-16T05:15:51Z
 generator: butterfreezone-gen v1.0.0
 sections:
   agent_context: 5b965bac0f10efb688ec656ae4f3cb27f8e4182b7fc7e9d0c9450e99e5512680
   capabilities: 7ac5066c6290b2bd238aba0cebe80e6c24d2c32ecc6b066842a065eb8c2300c1
   architecture: fcb6c51c96067ef45a3bb82065af7ec05c0d3105a4096632801512adf5d576d2
   interfaces: eac4f85e91f7b478a9060e501714c068cd5cc105802fc05d1ff5631ca71fadbc
-  module_map: 2df6d56035978daa37a2c2565b0e291d0b9e5bc4f82b0892853782232a0afc9c
+  module_map: bc5a983969774f3e3d5479b68789f0f61ae906182c479b828e31f6a437c877c5
   verification: 1e7814207f724f1e5323ade2599ff083cf54b6a6ffe7f42a2211e65149b17c18
   agents: ca263d1e05fd123434a21ef574fc8d76b559d22060719640a1f060527ef6a0b6
   ecosystem: 29fc390a2a77ec8d5bdbe657182dd47a2a5cd0c0c36c74c763c9e65cfad170e3

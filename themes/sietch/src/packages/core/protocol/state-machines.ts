@@ -101,6 +101,32 @@ export const PAYMENT_MACHINE: StateMachineDefinition<PaymentState> = {
 };
 
 // =============================================================================
+// System Config State Machine (Constitutional Governance)
+// =============================================================================
+
+export type SystemConfigState =
+  | 'draft'
+  | 'pending_approval'
+  | 'cooling_down'
+  | 'active'
+  | 'superseded'
+  | 'rejected';
+
+export const SYSTEM_CONFIG_MACHINE: StateMachineDefinition<SystemConfigState> = {
+  name: 'system_config',
+  initial: 'draft',
+  transitions: {
+    draft: ['pending_approval'],
+    pending_approval: ['cooling_down', 'rejected'],
+    cooling_down: ['active', 'rejected'],
+    active: ['superseded'],
+    superseded: [],
+    rejected: [],
+  },
+  terminal: ['superseded', 'rejected'],
+};
+
+// =============================================================================
 // State Machine Utilities
 // =============================================================================
 
@@ -133,4 +159,5 @@ export const STATE_MACHINES = {
   reservation: RESERVATION_MACHINE,
   revenue_rule: REVENUE_RULE_MACHINE,
   payment: PAYMENT_MACHINE,
+  system_config: SYSTEM_CONFIG_MACHINE,
 } as const;

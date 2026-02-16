@@ -92,3 +92,67 @@ export type EntryType =
   | 'commons_contribution' | 'revenue_share'
   | 'marketplace_sale' | 'marketplace_purchase'
   | 'escrow' | 'escrow_release';
+
+// =============================================================================
+// Constitutional Governance Types (Cycle 030)
+// =============================================================================
+
+/** System config governance states (mirrors SYSTEM_CONFIG_MACHINE) */
+export type SystemConfigStatus = 'draft' | 'pending_approval' | 'cooling_down' | 'active' | 'superseded' | 'rejected';
+
+/** Resolution source for a parameter lookup */
+export type ParamSource = 'entity_override' | 'global_config' | 'compile_fallback';
+
+/**
+ * A constitutional parameter stored in system_config.
+ * Maps 1:1 to the system_config table schema (migration 050).
+ */
+export interface SystemConfig {
+  id: string;
+  paramKey: string;
+  entityType: string | null;
+  valueJson: string;
+  configVersion: number;
+  activeFrom: string | null;
+  status: SystemConfigStatus;
+  proposedBy: string;
+  proposedAt: string;
+  approvedBy: string | null;
+  approvalCount: number;
+  requiredApprovals: number;
+  cooldownEndsAt: string | null;
+  activatedAt: string | null;
+  supersededAt: string | null;
+  supersededBy: string | null;
+  metadata: string | null;
+  createdAt: string;
+}
+
+/**
+ * Result of resolving a constitutional parameter through the three-tier chain:
+ *   1. entity-specific override
+ *   2. global default
+ *   3. compile-time fallback
+ */
+export interface ResolvedParam<T> {
+  /** The resolved value */
+  value: T;
+  /** config_version from system_config (0 for compile fallback) */
+  configVersion: number;
+  /** Where the value was resolved from */
+  source: ParamSource;
+  /** system_config.id (null for compile fallback) */
+  configId: string | null;
+}
+
+/**
+ * Options for proposing a constitutional parameter change.
+ */
+export interface ProposeOpts {
+  /** Entity type for entity-specific override (null for global) */
+  entityType?: string | null;
+  /** Admin ID of the proposer */
+  proposerAdminId: string;
+  /** Justification for the change (stored in metadata) */
+  justification?: string;
+}
