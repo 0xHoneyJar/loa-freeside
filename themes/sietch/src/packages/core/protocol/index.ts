@@ -107,6 +107,21 @@ export {
   getPropertiesByEnforcement,
 } from './conservation-properties.js';
 
+// JWT boundary — cross-system economic verification
+export type {
+  JwtErrorCode,
+  OutboundClaims,
+  InboundClaims,
+  IdempotencyStore,
+  ActiveReservations,
+} from './jwt-boundary.js';
+
+export {
+  JwtBoundaryError,
+  inboundClaimsSchema,
+  verifyUsageJWT,
+} from './jwt-boundary.js';
+
 // Compatibility check
 export {
   PROTOCOL_VERSION,
