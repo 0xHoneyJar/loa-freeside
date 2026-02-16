@@ -1,33 +1,42 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "Found unhandled service initialization errors, a JWT signature comparison vulnerability, and unsafe pagination limits that can cause failures or DoS.",
+  "summary": "Several security and input-validation issues allow malformed data and JWT algorithm confusion; fixes provided below.",
   "issues": [
     {
-      "severity": "major",
-      "file": "api/routes/billing-admin-routes.ts",
-      "line": 208,
-      "description": "getRevenueRulesService throws outside of try/catch in multiple handlers, causing unhandled exceptions and potential process crashes when the service is not initialized.",
-      "current_code": "```typescript\nfunction getRevenueRulesService(): IRevenueRulesService {\n  if (!revenueRulesService) {\n    throw new Error('Revenue rules service not initialized');\n  }\n  return revenueRulesService;\n}\n```\n\n```typescript\nconst service = getRevenueRulesService();\n```\n",
-      "fixed_code": "```typescript\nfunction getRevenueRulesService(res: Response): IRevenueRulesService | null {\n  if (!revenueRulesService) {\n    res.status(503).json({ error: 'Revenue rules service not initialized' });\n    return null;\n  }\n  return revenueRulesService;\n}\n```\n\n```typescript\nconst service = getRevenueRulesService(res);\nif (!service) return;\n```\n",
-      "explanation": "Returning a 503 instead of throwing prevents unhandled exceptions and ensures all revenue-rules endpoints respond deterministically when the service is not configured."
+      "severity": "critical",
+      "file": "api/routes/agent-tba.routes",
+      "line": 73,
+      "description": "Service JWT verification does not restrict algorithms, enabling JWT algorithm confusion attacks (e.g., 'none').",
+      "current_code": "```typescript\n    const token = authHeader.slice(7);\n    const payload = jwt.verify(token, secret) as { sub?: string };\n    (req as any).internalServiceId = payload.sub;\n    next();\n```",
+      "fixed_code": "```typescript\n    const token = authHeader.slice(7);\n    const payload = jwt.verify(token, secret, { algorithms: ['HS256'] }) as { sub?: string };\n    (req as any).internalServiceId = payload.sub;\n    next();\n```",
+      "explanation": "Restricting algorithms prevents 'none' or asymmetric algorithm confusion attacks and ensures the token is validated as intended."
     },
     {
       "severity": "major",
-      "file": "api/routes/billing-admin-routes.ts",
-      "line": 62,
-      "description": "JWT signature comparison uses a direct string comparison, which is not timing-safe and can leak information via timing attacks.",
-      "current_code": "```typescript\nimport { randomUUID, createHmac } from 'crypto';\n\n// ...\n\n    const signature = createHmac('sha256', secret)\n      .update(headerPayload)\n      .digest('base64url');\n\n    if (signature !== parts[2]) return null;\n```\n",
-      "fixed_code": "```typescript\nimport { randomUUID, createHmac, timingSafeEqual } from 'crypto';\n\n// ...\n\n    const signature = createHmac('sha256', secret)\n      .update(headerPayload)\n      .digest('base64url');\n\n    const expected = Buffer.from(signature, 'base64url');\n    const actual = Buffer.from(parts[2], 'base64url');\n    if (expected.length !== actual.length) return null;\n    if (!timingSafeEqual(expected, actual)) return null;\n```\n",
-      "explanation": "Using timingSafeEqual prevents timing side-channel attacks while preserving correct signature validation."
+      "file": "api/routes/agent-tba.routes",
+      "line": 160,
+      "description": "Bridge input validation is incomplete: chainId/blockNumber/logIndex are not required to be integers, tokenAddress/fromAddress/toAddress are not validated as EVM addresses, and amountRaw is not validated as a numeric string.",
+      "current_code": "```typescript\n    // Input validation\n    if (typeof chainId !== 'number' || chainId <= 0) {\n      res.status(400).json({ error: 'chainId must be a positive integer' });\n      return;\n    }\n    if (!txHash || typeof txHash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {\n      res.status(400).json({ error: 'txHash must be 0x-prefixed 32-byte hex string' });\n      return;\n    }\n    if (!tokenAddress || typeof tokenAddress !== 'string') {\n      res.status(400).json({ error: 'tokenAddress is required' });\n      return;\n    }\n    if (!amountRaw || typeof amountRaw !== 'string') {\n      res.status(400).json({ error: 'amountRaw is required (string)' });\n      return;\n    }\n    if (!fromAddress || typeof fromAddress !== 'string') {\n      res.status(400).json({ error: 'fromAddress is required' });\n      return;\n    }\n    if (!toAddress || typeof toAddress !== 'string') {\n      res.status(400).json({ error: 'toAddress is required' });\n      return;\n    }\n    if (typeof blockNumber !== 'number' || blockNumber < 0) {\n      res.status(400).json({ error: 'blockNumber must be a non-negative integer' });\n      return;\n    }\n    if (typeof logIndex !== 'number' || logIndex < 0) {\n      res.status(400).json({ error: 'logIndex must be a non-negative integer' });\n      return;\n    }\n```",
+      "fixed_code": "```typescript\n    // Input validation\n    if (typeof chainId !== 'number' || !Number.isInteger(chainId) || chainId <= 0) {\n      res.status(400).json({ error: 'chainId must be a positive integer' });\n      return;\n    }\n    if (!txHash || typeof txHash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {\n      res.status(400).json({ error: 'txHash must be 0x-prefixed 32-byte hex string' });\n      return;\n    }\n    if (!tokenAddress || typeof tokenAddress !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(tokenAddress)) {\n      res.status(400).json({ error: 'tokenAddress must be a valid 20-byte address' });\n      return;\n    }\n    if (!amountRaw || typeof amountRaw !== 'string' || !/^[0-9]+$/.test(amountRaw)) {\n      res.status(400).json({ error: 'amountRaw must be a numeric string' });\n      return;\n    }\n    if (!fromAddress || typeof fromAddress !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(fromAddress)) {\n      res.status(400).json({ error: 'fromAddress must be a valid 20-byte address' });\n      return;\n    }\n    if (!toAddress || typeof toAddress !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(toAddress)) {\n      res.status(400).json({ error: 'toAddress must be a valid 20-byte address' });\n      return;\n    }\n    if (typeof blockNumber !== 'number' || !Number.isInteger(blockNumber) || blockNumber < 0) {\n      res.status(400).json({ error: 'blockNumber must be a non-negative integer' });\n      return;\n    }\n    if (typeof logIndex !== 'number' || !Number.isInteger(logIndex) || logIndex < 0) {\n      res.status(400).json({ error: 'logIndex must be a non-negative integer' });\n      return;\n    }\n```",
+      "explanation": "This enforces integer constraints, validates EVM addresses, and ensures amountRaw is a numeric string, meeting the required input validation for DepositDetection."
     },
     {
       "severity": "major",
-      "file": "api/routes/billing-admin-routes.ts",
-      "line": 328,
-      "description": "The `limit` query parameter is not validated or bounded, allowing negative values or extremely large limits that can cause excessive load or unexpected service behavior.",
-      "current_code": "```typescript\nconst limit = parseInt(req.query.limit as string, 10) || 50;\nconst rules = await service.getRuleHistory(limit);\n```\n",
-      "fixed_code": "```typescript\nconst rawLimit = Number.parseInt(req.query.limit as string, 10);\nconst limit = Number.isFinite(rawLimit)\n  ? Math.min(Math.max(rawLimit, 1), 100)\n  : 50;\nconst rules = await service.getRuleHistory(limit);\n```\n",
-      "explanation": "Clamping the limit to a safe range prevents negative or oversized values from causing DoS or invalid queries."
+      "file": "api/routes/agent-tba.routes",
+      "line": 234,
+      "description": "accountId query param is not validated as a string (could be array/object), and limit/offset allow negative values, enabling unexpected behavior.",
+      "current_code": "```typescript\n    const accountId = req.query.accountId as string;\n    if (!accountId) {\n      res.status(400).json({ error: 'accountId query parameter is required' });\n      return;\n    }\n\n    const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);\n    const offset = parseInt(req.query.offset as string) || 0;\n```",
+      "fixed_code": "```typescript\n    const accountId = req.query.accountId;\n    if (!accountId || typeof accountId !== 'string') {\n      res.status(400).json({ error: 'accountId query parameter is required' });\n      return;\n    }\n\n    const limitRaw = parseInt(req.query.limit as string, 10);\n    const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 100) : 20;\n    const offsetRaw = parseInt(req.query.offset as string, 10);\n    const offset = Number.isFinite(offsetRaw) && offsetRaw >= 0 ? offsetRaw : 0;\n```",
+      "explanation": "Validates accountId is a single string and clamps pagination to non-negative values, preventing invalid queries and negative offsets."
+    },
+    {
+      "severity": "major",
+      "file": "api/routes/agent-tba.routes",
+      "line": 118,
+      "description": "TBA bind endpoint does not validate tbaAddress format, despite the spec requiring invalid addresses to return 400.",
+      "current_code": "```typescript\n    if (!tbaAddress || typeof tbaAddress !== 'string') {\n      res.status(400).json({ error: 'tbaAddress is required' });\n      return;\n    }\n```",
+      "fixed_code": "```typescript\n    if (!tbaAddress || typeof tbaAddress !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(tbaAddress)) {\n      res.status(400).json({ error: 'tbaAddress must be a valid 20-byte address' });\n      return;\n    }\n```",
+      "explanation": "Ensures address format validation aligns with the spec and prevents invalid on-chain addresses from being bound."
     }
   ],
   "fabrication_check": {

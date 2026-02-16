@@ -1,31 +1,31 @@
 {
   "verdict": "APPROVED",
-  "summary": "All previously blocking bridge-tracking inconsistencies are corrected (traceable resolved finding, reconciled rollups, grounded diff evidence, and corrected flatline language), with no new truly blocking issues introduced.",
+  "summary": "All previously-blocking issues were addressed with explicit gating checks, type/caller updates, CI/schema dependency coverage, and corrected merge-conflict acceptance criteria, with no new truly blocking problems introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "Findings JSON had `findings: []` but claimed a nonzero resolved count without listing the resolved finding in a machine-readable way",
+      "original_issue": "Migration 056 amendment risk: missing gating to ensure it’s safe to amend an existing migration",
       "status": "fixed",
-      "notes": "JSON now includes a `resolved_findings` array containing `medium-3` with `status: resolved`, `resolved_in_iteration: 3`, and concrete evidence (file/line/commit/before/after). `by_status.resolved: 1` now matches the array."
+      "notes": "Task 1.2 now includes an explicit gating check against main and a fallback plan to create a new migration (058) with a rebuild if 056 has shipped, plus ACs for fresh migrate-from-zero and an insert using entry_type='transfer_in'."
     },
     {
-      "original_issue": "Convergence Assessment rollups claimed '3/3 medium' and '2/2 low' without basis in the recorded iteration history",
+      "original_issue": "Migration 057 amendment risk + handling existing rows that might violate stricter CHECK",
       "status": "fixed",
-      "notes": "Final State rollups are now derivable from the provided history: medium findings are explicitly '1 from iter-2' and critical/high are 0. The unsupported 3/3 and 2/2 claims are removed."
+      "notes": "Task 1.3 adds the same gating check and explicitly states the fallback: create a forward migration that handles existing data before adding the stricter CHECK. ACs include representative inserts and a full lifecycle flow that would have failed if the constraint were wrong."
     },
     {
-      "original_issue": "Approval/Metadata statistics did not reconcile (e.g., '7 actionable' vs iter summaries of 4 actionable in iter-1 and 1 actionable in iter-2)",
+      "original_issue": "ReconciliationService Check 5 error handling: return shape/type/callers/tests not updated for {status:'failed', error} and removal of {skipped:true}",
       "status": "fixed",
-      "notes": "Totals are now consistent with the stated iteration context: total findings 10 (9+1) and actionable resolved 5 (4+1). Resolution rate 100% (5/5) is now auditable from the table."
+      "notes": "Task 2.1 explicitly includes updating the report type/interface and downstream callers/tests, plus an AC that no references to { skipped: true } remain and TS compiles after the type change."
     },
     {
-      "original_issue": "Verification claims lacked concrete diff evidence and timestamp was a placeholder",
+      "original_issue": "EntryType + DB CHECK dependency: service writes 'transfer_in' but CI/test DB might not have updated CHECK constraint",
       "status": "fixed",
-      "notes": "A minimal diff hunk is included showing `+3600` → `+300`, and timestamp is now a concrete value (`2026-02-15T15:30:00Z`). Evidence is also duplicated in the resolved finding JSON."
+      "notes": "Task 2.2 now includes an explicit requirement/AC that the test harness migrates from a clean DB (no cached schema) and that the integration test passes with the updated CHECK accepting 'transfer_in'. Task 1.2 also includes fresh migrate-from-zero AC."
     },
     {
-      "original_issue": "Flatline detection was misapplied (rule stated two consecutive iterations < 2.0, but iter-2 score was 3.0)",
+      "original_issue": "Merge conflict task AC contradictory/unverifiable (\"merge completes without conflicts\" and reliance on GitHub PR state)",
       "status": "fixed",
-      "notes": "The document no longer asserts 'FLATLINE DETECTED' under the two-iteration rule; it instead states quality gate passed and convergence achieved at final score 0.0, which matches the provided history."
+      "notes": "Task 3.5 AC is now locally testable: merge completes with conflicts resolved/committed if any, clean working tree, tests pass, diff reviewed; PR mergeability is explicitly optional/manual."
     }
   ],
   "new_blocking_concerns": [],

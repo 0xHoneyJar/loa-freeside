@@ -9,3 +9,4 @@ export { syncEligibilityTask } from './syncEligibility.js';
 export { weeklyResetTask } from './weeklyReset.js';
 export { boostExpiryTask } from './boostExpiry.js';
 export { sessionCleanupTask } from './sessionCleanup.js';
+export { agentGovernanceLifecycleTask } from './agentGovernance.js';

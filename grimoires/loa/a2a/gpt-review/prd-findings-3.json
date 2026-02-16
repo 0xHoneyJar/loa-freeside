@@ -1,60 +1,48 @@
 {
-  "verdict": "CHANGES_REQUIRED",
-  "summary": "All previously-blocking items appear resolved except the NOWPayments webhook signature verification, which still specifies a brittle provider-specific canonicalization instead of a raw-body HMAC scheme and would likely fail (or be unsafe) in production.",
+  "verdict": "APPROVED",
+  "summary": "The previously blocking contradiction about event emission semantics is now resolved and the earlier fixes remain intact, with no new truly blocking issues introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "Schema cannot support FIFO-by-expiry redemption due to UNIQUE(account_id, pool_id) balance row with expires_at",
+      "original_issue": "Cross-system conservation check mixed money vs budget capacity without a defined bridge instrument/semantics (FR-10 + §9.3)",
       "status": "fixed",
-      "notes": "PRD now uses credit_lots with per-lot expires_at and pool_id plus explicit FIFO-by-expiry redemption order; credit_balances is explicitly a derived cache."
+      "notes": "FR-9/FR-10 continue to clearly separate conserved funds (credit ledger) from authorized capacity (budget engine) and define the bridge as 1:1 locked credits via reserve()/finalize()/release(), with reconciliation equality checks."
     },
     {
-      "original_issue": "Reserve-finalize semantics inconsistent; unclear whether reserve reduces spendable balance and how partial finalization works",
+      "original_issue": "Monotonic per-entity sequence_number requirement incompatible with async emission and multi-writer reality (FR-7/FR-8)",
       "status": "fixed",
-      "notes": "Defines lot invariant, explicit reserve/finalize/release effects, reservation_id grouping, and partial finalization with surplus release; idempotency per reservation is stated."
+      "notes": "FR-7 uses SQLite rowid ordering and explicitly drops per-entity sequence numbers; FR-8 keeps synchronous in-transaction insertion, preserving atomicity and achievable ordering guarantees."
     },
     {
-      "original_issue": "Append-only ledger vs running balance (balance_after) and mutable corrections",
+      "original_issue": "Agents don’t need KYC conflicted with creator KYC and payout/settlement beneficiary ambiguity (FR-1/FR-3)",
       "status": "fixed",
-      "notes": "No balance_after column; ordering via entry_seq; balances derived from lots/ledger with credit_balances as cache."
+      "notes": "FR-3’s beneficiary model is consistent: agent is a controlled sub-ledger; creator is the legal beneficiary and payout destination; creator KYC governs thresholds."
     },
     {
-      "original_issue": "x402 per-request settlement vs daily batching contradiction",
+      "original_issue": "Budget cap semantics undefined with reserve/finalize/release/TTL and concurrency (FR-2)",
       "status": "fixed",
-      "notes": "x402 is clearly top-up only; per-request billing is internal reserve/finalize; NFR aligns with ~monthly on-chain tx frequency."
+      "notes": "FR-2 defines cap accounting on finalized spend only, idempotent cap updates keyed by reservation_id, and atomic cap counter updates in the same SQLite transaction as finalize()."
     },
     {
-      "original_issue": "Revenue distribution lacks concrete posting rules; risk of minting/destroying value",
+      "original_issue": "Constitutional parameters + Redis caching risk inconsistent enforcement across nodes; missing versioning/activation semantics (FR-4/5/6 + NFR)",
       "status": "fixed",
-      "notes": "Adds explicit posting table and a zero-sum invariant; COGS tracked outside the ledger."
+      "notes": "NFR now requires SQLite-in-transaction reads for money-moving operations, Redis only for non-transactional reads, and includes config_version/active_from with recording of config_version in the audit trail; emergency override is multi-approval with audit notification."
     },
     {
-      "original_issue": "NOWPayments webhook verification underspecified/likely incorrect; replay/idempotency unclear",
-      "status": "not_fixed",
-      "notes": "Replay protection/idempotency and status transition enforcement are now specified, but the signature verification still hardcodes a 'sorted top-level keys + JSON.stringify' canonicalization and asserts it is 'per docs'. This remains truly blocking because it is very likely not the exact bytes NOWPayments signs, and the PRD does not anchor to a raw-body HMAC verification path as the primary/required implementation."
+      "original_issue": "“Instant settlement” and “agents can’t dispute” ignored clawback/withhold flows and could create negative balances/invariant breaks (FR-1 + settlement policy)",
+      "status": "fixed",
+      "notes": "FR-2b clarifies instant settlement as no human dispute window while retaining fraud withhold/clawback; it also specifies non-negative agent balances and shortfall handling."
     },
     {
-      "original_issue": "Shadow billing entry types missing from ledger enum",
+      "original_issue": "Phase 1 provenance verification keyed to token_id conflicted with Phase 2 TBA binding; identity anchor mismatch risk (FR-11 vs FR-3)",
       "status": "fixed",
-      "notes": "shadow_charge/shadow_reserve/shadow_finalize are included in entry_type."
+      "notes": "FR-3 establishes canonical identity anchor (chain_id, contract_address, token_id) with Phase 2 tba_address explicitly additive."
     },
     {
-      "original_issue": "Credit pack margin math inconsistent; unclear COGS basis and what credits represent",
+      "original_issue": "Contradiction: FR-8 requires synchronous in-transaction event emission while Risks section reintroduced async/fire-and-forget emission",
       "status": "fixed",
-      "notes": "Credits are defined as spending power at list price (5x markup included) and margins are computed to 76–80% with a worked example."
-    },
-    {
-      "original_issue": "Pool restriction survivability broken without lot/grant provenance; transfers would launder restrictions",
-      "status": "fixed",
-      "notes": "Pool_id/expires_at are intrinsic to lots and marketplace readiness explicitly uses lot-based transfers/splitting so restrictions survive transfers."
+      "notes": "Section 8 now aligns with FR-8: synchronous INSERT into economic_events within the same SQLite transaction, with an async dispatcher only after commit for external publication (outbox pattern)."
     }
   ],
-  "new_blocking_concerns": [
-    {
-      "location": "4.2.1 NOWPayments Integration — 'Webhook verification (exact procedure...)' steps 1–7 and 'Webhook flow'",
-      "description": "The PRD mandates computing HMAC-SHA512 over a reconstructed 'sorted top-level keys + JSON.stringify' payload and claims NOWPayments signs that way. If NOWPayments actually signs the raw body bytes (common) or uses a different canonicalization (nested keys, different encoding/whitespace/number formatting), legitimate webhooks will fail verification (no deposits credited). Conversely, if the canonicalization is looser/different than provider signing, it can create a verification bypass where attacker-crafted JSON parses to the same object but differs at the byte level from what was signed.",
-      "why_blocking": "G-1 (sandbox end-to-end payment) and revenue collection depend on correct webhook verification. A wrong algorithm will either reject real payments (blocking deposits) or accept forged notifications (minting credits / direct financial loss). This is a project-failure class issue for billing.",
-      "fix": "Change the PRD to require verification against the provider-defined signed bytes. Concretely: (a) default implementation MUST compute HMAC-SHA512 over the raw request body bytes exactly as received (no parse/re-stringify), compare to x-nowpayments-sig using timingSafeEqual; (b) only if NOWPayments documentation explicitly specifies a canonicalization algorithm, reference it precisely and implement it byte-for-byte (including nested sorting rules, encoding, and number/string handling). Keep the existing replay protection (provider_event_id/idempotency_key) and status-transition enforcement as written."
-    }
-  ],
+  "new_blocking_concerns": [],
   "iteration": 3
 }

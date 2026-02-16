@@ -1,41 +1,26 @@
 {
   "verdict": "APPROVED",
-  "summary": "All previously blocking contradictions around x402↔purchase binding, pricing model, identity gating, property-test semantics, governance versioning, numeric units, and rate limiting have been resolved in a way that is implementable and verifiable.",
+  "summary": "All four previously blocking issues are addressed with concrete, implementable changes, and the revisions do not introduce any new truly blocking problems.",
   "previous_issues_status": [
     {
-      "original_issue": "Payment flow inconsistent / missing canonical payment→credit binding, SKU/amount mapping, and idempotency tied to payer/account",
+      "original_issue": "SQLite migration contradiction: cannot modify an existing CHECK constraint in-place while claiming additive/non-destructive migrations",
       "status": "fixed",
-      "notes": "FR-4 now defines a canonical PaymentProof contract, explicit binding rules (account_id from authenticated JWT, memo includes accountId:nonce for inline), recipient validation, and a concrete idempotency key stored with UNIQUE constraint. FR-4/FR-5 also unify inline and explicit purchase modes behind IPaymentVerifier."
+      "notes": "PRD now explicitly states migration 057 is feature-branch-only and not applied anywhere, so amending 057 pre-merge is feasible and consistent with the NFR framing (“additive from main’s perspective”). It also correctly notes that if 057 had been deployed, a rebuild-with-copy migration would be required."
     },
     {
-      "original_issue": "Contradiction between fixed tiers and dynamic price = inference_cost × markup_factor",
+      "original_issue": "Integrity rule moved out of DB: allowing amount_micro >= 0 without enforcing amount_micro > 0 for completed deposits at the DB layer",
       "status": "fixed",
-      "notes": "FR-5 explicitly chooses one model: fixed USDC price tiers with variable credits minted via floor(price/markup). It also clarifies markup is applied at purchase time and cost estimator affects consumption later."
+      "notes": "The revised compound CHECK enforces state-dependent validity at the DB layer, specifically requiring amount_micro > 0 when status='completed' while allowing 0 for non-terminal states. This resolves the internal inconsistency and restores DB-level protection for a core ledger invariant."
     },
     {
-      "original_issue": "Identity anchor requirement underspecified and conflicted with purchase/top-up flow (deadlock vs sybil risk)",
+      "original_issue": "EntryType change risk: adding 'transfer_in' could silently change balance/reporting semantics if entry_type is used for accounting classification",
       "status": "fixed",
-      "notes": "FR-2 adds an explicit authorization matrix and defines 'high-value' as a per-request threshold enforced at reserve time. It explicitly exempts purchase from anchoring to avoid deadlock while still gating high-value reserve."
+      "notes": "PRD now includes semantic impact analysis plus explicit requirements to audit/update balance computation to treat 'transfer_in' as credit-increasing equivalent to prior recipient 'deposit', and adds an acceptance test for balance equivalence before/after the type change. That is the right containment for the risk."
     },
     {
-      "original_issue": "Property-based invariants underspecified for lot-based ledger; liveness 'eventually' not modelable without time/worker",
+      "original_issue": "SqliteTimestamp branding not enforceable without specifying typed boundaries and a compile-time test",
       "status": "fixed",
-      "notes": "FR-1 now defines per-lot conservation precisely, adds FIFO as an explicit safety property, and handles liveness correctly by requiring an explicit expiry tick action plus a weaker safety fallback when fairness isn’t assumed."
-    },
-    {
-      "original_issue": "Governance schema version field required but undefined (what/where/how used)",
-      "status": "fixed",
-      "notes": "FR-7 defines what is versioned (revenue rule set schema), where stored (revenue_rules.schema_version with migration 040), how used (recorded in distribution entries), and compatibility semantics (finalize uses active rule at finalize time; old entries remain valid)."
-    },
-    {
-      "original_issue": "Numeric mismatch / unit ambiguity for micro-USD bounds and arithmetic/rounding policies",
-      "status": "fixed",
-      "notes": "FR-1 establishes microusd=1e-6 USD, unsigned bigint, MAX_MICRO_USD=1e15=$1B, floor rounding, and USDC 6-decimal 1:1 mapping. It also requires centralized arithmetic guards with explicit error behavior."
-    },
-    {
-      "original_issue": "In-memory rate limiting bypass risk in multi-instance deployments; keying strategy unspecified",
-      "status": "fixed",
-      "notes": "FR-6 specifies per-principal keying (service_id/sub/account_id) with an IP fallback only for unauthenticated requests, and explicitly constrains deployment to single-instance with a documented requirement to move to Redis if horizontally scaled."
+      "notes": "PRD now specifies the three enforcement boundaries (write params, row model types, comparison helpers) and requires a compile-time negative test via @ts-expect-error demonstrating that ISO strings cannot be passed where SqliteTimestamp is required. This is sufficient to achieve the stated compile-time safety goal (assuming those surfaces are actually updated as required)."
     }
   ],
   "new_blocking_concerns": [],

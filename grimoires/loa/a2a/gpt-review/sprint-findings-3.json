@@ -1,46 +1,46 @@
 {
   "verdict": "APPROVED",
-  "summary": "All 12 Flatline findings appear integrated as specified, Task 1.4b fits the dependency chain cleanly, and the two override rationales are documented and consistent with the stated SDD constraints without introducing new truly blocking inconsistencies.",
+  "summary": "The remaining blocking migration-ordering/deployment risk is correctly resolved by renumbering so the clawback receivables table ships with Sprint 4, and no new truly-blocking issues were introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "Revenue distribution recipient accounts not defined/seeded/configured",
+      "original_issue": "Clawback receivable table planned as a “047 addendum or included in 047” causing non-monotonic/unsafe migration ordering",
       "status": "fixed",
-      "notes": "Still correctly addressed: Task 3.5 seeds the three system credit_accounts and stores their account_ids in billing_config; Task 3.3 reads those keys and posts the triad."
+      "notes": "Now a dedicated migration exists and is cleanly placed in the monotonic sequence (048)."
     },
     {
-      "original_issue": "Task 1.3 depended on billing_config which was only created later",
+      "original_issue": "Acceptance criteria mixes clawback receivables into credit-lot conservation equations without defining semantics",
       "status": "fixed",
-      "notes": "Still correctly addressed: Task 1.3 uses BILLING_CEILING_MICRO env var now and explicitly defers billing_config override to Sprint 3."
+      "notes": "Receivables are explicitly off-ledger IOUs with separate invariants; reconciliation checks are separated accordingly."
     },
     {
-      "original_issue": "Migration ordering conflict (033 before 032) despite required 030→031→032→033",
+      "original_issue": "Sprint 6 requires transactional outbox inserts before outbox exists (Sprint 8)",
       "status": "fixed",
-      "notes": "Still correctly addressed: Sprint 3 ships 032_billing_ops and Sprint 4 ships 033_campaigns; ordering is consistent throughout the doc."
+      "notes": "Sprint 6 uses injected IEventEmitter backed by existing in-memory BillingEventEmitter; Sprint 8.5 backfills outbox wiring."
     },
     {
-      "original_issue": "billing-routes.ts scope confusion across sprints causing likely merge/scope conflicts",
+      "original_issue": "SQLite claim protocol used non-portable UPDATE...LIMIT RETURNING",
       "status": "fixed",
-      "notes": "Still correctly addressed: Sprint 2 creates billing-routes with explicit 501 stubs; Sprint 5 replaces stubs with implementations."
+      "notes": "Sprint 8.4 specifies a SQLite-compatible select→guarded update→reselect claim flow plus concurrency tests."
     },
     {
-      "original_issue": "RevenueDistributionService not wired into finalize() transaction path",
+      "original_issue": "Reconciliation results required for history queries but no persistence table existed",
       "status": "fixed",
-      "notes": "Still correctly addressed: Task 3.3 explicitly requires wiring into CreditLedgerAdapter.finalize() within the same BEGIN IMMEDIATE transaction and asserts rollback behavior."
+      "notes": "Migration 052 adds reconciliation_runs and Sprint 9 AC/tests require persistence and retrieval."
     },
     {
-      "original_issue": "SQLite generated column requirement for payment_id likely incompatible",
+      "original_issue": "Draft->pending_approval transition missing (propose creates draft but approvals expect pending_approval)",
       "status": "fixed",
-      "notes": "Still correctly addressed: Migration 031 uses a normal payment_id column populated during INSERT...SELECT plus a trigger to keep it synced."
+      "notes": "submit() method/endpoint added; approve constrained to pending_approval; tests cover draft-approval rejection."
     },
     {
-      "original_issue": "SQLite RETURNING usage for seq allocation may be incompatible",
+      "original_issue": "Authoritative spend computation underspecified (windowing/index/boundaries)",
       "status": "fixed",
-      "notes": "Still correctly addressed: Task 1.5 specifies UPDATE + SELECT within the same BEGIN IMMEDIATE transaction (no RETURNING)."
+      "notes": "Half-open interval query, required index (account_id, finalized_at), and boundary tests are specified."
     },
     {
-      "original_issue": "HMAC strategy determination not locked into code for Sprint 2 dependency",
+      "original_issue": "Migration numbering now implies 051 executes after 050 (Sprint 8), but Sprint 4 needs the clawback table",
       "status": "fixed",
-      "notes": "Still correctly addressed: Task 1.8 determines and implements a single strategy and locks it via NOWPAYMENTS_HMAC_STRATEGY; Sprint 2 depends on only one strategy deployed."
+      "notes": "Resolved by renumbering: clawback receivables is now migration 048 and explicitly ships with Sprint 4; subsequent migrations are renumbered to preserve monotonic ordering and release alignment."
     }
   ],
   "new_blocking_concerns": [],

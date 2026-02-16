@@ -48,9 +48,9 @@ export interface DailyReconciliationResult {
 // Helpers
 // =============================================================================
 
-function sqliteNow(): string {
-  return new Date().toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
-}
+import { sqliteTimestamp } from '../packages/adapters/billing/protocol/timestamps';
+
+const sqliteNow = sqliteTimestamp;
 
 // =============================================================================
 // Daily Reconciliation

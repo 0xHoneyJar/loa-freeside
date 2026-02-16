@@ -22,6 +22,7 @@ import { serializeBigInt } from '../../packages/core/protocol/arithmetic.js';
 import type { ICampaignService, GrantInput } from '../../packages/core/ports/ICampaignService.js';
 import type { ICreditLedgerService } from '../../packages/core/ports/ICreditLedgerService.js';
 import type { IRevenueRulesService } from '../../packages/core/ports/IRevenueRulesService.js';
+import type { FraudRulesService } from '../../packages/adapters/billing/FraudRulesService.js';
 import type Database from 'better-sqlite3';
 import {
   batchGrantSchema,
@@ -29,6 +30,7 @@ import {
   proposeRuleSchema,
   rejectRuleSchema,
   overrideCooldownSchema,
+  proposeFraudRuleSchema,
 } from '../../packages/core/contracts/admin-billing.js';
 
 // =============================================================================
@@ -44,17 +46,20 @@ export const billingAdminRouter = Router();
 let campaignService: ICampaignService | null = null;
 let ledgerService: ICreditLedgerService | null = null;
 let revenueRulesService: IRevenueRulesService | null = null;
+let fraudRulesService: FraudRulesService | null = null;
 let adminDb: Database.Database | null = null;
 
 export function setBillingAdminServices(services: {
   campaign: ICampaignService;
   ledger: ICreditLedgerService;
   revenueRules?: IRevenueRulesService;
+  fraudRules?: FraudRulesService;
   db: Database.Database;
 }): void {
   campaignService = services.campaign;
   ledgerService = services.ledger;
   revenueRulesService = services.revenueRules ?? null;
+  fraudRulesService = services.fraudRules ?? null;
   adminDb = services.db;
 }
 
@@ -125,7 +130,7 @@ function verifyHS256(token: string, secret: string): AdminTokenPayload | null {
   }
 }
 
-function requireAdminAuth(req: Request, res: Response, next: Function): void {
+export function requireAdminAuth(req: Request, res: Response, next: Function): void {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
     res.status(401).json({ error: 'Authorization required' });
@@ -759,3 +764,269 @@ function handleRuleError(err: unknown, res: Response): void {
     res.status(500).json({ error: 'Internal server error' });
   }
 }
+
+// =============================================================================
+// Fraud Rules Endpoints (Sprint 15, Task 15.4)
+// =============================================================================
+
+function getFraudRulesService(res: Response): FraudRulesService | null {
+  if (!fraudRulesService) {
+    res.status(503).json({ error: 'Fraud rules service not initialized' });
+    return null;
+  }
+  return fraudRulesService;
+}
+
+function handleFraudRuleError(err: unknown, res: Response): void {
+  const msg = (err as Error).message;
+  const name = (err as Error).name;
+  if (name === 'FourEyesViolationError') {
+    res.status(403).json({ error: 'four_eyes_violation', message: msg });
+  } else if (msg.includes('not found')) {
+    res.status(404).json({ error: 'Fraud rule not found' });
+  } else if (msg.includes('Invalid state') || msg.includes('Cannot')) {
+    res.status(409).json({ error: 'Invalid state transition', message: msg });
+  } else {
+    logger.error({ event: 'admin.fraud_rule.error', err }, msg);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// POST /admin/billing/fraud-rules — propose a new fraud rule
+billingAdminRouter.post(
+  '/fraud-rules',
+  requireAdminAuth,
+  adminRateLimiter,
+  async (req: Request, res: Response) => {
+    const service = getFraudRulesService(res);
+    if (!service) return;
+    const result = proposeFraudRuleSchema.safeParse(req.body);
+    if (!result.success) {
+      res.status(400).json({
+        error: 'Validation Error',
+        details: result.error.issues.map(i => ({
+          field: i.path.join('.'),
+          message: i.message,
+        })),
+      });
+      return;
+    }
+
+    try {
+      const rule = await service.proposeRule({
+        ...result.data,
+        proposedBy: (req as any).adminId ?? 'unknown',
+      });
+
+      logAudit('fraud_rule_proposed', req, {
+        targetType: 'fraud_rule',
+        targetId: rule.id,
+        ipClusterWeight: rule.ipClusterWeight,
+        velocityWeight: rule.velocityWeight,
+        flagThreshold: rule.flagThreshold,
+      });
+
+      res.status(201).json(rule);
+    } catch (err) {
+      logger.error({ event: 'admin.fraud_rule.propose.error', err },
+        (err as Error).message);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
+// PATCH /admin/billing/fraud-rules/:id/submit — submit for approval
+billingAdminRouter.patch(
+  '/fraud-rules/:id/submit',
+  requireAdminAuth,
+  adminRateLimiter,
+  async (req: Request, res: Response) => {
+    const service = getFraudRulesService(res);
+    if (!service) return;
+    try {
+      const rule = await service.submitForApproval(
+        req.params.id,
+        (req as any).adminId ?? 'unknown',
+      );
+      res.json(rule);
+    } catch (err) {
+      handleFraudRuleError(err, res);
+    }
+  },
+);
+
+// PATCH /admin/billing/fraud-rules/:id/approve — approve with four-eyes
+billingAdminRouter.patch(
+  '/fraud-rules/:id/approve',
+  requireAdminAuth,
+  adminRateLimiter,
+  async (req: Request, res: Response) => {
+    const service = getFraudRulesService(res);
+    if (!service) return;
+    try {
+      const rule = await service.approveRule(
+        req.params.id,
+        (req as any).adminId ?? 'unknown',
+      );
+
+      logAudit('fraud_rule_approved', req, {
+        targetType: 'fraud_rule',
+        targetId: rule.id,
+        activatesAt: rule.activatesAt,
+      });
+
+      res.json(rule);
+    } catch (err) {
+      handleFraudRuleError(err, res);
+    }
+  },
+);
+
+// PATCH /admin/billing/fraud-rules/:id/reject — reject with reason
+billingAdminRouter.patch(
+  '/fraud-rules/:id/reject',
+  requireAdminAuth,
+  adminRateLimiter,
+  async (req: Request, res: Response) => {
+    const service = getFraudRulesService(res);
+    if (!service) return;
+    const result = rejectRuleSchema.safeParse(req.body);
+    if (!result.success) {
+      res.status(400).json({
+        error: 'Validation Error',
+        details: result.error.issues.map(i => ({
+          field: i.path.join('.'),
+          message: i.message,
+        })),
+      });
+      return;
+    }
+
+    try {
+      const rule = await service.rejectRule(
+        req.params.id,
+        (req as any).adminId ?? 'unknown',
+        result.data.reason,
+      );
+
+      logAudit('fraud_rule_rejected', req, {
+        targetType: 'fraud_rule',
+        targetId: rule.id,
+        reason: result.data.reason,
+      });
+
+      res.json(rule);
+    } catch (err) {
+      handleFraudRuleError(err, res);
+    }
+  },
+);
+
+// PATCH /admin/billing/fraud-rules/:id/override-cooldown — emergency override
+billingAdminRouter.patch(
+  '/fraud-rules/:id/override-cooldown',
+  requireAdminAuth,
+  adminRateLimiter,
+  async (req: Request, res: Response) => {
+    const service = getFraudRulesService(res);
+    if (!service) return;
+    const result = overrideCooldownSchema.safeParse(req.body);
+    if (!result.success) {
+      res.status(400).json({
+        error: 'Validation Error',
+        details: result.error.issues.map(i => ({
+          field: i.path.join('.'),
+          message: i.message,
+        })),
+      });
+      return;
+    }
+
+    try {
+      const rule = await service.overrideCooldown(
+        req.params.id,
+        (req as any).adminId ?? 'unknown',
+        result.data.reason,
+      );
+
+      logAudit('fraud_rule_cooldown_override', req, {
+        targetType: 'fraud_rule',
+        targetId: rule.id,
+        reason: result.data.reason,
+      });
+
+      res.json(rule);
+    } catch (err) {
+      handleFraudRuleError(err, res);
+    }
+  },
+);
+
+// GET /admin/billing/fraud-rules — list rules (with optional status filter)
+billingAdminRouter.get(
+  '/fraud-rules',
+  requireAdminAuth,
+  adminRateLimiter,
+  async (req: Request, res: Response) => {
+    const service = getFraudRulesService(res);
+    if (!service) return;
+    try {
+      const status = req.query.status as string | undefined;
+      if (status === 'pending') {
+        const rules = await service.getPendingRules();
+        res.json({ rules });
+      } else {
+        const rawLimit = Number.parseInt(req.query.limit as string, 10);
+        const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 100) : 50;
+        const rules = await service.getRuleHistory(limit);
+        res.json({ rules });
+      }
+    } catch (err) {
+      logger.error({ event: 'admin.fraud_rules.list.error', err },
+        (err as Error).message);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
+// GET /admin/billing/fraud-rules/active — get currently active fraud rule
+billingAdminRouter.get(
+  '/fraud-rules/active',
+  requireAdminAuth,
+  adminRateLimiter,
+  async (_req: Request, res: Response) => {
+    const service = getFraudRulesService(res);
+    if (!service) return;
+    try {
+      const rule = await service.getActiveRule();
+      if (!rule) {
+        res.status(404).json({ error: 'No active fraud rule' });
+        return;
+      }
+      res.json(rule);
+    } catch (err) {
+      logger.error({ event: 'admin.fraud_rules.active.error', err },
+        (err as Error).message);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
+// GET /admin/billing/fraud-rules/:id/audit — audit log for a fraud rule
+billingAdminRouter.get(
+  '/fraud-rules/:id/audit',
+  requireAdminAuth,
+  adminRateLimiter,
+  async (req: Request, res: Response) => {
+    const service = getFraudRulesService(res);
+    if (!service) return;
+    try {
+      const entries = await service.getRuleAudit(req.params.id);
+      res.json({ ruleId: req.params.id, entries });
+    } catch (err) {
+      logger.error({ event: 'admin.fraud_rules.audit.error', err },
+        (err as Error).message);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);

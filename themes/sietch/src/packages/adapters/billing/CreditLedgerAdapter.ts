@@ -56,20 +56,12 @@ const REDIS_COMMAND_TIMEOUT_MS = 200;
 /** Redis key prefix for balance cache */
 const REDIS_BALANCE_PREFIX = 'billing:balance:';
 
-/**
- * SQLite-compatible timestamp (YYYY-MM-DD HH:MM:SS).
- * SQLite's datetime() returns this format; using ISO 8601 (with T and Z)
- * breaks string comparisons against datetime('now').
- */
-function sqliteNow(): string {
-  return new Date().toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
-}
+import { sqliteTimestamp, sqliteFutureTimestamp } from './protocol/timestamps';
 
-/** SQLite-compatible timestamp offset by N seconds from now. */
-function sqliteFuture(offsetSeconds: number): string {
-  return new Date(Date.now() + offsetSeconds * 1000)
-    .toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
-}
+/** @deprecated Use sqliteTimestamp() from protocol/timestamps.ts */
+const sqliteNow = sqliteTimestamp;
+/** @deprecated Use sqliteFutureTimestamp() from protocol/timestamps.ts */
+const sqliteFuture = (offsetSeconds: number) => sqliteFutureTimestamp(offsetSeconds);
 
 // =============================================================================
 // Error Classes
@@ -133,6 +125,7 @@ interface RedisClient {
 export class CreditLedgerAdapter implements ICreditLedgerService {
   private db: Database.Database;
   private redis: RedisClient | null;
+  private economicEmitter: { emitInTransaction(tx: { prepare(sql: string): any }, event: any): void } | null = null;
 
   constructor(db: Database.Database, redis?: RedisClient | null) {
     this.db = db;
@@ -142,6 +135,14 @@ export class CreditLedgerAdapter implements ICreditLedgerService {
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('busy_timeout = 5000');
     this.db.pragma('foreign_keys = ON');
+  }
+
+  /**
+   * Set the economic event emitter for outbox-backed event emission.
+   * Optional: when not set, no economic events are emitted (backward-compatible).
+   */
+  setEconomicEmitter(emitter: { emitInTransaction(tx: { prepare(sql: string): any }, event: any): void }): void {
+    this.economicEmitter = emitter;
   }
 
   // ---------------------------------------------------------------------------
@@ -557,6 +558,86 @@ export class CreditLedgerAdapter implements ICreditLedgerService {
         };
       })();
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Finalize (Transaction-threaded)
+  // ---------------------------------------------------------------------------
+
+  finalizeInTransaction(
+    tx: { prepare(sql: string): any },
+    reservationId: string,
+    actualCostMicro: bigint,
+    options?: FinalizeOptions,
+  ): FinalizeResult {
+    // Delegate to the same finalize logic but using the caller's transaction handle.
+    // The caller is responsible for wrapping this in db.transaction().
+    assertMicroUSD(actualCostMicro);
+
+    const reservation = tx.prepare(
+      `SELECT id, account_id, pool_id, total_reserved_micro, status, billing_mode
+       FROM credit_reservations WHERE id = ?`
+    ).get(reservationId) as CreditReservationRow | undefined;
+
+    if (!reservation) {
+      throw new Error(`Reservation ${reservationId} not found`);
+    }
+
+    if (reservation.status !== 'pending') {
+      throw new InvalidStateError(reservationId, reservation.status, 'finalize');
+    }
+
+    const accountId = reservation.account_id;
+    const poolId = reservation.pool_id ?? DEFAULT_POOL;
+    const totalReserved = BigInt(reservation.total_reserved_micro);
+    const now = sqliteNow();
+    let effectiveCost = actualCostMicro;
+    let surplusReleasedMicro = 0n;
+    let overrunMicro = 0n;
+
+    if (actualCostMicro > totalReserved) {
+      overrunMicro = actualCostMicro - totalReserved;
+      effectiveCost = totalReserved; // Cap at reserved for transaction-threaded path
+    } else if (actualCostMicro < totalReserved) {
+      surplusReleasedMicro = totalReserved - actualCostMicro;
+    }
+
+    // Update reservation status
+    tx.prepare(
+      `UPDATE credit_reservations SET status = 'finalized', updated_at = ? WHERE id = ?`
+    ).run(now, reservationId);
+
+    // Write finalize ledger entry
+    const seqRow = tx.prepare(
+      `SELECT COALESCE(MAX(entry_seq), -1) + 1 as next_seq
+       FROM credit_ledger WHERE account_id = ? AND pool_id = ?`
+    ).get(accountId, poolId) as { next_seq: number };
+
+    tx.prepare(`
+      INSERT INTO credit_ledger
+        (id, account_id, pool_id, reservation_id, entry_seq, entry_type,
+         amount_micro, description, idempotency_key, created_at)
+      VALUES (?, ?, ?, ?, ?, 'finalize', ?, ?, ?, ?)
+    `).run(
+      randomUUID(),
+      accountId,
+      poolId,
+      reservationId,
+      seqRow.next_seq,
+      (-effectiveCost).toString(),
+      `Finalization of ${reservationId}`,
+      `finalize:${reservationId}`,
+      now,
+    );
+
+    return {
+      reservationId,
+      accountId,
+      actualCostMicro: effectiveCost,
+      surplusReleasedMicro,
+      overrunMicro,
+      finalizedAt: now,
+    };
   }
 
   // ---------------------------------------------------------------------------

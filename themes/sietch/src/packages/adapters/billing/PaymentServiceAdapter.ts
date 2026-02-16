@@ -35,13 +35,9 @@ import type { X402PaymentAdapter, X402VerificationResult } from './X402PaymentAd
 import { dollarsToMicro } from '../../core/protocol/arithmetic.js';
 import { logger } from '../../../utils/logger.js';
 
-// =============================================================================
-// SQLite Timestamp Helper
-// =============================================================================
+import { sqliteTimestamp } from './protocol/timestamps';
 
-function sqliteNow(): string {
-  return new Date().toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
-}
+const sqliteNow = sqliteTimestamp;
 
 // =============================================================================
 // Row Types

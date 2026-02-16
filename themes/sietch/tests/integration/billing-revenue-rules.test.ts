@@ -16,6 +16,7 @@ import Database from 'better-sqlite3';
 import { CREDIT_LEDGER_SCHEMA_SQL } from '../../src/db/migrations/030_credit_ledger.js';
 import { BILLING_OPS_SCHEMA_SQL, BILLING_SYSTEM_ACCOUNTS_SQL } from '../../src/db/migrations/032_billing_ops.js';
 import { REVENUE_RULES_SCHEMA_SQL } from '../../src/db/migrations/035_revenue_rules.js';
+import { REVENUE_RULES_REFERRER_SQL } from '../../src/db/migrations/043_revenue_rules_referrer.js';
 import { RevenueRulesAdapter } from '../../src/packages/adapters/billing/RevenueRulesAdapter.js';
 import { RevenueDistributionService } from '../../src/packages/adapters/billing/RevenueDistributionService.js';
 import { createRevenueRulesActivator } from '../../src/jobs/revenue-rules-activator.js';
@@ -34,6 +35,7 @@ function setupDb(): Database.Database {
   testDb.exec(CREDIT_LEDGER_SCHEMA_SQL);
   testDb.exec(BILLING_OPS_SCHEMA_SQL);
   testDb.exec(REVENUE_RULES_SCHEMA_SQL);
+  testDb.exec(REVENUE_RULES_REFERRER_SQL);
   testDb.pragma('foreign_keys = ON');
   return testDb;
 }
@@ -370,8 +372,8 @@ describe('Task 8.5: Distribution from Revenue Rules', () => {
       proposedBy: 'admin',
     });
     await rulesAdapter.submitForApproval(rule.id, 'admin');
-    await rulesAdapter.approveRule(rule.id, 'admin');
-    await rulesAdapter.overrideCooldown(rule.id, 'admin', 'Test');
+    await rulesAdapter.approveRule(rule.id, 'admin-bob');
+    await rulesAdapter.overrideCooldown(rule.id, 'admin-bob', 'Test');
 
     // Cache still has old values
     expect(revDist.getConfig().commonsRateBps).toBe(500n);

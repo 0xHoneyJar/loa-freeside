@@ -48,14 +48,10 @@ function getNextRetryDelay(retryCount: number): number {
   return BACKOFF_DELAYS[Math.min(retryCount, BACKOFF_DELAYS.length - 1)];
 }
 
-function sqliteNow(): string {
-  return new Date().toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
-}
+import { sqliteTimestamp, sqliteFutureTimestamp } from '../packages/adapters/billing/protocol/timestamps';
 
-function sqliteFuture(offsetSeconds: number): string {
-  return new Date(Date.now() + offsetSeconds * 1000)
-    .toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
-}
+const sqliteNow = sqliteTimestamp;
+const sqliteFuture = (offsetSeconds: number) => sqliteFutureTimestamp(offsetSeconds);
 
 // =============================================================================
 // DLQ Processor

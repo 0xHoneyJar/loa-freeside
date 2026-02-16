@@ -64,9 +64,9 @@ interface CampaignRow {
 // Helpers
 // =============================================================================
 
-function sqliteNow(): string {
-  return new Date().toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
-}
+import { sqliteTimestamp } from './protocol/timestamps';
+
+const sqliteNow = sqliteTimestamp;
 
 function rowToCampaign(row: CampaignRow): Campaign {
   return {

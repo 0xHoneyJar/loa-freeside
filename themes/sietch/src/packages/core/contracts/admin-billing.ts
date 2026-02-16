@@ -73,3 +73,27 @@ export const overrideCooldownSchema = z.object({
 });
 
 export type EmergencyActivateRequest = z.infer<typeof overrideCooldownSchema>;
+
+// =============================================================================
+// Fraud Rules Schemas (Sprint 15, Task 15.4)
+// =============================================================================
+
+/** Schema for proposing a new fraud rule — weights must sum to 10000 BPS */
+export const proposeFraudRuleSchema = z.object({
+  name: z.string().min(1).max(200),
+  ipClusterWeight: z.number().int().min(0).max(10000),
+  uaFingerprintWeight: z.number().int().min(0).max(10000),
+  velocityWeight: z.number().int().min(0).max(10000),
+  activityWeight: z.number().int().min(0).max(10000),
+  flagThreshold: z.number().int().min(1).max(10000),
+  withholdThreshold: z.number().int().min(1).max(10000),
+  notes: z.string().max(1000).optional(),
+}).refine(
+  d => d.ipClusterWeight + d.uaFingerprintWeight + d.velocityWeight + d.activityWeight === 10000,
+  { message: 'Fraud weights must sum to 10000 (100%)' },
+).refine(
+  d => d.flagThreshold < d.withholdThreshold,
+  { message: 'Flag threshold must be less than withhold threshold' },
+);
+
+export type ProposeFraudRuleRequest = z.infer<typeof proposeFraudRuleSchema>;

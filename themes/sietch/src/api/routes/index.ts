@@ -19,6 +19,10 @@ import { boostRouter } from '../boost.routes.js';
 import { themeRouter } from './theme.routes.js';
 import { componentRouter } from './component.routes.js';
 import { internalRouter } from './internal.routes.js';
+import { referralRouter } from './referral.routes.js';
+import { transferRouter } from './transfer.routes.js';
+import { agentTbaRouter } from './agent-tba.routes.js';
+import { agentGovernanceRouter } from './agent-governance.routes.js';
 
 /**
  * Combined API router that mounts all sub-routers
@@ -58,6 +62,18 @@ apiRouter.use('/themes', themeRouter);
 // Mount component routes at /components (Sprint 5 - Component Registry)
 apiRouter.use('/components', componentRouter);
 
+// Mount referral routes at /referrals (Sprint 258 - Creator Economy)
+apiRouter.use('/referrals', referralRouter);
+
+// Mount transfer routes at /transfers (Sprint 286 - Peer Transfer API)
+apiRouter.use('/transfers', transferRouter);
+
+// Mount agent TBA routes at /agent/tba (Sprint 287 - TBA Binding)
+apiRouter.use('/agent/tba', agentTbaRouter);
+
+// Mount agent governance routes at /agent/governance (Sprint 289 - Agent Governance)
+apiRouter.use('/agent/governance', agentGovernanceRouter);
+
 /**
  * Re-export individual routers for backward compatibility and direct access
  */
@@ -74,6 +90,7 @@ export {
   themeRouter,
   componentRouter,
   internalRouter,
+  referralRouter,
 };
 
 /**
@@ -137,3 +154,27 @@ export type { AgentConfigRoutesDeps, AgentConfigStore, AgentConfigAuditLogger, B
  */
 export { createBYOKRoutes } from './admin/byok.routes.js';
 export type { BYOKRoutesDeps } from './admin/byok.routes.js';
+
+/**
+ * Referral routes (Sprint 258 - Creator Economy)
+ * Referral code management, registration, and stats
+ */
+export { setReferralService } from './referral.routes.js';
+
+/**
+ * Peer transfer routes (Sprint 286 - Peer Transfer API)
+ * Agent-to-agent credit transfers with policy enforcement
+ */
+export { transferRouter, setTransferService } from './transfer.routes.js';
+
+/**
+ * Agent TBA routes (Sprint 287 - TBA Binding, Sprint 288 - TBA Deposit Bridge)
+ * ERC-6551 Token-Bound Account binding and on-chain deposit bridging
+ */
+export { agentTbaRouter, setProvenanceVerifier, setDepositBridge } from './agent-tba.routes.js';
+
+/**
+ * Agent governance routes (Sprint 289 - Agent Governance Participation)
+ * Weighted proposals, voting, delegation-based weight computation
+ */
+export { agentGovernanceRouter, setAgentGovernanceService } from './agent-governance.routes.js';

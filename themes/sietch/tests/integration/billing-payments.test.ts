@@ -67,9 +67,9 @@ function setupDb(): Database.Database {
   return testDb;
 }
 
-function sqliteNow(): string {
-  return new Date().toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
-}
+import { sqliteTimestamp } from '../../src/packages/adapters/billing/protocol/timestamps';
+
+const sqliteNow = sqliteTimestamp;
 
 function seedPayment(opts: {
   id?: string;

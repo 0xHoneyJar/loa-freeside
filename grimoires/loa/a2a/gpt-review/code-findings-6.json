@@ -1,23 +1,29 @@
 {
-  "verdict": "APPROVED",
-  "summary": "All previously reported issues have been addressed without introducing new blocking problems.",
-  "previous_issues_status": [
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Missing fallback and type support for string enums plus unsafe enum validation allow invalid or missing governance defaults.",
+  "issues": [
     {
-      "original_issue": "getRevenueRulesService throws outside of try/catch, causing unhandled exceptions when service is uninitialized",
-      "status": "fixed",
-      "notes": "Now returns null and responds 503 instead of throwing."
+      "severity": "critical",
+      "file": "packages/core/protocol/config-schema.ts",
+      "line": 188,
+      "description": "CONFIG_FALLBACKS is typed as Record<string, number>, which prevents adding the required string fallback for governance.agent_weight_source and violates the acceptance criteria.",
+      "current_code": "```typescript\nexport const CONFIG_FALLBACKS: Record<string, number> = {\n  'kyc.basic_threshold_micro': 100_000_000,\n  'kyc.enhanced_threshold_micro': 600_000_000,\n  'settlement.hold_seconds': 172_800,\n  'payout.min_micro': 1_000_000,\n  'payout.rate_limit_seconds': 86_400,\n  'payout.fee_cap_percent': 20,\n  'revenue_rule.cooldown_seconds': 172_800,\n  'fraud_rule.cooldown_seconds': 604_800,\n  'reservation.default_ttl_seconds': 300,\n  'referral.attribution_window_days': 365,\n  'agent.drip_recovery_pct': 50,\n  'transfer.max_single_micro': 100_000_000,   // $100\n  'transfer.daily_limit_micro': 500_000_000,  // $500\n\n  // Agent Governance (Sprint 289)\n  'governance.agent_quorum_weight': 10,              // 10.0 weight units for quorum\n  'governance.agent_cooldown_seconds': 86_400,       // 24 hours\n  'governance.max_delegation_per_creator': 5,        // max 5 agents per creator\n  'governance.fixed_weight_per_agent': 1,            // 1.0 weight per agent\n  'governance.reputation_window_seconds': 2_592_000, // 30 days\n  'governance.reputation_scale_factor': 1,           // 1.0x scaling\n  'governance.max_weight_per_agent': 10,             // cap at 10.0\n};\n```",
+      "fixed_code": "```typescript\nexport const CONFIG_FALLBACKS: Record<string, number | string> = {\n  'kyc.basic_threshold_micro': 100_000_000,\n  'kyc.enhanced_threshold_micro': 600_000_000,\n  'settlement.hold_seconds': 172_800,\n  'payout.min_micro': 1_000_000,\n  'payout.rate_limit_seconds': 86_400,\n  'payout.fee_cap_percent': 20,\n  'revenue_rule.cooldown_seconds': 172_800,\n  'fraud_rule.cooldown_seconds': 604_800,\n  'reservation.default_ttl_seconds': 300,\n  'referral.attribution_window_days': 365,\n  'agent.drip_recovery_pct': 50,\n  'transfer.max_single_micro': 100_000_000,   // $100\n  'transfer.daily_limit_micro': 500_000_000,  // $500\n\n  // Agent Governance (Sprint 289)\n  'governance.agent_quorum_weight': 10,              // 10.0 weight units for quorum\n  'governance.agent_cooldown_seconds': 86_400,       // 24 hours\n  'governance.max_delegation_per_creator': 5,        // max 5 agents per creator\n  'governance.agent_weight_source': 'delegation',    // default weight source\n  'governance.fixed_weight_per_agent': 1,            // 1.0 weight per agent\n  'governance.reputation_window_seconds': 2_592_000, // 30 days\n  'governance.reputation_scale_factor': 1,           // 1.0x scaling\n  'governance.max_weight_per_agent': 10,             // cap at 10.0\n};\n```",
+      "explanation": "The fallback map must support string values to provide the required default for governance.agent_weight_source, satisfying the acceptance criteria and avoiding type errors."
     },
     {
-      "original_issue": "JWT signature comparison uses direct string comparison (timing unsafe)",
-      "status": "fixed",
-      "notes": "Already fixed previously; still uses timingSafeEqual with length check."
-    },
-    {
-      "original_issue": "Pagination limit is unvalidated/unbounded",
-      "status": "fixed",
-      "notes": "Limit is now clamped between 1 and 100 with a default of 50."
+      "severity": "major",
+      "file": "packages/core/protocol/config-schema.ts",
+      "line": 252,
+      "description": "string_enum validation accepts any string if enumValues is missing or empty, which can silently bypass governance constraints.",
+      "current_code": "```typescript\n  if (schema.type === 'string_enum') {\n    if (typeof value !== 'string') {\n      return { valid: false, error: `Parameter '${key}' requires a string value, got: ${typeof value}` };\n    }\n    if (schema.enumValues && !schema.enumValues.includes(value)) {\n      return { valid: false, error: `Parameter '${key}' value '${value}' not in allowed values: ${schema.enumValues.join(', ')}` };\n    }\n    return { valid: true };\n  }\n```",
+      "fixed_code": "```typescript\n  if (schema.type === 'string_enum') {\n    if (typeof value !== 'string') {\n      return { valid: false, error: `Parameter '${key}' requires a string value, got: ${typeof value}` };\n    }\n    if (!schema.enumValues || schema.enumValues.length === 0) {\n      return { valid: false, error: `Parameter '${key}' has no enumValues defined in schema` };\n    }\n    if (!schema.enumValues.includes(value)) {\n      return { valid: false, error: `Parameter '${key}' value '${value}' not in allowed values: ${schema.enumValues.join(', ')}` };\n    }\n    return { valid: true };\n  }\n```",
+      "explanation": "Explicitly requiring enumValues ensures that string enums cannot bypass validation due to a misconfigured schema, preserving governance integrity."
     }
   ],
-  "new_blocking_concerns": [],
-  "iteration": 3
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
 }

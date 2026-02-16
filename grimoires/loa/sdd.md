@@ -1,658 +1,293 @@
-# SDD: The Stillsuit — Cross-System Integration & Revenue Rules
+# SDD: Pre-Merge Excellence — Bug Fixes & Merge Readiness
 
 **Version:** 1.0.0
-**Cycle:** 026
-**Date:** 2026-02-15
-**PRD:** [The Stillsuit PRD v1.0.0](grimoires/loa/prd.md)
+**Date:** 2026-02-16
+**Status:** Active
+**Cycle:** cycle-032
+**PRD:** grimoires/loa/prd.md (v1.0.0)
 
 ---
 
-## 1. System Architecture
+## 1. Executive Summary
 
-### 1.1 Overview
+Cycle-032 resolves 2 critical bugs, 1 moderate design issue, and 2 medium improvements identified during Bridgebuilder review of cycle-031. All changes are surgical fixes to existing code — no new subsystems, no new dependencies, no new APIs. The merge conflict resolution (FR-5) is a git operation, not a code change.
 
-This cycle extends the billing system (Cycle 025) with cross-system integration, production hardening, and operational governance. No new services or deployments — all changes are within the existing Sietch API monolith and its test infrastructure.
-
-**Architectural changes this cycle:**
-- New vendored protocol types (`packages/core/protocol/`)
-- New SQLite table (`daily_agent_spending`)
-- New SQLite triggers (audit log immutability)
-- New admin API endpoints (revenue rules lifecycle)
-- New Docker Compose E2E test infrastructure
-- Extended S2S contract with identity anchor verification
-
-### 1.2 Existing Architecture (Preserved)
-
-**Pattern:** Modular Monolith with Ports & Adapters (Hexagonal)
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                      SIETCH API (Express)                           │
-├─────────────────────────────────────────────────────────────────────┤
-│  Routes: billing-routes.ts | billing-admin-routes.ts                │
-│       ↓                           ↓                                 │
-│  ┌──────────────────────────────────────────────────┐               │
-│  │              CORE SERVICES (Ports)                │               │
-│  │  ICreditLedgerService | IRevenueRulesService      │               │
-│  │  IPaymentService      | ICampaignService          │               │
-│  └──────────────────┬───────────────────────────────┘               │
-│                     ↓                                                │
-│  ┌──────────────────────────────────────────────────┐               │
-│  │              ADAPTERS (Implementations)           │               │
-│  │  CreditLedgerAdapter  | RevenueRulesAdapter       │               │
-│  │  AgentWalletPrototype | RevenueDistributionSvc    │               │
-│  └──────────────────┬───────────────────────────────┘               │
-│                     ↓                                                │
-│  ┌─────────┐  ┌─────────┐  ┌──────────────────────┐                │
-│  │ SQLite  │  │  Redis   │  │ Vendored Protocol    │                │
-│  │ (truth) │  │ (accel)  │  │ (loa-hounfour types) │                │
-│  └─────────┘  └─────────┘  └──────────────────────┘                │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-### 1.3 New: Cross-System E2E Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    Docker Compose Network                            │
-│                                                                     │
-│  ┌──────────────────────┐      ┌──────────────────────┐            │
-│  │   arrakis container   │      │  loa-finn container   │            │
-│  │                       │      │                       │            │
-│  │  Sietch API (Express) │      │  Hounfour (FastAPI)   │            │
-│  │  SQLite (internal)    │◄────►│  (no local DB)        │            │
-│  │                       │ S2S  │                       │            │
-│  │  ES256 private key    │ JWT  │  ES256 private key    │            │
-│  │  loa-finn public key  │      │  arrakis public key   │            │
-│  └───────────┬───────────┘      └───────────┬───────────┘            │
-│              │                               │                       │
-│              └───────────┬───────────────────┘                       │
-│                          ▼                                           │
-│                   ┌─────────────┐                                    │
-│                   │    Redis    │                                    │
-│                   │  (shared)   │                                    │
-│                   └─────────────┘                                    │
-└─────────────────────────────────────────────────────────────────────┘
-
-JWT Trust Flows:
-  1. Tenant JWT:  arrakis signs → loa-finn verifies (authorizes inference)
-  2. S2S JWT:     loa-finn signs → arrakis verifies (authorizes finalize)
-
-Key Provisioning:
-  - scripts/e2e-keygen.sh generates ES256 keypairs at compose build
-  - Public keys mounted read-only into verifying container
-  - Private keys mounted only into signing container
-```
+**Design principle:** Minimal blast radius. Every fix targets a specific file:line with a specific acceptance test. No refactoring beyond what is necessary to fix the identified issue.
 
 ---
 
-## 2. Component Design
+## 2. Component Changes
 
-### 2.1 Vendored Protocol Types (`packages/core/protocol/`)
+### 2.1 ReconciliationService — Check 5 Table Reference (FR-1)
 
-**Purpose:** Provide loa-hounfour shared types without depending on unpublished npm package.
+**File:** `themes/sietch/src/packages/adapters/billing/ReconciliationService.ts`
+**Method:** `checkTransferConservation()` (lines 308-375)
 
-**Structure:**
-```
-packages/core/protocol/
-├── index.ts                 # Re-exports all protocol types
-├── billing-types.ts         # AgentBillingConfig, CreditBalance, UsageRecord
-├── guard-types.ts           # GuardResult, BillingGuardResponse
-├── state-machines.ts        # STATE_MACHINES (escrow, stake, credit)
-├── arithmetic.ts            # BigInt micro-USD helpers
-├── compatibility.ts         # validateCompatibility()
-└── VENDORED.md              # Pinned commit hash, upgrade instructions
-```
+**Current state:** Check 5a at line ~314 may reference `ledger_entries` (a table that doesn't exist). The try/catch swallows the error and marks the check as `{ skipped: true }`.
 
-**Integration pattern:**
-```typescript
-// Local port extends protocol type
-import { CreditBalance } from '../../protocol/billing-types.js';
+**Change:**
+1. Verify the exact table name in Check 5a SQL query — if `ledger_entries`, change to `credit_ledger`
+2. Replace the silent skip pattern with structured error reporting: if the query fails, record `{ status: 'failed', error: '<message>' }` in the check result rather than `{ skipped: true }`. Do NOT throw — `reconcile()` must always return a complete report with per-check results.
+3. Check 5b already correctly queries `credit_ledger` for `transfer_out` entries (confirmed via code read)
 
-export interface ICreditLedgerService {
-  getBalance(accountId: string): Promise<CreditBalance>;
-  // ... existing methods
-}
-```
+**Error handling contract:** `reconcile()` returns a structured report containing all check results. Each check has `{ name, status: 'passed'|'failed', details }`. Errors within a check produce `status: 'failed'` with error details — they never throw or abort the reconciliation run. This ensures downstream systems always receive a complete report. Only programmer errors (null db, missing method) should throw.
 
-**Compatibility check (cross-service, not dependency-present):**
-```typescript
-// At startup, exchange version with loa-finn
-const compat = validateCompatibility(
-  ARRAKIS_PROTOCOL_VERSION,  // local vendored version
-  finnProtocolVersion,        // received from loa-finn /health
-);
-if (!compat.compatible) {
-  logger.error({ compat }, 'Protocol version mismatch with loa-finn');
-  process.exit(1);
-}
-```
+**Validation:**
+- `reconcile()` with completed transfers returns Check 5 `status: 'passed'` (not `'skipped'`)
+- `reconcile()` with an intentionally invalid SQL returns Check 5 `status: 'failed'` with error message (does not throw)
 
-### 2.2 Revenue Rules Admin API
+### 2.2 Migration 057 — TBA Deposit CHECK Constraint (FR-2)
 
-**New endpoints on `billing-admin-routes.ts`:**
+**File:** `themes/sietch/src/db/migrations/057_tba_deposits.ts`
 
-| Method | Path | Scope | Action |
-|--------|------|-------|--------|
-| POST | `/admin/billing/revenue-rules` | `admin:rules:write` | Create draft rule |
-| POST | `/admin/billing/revenue-rules/:id/submit` | `admin:rules:write` | Submit for approval |
-| POST | `/admin/billing/revenue-rules/:id/approve` | `admin:rules:approve` | Approve (start cooldown) |
-| POST | `/admin/billing/revenue-rules/:id/activate` | `admin:rules:approve` | Activate (after cooldown) |
-| POST | `/admin/billing/revenue-rules/:id/reject` | `admin:rules:approve` | Reject with reason |
-| POST | `/admin/billing/revenue-rules/:id/emergency-activate` | `admin:rules:emergency` | Override cooldown |
-| GET | `/admin/billing/revenue-rules` | `admin:rules:read` | List rules (filterable) |
-| GET | `/admin/billing/revenue-rules/:id/audit` | `admin:rules:read` | Audit trail |
-| GET | `/admin/billing/notifications` | `admin:rules:read` | Notification history |
+**Current state:** Migration creates `tba_deposits` with `amount_micro INTEGER NOT NULL CHECK (amount_micro >= 0)` and status CHECK `IN ('detected', 'confirmed', 'bridged', 'failed')`.
 
-**Four-eyes enforcement:**
-```typescript
-// In approve handler
-const actorId = req.auth.sub; // From authenticated JWT
-const rule = await revenueRules.getRule(req.params.id);
-
-if (actorId === rule.created_by) {
-  return res.status(403).json({
-    error: 'four_eyes_violation',
-    message: 'Creator cannot approve their own rule',
-  });
-}
-```
-
-**State machine validation:** All transitions validated against `ALLOWED_TRANSITIONS` map in `RevenueRulesAdapter`. Invalid transitions return 409 Conflict.
-
-### 2.3 Atomic Daily Spending (SQLite-Authoritative)
-
-**New migration: `036_daily_agent_spending.ts`**
+**Change:** Replace the simple `CHECK (amount_micro >= 0)` with a compound state-dependent CHECK:
 
 ```sql
-CREATE TABLE IF NOT EXISTS daily_agent_spending (
-  agent_account_id TEXT NOT NULL,
-  spending_date    TEXT NOT NULL,  -- YYYY-MM-DD
-  total_spent_micro INTEGER NOT NULL DEFAULT 0,
-  updated_at       TEXT NOT NULL,
-  PRIMARY KEY (agent_account_id, spending_date),
-  FOREIGN KEY (agent_account_id) REFERENCES credit_accounts(id)
-);
+CHECK (
+  (status IN ('detected', 'confirmed', 'failed') AND amount_micro >= 0)
+  OR (status = 'bridged' AND amount_micro > 0)
+)
 ```
 
-**Write path (finalize) — atomic UPSERT:**
-```
-AgentWalletPrototype.finalizeInference()
-  → BEGIN IMMEDIATE (same transaction as ledger entries)
-  → INSERT INTO daily_agent_spending(agent_account_id, spending_date, total_spent_micro, updated_at)
-      VALUES (?, ?, ?, ?)
-      ON CONFLICT(agent_account_id, spending_date)
-      DO UPDATE SET
-        total_spent_micro = daily_agent_spending.total_spent_micro + excluded.total_spent_micro,
-        updated_at = excluded.updated_at
-  → COMMIT
-  → Redis: Lua script for atomic INCRBY + EXPIREAT:
-      EVAL "local v = redis.call('INCRBY', KEYS[1], ARGV[1])
-            if v == tonumber(ARGV[1]) then
-              redis.call('EXPIREAT', KEYS[1], ARGV[2])
-            end
-            return v"
-      1 billing:agent:daily:{key} {amount} {midnightUnixTimestamp}
-```
+> Note: The actual status values in migration 057 are `detected`, `confirmed`, `bridged`, `failed` (4 states). The PRD referenced a 6-state lifecycle which may reflect planned future expansion. The fix uses the actual statuses present in the migration.
 
-**Cap enforcement model: Finalized-spend cap (explicit design choice)**
+**State machine clarification:** In `TbaDepositBridge.ts`, `'bridged'` is the terminal credited state — it is set AFTER the lot has been minted and `amount_micro` is already known/normalized (line ~441: `SET status = 'bridged', amount_micro = ?, lot_id = ?`). The transition sequence is: `detected(amount_micro=0)` → `confirmed(amount_micro=0 or known)` → `bridged(amount_micro>0, lot minted)`. The compound CHECK is therefore correct: only `'bridged'` requires `amount_micro > 0`.
 
-The daily cap applies to *finalized spend*, not reservations. This means concurrent reservations can temporarily oversubscribe the cap, but each finalize checks cumulative finalized spend and rejects/caps if the limit is exceeded. This is acceptable because:
-- SQLite single-writer serializes all finalizations
-- Reserve amounts are typically small relative to daily cap
-- A finalize that would exceed the cap is capped at `MIN(actualCost, remainingBudget)`
+**Migration strategy:** Since migration 057 exists only on the feature branch and has never been applied in any environment, amend it directly. No table rebuild required.
 
-If stricter reserve-time enforcement is needed (V2), add a separate `daily_reserved_micro` counter.
+**Validation:**
+- `INSERT INTO tba_deposits (status='detected', amount_micro=0)` succeeds
+- `INSERT INTO tba_deposits (status='bridged', amount_micro=0)` fails (CHECK violation)
+- `INSERT INTO tba_deposits (status='bridged', amount_micro=1000000)` succeeds
+- Full bridge flow test: insert `detected(0)` → update to `confirmed(0)` → update to `bridged(amount>0)` succeeds
 
-**Read path (cap check at finalize):**
-```
-AgentWalletPrototype.finalizeInference()
-  → Within BEGIN IMMEDIATE transaction:
-    → SELECT total_spent_micro FROM daily_agent_spending WHERE ...
-    → If total_spent + actualCost > dailyCap:
-        actualCost = dailyCap - total_spent  (cap to remaining)
-        If actualCost <= 0: reject finalize ('daily cap exceeded')
-    → UPSERT daily_agent_spending (as above)
-```
+### 2.3 Type System — EntryType Extension (FR-3)
 
-**Reserve-time soft check (advisory, not authoritative):**
-```
-AgentWalletPrototype.reserveForInference()
-  → Try Redis GET billing:agent:daily:{key}
-  → On Redis failure: SELECT total_spent_micro FROM daily_agent_spending
-  → If spent + estimatedCost > dailyCap: throw 'daily cap exceeded'
-  → (Advisory: may allow slight oversubscription under concurrency)
-```
+**Files:**
+- `themes/sietch/src/packages/core/protocol/billing-types.ts` (line ~89)
+- `themes/sietch/src/db/migrations/056_peer_transfers.ts` (lines 56-100 — credit_ledger rebuild)
+- `themes/sietch/src/packages/adapters/billing/PeerTransferService.ts` (line ~343)
 
-**Numeric precision bounds:**
+**Current state:**
+- `EntryType` union includes `'transfer_out'` but NOT `'transfer_in'`
+- `SourceType` union already includes `'transfer_in'`
+- PeerTransferService creates recipient entries with `entry_type = 'deposit'`
+- ReconciliationService Check 5 expects `entry_type = 'transfer_in'` entries
+- The `credit_ledger` CHECK constraint is defined in migration 030 and rebuilt in migration 056 (which added `'transfer_out'` via the standard rename→create→copy→drop→reindex pattern)
 
-Daily spending values are bounded by daily caps (max practical: $10,000/day = 10,000,000,000 micro-USD). This fits safely within:
-- SQLite INTEGER: signed 64-bit (max 9.2 × 10^18)
-- Redis INCRBY: signed 64-bit
-- JavaScript: Values up to $9.007 trillion fit in Number.MAX_SAFE_INTEGER (2^53-1)
+**Changes:**
 
-The Redis adapter uses `string` for all BigInt values to avoid JS Number precision loss:
+1. **billing-types.ts:** Add `'transfer_in'` to `EntryType` union:
+   ```typescript
+   export type EntryType =
+     | 'deposit' | 'reserve' | 'finalize' | 'release' | 'refund'
+     | 'grant' | 'shadow_charge' | 'shadow_reserve' | 'shadow_finalize'
+     | 'commons_contribution' | 'revenue_share'
+     | 'marketplace_sale' | 'marketplace_purchase'
+     | 'escrow' | 'escrow_release'
+     | 'transfer_out' | 'transfer_in';
+   ```
 
-**Redis interface extension:**
-```typescript
-interface AgentRedisClient {
-  get(key: string): Promise<string | null>;
-  set(key: string, value: string): Promise<string>;
-  setex?(key: string, seconds: number, value: string): Promise<string>;
-  expire?(key: string, seconds: number): Promise<number>;
-  incrby?(key: string, increment: string | number): Promise<string>;  // NEW: returns string
-  eval?(script: string, numkeys: number, ...args: string[]): Promise<unknown>;  // NEW: Lua scripts
-}
-```
+2. **Migration 056 amendment:** Add `'transfer_in'` to the `credit_ledger` CHECK constraint in `CREDIT_LEDGER_REBUILD_SQL` (line 77 of `056_peer_transfers.ts`). This is the migration that already rebuilds credit_ledger to add `'transfer_out'` — amend it to include `'transfer_in'` in the same CHECK list. Safe because 056 is feature-branch-only (pre-merge).
 
-### 2.4 Identity Anchor Verification
+3. **PeerTransferService.ts line ~343:** Change recipient entry from `'deposit'` to `'transfer_in'`:
+   ```typescript
+   // Before:
+   ... entry_type, ... VALUES (... 'deposit', ...)
+   // After:
+   ... entry_type, ... VALUES (... 'transfer_in', ...)
+   ```
 
-**Database: Add UNIQUE constraint to agent wallets**
+4. **Balance computation audit:** Identify the balance query function and ensure it sums `'transfer_in'` as a credit-increasing entry. The balance computation likely aggregates by entry_type — `'transfer_in'` must be treated equivalently to `'deposit'` (positive amount, increases available balance).
 
-If agent_wallets table doesn't exist yet (currently in-memory in prototype), create migration `037_agent_identity.ts`:
+**Semantic safety:** The `amount_micro` in recipient ledger entries is already positive (set to the transfer amount). Balance computation should sum all positive-amount entries regardless of type. Verify this assumption during implementation — if balance queries filter by specific entry_types, add `'transfer_in'` to the filter.
 
-```sql
-CREATE TABLE IF NOT EXISTS agent_identity_anchors (
-  agent_account_id  TEXT NOT NULL PRIMARY KEY,
-  identity_anchor   TEXT NOT NULL UNIQUE,
-  created_at        TEXT NOT NULL,
-  rotated_at        TEXT,
-  rotated_by        TEXT,
-  FOREIGN KEY (agent_account_id) REFERENCES credit_accounts(id)
-);
-```
+### 2.4 SqliteTimestamp Branded Type (FR-4)
 
-**S2S finalize verification (in billing-routes.ts):**
+**File:** `themes/sietch/src/packages/adapters/billing/protocol/timestamps.ts`
 
-The `accountId` is **derived from the reservation**, not accepted from the request body. This prevents confused-deputy where a caller claims a different account:
+**Current state:**
+- `sqliteTimestamp()` returns `string` (line 17)
+- Format: `YYYY-MM-DD HH:MM:SS` (space-separated, no timezone)
+- Warning comment about string comparison of 'T' vs space breaking chronological ordering (BB-67-001 / ADR-013)
+- Related functions: `sqliteFutureTimestamp()`, `isoTimestamp()`, `isSqliteFormat()`, `isIsoFormat()`
 
-```typescript
-// 1. Validate S2S JWT (loa-finn service identity)
-// 2. Look up reservation → derive accountId
-const reservation = db.prepare(
-  'SELECT account_id FROM credit_reservations WHERE id = ?'
-).get(body.reservationId);
-if (!reservation) return res.status(404).json({ error: 'reservation_not_found' });
+**Changes:**
 
-const accountId = reservation.account_id;
+1. **Define branded type:**
+   ```typescript
+   export type SqliteTimestamp = string & { readonly __brand: 'sqlite_ts' };
+   ```
 
-// 3. If account has an identity anchor, request MUST include it and it MUST match
-const anchor = db.prepare(
-  'SELECT identity_anchor FROM agent_identity_anchors WHERE agent_account_id = ?'
-).get(accountId);
+2. **Update return types:**
+   ```typescript
+   export function sqliteTimestamp(date?: Date): SqliteTimestamp {
+     return (date ?? new Date())
+       .toISOString()
+       .replace('T', ' ')
+       .replace(/\.\d+Z$/, '') as SqliteTimestamp;
+   }
 
-if (anchor) {
-  if (!body.identity_anchor) {
-    return res.status(403).json({
-      error: 'identity_anchor_required',
-      message: 'This account requires identity anchor verification',
-    });
-  }
-  if (anchor.identity_anchor !== body.identity_anchor) {
-    return res.status(403).json({
-      error: 'identity_anchor_mismatch',
-      // Do NOT return the stored anchor (information leak)
-    });
-  }
-}
-```
+   export function sqliteFutureTimestamp(
+     offsetSeconds: number,
+     from?: Date
+   ): SqliteTimestamp { ... }
+   ```
 
-### 2.5 Admin Contract Extraction
+3. **Enforcement boundaries:**
 
-**New file: `packages/core/contracts/admin-billing.ts`**
+   | Surface | Location | Change |
+   |---------|----------|--------|
+   | Insert/update params | All `*.ts` files with `INSERT/UPDATE ... *_at` | Parameter type → `SqliteTimestamp` |
+   | Row model interfaces | `billing-types.ts`, service-local row types | `*_at` fields → `SqliteTimestamp` |
+   | Comparison helpers | `timestamps.ts` (if any exist) | Parameter types → `SqliteTimestamp` |
 
-Extract all Zod schemas from `billing-admin-routes.ts`:
+4. **Compile-time verification test:**
+   ```typescript
+   // In test file:
+   import { SqliteTimestamp, sqliteTimestamp } from './timestamps';
 
-```typescript
-import { z } from 'zod';
+   function requiresTimestamp(ts: SqliteTimestamp): void {}
 
-// Revenue Rules
-export const createRuleSchema = z.object({
-  commons_bps: z.number().int().min(0).max(10000),
-  community_bps: z.number().int().min(0).max(10000),
-  foundation_bps: z.number().int().min(0).max(10000),
-  description: z.string().min(1).max(500),
-}).refine(d => d.commons_bps + d.community_bps + d.foundation_bps === 10000, {
-  message: 'Basis points must sum to 10000',
-});
+   // This should compile:
+   requiresTimestamp(sqliteTimestamp());
 
-export const rejectRuleSchema = z.object({
-  reason: z.string().min(10).max(1000),
-});
+   // @ts-expect-error — raw ISO string must not compile
+   requiresTimestamp(new Date().toISOString());
 
-export const emergencyActivateSchema = z.object({
-  justification: z.string().min(20).max(2000),
-});
+   // @ts-expect-error — plain string must not compile
+   requiresTimestamp('2026-02-16 14:30:00');
+   ```
 
-// Batch grants, mint, etc. — extracted from existing inline schemas
-export const batchGrantSchema = z.object({ /* ... */ });
-export const adminMintSchema = z.object({ /* ... */ });
+5. **DB boundary functions** (read path — prevents unbranded strings from DB rows):
+   ```typescript
+   /** Validate and brand a string read from SQLite *_at column */
+   export function parseSqliteTimestamp(raw: string): SqliteTimestamp {
+     if (!isSqliteFormat(raw)) {
+       throw new Error(`Invalid SQLite timestamp format: ${raw}`);
+     }
+     return raw as SqliteTimestamp;
+   }
+   ```
+   All DB row mappers for `*_at` fields in cycle-031 services must use `parseSqliteTimestamp()` to brand values read from the database. This prevents the bypass where raw `string` from SQLite rows gets used in comparisons without format validation.
 
-// Type exports
-export type CreateRuleRequest = z.infer<typeof createRuleSchema>;
-export type RejectRuleRequest = z.infer<typeof rejectRuleSchema>;
-export type EmergencyActivateRequest = z.infer<typeof emergencyActivateSchema>;
-```
+6. **Runtime validation test:** Add a test that `parseSqliteTimestamp()` rejects ISO format strings (e.g., `'2026-02-16T14:30:00.000Z'`) at runtime, complementing the compile-time `@ts-expect-error` test.
 
-### 2.6 Audit Log Immutability (SQLite Triggers)
+**Scope boundary:** Only update typed surfaces that are touched by cycle-031 code (PeerTransferService, TbaDepositBridge, AgentGovernanceService, ReconciliationService). Do not retrofit the branded type into pre-existing cycle-030 code — that's a separate refactoring task.
 
-**Added to migration `035_revenue_rules.ts` (or new migration `038_audit_immutability.ts`):**
+### 2.5 Merge Conflict Resolution (FR-5)
 
-```sql
-CREATE TRIGGER IF NOT EXISTS audit_log_no_update
-  BEFORE UPDATE ON revenue_rule_audit_log
-  BEGIN
-    SELECT RAISE(ABORT, 'audit log is immutable: updates are prohibited');
-  END;
+**Strategy:** Merge `main` into the feature branch (not rebase). Rationale: The feature branch has 570 files changed with complex history — rebasing risks introducing subtle errors across the commit chain.
 
-CREATE TRIGGER IF NOT EXISTS audit_log_no_delete
-  BEFORE DELETE ON revenue_rule_audit_log
-  BEGIN
-    SELECT RAISE(ABORT, 'audit log is immutable: deletes are prohibited');
-  END;
-```
-
-### 2.7 Notification System
-
-**New table in `038_audit_immutability.ts` migration:**
-
-```sql
-CREATE TABLE IF NOT EXISTS billing_notifications (
-  id          TEXT PRIMARY KEY,
-  rule_id     TEXT NOT NULL,
-  transition  TEXT NOT NULL,
-  old_splits  TEXT,  -- JSON: {commons_bps, community_bps, foundation_bps}
-  new_splits  TEXT,  -- JSON: {commons_bps, community_bps, foundation_bps}
-  actor_id    TEXT NOT NULL,
-  urgency     TEXT NOT NULL DEFAULT 'normal' CHECK(urgency IN ('normal', 'urgent')),
-  created_at  TEXT NOT NULL,
-  FOREIGN KEY (rule_id) REFERENCES revenue_rules(id)
-);
-```
-
-Notifications are created as part of the `activate` and `emergency-activate` transitions. Emergency activations create `urgency = 'urgent'` notifications.
+**Conflict resolution principles:**
+1. Accept main's changes for any file not modified by cycle-031
+2. For files modified by both: manually resolve, preferring cycle-031's additions while keeping main's independent changes
+3. After resolution: run full test suite to verify no regressions
+4. Verify no unintended deletions from main using `git diff main...HEAD --stat`
 
 ---
 
-## 3. Data Architecture
+## 3. Data Architecture Changes
 
-### 3.1 New Tables Summary
+### 3.1 Schema Amendments (Pre-Merge)
 
-| Table | Migration | Purpose |
-|-------|-----------|---------|
-| `daily_agent_spending` | 036 | SQLite-authoritative daily spending counter |
-| `agent_identity_anchors` | 037 | Identity anchor storage with UNIQUE constraint |
-| `billing_notifications` | 038 | Revenue rule change notifications |
+| Table | Migration | Column | Before | After |
+|-------|-----------|--------|--------|-------|
+| `tba_deposits` | 057 | `amount_micro` CHECK | `>= 0` | Compound: `(non-terminal AND >= 0) OR (bridged AND > 0)` |
+| `credit_ledger` | 056 | `entry_type` CHECK | Includes `'transfer_out'` | Add `'transfer_in'` to same CHECK list |
 
-### 3.2 New SQLite Triggers
+### 3.2 No New Tables
 
-| Trigger | Table | Action |
-|---------|-------|--------|
-| `audit_log_no_update` | `revenue_rule_audit_log` | ABORT on UPDATE |
-| `audit_log_no_delete` | `revenue_rule_audit_log` | ABORT on DELETE |
+No new tables, columns, or indexes are introduced.
 
-### 3.3 Redis Keys (Unchanged Pattern)
+### 3.3 No Data Migration
 
-| Key Pattern | Type | TTL | Purpose |
-|-------------|------|-----|---------|
-| `billing:agent:daily:{accountId}:{date}` | String (integer) | Midnight UTC | Daily spending acceleration |
-
-Redis operations change from `SET` to `INCRBY` for atomic increments.
+All changes are constraint tightening (compound CHECK) or constraint extension (new allowed value). No existing rows need modification — `'transfer_in'` entries will only be created by new transfers going forward.
 
 ---
 
-## 4. API Design
+## 4. Testing Strategy
 
-### 4.1 Revenue Rules Lifecycle API
+### 4.1 Unit Tests
 
-**Create Draft:**
-```
-POST /admin/billing/revenue-rules
-Authorization: Bearer <admin JWT with admin:rules:write>
-Content-Type: application/json
+| Test | Validates |
+|------|-----------|
+| ReconciliationService Check 5 with completed transfers | Check returns `passed` (not `skipped`) |
+| ReconciliationService Check 5 with no transfers | Check returns `passed` with zero totals |
+| TBA deposit INSERT with `status='detected', amount_micro=0` | Succeeds |
+| TBA deposit INSERT with `status='bridged', amount_micro=0` | Fails (CHECK violation) |
+| TBA deposit INSERT with `status='bridged', amount_micro=1000000` | Succeeds |
+| PeerTransfer recipient entry uses `entry_type='transfer_in'` | Entry type correct in credit_ledger |
+| Balance query includes `'transfer_in'` entries | Balance unchanged after type reclassification |
+| `sqliteTimestamp()` returns `SqliteTimestamp` branded type | Compile-time type check |
+| `@ts-expect-error` on ISO string where `SqliteTimestamp` expected | Compile-time enforcement |
 
-{
-  "commons_bps": 500,
-  "community_bps": 7000,
-  "foundation_bps": 2500,
-  "description": "Increase community share for Q2 growth"
-}
+### 4.2 Integration Tests
 
-Response 201:
-{
-  "id": "rule-uuid",
-  "status": "draft",
-  "created_by": "<JWT sub>",
-  "created_at": "2026-02-15T12:00:00Z"
-}
-```
+| Test | Validates |
+|------|-----------|
+| Full transfer flow → reconciliation passes | End-to-end transfer conservation with correct entry types |
+| TBA deposit detection → bridge flow | Deposit lifecycle with compound CHECK constraint |
+| Conservation stress test (existing) | Still passes with all fixes applied |
+| All 20 existing integration tests | No regressions |
 
-**Submit for Approval:**
-```
-POST /admin/billing/revenue-rules/:id/submit
-Authorization: Bearer <admin JWT with admin:rules:write>
+### 4.3 Compile-Time Tests
 
-Response 200:
-{
-  "id": "rule-uuid",
-  "status": "pending_approval",
-  "submitted_at": "2026-02-15T12:05:00Z"
-}
-```
-
-**Approve (Start Cooldown):**
-```
-POST /admin/billing/revenue-rules/:id/approve
-Authorization: Bearer <admin JWT with admin:rules:approve>
-
-Response 200:
-{
-  "id": "rule-uuid",
-  "status": "cooling_down",
-  "cooldown_expires_at": "2026-02-17T12:10:00Z",
-  "approved_by": "<JWT sub>"
-}
-
-Response 403 (four-eyes violation):
-{
-  "error": "four_eyes_violation",
-  "message": "Creator cannot approve their own rule"
-}
-```
-
-**Activate (After Cooldown):**
-```
-POST /admin/billing/revenue-rules/:id/activate
-Authorization: Bearer <admin JWT with admin:rules:approve>
-
-Response 200:
-{
-  "id": "rule-uuid",
-  "status": "active",
-  "superseded_rule_id": "old-rule-uuid",
-  "activated_at": "2026-02-17T12:15:00Z"
-}
-
-Response 409 (cooldown not expired):
-{
-  "error": "cooldown_active",
-  "cooldown_expires_at": "2026-02-17T12:10:00Z"
-}
-```
-
-**Emergency Activate:**
-```
-POST /admin/billing/revenue-rules/:id/emergency-activate
-Authorization: Bearer <admin JWT with admin:rules:emergency>
-Content-Type: application/json
-
-{
-  "justification": "Critical revenue split error discovered in production"
-}
-
-Response 200:
-{
-  "id": "rule-uuid",
-  "status": "active",
-  "emergency": true,
-  "activated_at": "2026-02-15T12:20:00Z"
-}
-```
-
-### 4.2 S2S Finalize Contract (Extended)
-
-**Updated request body (from `s2s-billing.ts`):**
-
-`accountId` is removed from the request schema — it is derived from the reservation server-side (prevents confused-deputy). `identity_anchor` is optional in the schema but required at runtime if the derived account has a stored anchor.
-
-```typescript
-export const s2sFinalizeRequestSchema = z.object({
-  reservationId: z.string().min(1),
-  actualCostMicro: z.string().regex(/^\d+$/),
-  identity_anchor: z.string().optional(),  // Required if account has stored anchor
-});
-```
+| Test | Validates |
+|------|-----------|
+| `SqliteTimestamp` branded type enforcement | ISO strings rejected at compile time |
+| `EntryType` union includes `'transfer_in'` | Type system consistency |
 
 ---
 
-## 5. Security Architecture
+## 5. File Manifest
 
-### 5.1 JWT Trust Boundaries
+### Modified Files
 
-| JWT Type | Issuer (`iss`) | Audience (`aud`) | Signing | Key Management |
-|----------|----------------|-------------------|---------|----------------|
-| Admin JWT | `arrakis-admin` | `arrakis-billing-admin` | HS256 (ADR-004) | `BILLING_ADMIN_JWT_SECRET` — dedicated secret, not shared with any other service |
-| Tenant JWT | `arrakis` | `loa-finn` | ES256 | Keypair per environment, public key distributed to loa-finn |
-| S2S JWT | `loa-finn` | `arrakis-s2s` | ES256 | Keypair per environment, public key distributed to arrakis |
+| File | Change |
+|------|--------|
+| `themes/sietch/src/packages/adapters/billing/ReconciliationService.ts` | Fix Check 5 table reference, remove silent skip |
+| `themes/sietch/src/db/migrations/057_tba_deposits.ts` | Compound CHECK on amount_micro, add 'transfer_in' to credit_ledger CHECK |
+| `themes/sietch/src/packages/core/protocol/billing-types.ts` | Add `'transfer_in'` to EntryType |
+| `themes/sietch/src/packages/adapters/billing/PeerTransferService.ts` | Change recipient entry_type to `'transfer_in'` |
+| `themes/sietch/src/packages/adapters/billing/protocol/timestamps.ts` | Add SqliteTimestamp branded type, update return types |
+| Service files with `*_at` insert/update params | Update parameter types to `SqliteTimestamp` |
 
-**Admin JWT validation requirements (mandatory checks):**
-- `iss` MUST equal `arrakis-admin` (reject others)
-- `aud` MUST equal `arrakis-billing-admin` (reject others)
-- `exp` MUST be present and not expired
-- `sub` MUST be present (used as `actor_id` in audit logs)
-- `scope` MUST contain the required scope for the endpoint
-- Secret MUST NOT be shared with S2S or tenant JWT systems
-- **Key rotation**: Document rotation procedure in runbook; rotate on personnel change or suspected compromise
+### New Files
 
-### 5.2 Four-Eyes Principle
-
-Revenue rules governance enforces separation of duties:
-- Creator: `admin:rules:write` scope, cannot approve own rules
-- Approver: `admin:rules:approve` scope, different `sub` than creator
-- Emergency: `admin:rules:emergency` scope, creates urgent audit entry
-
-### 5.3 Audit Immutability
-
-- SQLite triggers prevent UPDATE/DELETE on `revenue_rule_audit_log`
-- Application code only INSERTs audit entries
-- Tests verify trigger behavior (attempt UPDATE → expect error)
-
-### 5.4 Identity Anchor Security
-
-- Anchor stored with UNIQUE constraint (one anchor = one agent)
-- Anchor verified on S2S finalize (mismatch → 403)
-- Stored anchor never returned in error responses (information leak prevention)
-- Rotation requires admin four-eyes approval
+| File | Purpose |
+|------|---------|
+| Test file for SqliteTimestamp compile-time checks | `@ts-expect-error` verification |
 
 ---
 
-## 6. Testing Strategy
+## 6. Dependency Graph
 
-### 6.1 Unit Tests
+```
+FR-3 (EntryType) ──→ FR-1 (Check 5 fix)
+       │                    │
+       │                    ▼
+       │              Integration tests
+       │
+FR-2 (CHECK constraint) ──→ Integration tests
+       │
+FR-4 (SqliteTimestamp) ──→ All services (type updates)
+       │
+       ▼
+FR-5 (Merge conflicts) ──→ Final test suite
+```
 
-| Component | Test Focus | Est. Count |
-|-----------|-----------|------------|
-| Vendored protocol types | Type compatibility, arithmetic helpers | 8 |
-| Revenue rules admin | State machine transitions, four-eyes, cooldown | 15 |
-| Atomic daily spending | SQLite transactional update, Redis INCRBY | 8 |
-| Admin contract schemas | Zod validation, type exports | 6 |
-| Identity anchor | UNIQUE constraint, verification, rotation | 8 |
-| Audit immutability | Trigger prevents UPDATE/DELETE | 4 |
-| Notifications | Created on transitions, urgency levels | 5 |
-
-### 6.2 Integration Tests
-
-| Test Suite | Focus | Est. Count |
-|-----------|-------|------------|
-| Revenue rules lifecycle | Full create→submit→approve→activate flow | 6 |
-| Concurrent daily spending | 10 parallel finalizations, sum correctness | 3 |
-| Identity anchor E2E | Create wallet → deposit → finalize with anchor | 4 |
-| Redis fallback | Daily spending enforcement with Redis down | 3 |
-
-### 6.3 E2E Smoke Tests (Docker Compose)
-
-| Test | Flow | Verification |
-|------|------|-------------|
-| Happy path | Create account → deposit → reserve → inference → finalize | Revenue distribution entries correct |
-| Overrun (shadow) | Reserve 1M → finalize 1.5M in shadow mode | Logged as shadow_finalize |
-| Overrun (live) | Reserve 1M → finalize 1.5M in live mode | Capped at reserved amount |
-| Identity anchor | Agent finalize with correct/incorrect anchor | 200 vs 403 |
-| JWT validation | Invalid/expired JWT | 401 response |
-
-**Estimated new tests:** 70
+**Sprint ordering:** FR-2 and FR-3 can be done in parallel. FR-1 depends on FR-3 (Check 5 expects `transfer_in` entries). FR-4 is independent. FR-5 is last (resolves conflicts after all code changes).
 
 ---
 
-## 7. Migration Plan
+## 7. Technical Risks
 
-### 7.1 Database Migrations
-
-| Migration | Tables/Triggers | Dependencies |
-|-----------|----------------|-------------|
-| 036_daily_agent_spending | `daily_agent_spending` | 030_credit_ledger |
-| 037_agent_identity | `agent_identity_anchors` | 030_credit_ledger |
-| 038_audit_immutability | Triggers + `billing_notifications` | 035_revenue_rules |
-
-### 7.2 File Changes Summary
-
-| Area | Files Modified | Files Created |
-|------|---------------|--------------|
-| Protocol types | 0 | 6 (`packages/core/protocol/*`) |
-| Migrations | 0 | 3 (036, 037, 038) |
-| Adapters | 2 (AgentWallet, RevenueRules) | 0 |
-| Routes | 1 (billing-admin-routes) | 0 |
-| Contracts | 1 (s2s-billing) | 1 (admin-billing) |
-| Tests | 2 (existing extended) | 5 (new test files) |
-| E2E infra | 0 | 4 (Dockerfile, compose, keygen, test script) |
-| **Total** | **6** | **19** |
-
----
-
-## 8. Sprint Mapping
-
-| Sprint | SDD Sections | Key Deliverables |
-|--------|-------------|-----------------|
-| 1 | §2.1 | Vendored protocol types, type alignment, compatibility check |
-| 2 | §2.2, §2.6, §4.1 | Revenue rules admin API, four-eyes, audit triggers |
-| 3 | §2.3, §3.1 | SQLite daily spending table, Redis INCRBY, fallback chain |
-| 4 | §2.5, §2.7 | Admin contract extraction, notification system |
-| 5 | §2.4, §4.2 | Identity anchor table, S2S verification, rotation |
-| 6 | §1.3, §6.3 | Docker Compose, E2E keygen, smoke tests |
-
----
-
-## 9. ADR Additions
-
-### ADR-006: SQLite-Authoritative Daily Spending with Redis Acceleration
-
-**Context:** Bridgebuilder low-2 identified get-then-set race condition. Redis alone is insufficient because it's a cache layer — single-instance Redis failure would bypass spending limits.
-
-**Decision:** Persist daily spending in SQLite (`daily_agent_spending` table) transactionally during finalize. Use Redis INCRBY as acceleration for hot-path reads. Fallback chain: Redis → SQLite (not in-memory).
-
-**Consequences:** Slightly more complex write path (SQLite + Redis), but correctness guaranteed under all failure modes.
-
-### ADR-007: Vendored Protocol Types over npm Dependency
-
-**Context:** loa-hounfour PRs #1 and #2 are still OPEN. Can't depend on unpublished npm package.
-
-**Decision:** Vendor a pinned snapshot of protocol types into `packages/core/protocol/`. Replace with npm package when published.
-
-**Consequences:** Temporary code duplication until loa-hounfour publishes. Pinned commit hash ensures deterministic builds. `VENDORED.md` documents upgrade path.
-
-### ADR-008: Identity Anchor in Request Body, Not JWT Claims
-
-**Context:** GPT review identified risk of dual-source (JWT claims + request body) for identity anchor.
-
-**Decision:** Identity anchor travels in the S2S finalize request body only. JWT authenticates the service; body carries agent-specific payload. Single canonical source prevents precedence ambiguity.
-
-**Consequences:** Simpler verification logic. Anchor is implicitly authenticated by the JWT signature over the request.
+| Risk | Severity | Mitigation |
+|------|----------|------------|
+| Balance computation filters by entry_type | Medium | Audit balance query during FR-3 implementation; add test proving balance equivalence |
+| Merge conflicts introduce subtle bugs | Medium | Run full test suite after resolution; verify with `git diff` |
+| SqliteTimestamp retrofit touches too many files | Low | Scope to cycle-031 files only; don't retrofit into cycle-030 code |
+| Check 5 fix reveals additional reconciliation issues | Low | If new failures surface, log them for cycle-033 rather than expanding scope |
