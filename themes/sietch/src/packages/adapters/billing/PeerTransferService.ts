@@ -331,7 +331,7 @@ export class PeerTransferService implements IPeerTransferService {
           now,
         );
 
-        // Recipient: deposit (positive) — standard deposit entry for new lot
+        // Recipient: transfer_in (positive) — credit entry for received transfer
         const recipientEntrySeq = this.allocateSeq(toAccountId, DEFAULT_POOL);
         const recipientPreBalance = this.snapshotBalance(toAccountId, DEFAULT_POOL) - amountMicro;
 
@@ -340,7 +340,7 @@ export class PeerTransferService implements IPeerTransferService {
            (id, account_id, pool_id, lot_id, entry_seq, entry_type,
             amount_micro, idempotency_key, description,
             pre_balance_micro, post_balance_micro, created_at)
-           VALUES (?, ?, ?, ?, ?, 'deposit', ?, ?, ?, ?, ?, ?)`
+           VALUES (?, ?, ?, ?, ?, 'transfer_in', ?, ?, ?, ?, ?, ?)`
         ).run(
           randomUUID(),
           toAccountId,

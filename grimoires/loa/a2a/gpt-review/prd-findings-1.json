@@ -1,62 +1,32 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "As written, this PRD would likely ship a system that either breaks conservation (via deposits) or is vulnerable to governance capture, and it contains a few internal contradictions that will block correct implementation.",
+  "summary": "This PRD is close, but it contains a few domain/DB-migration contradictions that could either fail in production (migrations) or fail to actually enforce the intended invariants (timestamps and deposit amounts).",
   "blocking_issues": [
     {
-      "location": "FR-2.4 (TbaDepositBridge) + G-5 (conservation invariant) + FR-5.2 (TBA deposit bridge conservation)",
-      "issue": "The deposit bridge mints off-chain credit lots from on-chain deposits without specifying the backing/escrow model, asset denomination, or how on-chain value is conserved against off-chain liabilities.",
-      "why_blocking": "Minting credits from deposits is money creation unless the protocol also escrows/locks the on-chain asset under protocol control and defines a 1:1 conversion rate and redemption/burn path. Without a defined backing model, FR-5.2 is not implementable in a way that guarantees conservation, and reconciliation cannot prove anything beyond “we saw a tx hash.”",
-      "fix": "Specify the bridge as a double-entry liability issuance backed by verifiable escrow: (1) which token(s) are accepted (e.g., USDC on Berachain), (2) exact conversion rule to micro-USD (including decimals and FX/oracle policy), (3) what constitutes a “verified deposit” (to which contract/address, finality depth, chainId), (4) where funds are held (protocol-controlled escrow vs agent-controlled TBA) and why that is sufficient, and (5) the corresponding redemption/withdrawal flow (burn lots / reduce liability) or explicitly state deposits are non-redeemable and therefore not “conserved value,” only “accounting credits.” Update FR-5.2 to reconcile against escrow balances, not just observed deposits."
+      "location": "FR-2 / NFR: “Migration is additive (no destructive DDL)” + “Migration 057 uses CHECK (amount_micro >= 0)”",
+      "issue": "You cannot change an existing SQLite CHECK constraint in-place without a table rebuild (SQLite doesn’t support ALTER TABLE to modify CHECK constraints).",
+      "why_blocking": "If migration 057 already exists/applied in any environment, the proposed fix is not implementable as written. Attempting to “change” the constraint will either be impossible or will require destructive DDL (table recreation), directly contradicting the NFR and risking broken deploys or inconsistent schemas across environments.",
+      "fix": "Clarify the migration strategy: (A) if 057 is not merged/applied anywhere, amend 057 before merge; or (B) if 057 may already be applied, add a new migration (e.g., 058) that rebuilds `tba_deposits` safely (create new table with desired CHECK, copy data, drop old, rename) and explicitly waive the “no destructive DDL” constraint for this table rebuild (or redefine NFR to allow rebuild-with-copy as non-destructive)."
     },
     {
-      "location": "FR-2.4 (mintLot with source_type: 'transfer_in') vs FR-1.5 (transfer_in/out entry types) and Problem Statement #1 (transfer_in exists but no transfer_out)",
-      "issue": "The PRD reuses `source_type: 'transfer_in'` for TBA deposits, conflating peer transfers with external deposits.",
-      "why_blocking": "This will break auditability and the new reconciliation check semantics: transfer_in/out are supposed to be zero-sum internal movements, while deposits are external inflows. Using the same source type makes it easy to accidentally “pass” transfer conservation while actually minting from deposits, or to misclassify deposits as peer transfers in reporting and limits.",
-      "fix": "Introduce distinct source/entry types for deposits (e.g., `tba_deposit_in` or `external_deposit_in`) and reserve `transfer_in/transfer_out` strictly for internal peer transfers. Update FR-5.1 to only include peer transfer types, and FR-5.2 to only include deposit types."
+      "location": "FR-2: “Change constraint to CHECK (amount_micro >= 0)… Terminal states (completed) still require amount_micro > 0 (enforced at application level)”",
+      "issue": "The PRD’s stated requirement is internally inconsistent with the earlier “Critical requirements: … SQLite-backed authoritative ledger, conservation invariants” posture: it moves a core integrity rule (non-zero amount for completed deposits) out of the DB and into application logic without specifying enforcement points or reconciliation coverage.",
+      "why_blocking": "If any code path (now or future) writes `completed` with `amount_micro = 0`, the DB will accept it and you will have an irreconcilable “completed deposit with zero value” record that can break accounting, downstream settlement assumptions, and reconciliation invariants. This is exactly the class of bug DB constraints are meant to prevent in a financial ledger context.",
+      "fix": "Make the rule enforceable at the DB layer or explicitly define invariant enforcement elsewhere. Options: (1) Add a DB CHECK that encodes state-dependent constraint, e.g. `CHECK ((status IN ('detected','confirming','confirmed','bridging','failed') AND amount_micro >= 0) OR (status = 'completed' AND amount_micro > 0))` (adjust statuses to your exact enum). (2) If status is not stored or is stored elsewhere, add a trigger that rejects invalid transitions to `completed` when `amount_micro = 0`. If you truly must keep it app-level, add a reconciliation check that fails hard when `status='completed' AND amount_micro<=0` and specify exactly where the write is validated."
     },
     {
-      "location": "FR-1.2 (zero-sum) + FR-1.1 (atomically deduct/credit) + existing lot-based ledger model (reserve/finalize/release/mintLot)",
-      "issue": "The PRD requires a `transfer()` that atomically deducts and credits but does not specify how this maps onto the existing lot-based reserve/finalize model (and whether transfers are reversible, pending, or final).",
-      "why_blocking": "If the ledger is lot-based with reservation semantics, a naive “deduct/credit” can violate invariants under concurrency, partial failures, or idempotent retries (e.g., sender lot selection changes between retries). Without specifying whether transfer is a two-phase operation (reserve lots then finalize) and how correlation/idempotency ties to lot selection, implementers can build a transfer that passes unit tests but fails reconciliation under real retry/concurrency patterns.",
-      "fix": "Define transfer as a composed ledger operation: (a) reserve sender lots deterministically under `BEGIN IMMEDIATE`, (b) create paired entries with a shared correlation_id, (c) finalize both sides in the same SQLite transaction, and (d) define retry behavior: idempotency key must map to a stable transfer record that includes chosen lots (or a deterministic selection rule) so retries cannot select different lots."
+      "location": "FR-3: Recipient Ledger Entry Type (Moderate) + “Credit ledger: EntryType union controls allowed ledger entry types via CHECK constraint”",
+      "issue": "Adding `'transfer_in'` to the EntryType union and DB CHECK is described, but the PRD doesn’t ensure end-to-end semantic consistency between `entry_type`, `source_type`, and reconciliation logic—specifically whether `entry_type` is intended to represent accounting semantics (deposit/transfer) or ingestion source (bridge/transfer).",
+      "why_blocking": "If `entry_type` is used for accounting classification in other parts of the system (reporting, balance computation, fee logic), reclassifying recipient credits from `'deposit'` to `'transfer_in'` can silently change behavior outside reconciliation. That can cause incorrect balances, misreported revenue, or broken invariants—i.e., building the wrong thing while “fixing” Check 5.",
+      "fix": "Add an explicit requirement that balance computation and any aggregation logic treats `'transfer_in'` as a credit-increasing entry equivalent to the previous recipient `'deposit'` behavior. Concretely: identify the balance query/function and require tests proving balances are unchanged for recipient accounts after the type change. If `entry_type` is meant to be a small stable set, consider keeping `entry_type='deposit'` and instead fix reconciliation to key off `source_type` (or add a separate `transfer_direction` field)."
     },
     {
-      "location": "FR-1.8 (idempotency on ledger entries) + FR-1.5 (paired entries) + NFR-2 (BEGIN IMMEDIATE) + Event emission (FR-1.6)",
-      "issue": "Idempotency is specified at the entry level, but transfers are multi-row (at least two entries + possibly lot mutations + events). The PRD does not define the idempotency boundary or uniqueness constraints needed to prevent partial duplication.",
-      "why_blocking": "If only individual inserts are idempotent, a retry can create one side of the pair (e.g., transfer_in) without the other, or emit duplicate events, breaking zero-sum and/or downstream consumers. This is a classic failure mode in financial systems.",
-      "fix": "Introduce a first-class `transfers` table (or equivalent) keyed by `idempotency_key` with a unique constraint, storing from/to/amount/status/correlation_id. In a single `BEGIN IMMEDIATE` transaction: `INSERT OR IGNORE` transfer record, check status, then insert both ledger entries with a uniqueness constraint on (transfer_id, direction) or (correlation_id, entry_type), and emit events via outbox tied to the same transfer_id."
-    },
-    {
-      "location": "FR-3.5 (weight derived from credit balance) + FR-2 (deposit bridge mints credits) + Risk 8.1 (Sybil mitigation) + FR-3.8 (admin precedence)",
-      "issue": "Governance weight based on credit balance becomes trivially purchasable if deposits mint credits, enabling governance capture by any actor who can deposit funds (or by a creator concentrating funds across many agents).",
-      "why_blocking": "This undermines the stated Sybil mitigation and can cause the governance system to fail its purpose (agents/humans can buy parameter control). Admin precedence does not solve capture; it just re-centralizes and negates Principle 3 in practice.",
-      "fix": "Constrain agent governance weight to a non-purchasable or capped source: e.g., (1) delegation-only from KYC’d creators with per-creator caps, (2) time-weighted earned reputation not directly convertible from deposits, or (3) stake that is locked with unbonding + slashing and explicit caps. If credit balance remains a source, specify caps, lockup, and anti-concentration rules, and explicitly define whether bridged deposits count toward weight."
-    },
-    {
-      "location": "FR-3.2 (opts includes weight) vs NFR-2 (weight computed server-side, never client-supplied)",
-      "issue": "Direct contradiction: FR-3.2 implies caller supplies `weight`, while NFR-2 forbids client-supplied weight.",
-      "why_blocking": "Implementers will either violate security (accept client weight) or violate the FR API contract. Either way, governance will be wrong or insecure.",
-      "fix": "Change FR-3.2 so `opts` includes only `agentAccountId` (and maybe a delegation reference), and the service computes weight internally based on `governance.agent_weight_source`. Update acceptance criteria to assert server-side computation."
-    },
-    {
-      "location": "FR-4.2 (migration adapter dual-write) + FR-4.4 (DB trigger copies billing_events inserts to economic_events)",
-      "issue": "Two independent dual-write mechanisms are specified (application-level forwarder and DB trigger), which can cause duplicate economic_events or inconsistent ordering.",
-      "why_blocking": "Duplicate events will break consumers, reconciliation, and any exactly-once assumptions in outbox processing. Ordering differences can also cause hard-to-debug state divergence.",
-      "fix": "Pick exactly one dual-write strategy for the transition: either (A) application-level dual-write via a single outbox path (preferred for idempotency control), or (B) DB trigger-based replication. If using triggers, specify a unique constraint/idempotency key on economic_events to prevent duplicates and define how event_type/payload mapping occurs."
-    },
-    {
-      "location": "FR-4.5 (extend ECONOMIC_EVENT_TYPES with all event types currently only in BillingEventEmitter) + Appendix B (lists only 10 new events) + Goal G-4 (single event system)",
-      "issue": "The PRD claims full vocabulary consolidation but does not enumerate the legacy BillingEventEmitter event types that must be migrated, nor the schema mapping between billing_events and economic_events.",
-      "why_blocking": "Without an explicit mapping list, teams will miss event types, leading to silent loss of observability/backward compatibility and breaking existing consumers—exactly the failure mode this cycle is trying to prevent.",
-      "fix": "Add an explicit inventory: list every existing BillingEventEmitter event type and its target EconomicEvent type (or deprecation). Define payload schema compatibility rules and required fields so consumers can rely on stable contracts during the transition."
-    },
-    {
-      "location": "NFR-2 (EIP-55 checksum required) + FR-2.2 (basic hex validation) + Berachain ecosystem context",
-      "issue": "Requiring EIP-55 checksummed addresses is not reliably compatible with all upstream sources and does not add meaningful security if you already authenticate binding via provenance; it can also cause false rejections and operational failure.",
-      "why_blocking": "If upstream systems provide lowercase addresses (common), binding will fail and block all on-chain identity features (G-2). This is a practical ship-stopper in integrations.",
-      "fix": "Accept any valid 20-byte hex address, normalize to checksum for storage/display, and only enforce checksum on UI boundaries if desired. Keep provenance/authentication as the security control, not checksum formatting."
+      "location": "FR-4: SqliteTimestamp branded type + Acceptance: “All timestamp comparison sites type-check against SqliteTimestamp”",
+      "issue": "Branding `string` does not, by itself, prevent `.toISOString()` from being used unless all relevant APIs are typed to require `SqliteTimestamp` and you eliminate/guard casts; the PRD doesn’t specify the enforcement boundary (DB row types, query result typing, insert/update parameter typing).",
+      "why_blocking": "If only `sqliteTimestamp()` returns a branded type but DB access layers still accept `string`, developers can keep passing ISO strings and the compiler won’t stop them. That means the PRD’s core goal (“compile-time prevention”) may not actually be achieved, leading to recurring timestamp bugs and incorrect ordering/comparisons in SQLite (especially if mixed formats slip in).",
+      "fix": "Define the exact typed surfaces that must use `SqliteTimestamp`: (1) insert/update parameter types for any `*_at` columns, (2) row model types returned from SQLite for those columns, and (3) comparison helpers. Add an acceptance test at the type level (tsd or a `// @ts-expect-error` compile test) demonstrating that passing `new Date().toISOString()` to a function expecting `SqliteTimestamp` fails compilation."
     }
   ],
-  "question": null,
+  "question": "",
   "iteration": 1
 }

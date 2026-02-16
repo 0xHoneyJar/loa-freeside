@@ -10,27 +10,42 @@
  * breaks chronological ordering. See BB-67-001 / ADR-013.
  */
 
+/** Branded type for SQLite-format timestamps. Prevents accidental use of ISO 8601 strings. */
+export type SqliteTimestamp = string & { readonly __brand: 'sqlite_ts' };
+
 /**
  * Returns the current time in SQLite-compatible format: `YYYY-MM-DD HH:MM:SS`
  * Matches the output of SQLite's `datetime('now')`.
  */
-export function sqliteTimestamp(date?: Date): string {
+export function sqliteTimestamp(date?: Date): SqliteTimestamp {
   return (date ?? new Date())
     .toISOString()
     .replace('T', ' ')
-    .replace(/\.\d+Z$/, '');
+    .replace(/\.\d+Z$/, '') as SqliteTimestamp;
 }
 
 /**
  * Returns a future time in SQLite-compatible format.
  * @param offsetSeconds - Number of seconds to add to the current time
  */
-export function sqliteFutureTimestamp(offsetSeconds: number, from?: Date): string {
+export function sqliteFutureTimestamp(offsetSeconds: number, from?: Date): SqliteTimestamp {
   const base = from ?? new Date();
   return new Date(base.getTime() + offsetSeconds * 1000)
     .toISOString()
     .replace('T', ' ')
-    .replace(/\.\d+Z$/, '');
+    .replace(/\.\d+Z$/, '') as SqliteTimestamp;
+}
+
+/**
+ * Validates and brands a string read from a SQLite *_at column.
+ * Use this at the DB read boundary to ensure type safety.
+ * @throws Error if the string is not in SQLite timestamp format
+ */
+export function parseSqliteTimestamp(raw: string): SqliteTimestamp {
+  if (!isSqliteFormat(raw)) {
+    throw new Error(`Invalid SQLite timestamp format: "${raw}". Expected YYYY-MM-DD HH:MM:SS`);
+  }
+  return raw as SqliteTimestamp;
 }
 
 /**

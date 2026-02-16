@@ -92,7 +92,7 @@ export type EntryType =
   | 'commons_contribution' | 'revenue_share'
   | 'marketplace_sale' | 'marketplace_purchase'
   | 'escrow' | 'escrow_release'
-  | 'transfer_out';
+  | 'transfer_out' | 'transfer_in';
 
 // =============================================================================
 // Constitutional Governance Types (Cycle 030)

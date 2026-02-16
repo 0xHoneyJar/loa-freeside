@@ -29,7 +29,10 @@ CREATE TABLE IF NOT EXISTS tba_deposits (
   tx_hash TEXT NOT NULL UNIQUE,
   token_address TEXT NOT NULL,
   amount_raw TEXT NOT NULL,
-  amount_micro INTEGER NOT NULL CHECK (amount_micro >= 0),
+  amount_micro INTEGER NOT NULL CHECK (
+    (status IN ('detected', 'confirmed', 'failed') AND amount_micro >= 0)
+    OR (status = 'bridged' AND amount_micro > 0)
+  ),
   lot_id TEXT REFERENCES credit_lots(id),
   escrow_address TEXT NOT NULL,
   block_number INTEGER NOT NULL,

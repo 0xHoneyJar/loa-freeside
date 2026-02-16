@@ -74,7 +74,7 @@ CREATE TABLE credit_ledger (
     'commons_contribution', 'revenue_share',
     'marketplace_sale', 'marketplace_purchase',
     'escrow', 'escrow_release',
-    'transfer_out'
+    'transfer_out', 'transfer_in'
   )),
   amount_micro INTEGER NOT NULL,
   idempotency_key TEXT UNIQUE,

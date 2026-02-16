@@ -368,9 +368,14 @@ export class ReconciliationService implements IReconciliationService {
           violations,
         },
       };
-    } catch {
-      // transfers table may not exist — skip silently
-      return { name: 'transfer_conservation', status: 'passed', details: { skipped: true } };
+    } catch (err) {
+      // Report structured failure instead of silently skipping.
+      // reconcile() must always return a complete report — never throw.
+      return {
+        name: 'transfer_conservation',
+        status: 'failed' as const,
+        details: { error: err instanceof Error ? err.message : String(err) },
+      };
     }
   }
 

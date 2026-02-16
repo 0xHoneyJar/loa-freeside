@@ -1,36 +1,26 @@
 {
   "verdict": "APPROVED",
-  "summary": "All previously blocking issues are addressed in a way that preserves conservation, atomic idempotency, and migration safety, and no new truly-blocking problems were introduced.",
+  "summary": "All previously blocking issues are addressed with concrete, implementable fixes (correct migration targeting, clarified deposit state semantics, reconciliation error-reporting contract, and runtime/DB-boundary enforcement for SqliteTimestamp) and no new truly blocking problems were introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "Peer transfers minted a new recipient lot (transfer_in) without a paired sender-side supply reduction, inflating total lot supply",
+      "original_issue": "EntryType 'transfer_in' addition might be applied to the wrong migration / CHECK constraint not actually updated in existing environments",
       "status": "fixed",
-      "notes": "SDD now explicitly uses a lot-split: sender lot original_micro is reduced by the split amount and a recipient lot is created for the same amount, preserving global SUM(original_micro). Reconciliation Check 5 is updated to reflect transfer conservation at both ledger and lot levels."
+      "notes": "SDD now correctly identifies that the credit_ledger entry_type CHECK was defined earlier and is rebuilt in migration 056, and explicitly amends 056’s rebuild SQL to include 'transfer_in'. This resolves the SQLite limitation (cannot ALTER CHECK) by updating the table-rebuild migration that owns the constraint in this branch."
     },
     {
-      "original_issue": "Idempotency race: INSERT OR IGNORE outside BEGIN IMMEDIATE and no guaranteed SELECT/return on ignored insert",
+      "original_issue": "TBA deposit compound CHECK might incorrectly enforce amount_micro > 0 on a non-terminal 'bridged' state (state machine mismatch)",
       "status": "fixed",
-      "notes": "Transfer algorithm now begins with BEGIN IMMEDIATE and does SELECT-by-idempotency_key inside the transaction, returning completed/rejected results idempotently, otherwise inserting a pending transfer record before any side effects."
+      "notes": "SDD explicitly reconciles PRD’s 6-state mention with the actual 4 states in migration 057 and clarifies (with a concrete update statement location) that 'bridged' is the terminal credited state set after amount_micro is known. The proposed CHECK matches that semantics and the validation tests cover the intended transition sequence."
     },
     {
-      "original_issue": "Event consolidation dual-write claimed same transaction but legacy emitter transactional participation was not guaranteed",
+      "original_issue": "ReconciliationService change from silent skip to failure could accidentally throw/abort reconciliation instead of returning a structured report",
       "status": "fixed",
-      "notes": "EventConsolidationAdapter now defines an explicit emitInTransaction(tx, event) path and states both emitters accept a db/tx handle; adapter forces both writes through the same transaction context and provides a wrapper emit() that creates a transaction around emitInTransaction(). This satisfies the 'single dual-write mechanism (no triggers)' requirement."
+      "notes": "SDD now defines the contract: reconcile() must always return a complete per-check report; check-level SQL errors become status='failed' with error details and must not throw. It also includes a negative test asserting invalid SQL yields a failed check result without throwing."
     },
     {
-      "original_issue": "Contradiction about SQLite CHECK constraint alteration vs application-level validation; risk of runtime failures or risky table rebuild",
+      "original_issue": "SqliteTimestamp branding only at TS level can be bypassed by raw strings from SQLite rows; needs DB-boundary validation/branding",
       "status": "fixed",
-      "notes": "SDD now makes a clear decision: application-level validation only, and migration 056 does NOT rebuild/alter existing CHECK constraints. This resolves the contradiction and avoids risky rebuilds."
-    },
-    {
-      "original_issue": "TBA deposit bridge did not mandate on-chain receipt/log verification before minting, enabling fabricated deposit minting",
-      "status": "fixed",
-      "notes": "Bridge algorithm now makes on-chain verification mandatory (receipt status, block, ERC-20 Transfer log parsing, token/from/to/amount checks, finality depth) before any BEGIN IMMEDIATE minting transaction. It also persists verified receipt/log metadata for audit."
-    },
-    {
-      "original_issue": "Governance weight computation referenced missing config keys and missing delegation storage schema",
-      "status": "fixed",
-      "notes": "SDD adds governance.agent_weight_source and related parameters to CONFIG_SCHEMA/FALLBACKS and introduces agent_governance_delegations table + indexes. Weight is explicitly server-side only."
+      "notes": "SDD adds parseSqliteTimestamp(raw) with runtime validation and requires row mappers to use it for *_at fields, plus a runtime test rejecting ISO strings. This closes the bypass path where DB-read strings re-enter comparisons/updates unbranded."
     }
   ],
   "new_blocking_concerns": [],

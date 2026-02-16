@@ -1,51 +1,26 @@
 {
   "verdict": "APPROVED",
-  "summary": "All previously blocking issues were addressed with concrete, implementable specs (bridge backing model, distinct entry types, transfer/idempotency boundary, governance anti-capture, single dual-write path, explicit event inventory requirement, and relaxed checksum validation) and no new truly blocking problems were introduced.",
+  "summary": "All four previously blocking issues are addressed with concrete, implementable changes, and the revisions do not introduce any new truly blocking problems.",
   "previous_issues_status": [
     {
-      "original_issue": "Deposit bridge minted off-chain credits without specifying backing/escrow, denomination, verification, and redemption model (conservation risk)",
+      "original_issue": "SQLite migration contradiction: cannot modify an existing CHECK constraint in-place while claiming additive/non-destructive migrations",
       "status": "fixed",
-      "notes": "FR-2.4 now defines accepted token (USDC), 1:1 conversion to micro-USD, verified deposit criteria (escrow target, finality depth, chainId), protocol-controlled escrow model, and explicitly states non-redeemable deposits this cycle. FR-5.2 reconciles against escrow holdings so credits cannot exceed backing."
+      "notes": "PRD now explicitly states migration 057 is feature-branch-only and not applied anywhere, so amending 057 pre-merge is feasible and consistent with the NFR framing (“additive from main’s perspective”). It also correctly notes that if 057 had been deployed, a rebuild-with-copy migration would be required."
     },
     {
-      "original_issue": "Conflation of peer transfers with external deposits via `source_type: 'transfer_in'`",
+      "original_issue": "Integrity rule moved out of DB: allowing amount_micro >= 0 without enforcing amount_micro > 0 for completed deposits at the DB layer",
       "status": "fixed",
-      "notes": "FR-1.2 reserves `transfer_in/transfer_out` exclusively for peer transfers and FR-2.4 introduces distinct `source_type: 'tba_deposit'` for bridged deposits."
+      "notes": "The revised compound CHECK enforces state-dependent validity at the DB layer, specifically requiring amount_micro > 0 when status='completed' while allowing 0 for non-terminal states. This resolves the internal inconsistency and restores DB-level protection for a core ledger invariant."
     },
     {
-      "original_issue": "Atomic transfer requirement not mapped to lot reserve/finalize model; risk of invariant breaks under retries/concurrency",
+      "original_issue": "EntryType change risk: adding 'transfer_in' could silently change balance/reporting semantics if entry_type is used for accounting classification",
       "status": "fixed",
-      "notes": "FR-1.1 specifies transfer as a composed lot operation under a single `BEGIN IMMEDIATE` transaction with deterministic lot selection/reservation and same-tx finalization, eliminating ambiguous two-phase behavior."
+      "notes": "PRD now includes semantic impact analysis plus explicit requirements to audit/update balance computation to treat 'transfer_in' as credit-increasing equivalent to prior recipient 'deposit', and adds an acceptance test for balance equivalence before/after the type change. That is the right containment for the risk."
     },
     {
-      "original_issue": "Idempotency boundary unclear for multi-row transfer (paired entries + lot mutations + events), risking partial duplication",
+      "original_issue": "SqliteTimestamp branding not enforceable without specifying typed boundaries and a compile-time test",
       "status": "fixed",
-      "notes": "FR-1.8 introduces a first-class `transfers` table keyed by `idempotency_key` with UNIQUE constraint, plus uniqueness on `(transfer_id, entry_type)` and outbox emission tied to `transfer_id` in the same transaction."
-    },
-    {
-      "original_issue": "Governance weight derived from credit balance + deposit minting enables governance capture (Sybil/economic capture)",
-      "status": "fixed",
-      "notes": "FR-3.5 explicitly forbids credit balance/TBA deposits as direct weight sources and constrains weight to delegation (with per-KYC creator caps), time-weighted earned reputation, or fixed allocation; FR-3.6 adds proposable-key whitelist to limit blast radius."
-    },
-    {
-      "original_issue": "Contradiction: API allowed client-supplied weight vs security requirement that weight is server-computed",
-      "status": "fixed",
-      "notes": "FR-3.2 now states `opts` includes agentAccountId (optionally delegation reference) and weight is computed server-side; NFR-2 aligns."
-    },
-    {
-      "original_issue": "Two dual-write mechanisms (app adapter + DB trigger) risk duplicates/inconsistent ordering",
-      "status": "fixed",
-      "notes": "FR-4.2 selects a single application-level adapter and explicitly forbids DB triggers; dual-write is in the same transaction with EconomicEventEmitter as authoritative."
-    },
-    {
-      "original_issue": "Event vocabulary consolidation claimed but legacy BillingEventEmitter event types not enumerated/mapped",
-      "status": "fixed",
-      "notes": "FR-4.5 requires an explicit inventory and mapping in ADR-009, including all BillingEventEmitter event types plus new ones, with payload compatibility rules."
-    },
-    {
-      "original_issue": "EIP-55 checksum requirement would cause false rejections; should accept any valid 20-byte hex and normalize",
-      "status": "fixed",
-      "notes": "NFR-2 now accepts any valid hex address and normalizes to checksum for storage/display; binding security relies on provenance, not checksum formatting."
+      "notes": "PRD now specifies the three enforcement boundaries (write params, row model types, comparison helpers) and requires a compile-time negative test via @ts-expect-error demonstrating that ISO strings cannot be passed where SqliteTimestamp is required. This is sufficient to achieve the stated compile-time safety goal (assuming those surfaces are actually updated as required)."
     }
   ],
   "new_blocking_concerns": [],

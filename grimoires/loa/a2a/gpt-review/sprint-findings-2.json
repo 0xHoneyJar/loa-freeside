@@ -1,36 +1,31 @@
 {
   "verdict": "APPROVED",
-  "summary": "All previously-blocking issues were addressed directly in the sprint plan with consistent counts, explicit migration strategy, clarified config seeding ownership, mandatory transactional dual-write event emission, tightened lot-split invariants/tests, and an explicit outbox/ordering contract for the E2E proof—no new truly blocking problems introduced.",
+  "summary": "All previously-blocking issues were addressed with explicit gating checks, type/caller updates, CI/schema dependency coverage, and corrected merge-conflict acceptance criteria, with no new truly blocking problems introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "Event type count mismatch in Sprint 1 / Task 1.2 (10 vs 11 types; 39 vs 40 vocabulary).",
+      "original_issue": "Migration 056 amendment risk: missing gating to ensure it’s safe to amend an existing migration",
       "status": "fixed",
-      "notes": "Task 1.2 now explicitly states 11 new event types and updates the total vocabulary to 40 (29+11), removing the mismatch."
+      "notes": "Task 1.2 now includes an explicit gating check against main and a fallback plan to create a new migration (058) with a rebuild if 056 has shipped, plus ACs for fresh migrate-from-zero and an insert using entry_type='transfer_in'."
     },
     {
-      "original_issue": "Migration ordering inconsistency between Appendix B and sprint sequencing; Sprint 1 assumed 059 could run anytime.",
+      "original_issue": "Migration 057 amendment risk + handling existing rows that might violate stricter CHECK",
       "status": "fixed",
-      "notes": "Appendix B now makes the execution strategy explicit: all migrations run strictly in numeric order (056→060) in all environments, and Sprint 1 Task 1.5 explicitly states adapter/tests must not assume 059 has run."
+      "notes": "Task 1.3 adds the same gating check and explicitly states the fallback: create a forward migration that handles existing data before adding the stricter CHECK. ACs include representative inserts and a full lifecycle flow that would have failed if the constraint were wrong."
     },
     {
-      "original_issue": "Config params duplication/conflict between Sprint 3 (transfer params in schema/fallbacks) and Sprint 6 migration 060 (also claiming to add/seed them).",
+      "original_issue": "ReconciliationService Check 5 error handling: return shape/type/callers/tests not updated for {status:'failed', error} and removal of {skipped:true}",
       "status": "fixed",
-      "notes": "Sprint 3.3 now owns adding the 2 transfer params to CONFIG_SCHEMA/FALLBACKS; Sprint 6.2 explicitly does NOT re-add them in TypeScript and instead seeds all 10 params into DB, while adding only the 8 governance params to schema/fallbacks."
+      "notes": "Task 2.1 explicitly includes updating the report type/interface and downstream callers/tests, plus an AC that no references to { skipped: true } remain and TS compiles after the type change."
     },
     {
-      "original_issue": "Sprint 4/5 event emission not required to use EventConsolidationAdapter.emitInTransaction(), risking non-atomic or partial dual-write.",
+      "original_issue": "EntryType + DB CHECK dependency: service writes 'transfer_in' but CI/test DB might not have updated CHECK constraint",
       "status": "fixed",
-      "notes": "Sprint 4.2 and Sprint 5.3 acceptance criteria now require BEGIN IMMEDIATE + EventConsolidationAdapter.emitInTransaction(tx, ...) within the same transaction as the state change, ensuring atomic dual-write."
+      "notes": "Task 2.2 now includes an explicit requirement/AC that the test harness migrates from a clean DB (no cached schema) and that the integration test passes with the updated CHECK accepting 'transfer_in'. Task 1.2 also includes fresh migrate-from-zero AC."
     },
     {
-      "original_issue": "Lot-split acceptance criteria underspecified re: reserved/consumed handling and invariants; risk of conservation bugs.",
+      "original_issue": "Merge conflict task AC contradictory/unverifiable (\"merge completes without conflicts\" and reliance on GitHub PR state)",
       "status": "fixed",
-      "notes": "Task 2.3 now explicitly states reserved_micro and consumed_micro remain unchanged, available_micro must not go negative, and the per-lot invariant is preserved; it also mandates a unit test with non-zero reserved_micro plus a property test for global conservation."
-    },
-    {
-      "original_issue": "E2E sovereignty proof required outbox presence/ordering but no task/contract existed for outbox export or ordering semantics.",
-      "status": "fixed",
-      "notes": "Task 8.1 now explicitly references existing cycle-030 outbox/dispatch infrastructure, defines ordering verification via monotonic rowid within each transaction, and requires confirming the dispatch pipeline can claim/publish all 11 new event types."
+      "notes": "Task 3.5 AC is now locally testable: merge completes with conflicts resolved/committed if any, clean working tree, tests pass, diff reviewed; PR mergeability is explicitly optional/manual."
     }
   ],
   "new_blocking_concerns": [],
