@@ -1,32 +1,40 @@
 {
-  "plan_id": "plan-20260215-2faa8f",
-  "branch": "feature/billing-payments-release",
+  "plan_id": "plan-20260216-cycle029",
+  "branch": "feature/creator-economy-release",
   "state": "RUNNING",
   "timestamps": {
-    "started": "2026-02-15T20:00:00Z",
-    "last_activity": "2026-02-15T20:27:30Z"
+    "started": "2026-02-16T07:00:00Z",
+    "last_activity": "2026-02-16T14:20:00Z"
   },
   "sprints": {
-    "total": 5,
-    "completed": 5,
-    "current": null,
+    "total": 13,
+    "completed": 0,
+    "current": "sprint-1",
     "list": [
-      {"id": "sprint-1", "status": "completed", "cycles": 1, "files_changed": 4},
-      {"id": "sprint-2", "status": "completed", "cycles": 1, "files_changed": 4},
-      {"id": "sprint-3", "status": "completed", "cycles": 1, "files_changed": 12},
-      {"id": "sprint-4", "status": "completed", "cycles": 1, "files_changed": 5},
-      {"id": "sprint-5", "status": "completed", "cycles": 1, "files_changed": 6}
+      {"id": "sprint-1", "global_id": 257, "status": "in_progress", "cycles": 1},
+      {"id": "sprint-2", "global_id": 258, "status": "pending"},
+      {"id": "sprint-3", "global_id": 259, "status": "pending"},
+      {"id": "sprint-4", "global_id": 260, "status": "pending"},
+      {"id": "sprint-5", "global_id": 261, "status": "pending"},
+      {"id": "sprint-6", "global_id": 262, "status": "pending"},
+      {"id": "sprint-7", "global_id": 263, "status": "pending"},
+      {"id": "sprint-8", "global_id": 264, "status": "pending"},
+      {"id": "sprint-9", "global_id": 265, "status": "pending"},
+      {"id": "sprint-10", "global_id": 266, "status": "pending"},
+      {"id": "sprint-11", "global_id": 267, "status": "pending"},
+      {"id": "sprint-12", "global_id": 268, "status": "pending"},
+      {"id": "sprint-13", "global_id": 269, "status": "pending"}
     ]
   },
   "options": {
     "from": 1,
-    "to": 5,
+    "to": 13,
     "max_cycles": 20,
     "timeout_hours": 8
   },
   "metrics": {
-    "total_cycles": 5,
-    "total_files_changed": 31,
-    "total_findings_fixed": 5
+    "total_cycles": 1,
+    "total_files_changed": 4,
+    "total_findings_fixed": 0
   }
 }
