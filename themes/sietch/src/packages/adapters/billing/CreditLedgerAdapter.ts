@@ -552,6 +552,86 @@ export class CreditLedgerAdapter implements ICreditLedgerService {
   }
 
   // ---------------------------------------------------------------------------
+  // Finalize (Transaction-threaded)
+  // ---------------------------------------------------------------------------
+
+  finalizeInTransaction(
+    tx: { prepare(sql: string): any },
+    reservationId: string,
+    actualCostMicro: bigint,
+    options?: FinalizeOptions,
+  ): FinalizeResult {
+    // Delegate to the same finalize logic but using the caller's transaction handle.
+    // The caller is responsible for wrapping this in db.transaction().
+    assertMicroUSD(actualCostMicro);
+
+    const reservation = tx.prepare(
+      `SELECT id, account_id, pool_id, total_reserved_micro, status, billing_mode
+       FROM credit_reservations WHERE id = ?`
+    ).get(reservationId) as CreditReservationRow | undefined;
+
+    if (!reservation) {
+      throw new Error(`Reservation ${reservationId} not found`);
+    }
+
+    if (reservation.status !== 'pending') {
+      throw new InvalidStateError(reservationId, reservation.status, 'finalize');
+    }
+
+    const accountId = reservation.account_id;
+    const poolId = reservation.pool_id ?? DEFAULT_POOL;
+    const totalReserved = BigInt(reservation.total_reserved_micro);
+    const now = sqliteNow();
+    let effectiveCost = actualCostMicro;
+    let surplusReleasedMicro = 0n;
+    let overrunMicro = 0n;
+
+    if (actualCostMicro > totalReserved) {
+      overrunMicro = actualCostMicro - totalReserved;
+      effectiveCost = totalReserved; // Cap at reserved for transaction-threaded path
+    } else if (actualCostMicro < totalReserved) {
+      surplusReleasedMicro = totalReserved - actualCostMicro;
+    }
+
+    // Update reservation status
+    tx.prepare(
+      `UPDATE credit_reservations SET status = 'finalized', updated_at = ? WHERE id = ?`
+    ).run(now, reservationId);
+
+    // Write finalize ledger entry
+    const seqRow = tx.prepare(
+      `SELECT COALESCE(MAX(entry_seq), -1) + 1 as next_seq
+       FROM credit_ledger WHERE account_id = ? AND pool_id = ?`
+    ).get(accountId, poolId) as { next_seq: number };
+
+    tx.prepare(`
+      INSERT INTO credit_ledger
+        (id, account_id, pool_id, reservation_id, entry_seq, entry_type,
+         amount_micro, description, idempotency_key, created_at)
+      VALUES (?, ?, ?, ?, ?, 'finalize', ?, ?, ?, ?)
+    `).run(
+      randomUUID(),
+      accountId,
+      poolId,
+      reservationId,
+      seqRow.next_seq,
+      (-effectiveCost).toString(),
+      `Finalization of ${reservationId}`,
+      `finalize:${reservationId}`,
+      now,
+    );
+
+    return {
+      reservationId,
+      accountId,
+      actualCostMicro: effectiveCost,
+      surplusReleasedMicro,
+      overrunMicro,
+      finalizedAt: now,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
   // Release
   // ---------------------------------------------------------------------------
 

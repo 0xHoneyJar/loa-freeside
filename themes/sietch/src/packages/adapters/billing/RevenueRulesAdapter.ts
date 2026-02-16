@@ -25,13 +25,15 @@ import type {
 import { ALLOWED_TRANSITIONS } from '../../core/ports/IRevenueRulesService.js';
 import { InvalidStateError, FourEyesViolationError } from './CreditLedgerAdapter.js';
 import { logger } from '../../../utils/logger.js';
+import type { IConstitutionalGovernanceService } from '../../core/ports/IConstitutionalGovernanceService.js';
+import { CONFIG_FALLBACKS } from '../../core/protocol/config-schema.js';
 
 // =============================================================================
 // Constants
 // =============================================================================
 
-/** Default cooldown duration in hours */
-const DEFAULT_COOLDOWN_HOURS = 48;
+/** Legacy constant — now resolved from system_config as revenue_rule.cooldown_seconds (172800s) */
+const DEFAULT_COOLDOWN_SECONDS = 172_800; // 48 hours
 
 // =============================================================================
 // Row Types
@@ -117,9 +119,11 @@ const sqliteNow = sqliteTimestamp;
 
 export class RevenueRulesAdapter implements IRevenueRulesService {
   private db: Database.Database;
+  private governance: IConstitutionalGovernanceService | null;
 
-  constructor(db: Database.Database) {
+  constructor(db: Database.Database, governance?: IConstitutionalGovernanceService) {
     this.db = db;
+    this.governance = governance ?? null;
   }
 
   // ---------------------------------------------------------------------------
@@ -159,7 +163,7 @@ export class RevenueRulesAdapter implements IRevenueRulesService {
   // ---------------------------------------------------------------------------
 
   async approveRule(ruleId: string, approvedBy: string): Promise<RevenueRule> {
-    const cooldownHours = this.getCooldownHours();
+    const cooldownSeconds = this.resolveCooldownSeconds();
     const now = sqliteNow();
 
     return this.db.transaction(() => {
@@ -176,10 +180,10 @@ export class RevenueRulesAdapter implements IRevenueRulesService {
         SET status = 'cooling_down',
             approved_by = ?,
             approved_at = ?,
-            activates_at = datetime(?, '+' || ? || ' hours'),
+            activates_at = datetime(?, '+' || ? || ' seconds'),
             updated_at = ?
         WHERE id = ?
-      `).run(approvedBy, now, now, cooldownHours, now, ruleId);
+      `).run(approvedBy, now, now, cooldownSeconds, now, ruleId);
 
       this.logAudit(ruleId, 'approved', approvedBy, null, 'pending_approval', 'cooling_down');
 
@@ -466,7 +470,18 @@ export class RevenueRulesAdapter implements IRevenueRulesService {
     }
   }
 
-  private getCooldownHours(): number {
+  private resolveCooldownSeconds(): number {
+    if (this.governance) {
+      try {
+        const resolved = this.governance.resolveInTransaction<number>(
+          this.db, 'revenue_rule.cooldown_seconds',
+        );
+        return resolved.value;
+      } catch {
+        // Governance table may not exist yet
+      }
+    }
+    // Legacy fallback: try billing_config table (hours → seconds)
     try {
       const row = this.db.prepare(
         `SELECT value FROM billing_config WHERE key = 'revenue_rule_cooldown_hours'`
@@ -474,11 +489,11 @@ export class RevenueRulesAdapter implements IRevenueRulesService {
 
       if (row) {
         const hours = parseInt(row.value, 10);
-        if (hours > 0) return hours;
+        if (hours > 0) return hours * 3600;
       }
     } catch {
       // billing_config may not exist in test setup
     }
-    return DEFAULT_COOLDOWN_HOURS;
+    return (CONFIG_FALLBACKS['revenue_rule.cooldown_seconds'] as number) ?? DEFAULT_COOLDOWN_SECONDS;
   }
 }

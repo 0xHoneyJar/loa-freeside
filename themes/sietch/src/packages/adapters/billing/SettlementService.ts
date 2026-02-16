@@ -20,6 +20,7 @@ import { sqliteTimestamp } from './protocol/timestamps';
 import type { IConstitutionalGovernanceService } from '../../core/ports/IConstitutionalGovernanceService.js';
 import type { EntityType } from '../../core/protocol/billing-types.js';
 import { CONFIG_FALLBACKS } from '../../core/protocol/config-schema.js';
+import { BillingEventEmitter } from './BillingEventEmitter.js';
 
 // =============================================================================
 // Types
@@ -74,10 +75,12 @@ const SETTLEMENT_POOL = 'referral:revenue_share';
 export class SettlementService {
   private db: Database.Database;
   private governance: IConstitutionalGovernanceService | null;
+  private eventEmitter: BillingEventEmitter | null;
 
-  constructor(db: Database.Database, governance?: IConstitutionalGovernanceService) {
+  constructor(db: Database.Database, governance?: IConstitutionalGovernanceService, eventEmitter?: BillingEventEmitter) {
     this.db = db;
     this.governance = governance ?? null;
+    this.eventEmitter = eventEmitter ?? null;
   }
 
   /**
@@ -135,7 +138,7 @@ export class SettlementService {
 
     for (const earning of pendingEarnings) {
       try {
-        this.settleEarning(earning);
+        this.settleEarning(earning, { entityType: opts?.entityType });
         result.settled++;
         result.processed++;
       } catch (err) {
@@ -234,6 +237,195 @@ export class SettlementService {
   }
 
   /**
+   * Agent clawback with receivable tracking.
+   * If clawback exceeds available balance, creates receivable for the deficit.
+   * Conservation: applied + receivable = originalAmount
+   */
+  agentClawback(earningId: string, reason: string): ClawbackResult & { receivableId?: string } {
+    this.ensureSettlementColumns();
+
+    try {
+      return this.db.transaction(() => {
+        const earning = this.db.prepare(
+          `SELECT * FROM referrer_earnings WHERE id = ? AND settled_at IS NULL`
+        ).get(earningId) as EarningRow | undefined;
+
+        if (!earning) {
+          const exists = this.db.prepare(
+            `SELECT settled_at FROM referrer_earnings WHERE id = ?`
+          ).get(earningId) as { settled_at: string | null } | undefined;
+          if (!exists) return { success: false, earningId, reason: 'Earning not found' };
+          return { success: false, earningId, reason: 'Earning already settled — cannot clawback' };
+        }
+
+        const now = sqliteTimestamp();
+        const balance = this.getSettledBalance(earning.referrer_account_id);
+        const clawbackAmount = BigInt(earning.amount_micro);
+
+        if (balance >= clawbackAmount) {
+          // Full clawback — standard path
+          this.writeClawbackEntry(earning, now, reason);
+          return { success: true, earningId, reason };
+        }
+
+        // Partial clawback: apply what we can, create receivable for remainder
+        const applied = balance > 0n ? balance : 0n;
+        const receivableAmount = clawbackAmount - applied;
+
+        if (applied > 0n) {
+          // Write partial compensating ledger entry
+          const seqRow = this.db.prepare(
+            `SELECT COALESCE(MAX(entry_seq), -1) + 1 as next_seq
+             FROM credit_ledger WHERE account_id = ? AND pool_id = ?`
+          ).get(earning.referrer_account_id, SETTLEMENT_POOL) as { next_seq: number };
+
+          this.db.prepare(`
+            INSERT INTO credit_ledger
+              (id, account_id, pool_id, reservation_id, entry_seq, entry_type,
+               amount_micro, description, idempotency_key, created_at)
+            VALUES (?, ?, ?, ?, ?, 'refund', ?, ?, ?, ?)
+          `).run(
+            randomUUID(), earning.referrer_account_id, SETTLEMENT_POOL,
+            earning.charge_reservation_id, seqRow.next_seq,
+            -Number(applied),
+            `Partial clawback: ${reason}`,
+            `clawback:partial:${earningId}`,
+            now,
+          );
+        }
+
+        // Mark earning as clawed back
+        this.db.prepare(`
+          UPDATE referrer_earnings SET settled_at = ?, clawback_reason = ? WHERE id = ?
+        `).run(now, reason, earningId);
+
+        // Create receivable for unpaid remainder
+        const receivableId = randomUUID();
+        this.db.prepare(`
+          INSERT INTO agent_clawback_receivables
+            (id, account_id, source_clawback_id, original_amount_micro, balance_micro)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(receivableId, earning.referrer_account_id, earningId,
+          Number(receivableAmount), Number(receivableAmount));
+
+        // Emit events
+        if (this.eventEmitter) {
+          this.eventEmitter.emit({
+            type: 'AgentClawbackPartial',
+            aggregateType: 'earning', aggregateId: earningId, timestamp: now, causationId: `clawback:partial:${earningId}`,
+            payload: {
+              accountId: earning.referrer_account_id,
+              originalAmountMicro: String(clawbackAmount),
+              appliedAmountMicro: String(applied),
+              receivableAmountMicro: String(receivableAmount),
+              earningId,
+            },
+          }, { db: this.db });
+          this.eventEmitter.emit({
+            type: 'AgentClawbackReceivableCreated',
+            aggregateType: 'earning', aggregateId: receivableId, timestamp: now, causationId: `clawback:partial:${earningId}`,
+            payload: {
+              receivableId,
+              accountId: earning.referrer_account_id,
+              sourceClawbackId: earningId,
+              balanceMicro: String(receivableAmount),
+            },
+          }, { db: this.db });
+        }
+
+        logger.info({
+          event: 'settlement.agent_clawback_partial',
+          earningId, applied: applied.toString(),
+          receivableId, receivableAmount: receivableAmount.toString(),
+        }, 'Partial agent clawback — receivable created');
+
+        return { success: true, earningId, reason, receivableId };
+      })();
+    } catch (err) {
+      logger.error({ err, earningId }, 'Agent clawback failed');
+      return { success: false, earningId, reason: `Error: ${(err as Error).message}` };
+    }
+  }
+
+  /**
+   * Apply drip recovery from an agent earning to outstanding receivables.
+   * Deducts agent.drip_recovery_pct from the earning and applies to oldest receivable.
+   * Idempotent via drip:{earningId}:{receivableId} key.
+   *
+   * @returns Amount recovered (0 if no outstanding receivables)
+   */
+  applyDripRecovery(earningId: string, accountId: string, earningAmountMicro: bigint, entityType?: EntityType): bigint {
+    try {
+      return this.db.transaction(() => {
+        // Check for outstanding receivables
+        const receivable = this.db.prepare(`
+          SELECT id, balance_micro FROM agent_clawback_receivables
+          WHERE account_id = ? AND balance_micro > 0
+          ORDER BY created_at ASC LIMIT 1
+        `).get(accountId) as { id: string; balance_micro: number } | undefined;
+
+        if (!receivable) return 0n;
+
+        // Resolve drip percentage
+        const dripPct = this.governance
+          ? (() => { try { return this.governance!.resolveInTransaction<number>(this.db, 'agent.drip_recovery_pct', entityType).value; } catch { return 50; } })()
+          : (CONFIG_FALLBACKS['agent.drip_recovery_pct'] as number) ?? 50;
+
+        const dripAmount = (earningAmountMicro * BigInt(dripPct)) / 100n;
+        if (dripAmount <= 0n) return 0n;
+
+        const receivableBalance = BigInt(receivable.balance_micro);
+        const recoveryAmount = dripAmount < receivableBalance ? dripAmount : receivableBalance;
+        const newBalance = receivableBalance - recoveryAmount;
+
+        // Idempotency check
+        const idempKey = `drip:${earningId}:${receivable.id}`;
+        const existingEntry = this.db.prepare(
+          `SELECT 1 FROM credit_ledger WHERE idempotency_key = ?`
+        ).get(idempKey);
+        if (existingEntry) return 0n; // Already processed
+
+        const now = sqliteTimestamp();
+
+        // Write recovery ledger entry
+        const seqRow = this.db.prepare(
+          `SELECT COALESCE(MAX(entry_seq), -1) + 1 as next_seq
+           FROM credit_ledger WHERE account_id = ? AND pool_id = ?`
+        ).get(accountId, SETTLEMENT_POOL) as { next_seq: number };
+
+        this.db.prepare(`
+          INSERT INTO credit_ledger
+            (id, account_id, pool_id, reservation_id, entry_seq, entry_type,
+             amount_micro, description, idempotency_key, created_at)
+          VALUES (?, ?, ?, NULL, ?, 'refund', ?, ?, ?, ?)
+        `).run(
+          randomUUID(), accountId, SETTLEMENT_POOL,
+          seqRow.next_seq,
+          -Number(recoveryAmount),
+          `Drip recovery for receivable ${receivable.id}`,
+          idempKey, now,
+        );
+
+        // Update receivable balance
+        this.db.prepare(`
+          UPDATE agent_clawback_receivables SET balance_micro = ?, resolved_at = ?
+          WHERE id = ?
+        `).run(Number(newBalance), newBalance === 0n ? now : null, receivable.id);
+
+        if (newBalance === 0n) {
+          logger.info({ event: 'settlement.receivable_resolved', receivableId: receivable.id },
+            'Receivable fully resolved via drip recovery');
+        }
+
+        return recoveryAmount;
+      })();
+    } catch (err) {
+      logger.error({ err, earningId, accountId }, 'Drip recovery failed');
+      return 0n;
+    }
+  }
+
+  /**
    * Get settled balance for an account (non-withdrawable in Phase 1A).
    */
   getSettledBalance(accountId: string): bigint {
@@ -278,8 +470,12 @@ export class SettlementService {
   // Private
   // ---------------------------------------------------------------------------
 
-  private settleEarning(earning: EarningRow): void {
+  private settleEarning(earning: EarningRow, opts?: { entityType?: EntityType }): void {
     const now = sqliteTimestamp();
+    const holdResolved = this.governance
+      ? (() => { try { return this.governance!.resolveInTransaction<number>(this.db, 'settlement.hold_seconds', opts?.entityType); } catch { return null; } })()
+      : null;
+    const isInstant = holdResolved ? holdResolved.value === 0 : false;
 
     this.db.transaction(() => {
       // Get next entry_seq for UNIQUE constraint
@@ -310,6 +506,23 @@ export class SettlementService {
       this.db.prepare(`
         UPDATE referrer_earnings SET settled_at = ? WHERE id = ?
       `).run(now, earning.id);
+
+      // Emit AgentSettlementInstant for 0-hold (agent) settlements
+      if (isInstant && this.eventEmitter) {
+        this.eventEmitter.emit({
+          type: 'AgentSettlementInstant',
+          aggregateType: 'earning',
+          aggregateId: earning.id,
+          timestamp: now,
+          causationId: `settlement:${earning.id}`,
+          payload: {
+            referrerAccountId: earning.referrer_account_id,
+            amountMicro: String(earning.amount_micro),
+            earningId: earning.id,
+            configVersion: holdResolved?.configVersion ?? 0,
+          },
+        }, { db: this.db });
+      }
     })();
   }
 
@@ -320,6 +533,35 @@ export class SettlementService {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Write a full clawback compensating ledger entry and mark earning as clawed back.
+   * Used by agentClawback when balance covers the full amount.
+   */
+  private writeClawbackEntry(earning: EarningRow, now: string, reason: string): void {
+    const seqRow = this.db.prepare(
+      `SELECT COALESCE(MAX(entry_seq), -1) + 1 as next_seq
+       FROM credit_ledger WHERE account_id = ? AND pool_id = ?`
+    ).get(earning.referrer_account_id, SETTLEMENT_POOL) as { next_seq: number };
+
+    this.db.prepare(`
+      INSERT INTO credit_ledger
+        (id, account_id, pool_id, reservation_id, entry_seq, entry_type,
+         amount_micro, description, idempotency_key, created_at)
+      VALUES (?, ?, ?, ?, ?, 'refund', ?, ?, ?, ?)
+    `).run(
+      randomUUID(), earning.referrer_account_id, SETTLEMENT_POOL,
+      earning.charge_reservation_id, seqRow.next_seq,
+      -earning.amount_micro,
+      `Agent clawback: ${reason}`,
+      `clawback:agent:${earning.id}`,
+      now,
+    );
+
+    this.db.prepare(`
+      UPDATE referrer_earnings SET settled_at = ?, clawback_reason = ? WHERE id = ?
+    `).run(now, reason, earning.id);
   }
 
   /**

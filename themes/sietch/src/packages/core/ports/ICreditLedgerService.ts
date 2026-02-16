@@ -282,6 +282,18 @@ export interface ICreditLedgerService {
   ): Promise<FinalizeResult>;
 
   /**
+   * Finalize within an external transaction.
+   * All writes share the caller's BEGIN IMMEDIATE transaction.
+   * Used by SettlementService and AgentAwareFinalizer for atomic multi-write operations.
+   */
+  finalizeInTransaction(
+    tx: { prepare(sql: string): any },
+    reservationId: string,
+    actualCostMicro: bigint,
+    options?: FinalizeOptions,
+  ): FinalizeResult;
+
+  /**
    * Release a pending reservation, returning credits to lots.
    * Only allowed on 'pending' reservations.
    *

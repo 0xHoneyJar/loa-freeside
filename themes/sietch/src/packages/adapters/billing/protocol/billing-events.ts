@@ -200,6 +200,40 @@ export interface EarningClawedBack extends BillingEventBase {
   };
 }
 
+export interface AgentSettlementInstant extends BillingEventBase {
+  type: 'AgentSettlementInstant';
+  aggregateType: 'earning';
+  payload: {
+    referrerAccountId: string;
+    amountMicro: string;
+    earningId: string;
+    configVersion: number;
+  };
+}
+
+export interface AgentClawbackPartial extends BillingEventBase {
+  type: 'AgentClawbackPartial';
+  aggregateType: 'earning';
+  payload: {
+    accountId: string;
+    originalAmountMicro: string;
+    appliedAmountMicro: string;
+    receivableAmountMicro: string;
+    earningId: string;
+  };
+}
+
+export interface AgentClawbackReceivableCreated extends BillingEventBase {
+  type: 'AgentClawbackReceivableCreated';
+  aggregateType: 'earning';
+  payload: {
+    receivableId: string;
+    accountId: string;
+    sourceClawbackId: string;
+    balanceMicro: string;
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Payout events
 // ---------------------------------------------------------------------------
@@ -316,6 +350,9 @@ export type BillingEvent =
   | EarningRecorded
   | EarningSettled
   | EarningClawedBack
+  | AgentSettlementInstant
+  | AgentClawbackPartial
+  | AgentClawbackReceivableCreated
   | PayoutRequested
   | PayoutApproved
   | PayoutProcessing
@@ -343,6 +380,9 @@ export const BILLING_EVENT_TYPES = [
   'EarningRecorded',
   'EarningSettled',
   'EarningClawedBack',
+  'AgentSettlementInstant',
+  'AgentClawbackPartial',
+  'AgentClawbackReceivableCreated',
   'PayoutRequested',
   'PayoutApproved',
   'PayoutProcessing',
