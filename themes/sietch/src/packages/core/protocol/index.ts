@@ -16,11 +16,21 @@ export type {
   EntityType,
   SourceType,
   EntryType,
+  ProtocolEntryType,
   SystemConfigStatus,
   ParamSource,
   SystemConfig,
   ResolvedParam,
   ProposeOpts,
+} from './billing-types.js';
+
+// Billing domain values (const arrays + helpers)
+export {
+  ENTITY_TYPES,
+  SOURCE_TYPES,
+  ENTRY_TYPES,
+  buildEntryTypeCheck,
+  buildSourceTypeCheck,
 } from './billing-types.js';
 
 // Guard types
@@ -102,7 +112,6 @@ export {
 // BillingEntry — loa-hounfour protocol type
 export type {
   BillingEntry,
-  ProtocolEntryType,
 } from './billing-entry.js';
 
 export {
