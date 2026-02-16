@@ -14,6 +14,8 @@ import {
   isoTimestamp,
   isSqliteFormat,
   isIsoFormat,
+  parseSqliteTimestamp,
+  type SqliteTimestamp,
 } from '../../../src/packages/adapters/billing/protocol/timestamps';
 
 describe('protocol/timestamps', () => {
@@ -94,6 +96,60 @@ describe('protocol/timestamps', () => {
 
       expect(isIsoFormat(isoTs)).toBe(true);
       expect(isSqliteFormat(isoTs)).toBe(false);
+    });
+  });
+
+  describe('parseSqliteTimestamp (DB read boundary)', () => {
+    it('brands a valid SQLite timestamp string', () => {
+      const raw = '2026-03-15 14:30:00';
+      const branded: SqliteTimestamp = parseSqliteTimestamp(raw);
+      expect(branded).toBe(raw);
+      expect(isSqliteFormat(branded)).toBe(true);
+    });
+
+    it('throws on ISO 8601 input', () => {
+      expect(() => parseSqliteTimestamp('2026-03-15T14:30:00.000Z')).toThrow(
+        'Invalid SQLite timestamp format',
+      );
+    });
+
+    it('throws on empty string', () => {
+      expect(() => parseSqliteTimestamp('')).toThrow('Invalid SQLite timestamp format');
+    });
+
+    it('throws on partial timestamp', () => {
+      expect(() => parseSqliteTimestamp('2026-03-15')).toThrow('Invalid SQLite timestamp format');
+    });
+
+    it('round-trips with sqliteTimestamp', () => {
+      const original = sqliteTimestamp(new Date('2026-06-01T12:00:00Z'));
+      const parsed = parseSqliteTimestamp(original);
+      expect(parsed).toBe(original);
+    });
+  });
+
+  describe('SqliteTimestamp branded type (compile-time)', () => {
+    it('sqliteTimestamp returns SqliteTimestamp type', () => {
+      const ts: SqliteTimestamp = sqliteTimestamp();
+      expect(typeof ts).toBe('string');
+    });
+
+    it('sqliteFutureTimestamp returns SqliteTimestamp type', () => {
+      const ts: SqliteTimestamp = sqliteFutureTimestamp(60);
+      expect(typeof ts).toBe('string');
+    });
+
+    it('parseSqliteTimestamp returns SqliteTimestamp type', () => {
+      const ts: SqliteTimestamp = parseSqliteTimestamp('2026-01-01 00:00:00');
+      expect(typeof ts).toBe('string');
+    });
+
+    it('plain string is not assignable to SqliteTimestamp (compile-time check)', () => {
+      const plain: string = '2026-01-01 00:00:00';
+      // @ts-expect-error — branded type prevents accidental string assignment
+      const _branded: SqliteTimestamp = plain;
+      // If @ts-expect-error is unused, tsc fails — proving the brand works
+      expect(_branded).toBeDefined();
     });
   });
 
