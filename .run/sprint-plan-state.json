@@ -4,16 +4,16 @@
   "state": "RUNNING",
   "timestamps": {
     "started": "2026-02-17T22:12:00Z",
-    "last_activity": "2026-02-18T10:30:00Z"
+    "last_activity": "2026-02-18T11:45:00Z"
   },
   "sprints": {
     "total": 4,
-    "completed": 1,
-    "current": "sprint-301",
+    "completed": 2,
+    "current": "sprint-302",
     "list": [
       {"id": "sprint-300", "status": "completed", "cycles": 1, "files_changed": 21},
-      {"id": "sprint-301", "status": "in_progress", "cycles": 0},
-      {"id": "sprint-302", "status": "pending", "cycles": 0},
+      {"id": "sprint-301", "status": "completed", "cycles": 1, "files_changed": 27},
+      {"id": "sprint-302", "status": "in_progress", "cycles": 0},
       {"id": "sprint-303", "status": "pending", "cycles": 0}
     ]
   },
@@ -24,8 +24,8 @@
     "timeout_hours": 8
   },
   "metrics": {
-    "total_cycles": 1,
-    "total_files_changed": 21,
+    "total_cycles": 2,
+    "total_files_changed": 48,
     "total_findings_fixed": 0
   }
 }
