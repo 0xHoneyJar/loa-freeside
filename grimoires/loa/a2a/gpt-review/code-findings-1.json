@@ -1,7 +1,35 @@
 {
-  "verdict": "APPROVED",
-  "summary": "No bugs, security issues, or logic errors found in the provided changes.",
-  "issues": [],
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Found three major issues: missing index recreation due to name conflicts, incomplete FK target verification for lot_id columns, and foreign_keys state not restored to its prior value.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "migration060.ts",
+      "line": 58,
+      "description": "Indexes are not recreated on the new `credit_lots` because the index names are still owned by `_credit_lots_old` after renaming, and `CREATE INDEX IF NOT EXISTS` becomes a no-op. This silently drops critical indexes.",
+      "current_code": "```sql\n-- Step 4: Recreate indexes on the new credit_lots\nCREATE INDEX IF NOT EXISTS idx_credit_lots_redemption\n  ON credit_lots(account_id, pool_id, expires_at)\n  WHERE available_micro > 0;\n\nCREATE INDEX IF NOT EXISTS idx_credit_lots_account\n  ON credit_lots(account_id);\n\nCREATE UNIQUE INDEX IF NOT EXISTS idx_credit_lots_source\n  ON credit_lots(source_type, source_id)\n  WHERE source_id IS NOT NULL;\n```",
+      "fixed_code": "```sql\n-- Step 4: Drop old index names (now attached to _credit_lots_old) and recreate on new credit_lots\nDROP INDEX IF EXISTS idx_credit_lots_redemption;\nDROP INDEX IF EXISTS idx_credit_lots_account;\nDROP INDEX IF EXISTS idx_credit_lots_source;\n\nCREATE INDEX idx_credit_lots_redemption\n  ON credit_lots(account_id, pool_id, expires_at)\n  WHERE available_micro > 0;\n\nCREATE INDEX idx_credit_lots_account\n  ON credit_lots(account_id);\n\nCREATE UNIQUE INDEX idx_credit_lots_source\n  ON credit_lots(source_type, source_id)\n  WHERE source_id IS NOT NULL;\n```",
+      "explanation": "When `credit_lots` is renamed, its indexes keep their names and move with the old table. Dropping those names before recreating ensures indexes are actually created on the new table."
+    },
+    {
+      "severity": "major",
+      "file": "migration060.ts",
+      "line": 92,
+      "description": "FK schema verification only checks for names starting with `_credit_lots` and can miss corrupted targets like `credit_lots_058_backup`. It also doesn't explicitly enforce that `lot_id`/`source_lot_id` FKs point to `credit_lots`.",
+      "current_code": "```typescript\nfunction verifyFkTargets(db: { pragma(sql: string): unknown }): void {\n  const dependentTables = ['credit_ledger', 'reservation_lots', 'credit_debts'];\n  for (const table of dependentTables) {\n    const fkList = db.pragma(`foreign_key_list(${table})`) as Array<{ table: string }>;\n    for (const fk of fkList) {\n      if (fk.table === 'credit_lots') continue; // correct\n      if (fk.table === 'credit_accounts') continue; // unrelated FK, fine\n      if (fk.table === 'credit_reservations') continue; // unrelated FK, fine\n      // Any FK pointing to a backup/old/new temp table is corruption\n      if (fk.table.startsWith('_credit_lots')) {\n        throw new Error(\n          `FK corruption detected: ${table} references '${fk.table}' instead of 'credit_lots'`,\n        );\n      }\n    }\n  }\n}\n```",
+      "fixed_code": "```typescript\nfunction verifyFkTargets(db: { pragma(sql: string): unknown }): void {\n  const dependentTables = ['credit_ledger', 'reservation_lots', 'credit_debts'];\n  const lotFkColumns = new Set(['lot_id', 'source_lot_id']);\n\n  for (const table of dependentTables) {\n    const fkList = db.pragma(`foreign_key_list(${table})`) as Array<{ table: string; from: string }>;\n    for (const fk of fkList) {\n      // Enforce that any lot-related FK columns must reference credit_lots\n      if (lotFkColumns.has(fk.from) && fk.table !== 'credit_lots') {\n        throw new Error(\n          `FK corruption detected: ${table}.${fk.from} references '${fk.table}' instead of 'credit_lots'`,\n        );\n      }\n      // Catch any credit_lots backup/old/new names regardless of prefix\n      if (fk.table !== 'credit_lots' && fk.table.includes('credit_lots')) {\n        throw new Error(\n          `FK corruption detected: ${table} references '${fk.table}' instead of 'credit_lots'`,\n        );\n      }\n    }\n  }\n}\n```",
+      "explanation": "This enforces correct FK targets for the specific lot-related columns and catches backup/old table names like `credit_lots_058_backup`, ensuring schema-level corruption is detected reliably."
+    },
+    {
+      "severity": "major",
+      "file": "migration060.ts",
+      "line": 121,
+      "description": "The migration forces `foreign_keys = ON` at the end even if the connection previously had them disabled, potentially altering caller behavior and breaking surrounding migrations.",
+      "current_code": "```typescript\n  db.pragma('foreign_keys = OFF');\n  db.exec('BEGIN');\n  try {\n    db.exec(CREDIT_LOTS_REBUILD_SQL);\n\n    // Row-level FK integrity check\n    const fkViolations = db.pragma('foreign_key_check') as unknown;\n    if (Array.isArray(fkViolations) && fkViolations.length > 0) {\n      throw new Error(`foreign_key_check failed: ${JSON.stringify(fkViolations)}`);\n    }\n\n    // Schema-level FK target verification\n    verifyFkTargets(db);\n\n    db.exec('COMMIT');\n  } catch (err) {\n    db.exec('ROLLBACK');\n    throw err;\n  } finally {\n    db.pragma('foreign_keys = ON');\n  }\n```",
+      "fixed_code": "```typescript\n  const fkState = db.pragma('foreign_keys') as Array<{ foreign_keys: number }>;\n  const fkWasOn = Array.isArray(fkState) ? fkState[0]?.foreign_keys === 1 : false;\n\n  db.pragma('foreign_keys = OFF');\n  db.exec('BEGIN');\n  try {\n    db.exec(CREDIT_LOTS_REBUILD_SQL);\n\n    // Row-level FK integrity check\n    const fkViolations = db.pragma('foreign_key_check') as unknown;\n    if (Array.isArray(fkViolations) && fkViolations.length > 0) {\n      throw new Error(`foreign_key_check failed: ${JSON.stringify(fkViolations)}`);\n    }\n\n    // Schema-level FK target verification\n    verifyFkTargets(db);\n\n    db.exec('COMMIT');\n  } catch (err) {\n    db.exec('ROLLBACK');\n    throw err;\n  } finally {\n    db.pragma(`foreign_keys = ${fkWasOn ? 'ON' : 'OFF'}`);\n  }\n```",
+      "explanation": "Capturing and restoring the prior `foreign_keys` state avoids side effects and maintains correctness when migrations are run in environments where FK enforcement is intentionally disabled."
+    }
+  ],
   "fabrication_check": {
     "passed": true,
     "concerns": []

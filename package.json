@@ -4,7 +4,7 @@
     "node": ">=22"
   },
   "devDependencies": {
-    "@0xhoneyjar/loa-hounfour": "github:0xHoneyJar/loa-hounfour#v1.1.0",
+    "@0xhoneyjar/loa-hounfour": "github:0xHoneyJar/loa-hounfour#d091a3c0d4802402825fc7765bcc888f2477742f",
     "@types/express": "^5.0.6",
     "@types/supertest": "^6.0.3",
     "ajv": "^8.17.1",

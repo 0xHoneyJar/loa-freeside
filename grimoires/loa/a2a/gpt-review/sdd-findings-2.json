@@ -1,26 +1,31 @@
 {
   "verdict": "APPROVED",
-  "summary": "All previously blocking issues are addressed with concrete, implementable fixes (correct migration targeting, clarified deposit state semantics, reconciliation error-reporting contract, and runtime/DB-boundary enforcement for SqliteTimestamp) and no new truly blocking problems were introduced.",
+  "summary": "All previously blocking risks (version-downgrade ambiguity, trust_scopes normalization safety, conservation dual-run completeness, drift pinning robustness, and deterministic rollback) are addressed with concrete, safer mechanisms and no new failure-class issues were introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "EntryType 'transfer_in' addition might be applied to the wrong migration / CHECK constraint not actually updated in existing environments",
+      "original_issue": "Unversioned coordination messages defaulted to v4.6.0, creating a downgrade/bypass surface",
       "status": "fixed",
-      "notes": "SDD now correctly identifies that the credit_ledger entry_type CHECK was defined earlier and is rebuilt in migration 056, and explicitly amends 056’s rebuild SQL to include 'transfer_in'. This resolves the SQLite limitation (cannot ALTER CHECK) by updating the table-rebuild migration that owns the constraint in this branch."
+      "notes": "Section 3.7 now explicitly says “No version field → REJECT (missing required discriminator, never assume legacy)”, removing the downgrade ambiguity."
     },
     {
-      "original_issue": "TBA deposit compound CHECK might incorrectly enforce amount_micro > 0 on a non-terminal 'bridged' state (state machine mismatch)",
+      "original_issue": "trust_level → trust_scopes mapping was undefined/ambiguous and could allow privilege escalation; no precedence rules when both present",
       "status": "fixed",
-      "notes": "SDD explicitly reconciles PRD’s 6-state mention with the actual 4 states in migration 057 and clarifies (with a concrete update statement location) that 'bridged' is the terminal credited state set after amount_micro is known. The proposed CHECK matches that semantics and the validation tests cover the intended transition sequence."
+      "notes": "Section 3.6 adds exactly-one-of enforcement (reject both/neither), a least-privilege mapping table, an explicit invariant that v4 trust_level can never map to admin:true, and post-normalization re-validation against the v7 schema, with targeted negative tests."
     },
     {
-      "original_issue": "ReconciliationService change from silent skip to failure could accidentally throw/abort reconciliation instead of returning a structured report",
+      "original_issue": "Conservation dual-run compared only 14 invariants while v7 has 147; ENUMERATED_DIFFS could mask real safety changes; missing completeness criteria",
       "status": "fixed",
-      "notes": "SDD now defines the contract: reconcile() must always return a complete per-check report; check-level SQL errors become status='failed' with error details and must not throw. It also includes a negative test asserting invalid SQL yields a failed check result without throwing."
+      "notes": "Section 3.5 adds (a) bounded allowlist with expiry (max 30 days) instead of permanent diffs, (b) a coverage requirement that every canonical invariant ID is exercised at least once, and (c) an evaluator-independent conservation property test to reduce shared-bug risk. This resolves the “subset-only” and “masking” failure modes."
     },
     {
-      "original_issue": "SqliteTimestamp branding only at TS level can be bypassed by raw strings from SQLite rows; needs DB-boundary validation/branding",
+      "original_issue": "CI drift detection relied on parsing lockfile resolved URLs and dependency pinned to mutable tag",
       "status": "fixed",
-      "notes": "SDD adds parseSqliteTimestamp(raw) with runtime validation and requires row mappers to use it for *_at fields, plus a runtime test rejecting ISO strings. This closes the bypass path where DB-read strings re-enter comparisons/updates unbranded."
+      "notes": "Sections 3.1 and 3.8 pin the dependency by commit SHA and replace lockfile URL parsing with reading the installed package’s package.json (version + optional gitHead) plus CONTRACT_VERSION. This is materially more stable and harder to bypass."
+    },
+    {
+      "original_issue": "Rollback strategy was non-deterministic for a 40+ consumer import migration with vendored deletions",
+      "status": "fixed",
+      "notes": "Section 8 adds a pre-migration tag + release branch anchor, an explicit deterministic rollback procedure (including lockfile restoration), a rollback checklist, and a runtime feature flag to disable the v7 boundary normalizers without code rollback."
     }
   ],
   "new_blocking_concerns": [],

@@ -1,36 +1,42 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "This plan is close, but it has a few missing/incorrectly-specified tasks and acceptance criteria gaps that can realistically block implementation or leave the feature non-working at merge time.",
+  "summary": "The plan is close, but a few dependency/ordering gaps and one acceptance-criteria contradiction can realistically break the migration or make “done” unverifiable.",
   "blocking_issues": [
     {
-      "location": "Sprint 1 / Task 1.2 (Amend migration 056)",
-      "issue": "Plan assumes it is safe to amend an existing migration, but does not include a gating task to confirm migration 056 has not shipped/applied in any environment; if it has, amending it will break existing DBs or make CI/prod drift likely.",
-      "why_blocking": "If 056 is already applied anywhere, changing it can cause irreconcilable schema history (SQLite won’t “re-run” amended migrations), leading to failing tests, broken local dev, or inability to deploy/merge safely.",
-      "fix": "Add an explicit task/AC to verify migration 056 is not applied in any shared environment (or that the project policy allows amending). If it may be applied, create a new migration (e.g., 058) that rebuilds/updates the CHECK constraint to include 'transfer_in' instead of amending 056."
+      "location": "Appendix B Critical Path + Task 301.5 dependencies",
+      "issue": "Critical path shows 301.4 feeding into 301.5, but Task 301.5 does not depend on 301.4 (and 301.4 only depends on 300.2).",
+      "why_blocking": "If 301.5 deletes vendored files before 301.4’s agent adapter verification is complete, you can end up with a broken build or failing agent tests late, after the big delete, increasing rollback/repair cost and risking sprint failure. Also the critical path diagram is inconsistent with the task graph, so execution sequencing is ambiguous.",
+      "fix": "Either (a) add an explicit dependency: 301.5 depends on 301.4, or (b) update Appendix B to remove the implied dependency and explicitly state 301.4 is parallel/non-blocking. Prefer (a) if 301.4 could be impacted by vendored deletions or shared protocol barrels."
     },
     {
-      "location": "Sprint 1 / Task 1.3 (Amend migration 057)",
-      "issue": "Same migration-amendment risk as 056, plus the plan doesn’t specify how existing rows are handled if the constraint becomes stricter/conditional (e.g., any existing bridged rows with amount_micro=0 would make the table invalid under the new CHECK).",
-      "why_blocking": "If 057 has been applied or any existing data violates the new CHECK, the migration will fail or the environment will be stuck with inconsistent schema/data, blocking integration tests and merge readiness.",
-      "fix": "Add a gating check: confirm 057 is not applied anywhere OR implement a new forward migration that (a) cleans/updates any violating rows before adding the CHECK, and (b) adds the new constraint via table rebuild if needed. Include AC: migration runs on a DB seeded with representative existing rows."
+      "location": "Task 301.5 (Freeze snapshot then delete vendored files)",
+      "issue": "The acceptance criteria requires freezing `tests/fixtures/frozen-conservation-evaluator.ts` as an “exact copy of pre-migration conservation-properties.ts”, but the plan never guarantees that file still exists at the moment of freezing, nor does it pin the snapshot to the anchor tag content.",
+      "why_blocking": "If `conservation-properties.ts` is one of the vendored/REVIEW files that gets altered during Sprint 300/301 migrations (or renamed/removed as part of audit dispositions), you can no longer produce an “exact copy” that is provably pre-migration. That undermines the dual-run harness in 302.1 (which depends on the snapshot being truly pre-migration) and can stall Sprint 302 entirely.",
+      "fix": "Make the snapshot source explicit and mechanically reproducible: in 301.5, generate the frozen file from `pre-v7-migration-anchor` (e.g., `git show pre-v7-migration-anchor:themes/sietch/src/packages/core/protocol/conservation-properties.ts > tests/fixtures/frozen-conservation-evaluator.ts`) and record the source commit SHA in the header. Also add a dependency that no tasks modify the source file before snapshotting, or explicitly state snapshot is taken from the tag, not working tree."
     },
     {
-      "location": "Sprint 2 / Task 2.1 (ReconciliationService Check 5 error handling)",
-      "issue": "Acceptance criteria require `reconcile()` to never throw for check-level errors, but the plan doesn’t include updating the report type/interface and downstream callers/tests to match the new `{ status: 'failed', error }` shape (and removing any assumptions about `{ skipped: true }`).",
-      "why_blocking": "Changing runtime behavior and return shape without updating types/call sites will cause TypeScript failures or runtime failures in existing tests/consumers, blocking Sprint 3’s “full suite green” goal.",
-      "fix": "Add a subtask (or expand Task 2.1) to update the reconciliation report types and any consumers/tests that parse the report. AC: TypeScript compilation passes and an existing reconciliation-related test asserts the new failure shape."
+      "location": "Task 302.1 (conservation dual-run) acceptance criteria",
+      "issue": "Contradictory requirements: it both allows a `KNOWN_DIFFS` allowlist (with expiry) and also requires “Dual-run passes with zero unexpired allowlist entries.”",
+      "why_blocking": "If any legitimate, time-bounded diff is discovered (which is plausible across v4.6.0 → v7.0.0 evaluator changes), the test cannot be made to pass while also using the allowlist mechanism. This can deadlock Sprint 302 on a non-product issue (test harness policy).",
+      "fix": "Clarify the intended gate. Options: (a) allowlist permitted but must be empty by end of Sprint 303 (final gate), or (b) allowlist permitted only for logging (non-gating) while the main assertion is “no diffs,” or (c) allowlist permitted with max N entries and all must have expiry ≤30 days. Pick one and align the wording."
     },
     {
-      "location": "Sprint 2 / Task 2.2 + Sprint 1 / Task 1.2 (EntryType + DB CHECK) dependency",
-      "issue": "Task 2.2 changes runtime writes to `entry_type='transfer_in'`, but there is no explicit dependency/AC ensuring the DB schema in test environments actually includes the updated CHECK before the service code runs (especially if migrations are not re-applied cleanly in CI).",
-      "why_blocking": "If CI uses a persisted SQLite file or a migration cache, the service will start writing 'transfer_in' and immediately fail with CHECK violations, blocking integration tests and making the branch unmergeable.",
-      "fix": "Add an explicit task/AC to ensure test harness always migrates from a clean DB (or applies the new migration) and that the migration set used in CI includes the updated constraint. AC: a fresh migrate-from-zero run passes and a migrate-from-previous-version path is validated (if supported)."
+      "location": "Task 303.6 (Final regression gate) acceptance criteria",
+      "issue": "Test count math is asserted (25+ new, 3 deleted, net +22) but the plan does not enumerate which 3 tests are deleted, and task-level additions do not clearly sum to 25.",
+      "why_blocking": "This makes the acceptance criterion non-verifiable and likely to fail at the end of the sprint even if the migration is successful. It can block “done”/merge on a bookkeeping mismatch.",
+      "fix": "Add a small appendix/table listing: (1) each new test file and how many tests it contributes (or at least a minimum count), and (2) exactly which 3 tests/files are deleted and in which task (likely 303.2 or 301.3). Then update the net count to match reality or change the criterion to something verifiable (e.g., “no net decrease in protocol test coverage; new suites added: dual-run, independent, drift-detection, jwt-boundary-v7, version-negotiation, boundary-compat”)."
     },
     {
-      "location": "Sprint 3 / Task 3.5 (Resolve merge conflicts with main)",
-      "issue": "Acceptance criteria are internally contradictory/unreliable: it says “git merge main completes without conflicts” but the task is explicitly to resolve conflicts; also it relies on PR #67 GitHub state changes which may not be deterministic/available in the agent environment.",
-      "why_blocking": "You can do the work correctly and still fail the stated AC (because conflicts did exist, or GitHub doesn’t update to MERGEABLE immediately). That makes the sprint unverifiable and can stall completion.",
-      "fix": "Rewrite AC to be testable locally: (1) `git merge main` completes (conflicts resolved and committed if any), (2) working tree clean, (3) tests pass, (4) `git diff --name-status main...HEAD` reviewed/approved. Make PR state optional/non-blocking or move it to a manual checklist."
+      "location": "Task 300.2 (dependency upgrade) + Task 303.1 (drift detection Layer 2)",
+      "issue": "300.2 pins dependency to `github:...#<commit-sha>`, while 303.1 Layer 2 requires “Installed package version + gitHead (if present) match expected.” This may be impossible depending on how the package is built/published from GitHub and whether `gitHead` is present in the installed artifact.",
+      "why_blocking": "If `gitHead` is not present (common for GitHub installs or certain pack flows), Layer 2 can’t be satisfied deterministically, causing CI to fail at the end even though functionality is correct.",
+      "fix": "Define a deterministic check that works with GitHub SHA installs: assert the resolved dependency reference in the lockfile matches the expected commit SHA (or use `npm ls`/`pnpm why` to assert the resolved tarball URL/commit). Make Layer 2 explicitly conditional: either check lockfile resolution OR check `gitHead` when available, not both."
+    },
+    {
+      "location": "Task 301.5 vs Task 303.5 (core/protocol/index.ts rewrite)",
+      "issue": "301.5 already requires `core/protocol/index.ts` rewritten as an arrakis-extensions barrel, but 303.5 repeats the same rewrite as a separate deliverable.",
+      "why_blocking": "This creates ambiguity about when the barrel rewrite is “done” and can cause rework or merge conflicts across sprints (especially if other tasks depend on the barrel shape). It’s a sequencing risk because consumers may rely on the barrel during migration, and duplicating the rewrite invites drift.",
+      "fix": "Make it single-owner: either keep the barrel rewrite in 301.5 and change 303.5 to “verify barrel invariants + adjust exports if audit changed,” or move the rewrite entirely to 303.5 and remove it from 301.5 (but then 301.5 must still ensure no vendored imports remain without relying on the barrel)."
     }
   ],
   "question": "",

@@ -1,553 +1,424 @@
-# Sprint Plan: The Weirding Way — Protocol Convergence & Economic Formalization
+# Sprint Plan: The Voice from the Outer World — Canonical Protocol Adoption (v7.0.0)
 
-**Cycle:** cycle-033
-**PRD:** v1.1.0 (GPT-approved)
-**SDD:** v1.1.0 (GPT-approved)
-**Sprints:** 5 (global IDs: 295-299)
-**Team:** 1 AI agent (solo)
-**Duration:** ~2-3 hours per sprint
-
----
-
-## Overview
-
-| Parameter | Value |
-|-----------|-------|
-| Total sprints | 5 |
-| Sprint size | 1 agent session each |
-| Global sprint IDs | 295-299 |
-| Estimated total tasks | 23 |
-| Predecessor | cycle-032 (sprints 292-294) |
-
-### Sprint Summary
-
-| Sprint | Title | Global ID | Key Deliverable |
-|--------|-------|-----------|-----------------|
-| 1 | Merge & EntryType Foundation | 295 | PR #67 merged + const-array EntryType + sqlite_master validation |
-| 2 | State Machine Equivalence & Branded Types | 296 | 4 protocol machines verified + MicroUSD/BasisPoints branded + 10+ migrations |
-| 3 | Conservation Properties Formalization | 297 | 14 invariants formalized + 28 tests (positive + counterexample) |
-| 4 | Cross-System E2E Harness | 298 | JWT boundary module + 7+ E2E scenarios with conservation verification |
-| 5 | Migration 060 FK Corruption Fix | 299 | Safe table-rebuild migration + FK integrity regression tests |
+**Version:** 1.0.0
+**Date:** 2026-02-18
+**Cycle:** cycle-034
+**PRD:** grimoires/loa/prd.md (v1.1.0)
+**SDD:** grimoires/loa/sdd.md (v1.1.0)
+**Sprints:** 4 (Global IDs: 300–303)
 
 ---
 
-## Sprint 1: Merge & EntryType Foundation (Sprint 295)
+## Sprint 300 — Foundation: Dependency Upgrade & Extension Scaffolding
 
-**Goal:** Merge PR #67 to establish clean main, then consolidate EntryType taxonomy as the single-source-of-truth pattern for subsequent sprints.
+**Goal:** Upgrade to v7.0.0, audit canonical exports, create arrakis extension modules.
+**PRD Refs:** FR-1, FR-2 (partial)
+**SDD Refs:** 3.1, 3.3, 3.4
 
-**Dependencies:** None — executes first.
+### Prerequisites
+- loa-hounfour v7.0.0 tag exists on GitHub (confirmed in PRD Section 6)
+- Pre-migration anchor tag created: `git tag pre-v7-migration-anchor` (SDD 8.1)
 
-### Task 1.1: Merge PR #67 to main (FR-6)
+### Tasks
 
-**Description:** Run full test suite on current feature branch, merge PR #67 via `gh pr merge`, verify main CI is green.
-
+#### Task 300.1 — Create pre-migration anchor and feature branch
+**Goal ID:** G-6 (zero regressions — rollback safety)
 **Acceptance Criteria:**
-- [ ] Full test suite passes on feature branch pre-merge
-- [ ] PR #67 merged to main (merge commit, not squash — preserve sprint history)
-- [ ] Main branch CI verified green post-merge
-- [ ] Feature branch can be safely deleted
+- [ ] `git tag pre-v7-migration-anchor` on current HEAD
+- [ ] `release/pre-v7-baseline` branch created from tag
+- [ ] Feature branch `feature/canonical-protocol-v7` created from main
+**Files:** git operations only
+**Estimate:** XS
 
-**Estimated Effort:** Small (procedural)
-
-### Task 1.2: EntryType const array source of truth (FR-5)
-
-**Description:** Replace the manual `EntryType` union and `ProtocolEntryType` subset in `billing-types.ts` with a `const` array from which all types are derived.
-
-**Files Modified:**
-- `themes/sietch/src/packages/core/protocol/billing-types.ts`
-
+#### Task 300.2 — Upgrade @0xhoneyjar/loa-hounfour to v7.0.0
+**Goal ID:** G-1
 **Acceptance Criteria:**
-- [ ] `ENTRY_TYPES` const array is the single source (17 values)
-- [ ] `EntryType = (typeof ENTRY_TYPES)[number]`
-- [ ] `ProtocolEntryType = EntryType` (unified, no subset)
-- [ ] Bidirectional compile-time assertion: `_AssertExact<EntryType, ProtocolEntryType> = true`
-- [ ] `buildEntryTypeCheck(column)` generates SQL CHECK expression from array
-- [ ] Apply same pattern to `SOURCE_TYPES` and `ENTITY_TYPES`
-- [ ] TypeScript compiles clean across project
+- [ ] Both `package.json` (root + `packages/adapters/package.json`) updated to `github:0xHoneyJar/loa-hounfour#<v7.0.0-commit-sha>`
+- [ ] `npm install` / `pnpm install` succeeds
+- [ ] `import { CONTRACT_VERSION } from '@0xhoneyjar/loa-hounfour'` returns `'7.0.0'`
+- [ ] No version mismatch warnings at import time
+**Files:** `package.json`, `packages/adapters/package.json`, lockfile
+**Estimate:** S
+**Depends on:** 300.1
 
-### Task 1.3: EntryType DB validation tests (FR-5)
-
-**Description:** Create tests that verify EntryType TS/DB consistency using sqlite_master introspection (no migration changes needed). Comparison is **semantic** (set-based), not string-exact, to avoid brittleness across SQLite versions/formatting.
-
-**Files Created:**
-- Tests within existing test structure
-
+#### Task 300.3 — Audit v7.0.0 canonical exports against local protocol layer
+**Goal ID:** G-1, G-2
 **Acceptance Criteria:**
-- [ ] Test: extract allowed literal set from sqlite_master CHECK expression (parse values, strip whitespace/quotes, normalize), compare sorted set against `[...ENTRY_TYPES].sort()` — must be identical sets
-- [ ] Test: `buildEntryTypeCheck(column)` contains all 17 `ENTRY_TYPES` literals and references the provided column name
-- [ ] Test: invalid entry type rejected by DB CHECK (insert test)
-- [ ] Comparison is set-based (not exact string equality) to tolerate formatting/quoting differences across SQLite versions
-- [ ] All tests pass against fresh-migrated DB
+- [ ] Export comparison document created: for each of the 14 vendored files, list which exports have canonical equivalents in v7.0.0 and which are arrakis-specific
+- [ ] Resolve the 6 open questions from SDD Section 11 (branded types, conservation evaluator, BillingEntry, economic events, trust_scopes, config schema)
+- [ ] File disposition table (SDD 3.3) updated with audit results
+- [ ] Comparison document committed to `grimoires/loa/context/v7-export-audit.md`
+**Files:** `grimoires/loa/context/v7-export-audit.md` (new)
+**Estimate:** M
+**Depends on:** 300.2
+
+#### Task 300.4 — Create arrakis-arithmetic.ts extension module
+**Goal ID:** G-2
+**Acceptance Criteria:**
+- [ ] `themes/sietch/src/packages/core/protocol/arrakis-arithmetic.ts` created
+- [ ] Imports canonical `MicroUSD`, `BasisPoints`, `AccountId` from `@0xhoneyjar/loa-hounfour` (if v7 exports them; if not, keeps local definitions)
+- [ ] All arithmetic helper functions (`addMicroUSD`, `subtractMicroUSD`, `bpsShare`, `assertBpsSum`, `dollarsToMicro`, `microToDollarsDisplay`, etc.) implemented using canonical types
+- [ ] `tsc --noEmit` passes
+**Files:** `core/protocol/arrakis-arithmetic.ts` (new)
+**Estimate:** S
+**Depends on:** 300.3
+
+#### Task 300.5 — Create arrakis-compat.ts boundary compatibility module
+**Goal ID:** G-3, G-6
+**Acceptance Criteria:**
+- [ ] `themes/sietch/src/packages/core/protocol/arrakis-compat.ts` created
+- [ ] `negotiateVersion()` returns `{ preferred: '7.0.0', supported: ['4.6.0', '7.0.0'] }`
+- [ ] `normalizeInboundClaims()` implements exactly-one-of enforcement (trust_level XOR trust_scopes), least-privilege mapping table, post-normalization re-validation
+- [ ] `normalizeCoordinationMessage()` rejects missing version discriminator (never assumes legacy)
+- [ ] `PROTOCOL_V7_NORMALIZATION` feature flag implemented (SDD 8.3)
+- [ ] `tsc --noEmit` passes
+**Files:** `core/protocol/arrakis-compat.ts` (new)
+**Estimate:** M
+**Depends on:** 300.3
+
+#### Task 300.6 — Create arrakis-conservation.ts error taxonomy adapter
+**Goal ID:** G-5
+**Acceptance Criteria:**
+- [ ] `themes/sietch/src/packages/core/protocol/arrakis-conservation.ts` created
+- [ ] `ConservationErrorCode`, `ReconciliationFailureCode`, `ConservationViolationError` preserved
+- [ ] If v7.0.0 exports conservation evaluator: adapter maps canonical results to arrakis error codes
+- [ ] If v7.0.0 does NOT export evaluator: module wraps local conservation logic with clear TODO for future canonical migration
+- [ ] `tsc --noEmit` passes
+**Files:** `core/protocol/arrakis-conservation.ts` (new)
+**Estimate:** S
+**Depends on:** 300.3
 
 ---
 
-## Sprint 2: State Machine Equivalence & Branded Types (Sprint 296)
+## Sprint 301 — Consumer Migration: Import Path Overhaul
 
-**Goal:** Verify arrakis's 4 protocol state machines against loa-hounfour canonical definitions, and introduce branded types for compile-time unit safety.
+**Goal:** Migrate all 40+ consumers from vendored imports to canonical package imports. Delete vendored files.
+**PRD Refs:** FR-2, FR-4
+**SDD Refs:** 3.2, 3.3
 
-**Dependencies:** Sprint 1 (clean main + const-array pattern established)
+### Prerequisites
+- Sprint 300 complete (extension modules created, v7.0.0 installed)
 
-### Task 2.1: VENDORED_FROM provenance constant (FR-1)
+### Tasks
 
-**Description:** Add the upstream provenance constant to `state-machines.ts` recording the loa-hounfour commit SHA, date, and PR reference.
-
-**Files Modified:**
-- `themes/sietch/src/packages/core/protocol/state-machines.ts`
-
+#### Task 301.1 — Migrate billing adapter imports (23 files)
+**Goal ID:** G-2
 **Acceptance Criteria:**
-- [ ] `VENDORED_FROM` constant exported with `repo`, `commit`, `date`, `pr` fields
-- [ ] Commit SHA matches loa-hounfour PR #2 merge commit
+- [ ] All 23 billing adapter files import canonical types from `@0xhoneyjar/loa-hounfour`
+- [ ] Arrakis-specific helpers imported from `../../core/protocol/arrakis-arithmetic` (or equivalent)
+- [ ] No imports from vendored `../../core/protocol/arithmetic.ts`, `billing-types.ts`, `state-machines.ts`, etc.
+- [ ] `tsc --noEmit` passes after all 23 files updated
+**Files:** `themes/sietch/src/packages/adapters/billing/*.ts` (23 files)
+**Estimate:** L
+**Depends on:** Sprint 300
 
-### Task 2.2: Hash fixture and canonical machines oracle (FR-1)
-
-**Description:** Generate the upstream-anchored hash fixture from loa-hounfour at the pinned commit, and create the canonical machines JSON snapshot for structural equivalence testing. A reproducible generation script is committed alongside the fixtures.
-
-**Files Created:**
-- `tests/fixtures/protocol-hashes.json` — upstream-anchored SHA-256 hashes
-- `tests/fixtures/canonical-machines.json` — normalized state machine oracle
-- `scripts/gen-protocol-fixtures.ts` — reproducible fixture generation script
-
+#### Task 301.2 — Migrate API route imports (7 files)
+**Goal ID:** G-2
 **Acceptance Criteria:**
-- [ ] `protocol-hashes.json` schema v2 with `upstream.repo`, `upstream.commit`, per-artifact `upstream_sha256`
-- [ ] Hashes computed from loa-hounfour at pinned commit (documented generation protocol)
-- [ ] `canonical-machines.json` with normalized states/transitions/initial/terminals for all 4 protocol machines
-- [ ] Normalization rules: alphabetical sorting, deduplication
-- [ ] `scripts/gen-protocol-fixtures.ts` committed: clones/checks out the exact upstream commit, computes hashes, emits both JSON fixtures
-- [ ] Running the script from a clean checkout reproduces identical fixture files
-- [ ] Fallback documented: if network unavailable, a vendored upstream snapshot in `tests/fixtures/upstream-snapshot/` can be used instead
-- [ ] Required access documented (GitHub public repo clone; no auth needed)
+- [ ] All 7 API route files import canonical types from `@0xhoneyjar/loa-hounfour`
+- [ ] Arrakis-specific helpers imported from local extension modules
+- [ ] `tsc --noEmit` passes
+**Files:** `themes/sietch/src/api/routes/*.ts` (7 files)
+**Estimate:** M
+**Depends on:** Sprint 300
 
-### Task 2.3: State machine equivalence test suite (FR-1)
-
-**Description:** Create the full equivalence test suite: hash drift detection, structural oracle comparison, domain conformance checks.
-
-**Files Created:**
-- `tests/unit/protocol/state-machine-equivalence.test.ts`
-
+#### Task 301.3 — Migrate test imports to canonical
+**Goal ID:** G-2, G-6
 **Acceptance Criteria:**
-- [ ] Hash drift test: each vendored file hash matches `protocol-hashes.json` upstream_sha256
-- [ ] VENDORED_FROM.commit matches fixture source commit
-- [ ] Negative test: tampered content produces different hash
-- [ ] Structural equivalence: for each of 4 machines, compare normalized actual vs canonical oracle (states, transitions, initial, terminals)
-- [ ] Domain conformance: PayoutStateMachine, CampaignAdapter, FraudRulesService don't violate protocol terminal states
-- [ ] All tests pass
+- [ ] Property tests (`tests/unit/billing/property-tests/`) import from canonical
+- [ ] Conservation tests (`tests/unit/protocol/`) import from canonical
+- [ ] Conformance tests updated to expect `CONTRACT_VERSION === '7.0.0'`
+- [ ] `tsc --noEmit` passes
+**Files:** `themes/sietch/tests/unit/**/*.test.ts`
+**Estimate:** M
+**Depends on:** Sprint 300
 
-### Task 2.4: Branded type definitions and overloads (FR-4)
-
-**Description:** Define `MicroUSD`, `BasisPoints`, `AccountId` branded types with constructors and backward-compatible overloads for public API functions.
-
-**Files Modified:**
-- `themes/sietch/src/packages/core/protocol/arithmetic.ts`
-
+#### Task 301.4 — Update agent adapter layer (version bump verification)
+**Goal ID:** G-1
 **Acceptance Criteria:**
-- [ ] `MicroUSD = bigint & { readonly __brand: 'micro_usd' }` exported
-- [ ] `BasisPoints = bigint & { readonly __brand: 'basis_points' }` exported
-- [ ] `AccountId = string & { readonly __brand: 'account_id' }` exported
-- [ ] Constructor functions: `microUSD()`, `basisPoints()`, `accountId()` with range validation
-- [ ] Branded overloads ABOVE unbranded for: `bpsShare`, `assertBpsSum`, `assertMicroUSD`, `addMicroUSD`, `subtractMicroUSD`
-- [ ] TypeScript resolves branded overload when branded args passed
-- [ ] Unbranded overload preserved for backward compatibility
-- [ ] TypeScript compiles clean
+- [ ] `packages/adapters/agent/*.ts` — verify `CONTRACT_VERSION` now returns `'7.0.0'`
+- [ ] `validateCompatibility()` still functions correctly with v7.0.0
+- [ ] Agent tests pass
+- [ ] No import path changes needed (already importing from canonical package)
+**Files:** `packages/adapters/agent/*.ts` (4 files — verification only)
+**Estimate:** S
+**Depends on:** 300.2
 
-### Task 2.5: Branded type compile-time tests (FR-4)
-
-**Description:** Create tests verifying branded types prevent assignment and that constructors validate ranges.
-
-**Files Created:**
-- `tests/unit/protocol/branded-types.test.ts`
-
+#### Task 301.5 — Freeze conservation snapshot then delete vendored files
+**Goal ID:** G-2, G-5
+**CRITICAL ORDERING:** Freeze conservation snapshot BEFORE deleting vendored files.
 **Acceptance Criteria:**
-- [ ] `@ts-expect-error`: plain bigint not assignable to MicroUSD
-- [ ] `@ts-expect-error`: plain bigint not assignable to BasisPoints
-- [ ] `@ts-expect-error`: plain string not assignable to AccountId
-- [ ] Runtime test: `microUSD(-1n)` throws RangeError
-- [ ] Runtime test: `basisPoints(10001n)` throws RangeError
-- [ ] Runtime test: `accountId('')` throws RangeError
-- [ ] Runtime test: `bpsShare(microUSD(1000000n), basisPoints(5000n))` returns MicroUSD
-
-### Task 2.6: Branded type call-site migration (FR-4)
-
-**Description:** Migrate minimum 10 high-value call sites to use branded types.
-
-**Files Modified:**
-- `CreditLedgerAdapter.ts` (3 sites: computeBalanceFromLots, snapshotBalance, reserve)
-- `RevenueDistributionService.ts` (2 sites: distribute bps + amount)
-- `ReconciliationService.ts` (2 sites: Check 1 + Check 4)
-- `ConstitutionalGovernanceService.ts` (1 site: resolveParam)
-- `PeerTransferService.ts` (1 site: transfer amount)
-- `SettlementService.ts` (1 site: settle amount)
-
-**Acceptance Criteria:**
-- [ ] Minimum 10 call sites migrated
-- [ ] TypeScript compiles clean
-- [ ] All existing behavioral tests pass unchanged
-- [ ] No runtime behavior changes (brands are compile-time only)
+- [ ] `tests/fixtures/frozen-conservation-evaluator.ts` generated from git tag (NOT working tree): `git show pre-v7-migration-anchor:themes/sietch/src/packages/core/protocol/conservation-properties.ts > tests/fixtures/frozen-conservation-evaluator.ts`
+- [ ] Frozen file header includes: "FROZEN SNAPSHOT from pre-v7-migration-anchor (SHA: <commit>). DO NOT MODIFY."
+- [ ] Vendored files deleted one-by-one with `tsc --noEmit` after each:
+  - `VENDORED.md`, `state-machines.ts`, `arithmetic.ts`, `compatibility.ts`
+  - `billing-types.ts`, `guard-types.ts`, `billing-entry.ts`
+- [ ] Files marked REVIEW in SDD 3.3 handled per audit results (Task 300.3)
+- [ ] `core/protocol/index.ts` rewritten as barrel for arrakis extensions only (single-owner — 303.5 only verifies/adjusts)
+- [ ] Full `tsc --noEmit` passes with zero vendored imports remaining
+- [ ] `npm test` passes
+**Files:** `core/protocol/*.ts` (delete 7+, rewrite index.ts), `tests/fixtures/frozen-conservation-evaluator.ts` (new)
+**Estimate:** L
+**Depends on:** 301.1, 301.2, 301.3, 301.4
 
 ---
 
-## Sprint 3: Conservation Properties Formalization (Sprint 297)
+## Sprint 302 — Breaking Changes & Conservation Safety
 
-**Goal:** Formalize all 14 conservation invariants as testable temporal properties with positive and counterexample tests.
+**Goal:** Handle both breaking changes with boundary safety. Dual-run conservation validation.
+**PRD Refs:** FR-3, FR-5, FR-6
+**SDD Refs:** 3.5, 3.6, 3.7
 
-**Dependencies:** Sprint 2 (branded types for property metadata typing)
+### Prerequisites
+- Sprint 301 complete (all consumers migrated, vendored files deleted, conservation snapshot frozen)
 
-### Task 3.1: Conservation properties module with error taxonomy (FR-2)
+### Tasks
 
-**Description:** Create the `ConservationProperties` module defining all 14 invariants with metadata including universe/scope, enforcement mechanism, fairness models, and **expected error codes per invariant**. Also introduce `ConservationViolationError` and `ReconciliationFailureCode` to standardize what counterexample tests assert against.
-
-**Files Created:**
-- `themes/sietch/src/packages/core/protocol/conservation-properties.ts`
-
+#### Task 302.1 — Create conservation dual-run test harness
+**Goal ID:** G-5
 **Acceptance Criteria:**
-- [ ] `ConservationProperty` interface: id, name, description, ltl, universe, kind, fairnessModel?, enforcedBy[], expectedErrorCode?
-- [ ] `CONSERVATION_PROPERTIES` array with all 14 properties (I-1 through I-14)
-- [ ] Each property has explicit enforcement mechanism classification (DB CHECK, Application, Reconciliation-only)
-- [ ] Each application-enforced property has `expectedErrorCode` mapping (e.g., I-3 -> `RECEIVABLE_BOUND_EXCEEDED`, I-5 -> `BUDGET_OVERSPEND`)
-- [ ] Each reconciliation-only property has `reconciliationFailureCode` (e.g., I-4 -> `PLATFORM_CONSERVATION_DRIFT`, I-13 -> `TREASURY_INADEQUATE`)
-- [ ] `ConservationViolationError` class exported (extends Error, typed code field) for application-enforced violations
-- [ ] Liveness properties (I-11, I-12) have explicit fairness models
-- [ ] TypeScript compiles clean
+- [ ] `tests/unit/protocol/conservation-dual-run.test.ts` created
+- [ ] Uses `fast-check` (or equivalent) for property-based trace generation
+- [ ] Edge case generators: overflow (MAX_MICRO_USD), zero, negative, terminal transitions, concurrent reservations
+- [ ] Runs same traces through frozen local AND canonical evaluator
+- [ ] All 14 local invariants (I-1 through I-14) produce identical pass/fail
+- [ ] v7.0.0 invariants beyond local 14 are run and logged (not gated)
+- [ ] `KNOWN_DIFFS` bounded allowlist with expiry dates (max 30 days) — permitted during Sprint 302 for development velocity
+- [ ] Coverage counter verifies every canonical invariant ID exercised at least once
+- [ ] Dual-run passes (allowlist entries permitted here; must be empty by Task 303.6 final gate)
+**Files:** `tests/unit/protocol/conservation-dual-run.test.ts` (new)
+**Estimate:** L
+**Depends on:** 301.5 (frozen snapshot must exist)
 
-### Task 3.2: BigInt-safe DB access helper (FR-2)
-
-**Description:** Create the `parseLotBigInts()` helper and BigInt precision guard test.
-
-**Files Created:**
-- `tests/helpers/bigint-db.ts`
-
+#### Task 302.2 — Create evaluator-independent conservation test
+**Goal ID:** G-5
 **Acceptance Criteria:**
-- [ ] `parseLotBigInts(row)` parses all monetary columns to BigInt
-- [ ] Guard test: insert value > 2^53, round-trip without precision loss
-- [ ] Helper used consistently in all conservation tests
+- [ ] `tests/unit/protocol/conservation-independent.test.ts` created
+- [ ] Property: `SUM(credits) == SUM(debits)` over generated traces (no evaluator dependency)
+- [ ] Property: `reserved_micro <= available_micro` per account
+- [ ] Property: no negative balances after finalization
+- [ ] All properties pass with `fast-check` (100+ runs)
+**Files:** `tests/unit/protocol/conservation-independent.test.ts` (new)
+**Estimate:** M
+**Depends on:** Sprint 301
 
-### Task 3.3: Conservation property positive tests (FR-2)
-
-**Description:** Create positive property-based tests for all 14 invariants using fast-check. All monetary values must use BigInt end-to-end — from generation through arithmetic to assertion.
-
-**Files Created:**
-- `tests/unit/protocol/conservation-properties.test.ts`
-
+#### Task 302.3 — JWT claim schema migration (trust_scopes)
+**Goal ID:** G-3
 **Acceptance Criteria:**
-- [ ] 14 positive tests (one per invariant)
-- [ ] Property-based tests use `fc.asyncProperty` with operation sequence arbitraries
-- [ ] All monetary arbitraries use `fc.bigInt()` or custom bigint generators (no `fc.integer()` for monetary values)
-- [ ] All monetary assertions use `parseLotBigInts()` for BigInt safety
-- [ ] No `Number()`, `parseFloat()`, or `parseInt()` in any monetary code path — BigInt end-to-end
-- [ ] Liveness tests (I-11, I-12) encode fairness assumptions in harness
-- [ ] I-12: time advanced beyond TTL, ExpirationJob invoked at least once
-- [ ] All tests pass with 100 runs per property
+- [ ] `jwt-boundary.ts` updated with v7.0.0 claim schemas (if still local) or deleted (if canonical)
+- [ ] `identity-trust.ts` aligned with canonical trust model (per audit Task 300.3)
+- [ ] JWT encode/decode round-trip test with v7.0.0 schema passes
+- [ ] Inbound v4.6.0 token with valid trust_level: accepted, mapped via least-privilege table
+- [ ] Inbound v7.0.0 token with trust_scopes: accepted
+- [ ] Token with BOTH trust_level AND trust_scopes: REJECTED
+- [ ] Token with NEITHER: REJECTED
+- [ ] trust_level=9 NEVER maps to admin:true (privilege escalation guard)
+- [ ] trust_level out of range (negative, >9): REJECTED
+- [ ] Post-normalization output passes v7.0.0 schema validation
+**Files:** `jwt-boundary.ts`, `identity-trust.ts`, `arrakis-compat.ts`, `tests/unit/protocol/jwt-boundary-v7.test.ts` (new)
+**Estimate:** L
+**Depends on:** Sprint 301
 
-### Task 3.4: Conservation property counterexample tests (FR-2)
-
-**Description:** Create counterexample tests for all 14 invariants, tailored to each property's enforcement mechanism.
-
+#### Task 302.4 — Coordination schema migration + version negotiation
+**Goal ID:** G-3
 **Acceptance Criteria:**
-- [ ] 14 counterexample tests (one per invariant)
-- [ ] DB CHECK-enforced (I-1, I-2, I-10): raw SQL UPDATE on seeded row -> constraint fires
-- [ ] Application-enforced (I-3, I-5, I-7, I-8, I-11, I-14): call public API with violating request -> typed error
-- [ ] Reconciliation-only (I-4, I-13): corrupt state, run reconcile() -> specific failure code
-- [ ] DB UNIQUE-enforced (I-6, I-9): insert violating row -> constraint fires
-- [ ] Each counterexample asserts on specific error type/code, not generic "throws"
+- [ ] All coordination message construction uses v7.0.0 schema outbound
+- [ ] `validateCompatibility()` imported from canonical everywhere (no local copy)
+- [ ] `/api/v1/compat` returns `{ preferred: '7.0.0', supported: ['4.6.0', '7.0.0'] }`
+- [ ] Inbound v7.0.0 coordination messages: accepted
+- [ ] Inbound v4.6.0 coordination messages: normalized via `arrakis-compat.ts`
+- [ ] Missing version discriminator: REJECTED (never assume legacy)
+- [ ] Unknown version: REJECTED
+- [ ] `GET /api/health` reports `protocol_version: '7.0.0'`
+**Files:** API routes, `arrakis-compat.ts`, `tests/unit/protocol/version-negotiation.test.ts` (new)
+**Estimate:** M
+**Depends on:** Sprint 301
+
+#### Task 302.5 — Backward compatibility integration tests
+**Goal ID:** G-3, G-6
+**Acceptance Criteria:**
+- [ ] `tests/unit/protocol/boundary-compat.test.ts` created covering:
+  - v4.6.0 inbound JWT accepted (trust_level mapped)
+  - v7.0.0 inbound JWT accepted (trust_scopes used directly)
+  - v4.6.0 coordination message accepted (normalized)
+  - v7.0.0 coordination message accepted (direct)
+  - Malformed messages rejected with correct error codes
+- [ ] Feature flag test: `PROTOCOL_V7_NORMALIZATION=false` reverts to v4.6 behavior
+- [ ] All boundary tests pass
+**Files:** `tests/unit/protocol/boundary-compat.test.ts` (new)
+**Estimate:** M
+**Depends on:** 302.3, 302.4
 
 ---
 
-## Sprint 4: Cross-System E2E Harness (Sprint 298)
+## Sprint 303 — CI Hardening, Cleanup & Conformance Gate
 
-**Goal:** Build the cross-system E2E test harness that proves conservation holds across the JWT boundary between arrakis and loa-finn.
+**Goal:** Wire CI drift detection, run full conformance suite, audit arrakis-specific modules, final regression gate.
+**PRD Refs:** FR-7, FR-8
+**SDD Refs:** 3.8, 3.9
 
-**Dependencies:** Sprint 3 (conservation properties for post-scenario verification)
+### Prerequisites
+- Sprint 302 complete (all breaking changes handled, conservation validated)
 
-### Task 4.1: JWT boundary module (FR-3)
+### Tasks
 
-**Description:** Create `jwt-boundary.ts` with typed error taxonomy, zod claim schemas, and the `verifyUsageJWT` function using KeyObject + jose.
-
-**Files Created:**
-- `themes/sietch/src/packages/core/protocol/jwt-boundary.ts`
-
+#### Task 303.1 — Create three-layer drift detection tests
+**Goal ID:** G-4
 **Acceptance Criteria:**
-- [ ] `JwtBoundaryError` class with `code: JwtErrorCode` and `permanent: boolean`
-- [ ] Error codes: SIGNATURE_INVALID, ALGORITHM_REJECTED, CLAIMS_SCHEMA, RESERVATION_UNKNOWN, OVERSPEND, REPLAY, KEY_FETCH_FAILED
-- [ ] `inboundClaimsSchema` (zod): validates jti UUID, finalized literal true, microUSD strings, bounded arrays/strings
-- [ ] `OutboundClaims` and `InboundClaims` types
-- [ ] `verifyUsageJWT(token, publicKey: KeyObject, idempotencyStore, activeReservations)` with 6-step verification
-- [ ] Replay protection keyed by `jti` (not reservation_id)
-- [ ] Algorithm restricted to EdDSA only
-- [ ] TypeScript compiles clean
+- [ ] `tests/unit/protocol/drift-detection.test.ts` created
+- [ ] Layer 1: `CONTRACT_VERSION === '7.0.0'`
+- [ ] Layer 2: Installed package version matches expected (`require.resolve` + `package.json`). If `gitHead` field is present, also assert it matches expected SHA. If `gitHead` is absent (common for GitHub tarball installs), fall back to asserting lockfile resolved reference contains expected SHA (via `npm ls --json` or lockfile parse)
+- [ ] Layer 3: No vendored protocol files remain (allowlist for arrakis extensions)
+- [ ] Upgrade procedure documented in test file comments
+- [ ] All 3 layers pass
+**Files:** `tests/unit/protocol/drift-detection.test.ts` (new)
+**Estimate:** M
+**Depends on:** Sprint 302
 
-### Task 4.2: JWT test helper factory (FR-3)
-
-**Description:** Create the test keypair generation and JWT signing helpers.
-
-**Files Created:**
-- `tests/helpers/jwt-factory.ts`
-
+#### Task 303.2 — Delete hash-pinning artifacts
+**Goal ID:** G-4
 **Acceptance Criteria:**
-- [ ] `createTestKeypairs()` returns `{ arrakis: KeyObject pair, loaFinn: KeyObject pair }`
-- [ ] `signOutbound(claims, privateKey: KeyObject)` creates signed JWT
-- [ ] `signInbound(claims, privateKey: KeyObject)` creates signed JWT
-- [ ] CI guard test: KeyObject type + asymmetricKeyType === 'ed25519'
-- [ ] CI guard test: jose accepts generated KeyObject for signing
+- [ ] `themes/sietch/scripts/gen-protocol-fixtures.ts` deleted
+- [ ] `themes/sietch/tests/fixtures/protocol-hashes.json` deleted
+- [ ] Any references to hash-pinning in test files updated/removed
+- [ ] `npm test` still passes
+**Files:** 2 files deleted + reference cleanup
+**Estimate:** S
+**Depends on:** 303.1
 
-### Task 4.3: Conservation assertion helper (FR-3)
-
-**Description:** Create the `assertConservation()` helper that runs ReconciliationService post-scenario.
-
-**Files Created:**
-- `tests/helpers/conservation-check.ts`
-
+#### Task 303.3 — Full conformance suite execution
+**Goal ID:** G-5, G-6
 **Acceptance Criteria:**
-- [ ] `assertConservation(db)` runs full ReconciliationService.reconcile()
-- [ ] Verifies all checks pass (I-1, I-2, I-4 minimum)
-- [ ] Uses BigInt-safe row parsing throughout
+- [ ] All 14 conformance assertions pass against canonical source
+- [ ] All 32 property tests pass against canonical types
+- [ ] Conservation dual-run passes (from 302.1)
+- [ ] Conservation independent tests pass (from 302.2)
+- [ ] Zero skipped or `.todo` tests
+- [ ] Full `npm test` green
+**Files:** verification only (no new files)
+**Estimate:** S
+**Depends on:** Sprint 302
 
-### Task 4.4: Cross-system E2E positive scenarios (FR-3)
-
-**Description:** Implement the 4 positive E2E scenarios with conservation verification.
-
-**Files Created:**
-- `tests/integration/cross-system-conservation.test.ts`
-
+#### Task 303.4 — Audit arrakis-specific modules against v7.0.0
+**Goal ID:** G-2
 **Acceptance Criteria:**
-- [ ] Happy path: reserve -> execute -> finalize (exact match) -> conservation check
-- [ ] Partial use: reserve $1.00 -> use $0.60 -> finalize -> release $0.40 -> conservation check
-- [ ] Timeout: reserve -> advance time -> expire -> conservation check
-- [ ] Ensemble: reserve -> 3 model calls -> aggregate finalize -> conservation check
-- [ ] All scenarios use real Ed25519 keypairs (not mocked)
-- [ ] All scenarios end with `assertConservation(db)` passing
+- [ ] `config-schema.ts`: checked against v7.0.0 — align if canonical equivalent exists, document as arrakis extension if not
+- [ ] `economic-events.ts`: checked against v7.0.0 — align event taxonomy if canonical exists
+- [ ] `identity-trust.ts`: already handled in 302.3, verify final state
+- [ ] `atomic-counter.ts`: confirmed arrakis-specific (Redis), no canonical equivalent
+- [ ] Audit results documented in `grimoires/loa/context/v7-export-audit.md` (update from 300.3)
+**Files:** Up to 3 files modified + audit document updated
+**Estimate:** M
+**Depends on:** Sprint 302
 
-### Task 4.5: Cross-system E2E negative scenarios (FR-3)
-
-**Description:** Implement negative scenarios covering **every `JwtErrorCode`** in the taxonomy, asserting on specific error codes. Includes BigInt precision guard for JWT claim round-trip.
-
+#### Task 303.5 — Verify and adjust core/protocol/index.ts barrel
+**Goal ID:** G-2
+**Note:** The barrel was rewritten in 301.5 (single-owner). This task verifies the barrel is correct after audit results (303.4) and adjusts if module alignment changed any exports.
 **Acceptance Criteria:**
-- [ ] Tampered JWT -> `JwtBoundaryError { code: 'SIGNATURE_INVALID', permanent: true }`
-- [ ] Wrong algorithm (RS256) -> `JwtBoundaryError { code: 'ALGORITHM_REJECTED', permanent: true }`
-- [ ] Missing required claim -> `JwtBoundaryError { code: 'CLAIMS_SCHEMA', permanent: true }`
-- [ ] `finalized: false` -> `JwtBoundaryError { code: 'CLAIMS_SCHEMA', permanent: true }`
-- [ ] Negative cost_micro -> `JwtBoundaryError { code: 'CLAIMS_SCHEMA', permanent: true }`
-- [ ] Unknown reservation_id (valid JWT, non-existent reservation) -> `JwtBoundaryError { code: 'RESERVATION_UNKNOWN', permanent: true }`
-- [ ] Replay (same jti twice) -> `JwtBoundaryError { code: 'REPLAY', permanent: true }`
-- [ ] Different jti, same reservation -> allowed (not replay)
-- [ ] Over-spend -> `JwtBoundaryError { code: 'OVERSPEND', permanent: true }`
-- [ ] KEY_FETCH_FAILED: clarified as higher-layer error (key provisioning, not boundary verification) — documented in jwt-boundary.ts JSDoc; unit test verifies the error class can be constructed with this code
-- [ ] **Every `JwtErrorCode` has at least one test** (full taxonomy coverage)
-- [ ] BigInt precision guard: JWT with `actual_cost_micro` > 2^53 round-trips through sign->verify->parse without precision loss
-- [ ] Conservation remains intact after each rejected scenario (no partial state mutation from failed verification)
+- [ ] `core/protocol/index.ts` only re-exports from arrakis extension modules (verified)
+- [ ] No re-exports from `@0xhoneyjar/loa-hounfour` (consumers import canonical directly)
+- [ ] If audit (303.4) aligned any local modules with canonical, update barrel to remove those re-exports
+- [ ] All arrakis-specific modules accessible via barrel import
+- [ ] `tsc --noEmit` passes
+**Files:** `core/protocol/index.ts` (verify, adjust if needed)
+**Estimate:** XS
+**Depends on:** 303.4
+
+#### Task 303.6 — Final regression gate + PR preparation
+**Goal ID:** G-6
+**Acceptance Criteria:**
+- [ ] Full `npm test` green with zero skipped tests
+- [ ] `tsc --noEmit` passes with zero errors
+- [ ] No `@ts-ignore` or `@ts-expect-error` introduced by migration (except pre-existing)
+- [ ] Test count: net positive per Appendix D (minimum 25 new, 3 deleted = net +22)
+- [ ] `KNOWN_DIFFS` allowlist from Task 302.1 contains zero unexpired entries
+- [ ] Statement/branch coverage for protocol modules: no decrease
+- [ ] Squash merge PR created with comprehensive description
+- [ ] PR description includes: migration summary, breaking change handling, rollback procedure
+**Files:** verification + PR creation
+**Estimate:** M
+**Depends on:** 303.1, 303.2, 303.3, 303.4, 303.5
 
 ---
 
-## Dependency Graph
+## Appendix A: Sprint Summary
+
+| Sprint | Global ID | Tasks | Key Deliverables |
+|--------|-----------|-------|-----------------|
+| Foundation | 300 | 6 | v7.0.0 installed, export audit, extension modules |
+| Consumer Migration | 301 | 5 | 40+ files migrated, vendored files deleted |
+| Breaking Changes | 302 | 5 | trust_scopes, coordination schema, conservation dual-run |
+| CI & Conformance | 303 | 6 | Drift detection, conformance gate, final regression |
+
+**Total tasks:** 22
+**Total estimated new tests:** 25+
+**Total estimated deleted tests:** 3
+**Net test change:** +22
+
+## Appendix B: Critical Path
 
 ```
-Sprint 1 (Merge & EntryType)
-  ├── Task 1.1 (Merge PR #67) ─────→ Clean main established
-  ├── Task 1.2 (Const array) ──────→ Pattern for Sprint 2
-  └── Task 1.3 (DB validation) ────→ sqlite_master introspection
-
-Sprint 2 (State Machines & Branded Types) — depends on Sprint 1
-  ├── Task 2.1 (VENDORED_FROM) ──┐
-  ├── Task 2.2 (Hash + Oracle) ──┤→ Task 2.3 (Equivalence tests)
-  ├── Task 2.4 (Branded types) ──┤→ Task 2.5 (Compile tests)
-  └── Task 2.6 (Migration) ─────→ Sprint 3 (typed properties)
-
-Sprint 3 (Conservation Properties) — depends on Sprint 2
-  ├── Task 3.1 (Properties module) ─→ Task 3.3, 3.4
-  ├── Task 3.2 (BigInt helper) ─────→ Task 3.3, 3.4
-  ├── Task 3.3 (Positive tests) ────→ Sprint 4
-  └── Task 3.4 (Counterexamples) ──→ Sprint 4
-
-Sprint 4 (Cross-System E2E) — depends on Sprint 3
-  ├── Task 4.1 (JWT module) ──────┐
-  ├── Task 4.2 (JWT factory) ─────┤→ Task 4.4, 4.5
-  ├── Task 4.3 (Conservation helper)┤
-  ├── Task 4.4 (Positive E2E) ────→ Conservation verified
-  └── Task 4.5 (Negative E2E) ────→ Error taxonomy verified
+300.1 → 300.2 → 300.3 ─┬→ 300.4
+                        ├→ 300.5
+                        └→ 300.6
+                             │
+         ┌───────────────────┘
+         ▼
+301.1 ─┐
+301.2 ─┤→ 301.5 (freeze snapshot + delete vendored)
+301.3 ─┘     │
+301.4 ───────┘
+                │
+         ┌──────┘
+         ▼
+302.1 (dual-run) ─┐
+302.2 (independent)┤
+302.3 (JWT) ───────┤→ 302.5 (boundary compat)
+302.4 (coord) ─────┘
+                │
+         ┌──────┘
+         ▼
+303.1 → 303.2
+303.3
+303.4 → 303.5
+              └→ 303.6 (final gate)
 ```
 
----
+## Appendix C: Goal Traceability Matrix
 
-## Risk Mitigation
+| Goal | Sprint Tasks | Verification |
+|------|-------------|-------------|
+| G-1 (v7.0.0 upgrade) | 300.2, 300.3, 301.4 | CONTRACT_VERSION === '7.0.0' + lockfile SHA |
+| G-2 (delete vendored) | 300.3, 300.4, 300.6, 301.1-301.5, 303.4, 303.5 | Zero vendored files remain |
+| G-3 (breaking changes) | 300.5, 302.3, 302.4, 302.5 | trust_scopes tests + coordination compat tests |
+| G-4 (CI drift detection) | 303.1, 303.2 | Three-layer drift test green |
+| G-5 (conservation) | 300.6, 302.1, 302.2, 303.3 | Dual-run + independent + conformance |
+| G-6 (zero regressions) | 300.1, 301.5, 302.5, 303.6 | Full npm test green, zero skipped |
 
-| Risk | Sprint | Mitigation |
-|------|--------|------------|
-| PR #67 merge conflict | 1 | Conflicts already resolved in cycle-032; re-run merge only |
-| Canonical machine oracle drift | 2 | Oracle generated from pinned commit; deliberate update required |
-| Branded overloads confuse IDE | 2 | Branded listed first (TypeScript resolves top-down); JSDoc |
-| Property tests slow | 3 | 100 runs per property (configurable via NUM_PROPERTY_RUNS env) |
-| BigInt precision in SQLite | 3 | Guard test + parseLotBigInts() enforced in all tests |
-| Ed25519 not available in test env | 4 | jose handles cross-platform; CI guard test validates key type |
+## Appendix D: Test Count Enumeration
 
----
+### New Test Files (minimum 25 tests)
 
-## Sprint 5: Migration 060 FK Corruption Fix (Sprint 299)
+| Task | Test File | Min Tests | Description |
+|------|-----------|-----------|-------------|
+| 302.1 | `tests/unit/protocol/conservation-dual-run.test.ts` | 6 | Dual-run: 14 invariants match (1), overflow edge (1), zero edge (1), terminal transition (1), concurrent reservations (1), coverage counter (1) |
+| 302.2 | `tests/unit/protocol/conservation-independent.test.ts` | 4 | Independent: credits==debits (1), reserved<=available (1), no negative post-finalization (1), fast-check 100+ runs (1) |
+| 302.3 | `tests/unit/protocol/jwt-boundary-v7.test.ts` | 8 | JWT: v7 round-trip (1), v4.6 trust_level accepted (1), v7 trust_scopes accepted (1), both rejected (1), neither rejected (1), level=9 no admin (1), out-of-range rejected (1), post-norm validation (1) |
+| 302.4 | `tests/unit/protocol/version-negotiation.test.ts` | 3 | Negotiation: v7 accepted (1), v4.6 normalized (1), missing version rejected (1) |
+| 302.5 | `tests/unit/protocol/boundary-compat.test.ts` | 2 | Compat: feature flag toggle (1), malformed rejected (1) |
+| 303.1 | `tests/unit/protocol/drift-detection.test.ts` | 3 | Drift: Layer 1 CONTRACT_VERSION (1), Layer 2 package identity (1), Layer 3 no vendored files (1) |
+| **Total** | **6 new test files** | **26** | |
 
-**Goal:** Fix the production-risk SQLite table-rebuild bug in migration 060 where `ALTER TABLE RENAME` corrupts foreign key references in `credit_ledger`, and add FK integrity regression tests to prevent recurrence.
+### Deleted Test Files (3 tests)
 
-**Dependencies:** Soft dependency on Sprints 1-4 (Task 5.2 conditionally modifies test files created in those sprints). Sprint 5 CAN run before Sprints 1-4 — Task 5.1 and 5.3 are fully independent, and Task 5.2 is conditional (only modifies files that exist). Recommended order: run Sprint 5 first (fixes the migration before building more tests on top of it).
+| Task | Deleted File/Tests | Count | Reason |
+|------|-------------------|-------|--------|
+| 303.2 | `themes/sietch/scripts/gen-protocol-fixtures.ts` | 0 | Script, not a test file |
+| 303.2 | `themes/sietch/tests/fixtures/protocol-hashes.json` | 0 | Fixture, not a test file |
+| 301.3 | 3 hash-pinning assertions in existing conformance tests | 3 | Hash-pinning replaced by drift-detection Layer 2 |
 
-**Context:** Migration 060 (`060_credit_lots_tba_source.ts`) rebuilds `credit_lots` to add `'tba_deposit'` to the `source_type` CHECK constraint. It uses `ALTER TABLE credit_lots RENAME TO _credit_lots_058_backup`, which causes SQLite (with `legacy_alter_table = OFF`, the default since 3.26.0) to **automatically update FK references in other tables** to point to the backup name. When the backup is dropped, `credit_ledger.lot_id REFERENCES credit_lots(id)` becomes a dangling reference to `_credit_lots_058_backup`. The `up()` function's `foreign_key_check` pragma doesn't catch schema-level FK target corruption — it only validates row-level referential integrity.
+### Net Count
 
-**Evidence:** Three separate test files already work around this bug:
-- `billing-agent-sovereignty.test.ts` — uses inline DROP+CREATE instead of importing CREDIT_LOTS_REBUILD_SQL
-- `cross-system-conservation.test.ts` — omits migration 060 entirely with explanatory comment
-- `entry-types-consistency.test.ts` — uses `foreign_keys = OFF` workaround
-
-### Task 5.1: Rewrite CREDIT_LOTS_REBUILD_SQL with safe pattern
-
-**Description:** Replace the `ALTER TABLE RENAME` approach with the safe **CREATE-new → COPY → RENAME-old → RENAME-new → DROP-old** pattern. The old table is kept alive until the new table is fully populated and renamed into place. This ensures no intermediate state where `credit_lots` doesn't exist — if anything fails between steps, the original table is still available under its original name or as `_credit_lots_old`.
-
-**Files Modified:**
-- `themes/sietch/src/db/migrations/060_credit_lots_tba_source.ts`
-
-**Safe SQL Sequence:**
-```sql
--- Guard: clean up any partial previous run
-DROP TABLE IF EXISTS _credit_lots_new;
-DROP TABLE IF EXISTS _credit_lots_old;
-
--- Step 1: Create new table with updated CHECK constraint
-CREATE TABLE _credit_lots_new (...tba_deposit included...);
-
--- Step 2: Copy all data
-INSERT INTO _credit_lots_new SELECT * FROM credit_lots;
-
--- Step 3: Swap (old table preserved until step 5)
-ALTER TABLE credit_lots RENAME TO _credit_lots_old;
-ALTER TABLE _credit_lots_new RENAME TO credit_lots;
-
--- Step 4: Recreate indexes on new credit_lots
-CREATE INDEX IF NOT EXISTS ...;
-
--- Step 5: Drop old table only after everything succeeds
-DROP TABLE _credit_lots_old;
-```
-
-**Acceptance Criteria:**
-- [ ] `CREDIT_LOTS_REBUILD_SQL` starts with `DROP TABLE IF EXISTS _credit_lots_new; DROP TABLE IF EXISTS _credit_lots_old;` (idempotency guards for partial-failure recovery)
-- [ ] Creates `_credit_lots_new` with the updated CHECK constraint
-- [ ] Data copied: `INSERT INTO _credit_lots_new SELECT * FROM credit_lots`
-- [ ] Old table renamed (not dropped): `ALTER TABLE credit_lots RENAME TO _credit_lots_old`
-- [ ] New table renamed into place: `ALTER TABLE _credit_lots_new RENAME TO credit_lots`
-- [ ] Old table dropped last: `DROP TABLE _credit_lots_old` (only after swap succeeds)
-- [ ] Indexes recreated on the final `credit_lots` table after rename
-- [ ] `up()` function wraps in FK OFF + BEGIN/COMMIT + FK ON
-- [ ] `up()` adds **schema-level FK target verification** after the rebuild: query `PRAGMA foreign_key_list(credit_ledger)`, `PRAGMA foreign_key_list(reservation_lots)`, `PRAGMA foreign_key_list(credit_debts)` and assert referenced table is `credit_lots` (not `_credit_lots_old` or `_credit_lots_058_backup`)
-- [ ] `up()` runs `PRAGMA foreign_key_check` for row-level integrity (existing behavior)
-- [ ] Idempotency: early-return if `tba_deposit` is already present in `credit_lots` CHECK constraint (introspect `sqlite_master` for the table's SQL, check if `'tba_deposit'` literal exists)
-- [ ] `CREDIT_LOTS_REBUILD_ROLLBACK_SQL` unchanged (no-op is fine)
-
-### Task 5.2: Remove test workarounds
-
-**Description:** Now that `CREDIT_LOTS_REBUILD_SQL` is FK-safe, remove inline DROP+CREATE workarounds from test helpers and use the migration SQL directly. This task is **conditional** — it applies to whichever test files exist in the current codebase at execution time. If Sprint 5 runs before Sprints 1-4, some files may not exist yet; the task only modifies files that already contain the workaround pattern.
-
-**Files Modified (conditional — only if they exist and contain workarounds):**
-- `themes/sietch/tests/integration/billing-agent-sovereignty.test.ts` — replace inline DROP+CREATE with `testDb.exec(CREDIT_LOTS_REBUILD_SQL)` import
-- `themes/sietch/tests/integration/cross-system-conservation.test.ts` — add `testDb.exec(CREDIT_LOTS_REBUILD_SQL)` where it was omitted
-- `themes/sietch/tests/conformance/entry-types-consistency.test.ts` — verify it works with FK ON after migration
-
-**Acceptance Criteria:**
-- [ ] All test files that contain inline `credit_lots` DROP+CREATE workarounds are updated to import and use `CREDIT_LOTS_REBUILD_SQL` instead
-- [ ] All test files that omit migration 060 with a comment about FK corruption now include it
-- [ ] All modified test files pass with `foreign_keys = ON` enabled after running migrations
-- [ ] No inline credit_lots schema duplication remains in existing test files (single source of truth is migration 060)
-- [ ] If a referenced test file does not yet exist (Sprint 5 run before Sprint 4), skip that file — it will be created correctly in the later sprint
-
-### Task 5.3: FK integrity regression test
-
-**Description:** Create a dedicated test that runs the **exact production migration sequence** on a fresh in-memory DB, then verifies all FK references are valid at both schema level (FK targets exist) and row level (FK values reference existing rows). This uses the same migration runner/ordering used in production to ensure the test reproduces the exact state where the bug occurs.
-
-**Files Created:**
-- `themes/sietch/tests/conformance/migration-fk-integrity.test.ts`
-
-**Acceptance Criteria:**
-- [ ] Test creates fresh in-memory DB
-- [ ] Uses the **production migration runner** (same function/module that applies migrations in the real app) to run all migrations from first to latest — NOT a hand-picked subset
-- [ ] If no programmatic migration runner exists, imports and executes every migration's `up()` function in the exact order used in production (determined by filename sort or migration registry)
-- [ ] `PRAGMA foreign_keys = ON` after all migrations complete
-- [ ] **Row-level check**: `PRAGMA foreign_key_check` returns empty array (no FK violations)
-- [ ] **Schema-level check**: For every table in `sqlite_master` that has FK references, query `PRAGMA foreign_key_list(<table>)` and verify the `table` column (referenced table) exists in `sqlite_master`
-- [ ] Specifically verifies: `credit_ledger.lot_id` references `credit_lots` (not `_credit_lots_058_backup` or `_credit_lots_old`)
-- [ ] Specifically verifies: `reservation_lots.lot_id` references `credit_lots`
-- [ ] Specifically verifies: `credit_debts.source_lot_id` references `credit_lots`
-- [ ] Test fails if any migration is skipped or run out of order
-- [ ] Test passes with no workarounds (no FK=OFF, no inline schema overrides)
-
-### Task 5.4: Full regression suite
-
-**Description:** Run the complete test suite to verify no regressions from the migration rewrite.
-
-**Acceptance Criteria:**
-- [ ] All 17 cross-system-conservation tests pass
-- [ ] All billing-agent-sovereignty tests pass
-- [ ] All entry-types-consistency tests pass
-- [ ] All conservation-properties tests pass
-- [ ] Full regression suite: no new failures introduced
-- [ ] Migration FK integrity test passes
-
----
-
-## Dependency Graph (Updated)
-
-```
-Sprint 1 (Merge & EntryType)
-  ├── Task 1.1 (Merge PR #67) ─────→ Clean main established
-  ├── Task 1.2 (Const array) ──────→ Pattern for Sprint 2
-  └── Task 1.3 (DB validation) ────→ sqlite_master introspection
-
-Sprint 2 (State Machines & Branded Types) — depends on Sprint 1
-  ├── Task 2.1 (VENDORED_FROM) ──┐
-  ├── Task 2.2 (Hash + Oracle) ──┤→ Task 2.3 (Equivalence tests)
-  ├── Task 2.4 (Branded types) ──┤→ Task 2.5 (Compile tests)
-  └── Task 2.6 (Migration) ─────→ Sprint 3 (typed properties)
-
-Sprint 3 (Conservation Properties) — depends on Sprint 2
-  ├── Task 3.1 (Properties module) ─→ Task 3.3, 3.4
-  ├── Task 3.2 (BigInt helper) ─────→ Task 3.3, 3.4
-  ├── Task 3.3 (Positive tests) ────→ Sprint 4
-  └── Task 3.4 (Counterexamples) ──→ Sprint 4
-
-Sprint 4 (Cross-System E2E) — depends on Sprint 3
-  ├── Task 4.1 (JWT module) ──────┐
-  ├── Task 4.2 (JWT factory) ─────┤→ Task 4.4, 4.5
-  ├── Task 4.3 (Conservation helper)┤
-  ├── Task 4.4 (Positive E2E) ────→ Conservation verified
-  └── Task 4.5 (Negative E2E) ────→ Error taxonomy verified
-
-Sprint 5 (Migration Fix) — SOFT dependency on Sprints 1-4 (Task 5.2 conditional)
-  ├── Task 5.1 (Rewrite migration) ─→ Task 5.2, Task 5.3
-  ├── Task 5.2 (Remove workarounds) ─→ Task 5.4 (conditional on existing files)
-  ├── Task 5.3 (FK regression test) ─→ Task 5.4
-  └── Task 5.4 (Full regression) ───→ Verified
-```
-
----
-
-## Risk Mitigation (Updated)
-
-| Risk | Sprint | Mitigation |
-|------|--------|------------|
-| PR #67 merge conflict | 1 | Conflicts already resolved in cycle-032; re-run merge only |
-| Canonical machine oracle drift | 2 | Oracle generated from pinned commit; deliberate update required |
-| Branded overloads confuse IDE | 2 | Branded listed first (TypeScript resolves top-down); JSDoc |
-| Property tests slow | 3 | 100 runs per property (configurable via NUM_PROPERTY_RUNS env) |
-| BigInt precision in SQLite | 3 | Guard test + parseLotBigInts() enforced in all tests |
-| Ed25519 not available in test env | 4 | jose handles cross-platform; CI guard test validates key type |
-| Migration rewrite breaks production DB | 5 | New migration is semantically identical; same CHECK constraint, same data; foreign_key_check verifies post-migration |
-| Test helpers depend on workaround behavior | 5 | Task 5.2 explicitly removes all workarounds and verifies FK ON works |
-
----
-
-## Success Metrics (Updated)
-
-| Metric | Target |
-|--------|--------|
-| Protocol machines verified | 4/4 |
-| Conservation invariants formalized | 14/14 |
-| Positive + counterexample tests | 28 minimum |
-| Cross-system E2E scenarios | 7+ (4 positive, 3+ negative) |
-| Branded type call sites migrated | 10+ |
-| EntryType TS/DB consistency | Verified via sqlite_master |
-| PR #67 merged | Yes |
-| Migration 060 FK corruption | Fixed — no dangling FK references |
-| FK integrity regression test | Passes for all tables |
-| Test workaround count | 0 (all inline schema duplication removed) |
+- **New:** 26 minimum (≥25 requirement met)
+- **Deleted:** 3 assertions removed from existing conformance tests (Task 301.3)
+- **Net:** +23 (≥+22 requirement met)

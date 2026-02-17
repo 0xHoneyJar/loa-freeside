@@ -1,26 +1,41 @@
 {
   "verdict": "APPROVED",
-  "summary": "All four previously blocking issues are addressed with concrete, implementable changes, and the revisions do not introduce any new truly blocking problems.",
+  "summary": "All previously blocking contradictions and unverifiable success criteria were corrected with concrete, Phase-3-scoped, testable requirements, and no new truly blocking issues were introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "SQLite migration contradiction: cannot modify an existing CHECK constraint in-place while claiming additive/non-destructive migrations",
+      "original_issue": "Contradictory versioning strategy: semver range (^7.0.0) vs GitHub tag installs",
       "status": "fixed",
-      "notes": "PRD now explicitly states migration 057 is feature-branch-only and not applied anywhere, so amending 057 pre-merge is feasible and consistent with the NFR framing (“additive from main’s perspective”). It also correctly notes that if 057 had been deployed, a rebuild-with-copy migration would be required."
+      "notes": "G-1/FR-1 now explicitly target GitHub tag v7.0.0, assert CONTRACT_VERSION === '7.0.0', and require lockfile commit SHA recording—consistent with the GitHub-install constraint."
     },
     {
-      "original_issue": "Integrity rule moved out of DB: allowing amount_micro >= 0 without enforcing amount_micro > 0 for completed deposits at the DB layer",
+      "original_issue": "“Zero runtime regressions / invisible to production” conflicted with wire-visible schema changes and Phase 4 being out of scope",
       "status": "fixed",
-      "notes": "The revised compound CHECK enforces state-dependent validity at the DB layer, specifically requiring amount_micro > 0 when status='completed' while allowing 0 for non-terminal states. This resolves the internal inconsistency and restores DB-level protection for a core ledger invariant."
+      "notes": "Reframed to 'zero arrakis-internal regressions' and explicitly states boundary changes are version-gated with backward compatibility during transition (NFR-2, G-6, Success #9). This is now enforceable within Phase 3 via boundary tests."
     },
     {
-      "original_issue": "EntryType change risk: adding 'transfer_in' could silently change balance/reporting semantics if entry_type is used for accounting classification",
+      "original_issue": "Priority mismatch: breaking-change handling was P0 goal but FRs were P1; unsafe reliance on grep for trust_scopes impact",
       "status": "fixed",
-      "notes": "PRD now includes semantic impact analysis plus explicit requirements to audit/update balance computation to treat 'transfer_in' as credit-increasing equivalent to prior recipient 'deposit', and adds an acceptance test for balance equivalence before/after the type change. That is the right containment for the risk."
+      "notes": "FR-5 and FR-6 are now P0 and explicitly call out that grep is insufficient; they require JWT/coordination schema audits and encode/decode + compat tests."
     },
     {
-      "original_issue": "SqliteTimestamp branding not enforceable without specifying typed boundaries and a compile-time test",
+      "original_issue": "Semver-based drift detection incorrect/underspecified under GitHub tag installs; CONTRACT_VERSION alone doesn’t detect retagging",
       "status": "fixed",
-      "notes": "PRD now specifies the three enforcement boundaries (write params, row model types, comparison helpers) and requires a compile-time negative test via @ts-expect-error demonstrating that ISO strings cannot be passed where SqliteTimestamp is required. This is sufficient to achieve the stated compile-time safety goal (assuming those surfaces are actually updated as required)."
+      "notes": "FR-7 now requires a two-layer assertion: CONTRACT_VERSION exact match plus lockfile-resolved commit SHA match to an expected constant, with an explicit upgrade procedure."
+    },
+    {
+      "original_issue": "Test-count preservation conflicted with deleting redundant equivalence/hash tests; replacement tests not specified",
+      "status": "fixed",
+      "notes": "NFR-4 is now coverage-based for protocol modules and explicitly defines 1:1 replacements for the specific deleted tests; also preserves the 32 property tests and 14 conformance assertions."
+    },
+    {
+      "original_issue": "Conservation equivalence not defined/measurable; risk of changing the oracle to match canonical and masking regressions",
+      "status": "fixed",
+      "notes": "FR-3 now mandates freezing the local evaluator for test-only dual-run, running identical generated traces through both, failing on any unenumerated disagreement, plus adding an evaluator-independent conserved-quantity property test."
+    },
+    {
+      "original_issue": "Version negotiation acceptance criteria ambiguous; could implement wrong behavior for Phase 3 interop",
+      "status": "fixed",
+      "notes": "FR-6 now defines concrete Phase 3 negotiation behavior (supported range, preferred version) and requires inbound acceptance for both v4.6.0 and v7.0.0 formats with explicit tests."
     }
   ],
   "new_blocking_concerns": [],

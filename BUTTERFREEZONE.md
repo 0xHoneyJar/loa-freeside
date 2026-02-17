@@ -3,7 +3,7 @@ name: arrakis
 type: framework
 purpose: No description available
 key_files: [.claude/loa/CLAUDE.loa.md, .loa.config.yaml, .claude/scripts/, package.json]
-version: v1.32.0
+version: v1.39.1
 trust_level: grounded
 -->
 
@@ -99,11 +99,11 @@ themes/sietch/src/api/routes/admin/byok.routes.ts:109:  router.post(
 themes/sietch/src/api/routes/admin/byok.routes.ts:147:  router.get(
 themes/sietch/src/api/routes/admin/byok.routes.ts:164:  router.delete(
 themes/sietch/src/api/routes/admin/byok.routes.ts:189:  router.post(
+themes/sietch/src/api/routes/agent-identity.routes.ts:37:  router.post('/register', async (req: Request, res: Response) => {
+themes/sietch/src/api/routes/agent-identity.routes.ts:82:  router.get('/:id/provenance', async (req: Request, res: Response) => {
+themes/sietch/src/api/routes/agent-identity.routes.ts:99:  router.get('/:id/identity', async (req: Request, res: Response) => {
 themes/sietch/src/api/routes/agents.routes.ts:142:  router.get('/.well-known/jwks.json', (req: Request, res: Response) => {
 themes/sietch/src/api/routes/agents.routes.ts:193:  router.get('/api/agents/health', setDefaultRateLimitPolicy, killSwitch(agentEnabled), async (_req: Request, res: Response) => {
-themes/sietch/src/api/routes/agents.routes.ts:211:  router.post('/api/agents/invoke', ...authMiddlewares, async (req: Request, res: Response) => {
-themes/sietch/src/api/routes/agents.routes.ts:243:  router.post('/api/agents/stream', ...authMiddlewares, async (req: Request, res: Response) => {
-themes/sietch/src/api/routes/agents.routes.ts:336:  router.get('/api/agents/models', ...authMiddlewares, (req: Request, res: Response) => {
 
 ### CLI Commands
 packages/cli/src/commands/auth/index.ts:113:    .command('login')
@@ -154,16 +154,16 @@ packages/cli/src/commands/sandbox/index.ts:185:    .command('status <name>')
 |--------|-------|---------|
 | `apps/` | 34983 |  |
 | `decisions/` | 6 |  |
-| `docs/` | 28 | Documentation |
+| `docs/` | 29 | Documentation |
 | `drizzle/` | 1 |  |
 | `evals/` | 122 |  |
-| `grimoires/` | 971 | Loa state files |
+| `grimoires/` | 1050 | Loa state files |
 | `infrastructure/` | 181 |  |
 | `packages/` | 57581 |  |
 | `scripts/` | 10 | Utility scripts |
 | `sites/` | 28151 |  |
 | `tests/` | 83 | Test suites |
-| `themes/` | 65863 |  |
+| `themes/` | 65983 |  |
 
 ## Ecosystem
 <!-- provenance: OPERATIONAL -->
@@ -200,15 +200,15 @@ npx drizzle-kit push
 
 # Start development server
 <!-- ground-truth-meta
-head_sha: 0fa6a7805769beda28feffff5a39c08f0cea833d
-generated_at: 2026-02-15T11:39:28Z
+head_sha: b6e10181150f03b0a8f24b9be30b1d7921613460
+generated_at: 2026-02-17T22:07:35Z
 generator: butterfreezone-gen v1.0.0
 sections:
-  agent_context: 8e6e81f20ee2d5a669227a7d14f18b33f71bfb5fafaf62d3e80e4b7fa3cd9590
+  agent_context: 318087633e2b065254d3ca0539b5af865356f6eae7d488ef23933ec185115de4
   capabilities: fb6ef381fb7c2032e949e99a675dae0b4d58aabe935aec3c9c48c362594e9ca7
   architecture: ac0df8c3054b47de4a589106e66d40cd9ac67a53a68f20b02cef3ce1bed2beea
-  interfaces: ad3885132bd141b5cc8707fa779d267bfe28bcd3fafb5b0bcf1d9f3b32bb71af
-  module_map: 97194de1a408b1f004b2c217039af54beafae77016a6afd0b0aaeff5bc19cf19
+  interfaces: 82e434907d4e58dbbdfa0c6c5ee07a289e81efcb277c24e39d9f7928145eb1e6
+  module_map: eea8588a574147fd46efb5f36e41d23526418e8d63468ddcfcaa43bcfc4cccf9
   ecosystem: 29fc390a2a77ec8d5bdbe657182dd47a2a5cd0c0c36c74c763c9e65cfad170e3
   quick_start: e26d726aebbf5e8317bee1b55fe4e7979ca39f8a9eee91f7c3b47373a268ff8d
 -->

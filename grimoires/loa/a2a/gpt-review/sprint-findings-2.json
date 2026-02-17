@@ -1,31 +1,36 @@
 {
   "verdict": "APPROVED",
-  "summary": "All previously-blocking issues were addressed with explicit gating checks, type/caller updates, CI/schema dependency coverage, and corrected merge-conflict acceptance criteria, with no new truly blocking problems introduced.",
+  "summary": "All previously blocking dependency/ordering and acceptance-criteria contradictions were addressed in a verifiable way, and no new truly blocking issues were introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "Migration 056 amendment risk: missing gating to ensure it’s safe to amend an existing migration",
+      "original_issue": "Critical path shows 301.4 feeding into 301.5, but Task 301.5 did not depend on 301.4 (diagram inconsistent with task graph).",
       "status": "fixed",
-      "notes": "Task 1.2 now includes an explicit gating check against main and a fallback plan to create a new migration (058) with a rebuild if 056 has shipped, plus ACs for fresh migrate-from-zero and an insert using entry_type='transfer_in'."
+      "notes": "Task 301.5 now explicitly depends on 301.4, and Appendix B depicts 301.4 joining into 301.5, so sequencing is unambiguous and consistent."
     },
     {
-      "original_issue": "Migration 057 amendment risk + handling existing rows that might violate stricter CHECK",
+      "original_issue": "301.5 snapshot acceptance criteria required an exact pre-migration copy but didn’t guarantee the source file still existed or was anchored to the tag.",
       "status": "fixed",
-      "notes": "Task 1.3 adds the same gating check and explicitly states the fallback: create a forward migration that handles existing data before adding the stricter CHECK. ACs include representative inserts and a full lifecycle flow that would have failed if the constraint were wrong."
+      "notes": "301.5 now mechanically generates the frozen snapshot from `pre-v7-migration-anchor` via `git show ... > frozen-conservation-evaluator.ts` and requires embedding the source SHA in the header, making it reproducible and provably pre-migration."
     },
     {
-      "original_issue": "ReconciliationService Check 5 error handling: return shape/type/callers/tests not updated for {status:'failed', error} and removal of {skipped:true}",
+      "original_issue": "302.1 dual-run acceptance criteria contradicted itself by allowing a KNOWN_DIFFS allowlist but also requiring zero unexpired allowlist entries.",
       "status": "fixed",
-      "notes": "Task 2.1 explicitly includes updating the report type/interface and downstream callers/tests, plus an AC that no references to { skipped: true } remain and TS compiles after the type change."
+      "notes": "Criteria now clearly allow KNOWN_DIFFS during Sprint 302 and moves the “must be empty” requirement to the final gate (303.6), removing the deadlock."
     },
     {
-      "original_issue": "EntryType + DB CHECK dependency: service writes 'transfer_in' but CI/test DB might not have updated CHECK constraint",
+      "original_issue": "303.6 test count math was non-verifiable (25+ new, 3 deleted) without enumerating deletions/additions.",
       "status": "fixed",
-      "notes": "Task 2.2 now includes an explicit requirement/AC that the test harness migrates from a clean DB (no cached schema) and that the integration test passes with the updated CHECK accepting 'transfer_in'. Task 1.2 also includes fresh migrate-from-zero AC."
+      "notes": "Appendix D now enumerates new test files with minimum test counts and explicitly identifies the 3 deleted assertions (hash-pinning assertions removed in 301.3). Net math is now checkable."
     },
     {
-      "original_issue": "Merge conflict task AC contradictory/unverifiable (\"merge completes without conflicts\" and reliance on GitHub PR state)",
+      "original_issue": "300.2 uses GitHub SHA install, but 303.1 Layer 2 required package version + gitHead match, which may be impossible if gitHead absent.",
       "status": "fixed",
-      "notes": "Task 3.5 AC is now locally testable: merge completes with conflicts resolved/committed if any, clean working tree, tests pass, diff reviewed; PR mergeability is explicitly optional/manual."
+      "notes": "303.1 Layer 2 is now conditional: assert gitHead only if present; otherwise assert the lockfile/npm resolution contains the expected SHA. This is deterministic for GitHub SHA installs."
+    },
+    {
+      "original_issue": "301.5 vs 303.5 duplicated ownership of `core/protocol/index.ts` rewrite, creating ambiguity/merge risk.",
+      "status": "fixed",
+      "notes": "Plan now makes 301.5 the single-owner rewrite and 303.5 a verify/adjust task post-audit, which resolves the duplication."
     }
   ],
   "new_blocking_concerns": [],

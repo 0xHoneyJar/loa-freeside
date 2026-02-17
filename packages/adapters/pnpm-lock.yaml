@@ -9,14 +9,11 @@ importers:
   .:
     dependencies:
       '@0xhoneyjar/loa-hounfour':
-        specifier: github:0xHoneyJar/loa-hounfour#v1.1.0
-        version: https://codeload.github.com/0xHoneyJar/loa-hounfour/tar.gz/64be76fe09cc1abd0be902adbcab2db72cd8df2f
+        specifier: github:0xHoneyJar/loa-hounfour#d091a3c0d4802402825fc7765bcc888f2477742f
+        version: https://codeload.github.com/0xHoneyJar/loa-hounfour/tar.gz/d091a3c0d4802402825fc7765bcc888f2477742f
       '@arrakis/core':
         specifier: file:../core
         version: file:../core
-      '@arrakis/loa-finn-contract':
-        specifier: file:../contracts
-        version: file:../contracts
       drizzle-orm:
         specifier: ^0.33.0
         version: 0.33.0(postgres@3.4.8)
@@ -69,9 +66,9 @@ importers:
 
 packages:
 
-  '@0xhoneyjar/loa-hounfour@https://codeload.github.com/0xHoneyJar/loa-hounfour/tar.gz/64be76fe09cc1abd0be902adbcab2db72cd8df2f':
-    resolution: {tarball: https://codeload.github.com/0xHoneyJar/loa-hounfour/tar.gz/64be76fe09cc1abd0be902adbcab2db72cd8df2f}
-    version: 1.1.0
+  '@0xhoneyjar/loa-hounfour@https://codeload.github.com/0xHoneyJar/loa-hounfour/tar.gz/d091a3c0d4802402825fc7765bcc888f2477742f':
+    resolution: {tarball: https://codeload.github.com/0xHoneyJar/loa-hounfour/tar.gz/d091a3c0d4802402825fc7765bcc888f2477742f}
+    version: 7.0.0
     engines: {node: '>=22'}
 
   '@adraffy/ens-normalize@1.11.1':
@@ -79,10 +76,6 @@ packages:
 
   '@arrakis/core@file:../core':
     resolution: {directory: ../core, type: directory}
-    engines: {node: '>=20.0.0'}
-
-  '@arrakis/loa-finn-contract@file:../contracts':
-    resolution: {directory: ../contracts, type: directory}
     engines: {node: '>=20.0.0'}
 
   '@esbuild/aix-ppc64@0.21.5':
@@ -244,6 +237,10 @@ packages:
   '@noble/hashes@1.8.0':
     resolution: {integrity: sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==}
     engines: {node: ^14.21.3 || >=16}
+
+  '@noble/hashes@2.0.1':
+    resolution: {integrity: sha512-XlOlEbQcE9fmuXxrVTXCTlG2nlRXa9Rj3rr5Ue/+tX+nmkgbX720YHh0VR3hBF9xDvwnb8D2shVGOwNx+ulArw==}
+    engines: {node: '>= 20.19.0'}
 
   '@pinojs/redact@0.4.0':
     resolution: {integrity: sha512-k2ENnmBugE/rzQfEcdWHcCY+/FM3VLzH9cYEsbdsoqrvzAKRhUZeRNhAZvB8OitQJ1TBed3yqWtdjzS6wJKBwg==}
@@ -476,6 +473,10 @@ packages:
   cac@6.7.14:
     resolution: {integrity: sha512-b6Ilus+c3RrdDk+JhLKUAQfzzgLEPy6wcXqS7f/xe1EETvsDP6GORG7SFuOs6cID5YkqchW/LXZbX5bc8j7ZcQ==}
     engines: {node: '>=8'}
+
+  canonicalize@2.1.0:
+    resolution: {integrity: sha512-F705O3xrsUtgt98j7leetNhTWPe+5S72rlL5O4jA1pKqBVQ/dT1O1D6PFxmSXvc0SUOinWS57DKx0I3CHrXJHQ==}
+    hasBin: true
 
   chai@4.5.0:
     resolution: {integrity: sha512-RITGBfijLkBddZvnn8jdqoTypxvqbOLYQkGGxXzeFjVHvudaPw0HNFD9x928/eUwYWd2dPCugVqspGALTZZQKw==}
@@ -980,16 +981,16 @@ packages:
 
 snapshots:
 
-  '@0xhoneyjar/loa-hounfour@https://codeload.github.com/0xHoneyJar/loa-hounfour/tar.gz/64be76fe09cc1abd0be902adbcab2db72cd8df2f':
+  '@0xhoneyjar/loa-hounfour@https://codeload.github.com/0xHoneyJar/loa-hounfour/tar.gz/d091a3c0d4802402825fc7765bcc888f2477742f':
     dependencies:
+      '@noble/hashes': 2.0.1
       '@sinclair/typebox': 0.34.48
+      canonicalize: 2.1.0
       jose: 6.1.3
 
   '@adraffy/ens-normalize@1.11.1': {}
 
   '@arrakis/core@file:../core': {}
-
-  '@arrakis/loa-finn-contract@file:../contracts': {}
 
   '@esbuild/aix-ppc64@0.21.5':
     optional: true
@@ -1075,6 +1076,8 @@ snapshots:
       '@noble/hashes': 1.8.0
 
   '@noble/hashes@1.8.0': {}
+
+  '@noble/hashes@2.0.1': {}
 
   '@pinojs/redact@0.4.0': {}
 
@@ -1266,6 +1269,8 @@ snapshots:
   atomic-sleep@1.0.0: {}
 
   cac@6.7.14: {}
+
+  canonicalize@2.1.0: {}
 
   chai@4.5.0:
     dependencies:
