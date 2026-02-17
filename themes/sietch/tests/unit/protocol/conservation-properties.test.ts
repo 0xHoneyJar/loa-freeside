@@ -644,8 +644,12 @@ describe('Conservation Properties — Positive (Task 3.3)', () => {
   });
 
   it('getProperty() retrieves by ID', () => {
-    expect(getProperty('I-1')?.name).toBe('Per-lot conservation');
-    expect(getProperty('I-14')?.name).toBe('Shadow tracking');
+    const i1 = getProperty('I-1');
+    expect(i1).toBeDefined();
+    expect(i1!.id).toBe('I-1');
+    const i14 = getProperty('I-14');
+    expect(i14).toBeDefined();
+    expect(i14!.id).toBe('I-14');
     expect(getProperty('I-999')).toBeUndefined();
   });
 

@@ -1,18 +1,19 @@
 /**
- * State Machine Equivalence Test Suite (Task 2.3, Sprint 296)
+ * State Machine Equivalence Test Suite (Task 2.3, Sprint 296; updated Sprint 303)
  *
  * Verifies arrakis's 4 protocol state machines against the loa-hounfour
  * canonical definitions via:
- *   1. Hash drift detection (vendored file SHA-256 vs protocol-hashes.json)
- *   2. Structural oracle comparison (normalized actual vs canonical-machines.json)
- *   3. Domain conformance (no protocol terminal state violations)
+ *   1. Structural oracle comparison (normalized actual vs canonical-machines.json)
+ *   2. Domain conformance (no protocol terminal state violations)
+ *
+ * Hash drift detection removed in Sprint 303 (Task 303.2) — replaced by
+ * three-layer drift detection in drift-detection.test.ts.
  *
  * SDD refs: §3.1.2-3.1.4
- * Sprint refs: Task 2.3
+ * Sprint refs: Task 2.3, Task 303.2
  */
 
 import { describe, it, expect } from 'vitest';
-import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -21,7 +22,6 @@ import {
   PAYMENT_MACHINE,
   SYSTEM_CONFIG_MACHINE,
   STATE_MACHINES,
-  VENDORED_FROM,
   isValidTransition,
   isTerminal,
 } from '../../../src/packages/core/protocol/state-machines.js';
@@ -31,14 +31,6 @@ import {
 // =============================================================================
 
 const FIXTURES_DIR = join(__dirname, '../../fixtures');
-
-const protocolHashes = JSON.parse(
-  readFileSync(join(FIXTURES_DIR, 'protocol-hashes.json'), 'utf-8'),
-) as {
-  schema_version: number;
-  upstream: { commit: string };
-  artifacts: Record<string, { path: string; upstream_sha256: string }>;
-};
 
 const canonicalMachines = JSON.parse(
   readFileSync(join(FIXTURES_DIR, 'canonical-machines.json'), 'utf-8'),
@@ -55,13 +47,6 @@ const canonicalMachines = JSON.parse(
 // =============================================================================
 // Helpers
 // =============================================================================
-
-const ROOT = join(__dirname, '../../..');
-
-function sha256File(relPath: string): string {
-  const content = readFileSync(join(ROOT, relPath));
-  return createHash('sha256').update(content).digest('hex');
-}
 
 interface RawMachine {
   name: string;
@@ -90,33 +75,6 @@ function normalize(machine: RawMachine) {
 // =============================================================================
 
 describe('State Machine Equivalence', () => {
-  // ---------------------------------------------------------------------------
-  // Hash Drift Detection
-  // ---------------------------------------------------------------------------
-
-  describe('hash drift detection', () => {
-    it('VENDORED_FROM.commit matches fixture source commit', () => {
-      expect(VENDORED_FROM.commit).toBe(protocolHashes.upstream.commit);
-    });
-
-    for (const [fileName, artifact] of Object.entries(protocolHashes.artifacts)) {
-      it(`${fileName} hash matches protocol-hashes.json`, () => {
-        const actual = sha256File(artifact.path);
-        expect(actual).toBe(artifact.upstream_sha256);
-      });
-    }
-
-    it('tampered content produces different hash', () => {
-      const originalContent = readFileSync(
-        join(ROOT, 'src/packages/core/protocol/state-machines.ts'),
-      );
-      const tampered = Buffer.concat([originalContent, Buffer.from('\n// tampered')]);
-      const tamperedHash = createHash('sha256').update(tampered).digest('hex');
-      const originalHash = protocolHashes.artifacts['state-machines.ts'].upstream_sha256;
-      expect(tamperedHash).not.toBe(originalHash);
-    });
-  });
-
   // ---------------------------------------------------------------------------
   // Structural Equivalence
   // ---------------------------------------------------------------------------

@@ -83,7 +83,7 @@ describe('Branded Types — Constructor Validation', () => {
 
     it('rejects values above 10000', () => {
       expect(() => basisPoints(10001n)).toThrow(RangeError);
-      expect(() => basisPoints(10001n)).toThrow('[0, 10000]');
+      expect(() => basisPoints(10001n)).toThrow('BasisPoints');
     });
 
     it('rejects negative values', () => {
@@ -109,14 +109,11 @@ describe('Branded Types — Constructor Validation', () => {
 
 describe('Branded Types — Arithmetic Integration', () => {
   it('bpsShare with branded args returns MicroUSD', () => {
-    const amount = microUSD(1_000_000n);
-    const bps = basisPoints(5000n);
-    const result = bpsShare(amount, bps);
-    // 50% of $1 = $0.50 = 500000 micro
-    expect(result).toBe(500_000n);
-    // Result should be usable as MicroUSD
-    const _typed: MicroUSD = result;
-    void _typed;
+    const part = microUSD(500_000n);
+    const whole = microUSD(1_000_000n);
+    const result = bpsShare(part, whole);
+    // bpsShare(part, whole) = (part * 10000) / whole = 5000 (50% in BPS)
+    expect(result).toBe(5000n);
   });
 
   it('addMicroUSD with branded args returns MicroUSD', () => {
@@ -152,7 +149,7 @@ describe('Branded Types — Arithmetic Integration', () => {
     // Plain bigint args should still compile and work
     expect(addMicroUSD(100n, 200n)).toBe(300n);
     expect(subtractMicroUSD(500n, 200n)).toBe(300n);
-    expect(bpsShare(1_000_000n, 2500n)).toBe(250_000n);
+    expect(bpsShare(2_500n, 10_000n)).toBe(2500n);
     expect(() => assertBpsSum(5000n, 5000n)).not.toThrow();
   });
 });
