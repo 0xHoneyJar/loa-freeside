@@ -21,6 +21,7 @@
 import { randomUUID } from 'crypto';
 import type Database from 'better-sqlite3';
 import { bpsShare, assertBpsSum } from '../../core/protocol/arithmetic.js';
+import type { MicroUSD, BasisPoints } from '../../core/protocol/arithmetic.js';
 import { logger } from '../../../utils/logger.js';
 import type { IReferralService } from '../../core/ports/IReferralService.js';
 
@@ -147,6 +148,20 @@ export class RevenueDistributionService {
    *
    * @param referrerBps - Effective referrer BPS (0 if no attribution)
    */
+  calculateShares(chargeMicro: MicroUSD, referrerBps?: BasisPoints): {
+    referrerShare: MicroUSD;
+    commonsShare: MicroUSD;
+    communityShare: MicroUSD;
+    treasuryReserve: MicroUSD;
+    foundationShare: MicroUSD;
+  };
+  calculateShares(chargeMicro: bigint, referrerBps?: bigint): {
+    referrerShare: bigint;
+    commonsShare: bigint;
+    communityShare: bigint;
+    treasuryReserve: bigint;
+    foundationShare: bigint;
+  };
   calculateShares(chargeMicro: bigint, referrerBps?: bigint): {
     referrerShare: bigint;
     commonsShare: bigint;

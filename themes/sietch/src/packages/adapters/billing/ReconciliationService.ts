@@ -21,6 +21,7 @@
 import { randomUUID } from 'crypto';
 import type Database from 'better-sqlite3';
 import { logger } from '../../../utils/logger.js';
+import type { MicroUSD } from '../../core/protocol/arithmetic.js';
 import { sqliteTimestamp } from './protocol/timestamps.js';
 import type {
   IReconciliationService,
@@ -153,8 +154,8 @@ export class ReconciliationService implements IReconciliationService {
 
       let violations = 0;
       for (const acct of accounts) {
-        const lhs = BigInt(acct.total_available) + BigInt(acct.total_reserved) + BigInt(acct.total_consumed);
-        const rhs = BigInt(acct.total_original);
+        const lhs: MicroUSD = (BigInt(acct.total_available) + BigInt(acct.total_reserved) + BigInt(acct.total_consumed)) as MicroUSD;
+        const rhs: MicroUSD = BigInt(acct.total_original) as MicroUSD;
         // Allow for expired lots: lhs <= rhs
         if (lhs > rhs) {
           violations++;
@@ -283,8 +284,8 @@ export class ReconciliationService implements IReconciliationService {
           WHERE account_id = ? AND finalized_at >= ? AND finalized_at < ?
         `).get(limit.account_id, limit.window_start, windowEnd) as { actual_spend: string };
 
-        const recorded = BigInt(limit.current_spend_micro);
-        const actual = BigInt(spendRow.actual_spend);
+        const recorded: MicroUSD = BigInt(limit.current_spend_micro) as MicroUSD;
+        const actual: MicroUSD = BigInt(spendRow.actual_spend) as MicroUSD;
 
         if (actual !== recorded) {
           violations++;

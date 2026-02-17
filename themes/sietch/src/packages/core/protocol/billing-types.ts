@@ -76,23 +76,62 @@ export interface UsageRecord {
 export type BillingMode = 'shadow' | 'soft' | 'live';
 
 // =============================================================================
-// Entity & Entry Types (Canonical)
+// Entity & Entry Types (Single Source of Truth — const arrays)
 // =============================================================================
 
+/** Canonical entity type values — derive all types from this array */
+export const ENTITY_TYPES = [
+  'agent', 'person', 'community', 'mod', 'protocol', 'foundation', 'commons',
+] as const;
+
 /** Entity types supported by the credit system */
-export type EntityType = 'agent' | 'person' | 'community' | 'mod' | 'protocol' | 'foundation' | 'commons';
+export type EntityType = (typeof ENTITY_TYPES)[number];
+
+/** Canonical source type values — derive all types from this array */
+export const SOURCE_TYPES = [
+  'deposit', 'grant', 'purchase', 'transfer_in', 'commons_dividend', 'tba_deposit',
+] as const;
 
 /** Credit lot source types */
-export type SourceType = 'deposit' | 'grant' | 'purchase' | 'transfer_in' | 'commons_dividend' | 'tba_deposit';
+export type SourceType = (typeof SOURCE_TYPES)[number];
 
-/** Ledger entry types */
-export type EntryType =
-  | 'deposit' | 'reserve' | 'finalize' | 'release' | 'refund'
-  | 'grant' | 'shadow_charge' | 'shadow_reserve' | 'shadow_finalize'
-  | 'commons_contribution' | 'revenue_share'
-  | 'marketplace_sale' | 'marketplace_purchase'
-  | 'escrow' | 'escrow_release'
-  | 'transfer_out' | 'transfer_in';
+/** Canonical entry type values — derive all types and CHECK expressions from this */
+export const ENTRY_TYPES = [
+  'deposit', 'reserve', 'finalize', 'release', 'refund',
+  'grant', 'shadow_charge', 'shadow_reserve', 'shadow_finalize',
+  'commons_contribution', 'revenue_share',
+  'marketplace_sale', 'marketplace_purchase',
+  'escrow', 'escrow_release',
+  'transfer_out', 'transfer_in',
+] as const;
+
+/** Ledger entry type — derived from ENTRY_TYPES array */
+export type EntryType = (typeof ENTRY_TYPES)[number];
+
+/** Protocol entry type — unified with EntryType (no separate subset) */
+export type ProtocolEntryType = EntryType;
+
+// Compile-time bidirectional equality check
+type _AssertExact<A, B> = A extends B ? (B extends A ? true : never) : never;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _entryTypeCheck: _AssertExact<EntryType, ProtocolEntryType> = true;
+
+/**
+ * Generate a SQL CHECK expression for a column from the canonical ENTRY_TYPES array.
+ * Used in migrations and validated against sqlite_master in tests.
+ */
+export function buildEntryTypeCheck(column = 'entry_type'): string {
+  const values = ENTRY_TYPES.map(t => `'${t}'`).join(', ');
+  return `${column} IN (${values})`;
+}
+
+/**
+ * Generate a SQL CHECK expression for source_type from the canonical SOURCE_TYPES array.
+ */
+export function buildSourceTypeCheck(column = 'source_type'): string {
+  const values = SOURCE_TYPES.map(t => `'${t}'`).join(', ');
+  return `${column} IN (${values})`;
+}
 
 // =============================================================================
 // Constitutional Governance Types (Cycle 030)

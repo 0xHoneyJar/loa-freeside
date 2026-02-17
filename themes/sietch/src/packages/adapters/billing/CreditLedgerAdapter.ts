@@ -38,6 +38,7 @@ import type {
 } from '../../core/ports/ICreditLedgerService.js';
 import { DEFAULT_POOL } from '../../core/ports/ICreditLedgerService.js';
 import { assertMicroUSD } from '../../core/protocol/arithmetic.js';
+import type { MicroUSD } from '../../core/protocol/arithmetic.js';
 import { logger } from '../../../utils/logger.js';
 
 // =============================================================================
@@ -777,7 +778,7 @@ export class CreditLedgerAdapter implements ICreditLedgerService {
    * Used for pre/post balance audit trail on ledger entries.
    * MUST be called within a BEGIN IMMEDIATE transaction for snapshot consistency.
    */
-  private snapshotBalance(accountId: string, poolId: string): bigint {
+  private snapshotBalance(accountId: string, poolId: string): MicroUSD {
     const row = this.db.prepare(
       `SELECT COALESCE(SUM(available_micro), 0) as balance
        FROM credit_lots
@@ -785,7 +786,7 @@ export class CreditLedgerAdapter implements ICreditLedgerService {
          AND (pool_id = ? OR pool_id IS NULL OR pool_id = 'general')
          AND (expires_at IS NULL OR expires_at > datetime('now'))`
     ).safeIntegers(true).get(accountId, poolId) as { balance: bigint };
-    return BigInt(row.balance);
+    return BigInt(row.balance) as MicroUSD;
   }
 
   // ---------------------------------------------------------------------------
@@ -850,8 +851,8 @@ export class CreditLedgerAdapter implements ICreditLedgerService {
   }
 
   private computeBalanceFromLots(accountId: string, poolId: string): {
-    availableMicro: bigint;
-    reservedMicro: bigint;
+    availableMicro: MicroUSD;
+    reservedMicro: MicroUSD;
   } {
     const row = this.db.prepare(
       `SELECT
@@ -864,8 +865,8 @@ export class CreditLedgerAdapter implements ICreditLedgerService {
     ).safeIntegers(true).get(accountId, poolId) as { available_micro: bigint; reserved_micro: bigint };
 
     return {
-      availableMicro: BigInt(row.available_micro), // no-op when already BigInt via safeIntegers
-      reservedMicro: BigInt(row.reserved_micro),
+      availableMicro: BigInt(row.available_micro) as MicroUSD,
+      reservedMicro: BigInt(row.reserved_micro) as MicroUSD,
     };
   }
 

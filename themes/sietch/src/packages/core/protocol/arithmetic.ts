@@ -18,6 +18,61 @@
 import { z } from 'zod';
 
 // =============================================================================
+// Branded Types (Cycle-033, FR-4)
+// =============================================================================
+
+/**
+ * Compile-time branded micro-USD type.
+ * Prevents accidental assignment of raw bigint to monetary fields.
+ */
+export type MicroUSD = bigint & { readonly __brand: 'micro_usd' };
+
+/**
+ * Compile-time branded basis-points type.
+ * Prevents accidental assignment of raw bigint to BPS fields.
+ */
+export type BasisPoints = bigint & { readonly __brand: 'basis_points' };
+
+/**
+ * Compile-time branded account identifier.
+ * Prevents accidental assignment of raw strings to account ID fields.
+ */
+export type AccountId = string & { readonly __brand: 'account_id' };
+
+/**
+ * Construct a validated MicroUSD value.
+ * @throws {RangeError} if value is negative
+ */
+export function microUSD(value: bigint): MicroUSD {
+  if (value < 0n) {
+    throw new RangeError(`MicroUSD must be non-negative, got ${value}`);
+  }
+  return value as MicroUSD;
+}
+
+/**
+ * Construct a validated BasisPoints value.
+ * @throws {RangeError} if value not in [0, 10000]
+ */
+export function basisPoints(value: bigint): BasisPoints {
+  if (value < 0n || value > 10000n) {
+    throw new RangeError(`BasisPoints must be in [0, 10000], got ${value}`);
+  }
+  return value as BasisPoints;
+}
+
+/**
+ * Construct a validated AccountId value.
+ * @throws {RangeError} if value is empty
+ */
+export function accountId(value: string): AccountId {
+  if (!value) {
+    throw new RangeError('AccountId must be non-empty');
+  }
+  return value as AccountId;
+}
+
+// =============================================================================
 // Constants
 // =============================================================================
 
@@ -58,6 +113,8 @@ export class SafeArithmeticError extends Error {
  * Safe addition of two micro-USD values.
  * @throws {SafeArithmeticError} if either input < 0 or result > MAX_MICRO_USD
  */
+export function addMicroUSD(a: MicroUSD, b: MicroUSD): MicroUSD;
+export function addMicroUSD(a: bigint, b: bigint): bigint;
 export function addMicroUSD(a: bigint, b: bigint): bigint {
   if (a < 0n) throw new SafeArithmeticError('addMicroUSD', [a, b], `first operand is negative: ${a}`);
   if (b < 0n) throw new SafeArithmeticError('addMicroUSD', [a, b], `second operand is negative: ${b}`);
@@ -72,6 +129,8 @@ export function addMicroUSD(a: bigint, b: bigint): bigint {
  * Safe subtraction of two micro-USD values.
  * @throws {SafeArithmeticError} if result < 0
  */
+export function subtractMicroUSD(a: MicroUSD, b: MicroUSD): MicroUSD;
+export function subtractMicroUSD(a: bigint, b: bigint): bigint;
 export function subtractMicroUSD(a: bigint, b: bigint): bigint {
   if (a < 0n) throw new SafeArithmeticError('subtractMicroUSD', [a, b], `first operand is negative: ${a}`);
   if (b < 0n) throw new SafeArithmeticError('subtractMicroUSD', [a, b], `second operand is negative: ${b}`);
@@ -176,6 +235,8 @@ function getCeilingMicro(): bigint {
  *
  * @throws {RangeError} if value is negative or exceeds ceiling
  */
+export function assertMicroUSD(value: MicroUSD): void;
+export function assertMicroUSD(value: bigint): void;
 export function assertMicroUSD(value: bigint): void {
   if (value < 0n) {
     throw new RangeError(`micro-USD value must be non-negative, got ${value}`);
@@ -258,6 +319,8 @@ export const TOTAL_BPS = 10000n;
  *
  * @example bpsShare(1000000n, 2500n) // => 250000n (25% of $1)
  */
+export function bpsShare(amountMicro: MicroUSD, bps: BasisPoints): MicroUSD;
+export function bpsShare(amountMicro: bigint, bps: bigint): bigint;
 export function bpsShare(amountMicro: bigint, bps: bigint): bigint {
   return (amountMicro * bps) / TOTAL_BPS;
 }
@@ -267,6 +330,8 @@ export function bpsShare(amountMicro: bigint, bps: bigint): bigint {
  *
  * @throws {RangeError} if values don't sum to 10000
  */
+export function assertBpsSum(...values: BasisPoints[]): void;
+export function assertBpsSum(...values: bigint[]): void;
 export function assertBpsSum(...values: bigint[]): void {
   const total = values.reduce((sum, v) => sum + v, 0n);
   if (total !== TOTAL_BPS) {

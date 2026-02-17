@@ -1,0 +1,36 @@
+{
+  "schema_version": 2,
+  "upstream": {
+    "repo": "0xHoneyJar/loa-hounfour",
+    "commit": "d297b0199c04e40c3d5e056fcb3470fd4c342638",
+    "date": "2026-02-15",
+    "pr": "https://github.com/0xHoneyJar/loa-hounfour/pull/2"
+  },
+  "generation": {
+    "method": "sha256sum of vendored files at pinned commit",
+    "script": "scripts/gen-protocol-fixtures.ts",
+    "generated_at": "2026-02-17"
+  },
+  "artifacts": {
+    "state-machines.ts": {
+      "path": "src/packages/core/protocol/state-machines.ts",
+      "upstream_sha256": "b982dc18660b5abbccc8effaae022bb8a2a76b1cfb046365ba0a0d3aee927b0c"
+    },
+    "billing-types.ts": {
+      "path": "src/packages/core/protocol/billing-types.ts",
+      "upstream_sha256": "4d10013f06684b0cee25b373a5bb89d9384d049a058030de4c49c053416dce0b"
+    },
+    "arithmetic.ts": {
+      "path": "src/packages/core/protocol/arithmetic.ts",
+      "upstream_sha256": "087a6d64fe319d7cd39625c0ab0ad118f19766f40bd9256e8f6c602b88ccfe64"
+    },
+    "guard-types.ts": {
+      "path": "src/packages/core/protocol/guard-types.ts",
+      "upstream_sha256": "9e70d72e53b59f6f540080c84b8728d16524992295687499c5a86b0192d5ed72"
+    },
+    "compatibility.ts": {
+      "path": "src/packages/core/protocol/compatibility.ts",
+      "upstream_sha256": "e1fb1dfc6d233a9bbc2aff969f94de14b0d4728deb171703ce1de78dfbb4f85f"
+    }
+  }
+}

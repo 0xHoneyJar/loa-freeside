@@ -16,11 +16,21 @@ export type {
   EntityType,
   SourceType,
   EntryType,
+  ProtocolEntryType,
   SystemConfigStatus,
   ParamSource,
   SystemConfig,
   ResolvedParam,
   ProposeOpts,
+} from './billing-types.js';
+
+// Billing domain values (const arrays + helpers)
+export {
+  ENTITY_TYPES,
+  SOURCE_TYPES,
+  ENTRY_TYPES,
+  buildEntryTypeCheck,
+  buildSourceTypeCheck,
 } from './billing-types.js';
 
 // Guard types
@@ -48,8 +58,17 @@ export {
   isTerminal,
 } from './state-machines.js';
 
-// Arithmetic helpers
+// Arithmetic helpers + branded types
+export type {
+  MicroUSD,
+  BasisPoints,
+  AccountId,
+} from './arithmetic.js';
+
 export {
+  microUSD,
+  basisPoints,
+  accountId,
   MICRO_USD_PER_DOLLAR,
   TOTAL_BPS,
   MAX_MICRO_USD,
@@ -67,6 +86,41 @@ export {
   bpsShare,
   assertBpsSum,
 } from './arithmetic.js';
+
+// State machine provenance
+export { VENDORED_FROM } from './state-machines.js';
+
+// Conservation properties
+export type {
+  ConservationErrorCode,
+  ReconciliationFailureCode,
+  ConservationProperty,
+  EnforcementMechanism,
+  PropertyUniverse,
+  PropertyKind,
+} from './conservation-properties.js';
+
+export {
+  CONSERVATION_PROPERTIES,
+  ConservationViolationError,
+  getProperty,
+  getPropertiesByEnforcement,
+} from './conservation-properties.js';
+
+// JWT boundary — cross-system economic verification
+export type {
+  JwtErrorCode,
+  OutboundClaims,
+  InboundClaims,
+  IdempotencyStore,
+  ActiveReservations,
+} from './jwt-boundary.js';
+
+export {
+  JwtBoundaryError,
+  inboundClaimsSchema,
+  verifyUsageJWT,
+} from './jwt-boundary.js';
 
 // Compatibility check
 export {
@@ -102,7 +156,6 @@ export {
 // BillingEntry — loa-hounfour protocol type
 export type {
   BillingEntry,
-  ProtocolEntryType,
 } from './billing-entry.js';
 
 export {

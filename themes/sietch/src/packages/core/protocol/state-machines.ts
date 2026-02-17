@@ -10,6 +10,21 @@
  */
 
 // =============================================================================
+// Upstream Provenance
+// =============================================================================
+
+/**
+ * Upstream vendoring provenance for state machine definitions.
+ * Used by equivalence tests to verify hash drift against the canonical source.
+ */
+export const VENDORED_FROM = {
+  repo: '0xHoneyJar/loa-hounfour',
+  commit: 'd297b0199c04e40c3d5e056fcb3470fd4c342638',
+  date: '2026-02-15',
+  pr: 'https://github.com/0xHoneyJar/loa-hounfour/pull/2',
+} as const;
+
+// =============================================================================
 // State Machine Definition Type
 // =============================================================================
 

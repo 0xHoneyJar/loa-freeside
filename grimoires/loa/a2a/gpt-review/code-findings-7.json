@@ -1,0 +1,13 @@
+{
+  "verdict": "APPROVED",
+  "summary": "The legacy_alter_table handling was moved out of the SQL string and wrapped in try/finally, so the original safety issue is resolved.",
+  "previous_issues_status": [
+    {
+      "original_issue": "PRAGMA legacy_alter_table set inside multi-statement SQL could remain ON if RENAME fails",
+      "status": "fixed",
+      "notes": "The PRAGMA is now set in code and restored in a try/finally, so it can’t leak on error."
+    }
+  ],
+  "new_blocking_concerns": [],
+  "iteration": 2
+}

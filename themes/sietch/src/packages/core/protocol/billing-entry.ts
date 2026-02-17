@@ -14,29 +14,16 @@
  */
 
 // =============================================================================
-// Protocol Entry Types
+// Protocol Entry Types — Unified with EntryType (Cycle-033)
 // =============================================================================
 
 /**
  * loa-hounfour protocol entry types.
- * A subset of arrakis EntryType, normalized for cross-system use.
+ * Unified with arrakis EntryType — no separate subset.
+ * Canonical source: billing-types.ts ENTRY_TYPES const array.
  */
-export type ProtocolEntryType =
-  | 'deposit'
-  | 'reserve'
-  | 'finalize'
-  | 'release'
-  | 'refund'
-  | 'grant'
-  | 'shadow_charge'
-  | 'shadow_reserve'
-  | 'shadow_finalize'
-  | 'commons_contribution'
-  | 'revenue_share'
-  | 'marketplace_sale'
-  | 'marketplace_purchase'
-  | 'escrow'
-  | 'escrow_release';
+import type { ProtocolEntryType } from './billing-types.js';
+export type { ProtocolEntryType } from './billing-types.js';
 
 // =============================================================================
 // BillingEntry

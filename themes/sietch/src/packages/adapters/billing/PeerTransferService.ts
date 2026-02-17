@@ -26,6 +26,7 @@ import type Database from 'better-sqlite3';
 import { logger } from '../../../utils/logger.js';
 import { sqliteTimestamp } from './protocol/timestamps.js';
 import { assertMicroUSD } from '../../core/protocol/arithmetic.js';
+import type { MicroUSD } from '../../core/protocol/arithmetic.js';
 import { DEFAULT_POOL } from '../../core/ports/ICreditLedgerService.js';
 import type { IEconomicEventEmitter } from '../../core/ports/IEconomicEventEmitter.js';
 import type { IAgentBudgetService } from '../../core/ports/IAgentBudgetService.js';
@@ -615,7 +616,7 @@ export class PeerTransferService implements IPeerTransferService {
    * Sum completed transfer volume for a sender in the last 24 hours.
    * Used for daily aggregate limit enforcement within the transaction.
    */
-  private getDailyTransferTotal(fromAccountId: string): bigint {
+  private getDailyTransferTotal(fromAccountId: string): MicroUSD {
     const row = this.db.prepare(`
       SELECT COALESCE(SUM(amount_micro), 0) as daily_total
       FROM transfers
@@ -623,7 +624,7 @@ export class PeerTransferService implements IPeerTransferService {
         AND status = 'completed'
         AND created_at >= datetime('now', '-1 day')
     `).safeIntegers(true).get(fromAccountId) as { daily_total: bigint };
-    return BigInt(row.daily_total);
+    return BigInt(row.daily_total) as MicroUSD;
   }
 
   // ---------------------------------------------------------------------------

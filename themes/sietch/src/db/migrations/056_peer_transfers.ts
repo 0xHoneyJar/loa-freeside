@@ -8,6 +8,13 @@
  *    constraint. SQLite does not support ALTER CONSTRAINT, so we use the
  *    standard table-rebuild pattern (rename → create → copy → drop → reindex).
  *
+ * **Why legacy_alter_table matters (FK safety):**
+ * By default (legacy_alter_table=OFF, since SQLite 3.26.0), ALTER TABLE RENAME
+ * auto-updates FK references in OTHER tables to follow the rename. Currently
+ * credit_ledger is not referenced BY other tables (it references them), but
+ * applying the PRAGMA prophylactically prevents this class of bug if any future
+ * table adds an FK to credit_ledger. See migration 060 for the full story.
+ *
  * The credit_ledger rebuild is required because the entry_type CHECK constraint
  * from migration 030 does not include 'transfer_out'. Application-level
  * validation (TypeScript EntryType union) is authoritative (SDD §7.2), but
@@ -57,7 +64,7 @@ CREATE INDEX IF NOT EXISTS idx_transfers_status
 // =============================================================================
 
 export const CREDIT_LEDGER_REBUILD_SQL = `
--- Step 1: Rename existing table
+-- Step 1: Rename existing table (legacy_alter_table is set ON/OFF in up())
 ALTER TABLE credit_ledger RENAME TO _credit_ledger_056_backup;
 
 -- Step 2: Create new table with 'transfer_out' in entry_type CHECK
@@ -123,8 +130,15 @@ export function up(db: { exec(sql: string): void; pragma(sql: string): unknown }
     // Create transfers table
     db.exec(PEER_TRANSFERS_SQL);
 
-    // Rebuild credit_ledger with updated CHECK constraint
-    db.exec(CREDIT_LEDGER_REBUILD_SQL);
+    // legacy_alter_table=ON prevents SQLite from auto-updating FK references
+    // in dependent tables to follow the rename (prophylactic — see migration 060).
+    db.pragma('legacy_alter_table = ON');
+    try {
+      // Rebuild credit_ledger with updated CHECK constraint
+      db.exec(CREDIT_LEDGER_REBUILD_SQL);
+    } finally {
+      db.pragma('legacy_alter_table = OFF');
+    }
 
     // Verify foreign key integrity after rebuild
     db.pragma('foreign_key_check');

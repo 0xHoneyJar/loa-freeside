@@ -1,31 +1,26 @@
 {
   "verdict": "APPROVED",
-  "summary": "All five previously-blocking issues were addressed in a way that is internally consistent, implementable in SQLite, and testable; no new truly-blocking problems were introduced by the fixes.",
+  "summary": "All previously-blocking migration-safety and test-execution gaps were addressed with a safer rebuild sequence, explicit schema-level FK verification, clarified idempotency strategy, and a production-sequence migration regression test.",
   "previous_issues_status": [
     {
-      "original_issue": "Revenue Rules state machine inconsistent/missing transitions/handlers",
+      "original_issue": "Unsafe migration sequence could DROP credit_lots while FK enforcement is OFF, risking broken intermediate states; lacked schema-level FK target validation inside the migration",
       "status": "fixed",
-      "notes": "Sprint 8 now defines a single canonical lifecycle everywhere: `draft → pending_approval → cooling_down → active → superseded` with terminal `rejected/superseded`, removes the ambiguous `approved` state, and explicitly specifies submit/approve/reject/override/auto-activate behaviors plus `getPendingRules()` semantics. This resolves the prior ambiguity and makes deterministic tests feasible."
+      "notes": "Task 5.1 now uses CREATE→COPY→RENAME-old→RENAME-new→DROP-old (drop last), and explicitly requires schema-level FK target verification via PRAGMA foreign_key_list on credit_ledger/reservation_lots/credit_debts to ensure they reference credit_lots (not the backup/old name), plus keeps PRAGMA foreign_key_check for row-level integrity."
     },
     {
-      "original_issue": "Unique active rule constraint not implementable/specified safely in SQLite",
+      "original_issue": "Idempotency requirement was stated but the described SQL was not idempotent and could fail on rerun/partial migration states",
       "status": "fixed",
-      "notes": "The plan now includes correct SQLite DDL (`CREATE UNIQUE INDEX revenue_rules_one_active ON revenue_rules(1) WHERE status='active';`) and a concurrency-safe activator update guarded by `BEGIN IMMEDIATE` + `NOT EXISTS (SELECT 1 ... status='active')`, plus an explicit race integration test. This is sufficient to prevent dual-active rules under concurrent runners."
+      "notes": "Task 5.1 now includes explicit cleanup guards (DROP TABLE IF EXISTS _credit_lots_new/_credit_lots_old) and an early-return condition by introspecting sqlite_master to detect whether 'tba_deposit' is already present in the credit_lots CHECK constraint."
     },
     {
-      "original_issue": "Pre/post balance CHECK conflicted with soft mode; balance capture method underspecified",
+      "original_issue": "Migration runner scope in tests was ambiguous (subset 030–060+) and might not reproduce production ordering/state",
       "status": "fixed",
-      "notes": "The non-negative CHECK is removed (allowing soft-mode negatives), and the plan now requires in-transaction SQL aggregation against `credit_lots` (not Redis / not `getBalance()`), with a specific soft-mode negative post-balance test. This aligns with Sprint 3 soft mode and defines snapshot semantics clearly."
+      "notes": "Task 5.3 acceptance criteria now requires using the exact production migration runner to run all migrations from first to latest (or, if absent, executing every migration up() in production order), and explicitly fails if any migration is skipped or out of order."
     },
     {
-      "original_issue": "Bridgebuilder findings count/mapping double-counted governance work",
+      "original_issue": "Sprint 5 claimed independence but Task 5.2 depended on test files created/modified in earlier sprints, risking non-applicability/failure",
       "status": "fixed",
-      "notes": "Appendix E is normalized into “Bridgebuilder Findings (13)” plus “User-Requested Feature (F-1)”, and it explicitly explains that findings #7 and #13 are different facets resolved by the same Sprint 8 work. This removes the traceability/count mismatch that would have failed acceptance."
-    },
-    {
-      "original_issue": "Dependency chain for Task 7.5 incorrect / sequencing risk with endpoints and write-path changes",
-      "status": "fixed",
-      "notes": "Task 7.5 dependencies now correctly include Sprint 1 (adapter/write paths), Sprint 3 (finalize+distribution + soft mode), and Sprint 5 (history endpoint tolerance), and it adds explicit backward-compat criteria (nullable columns) plus an E2E-BILLING regression run. This addresses the sequencing/regression risk."
+      "notes": "Sprint 5 now declares a soft dependency and makes Task 5.2 explicitly conditional: only modify files that exist and contain the workaround pattern; otherwise skip and rely on later sprints to create them correctly."
     }
   ],
   "new_blocking_concerns": [],

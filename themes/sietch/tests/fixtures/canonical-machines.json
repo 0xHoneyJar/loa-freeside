@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "source": {
+    "repo": "0xHoneyJar/loa-hounfour",
+    "commit": "d297b0199c04e40c3d5e056fcb3470fd4c342638"
+  },
+  "normalization": {
+    "rules": [
+      "States sorted alphabetically",
+      "Transition targets sorted alphabetically",
+      "Terminal states sorted alphabetically",
+      "Duplicate states/transitions deduplicated"
+    ]
+  },
+  "machines": {
+    "credit_reservation": {
+      "name": "credit_reservation",
+      "initial": "pending",
+      "states": ["expired", "finalized", "pending", "released"],
+      "transitions": {
+        "expired": [],
+        "finalized": [],
+        "pending": ["expired", "finalized", "released"],
+        "released": []
+      },
+      "terminal": ["expired", "finalized", "released"]
+    },
+    "revenue_rule": {
+      "name": "revenue_rule",
+      "initial": "draft",
+      "states": ["active", "cooling_down", "draft", "pending_approval", "rejected", "superseded"],
+      "transitions": {
+        "active": ["superseded"],
+        "cooling_down": ["active", "rejected"],
+        "draft": ["pending_approval"],
+        "pending_approval": ["cooling_down", "rejected"],
+        "rejected": [],
+        "superseded": []
+      },
+      "terminal": ["rejected", "superseded"]
+    },
+    "payment": {
+      "name": "payment",
+      "initial": "waiting",
+      "states": ["confirmed", "confirming", "expired", "failed", "finished", "partially_paid", "refunded", "sending", "waiting"],
+      "transitions": {
+        "confirmed": ["failed", "finished", "sending"],
+        "confirming": ["confirmed", "failed", "finished", "sending"],
+        "expired": [],
+        "failed": [],
+        "finished": ["refunded"],
+        "partially_paid": ["confirmed", "confirming", "expired", "failed", "finished", "sending"],
+        "refunded": [],
+        "sending": ["failed", "finished"],
+        "waiting": ["confirmed", "confirming", "expired", "failed", "finished", "partially_paid", "sending"]
+      },
+      "terminal": ["expired", "failed", "refunded"]
+    },
+    "system_config": {
+      "name": "system_config",
+      "initial": "draft",
+      "states": ["active", "cooling_down", "draft", "pending_approval", "rejected", "superseded"],
+      "transitions": {
+        "active": ["superseded"],
+        "cooling_down": ["active", "rejected"],
+        "draft": ["pending_approval"],
+        "pending_approval": ["cooling_down", "rejected"],
+        "rejected": [],
+        "superseded": []
+      },
+      "terminal": ["rejected", "superseded"]
+    }
+  }
+}

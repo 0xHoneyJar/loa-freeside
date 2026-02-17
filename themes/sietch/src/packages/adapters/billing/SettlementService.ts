@@ -19,6 +19,7 @@ import { logger } from '../../../utils/logger.js';
 import { sqliteTimestamp } from './protocol/timestamps';
 import type { IConstitutionalGovernanceService } from '../../core/ports/IConstitutionalGovernanceService.js';
 import type { EntityType } from '../../core/protocol/billing-types.js';
+import type { MicroUSD } from '../../core/protocol/arithmetic.js';
 import { CONFIG_FALLBACKS } from '../../core/protocol/config-schema.js';
 import { BillingEventEmitter } from './BillingEventEmitter.js';
 
@@ -428,7 +429,7 @@ export class SettlementService {
   /**
    * Get settled balance for an account (non-withdrawable in Phase 1A).
    */
-  getSettledBalance(accountId: string): bigint {
+  getSettledBalance(accountId: string): MicroUSD {
     this.ensureSettlementColumns();
 
     try {
@@ -440,16 +441,16 @@ export class SettlementService {
           AND clawback_reason IS NULL
       `).get(accountId) as { total: number };
 
-      return BigInt(row.total);
+      return BigInt(row.total) as MicroUSD;
     } catch {
-      return 0n;
+      return 0n as MicroUSD;
     }
   }
 
   /**
    * Get pending (unsettled) balance for an account.
    */
-  getPendingBalance(accountId: string): bigint {
+  getPendingBalance(accountId: string): MicroUSD {
     this.ensureSettlementColumns();
 
     try {
@@ -460,9 +461,9 @@ export class SettlementService {
           AND settled_at IS NULL
       `).get(accountId) as { total: number };
 
-      return BigInt(row.total);
+      return BigInt(row.total) as MicroUSD;
     } catch {
-      return 0n;
+      return 0n as MicroUSD;
     }
   }
 
