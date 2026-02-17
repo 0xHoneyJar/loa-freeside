@@ -20,7 +20,7 @@ import { randomUUID } from 'crypto';
 // Schema imports
 import { CREDIT_LEDGER_SCHEMA_SQL } from '../../src/db/migrations/030_credit_ledger.js';
 import { PEER_TRANSFERS_SQL, CREDIT_LEDGER_REBUILD_SQL } from '../../src/db/migrations/056_peer_transfers.js';
-// CREDIT_LOTS_REBUILD_SQL not used — inline DROP+CREATE avoids SQLite FK reference issues
+import { CREDIT_LOTS_REBUILD_SQL } from '../../src/db/migrations/060_credit_lots_tba_source.js';
 import { TBA_DEPOSITS_SQL } from '../../src/db/migrations/057_tba_deposits.js';
 import { AGENT_GOVERNANCE_SQL } from '../../src/db/migrations/058_agent_governance.js';
 import { ECONOMIC_EVENTS_SQL } from '../../src/db/migrations/054_economic_events.js';
@@ -53,33 +53,9 @@ function createTestDb(): Database.Database {
   testDb.pragma('foreign_keys = OFF');
   testDb.exec(CREDIT_LEDGER_REBUILD_SQL);
 
-  // Drop and recreate credit_lots with 'tba_deposit' source_type (matching migration 060)
-  // Inline DROP+CREATE avoids SQLite FK reference issues with ALTER TABLE RENAME
-  testDb.exec(`DROP TABLE IF EXISTS credit_lots`);
-  testDb.exec(`
-    CREATE TABLE credit_lots (
-      id TEXT PRIMARY KEY,
-      account_id TEXT NOT NULL REFERENCES credit_accounts(id),
-      pool_id TEXT,
-      source_type TEXT NOT NULL CHECK (source_type IN (
-        'deposit', 'grant', 'purchase', 'transfer_in', 'commons_dividend', 'tba_deposit'
-      )),
-      source_id TEXT,
-      original_micro INTEGER NOT NULL,
-      available_micro INTEGER NOT NULL DEFAULT 0,
-      reserved_micro INTEGER NOT NULL DEFAULT 0,
-      consumed_micro INTEGER NOT NULL DEFAULT 0,
-      expires_at TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      CONSTRAINT lot_balance CHECK (available_micro >= 0 AND reserved_micro >= 0 AND consumed_micro >= 0),
-      CONSTRAINT lot_invariant CHECK (available_micro + reserved_micro + consumed_micro = original_micro)
-    );
-    CREATE INDEX IF NOT EXISTS idx_credit_lots_redemption
-      ON credit_lots(account_id, pool_id, expires_at) WHERE available_micro > 0;
-    CREATE INDEX IF NOT EXISTS idx_credit_lots_account ON credit_lots(account_id);
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_credit_lots_source
-      ON credit_lots(source_type, source_id) WHERE source_id IS NOT NULL;
-  `);
+  // Migration 060: Add 'tba_deposit' to credit_lots source_type CHECK
+  // (Now uses safe CREATE→COPY→SWAP→DROP pattern — no FK corruption)
+  testDb.exec(CREDIT_LOTS_REBUILD_SQL);
   testDb.pragma('foreign_keys = ON');
 
   // Economic events

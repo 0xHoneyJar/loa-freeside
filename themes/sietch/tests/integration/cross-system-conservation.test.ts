@@ -25,6 +25,7 @@ import { AGENT_BUDGET_SQL } from '../../src/db/migrations/052_agent_budget.js';
 import { RECONCILIATION_RUNS_SQL } from '../../src/db/migrations/055_reconciliation_runs.js';
 import { PEER_TRANSFERS_SQL, CREDIT_LEDGER_REBUILD_SQL } from '../../src/db/migrations/056_peer_transfers.js';
 import { TBA_DEPOSITS_SQL } from '../../src/db/migrations/057_tba_deposits.js';
+import { CREDIT_LOTS_REBUILD_SQL } from '../../src/db/migrations/060_credit_lots_tba_source.js';
 import {
   CreditLedgerAdapter,
   InsufficientBalanceError,
@@ -64,9 +65,9 @@ function createE2EDb(): Database.Database {
   testDb.exec(PEER_TRANSFERS_SQL);
   testDb.exec(CREDIT_LEDGER_REBUILD_SQL);
   testDb.exec(TBA_DEPOSITS_SQL);
-  // Note: 060_credit_lots_tba_source (CREDIT_LOTS_REBUILD_SQL) intentionally omitted.
-  // Its RENAME breaks credit_ledger's FK to credit_lots when foreign_keys=ON.
-  // Tests here don't need 'tba_deposit' source_type.
+  // Migration 060: Add 'tba_deposit' to credit_lots source_type CHECK
+  // (Now uses safe CREATE→COPY→SWAP→DROP pattern — no FK corruption)
+  testDb.exec(CREDIT_LOTS_REBUILD_SQL);
 
   return testDb;
 }

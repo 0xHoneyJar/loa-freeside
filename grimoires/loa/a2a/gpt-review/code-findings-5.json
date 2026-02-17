@@ -1,28 +1,23 @@
 {
   "verdict": "APPROVED",
-  "summary": "All previously reported security and input-validation issues have been addressed appropriately with no new blocking problems introduced.",
+  "summary": "All previously reported issues remain fixed and no new blocking problems were introduced in this revision.",
   "previous_issues_status": [
     {
-      "original_issue": "Service JWT verification did not restrict algorithms (JWT algorithm confusion risk)",
+      "original_issue": "Indexes not recreated due to name conflicts after rename",
       "status": "fixed",
-      "notes": "JWT verify now restricts algorithms to HS256 as suggested."
+      "notes": "Drop/recreate logic for idx_credit_lots_* remains in place before creating new indexes."
     },
     {
-      "original_issue": "Bridge input validation incomplete for integers, EVM addresses, and numeric amountRaw",
+      "original_issue": "FK verification incomplete for lot_id/source_lot_id and backup names",
       "status": "fixed",
-      "notes": "Validation now enforces integer checks and address/amount formats."
+      "notes": "verifyFkTargets still enforces lot-related FKs target credit_lots and flags any credit_lots-like backup names."
     },
     {
-      "original_issue": "accountId query param not validated as string; limit/offset allowed negative values",
+      "original_issue": "foreign_keys state not restored to prior value",
       "status": "fixed",
-      "notes": "accountId type check added; limit/offset are clamped to non-negative values."
-    },
-    {
-      "original_issue": "TBA bind endpoint did not validate tbaAddress format",
-      "status": "fixed",
-      "notes": "tbaAddress now validated as a 20-byte EVM address."
+      "notes": "FK state capture and restore in finally block remains intact."
     }
   ],
   "new_blocking_concerns": [],
-  "iteration": 2
+  "iteration": 3
 }
