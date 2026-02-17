@@ -13,7 +13,7 @@
 
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
-import { serializeBigInt } from '../../packages/core/protocol/arithmetic.js';
+import { serializeBigInt } from '../../packages/core/protocol/arrakis-arithmetic.js';
 import { logger } from '../../utils/logger.js';
 import type Database from 'better-sqlite3';
 

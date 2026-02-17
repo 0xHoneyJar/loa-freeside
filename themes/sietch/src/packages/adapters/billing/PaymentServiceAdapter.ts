@@ -32,7 +32,7 @@ import {
 import type { ICreditLedgerService } from '../../core/ports/ICreditLedgerService.js';
 import type { ICryptoPaymentProvider } from '../../core/ports/ICryptoPaymentProvider.js';
 import type { X402PaymentAdapter, X402VerificationResult } from './X402PaymentAdapter.js';
-import { dollarsToMicro } from '../../core/protocol/arithmetic.js';
+import { dollarsToMicro } from '../../core/protocol/arrakis-arithmetic.js';
 import { logger } from '../../../utils/logger.js';
 
 import { sqliteTimestamp } from './protocol/timestamps';

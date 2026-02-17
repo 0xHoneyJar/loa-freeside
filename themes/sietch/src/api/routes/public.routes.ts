@@ -10,7 +10,7 @@ import {
   publicRateLimiter,
   ValidationError,
 } from '../middleware.js';
-import { PROTOCOL_VERSION } from '../../packages/core/protocol/compatibility.js';
+import { CONTRACT_VERSION } from '../../packages/core/protocol/arrakis-compat.js';
 import {
   // SQLite queries (fallback)
   getCurrentEligibility,
@@ -153,7 +153,7 @@ publicRouter.get('/health', async (_req: Request, res: Response) => {
     last_successful_query: lastSuccessTime?.toISOString() ?? null,
     next_query: nextQuery.toISOString(),
     grace_period: health.inGracePeriod,
-    protocol_version: PROTOCOL_VERSION,
+    protocol_version: CONTRACT_VERSION,
   };
 
   // Use 200 even for degraded - it's still functioning

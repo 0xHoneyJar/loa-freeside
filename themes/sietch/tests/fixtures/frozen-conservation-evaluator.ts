@@ -1,5 +1,8 @@
 /**
- * Conservation Properties Module (Task 3.1, Sprint 297)
+ * FROZEN SNAPSHOT from pre-v7-migration-anchor (SHA: b6e10181150f03b0a8f24b9be30b1d7921613460). DO NOT MODIFY.
+ * Used for dual-run conservation validation in Sprint 302.
+ *
+ * Original: Conservation Properties Module (Task 3.1, Sprint 297)
  *
  * Formalizes all 14 conservation invariants as first-class temporal properties
  * with enforcement metadata, error taxonomy, and LTL specifications.

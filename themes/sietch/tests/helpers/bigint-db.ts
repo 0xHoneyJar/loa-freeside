@@ -8,7 +8,7 @@
  * Sprint refs: Task 3.2
  */
 
-import type { MicroUSD } from '../../src/packages/core/protocol/arithmetic.js';
+import type { MicroUSD } from '../../src/packages/core/protocol/arrakis-arithmetic.js';
 
 /**
  * Monetary column names in credit_lots rows.

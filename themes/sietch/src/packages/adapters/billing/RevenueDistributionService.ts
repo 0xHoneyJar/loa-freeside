@@ -20,8 +20,8 @@
 
 import { randomUUID } from 'crypto';
 import type Database from 'better-sqlite3';
-import { bpsShare, assertBpsSum } from '../../core/protocol/arithmetic.js';
-import type { MicroUSD, BasisPoints } from '../../core/protocol/arithmetic.js';
+import { bpsShare, assertBpsSum } from '../../core/protocol/arrakis-arithmetic.js';
+import type { MicroUSD, BasisPoints } from '../../core/protocol/arrakis-arithmetic.js';
 import { logger } from '../../../utils/logger.js';
 import type { IReferralService } from '../../core/ports/IReferralService.js';
 

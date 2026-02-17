@@ -21,7 +21,7 @@
 import { randomUUID } from 'crypto';
 import type Database from 'better-sqlite3';
 import { logger } from '../../../utils/logger.js';
-import type { MicroUSD } from '../../core/protocol/arithmetic.js';
+import type { MicroUSD } from '../../core/protocol/arrakis-arithmetic.js';
 import { sqliteTimestamp } from './protocol/timestamps.js';
 import type {
   IReconciliationService,

@@ -37,8 +37,8 @@ import type {
   HistoryOptions,
 } from '../../core/ports/ICreditLedgerService.js';
 import { DEFAULT_POOL } from '../../core/ports/ICreditLedgerService.js';
-import { assertMicroUSD } from '../../core/protocol/arithmetic.js';
-import type { MicroUSD } from '../../core/protocol/arithmetic.js';
+import { assertMicroUSD } from '../../core/protocol/arrakis-arithmetic.js';
+import type { MicroUSD } from '../../core/protocol/arrakis-arithmetic.js';
 import { logger } from '../../../utils/logger.js';
 
 // =============================================================================

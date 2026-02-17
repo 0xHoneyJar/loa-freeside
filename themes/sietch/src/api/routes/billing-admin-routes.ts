@@ -18,7 +18,7 @@ import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { randomUUID, createHmac, timingSafeEqual } from 'crypto';
 import { logger } from '../../utils/logger.js';
-import { serializeBigInt } from '../../packages/core/protocol/arithmetic.js';
+import { serializeBigInt } from '../../packages/core/protocol/arrakis-arithmetic.js';
 import type { ICampaignService, GrantInput } from '../../packages/core/ports/ICampaignService.js';
 import type { ICreditLedgerService } from '../../packages/core/ports/ICreditLedgerService.js';
 import type { IRevenueRulesService } from '../../packages/core/ports/IRevenueRulesService.js';

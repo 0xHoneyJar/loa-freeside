@@ -15,7 +15,7 @@ import {
   divideWithFloor,
   SafeArithmeticError,
   MAX_MICRO_USD,
-} from '../../../../src/packages/core/protocol/arithmetic.js';
+} from '../../../../src/packages/core/protocol/arrakis-arithmetic.js';
 
 // =============================================================================
 // SafeArithmeticError

@@ -17,7 +17,7 @@ import {
   divideWithFloor,
   MAX_MICRO_USD,
   SafeArithmeticError,
-} from '../protocol/arithmetic.js';
+} from '../protocol/arrakis-arithmetic.js';
 
 /** Minimum credit issuance: 0.001 USD in micro-USD */
 export const MIN_CREDIT_ISSUANCE = 1000n;

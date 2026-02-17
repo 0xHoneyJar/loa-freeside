@@ -1,13 +1,18 @@
 /**
- * Vendored loa-hounfour Protocol Types — Barrel Export
+ * Arrakis Protocol Types — Barrel Export
  *
- * Re-exports all protocol types for convenient imports:
- *   import { CreditBalance, GuardResult, STATE_MACHINES } from '../../protocol/index.js';
+ * Re-exports arrakis-specific protocol types and extensions.
+ * Canonical types should be imported directly from @0xhoneyjar/loa-hounfour.
+ *
+ * Extension modules:
+ *   arrakis-arithmetic.ts  — Branded types + arrakis arithmetic helpers
+ *   arrakis-compat.ts      — Protocol version negotiation + boundary normalization
+ *   arrakis-conservation.ts — Conservation error taxonomy adapter
  *
  * @module packages/core/protocol
  */
 
-// Billing domain types
+// Billing domain types (arrakis-specific)
 export type {
   AgentBillingConfig,
   CreditBalance,
@@ -24,7 +29,6 @@ export type {
   ProposeOpts,
 } from './billing-types.js';
 
-// Billing domain values (const arrays + helpers)
 export {
   ENTITY_TYPES,
   SOURCE_TYPES,
@@ -33,13 +37,13 @@ export {
   buildSourceTypeCheck,
 } from './billing-types.js';
 
-// Guard types
+// Guard types (arrakis-specific)
 export type {
   GuardResult,
   BillingGuardResponse,
 } from './guard-types.js';
 
-// State machine definitions
+// State machine definitions (arrakis-specific — different from v7.0.0 machines)
 export type {
   StateMachineDefinition,
   ReservationState,
@@ -56,14 +60,15 @@ export {
   STATE_MACHINES,
   isValidTransition,
   isTerminal,
+  VENDORED_FROM,
 } from './state-machines.js';
 
-// Arithmetic helpers + branded types
+// Arithmetic — re-export from arrakis extension module
 export type {
   MicroUSD,
   BasisPoints,
   AccountId,
-} from './arithmetic.js';
+} from './arrakis-arithmetic.js';
 
 export {
   microUSD,
@@ -85,12 +90,9 @@ export {
   serializeBigInt,
   bpsShare,
   assertBpsSum,
-} from './arithmetic.js';
+} from './arrakis-arithmetic.js';
 
-// State machine provenance
-export { VENDORED_FROM } from './state-machines.js';
-
-// Conservation properties
+// Conservation — re-export from arrakis extension module
 export type {
   ConservationErrorCode,
   ReconciliationFailureCode,
@@ -98,16 +100,37 @@ export type {
   EnforcementMechanism,
   PropertyUniverse,
   PropertyKind,
-} from './conservation-properties.js';
+} from './arrakis-conservation.js';
 
 export {
-  CONSERVATION_PROPERTIES,
   ConservationViolationError,
+  getCanonicalProperties,
   getProperty,
   getPropertiesByEnforcement,
-} from './conservation-properties.js';
+  CANONICAL_CONSERVATION_PROPERTIES,
+} from './arrakis-conservation.js';
 
-// JWT boundary — cross-system economic verification
+// Compatibility — re-export from arrakis extension module
+export {
+  CONTRACT_VERSION,
+  validateCompatibility,
+  negotiateVersion,
+  normalizeInboundClaims,
+  normalizeCoordinationMessage,
+  ClaimNormalizationError,
+  isV7NormalizationEnabled,
+} from './arrakis-compat.js';
+
+export type {
+  TrustScope,
+  TrustLevel,
+  NormalizedClaims,
+  VersionNegotiation,
+  CoordinationMessage,
+  NormalizedCoordinationMessage,
+} from './arrakis-compat.js';
+
+// JWT boundary — cross-system economic verification (arrakis-specific)
 export type {
   JwtErrorCode,
   OutboundClaims,
@@ -122,15 +145,7 @@ export {
   verifyUsageJWT,
 } from './jwt-boundary.js';
 
-// Compatibility check
-export {
-  PROTOCOL_VERSION,
-  validateCompatibility,
-} from './compatibility.js';
-
-export type { CompatibilityResult } from './compatibility.js';
-
-// Atomic counter primitive
+// Atomic counter primitive (arrakis-specific)
 export type {
   ICounterBackend,
   IAtomicCounter,
@@ -139,7 +154,7 @@ export type {
 
 export { createAtomicCounter } from './atomic-counter.js';
 
-// Identity trust
+// Identity trust (arrakis-specific)
 export type {
   IdentityTrustConfig,
   IdentityCheckResult,
@@ -153,7 +168,7 @@ export {
   verifyIdentityAnchor,
 } from './identity-trust.js';
 
-// BillingEntry — loa-hounfour protocol type
+// BillingEntry — arrakis schema (different from v7.0.0 BillingEntry)
 export type {
   BillingEntry,
 } from './billing-entry.js';
@@ -162,7 +177,7 @@ export {
   BILLING_ENTRY_CONTRACT_VERSION,
 } from './billing-entry.js';
 
-// Config schema registry
+// Config schema registry (arrakis-specific)
 export type {
   ParamSchema,
   ValidationResult,

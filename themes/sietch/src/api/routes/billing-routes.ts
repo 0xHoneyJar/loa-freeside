@@ -19,8 +19,8 @@ import { z } from 'zod';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { requireAuth } from '../middleware/auth.js';
 import { memberRateLimiter } from '../middleware.js';
-import { serializeBigInt } from '../../packages/core/protocol/arithmetic.js';
-import { PROTOCOL_VERSION, validateCompatibility } from '../../packages/core/protocol/compatibility.js';
+import { serializeBigInt } from '../../packages/core/protocol/arrakis-arithmetic.js';
+import { CONTRACT_VERSION, validateCompatibility } from '../../packages/core/protocol/arrakis-compat.js';
 import { verifyIdentityAnchor } from '../../packages/core/protocol/identity-trust.js';
 import { fromFinalizeResult } from '../../packages/adapters/billing/billing-entry-mapper.js';
 import { s2sFinalizeRequestSchema, historyQuerySchema } from '../../packages/core/contracts/s2s-billing.js';
@@ -371,28 +371,20 @@ creditBillingRouter.post(
     // Protocol version compatibility check (Sprint 10, Task 1.4)
     const remoteVersion = req.headers['x-protocol-version'] as string | undefined;
     if (remoteVersion) {
-      const compat = validateCompatibility(PROTOCOL_VERSION, remoteVersion);
+      const compat = validateCompatibility(remoteVersion);
       if (!compat.compatible) {
         logger.warn({
           event: 'billing.s2s.finalize.version_mismatch',
-          localVersion: PROTOCOL_VERSION,
+          localVersion: CONTRACT_VERSION,
           remoteVersion,
-          level: compat.level,
-        }, compat.message);
+        }, compat.error || 'Version incompatible');
         res.status(422).json({
           error: 'Protocol Version Mismatch',
-          message: compat.message,
-          localVersion: PROTOCOL_VERSION,
+          message: compat.error || 'Version incompatible',
+          localVersion: CONTRACT_VERSION,
           remoteVersion,
         });
         return;
-      }
-      if (compat.level === 'minor_compatible') {
-        logger.info({
-          event: 'billing.s2s.finalize.version_drift',
-          localVersion: PROTOCOL_VERSION,
-          remoteVersion,
-        }, compat.message);
       }
     }
 

@@ -17,12 +17,12 @@ import {
   subtractMicroUSD,
   assertMicroUSD,
   assertBpsSum,
-} from '../../../src/packages/core/protocol/arithmetic.js';
+} from '../../../src/packages/core/protocol/arrakis-arithmetic.js';
 import type {
   MicroUSD,
   BasisPoints,
   AccountId,
-} from '../../../src/packages/core/protocol/arithmetic.js';
+} from '../../../src/packages/core/protocol/arrakis-arithmetic.js';
 
 // =============================================================================
 // Compile-Time Safety

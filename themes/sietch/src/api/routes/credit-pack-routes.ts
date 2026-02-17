@@ -21,7 +21,7 @@ import { createHash } from 'crypto';
 import { z } from 'zod';
 import { requireAuth } from '../middleware/auth.js';
 import { memberRateLimiter } from '../middleware.js';
-import { serializeBigInt } from '../../packages/core/protocol/arithmetic.js';
+import { serializeBigInt } from '../../packages/core/protocol/arrakis-arithmetic.js';
 import {
   resolveCreditPack,
   DEFAULT_MARKUP_FACTOR,

@@ -19,7 +19,7 @@ import { logger } from '../../../utils/logger.js';
 import { sqliteTimestamp } from './protocol/timestamps';
 import type { IConstitutionalGovernanceService } from '../../core/ports/IConstitutionalGovernanceService.js';
 import type { EntityType } from '../../core/protocol/billing-types.js';
-import type { MicroUSD } from '../../core/protocol/arithmetic.js';
+import type { MicroUSD } from '../../core/protocol/arrakis-arithmetic.js';
 import { CONFIG_FALLBACKS } from '../../core/protocol/config-schema.js';
 import { BillingEventEmitter } from './BillingEventEmitter.js';
 

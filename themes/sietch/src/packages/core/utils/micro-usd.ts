@@ -19,4 +19,4 @@ export {
   bpsShare,
   assertBpsSum,
   TOTAL_BPS,
-} from '../protocol/arithmetic.js';
+} from '../protocol/arrakis-arithmetic.js';

@@ -21,7 +21,7 @@ import {
 } from '../../../src/packages/core/billing/credit-packs.js';
 import { MockPaymentVerifier } from '../../../src/packages/adapters/billing/MockPaymentVerifier.js';
 import type { PaymentProof } from '../../../src/packages/core/ports/IPaymentVerifier.js';
-import { SafeArithmeticError, MAX_MICRO_USD } from '../../../src/packages/core/protocol/arithmetic.js';
+import { SafeArithmeticError, MAX_MICRO_USD } from '../../../src/packages/core/protocol/arrakis-arithmetic.js';
 import Database from 'better-sqlite3';
 import { CREDIT_LEDGER_SCHEMA_SQL } from '../../../src/db/migrations/030_credit_ledger.js';
 import { CREDIT_LOT_PURCHASES_SCHEMA_SQL } from '../../../src/db/migrations/040_credit_lot_purchases.js';
