@@ -89,8 +89,18 @@ const TRUST_LEVEL_TO_SCOPES: Record<TrustLevel, readonly TrustScope[]> = {
   6: ['billing:read', 'billing:write', 'agent:invoke', 'agent:manage'],
   7: ['billing:read', 'billing:write', 'agent:invoke', 'agent:manage', 'governance:propose'],
   8: ['billing:read', 'billing:write', 'agent:invoke', 'agent:manage', 'governance:propose', 'governance:vote'],
+  // Level 9 intentionally identical to level 8: admin:full ceiling cap (SDD §3.6).
+  // The highest legacy trust_level still cannot escalate to admin:full.
   9: ['billing:read', 'billing:write', 'agent:invoke', 'agent:manage', 'governance:propose', 'governance:vote'],
 };
+
+/** Runtime-valid trust scopes for defense-in-depth validation (F-6). */
+const VALID_SCOPES = new Set<TrustScope>([
+  'billing:read', 'billing:write', 'billing:admin',
+  'agent:invoke', 'agent:manage', 'agent:admin',
+  'governance:propose', 'governance:vote', 'governance:admin',
+  'admin:full',
+]);
 
 // =============================================================================
 // Inbound Claim Normalization
@@ -131,6 +141,14 @@ export function normalizeInboundClaims(claims: {
   if (!isV7NormalizationEnabled()) {
     // Feature flag disabled — pass through without normalization
     if (claims.trust_scopes && claims.trust_scopes.length > 0) {
+      // Security invariant: always block admin:full regardless of feature flag state.
+      // The privilege escalation guard is not a normalization behavior.
+      if ((claims.trust_scopes as string[]).includes('admin:full')) {
+        throw new ClaimNormalizationError(
+          'PRIVILEGE_ESCALATION',
+          'Inbound token cannot contain admin:full scope'
+        );
+      }
       return { trust_scopes: claims.trust_scopes as TrustScope[], source: 'v7_native' };
     }
     if (claims.trust_level !== undefined) {
@@ -166,6 +184,14 @@ export function normalizeInboundClaims(claims: {
       throw new ClaimNormalizationError(
         'PRIVILEGE_ESCALATION',
         'Inbound token cannot contain admin:full scope'
+      );
+    }
+    // Runtime scope validation: reject unknown scopes (defense-in-depth)
+    const unknownScopes = scopes.filter(s => !VALID_SCOPES.has(s));
+    if (unknownScopes.length > 0) {
+      throw new ClaimNormalizationError(
+        'UNKNOWN_SCOPE',
+        `Unknown trust scopes: ${unknownScopes.join(', ')}`
       );
     }
     return { trust_scopes: scopes, source: 'v7_native' };
@@ -257,7 +283,15 @@ export function normalizeCoordinationMessage(
     );
   }
 
-  // Validate compatibility with canonical function
+  // Validate compatibility with canonical function.
+  // For versions in the local transition window (v4.6.0), skip canonical validation
+  // because canonical MIN_SUPPORTED_VERSION=6.0.0 rejects v4.6.0. The local
+  // supported set check above already gates which versions we accept.
+  const LOCAL_TRANSITION_VERSIONS = new Set(['4.6.0']);
+  if (LOCAL_TRANSITION_VERSIONS.has(message.version)) {
+    return { version: message.version, type: message.type, payload: message.payload };
+  }
+
   const compat = validateCompatibility(message.version);
   if (!compat.compatible) {
     throw new ClaimNormalizationError(

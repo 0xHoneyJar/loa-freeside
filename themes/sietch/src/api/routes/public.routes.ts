@@ -167,6 +167,7 @@ publicRouter.get('/health', async (_req: Request, res: Response) => {
  */
 publicRouter.get('/api/v1/compat', (_req: Request, res: Response) => {
   const negotiation = negotiateVersion();
+  res.setHeader('Cache-Control', 'public, max-age=3600');
   res.json({
     preferred: negotiation.preferred,
     supported: [...negotiation.supported],

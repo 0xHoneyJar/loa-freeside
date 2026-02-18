@@ -20,7 +20,7 @@
 
 import { randomUUID } from 'crypto';
 import type Database from 'better-sqlite3';
-import { bpsShare, assertBpsSum } from '../../core/protocol/arrakis-arithmetic.js';
+import { multiplyBPS, assertBpsSum } from '../../core/protocol/arrakis-arithmetic.js';
 import type { MicroUSD, BasisPoints } from '../../core/protocol/arrakis-arithmetic.js';
 import { logger } from '../../../utils/logger.js';
 import type { IReferralService } from '../../core/ports/IReferralService.js';
@@ -173,15 +173,16 @@ export class RevenueDistributionService {
     const effectiveReferrerBps = referrerBps ?? 0n;
 
     // Floor each share via BigInt integer division
-    const referrerShare = bpsShare(chargeMicro, effectiveReferrerBps);
-    const commonsShare = bpsShare(chargeMicro, config.commonsRateBps);
-    const communityShare = bpsShare(chargeMicro, config.communityRateBps);
+    // Cast to branded types — chargeMicro is MicroUSD, BPS configs are BasisPoints
+    const referrerShare = multiplyBPS(chargeMicro as MicroUSD, effectiveReferrerBps as BasisPoints);
+    const commonsShare = multiplyBPS(chargeMicro as MicroUSD, config.commonsRateBps as BasisPoints);
+    const communityShare = multiplyBPS(chargeMicro as MicroUSD, config.communityRateBps as BasisPoints);
 
     // Foundation gross = total - referrer - commons - community
     const foundationGross = chargeMicro - referrerShare - commonsShare - communityShare;
 
     // Treasury reserve from foundation gross (not additive to total)
-    const treasuryReserve = bpsShare(foundationGross, config.treasuryReserveBps);
+    const treasuryReserve = multiplyBPS(foundationGross as MicroUSD, config.treasuryReserveBps as BasisPoints);
 
     // Foundation net absorbs all remainder — exact conservation
     const foundationShare = foundationGross - treasuryReserve;

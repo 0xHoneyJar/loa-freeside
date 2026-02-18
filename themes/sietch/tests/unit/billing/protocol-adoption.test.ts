@@ -14,7 +14,7 @@ import {
   assertMicroUSD,
   serializeBigInt,
   microUsdSchema,
-  bpsShare,
+  multiplyBPS,
   assertBpsSum,
   TOTAL_BPS,
   MICRO_USD_PER_DOLLAR,
@@ -173,17 +173,17 @@ describe('protocol/arithmetic', () => {
   });
 
   describe('BPS arithmetic', () => {
-    it('calculates basis point share', () => {
-      // 25% of $1
-      expect(bpsShare(1_000_000n, 2500n)).toBe(250_000n);
+    it('calculates basis point share (multiplyBPS)', () => {
+      // 25% of $1: (1_000_000 * 2500) / 10000 = 250_000
+      expect(multiplyBPS(1_000_000n, 2500n)).toBe(250_000n);
     });
 
     it('handles zero BPS', () => {
-      expect(bpsShare(1_000_000n, 0n)).toBe(0n);
+      expect(multiplyBPS(1_000_000n, 0n)).toBe(0n);
     });
 
     it('handles 100% BPS', () => {
-      expect(bpsShare(1_000_000n, TOTAL_BPS)).toBe(1_000_000n);
+      expect(multiplyBPS(1_000_000n, TOTAL_BPS)).toBe(1_000_000n);
     });
 
     it('assertBpsSum passes for valid split', () => {

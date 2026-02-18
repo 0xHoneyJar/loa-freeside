@@ -154,6 +154,15 @@ describe('Backward Compatibility Integration Tests (Task 302.5)', () => {
         expect(e.code).toBe('PRIVILEGE_ESCALATION');
       }
     });
+
+    it('rejects unknown trust scopes (UNKNOWN_SCOPE)', () => {
+      try {
+        normalizeInboundClaims({ trust_scopes: ['billing:read', 'system:root'] });
+      } catch (e: any) {
+        expect(e.code).toBe('UNKNOWN_SCOPE');
+        expect(e.message).toContain('system:root');
+      }
+    });
   });
 
   // ===========================================================================
@@ -167,10 +176,16 @@ describe('Backward Compatibility Integration Tests (Task 302.5)', () => {
       expect(isV7NormalizationEnabled()).toBe(false);
     });
 
-    it('trust_scopes pass through without admin:full check when disabled', () => {
-      // When normalization is disabled, admin:full is NOT blocked
-      const result = normalizeInboundClaims({ trust_scopes: ['admin:full', 'billing:read'] });
-      expect(result.trust_scopes).toContain('admin:full');
+    it('admin:full is always blocked even when normalization disabled', () => {
+      // Security invariant: admin:full check is independent of feature flag
+      expect(() => normalizeInboundClaims({ trust_scopes: ['admin:full', 'billing:read'] }))
+        .toThrow(ClaimNormalizationError);
+    });
+
+    it('valid trust_scopes pass through when normalization disabled', () => {
+      const result = normalizeInboundClaims({ trust_scopes: ['billing:read', 'agent:invoke'] });
+      expect(result.trust_scopes).toContain('billing:read');
+      expect(result.source).toBe('v7_native');
     });
 
     it('trust_level maps to default scopes when disabled', () => {

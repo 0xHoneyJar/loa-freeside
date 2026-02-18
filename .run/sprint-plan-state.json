@@ -1,31 +1,33 @@
 {
   "plan_id": "plan-20260218-cycle034",
   "branch": "feature/creator-economy-release",
-  "state": "RUNNING",
+  "state": "JACKED_OUT",
   "timestamps": {
     "started": "2026-02-17T22:12:00Z",
-    "last_activity": "2026-02-18T13:00:00Z"
+    "last_activity": "2026-02-18T16:15:00Z",
+    "completed": "2026-02-18T16:15:00Z"
   },
   "sprints": {
-    "total": 4,
-    "completed": 3,
-    "current": "sprint-303",
+    "total": 5,
+    "completed": 5,
+    "current": null,
     "list": [
       {"id": "sprint-300", "status": "completed", "cycles": 1, "files_changed": 21},
       {"id": "sprint-301", "status": "completed", "cycles": 1, "files_changed": 27},
       {"id": "sprint-302", "status": "completed", "cycles": 1, "files_changed": 8},
-      {"id": "sprint-303", "status": "in_progress", "cycles": 0}
+      {"id": "sprint-303", "status": "completed", "cycles": 1, "files_changed": 8},
+      {"id": "sprint-304", "status": "completed", "cycles": 1, "files_changed": 6}
     ]
   },
   "options": {
     "from": 300,
-    "to": 303,
+    "to": 304,
     "max_cycles": 20,
     "timeout_hours": 8
   },
   "metrics": {
-    "total_cycles": 3,
-    "total_files_changed": 56,
-    "total_findings_fixed": 0
+    "total_cycles": 5,
+    "total_files_changed": 70,
+    "total_findings_fixed": 12
   }
 }
