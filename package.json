@@ -7,7 +7,7 @@
     "@0xhoneyjar/loa-hounfour": "github:0xHoneyJar/loa-hounfour#d091a3c0d4802402825fc7765bcc888f2477742f",
     "@types/express": "^5.0.6",
     "@types/supertest": "^6.0.3",
-    "ajv": "^8.17.1",
+    "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1",
     "express": "^5.2.1",
     "jose": "^6.1.3",
