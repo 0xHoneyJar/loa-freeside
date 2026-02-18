@@ -1,45 +1,43 @@
 {
-  "verdict": "CHANGES_REQUIRED",
-  "summary": "Most prior blockers were addressed (S2S boundary/JWKS, webhook ingress+idempotency, Discord thread feasibility, widget auth, Prometheus-on-Fargate), but one personality-bridge fix introduced a direct contradiction that is truly blocking for implementation.",
+  "verdict": "APPROVED",
+  "summary": "All previously blocking inconsistencies (auth, tenancy, billing primitive, dogfood gating, contract source of truth, SLA language, and BYOK metering) are now explicitly surfaced as decisions with coherent recommended paths, and no new truly blocking issues were introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "Auth boundary between loa-freeside and loa-finn (S2S JWT ES256) was underspecified/inconsistent (JWKS hosting, rotation, internal-only vs public).",
+      "original_issue": "Auth model contradictory (JWT/JWKS vs API keys) causing onboarding/SDK/CLI ambiguity",
       "status": "fixed",
-      "notes": "Now explicitly states finn is internal-only, SG allows inbound only from freeside, JWKS hosted by freeside (issuer), includes iss/aud/TTL, and defines rotation via Secrets Manager + scheduled Lambda. This resolves the original contradiction and is production-implementable on ECS."
+      "notes": "Added D1 with clear options (API key primary, OAuth/OIDC primary, hybrid) and an explicit recommended hybrid pattern (API key for S2S + OAuth for portal) mapping both to internal JWT. This resolves the contradiction and makes the implementation path explicit."
     },
     {
-      "original_issue": "NOWPayments webhook ingress not concretely defined for ALB/TLS + idempotency semantics ambiguous (risk double-mint).",
+      "original_issue": "Undefined/ambiguous account model (community vs developer/project/NFT collection) breaking onboarding/billing/isolation",
       "status": "fixed",
-      "notes": "Defines a stable public HTTPS endpoint on freeside (`POST https://api.{domain}/api/crypto/webhook`), HMAC-SHA512 verification, and idempotency keyed on `payment_id` with UNIQUE constraint + replay behavior. This is sufficient to ship payments safely."
+      "notes": "Added D2 with a canonical hierarchy (Account → Project → optional Community → End-user) and explicitly moves budgets/rate limits to Project, with communities as optional sub-resources. This directly addresses the tenancy join-key ambiguity."
     },
     {
-      "original_issue": "“Private to holder” Discord thread likely infeasible; permission model/fallback missing.",
+      "original_issue": "Billing requirements conflicted (prepaid topups vs subscription+overage) with no ledger/enforcement clarity",
       "status": "fixed",
-      "notes": "Requirement now uses public thread with bot-enforced gating by default, and private threads only when server supports them, with explicit fallback. This is implementable and matches Discord constraints."
+      "notes": "Added D3 with explicit billing primitives and a recommended MVP path (prepaid first, postpaid later for enterprise), aligned to existing enforcement (budget engine hard stops) and existing endpoints/flags. This is sufficient to launch paid self-serve without internal contradiction."
     },
     {
-      "original_issue": "Personality bridge ownership/call flow unclear (freeside calling finn personality endpoint vs ‘route through bridge’).",
-      "status": "not_fixed",
-      "notes": "You correctly chose a single source of truth (finn owns personality derivation) and removed the need for a separate personality lookup endpoint in the Track 2 narrative. However, the Dependency table still lists a required `GET /api/v1/nft/:tokenId/personality` endpoint, and the Dependency Graph still says “FR-2.1: Personality lookup client” / “FR-2.3: System prompt injection,” which contradicts the stated approach (freeside passes nft_id; finn derives personality inside inference). This contradiction will cause the team to build the wrong interface and block integration."
+      "original_issue": "Dogfooding success criteria depended on 'public API' components not guaranteed to exist before Pillar 2",
+      "status": "fixed",
+      "notes": "Added D4 defining a minimal 'Public API MVP Gate' and updates sequencing to Phase 1.0 → Phase 2 → Phase 1.1 iteration. This prevents false-positive dogfood validation via internal shortcuts."
     },
     {
-      "original_issue": "Web chat widget auth/gating undefined; risk of leaking API keys in browser or bypassing token gating.",
+      "original_issue": "API contract source of truth unclear (Zod vs OpenAPI vs NATS schemas vs ports), risking spec drift",
       "status": "fixed",
-      "notes": "Defines SIWE → server-issued short-lived session token, explicitly forbids API keys in browser, and provides a community-embedded server-side key option plus read-only unauthenticated mode. This is a viable MVP security model."
+      "notes": "Added D5 declaring Zod REST schemas as canonical for external API, with CI conformance and NATS schemas explicitly internal-only; SDK types generated from OpenAPI. This resolves the drift risk at the strategy level."
     },
     {
-      "original_issue": "Prometheus requirement lacked a viable ECS/Fargate scraping architecture.",
+      "original_issue": "99.9% SLA commitment without operational definition/controls created legal/expectation risk",
       "status": "fixed",
-      "notes": "Specifies AMP + ADOT sidecars using ECS task metadata discovery, with CloudWatch Container Insights retained. This is an AWS-supported pattern and meets the 60s alerting goal."
+      "notes": "Added D6 to defer contractual SLA to Phase 3 and publish SLOs first with required operational prerequisites and explicit exclusions. This removes the premature SLA blocker."
+    },
+    {
+      "original_issue": "BYOK 'key never seen' promise conflicted with metering/budget enforcement; unclear operating mode",
+      "status": "fixed",
+      "notes": "Added D7 specifying proxy-mode token metering with deny-by-default content redaction, and clarifies what is/ isn’t observed plus what must be documented as a trust policy. This resolves the metering vs BYOK tension for MVP."
     }
   ],
-  "new_blocking_concerns": [
-    {
-      "location": "Section 7 'Cross-Repo Dependencies' + Section 8 'Dependency Graph' vs Track 2 'PERSONALITY OWNERSHIP' and FR-2.1 wording",
-      "description": "Personality bridge is internally contradictory: the PRD says no separate personality lookup endpoint is needed and finn derives personality inside inference, but dependencies/graph still require a `GET /api/v1/nft/:tokenId/personality` endpoint and describe a 'personality lookup client'.",
-      "why_blocking": "This will misdirect implementation across repos: freeside engineers may build a client and routing around a personality endpoint that the Track 2 design explicitly says should not exist, while finn engineers may not implement it. That mismatch blocks integration testing for #80 and cascades into #81/#85 (Discord threads + web chat) because both rely on the personality bridge being callable in the agreed way.",
-      "fix": "Make the document consistent with the chosen model (finn owns derivation inside inference): (1) Remove/replace the dependency row that names `GET /api/v1/nft/:tokenId/personality` with 'Personality derivation within inference endpoint (returns X-Pool-Used/X-Personality-Id)'. (2) Update the dependency graph nodes under Track 2 to reflect 'FR-2.1: Inference request enrichment (nft_id in JWT)' and 'FR-2.2: Pool/personality metadata headers' (and remove 'personality lookup client' / 'system prompt injection' if prompts are fully on finn). (3) Optionally tighten FR-2.1 acceptance criteria to state explicitly that freeside does not call a personality endpoint; it only passes nft_id/tier/budget_reservation_id and finn returns metadata."
-    }
-  ],
+  "new_blocking_concerns": [],
   "iteration": 2
 }
