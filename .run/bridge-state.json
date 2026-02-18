@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "bridge_id": "bridge-20260218-66a168",
-  "state": "JACKED_OUT",
+  "bridge_id": "bridge-20260218-1869a0de",
+  "state": "ITERATING",
   "config": {
     "depth": 3,
     "mode": "full",
@@ -11,74 +11,49 @@
     "repo": ""
   },
   "timestamps": {
-    "started": "2026-02-17T22:07:33Z",
-    "last_activity": "2026-02-18T16:35:00Z",
-    "completed": "2026-02-18T16:35:00Z"
+    "started": "2026-02-18T16:45:00Z",
+    "last_activity": "2026-02-18T17:25:00Z"
   },
   "iterations": [
     {
       "iteration": 1,
-      "state": "review_complete",
-      "sprint_plan_source": "existing",
-      "sprints_executed": 4,
-      "bridgebuilder": {
-        "total_findings": 15,
-        "by_severity": { "critical": 0, "high": 1, "medium": 2, "low": 4, "vision": 0, "praise": 7 },
-        "severity_weighted_score": 14,
-        "pr_comment_url": null
-      },
-      "enrichment": {
-        "persona_loaded": true,
-        "persona_validation": "complete",
-        "findings_format": "json",
-        "field_fill_rates": { "faang_parallel": 0, "metaphor": 0, "teachable_moment": 0, "connection": 0 },
-        "praise_count": 7,
-        "insights_size_bytes": 27648,
-        "redactions_applied": 0
-      },
-      "visions_captured": 0,
-      "started_at": "2026-02-17T22:10:00Z",
-      "updated_at": "2026-02-18T15:45:00Z"
-    },
-    {
-      "iteration": 2,
-      "state": "review_complete",
+      "state": "sprint_complete",
       "sprint_plan_source": "findings",
       "sprints_executed": 1,
       "bridgebuilder": {
-        "total_findings": 2,
-        "by_severity": { "critical": 0, "high": 0, "medium": 0, "low": 2, "vision": 0, "praise": 0 },
-        "severity_weighted_score": 0,
+        "total_findings": 14,
+        "by_severity": { "critical": 0, "high": 0, "medium": 2, "low": 4, "vision": 0, "praise": 8 },
+        "severity_weighted_score": 8,
         "pr_comment_url": null
       },
       "enrichment": {
-        "persona_loaded": true,
-        "persona_validation": "complete",
-        "findings_format": "json",
+        "persona_loaded": false,
+        "persona_validation": "pending",
+        "findings_format": "structured",
         "field_fill_rates": { "faang_parallel": 0, "metaphor": 0, "teachable_moment": 0, "connection": 0 },
-        "praise_count": 0,
-        "insights_size_bytes": 4096,
+        "praise_count": 8,
+        "insights_size_bytes": 0,
         "redactions_applied": 0
       },
       "visions_captured": 0,
-      "started_at": "2026-02-18T15:45:00Z",
-      "updated_at": "2026-02-18T16:35:00Z"
+      "started_at": "2026-02-18T16:45:00Z",
+      "updated_at": "2026-02-18T17:25:00Z"
     }
   ],
   "flatline": {
-    "initial_score": 14,
-    "last_score": 0,
-    "consecutive_below_threshold": 1
+    "initial_score": 8,
+    "last_score": 8,
+    "consecutive_below_threshold": 0
   },
   "metrics": {
-    "total_sprints_executed": 5,
-    "total_files_changed": 72,
-    "total_findings_addressed": 14,
+    "total_sprints_executed": 1,
+    "total_files_changed": 8,
+    "total_findings_addressed": 6,
     "total_visions_captured": 0
   },
   "finalization": {
-    "ground_truth_updated": true,
-    "rtfm_passed": true,
+    "ground_truth_updated": false,
+    "rtfm_passed": false,
     "pr_url": null,
     "butterfreezone_generated": false
   }

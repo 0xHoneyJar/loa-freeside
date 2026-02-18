@@ -4,7 +4,7 @@
  * Shared type definitions for cross-system billing between arrakis and loa-finn.
  * These types represent the wire format and domain concepts shared by both systems.
  *
- * Vendored from: loa-hounfour (pinned commit — see VENDORED.md)
+ * Vendored from: loa-hounfour (pinned commit, see @0xhoneyjar/loa-hounfour v7.0.0)
  *
  * @module packages/core/protocol/billing-types
  */

@@ -4,7 +4,7 @@
  * Canonical state machine definitions shared between arrakis and loa-finn.
  * Each state machine defines allowed transitions and terminal states.
  *
- * Vendored from: loa-hounfour (pinned commit — see VENDORED.md)
+ * Vendored from: loa-hounfour (pinned commit, see @0xhoneyjar/loa-hounfour v7.0.0)
  *
  * @module packages/core/protocol/state-machines
  */

@@ -94,6 +94,9 @@ const TRUST_LEVEL_TO_SCOPES: Record<TrustLevel, readonly TrustScope[]> = {
   9: ['billing:read', 'billing:write', 'agent:invoke', 'agent:manage', 'governance:propose', 'governance:vote'],
 };
 
+/** Versions in the local transition window that bypass canonical validateCompatibility. */
+const LOCAL_TRANSITION_VERSIONS = new Set(['4.6.0']);
+
 /** Runtime-valid trust scopes for defense-in-depth validation (F-6). */
 const VALID_SCOPES = new Set<TrustScope>([
   'billing:read', 'billing:write', 'billing:admin',
@@ -160,6 +163,13 @@ export function normalizeInboundClaims(claims: {
       return { trust_scopes: claims.trust_scopes as TrustScope[], source: 'v7_native' };
     }
     if (claims.trust_level !== undefined) {
+      const level = claims.trust_level;
+      if (!Number.isInteger(level) || level < 0 || level > 9) {
+        throw new ClaimNormalizationError(
+          'INVALID_TRUST_LEVEL',
+          `trust_level must be integer in [0, 9], got ${level}`
+        );
+      }
       return { trust_scopes: ['billing:read', 'agent:invoke'] as TrustScope[], source: 'v4_mapped' };
     }
     throw new ClaimNormalizationError('NO_AUTHORITY', 'Token has neither trust_level nor trust_scopes');
@@ -262,11 +272,18 @@ export function normalizeCoordinationMessage(
   message: CoordinationMessage
 ): NormalizedCoordinationMessage {
   if (!isV7NormalizationEnabled()) {
-    // Feature flag disabled — require version but allow any supported version
+    // Feature flag disabled — require version and validate against supported set
     if (!message.version) {
       throw new ClaimNormalizationError(
         'MISSING_VERSION',
         'Coordination message missing version discriminator (even with normalization disabled, version is required)'
+      );
+    }
+    const { supported } = negotiateVersion();
+    if (!supported.includes(message.version)) {
+      throw new ClaimNormalizationError(
+        'UNSUPPORTED_VERSION',
+        `Coordination message version ${message.version} not in supported set [${supported.join(', ')}]`
       );
     }
     return { version: message.version, type: message.type, payload: message.payload };
@@ -295,7 +312,6 @@ export function normalizeCoordinationMessage(
   // For versions in the local transition window (v4.6.0), skip canonical validation
   // because canonical MIN_SUPPORTED_VERSION=6.0.0 rejects v4.6.0. The local
   // supported set check above already gates which versions we accept.
-  const LOCAL_TRANSITION_VERSIONS = new Set(['4.6.0']);
   if (LOCAL_TRANSITION_VERSIONS.has(message.version)) {
     return { version: message.version, type: message.type, payload: message.payload };
   }

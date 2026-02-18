@@ -123,14 +123,22 @@ const RECON_CODE_MAP: Record<string, ReconciliationFailureCode> = {
  */
 export function fromCanonical(canonical: CanonicalConservationProperty): ConservationProperty {
   const id = canonical.invariant_id;
+  const universe = UNIVERSE_MAP[canonical.universe];
+  if (!universe) {
+    console.warn(`[arrakis-conservation] Unmapped canonical universe '${canonical.universe}' for ${id}, defaulting to 'platform-wide'`);
+  }
+  const enforcement = ENFORCEMENT_MAP[canonical.enforcement];
+  if (!enforcement) {
+    console.warn(`[arrakis-conservation] Unmapped canonical enforcement '${canonical.enforcement}' for ${id}, defaulting to 'Application'`);
+  }
   return {
     id,
     name: canonical.name,
     description: canonical.description,
     ltl: canonical.ltl_formula,
-    universe: UNIVERSE_MAP[canonical.universe] || 'platform-wide',
+    universe: universe || 'platform-wide',
     kind: canonical.severity === 'warning' ? 'liveness' : 'safety',
-    enforcedBy: [ENFORCEMENT_MAP[canonical.enforcement] || 'Application'],
+    enforcedBy: [enforcement || 'Application'],
     expectedErrorCode: ERROR_CODE_MAP[id],
     reconciliationFailureCode: RECON_CODE_MAP[id],
   };

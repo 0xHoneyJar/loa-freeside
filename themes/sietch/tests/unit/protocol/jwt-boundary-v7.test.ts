@@ -353,8 +353,8 @@ describe('JWT Claim Schema Migration -- trust_scopes (Task 302.3)', () => {
     });
 
     it('passes through trust_scopes without validation when disabled', () => {
-      // When disabled, trust_scopes are passed through as-is -- even admin:full
-      // is NOT blocked (normalization is off)
+      // When disabled, trust_scopes are passed through — but admin:full and
+      // unknown scopes are STILL blocked (security invariants survive flag state)
       const scopes = ['billing:read', 'agent:invoke'];
       const result = normalizeInboundClaims({ trust_scopes: scopes });
       expect(result.source).toBe('v7_native');
@@ -375,6 +375,12 @@ describe('JWT Claim Schema Migration -- trust_scopes (Task 302.3)', () => {
       const result9 = normalizeInboundClaims({ trust_level: 9 });
       expect(result0.trust_scopes).toEqual(result9.trust_scopes);
       expect(result0.trust_scopes).toEqual(['billing:read', 'agent:invoke']);
+    });
+
+    it('rejects out-of-range trust_level even when disabled', () => {
+      expectNormalizationError({ trust_level: -1 }, 'INVALID_TRUST_LEVEL');
+      expectNormalizationError({ trust_level: 10 }, 'INVALID_TRUST_LEVEL');
+      expectNormalizationError({ trust_level: 1.5 }, 'INVALID_TRUST_LEVEL');
     });
 
     it('still rejects NO_AUTHORITY even when disabled', () => {

@@ -5,7 +5,7 @@
  * loa-finn calls billing guards before executing inference; arrakis
  * implements the guards and returns these types.
  *
- * Vendored from: loa-hounfour (pinned commit — see VENDORED.md)
+ * Vendored from: loa-hounfour (pinned commit, see @0xhoneyjar/loa-hounfour v7.0.0)
  *
  * @module packages/core/protocol/guard-types
  */

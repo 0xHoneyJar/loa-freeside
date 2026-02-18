@@ -209,6 +209,27 @@ describe('Backward Compatibility Integration Tests (Task 302.5)', () => {
       expect(() => normalizeCoordinationMessage({ type: 'ping', payload: {} } as any))
         .toThrow(ClaimNormalizationError);
     });
+
+    it('coordination rejects unsupported version even when disabled', () => {
+      expect(() => normalizeCoordinationMessage({ version: '2.0.0', type: 'ping', payload: {} }))
+        .toThrow(ClaimNormalizationError);
+      try {
+        normalizeCoordinationMessage({ version: '2.0.0', type: 'ping', payload: {} });
+      } catch (e: any) {
+        expect(e.code).toBe('UNSUPPORTED_VERSION');
+      }
+    });
+
+    it('coordination accepts supported versions when disabled', () => {
+      const result = normalizeCoordinationMessage({ version: '4.6.0', type: 'heartbeat', payload: {} });
+      expect(result.version).toBe('4.6.0');
+    });
+
+    it('rejects out-of-range trust_level even when disabled', () => {
+      expect(() => normalizeInboundClaims({ trust_level: -1 })).toThrow(ClaimNormalizationError);
+      expect(() => normalizeInboundClaims({ trust_level: 10 })).toThrow(ClaimNormalizationError);
+      expect(() => normalizeInboundClaims({ trust_level: 1.5 })).toThrow(ClaimNormalizationError);
+    });
   });
 
   // ===========================================================================

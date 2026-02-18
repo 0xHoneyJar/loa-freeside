@@ -461,7 +461,7 @@ export class RevenueDistributionService {
       `).run(
         referrerAccountId, refereeAccountId, reg.id,
         chargeReservationId, earningLotId,
-        Number(amountMicro), Number(referrerBps), Number(sourceChargeMicro),
+        amountMicro.toString(), referrerBps.toString(), sourceChargeMicro.toString(),
       );
     } catch (err) {
       // Non-fatal: don't block distribution if earnings table missing
