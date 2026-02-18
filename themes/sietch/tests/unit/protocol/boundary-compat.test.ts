@@ -124,6 +124,7 @@ describe('Backward Compatibility Integration Tests (Task 302.5)', () => {
     });
 
     it('rejects JWT with neither authority (NO_AUTHORITY)', () => {
+      expect(() => normalizeInboundClaims({})).toThrow(ClaimNormalizationError);
       try {
         normalizeInboundClaims({});
       } catch (e: any) {
@@ -132,6 +133,8 @@ describe('Backward Compatibility Integration Tests (Task 302.5)', () => {
     });
 
     it('rejects coordination without version (MISSING_VERSION)', () => {
+      expect(() => normalizeCoordinationMessage({ type: 'ping', payload: {} } as any))
+        .toThrow(ClaimNormalizationError);
       try {
         normalizeCoordinationMessage({ type: 'ping', payload: {} } as any);
       } catch (e: any) {
@@ -140,6 +143,8 @@ describe('Backward Compatibility Integration Tests (Task 302.5)', () => {
     });
 
     it('rejects coordination with unknown version (UNSUPPORTED_VERSION)', () => {
+      expect(() => normalizeCoordinationMessage({ version: '2.0.0', type: 'ping', payload: {} }))
+        .toThrow(ClaimNormalizationError);
       try {
         normalizeCoordinationMessage({ version: '2.0.0', type: 'ping', payload: {} });
       } catch (e: any) {
@@ -148,6 +153,8 @@ describe('Backward Compatibility Integration Tests (Task 302.5)', () => {
     });
 
     it('rejects admin:full in inbound scopes (PRIVILEGE_ESCALATION)', () => {
+      expect(() => normalizeInboundClaims({ trust_scopes: ['admin:full'] }))
+        .toThrow(ClaimNormalizationError);
       try {
         normalizeInboundClaims({ trust_scopes: ['admin:full'] });
       } catch (e: any) {
@@ -156,6 +163,8 @@ describe('Backward Compatibility Integration Tests (Task 302.5)', () => {
     });
 
     it('rejects unknown trust scopes (UNKNOWN_SCOPE)', () => {
+      expect(() => normalizeInboundClaims({ trust_scopes: ['billing:read', 'system:root'] }))
+        .toThrow(ClaimNormalizationError);
       try {
         normalizeInboundClaims({ trust_scopes: ['billing:read', 'system:root'] });
       } catch (e: any) {

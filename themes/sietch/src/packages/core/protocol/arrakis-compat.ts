@@ -149,6 +149,14 @@ export function normalizeInboundClaims(claims: {
           'Inbound token cannot contain admin:full scope'
         );
       }
+      // Runtime scope validation even when disabled (defense-in-depth)
+      const unknownDisabled = (claims.trust_scopes as string[]).filter(s => !VALID_SCOPES.has(s as TrustScope));
+      if (unknownDisabled.length > 0) {
+        throw new ClaimNormalizationError(
+          'UNKNOWN_SCOPE',
+          `Unknown trust scopes: ${unknownDisabled.join(', ')}`
+        );
+      }
       return { trust_scopes: claims.trust_scopes as TrustScope[], source: 'v7_native' };
     }
     if (claims.trust_level !== undefined) {
