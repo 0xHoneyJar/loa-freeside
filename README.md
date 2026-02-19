@@ -17,7 +17,7 @@ Version: 1.36.0
 
 ## What Is This?
 
-Loa is an agent-driven development framework for [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview) (Anthropic's official CLI). It adds 17 specialized AI agents, quality gates, persistent memory, and structured workflows on top of Claude Code. Works on macOS and Linux. Created by [@janitooor](https://github.com/janitooor) at [The Honey Jar](https://0xhoneyjar.xyz)
+Loa is an agent-driven development framework for [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview) (Anthropic's official CLI). It adds 17 specialized AI agents, quality gates, persistent memory, and structured workflows on top of Claude Code. Works on macOS and Linux. Created by [@janitooor](https://github.com/janitooor) at [The Honey Jar].(https://0xhoneyjar.xyz)
 
 ### Why "Loa"?
 
