@@ -1,202 +1,272 @@
-# Arrakis
+# Freeside
 
-[![Version](https://img.shields.io/badge/version-7.0.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-6.0.0-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-green.svg)](LICENSE.md)
 
-Engagement intelligence platform for Web3 communities. Conviction scoring and tiered progression delivered as Discord and Telegram roles.
+Multi-model agent economy infrastructure platform. Token-gated AI capabilities, budget-atomic inference, and cross-chain community management delivered as Discord, Telegram, and REST APIs.
 
-## What is Arrakis?
+<!-- cite: loa-freeside:themes/sietch/src/api/routes/agents.routes.ts -->
+<!-- cite: loa-freeside:packages/adapters/agent/ensemble-accounting.ts -->
+<!-- cite: loa-freeside:packages/adapters/agent/budget-manager.ts -->
 
-Arrakis is a multi-tenant community infrastructure platform built for Web3. It connects to your Discord server and Telegram group, reads on-chain token holdings (BGT on Berachain), and automatically assigns roles based on a 9-tier progression system.
+## What is Freeside?
 
-Members earn conviction scores based on holding duration, accumulation patterns, and on-chain activity. Scores drive tier placement, which drives role assignment, which drives channel access. The entire pipeline is automated — communities configure their rules once and Arrakis handles the rest.
+Freeside is the platform layer of the [Loa protocol](https://github.com/0xHoneyJar/loa) — a multi-tenant infrastructure for building and operating AI agent economies on-chain. It connects on-chain token holdings to AI capabilities: communities configure conviction-based tiers, each tier unlocks access to different model pools, and all inference runs through budget-atomic accounting with per-model cost attribution.
 
-For communities running existing verification bots (Collab.Land, Matrica, Guild.xyz), Arrakis offers a Shadow Mode that runs in parallel without disrupting your current setup. Compare role assignments in real-time, tune thresholds, and switch over when ready.
+<!-- cite: loa-freeside:packages/core/ports/ -->
 
-## Features
+The platform serves three audiences:
 
-### Conviction Scoring
+- **Community operators** configure token thresholds, model budgets, and channel permissions through Discord slash commands or the admin API
+- **Developers** integrate AI agent capabilities via REST endpoints with JWT authentication, or build on the NATS event protocol
+- **Infrastructure teams** deploy via Terraform to AWS ECS with full observability
 
-Algorithmic scoring based on on-chain behavior:
-- **Holding Duration** — Longer holding periods increase score
-- **Accumulation Pattern** — Buying during dips shows conviction
-- **Trading Behavior** — Diamond hands rewarded, frequent selling penalized
-- **On-Chain Activity** — Governance participation, staking, protocol interactions
+## Capabilities
 
-### 9-Tier Progression System
+### Agent Gateway
+<!-- cite: loa-freeside:packages/adapters/agent/ -->
 
-Dune-themed tiers based on BGT holdings and community rank:
+Multi-model inference orchestration with production-grade financial controls:
 
-| Tier | Name | BGT Threshold | Rank Range |
-|------|------|--------------|------------|
-| 1 | Naib | (by rank) | Top 1–7 |
-| 2 | Fedaykin | (by rank) | Top 8–69 |
-| 3 | Usul | 1,111 BGT | 70–100 |
-| 4 | Sayyadina | 888 BGT | 101–150 |
-| 5 | Mushtamal | 690 BGT | 151–200 |
-| 6 | Sihaya | 420 BGT | 201–300 |
-| 7 | Qanat | 222 BGT | 301–500 |
-| 8 | Ichwan | 69 BGT | 501–1,000 |
-| 9 | Hajra | 6.9 BGT | 1,001+ |
+- **5-pool model routing** — cheap, fast-code, reviewer, reasoning, native tiers mapped to provider models
+<!-- cite: loa-freeside:packages/adapters/agent/pool-mapping.ts -->
+- **Budget atomicity** — BigInt micro-USD precision with two-counter Redis Lua scripts; zero precision loss
+<!-- cite: loa-freeside:packages/adapters/agent/budget-manager.ts -->
+- **Ensemble strategies** — best_of_n, consensus, fallback with per-model cost attribution
+<!-- cite: loa-freeside:packages/adapters/agent/ensemble-accounting.ts -->
+- **4-dimension rate limiting** — community, user, channel, burst
+- **SSE streaming** — with reconciliation for dropped connections
+- **BYOK** — Bring Your Own Key with envelope encryption (AES-256-GCM + KMS wrap), LRU cache, circuit breaker
+<!-- cite: loa-freeside:packages/adapters/agent/byok-manager.ts -->
 
-### Badge System
+### Token-Gated Access
+<!-- cite: loa-freeside:themes/sietch/src/services/ -->
 
-Achievement badges for community milestones:
-- **Water Sharer** — Referral chain tracking with recursive lineage
-- **Engaged** — Consistent community participation
-- **Veteran** — Long-term membership tenure
-- **Former Naib** — Previously held top leadership rank
-- **Taqwa** — Community recognition badge
+On-chain conviction scoring drives capability access:
 
-### Agent Gateway (Hounfour)
+- **9-tier progression** — BGT holdings and community rank determine tier placement
+- **Conviction scoring** — holding duration, accumulation patterns, trading behavior, on-chain activity
+- **Access control** — free, pro, enterprise capability tiers mapped to model pools
+- **Wallet verification** — session-based signature verification with rate limiting and timing-safe comparisons
+<!-- cite: loa-freeside:themes/sietch/src/api/routes/verify.routes.ts -->
 
-AI-powered community interactions with budget management:
-- Per-community monthly budgets with two-counter atomicity
-- 5 model tiers: cheap, fast-code, reviewer, reasoning, native
-- Rate limiting (community, user, channel, burst dimensions)
-- Streaming via SSE with reconciliation for dropped connections
+### Distribution Channels
+<!-- cite: loa-freeside:themes/sietch/src/discord/ -->
+<!-- cite: loa-freeside:themes/sietch/src/telegram/ -->
 
-### Shadow Mode
+- **Discord** — 22+ slash commands, Rust/Axum gateway proxy with multi-shard pool via Twilight
+<!-- cite: loa-freeside:apps/gateway/src/main.rs -->
+- **Telegram** — Grammy bot framework with 10+ commands and throttled streaming edits
+- **REST API** — 80+ Express endpoints with Zod validation
+<!-- cite: loa-freeside:themes/sietch/src/api/routes/ -->
+- **NATS protocol** — Cross-language wire format with Zod schemas and JSON fixtures
+<!-- cite: loa-freeside:packages/shared/nats-schemas/ -->
 
-Test alongside existing verification bots:
-- Compare role assignments in real-time against Collab.Land/Matrica/Guild.xyz
+### Billing & Payments
+<!-- cite: loa-freeside:themes/sietch/src/api/routes/billing.routes.ts -->
+
+- **Paddle integration** — checkout, subscriptions, webhooks, customer portal
+- **Crypto payments** — NOWPayments integration (feature-flagged)
+<!-- cite: loa-freeside:themes/sietch/src/api/routes/crypto-billing.routes.ts -->
+- **Shadow billing** — parallel billing tracking for migration testing
+- **Entitlements caching** — feature access with audit logging
+
+### Infrastructure-as-Code
+<!-- cite: loa-freeside:infrastructure/terraform/ -->
+
+- **20 Terraform modules** — ECS, RDS, ElastiCache, ALB, Route53, CloudWatch, KMS
+<!-- cite: loa-freeside:infrastructure/terraform/ecs.tf -->
+<!-- cite: loa-freeside:infrastructure/terraform/rds.tf -->
+- **Agent monitoring** — CloudWatch dashboards + alarms for gateway metrics
+<!-- cite: loa-freeside:infrastructure/terraform/agent-monitoring.tf -->
+- **BYOK security** — Least-privilege IAM roles per service
+<!-- cite: loa-freeside:infrastructure/terraform/byok-security.tf -->
+
+### Coexistence & Migration
+<!-- cite: loa-freeside:packages/adapters/coexistence/ -->
+
+Shadow mode for testing alongside existing verification bots (Collab.Land, Matrica, Guild.xyz):
+
+- 4 transition modes: shadow → parallel → primary → exclusive
 - Divergence tracking via shadow ledger
-- Tune thresholds before going live
-- Zero disruption to existing setup
+- Incumbent health monitoring with emergency rollback
+<!-- cite: loa-freeside:themes/sietch/src/api/routes/coexistence.routes.ts -->
 
-### QA Sandbox
+### CLI (gaib)
+<!-- cite: loa-freeside:packages/cli/ -->
 
-Interactive testing environment for administrators:
-- Assume any tier/role combination
-- Test permission gates and threshold configurations
-- Schema provisioning per sandbox instance
-- Visual tier hierarchy
+- `gaib login/logout/whoami` — Authentication
+- `gaib sandbox new|ls|rm|env|link|unlink|status` — Sandbox management
+- `gaib server` — IaC deployment commands
+
+## Ecosystem
+
+Freeside is Layer 4 in the 5-layer Loa protocol stack:
+
+```
+Layer 5  Products     loa-dixie       dNFT Oracle — first customer
+Layer 4  Platform     loa-freeside    API, Discord/TG, token-gating, billing, IaC  ← you are here
+Layer 3  Runtime      loa-finn        Persistent sessions, tool sandbox, memory
+Layer 2  Protocol     loa-hounfour    NATS schemas, state machines, model routing
+Layer 1  Framework    loa             Agent dev framework, skills, Bridgebuilder
+```
+
+| Repo | Purpose | Key Interface |
+|------|---------|---------------|
+| [loa](https://github.com/0xHoneyJar/loa) | Agent development framework | Skills, protocols, Bridgebuilder persona |
+| [loa-hounfour](https://github.com/0xHoneyJar/loa-hounfour) | Wire protocol + model routing | NATS schemas, agent-invoke contracts |
+| [loa-finn](https://github.com/0xHoneyJar/loa-finn) | Agent runtime | Persistent sessions, tool sandbox |
+| **loa-freeside** | **Platform infrastructure** | **REST API, Discord/TG, billing, Terraform** |
+| [loa-dixie](https://github.com/0xHoneyJar/loa-dixie) | dNFT Oracle product | First platform customer |
+
+Protocol contracts flow upward: loa-hounfour schemas are consumed by loa-freeside's gateway adapter and validated with the same Zod types used by the Rust gateway.
+
+See [docs/ECOSYSTEM.md](docs/ECOSYSTEM.md) for the full ecosystem map with statistics and dependency analysis.
 
 ## Architecture
 
 ```
-arrakis/
+loa-freeside/
 ├── packages/
-│   ├── core/               # Port interfaces + domain types
-│   │   ├── ports/          # IChainProvider, IStorageProvider, etc.
-│   │   └── domain/         # WizardSession, CommunityManifest
-│   ├── adapters/           # 8 adapter modules
-│   │   ├── agent/          # AgentGateway, BudgetManager
-│   │   ├── chain/          # RPC, Dune Sim, hybrid provider
-│   │   ├── storage/        # Drizzle ORM + PostgreSQL + RLS
-│   │   ├── synthesis/      # BullMQ queue for Discord API
-│   │   ├── wizard/         # 8-step onboarding orchestrator
-│   │   ├── themes/         # ThemeRegistry, SietchTheme
-│   │   ├── security/       # Vault, KillSwitch, MFA
-│   │   └── coexistence/    # Shadow mode, migration
-│   ├── cli/                # Gaib CLI (auth, sandbox, server IaC)
-│   └── sandbox/            # Schema provisioning, event routing
-├── themes/sietch/          # Main Discord/Telegram bot service
-│   ├── src/
-│   │   ├── api/            # Express REST API (80+ routes)
-│   │   ├── discord/        # Slash commands (22+)
-│   │   ├── telegram/       # Grammy bot (10 commands)
-│   │   └── trigger/        # Scheduled tasks (7 cron jobs)
-│   └── drizzle/            # Database migrations
+│   ├── core/                  # Port interfaces + domain types
+│   │   └── ports/             # IChainProvider, IStorageProvider, IAgentGateway
+│   ├── adapters/              # 8 adapter modules
+│   │   ├── agent/             # Gateway, BudgetManager, BYOK, ensemble, audit
+│   │   ├── chain/             # RPC, Dune Sim API, hybrid provider
+│   │   ├── storage/           # Drizzle ORM + PostgreSQL + RLS
+│   │   ├── synthesis/         # BullMQ queue for Discord API
+│   │   ├── wizard/            # 8-step onboarding orchestrator
+│   │   ├── themes/            # ThemeRegistry, SietchTheme
+│   │   ├── security/          # Vault, KillSwitch, MFA
+│   │   └── coexistence/       # Shadow mode, migration engine
+│   ├── cli/                   # gaib CLI (auth, sandbox, server)
+│   ├── sandbox/               # Schema provisioning, event routing
+│   └── shared/nats-schemas/   # Cross-language wire format (Zod + JSON)
+├── themes/sietch/             # Main Discord/Telegram service (v6.0.0)
+│   ├── src/api/               # Express REST API (80+ routes)
+│   ├── src/discord/           # Slash commands (22+)
+│   ├── src/telegram/          # Grammy bot (10+ commands)
+│   ├── src/trigger/           # Scheduled tasks (7 cron jobs)
+│   └── drizzle/               # Database migrations
 ├── apps/
-│   ├── gateway/            # Rust/Axum Discord gateway proxy
-│   ├── ingestor/           # Event ingestion service
-│   └── worker/             # Background job worker
-└── infrastructure/
-    └── terraform/          # AWS ECS deployment (IaC)
+│   ├── gateway/               # Rust/Axum Discord gateway proxy (multi-shard)
+│   ├── ingestor/              # Event ingestion service
+│   └── worker/                # Background job worker (NATS + RabbitMQ)
+├── infrastructure/
+│   └── terraform/             # AWS ECS deployment (20 modules)
+├── evals/                     # Evaluation framework + test suites
+└── docs/                      # Developer documentation
 ```
 
 ## Technology Stack
 
 | Layer | Technology |
 |-------|------------|
-| Runtime | Node.js 20+, Rust (gateway) |
+| Runtime | Node.js 22+, Rust (gateway) |
 | Language | TypeScript (strict), Rust |
-| Bot Frameworks | discord.js v14, Grammy (Telegram) |
-| API | Express, Zod validation (1,736-line config schema) |
+| Bot Frameworks | discord.js v14, Grammy (Telegram), Twilight 0.17 (Rust gateway) |
+| API | Express 5.x, Zod validation |
 | Database | PostgreSQL 15 + Drizzle ORM + Row-Level Security |
 | Cache | Redis 7 (ioredis) |
-| Queue | BullMQ (synthesis, reaper), Trigger.dev (cron) |
-| Blockchain | viem (RPC), Dune Sim API (hybrid mode) |
-| Infrastructure | Terraform, AWS ECS, Docker |
-| Testing | Vitest |
+| Queue | BullMQ (synthesis, reaper), NATS JetStream (gateway events) |
+| Blockchain | viem 2.x (RPC), Dune Sim API (hybrid mode) |
+| Infrastructure | Terraform, AWS ECS (Fargate), Docker |
+| Monitoring | CloudWatch, OTEL/X-Ray tracing, Prometheus metrics |
+| Testing | Vitest, fast-check (property-based) |
+| Secrets | AWS KMS (BYOK envelope encryption), optional HashiCorp Vault |
 
 ## Quick Start
 
-```bash
-# Clone
-git clone https://github.com/0xHoneyJar/arrakis.git
-cd arrakis
+### For Developers (API integration)
 
-# Install dependencies
-npm install
+```bash
+git clone https://github.com/0xHoneyJar/loa-freeside.git
+cd loa-freeside
+pnpm install
 
 # Set up environment
-cp themes/sietch/.env.example themes/sietch/.env
-# Edit .env with your Discord bot token, database URL, etc.
+cp .env.example .env
+# Fill: DATABASE_URL, REDIS_URL, JWT_SECRET
+
+# Start backing services
+docker-compose up -d  # PostgreSQL + Redis
 
 # Run database migrations
-cd themes/sietch
-npx drizzle-kit push
+cd themes/sietch && npx drizzle-kit push && cd ../..
 
 # Start development server
-npm run dev
+pnpm run dev
+# → http://localhost:3000
+
+# Verify
+curl http://localhost:3000/api/agents/health
 ```
 
-See [INSTALLATION.md](INSTALLATION.md) for detailed setup including Docker, database, Redis, and deployment configuration.
+See [docs/API-QUICKSTART.md](docs/API-QUICKSTART.md) for the "First agent call in 5 minutes" tutorial.
+
+### For Operators (deployment)
+
+See [INSTALLATION.md](INSTALLATION.md) for full deployment guide including Docker, database, Redis, and infrastructure configuration.
+
+See [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md) for the Terraform deployment topology, module inventory, and staging guide.
 
 ## Configuration
 
-Key environment variables (see INSTALLATION.md for full list):
+Key environment variables (see [INSTALLATION.md](INSTALLATION.md) for full list):
 
 | Variable | Required | Description |
 |----------|----------|-------------|
+| DATABASE_URL | Yes | PostgreSQL connection URL |
+| REDIS_URL | Yes | Redis connection URL |
 | DISCORD_BOT_TOKEN | Yes | Discord bot token |
 | DISCORD_GUILD_ID | Yes | Discord server ID |
-| DATABASE_URL | Yes | PostgreSQL connection URL |
 | BERACHAIN_RPC_URLS | Yes | Comma-separated RPC endpoints |
-| BGT_ADDRESS | Yes | BGT token contract address |
+| JWT_SECRET | Yes | JWT signing secret |
 
 Feature flags control optional subsystems:
 
 | Flag | Default | Enables |
 |------|---------|---------|
-| FEATURE_BILLING_ENABLED | false | Paddle billing integration |
+| AGENT_ENABLED | false | Agent gateway routes |
+| FEATURE_BILLING_ENABLED | false | Paddle billing |
 | FEATURE_REDIS_ENABLED | false | Redis caching layer |
 | FEATURE_TELEGRAM_ENABLED | false | Telegram bot bridge |
-| FEATURE_VAULT_ENABLED | false | HashiCorp Vault secrets |
 | FEATURE_CRYPTO_PAYMENTS_ENABLED | false | NOWPayments crypto billing |
-
-## Development
-
-```bash
-# Build
-npm run build
-
-# Run tests
-npm test
-
-# Type checking
-npm run typecheck
-
-# Start with hot reload
-npm run dev
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/my-feature`)
-3. Commit your changes with conventional commit messages
-4. Push to the branch and open a Pull Request
+| CHAIN_PROVIDER | rpc | Provider mode: rpc, dune_sim, hybrid |
 
 ## Documentation
 
 | Document | Audience | Description |
 |----------|----------|-------------|
 | [BUTTERFREEZONE.md](BUTTERFREEZONE.md) | AI agents | Machine-readable project overview with source citations |
-| [INSTALLATION.md](INSTALLATION.md) | Developers | Detailed setup and deployment guide |
+| [INSTALLATION.md](INSTALLATION.md) | Operators | Setup, deployment, and configuration guide |
+| [docs/ECOSYSTEM.md](docs/ECOSYSTEM.md) | Everyone | 5-repo ecosystem map with layer diagram |
+| [docs/API-QUICKSTART.md](docs/API-QUICKSTART.md) | Developers | First agent call in 5 minutes |
+| [docs/API-REFERENCE.md](docs/API-REFERENCE.md) | Developers | Full API reference (stable + unstable tiers) |
+| [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md) | Operators | Terraform topology, modules, staging guide |
+| [docs/CLI.md](docs/CLI.md) | Developers | gaib CLI reference |
+| [docs/DEVELOPER-GUIDE.md](docs/DEVELOPER-GUIDE.md) | Contributors | Onboarding path and ownership table |
 | [CHANGELOG.md](CHANGELOG.md) | Everyone | Version history and release notes |
+
+## Development
+
+```bash
+pnpm run build      # Build all packages
+pnpm test           # Run tests
+pnpm run typecheck  # Type checking
+pnpm run dev        # Start with hot reload
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/my-feature`)
+3. Commit with conventional commit messages
+4. Push and open a Pull Request
+
+## Historical Note
+
+This repository evolved from a single-purpose engagement bot with Dune-themed naming to a multi-model agent economy infrastructure. Naming transitioned to Neuromancer trilogy references (Freeside, Sietch, Wintermute, etc.) to reflect the expanded scope. Some internal package prefixes remain from the original naming for backwards compatibility.
 
 ## License
 
@@ -206,3 +276,4 @@ npm run dev
 
 - [Discord](https://discord.gg/thehoneyjar)
 - [The HoneyJar](https://thehoneyjar.xyz)
+- [Loa Protocol](https://github.com/0xHoneyJar/loa)

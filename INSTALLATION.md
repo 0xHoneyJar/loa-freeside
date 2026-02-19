@@ -1,5 +1,7 @@
 # Installation Guide
 
+> **Historical note:** Some internal package names (e.g., `@arrakis/`) reflect the project's original Dune-themed naming. External-facing documentation now uses the current Neuromancer-derived naming (Freeside, Sietch). See [README.md](README.md) for the full naming context.
+
 Loa can be installed in two ways: **mounting onto an existing repository** (recommended) or **cloning the template**.
 
 **Time to first command**: ~2 minutes (one-liner install) | ~5 minutes (manual install with optional tools)

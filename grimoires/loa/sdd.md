@@ -1,733 +1,788 @@
-# SDD: The Voice from the Outer World — Canonical Protocol Adoption (v7.0.0)
+# SDD: The Neuromancer Codex — Documentation as Product Surface
 
-**Version:** 1.1.0
-**Date:** 2026-02-17
+**Version:** 1.0.0
+**Date:** 2026-02-19
 **Status:** Active
-**Cycle:** cycle-034
+**Cycle:** cycle-035
 **PRD:** grimoires/loa/prd.md (v1.1.0)
 
 ---
 
 ## 1. Executive Summary
 
-This SDD designs the architecture for migrating arrakis from vendored loa-hounfour v4.6.0 protocol definitions to canonical `@0xhoneyjar/loa-hounfour` v7.0.0 package imports. The migration spans two integration points: (1) the agent adapter layer already importing at v1.1.0, and (2) the billing/sietch protocol layer with 14 vendored files and 40+ consumers. All work is arrakis-local (Phase 3 of the convergence plan).
+This SDD designs the documentation architecture for transforming loa-freeside's external surface from "Discord bot" to "multi-model agent economy infrastructure platform." The work spans 10 documents across 5 categories: identity (README, BUTTERFREEZONE), ecosystem (ECOSYSTEM.md), developer surface (API quick-start, API reference, CLI docs), infrastructure (IaC docs), and meta (developer guide, ownership).
 
 **Key design decisions:**
-- Direct canonical imports everywhere (no barrel re-export shim — FAANG approach, sustainable long-term)
-- Full audit-and-align for arrakis-specific modules (config-schema, economic-events, identity-trust)
-- Dual-run conservation validation with frozen local evaluator snapshot (transition safety)
-- Two-layer CI drift detection: `CONTRACT_VERSION` + lockfile commit SHA
-- Backward-compatible boundary layer accepts both v4.6.0 and v7.0.0 inbound during transition
-- Arrakis-specific arithmetic helpers preserved as a utility module (separate from protocol types)
+- **Document-from-code** — every doc is generated from or validated against source files, never written from memory
+- **Stable subset API docs** — 7 guaranteed-stable endpoints fully documented; 70+ remaining auto-extracted as route index
+- **JSON canonicalization for BUTTERFREEZONE** — hash structured JSON extraction, not raw Markdown
+- **Citation automation** — `pin-citations.sh` resolves cross-repo references to commit SHA permalinks
+- **Naming grep gate** — zero-tolerance files validated by regex denylist in CI
+- **Ownership-first sustainability** — every document has a DRI, update trigger, and review cadence
 
 ---
 
-## 2. System Architecture
+## 2. Document Architecture
 
-### 2.1 Migration Strategy Overview
-
-The migration follows a **delete-and-replace** pattern, not a gradual shim. Each vendored file is either:
-1. **DELETED** — canonical package exports equivalent (import directly)
-2. **REDUCED** — canonical provides the type, arrakis keeps local helpers/extensions
-3. **KEPT** — no canonical equivalent exists (arrakis-specific)
+### 2.1 Information Hierarchy
 
 ```
-┌─────────────────────────────────────────────────────┐
-│  BEFORE (v4.6.0 vendored)                           │
-│                                                     │
-│  core/protocol/ (14 files, ~2220 lines)             │
-│  ├── state-machines.ts       ─── VENDORED ───┐      │
-│  ├── arithmetic.ts           ─── VENDORED ───┤      │
-│  ├── compatibility.ts        ─── VENDORED ───┤      │
-│  ├── billing-types.ts        ─── VENDORED ───┤      │
-│  ├── guard-types.ts          ─── VENDORED ───┤      │
-│  ├── conservation-props.ts   ─── LOCAL    ───┤      │
-│  ├── jwt-boundary.ts         ─── LOCAL    ───┤      │
-│  ├── billing-entry.ts        ─── VENDORED ───┤      │
-│  ├── identity-trust.ts       ─── LOCAL    ───┤      │
-│  ├── config-schema.ts        ─── LOCAL    ───┤      │
-│  ├── economic-events.ts      ─── LOCAL    ───┤      │
-│  ├── atomic-counter.ts       ─── LOCAL    ───┤      │
-│  └── index.ts                ─── BARREL   ───┘      │
-│                                                     │
-│  40+ consumers import via ../../core/protocol/      │
-│  4 agent adapters import via @0xhoneyjar/loa-hounfour │
-└─────────────────────────────────────────────────────┘
-                        │
-                        ▼
-┌─────────────────────────────────────────────────────┐
-│  AFTER (v7.0.0 canonical)                           │
-│                                                     │
-│  @0xhoneyjar/loa-hounfour v7.0.0                    │
-│  ├── CONTRACT_VERSION, state machines               │
-│  ├── MicroUSD, BasisPoints, AccountId (branded)     │
-│  ├── Conservation evaluator + 147 constraints       │
-│  ├── validateCompatibility(), trust_scopes          │
-│  ├── JWT schemas, error codes, pool vocabulary      │
-│  └── Coordination schema (v7.0.0 structure)         │
-│                                                     │
-│  core/protocol/ (REDUCED — arrakis extensions only) │
-│  ├── arrakis-arithmetic.ts   ── bpsShare, addMicroUSD │
-│  ├── arrakis-billing.ts      ── BillingEntry mapper │
-│  ├── arrakis-conservation.ts ── error taxonomy adapter│
-│  ├── arrakis-compat.ts       ── boundary compat layer│
-│  ├── config-schema.ts        ── 22 constitutional params│
-│  ├── economic-events.ts      ── 31 event types      │
-│  ├── identity-trust.ts       ── graduated trust     │
-│  ├── atomic-counter.ts       ── Redis atomic ops    │
-│  └── index.ts                ── barrel for arrakis ext│
-│                                                     │
-│  ALL consumers import canonical types directly      │
-│  from @0xhoneyjar/loa-hounfour                      │
-└─────────────────────────────────────────────────────┘
+README.md                          ← Entry point: "What is this?"
+├── docs/ECOSYSTEM.md              ← "How does the ecosystem fit together?"
+├── docs/API-QUICKSTART.md         ← "Make your first API call"
+│   └── docs/API-REFERENCE.md      ← "Full endpoint reference"
+├── docs/INFRASTRUCTURE.md         ← "Deploy your own instance"
+├── docs/CLI.md                    ← "CLI command reference"
+└── docs/DEVELOPER-GUIDE.md        ← "Onboarding index + ownership table"
+
+BUTTERFREEZONE.md                  ← Agent context (parallel entry point for AI)
 ```
 
-### 2.2 Component Map (Changes Only)
+### 2.2 Document Inventory
 
-| Component | Location | Change Type | PRD Ref |
-|-----------|----------|-------------|---------|
-| Package dependency | `package.json`, `packages/adapters/package.json` | Bump v1.1.0 → v7.0.0 | FR-1 |
-| Protocol layer | `core/protocol/*.ts` (14 files) | Delete/reduce/restructure | FR-2, FR-3, FR-4 |
-| Billing adapters | `adapters/billing/*.ts` (23 files) | Import path migration | FR-2 |
-| API routes | `api/routes/*.ts` (7 files) | Import path migration | FR-2 |
-| Agent adapters | `packages/adapters/agent/*.ts` (4 files) | Version bump only | FR-1 |
-| JWT boundary | `jwt-boundary.ts` → `arrakis-compat.ts` | Claim schema update + backward compat | FR-5 |
-| Compatibility | `compatibility.ts` → `arrakis-compat.ts` | Version negotiation update | FR-6 |
-| Conservation tests | `tests/unit/protocol/` | Dual-run harness + migration | FR-3, FR-8 |
-| CI drift tests | `tests/unit/protocol/` | Two-layer version assertion | FR-7 |
-| Property tests | `tests/unit/billing/property-tests/` | Import path migration | FR-8 |
-| Fixtures | `tests/fixtures/` | Add frozen evaluator, delete hash fixtures | FR-3, FR-7 |
+| Document | Type | Source of Truth | Generation Method |
+|----------|------|----------------|-------------------|
+| README.md | Identity | Codebase reality files + package.json | Hand-written, validated against reality/ |
+| BUTTERFREEZONE.md | Agent context | Codebase scan | Script-generated (`butterfreezone-gen.sh`) |
+| docs/ECOSYSTEM.md | Ecosystem | 5 repo READMEs + package.json deps | Hand-written, stats from `ecosystem-stats.sh` |
+| docs/API-QUICKSTART.md | Developer | Route source files | Hand-written, validated by smoke-test |
+| docs/API-REFERENCE.md | Developer | Route source files | Stable subset hand-written + auto-extracted index |
+| docs/INFRASTRUCTURE.md | Infrastructure | Terraform .tf files | Hand-written, validated by `terraform plan` |
+| docs/CLI.md | Developer | CLI source files | Hand-written, validated against `gaib --help` |
+| docs/DEVELOPER-GUIDE.md | Meta | All docs | Hand-written index + ownership table |
 
-### 2.3 Unchanged Components
+### 2.3 Cross-Reference Map
 
-- Database schema and migrations (NFR-3)
-- Infrastructure/Terraform (NFR-3)
-- Discord/Telegram bot layer
-- CLI package
-- Theme system
-- Redis/BullMQ job infrastructure
+Each document ends with a "Next Steps" section linking to the logical next document:
+
+```
+README → ECOSYSTEM → API-QUICKSTART → API-REFERENCE
+                  → INFRASTRUCTURE
+                  → CLI
+                  → DEVELOPER-GUIDE (index)
+```
 
 ---
 
-## 3. Detailed Design
+## 3. Component Design
 
-### 3.1 Dependency Upgrade (FR-1)
+### 3.1 README.md
 
-**Both `package.json` files** (pin by resolved commit SHA for immutability, not mutable tag):
-```json
+**Structure:**
+
+```markdown
+# loa-freeside
+
+[badges: version, license, tests]
+
+[1-2 sentence description: what this IS]
+
+## What is Freeside?
+
+[3-4 paragraphs: platform description grounded in capabilities]
+[Each capability cites source file]
+
+## The Ecosystem
+
+[Layer diagram: 5 repos]
+[Brief description of each repo]
+[Link to docs/ECOSYSTEM.md]
+
+## Architecture
+
+[ASCII diagram: packages, apps, infrastructure, themes]
+
+## Quick Start
+
+### For Developers (API)
+[Link to docs/API-QUICKSTART.md]
+
+### For Community Operators (Discord/Telegram)
+[Link to INSTALLATION.md]
+
+## Technology Stack
+
+[Table: layer → technology]
+
+## Documentation
+
+[Table: document → audience → description]
+
+## The Neuromancer Connection
+
+[Brief naming explanation]
+[Link to docs/ECOSYSTEM.md for full map]
+```
+
+**Source grounding pattern — unified citation syntax:**
+
+All documentation uses a single machine-readable citation format for both local and cross-repo references:
+
+```markdown
+**Multi-model inference** — 5-pool routing with ensemble orchestration.
+<!-- cite: loa-freeside:packages/adapters/agent/pool-mapping.ts#L15-L45 -->
+<!-- cite: loa-freeside:packages/adapters/agent/ensemble-accounting.ts -->
+
+Protocol contract flow follows Level 4 state machines.
+<!-- cite: loa-hounfour@v7.0.0:src/state-machines.ts -->
+```
+
+**Citation syntax**: `<!-- cite: <repo>[@<ref>]:<path>[#L<start>[-L<end>]] -->`
+
+| Component | Required | Description |
+|-----------|----------|-------------|
+| `repo` | Yes | Repository name (e.g., `loa-freeside`, `loa-hounfour`) |
+| `@ref` | No (local repo) / Yes (cross-repo) | Tag, commit SHA, or version |
+| `path` | Yes | File path relative to repo root |
+| `#Lstart-Lend` | No | Line range for precision |
+
+HTML comments — visible in raw Markdown, invisible in rendered GitHub view. This keeps docs clean while maintaining traceability. Both `pin-citations.sh` and RTFM validation parse this exact syntax.
+
+**`pin-citations.sh` behavior:**
+
+Scans all docs for `<!-- cite: ... -->`, resolves cross-repo references (`@v7.0.0` → commit SHA permalink), rewrites to `<!-- cite: ... -->` with resolved URL appended, reports any unresolvable references as errors.
+
+**Resilience features:**
+
+| Feature | Implementation |
+|---------|---------------|
+| **Retry/backoff** | 3 retries with exponential backoff (1s, 2s, 4s) for GitHub API failures |
+| **Rate limiting** | Respects `X-RateLimit-Remaining` header; waits when <10 remaining |
+| **Authentication** | Uses `GITHUB_TOKEN` or `gh auth token` for authenticated API access (higher rate limits) |
+| **Offline validation** | `--validate-only` flag checks already-pinned permalinks exist in local git cache without network calls |
+| **Caching** | Resolved SHA mappings cached to `grimoires/loa/cache/citation-pins.json`; reused when tag→SHA mapping unchanged |
+| **Immutable refs** | Cross-repo citations must use commit SHA in the resolved permalink (not tag), ensuring immutability even if tags are moved |
+
+**Modes:**
+- `pin-citations.sh --pin` — resolve and rewrite (requires network)
+- `pin-citations.sh --validate-only` — check existing pins are well-formed (offline)
+- `pin-citations.sh --check-stale` — report citations where the pinned SHA is >30 days old
+
+### 3.2 BUTTERFREEZONE.md
+
+**Canonicalization architecture:**
+
+```
+Codebase Scan
+     │
+     ▼
+┌─────────────┐
+│ Extract per  │   butterfreezone-gen.sh scans:
+│ section to   │   - package.json (name, version, deps)
+│ structured   │   - packages/core/ports/ (interfaces)
+│ JSON objects │   - themes/sietch/src/api/routes/ (HTTP routes)
+│              │   - themes/sietch/src/discord/commands/ (Discord)
+│              │   - themes/sietch/src/telegram/commands/ (Telegram)
+│              │   - packages/cli/src/commands/ (CLI)
+│              │   - infrastructure/terraform/ (IaC modules)
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│ Canonicalize │   jq canonicalization (project-normative algorithm):
+│ JSON → hash  │   1. `jq -Sc '.'` — sort object keys, compact output
+│              │   2. jq handles: key sorting, compact whitespace,
+│              │      deterministic number formatting, valid JSON output
+│              │   3. Strings: no mutation — emit as extracted
+│              │   4. Arrays: preserve extraction order (extractor emits
+│              │      deterministic order by construction — routes sorted
+│              │      by {method, path}, commands sorted by name, etc.)
+│              │   5. UTF-8 encoding, LF line ending (no trailing newline)
+│              │   6. SHA-256 hash of the canonical byte string
+│              │   7. Pinned jq version: >=1.7 (for stable sort behavior)
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│ Render       │   Template produces Markdown with:
+│ Markdown     │   - AGENT-CONTEXT header (name, type, purpose, key_files)
+│ + meta block │   - Capabilities with source citations
+│              │   - Interfaces (routes, commands)
+│              │   - Module map with line counts
+│              │   - ground-truth-meta footer with section hashes
+└─────────────┘
+```
+
+**Key canonicalization rules:**
+- **No semantic mutations**: strings are never trimmed, truncated, or normalized beyond UTF-8 encoding. The extractor is responsible for emitting clean values; the canonicalizer preserves them exactly.
+- **Object keys only sorted**: array order is determined at extraction time. The extractor sorts arrays by a declared key (e.g., routes by `{method, path, source}`, commands by `{name}`) before emitting JSON. The canonicalizer does NOT re-sort arrays.
+- **Single implementation**: both `butterfreezone-gen.sh` and `butterfreezone-validate.sh` use the same `jq -Sc '.'` canonicalization filter to ensure identical output. This is the ONLY code path that produces canonical JSON.
+- **Not RFC 8785 JCS**: this project uses `jq` canonicalization as its normative algorithm, not RFC 8785. The two differ in number formatting edge cases. Since both gen and validate use the same `jq` binary (version >=1.7 pinned), hashes are stable within the project. Cross-tool interoperability with JCS implementations is not a goal.
+- **jq version pinning**: CI and scripts must use jq >=1.7. The version is checked at script startup: `jq --version | grep -qE '^jq-1\.[7-9]' || exit 1`.
+
+**Error taxonomy and fail-closed behavior:**
+
+Both `butterfreezone-gen.sh` and `butterfreezone-validate.sh` must handle errors deterministically:
+
+| Error Class | Exit Code | Behavior |
+|------------|-----------|----------|
+| Parse error (malformed TS/JSON) | 10 | Fail closed — do NOT emit partial output |
+| Missing required file (package.json) | 11 | Fail closed — require minimum file set |
+| Partial scan (some sections extracted, others failed) | 12 | Fail closed — all-or-nothing extraction |
+| jq version mismatch | 13 | Fail immediately at startup |
+| Hash mismatch (validate only) | 20 | Report diffs per section, exit non-zero |
+
+**Minimum required sections:** The generator must emit at least `agent_context`, `capabilities`, `interfaces`, and `module_map`. If any section produces zero entries, it is an error (exit 12), not a valid empty section.
+
+**Cross-platform extraction determinism:**
+
+To ensure identical output across Linux/macOS/CI:
+- **File discovery:** All file lists are sorted lexicographically (`LC_ALL=C sort`) after glob expansion. Never rely on filesystem traversal order.
+- **Line endings:** Normalize to LF at extraction time (`tr -d '\r'`).
+- **Node/ts-morph pinning:** Pin ts-morph version in package.json; CI uses same Node major version as dev.
+- **Golden tests include platform tags:** Cross-platform vectors run on both Linux and macOS CI to catch divergence.
+
+**Agent context fields (updated):**
+
+```yaml
+name: loa-freeside
+type: platform
+purpose: Multi-model agent economy infrastructure — inference routing, budget atomicity, token-gated capability markets, and payment rails for Web3 communities
+key_files:
+  - packages/core/ports/agent-gateway.ts
+  - packages/adapters/agent/pool-mapping.ts
+  - packages/adapters/agent/ensemble-accounting.ts
+  - packages/adapters/agent/budget-manager.ts
+  - themes/sietch/src/api/routes/agents.routes.ts
+  - themes/sietch/src/api/routes/billing-routes.ts
+  - packages/cli/src/index.ts
+  - infrastructure/terraform/main.tf
+version: (from package.json)
+trust_level: grounded
+```
+
+**Golden test vectors:**
+
+Location: `tests/fixtures/butterfreezone-golden/`
+
+Each vector is a **minimal fixture tree** that mimics real repo structure:
+
+```
+tests/fixtures/butterfreezone-golden/
+├── vector-001-routes/
+│   ├── fixture/                     # Minimal repo structure
+│   │   ├── package.json             # Name, version, deps
+│   │   └── themes/sietch/src/api/routes/
+│   │       └── agents.routes.ts     # Known route registrations
+│   ├── expected-interfaces.json     # Expected canonical JSON from extractor
+│   └── expected-interfaces.hash     # SHA-256 of the canonical JSON
+├── vector-002-commands/
+│   ├── fixture/
+│   │   └── themes/sietch/src/discord/commands/
+│   │       └── ping.ts              # Known command definition
+│   ├── expected-interfaces.json
+│   └── expected-interfaces.hash
+└── vector-003-full/
+    ├── fixture/                     # Full minimal tree (all sections)
+    ├── expected-agent-context.json
+    ├── expected-capabilities.json
+    ├── expected-interfaces.json
+    └── expected-*.hash
+```
+
+The extractor runs against the `fixture/` directory (not Markdown). This tests the same code path used in production: scan repo structure → extract JSON → canonicalize → hash.
+
+Validation: `butterfreezone-validate.sh` re-runs extraction on the current codebase and compares section hashes against the `ground-truth-meta` block in the generated BUTTERFREEZONE.md. Golden vectors separately test the extraction logic against known fixture inputs to catch regressions in the extractor itself.
+
+### 3.3 docs/ECOSYSTEM.md
+
+**Structure:**
+
+```markdown
+# The Loa Ecosystem
+
+## The Stack
+
+[Layer diagram with all 5 repos]
+
+## Repositories
+
+### loa-freeside (Freeside)
+[Purpose, stats, key interfaces, links]
+
+### loa-finn (The Finn)
+[Purpose, stats, key interfaces, links]
+
+### loa-hounfour (The Hounfour)
+[Purpose, stats, key interfaces, links]
+
+### loa-dixie (Dixie Flatline)
+[Purpose, stats, links]
+
+### loa (The Framework)
+[Purpose, links]
+
+## The Neuromancer Map
+[Full naming explanation with Gibson references]
+
+## Protocol Contract Flow
+[How loa-hounfour schemas flow through the system]
+
+## The Web4 Connection
+[Brief link to wider vision — not marketing, context]
+
+## Statistics
+[Table with measurement method, commit SHAs, generated_at]
+```
+
+**Stats generation:**
+
+`scripts/ecosystem-stats.sh` computes verifiable statistics for all 5 repos:
+
+**Local repo (loa-freeside):**
+1. Runs `cloc --json --exclude-dir=node_modules,.next,dist,build` for line counts
+2. Runs `pnpm test -- --reporter=json 2>/dev/null | jq '.numTotalTests'` for test count
+3. Records `git rev-parse HEAD` as commit SHA
+
+**Remote repos (loa-finn, loa-hounfour, loa-dixie, loa):**
+1. Shallow-clone at pinned ref: `git clone --depth 1 --branch <tag> <repo_url> /tmp/eco-stats/<repo>`
+2. Run same `cloc` and test discovery in the clone
+3. Record the tag/SHA used
+4. Clean up clone after extraction
+
+```bash
+# Example output per repo:
 {
-  "@0xhoneyjar/loa-hounfour": "github:0xHoneyJar/loa-hounfour#<v7.0.0-resolved-sha>"
+  "repo": "loa-hounfour",
+  "ref": "v7.0.0",
+  "commit_sha": "abc123...",
+  "lines": { "typescript": 12450, "total": 15200 },
+  "tests": 1097,
+  "measured_at": "2026-02-19T20:00:00Z"
 }
 ```
 
-**Verification after install:**
-```typescript
-import { CONTRACT_VERSION } from '@0xhoneyjar/loa-hounfour';
-assert(CONTRACT_VERSION === '7.0.0');
+**Caching:** Results are cached to `grimoires/loa/cache/ecosystem-stats.json` with TTL of 7 days. The script skips cloning for repos whose pinned ref hasn't changed since last run. Force refresh via `--fresh` flag.
+
+Stats are embedded in the doc with `generated_at` timestamp and the ref used for measurement.
+
+### 3.4 docs/API-QUICKSTART.md
+
+**Stable subset (7 endpoints):**
+
+| # | Method | Path | Auth | Purpose |
+|---|--------|------|------|---------|
+| 1 | GET | `/api/agents/health` | None | Health check (entry point) |
+| 2 | GET | `/.well-known/jwks.json` | None | JWKS for JWT verification |
+| 3 | POST | `/api/agents/invoke` | JWT | Synchronous agent invocation |
+| 4 | POST | `/api/agents/stream` | JWT | SSE streaming invocation |
+| 5 | GET | `/api/agents/budget` | JWT | Budget status |
+| 6 | GET | `/api/agents/models` | JWT | Available models for tier |
+| 7 | GET | `/api/billing/balance` | JWT | Credit balance |
+
+Each endpoint documented with:
+- `curl` command (copy-pastable against localhost:3000)
+- Request headers
+- Request body (JSON with realistic payload)
+- Response body (actual shape from route handler)
+- Error cases
+
+**Stability contract for "Guaranteed Stable" endpoints:**
+
+The 7 stable endpoints carry an explicit contract:
+
+| Property | Guarantee |
+|----------|-----------|
+| **Compatibility** | Response shape will not have fields removed or type-changed without a major version bump |
+| **Deprecation** | Minimum 2 cycle (4-week) deprecation window with `Sunset` header before removal |
+| **Versioning** | No path versioning currently; breaking changes require new path (e.g., `/api/v2/agents/invoke`) |
+| **Change log** | All changes to stable endpoints documented in `docs/API-CHANGELOG.md` with date and migration guide |
+| **Promotion** | Tier 2 → Tier 1 requires: stable for 2+ cycles, smoke-test coverage, full request/response docs |
+
+**Tier 2 (indexed) endpoint contract:**
+
+Tier 2 routes are labeled `Internal` or `Unstable` and carry weaker guarantees:
+
+| Property | Guarantee |
+|----------|-----------|
+| **Compatibility** | May change without notice between cycles |
+| **Documentation** | Method, path, auth requirement only — no request/response examples |
+| **Monitoring** | Minimal automated contract checks: auth requirement correctness and 2xx/4xx status code validation |
+| **Warning** | `X-Stability: unstable` header recommended for unstable endpoints |
+
+**Automated contract checks for Tier 2:**
+
+A lightweight integration test suite runs the extracted route index against a local dev server:
+1. For each indexed route, verify the expected auth requirement (unauthenticated → 401/403 if auth required, 2xx if no auth)
+2. For each indexed route, verify it responds (not 404)
+3. Results compared against `scripts/route-snapshot.json` — divergence is a CI warning (not blocking for docs, but logged)
+
+**Smoke-test checklist:** A numbered set of curl commands at the end of the doc. Running them against a local instance validates the docs are accurate.
+
+**Local auth setup (prerequisite for smoke tests):**
+
+The quick-start must include a self-contained "Get a JWT" section before any authenticated curl examples:
+
+```bash
+# 1. Generate dev keypair (one-time)
+gaib auth setup-dev
+# Creates .dev-keys/private.pem and .dev-keys/public.pem
+# Configures local server to trust this keypair via JWKS
+
+# 2. Mint a dev JWT (valid 1 hour)
+export JWT=$(gaib auth token --dev)
+# Token claims: { iss: "dev-local", aud: "loa-freeside", sub: "dev-user", exp: +3600 }
+
+# Alternative: manual JWT signing (if gaib not installed)
+# See docs/API-QUICKSTART.md § "Manual JWT" for openssl-based approach
 ```
 
-**Lockfile SHA recording:** After `npm install`, extract the resolved commit SHA from `package-lock.json` and record as `EXPECTED_HOUNFOUR_SHA` constant in the drift detection test.
+The smoke-test script sources `$JWT` from this flow.
 
-### 3.2 Import Path Migration Strategy (FR-2)
+**AUTH_BYPASS code-level safeguard (required):**
 
-**Approach: Direct canonical imports everywhere.**
+If the platform supports `AUTH_BYPASS=true` for local dev, the following code-level protections are **required** (not just documented):
 
-Every consumer file that currently imports from `../../core/protocol/` (or similar relative path) will be updated to import canonical types directly from `@0xhoneyjar/loa-hounfour`. Arrakis-specific utilities remain importable from `../../core/protocol/`.
+| Protection | Implementation |
+|-----------|---------------|
+| Environment gate | `AUTH_BYPASS` only honored when `NODE_ENV !== 'production'` |
+| Startup check | Server refuses to start if `AUTH_BYPASS=true` and `NODE_ENV=production` |
+| Log warning | Emits `WARN: AUTH_BYPASS is enabled — development only` at startup |
+| Build exclusion | Production Docker builds set `NODE_ENV=production` and do not include bypass code path |
 
-**Migration pattern for each consumer:**
+The quick-start documents AUTH_BYPASS with: `⚠️ Development only. Disabled by default. Code-enforced: will not activate in production builds.`
 
-```typescript
-// BEFORE (vendored)
-import {
-  MicroUSD, microUSD, addMicroUSD,           // branded types + helpers
-  RESERVATION_MACHINE, isValidTransition,     // state machines
-  ENTRY_TYPES, EntryType,                     // billing types
-  ConservationProperty,                       // conservation
-  PROTOCOL_VERSION, validateCompatibility,    // compatibility
-} from '../../core/protocol';
+**Security disclaimers section:**
+- "Local Development Only" banner at top
+- Key rotation expectations
+- Token TTL guidance
+- Never embed private keys in code
+- Separate dev/prod JWKS
+- Audience and issuer validation
 
-// AFTER (canonical + arrakis extensions)
-import {
-  MicroUSD, microUSD,                         // canonical branded types
-  RESERVATION_MACHINE, isValidTransition,     // canonical state machines
-  ENTRY_TYPES, EntryType,                     // canonical billing types
-  ConservationProperty,                       // canonical conservation
-  CONTRACT_VERSION, validateCompatibility,    // canonical compatibility
-} from '@0xhoneyjar/loa-hounfour';
+### 3.5 docs/API-REFERENCE.md
 
-import {
-  addMicroUSD, subtractMicroUSD, bpsShare,   // arrakis arithmetic helpers
-} from '../../core/protocol/arrakis-arithmetic';
+**Two-tier structure:**
+
+**Tier 1: Stable endpoints** (from quick-start, full documentation)
+
+**Tier 2: Route index** (auto-extracted, minimal documentation)
+
+Auto-extraction approach:
+
+`scripts/extract-routes.sh` uses `ts-morph` (TypeScript compiler API) to parse route files via AST rather than regex/grep.
+
+**Supported route registration patterns:**
+
+The extractor recognizes these Express patterns:
+
+| Pattern | Example | Supported |
+|---------|---------|-----------|
+| Direct method call | `router.get('/path', handler)` | Yes |
+| `router.use()` sub-mount | `router.use('/api', subRouter)` | Yes (resolves base path) |
+| Method chaining | `router.route('/path').get(h1).post(h2)` | Yes |
+| Path constants | `const PATH = '/api/foo'; router.get(PATH, h)` | Yes (resolves string literals) |
+| Middleware chain | `router.get('/path', auth, validate, handler)` | Yes (detects auth middleware) |
+| Template literals | `` router.get(`/api/${version}/foo`, h) `` | **No** — flagged as unresolvable |
+| Dynamic/computed | `router[method](path, handler)` | **No** — flagged as unresolvable |
+| Conditional registration | `if (env) router.get(...)` | **No** — flagged as unresolvable |
+
+**Unresolvable route linter:** When the extractor encounters a route registration it cannot statically resolve, it emits a warning with file:line. A linter gate counts unresolvable registrations — if >5% of registrations are unresolvable, extraction fails. This prevents silent omissions.
+
+```bash
+# extract-routes.sh internals:
+# 1. Load TypeScript project via ts-morph
+# 2. Find all Router method calls (.get, .post, .put, .patch, .delete, .use)
+# 3. Resolve mounted base paths from .use() calls
+# 4. Extract auth middleware presence from handler chain
+# 5. Flag unresolvable patterns with warning
+# 6. Emit JSON: { method, full_path, auth, source_file, line }
+# 7. Sort by {method, full_path} for deterministic output
 ```
 
-**Execution order:**
-1. Upgrade dependency (FR-1) — ensures canonical imports resolve
-2. Create arrakis extension modules (new files for local helpers)
-3. Migrate consumers in dependency order: types-only first, then logic files
-4. Delete vendored files one-by-one (each deletion is a compile-time verification)
-5. TypeScript compiler (`tsc --noEmit`) validates every step
+**Dual extraction strategy (primary + verification):**
 
-### 3.3 File Disposition Table
+| Strategy | Method | Purpose |
+|----------|--------|---------|
+| Primary | ts-morph AST parsing (static) | Produces route index for docs |
+| Verification | Runtime route-table introspection | Cross-checks AST extraction |
 
-| Current File | Action | Destination | Rationale |
-|-------------|--------|-------------|-----------|
-| `VENDORED.md` | DELETE | — | No longer vendoring |
-| `state-machines.ts` | DELETE | Canonical import | v7.0.0 exports all 4 machines |
-| `arithmetic.ts` | SPLIT | Branded types → canonical; helpers → `arrakis-arithmetic.ts` | Types canonical, helpers arrakis-specific |
-| `compatibility.ts` | DELETE + ABSORB | Canonical `validateCompatibility()`; local compat logic → `arrakis-compat.ts` | v7.0.0 exports compatibility checking |
-| `billing-types.ts` | DELETE or ALIGN | Canonical if v7.0.0 has equivalent; otherwise audit-and-keep | Depends on v7.0.0 export audit |
-| `guard-types.ts` | DELETE or ALIGN | Canonical if v7.0.0 has equivalent | Depends on v7.0.0 export audit |
-| `conservation-properties.ts` | DELETE (after dual-run) | Canonical evaluator; error taxonomy → `arrakis-conservation.ts` | Core safety migration |
-| `jwt-boundary.ts` | REDUCE | Canonical claim schemas; verification pipeline → `arrakis-compat.ts` | v7.0.0 JWT schemas, arrakis-specific verification |
-| `billing-entry.ts` | DELETE or ALIGN | Canonical wire format; mapper logic stays in adapter | Depends on v7.0.0 BillingEntry export |
-| `identity-trust.ts` | AUDIT | Align with canonical `trust_scopes` if applicable; keep as extension if not | FR-5 breaking change |
-| `config-schema.ts` | KEEP | Stays in `core/protocol/` | 22 constitutional parameters are arrakis-specific |
-| `economic-events.ts` | AUDIT | Align with canonical event taxonomy if v7.0.0 exports one; keep if not | 31 event types may be arrakis-specific |
-| `atomic-counter.ts` | KEEP | Stays in `core/protocol/` | Redis-specific, arrakis infrastructure |
-| `index.ts` | REWRITE | Barrel re-export of arrakis extensions only | Consumers import canonical directly; index.ts only for arrakis modules |
+The verification strategy starts a local dev server, queries the Express route stack via `app._router.stack`, and compares the `{method, path}` set against the AST extraction output. Discrepancies are reported as errors.
 
-### 3.4 Arrakis Extension Modules (New Files)
+**Completeness gate:** Instead of a simple count baseline, the gate uses a **snapshot diff** of the `{method, path}` set:
 
-#### 3.4.1 `arrakis-arithmetic.ts`
-
-Arithmetic helper functions that operate on canonical branded types but are arrakis-specific business logic:
-
-```typescript
-// arrakis-arithmetic.ts
-import { MicroUSD, BasisPoints, microUSD, basisPoints } from '@0xhoneyjar/loa-hounfour';
-
-// Arrakis-specific helpers (not in canonical package)
-export function addMicroUSD(a: MicroUSD, b: MicroUSD): MicroUSD { ... }
-export function subtractMicroUSD(a: MicroUSD, b: MicroUSD): MicroUSD { ... }
-export function bpsShare(total: MicroUSD, bps: BasisPoints): MicroUSD { ... }
-export function assertBpsSum(values: BasisPoints[]): void { ... }
-export function dollarsToMicro(dollars: number): MicroUSD { ... }
-export function microToDollarsDisplay(micro: bigint): string { ... }
-
-// Re-export canonical constants for convenience
-export { MICRO_USD_PER_DOLLAR, TOTAL_BPS, MAX_MICRO_USD } from '@0xhoneyjar/loa-hounfour';
+```bash
+# Route snapshot stored at scripts/route-snapshot.json
+# On extraction, diff against snapshot:
+# - New routes: informational (update snapshot)
+# - Missing routes: ERROR (extraction regression or route removed)
+# - Changed auth: WARNING (review required)
+scripts/extract-routes.sh --diff scripts/route-snapshot.json
 ```
 
-**Design rationale:** If v7.0.0 exports these helpers natively, this file becomes unnecessary and is deleted. The module boundary allows us to verify canonical API surface first, then shrink.
+This produces a table like:
 
-#### 3.4.2 `arrakis-compat.ts`
+| Method | Path | Auth | Source | Stability |
+|--------|------|------|--------|-----------|
+| POST | `/api/agents/invoke` | JWT | agents.routes.ts:193 | **Stable** |
+| GET | `/api/admin/byok/keys` | Admin | byok.routes.ts:147 | Internal |
+| ... | ... | ... | ... | ... |
 
-Boundary compatibility layer for the Phase 3 transition period:
+Routes marked `Internal` or `Unstable` have no request/response examples — just the index entry.
 
-```typescript
-// arrakis-compat.ts
-import { CONTRACT_VERSION, validateCompatibility } from '@0xhoneyjar/loa-hounfour';
+### 3.6 docs/INFRASTRUCTURE.md
 
-// Phase 3 transition: accept both v4.6.0 and v7.0.0 inbound
-const SUPPORTED_VERSIONS = ['4.6.0', '7.0.0'] as const;
-const PREFERRED_VERSION = '7.0.0';
+**Structure:**
 
-export interface VersionNegotiationResult {
-  preferred: string;
-  supported: readonly string[];
-  selected: string;
-  backwardCompat: boolean;
-}
+```markdown
+# Infrastructure
 
-export function negotiateVersion(remoteVersion: string): VersionNegotiationResult { ... }
+## Deployment Architecture
 
-// JWT claim schema compatibility: accept v4.6.0 trust_level OR v7.0.0 trust_scopes
-export function normalizeInboundClaims(claims: unknown): NormalizedClaims { ... }
+[ASCII diagram: ECS → RDS → ElastiCache → ALB → Route53]
 
-// Coordination message compatibility: accept v4.6.0 AND v7.0.0 format
-export function normalizeCoordinationMessage(msg: unknown): NormalizedCoordination { ... }
+## Terraform Modules
+
+| Module | File | Purpose | Key Variables |
+|--------|------|---------|---------------|
+| Compute | ecs.tf | ECS Fargate | instance count, CPU, memory |
+| Database | rds.tf | PostgreSQL | instance class, storage |
+| ... | ... | ... | ... |
+
+## Staging Deployment Guide
+
+### Prerequisites
+### Step-by-Step
+### Post-Deployment Verification
+
+## Monitoring & Observability
+
+### CloudWatch Dashboards
+### Alarms
+### Log Aggregation
+
+## Cost Estimation
+
+[Table grounded in actual Terraform resource configs]
+
+## Production Hardening Checklist
+
+[Checklist format — items beyond staging scope]
 ```
 
-**Lifecycle:** This module is temporary. After loa-finn upgrades (Phase 2), backward compat is removed and this module is deleted or reduced to a thin wrapper around canonical `validateCompatibility()`.
+### 3.7 docs/CLI.md
 
-#### 3.4.3 `arrakis-conservation.ts`
+Source: `packages/cli/src/commands/` — extract from Commander.js definitions.
 
-Adapter between canonical conservation evaluator and arrakis error taxonomy:
+### 3.8 docs/DEVELOPER-GUIDE.md
 
-```typescript
-// arrakis-conservation.ts
-import { evaluateConservation, type ConservationResult } from '@0xhoneyjar/loa-hounfour';
-
-// Arrakis error codes (may not exist in canonical package)
-export type ConservationErrorCode =
-  | 'RECEIVABLE_BOUND_EXCEEDED'
-  | 'BUDGET_OVERSPEND'
-  | 'TERMINAL_STATE_VIOLATION'
-  | 'TRANSFER_IMBALANCE'
-  | 'DEPOSIT_BRIDGE_MISMATCH'
-  | 'SHADOW_DIVERGENCE';
-
-export type ReconciliationFailureCode =
-  | 'LOT_CONSERVATION_DRIFT'
-  | 'ACCOUNT_CONSERVATION_DRIFT'
-  | 'PLATFORM_CONSERVATION_DRIFT'
-  | 'BUDGET_CONSISTENCY_DRIFT'
-  | 'TREASURY_INADEQUATE';
-
-export class ConservationViolationError extends Error {
-  constructor(
-    public readonly code: ConservationErrorCode,
-    public readonly invariantId: string,
-    message: string,
-  ) {
-    super(message);
-    this.name = 'ConservationViolationError';
-  }
-}
-
-// Adapter: maps canonical evaluation result → arrakis error taxonomy
-export function evaluateWithArrakisErrors(
-  ...args: Parameters<typeof evaluateConservation>
-): ConservationResult & { arrakisErrorCode?: ConservationErrorCode } { ... }
-```
-
-**Design rationale:** If canonical v7.0.0 exports equivalent error codes, this adapter becomes unnecessary. The separate module allows us to verify and eliminate.
-
-### 3.5 Conservation Dual-Run Validation (FR-3)
-
-The conservation migration is the highest-risk change — billing correctness is the platform's trust anchor. The dual-run pattern provides transition safety.
-
-```
-┌──────────────────────────────────────────────────┐
-│              DUAL-RUN TEST HARNESS               │
-│                                                  │
-│  Property-based test generator                   │
-│  ├── Generates random billing traces             │
-│  ├── Same traces fed to BOTH evaluators          │
-│  └── Assertion: results must match               │
-│                                                  │
-│  ┌─────────────┐     ┌─────────────────────┐    │
-│  │ FROZEN LOCAL │     │ CANONICAL v7.0.0    │    │
-│  │ evaluator    │     │ evaluator           │    │
-│  │ (snapshot    │     │ (from package)      │    │
-│  │  of v4.6.0)  │     │                     │    │
-│  └──────┬───────┘     └──────────┬──────────┘    │
-│         │                        │               │
-│         ▼                        ▼               │
-│  ┌────────────────────────────────────────┐      │
-│  │ COMPARISON                             │      │
-│  │ ├── Pass/fail must match               │      │
-│  │ ├── Unenumerated disagreement = FAIL   │      │
-│  │ └── Enumerated diffs = reviewed & OK   │      │
-│  └────────────────────────────────────────┘      │
-│                                                  │
-│  PLUS: Evaluator-independent conservation test   │
-│  └── SUM(debits) == SUM(credits) in MicroUSD    │
-│       (property-based, no evaluator dependency)  │
-└──────────────────────────────────────────────────┘
-```
-
-**Implementation:**
-
-1. **Freeze local evaluator:** Copy current `conservation-properties.ts` to `tests/fixtures/frozen-conservation-evaluator.ts` as a test-only snapshot. This file is never modified.
-
-2. **Dual-run harness:** `tests/unit/protocol/conservation-dual-run.test.ts`
-   - Uses `fast-check` (or equivalent) for property-based trace generation
-   - Generates traces with: deposits, reservations, finalizations, releases, transfers
-   - **Edge case generators:** overflow bounds (MAX_MICRO_USD), zero amounts, negative attempts, terminal state transitions, concurrent reservations
-   - Runs each trace through both evaluators
-   - **Comparison target:** All 14 local invariant IDs (I-1 through I-14) must produce identical pass/fail results. Additionally, any v7.0.0 invariants beyond the local 14 are run and their results logged (not gated) to build understanding of the expanded constraint set.
-   - **Strictness monotonicity:** v7.0.0 must be >= v4.6.0 strictness on the shared 14 invariants. If v7 passes where local fails, that's an acceptable relaxation to investigate. If v7 fails where local passes, that's a tightening — acceptable if trace generation covers it.
-   - **Bounded allowlist (not permanent ENUMERATED_DIFFS):** Any known semantic differences are recorded in `KNOWN_DIFFS` with: invariant ID, description, review date, reviewer, and **expiry date** (max 30 days from merge). After expiry, the diff becomes a hard failure. This prevents permanent masking.
-   - **Coverage requirement:** Property corpus must exercise every canonical invariant ID at least once (verified by a coverage counter in the harness)
-
-3. **Evaluator-independent test:** `tests/unit/protocol/conservation-independent.test.ts`
-   - Property: `SUM(all credit entries) == SUM(all debit entries)` over generated traces
-   - Does NOT use either evaluator — directly computes conserved quantities
-   - Catches regression even if both evaluators have the same bug
-   - **Additional properties:** `reserved_micro <= available_micro` per account, no negative balances after finalization
-
-4. **Migration gate:** Conservation module deletion is blocked until dual-run passes with zero unexpired allowlist entries and full invariant ID coverage.
-
-### 3.6 Breaking Change: trust_scopes (FR-5)
-
-**Current state:** `identity-trust.ts` has a graduated trust model but `trust_level`/`trust_scopes` are not used as string literals. The v6.0.0 breaking change affects JWT claim schemas and imported type definitions.
-
-**Migration design:**
-
-```
-┌──────────────────────────────────────────────────┐
-│  JWT CLAIM SCHEMA MIGRATION                      │
-│                                                  │
-│  v4.6.0 (if present):     v7.0.0 (canonical):   │
-│  {                         {                     │
-│    ...claims,               ...claims,           │
-│    trust_level: number      trust_scopes: {      │
-│  }                            read: boolean,     │
-│                               write: boolean,    │
-│                               admin: boolean,    │
-│                             }                    │
-│                           }                      │
-│                                                  │
-│  TRANSITION BEHAVIOR (Phase 3):                  │
-│  ├── Outbound: always emit trust_scopes (v7)     │
-│  ├── Inbound: accept trust_level (v4.6) OR       │
-│  │            trust_scopes (v7) via normalizer   │
-│  └── Rejection: unknown format → PROTOCOL_       │
-│                  VERSION_MISMATCH error           │
-└──────────────────────────────────────────────────┘
-```
-
-**Normalization safety rules:**
-
-1. **Exactly-one-of enforcement:** Inbound claims MUST contain exactly one of `trust_level` (v4.6) or `trust_scopes` (v7.0). If both are present, REJECT with `CLAIMS_SCHEMA` error — conflicting fields indicate a crafted token or misconfigured issuer. If neither is present, REJECT.
-
-2. **Least-privilege mapping table (trust_level → trust_scopes):**
-
-| trust_level (v4.6) | trust_scopes (v7.0) | Rationale |
-|--------------------|--------------------|-----------|
-| 0 (none) | `{ read: false, write: false, admin: false }` | No access |
-| 1-3 (low) | `{ read: true, write: false, admin: false }` | Read-only |
-| 4-6 (medium) | `{ read: true, write: true, admin: false }` | Read+write, no admin |
-| 7-9 (high) | `{ read: true, write: true, admin: false }` | Still no admin — admin requires explicit v7.0 trust_scopes |
-| Any other value | REJECT with `CLAIMS_SCHEMA` | Out of range |
-
-**Key invariant:** `trust_level` can NEVER normalize to `admin: true`. Admin access requires an explicit v7.0.0 `trust_scopes` claim. This is monotone and least-privilege by design.
-
-3. **Post-normalization re-validation:** After normalization, the output canonical claim object is re-validated against the v7.0.0 Zod schema. This catches any normalization bugs that produce an invalid claim shape.
-
-4. **Issuer/audience/subject constraints:** These are validated BEFORE normalization (step 1-2 of the 6-step pipeline) and are unchanged by the migration.
-
-**Files affected:**
-- `jwt-boundary.ts` → claim schema updates, verification pipeline preserved
-- `identity-trust.ts` → align `IdentityTrustConfig` with canonical trust model if applicable
-- `arrakis-compat.ts` → `normalizeInboundClaims()` with exactly-one-of + mapping table + re-validation
-
-**Tests:**
-- JWT encode/decode round-trip with v7.0.0 claim schema
-- Inbound v4.6.0 token with valid trust_level accepted and mapped correctly (boundary values: 0, 3, 6, 9)
-- Inbound v7.0.0 token with trust_scopes accepted
-- Token with BOTH trust_level AND trust_scopes → REJECTED
-- Token with NEITHER trust_level NOR trust_scopes → REJECTED
-- trust_level=9 NEVER maps to admin:true (privilege escalation guard)
-- trust_level out of range (negative, >9) → REJECTED
-- Malformed token rejected with `PROTOCOL_VERSION_MISMATCH`
-- Post-normalization output passes v7.0.0 schema validation
-
-### 3.7 Breaking Change: Coordination Schema (FR-6)
-
-**Current state:** `compatibility.ts` defines `PROTOCOL_VERSION = '4.6.0'` and `validateCompatibility()` with semver-based negotiation. The agent layer already imports `validateCompatibility()` from the canonical package.
-
-**Migration design:**
-
-```
-┌──────────────────────────────────────────────────┐
-│  VERSION NEGOTIATION — Phase 3 Transition        │
-│                                                  │
-│  /api/v1/compat endpoint returns:                │
-│  {                                               │
-│    "preferred": "7.0.0",                         │
-│    "supported": ["4.6.0", "7.0.0"],             │
-│    "protocol": "loa-hounfour"                    │
-│  }                                               │
-│                                                  │
-│  INBOUND MESSAGE HANDLING:                       │
-│  ├── v7.0.0 format → process directly            │
-│  ├── v4.6.0 format → normalize via arrakis-compat│
-│  ├── No version field → REJECT (missing required │
-│  │   discriminator, never assume legacy)          │
-│  └── Unknown version → REJECT with error         │
-│                                                  │
-│  OUTBOUND MESSAGE FORMAT:                        │
-│  └── Always v7.0.0 (no backward compat outbound) │
-└──────────────────────────────────────────────────┘
-```
-
-**Files affected:**
-- `compatibility.ts` → DELETE (canonical `validateCompatibility()` used directly)
-- `arrakis-compat.ts` → `negotiateVersion()`, `normalizeCoordinationMessage()`
-- Billing routes → update `/api/v1/compat` response
-- Agent layer → already using canonical, just version bump
-
-### 3.8 CI Drift Detection (FR-7)
-
-**Immutable pinning + three-layer assertion replaces hash-pinning:**
-
-**Dependency specification:** Pin by commit SHA in addition to tag for immutability:
-```json
-{
-  "@0xhoneyjar/loa-hounfour": "github:0xHoneyJar/loa-hounfour#<commit-sha>"
-}
-```
-The v7.0.0 tag is used to identify which commit to pin, but the actual `package.json` records the resolved commit SHA (not the mutable tag). This prevents force-tag-move attacks.
-
-**Three-layer drift detection:**
-
-```typescript
-// tests/unit/protocol/drift-detection.test.ts
-
-import { CONTRACT_VERSION } from '@0xhoneyjar/loa-hounfour';
-import { readFileSync } from 'fs';
-import { join } from 'path';
-
-const EXPECTED_HOUNFOUR_VERSION = '7.0.0';
-const EXPECTED_HOUNFOUR_SHA = 'abc123def456...'; // Full SHA, updated on upgrade
-
-describe('Protocol Drift Detection', () => {
-  // Layer 1: Semantic version constant
-  test('CONTRACT_VERSION matches expected', () => {
-    expect(CONTRACT_VERSION).toBe(EXPECTED_HOUNFOUR_VERSION);
-  });
-
-  // Layer 2: Installed package identity (reads installed package.json, not lockfile URL)
-  test('Installed package version matches expected', () => {
-    const pkgPath = require.resolve('@0xhoneyjar/loa-hounfour/package.json');
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
-    expect(pkg.version).toBe(EXPECTED_HOUNFOUR_VERSION);
-    // If gitHead is present (npm pack from git), verify it too
-    if (pkg.gitHead) {
-      expect(pkg.gitHead).toBe(EXPECTED_HOUNFOUR_SHA);
-    }
-  });
-
-  // Layer 3: No vendored protocol files remain
-  test('No vendored protocol files remain', () => {
-    const protocolDir = join(__dirname, '../../src/packages/core/protocol');
-    const allowed = new Set([
-      'arrakis-arithmetic.ts',
-      'arrakis-compat.ts',
-      'arrakis-conservation.ts',
-      'config-schema.ts',
-      'economic-events.ts',
-      'identity-trust.ts',
-      'atomic-counter.ts',
-      'index.ts',
-    ]);
-    // readdirSync and assert all files are in allowed set
-  });
-});
-```
-
-**Why not parse lockfile URLs:** Lockfile formats vary across npm/pnpm/yarn versions. The `resolved` URL format is not stable. Instead, we read the installed package's own `package.json` which is always present and format-stable.
-
-**Upgrade procedure:**
-1. Identify the new target commit SHA from the v7.x.y tag on GitHub
-2. Update `package.json`: `"@0xhoneyjar/loa-hounfour": "github:0xHoneyJar/loa-hounfour#<new-sha>"`
-3. Run `npm install` / `pnpm install`
-4. Update `EXPECTED_HOUNFOUR_VERSION` and `EXPECTED_HOUNFOUR_SHA` in drift-detection.test.ts
-5. Run full test suite
-
-**Deleted artifacts:**
-- `themes/sietch/scripts/gen-protocol-fixtures.ts`
-- `themes/sietch/tests/fixtures/protocol-hashes.json`
-
-### 3.9 Test Strategy
-
-#### 3.9.1 Test Disposition
-
-| Current Test | Action | Replacement | PRD Ref |
-|-------------|--------|-------------|---------|
-| State machine equivalence | DELETE | Canonical schema validation (machine IDs, state sets, terminals) | NFR-4 |
-| Protocol hash fixtures | DELETE | Lockfile commit SHA assertion (drift-detection.test.ts) | NFR-4 |
-| Vendored file drift | DELETE | Vendored-file absence test | NFR-4 |
-| 14 conformance assertions | MIGRATE | Update imports, same assertions against canonical | FR-8 |
-| 32 property tests | MIGRATE | Update imports, same property tests against canonical types | FR-8 |
-| Conservation dual-run | NEW | Frozen local vs canonical evaluator comparison | FR-3 |
-| Conservation independent | NEW | SUM(debits)==SUM(credits) property test | FR-3 |
-| JWT v7.0.0 round-trip | NEW | Encode/decode with v7.0.0 claim schema | FR-5 |
-| JWT backward compat | NEW | Accept v4.6.0 + v7.0.0 inbound tokens | FR-5 |
-| Version negotiation | NEW | /api/v1/compat response format | FR-6 |
-| Coordination compat | NEW | Accept both v4.6.0 and v7.0.0 coordination messages | FR-6 |
-| Drift detection (2-layer) | NEW | CONTRACT_VERSION + lockfile SHA | FR-7 |
-
-#### 3.9.2 Test File Map
-
-| Test File | Type | Count | Status |
-|-----------|------|-------|--------|
-| `conservation-dual-run.test.ts` | Property-based | ~14 properties | NEW |
-| `conservation-independent.test.ts` | Property-based | 1+ properties | NEW |
-| `conservation-properties.test.ts` | Unit | 28 (14+14) | MIGRATE |
-| `drift-detection.test.ts` | Unit | 3 | NEW (replaces hash-pinning) |
-| `jwt-boundary-v7.test.ts` | Unit | 4+ | NEW |
-| `version-negotiation.test.ts` | Unit | 4+ | NEW |
-| `protocol-conformance.test.ts` | Unit | 14 | MIGRATE |
-| `property-tests/*.test.ts` | Property-based | 32 | MIGRATE |
-
-**Net test change:** +25 new tests, -3 deleted tests = net +22
+Index page + ownership table from FR-9.
 
 ---
 
-## 4. Data Model
+## 4. Tooling Pipeline
 
-No database changes (NFR-3). The only data model change is the wire format for cross-service messages:
+### 4.1 Generation Tools
 
-| Field | v4.6.0 | v7.0.0 | Transition |
-|-------|--------|--------|------------|
-| `contract_version` | `"4.6.0"` | `"7.0.0"` | Accept both inbound |
-| `trust_level` | `number` | — (removed) | Normalize to `trust_scopes` |
-| `trust_scopes` | — (not present) | `{ read, write, admin }` | Emit outbound |
-| `protocol_version` (health) | `"4.6.0"` | `"7.0.0"` | Explicit version-gated change |
+| Tool | Purpose | Input | Output |
+|------|---------|-------|--------|
+| `butterfreezone-gen.sh` | Generate BUTTERFREEZONE.md | Codebase scan | BUTTERFREEZONE.md |
+| `scripts/ecosystem-stats.sh` | Generate ecosystem statistics | `cloc` + `gh api` | JSON stats blob |
+| `scripts/extract-routes.sh` | Extract route index from Express | Route source files | Markdown table |
+| `scripts/pin-citations.sh` | Pin cross-repo references | Docs with `repo@version:path` | Docs with permalink URLs |
 
----
+### 4.2 Validation Tools
 
-## 5. API Changes
+| Tool | Purpose | Gate |
+|------|---------|------|
+| `butterfreezone-validate.sh` | Verify BUTTERFREEZONE hashes | BUTTERFREEZONE acceptance |
+| Smoke-test checklist (curl commands) | Verify API docs against running instance | API docs acceptance |
+| `terraform plan` | Verify IaC docs match actual config | IaC docs acceptance |
+| `gaib --help` comparison | Verify CLI docs match implementation | CLI docs acceptance |
+| Naming grep check | Zero "Arrakis" in zero-tolerance files | Naming acceptance |
+| Cross-repo citation check | No branch-relative links | Citation acceptance |
 
-### 5.1 Modified Endpoints
+### 4.3 Naming Migration
 
-| Endpoint | Change | NFR-2 |
-|----------|--------|-------|
-| `GET /api/health` | `protocol_version` changes `4.6.0` → `7.0.0` | Version-gated, expected |
-| `GET /api/v1/compat` | Returns `{ preferred: '7.0.0', supported: ['4.6.0', '7.0.0'] }` | Backward compat |
+**Approach:** Search-and-replace in documentation files only. Code-level naming changes are out of scope.
 
-### 5.2 No New Endpoints
-
-No new routes, no new middleware, no new webhooks.
-
----
-
-## 6. Security Considerations
-
-### 6.1 JWT Boundary
-
-The JWT verification pipeline (6-step: signature → algorithm → schema → reservation → replay → overspend) is preserved unchanged. Only the claim schema definitions update (trust_scopes). EdDSA signature verification is not affected by the type migration.
-
-### 6.2 Conservation Properties
-
-Conservation invariants are the billing system's trust anchor. The dual-run validation (Section 3.5) ensures no silent regression in conservation checking. The evaluator-independent test provides a safety net that doesn't depend on either evaluator implementation.
-
-### 6.3 Backward Compatibility
-
-During the transition period (Phase 3):
-- Inbound messages from pre-v7 peers are accepted via normalization (not rejected)
-- Outbound messages use v7.0.0 format only
-- The `normalizeInboundClaims()` function is the single point of backward compat logic — easy to audit and remove
-
----
-
-## 7. Implementation Order
-
-The implementation must follow a strict dependency order to ensure each step is compile-time verified:
-
-### Sprint 1: Foundation (FR-1, FR-2 partial)
-
-| Task | Dependencies | Verification |
-|------|-------------|-------------|
-| 1.1 Upgrade `@0xhoneyjar/loa-hounfour` to v7.0.0 in both package.json files | v7.0.0 tag exists on GitHub | `npm install` succeeds |
-| 1.2 Audit v7.0.0 canonical exports against local protocol layer | Task 1.1 | Export comparison document |
-| 1.3 Create `arrakis-arithmetic.ts` with local helpers importing canonical types | Task 1.1 | `tsc --noEmit` passes |
-| 1.4 Create `arrakis-compat.ts` with version negotiation + backward compat | Task 1.1 | `tsc --noEmit` passes |
-| 1.5 Create `arrakis-conservation.ts` with error taxonomy adapter | Task 1.1 | `tsc --noEmit` passes |
-
-### Sprint 2: Consumer Migration (FR-2, FR-4)
-
-| Task | Dependencies | Verification |
-|------|-------------|-------------|
-| 2.1 Migrate billing adapter imports (23 files) to canonical | Sprint 1 | `tsc --noEmit` passes |
-| 2.2 Migrate API route imports (7 files) to canonical | Sprint 1 | `tsc --noEmit` passes |
-| 2.3 Migrate test imports to canonical | Sprint 1 | `tsc --noEmit` passes |
-| 2.4 Delete vendored files that are fully replaced by canonical | Tasks 2.1-2.3 | `npm test` passes |
-| 2.5 Update agent adapter layer (version bump, verify imports) | Task 1.1 | Agent tests pass |
-
-### Sprint 3: Breaking Changes + Conservation (FR-3, FR-5, FR-6)
-
-| Task | Dependencies | Verification |
-|------|-------------|-------------|
-| 3.1 Freeze local conservation evaluator to test fixture | Sprint 1 | Snapshot file exists |
-| 3.2 Create conservation dual-run test harness | Task 3.1, Sprint 2 | Dual-run passes |
-| 3.3 Migrate conservation properties to canonical evaluator | Task 3.2 (gate) | Dual-run + unit tests pass |
-| 3.4 JWT claim schema migration (trust_scopes) | Sprint 2 | JWT round-trip tests pass |
-| 3.5 Coordination schema migration + version negotiation | Sprint 2 | Compat tests pass |
-| 3.6 Backward compatibility tests (v4.6.0 + v7.0.0 inbound) | Tasks 3.4, 3.5 | Boundary tests pass |
-
-### Sprint 4: CI, Cleanup, Conformance (FR-7, FR-8)
-
-| Task | Dependencies | Verification |
-|------|-------------|-------------|
-| 4.1 Create two-layer drift detection tests | Sprint 2 | Drift tests pass |
-| 4.2 Delete hash-pinning fixtures and gen script | Task 4.1 | No fixtures remain |
-| 4.3 Run full conformance suite (14 assertions + 32 property tests) | Sprint 3 | All pass |
-| 4.4 Rewrite `core/protocol/index.ts` as arrakis-extensions barrel | Sprint 3 | `tsc --noEmit` passes |
-| 4.5 Audit arrakis-specific modules (config-schema, economic-events, identity-trust) | Sprint 3 | Audit document |
-| 4.6 Full regression: `npm test` with zero skipped tests | All above | `npm test` green |
-
----
-
-## 8. Rollback Strategy
-
-### 8.1 Pre-Migration Anchor
-
-Before the migration branch is created:
-1. **Tag the pre-migration commit:** `git tag pre-v7-migration-anchor` on the last commit before migration work begins
-2. **Create a release branch:** `release/pre-v7-baseline` from that tag, preserving the exact pre-migration state including lockfile and vendored files
-
-### 8.2 Deterministic Rollback Procedure
-
-If the migration causes issues after merge:
-
-1. **Immediate (< 5 min):** `git revert <squash-merge-sha>` — this reverts the entire squash merge, restoring all files including `package.json`, lockfile, vendored protocol directory, and consumer import paths
-2. **Run `npm install` / `pnpm install`** after revert to restore the pre-migration dependency graph from the restored lockfile
-3. **Verify:** `npm test` passes on the reverted state
-
-If `git revert` produces conflicts (other commits landed after squash):
-1. **Create rollback branch** from `pre-v7-migration-anchor` tag
-2. **Cherry-pick** any non-migration commits from main onto the rollback branch
-3. **Merge** rollback branch to main
-
-### 8.3 Boundary Normalizer Feature Flag
-
-The backward-compatibility normalizers (`normalizeInboundClaims()`, `normalizeCoordinationMessage()`) are gated by a runtime feature flag:
-
-```typescript
-// arrakis-compat.ts
-const V7_NORMALIZATION_ENABLED = process.env.PROTOCOL_V7_NORMALIZATION !== 'false';
-
-export function normalizeInboundClaims(claims: unknown): NormalizedClaims {
-  if (!V7_NORMALIZATION_ENABLED) {
-    // Bypass v7 normalization, use v4.6 claim schema directly
-    return parseV4Claims(claims);
-  }
-  // ... v7 normalization logic
-}
+**Zero-tolerance validation:**
+```bash
+# Must return 0 matches for each file
+for f in README.md BUTTERFREEZONE.md docs/ECOSYSTEM.md docs/API-QUICKSTART.md \
+         docs/API-REFERENCE.md docs/INFRASTRUCTURE.md docs/DEVELOPER-GUIDE.md; do
+  count=$(grep -ci "arrakis" "$f" 2>/dev/null || echo 0)
+  if [ "$count" -gt 0 ]; then
+    echo "FAIL: $f has $count Arrakis references"
+  fi
+done
 ```
 
-This allows disabling v7 parsing without a code rollback if boundary issues are discovered in production. The flag defaults to enabled (`true`); setting `PROTOCOL_V7_NORMALIZATION=false` reverts to v4.6 behavior.
-
-### 8.4 Rollback Artifacts Checklist
-
-A rollback is deterministic only if ALL of these are restored:
-- [ ] `package.json` (both root and adapters) → v1.1.0 dependency
-- [ ] `package-lock.json` / `pnpm-lock.yaml` → pre-migration lockfile
-- [ ] `themes/sietch/src/packages/core/protocol/` → all 14 vendored files
-- [ ] Consumer import paths → relative `../../core/protocol/` imports
-- [ ] Test fixtures → `protocol-hashes.json` restored
-- [ ] CI drift detection → hash-pinning tests restored
-
-The `git revert` of the squash merge handles all of these atomically.
+**Historical reference pattern** (allowed in CHANGELOG.md, INSTALLATION.md):
+```markdown
+> *Formerly known as Arrakis. Rebranded to loa-freeside (Cycle 035).*
+```
 
 ---
 
-## 9. Monitoring & Observability
+## 5. Data Architecture
 
-No new monitoring required (NFR-3). The protocol version change is observable via:
-- `GET /api/health` → `protocol_version` field
-- `GET /api/v1/compat` → version negotiation response
-- Agent audit events already log `contract_version`
+Not applicable — this is a documentation cycle with no database changes.
 
 ---
 
-## 10. Dependencies & Constraints
+## 6. API Design
 
-| Dependency | Status | Impact |
-|-----------|--------|--------|
-| loa-hounfour v7.0.0 GitHub tag | Must exist before Sprint 1 | Blocking |
-| v7.0.0 exports branded types (MicroUSD, etc.) | To be verified in Task 1.2 | If not exported, keep local |
-| v7.0.0 exports conservation evaluator | To be verified in Task 1.2 | If not exported, keep local |
-| loa-finn upgrade (Phase 2) | NOT required | Backward compat handles this |
-| npm publish | NOT required | Using GitHub tag install |
+Not applicable — no new API endpoints. API documentation references existing endpoints.
 
 ---
 
-## 11. Open Questions (to Resolve in Sprint 1, Task 1.2)
+## 7. Security Considerations
 
-These questions depend on the actual v7.0.0 export surface, which can only be verified after the dependency upgrade:
+### 7.1 Quick-Start Security
 
-| Question | Impact | Fallback |
-|----------|--------|----------|
-| Does v7.0.0 export `MicroUSD`, `BasisPoints`, `AccountId` branded types? | If yes: delete local. If no: keep local arithmetic.ts | Keep local, import canonical when published |
-| Does v7.0.0 export conservation evaluator builtins? | If yes: dual-run then replace. If no: keep local module | Keep local, document as extension |
-| Does v7.0.0 export `BillingEntry` wire format? | If yes: delete local. If no: keep arrakis-billing.ts | Keep local billing entry mapper |
-| Does v7.0.0 export economic event types? | If yes: align. If no: keep arrakis-specific | Keep local economic-events.ts |
-| Does v7.0.0 export `trust_scopes` in JWT schema? | If yes: migrate claim schema. If no: trust_scopes migration is a no-op | Keep existing identity-trust.ts |
-| Does v7.0.0 export config schema / constitutional params? | If yes: align. If no: keep arrakis-specific | Keep local config-schema.ts |
+The API quick-start teaches JWT authentication patterns. Security risks:
 
-**Resolution strategy:** Sprint 1 Task 1.2 performs the export audit. Each question has an explicit fallback that preserves the current behavior. No question blocks the migration — they only determine how much local code can be deleted.
+| Risk | Mitigation in Docs |
+|------|-------------------|
+| Private key leakage | Explicit warning: "Never commit private keys" |
+| Dev JWKS in production | Warning: "Generate separate JWKS for production" |
+| Long-lived tokens | Document recommended TTL (15 min for access tokens) |
+| Missing audience validation | Include `aud` and `iss` in example JWT payload |
+| Admin endpoint exposure | Admin docs high-level only, separate from quick-start |
+
+### 7.2 IaC Documentation Security
+
+Terraform docs reference AWS resources. Risks:
+
+| Risk | Mitigation |
+|------|-----------|
+| Credential exposure | Never include actual AWS credentials in docs; use placeholder variables |
+| Security group misconfiguration | Document recommended ingress/egress rules explicitly |
+| Unencrypted storage | Document KMS encryption as required, not optional |
+
+---
+
+## 8. Execution Architecture
+
+### 8.1 Phase Sequencing (from PRD FR-10)
+
+```
+Phase A (Days 1-2): IDENTITY
+├── README.md rewrite
+├── BUTTERFREEZONE.md regeneration
+└── docs/ECOSYSTEM.md creation
+     Gate: P0 docs review-ready
+
+Phase B (Days 3-5): DEVELOPER SURFACE    Phase C (Days 6-7): INFRASTRUCTURE
+├── docs/API-QUICKSTART.md               ├── docs/INFRASTRUCTURE.md
+├── docs/API-REFERENCE.md                └── terraform plan verification
+├── docs/CLI.md update                        Gate: terraform plan clean
+├── Security disclaimers
+└── Smoke-test validation
+     Gate: smoke-test passes
+
+Phase D (Days 8-9): POLISH
+├── docs/DEVELOPER-GUIDE.md (index + ownership)
+├── Cross-links between all documents
+├── Route index auto-extraction
+├── Citation pinning (pin-citations.sh)
+└── Gate: RTFM validation passes
+
+Phase E (Day 10): VALIDATION
+├── RTFM full audit
+├── Naming grep check
+├── BUTTERFREEZONE hash validation
+├── Ownership table committed
+└── Gate: all success criteria met
+```
+
+### 8.2 Parallel Execution Opportunities
+
+Phases B and C are independent and can run in parallel. Within each phase:
+
+| Task | Dependencies | Parallelizable? |
+|------|-------------|-----------------|
+| README rewrite | None | First task in Phase A |
+| BUTTERFREEZONE regen | README (for description alignment) | After README |
+| ECOSYSTEM.md | None | Parallel with README |
+| API-QUICKSTART | README identity (for naming) | Phase B, after Phase A |
+| API-REFERENCE | API-QUICKSTART (stable subset) | After quick-start stable subset |
+| IaC docs | None | Phase C, parallel with Phase B |
+| CLI docs | None | Phase B, parallel with API docs |
+| DEVELOPER-GUIDE | All other docs (for index) | Phase D |
+
+---
+
+## 9. Testing & Validation
+
+### 9.1 RTFM Validation Pipeline
+
+The final quality gate. Checks:
+
+1. **Citation validity:** Every `<!-- cite: ... -->` tag points to an existing file (local) or resolvable ref (cross-repo). Parser: regex `<!-- cite: (\S+?)(?:@(\S+?))?:(\S+?)(?:#L(\d+)(?:-L(\d+))?)? -->`
+2. **Naming compliance:** Zero "Arrakis" in zero-tolerance files
+3. **Version consistency:** Package.json version matches README badge and BUTTERFREEZONE
+4. **Cross-link integrity:** Every document link resolves to an existing file
+5. **Cross-repo citation stability:** `grep -P 'github\.com.*/(tree|blob)/(main|develop|master)' docs/*.md` returns 0 matches — all cross-repo links must be commit-SHA permalinks
+6. **Completeness:** No `TODO`, `TBD`, or `PLACEHOLDER` in shipped docs
+7. **BUTTERFREEZONE hash validation:** All section hashes match via `butterfreezone-validate.sh`
+8. **Route index completeness:** `scripts/extract-routes.sh --count` >= baseline route count
+
+### 9.2 Smoke-Test Protocol
+
+For API docs validation:
+
+```bash
+# 1. Start local instance
+npm run dev &
+sleep 5
+
+# 2. Run smoke-test checklist from API-QUICKSTART.md
+# Each curl command must return expected status code
+
+# 3. Health check (no auth)
+curl -s http://localhost:3000/api/agents/health | jq .status
+# Expected: "ok" or similar
+
+# 4. JWKS endpoint (no auth)
+curl -s http://localhost:3000/.well-known/jwks.json | jq .keys
+# Expected: array of JWK objects
+
+# 5. Auth-required endpoints (with JWT)
+curl -s -H "Authorization: Bearer $JWT" http://localhost:3000/api/agents/budget
+# Expected: 200 with budget object
+
+# 6. Kill local instance
+kill %1
+```
+
+---
+
+## 10. Technical Risks & Mitigation
+
+| Risk | Likelihood | Impact | Mitigation |
+|------|-----------|--------|------------|
+| Route extraction misses patterns | Medium | Medium | Supported-pattern spec + unresolvable linter gate + runtime introspection cross-check + snapshot diff |
+| BUTTERFREEZONE extraction non-determinism across OS | Medium | Medium | `LC_ALL=C sort` for file lists, LF normalization, pinned jq/ts-morph/Node versions, cross-platform golden tests |
+| BUTTERFREEZONE gen/validate share broken logic | Low | High | Fail-closed error taxonomy (exit 10-13), minimum-section requirement, golden fixture vectors |
+| Naming migration misses references in linked docs | Medium | Medium | Grep validation covers all zero-tolerance files |
+| API docs describe behavior that differs from actual routes | Medium | High | Smoke-test checklist + Tier 2 automated contract checks (auth + status code) |
+| Stable endpoint contract broken without notice | Low | High | Stability contract with 2-cycle deprecation, `Sunset` header, API-CHANGELOG.md |
+| Citation pinning fails due to GitHub API limits | Medium | Low | Retry/backoff, rate limit awareness, offline `--validate-only` mode, SHA caching |
+| AUTH_BYPASS reaches production | Low | Critical | Code-level environment gate, startup check, production build exclusion |
+| Ecosystem stats become stale before publication | Medium | Low | Stats include `generated_at` and commit SHA; 7-day TTL cache; `--fresh` flag |
+| Phase A takes >3 days | Low | Medium | Circuit breaker: descope Phase C to document-only (no diagrams) |
+
+---
+
+## 11. Future Considerations
+
+### 11.1 OpenAPI Generation
+
+When code-level changes allow (out of scope for this cycle), generate OpenAPI 3.1 spec from Zod schemas using `zod-to-openapi`. This would:
+- Auto-generate API-REFERENCE.md from the spec
+- Enable interactive docs (Scalar, Redocly)
+- Provide SDK type generation
+
+### 11.2 Hosted Documentation Site
+
+The `sites/docs/` directory exists but is unused. Future consideration: deploy a dedicated docs site (Mintlify, Docusaurus, or Astro Starlight) with:
+- Versioned documentation
+- Search
+- Interactive API explorer
+- Multi-language SDK examples
+
+### 11.3 Code-Level Naming Migration
+
+A separate engineering cycle to rename code internals from Dune to Neuromancer naming. Scope: variable names, import paths, configuration keys. Requires careful TypeScript refactoring and full test suite validation.

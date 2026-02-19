@@ -1,36 +1,31 @@
 {
   "verdict": "APPROVED",
-  "summary": "All previously blocking dependency/ordering and acceptance-criteria contradictions were addressed in a verifiable way, and no new truly blocking issues were introduced.",
+  "summary": "All five previously-blocking dependency/validation gaps are addressed with concrete harnesses, canonical sources, and executable validators, and the plan is now runnable end-to-end with no new truly blocking issues introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "Critical path shows 301.4 feeding into 301.5, but Task 301.5 did not depend on 301.4 (diagram inconsistent with task graph).",
+      "original_issue": "Sprint 2 gate required `terraform plan` clean but no runnable Terraform harness/invocation/environment was defined",
       "status": "fixed",
-      "notes": "Task 301.5 now explicitly depends on 301.4, and Appendix B depicts 301.4 joining into 301.5, so sequencing is unambiguous and consistent."
+      "notes": "S305-T6 now explicitly adds `scripts/tf-plan.sh`, pins the module directory (`infrastructure/terraform/`), uses `terraform init -backend=false`, provides `terraform.tfvars.example` with dummy values, and defines the gate as 'exits 0 locally without AWS creds'. This resolves the original risk of the gate failing for non-doc reasons."
     },
     {
-      "original_issue": "301.5 snapshot acceptance criteria required an exact pre-migration copy but didn’t guarantee the source file still existed or was anchored to the tag.",
+      "original_issue": "API docs/tests depended on '7 guaranteed-stable endpoints' but there was no canonical locked list before writing docs and smoke tests",
       "status": "fixed",
-      "notes": "301.5 now mechanically generates the frozen snapshot from `pre-v7-migration-anchor` via `git show ... > frozen-conservation-evaluator.ts` and requires embedding the source SHA in the header, making it reproducible and provably pre-migration."
+      "notes": "S305-T0 creates `docs/api/stable-endpoints.json` as the single source of truth and requires verification that each endpoint exists and is used to generate the smoke checklist and referenced by QUICKSTART/REFERENCE. This removes ambiguity and makes Sprint 2 gate verifiable."
     },
     {
-      "original_issue": "302.1 dual-run acceptance criteria contradicted itself by allowing a KNOWN_DIFFS allowlist but also requiring zero unexpired allowlist entries.",
+      "original_issue": "Tier 2 contract checks required framework-specific runtime introspection (`app._router.stack`) which may be impossible",
       "status": "fixed",
-      "notes": "Criteria now clearly allow KNOWN_DIFFS during Sprint 302 and moves the “must be empty” requirement to the final gate (303.6), removing the deadlock."
+      "notes": "S305-T4 is now framework-agnostic via HTTP checks against a running dev server, with optional `/api/debug/routes` cross-check only if available. This eliminates the 'impossible depending on framework/export' failure mode."
     },
     {
-      "original_issue": "303.6 test count math was non-verifiable (25+ new, 3 deleted) without enumerating deletions/additions.",
+      "original_issue": "RTFM validation was a Sprint 3 gate but the plan did not include implementing/confirming the validator tooling",
       "status": "fixed",
-      "notes": "Appendix D now enumerates new test files with minimum test counts and explicitly identifies the 3 deleted assertions (hash-pinning assertions removed in 301.3). Net math is now checkable."
+      "notes": "S306-T4 now explicitly creates `scripts/rtfm-validate.sh` and enumerates all 8 checks with deterministic exit behavior and a required passing run. This makes the Sprint 3 gate achievable and testable."
     },
     {
-      "original_issue": "300.2 uses GitHub SHA install, but 303.1 Layer 2 required package version + gitHead match, which may be impossible if gitHead absent.",
+      "original_issue": "BUTTERFREEZONE regeneration required jq >= 1.7 but jq availability/CI provisioning was not defined",
       "status": "fixed",
-      "notes": "303.1 Layer 2 is now conditional: assert gitHead only if present; otherwise assert the lockfile/npm resolution contains the expected SHA. This is deterministic for GitHub SHA installs."
-    },
-    {
-      "original_issue": "301.5 vs 303.5 duplicated ownership of `core/protocol/index.ts` rewrite, creating ambiguity/merge risk.",
-      "status": "fixed",
-      "notes": "Plan now makes 301.5 the single-owner rewrite and 303.5 a verify/adjust task post-audit, which resolves the duplication."
+      "notes": "Prerequisites now specify jq >=1.7 installation paths (brew/apt/asdf/mise), require CI runner compliance, and scripts fail fast with exit 13 if unmet. This addresses the environment mismatch that could block Sprint 1."
     }
   ],
   "new_blocking_concerns": [],

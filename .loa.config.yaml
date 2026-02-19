@@ -1631,6 +1631,16 @@ run_bridge:
       - neuromancer
 
 # =============================================================================
+# Agent Teams (v1.39.0)
+# =============================================================================
+# Multi-session orchestration where lead agent spawns parallel teammates.
+# Requires CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 in environment.
+# Reference: .claude/loa/reference/agent-teams-reference.md
+agent_teams:
+  # auto: use if available | true: require | false: disable
+  enabled: true
+
+# =============================================================================
 # Behavior Preferences
 # =============================================================================
 preferences:

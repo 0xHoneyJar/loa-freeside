@@ -1,33 +1,45 @@
 {
-  "verdict": "APPROVED",
-  "summary": "All previously blocking risks (version-downgrade ambiguity, trust_scopes normalization safety, conservation dual-run completeness, drift pinning robustness, and deterministic rollback) are addressed with concrete, safer mechanisms and no new failure-class issues were introduced.",
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "All six prior blockers appear addressed in substance, but the revised SDD introduces a new truly blocking contradiction: the canonicalization implementation described (jq -Sc) is not RFC 8785 JCS and will not produce a stable, spec-compliant canonical byte stream for hashing across environments.",
   "previous_issues_status": [
     {
-      "original_issue": "Unversioned coordination messages defaulted to v4.6.0, creating a downgrade/bypass surface",
-      "status": "fixed",
-      "notes": "Section 3.7 now explicitly says “No version field → REJECT (missing required discriminator, never assume legacy)”, removing the downgrade ambiguity."
+      "original_issue": "Canonicalization rules were underspecified/unsafe (array ordering + string trimming) and could change semantics / destabilize hashes",
+      "status": "not_fixed",
+      "notes": "You fixed the *rules* (no trimming, arrays deterministic at extraction, object-key sorting) and referenced RFC 8785, which is correct. However, the implementation claim “single jq -Sc code path” is incompatible with RFC 8785 JCS (notably number formatting and full JCS canonical output requirements). This means the hash can still be unstable or non-portable, so the integrity gate can fail in real use."
     },
     {
-      "original_issue": "trust_level → trust_scopes mapping was undefined/ambiguous and could allow privilege escalation; no precedence rules when both present",
+      "original_issue": "Golden vectors were inconsistent with the described extractor inputs (input.md vs codebase scan)",
       "status": "fixed",
-      "notes": "Section 3.6 adds exactly-one-of enforcement (reject both/neither), a least-privilege mapping table, an explicit invariant that v4 trust_level can never map to admin:true, and post-normalization re-validation against the v7 schema, with targeted negative tests."
+      "notes": "Fixture directory trees that mimic minimal repo structure and running the same extractor code path resolves the inconsistency and makes the gate implementable."
     },
     {
-      "original_issue": "Conservation dual-run compared only 14 invariants while v7 has 147; ENUMERATED_DIFFS could mask real safety changes; missing completeness criteria",
+      "original_issue": "Route extraction via grep would miss common Express patterns, producing incomplete route index",
       "status": "fixed",
-      "notes": "Section 3.5 adds (a) bounded allowlist with expiry (max 30 days) instead of permanent diffs, (b) a coverage requirement that every canonical invariant ID is exercised at least once, and (c) an evaluator-independent conservation property test to reduce shared-bug risk. This resolves the “subset-only” and “masking” failure modes."
+      "notes": "Switching to ts-morph AST parsing + resolving router.use mounts/constants + adding a baseline-count completeness gate addresses the reliability/completeness risk sufficiently for FR-4."
     },
     {
-      "original_issue": "CI drift detection relied on parsing lockfile resolved URLs and dependency pinned to mutable tag",
+      "original_issue": "Citation model mismatch between syntax and validation/pinning (source: vs repo@version:path)",
       "status": "fixed",
-      "notes": "Sections 3.1 and 3.8 pin the dependency by commit SHA and replace lockfile URL parsing with reading the installed package’s package.json (version + optional gitHead) plus CONTRACT_VERSION. This is materially more stable and harder to bypass."
+      "notes": "Standardizing on a single machine-readable <!-- cite: ... --> format and having both pinning + RTFM validation parse the same syntax resolves the automation mismatch."
     },
     {
-      "original_issue": "Rollback strategy was non-deterministic for a 40+ consumer import migration with vendored deletions",
+      "original_issue": "Smoke tests assumed a JWT existed but did not specify how to obtain one locally",
       "status": "fixed",
-      "notes": "Section 8 adds a pre-migration tag + release branch anchor, an explicit deterministic rollback procedure (including lockfile restoration), a rollback checklist, and a runtime feature flag to disable the v7 boundary normalizers without code rollback."
+      "notes": "Adding explicit local-auth setup (setup-dev + token minting), required claims, and an alternative manual path makes the smoke-test protocol executable."
+    },
+    {
+      "original_issue": "Ecosystem stats relied on non-existent/undefined GitHub API data and vague caching",
+      "status": "fixed",
+      "notes": "Shallow-clone at pinned refs + run cloc/test discovery locally with a defined cache/TTL and --fresh flag is concrete and implementable."
     }
   ],
-  "new_blocking_concerns": [],
+  "new_blocking_concerns": [
+    {
+      "location": "3.2 BUTTERFREEZONE.md — Canonicalization architecture + 'Single implementation' section (jq -Sc '.')",
+      "description": "The SDD claims RFC 8785 JCS canonicalization but also states canonical JSON is produced via `jq -Sc '.'`, which is not an RFC 8785 JCS implementation and will not guarantee JCS-compliant canonical bytes (especially for number formatting/normalization).",
+      "why_blocking": "FR-2/NFR-2 depend on a trustworthy, deterministic, cross-environment integrity hash. If the implementation is not actually JCS, hashes may differ across tool versions or differ from any other JCS implementation, breaking verification and undermining the 'spec-defined' integrity guarantee. This is a functional contradiction that can cause CI gates to fail or produce unverifiable artifacts.",
+      "fix": "Either (A) actually implement RFC 8785 JCS using a real JCS library/tool (Node: a JCS package; Go/Rust equivalents) and hash the exact UTF-8 bytes it emits, or (B) drop the RFC 8785 claim and precisely specify 'jq canonicalization' as the project’s canonical form (including pinned jq version) and accept it as the normative algorithm. Best is (A): keep RFC 8785 as the normative spec and ensure both gen/validate call the same JCS implementation."
+    }
+  ],
   "iteration": 2
 }

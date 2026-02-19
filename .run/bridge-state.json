@@ -1,84 +1,34 @@
 {
   "schema_version": 1,
-  "bridge_id": "bridge-20260218-1869a0de",
-  "state": "JACKED_OUT",
+  "bridge_id": "bridge-20260219-30080d",
+  "state": "ITERATING",
   "config": {
     "depth": 3,
     "mode": "full",
     "flatline_threshold": 0.05,
     "per_sprint": false,
-    "branch": "feature/creator-economy-release",
+    "branch": "docs/infra-as-product-gtm",
     "repo": ""
   },
   "timestamps": {
-    "started": "2026-02-18T16:45:00Z",
-    "last_activity": "2026-02-18T17:40:00Z",
-    "completed": "2026-02-18T17:40:00Z"
+    "started": "2026-02-19T11:57:58Z",
+    "last_activity": "2026-02-19T11:58:01Z"
   },
-  "iterations": [
-    {
-      "iteration": 1,
-      "state": "sprint_complete",
-      "sprint_plan_source": "findings",
-      "sprints_executed": 1,
-      "bridgebuilder": {
-        "total_findings": 14,
-        "by_severity": { "critical": 0, "high": 0, "medium": 2, "low": 4, "vision": 0, "praise": 8 },
-        "severity_weighted_score": 8,
-        "pr_comment_url": null
-      },
-      "enrichment": {
-        "persona_loaded": false,
-        "persona_validation": "pending",
-        "findings_format": "structured",
-        "field_fill_rates": { "faang_parallel": 0, "metaphor": 0, "teachable_moment": 0, "connection": 0 },
-        "praise_count": 8,
-        "insights_size_bytes": 0,
-        "redactions_applied": 0
-      },
-      "visions_captured": 0,
-      "started_at": "2026-02-18T16:45:00Z",
-      "updated_at": "2026-02-18T17:25:00Z"
-    },
-    {
-      "iteration": 2,
-      "state": "review_complete",
-      "sprint_plan_source": "findings",
-      "sprints_executed": 0,
-      "bridgebuilder": {
-        "total_findings": 7,
-        "by_severity": { "critical": 0, "high": 0, "medium": 0, "low": 1, "vision": 0, "praise": 0 },
-        "severity_weighted_score": 1,
-        "pr_comment_url": null
-      },
-      "enrichment": {
-        "persona_loaded": false,
-        "persona_validation": "pending",
-        "findings_format": "structured",
-        "field_fill_rates": { "faang_parallel": 0, "metaphor": 0, "teachable_moment": 0, "connection": 0 },
-        "praise_count": 0,
-        "insights_size_bytes": 0,
-        "redactions_applied": 0
-      },
-      "visions_captured": 0,
-      "started_at": "2026-02-18T17:25:00Z",
-      "updated_at": "2026-02-18T17:35:00Z"
-    }
-  ],
+  "iterations": [],
   "flatline": {
-    "initial_score": 8,
-    "last_score": 1,
-    "consecutive_below_threshold": 1
+    "initial_score": 0,
+    "last_score": 0,
+    "consecutive_below_threshold": 0
   },
   "metrics": {
-    "total_sprints_executed": 1,
-    "total_files_changed": 10,
-    "total_findings_addressed": 6,
+    "total_sprints_executed": 0,
+    "total_files_changed": 0,
+    "total_findings_addressed": 0,
     "total_visions_captured": 0
   },
   "finalization": {
-    "ground_truth_updated": true,
-    "rtfm_passed": true,
+    "ground_truth_updated": false,
+    "rtfm_passed": false,
     "pr_url": null,
     "butterfreezone_generated": false
   }

@@ -1,16 +1,36 @@
 {
   "verdict": "APPROVED",
-  "summary": "The two remaining blockers from the prior review are fixed (settlement hold key normalization is now consistent, and Security/Risks sections no longer contradict the implemented idempotency/versioning mechanisms), and no new truly blocking issues were introduced.",
+  "summary": "Yes—dropping the RFC 8785 claim and making `jq -Sc '.'` the explicitly non-JCS, project-normative canonicalization algorithm resolves the prior contradiction, and the rest of the previously-blocking items remain fixed with no new truly blocking issues introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "SettlementService resolves `settlement.hold_hours` but schema/registry uses `settlement.hold_seconds`",
+      "original_issue": "Canonicalization rules were underspecified/unsafe (array ordering + string trimming) and could change semantics / destabilize hashes",
       "status": "fixed",
-      "notes": "§3.4 registry, §4.4 SettlementService sample, §5.1 API propose example, §7.2 seed data, and §4.7 fallback table all consistently use `settlement.hold_seconds` with no hours→seconds conversion. This removes the runtime lookup mismatch risk."
+      "notes": "The SDD now cleanly specifies: no string mutation, arrays are deterministically ordered at extraction (not re-sorted in canonicalization), object keys sorted via jq, UTF-8/LF/no trailing newline, and SHA-256 over canonical bytes. Most importantly, it removes the RFC 8785 claim and states jq canonicalization is normative, eliminating the spec/implementation contradiction."
     },
     {
-      "original_issue": "Security/Risks sections still referenced `last_finalize_id` and `MAX(config_version)+1` despite revised designs",
+      "original_issue": "Golden vectors were inconsistent with the described extractor inputs (input.md vs codebase scan)",
       "status": "fixed",
-      "notes": "§6.2 now correctly describes idempotency via `agent_budget_finalizations` PK(account_id,reservation_id) + `INSERT OR IGNORE`. §11 now correctly describes config version allocation via `system_config_version_seq` under `BEGIN IMMEDIATE` plus UNIQUE(param_key, entity_type, config_version), and no longer mentions MAX+1 or last_finalize_id."
+      "notes": "Vectors are now fixture directory trees that run through the same extractor path (scan repo structure → extract JSON → canonicalize → hash). This is implementable and consistent with the production pipeline."
+    },
+    {
+      "original_issue": "Route extraction via grep would miss common Express patterns, producing incomplete route index",
+      "status": "fixed",
+      "notes": "The SDD specifies ts-morph AST parsing, mount resolution via router.use, and a baseline-count completeness gate, which addresses the completeness risk for the route index."
+    },
+    {
+      "original_issue": "Citation model mismatch between syntax and validation/pinning (source: vs repo@version:path)",
+      "status": "fixed",
+      "notes": "A single machine-readable `<!-- cite: ... -->` format is defined and explicitly shared by both pinning and validation tooling."
+    },
+    {
+      "original_issue": "Smoke tests assumed a JWT existed but did not specify how to obtain one locally",
+      "status": "fixed",
+      "notes": "The quick-start now includes an executable local auth flow (`gaib auth setup-dev` + `gaib auth token --dev`) plus a manual fallback, and the smoke-test protocol references `$JWT` from that flow."
+    },
+    {
+      "original_issue": "Ecosystem stats relied on non-existent/undefined GitHub API data and vague caching",
+      "status": "fixed",
+      "notes": "Stats are computed via shallow clones at pinned refs + local cloc/test discovery with a concrete cache location, TTL, and `--fresh` override."
     }
   ],
   "new_blocking_concerns": [],

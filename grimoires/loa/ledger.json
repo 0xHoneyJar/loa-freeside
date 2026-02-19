@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "next_sprint_number": 304,
-  "active_cycle": "cycle-034",
+  "next_sprint_number": 307,
+  "active_cycle": "cycle-035",
   "cycles": [
     {
       "id": "cycle-001",
@@ -1246,8 +1246,9 @@
     {
       "id": "cycle-034",
       "label": "The Voice from the Outer World — Canonical Protocol Adoption (v7.0.0)",
-      "status": "active",
+      "status": "archived",
       "created": "2026-02-17T12:30:00Z",
+      "archived": "2026-02-19T20:45:00Z",
       "prd": "grimoires/loa/prd.md",
       "sdd": "grimoires/loa/sdd.md",
       "sprints": [
@@ -1269,6 +1270,32 @@
         {
           "global_id": 303,
           "local_label": "sprint-303",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "cycle-035",
+      "label": "The Neuromancer Codex — Documentation as Product Surface",
+      "status": "active",
+      "created": "2026-02-19T20:45:00Z",
+      "prd": "grimoires/loa/prd.md",
+      "sdd": "grimoires/loa/sdd.md",
+      "sprint_plan": "grimoires/loa/sprint.md",
+      "sprints": [
+        {
+          "global_id": 304,
+          "local_label": "sprint-1",
+          "status": "pending"
+        },
+        {
+          "global_id": 305,
+          "local_label": "sprint-2",
+          "status": "pending"
+        },
+        {
+          "global_id": 306,
+          "local_label": "sprint-3",
           "status": "pending"
         }
       ]

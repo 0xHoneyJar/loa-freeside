@@ -1,46 +1,41 @@
 {
   "verdict": "APPROVED",
-  "summary": "The previously blocking contradiction about event emission semantics is now resolved and the earlier fixes remain intact, with no new truly blocking issues introduced.",
+  "summary": "All nine Flatline improvements appear integrated cleanly, FR-9/FR-10 are consistent with existing scope/acceptance gates, and no new truly blocking contradictions or impossible requirements were introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "Cross-system conservation check mixed money vs budget capacity without a defined bridge instrument/semantics (FR-10 + §9.3)",
+      "original_issue": "FR-2 BUTTERFREEZONE hashing was underspecified and brittle (algorithm, normalization, validation reliability)",
       "status": "fixed",
-      "notes": "FR-9/FR-10 continue to clearly separate conserved funds (credit ledger) from authorized capacity (budget engine) and define the bridge as 1:1 locked credits via reserve()/finalize()/release(), with reconciliation equality checks."
+      "notes": "Now specifies SHA-256 plus a structured JSON extraction/canonicalization step (sorted keys, trimmed values, deterministic arrays, UTF-8), excludes the meta block to avoid circularity, and adds a reference implementation + golden test vectors + validate script. This closes the prior verification gap and reduces OS/whitespace brittleness."
     },
     {
-      "original_issue": "Monotonic per-entity sequence_number requirement incompatible with async emission and multi-writer reality (FR-7/FR-8)",
+      "original_issue": "API docs scope/verification risk: too many endpoints to hand-document and keep accurate; missing enforceable contract and validation gate",
       "status": "fixed",
-      "notes": "FR-7 uses SQLite rowid ordering and explicitly drops per-entity sequence numbers; FR-8 keeps synchronous in-transaction insertion, preserving atomicity and achievable ordering guarantees."
+      "notes": "FR-4 is now explicitly constrained to 7 guaranteed-stable endpoints with full examples, while the remaining routes are covered via an auto-extracted route index (method/path/auth/description) and labeled internal/unstable. Smoke-test checklist remains the validation gate, which makes the quick-start verifiable against a local instance."
     },
     {
-      "original_issue": "Agents don’t need KYC conflicted with creator KYC and payout/settlement beneficiary ambiguity (FR-1/FR-3)",
+      "original_issue": "Auth ambiguity (JWT vs API keys) could lead to incorrect onboarding steps",
       "status": "fixed",
-      "notes": "FR-3’s beneficiary model is consistent: agent is a controlled sub-ledger; creator is the legal beneficiary and payout destination; creator KYC governs thresholds."
+      "notes": "JWT (ES256 + JWKS) remains the only auth method with operational steps; API keys are explicitly marked Planned with no operational steps. This stays consistent with the quick-start and acceptance criteria."
     },
     {
-      "original_issue": "Budget cap semantics undefined with reserve/finalize/release/TTL and concurrency (FR-2)",
+      "original_issue": "Security guidance missing for auth/keys/admin scoping (risk of shipping unsafe docs)",
       "status": "fixed",
-      "notes": "FR-2 defines cap accounting on finalized spend only, idempotent cap updates keyed by reservation_id, and atomic cap counter updates in the same SQLite transaction as finalize()."
+      "notes": "FR-4 acceptance criteria now explicitly requires security disclaimers (no private keys in code, dev/prod JWKS separation, rotation expectations, TTL guidance, aud/iss validation, least privilege, admin endpoint scoping). This is additive and does not contradict scope."
     },
     {
-      "original_issue": "Constitutional parameters + Redis caching risk inconsistent enforcement across nodes; missing versioning/activation semantics (FR-4/5/6 + NFR)",
+      "original_issue": "Docs would re-drift without ownership/maintenance triggers and cadence",
       "status": "fixed",
-      "notes": "NFR now requires SQLite-in-transaction reads for money-moving operations, Redis only for non-transactional reads, and includes config_version/active_from with recording of config_version in the audit trail; emergency override is multi-approval with audit notification."
+      "notes": "FR-9 introduces a DRI table, concrete update triggers mapped to code paths, doc versioning/errata expectations, and a weekly verification spot-check with a logging location. This is internally consistent with the RTFM validation gate and the overall 'docs-as-product' framing."
     },
     {
-      "original_issue": "“Instant settlement” and “agents can’t dispute” ignored clawback/withhold flows and could create negative balances/invariant breaks (FR-1 + settlement policy)",
+      "original_issue": "Execution plan lacked sequencing/gates, increasing risk of scope creep and missed launch window",
       "status": "fixed",
-      "notes": "FR-2b clarifies instant settlement as no human dispute window while retaining fraud withhold/clawback; it also specifies non-negative agent balances and shortfall handling."
+      "notes": "FR-10 adds a 5-phase 10-day plan with dependency order and explicit gates aligned to existing acceptance criteria (smoke tests, terraform plan, RTFM, naming grep, hash validation). Circuit breaker is consistent with the earlier staging-only IaC scope (it further reduces work rather than expanding it)."
     },
     {
-      "original_issue": "Phase 1 provenance verification keyed to token_id conflicted with Phase 2 TBA binding; identity anchor mismatch risk (FR-11 vs FR-3)",
+      "original_issue": "Cross-repo truth-grounded citations were hard to keep stable and verifiable",
       "status": "fixed",
-      "notes": "FR-3 establishes canonical identity anchor (chain_id, contract_address, token_id) with Phase 2 tba_address explicitly additive."
-    },
-    {
-      "original_issue": "Contradiction: FR-8 requires synchronous in-transaction event emission while Risks section reintroduced async/fire-and-forget emission",
-      "status": "fixed",
-      "notes": "Section 8 now aligns with FR-8: synchronous INSERT into economic_events within the same SQLite transaction, with an async dispatcher only after commit for external publication (outbox pattern)."
+      "notes": "NFR-1 now adds citation automation via scripts/pin-citations.sh to resolve repo@version:path into commit-SHA permalinks using gh api, while retaining the prohibition on branch links and the grep-based acceptance check. This improves maintainability without weakening the stability requirement."
     }
   ],
   "new_blocking_concerns": [],

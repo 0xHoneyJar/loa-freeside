@@ -1,0 +1,50 @@
+{
+  "measured_at": "2026-02-19T12:28:26Z",
+  "repos": [
+    {
+      "name": "loa-freeside",
+      "ts_files": 1379,
+      "test_files": 442,
+      "tf_files": 81,
+      "route_files": 42,
+      "latest_tag": "v1.39.1",
+      "commit_sha": "0fe59b54"
+    },
+    {
+      "name": "loa",
+      "ts_files": null,
+      "test_files": null,
+      "tf_files": null,
+      "route_files": null,
+      "latest_tag": "v1.51.0",
+      "commit_sha": "f52f531"
+    },
+    {
+      "name": "loa-hounfour",
+      "ts_files": null,
+      "test_files": null,
+      "tf_files": null,
+      "route_files": null,
+      "latest_tag": "v7.0.0",
+      "commit_sha": "d091a3c"
+    },
+    {
+      "name": "loa-finn",
+      "ts_files": null,
+      "test_files": null,
+      "tf_files": null,
+      "route_files": null,
+      "latest_tag": "v1.29.0",
+      "commit_sha": "7a1cfb6"
+    },
+    {
+      "name": "loa-dixie",
+      "ts_files": null,
+      "test_files": null,
+      "tf_files": null,
+      "route_files": null,
+      "latest_tag": "",
+      "commit_sha": ""
+    }
+  ]
+}

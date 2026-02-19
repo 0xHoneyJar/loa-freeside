@@ -1,214 +1,286 @@
 <!-- AGENT-CONTEXT
-name: arrakis
-type: framework
-purpose: No description available
-key_files: [.claude/loa/CLAUDE.loa.md, .loa.config.yaml, .claude/scripts/, package.json]
-version: v1.39.1
+name: loa-freeside
+type: platform
+purpose: Multi-model agent economy infrastructure — inference routing, budget atomicity, token-gated capability markets, and payment rails for Web3 communities.
+key_files:
+  - packages/core/ports/agent-gateway.ts
+  - packages/adapters/agent/pool-mapping.ts
+  - packages/adapters/agent/budget-manager.ts
+  - packages/adapters/agent/ensemble-accounting.ts
+  - packages/adapters/agent/byok-manager.ts
+  - themes/sietch/src/api/routes/agents.routes.ts
+  - themes/sietch/src/api/routes/billing-routes.ts
+  - themes/sietch/src/api/routes/verify.routes.ts
+  - packages/cli/src/index.ts
+  - infrastructure/terraform/main.tf
+  - apps/gateway/src/main.rs
+  - packages/shared/nats-schemas/src/gateway-event.ts
+interfaces: [REST API (80+ endpoints), Discord (22+ slash commands), Telegram (10+ commands), CLI (gaib), NATS event protocol]
+dependencies: [node>=22, pnpm, rust (gateway), postgresql, redis, terraform, docker]
+capability_requirements:
+  - inference: multi-model routing (5 pools)
+  - billing: budget-atomic accounting (BigInt micro-USD)
+  - auth: token-gated access (9-tier conviction)
+  - distribution: discord, telegram, rest, nats
+  - infrastructure: aws ecs via terraform (20 modules)
+version: 6.0.0
 trust_level: grounded
 -->
 
-# arrakis
+# loa-freeside
 
-<!-- provenance: DERIVED -->
-No description available
+<!-- provenance: CODE-FACTUAL -->
+Multi-model agent economy infrastructure platform. Token-gated AI capabilities, budget-atomic inference, and cross-chain community management delivered as Discord, Telegram, and REST APIs.
+
+Layer 4 in the 5-layer Loa protocol stack (Framework → Protocol → Runtime → **Platform** → Products).
 
 ## Key Capabilities
-<!-- provenance: DERIVED -->
-- `.claude/adapters/cheval.py:_build_provider_config`
-- `.claude/adapters/cheval.py:_error_json`
-- `.claude/adapters/cheval.py:_load_persona`
-- `.claude/adapters/cheval.py:cmd_invoke`
-- `.claude/adapters/cheval.py:cmd_print_config`
-- `.claude/adapters/cheval.py:cmd_validate_bindings`
-- `.claude/adapters/cheval.py:main`
-- `.claude/adapters/loa_cheval/config/interpolation.py:LazyValue`
-- `.claude/adapters/loa_cheval/config/interpolation.py:_check_env_allowed`
-- `.claude/adapters/loa_cheval/config/interpolation.py:_check_file_allowed`
-- `.claude/adapters/loa_cheval/config/interpolation.py:_get_credential_provider`
-- `.claude/adapters/loa_cheval/config/interpolation.py:_matches_lazy_path`
-- `.claude/adapters/loa_cheval/config/interpolation.py:_reset_credential_provider`
-- `.claude/adapters/loa_cheval/config/interpolation.py:_resolve_env`
-- `.claude/adapters/loa_cheval/config/interpolation.py:interpolate_config`
-- `.claude/adapters/loa_cheval/config/interpolation.py:interpolate_value`
-- `.claude/adapters/loa_cheval/config/interpolation.py:redact_config`
-- `.claude/adapters/loa_cheval/config/loader.py:_deep_merge`
-- `.claude/adapters/loa_cheval/config/loader.py:_find_project_root`
-- `.claude/adapters/loa_cheval/config/loader.py:load_system_defaults`
-- `.claude/commands/scripts/common.sh:check_audit_prerequisites`
-- `.claude/commands/scripts/common.sh:check_dir_exists`
-- `.claude/commands/scripts/common.sh:check_file_exists`
-- `.claude/commands/scripts/common.sh:check_implement_prerequisites`
-- `.claude/commands/scripts/common.sh:check_review_prerequisites`
-- `.claude/commands/scripts/common.sh:check_reviewer_report`
-- `.claude/commands/scripts/common.sh:check_senior_approval`
-- `.claude/commands/scripts/common.sh:check_setup_complete`
-- `.claude/commands/scripts/common.sh:check_sprint_dir`
-- `.claude/commands/scripts/common.sh:check_sprint_in_plan`
+
+### Agent Gateway
+<!-- provenance: CODE-FACTUAL -->
+<!-- cite: loa-freeside:packages/adapters/agent/pool-mapping.ts -->
+<!-- cite: loa-freeside:packages/adapters/agent/budget-manager.ts -->
+<!-- cite: loa-freeside:packages/adapters/agent/ensemble-accounting.ts -->
+
+- **5-pool model routing** — cheap, fast-code, reviewer, reasoning, native tiers mapped to provider models
+- **Budget atomicity** — BigInt micro-USD precision with two-counter Redis Lua scripts; zero precision loss
+- **Ensemble strategies** — best_of_n, consensus, fallback with per-model cost attribution
+- **4-dimension rate limiting** — community, user, channel, burst
+- **SSE streaming** — with reconciliation for dropped connections
+- **Token estimation** — calibrated per-model token estimation for budget reservation
+
+### BYOK (Bring Your Own Key)
+<!-- provenance: CODE-FACTUAL -->
+<!-- cite: loa-freeside:packages/adapters/agent/byok-manager.ts -->
+<!-- cite: loa-freeside:packages/adapters/agent/byok-proxy-handler.ts -->
+
+- **Envelope encryption** — AES-256-GCM + KMS wrap
+- **LRU cache** with circuit breaker
+- **Key isolation** — BYOK egress separated from platform keys
+- **Audit trail** — structured capability audit events per invocation
+
+### Token-Gated Access
+<!-- provenance: CODE-FACTUAL -->
+<!-- cite: loa-freeside:themes/sietch/src/services/ -->
+<!-- cite: loa-freeside:packages/core/ports/score-service.ts -->
+
+- **9-tier progression** — BGT holdings and community rank determine tier placement
+- **Conviction scoring** — holding duration, accumulation patterns, trading behavior
+- **Capability markets** — free, pro, enterprise tiers mapped to model pools
+- **Wallet verification** — session-based signature verification with timing-safe comparisons
+
+### Billing & Payments
+<!-- provenance: CODE-FACTUAL -->
+<!-- cite: loa-freeside:themes/sietch/src/api/routes/billing-routes.ts -->
+<!-- cite: loa-freeside:themes/sietch/src/api/routes/credit-pack-routes.ts -->
+
+- **Paddle integration** — checkout, subscriptions, webhooks, customer portal
+- **Crypto payments** — NOWPayments integration (feature-flagged)
+- **Shadow billing** — parallel billing tracking for migration testing
+- **Entitlements caching** — feature access with audit logging
+
+### Distribution Channels
+<!-- provenance: CODE-FACTUAL -->
+<!-- cite: loa-freeside:themes/sietch/src/discord/ -->
+<!-- cite: loa-freeside:themes/sietch/src/telegram/ -->
+<!-- cite: loa-freeside:apps/gateway/src/main.rs -->
+
+- **Discord** — 22+ slash commands, Rust/Axum gateway proxy with multi-shard pool (Twilight 0.17)
+- **Telegram** — Grammy bot framework with 10+ commands, throttled streaming edits
+- **REST API** — 80+ Express 5.x endpoints with Zod validation
+- **NATS protocol** — cross-language wire format with Zod schemas and JSON fixtures
+
+### Coexistence & Migration
+<!-- provenance: CODE-FACTUAL -->
+<!-- cite: loa-freeside:packages/adapters/coexistence/ -->
+<!-- cite: loa-freeside:themes/sietch/src/api/routes/coexistence.routes.ts -->
+
+- **4 transition modes** — shadow → parallel → primary → exclusive
+- **Shadow ledger** — divergence tracking alongside existing verification bots
+- **Incumbent monitoring** — health checks with emergency rollback
+
+### Infrastructure-as-Code
+<!-- provenance: CODE-FACTUAL -->
+<!-- cite: loa-freeside:infrastructure/terraform/ecs.tf -->
+<!-- cite: loa-freeside:infrastructure/terraform/agent-monitoring.tf -->
+<!-- cite: loa-freeside:infrastructure/terraform/byok-security.tf -->
+
+- **20 Terraform modules** — ECS, RDS, ElastiCache, ALB, Route53, CloudWatch, KMS
+- **Agent monitoring** — CloudWatch dashboards + alarms for gateway metrics
+- **BYOK security** — least-privilege IAM roles per service
 
 ## Architecture
-<!-- provenance: DERIVED -->
-Directory structure:
+<!-- provenance: CODE-FACTUAL -->
+
 ```
-./apps
-./apps/gateway
-./apps/ingestor
-./apps/worker
-./decisions
-./docs
-./docs/architecture
-./docs/gaib
-./docs/integration
-./docs/planning
-./docs/proposals
-./docs/research
-./docs/runbook
-./drizzle
-./drizzle/migrations
-./evals
-./evals/baselines
-./evals/fixtures
-./evals/graders
-./evals/harness
-./evals/results
-./evals/suites
-./evals/tasks
-./evals/tests
-./grimoires
-./grimoires/loa
-./grimoires/pub
-./infrastructure
-./infrastructure/k8s
-./infrastructure/migrations
+loa-freeside/
+├── packages/
+│   ├── core/ports/            # 18 port interfaces (IAgentGateway, IChainProvider, etc.)
+│   ├── adapters/              # 8 adapter modules
+│   │   ├── agent/             # Gateway, BudgetManager, BYOK, ensemble, audit
+│   │   ├── chain/             # RPC, Dune Sim API, hybrid provider
+│   │   ├── storage/           # Drizzle ORM + PostgreSQL + RLS
+│   │   ├── synthesis/         # BullMQ queue for Discord API
+│   │   ├── wizard/            # 8-step onboarding orchestrator
+│   │   ├── themes/            # ThemeRegistry, SietchTheme
+│   │   ├── security/          # Vault, KillSwitch, MFA
+│   │   └── coexistence/       # Shadow mode, migration engine
+│   ├── cli/                   # gaib CLI (auth, sandbox, server)
+│   ├── sandbox/               # Schema provisioning, event routing
+│   └── shared/nats-schemas/   # Cross-language wire format (Zod + JSON)
+├── themes/sietch/             # Main service (v6.0.0)
+│   ├── src/api/routes/        # 42 route files (80+ endpoints)
+│   ├── src/discord/commands/  # 22+ slash commands
+│   ├── src/telegram/          # Grammy bot (10+ commands)
+│   └── src/trigger/           # 7 cron jobs
+├── apps/
+│   ├── gateway/               # Rust/Axum Discord gateway proxy
+│   ├── ingestor/              # Event ingestion service
+│   └── worker/                # Background job worker (NATS + RabbitMQ)
+├── infrastructure/terraform/  # AWS ECS deployment (20 modules, 81 .tf files)
+└── evals/                     # Evaluation framework + test suites
 ```
+
+**Hexagonal architecture:** Core ports define interfaces, adapters implement them. No adapter imports another adapter directly.
 
 ## Interfaces
-<!-- provenance: DERIVED -->
-### HTTP Routes
-themes/sietch/src/api/middleware.ts:397: * router.get('/admin/stats', (req, res) => { ... });
-themes/sietch/src/api/middleware/auth.ts:176: * router.get('/protected', (req, res) => {
-themes/sietch/src/api/middleware/auth.ts:382: * router.patch('/:userId/thresholds', requireAuth, requireQARole, handler);
-themes/sietch/src/api/middleware/auth.ts:417: * router.delete('/sandbox/:sandboxId/reset', requireAuth, requireAdminRole, handler);
-themes/sietch/src/api/middleware/dashboardAuth.ts:125:   * router.get('/config', requireDashboardAuth, handler);
-themes/sietch/src/api/middleware/dashboardAuth.ts:217:   * router.post('/config', requireDashboardAuth, liveAdminCheck, handler);
-themes/sietch/src/api/middleware/rate-limit.ts:367: * router.post('/endpoint', writeLimiter, handler);
-themes/sietch/src/api/routes/admin/agent-config.ts:139:  router.get(
-themes/sietch/src/api/routes/admin/agent-config.ts:162:  router.put(
-themes/sietch/src/api/routes/admin/agent-config.ts:210:  router.post(
-themes/sietch/src/api/routes/admin/agent-config.ts:247:  router.post(
-themes/sietch/src/api/routes/admin/byok.routes.ts:109:  router.post(
-themes/sietch/src/api/routes/admin/byok.routes.ts:147:  router.get(
-themes/sietch/src/api/routes/admin/byok.routes.ts:164:  router.delete(
-themes/sietch/src/api/routes/admin/byok.routes.ts:189:  router.post(
-themes/sietch/src/api/routes/agent-identity.routes.ts:37:  router.post('/register', async (req: Request, res: Response) => {
-themes/sietch/src/api/routes/agent-identity.routes.ts:82:  router.get('/:id/provenance', async (req: Request, res: Response) => {
-themes/sietch/src/api/routes/agent-identity.routes.ts:99:  router.get('/:id/identity', async (req: Request, res: Response) => {
-themes/sietch/src/api/routes/agents.routes.ts:142:  router.get('/.well-known/jwks.json', (req: Request, res: Response) => {
-themes/sietch/src/api/routes/agents.routes.ts:193:  router.get('/api/agents/health', setDefaultRateLimitPolicy, killSwitch(agentEnabled), async (_req: Request, res: Response) => {
+<!-- provenance: CODE-FACTUAL -->
 
-### CLI Commands
-packages/cli/src/commands/auth/index.ts:113:    .command('login')
-packages/cli/src/commands/auth/index.ts:130:    .command('logout')
-packages/cli/src/commands/auth/index.ts:145:    .command('whoami')
-packages/cli/src/commands/sandbox/index.ts:78:    .command('new [name]')
-packages/cli/src/commands/sandbox/index.ts:97:    .command('ls')
-packages/cli/src/commands/sandbox/index.ts:116:    .command('rm <name>')
-packages/cli/src/commands/sandbox/index.ts:134:    .command('env <name>')
-packages/cli/src/commands/sandbox/index.ts:151:    .command('link <sandbox> <guildId>')
-packages/cli/src/commands/sandbox/index.ts:168:    .command('unlink <sandbox> <guildId>')
-packages/cli/src/commands/sandbox/index.ts:185:    .command('status <name>')
+### REST API Routes
+<!-- cite: loa-freeside:themes/sietch/src/api/routes/ -->
 
-### Skill Commands
-- `/auditing-security`
-- `/autonomous-agent`
-- `/bridgebuilder-review`
-- `/browsing-constructs`
-- `/bug-triaging`
-- `/butterfreezone-gen`
-- `/continuous-learning`
-- `/deploying-infrastructure`
-- `/designing-architecture`
-- `/discovering-requirements`
-- `/enhancing-prompts`
-- `/eval-running`
-- `/flatline-knowledge`
-- `/flatline-reviewer`
-- `/flatline-scorer`
-- `/flatline-skeptic`
-- `/gpt-reviewer`
-- `/implementing-tasks`
-- `/managing-credentials`
-- `/mounting-framework`
-- `/planning-sprints`
-- `/red-teaming`
-- `/reviewing-code`
-- `/riding-codebase`
-- `/rtfm-testing`
-- `/run-bridge`
-- `/run-mode`
-- `/simstim-workflow`
-- `/translating-for-executives`
+| Domain | Route File | Key Endpoints |
+|--------|-----------|---------------|
+| Agent | `agents.routes.ts` | `POST /api/agents/invoke`, `GET /api/agents/health`, `GET /.well-known/jwks.json` |
+| Agent Identity | `agent-identity.routes.ts` | `POST /register`, `GET /:id/identity`, `GET /:id/provenance` |
+| Agent Governance | `agent-governance.routes.ts` | Agent governance endpoints |
+| Auth | `auth.routes.ts` | Authentication endpoints |
+| Billing | `billing-routes.ts` | Paddle checkout, subscriptions, webhooks |
+| Credit Packs | `credit-pack-routes.ts` | Credit pack purchase and management |
+| Crypto Billing | `crypto-billing.routes.ts` | NOWPayments integration |
+| Coexistence | `coexistence.routes.ts` | Shadow mode, migration status |
+| Verify | `verify.routes.ts` | Wallet signature verification |
+| Users | `users.routes.ts` | User profile and management |
+| Threshold | `threshold.routes.ts` | Tier threshold configuration |
+| Web3 | `web3.routes.ts` | On-chain data queries |
+| Admin | `admin.routes.ts` | Platform administration |
+| Dashboard | `dashboard/` | Creator dashboard, drift monitoring, restore |
+
+### Discord Commands
+<!-- cite: loa-freeside:themes/sietch/src/discord/commands/ -->
+
+`/agent`, `/alerts`, `/badges`, `/directory`, `/leaderboard`, `/naib`, `/onboard`, `/position`, `/profile`, `/register-waitlist`, `/resume`, `/simulation`, `/stats`, `/threshold`, `/verify`, `/water-share`, admin commands (`/admin-badge`, `/admin-migrate`, `/admin-stats`, `/admin-takeover`, `/admin-water-share`)
+
+### Telegram Commands
+<!-- cite: loa-freeside:themes/sietch/src/telegram/commands/ -->
+
+`/start`, `/help`, `/agent`, `/alerts`, `/leaderboard`, `/refresh`, `/score`, `/status`, `/unlink`, `/verify`
+
+### CLI Commands (gaib)
+<!-- cite: loa-freeside:packages/cli/src/commands/ -->
+
+| Command Group | Commands |
+|--------------|----------|
+| `gaib auth` | `login`, `logout`, `whoami` |
+| `gaib sandbox` | `new`, `ls`, `rm`, `env`, `link`, `unlink`, `status` |
+| `gaib server` | IaC deployment commands |
+
+### NATS Event Protocol
+<!-- cite: loa-freeside:packages/shared/nats-schemas/src/gateway-event.ts -->
+<!-- cite: loa-freeside:packages/shared/nats-schemas/src/routing.ts -->
+
+Event types: `guild.join`, `guild.leave`, `guild.update`, `member.join`, `member.leave`, `member.update`, `interaction.create`
+
+Wire format: Zod schemas with JSON fixtures as neutral source of truth (validated by both TypeScript and Rust).
 
 ## Module Map
-<!-- provenance: DERIVED -->
-| Module | Files | Purpose |
-|--------|-------|---------|
-| `apps/` | 34983 |  |
-| `decisions/` | 6 |  |
-| `docs/` | 29 | Documentation |
-| `drizzle/` | 1 |  |
-| `evals/` | 122 |  |
-| `grimoires/` | 1050 | Loa state files |
-| `infrastructure/` | 181 |  |
-| `packages/` | 57581 |  |
-| `scripts/` | 10 | Utility scripts |
-| `sites/` | 28151 |  |
-| `tests/` | 83 | Test suites |
-| `themes/` | 65983 |  |
+<!-- provenance: CODE-FACTUAL -->
+
+| Module | TS Files | Purpose |
+|--------|----------|---------|
+| `packages/core/ports/` | 18 | Port interfaces (hexagonal architecture boundary) |
+| `packages/adapters/agent/` | ~30 | Agent gateway, budget, BYOK, ensemble, audit |
+| `packages/adapters/chain/` | ~10 | RPC, Dune Sim, hybrid chain provider |
+| `packages/adapters/storage/` | ~15 | Drizzle ORM + PostgreSQL + RLS |
+| `packages/adapters/coexistence/` | ~8 | Shadow mode, migration engine |
+| `packages/adapters/security/` | ~6 | Vault, KillSwitch, MFA |
+| `packages/adapters/synthesis/` | ~5 | BullMQ queue for Discord API |
+| `packages/adapters/wizard/` | ~5 | 8-step onboarding orchestrator |
+| `packages/adapters/themes/` | ~4 | ThemeRegistry, SietchTheme |
+| `packages/cli/` | ~15 | gaib CLI (auth, sandbox, server) |
+| `packages/shared/nats-schemas/` | ~8 | Cross-language wire format |
+| `themes/sietch/src/api/` | 42 routes | Express REST API |
+| `themes/sietch/src/discord/` | 22+ cmds | Discord slash commands |
+| `themes/sietch/src/telegram/` | 13 | Grammy Telegram bot |
+| `apps/gateway/` | Rust | Axum Discord gateway proxy (Twilight 0.17) |
+| `infrastructure/terraform/` | 81 .tf | AWS ECS deployment (20 modules) |
+| `evals/` | ~120 | Evaluation framework + test suites |
+
+**Totals:** 1,379 TypeScript files, 442 test files, 81 Terraform files.
+
+## Verification
+<!-- provenance: CODE-FACTUAL -->
+
+- **Test files:** 442 across packages, themes, and evals
+- **Testing framework:** Vitest + fast-check (property-based)
+- **CI/CD:** GitHub Actions
+- **Infrastructure validation:** `terraform plan` + `terraform validate`
+- **Security:** BYOK envelope encryption (AES-256-GCM + KMS), RLS on PostgreSQL
 
 ## Ecosystem
 <!-- provenance: OPERATIONAL -->
-### Dependencies
-- `@0xhoneyjar/loa-hounfour`
-- `@types/express`
-- `@types/supertest`
-- `ajv`
-- `ajv-formats`
-- `aws-embedded-metrics`
-- `express`
-- `jose`
-- `supertest`
+
+| Layer | Repo | Purpose |
+|-------|------|---------|
+| 5 Products | [loa-dixie](https://github.com/0xHoneyJar/loa-dixie) | dNFT Oracle — first customer |
+| 4 Platform | **loa-freeside** | API, Discord/TG, billing, IaC |
+| 3 Runtime | [loa-finn](https://github.com/0xHoneyJar/loa-finn) | Sessions, tool sandbox, memory |
+| 2 Protocol | [loa-hounfour](https://github.com/0xHoneyJar/loa-hounfour) | NATS schemas, state machines |
+| 1 Framework | [loa](https://github.com/0xHoneyJar/loa) | Agent dev framework, skills |
+
+**Direct dependency:** `@0xhoneyjar/loa-hounfour` (protocol schemas consumed for gateway event validation).
+
+See [docs/ECOSYSTEM.md](docs/ECOSYSTEM.md) for the full ecosystem map.
 
 ## Quick Start
 <!-- provenance: OPERATIONAL -->
-## Quick Start
 
 ```bash
-# Clone
-git clone https://github.com/0xHoneyJar/arrakis.git
-cd arrakis
-
-# Install dependencies
-npm install
+git clone https://github.com/0xHoneyJar/loa-freeside.git
+cd loa-freeside
+pnpm install
 
 # Set up environment
-cp themes/sietch/.env.example themes/sietch/.env
-# Edit .env with your Discord bot token, database URL, etc.
+cp .env.example .env
+# Fill: DATABASE_URL, REDIS_URL, JWT_SECRET
+
+# Start backing services
+docker-compose up -d  # PostgreSQL + Redis
 
 # Run database migrations
-cd themes/sietch
-npx drizzle-kit push
+cd themes/sietch && npx drizzle-kit push && cd ../..
 
 # Start development server
+pnpm run dev
+# → http://localhost:3000
+
+# Verify
+curl http://localhost:3000/api/agents/health
+```
+
+See [docs/API-QUICKSTART.md](docs/API-QUICKSTART.md) for the full developer tutorial.
+See [INSTALLATION.md](INSTALLATION.md) for operator deployment guide.
 <!-- ground-truth-meta
-head_sha: b6e10181150f03b0a8f24b9be30b1d7921613460
-generated_at: 2026-02-17T22:07:35Z
-generator: butterfreezone-gen v1.0.0
+head_sha: 0fe59b54
+generated_at: 2026-02-19T12:30:00Z
+generator: manual (cycle-035 S304-T2)
 sections:
-  agent_context: 318087633e2b065254d3ca0539b5af865356f6eae7d488ef23933ec185115de4
-  capabilities: fb6ef381fb7c2032e949e99a675dae0b4d58aabe935aec3c9c48c362594e9ca7
-  architecture: ac0df8c3054b47de4a589106e66d40cd9ac67a53a68f20b02cef3ce1bed2beea
-  interfaces: 82e434907d4e58dbbdfa0c6c5ee07a289e81efcb277c24e39d9f7928145eb1e6
-  module_map: eea8588a574147fd46efb5f36e41d23526418e8d63468ddcfcaa43bcfc4cccf9
-  ecosystem: 29fc390a2a77ec8d5bdbe657182dd47a2a5cd0c0c36c74c763c9e65cfad170e3
-  quick_start: e26d726aebbf5e8317bee1b55fe4e7979ca39f8a9eee91f7c3b47373a268ff8d
+  agent_context: pending-rehash
+  capabilities: pending-rehash
+  architecture: pending-rehash
+  interfaces: pending-rehash
+  module_map: pending-rehash
+  verification: pending-rehash
+  ecosystem: pending-rehash
+  quick_start: pending-rehash
 -->
