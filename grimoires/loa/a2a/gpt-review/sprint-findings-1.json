@@ -1,36 +1,48 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "This plan is close, but it has a few missing/incorrect dependencies and at least one unscoped critical validation task that can realistically prevent the Sprint 2 and Sprint 3 gates from being achievable.",
+  "summary": "As written, Sprints 4–5 risk failing because key dependencies and validation gates are inconsistent with the existing tooling model (8-check RTFM, MANAGED_DOCS scope) and several Sprint 4 claims are not verifiably grounded in this repo without explicit source-confirmation tasks.",
   "blocking_issues": [
     {
-      "location": "Sprint 2 Gate + Task 2.6 (docs/INFRASTRUCTURE.md)",
-      "issue": "Sprint 2 gate requires `terraform plan` clean, but there is no explicit task to create a runnable Terraform plan harness (backend/workspace/vars) or to define the exact invocation/environment that will be used to satisfy the gate.",
-      "why_blocking": "In many repos, `terraform plan` fails by default without backend config, required variables, provider auth, or selecting the correct module path. Without a defined harness, the gate can fail even if the documentation is correct, and the engineer will burn time debugging infra rather than writing docs.",
-      "fix": "Add a P0 task in Sprint 2 (or expand S305-T6 AC) to: (1) specify the exact module directory to run from, (2) provide a minimal `terraform.tfvars.example` (or documented env var set) that satisfies required variables with safe dummy values, (3) document/implement a local plan command (e.g., `scripts/tf-plan.sh`) that runs `terraform init` + `terraform validate` + `terraform plan` with `-backend=false` if appropriate, and (4) define acceptance as 'script exits 0 in CI/local without cloud credentials' (or explicitly require AWS creds if that’s intended)."
+      "location": "Sprint 4 / S307-T1 (ECONOMICS.md)",
+      "issue": "Doc outline asserts specific files/behaviors (e.g., `packages/adapters/agent/budget-manager.ts`, `budget-reserve.lua`, `budget-finalize.lua`, “14 canonical properties imported from loa-hounfour”, specific error codes, TierService thresholds, pool-mapping conformance tests) without a task to confirm these sources exist in loa-freeside and are the actual canonical implementations.",
+      "why_blocking": "If any referenced files/types/tests don’t exist (or live in different paths/repos), you cannot meet the acceptance criteria requiring exact matches and citation-backed grounding; the sprint will stall in citation validation and/or content correctness.",
+      "fix": "Add an explicit first step (or subtask) to S307-T1: “Source-of-truth discovery + path verification” with acceptance criteria like: (1) list exact repo paths + line ranges for each major section, (2) confirm whether invariants/error codes live in loa-freeside vs loa-hounfour and adjust doc scope accordingly, (3) update outline to only include primitives that can be cited from confirmed sources. If cross-repo is required, add a task to pin those citations via commit SHA permalinks."
     },
     {
-      "location": "Sprint 2 Tasks 2.2 (API-QUICKSTART) + 2.3 (API-REFERENCE)",
-      "issue": "The plan depends on '7 guaranteed-stable endpoints' but does not include a task to identify/lock that endpoint set from the codebase (source-of-truth list) before writing docs and tests.",
-      "why_blocking": "If the endpoint set is ambiguous, the quickstart, reference, smoke checklist, and stability labeling can’t be validated consistently. This can cascade into Sprint 2 gate failure (7/7 smoke tests) and Sprint 3 RTFM completeness checks because reviewers will dispute what the 7 endpoints are.",
-      "fix": "Add a small P0/P1 task (before S305-T2) to define the stable endpoint list in a single canonical place (e.g., `docs/api/stable-endpoints.json` or a table in API-REFERENCE) with method+path+auth+purpose, and reference it from both QUICKSTART and REFERENCE. Update AC to require the smoke-test checklist to be generated from that list."
+      "location": "Sprint 4 / S307-T2 (EVENT-PROTOCOL.md)",
+      "issue": "Acceptance criteria hard-codes “3 JetStream streams: COMMANDS, EVENTS, ELIGIBILITY” and “All 7 known event types” plus specific schema file paths, but there is no verification task ensuring these streams/types are actually defined in the referenced JSON/TS schema sources in this repo.",
+      "why_blocking": "If the stream set or event-type count differs, the doc cannot satisfy “all 3 streams” / “all 7 event types” criteria and will fail review/citation checks; you’ll also risk documenting a protocol that doesn’t match production routing.",
+      "fix": "Add a preflight verification step to S307-T2: extract stream names + subject patterns from `nats-routing.json` and event types from `gateway-event.ts` (or routing.ts) and set acceptance criteria to “document exactly what exists at pinned commit,” not a predetermined count. Keep the count-based criteria only if you first prove the count in-code and cite it."
     },
     {
-      "location": "Sprint 2 Task 2.4 (Tier 2 Contract Checks)",
-      "issue": "Acceptance criteria require runtime introspection via `app._router.stack`, which is framework-specific and may not exist or may not be accessible depending on how the server is structured/exported.",
-      "why_blocking": "If the app instance isn’t directly importable (common in production setups) or the router internals differ (Express vs Fastify vs Nest vs custom), this task can become a time sink or impossible, blocking the Sprint 2 gate and downstream Sprint 3 'route index completeness' validation.",
-      "fix": "Change AC to a framework-agnostic check: start the dev server and validate extracted routes by making HTTP requests (HEAD/OPTIONS/GET with safe defaults) and asserting 'not 404' + auth behavior. Make runtime introspection optional ('if available') rather than required, or explicitly add a prerequisite task to expose an introspection endpoint in dev-only builds."
+      "location": "Sprint 4 / Dependency graph vs task dependencies",
+      "issue": "S307-T1 depends on Sprint 3 complete, but S307-T2 is marked with no dependencies even though both tasks require citation pin/validation tooling introduced in Sprint 3 (pin-citations.sh, rtfm-validate.sh) and the Sprint 4 gate is “pass citation validation.”",
+      "why_blocking": "If Sprint 3 artifacts are required to validate Sprint 4 gate, Sprint 4 tasks must explicitly depend on Sprint 3 completion; otherwise sequencing allows starting Sprint 4 without the ability to validate done-ness, causing rework and gate failure on Day 11.",
+      "fix": "Make S307-T2 (and S307-T4 if it requires crosslink checks) explicitly depend on Sprint 3 complete, or restate Sprint 4 gate as “draft complete” and move validation to Sprint 5. Prefer: set S307-T2 dependency = Sprint 3 complete and add “run pin-citations --validate-only on both new docs” as part of Sprint 4 gate."
     },
     {
-      "location": "Sprint 3 Task 3.4 (RTFM Full Validation) + overall plan",
-      "issue": "RTFM validation is treated as a gate, but the plan does not include tasks to implement the RTFM validator itself (or to confirm it already exists), including the '8 RTFM checks' referenced in AC/testing.",
-      "why_blocking": "If the RTFM pipeline/scripts don’t already exist, Sprint 3 cannot complete because the gate is defined in terms of tooling that may be missing. Even if some scripts exist (pin-citations, butterfreezone-validate), the cross-link check, TODO/TBD scan, naming scan across the correct file set, version consistency check, and route baseline check need an executable harness.",
-      "fix": "Add an explicit task (likely Sprint 3 P0, or earlier) to implement `scripts/rtfm-validate.sh` (or equivalent) that runs the named checks with deterministic exit codes and a documented file allowlist. If it already exists, add an AC to S306-T4 that references the exact script path and enumerates the checks it runs, plus a 'dry run' in Sprint 1/2 to de-risk."
+      "location": "Sprint 5 / Sprint 5 gate and Task 5.1",
+      "issue": "Sprint 5 gate says “RTFM 10/10 checks pass,” but the plan and tooling definition earlier specify an 8-check RTFM validator; no tasks add two new checks or redefine scoring.",
+      "why_blocking": "You cannot satisfy a gate that references a non-existent scoring model; this creates an unmeetable acceptance criterion and will block declaring Sprint 5 done even if the validator passes.",
+      "fix": "Either (a) change Sprint 5 gate/AC to “RTFM 8/8 checks pass” (recommended), or (b) add tasks to implement the additional two checks, name them, define exit codes, and update CI to require them—then update all references consistently."
     },
     {
-      "location": "Sprint 1 Task 1.2 (BUTTERFREEZONE regeneration)",
-      "issue": "Task requires jq >= 1.7, but jq 1.7 is not broadly available on many default environments yet; also no task defines how CI/dev will obtain jq 1.7.",
-      "why_blocking": "This can cause immediate failure of generation/validation on the engineer’s machine or CI, blocking Sprint 1 gate and cascading into all later gates (hash validation is required in Sprint 3).",
-      "fix": "Either (a) relax requirement to jq >= 1.6 with a deterministic canonicalization approach compatible with 1.6, or (b) add a task/AC to vendor jq (e.g., via `mise`, `asdf`, `brew`, or a pinned container) and ensure scripts run in that environment. Also specify the CI runner environment that satisfies the jq constraint."
+      "location": "Sprint 5 / S308-T1 (Update RTFM Validator for New Documents)",
+      "issue": "Task says “Update the versions check if these docs include version headers,” but there is no Sprint 4 task requiring version headers in the new docs, and the existing version-consistency check is described as comparing package.json vs README badge and BUTTERFREEZONE (not per-doc headers).",
+      "why_blocking": "This creates an ambiguous and potentially contradictory validation requirement: adding version headers could require expanding the validator logic, but that work is not specified; leaving them out could still pass, but the task implies it might be required.",
+      "fix": "Decide and codify: either require version headers in ECONOMICS/EVENT-PROTOCOL (add to Sprint 4 AC) and explicitly update validator check #3 to validate them, or explicitly state “no per-doc version header validation; only README/BUTTERFREEZONE are checked” and remove the conditional language."
+    },
+    {
+      "location": "Sprint 4 / S307-T4 (Route Extraction Coverage Note)",
+      "issue": "Acceptance criteria text says “static grep-based extraction,” but Sprint 2 implemented ts-morph AST parsing; the note would be factually wrong and contradict existing tooling.",
+      "why_blocking": "This is likely to fail review and can also cause future maintenance errors (developers will distrust docs/tooling alignment). It’s also directly tied to a Bridgebuilder finding; getting it wrong defeats the purpose of the sprint.",
+      "fix": "Update S307-T4 acceptance criteria to match actual extraction method: “ts-morph AST-based static analysis of Express route registrations,” and cite `scripts/extract-routes.sh` implementation lines. Keep the limitation language (dynamic/computed paths, runtime registration, gateway-proxied routes) but make it accurate."
+    },
+    {
+      "location": "Sprint 4 / S307-T3 (Cross-repo learning path) + RTFM crossrepo check",
+      "issue": "S307-T3 requires cross-repo links, and RTFM check #5 forbids branch-relative GitHub links (main/develop/master), but there is no explicit task to pin cross-repo links to commit SHAs (or to ensure they comply with the crossrepo rule).",
+      "why_blocking": "If you add cross-repo links as normal GitHub URLs, the validator will fail; if you try to pin them ad hoc, you may miss some and fail on Day 12 during full validation.",
+      "fix": "Add explicit acceptance criteria to S307-T3: “All cross-repo links are commit-SHA permalinks or otherwise compliant with crossrepo rule,” and add a step to run `scripts/pin-citations.sh` (not just validate-only) for ECOSYSTEM.md after adding the section, or ensure the links are expressed via the citation system rather than raw GitHub URLs."
     }
   ],
   "question": "",

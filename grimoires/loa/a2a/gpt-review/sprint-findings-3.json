@@ -1,48 +1,50 @@
 {
-  "verdict": "APPROVED",
-  "summary": "The remaining blocking migration-ordering/deployment risk is correctly resolved by renumbering so the clawback receivables table ships with Sprint 4, and no new truly-blocking issues were introduced.",
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Most prior blocking issues remain fixed, but the remaining blocker (S307-T4 describing the wrong route-extraction method) is still not corrected and now directly contradicts the plan’s own Sprint 2 ts-morph contract.",
   "previous_issues_status": [
     {
-      "original_issue": "Clawback receivable table planned as a “047 addendum or included in 047” causing non-monotonic/unsafe migration ordering",
+      "original_issue": "S307-T1 ECONOMICS.md outline asserted specific files/behaviors without an explicit source-of-truth discovery/verification step",
       "status": "fixed",
-      "notes": "Now a dedicated migration exists and is cleanly placed in the monotonic sequence (048)."
+      "notes": "Still includes an explicit Pre-flight step and AC requiring source paths verified + counts/types extracted from code before prose."
     },
     {
-      "original_issue": "Acceptance criteria mixes clawback receivables into credit-lot conservation equations without defining semantics",
+      "original_issue": "S307-T2 EVENT-PROTOCOL.md hard-coded stream/event counts without verification tasks",
       "status": "fixed",
-      "notes": "Receivables are explicitly off-ledger IOUs with separate invariants; reconciliation checks are separated accordingly."
+      "notes": "Still includes Pre-flight extraction of stream names/counts and event types, and AC uses extracted values as ground truth."
     },
     {
-      "original_issue": "Sprint 6 requires transactional outbox inserts before outbox exists (Sprint 8)",
+      "original_issue": "Sprint 4 dependency sequencing: S307-T2 lacked dependency on Sprint 3 despite requiring citation tooling/gates",
       "status": "fixed",
-      "notes": "Sprint 6 uses injected IEventEmitter backed by existing in-memory BillingEventEmitter; Sprint 8.5 backfills outbox wiring."
+      "notes": "S307-T2 still depends on Sprint 3 complete, aligning with pin-citations/RTFM gating."
     },
     {
-      "original_issue": "SQLite claim protocol used non-portable UPDATE...LIMIT RETURNING",
+      "original_issue": "Sprint 5 gate referenced non-existent RTFM 10/10 model vs actual 8 checks",
       "status": "fixed",
-      "notes": "Sprint 8.4 specifies a SQLite-compatible select→guarded update→reselect claim flow plus concurrency tests."
+      "notes": "Sprint 5 gate remains consistent with RTFM 8/8 checks."
     },
     {
-      "original_issue": "Reconciliation results required for history queries but no persistence table existed",
+      "original_issue": "S308-T1 ambiguous per-doc version header validation requirement",
       "status": "fixed",
-      "notes": "Migration 052 adds reconciliation_runs and Sprint 9 AC/tests require persistence and retrieval."
+      "notes": "S308-T1 still clearly states no per-doc version headers required for the new docs and scopes version check accordingly."
     },
     {
-      "original_issue": "Draft->pending_approval transition missing (propose creates draft but approvals expect pending_approval)",
-      "status": "fixed",
-      "notes": "submit() method/endpoint added; approve constrained to pending_approval; tests cover draft-approval rejection."
+      "original_issue": "S307-T4 coverage note incorrectly claimed grep-based extraction despite ts-morph AST implementation",
+      "status": "not_fixed",
+      "notes": "S307-T4 explicitly claims the implementation is grep-based and calls it a “pragmatic divergence,” but the same plan (Sprint 2 / S305-T1) defines the extractor as ts-morph AST parsing and the overall doc-from-code trust model depends on that being accurate. Unless the implementation truly changed to grep (which would also require updating Sprint 2 and likely the tool), this remains a factual contradiction in the plan."
     },
     {
-      "original_issue": "Authoritative spend computation underspecified (windowing/index/boundaries)",
+      "original_issue": "S307-T3 cross-repo learning path needed explicit compliance with crossrepo rule (no branch-relative links) and pinning/validation step",
       "status": "fixed",
-      "notes": "Half-open interval query, required index (account_id, finalized_at), and boundary tests are specified."
-    },
-    {
-      "original_issue": "Migration numbering now implies 051 executes after 050 (Sprint 8), but Sprint 4 needs the clawback table",
-      "status": "fixed",
-      "notes": "Resolved by renumbering: clawback receivables is now migration 048 and explicitly ships with Sprint 4; subsequent migrations are renumbered to preserve monotonic ordering and release alignment."
+      "notes": "S307-T3 still requires non-branch-relative links and running pin-citations validate-only after edits."
     }
   ],
-  "new_blocking_concerns": [],
+  "new_blocking_concerns": [
+    {
+      "location": "Sprint 4 / S307-T4 (Route Extraction Coverage Note) — Description + Acceptance Criteria",
+      "description": "S307-T4 now asserts the extractor is “grep-based pattern matching” and frames it as an intentional divergence, which conflicts with Sprint 2’s stated (and previously reviewed) ts-morph AST-based extractor contract and undermines the provenance of the Tier 2 route index.",
+      "why_blocking": "This is a document-from-code integrity break: either (a) the plan is wrong about the implementation, causing the coverage note to be factually incorrect, or (b) the implementation actually diverged to grep, which would invalidate Sprint 2’s acceptance criteria/tooling expectations and could cause CI/validation behavior to mismatch what the docs claim. Either way, it risks rejection of Sprint 4 deliverables as ungrounded/incorrect and creates maintenance hazards.",
+      "fix": "Make S307-T4 describe the actual implemented extractor. If the tool is ts-morph-based, update S307-T4 AC to: “ts-morph AST-based static analysis of Express route registrations,” and list real limitations (dynamic/computed paths, runtime/conditional registration, gateway-proxied routes). Optionally add a citation requirement pointing to the relevant lines in `scripts/extract-routes.sh` that show ts-morph usage. If the tool truly is grep-based, then you must also update Sprint 2 S305-T1 Description/AC (and any other references) to match grep, and ensure the extractor’s limitations/coverage thresholds are still achievable and validated."
+    }
+  ],
   "iteration": 3
 }
