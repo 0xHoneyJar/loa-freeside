@@ -45,7 +45,6 @@ The foundational framework that all other repos mount. Provides the skill system
 
 ### Layer 2: loa-hounfour (Protocol)
 
-<!-- cite: loa-freeside:packages/shared/nats-schemas/src/gateway-event.ts -->
 <!-- cite: loa-freeside:packages/shared/nats-schemas/src/routing.ts -->
 
 | Field | Value |
@@ -163,7 +162,7 @@ Discord User → Rust Gateway (apps/gateway)
 
 <!-- cite: loa-freeside:apps/gateway/src/main.rs -->
 <!-- cite: loa-freeside:apps/worker/ -->
-<!-- cite: loa-freeside:packages/shared/nats-schemas/src/gateway-event.ts -->
+<!-- cite: loa-freeside:packages/shared/nats-schemas/src/routing.ts -->
 
 The critical invariant: JSON fixtures committed in loa-hounfour are the neutral source of truth. Both the TypeScript Zod validation and the Rust `serde` deserialization run against the same fixtures, ensuring schema agreement across language boundaries.
 
@@ -215,12 +214,8 @@ The budget-atomic accounting system (BigInt micro-USD precision, two-counter Red
 
 **Measurement method:** File counts via `find` with `node_modules`, `dist`, and build artifacts excluded. Remote repo stats from GitHub API. Stats for remote repos are placeholders — run `scripts/ecosystem-stats.sh --fresh` to populate from source.
 
-## Related Documentation
+## Next Steps
 
-| Document | Description |
-|----------|-------------|
-| [README.md](../README.md) | Platform overview and quick start |
-| [BUTTERFREEZONE.md](../BUTTERFREEZONE.md) | Agent-grounded project summary |
-| [INSTALLATION.md](../INSTALLATION.md) | Full deployment guide |
-| [docs/INFRASTRUCTURE.md](INFRASTRUCTURE.md) | Terraform topology and modules |
-| [docs/API-QUICKSTART.md](API-QUICKSTART.md) | First agent call in 5 minutes |
+- [API-QUICKSTART.md](API-QUICKSTART.md) — Make your first agent call against the platform
+- [API-REFERENCE.md](API-REFERENCE.md) — Full endpoint reference (Tier 1 + Tier 2)
+- [INFRASTRUCTURE.md](INFRASTRUCTURE.md) — Deployment topology and Terraform modules

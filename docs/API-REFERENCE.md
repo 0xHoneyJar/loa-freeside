@@ -469,3 +469,9 @@ See [API-QUICKSTART.md](API-QUICKSTART.md) for token generation examples.
 ## Changelog
 
 See [API-CHANGELOG.md](API-CHANGELOG.md) for a record of all Tier 1 endpoint changes.
+
+## Next Steps
+
+- [INFRASTRUCTURE.md](INFRASTRUCTURE.md) — Deployment topology and monitoring
+- [CLI.md](CLI.md) — gaib CLI for sandbox and server management
+- [DEVELOPER-GUIDE.md](DEVELOPER-GUIDE.md) — Full learning path and document ownership

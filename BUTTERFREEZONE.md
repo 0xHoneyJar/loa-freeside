@@ -14,7 +14,7 @@ key_files:
   - packages/cli/src/index.ts
   - infrastructure/terraform/main.tf
   - apps/gateway/src/main.rs
-  - packages/shared/nats-schemas/src/gateway-event.ts
+  - packages/shared/nats-schemas/src/routing.ts
 interfaces: [REST API (80+ endpoints), Discord (22+ slash commands), Telegram (10+ commands), CLI (gaib), NATS event protocol]
 dependencies: [node>=22, pnpm, rust (gateway), postgresql, redis, terraform, docker]
 capability_requirements:
@@ -186,7 +186,6 @@ loa-freeside/
 | `gaib server` | IaC deployment commands |
 
 ### NATS Event Protocol
-<!-- cite: loa-freeside:packages/shared/nats-schemas/src/gateway-event.ts -->
 <!-- cite: loa-freeside:packages/shared/nats-schemas/src/routing.ts -->
 
 Event types: `guild.join`, `guild.leave`, `guild.update`, `member.join`, `member.leave`, `member.update`, `interaction.create`

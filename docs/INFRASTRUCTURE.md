@@ -254,10 +254,8 @@ docker-compose -f docker-compose.dev.yml up -d
 | redis | 6379 | Redis latest |
 | sietch-dev | 3000 | Node.js dev server (hot-reload) |
 
-## Related Documentation
+## Next Steps
 
-| Document | Description |
-|----------|-------------|
-| [docs/iac.md](iac.md) | Discord server IaC (`gaib server` workflow) |
-| [docs/CLI.md](CLI.md) | gaib CLI reference |
-| [INSTALLATION.md](../INSTALLATION.md) | Platform setup guide |
+- [CLI.md](CLI.md) — gaib CLI reference for deployment commands
+- [API-REFERENCE.md](API-REFERENCE.md) — Full API endpoint reference
+- [DEVELOPER-GUIDE.md](DEVELOPER-GUIDE.md) — Learning path and document ownership
