@@ -1,5 +1,5 @@
 <!-- AGENT-CONTEXT
-name: arrakis
+name: loa-freeside
 type: framework
 purpose: No description available
 key_files: [.claude/loa/CLAUDE.loa.md, .loa.config.yaml, .claude/scripts/, package.json]
@@ -7,7 +7,7 @@ version: v1.39.1
 trust_level: grounded
 -->
 
-# arrakis
+# loa-freeside
 
 <!-- provenance: DERIVED -->
 No description available
@@ -184,8 +184,8 @@ packages/cli/src/commands/sandbox/index.ts:185:    .command('status <name>')
 
 ```bash
 # Clone
-git clone https://github.com/0xHoneyJar/arrakis.git
-cd arrakis
+git clone https://github.com/0xHoneyJar/loa-freeside.git
+cd loa-freeside
 
 # Install dependencies
 npm install
