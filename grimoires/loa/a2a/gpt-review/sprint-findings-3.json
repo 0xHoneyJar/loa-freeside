@@ -1,43 +1,50 @@
 {
-  "verdict": "APPROVED",
-  "summary": "The iteration-2 blocking contradiction around removing v4.6.0 JWT vectors during the dual-accept window is fixed correctly, and no new truly blocking issues were introduced in this revision.",
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Most prior blocking issues remain fixed, but the remaining blocker (S307-T4 describing the wrong route-extraction method) is still not corrected and now directly contradicts the plan’s own Sprint 2 ts-morph contract.",
   "previous_issues_status": [
     {
-      "original_issue": "SHA pinning was ambiguous (tag/main allowed) and could make builds non-reproducible",
+      "original_issue": "S307-T1 ECONOMICS.md outline asserted specific files/behaviors without an explicit source-of-truth discovery/verification step",
       "status": "fixed",
-      "notes": "Task 1.1 still explicitly requires resolving the v7.0.0 tag to an immutable commit SHA, pinning to that SHA in package.json, and verifying lockfile/CI regex gates."
+      "notes": "Still includes an explicit Pre-flight step and AC requiring source paths verified + counts/types extracted from code before prose."
     },
     {
-      "original_issue": "JWT migration removed v4.6.0 compatibility without a dual-accept window, TTL strategy, and telemetry",
+      "original_issue": "S307-T2 EVENT-PROTOCOL.md hard-coded stream/event counts without verification tasks",
       "status": "fixed",
-      "notes": "Tasks 2.1 and 2.7 retain dual-accept (v4.6.0 trust_level + v7 trust_scopes), single-write v7, and a bounded telemetry-based cutoff policy tied to TTL."
+      "notes": "Still includes Pre-flight extraction of stream names/counts and event types, and AC uses extracted values as ground truth."
     },
     {
-      "original_issue": "NftId canonicalization lacked DB/backfill + read-compat plan",
+      "original_issue": "Sprint 4 dependency sequencing: S307-T2 lacked dependency on Sprint 3 despite requiring citation tooling/gates",
       "status": "fixed",
-      "notes": "Task 2.3 includes inventory, dual-read/single-write, idempotent backfill with collision/ambiguity handling, and integration tests for old-format accessibility."
+      "notes": "S307-T2 still depends on Sprint 3 complete, aligning with pin-citations/RTFM gating."
     },
     {
-      "original_issue": "No concrete S2S peer verification/compatibility window against real loa-finn deployments",
+      "original_issue": "Sprint 5 gate referenced non-existent RTFM 10/10 model vs actual 8 checks",
       "status": "fixed",
-      "notes": "Task 4.9 defines a pre-deploy verification gate plus a bounded dual-accept policy for v6.x/7.0.0 and requires integration tests for both peer versions."
+      "notes": "Sprint 5 gate remains consistent with RTFM 8/8 checks."
     },
     {
-      "original_issue": "SSE/Completion wire changes lacked end-to-end integration tests (stub-only risk)",
+      "original_issue": "S308-T1 ambiguous per-doc version header validation requirement",
       "status": "fixed",
-      "notes": "Task 4.10 adds transcript replay tests, forward-compat unknown event handling, and ajv schema validation for CompletionRequest/Result."
+      "notes": "S308-T1 still clearly states no per-doc version headers required for the new docs and scopes version check accordingly."
     },
     {
-      "original_issue": "Duplicate task IDs created sequencing ambiguity",
-      "status": "fixed",
-      "notes": "Task numbering remains unique and cross-references appear consistent in this revision."
+      "original_issue": "S307-T4 coverage note incorrectly claimed grep-based extraction despite ts-morph AST implementation",
+      "status": "not_fixed",
+      "notes": "S307-T4 explicitly claims the implementation is grep-based and calls it a “pragmatic divergence,” but the same plan (Sprint 2 / S305-T1) defines the extractor as ts-morph AST parsing and the overall doc-from-code trust model depends on that being accurate. Unless the implementation truly changed to grep (which would also require updating Sprint 2 and likely the tool), this remains a factual contradiction in the plan."
     },
     {
-      "original_issue": "Auth-migration contradiction: Sprint 4.5 removed v4.6.0 JWT test vectors while Sprint 2 required dual-accept during telemetry window",
+      "original_issue": "S307-T3 cross-repo learning path needed explicit compliance with crossrepo rule (no branch-relative links) and pinning/validation step",
       "status": "fixed",
-      "notes": "Task 4.5 now explicitly keeps v4.6.0 dual-accept vectors and annotates removal as gated on the Task 2.7 telemetry cutoff; Task 4.8/NOTES.md also reflects that removal is deferred post-cutoff."
+      "notes": "S307-T3 still requires non-branch-relative links and running pin-citations validate-only after edits."
     }
   ],
-  "new_blocking_concerns": [],
+  "new_blocking_concerns": [
+    {
+      "location": "Sprint 4 / S307-T4 (Route Extraction Coverage Note) — Description + Acceptance Criteria",
+      "description": "S307-T4 now asserts the extractor is “grep-based pattern matching” and frames it as an intentional divergence, which conflicts with Sprint 2’s stated (and previously reviewed) ts-morph AST-based extractor contract and undermines the provenance of the Tier 2 route index.",
+      "why_blocking": "This is a document-from-code integrity break: either (a) the plan is wrong about the implementation, causing the coverage note to be factually incorrect, or (b) the implementation actually diverged to grep, which would invalidate Sprint 2’s acceptance criteria/tooling expectations and could cause CI/validation behavior to mismatch what the docs claim. Either way, it risks rejection of Sprint 4 deliverables as ungrounded/incorrect and creates maintenance hazards.",
+      "fix": "Make S307-T4 describe the actual implemented extractor. If the tool is ts-morph-based, update S307-T4 AC to: “ts-morph AST-based static analysis of Express route registrations,” and list real limitations (dynamic/computed paths, runtime/conditional registration, gateway-proxied routes). Optionally add a citation requirement pointing to the relevant lines in `scripts/extract-routes.sh` that show ts-morph usage. If the tool truly is grep-based, then you must also update Sprint 2 S305-T1 Description/AC (and any other references) to match grep, and ensure the extractor’s limitations/coverage thresholds are still achievable and validated."
+    }
+  ],
   "iteration": 3
 }

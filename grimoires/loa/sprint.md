@@ -1,12 +1,12 @@
 # Sprint Plan: The Neuromancer Codex — Documentation as Product Surface
 
-**Version:** 1.0.0
-**Date:** 2026-02-19
+**Version:** 1.1.0
+**Date:** 2026-02-20
 **Cycle:** cycle-035
 **PRD:** grimoires/loa/prd.md (v1.1.0)
 **SDD:** grimoires/loa/sdd.md (v1.0.0)
-**Global Sprint IDs:** 304–306
-**Duration:** 10 working days across 3 sprints
+**Global Sprint IDs:** 304–308
+**Duration:** 12 working days across 5 sprints
 **Team:** 1 engineer (AI-assisted)
 
 ---
@@ -18,6 +18,8 @@
 | Sprint 1 | 304 | Phase A | Days 1–2 | Identity | P0 docs review-ready |
 | Sprint 2 | 305 | Phase B+C | Days 3–7 | Developer Surface + Infrastructure | Smoke-test passes, terraform plan clean |
 | Sprint 3 | 306 | Phase D+E | Days 8–10 | Polish + Validation | All success criteria met |
+| Sprint 4 | 307 | Phase F | Day 11 | Educational Deep Docs | ECONOMICS.md + EVENT-PROTOCOL.md grounded |
+| Sprint 5 | 308 | Phase G | Day 12 | Merge Prep | RTFM 8/8 pass, PR ready for review |
 
 **Dependency chain:** Sprint 1 → Sprint 2 → Sprint 3 (sequential gates)
 **Parallel opportunity:** Within Sprint 2, API docs and IaC docs run in parallel.
@@ -553,3 +555,292 @@ Sprint 3 (Days 8-10):
 | BUTTERFREEZONE validity | All hashes match | `butterfreezone-validate.sh` |
 | Doc completeness | 0 placeholders | `grep -ri "TODO\|TBD\|PLACEHOLDER" docs/` |
 | Cross-link integrity | 0 broken links | RTFM cross-link check |
+
+---
+
+## Sprint 4: EDUCATIONAL DEEP DOCS (Global ID: 307)
+
+**Goal:** Create the economic primitives and event protocol documentation suggested by the Bridgebuilder review. Add cross-repo learning path and route coverage note.
+**Duration:** Day 11
+**Gate:** ECONOMICS.md and EVENT-PROTOCOL.md pass citation validation; cross-repo learning path added to ECOSYSTEM.md.
+**Source:** [Bridgebuilder Review — PR #76](https://github.com/0xHoneyJar/loa-freeside/pull/76#issuecomment-3927347470) findings high-1, high-2, medium-2, medium-3.
+
+### Task 4.1: docs/ECONOMICS.md — Economic Primitives Documentation
+
+**ID:** S307-T1
+**Priority:** P0
+**Effort:** Large (4–6 hours)
+**Dependencies:** Sprint 3 complete
+**Source:** Bridgebuilder finding high-1 ("Economic primitives undocumented")
+
+**Description:**
+Document the economic model that underpins the platform: budget-atomic accounting, conservation invariant, lot lifecycle, conviction-to-tier mapping, and ensemble cost attribution. Ground every claim in source citations. Include worked examples and failure mode guarantees.
+
+This is the document that transforms "interesting project" into "serious protocol." The economic primitives — BigInt micro-USD precision, two-counter atomic reservation, conservation properties enforced via Lua scripts — are the platform's deepest moat and deserve the most thorough documentation.
+
+**Pre-flight (first step):** Verify all source paths exist and extract exact counts/types from code before writing prose. Confirmed source paths (from codebase analysis):
+- `packages/adapters/agent/budget-manager.ts` — BudgetResult/FinalizeResult types, reserve/finalize/reap methods
+- `packages/adapters/agent/lua/budget-reserve.lua` — Atomic reservation Lua script
+- `packages/adapters/agent/lua/budget-finalize.lua` — Atomic finalization Lua script
+- `themes/sietch/src/packages/core/protocol/arrakis-conservation.ts` — Conservation adapter (imports from loa-hounfour)
+- `themes/sietch/src/services/TierService.ts` — 9-tier conviction system
+- `packages/adapters/agent/pool-mapping.ts` — Pool→tier access mapping
+- `packages/adapters/agent/ensemble-accounting.ts` — Per-model cost attribution
+
+**Content Outline:**
+1. **Overview** — What makes this an economic protocol, not just billing
+2. **Budget Accounting Model** — Two-counter system (committed + reserved), micro-USD precision, monthly reset lifecycle
+   - Source: `packages/adapters/agent/budget-manager.ts`, `budget-reserve.lua`, `budget-finalize.lua`
+3. **Lot Lifecycle** — reserve → finalize → reap with idempotency guarantees
+   - Worked example: complete request flow from reservation to finalization
+   - Failure modes: late finalize, expired reservation, Redis errors (fail-closed reserve, fail-open finalize)
+4. **Conservation Invariant** — Canonical properties imported from loa-hounfour
+   - Document exactly the error codes and reconciliation failure codes present in `arrakis-conservation.ts`
+   - Universe scopes: per-lot, per-account, cross-system, platform-wide
+   - Enforcement mechanisms: DB CHECK, DB UNIQUE, Application, Reconciliation-only
+   - Note: canonical property count and details extracted from source at write time, not hardcoded in plan
+5. **Conviction Scoring → Capability Tiers** — Tier system from BGT holdings
+   - Threshold table extracted from `TierService.ts` at write time
+   - Rank precedence rules as implemented
+   - Tier → pool access mapping from `pool-mapping.ts` protocol conformance tests
+6. **Ensemble Cost Attribution** — Per-model breakdown with PLATFORM_BUDGET vs BYOK_NO_BUDGET accounting modes
+   - Savings calculation: reserved - actual
+7. **Model Pricing** — Default pricing table per pool (from DEFAULT_MODEL_PRICING in budget-manager.ts)
+8. **Guarantees** — What the system promises: no precision loss, no double-charge, fail-closed reservation
+
+**Acceptance Criteria:**
+- [ ] Pre-flight: all source paths verified to exist; exact counts/types extracted from code
+- [ ] Every section has `<!-- cite: loa-freeside:path -->` citation(s) to source code
+- [ ] Conservation invariant section documents exactly the properties found in `arrakis-conservation.ts`
+- [ ] Worked example covers complete reserve → finalize → reap flow
+- [ ] Failure modes table covers at least: late finalize, expired reservation, Redis failure, budget exceeded
+- [ ] Conviction tier table matches `TierService.ts` thresholds exactly (verified by reading source)
+- [ ] Pool access matrix matches `pool-mapping.ts` protocol conformance tests (verified by reading source)
+- [ ] Zero "Arrakis" references in platform context
+- [ ] `scripts/pin-citations.sh --validate-only` passes for this file
+
+**Testing:**
+- All citations resolve to existing files
+- Tier thresholds verified against TierService.ts source
+- Pool access matrix verified against protocol-conformance.test.ts
+
+### Task 4.2: docs/EVENT-PROTOCOL.md — NATS Event Schema Documentation
+
+**ID:** S307-T2
+**Priority:** P0
+**Effort:** Medium (3–4 hours)
+**Dependencies:** Sprint 3 complete (requires pin-citations.sh for validation gate)
+**Source:** Bridgebuilder finding high-2 ("NATS event protocol has no API-level documentation")
+
+**Description:**
+Document the NATS event protocol at API level for Layer 5 product consumers. Cover stream configuration, subject namespaces, the GatewayEvent envelope schema, event data payloads, and subscription patterns. Reference Hounfour protocol types as the canonical schema source.
+
+**Pre-flight (first step):** Extract actual stream names/counts from `nats-routing.json` and event types from `gateway-event.ts` before writing prose. Confirmed source paths:
+- `packages/shared/nats-schemas/nats-routing.json` — Stream definitions
+- `packages/shared/nats-schemas/src/schemas/gateway-event.ts` — GatewayEvent envelope + known event types
+- `packages/shared/nats-schemas/src/schemas/event-data.ts` — Per-event payload types
+- `packages/shared/nats-schemas/src/routing.ts` — Event type → subject mapping
+- `apps/gateway/src/main.rs` — Rust/Axum gateway
+
+**Content Outline:**
+1. **Overview** — The event protocol as the machine-facing API surface
+2. **Streams** — Document all JetStream streams found in `nats-routing.json` with subject patterns
+   - Source: `packages/shared/nats-schemas/nats-routing.json`
+3. **GatewayEvent Envelope** — Canonical message format (fields extracted from source at write time)
+   - Source: `packages/shared/nats-schemas/src/schemas/gateway-event.ts`
+4. **Event Type → Subject Mapping** — Document all mappings found in routing.ts
+   - Source: `packages/shared/nats-schemas/src/routing.ts`
+5. **Event Data Schemas** — Per-event payload types (document all types found in event-data.ts)
+   - Source: `packages/shared/nats-schemas/src/schemas/event-data.ts`
+6. **Subscription Patterns** — How to subscribe by guild, event type, wildcard
+7. **Gateway Architecture** — Rust/Axum gateway (Discord WSS → NATS), shard pool configuration
+   - Source: `apps/gateway/src/main.rs`
+8. **Relationship to Hounfour** — Protocol types as canonical schema source
+
+**Acceptance Criteria:**
+- [ ] Pre-flight: extract exact stream count and event type list from source; use extracted values as ground truth
+- [ ] All streams from `nats-routing.json` documented with subject patterns
+- [ ] GatewayEvent envelope schema fully documented with field types
+- [ ] All event types from `gateway-event.ts` mapped to subjects
+- [ ] Event data schemas for all event types in `event-data.ts`
+- [ ] Subscription pattern examples (by guild, by type, wildcard)
+- [ ] Citations to NATS schema source files
+- [ ] Cross-reference to Hounfour protocol types
+- [ ] Zero "Arrakis" references
+- [ ] `scripts/pin-citations.sh --validate-only` passes for this file
+
+**Testing:**
+- Event type list verified against gateway-event.ts known types (exact match)
+- Stream configuration verified against nats-routing.json (exact match)
+- Schema field types verified against TypeScript definitions
+
+### Task 4.3: Cross-Repo Learning Path in ECOSYSTEM.md
+
+**ID:** S307-T3
+**Priority:** P1
+**Effort:** Small (1–2 hours)
+**Dependencies:** S307-T1, S307-T2 (references both new docs)
+**Source:** Bridgebuilder finding medium-2 ("Cross-repo learning path missing")
+
+**Description:**
+Add a "Building on Loa" section to ECOSYSTEM.md that maps the cross-repo journey for developers building Layer 5 products. Connect the freeside-only learning path (DEVELOPER-GUIDE.md) to the ecosystem-wide onboarding journey.
+
+**Content:**
+- "Building on Loa" section after the per-repo summaries
+- Journey map: Ecosystem overview → Protocol types (hounfour) → Platform APIs (freeside) → Runtime capabilities (finn) → Build your product (dixie as example)
+- Role-based paths: API consumer, product builder, protocol contributor
+- Cross-link to DEVELOPER-GUIDE.md for freeside-specific onboarding
+
+**Acceptance Criteria:**
+- [ ] "Building on Loa" section added to ECOSYSTEM.md
+- [ ] 3 role-based paths documented
+- [ ] Cross-repo references use repository links (not branch-relative); all compliant with RTFM crossrepo check
+- [ ] Run `scripts/pin-citations.sh --validate-only` on updated ECOSYSTEM.md after adding section
+- [ ] Links to DEVELOPER-GUIDE.md for freeside-specific deep dive
+- [ ] Zero "Arrakis" references
+
+**Testing:**
+- All links resolve (cross-link check)
+- No branch-relative GitHub links (crossrepo check)
+
+### Task 4.4: Route Extraction Coverage Note
+
+**ID:** S307-T4
+**Priority:** P2
+**Effort:** Small (30 min)
+**Dependencies:** None
+**Source:** Bridgebuilder finding medium-3 ("Route extraction coverage boundary undocumented")
+
+**Description:**
+Add a coverage boundary note to the API-REFERENCE.md Tier 2 section acknowledging that auto-extracted routes come from static analysis and may not capture dynamically registered or gateway-proxied routes.
+
+Note: Sprint 2 plan specified ts-morph AST parsing, but the actual `extract-routes.sh` implementation uses grep-based pattern matching on Express router method calls (pragmatic divergence documented in implementation notes). The coverage note must describe the **actual** extraction method, not the planned one.
+
+**Acceptance Criteria:**
+- [ ] Note added below Tier 2 header explaining extraction method and coverage limitations
+- [ ] Accurately describes actual method: grep-based pattern matching on Express `router.METHOD()` calls in `themes/sietch/src/api/routes/*.ts`
+- [ ] Acknowledges: middleware chains, dynamic mounting, Rust gateway proxy routes may not appear
+
+**Testing:**
+- Note present in rendered markdown
+
+---
+
+## Sprint 5: MERGE PREP (Global ID: 308)
+
+**Goal:** Update all validation tooling for the expanded document set, run final validation, and prepare PR #76 for merge.
+**Duration:** Day 12
+**Gate:** RTFM 8/8 checks pass (MANAGED_DOCS expanded to include new docs), PR marked ready for review.
+
+### Task 5.1: Update RTFM Validator for New Documents
+
+**ID:** S308-T1
+**Priority:** P0
+**Effort:** Small (1 hour)
+**Dependencies:** Sprint 4 complete
+**Source:** New docs must be in validation scope
+
+**Description:**
+Add `docs/ECONOMICS.md` and `docs/EVENT-PROTOCOL.md` to the `MANAGED_DOCS` array in `scripts/rtfm-validate.sh`. Update the naming zero-tolerance list. Note: no per-doc version headers are required for new docs; the existing versions check (check #3) validates only `docs/DEVELOPER-GUIDE.md` and `package.json` — no changes needed to that check.
+
+**Acceptance Criteria:**
+- [ ] `MANAGED_DOCS` array includes `docs/ECONOMICS.md` and `docs/EVENT-PROTOCOL.md`
+- [ ] `zero_tolerance_files` array includes both new docs
+- [ ] All 8 RTFM checks still pass after expansion
+
+**Testing:**
+- `scripts/rtfm-validate.sh` exits 0 with expanded scope
+
+### Task 5.2: Update BUTTERFREEZONE.md
+
+**ID:** S308-T2
+**Priority:** P1
+**Effort:** Small (30 min)
+**Dependencies:** S308-T1
+
+**Description:**
+Update BUTTERFREEZONE.md to reference the new documentation (ECONOMICS.md, EVENT-PROTOCOL.md) in the interfaces or capabilities section.
+
+**Acceptance Criteria:**
+- [ ] New docs referenced in appropriate BUTTERFREEZONE section
+- [ ] `butterfreezone-validate.sh` still passes (or passes with advisory warnings only)
+
+**Testing:**
+- `butterfreezone-validate.sh` exit code 0 or 2
+
+### Task 5.3: Update DEVELOPER-GUIDE.md
+
+**ID:** S308-T3
+**Priority:** P1
+**Effort:** Small (30 min)
+**Dependencies:** S308-T1
+
+**Description:**
+Add ECONOMICS.md and EVENT-PROTOCOL.md to the learning path and ownership table in DEVELOPER-GUIDE.md.
+
+**Acceptance Criteria:**
+- [ ] Both new docs appear in learning path at appropriate positions
+- [ ] Both new docs have DRI, update trigger, and review cadence in ownership table
+- [ ] Cross-links resolve
+
+**Testing:**
+- All document links resolve
+
+### Task 5.4: Full RTFM Validation + Citation Sweep
+
+**ID:** S308-T4
+**Priority:** P0
+**Effort:** Small (1 hour)
+**Dependencies:** S308-T1, S308-T2, S308-T3
+
+**Description:**
+Run full validation suite across all documents. Fix any issues found.
+
+**Acceptance Criteria:**
+- [ ] `scripts/rtfm-validate.sh` exits 0 — all 8 checks pass
+- [ ] `scripts/pin-citations.sh --validate-only` passes for all new docs
+- [ ] Zero naming violations across all zero-tolerance files
+- [ ] Zero broken cross-links
+- [ ] Zero placeholder markers (TODO/TBD/PLACEHOLDER/FIXME)
+
+**Testing:**
+- `scripts/rtfm-validate.sh` exits 0
+- `scripts/pin-citations.sh --validate-only` exits 0
+
+### Task 5.5: Update PR #76 for Merge
+
+**ID:** S308-T5
+**Priority:** P0
+**Effort:** Small (1 hour)
+**Dependencies:** S308-T4
+
+**Description:**
+Update PR #76 body with the complete sprint breakdown (304–308), mark as ready for review, and verify CI passes.
+
+**Acceptance Criteria:**
+- [ ] PR body updated with Sprint 4 and Sprint 5 summary
+- [ ] Sprint breakdown table includes all 5 sprints with file counts
+- [ ] PR marked as ready for review (not draft)
+- [ ] CI docs-validation workflow passes
+- [ ] Final commit message follows conventional commit format
+
+**Testing:**
+- `gh pr view 76 --json isDraft` returns false
+- CI checks pass
+
+---
+
+## Sprint 4–5 Task Dependency Graph
+
+```
+Sprint 4 (Day 11):
+  S307-T1 (ECONOMICS.md) ──────┐
+  S307-T2 (EVENT-PROTOCOL.md) ─┤
+                                ├──→ S307-T3 (Cross-repo path) ──→ GATE: citations pass
+  S307-T4 (Coverage note) ─────┘
+
+Sprint 5 (Day 12):
+  S308-T1 (Update RTFM) ──→ S308-T2 (BUTTERFREEZONE)
+                           ──→ S308-T3 (DEV-GUIDE)
+                           ──→ S308-T4 (Full validation) ──→ S308-T5 (PR merge prep) ──→ GATE: RTFM 8/8
+```
