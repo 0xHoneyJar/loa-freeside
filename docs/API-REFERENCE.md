@@ -320,6 +320,14 @@ Requires `admin` or `qa_admin` role. Returns budget counters from Redis for the 
 These routes are auto-extracted from source code by `scripts/extract-routes.sh`.
 They may change without notice. Do not build external integrations against Tier 2 routes.
 
+<!-- cite: loa-freeside:scripts/extract-routes.sh -->
+
+> **Coverage note:** Route extraction uses grep-based pattern matching on Express `router.METHOD()` calls in `themes/sietch/src/api/routes/*.ts`. This static analysis has known coverage boundaries:
+> - **Captured**: Direct `router.get()`, `router.post()`, etc. calls with string literal paths
+> - **Not captured**: Middleware-mounted routes, dynamically computed paths, routes registered at runtime via conditional logic, and Rust gateway proxy routes (`apps/gateway/`)
+>
+> If you register routes outside the standard pattern, they will not appear in this index. The Tier 1 section above is manually curated and always authoritative.
+
 **Promotion criteria**: A Tier 2 route can be promoted to Tier 1 after:
 1. Stable for 2+ development cycles without breaking changes
 2. Covered by smoke-test checklist

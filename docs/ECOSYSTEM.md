@@ -214,8 +214,48 @@ The budget-atomic accounting system (BigInt micro-USD precision, two-counter Red
 
 **Measurement method:** File counts via `find` with `node_modules`, `dist`, and build artifacts excluded. Remote repo stats from GitHub API. Stats for remote repos are placeholders — run `scripts/ecosystem-stats.sh --fresh` to populate from source.
 
+## Building on Loa
+
+The learning path depends on what you're building. Each path moves through the stack from protocol foundations upward to product integration.
+
+### Journey Map
+
+```
+1. Ecosystem Overview (this doc)
+        │
+        ▼
+2. Protocol Types (loa-hounfour)
+   GatewayEventSchema, InteractionPayloadSchema, NATS_ROUTING
+        │
+        ▼
+3. Platform APIs (loa-freeside)
+   HTTP endpoints, economic primitives, event protocol
+        │
+        ▼
+4. Runtime Capabilities (loa-finn)
+   Persistent sessions, tool sandbox, agent memory
+        │
+        ▼
+5. Build Your Product (loa-dixie as example)
+   dNFT Oracle — first Layer 5 customer
+```
+
+### By Role
+
+| Role | Start With | Then Read | Focus On |
+|------|-----------|-----------|----------|
+| **API Consumer** | [API-QUICKSTART.md](API-QUICKSTART.md) | [API-REFERENCE.md](API-REFERENCE.md) → [ECONOMICS.md](ECONOMICS.md) | Making agent calls, understanding budget model |
+| **Product Builder** | This doc → [EVENT-PROTOCOL.md](EVENT-PROTOCOL.md) | [API-REFERENCE.md](API-REFERENCE.md) → [ECONOMICS.md](ECONOMICS.md) | NATS subscription patterns, cost attribution |
+| **Protocol Contributor** | [loa-hounfour](https://github.com/0xHoneyJar/loa-hounfour) | [EVENT-PROTOCOL.md](EVENT-PROTOCOL.md) → [ECONOMICS.md](ECONOMICS.md) | Schema definitions, conservation invariants |
+
+### Freeside-Specific Deep Dive
+
+For developers working directly on loa-freeside, see the [Developer Guide](DEVELOPER-GUIDE.md) for the full learning path, document ownership table, and contribution practices.
+
 ## Next Steps
 
 - [API-QUICKSTART.md](API-QUICKSTART.md) — Make your first agent call against the platform
 - [API-REFERENCE.md](API-REFERENCE.md) — Full endpoint reference (Tier 1 + Tier 2)
+- [ECONOMICS.md](ECONOMICS.md) — Economic primitives: budget accounting, conservation, tiers
+- [EVENT-PROTOCOL.md](EVENT-PROTOCOL.md) — NATS event protocol for real-time subscriptions
 - [INFRASTRUCTURE.md](INFRASTRUCTURE.md) — Deployment topology and Terraform modules

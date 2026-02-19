@@ -6,7 +6,7 @@
 <!-- cite: loa-freeside:packages/shared/nats-schemas/src/routing.ts -->
 <!-- cite: loa-freeside:apps/gateway/src/main.rs -->
 
-> Version: v1.1.0
+> Version: v1.0.0
 
 This document describes the NATS event protocol — the machine-facing API surface of the Loa platform. While the [API Reference](API-REFERENCE.md) covers HTTP endpoints for human-driven integrations, this protocol is how platform components communicate internally and how Layer 5 products subscribe to real-time events.
 
@@ -151,10 +151,6 @@ Uses `.passthrough()` — Rust serializes the full Twilight guild object (40+ fi
 |-------|------|----------|
 | `unavailable` | `boolean` | No |
 
-### guild.update
-
-No specific data schema exists in `event-data.ts` for `guild.update`. The `data` field uses the forward-compatibility pattern (`z.unknown()`) from the GatewayEvent envelope. Rust serializes the Twilight guild object with the updated fields — consumers should treat the payload as opaque and extract only the fields they need. A typed schema may be added in a future version when worker requirements stabilize.
-
 ### member.join
 
 <!-- cite: loa-freeside:packages/shared/nats-schemas/src/schemas/event-data.ts#L52-L55 -->
@@ -275,86 +271,9 @@ The `NATS_ROUTING` export from `routing.ts` is the single source of truth for st
 
 ---
 
-## Failure Modes
-
-<!-- cite: loa-freeside:apps/gateway/src/main.rs -->
-<!-- cite: loa-freeside:packages/shared/nats-schemas/src/schemas/gateway-event.ts -->
-
-| Failure | Behavior | Rationale |
-|---------|----------|-----------|
-| **NATS unreachable (gateway)** | Gateway buffers events in memory; drops oldest on overflow. Shard connections remain alive — Discord events accumulate until NATS recovers. | Losing events is preferable to losing shard connections. Gateway recovery is faster than Discord reconnection. |
-| **Consumer lag (JetStream)** | JetStream redelivers unacknowledged messages after the ack timeout. Consumers receive duplicates — idempotency must be handled at the worker level. | At-least-once delivery is the JetStream default. Exactly-once requires consumer-side deduplication via `event_id`. |
-| **Deserialization failure (Zod)** | Worker logs a structured warning with the raw payload and continues. The message is acknowledged (not redelivered) to prevent poison-message loops. | A single malformed event should not block the consumer. The `z.unknown()` data field absorbs most schema mismatches; Zod failures indicate envelope-level corruption. |
-| **Gateway restart (shard reconnection)** | Twilight re-establishes WebSocket connections per shard. Discord sends a READY event with missed events via the gateway's resume sequence. Brief gap possible if resume fails — Discord falls back to full reconnection. | Discord's gateway protocol handles reconnection natively. The `shard_id` field enables consumers to detect per-shard gaps. |
-| **Duplicate delivery** | JetStream may redeliver on ack timeout or consumer restart. Workers must use `event_id` (UUIDv4) for deduplication. | At-least-once is the safe default; exactly-once delivery requires application-level idempotency. |
-
-### Message Ordering
-
-NATS JetStream preserves ordering within a single subject. Events published to `events.guild.join` arrive in publication order. Cross-subject ordering is **not guaranteed** — a `member.join` event may arrive before the corresponding `guild.join` if they were published to different subjects in rapid succession.
-
----
-
-## Stability Tiers
-
-<!-- cite: loa-freeside:packages/shared/nats-schemas/nats-routing.json -->
-<!-- cite: loa-freeside:packages/shared/nats-schemas/fixtures/ -->
-<!-- cite: loa-freeside:packages/shared/nats-schemas/SCHEMA-GOVERNANCE.md -->
-
-The event protocol uses the same two-tier stability model as [API-REFERENCE.md](API-REFERENCE.md). When Layer 5 products (loa-dixie) subscribe to NATS events, they need the same stability guarantees as HTTP API consumers. The `GatewayEvent` envelope schema is arguably *more* foundational than any HTTP endpoint — HTTP endpoints are consumed by humans; NATS events are consumed by autonomous agents.
-
-### Tier 1 — Stable
-
-These subjects, schemas, and stream names are guaranteed stable. Breaking changes follow a **2-cycle deprecation policy** documented in [API-CHANGELOG.md](API-CHANGELOG.md).
-
-| Element | Type | Stable Since |
-|---------|------|-------------|
-| `GatewayEvent` envelope schema | Schema | v1.0.0 |
-| `COMMANDS` stream | Stream | v1.0.0 |
-| `EVENTS` stream | Stream | v1.0.0 |
-| `ELIGIBILITY` stream | Stream | v1.0.0 |
-| `events.guild.>` subject pattern | Subject | v1.0.0 |
-| `events.member.>` subject pattern | Subject | v1.0.0 |
-| `commands.interaction` subject | Subject | v1.0.0 |
-
-**Evidence of stability:** All Tier 1 schemas have committed JSON fixtures in `packages/shared/nats-schemas/fixtures/` validated by both TypeScript (Zod) and Rust (serde) in CI. The fixture-based cross-language validation (see [SCHEMA-GOVERNANCE.md](../packages/shared/nats-schemas/SCHEMA-GOVERNANCE.md)) ensures wire-format stability across implementations.
-
-**Deprecation process:** Changes to Tier 1 elements require:
-1. Two development cycles of deprecation notice in [API-CHANGELOG.md](API-CHANGELOG.md)
-2. A new fixture added alongside the deprecated fixture
-3. Both old and new fixtures passing CI for the deprecation period
-
-### Tier 2 — Unstable
-
-These elements may change without notice. Consumers should handle them defensively.
-
-| Element | Type | Reason |
-|---------|------|--------|
-| Event data payload shapes beyond the 6 documented types | Schema | New event types may be added from Rust gateway |
-| `guild.update` data payload | Schema | Uses `z.unknown()` forward-compatibility pattern |
-| `eligibility.>` subject structure | Subject | Eligibility subsystem under active development |
-| Consumer group naming conventions | Configuration | Deployment-specific; may vary between environments |
-| Wildcard subject extensions beyond documented patterns | Subject | New namespaces may be introduced |
-
-### Promotion Criteria
-
-A Tier 2 element may be promoted to Tier 1 when:
-1. Stable for 2+ development cycles without breaking changes
-2. Documented in this file with full schema specification
-3. Covered by committed JSON fixtures in `packages/shared/nats-schemas/fixtures/`
-4. Cross-language validation tests pass (TypeScript Zod + Rust serde)
-
----
-
-## Versioning & Stability
-
-This document follows the **Protocol Document** governance tier defined in [DEVELOPER-GUIDE.md](DEVELOPER-GUIDE.md#document-versioning). Changes to Tier 1 elements (envelope schema, stream names, stable subjects) require a major version bump and core team review. See the [Stability Tiers](#stability-tiers) section above for the full classification.
-
----
-
 ## Related Documentation
 
 - [API-REFERENCE.md](API-REFERENCE.md) — HTTP endpoints (the human-facing API surface)
 - [ECONOMICS.md](ECONOMICS.md) — Economic primitives triggered by agent invocations through this protocol
 - [ECOSYSTEM.md](ECOSYSTEM.md) — How the 5-repo Loa protocol fits together
 - [INFRASTRUCTURE.md](INFRASTRUCTURE.md) — AWS deployment where the gateway and workers run
-- [DEVELOPER-GUIDE.md](DEVELOPER-GUIDE.md#document-versioning) — Document versioning governance
