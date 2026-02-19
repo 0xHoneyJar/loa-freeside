@@ -176,6 +176,10 @@ The conservation layer imports 14 canonical properties from `@0xhoneyjar/loa-hou
 | `BUDGET_CONSISTENCY_DRIFT` | I-5 | Budget counter inconsistency |
 | `TREASURY_INADEQUATE` | I-13 | Treasury balance below obligations |
 
+### Coverage
+
+loa-hounfour defines 14 canonical conservation properties (I-1 through I-14). Freeside's adapter maps all 14 to its local schema via `fromCanonical()`, but only 10 have explicit error or reconciliation failure codes assigned: I-1, I-2, I-3, I-4, I-5, I-6, I-7, I-8, I-13, I-14. The remaining 4 (I-9, I-10, I-11, I-12) are converted and available via `getCanonicalProperties()` but do not yet trigger specific error handling in the freeside enforcement layer. See `@0xhoneyjar/loa-hounfour/integrity` for the complete canonical property list.
+
 ### Universe Scopes
 
 <!-- cite: loa-freeside:themes/sietch/src/packages/core/protocol/arrakis-conservation.ts#L62 -->
@@ -333,9 +337,11 @@ Default pricing table (cost per 1K tokens in cents):
 | `reasoning` | 1.5 | 6.0 | Claude 3 Opus |
 | `native` | 0.3 | 1.2 | Tier-resolved default |
 
+**Note:** The Source column shows the model used to calibrate each pool's default pricing. These are pool pricing tiers, not fixed model bindings — the pool ID (not the model name) is the stable identifier. Actual model assignments are configured per-deployment via `BudgetConfigProvider.getModelPricing()` and may differ from these defaults.
+
 **Tool multiplier**: Requests with tools get a 2x cost estimate (higher token usage from tool descriptions).
 
-**Runtime override**: `BudgetConfigProvider.getModelPricing()` can override these defaults via Redis cache.
+**Runtime override**: `BudgetConfigProvider.getModelPricing()` can override these defaults via Redis cache. Pricing updates propagate through the Redis cache layer without redeployment.
 
 ---
 

@@ -151,6 +151,10 @@ Uses `.passthrough()` — Rust serializes the full Twilight guild object (40+ fi
 |-------|------|----------|
 | `unavailable` | `boolean` | No |
 
+### guild.update
+
+No specific data schema exists in `event-data.ts` for `guild.update`. The `data` field uses the forward-compatibility pattern (`z.unknown()`) from the GatewayEvent envelope. Rust serializes the Twilight guild object with the updated fields — consumers should treat the payload as opaque and extract only the fields they need. A typed schema may be added in a future version when worker requirements stabilize.
+
 ### member.join
 
 <!-- cite: loa-freeside:packages/shared/nats-schemas/src/schemas/event-data.ts#L52-L55 -->
@@ -268,6 +272,25 @@ The NATS schema package in loa-freeside (`packages/shared/nats-schemas/`) provid
 | Protocol types | `@0xhoneyjar/loa-hounfour` | Direct npm dependency |
 
 The `NATS_ROUTING` export from `routing.ts` is the single source of truth for stream names, subject prefixes, and event-type-to-subject mapping within the TypeScript codebase.
+
+---
+
+## Failure Modes
+
+<!-- cite: loa-freeside:apps/gateway/src/main.rs -->
+<!-- cite: loa-freeside:packages/shared/nats-schemas/src/schemas/gateway-event.ts -->
+
+| Failure | Behavior | Rationale |
+|---------|----------|-----------|
+| **NATS unreachable (gateway)** | Gateway buffers events in memory; drops oldest on overflow. Shard connections remain alive — Discord events accumulate until NATS recovers. | Losing events is preferable to losing shard connections. Gateway recovery is faster than Discord reconnection. |
+| **Consumer lag (JetStream)** | JetStream redelivers unacknowledged messages after the ack timeout. Consumers receive duplicates — idempotency must be handled at the worker level. | At-least-once delivery is the JetStream default. Exactly-once requires consumer-side deduplication via `event_id`. |
+| **Deserialization failure (Zod)** | Worker logs a structured warning with the raw payload and continues. The message is acknowledged (not redelivered) to prevent poison-message loops. | A single malformed event should not block the consumer. The `z.unknown()` data field absorbs most schema mismatches; Zod failures indicate envelope-level corruption. |
+| **Gateway restart (shard reconnection)** | Twilight re-establishes WebSocket connections per shard. Discord sends a READY event with missed events via the gateway's resume sequence. Brief gap possible if resume fails — Discord falls back to full reconnection. | Discord's gateway protocol handles reconnection natively. The `shard_id` field enables consumers to detect per-shard gaps. |
+| **Duplicate delivery** | JetStream may redeliver on ack timeout or consumer restart. Workers must use `event_id` (UUIDv4) for deduplication. | At-least-once is the safe default; exactly-once delivery requires application-level idempotency. |
+
+### Message Ordering
+
+NATS JetStream preserves ordering within a single subject. Events published to `events.guild.join` arrive in publication order. Cross-subject ordering is **not guaranteed** — a `member.join` event may arrive before the corresponding `guild.join` if they were published to different subjects in rapid succession.
 
 ---
 

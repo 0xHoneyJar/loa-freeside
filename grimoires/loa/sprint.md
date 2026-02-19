@@ -1,12 +1,12 @@
 # Sprint Plan: The Neuromancer Codex — Documentation as Product Surface
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Date:** 2026-02-20
 **Cycle:** cycle-035
 **PRD:** grimoires/loa/prd.md (v1.1.0)
 **SDD:** grimoires/loa/sdd.md (v1.0.0)
-**Global Sprint IDs:** 304–308
-**Duration:** 12 working days across 5 sprints
+**Global Sprint IDs:** 304–309
+**Duration:** 13 working days across 6 sprints
 **Team:** 1 engineer (AI-assisted)
 
 ---
@@ -20,6 +20,7 @@
 | Sprint 3 | 306 | Phase D+E | Days 8–10 | Polish + Validation | All success criteria met |
 | Sprint 4 | 307 | Phase F | Day 11 | Educational Deep Docs | ECONOMICS.md + EVENT-PROTOCOL.md grounded |
 | Sprint 5 | 308 | Phase G | Day 12 | Merge Prep | RTFM 8/8 pass, PR ready for review |
+| Sprint 6 | 309 | Phase H | Day 13 | Bridge Findings | Bridgebuilder findings addressed, RTFM 8/8 |
 
 **Dependency chain:** Sprint 1 → Sprint 2 → Sprint 3 (sequential gates)
 **Parallel opportunity:** Within Sprint 2, API docs and IaC docs run in parallel.
@@ -843,4 +844,142 @@ Sprint 5 (Day 12):
   S308-T1 (Update RTFM) ──→ S308-T2 (BUTTERFREEZONE)
                            ──→ S308-T3 (DEV-GUIDE)
                            ──→ S308-T4 (Full validation) ──→ S308-T5 (PR merge prep) ──→ GATE: RTFM 8/8
+
+Sprint 6 (Day 13):
+  S309-T1 (Failure modes) ──┐
+  S309-T2 (Pricing note) ───┤
+  S309-T3 (guild.update) ───┤
+  S309-T4 (Coverage note) ──┤
+  S309-T5 (BUTTERFREEZONE) ─┴──→ S309-T6 (Validation) ──→ GATE: RTFM 8/8 + citations
 ```
+
+---
+
+## Sprint 6: BRIDGE FINDINGS (Global ID: 309)
+
+**Goal:** Address 3 MEDIUM + 2 LOW findings from Bridgebuilder review iteration 1 (bridge-20260220-ec9d24).
+**Duration:** Day 13
+**Gate:** All findings addressed, RTFM 8/8 pass, citations valid.
+**Source:** [Bridgebuilder Review — Iteration 1](https://github.com/0xHoneyJar/loa-freeside/pull/76#issuecomment-3930736754) findings medium-1, medium-2, medium-3, low-1, low-2.
+
+### Task 6.1: Add Failure Modes Section to EVENT-PROTOCOL.md
+
+**ID:** S309-T1
+**Priority:** P1
+**Effort:** Medium (1–2 hours)
+**Dependencies:** Sprint 5 complete
+**Source:** Bridgebuilder finding medium-1 ("EVENT-PROTOCOL.md lacks failure modes documentation")
+
+**Description:**
+Add a "## Failure Modes" section to EVENT-PROTOCOL.md, following the same table format used in ECONOMICS.md (| Failure | Behavior | Rationale |). Cover NATS unreachability, consumer lag, deserialization failure, gateway restart, and message ordering guarantees.
+
+**Pre-flight:** Read `apps/gateway/src/main.rs` for gateway reconnection behavior and `packages/shared/nats-schemas/` for error handling patterns.
+
+**Acceptance Criteria:**
+- [ ] "## Failure Modes" section added to EVENT-PROTOCOL.md before "## Related Documentation"
+- [ ] At least 5 failure scenarios documented: NATS unreachable (gateway), consumer lag (JetStream redelivery), deserialization failure (Zod parse), gateway restart (shard reconnection), duplicate delivery
+- [ ] Table follows | Failure | Behavior | Rationale | format from ECONOMICS.md
+- [ ] Citations to source code where behavior is implemented
+- [ ] `scripts/pin-citations.sh --validate-only` passes
+
+**Testing:**
+- Failure modes table present in rendered markdown
+- All citations resolve
+
+### Task 6.2: Add Pricing Mechanism Note to ECONOMICS.md
+
+**ID:** S309-T2
+**Priority:** P1
+**Effort:** Small (30 min)
+**Dependencies:** None
+**Source:** Bridgebuilder finding medium-2 ("Model pricing table uses stale model identifiers")
+
+**Description:**
+Add a clarifying note below the model pricing table in ECONOMICS.md explaining that the Source column shows default pool pricing tiers, not fixed model bindings. Actual model assignments are configured per-deployment via `BudgetConfigProvider.getModelPricing()`.
+
+**Acceptance Criteria:**
+- [ ] Note added below pricing table clarifying pool defaults vs. runtime configuration
+- [ ] Explains `BudgetConfigProvider.getModelPricing()` override mechanism
+- [ ] Makes clear that pool ID (not model name) is the stable identifier
+
+**Testing:**
+- Note present in rendered markdown
+
+### Task 6.3: Add guild.update Data Schema to EVENT-PROTOCOL.md
+
+**ID:** S309-T3
+**Priority:** P1
+**Effort:** Small (30 min)
+**Dependencies:** None
+**Source:** Bridgebuilder finding medium-3 ("guild.update event type lacks data schema documentation")
+
+**Description:**
+Add a `### guild.update` subsection under the Event Data Schemas section of EVENT-PROTOCOL.md. Check `event-data.ts` for a guild.update data schema; if none exists, document the forward-compatibility pattern.
+
+**Pre-flight:** Read `packages/shared/nats-schemas/src/schemas/event-data.ts` to confirm whether guild.update has a specific data schema or uses the generic `z.unknown()` passthrough.
+
+**Acceptance Criteria:**
+- [ ] `### guild.update` subsection added to Event Data Schemas section
+- [ ] If data schema exists: document fields with types
+- [ ] If no specific schema: document that it uses forward-compatibility (z.unknown())
+- [ ] Citation to event-data.ts
+
+**Testing:**
+- guild.update documented in Event Data Schemas section
+
+### Task 6.4: Add Conservation Property Coverage Note to ECONOMICS.md
+
+**ID:** S309-T4
+**Priority:** P2
+**Effort:** Small (30 min)
+**Dependencies:** None
+**Source:** Bridgebuilder finding low-1 ("Conservation section documents 11 of 14 canonical properties")
+
+**Description:**
+Add a note to the conservation invariant section of ECONOMICS.md stating how many of the 14 canonical properties from loa-hounfour are enforced in freeside, and which remain protocol-level only.
+
+**Pre-flight:** Read `themes/sietch/src/packages/core/protocol/arrakis-conservation.ts` to extract exact invariant IDs and cross-reference against loa-hounfour canonical property list.
+
+**Acceptance Criteria:**
+- [ ] Note states the coverage ratio (N of 14 properties enforced in freeside)
+- [ ] Lists which properties remain protocol-level only (if determinable from source)
+- [ ] Does not imply false completeness
+
+**Testing:**
+- Coverage note present in conservation section
+
+### Task 6.5: Add BUTTERFREEZONE Cross-Reference to DEVELOPER-GUIDE.md
+
+**ID:** S309-T5
+**Priority:** P2
+**Effort:** Small (15 min)
+**Dependencies:** None
+**Source:** Bridgebuilder finding low-2 ("DEVELOPER-GUIDE.md learning path omits BUTTERFREEZONE.md")
+
+**Description:**
+Add a brief note after the learning path table in DEVELOPER-GUIDE.md referencing BUTTERFREEZONE.md as the agent-optimized context file.
+
+**Acceptance Criteria:**
+- [ ] Note added after learning path table referencing BUTTERFREEZONE.md
+- [ ] Explains BUTTERFREEZONE purpose (agent context, token-efficient)
+- [ ] Link resolves
+
+**Testing:**
+- Cross-reference present in rendered markdown
+
+### Task 6.6: Full Validation Sweep
+
+**ID:** S309-T6
+**Priority:** P0
+**Effort:** Small (30 min)
+**Dependencies:** S309-T1 through S309-T5
+**Source:** Gate requirement
+
+**Description:**
+Run full validation suite to confirm all changes pass.
+
+**Acceptance Criteria:**
+- [ ] `scripts/rtfm-validate.sh` exits 0 — all 8 checks pass
+- [ ] `scripts/pin-citations.sh --validate-only` passes
+- [ ] Zero naming violations
+- [ ] Zero broken cross-links
