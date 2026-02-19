@@ -1,365 +1,555 @@
-# Sprint Plan: Hounfour Runtime Bridge — Model-Heterogeneous Agent Routing
+# Sprint Plan: The Neuromancer Codex — Documentation as Product Surface
 
-> Cycle: cycle-026 | PRD: grimoires/loa/prd.md | SDD: grimoires/loa/sdd.md
-> Source: [#365](https://github.com/0xHoneyJar/loa/issues/365), [#368](https://github.com/0xHoneyJar/loa/pull/368)
-> Sprints: 9 (6 completed + 3 new) | Phase 2: Bridgebuilder Advances
-> Bridgebuilder Review: [Part I](https://github.com/0xHoneyJar/loa/pull/368#issuecomment-3919141410), [Part II](https://github.com/0xHoneyJar/loa/pull/368#issuecomment-3919146469), [Part III](https://github.com/0xHoneyJar/loa/pull/368#issuecomment-3919161951)
-> Flatline: Reviewed (2 HIGH_CONSENSUS integrated, 1 DISPUTED accepted, 6 BLOCKERS addressed)
-> Phase 1.5 added: 2026-02-18 (Hounfour v7 Protocol Alignment)
-
-## Completed Sprints (Phase 1 + Phase 1.5 + Bridge Iterations)
-
-### Sprint 1: GoogleAdapter — Standard Gemini Models (sprint-5) [COMPLETED]
-### Sprint 2: Deep Research Adapter (sprint-6) [COMPLETED]
-### Sprint 3: Metering Activation + Flatline Routing + Feature Flags (sprint-7) [COMPLETED]
-### Sprint 4: Hounfour v7 Protocol Alignment (sprint-8) [COMPLETED]
-### Sprint 5: Bridge Iteration 1 — Metering Correctness (sprint-9) [COMPLETED]
-### Sprint 6: Bridge Iteration 2 — Resilience Hardening (sprint-10) [COMPLETED]
+**Version:** 1.0.0
+**Date:** 2026-02-19
+**Cycle:** cycle-035
+**PRD:** grimoires/loa/prd.md (v1.1.0)
+**SDD:** grimoires/loa/sdd.md (v1.0.0)
+**Global Sprint IDs:** 304–306
+**Duration:** 10 working days across 3 sprints
+**Team:** 1 engineer (AI-assisted)
 
 ---
 
-## Phase 2: Bridgebuilder Advances
+## Sprint Overview
 
-Source: Three-part Bridgebuilder deep review identifying architectural advances beyond code correctness. These sprints implement the concrete proposals from Parts I-III.
+| Sprint | Global ID | Phase | Days | Focus | Gate |
+|--------|-----------|-------|------|-------|------|
+| Sprint 1 | 304 | Phase A | Days 1–2 | Identity | P0 docs review-ready |
+| Sprint 2 | 305 | Phase B+C | Days 3–7 | Developer Surface + Infrastructure | Smoke-test passes, terraform plan clean |
+| Sprint 3 | 306 | Phase D+E | Days 8–10 | Polish + Validation | All success criteria met |
 
----
+**Dependency chain:** Sprint 1 → Sprint 2 → Sprint 3 (sequential gates)
+**Parallel opportunity:** Within Sprint 2, API docs and IaC docs run in parallel.
 
-## Sprint 7: Test Coverage Hardening — Trust Scopes, Multi-Adapter & Invariant Verification [COMPLETED]
+**Prerequisites:**
+- jq >=1.7 installed (via `brew install jq`, `apt install jq`, or pinned in `.tool-versions` for asdf/mise). CI runner must also satisfy this. Scripts check at startup and fail with exit 13 if not met.
+- Node.js >=20 with ts-morph available (for route extraction in Sprint 2)
+- `gh` CLI authenticated (for citation pinning in Sprint 3)
 
-**Goal**: Fill the test gaps identified in the Bridgebuilder review. The existing test suite (14 Python files, ~4700 lines) is strong on individual components but weak on cross-cutting concerns: trust scopes have zero dedicated tests, budget+fallback integration is partial, multi-flag combinations are untested, and the conservation invariant is verified nowhere. This sprint closes those gaps.
+**Local dev environment setup (prerequisite for smoke tests):**
+- Clone repo, `pnpm install`
+- Copy `.env.example` to `.env`, fill required values (DATABASE_URL, REDIS_URL, JWT_SECRET)
+- Run `docker-compose up -d` for Postgres + Redis (or use local instances)
+- Run `pnpm run dev` — server starts on `localhost:3000`
+- Verify: `curl http://localhost:3000/api/agents/health` returns 200
+- For JWT: `gaib auth setup-dev && export JWT=$(gaib auth token --dev)`
 
-**Global Sprint ID**: sprint-11
+**CI toolchain pinning (`.tool-versions`):**
+```
+jq 1.7.1
+nodejs 20.11.0
+```
+CI runners must use these exact versions. `cloc` version pinned in CI config. Hash computations exclude nondeterministic fields (timestamps, absolute paths) — only content-derived fields are hashed.
 
-### Task 7.1: Create dedicated trust_scopes test file
+**Capacity planning:**
+- **Estimated total effort:** ~45–55 hours across 10 days
+- **AI-assisted velocity multiplier:** ~2–3x for documentation tasks (AI drafts, human validates)
+- **Buffer:** 15% buffer built into Sprint 2 (5 days for ~3.5 days of work)
+- **Cut-line:** If Sprint 1 gate not met by Day 3, descope BUTTERFREEZONE golden vectors to Sprint 2 and IaC docs to document-only (no diagrams)
 
-**File**: `.claude/adapters/tests/test_trust_scopes.py` (new)
+**Gate failure rollback:**
+- Each sprint works on a feature branch: `docs/cycle-035-sprint-N`
+- Gate failure → review failures, fix on same branch, re-attempt gate
+- If gate is unachievable, revert branch to last passing commit, descope, and re-attempt
+- No partial merges to main — all-or-nothing per sprint
 
-Trust scopes were migrated in Sprint 4 but have no validation tests. The 6-dimensional model maps directly to Ostrom's governance principles — and governance without enforcement is poetry.
+**CI integration for validation scripts:**
+- `scripts/rtfm-validate.sh` runs as GitHub Actions required check on PRs touching `docs/` or `*.md`
+- `butterfreezone-validate.sh` runs on PRs touching `BUTTERFREEZONE.md` or `butterfreezone-gen.sh`
+- `scripts/extract-routes.sh --diff` runs on PRs touching `themes/sietch/src/api/routes/`
+- Naming grep check runs on all PRs as advisory (non-blocking for non-doc PRs)
 
-**Acceptance Criteria**:
-- [x] Test `model-permissions.yaml` loads and parses all 6 dimensions for each model entry
-- [x] Test `claude-code:session` has expected scopes (high data_access, financial, delegation, model_selection; none governance)
-- [x] Test `openai:gpt-5.2` has all-none scopes (read-only remote model)
-- [x] Test Google model entries (added Sprint 6) have correct scopes (data_access: none, delegation: limited for deep-research)
-- [x] Test trust_scopes schema validation: reject unknown dimensions, reject invalid values (not in high/medium/low/none/limited)
-- [x] Test backward compat: `trust_level` summary field still present alongside `trust_scopes`
-- [x] Test all entries in model-permissions.yaml are covered (no model has scopes undefined)
-- [x] Validate Ostrom Principle #1: every registered provider has a trust scope entry (boundary enforcement)
-
-### Task 7.2: Multi-flag feature flag combination tests
-
-**File**: `.claude/adapters/tests/test_feature_flags.py` (new)
-
-Existing tests check individual flags. The Bridgebuilder review notes that real-world configurations involve multiple flags simultaneously, and the interaction between flags is untested.
-
-**Acceptance Criteria**:
-- [x] Test all-flags-enabled (default) works end-to-end
-- [x] Test `google_adapter: false` + `deep_research: true` — deep_research should be blocked (parent disabled)
-- [x] Test `metering: false` + `google_adapter: true` — adapter works, no budget enforcement
-- [x] Test `thinking_traces: false` + `google_adapter: true` — adapter works, no thinking config in request body
-- [x] Test `flatline_routing: true` + `google_adapter: false` — Flatline falls back to non-Google providers
-- [x] Test all-flags-disabled — no external calls, no metering, no thinking
-- [x] Test flag precedence: config file vs environment variable override
-- [x] All tests mocked (no live API)
-
-### Task 7.3: Budget + fallback chain integration tests
-
-**File**: `.claude/adapters/tests/test_budget_fallback.py` (new)
-
-Budget enforcement and fallback routing are tested independently but never together. The Bridgebuilder review identifies this as a critical gap: "What happens when a budget-exceeded model triggers fallback to a cheaper model?"
-
-**Acceptance Criteria**:
-- [x] Test DOWNGRADE action triggers fallback chain walk
-- [x] Test fallback candidate satisfies agent requires (native_runtime guard respected during downgrade)
-- [x] Test downgrade from `google:gemini-3-pro` to `openai:gpt-4o-mini` via configured chain
-- [x] Test downgrade impossible for `native_runtime: true` agents (cannot leave Claude Code)
-- [x] Test BLOCK action returns exit code 6 without invoking any provider
-- [x] Test WARN action allows invocation but logs warning
-- [x] Test budget check uses daily_micro_usd from config, not hardcoded value
-- [x] Test atomic pre_call + provider failure + post_call records zero cost (Sprint 5 fix verified end-to-end)
-
-### Task 7.4: Conservation invariant property-based tests
-
-**File**: `.claude/adapters/tests/test_conservation_invariant.py` (new)
-
-The Bridgebuilder review identifies the conservation invariant as the most important architectural property in the system. It spans three layers (pricing → budget → ledger) but is tested nowhere as a cross-cutting property. This task implements property-based tests that verify the invariant holds across randomized inputs.
-
-**Acceptance Criteria**:
-- [x] Property test: for any valid (tokens, price_per_mtok), `cost + remainder == tokens * price_per_mtok`
-- [x] Property test: `RemainderAccumulator` across N random additions, `sum(yielded_costs) + accumulator.remainder == sum(raw_products)`
-- [x] Property test: `create_ledger_entry()` + `calculate_total_cost()` round-trip preserves total (no precision loss)
-- [x] Property test: sequence of `pre_call_atomic()` + `post_call()` never produces negative daily spend
-- [x] Property test: hybrid pricing mode satisfies `total == token_cost + per_task_cost + remainder_carry`
-- [x] Uses hypothesis library for property-based testing (add to test requirements if not present)
-- [x] Minimum 100 examples per property, shrinking enabled for failure reproduction
-- [x] Document the invariant being tested in each property's docstring (cite Bridgebuilder review Part II)
-
-### Task 7.5: Google adapter recovery and edge case tests
-
-**File**: `.claude/adapters/tests/test_google_adapter.py` (extend)
-
-Extend the existing Google adapter tests with recovery edge cases identified in the review.
-
-**Acceptance Criteria**:
-- [x] Test interaction persistence: create_interaction → crash (simulate) → resume polling from persisted state
-- [x] Test interaction persistence: stale .dr-interactions.json with dead interaction → no hang
-- [x] Test Deep Research cancellation after completion (idempotent, no error)
-- [x] Test Deep Research unknown status in poll response → continue polling (not crash)
-- [x] Test concurrent standard + Deep Research requests share the correct semaphore pools
-- [x] Test API version override via `model_config.extra.api_version` → URL constructed correctly
-- [x] Test auth mode: header (default) vs query param (legacy) → correct request format
-- [x] Test max retries exhausted → final error surfaced (not swallowed by retry loop)
-
-### Task 7.6: Cross-adapter routing integration tests
-
-**File**: `.claude/adapters/tests/test_multi_adapter.py` (new)
-
-Test that routing works correctly when multiple adapters are registered simultaneously.
-
-**Acceptance Criteria**:
-- [x] Test agent binding resolution: `deep-researcher` → Google, `reviewing-code` → OpenAI, `native` → Claude Code
-- [x] Test circuit breaker trip on Google → fallback to OpenAI for agents that don't require Google-specific capabilities
-- [x] Test `validate_bindings()` catches missing provider for any configured agent
-- [x] Test alias chain: `deep-thinker` → alias → `google:gemini-3-pro` → GoogleAdapter
-- [x] Test adapter registry contains all 3 providers (openai, anthropic, google)
-- [x] All tests mocked
+**Weekly verification mechanism (post-launch):**
+- Scheduled CI job (weekly) runs `scripts/rtfm-validate.sh` against main branch
+- Failures create GitHub issue assigned to DRI from ownership table
+- Triage SLA: 3 business days from issue creation
+- Results logged to `grimoires/loa/NOTES.md`
 
 ---
 
-## Sprint 8: Cross-Repository Invariant Infrastructure & Eval Harness Fix
+## Sprint 1: IDENTITY (Global ID: 304)
 
-**Goal**: Implement the cross-repository invariant verification infrastructure proposed in Bridgebuilder Part III, and investigate the 50% eval regression pass rate identified in Part I. The invariant system creates formal property declarations that span Loa's `RemainderAccumulator`, hounfour's `MonetaryPolicy`, and arrakis's `lot_invariant` — enabling CI verification across all three codebases.
+**Goal:** Establish the new platform identity across the three P0 documents.
+**Duration:** Days 1–2
+**Gate:** README, BUTTERFREEZONE, and ECOSYSTEM are review-ready with zero naming violations.
 
-**Global Sprint ID**: sprint-12
+### Task 1.1: README.md Rewrite
 
-### Task 8.1: Create invariants declaration schema
+**ID:** S304-T1
+**Priority:** P0
+**Effort:** Large (4–6 hours)
+**Dependencies:** None (first task)
+**FR:** FR-1
 
-**File**: `.claude/schemas/invariants.schema.json` (new)
+**Description:**
+Complete rewrite of README.md from "engagement intelligence platform" to "multi-model agent economy infrastructure platform." Ground every capability claim in source file citations using the unified `<!-- cite: ... -->` syntax.
 
-Define the JSON Schema for cross-repository invariant declarations. This is the formal expression of the social contract identified in Bridgebuilder Part II.
+**Acceptance Criteria:**
+- [ ] Opens with accurate platform description (not "engagement intelligence")
+- [ ] Feature inventory covers: multi-model inference, budget atomicity, token-gated capabilities, payment rails, multi-tenant RLS, Discord/TG/API distribution, IaC
+- [ ] Each capability has `<!-- cite: loa-freeside:path -->` citation
+- [ ] Architecture diagram reflects actual package/app/infrastructure/themes structure
+- [ ] Ecosystem section covers all 5 repos with layer diagram
+- [ ] Quick-start paths for developers (→ API-QUICKSTART) and operators (→ INSTALLATION)
+- [ ] Technology stack table is current and accurate
+- [ ] Documentation index table links to all new docs
+- [ ] Zero "Arrakis" references in platform context
+- [ ] Badges: version (from package.json), license
 
-**Acceptance Criteria**:
-- [ ] Schema defines `invariants` array with `id`, `description`, `properties` (string array of formal property expressions), `verified_in` (array of repo+file+function references)
-- [ ] Schema validates `severity` field: `"critical"` (must never be violated), `"important"` (should be verified), `"advisory"` (best-effort)
-- [ ] Schema validates `category` field: `"conservation"`, `"monotonicity"`, `"ordering"`, `"bounded"`, `"idempotent"`
-- [ ] JSON Schema draft 2020-12 compatible
-- [ ] Example invariant validates against schema
+**Testing:**
+- `grep -ci "arrakis" README.md` returns 0
+- All `<!-- cite: ... -->` tags point to existing files
+- Version badge matches package.json
 
-### Task 8.2: Declare Hounfour economic invariants
+### Task 1.2: BUTTERFREEZONE.md Regeneration
 
-**File**: `grimoires/loa/invariants.yaml` (new)
+**ID:** S304-T2
+**Priority:** P0
+**Effort:** Large (4–6 hours)
+**Dependencies:** S304-T1 (README establishes description alignment)
+**FR:** FR-2
 
-Declare the invariants identified across the ecosystem. These become the formal social contract.
+**Description:**
+Regenerate BUTTERFREEZONE.md with the updated `butterfreezone-gen.sh` script. Implement the jq canonicalization pipeline, error taxonomy, and golden test vectors. The agent context must have real description, not "No description available."
 
-**Acceptance Criteria**:
-- [ ] INV-001: Conservation — `sum(input_costs) == sum(distributed_costs) + sum(remainders)`, severity: critical
-  - verified_in: `loa:pricing.py:RemainderAccumulator.add`, `loa:pricing.py:calculate_cost_micro`
-- [ ] INV-002: Non-negative spend — `daily_spend >= 0` at all times, severity: critical
-  - verified_in: `loa:budget.py:pre_call_atomic`, `loa:ledger.py:update_daily_spend`
-- [ ] INV-003: Deduplication — `len(unique(interaction_ids)) == len(ledger_entries_for_interactions)`, severity: important
-  - verified_in: `loa:budget.py:post_call`, `loa:ledger.py:append_ledger`
-- [ ] INV-004: Budget monotonicity — daily spend counter only increases within a day (never decremented), severity: critical
-  - verified_in: `loa:budget.py:post_call`, `loa:ledger.py:update_daily_spend`
-- [ ] INV-005: Trust boundary — no model exceeds its trust_scopes at runtime, severity: critical
-  - verified_in: `loa:resolver.py:resolve_execution`, `loa:model-permissions.yaml`
-- [ ] Cross-repo references annotated with `protocol: loa-hounfour@7.0.0` for ecosystem traceability
-- [ ] YAML validates against schema from Task 8.1
+**Acceptance Criteria:**
+- [ ] Agent context: `name: loa-freeside`, `type: platform`, real `purpose:` description
+- [ ] `key_files:` references actual platform files (core ports, agent gateway, billing, CLI, terraform)
+- [ ] Capabilities section organized by domain with `<!-- cite: ... -->` per capability
+- [ ] Interfaces section: REST routes, Discord commands, Telegram commands, CLI commands
+- [ ] Module map with accurate file counts and LOC
+- [ ] `butterfreezone-gen.sh` implements jq canonicalization (`jq -Sc '.'`, not RFC 8785)
+- [ ] Error taxonomy implemented: exit codes 10–13, fail-closed on partial scan
+- [ ] Minimum section requirement: agent_context, capabilities, interfaces, module_map
+- [ ] `butterfreezone-validate.sh` re-computes hashes and compares
+- [ ] Golden test vectors committed to `tests/fixtures/butterfreezone-golden/`
+- [ ] At least 2 vectors: vector-001-routes and vector-003-full
+- [ ] Cross-platform determinism: `LC_ALL=C sort` for file lists, LF normalization
+- [ ] jq version check at script startup (>=1.7)
+- [ ] `ground-truth-meta` block with per-section SHA-256 hashes
 
-### Task 8.3: Implement invariant verification script
+**Testing:**
+- `butterfreezone-validate.sh` passes against generated output
+- Golden vectors pass against fixture directories
+- Agent context `purpose` is not "No description available"
 
-**File**: `.claude/scripts/verify-invariants.sh` (new)
+### Task 1.3: docs/ECOSYSTEM.md Creation
 
-Script that reads `invariants.yaml`, locates each `verified_in` reference, and confirms the referenced function/class exists in the codebase.
+**ID:** S304-T3
+**Priority:** P0
+**Effort:** Medium (3–4 hours)
+**Dependencies:** None (parallel with T1)
+**FR:** FR-3
 
-**Acceptance Criteria**:
-- [ ] Reads `grimoires/loa/invariants.yaml`
-- [ ] For each invariant, for each `verified_in` entry where `repo == "loa"`:
-  - Verify the file exists
-  - Verify the function/class exists in the file (grep for definition)
-  - Report PASS/FAIL per invariant
-- [ ] For cross-repo references (repo != "loa"): report SKIP with note (verified in external CI)
-- [ ] Exit code 0 if all local invariants pass, 1 if any fail
-- [ ] Output format compatible with `butterfreezone-validate.sh` pattern
-- [ ] Integrates with `quality-gates.bats` as an optional check
+**Description:**
+Create comprehensive 5-repo ecosystem map replacing the stale 2-repo ECOSYSTEM-MAP.md. Include layer diagram, per-repo summaries, protocol contract flow, Neuromancer naming explanation, Web4 connection, and statistics.
 
-### Task 8.4: Add invariant verification to existing test suite
+**Acceptance Criteria:**
+- [ ] Layer diagram shows all 5 repos with dependency arrows (Layer 1–5)
+- [ ] Per-repo summary: purpose, key stats, primary interfaces, relationship to other repos
+- [ ] Protocol contract flow section: how loa-hounfour schemas flow through the system
+- [ ] Neuromancer naming map with Gibson references for all 5 repos
+- [ ] Web4 vision connection (brief, not marketing)
+- [ ] Statistics table with measurement method and commit SHA per repo
+- [ ] `scripts/ecosystem-stats.sh` created — shallow-clone at pinned ref + cloc + test count
+- [ ] Stats caching to `grimoires/loa/cache/ecosystem-stats.json` with 7-day TTL
+- [ ] Zero "Arrakis" references
 
-**File**: `tests/unit/invariant-verification.bats` (new)
+**Testing:**
+- `scripts/ecosystem-stats.sh --fresh` runs successfully for loa-freeside (local)
+- Layer diagram verified against actual package.json dependencies
+- `grep -ci "arrakis" docs/ECOSYSTEM.md` returns 0
 
-BATS tests that exercise the invariant verification script.
+### Task 1.4: Naming Migration
 
-**Acceptance Criteria**:
-- [ ] Test script finds all declared invariants in valid codebase
-- [ ] Test script detects missing function (simulate by declaring non-existent function reference)
-- [ ] Test script detects missing file
-- [ ] Test script handles empty invariants.yaml gracefully
-- [ ] Test cross-repo references are SKIPped (not FAILed)
-- [ ] Test exit codes: 0 for all-pass, 1 for any-fail
+**ID:** S304-T4
+**Priority:** P0
+**Effort:** Small (1–2 hours)
+**Dependencies:** S304-T1, S304-T2, S304-T3 (applies to all Phase A docs)
+**FR:** FR-8 (partial)
 
-### Task 8.5: Investigate eval regression 50% pass rate
+**Description:**
+Validate all zero-tolerance files have zero "Arrakis" references. Add historical reference note to CHANGELOG.md and INSTALLATION.md.
 
-**File**: `.claude/scripts/tests/eval-regression-analysis.sh` (new)
+**Acceptance Criteria:**
+- [ ] Zero-tolerance naming grep passes for all 7 files
+- [ ] CHANGELOG.md has historical reference note
+- [ ] INSTALLATION.md has historical reference note in header
 
-The Bridgebuilder review Part I flags that 10 regression eval tasks consistently show 50% pass rate. This is suspicious — "If one trial consistently passes and one consistently fails across all tasks, the signal is in the harness, not the code."
-
-**Acceptance Criteria**:
-- [ ] Script runs each failing eval task 4 times, recording pass/fail per trial
-- [ ] Output: per-task breakdown showing which trial(s) pass and which fail
-- [ ] If pattern is "trial 1 always passes, trial 2 always fails" → report as HARNESS_BUG
-- [ ] If pattern is truly random 50/50 → report as FLAKY
-- [ ] If pattern is "always fails" → report as REGRESSION
-- [ ] Analysis saved to `.run/eval-regression-analysis.json`
-- [ ] Document findings in NOTES.md
-
-### Task 8.6: Fix eval harness (conditional on Task 8.5 findings)
-
-**Acceptance Criteria**:
-- [ ] If HARNESS_BUG: fix the harness to eliminate the systematic trial failure
-- [ ] If FLAKY: add retry logic or increase trial count
-- [ ] If REGRESSION: create bug report for each failing task
-- [ ] After fix: all 10 previously-failing tasks pass at >80% rate
-- [ ] Existing passing tasks remain unaffected
-
----
-
-## Sprint 9: Epistemic Trust Scopes & Jam Geometry Architecture [COMPLETED]
-
-**Goal**: Implement the epistemic trust scopes proposed in Bridgebuilder Part III (context_access dimension controlling what models *know*), and design the Jam geometry architecture for multi-model parallel review with independent synthesis. The epistemic dimension is the mechanism that makes the Maroon collaboration geometry safe — agents can coordinate through shared state while being protected from each other's sensitive contexts.
-
-**Global Sprint ID**: sprint-13
-
-### Task 9.1: Extend trust_scopes schema with epistemic dimension
-
-**File**: `.claude/data/model-permissions.yaml`, `.claude/schemas/model-config.schema.json`
-
-Add the `context_access` dimension to trust_scopes. This implements Ostrom Principle #1 applied to *knowledge* rather than *action*.
-
-**Acceptance Criteria**:
-- [x] `context_access` added as 7th trust_scopes dimension with sub-fields:
-  - `architecture`: full/summary/none — visibility into SDD, PRD, protocol docs
-  - `business_logic`: full/redacted/none — visibility into implementation code
-  - `security`: full/redacted/none — visibility into audit findings, vulnerability details
-  - `lore`: full/summary/none — visibility into institutional knowledge
-- [x] `claude-code:session` (native): full/full/full/full (unrestricted — it already has file access)
-- [x] `openai:gpt-5.2` (remote reviewer): full/redacted/none/full (sees architecture + lore, not security details)
-- [x] `google:deep-research-pro` (remote research): summary/none/none/summary (minimal context, focused on research task)
-- [x] `google:gemini-3-pro` (remote reasoning): full/redacted/none/full (architecture-aware reasoning)
-- [x] Schema JSON updated with `context_access` sub-schema
-- [x] Backward compatible: `context_access` optional, defaults to all-full if missing
-
-### Task 9.2: Implement epistemic scope filtering in request builder
-
-**File**: `.claude/adapters/loa_cheval/routing/context_filter.py` (new)
-
-When building a request for a remote model, filter the context (system prompt, appended context) based on the model's epistemic trust scopes.
-
-**Acceptance Criteria**:
-- [x] `filter_context(messages, trust_scopes)` function filters message content based on `context_access` dimensions
-- [x] `architecture: none` → strip SDD/PRD content from system messages
-- [x] `architecture: summary` → replace full SDD with executive summary (first 500 chars + section headers)
-- [x] `business_logic: redacted` → replace function bodies with signatures only (regex-based)
-- [x] `security: none` → strip security audit findings, vulnerability markers, CVE references
-- [x] `lore: summary` → include `short` fields only (not `context`)
-- [x] Filtering is additive: messages not matching any filter category pass through unchanged
-- [x] Filter applied in `cheval.py` *after* agent binding resolution, *before* adapter.complete()
-- [x] Log filtered dimensions: `{event: "context_filtered", model: "...", dimensions: {"architecture": "redacted", ...}}`
-- [x] No filtering for `native_runtime` models (they have file access anyway)
-
-### Task 9.3: Epistemic trust scopes tests
-
-**File**: `.claude/adapters/tests/test_epistemic_scopes.py` (new)
-
-**Acceptance Criteria**:
-- [x] Test full access: all dimensions = full → no filtering applied
-- [x] Test architecture: none → SDD/PRD content stripped from system messages
-- [x] Test architecture: summary → truncated to headers + first paragraph
-- [x] Test business_logic: redacted → function bodies replaced with `[redacted]`
-- [x] Test security: none → CVE references, audit findings stripped
-- [x] Test lore: summary → only `short` fields preserved
-- [x] Test native_runtime models bypass filtering entirely
-- [x] Test missing context_access → defaults to all-full (backward compat)
-- [x] Test mixed dimensions: architecture: full + security: none → architecture preserved, security stripped
-- [x] All tests use fixture messages with identifiable content for each category
-
-### Task 9.4: Design Jam geometry for multi-model review
-
-**File**: `docs/architecture/jam-geometry.md` (new)
-
-Design document for the Jam geometry proposal from Bridgebuilder Part III. This is a design artifact, not code — but it needs to be grounded in the existing infrastructure to be implementable.
-
-**Acceptance Criteria**:
-- [x] Document the three-phase workflow: Divergent → Synthesis → Harmony
-- [x] Divergent phase: Claude, GPT-5.2, Kimi-K2 review the same PR independently (use existing `cheval.py` infrastructure)
-- [x] Synthesis phase: a *different* model (not one of the reviewers) synthesizes the three reviews
-  - Identify disagreements, consensus findings, and unique insights from each
-  - Synthesizer model selection: lowest trust_scopes model capable of text analysis (cost optimization)
-- [x] Harmony phase: unified review posted with per-model attribution
-- [x] Map to existing infrastructure: `ProviderAdapter` for divergent calls, `BudgetEnforcer` for cost tracking, `trust_scopes` for access control
-- [x] Estimate cost per Jam review (3 divergent + 1 synthesis call, using current pricing)
-- [x] Compare to current Seance geometry (1 model, 1 review): quality tradeoffs, cost tradeoffs
-- [x] Reference: Miles Davis's second quintet (freedom within structure), academic peer review (independent reviewers + editor)
-- [x] Identify prerequisite: epistemic trust scopes (Task 9.1-9.3) — reviewers need appropriate context_access
-- [x] Identify Phase 0: use existing Flatline Protocol as scaffold (it already does parallel model calls)
-
-### Task 9.5: Update model-config.yaml with Jam geometry routing
-
-**File**: `.claude/defaults/model-config.yaml`
-
-Add agent bindings for the Jam geometry roles.
-
-**Acceptance Criteria**:
-- [x] `jam-reviewer-claude` agent binding: `model: native`, `requires: {thinking_traces: true}`
-- [x] `jam-reviewer-gpt` agent binding: `model: reviewer` (openai:gpt-5.2)
-- [x] `jam-reviewer-kimi` agent binding: `model: reasoning` (moonshot:kimi-k2-thinking)
-- [x] `jam-synthesizer` agent binding: `model: cheap` (anthropic:claude-sonnet-4-6) — lowest cost for text synthesis
-- [x] Each reviewer has appropriate `context_access` in model-permissions.yaml
-- [x] Feature flag: `hounfour.feature_flags.jam_geometry: false` (opt-in, not default)
-
-### Task 9.6: Update BUTTERFREEZONE and Ground Truth
-
-Run finalization artifacts for the new sprint additions.
-
-**Acceptance Criteria**:
-- [x] BUTTERFREEZONE.md regenerated with Phase 2 sprint context
-- [x] `butterfreezone-validate.sh` passes (17/17+ checks)
-- [x] Ground truth checksums updated
-- [x] `invariants.yaml` checksummed in ground truth
+**Testing:**
+- Naming grep validation: zero matches across all zero-tolerance files
 
 ---
 
-## Dependency Graph (Phase 2)
+## Sprint 2: DEVELOPER SURFACE + INFRASTRUCTURE (Global ID: 305)
+
+**Goal:** Create the developer-facing API documentation and infrastructure documentation.
+**Duration:** Days 3–7
+**Gate:** Smoke-test checklist passes against local instance; `terraform plan` produces no errors.
+
+### Task 2.0: Define Stable Endpoint List
+
+**ID:** S305-T0
+**Priority:** P0
+**Effort:** Small (1 hour)
+**Dependencies:** Sprint 1 complete
+**FR:** FR-4 (prerequisite)
+
+**Description:**
+Lock the 7 guaranteed-stable endpoints in a single canonical source file (`docs/api/stable-endpoints.json`). This is the source of truth referenced by the quick-start, reference, smoke-test checklist, and stability labeling.
+
+**Acceptance Criteria:**
+- [ ] `docs/api/stable-endpoints.json` created with array of `{ method, path, auth, purpose }`
+- [ ] Verified each endpoint exists in route source files
+- [ ] Smoke-test checklist will be generated from this list
+- [ ] Referenced by both API-QUICKSTART and API-REFERENCE
+
+**Testing:**
+- Each endpoint in the JSON responds (not 404) against local dev server
+
+### Task 2.1: scripts/extract-routes.sh
+
+**ID:** S305-T1
+**Priority:** P1
+**Effort:** Large (4–6 hours)
+**Dependencies:** S305-T0 (stable list defined)
+**FR:** FR-4 (tooling prerequisite)
+
+**Description:**
+Build the route extraction tool using ts-morph AST parsing. Define supported patterns, implement unresolvable pattern linter, create initial route snapshot.
+
+**Acceptance Criteria:**
+- [ ] Parses supported patterns: direct method calls, router.use sub-mounts, method chaining, path constants, middleware chains
+- [ ] Flags unsupported patterns: template literals, dynamic/computed, conditional registration
+- [ ] Unresolvable linter: fails if >5% of registrations are unresolvable
+- [ ] Emits JSON: `{ method, full_path, auth, source_file, line }` sorted by `{method, full_path}`
+- [ ] Route snapshot created at `scripts/route-snapshot.json`
+- [ ] `--diff` mode compares against snapshot (new=info, missing=error, changed auth=warning)
+- [ ] `--count` mode returns total extracted count
+
+**Testing:**
+- Extracts >=80 routes from current codebase
+- Snapshot diff against freshly extracted routes shows zero missing
+
+### Task 2.2: docs/API-QUICKSTART.md
+
+**ID:** S305-T2
+**Priority:** P1
+**Effort:** Large (4–6 hours)
+**Dependencies:** S305-T1 (route extraction for completeness verification)
+**FR:** FR-4
+
+**Description:**
+"First agent call in 5 minutes" tutorial covering the 7 guaranteed-stable endpoints. Include local auth setup, copy-pastable curl examples, smoke-test checklist, and security disclaimers.
+
+**Acceptance Criteria:**
+- [ ] Local auth setup: `gaib auth setup-dev` + `gaib auth token --dev` flow
+- [ ] Manual JWT alternative documented (openssl-based)
+- [ ] 7 stable endpoints fully documented with curl, headers, request/response, errors
+- [ ] Stability contract: compatibility, deprecation (2-cycle), versioning, change log, promotion
+- [ ] Smoke-test checklist: numbered curl commands, expected status codes
+- [ ] Security disclaimers: no private keys, separate JWKS, TTL, aud/iss validation
+- [ ] AUTH_BYPASS documented with code-level safeguard requirement
+- [ ] Zero "Arrakis" references
+
+**Testing:**
+- Smoke-test checklist passes against `npm run dev`
+- JWT minting flow produces valid token accepted by local server
+
+### Task 2.3: docs/API-REFERENCE.md
+
+**ID:** S305-T3
+**Priority:** P1
+**Effort:** Medium (3–4 hours)
+**Dependencies:** S305-T1, S305-T2
+**FR:** FR-4
+
+**Description:**
+Two-tier API reference: Tier 1 stable endpoints with full docs, Tier 2 auto-extracted route index.
+
+**Acceptance Criteria:**
+- [ ] Tier 1: 7 stable endpoints with full request/response documentation
+- [ ] Tier 2: Auto-extracted route index from `scripts/extract-routes.sh`
+- [ ] Each Tier 2 route: method, path, auth, source file, stability label
+- [ ] Tier 2 contract documented: may change without notice, no examples
+- [ ] API-CHANGELOG.md created (initially empty, with format template)
+- [ ] Promotion criteria: stable 2+ cycles, smoke-test coverage, full docs
+- [ ] Zero "Arrakis" references
+
+**Testing:**
+- Route index count matches `scripts/extract-routes.sh --count`
+- All Tier 1 endpoints appear as "Stable" in index
+
+### Task 2.4: Tier 2 Contract Checks
+
+**ID:** S305-T4
+**Priority:** P1
+**Effort:** Medium (2–3 hours)
+**Dependencies:** S305-T1
+**FR:** FR-4
+
+**Description:**
+Framework-agnostic integration test validating Tier 2 route contracts against a running local dev server via HTTP requests (not framework internals).
+
+**Acceptance Criteria:**
+- [ ] Auth requirement validation: for each indexed route, send unauthenticated HEAD/GET — expect 401/403 if auth required, 2xx/3xx if no auth
+- [ ] Not-404 validation: all indexed routes respond (not 404)
+- [ ] Results compared against route snapshot — divergence logged as warning
+- [ ] Script: `scripts/verify-routes.sh` starts dev server, runs checks, reports
+- [ ] Optional: runtime introspection via dev-only `/api/debug/routes` endpoint (if available, cross-check against AST; if not available, skip gracefully)
+
+**Testing:**
+- `scripts/verify-routes.sh` passes against local dev server
+- Zero 404s for indexed routes
+
+### Task 2.5: docs/CLI.md Update
+
+**ID:** S305-T5
+**Priority:** P1
+**Effort:** Small (2–3 hours)
+**Dependencies:** None (parallel)
+**FR:** FR-6
+
+**Description:**
+Update CLI documentation to match current `gaib` implementation.
+
+**Acceptance Criteria:**
+- [ ] All gaib subcommands documented with usage and examples
+- [ ] Installation instructions
+- [ ] Configuration documentation
+- [ ] Validated against `gaib --help` output
+
+**Testing:**
+- Every documented command exists in `gaib --help`
+
+### Task 2.6: docs/INFRASTRUCTURE.md + Terraform Plan Harness
+
+**ID:** S305-T6
+**Priority:** P1
+**Effort:** Large (4–6 hours)
+**Dependencies:** None (parallel — Phase C)
+**FR:** FR-5
+
+**Description:**
+Document the IaC story: deployment topology, Terraform modules, staging guide, monitoring, cost estimation. Also create a runnable Terraform plan harness for gate validation.
+
+**Acceptance Criteria:**
+- [ ] Architecture diagram: ECS → RDS → ElastiCache → ALB → Route53 → CloudWatch → KMS
+- [ ] Module inventory: each `.tf` file with purpose and key variables
+- [ ] Staging deployment guide: prerequisites, step-by-step, verification
+- [ ] Monitoring: CloudWatch dashboards, alarms, log aggregation
+- [ ] Cost estimation (~$150–200/mo) grounded in resource configs
+- [ ] Production hardening checklist
+- [ ] Security: KMS required, VPC/security group guidance, no credentials in docs
+- [ ] Zero "Arrakis" references
+- [ ] **Terraform plan harness:** `scripts/tf-plan.sh` created that:
+  - Runs from the correct module directory (`infrastructure/terraform/`)
+  - Uses `terraform init -backend=false` (no cloud credentials required)
+  - Provides `terraform.tfvars.example` with safe dummy values for all required variables
+  - Runs `terraform validate` + `terraform plan` with the example vars
+  - Exits 0 if plan succeeds (gate pass), non-zero with error details (gate fail)
+
+**Testing:**
+- `scripts/tf-plan.sh` exits 0 locally without AWS credentials
+- Every `.tf` file accounted for in module inventory
+
+### Task 2.7: AUTH_BYPASS Code Safeguard
+
+**ID:** S305-T7
+**Priority:** P1
+**Effort:** Small (1–2 hours)
+**Dependencies:** None
+**FR:** FR-4 (SKP-005)
+
+**Description:**
+Implement code-level AUTH_BYPASS protection: environment gate, startup check, build exclusion.
+
+**Acceptance Criteria:**
+- [ ] `AUTH_BYPASS` only honored when `NODE_ENV !== 'production'`
+- [ ] Server refuses to start if `AUTH_BYPASS=true` and `NODE_ENV=production`
+- [ ] Log warning emitted at startup when bypass enabled
+- [ ] Production Docker build sets `NODE_ENV=production`
+
+**Testing:**
+- Setting `AUTH_BYPASS=true NODE_ENV=production` causes startup failure
+- Setting `AUTH_BYPASS=true NODE_ENV=development` works with warning log
+
+---
+
+## Sprint 3: POLISH + VALIDATION (Global ID: 306)
+
+**Goal:** Complete the documentation suite with cross-links, ownership, citations, and pass all validation gates.
+**Duration:** Days 8–10
+**Gate:** RTFM validation passes, all success criteria met.
+
+### Task 3.1: docs/DEVELOPER-GUIDE.md
+
+**ID:** S306-T1
+**Priority:** P1
+**Effort:** Medium (2–3 hours)
+**Dependencies:** All Sprint 2 docs complete
+**FR:** FR-7, FR-9
+
+**Description:**
+Onboarding index page with sequential learning path and ownership table.
+
+**Acceptance Criteria:**
+- [ ] Sequential path: README → ECOSYSTEM → API-QUICKSTART → API-REFERENCE → INFRASTRUCTURE → CLI
+- [ ] Ownership table: every document has DRI, update trigger, review cadence
+- [ ] Versioning headers: each doc has version (v1.0.0)
+- [ ] Errata process documented
+- [ ] Zero "Arrakis" references
+
+**Testing:**
+- Every document link resolves to existing file
+- Ownership table covers all 8 documents
+
+### Task 3.2: Cross-Links
+
+**ID:** S306-T2
+**Priority:** P1
+**Effort:** Small (1–2 hours)
+**Dependencies:** S306-T1
+**FR:** FR-7
+
+**Description:**
+Add "Next Steps" section to every document linking to logical next document.
+
+**Acceptance Criteria:**
+- [ ] Every doc ends with "Next Steps"
+- [ ] Links follow cross-reference map
+- [ ] All links resolve
+
+**Testing:**
+- Zero broken links in cross-link check
+
+### Task 3.3: Citation Pinning
+
+**ID:** S306-T3
+**Priority:** P0
+**Effort:** Medium (3–4 hours)
+**Dependencies:** All docs written
+**FR:** NFR-1
+
+**Description:**
+Create `scripts/pin-citations.sh` and run against all docs.
+
+**Acceptance Criteria:**
+- [ ] Scans `<!-- cite: ... -->` tags across all docs
+- [ ] Resolves cross-repo references to commit SHA permalinks via `gh api`
+- [ ] Validates local references against filesystem
+- [ ] Retry/backoff: 3 retries with exponential backoff
+- [ ] Rate limiting: respects GitHub API limits
+- [ ] Offline mode: `--validate-only`
+- [ ] Caching: `grimoires/loa/cache/citation-pins.json`
+- [ ] `--check-stale` mode for >30 day old pins
+- [ ] Zero branch-relative links in docs
+
+**Testing:**
+- `scripts/pin-citations.sh --validate-only` passes
+- `grep -P 'github\.com.*/(tree|blob)/(main|develop|master)' docs/*.md` returns 0
+
+### Task 3.4: Implement RTFM Validator
+
+**ID:** S306-T4
+**Priority:** P0
+**Effort:** Medium (3–4 hours)
+**Dependencies:** S306-T2, S306-T3
+**FR:** FR-8
+
+**Description:**
+Create `scripts/rtfm-validate.sh` that runs all 8 validation checks with deterministic exit codes, then run it against the full documentation set.
+
+**Acceptance Criteria:**
+- [ ] `scripts/rtfm-validate.sh` created with 8 named checks:
+  1. Citation validity: parse `<!-- cite: ... -->` regex, verify local files exist, cross-repo refs well-formed
+  2. Naming compliance: `grep -ci "arrakis"` across zero-tolerance file list (hardcoded in script)
+  3. Version consistency: compare package.json version against README badge and BUTTERFREEZONE
+  4. Cross-link integrity: extract all Markdown links from docs, verify targets exist
+  5. Cross-repo citation stability: `grep -P 'github\.com.*/(tree|blob)/(main|develop|master)' docs/*.md`
+  6. Completeness: `grep -ri "TODO\|TBD\|PLACEHOLDER" docs/` returns 0
+  7. BUTTERFREEZONE hash: runs `butterfreezone-validate.sh` and checks exit code
+  8. Route index completeness: `scripts/extract-routes.sh --diff scripts/route-snapshot.json` exits 0
+- [ ] Each check reports PASS/FAIL with details
+- [ ] Script exits 0 only if ALL checks pass; non-zero with summary of failures
+- [ ] All 8 checks pass against current documentation
+
+**Testing:**
+- `scripts/rtfm-validate.sh` exits 0 (all checks pass)
+- Deliberately introduce a broken link → verify check #4 catches it (then revert)
+
+### Task 3.5: Final Verification
+
+**ID:** S306-T5
+**Priority:** P0
+**Effort:** Small (1–2 hours)
+**Dependencies:** S306-T4
+**FR:** FR-10
+
+**Description:**
+Verify all PRD §8 success criteria are met.
+
+**Acceptance Criteria:**
+- [ ] README accurately describes platform
+- [ ] BUTTERFREEZONE valid and grounded
+- [ ] Ecosystem covers all 5 repos
+- [ ] Zero naming violations
+- [ ] API quick-start enables first call
+- [ ] IaC docs enable staging understanding
+- [ ] RTFM passes
+- [ ] Onboarding path is clear and sequential
+- [ ] Ownership table committed
+- [ ] Weekly verification process documented
+
+**Testing:**
+- All PRD §8 success criteria verified
+
+---
+
+## Task Dependency Graph
 
 ```
-Sprint 7 (Test Hardening)
-    │
-    ├──── Sprint 8 (Invariants + Eval Fix)    [independent of Sprint 7]
-    │
-    └──── Sprint 9 (Epistemic + Jam)          [blocks on Sprint 7 Task 7.1 for trust scope foundation]
+Sprint 1 (Days 1-2):
+  S304-T1 (README) ──────────┐
+  S304-T3 (ECOSYSTEM) ───────┤
+                              ├──→ S304-T4 (Naming) ──→ GATE: P0 review-ready
+  S304-T1 → S304-T2 (BUTTER) ┘
+
+Sprint 2 (Days 3-7):
+  S305-T0 (stable-endpoints) ─→ S305-T1 (extract-routes) ─→ S305-T2 (QUICKSTART) ─→ S305-T3 (REFERENCE)
+                                                           ─→ S305-T4 (Contract checks)
+  S305-T5 (CLI) ──────────────── parallel ──────────────────
+  S305-T6 (INFRA + tf-plan) ──── parallel ──────────────────→ GATE: smoke + tf-plan.sh
+  S305-T7 (AUTH_BYPASS) ──────── parallel ──────────────────
+
+Sprint 3 (Days 8-10):
+  S306-T1 (DEV-GUIDE) ──→ S306-T2 (Cross-links)
+  S306-T3 (Citations) ──→ S306-T4 (RTFM validator) ──→ S306-T5 (Final) ──→ GATE: all criteria
 ```
 
-Sprints 7 and 8 are parallelizable.
-Sprint 9 depends on trust scope tests from Sprint 7 (validates the foundation before extending it).
+---
 
-## Risk Assessment (Phase 2)
+## Risk Mitigation
 
-| Risk | Sprint | Mitigation |
-|------|--------|------------|
-| hypothesis library not available in test env | S7 | Fallback to manual property tests with range loops |
-| Eval harness root cause not deterministic | S8 | Document findings even if fix isn't clear-cut |
-| Epistemic filtering too aggressive (strips needed context) | S9 | Default to all-full; filtering is opt-in per model |
-| Jam geometry cost exceeds budget for routine reviews | S9 | Feature flag default=false; cost estimate before activation |
-| Cross-repo invariant references drift | S8 | verify-invariants.sh designed for CI; drift detected on each run |
+| Risk | Trigger | Action |
+|------|---------|--------|
+| Phase A takes >3 days | Day 3 without gate pass | Descope IaC to document-only (no diagrams) |
+| Smoke-test failures | >3 endpoints fail | Reduce stable subset to passing endpoints |
+| Route extraction <80 | Unresolvable patterns | Add manual entries; update baseline |
+| Citation pinning API limits | Rate limited | Use cached pins; defer cross-repo to post-sprint |
+| BUTTERFREEZONE hash instability | Cross-platform mismatch | Pin exact jq version in CI |
 
-## Success Criteria (Phase 2)
+---
 
-1. Trust scopes have dedicated test coverage (100% of model-permissions entries validated)
-2. Conservation invariant verified by property-based tests across pricing/budget/ledger
-3. Multi-flag feature combinations tested (minimum 6 combination scenarios)
-4. Budget+fallback integration tested end-to-end (DOWNGRADE → chain walk → cheaper model)
-5. Cross-repository invariants declared in formal schema (minimum 5 invariants)
-6. Invariant verification script runs in CI (exit code 0)
-7. Eval regression root cause identified and documented
-8. Epistemic trust scopes implemented with 4 context_access dimensions
-9. Context filtering applied to remote model requests based on epistemic scopes
-10. Jam geometry design document complete with cost analysis and implementation roadmap
-11. All existing tests still pass (zero regressions)
+## Success Metrics
+
+| Metric | Target | Measurement |
+|--------|--------|-------------|
+| Naming compliance | 0 violations | `grep -ci "arrakis"` across zero-tolerance files |
+| Citation grounding | 100% sourced | RTFM citation check |
+| Smoke-test pass rate | 7/7 stable endpoints | Smoke-test checklist |
+| Route index coverage | >=80 routes | `extract-routes.sh --count` |
+| BUTTERFREEZONE validity | All hashes match | `butterfreezone-validate.sh` |
+| Doc completeness | 0 placeholders | `grep -ri "TODO\|TBD\|PLACEHOLDER" docs/` |
+| Cross-link integrity | 0 broken links | RTFM cross-link check |

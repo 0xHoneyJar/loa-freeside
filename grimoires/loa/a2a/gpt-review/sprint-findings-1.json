@@ -1,66 +1,36 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "As written, this plan is likely to fail because several sprint gates depend on missing cross-repo/IaC tasks (freeside ECS service, finn JWT verification, WebSocket/ALB wiring, Discord ownership verification, and message storage), and some acceptance criteria can’t be objectively verified with the described work.",
+  "summary": "This plan is close, but it has a few missing/incorrect dependencies and at least one unscoped critical validation task that can realistically prevent the Sprint 2 and Sprint 3 gates from being achievable.",
   "blocking_issues": [
     {
-      "location": "Sprint 1 (Issue #77) — overall deployment gate / Task 1.1",
-      "issue": "Plan verifies/enables loa-finn ECS, but does not include the critical work to deploy loa-freeside to ECS in production (task definition/service/ALB target group/env/secrets) even though G-1 requires both services deployed and healthy.",
-      "why_blocking": "You can’t meet G-1 (“Both services deployed to production on ECS with health checks”) if only finn is explicitly enabled/verified; freeside deployment could be assumed “already exists” but there is no task to confirm desired_count, ALB routing, env vars, Secrets Manager bindings, Cloud Map/SG rules, or health check path alignment for freeside in the same sprint.",
-      "fix": "Add a Sprint 1 task explicitly verifying/enabling loa-freeside ECS/Terraform resources (desired_count, task definition env/secrets, ALB listener rules, target group health check path, SG ingress/egress, Cloud Map if used) with acceptance criteria: `terraform plan` clean, service stable, ALB returns 200 on /health, and both services reachable as intended (public vs internal)."
+      "location": "Sprint 2 Gate + Task 2.6 (docs/INFRASTRUCTURE.md)",
+      "issue": "Sprint 2 gate requires `terraform plan` clean, but there is no explicit task to create a runnable Terraform plan harness (backend/workspace/vars) or to define the exact invocation/environment that will be used to satisfy the gate.",
+      "why_blocking": "In many repos, `terraform plan` fails by default without backend config, required variables, provider auth, or selecting the correct module path. Without a defined harness, the gate can fail even if the documentation is correct, and the engineer will burn time debugging infra rather than writing docs.",
+      "fix": "Add a P0 task in Sprint 2 (or expand S305-T6 AC) to: (1) specify the exact module directory to run from, (2) provide a minimal `terraform.tfvars.example` (or documented env var set) that satisfies required variables with safe dummy values, (3) document/implement a local plan command (e.g., `scripts/tf-plan.sh`) that runs `terraform init` + `terraform validate` + `terraform plan` with `-backend=false` if appropriate, and (4) define acceptance as 'script exits 0 in CI/local without cloud credentials' (or explicitly require AWS creds if that’s intended)."
     },
     {
-      "location": "Sprint 1 — Task 1.3 (ES256 JWKS + signer) and Sprint 3 dependencies",
-      "issue": "Only the signing/JWKS publishing side is planned; there is no corresponding task to implement/verify JWT validation in loa-finn (JWKS fetch, caching, aud/iss/exp enforcement).",
-      "why_blocking": "Sprint 1 gate says “S2S JWT validated” and Sprint 3 requires authenticated freeside→finn calls. Without finn-side verification work (likely in loa-finn repo), S2S auth cannot be proven working and integration will stall.",
-      "fix": "Add an explicit cross-repo task (loa-finn) to implement ES256 JWT verification against freeside JWKS (iss/aud/exp/iat checks, clock skew handling, JWKS cache/refresh, kid selection) plus an integration test or curl-based proof in staging. Also add a mitigation plan if loa-finn changes can’t land (temporary shared secret HS256 is not acceptable per security req; better: ship JWKS verifier first)."
+      "location": "Sprint 2 Tasks 2.2 (API-QUICKSTART) + 2.3 (API-REFERENCE)",
+      "issue": "The plan depends on '7 guaranteed-stable endpoints' but does not include a task to identify/lock that endpoint set from the codebase (source-of-truth list) before writing docs and tests.",
+      "why_blocking": "If the endpoint set is ambiguous, the quickstart, reference, smoke checklist, and stability labeling can’t be validated consistently. This can cascade into Sprint 2 gate failure (7/7 smoke tests) and Sprint 3 RTFM completeness checks because reviewers will dispute what the 7 endpoints are.",
+      "fix": "Add a small P0/P1 task (before S305-T2) to define the stable endpoint list in a single canonical place (e.g., `docs/api/stable-endpoints.json` or a table in API-REFERENCE) with method+path+auth+purpose, and reference it from both QUICKSTART and REFERENCE. Update AC to require the smoke-test checklist to be generated from that list."
     },
     {
-      "location": "Sprint 1 — Task 1.1 env var `FREESIDE_JWKS_URL=http://api.arrakis-{env}.local:3000/.well-known/jwks.json`",
-      "issue": "JWKS URL/hostname is underspecified and likely wrong for ECS networking; it assumes an internal DNS name for freeside (`api.arrakis-{env}.local`) that isn’t defined in the “What Already Exists” table (only finn Cloud Map is listed).",
-      "why_blocking": "If finn can’t resolve/reach the JWKS endpoint from inside the VPC, JWT verification will fail and all authenticated calls will fail. This is a common ECS/Cloud Map pitfall: ALB public DNS vs internal service discovery vs task ENI reachability.",
-      "fix": "Decide and implement one concrete JWKS reachability path: (a) register freeside in Cloud Map (e.g., `freeside.arrakis-{env}.local`) and use that, or (b) expose JWKS via internal ALB listener/DNS, or (c) host JWKS in S3/CloudFront (but that’s new infra). Add Terraform changes + acceptance criteria: from a finn task, `curl $FREESIDE_JWKS_URL` succeeds and returns JWKS."
+      "location": "Sprint 2 Task 2.4 (Tier 2 Contract Checks)",
+      "issue": "Acceptance criteria require runtime introspection via `app._router.stack`, which is framework-specific and may not exist or may not be accessible depending on how the server is structured/exported.",
+      "why_blocking": "If the app instance isn’t directly importable (common in production setups) or the router internals differ (Express vs Fastify vs Nest vs custom), this task can become a time sink or impossible, blocking the Sprint 2 gate and downstream Sprint 3 'route index completeness' validation.",
+      "fix": "Change AC to a framework-agnostic check: start the dev server and validate extracted routes by making HTTP requests (HEAD/OPTIONS/GET with safe defaults) and asserting 'not 404' + auth behavior. Make runtime introspection optional ('if available') rather than required, or explicitly add a prerequisite task to expose an introspection endpoint in dev-only builds."
     },
     {
-      "location": "Sprint 4 — Task 4.1 (WebSocket endpoint) + existing ALB/WAF",
-      "issue": "No IaC task to ensure ALB listener rules, target group settings, idle timeouts, and WAF behavior are compatible with WebSocket streaming for `/chat/:tokenId/ws`.",
-      "why_blocking": "G-9 requires streaming via WebSocket. Even if the app code works locally, production commonly fails without ALB idle timeout tuning, correct listener rule path patterns, and ensuring WAF doesn’t block upgrade requests. The plan lists “ALB + WAF supports WebSocket” but doesn’t include a verification/deploy task for the specific route.",
-      "fix": "Add a Terraform+staging verification task before/within Sprint 4: confirm ALB idle timeout (e.g., 60–300s), listener rules route `/chat/*` and `/chat/*/ws`, WAF allows `Upgrade: websocket`, and CloudWatch metrics show successful 101 upgrades. Acceptance: `wscat`/browser connects in staging and streams for N minutes without disconnect."
+      "location": "Sprint 3 Task 3.4 (RTFM Full Validation) + overall plan",
+      "issue": "RTFM validation is treated as a gate, but the plan does not include tasks to implement the RTFM validator itself (or to confirm it already exists), including the '8 RTFM checks' referenced in AC/testing.",
+      "why_blocking": "If the RTFM pipeline/scripts don’t already exist, Sprint 3 cannot complete because the gate is defined in terms of tooling that may be missing. Even if some scripts exist (pin-citations, butterfreezone-validate), the cross-link check, TODO/TBD scan, naming scan across the correct file set, version consistency check, and route baseline check need an executable harness.",
+      "fix": "Add an explicit task (likely Sprint 3 P0, or earlier) to implement `scripts/rtfm-validate.sh` (or equivalent) that runs the named checks with deterministic exit codes and a documented file allowlist. If it already exists, add an AC to S306-T4 that references the exact script path and enumerates the checks it runs, plus a 'dry run' in Sprint 1/2 to de-risk."
     },
     {
-      "location": "Sprint 4 — Task 4.6 (Channel synchronization design)",
-      "issue": "It proposes storing “all messages” in `agent_threads` table, but migration 063 defines `agent_threads` as thread mapping metadata only; there is no messages table/schema or tasks to implement message persistence.",
-      "why_blocking": "Acceptance criteria for 4.6 (“Messages from both surfaces stored in same table”, “Web chat displays full conversation history including Discord messages”) cannot be met with the current schema/tasks. This will stall implementation or cause last-minute schema churn mid-sprint.",
-      "fix": "Add a migration for `agent_messages` (or similar) with fields: message_id, thread_id, nft_id, community_id, source, author_wallet/discord_user_id, content, created_at, and any token usage metadata. Update 4.6 to write/read from that table, and update 4.1 to render history from it."
-    },
-    {
-      "location": "Sprint 4 — Task 4.2 (SIWE) and Task 4.4/4.5 (Discord ownership verification)",
-      "issue": "Discord commands require “verify wallet ownership” but the plan does not include a concrete linking mechanism between a Discord user and a wallet (or how ownership is proven inside Discord).",
-      "why_blocking": "G-5 depends on gating: “NFT holder invokes /my-agent and gets dedicated thread” and “Non-owner cannot write”. Without a defined Discord↔wallet binding (SIWE in web doesn’t automatically apply to Discord), you can’t reliably enforce ownership and the feature will fail or be insecure.",
-      "fix": "Add an explicit task to implement Discord wallet linking (e.g., `/link-wallet` that issues a nonce and verifies an EIP-4361 signature via DM/web callback), store mapping in DB, and use it for ownership checks. Acceptance: a Discord user links wallet, bot verifies NFT ownership, then /my-agent works; unlinked users are blocked with a clear instruction."
-    },
-    {
-      "location": "Sprint 2 — Task 2.4 (Webhook verification) / overall payments gate G-2",
-      "issue": "The plan relies on NOWPayments webhook configuration but does not include an end-to-end staging test harness for HMAC-SHA512 verification + idempotency + state machine transitions using real NOWPayments IPN payloads/signature headers.",
-      "why_blocking": "G-2 is “First real credit pack purchase”. Webhook signature mismatches, header naming differences, or body canonicalization issues are a top cause of launch failure; without a concrete test step using captured real payloads (or NOWPayments test IPNs), you risk discovering it only in production.",
-      "fix": "Add a Sprint 2 task: capture a real/sandbox IPN request (raw body + headers), add an automated verification test (or replay tool) that posts it to staging and asserts: signature valid, state transition correct, idempotent replay safe, credits minted exactly once."
-    },
-    {
-      "location": "Sprint 3 — Task 3.1 (cache invalidation on NFT transfer event)",
-      "issue": "Cache invalidation depends on an “NFT transfer event” source, but no event ingestion/indexer task is included (what chain, what contract, where events come from, how they reach freeside).",
-      "why_blocking": "Acceptance criterion “Cache invalidated on transfer event” cannot be implemented without an event pipeline. This will either be skipped (failing AC) or cause scope explosion mid-sprint.",
-      "fix": "Either (a) cut/relax the AC for this sprint (invalidate by TTL only) or (b) add a concrete task to consume transfer events (existing indexer/webhook if it exists) and trigger Redis invalidation. Make the dependency explicit and verifiable."
-    },
-    {
-      "location": "Sprint 5 — Task 5.1/5.2 (admin spend breakdown + JSONL audit) and Sprint 3 budget finalization",
-      "issue": "Admin spend breakdown and JSONL audit require a durable ledger of per-inference spend by pool (finalized amounts, pool_id, tokens used, reservation/finalization ids), but the plan doesn’t include tasks to persist these usage records (it only mentions parsing response headers).",
-      "why_blocking": "G-6 and G-7 can’t be satisfied if the system doesn’t store per-request accounting events in a queryable/auditable table. Relying on logs/headers at request time won’t support exports and breakdowns.",
-      "fix": "Add a migration + write-path task to persist an immutable accounting/audit event per reservation finalization (e.g., `credit_ledger` / `usage_events`) including: community_id, nft_id, pool_id, tokens, amount_micro, finalization_id, conservation_guard_result, timestamps. Then base admin endpoints/export on that table."
-    },
-    {
-      "location": "Sprint 6 — Task 6.2 (Conservation guard failure alert within 60s)",
-      "issue": "No task defines how conservation guard failures are emitted as metrics/log events that CloudWatch/AMP alarms can actually trigger on (what metric name, where it’s incremented, and how it reaches AMP/CloudWatch).",
-      "why_blocking": "G-3 requires an alert within 60s. Terraform alarms alone won’t work unless the application emits a signal (custom metric, log filter metric, or Prometheus counter) on invariant failure.",
-      "fix": "Add an instrumentation task: on any conservation guard violation, increment a Prometheus counter (e.g., `conservation_guard_failures_total{invariant=...}`) and/or emit a structured log line that a CloudWatch metric filter converts to a metric. Then define the alarm on that metric with a 60s evaluation period and test by forcing a known failure in staging."
+      "location": "Sprint 1 Task 1.2 (BUTTERFREEZONE regeneration)",
+      "issue": "Task requires jq >= 1.7, but jq 1.7 is not broadly available on many default environments yet; also no task defines how CI/dev will obtain jq 1.7.",
+      "why_blocking": "This can cause immediate failure of generation/validation on the engineer’s machine or CI, blocking Sprint 1 gate and cascading into all later gates (hash validation is required in Sprint 3).",
+      "fix": "Either (a) relax requirement to jq >= 1.6 with a deterministic canonicalization approach compatible with 1.6, or (b) add a task/AC to vendor jq (e.g., via `mise`, `asdf`, `brew`, or a pinned container) and ensure scripts run in that environment. Also specify the CI runner environment that satisfies the jq constraint."
     }
   ],
   "question": "",

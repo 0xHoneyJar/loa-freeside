@@ -1,41 +1,41 @@
 {
   "verdict": "APPROVED",
-  "summary": "All previously blocking inconsistencies (auth, tenancy, billing primitive, dogfood gating, contract source of truth, SLA language, and BYOK metering) are now explicitly surfaced as decisions with coherent recommended paths, and no new truly blocking issues were introduced.",
+  "summary": "All seven previously-blocking contradictions/verification gaps were addressed with concrete contracts, measurement/validation methods, and scoped acceptance criteria, and the changes did not introduce any new truly blocking issues.",
   "previous_issues_status": [
     {
-      "original_issue": "Auth model contradictory (JWT/JWKS vs API keys) causing onboarding/SDK/CLI ambiguity",
+      "original_issue": "API Quick-Start/Reference requirements were unverifiable due to missing public contract (base URL/env, credential issuance, streaming protocol, public vs admin endpoints, smoke tests)",
       "status": "fixed",
-      "notes": "Added D1 with clear options (API key primary, OAuth/OIDC primary, hybrid) and an explicit recommended hybrid pattern (API key for S2S + OAuth for portal) mapping both to internal JWT. This resolves the contradiction and makes the implementation path explicit."
+      "notes": "The PRD now includes a clear Developer-Facing API Contract (localhost:3000 target, JWT ES256+JWKS, SSE, endpoint classification, credential acquisition paths) plus an explicit curl-based smoke-test checklist as a validation gate."
     },
     {
-      "original_issue": "Undefined/ambiguous account model (community vs developer/project/NFT collection) breaking onboarding/billing/isolation",
+      "original_issue": "Auth method ambiguity (JWT vs API keys) risked shipping incorrect onboarding steps",
       "status": "fixed",
-      "notes": "Added D2 with a canonical hierarchy (Account → Project → optional Community → End-user) and explicitly moves budgets/rate limits to Project, with communities as optional sub-resources. This directly addresses the tenancy join-key ambiguity."
+      "notes": "JWT (ES256 + JWKS) is declared primary with operational steps; API keys are explicitly marked Planned with no operational steps, aligning with the quick-start and acceptance criteria."
     },
     {
-      "original_issue": "Billing requirements conflicted (prepaid topups vs subscription+overage) with no ledger/enforcement clarity",
+      "original_issue": "Ecosystem stats (LOC/tests/versions) lacked a defined measurement method and would drift / be unverifiable",
       "status": "fixed",
-      "notes": "Added D3 with explicit billing primitives and a recommended MVP path (prepaid first, postpaid later for enterprise), aligned to existing enforcement (budget engine hard stops) and existing endpoints/flags. This is sufficient to launch paid self-serve without internal contradiction."
+      "notes": "A canonical measurement approach is specified (cloc + test runner output), with required generated_at + commit SHA/tag anchoring and acceptance criteria tying published numbers to script output."
     },
     {
-      "original_issue": "Dogfooding success criteria depended on 'public API' components not guaranteed to exist before Pillar 2",
+      "original_issue": "BUTTERFREEZONE content hashes were underspecified (algorithm, file set/normalization, validation mode), making validation unreliable",
       "status": "fixed",
-      "notes": "Added D4 defining a minimal 'Public API MVP Gate' and updates sequencing to Phase 1.0 → Phase 2 → Phase 1.1 iteration. This prevents false-positive dogfood validation via internal shortcuts."
+      "notes": "Hashing is now defined as SHA-256, per-section hashing, normalization rules, explicit exclusion of the meta block, and a validation mode tied to the generating commit/working tree at generation time."
     },
     {
-      "original_issue": "API contract source of truth unclear (Zod vs OpenAPI vs NATS schemas vs ports), risking spec drift",
+      "original_issue": "Naming migration policy was contradictory (zero Arrakis vs theme references) and lacked enforceable boundaries",
       "status": "fixed",
-      "notes": "Added D5 declaring Zod REST schemas as canonical for external API, with CI conformance and NATS schemas explicitly internal-only; SDK types generated from OpenAPI. This resolves the drift risk at the strategy level."
+      "notes": "The PRD now enumerates zero-tolerance files, exempt/theme directories, and a single-mention historical pattern, with a grep-based validation command integrated into FR-8."
     },
     {
-      "original_issue": "99.9% SLA commitment without operational definition/controls created legal/expectation risk",
+      "original_issue": "IaC acceptance implied production-grade deploy while production deployment was out of scope",
       "status": "fixed",
-      "notes": "Added D6 to defer contractual SLA to Phase 3 and publish SLOs first with required operational prerequisites and explicit exclusions. This removes the premature SLA blocker."
+      "notes": "Scope is narrowed to staging/non-production deployment with production hardening as checklist-only; acceptance criteria are aligned (staging deployability + terraform plan validation)."
     },
     {
-      "original_issue": "BYOK 'key never seen' promise conflicted with metering/budget enforcement; unclear operating mode",
+      "original_issue": "Truth-grounded citation requirement was impossible for cross-repo claims without stable link rules",
       "status": "fixed",
-      "notes": "Added D7 specifying proxy-mode token metering with deny-by-default content redaction, and clarifies what is/ isn’t observed plus what must be documented as a trust policy. This resolves the metering vs BYOK tension for MVP."
+      "notes": "Cross-repo citation rules now require tags or commit-SHA permalinks and prohibit branch links, with a grep-based acceptance check to prevent drift/link rot."
     }
   ],
   "new_blocking_concerns": [],

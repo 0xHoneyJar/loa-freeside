@@ -1,56 +1,31 @@
 {
   "verdict": "APPROVED",
-  "summary": "All previously blocking gaps were addressed with explicit cross-repo/IaC tasks and objectively testable acceptance criteria, and no new truly blocking problems were introduced.",
+  "summary": "All five previously-blocking dependency/validation gaps are addressed with concrete harnesses, canonical sources, and executable validators, and the plan is now runnable end-to-end with no new truly blocking issues introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "Sprint 1 gate required both services healthy on ECS but freeside ECS/ALB/env/secrets/health checks were not explicitly verified/enabled",
+      "original_issue": "Sprint 2 gate required `terraform plan` clean but no runnable Terraform harness/invocation/environment was defined",
       "status": "fixed",
-      "notes": "Added Sprint 1 Task 1.0 explicitly verifying/enabling freeside ECS resources, ALB routing, health check path, SG rules, Cloud Map, and clean terraform plan, with concrete AC including ALB /health=200."
+      "notes": "S305-T6 now explicitly adds `scripts/tf-plan.sh`, pins the module directory (`infrastructure/terraform/`), uses `terraform init -backend=false`, provides `terraform.tfvars.example` with dummy values, and defines the gate as 'exits 0 locally without AWS creds'. This resolves the original risk of the gate failing for non-doc reasons."
     },
     {
-      "original_issue": "JWT work only covered signing/JWKS publishing; missing finn-side ES256 JWT validation (JWKS fetch/cache, iss/aud/exp enforcement) needed for S2S auth and later sprints",
+      "original_issue": "API docs/tests depended on '7 guaranteed-stable endpoints' but there was no canonical locked list before writing docs and smoke tests",
       "status": "fixed",
-      "notes": "Added Sprint 1 Task 1.6 as a cross-repo loa-finn task implementing JWKS client + verification middleware + staging integration test, and explicitly blocks Sprint 3 if not landed."
+      "notes": "S305-T0 creates `docs/api/stable-endpoints.json` as the single source of truth and requires verification that each endpoint exists and is used to generate the smoke checklist and referenced by QUICKSTART/REFERENCE. This removes ambiguity and makes Sprint 2 gate verifiable."
     },
     {
-      "original_issue": "JWKS URL/hostname was underspecified/likely wrong for ECS networking (internal DNS name not defined)",
+      "original_issue": "Tier 2 contract checks required framework-specific runtime introspection (`app._router.stack`) which may be impossible",
       "status": "fixed",
-      "notes": "Cloud Map for freeside is now explicitly listed as existing and verified in Task 1.0, and finn uses FREESIDE_JWKS_URL pointing at freeside Cloud Map DNS with an explicit 'curl from finn task' acceptance test."
+      "notes": "S305-T4 is now framework-agnostic via HTTP checks against a running dev server, with optional `/api/debug/routes` cross-check only if available. This eliminates the 'impossible depending on framework/export' failure mode."
     },
     {
-      "original_issue": "WebSocket streaming likely to fail without ALB/WAF/IaC verification (listener rules, idle timeout, WAF upgrade behavior)",
+      "original_issue": "RTFM validation was a Sprint 3 gate but the plan did not include implementing/confirming the validator tooling",
       "status": "fixed",
-      "notes": "Added Sprint 4 Task 4.0 to verify/update ALB idle timeout, listener rules for /chat/* and /chat/*/ws, WAF upgrade allowance, and a staging wscat test with 101 verification."
+      "notes": "S306-T4 now explicitly creates `scripts/rtfm-validate.sh` and enumerates all 8 checks with deterministic exit behavior and a required passing run. This makes the Sprint 3 gate achievable and testable."
     },
     {
-      "original_issue": "Sprint 4 channel sync proposed storing messages in agent_threads but schema only supported thread metadata; missing messages persistence",
+      "original_issue": "BUTTERFREEZONE regeneration required jq >= 1.7 but jq availability/CI provisioning was not defined",
       "status": "fixed",
-      "notes": "Added migration 066 agent_messages and updated Task 4.6 to store/read unified history from agent_messages, with pagination API AC."
-    },
-    {
-      "original_issue": "Discord ownership verification lacked a concrete Discord↔wallet linking mechanism",
-      "status": "fixed",
-      "notes": "Plan now relies on an explicitly stated existing /verify command + SIWE/DM/web callback binding, and Task 4.4 enforces 'wallet linked' as a prerequisite with clear user guidance."
-    },
-    {
-      "original_issue": "NOWPayments webhook verification/idempotency lacked an end-to-end staging replay harness using real/sandbox payloads and headers",
-      "status": "fixed",
-      "notes": "Added Sprint 2 Task 2.6 with captured raw payload+headers fixture, replay to staging, signature validation assertion, state transition assertion, and idempotent double-replay assertion."
-    },
-    {
-      "original_issue": "NFT transfer cache invalidation depended on an unspecified event ingestion pipeline",
-      "status": "fixed",
-      "notes": "Task 3.1 explicitly scopes cache invalidation to TTL-only for launch and defers event-driven invalidation post-launch, removing the impossible dependency from sprint AC."
-    },
-    {
-      "original_issue": "Admin spend breakdown + JSONL audit required a durable per-finalization ledger; plan didn’t persist usage records",
-      "status": "fixed",
-      "notes": "Added migration 067 usage_events plus Sprint 3 Task 3.5 to write immutable usage events atomically with finalization; Sprint 5 endpoints/export now explicitly query usage_events."
-    },
-    {
-      "original_issue": "Conservation guard alert within 60s lacked a defined emitted signal for alarms to trigger on",
-      "status": "fixed",
-      "notes": "Added Sprint 6 Task 6.0 instrumentation (Prometheus counters + structured log) and Task 6.2 dual alert path (AMP counter and CloudWatch metric filter) with a forced-failure staging test AC."
+      "notes": "Prerequisites now specify jq >=1.7 installation paths (brew/apt/asdf/mise), require CI runner compliance, and scripts fail fast with exit 13 if unmet. This addresses the environment mismatch that could block Sprint 1."
     }
   ],
   "new_blocking_concerns": [],

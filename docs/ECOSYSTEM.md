@@ -22,44 +22,6 @@ Layer 1  Framework    loa             Agent development framework, skills, Bridg
 
 **Dependency direction:** Each layer depends only on layers below it. Products depend on Platform, Platform depends on Protocol + Runtime, Runtime depends on Protocol, Protocol stands alone alongside the Framework.
 
-## Understanding the Agent Economy
-
-If you're arriving from traditional web development, the architecture above may prompt a question: *why does an AI platform need 5 repositories, a formal protocol layer, and conservation invariants?* The answer is that Loa is not a chatbot platform — it is economic infrastructure for autonomous AI agents.
-
-### What is an Agent Economy?
-
-An agent economy is a system where autonomous AI agents hold identity, spend budget, and provide services within a governed commons. Each agent has an on-chain wallet, a [capability tier](GLOSSARY.md#capability-tier), and a [budget allocation](GLOSSARY.md#lot-lifecycle) that it can spend on inference. Agents are not cost centers to be minimized — they are economic actors whose activity generates value.
-
-The distinction matters because it changes what "correct" means. In a chatbot platform, correct means "the response was good." In an agent economy, correct means "the books balanced, the conservation invariant held, the budget delegation was safe, and the response was good." Economic correctness is a precondition for operational correctness.
-
-### Why Conservation Invariants?
-
-When a community delegates spending authority to an autonomous agent, they need mathematical proof that the books will always balance. A billing system can tolerate occasional inconsistencies caught by human review. An economic protocol cannot — autonomous agents operate at machine speed without human oversight of individual transactions.
-
-The [conservation invariant](GLOSSARY.md#conservation-invariant) (`available + reserved + consumed = original` for every lot) is the foundational promise. It is enforced by database constraints, application assertions, Redis Lua atomicity, and periodic reconciliation — four layers of defense because the guarantee is existential. See [ECONOMICS.md](ECONOMICS.md) § Formal Specification for the complete set of 14 canonical properties.
-
-### Why 5 Repositories?
-
-Separation of concerns at the protocol level. The same insight that drove Kubernetes to separate the API specification from cloud providers and container runtimes applies here:
-
-- **Protocol contracts** (loa-hounfour) define what an agent *is*. These change slowly and require formal verification. Analogous to the Kubernetes API spec.
-- **Platform infrastructure** (loa-freeside) implements *how* agents operate. These change frequently with operational demands. Analogous to a cloud provider.
-- **Agent runtime** (loa-finn) provides *where* agents execute. Analogous to a container runtime (containerd, CRI-O).
-
-A Layer 5 product should be able to switch platforms without rewriting its protocol integration — just as a Kubernetes workload can move between cloud providers.
-
-### Why Multi-Model?
-
-Different cognitive tasks require different AI models, just as different compute tasks require different processors. [Pool routing](GLOSSARY.md#pool-routing) maps capability requirements to model pools: `cheap` for high-volume simple tasks, `reasoning` for complex analysis, `architect` for code generation. [Ensemble strategies](GLOSSARY.md#ensemble-strategy) (`best_of_n`, `consensus`, `fallback`) provide quality and reliability guarantees that no single model can offer alone.
-
-The economic layer makes this transparent — per-model cost attribution means communities see exactly which model consumed which portion of their budget, not an opaque total.
-
-### The Web4 Thesis
-
-The convergence of blockchain (ownership layer) and AI (autonomy layer) creates something neither can achieve alone: agents that own assets, tokens that gate capabilities, and economic activity that flows through protocol-level accounting. This is what the project calls "Web4" — not as a marketing claim, but as a structural observation about what becomes possible when on-chain identity meets autonomous inference. See [The Web4 Connection](#the-web4-connection) below for the technical details.
-
-For formal definitions of all concepts mentioned here, see the [Concept Glossary](GLOSSARY.md).
-
 ## Repositories
 
 ### Layer 1: loa (Framework)
@@ -83,6 +45,7 @@ The foundational framework that all other repos mount. Provides the skill system
 
 ### Layer 2: loa-hounfour (Protocol)
 
+<!-- cite: loa-freeside:packages/shared/nats-schemas/src/gateway-event.ts -->
 <!-- cite: loa-freeside:packages/shared/nats-schemas/src/routing.ts -->
 
 | Field | Value |
@@ -200,7 +163,7 @@ Discord User → Rust Gateway (apps/gateway)
 
 <!-- cite: loa-freeside:apps/gateway/src/main.rs -->
 <!-- cite: loa-freeside:apps/worker/ -->
-<!-- cite: loa-freeside:packages/shared/nats-schemas/src/routing.ts -->
+<!-- cite: loa-freeside:packages/shared/nats-schemas/src/gateway-event.ts -->
 
 The critical invariant: JSON fixtures committed in loa-hounfour are the neutral source of truth. Both the TypeScript Zod validation and the Rust `serde` deserialization run against the same fixtures, ensuring schema agreement across language boundaries.
 
@@ -252,79 +215,12 @@ The budget-atomic accounting system (BigInt micro-USD precision, two-counter Red
 
 **Measurement method:** File counts via `find` with `node_modules`, `dist`, and build artifacts excluded. Remote repo stats from GitHub API. Stats for remote repos are placeholders — run `scripts/ecosystem-stats.sh --fresh` to populate from source.
 
-## Building on Loa
+## Related Documentation
 
-### Why This Architecture Exists
-
-Loa did not start as a 5-repo protocol stack. It started as a Discord bot for community management — conviction scoring and tiered role progression. Through 35 development cycles, the scope expanded: first multi-model inference, then economic accounting, then formal protocol contracts, then payment rails, then autonomous agents as economic actors.
-
-The 5-repo structure emerged because these concerns *must* evolve independently:
-
-- **Protocol contracts** (loa-hounfour) define what an agent *is* — schemas, state machines, conservation invariants. These change slowly and require formal verification.
-- **Platform infrastructure** (loa-freeside) implements *how* agents operate — API routing, budget management, deployment. These change frequently with operational demands.
-- **Agent runtime** (loa-finn) provides *where* agents execute — sessions, memory, tool sandboxes. Runtime evolution is independent of both protocol and platform.
-
-This is the Kubernetes insight applied to agent economies: the contract specification (hounfour, like the Kubernetes API) is independent of both the platform (freeside, like a cloud provider) and the runtime (finn, like a container runtime). A Layer 5 product should be able to switch platforms without changing protocol contracts.
-
-### Conceptual Prerequisites
-
-If you're coming from traditional web development, several concepts in Loa have no direct precedent. Before diving into the technical documentation, familiarize yourself with:
-
-- **Conservation invariants**: The mathematical guarantee that `available + reserved + consumed = original` for every budget lot. See [GLOSSARY.md](GLOSSARY.md) for the full definition.
-- **BigInt micro-USD arithmetic**: All monetary values are integer micro-USD (1 cent = 10,000 micro-USD). No floating point ever touches money.
-- **JetStream at-least-once delivery**: NATS messages may be delivered more than once. Consumers must handle deduplication via `event_id`.
-- **Token-gating**: On-chain token holdings (BGT) determine capability access tiers. This is not authentication — it is *economic authorization*.
-- **Hexagonal architecture**: Core business logic is isolated from delivery mechanisms via port/adapter interfaces.
-
-For formal definitions of all Loa-specific concepts, see the [Concept Glossary](GLOSSARY.md).
-
-### The Learning Journey
-
-Each step introduces new primitives that build on the previous. This is a conceptual progression, not just a reading list.
-
-```
-1. What is Loa?           (this doc — 5-layer stack, dependency direction, naming)
-        │
-        ▼
-2. What are the rules?    (loa-hounfour — protocol contracts, state machines, invariants)
-        │
-        ▼
-3. How does money work?   (ECONOMICS.md — budget atomicity, lot lifecycle, capability tiers)
-        │
-        ▼
-4. How do events flow?    (EVENT-PROTOCOL.md — NATS streams, GatewayEvent, subscriptions)
-        │
-        ▼
-5. How do I call an agent? (API-QUICKSTART.md — first API call in 5 minutes)
-        │
-        ▼
-6. What can I build?      (API-REFERENCE.md — full endpoint reference, stability tiers)
-        │
-        ▼
-7. How do I deploy?       (INFRASTRUCTURE.md — Terraform modules, staging guide)
-        │
-        ▼
-8. How do I run it?       (CLI.md — gaib CLI for management)
-```
-
-### By Role
-
-| Role | Path | Key Concepts |
-|------|------|-------------|
-| **API Consumer** | [API-QUICKSTART](API-QUICKSTART.md) → [API-REFERENCE](API-REFERENCE.md) → [ECONOMICS](ECONOMICS.md) → [Stability Tiers](API-REFERENCE.md) | Making agent calls, understanding costs, stability guarantees |
-| **Product Builder** | This doc → [EVENT-PROTOCOL](EVENT-PROTOCOL.md) → [ECONOMICS](ECONOMICS.md) → [loa-hounfour](https://github.com/0xHoneyJar/loa-hounfour) → [API-REFERENCE](API-REFERENCE.md) | NATS subscriptions, cost attribution, protocol contracts |
-| **Protocol Contributor** | [loa-hounfour](https://github.com/0xHoneyJar/loa-hounfour) → [ECONOMICS](ECONOMICS.md) → [EVENT-PROTOCOL](EVENT-PROTOCOL.md) → conservation invariant source | Schema definitions, conservation properties, temporal properties |
-| **Operator** | [INFRASTRUCTURE](INFRASTRUCTURE.md) → [CLI](CLI.md) → monitoring dashboards → cost estimation | Deployment, management, monitoring |
-| **New to Agent Economies** | [GLOSSARY](GLOSSARY.md) → This doc → [ECONOMICS](ECONOMICS.md) → [EVENT-PROTOCOL](EVENT-PROTOCOL.md) | What is an agent economy? How does it differ from SaaS? |
-
-### Freeside-Specific Deep Dive
-
-For developers working directly on loa-freeside, see the [Developer Guide](DEVELOPER-GUIDE.md) for the full learning path, document ownership table, and contribution practices.
-
-## Next Steps
-
-- [API-QUICKSTART.md](API-QUICKSTART.md) — Make your first agent call against the platform
-- [API-REFERENCE.md](API-REFERENCE.md) — Full endpoint reference (Tier 1 + Tier 2)
-- [ECONOMICS.md](ECONOMICS.md) — Economic primitives: budget accounting, conservation, tiers
-- [EVENT-PROTOCOL.md](EVENT-PROTOCOL.md) — NATS event protocol for real-time subscriptions
-- [INFRASTRUCTURE.md](INFRASTRUCTURE.md) — Deployment topology and Terraform modules
+| Document | Description |
+|----------|-------------|
+| [README.md](../README.md) | Platform overview and quick start |
+| [BUTTERFREEZONE.md](../BUTTERFREEZONE.md) | Agent-grounded project summary |
+| [INSTALLATION.md](../INSTALLATION.md) | Full deployment guide |
+| [docs/INFRASTRUCTURE.md](INFRASTRUCTURE.md) | Terraform topology and modules |
+| [docs/API-QUICKSTART.md](API-QUICKSTART.md) | First agent call in 5 minutes |

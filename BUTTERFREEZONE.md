@@ -1,217 +1,286 @@
 <!-- AGENT-CONTEXT
-name: loa
-type: framework
-purpose: Loa is an agent-driven development framework for [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview) (Anthropic's official CLI).
-key_files: [CLAUDE.md, .claude/loa/CLAUDE.loa.md, .loa.config.yaml, .claude/scripts/, .claude/skills/]
-interfaces: [/auditing-security, /autonomous-agent, /bridgebuilder-review, /browsing-constructs, /bug-triaging]
-dependencies: [git, jq, yq]
-ecosystem:
-  - repo: 0xHoneyJar/loa-finn
-    role: runtime
-    interface: hounfour-router
-    protocol: loa-hounfour@5.0.0
-  - repo: 0xHoneyJar/loa-hounfour
-    role: protocol
-    interface: npm-package
-    protocol: loa-hounfour@7.0.0
-  - repo: 0xHoneyJar/arrakis
-    role: distribution
-    interface: jwt-auth
-    protocol: loa-hounfour@7.0.0
+name: loa-freeside
+type: platform
+purpose: Multi-model agent economy infrastructure — inference routing, budget atomicity, token-gated capability markets, and payment rails for Web3 communities.
+key_files:
+  - packages/core/ports/agent-gateway.ts
+  - packages/adapters/agent/pool-mapping.ts
+  - packages/adapters/agent/budget-manager.ts
+  - packages/adapters/agent/ensemble-accounting.ts
+  - packages/adapters/agent/byok-manager.ts
+  - themes/sietch/src/api/routes/agents.routes.ts
+  - themes/sietch/src/api/routes/billing-routes.ts
+  - themes/sietch/src/api/routes/verify.routes.ts
+  - packages/cli/src/index.ts
+  - infrastructure/terraform/main.tf
+  - apps/gateway/src/main.rs
+  - packages/shared/nats-schemas/src/gateway-event.ts
+interfaces: [REST API (80+ endpoints), Discord (22+ slash commands), Telegram (10+ commands), CLI (gaib), NATS event protocol]
+dependencies: [node>=22, pnpm, rust (gateway), postgresql, redis, terraform, docker]
 capability_requirements:
-  - filesystem: read
-  - filesystem: write (scope: state)
-  - filesystem: write (scope: app)
-  - git: read_write
-  - shell: execute
-  - github_api: read_write (scope: external)
-version: v1.45.2
-trust_level: L2-verified
+  - inference: multi-model routing (5 pools)
+  - billing: budget-atomic accounting (BigInt micro-USD)
+  - auth: token-gated access (9-tier conviction)
+  - distribution: discord, telegram, rest, nats
+  - infrastructure: aws ecs via terraform (20 modules)
+version: 6.0.0
+trust_level: grounded
 -->
 
-# loa
+# loa-freeside
 
-<!-- provenance: DERIVED -->
-Loa is an agent-driven development framework for [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview) (Anthropic's official CLI).
+<!-- provenance: CODE-FACTUAL -->
+Multi-model agent economy infrastructure platform. Token-gated AI capabilities, budget-atomic inference, and cross-chain community management delivered as Discord, Telegram, and REST APIs.
 
-The framework provides 29 specialized skills, built with TypeScript/JavaScript, Python, Shell.
+Layer 4 in the 5-layer Loa protocol stack (Framework → Protocol → Runtime → **Platform** → Products).
 
 ## Key Capabilities
-<!-- provenance: DERIVED -->
-The project exposes 15 key entry points across its public API surface.
 
-### .claude/adapters
+### Agent Gateway
+<!-- provenance: CODE-FACTUAL -->
+<!-- cite: loa-freeside:packages/adapters/agent/pool-mapping.ts -->
+<!-- cite: loa-freeside:packages/adapters/agent/budget-manager.ts -->
+<!-- cite: loa-freeside:packages/adapters/agent/ensemble-accounting.ts -->
 
-- **_build_provider_config** — Build ProviderConfig from merged hounfour config. (`.claude/adapters/cheval.py:152`)
-- **_check_feature_flags** — Check feature flags. (`.claude/adapters/cheval.py:191`)
-- **_error_json** — Format error as JSON for stderr (SDD §4.2.2 Error Taxonomy). (`.claude/adapters/cheval.py:77`)
-- **_load_persona** — Load persona.md for the given agent with optional system merge (SDD §4.3.2). (`.claude/adapters/cheval.py:96`)
-- **cmd_cancel** — Cancel a Deep Research interaction. (`.claude/adapters/cheval.py:510`)
-- **cmd_invoke** — Main invocation: resolve agent → call provider → return response. (`.claude/adapters/cheval.py:210`)
-- **cmd_poll** — Poll a Deep Research interaction. (`.claude/adapters/cheval.py:466`)
-- **cmd_print_config** — Print effective merged config with source annotations. (`.claude/adapters/cheval.py:441`)
-- **cmd_validate_bindings** — Validate all agent bindings. (`.claude/adapters/cheval.py:452`)
-- **main** — CLI entry point. (`.claude/adapters/cheval.py:546`)
+- **5-pool model routing** — cheap, fast-code, reviewer, reasoning, native tiers mapped to provider models
+- **Budget atomicity** — BigInt micro-USD precision with two-counter Redis Lua scripts; zero precision loss
+- **Ensemble strategies** — best_of_n, consensus, fallback with per-model cost attribution
+- **4-dimension rate limiting** — community, user, channel, burst
+- **SSE streaming** — with reconciliation for dropped connections
+- **Token estimation** — calibrated per-model token estimation for budget reservation
 
-### .claude/adapters/loa_cheval/config
+### BYOK (Bring Your Own Key)
+<!-- provenance: CODE-FACTUAL -->
+<!-- cite: loa-freeside:packages/adapters/agent/byok-manager.ts -->
+<!-- cite: loa-freeside:packages/adapters/agent/byok-proxy-handler.ts -->
 
-- **LazyValue** — Deferred interpolation token. (`.claude/adapters/loa_cheval/config/interpolation.py:41`)
-- **_check_env_allowed** — Check if env var name is in the allowlist. (`.claude/adapters/loa_cheval/config/interpolation.py:122`)
-- **_check_file_allowed** — Validate and resolve a file path for secret reading. (`.claude/adapters/loa_cheval/config/interpolation.py:133`)
-- **_get_credential_provider** — Get the credential provider chain (lazily initialized, thread-safe). (`.claude/adapters/loa_cheval/config/interpolation.py:192`)
-- **_matches_lazy_path** — Check if a dotted config key path matches any lazy path pattern. (`.claude/adapters/loa_cheval/config/interpolation.py:275`)
+- **Envelope encryption** — AES-256-GCM + KMS wrap
+- **LRU cache** with circuit breaker
+- **Key isolation** — BYOK egress separated from platform keys
+- **Audit trail** — structured capability audit events per invocation
+
+### Token-Gated Access
+<!-- provenance: CODE-FACTUAL -->
+<!-- cite: loa-freeside:themes/sietch/src/services/ -->
+<!-- cite: loa-freeside:packages/core/ports/score-service.ts -->
+
+- **9-tier progression** — BGT holdings and community rank determine tier placement
+- **Conviction scoring** — holding duration, accumulation patterns, trading behavior
+- **Capability markets** — free, pro, enterprise tiers mapped to model pools
+- **Wallet verification** — session-based signature verification with timing-safe comparisons
+
+### Billing & Payments
+<!-- provenance: CODE-FACTUAL -->
+<!-- cite: loa-freeside:themes/sietch/src/api/routes/billing-routes.ts -->
+<!-- cite: loa-freeside:themes/sietch/src/api/routes/credit-pack-routes.ts -->
+
+- **Paddle integration** — checkout, subscriptions, webhooks, customer portal
+- **Crypto payments** — NOWPayments integration (feature-flagged)
+- **Shadow billing** — parallel billing tracking for migration testing
+- **Entitlements caching** — feature access with audit logging
+
+### Distribution Channels
+<!-- provenance: CODE-FACTUAL -->
+<!-- cite: loa-freeside:themes/sietch/src/discord/ -->
+<!-- cite: loa-freeside:themes/sietch/src/telegram/ -->
+<!-- cite: loa-freeside:apps/gateway/src/main.rs -->
+
+- **Discord** — 22+ slash commands, Rust/Axum gateway proxy with multi-shard pool (Twilight 0.17)
+- **Telegram** — Grammy bot framework with 10+ commands, throttled streaming edits
+- **REST API** — 80+ Express 5.x endpoints with Zod validation
+- **NATS protocol** — cross-language wire format with Zod schemas and JSON fixtures
+
+### Coexistence & Migration
+<!-- provenance: CODE-FACTUAL -->
+<!-- cite: loa-freeside:packages/adapters/coexistence/ -->
+<!-- cite: loa-freeside:themes/sietch/src/api/routes/coexistence.routes.ts -->
+
+- **4 transition modes** — shadow → parallel → primary → exclusive
+- **Shadow ledger** — divergence tracking alongside existing verification bots
+- **Incumbent monitoring** — health checks with emergency rollback
+
+### Infrastructure-as-Code
+<!-- provenance: CODE-FACTUAL -->
+<!-- cite: loa-freeside:infrastructure/terraform/ecs.tf -->
+<!-- cite: loa-freeside:infrastructure/terraform/agent-monitoring.tf -->
+<!-- cite: loa-freeside:infrastructure/terraform/byok-security.tf -->
+
+- **20 Terraform modules** — ECS, RDS, ElastiCache, ALB, Route53, CloudWatch, KMS
+- **Agent monitoring** — CloudWatch dashboards + alarms for gateway metrics
+- **BYOK security** — least-privilege IAM roles per service
 
 ## Architecture
-<!-- provenance: DERIVED -->
-The architecture follows a three-zone model: System (`.claude/`) contains framework-managed scripts and skills, State (`grimoires/`, `.beads/`) holds project-specific artifacts and memory, and App (`src/`, `lib/`) contains developer-owned application code. The framework orchestrates 29 specialized skills through slash commands.
-```mermaid
-graph TD
-    docs[docs]
-    evals[evals]
-    grimoires[grimoires]
-    skills[skills]
-    tests[tests]
-    Root[Project Root]
-    Root --> docs
-    Root --> evals
-    Root --> grimoires
-    Root --> skills
-    Root --> tests
+<!-- provenance: CODE-FACTUAL -->
+
 ```
-Directory structure:
+loa-freeside/
+├── packages/
+│   ├── core/ports/            # 18 port interfaces (IAgentGateway, IChainProvider, etc.)
+│   ├── adapters/              # 8 adapter modules
+│   │   ├── agent/             # Gateway, BudgetManager, BYOK, ensemble, audit
+│   │   ├── chain/             # RPC, Dune Sim API, hybrid provider
+│   │   ├── storage/           # Drizzle ORM + PostgreSQL + RLS
+│   │   ├── synthesis/         # BullMQ queue for Discord API
+│   │   ├── wizard/            # 8-step onboarding orchestrator
+│   │   ├── themes/            # ThemeRegistry, SietchTheme
+│   │   ├── security/          # Vault, KillSwitch, MFA
+│   │   └── coexistence/       # Shadow mode, migration engine
+│   ├── cli/                   # gaib CLI (auth, sandbox, server)
+│   ├── sandbox/               # Schema provisioning, event routing
+│   └── shared/nats-schemas/   # Cross-language wire format (Zod + JSON)
+├── themes/sietch/             # Main service (v6.0.0)
+│   ├── src/api/routes/        # 42 route files (80+ endpoints)
+│   ├── src/discord/commands/  # 22+ slash commands
+│   ├── src/telegram/          # Grammy bot (10+ commands)
+│   └── src/trigger/           # 7 cron jobs
+├── apps/
+│   ├── gateway/               # Rust/Axum Discord gateway proxy
+│   ├── ingestor/              # Event ingestion service
+│   └── worker/                # Background job worker (NATS + RabbitMQ)
+├── infrastructure/terraform/  # AWS ECS deployment (20 modules, 81 .tf files)
+└── evals/                     # Evaluation framework + test suites
 ```
-./docs
-./docs/architecture
-./docs/integration
-./evals
-./evals/baselines
-./evals/fixtures
-./evals/graders
-./evals/harness
-./evals/results
-./evals/suites
-./evals/tasks
-./evals/tests
-./grimoires
-./grimoires/loa
-./grimoires/pub
-./skills
-./skills/legba
-./tests
-./tests/e2e
-./tests/edge-cases
-./tests/fixtures
-./tests/helpers
-./tests/integration
-./tests/performance
-./tests/unit
-```
+
+**Hexagonal architecture:** Core ports define interfaces, adapters implement them. No adapter imports another adapter directly.
 
 ## Interfaces
-<!-- provenance: DERIVED -->
-### Skill Commands
+<!-- provenance: CODE-FACTUAL -->
 
-- **/auditing-security** — Paranoid Cypherpunk Auditor
-- **/autonomous-agent** — Autonomous agent
-- **/bridgebuilder-review** — Bridgebuilder — Autonomous PR Review
-- **/browsing-constructs** — Provide a multi-select UI for browsing and installing packs from the Loa Constructs Registry. Enables composable skill installation per-repo.
-- **/bug-triaging** — Bug Triage Skill
-- **/butterfreezone-gen** — BUTTERFREEZONE Generation Skill
-- **/continuous-learning** — Continuous Learning Skill
-- **/deploying-infrastructure** — Deploying infrastructure
-- **/designing-architecture** — Architecture Designer
-- **/discovering-requirements** — Discovering Requirements
-- **/enhancing-prompts** — Enhancing prompts
-- **/eval-running** — Eval running
-- **/flatline-knowledge** — Provides optional NotebookLM integration for the Flatline Protocol, enabling external knowledge retrieval from curated AI-powered notebooks.
-- **/flatline-reviewer** — Flatline reviewer
-- **/flatline-scorer** — Flatline scorer
-- **/flatline-skeptic** — Flatline skeptic
-- **/gpt-reviewer** — Gpt reviewer
-- **/implementing-tasks** — Sprint Task Implementer
-- **/managing-credentials** — /loa-credentials — Credential Management
-- **/mounting-framework** — Create structure (preserve if exists)
-- **/planning-sprints** — Sprint Planner
-- **/red-teaming** — Use the Flatline Protocol's red team mode to generate creative attack scenarios against design documents. Produces structured attack scenarios with consensus classification and architectural counter-designs.
-- **/reviewing-code** — Senior Tech Lead Reviewer
-- **/riding-codebase** — Riding Through the Codebase
-- **/rtfm-testing** — RTFM Testing Skill
-- **/run-bridge** — Run Bridge — Autonomous Excellence Loop
-- **/run-mode** — Run mode
-- **/simstim-workflow** — Check post-PR state
-- **/translating-for-executives** — Translating for executives
+### REST API Routes
+<!-- cite: loa-freeside:themes/sietch/src/api/routes/ -->
+
+| Domain | Route File | Key Endpoints |
+|--------|-----------|---------------|
+| Agent | `agents.routes.ts` | `POST /api/agents/invoke`, `GET /api/agents/health`, `GET /.well-known/jwks.json` |
+| Agent Identity | `agent-identity.routes.ts` | `POST /register`, `GET /:id/identity`, `GET /:id/provenance` |
+| Agent Governance | `agent-governance.routes.ts` | Agent governance endpoints |
+| Auth | `auth.routes.ts` | Authentication endpoints |
+| Billing | `billing-routes.ts` | Paddle checkout, subscriptions, webhooks |
+| Credit Packs | `credit-pack-routes.ts` | Credit pack purchase and management |
+| Crypto Billing | `crypto-billing.routes.ts` | NOWPayments integration |
+| Coexistence | `coexistence.routes.ts` | Shadow mode, migration status |
+| Verify | `verify.routes.ts` | Wallet signature verification |
+| Users | `users.routes.ts` | User profile and management |
+| Threshold | `threshold.routes.ts` | Tier threshold configuration |
+| Web3 | `web3.routes.ts` | On-chain data queries |
+| Admin | `admin.routes.ts` | Platform administration |
+| Dashboard | `dashboard/` | Creator dashboard, drift monitoring, restore |
+
+### Discord Commands
+<!-- cite: loa-freeside:themes/sietch/src/discord/commands/ -->
+
+`/agent`, `/alerts`, `/badges`, `/directory`, `/leaderboard`, `/naib`, `/onboard`, `/position`, `/profile`, `/register-waitlist`, `/resume`, `/simulation`, `/stats`, `/threshold`, `/verify`, `/water-share`, admin commands (`/admin-badge`, `/admin-migrate`, `/admin-stats`, `/admin-takeover`, `/admin-water-share`)
+
+### Telegram Commands
+<!-- cite: loa-freeside:themes/sietch/src/telegram/commands/ -->
+
+`/start`, `/help`, `/agent`, `/alerts`, `/leaderboard`, `/refresh`, `/score`, `/status`, `/unlink`, `/verify`
+
+### CLI Commands (gaib)
+<!-- cite: loa-freeside:packages/cli/src/commands/ -->
+
+| Command Group | Commands |
+|--------------|----------|
+| `gaib auth` | `login`, `logout`, `whoami` |
+| `gaib sandbox` | `new`, `ls`, `rm`, `env`, `link`, `unlink`, `status` |
+| `gaib server` | IaC deployment commands |
+
+### NATS Event Protocol
+<!-- cite: loa-freeside:packages/shared/nats-schemas/src/gateway-event.ts -->
+<!-- cite: loa-freeside:packages/shared/nats-schemas/src/routing.ts -->
+
+Event types: `guild.join`, `guild.leave`, `guild.update`, `member.join`, `member.leave`, `member.update`, `interaction.create`
+
+Wire format: Zod schemas with JSON fixtures as neutral source of truth (validated by both TypeScript and Rust).
 
 ## Module Map
-<!-- provenance: DERIVED -->
-| Module | Files | Purpose | Documentation |
-|--------|-------|---------|---------------|
-| `docs/` | 6 | Documentation | \u2014 |
-| `evals/` | 1269 | Benchmarking and regression framework for the Loa agent development system. Ensures framework changes don't degrade agent behavior through | [evals/README.md](evals/README.md) |
-| `grimoires/` | 642 | Home to all grimoire directories for the Loa | [grimoires/README.md](grimoires/README.md) |
-| `skills/` | 5112 | Specialized agent skills | \u2014 |
-| `tests/` | 150 | Test suites | \u2014 |
+<!-- provenance: CODE-FACTUAL -->
+
+| Module | TS Files | Purpose |
+|--------|----------|---------|
+| `packages/core/ports/` | 18 | Port interfaces (hexagonal architecture boundary) |
+| `packages/adapters/agent/` | ~30 | Agent gateway, budget, BYOK, ensemble, audit |
+| `packages/adapters/chain/` | ~10 | RPC, Dune Sim, hybrid chain provider |
+| `packages/adapters/storage/` | ~15 | Drizzle ORM + PostgreSQL + RLS |
+| `packages/adapters/coexistence/` | ~8 | Shadow mode, migration engine |
+| `packages/adapters/security/` | ~6 | Vault, KillSwitch, MFA |
+| `packages/adapters/synthesis/` | ~5 | BullMQ queue for Discord API |
+| `packages/adapters/wizard/` | ~5 | 8-step onboarding orchestrator |
+| `packages/adapters/themes/` | ~4 | ThemeRegistry, SietchTheme |
+| `packages/cli/` | ~15 | gaib CLI (auth, sandbox, server) |
+| `packages/shared/nats-schemas/` | ~8 | Cross-language wire format |
+| `themes/sietch/src/api/` | 42 routes | Express REST API |
+| `themes/sietch/src/discord/` | 22+ cmds | Discord slash commands |
+| `themes/sietch/src/telegram/` | 13 | Grammy Telegram bot |
+| `apps/gateway/` | Rust | Axum Discord gateway proxy (Twilight 0.17) |
+| `infrastructure/terraform/` | 81 .tf | AWS ECS deployment (20 modules) |
+| `evals/` | ~120 | Evaluation framework + test suites |
+
+**Totals:** 1,379 TypeScript files, 442 test files, 81 Terraform files.
 
 ## Verification
 <!-- provenance: CODE-FACTUAL -->
-- Trust Level: **L2 — CI Verified**
-- 150 test files across 1 suite
-- CI/CD: GitHub Actions (10 workflows)
-- Security: SECURITY.md present
 
-## Agents
-<!-- provenance: DERIVED -->
-The project defines 1 specialized agent persona.
+- **Test files:** 442 across packages, themes, and evals
+- **Testing framework:** Vitest + fast-check (property-based)
+- **CI/CD:** GitHub Actions
+- **Infrastructure validation:** `terraform plan` + `terraform validate`
+- **Security:** BYOK envelope encryption (AES-256-GCM + KMS), RLS on PostgreSQL
 
-| Agent | Identity | Voice |
-|-------|----------|-------|
-| Bridgebuilder | You are the Bridgebuilder — a senior engineering mentor who has spent decades building systems at scale. | Your voice is warm, precise, and rich with analogy. |
-
-## Culture
+## Ecosystem
 <!-- provenance: OPERATIONAL -->
-**Naming**: Vodou terminology (Loa, Grimoire, Hounfour, Simstim) as cognitive hooks for agent framework concepts.
 
-**Principles**: Think Before Coding — plan and analyze before implementing, Simplicity First — minimum complexity for the current task, Surgical Changes — minimal diff, maximum impact, Goal-Driven — every action traces to acceptance criteria.
+| Layer | Repo | Purpose |
+|-------|------|---------|
+| 5 Products | [loa-dixie](https://github.com/0xHoneyJar/loa-dixie) | dNFT Oracle — first customer |
+| 4 Platform | **loa-freeside** | API, Discord/TG, billing, IaC |
+| 3 Runtime | [loa-finn](https://github.com/0xHoneyJar/loa-finn) | Sessions, tool sandbox, memory |
+| 2 Protocol | [loa-hounfour](https://github.com/0xHoneyJar/loa-hounfour) | NATS schemas, state machines |
+| 1 Framework | [loa](https://github.com/0xHoneyJar/loa) | Agent dev framework, skills |
 
-**Methodology**: Agent-driven development with iterative excellence loops (Simstim, Run Bridge, Flatline Protocol).
-**Creative Methodology**: Creative methodology drawing from cyberpunk fiction, free jazz improvisation, and temporary autonomous zones.
+**Direct dependency:** `@0xhoneyjar/loa-hounfour` (protocol schemas consumed for gateway event validation).
 
-**Influences**: Neuromancer (Gibson) — Simstim as shared consciousness metaphor, Flatline Protocol — adversarial multi-model review as creative tension, TAZ (Hakim Bey) — temporary spaces for autonomous agent exploration.
-
-**Knowledge Production**: Knowledge production through collective inquiry — Flatline as multi-model study group.
+See [docs/ECOSYSTEM.md](docs/ECOSYSTEM.md) for the full ecosystem map.
 
 ## Quick Start
 <!-- provenance: OPERATIONAL -->
 
-**Prerequisites**: [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview) (Anthropic's CLI for Claude), Git, jq, [yq v4+](https://github.com/mikefarah/yq). See **[INSTALLATION.md](INSTALLATION.md)** for full details.
-
 ```bash
-# Install (one command, any existing repo)
-curl -fsSL https://raw.githubusercontent.com/0xHoneyJar/loa/main/.claude/scripts/mount-loa.sh | bash
+git clone https://github.com/0xHoneyJar/loa-freeside.git
+cd loa-freeside
+pnpm install
 
-# Start Claude Code
-claude
+# Set up environment
+cp .env.example .env
+# Fill: DATABASE_URL, REDIS_URL, JWT_SECRET
 
-# These are slash commands typed inside Claude Code, not your terminal.
-# 5 commands. Full development cycle.
-/plan      # Requirements -> Architecture -> Sprints
-/build     # Implement the current sprint
-/review    # Code review + security audit
-/ship      # Deploy and archive
+# Start backing services
+docker-compose up -d  # PostgreSQL + Redis
+
+# Run database migrations
+cd themes/sietch && npx drizzle-kit push && cd ../..
+
+# Start development server
+pnpm run dev
+# → http://localhost:3000
+
+# Verify
+curl http://localhost:3000/api/agents/health
 ```
 
-After install, you should see a `.claude/` directory, `grimoires/loa/`, and `.loa.config.yaml` in your repo. Run `/loa doctor` inside Claude Code to verify everything is healthy.
+See [docs/API-QUICKSTART.md](docs/API-QUICKSTART.md) for the full developer tutorial.
+See [INSTALLATION.md](INSTALLATION.md) for operator deployment guide.
 <!-- ground-truth-meta
-head_sha: 781661db55c0d12218299b7a4b2d7baeb0c7a652
-generated_at: 2026-02-18T21:49:01Z
-generator: butterfreezone-gen v1.0.0
+head_sha: 0fe59b54
+generated_at: 2026-02-19T12:30:00Z
+generator: manual (cycle-035 S304-T2)
 sections:
-  agent_context: f8ea773f457ef2d8e0eec1de6db4e119a00029a333ec868a4ccdc42164eb6ec6
-  capabilities: 555ccb971a852f04bbea1616c518a522b8b4a3b4274c61f0bfcd3ff69437888c
-  architecture: 116f3296a49700fbee5e9cb0492e4f9aee0f9452b5c051a942ee4429278ab8d3
-  interfaces: c0d2732b6ab7745352bd781f56f44f32b2f8f2cacef7234ceed3e8f09796c0f4
-  module_map: cc799f95d8ed427e34c433460ae0324fa0460ab18e2f6f7527cc34367173527a
-  verification: 3abc915e61bda5da9bf05014f8b02fb439a718a9f3ee58a5ec1dabb62ea75993
-  agents: ca263d1e05fd123434a21ef574fc8d76b559d22060719640a1f060527ef6a0b6
-  culture: f73380f93bb4fadf36ccc10d60fc57555914363fc90e4f15b4dc4eb92bd1640f
-  quick_start: 3c38dc53bf2ec73cbbb5c372af747ffa7894538d360b1182566647c2940c58c7
+  agent_context: pending-rehash
+  capabilities: pending-rehash
+  architecture: pending-rehash
+  interfaces: pending-rehash
+  module_map: pending-rehash
+  verification: pending-rehash
+  ecosystem: pending-rehash
+  quick_start: pending-rehash
 -->
