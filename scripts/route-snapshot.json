@@ -1,0 +1,324 @@
+[
+  {
+    "method": "POST",
+    "path": "/register",
+    "auth": false,
+    "source_file": "themes/sietch/src/api/routes/agent-identity.routes.ts",
+    "line": 37
+  },
+  {
+    "method": "GET",
+    "path": "/:id/provenance",
+    "auth": false,
+    "source_file": "themes/sietch/src/api/routes/agent-identity.routes.ts",
+    "line": 82
+  },
+  {
+    "method": "GET",
+    "path": "/:id/identity",
+    "auth": false,
+    "source_file": "themes/sietch/src/api/routes/agent-identity.routes.ts",
+    "line": 99
+  },
+  {
+    "method": "GET",
+    "path": "/.well-known/jwks.json",
+    "auth": false,
+    "source_file": "themes/sietch/src/api/routes/agents.routes.ts",
+    "line": 142
+  },
+  {
+    "method": "GET",
+    "path": "/api/agents/health",
+    "auth": false,
+    "source_file": "themes/sietch/src/api/routes/agents.routes.ts",
+    "line": 193
+  },
+  {
+    "method": "POST",
+    "path": "/api/agents/invoke",
+    "auth": true,
+    "source_file": "themes/sietch/src/api/routes/agents.routes.ts",
+    "line": 211
+  },
+  {
+    "method": "POST",
+    "path": "/api/agents/stream",
+    "auth": true,
+    "source_file": "themes/sietch/src/api/routes/agents.routes.ts",
+    "line": 243
+  },
+  {
+    "method": "GET",
+    "path": "/api/agents/models",
+    "auth": true,
+    "source_file": "themes/sietch/src/api/routes/agents.routes.ts",
+    "line": 336
+  },
+  {
+    "method": "GET",
+    "path": "/api/agents/budget",
+    "auth": true,
+    "source_file": "themes/sietch/src/api/routes/agents.routes.ts",
+    "line": 346
+  },
+  {
+    "method": "POST",
+    "path": "/usage-reports",
+    "auth": false,
+    "source_file": "themes/sietch/src/api/routes/agents.routes.ts",
+    "line": 399
+  },
+  {
+    "method": "POST",
+    "path": "/login",
+    "auth": true,
+    "source_file": "themes/sietch/src/api/routes/auth.routes.ts",
+    "line": 101
+  },
+  {
+    "method": "POST",
+    "path": "/logout",
+    "auth": false,
+    "source_file": "themes/sietch/src/api/routes/auth.routes.ts",
+    "line": 160
+  },
+  {
+    "method": "GET",
+    "path": "/me",
+    "auth": false,
+    "source_file": "themes/sietch/src/api/routes/auth.routes.ts",
+    "line": 190
+  },
+  {
+    "method": "POST",
+    "path": "/refresh",
+    "auth": false,
+    "source_file": "themes/sietch/src/api/routes/auth.routes.ts",
+    "line": 236
+  },
+  {
+    "method": "GET",
+    "path": "/sessions",
+    "auth": false,
+    "source_file": "themes/sietch/src/api/routes/auth.routes.ts",
+    "line": 276
+  },
+  {
+    "method": "DELETE",
+    "path": "/sessions/:sessionId",
+    "auth": false,
+    "source_file": "themes/sietch/src/api/routes/auth.routes.ts",
+    "line": 329
+  },
+  {
+    "method": "GET",
+    "path": "/verify",
+    "auth": true,
+    "source_file": "themes/sietch/src/api/routes/auth.routes.ts",
+    "line": 475
+  },
+  {
+    "method": "GET",
+    "path": "/:guildId/status",
+    "auth": true,
+    "source_file": "themes/sietch/src/api/routes/coexistence.routes.ts",
+    "line": 126
+  },
+  {
+    "method": "POST",
+    "path": "/:guildId/mode",
+    "auth": true,
+    "source_file": "themes/sietch/src/api/routes/coexistence.routes.ts",
+    "line": 219
+  },
+  {
+    "method": "POST",
+    "path": "/:guildId/rollback",
+    "auth": true,
+    "source_file": "themes/sietch/src/api/routes/coexistence.routes.ts",
+    "line": 315
+  },
+  {
+    "method": "GET",
+    "path": "/:guildId/shadow/divergences",
+    "auth": true,
+    "source_file": "themes/sietch/src/api/routes/coexistence.routes.ts",
+    "line": 384
+  },
+  {
+    "method": "POST",
+    "path": "/:guildId/emergency-backup",
+    "auth": true,
+    "source_file": "themes/sietch/src/api/routes/coexistence.routes.ts",
+    "line": 455
+  },
+  {
+    "method": "GET",
+    "path": "/discord",
+    "auth": false,
+    "source_file": "themes/sietch/src/api/routes/dashboard/auth.routes.ts",
+    "line": 456
+  },
+  {
+    "method": "GET",
+    "path": "/callback",
+    "auth": false,
+    "source_file": "themes/sietch/src/api/routes/dashboard/auth.routes.ts",
+    "line": 507
+  },
+  {
+    "method": "POST",
+    "path": "/login",
+    "auth": false,
+    "source_file": "themes/sietch/src/api/routes/dashboard/auth.routes.ts",
+    "line": 636
+  },
+  {
+    "method": "POST",
+    "path": "/logout",
+    "auth": false,
+    "source_file": "themes/sietch/src/api/routes/dashboard/auth.routes.ts",
+    "line": 734
+  },
+  {
+    "method": "GET",
+    "path": "/me",
+    "auth": false,
+    "source_file": "themes/sietch/src/api/routes/dashboard/auth.routes.ts",
+    "line": 792
+  },
+  {
+    "method": "POST",
+    "path": "/refresh",
+    "auth": false,
+    "source_file": "themes/sietch/src/api/routes/dashboard/auth.routes.ts",
+    "line": 860
+  },
+  {
+    "method": "POST",
+    "path": "/change-password",
+    "auth": false,
+    "source_file": "themes/sietch/src/api/routes/dashboard/auth.routes.ts",
+    "line": 951
+  },
+  {
+    "method": "POST",
+    "path": "/run",
+    "auth": false,
+    "source_file": "themes/sietch/src/api/routes/reconciliation-admin.routes.ts",
+    "line": 34
+  },
+  {
+    "method": "GET",
+    "path": "/history",
+    "auth": false,
+    "source_file": "themes/sietch/src/api/routes/reconciliation-admin.routes.ts",
+    "line": 47
+  },
+  {
+    "method": "GET",
+    "path": "/rewards",
+    "auth": false,
+    "source_file": "themes/sietch/src/api/routes/score-rewards.routes.ts",
+    "line": 38
+  },
+  {
+    "method": "GET",
+    "path": "/",
+    "auth": true,
+    "source_file": "themes/sietch/src/api/routes/users.routes.ts",
+    "line": 127
+  },
+  {
+    "method": "POST",
+    "path": "/",
+    "auth": true,
+    "source_file": "themes/sietch/src/api/routes/users.routes.ts",
+    "line": 169
+  },
+  {
+    "method": "GET",
+    "path": "/:id",
+    "auth": true,
+    "source_file": "themes/sietch/src/api/routes/users.routes.ts",
+    "line": 217
+  },
+  {
+    "method": "PATCH",
+    "path": "/:id",
+    "auth": true,
+    "source_file": "themes/sietch/src/api/routes/users.routes.ts",
+    "line": 256
+  },
+  {
+    "method": "POST",
+    "path": "/:id/disable",
+    "auth": true,
+    "source_file": "themes/sietch/src/api/routes/users.routes.ts",
+    "line": 312
+  },
+  {
+    "method": "POST",
+    "path": "/:id/enable",
+    "auth": true,
+    "source_file": "themes/sietch/src/api/routes/users.routes.ts",
+    "line": 357
+  },
+  {
+    "method": "DELETE",
+    "path": "/:id",
+    "auth": true,
+    "source_file": "themes/sietch/src/api/routes/users.routes.ts",
+    "line": 402
+  },
+  {
+    "method": "POST",
+    "path": "/:id/reset-password",
+    "auth": true,
+    "source_file": "themes/sietch/src/api/routes/users.routes.ts",
+    "line": 447
+  },
+  {
+    "method": "POST",
+    "path": "/:id/sandbox-access",
+    "auth": true,
+    "source_file": "themes/sietch/src/api/routes/users.routes.ts",
+    "line": 493
+  },
+  {
+    "method": "DELETE",
+    "path": "/:id/sandbox-access/:sandboxId",
+    "auth": true,
+    "source_file": "themes/sietch/src/api/routes/users.routes.ts",
+    "line": 548
+  },
+  {
+    "method": "GET",
+    "path": "/:id/sandbox-access",
+    "auth": true,
+    "source_file": "themes/sietch/src/api/routes/users.routes.ts",
+    "line": 603
+  },
+  {
+    "method": "GET",
+    "path": "/:sessionId",
+    "auth": false,
+    "source_file": "themes/sietch/src/api/routes/verify.routes.ts",
+    "line": 322
+  },
+  {
+    "method": "POST",
+    "path": "/:sessionId",
+    "auth": false,
+    "source_file": "themes/sietch/src/api/routes/verify.routes.ts",
+    "line": 417
+  },
+  {
+    "method": "GET",
+    "path": "/:sessionId/status",
+    "auth": false,
+    "source_file": "themes/sietch/src/api/routes/verify.routes.ts",
+    "line": 529
+  }
+]

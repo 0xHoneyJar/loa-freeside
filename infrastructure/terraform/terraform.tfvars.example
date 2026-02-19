@@ -1,0 +1,66 @@
+# Freeside Terraform Variables (Example / Validation Mode)
+# Copy to terraform.tfvars and fill with real values for deployment.
+# These dummy values allow `terraform validate` and `terraform plan` to succeed
+# without AWS credentials (using -backend=false).
+
+aws_region         = "us-east-1"
+environment        = "staging"
+vpc_cidr           = "10.0.0.0/16"
+availability_zones = ["us-east-1a", "us-east-1b"]
+
+# Domain
+root_domain = "example.com"
+domain_name = "api.example.com"
+
+# Database
+db_instance_class    = "db.t3.small"
+db_allocated_storage = 20
+
+# Cache
+redis_node_type = "cache.t3.micro"
+
+# ECS Services
+api_cpu           = 512
+api_memory        = 1024
+api_desired_count = 1
+
+ingestor_cpu           = 256
+ingestor_memory        = 512
+ingestor_desired_count = 1
+
+gp_worker_cpu           = 256
+gp_worker_memory        = 512
+gp_worker_desired_count = 1
+
+nats_cpu           = 512
+nats_memory        = 1024
+nats_desired_count = 3
+
+gateway_cpu           = 512
+gateway_memory        = 1024
+gateway_desired_count = 1
+
+# PgBouncer
+pgbouncer_max_client_conn  = 1000
+pgbouncer_default_pool_size = 25
+pgbouncer_desired_count     = 1
+
+# Message Queue
+rabbitmq_instance_type = "mq.t3.micro"
+
+# Agent Gateway
+agent_enabled     = "false"
+ensemble_enabled  = "false"
+loa_finn_base_url = "http://loa-finn:3000"
+
+# Observability
+log_retention_days = 30
+log_level          = "info"
+sns_alarm_topic_arn = ""
+
+# Vault (optional)
+vault_addr      = ""
+vault_namespace = "admin"
+
+# Features
+enable_service_discovery = true

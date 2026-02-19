@@ -1,0 +1,51 @@
+[
+  {
+    "method": "GET",
+    "path": "/.well-known/jwks.json",
+    "auth": false,
+    "purpose": "JSON Web Key Set for JWT verification",
+    "source": "themes/sietch/src/api/routes/agents.routes.ts:142"
+  },
+  {
+    "method": "GET",
+    "path": "/api/agents/health",
+    "auth": false,
+    "purpose": "Agent gateway health check",
+    "source": "themes/sietch/src/api/routes/agents.routes.ts:193"
+  },
+  {
+    "method": "POST",
+    "path": "/api/agents/invoke",
+    "auth": true,
+    "purpose": "Invoke agent with model routing and budget accounting",
+    "source": "themes/sietch/src/api/routes/agents.routes.ts:211"
+  },
+  {
+    "method": "POST",
+    "path": "/api/agents/stream",
+    "auth": true,
+    "purpose": "SSE streaming agent invocation",
+    "source": "themes/sietch/src/api/routes/agents.routes.ts:243"
+  },
+  {
+    "method": "GET",
+    "path": "/api/agents/models",
+    "auth": true,
+    "purpose": "List available models for the authenticated user's tier",
+    "source": "themes/sietch/src/api/routes/agents.routes.ts:336"
+  },
+  {
+    "method": "GET",
+    "path": "/api/agents/budget",
+    "auth": true,
+    "purpose": "Query remaining budget for the authenticated user",
+    "source": "themes/sietch/src/api/routes/agents.routes.ts:346"
+  },
+  {
+    "method": "POST",
+    "path": "/api/verify/:sessionId",
+    "auth": false,
+    "purpose": "Submit wallet signature for verification",
+    "source": "themes/sietch/src/api/routes/verify.routes.ts:417"
+  }
+]

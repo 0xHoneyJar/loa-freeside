@@ -687,6 +687,38 @@ export async function startServer(): Promise<void> {
     );
   }
 
+  // ==========================================================================
+  // S305-T7: AUTH_BYPASS Code Safeguard
+  // ==========================================================================
+
+  const authBypass = process.env.AUTH_BYPASS?.toLowerCase() === 'true';
+  const nodeEnv = process.env.NODE_ENV?.toLowerCase();
+  const bypassAllowedEnvs = ['development', 'test'];
+
+  if (authBypass && !bypassAllowedEnvs.includes(nodeEnv || '')) {
+    logger.fatal(
+      {
+        auth_bypass: authBypass,
+        node_env: nodeEnv,
+        allowed: bypassAllowedEnvs,
+      },
+      `SECURITY FATAL: AUTH_BYPASS=true is not allowed in ${nodeEnv || 'unspecified'} environment. ` +
+        'AUTH_BYPASS is only permitted in development or test environments. Refusing to start.'
+    );
+    process.exit(1);
+  }
+
+  if (authBypass) {
+    logger.warn(
+      {
+        auth_bypass: true,
+        node_env: nodeEnv,
+      },
+      'AUTH_BYPASS enabled — all API requests will bypass authentication. ' +
+        'This is only safe in development/test environments.'
+    );
+  }
+
   // Start listening
   const { port, host } = config.api;
 
