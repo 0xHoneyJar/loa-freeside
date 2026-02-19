@@ -43,7 +43,7 @@ Layer 4 in the 5-layer Loa protocol stack (Framework → Protocol → Runtime �
 <!-- cite: loa-freeside:packages/adapters/agent/ensemble-accounting.ts -->
 
 - **5-pool model routing** — cheap, fast-code, reviewer, reasoning, native tiers mapped to provider models
-- **Budget atomicity** — BigInt micro-USD precision with two-counter Redis Lua scripts; zero precision loss
+- **Budget atomicity** — BigInt micro-USD precision with two-counter Redis Lua scripts; zero precision loss (see [docs/ECONOMICS.md](docs/ECONOMICS.md))
 - **Ensemble strategies** — best_of_n, consensus, fallback with per-model cost attribution
 - **4-dimension rate limiting** — community, user, channel, burst
 - **SSE streaming** — with reconciliation for dropped connections
@@ -190,7 +190,7 @@ loa-freeside/
 
 Event types: `guild.join`, `guild.leave`, `guild.update`, `member.join`, `member.leave`, `member.update`, `interaction.create`
 
-Wire format: Zod schemas with JSON fixtures as neutral source of truth (validated by both TypeScript and Rust).
+Wire format: Zod schemas with JSON fixtures as neutral source of truth (validated by both TypeScript and Rust). See [docs/EVENT-PROTOCOL.md](docs/EVENT-PROTOCOL.md) for the full protocol reference.
 
 ## Module Map
 <!-- provenance: CODE-FACTUAL -->

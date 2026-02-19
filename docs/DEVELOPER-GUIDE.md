@@ -6,8 +6,10 @@
 <!-- cite: loa-freeside:docs/API-REFERENCE.md -->
 <!-- cite: loa-freeside:docs/INFRASTRUCTURE.md -->
 <!-- cite: loa-freeside:docs/CLI.md -->
+<!-- cite: loa-freeside:docs/ECONOMICS.md -->
+<!-- cite: loa-freeside:docs/EVENT-PROTOCOL.md -->
 
-> Version: v1.0.0
+> Version: v1.1.0
 
 This guide provides a learning path through the loa-freeside documentation and establishes ownership, versioning, and maintenance practices.
 
@@ -21,8 +23,10 @@ Read the documentation in this order. Each document builds on the previous:
 | 2 | [ECOSYSTEM.md](ECOSYSTEM.md) | How Freeside fits into the 5-repo Loa protocol |
 | 3 | [API-QUICKSTART.md](API-QUICKSTART.md) | Make your first agent invocation in 5 minutes |
 | 4 | [API-REFERENCE.md](API-REFERENCE.md) | Full API reference (Tier 1 stable + Tier 2 index) |
-| 5 | [INFRASTRUCTURE.md](INFRASTRUCTURE.md) | Deployment topology, Terraform modules, monitoring |
-| 6 | [CLI.md](CLI.md) | gaib CLI for sandbox and server management |
+| 5 | [ECONOMICS.md](ECONOMICS.md) | Budget accounting, conservation invariant, conviction tiers |
+| 6 | [EVENT-PROTOCOL.md](EVENT-PROTOCOL.md) | NATS streams, GatewayEvent envelope, event schemas |
+| 7 | [INFRASTRUCTURE.md](INFRASTRUCTURE.md) | Deployment topology, Terraform modules, monitoring |
+| 8 | [CLI.md](CLI.md) | gaib CLI for sandbox and server management |
 
 ### By Role
 
@@ -46,6 +50,8 @@ Every document has a Directly Responsible Individual (DRI), an update trigger, a
 | API-CHANGELOG.md | API lead | Tier 1 breaking change or deprecation | On change |
 | INFRASTRUCTURE.md | Platform lead | Terraform module added or topology change | Quarterly |
 | CLI.md | CLI maintainer | gaib command added or changed | Every release cycle |
+| ECONOMICS.md | Core team | Budget, tier, or pool logic change | Every release cycle |
+| EVENT-PROTOCOL.md | Core team | NATS stream, event type, or schema change | Every release cycle |
 | DEVELOPER-GUIDE.md | Core team | New document added | Annually |
 | BUTTERFREEZONE.md | Automated | butterfreezone-gen.sh output | Every release cycle |
 
