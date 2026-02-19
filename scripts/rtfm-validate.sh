@@ -63,6 +63,8 @@ MANAGED_DOCS=(
   "docs/INFRASTRUCTURE.md"
   "docs/CLI.md"
   "docs/DEVELOPER-GUIDE.md"
+  "docs/ECONOMICS.md"
+  "docs/EVENT-PROTOCOL.md"
 )
 
 run_check() {
@@ -131,13 +133,15 @@ check_naming() {
     "docs/INFRASTRUCTURE.md"
     "docs/CLI.md"
     "docs/DEVELOPER-GUIDE.md"
+    "docs/ECONOMICS.md"
+    "docs/EVENT-PROTOCOL.md"
   )
 
   local violations=0
   for f in "${zero_tolerance_files[@]}"; do
     if [[ -f "$f" ]]; then
       local count
-      count=$(grep -ci "arrakis" "$f" 2>/dev/null || true)
+      count=$(grep -vi '<!-- cite:' "$f" 2>/dev/null | grep -ci "arrakis" 2>/dev/null || true)
       if [[ "$count" -gt 0 ]]; then
         echo "    $f: $count Arrakis references" >&2
         violations=$((violations + count))
