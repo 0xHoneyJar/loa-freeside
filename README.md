@@ -200,7 +200,9 @@ npm run dev
 
 ## License
 
-[AGPL-3.0](LICENSE.md)
+[AGPL-3.0](LICENSE.md) — Use, modify, distribute freely. Network service deployments must release source code.
+
+Commercial licenses are available for organizations that wish to use Loa without AGPL obligations.
 
 ## Links
 
