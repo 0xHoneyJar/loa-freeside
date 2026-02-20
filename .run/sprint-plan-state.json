@@ -1,45 +1,34 @@
 {
-  "plan_id": "plan-20260219-cycle035",
-  "branch": "docs/infra-as-product-gtm",
+  "plan_id": "plan-20260220-cycle036",
+  "branch": "feature/cycle-036-launch-readiness",
   "state": "RUNNING",
   "timestamps": {
-    "started": "2026-02-19T12:01:12Z",
-    "last_activity": "2026-02-19T12:37:21Z"
+    "started": "2026-02-20T14:30:00Z",
+    "last_activity": "2026-02-20T22:00:00Z"
   },
   "sprints": {
-    "total": 3,
+    "total": 7,
     "completed": 1,
-    "current": "sprint-305",
+    "current": "sprint-2",
     "list": [
-      {
-        "id": "sprint-304",
-        "status": "completed",
-        "cycles": 1,
-        "files_changed": 6
-      },
-      {
-        "id": "sprint-305",
-        "status": "in_progress",
-        "cycles": 0,
-        "files_changed": 0
-      },
-      {
-        "id": "sprint-306",
-        "status": "pending",
-        "cycles": 0,
-        "files_changed": 0
-      }
+      {"id": "sprint-1", "global_id": 314, "status": "completed", "cycles": 1, "files_changed": 12},
+      {"id": "sprint-2", "global_id": 315, "status": "pending"},
+      {"id": "sprint-3", "global_id": 316, "status": "pending"},
+      {"id": "sprint-4", "global_id": 317, "status": "pending"},
+      {"id": "sprint-5", "global_id": 318, "status": "pending"},
+      {"id": "sprint-6", "global_id": 319, "status": "pending"},
+      {"id": "sprint-7", "global_id": 320, "status": "pending"}
     ]
   },
   "options": {
-    "from": 304,
-    "to": 306,
+    "from": 1,
+    "to": 7,
     "max_cycles": 20,
     "timeout_hours": 8
   },
   "metrics": {
     "total_cycles": 1,
-    "total_files_changed": 6,
+    "total_files_changed": 12,
     "total_findings_fixed": 0
   }
 }
