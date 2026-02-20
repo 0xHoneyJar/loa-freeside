@@ -79,7 +79,7 @@ resource "aws_ecr_lifecycle_policy" "finn" {
 
 # -----------------------------------------------------------------------------
 # Execution Role (Least-Privilege per Sprint 94 pattern)
-# Needs: db_credentials, redis, ES256 key, NOWPayments secrets
+# Needs: finn_db_credentials (read-only), redis, ES256 key, NOWPayments secrets
 # -----------------------------------------------------------------------------
 
 resource "aws_iam_role" "ecs_execution_finn" {
@@ -121,7 +121,7 @@ resource "aws_iam_role_policy" "ecs_execution_finn_secrets" {
           "secretsmanager:GetSecretValue"
         ]
         Resource = [
-          aws_secretsmanager_secret.db_credentials.arn,
+          aws_secretsmanager_secret.finn_db_credentials.arn,
           aws_secretsmanager_secret.redis_credentials.arn,
           aws_secretsmanager_secret.finn_s2s_es256_private_key.arn,
           aws_secretsmanager_secret.finn_nowpayments_api_key.arn,
@@ -363,7 +363,7 @@ resource "aws_ecs_task_definition" "finn" {
       ]
 
       secrets = [
-        { name = "DATABASE_URL", valueFrom = "${aws_secretsmanager_secret.db_credentials.arn}:url::" },
+        { name = "DATABASE_URL", valueFrom = "${aws_secretsmanager_secret.finn_db_credentials.arn}:url::" },
         { name = "REDIS_URL", valueFrom = "${aws_secretsmanager_secret.redis_credentials.arn}:url::" },
         { name = "S2S_ES256_PRIVATE_KEY", valueFrom = aws_secretsmanager_secret.finn_s2s_es256_private_key.arn },
         { name = "NOWPAYMENTS_API_KEY", valueFrom = aws_secretsmanager_secret.finn_nowpayments_api_key.arn },
