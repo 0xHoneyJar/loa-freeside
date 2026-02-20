@@ -65,6 +65,7 @@ MANAGED_DOCS=(
   "docs/DEVELOPER-GUIDE.md"
   "docs/ECONOMICS.md"
   "docs/EVENT-PROTOCOL.md"
+  "docs/GLOSSARY.md"
 )
 
 run_check() {

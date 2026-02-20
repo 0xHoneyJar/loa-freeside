@@ -216,37 +216,68 @@ The budget-atomic accounting system (BigInt micro-USD precision, two-counter Red
 
 ## Building on Loa
 
-The learning path depends on what you're building. Each path moves through the stack from protocol foundations upward to product integration.
+### Why This Architecture Exists
 
-### Journey Map
+Loa did not start as a 5-repo protocol stack. It started as a Discord bot for community management — conviction scoring and tiered role progression. Through 35 development cycles, the scope expanded: first multi-model inference, then economic accounting, then formal protocol contracts, then payment rails, then autonomous agents as economic actors.
+
+The 5-repo structure emerged because these concerns *must* evolve independently:
+
+- **Protocol contracts** (loa-hounfour) define what an agent *is* — schemas, state machines, conservation invariants. These change slowly and require formal verification.
+- **Platform infrastructure** (loa-freeside) implements *how* agents operate — API routing, budget management, deployment. These change frequently with operational demands.
+- **Agent runtime** (loa-finn) provides *where* agents execute — sessions, memory, tool sandboxes. Runtime evolution is independent of both protocol and platform.
+
+This is the Kubernetes insight applied to agent economies: the contract specification (hounfour, like the Kubernetes API) is independent of both the platform (freeside, like a cloud provider) and the runtime (finn, like a container runtime). A Layer 5 product should be able to switch platforms without changing protocol contracts.
+
+### Conceptual Prerequisites
+
+If you're coming from traditional web development, several concepts in Loa have no direct precedent. Before diving into the technical documentation, familiarize yourself with:
+
+- **Conservation invariants**: The mathematical guarantee that `available + reserved + consumed = original` for every budget lot. See [GLOSSARY.md](GLOSSARY.md) for the full definition.
+- **BigInt micro-USD arithmetic**: All monetary values are integer micro-USD (1 cent = 10,000 micro-USD). No floating point ever touches money.
+- **JetStream at-least-once delivery**: NATS messages may be delivered more than once. Consumers must handle deduplication via `event_id`.
+- **Token-gating**: On-chain token holdings (BGT) determine capability access tiers. This is not authentication — it is *economic authorization*.
+- **Hexagonal architecture**: Core business logic is isolated from delivery mechanisms via port/adapter interfaces.
+
+For formal definitions of all Loa-specific concepts, see the [Concept Glossary](GLOSSARY.md).
+
+### The Learning Journey
+
+Each step introduces new primitives that build on the previous. This is a conceptual progression, not just a reading list.
 
 ```
-1. Ecosystem Overview (this doc)
+1. What is Loa?           (this doc — 5-layer stack, dependency direction, naming)
         │
         ▼
-2. Protocol Types (loa-hounfour)
-   GatewayEventSchema, InteractionPayloadSchema, NATS_ROUTING
+2. What are the rules?    (loa-hounfour — protocol contracts, state machines, invariants)
         │
         ▼
-3. Platform APIs (loa-freeside)
-   HTTP endpoints, economic primitives, event protocol
+3. How does money work?   (ECONOMICS.md — budget atomicity, lot lifecycle, capability tiers)
         │
         ▼
-4. Runtime Capabilities (loa-finn)
-   Persistent sessions, tool sandbox, agent memory
+4. How do events flow?    (EVENT-PROTOCOL.md — NATS streams, GatewayEvent, subscriptions)
         │
         ▼
-5. Build Your Product (loa-dixie as example)
-   dNFT Oracle — first Layer 5 customer
+5. How do I call an agent? (API-QUICKSTART.md — first API call in 5 minutes)
+        │
+        ▼
+6. What can I build?      (API-REFERENCE.md — full endpoint reference, stability tiers)
+        │
+        ▼
+7. How do I deploy?       (INFRASTRUCTURE.md — Terraform modules, staging guide)
+        │
+        ▼
+8. How do I run it?       (CLI.md — gaib CLI for management)
 ```
 
 ### By Role
 
-| Role | Start With | Then Read | Focus On |
-|------|-----------|-----------|----------|
-| **API Consumer** | [API-QUICKSTART.md](API-QUICKSTART.md) | [API-REFERENCE.md](API-REFERENCE.md) → [ECONOMICS.md](ECONOMICS.md) | Making agent calls, understanding budget model |
-| **Product Builder** | This doc → [EVENT-PROTOCOL.md](EVENT-PROTOCOL.md) | [API-REFERENCE.md](API-REFERENCE.md) → [ECONOMICS.md](ECONOMICS.md) | NATS subscription patterns, cost attribution |
-| **Protocol Contributor** | [loa-hounfour](https://github.com/0xHoneyJar/loa-hounfour) | [EVENT-PROTOCOL.md](EVENT-PROTOCOL.md) → [ECONOMICS.md](ECONOMICS.md) | Schema definitions, conservation invariants |
+| Role | Path | Key Concepts |
+|------|------|-------------|
+| **API Consumer** | [API-QUICKSTART](API-QUICKSTART.md) → [API-REFERENCE](API-REFERENCE.md) → [ECONOMICS](ECONOMICS.md) → [Stability Tiers](API-REFERENCE.md) | Making agent calls, understanding costs, stability guarantees |
+| **Product Builder** | This doc → [EVENT-PROTOCOL](EVENT-PROTOCOL.md) → [ECONOMICS](ECONOMICS.md) → [loa-hounfour](https://github.com/0xHoneyJar/loa-hounfour) → [API-REFERENCE](API-REFERENCE.md) | NATS subscriptions, cost attribution, protocol contracts |
+| **Protocol Contributor** | [loa-hounfour](https://github.com/0xHoneyJar/loa-hounfour) → [ECONOMICS](ECONOMICS.md) → [EVENT-PROTOCOL](EVENT-PROTOCOL.md) → conservation invariant source | Schema definitions, conservation properties, temporal properties |
+| **Operator** | [INFRASTRUCTURE](INFRASTRUCTURE.md) → [CLI](CLI.md) → monitoring dashboards → cost estimation | Deployment, management, monitoring |
+| **New to Agent Economies** | [GLOSSARY](GLOSSARY.md) → This doc → [ECONOMICS](ECONOMICS.md) → [EVENT-PROTOCOL](EVENT-PROTOCOL.md) | What is an agent economy? How does it differ from SaaS? |
 
 ### Freeside-Specific Deep Dive
 
