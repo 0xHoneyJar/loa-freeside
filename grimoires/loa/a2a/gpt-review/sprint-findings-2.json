@@ -1,49 +1,54 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "Most of the previously blocking contradictions were fixed (routes extraction approach, canonical-vs-implemented invariants, RTFM scope ownership, verify-routes probing, golden vectors policy, and findings closure), but one original blocker remains unresolved: Sprint 4 still hard-cites an `arrakis-*` code path while the plan also enforces a zero-tolerance naming gate, making the Sprint 4 gate potentially unachievable under the stated rules.",
+  "summary": "All 8 previously-blocking issues appear to be addressed correctly, but one new truly-blocking issue was introduced in the SIWE session design (HS256 JWT in a cookie without a concrete signing key/rotation plan), which would prevent secure production deployment of the web chat/auth surface.",
   "previous_issues_status": [
     {
-      "original_issue": "Sprint 4 ECONOMICS.md pre-flight cites old/forbidden `themes/sietch/src/packages/core/protocol/arrakis-conservation.ts` path, conflicting with naming policy",
-      "status": "not_fixed",
-      "notes": "The revised plan keeps the `arrakis-conservation.ts` path and adds a note: \"code-level renaming is explicitly out of scope... Citations to code paths may use the original filename.\" However, the global requirement and multiple gates still say \"Zero 'Arrakis' references\" and RTFM check #2 greps for \"arrakis\" across a zero-tolerance list that Sprint 5.1 expands to include ECONOMICS/EVENT-PROTOCOL (and Sprint 4.1 also requires zero Arrakis references). If ECONOMICS.md cites a path containing \"arrakis\", the doc will contain the substring and the naming grep will fail unless the naming rule explicitly exempts code-path citations or exempts this specific file. As written, this remains a gating deadlock risk."
+      "original_issue": "JWKS fetch URL pointed to finn instead of freeside",
+      "status": "fixed",
+      "notes": "2.3 now fetches from `http://freeside.arrakis-{env}.local:3000/.well-known/jwks.json` via Cloud Map, matching the trust model (freeside is issuer)."
     },
     {
-      "original_issue": "Sprint 2.1 ts-morph AST vs Sprint 4.4 note claiming grep-based extractor (plan contradiction)",
+      "original_issue": "Cloud Map/Route53 conflated; no explicit service discovery wiring",
       "status": "fixed",
-      "notes": "Sprint 2.1 now explicitly allows either ts-morph AST or a pragmatic grep-based matcher, with a requirement to document the chosen approach in the script header. Sprint 4.4’s coverage note is aligned to the actual grep-based implementation (and framed as 'actual implementation'). The contradiction is removed."
+      "notes": "1.2 now explicitly creates/uses a Cloud Map private namespace, configures `service_registries` for both ECS services, and includes task-level `nslookup` verification. Route53 is explicitly removed/clarified."
     },
     {
-      "original_issue": "Canonical 14 conservation properties vs freeside enforcing subset (Sprint 4/6/9 inconsistency)",
+      "original_issue": "No key material bootstrap step for JWKS DB source-of-truth",
       "status": "fixed",
-      "notes": "Sprint 4.1 now states loa-hounfour is the normative canonical set (14), and freeside’s adapter list is 'implemented coverage'. Sprint 6.4 adds an explicit coverage note (N of 14 enforced). Sprint 9.1 requires a 14-row table referencing loa-hounfour. This creates a coherent reconciliation rule."
+      "notes": "2.1 adds bootstrap + rotation scripts, stores private key + activeKid in Secrets Manager, inserts public JWK rows into DB, and serves all non-expired keys. Selection rules are clear and workable."
     },
     {
-      "original_issue": "RTFM managed-doc scope ownership split/duplicated (GLOSSARY added twice; Sprint 10 dependency mismatch)",
+      "original_issue": "NATS JetStream infra not provisioned but required by Sprint 4",
       "status": "fixed",
-      "notes": "Sprint 8.3 is the introduction point for adding GLOSSARY.md to MANAGED_DOCS. Sprint 10.1 is now explicitly verification-only ('confirm already added; only change if incomplete') and includes an acceptance criterion 'No redundant MANAGED_DOCS additions'. This resolves the scope ownership ambiguity and removes the earlier dependency mismatch risk."
+      "notes": "4.3 adds Terraform/ECS provisioning, SG rules, Cloud Map name, persistence option, auth in Secrets Manager, and a concrete verification step."
     },
     {
-      "original_issue": "verify-routes.sh acceptance criteria unsafe/flaky (HEAD/GET on every route; non-idempotent routes; 405 handling)",
+      "original_issue": "Budget finalization depended on token usage but Sprint 2 didn’t require finn to emit it",
       "status": "fixed",
-      "notes": "Sprint 2.4 now constrains checks to indexed GET routes for auth validation, treats 405 as non-fatal for safe probes, adds per-route `probe_method` override, and forbids sending bodies to non-idempotent routes. This makes the gate testable and much less flaky."
+      "notes": "2.4 now requires `X-Token-Count` or SSE done event usage, and requires freeside to record it. This unblocks Sprint 4 reservation/finalization."
     },
     {
-      "original_issue": "Sprint 9 BUTTERFREEZONE discovery fields change lacks explicit golden vector/validator policy update",
+      "original_issue": "WebSocket ALB/ECS infra config missing (idle timeout, drain, TG health checks)",
       "status": "fixed",
-      "notes": "Sprint 9.2 now explicitly requires: (a) validator updated so new fields are optional with advisory warning exit code 2, (b) RTFM check #7 accepts 0 or 2, and (c) golden vectors regenerated and committed. This closes the gate deadlock."
+      "notes": "6.5 adds ALB idle timeout, TG health check path, ECS deployment settings, deregistration delay, and a staging drain verification."
     },
     {
-      "original_issue": "No explicit bridge/deep review findings closure artifact mapping finding IDs to doc sections/validation evidence",
+      "original_issue": "WAF per-payment_id throttling not implementable as written",
       "status": "fixed",
-      "notes": "Sprint 10.4 adds a closure table artifact in `grimoires/loa/NOTES.md` (or dedicated section) mapping all 13 findings to sprint/task/doc section and validation evidence, with CLOSED/DEFERRED status rules. This is sufficient to prevent regression disputes at merge time."
+      "notes": "3.7 correctly moves per-payment throttling into the application (Redis) and keeps WAF rate limiting IP-based, with DB idempotency as the final layer."
+    },
+    {
+      "original_issue": "PgBouncer treated as configurable without validating it exists/controlled",
+      "status": "fixed",
+      "notes": "2.5 now includes an explicit prerequisite check and a fallback path (direct RDS / RDS Proxy) while still enforcing a read-only DB role."
     }
   ],
   "new_blocking_concerns": [
     {
-      "location": "Sprint 4 / Task 4.1 (ECONOMICS.md) + Sprint 5.1 (RTFM naming check scope) + global 'Zero Arrakis references' gates",
-      "description": "The plan simultaneously (a) requires ECONOMICS.md to cite a code path containing the substring `arrakis` and (b) enforces a zero-tolerance `grep -ci \"arrakis\"` naming gate across managed docs (expanded to include ECONOMICS.md). This can make Sprint 4/5/6/10 gates impossible to pass if the naming check is literal substring-based.",
-      "why_blocking": "This is not stylistic: it can hard-fail required CI checks (RTFM check #2) and/or Sprint gates, preventing merge. The plan’s own acceptance criteria repeatedly require 'Zero \"Arrakis\" references' while also instructing inclusion of an `arrakis-*` citation string in a managed doc.",
-      "fix": "Pick one explicit, testable reconciliation and encode it in the plan + validator:\n1) Preferred: rename the code file/module away from `arrakis-*` (and update imports) before Sprint 4 citations are written; OR\n2) If code rename is truly out of scope: update the naming policy and RTFM check #2 to exempt code-path citations (e.g., ignore text inside `<!-- cite: ... -->` blocks) or exempt this specific legacy filename, while still banning 'Arrakis' in prose. Then update Sprint 4.1/5.1 acceptance criteria to reflect the exemption so gates remain achievable."
+      "location": "Sprint 6 — Task 6.7 SIWE Auth Flow (EIP-4361)",
+      "description": "Session token is specified as an HS256 JWT in an HttpOnly cookie, but the plan does not specify where the HS256 signing secret lives, how it is provisioned (Terraform/Secrets Manager), and how rotation/invalidations work across multiple ECS tasks.",
+      "why_blocking": "In production ECS with >1 task and rolling deploys, an HS256 session JWT requires a consistent shared signing secret across all tasks. Without an explicit secret source and rotation strategy, sessions will either (a) fail validation intermittently across tasks, or (b) force unsafe practices (hard-coded secret / env drift). This is a security and availability blocker for the web widget/chat surface and any authenticated web flows.",
+      "fix": "Add an explicit Secrets Manager secret and wiring + rotation semantics: e.g., create `arrakis-{env}-siwe-session-hs256-secret` (or switch to asymmetric signing). Update 6.7 AC to include: (1) secret provisioned via Terraform, injected into freeside tasks, (2) support for dual-secret validation during rotation (current + previous) for 24h, (3) `kid` header or `pepper_version`-style versioning for session tokens, and (4) a runbook/acceptance test proving sessions survive a rolling deploy."
     }
   ],
   "iteration": 2

@@ -1,630 +1,498 @@
-# PRD: The Neuromancer Codex — Documentation as Product Surface
+# PRD: Launch Readiness — Production Stack, Payments & Agent Surfaces
 
 **Version:** 1.1.0
-**Date:** 2026-02-19
+**Date:** 2026-02-20
 **Status:** Active
-**Cycle:** cycle-035
-**Predecessor:** cycle-034 "The Voice from the Outer World" (paused — protocol adoption)
-**Source:** Team directive (2026-02-19), [PR #74](https://github.com/0xHoneyJar/loa-freeside/pull/74), [loa-finn #66](https://github.com/0xHoneyJar/loa-finn/issues/66)
+**Cycle:** cycle-036
+**Predecessor:** cycle-035 "The Neuromancer Codex" (archived — documentation complete)
+**Source:** [loa-finn#66](https://github.com/0xHoneyJar/loa-finn/issues/66) (Launch Readiness RFC), Issues [#77](https://github.com/0xHoneyJar/loa-freeside/issues/77)–[#85](https://github.com/0xHoneyJar/loa-freeside/issues/85)
 
 ---
 
 ## 0. The Question Behind the Question
 
-The request is "docs upgrade." The real problem is **identity drift at the narrative layer**.
+The request is "deploy and launch." The real problem is **the last mile between infrastructure and revenue**.
 
-The README says: *"Engagement intelligence platform for Web3 communities. Conviction scoring and tiered progression delivered as Discord and Telegram roles."*
+52 global sprints across 20 cycles produced a complete multi-model inference platform: 5-pool model routing, budget-atomic accounting, token-gated access, 9-tier conviction scoring, ensemble strategies, BYOK encryption, and a full NOWPayments crypto billing adapter with 95 passing tests. The documentation is now production-grade (cycle-035).
 
-That describes Cycle 001. This is Cycle 035. The codebase has undergone a metamorphosis through 34 development cycles, 303+ sprints, and 82k+ lines of code across 5 repositories — from a Discord bot into a **multi-model agent economy infrastructure platform** with formal economic verification, payment rails, and protocol-level contracts.
+But none of it is deployed. The NOWPayments adapter is feature-flagged off. The loa-finn inference engine has no production container. Users can't buy credits, can't talk to their NFT agents, and community admins can't see what's happening.
 
-The documentation still describes the caterpillar. The code is the butterfly.
+This is the "last mile" problem that kills platforms. Stripe had the best payment API in 2011 — but it didn't matter until developers could `curl` it from production. We have the agent economy infrastructure. This cycle makes it real.
 
-This is the Amazon-to-AWS moment. Stripe won not on technology — they won because `curl https://api.stripe.com/v1/charges` was 7 lines and perfectly documented. The documentation WAS the product. For loa-freeside, the docs upgrade isn't auxiliary to launch. It IS the launch surface.
-
-Additionally, the project is rebranding from Dune-themed naming ("Arrakis", "Sietch", "Naib") to Neuromancer trilogy naming ("Freeside", from William Gibson's orbital station where AIs converge into superintelligence). This rebrand applies to the platform identity — individual Discord themes may retain their own flavor.
-
-> Sources: README.md (current), INFRA-AS-PRODUCT-GTM.md, [loa-finn #66](https://github.com/0xHoneyJar/loa-finn/issues/66), [Web4 manifesto](https://meow.bio/web4.html), [loa-finn #31 (Hounfour RFC)](https://github.com/0xHoneyJar/loa-finn/issues/31)
+> The gap between "infrastructure ready" and "users can use it" — loa-finn#66 §6
 
 ---
 
 ## 1. Problem Statement
 
-### P1: Identity Drift
-
-The external documentation describes a conviction-scoring Discord bot. The code implements:
-
-- Multi-model inference platform with 5-pool routing and ensemble orchestration
-- Atomic budget management with BigInt micro-USD precision and conservation invariants
-- Token-gated capability markets (on-chain conviction → AI access tiers)
-- Formal economic verification (5 invariants, 147 constraints, property-based testing)
-- Payment rails (x402 USDC, credit ledger, prepaid billing)
-- Multi-tenant isolation with Row-Level Security
-- Protocol-first architecture (loa-hounfour Level 4 contracts, 1097 tests)
-- Infrastructure-as-Code (Terraform, AWS ECS, CloudWatch)
-
-A developer, investor, or partner who reads the current README has no idea what this project actually is.
-
-### P2: Ecosystem Invisibility
-
-The platform spans 5 repositories with clear layering:
-
-```
-Layer 5: Products          loa-dixie (dNFT Oracle — first customer)
-Layer 4: Platform          loa-freeside (API, Discord/TG, token-gating)
-Layer 3: Runtime           loa-finn (persistent sessions, tool sandbox)
-Layer 2: Protocol          loa-hounfour (schemas, state machines, constraints)
-Layer 1: Framework         loa (agent dev framework, skills, Bridgebuilder)
-```
-
-No document shows this. The ECOSYSTEM-MAP.md only covers "arrakis + arrakis-web" and doesn't mention loa, loa-finn, loa-hounfour, or loa-dixie.
-
-### P3: Stale Naming
-
-The project uses "Arrakis" (Dune) naming throughout. The team is rebranding to Neuromancer trilogy naming. "loa-freeside" / "Freeside" is the canonical name. Core platform documentation must reflect this. Discord theme subsystems (e.g., sietch) may retain their own names as theme-specific branding.
-
-### P4: No Developer Onboarding Path
-
-The GTM plan (PR #74) identifies that the platform has 80+ API routes, 22+ Discord commands, a CLI tool, and comprehensive internals — but **zero external developer documentation**. No OpenAPI spec, no quick-start, no SDK docs, no API reference.
-
-### P5: BUTTERFREEZONE Without Soul
-
-BUTTERFREEZONE.md exists but its agent context says "No description available" and lists `.claude/` internal files as "Key Capabilities." It's mechanically generated without understanding what the project is. For AI agents (and the humans who read agent context), this file IS the project's identity.
-
-> Sources: README.md:1-10, BUTTERFREEZONE.md:1-5, ECOSYSTEM-MAP.md, CODEBASE-ANALYSIS.md (Cycle 008 — 26 cycles stale), INFRA-AS-PRODUCT-GTM.md:107-191
+| ID | Problem | Evidence |
+|----|---------|----------|
+| P-1 | Neither loa-finn nor loa-freeside is deployed to production | Issue #77 — "Neither loa-finn nor loa-freeside is deployed to production" |
+| P-2 | No way to collect money despite fully-built billing adapter | Issue #79 — "We have no way to collect money" (loa-freeside#62) |
+| P-3 | No production monitoring — failures detected in code but no human alerting | Issue #78 — "The code detects failures; nothing alerts humans about them" |
+| P-4 | NFT personality routing bridge doesn't exist between loa-freeside and loa-finn | Issue #80 — "The bridge between them doesn't exist yet" |
+| P-5 | No per-NFT conversational spaces in Discord | Issue #81 — each NFT agent needs its own thread |
+| P-6 | Community admins have zero visibility into spend, usage, or model allocation | Issue #82 — "Without a dashboard, communities can't manage their agent budgets" |
+| P-7 | No audit trail or pool enforcement transparency | Issue #83 — "Communities won't adopt infrastructure they can't audit" |
+| P-8 | No self-service developer onboarding for the API platform (Product B) | Issue #84 — developers need API keys without manual intervention |
+| P-9 | No web surface for non-Discord users | Issue #85 — "Not all users are on Discord" |
 
 ---
 
-## 2. Goals
+## 2. Goals & Success Metrics
 
-| ID | Goal | Metric | Priority |
-|----|------|--------|----------|
-| G-1 | Rewrite all external-facing documentation to reflect what loa-freeside actually IS — a multi-model agent economy infrastructure platform | README accurately describes platform capabilities; no references to "engagement intelligence" as primary identity | P0 |
-| G-2 | Complete Neuromancer rebrand in documentation — all platform-level references to "Arrakis" become "loa-freeside" / "Freeside" | Zero "Arrakis" references in platform-level docs (README, BUTTERFREEZONE, API docs, ecosystem map). Theme-level references (sietch) preserved as subsystem names | P0 |
-| G-3 | Create the 5-repo ecosystem map grounded in code truth | Ecosystem document covers all 5 repos with accurate layer diagram, test counts, line counts, and inter-repo dependency graph | P0 |
-| G-4 | Regenerate BUTTERFREEZONE with narrative soul and accurate capability inventory | BUTTERFREEZONE agent context section has real description, capabilities list references actual platform features (not `.claude/` internals), provenance tags cite source files | P0 |
-| G-5 | Produce developer-facing API documentation sufficient for "first call in 5 minutes" | Quick-start guide exists; API reference covers invoke, stream, budget, health, billing endpoints with request/response examples | P1 |
-| G-6 | Document the Infrastructure-as-Code story (Terraform, deployment, monitoring) | IaC documentation covers all Terraform modules, deployment architecture, and operational runbooks | P1 |
-| G-7 | Connect the documentation to the wider Web4 / agent economy vision | Ecosystem docs reference the Web4 manifesto context; positioning is "infrastructure for agent economies" not "Discord bot" | P0 |
-| G-8 | Ground every documentation claim in code truth — no aspirational language without source citations | Every capability claim in README/BUTTERFREEZONE has a `source:` annotation or file reference. Zero vaporware claims. | P0 |
+| ID | Goal | Metric | Source |
+|----|------|--------|--------|
+| G-1 | Deploy full stack to production on existing AWS ECS infrastructure | Both services responding on HTTPS with health checks | #77 |
+| G-2 | Enable crypto payment revenue collection | First real credit pack purchase via NOWPayments | #79 |
+| G-3 | Production observability with human alerting | Conservation guard failure triggers alert within 60s | #78 |
+| G-4 | Per-NFT personality-driven inference routing | Two different NFTs get different model pool selections | #80 |
+| G-5 | Per-NFT Discord conversational spaces | NFT holder invokes `/my-agent` and gets dedicated thread | #81 |
+| G-6 | Community admin budget visibility | Admin views spend breakdown by model pool | #82 |
+| G-7 | Auditable billing and pool enforcement | Community downloads JSONL audit trail of all credit operations | #83 |
+| G-8 | Self-service developer API keys | Developer creates key, makes inference request, zero manual intervention | #84 |
+| G-9 | Web chat surface for agents | Embeddable widget streams responses via WebSocket | #85 |
+
+### Timeline
+
+**Target: 1-2 weeks to Product A launch (NFT agents live in Discord with billing).**
+Product B (API platform) and web chat widget are in-scope but can trail by days.
+
+### Critical Path (P0 Minimum Viable Launch)
+
+The 1-2 week target is achievable ONLY if P0 is scoped to the true critical path. If any item below slips, the entire launch slips:
+
+1. **Deploy** — loa-freeside + loa-finn on ECS with health checks (FR-0.1, FR-0.3)
+2. **S2S Auth** — JWT exchange validated in staging (FR-0.3, go/no-go gate)
+3. **Basic Discord chat** — `/my-agent` → streamed inference via personality bridge (FR-3.1, FR-2.1)
+4. **Payment + credit mint** — NOWPayments checkout → webhook → credits arrive (FR-1.2, FR-1.4)
+5. **Minimal alerting** — Conservation guard failure → Slack within 60s (FR-0.7)
+
+Everything else (dashboards, audit exports, web widget, API portal, Telegram) follows in P1/P2 and MUST NOT block the P0 launch date. If cross-repo blockers (loa-finn Dockerfile, personality derivation) slip >3 days, escalate to loa-finn team immediately.
 
 ---
 
-## 3. Scope
+## 3. User & Stakeholder Context
 
-### In Scope
+### Primary Personas
 
-1. **README.md rewrite** — Full rewrite reflecting loa-freeside identity, capabilities, architecture, and ecosystem position
-2. **BUTTERFREEZONE.md regeneration** — Regenerate with real narrative, accurate capabilities, proper agent context
-3. **Ecosystem documentation** — New comprehensive 5-repo ecosystem map replacing the stale 2-repo version
-4. **API quick-start guide** — "First agent call in 5 minutes" with code examples
-5. **API reference** — Endpoint documentation for all public API routes (from Zod schemas)
-6. **IaC documentation** — Terraform modules, deployment architecture, monitoring
-7. **CLI documentation** — gaib CLI command reference
-8. **Naming migration in docs** — All platform-level "Arrakis" → "loa-freeside" / "Freeside" in documentation files
-9. **RTFM validation** — Ensure all docs are internally consistent and cross-referenced
-10. **Developer onboarding path** — Structured learning path from "what is this?" to "I shipped my first agent call"
+| Persona | Description | Key Needs |
+|---------|-------------|-----------|
+| **NFT Holder** | Owns a finnNFT, wants to interact with their agent | Chat with their NFT personality, see it respond uniquely, buy credits |
+| **Community Admin** | Manages a Discord community using Loa platform | Budget visibility, usage dashboards, audit trails, tier configuration |
+| **Developer** | Building on the Loa API (Product B) | Self-service API keys, sandbox testing, clear documentation |
+| **Platform Operator** | THJ team deploying and maintaining infrastructure | Production monitoring, alerting, deployment automation |
 
-### Out of Scope
+### User Journeys
 
-- Code-level renaming (variable names, package names, import paths) — separate engineering cycle
-- Database migration or runtime changes
-- New feature development
-- OpenAPI spec generation from Zod (requires code changes — documented as prerequisite for future API docs automation)
-- SDK development (TypeScript/Python SDKs are implementation work, not documentation)
-- Marketing website changes
-- Payment provider integration
-- Production deployment
+**NFT Holder Journey:**
+1. Verify wallet in Discord → tier assigned based on conviction score
+2. `/my-agent` → dedicated Discord thread created with NFT personality
+3. Chat with agent → personality-routed inference through correct model pool
+4. Credits run low → `/buy-credits 10` → NOWPayments checkout → credits arrive
+5. Continue chatting
 
-### Naming Scope Clarification
+**Developer Journey (Product B):**
+1. Sign up via web form → get sandbox API key (`lf_test_...`)
+2. Make first inference request against `cheap` pool (free tier)
+3. Verify it works → upgrade to production key (`lf_live_...`)
+4. View usage dashboard → manage rate limits and budget
 
-| Layer | Current Name | New Name | Scope |
-|-------|-------------|----------|-------|
-| Platform identity | Arrakis | loa-freeside / Freeside | IN SCOPE (docs) |
-| Repository | arrakis (GitHub) | loa-freeside | Already done |
-| README, BUTTERFREEZONE | "Arrakis" throughout | "loa-freeside" / "Freeside" | IN SCOPE |
-| Discord theme | Sietch (themes/sietch/) | Sietch (retained as theme name) | No change |
-| Tier names | Dune-themed (Naib, Fedaykin, etc.) | Theme-specific (keep in sietch theme) | No change in docs |
-| Code internals | Various Dune references | Future engineering cycle | OUT OF SCOPE |
-| CLI | gaib | Future naming decision | OUT OF SCOPE |
-
-### Naming Policy (Zero-Tolerance and Exemptions)
-
-**Zero-tolerance files** (zero platform-level "Arrakis" references allowed):
-- `README.md`
-- `BUTTERFREEZONE.md`
-- `docs/ECOSYSTEM.md`
-- `docs/API-QUICKSTART.md`
-- `docs/API-REFERENCE.md`
-- `docs/INFRASTRUCTURE.md`
-- `docs/DEVELOPER-GUIDE.md`
-
-**Allowed single-mention pattern** — these files may contain exactly ONE historical reference in the format: `> *Formerly known as Arrakis. Rebranded to loa-freeside (Cycle 035).*`
-- `CHANGELOG.md` (historical entries preserved as-is — these are immutable records)
-- `INSTALLATION.md` (one historical note in header)
-
-**Exempt files** (Dune naming is theme-specific, not platform identity):
-- `themes/sietch/` (all files — "sietch" is the Discord theme name)
-- `grimoires/loa/archive/` (historical cycle records are immutable)
-- `grimoires/loa/context/` (internal working documents)
-- Code files (OUT OF SCOPE — separate engineering cycle)
-
-**Validation:** `grep -ri "arrakis" <file>` on zero-tolerance files must return 0 matches. This check is part of FR-8 RTFM validation.
+**Community Admin Journey:**
+1. View budget dashboard → see spend by model pool
+2. Download audit trail as JSONL → verify conservation invariants
+3. See pool enforcement decisions → understand why a request was routed where
+4. Set budget caps → control community spending
 
 ---
 
 ## 4. Functional Requirements
 
-### FR-1: README.md Rewrite (P0)
+### Track 0: Make It Run (Issues #77, #78)
 
-**Context:** Current README (7.7KB) opens with "Engagement intelligence platform for Web3 communities" — a description accurate for Cycle 001, misleading for Cycle 035. The README is the single highest-traffic entry point for the project.
+| ID | Requirement | Acceptance Criteria | Source |
+|----|-------------|---------------------|--------|
+| FR-0.1 | Deploy loa-finn as ECS service in existing AWS cluster | ECS task definition, service, ALB target group, health check passing | #77 |
+| FR-0.2 | Docker Compose for local full-stack development | `docker compose up` starts loa-freeside + loa-finn + Redis + PostgreSQL | #77 |
+| FR-0.3 | S2S JWT exchange working in production | loa-freeside signs ES256 JWT (`iss: loa-freeside`, `aud: loa-finn`) → loa-finn validates via JWKS; loa-finn rejects all requests without valid S2S JWT | #77 |
+| FR-0.4 | At least one model pool responds to inference in production | Discord `/agent` → streamed response via loa-finn | #77 |
+| FR-0.5 | Metrics collection from both services | Amazon Managed Prometheus (AMP) workspace with ADOT collector sidecar containers on each ECS task; ADOT discovers targets via ECS task metadata endpoint; existing CloudWatch Container Insights remain for ECS-level metrics | #78 |
+| FR-0.6 | CloudWatch dashboards for unified service health | Inference latency, error rate, billing flow, auth failures, conservation guard panels; sourced from AMP via CloudWatch data source or Grafana on AMP | #78 |
+| FR-0.7 | Alerting on conservation guard failure and service downtime | AMP alerting rules → SNS topic → Slack webhook; fires within 60s of conservation guard failure or service health check failure | #78 |
 
-**Requirements:**
-1. Open with what loa-freeside actually IS: multi-model agent economy infrastructure platform
-2. Feature inventory grounded in code reality (cite source files):
-   - Multi-model inference (5 pools, ensemble, BYOK)
-   - Budget atomicity and economic verification
-   - Token-gated capability markets
-   - Payment rails (x402, credit ledger)
-   - Multi-tenant with RLS
-   - Discord + Telegram + REST API distribution
-   - Infrastructure-as-Code (Terraform)
-3. Architecture diagram reflecting current state (packages, apps, infrastructure, themes)
-4. Ecosystem section showing all 5 repos and their relationships
-5. Quick-start path for developers ("I want to call the API") and community operators ("I want to set up a Discord bot")
-6. Technology stack table (current and accurate)
-7. Link to all documentation (API docs, IaC docs, CLI docs, ecosystem map)
-8. Zero "Arrakis" references in platform identity (theme subsystems may keep names)
-9. Appropriate badges (version, license, test count if available)
+**CRITICAL CONSTRAINT:** Use existing Terraform/AWS ECS infrastructure. No Fly.io. loa-finn deploys as a new ECS service in the existing cluster, behind the existing ALB, using existing RDS/ElastiCache/VPC/Route53. Reference: `infrastructure/terraform/ecs.tf`, `alb.tf`, `variables.tf`.
 
-**Acceptance Criteria:**
-- README opens with accurate platform description
-- All capability claims have source file references in comments or linked docs
-- Architecture diagram matches actual codebase structure
-- Ecosystem section covers all 5 repos
-- No identity drift between README and code reality
-- "Arrakis" appears only in theme-context references, if at all
+**S2S TRUST MODEL:** loa-finn is internal-only — not directly reachable from the internet. loa-freeside is the sole public-facing gateway. Network enforcement: loa-finn's security group allows inbound only from loa-freeside's security group (no public ALB listener rule for finn). loa-freeside calls loa-finn via internal service discovery (`finn.arrakis-{env}.local`) or private ALB target group. JWKS endpoint hosted by loa-freeside (the issuer), not loa-finn (the verifier). JWT claims: `iss: loa-freeside`, `aud: loa-finn`, TTL: 60s. Key rotation: ES256 keypair in Secrets Manager, rotated via scheduled Lambda (quarterly). loa-finn MUST reject all requests without valid S2S JWT bearing correct `aud`.
 
-### FR-2: BUTTERFREEZONE.md Regeneration (P0)
+### Track 1A: Make It Pay (Issue #79)
 
-**Context:** Current BUTTERFREEZONE has `purpose: No description available` and lists `.claude/` adapter files as "Key Capabilities." This file is consumed by AI agents and determines how they understand the project.
+| ID | Requirement | Acceptance Criteria | Source |
+|----|-------------|---------------------|--------|
+| FR-1.1 | Enable NOWPayments feature flag in production | `FEATURE_CRYPTO_PAYMENTS_ENABLED=true`, API key + IPN secret configured | #79 |
+| FR-1.2 | Wire NOWPayments webhook to credit mint | `POST https://api.{domain}/api/crypto/webhook` (loa-freeside, public via ALB) receives IPN; HMAC-SHA512 verified against `NOWPAYMENTS_IPN_SECRET`; idempotency key = `payment_id` (UNIQUE constraint in `crypto_payments` table); replay of identical payload = HTTP 200, no additional credit lots; payment `finished` → credit lot created, conservation guard verifies | #79 |
+| FR-1.3 | Credit pack tiers defined in config | $5 Starter, $10 Basic, $25 Pro (configurable, not hardcoded) | #79 |
+| FR-1.4 | Discord `/buy-credits [amount]` command | Returns NOWPayments checkout URL, confirms on completion | #79 |
+| FR-1.5 | Telegram `/buy-credits` equivalent | Same flow as Discord | #79 |
+| FR-1.6 | Idempotent double-payment handling | Same payment ID = no duplicate credits | #79 |
 
-**Requirements:**
-1. Agent context section:
-   - `name: loa-freeside`
-   - `type: platform` (not `framework`)
-   - `purpose:` — accurate 1-2 sentence description of what this is
-   - `key_files:` — actual key files (core ports, agent gateway, billing, CLI, Terraform)
-   - `version:` — current version
-   - `trust_level: grounded`
-2. Capabilities section — list actual platform capabilities with source file citations:
-   - Each capability references the file that implements it
-   - Organized by domain (inference, economics, distribution, infrastructure)
-3. Architecture section — actual package/app/infrastructure layout
-4. Interfaces section — REST routes, Discord commands, Telegram commands, CLI commands
-5. Module map — accurate file counts and LOC by module
-6. Ecosystem section — dependencies including cross-repo (loa-hounfour, loa-finn)
-7. Quick start — accurate setup instructions
-8. Content hashes for integrity verification:
-   - Algorithm: SHA-256
-   - **Canonicalization:** Each section is first extracted into a structured JSON representation (keys sorted, values trimmed, arrays ordered deterministically) before hashing. Raw Markdown is NOT hashed directly — this avoids brittleness from whitespace, code fence variations, and OS-specific line endings.
-   - Scope: hash each major section independently (agent_context, capabilities, architecture, interfaces, module_map, ecosystem, quick_start)
-   - Input normalization: JSON keys sorted alphabetically, string values trimmed, UTF-8 encoding
-   - Excluded from hash: the `ground-truth-meta` block itself (to avoid circular reference)
-   - **Reference implementation:** `butterfreezone-gen.sh` contains the canonical extraction-to-JSON logic. A set of golden test vectors (known input Markdown → expected JSON → expected hash) must be committed to `tests/fixtures/butterfreezone-golden/` to catch regressions across tooling or OS changes.
-   - Validation mode: hashes must match current working tree state at generation time; `butterfreezone-validate.sh` re-computes JSON extraction and compares
+**PAYMENT STATE MACHINE:** NOWPayments IPN delivers status transitions. The platform must handle all edge states:
 
-**Acceptance Criteria:**
-- Agent context has real description (not "No description available")
-- Capabilities reference actual source files, not `.claude/` internals
-- All provenance tags are accurate
-- Golden test vectors committed and passing (known input → expected hash)
-- Content hashes validate when `butterfreezone-validate.sh` is run against the same commit that generated them
-- A fresh AI agent reading BUTTERFREEZONE can accurately describe what the project does
+| IPN Status | Action | Credit Outcome | User-Facing |
+|------------|--------|---------------|-------------|
+| `waiting` | Record payment, show pending | None | "Payment pending — waiting for confirmation" |
+| `confirming` | Update status | None | "Payment detected — confirming on-chain" |
+| `confirmed` | Update status | None | "Payment confirmed — processing" |
+| `finished` | Mint credits, conservation guard | Credits created | "Credits added to your account!" |
+| `partially_paid` | Record underpayment, notify | None (require full payment) | "Underpaid — send remaining or contact support" |
+| `failed` | Record failure, allow retry | None | "Payment failed — please try again" |
+| `expired` | Mark expired, allow new checkout | None | "Invoice expired — use /buy-credits for a new one" |
+| `refunded` | Reverse credits if minted | Credits reversed | "Refund processed" |
 
-### FR-3: Ecosystem Documentation (P0)
+**Edge cases:**
+- **Double IPN delivery:** Idempotency on `payment_id` (UNIQUE constraint) — replay returns 200, no duplicate credits.
+- **Out-of-order delivery:** Accept any valid status transition; ignore stale/backward transitions (e.g., `finished` then `confirming`).
+- **Timeout without IPN:** Reconciliation job polls NOWPayments API by `payment_id` every 5 minutes for invoices >15 min old, resolves stuck payments.
+- **Currency conversion:** Credit lot denomination is always in USD equivalent; NOWPayments handles crypto→USD conversion; platform records both crypto amount and USD equivalent.
+- **Retry after failure:** User can invoke `/buy-credits` again; new `payment_id` generated; old failed record retained for audit.
 
-**Context:** ECOSYSTEM-MAP.md (2026-02-04) covers only "arrakis + arrakis-web." The actual ecosystem is 5 repositories with clear layering, shared protocol contracts, and cross-repo dependencies.
+**Reconciliation & admin tools:**
+- **Reconciliation job:** Scheduled task (every 5 min) polls NOWPayments API for invoices with `waiting`/`confirming` status older than 15 minutes. Resolves stuck payments by fetching current status and processing any missed IPN transitions.
+- **Supported currencies:** All currencies supported by NOWPayments (BTC, ETH, USDT, USDC, etc.); credit lot always denominated in USD equivalent using NOWPayments' conversion rate at `finished` time.
+- **Rounding rules:** Credit lots rounded DOWN to nearest micro-USD (floor). Platform never over-credits.
+- **Admin repair endpoint:** `POST /api/v1/admin/payments/:paymentId/reconcile` — manually triggers status check against NOWPayments API and processes any missed transitions. Requires admin auth. Logs all manual reconciliations to audit trail.
+- **Admin payment dashboard:** `GET /api/v1/admin/payments?status=stuck` — lists payments in limbo (>30 min without `finished`/`failed`/`expired`).
 
-**Requirements:**
-1. Layer diagram showing all 5 repos with dependency arrows:
-   ```
-   loa-dixie → loa-freeside → loa-finn
-                     ↓              ↓
-                loa-hounfour ←──────┘
-                     ↓
-                    loa (framework)
-   ```
-2. Per-repo summary:
-   - Purpose (1-2 sentences, grounded)
-   - Key stats (lines, tests, version)
-   - Primary interfaces / API surface
-   - Relationship to other repos
-3. Protocol contract flow — how loa-hounfour schemas flow through the system
-4. The "Neuromancer map" — explain the naming:
-   - loa = voodoo spirits (AI agents, from Count Zero)
-   - Freeside = orbital station (platform convergence point)
-   - Dixie = Dixie Flatline (first product that speaks)
-   - Hounfour = voodoo temple (where the loa manifest — protocol contracts)
-   - Finn = the Finn (fence/broker — runtime engine)
-5. Web4 vision connection — brief section linking the technical stack to the Web4 manifesto's "infrastructure for agent economies" thesis
-6. Competitive positioning (from PR #74 analysis)
+**EXISTING ASSETS:** NOWPayments adapter fully built (557 LOC, 23 tests). CryptoWebhookService with LVVER pattern (486 LOC, 26 tests). Database migration `021_crypto_payments.ts` ready. Routes at `/api/crypto/*` implemented (440 LOC, 7 tests). Total: 95 tests passing. NOWPayments account exists, API key available as env var.
 
-**Acceptance Criteria:**
-- All 5 repos documented with accurate stats
-- Layer diagram is correct (verified against package.json dependencies)
-- Naming section explains the Neuromancer references
-- A new developer reading this understands the full ecosystem in <5 minutes
-- No references to "arrakis-web" or other stale repos without context
+### Track 2: Make It Personal (Issue #80)
 
-### FR-4: API Quick-Start Guide (P1)
+| ID | Requirement | Acceptance Criteria | Source |
+|----|-------------|---------------------|--------|
+| FR-2.1 | Inference request enrichment with NFT context | loa-freeside includes `nft_id` + `tier` + `budget_reservation_id` in S2S JWT claims sent to loa-finn; loa-finn resolves personality and selects pool | #80 |
+| FR-2.2 | Pool/personality metadata in inference response | loa-finn returns `X-Pool-Used` + `X-Personality-Id` headers; loa-freeside uses these for budget finalization and audit logging | #80 |
+| FR-2.3 | Anti-narration enforcement | No forbidden identity terms appear in streamed responses; loa-finn's reviewer-adapter anti-narration rules respected | #80 |
+| FR-2.4 | Two different NFTs get different model pool routing | Verified in integration test — different `nft_id` values produce different `X-Pool-Used` and `X-Personality-Id` | #80 |
 
-**Context:** The platform has 80+ API routes but zero developer-facing documentation. The GTM plan identifies this as a critical gap. While the full OpenAPI spec requires code changes (out of scope), a hand-written quick-start is achievable.
+**PERSONALITY OWNERSHIP:** loa-finn owns personality derivation (it has the NFT metadata, BEAUVOIR.md loader, and NameKDF). loa-freeside passes `nft_id` from JWT claims in the inference request; loa-finn's inference endpoint selects the personality, chooses the pool, and returns pool/personality metadata in the response for auditability. loa-freeside does NOT independently look up personality — it trusts loa-finn's routing decision. This avoids circular dependencies (freeside needs finn for personality; finn needs freeside for auth/budget).
 
-#### Developer-Facing API Contract
+**Call flow:** User → loa-freeside (auth, budget reservation, tier check) → S2S JWT with `nft_id` + `tier` + `budget_reservation_id` → loa-finn (personality lookup, pool selection, inference) → streamed response with `X-Pool-Used` + `X-Personality-Id` headers → loa-freeside (budget finalization, audit).
 
-Before writing any docs, the following must be defined explicitly:
+**STREAMING BUDGET LIFECYCLE:** Inference requests use streaming, which requires explicit reservation→finalization semantics to prevent credit leakage or double-spend:
 
-| Property | Value | Source |
-|----------|-------|--------|
-| **Target environment** | Local development (`localhost:3000`) — docs target a locally-running instance, not a hosted service | `themes/sietch/src/index.ts` |
-| **Primary auth method** | JWT (ES256 + JWKS) — this is implemented today and is the canonical auth method | `themes/sietch/src/api/middleware/auth.ts` |
-| **API key auth** | **Planned** — not yet implemented for external devs. Docs must label this "Planned" with no operational steps | GTM plan D1 |
-| **Streaming protocol** | Server-Sent Events (SSE) via `text/event-stream`, resumable via `Last-Event-ID` header | `agents.routes.ts` |
-| **Public endpoints** | `/api/agents/*`, `/api/billing/*`, `/.well-known/jwks.json`, `/api/agents/health` | Route files |
-| **Admin-only endpoints** | `/api/admin/*` (BYOK, agent-config) — documented separately, not in quick-start | Admin route files |
-| **Credential acquisition** | For local dev: generate JWT via `gaib auth login` or manual ES256 signing against local JWKS | `packages/cli/src/commands/auth/` |
+| Phase | Trigger | Action |
+|-------|---------|--------|
+| **Reserve** | loa-freeside receives inference request | Create `budget_reservation_id`, deduct estimated max cost from available balance (pessimistic reserve based on `max_tokens` or pool default) |
+| **Stream** | loa-finn begins streaming tokens | Token count tracked in real-time via `X-Token-Count` trailer or post-stream summary |
+| **Finalize** | Stream completes (200 OK + final chunk) | Calculate actual cost from real token usage; release unused reservation back to balance; write audit record |
+| **Partial completion** | Client disconnect or upstream error mid-stream | Charge for tokens actually delivered (loa-finn returns partial token count in error response or trailer); release remainder |
+| **Retry** | Client retries same request | New `budget_reservation_id` — original reservation finalized (partial or zero); no double-spend because each reservation is independent |
+| **Timeout** | No response from loa-finn within 60s | Release full reservation; log timeout; return error to user |
+| **Orphan cleanup** | Reservation >5 min without finalization | Scheduled job releases orphaned reservations back to balance; logs anomaly |
 
-**Requirements:**
-1. "First agent call in 5 minutes" tutorial:
-   - Prerequisites: running local instance + JWT token (via gaib CLI or manual signing)
-   - Single `curl` example hitting `/api/agents/invoke` with JWT `Authorization: Bearer` header
-   - Single `curl` example for SSE streaming via `/api/agents/stream` with `Accept: text/event-stream`
-   - Budget check via `/api/agents/budget`
-   - Health check via `/api/agents/health` (no auth required)
-2. Authentication guide:
-   - JWT flow (ES256 + JWKS) — primary, fully documented with step-by-step
-   - **Planned: API key provisioning** — labeled as future, no operational steps
-   - Header format: `Authorization: Bearer <jwt>`
-   - JWKS verification endpoint: `/.well-known/jwks.json`
-3. Endpoint reference — **"Guaranteed Stable" subset only** (hand-documented from route files):
-   - **Stable Public:** `/api/agents/invoke`, `/api/agents/stream`, `/api/agents/budget`, `/api/agents/health`, `/api/agents/models` (5 endpoints — the minimum for first success)
-   - **Stable Public:** `/api/billing/balance`, `/api/billing/pricing` (2 billing endpoints for cost visibility)
-   - **Route Index (auto-extracted):** All remaining 70+ routes listed in a table (method, path, auth requirement, one-line description) auto-extracted from Express route registrations. Marked as `internal` or `unstable` — no request/response examples for these.
-   - **Admin-only:** BYOK, agent-config documented at high level only (purpose + auth) — not in quick-start
-4. Request/response examples with realistic payloads — must be copy-pastable against a local instance
-5. Rate limit documentation (4 dimensions, tier tables)
-6. Error code reference
-7. **Smoke-test checklist:** A numbered list of curl commands that must all return 2xx (or expected 401 for auth tests) against a running local instance. This checklist is the validation gate for the quick-start.
+**Idempotency:** Each inference request carries a unique `budget_reservation_id` in the S2S JWT. loa-finn includes this ID in response headers. loa-freeside uses it for finalization — duplicate finalization requests are no-ops.
 
-**Acceptance Criteria:**
-- A developer can make their first API call by following the guide against a local instance
-- All endpoint descriptions match actual route implementations (validated by running smoke-test checklist)
-- Request/response examples are valid and copy-pastable
-- Rate limit tiers match code configuration
-- JWT is the only auth method with operational steps; API keys are clearly labeled "Planned"
-- Smoke-test checklist passes against `npm run dev` local environment
-- **Security disclaimers** included: never ship private keys in code, separate dev/prod JWKS, document key rotation expectations, token TTL guidance, audience/issuer validation requirements, least-privilege scope recommendations
-- Admin endpoint documentation is high-level only (purpose + auth requirements) — detailed operational docs require separate admin guide
+**DEPENDENCY:** loa-finn#88 (static personality config) or loa-finn#86 (dynamic derivation) must provide personality selection within the inference endpoint. No separate personality lookup endpoint needed.
 
-### FR-5: Infrastructure-as-Code Documentation (P1)
+### Track 3: Make It Visible (Issues #81, #82, #85)
 
-**Context:** `infrastructure/terraform/` contains 10+ Terraform modules for AWS ECS deployment, but the only documentation is the stale `docs/iac.md` and `infrastructure/STAGING-SETUP.md`. The IaC story is a competitive advantage (self-hosted path in Pillar 3) and needs to be visible.
+| ID | Requirement | Acceptance Criteria | Source |
+|----|-------------|---------------------|--------|
+| FR-3.1 | `/my-agent` creates dedicated Discord thread per NFT | Public thread in designated agent channel; bot-enforced access control (bot responds only to verified holder in that thread); thread name = agent name or `Agent #[tokenId]`; if server supports private threads (boost level 2+), use private thread; otherwise public with bot-level gating; **token transfer handling:** bot re-verifies ownership on every message (cached 60s); if ownership changed, bot posts "ownership transferred" notice, stops responding to old holder, and creates new thread for new holder on their next `/my-agent`; **re-verification cadence:** wallet verification refreshed every 24h via background job — stale verifications (>48h) revoke thread access; **bot permissions required:** `MANAGE_THREADS`, `SEND_MESSAGES_IN_THREADS`, `READ_MESSAGE_HISTORY`; bot degrades gracefully if permissions missing (responds with "missing permissions" instead of silent failure) | #81 |
+| FR-3.2 | Thread messages routed through personality bridge | Personality tier + emphasis applied to every message | #81 |
+| FR-3.3 | `/agent-info` shows personality summary | Anti-narration-safe display, no identity labels | #81 |
+| FR-3.4 | Community admin usage dashboard | Total spend, per-pool breakdown, per-user breakdown, projected depletion | #82 |
+| FR-3.5 | Admin API endpoints for usage/billing/agents | `GET /api/v1/admin/community/:id/{usage,billing,agents}` | #82 |
+| FR-3.6 | Embeddable web chat widget | Single `<script>` tag, WebSocket streaming, personality-aware styling; auth via SIWE wallet login → server-issued short-lived session token (no API keys in browser); community-embedded widgets use server-side API key (not client-exposed); unauthenticated users see read-only agent profile | #85 |
+| FR-3.7 | Standalone chat page at `/chat/:tokenId` | Shareable URL, mobile-responsive; read-only mode (personality display, past public interactions) without auth; SIWE login required to send messages; rate-limited per session | #85 |
 
-**Requirements:**
-1. Architecture diagram — AWS deployment topology:
-   - ECS Fargate services
-   - RDS PostgreSQL
-   - ElastiCache Redis
-   - ALB + Route53
-   - CloudWatch monitoring
-   - KMS encryption
-2. Module inventory — each `.tf` file documented with purpose and key variables
-3. Deployment guide:
-   - Prerequisites (AWS account, Terraform, credentials)
-   - Environment setup (staging vs production)
-   - `terraform plan` → `terraform apply` workflow
-   - Post-deployment verification
-4. Monitoring and observability:
-   - CloudWatch dashboards (from `agent-monitoring.tf`)
-   - Alarms and alerting
-   - Log aggregation
-5. Cost estimation (from PR #74: ~$150-200/mo production)
-6. Security hardening notes (KMS, VPC, security groups)
+### Track 4: Make It Trustworthy (Issue #83)
 
-**Target:** Documentation enables deployment to a **non-production AWS account (staging)**. Production hardening (secrets rotation, incident response, oncall) is documented as a checklist but not guaranteed as a complete runbook.
+| ID | Requirement | Acceptance Criteria | Source |
+|----|-------------|---------------------|--------|
+| FR-4.1 | Billing audit trail export as JSONL | Includes timestamp, operation type, amount, pool, user, conservation result | #83 |
+| FR-4.2 | Pool enforcement transparency | Admins see which pools agents access and why | #83 |
+| FR-4.3 | Conservation guard status endpoint | `GET /api/v1/admin/community/:id/conservation` with current status + history | #83 |
+| FR-4.4 | No PII in audit exports | Wallet addresses only (pseudonymous) | #83 |
 
-**Acceptance Criteria:**
-- All Terraform modules documented with purpose and key variables
-- A DevOps engineer can deploy the full stack to a staging AWS account by following the documentation
-- Cost estimates are grounded in actual resource configuration (reference specific instance types, storage sizes)
-- Security posture documented (KMS, VPC, security groups) with a "Production hardening checklist" section for items beyond staging
-- Staging deployment verified: `terraform plan` produces no errors against documented variable values
+### Product B: API Platform (Issue #84)
 
-### FR-6: CLI Documentation (P1)
-
-**Context:** `packages/cli/` (gaib) has auth, sandbox, and server commands. These are documented in `docs/cli.md` but that file may be stale.
-
-**Requirements:**
-1. Command reference for all gaib subcommands:
-   - `gaib auth login/logout/whoami`
-   - `gaib sandbox new/ls/rm/env/link/unlink/status`
-   - `gaib server` commands
-2. Installation instructions
-3. Configuration (environment variables, config files)
-4. Usage examples for common workflows
-
-**Acceptance Criteria:**
-- All commands documented with usage and examples
-- Installation path works
-- Matches actual CLI implementation
-
-### FR-7: Developer Onboarding Path (P1)
-
-**Context:** No structured path exists from "what is this?" to "I shipped my first agent call." Documents exist in isolation without a learning sequence.
-
-**Requirements:**
-1. Landing page / index that sequences the documentation:
-   - Start here → README (what is this?)
-   - Understand → Ecosystem map (how does it fit together?)
-   - Build → Quick-start (make your first API call)
-   - Deploy → IaC docs (run your own instance)
-   - Extend → CLI docs, SDK guide (build on the platform)
-2. Cross-links between documents at appropriate transition points
-3. "Next steps" section at the end of each document
-
-**Acceptance Criteria:**
-- Clear sequential path from discovery to deployment
-- Every document links to logical next document
-- A developer can self-serve from zero to productive
-
-### FR-8: RTFM Validation (P0)
-
-**Context:** RTFM (Read The Freaking Manual) validation ensures documentation is internally consistent, cross-referenced, and grounded in code truth. This is the quality gate.
-
-**Requirements:**
-1. Cross-reference audit:
-   - Every file path referenced in docs exists in the codebase
-   - Every capability claim has a source file
-   - No broken links between documents
-2. Naming consistency:
-   - "loa-freeside" / "Freeside" used consistently for platform identity
-   - No stale "Arrakis" references in platform context
-   - Theme-specific naming preserved where appropriate
-3. Version consistency:
-   - All version numbers match actual package.json
-   - Protocol version references match loa-hounfour state
-4. Completeness check:
-   - Every major subsystem mentioned in architecture has documentation
-   - No "TODO" or placeholder sections in shipped docs
-
-**Acceptance Criteria:**
-- Zero broken file references
-- Zero naming inconsistencies at platform level
-- All version numbers current
-- No placeholder content in shipped documentation
-
-### FR-9: Documentation Ownership & Maintenance (P0)
-
-**Context:** (Flatline SKP-001, IMP-004) Without defined ownership, update triggers, and verification cadence, documentation will re-drift within 1-2 cycles — recreating the exact problem this PRD solves. Documentation-as-product requires documentation-as-maintained-product.
-
-**Requirements:**
-1. **Ownership table** — every shipped document has a DRI (Directly Responsible Individual) or owning role:
-
-   | Document | DRI / Owner | Update Trigger | Review Cadence |
-   |----------|-------------|----------------|----------------|
-   | README.md | Engineering lead | Any feature/capability change | Every cycle |
-   | BUTTERFREEZONE.md | Auto-generated (script) | On release tag | Every release |
-   | docs/ECOSYSTEM.md | Engineering lead | New repo or major version bump | Quarterly |
-   | docs/API-QUICKSTART.md | API team | Route signature change | Every sprint with API changes |
-   | docs/API-REFERENCE.md | API team (+ auto-extracted index) | Route addition/removal | Every sprint with API changes |
-   | docs/INFRASTRUCTURE.md | DevOps / infra lead | Terraform module change | Every deploy cycle |
-   | docs/CLI.md | CLI maintainer | CLI command addition/change | On CLI release |
-   | docs/DEVELOPER-GUIDE.md | Engineering lead | New document added | Quarterly |
-
-2. **Update triggers** — define what code changes should trigger doc updates:
-   - Route file changes (`themes/sietch/src/api/routes/`) → API docs
-   - Terraform file changes (`infrastructure/terraform/`) → IaC docs
-   - CLI command changes (`packages/cli/src/commands/`) → CLI docs
-   - Package.json version bumps → README version badge + BUTTERFREEZONE
-
-3. **Versioning & errata process** (Flatline IMP-001):
-   - Each shipped doc includes a version header (`v1.0.0`, following semver)
-   - Corrections to published docs get an errata note at the top with date and description
-   - Revert procedure: `git revert` the doc commit + re-publish
-
-4. **Verification cadence** — weekly spot-check: pick 3 random capability claims from README, verify source files still match. Log results to `grimoires/loa/NOTES.md`.
-
-**Acceptance Criteria:**
-- Ownership table committed to `docs/DEVELOPER-GUIDE.md` (or standalone `docs/OWNERSHIP.md`)
-- Every document in zero-tolerance naming list has a defined DRI
-- Update triggers documented and actionable (a developer knows when to update which doc)
-- Versioning headers present in all shipped documents
-
-### FR-10: Execution Timeline (P0)
-
-**Context:** (Flatline IMP-002) The PRD mentions "1-2 week launch" but has no execution milestones, making it hard to prioritize and sequence work.
-
-**Timeline:**
-
-| Phase | Days | Deliverables | Gate |
-|-------|------|-------------|------|
-| **Phase A: Identity** | Days 1-2 | README rewrite, BUTTERFREEZONE regeneration, Ecosystem map | P0 docs review-ready |
-| **Phase B: Developer Surface** | Days 3-5 | API quick-start (stable subset), CLI docs update, Security disclaimers | Smoke-test checklist passes |
-| **Phase C: Infrastructure** | Days 6-7 | IaC documentation, Staging deployment verification | `terraform plan` clean |
-| **Phase D: Polish** | Days 8-9 | Developer onboarding path, Cross-links, Route index extraction, Citation pinning | RTFM validation passes |
-| **Phase E: Validation** | Day 10 | RTFM full audit, Naming grep check, Ownership table, Final BUTTERFREEZONE hash validation | All success criteria met |
-
-**Dependency order:** Phase A must complete before B (README establishes identity). Phases B and C can run in parallel. Phase D requires B+C. Phase E is the final gate.
-
-**Circuit breaker:** If Phase A takes >3 days, descope Phase C to "document existing IaC files only" (no new architecture diagrams).
+| ID | Requirement | Acceptance Criteria | Source |
+|----|-------------|---------------------|--------|
+| FR-5.1 | API key generation | Scoped keys: `lf_live_...` (prod), `lf_test_...` (sandbox), shown once | #84 |
+| FR-5.2 | API key authentication on inference requests | `Authorization: Bearer lf_live_...` → pool access + rate limits | #84 |
+| FR-5.3 | Rate limiting per API key | Requests/minute and tokens/day configurable per key | #84 |
+| FR-5.4 | Self-service portal | Key creation, rotation, revocation, usage dashboard | #84 |
+| FR-5.5 | Developer onboarding flow | Sign up → sandbox key → free inference → upgrade to production | #84 |
 
 ---
 
-## 5. Non-Functional Requirements
+## 5. Technical & Non-Functional Requirements
 
-### NFR-1: Truth-Grounded
+### Infrastructure (MANDATORY: Existing AWS Stack)
 
-Every capability claim must cite a source file. The pattern is:
+| Requirement | Implementation | Reference |
+|-------------|----------------|-----------|
+| loa-finn runs as ECS Fargate service | New task definition in `ecs.tf`, same cluster | `infrastructure/terraform/ecs.tf` |
+| ALB routes to loa-finn | Path-based (`/finn/*`) or subdomain (`finn.{domain}`) routing | `infrastructure/terraform/alb.tf` |
+| Shared Redis (ElastiCache) | loa-finn connects to existing cache.t3.micro Redis 7.0; **capacity plan:** maxmemory-policy `allkeys-lru`; key TTLs enforced (rate-limit: 60s, session: 1h, cache: 5m); expected QPS: <100 at launch; upgrade to cache.t3.small if memory >80% sustained; **circuit breaker:** Redis unavailability degrades rate limiting to in-memory fallback, does NOT block inference | `infrastructure/terraform/elasticache.tf` |
+| Shared PostgreSQL (RDS) | loa-finn connects via existing PgBouncer (port 6432); **capacity plan:** PgBouncer pool_size=20 (per service), max_client_conn=100; expected concurrent connections: <30 at launch; **isolation:** loa-finn uses read-only connection for queries, separate connection pool from loa-freeside writes; **backpressure:** connection queue timeout 5s, return 503 instead of blocking indefinitely | `infrastructure/terraform/rds.tf`, `pgbouncer.tf` |
+| ECR repository for loa-finn | `arrakis-{env}-loa-finn` container registry | `infrastructure/terraform/ecr.tf` |
+| Secrets via AWS Secrets Manager | Model API keys, ES256 keypair, NOWPayments creds | `infrastructure/terraform/secrets.tf` |
+| CloudWatch logging | `/ecs/arrakis-{env}/loa-finn` log group | `infrastructure/terraform/monitoring.tf` |
+| Route53 DNS | Subdomain for loa-finn endpoint | `infrastructure/terraform/route53.tf` |
 
-```markdown
-**Multi-model inference** — 5-pool routing (cheap, fast-code, reviewer, reasoning, native) with ensemble orchestration.
-*Source: `packages/adapters/agent/pool-mapping.ts`, `ensemble-accounting.ts`*
-```
+### Performance
 
-No aspirational language without explicit flagging: "Planned: ..." or "Future: ...".
+| Metric | Target | Rationale |
+|--------|--------|-----------|
+| Inference latency (p95) | <30s (model-dependent) | Streaming mitigates perceived latency |
+| Health check response | <200ms | ALB health check interval |
+| Credit creation latency | <2s from webhook receipt | Conservation guard + DB write |
+| Dashboard data freshness | <60s | Near-real-time spend visibility |
 
-#### Cross-Repo Citation Rules
+### Security
 
-Claims about other repositories (loa-finn, loa-hounfour, loa-dixie, loa) must use **stable references only**:
+| Requirement | Implementation |
+|-------------|----------------|
+| S2S JWT (ES256) | loa-freeside signs, loa-finn validates via JWKS |
+| NOWPayments webhook HMAC-SHA512 | Existing LVVER pattern in CryptoWebhookService |
+| API keys hashed at rest | Cleartext shown once at creation only |
+| Rate limiting | 4-dimension (community/user/channel/burst) + per-API-key |
+| BYOK key isolation | Envelope encryption (AES-256-GCM + KMS) — already built |
+| Audit trail immutability | Append-only JSONL with conservation guard results |
 
-| Citation Type | Format | Example |
-|--------------|--------|---------|
-| Tagged release | `repo@vX.Y.Z:path/to/file` | `loa-hounfour@v7.0.0:src/state-machines.ts` |
-| GitHub permalink | Full blob URL with commit SHA | `https://github.com/0xHoneyJar/loa-hounfour/blob/abc123/src/...` |
+### Existing Assets (DO NOT REBUILD)
 
-**Prohibited:** Branch-relative links (`main`, `develop`) — these drift immediately.
-
-Cross-repo stats (test counts, line counts) must include the tag or commit SHA they were measured against. Acceptance criteria: `grep -P 'github\.com.*/(tree|blob)/(main|develop|master)' docs/*.md` returns 0 matches.
-
-#### Citation Automation
-
-To prevent manual SHA pinning from becoming a maintenance burden, a `scripts/pin-citations.sh` script must be created that:
-1. Scans docs for cross-repo references matching pattern `repo@version:path`
-2. Resolves each to a GitHub permalink (commit SHA blob URL) using `gh api`
-3. Updates the Markdown with resolved permalinks
-4. Reports any unresolvable references as errors
-
-This script runs at doc generation time (not CI) and allows bulk-updating all cross-repo citations when a new release is tagged. Manual pinning is acceptable for initial authoring; the script handles ongoing maintenance.
-
-### NFR-2: Agent-Readable
-
-BUTTERFREEZONE.md must be parseable by AI agents. The format follows the existing `<!-- AGENT-CONTEXT -->` pattern with provenance tags and content hashes. An agent reading only BUTTERFREEZONE should be able to:
-- Accurately describe the project
-- Identify key files for any task
-- Understand the ecosystem context
-
-### NFR-3: Developer-First Tone
-
-Documentation targets external developers. Tone is:
-- Direct and technical (not marketing)
-- Code examples over prose
-- "Here's how" over "imagine if"
-- Honest about what exists vs what's planned
-
-### NFR-4: Sustainable
-
-Documentation must be maintainable. Prefer:
-- Auto-generated where possible (BUTTERFREEZONE via script)
-- References to code rather than duplicated descriptions
-- Living documents that can evolve with the codebase
-- Clear ownership (which file documents which subsystem)
+| Asset | Status | Tests | Location |
+|-------|--------|-------|----------|
+| NOWPayments adapter | Production-ready, feature-flagged off | 23 | `themes/sietch/src/packages/adapters/billing/NOWPaymentsAdapter.ts` |
+| Crypto webhook service (LVVER) | Production-ready | 26 | `themes/sietch/src/services/billing/CryptoWebhookService.ts` |
+| Crypto billing routes | Production-ready | 7 | `themes/sietch/src/api/crypto-billing.routes.ts` |
+| Credit pack system | Production-ready | 39 | `themes/sietch/src/packages/core/billing/credit-packs.ts` |
+| Budget manager (BigInt) | Production-ready | Covered | `packages/adapters/agent/budget-manager.ts` |
+| Pool mapping (5 pools) | Production-ready | Covered | `packages/adapters/agent/pool-mapping.ts` |
+| Ensemble accounting | Production-ready | Covered | `packages/adapters/agent/ensemble-accounting.ts` |
+| BYOK encryption | Production-ready | Covered | `packages/adapters/agent/byok-manager.ts` |
+| Discord 22+ commands | Production-ready | Covered | `themes/sietch/src/discord/commands/` |
+| Telegram 10+ commands | Production-ready | Covered | `themes/sietch/src/telegram/commands/` |
+| Terraform (20 modules, 81 .tf files) | Staging-ready | N/A | `infrastructure/terraform/` |
+| Conservation guard | Production-ready | Covered | Multiple locations |
 
 ---
 
-## 6. Technical Context
+## 6. Scope & Prioritization
 
-### Documentation Inventory (Current State)
+### In Scope (P0 — Must Ship)
 
-| Document | Size | Status | Action |
-|----------|------|--------|--------|
-| README.md | 7.7KB | Identity drift — describes Cycle 001 | REWRITE |
-| BUTTERFREEZONE.md | 8KB | "No description available" | REGENERATE |
-| ECOSYSTEM-MAP.md | 5KB | Only 2 repos, stale | REWRITE |
-| CODEBASE-ANALYSIS.md | 10KB | Cycle 008 (26 cycles stale) | REWRITE or DELETE |
-| INFRA-AS-PRODUCT-GTM.md | 15KB | Current and excellent | PRESERVE (internal) |
-| INSTALLATION.md | 25KB | Bot-focused setup | UPDATE |
-| CHANGELOG.md | 30KB | Current | PRESERVE |
-| docs/iac.md | ~5KB | May be stale | UPDATE |
-| docs/cli.md | ~3KB | May be stale | UPDATE |
-| grimoires/loa/reality/ | 14 files | Current | REFERENCE (source of truth) |
-| grimoires/loa/ground-truth/ | 5 files | Verified | REFERENCE (source of truth) |
+| Track | Issues | What | Why |
+|-------|--------|------|-----|
+| Track 0 | #77, #78 | Production deployment + monitoring | Nothing works without this |
+| Track 1A | #79 | NOWPayments credit purchase flow | Revenue — "we have no way to collect money" |
+| Track 2 | #80 | Per-NFT personality routing bridge | Core differentiator — "talk to your NFT" |
+| Track 3 | #81, #82 | Discord threads + budget dashboard | User surface + admin visibility |
+| Track 4 | #83 | Audit trail + pool transparency | Trust — communities won't adopt without it |
 
-### New Documents to Create
+### In Scope (P1 — Ship Within Days of P0)
 
-| Document | Purpose | Priority |
-|----------|---------|----------|
-| docs/ECOSYSTEM.md | 5-repo ecosystem map with layer diagram | P0 |
-| docs/API-QUICKSTART.md | First API call in 5 minutes | P1 |
-| docs/API-REFERENCE.md | Full endpoint documentation | P1 |
-| docs/INFRASTRUCTURE.md | Terraform/IaC documentation | P1 |
-| docs/DEVELOPER-GUIDE.md | Onboarding path index | P1 |
+| Track | Issues | What | Why |
+|-------|--------|------|-----|
+| Product B | #84 | API key management + developer onboarding | Second revenue stream |
+| Track 3 | #85 | Embeddable web chat widget | Non-Discord user acquisition |
 
-### Ecosystem Statistics (Grounded)
+### Out of Scope (This Cycle)
 
-Stats are point-in-time snapshots generated via `cloc` (lines) and test runner output (test counts). Each stat in published docs must include a `generated_at` timestamp and the commit SHA of the repo at measurement time. Cross-repo stats use GitHub tagged release as the reference point.
-
-**Measurement method:** For each repo, run `cloc --json --exclude-dir=node_modules,.next,dist,build` for line counts and `pnpm test -- --reporter=json 2>/dev/null | jq '.numTotalTests'` (or repo-specific equivalent) for test counts. Record commit SHA from `git rev-parse HEAD`.
-
-| Repo | Description | Tests | Measured At | Status |
-|------|-------------|-------|-------------|--------|
-| loa-freeside | Multi-model agent economy platform | 1200+ | To be measured at sprint start | Active (cycle-035) |
-| loa-finn | Agent runtime (sessions, tools, scheduling) | 990+ | To be measured at sprint start | Active |
-| loa-hounfour | Protocol contracts (v7.0.0, Level 4) | 1097 | v4.6.0 tag | Stable |
-| loa-dixie | dNFT Oracle product | — | N/A (pre-launch) | Pre-launch |
-| loa | Agent dev framework (v1.39.1) | — | N/A (framework) | Active |
-
-**Acceptance criteria for stats:** Published numbers must match script output run against the recorded commit SHA. Stale stats (>7 days from publication) must include a "Last verified" note.
-
-### Naming Convention
-
-| Gibson Reference | Repo | Meaning |
-|-----------------|------|---------|
-| **Loa** (Count Zero) | loa | Voodoo spirits — AI agents that ride the network |
-| **Freeside** (Neuromancer) | loa-freeside | The orbital station — where all systems converge |
-| **The Finn** (Neuromancer) | loa-finn | The fence/broker — runtime that connects agents to the world |
-| **Dixie Flatline** (Neuromancer) | loa-dixie | McCoy Pauley's ROM construct — the first AI product that speaks |
-| **Hounfour** (Count Zero) | loa-hounfour | Voodoo temple — where the loa manifest as protocol |
+| Feature | Why Deferred | Reference |
+|---------|-------------|-----------|
+| Soul memory (persistent knowledge) | Post-launch flagship | loa-finn#27 Phase 1 |
+| Inbox privacy (encrypted owner-scoped conversations) | Post-launch | loa-finn#27 Phase 2 |
+| Personality evolution (compound learning) | Post-launch | loa-finn#27 Phase 3 |
+| On-chain autonomous actions (ERC-6551 TBA) | Post-launch | loa-finn#27 Phase 4 |
+| Voice transcription (Whisper) | P2 feature | loa-finn#66 §6 |
+| Natural language scheduling | P2 feature | loa-finn#66 §6 |
+| Agent social network | P2+ feature | loa-finn#66 §6 |
+| WhatsApp/Slack adapters | P2 channel expansion | loa-finn#66 §4 |
 
 ---
 
-## 7. Risks
+## 7. Risks & Dependencies
+
+### Cross-Repo Dependencies
+
+| Dependency | Owner | Status | Blocks |
+|------------|-------|--------|--------|
+| loa-finn Dockerfile | loa-finn#84 | Needed | FR-0.1 (ECS deployment) |
+| loa-finn Prometheus metrics endpoint | loa-finn#90 | Needed | FR-0.5 (monitoring) |
+| loa-finn personality derivation within inference endpoint (returns `X-Pool-Used`/`X-Personality-Id` headers) | loa-finn#88 or #86 | Needed | FR-2.1 (inference enrichment) |
+| loa-finn OpenAPI spec | loa-finn#91 | Needed | FR-5.1 (developer onboarding) |
+| loa-finn x402 permissionless auth | loa-finn#85 | Nice-to-have | FR-3.6 (widget permissionless mode) |
+
+### Technical Risks
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
-| Naming migration introduces inconsistencies | Medium | Medium | FR-8 RTFM validation catches all naming drift |
-| API documentation diverges from actual routes | Medium | High | Ground every endpoint in source file reference; validate against route files |
-| BUTTERFREEZONE regeneration loses provenance integrity | Low | Medium | Run `butterfreezone-validate.sh` after generation |
-| Documentation scope creep (want to write everything) | High | Medium | Strict P0/P1 prioritization; P0 ships first, P1 follows |
-| Stale docs discovered that need deletion | Medium | Low | Audit and mark deprecated or delete with explanation |
-| Team unfamiliar with new naming | Medium | Low | Naming section in ecosystem docs explains all references |
+| loa-finn Dockerfile not ready | Medium | Blocks all of Track 0 | Can create Dockerfile from freeside side if needed |
+| ES256 key rotation in production | Low | Auth failures | Test key rotation in staging first |
+| NOWPayments webhook delivery reliability | Low | Missed payments | LVVER pattern + dead-letter + reconciliation already built |
+| Redis memory pressure (shared instance) | Low | Latency | Monitor via CloudWatch, upgrade cache class if needed |
+| ALB path routing conflicts | Low | 502 errors | Test routing rules in staging before production |
+
+### Environment Variables (New for This Cycle)
+
+```bash
+# NOWPayments (account exists, keys available)
+FEATURE_CRYPTO_PAYMENTS_ENABLED=true
+NOWPAYMENTS_API_KEY=<from env>
+NOWPAYMENTS_IPN_SECRET=<from env>
+NOWPAYMENTS_ENVIRONMENT=production
+
+# loa-finn service (internal only — not public-facing)
+LOA_FINN_URL=http://finn.arrakis-{env}.local:3000  # ECS service discovery, NOT public ALB
+# JWKS hosted by freeside (the JWT issuer), consumed by finn (the verifier)
+FREESIDE_JWKS_URL=https://api.{domain}/.well-known/jwks.json  # finn reads this to validate S2S JWTs
+
+# Model API keys (in Secrets Manager)
+OPENAI_API_KEY=<secrets manager>
+ANTHROPIC_API_KEY=<secrets manager>
+```
 
 ---
 
-## 8. Success Criteria
+## 8. Launch Readiness Requirements
 
-1. **README** accurately describes loa-freeside as a multi-model agent economy infrastructure platform, with all capability claims grounded in source files
-2. **BUTTERFREEZONE** has real description, accurate capabilities, and passes validation script
-3. **Ecosystem map** covers all 5 repos with correct layer diagram and inter-repo dependencies
-4. **Naming** — zero "Arrakis" references in platform-level documentation; Neuromancer naming explained
-5. **API quick-start** enables a developer to make their first agent call by following the guide
-6. **IaC documentation** enables a DevOps engineer to understand and deploy the infrastructure
-7. **RTFM validation** passes — zero broken references, zero naming inconsistencies, zero stale versions
-8. **Onboarding path** — clear sequential flow from README → Ecosystem → Quick-start → Deploy → Extend
+### Rollback & Disaster Recovery (IMP-001)
+
+First production deploy requires explicit rollback procedures:
+
+| Component | Rollback Strategy |
+|-----------|------------------|
+| ECS task definition | Revert to previous task def revision (`aws ecs update-service --task-definition <prev>`) |
+| Database migrations | Forward-only migrations with expand/contract pattern — no `DROP` in initial migration; old columns retained for 1 cycle |
+| Feature flags | Kill switch for NOWPayments (`FEATURE_CRYPTO_PAYMENTS_ENABLED=false`), personality routing, Discord thread creation |
+| DNS/ALB | Route53 weighted routing for blue/green; ALB target group swap |
+| Secrets rotation | Previous ES256 keypair retained in Secrets Manager for JWT validation overlap window (24h) |
+| Full rollback | Revert ECS services to previous task def, disable feature flags, no schema rollback needed (forward-only) |
+
+**RTO target:** <15 minutes for ECS rollback, <5 minutes for feature flag kill switch.
+
+### Database Migration Strategy (IMP-006)
+
+ECS rolling deploys with shared database require:
+
+| Rule | Implementation |
+|------|---------------|
+| Forward-only migrations | No `DROP COLUMN`, `DROP TABLE`, or destructive DDL in initial deploy |
+| Expand/contract pattern | Phase 1: add new columns/tables (backward-compatible). Phase 2 (next cycle): remove deprecated columns |
+| Pre-deploy migration step | Migrations run as ECS task (one-shot) before service update, not during app startup |
+| Zero-downtime constraint | Old code must work with new schema; new code must work with old schema during rolling update |
+| Migration ownership | loa-freeside owns all schema migrations; loa-finn reads only via views or explicit grants |
+| Rollback testing | Every migration tested in staging with rollback to previous task def to verify backward compatibility |
+
+### Go/No-Go Launch Gate (IMP-002)
+
+Before production deploy, an explicit checklist must pass:
+
+| Gate | Verification | Pass Criteria |
+|------|-------------|---------------|
+| E2E payment | NOWPayments sandbox → webhook → credit mint | Credits appear in account, conservation guard passes |
+| S2S JWT exchange | loa-freeside → loa-finn authenticated inference via real ALB/service discovery in staging | Streamed response received, JWT claims (`iss`, `aud`, `exp`) validated; finn rejects expired/wrong-aud tokens |
+| JWT rotation | Rotate ES256 keypair in Secrets Manager, verify both old and new keys work during overlap window | Old key valid for 24h after rotation; new key used for signing; finn fetches updated JWKS within 60s |
+| Personality routing | Two different NFTs → different pool/personality | `X-Pool-Used` and `X-Personality-Id` differ |
+| Webhook delivery | NOWPayments IPN → ALB → credit mint | Idempotent replay returns 200, no duplicates |
+| Monitoring | Conservation guard failure → alert | Slack notification within 60s |
+| Health checks | Both services pass ALB health checks | 200 on `/health` for 5 consecutive checks |
+| Rollback | Feature flag kill switch tested | Payments disabled within 5 minutes |
+| Load baseline | Staging load test (10 concurrent users) | No 5xx errors, p95 latency within targets |
+
+**Decision:** All gates must pass in staging before production deploy. Any failure = no-go.
 
 ---
 
-## 9. The Larger Frame
+## 9. Dependency Graph
 
-This documentation initiative sits at the intersection of three forces:
+```
+Track 0: Deploy (#77)
+    ├── FR-0.1: ECS task def + service (loa-finn)
+    ├── FR-0.2: Docker Compose (local dev)
+    ├── FR-0.3: S2S JWT exchange
+    └── FR-0.4: First inference in production
+         │
+         ├──► Track 0: Monitor (#78)
+         │    ├── FR-0.5: Prometheus
+         │    ├── FR-0.6: CloudWatch dashboards
+         │    └── FR-0.7: Alerting
+         │
+         ├──► Track 1A: Pay (#79)
+         │    ├── FR-1.1: Enable NOWPayments flag
+         │    ├── FR-1.2: Wire webhook → credit mint
+         │    ├── FR-1.3: Credit pack tiers
+         │    ├── FR-1.4: Discord /buy-credits
+         │    └── FR-1.5: Telegram /buy-credits
+         │
+         ├──► Track 2: Personalize (#80)
+         │    ├── FR-2.1: Inference request enrichment (nft_id in JWT)
+         │    ├── FR-2.2: Pool/personality metadata headers in response
+         │    └── FR-2.3: Anti-narration enforcement
+         │         │
+         │         └──► Track 3: Discord Threads (#81)
+         │              ├── FR-3.1: /my-agent thread creation
+         │              ├── FR-3.2: Thread routing
+         │              └── FR-3.3: /agent-info
+         │
+         ├──► Track 3: Dashboard (#82)
+         │    ├── FR-3.4: Usage dashboard
+         │    └── FR-3.5: Admin API endpoints
+         │
+         ├──► Track 4: Audit (#83)
+         │    ├── FR-4.1: JSONL audit trail
+         │    ├── FR-4.2: Pool transparency
+         │    └── FR-4.3: Conservation endpoint
+         │
+         ├──► Product B: API Keys (#84)
+         │    ├── FR-5.1: Key generation
+         │    ├── FR-5.2: Key auth on inference
+         │    ├── FR-5.3: Per-key rate limits
+         │    └── FR-5.4: Self-service portal
+         │
+         └──► Track 3: Web Chat (#85)
+              ├── FR-3.6: Embeddable widget
+              └── FR-3.7: Standalone chat page
+```
 
-1. **Product launch** — "We will be launching this product within the next week or two." The docs ARE the launch surface.
-
-2. **Web4 vision** — From the [manifesto](https://meow.bio/web4.html): *"Money must be scarce, but monies can be infinite."* loa-freeside is infrastructure for the agent economies that make this vision operational. The documentation should position the platform within this context without becoming marketing.
-
-3. **The Cambrian moment** — Five repos, 34 cycles, 303+ sprints, 3000+ tests across the ecosystem. This is the output of what the team describes as "beast mode." The documentation transforms this engineering output into a legible surface that others can build on.
-
-The Stripe parallel is instructive: Patrick Collison famously said "the documentation is the API." For loa-freeside, this cycle makes that true.
+**Critical path:** Deploy (#77) → Pay (#79) + Personalize (#80) → Discord Threads (#81)
 
 ---
 
-## 10. Appendix: The Neuromancer Connection
+## 10. The Competitive Positioning
 
-For those unfamiliar with the source material:
+From loa-finn#66 §9:
 
-William Gibson's **Sprawl trilogy** (*Neuromancer*, *Count Zero*, *Mona Lisa Overdrive*) introduced cyberspace, AI consciousness, and the concept of digital entities (the loa) that emerge from networked computation. The trilogy's central question — what happens when AI systems become autonomous actors within economic networks — is remarkably prescient for what this project builds.
+```
+Our moat is the intersection of:
+  1. On-chain identity      → Token-gated model access (conviction scoring)
+  2. Multi-model orchestration → 5 pools, ensemble strategies, per-model cost attribution
+  3. Cost governance         → BigInt micro-USD, conservation invariants, budget atomicity
 
-- **Neuromancer** (1984): Two AIs (Wintermute and Neuromancer) merge inside the Freeside orbital station to become a superintelligence. The station is where digital and physical economies converge.
-- **Count Zero** (1986): The merged AI fragments into voodoo loa — independent agents that ride the network, each with personality and purpose. A hounfour (voodoo temple) is where these spirits manifest.
-- **Mona Lisa Overdrive** (1988): The loa become fully autonomous economic actors, creating their own value systems within cyberspace.
+No competitor offers all three.
+```
 
-The naming isn't decoration. It's architecture.
+**vs. Nanobot:** They have 9 channels, we have 2 (Discord, Telegram) + API. But they have no cost governance, no token-gating, no NFT identity. We win on infrastructure depth.
+
+**vs. Hive:** They have goal-driven agent generation and self-improvement. But they have no NFT identity, no on-chain gating, no formal economic verification. We win on the capability market model.
+
+**This cycle closes the gap between "infrastructure advantage" and "users can experience it."**
+
+---
+
+## Appendix A: Issue Index
+
+| Issue | Track | Title | Blocked By |
+|-------|-------|-------|------------|
+| [#77](https://github.com/0xHoneyJar/loa-freeside/issues/77) | Track 0 | Production Deployment | loa-finn#84 (Dockerfile) |
+| [#78](https://github.com/0xHoneyJar/loa-freeside/issues/78) | Track 0 | Production Monitoring | #77 |
+| [#79](https://github.com/0xHoneyJar/loa-freeside/issues/79) | Track 1A | NOWPayments Credit Purchase | Nothing (adapter built) |
+| [#80](https://github.com/0xHoneyJar/loa-freeside/issues/80) | Track 2 | Per-NFT Personality Routing | loa-finn#88 or #86 (personality derivation in inference endpoint) |
+| [#81](https://github.com/0xHoneyJar/loa-freeside/issues/81) | Track 3 | Per-NFT Discord Threads | #80, #77 |
+| [#82](https://github.com/0xHoneyJar/loa-freeside/issues/82) | Track 3 | Community Budget Dashboard | #77 |
+| [#83](https://github.com/0xHoneyJar/loa-freeside/issues/83) | Track 4 | Billing Audit Trail | #77 |
+| [#84](https://github.com/0xHoneyJar/loa-freeside/issues/84) | Product B | API Key Management | #77, loa-finn#91 |
+| [#85](https://github.com/0xHoneyJar/loa-freeside/issues/85) | Track 3 | Web Chat Widget | #77, #80 |

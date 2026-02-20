@@ -1,43 +1,45 @@
 {
-  "verdict": "APPROVED",
-  "summary": "All seven previously-blocking contradictions/verification gaps were addressed with concrete contracts, measurement/validation methods, and scoped acceptance criteria, and the changes did not introduce any new truly blocking issues.",
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Most prior blockers were addressed (S2S boundary/JWKS, webhook ingress+idempotency, Discord thread feasibility, widget auth, Prometheus-on-Fargate), but one personality-bridge fix introduced a direct contradiction that is truly blocking for implementation.",
   "previous_issues_status": [
     {
-      "original_issue": "API Quick-Start/Reference requirements were unverifiable due to missing public contract (base URL/env, credential issuance, streaming protocol, public vs admin endpoints, smoke tests)",
+      "original_issue": "Auth boundary between loa-freeside and loa-finn (S2S JWT ES256) was underspecified/inconsistent (JWKS hosting, rotation, internal-only vs public).",
       "status": "fixed",
-      "notes": "The PRD now includes a clear Developer-Facing API Contract (localhost:3000 target, JWT ES256+JWKS, SSE, endpoint classification, credential acquisition paths) plus an explicit curl-based smoke-test checklist as a validation gate."
+      "notes": "Now explicitly states finn is internal-only, SG allows inbound only from freeside, JWKS hosted by freeside (issuer), includes iss/aud/TTL, and defines rotation via Secrets Manager + scheduled Lambda. This resolves the original contradiction and is production-implementable on ECS."
     },
     {
-      "original_issue": "Auth method ambiguity (JWT vs API keys) risked shipping incorrect onboarding steps",
+      "original_issue": "NOWPayments webhook ingress not concretely defined for ALB/TLS + idempotency semantics ambiguous (risk double-mint).",
       "status": "fixed",
-      "notes": "JWT (ES256 + JWKS) is declared primary with operational steps; API keys are explicitly marked Planned with no operational steps, aligning with the quick-start and acceptance criteria."
+      "notes": "Defines a stable public HTTPS endpoint on freeside (`POST https://api.{domain}/api/crypto/webhook`), HMAC-SHA512 verification, and idempotency keyed on `payment_id` with UNIQUE constraint + replay behavior. This is sufficient to ship payments safely."
     },
     {
-      "original_issue": "Ecosystem stats (LOC/tests/versions) lacked a defined measurement method and would drift / be unverifiable",
+      "original_issue": "“Private to holder” Discord thread likely infeasible; permission model/fallback missing.",
       "status": "fixed",
-      "notes": "A canonical measurement approach is specified (cloc + test runner output), with required generated_at + commit SHA/tag anchoring and acceptance criteria tying published numbers to script output."
+      "notes": "Requirement now uses public thread with bot-enforced gating by default, and private threads only when server supports them, with explicit fallback. This is implementable and matches Discord constraints."
     },
     {
-      "original_issue": "BUTTERFREEZONE content hashes were underspecified (algorithm, file set/normalization, validation mode), making validation unreliable",
-      "status": "fixed",
-      "notes": "Hashing is now defined as SHA-256, per-section hashing, normalization rules, explicit exclusion of the meta block, and a validation mode tied to the generating commit/working tree at generation time."
+      "original_issue": "Personality bridge ownership/call flow unclear (freeside calling finn personality endpoint vs ‘route through bridge’).",
+      "status": "not_fixed",
+      "notes": "You correctly chose a single source of truth (finn owns personality derivation) and removed the need for a separate personality lookup endpoint in the Track 2 narrative. However, the Dependency table still lists a required `GET /api/v1/nft/:tokenId/personality` endpoint, and the Dependency Graph still says “FR-2.1: Personality lookup client” / “FR-2.3: System prompt injection,” which contradicts the stated approach (freeside passes nft_id; finn derives personality inside inference). This contradiction will cause the team to build the wrong interface and block integration."
     },
     {
-      "original_issue": "Naming migration policy was contradictory (zero Arrakis vs theme references) and lacked enforceable boundaries",
+      "original_issue": "Web chat widget auth/gating undefined; risk of leaking API keys in browser or bypassing token gating.",
       "status": "fixed",
-      "notes": "The PRD now enumerates zero-tolerance files, exempt/theme directories, and a single-mention historical pattern, with a grep-based validation command integrated into FR-8."
+      "notes": "Defines SIWE → server-issued short-lived session token, explicitly forbids API keys in browser, and provides a community-embedded server-side key option plus read-only unauthenticated mode. This is a viable MVP security model."
     },
     {
-      "original_issue": "IaC acceptance implied production-grade deploy while production deployment was out of scope",
+      "original_issue": "Prometheus requirement lacked a viable ECS/Fargate scraping architecture.",
       "status": "fixed",
-      "notes": "Scope is narrowed to staging/non-production deployment with production hardening as checklist-only; acceptance criteria are aligned (staging deployability + terraform plan validation)."
-    },
-    {
-      "original_issue": "Truth-grounded citation requirement was impossible for cross-repo claims without stable link rules",
-      "status": "fixed",
-      "notes": "Cross-repo citation rules now require tags or commit-SHA permalinks and prohibit branch links, with a grep-based acceptance check to prevent drift/link rot."
+      "notes": "Specifies AMP + ADOT sidecars using ECS task metadata discovery, with CloudWatch Container Insights retained. This is an AWS-supported pattern and meets the 60s alerting goal."
     }
   ],
-  "new_blocking_concerns": [],
+  "new_blocking_concerns": [
+    {
+      "location": "Section 7 'Cross-Repo Dependencies' + Section 8 'Dependency Graph' vs Track 2 'PERSONALITY OWNERSHIP' and FR-2.1 wording",
+      "description": "Personality bridge is internally contradictory: the PRD says no separate personality lookup endpoint is needed and finn derives personality inside inference, but dependencies/graph still require a `GET /api/v1/nft/:tokenId/personality` endpoint and describe a 'personality lookup client'.",
+      "why_blocking": "This will misdirect implementation across repos: freeside engineers may build a client and routing around a personality endpoint that the Track 2 design explicitly says should not exist, while finn engineers may not implement it. That mismatch blocks integration testing for #80 and cascades into #81/#85 (Discord threads + web chat) because both rely on the personality bridge being callable in the agreed way.",
+      "fix": "Make the document consistent with the chosen model (finn owns derivation inside inference): (1) Remove/replace the dependency row that names `GET /api/v1/nft/:tokenId/personality` with 'Personality derivation within inference endpoint (returns X-Pool-Used/X-Personality-Id)'. (2) Update the dependency graph nodes under Track 2 to reflect 'FR-2.1: Inference request enrichment (nft_id in JWT)' and 'FR-2.2: Pool/personality metadata headers' (and remove 'personality lookup client' / 'system prompt injection' if prompts are fully on finn). (3) Optionally tighten FR-2.1 acceptance criteria to state explicitly that freeside does not call a personality endpoint; it only passes nft_id/tier/budget_reservation_id and finn returns metadata."
+    }
+  ],
   "iteration": 2
 }

@@ -1,1471 +1,996 @@
-# Sprint Plan: The Neuromancer Codex — Documentation as Product Surface
+# Sprint Plan: Launch Readiness — Production Stack, Payments & Agent Surfaces
 
-**Version:** 1.3.0
+**Version:** 1.0.0
 **Date:** 2026-02-20
-**Cycle:** cycle-035
+**Cycle:** cycle-036
 **PRD:** grimoires/loa/prd.md (v1.1.0)
 **SDD:** grimoires/loa/sdd.md (v1.0.0)
-**Global Sprint IDs:** 304–313
-**Duration:** 17 working days across 10 sprints
+**Global Sprint IDs:** 314–320
+**Duration:** 14 working days across 7 sprints
 **Team:** 1 engineer (AI-assisted)
 
 ---
 
 ## Sprint Overview
 
-| Sprint | Global ID | Phase | Days | Focus | Gate |
-|--------|-----------|-------|------|-------|------|
-| Sprint 1 | 304 | Phase A | Days 1–2 | Identity | P0 docs review-ready |
-| Sprint 2 | 305 | Phase B+C | Days 3–7 | Developer Surface + Infrastructure | Smoke-test passes, terraform plan clean |
-| Sprint 3 | 306 | Phase D+E | Days 8–10 | Polish + Validation | All success criteria met |
-| Sprint 4 | 307 | Phase F | Day 11 | Educational Deep Docs | ECONOMICS.md + EVENT-PROTOCOL.md grounded |
-| Sprint 5 | 308 | Phase G | Day 12 | Merge Prep | RTFM 8/8 pass, PR ready for review |
-| Sprint 6 | 309 | Phase H | Day 13 | Bridge Findings | Bridgebuilder findings addressed, RTFM 8/8 |
-| Sprint 7 | 310 | Phase I | Day 14 | Protocol Stability & Governance | NATS stability tiers, doc semver governance |
-| Sprint 8 | 311 | Phase J | Days 15–16 | Cross-Repo Education | Multi-repo learning journey, concept glossary |
-| Sprint 9 | 312 | Phase K | Day 17 | Protocol Formalization & Discovery | Economic spec deepening, BUTTERFREEZONE discovery |
-| Sprint 10 | 313 | Phase L | Day 17 | Final Excellence & Merge | RTFM 8/8, citations, PR update |
+| Sprint | Global ID | SDD Phase | Days | Focus | Gate |
+|--------|-----------|-----------|------|-------|------|
+| Sprint 1 | 314 | Phase 1a | Days 1–2 | Foundation — IaC + Migrations | `terraform plan` clean, migrations applied, ECR repo exists |
+| Sprint 2 | 315 | Phase 1b | Days 3–4 | Auth + First Inference Through Finn | S2S JWT validated in staging, streamed response end-to-end |
+| Sprint 3 | 316 | Phase 2 | Days 5–6 | Revenue — Payments + Credit Mint | Webhook → credit mint → conservation guard in staging |
+| Sprint 4 | 317 | Phase 3+4a | Days 7–9 | Personality Routing + Discord Agent Threads | Two NFTs routed differently, `/my-agent` thread working |
+| Sprint 5 | 318 | Phase 4b | Days 10–11 | Admin Dashboard + Audit Trail | Admin API returns usage/billing, JSONL export works |
+| Sprint 6 | 319 | Phase 5 | Days 12–13 | API Platform + Web Chat Widget | Developer creates key → inference → streamed response |
+| Sprint 7 | 320 | Phase 6 | Day 14 | Hardening — Monitoring + Go/No-Go Gate | All 11 go/no-go gates pass, production deploy |
 
-**Dependency chain:** Sprint 1 → Sprint 2 → Sprint 3 (sequential gates)
-**Parallel opportunity:** Within Sprint 2, API docs and IaC docs run in parallel.
-**Phase I–L dependency:** Sprint 7 → Sprint 8 (stability tiers referenced in learning path). Sprint 9 parallel with Sprint 8. Sprint 10 depends on all.
+**Dependency chain:** Sprint 1 → Sprint 2 → Sprint 3 (sequential — infra must exist before auth, auth before payments)
+**Partial parallel:** Sprint 4 and Sprint 5 share context but Sprint 5 depends on Sprint 4 admin API foundations.
+**Sprint 6 parallel:** API platform can begin after Sprint 2 (S2S auth exists), but web chat depends on Sprint 4 personality routing.
+**Sprint 7 depends on all.**
+
+**P0 Critical Path (PRD §2):**
+1. Deploy → Sprint 1 + 2
+2. S2S Auth → Sprint 2
+3. Basic Discord chat → Sprint 4
+4. Payment + credit mint → Sprint 3
+5. Minimal alerting → Sprint 7
+
+**Schedule Risk & Buffer (Flatline SKP-001):**
+The 14-day estimate assumes near-perfect execution with 1 engineer (AI-assisted). Risk mitigations:
+- **Buffer:** Add 3–5 days slack (realistic target: 17–19 working days)
+- **Scope triage if behind:** Sprint 6 (API platform + web widget) is P1 and CAN be deferred to a follow-up cycle without blocking P0 launch. Telegram `/buy-credits` (3.6) is also deferrable.
+- **Minimum Viable Go/No-Go:** If Sprint 7 is unreachable by Day 14, a reduced gate set enables P0 launch:
+  1. Health checks passing (Sprint 1)
+  2. S2S JWT validated (Sprint 2)
+  3. At least one inference pool responds (Sprint 2)
+  4. Webhook → credit mint working (Sprint 3)
+  5. `/my-agent` thread creation working (Sprint 4)
+  6. Conservation guard passing (Sprint 3)
+  7. Basic Slack alerting on health check failure (Sprint 7, task 7.2 only)
+- **Sequential dependency risk:** If Sprint 1 slips >1 day, immediately parallelize Sprint 1 remaining + Sprint 2 tasks where possible (e.g., JWKS code can be written before Terraform fully applied).
 
 **Prerequisites:**
-- jq >=1.7 installed (via `brew install jq`, `apt install jq`, or pinned in `.tool-versions` for asdf/mise). CI runner must also satisfy this. Scripts check at startup and fail with exit 13 if not met.
-- Node.js >=20 with ts-morph available (for route extraction in Sprint 2)
-- `gh` CLI authenticated (for citation pinning in Sprint 3)
-
-**Local dev environment setup (prerequisite for smoke tests):**
-- Clone repo, `pnpm install`
-- Copy `.env.example` to `.env`, fill required values (DATABASE_URL, REDIS_URL, JWT_SECRET)
-- Run `docker-compose up -d` for Postgres + Redis (or use local instances)
-- Run `pnpm run dev` — server starts on `localhost:3000`
-- Verify: `curl http://localhost:3000/api/agents/health` returns 200
-- For JWT: `gaib auth setup-dev && export JWT=$(gaib auth token --dev)`
-
-**CI toolchain pinning (`.tool-versions`):**
-```
-jq 1.7.1
-nodejs 20.11.0
-```
-CI runners must use these exact versions. `cloc` version pinned in CI config. Hash computations exclude nondeterministic fields (timestamps, absolute paths) — only content-derived fields are hashed.
-
-**Capacity planning:**
-- **Estimated total effort:** ~45–55 hours across 10 days
-- **AI-assisted velocity multiplier:** ~2–3x for documentation tasks (AI drafts, human validates)
-- **Buffer:** 15% buffer built into Sprint 2 (5 days for ~3.5 days of work)
-- **Cut-line:** If Sprint 1 gate not met by Day 3, descope BUTTERFREEZONE golden vectors to Sprint 2 and IaC docs to document-only (no diagrams)
-
-**Gate failure rollback:**
-- Each sprint works on a feature branch: `docs/cycle-035-sprint-N`
-- Gate failure → review failures, fix on same branch, re-attempt gate
-- If gate is unachievable, revert branch to last passing commit, descope, and re-attempt
-- No partial merges to main — all-or-nothing per sprint
-
-**CI integration for validation scripts:**
-- `scripts/rtfm-validate.sh` runs as GitHub Actions required check on PRs touching `docs/` or `*.md`
-- `butterfreezone-validate.sh` runs on PRs touching `BUTTERFREEZONE.md` or `butterfreezone-gen.sh`
-- `scripts/extract-routes.sh --diff` runs on PRs touching `themes/sietch/src/api/routes/`
-- Naming grep check runs on all PRs as advisory (non-blocking for non-doc PRs)
-
-**Weekly verification mechanism (post-launch):**
-- Scheduled CI job (weekly) runs `scripts/rtfm-validate.sh` against main branch
-- Failures create GitHub issue assigned to DRI from ownership table
-- Triage SLA: 3 business days from issue creation
-- Results logged to `grimoires/loa/NOTES.md`
+- NOWPayments API key available as env var (`NOWPAYMENTS_API_KEY`, `NOWPAYMENTS_IPN_SECRET`)
+- AWS credentials with ECS/ECR/Secrets Manager access
+- loa-finn repository accessible for Dockerfile creation (loa-finn#84)
+- Existing Terraform state for `infrastructure/terraform/`
 
 ---
 
-## Sprint 1: IDENTITY (Global ID: 304)
+## Sprint 1: Foundation — IaC + Migrations
 
-**Goal:** Establish the new platform identity across the three P0 documents.
-**Duration:** Days 1–2
-**Gate:** README, BUTTERFREEZONE, and ECOSYSTEM are review-ready with zero naming violations.
+**Global ID:** 314
+**SDD Phase:** Phase 1a
+**Days:** 1–2
+**Goals:** G-1 (Deploy full stack to production on existing AWS ECS)
+**FRs:** FR-0.1 (Deploy loa-finn ECS), FR-0.2 (Docker Compose), FR-0.5 (Metrics collection)
 
-### Task 1.1: README.md Rewrite
+### Tasks
 
-**ID:** S304-T1
-**Priority:** P0
-**Effort:** Large (4–6 hours)
-**Dependencies:** None (first task)
-**FR:** FR-1
-
-**Description:**
-Complete rewrite of README.md from "engagement intelligence platform" to "multi-model agent economy infrastructure platform." Ground every capability claim in source file citations using the unified `<!-- cite: ... -->` syntax.
-
+#### 1.1 loa-finn ECS Task Definition + Service
+**Description:** Add loa-finn as a new ECS Fargate service in the existing cluster. Create ECR repository `arrakis-{env}-loa-finn`, task definition with ADOT sidecar, service with desired count, and ALB target group.
 **Acceptance Criteria:**
-- [ ] Opens with accurate platform description (not "engagement intelligence")
-- [ ] Feature inventory covers: multi-model inference, budget atomicity, token-gated capabilities, payment rails, multi-tenant RLS, Discord/TG/API distribution, IaC
-- [ ] Each capability has `<!-- cite: loa-freeside:path -->` citation
-- [ ] Architecture diagram reflects actual package/app/infrastructure/themes structure
-- [ ] Ecosystem section covers all 5 repos with layer diagram
-- [ ] Quick-start paths for developers (→ API-QUICKSTART) and operators (→ INSTALLATION)
-- [ ] Technology stack table is current and accurate
-- [ ] Documentation index table links to all new docs
-- [ ] Zero "Arrakis" references in platform context
-- [ ] Badges: version (from package.json), license
+- `infrastructure/terraform/ecs-finn.tf` created with task definition, service, ECR repo
+- Security group allows inbound only from loa-freeside's security group (no public listener)
+- Service discovery registered at `finn.arrakis-{env}.local` via Cloud Map
+- `terraform plan` shows clean additions (no destructive changes)
+- ADOT sidecar container included in task definition for Prometheus metrics
 
-**Testing:**
-- `grep -ci "arrakis" README.md` returns 0
-- All `<!-- cite: ... -->` tags point to existing files
-- Version badge matches package.json
+**Effort:** L
+**Dependencies:** None (existing Terraform state)
 
-### Task 1.2: BUTTERFREEZONE.md Regeneration
-
-**ID:** S304-T2
-**Priority:** P0
-**Effort:** Large (4–6 hours)
-**Dependencies:** S304-T1 (README establishes description alignment)
-**FR:** FR-2
-
-**Description:**
-Regenerate BUTTERFREEZONE.md with the updated `butterfreezone-gen.sh` script. Implement the jq canonicalization pipeline, error taxonomy, and golden test vectors. The agent context must have real description, not "No description available."
-
+#### 1.2 Cloud Map Service Discovery + Internal Routing
+**Description:** Configure AWS Cloud Map private DNS namespace and register both services for internal discovery. loa-freeside reaches finn (and vice versa for JWKS) via Cloud Map, not ALB path routing (per SDD §1.3 trust model).
 **Acceptance Criteria:**
-- [ ] Agent context: `name: loa-freeside`, `type: platform`, real `purpose:` description
-- [ ] `key_files:` references actual platform files (core ports, agent gateway, billing, CLI, terraform)
-- [ ] Capabilities section organized by domain with `<!-- cite: ... -->` per capability
-- [ ] Interfaces section: REST routes, Discord commands, Telegram commands, CLI commands
-- [ ] Module map with accurate file counts and LOC
-- [ ] `butterfreezone-gen.sh` implements jq canonicalization (`jq -Sc '.'`, not RFC 8785)
-- [ ] Error taxonomy implemented: exit codes 10–13, fail-closed on partial scan
-- [ ] Minimum section requirement: agent_context, capabilities, interfaces, module_map
-- [ ] `butterfreezone-validate.sh` re-computes hashes and compares
-- [ ] Golden test vectors committed to `tests/fixtures/butterfreezone-golden/`
-- [ ] At least 2 vectors: vector-001-routes and vector-003-full
-- [ ] Cross-platform determinism: `LC_ALL=C sort` for file lists, LF normalization
-- [ ] jq version check at script startup (>=1.7)
-- [ ] `ground-truth-meta` block with per-section SHA-256 hashes
+- Cloud Map private DNS namespace `arrakis-{env}.local` exists (create if not present)
+- loa-finn ECS service has `service_registries` configured → resolves as `finn.arrakis-{env}.local`
+- loa-freeside ECS service has `service_registries` configured → resolves as `freeside.arrakis-{env}.local`
+- Verification: exec into freeside task → `nslookup finn.arrakis-{env}.local` resolves to finn task IP
+- Verification: exec into finn task → `nslookup freeside.arrakis-{env}.local` resolves to freeside task IP
+- Internal-only ALB target group for loa-finn on port 3000, health check at `/health`
+- No public ALB listener rule for finn (network enforcement)
+- `infrastructure/terraform/service-discovery.tf` with Cloud Map namespace + service definitions
+- Remove Route53 private hosted zone if Cloud Map namespace handles resolution
+- **Day 1 validation spike (Flatline SKP-002):**
+  - First task on Day 1: deploy Cloud Map namespace to staging, register a dummy ECS service, confirm `nslookup` resolves from inside a task container
+  - Validate VPC DNS settings: `enableDnsHostnames = true`, `enableDnsSupport = true` (required for Cloud Map)
+  - Confirm no conflicting private hosted zone for `arrakis-{env}.local` in Route53
+  - **Fallback path:** If Cloud Map fails in existing VPC/ECS setup, document ALB internal listener fallback — each service reaches the other via internal ALB DNS name (`internal-arrakis-{env}-alb-*.elb.amazonaws.com`) with path-based routing. This is less ideal (extra hop, ALB cost) but functional
+  - Time-box: 2 hours max for spike. If Cloud Map works → proceed. If not → switch to ALB internal immediately (do not debug Cloud Map during sprint)
 
-**Testing:**
-- `butterfreezone-validate.sh` passes against generated output
-- Golden vectors pass against fixture directories
-- Agent context `purpose` is not "No description available"
+**Effort:** M
+**Dependencies:** 1.1
 
-### Task 1.3: docs/ECOSYSTEM.md Creation
-
-**ID:** S304-T3
-**Priority:** P0
-**Effort:** Medium (3–4 hours)
-**Dependencies:** None (parallel with T1)
-**FR:** FR-3
-
-**Description:**
-Create comprehensive 5-repo ecosystem map replacing the stale 2-repo ECOSYSTEM-MAP.md. Include layer diagram, per-repo summaries, protocol contract flow, Neuromancer naming explanation, Web4 connection, and statistics.
-
+#### 1.3 Database Migrations 061–065
+**Description:** Create database migrations for new tables required by cycle-036: `s2s_jwks_public_keys`, `api_keys`, `agent_threads`, `admin_audit_log`, `crypto_payments` extensions (if not already migrated).
 **Acceptance Criteria:**
-- [ ] Layer diagram shows all 5 repos with dependency arrows (Layer 1–5)
-- [ ] Per-repo summary: purpose, key stats, primary interfaces, relationship to other repos
-- [ ] Protocol contract flow section: how loa-hounfour schemas flow through the system
-- [ ] Neuromancer naming map with Gibson references for all 5 repos
-- [ ] Web4 vision connection (brief, not marketing)
-- [ ] Statistics table with measurement method and commit SHA per repo
-- [ ] `scripts/ecosystem-stats.sh` created — shallow-clone at pinned ref + cloc + test count
-- [ ] Stats caching to `grimoires/loa/cache/ecosystem-stats.json` with 7-day TTL
-- [ ] Zero "Arrakis" references
+- Migration 061: `s2s_jwks_public_keys` table (kid, kty, crv, x, y, created_at, expires_at)
+- Migration 062: `api_keys` table (id, user_id, community_id, key_prefix, key_hash, key_salt, pepper_version, name, scopes, rate_limit_rpm, rate_limit_tpd, is_active, last_used_at, created_at, revoked_at)
+- Migration 063: `agent_threads` table (id, nft_id, channel_id, thread_id, owner_wallet, community_id, created_at, last_active_at, ownership_verified_at)
+- Migration 064: `budget_reservations` table with `finalization_id UNIQUE`, `status CHECK`, `spend_events` table
+- Migration 065: `crypto_payments` extensions (`credits_minted_at`, `credits_mint_event_id UNIQUE`, `status_rank`)
+- All migrations run forward/backward cleanly
+- Existing 95 payment tests still pass
+- **Zero-downtime migration rules (Flatline IMP-004):**
+  - All migrations MUST be additive-only (new tables, new nullable columns, new indexes)
+  - No column renames, type changes, or NOT NULL additions without default in same migration
+  - Expand/contract pattern: add new column → deploy code that writes both → backfill → drop old (separate migrations)
+  - Deploy-order independence: migrations must be safe to run before OR after new code deploys
+  - Verification checklist: `pg_dump --schema-only` diff shows only ADDs, no ALTERs of existing columns
 
-**Testing:**
-- `scripts/ecosystem-stats.sh --fresh` runs successfully for loa-freeside (local)
-- Layer diagram verified against actual package.json dependencies
-- `grep -ci "arrakis" docs/ECOSYSTEM.md` returns 0
-
-### Task 1.4: Naming Migration
-
-**ID:** S304-T4
-**Priority:** P0
-**Effort:** Small (1–2 hours)
-**Dependencies:** S304-T1, S304-T2, S304-T3 (applies to all Phase A docs)
-**FR:** FR-8 (partial)
-
-**Description:**
-Validate all zero-tolerance files have zero "Arrakis" references. Add historical reference note to CHANGELOG.md and INSTALLATION.md.
-
-**Acceptance Criteria:**
-- [ ] Zero-tolerance naming grep passes for all 7 files
-- [ ] CHANGELOG.md has historical reference note
-- [ ] INSTALLATION.md has historical reference note in header
-
-**Testing:**
-- Naming grep validation: zero matches across all zero-tolerance files
-
----
-
-## Sprint 2: DEVELOPER SURFACE + INFRASTRUCTURE (Global ID: 305)
-
-**Goal:** Create the developer-facing API documentation and infrastructure documentation.
-**Duration:** Days 3–7
-**Gate:** Smoke-test checklist passes against local instance; `terraform plan` produces no errors.
-
-### Task 2.0: Define Stable Endpoint List
-
-**ID:** S305-T0
-**Priority:** P0
-**Effort:** Small (1 hour)
-**Dependencies:** Sprint 1 complete
-**FR:** FR-4 (prerequisite)
-
-**Description:**
-Lock the 7 guaranteed-stable endpoints in a single canonical source file (`docs/api/stable-endpoints.json`). This is the source of truth referenced by the quick-start, reference, smoke-test checklist, and stability labeling.
-
-**Acceptance Criteria:**
-- [ ] `docs/api/stable-endpoints.json` created with array of `{ method, path, auth, purpose }`
-- [ ] Verified each endpoint exists in route source files
-- [ ] Smoke-test checklist will be generated from this list
-- [ ] Referenced by both API-QUICKSTART and API-REFERENCE
-
-**Testing:**
-- Each endpoint in the JSON responds (not 404) against local dev server
-
-### Task 2.1: scripts/extract-routes.sh
-
-**ID:** S305-T1
-**Priority:** P1
-**Effort:** Large (4–6 hours)
-**Dependencies:** S305-T0 (stable list defined)
-**FR:** FR-4 (tooling prerequisite)
-
-**Description:**
-Build the route extraction tool. Preferred approach is ts-morph AST parsing; if AST proves impractical, a grep-based pattern matcher on Express `router.METHOD()` calls is an acceptable pragmatic alternative (document the chosen approach in the script header). Define supported patterns, implement unresolvable pattern linter, create initial route snapshot.
-
-**Acceptance Criteria:**
-- [ ] Parses supported patterns: direct method calls, router.use sub-mounts, method chaining, path constants, middleware chains (AST), or equivalent grep patterns for `router.get/post/put/delete/patch()` calls
-- [ ] Flags unsupported patterns: template literals, dynamic/computed, conditional registration
-- [ ] Unresolvable linter: fails if >5% of registrations are unresolvable (AST mode) or logs advisory for grep mode
-- [ ] Emits JSON: `{ method, full_path, auth, source_file, line }` sorted by `{method, full_path}`
-- [ ] Route snapshot created at `scripts/route-snapshot.json`
-- [ ] `--diff` mode compares against snapshot (new=info, missing=error, changed auth=warning)
-- [ ] `--count` mode returns total extracted count
-
-**Testing:**
-- Extracts >=80 routes from current codebase
-- Snapshot diff against freshly extracted routes shows zero missing
-
-### Task 2.2: docs/API-QUICKSTART.md
-
-**ID:** S305-T2
-**Priority:** P1
-**Effort:** Large (4–6 hours)
-**Dependencies:** S305-T1 (route extraction for completeness verification)
-**FR:** FR-4
-
-**Description:**
-"First agent call in 5 minutes" tutorial covering the 7 guaranteed-stable endpoints. Include local auth setup, copy-pastable curl examples, smoke-test checklist, and security disclaimers.
-
-**Acceptance Criteria:**
-- [ ] Local auth setup: `gaib auth setup-dev` + `gaib auth token --dev` flow
-- [ ] Manual JWT alternative documented (openssl-based)
-- [ ] 7 stable endpoints fully documented with curl, headers, request/response, errors
-- [ ] Stability contract: compatibility, deprecation (2-cycle), versioning, change log, promotion
-- [ ] Smoke-test checklist: numbered curl commands, expected status codes
-- [ ] Security disclaimers: no private keys, separate JWKS, TTL, aud/iss validation
-- [ ] AUTH_BYPASS documented with code-level safeguard requirement
-- [ ] Zero "Arrakis" references
-
-**Testing:**
-- Smoke-test checklist passes against `npm run dev`
-- JWT minting flow produces valid token accepted by local server
-
-### Task 2.3: docs/API-REFERENCE.md
-
-**ID:** S305-T3
-**Priority:** P1
-**Effort:** Medium (3–4 hours)
-**Dependencies:** S305-T1, S305-T2
-**FR:** FR-4
-
-**Description:**
-Two-tier API reference: Tier 1 stable endpoints with full docs, Tier 2 auto-extracted route index.
-
-**Acceptance Criteria:**
-- [ ] Tier 1: 7 stable endpoints with full request/response documentation
-- [ ] Tier 2: Auto-extracted route index from `scripts/extract-routes.sh`
-- [ ] Each Tier 2 route: method, path, auth, source file, stability label
-- [ ] Tier 2 contract documented: may change without notice, no examples
-- [ ] API-CHANGELOG.md created (initially empty, with format template)
-- [ ] Promotion criteria: stable 2+ cycles, smoke-test coverage, full docs
-- [ ] Zero "Arrakis" references
-
-**Testing:**
-- Route index count matches `scripts/extract-routes.sh --count`
-- All Tier 1 endpoints appear as "Stable" in index
-
-### Task 2.4: Tier 2 Contract Checks
-
-**ID:** S305-T4
-**Priority:** P1
-**Effort:** Medium (2–3 hours)
-**Dependencies:** S305-T1
-**FR:** FR-4
-
-**Description:**
-Framework-agnostic integration test validating Tier 2 route contracts against a running local dev server via HTTP requests (not framework internals).
-
-**Acceptance Criteria:**
-- [ ] Auth requirement validation: for each indexed GET route, send unauthenticated GET — expect 401/403 if auth required, 2xx/3xx if no auth. Non-GET routes (POST/PUT/DELETE) are verified as not-404 only via OPTIONS or HEAD (treat 405 as non-fatal pass)
-- [ ] Not-404 validation: all indexed GET routes respond (not 404); non-GET routes verified via safe probe only
-- [ ] Per-route probe method override supported in extracted JSON (`probe_method` field, default GET)
-- [ ] Non-idempotent routes (POST/PUT/DELETE) are never sent with bodies — probe only for existence
-- [ ] Results compared against route snapshot — divergence logged as warning
-- [ ] Script: `scripts/verify-routes.sh` starts dev server, runs checks, reports
-- [ ] Optional: runtime introspection via dev-only `/api/debug/routes` endpoint (if available, cross-check against extraction; if not available, skip gracefully)
-
-**Testing:**
-- `scripts/verify-routes.sh` passes against local dev server
-- Zero 404s for indexed routes
-
-### Task 2.5: docs/CLI.md Update
-
-**ID:** S305-T5
-**Priority:** P1
-**Effort:** Small (2–3 hours)
-**Dependencies:** None (parallel)
-**FR:** FR-6
-
-**Description:**
-Update CLI documentation to match current `gaib` implementation.
-
-**Acceptance Criteria:**
-- [ ] All gaib subcommands documented with usage and examples
-- [ ] Installation instructions
-- [ ] Configuration documentation
-- [ ] Validated against `gaib --help` output
-
-**Testing:**
-- Every documented command exists in `gaib --help`
-
-### Task 2.6: docs/INFRASTRUCTURE.md + Terraform Plan Harness
-
-**ID:** S305-T6
-**Priority:** P1
-**Effort:** Large (4–6 hours)
-**Dependencies:** None (parallel — Phase C)
-**FR:** FR-5
-
-**Description:**
-Document the IaC story: deployment topology, Terraform modules, staging guide, monitoring, cost estimation. Also create a runnable Terraform plan harness for gate validation.
-
-**Acceptance Criteria:**
-- [ ] Architecture diagram: ECS → RDS → ElastiCache → ALB → Route53 → CloudWatch → KMS
-- [ ] Module inventory: each `.tf` file with purpose and key variables
-- [ ] Staging deployment guide: prerequisites, step-by-step, verification
-- [ ] Monitoring: CloudWatch dashboards, alarms, log aggregation
-- [ ] Cost estimation (~$150–200/mo) grounded in resource configs
-- [ ] Production hardening checklist
-- [ ] Security: KMS required, VPC/security group guidance, no credentials in docs
-- [ ] Zero "Arrakis" references
-- [ ] **Terraform plan harness:** `scripts/tf-plan.sh` created that:
-  - Runs from the correct module directory (`infrastructure/terraform/`)
-  - Uses `terraform init -backend=false` (no cloud credentials required)
-  - Provides `terraform.tfvars.example` with safe dummy values for all required variables
-  - Runs `terraform validate` + `terraform plan` with the example vars
-  - Exits 0 if plan succeeds (gate pass), non-zero with error details (gate fail)
-
-**Testing:**
-- `scripts/tf-plan.sh` exits 0 locally without AWS credentials
-- Every `.tf` file accounted for in module inventory
-
-### Task 2.7: AUTH_BYPASS Code Safeguard
-
-**ID:** S305-T7
-**Priority:** P1
-**Effort:** Small (1–2 hours)
+**Effort:** L
 **Dependencies:** None
-**FR:** FR-4 (SKP-005)
 
-**Description:**
-Implement code-level AUTH_BYPASS protection: environment gate, startup check, build exclusion.
-
+#### 1.4 Docker Compose Full-Stack Local Dev
+**Description:** Create `docker-compose.yml` for local development with loa-freeside + loa-finn + Redis + PostgreSQL.
 **Acceptance Criteria:**
-- [ ] `AUTH_BYPASS` only honored when `NODE_ENV !== 'production'`
-- [ ] Server refuses to start if `AUTH_BYPASS=true` and `NODE_ENV=production`
-- [ ] Log warning emitted at startup when bypass enabled
-- [ ] Production Docker build sets `NODE_ENV=production`
+- `docker compose up` starts all 4 services
+- loa-freeside reachable at `localhost:3000`
+- loa-finn reachable at `localhost:3001` (internal only)
+- Health checks pass on both services
+- Environment variables loaded from `.env.example`
+- PostgreSQL migrations auto-run on startup
 
-**Testing:**
-- Setting `AUTH_BYPASS=true NODE_ENV=production` causes startup failure
-- Setting `AUTH_BYPASS=true NODE_ENV=development` works with warning log
+**Effort:** M
+**Dependencies:** 1.3
+
+#### 1.5 Secrets Manager Configuration
+**Description:** Add Secrets Manager entries for ES256 keypair, NOWPayments credentials, and model API keys. Reference existing `infrastructure/terraform/secrets.tf`.
+**Acceptance Criteria:**
+- ES256 private key secret created (`arrakis-{env}-s2s-es256-private-key`)
+- NOWPayments API key and IPN secret stored (`arrakis-{env}-nowpayments-api-key`, `arrakis-{env}-nowpayments-ipn-secret`)
+- Terraform references from ECS task definition environment
+- Rotation policy documented (quarterly for ES256, on-compromise for API keys)
+
+**Effort:** M
+**Dependencies:** 1.1
+
+#### 1.6 AMP Workspace + ADOT Configuration
+**Description:** Create Amazon Managed Prometheus workspace and configure ADOT sidecar for both services.
+**Acceptance Criteria:**
+- `infrastructure/terraform/amp.tf` with AMP workspace
+- ADOT sidecar config discovers ECS task metadata endpoint for targets
+- Both freeside and finn emit Prometheus metrics to AMP
+- CloudWatch Container Insights remain for ECS-level metrics
+
+**Effort:** M
+**Dependencies:** 1.1
+
+### Sprint 1 Gate
+- [ ] `terraform plan` clean — no destructive changes
+- [ ] Migrations 061–065 applied to dev database
+- [ ] Docker Compose starts all services
+- [ ] ECR repository exists with placeholder image
+- [ ] Secrets Manager entries provisioned
 
 ---
 
-## Sprint 3: POLISH + VALIDATION (Global ID: 306)
+## Sprint 2: Auth + First Inference Through Finn
 
-**Goal:** Complete the documentation suite with cross-links, ownership, citations, and pass all validation gates.
-**Duration:** Days 8–10
-**Gate:** RTFM validation passes, all success criteria met.
+**Global ID:** 315
+**SDD Phase:** Phase 1b
+**Days:** 3–4
+**Goals:** G-1 (Deploy), G-4 (Per-NFT routing — foundation)
+**FRs:** FR-0.3 (S2S JWT), FR-0.4 (Model pool responds to inference)
 
-### Task 3.1: docs/DEVELOPER-GUIDE.md
+### Tasks
 
-**ID:** S306-T1
-**Priority:** P1
-**Effort:** Medium (2–3 hours)
-**Dependencies:** All Sprint 2 docs complete
-**FR:** FR-7, FR-9
-
-**Description:**
-Onboarding index page with sequential learning path and ownership table.
-
+#### 2.1 ES256 Key Material Bootstrap + JWKS Endpoint
+**Description:** Generate initial ES256 keypair, store private key + `activeKid` in Secrets Manager, insert public JWK into `s2s_jwks_public_keys` table. Then implement `/.well-known/jwks.json` route on loa-freeside that serves public keys from DB. Dual-path: internal Cloud Map for finn, public ALB for third-party verifiers.
 **Acceptance Criteria:**
-- [ ] Sequential path: README → ECOSYSTEM → API-QUICKSTART → API-REFERENCE → INFRASTRUCTURE → CLI
-- [ ] Ownership table: every document has DRI, update trigger, review cadence
-- [ ] Versioning headers: each doc has version (v1.0.0)
-- [ ] Errata process documented
-- [ ] Zero "Arrakis" references
+- **Bootstrap script** (`scripts/bootstrap-s2s-keys.sh`): generates ES256 keypair, stores private key PEM in Secrets Manager (`arrakis-{env}-s2s-es256-private-key`), stores `activeKid` string in Secrets Manager, inserts public JWK row into `s2s_jwks_public_keys` with `kid`, `kty=EC`, `crv=P-256`, `x`, `y`, `created_at`, `expires_at` (90 days)
+- **Admin ops script** (`scripts/rotate-s2s-key.sh`): generates new keypair, inserts new public JWK, updates `activeKid` (but does NOT remove old key — that's manual after 24h overlap)
+- `GET /.well-known/jwks.json` returns JWK Set with all non-expired keys (not just active)
+- Keys served from `s2s_jwks_public_keys` table (DB is source of truth for public keys)
+- Private keys ONLY in Secrets Manager (never in DB)
+- Selection rule: serve all rows where `expires_at > NOW()`; signing uses key matching `activeKid` from Secrets Manager
+- Cache-Control: max-age=300 on public endpoint
+- Health check does NOT depend on JWKS availability
+- **Key management operational invariants (Flatline SKP-003):**
+  - Bootstrap and rotation scripts MUST NOT log or stdout key material (redirect to /dev/null, use `set +x` around key ops)
+  - Secrets Manager access policy: only ECS task role + rotation Lambda can read private key; no human IAM access without break-glass procedure
+  - Rotation procedure is atomic: publish new public key → verify JWKS serves it → canary test (freeside signs → finn validates with new kid) → ONLY THEN switch `activeKid`
+  - Audit logging: every Secrets Manager `GetSecretValue` and `PutSecretValue` logged to CloudTrail
+  - Automated canary: CI job runs `sign-with-new-key → validate-on-finn` before `activeKid` switch (fail = abort rotation)
+  - Recovery runbook: if `activeKid` and private key drift, revert `activeKid` to previous value (JWTs signed in last 60s will expire naturally)
 
-**Testing:**
-- Every document link resolves to existing file
-- Ownership table covers all 8 documents
+**Effort:** L
+**Dependencies:** Sprint 1 (1.3 migrations, 1.5 secrets)
 
-### Task 3.2: Cross-Links
-
-**ID:** S306-T2
-**Priority:** P1
-**Effort:** Small (1–2 hours)
-**Dependencies:** S306-T1
-**FR:** FR-7
-
-**Description:**
-Add "Next Steps" section to every document linking to logical next document.
-
+#### 2.2 S2S JWT Signing Service
+**Description:** Create ES256 JWT signing service that produces S2S tokens for loa-finn requests. Signs with private key from Secrets Manager. Claims: `iss: loa-freeside`, `aud: loa-finn`, TTL: 60s.
 **Acceptance Criteria:**
-- [ ] Every doc ends with "Next Steps"
-- [ ] Links follow cross-reference map
-- [ ] All links resolve
+- `S2STokenService.sign(claims)` returns signed ES256 JWT
+- Claims include: `iss`, `aud`, `exp`, `iat`, `jti`, `nft_id`, `tier`, `budget_reservation_id`
+- Private key loaded from Secrets Manager on startup, cached in memory
+- Key rotation: reads `activeKid` from Secrets Manager, signs with matching key
+- JWT TTL: 60s (short-lived)
 
-**Testing:**
-- Zero broken links in cross-link check
+**Effort:** M
+**Dependencies:** 2.1
 
-### Task 3.3: Citation Pinning
-
-**ID:** S306-T3
-**Priority:** P0
-**Effort:** Medium (3–4 hours)
-**Dependencies:** All docs written
-**FR:** NFR-1
-
-**Description:**
-Create `scripts/pin-citations.sh` and run against all docs.
-
+#### 2.3 S2S JWT Validation on loa-finn
+**Description:** Implement JWT validation middleware on loa-finn that verifies ES256 tokens from loa-freeside using JWKS endpoint via internal Cloud Map URL.
 **Acceptance Criteria:**
-- [ ] Scans `<!-- cite: ... -->` tags across all docs
-- [ ] Resolves cross-repo references to commit SHA permalinks via `gh api`
-- [ ] Validates local references against filesystem
-- [ ] Retry/backoff: 3 retries with exponential backoff
-- [ ] Rate limiting: respects GitHub API limits
-- [ ] Offline mode: `--validate-only`
-- [ ] Caching: `grimoires/loa/cache/citation-pins.json`
-- [ ] `--check-stale` mode for >30 day old pins
-- [ ] Zero branch-relative links in docs
+- loa-finn fetches JWKS from `http://freeside.arrakis-{env}.local:3000/.well-known/jwks.json` (internal, via Cloud Map — freeside is the issuer)
+- Validates `iss: loa-freeside`, `aud: loa-finn`, `exp` not past
+- JWKS cached 5 minutes, refreshed on kid-not-found (grace fetch)
+- All inference endpoints require valid S2S JWT (reject 401 without it)
+- Rejects expired tokens, wrong audience, invalid signature
+- Verify resolution from finn task: `nslookup freeside.arrakis-{env}.local` succeeds
 
-**Testing:**
-- `scripts/pin-citations.sh --validate-only` passes
-- `grep -P 'github\.com.*/(tree|blob)/(main|develop|master)' docs/*.md` returns 0
+**Effort:** M
+**Dependencies:** 2.1, 2.2
 
-### Task 3.4: Implement RTFM Validator
-
-**ID:** S306-T4
-**Priority:** P0
-**Effort:** Medium (3–4 hours)
-**Dependencies:** S306-T2, S306-T3
-**FR:** FR-8
-
-**Description:**
-Create `scripts/rtfm-validate.sh` that runs all 8 validation checks with deterministic exit codes, then run it against the full documentation set.
-
+#### 2.4 First End-to-End Inference Request
+**Description:** Wire loa-freeside → S2S JWT → loa-finn → streamed inference response. Verify at least one model pool responds with token usage data.
 **Acceptance Criteria:**
-- [ ] `scripts/rtfm-validate.sh` created with 8 named checks:
-  1. Citation validity: parse `<!-- cite: ... -->` regex, verify local files exist, cross-repo refs well-formed
-  2. Naming compliance: `grep -ci "arrakis"` across zero-tolerance file list (hardcoded in script), **exempting** code-path citations inside `<!-- cite: ... -->` blocks (these reference source filenames which are out-of-scope for doc-level renaming per PRD §3). Implementation: strip `<!-- cite: ... -->` blocks before grep, or use `grep -P` negative lookahead.
-  3. Version consistency: compare package.json version against README badge and BUTTERFREEZONE
-  4. Cross-link integrity: extract all Markdown links from docs, verify targets exist
-  5. Cross-repo citation stability: `grep -P 'github\.com.*/(tree|blob)/(main|develop|master)' docs/*.md`
-  6. Completeness: `grep -ri "TODO\|TBD\|PLACEHOLDER" docs/` returns 0
-  7. BUTTERFREEZONE hash: runs `butterfreezone-validate.sh` and checks exit code
-  8. Route index completeness: `scripts/extract-routes.sh --diff scripts/route-snapshot.json` exits 0
-- [ ] Each check reports PASS/FAIL with details
-- [ ] Script exits 0 only if ALL checks pass; non-zero with summary of failures
-- [ ] All 8 checks pass against current documentation
+- Discord `/agent` command → loa-freeside signs S2S JWT → loa-finn inference endpoint → streamed response
+- Response includes `X-Pool-Used` header
+- **Response includes `X-Token-Count` header or SSE `done` event with `usage.total_tokens`** (required for budget finalization in Sprint 4)
+- loa-freeside records token usage from response (logged, even if not yet finalized)
+- Round-trip works in Docker Compose local dev
+- Integration test: sign JWT → POST to finn → verify streamed response → verify token count present
+- Error case: finn returns 401 if JWT missing or invalid
+- Error case: finn returns partial token count on client disconnect (in error response or trailer)
+- **S2S resilience (Flatline IMP-001):**
+  - Connection timeout: 5s to establish, 60s total for streaming response
+  - Retry: max 2 retries with exponential backoff (1s, 2s), only on 5xx/timeout (not 4xx)
+  - Circuit breaker: half-open after 30s, 3 consecutive failures → open; probe every 30s
+  - Fallback on circuit open: return 503 "Inference temporarily unavailable" (do NOT queue)
+  - Budget reservation released on timeout/circuit-open (no credit leakage)
 
-**Testing:**
-- `scripts/rtfm-validate.sh` exits 0 (all checks pass)
-- Deliberately introduce a broken link → verify check #4 catches it (then revert)
+**Effort:** L
+**Dependencies:** 2.2, 2.3
 
-### Task 3.5: Final Verification
-
-**ID:** S306-T5
-**Priority:** P0
-**Effort:** Small (1–2 hours)
-**Dependencies:** S306-T4
-**FR:** FR-10
-
-**Description:**
-Verify all PRD §8 success criteria are met.
-
+#### 2.5 PgBouncer Validation + Read-Only Role for loa-finn
+**Description:** First validate that PgBouncer exists and is configurable in the current AWS stack. Then create `loa_finn_ro` PostgreSQL role and configure PgBouncer pool mapping. If PgBouncer is not deployed, fall back to RDS Proxy or direct connection with DB-level read-only role.
 **Acceptance Criteria:**
-- [ ] README accurately describes platform
-- [ ] BUTTERFREEZONE valid and grounded
-- [ ] Ecosystem covers all 5 repos
-- [ ] Zero naming violations
-- [ ] API quick-start enables first call
-- [ ] IaC docs enable staging understanding
-- [ ] RTFM passes
-- [ ] Onboarding path is clear and sequential
-- [ ] Ownership table committed
-- [ ] Weekly verification process documented
+- **Prerequisite check:** Confirm PgBouncer is deployed (check Terraform state for `pgbouncer.tf`, confirm ECS task or EC2 instance running PgBouncer, identify where config lives)
+- **If PgBouncer exists:**
+  - `loa_finn_ro` role with `SELECT` on required tables only
+  - `default_transaction_read_only = on` set on role
+  - PgBouncer `[databases]` section includes `arrakis_finn` entry mapping to `loa_finn_ro`
+  - Separate pool (pool_size=20, max_client_conn=100)
+  - Connection queue timeout: 5s → 503
+- **If PgBouncer does NOT exist:**
+  - Create `loa_finn_ro` role with `SELECT`-only + `default_transaction_read_only = on` directly on RDS
+  - loa-finn connects to RDS directly using `loa_finn_ro` credentials (stored in Secrets Manager)
+  - Document PgBouncer provisioning as follow-up task if connection pooling needed at scale
+- Verification: loa-finn can query DB via read-only connection; `INSERT` attempt returns error
 
-**Testing:**
-- All PRD §8 success criteria verified
+**Effort:** M
+**Dependencies:** Sprint 1 (1.3 migrations)
+
+### Sprint 2 Gate
+- [ ] S2S JWT signed by freeside, validated by finn in staging
+- [ ] At least one model pool responds to inference via S2S
+- [ ] JWKS endpoint serving public keys
+- [ ] PgBouncer read-only pool operational
+- [ ] Integration test: Discord → freeside → finn → streamed response
 
 ---
 
-## Task Dependency Graph
+## Sprint 3: Revenue — Payments + Credit Mint
 
-```
-Sprint 1 (Days 1-2):
-  S304-T1 (README) ──────────┐
-  S304-T3 (ECOSYSTEM) ───────┤
-                              ├──→ S304-T4 (Naming) ──→ GATE: P0 review-ready
-  S304-T1 → S304-T2 (BUTTER) ┘
+**Global ID:** 316
+**SDD Phase:** Phase 2
+**Days:** 5–6
+**Goals:** G-2 (Enable crypto payment revenue collection)
+**FRs:** FR-1.1 (Enable feature flag), FR-1.2 (Wire webhook), FR-1.3 (Credit tiers), FR-1.4 (Discord /buy-credits), FR-1.5 (Telegram /buy-credits), FR-1.6 (Idempotent double-payment)
 
-Sprint 2 (Days 3-7):
-  S305-T0 (stable-endpoints) ─→ S305-T1 (extract-routes) ─→ S305-T2 (QUICKSTART) ─→ S305-T3 (REFERENCE)
-                                                           ─→ S305-T4 (Contract checks)
-  S305-T5 (CLI) ──────────────── parallel ──────────────────
-  S305-T6 (INFRA + tf-plan) ──── parallel ──────────────────→ GATE: smoke + tf-plan.sh
-  S305-T7 (AUTH_BYPASS) ──────── parallel ──────────────────
+### Tasks
 
-Sprint 3 (Days 8-10):
-  S306-T1 (DEV-GUIDE) ──→ S306-T2 (Cross-links)
-  S306-T3 (Citations) ──→ S306-T4 (RTFM validator) ──→ S306-T5 (Final) ──→ GATE: all criteria
-```
+#### 3.1 Enable NOWPayments Feature Flag + Webhook Route
+**Description:** Set `FEATURE_CRYPTO_PAYMENTS_ENABLED=true` in staging. Wire ALB to route `POST /api/crypto/webhook` to loa-freeside.
+**Acceptance Criteria:**
+- Feature flag enabled in staging environment config
+- ALB routes `/api/crypto/webhook` to loa-freeside
+- Express raw body capture via `verify` callback for HMAC verification:
+  ```typescript
+  app.use('/api/crypto/webhook', express.json({
+    verify: (req, _res, buf) => { (req as any).rawBody = buf; }
+  }));
+  ```
+- HMAC-SHA512 verified against `NOWPAYMENTS_IPN_SECRET` using `crypto.timingSafeEqual()`
+- **IPN authenticity hardening (Flatline SKP-006):**
+  - Canonical HMAC computation: sort IPN body keys alphabetically, `JSON.stringify()` the sorted object, then HMAC-SHA512 — document the exact NOWPayments HMAC algorithm (verify against their docs, do not assume)
+  - Reject IPNs with `payment_id` not matching any `crypto_payments` row (prevents orphan processing)
+  - Log raw IPN body (redacting sensitive fields) to audit trail for forensic replay
+- Existing 95 tests still pass
+
+**Effort:** M
+**Dependencies:** Sprint 1 (1.5 secrets), Sprint 2 (2.4 E2E working)
+
+#### 3.2 IPN State Machine + Mint Guard
+**Description:** Extend CryptoWebhookService for full IPN state machine with DB-atomic credit mint guard using `credits_minted_at` + `credits_mint_event_id`.
+**Acceptance Criteria:**
+- Payment status enum: `waiting`, `confirming`, `confirmed`, `sending`, `finished`, `partially_paid`, `failed`, `expired`, `refunded`
+- Monotonic `status_rank` prevents backward transitions
+- `SELECT ... FOR UPDATE` row locking on `crypto_payments` for concurrent webhook/poll/admin paths
+- `credits_minted_at IS NULL` guard prevents double-mint
+- `credits_mint_event_id UNIQUE` belt-and-suspenders
+- Refunds modeled as compensating negative `credit_lot_adjustments` (never reverse original mint)
+- All 3 mint paths (IPN webhook, reconciliation poll, admin reconcile) use identical single-transaction pattern
+
+**Effort:** L
+**Dependencies:** Sprint 1 (1.3 migrations)
+
+#### 3.3 Credit Pack Tier Configuration
+**Description:** Configure credit pack pricing tiers as defined in SDD.
+**Acceptance Criteria:**
+- Starter: $5 → 5,000,000 micro-credits (0% bonus)
+- Standard: $10 → 10,500,000 micro-credits (5% bonus)
+- Premium: $25 → 27,500,000 micro-credits (10% bonus)
+- All arithmetic uses `BigInt` (no floating-point)
+- Per-token cost: `Math.ceil(cost_micro_per_token * tokens_used)` (round UP against user)
+- Minimum charge: 1 micro-credit per inference request
+- Minimum payment: $5 enforced at command level
+
+**Effort:** S
+**Dependencies:** None (existing credit pack system)
+
+#### 3.4 Reconciliation Job
+**Description:** Scheduled task polls NOWPayments API every 5 minutes for invoices with `waiting`/`confirming` status older than 15 minutes.
+**Acceptance Criteria:**
+- Polls NOWPayments API by `payment_id` for stuck invoices
+- Processes missed IPN transitions through same state machine as 3.2
+- Uses same `SELECT ... FOR UPDATE` + mint guard pattern
+- Logs all reconciliation actions to audit trail
+- Does not duplicate credits (idempotent)
+- **NOWPayments operational edge cases (Flatline SKP-006):**
+  - **Replay protection:** Store IPN `updated_at` timestamp; reject IPNs with `updated_at ≤ last_seen_updated_at` for that `payment_id`
+  - **Rate-limit aware backoff:** NOWPayments API polling respects `429 Too Many Requests` — exponential backoff starting at 30s, max 5 min, with jitter
+  - **Test vectors:** Integration tests include IPN payloads for every status transition (`waiting→confirming→confirmed→sending→finished`, `waiting→expired`, `confirmed→failed`, `finished→refunded`) — use recorded real IPN payloads from NOWPayments sandbox
+  - **Network failure handling:** If NOWPayments API returns 5xx during reconciliation poll, log warning and retry next cycle (do not mark payment as failed based on API unavailability)
+  - **Partial payment edge case:** `partially_paid` status triggers alert to admin (do not auto-mint) — admin resolves via manual reconcile endpoint
+
+**Effort:** M
+**Dependencies:** 3.2
+
+#### 3.5 Discord `/buy-credits` Command
+**Description:** Add `/buy-credits [amount]` Discord command. Returns NOWPayments checkout URL, confirms on completion.
+**Acceptance Criteria:**
+- `/buy-credits 5` → creates NOWPayments invoice for $5 Starter pack
+- `/buy-credits 10` → $10 Standard, `/buy-credits 25` → $25 Premium
+- Returns checkout URL as ephemeral reply
+- On `finished` IPN → bot sends confirmation in DM or channel
+- Rate limit: 100 req/min per IP at ALB, 10 per payment_id/hour WAF throttle
+
+**Effort:** M
+**Dependencies:** 3.1, 3.2, 3.3
+
+#### 3.6 Telegram `/buy-credits` Command
+**Description:** Same flow as Discord but for Telegram surface.
+**Acceptance Criteria:**
+- `/buy-credits [amount]` returns checkout URL in Telegram reply
+- Same tier mapping as Discord
+- Confirmation message on completion
+
+**Effort:** S
+**Dependencies:** 3.5 (shared logic)
+
+#### 3.7 Webhook Rate Limiting + DoS Protection
+**Description:** Implement layered rate limiting for webhook endpoints per SDD Flatline IMP-002.
+**Acceptance Criteria:**
+- **Layer 1 — WAF IP-based:** 100 requests/min per source IP on `/api/crypto/webhook` (WAF rate-based rule, keys on IP)
+- **Layer 2 — Application-level per-payment:** Redis-backed throttle — max 10 IPN deliveries/hour per `payment_id` (extracted from JSON body in Express middleware, NOT WAF — WAF cannot inspect JSON body fields)
+- **Layer 3 — DB idempotency:** Already handled by 3.2 (`SELECT ... FOR UPDATE` + mint guard)
+- Retry-aware: 429 response includes `Retry-After` header; legitimate NOWPayments retries on 5xx not blocked (5xx = no rate-limit counter increment)
+- WAF rule in `infrastructure/terraform/waf.tf`
+- Application middleware in webhook route handler (before HMAC verification to save CPU on floods)
+
+**Effort:** M
+**Dependencies:** 3.1
+
+### Sprint 3 Gate
+- [ ] Webhook → credit mint → conservation guard verified in staging
+- [ ] Double-payment replay returns 200, no duplicate credits
+- [ ] Reconciliation job resolves stuck payments
+- [ ] `/buy-credits` works in both Discord and Telegram
+- [ ] Rate limiting active on webhook endpoint
+- [ ] **E2E billing integration test (Flatline IMP-010):** Payment($10) → webhook(finished) → credit mint(10,500,000 micro) → conservation guard(balance matches) → inference request → budget reserve → finalize(actual tokens) → balance decremented correctly; assert BigInt precision throughout (no floating-point); assert idempotent replay of each step produces identical state
 
 ---
 
-## Risk Mitigation
+## Sprint 4: Personality Routing + Discord Agent Threads
 
-| Risk | Trigger | Action |
-|------|---------|--------|
-| Phase A takes >3 days | Day 3 without gate pass | Descope IaC to document-only (no diagrams) |
-| Smoke-test failures | >3 endpoints fail | Reduce stable subset to passing endpoints |
-| Route extraction <80 | Unresolvable patterns | Add manual entries; update baseline |
-| Citation pinning API limits | Rate limited | Use cached pins; defer cross-repo to post-sprint |
-| BUTTERFREEZONE hash instability | Cross-platform mismatch | Pin exact jq version in CI |
+**Global ID:** 317
+**SDD Phase:** Phase 3 + 4a
+**Days:** 7–9
+**Goals:** G-4 (Per-NFT personality routing), G-5 (Per-NFT Discord threads)
+**FRs:** FR-2.1–2.4 (Personality routing), FR-3.1–3.3 (Discord threads)
+
+### Tasks
+
+#### 4.1 Inference Request Enrichment with NFT Context
+**Description:** Extend S2S JWT claims to include `nft_id`, `tier`, and `budget_reservation_id`. loa-finn resolves personality and selects pool.
+**Acceptance Criteria:**
+- S2S JWT claims include: `nft_id` (string), `tier` (string), `budget_reservation_id` (string)
+- loa-freeside resolves NFT ownership before signing JWT
+- Budget reservation created before inference request (pessimistic reserve based on `max_tokens`)
+- loa-finn returns `X-Pool-Used` + `X-Personality-Id` response headers
+
+**Effort:** L
+**Dependencies:** Sprint 2 (2.2, 2.4)
+
+#### 4.2 Budget Reservation Lifecycle
+**Description:** Implement reserve → stream → finalize lifecycle for streaming inference budget.
+**Acceptance Criteria:**
+- **Reserve:** Create `budget_reservation_id`, deduct estimated max cost from balance
+- **Finalize:** `finalization_id UNIQUE` + `finalized_at IS NULL` guard
+- **Partial completion:** Charge for tokens actually delivered (from `X-Token-Count`)
+- **Orphan cleanup:** Scheduled job releases reservations >5 min without finalization
+- `spend_events` table with `UNIQUE(budget_reservation_id)` prevents double-finalization
+- Status transitions: `reserved` → `streaming` → `finalized` / `released` / `orphan_released`
+- **Server-side metering authority (Flatline SKP-004):**
+  - loa-finn is the authoritative source of token counts (server-side metering, not client-observed)
+  - Primary path: NATS JetStream `usage_finalized` event with `tokens_used` from finn's internal counter
+  - Secondary path: `X-Token-Count` response header (set by finn before stream ends)
+  - SSE `done` event includes `usage.total_tokens` as belt-and-suspenders
+  - **Disconnect fallback:** If stream terminates early (client disconnect, proxy timeout), finn STILL emits NATS usage event with actual tokens sent; if NATS also down, freeside bills `max_tokens` from reservation and reconciliation job corrects within 5 min
+  - **Per-pool contract tests:** Each model pool (cheap, standard, reasoning, architect, flagship) must return token count in at least one of the 3 paths; CI test per pool verifies this
+
+**Effort:** L
+**Dependencies:** Sprint 1 (1.3 migration 064), Sprint 2 (2.4)
+
+#### 4.3 NATS JetStream Infrastructure Provisioning
+**Description:** Deploy NATS server with JetStream enabled as an ECS service. Configure networking, secrets, and persistence for durable usage reporting.
+**Acceptance Criteria:**
+- `infrastructure/terraform/nats.tf` with ECS task definition for NATS with JetStream enabled
+- Security group: allows inbound from freeside + finn security groups only (port 4222)
+- Cloud Map service discovery: `nats.arrakis-{env}.local`
+- EFS volume for JetStream persistence (or accept ephemeral with 72h retention for launch)
+- NATS auth: nkey or user/pass stored in Secrets Manager (`arrakis-{env}-nats-auth`)
+- Connection URLs injected into freeside + finn task definitions as env vars
+- Health check: NATS monitoring endpoint on port 8222 (`/healthz`)
+- Verification: exec into freeside task → `nats pub test "hello"` succeeds
+- **Operational risk mitigations (Flatline SKP-005):**
+  - **Sizing:** NATS container resource limits documented — start with 512 MiB memory / 0.25 vCPU; JetStream max memory store 256 MiB, max file store 1 GiB
+  - **EFS performance mode:** Use `generalPurpose` (not `maxIO`); throughput mode `elastic` for burst tolerance. If write latency >50ms in testing, fall back to ephemeral persistence with documented tradeoff
+  - **Monitoring:** CloudWatch metric filter on NATS logs for `slow_consumer`, `no_responders`, `stale_connection`; alarm if consumer pending count >1000 for >5 min
+  - **Consumer lag alert:** loa-freeside exposes `/metrics/nats` endpoint with pending message count; CloudWatch alarm on sustained lag
+  - **Disaster recovery runbook:** If NATS is down >30 min, manually trigger reconciliation job (Task 3.4 pattern) against finn's `X-Token-Count` headers as fallback data source
+  - **Rollback path:** If NATS proves operationally infeasible before launch, revert to `X-Token-Count` header-only mode (already the fallback path in Task 4.4) — NATS is an enhancement, not a hard dependency
+
+**Effort:** L
+**Dependencies:** Sprint 1 (1.1 ECS cluster, 1.2 Cloud Map)
+
+#### 4.4 Durable Usage Reporting via NATS JetStream
+**Description:** loa-finn emits `inference.usage.finalized` to NATS JetStream after each inference completes. loa-freeside subscribes for budget finalization, independent of HTTP stream completion.
+**Acceptance Criteria:**
+- NATS JetStream subject: `inference.usage.finalized`
+- Payload: `{ budget_reservation_id, tokens_used, model, pool_used, personality_id, latency_ms }`
+- Retention: `WorkQueue` policy, 72h max age
+- loa-freeside consumer: finalize budget on receipt, ack after DB commit
+- Fallback: if NATS unavailable, `X-Token-Count` header used; reconciliation job catches mismatches
+- At-least-once delivery; finalization is idempotent (UNIQUE constraint)
+
+**Effort:** L
+**Dependencies:** 4.3 (NATS provisioned), Sprint 2 (2.4)
+
+#### 4.5 Two-NFT Differential Routing Test
+**Description:** Integration test verifying two different NFTs get different model pool routing.
+**Acceptance Criteria:**
+- Test with NFT-A (high tier) → routes to `architect` or `reasoning` pool
+- Test with NFT-B (standard tier) → routes to `cheap` pool
+- `X-Pool-Used` and `X-Personality-Id` differ between the two
+- Anti-narration enforcement verified (no forbidden identity terms)
+- Test runs in CI via Docker Compose
+
+**Effort:** M
+**Dependencies:** 4.1
+
+#### 4.6 Discord `/my-agent` Command — Thread Creation
+**Description:** Create dedicated Discord thread per NFT when holder invokes `/my-agent`. Bot-enforced access control with ownership verification.
+**Acceptance Criteria:**
+- `/my-agent` creates thread named `Agent #[tokenId]` (or agent name if available)
+- Private thread if server boost level 2+, otherwise public with bot-level gating
+- Bot responds only to verified holder in that thread (ownership check on every message, cached 60s via Redis)
+- Thread recorded in `agent_threads` table
+- Bot permissions required: `MANAGE_THREADS`, `SEND_MESSAGES_IN_THREADS`, `READ_MESSAGE_HISTORY`
+- Graceful degradation: "Missing permissions" message if bot lacks required permissions
+
+**Effort:** L
+**Dependencies:** 4.1 (personality routing working)
+
+#### 4.7 Thread Message Routing Through Personality Bridge
+**Description:** Messages in agent threads are routed through the personality bridge (S2S JWT → loa-finn inference with NFT context).
+**Acceptance Criteria:**
+- Message in thread → budget reservation → S2S JWT with nft_id → loa-finn → streamed response in thread
+- Personality tier and emphasis applied to every message
+- Token usage tracked and budget finalized per message
+- Rate limiting per user per channel
+
+**Effort:** M
+**Dependencies:** 4.1, 4.2, 4.6
+
+#### 4.8 Token Transfer Handling
+**Description:** On NFT ownership change, bot re-verifies and creates new thread for new holder.
+**Acceptance Criteria:**
+- Per-message ownership re-verification (Redis cache 60s TTL)
+- On ownership change: bot posts "Ownership transferred" notice in old thread
+- Old thread: bot stops responding to previous holder
+- New holder invokes `/my-agent` → new thread created
+- Background wallet re-verification job (every 24h)
+- Event-driven invalidation: cache cleared on transfer event
+
+**Effort:** M
+**Dependencies:** 4.6, 4.7
+
+#### 4.9 Discord `/agent-info` Command
+**Description:** Show personality summary for an NFT agent, anti-narration safe.
+**Acceptance Criteria:**
+- `/agent-info [tokenId]` displays personality summary (pool tier, emphasis keywords, agent name)
+- No forbidden identity terms (anti-narration enforcement)
+- Available to any server member (not gated to holder)
+
+**Effort:** S
+**Dependencies:** 4.1
+
+### Sprint 4 Gate
+- [ ] Two different NFTs get different model pool routing (verified in test)
+- [ ] `/my-agent` creates thread, messages route through personality bridge
+- [ ] Token transfer handling works (ownership change → new thread)
+- [ ] Budget reservation → finalization lifecycle tested
+- [ ] NATS JetStream usage reporting operational
+- [ ] **NATS chaos test (Flatline IMP-002):** Kill NATS container mid-inference → verify `X-Token-Count` header fallback activates → budget finalization completes via header path → no credit leakage; reconciliation job catches any mismatches within 5 min SLA; NATS recovery → consumer resumes without message loss
 
 ---
 
-## Success Metrics
+## Sprint 5: Admin Dashboard + Audit Trail
 
-| Metric | Target | Measurement |
-|--------|--------|-------------|
-| Naming compliance | 0 violations in prose | `grep -ci "arrakis"` across zero-tolerance files (exempting `<!-- cite: ... -->` blocks) |
-| Citation grounding | 100% sourced | RTFM citation check |
-| Smoke-test pass rate | 7/7 stable endpoints | Smoke-test checklist |
-| Route index coverage | >=80 routes | `extract-routes.sh --count` |
-| BUTTERFREEZONE validity | All hashes match | `butterfreezone-validate.sh` |
-| Doc completeness | 0 placeholders | `grep -ri "TODO\|TBD\|PLACEHOLDER" docs/` |
-| Cross-link integrity | 0 broken links | RTFM cross-link check |
+**Global ID:** 318
+**SDD Phase:** Phase 4b
+**Days:** 10–11
+**Goals:** G-6 (Community admin budget visibility), G-7 (Auditable billing)
+**FRs:** FR-3.4–3.5 (Admin dashboard), FR-4.1–4.4 (Audit trail)
+
+### Tasks
+
+#### 5.1 Admin API — Usage Endpoints
+**Description:** Implement admin API endpoints for community usage data.
+**Acceptance Criteria:**
+- `GET /api/v1/admin/community/:id/usage` — total spend, per-pool breakdown, per-user breakdown, projected depletion
+- `GET /api/v1/admin/community/:id/billing` — billing history, credit lots, payment records
+- `GET /api/v1/admin/community/:id/agents` — active agents, thread counts, last active
+- All endpoints require admin authentication
+- Response data freshness: <60s (near-real-time)
+
+**Effort:** L
+**Dependencies:** Sprint 4 (4.2 budget finalization populating data)
+
+#### 5.2 JSONL Audit Trail Export
+**Description:** Implement billing audit trail export as JSONL for community admins.
+**Acceptance Criteria:**
+- `GET /api/v1/admin/community/:id/audit?format=jsonl` returns downloadable JSONL
+- Each line includes: timestamp, operation_type, amount_micro, pool, user_wallet (pseudonymous), conservation_result
+- No PII in exports (wallet addresses only)
+- Append-only: audit records cannot be modified after creation
+- Conservation guard results included for every credit operation
+- Supports date range filters
+
+**Effort:** M
+**Dependencies:** 5.1
+
+#### 5.3 Conservation Guard Status Endpoint
+**Description:** Admin endpoint showing conservation guard health and history.
+**Acceptance Criteria:**
+- `GET /api/v1/admin/community/:id/conservation` returns current guard status + violation history
+- Shows: total credits created, total credits consumed, drift amount, last check timestamp
+- Historical violations with resolution notes
+- Budget drift monitor: alerts if drift >1% of total balance
+
+**Effort:** M
+**Dependencies:** 5.1
+
+#### 5.4 Pool Enforcement Transparency
+**Description:** Admins can see which pools agents access and the routing decisions.
+**Acceptance Criteria:**
+- `GET /api/v1/admin/community/:id/pool-enforcement` returns recent routing decisions
+- Each record: timestamp, nft_id, requested_pool, actual_pool, reason, cost_micro
+- Filterable by time range and pool
+- Shows pool utilization percentages
+
+**Effort:** M
+**Dependencies:** 5.1
+
+#### 5.5 Admin Payment Dashboard + Repair Endpoint
+**Description:** Admin endpoints for payment monitoring and manual reconciliation.
+**Acceptance Criteria:**
+- `GET /api/v1/admin/payments?status=stuck` — lists payments in limbo (>30 min without terminal state)
+- `POST /api/v1/admin/payments/:paymentId/reconcile` — manually triggers status check against NOWPayments API
+- Uses same mint guard pattern as webhook (no double-mint risk)
+- All manual reconciliations logged to audit trail with admin identity
+- Requires admin auth
+
+**Effort:** M
+**Dependencies:** Sprint 3 (3.2 IPN state machine)
+
+### Sprint 5 Gate
+- [ ] Admin API returns usage data with <60s freshness
+- [ ] JSONL audit export contains all required fields, no PII
+- [ ] Conservation guard status endpoint operational
+- [ ] Pool enforcement decisions visible to admins
+- [ ] Stuck payment dashboard shows limbo invoices
 
 ---
 
-## Sprint 4: EDUCATIONAL DEEP DOCS (Global ID: 307)
+## Sprint 6: API Platform + Web Chat Widget
 
-**Goal:** Create the economic primitives and event protocol documentation suggested by the Bridgebuilder review. Add cross-repo learning path and route coverage note.
-**Duration:** Day 11
-**Gate:** ECONOMICS.md and EVENT-PROTOCOL.md pass citation validation; cross-repo learning path added to ECOSYSTEM.md.
-**Source:** [Bridgebuilder Review — PR #76](https://github.com/0xHoneyJar/loa-freeside/pull/76#issuecomment-3927347470) findings high-1, high-2, medium-2, medium-3.
+**Global ID:** 319
+**SDD Phase:** Phase 5
+**Days:** 12–13
+**Goals:** G-8 (Self-service developer API keys), G-9 (Web chat surface)
+**FRs:** FR-5.1–5.5 (API platform), FR-3.6–3.7 (Web chat)
 
-### Task 4.1: docs/ECONOMICS.md — Economic Primitives Documentation
+### Tasks
 
-**ID:** S307-T1
-**Priority:** P0
-**Effort:** Large (4–6 hours)
-**Dependencies:** Sprint 3 complete
-**Source:** Bridgebuilder finding high-1 ("Economic primitives undocumented")
-
-**Description:**
-Document the economic model that underpins the platform: budget-atomic accounting, conservation invariant, lot lifecycle, conviction-to-tier mapping, and ensemble cost attribution. Ground every claim in source citations. Include worked examples and failure mode guarantees.
-
-This is the document that transforms "interesting project" into "serious protocol." The economic primitives — BigInt micro-USD precision, two-counter atomic reservation, conservation properties enforced via Lua scripts — are the platform's deepest moat and deserve the most thorough documentation.
-
-**Pre-flight (first step):** Verify all source paths exist and extract exact counts/types from code before writing prose. Confirmed source paths (from codebase analysis):
-- `packages/adapters/agent/budget-manager.ts` — BudgetResult/FinalizeResult types, reserve/finalize/reap methods
-- `packages/adapters/agent/lua/budget-reserve.lua` — Atomic reservation Lua script
-- `packages/adapters/agent/lua/budget-finalize.lua` — Atomic finalization Lua script
-- `themes/sietch/src/packages/core/protocol/arrakis-conservation.ts` — Conservation adapter (imports from loa-hounfour). Note: this is a code-level file path; code-level renaming is explicitly out of scope per PRD §3. Citations to code paths may use the original filename.
-- `themes/sietch/src/services/TierService.ts` — 9-tier conviction system
-- `packages/adapters/agent/pool-mapping.ts` — Pool→tier access mapping
-- `packages/adapters/agent/ensemble-accounting.ts` — Per-model cost attribution
-
-**Content Outline:**
-1. **Overview** — What makes this an economic protocol, not just billing
-2. **Budget Accounting Model** — Two-counter system (committed + reserved), micro-USD precision, monthly reset lifecycle
-   - Source: `packages/adapters/agent/budget-manager.ts`, `budget-reserve.lua`, `budget-finalize.lua`
-3. **Lot Lifecycle** — reserve → finalize → reap with idempotency guarantees
-   - Worked example: complete request flow from reservation to finalization
-   - Failure modes: late finalize, expired reservation, Redis errors (fail-closed reserve, fail-open finalize)
-4. **Conservation Invariant** — Canonical properties from loa-hounfour as normative set
-   - List all 14 canonical properties from loa-hounfour as the normative reference
-   - Separately document which subset is enforced in freeside (with citations to freeside enforcement points in `arrakis-conservation.ts`)
-   - Treat the freeside adapter list as "implemented coverage," not the canonical list
-   - Universe scopes: per-lot, per-account, cross-system, platform-wide
-   - Enforcement mechanisms: DB CHECK, DB UNIQUE, Application, Reconciliation-only
-   - Note: canonical property count and details extracted from source at write time, not hardcoded in plan
-5. **Conviction Scoring → Capability Tiers** — Tier system from BGT holdings
-   - Threshold table extracted from `TierService.ts` at write time
-   - Rank precedence rules as implemented
-   - Tier → pool access mapping from `pool-mapping.ts` protocol conformance tests
-6. **Ensemble Cost Attribution** — Per-model breakdown with PLATFORM_BUDGET vs BYOK_NO_BUDGET accounting modes
-   - Savings calculation: reserved - actual
-7. **Model Pricing** — Default pricing table per pool (from DEFAULT_MODEL_PRICING in budget-manager.ts)
-8. **Guarantees** — What the system promises: no precision loss, no double-charge, fail-closed reservation
-
+#### 6.1 API Key Generation + Storage
+**Description:** Implement two-part API key system (prefix + HMAC-SHA256 hashed secret with per-key salt).
 **Acceptance Criteria:**
-- [ ] Pre-flight: all source paths verified to exist; exact counts/types extracted from code
-- [ ] Every section has `<!-- cite: loa-freeside:path -->` citation(s) to source code
-- [ ] Conservation invariant section uses loa-hounfour as the canonical source (14 properties), then documents which subset is enforced in freeside's `arrakis-conservation.ts` adapter with citations to both
-- [ ] Worked example covers complete reserve → finalize → reap flow
-- [ ] Failure modes table covers at least: late finalize, expired reservation, Redis failure, budget exceeded
-- [ ] Conviction tier table matches `TierService.ts` thresholds exactly (verified by reading source)
-- [ ] Pool access matrix matches `pool-mapping.ts` protocol conformance tests (verified by reading source)
-- [ ] Zero "Arrakis" references in platform prose (code-path citations inside `<!-- cite: ... -->` blocks are exempt per PRD §3 — code-level renaming is a separate cycle)
-- [ ] `scripts/pin-citations.sh --validate-only` passes for this file
+- Key format: `lf_live_` + 12-char base32 prefix + `_` + 32-char base62 secret (≥190 bits entropy)
+- Stored: prefix in `key_prefix`, `HMAC-SHA256(PEPPER, salt || secret)` in `key_hash`, random salt in `key_salt`
+- Sandbox keys: `lf_test_` prefix
+- Cleartext shown exactly once at creation (never stored or logged)
+- `pepper_version` column for rotation tracking
+- Negative cache for failed lookups (rate-limit invalid key attempts)
 
-**Testing:**
-- All citations resolve to existing files
-- Naming check passes (after stripping cite blocks)
-- Tier thresholds verified against TierService.ts source
-- Pool access matrix verified against protocol-conformance.test.ts
+**Effort:** L
+**Dependencies:** Sprint 1 (1.3 migration 062)
 
-### Task 4.2: docs/EVENT-PROTOCOL.md — NATS Event Schema Documentation
-
-**ID:** S307-T2
-**Priority:** P0
-**Effort:** Medium (3–4 hours)
-**Dependencies:** Sprint 3 complete (requires pin-citations.sh for validation gate)
-**Source:** Bridgebuilder finding high-2 ("NATS event protocol has no API-level documentation")
-
-**Description:**
-Document the NATS event protocol at API level for Layer 5 product consumers. Cover stream configuration, subject namespaces, the GatewayEvent envelope schema, event data payloads, and subscription patterns. Reference Hounfour protocol types as the canonical schema source.
-
-**Pre-flight (first step):** Extract actual stream names/counts from `nats-routing.json` and event types from `gateway-event.ts` before writing prose. Confirmed source paths:
-- `packages/shared/nats-schemas/nats-routing.json` — Stream definitions
-- `packages/shared/nats-schemas/src/schemas/gateway-event.ts` — GatewayEvent envelope + known event types
-- `packages/shared/nats-schemas/src/schemas/event-data.ts` — Per-event payload types
-- `packages/shared/nats-schemas/src/routing.ts` — Event type → subject mapping
-- `apps/gateway/src/main.rs` — Rust/Axum gateway
-
-**Content Outline:**
-1. **Overview** — The event protocol as the machine-facing API surface
-2. **Streams** — Document all JetStream streams found in `nats-routing.json` with subject patterns
-   - Source: `packages/shared/nats-schemas/nats-routing.json`
-3. **GatewayEvent Envelope** — Canonical message format (fields extracted from source at write time)
-   - Source: `packages/shared/nats-schemas/src/schemas/gateway-event.ts`
-4. **Event Type → Subject Mapping** — Document all mappings found in routing.ts
-   - Source: `packages/shared/nats-schemas/src/routing.ts`
-5. **Event Data Schemas** — Per-event payload types (document all types found in event-data.ts)
-   - Source: `packages/shared/nats-schemas/src/schemas/event-data.ts`
-6. **Subscription Patterns** — How to subscribe by guild, event type, wildcard
-7. **Gateway Architecture** — Rust/Axum gateway (Discord WSS → NATS), shard pool configuration
-   - Source: `apps/gateway/src/main.rs`
-8. **Relationship to Hounfour** — Protocol types as canonical schema source
-
+#### 6.2 API Key Auth Middleware
+**Description:** Authentication middleware that validates API keys on inference routes.
 **Acceptance Criteria:**
-- [ ] Pre-flight: extract exact stream count and event type list from source; use extracted values as ground truth
-- [ ] All streams from `nats-routing.json` documented with subject patterns
-- [ ] GatewayEvent envelope schema fully documented with field types
-- [ ] All event types from `gateway-event.ts` mapped to subjects
-- [ ] Event data schemas for all event types in `event-data.ts`
-- [ ] Subscription pattern examples (by guild, by type, wildcard)
-- [ ] Citations to NATS schema source files
-- [ ] Cross-reference to Hounfour protocol types
-- [ ] Zero "Arrakis" references
-- [ ] `scripts/pin-citations.sh --validate-only` passes for this file
+- `Authorization: Bearer lf_live_...` → extract prefix → DB lookup → HMAC verify with `timingSafeEqual`
+- Rate limiting per key: configurable RPM (requests/min) and TPD (tokens/day)
+- `last_used_at` updated on valid authentication
+- Revoked keys return 401
+- Response headers: `X-RateLimit-Remaining`, `X-RateLimit-Reset`
 
-**Testing:**
-- Event type list verified against gateway-event.ts known types (exact match)
-- Stream configuration verified against nats-routing.json (exact match)
-- Schema field types verified against TypeScript definitions
+**Effort:** M
+**Dependencies:** 6.1
 
-### Task 4.3: Cross-Repo Learning Path in ECOSYSTEM.md
-
-**ID:** S307-T3
-**Priority:** P1
-**Effort:** Small (1–2 hours)
-**Dependencies:** S307-T1, S307-T2 (references both new docs)
-**Source:** Bridgebuilder finding medium-2 ("Cross-repo learning path missing")
-
-**Description:**
-Add a "Building on Loa" section to ECOSYSTEM.md that maps the cross-repo journey for developers building Layer 5 products. Connect the freeside-only learning path (DEVELOPER-GUIDE.md) to the ecosystem-wide onboarding journey.
-
-**Content:**
-- "Building on Loa" section after the per-repo summaries
-- Journey map: Ecosystem overview → Protocol types (hounfour) → Platform APIs (freeside) → Runtime capabilities (finn) → Build your product (dixie as example)
-- Role-based paths: API consumer, product builder, protocol contributor
-- Cross-link to DEVELOPER-GUIDE.md for freeside-specific onboarding
-
+#### 6.3 Key Management Endpoints
+**Description:** Self-service CRUD endpoints for API key management.
 **Acceptance Criteria:**
-- [ ] "Building on Loa" section added to ECOSYSTEM.md
-- [ ] 3 role-based paths documented
-- [ ] Cross-repo references use repository links (not branch-relative); all compliant with RTFM crossrepo check
-- [ ] Run `scripts/pin-citations.sh --validate-only` on updated ECOSYSTEM.md after adding section
-- [ ] Links to DEVELOPER-GUIDE.md for freeside-specific deep dive
-- [ ] Zero "Arrakis" references
+- `POST /api/v1/keys` — create key (returns cleartext once)
+- `GET /api/v1/keys` — list keys (prefix + name + created_at only, no secrets)
+- `DELETE /api/v1/keys/:id` — revoke key (soft delete)
+- `POST /api/v1/keys/:id/rotate` — revoke old, create new
+- Scoped by user/community
+- Max 10 active keys per user
 
-**Testing:**
-- All links resolve (cross-link check)
-- No branch-relative GitHub links (crossrepo check)
+**Effort:** M
+**Dependencies:** 6.1, 6.2
 
-### Task 4.4: Route Extraction Coverage Note
-
-**ID:** S307-T4
-**Priority:** P2
-**Effort:** Small (30 min)
-**Dependencies:** None
-**Source:** Bridgebuilder finding medium-3 ("Route extraction coverage boundary undocumented")
-
-**Description:**
-Add a coverage boundary note to the API-REFERENCE.md Tier 2 section acknowledging that auto-extracted routes come from static analysis and may not capture dynamically registered or gateway-proxied routes.
-
-Note: Sprint 2 plan specified ts-morph AST parsing, but the actual `extract-routes.sh` implementation uses grep-based pattern matching on Express router method calls (pragmatic divergence documented in implementation notes). The coverage note must describe the **actual** extraction method, not the planned one.
-
+#### 6.4 Developer Onboarding Flow
+**Description:** Self-service developer signup → sandbox key → free inference → production upgrade.
 **Acceptance Criteria:**
-- [ ] Note added below Tier 2 header explaining extraction method and coverage limitations
-- [ ] Accurately describes actual method: grep-based pattern matching on Express `router.METHOD()` calls in `themes/sietch/src/api/routes/*.ts`
-- [ ] Acknowledges: middleware chains, dynamic mounting, Rust gateway proxy routes may not appear
+- Sign up → sandbox key (`lf_test_...`) with free-tier limits (10 RPM, 10k TPD)
+- Sandbox routes to `cheap` pool only
+- Upgrade path to production key (`lf_live_...`) with higher limits
+- Onboarding page at `/developers` with getting-started guide
+- First inference within 5 minutes of signup (zero manual intervention)
 
-**Testing:**
-- Note present in rendered markdown
+**Effort:** L
+**Dependencies:** 6.2, 6.3
+
+#### 6.5 ALB/ECS WebSocket Infrastructure Configuration
+**Description:** Configure ALB and ECS deployment settings for WebSocket support. Without these infra changes, WebSockets work locally but fail in production.
+**Acceptance Criteria:**
+- ALB idle timeout set to ≥300s (`idle_timeout.timeout_seconds = 300` in `alb.tf`)
+- Target group for WebSocket endpoint with health check path `/health` (not the WS path)
+- ECS deployment configuration: `minimum_healthy_percent = 50`, `maximum_percent = 200` for graceful drain
+- ECS deregistration delay aligned with 120s drain (`deregistration_delay = 130`)
+- Staging verification: open WebSocket → trigger ECS deploy → confirm 120s drain (connection stays open during rolling update)
+- ALB access logs enabled for WebSocket endpoint (for debugging connection drops)
+
+**Effort:** M
+**Dependencies:** Sprint 1 (1.1 ECS, 1.2 ALB)
+
+#### 6.6 Web Chat Widget — Static JS Bundle + WebSocket
+**Description:** Embeddable web chat widget with single `<script>` tag and WebSocket streaming.
+**Acceptance Criteria:**
+- Single `<script src="https://api.arrakis.community/widget.js">` tag for embedding
+- WebSocket endpoint for streaming inference responses
+- WebSocket lifecycle: 300s idle timeout, 30s heartbeat, max 3 conns/user, 120s graceful drain on deploy
+- Personality-aware styling (agent name, colors from NFT metadata)
+- Unauthenticated users see read-only agent profile
+- Auth via SIWE wallet login → server-issued short-lived session token (no API keys in browser)
+- **Supply-chain security (Flatline SKP-007):**
+  - `widget.js` served from versioned immutable path (`/widget/v1/widget.js`) with `Cache-Control: immutable, max-age=31536000`
+  - Subresource Integrity (SRI) hash published in docs; embed snippet includes `integrity` attribute
+  - Content Security Policy on hosting page: `script-src 'self' https://api.arrakis.community; connect-src wss://api.arrakis.community`
+  - No inline scripts — all logic in the external bundle
+- **CSRF / session fixation (Flatline SKP-007):**
+  - SIWE nonce (from 6.7) acts as CSRF token for the auth flow
+  - Session token bound to `origin` claim — requests from mismatched origins rejected
+  - `SameSite=Strict` cookie prevents cross-site attachment
+- **WebSocket auth/origin enforcement (Flatline SKP-007):**
+  - WS upgrade request MUST include valid session cookie — reject with 401 if missing/expired
+  - Server validates `Origin` header on WS upgrade against allowlist (`api.arrakis.community`, localhost for dev)
+  - Per-IP connection limit (10 WS connections/IP) enforced at application level to prevent resource exhaustion
+  - WS messages authenticated on every frame via session token in initial upgrade (no re-auth per message needed, but session expiry checked on heartbeat)
+
+**Effort:** L
+**Dependencies:** 6.5 (ALB/WS infra), Sprint 4 (4.1 personality routing)
+
+#### 6.7 SIWE Auth Flow (EIP-4361)
+**Description:** Implement Sign-In with Ethereum for web widget authentication.
+**Acceptance Criteria:**
+- Nonce: 16 bytes hex, stored in Redis with 5-min TTL, single-use (deleted after verification)
+- SIWE message fields: domain, address, uri, version (1), chainId, nonce, issuedAt, expirationTime (5 min)
+- Server validates: nonce exists in Redis + not expired, domain matches `api.arrakis.community`, chainId in allowlist, signature valid via `ethers.verifyMessage()`
+- On success: issue HS256 JWT session token (1h TTL), set `HttpOnly; Secure; SameSite=Strict` cookie
+- Origin binding: session token includes `origin` claim, validated on every request
+- **Signing secret:** HS256 secret stored in Secrets Manager (`arrakis-{env}-siwe-session-hs256-secret`), provisioned via Terraform, injected as env var into all freeside ECS tasks (consistent across tasks for rolling deploys)
+- **Rotation:** Dual-secret validation during rotation — freeside accepts tokens signed with current OR previous secret for 24h overlap; session JWT includes `kid` header (version identifier) to route to correct secret
+- **Verification:** Rolling deploy test in staging — sessions created before deploy remain valid after new tasks come up
+- **Terraform:** `infrastructure/terraform/secrets.tf` updated with session secret entry
+
+**Effort:** L
+**Dependencies:** 6.6
+
+#### 6.8 Standalone Chat Page
+**Description:** Standalone chat page at `/chat/:tokenId` for shareable agent conversations.
+**Acceptance Criteria:**
+- Shareable URL: `https://api.arrakis.community/chat/[tokenId]`
+- Mobile-responsive layout
+- Read-only mode without auth (personality display, past public interactions)
+- SIWE login required to send messages
+- Rate-limited per session
+
+**Effort:** M
+**Dependencies:** 6.6, 6.7
+
+### Sprint 6 Gate
+- [ ] Developer creates API key → makes inference request → gets streamed response
+- [ ] Web chat widget embeddable with single script tag
+- [ ] SIWE auth flow working (nonce → sign → verify → session)
+- [ ] Standalone chat page renders and authenticates
+- [ ] WebSocket lifecycle constraints enforced (idle timeout, heartbeat, max conns)
 
 ---
 
-## Sprint 5: MERGE PREP (Global ID: 308)
+## Sprint 7: Hardening — Monitoring + Go/No-Go Gate Execution
 
-**Goal:** Update all validation tooling for the expanded document set, run final validation, and prepare PR #76 for merge.
-**Duration:** Day 12
-**Gate:** RTFM 8/8 checks pass (MANAGED_DOCS expanded to include new docs), PR marked ready for review.
+**Global ID:** 320
+**SDD Phase:** Phase 6
+**Days:** Day 14
+**Goals:** G-3 (Production observability), all goals validated
+**FRs:** FR-0.6 (CloudWatch dashboards), FR-0.7 (Alerting)
 
-### Task 5.1: Update RTFM Validator for New Documents
+### Tasks
 
-**ID:** S308-T1
-**Priority:** P0
-**Effort:** Small (1 hour)
-**Dependencies:** Sprint 4 complete
-**Source:** New docs must be in validation scope
-
-**Description:**
-Add `docs/ECONOMICS.md` and `docs/EVENT-PROTOCOL.md` to the `MANAGED_DOCS` array in `scripts/rtfm-validate.sh`. Update the naming zero-tolerance list. Note: no per-doc version headers are required for new docs; the existing versions check (check #3) validates only `docs/DEVELOPER-GUIDE.md` and `package.json` — no changes needed to that check.
-
+#### 7.0 Security Review Gate (Flatline Beads IMP-006)
+**Description:** Lightweight threat model review covering the 4 trust boundaries: S2S auth (JWT ES256), API keys, SIWE sessions, and NOWPayments webhooks. Produces a documented threat model and sign-off before production deploy.
 **Acceptance Criteria:**
-- [ ] `MANAGED_DOCS` array includes `docs/ECONOMICS.md` and `docs/EVENT-PROTOCOL.md`
-- [ ] `zero_tolerance_files` array includes both new docs
-- [ ] All 8 RTFM checks still pass after expansion
+- Threat model document covering: S2S JWT (ES256 signing/validation, JWKS cache poisoning), API key auth (timing attacks, prefix leakage), SIWE (replay, session fixation, origin binding), NOWPayments IPN (replay, spoofing, race conditions), Admin endpoints (privilege escalation, repair abuse)
+- Each threat has: likelihood, impact, existing mitigation (cite sprint task), residual risk
+- Admin endpoint RBAC requirements documented: MFA for admin routes, IP allowlisting, dual-control for credit repairs (Task 5.5), immutable append-only audit logs (Task 5.2)
+- PII handling: JSONL export (Task 5.2) must redact wallet addresses and session tokens; define redaction rules
+- Sign-off: threat model reviewed, no HIGH residual risks without explicit acceptance
+- Time-boxed: 4 hours max — this is a review, not a penetration test
 
-**Testing:**
-- `scripts/rtfm-validate.sh` exits 0 with expanded scope
+**Effort:** M
+**Dependencies:** Sprint 5 (admin endpoints exist), Sprint 6 (auth flows exist)
 
-### Task 5.2: Update BUTTERFREEZONE.md
-
-**ID:** S308-T2
-**Priority:** P1
-**Effort:** Small (30 min)
-**Dependencies:** S308-T1
-
-**Description:**
-Update BUTTERFREEZONE.md to reference the new documentation (ECONOMICS.md, EVENT-PROTOCOL.md) in the interfaces or capabilities section.
-
+#### 7.1 CloudWatch Dashboards
+**Description:** Create unified service health dashboards sourced from AMP.
 **Acceptance Criteria:**
-- [ ] New docs referenced in appropriate BUTTERFREEZONE section
-- [ ] `butterfreezone-validate.sh` still passes (or passes with advisory warnings only)
+- Inference latency panel (p50, p95, p99 by pool)
+- Error rate panel (4xx, 5xx by service)
+- Billing flow panel (payments created/finished/failed, credits minted)
+- Auth failures panel (JWT validation failures, API key failures)
+- Conservation guard panel (guard checks, violations, drift)
+- Dashboard refreshes <60s
 
-**Testing:**
-- `butterfreezone-validate.sh` exit code 0 or 2
+**Effort:** M
+**Dependencies:** Sprint 1 (1.6 AMP workspace)
 
-### Task 5.3: Update DEVELOPER-GUIDE.md
-
-**ID:** S308-T3
-**Priority:** P1
-**Effort:** Small (30 min)
-**Dependencies:** S308-T1
-
-**Description:**
-Add ECONOMICS.md and EVENT-PROTOCOL.md to the learning path and ownership table in DEVELOPER-GUIDE.md.
-
+#### 7.2 Alerting Rules — Conservation Guard + Health
+**Description:** AMP alerting rules → SNS → Slack webhook. Fires within 60s.
 **Acceptance Criteria:**
-- [ ] Both new docs appear in learning path at appropriate positions
-- [ ] Both new docs have DRI, update trigger, and review cadence in ownership table
-- [ ] Cross-links resolve
+- Conservation guard failure → Slack alert within 60s
+- Service health check failure → Slack alert within 60s
+- Budget drift >1% → Slack warning
+- 5xx error rate >5% for 5 minutes → Slack alert
+- Payment webhook 5xx → Slack alert
+- All alerts include service name, environment, metric value, dashboard link
 
-**Testing:**
-- All document links resolve
+**Effort:** M
+**Dependencies:** 7.1, Sprint 1 (1.6 AMP)
 
-### Task 5.4: Full RTFM Validation + Citation Sweep
-
-**ID:** S308-T4
-**Priority:** P0
-**Effort:** Small (1 hour)
-**Dependencies:** S308-T1, S308-T2, S308-T3
-
-**Description:**
-Run full validation suite across all documents. Fix any issues found.
-
+#### 7.3 Feature Flag Kill Switch Verification
+**Description:** Verify all feature flags can be toggled off in production without deployment.
 **Acceptance Criteria:**
-- [ ] `scripts/rtfm-validate.sh` exits 0 — all 8 checks pass
-- [ ] `scripts/pin-citations.sh --validate-only` passes for all new docs
-- [ ] Zero naming violations across all zero-tolerance files
-- [ ] Zero broken cross-links
-- [ ] Zero placeholder markers (TODO/TBD/PLACEHOLDER/FIXME)
+- `FEATURE_CRYPTO_PAYMENTS_ENABLED=false` → payments disabled, existing credits still work
+- `FEATURE_API_KEYS_ENABLED=false` → API key creation disabled, existing keys still work
+- `FEATURE_WEB_CHAT_ENABLED=false` → widget returns 503
+- Toggles take effect within 60s (env var refresh)
+- Kill switch test: toggle off → verify → toggle on in staging
 
-**Testing:**
-- `scripts/rtfm-validate.sh` exits 0
-- `scripts/pin-citations.sh --validate-only` exits 0
+**Effort:** S
+**Dependencies:** Sprints 3, 6
 
-### Task 5.5: Update PR #76 for Merge
-
-**ID:** S308-T5
-**Priority:** P0
-**Effort:** Small (1 hour)
-**Dependencies:** S308-T4
-
-**Description:**
-Update PR #76 body with the complete sprint breakdown (304–308), mark as ready for review, and verify CI passes.
-
+#### 7.4 JWKS Rotation Playbook Verification
+**Description:** Verify JWKS key rotation works per SDD SKP-004 strict ordering.
 **Acceptance Criteria:**
-- [ ] PR body updated with Sprint 4 and Sprint 5 summary
-- [ ] Sprint breakdown table includes all 5 sprints with file counts
-- [ ] PR marked as ready for review (not draft)
-- [ ] CI docs-validation workflow passes
-- [ ] Final commit message follows conventional commit format
+- Rotation test in staging:
+  1. Publish new public key to DB → verify JWKS serves both keys
+  2. Wait ≥6.5 min (cache TTL 5 min + JWT TTL 60s + safety 30s)
+  3. Switch `activeKid` in Secrets Manager → new JWTs signed with new key
+  4. Verify finn accepts both old and new JWTs during overlap
+  5. After 24h overlap: remove old key from DB
+- Automated integration test runs full rotation cycle
+- Rotation runbook documented
 
-**Testing:**
-- `gh pr view 76 --json isDraft` returns false
-- CI checks pass
+**Effort:** M
+**Dependencies:** Sprint 2 (2.1, 2.2, 2.3)
+
+#### 7.5 Load Baseline Test
+**Description:** Baseline load test with 10 concurrent simulated users.
+**Acceptance Criteria:**
+- 10 concurrent inference requests → all complete within p95 <30s
+- No 5xx errors under load
+- Conservation guard passes on all concurrent transactions
+- PgBouncer connection pool not exhausted
+- Redis memory stable
+
+**Effort:** M
+**Dependencies:** All previous sprints
+
+#### 7.6 Deployment Rollback Runbook
+**Description:** Document rollback procedures per SDD Flatline IMP-001.
+**Acceptance Criteria:**
+- Per-phase rollback documented:
+  | Phase | Rollback Method | RTO | RPO |
+  |-------|----------------|-----|-----|
+  | ECS deploy | Previous task definition revision | <5 min | Zero (stateless) |
+  | DB migration | Reverse migration script | <10 min | Zero (backward-compatible) |
+  | Secrets rotation | Revert activeKid + re-deploy | <5 min | 60s JWT TTL window |
+  | Feature flag | Env var toggle | <60s | Zero |
+  | Payment webhook | Disable ALB rule | <2 min | Queued in NOWPayments retry |
+
+**Effort:** S
+**Dependencies:** None (documentation)
+
+#### 7.7 Go/No-Go Gate Checklist
+**Description:** Execute all 11 go/no-go gates for production deployment.
+**Acceptance Criteria:**
+- [ ] Health checks passing on both services (ECS)
+- [ ] S2S JWT validated end-to-end (auth)
+- [ ] At least one model pool responds to inference (inference)
+- [ ] Conservation guard passing on test transactions (billing)
+- [ ] NOWPayments webhook → credit mint working (payments)
+- [ ] `/my-agent` thread creation working (discord)
+- [ ] Admin API returning data (dashboard)
+- [ ] JSONL audit export works (audit)
+- [ ] API key → inference working (platform)
+- [ ] CloudWatch alerts firing on test violation (monitoring)
+- [ ] Rollback tested — previous task def revert succeeds (rollback)
+- All gates pass → production deploy
+- Any gate fails → document blocker, fix, re-gate
+
+**Effort:** L
+**Dependencies:** All previous sprints
+
+#### 7.8 Production Deploy
+**Description:** Deploy to production environment if all go/no-go gates pass.
+**Acceptance Criteria:**
+- `terraform apply` on production environment
+- ECS services running with health checks passing
+- DNS resolving correctly
+- Smoke test: end-to-end inference request in production
+- Monitoring dashboards showing production traffic
+- On-call rotation confirmed
+
+**Effort:** L
+**Dependencies:** 7.7 (all gates pass)
+
+### Sprint 7 Gate
+- [ ] All 11 go/no-go gates pass
+- [ ] Production deploy successful with health checks
+- [ ] Alerting verified (test conservation violation → Slack within 60s)
+- [ ] Rollback tested and documented
+- [ ] Load baseline acceptable (<30s p95)
 
 ---
 
-## Sprint 4–5 Task Dependency Graph
-
-```
-Sprint 4 (Day 11):
-  S307-T1 (ECONOMICS.md) ──────┐
-  S307-T2 (EVENT-PROTOCOL.md) ─┤
-                                ├──→ S307-T3 (Cross-repo path) ──→ GATE: citations pass
-  S307-T4 (Coverage note) ─────┘
-
-Sprint 5 (Day 12):
-  S308-T1 (Update RTFM) ──→ S308-T2 (BUTTERFREEZONE)
-                           ──→ S308-T3 (DEV-GUIDE)
-                           ──→ S308-T4 (Full validation) ──→ S308-T5 (PR merge prep) ──→ GATE: RTFM 8/8
-
-Sprint 6 (Day 13):
-  S309-T1 (Failure modes) ──┐
-  S309-T2 (Pricing note) ───┤
-  S309-T3 (guild.update) ───┤
-  S309-T4 (Coverage note) ──┤
-  S309-T5 (BUTTERFREEZONE) ─┴──→ S309-T6 (Validation) ──→ GATE: RTFM 8/8 + citations
-```
-
----
-
-## Sprint 6: BRIDGE FINDINGS (Global ID: 309)
-
-**Goal:** Address 3 MEDIUM + 2 LOW findings from Bridgebuilder review iteration 1 (bridge-20260220-ec9d24).
-**Duration:** Day 13
-**Gate:** All findings addressed, RTFM 8/8 pass, citations valid.
-**Source:** [Bridgebuilder Review — Iteration 1](https://github.com/0xHoneyJar/loa-freeside/pull/76#issuecomment-3930736754) findings medium-1, medium-2, medium-3, low-1, low-2.
-
-### Task 6.1: Add Failure Modes Section to EVENT-PROTOCOL.md
-
-**ID:** S309-T1
-**Priority:** P1
-**Effort:** Medium (1–2 hours)
-**Dependencies:** Sprint 5 complete
-**Source:** Bridgebuilder finding medium-1 ("EVENT-PROTOCOL.md lacks failure modes documentation")
-
-**Description:**
-Add a "## Failure Modes" section to EVENT-PROTOCOL.md, following the same table format used in ECONOMICS.md (| Failure | Behavior | Rationale |). Cover NATS unreachability, consumer lag, deserialization failure, gateway restart, and message ordering guarantees.
-
-**Pre-flight:** Read `apps/gateway/src/main.rs` for gateway reconnection behavior and `packages/shared/nats-schemas/` for error handling patterns.
-
-**Acceptance Criteria:**
-- [ ] "## Failure Modes" section added to EVENT-PROTOCOL.md before "## Related Documentation"
-- [ ] At least 5 failure scenarios documented: NATS unreachable (gateway), consumer lag (JetStream redelivery), deserialization failure (Zod parse), gateway restart (shard reconnection), duplicate delivery
-- [ ] Table follows | Failure | Behavior | Rationale | format from ECONOMICS.md
-- [ ] Citations to source code where behavior is implemented
-- [ ] `scripts/pin-citations.sh --validate-only` passes
-
-**Testing:**
-- Failure modes table present in rendered markdown
-- All citations resolve
-
-### Task 6.2: Add Pricing Mechanism Note to ECONOMICS.md
-
-**ID:** S309-T2
-**Priority:** P1
-**Effort:** Small (30 min)
-**Dependencies:** None
-**Source:** Bridgebuilder finding medium-2 ("Model pricing table uses stale model identifiers")
-
-**Description:**
-Add a clarifying note below the model pricing table in ECONOMICS.md explaining that the Source column shows default pool pricing tiers, not fixed model bindings. Actual model assignments are configured per-deployment via `BudgetConfigProvider.getModelPricing()`.
-
-**Acceptance Criteria:**
-- [ ] Note added below pricing table clarifying pool defaults vs. runtime configuration
-- [ ] Explains `BudgetConfigProvider.getModelPricing()` override mechanism
-- [ ] Makes clear that pool ID (not model name) is the stable identifier
-
-**Testing:**
-- Note present in rendered markdown
-
-### Task 6.3: Add guild.update Data Schema to EVENT-PROTOCOL.md
-
-**ID:** S309-T3
-**Priority:** P1
-**Effort:** Small (30 min)
-**Dependencies:** None
-**Source:** Bridgebuilder finding medium-3 ("guild.update event type lacks data schema documentation")
-
-**Description:**
-Add a `### guild.update` subsection under the Event Data Schemas section of EVENT-PROTOCOL.md. Check `event-data.ts` for a guild.update data schema; if none exists, document the forward-compatibility pattern.
-
-**Pre-flight:** Read `packages/shared/nats-schemas/src/schemas/event-data.ts` to confirm whether guild.update has a specific data schema or uses the generic `z.unknown()` passthrough.
-
-**Acceptance Criteria:**
-- [ ] `### guild.update` subsection added to Event Data Schemas section
-- [ ] If data schema exists: document fields with types
-- [ ] If no specific schema: document that it uses forward-compatibility (z.unknown())
-- [ ] Citation to event-data.ts
-
-**Testing:**
-- guild.update documented in Event Data Schemas section
-
-### Task 6.4: Add Conservation Property Coverage Note to ECONOMICS.md
-
-**ID:** S309-T4
-**Priority:** P2
-**Effort:** Small (30 min)
-**Dependencies:** None
-**Source:** Bridgebuilder finding low-1 ("Conservation section documents 11 of 14 canonical properties")
-
-**Description:**
-Add a note to the conservation invariant section of ECONOMICS.md stating how many of the 14 canonical properties from loa-hounfour are enforced in freeside, and which remain protocol-level only.
-
-**Pre-flight:** Read `themes/sietch/src/packages/core/protocol/arrakis-conservation.ts` to extract exact invariant IDs and cross-reference against loa-hounfour canonical property list.
-
-**Acceptance Criteria:**
-- [ ] Note states the coverage ratio (N of 14 properties enforced in freeside)
-- [ ] Lists which properties remain protocol-level only (if determinable from source)
-- [ ] Does not imply false completeness
-
-**Testing:**
-- Coverage note present in conservation section
-
-### Task 6.5: Add BUTTERFREEZONE Cross-Reference to DEVELOPER-GUIDE.md
-
-**ID:** S309-T5
-**Priority:** P2
-**Effort:** Small (15 min)
-**Dependencies:** None
-**Source:** Bridgebuilder finding low-2 ("DEVELOPER-GUIDE.md learning path omits BUTTERFREEZONE.md")
-
-**Description:**
-Add a brief note after the learning path table in DEVELOPER-GUIDE.md referencing BUTTERFREEZONE.md as the agent-optimized context file.
-
-**Acceptance Criteria:**
-- [ ] Note added after learning path table referencing BUTTERFREEZONE.md
-- [ ] Explains BUTTERFREEZONE purpose (agent context, token-efficient)
-- [ ] Link resolves
-
-**Testing:**
-- Cross-reference present in rendered markdown
-
-### Task 6.6: Full Validation Sweep
-
-**ID:** S309-T6
-**Priority:** P0
-**Effort:** Small (30 min)
-**Dependencies:** S309-T1 through S309-T5
-**Source:** Gate requirement
-
-**Description:**
-Run full validation suite to confirm all changes pass.
-
-**Acceptance Criteria:**
-- [ ] `scripts/rtfm-validate.sh` exits 0 — all 8 checks pass
-- [ ] `scripts/pin-citations.sh --validate-only` passes
-- [ ] Zero naming violations
-- [ ] Zero broken cross-links
-
----
-
-## Sprint 7: PROTOCOL STABILITY & GOVERNANCE (Global ID: 310)
-
-**Goal:** Extend the two-tier stability model to NATS event schemas, establish semver governance for protocol documentation, and formalize the stability promise beyond HTTP.
-**Duration:** Day 14
-**Gate:** EVENT-PROTOCOL.md has stability tiers for subjects/schemas; ECONOMICS.md and EVENT-PROTOCOL.md have governance policy; RTFM 8/8.
-**Source:** [Deep Bridgebuilder Review](https://github.com/0xHoneyJar/loa-freeside/pull/76#issuecomment-3930900304) Gap 1 (Stability stops at HTTP), Gap 3 (Versioning as Governance), and bridge iteration 1 REFRAME finding.
-
-### Task 7.1: NATS Stability Tiers in EVENT-PROTOCOL.md
-
-**ID:** S310-T1
-**Priority:** P0
-**Effort:** Medium (2–3 hours)
-**Dependencies:** Sprint 6 complete
-**Source:** Deep Review Gap 1 — "The Stability Promise Stops at HTTP"
-
-**Description:**
-Add a "## Stability Tiers" section to EVENT-PROTOCOL.md that applies the same two-tier model from API-REFERENCE.md to NATS subjects and event schemas. When Layer 5 products (loa-dixie) subscribe to NATS events, they need the same stability guarantees as HTTP API consumers. The `GatewayEvent` envelope schema is arguably *more* foundational than any HTTP endpoint.
-
-**Content:**
-1. **Tier 1 (Stable):** GatewayEvent envelope schema, core subject patterns (`gateway.events.>`, `gateway.interactions.>`), stream names. Same 2-cycle deprecation policy as HTTP.
-2. **Tier 2 (Unstable):** Event data payload shapes beyond the 6 documented types, wildcard subject extensions, consumer group naming conventions.
-3. **Promotion criteria:** Stable for 2+ cycles, documented in EVENT-PROTOCOL.md, covered by loa-hounfour JSON fixtures.
-4. **Cross-reference:** Link to API-REFERENCE.md stability contract for HTTP tier definitions.
-
-**Pre-flight:** Read `packages/shared/nats-schemas/nats-routing.json` to identify which subjects should be Tier 1 vs Tier 2. Read loa-hounfour fixture list to identify which schemas have cross-language validation.
-
-**Acceptance Criteria:**
-- [ ] "## Stability Tiers" section added to EVENT-PROTOCOL.md
-- [ ] At minimum 3 subjects/schemas classified as Tier 1 (Stable)
-- [ ] Deprecation policy mirrors HTTP: 2-cycle notice, documented in API-CHANGELOG.md
-- [ ] Tier 2 subjects explicitly marked as unstable
-- [ ] Cross-reference to API-REFERENCE.md stability definitions
-- [ ] Citations to nats-routing.json and loa-hounfour fixtures
-- [ ] `scripts/pin-citations.sh --validate-only` passes
-
-**Testing:**
-- Stability tiers section present in rendered markdown
-- All citations resolve
-
-### Task 7.2: Document Versioning Governance
-
-**ID:** S310-T2
-**Priority:** P1
-**Effort:** Medium (1–2 hours)
-**Dependencies:** None (parallel with T1)
-**Source:** Deep Review Gap 3 — "Versioning as Governance"
-
-**Description:**
-Add a "## Document Versioning" section to DEVELOPER-GUIDE.md that establishes semver governance for protocol documentation. When ECONOMICS.md and EVENT-PROTOCOL.md function as specifications, versioning must follow the same semantics as code — downstream consumers need to say "I built against ECONOMICS.md v1.0.0 and these guarantees apply."
-
-**Content:**
-1. **Major version:** Document restructured, sections removed, guarantees narrowed, or invariant definitions changed.
-2. **Minor version:** New section added, significant content expansion, new failure modes or stability classifications.
-3. **Patch version:** Typo fixes, link updates, clarifications that don't change meaning.
-4. **Protocol docs (ECONOMICS.md, EVENT-PROTOCOL.md):** Major version bumps require PR review from core team. Conservation invariant changes are always major.
-5. **Operational docs (INFRASTRUCTURE.md, CLI.md):** Standard semver, no special governance.
-
-**Acceptance Criteria:**
-- [ ] "## Document Versioning" section in DEVELOPER-GUIDE.md (update existing Versioning section)
-- [ ] Governance rules distinguish protocol docs from operational docs
-- [ ] Conservation invariant changes explicitly classified as major version
-- [ ] Examples of each version bump type
-- [ ] Cross-reference from ECONOMICS.md and EVENT-PROTOCOL.md to versioning governance
-
-**Testing:**
-- Versioning governance section present in DEVELOPER-GUIDE.md
-- Cross-references resolve
-
-### Task 7.3: Stability Contract Cross-Reference in ECONOMICS.md
-
-**ID:** S310-T3
-**Priority:** P1
-**Effort:** Small (30 min)
-**Dependencies:** S310-T2
-**Source:** Deep Review Gap 3
-
-**Description:**
-Add a brief "## Versioning & Stability" section to ECONOMICS.md referencing the governance policy in DEVELOPER-GUIDE.md. State that the conservation invariant, lot lifecycle, and budget accounting model are Tier 1 (Stable) — changes to these definitions follow the 2-cycle deprecation policy.
-
-**Acceptance Criteria:**
-- [ ] "## Versioning & Stability" section added to ECONOMICS.md
-- [ ] Conservation invariant, lot lifecycle, budget accounting classified as Tier 1
-- [ ] Link to DEVELOPER-GUIDE.md versioning governance
-- [ ] Version header reflects current version
-
-**Testing:**
-- Section present in rendered markdown
-- Links resolve
-
----
-
-## Sprint 8: CROSS-REPO EDUCATION & PARADIGM ONBOARDING (Global ID: 311)
-
-**Goal:** Transform the Freeside-centric learning path into a true cross-repo educational journey. Help developers understand they are entering a new paradigm — not just a new codebase — with concepts (conservation invariants, multi-model routing, token-gated capabilities, agent economic citizenship) that have no direct precedent in traditional web development.
-**Duration:** Days 15–16
-**Gate:** ECOSYSTEM.md has comprehensive cross-repo journey; concept glossary exists; RTFM 8/8.
-**Source:** [Deep Bridgebuilder Review](https://github.com/0xHoneyJar/loa-freeside/pull/76#issuecomment-3930900304) Gap 2 (Learning Path is Freeside-Centric), user request for "education across the bounds of single repos."
-
-### Task 8.1: Expand "Building on Loa" into Cross-Repo Educational Journey
-
-**ID:** S311-T1
-**Priority:** P0
-**Effort:** Large (4–6 hours)
-**Dependencies:** Sprint 7 complete
-**Source:** Deep Review Gap 2, user request for multi-repo multi-step learning
-
-**Description:**
-Expand the existing "Building on Loa" section in ECOSYSTEM.md from a brief journey map into a comprehensive multi-repo onboarding guide. The current version assumes readers already understand the protocol layer. The expanded version should take a developer from "I know nothing about Loa" to "I understand the architecture well enough to build a Layer 5 product."
-
-This is not just a reading list — it is a **conceptual progression**. Each step introduces new primitives that build on the previous:
-
-1. **What is Loa?** (ECOSYSTEM.md) — 5-layer stack, dependency direction, naming
-2. **What are the rules?** (loa-hounfour) — Protocol contracts, state machines, conservation invariants
-3. **How does money work?** (ECONOMICS.md) — Budget atomicity, lot lifecycle, capability tiers
-4. **How do events flow?** (EVENT-PROTOCOL.md) — NATS streams, GatewayEvent, subscription patterns
-5. **How do I call an agent?** (API-QUICKSTART.md) — First API call in 5 minutes
-6. **What can I build?** (API-REFERENCE.md) — Full endpoint reference, stability tiers
-7. **How do I deploy?** (INFRASTRUCTURE.md) — Terraform modules, staging guide
-8. **How do I run it?** (CLI.md) — gaib CLI for management
-
-**Content additions:**
-- "Why This Architecture Exists" preamble — explain the progression from Discord bot → community management → agent economy → economic protocol. People need to understand WHY there are 5 repos, not just THAT there are 5 repos.
-- "Conceptual Prerequisites" — what you need to understand before diving in: Redis Lua atomicity, BigInt arithmetic, JetStream at-least-once delivery, token-gating mechanics, hexagonal architecture
-- Role-based deep journeys (expanded from current 3-row table):
-  - **API Consumer**: QUICKSTART → REFERENCE → ECONOMICS (understand costs) → stability tiers
-  - **Product Builder**: ECOSYSTEM → EVENT-PROTOCOL → ECONOMICS → loa-hounfour contracts → REFERENCE
-  - **Protocol Contributor**: loa-hounfour → ECONOMICS → EVENT-PROTOCOL → conservation invariant source → temporal properties
-  - **Operator**: INFRASTRUCTURE → CLI → monitoring dashboards → cost estimation
-  - **New to Agent Economies**: Start with "What is an Agent Economy?" section → ECOSYSTEM → ECONOMICS → EVENT-PROTOCOL
-
-**Acceptance Criteria:**
-- [ ] "Building on Loa" section expanded to at minimum 5 role-based paths
-- [ ] "Why This Architecture Exists" preamble explains evolution from bot → protocol
-- [ ] "Conceptual Prerequisites" section lists key primitives newcomers must understand
-- [ ] Each path includes cross-repo links (loa-hounfour, loa-finn where relevant)
-- [ ] Cross-repo references use repository links, not branch-relative
-- [ ] `scripts/pin-citations.sh --validate-only` passes
-- [ ] Section is self-contained — readable without needing to open 8 tabs
-
-**Testing:**
-- All cross-repo links resolve
-- RTFM crossrepo check passes
-
-### Task 8.2: Concept Glossary — "New Concepts in Agent Economies"
-
-**ID:** S311-T2
-**Priority:** P0
-**Effort:** Large (3–4 hours)
-**Dependencies:** S311-T1 (references glossary entries)
-**Source:** User request — "getting used to new concepts"
-
-**Description:**
-Create a `docs/GLOSSARY.md` that defines the key concepts of the Loa protocol. This is not a dictionary — it is a conceptual map for developers transitioning from traditional web development to agent economic infrastructure. Each entry should explain: what it is, why it matters, where it comes from (FAANG/industry parallel), and where to learn more.
-
-People entering this ecosystem face a combinatorial explosion of unfamiliar concepts: conservation invariants, lot lifecycle, conviction scoring, pool routing, ensemble strategies, token-gating, BYOK, budget atomicity. Without a glossary, they must reconstruct these concepts from scattered source code. The glossary serves as the "Rosetta Stone" between traditional concepts and Loa concepts.
-
-**Content (minimum entries):**
-
-| Concept | Traditional Equivalent | Loa Primitive | Source Doc |
-|---------|----------------------|---------------|------------|
-| Conservation Invariant | Double-entry bookkeeping | `available + reserved + consumed = original` | ECONOMICS.md |
-| Budget Atomicity | Transaction isolation | Redis Lua two-counter model | ECONOMICS.md |
-| Lot Lifecycle | Payment authorization | reserve → finalize → reap | ECONOMICS.md |
-| Conviction Scoring | Access control list | Token-weighted tier calculation | ECONOMICS.md |
-| Pool Routing | Load balancing | Capability-based model selection | ECONOMICS.md |
-| Ensemble Strategy | Redundant systems | Multi-model decision protocols | ECONOMICS.md |
-| Capability Tier | Subscription plan | Token-gated pool access | ECONOMICS.md |
-| GatewayEvent | HTTP request | NATS message envelope | EVENT-PROTOCOL.md |
-| Stability Tier | API versioning | 2-cycle deprecation commitment | API-REFERENCE.md |
-| BYOK | Self-hosted | Bring Your Own Key with envelope encryption | BUTTERFREEZONE.md |
-| Token-Gating | Authentication | Wallet-verified capability access | ECOSYSTEM.md |
-| Forward Compatibility | Backward compatibility | `z.unknown()` + `isKnownEventType()` guard | EVENT-PROTOCOL.md |
-| Fail-Closed Reservation | Circuit breaker | Deny on Redis unreachable | ECONOMICS.md |
-| Agent Economic Citizenship | Service identity | NFT-bound agent with budget delegation | ECOSYSTEM.md |
-
-**Format for each entry:**
-```markdown
-### Conservation Invariant
-
-**What:** A mathematical guarantee that no budget can be created or destroyed during the agent inference lifecycle. Expressed as `available + reserved + consumed = original` for every lot.
-
-**Why it matters:** In a multi-agent economy where communities delegate spending authority to autonomous agents, the conservation invariant is what makes that delegation safe. It is the foundational promise that the books will always balance.
-
-**Traditional parallel:** Double-entry bookkeeping (every credit has a corresponding debit). In banking, this is regulatory requirement. In agent economies, it is protocol-level enforcement.
-
-**Industry parallel:** Stripe's idempotency keys prevent double-charges; the conservation invariant prevents double-spending at a more fundamental level — not per-transaction but per-lot across the entire lifecycle.
-
-**Learn more:** [ECONOMICS.md](ECONOMICS.md) § Conservation Invariant
-```
-
-**Acceptance Criteria:**
-- [ ] `docs/GLOSSARY.md` created with at minimum 12 concept entries
-- [ ] Each entry has: What, Why it matters, Traditional parallel, Industry parallel, Learn more
-- [ ] Entries link to source documentation
-- [ ] Cross-referenced from DEVELOPER-GUIDE.md learning path
-- [ ] Cross-referenced from ECOSYSTEM.md "Conceptual Prerequisites"
-- [ ] `scripts/pin-citations.sh --validate-only` passes
-
-**Testing:**
-- All "Learn more" links resolve
-- Glossary covers at least the 14 concepts listed above
-
-### Task 8.3: Add GLOSSARY.md to Validation and Navigation
-
-**ID:** S311-T3
-**Priority:** P1
-**Effort:** Small (1 hour)
-**Dependencies:** S311-T2
-**Source:** Integration task
-
-**Description:**
-Add GLOSSARY.md to RTFM managed docs, DEVELOPER-GUIDE.md learning path and ownership table, BUTTERFREEZONE interfaces list, and cross-link from all docs that use glossary terms.
-
-**Acceptance Criteria:**
-- [ ] GLOSSARY.md added to `MANAGED_DOCS` in `scripts/rtfm-validate.sh`
-- [ ] GLOSSARY.md in DEVELOPER-GUIDE.md learning path (position after ECOSYSTEM, before API-QUICKSTART)
-- [ ] GLOSSARY.md in DEVELOPER-GUIDE.md ownership table (DRI: Core team, trigger: new concept introduced)
-- [ ] "Next Steps" footer added to GLOSSARY.md
-- [ ] All docs referencing glossary concepts link to GLOSSARY.md at least once
-- [ ] BUTTERFREEZONE.md updated to reference GLOSSARY.md
-- [ ] RTFM 8/8 passes with expanded managed docs
-
-**Testing:**
-- `scripts/rtfm-validate.sh` passes with GLOSSARY.md in scope
-- All cross-links resolve
-
----
-
-## Sprint 9: PROTOCOL FORMALIZATION & DISCOVERY (Global ID: 312)
-
-**Goal:** Deepen the economic primitives documentation toward protocol-specification quality, establish BUTTERFREEZONE as the foundation for machine-discoverable agent platforms, and add the "why this matters" educational framing that transforms docs from reference material into paradigm introduction.
-**Duration:** Day 17 (parallel with Sprint 10)
-**Gate:** ECONOMICS.md has formal specification section; BUTTERFREEZONE has discovery protocol fields; RTFM 8/8.
-**Source:** [Deep Bridgebuilder Review](https://github.com/0xHoneyJar/loa-freeside/pull/76#issuecomment-3930900304) Gap 4 (Agent Discovery), bridge SPECULATION findings, user request for "awareness of the wider eco."
-
-### Task 9.1: Economic Protocol Formal Specification Section
-
-**ID:** S312-T1
-**Priority:** P1
-**Effort:** Medium (2–3 hours)
-**Dependencies:** Sprint 8 complete (glossary terms referenced)
-**Source:** Bridge iteration 1 SPECULATION finding — "Formalize economic primitives as a standalone protocol specification"
-
-**Description:**
-Add a "## Formal Specification" section to ECONOMICS.md that presents the conservation invariant, lot lifecycle state machine, and budget accounting model in a format approaching EIP-style specification quality. This is not a full EIP — it is the educational bridge between "internal documentation" and "proposed standard."
-
-The deep review noted: "The gap between 'internal documentation' and 'proposed standard' is smaller than it appears." This task closes that gap for the most critical primitives.
-
-**Content:**
-1. **Conservation Properties** — Table of all 14 canonical properties with formal notation:
-   - Property ID, Name, Formal expression, Enforcement level (DB/App/Protocol/Reconciliation)
-   - Cross-reference to loa-hounfour source
-2. **Lot State Machine** — State diagram: `RESERVED → PARTIALLY_CONSUMED → CONSUMED → REAPED`
-   - Transition guards and side effects
-   - Idempotency guarantees per transition
-3. **Budget Accounting Axioms** — The 3 guarantees as formal properties:
-   - A1: No precision loss (integer micro-USD, no floating point)
-   - A2: No double-charge (idempotent finalization via Redis key)
-   - A3: Fail-closed reservation (deny on infrastructure failure)
-4. **Implementer Notes** — What a conforming implementation must guarantee to claim Loa compatibility
-
-**Acceptance Criteria:**
-- [ ] "## Formal Specification" section added to ECONOMICS.md after the existing content
-- [ ] Conservation properties table with all 14 properties (referencing loa-hounfour)
-- [ ] Lot state machine documented with transitions and guards
-- [ ] 3 budget axioms formally stated
-- [ ] Implementer notes section explaining conformance requirements
-- [ ] Citations to loa-hounfour constraint JSON files where relevant
-- [ ] `scripts/pin-citations.sh --validate-only` passes
-
-**Testing:**
-- Formal specification section present in rendered markdown
-- Property table has 14 entries matching loa-hounfour canonical list
-
-### Task 9.2: BUTTERFREEZONE Agent Discovery Fields
-
-**ID:** S312-T2
-**Priority:** P1
-**Effort:** Medium (1–2 hours)
-**Dependencies:** None (parallel with T1)
-**Source:** Deep Review Gap 4 — "The Agent Discovery Story"
-
-**Description:**
-Extend the `AGENT-CONTEXT` header in BUTTERFREEZONE.md with additional fields that lay the foundation for machine-discoverable agent platforms. Currently the header has: name, type, purpose, key_files, interfaces, dependencies, capability_requirements, version, trust_level. Add fields that enable an agent to evaluate whether this platform meets its needs without human intermediation.
-
-**New fields:**
-- `stability_contract`: URL to stability tier documentation
-- `economic_model`: Brief description of the economic primitives (conservation, lot lifecycle)
-- `protocol_version`: loa-hounfour version this platform conforms to
-- `discovery_endpoints`: List of machine-readable entry points (health check, capabilities, pricing)
-- `ecosystem`: Map of related repos with their roles
-
-**Acceptance Criteria:**
-- [ ] AGENT-CONTEXT header extended with at minimum 4 new fields
-- [ ] Fields are machine-parseable (YAML within HTML comment)
-- [ ] `butterfreezone-validate.sh` updated: new fields are optional — validator treats absence as advisory warning (exit code 2, not failure). RTFM check #7 accepts exit code 0 or 2.
-- [ ] Golden test vectors in `tests/fixtures/butterfreezone-golden/` regenerated and committed to reflect new fields and updated per-section hashes
-- [ ] Brief prose section explaining the agent discovery vision
-- [ ] Cross-reference to GLOSSARY.md for concept definitions
-
-**Testing:**
-- `butterfreezone-validate.sh` passes (exit 0 or 2 for advisory)
-- Golden vectors match regenerated output
-- New fields parseable by a simple YAML parser
-
-### Task 9.3: "Understanding the Agent Economy" Preamble
-
-**ID:** S312-T3
-**Priority:** P1
-**Effort:** Medium (1–2 hours)
-**Dependencies:** S311-T2 (glossary concepts referenced)
-**Source:** User request — "building a new paradigm so we need to do the education"
-
-**Description:**
-Add an "Understanding the Agent Economy" section to the beginning of ECOSYSTEM.md (after the Stack section, before Repositories). This section explains to newcomers *why* this architecture exists and *what problem it solves* at the paradigm level — not just the technical level.
-
-The current ECOSYSTEM.md jumps straight into layer diagrams and repo descriptions. A developer arriving from traditional web development needs context: Why are there 5 repos? Why is there a separate protocol layer? Why does billing need its own conservation invariant? What is an "agent economy" and how does it differ from a regular SaaS?
-
-**Content:**
-1. **What is an Agent Economy?** — Autonomous AI agents that hold identity, spend budget, and provide services within a governed commons. Not chatbots — economic actors.
-2. **Why Conservation Invariants?** — When you delegate spending authority to an autonomous agent, you need mathematical proof that the books balance. This is the difference between a billing system and an economic protocol.
-3. **Why 5 Repos?** — Separation of concerns at the protocol level. The contracts (loa-hounfour) must evolve independently of the implementation (loa-freeside) and the runtime (loa-finn). This is the Kubernetes insight: contracts independent of both platform and runtime.
-4. **Why Multi-Model?** — Different cognitive tasks require different models, just as different compute tasks require different processors. Pool routing is to models what load balancing is to servers — but with cost and capability awareness.
-5. **The Web4 Connection** — Brief reference to the broader thesis (blockchain + AI convergence), linking to the existing Web4 section.
-
-**Acceptance Criteria:**
-- [ ] "Understanding the Agent Economy" section added to ECOSYSTEM.md
-- [ ] At minimum 4 subsections explaining paradigm concepts
-- [ ] Links to GLOSSARY.md for formal definitions
-- [ ] Links to ECONOMICS.md and EVENT-PROTOCOL.md for technical depth
-- [ ] Accessible to someone with web development background but no agent/blockchain experience
-- [ ] Zero jargon without definition or glossary link
-
-**Testing:**
-- Section present in rendered markdown
-- All links resolve
-- No undefined technical terms
-
----
-
-## Sprint 10: FINAL EXCELLENCE & MERGE (Global ID: 313)
-
-**Goal:** Run full validation suite, regenerate BUTTERFREEZONE, update PR body, and prepare for merge.
-**Duration:** Day 17 (after Sprint 9)
-**Gate:** RTFM 8/8, all citations valid, PR body updated, ready for human review.
-**Source:** Merge preparation.
-
-### Task 10.1: Update RTFM Validator Scope
-
-**ID:** S313-T1
-**Priority:** P0
-**Effort:** Small (30 min)
-**Dependencies:** Sprints 7–9 complete
-**Source:** New docs must be in validation scope
-
-**Description:**
-Verify that `docs/GLOSSARY.md` is already in `MANAGED_DOCS` and `zero_tolerance_files` (added in Sprint 8, Task 8.3). This is a verification-only task — if Sprint 8.3 correctly added GLOSSARY.md, no changes are needed. If Sprint 8.3 was incomplete, add it here. Confirm all 8 checks account for the expanded document set including all Sprint 7–9 additions.
-
-**Acceptance Criteria:**
-- [ ] Confirm `MANAGED_DOCS` includes GLOSSARY.md (expected from S311-T3)
-- [ ] Confirm `zero_tolerance_files` includes GLOSSARY.md (expected from S311-T3)
-- [ ] All 8 RTFM checks pass with full expanded scope (all Sprint 7–9 docs)
-- [ ] No redundant MANAGED_DOCS additions — single source of introduction per doc
-
-**Testing:**
-- `scripts/rtfm-validate.sh` exits 0
-
-### Task 10.2: Regenerate BUTTERFREEZONE.md
-
-**ID:** S313-T2
-**Priority:** P1
-**Effort:** Small (30 min)
-**Dependencies:** S313-T1
-**Source:** New docs and discovery fields need to be reflected
-
-**Description:**
-Regenerate BUTTERFREEZONE.md to reflect the expanded documentation set, new GLOSSARY.md, and agent discovery fields from S312-T2. Validate hashes.
-
-**Acceptance Criteria:**
-- [ ] BUTTERFREEZONE.md regenerated or manually updated with new fields
-- [ ] `butterfreezone-validate.sh` passes
-- [ ] AGENT-CONTEXT header reflects current state
-
-**Testing:**
-- `butterfreezone-validate.sh` exit 0 or advisory-only warnings
-
-### Task 10.3: Full Citation Sweep + Validation
-
-**ID:** S313-T3
-**Priority:** P0
-**Effort:** Small (1 hour)
-**Dependencies:** S313-T2
-**Source:** Gate requirement
-
-**Description:**
-Run full validation suite across all documents. Fix any issues found.
-
-**Acceptance Criteria:**
-- [ ] `scripts/rtfm-validate.sh` exits 0 — all 8 checks pass
-- [ ] `scripts/pin-citations.sh --validate-only` passes for ALL docs
-- [ ] Zero naming violations
-- [ ] Zero broken cross-links
-- [ ] Zero placeholder markers (TODO/TBD/PLACEHOLDER/FIXME)
-
-**Testing:**
-- `scripts/rtfm-validate.sh` exits 0
-- `scripts/pin-citations.sh --validate-only` exits 0
-
-### Task 10.4: Bridge Findings Closure Checklist
-
-**ID:** S313-T4
-**Priority:** P0
-**Effort:** Small (30 min)
-**Dependencies:** S313-T3
-**Source:** GPT review — findings traceability requirement
-
-**Description:**
-Create a findings closure artifact that maps every bridge review finding (3 MEDIUM, 2 LOW, 1 REFRAME, 3 SPECULATION from bridge iterations, plus 4 gaps from deep review) to the concrete doc section/commit that addresses it. This prevents regression — since Sprints 7–10 modify the same docs that resolved earlier findings, later edits could regress a previously "closed" finding.
-
-**Acceptance Criteria:**
-- [ ] Closure table created in `grimoires/loa/NOTES.md` (or dedicated section) with columns: Finding ID → Description → Sprint/Task → Doc Section → Validation Evidence
-- [ ] All 13 findings mapped (3 MEDIUM + 2 LOW + 1 REFRAME + 3 SPECULATION + 4 deep review gaps)
-- [ ] Each finding shows current status: CLOSED (with evidence) or DEFERRED (with rationale)
-- [ ] No finding marked CLOSED without a verifiable doc section reference
-
-**Testing:**
-- All MEDIUM and HIGH findings show CLOSED status
-- All closure references point to existing doc sections
-
-### Task 10.5: Update PR #76 for Final Merge
-
-**ID:** S313-T5
-**Priority:** P0
-**Effort:** Small (1 hour)
-**Dependencies:** S313-T4
-**Source:** Merge preparation
-
-**Description:**
-Update PR #76 body with the complete sprint breakdown (304–313), include the bridge review trail, mark as ready for review.
-
-**Acceptance Criteria:**
-- [ ] PR body updated with all 10 sprints and file counts
-- [ ] Bridge review trail referenced (3 comments: iteration 1, iteration 2, deep review)
-- [ ] Sprint breakdown table includes all sprints with status
-- [ ] CI docs-validation workflow passes
-- [ ] Final commit follows conventional commit format
-
-**Testing:**
-- `gh pr view 76 --json isDraft` returns false
-- CI checks pass
-
----
-
-## Sprint 7–10 Task Dependency Graph
-
-```
-Sprint 7 (Day 14):
-  S310-T1 (NATS stability tiers) ──┐
-  S310-T2 (Doc versioning governance)┤
-                                     ├──→ S310-T3 (ECONOMICS stability ref) ──→ GATE: RTFM 8/8
-                                     ┘
-
-Sprint 8 (Days 15–16):
-  S311-T1 (Cross-repo journey) ──→ S311-T2 (Concept glossary) ──→ S311-T3 (Integration) ──→ GATE: RTFM 8/8
-
-Sprint 9 (Day 17):
-  S312-T1 (Formal specification) ──┐
-  S312-T2 (Discovery fields) ──────┤
-  S312-T3 (Agent economy preamble) ┴──→ GATE: RTFM 8/8
-
-Sprint 10 (Day 17, after Sprint 9):
-  S313-T1 (RTFM scope verify) ──→ S313-T2 (BUTTERFREEZONE) ──→ S313-T3 (Full validation) ──→ S313-T4 (Findings closure) ──→ S313-T5 (PR update) ──→ GATE: Merge-ready
-```
+## Appendix A: FR → Sprint Mapping
+
+| FR | Description | Sprint | Task |
+|----|-------------|--------|------|
+| FR-0.1 | Deploy loa-finn ECS | Sprint 1 | 1.1, 1.2 |
+| FR-0.2 | Docker Compose local dev | Sprint 1 | 1.4 |
+| FR-0.3 | S2S JWT exchange | Sprint 2 | 2.1, 2.2, 2.3 |
+| FR-0.4 | Model pool responds | Sprint 2 | 2.4 |
+| FR-0.5 | Metrics collection | Sprint 1 | 1.6 |
+| FR-0.6 | CloudWatch dashboards | Sprint 7 | 7.1 |
+| FR-0.7 | Alerting | Sprint 7 | 7.2 |
+| FR-1.1 | Enable feature flag | Sprint 3 | 3.1 |
+| FR-1.2 | Wire webhook | Sprint 3 | 3.1, 3.2 |
+| FR-1.3 | Credit tiers | Sprint 3 | 3.3 |
+| FR-1.4 | Discord /buy-credits | Sprint 3 | 3.5 |
+| FR-1.5 | Telegram /buy-credits | Sprint 3 | 3.6 |
+| FR-1.6 | Idempotent double-payment | Sprint 3 | 3.2 |
+| FR-2.1 | NFT context enrichment | Sprint 4 | 4.1 |
+| FR-2.2 | Pool/personality metadata | Sprint 4 | 4.1 |
+| FR-2.3 | Anti-narration enforcement | Sprint 4 | 4.4 |
+| FR-2.4 | Two-NFT differential routing | Sprint 4 | 4.4 |
+| FR-3.1 | /my-agent Discord thread | Sprint 4 | 4.5 |
+| FR-3.2 | Thread personality routing | Sprint 4 | 4.6 |
+| FR-3.3 | /agent-info command | Sprint 4 | 4.8 |
+| FR-3.4 | Admin usage dashboard | Sprint 5 | 5.1 |
+| FR-3.5 | Admin API endpoints | Sprint 5 | 5.1–5.4 |
+| FR-3.6 | Web chat widget | Sprint 6 | 6.5 |
+| FR-3.7 | Standalone chat page | Sprint 6 | 6.7 |
+| FR-4.1 | JSONL audit export | Sprint 5 | 5.2 |
+| FR-4.2 | Pool enforcement transparency | Sprint 5 | 5.4 |
+| FR-4.3 | Conservation guard endpoint | Sprint 5 | 5.3 |
+| FR-4.4 | No PII in exports | Sprint 5 | 5.2 |
+| FR-5.1 | API key generation | Sprint 6 | 6.1 |
+| FR-5.2 | API key auth | Sprint 6 | 6.2 |
+| FR-5.3 | Per-key rate limiting | Sprint 6 | 6.2 |
+| FR-5.4 | Self-service portal | Sprint 6 | 6.3 |
+| FR-5.5 | Developer onboarding | Sprint 6 | 6.4 |
+
+## Appendix B: SDD Component → Sprint Mapping
+
+| SDD Component | Sprint |
+|---------------|--------|
+| ECS Task Definitions (§1.3) | Sprint 1 |
+| Service Discovery / Cloud Map (§1.3) | Sprint 1 |
+| ADOT Sidecar / AMP (§1.3) | Sprint 1 |
+| Database Migrations 061–065 (§3) | Sprint 1 |
+| JWKS Endpoint (§1.6) | Sprint 2 |
+| S2S JWT Signing (§1.6) | Sprint 2 |
+| S2S JWT Validation (§1.6) | Sprint 2 |
+| PgBouncer Read-Only (§1.4) | Sprint 2 |
+| NOWPayments Webhook (§5.4) | Sprint 3 |
+| IPN State Machine (§3.2) | Sprint 3 |
+| Credit Mint Guard (§3.2) | Sprint 3 |
+| Reconciliation Job (§3.2) | Sprint 3 |
+| Inference Enrichment (§4.1) | Sprint 4 |
+| Budget Reservation Lifecycle (§3.2, §1.5) | Sprint 4 |
+| NATS JetStream Usage (SKP-002) | Sprint 4 |
+| Discord Thread Management (§4.2) | Sprint 4 |
+| Admin API Endpoints (§5) | Sprint 5 |
+| JSONL Audit Export (§5) | Sprint 5 |
+| API Key System (§1.9, §5) | Sprint 6 |
+| SIWE Auth (§1.9, IMP-003) | Sprint 6 |
+| WebSocket Chat (§4.2, IMP-004) | Sprint 6 |
+| CloudWatch Dashboards (§8 Phase 6) | Sprint 7 |
+| AMP Alerting Rules (§8 Phase 6) | Sprint 7 |
+| JWKS Rotation Playbook (SKP-004) | Sprint 7 |
+| Go/No-Go Gates (§8 Phase 6) | Sprint 7 |
+
+## Appendix C: Goal → Sprint Traceability
+
+| Goal | Description | Sprints | Verified By |
+|------|-------------|---------|-------------|
+| G-1 | Deploy full stack to production | Sprint 1, 2, 7 | 7.7 gate: health checks passing |
+| G-2 | Enable crypto payment revenue | Sprint 3 | 7.7 gate: webhook → credit mint |
+| G-3 | Production observability + alerting | Sprint 1, 7 | 7.7 gate: Slack alert within 60s |
+| G-4 | Per-NFT personality routing | Sprint 4 | 7.7 gate: two NFTs routed differently |
+| G-5 | Per-NFT Discord threads | Sprint 4 | 7.7 gate: /my-agent thread creation |
+| G-6 | Admin budget visibility | Sprint 5 | 7.7 gate: admin API returns data |
+| G-7 | Auditable billing + pool enforcement | Sprint 5 | 7.7 gate: JSONL export works |
+| G-8 | Self-service developer API keys | Sprint 6 | 7.7 gate: API key → inference |
+| G-9 | Web chat surface | Sprint 6 | 7.7 gate: widget streams response |
+
+## Appendix D: S2S Contract (Frozen v1.0.0)
+
+Per SDD Flatline SKP-001, the loa-freeside ↔ loa-finn contract is frozen at v1.0.0 for this cycle:
+
+| Aspect | Specification |
+|--------|---------------|
+| **Endpoint** | `POST /api/v1/inference` |
+| **Auth** | `Authorization: Bearer <ES256 JWT>`, `iss: loa-freeside`, `aud: loa-finn`, TTL 60s |
+| **Request body** | `{ "prompt": string, "max_tokens"?: number, "stream": true }` |
+| **JWT claims** | `nft_id`, `tier`, `budget_reservation_id`, `community_id` |
+| **SSE events** | `data: {"type":"token","content":"..."}`, `data: {"type":"done","usage":{...}}` |
+| **Response headers** | `X-Pool-Used`, `X-Personality-Id`, `X-Token-Count`, `X-Request-Id` |
+| **Health** | `GET /health` → 200 `{"status":"ok","version":"..."}` |
+| **Compatibility gate** | Both services log `contract_version: "1.0.0"` header; mismatch → warn (not block) |

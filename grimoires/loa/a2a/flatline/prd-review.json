@@ -1,1 +1,88 @@
-{"phase":"prd","document":"grimoires/loa/prd.md","timestamp":"2026-02-19T08:13:34Z","consensus_summary":{"high_consensus_count":4,"disputed_count":0,"low_value_count":0,"blocker_count":5,"model_agreement_percent":100},"high_consensus_count":4,"blocker_count":5}
+{
+  "phase": "prd",
+  "document": "grimoires/loa/prd.md",
+  "timestamp": "2026-02-20T08:08:35Z",
+  "consensus_summary": {
+    "high_consensus_count": 5,
+    "disputed_count": 0,
+    "low_value_count": 0,
+    "blocker_count": 6,
+    "model_agreement_percent": 100,
+    "confidence": "full"
+  },
+  "high_consensus": [
+    {
+      "id": "IMP-001",
+      "description": "Rollback/DR strategy for first production deploy",
+      "average_score": 840,
+      "status": "auto_integrated"
+    },
+    {
+      "id": "IMP-002",
+      "description": "Explicit go/no-go gate with launch checklist",
+      "average_score": 760,
+      "status": "auto_integrated"
+    },
+    {
+      "id": "IMP-003",
+      "description": "Payment edge states specification (state machine)",
+      "average_score": 890,
+      "status": "auto_integrated"
+    },
+    {
+      "id": "IMP-005",
+      "description": "Fix JWKS URL ownership contradiction in env vars",
+      "average_score": 905,
+      "status": "auto_integrated"
+    },
+    {
+      "id": "IMP-006",
+      "description": "Database migration execution strategy",
+      "average_score": 760,
+      "status": "auto_integrated"
+    }
+  ],
+  "disputed": [],
+  "blockers": [
+    {
+      "id": "SKP-001",
+      "concern": "Timeline is incompatible with scope",
+      "severity_score": 950,
+      "status": "pending_user_decision"
+    },
+    {
+      "id": "SKP-002",
+      "concern": "S2S JWT/JWKS env var contradicts trust model",
+      "severity_score": 900,
+      "status": "pending_user_decision"
+    },
+    {
+      "id": "SKP-003",
+      "concern": "NOWPayments reconciliation and failure modes underspecified",
+      "severity_score": 880,
+      "status": "pending_user_decision"
+    },
+    {
+      "id": "SKP-004",
+      "concern": "Budget atomicity across streaming inference underspecified",
+      "severity_score": 780,
+      "status": "pending_user_decision"
+    },
+    {
+      "id": "SKP-005",
+      "concern": "Discord thread access control fragility",
+      "severity_score": 740,
+      "status": "pending_user_decision"
+    },
+    {
+      "id": "SKP-006",
+      "concern": "Shared Redis/RDS capacity bottlenecks",
+      "severity_score": 720,
+      "status": "pending_user_decision"
+    }
+  ],
+  "metrics": {
+    "total_latency_ms": 226000,
+    "cost_cents": 46
+  }
+}

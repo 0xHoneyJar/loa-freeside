@@ -1,48 +1,54 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "The plan is close, but several dependency/consistency breaks and a couple of missing integration tasks will cause gates to fail (or be untestable) in Sprint 4+ and Sprint 10.",
+  "summary": "This plan is close, but several incorrect dependencies and missing infra/security tasks (Cloud Map/JWKS URL, NATS provisioning, JWKS key lifecycle, and WebSocket/ECS wiring) will block end-to-end implementation within the cycle.",
   "blocking_issues": [
     {
-      "location": "Sprint 4 / Task 4.1 (ECONOMICS.md) pre-flight source paths",
-      "issue": "Pre-flight cites a file path that appears to still use the old name: `themes/sietch/src/packages/core/protocol/arrakis-conservation.ts`.",
-      "why_blocking": "Your global requirement is zero naming violations in platform context and Sprint 1/3 enforce `arrakis` grep checks. If the code path really contains `arrakis-*`, either (a) the naming gate will fail, or (b) ECONOMICS.md will be forced to cite a path that violates the naming policy. Either way, Sprint 4’s gate (“grounded + citations valid”) becomes unachievable without changing either code or the naming rule.",
-      "fix": "Before Sprint 4 starts, add an explicit task to reconcile this: either rename the source file/module to loa-freeside naming (and update imports), or update the naming policy to allow `arrakis` in code paths while still banning it in docs prose. Then update all planned citations/paths accordingly."
+      "location": "Sprint 2 — Task 2.3 S2S JWT Validation on loa-finn",
+      "issue": "JWKS fetch URL points to finn instead of freeside, and the port/host are inconsistent with the trust model.",
+      "why_blocking": "loa-finn cannot validate tokens if it cannot fetch JWKS; as written it will call `http://finn.../.well-known/jwks.json` which is the wrong service. This breaks Sprint 2 gate and everything downstream (payments/routing/web chat).",
+      "fix": "Change acceptance criteria to fetch JWKS from freeside via internal discovery, e.g. `http://freeside.arrakis-{env}.local:3000/.well-known/jwks.json` (or whatever the freeside Cloud Map name is). Add an explicit Sprint 1 task/AC to register freeside in Cloud Map (if not already) and document the internal base URLs/ports for both services."
     },
     {
-      "location": "Sprint 2 / Task 2.1 (extract-routes.sh) vs Sprint 4 / Task 4.4 (coverage note)",
-      "issue": "Task 2.1 specifies a ts-morph AST parser, but Sprint 4.4 states the actual implementation is grep-based and must be documented as such.",
-      "why_blocking": "This is a direct plan contradiction that will cause either implementation churn (building AST when you later document grep) or doc/code truth violations (documenting grep when code is AST). It also impacts RTFM check #8 (route diff completeness) and Sprint 2 acceptance criteria (supported patterns, unresolvable linter) which are AST-specific.",
-      "fix": "Decide and lock the extraction approach in Sprint 2: either (A) keep ts-morph and remove the Sprint 4.4 note about grep, or (B) change Sprint 2.1 acceptance criteria to match a grep-based extractor (supported patterns, limitations, and linter semantics) and update Sprint 2.2/2.3/RTFM check #8 expectations accordingly."
+      "location": "Sprint 1 — Tasks 1.1/1.2 (Service Discovery / DNS)",
+      "issue": "Cloud Map and Route53 internal DNS are conflated; the plan assumes `finn.arrakis-{env}.local` resolves but doesn’t include the required Cloud Map namespace/service wiring details.",
+      "why_blocking": "If service discovery isn’t actually created/attached to the ECS service, freeside→finn calls (and later finn→freeside JWKS fetch) will fail in ECS even if Docker Compose works. This is a common production-only failure mode.",
+      "fix": "In Sprint 1, add explicit acceptance criteria for: (a) Cloud Map private DNS namespace exists/selected, (b) ECS service has `service_registries` configured, (c) verify resolution from a task (exec into freeside task and `nslookup finn...`), and (d) remove/clarify the Route53 record requirement unless you truly manage a separate private hosted zone."
     },
     {
-      "location": "Sprint 4 / Task 4.1 (ECONOMICS.md) and Sprint 9 / Task 9.1 (Formal Specification)",
-      "issue": "The plan requires documenting “exactly the properties found in arrakis-conservation.ts” (Sprint 4) and later a table of “all 14 canonical properties” (Sprint 9), while Sprint 6.4 says freeside enforces only N of 14 and some are protocol-only.",
-      "why_blocking": "As written, these requirements can conflict and become untestable: Sprint 4 demands exactness from a freeside adapter file, Sprint 9 demands completeness from loa-hounfour, and Sprint 6.4 demands partial enforcement disclosure. Without a defined reconciliation rule, reviewers/RTFM can’t determine correctness, and you risk rework across three sprints.",
-      "fix": "Add an explicit acceptance rule: ECONOMICS.md must (1) list the canonical 14 from loa-hounfour as the normative set, (2) separately state which subset is enforced in freeside (with citations to freeside enforcement points), and (3) treat any freeside adapter list as “implemented coverage,” not the canonical list. Update Sprint 4.1 acceptance criteria to reference loa-hounfour as canonical, not the freeside adapter file."
+      "location": "Sprint 2 — Task 2.2 (Key rotation) + Sprint 7 — Task 7.4 (Rotation test)",
+      "issue": "Key lifecycle prerequisites are missing: there is no task to initially generate/publish the public JWK into `s2s_jwks_public_keys`, nor to manage multiple keys/expiry in DB.",
+      "why_blocking": "JWKS endpoint is specified as DB source-of-truth; without a concrete “bootstrap key material” step, staging cannot pass S2S auth. Rotation test also can’t run if there’s no mechanism to insert/activate keys and set `activeKid` consistently.",
+      "fix": "Add a Sprint 1 or Sprint 2 task: generate ES256 keypair(s), store private key + `activeKid` in Secrets Manager, insert corresponding public JWK rows into `s2s_jwks_public_keys` with `created_at/expires_at`, and a small admin/ops script to add a new key + mark active. Update 2.1 AC to specify selection rules (e.g., serve all non-expired keys; mark one as current)."
     },
     {
-      "location": "Sprint 7 / Sprint 8 / Sprint 10 RTFM scope management",
-      "issue": "RTFM managed-doc scope updates are split across Sprint 5 (adds ECONOMICS/EVENT-PROTOCOL), Sprint 8.3 (adds GLOSSARY), and Sprint 10.1 (adds GLOSSARY again). Sprint 10.1 also says it depends on Sprints 7–9, but GLOSSARY is introduced in Sprint 8.",
-      "why_blocking": "This creates a real risk that Sprint 8’s gate (“RTFM 8/8”) is impossible if GLOSSARY isn’t in MANAGED_DOCS yet (or conversely, that Sprint 10 is redundant and drifts). It also makes it unclear which sprint is responsible for keeping validation scope authoritative, which is critical because “docs are the product surface” and gates rely on RTFM.",
-      "fix": "Make RTFM scope ownership single-source: (a) require each sprint that introduces a new managed doc to update MANAGED_DOCS in the same sprint (so Sprint 8.3 is the only place GLOSSARY is added), and (b) remove Sprint 10.1 or change it to a pure verification task (“confirm MANAGED_DOCS already includes all docs”). Also correct Sprint 10.1 dependencies to match the actual introduction point."
+      "location": "Sprint 4 — Task 4.3 Durable Usage Reporting via NATS JetStream",
+      "issue": "NATS/JetStream infrastructure provisioning is not planned (no ECS service, no cluster, no creds, no network rules), yet Sprint 4 gate requires it operational.",
+      "why_blocking": "You cannot make JetStream “operational” in staging without deploying NATS and configuring connectivity/secrets. This will stall budget finalization and admin usage freshness assumptions.",
+      "fix": "Add an infra task (Sprint 1 or Sprint 4) to provision NATS JetStream (ECS service or managed alternative), including: security group rules, service discovery name, persistence volume strategy, auth (nkeys/user+pass), and Secrets Manager entries. Alternatively, change Sprint 4 to use DB-outbox/SQS as the durable channel and defer JetStream to a later cycle (but then update gates/FR mapping accordingly)."
     },
     {
-      "location": "Sprint 2 / Task 2.4 (verify-routes.sh) acceptance criteria",
-      "issue": "The contract check requires sending unauthenticated HEAD/GET to “each indexed route” and expecting 401/403 vs 2xx/3xx, but many routes may not support HEAD, may require POST, or may have side effects; also “auth” classification is derived from static extraction which may not map cleanly to runtime behavior.",
-      "why_blocking": "This can make Sprint 2’s gate (“smoke-test checklist passes”) fail for reasons unrelated to docs correctness, and can make verify-routes.sh flaky/unreliable. A flaky required check will block merges in Sprint 5/10.",
-      "fix": "Constrain verify-routes.sh to a safe, testable subset: (1) only methods that are safe to probe (GET/HEAD where implemented), (2) allow per-route probe method override in the extracted JSON, and (3) treat “method not allowed/405” as non-fatal for HEAD probes. Add explicit acceptance criteria for how to handle non-idempotent routes (POST/PUT/DELETE) and routes requiring bodies."
+      "location": "Sprint 4 — Tasks 4.1/4.2/4.3 (Budget lifecycle)",
+      "issue": "Critical dependency mismatch: 4.2 requires token usage (`X-Token-Count` or usage event) but Sprint 2’s E2E inference does not require finn to emit token counts/usage in a reliable way.",
+      "why_blocking": "If finn doesn’t deterministically provide token usage, you can’t finalize budgets correctly; this cascades into admin usage, conservation guard, and load test acceptance criteria.",
+      "fix": "Add/strengthen Sprint 2 Task 2.4 acceptance criteria to require finn emits `X-Token-Count` (or SSE done event usage) and that freeside records it. Then Sprint 4 can build reservation/finalization on a known contract."
     },
     {
-      "location": "Sprint 9 / Task 9.2 (BUTTERFREEZONE discovery fields) vs Sprint 1 / Task 1.2 (golden vectors + determinism)",
-      "issue": "Sprint 9 changes the BUTTERFREEZONE header schema but does not include an explicit task to update the golden vectors/fixtures and any schema expectations in butterfreezone-validate.sh beyond “updated to validate new fields (or passes with advisory warnings)”.",
-      "why_blocking": "If golden vectors are strict (as Sprint 1.2 implies) and hashes are per-section, adding fields will change hashes and likely fail butterfreezone-validate.sh and RTFM check #7 until fixtures are updated. “Or passes with advisory warnings” is ambiguous and risks a gate deadlock.",
-      "fix": "Add an explicit subtask in Sprint 9.2 (or Sprint 10.2) to regenerate and commit updated golden vectors and to define validator behavior: either (A) new fields are required and fixtures updated accordingly, or (B) new fields are optional and validator treats absence as warning with a specific exit code that RTFM accepts. Then align RTFM check #7 to the chosen exit-code policy."
+      "location": "Sprint 6 — Task 6.5 Web Chat Widget (WebSocket) + Sprint 1/2 infra",
+      "issue": "WebSocket production wiring is missing: ALB listener rules/timeouts, target group protocol settings, and ECS deployment drain behavior aren’t captured as tasks.",
+      "why_blocking": "A WebSocket feature can work locally but fail in ECS/ALB due to idle timeout defaults, missing stickiness expectations, or incorrect health checks. Your AC mentions lifecycle constraints but not the infra changes needed to enforce them.",
+      "fix": "Add a task (Sprint 1 or Sprint 6) for ALB/WebSocket configuration: ALB idle timeout set to ≥300s, target group health check path, deregistration delay aligned with 120s drain, ECS deployment configuration (min/max healthy percent) for graceful drain, and an explicit staging verification (open WS, deploy, confirm drain behavior)."
     },
     {
-      "location": "Bridge/deep review coverage tracking across Sprints 4–7",
-      "issue": "The plan claims all bridge findings and deep review gaps are addressed, but there is no explicit “findings closure checklist” task that maps each finding ID (3 MEDIUM, 2 LOW, 1 REFRAME, 3 SPECULATION, 4 gaps) to a concrete doc section/commit and re-validates after subsequent edits.",
-      "why_blocking": "Because later sprints (7–10) modify the same docs, it’s easy to regress a previously “addressed” finding. Without a closure artifact, Sprint 10’s merge-readiness gate can fail in review even if RTFM passes (human reviewer says a finding is still open).",
-      "fix": "Add a lightweight but explicit task (ideally Sprint 10) to create/update `grimoires/loa/bridge-findings-closure.md` (or NOTES.md section) with a table: finding → implemented change → doc section link → citations → validation evidence. Make Sprint 10 gate require this table to show all findings closed."
+      "location": "Sprint 3 — Task 3.7 Webhook Rate Limiting + DoS Protection",
+      "issue": "WAF throttling “per payment_id” is specified but no concrete mechanism is planned to extract `payment_id` into a WAF key (NOWPayments sends JSON body; WAF typically keys on IP/headers/query/cookies).",
+      "why_blocking": "If implemented as written, this task may be impossible on ALB/WAF without redesign (e.g., putting payment_id in path/query/header). It risks stalling Sprint 3 gate late in the cycle.",
+      "fix": "Revise AC to an implementable control: (a) IP-based rate limit at WAF, plus (b) application-level idempotency + per-payment DB lock already in 3.2, and optionally (c) require NOWPayments to include `payment_id` in a header/query you can rate-limit on. If you keep per-payment throttling, add a task to change webhook URL format to `/api/crypto/webhook/:paymentId` (or require a header) and validate NOWPayments supports it."
+    },
+    {
+      "location": "Sprint 2 — Task 2.5 PgBouncer Read-Only Role for loa-finn",
+      "issue": "PgBouncer is treated as configurable but there is no infra task to deploy/manage PgBouncer in ECS or confirm you control its config in this environment.",
+      "why_blocking": "If PgBouncer isn’t already part of the existing AWS stack (or is managed elsewhere), this task can’t be completed and may block finn connectivity assumptions (and load baseline).",
+      "fix": "Add a prerequisite validation task in Sprint 1: confirm PgBouncer exists and is configurable (where config lives, how it’s deployed). If it doesn’t exist, add an infra task to provision it (or drop PgBouncer from this cycle and connect finn directly with a DB role + RDS Proxy)."
     }
   ],
   "question": "",
