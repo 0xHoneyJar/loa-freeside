@@ -22,6 +22,44 @@ Layer 1  Framework    loa             Agent development framework, skills, Bridg
 
 **Dependency direction:** Each layer depends only on layers below it. Products depend on Platform, Platform depends on Protocol + Runtime, Runtime depends on Protocol, Protocol stands alone alongside the Framework.
 
+## Understanding the Agent Economy
+
+If you're arriving from traditional web development, the architecture above may prompt a question: *why does an AI platform need 5 repositories, a formal protocol layer, and conservation invariants?* The answer is that Loa is not a chatbot platform — it is economic infrastructure for autonomous AI agents.
+
+### What is an Agent Economy?
+
+An agent economy is a system where autonomous AI agents hold identity, spend budget, and provide services within a governed commons. Each agent has an on-chain wallet, a [capability tier](GLOSSARY.md#capability-tier), and a [budget allocation](GLOSSARY.md#lot-lifecycle) that it can spend on inference. Agents are not cost centers to be minimized — they are economic actors whose activity generates value.
+
+The distinction matters because it changes what "correct" means. In a chatbot platform, correct means "the response was good." In an agent economy, correct means "the books balanced, the conservation invariant held, the budget delegation was safe, and the response was good." Economic correctness is a precondition for operational correctness.
+
+### Why Conservation Invariants?
+
+When a community delegates spending authority to an autonomous agent, they need mathematical proof that the books will always balance. A billing system can tolerate occasional inconsistencies caught by human review. An economic protocol cannot — autonomous agents operate at machine speed without human oversight of individual transactions.
+
+The [conservation invariant](GLOSSARY.md#conservation-invariant) (`available + reserved + consumed = original` for every lot) is the foundational promise. It is enforced by database constraints, application assertions, Redis Lua atomicity, and periodic reconciliation — four layers of defense because the guarantee is existential. See [ECONOMICS.md](ECONOMICS.md) § Formal Specification for the complete set of 14 canonical properties.
+
+### Why 5 Repositories?
+
+Separation of concerns at the protocol level. The same insight that drove Kubernetes to separate the API specification from cloud providers and container runtimes applies here:
+
+- **Protocol contracts** (loa-hounfour) define what an agent *is*. These change slowly and require formal verification. Analogous to the Kubernetes API spec.
+- **Platform infrastructure** (loa-freeside) implements *how* agents operate. These change frequently with operational demands. Analogous to a cloud provider.
+- **Agent runtime** (loa-finn) provides *where* agents execute. Analogous to a container runtime (containerd, CRI-O).
+
+A Layer 5 product should be able to switch platforms without rewriting its protocol integration — just as a Kubernetes workload can move between cloud providers.
+
+### Why Multi-Model?
+
+Different cognitive tasks require different AI models, just as different compute tasks require different processors. [Pool routing](GLOSSARY.md#pool-routing) maps capability requirements to model pools: `cheap` for high-volume simple tasks, `reasoning` for complex analysis, `architect` for code generation. [Ensemble strategies](GLOSSARY.md#ensemble-strategy) (`best_of_n`, `consensus`, `fallback`) provide quality and reliability guarantees that no single model can offer alone.
+
+The economic layer makes this transparent — per-model cost attribution means communities see exactly which model consumed which portion of their budget, not an opaque total.
+
+### The Web4 Thesis
+
+The convergence of blockchain (ownership layer) and AI (autonomy layer) creates something neither can achieve alone: agents that own assets, tokens that gate capabilities, and economic activity that flows through protocol-level accounting. This is what the project calls "Web4" — not as a marketing claim, but as a structural observation about what becomes possible when on-chain identity meets autonomous inference. See [The Web4 Connection](#the-web4-connection) below for the technical details.
+
+For formal definitions of all concepts mentioned here, see the [Concept Glossary](GLOSSARY.md).
+
 ## Repositories
 
 ### Layer 1: loa (Framework)

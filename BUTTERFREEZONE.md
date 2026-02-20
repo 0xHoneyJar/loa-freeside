@@ -25,6 +25,25 @@ capability_requirements:
   - infrastructure: aws ecs via terraform (20 modules)
 version: 6.0.0
 trust_level: grounded
+stability_contract: docs/API-REFERENCE.md
+economic_model: conservation-invariant lot lifecycle with budget-atomic two-counter reservation (see docs/ECONOMICS.md)
+protocol_version: loa-hounfour@7.0.0
+discovery_endpoints:
+  - health: /api/agents/health
+  - capabilities: /api/agents/invoke (POST, requires auth)
+  - pricing: docs/ECONOMICS.md#model-pricing
+  - events: docs/EVENT-PROTOCOL.md (NATS JetStream)
+ecosystem:
+  - repo: 0xHoneyJar/loa
+    role: framework (Layer 1)
+  - repo: 0xHoneyJar/loa-hounfour
+    role: protocol (Layer 2)
+  - repo: 0xHoneyJar/loa-finn
+    role: runtime (Layer 3)
+  - repo: 0xHoneyJar/loa-freeside
+    role: platform (Layer 4)
+  - repo: 0xHoneyJar/loa-dixie
+    role: product (Layer 5)
 -->
 
 # loa-freeside
@@ -240,6 +259,19 @@ Wire format: Zod schemas with JSON fixtures as neutral source of truth (validate
 **Direct dependency:** `@0xhoneyjar/loa-hounfour` (protocol schemas consumed for gateway event validation).
 
 See [docs/ECOSYSTEM.md](docs/ECOSYSTEM.md) for the full ecosystem map.
+
+## Agent Discovery
+<!-- provenance: OPERATIONAL -->
+
+The `AGENT-CONTEXT` header includes machine-readable discovery fields that enable autonomous agents to evaluate this platform's capabilities without human intermediation:
+
+- **`stability_contract`** — Path to the stability tier documentation, enabling agents to distinguish stable APIs from experimental ones
+- **`economic_model`** — Brief description of the economic primitives, so agents understand cost accounting before invoking
+- **`protocol_version`** — The loa-hounfour version this platform conforms to, enabling schema compatibility checks
+- **`discovery_endpoints`** — Machine-readable entry points for health, capabilities, pricing, and event subscriptions
+- **`ecosystem`** — Map of related repositories with their protocol layer roles
+
+These fields lay the groundwork for a future where agents discover, evaluate, and integrate with platforms programmatically. For concept definitions, see [docs/GLOSSARY.md](docs/GLOSSARY.md).
 
 ## Quick Start
 <!-- provenance: OPERATIONAL -->

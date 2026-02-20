@@ -8,7 +8,7 @@
 <!-- cite: loa-freeside:themes/sietch/src/services/TierService.ts -->
 <!-- cite: loa-freeside:packages/adapters/agent/pool-mapping.ts -->
 
-> Version: v1.1.0
+> Version: v1.2.0
 
 This document describes the economic model that underpins the Loa platform. Every claim is grounded in source code citations. The economic primitives — BigInt micro-USD precision, two-counter atomic reservation, conservation properties enforced via Lua scripts — are what make this an economic *protocol*, not just a billing system.
 
@@ -354,6 +354,85 @@ The economic system makes three explicit guarantees:
 2. **No double-charge**: Finalization is idempotent via a 24-hour marker key (`agent:budget:finalized:{...}`). The `ALREADY_FINALIZED` check runs before any counter mutation.
 
 3. **Fail-closed reservation**: Redis errors during `reserve()` return `BUDGET_EXCEEDED`. The platform never executes inference it cannot account for. (Finalization is fail-open to avoid blocking response delivery — drift is caught by reconciliation.)
+
+---
+
+## Formal Specification
+
+<!-- cite: loa-freeside:themes/sietch/tests/fixtures/frozen-conservation-evaluator.ts -->
+<!-- cite: loa-freeside:themes/sietch/src/packages/core/protocol/state-machines.ts -->
+
+This section presents the economic primitives in a format approaching specification quality. The canonical source for all properties is `@0xhoneyjar/loa-hounfour/integrity`; loa-freeside imports and enforces them via the adapter layer.
+
+### Conservation Properties
+
+14 canonical properties, each with a formal expression in LTL (Linear Temporal Logic). Properties are classified as **safety** (nothing bad happens) or **liveness** (something good eventually happens).
+
+| ID | Name | Kind | Universe | Formal Expression | Enforcement |
+|----|------|------|----------|-------------------|-------------|
+| I-1 | Per-lot conservation | Safety | per-lot | `□(∀lot: lot.available + lot.reserved + lot.consumed = lot.original)` | DB CHECK, Application |
+| I-2 | Per-account conservation | Safety | per-account | `□(∀acct: Σ(lot.available + lot.reserved + lot.consumed) ≤ Σ(lot.original))` | DB CHECK, Application |
+| I-3 | Receivable bound | Safety | per-account | `□(∀receivable: receivable.balance ≤ receivable.original_amount)` | Application |
+| I-4 | Platform conservation | Safety | platform-wide | `□(Σ(lot_balances) + Σ(receivable_balances) ≤ Σ(minted) - Σ(expired))` | Reconciliation |
+| I-5 | Budget consistency | Safety | cross-system | `□(∀budget: budget.current_spend = Σ(finalizations ∈ window))` | Application, Reconciliation |
+| I-6 | Transfer symmetry | Safety | cross-system | `□(∀transfer: completed ⟹ ∃lot: lot.source=transfer)` | DB UNIQUE, Application |
+| I-7 | TBA deposit bridge | Safety | cross-system | `□(Σ(tba_deposits WHERE bridged) = Σ(lots WHERE source=tba_deposit))` | Application |
+| I-8 | Terminal absorption | Safety | per-lot | `□(∀sm, s: isTerminal(sm, s) ⟹ ¬∃s′: transition(s, s′))` | Application |
+| I-9 | Revenue rule exclusion | Safety | platform-wide | `□(count(rules WHERE status=active) ≤ 1)` | DB UNIQUE, Application |
+| I-10 | Lot monotonicity | Safety | per-lot | `□(∀lot: lot.original_micro = lot.original_micro@creation)` | DB CHECK |
+| I-11 | Finalization atomicity | Liveness | per-lot | `□(finalize_start ⟹ ◇(finalize_complete ∨ rollback_complete))` | Application (SQLite BEGIN IMMEDIATE) |
+| I-12 | Reservation termination | Liveness | per-lot | `□(∀r: r.status=pending ⟹ ◇(r.status ∈ {finalized, released, expired}))` | Application (ExpirationJob TTL) |
+| I-13 | Treasury adequacy | Safety | platform-wide | `□(treasury.balance ≥ Σ(outstanding_commitments))` | Reconciliation |
+| I-14 | Shadow tracking | Safety | platform-wide | `□(∀entry: shadow(entry) = real(entry))` | Application |
+
+**Coverage:** I-1 through I-8, I-13, and I-14 (10 of 14) have explicit error or reconciliation codes in the freeside enforcement layer. I-9, I-10, I-11, I-12 are converted and available via `getCanonicalProperties()` but do not yet trigger specific error handling.
+
+### Lot State Machine
+
+The reservation state machine is vendored from loa-hounfour (commit `d297b019`):
+
+```
+           ┌─────────────────┐
+           │     pending      │  (initial state)
+           └───┬─────┬────┬──┘
+               │     │    │
+          finalize cancel  TTL expires
+               │     │    │
+               ▼     ▼    ▼
+          finalized released expired
+          (terminal) (terminal) (terminal)
+```
+
+| Transition | Guard | Side Effect |
+|-----------|-------|-------------|
+| pending → finalized | `DEL` reservation key returns 1 (atomic claim) | `DECRBY reserved`, `INCRBY committed` |
+| pending → released | `finalize()` with `actualCost=0` | `DECRBY reserved` (full amount returned) |
+| pending → expired | ExpirationJob TTL elapsed | `DECRBY reserved` (full amount reclaimed) |
+| finalized → * | Blocked (I-8: terminal absorption) | — |
+| released → * | Blocked (I-8: terminal absorption) | — |
+| expired → finalized | `LATE_FINALIZE` — reservation reaped, cost added directly to committed | `INCRBY committed` only (no reserved adjustment) |
+
+**Idempotency guarantees:** `ALREADY_RESERVED` (duplicate reservation), `ALREADY_FINALIZED` (24-hour marker prevents double-charge).
+
+### Budget Accounting Axioms
+
+Three guarantees that a conforming implementation must uphold:
+
+| Axiom | Statement | Enforcement | Verification |
+|-------|-----------|-------------|-------------|
+| **A1: No precision loss** | All monetary values are integer micro-USD. No floating point ever touches money. `normalizeCostCents()` rejects NaN/Infinity, rounds up via `Math.ceil()`, clamps to ≥ 0. | Application | Unit tests with edge-case inputs |
+| **A2: No double-charge** | Finalization is idempotent. A 24-hour marker key (`agent:budget:finalized:{...}`) is checked before any counter mutation. | Redis Lua atomic check | Property-based tests (fast-check) |
+| **A3: Fail-closed reservation** | If the budget tracking infrastructure is unreachable, deny the request. Never execute inference you cannot account for. Finalization is fail-open — the inference has already run. | Application catch block | Integration tests with Redis failure injection |
+
+### Implementer Notes
+
+A conforming Loa economic implementation must guarantee:
+
+1. **Conservation** — All 14 properties (I-1 through I-14) hold at rest and in flight. At minimum, I-1 (per-lot), I-5 (budget consistency), and I-8 (terminal absorption) must be enforced at the application layer. Others may use reconciliation.
+2. **Atomicity** — Reserve and finalize operations must be atomic (no TOCTOU window). The Redis Lua approach is one valid implementation; database transactions with appropriate isolation levels are another.
+3. **Idempotency** — Both `reserve()` and `finalize()` must be safe to retry. Idempotency keys must survive the reservation TTL.
+4. **Fail-closed** — Authorization (reserve) must deny on infrastructure failure. Settlement (finalize) may accept on infrastructure failure provided reconciliation exists.
+5. **Integer arithmetic** — All monetary calculations must use integer arithmetic. The precision unit (micro-USD, cents, or equivalent) must be declared and consistent.
 
 ---
 
