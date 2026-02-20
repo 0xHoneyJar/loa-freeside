@@ -136,6 +136,7 @@ check_naming() {
     "docs/DEVELOPER-GUIDE.md"
     "docs/ECONOMICS.md"
     "docs/EVENT-PROTOCOL.md"
+    "docs/GLOSSARY.md"
   )
 
   local violations=0
