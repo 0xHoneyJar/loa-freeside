@@ -23,6 +23,8 @@ import { adminStatsCommand } from './admin-stats.js';
 import { verifyCommand } from './verify.js';
 // Sprint 107: QA Sandbox Simulation
 import { simulationCommand } from './simulation.js';
+// Cycle 036: Credit Pack Purchase
+import { buyCreditsCommand } from './buy-credits.js';
 
 /**
  * All registered slash commands
@@ -50,6 +52,8 @@ export const commands: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
   verifyCommand,
   // Sprint 107: QA Sandbox Simulation
   simulationCommand.toJSON(),
+  // Cycle 036: Credit Pack Purchase
+  buyCreditsCommand.toJSON(),
 ];
 
 /**
@@ -94,6 +98,9 @@ export { handleVerifyCommand, cleanupVerifyCommand } from './verify.js';
 
 // Sprint 107: QA Sandbox Simulation
 export { handleSimulationCommand, initializeSimulationCommand } from './simulation.js';
+
+// Cycle 036: Credit Pack Purchase
+export { handleBuyCreditsCommand, initializeBuyCreditsCommand } from './buy-credits.js';
 
 /**
  * Register slash commands with Discord API

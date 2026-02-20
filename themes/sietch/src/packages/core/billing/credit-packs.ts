@@ -22,6 +22,8 @@ export interface CreditPackTier {
   name: string;
   /** Price in micro-USD */
   priceMicro: bigint;
+  /** Bonus in basis points (500 = 5%, 1000 = 10%). Applied after markup. */
+  bonusBps: number;
   /** Human-readable description */
   description: string;
 }
@@ -49,19 +51,22 @@ export const CREDIT_PACK_TIERS: readonly CreditPackTier[] = [
     id: 'starter',
     name: 'Starter',
     priceMicro: 5_000_000n,  // $5
+    bonusBps: 0,             // 0% bonus
     description: '$5 credit pack — great for trying out the platform',
   },
   {
-    id: 'builder',
-    name: 'Builder',
+    id: 'standard',
+    name: 'Standard',
     priceMicro: 10_000_000n, // $10
-    description: '$10 credit pack — for regular builders',
+    bonusBps: 500,           // 5% bonus → 10,500,000 micro-credits
+    description: '$10 credit pack — 5% bonus for regular users',
   },
   {
-    id: 'pro',
-    name: 'Pro',
+    id: 'premium',
+    name: 'Premium',
     priceMicro: 25_000_000n, // $25
-    description: '$25 credit pack — best value for power users',
+    bonusBps: 1000,          // 10% bonus → 27,500,000 micro-credits
+    description: '$25 credit pack — 10% bonus, best value for power users',
   },
 ];
 
@@ -73,7 +78,20 @@ export const DEFAULT_MARKUP_FACTOR = 1.0;
 // =============================================================================
 
 /**
- * Look up a tier by ID and calculate credits at the given markup.
+ * Apply bonus basis points to base credits using pure BigInt arithmetic.
+ * 500 bps = 5%, 1000 bps = 10%.
+ *
+ * Formula: base + floor(base * bonusBps / 10_000)
+ */
+function applyBonusBps(baseCreditsMicro: bigint, bonusBps: number): bigint {
+  if (bonusBps <= 0) return baseCreditsMicro;
+  const bonus = (baseCreditsMicro * BigInt(bonusBps)) / 10_000n;
+  return baseCreditsMicro + bonus;
+}
+
+/**
+ * Look up a tier by ID and calculate credits at the given markup,
+ * then apply the tier's bonus basis points.
  *
  * @returns ResolvedCreditPack with tier + credits, or null if tier not found
  */
@@ -85,7 +103,8 @@ export function resolveCreditPack(
   const tier = tiers.find(t => t.id === packId);
   if (!tier) return null;
 
-  const creditsMicro = calculateCredits(tier.priceMicro, markupFactor);
+  const baseCreditsMicro = calculateCredits(tier.priceMicro, markupFactor);
+  const creditsMicro = applyBonusBps(baseCreditsMicro, tier.bonusBps);
   return { tier, creditsMicro };
 }
 
@@ -101,7 +120,8 @@ export function validateTierConfig(
 
   for (const tier of tiers) {
     try {
-      const credits = calculateCredits(tier.priceMicro, markupFactor);
+      const baseCreditsMicro = calculateCredits(tier.priceMicro, markupFactor);
+      const credits = applyBonusBps(baseCreditsMicro, tier.bonusBps);
       if (credits < MIN_CREDIT_ISSUANCE) {
         errors.push(
           `Tier "${tier.id}" yields ${credits} credits, below minimum ${MIN_CREDIT_ISSUANCE}`,

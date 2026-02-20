@@ -4,16 +4,16 @@
   "state": "RUNNING",
   "timestamps": {
     "started": "2026-02-20T14:30:00Z",
-    "last_activity": "2026-02-20T22:00:00Z"
+    "last_activity": "2026-02-20T23:50:00Z"
   },
   "sprints": {
     "total": 7,
-    "completed": 1,
-    "current": "sprint-2",
+    "completed": 3,
+    "current": "sprint-4",
     "list": [
       {"id": "sprint-1", "global_id": 314, "status": "completed", "cycles": 1, "files_changed": 12},
-      {"id": "sprint-2", "global_id": 315, "status": "pending"},
-      {"id": "sprint-3", "global_id": 316, "status": "pending"},
+      {"id": "sprint-2", "global_id": 315, "status": "completed", "cycles": 1, "files_changed": 5},
+      {"id": "sprint-3", "global_id": 316, "status": "completed", "cycles": 1, "files_changed": 9},
       {"id": "sprint-4", "global_id": 317, "status": "pending"},
       {"id": "sprint-5", "global_id": 318, "status": "pending"},
       {"id": "sprint-6", "global_id": 319, "status": "pending"},
@@ -27,8 +27,8 @@
     "timeout_hours": 8
   },
   "metrics": {
-    "total_cycles": 1,
-    "total_files_changed": 12,
-    "total_findings_fixed": 0
+    "total_cycles": 3,
+    "total_files_changed": 26,
+    "total_findings_fixed": 8
   }
 }

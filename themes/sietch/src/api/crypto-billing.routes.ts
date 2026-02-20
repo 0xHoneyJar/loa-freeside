@@ -23,6 +23,7 @@ import {
   ValidationError,
   NotFoundError,
 } from './middleware.js';
+import { webhookPaymentThrottle } from './middleware/webhook-payment-throttle.js';
 import {
   config,
   isCryptoPaymentsEnabled,
@@ -380,7 +381,7 @@ cryptoBillingRouter.get(
  *
  * Configure Express with: express.raw({ type: 'application/json' }) for /crypto/webhook
  */
-cryptoBillingRouter.post('/webhook', webhookRateLimiter, async (req: Request, res: Response) => {
+cryptoBillingRouter.post('/webhook', webhookRateLimiter, webhookPaymentThrottle, async (req: Request, res: Response) => {
   // Webhook doesn't require crypto to be fully enabled
   // (we want to process events even if feature flags are off)
 

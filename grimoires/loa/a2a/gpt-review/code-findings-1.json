@@ -1,29 +1,8 @@
 {
-  "verdict": "CHANGES_REQUIRED",
-  "summary": "Found authorization and compatibility validation gaps in disabled paths that can accept invalid versions and unvalidated trust_level values.",
-  "issues": [
-    {
-      "severity": "major",
-      "file": "arrakis-compat.ts",
-      "line": 118,
-      "description": "When normalization is disabled, any trust_level value is accepted and mapped to a fixed scope set without validation, bypassing least-privilege mapping and range checks.",
-      "current_code": "```typescript\n    if (claims.trust_level !== undefined) {\n      return { trust_scopes: ['billing:read', 'agent:invoke'] as TrustScope[], source: 'v4_mapped' };\n    }\n```",
-      "fixed_code": "```typescript\n    if (claims.trust_level !== undefined) {\n      const level = claims.trust_level;\n      if (!Number.isInteger(level) || level < 0 || level > 9) {\n        throw new ClaimNormalizationError(\n          'INVALID_TRUST_LEVEL',\n          `trust_level must be integer in [0, 9], got ${level}`\n        );\n      }\n      const scopes = TRUST_LEVEL_TO_SCOPES[level as TrustLevel];\n      if (!scopes || scopes.length === 0) {\n        throw new ClaimNormalizationError(\n          'MAPPING_FAILURE',\n          `No scopes mapped for trust_level=${level}`\n        );\n      }\n      return { trust_scopes: scopes, source: 'v4_mapped' };\n    }\n```",
-      "explanation": "This enforces the same least-privilege mapping and range validation even when the feature flag is off, preventing invalid or out-of-range trust_level values from bypassing policy."
-    },
-    {
-      "severity": "major",
-      "file": "arrakis-compat.ts",
-      "line": 203,
-      "description": "In the disabled coordination path, versions are only checked against the supported list and never validated for canonical compatibility, causing behavior to diverge from the enabled path and potentially accept incompatible versions.",
-      "current_code": "```typescript\n    const { supported } = negotiateVersion();\n    if (!supported.includes(message.version)) {\n      throw new ClaimNormalizationError(\n        'UNSUPPORTED_VERSION',\n        `Coordination message version ${message.version} not in supported set [${supported.join(', ')}]`\n      );\n    }\n    return { version: message.version, type: message.type, payload: message.payload };\n```",
-      "fixed_code": "```typescript\n    const { supported } = negotiateVersion();\n    if (!supported.includes(message.version)) {\n      throw new ClaimNormalizationError(\n        'UNSUPPORTED_VERSION',\n        `Coordination message version ${message.version} not in supported set [${supported.join(', ')}]`\n      );\n    }\n\n    if (LOCAL_TRANSITION_VERSIONS.has(message.version)) {\n      return { version: message.version, type: message.type, payload: message.payload };\n    }\n\n    const compat = validateCompatibility(message.version);\n    if (!compat.compatible) {\n      throw new ClaimNormalizationError(\n        'INCOMPATIBLE_VERSION',\n        `Version ${message.version} is incompatible: ${compat.error || 'unknown reason'}`\n      );\n    }\n\n    return { version: message.version, type: message.type, payload: message.payload };\n```",
-      "explanation": "This aligns the disabled path with the enabled path: supported set gating plus canonical compatibility checks for non-transition versions."
-    }
-  ],
-  "fabrication_check": {
-    "passed": true,
-    "concerns": []
-  },
-  "iteration": 1
+  "verdict": "SKIPPED",
+  "reason": "GPT API unavailable (curl exit code 56 - network error). Retried 2x. Proceeding per error handling protocol.",
+  "type": "code",
+  "file": "infrastructure/terraform/ecs-finn.tf",
+  "iteration": 1,
+  "timestamp": "2026-02-20T15:10:00Z"
 }
