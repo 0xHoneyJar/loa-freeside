@@ -1,48 +1,48 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "As written, Sprints 4–5 risk failing because key dependencies and validation gates are inconsistent with the existing tooling model (8-check RTFM, MANAGED_DOCS scope) and several Sprint 4 claims are not verifiably grounded in this repo without explicit source-confirmation tasks.",
+  "summary": "The plan is close, but several dependency/consistency breaks and a couple of missing integration tasks will cause gates to fail (or be untestable) in Sprint 4+ and Sprint 10.",
   "blocking_issues": [
     {
-      "location": "Sprint 4 / S307-T1 (ECONOMICS.md)",
-      "issue": "Doc outline asserts specific files/behaviors (e.g., `packages/adapters/agent/budget-manager.ts`, `budget-reserve.lua`, `budget-finalize.lua`, “14 canonical properties imported from loa-hounfour”, specific error codes, TierService thresholds, pool-mapping conformance tests) without a task to confirm these sources exist in loa-freeside and are the actual canonical implementations.",
-      "why_blocking": "If any referenced files/types/tests don’t exist (or live in different paths/repos), you cannot meet the acceptance criteria requiring exact matches and citation-backed grounding; the sprint will stall in citation validation and/or content correctness.",
-      "fix": "Add an explicit first step (or subtask) to S307-T1: “Source-of-truth discovery + path verification” with acceptance criteria like: (1) list exact repo paths + line ranges for each major section, (2) confirm whether invariants/error codes live in loa-freeside vs loa-hounfour and adjust doc scope accordingly, (3) update outline to only include primitives that can be cited from confirmed sources. If cross-repo is required, add a task to pin those citations via commit SHA permalinks."
+      "location": "Sprint 4 / Task 4.1 (ECONOMICS.md) pre-flight source paths",
+      "issue": "Pre-flight cites a file path that appears to still use the old name: `themes/sietch/src/packages/core/protocol/arrakis-conservation.ts`.",
+      "why_blocking": "Your global requirement is zero naming violations in platform context and Sprint 1/3 enforce `arrakis` grep checks. If the code path really contains `arrakis-*`, either (a) the naming gate will fail, or (b) ECONOMICS.md will be forced to cite a path that violates the naming policy. Either way, Sprint 4’s gate (“grounded + citations valid”) becomes unachievable without changing either code or the naming rule.",
+      "fix": "Before Sprint 4 starts, add an explicit task to reconcile this: either rename the source file/module to loa-freeside naming (and update imports), or update the naming policy to allow `arrakis` in code paths while still banning it in docs prose. Then update all planned citations/paths accordingly."
     },
     {
-      "location": "Sprint 4 / S307-T2 (EVENT-PROTOCOL.md)",
-      "issue": "Acceptance criteria hard-codes “3 JetStream streams: COMMANDS, EVENTS, ELIGIBILITY” and “All 7 known event types” plus specific schema file paths, but there is no verification task ensuring these streams/types are actually defined in the referenced JSON/TS schema sources in this repo.",
-      "why_blocking": "If the stream set or event-type count differs, the doc cannot satisfy “all 3 streams” / “all 7 event types” criteria and will fail review/citation checks; you’ll also risk documenting a protocol that doesn’t match production routing.",
-      "fix": "Add a preflight verification step to S307-T2: extract stream names + subject patterns from `nats-routing.json` and event types from `gateway-event.ts` (or routing.ts) and set acceptance criteria to “document exactly what exists at pinned commit,” not a predetermined count. Keep the count-based criteria only if you first prove the count in-code and cite it."
+      "location": "Sprint 2 / Task 2.1 (extract-routes.sh) vs Sprint 4 / Task 4.4 (coverage note)",
+      "issue": "Task 2.1 specifies a ts-morph AST parser, but Sprint 4.4 states the actual implementation is grep-based and must be documented as such.",
+      "why_blocking": "This is a direct plan contradiction that will cause either implementation churn (building AST when you later document grep) or doc/code truth violations (documenting grep when code is AST). It also impacts RTFM check #8 (route diff completeness) and Sprint 2 acceptance criteria (supported patterns, unresolvable linter) which are AST-specific.",
+      "fix": "Decide and lock the extraction approach in Sprint 2: either (A) keep ts-morph and remove the Sprint 4.4 note about grep, or (B) change Sprint 2.1 acceptance criteria to match a grep-based extractor (supported patterns, limitations, and linter semantics) and update Sprint 2.2/2.3/RTFM check #8 expectations accordingly."
     },
     {
-      "location": "Sprint 4 / Dependency graph vs task dependencies",
-      "issue": "S307-T1 depends on Sprint 3 complete, but S307-T2 is marked with no dependencies even though both tasks require citation pin/validation tooling introduced in Sprint 3 (pin-citations.sh, rtfm-validate.sh) and the Sprint 4 gate is “pass citation validation.”",
-      "why_blocking": "If Sprint 3 artifacts are required to validate Sprint 4 gate, Sprint 4 tasks must explicitly depend on Sprint 3 completion; otherwise sequencing allows starting Sprint 4 without the ability to validate done-ness, causing rework and gate failure on Day 11.",
-      "fix": "Make S307-T2 (and S307-T4 if it requires crosslink checks) explicitly depend on Sprint 3 complete, or restate Sprint 4 gate as “draft complete” and move validation to Sprint 5. Prefer: set S307-T2 dependency = Sprint 3 complete and add “run pin-citations --validate-only on both new docs” as part of Sprint 4 gate."
+      "location": "Sprint 4 / Task 4.1 (ECONOMICS.md) and Sprint 9 / Task 9.1 (Formal Specification)",
+      "issue": "The plan requires documenting “exactly the properties found in arrakis-conservation.ts” (Sprint 4) and later a table of “all 14 canonical properties” (Sprint 9), while Sprint 6.4 says freeside enforces only N of 14 and some are protocol-only.",
+      "why_blocking": "As written, these requirements can conflict and become untestable: Sprint 4 demands exactness from a freeside adapter file, Sprint 9 demands completeness from loa-hounfour, and Sprint 6.4 demands partial enforcement disclosure. Without a defined reconciliation rule, reviewers/RTFM can’t determine correctness, and you risk rework across three sprints.",
+      "fix": "Add an explicit acceptance rule: ECONOMICS.md must (1) list the canonical 14 from loa-hounfour as the normative set, (2) separately state which subset is enforced in freeside (with citations to freeside enforcement points), and (3) treat any freeside adapter list as “implemented coverage,” not the canonical list. Update Sprint 4.1 acceptance criteria to reference loa-hounfour as canonical, not the freeside adapter file."
     },
     {
-      "location": "Sprint 5 / Sprint 5 gate and Task 5.1",
-      "issue": "Sprint 5 gate says “RTFM 10/10 checks pass,” but the plan and tooling definition earlier specify an 8-check RTFM validator; no tasks add two new checks or redefine scoring.",
-      "why_blocking": "You cannot satisfy a gate that references a non-existent scoring model; this creates an unmeetable acceptance criterion and will block declaring Sprint 5 done even if the validator passes.",
-      "fix": "Either (a) change Sprint 5 gate/AC to “RTFM 8/8 checks pass” (recommended), or (b) add tasks to implement the additional two checks, name them, define exit codes, and update CI to require them—then update all references consistently."
+      "location": "Sprint 7 / Sprint 8 / Sprint 10 RTFM scope management",
+      "issue": "RTFM managed-doc scope updates are split across Sprint 5 (adds ECONOMICS/EVENT-PROTOCOL), Sprint 8.3 (adds GLOSSARY), and Sprint 10.1 (adds GLOSSARY again). Sprint 10.1 also says it depends on Sprints 7–9, but GLOSSARY is introduced in Sprint 8.",
+      "why_blocking": "This creates a real risk that Sprint 8’s gate (“RTFM 8/8”) is impossible if GLOSSARY isn’t in MANAGED_DOCS yet (or conversely, that Sprint 10 is redundant and drifts). It also makes it unclear which sprint is responsible for keeping validation scope authoritative, which is critical because “docs are the product surface” and gates rely on RTFM.",
+      "fix": "Make RTFM scope ownership single-source: (a) require each sprint that introduces a new managed doc to update MANAGED_DOCS in the same sprint (so Sprint 8.3 is the only place GLOSSARY is added), and (b) remove Sprint 10.1 or change it to a pure verification task (“confirm MANAGED_DOCS already includes all docs”). Also correct Sprint 10.1 dependencies to match the actual introduction point."
     },
     {
-      "location": "Sprint 5 / S308-T1 (Update RTFM Validator for New Documents)",
-      "issue": "Task says “Update the versions check if these docs include version headers,” but there is no Sprint 4 task requiring version headers in the new docs, and the existing version-consistency check is described as comparing package.json vs README badge and BUTTERFREEZONE (not per-doc headers).",
-      "why_blocking": "This creates an ambiguous and potentially contradictory validation requirement: adding version headers could require expanding the validator logic, but that work is not specified; leaving them out could still pass, but the task implies it might be required.",
-      "fix": "Decide and codify: either require version headers in ECONOMICS/EVENT-PROTOCOL (add to Sprint 4 AC) and explicitly update validator check #3 to validate them, or explicitly state “no per-doc version header validation; only README/BUTTERFREEZONE are checked” and remove the conditional language."
+      "location": "Sprint 2 / Task 2.4 (verify-routes.sh) acceptance criteria",
+      "issue": "The contract check requires sending unauthenticated HEAD/GET to “each indexed route” and expecting 401/403 vs 2xx/3xx, but many routes may not support HEAD, may require POST, or may have side effects; also “auth” classification is derived from static extraction which may not map cleanly to runtime behavior.",
+      "why_blocking": "This can make Sprint 2’s gate (“smoke-test checklist passes”) fail for reasons unrelated to docs correctness, and can make verify-routes.sh flaky/unreliable. A flaky required check will block merges in Sprint 5/10.",
+      "fix": "Constrain verify-routes.sh to a safe, testable subset: (1) only methods that are safe to probe (GET/HEAD where implemented), (2) allow per-route probe method override in the extracted JSON, and (3) treat “method not allowed/405” as non-fatal for HEAD probes. Add explicit acceptance criteria for how to handle non-idempotent routes (POST/PUT/DELETE) and routes requiring bodies."
     },
     {
-      "location": "Sprint 4 / S307-T4 (Route Extraction Coverage Note)",
-      "issue": "Acceptance criteria text says “static grep-based extraction,” but Sprint 2 implemented ts-morph AST parsing; the note would be factually wrong and contradict existing tooling.",
-      "why_blocking": "This is likely to fail review and can also cause future maintenance errors (developers will distrust docs/tooling alignment). It’s also directly tied to a Bridgebuilder finding; getting it wrong defeats the purpose of the sprint.",
-      "fix": "Update S307-T4 acceptance criteria to match actual extraction method: “ts-morph AST-based static analysis of Express route registrations,” and cite `scripts/extract-routes.sh` implementation lines. Keep the limitation language (dynamic/computed paths, runtime registration, gateway-proxied routes) but make it accurate."
+      "location": "Sprint 9 / Task 9.2 (BUTTERFREEZONE discovery fields) vs Sprint 1 / Task 1.2 (golden vectors + determinism)",
+      "issue": "Sprint 9 changes the BUTTERFREEZONE header schema but does not include an explicit task to update the golden vectors/fixtures and any schema expectations in butterfreezone-validate.sh beyond “updated to validate new fields (or passes with advisory warnings)”.",
+      "why_blocking": "If golden vectors are strict (as Sprint 1.2 implies) and hashes are per-section, adding fields will change hashes and likely fail butterfreezone-validate.sh and RTFM check #7 until fixtures are updated. “Or passes with advisory warnings” is ambiguous and risks a gate deadlock.",
+      "fix": "Add an explicit subtask in Sprint 9.2 (or Sprint 10.2) to regenerate and commit updated golden vectors and to define validator behavior: either (A) new fields are required and fixtures updated accordingly, or (B) new fields are optional and validator treats absence as warning with a specific exit code that RTFM accepts. Then align RTFM check #7 to the chosen exit-code policy."
     },
     {
-      "location": "Sprint 4 / S307-T3 (Cross-repo learning path) + RTFM crossrepo check",
-      "issue": "S307-T3 requires cross-repo links, and RTFM check #5 forbids branch-relative GitHub links (main/develop/master), but there is no explicit task to pin cross-repo links to commit SHAs (or to ensure they comply with the crossrepo rule).",
-      "why_blocking": "If you add cross-repo links as normal GitHub URLs, the validator will fail; if you try to pin them ad hoc, you may miss some and fail on Day 12 during full validation.",
-      "fix": "Add explicit acceptance criteria to S307-T3: “All cross-repo links are commit-SHA permalinks or otherwise compliant with crossrepo rule,” and add a step to run `scripts/pin-citations.sh` (not just validate-only) for ECOSYSTEM.md after adding the section, or ensure the links are expressed via the citation system rather than raw GitHub URLs."
+      "location": "Bridge/deep review coverage tracking across Sprints 4–7",
+      "issue": "The plan claims all bridge findings and deep review gaps are addressed, but there is no explicit “findings closure checklist” task that maps each finding ID (3 MEDIUM, 2 LOW, 1 REFRAME, 3 SPECULATION, 4 gaps) to a concrete doc section/commit and re-validates after subsequent edits.",
+      "why_blocking": "Because later sprints (7–10) modify the same docs, it’s easy to regress a previously “addressed” finding. Without a closure artifact, Sprint 10’s merge-readiness gate can fail in review even if RTFM passes (human reviewer says a finding is still open).",
+      "fix": "Add a lightweight but explicit task (ideally Sprint 10) to create/update `grimoires/loa/bridge-findings-closure.md` (or NOTES.md section) with a table: finding → implemented change → doc section link → citations → validation evidence. Make Sprint 10 gate require this table to show all findings closed."
     }
   ],
   "question": "",

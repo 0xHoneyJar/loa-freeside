@@ -8,7 +8,7 @@
 <!-- cite: loa-freeside:themes/sietch/src/services/TierService.ts -->
 <!-- cite: loa-freeside:packages/adapters/agent/pool-mapping.ts -->
 
-> Version: v1.0.0
+> Version: v1.1.0
 
 This document describes the economic model that underpins the Loa platform. Every claim is grounded in source code citations. The economic primitives — BigInt micro-USD precision, two-counter atomic reservation, conservation properties enforced via Lua scripts — are what make this an economic *protocol*, not just a billing system.
 
@@ -354,6 +354,25 @@ The economic system makes three explicit guarantees:
 2. **No double-charge**: Finalization is idempotent via a 24-hour marker key (`agent:budget:finalized:{...}`). The `ALREADY_FINALIZED` check runs before any counter mutation.
 
 3. **Fail-closed reservation**: Redis errors during `reserve()` return `BUDGET_EXCEEDED`. The platform never executes inference it cannot account for. (Finalization is fail-open to avoid blocking response delivery — drift is caught by reconciliation.)
+
+---
+
+## Versioning & Stability
+
+This document follows the **Protocol Document** governance tier defined in [DEVELOPER-GUIDE.md](DEVELOPER-GUIDE.md#document-versioning). The economic primitives documented here are Tier 1 (Stable):
+
+| Element | Stability | Deprecation Policy |
+|---------|-----------|-------------------|
+| Conservation invariant (I-1 through I-14) | Tier 1 — Stable | Major version bump; core team review required |
+| Lot lifecycle (reserve → finalize → reap) | Tier 1 — Stable | 2-cycle deprecation notice |
+| Budget accounting model (two-counter) | Tier 1 — Stable | 2-cycle deprecation notice |
+| Pool routing (5-pool architecture) | Tier 1 — Stable | 2-cycle deprecation notice |
+| Tier thresholds (BGT amounts) | Tier 2 — Configurable | May change per deployment |
+| Model pricing defaults | Tier 2 — Configurable | Runtime override via `BudgetConfigProvider` |
+
+Changes to conservation invariant definitions are **always major version bumps** — even clarifications. These properties are the foundational promise of the economic protocol. Downstream consumers (Layer 5 products, external integrators) build against these guarantees.
+
+See [DEVELOPER-GUIDE.md](DEVELOPER-GUIDE.md#document-versioning) for the full versioning governance policy.
 
 ---
 

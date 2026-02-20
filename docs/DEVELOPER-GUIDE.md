@@ -9,7 +9,7 @@
 <!-- cite: loa-freeside:docs/ECONOMICS.md -->
 <!-- cite: loa-freeside:docs/EVENT-PROTOCOL.md -->
 
-> Version: v1.1.0
+> Version: v1.2.0
 
 This guide provides a learning path through the loa-freeside documentation and establishes ownership, versioning, and maintenance practices.
 
@@ -57,15 +57,41 @@ Every document has a Directly Responsible Individual (DRI), an update trigger, a
 | DEVELOPER-GUIDE.md | Core team | New document added | Annually |
 | BUTTERFREEZONE.md | Automated | butterfreezone-gen.sh output | Every release cycle |
 
-## Versioning
+## Document Versioning
 
-Each document carries a version header (`v<major>.<minor>.<patch>`):
+Each document carries a version header (`v<major>.<minor>.<patch>`). Documents are classified into two governance tiers:
 
-- **Major**: Document restructured or sections removed
-- **Minor**: New section added or significant content update
-- **Patch**: Typo fixes, link updates, clarifications
+### Protocol Documents (ECONOMICS.md, EVENT-PROTOCOL.md)
 
-The BUTTERFREEZONE.md version is managed by `butterfreezone-gen.sh` and should not be edited manually.
+These documents function as **specifications** — downstream consumers (Layer 5 products, external integrators) build against their guarantees. Versioning follows strict governance:
+
+| Version Type | When | Example | Review Required |
+|-------------|------|---------|-----------------|
+| **Major** | Invariant definitions changed, sections removed, guarantees narrowed | Conservation property removed or redefined | Core team PR review |
+| **Minor** | New section added, significant content expansion, new failure modes or stability classifications | New Tier 1 subject added to EVENT-PROTOCOL.md | Standard PR review |
+| **Patch** | Typo fixes, link updates, clarifications that don't change meaning | Fixing a broken citation link | Any contributor |
+
+**Conservation invariant changes are always major.** The conservation properties (I-1 through I-14) are the foundational promise of the economic protocol. Any change to an invariant definition, enforcement level, or scope triggers a major version bump — even if the change is "just" a clarification.
+
+**Stability tier changes**: Promoting a Tier 2 element to Tier 1 is a minor version bump (new guarantee). Demoting a Tier 1 element follows the 2-cycle deprecation policy and triggers a major version bump.
+
+### Operational Documents (INFRASTRUCTURE.md, CLI.md, API-QUICKSTART.md, API-REFERENCE.md)
+
+Standard semver — no special governance beyond normal PR review:
+
+| Version Type | When | Example |
+|-------------|------|---------|
+| **Major** | Document restructured, sections removed | CLI.md reorganized by workflow instead of command |
+| **Minor** | New section, significant update | New Terraform module documented |
+| **Patch** | Typos, links, minor clarifications | Updated cost estimate |
+
+### Meta Documents (DEVELOPER-GUIDE.md, ECOSYSTEM.md, GLOSSARY.md)
+
+Standard semver. Version bumps required when new documents are added to the learning path or ownership table.
+
+### BUTTERFREEZONE.md
+
+Version managed by `butterfreezone-gen.sh` — should not be edited manually.
 
 ## Errata Process
 

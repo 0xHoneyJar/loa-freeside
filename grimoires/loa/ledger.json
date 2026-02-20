@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "next_sprint_number": 310,
+  "next_sprint_number": 314,
   "active_cycle": "cycle-035",
   "cycles": [
     {
@@ -1312,6 +1312,26 @@
           "global_id": 309,
           "local_label": "sprint-6",
           "status": "completed"
+        },
+        {
+          "global_id": 310,
+          "local_label": "sprint-7",
+          "status": "completed"
+        },
+        {
+          "global_id": 311,
+          "local_label": "sprint-8",
+          "status": "pending"
+        },
+        {
+          "global_id": 312,
+          "local_label": "sprint-9",
+          "status": "pending"
+        },
+        {
+          "global_id": 313,
+          "local_label": "sprint-10",
+          "status": "pending"
         }
       ]
     }

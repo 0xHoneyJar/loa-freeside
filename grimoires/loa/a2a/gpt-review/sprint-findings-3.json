@@ -1,50 +1,43 @@
 {
-  "verdict": "CHANGES_REQUIRED",
-  "summary": "Most prior blocking issues remain fixed, but the remaining blocker (S307-T4 describing the wrong route-extraction method) is still not corrected and now directly contradicts the plan’s own Sprint 2 ts-morph contract.",
+  "verdict": "APPROVED",
+  "summary": "The previously blocking Sprint 4 vs zero-tolerance naming gate deadlock is now explicitly reconciled in the plan and validator design, and no new truly blocking issues were introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "S307-T1 ECONOMICS.md outline asserted specific files/behaviors without an explicit source-of-truth discovery/verification step",
+      "original_issue": "Sprint 4 ECONOMICS.md pre-flight cites old/forbidden `themes/sietch/src/packages/core/protocol/arrakis-conservation.ts` path, conflicting with naming policy",
       "status": "fixed",
-      "notes": "Still includes an explicit Pre-flight step and AC requiring source paths verified + counts/types extracted from code before prose."
+      "notes": "The plan now makes the exemption explicit and testable: RTFM validator check #2 must strip `<!-- cite: ... -->` blocks before running the `arrakis` grep, and Sprint 4.1 acceptance criteria explicitly allow `arrakis-*` only inside cite blocks while still requiring zero 'Arrakis' in prose. Sprint 5.1 expands scope to include ECONOMICS/EVENT-PROTOCOL, but because the validator exemption is defined centrally, the gate remains achievable."
     },
     {
-      "original_issue": "S307-T2 EVENT-PROTOCOL.md hard-coded stream/event counts without verification tasks",
+      "original_issue": "Sprint 2.1 ts-morph AST vs Sprint 4.4 note claiming grep-based extractor (plan contradiction)",
       "status": "fixed",
-      "notes": "Still includes Pre-flight extraction of stream names/counts and event types, and AC uses extracted values as ground truth."
+      "notes": "Sprint 2.1 explicitly allows AST or grep with a requirement to document the chosen approach, and Sprint 4.4’s coverage note is aligned to the actual grep-based method."
     },
     {
-      "original_issue": "Sprint 4 dependency sequencing: S307-T2 lacked dependency on Sprint 3 despite requiring citation tooling/gates",
+      "original_issue": "Canonical 14 conservation properties vs freeside enforcing subset (Sprint 4/6/9 inconsistency)",
       "status": "fixed",
-      "notes": "S307-T2 still depends on Sprint 3 complete, aligning with pin-citations/RTFM gating."
+      "notes": "Sprint 4.1 establishes loa-hounfour as normative canonical (14) and freeside as implemented coverage; Sprint 6.4 and Sprint 9.1 reinforce this with an explicit coverage ratio note and a required 14-row table."
     },
     {
-      "original_issue": "Sprint 5 gate referenced non-existent RTFM 10/10 model vs actual 8 checks",
+      "original_issue": "RTFM managed-doc scope ownership split/duplicated (GLOSSARY added twice; Sprint 10 dependency mismatch)",
       "status": "fixed",
-      "notes": "Sprint 5 gate remains consistent with RTFM 8/8 checks."
+      "notes": "Sprint 8.3 is the introduction point for adding GLOSSARY.md to MANAGED_DOCS; Sprint 10.1 is verification-only with an explicit 'no redundant additions' criterion."
     },
     {
-      "original_issue": "S308-T1 ambiguous per-doc version header validation requirement",
+      "original_issue": "verify-routes.sh acceptance criteria unsafe/flaky (HEAD/GET on every route; non-idempotent routes; 405 handling)",
       "status": "fixed",
-      "notes": "S308-T1 still clearly states no per-doc version headers required for the new docs and scopes version check accordingly."
+      "notes": "Sprint 2.4 constrains auth validation to indexed GET routes, uses safe probes for non-GET routes, treats 405 as non-fatal, and forbids bodies on non-idempotent routes."
     },
     {
-      "original_issue": "S307-T4 coverage note incorrectly claimed grep-based extraction despite ts-morph AST implementation",
-      "status": "not_fixed",
-      "notes": "S307-T4 explicitly claims the implementation is grep-based and calls it a “pragmatic divergence,” but the same plan (Sprint 2 / S305-T1) defines the extractor as ts-morph AST parsing and the overall doc-from-code trust model depends on that being accurate. Unless the implementation truly changed to grep (which would also require updating Sprint 2 and likely the tool), this remains a factual contradiction in the plan."
+      "original_issue": "Sprint 9 BUTTERFREEZONE discovery fields change lacks explicit golden vector/validator policy update",
+      "status": "fixed",
+      "notes": "Sprint 9.2 requires validator optional-field handling with advisory exit code 2, updates RTFM check #7 to accept 0 or 2, and regenerates/commits golden vectors."
     },
     {
-      "original_issue": "S307-T3 cross-repo learning path needed explicit compliance with crossrepo rule (no branch-relative links) and pinning/validation step",
+      "original_issue": "No explicit bridge/deep review findings closure artifact mapping finding IDs to doc sections/validation evidence",
       "status": "fixed",
-      "notes": "S307-T3 still requires non-branch-relative links and running pin-citations validate-only after edits."
+      "notes": "Sprint 10.4 defines a closure table artifact with required columns and CLOSED/DEFERRED rules, covering all 13 findings."
     }
   ],
-  "new_blocking_concerns": [
-    {
-      "location": "Sprint 4 / S307-T4 (Route Extraction Coverage Note) — Description + Acceptance Criteria",
-      "description": "S307-T4 now asserts the extractor is “grep-based pattern matching” and frames it as an intentional divergence, which conflicts with Sprint 2’s stated (and previously reviewed) ts-morph AST-based extractor contract and undermines the provenance of the Tier 2 route index.",
-      "why_blocking": "This is a document-from-code integrity break: either (a) the plan is wrong about the implementation, causing the coverage note to be factually incorrect, or (b) the implementation actually diverged to grep, which would invalidate Sprint 2’s acceptance criteria/tooling expectations and could cause CI/validation behavior to mismatch what the docs claim. Either way, it risks rejection of Sprint 4 deliverables as ungrounded/incorrect and creates maintenance hazards.",
-      "fix": "Make S307-T4 describe the actual implemented extractor. If the tool is ts-morph-based, update S307-T4 AC to: “ts-morph AST-based static analysis of Express route registrations,” and list real limitations (dynamic/computed paths, runtime/conditional registration, gateway-proxied routes). Optionally add a citation requirement pointing to the relevant lines in `scripts/extract-routes.sh` that show ts-morph usage. If the tool truly is grep-based, then you must also update Sprint 2 S305-T1 Description/AC (and any other references) to match grep, and ensure the extractor’s limitations/coverage thresholds are still achievable and validated."
-    }
-  ],
+  "new_blocking_concerns": [],
   "iteration": 3
 }

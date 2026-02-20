@@ -1,12 +1,12 @@
 # Sprint Plan: The Neuromancer Codex — Documentation as Product Surface
 
-**Version:** 1.2.0
+**Version:** 1.3.0
 **Date:** 2026-02-20
 **Cycle:** cycle-035
 **PRD:** grimoires/loa/prd.md (v1.1.0)
 **SDD:** grimoires/loa/sdd.md (v1.0.0)
-**Global Sprint IDs:** 304–309
-**Duration:** 13 working days across 6 sprints
+**Global Sprint IDs:** 304–313
+**Duration:** 17 working days across 10 sprints
 **Team:** 1 engineer (AI-assisted)
 
 ---
@@ -21,9 +21,14 @@
 | Sprint 4 | 307 | Phase F | Day 11 | Educational Deep Docs | ECONOMICS.md + EVENT-PROTOCOL.md grounded |
 | Sprint 5 | 308 | Phase G | Day 12 | Merge Prep | RTFM 8/8 pass, PR ready for review |
 | Sprint 6 | 309 | Phase H | Day 13 | Bridge Findings | Bridgebuilder findings addressed, RTFM 8/8 |
+| Sprint 7 | 310 | Phase I | Day 14 | Protocol Stability & Governance | NATS stability tiers, doc semver governance |
+| Sprint 8 | 311 | Phase J | Days 15–16 | Cross-Repo Education | Multi-repo learning journey, concept glossary |
+| Sprint 9 | 312 | Phase K | Day 17 | Protocol Formalization & Discovery | Economic spec deepening, BUTTERFREEZONE discovery |
+| Sprint 10 | 313 | Phase L | Day 17 | Final Excellence & Merge | RTFM 8/8, citations, PR update |
 
 **Dependency chain:** Sprint 1 → Sprint 2 → Sprint 3 (sequential gates)
 **Parallel opportunity:** Within Sprint 2, API docs and IaC docs run in parallel.
+**Phase I–L dependency:** Sprint 7 → Sprint 8 (stability tiers referenced in learning path). Sprint 9 parallel with Sprint 8. Sprint 10 depends on all.
 
 **Prerequisites:**
 - jq >=1.7 installed (via `brew install jq`, `apt install jq`, or pinned in `.tool-versions` for asdf/mise). CI runner must also satisfy this. Scripts check at startup and fail with exit 13 if not met.
@@ -220,12 +225,12 @@ Lock the 7 guaranteed-stable endpoints in a single canonical source file (`docs/
 **FR:** FR-4 (tooling prerequisite)
 
 **Description:**
-Build the route extraction tool using ts-morph AST parsing. Define supported patterns, implement unresolvable pattern linter, create initial route snapshot.
+Build the route extraction tool. Preferred approach is ts-morph AST parsing; if AST proves impractical, a grep-based pattern matcher on Express `router.METHOD()` calls is an acceptable pragmatic alternative (document the chosen approach in the script header). Define supported patterns, implement unresolvable pattern linter, create initial route snapshot.
 
 **Acceptance Criteria:**
-- [ ] Parses supported patterns: direct method calls, router.use sub-mounts, method chaining, path constants, middleware chains
+- [ ] Parses supported patterns: direct method calls, router.use sub-mounts, method chaining, path constants, middleware chains (AST), or equivalent grep patterns for `router.get/post/put/delete/patch()` calls
 - [ ] Flags unsupported patterns: template literals, dynamic/computed, conditional registration
-- [ ] Unresolvable linter: fails if >5% of registrations are unresolvable
+- [ ] Unresolvable linter: fails if >5% of registrations are unresolvable (AST mode) or logs advisory for grep mode
 - [ ] Emits JSON: `{ method, full_path, auth, source_file, line }` sorted by `{method, full_path}`
 - [ ] Route snapshot created at `scripts/route-snapshot.json`
 - [ ] `--diff` mode compares against snapshot (new=info, missing=error, changed auth=warning)
@@ -296,11 +301,13 @@ Two-tier API reference: Tier 1 stable endpoints with full docs, Tier 2 auto-extr
 Framework-agnostic integration test validating Tier 2 route contracts against a running local dev server via HTTP requests (not framework internals).
 
 **Acceptance Criteria:**
-- [ ] Auth requirement validation: for each indexed route, send unauthenticated HEAD/GET — expect 401/403 if auth required, 2xx/3xx if no auth
-- [ ] Not-404 validation: all indexed routes respond (not 404)
+- [ ] Auth requirement validation: for each indexed GET route, send unauthenticated GET — expect 401/403 if auth required, 2xx/3xx if no auth. Non-GET routes (POST/PUT/DELETE) are verified as not-404 only via OPTIONS or HEAD (treat 405 as non-fatal pass)
+- [ ] Not-404 validation: all indexed GET routes respond (not 404); non-GET routes verified via safe probe only
+- [ ] Per-route probe method override supported in extracted JSON (`probe_method` field, default GET)
+- [ ] Non-idempotent routes (POST/PUT/DELETE) are never sent with bodies — probe only for existence
 - [ ] Results compared against route snapshot — divergence logged as warning
 - [ ] Script: `scripts/verify-routes.sh` starts dev server, runs checks, reports
-- [ ] Optional: runtime introspection via dev-only `/api/debug/routes` endpoint (if available, cross-check against AST; if not available, skip gracefully)
+- [ ] Optional: runtime introspection via dev-only `/api/debug/routes` endpoint (if available, cross-check against extraction; if not available, skip gracefully)
 
 **Testing:**
 - `scripts/verify-routes.sh` passes against local dev server
@@ -467,7 +474,7 @@ Create `scripts/rtfm-validate.sh` that runs all 8 validation checks with determi
 **Acceptance Criteria:**
 - [ ] `scripts/rtfm-validate.sh` created with 8 named checks:
   1. Citation validity: parse `<!-- cite: ... -->` regex, verify local files exist, cross-repo refs well-formed
-  2. Naming compliance: `grep -ci "arrakis"` across zero-tolerance file list (hardcoded in script)
+  2. Naming compliance: `grep -ci "arrakis"` across zero-tolerance file list (hardcoded in script), **exempting** code-path citations inside `<!-- cite: ... -->` blocks (these reference source filenames which are out-of-scope for doc-level renaming per PRD §3). Implementation: strip `<!-- cite: ... -->` blocks before grep, or use `grep -P` negative lookahead.
   3. Version consistency: compare package.json version against README badge and BUTTERFREEZONE
   4. Cross-link integrity: extract all Markdown links from docs, verify targets exist
   5. Cross-repo citation stability: `grep -P 'github\.com.*/(tree|blob)/(main|develop|master)' docs/*.md`
@@ -549,7 +556,7 @@ Sprint 3 (Days 8-10):
 
 | Metric | Target | Measurement |
 |--------|--------|-------------|
-| Naming compliance | 0 violations | `grep -ci "arrakis"` across zero-tolerance files |
+| Naming compliance | 0 violations in prose | `grep -ci "arrakis"` across zero-tolerance files (exempting `<!-- cite: ... -->` blocks) |
 | Citation grounding | 100% sourced | RTFM citation check |
 | Smoke-test pass rate | 7/7 stable endpoints | Smoke-test checklist |
 | Route index coverage | >=80 routes | `extract-routes.sh --count` |
@@ -583,7 +590,7 @@ This is the document that transforms "interesting project" into "serious protoco
 - `packages/adapters/agent/budget-manager.ts` — BudgetResult/FinalizeResult types, reserve/finalize/reap methods
 - `packages/adapters/agent/lua/budget-reserve.lua` — Atomic reservation Lua script
 - `packages/adapters/agent/lua/budget-finalize.lua` — Atomic finalization Lua script
-- `themes/sietch/src/packages/core/protocol/arrakis-conservation.ts` — Conservation adapter (imports from loa-hounfour)
+- `themes/sietch/src/packages/core/protocol/arrakis-conservation.ts` — Conservation adapter (imports from loa-hounfour). Note: this is a code-level file path; code-level renaming is explicitly out of scope per PRD §3. Citations to code paths may use the original filename.
 - `themes/sietch/src/services/TierService.ts` — 9-tier conviction system
 - `packages/adapters/agent/pool-mapping.ts` — Pool→tier access mapping
 - `packages/adapters/agent/ensemble-accounting.ts` — Per-model cost attribution
@@ -595,8 +602,10 @@ This is the document that transforms "interesting project" into "serious protoco
 3. **Lot Lifecycle** — reserve → finalize → reap with idempotency guarantees
    - Worked example: complete request flow from reservation to finalization
    - Failure modes: late finalize, expired reservation, Redis errors (fail-closed reserve, fail-open finalize)
-4. **Conservation Invariant** — Canonical properties imported from loa-hounfour
-   - Document exactly the error codes and reconciliation failure codes present in `arrakis-conservation.ts`
+4. **Conservation Invariant** — Canonical properties from loa-hounfour as normative set
+   - List all 14 canonical properties from loa-hounfour as the normative reference
+   - Separately document which subset is enforced in freeside (with citations to freeside enforcement points in `arrakis-conservation.ts`)
+   - Treat the freeside adapter list as "implemented coverage," not the canonical list
    - Universe scopes: per-lot, per-account, cross-system, platform-wide
    - Enforcement mechanisms: DB CHECK, DB UNIQUE, Application, Reconciliation-only
    - Note: canonical property count and details extracted from source at write time, not hardcoded in plan
@@ -612,16 +621,17 @@ This is the document that transforms "interesting project" into "serious protoco
 **Acceptance Criteria:**
 - [ ] Pre-flight: all source paths verified to exist; exact counts/types extracted from code
 - [ ] Every section has `<!-- cite: loa-freeside:path -->` citation(s) to source code
-- [ ] Conservation invariant section documents exactly the properties found in `arrakis-conservation.ts`
+- [ ] Conservation invariant section uses loa-hounfour as the canonical source (14 properties), then documents which subset is enforced in freeside's `arrakis-conservation.ts` adapter with citations to both
 - [ ] Worked example covers complete reserve → finalize → reap flow
 - [ ] Failure modes table covers at least: late finalize, expired reservation, Redis failure, budget exceeded
 - [ ] Conviction tier table matches `TierService.ts` thresholds exactly (verified by reading source)
 - [ ] Pool access matrix matches `pool-mapping.ts` protocol conformance tests (verified by reading source)
-- [ ] Zero "Arrakis" references in platform context
+- [ ] Zero "Arrakis" references in platform prose (code-path citations inside `<!-- cite: ... -->` blocks are exempt per PRD §3 — code-level renaming is a separate cycle)
 - [ ] `scripts/pin-citations.sh --validate-only` passes for this file
 
 **Testing:**
 - All citations resolve to existing files
+- Naming check passes (after stripping cite blocks)
 - Tier thresholds verified against TierService.ts source
 - Pool access matrix verified against protocol-conformance.test.ts
 
@@ -983,3 +993,479 @@ Run full validation suite to confirm all changes pass.
 - [ ] `scripts/pin-citations.sh --validate-only` passes
 - [ ] Zero naming violations
 - [ ] Zero broken cross-links
+
+---
+
+## Sprint 7: PROTOCOL STABILITY & GOVERNANCE (Global ID: 310)
+
+**Goal:** Extend the two-tier stability model to NATS event schemas, establish semver governance for protocol documentation, and formalize the stability promise beyond HTTP.
+**Duration:** Day 14
+**Gate:** EVENT-PROTOCOL.md has stability tiers for subjects/schemas; ECONOMICS.md and EVENT-PROTOCOL.md have governance policy; RTFM 8/8.
+**Source:** [Deep Bridgebuilder Review](https://github.com/0xHoneyJar/loa-freeside/pull/76#issuecomment-3930900304) Gap 1 (Stability stops at HTTP), Gap 3 (Versioning as Governance), and bridge iteration 1 REFRAME finding.
+
+### Task 7.1: NATS Stability Tiers in EVENT-PROTOCOL.md
+
+**ID:** S310-T1
+**Priority:** P0
+**Effort:** Medium (2–3 hours)
+**Dependencies:** Sprint 6 complete
+**Source:** Deep Review Gap 1 — "The Stability Promise Stops at HTTP"
+
+**Description:**
+Add a "## Stability Tiers" section to EVENT-PROTOCOL.md that applies the same two-tier model from API-REFERENCE.md to NATS subjects and event schemas. When Layer 5 products (loa-dixie) subscribe to NATS events, they need the same stability guarantees as HTTP API consumers. The `GatewayEvent` envelope schema is arguably *more* foundational than any HTTP endpoint.
+
+**Content:**
+1. **Tier 1 (Stable):** GatewayEvent envelope schema, core subject patterns (`gateway.events.>`, `gateway.interactions.>`), stream names. Same 2-cycle deprecation policy as HTTP.
+2. **Tier 2 (Unstable):** Event data payload shapes beyond the 6 documented types, wildcard subject extensions, consumer group naming conventions.
+3. **Promotion criteria:** Stable for 2+ cycles, documented in EVENT-PROTOCOL.md, covered by loa-hounfour JSON fixtures.
+4. **Cross-reference:** Link to API-REFERENCE.md stability contract for HTTP tier definitions.
+
+**Pre-flight:** Read `packages/shared/nats-schemas/nats-routing.json` to identify which subjects should be Tier 1 vs Tier 2. Read loa-hounfour fixture list to identify which schemas have cross-language validation.
+
+**Acceptance Criteria:**
+- [ ] "## Stability Tiers" section added to EVENT-PROTOCOL.md
+- [ ] At minimum 3 subjects/schemas classified as Tier 1 (Stable)
+- [ ] Deprecation policy mirrors HTTP: 2-cycle notice, documented in API-CHANGELOG.md
+- [ ] Tier 2 subjects explicitly marked as unstable
+- [ ] Cross-reference to API-REFERENCE.md stability definitions
+- [ ] Citations to nats-routing.json and loa-hounfour fixtures
+- [ ] `scripts/pin-citations.sh --validate-only` passes
+
+**Testing:**
+- Stability tiers section present in rendered markdown
+- All citations resolve
+
+### Task 7.2: Document Versioning Governance
+
+**ID:** S310-T2
+**Priority:** P1
+**Effort:** Medium (1–2 hours)
+**Dependencies:** None (parallel with T1)
+**Source:** Deep Review Gap 3 — "Versioning as Governance"
+
+**Description:**
+Add a "## Document Versioning" section to DEVELOPER-GUIDE.md that establishes semver governance for protocol documentation. When ECONOMICS.md and EVENT-PROTOCOL.md function as specifications, versioning must follow the same semantics as code — downstream consumers need to say "I built against ECONOMICS.md v1.0.0 and these guarantees apply."
+
+**Content:**
+1. **Major version:** Document restructured, sections removed, guarantees narrowed, or invariant definitions changed.
+2. **Minor version:** New section added, significant content expansion, new failure modes or stability classifications.
+3. **Patch version:** Typo fixes, link updates, clarifications that don't change meaning.
+4. **Protocol docs (ECONOMICS.md, EVENT-PROTOCOL.md):** Major version bumps require PR review from core team. Conservation invariant changes are always major.
+5. **Operational docs (INFRASTRUCTURE.md, CLI.md):** Standard semver, no special governance.
+
+**Acceptance Criteria:**
+- [ ] "## Document Versioning" section in DEVELOPER-GUIDE.md (update existing Versioning section)
+- [ ] Governance rules distinguish protocol docs from operational docs
+- [ ] Conservation invariant changes explicitly classified as major version
+- [ ] Examples of each version bump type
+- [ ] Cross-reference from ECONOMICS.md and EVENT-PROTOCOL.md to versioning governance
+
+**Testing:**
+- Versioning governance section present in DEVELOPER-GUIDE.md
+- Cross-references resolve
+
+### Task 7.3: Stability Contract Cross-Reference in ECONOMICS.md
+
+**ID:** S310-T3
+**Priority:** P1
+**Effort:** Small (30 min)
+**Dependencies:** S310-T2
+**Source:** Deep Review Gap 3
+
+**Description:**
+Add a brief "## Versioning & Stability" section to ECONOMICS.md referencing the governance policy in DEVELOPER-GUIDE.md. State that the conservation invariant, lot lifecycle, and budget accounting model are Tier 1 (Stable) — changes to these definitions follow the 2-cycle deprecation policy.
+
+**Acceptance Criteria:**
+- [ ] "## Versioning & Stability" section added to ECONOMICS.md
+- [ ] Conservation invariant, lot lifecycle, budget accounting classified as Tier 1
+- [ ] Link to DEVELOPER-GUIDE.md versioning governance
+- [ ] Version header reflects current version
+
+**Testing:**
+- Section present in rendered markdown
+- Links resolve
+
+---
+
+## Sprint 8: CROSS-REPO EDUCATION & PARADIGM ONBOARDING (Global ID: 311)
+
+**Goal:** Transform the Freeside-centric learning path into a true cross-repo educational journey. Help developers understand they are entering a new paradigm — not just a new codebase — with concepts (conservation invariants, multi-model routing, token-gated capabilities, agent economic citizenship) that have no direct precedent in traditional web development.
+**Duration:** Days 15–16
+**Gate:** ECOSYSTEM.md has comprehensive cross-repo journey; concept glossary exists; RTFM 8/8.
+**Source:** [Deep Bridgebuilder Review](https://github.com/0xHoneyJar/loa-freeside/pull/76#issuecomment-3930900304) Gap 2 (Learning Path is Freeside-Centric), user request for "education across the bounds of single repos."
+
+### Task 8.1: Expand "Building on Loa" into Cross-Repo Educational Journey
+
+**ID:** S311-T1
+**Priority:** P0
+**Effort:** Large (4–6 hours)
+**Dependencies:** Sprint 7 complete
+**Source:** Deep Review Gap 2, user request for multi-repo multi-step learning
+
+**Description:**
+Expand the existing "Building on Loa" section in ECOSYSTEM.md from a brief journey map into a comprehensive multi-repo onboarding guide. The current version assumes readers already understand the protocol layer. The expanded version should take a developer from "I know nothing about Loa" to "I understand the architecture well enough to build a Layer 5 product."
+
+This is not just a reading list — it is a **conceptual progression**. Each step introduces new primitives that build on the previous:
+
+1. **What is Loa?** (ECOSYSTEM.md) — 5-layer stack, dependency direction, naming
+2. **What are the rules?** (loa-hounfour) — Protocol contracts, state machines, conservation invariants
+3. **How does money work?** (ECONOMICS.md) — Budget atomicity, lot lifecycle, capability tiers
+4. **How do events flow?** (EVENT-PROTOCOL.md) — NATS streams, GatewayEvent, subscription patterns
+5. **How do I call an agent?** (API-QUICKSTART.md) — First API call in 5 minutes
+6. **What can I build?** (API-REFERENCE.md) — Full endpoint reference, stability tiers
+7. **How do I deploy?** (INFRASTRUCTURE.md) — Terraform modules, staging guide
+8. **How do I run it?** (CLI.md) — gaib CLI for management
+
+**Content additions:**
+- "Why This Architecture Exists" preamble — explain the progression from Discord bot → community management → agent economy → economic protocol. People need to understand WHY there are 5 repos, not just THAT there are 5 repos.
+- "Conceptual Prerequisites" — what you need to understand before diving in: Redis Lua atomicity, BigInt arithmetic, JetStream at-least-once delivery, token-gating mechanics, hexagonal architecture
+- Role-based deep journeys (expanded from current 3-row table):
+  - **API Consumer**: QUICKSTART → REFERENCE → ECONOMICS (understand costs) → stability tiers
+  - **Product Builder**: ECOSYSTEM → EVENT-PROTOCOL → ECONOMICS → loa-hounfour contracts → REFERENCE
+  - **Protocol Contributor**: loa-hounfour → ECONOMICS → EVENT-PROTOCOL → conservation invariant source → temporal properties
+  - **Operator**: INFRASTRUCTURE → CLI → monitoring dashboards → cost estimation
+  - **New to Agent Economies**: Start with "What is an Agent Economy?" section → ECOSYSTEM → ECONOMICS → EVENT-PROTOCOL
+
+**Acceptance Criteria:**
+- [ ] "Building on Loa" section expanded to at minimum 5 role-based paths
+- [ ] "Why This Architecture Exists" preamble explains evolution from bot → protocol
+- [ ] "Conceptual Prerequisites" section lists key primitives newcomers must understand
+- [ ] Each path includes cross-repo links (loa-hounfour, loa-finn where relevant)
+- [ ] Cross-repo references use repository links, not branch-relative
+- [ ] `scripts/pin-citations.sh --validate-only` passes
+- [ ] Section is self-contained — readable without needing to open 8 tabs
+
+**Testing:**
+- All cross-repo links resolve
+- RTFM crossrepo check passes
+
+### Task 8.2: Concept Glossary — "New Concepts in Agent Economies"
+
+**ID:** S311-T2
+**Priority:** P0
+**Effort:** Large (3–4 hours)
+**Dependencies:** S311-T1 (references glossary entries)
+**Source:** User request — "getting used to new concepts"
+
+**Description:**
+Create a `docs/GLOSSARY.md` that defines the key concepts of the Loa protocol. This is not a dictionary — it is a conceptual map for developers transitioning from traditional web development to agent economic infrastructure. Each entry should explain: what it is, why it matters, where it comes from (FAANG/industry parallel), and where to learn more.
+
+People entering this ecosystem face a combinatorial explosion of unfamiliar concepts: conservation invariants, lot lifecycle, conviction scoring, pool routing, ensemble strategies, token-gating, BYOK, budget atomicity. Without a glossary, they must reconstruct these concepts from scattered source code. The glossary serves as the "Rosetta Stone" between traditional concepts and Loa concepts.
+
+**Content (minimum entries):**
+
+| Concept | Traditional Equivalent | Loa Primitive | Source Doc |
+|---------|----------------------|---------------|------------|
+| Conservation Invariant | Double-entry bookkeeping | `available + reserved + consumed = original` | ECONOMICS.md |
+| Budget Atomicity | Transaction isolation | Redis Lua two-counter model | ECONOMICS.md |
+| Lot Lifecycle | Payment authorization | reserve → finalize → reap | ECONOMICS.md |
+| Conviction Scoring | Access control list | Token-weighted tier calculation | ECONOMICS.md |
+| Pool Routing | Load balancing | Capability-based model selection | ECONOMICS.md |
+| Ensemble Strategy | Redundant systems | Multi-model decision protocols | ECONOMICS.md |
+| Capability Tier | Subscription plan | Token-gated pool access | ECONOMICS.md |
+| GatewayEvent | HTTP request | NATS message envelope | EVENT-PROTOCOL.md |
+| Stability Tier | API versioning | 2-cycle deprecation commitment | API-REFERENCE.md |
+| BYOK | Self-hosted | Bring Your Own Key with envelope encryption | BUTTERFREEZONE.md |
+| Token-Gating | Authentication | Wallet-verified capability access | ECOSYSTEM.md |
+| Forward Compatibility | Backward compatibility | `z.unknown()` + `isKnownEventType()` guard | EVENT-PROTOCOL.md |
+| Fail-Closed Reservation | Circuit breaker | Deny on Redis unreachable | ECONOMICS.md |
+| Agent Economic Citizenship | Service identity | NFT-bound agent with budget delegation | ECOSYSTEM.md |
+
+**Format for each entry:**
+```markdown
+### Conservation Invariant
+
+**What:** A mathematical guarantee that no budget can be created or destroyed during the agent inference lifecycle. Expressed as `available + reserved + consumed = original` for every lot.
+
+**Why it matters:** In a multi-agent economy where communities delegate spending authority to autonomous agents, the conservation invariant is what makes that delegation safe. It is the foundational promise that the books will always balance.
+
+**Traditional parallel:** Double-entry bookkeeping (every credit has a corresponding debit). In banking, this is regulatory requirement. In agent economies, it is protocol-level enforcement.
+
+**Industry parallel:** Stripe's idempotency keys prevent double-charges; the conservation invariant prevents double-spending at a more fundamental level — not per-transaction but per-lot across the entire lifecycle.
+
+**Learn more:** [ECONOMICS.md](ECONOMICS.md) § Conservation Invariant
+```
+
+**Acceptance Criteria:**
+- [ ] `docs/GLOSSARY.md` created with at minimum 12 concept entries
+- [ ] Each entry has: What, Why it matters, Traditional parallel, Industry parallel, Learn more
+- [ ] Entries link to source documentation
+- [ ] Cross-referenced from DEVELOPER-GUIDE.md learning path
+- [ ] Cross-referenced from ECOSYSTEM.md "Conceptual Prerequisites"
+- [ ] `scripts/pin-citations.sh --validate-only` passes
+
+**Testing:**
+- All "Learn more" links resolve
+- Glossary covers at least the 14 concepts listed above
+
+### Task 8.3: Add GLOSSARY.md to Validation and Navigation
+
+**ID:** S311-T3
+**Priority:** P1
+**Effort:** Small (1 hour)
+**Dependencies:** S311-T2
+**Source:** Integration task
+
+**Description:**
+Add GLOSSARY.md to RTFM managed docs, DEVELOPER-GUIDE.md learning path and ownership table, BUTTERFREEZONE interfaces list, and cross-link from all docs that use glossary terms.
+
+**Acceptance Criteria:**
+- [ ] GLOSSARY.md added to `MANAGED_DOCS` in `scripts/rtfm-validate.sh`
+- [ ] GLOSSARY.md in DEVELOPER-GUIDE.md learning path (position after ECOSYSTEM, before API-QUICKSTART)
+- [ ] GLOSSARY.md in DEVELOPER-GUIDE.md ownership table (DRI: Core team, trigger: new concept introduced)
+- [ ] "Next Steps" footer added to GLOSSARY.md
+- [ ] All docs referencing glossary concepts link to GLOSSARY.md at least once
+- [ ] BUTTERFREEZONE.md updated to reference GLOSSARY.md
+- [ ] RTFM 8/8 passes with expanded managed docs
+
+**Testing:**
+- `scripts/rtfm-validate.sh` passes with GLOSSARY.md in scope
+- All cross-links resolve
+
+---
+
+## Sprint 9: PROTOCOL FORMALIZATION & DISCOVERY (Global ID: 312)
+
+**Goal:** Deepen the economic primitives documentation toward protocol-specification quality, establish BUTTERFREEZONE as the foundation for machine-discoverable agent platforms, and add the "why this matters" educational framing that transforms docs from reference material into paradigm introduction.
+**Duration:** Day 17 (parallel with Sprint 10)
+**Gate:** ECONOMICS.md has formal specification section; BUTTERFREEZONE has discovery protocol fields; RTFM 8/8.
+**Source:** [Deep Bridgebuilder Review](https://github.com/0xHoneyJar/loa-freeside/pull/76#issuecomment-3930900304) Gap 4 (Agent Discovery), bridge SPECULATION findings, user request for "awareness of the wider eco."
+
+### Task 9.1: Economic Protocol Formal Specification Section
+
+**ID:** S312-T1
+**Priority:** P1
+**Effort:** Medium (2–3 hours)
+**Dependencies:** Sprint 8 complete (glossary terms referenced)
+**Source:** Bridge iteration 1 SPECULATION finding — "Formalize economic primitives as a standalone protocol specification"
+
+**Description:**
+Add a "## Formal Specification" section to ECONOMICS.md that presents the conservation invariant, lot lifecycle state machine, and budget accounting model in a format approaching EIP-style specification quality. This is not a full EIP — it is the educational bridge between "internal documentation" and "proposed standard."
+
+The deep review noted: "The gap between 'internal documentation' and 'proposed standard' is smaller than it appears." This task closes that gap for the most critical primitives.
+
+**Content:**
+1. **Conservation Properties** — Table of all 14 canonical properties with formal notation:
+   - Property ID, Name, Formal expression, Enforcement level (DB/App/Protocol/Reconciliation)
+   - Cross-reference to loa-hounfour source
+2. **Lot State Machine** — State diagram: `RESERVED → PARTIALLY_CONSUMED → CONSUMED → REAPED`
+   - Transition guards and side effects
+   - Idempotency guarantees per transition
+3. **Budget Accounting Axioms** — The 3 guarantees as formal properties:
+   - A1: No precision loss (integer micro-USD, no floating point)
+   - A2: No double-charge (idempotent finalization via Redis key)
+   - A3: Fail-closed reservation (deny on infrastructure failure)
+4. **Implementer Notes** — What a conforming implementation must guarantee to claim Loa compatibility
+
+**Acceptance Criteria:**
+- [ ] "## Formal Specification" section added to ECONOMICS.md after the existing content
+- [ ] Conservation properties table with all 14 properties (referencing loa-hounfour)
+- [ ] Lot state machine documented with transitions and guards
+- [ ] 3 budget axioms formally stated
+- [ ] Implementer notes section explaining conformance requirements
+- [ ] Citations to loa-hounfour constraint JSON files where relevant
+- [ ] `scripts/pin-citations.sh --validate-only` passes
+
+**Testing:**
+- Formal specification section present in rendered markdown
+- Property table has 14 entries matching loa-hounfour canonical list
+
+### Task 9.2: BUTTERFREEZONE Agent Discovery Fields
+
+**ID:** S312-T2
+**Priority:** P1
+**Effort:** Medium (1–2 hours)
+**Dependencies:** None (parallel with T1)
+**Source:** Deep Review Gap 4 — "The Agent Discovery Story"
+
+**Description:**
+Extend the `AGENT-CONTEXT` header in BUTTERFREEZONE.md with additional fields that lay the foundation for machine-discoverable agent platforms. Currently the header has: name, type, purpose, key_files, interfaces, dependencies, capability_requirements, version, trust_level. Add fields that enable an agent to evaluate whether this platform meets its needs without human intermediation.
+
+**New fields:**
+- `stability_contract`: URL to stability tier documentation
+- `economic_model`: Brief description of the economic primitives (conservation, lot lifecycle)
+- `protocol_version`: loa-hounfour version this platform conforms to
+- `discovery_endpoints`: List of machine-readable entry points (health check, capabilities, pricing)
+- `ecosystem`: Map of related repos with their roles
+
+**Acceptance Criteria:**
+- [ ] AGENT-CONTEXT header extended with at minimum 4 new fields
+- [ ] Fields are machine-parseable (YAML within HTML comment)
+- [ ] `butterfreezone-validate.sh` updated: new fields are optional — validator treats absence as advisory warning (exit code 2, not failure). RTFM check #7 accepts exit code 0 or 2.
+- [ ] Golden test vectors in `tests/fixtures/butterfreezone-golden/` regenerated and committed to reflect new fields and updated per-section hashes
+- [ ] Brief prose section explaining the agent discovery vision
+- [ ] Cross-reference to GLOSSARY.md for concept definitions
+
+**Testing:**
+- `butterfreezone-validate.sh` passes (exit 0 or 2 for advisory)
+- Golden vectors match regenerated output
+- New fields parseable by a simple YAML parser
+
+### Task 9.3: "Understanding the Agent Economy" Preamble
+
+**ID:** S312-T3
+**Priority:** P1
+**Effort:** Medium (1–2 hours)
+**Dependencies:** S311-T2 (glossary concepts referenced)
+**Source:** User request — "building a new paradigm so we need to do the education"
+
+**Description:**
+Add an "Understanding the Agent Economy" section to the beginning of ECOSYSTEM.md (after the Stack section, before Repositories). This section explains to newcomers *why* this architecture exists and *what problem it solves* at the paradigm level — not just the technical level.
+
+The current ECOSYSTEM.md jumps straight into layer diagrams and repo descriptions. A developer arriving from traditional web development needs context: Why are there 5 repos? Why is there a separate protocol layer? Why does billing need its own conservation invariant? What is an "agent economy" and how does it differ from a regular SaaS?
+
+**Content:**
+1. **What is an Agent Economy?** — Autonomous AI agents that hold identity, spend budget, and provide services within a governed commons. Not chatbots — economic actors.
+2. **Why Conservation Invariants?** — When you delegate spending authority to an autonomous agent, you need mathematical proof that the books balance. This is the difference between a billing system and an economic protocol.
+3. **Why 5 Repos?** — Separation of concerns at the protocol level. The contracts (loa-hounfour) must evolve independently of the implementation (loa-freeside) and the runtime (loa-finn). This is the Kubernetes insight: contracts independent of both platform and runtime.
+4. **Why Multi-Model?** — Different cognitive tasks require different models, just as different compute tasks require different processors. Pool routing is to models what load balancing is to servers — but with cost and capability awareness.
+5. **The Web4 Connection** — Brief reference to the broader thesis (blockchain + AI convergence), linking to the existing Web4 section.
+
+**Acceptance Criteria:**
+- [ ] "Understanding the Agent Economy" section added to ECOSYSTEM.md
+- [ ] At minimum 4 subsections explaining paradigm concepts
+- [ ] Links to GLOSSARY.md for formal definitions
+- [ ] Links to ECONOMICS.md and EVENT-PROTOCOL.md for technical depth
+- [ ] Accessible to someone with web development background but no agent/blockchain experience
+- [ ] Zero jargon without definition or glossary link
+
+**Testing:**
+- Section present in rendered markdown
+- All links resolve
+- No undefined technical terms
+
+---
+
+## Sprint 10: FINAL EXCELLENCE & MERGE (Global ID: 313)
+
+**Goal:** Run full validation suite, regenerate BUTTERFREEZONE, update PR body, and prepare for merge.
+**Duration:** Day 17 (after Sprint 9)
+**Gate:** RTFM 8/8, all citations valid, PR body updated, ready for human review.
+**Source:** Merge preparation.
+
+### Task 10.1: Update RTFM Validator Scope
+
+**ID:** S313-T1
+**Priority:** P0
+**Effort:** Small (30 min)
+**Dependencies:** Sprints 7–9 complete
+**Source:** New docs must be in validation scope
+
+**Description:**
+Verify that `docs/GLOSSARY.md` is already in `MANAGED_DOCS` and `zero_tolerance_files` (added in Sprint 8, Task 8.3). This is a verification-only task — if Sprint 8.3 correctly added GLOSSARY.md, no changes are needed. If Sprint 8.3 was incomplete, add it here. Confirm all 8 checks account for the expanded document set including all Sprint 7–9 additions.
+
+**Acceptance Criteria:**
+- [ ] Confirm `MANAGED_DOCS` includes GLOSSARY.md (expected from S311-T3)
+- [ ] Confirm `zero_tolerance_files` includes GLOSSARY.md (expected from S311-T3)
+- [ ] All 8 RTFM checks pass with full expanded scope (all Sprint 7–9 docs)
+- [ ] No redundant MANAGED_DOCS additions — single source of introduction per doc
+
+**Testing:**
+- `scripts/rtfm-validate.sh` exits 0
+
+### Task 10.2: Regenerate BUTTERFREEZONE.md
+
+**ID:** S313-T2
+**Priority:** P1
+**Effort:** Small (30 min)
+**Dependencies:** S313-T1
+**Source:** New docs and discovery fields need to be reflected
+
+**Description:**
+Regenerate BUTTERFREEZONE.md to reflect the expanded documentation set, new GLOSSARY.md, and agent discovery fields from S312-T2. Validate hashes.
+
+**Acceptance Criteria:**
+- [ ] BUTTERFREEZONE.md regenerated or manually updated with new fields
+- [ ] `butterfreezone-validate.sh` passes
+- [ ] AGENT-CONTEXT header reflects current state
+
+**Testing:**
+- `butterfreezone-validate.sh` exit 0 or advisory-only warnings
+
+### Task 10.3: Full Citation Sweep + Validation
+
+**ID:** S313-T3
+**Priority:** P0
+**Effort:** Small (1 hour)
+**Dependencies:** S313-T2
+**Source:** Gate requirement
+
+**Description:**
+Run full validation suite across all documents. Fix any issues found.
+
+**Acceptance Criteria:**
+- [ ] `scripts/rtfm-validate.sh` exits 0 — all 8 checks pass
+- [ ] `scripts/pin-citations.sh --validate-only` passes for ALL docs
+- [ ] Zero naming violations
+- [ ] Zero broken cross-links
+- [ ] Zero placeholder markers (TODO/TBD/PLACEHOLDER/FIXME)
+
+**Testing:**
+- `scripts/rtfm-validate.sh` exits 0
+- `scripts/pin-citations.sh --validate-only` exits 0
+
+### Task 10.4: Bridge Findings Closure Checklist
+
+**ID:** S313-T4
+**Priority:** P0
+**Effort:** Small (30 min)
+**Dependencies:** S313-T3
+**Source:** GPT review — findings traceability requirement
+
+**Description:**
+Create a findings closure artifact that maps every bridge review finding (3 MEDIUM, 2 LOW, 1 REFRAME, 3 SPECULATION from bridge iterations, plus 4 gaps from deep review) to the concrete doc section/commit that addresses it. This prevents regression — since Sprints 7–10 modify the same docs that resolved earlier findings, later edits could regress a previously "closed" finding.
+
+**Acceptance Criteria:**
+- [ ] Closure table created in `grimoires/loa/NOTES.md` (or dedicated section) with columns: Finding ID → Description → Sprint/Task → Doc Section → Validation Evidence
+- [ ] All 13 findings mapped (3 MEDIUM + 2 LOW + 1 REFRAME + 3 SPECULATION + 4 deep review gaps)
+- [ ] Each finding shows current status: CLOSED (with evidence) or DEFERRED (with rationale)
+- [ ] No finding marked CLOSED without a verifiable doc section reference
+
+**Testing:**
+- All MEDIUM and HIGH findings show CLOSED status
+- All closure references point to existing doc sections
+
+### Task 10.5: Update PR #76 for Final Merge
+
+**ID:** S313-T5
+**Priority:** P0
+**Effort:** Small (1 hour)
+**Dependencies:** S313-T4
+**Source:** Merge preparation
+
+**Description:**
+Update PR #76 body with the complete sprint breakdown (304–313), include the bridge review trail, mark as ready for review.
+
+**Acceptance Criteria:**
+- [ ] PR body updated with all 10 sprints and file counts
+- [ ] Bridge review trail referenced (3 comments: iteration 1, iteration 2, deep review)
+- [ ] Sprint breakdown table includes all sprints with status
+- [ ] CI docs-validation workflow passes
+- [ ] Final commit follows conventional commit format
+
+**Testing:**
+- `gh pr view 76 --json isDraft` returns false
+- CI checks pass
+
+---
+
+## Sprint 7–10 Task Dependency Graph
+
+```
+Sprint 7 (Day 14):
+  S310-T1 (NATS stability tiers) ──┐
+  S310-T2 (Doc versioning governance)┤
+                                     ├──→ S310-T3 (ECONOMICS stability ref) ──→ GATE: RTFM 8/8
+                                     ┘
+
+Sprint 8 (Days 15–16):
+  S311-T1 (Cross-repo journey) ──→ S311-T2 (Concept glossary) ──→ S311-T3 (Integration) ──→ GATE: RTFM 8/8
+
+Sprint 9 (Day 17):
+  S312-T1 (Formal specification) ──┐
+  S312-T2 (Discovery fields) ──────┤
+  S312-T3 (Agent economy preamble) ┴──→ GATE: RTFM 8/8
+
+Sprint 10 (Day 17, after Sprint 9):
+  S313-T1 (RTFM scope verify) ──→ S313-T2 (BUTTERFREEZONE) ──→ S313-T3 (Full validation) ──→ S313-T4 (Findings closure) ──→ S313-T5 (PR update) ──→ GATE: Merge-ready
+```

@@ -1,49 +1,49 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "Most of the previously blocking dependency/grounding/RTFM-scope issues were fixed, but one prior blocking issue remains: Sprint 4 S307-T4 still states the wrong extraction method (“static grep-based”) which contradicts the implemented ts-morph AST tool and can fail the “document-from-code” contract.",
+  "summary": "Most of the previously blocking contradictions were fixed (routes extraction approach, canonical-vs-implemented invariants, RTFM scope ownership, verify-routes probing, golden vectors policy, and findings closure), but one original blocker remains unresolved: Sprint 4 still hard-cites an `arrakis-*` code path while the plan also enforces a zero-tolerance naming gate, making the Sprint 4 gate potentially unachievable under the stated rules.",
   "previous_issues_status": [
     {
-      "original_issue": "S307-T1 ECONOMICS.md outline asserted specific files/behaviors without an explicit source-of-truth discovery/verification step",
-      "status": "fixed",
-      "notes": "You added an explicit Pre-flight step plus AC requiring source paths verified to exist and counts/types extracted from code, and you removed hardcoded property counts by stating they’re extracted at write time."
-    },
-    {
-      "original_issue": "S307-T2 EVENT-PROTOCOL.md hard-coded stream/event counts without verification tasks",
-      "status": "fixed",
-      "notes": "You added a Pre-flight step to extract actual stream names/counts and event types from the cited sources and updated AC to use extracted values as ground truth rather than predetermined counts."
-    },
-    {
-      "original_issue": "Sprint 4 dependency sequencing: S307-T2 lacked dependency on Sprint 3 despite requiring citation tooling/gates",
-      "status": "fixed",
-      "notes": "S307-T2 now explicitly depends on Sprint 3 complete, aligning with the Sprint 4 gate requiring citation validation."
-    },
-    {
-      "original_issue": "Sprint 5 gate referenced non-existent RTFM 10/10 model vs actual 8 checks",
-      "status": "fixed",
-      "notes": "Sprint 5 gate is now consistently stated as RTFM 8/8 checks pass, matching the described validator."
-    },
-    {
-      "original_issue": "S308-T1 ambiguous per-doc version header validation requirement",
-      "status": "fixed",
-      "notes": "You explicitly decided no per-doc version headers are required for the new docs and clarified check #3 scope, removing the ambiguity."
-    },
-    {
-      "original_issue": "S307-T4 coverage note incorrectly claimed grep-based extraction despite ts-morph AST implementation",
+      "original_issue": "Sprint 4 ECONOMICS.md pre-flight cites old/forbidden `themes/sietch/src/packages/core/protocol/arrakis-conservation.ts` path, conflicting with naming policy",
       "status": "not_fixed",
-      "notes": "S307-T4 Acceptance Criteria still says “static grep-based extraction” and “direct Express route registrations only.” This directly contradicts Sprint 2’s implemented approach (ts-morph AST parsing) and the earlier plan text, and it undermines the document-from-code trust model."
+      "notes": "The revised plan keeps the `arrakis-conservation.ts` path and adds a note: \"code-level renaming is explicitly out of scope... Citations to code paths may use the original filename.\" However, the global requirement and multiple gates still say \"Zero 'Arrakis' references\" and RTFM check #2 greps for \"arrakis\" across a zero-tolerance list that Sprint 5.1 expands to include ECONOMICS/EVENT-PROTOCOL (and Sprint 4.1 also requires zero Arrakis references). If ECONOMICS.md cites a path containing \"arrakis\", the doc will contain the substring and the naming grep will fail unless the naming rule explicitly exempts code-path citations or exempts this specific file. As written, this remains a gating deadlock risk."
     },
     {
-      "original_issue": "S307-T3 cross-repo learning path needed explicit compliance with crossrepo rule (no branch-relative links) and pinning/validation step",
+      "original_issue": "Sprint 2.1 ts-morph AST vs Sprint 4.4 note claiming grep-based extractor (plan contradiction)",
       "status": "fixed",
-      "notes": "You added AC requiring cross-repo references not be branch-relative and to run pin-citations validate-only on ECOSYSTEM.md after edits, which is sufficient to avoid the known validator failure mode."
+      "notes": "Sprint 2.1 now explicitly allows either ts-morph AST or a pragmatic grep-based matcher, with a requirement to document the chosen approach in the script header. Sprint 4.4’s coverage note is aligned to the actual grep-based implementation (and framed as 'actual implementation'). The contradiction is removed."
+    },
+    {
+      "original_issue": "Canonical 14 conservation properties vs freeside enforcing subset (Sprint 4/6/9 inconsistency)",
+      "status": "fixed",
+      "notes": "Sprint 4.1 now states loa-hounfour is the normative canonical set (14), and freeside’s adapter list is 'implemented coverage'. Sprint 6.4 adds an explicit coverage note (N of 14 enforced). Sprint 9.1 requires a 14-row table referencing loa-hounfour. This creates a coherent reconciliation rule."
+    },
+    {
+      "original_issue": "RTFM managed-doc scope ownership split/duplicated (GLOSSARY added twice; Sprint 10 dependency mismatch)",
+      "status": "fixed",
+      "notes": "Sprint 8.3 is the introduction point for adding GLOSSARY.md to MANAGED_DOCS. Sprint 10.1 is now explicitly verification-only ('confirm already added; only change if incomplete') and includes an acceptance criterion 'No redundant MANAGED_DOCS additions'. This resolves the scope ownership ambiguity and removes the earlier dependency mismatch risk."
+    },
+    {
+      "original_issue": "verify-routes.sh acceptance criteria unsafe/flaky (HEAD/GET on every route; non-idempotent routes; 405 handling)",
+      "status": "fixed",
+      "notes": "Sprint 2.4 now constrains checks to indexed GET routes for auth validation, treats 405 as non-fatal for safe probes, adds per-route `probe_method` override, and forbids sending bodies to non-idempotent routes. This makes the gate testable and much less flaky."
+    },
+    {
+      "original_issue": "Sprint 9 BUTTERFREEZONE discovery fields change lacks explicit golden vector/validator policy update",
+      "status": "fixed",
+      "notes": "Sprint 9.2 now explicitly requires: (a) validator updated so new fields are optional with advisory warning exit code 2, (b) RTFM check #7 accepts 0 or 2, and (c) golden vectors regenerated and committed. This closes the gate deadlock."
+    },
+    {
+      "original_issue": "No explicit bridge/deep review findings closure artifact mapping finding IDs to doc sections/validation evidence",
+      "status": "fixed",
+      "notes": "Sprint 10.4 adds a closure table artifact in `grimoires/loa/NOTES.md` (or dedicated section) mapping all 13 findings to sprint/task/doc section and validation evidence, with CLOSED/DEFERRED status rules. This is sufficient to prevent regression disputes at merge time."
     }
   ],
   "new_blocking_concerns": [
     {
-      "location": "Sprint 4 / S307-T4 (Route Extraction Coverage Note) Acceptance Criteria",
-      "description": "The plan still instructs documenting the extraction method as “static grep-based extraction,” which is factually inconsistent with the implemented ts-morph AST-based extractor described earlier in the same plan (Sprint 2 S305-T1).",
-      "why_blocking": "This is a direct contradiction in the plan that breaks the document-from-code principle and can cause the Sprint 4 deliverable to be rejected as incorrect/ungrounded. It also risks future maintenance errors because readers will distrust the Tier 2 route index provenance and limitations.",
-      "fix": "Update S307-T4 AC to state “ts-morph AST-based static analysis of Express route registrations” (and keep the limitation language about dynamic/computed paths, runtime registration, and gateway-proxied routes). Optionally add a citation requirement to `scripts/extract-routes.sh` lines implementing ts-morph parsing to keep it grounded."
+      "location": "Sprint 4 / Task 4.1 (ECONOMICS.md) + Sprint 5.1 (RTFM naming check scope) + global 'Zero Arrakis references' gates",
+      "description": "The plan simultaneously (a) requires ECONOMICS.md to cite a code path containing the substring `arrakis` and (b) enforces a zero-tolerance `grep -ci \"arrakis\"` naming gate across managed docs (expanded to include ECONOMICS.md). This can make Sprint 4/5/6/10 gates impossible to pass if the naming check is literal substring-based.",
+      "why_blocking": "This is not stylistic: it can hard-fail required CI checks (RTFM check #2) and/or Sprint gates, preventing merge. The plan’s own acceptance criteria repeatedly require 'Zero \"Arrakis\" references' while also instructing inclusion of an `arrakis-*` citation string in a managed doc.",
+      "fix": "Pick one explicit, testable reconciliation and encode it in the plan + validator:\n1) Preferred: rename the code file/module away from `arrakis-*` (and update imports) before Sprint 4 citations are written; OR\n2) If code rename is truly out of scope: update the naming policy and RTFM check #2 to exempt code-path citations (e.g., ignore text inside `<!-- cite: ... -->` blocks) or exempt this specific legacy filename, while still banning 'Arrakis' in prose. Then update Sprint 4.1/5.1 acceptance criteria to reflect the exemption so gates remain achievable."
     }
   ],
   "iteration": 2
