@@ -112,7 +112,8 @@ async function verifyOwnership(
   const access = await mapper.resolveAccess(tier);
   const allowedModels = mapper.getDefaultModels(tier);
 
-  const nftId = `${profile.walletAddress}:${communityId}`;
+  // Bridge iter2 (iter2-3): Normalize wallet in nftId construction for consistent matching
+  const nftId = `${normalizeWallet(profile.walletAddress)}:${communityId}`;
 
   const result: OwnershipResult = {
     verified: true,
