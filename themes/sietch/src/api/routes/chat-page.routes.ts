@@ -42,8 +42,13 @@ chatPageRouter.get('/:tokenId', (req: Request, res: Response) => {
 // ─── HTML Template ────────────────────────────────────────────────────────────
 
 function getChatPage(tokenId: string): string {
-  // Escape tokenId for safe embedding in HTML/JS
-  const safeTokenId = tokenId.replace(/[&<>"']/g, '');
+  // Escape tokenId for safe embedding in HTML/JS (Sprint 321, medium-5)
+  const safeTokenId = tokenId
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
 
   return `<!DOCTYPE html>
 <html lang="en">

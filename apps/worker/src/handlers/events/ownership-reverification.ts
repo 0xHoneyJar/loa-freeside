@@ -17,6 +17,7 @@ import {
   getProfileByDiscordId,
   getCommunityByGuildId,
 } from '../../data/index.js';
+import { normalizeWallet } from '../../utils/normalize-wallet.js';
 import {
   getDb,
   getAllActiveThreads,
@@ -183,7 +184,8 @@ async function findProfileByWallet(
   // Import dynamically to avoid circular dependency
   const { getProfileByWallet } = await import('../../data/database.js');
 
-  const profile = await getProfileByWallet(communityId, walletAddress);
+  // Sprint 321 (high-4): Normalize wallet for consistent lookup
+  const profile = await getProfileByWallet(communityId, normalizeWallet(walletAddress));
   if (!profile) return null;
 
   const rawTier = profile.tier ?? 0;

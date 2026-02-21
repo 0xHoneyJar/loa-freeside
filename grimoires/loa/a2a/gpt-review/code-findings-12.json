@@ -1,18 +1,29 @@
 {
-  "verdict": "APPROVED",
-  "summary": "Previous feedback is no longer applicable given the clarified synchronous build; the current lazy init and route handling are acceptable.",
-  "previous_issues_status": [
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Two test-stability and precision issues: nondeterministic randomness causing flaky tests and Number-based lot minting that risks precision loss for larger amounts.",
+  "issues": [
     {
-      "original_issue": "Lazy init must handle async build, prevent concurrent builds, and reset on failure",
-      "status": "rejected_with_valid_reason",
-      "notes": "The content explicitly clarifies buildDiscoveryDocument is synchronous with no I/O or Promises, so async guarding and promise caching are unnecessary."
+      "severity": "major",
+      "file": "tests/e2e/transfer-conservation.test.ts",
+      "line": 77,
+      "description": "The test uses Math.random() for transfers, which makes the property test nondeterministic and flaky. This violates the requirement for deterministic randomized stress tests.",
+      "current_code": "```typescript\n    for (let i = 0; i < 100; i++) {\n      const fromIdx = Math.floor(Math.random() * numAccounts);\n      let toIdx = Math.floor(Math.random() * numAccounts);\n      while (toIdx === fromIdx) {\n        toIdx = Math.floor(Math.random() * numAccounts);\n      }\n\n      const from = accounts[fromIdx];\n      const to = accounts[toIdx];\n      // Random amount between $1 and $15\n      const amount = BigInt(Math.floor(Math.random() * 14_000_000) + 1_000_000);\n\n      try {\n        const result = await transferService.transfer(from, to, amount, {\n          idempotencyKey: `stress-100-${i}`,\n        });\n```\n      \n",
+      "fixed_code": "```typescript\n    // Deterministic RNG to avoid flaky tests\n    function createRng(seed: number) {\n      let t = seed >>> 0;\n      return () => {\n        t += 0x6D2B79F5;\n        let r = Math.imul(t ^ (t >>> 15), 1 | t);\n        r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);\n        return (r ^ (r >>> 14)) >>> 0;\n      };\n    }\n    const rng = createRng(0x1a2b3c4d);\n    const randInt = (max: number) => rng() % max;\n\n    for (let i = 0; i < 100; i++) {\n      const fromIdx = randInt(numAccounts);\n      let toIdx = randInt(numAccounts);\n      while (toIdx === fromIdx) {\n        toIdx = randInt(numAccounts);\n      }\n\n      const from = accounts[fromIdx];\n      const to = accounts[toIdx];\n      // Random amount between $1 and $15 (deterministic)\n      const amount = BigInt(randInt(14_000_000) + 1_000_000);\n\n      try {\n        const result = await transferService.transfer(from, to, amount, {\n          idempotencyKey: `stress-100-${i}`,\n        });\n```\n",
+      "explanation": "Using a seeded RNG makes the test deterministic and reproducible while preserving randomized coverage. This removes flakiness without changing test intent."
     },
     {
-      "original_issue": "Route handler must await getDiscoveryDocument and handle errors from async build",
-      "status": "rejected_with_valid_reason",
-      "notes": "With synchronous build, awaiting is not needed; the try/catch around the synchronous call is sufficient."
+      "severity": "major",
+      "file": "tests/e2e/transfer-conservation.test.ts",
+      "line": 47,
+      "description": "Lot minting accepts a Number and binds it directly, which risks precision loss for larger values and violates BigInt-only accounting. Use bigint and bind as string.",
+      "current_code": "```typescript\nfunction mintLot(testDb: Database.Database, accountId: string, amountMicro: number): string {\n  const lotId = randomUUID();\n  testDb.prepare(`\n    INSERT INTO credit_lots (id, account_id, original_micro, available_micro, reserved_micro, consumed_micro, source_type, source_id, pool_id, status, created_at)\n    VALUES (?, ?, ?, ?, 0, 0, 'deposit', ?, 'general', 'active', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))\n  `).run(lotId, accountId, amountMicro, amountMicro, `src-${randomUUID()}`);\n  return lotId;\n}\n```\n      \n",
+      "fixed_code": "```typescript\nfunction mintLot(testDb: Database.Database, accountId: string, amountMicro: bigint): string {\n  const lotId = randomUUID();\n  testDb.prepare(`\n    INSERT INTO credit_lots (id, account_id, original_micro, available_micro, reserved_micro, consumed_micro, source_type, source_id, pool_id, status, created_at)\n    VALUES (?, ?, ?, ?, 0, 0, 'deposit', ?, 'general', 'active', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))\n  `).run(lotId, accountId, amountMicro.toString(), amountMicro.toString(), `src-${randomUUID()}`);\n  return lotId;\n}\n```\n",
+      "explanation": "Using bigint and binding as strings ensures no IEEE-754 precision loss and aligns with BigInt-only accounting requirements."
     }
   ],
-  "new_blocking_concerns": [],
-  "iteration": 3
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
 }
