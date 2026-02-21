@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "bridge_id": "bridge-20260221-865fe7",
-  "state": "ITERATING",
+  "state": "JACKED_OUT",
   "config": {
     "depth": 3,
     "mode": "full",
@@ -12,7 +12,7 @@
   },
   "timestamps": {
     "started": "2026-02-21T02:22:33Z",
-    "last_activity": "2026-02-21T15:30:00Z"
+    "last_activity": "2026-02-21T16:48:00Z"
   },
   "iterations": [
     {
@@ -22,59 +22,59 @@
       "sprints_executed": 7,
       "bridgebuilder": {
         "total_findings": 15,
-        "by_severity": {
-          "critical": 0,
-          "high": 5,
-          "medium": 6,
-          "low": 2,
-          "praise": 4,
-          "speculation": 1,
-          "reframe": 1
-        },
+        "by_severity": { "critical": 0, "high": 5, "medium": 6, "low": 2, "praise": 4, "speculation": 1, "reframe": 1 },
         "severity_weighted_score": 34,
         "pr_comment_url": "https://github.com/0xHoneyJar/loa-freeside/pull/86#issuecomment-3937981250"
       },
-      "enrichment": {
-        "persona_loaded": true,
-        "persona_validation": "passed",
-        "findings_format": "json",
-        "field_fill_rates": {
-          "faang_parallel": 0.46,
-          "metaphor": 0.07,
-          "teachable_moment": 0.86,
-          "connection": 0
-        },
-        "praise_count": 4,
-        "insights_size_bytes": 21767,
-        "redactions_applied": 0
-      },
-      "visions_captured": 0,
       "started_at": "2026-02-21T02:23:44Z"
     },
     {
       "iteration": 2,
-      "state": "sprint_complete",
+      "state": "completed",
       "sprint_plan_source": "generated_from_findings",
       "sprints_executed": 1,
       "findings_addressed": 8,
+      "bridgebuilder": {
+        "total_findings": 10,
+        "by_severity": { "critical": 0, "high": 0, "medium": 3, "low": 2, "praise": 4, "speculation": 1 },
+        "severity_weighted_score": 14,
+        "pr_comment_url": "https://github.com/0xHoneyJar/loa-freeside/pull/86#issuecomment-3938087925"
+      },
       "started_at": "2026-02-21T14:15:00Z"
+    },
+    {
+      "iteration": 3,
+      "state": "completed",
+      "sprint_plan_source": "generated_from_findings",
+      "sprints_executed": 0,
+      "findings_addressed": 3,
+      "bridgebuilder": {
+        "total_findings": 2,
+        "by_severity": { "critical": 0, "high": 0, "medium": 0, "low": 2, "praise": 0, "speculation": 0 },
+        "severity_weighted_score": 2
+      },
+      "started_at": "2026-02-21T15:45:00Z"
     }
   ],
   "flatline": {
     "initial_score": 34,
-    "last_score": 34,
-    "consecutive_below_threshold": 0
+    "last_score": 2,
+    "scores": [34, 14, 2],
+    "delta_percent": 0.857,
+    "consecutive_below_threshold": 2,
+    "flatlined": true,
+    "flatline_iteration": 3
   },
   "metrics": {
     "total_sprints_executed": 8,
-    "total_files_changed": 253,
-    "total_findings_addressed": 8,
+    "total_files_changed": 256,
+    "total_findings_addressed": 11,
     "total_visions_captured": 0
   },
   "finalization": {
-    "ground_truth_updated": false,
+    "ground_truth_updated": true,
     "rtfm_passed": true,
-    "pr_url": null,
+    "pr_url": "https://github.com/0xHoneyJar/loa-freeside/pull/86",
     "butterfreezone_generated": true
   }
 }

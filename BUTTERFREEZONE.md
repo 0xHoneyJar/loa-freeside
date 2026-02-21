@@ -119,7 +119,7 @@ Directory structure:
 - **PATCH** `/:userId/thresholds` (`themes/sietch/src/api/middleware/auth.ts:382`)
 - **POST** `/config` (`themes/sietch/src/api/middleware/dashboardAuth.ts:217`)
 - **POST** `/endpoint` (`themes/sietch/src/api/middleware/rate-limit.ts:367`)
-- **POST** `/inference` (`themes/sietch/src/api/middleware/developer-key-auth.ts:137`)
+- **POST** `/inference` (`themes/sietch/src/api/middleware/developer-key-auth.ts:156`)
 - **POST** `/register` (`themes/sietch/src/api/routes/agent-identity.routes.ts:37`)
 
 ### CLI Commands
@@ -171,12 +171,12 @@ packages/cli/src/commands/sandbox/index.ts:185:    .command('status <name>')
 <!-- provenance: DERIVED -->
 | Module | Files | Purpose | Documentation |
 |--------|-------|---------|---------------|
-| `apps/` | 34989 | Apps | \u2014 |
+| `apps/` | 34990 | Apps | \u2014 |
 | `decisions/` | 6 | Documentation | \u2014 |
 | `docs/` | 42 | Documentation | \u2014 |
 | `drizzle/` | 1 | Drizzle | \u2014 |
 | `evals/` | 122 | Benchmarking and regression framework for the Loa agent development system. Ensures framework changes don't degrade agent behavior through | [evals/README.md](evals/README.md) |
-| `grimoires/` | 1160 | Home to all grimoire directories for the Loa | [grimoires/README.md](grimoires/README.md) |
+| `grimoires/` | 1164 | Home to all grimoire directories for the Loa | [grimoires/README.md](grimoires/README.md) |
 | `infrastructure/` | 189 | This directory contains the Infrastructure as Code (IaC) for Arrakis, using Terraform to provision AWS | [infrastructure/README.md](infrastructure/README.md) |
 | `packages/` | 55050 | Shared libraries and utilities for the Arrakis | [packages/README.md](packages/README.md) |
 | `scripts/` | 19 | Utility scripts | \u2014 |
@@ -235,15 +235,15 @@ cd themes/sietch && npx drizzle-kit push && cd ../..
 # Start development server
 pnpm run dev
 <!-- ground-truth-meta
-head_sha: 7d21c2168c132be220012df4a86cc832b702701c
-generated_at: 2026-02-21T02:22:37Z
+head_sha: 3f6154a0600b84845dde033d8ccaa5eb6b7906e2
+generated_at: 2026-02-21T03:48:27Z
 generator: butterfreezone-gen v1.0.0
 sections:
   agent_context: 051a2600552d6987cfc91e9c0d2bf61e710a8814852e0de2e9b51adce07d69bc
   capabilities: ab2576b1f2e7e8141f0e93e807d26ed2b7b155e21c96d787507a3ba933bb9795
   architecture: 1baed493127e15926a14116d27581dbed3239a3993de731baaba83bad22c6c84
-  interfaces: 7ccd534e371463ce2109b6072722cddddfbbc62eb2f2c6b468e44fd35eb737d3
-  module_map: 033513339e24be3ae56bd127d87ddf906cc4b8a8b72cb6c122fd76e16bae309e
+  interfaces: 3bcf9c10303d01bf67c82e73663ca15117393f34599fbdb625cfe7ab6120ea5a
+  module_map: 32caad205a4bdf4bea37b2f1c6b34f83ca0ae904f330da227133ac50113ff0ab
   verification: 40e6771c3773f5eaa7c5f7c6fe8a4beb1c1b71a42f06abb116210ddfebcb146d
   agents: ca263d1e05fd123434a21ef574fc8d76b559d22060719640a1f060527ef6a0b6
   ecosystem: 29fc390a2a77ec8d5bdbe657182dd47a2a5cd0c0c36c74c763c9e65cfad170e3

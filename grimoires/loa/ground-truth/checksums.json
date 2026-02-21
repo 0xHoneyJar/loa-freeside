@@ -1,12 +1,20 @@
 {
-  "generated_at": "2026-02-18T21:48:47Z",
-  "git_sha": "781661db55c0d12218299b7a4b2d7baeb0c7a652",
+  "generated_at": "2026-02-21T03:47:48Z",
+  "git_sha": "3f6154a0600b84845dde033d8ccaa5eb6b7906e2",
   "algorithm": "sha256",
   "files": {
-    "grimoires/loa/ground-truth/architecture.md": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "grimoires/loa/ground-truth/behaviors.md": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "grimoires/loa/ground-truth/api-surface.md": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "grimoires/loa/ground-truth/index.md": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "grimoires/loa/ground-truth/contracts.md": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    "grimoires/loa/reality/services.md": "8fa8a4d46e62639edd75177ee4d30d92b3973f06e927d8416b66d88c835f7465",
+    "grimoires/loa/reality/consistency.md": "e7c860f085a126a79a80881d0993fce9464e87195c5fcdf48e133e6f0922eba8",
+    "grimoires/loa/reality/database.md": "ad8104bde8ec418fbfc12fe24ef24129086e87a5e258ab90037d624d16876411",
+    "grimoires/loa/reality/triggers.md": "ab66ce26031bcfb3536f9952a15414709b97d62ab1ad334f17f9c9c3535c2f78",
+    "grimoires/loa/reality/api.md": "77b2230056eb0f6fa439898927e0c4b5b6aec307378050e23c6b95bfacdbad14",
+    "grimoires/loa/reality/structure.md": "9722c007ec9bf904ea9d8c229089c74955d6466328c25238ffaa5ec0615ff134",
+    "grimoires/loa/reality/index.md": "6f2488a460c0f51879a7d72901836fdc3bc8ff33854ce04195b0e777759f03ce",
+    "grimoires/loa/reality/commands.md": "3aee21c6b4eca22b155d5a9347490c60058a4ceda7b7446d0e717a1da94c39c9",
+    "grimoires/loa/reality/hygiene.md": "2efbfdb2db6a24a3bcb3df9a7b2babeb42b059a1e2b4d264fc5fc44f03e869c3",
+    "grimoires/loa/reality/drift-analysis.md": "e947f319c63b9aafc11261000d7f245c8f921f67d93073a2d113fc383099e3dc",
+    "grimoires/loa/reality/environment.md": "2ac9a025abb0fab709872a0cd466099908f9dfa6a23ddef863c890a05cae4dc7",
+    "grimoires/loa/reality/documentation.md": "271ffc6def083eebc8efcca7b28672bf9b7f6ec23a683f7b3cc5ccea043fc9fa",
+    "grimoires/loa/reality/README.md": "cec7549e6f34591ddd6d0aca39a2879d90b02c459a5c327da3c3cbd1f59c795a"
   }
 }
