@@ -25,7 +25,6 @@ import { getDb, findThreadByThreadId, updateThreadLastActive } from '../commands
 import { TierAccessMapper } from '../../../../../packages/adapters/agent/tier-access-mapper.js';
 import { resolvePoolId } from '../../../../../packages/adapters/agent/pool-mapping.js';
 import { randomUUID } from 'node:crypto';
-import { normalizeWallet } from '../../utils/normalize-wallet.js';
 
 // --------------------------------------------------------------------------
 // Constants
@@ -74,7 +73,7 @@ async function verifyOwnership(
   communityId: string,
   log: Logger,
 ): Promise<OwnershipResult> {
-  const normalizedOwnerWallet = normalizeWallet(ownerWallet);
+  const normalizedOwnerWallet = ownerWallet.toLowerCase();
   const cacheKey = `${OWNERSHIP_CACHE_PREFIX}${threadId}:${userId}:${communityId}:${normalizedOwnerWallet}`;
 
   // Check cache first
@@ -96,8 +95,8 @@ async function verifyOwnership(
     return { verified: false };
   }
 
-  // Check wallet matches thread owner (Sprint 321, high-4: consistent normalization)
-  if (normalizeWallet(profile.walletAddress) !== normalizedOwnerWallet) {
+  // Check wallet matches thread owner
+  if (profile.walletAddress.toLowerCase() !== normalizedOwnerWallet) {
     return { verified: false };
   }
 
@@ -112,8 +111,7 @@ async function verifyOwnership(
   const access = await mapper.resolveAccess(tier);
   const allowedModels = mapper.getDefaultModels(tier);
 
-  // Bridge iter2 (iter2-3): Normalize wallet in nftId construction for consistent matching
-  const nftId = `${normalizeWallet(profile.walletAddress)}:${communityId}`;
+  const nftId = `${profile.walletAddress}:${communityId}`;
 
   const result: OwnershipResult = {
     verified: true,
@@ -325,9 +323,7 @@ export function createThreadMessageHandler(
       // Send user-friendly error
       await discord.sendMessage(channel_id, {
         content: 'Sorry, I encountered an error processing your message. Please try again.',
-      }).catch((discordErr) => {
-        msgLog.warn({ discordErr, channel_id }, 'Failed to send error notification to Discord');
-      });
+      }).catch(() => {});
     }
   };
 }

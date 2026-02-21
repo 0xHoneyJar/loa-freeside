@@ -90,16 +90,15 @@ export function createMyAgentHandler(discord: DiscordRestService) {
       }
 
       // 5. Derive NFT identifier from profile
-      //    Sprint 321 (high-4): Normalize wallet to lowercase before storage/lookup
-      const normalizedWallet = profile.walletAddress.toLowerCase();
       //    nftId = walletAddress:communityId (composite key for thread dedup)
-      const nftId = `${normalizedWallet}:${community.id}`;
+      const nftId = `${profile.walletAddress}:${community.id}`;
 
-      // 6. Check for existing active thread first (fast path)
+      // 6. Check for existing active thread
       const db = getDb();
       const existingThread = await findActiveThread(db, nftId, community.id);
 
       if (existingThread) {
+        // Update last active timestamp
         await discord.editOriginal(interactionToken, {
           content: `Your agent thread already exists: <#${existingThread.threadId}>\n` +
             `Tier: **${tier}** | Thread created: <t:${Math.floor(new Date(existingThread.createdAt).getTime() / 1000)}:R>`,
@@ -108,7 +107,8 @@ export function createMyAgentHandler(discord: DiscordRestService) {
         return 'ack';
       }
 
-      // 7. Create new Discord thread
+      // 7. Create new thread
+      //    Use hex ID suffix (not wallet address) to avoid leaking sensitive data
       const threadName = `Agent | Tier ${tier}`;
       const thread = await discord.createThread(channelId, {
         name: threadName,
@@ -125,29 +125,18 @@ export function createMyAgentHandler(discord: DiscordRestService) {
         return 'ack';
       }
 
-      // 8. Record thread in database — insert-or-find pattern (Sprint 321, high-3)
-      //    On UNIQUE violation (concurrent insert race), returns existing thread
+      // 8. Record thread in database
       const now = new Date().toISOString();
-      const record = await insertAgentThread(db, {
+      await insertAgentThread(db, {
         nftId,
         channelId,
         threadId: thread.id,
-        ownerWallet: normalizedWallet,
+        ownerWallet: profile.walletAddress,
         communityId: community.id,
         createdAt: now,
         lastActiveAt: now,
         ownershipVerifiedAt: now,
       });
-
-      // If we got back a different thread (race condition), point user to the existing one
-      if (record.threadId !== thread.id) {
-        log.info({ existingThreadId: record.threadId, attemptedThreadId: thread.id }, 'Race resolved — returning existing thread');
-        await discord.editOriginal(interactionToken, {
-          content: `Your agent thread already exists: <#${record.threadId}>\n` +
-            `Tier: **${tier}** | Thread created: <t:${Math.floor(new Date(record.createdAt).getTime() / 1000)}:R>`,
-        });
-        return 'ack';
-      }
 
       // 9. Send welcome message in the thread
       await discord.sendMessage(thread.id, {
