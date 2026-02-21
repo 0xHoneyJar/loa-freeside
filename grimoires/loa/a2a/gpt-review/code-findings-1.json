@@ -1,8 +1,38 @@
 {
-  "verdict": "SKIPPED",
-  "reason": "GPT API unavailable (curl exit code 56 - network error). Retried 2x. Proceeding per error handling protocol.",
-  "type": "code",
-  "file": "infrastructure/terraform/ecs-finn.tf",
-  "iteration": 1,
-  "timestamp": "2026-02-20T15:10:00Z"
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Two security/logic issues found: dev pepper mismatch breaks validation, and createApiKey can fail on prefix collision without retry; also tighten constant‑time comparison on hex digests.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "services/api-keys/ApiKeyService.ts",
+      "line": 137,
+      "description": "Validation uses API_KEY_PEPPER for pepper_version=0, but creation uses the dev fallback string when NODE_ENV!=production. This causes all dev-issued keys (pepper_version=0) to fail validation unless API_KEY_PEPPER happens to equal the fallback.",
+      "current_code": "```typescript\n  const storedPepperEnv = row.pepper_version === 0\n    ? process.env.API_KEY_PEPPER\n    : process.env[`API_KEY_PEPPER_V${row.pepper_version}`] ?? process.env.API_KEY_PEPPER;\n\n  if (storedPepperEnv) {\n    versionsToTry.push({ pepper: storedPepperEnv, version: row.pepper_version });\n  }\n\n  // Development fallback\n  if (versionsToTry.length === 0 && process.env.NODE_ENV !== 'production') {\n    versionsToTry.push({ pepper: 'CHANGE_ME_IN_PRODUCTION', version: 0 });\n  }\n```",
+      "fixed_code": "```typescript\nconst DEV_FALLBACK_PEPPER = 'CHANGE_ME_IN_PRODUCTION';\n\n  const storedPepperEnv = row.pepper_version === 0\n    ? (process.env.NODE_ENV !== 'production' ? DEV_FALLBACK_PEPPER : undefined)\n    : process.env[`API_KEY_PEPPER_V${row.pepper_version}`] ?? process.env.API_KEY_PEPPER;\n\n  if (storedPepperEnv) {\n    versionsToTry.push({ pepper: storedPepperEnv, version: row.pepper_version });\n  }\n\n  // Development fallback (if nothing else was available)\n  if (versionsToTry.length === 0 && process.env.NODE_ENV !== 'production') {\n    versionsToTry.push({ pepper: DEV_FALLBACK_PEPPER, version: 0 });\n  }\n```",
+      "explanation": "Creation stores pepper_version=0 only when the dev fallback string is used. Validation must use the same fallback string for version 0 or the HMAC will never match."
+    },
+    {
+      "severity": "major",
+      "file": "services/api-keys/ApiKeyService.ts",
+      "line": 87,
+      "description": "createApiKey does not handle UNIQUE constraint collisions on key_prefix. A collision will throw and fail without retry, causing intermittent production failures.",
+      "current_code": "```typescript\n  // Generate key parts\n  const { fullPrefix, secret, cleartext } = generateKeyParts(mode);\n\n  // Generate per-key salt and hash\n  const salt = generateSalt();\n  const { pepper, version: pepperVersion } = getCurrentPepper();\n  const keyHash = computeKeyHash(pepper, salt, secret);\n\n  // Insert into database\n  const rpm = rateLimitRpm ?? (mode === 'test' ? 10 : 60);\n  const tpd = rateLimitTpd ?? (mode === 'test' ? 10_000 : 100_000);\n\n  const stmt = db.prepare(`\n    INSERT INTO api_keys (user_id, community_id, key_prefix, key_hash, key_salt,\n                          pepper_version, name, rate_limit_rpm, rate_limit_tpd)\n    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)\n  `);\n\n  const result = stmt.run(\n    userId, communityId, fullPrefix, keyHash, salt,\n    pepperVersion, name, rpm, tpd,\n  );\n```",
+      "fixed_code": "```typescript\n  const rpm = rateLimitRpm ?? (mode === 'test' ? 10 : 60);\n  const tpd = rateLimitTpd ?? (mode === 'test' ? 10_000 : 100_000);\n\n  const stmt = db.prepare(`\n    INSERT INTO api_keys (user_id, community_id, key_prefix, key_hash, key_salt,\n                          pepper_version, name, rate_limit_rpm, rate_limit_tpd)\n    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)\n  `);\n\n  const { pepper, version: pepperVersion } = getCurrentPepper();\n\n  let attempt = 0;\n  let result: ReturnType<typeof stmt.run> | null = null;\n  let fullPrefix = '';\n  let secret = '';\n  let cleartext = '';\n  let salt = '';\n  let keyHash = '';\n\n  while (attempt < 5) {\n    attempt++;\n    ({ fullPrefix, secret, cleartext } = generateKeyParts(mode));\n    salt = generateSalt();\n    keyHash = computeKeyHash(pepper, salt, secret);\n\n    try {\n      result = stmt.run(\n        userId, communityId, fullPrefix, keyHash, salt,\n        pepperVersion, name, rpm, tpd,\n      );\n      break; // success\n    } catch (err: any) {\n      const msg = String(err?.message || '');\n      if (msg.includes('UNIQUE constraint failed: api_keys.key_prefix')) {\n        continue; // collision, retry\n      }\n      throw err;\n    }\n  }\n\n  if (!result) {\n    throw new Error('Failed to generate unique API key prefix after multiple attempts.');\n  }\n```",
+      "explanation": "Collisions on the unique key_prefix are rare but possible. Retrying safely prevents intermittent failures while keeping the key secure."
+    },
+    {
+      "severity": "major",
+      "file": "services/api-keys/ApiKeyService.ts",
+      "line": 180,
+      "description": "timingSafeEqual compares UTF‑8 strings rather than raw hex bytes. This is weaker and can cause subtle mismatches. Use hex buffers to compare the actual digest bytes in constant time.",
+      "current_code": "```typescript\n    if (candidateHash.length === row.key_hash.length) {\n      try {\n        const matches = crypto.timingSafeEqual(\n          Buffer.from(candidateHash, 'utf-8'),\n          Buffer.from(row.key_hash, 'utf-8'),\n        );\n        if (matches) {\n          return { valid: true, keyRecord: row };\n        }\n      } catch {\n        // Length mismatch — continue\n      }\n    }\n```",
+      "fixed_code": "```typescript\n    if (candidateHash.length === row.key_hash.length) {\n      try {\n        const matches = crypto.timingSafeEqual(\n          Buffer.from(candidateHash, 'hex'),\n          Buffer.from(row.key_hash, 'hex'),\n        );\n        if (matches) {\n          return { valid: true, keyRecord: row };\n        }\n      } catch {\n        // Length mismatch — continue\n      }\n    }\n```",
+      "explanation": "Comparing digest bytes (hex decoding) ensures constant‑time comparison of the true HMAC output and avoids any encoding discrepancies."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
 }

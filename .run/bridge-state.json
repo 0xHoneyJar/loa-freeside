@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "bridge_id": "bridge-20260219-30080d",
-  "state": "ITERATING",
+  "bridge_id": "bridge-20260220-ec9d24",
+  "state": "JACKED_OUT",
   "config": {
     "depth": 3,
     "mode": "full",
@@ -11,25 +11,61 @@
     "repo": ""
   },
   "timestamps": {
-    "started": "2026-02-19T11:57:58Z",
-    "last_activity": "2026-02-19T11:58:01Z"
+    "started": "2026-02-20T14:00:00Z",
+    "last_activity": "2026-02-20T16:45:00Z"
   },
-  "iterations": [],
+  "iterations": [
+    {
+      "iteration": 1,
+      "review_posted": true,
+      "review_url": "https://github.com/0xHoneyJar/loa-freeside/pull/76#issuecomment-3930736754",
+      "findings": {
+        "total": 10,
+        "praise": 3,
+        "high": 0,
+        "medium": 3,
+        "low": 2,
+        "speculation": 1,
+        "reframe": 1
+      },
+      "score": 8,
+      "sprint_generated": true,
+      "sprint_id": 309,
+      "sprint_completed": true
+    },
+    {
+      "iteration": 2,
+      "review_posted": true,
+      "review_url": "https://github.com/0xHoneyJar/loa-freeside/pull/76#issuecomment-3930783747",
+      "findings": {
+        "total": 2,
+        "praise": 2,
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "speculation": 0,
+        "reframe": 0
+      },
+      "score": 0,
+      "sprint_generated": false,
+      "flatline": true
+    }
+  ],
   "flatline": {
-    "initial_score": 0,
+    "initial_score": 8,
     "last_score": 0,
-    "consecutive_below_threshold": 0
+    "consecutive_below_threshold": 1
   },
   "metrics": {
-    "total_sprints_executed": 0,
-    "total_files_changed": 0,
-    "total_findings_addressed": 0,
+    "total_sprints_executed": 1,
+    "total_files_changed": 5,
+    "total_findings_addressed": 5,
     "total_visions_captured": 0
   },
   "finalization": {
     "ground_truth_updated": false,
-    "rtfm_passed": false,
-    "pr_url": null,
+    "rtfm_passed": true,
+    "pr_url": "https://github.com/0xHoneyJar/loa-freeside/pull/76",
     "butterfreezone_generated": false
   }
 }

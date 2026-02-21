@@ -1,7 +1,53 @@
 {
-  "verdict": "APPROVED",
-  "summary": "No bugs or security issues found in the discovery endpoint implementation.",
-  "issues": [],
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Critical async handling and security logging issues in API key validation middleware require fixes.",
+  "issues": [
+    {
+      "severity": "critical",
+      "file": "api/middleware/developer-key-auth.ts",
+      "line": 132,
+      "description": "validateApiKey is called synchronously; if it returns a Promise (DB lookup + HMAC), this will mis-handle authentication and can throw or bypass validation. Missing error handling for validation failures.",
+      "current_code": "```typescript\n  // Validate key (DB lookup + HMAC verify)\n  const result = validateApiKey(token);\n\n  if (!result.valid || !result.keyRecord) {\n    logger.warn(\n      { reason: result.reason, keyPrefix: token.slice(0, 20) },\n      'Developer key authentication failed',\n    );\n    res.status(401).json({ error: 'Invalid or revoked API key' });\n    return;\n  }\n```",
+      "fixed_code": "```typescript\n  // Validate key (DB lookup + HMAC verify)\n  let result: Awaited<ReturnType<typeof validateApiKey>>;\n  try {\n    result = await validateApiKey(token);\n  } catch (err) {\n    logger.error({ err }, 'Developer key validation error');\n    res.status(500).json({ error: 'Internal server error' });\n    return;\n  }\n\n  if (!result.valid || !result.keyRecord) {\n    logger.warn(\n      { reason: result.reason, keyPrefix: getKeyPrefix(token) },\n      'Developer key authentication failed',\n    );\n    res.status(401).json({ error: 'Invalid or revoked API key' });\n    return;\n  }\n```",
+      "explanation": "Awaiting the validation ensures DB/HMAC checks complete before proceeding. The try/catch prevents unhandled promise rejections and returns a safe 500 on internal failures."
+    },
+    {
+      "severity": "major",
+      "file": "api/middleware/developer-key-auth.ts",
+      "line": 118,
+      "description": "The middleware function is not declared async but uses awaited validation in the fix. Without async, this will throw. Also missing helper to avoid logging key secrets.",
+      "current_code": "```typescript\nexport function requireDeveloperKey(\n  req: DeveloperKeyRequest,\n  res: Response,\n  next: NextFunction,\n): void {\n```\n",
+      "fixed_code": "```typescript\nexport async function requireDeveloperKey(\n  req: DeveloperKeyRequest,\n  res: Response,\n  next: NextFunction,\n): Promise<void> {\n```\n",
+      "explanation": "Declaring the middleware async allows `await validateApiKey(...)` and ensures proper flow control with Promises."
+    },
+    {
+      "severity": "major",
+      "file": "api/middleware/developer-key-auth.ts",
+      "line": 138,
+      "description": "Logging token.slice(0, 20) can leak part of the API secret. This is a security risk.",
+      "current_code": "```typescript\n    logger.warn(\n      { reason: result.reason, keyPrefix: token.slice(0, 20) },\n      'Developer key authentication failed',\n    );\n```",
+      "fixed_code": "```typescript\n    logger.warn(\n      { reason: result.reason, keyPrefix: getKeyPrefix(token) },\n      'Developer key authentication failed',\n    );\n```",
+      "explanation": "Using a sanitized prefix avoids logging any part of the secret while still providing useful diagnostics."
+    },
+    {
+      "severity": "major",
+      "file": "api/middleware/developer-key-auth.ts",
+      "line": 84,
+      "description": "Missing helper to safely extract a non-secret key prefix for logs.",
+      "current_code": "```typescript\n// =============================================================================\n// In-Memory Rate Limit Counters\n// =============================================================================\n```\n",
+      "fixed_code": "```typescript\n// =============================================================================\n// In-Memory Rate Limit Counters\n// =============================================================================\n\n/** Extract non-secret key prefix for safe logging */\nfunction getKeyPrefix(token: string): string {\n  const parts = token.split('_');\n  if (parts.length >= 3) {\n    return `${parts[0]}_${parts[1]}_${parts[2]}`;\n  }\n  return 'invalid';\n}\n```\n",
+      "explanation": "Provides a safe prefix for logging that avoids exposing any part of the secret."
+    },
+    {
+      "severity": "major",
+      "file": "api/middleware/developer-key-auth.ts",
+      "line": 190,
+      "description": "touchKeyUsage may be async; calling it without handling the Promise can cause unhandled rejections.",
+      "current_code": "```typescript\n  // Update last_used_at (fire-and-forget)\n  touchKeyUsage(keyRecord.id);\n```",
+      "fixed_code": "```typescript\n  // Update last_used_at (fire-and-forget)\n  void touchKeyUsage(keyRecord.id).catch((err) => {\n    logger.error({ err, keyId: keyRecord.id }, 'Failed to update key usage');\n  });\n```",
+      "explanation": "Explicitly handling the Promise prevents unhandled rejections and logs failures without blocking requests."
+    }
+  ],
   "fabrication_check": {
     "passed": true,
     "concerns": []

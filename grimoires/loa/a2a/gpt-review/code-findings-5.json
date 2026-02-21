@@ -1,13 +1,47 @@
 {
-  "verdict": "APPROVED",
-  "summary": "The routing override now validates shapes at runtime and safely falls back, resolving the prior crash risk.",
-  "previous_issues_status": [
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Multiple security and logic issues: missing auth guard, potential secret leakage in list endpoint, and non-awaited service calls that may return Promises.",
+  "issues": [
     {
-      "original_issue": "resolvePoolId() assumed routingOverride.policy.personalities array shape and could throw on malformed policy",
-      "status": "fixed",
-      "notes": "Runtime validation now guards personalities array and task_routing object before access, preventing .find crashes and preserving fallback behavior."
+      "severity": "critical",
+      "file": "api/routes/api-keys.ts",
+      "line": 63,
+      "description": "Missing auth guard allows requests without authenticated user to default to 'unknown', enabling cross-user key operations.",
+      "current_code": "```typescript\n    const { name, mode, communityId, rateLimitRpm, rateLimitTpd } = parsed.data;\n    const userId = req.adminName ?? 'unknown';\n\n    const result = createApiKey({\n      userId,\n      communityId,\n      name,\n      mode,\n      rateLimitRpm,\n      rateLimitTpd,\n    });\n```",
+      "fixed_code": "```typescript\n    const { name, mode, communityId, rateLimitRpm, rateLimitTpd } = parsed.data;\n    if (!req.adminName) {\n      res.status(401).json({ error: 'Unauthorized' });\n      return;\n    }\n    const userId = req.adminName;\n\n    const result = await createApiKey({\n      userId,\n      communityId,\n      name,\n      mode,\n      rateLimitRpm,\n      rateLimitTpd,\n    });\n```",
+      "explanation": "Rejects unauthenticated requests instead of silently using 'unknown'. Also awaits the async service call to avoid returning a Promise."
+    },
+    {
+      "severity": "major",
+      "file": "api/routes/api-keys.ts",
+      "line": 92,
+      "description": "List endpoint may return secrets because it returns raw service results without filtering.",
+      "current_code": "```typescript\napiKeysRouter.get('/', (req: AuthenticatedRequest, res: Response) => {\n  try {\n    const userId = req.adminName ?? 'unknown';\n    const keys = listApiKeys(userId);\n\n    res.json({\n      keys,\n      count: keys.length,\n    });\n  } catch (err) {\n    logger.error({ err }, 'Failed to list API keys');\n    res.status(500).json({ error: 'Internal server error' });\n  }\n});\n```",
+      "fixed_code": "```typescript\napiKeysRouter.get('/', async (req: AuthenticatedRequest, res: Response) => {\n  try {\n    if (!req.adminName) {\n      res.status(401).json({ error: 'Unauthorized' });\n      return;\n    }\n    const userId = req.adminName;\n    const keys = await listApiKeys(userId);\n\n    const safeKeys = keys.map(k => ({\n      id: k.id,\n      keyPrefix: k.keyPrefix,\n      name: k.name,\n      mode: k.mode,\n      createdAt: k.createdAt,\n    }));\n\n    res.json({\n      keys: safeKeys,\n      count: safeKeys.length,\n    });\n  } catch (err) {\n    logger.error({ err }, 'Failed to list API keys');\n    res.status(500).json({ error: 'Internal server error' });\n  }\n});\n```",
+      "explanation": "Ensures only non-sensitive fields are returned, preventing secret leakage. Adds auth guard and awaits async service."
+    },
+    {
+      "severity": "major",
+      "file": "api/routes/api-keys.ts",
+      "line": 117,
+      "description": "Delete endpoint lacks auth guard and does not await possibly async revokeApiKey call.",
+      "current_code": "```typescript\napiKeysRouter.delete('/:id', (req: AuthenticatedRequest, res: Response) => {\n  try {\n    const parsed = keyIdParamSchema.safeParse(req.params);\n    if (!parsed.success) {\n      res.status(400).json({ error: 'Invalid key ID' });\n      return;\n    }\n\n    const userId = req.adminName ?? 'unknown';\n    const revoked = revokeApiKey(parsed.data.id, userId);\n\n    if (!revoked) {\n      res.status(404).json({ error: 'Key not found or already revoked' });\n      return;\n    }\n\n    res.json({ revoked: true, id: parsed.data.id });\n  } catch (err) {\n    logger.error({ err }, 'Failed to revoke API key');\n    res.status(500).json({ error: 'Internal server error' });\n  }\n});\n```",
+      "fixed_code": "```typescript\napiKeysRouter.delete('/:id', async (req: AuthenticatedRequest, res: Response) => {\n  try {\n    const parsed = keyIdParamSchema.safeParse(req.params);\n    if (!parsed.success) {\n      res.status(400).json({ error: 'Invalid key ID' });\n      return;\n    }\n\n    if (!req.adminName) {\n      res.status(401).json({ error: 'Unauthorized' });\n      return;\n    }\n    const userId = req.adminName;\n    const revoked = await revokeApiKey(parsed.data.id, userId);\n\n    if (!revoked) {\n      res.status(404).json({ error: 'Key not found or already revoked' });\n      return;\n    }\n\n    res.json({ revoked: true, id: parsed.data.id });\n  } catch (err) {\n    logger.error({ err }, 'Failed to revoke API key');\n    res.status(500).json({ error: 'Internal server error' });\n  }\n});\n```",
+      "explanation": "Prevents unauthorized access and ensures revoke operation completes before responding."
+    },
+    {
+      "severity": "major",
+      "file": "api/routes/api-keys.ts",
+      "line": 149,
+      "description": "Rotate endpoint lacks auth guard and does not await possibly async rotateApiKey call.",
+      "current_code": "```typescript\napiKeysRouter.post('/:id/rotate', (req: AuthenticatedRequest, res: Response) => {\n  try {\n    const parsed = keyIdParamSchema.safeParse(req.params);\n    if (!parsed.success) {\n      res.status(400).json({ error: 'Invalid key ID' });\n      return;\n    }\n\n    const userId = req.adminName ?? 'unknown';\n    const result = rotateApiKey(parsed.data.id, userId);\n\n    if (!result) {\n      res.status(404).json({ error: 'Key not found or already revoked' });\n      return;\n    }\n\n    res.status(201).json({\n      id: result.id,\n      key: result.cleartext,\n      keyPrefix: result.keyPrefix,\n      name: result.name,\n      mode: result.mode,\n      createdAt: result.createdAt,\n      previousKeyId: parsed.data.id,\n      warning: 'Store this key securely. It will not be shown again.',\n    });\n  } catch (err) {\n    if (err instanceof ApiKeyLimitError) {\n      res.status(409).json({ error: err.message });\n      return;\n    }\n    logger.error({ err }, 'Failed to rotate API key');\n    res.status(500).json({ error: 'Internal server error' });\n  }\n});\n```",
+      "fixed_code": "```typescript\napiKeysRouter.post('/:id/rotate', async (req: AuthenticatedRequest, res: Response) => {\n  try {\n    const parsed = keyIdParamSchema.safeParse(req.params);\n    if (!parsed.success) {\n      res.status(400).json({ error: 'Invalid key ID' });\n      return;\n    }\n\n    if (!req.adminName) {\n      res.status(401).json({ error: 'Unauthorized' });\n      return;\n    }\n    const userId = req.adminName;\n    const result = await rotateApiKey(parsed.data.id, userId);\n\n    if (!result) {\n      res.status(404).json({ error: 'Key not found or already revoked' });\n      return;\n    }\n\n    res.status(201).json({\n      id: result.id,\n      key: result.cleartext,\n      keyPrefix: result.keyPrefix,\n      name: result.name,\n      mode: result.mode,\n      createdAt: result.createdAt,\n      previousKeyId: parsed.data.id,\n      warning: 'Store this key securely. It will not be shown again.',\n    });\n  } catch (err) {\n    if (err instanceof ApiKeyLimitError) {\n      res.status(409).json({ error: err.message });\n      return;\n    }\n    logger.error({ err }, 'Failed to rotate API key');\n    res.status(500).json({ error: 'Internal server error' });\n  }\n});\n```",
+      "explanation": "Enforces authentication and awaits rotation to ensure correct sequencing and error handling."
     }
   ],
-  "new_blocking_concerns": [],
-  "iteration": 2
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
 }

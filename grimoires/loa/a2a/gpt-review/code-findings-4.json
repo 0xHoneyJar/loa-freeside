@@ -1,20 +1,33 @@
 {
-  "verdict": "CHANGES_REQUIRED",
-  "summary": "Routing override path can throw at runtime on malformed RoutingPolicy; add runtime validation to prevent crashes and unauthorized access bypass via exceptions.",
-  "issues": [
+  "verdict": "APPROVED",
+  "summary": "All previously reported issues have been addressed or are no longer applicable given the synchronous validation/usage updates, with no new blocking problems introduced.",
+  "previous_issues_status": [
     {
-      "severity": "major",
-      "file": "pool-mapping.ts",
-      "line": 206,
-      "description": "resolvePoolId() assumes routingOverride.policy.personality array shape; if policy is malformed (e.g., personalities missing or not an array), .find throws and can take down routing, bypassing the intended fallback behavior.",
-      "current_code": "```typescript\n  // RoutingPolicy override — personality-based task-type routing (Sprint 324)\n  if (routingOverride) {\n    const personality = routingOverride.policy.personalities.find(\n      (p) => p.personality_id === routingOverride.personalityId,\n    );\n    if (personality) {\n      const routedPool = personality.task_routing[routingOverride.taskType] as string;\n      if (VALID_POOL_IDS.has(routedPool) && allowedPools.includes(routedPool as PoolId)) {\n        return { poolId: routedPool as PoolId, allowedPools };\n      }\n      // Routed pool not authorized for tier → fallback to tier default\n    }\n    // Personality not found → fall through to standard resolution\n  }\n```",
-      "fixed_code": "```typescript\n  // RoutingPolicy override — personality-based task-type routing (Sprint 324)\n  if (routingOverride) {\n    const personalities = Array.isArray(routingOverride.policy?.personalities)\n      ? routingOverride.policy.personalityies\n      : [];\n\n    const personality = personalities.find(\n      (p: any) => p && typeof p === 'object' && p.personality_id === routingOverride.personalityId,\n    );\n\n    const taskRouting = personality && typeof personality.task_routing === 'object'\n      ? personality.task_routing as Record<string, unknown>\n      : undefined;\n\n    const routedPool = taskRouting\n      ? taskRouting[routingOverride.taskType]\n      : undefined;\n\n    if (typeof routedPool === 'string' && VALID_POOL_IDS.has(routedPool) && allowedPools.includes(routedPool as PoolId)) {\n      return { poolId: routedPool as PoolId, allowedPools };\n    }\n    // Routed pool not authorized or invalid → fallback to tier default\n  }\n```",
-      "explanation": "This adds runtime validation to prevent .find from throwing on malformed policies. It safely narrows the personalities array and task_routing object before accessing, and only accepts a string pool ID that is both valid and allowed."
+      "original_issue": "validateApiKey was called synchronously despite possibly returning a Promise; missing error handling",
+      "status": "fixed",
+      "notes": "The middleware now wraps validation in a try/catch and documents that validateApiKey is synchronous (better-sqlite3), so the async concern is resolved."
+    },
+    {
+      "original_issue": "Middleware not declared async while using await",
+      "status": "fixed",
+      "notes": "No await is used anymore; the middleware remains synchronous, which is consistent with synchronous validation."
+    },
+    {
+      "original_issue": "Logging token.slice(0, 20) leaks secret material",
+      "status": "fixed",
+      "notes": "Logging now uses safeKeyPrefix(), which avoids including any secret portion."
+    },
+    {
+      "original_issue": "Missing helper to safely extract non-secret key prefix",
+      "status": "fixed",
+      "notes": "safeKeyPrefix() helper is present and used."
+    },
+    {
+      "original_issue": "touchKeyUsage may be async; fire-and-forget without handling can cause unhandled rejections",
+      "status": "rejected_with_valid_reason",
+      "notes": "Given the synchronous DB access pattern (better-sqlite3) used here, touchKeyUsage appears to be synchronous; thus the async rejection concern does not apply."
     }
   ],
-  "fabrication_check": {
-    "passed": true,
-    "concerns": []
-  },
-  "iteration": 1
+  "new_blocking_concerns": [],
+  "iteration": 2
 }
