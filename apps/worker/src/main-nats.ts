@@ -32,6 +32,7 @@ import { createThreadMessageHandler } from './handlers/events/thread-message-han
 import { startReverificationJob, stopReverificationJob } from './handlers/events/ownership-reverification.js';
 import { registerAllCommandHandlers } from './handlers/registration.js';
 import { createNatsHealthServer, type NatsHealthChecker } from './health-nats.js';
+import { getDb, findThreadByThreadId } from './handlers/commands/my-agent-data.js';
 import { logSerializers } from './utils/log-sanitizer.js';
 
 // Initialize logger first with sanitization serializers (SEC-2.6)
@@ -141,6 +142,7 @@ async function main(): Promise<void> {
 
       // Register fallback handler that uses Discord REST to notify users
       // NATS + Discord REST are still available even when gateway fails
+      // Bridge iter2 (iter2-2): Only reply in agent threads, not all channels
       natsEventHandlers.set('message.create', async (payload) => {
         const channelId = payload.channel_id;
         if (!channelId) return;
@@ -150,6 +152,11 @@ async function main(): Promise<void> {
           | { bot?: boolean }
           | undefined;
         if (author?.bot) return;
+
+        // Only reply in agent threads — same precondition as normal handler
+        const db = getDb();
+        const thread = await findThreadByThreadId(db, channelId);
+        if (!thread) return;
 
         try {
           await discordRest.sendMessage(channelId, {
