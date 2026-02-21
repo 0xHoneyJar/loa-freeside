@@ -1,51 +1,41 @@
 {
   "verdict": "APPROVED",
-  "summary": "The previously-blocking SIWE HS256 session design gap is now addressed with concrete Secrets Manager provisioning, rotation semantics, and a rolling-deploy verification test, and no new truly-blocking issues were introduced.",
+  "summary": "The iteration-2 blocking contradiction around removing v4.6.0 JWT vectors during the dual-accept window is fixed correctly, and no new truly blocking issues were introduced in this revision.",
   "previous_issues_status": [
     {
-      "original_issue": "JWKS fetch URL pointed to finn instead of freeside",
+      "original_issue": "SHA pinning was ambiguous (tag/main allowed) and could make builds non-reproducible",
       "status": "fixed",
-      "notes": "Still correct: finn fetches JWKS from freeside via Cloud Map (`http://freeside.arrakis-{env}.local:3000/.well-known/jwks.json`)."
+      "notes": "Task 1.1 still explicitly requires resolving the v7.0.0 tag to an immutable commit SHA, pinning to that SHA in package.json, and verifying lockfile/CI regex gates."
     },
     {
-      "original_issue": "Cloud Map/Route53 conflated; no explicit service discovery wiring",
+      "original_issue": "JWT migration removed v4.6.0 compatibility without a dual-accept window, TTL strategy, and telemetry",
       "status": "fixed",
-      "notes": "Still correct: explicit Cloud Map private namespace + `service_registries` + task-level `nslookup` verification; Route53 is explicitly removed/clarified."
+      "notes": "Tasks 2.1 and 2.7 retain dual-accept (v4.6.0 trust_level + v7 trust_scopes), single-write v7, and a bounded telemetry-based cutoff policy tied to TTL."
     },
     {
-      "original_issue": "No key material bootstrap step for JWKS DB source-of-truth",
+      "original_issue": "NftId canonicalization lacked DB/backfill + read-compat plan",
       "status": "fixed",
-      "notes": "Still correct: bootstrap + rotation scripts, private key in Secrets Manager, public keys in DB, JWKS serves all non-expired keys."
+      "notes": "Task 2.3 includes inventory, dual-read/single-write, idempotent backfill with collision/ambiguity handling, and integration tests for old-format accessibility."
     },
     {
-      "original_issue": "NATS JetStream infra not provisioned but required by Sprint 4",
+      "original_issue": "No concrete S2S peer verification/compatibility window against real loa-finn deployments",
       "status": "fixed",
-      "notes": "Still correct: Terraform/ECS provisioning, SG rules, Cloud Map name, persistence option, auth secret, and verification step are present."
+      "notes": "Task 4.9 defines a pre-deploy verification gate plus a bounded dual-accept policy for v6.x/7.0.0 and requires integration tests for both peer versions."
     },
     {
-      "original_issue": "Budget finalization depended on token usage but Sprint 2 didn’t require finn to emit it",
+      "original_issue": "SSE/Completion wire changes lacked end-to-end integration tests (stub-only risk)",
       "status": "fixed",
-      "notes": "Still correct: Sprint 2.4 requires `X-Token-Count` or SSE done usage and freeside recording it."
+      "notes": "Task 4.10 adds transcript replay tests, forward-compat unknown event handling, and ajv schema validation for CompletionRequest/Result."
     },
     {
-      "original_issue": "WebSocket ALB/ECS infra config missing (idle timeout, drain, TG health checks)",
+      "original_issue": "Duplicate task IDs created sequencing ambiguity",
       "status": "fixed",
-      "notes": "Still correct: Sprint 6.5 includes ALB idle timeout, TG health check path, ECS deployment settings, deregistration delay, and a drain verification."
+      "notes": "Task numbering remains unique and cross-references appear consistent in this revision."
     },
     {
-      "original_issue": "WAF per-payment_id throttling not implementable as written",
+      "original_issue": "Auth-migration contradiction: Sprint 4.5 removed v4.6.0 JWT test vectors while Sprint 2 required dual-accept during telemetry window",
       "status": "fixed",
-      "notes": "Still correct: per-payment throttling moved to app/Redis; WAF remains IP-based; DB idempotency is final layer."
-    },
-    {
-      "original_issue": "PgBouncer treated as configurable without validating it exists/controlled",
-      "status": "fixed",
-      "notes": "Still correct: explicit prerequisite check + fallback to RDS Proxy/direct while enforcing read-only role."
-    },
-    {
-      "original_issue": "SIWE session token used HS256 JWT cookie without concrete shared secret provisioning/rotation plan",
-      "status": "fixed",
-      "notes": "Fixed as requested: Secrets Manager secret (`arrakis-{env}-siwe-session-hs256-secret`) provisioned via Terraform and injected into all freeside tasks; dual-secret validation for 24h overlap; `kid` header for routing; explicit staging rolling-deploy session survivability test in AC."
+      "notes": "Task 4.5 now explicitly keeps v4.6.0 dual-accept vectors and annotates removal as gated on the Task 2.7 telemetry cutoff; Task 4.8/NOTES.md also reflects that removal is deferred post-cutoff."
     }
   ],
   "new_blocking_concerns": [],

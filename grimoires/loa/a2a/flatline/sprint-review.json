@@ -1,7 +1,8 @@
 {
   "phase": "sprint",
   "document": "grimoires/loa/sprint.md",
-  "timestamp": "2026-02-20T12:28:56Z",
+  "timestamp": "2026-02-21T17:19:53Z",
+  "simstim_id": "simstim-20260221-hounfour-v7",
   "consensus_summary": {
     "high_consensus_count": 4,
     "disputed_count": 0,
@@ -13,70 +14,46 @@
   "high_consensus": [
     {
       "id": "IMP-001",
-      "description": "Add S2S timeout, retry/backoff, and circuit breaker acceptance criteria to prevent cascading failures",
-      "gpt_score": 820,
+      "description": "Add S2S rollback/canary/cutover plan for CONTRACT_VERSION jump to 7.0.0",
+      "gpt_score": 920,
       "opus_score": 920,
-      "average_score": 870
+      "average_score": 920,
+      "integrated": true
     },
     {
       "id": "IMP-002",
-      "description": "Add NATS chaos test (kill NATS), verify header fallback, define reconciliation SLAs for usage reporting reliability",
-      "gpt_score": 760,
-      "opus_score": 750,
-      "average_score": 755
+      "description": "Add pre-flight compile check before de-vendoring to prevent predictable failures",
+      "gpt_score": 780,
+      "opus_score": 870,
+      "average_score": 825,
+      "integrated": true
+    },
+    {
+      "id": "IMP-003",
+      "description": "Add type-shape contract tests to detect drift during vendored-to-canonical migration",
+      "gpt_score": 740,
+      "opus_score": 810,
+      "average_score": 775,
+      "integrated": true
     },
     {
       "id": "IMP-004",
-      "description": "Add zero-downtime migration guidelines (expand/contract, additive-only, deploy-order independence) to Sprint 1 migrations",
-      "gpt_score": 860,
-      "opus_score": 780,
-      "average_score": 820
-    },
-    {
-      "id": "IMP-010",
-      "description": "Add explicit end-to-end billing integration test plan with precision/rounding assertions and idempotency checks across payment→mint→reservation→balance path",
-      "gpt_score": 790,
-      "opus_score": 740,
-      "average_score": 765
+      "description": "Add schema validation tests for /.well-known/loa-hounfour discovery endpoint",
+      "gpt_score": 810,
+      "opus_score": 830,
+      "average_score": 820,
+      "integrated": true
     }
   ],
   "disputed": [],
   "low_value": [],
   "blockers": [
-    {
-      "id": "SKP-001",
-      "concern": "Schedule math and staffing internally inconsistent (14 days, 1 engineer, many L tasks, sequential dependency chain)",
-      "severity_score": 930
-    },
-    {
-      "id": "SKP-003",
-      "concern": "Key management/rotation partially specified; bootstrap scripts + Secrets Manager can create unrecoverable auth outages",
-      "severity_score": 880
-    },
-    {
-      "id": "SKP-004",
-      "concern": "Streaming usage accounting fragile: X-Token-Count / SSE done event unreliable across model pools and disconnects",
-      "severity_score": 860
-    },
-    {
-      "id": "SKP-007",
-      "concern": "Web widget security gaps: XSS/supply-chain risk for widget.js, CSRF/session fixation, WebSocket auth/origin enforcement",
-      "severity_score": 820
-    },
-    {
-      "id": "SKP-005",
-      "concern": "NATS JetStream + EFS mid-plan is hidden complexity and major operational risk for 1-engineer launch",
-      "severity_score": 770
-    },
-    {
-      "id": "SKP-002",
-      "concern": "Cloud Map + service discovery assumptions may fail in existing VPC/ECS setup",
-      "severity_score": 740
-    },
-    {
-      "id": "SKP-006",
-      "concern": "NOWPayments IPN authenticity, replay behavior, and operational failure modes may break state machine",
-      "severity_score": 720
-    }
+    {"id": "SKP-001", "concern": "Pin to immutable commit SHA, not tag reference", "severity_score": 920},
+    {"id": "SKP-002", "concern": "v4.6.0 compat removal could break loa-finn peers", "severity_score": 900},
+    {"id": "SKP-009", "concern": "CORS wildcard for SIWE is auth vulnerability, not just logging", "severity_score": 860},
+    {"id": "SKP-010", "concern": "Scope/timeline risk: 4 sprints, 1 engineer, cross-cutting", "severity_score": 780},
+    {"id": "SKP-003", "concern": "De-vendoring assumes identical export surface", "severity_score": 760},
+    {"id": "SKP-004", "concern": "NftId migration underspecified", "severity_score": 740},
+    {"id": "SKP-006", "concern": "JWT claim changes need versioning strategy", "severity_score": 720}
   ]
 }

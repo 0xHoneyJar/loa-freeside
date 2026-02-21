@@ -1380,9 +1380,34 @@
           "global_id": 320,
           "local_label": "sprint-7",
           "status": "pending"
+        },
+        {
+          "global_id": 321,
+          "local_label": "sprint-321",
+          "status": "completed"
+        },
+        {
+          "global_id": 322,
+          "local_label": "sprint-1",
+          "status": "pending"
+        },
+        {
+          "global_id": 323,
+          "local_label": "sprint-2",
+          "status": "pending"
+        },
+        {
+          "global_id": 324,
+          "local_label": "sprint-3",
+          "status": "pending"
+        },
+        {
+          "global_id": 325,
+          "local_label": "sprint-4",
+          "status": "pending"
         }
       ]
     }
   ],
-  "next_sprint_number": 321
+  "next_sprint_number": 326
 }
