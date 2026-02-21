@@ -17,11 +17,19 @@ import { createNatsClient, type NatsClient } from './services/NatsClient.js';
 import {
   createCommandNatsConsumer,
   createEventNatsConsumer,
+  createDefaultNatsEventHandlers,
   createEligibilityNatsConsumer,
+  createUsageNatsConsumer,
   type CommandNatsConsumer,
   type EventNatsConsumer,
   type EligibilityNatsConsumer,
+  type UsageNatsConsumer,
 } from './consumers/index.js';
+import Redis from 'ioredis';
+import { BudgetManager } from '../../../packages/adapters/agent/budget-manager.js';
+import { createAgentGateway } from '../../../packages/adapters/agent/factory.js';
+import { createThreadMessageHandler } from './handlers/events/thread-message-handler.js';
+import { startReverificationJob, stopReverificationJob } from './handlers/events/ownership-reverification.js';
 import { registerAllCommandHandlers } from './handlers/registration.js';
 import { createNatsHealthServer, type NatsHealthChecker } from './health-nats.js';
 import { logSerializers } from './utils/log-sanitizer.js';
@@ -48,6 +56,8 @@ let natsClient: NatsClient | null = null;
 let commandConsumer: CommandNatsConsumer | null = null;
 let eventConsumer: EventNatsConsumer | null = null;
 let eligibilityConsumer: EligibilityNatsConsumer | null = null;
+let usageConsumer: UsageNatsConsumer | null = null;
+let budgetRedis: Redis | null = null;
 let stateManager: StateManager | null = null;
 let healthServer: ReturnType<typeof createNatsHealthServer> | null = null;
 
@@ -95,10 +105,42 @@ async function main(): Promise<void> {
   const commandHandlers = registerAllCommandHandlers(discordRest);
   logger.info({ handlerCount: commandHandlers.size }, 'Command handlers registered');
 
+  // Create dedicated Redis connection for BudgetManager (uses Lua scripts)
+  budgetRedis = new Redis(config.redisUrl, {
+    maxRetriesPerRequest: 3,
+    retryStrategy: (times) => Math.min(times * 200, 5000),
+    lazyConnect: false,
+  });
+  const budgetManager = new BudgetManager(budgetRedis, logger);
+
+  // Build NATS event handlers — start with defaults, add message routing if agent enabled
+  const natsEventHandlers = createDefaultNatsEventHandlers();
+
+  const agentEnabled = process.env['AGENT_ENABLED'] === 'true';
+  if (agentEnabled) {
+    try {
+      const { gateway } = await createAgentGateway({ redis: budgetRedis, logger });
+      const messageHandler = createThreadMessageHandler({
+        gateway,
+        discord: discordRest,
+        redis: budgetRedis,
+        logger,
+      });
+      natsEventHandlers.set('message.create', messageHandler);
+      logger.info('Agent gateway initialized — thread message routing enabled');
+
+      // Start background ownership re-verification (24h cycle)
+      startReverificationJob({ discord: discordRest, redis: budgetRedis, logger });
+    } catch (err) {
+      logger.warn({ err }, 'Agent gateway initialization failed — thread message routing disabled');
+    }
+  }
+
   // Create NATS consumers
   commandConsumer = createCommandNatsConsumer(discordRest, commandHandlers, logger);
-  eventConsumer = createEventNatsConsumer(undefined, undefined, logger);
+  eventConsumer = createEventNatsConsumer(natsEventHandlers, undefined, logger);
   eligibilityConsumer = createEligibilityNatsConsumer(discordRest, undefined, logger);
+  usageConsumer = createUsageNatsConsumer({ budgetManager }, logger);
 
   // Initialize consumers (create durable consumers in NATS if needed)
   const jsm = natsClient.getJetStreamManager();
@@ -106,6 +148,7 @@ async function main(): Promise<void> {
     commandConsumer.initialize(jsm),
     eventConsumer.initialize(jsm),
     eligibilityConsumer.initialize(jsm),
+    usageConsumer.initialize(jsm),
   ]);
   logger.info('NATS consumers initialized');
 
@@ -115,6 +158,7 @@ async function main(): Promise<void> {
     commandConsumer.start(js),
     eventConsumer.start(js),
     eligibilityConsumer.start(js),
+    usageConsumer.start(js),
   ]);
   logger.info('NATS consumers started processing messages');
 
@@ -126,6 +170,7 @@ async function main(): Promise<void> {
     getCommandConsumerStats: () => commandConsumer?.getStats() ?? { processed: 0, errored: 0, running: false },
     getEventConsumerStats: () => eventConsumer?.getStats() ?? { processed: 0, errored: 0, running: false },
     getEligibilityConsumerStats: () => eligibilityConsumer?.getStats() ?? { processed: 0, errored: 0, running: false },
+    getUsageConsumerStats: () => usageConsumer?.getStats() ?? { processed: 0, errored: 0, running: false },
     getRedisStatus: () => stateManager?.isConnected() ?? false,
     getRedisLatency: () => stateManager?.ping() ?? Promise.resolve(null),
     getStartTime: () => startTime,
@@ -150,6 +195,9 @@ async function shutdown(signal: string): Promise<void> {
     logger.info('Health server closed');
   }
 
+  // Stop background jobs
+  stopReverificationJob();
+
   // Stop consumers (but keep connections open to finish in-flight)
   const stopPromises: Promise<void>[] = [];
 
@@ -162,6 +210,9 @@ async function shutdown(signal: string): Promise<void> {
   if (eligibilityConsumer) {
     stopPromises.push(eligibilityConsumer.stop());
   }
+  if (usageConsumer) {
+    stopPromises.push(usageConsumer.stop());
+  }
 
   await Promise.all(stopPromises);
   logger.info('NATS consumers stopped');
@@ -170,6 +221,7 @@ async function shutdown(signal: string): Promise<void> {
   await Promise.all([
     natsClient?.close(),
     stateManager?.close(),
+    budgetRedis?.quit(),
   ]);
 
   logger.info('All connections closed, worker shutdown complete');

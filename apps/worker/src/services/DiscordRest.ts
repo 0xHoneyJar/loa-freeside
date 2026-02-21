@@ -311,6 +311,63 @@ export class DiscordRestService {
   }
 
   /**
+   * Create a thread in a channel (Sprint 4, Task 4.6)
+   * Requires bot token to be set
+   */
+  async createThread(
+    channelId: string,
+    options: { name: string; type?: 11 | 12; autoArchiveDuration?: 60 | 1440 | 4320 | 10080 }
+  ): Promise<{ id: string } | null> {
+    try {
+      const body = {
+        name: options.name.slice(0, 100), // Discord name limit
+        type: options.type ?? 11, // 11 = PUBLIC_THREAD
+        auto_archive_duration: options.autoArchiveDuration ?? 10080, // 7 days
+      };
+
+      const response = await this.rest.post(
+        Routes.threads(channelId),
+        { body, auth: true }
+      ) as { id: string };
+
+      this.log.debug({ channelId, threadId: response.id, name: options.name }, 'Created thread');
+      return response;
+    } catch (error) {
+      this.log.error({ error, channelId }, 'Failed to create thread');
+      return null;
+    }
+  }
+
+  /**
+   * Send a message to a channel or thread (Sprint 4, Task 4.6)
+   * Requires bot token to be set
+   */
+  async sendMessage(
+    channelId: string,
+    options: FollowupOptions
+  ): Promise<FollowupResult> {
+    try {
+      const body = {
+        content: options.content,
+        embeds: options.embeds,
+        components: options.components,
+      };
+
+      const response = await this.rest.post(
+        Routes.channelMessages(channelId),
+        { body, auth: true }
+      ) as { id: string };
+
+      this.log.debug({ channelId, messageId: response.id }, 'Sent message');
+      return { success: true, messageId: response.id };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      this.log.error({ error, channelId }, 'Failed to send message');
+      return { success: false, error: message };
+    }
+  }
+
+  /**
    * Respond to an autocomplete interaction
    * Uses the interaction token, NOT bot token
    */

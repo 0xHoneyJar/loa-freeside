@@ -15,6 +15,11 @@
       "name": "ELIGIBILITY",
       "subjects": ["eligibility.>"],
       "description": "Token eligibility checks"
+    },
+    "USAGE": {
+      "name": "USAGE",
+      "subjects": ["inference.usage.>"],
+      "description": "Inference usage finalization events from loa-finn (WorkQueue, 72h max age)"
     }
   },
   "subjects": {
@@ -33,6 +38,14 @@
       "join": "events.member.join",
       "leave": "events.member.leave",
       "update": "events.member.update"
+    },
+    "message_events": {
+      "prefix": "events.message",
+      "create": "events.message.create"
+    },
+    "usage": {
+      "prefix": "inference.usage",
+      "finalized": "inference.usage.finalized"
     }
   },
   "event_type_to_subject": {
@@ -42,6 +55,8 @@
     "guild.update": "events.guild.update",
     "member.join": "events.member.join",
     "member.leave": "events.member.leave",
-    "member.update": "events.member.update"
+    "member.update": "events.member.update",
+    "message.create": "events.message.create",
+    "inference.usage.finalized": "inference.usage.finalized"
   }
 }

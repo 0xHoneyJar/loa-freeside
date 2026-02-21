@@ -32,6 +32,8 @@ import {
   createAdminStatsHandler,
   createAdminBadgeHandler,
   createAdminBadgeAutocompleteHandler,
+  createMyAgentHandler,
+  createAgentInfoHandler,
 } from './commands/index.js';
 
 // --------------------------------------------------------------------------
@@ -89,6 +91,10 @@ export function registerAllCommandHandlers(
   // Admin commands
   registry.set('admin-stats', createHandlerAdapter(discord, createAdminStatsHandler));
   registry.set('admin-badge', createHandlerAdapter(discord, createAdminBadgeHandler));
+
+  // Agent commands (Sprint 4)
+  registry.set('my-agent', createHandlerAdapter(discord, createMyAgentHandler));
+  registry.set('agent-info', createHandlerAdapter(discord, createAgentInfoHandler));
 
   // Also register with global registry for backwards compatibility
   for (const [name, handler] of registry) {
