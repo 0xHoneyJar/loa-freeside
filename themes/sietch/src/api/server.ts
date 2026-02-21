@@ -26,8 +26,6 @@ import { siweRouter, setSiweRedisClient } from './routes/siwe.routes.js';
 import cookieParser from 'cookie-parser';
 // Sprint 6 (319), Task 6.8: Standalone Chat Page
 import { chatPageRouter } from './routes/chat-page.routes.js';
-// Sprint 324, Task 3.1: Protocol Discovery Endpoint
-import { discoveryRouter } from './routes/discovery.routes.js';
 // Sprint 6 (319), Task 6.6: Web Chat Widget + WebSocket
 import { createChatWebSocket, drainChatWebSocket } from './websocket/chat-ws.js';
 import path from 'path';
@@ -259,9 +257,6 @@ function createApp(): Application {
 
   // Sprint 6 (319), Task 6.7: Cookie parser for SIWE session tokens
   expressApp.use(cookieParser());
-
-  // Protocol Discovery (Sprint 324, Task 3.1) — public, no auth
-  expressApp.use('/.well-known/loa-hounfour', discoveryRouter);
 
   // Public routes
   expressApp.use('/', publicRouter);
