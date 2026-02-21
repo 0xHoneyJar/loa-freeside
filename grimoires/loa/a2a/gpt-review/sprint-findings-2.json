@@ -1,54 +1,44 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "All 8 previously-blocking issues appear to be addressed correctly, but one new truly-blocking issue was introduced in the SIWE session design (HS256 JWT in a cookie without a concrete signing key/rotation plan), which would prevent secure production deployment of the web chat/auth surface.",
+  "summary": "Most iteration-1 blockers are addressed (SHA pinning, task renumbering, JWT dual-accept, NftId dual-read/backfill, S2S gate, SSE replay), but one change reintroduces a truly blocking auth-migration contradiction: Sprint 4.5 removes v4.6.0 JWT test vectors while Sprint 2.1/2.7 explicitly requires keeping v4.6.0 dual-accept during the telemetry window.",
   "previous_issues_status": [
     {
-      "original_issue": "JWKS fetch URL pointed to finn instead of freeside",
+      "original_issue": "SHA pinning was ambiguous (tag/main allowed) and could make builds non-reproducible",
       "status": "fixed",
-      "notes": "2.3 now fetches from `http://freeside.arrakis-{env}.local:3000/.well-known/jwks.json` via Cloud Map, matching the trust model (freeside is issuer)."
+      "notes": "Task 1.1 now explicitly resolves v7.0.0 tag to an immutable commit SHA and adds a CI regex gate + lockfile verification."
     },
     {
-      "original_issue": "Cloud Map/Route53 conflated; no explicit service discovery wiring",
+      "original_issue": "JWT migration removed v4.6.0 compatibility without a dual-accept window, TTL strategy, and telemetry",
       "status": "fixed",
-      "notes": "1.2 now explicitly creates/uses a Cloud Map private namespace, configures `service_registries` for both ECS services, and includes task-level `nslookup` verification. Route53 is explicitly removed/clarified."
+      "notes": "Tasks 2.1 and 2.7 now define dual-accept (v4.6.0 trust_level + v7 trust_scopes), single-write v7, and telemetry with a bounded cutoff policy tied to TTL."
     },
     {
-      "original_issue": "No key material bootstrap step for JWKS DB source-of-truth",
+      "original_issue": "NftId canonicalization lacked DB/backfill + read-compat plan",
       "status": "fixed",
-      "notes": "2.1 adds bootstrap + rotation scripts, stores private key + activeKid in Secrets Manager, inserts public JWK rows into DB, and serves all non-expired keys. Selection rules are clear and workable."
+      "notes": "Task 2.3 now includes inventory, dual-read/single-write, idempotent backfill with collision handling, and integration tests for old-format accessibility."
     },
     {
-      "original_issue": "NATS JetStream infra not provisioned but required by Sprint 4",
+      "original_issue": "No concrete S2S peer verification/compatibility window against real loa-finn deployments",
       "status": "fixed",
-      "notes": "4.3 adds Terraform/ECS provisioning, SG rules, Cloud Map name, persistence option, auth in Secrets Manager, and a concrete verification step."
+      "notes": "Task 4.9 adds a pre-deploy verification gate and defines a bounded dual-accept policy for 6.x/7.0.0."
     },
     {
-      "original_issue": "Budget finalization depended on token usage but Sprint 2 didn’t require finn to emit it",
+      "original_issue": "SSE/Completion wire changes lacked end-to-end integration tests (stub-only risk)",
       "status": "fixed",
-      "notes": "2.4 now requires `X-Token-Count` or SSE done event usage, and requires freeside to record it. This unblocks Sprint 4 reservation/finalization."
+      "notes": "Task 4.10 adds transcript replay tests, forward-compat unknown event handling, and ajv schema validation for request/response."
     },
     {
-      "original_issue": "WebSocket ALB/ECS infra config missing (idle timeout, drain, TG health checks)",
+      "original_issue": "Duplicate task IDs created sequencing ambiguity",
       "status": "fixed",
-      "notes": "6.5 adds ALB idle timeout, TG health check path, ECS deployment settings, deregistration delay, and a staging drain verification."
-    },
-    {
-      "original_issue": "WAF per-payment_id throttling not implementable as written",
-      "status": "fixed",
-      "notes": "3.7 correctly moves per-payment throttling into the application (Redis) and keeps WAF rate limiting IP-based, with DB idempotency as the final layer."
-    },
-    {
-      "original_issue": "PgBouncer treated as configurable without validating it exists/controlled",
-      "status": "fixed",
-      "notes": "2.5 now includes an explicit prerequisite check and a fallback path (direct RDS / RDS Proxy) while still enforcing a read-only DB role."
+      "notes": "Task numbering is now unique (1.1–1.8) and cross-references appear updated (e.g., Task 1.2 references 1.3–1.5)."
     }
   ],
   "new_blocking_concerns": [
     {
-      "location": "Sprint 6 — Task 6.7 SIWE Auth Flow (EIP-4361)",
-      "description": "Session token is specified as an HS256 JWT in an HttpOnly cookie, but the plan does not specify where the HS256 signing secret lives, how it is provisioned (Terraform/Secrets Manager), and how rotation/invalidations work across multiple ECS tasks.",
-      "why_blocking": "In production ECS with >1 task and rolling deploys, an HS256 session JWT requires a consistent shared signing secret across all tasks. Without an explicit secret source and rotation strategy, sessions will either (a) fail validation intermittently across tasks, or (b) force unsafe practices (hard-coded secret / env drift). This is a security and availability blocker for the web widget/chat surface and any authenticated web flows.",
-      "fix": "Add an explicit Secrets Manager secret and wiring + rotation semantics: e.g., create `arrakis-{env}-siwe-session-hs256-secret` (or switch to asymmetric signing). Update 6.7 AC to include: (1) secret provisioned via Terraform, injected into freeside tasks, (2) support for dual-secret validation during rotation (current + previous) for 24h, (3) `kid` header or `pepper_version`-style versioning for session tokens, and (4) a runbook/acceptance test proving sessions survive a rolling deploy."
+      "location": "Sprint 4 — Task 4.5 (Update protocol conformance tests for v7.0.0) vs Sprint 2 — Tasks 2.1 and 2.7 (JWT dual-accept window + telemetry cutoff)",
+      "description": "Task 4.5 instructs removing v4.6.0 backward-compat JWT test cases (trust_level integer tests), but the plan explicitly keeps v4.6.0 dual-accept in production until telemetry cutoff is met. Removing those tests during the window makes it easy to accidentally break v4.6.0 claim acceptance while still relying on it operationally.",
+      "why_blocking": "This creates a high-probability auth outage risk: the code is supposed to accept v4.6.0 claims for up to ~7 days (or longer if telemetry shows usage), but CI would no longer enforce that behavior. A refactor or unrelated change could silently drop the v4.6.0 branch and only be discovered after deploy when legacy tokens/sessions fail—exactly the failure mode the dual-accept window is meant to prevent.",
+      "fix": "Change Task 4.5 to keep (not remove) v4.6.0 JWT vector tests for the duration of the dual-accept window, and only remove them in the follow-up task that executes after the telemetry cutoff condition is satisfied. Concretely: (1) keep a minimal set of v4.6.0 vectors asserting trust_level→trust_scopes normalization, (2) add/keep v7 vectors asserting canonical emission, and (3) gate removal of v4.6.0 vectors on the same '0 claims for N days' policy documented in Task 2.7."
     }
   ],
   "iteration": 2
