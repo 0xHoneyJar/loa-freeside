@@ -232,12 +232,24 @@ variable "slack_workspace_id" {
   description = "Slack workspace ID for AWS Chatbot integration (leave empty to disable)"
   type        = string
   default     = ""
+
+  # Sprint 321 (medium-6): Validate Slack workspace ID format
+  validation {
+    condition     = var.slack_workspace_id == "" || can(regex("^T[A-Z0-9]+$", var.slack_workspace_id))
+    error_message = "Must be empty or a valid Slack workspace ID (starts with T, e.g. T01ABCDEF)."
+  }
 }
 
 variable "slack_channel_id" {
   description = "Slack channel ID for CloudWatch alarm notifications"
   type        = string
   default     = ""
+
+  # Sprint 321 (medium-6): Validate Slack channel ID format
+  validation {
+    condition     = var.slack_channel_id == "" || can(regex("^C[A-Z0-9]+$", var.slack_channel_id))
+    error_message = "Must be empty or a valid Slack channel ID (starts with C, e.g. C01ABCDEF)."
+  }
 }
 
 # Sprint 7 (320), Task 7.3: Feature flag kill switches
@@ -245,18 +257,36 @@ variable "feature_crypto_payments_enabled" {
   description = "Enable crypto payments (NOWPayments integration)"
   type        = string
   default     = "false"
+
+  # Sprint 321 (medium-6): Validate boolean string
+  validation {
+    condition     = contains(["true", "false"], var.feature_crypto_payments_enabled)
+    error_message = "Must be 'true' or 'false'."
+  }
 }
 
 variable "feature_api_keys_enabled" {
   description = "Enable developer API key management"
   type        = string
   default     = "false"
+
+  # Sprint 321 (medium-6): Validate boolean string
+  validation {
+    condition     = contains(["true", "false"], var.feature_api_keys_enabled)
+    error_message = "Must be 'true' or 'false'."
+  }
 }
 
 variable "feature_web_chat_enabled" {
   description = "Enable web chat widget and standalone chat page"
   type        = string
   default     = "false"
+
+  # Sprint 321 (medium-6): Validate boolean string
+  validation {
+    condition     = contains(["true", "false"], var.feature_web_chat_enabled)
+    error_message = "Must be 'true' or 'false'."
+  }
 }
 
 # =============================================================================

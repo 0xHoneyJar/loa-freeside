@@ -1,0 +1,29 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Found two major issues: invalid tier parsing can falsely verify ownership, and the startup timeout is never cleared or unref’d, leading to leaks and unintended runs after stop.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "path/to/file.ts",
+      "line": 129,
+      "description": "Tier parsing can return NaN, which makes `tier < 1` false and incorrectly treats invalid tiers as verified owners.",
+      "current_code": "```typescript\n  const profile = await getProfileByWallet(communityId, walletAddress);\n  if (!profile) return null;\n\n  const tier = profile.tier ? parseInt(profile.tier, 10) : 0;\n  return { tier };\n```",
+      "fixed_code": "```typescript\n  const profile = await getProfileByWallet(communityId, walletAddress);\n  if (!profile) return null;\n\n  const rawTier = profile.tier ?? 0;\n  const parsedTier = typeof rawTier === 'number' ? rawTier : Number(rawTier);\n  const tier = Number.isFinite(parsedTier) ? parsedTier : 0;\n  return { tier };\n```",
+      "explanation": "This ensures non-numeric or malformed tier values become 0, so ownership is not falsely considered valid."
+    },
+    {
+      "severity": "major",
+      "file": "path/to/file.ts",
+      "line": 156,
+      "description": "The startup `setTimeout` is not tracked, cannot be cleared on stop, and is not `unref`’d. This can trigger a re-verification after `stopReverificationJob` and keep the process alive unnecessarily.",
+      "current_code": "```typescript\nlet reverificationTimer: ReturnType<typeof setInterval> | null = null;\n\nexport function startReverificationJob(deps: OwnershipReverificationDeps): void {\n  const log = deps.logger.child({ job: 'ownership-reverification' });\n\n  // Run initial re-verification after a 60s startup delay\n  setTimeout(() => {\n    reverifyAllThreads({ ...deps, logger: log }).catch((err) => {\n      log.error({ err }, 'Initial re-verification failed');\n    });\n  }, 60_000);\n\n  // Schedule recurring job every 24h\n  reverificationTimer = setInterval(() => {\n    reverifyAllThreads({ ...deps, logger: log }).catch((err) => {\n      log.error({ err }, 'Scheduled re-verification failed');\n    });\n  }, REVERIFICATION_INTERVAL_MS);\n\n  // Don't keep the process alive just for this timer\n  if (reverificationTimer.unref) {\n    reverificationTimer.unref();\n  }\n\n  log.info({ intervalMs: REVERIFICATION_INTERVAL_MS }, 'Background re-verification job started');\n}\n\nexport function stopReverificationJob(): void {\n  if (reverificationTimer) {\n    clearInterval(reverificationTimer);\n    reverificationTimer = null;\n  }\n}\n```",
+      "fixed_code": "```typescript\nlet reverificationTimer: ReturnType<typeof setInterval> | null = null;\nlet startupTimer: ReturnType<typeof setTimeout> | null = null;\n\nexport function startReverificationJob(deps: OwnershipReverificationDeps): void {\n  const log = deps.logger.child({ job: 'ownership-reverification' });\n\n  // Run initial re-verification after a 60s startup delay\n  startupTimer = setTimeout(() => {\n    reverifyAllThreads({ ...deps, logger: log }).catch((err) => {\n      log.error({ err }, 'Initial re-verification failed');\n    });\n  }, 60_000);\n\n  // Don't keep the process alive just for this timer\n  if (startupTimer && typeof startupTimer.unref === 'function') {\n    startupTimer.unref();\n  }\n\n  // Schedule recurring job every 24h\n  reverificationTimer = setInterval(() => {\n    reverifyAllThreads({ ...deps, logger: log }).catch((err) => {\n      log.error({ err }, 'Scheduled re-verification failed');\n    });\n  }, REVERIFICATION_INTERVAL_MS);\n\n  // Don't keep the process alive just for this timer\n  if (reverificationTimer && typeof reverificationTimer.unref === 'function') {\n    reverificationTimer.unref();\n  }\n\n  log.info({ intervalMs: REVERIFICATION_INTERVAL_MS }, 'Background re-verification job started');\n}\n\nexport function stopReverificationJob(): void {\n  if (startupTimer) {\n    clearTimeout(startupTimer);\n    startupTimer = null;\n  }\n  if (reverificationTimer) {\n    clearInterval(reverificationTimer);\n    reverificationTimer = null;\n  }\n}\n```",
+      "explanation": "Tracking the startup timeout allows it to be cleared on stop and unref’d to avoid keeping the process alive, preventing unwanted runs after shutdown."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

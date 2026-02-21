@@ -1,0 +1,29 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Tier IDs and bonus mechanics do not meet SDD/acceptance criteria, and bonuses are never applied to credit minting.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "packages/core/billing/credit-packs.ts",
+      "line": 44,
+      "description": "Default tiers use outdated IDs (builder/pro) and omit required bonusBps, violating acceptance criteria for tier naming and bonus configuration.",
+      "current_code": "```typescript\nexport const CREDIT_PACK_TIERS: readonly CreditPackTier[] = [\n  {\n    id: 'starter',\n    name: 'Starter',\n    priceMicro: 5_000_000n,  // $5\n    description: '$5 credit pack — great for trying out the platform',\n  },\n  {\n    id: 'builder',\n    name: 'Builder',\n    priceMicro: 10_000_000n, // $10\n    description: '$10 credit pack — for regular builders',\n  },\n  {\n    id: 'pro',\n    name: 'Pro',\n    priceMicro: 25_000_000n, // $25\n    description: '$25 credit pack — best value for power users',\n  },\n];\n```",
+      "fixed_code": "```typescript\nexport const CREDIT_PACK_TIERS: readonly CreditPackTier[] = [\n  {\n    id: 'starter',\n    name: 'Starter',\n    priceMicro: 5_000_000n,  // $5\n    bonusBps: 0,\n    description: '$5 credit pack — great for trying out the platform',\n  },\n  {\n    id: 'standard',\n    name: 'Standard',\n    priceMicro: 10_000_000n, // $10\n    bonusBps: 500, // 5%\n    description: '$10 credit pack — for regular builders',\n  },\n  {\n    id: 'premium',\n    name: 'Premium',\n    priceMicro: 25_000_000n, // $25\n    bonusBps: 1000, // 10%\n    description: '$25 credit pack — best value for power users',\n  },\n];\n```",
+      "explanation": "Updates the tier IDs to standard/premium as required and adds bonusBps for all tiers, matching the specified 0%, 5%, and 10% bonuses."
+    },
+    {
+      "severity": "major",
+      "file": "packages/core/billing/credit-packs.ts",
+      "line": 77,
+      "description": "Bonus basis points are never applied; resolveCreditPack/validateTierConfig only use calculateCredits, so minted credits are incorrect for Standard/Premium.",
+      "current_code": "```typescript\nexport function resolveCreditPack(\n  packId: string,\n  markupFactor: number,\n  tiers: readonly CreditPackTier[] = CREDIT_PACK_TIERS,\n): ResolvedCreditPack | null {\n  const tier = tiers.find(t => t.id === packId);\n  if (!tier) return null;\n\n  const creditsMicro = calculateCredits(tier.priceMicro, markupFactor);\n  return { tier, creditsMicro };\n}\n\nexport function validateTierConfig(\n  markupFactor: number,\n  tiers: readonly CreditPackTier[] = CREDIT_PACK_TIERS,\n): string[] {\n  const errors: string[] = [];\n\n  for (const tier of tiers) {\n    try {\n      const credits = calculateCredits(tier.priceMicro, markupFactor);\n      if (credits < MIN_CREDIT_ISSUANCE) {\n        errors.push(\n          `Tier \"${tier.id}\" yields ${credits} credits, below minimum ${MIN_CREDIT_ISSUANCE}`,\n        );\n      }\n    } catch (e) {\n      errors.push(`Tier \"${tier.id}\": ${(e as Error).message}`);\n    }\n  }\n\n  return errors;\n}\n```",
+      "fixed_code": "```typescript\nfunction applyBonusBps(baseCreditsMicro: bigint, bonusBps: number): bigint {\n  if (bonusBps <= 0) return baseCreditsMicro;\n  const bonus = (baseCreditsMicro * BigInt(bonusBps)) / 10_000n;\n  return baseCreditsMicro + bonus;\n}\n\nexport function resolveCreditPack(\n  packId: string,\n  markupFactor: number,\n  tiers: readonly CreditPackTier[] = CREDIT_PACK_TIERS,\n): ResolvedCreditPack | null {\n  const tier = tiers.find(t => t.id === packId);\n  if (!tier) return null;\n\n  const baseCreditsMicro = calculateCredits(tier.priceMicro, markupFactor);\n  const creditsMicro = applyBonusBps(baseCreditsMicro, tier.bonusBps);\n  return { tier, creditsMicro };\n}\n\nexport function validateTierConfig(\n  markupFactor: number,\n  tiers: readonly CreditPackTier[] = CREDIT_PACK_TIERS,\n): string[] {\n  const errors: string[] = [];\n\n  for (const tier of tiers) {\n    try {\n      const baseCreditsMicro = calculateCredits(tier.priceMicro, markupFactor);\n      const credits = applyBonusBps(baseCreditsMicro, tier.bonusBps);\n      if (credits < MIN_CREDIT_ISSUANCE) {\n        errors.push(\n          `Tier \"${tier.id}\" yields ${credits} credits, below minimum ${MIN_CREDIT_ISSUANCE}`,\n        );\n      }\n    } catch (e) {\n      errors.push(`Tier \"${tier.id}\": ${(e as Error).message}`);\n    }\n  }\n\n  return errors;\n}\n```",
+      "explanation": "Applies bonus basis points using pure BigInt arithmetic to ensure exact bonus credits are added without floating-point math. This yields the required 10,500,000 and 27,500,000 micro-credits for Standard/Premium at markupFactor 1.0."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

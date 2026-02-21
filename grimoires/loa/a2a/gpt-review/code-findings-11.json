@@ -1,0 +1,20 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Route ordering causes potential shadowing of /admin/agents by /admin, making the admin agent dashboard unreachable in some configurations.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "themes/sietch/src/api/server.ts",
+      "line": 481,
+      "description": "The /admin router is mounted before /admin/agents. If billingAdminRouter defines a catch-all or 404 handler, it can intercept /admin/agents and prevent adminAgentRouter from ever being reached.",
+      "current_code": "```typescript\n  // Billing admin routes (v4.0 - Sprint 26)\n  expressApp.use('/admin', billingAdminRouter);\n\n  // Admin agent dashboard routes (Sprint 5 / 318)\n  expressApp.use('/admin/agents', adminAgentRouter);\n  logger.info('Admin agent routes mounted at /admin/agents');\n```",
+      "fixed_code": "```typescript\n  // Admin agent dashboard routes (Sprint 5 / 318)\n  expressApp.use('/admin/agents', adminAgentRouter);\n  logger.info('Admin agent routes mounted at /admin/agents');\n\n  // Billing admin routes (v4.0 - Sprint 26)\n  expressApp.use('/admin', billingAdminRouter);\n```",
+      "explanation": "Mounting the more specific /admin/agents route before /admin guarantees it is matched first and prevents accidental interception by the broader /admin router."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

@@ -243,7 +243,8 @@ resource "aws_cloudwatch_metric_alarm" "agent_redis_evictions" {
 
 # SNS Topic for alerts
 resource "aws_sns_topic" "alerts" {
-  name = "${local.name_prefix}-alerts"
+  name              = "${local.name_prefix}-alerts"
+  kms_master_key_id = "alias/aws/sns"
 
   tags = local.common_tags
 }

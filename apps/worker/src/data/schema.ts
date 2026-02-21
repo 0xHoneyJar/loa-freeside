@@ -201,6 +201,8 @@ export const agentThreads = pgTable(
     communityActiveIdx: index('idx_agent_threads_community').on(table.communityId, table.isActive),
     nftIdx: index('idx_agent_threads_nft').on(table.nftId),
     walletIdx: index('idx_agent_threads_wallet').on(table.ownerWallet),
+    // Sprint 321 (high-3): Partial UNIQUE index to prevent duplicate active threads per (community, nft)
+    uniqueActiveCommunityNft: unique('uq_agent_threads_community_nft_active').on(table.communityId, table.nftId, table.isActive),
   })
 );
 

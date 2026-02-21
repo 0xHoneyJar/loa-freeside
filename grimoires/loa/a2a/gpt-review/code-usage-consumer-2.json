@@ -1,0 +1,29 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Found a billing logic bug: micro-USD to cents conversion silently truncates fractional cents, causing underbilling; must validate divisibility or fail.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "UsageNatsConsumer.ts",
+      "line": 86,
+      "description": "micro-USD to cents conversion silently truncates fractional cents (micro % 10,000), causing underbilling and violating exact conversion requirement.",
+      "current_code": "```typescript\n/** Convert micro-USD BigInt to cents (number) — bounded */\nfunction microUsdToCents(micro: bigint): number {\n  // 1 USD = 1,000,000 micro-USD = 100 cents → 1 cent = 10,000 micro-USD\n  return Number(micro / 10_000n);\n}\n```",
+      "fixed_code": "```typescript\n/** Convert micro-USD BigInt to cents (number) — bounded */\nfunction microUsdToCents(micro: bigint): number {\n  // 1 USD = 1,000,000 micro-USD = 100 cents → 1 cent = 10,000 micro-USD\n  const remainder = micro % 10_000n;\n  if (remainder !== 0n) {\n    throw new Error('validation: cost_micro_usd must be divisible by 10,000 to convert to cents exactly');\n  }\n  return Number(micro / 10_000n);\n}\n```",
+      "explanation": "This prevents silent truncation of fractional cents and enforces an exact conversion at the system boundary."
+    },
+    {
+      "severity": "major",
+      "file": "UsageNatsConsumer.ts",
+      "line": 44,
+      "description": "If microUsdToCents throws, it currently escapes without being classified as non-retryable terminal validation; must include conversion in the same validation block.",
+      "current_code": "```typescript\n// 2. Parse cost with validation (non-retryable on malformed values)\nlet costMicro: bigint;\ntry {\n  costMicro = parseMicroUsd(event.cost_micro_usd);\n} catch (err) {\n  this.log.error(\n    { reservationId: event.budget_reservation_id, costRaw: event.cost_micro_usd, err },\n    'Invalid cost_micro_usd — terminal (will not retry)',\n  );\n  return { success: false, retryable: false, error: err instanceof Error ? err : new Error(String(err)) };\n}\n\n// 3. Finalize budget reservation\ntry {\n  const result = await this.budgetManager.finalize({\n    communityId: event.community_id,\n    userId: event.user_wallet,\n    idempotencyKey: event.budget_reservation_id,\n    actualCost: microUsdToCents(costMicro),\n    usage: {\n      promptTokens: event.input_tokens,\n      completionTokens: event.output_tokens,\n      costUsd: microUsdToUsd(costMicro),\n    },\n    modelAlias: event.pool_used,\n    traceId: event.budget_reservation_id,\n  });\n```",
+      "fixed_code": "```typescript\n// 2. Parse cost with validation (non-retryable on malformed values)\nlet costMicro: bigint;\nlet costCents: number;\nlet costUsd: number;\ntry {\n  costMicro = parseMicroUsd(event.cost_micro_usd);\n  costCents = microUsdToCents(costMicro);\n  costUsd = microUsdToUsd(costMicro);\n} catch (err) {\n  this.log.error(\n    { reservationId: event.budget_reservation_id, costRaw: event.cost_micro_usd, err },\n    'Invalid cost_micro_usd — terminal (will not retry)',\n  );\n  return { success: false, retryable: false, error: err instanceof Error ? err : new Error(String(err)) };\n}\n\n// 3. Finalize budget reservation\ntry {\n  const result = await this.budgetManager.finalize({\n    communityId: event.community_id,\n    userId: event.user_wallet,\n    idempotencyKey: event.budget_reservation_id,\n    actualCost: costCents,\n    usage: {\n      promptTokens: event.input_tokens,\n      completionTokens: event.output_tokens,\n      costUsd: costUsd,\n    },\n    modelAlias: event.pool_used,\n    traceId: event.budget_reservation_id,\n  });\n```",
+      "explanation": "By performing conversion inside the validation try/catch, any non-divisible micro-USD values are treated as terminal validation errors instead of crashing the handler or being misclassified."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

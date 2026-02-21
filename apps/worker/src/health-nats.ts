@@ -20,7 +20,7 @@ export interface NatsConsumerStats {
 }
 
 export interface NatsHealthChecker {
-  getNatsStatus: () => { connected: boolean };
+  getNatsStatus: () => { connected: boolean; gatewayDegraded?: boolean };
   getCommandConsumerStats: () => NatsConsumerStats;
   getEventConsumerStats: () => NatsConsumerStats;
   getEligibilityConsumerStats: () => NatsConsumerStats;
@@ -193,6 +193,7 @@ async function getHealthStatus(
 
 /**
  * Check if worker is ready to accept traffic
+ * Sprint 321 (high-5): Returns false when agent gateway is degraded
  */
 async function checkReadiness(checker: NatsHealthChecker): Promise<boolean> {
   const natsStatus = checker.getNatsStatus();
@@ -204,5 +205,7 @@ async function checkReadiness(checker: NatsHealthChecker): Promise<boolean> {
   // 1. NATS connected
   // 2. At least command or event consumer running
   // 3. Redis connected
-  return natsStatus.connected && (commandStats.running || eventStats.running) && redisConnected;
+  // 4. Agent gateway not degraded (Sprint 321, high-5)
+  const baseReady = natsStatus.connected && (commandStats.running || eventStats.running) && redisConnected;
+  return baseReady && !natsStatus.gatewayDegraded;
 }

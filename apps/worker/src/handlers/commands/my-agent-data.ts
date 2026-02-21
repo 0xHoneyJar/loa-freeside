@@ -11,6 +11,7 @@ import { agentThreads, type NewAgentThread } from '../../data/schema.js';
 import * as schema from '../../data/schema.js';
 import { getDatabase } from '../../data/database.js';
 import { randomBytes } from 'node:crypto';
+import { normalizeWallet } from '../../utils/normalize-wallet.js';
 
 type DB = PostgresJsDatabase<typeof schema>;
 
@@ -91,7 +92,7 @@ export async function getActiveThreadsByWallet(
     .from(agentThreads)
     .where(
       and(
-        eq(agentThreads.ownerWallet, ownerWallet.toLowerCase()),
+        eq(agentThreads.ownerWallet, normalizeWallet(ownerWallet)),
         eq(agentThreads.isActive, 1),
       ),
     );
@@ -107,15 +108,33 @@ export async function getAllActiveThreads(
     .where(eq(agentThreads.isActive, 1));
 }
 
-/** Insert a new agent thread record */
+/**
+ * Insert a new agent thread record, or return the existing active thread on conflict.
+ * Sprint 321 (high-3): Insert-or-find pattern to prevent race condition duplicates.
+ *
+ * @returns The inserted or existing thread record
+ */
 export async function insertAgentThread(
   db: DB,
   data: Omit<NewAgentThread, 'id' | 'isActive'>,
-): Promise<void> {
+): Promise<typeof agentThreads.$inferSelect> {
   const id = randomBytes(8).toString('hex');
-  await db.insert(agentThreads).values({
-    id,
-    isActive: 1,
-    ...data,
-  });
+  try {
+    await db.insert(agentThreads).values({
+      id,
+      isActive: 1,
+      ...data,
+    });
+    // Return the just-inserted row
+    const inserted = await findActiveThread(db, data.nftId, data.communityId);
+    return inserted!;
+  } catch (err: unknown) {
+    // Handle UNIQUE constraint violation — return existing thread
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes('unique') || message.includes('UNIQUE') || message.includes('duplicate key') || message.includes('23505')) {
+      const existing = await findActiveThread(db, data.nftId, data.communityId);
+      if (existing) return existing;
+    }
+    throw err;
+  }
 }

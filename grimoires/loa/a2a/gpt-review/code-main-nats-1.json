@@ -1,0 +1,47 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Found multiple shutdown and connection lifecycle bugs that can cause startup race conditions and resource leaks.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "src/index-nats.ts",
+      "line": 88,
+      "description": "BudgetManager's Redis connection is created but never awaited, which can race with usage consumption and cause Lua-script failures on a not-yet-ready connection.",
+      "current_code": "```typescript\n  // Create dedicated Redis connection for BudgetManager (uses Lua scripts)\n  budgetRedis = new Redis(config.redisUrl, {\n    maxRetriesPerRequest: 3,\n    retryStrategy: (times) => Math.min(times * 200, 5000),\n    lazyConnect: false,\n  });\n  const budgetManager = new BudgetManager(budgetRedis, logger);\n```",
+      "fixed_code": "```typescript\n  // Create dedicated Redis connection for BudgetManager (uses Lua scripts)\n  budgetRedis = new Redis(config.redisUrl, {\n    maxRetriesPerRequest: 3,\n    retryStrategy: (times) => Math.min(times * 200, 5000),\n    lazyConnect: false,\n  });\n  await budgetRedis.connect();\n  logger.info('BudgetManager Redis connection established');\n  const budgetManager = new BudgetManager(budgetRedis, logger);\n```",
+      "explanation": "Awaiting `connect()` ensures the Redis connection is ready before usage consumption begins, preventing failures when Lua scripts are invoked on an unready connection."
+    },
+    {
+      "severity": "major",
+      "file": "src/index-nats.ts",
+      "line": 132,
+      "description": "Shutdown uses `Promise.all` without guarding against re-entry or failures; a single rejection prevents closing remaining resources, causing leaks.",
+      "current_code": "```typescript\nasync function shutdown(signal: string): Promise<void> {\n  logger.info({ signal }, 'Shutdown signal received, starting graceful shutdown');\n\n  // Stop health server first\n  if (healthServer) {\n    healthServer.close();\n    logger.info('Health server closed');\n  }\n\n  // Stop consumers (but keep connections open to finish in-flight)\n  const stopPromises: Promise<void>[] = [];\n\n  if (commandConsumer) {\n    stopPromises.push(commandConsumer.stop());\n  }\n  if (eventConsumer) {\n    stopPromises.push(eventConsumer.stop());\n  }\n  if (eligibilityConsumer) {\n    stopPromises.push(eligibilityConsumer.stop());\n  }\n  if (usageConsumer) {\n    stopPromises.push(usageConsumer.stop());\n  }\n\n  await Promise.all(stopPromises);\n  logger.info('NATS consumers stopped');\n\n  // Close connections\n  await Promise.all([\n    natsClient?.close(),\n    stateManager?.close(),\n    budgetRedis?.quit(),\n  ]);\n\n  logger.info('All connections closed, worker shutdown complete');\n  process.exit(0);\n}\n```",
+      "fixed_code": "```typescript\nlet isShuttingDown = false;\n\nasync function shutdown(signal: string, exitCode = 0): Promise<void> {\n  if (isShuttingDown) {\n    logger.warn({ signal }, 'Shutdown already in progress');\n    return;\n  }\n  isShuttingDown = true;\n\n  logger.info({ signal }, 'Shutdown signal received, starting graceful shutdown');\n\n  // Stop health server first\n  if (healthServer) {\n    healthServer.close();\n    logger.info('Health server closed');\n  }\n\n  // Stop consumers (but keep connections open to finish in-flight)\n  const stopPromises: Promise<void>[] = [];\n\n  if (commandConsumer) {\n    stopPromises.push(commandConsumer.stop());\n  }\n  if (eventConsumer) {\n    stopPromises.push(eventConsumer.stop());\n  }\n  if (eligibilityConsumer) {\n    stopPromises.push(eligibilityConsumer.stop());\n  }\n  if (usageConsumer) {\n    stopPromises.push(usageConsumer.stop());\n  }\n\n  await Promise.allSettled(stopPromises);\n  logger.info('NATS consumers stopped');\n\n  // Close connections\n  await Promise.allSettled([\n    natsClient?.close(),\n    stateManager?.close(),\n    budgetRedis\n      ? budgetRedis.quit().catch((err) => {\n          budgetRedis.disconnect();\n          throw err;\n        })\n      : undefined,\n  ]);\n\n  logger.info('All connections closed, worker shutdown complete');\n  process.exit(exitCode);\n}\n```",
+      "explanation": "Using `Promise.allSettled` ensures all resources are attempted even if one fails, and adding a re-entry guard prevents double shutdown from leaving resources in inconsistent states."
+    },
+    {
+      "severity": "major",
+      "file": "src/index-nats.ts",
+      "line": 175,
+      "description": "Uncaught exceptions and unhandled rejections exit immediately without cleanup, leaking NATS and Redis resources.",
+      "current_code": "```typescript\nprocess.on('uncaughtException', (error) => {\n  logger.fatal({ error }, 'Uncaught exception, shutting down');\n  process.exit(1);\n});\n\nprocess.on('unhandledRejection', (reason) => {\n  logger.fatal({ reason }, 'Unhandled rejection, shutting down');\n  process.exit(1);\n});\n```",
+      "fixed_code": "```typescript\nprocess.on('uncaughtException', (error) => {\n  logger.fatal({ error }, 'Uncaught exception, shutting down');\n  void shutdown('uncaughtException', 1);\n});\n\nprocess.on('unhandledRejection', (reason) => {\n  logger.fatal({ reason }, 'Unhandled rejection, shutting down');\n  void shutdown('unhandledRejection', 1);\n});\n```",
+      "explanation": "Calling `shutdown()` ensures consumers and Redis/NATS connections are closed before exiting, preventing resource leaks and data loss."
+    },
+    {
+      "severity": "major",
+      "file": "src/index-nats.ts",
+      "line": 165,
+      "description": "Signal handlers do not await shutdown and can race with other shutdown paths; explicit invocation with exit codes improves determinism.",
+      "current_code": "```typescript\nprocess.on('SIGTERM', () => shutdown('SIGTERM'));\nprocess.on('SIGINT', () => shutdown('SIGINT'));\n```",
+      "fixed_code": "```typescript\nprocess.on('SIGTERM', () => void shutdown('SIGTERM', 0));\nprocess.on('SIGINT', () => void shutdown('SIGINT', 0));\n```",
+      "explanation": "Explicitly invoking `shutdown()` with an exit code prevents dangling promises from being ignored and harmonizes exit behavior with error paths."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

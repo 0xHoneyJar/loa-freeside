@@ -1,0 +1,38 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Found critical BigInt precision loss and missing base URL validation plus unsafe expiresAt handling.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "src/commands/buy-credits.ts",
+      "line": 118,
+      "description": "Credits are formatted using Number(resolved.creditsMicro), which can overflow and lose precision for BigInt micro-credits.",
+      "current_code": "```typescript\n{\n  name: 'Credits',\n  value: `${(Number(resolved.creditsMicro) / 1_000_000).toFixed(1)} credits`,\n  inline: true,\n},\n```",
+      "fixed_code": "```typescript\n// helper near top-level\nfunction formatCreditsFromMicro(creditsMicro: bigint): string {\n  const whole = creditsMicro / 1_000_000n;\n  const oneDecimal = (creditsMicro % 1_000_000n) / 100_000n; // 1 decimal place\n  return `${whole}.${oneDecimal.toString()}`;\n}\n\n// ...inside embed fields\n{\n  name: 'Credits',\n  value: `${formatCreditsFromMicro(resolved.creditsMicro)} credits`,\n  inline: true,\n},\n```",
+      "explanation": "Avoids converting BigInt to Number, preventing precision loss for large credit values and formatting safely with integer math."
+    },
+    {
+      "severity": "major",
+      "file": "src/commands/buy-credits.ts",
+      "line": 86,
+      "description": "Payment is created even if baseUrl is empty, resulting in an invalid IPN callback URL and failed webhook confirmation.",
+      "current_code": "```typescript\nconst baseUrl = config.server?.publicUrl || config.server?.baseUrl || '';\nconst payment = await cryptoProvider.createPayment({\n  communityId: interaction.guildId || 'direct',\n  tier: tierId as any,\n  ipnCallbackUrl: `${baseUrl}/api/crypto/webhook`,\n  metadata: {\n    discord_user_id: interaction.user.id,\n    discord_guild_id: interaction.guildId || '',\n    pack_id: tierId,\n    credits_micro: resolved.creditsMicro.toString(),\n  },\n});\n```",
+      "fixed_code": "```typescript\nconst baseUrl = config.server?.publicUrl ?? config.server?.baseUrl;\nif (!baseUrl) {\n  await interaction.reply({\n    content: 'Payment service is misconfigured. Please try again later.',\n    ephemeral: true,\n  });\n  return;\n}\n\nconst payment = await cryptoProvider.createPayment({\n  communityId: interaction.guildId || 'direct',\n  tier: tierId as any,\n  ipnCallbackUrl: `${baseUrl}/api/crypto/webhook`,\n  metadata: {\n    discord_user_id: interaction.user.id,\n    discord_guild_id: interaction.guildId || '',\n    pack_id: tierId,\n    credits_micro: resolved.creditsMicro.toString(),\n  },\n});\n```",
+      "explanation": "Prevents creation of payments with an empty/invalid IPN callback URL, avoiding failed webhook confirmations."
+    },
+    {
+      "severity": "major",
+      "file": "src/commands/buy-credits.ts",
+      "line": 137,
+      "description": "Assumes payment.expiresAt is a Date; if the provider returns a string/number, this will throw or create an invalid timestamp.",
+      "current_code": "```typescript\n{\n  name: 'Expires',\n  value: `<t:${Math.floor(payment.expiresAt.getTime() / 1000)}:R>`,\n  inline: true,\n},\n```",
+      "fixed_code": "```typescript\nconst expiresAt = payment.expiresAt instanceof Date\n  ? payment.expiresAt\n  : new Date(payment.expiresAt);\nif (Number.isNaN(expiresAt.getTime())) {\n  throw new Error('Invalid payment expiration time');\n}\n\n// ...inside embed fields\n{\n  name: 'Expires',\n  value: `<t:${Math.floor(expiresAt.getTime() / 1000)}:R>`,\n  inline: true,\n},\n```",
+      "explanation": "Safely normalizes expiresAt to a Date and ensures it's valid before formatting, preventing runtime errors."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

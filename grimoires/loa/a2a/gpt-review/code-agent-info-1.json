@@ -1,0 +1,38 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Found tier parsing and config validation bugs plus missing anti‑narration sanitization for aliases; fixes provided.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "agent-info.ts",
+      "line": 86,
+      "description": "Tier parsing accepts non-integer values and duplicates parsing logic in two branches; this can yield incorrect tiers or unexpected mapping lookups.",
+      "current_code": "```typescript\n        const rawTier = profile.tier ?? 0;\n        const parsed = typeof rawTier === 'number' ? rawTier : Number(rawTier);\n        tier = Number.isFinite(parsed) ? parsed : 0;\n```\n```typescript\n        const rawTier = profile.tier ?? 0;\n        const parsed = typeof rawTier === 'number' ? rawTier : Number(rawTier);\n        tier = Number.isFinite(parsed) ? parsed : 0;\n```",
+      "fixed_code": "```typescript\n// Add once near helper section\nfunction parseTier(raw: unknown): number {\n  const parsed = typeof raw === 'number' ? raw : Number(raw);\n  return Number.isInteger(parsed) ? parsed : 0;\n}\n```\n```typescript\n        const rawTier = profile.tier ?? 0;\n        tier = parseTier(rawTier);\n```\n```typescript\n        const rawTier = profile.tier ?? 0;\n        tier = parseTier(rawTier);\n```",
+      "explanation": "Using a single helper enforces integer-only tiers and prevents NaN/float values from slipping through, making tier mapping robust and consistent."
+    },
+    {
+      "severity": "major",
+      "file": "agent-info.ts",
+      "line": 132,
+      "description": "Missing validation for pool configuration; if accessLevel maps to no pool, the embed will show incomplete or incorrect data rather than a proper error.",
+      "current_code": "```typescript\n      const { accessLevel } = mapping;\n      const poolConfig = ACCESS_LEVEL_POOLS[accessLevel];\n      const agentName = sanitizeAntiNarration(`Tier ${tier} Agent`);\n```\n```typescript\n          { name: 'Default Pool', value: POOL_DISPLAY[poolConfig?.default] ?? poolConfig?.default ?? 'Standard', inline: true },\n          { name: 'Available Capabilities', value: poolList || 'Quick Response', inline: false },\n```",
+      "fixed_code": "```typescript\n      const { accessLevel } = mapping;\n      const poolConfig = ACCESS_LEVEL_POOLS[accessLevel];\n      if (!poolConfig) {\n        await discord.editOriginal(interactionToken, {\n          embeds: [createErrorEmbed('Unable to resolve pool configuration for this access level.')],\n        });\n        return 'ack';\n      }\n      const agentName = sanitizeAntiNarration(`Tier ${tier} Agent`);\n```\n```typescript\n          { name: 'Default Pool', value: POOL_DISPLAY[poolConfig.default] ?? poolConfig.default ?? 'Standard', inline: true },\n          { name: 'Available Capabilities', value: poolList || 'Quick Response', inline: false },\n```",
+      "explanation": "Explicitly handling missing pool configuration prevents silent failures and ensures the command returns a clear error when access level data is inconsistent."
+    },
+    {
+      "severity": "major",
+      "file": "agent-info.ts",
+      "line": 157,
+      "description": "Model aliases are displayed without anti-narration sanitization and can throw if aliases is undefined, violating the 'no forbidden identity terms' requirement and risking runtime errors.",
+      "current_code": "```typescript\n          { name: 'Model Aliases', value: mapping.aliases.join(', '), inline: false },\n```",
+      "fixed_code": "```typescript\n      const safeAliases = Array.isArray(mapping.aliases)\n        ? mapping.aliases.map((a) => sanitizeAntiNarration(String(a)))\n        : [];\n```\n```typescript\n          { name: 'Model Aliases', value: safeAliases.join(', ') || 'Standard', inline: false },\n```",
+      "explanation": "Sanitizing and guarding the aliases array prevents forbidden identity terms from leaking and avoids crashes if aliases is missing."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

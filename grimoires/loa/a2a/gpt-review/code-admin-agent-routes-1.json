@@ -1,0 +1,29 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Found SQLite syntax bug and missing wallet pseudonymization with a potential null crash; fixes provided.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "api/routes/admin-agent.ts",
+      "line": 224,
+      "description": "SQLite does not support `NULLS LAST` in ORDER BY, causing a runtime SQL error in the credit lots query.",
+      "current_code": "```typescript\n      const creditLots = db.prepare(`\n        SELECT\n          id, account_id, pool_id, source_type,\n          original_micro, available_micro, reserved_micro, consumed_micro,\n          expires_at, created_at\n        FROM credit_lots\n        WHERE account_id IN (${placeholders}) AND available_micro > 0\n        ORDER BY expires_at ASC NULLS LAST, created_at ASC\n        LIMIT 20\n      `).all(...accountIds) as Array<{\n        id: string;\n        account_id: string;\n        pool_id: string | null;\n        source_type: string;\n        original_micro: number;\n        available_micro: number;\n        reserved_micro: number;\n        consumed_micro: number;\n        expires_at: string | null;\n        created_at: string;\n      }>;\n```",
+      "fixed_code": "```typescript\n      const creditLots = db.prepare(`\n        SELECT\n          id, account_id, pool_id, source_type,\n          original_micro, available_micro, reserved_micro, consumed_micro,\n          expires_at, created_at\n        FROM credit_lots\n        WHERE account_id IN (${placeholders}) AND available_micro > 0\n        ORDER BY (expires_at IS NULL) ASC, expires_at ASC, created_at ASC\n        LIMIT 20\n      `).all(...accountIds) as Array<{\n        id: string;\n        account_id: string;\n        pool_id: string | null;\n        source_type: string;\n        original_micro: number;\n        available_micro: number;\n        reserved_micro: number;\n        consumed_micro: number;\n        expires_at: string | null;\n        created_at: string;\n      }>;\n```",
+      "explanation": "SQLite doesn't implement `NULLS LAST`. Ordering by `(expires_at IS NULL)` pushes NULLs to the end (0 before 1), preserving the intended ordering without syntax errors."
+    },
+    {
+      "severity": "major",
+      "file": "api/routes/admin-agent.ts",
+      "line": 66,
+      "description": "Wallet addresses are not pseudonymized in the usage endpoint, and owner_wallet can be null which will throw when accessing `.length`.",
+      "current_code": "```typescript\n// =============================================================================\n// Helpers\n// =============================================================================\n\nfunction getPeriodStart(period: 'daily' | 'weekly' | 'monthly'): string {\n  const now = new Date();\n  switch (period) {\n    case 'daily':\n      return now.toISOString().split('T')[0]!;\n    case 'weekly': {\n      const weekAgo = new Date(now);\n      weekAgo.setDate(weekAgo.getDate() - 7);\n      return weekAgo.toISOString().split('T')[0]!;\n    }\n    case 'monthly': {\n      const monthAgo = new Date(now);\n      monthAgo.setMonth(monthAgo.getMonth() - 1);\n      return monthAgo.toISOString().split('T')[0]!;\n    }\n  }\n}\n```\n```typescript\n        userBreakdown: userBreakdown.map(u => ({\n          accountId: u.agent_account_id,\n          entityId: u.agent_entity_id,\n          totalSpendMicro: u.total_spent_micro,\n        })),\n```\n```typescript\n        threads: threads.map(t => ({\n          id: t.id,\n          nftId: t.nft_id,\n          threadId: t.thread_id,\n          // Pseudonymize wallet: show first 6 + last 4 chars\n          ownerWallet: t.owner_wallet.length > 10\n            ? `${t.owner_wallet.slice(0, 6)}...${t.owner_wallet.slice(-4)}`\n            : t.owner_wallet,\n          createdAt: t.created_at,\n          lastActiveAt: t.last_active_at,\n          ownershipVerifiedAt: t.ownership_verified_at,\n        })),\n```",
+      "fixed_code": "```typescript\n// =============================================================================\n// Helpers\n// =============================================================================\n\nfunction getPeriodStart(period: 'daily' | 'weekly' | 'monthly'): string {\n  const now = new Date();\n  switch (period) {\n    case 'daily':\n      return now.toISOString().split('T')[0]!;\n    case 'weekly': {\n      const weekAgo = new Date(now);\n      weekAgo.setDate(weekAgo.getDate() - 7);\n      return weekAgo.toISOString().split('T')[0]!;\n    }\n    case 'monthly': {\n      const monthAgo = new Date(now);\n      monthAgo.setMonth(monthAgo.getMonth() - 1);\n      return monthAgo.toISOString().split('T')[0]!;\n    }\n  }\n}\n\nfunction pseudonymizeWallet(wallet?: string | null): string | null {\n  if (!wallet) return null;\n  return wallet.length > 10\n    ? `${wallet.slice(0, 6)}...${wallet.slice(-4)}`\n    : wallet;\n}\n```\n```typescript\n        userBreakdown: userBreakdown.map(u => ({\n          accountId: u.agent_account_id,\n          entityId: pseudonymizeWallet(u.agent_entity_id),\n          totalSpendMicro: u.total_spent_micro,\n        })),\n```\n```typescript\n        threads: threads.map(t => ({\n          id: t.id,\n          nftId: t.nft_id,\n          threadId: t.thread_id,\n          // Pseudonymize wallet: show first 6 + last 4 chars\n          ownerWallet: pseudonymizeWallet(t.owner_wallet),\n          createdAt: t.created_at,\n          lastActiveAt: t.last_active_at,\n          ownershipVerifiedAt: t.ownership_verified_at,\n        })),\n```",
+      "explanation": "This ensures all wallet-like strings are pseudonymized and prevents runtime errors if `owner_wallet` is null or empty."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

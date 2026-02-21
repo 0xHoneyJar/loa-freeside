@@ -1,0 +1,10 @@
+{
+  "verdict": "SKIPPED",
+  "summary": "GPT review skipped — OpenAI API unavailable (OPENAI_API_KEY not set). Self-review conducted covering: origin validation, per-IP/per-user limits, idle timeout, heartbeat, graceful drain, message size limit, XSS prevention (textContent only), upstream abort on disconnect.",
+  "issues": [],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

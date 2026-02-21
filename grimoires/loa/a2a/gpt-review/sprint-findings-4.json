@@ -1,30 +1,42 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "Sprint 5 is close, but as written it has a couple of migration-safety and test-execution gaps that can cause the implementation to fail or ship a non-idempotent/unsafe migration in production.",
+  "summary": "This sprint plan is close, but several tasks are missing critical dependencies/implementation details (DB migration, CORS source of truth, testability, and concrete fallback behavior) that can realistically cause the sprint to fail or ship incomplete fixes.",
   "blocking_issues": [
     {
-      "location": "Sprint 5 — Task 5.1 acceptance criteria (idempotency + execution order)",
-      "issue": "The proposed SQL sequence `DROP TABLE credit_lots` while `foreign_keys = OFF` can silently delete the parent table while child tables still exist, and the plan does not require validating schema-level FK targets after the rebuild inside the migration itself.",
-      "why_blocking": "With FK enforcement disabled, dropping `credit_lots` is allowed even if `credit_ledger/reservation_lots/credit_debts` reference it. If anything fails between DROP and RENAME (or if the migration is interrupted), the DB can be left in a broken state. Also, `foreign_key_check` only checks row-level integrity; it will not detect that FKs now point at a non-existent table name. This is exactly the class of bug you’re fixing—so the migration needs an in-migration schema validation step or it can still ship broken under partial-failure conditions.",
-      "fix": "Amend Task 5.1 to (a) keep the old table until the new one is fully populated and validated, and (b) add an explicit schema-level FK target verification step in `up()` after the rename. Concretely: use a safer pattern like `CREATE _new; INSERT; CREATE indexes on _new (or after rename); ALTER TABLE credit_lots RENAME TO _old; ALTER TABLE _new RENAME TO credit_lots; DROP TABLE _old;` (so you only drop the old table at the end). Then add a check that `PRAGMA foreign_key_list(credit_ledger)` (and other tables) reference `credit_lots` and that `sqlite_master` contains the referenced table names. Make this part of the migration’s acceptance criteria."
+      "location": "Task 1.3: Fix thread creation race condition (HIGH — high-3)",
+      "issue": "Requires a database-level UNIQUE constraint and/or an ON CONFLICT path, but no task exists to add/verify the required DB schema/index and its migration.",
+      "why_blocking": "Without an actual UNIQUE constraint (or equivalent locking strategy) in the database, the code change cannot guarantee single-thread creation under concurrency; the acceptance criteria ('exactly one thread') will be unachievable in production.",
+      "fix": "Add an explicit task to (a) identify the table/columns representing the thread uniqueness key (e.g., guild_id + nft_id/token_id + wallet), (b) add a UNIQUE index/constraint via migration, (c) deploy migration before code, and (d) add an integration test that proves concurrent inserts resolve to one row."
     },
     {
-      "location": "Sprint 5 — Task 5.1 acceptance criteria (idempotency requirement)",
-      "issue": "The plan requires the migration to be idempotent (“running against a DB that already has tba_deposit … does not error”), but the described SQL (`CREATE TABLE _credit_lots_new`, `INSERT ... SELECT *`, `DROP TABLE credit_lots`) is not idempotent without additional guards and can fail on re-run or on partially-migrated states.",
-      "why_blocking": "SQLite migrations in production are commonly re-run in dev/test, and partial application can happen (crash mid-migration). Without explicit handling, re-running can hit: `_credit_lots_new already exists`, `credit_lots missing`, or duplicate index names. This will cause CI failures when tests create DBs in different ways, and it can cause operational failure if a migration is retried.",
-      "fix": "Define the exact idempotency strategy in the task: either (1) explicitly drop temp tables if present (`DROP TABLE IF EXISTS _credit_lots_new;`) and use `IF EXISTS/IF NOT EXISTS` for indexes where possible, plus detect whether `tba_deposit` is already in the CHECK and early-return; or (2) remove the idempotency requirement and instead assert migrations are run exactly once (but then update acceptance criteria and test harness accordingly). Given your requirement, add explicit guards for `_credit_lots_new`, `_credit_lots_058_backup/_old`, and index recreation naming collisions."
+      "location": "Task 1.1: Fix SIWE origin validation (HIGH — high-1)",
+      "issue": "Depends on a definitive 'CORS allowed origins list' source, but the plan doesn’t specify where that list lives (env var, config file, middleware) or ensure it matches runtime CORS behavior.",
+      "why_blocking": "If origin validation uses a different list than the actual CORS configuration, you can easily break legitimate logins (false rejects) or keep a bypass (false accepts). The task can’t be implemented correctly without a single source of truth.",
+      "fix": "Add a subtask to locate/define the canonical allowed-origins configuration (e.g., shared config module or env var parsed once) and require SIWE validation to reference that same source. Add tests for: allowed origin passes, disallowed origin 400, missing Origin 400."
     },
     {
-      "location": "Sprint 5 — Task 5.3 acceptance criteria (migration runner scope)",
-      "issue": "Task 5.3 says “Runs all migrations in order (030 through 060+)” which is ambiguous and likely wrong for a repo with 60+ migrations; it risks not actually reproducing the production sequence that triggers the FK corruption.",
-      "why_blocking": "If the test doesn’t run the full real migration chain (from 001 or whatever the actual baseline is), it may miss the exact schema state where 060 runs and therefore fail to catch regressions. This can lead to a false sense of safety and a reintroduction of the bug.",
-      "fix": "Change acceptance criteria to: “Runs the exact same migration runner used in production from the first migration through the latest.” If you truly need a subset, specify the precise starting migration that creates the involved tables and constraints, and assert the schema version before/after. Make the test fail if any migration is skipped."
+      "location": "Task 1.2: Fix rate bucket cleanup logic (HIGH — high-2)",
+      "issue": "Acceptance criteria includes 'Add max nonce count cap for in-memory stores' and 'No memory leak under sustained load' but does not define what store is being capped (bucket map? nonce map?), what the cap value is, or how to verify 'no memory leak'.",
+      "why_blocking": "This is likely to stall implementation/review because it’s not objectively testable and may lead to an incomplete fix (changing AND→OR but leaving the memory growth vector).",
+      "fix": "Specify: (a) which in-memory structures are capped, (b) the eviction strategy (LRU/TTL/size-based), (c) concrete cap values (or formula), and (d) a measurable test (e.g., unit test asserting map size never exceeds N after M requests; or a load test script with acceptance threshold)."
     },
     {
-      "location": "Sprint 5 — Task 5.2 sequencing vs Sprint 4 artifacts",
-      "issue": "Task 5.2 references `cross-system-conservation.test.ts` and `entry-types-consistency.test.ts` workarounds, but those files are also created/modified in earlier sprints; Sprint 5 is marked “independent” yet depends on those files existing in the described form.",
-      "why_blocking": "If Sprint 5 is executed before Sprints 1–4 (as allowed by the plan), Task 5.2 may not apply cleanly (file paths/content may differ or not exist yet), causing the sprint to fail or forcing unplanned rework.",
-      "fix": "Either (a) declare Sprint 5 depends on Sprints 1–4 (or at least on the existence of those tests), or (b) rewrite Task 5.2 acceptance criteria to be conditional: remove workarounds wherever they exist in the current codebase, and ensure all tests pass with FK ON—without hardcoding specific line ranges/files that may not exist yet."
+      "location": "Task 1.4: Normalize wallet addresses consistently (HIGH — high-4)",
+      "issue": "Plan mandates lowercase normalization, but does not address checksum validation (EIP-55) vs normalization, nor does it include a data migration/cleanup for already-stored mixed-case addresses.",
+      "why_blocking": "If existing rows/keys are mixed-case, switching lookups to lowercase can break retrieval (threads not found, cache misses) until data is backfilled. That can cause production regressions and make the sprint fail acceptance ('No mixed-case stored or compared').",
+      "fix": "Add a task to (a) decide policy: accept any input, normalize to lowercase for storage, optionally validate checksum when provided; (b) backfill/update existing persisted addresses to normalized form (migration or one-off script); (c) add tests covering mixed-case input still finds existing records."
+    },
+    {
+      "location": "Task 1.5: Handle agent gateway init failure gracefully (HIGH — high-5)",
+      "issue": "Fallback behavior is underspecified: when createAgentGateway() fails at startup, the worker may not be able to send messages to threads at all (depending on what components are unavailable), and the plan doesn’t specify the exact mechanism used to deliver the user-facing error.",
+      "why_blocking": "If the gateway is the dependency required to post to Discord/threads, a 'fallback handler' may not be able to message users, making the acceptance criteria impossible. This can lead to an implemented no-op that still results in silence.",
+      "fix": "Clarify the failure mode and delivery path: (a) what still works when gateway init fails (Discord client? NATS subscription?); (b) where the fallback handler is registered (NATS consumer vs Discord command handler); (c) implement a deterministic behavior (e.g., respond to slash command immediately with ephemeral error; or post to thread via Discord client directly). Add a test or a manual runbook step to simulate gateway failure and verify the user-visible message."
+    },
+    {
+      "location": "Tasks 1.6–1.8 (MEDIUM findings)",
+      "issue": "Tasks reference files but not the specific variables/resources to change, and there are no acceptance criteria ensuring the changes are actually applied end-to-end (e.g., terraform plan shows diff; apply succeeds; SNS publishes still work with KMS).",
+      "why_blocking": "Infra tasks often fail late due to missing permissions/policies (KMS key policy, SNS service principal) or because the variable names don’t match actual modules. Without naming the exact vars/resources, implementation can stall or ship incomplete.",
+      "fix": "For each: include the exact variable names and the exact Terraform resource address. For SNS encryption, add acceptance criteria: terraform plan shows kms_master_key_id set; apply succeeds in target env; CloudWatch alarm can publish to the encrypted topic (permissions validated)."
     }
   ],
   "question": "",

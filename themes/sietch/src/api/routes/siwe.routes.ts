@@ -250,9 +250,18 @@ siweRouter.post('/verify', async (req: Request, res: Response) => {
       return;
     }
 
-    // Issue session token
+    // Issue session token — strict origin validation (Sprint 321, high-1)
+    if (!req.headers.origin) {
+      res.status(400).json({ error: 'Missing Origin header' });
+      return;
+    }
+    if (!config.cors.allowedOrigins.includes(req.headers.origin) && !config.cors.allowedOrigins.includes('*')) {
+      res.status(400).json({ error: 'Invalid origin' });
+      return;
+    }
+
     const secrets = getSessionSecrets();
-    const origin = req.headers.origin || parsed.domain;
+    const origin = req.headers.origin;
     const token = createSessionToken(
       parsed.address,
       origin,

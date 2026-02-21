@@ -1,0 +1,29 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Graceful shutdown is bypassed on fatal errors, causing resource leaks and non-deterministic shutdown behavior.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "main-nats.ts",
+      "line": 149,
+      "description": "uncaughtException/unhandledRejection handlers call process.exit immediately, skipping graceful shutdown and leaving NATS/Redis connections open.",
+      "current_code": "```typescript\nprocess.on('uncaughtException', (error) => {\n  logger.fatal({ error }, 'Uncaught exception, shutting down');\n  process.exit(1);\n});\n\nprocess.on('unhandledRejection', (reason) => {\n  logger.fatal({ reason }, 'Unhandled rejection, shutting down');\n  process.exit(1);\n});\n```",
+      "fixed_code": "```typescript\n// Guard to prevent multiple shutdowns\nlet shuttingDown = false;\n\n/**\n * Graceful shutdown\n */\nasync function shutdown(signal: string, exitCode = 0): Promise<void> {\n  if (shuttingDown) return;\n  shuttingDown = true;\n  logger.info({ signal }, 'Shutdown signal received, starting graceful shutdown');\n\n  try {\n    // Stop health server first\n    if (healthServer) {\n      healthServer.close();\n      logger.info('Health server closed');\n    }\n\n    // Stop consumers (but keep connections open to finish in-flight)\n    const stopPromises: Promise<void>[] = [];\n\n    if (commandConsumer) {\n      stopPromises.push(commandConsumer.stop());\n    }\n    if (eventConsumer) {\n      stopPromises.push(eventConsumer.stop());\n    }\n    if (eligibilityConsumer) {\n      stopPromises.push(eligibilityConsumer.stop());\n    }\n    if (usageConsumer) {\n      stopPromises.push(usageConsumer.stop());\n    }\n\n    await Promise.all(stopPromises);\n    logger.info('NATS consumers stopped');\n\n    // Close connections\n    await Promise.all([\n      natsClient?.close(),\n      stateManager?.close(),\n      budgetRedis?.quit(),\n    ]);\n\n    logger.info('All connections closed, worker shutdown complete');\n  } catch (err) {\n    logger.error({ err }, 'Error during shutdown');\n  } finally {\n    process.exit(exitCode);\n  }\n}\n\nprocess.on('uncaughtException', (error) => {\n  logger.fatal({ error }, 'Uncaught exception, shutting down');\n  void shutdown('uncaughtException', 1);\n});\n\nprocess.on('unhandledRejection', (reason) => {\n  logger.fatal({ reason }, 'Unhandled rejection, shutting down');\n  void shutdown('unhandledRejection', 1);\n});\n```",
+      "explanation": "This ensures fatal errors still trigger the same graceful shutdown path, closing consumers and Redis/NATS connections before exiting with the correct exit code."
+    },
+    {
+      "severity": "major",
+      "file": "main-nats.ts",
+      "line": 127,
+      "description": "shutdown can be invoked multiple times (SIGTERM + SIGINT), causing duplicated stop/close attempts and potential errors.",
+      "current_code": "```typescript\nasync function shutdown(signal: string): Promise<void> {\n  logger.info({ signal }, 'Shutdown signal received, starting graceful shutdown');\n  // ...\n  process.exit(0);\n}\n\nprocess.on('SIGTERM', () => shutdown('SIGTERM'));\nprocess.on('SIGINT', () => shutdown('SIGINT'));\n```",
+      "fixed_code": "```typescript\n// Guard to prevent multiple shutdowns\nlet shuttingDown = false;\n\nasync function shutdown(signal: string, exitCode = 0): Promise<void> {\n  if (shuttingDown) return;\n  shuttingDown = true;\n  logger.info({ signal }, 'Shutdown signal received, starting graceful shutdown');\n  // ...\n  process.exit(exitCode);\n}\n\nprocess.on('SIGTERM', () => void shutdown('SIGTERM', 0));\nprocess.on('SIGINT', () => void shutdown('SIGINT', 0));\n```",
+      "explanation": "A shutdown guard prevents concurrent/duplicate shutdown sequences, avoiding double-closing resources and ensuring deterministic shutdown."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

@@ -1,0 +1,56 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "WAF rate limits are misconfigured for the 5‑minute evaluation window, Retry‑After header is missing, and CloudWatch logging lacks the required resource policy.",
+  "issues": [
+    {
+      "severity": "critical",
+      "file": "infrastructure/terraform/waf.tf",
+      "line": 34,
+      "description": "AWS WAF rate-based rules use a 5-minute window; setting limit = 100 enforces 100/5min (≈20/min), not the required 100/min.",
+      "current_code": "```hcl\n    statement {\n      rate_based_statement {\n        limit              = 100\n        aggregate_key_type = \"IP\"\n\n        scope_down_statement {\n          byte_match_statement {\n            search_string         = \"/api/crypto/webhook\"\n            positional_constraint = \"STARTS_WITH\"\n\n            field_to_match {\n              uri_path {}\n            }\n\n            text_transformation {\n              priority = 0\n              type     = \"LOWERCASE\"\n            }\n          }\n        }\n      }\n    }\n```",
+      "fixed_code": "```hcl\n    statement {\n      rate_based_statement {\n        # WAF evaluates over 5 minutes; 100/min => 500/5min\n        limit              = 500\n        aggregate_key_type = \"IP\"\n\n        scope_down_statement {\n          byte_match_statement {\n            search_string         = \"/api/crypto/webhook\"\n            positional_constraint = \"STARTS_WITH\"\n\n            field_to_match {\n              uri_path {}\n            }\n\n            text_transformation {\n              priority = 0\n              type     = \"LOWERCASE\"\n            }\n          }\n        }\n      }\n    }\n```",
+      "explanation": "WAFv2 rate-based rules are evaluated over 5 minutes. Setting 500 enforces the intended 100 requests/minute."
+    },
+    {
+      "severity": "major",
+      "file": "infrastructure/terraform/waf.tf",
+      "line": 78,
+      "description": "Global rate limit uses the same 5-minute window; limit = 2000 is 2000/5min (≈400/min), not 2000/min.",
+      "current_code": "```hcl\n    statement {\n      rate_based_statement {\n        limit              = 2000\n        aggregate_key_type = \"IP\"\n      }\n    }\n```",
+      "fixed_code": "```hcl\n    statement {\n      rate_based_statement {\n        # 2000/min => 10000/5min\n        limit              = 10000\n        aggregate_key_type = \"IP\"\n      }\n    }\n```",
+      "explanation": "Adjusting to 10000 enforces the intended 2000 requests/minute over WAF's 5-minute evaluation window."
+    },
+    {
+      "severity": "major",
+      "file": "infrastructure/terraform/waf.tf",
+      "line": 21,
+      "description": "Custom 429 response lacks a Retry-After header, violating the required Retry-After semantics.",
+      "current_code": "```hcl\n    action {\n      block {\n        custom_response {\n          response_code = 429\n          custom_response_body_key = \"rate-limited\"\n        }\n      }\n    }\n```",
+      "fixed_code": "```hcl\n    action {\n      block {\n        custom_response {\n          response_code            = 429\n          custom_response_body_key = \"rate-limited\"\n\n          custom_response_header {\n            name  = \"Retry-After\"\n            value = \"60\"\n          }\n        }\n      }\n    }\n```",
+      "explanation": "Adding Retry-After ensures clients receive proper throttling guidance; WAF supports static custom headers."
+    },
+    {
+      "severity": "major",
+      "file": "infrastructure/terraform/waf.tf",
+      "line": 65,
+      "description": "The global rate limit rule also returns 429 without a Retry-After header.",
+      "current_code": "```hcl\n    action {\n      block {\n        custom_response {\n          response_code = 429\n          custom_response_body_key = \"rate-limited\"\n        }\n      }\n    }\n```",
+      "fixed_code": "```hcl\n    action {\n      block {\n        custom_response {\n          response_code            = 429\n          custom_response_body_key = \"rate-limited\"\n\n          custom_response_header {\n            name  = \"Retry-After\"\n            value = \"60\"\n          }\n        }\n      }\n    }\n```",
+      "explanation": "Keeps response semantics consistent for all 429 responses."
+    },
+    {
+      "severity": "major",
+      "file": "infrastructure/terraform/waf.tf",
+      "line": 106,
+      "description": "WAF logging to CloudWatch Logs will fail without a log resource policy granting waf.amazonaws.com permissions.",
+      "current_code": "```hcl\nresource \"aws_cloudwatch_log_group\" \"waf\" {\n  name              = \"aws-waf-logs-${local.name_prefix}\"\n  retention_in_days = 30\n\n  tags = merge(local.common_tags, {\n    Service = \"waf\"\n  })\n}\n\nresource \"aws_wafv2_web_acl_logging_configuration\" \"main\" {\n  log_destination_configs = [aws_cloudwatch_log_group.waf.arn]\n  resource_arn            = aws_wafv2_web_acl.main.arn\n\n  logging_filter {\n    default_behavior = \"DROP\"\n\n    filter {\n      behavior    = \"KEEP\"\n      requirement = \"MEETS_ANY\"\n\n      condition {\n        action_condition {\n          action = \"BLOCK\"\n        }\n      }\n    }\n  }\n}\n```",
+      "fixed_code": "```hcl\nresource \"aws_cloudwatch_log_group\" \"waf\" {\n  name              = \"aws-waf-logs-${local.name_prefix}\"\n  retention_in_days = 30\n\n  tags = merge(local.common_tags, {\n    Service = \"waf\"\n  })\n}\n\ndata \"aws_iam_policy_document\" \"waf_logs\" {\n  statement {\n    effect = \"Allow\"\n\n    principals {\n      type        = \"Service\"\n      identifiers = [\"waf.amazonaws.com\"]\n    }\n\n    actions = [\n      \"logs:CreateLogStream\",\n      \"logs:PutLogEvents\"\n    ]\n\n    resources = [\"${aws_cloudwatch_log_group.waf.arn}:*\"]\n  }\n}\n\nresource \"aws_cloudwatch_log_resource_policy\" \"waf_logs\" {\n  policy_name     = \"waf-logs-${local.name_prefix}\"\n  policy_document = data.aws_iam_policy_document.waf_logs.json\n}\n\nresource \"aws_wafv2_web_acl_logging_configuration\" \"main\" {\n  log_destination_configs = [aws_cloudwatch_log_group.waf.arn]\n  resource_arn            = aws_wafv2_web_acl.main.arn\n\n  logging_filter {\n    default_behavior = \"DROP\"\n\n    filter {\n      behavior    = \"KEEP\"\n      requirement = \"MEETS_ANY\"\n\n      condition {\n        action_condition {\n          action = \"BLOCK\"\n        }\n      }\n    }\n  }\n}\n```",
+      "explanation": "WAF requires an explicit CloudWatch Logs resource policy to write log streams/events; without it, logging fails."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

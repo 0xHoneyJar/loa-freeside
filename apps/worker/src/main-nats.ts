@@ -116,6 +116,9 @@ async function main(): Promise<void> {
   // Build NATS event handlers — start with defaults, add message routing if agent enabled
   const natsEventHandlers = createDefaultNatsEventHandlers();
 
+  // Sprint 321 (high-5): Track gateway degraded state for health checks
+  let gatewayDegraded = false;
+
   const agentEnabled = process.env['AGENT_ENABLED'] === 'true';
   if (agentEnabled) {
     try {
@@ -132,7 +135,30 @@ async function main(): Promise<void> {
       // Start background ownership re-verification (24h cycle)
       startReverificationJob({ discord: discordRest, redis: budgetRedis, logger });
     } catch (err) {
-      logger.warn({ err }, 'Agent gateway initialization failed — thread message routing disabled');
+      // Sprint 321 (high-5): Log at error level (not warn) with full context
+      logger.error({ err }, 'Agent gateway initialization failed — registering fallback handler');
+      gatewayDegraded = true;
+
+      // Register fallback handler that uses Discord REST to notify users
+      // NATS + Discord REST are still available even when gateway fails
+      natsEventHandlers.set('message.create', async (payload) => {
+        const channelId = payload.channel_id;
+        if (!channelId) return;
+
+        // Ignore bot messages
+        const author = (payload.data as Record<string, unknown>)?.['author'] as
+          | { bot?: boolean }
+          | undefined;
+        if (author?.bot) return;
+
+        try {
+          await discordRest.sendMessage(channelId, {
+            content: 'Agent is temporarily unavailable. Please try again later.',
+          });
+        } catch (sendErr) {
+          logger.error({ sendErr, channelId }, 'Failed to send fallback error message');
+        }
+      });
     }
   }
 
@@ -162,10 +188,11 @@ async function main(): Promise<void> {
   ]);
   logger.info('NATS consumers started processing messages');
 
-  // Create health checker
+  // Create health checker — Sprint 321 (high-5): include gateway degradation
   const healthChecker: NatsHealthChecker = {
     getNatsStatus: () => ({
       connected: natsClient?.isConnected() ?? false,
+      gatewayDegraded,
     }),
     getCommandConsumerStats: () => commandConsumer?.getStats() ?? { processed: 0, errored: 0, running: false },
     getEventConsumerStats: () => eventConsumer?.getStats() ?? { processed: 0, errored: 0, running: false },

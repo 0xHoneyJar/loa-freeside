@@ -1,0 +1,29 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Audit export leaks internal account IDs instead of pseudonymized wallets and allows header injection via unsanitized filename.",
+  "issues": [
+    {
+      "severity": "critical",
+      "file": "api/routes/admin-agent.ts",
+      "line": 333,
+      "description": "Audit export uses internal account_id for user_wallet, violating requirement to export only pseudonymized wallet addresses.",
+      "current_code": "```typescript\n        // Parse metadata for conservation_result if present\n        let conservationResult: string | null = null;\n        if (row.metadata) {\n          try {\n            const meta = JSON.parse(row.metadata);\n            conservationResult = meta.conservation_result ?? null;\n          } catch {\n            // Malformed metadata — skip conservation field\n          }\n        }\n\n        const line = JSON.stringify({\n          timestamp: row.created_at,\n          operation_type: row.entry_type,\n          amount_micro: row.amount_micro,\n          pool: row.pool_id,\n          user_wallet: pseudonymizeWallet(row.account_id),\n          pre_balance_micro: row.pre_balance_micro,\n          post_balance_micro: row.post_balance_micro,\n          reservation_id: row.reservation_id,\n          reservation_status: row.reservation_status,\n          conservation_result: conservationResult,\n        });\n```",
+      "fixed_code": "```typescript\n        // Parse metadata for conservation_result and user wallet if present\n        let conservationResult: string | null = null;\n        let userWallet: string | null = null;\n        if (row.metadata) {\n          try {\n            const meta = JSON.parse(row.metadata);\n            conservationResult = meta?.conservation_result ?? null;\n            // support common wallet fields\n            userWallet = meta?.user_wallet ?? meta?.wallet ?? meta?.owner_wallet ?? null;\n          } catch {\n            // Malformed metadata — skip conservation and wallet fields\n          }\n        }\n\n        const line = JSON.stringify({\n          timestamp: row.created_at,\n          operation_type: row.entry_type,\n          amount_micro: row.amount_micro,\n          pool: row.pool_id,\n          user_wallet: pseudonymizeWallet(userWallet),\n          pre_balance_micro: row.pre_balance_micro,\n          post_balance_micro: row.post_balance_micro,\n          reservation_id: row.reservation_id,\n          reservation_status: row.reservation_status,\n          conservation_result: conservationResult,\n        });\n```",
+      "explanation": "This fixes the data leak by extracting wallet addresses from metadata and pseudonymizing them, rather than exporting internal account IDs. It preserves conservation_result extraction and keeps JSONL output structure intact."
+    },
+    {
+      "severity": "major",
+      "file": "api/routes/admin-agent.ts",
+      "line": 298,
+      "description": "Content-Disposition filename uses unsanitized communityId, allowing header injection or invalid filenames.",
+      "current_code": "```typescript\n        res.setHeader('Content-Type', 'application/x-ndjson');\n        res.setHeader('Content-Disposition', `attachment; filename=\"audit-${communityId}.jsonl\"`);\n        res.end();\n        return;\n```\n```typescript\n      res.setHeader('Content-Type', 'application/x-ndjson');\n      res.setHeader('Content-Disposition', `attachment; filename=\"audit-${communityId}.jsonl\"`);\n      res.setHeader('X-Record-Count', String(rows.length));\n```",
+      "fixed_code": "```typescript\n        const safeCommunityId = communityId.replace(/[^a-zA-Z0-9_-]/g, '_');\n        res.setHeader('Content-Type', 'application/x-ndjson');\n        res.setHeader('Content-Disposition', `attachment; filename=\"audit-${safeCommunityId}.jsonl\"`);\n        res.end();\n        return;\n```\n```typescript\n      const safeCommunityId = communityId.replace(/[^a-zA-Z0-9_-]/g, '_');\n      res.setHeader('Content-Type', 'application/x-ndjson');\n      res.setHeader('Content-Disposition', `attachment; filename=\"audit-${safeCommunityId}.jsonl\"`);\n      res.setHeader('X-Record-Count', String(rows.length));\n```",
+      "explanation": "Sanitizing the filename prevents CRLF/header injection and ensures a valid filename in the Content-Disposition header."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

@@ -25,6 +25,7 @@ import { getDb, findThreadByThreadId, updateThreadLastActive } from '../commands
 import { TierAccessMapper } from '../../../../../packages/adapters/agent/tier-access-mapper.js';
 import { resolvePoolId } from '../../../../../packages/adapters/agent/pool-mapping.js';
 import { randomUUID } from 'node:crypto';
+import { normalizeWallet } from '../../utils/normalize-wallet.js';
 
 // --------------------------------------------------------------------------
 // Constants
@@ -73,7 +74,7 @@ async function verifyOwnership(
   communityId: string,
   log: Logger,
 ): Promise<OwnershipResult> {
-  const normalizedOwnerWallet = ownerWallet.toLowerCase();
+  const normalizedOwnerWallet = normalizeWallet(ownerWallet);
   const cacheKey = `${OWNERSHIP_CACHE_PREFIX}${threadId}:${userId}:${communityId}:${normalizedOwnerWallet}`;
 
   // Check cache first
@@ -95,8 +96,8 @@ async function verifyOwnership(
     return { verified: false };
   }
 
-  // Check wallet matches thread owner
-  if (profile.walletAddress.toLowerCase() !== normalizedOwnerWallet) {
+  // Check wallet matches thread owner (Sprint 321, high-4: consistent normalization)
+  if (normalizeWallet(profile.walletAddress) !== normalizedOwnerWallet) {
     return { verified: false };
   }
 
