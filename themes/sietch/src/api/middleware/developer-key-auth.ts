@@ -111,32 +111,13 @@ export function recordTokenUsage(keyId: string, tokens: number): void {
   bucket.tpd += tokens;
 }
 
-/** Maximum number of rate limit buckets before LRU eviction (Sprint 321, high-2) */
-const MAX_RATE_BUCKETS = 50_000;
-
 // Periodic cleanup of stale buckets (every 10 minutes)
 setInterval(() => {
   const now = Date.now();
   for (const [keyId, bucket] of rateBuckets) {
-    // Remove buckets where RPM window expired OR TPD window expired (Sprint 321, high-2: AND→OR fix)
-    const rpmWindowExpired = now - bucket.rpmWindowStart > 3_600_000;
-    const tpdWindowExpired = now - bucket.tpdWindowStart > 86_400_000;
-    if (rpmWindowExpired || tpdWindowExpired) {
+    // Remove buckets idle for >1 hour
+    if (now - bucket.rpmWindowStart > 3_600_000 && now - bucket.tpdWindowStart > 86_400_000) {
       rateBuckets.delete(keyId);
-    }
-  }
-
-  // Size-based eviction: if still over cap, evict oldest 10% by rpmWindowStart (LRU approximation)
-  if (rateBuckets.size > MAX_RATE_BUCKETS) {
-    logger.warn(
-      { bucketCount: rateBuckets.size, maxBuckets: MAX_RATE_BUCKETS },
-      'Rate bucket eviction triggered — sustained high cardinality',
-    );
-    const entries = Array.from(rateBuckets.entries())
-      .sort((a, b) => a[1].rpmWindowStart - b[1].rpmWindowStart);
-    const evictCount = Math.ceil(rateBuckets.size * 0.1);
-    for (let i = 0; i < evictCount && i < entries.length; i++) {
-      rateBuckets.delete(entries[i]![0]);
     }
   }
 }, 10 * 60 * 1000).unref();
