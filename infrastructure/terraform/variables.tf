@@ -220,6 +220,45 @@ variable "loa_finn_base_url" {
   default     = "http://loa-finn:3000"
 }
 
+# Sprint 6 (319), Task 6.7: SIWE Auth
+variable "siwe_session_secret_kid" {
+  description = "Key ID (kid) for SIWE session secret routing"
+  type        = string
+  default     = "v1"
+}
+
+# Sprint 7 (320), Task 7.2: Slack alerting integration via AWS Chatbot
+variable "slack_workspace_id" {
+  description = "Slack workspace ID for AWS Chatbot integration (leave empty to disable)"
+  type        = string
+  default     = ""
+}
+
+variable "slack_channel_id" {
+  description = "Slack channel ID for CloudWatch alarm notifications"
+  type        = string
+  default     = ""
+}
+
+# Sprint 7 (320), Task 7.3: Feature flag kill switches
+variable "feature_crypto_payments_enabled" {
+  description = "Enable crypto payments (NOWPayments integration)"
+  type        = string
+  default     = "false"
+}
+
+variable "feature_api_keys_enabled" {
+  description = "Enable developer API key management"
+  type        = string
+  default     = "false"
+}
+
+variable "feature_web_chat_enabled" {
+  description = "Enable web chat widget and standalone chat page"
+  type        = string
+  default     = "false"
+}
+
 # =============================================================================
 # loa-finn Service (Cycle 036)
 # =============================================================================

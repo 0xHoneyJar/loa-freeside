@@ -232,6 +232,10 @@ const configSchema = z.object({
     gatewayProxyEnabled: envBooleanSchema.default(false),
     // Enable NOWPayments crypto payment integration (Sprint 155)
     cryptoPaymentsEnabled: envBooleanSchema.default(false),
+    // Enable developer API key management (Sprint 320, Task 7.3)
+    apiKeysEnabled: envBooleanSchema.default(false),
+    // Enable web chat widget and standalone chat page (Sprint 320, Task 7.3)
+    webChatEnabled: envBooleanSchema.default(false),
   }),
 
   // Telegram Configuration (v4.1 - Sprint 30)
@@ -510,6 +514,8 @@ function parseConfig() {
       vaultEnabled: process.env.FEATURE_VAULT_ENABLED ?? 'false',
       gatewayProxyEnabled: process.env.USE_GATEWAY_PROXY ?? 'false',
       cryptoPaymentsEnabled: process.env.FEATURE_CRYPTO_PAYMENTS_ENABLED ?? 'false',
+      apiKeysEnabled: process.env.FEATURE_API_KEYS_ENABLED ?? 'false',
+      webChatEnabled: process.env.FEATURE_WEB_CHAT_ENABLED ?? 'false',
     },
     // Telegram Configuration (v4.1 - Sprint 30)
     telegram: {
@@ -747,6 +753,10 @@ export interface Config {
     gatewayProxyEnabled: boolean;
     /** Enable NOWPayments crypto payment integration (Sprint 155) */
     cryptoPaymentsEnabled: boolean;
+    /** Enable developer API key management (Sprint 320, Task 7.3) */
+    apiKeysEnabled: boolean;
+    /** Enable web chat widget and standalone chat page (Sprint 320, Task 7.3) */
+    webChatEnabled: boolean;
   };
   // Telegram Configuration (v4.1 - Sprint 30)
   telegram: {

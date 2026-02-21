@@ -1070,3 +1070,192 @@ resource "aws_cloudwatch_dashboard" "sandbox" {
     ]
   })
 }
+
+# Sprint 7 (320), Task 7.1: Unified Service Health Dashboard
+resource "aws_cloudwatch_dashboard" "service_health" {
+  dashboard_name = "${local.name_prefix}-service-health"
+
+  dashboard_body = jsonencode({
+    widgets = [
+      # Row 1: Inference Latency by Pool (p50, p95, p99)
+      {
+        type   = "metric"
+        x      = 0
+        y      = 0
+        width  = 24
+        height = 6
+        properties = {
+          title  = "Inference Latency by Pool"
+          region = var.aws_region
+          period = 60
+          view   = "timeSeries"
+          metrics = [
+            ["Arrakis/Agent", "InferenceLatencyMs", "Pool", "cheap", "Environment", var.environment, { stat = "p50", label = "cheap p50" }],
+            ["...", { stat = "p95", label = "cheap p95" }],
+            ["...", { stat = "p99", label = "cheap p99", color = "#d62728" }],
+            ["Arrakis/Agent", "InferenceLatencyMs", "Pool", "reasoning", "Environment", var.environment, { stat = "p50", label = "reasoning p50" }],
+            ["...", { stat = "p95", label = "reasoning p95" }],
+            ["...", { stat = "p99", label = "reasoning p99", color = "#ff7f0e" }],
+            ["Arrakis/Agent", "InferenceLatencyMs", "Pool", "architect", "Environment", var.environment, { stat = "p50", label = "architect p50" }],
+            ["...", { stat = "p95", label = "architect p95" }],
+            ["...", { stat = "p99", label = "architect p99", color = "#9467bd" }]
+          ]
+        }
+      },
+      # Row 2: HTTP Error Rates + Request Count
+      {
+        type   = "metric"
+        x      = 0
+        y      = 6
+        width  = 12
+        height = 6
+        properties = {
+          title  = "HTTP Error Rates"
+          region = var.aws_region
+          stat   = "Sum"
+          period = 60
+          metrics = [
+            ["Arrakis/API", "Http4xxCount", "Environment", var.environment, { label = "4xx", color = "#ff7f0e" }],
+            [".", "Http5xxCount", ".", ".", { label = "5xx", color = "#d62728" }]
+          ]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 6
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Request Count"
+          region = var.aws_region
+          stat   = "Sum"
+          period = 60
+          metrics = [
+            ["Arrakis/API", "RequestCount", "Environment", var.environment, { label = "Total Requests" }],
+            [".", "RequestCount", "Service", "inference", "Environment", var.environment, { label = "Inference" }],
+            [".", "RequestCount", "Service", "webhook", ".", ".", { label = "Webhooks" }]
+          ]
+        }
+      },
+      # Row 3: Billing Flow
+      {
+        type   = "metric"
+        x      = 0
+        y      = 12
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Billing Flow — Payments"
+          region = var.aws_region
+          stat   = "Sum"
+          period = 60
+          metrics = [
+            ["Arrakis/Billing", "PaymentCreated", "Environment", var.environment, { label = "Created", color = "#2ca02c" }],
+            [".", "PaymentFinished", ".", ".", { label = "Finished", color = "#1f77b4" }],
+            [".", "PaymentFailed", ".", ".", { label = "Failed", color = "#d62728" }]
+          ]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 12
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Billing Flow — Credits"
+          region = var.aws_region
+          stat   = "Sum"
+          period = 60
+          metrics = [
+            ["Arrakis/Billing", "CreditsMinted", "Environment", var.environment, { label = "Credits Minted", color = "#2ca02c" }],
+            [".", "CreditsSpent", ".", ".", { label = "Credits Spent", color = "#ff7f0e" }],
+            [".", "CreditsMintedValue", ".", ".", { label = "Mint Value ($)", color = "#9467bd" }]
+          ]
+        }
+      },
+      # Row 4: Webhook Processing
+      {
+        type   = "metric"
+        x      = 0
+        y      = 18
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Webhook Processing"
+          region = var.aws_region
+          stat   = "Sum"
+          period = 60
+          metrics = [
+            ["Arrakis/Webhook", "WebhookReceived", "Environment", var.environment, { label = "Received" }],
+            [".", "WebhookProcessed", ".", ".", { label = "Processed", color = "#2ca02c" }],
+            [".", "WebhookRejected", ".", ".", { label = "Rejected", color = "#d62728" }],
+            [".", "WebhookThrottled", ".", ".", { label = "Throttled", color = "#ff7f0e" }]
+          ]
+        }
+      },
+      # Row 4 (right): Auth Failures + Sessions
+      {
+        type   = "metric"
+        x      = 12
+        y      = 18
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Auth Failures & Sessions"
+          region = var.aws_region
+          stat   = "Sum"
+          period = 60
+          metrics = [
+            ["Arrakis/Auth", "JwtValidationFailure", "Environment", var.environment, { label = "JWT Failure", color = "#d62728" }],
+            [".", "ApiKeyFailure", ".", ".", { label = "API Key Failure", color = "#ff7f0e" }],
+            [".", "SiweFailure", ".", ".", { label = "SIWE Failure", color = "#9467bd" }],
+            [".", "SiweSessionCreated", ".", ".", { label = "SIWE Sessions", color = "#2ca02c" }]
+          ]
+        }
+      },
+      # Row 5: Conservation Guard
+      {
+        type   = "metric"
+        x      = 0
+        y      = 24
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Conservation Guard"
+          region = var.aws_region
+          stat   = "Sum"
+          period = 60
+          metrics = [
+            ["Arrakis/Billing", "ConservationCheckPassed", "Environment", var.environment, { label = "Checks Passed", color = "#2ca02c" }],
+            [".", "ConservationCheckFailed", ".", ".", { label = "Checks Failed", color = "#d62728" }],
+            [".", "ConservationDriftPercent", ".", ".", { stat = "Maximum", label = "Budget Drift %", color = "#ff7f0e" }]
+          ]
+        }
+      },
+      # Row 5 (right): WebSocket Connections
+      {
+        type   = "metric"
+        x      = 12
+        y      = 24
+        width  = 12
+        height = 6
+        properties = {
+          title  = "WebSocket Connections"
+          region = var.aws_region
+          period = 60
+          metrics = [
+            ["Arrakis/WebSocket", "ActiveConnections", "Environment", var.environment, { stat = "Maximum", label = "Active Connections" }],
+            [".", "UniqueUsers", ".", ".", { stat = "Maximum", label = "Unique Users", color = "#1f77b4" }],
+            [".", "MessagesReceived", ".", ".", { stat = "Sum", label = "Messages Received", color = "#2ca02c" }]
+          ]
+        }
+      }
+    ]
+  })
+
+  tags = merge(local.common_tags, {
+    Sprint = "320-Task-7.1"
+  })
+}
