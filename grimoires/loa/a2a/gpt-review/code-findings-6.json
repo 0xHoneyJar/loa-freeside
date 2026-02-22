@@ -1,35 +1,29 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "Auth guards and safe list mapping are present, but the async service calls are no longer awaited, reintroducing the original blocking issues.",
-  "previous_issues_status": [
+  "summary": "Found security and logic issues around SIWE origin/domain binding and cookie clearing behavior.",
+  "issues": [
     {
-      "original_issue": "Missing auth guard allows unauthenticated create and createApiKey not awaited",
-      "status": "not_fixed",
-      "notes": "Auth guard is present, but createApiKey is called without await, reintroducing the async handling issue."
+      "severity": "critical",
+      "file": "path/to/siwe-router.ts",
+      "line": 188,
+      "description": "SIWE message `domain`/`uri` are not bound to the request `Origin`. This enables origin spoofing and replay across allowed origins because any allowed origin can present a message for another domain/URI.",
+      "current_code": "```typescript\n    // Issue session token — strict origin validation (Sprint 321, high-1)\n    if (!req.headers.origin) {\n      res.status(400).json({ error: 'Missing Origin header' });\n      return;\n    }\n    if (!config.cors.allowedOrigins.includes(req.headers.origin) && !config.cors.allowedOrigins.includes('*')) {\n      res.status(400).json({ error: 'Invalid origin' });\n      return;\n    }\n\n    // Sprint 325, Task 4.4: Block wildcard CORS for SIWE in production (Flatline SKP-009)\n    if (config.cors.allowedOrigins.includes('*')) {\n      if (process.env.NODE_ENV === 'production') {\n        logger.error(\n          { origin: req.headers.origin, address: parsed.address },\n          'SIWE session BLOCKED: wildcard CORS not allowed in production',\n        );\n        res.status(403).json({\n          error: 'CORS configuration error: wildcard not permitted in production',\n        });\n        return;\n      }\n      logger.warn(\n        { origin: req.headers.origin, address: parsed.address },\n        'SIWE session issued with wildcard CORS — restrict allowedOrigins before production',\n      );\n    }\n\n    const secrets = getSessionSecrets();\n    const origin = req.headers.origin;\n    const token = createSessionToken(\n      parsed.address,\n      origin,\n      parsed.chainId,\n      secrets.current,\n      secrets.kid\n    );\n```",
+      "fixed_code": "```typescript\n    // Issue session token — strict origin validation (Sprint 321, high-1)\n    if (!req.headers.origin) {\n      res.status(400).json({ error: 'Missing Origin header' });\n      return;\n    }\n    if (!config.cors.allowedOrigins.includes(req.headers.origin) && !config.cors.allowedOrigins.includes('*')) {\n      res.status(400).json({ error: 'Invalid origin' });\n      return;\n    }\n\n    // Bind SIWE message domain/uri to request origin (prevents origin spoofing/replay)\n    let originUrl: URL;\n    let messageUrl: URL;\n    try {\n      originUrl = new URL(req.headers.origin);\n    } catch {\n      res.status(400).json({ error: 'Invalid Origin header' });\n      return;\n    }\n    try {\n      messageUrl = new URL(parsed.uri);\n    } catch {\n      res.status(400).json({ error: 'Invalid SIWE URI' });\n      return;\n    }\n    if (originUrl.hostname !== parsed.domain) {\n      res.status(400).json({ error: 'SIWE domain does not match request origin' });\n      return;\n    }\n    if (messageUrl.origin !== originUrl.origin) {\n      res.status(400).json({ error: 'SIWE URI does not match request origin' });\n      return;\n    }\n\n    // Sprint 325, Task 4.4: Block wildcard CORS for SIWE in production (Flatline SKP-009)\n    if (config.cors.allowedOrigins.includes('*')) {\n      if (process.env.NODE_ENV === 'production') {\n        logger.error(\n          { origin: req.headers.origin, address: parsed.address },\n          'SIWE session BLOCKED: wildcard CORS not allowed in production',\n        );\n        res.status(403).json({\n          error: 'CORS configuration error: wildcard not permitted in production',\n        });\n        return;\n      }\n      logger.warn(\n        { origin: req.headers.origin, address: parsed.address },\n        'SIWE session issued with wildcard CORS — restrict allowedOrigins before production',\n      );\n    }\n\n    const secrets = getSessionSecrets();\n    const origin = req.headers.origin;\n    const token = createSessionToken(\n      parsed.address,\n      origin,\n      parsed.chainId,\n      secrets.current,\n      secrets.kid\n    );\n```",
+      "explanation": "This binds the SIWE message to the actual request Origin, ensuring the domain and URI cannot be spoofed across allowed origins. It blocks replay and origin spoofing attacks while keeping existing CORS checks intact."
     },
     {
-      "original_issue": "List endpoint may return secrets and lacked auth/await",
-      "status": "not_fixed",
-      "notes": "Secrets are filtered and auth is enforced, but listApiKeys is called without await."
-    },
-    {
-      "original_issue": "Delete endpoint lacks auth guard and does not await revokeApiKey",
-      "status": "not_fixed",
-      "notes": "Auth guard is present, but revokeApiKey is called without await."
-    },
-    {
-      "original_issue": "Rotate endpoint lacks auth guard and does not await rotateApiKey",
-      "status": "not_fixed",
-      "notes": "Auth guard is present, but rotateApiKey is called without await."
+      "severity": "major",
+      "file": "path/to/siwe-router.ts",
+      "line": 254,
+      "description": "Logout clears the cookie without matching security attributes (SameSite/Secure/HttpOnly), which can prevent proper deletion in some browsers.",
+      "current_code": "```typescript\nsiweRouter.post('/logout', (_req: Request, res: Response) => {\n  res.clearCookie('freeside_session', { path: '/' });\n  res.json({ success: true });\n});\n```",
+      "fixed_code": "```typescript\nsiweRouter.post('/logout', (_req: Request, res: Response) => {\n  const isProduction = process.env.NODE_ENV === 'production';\n  res.clearCookie('freeside_session', {\n    path: '/',\n    httpOnly: true,\n    secure: isProduction,\n    sameSite: 'strict',\n  });\n  res.json({ success: true });\n});\n```",
+      "explanation": "Clearing a cookie should match the attributes used when setting it. This ensures the session cookie is reliably removed across browsers."
     }
   ],
-  "new_blocking_concerns": [
-    {
-      "location": "api/routes/api-keys.ts",
-      "description": "Service calls (createApiKey, listApiKeys, revokeApiKey, rotateApiKey) are not awaited; responses may contain Promises and errors may escape try/catch.",
-      "why_blocking": "If these services are async (as previously assumed), unawaited Promises cause incorrect responses and bypass error handling, breaking endpoint functionality and reliability.",
-      "fix": "Mark handlers async and await each service call, as in the prior fixes."
-    }
-  ],
-  "iteration": 2
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
 }
