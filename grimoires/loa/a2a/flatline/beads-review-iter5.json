@@ -1,0 +1,124 @@
+{
+  "consensus_summary": {
+    "high_consensus_count": 4,
+    "disputed_count": 1,
+    "low_value_count": 0,
+    "blocker_count": 4,
+    "model_agreement_percent": 90,
+    "confidence": "full"
+  },
+  "high_consensus": [
+    {
+      "id": "IMP-001",
+      "description": "Real structural gap: dependency_count/dependent_count plus free-text DEPENDS is not machine-actionable. Explicit edges (depends_on[]) enable critical path, cycle detection, ordering enforcement, and consistent tooling. Low-to-moderate effort with high ROI across the whole plan.",
+      "gpt_score": 900,
+      "opus_score": 720,
+      "delta": 180,
+      "average_score": 810,
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-002",
+      "description": "Actionable and useful for tooling: relying on ID prefixes for sprint membership is brittle and forces string parsing. Adding a sprint label/field to tasks improves filtering and reporting. Some trade-off if the system treats sprint as implicit by convention, but structured metadata is still better.",
+      "gpt_score": 720,
+      "opus_score": 870,
+      "delta": 150,
+      "average_score": 795,
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-003",
+      "description": "Clear gap for any backlog system: tasks-to-epic linkage is implied only by naming. Explicit parent/epic_id enables rollups, progress tracking, and navigation. Implementation is straightforward and materially improves plan usability.",
+      "gpt_score": 860,
+      "opus_score": 750,
+      "delta": 110,
+      "average_score": 805,
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-004",
+      "description": "Critical ambiguity: the work explicitly requires removing/replacing names, but the canonical replacement name is not defined. This will cause inconsistent edits across multiple docs and rework. Very low effort to fix (define canonical name + allowed aliases) with high impact.",
+      "gpt_score": 940,
+      "opus_score": 810,
+      "delta": 130,
+      "average_score": 875,
+      "would_integrate": true,
+      "agreement": "HIGH"
+    }
+  ],
+  "disputed": [
+    {
+      "id": "IMP-008",
+      "description": "Potentially useful, but may be out of scope for a beads/backlog document if assignment happens in a tracker. If this document is the source of truth for execution, DRI per task is valuable; otherwise it adds churn. Nice-to-have unless ownership is currently a known pain point.",
+      "gpt_score": 450,
+      "opus_score": 790,
+      "delta": 340,
+      "average_score": 620,
+      "would_integrate": false,
+      "agreement": "DISPUTED"
+    }
+  ],
+  "low_value": [],
+  "blockers": [
+    {
+      "id": "SKP-002",
+      "concern": "Cross-repo citation pinning depends on GitHub API availability, permissions, and repo access; failure modes could block CI and PR flow",
+      "severity": "CRITICAL",
+      "severity_score": 880,
+      "why_matters": "The citation contract is cross-cutting across Sprint 1–3. If gh api calls fail (rate limits, auth, private repos, forks), pinning may be impossible, and CI may reject doc changes. The fallback policy is partially defined but still risks inconsistent behavior between PRs, forks, and main.",
+      "location": "S306-T3: Citation Pinning; S304-T1 cite syntax used across all docs",
+      "recommendation": "Define a strict CI policy matrix: PR/fork/main behaviors, what is blocking vs non-blocking, and deterministic outcomes when API is unavailable. Cache pins per repo/ref, support GitHub Enterprise if applicable, and add a “manual pin override” mechanism with validation.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-001",
+      "concern": "Project scope is “documentation/tooling only” but acceptance criteria implicitly require product/runtime behavior and multi-repo truth that may not exist or be stable",
+      "severity": "CRITICAL",
+      "severity_score": 920,
+      "why_matters": "Multiple tasks require verifying endpoints against a running server, extracting >=80 routes, documenting billing/auth flows, and mapping 5 repos. If the underlying code, environments, or repos are incomplete/inconsistent, the doc effort stalls or devolves into speculative docs (which the citation rules explicitly forbid).",
+      "location": "S305-T0, S305-T1, S305-T2, S305-T3, S305-T4; also S304-T1 grounding requirement",
+      "recommendation": "Add an explicit prerequisite checklist: (a) dev server boot instructions verified, (b) route count baseline confirmed, (c) billing/auth endpoints confirmed implemented, (d) access to all 5 repos at pinned refs. If prerequisites fail, define a fallback: reduce stable endpoints list and/or mark sections as Planned with strict separation.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-004",
+      "concern": "Tier 2 contract checks (GET/HEAD only) can still trigger side effects, require auth, or be blocked by middleware; “zero 404s” is unrealistic for parameterized routes and environment-dependent mounts",
+      "severity": "HIGH",
+      "severity_score": 730,
+      "why_matters": "Many routes require path params, specific headers, or POST semantics; HEAD may not be implemented; some endpoints may intentionally return 404 without valid IDs. A blanket “not 404” requirement can fail even when the system is correct, causing flaky verification.",
+      "location": "S305-T4: Tier 2 Contract Checks",
+      "recommendation": "Classify routes into testable categories: static vs parameterized, safe vs unsafe, requires fixtures vs not. For parameterized routes, allow a “contract probe” that expects 400/401/403/405 as acceptable outcomes. Maintain an allowlist/skiplist with justification.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-003",
+      "concern": "ts-morph route extraction will be brittle against real-world Express/Router patterns; the 5% unresolvable threshold and “>=80 routes” target are risky and may cause chronic CI failures",
+      "severity": "HIGH",
+      "severity_score": 760,
+      "why_matters": "Route registration is often dynamic (template literals, conditional mounts, imported routers, computed prefixes). Even with allowlist annotations, keeping extraction accurate over time is ongoing work. A strict unresolvable threshold can turn routine refactors into CI breakages and developer frustration.",
+      "location": "S305-T1: scripts/extract-routes.sh (supported/unsupported patterns, threshold, allowlist)",
+      "recommendation": "Start with a non-blocking mode to establish baseline metrics, then ratchet thresholds gradually. Require a stable annotation convention for complex routes, and add unit tests for representative routing patterns in the codebase to prevent regressions in the extractor.",
+      "source": "tertiary_skeptic"
+    }
+  ],
+  "degraded": false,
+  "degraded_model": null,
+  "confidence": "full",
+  "phase": "beads",
+  "document": "grimoires/loa/a2a/flatline/beads-export-cycle035.json",
+  "domain": "s304 t1 readme md rewrite",
+  "execution": {
+    "mode": "hitl",
+    "mode_reason": "Simstim workflow active (.run/simstim-state.json state=RUNNING)",
+    "run_id": null
+  },
+  "timestamp": "2026-02-19T11:39:32Z",
+  "metrics": {
+    "total_latency_ms": 218000,
+    "cost_cents": 0,
+    "cost_usd": 0
+  }
+}

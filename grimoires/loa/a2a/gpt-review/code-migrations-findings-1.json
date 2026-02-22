@@ -1,0 +1,56 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Schema contains append-only enforcement gaps and BigInt/idempotency issues that can break accounting integrity and overflow in PostgreSQL.",
+  "issues": [
+    {
+      "severity": "critical",
+      "file": "migrations/066_067.ts",
+      "line": 86,
+      "description": "usage_events is described as append-only but there is no database-level enforcement preventing UPDATE/DELETE, allowing tampering with the audit ledger.",
+      "current_code": "```sql\n-- Conservation guard failures (for alerting queries)\nCREATE INDEX IF NOT EXISTS idx_usage_events_guard_failures\n  ON usage_events(conservation_guard_result, created_at)\n  WHERE conservation_guard_result = 0;\n```",
+      "fixed_code": "```sql\n-- Conservation guard failures (for alerting queries)\nCREATE INDEX IF NOT EXISTS idx_usage_events_guard_failures\n  ON usage_events(conservation_guard_result, created_at)\n  WHERE conservation_guard_result = 0;\n\n-- Enforce append-only semantics at the DB layer\nCREATE TRIGGER IF NOT EXISTS usage_events_no_update\nBEFORE UPDATE ON usage_events\nBEGIN\n  SELECT RAISE(ABORT, 'usage_events is append-only');\nEND;\n\nCREATE TRIGGER IF NOT EXISTS usage_events_no_delete\nBEFORE DELETE ON usage_events\nBEGIN\n  SELECT RAISE(ABORT, 'usage_events is append-only');\nEND;\n```",
+      "explanation": "Adding triggers prevents UPDATE/DELETE at the database level, ensuring the ledger remains immutable as required."
+    },
+    {
+      "severity": "major",
+      "file": "migrations/066_067.ts",
+      "line": 32,
+      "description": "Token usage counters are INTEGER without non-negative checks; in PostgreSQL INTEGER is 32-bit and can overflow. Negative values are also allowed.",
+      "current_code": "```sql\n  token_usage_input INTEGER DEFAULT 0,\n  token_usage_output INTEGER DEFAULT 0,\n```",
+      "fixed_code": "```sql\n  token_usage_input BIGINT NOT NULL DEFAULT 0 CHECK (token_usage_input >= 0),\n  token_usage_output BIGINT NOT NULL DEFAULT 0 CHECK (token_usage_output >= 0),\n```",
+      "explanation": "BIGINT ensures safe storage for large token counts across PostgreSQL/SQLite, while CHECK constraints prevent invalid negative values."
+    },
+    {
+      "severity": "major",
+      "file": "migrations/066_067.ts",
+      "line": 69,
+      "description": "Monetary/token columns use INTEGER; in PostgreSQL this is 32-bit and can overflow for micro-credit accounting.",
+      "current_code": "```sql\n  tokens_input INTEGER NOT NULL DEFAULT 0 CHECK (tokens_input >= 0),\n  tokens_output INTEGER NOT NULL DEFAULT 0 CHECK (tokens_output >= 0),\n  amount_micro INTEGER NOT NULL DEFAULT 0 CHECK (amount_micro >= 0),\n```",
+      "fixed_code": "```sql\n  tokens_input BIGINT NOT NULL DEFAULT 0 CHECK (tokens_input >= 0),\n  tokens_output BIGINT NOT NULL DEFAULT 0 CHECK (tokens_output >= 0),\n  amount_micro BIGINT NOT NULL DEFAULT 0 CHECK (amount_micro >= 0),\n```",
+      "explanation": "BIGINT is required for micro-credit accounting to avoid overflow in PostgreSQL while remaining valid in SQLite."
+    },
+    {
+      "severity": "major",
+      "file": "migrations/066_067.ts",
+      "line": 73,
+      "description": "finalization_id is nullable; UNIQUE allows multiple NULLs, which weakens idempotency guarantees for double-write prevention.",
+      "current_code": "```sql\n  finalization_id TEXT UNIQUE,\n```",
+      "fixed_code": "```sql\n  finalization_id TEXT NOT NULL UNIQUE,\n```",
+      "explanation": "Making finalization_id NOT NULL ensures every ledger row participates in idempotency and prevents duplicate finalizations."
+    },
+    {
+      "severity": "major",
+      "file": "migrations/066_067.ts",
+      "line": 106,
+      "description": "Rollback does not drop the new append-only enforcement triggers, leaving schema artifacts after rollback.",
+      "current_code": "```sql\nDROP INDEX IF EXISTS idx_usage_events_guard_failures;\nDROP INDEX IF EXISTS idx_usage_events_finalization;\nDROP INDEX IF EXISTS idx_usage_events_pool;\nDROP INDEX IF EXISTS idx_usage_events_nft;\nDROP INDEX IF EXISTS idx_usage_events_community_created;\nDROP TABLE IF EXISTS usage_events;\n```",
+      "fixed_code": "```sql\nDROP TRIGGER IF EXISTS usage_events_no_delete;\nDROP TRIGGER IF EXISTS usage_events_no_update;\nDROP INDEX IF EXISTS idx_usage_events_guard_failures;\nDROP INDEX IF EXISTS idx_usage_events_finalization;\nDROP INDEX IF EXISTS idx_usage_events_pool;\nDROP INDEX IF EXISTS idx_usage_events_nft;\nDROP INDEX IF EXISTS idx_usage_events_community_created;\nDROP TABLE IF EXISTS usage_events;\n```",
+      "explanation": "Ensures rollback fully removes all objects created by the migration."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

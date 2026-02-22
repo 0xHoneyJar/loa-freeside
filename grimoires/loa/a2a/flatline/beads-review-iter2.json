@@ -1,0 +1,23 @@
+{
+  "phase": "beads",
+  "iteration": 2,
+  "document": ".run/flatline-beads-export.json",
+  "timestamp": "2026-02-20T10:23:44Z",
+  "consensus_summary": {
+    "high_consensus_count": 4,
+    "disputed_count": 0,
+    "low_value_count": 0,
+    "blocker_count": 6,
+    "model_agreement_percent": 100,
+    "confidence": "full"
+  },
+  "flatline_detected": true,
+  "flatline_reason": "All findings reference details already present in sprint.md ACs — beads export is title-only. Change rate <5% across iterations.",
+  "high_consensus_actions": [
+    {"id": "IMP-002", "action": "NOTED — ACs exist in sprint.md, beads are tracking-only overlay"},
+    {"id": "IMP-003", "action": "NOTED — existing GitHub Actions CI/CD; same as iter1 IMP-007"},
+    {"id": "IMP-007", "action": "NOTED — E2E billing test already in Sprint 3 gate (Flatline sprint IMP-010)"},
+    {"id": "IMP-008", "action": "NOTED — DLQ/idempotency already in Tasks 3.2, 3.4, 4.4 ACs"}
+  ],
+  "blockers_assessment": "All 6 blockers are repeats of iteration 1, all already addressed in sprint.md ACs from Flatline sprint review (SKP-001 through SKP-007)."
+}
