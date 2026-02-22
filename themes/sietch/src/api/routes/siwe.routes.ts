@@ -154,6 +154,16 @@ const ipNonceRequests = new Map<string, { count: number; resetAt: number }>();
 const NONCE_RATE_LIMIT = 20;     // 20 nonces per window
 const NONCE_RATE_WINDOW = 300_000; // 5 minutes
 
+// Clean stale rate-limit entries every 60s (Sprint 325, Task 4.3)
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of ipNonceRequests) {
+    if (now > entry.resetAt) {
+      ipNonceRequests.delete(ip);
+    }
+  }
+}, 60_000).unref();
+
 function checkNonceRateLimit(ip: string): boolean {
   const now = Date.now();
   const entry = ipNonceRequests.get(ip);
@@ -258,6 +268,24 @@ siweRouter.post('/verify', async (req: Request, res: Response) => {
     if (!config.cors.allowedOrigins.includes(req.headers.origin) && !config.cors.allowedOrigins.includes('*')) {
       res.status(400).json({ error: 'Invalid origin' });
       return;
+    }
+
+    // Sprint 325, Task 4.4: Block wildcard CORS for SIWE in production (Flatline SKP-009)
+    if (config.cors.allowedOrigins.includes('*')) {
+      if (process.env.NODE_ENV === 'production') {
+        logger.error(
+          { origin: req.headers.origin, address: parsed.address },
+          'SIWE session BLOCKED: wildcard CORS not allowed in production',
+        );
+        res.status(403).json({
+          error: 'CORS configuration error: wildcard not permitted in production',
+        });
+        return;
+      }
+      logger.warn(
+        { origin: req.headers.origin, address: parsed.address },
+        'SIWE session issued with wildcard CORS — restrict allowedOrigins before production',
+      );
     }
 
     const secrets = getSessionSecrets();

@@ -54,5 +54,9 @@ export interface BillingEntry {
   contract_version: string;
 }
 
-/** Current contract version for BillingEntry schema */
-export const BILLING_ENTRY_CONTRACT_VERSION = '4.6.0';
+/**
+ * Current contract version for BillingEntry schema.
+ * Aligned with hounfour CONTRACT_VERSION.
+ * Updated from '4.6.0' as part of hounfour v7.0.0 alignment.
+ */
+export const BILLING_ENTRY_CONTRACT_VERSION = '7.0.0';

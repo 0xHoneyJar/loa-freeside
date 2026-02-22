@@ -1,11 +1,14 @@
 /**
- * Vendored loa-hounfour Guard Types
+ * Freeside Guard Types
  *
- * Types for billing guard responses used in the inference pipeline.
- * loa-finn calls billing guards before executing inference; arrakis
+ * Types for billing guard responses in the Freeside inference pipeline.
+ * loa-finn calls billing guards before executing inference; Freeside (arrakis)
  * implements the guards and returns these types.
  *
- * Vendored from: loa-hounfour (pinned commit, see @0xhoneyjar/loa-hounfour v7.0.0)
+ * These are distinct from the canonical hounfour GuardResult type which models
+ * agent lifecycle transition guards ({ valid: boolean; reason; guard }).
+ * The Freeside GuardResult models billing reservation outcomes
+ * ({ allowed: boolean; reservationId; reservedMicro; remainingMicro }).
  *
  * @module packages/core/protocol/guard-types
  */

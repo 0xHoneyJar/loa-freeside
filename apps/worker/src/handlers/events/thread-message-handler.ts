@@ -325,7 +325,9 @@ export function createThreadMessageHandler(
       // Send user-friendly error
       await discord.sendMessage(channel_id, {
         content: 'Sorry, I encountered an error processing your message. Please try again.',
-      }).catch(() => {});
+      }).catch((discordErr) => {
+        msgLog.warn({ discordErr, channel_id }, 'Failed to send error notification to Discord');
+      });
     }
   };
 }

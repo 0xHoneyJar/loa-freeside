@@ -129,7 +129,7 @@ export class JwtService {
     this.assertInitialized();
 
     const now = Math.floor(this.clock.now() / 1000);
-    const reqHash = computeReqHash(requestBody);
+    const reqHash = computeReqHash(Buffer.from(requestBody, 'utf-8'));
 
     return new SignJWT({
       tenant_id: context.tenantId,

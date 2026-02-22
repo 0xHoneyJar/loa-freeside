@@ -11,7 +11,14 @@
  * SDD ref: §3.6, §3.7, §8.3
  */
 
-import { validateCompatibility, CONTRACT_VERSION } from '@0xhoneyjar/loa-hounfour';
+import {
+  validateCompatibility,
+  CONTRACT_VERSION,
+  type CapabilityScope,
+  type CapabilityScopedTrust,
+  type TrustLevel as CanonicalTrustLevel,
+  flatTrustToScoped,
+} from '@0xhoneyjar/loa-hounfour';
 
 // =============================================================================
 // Version Negotiation
@@ -51,7 +58,16 @@ export function isV7NormalizationEnabled(): boolean {
 // Trust Scope Types
 // =============================================================================
 
-/** v7.0.0 trust scopes (capability-based) */
+/**
+ * Freeside fine-grained trust scopes (capability-based).
+ *
+ * Distinct from canonical hounfour CapabilityScope (coarse: billing, governance,
+ * inference, delegation, audit, composition). Freeside scopes add read/write/admin
+ * granularity per capability domain.
+ *
+ * Canonical CapabilityScope and CapabilityScopedTrust are re-exported from the
+ * barrel for consumers that need the canonical wire format.
+ */
 export type TrustScope =
   | 'billing:read'
   | 'billing:write'
@@ -137,6 +153,22 @@ export class ClaimNormalizationError extends Error {
  *
  * @throws {ClaimNormalizationError} on invalid input
  */
+/**
+ * Claim version telemetry callback (Task 2.7).
+ * Set via setClaimVersionLogger() to receive structured telemetry on every
+ * JWT normalization. Default: no-op.
+ *
+ * Cutoff policy: v4.6.0 dual-accept will be removed after telemetry confirms
+ * 0 v4.6.0 claims for 7 consecutive days (max JWT TTL = 24h + 6d buffer).
+ */
+type ClaimVersionLogger = (data: { claim_version: 'v7.0.0' | 'v4.6.0'; source: string }) => void;
+let claimVersionLogger: ClaimVersionLogger = () => {};
+
+/** Set the telemetry logger for claim version observations. */
+export function setClaimVersionLogger(logger: ClaimVersionLogger): void {
+  claimVersionLogger = logger;
+}
+
 export function normalizeInboundClaims(claims: {
   trust_level?: number;
   trust_scopes?: string[];
@@ -212,6 +244,7 @@ export function normalizeInboundClaims(claims: {
         `Unknown trust scopes: ${unknownScopes.join(', ')}`
       );
     }
+    claimVersionLogger({ claim_version: 'v7.0.0', source: 'normalizeInboundClaims' });
     return { trust_scopes: scopes, source: 'v7_native' };
   }
 
@@ -236,6 +269,7 @@ export function normalizeInboundClaims(claims: {
     );
   }
 
+  claimVersionLogger({ claim_version: 'v4.6.0', source: 'normalizeInboundClaims' });
   return { trust_scopes: scopes, source: 'v4_mapped' };
 }
 
@@ -332,7 +366,11 @@ export function normalizeCoordinationMessage(
 }
 
 // =============================================================================
-// Re-export canonical compatibility
+// Re-export canonical compatibility + identity types
 // =============================================================================
 
 export { validateCompatibility, CONTRACT_VERSION };
+
+// Re-export canonical identity types for consumers needing wire format
+export type { CapabilityScope, CapabilityScopedTrust, CanonicalTrustLevel };
+export { flatTrustToScoped };

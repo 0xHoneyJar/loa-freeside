@@ -1,5 +1,5 @@
 {
-  "version": "1.1.0",
+  "version": "7.0.0",
   "description": "Decoded payload templates for E2E test scenarios — NOT pre-signed JWS. Stub signs at runtime with ephemeral ES256 key.",
   "vectors": [
     {
@@ -18,7 +18,7 @@
           "platform": "discord",
           "channel_id": "ch_test_001",
           "idempotency_key": "idem-free-001",
-          "pool_mapping_version": "1.0.0"
+          "pool_mapping_version": "7.0.0"
         },
         "body": {
           "agent": "default",
@@ -62,7 +62,7 @@
           "platform": "discord",
           "channel_id": "ch_test_002",
           "idempotency_key": "idem-pro-001",
-          "pool_mapping_version": "1.0.0"
+          "pool_mapping_version": "7.0.0"
         },
         "body": {
           "agent": "coder",
@@ -107,7 +107,7 @@
           "platform": "discord",
           "channel_id": "ch_test_003",
           "idempotency_key": "idem-stream-001",
-          "pool_mapping_version": "1.0.0"
+          "pool_mapping_version": "7.0.0"
         },
         "body": {
           "agent": "default",
@@ -149,7 +149,7 @@
           "platform": "discord",
           "channel_id": "ch_test_004",
           "idempotency_key": "idem-rate-001",
-          "pool_mapping_version": "1.0.0"
+          "pool_mapping_version": "7.0.0"
         },
         "body": {
           "agent": "default",
@@ -185,7 +185,7 @@
           "platform": "discord",
           "channel_id": "ch_test_005",
           "idempotency_key": "idem-budget-001",
-          "pool_mapping_version": "1.0.0"
+          "pool_mapping_version": "7.0.0"
         },
         "body": {
           "agent": "default",
@@ -218,7 +218,7 @@
           "platform": "discord",
           "channel_id": "ch_test_006",
           "idempotency_key": "idem-abort-001",
-          "pool_mapping_version": "1.0.0"
+          "pool_mapping_version": "7.0.0"
         },
         "body": {
           "agent": "default",
@@ -259,7 +259,7 @@
           "platform": "discord",
           "channel_id": "ch_test_007",
           "idempotency_key": "idem-byok-001",
-          "pool_mapping_version": "1.0.0",
+          "pool_mapping_version": "7.0.0",
           "byok": true,
           "byok_provider": "openai",
           "byok_operation": "chat_completions"
@@ -307,7 +307,7 @@
           "platform": "discord",
           "channel_id": "ch_test_008",
           "idempotency_key": "idem-ensemble-001",
-          "pool_mapping_version": "1.0.0",
+          "pool_mapping_version": "7.0.0",
           "ensemble_strategy": "best_of_n",
           "ensemble_n": 3,
           "ensemble_models": ["fast-code", "reviewer", "reasoning"]
@@ -354,7 +354,7 @@
           "platform": "discord",
           "channel_id": "ch_test_009",
           "idempotency_key": "idem-ensemble-partial-001",
-          "pool_mapping_version": "1.0.0",
+          "pool_mapping_version": "7.0.0",
           "ensemble_strategy": "best_of_n",
           "ensemble_n": 3,
           "ensemble_models": ["fast-code", "reviewer", "reasoning"]
@@ -410,7 +410,7 @@
           "platform": "discord",
           "channel_id": "ch_test_010",
           "idempotency_key": "idem-hybrid-byok-001",
-          "pool_mapping_version": "1.1.0",
+          "pool_mapping_version": "7.0.0",
           "ensemble_strategy": "best_of_n",
           "ensemble_n": 3,
           "ensemble_models": ["reasoning", "fast-code", "reviewer"],
@@ -503,7 +503,7 @@
           "platform": "discord",
           "channel_id": "ch_test_011",
           "idempotency_key": "idem-partial-model-001",
-          "pool_mapping_version": "1.1.0",
+          "pool_mapping_version": "7.0.0",
           "ensemble_strategy": "consensus",
           "ensemble_n": 3,
           "ensemble_quorum": 2,

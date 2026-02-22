@@ -15,6 +15,9 @@
 import type { Logger } from 'pino';
 import type { ModelInvocationResult } from './ensemble-accounting.js';
 import type { LifecycleEvent } from './request-lifecycle.js';
+import type { DomainEvent } from '@0xhoneyjar/loa-hounfour';
+import { CONTRACT_VERSION } from '@0xhoneyjar/loa-hounfour';
+import { randomUUID } from 'node:crypto';
 
 // --------------------------------------------------------------------------
 // Types
@@ -207,4 +210,63 @@ export class CapabilityAuditLogger {
       lifecycle_trace: params.lifecycleTrace,
     });
   }
+}
+
+// --------------------------------------------------------------------------
+// DomainEvent Adapter (Sprint 323, Task 2.4)
+// --------------------------------------------------------------------------
+
+/** Map CapabilityEventType to canonical DomainEvent aggregate_type */
+const EVENT_TO_AGGREGATE: Record<CapabilityEventType, 'billing' | 'agent'> = {
+  pool_access: 'billing',
+  byok_usage: 'billing',
+  ensemble_invocation: 'agent',
+  model_access: 'agent',
+};
+
+/** Map CapabilityEventType to canonical DomainEvent dotted type string */
+const EVENT_TO_DOMAIN_TYPE: Record<CapabilityEventType, string> = {
+  pool_access: 'billing.pool.accessed',
+  byok_usage: 'billing.byok.used',
+  ensemble_invocation: 'agent.ensemble.invoked',
+  model_access: 'agent.model.accessed',
+};
+
+/** Validate a required string field for DomainEvent envelope. */
+function assertNonEmptyString(value: unknown, field: string): string {
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new Error(`Invalid CapabilityAuditEvent: ${field} is required`);
+  }
+  return value;
+}
+
+/**
+ * Wrap a CapabilityAuditEvent in the canonical DomainEvent<T> envelope.
+ *
+ * Non-breaking: existing emit() and CloudWatch consumers are unchanged.
+ * Use this when forwarding audit events to canonical event stores or
+ * cross-system event buses that expect the v7.0.0 DomainEvent format.
+ *
+ * @throws {Error} if required fields (event_type, timestamp, trace_id, community_id, user_id) are missing
+ */
+export function toDomainEvent(event: CapabilityAuditEvent): DomainEvent<CapabilityAuditEvent> {
+  const eventType = assertNonEmptyString(event.event_type, 'event_type') as CapabilityEventType;
+  const timestamp = assertNonEmptyString(event.timestamp, 'timestamp');
+  const traceId = assertNonEmptyString(event.trace_id, 'trace_id');
+  const communityId = assertNonEmptyString(event.community_id, 'community_id');
+  const userId = assertNonEmptyString(event.user_id, 'user_id');
+
+  return {
+    event_id: randomUUID(),
+    aggregate_id: communityId,
+    aggregate_type: EVENT_TO_AGGREGATE[eventType],
+    type: EVENT_TO_DOMAIN_TYPE[eventType],
+    version: 1,
+    occurred_at: timestamp,
+    actor: userId,
+    correlation_id: traceId,
+    causation_id: traceId,
+    payload: event,
+    contract_version: CONTRACT_VERSION,
+  };
 }

@@ -1,860 +1,933 @@
-# Sprint Plan: Hounfour v7.0.0 Protocol Alignment — Cycle 036
+# Sprint Plan: Launch Readiness — Production Stack, Payments & Agent Surfaces
 
-**Version:** 3.3.0
+**Version:** 2.0.0
 **Date:** 2026-02-21
 **Cycle:** cycle-036
-**Source:** Bridgebuilder Deep Review of PR #86 + remaining LOW findings
-**Global Sprint IDs:** 322–325
-**Duration:** 4 sprints
+**Source:** Issues [#77](https://github.com/0xHoneyJar/loa-freeside/issues/77)–[#85](https://github.com/0xHoneyJar/loa-freeside/issues/85), [loa-finn#66](https://github.com/0xHoneyJar/loa-finn/issues/66)
+**PRD:** grimoires/loa/prd.md v1.1.0
+**SDD:** grimoires/loa/sdd.md v1.0.0
+**Duration:** 6 sprints
 **Team:** 1 engineer (AI-assisted)
-**Flatline Review:** 4 HIGH_CONSENSUS integrated (IMP-001–IMP-004), 4 BLOCKERs resolved (SKP-001, SKP-002/006, SKP-004, SKP-009), 2 GPT findings integrated (S2S gate, SSE replay)
+**Protocol:** loa-hounfour v7.0.0 (`CONTRACT_VERSION = '7.0.0'`)
 
 ---
 
 ## Context
 
-The Bridgebuilder deep review identified a critical protocol gap: Freeside pins loa-hounfour to commit `d091a3c0` (CONTRACT_VERSION `1.1.0`) while the canonical protocol has progressed to **v7.0.0** — "The Composition-Aware Economic Protocol". Three vendored files duplicate code that should be canonical imports. The v4.6.0 compatibility layer remains active behind a feature flag when v7.0.0 should be the default. Four LOW findings from bridge iteration 3 remain unaddressed.
+The Hounfour v7.0.0 Protocol Alignment (sprints 322–325) is complete. Freeside now speaks canonical v7.0.0 — de-vendored, fully typed, with dual-accept active for the transition window. This sprint plan implements the launch readiness work: deploying the full stack on **existing AWS ECS/Terraform infrastructure**, activating crypto payments, wiring the personality routing bridge, and building user surfaces.
 
-### Gap Summary
+### What Already Exists (Strict Reuse)
 
-| Category | Current State | Target State |
-|----------|--------------|--------------|
-| Dependency | Pinned commit `d091a3c0` | v7.0.0 immutable commit SHA |
-| CONTRACT_VERSION | `1.1.0` | `7.0.0` |
-| Vendored files | 3 files (state-machines, billing-types, guard-types) | Canonical imports from `@0xhoneyjar/loa-hounfour` |
-| Compat layer | v4.6.0 backward compat active (feature flag) | v7.0.0 default, v4.6.0 compat removed |
-| Type adoption | Partial (arithmetic, conservation, pools) | Full (identity, lifecycle, events, discovery) |
-| LOW findings | 4 remaining | 0 |
+| Infrastructure | File | Status |
+|---------------|------|--------|
+| ECS Fargate cluster | `infrastructure/terraform/ecs.tf` | Production-ready |
+| loa-finn ECS service | `infrastructure/terraform/ecs-finn.tf` | Defined (512 CPU, 1GB, internal-only) |
+| loa-finn ECR repo | `infrastructure/terraform/ecs-finn.tf` | `arrakis-{env}-loa-finn` |
+| loa-finn PgBouncer pool | `infrastructure/terraform/pgbouncer-finn.tf` | Isolated read-only role |
+| Service discovery (finn) | `infrastructure/terraform/ecs-finn.tf` | `finn.arrakis-{env}.local:3000` |
+| Service discovery (freeside) | `infrastructure/terraform/ecs.tf` | `freeside.arrakis-{env}.local:3000` (Cloud Map) |
+| Wallet verification | `themes/sietch/src/api/routes/siwe.routes.ts` | SIWE + existing Discord `/verify` command |
+| Chain event listener | `packages/adapters/chain/` | Existing NFT transfer detection (chain provider) |
+| NOWPayments adapter | `themes/sietch/src/packages/adapters/billing/NOWPaymentsAdapter.ts` | Full API client + HMAC-SHA512 |
+| Crypto billing routes | `themes/sietch/src/api/crypto-billing.routes.ts` | 5 endpoints + WAF protection |
+| Payment DB schema | `themes/sietch/src/db/migrations/031_crypto_payments_v2.ts` | Tables + idempotency |
+| Redis (ElastiCache) | `infrastructure/terraform/elasticache.tf` | Redis 7.0, encryption, 7-day snapshots |
+| PostgreSQL (RDS) | `infrastructure/terraform/rds.tf` | PostgreSQL 15.10, auto-scaling 20-100GB |
+| ALB + WAF | `infrastructure/terraform/alb.tf`, `waf.tf` | HTTPS, WebSocket support, rate limiting |
+| Secrets Manager | `infrastructure/terraform/kms.tf` | KMS-encrypted, per-service scoping |
+| Amazon Managed Prometheus | `infrastructure/terraform/amp.tf` | Metrics workspace |
+| CloudWatch alarms | `infrastructure/terraform/monitoring.tf` | CPU/memory/5xx alerts |
+| Agent monitoring | `infrastructure/terraform/agent-monitoring.tf` | Request latency, per-model breakdown |
+| SNS alerting | `infrastructure/terraform/alerting.tf` | Alert topic (→ Slack) |
+| Observability stack | `infrastructure/observability/` | Grafana, Prometheus, Tempo configs |
+| Docker Compose (dev) | `docker-compose.dev.yml` | PostgreSQL + Redis + sietch |
+
+### Stakeholder Directives
+
+1. **NO Fly.io** — deploy exclusively on existing Terraform/ECS infrastructure (#77 comment)
+2. **NOWPayments API key** available as env var (NOWPAYMENTS_API_KEY)
+3. **Web chat is PRIMARY UI** — Discord threads are satellite/secondary (#81, #85 comments)
+4. **IaC-first** — think about everything from the Terraform perspective for the wider dNFT system at scale
+5. **Protocol v7.0.0** — all references use canonical loa-hounfour v7.0.0
 
 ---
 
 ## Sprint Overview
 
-| Sprint | Global ID | Focus | Gate |
-|--------|-----------|-------|------|
-| Sprint 1 | 322 | Protocol Foundation — v7.0.0 Dep Bump & De-vendoring | Builds clean, CONTRACT_VERSION = 7.0.0, no vendored copies |
-| Sprint 2 | 323 | Canonical Type Adoption — Identity, Lifecycle & Events | All canonical types imported, dual-accept active with telemetry, NftId dual-read layer |
-| Sprint 3 | 324 | Platform Surface — Discovery, Routing & Conversations | Discovery endpoint live, personality routing via canonical types |
-| Sprint 4 | 325 | Hardening — LOW Fixes, S2S Verification & Docs | 0 remaining findings, CORS blocked in prod, S2S gate verified, SSE replay tests pass, BUTTERFREEZONE updated |
+| Sprint | Focus | Issues | Gate |
+|--------|-------|--------|------|
+| Sprint 1 | Production Deployment — ECS + S2S Auth | #77 | `docker compose up` starts full stack; both ECS services healthy; S2S JWT validated |
+| Sprint 2 | Revenue Activation — NOWPayments + Credit Mint | #79 | `/buy-credits 10` → checkout → webhook → credits arrive |
+| Sprint 3 | Personality Routing Bridge — NFT → Model Pool | #80 | Two different NFTs get different model pool selections |
+| Sprint 4 | Web Chat (Primary) + Discord Threads (Satellite) | #85, #81 | `/chat/:tokenId` streams responses; `/my-agent` creates Discord thread |
+| Sprint 5 | Admin Dashboard + Audit Trail | #82, #83 | Admin views spend breakdown; downloads JSONL audit trail |
+| Sprint 6 | Monitoring, API Platform + Go/No-Go | #78, #84 | Conservation guard failure alerts within 60s; developer creates API key |
 
 ---
 
-## Sprint 1: Protocol Foundation — v7.0.0 Dependency & De-vendoring (Global ID: 322)
+## Sprint 1: Production Deployment — ECS + S2S Auth (Issue #77)
 
-### Task 1.1: Bump loa-hounfour dependency to v7.0.0
+**Goal:** Both loa-freeside and loa-finn running on existing ECS infrastructure with authenticated S2S JWT communication.
+
+### Task 1.0: Verify and enable loa-freeside ECS/Terraform resources (GPT F-1)
 
 **Files:**
-- `package.json` (root devDependency)
-- `packages/adapters/package.json` (dependency)
+- `infrastructure/terraform/ecs.tf` (existing — verify)
+- `infrastructure/terraform/alb.tf` (existing — verify)
+- `infrastructure/terraform/variables.tf` (existing — verify)
 
-**Description:** Replace the pinned commit reference with the v7.0.0 release. The current pin `github:0xHoneyJar/loa-hounfour#d091a3c0d4802402825fc7765bcc888f2477742f` must be updated to the immutable commit SHA of the v7.0.0 release (resolve the tag to its commit hash before pinning).
+**Description:** GPT finding F-1: The plan must explicitly verify loa-freeside ECS deployment, not just loa-finn. Confirm desired_count, ALB routing, env vars, Secrets Manager bindings, Cloud Map registration, and health check path alignment.
 
 **Implementation:**
-1. Resolve v7.0.0 tag to its immutable commit SHA: `git ls-remote https://github.com/0xHoneyJar/loa-hounfour refs/tags/v7.0.0` → record the SHA
-2. In both `package.json` files, update `@0xhoneyjar/loa-hounfour` to `github:0xHoneyJar/loa-hounfour#<resolved-SHA>` (never a tag or branch ref)
-3. Run `pnpm install` to update lockfile
-4. Verify lockfile contains the same resolved commit SHA (CI gate: regex check that dep spec is a full SHA)
-5. Verify all existing imports resolve correctly with the new version
+1. Verify freeside ECS task definition: desired_count > 0, CPU/memory, env vars from Secrets Manager
+2. Verify ALB listener rules route `/api/*`, `/health`, `/.well-known/*` to freeside target group
+3. Verify target group health check path matches `/health` route
+4. Verify Cloud Map registration: `freeside.arrakis-{env}.local:3000` (GPT F-3: required for finn to reach JWKS endpoint)
+5. Verify security group: ingress from ALB on port 3000, egress to finn SG, Redis, RDS, NATS
+6. `terraform plan` should show no unexpected changes
 
 **Acceptance Criteria:**
-- [ ] Both package.json files reference v7.0.0 via **immutable commit SHA** (not tag — Flatline IMP-001/SKP-001)
-- [ ] `pnpm install` succeeds without errors
-- [ ] All existing imports from `@0xhoneyjar/loa-hounfour` resolve
-- [ ] All existing imports from `@0xhoneyjar/loa-hounfour/economy` resolve
-- [ ] All existing imports from `@0xhoneyjar/loa-hounfour/integrity` resolve
-- [ ] Lockfile pinned to exact commit hash for reproducibility
+- [ ] `terraform plan` clean for freeside ECS resources
+- [ ] ALB returns 200 on `GET /health` via public HTTPS
+- [ ] Cloud Map DNS resolves `freeside.arrakis-{env}.local` from within VPC
+- [ ] From finn task: `curl http://freeside.arrakis-{env}.local:3000/.well-known/jwks.json` returns JWKS (GPT F-3)
 
 ---
 
-### Task 1.2: Pre-flight compile check before de-vendoring (Flatline IMP-002)
-
-**Description:** Before replacing vendored files (Tasks 1.3–1.5 — state-machines, billing-types, guard-types), run a compile-time compatibility check to verify that v7.0.0 canonical exports match the vendored export surface. This prevents predictable failures during de-vendoring.
-
-**Implementation:**
-1. Create a temporary test file that imports all types from both vendored files AND canonical package
-2. Use TypeScript `Exact<>` or assignment compatibility checks to verify type-shape match
-3. Run `tsc --noEmit` on the test file — if it fails, the canonical types have drifted from vendored
-4. Document any mismatches before proceeding with replacement
-
-**Acceptance Criteria:**
-- [ ] Compile-time compatibility test created and run before de-vendoring
-- [ ] All vendored type exports verified to have canonical equivalents
-- [ ] Any shape mismatches documented with adaptation strategy
-- [ ] Test removed after de-vendoring complete (one-time gate)
-
----
-
-### Task 1.3: Replace vendored state-machines.ts with canonical import
+### Task 1.1: Verify and enable loa-finn Terraform resources
 
 **Files:**
-- `themes/sietch/src/packages/core/protocol/state-machines.ts` (vendored from commit `d297b019`)
-- `themes/sietch/src/packages/core/protocol/index.ts` (barrel re-exports)
+- `infrastructure/terraform/ecs-finn.tf` (existing — verify)
+- `infrastructure/terraform/pgbouncer-finn.tf` (existing — verify)
+- `infrastructure/terraform/variables.tf` (existing — update)
 
-**Description:** The vendored state-machines.ts (238 lines) duplicates `StateMachineDefinition`, `isValidTransition()`, `isTerminal()`, and 4 state machine definitions (`RESERVATION_MACHINE`, `REVENUE_RULE_MACHINE`, `PAYMENT_MACHINE`, `SYSTEM_CONFIG_MACHINE`) that are canonical in `@0xhoneyjar/loa-hounfour`. Replace with direct imports.
+**Description:** The ECS service definition, ECR repo, security group, and service discovery for loa-finn already exist in Terraform. Verify all resource configurations match SDD §1.7, enable the service by setting `desired_count > 0`, and add any missing env vars (model API keys, Redis endpoint, S2S auth config).
 
 **Implementation:**
-1. Replace the entire vendored file body with re-exports from canonical source:
-   ```typescript
-   // Canonical imports — de-vendored from commit d297b019
-   export {
-     StateMachineDefinition,
-     isValidTransition,
-     isTerminal,
-     RESERVATION_MACHINE,
-     REVENUE_RULE_MACHINE,
-     PAYMENT_MACHINE,
-     SYSTEM_CONFIG_MACHINE,
-     STATE_MACHINES,
-     ReservationState,
-     RevenueRuleState,
-     PaymentState,
-     SystemConfigState,
-   } from '@0xhoneyjar/loa-hounfour';
-   ```
-2. Verify all downstream imports compile — grep for `from.*state-machines` across the codebase
-3. Remove the `VENDORED_FROM` provenance constant (no longer needed)
+1. Verify `ecs-finn.tf` task definition: CPU 512, Memory 1024, port 3000, internal-only SG
+2. Verify `pgbouncer-finn.tf`: read-only role (`loa_finn_ro`), pool_size=20
+3. Verify Cloud Map registration: `finn.arrakis-{env}.local:3000`
+4. Add environment variables to finn task definition: `REDIS_URL`, `OPENAI_API_KEY` (from Secrets Manager), `ANTHROPIC_API_KEY`, `FREESIDE_JWKS_URL=http://freeside.arrakis-{env}.local:3000/.well-known/jwks.json` (uses Cloud Map DNS — see Task 1.0 AC)
+5. Set `desired_count = 1` for staging (currently may be 0)
+6. Verify IAM role has access to required secrets only
 
 **Acceptance Criteria:**
-- [ ] No vendored type/function definitions remain in state-machines.ts
-- [ ] All exports are re-exports from `@0xhoneyjar/loa-hounfour`
-- [ ] All downstream consumers compile without changes (same export surface)
-- [ ] TypeScript strict mode passes (no type widening or narrowing issues)
+- [ ] `terraform plan` shows no unexpected changes for finn resources
+- [ ] Finn ECS service has all required env vars from Secrets Manager
+- [ ] Security group allows ingress on port 3000 from API SG only
+- [ ] Cloud Map DNS resolves `finn.arrakis-{env}.local`
 
 ---
 
-### Task 1.4: Replace vendored billing-types.ts with canonical imports
+### Task 1.2: Docker Compose full-stack local development
 
 **Files:**
-- `themes/sietch/src/packages/core/protocol/billing-types.ts` (vendored)
-- `themes/sietch/src/packages/core/protocol/index.ts` (barrel)
+- `docker-compose.dev.yml` (existing — extend)
 
-**Description:** billing-types.ts vendors ~15 types (`AgentBillingConfig`, `CreditBalance`, `UsageRecord`, `BillingMode`, `EntryType`, `SystemConfig`, `ResolvedParam<T>`, etc.) and 2 SQL helper functions. Replace type definitions with canonical imports from `@0xhoneyjar/loa-hounfour/economy`. Keep SQL helpers local if they have no canonical equivalent.
+**Description:** Add loa-finn as a service to the existing Docker Compose for local development. Ensure both services can communicate via S2S JWT.
 
 **Implementation:**
-1. Import canonical types from `@0xhoneyjar/loa-hounfour/economy` and `@0xhoneyjar/loa-hounfour`
-2. Re-export all types that have canonical equivalents
-3. Keep `buildEntryTypeCheck()` and `buildSourceTypeCheck()` local if they are SQL-specific (not in canonical protocol)
-4. Verify that type shapes are compatible — if v7.0.0 has additional fields, extend locally where needed
+1. Add `loa-finn` service definition: build from `../loa-finn` (relative path) or pull from ECR
+2. Configure shared Redis network between services
+3. Add `FREESIDE_JWKS_URL=http://sietch-dev:3000/.well-known/jwks.json` to finn env
+4. Add `LOA_FINN_URL=http://loa-finn:3000` to freeside env
+5. Add health check configuration for both services
+6. Document local setup in docker-compose comments
 
 **Acceptance Criteria:**
-- [ ] All type definitions that exist in v7.0.0 are imported, not locally defined
-- [ ] SQL helpers remain local only if no canonical equivalent exists
-- [ ] `EntryType` union matches v7.0.0 canonical (16 variants)
-- [ ] `BillingMode` type matches v7.0.0 canonical (`'shadow' | 'soft' | 'live'`)
-- [ ] All downstream consumers compile without changes
+- [ ] `docker compose -f docker-compose.dev.yml up` starts freeside, finn, PostgreSQL, Redis
+- [ ] Both services report healthy via health endpoints
+- [ ] Services can communicate on internal Docker network
 
 ---
 
-### Task 1.5: Replace vendored guard-types.ts with canonical imports
+### Task 1.3: ES256 JWT keypair and JWKS endpoint
 
 **Files:**
-- `themes/sietch/src/packages/core/protocol/guard-types.ts` (vendored)
-- `themes/sietch/src/packages/core/protocol/index.ts` (barrel)
+- `themes/sietch/src/api/routes/jwks.routes.ts` (NEW)
+- `themes/sietch/src/services/auth/JwksService.ts` (NEW)
+- `themes/sietch/src/services/auth/S2SJwtSigner.ts` (NEW)
+- `infrastructure/terraform/variables.tf` (add secret reference)
 
-**Description:** guard-types.ts vendors 2 interfaces (`GuardResult`, `BillingGuardResponse`). Replace with canonical imports.
+**Description:** Implement ES256 JWT signing for S2S communication (SDD §1.9). Freeside signs JWTs with `iss: loa-freeside`, `aud: loa-finn`, TTL 60s. JWKS endpoint publishes public key for finn verification.
 
 **Implementation:**
-1. Replace with re-exports:
-   ```typescript
-   export type { GuardResult, BillingGuardResponse } from '@0xhoneyjar/loa-hounfour';
-   ```
-2. Verify type shape compatibility with v7.0.0
+1. Create `JwksService`: loads ES256 keypair from Secrets Manager (or env var for local dev), exposes public key as JWKS
+2. Create `S2SJwtSigner`: signs JWTs with ES256, includes `{iss, aud, iat, exp, nft_id, tier, community_id, budget_reservation_id}`
+3. Create `/.well-known/jwks.json` route serving the public key
+4. Add Secrets Manager reference for `arrakis-{env}/agent-jwt-signing-key`
+5. For local dev: generate ephemeral keypair on startup if no secret configured
+6. Cache active signing key in memory (refresh every 60s from Secrets Manager)
 
 **Acceptance Criteria:**
-- [ ] No local type definitions remain in guard-types.ts
-- [ ] All exports are re-exports from canonical source
-- [ ] Downstream consumers compile without changes
+- [ ] `GET /.well-known/jwks.json` returns valid JWKS with ES256 public key
+- [ ] `S2SJwtSigner.sign(payload)` produces a valid JWT verifiable against JWKS
+- [ ] JWT contains required claims: `iss`, `aud`, `iat`, `exp`
+- [ ] TTL enforced at 60s
+- [ ] Works with both Secrets Manager and local ephemeral key
 
 ---
 
-### Task 1.6: Update CONTRACT_VERSION and version negotiation
+### Task 1.4: Database migrations (061-067)
 
 **Files:**
-- `packages/adapters/agent/loa-finn-client.ts` — uses `CONTRACT_VERSION` for S2S validation
-- `packages/adapters/agent/jwt-service.ts` — embeds `contract_version` claim in JWT
-- `themes/sietch/src/packages/core/protocol/arrakis-compat.ts` — re-exports `CONTRACT_VERSION`
-- `tests/unit/protocol-conformance.test.ts` — expects specific version
+- `themes/sietch/src/db/migrations/061_payment_state_machine.ts` (NEW)
+- `themes/sietch/src/db/migrations/062_jwks_key_store.ts` (NEW)
+- `themes/sietch/src/db/migrations/063_agent_threads.ts` (NEW)
+- `themes/sietch/src/db/migrations/064_budget_reservations.ts` (NEW)
+- `themes/sietch/src/db/migrations/065_api_keys.ts` (NEW)
+- `themes/sietch/src/db/migrations/066_agent_messages.ts` (NEW — GPT F-5)
+- `themes/sietch/src/db/migrations/067_usage_events.ts` (NEW — GPT F-9)
 
-**Description:** After bumping to v7.0.0, `CONTRACT_VERSION` will automatically update to `'7.0.0'` from the package. Update all test expectations and verify that version negotiation with loa-finn still works. The `validateCompatibility()` function enforces `MIN_SUPPORTED_VERSION = '6.0.0'`, so loa-finn must also support v7.0.0.
+**Description:** Create all database schemas needed across sprints 1-6. Front-loading migrations avoids mid-sprint DDL.
 
 **Implementation:**
-1. Update test expectation in `protocol-conformance.test.ts` from `'1.1.0'` to `'7.0.0'`
-2. Update any hardcoded version strings in E2E stubs (`tests/e2e/loa-finn-e2e-stub.ts`)
-3. Verify `validateCompatibility()` accepts v7.0.0 peer version
-4. Confirm JWT `contract_version` claim is now `'7.0.0'`
-
-**S2S Rollback/Canary Plan (Flatline IMP-001):**
-- Before deploying, verify loa-finn peer supports v7.0.0 (`validateCompatibility()` check)
-- If peer is still on v6.x, maintain dual-accept window (accept both 6.x and 7.0.0 responses)
-- Canary: deploy to staging first, validate S2S handshake, then production
-- Rollback: revert dependency pin to previous commit SHA if S2S negotiation fails
-- Add integration test: mock loa-finn returning `x-contract-version: 6.0.0` → verify graceful handling
+1. `061`: Extend `crypto_payments` with full IPN state machine columns (`status` enum, `partially_paid_amount`, `reconciled_at`)
+2. `062`: `jwks_keys` table for ES256 key metadata (`kid`, `created_at`, `active`, `public_key_jwk`)
+3. `063`: `agent_threads` table (`thread_id`, `nft_id`, `community_id`, `owner_wallet`, `created_at`, `archived_at`)
+4. `064`: `budget_reservations` table (`reservation_id`, `community_id`, `nft_id`, `amount_micro BIGINT`, `status` enum, `finalized_at`, `finalization_id UNIQUE`)
+5. `065`: `api_keys` table (`key_prefix` indexed, `key_salt`, `key_hash`, `developer_id`, `rate_limit_rpm`, `rate_limit_tpd`, `allowed_pools`, `environment` enum)
+6. `066`: `agent_messages` table (GPT F-5: separate from `agent_threads` metadata) — `message_id UUID PK`, `thread_id FK`, `nft_id`, `community_id`, `source ENUM('web','discord','telegram','api')`, `author_wallet VARCHAR`, `discord_user_id VARCHAR`, `content TEXT`, `role ENUM('user','assistant','system')`, `token_usage_input INT`, `token_usage_output INT`, `pool_id VARCHAR`, `created_at TIMESTAMPTZ` — indexed on `(thread_id, created_at)`
+7. `067`: `usage_events` table (GPT F-9: immutable accounting ledger) — `event_id UUID PK`, `community_id`, `nft_id`, `pool_id`, `tokens_input INT`, `tokens_output INT`, `amount_micro BIGINT`, `reservation_id FK`, `finalization_id VARCHAR UNIQUE`, `conservation_guard_result BOOLEAN`, `conservation_guard_violations JSONB`, `created_at TIMESTAMPTZ` — indexed on `(community_id, created_at)`, immutable (no UPDATE/DELETE)
 
 **Acceptance Criteria:**
-- [ ] `CONTRACT_VERSION` reports `'7.0.0'` at runtime
-- [ ] Protocol conformance tests pass with v7.0.0
-- [ ] JWT `contract_version` claim = `'7.0.0'`
-- [ ] `validateCompatibility('7.0.0', '7.0.0')` returns compatible
-- [ ] E2E stub uses v7.0.0 for both local and peer versions
-- [ ] Integration test: graceful handling when peer returns v6.x (Flatline IMP-001)
-- [ ] Rollback path documented: revert to previous commit SHA
+- [ ] All migrations run without errors on fresh and existing databases
+- [ ] No `DROP` statements (additive only)
+- [ ] All BigInt columns for monetary values
+- [ ] Unique constraints on `finalization_id`, `key_prefix`, `thread_id+nft_id`
+- [ ] `agent_messages` indexed on `(thread_id, created_at)` for efficient history queries (GPT F-5)
+- [ ] `usage_events` indexed on `(community_id, created_at)` for admin dashboard queries (GPT F-9)
+- [ ] `usage_events` has no UPDATE/DELETE grants — append-only audit table
 
 ---
 
-### Task 1.7: Update BILLING_PROTOCOL_VERSION references
-
-**Files:** Search for `BILLING_PROTOCOL_VERSION` or `4.6.0` across the codebase
-
-**Description:** Any remaining references to billing protocol version `4.6.0` must be updated to `7.0.0`. The v7.0.0 protocol unifies billing and core versions into a single `CONTRACT_VERSION`.
-
-**Implementation:**
-1. Search for all occurrences of `4.6.0` and `BILLING_PROTOCOL_VERSION`
-2. Replace with `CONTRACT_VERSION` from the canonical package where appropriate
-3. Remove any separate billing version tracking — v7.0.0 unifies this
-
-**Acceptance Criteria:**
-- [ ] No references to `4.6.0` as a protocol version remain
-- [ ] Single version source of truth: `CONTRACT_VERSION = '7.0.0'`
-- [ ] All S2S headers use unified version
-
----
-
-### Task 1.8: Verify build and existing test suite
-
-**Files:** All modified files from tasks 1.1–1.7
-
-**Description:** Full build verification after dependency bump and de-vendoring.
-
-**Implementation:**
-1. `pnpm build` — all packages compile
-2. `pnpm test` — existing test suite passes
-3. `pnpm typecheck` (if available) — no type errors
-4. Fix any type incompatibilities discovered during compilation
-
-**Type-Shape Contract Tests (Flatline IMP-003):**
-Add permanent contract tests that verify canonical imports maintain the expected type shapes. These survive beyond de-vendoring as regression guards:
-1. Create `tests/unit/type-shape-contracts.test.ts`
-2. For each de-vendored type, add assignment compatibility assertions (e.g., `const _: CanonicalStateMachine = localValue`)
-3. Test key runtime invariants: state machine terminal states, billing entry type unions, guard result shape
-4. Run as part of CI — prevents silent upstream type drift
-
-**Acceptance Criteria:**
-- [ ] `pnpm build` succeeds with 0 errors
-- [ ] Existing test suite passes (no regressions)
-- [ ] No TypeScript strict mode violations
-- [ ] No type widening/narrowing from de-vendoring
-- [ ] Type-shape contract tests added and passing (Flatline IMP-003)
-- [ ] Contract tests verify: state machines, billing types, guard types, branded arithmetic
-
----
-
-## Sprint 2: Canonical Type Adoption — Identity, Lifecycle & Events (Global ID: 323)
-
-### Task 2.1: Adopt AgentIdentity with capability-scoped trust_scopes
+### Task 1.5: Health check endpoint verification
 
 **Files:**
-- `themes/sietch/src/packages/core/protocol/arrakis-compat.ts` — local `TrustScope`, `TrustLevel`, `TRUST_LEVEL_TO_SCOPES`
-- `packages/adapters/agent/jwt-service.ts` — JWT claims include trust-related fields
+- `themes/sietch/src/api/routes/health.routes.ts` (existing — verify/extend)
 
-**Description:** v7.0.0 provides canonical `AgentIdentity` with `trust_scopes` as capability-scoped permissions (billing, governance, inference, delegation, audit, composition). The local `TrustScope` union in arrakis-compat.ts (11 values) should be replaced with the canonical type. During the migration window, `normalizeInboundClaims()` must dual-accept both v4.6.0 (integer trust_level) and v7.0.0 (trust_scopes array) formats. The v4.6.0 branch will be removed only after telemetry confirms 0 usage (see Task 2.7).
+**Description:** Ensure both services expose health endpoints compatible with ECS health checks and ALB target group configuration.
 
 **Implementation:**
-1. Import `AgentIdentity`, `TrustScope` from `@0xhoneyjar/loa-hounfour`
-2. Replace local `TrustScope` union with canonical import
-3. Keep `TrustLevel` type and `TRUST_LEVEL_TO_SCOPES` mapping **temporarily** for dual-accept window
-4. Update `normalizeInboundClaims()` to:
-   - Accept v7.0.0 format (trust_scopes array) as primary path
-   - Accept v4.6.0 format (integer trust_level) as fallback, converting to trust_scopes via mapping
-   - **Log a metric** (`claim_version_seen: 'v4.6.0' | 'v7.0.0'`) on every invocation for telemetry
-5. Change `isV7NormalizationEnabled()` to always return true (v7.0.0 is default) but keep the function as a kill-switch
-6. Add integration tests covering both claim shapes during the dual-accept window
+1. Verify freeside `GET /health` returns 200 with `{status: "ok", version, uptime}`
+2. Add dependency checks: DB reachable, Redis reachable
+3. Verify loa-finn health endpoint format matches ECS health check config
+4. Ensure ALB health check path matches route
 
 **Acceptance Criteria:**
-- [ ] `TrustScope` imported from canonical, not locally defined
-- [ ] `normalizeInboundClaims()` accepts BOTH v4.6.0 and v7.0.0 formats (dual-accept window)
-- [ ] v4.6.0 claims are converted to trust_scopes via mapping (not rejected)
-- [ ] Claim version metric logged on every invocation (`claim_version_seen`)
-- [ ] JWT claims emitted in canonical trust_scopes format (v7.0.0 only on write)
-- [ ] Integration tests cover: v7.0.0 claims (pass), v4.6.0 claims (convert + pass), malformed claims (reject)
-- [ ] Kill-switch: `PROTOCOL_V7_NORMALIZATION=false` can revert to v4.6.0-only if needed
+- [ ] `GET /health` returns 200 when dependencies are healthy
+- [ ] Returns 503 when DB or Redis unreachable
+- [ ] Response includes `contract_version: '7.0.0'` header (for peer verification — Task 4.9 from sprint 325)
 
 ---
 
-### Task 2.2: Adopt AgentLifecycleState
+### Task 1.6: [CROSS-REPO] loa-finn ES256 JWT verification against JWKS (GPT F-2)
 
-**Files:**
-- New or existing agent state management code
-- `themes/sietch/src/packages/core/protocol/index.ts` (barrel)
+**Repo:** loa-finn (not loa-freeside)
 
-**Description:** v7.0.0 provides canonical `AgentLifecycleState`: `DORMANT | PROVISIONING | ACTIVE | SUSPENDED | TRANSFERRED | ARCHIVED`. Import and re-export for use in agent thread management and identity tracking.
+**Description:** GPT finding F-2: Only the signing/JWKS publishing side is planned in freeside. loa-finn must implement the verification side — JWKS fetch, caching, `aud`/`iss`/`exp` enforcement, `kid` selection, clock skew handling.
 
-**Implementation:**
-1. Import `AgentLifecycleState` from `@0xhoneyjar/loa-hounfour`
-2. Re-export from protocol barrel
-3. Add lifecycle state to agent thread model if not already present (or document for future sprint)
+**Implementation (loa-finn):**
+1. Add JWKS client: fetch from `$FREESIDE_JWKS_URL`, cache keys for 5 min, refresh on `kid` miss
+2. JWT verification middleware: validate `iss = 'loa-freeside'`, `aud = 'loa-finn'`, `exp` with 5s clock skew tolerance
+3. Extract claims: `{nft_id, tier, community_id, budget_reservation_id}` from verified JWT
+4. Reject requests with missing/expired/invalid JWT (401 with structured error)
+5. Integration test: freeside signs JWT → finn verifies via JWKS → request succeeds
 
 **Acceptance Criteria:**
-- [ ] `AgentLifecycleState` imported from canonical source
-- [ ] Re-exported from protocol barrel for downstream use
-- [ ] Type available for agent thread state management
+- [ ] loa-finn fetches and caches JWKS from freeside Cloud Map endpoint
+- [ ] JWT with valid claims passes verification
+- [ ] Expired JWT rejected (401)
+- [ ] Wrong `iss` or `aud` rejected (401)
+- [ ] Integration test: sign-then-verify round-trip succeeds in staging
+
+**Mitigation if loa-finn changes can't land:**
+- Ship JWKS verifier as a standalone PR to loa-finn (small surface area)
+- Temporary fallback: pre-shared symmetric key NOT acceptable per security requirements (ES256 required)
+- Escalation: block Sprint 3 start until finn verification lands
 
 ---
 
-### Task 2.3: Adopt canonical NftId format
+## Sprint 2: Revenue Activation — NOWPayments + Credit Mint (Issue #79)
+
+**Goal:** Users can buy credits with crypto. First real payment collected.
+
+### Task 2.1: Enable NOWPayments feature flag and configure secrets
 
 **Files:**
-- `apps/worker/src/handlers/commands/my-agent.ts` — nftId construction
-- `apps/worker/src/handlers/commands/my-agent-data.ts` — nftId queries
-- `packages/adapters/agent/jwt-service.ts` — nft_id JWT claim
+- `infrastructure/terraform/variables.tf` (update default)
+- `themes/sietch/src/config.ts` (verify env var loading)
 
-**Description:** v7.0.0 defines canonical NftId format: `eip155:{chainId}/{collectionAddress}/{tokenId}`. Current code uses ad-hoc `wallet:communityId` or similar patterns. Adopt the canonical format with a dual-read compatibility layer and backfill plan for existing records.
+**Description:** The NOWPayments adapter is built and tested (95 passing tests from cycle-005). The `FEATURE_CRYPTO_PAYMENTS_ENABLED` flag is currently `false`. Enable it in staging first, then production.
 
 **Implementation:**
-1. **Inventory storage locations:** Identify all tables/columns/caches where nftId is persisted and indexed (agent_threads, JWT claims, Redis keys, etc.)
-2. Import `NftId` type and `parseNftId()` / `formatNftId()` if available from v7.0.0; otherwise create local utilities
-3. **Dual-read layer:** Create `resolveNftId(raw: string): NftId` that accepts both old format (`wallet:communityId`) and canonical (`eip155:...`), normalizing to canonical on read
-4. **Single-write:** All new records and JWT claims write canonical format only
-5. Update nftId construction in `my-agent.ts` to use canonical format via `formatNftId()`
-6. Update queries in `my-agent-data.ts` to use `resolveNftId()` for lookups (accept both formats)
-7. Use `normalizeWallet()` (from Sprint 321, Task 1.4) on the collection address component
-8. **Backfill script:** Create `scripts/backfill-nft-ids.ts` — idempotent script that:
-   - Scans agent_threads table for old-format nftId values
-   - Converts to canonical format using `formatNftId()`
-   - Updates in batches with progress logging
-   - Handles collision/ambiguity (old formats that cannot be deterministically mapped → log and skip)
-9. Add integration tests proving old-format records remain accessible after deploy
+1. Set `FEATURE_CRYPTO_PAYMENTS_ENABLED=true` in Terraform staging variables
+2. Verify `NOWPAYMENTS_API_KEY` loads from Secrets Manager (`arrakis-{env}/nowpayments`)
+3. Verify `NOWPAYMENTS_IPN_SECRET` loads for webhook verification
+4. Configure webhook callback URL to `https://api.{domain}/api/crypto/webhook`
+5. Verify WAF rule on `/api/crypto/webhook` (already exists: 100 req/min per IP)
 
 **Acceptance Criteria:**
-- [ ] NftId format follows `eip155:{chainId}/{collectionAddress}/{tokenId}` pattern
-- [ ] New records use canonical format (single-write)
-- [ ] `resolveNftId()` accepts both old and canonical formats (dual-read)
-- [ ] JWT `nft_id` claim uses canonical format
-- [ ] Backfill script created with idempotency + progress logging
-- [ ] Integration tests: old-format nftId lookups still return correct results
-- [ ] All storage locations inventoried and documented
-- [ ] Collision/ambiguity handling defined (log + skip for unmappable formats)
+- [ ] Feature flag enabled in staging
+- [ ] NOWPayments API key and IPN secret loaded from Secrets Manager
+- [ ] Webhook URL configured in NOWPayments dashboard
+- [ ] WAF rate limiting active on webhook endpoint
 
 ---
 
-### Task 2.4: Adopt DomainEvent<T> for event sourcing
+### Task 2.2: Credit pack product definition
 
 **Files:**
-- `themes/sietch/src/packages/core/protocol/index.ts` (barrel)
-- `packages/adapters/agent/capability-audit.ts` — audit event emitter
+- `themes/sietch/src/config.ts` (add credit pack config)
+- `themes/sietch/src/services/billing/credit-packs.ts` (NEW)
 
-**Description:** v7.0.0 provides `DomainEvent<T>` with 35+ registered event types across 10 aggregate types. Import the canonical event type and adapt the capability audit emitter to produce canonical domain events.
+**Description:** Define credit pack tiers as per SDD §Phase 2. Single source of truth for pricing, USD-to-microcredit conversion, and bonus percentages.
 
 **Implementation:**
-1. Import `DomainEvent`, `DomainEventBatch` from `@0xhoneyjar/loa-hounfour`
-2. Re-export from protocol barrel
-3. Update `capability-audit.ts` to wrap audit events in `DomainEvent<T>` format:
-   - `aggregate_type`: derive from event context (e.g., `'budget'`, `'agent'`)
-   - `aggregate_id`: derive from entity ID
-   - `event_type`: map to canonical event type string
-   - `occurred_at`: ISO timestamp
-   - `payload`: the existing audit event data
+1. Define `CREDIT_PACKS` constant with 3 tiers (SDD pricing table):
+   - Starter: $5 → 5,000,000 micro-credits (0% bonus)
+   - Standard: $10 → 10,500,000 micro-credits (5% bonus)
+   - Premium: $25 → 27,500,000 micro-credits (10% bonus)
+2. All arithmetic via BigInt — no floating-point
+3. Minimum payment: $5 (enforced at command level)
+4. Export `getCreditPackByAmount(usdAmount: number)` helper
 
 **Acceptance Criteria:**
-- [ ] `DomainEvent<T>` imported from canonical source
-- [ ] Audit events wrapped in canonical DomainEvent format
-- [ ] `aggregate_type` and `event_type` use v7.0.0 canonical strings
-- [ ] Backward-compatible: existing audit log consumers still work
+- [ ] 3 credit pack tiers defined with BigInt micro-credit amounts
+- [ ] No floating-point in monetary calculations
+- [ ] Minimum $5 enforced
+- [ ] Helper function resolves USD amount to pack definition
 
 ---
 
-### Task 2.5: Adopt StreamEvent discriminated union
+### Task 2.3: Discord `/buy-credits` slash command
 
 **Files:**
-- `packages/adapters/agent/loa-finn-client.ts` — SSE stream parsing
-- `themes/sietch/src/packages/core/protocol/index.ts` (barrel)
+- `themes/sietch/src/discord/commands/buy-credits.ts` (NEW)
+- `apps/worker/src/handlers/commands/index.ts` (register command)
 
-**Description:** v7.0.0 provides canonical `StreamEvent` discriminated union: `stream_start | chunk | tool_call | usage | stream_end | error`. The loa-finn-client currently parses SSE events with ad-hoc type handling. Adopt canonical types.
+**Description:** Discord slash command that creates a NOWPayments checkout URL and returns it to the user.
 
 **Implementation:**
-1. Import `StreamEvent` and its constituent types from `@0xhoneyjar/loa-hounfour`
-2. Re-export from protocol barrel
-3. Update SSE parser in loa-finn-client to type parsed events as `StreamEvent`
-4. Verify discriminated union narrowing works in switch/case handlers
+1. Register `/buy-credits` command with `amount` parameter (number, choices: 5/10/25)
+2. On invocation: look up credit pack tier → call NOWPayments `create_payment` API → return checkout URL as ephemeral message
+3. Store payment record in DB (status: `waiting`, `payment_id`, `community_id`, `user_wallet`)
+4. Handle errors: amount too low, NOWPayments API failure, user not verified
 
 **Acceptance Criteria:**
-- [ ] `StreamEvent` imported from canonical source
-- [ ] SSE parser produces typed `StreamEvent` objects
-- [ ] Type narrowing works: `event.type === 'chunk'` narrows to `ChunkEvent`
-- [ ] All 6 event types handled (stream_start, chunk, tool_call, usage, stream_end, error)
+- [ ] `/buy-credits 10` returns a NOWPayments checkout link
+- [ ] Payment record created in DB with status `waiting`
+- [ ] Ephemeral response (only visible to invoker)
+- [ ] Amounts below $5 rejected
 
 ---
 
-### Task 2.6: Adopt CompletionRequest and CompletionResult
+### Task 2.4: Webhook → credit mint pipeline with conservation guard
 
 **Files:**
-- `packages/adapters/agent/loa-finn-client.ts` — request/response types
-- `themes/sietch/src/packages/core/protocol/index.ts` (barrel)
+- `themes/sietch/src/services/billing/CryptoWebhookService.ts` (existing — extend)
+- `themes/sietch/src/api/crypto-billing.routes.ts` (existing — verify)
 
-**Description:** v7.0.0 provides canonical `CompletionRequest` (with `execution_mode`, `thinking`, `budget_limit_micro`) and `CompletionResult` (with `usage`, `pricing_applied`). Adopt these as the wire format for loa-finn S2S communication.
+**Description:** Wire the existing NOWPayments webhook handler to the credit mint pipeline. On successful payment (`finished` status), mint credit lot with conservation guard verification.
 
 **Implementation:**
-1. Import `CompletionRequest`, `CompletionResult` from `@0xhoneyjar/loa-hounfour`
-2. Re-export from protocol barrel
-3. Update loa-finn-client request building to use `CompletionRequest` type
-4. Update response parsing to use `CompletionResult` type
-5. Map existing fields to canonical field names
+1. Extend `CryptoWebhookService` to handle full IPN state machine: `waiting` → `confirming` → `confirmed` → `sending` → `partially_paid` | `finished` | `failed` | `expired`
+2. On `finished`: mint credit lot using existing budget engine (`BigInt` micro-credits)
+3. Fire conservation guard on credit creation (verify I-1 through I-14 invariants)
+4. Handle `partially_paid`: no credits minted, log for admin reconciliation
+5. Idempotency: `SELECT ... FOR UPDATE` on `payment_id` prevents double-mint
+6. Send Discord confirmation message to user on success
 
 **Acceptance Criteria:**
-- [ ] `CompletionRequest` and `CompletionResult` imported from canonical source
-- [ ] Request builder produces canonical format
-- [ ] Response parser expects canonical format
-- [ ] `execution_mode`, `thinking`, `budget_limit_micro` fields available
-- [ ] `usage` and `pricing_applied` fields parsed from response
+- [ ] Webhook receives payment confirmation and creates credit balance
+- [ ] Conservation guard fires on credit creation
+- [ ] Double-payment handled idempotently (replay returns 200, no double-mint)
+- [ ] `partially_paid` logged but no credits minted
+- [ ] User receives Discord confirmation message
 
 ---
 
-### Task 2.7: Add JWT claim version telemetry and define v4.6.0 cutoff policy
+### Task 2.5: Payment reconciliation job
 
 **Files:**
-- `themes/sietch/src/packages/core/protocol/arrakis-compat.ts` — compat layer
-- `packages/adapters/agent/jwt-service.ts` — JWT claims
+- `themes/sietch/src/jobs/payment-reconciliation.ts` (NEW)
 
-**Description:** Rather than immediately removing v4.6.0 backward compatibility, add telemetry to track claim versions observed in production. Define a bounded cutoff policy: v4.6.0 dual-accept will be removed only after telemetry confirms 0 v4.6.0 claims for N consecutive days (where N >= max JWT TTL in days + session TTL buffer). The actual removal is deferred to a follow-up task after the cutoff condition is met.
+**Description:** Background job that polls NOWPayments for payments stuck in intermediate states (SDD §1.4 failure modes).
 
 **Implementation:**
-1. Add structured metric logging in `normalizeInboundClaims()`:
-   ```typescript
-   logger.info({ claim_version: hasV7Scopes ? 'v7.0.0' : 'v4.6.0', nft_id, source }, 'jwt_claim_version_observed');
-   ```
-2. Define cutoff policy in code comments and NOTES.md:
-   - Cutoff condition: 0 v4.6.0 claims observed for 7 consecutive days (max JWT TTL = 24h + 6d buffer)
-   - Monitoring: query structured logs for `jwt_claim_version_observed` where `claim_version = 'v4.6.0'`
-   - Removal: once cutoff is confirmed, create a follow-up task to remove `TrustLevel`, `TRUST_LEVEL_TO_SCOPES`, and v4.6.0 branch
-3. Keep `validateCompatibility()` and `CONTRACT_VERSION` re-exports (still needed)
-4. Simplify `normalizeCoordinationMessage()` — version field is now always required
-5. Keep `isV7NormalizationEnabled()` as a kill-switch but default to true
+1. Run every 5 minutes
+2. Query DB for payments with status `waiting` or `confirming` older than 20 minutes
+3. Poll NOWPayments `GET /payment/:id` for current status
+4. Update DB status accordingly
+5. If `finished` but no credit lot: trigger mint (same path as webhook)
+6. If `expired` or `failed`: update status, no action needed
 
 **Acceptance Criteria:**
-- [ ] Claim version metric logged on every JWT normalization
-- [ ] Cutoff policy documented: 0 v4.6.0 claims for 7 consecutive days → safe to remove
-- [ ] `normalizeInboundClaims()` still dual-accepts v4.6.0 and v7.0.0 (NOT removed yet)
-- [ ] Kill-switch `PROTOCOL_V7_NORMALIZATION` retained for emergency revert
-- [ ] Follow-up task template documented in NOTES.md for eventual removal
-- [ ] All tests cover both v4.6.0 and v7.0.0 claim paths
+- [ ] Job runs every 5 minutes
+- [ ] Stuck payments detected and reconciled
+- [ ] Missed webhooks recovered via polling
+- [ ] No duplicate minting (idempotency guards)
 
 ---
 
-## Sprint 3: Platform Surface — Discovery, Routing & Conversations (Global ID: 324)
-
-### Task 3.1: Implement /.well-known/loa-hounfour discovery endpoint
+### Task 2.6: E2E webhook replay test harness (GPT F-7)
 
 **Files:**
-- `themes/sietch/src/api/routes/` — new route file or add to existing
-- `themes/sietch/src/api/server.ts` — route registration
+- `themes/sietch/src/tests/integration/webhook-replay.test.ts` (NEW)
+- `themes/sietch/src/tests/fixtures/nowpayments-ipn-sample.json` (NEW)
 
-**Description:** v7.0.0 defines a `ProtocolDiscovery` schema for `/.well-known/loa-hounfour`. Implement this endpoint to advertise Freeside's protocol capabilities, supported versions, and available features. This enables cross-system protocol negotiation.
+**Description:** GPT finding F-7: Webhook signature mismatches, header naming differences, or body canonicalization issues are a top cause of launch failure. Capture a real/sandbox IPN request and build an automated replay test.
 
 **Implementation:**
-1. Import `ProtocolDiscovery` type from `@0xhoneyjar/loa-hounfour`
-2. Create GET `/.well-known/loa-hounfour` route
-3. Return discovery document:
-   ```json
-   {
-     "protocol_version": "7.0.0",
-     "min_supported_version": "6.0.0",
-     "capabilities": ["billing", "agent_threads", "streaming", "ensemble"],
-     "endpoints": { "inference": "/api/inference", "jwks": "/.well-known/jwks.json" }
-   }
-   ```
-4. Cache response (static content, changes only on deploy)
-5. No authentication required (public endpoint)
-
-**Schema Validation Tests (Flatline IMP-004):**
-Add tests that validate the discovery endpoint response against the canonical `ProtocolDiscovery` JSON schema from v7.0.0. This prevents silent drift in the contract surface:
-1. Import or derive JSON Schema from the `ProtocolDiscovery` TypeScript type
-2. Use `ajv` (already a project dependency) to validate response body
-3. Test: missing required fields → validation error
-4. Test: extra fields → allowed (forward-compatible)
+1. Capture a real NOWPayments sandbox IPN request (raw body bytes + all headers)
+2. Store as test fixture: `{headers: {...}, body: "raw string", expected_signature: "..."}`
+3. Replay test: POST fixture to staging `/api/crypto/webhook` endpoint
+4. Assert: HMAC-SHA512 signature validates, state transition correct (→ `finished`), credits minted exactly once
+5. Replay again (idempotency): assert 200 returned, no double-mint, credit balance unchanged
+6. Test `partially_paid` fixture: assert no credits minted, status updated
 
 **Acceptance Criteria:**
-- [ ] GET `/.well-known/loa-hounfour` returns 200 with discovery document
-- [ ] Response conforms to `ProtocolDiscovery` schema
-- [ ] `protocol_version` matches `CONTRACT_VERSION`
-- [ ] No authentication required
-- [ ] Response is cacheable (Cache-Control header)
-- [ ] Schema validation test using ajv against canonical type (Flatline IMP-004)
-- [ ] Test: invalid response shape detected at CI time
+- [ ] Captured real/sandbox IPN payload stored as test fixture
+- [ ] Replay test validates HMAC-SHA512 signature end-to-end
+- [ ] State machine transition correct on replay
+- [ ] Idempotent replay: no double-mint
+- [ ] `partially_paid` scenario tested
 
 ---
 
-### Task 3.2: Adopt RoutingPolicy with personality routing
+## Sprint 3: Personality Routing Bridge (Issue #80)
+
+**Goal:** Different NFTs get different model routing based on personality derivation.
+
+### Task 3.1: Personality lookup client
 
 **Files:**
-- `packages/adapters/agent/pool-mapping.ts` — current pool resolution
-- `themes/sietch/src/packages/core/protocol/index.ts` (barrel)
+- `packages/adapters/agent/personality-client.ts` (NEW)
 
-**Description:** v7.0.0 provides canonical `RoutingPolicy` with personality routing per `TaskType`. Import and integrate with the existing pool resolution system.
+**Description:** loa-freeside calls loa-finn's personality endpoint to get NFT personality data for routing decisions. Uses S2S JWT from Task 1.3 for authentication.
+
+**Implementation:**
+1. Create `PersonalityClient` that calls `GET /api/v1/nft/:tokenId/personality` on loa-finn
+2. Authenticate with S2S JWT signed by freeside
+3. Parse response: `{personality_summary, emphasis_weights, tier, pool_preferences, element}`
+4. Note: `element` field now carries per-card differentiation for Major Arcana NFTs (loa-finn PR #92 — air/water/earth/fire per Drug-Tarot Codec)
+5. Cache result in Redis (`personality:{nft_id}`, TTL 5 min)
+6. Cache invalidation: TTL-based only for this sprint (GPT F-8: event-driven invalidation via on-chain transfer listener deferred to post-launch — requires event ingestion pipeline not yet scoped)
+
+**Acceptance Criteria:**
+- [ ] Client fetches personality from loa-finn via S2S JWT
+- [ ] Response cached in Redis (5 min TTL)
+- [ ] TTL expiry forces re-fetch (verified by test)
+- [ ] Graceful degradation if loa-finn unreachable (use default personality)
+- [ ] NOTE: Event-driven cache invalidation on NFT transfer deferred to post-launch (GPT F-8)
+
+---
+
+### Task 3.2: Pool selection logic
+
+**Files:**
+- `packages/adapters/agent/pool-selector.ts` (NEW)
+
+**Description:** Map personality tier and emphasis weights to model pool selection (SDD §Phase 3). Uses loa-hounfour v7.0.0 canonical `RoutingPolicy` and `TaskType` types.
 
 **Implementation:**
 1. Import `RoutingPolicy`, `TaskType` from `@0xhoneyjar/loa-hounfour`
-2. Re-export from protocol barrel
-3. Update `resolvePoolId()` to optionally accept a `RoutingPolicy` override
-4. When a routing policy is provided, use its task-type-to-pool mapping instead of the default tier-based resolution
+2. Map personality tier (Basic → `cheap` pool only, Standard → `cheap` + `fast-code`, Premium → all 5 pools)
+3. Map emphasis weights to preferred pool per task type
+4. Factor in `element` field for personality-aware routing (fire → reasoning, water → creative, earth → structured, air → fast-code)
+5. Return selected pool + fallback pool
 
 **Acceptance Criteria:**
-- [ ] `RoutingPolicy` and `TaskType` imported from canonical source
-- [ ] `resolvePoolId()` accepts optional `RoutingPolicy` parameter
-- [ ] Routing policy overrides default tier-based resolution when provided
-- [ ] Backward-compatible: existing callers without routing policy work unchanged
+- [ ] Basic tier restricted to `cheap` pool
+- [ ] Premium tier has access to all 5 pools (cheap, fast-code, reviewer, reasoning, architect)
+- [ ] Element-based routing varies selection for Major Arcana NFTs
+- [ ] Two different NFTs get different pool selections (integration test)
 
 ---
 
-### Task 3.3: Adopt BudgetScope with PreferenceSignal
+### Task 3.3: Request enrichment and budget reservation
 
 **Files:**
-- `packages/adapters/agent/` — budget management
-- `themes/sietch/src/packages/core/protocol/index.ts` (barrel)
+- `packages/adapters/agent/loa-finn-client.ts` (existing — extend)
+- `packages/adapters/agent/budget-manager.ts` (existing — extend)
 
-**Description:** v7.0.0 provides canonical `BudgetScope` with `PreferenceSignal` for expressing user preferences in budget allocation. Import and make available for the budget manager.
+**Description:** Enrich inference requests with personality context and manage budget reservation lifecycle (reserve → finalize → cleanup).
 
 **Implementation:**
-1. Import `BudgetScope`, `PreferenceSignal` from `@0xhoneyjar/loa-hounfour`
-2. Re-export from protocol barrel
-3. Add `BudgetScope` as an optional parameter to budget reservation requests
-4. When preference signals are present, pass them through to the budget manager
+1. Before inference: create pessimistic budget reservation (`INSERT INTO budget_reservations`)
+2. Sign S2S JWT with `{nft_id, tier, budget_reservation_id, community_id}` claims
+3. Call loa-finn inference endpoint with personality context in system prompt
+4. Anti-narration enforcement: no forbidden identity terms in system prompt (per SDD §Phase 3)
+5. On response: parse `X-Pool-Used`, `X-Personality-Id`, `X-Tokens-Used` headers
+6. Finalize budget with actual token count (single DB transaction, SDD §1.5 atomicity)
+7. Orphan cleanup: job releases reservations older than 5 min with status `reserved`
 
 **Acceptance Criteria:**
-- [ ] `BudgetScope` and `PreferenceSignal` imported from canonical source
-- [ ] Available for budget reservation requests
-- [ ] Preference signals forwarded to budget allocation logic
+- [ ] Budget reserved before inference request
+- [ ] S2S JWT contains all required claims
+- [ ] Budget finalized with actual token count after response
+- [ ] Orphaned reservations cleaned up within 5 minutes
+- [ ] Anti-narration terms excluded from system prompt
 
 ---
 
-### Task 3.4: Adopt Conversation type with sealing policy
+### Task 3.4: Orphan reservation cleanup job
 
 **Files:**
-- `themes/sietch/src/packages/core/protocol/index.ts` (barrel)
+- `themes/sietch/src/jobs/orphan-reservation-cleanup.ts` (NEW)
 
-**Description:** v7.0.0 provides canonical `Conversation` type with `ConversationSealingPolicy` and `AccessPolicy`. Import and re-export for use in agent thread management. This lays groundwork for conversation history and audit trail.
+**Description:** Background job that releases orphaned budget reservations (SDD §1.5 failure modes).
 
 **Implementation:**
-1. Import `Conversation`, `ConversationSealingPolicy`, `AccessPolicy` from `@0xhoneyjar/loa-hounfour`
-2. Re-export from protocol barrel
-3. Document mapping between existing agent threads and the Conversation type
+1. Run every 5 minutes
+2. Query `budget_reservations WHERE status = 'reserved' AND created_at < NOW() - INTERVAL '5 minutes'`
+3. Release each: set `status = 'expired'`, restore credit balance
+4. Log released reservations for audit
 
 **Acceptance Criteria:**
-- [ ] Canonical Conversation types imported and re-exported
-- [ ] Documentation added mapping agent_threads columns to Conversation fields
-- [ ] Types available for downstream adoption
+- [ ] Orphaned reservations released within 5 minutes
+- [ ] Credit balance restored on release
+- [ ] Audit log entry for each released reservation
 
 ---
 
-### Task 3.5: Adopt EscrowEntry and MonetaryPolicy types
+### Task 3.5: Persist per-finalization accounting events to `usage_events` (GPT F-9)
 
 **Files:**
-- `themes/sietch/src/packages/core/protocol/index.ts` (barrel)
+- `packages/adapters/agent/usage-event-writer.ts` (NEW)
+- `packages/adapters/agent/budget-manager.ts` (existing — extend finalization path)
 
-**Description:** v7.0.0 provides `EscrowEntry` and `MonetaryPolicy` types that formalize the economic guardrails. Import and make available for the billing subsystem.
+**Description:** GPT finding F-9: Admin spend breakdown (G-6) and JSONL audit trail (G-7) require durable per-request accounting records. The budget finalization path must write an immutable `usage_events` row (migration 067) on every finalization.
 
 **Implementation:**
-1. Import `EscrowEntry`, `MonetaryPolicy`, `MintingPolicy` from `@0xhoneyjar/loa-hounfour`
-2. Re-export from protocol barrel
-3. Verify type compatibility with existing reservation/escrow handling
+1. Create `UsageEventWriter` service: writes one row to `usage_events` per budget finalization
+2. Fields: `community_id`, `nft_id`, `pool_id` (from `X-Pool-Used` header), `tokens_input`, `tokens_output`, `amount_micro` (BigInt), `reservation_id`, `finalization_id`, `conservation_guard_result`, `conservation_guard_violations` (JSONB, nullable)
+3. Write happens inside the same DB transaction as budget finalization (atomic — either both commit or neither)
+4. No UPDATE/DELETE on `usage_events` — append-only by design
+5. Sprint 5 admin endpoints (Tasks 5.1, 5.2) will query this table for breakdowns and JSONL export
 
 **Acceptance Criteria:**
-- [ ] Economic types imported from canonical source
-- [ ] Re-exported from protocol barrel
-- [ ] No conflicts with existing local types
+- [ ] Every budget finalization writes one row to `usage_events`
+- [ ] Write is atomic with finalization transaction (same DB transaction)
+- [ ] All monetary values stored as BigInt micro-credits
+- [ ] `conservation_guard_result` captured per event
+- [ ] Table is append-only (no UPDATE/DELETE)
+- [ ] Query by `(community_id, created_at)` is efficient (indexed)
 
 ---
 
-### Task 3.6: Update protocol barrel with all new canonical exports
+## Sprint 4: Web Chat (Primary) + Discord Threads (Satellite) (Issues #85, #81)
+
+**Goal:** Primary web chat interface at `/chat/:tokenId` streams responses. Discord threads provide satellite access.
+
+### Task 4.0: ALB/WAF WebSocket compatibility verification (GPT F-4)
 
 **Files:**
-- `themes/sietch/src/packages/core/protocol/index.ts`
+- `infrastructure/terraform/alb.tf` (existing — verify/update)
+- `infrastructure/terraform/waf.tf` (existing — verify/update)
 
-**Description:** Ensure the protocol barrel file cleanly re-exports all canonical types adopted in Sprints 1-3. Organize into logical sections.
+**Description:** GPT finding F-4: Production WebSocket commonly fails without ALB idle timeout tuning, correct listener rule path patterns, and ensuring WAF doesn't block HTTP Upgrade requests. Verify and fix before building app-level WebSocket code.
 
 **Implementation:**
-1. Group exports by domain: core, economy, model, governance, constraints, integrity
-2. Remove any remaining local type definitions that have canonical equivalents
-3. Add JSDoc comments indicating v7.0.0 source for each group
-4. Verify no circular dependencies
+1. Verify ALB idle timeout in `alb.tf` — must be ≥120s for WebSocket (already 300s per existing config, confirm)
+2. Verify/add ALB listener rules for `/chat/*` and `/chat/*/ws` paths → route to freeside target group
+3. Verify WAF rules in `waf.tf` do not block `Upgrade: websocket` header (check existing rule sets)
+4. If WAF blocks WebSocket upgrade: add exception rule for `/chat/*` path pattern
+5. Verify target group stickiness configuration (WebSocket needs sticky sessions or stateless design)
+6. Deploy to staging and test: `wscat -c wss://staging.api.{domain}/chat/test/ws` connects and stays alive for 5 minutes
 
 **Acceptance Criteria:**
-- [ ] All canonical types re-exported through barrel
-- [ ] Organized by v7.0.0 sub-package domain
-- [ ] No duplicate definitions (canonical only)
-- [ ] No circular dependency warnings
+- [ ] ALB idle timeout ≥120s confirmed in Terraform
+- [ ] Listener rules route `/chat/*` paths to correct target group
+- [ ] WAF allows `Upgrade: websocket` on `/chat/*` paths
+- [ ] `wscat` connects via staging ALB and streams for 5+ minutes without disconnect
+- [ ] CloudWatch shows successful 101 Switching Protocols responses
 
 ---
 
-### Task 3.7: Update ensemble-accounting for canonical cost types
+### Task 4.1: Standalone chat page and WebSocket endpoint
 
 **Files:**
-- `packages/adapters/agent/ensemble-accounting.ts`
+- `themes/sietch/src/api/routes/chat.routes.ts` (NEW)
 
-**Description:** Update the ensemble accounting module to use canonical cost types from v7.0.0 where applicable. Ensure `model_breakdown` array uses canonical `MicroUSD` branded type throughout.
+**Description:** The web chat is the **primary** interface for dNFT interaction (#85 comment). Build a standalone chat page at `/chat/:tokenId` with WebSocket streaming.
 
 **Implementation:**
-1. Verify all cost fields use `MicroUSD` branded type (from already-adopted arrakis-arithmetic)
-2. If v7.0.0 provides canonical ensemble types, import them
-3. Ensure `platform_cost_micro`, `byok_cost_micro`, `savings_micro` are properly branded
+1. `GET /chat/:tokenId` — serves chat page HTML (lightweight, mobile-responsive)
+2. `WS /chat/:tokenId/ws` — WebSocket endpoint for streaming inference
+3. On WebSocket connect: authenticate via JWT (NFT holders) or session token
+4. On message: route through personality bridge (Task 3.1-3.3) → stream response tokens back via WebSocket
+5. Read-only mode: no auth required for viewing (public chat history)
+6. Personality-aware visual styling (use `element` field for color theme)
 
 **Acceptance Criteria:**
-- [ ] All monetary values use branded `MicroUSD` type
-- [ ] Ensemble accounting produces canonical cost structures
-- [ ] Per-model breakdown compatible with v7.0.0 billing schema
+- [ ] `GET /chat/:tokenId` serves responsive chat page
+- [ ] WebSocket streams inference responses in real-time
+- [ ] Authenticated users can send messages
+- [ ] Read-only mode available without auth
+- [ ] Mobile-responsive design
 
 ---
 
-## Sprint 4: Hardening — LOW Fixes, Conformance Tests & Docs (Global ID: 325)
-
-### Task 4.1: Fix insertAgentThread catch branch (LOW — iter3-1)
-
-**File:** `apps/worker/src/handlers/commands/my-agent-data.ts:117-140`
-
-**Description:** The catch block in `insertAgentThread()` uses string matching (`message.includes('unique')`) which is fragile. Since Sprint 321 Task 1.3 added the UNIQUE constraint, the catch should now properly detect constraint violations using the database error code.
-
-**Implementation:**
-1. Check if the error has a `code` property (pg uses `'23505'` for unique violation)
-2. Replace string matching with: `if ((err as any).code === '23505' || (err as any).code === 'SQLITE_CONSTRAINT_UNIQUE')`
-3. Log the original error at `debug` level for observability
-4. If error doesn't match unique violation codes, re-throw immediately
-
-**Acceptance Criteria:**
-- [ ] Error detection uses DB error codes, not string matching
-- [ ] Supports both PostgreSQL (`23505`) and SQLite (`SQLITE_CONSTRAINT_UNIQUE`)
-- [ ] Original error logged at debug level
-- [ ] Non-unique errors re-thrown without swallowing
-
----
-
-### Task 4.2: Log fallback handler Discord errors (LOW — iter3-2)
-
-**File:** `apps/worker/src/handlers/events/thread-message-handler.ts:328`
-
-**Description:** The `.catch(() => {})` on the Discord error notification silently swallows send failures. Add logging.
-
-**Implementation:**
-1. Replace `.catch(() => {})` with:
-   ```typescript
-   .catch((discordErr) => {
-     msgLog.warn({ discordErr, channel_id }, 'Failed to send error notification to Discord');
-   });
-   ```
-
-**Acceptance Criteria:**
-- [ ] Discord send failures logged at `warn` level
-- [ ] Log includes `channel_id` for debugging
-- [ ] Error message still sent on success (no behavioral change)
-
----
-
-### Task 4.3: Add ipNonceRequests cleanup interval (LOW — iter2-4)
-
-**File:** `themes/sietch/src/api/routes/siwe.routes.ts:153-166`
-
-**Description:** The `ipNonceRequests` Map grows without bound. Entries are only overwritten when the same IP returns after window expiry, but IPs that never return accumulate forever.
-
-**Implementation:**
-1. Add a cleanup interval after the Map declaration:
-   ```typescript
-   setInterval(() => {
-     const now = Date.now();
-     for (const [ip, entry] of ipNonceRequests) {
-       if (now > entry.resetAt) {
-         ipNonceRequests.delete(ip);
-       }
-     }
-   }, 60_000).unref();
-   ```
-2. The `.unref()` ensures the interval doesn't prevent process exit
-
-**Acceptance Criteria:**
-- [ ] Cleanup interval runs every 60 seconds
-- [ ] Expired entries (past `resetAt`) are deleted
-- [ ] `.unref()` prevents process hang on shutdown
-- [ ] Pattern matches existing `nonceStore` cleanup (lines 88-94)
-
----
-
-### Task 4.4: Block SIWE wildcard CORS in production (MEDIUM — escalated from iter2-5, Flatline SKP-009)
-
-**File:** `themes/sietch/src/api/routes/siwe.routes.ts:253-261`
-
-**Description:** When `config.cors.allowedOrigins` includes `'*'`, any origin can initiate wallet-signing sessions — this is an auth vulnerability, not just a logging concern. In production, wildcard CORS for SIWE must be blocked. In development/staging, log a warning but allow.
-
-**Implementation:**
-1. After the origin validation block (line 261), add environment-aware handling:
-   ```typescript
-   if (config.cors.allowedOrigins.includes('*')) {
-     if (process.env.NODE_ENV === 'production') {
-       logger.error(
-         { origin: req.headers.origin, address: parsed.address },
-         'SIWE session BLOCKED: wildcard CORS not allowed in production'
-       );
-       return res.status(403).json({
-         error: 'CORS configuration error: wildcard not permitted in production'
-       });
-     }
-     logger.warn(
-       { origin: req.headers.origin, address: parsed.address },
-       'SIWE session issued with wildcard CORS — restrict allowedOrigins before production'
-     );
-   }
-   ```
-
-**Acceptance Criteria:**
-- [ ] Production (`NODE_ENV=production`): wildcard CORS **blocks** SIWE with 403
-- [ ] Non-production: warning logged but session still issued
-- [ ] Log includes origin and wallet address in both cases
-- [ ] Error message explains required fix (set explicit allowedOrigins)
-- [ ] Tests updated: production wildcard → 403, dev wildcard → 200 + warning
-
----
-
-### Task 4.5: Update protocol conformance tests for v7.0.0
+### Task 4.2: SIWE authentication for web chat
 
 **Files:**
-- `tests/unit/protocol-conformance.test.ts`
-- `tests/conformance/jwt-vectors.test.ts`
-- `tests/e2e/vectors/index.ts`
-- `tests/e2e/loa-finn-e2e-stub.ts`
+- `themes/sietch/src/api/routes/siwe.routes.ts` (existing — extend for chat context)
 
-**Description:** Update all test files to work with v7.0.0 contract version and canonical types. **Important:** v4.6.0 dual-accept test vectors must be KEPT during the migration window (see Tasks 2.1, 2.7) — only remove them in the follow-up task after telemetry cutoff is satisfied.
+**Description:** Extend existing SIWE (Sign-In with Ethereum) auth for the web chat widget. Verify wallet ownership matches NFT holder.
 
 **Implementation:**
-1. Update `CONTRACT_VERSION` expectations from `'1.1.0'` to `'7.0.0'`
-2. Update golden test vectors that reference specific version strings
-3. **Keep** v4.6.0 JWT claim test vectors (trust_level integer → trust_scopes conversion) — these guard the dual-accept window
-4. Add new v7.0.0 test cases for canonical type imports (verify re-exports work)
-5. Add test cases verifying dual-accept: v4.6.0 claims normalize to v7.0.0 trust_scopes
-6. Update E2E stub to use v7.0.0 version in response headers
-7. Mark v4.6.0 test vectors with `// DUAL-ACCEPT: remove after telemetry cutoff (Task 2.7)` comment
+1. Reuse existing SIWE verification flow (routes already exist)
+2. After SIWE auth: verify user's wallet owns the NFT for the requested `tokenId`
+3. Issue session token scoped to `tokenId` (JWT with `nft_id`, `wallet`, `tier`)
+4. Session token used for WebSocket authentication
+5. Note: wildcard CORS already blocked in production (Sprint 325, Task 4.4)
 
 **Acceptance Criteria:**
-- [ ] All tests pass with v7.0.0 version strings
-- [ ] v4.6.0 dual-accept test vectors RETAINED (trust_level → trust_scopes normalization)
-- [ ] New v7.0.0 canonical test cases added
-- [ ] Golden vectors updated for v7.0.0
-- [ ] E2E stub returns v7.0.0 in `x-contract-version` header
-- [ ] v4.6.0 vectors annotated with removal gate (telemetry cutoff from Task 2.7)
-- [ ] No test regressions
+- [ ] SIWE auth flow works for web chat context
+- [ ] Session token scoped to specific NFT
+- [ ] Non-owner wallet cannot authenticate for another's NFT
 
 ---
 
-### Task 4.6: Update conservation adapter for any new v7.0.0 invariants
+### Task 4.3: Embeddable web chat widget
 
-**File:** `themes/sietch/src/packages/core/protocol/arrakis-conservation.ts`
+**Files:**
+- `themes/sietch/public/widget.js` (NEW)
+- `themes/sietch/src/api/routes/chat.routes.ts` (extend)
 
-**Description:** Check if v7.0.0 added any conservation invariants beyond I-1 through I-14. Update mapping tables (`UNIVERSE_MAP`, `ENFORCEMENT_MAP`, `ERROR_CODE_MAP`, `RECON_CODE_MAP`) if new invariants exist.
+**Description:** Lightweight embeddable `<script>` tag for third-party websites (#85).
 
 **Implementation:**
-1. Import fresh `CANONICAL_CONSERVATION_PROPERTIES` from v7.0.0
-2. Compare count against current 14 — if new properties exist, add mappings
-3. If no new properties, verify existing mappings are still correct
-4. Update `fromCanonical()` adapter if canonical schema changed
+1. Build static JS bundle (`widget.js`) that creates chat iframe or inline component
+2. Configuration via `data-*` attributes: `data-token-id`, `data-theme` (light/dark), `data-position` (bottom-right/left/fullscreen)
+3. `GET /widget.js` serves the bundle (Cache-Control: public, max-age=3600)
+4. Widget connects to same WebSocket endpoint as standalone page
+5. Personality-aware theming (element → color palette)
 
 **Acceptance Criteria:**
-- [ ] All v7.0.0 conservation invariants have arrakis mappings
-- [ ] No unmapped invariants (count verified)
-- [ ] `fromCanonical()` produces correct output for all invariants
-- [ ] `getCanonicalProperties()` returns complete set
+- [ ] Widget embeddable via single `<script>` tag
+- [ ] Configurable via data attributes
+- [ ] Connects to WebSocket and streams responses
+- [ ] Personality-aware styling
 
 ---
 
-### Task 4.7: Regenerate BUTTERFREEZONE and Ground Truth
+### Task 4.4: Discord `/my-agent` command — thread creation (GPT F-6: wallet linking)
 
-**Description:** After all protocol alignment changes, regenerate project documentation.
+**Files:**
+- `themes/sietch/src/discord/commands/my-agent.ts` (NEW)
+- `apps/worker/src/handlers/commands/index.ts` (register)
+- `themes/siecht/src/api/routes/siwe.routes.ts` (existing — Discord `/verify` wallet linking)
+
+**Description:** Discord satellite UI for per-NFT conversational spaces (#81). Thread per NFT with bot-enforced gating. GPT finding F-6: Discord↔wallet linking is required for ownership verification inside Discord. The existing `/verify` command (listed in "What Already Exists") provides this binding via SIWE + DM/web callback flow.
 
 **Implementation:**
-1. Run `.claude/scripts/ground-truth-gen.sh --mode checksums --reality-dir grimoires/loa/reality --output-dir grimoires/loa/ground-truth`
-2. Run `.claude/scripts/butterfreezone-gen.sh`
-3. Run `.claude/scripts/butterfreezone-validate.sh`
-4. Verify all checks pass
+1. Register `/my-agent` slash command
+2. **Prerequisite: wallet linked** — check existing Discord↔wallet mapping in DB (from `/verify` command, GPT F-6)
+3. If wallet not linked: respond with ephemeral message instructing user to run `/verify` first (links to SIWE web callback)
+4. If wallet linked: verify wallet owns the NFT for requested `tokenId` → look up NFT personality → create/find dedicated thread
+5. Thread name from NameKDF or `Agent #[tokenId]`
+6. Store thread mapping in `agent_threads` table (migration 063)
+7. If thread exists: navigate user to existing thread
+8. Bot-enforced gating: only NFT owner can write in thread (re-check wallet↔Discord binding per message, cached 60s)
 
 **Acceptance Criteria:**
-- [ ] Ground Truth checksums updated for all changed reality files
-- [ ] BUTTERFREEZONE regenerated with v7.0.0 references
-- [ ] Validation passes (all checks green)
-- [ ] No stale version references in generated docs
+- [ ] `/my-agent` creates dedicated thread for NFT holder
+- [ ] Thread named based on personality
+- [ ] Existing thread reused on repeat invocation
+- [ ] Non-owner cannot write in gated thread
+- [ ] Unlinked Discord user blocked with clear `/verify` instruction (GPT F-6)
+- [ ] Wallet↔Discord binding verified before thread creation
 
 ---
 
-### Task 4.8: Update NOTES.md with protocol alignment summary
+### Task 4.5: Thread message routing through personality bridge
 
-**File:** `grimoires/loa/NOTES.md`
+**Files:**
+- `apps/worker/src/handlers/events/thread-message-handler.ts` (existing — extend)
 
-**Description:** Document the v7.0.0 protocol alignment for cross-session memory.
+**Description:** Messages in agent threads route through the personality bridge (Sprint 3) for personality-driven responses.
 
 **Implementation:**
-1. Add entry summarizing:
-   - Dependency bumped from commit `d091a3c0` to v7.0.0
-   - 3 vendored files de-vendored (state-machines, billing-types, guard-types)
-   - v4.6.0 compat layer: dual-accept active with telemetry, removal deferred to post-cutoff follow-up
-   - Canonical types adopted: AgentIdentity, AgentLifecycleState, DomainEvent, StreamEvent, CompletionRequest/Result, RoutingPolicy, BudgetScope, Conversation, EscrowEntry
-   - Discovery endpoint implemented
-   - 4 LOW findings resolved
-2. Note any remaining gaps for future cycles
+1. Detect messages in agent threads (check `agent_threads` table)
+2. Route through personality bridge: lookup → pool selection → budget reserve → inference → finalize
+3. Stream response back to Discord thread
+4. Maintain conversational context (last N messages as context window)
+5. Per-message ownership re-verification (cached 60s in Redis)
 
 **Acceptance Criteria:**
-- [ ] NOTES.md updated with protocol alignment summary
-- [ ] All adopted types listed
-- [ ] Remaining gaps documented (if any)
+- [ ] Messages in agent threads get personality-routed responses
+- [ ] Different NFT holders get different personality responses
+- [ ] Conversational context maintained across messages
+- [ ] Ownership re-verified per message (cached)
 
 ---
 
-### Task 4.9: Pre-deploy loa-finn version verification gate (GPT BLOCKER-7)
+### Task 4.6: Channel synchronization design (web ↔ Discord)
 
-**Description:** Before deploying v7.0.0 changes to staging/production, verify that loa-finn actually supports the protocol version. This is a pre-deploy gate, not a runtime check.
+**Files:**
+- `themes/sietch/src/services/chat/channel-sync.ts` (NEW)
+
+**Description:** Web chat is primary; Discord is satellite. Conversations should be visible across both surfaces (#85 comment: "figure out synchronisation").
 
 **Implementation:**
-1. Create a pre-deploy verification script (`scripts/verify-peer-version.sh`):
-   ```bash
-   # Hit loa-finn staging discovery endpoint
-   curl -s https://loa-finn-staging/.well-known/loa-hounfour | jq '.protocol_version'
-   # Verify MIN_SUPPORTED_VERSION accepts 7.0.0
-   ```
-2. If loa-finn doesn't have a discovery endpoint yet, use the S2S handshake:
-   - Send a `validateCompatibility()` probe with `local_version: '7.0.0'`
-   - Parse the `x-contract-version` response header
-3. Add as a CI/CD gate: deployment to staging blocked until peer version verified
-4. Define bounded dual-accept policy for version negotiation:
-   - Accept responses with `x-contract-version: 6.x` or `7.0.0`
-   - Parse both v6 and v7 response body shapes (field name mapping if needed)
-   - Log warning for v6.x responses: "peer on older version, dual-accept active"
+1. Store all messages in `agent_messages` table (migration 066, GPT F-5) with `source` field (`web` | `discord` | `telegram` | `api`)
+2. Web chat reads from `agent_messages` joined on `thread_id` (unified conversation history)
+3. Discord thread messages also written to `agent_messages` via thread-message-handler
+4. For P0: one-way sync (Discord → DB). Full bidirectional sync deferred to P1.
+5. API endpoint: `GET /api/v1/chat/:tokenId/history` returns paginated conversation from `agent_messages`
+6. Note: `agent_threads` (migration 063) stores thread metadata only; `agent_messages` stores message content
 
 **Acceptance Criteria:**
-- [ ] Verification script created and documented
-- [ ] Script validates loa-finn supports v7.0.0 (or at minimum v6.0.0+)
-- [ ] Integration test: mock loa-finn returning v6.0.0 → verify graceful dual-accept
-- [ ] Integration test: mock loa-finn returning v7.0.0 → verify normal path
-- [ ] Deployment gate documented in deployment runbook
-- [ ] Dual-accept policy: which versions accepted, which fields dual-parsed
+- [ ] Messages from both surfaces stored in `agent_messages` table (GPT F-5)
+- [ ] Web chat displays full conversation history including Discord messages
+- [ ] History API returns paginated results (cursor-based on `created_at`)
+- [ ] Source field tracks message origin (`web`, `discord`, `telegram`, `api`)
 
 ---
 
-### Task 4.10: SSE transcript replay integration tests (GPT BLOCKER-7)
+## Sprint 5: Admin Dashboard + Audit Trail (Issues #82, #83)
 
-**Description:** Add integration tests that validate StreamEvent and CompletionRequest/Result parsing against real SSE event streams, not just the updated E2E stub. This catches runtime-only failures from ordering, optional fields, unknown event types, and JSON framing.
+**Goal:** Community admins have visibility into spend, usage, and model allocation. Billing is auditable.
+
+### Task 5.1: Admin API endpoints
+
+**Files:**
+- `themes/sietch/src/api/routes/admin-dashboard.routes.ts` (NEW)
+
+**Description:** REST API for community admin dashboards (SDD §Phase 4).
 
 **Implementation:**
-1. Capture or create representative SSE transcripts:
-   - `tests/fixtures/sse-transcript-v7.txt` — canonical v7.0.0 stream with all 6 event types
-   - `tests/fixtures/sse-transcript-v6.txt` — v6.x stream (if dual-accept active)
-2. Create `tests/integration/sse-replay.test.ts`:
-   - Replay each transcript through the SSE parser from `loa-finn-client.ts`
-   - Assert each event is correctly typed as `StreamEvent` discriminated union
-   - Verify type narrowing: `event.type === 'chunk'` → `event.content` exists
-3. Add forward-compatibility test:
-   - Inject an unknown event type (`{type: 'future_event', ...}`) into transcript
-   - Assert parser does not crash — unknown events are skipped or logged
-4. Validate CompletionRequest serialization against JSON schema:
-   - Import or derive JSON Schema from `CompletionRequest` type
-   - Use `ajv` to validate serialized request body
-5. Validate CompletionResult parsing against JSON schema:
-   - Use `ajv` to validate response fixtures
+1. `GET /api/v1/admin/community/:id/usage` — total spend, per-pool breakdown, per-user breakdown (queries `usage_events` table from migration 067, GPT F-9)
+2. `GET /api/v1/admin/community/:id/billing` — credit balance, projected depletion date, transaction history
+3. `GET /api/v1/admin/community/:id/agents` — active agents, thread counts, personality summaries
+4. `GET /api/v1/admin/community/:id/conservation` — current invariant status, last check, violations (queries `conservation_guard_result` from `usage_events`)
+5. Auth: require admin role (existing role system) or community owner wallet
 
 **Acceptance Criteria:**
-- [ ] SSE transcript fixtures created (v7.0.0, optionally v6.x)
-- [ ] Replay test parses all events into correct `StreamEvent` variants
-- [ ] Forward-compat test: unknown event type does not crash parser
-- [ ] CompletionRequest serialization validated against JSON schema (ajv)
-- [ ] CompletionResult parsing validated against JSON schema (ajv)
-- [ ] Tests run in CI alongside existing test suite
+- [ ] All 4 admin endpoints return correct data
+- [ ] Usage broken down by model pool (from `usage_events.pool_id`, GPT F-9)
+- [ ] Credit balance includes projected depletion date
+- [ ] Admin role required (non-admin gets 403)
+
+---
+
+### Task 5.2: Billing audit trail JSONL export
+
+**Files:**
+- `themes/sietch/src/api/routes/admin-dashboard.routes.ts` (extend)
+
+**Description:** Downloadable JSONL of all credit operations per community (#83). Reads from `usage_events` table (migration 067, GPT F-9).
+
+**Implementation:**
+1. `GET /api/v1/admin/community/:id/audit?format=jsonl` — streaming JSONL download from `usage_events` table
+2. Each line: `{timestamp, operation_type, amount_micro, model_pool, nft_id, tokens_input, tokens_output, conservation_guard_result, finalization_id}` (sourced from `usage_events`)
+3. Configurable retention (default 90 days, via query param `days=N`)
+4. Also support `format=csv` for non-technical admins
+5. No PII leaks — wallet addresses are pseudonymous
+
+**Acceptance Criteria:**
+- [ ] JSONL download contains all credit operations
+- [ ] Each entry includes conservation guard result
+- [ ] CSV format also available
+- [ ] Retention filter works (default 90 days)
+
+---
+
+### Task 5.3: Pool enforcement transparency
+
+**Files:**
+- `themes/sietch/src/api/routes/admin-dashboard.routes.ts` (extend)
+
+**Description:** Admins see which model pools their agents access and why (#83).
+
+**Implementation:**
+1. `GET /api/v1/admin/community/:id/pool-access` — list accessible pools per tier
+2. Each pool entry: `{pool_id, access_reason, tier_required, conviction_score_required}`
+3. Include confused deputy rejection count (attempts to access pools above tier)
+4. Historical pool usage distribution (last 30 days)
+
+**Acceptance Criteria:**
+- [ ] Pool access list visible per community
+- [ ] Clear explanation of why each pool is accessible
+- [ ] Confused deputy rejections visible
+
+---
+
+## Sprint 6: Monitoring, API Platform + Go/No-Go (Issues #78, #84)
+
+**Goal:** Production monitoring with human alerting. Developer self-service API keys. Go/no-go gate for production deploy.
+
+### Task 6.0: Conservation guard metrics instrumentation (GPT F-10)
+
+**Files:**
+- `packages/core/services/conservation-guard.ts` (existing — extend)
+- `themes/sietch/src/services/metrics/prometheus-metrics.ts` (NEW or extend existing)
+
+**Description:** GPT finding F-10: G-3 requires conservation guard failure alerts within 60s. Terraform alarms alone won't work unless the application emits a signal. Add Prometheus counter + structured log on every conservation guard violation.
+
+**Implementation:**
+1. Add Prometheus counter: `conservation_guard_failures_total{invariant="I-1",...,"I-14"}` — incremented on any invariant violation
+2. Add Prometheus counter: `conservation_guard_checks_total{result="pass|fail"}` — incremented on every check (for rate calculation)
+3. On violation: emit structured JSON log line `{"level":"error","event":"conservation_guard_violation","invariant":"I-N","details":{...},"timestamp":"..."}`
+4. CloudWatch metric filter (in Terraform Task 6.2): parse structured log for `conservation_guard_violation` events → CloudWatch metric
+5. AMP/Prometheus: ADOT sidecar (Task 6.1) scrapes counter → AMP workspace
+6. Test: force a known invariant failure in staging, verify counter increments and alert fires within 60s
+
+**Acceptance Criteria:**
+- [ ] Prometheus counter `conservation_guard_failures_total` incremented on violation
+- [ ] Structured JSON log emitted on every violation with invariant ID
+- [ ] Counter labels include invariant identifier (I-1 through I-14)
+- [ ] Staging test: forced violation → alert fires within 60s
+- [ ] Both Prometheus counter and CloudWatch metric filter paths functional
+
+---
+
+### Task 6.1: ADOT sidecar for Prometheus metrics
+
+**Files:**
+- `infrastructure/terraform/ecs-finn.tf` (extend task definition)
+- `infrastructure/terraform/ecs.tf` (extend API task definition)
+
+**Description:** Add AWS Distro for OpenTelemetry (ADOT) sidecar to both ECS task definitions for Prometheus metrics scraping (SDD §1.7).
+
+**Implementation:**
+1. Add ADOT sidecar container to loa-finn task definition
+2. Add ADOT sidecar container to API task definition (if not already present)
+3. Configure Prometheus scrape endpoints for both services
+4. Route metrics to existing AMP workspace (`infrastructure/terraform/amp.tf`)
+5. Key metrics: request rate, latency p50/p99, error rate, billing operations, auth failures
+
+**Acceptance Criteria:**
+- [ ] ADOT sidecar running on both ECS services
+- [ ] Metrics flowing to AMP workspace
+- [ ] Prometheus scrape targets reachable
+
+---
+
+### Task 6.2: CloudWatch alerting → SNS → Slack
+
+**Files:**
+- `infrastructure/terraform/monitoring.tf` (extend)
+- `infrastructure/terraform/alerting.tf` (extend)
+
+**Description:** Add alerting rules for launch-critical conditions (SDD §Phase 6).
+
+**Implementation:**
+1. Conservation guard failure → alarm on `conservation_guard_failures_total` Prometheus counter (from Task 6.0, GPT F-10) OR CloudWatch metric filter on structured log → SNS → Slack (within 60s evaluation period)
+2. Service downtime (health check failures > 3 consecutive) → critical alert
+3. 5xx error rate > 5% → warning alert
+4. Billing webhook failure rate > 10% → critical alert
+5. Budget drift (reservations vs finalizations mismatch) → warning alert
+6. Configure SNS topic subscription to Slack webhook
+7. Add CloudWatch metric filter: parse structured JSON logs for `"event":"conservation_guard_violation"` → CloudWatch metric (backup path if AMP/Prometheus unavailable)
+
+**Acceptance Criteria:**
+- [ ] Conservation guard failure alerts within 60s (depends on Task 6.0 instrumentation)
+- [ ] Service downtime triggers critical alert
+- [ ] Alerts delivered to Slack channel
+- [ ] All alert rules defined in Terraform (IaC)
+- [ ] Dual alert path: Prometheus counter via AMP + CloudWatch metric filter via logs
+
+---
+
+### Task 6.3: API key generation and authentication (Product B)
+
+**Files:**
+- `themes/sietch/src/api/routes/api-keys.routes.ts` (NEW)
+- `themes/sietch/src/services/auth/ApiKeyService.ts` (NEW)
+
+**Description:** Self-service API key management for the developer product (#84). Two-part key design for hot-path performance (SDD §1.9).
+
+**Implementation:**
+1. Key format: `lf_live_{prefix}_{secret}` / `lf_test_{prefix}_{secret}`
+2. `prefix` = 12 chars base32 (public identifier, indexed for lookup)
+3. `secret` = 32 chars base62 (≥190 bits entropy)
+4. Storage: `key_prefix` (plaintext, indexed) + `key_salt` (16 bytes random) + `key_hash` = `HMAC-SHA256(PEPPER, salt || secret)`
+5. Auth flow: extract prefix → lookup → HMAC verify with `crypto.timingSafeEqual`
+6. Endpoints: `POST /api/v1/keys` (create), `GET /api/v1/keys` (list), `DELETE /api/v1/keys/:prefix` (revoke)
+7. Per-key rate limiting: RPM + tokens/day stored in key metadata
+8. Redis negative cache for failed lookups (1 min TTL)
+
+**Acceptance Criteria:**
+- [ ] Developer can create API key via POST endpoint
+- [ ] Key authenticates inference requests via `Authorization: Bearer lf_live_...`
+- [ ] Per-key rate limiting enforced
+- [ ] Keys revocable immediately
+- [ ] `timingSafeEqual` used for comparison (no timing attacks)
+
+---
+
+### Task 6.4: Sandbox mode for developers
+
+**Files:**
+- `themes/sietch/src/services/auth/ApiKeyService.ts` (extend)
+
+**Description:** Free-tier sandbox for developer testing (#84).
+
+**Implementation:**
+1. `lf_test_` keys restricted to `cheap` pool only
+2. Rate limit: 10 RPM, 1000 tokens/day
+3. No billing charged (sandbox credit pool)
+4. Upgrade path: swap `lf_test_` for `lf_live_` with billing configured
+
+**Acceptance Criteria:**
+- [ ] Test keys restricted to cheap pool
+- [ ] Rate limits enforced (10 RPM, 1000 TPD)
+- [ ] No charges incurred
+- [ ] Clear upgrade path documented
+
+---
+
+### Task 6.5: Go/no-go gate checklist
+
+**Files:**
+- `scripts/go-no-go-checklist.sh` (NEW)
+
+**Description:** Automated verification script for production deploy readiness.
+
+**Implementation:**
+1. Check health endpoints on both services
+2. Verify S2S JWT exchange (sign → verify round-trip)
+3. Verify NOWPayments webhook connectivity (dry-run)
+4. Verify peer protocol version (`scripts/verify-peer-version.sh` from Sprint 325)
+5. Verify CloudWatch alarms configured
+6. Verify conservation guard status
+7. Load baseline test: 10 concurrent inference requests
+8. Output: PASS/FAIL with detailed report
+
+**Acceptance Criteria:**
+- [ ] Script validates all pre-deploy conditions
+- [ ] S2S JWT round-trip verified
+- [ ] Protocol v7.0.0 peer compatibility confirmed
+- [ ] Load baseline test passes
+- [ ] Clear PASS/FAIL output
+
+---
+
+## Dependencies & Cross-Repo Blockers
+
+| Dependency | Source | Impact | Mitigation |
+|-----------|--------|--------|------------|
+| loa-finn ES256 JWT verification (GPT F-2) | loa-finn (Task 1.6) | **Blocks Sprint 3** — S2S auth can't be proven working | Ship JWKS verifier as standalone PR to loa-finn; small surface area, no HS256 fallback |
+| loa-finn Dockerfile | loa-finn#84 | Blocks Sprint 1 local dev | Can create Dockerfile from freeside patterns; escalate after 3 days |
+| loa-finn personality endpoint | loa-finn#88 or #86 | Blocks Sprint 3 | Stub with static personality config |
+| loa-finn inference endpoint contract | loa-finn team | Blocks Sprint 3 | Assume `/api/v1/inference` per RFC #31 |
+| NOWPayments account setup | Ops | Blocks Sprint 2 (production only) | Sandbox mode available for development |
+| Element derivation (loa-finn PR #92) | loa-finn | Enriches Sprint 3 | Default to `fire` if element not available |
+
+## Risk Register
+
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| loa-finn JWT verifier not landed (GPT F-2) | Medium | Blocks Sprint 3 | Ship as standalone PR, small surface area |
+| loa-finn Dockerfile not ready | Medium | Blocks Sprint 1 | Create Dockerfile from freeside patterns |
+| Redis memory pressure | Low | Latency | maxmemory-policy allkeys-lru, TTLs enforced |
+| NOWPayments IPN delivery failure | Low | Missed payments | Reconciliation job (Task 2.5) |
+| NOWPayments webhook signature mismatch (GPT F-7) | Medium | Blocks G-2 | E2E replay test harness (Task 2.6) |
+| ES256 key rotation | Low | Auth outage | 24h overlap window, staging test first |
+| ALB/WAF blocks WebSocket upgrade (GPT F-4) | Low | Blocks G-9 | Pre-verify in Task 4.0 before app code |
+| Discord thread permission issues | Medium | Degraded UX | Bot checks permissions, posts warning |
+| NFT transfer cache staleness (GPT F-8) | Low | Stale personality (5 min max) | TTL-only for launch; event pipeline post-launch |
+| Conservation guard alert > 60s (GPT F-10) | Low | Fails G-3 | Dual path: Prometheus counter + CloudWatch metric filter |

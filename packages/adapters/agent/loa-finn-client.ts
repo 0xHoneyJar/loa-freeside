@@ -454,14 +454,14 @@ export class LoaFinnClient {
     const peerVersion = response.headers.get('x-contract-version');
     if (!peerVersion) return; // Header absent — older loa-finn, tolerate
 
-    const result = validateCompatibility(CONTRACT_VERSION, peerVersion);
+    const result = validateCompatibility(peerVersion);
     if (!result.compatible) {
       this.log.error(
-        { ourVersion: CONTRACT_VERSION, peerVersion, reason: result.reason },
+        { ourVersion: CONTRACT_VERSION, peerVersion, error: result.error },
         'CONTRACT_VERSION_MISMATCH: incompatible loa-finn contract version',
       );
       throw new ContractVersionMismatchError(
-        `Contract version mismatch: ours=${CONTRACT_VERSION}, peer=${peerVersion} — ${result.reason}`,
+        `Contract version mismatch: ours=${CONTRACT_VERSION}, peer=${peerVersion} — ${result.error}`,
         CONTRACT_VERSION,
         peerVersion,
       );

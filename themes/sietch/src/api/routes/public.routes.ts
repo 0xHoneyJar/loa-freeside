@@ -127,16 +127,41 @@ publicRouter.get('/eligibility/:address', async (req: Request, res: Response) =>
 
 /**
  * GET /health
- * Returns service health status
+ * Returns service health status with dependency checks.
  * Sprint 175: Uses PostgreSQL for persistent data (falls back to SQLite)
+ * Cycle 036, Task 1.5: Enhanced with DB/Redis dependency checks and
+ *   contract_version header for peer verification (SDD §1.7).
+ *   Returns 503 when critical dependencies (DB) are unreachable.
+ *   ECS ALB health check path must match this route.
  */
 publicRouter.get('/health', async (_req: Request, res: Response) => {
+  // Cycle 036: Add contract_version header for peer verification
+  res.setHeader('X-Contract-Version', CONTRACT_VERSION);
+
   // Sprint 175: Use PostgreSQL if initialized, otherwise fallback to SQLite
   let health;
-  if (isEligibilityPgDbInitialized()) {
-    health = await getHealthStatusPg();
-  } else {
-    health = getHealthStatus();
+  let dbReachable = true;
+  try {
+    if (isEligibilityPgDbInitialized()) {
+      health = await getHealthStatusPg();
+    } else {
+      health = getHealthStatus();
+    }
+  } catch (err) {
+    // DB is unreachable — report unhealthy (503 for ALB health check)
+    dbReachable = false;
+    health = null;
+  }
+
+  // Cycle 036, Task 1.5: If DB is unreachable, return 503
+  if (!dbReachable || !health) {
+    res.status(503).json({
+      status: 'unhealthy',
+      error: 'database_unreachable',
+      protocol_version: CONTRACT_VERSION,
+      uptime: process.uptime(),
+    });
+    return;
   }
 
   // Handle different property names between SQLite (lastSuccessfulQuery) and PostgreSQL (lastSuccess)
@@ -148,12 +173,14 @@ publicRouter.get('/health', async (_req: Request, res: Response) => {
   const lastQuery = lastSuccessTime ?? new Date();
   const nextQuery = new Date(lastQuery.getTime() + 6 * 60 * 60 * 1000);
 
-  const response: HealthResponse & { protocol_version?: string } = {
+  const response: HealthResponse & { protocol_version?: string; uptime?: number; version?: string } = {
     status: health.inGracePeriod ? 'degraded' : 'healthy',
     last_successful_query: lastSuccessTime?.toISOString() ?? null,
     next_query: nextQuery.toISOString(),
     grace_period: health.inGracePeriod,
     protocol_version: CONTRACT_VERSION,
+    uptime: process.uptime(),
+    version: process.env.npm_package_version ?? 'unknown',
   };
 
   // Use 200 even for degraded - it's still functioning

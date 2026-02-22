@@ -13,6 +13,7 @@
  */
 
 import type { AccessLevel, ModelAlias } from '@arrakis/core/ports';
+import type { RoutingPolicy, TaskType } from '@0xhoneyjar/loa-hounfour';
 import {
   POOL_IDS as HOUNFOUR_POOL_IDS,
   TIER_POOL_ACCESS,
@@ -232,6 +233,7 @@ export interface PoolResolution {
  * Resolve a model alias to a pool ID with tier-aware `native` handling.
  *
  * Resolution rules:
+ * - RoutingPolicy override → personality task-type routing (Sprint 324, Task 3.2)
  * - No alias → tier default pool
  * - `native` → tier-aware (free→cheap, pro→fast-code, enterprise→architect)
  * - Direct alias (cheap, fast-code, etc.) → 1:1 pool mapping
@@ -241,10 +243,36 @@ export interface PoolResolution {
 export function resolvePoolId(
   modelAlias: ModelAlias | undefined,
   accessLevel: AccessLevel,
+  routingOverride?: { policy: RoutingPolicy; personalityId: string; taskType: TaskType },
 ): PoolResolution {
   // Guard against invalid access levels at runtime — fallback to least-privileged tier
   const level: AccessLevel = isAccessLevel(accessLevel as string) ? accessLevel : 'free';
   const { default: defaultPool, allowed: allowedPools } = ACCESS_LEVEL_POOLS[level];
+
+  // RoutingPolicy override — personality-based task-type routing (Sprint 324)
+  // Defense-in-depth: validate shape at runtime even though TS provides compile-time safety
+  if (routingOverride) {
+    const personalities = Array.isArray(routingOverride.policy?.personalities)
+      ? routingOverride.policy.personalities
+      : [];
+
+    const personality = personalities.find(
+      (p) => p && typeof p === 'object' && p.personality_id === routingOverride.personalityId,
+    );
+
+    if (personality && typeof personality.task_routing === 'object') {
+      const routedPool = personality.task_routing[routingOverride.taskType] as unknown;
+      if (
+        typeof routedPool === 'string' &&
+        VALID_POOL_IDS.has(routedPool) &&
+        allowedPools.includes(routedPool as PoolId)
+      ) {
+        return { poolId: routedPool as PoolId, allowedPools };
+      }
+      // Routed pool not authorized for tier or invalid → fallback to tier default
+    }
+    // Personality not found or malformed → fall through to standard resolution
+  }
 
   // No alias → use tier default
   if (!modelAlias) {
