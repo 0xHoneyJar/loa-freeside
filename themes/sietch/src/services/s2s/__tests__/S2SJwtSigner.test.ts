@@ -140,7 +140,7 @@ describe('S2SJwtSigner', () => {
       expect(parts).toHaveLength(3);
     });
 
-    it('JWT contains correct standard claims including jti', async () => {
+    it('JWT contains correct standard claims', async () => {
       await initS2SJwtSigner();
       const jwt = await signS2SJwt(testClaims);
 
@@ -151,9 +151,6 @@ describe('S2SJwtSigner', () => {
       expect(decoded.aud).toBe('loa-finn');
       expect(decoded.iat).toBeDefined();
       expect(decoded.exp).toBeDefined();
-      expect(decoded.jti).toBeDefined();
-      expect(typeof decoded.jti).toBe('string');
-      expect(decoded.jti!.length).toBeGreaterThan(0);
     });
 
     it('JWT TTL is exactly 60 seconds', async () => {
@@ -241,20 +238,13 @@ describe('S2SJwtSigner', () => {
       ).rejects.toThrow();
     });
 
-    it('each JWT has a unique signature and jti', async () => {
+    it('each JWT has a unique signature', async () => {
       await initS2SJwtSigner();
       const jwt1 = await signS2SJwt(testClaims);
       const jwt2 = await signS2SJwt(testClaims);
 
       // ES256 uses random nonce per signature, so same payload = different JWTs
       expect(jwt1).not.toBe(jwt2);
-
-      // Each JWT must have a unique jti for replay protection (high-1)
-      const decoded1 = jose.decodeJwt(jwt1);
-      const decoded2 = jose.decodeJwt(jwt2);
-      expect(decoded1.jti).toBeDefined();
-      expect(decoded2.jti).toBeDefined();
-      expect(decoded1.jti).not.toBe(decoded2.jti);
     });
   });
 

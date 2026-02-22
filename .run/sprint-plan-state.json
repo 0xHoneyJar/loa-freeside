@@ -1,28 +1,33 @@
 {
-  "plan_id": "plan-20260221-bridge2",
-  "branch": "feature/cycle-036-launch-readiness",
-  "state": "JACKED_OUT",
+  "plan_id": "plan-20260222-bridge",
+  "branch": "feature/launch-readiness",
+  "state": "RUNNING",
   "timestamps": {
-    "started": "2026-02-21T14:15:00Z",
-    "last_activity": "2026-02-21T15:30:00Z"
+    "started": "2026-02-22T01:00:00Z",
+    "last_activity": "2026-02-22T01:00:00Z"
   },
   "sprints": {
-    "total": 1,
-    "completed": 1,
+    "total": 6,
+    "completed": 0,
     "current": "sprint-1",
     "list": [
-      {"id": "sprint-1", "status": "completed", "cycles": 1, "global_id": 321, "files_changed": 13}
+      { "id": "sprint-1", "status": "pending", "cycles": 0 },
+      { "id": "sprint-2", "status": "pending", "cycles": 0 },
+      { "id": "sprint-3", "status": "pending", "cycles": 0 },
+      { "id": "sprint-4", "status": "pending", "cycles": 0 },
+      { "id": "sprint-5", "status": "pending", "cycles": 0 },
+      { "id": "sprint-6", "status": "pending", "cycles": 0 }
     ]
   },
   "options": {
     "from": 1,
-    "to": 1,
+    "to": 6,
     "max_cycles": 20,
     "timeout_hours": 8
   },
   "metrics": {
-    "total_cycles": 1,
-    "total_files_changed": 13,
-    "total_findings_fixed": 8
+    "total_cycles": 0,
+    "total_files_changed": 0,
+    "total_findings_fixed": 0
   }
 }

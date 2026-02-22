@@ -12,18 +12,9 @@
  *
  * @see SDD §1.9 Security Architecture
  * @see SDD §5.2 S2S Contract
- *
- * ARCHITECTURE NOTE (Bridge high-3): This is one of TWO JWT signers in the system.
- * The other is JwtService at packages/adapters/agent/jwt-service.ts (issuer: 'arrakis').
- * Both sign ES256 for loa-finn but serve different trust boundaries:
- *   - S2SJwtSigner (this file): freeside→finn S2S calls, issuer 'loa-freeside'
- *   - JwtService: gateway→finn user-context calls, issuer 'arrakis'
- * loa-finn must trust JWKS from both issuers. Key rotation is independent.
- * @see packages/adapters/agent/jwt-service.ts for the gateway JWT signer
  */
 
 import * as jose from 'jose';
-import { randomUUID } from 'node:crypto';
 import { logger } from '../../utils/logger.js';
 import { insertPublicKey, resetJwksCache } from './JwksService.js';
 
@@ -109,9 +100,6 @@ function requireEcPublicJwk(jwk: jose.JWK): { kty: string; crv: string; x: strin
 // --------------------------------------------------------------------------
 
 let activeSigningKey: SigningKeyState | null = null;
-
-/** Background key refresh timer (unref'd so it doesn't block process exit) */
-let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
 // --------------------------------------------------------------------------
 // Key Loading
@@ -247,16 +235,6 @@ export async function initS2SJwtSigner(): Promise<void> {
 
   logger.warn('No S2S signing key configured. Generating ephemeral keypair for local dev.');
   activeSigningKey = await generateEphemeralKey();
-
-  // Start background key refresh for production keys (medium-2: off hot path)
-  if (!activeSigningKey.ephemeral && !refreshTimer) {
-    refreshTimer = setInterval(() => {
-      refreshSigningKeyIfStale().catch((err) => {
-        logger.error({ err }, 'Background S2S key refresh failed');
-      });
-    }, KEY_REFRESH_INTERVAL_MS);
-    refreshTimer.unref(); // Don't block process exit
-  }
 }
 
 /**
@@ -320,6 +298,9 @@ export async function refreshSigningKeyIfStale(): Promise<void> {
  * ```
  */
 export async function signS2SJwt(claims: S2SJwtClaims): Promise<string> {
+  // Refresh key if stale (non-blocking for most calls)
+  await refreshSigningKeyIfStale();
+
   if (!activeSigningKey) {
     throw new Error('S2S JWT signer not initialized. Call initS2SJwtSigner() first.');
   }
@@ -341,7 +322,6 @@ export async function signS2SJwt(claims: S2SJwtClaims): Promise<string> {
     .setAudience(JWT_AUDIENCE)
     .setIssuedAt(now)
     .setExpirationTime(now + JWT_TTL_SECONDS)
-    .setJti(randomUUID())
     .sign(activeSigningKey.privateKey);
 
   return jwt;
@@ -379,9 +359,5 @@ export function isSignerReady(): boolean {
  */
 export function resetSigner(): void {
   activeSigningKey = null;
-  if (refreshTimer) {
-    clearInterval(refreshTimer);
-    refreshTimer = null;
-  }
   resetJwksCache();
 }

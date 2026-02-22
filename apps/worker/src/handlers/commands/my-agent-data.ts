@@ -130,8 +130,9 @@ export async function insertAgentThread(
     return inserted!;
   } catch (err: unknown) {
     // Handle UNIQUE constraint violation — return existing thread
-    const message = err instanceof Error ? err.message : String(err);
-    if (message.includes('unique') || message.includes('UNIQUE') || message.includes('duplicate key') || message.includes('23505')) {
+    // Sprint 325, Task 4.1: Use DB error codes instead of fragile string matching
+    const errCode = (err as { code?: string }).code;
+    if (errCode === '23505' || errCode === 'SQLITE_CONSTRAINT_UNIQUE') {
       const existing = await findActiveThread(db, data.nftId, data.communityId);
       if (existing) return existing;
     }

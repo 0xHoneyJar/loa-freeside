@@ -16,13 +16,6 @@
  *
  * SDD refs: §3.4 Budget Finalization, §5.5 Admin API
  * PRD refs: G-6 Budget Visibility, G-7 Audit Trail
- *
- * PORTABILITY NOTE (Bridge high-2): This migration uses SQLite-specific syntax.
- * For PostgreSQL (RDS production), equivalent migration required:
- *   - lower(hex(randomblob(16))) → gen_random_uuid()::text
- *   - strftime('%Y-%m-%dT%H:%M:%fZ', 'now') → NOW()
- *   - CREATE TRIGGER ... RAISE(ABORT) → PL/pgSQL trigger function
- * See: themes/sietch/src/db/migrations/README.md for dialect strategy.
  */
 
 export const USAGE_EVENTS_SQL = `
