@@ -1,28 +1,20 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "Previous feedback about awaiting async service calls was not addressed; the service calls are still unawaited.",
-  "previous_issues_status": [
+  "summary": "Missing jti claim breaks single-use token requirement; add UUID-based jti.",
+  "issues": [
     {
-      "original_issue": "Missing auth guard allows unauthenticated create and createApiKey not awaited",
-      "status": "not_fixed",
-      "notes": "Auth guard remains, but createApiKey is still called without await."
-    },
-    {
-      "original_issue": "List endpoint may return secrets and lacked auth/await",
-      "status": "not_fixed",
-      "notes": "Secrets are filtered and auth is enforced, but listApiKeys is still called without await."
-    },
-    {
-      "original_issue": "Delete endpoint lacks auth guard and does not await revokeApiKey",
-      "status": "not_fixed",
-      "notes": "Auth guard is present, but revokeApiKey is still called without await."
-    },
-    {
-      "original_issue": "Rotate endpoint lacks auth guard and does not await rotateApiKey",
-      "status": "not_fixed",
-      "notes": "Auth guard is present, but rotateApiKey is still called without await."
+      "severity": "critical",
+      "file": "path/to/S2SJwtSigner.ts",
+      "line": 214,
+      "description": "S2S JWTs are missing a jti claim, preventing replay protection and violating the single-use token requirement.",
+      "current_code": "```typescript\n  const jwt = await new jose.SignJWT({\n    nft_id: claims.nft_id,\n    tier: claims.tier,\n    community_id: claims.community_id,\n    budget_reservation_id: claims.budget_reservation_id,\n  })\n    .setProtectedHeader({\n      alg: JWT_ALGORITHM,\n      kid: activeSigningKey.kid,\n      typ: 'JWT',\n    })\n    .setIssuer(JWT_ISSUER)\n    .setAudience(JWT_AUDIENCE)\n    .setIssuedAt(now)\n    .setExpirationTime(now + JWT_TTL_SECONDS)\n    .sign(activeSigningKey.privateKey);\n```",
+      "fixed_code": "```typescript\n  const jwt = await new jose.SignJWT({\n    nft_id: claims.nft_id,\n    tier: claims.tier,\n    community_id: claims.community_id,\n    budget_reservation_id: claims.budget_reservation_id,\n  })\n    .setProtectedHeader({\n      alg: JWT_ALGORITHM,\n      kid: activeSigningKey.kid,\n      typ: 'JWT',\n    })\n    .setIssuer(JWT_ISSUER)\n    .setAudience(JWT_AUDIENCE)\n    .setIssuedAt(now)\n    .setExpirationTime(now + JWT_TTL_SECONDS)\n    .setJti(randomUUID())\n    .sign(activeSigningKey.privateKey);\n```",
+      "explanation": "Adding setJti(randomUUID()) injects a unique JWT ID per token, enabling replay protection and meeting the single-use token requirement without altering existing signing behavior."
     }
   ],
-  "new_blocking_concerns": [],
-  "iteration": 3
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
 }

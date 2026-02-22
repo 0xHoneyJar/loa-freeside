@@ -1,28 +1,29 @@
 {
-  "verdict": "APPROVED",
-  "summary": "All previously reported issues were addressed correctly and no new blocking problems were introduced.",
-  "previous_issues_status": [
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Potential async build handling and error propagation are missing; fix lazy init to handle Promise builds, concurrent requests, and failures safely.",
+  "issues": [
     {
-      "original_issue": "S2S authorization secret may be empty, causing unauthenticated gateway calls (invoke)",
-      "status": "fixed",
-      "notes": "Adds explicit secret presence check and returns 503 if missing."
+      "severity": "major",
+      "file": "src/routes/discovery.ts",
+      "line": 31,
+      "description": "If buildDiscoveryDocument is async (returns a Promise), the current lazy init returns a Promise object to res.json and never awaits it, causing incorrect responses. It also allows duplicate builds on concurrent requests and doesn't reset on failure.",
+      "current_code": "```typescript\n// Lazy-initialized discovery document (medium-3: avoids module-level side effects).\n// Built on first request, then cached for subsequent calls.\nlet cachedDiscoveryDocument: ReturnType<typeof buildDiscoveryDocument> | null = null;\n\nfunction getDiscoveryDocument() {\n  if (!cachedDiscoveryDocument) {\n    cachedDiscoveryDocument = buildDiscoveryDocument(\n      ADVERTISED_SCHEMAS.map(name => `${SCHEMA_BASE_URL}/${CONTRACT_VERSION}/${name}`),\n      {\n        aggregateTypes: [\n          'billing',\n          'agent',\n          'conversation',\n          'transfer',\n          'tool',\n        ],\n      },\n    );\n  }\n  return cachedDiscoveryDocument;\n}\n```\n",
+      "fixed_code": "```typescript\n// Lazy-initialized discovery document (medium-3: avoids module-level side effects).\n// Built on first request, then cached for subsequent calls.\nlet cachedDiscoveryDocument: Awaited<ReturnType<typeof buildDiscoveryDocument>> | null = null;\nlet discoveryDocumentPromise: Promise<Awaited<ReturnType<typeof buildDiscoveryDocument>>> | null = null;\n\nasync function getDiscoveryDocument() {\n  if (cachedDiscoveryDocument) return cachedDiscoveryDocument;\n  if (!discoveryDocumentPromise) {\n    discoveryDocumentPromise = Promise.resolve(\n      buildDiscoveryDocument(\n        ADVERTISED_SCHEMAS.map(name => `${SCHEMA_BASE_URL}/${CONTRACT_VERSION}/${name}`),\n        {\n          aggregateTypes: [\n            'billing',\n            'agent',\n            'conversation',\n            'transfer',\n            'tool',\n          ],\n        },\n      ),\n    ).then(doc => {\n      cachedDiscoveryDocument = doc;\n      return doc;\n    }).catch(err => {\n      discoveryDocumentPromise = null; // allow retry after failure\n      throw err;\n    });\n  }\n  return discoveryDocumentPromise;\n}\n```\n",
+      "explanation": "This fix correctly handles both sync and async implementations of buildDiscoveryDocument, prevents concurrent duplicate builds, and resets the promise on failure so future requests can retry."
     },
     {
-      "original_issue": "S2S authorization secret may be empty in streaming proxy",
-      "status": "fixed",
-      "notes": "Adds explicit secret presence check and returns 503 if missing."
-    },
-    {
-      "original_issue": "Upgrade endpoint does not verify sandboxKeyId matches authenticated key",
-      "status": "fixed",
-      "notes": "Now validates sandboxKeyId against keyRecord.id and returns 403 on mismatch."
-    },
-    {
-      "original_issue": "Streaming proxy does not abort upstream fetch/reader on client disconnect",
-      "status": "fixed",
-      "notes": "Introduces AbortController, timeout, and onClose handler to abort and cancel reader."
+      "severity": "major",
+      "file": "src/routes/discovery.ts",
+      "line": 56,
+      "description": "The route handler doesn't handle errors from getDiscoveryDocument (now async). A thrown error will crash the request without a proper response.",
+      "current_code": "```typescript\ndiscoveryRouter.get('/', (_req, res) => {\n  const doc = getDiscoveryDocument();\n  res.setHeader('Cache-Control', 'public, max-age=3600');\n  res.setHeader('ETag', `\"hounfour-${CONTRACT_VERSION}\"`);\n  res.setHeader('Content-Type', 'application/json; charset=utf-8');\n  res.json(doc);\n});\n```\n",
+      "fixed_code": "```typescript\ndiscoveryRouter.get('/', async (_req, res) => {\n  try {\n    const doc = await getDiscoveryDocument();\n    res.setHeader('Cache-Control', 'public, max-age=3600');\n    res.setHeader('ETag', `\"hounfour-${CONTRACT_VERSION}\"`);\n    res.setHeader('Content-Type', 'application/json; charset=utf-8');\n    res.json(doc);\n  } catch (err) {\n    res.status(500).json({\n      error: 'discovery_document_unavailable',\n      message: 'Failed to build discovery document',\n    });\n  }\n});\n```\n",
+      "explanation": "Awaiting the document and catching errors ensures correct JSON responses and prevents uncaught exceptions from crashing or hanging the request."
     }
   ],
-  "new_blocking_concerns": [],
-  "iteration": 2
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
 }

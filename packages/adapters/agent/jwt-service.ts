@@ -8,6 +8,14 @@
  * @see SDD §4.2 JWT Service
  * @see Trust Boundary Document §3.2 JWT Claims
  * @see Hounfour RFC #31 §9 Metering, Billing & Cost Attribution — pool claim inclusion rationale
+ *
+ * ARCHITECTURE NOTE (Bridge high-3): This is one of TWO JWT signers in the system.
+ * The other is S2SJwtSigner at themes/sietch/src/services/s2s/S2SJwtSigner.ts (issuer: 'loa-freeside').
+ * Both sign ES256 for loa-finn but serve different trust boundaries:
+ *   - JwtService (this file): gateway→finn user-context calls, issuer 'arrakis'
+ *   - S2SJwtSigner: freeside→finn S2S calls, issuer 'loa-freeside'
+ * loa-finn must trust JWKS from both issuers. Key rotation is independent.
+ * @see themes/sietch/src/services/s2s/S2SJwtSigner.ts for the S2S JWT signer
  */
 
 import { SignJWT, importPKCS8, exportJWK, type JWK, type KeyLike } from 'jose';
