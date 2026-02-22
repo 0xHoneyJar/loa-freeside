@@ -33,20 +33,27 @@ const ADVERTISED_SCHEMAS = [
   'ProtocolDiscovery',
 ];
 
-// Build the discovery document once at import time (static content).
-// Schema IDs follow canonical format: {SCHEMA_BASE_URL}/{CONTRACT_VERSION}/{schema-name}
-const discoveryDocument = buildDiscoveryDocument(
-  ADVERTISED_SCHEMAS.map(name => `${SCHEMA_BASE_URL}/${CONTRACT_VERSION}/${name}`),
-  {
-    aggregateTypes: [
-      'billing',
-      'agent',
-      'conversation',
-      'transfer',
-      'tool',
-    ],
-  },
-);
+// Lazy-initialized discovery document (medium-3: avoids module-level side effects).
+// Built on first request, then cached for subsequent calls.
+let cachedDiscoveryDocument: ReturnType<typeof buildDiscoveryDocument> | null = null;
+
+function getDiscoveryDocument() {
+  if (!cachedDiscoveryDocument) {
+    cachedDiscoveryDocument = buildDiscoveryDocument(
+      ADVERTISED_SCHEMAS.map(name => `${SCHEMA_BASE_URL}/${CONTRACT_VERSION}/${name}`),
+      {
+        aggregateTypes: [
+          'billing',
+          'agent',
+          'conversation',
+          'transfer',
+          'tool',
+        ],
+      },
+    );
+  }
+  return cachedDiscoveryDocument;
+}
 
 export const discoveryRouter = Router();
 
@@ -57,8 +64,13 @@ export const discoveryRouter = Router();
  * Response is cacheable (static content, changes only on deploy).
  */
 discoveryRouter.get('/', (_req, res) => {
-  res.setHeader('Cache-Control', 'public, max-age=3600');
-  res.setHeader('ETag', `"hounfour-${CONTRACT_VERSION}"`);
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.json(discoveryDocument);
+  try {
+    const doc = getDiscoveryDocument();
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.setHeader('ETag', `"hounfour-${CONTRACT_VERSION}"`);
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.json(doc);
+  } catch {
+    res.status(500).json({ error: 'discovery_document_unavailable' });
+  }
 });

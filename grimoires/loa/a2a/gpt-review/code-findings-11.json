@@ -1,20 +1,18 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "Route ordering causes potential shadowing of /admin/agents by /admin, making the admin agent dashboard unreachable in some configurations.",
-  "issues": [
+  "summary": "Previous feedback was not applied; the lazy init still assumes synchronous build and the route does not await or handle async failures properly.",
+  "previous_issues_status": [
     {
-      "severity": "major",
-      "file": "themes/sietch/src/api/server.ts",
-      "line": 481,
-      "description": "The /admin router is mounted before /admin/agents. If billingAdminRouter defines a catch-all or 404 handler, it can intercept /admin/agents and prevent adminAgentRouter from ever being reached.",
-      "current_code": "```typescript\n  // Billing admin routes (v4.0 - Sprint 26)\n  expressApp.use('/admin', billingAdminRouter);\n\n  // Admin agent dashboard routes (Sprint 5 / 318)\n  expressApp.use('/admin/agents', adminAgentRouter);\n  logger.info('Admin agent routes mounted at /admin/agents');\n```",
-      "fixed_code": "```typescript\n  // Admin agent dashboard routes (Sprint 5 / 318)\n  expressApp.use('/admin/agents', adminAgentRouter);\n  logger.info('Admin agent routes mounted at /admin/agents');\n\n  // Billing admin routes (v4.0 - Sprint 26)\n  expressApp.use('/admin', billingAdminRouter);\n```",
-      "explanation": "Mounting the more specific /admin/agents route before /admin guarantees it is matched first and prevents accidental interception by the broader /admin router."
+      "original_issue": "Lazy init must handle async build, prevent concurrent builds, and reset on failure",
+      "status": "not_fixed",
+      "notes": "The code still uses a synchronous cache and returns ReturnType without awaiting; no promise caching or failure reset is implemented."
+    },
+    {
+      "original_issue": "Route handler must await getDiscoveryDocument and handle errors from async build",
+      "status": "not_fixed",
+      "notes": "Handler is still synchronous and does not await getDiscoveryDocument; error handling only catches sync errors."
     }
   ],
-  "fabrication_check": {
-    "passed": true,
-    "concerns": []
-  },
-  "iteration": 1
+  "new_blocking_concerns": [],
+  "iteration": 2
 }

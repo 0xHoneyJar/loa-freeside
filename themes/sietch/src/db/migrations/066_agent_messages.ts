@@ -12,6 +12,13 @@
  *
  * SDD refs: §4.1 Thread Management, §4.6 Channel Synchronization
  * PRD refs: FR-3.1 Discord Threads, FR-3.7 Web Chat
+ *
+ * PORTABILITY NOTE (Bridge high-2): This migration uses SQLite-specific syntax.
+ * For PostgreSQL (RDS production), equivalent migration required:
+ *   - lower(hex(randomblob(16))) → gen_random_uuid()::text
+ *   - strftime('%Y-%m-%dT%H:%M:%fZ', 'now') → NOW()
+ *   - REFERENCES agent_threads(thread_id) recommended for FK integrity (medium-1)
+ * See: themes/sietch/src/db/migrations/README.md for dialect strategy.
  */
 
 export const AGENT_MESSAGES_SQL = `
