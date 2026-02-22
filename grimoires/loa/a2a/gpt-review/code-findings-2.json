@@ -1,21 +1,26 @@
 {
-  "verdict": "APPROVED",
-  "summary": "All previously reported issues have been addressed and no new blocking problems were introduced.",
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Previous issues about awaiting JWKS insertion were not fixed; validation and issuer fixes are present but the async handling remains incorrect.",
   "previous_issues_status": [
     {
-      "original_issue": "Dev pepper mismatch breaks validation for pepper_version=0 keys",
-      "status": "fixed",
-      "notes": "Validation now uses the same dev fallback pepper for version 0 in non-production, matching creation behavior."
+      "original_issue": "insertPublicKey is called without await, so Promise rejections are not caught and the JWKS insert may not complete before use",
+      "status": "not_fixed",
+      "notes": "Current code still calls insertPublicKey without await in generateEphemeralKey, initS2SJwtSigner, and refreshSigningKeyIfStale."
     },
     {
-      "original_issue": "createApiKey fails on UNIQUE key_prefix collisions without retry",
+      "original_issue": "Public key insertion uses hardcoded issuer and defaults missing JWK fields to empty strings, producing invalid JWKS and issuer mismatch",
       "status": "fixed",
-      "notes": "Collision retry loop added with bounded attempts and proper error handling."
+      "notes": "Issuer is now JWT_ISSUER and requireEcPublicJwk prevents missing fields."
     },
     {
-      "original_issue": "timingSafeEqual compares UTF-8 strings instead of hex bytes",
+      "original_issue": "Key rotation path inserts public keys without await and defaults missing fields to empty strings, which can create invalid JWKS and missed insertions",
+      "status": "not_fixed",
+      "notes": "Rotation path still inserts without await; validation is fixed but async handling remains."
+    },
+    {
+      "original_issue": "No validation exists for required EC public JWK fields before insertion, allowing invalid JWKS entries with missing x/y/crv/kty",
       "status": "fixed",
-      "notes": "Comparison now decodes hex to bytes before constant-time comparison."
+      "notes": "requireEcPublicJwk added and used."
     }
   ],
   "new_blocking_concerns": [],

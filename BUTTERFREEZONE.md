@@ -176,13 +176,13 @@ packages/cli/src/commands/sandbox/index.ts:185:    .command('status <name>')
 | `docs/` | 42 | Documentation | \u2014 |
 | `drizzle/` | 1 | Drizzle | \u2014 |
 | `evals/` | 122 | Benchmarking and regression framework for the Loa agent development system. Ensures framework changes don't degrade agent behavior through | [evals/README.md](evals/README.md) |
-| `grimoires/` | 1182 | Home to all grimoire directories for the Loa | [grimoires/README.md](grimoires/README.md) |
+| `grimoires/` | 1186 | Home to all grimoire directories for the Loa | [grimoires/README.md](grimoires/README.md) |
 | `infrastructure/` | 189 | This directory contains the Infrastructure as Code (IaC) for Arrakis, using Terraform to provision AWS | [infrastructure/README.md](infrastructure/README.md) |
 | `packages/` | 55050 | Shared libraries and utilities for the Arrakis | [packages/README.md](packages/README.md) |
 | `scripts/` | 21 | Utility scripts | \u2014 |
 | `sites/` | 28151 | Web properties for the Arrakis | [sites/README.md](sites/README.md) |
 | `tests/` | 93 | Test suites | \u2014 |
-| `themes/` | 66028 | Theme-specific backend services for Arrakis | [themes/README.md](themes/README.md) |
+| `themes/` | 66032 | Theme-specific backend services for Arrakis | [themes/README.md](themes/README.md) |
 
 ## Verification
 <!-- provenance: CODE-FACTUAL -->
@@ -235,15 +235,15 @@ cd themes/sietch && npx drizzle-kit push && cd ../..
 # Start development server
 pnpm run dev
 <!-- ground-truth-meta
-head_sha: 43b038e4f1e91861abe3bf96397961095d46b099
-generated_at: 2026-02-21T11:55:11Z
+head_sha: cf1a84bf975f5d5cc3ec491f99a6e4c6c8725204
+generated_at: 2026-02-22T05:43:25Z
 generator: butterfreezone-gen v1.0.0
 sections:
   agent_context: 051a2600552d6987cfc91e9c0d2bf61e710a8814852e0de2e9b51adce07d69bc
   capabilities: ab2576b1f2e7e8141f0e93e807d26ed2b7b155e21c96d787507a3ba933bb9795
   architecture: 1baed493127e15926a14116d27581dbed3239a3993de731baaba83bad22c6c84
   interfaces: 3bcf9c10303d01bf67c82e73663ca15117393f34599fbdb625cfe7ab6120ea5a
-  module_map: ffbd070452f4ae2e36f02108fc9a71619178609a7617c5b8382180046f12ea90
+  module_map: 6569f30ec75d8613d9007bc7e1cc1d70b13de6948da97399aed4e034b437d3af
   verification: 40e6771c3773f5eaa7c5f7c6fe8a4beb1c1b71a42f06abb116210ddfebcb146d
   agents: ca263d1e05fd123434a21ef574fc8d76b559d22060719640a1f060527ef6a0b6
   ecosystem: 29fc390a2a77ec8d5bdbe657182dd47a2a5cd0c0c36c74c763c9e65cfad170e3

@@ -1,42 +1,66 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "As written, this plan is likely to fail in production because it removes v4.6.0/JWT compatibility without a concrete dual-accept + rollout window, and it introduces a canonical NftId format without a required DB/backfill + read-compat plan.",
+  "summary": "As written, this plan is likely to fail because several sprint gates depend on missing cross-repo/IaC tasks (freeside ECS service, finn JWT verification, WebSocket/ALB wiring, Discord ownership verification, and message storage), and some acceptance criteria can’t be objectively verified with the described work.",
   "blocking_issues": [
     {
-      "location": "Sprint 2 — Task 2.1 (Adopt AgentIdentity / remove v4.6.0 claims) + Sprint 2 — Task 2.7 (Remove v4.6.0 backward compatibility code)",
-      "issue": "Plan removes v4.6.0 JWT claim normalization and the PROTOCOL_V7_NORMALIZATION flag, but does not include a dual-accept window, token TTL strategy, or coordinated rollout steps across all token issuers/consumers.",
-      "why_blocking": "If any existing sessions/tokens (Discord worker, web, API clients, or loa-finn) still present v4.6.0-style claims (e.g., trust_level integer or missing trust_scopes), Freeside will start rejecting them immediately after deploy. That is a hard auth outage and will force rollback; with 1 engineer, diagnosing cross-surface auth breakage is a common sprint-killer.",
-      "fix": "Add explicit tasks/AC for a staged JWT migration: (1) keep normalizeInboundClaims dual-accept for a bounded window (e.g., accept v6/v7 claims; optionally accept v4.6.0 only if still observed), (2) add metrics/logging for claim versions seen, (3) define a cutoff date tied to max JWT TTL + session TTL, (4) only remove v4.6.0 branch after telemetry shows 0 usage for N days, and (5) add integration tests covering both claim shapes during the window."
+      "location": "Sprint 1 (Issue #77) — overall deployment gate / Task 1.1",
+      "issue": "Plan verifies/enables loa-finn ECS, but does not include the critical work to deploy loa-freeside to ECS in production (task definition/service/ALB target group/env/secrets) even though G-1 requires both services deployed and healthy.",
+      "why_blocking": "You can’t meet G-1 (“Both services deployed to production on ECS with health checks”) if only finn is explicitly enabled/verified; freeside deployment could be assumed “already exists” but there is no task to confirm desired_count, ALB routing, env vars, Secrets Manager bindings, Cloud Map/SG rules, or health check path alignment for freeside in the same sprint.",
+      "fix": "Add a Sprint 1 task explicitly verifying/enabling loa-freeside ECS/Terraform resources (desired_count, task definition env/secrets, ALB listener rules, target group health check path, SG ingress/egress, Cloud Map if used) with acceptance criteria: `terraform plan` clean, service stable, ALB returns 200 on /health, and both services reachable as intended (public vs internal)."
     },
     {
-      "location": "Sprint 2 — Task 2.3 (Adopt canonical NftId format)",
-      "issue": "NftId format change is specified for new records and JWT claims, but there is no concrete migration/backfill task, no read-compat strategy, and no acceptance criteria ensuring existing records/queries continue to work.",
-      "why_blocking": "Changing identifiers from ad-hoc formats to eip155 canonical will break lookups, joins, caches, and any persisted references unless the system can read both formats or the DB is backfilled. The plan explicitly updates queries (my-agent-data.ts) and JWT claim emission, which can immediately desynchronize stored data vs. incoming identifiers—causing user-facing failures (missing agents/threads) and forcing rollback.",
-      "fix": "Add a required migration task: (1) inventory all storage locations/columns where nftId is persisted and indexed, (2) implement dual-read (accept old + new) and single-write (write canonical) for a window, (3) add a backfill script with idempotency + progress logging, (4) add DB constraints/index updates if needed, (5) add integration tests proving old-format records remain accessible after deploy, and (6) define collision/ambiguity handling (old formats that cannot be deterministically mapped)."
+      "location": "Sprint 1 — Task 1.3 (ES256 JWKS + signer) and Sprint 3 dependencies",
+      "issue": "Only the signing/JWKS publishing side is planned; there is no corresponding task to implement/verify JWT validation in loa-finn (JWKS fetch, caching, aud/iss/exp enforcement).",
+      "why_blocking": "Sprint 1 gate says “S2S JWT validated” and Sprint 3 requires authenticated freeside→finn calls. Without finn-side verification work (likely in loa-finn repo), S2S auth cannot be proven working and integration will stall.",
+      "fix": "Add an explicit cross-repo task (loa-finn) to implement ES256 JWT verification against freeside JWKS (iss/aud/exp/iat checks, clock skew handling, JWKS cache/refresh, kid selection) plus an integration test or curl-based proof in staging. Also add a mitigation plan if loa-finn changes can’t land (temporary shared secret HS256 is not acceptable per security req; better: ship JWKS verifier first)."
     },
     {
-      "location": "Sprint 1 — Task 1.5 (Update CONTRACT_VERSION and version negotiation) + overall cross-system dependency",
-      "issue": "The plan assumes loa-finn supports v7.0.0 (MIN_SUPPORTED_VERSION=6.0.0) but does not include a concrete coordination/verification task against real loa-finn deployments (staging/prod) nor a defined compatibility window policy (how long 6.x is accepted, what headers/fields are dual-parsed).",
-      "why_blocking": "S2S protocol mismatches are a primary failure mode: even if TypeScript compiles, runtime wire changes (CompletionRequest/Result, StreamEvent, headers) can break inference. Without an explicit “verify peer version in environment X” gate and a dual-stack parsing plan, you can ship a build that passes unit tests but fails immediately in staging/prod.",
-      "fix": "Add an explicit pre-deploy gate task: hit loa-finn staging/prod discovery (or a version endpoint) and record supported versions; add AC that staging handshake succeeds before proceeding. Also define a bounded dual-accept policy: which versions are accepted, for how long, and which fields are parsed in a backward-compatible way (headers + body)."
+      "location": "Sprint 1 — Task 1.1 env var `FREESIDE_JWKS_URL=http://api.arrakis-{env}.local:3000/.well-known/jwks.json`",
+      "issue": "JWKS URL/hostname is underspecified and likely wrong for ECS networking; it assumes an internal DNS name for freeside (`api.arrakis-{env}.local`) that isn’t defined in the “What Already Exists” table (only finn Cloud Map is listed).",
+      "why_blocking": "If finn can’t resolve/reach the JWKS endpoint from inside the VPC, JWT verification will fail and all authenticated calls will fail. This is a common ECS/Cloud Map pitfall: ALB public DNS vs internal service discovery vs task ENI reachability.",
+      "fix": "Decide and implement one concrete JWKS reachability path: (a) register freeside in Cloud Map (e.g., `freeside.arrakis-{env}.local`) and use that, or (b) expose JWKS via internal ALB listener/DNS, or (c) host JWKS in S3/CloudFront (but that’s new infra). Add Terraform changes + acceptance criteria: from a finn task, `curl $FREESIDE_JWKS_URL` succeeds and returns JWKS."
     },
     {
-      "location": "Sprint 2 — Tasks 2.5 (StreamEvent) and 2.6 (CompletionRequest/Result)",
-      "issue": "These tasks change the S2S wire types but the plan does not add end-to-end integration tests that validate real SSE event streams and completion request/response payloads against loa-finn (only mentions a stub and some unit updates).",
-      "why_blocking": "SSE/event-stream parsing and request/response schema drift often fails only at runtime (ordering, optional fields, unknown event types, JSON framing). A stub that you also update to v7.0.0 can mask incompatibilities. Without a contract test that replays captured real streams (or validates against canonical JSON schema), you risk shipping a broken inference path.",
-      "fix": "Add integration tests that (1) replay recorded SSE transcripts from loa-finn (6.x and 7.x if applicable) and assert parsing into StreamEvent union, (2) validate CompletionRequest serialization and CompletionResult parsing against canonical JSON schema (ajv), and (3) include an “unknown event type” forward-compat test to ensure it doesn’t crash the stream."
+      "location": "Sprint 4 — Task 4.1 (WebSocket endpoint) + existing ALB/WAF",
+      "issue": "No IaC task to ensure ALB listener rules, target group settings, idle timeouts, and WAF behavior are compatible with WebSocket streaming for `/chat/:tokenId/ws`.",
+      "why_blocking": "G-9 requires streaming via WebSocket. Even if the app code works locally, production commonly fails without ALB idle timeout tuning, correct listener rule path patterns, and ensuring WAF doesn’t block upgrade requests. The plan lists “ALB + WAF supports WebSocket” but doesn’t include a verification/deploy task for the specific route.",
+      "fix": "Add a Terraform+staging verification task before/within Sprint 4: confirm ALB idle timeout (e.g., 60–300s), listener rules route `/chat/*` and `/chat/*/ws`, WAF allows `Upgrade: websocket`, and CloudWatch metrics show successful 101 upgrades. Acceptance: `wscat`/browser connects in staging and streams for N minutes without disconnect."
     },
     {
-      "location": "Sprint 1 — Task numbering / dependency clarity (Sprint 1 has two 'Task 1.3' entries)",
-      "issue": "Duplicate task IDs (two Task 1.3s) create ambiguous references for sequencing and review gates (1.3–1.5 referenced by 1.2).",
-      "why_blocking": "This is not a formatting nit: it breaks dependency tracking (“Tasks 1.3–1.5”) and can cause the engineer/reviewer to execute the wrong step order or miss a required de-vendoring item, leading to incomplete work and failed sprint gate (build clean / no vendored copies).",
-      "fix": "Renumber tasks uniquely (e.g., 1.3 state-machines, 1.4 billing-types, 1.5 guard-types, shift subsequent tasks) and update all cross-references (notably Task 1.2 and Sprint 1 gate)."
+      "location": "Sprint 4 — Task 4.6 (Channel synchronization design)",
+      "issue": "It proposes storing “all messages” in `agent_threads` table, but migration 063 defines `agent_threads` as thread mapping metadata only; there is no messages table/schema or tasks to implement message persistence.",
+      "why_blocking": "Acceptance criteria for 4.6 (“Messages from both surfaces stored in same table”, “Web chat displays full conversation history including Discord messages”) cannot be met with the current schema/tasks. This will stall implementation or cause last-minute schema churn mid-sprint.",
+      "fix": "Add a migration for `agent_messages` (or similar) with fields: message_id, thread_id, nft_id, community_id, source, author_wallet/discord_user_id, content, created_at, and any token usage metadata. Update 4.6 to write/read from that table, and update 4.1 to render history from it."
     },
     {
-      "location": "Sprint 1 — Task 1.1 (Dependency bump) and overall supply-chain pinning",
-      "issue": "Task text still allows 'github:...#v7.0.0 (or latest main commit)' while acceptance criteria requires immutable SHA; there is no explicit step to resolve and record the exact commit SHA for v7.0.0 and ensure pnpm lockfile cannot float.",
-      "why_blocking": "If the engineer follows the implementation text and pins to a tag or main, builds can become non-reproducible and may break mid-sprint due to upstream changes—especially risky when de-vendoring depends on exact export surfaces. That can derail the entire 4-sprint migration.",
-      "fix": "Make the implementation unambiguous: require resolving v7.0.0 tag → commit SHA and pin to that SHA in both package.json files; add AC that CI verifies the dependency spec is a SHA (e.g., regex check) and that lockfile contains the same resolved commit."
+      "location": "Sprint 4 — Task 4.2 (SIWE) and Task 4.4/4.5 (Discord ownership verification)",
+      "issue": "Discord commands require “verify wallet ownership” but the plan does not include a concrete linking mechanism between a Discord user and a wallet (or how ownership is proven inside Discord).",
+      "why_blocking": "G-5 depends on gating: “NFT holder invokes /my-agent and gets dedicated thread” and “Non-owner cannot write”. Without a defined Discord↔wallet binding (SIWE in web doesn’t automatically apply to Discord), you can’t reliably enforce ownership and the feature will fail or be insecure.",
+      "fix": "Add an explicit task to implement Discord wallet linking (e.g., `/link-wallet` that issues a nonce and verifies an EIP-4361 signature via DM/web callback), store mapping in DB, and use it for ownership checks. Acceptance: a Discord user links wallet, bot verifies NFT ownership, then /my-agent works; unlinked users are blocked with a clear instruction."
+    },
+    {
+      "location": "Sprint 2 — Task 2.4 (Webhook verification) / overall payments gate G-2",
+      "issue": "The plan relies on NOWPayments webhook configuration but does not include an end-to-end staging test harness for HMAC-SHA512 verification + idempotency + state machine transitions using real NOWPayments IPN payloads/signature headers.",
+      "why_blocking": "G-2 is “First real credit pack purchase”. Webhook signature mismatches, header naming differences, or body canonicalization issues are a top cause of launch failure; without a concrete test step using captured real payloads (or NOWPayments test IPNs), you risk discovering it only in production.",
+      "fix": "Add a Sprint 2 task: capture a real/sandbox IPN request (raw body + headers), add an automated verification test (or replay tool) that posts it to staging and asserts: signature valid, state transition correct, idempotent replay safe, credits minted exactly once."
+    },
+    {
+      "location": "Sprint 3 — Task 3.1 (cache invalidation on NFT transfer event)",
+      "issue": "Cache invalidation depends on an “NFT transfer event” source, but no event ingestion/indexer task is included (what chain, what contract, where events come from, how they reach freeside).",
+      "why_blocking": "Acceptance criterion “Cache invalidated on transfer event” cannot be implemented without an event pipeline. This will either be skipped (failing AC) or cause scope explosion mid-sprint.",
+      "fix": "Either (a) cut/relax the AC for this sprint (invalidate by TTL only) or (b) add a concrete task to consume transfer events (existing indexer/webhook if it exists) and trigger Redis invalidation. Make the dependency explicit and verifiable."
+    },
+    {
+      "location": "Sprint 5 — Task 5.1/5.2 (admin spend breakdown + JSONL audit) and Sprint 3 budget finalization",
+      "issue": "Admin spend breakdown and JSONL audit require a durable ledger of per-inference spend by pool (finalized amounts, pool_id, tokens used, reservation/finalization ids), but the plan doesn’t include tasks to persist these usage records (it only mentions parsing response headers).",
+      "why_blocking": "G-6 and G-7 can’t be satisfied if the system doesn’t store per-request accounting events in a queryable/auditable table. Relying on logs/headers at request time won’t support exports and breakdowns.",
+      "fix": "Add a migration + write-path task to persist an immutable accounting/audit event per reservation finalization (e.g., `credit_ledger` / `usage_events`) including: community_id, nft_id, pool_id, tokens, amount_micro, finalization_id, conservation_guard_result, timestamps. Then base admin endpoints/export on that table."
+    },
+    {
+      "location": "Sprint 6 — Task 6.2 (Conservation guard failure alert within 60s)",
+      "issue": "No task defines how conservation guard failures are emitted as metrics/log events that CloudWatch/AMP alarms can actually trigger on (what metric name, where it’s incremented, and how it reaches AMP/CloudWatch).",
+      "why_blocking": "G-3 requires an alert within 60s. Terraform alarms alone won’t work unless the application emits a signal (custom metric, log filter metric, or Prometheus counter) on invariant failure.",
+      "fix": "Add an instrumentation task: on any conservation guard violation, increment a Prometheus counter (e.g., `conservation_guard_failures_total{invariant=...}`) and/or emit a structured log line that a CloudWatch metric filter converts to a metric. Then define the alarm on that metric with a 60s evaluation period and test by forcing a known failure in staging."
     }
   ],
   "question": "",
