@@ -1,280 +1,221 @@
 <!-- AGENT-CONTEXT
-name: loa-freeside
-type: platform
-purpose: Multi-model agent economy infrastructure — inference routing, budget atomicity, token-gated capability markets, and payment rails for Web3 communities.
-key_files:
-  - packages/core/ports/agent-gateway.ts
-  - packages/adapters/agent/pool-mapping.ts
-  - packages/adapters/agent/budget-manager.ts
-  - packages/adapters/agent/ensemble-accounting.ts
-  - packages/adapters/agent/byok-manager.ts
-  - themes/sietch/src/api/routes/agents.routes.ts
-  - themes/sietch/src/api/routes/billing-routes.ts
-  - themes/sietch/src/api/routes/verify.routes.ts
-  - packages/cli/src/index.ts
-  - infrastructure/terraform/main.tf
-  - apps/gateway/src/main.rs
-  - packages/shared/nats-schemas/src/routing.ts
-interfaces: [REST API (80+ endpoints), Discord (22+ slash commands), Telegram (10+ commands), CLI (gaib), NATS event protocol]
-dependencies: [node>=22, pnpm, rust (gateway), postgresql, redis, terraform, docker]
+name: arrakis
+type: framework
+purpose: Multi-model agent economy infrastructure platform.
+key_files: [CLAUDE.md, .claude/loa/CLAUDE.loa.md, .loa.config.yaml, .claude/scripts/, .claude/skills/, package.json]
+interfaces: [/auditing-security, /autonomous-agent, /bridgebuilder-review, /browsing-constructs, /bug-triaging]
+dependencies: [git, jq, yq, node]
 capability_requirements:
-  - inference: multi-model routing (5 pools)
-  - billing: budget-atomic accounting (BigInt micro-USD)
-  - auth: token-gated access (9-tier conviction)
-  - distribution: discord, telegram, rest, nats
-  - infrastructure: aws ecs via terraform (20 modules)
-version: 6.0.0
-trust_level: grounded
-stability_contract: docs/API-REFERENCE.md
-economic_model: conservation-invariant lot lifecycle with budget-atomic two-counter reservation (see docs/ECONOMICS.md)
-protocol_version: loa-hounfour@7.0.0
-discovery_endpoints:
-  - health: /api/agents/health
-  - capabilities: /api/agents/invoke (POST, requires auth)
-  - pricing: docs/ECONOMICS.md#model-pricing
-  - events: docs/EVENT-PROTOCOL.md (NATS JetStream)
-ecosystem:
-  - repo: 0xHoneyJar/loa
-    role: framework (Layer 1)
-  - repo: 0xHoneyJar/loa-hounfour
-    role: protocol (Layer 2)
-  - repo: 0xHoneyJar/loa-finn
-    role: runtime (Layer 3)
-  - repo: 0xHoneyJar/loa-freeside
-    role: platform (Layer 4)
-  - repo: 0xHoneyJar/loa-dixie
-    role: product (Layer 5)
+  - filesystem: read
+  - filesystem: write (scope: state)
+  - filesystem: write (scope: app)
+  - git: read_write
+  - shell: execute
+  - github_api: read_write (scope: external)
+version: v1.39.1
+trust_level: L2-verified
 -->
 
 # loa-freeside
 
-<!-- provenance: CODE-FACTUAL -->
-Multi-model agent economy infrastructure platform. Token-gated AI capabilities, budget-atomic inference, and cross-chain community management delivered as Discord, Telegram, and REST APIs.
+<!-- provenance: DERIVED -->
+Multi-model agent economy infrastructure platform.
 
-Layer 4 in the 5-layer Loa protocol stack (Framework → Protocol → Runtime → **Platform** → Products).
+The framework provides 29 specialized skills, built with TypeScript/JavaScript, Python, Shell.
 
 ## Key Capabilities
+<!-- provenance: DERIVED -->
+The project exposes 15 key entry points across its public API surface.
 
-### Agent Gateway
-<!-- provenance: CODE-FACTUAL -->
-<!-- cite: loa-freeside:packages/adapters/agent/pool-mapping.ts -->
-<!-- cite: loa-freeside:packages/adapters/agent/budget-manager.ts -->
-<!-- cite: loa-freeside:packages/adapters/agent/ensemble-accounting.ts -->
+### .claude/adapters
 
-- **5-pool model routing** — cheap, fast-code, reviewer, reasoning, native tiers mapped to provider models
-- **Budget atomicity** — BigInt micro-USD precision with two-counter Redis Lua scripts; zero precision loss (see [docs/ECONOMICS.md](docs/ECONOMICS.md))
-- **Ensemble strategies** — best_of_n, consensus, fallback with per-model cost attribution
-- **4-dimension rate limiting** — community, user, channel, burst
-- **SSE streaming** — with reconciliation for dropped connections
-- **Token estimation** — calibrated per-model token estimation for budget reservation
+- **_build_provider_config** — Build ProviderConfig from merged hounfour config. (`.claude/adapters/cheval.py:152`)
+- **_check_feature_flags** — Check feature flags. (`.claude/adapters/cheval.py:192`)
+- **_error_json** — Format error as JSON for stderr (SDD §4.2.2 Error Taxonomy). (`.claude/adapters/cheval.py:77`)
+- **_load_persona** — Load persona.md for the given agent with optional system merge (SDD §4.3.2). (`.claude/adapters/cheval.py:96`)
+- **cmd_cancel** — Cancel a Deep Research interaction. (`.claude/adapters/cheval.py:511`)
+- **cmd_invoke** — Main invocation: resolve agent → call provider → return response. (`.claude/adapters/cheval.py:211`)
+- **cmd_poll** — Poll a Deep Research interaction. (`.claude/adapters/cheval.py:467`)
+- **cmd_print_config** — Print effective merged config with source annotations. (`.claude/adapters/cheval.py:442`)
+- **cmd_validate_bindings** — Validate all agent bindings. (`.claude/adapters/cheval.py:453`)
+- **main** — CLI entry point. (`.claude/adapters/cheval.py:547`)
 
-### BYOK (Bring Your Own Key)
-<!-- provenance: CODE-FACTUAL -->
-<!-- cite: loa-freeside:packages/adapters/agent/byok-manager.ts -->
-<!-- cite: loa-freeside:packages/adapters/agent/byok-proxy-handler.ts -->
+### .claude/adapters/loa_cheval/config
 
-- **Envelope encryption** — AES-256-GCM + KMS wrap
-- **LRU cache** with circuit breaker
-- **Key isolation** — BYOK egress separated from platform keys
-- **Audit trail** — structured capability audit events per invocation
-
-### Token-Gated Access
-<!-- provenance: CODE-FACTUAL -->
-<!-- cite: loa-freeside:themes/sietch/src/services/ -->
-<!-- cite: loa-freeside:packages/core/ports/score-service.ts -->
-
-- **9-tier progression** — BGT holdings and community rank determine tier placement
-- **Conviction scoring** — holding duration, accumulation patterns, trading behavior
-- **Capability markets** — free, pro, enterprise tiers mapped to model pools
-- **Wallet verification** — session-based signature verification with timing-safe comparisons
-
-### Billing & Payments
-<!-- provenance: CODE-FACTUAL -->
-<!-- cite: loa-freeside:themes/sietch/src/api/routes/billing-routes.ts -->
-<!-- cite: loa-freeside:themes/sietch/src/api/routes/credit-pack-routes.ts -->
-
-- **Paddle integration** — checkout, subscriptions, webhooks, customer portal
-- **Crypto payments** — NOWPayments integration (feature-flagged)
-- **Shadow billing** — parallel billing tracking for migration testing
-- **Entitlements caching** — feature access with audit logging
-
-### Distribution Channels
-<!-- provenance: CODE-FACTUAL -->
-<!-- cite: loa-freeside:themes/sietch/src/discord/ -->
-<!-- cite: loa-freeside:themes/sietch/src/telegram/ -->
-<!-- cite: loa-freeside:apps/gateway/src/main.rs -->
-
-- **Discord** — 22+ slash commands, Rust/Axum gateway proxy with multi-shard pool (Twilight 0.17)
-- **Telegram** — Grammy bot framework with 10+ commands, throttled streaming edits
-- **REST API** — 80+ Express 5.x endpoints with Zod validation
-- **NATS protocol** — cross-language wire format with Zod schemas and JSON fixtures
-
-### Coexistence & Migration
-<!-- provenance: CODE-FACTUAL -->
-<!-- cite: loa-freeside:packages/adapters/coexistence/ -->
-<!-- cite: loa-freeside:themes/sietch/src/api/routes/coexistence.routes.ts -->
-
-- **4 transition modes** — shadow → parallel → primary → exclusive
-- **Shadow ledger** — divergence tracking alongside existing verification bots
-- **Incumbent monitoring** — health checks with emergency rollback
-
-### Infrastructure-as-Code
-<!-- provenance: CODE-FACTUAL -->
-<!-- cite: loa-freeside:infrastructure/terraform/ecs.tf -->
-<!-- cite: loa-freeside:infrastructure/terraform/agent-monitoring.tf -->
-<!-- cite: loa-freeside:infrastructure/terraform/byok-security.tf -->
-
-- **20 Terraform modules** — ECS, RDS, ElastiCache, ALB, Route53, CloudWatch, KMS
-- **Agent monitoring** — CloudWatch dashboards + alarms for gateway metrics
-- **BYOK security** — least-privilege IAM roles per service
+- **LazyValue** — Deferred interpolation token. (`.claude/adapters/loa_cheval/config/interpolation.py:41`)
+- **_check_env_allowed** — Check if env var name is in the allowlist. (`.claude/adapters/loa_cheval/config/interpolation.py:122`)
+- **_check_file_allowed** — Validate and resolve a file path for secret reading. (`.claude/adapters/loa_cheval/config/interpolation.py:133`)
+- **_get_credential_provider** — Get the credential provider chain (lazily initialized, thread-safe). (`.claude/adapters/loa_cheval/config/interpolation.py:192`)
+- **_matches_lazy_path** — Check if a dotted config key path matches any lazy path pattern. (`.claude/adapters/loa_cheval/config/interpolation.py:275`)
 
 ## Architecture
-<!-- provenance: CODE-FACTUAL -->
-
+<!-- provenance: DERIVED -->
+The architecture follows a three-zone model: System (`.claude/`) contains framework-managed scripts and skills, State (`grimoires/`, `.beads/`) holds project-specific artifacts and memory, and App (`src/`, `lib/`) contains developer-owned application code. The framework orchestrates 29 specialized skills through slash commands.
+```mermaid
+graph TD
+    apps[apps]
+    decisions[decisions]
+    docs[docs]
+    drizzle[drizzle]
+    evals[evals]
+    grimoires[grimoires]
+    infrastructure[infrastructure]
+    packages[packages]
+    Root[Project Root]
+    Root --> apps
+    Root --> decisions
+    Root --> docs
+    Root --> drizzle
+    Root --> evals
+    Root --> grimoires
+    Root --> infrastructure
+    Root --> packages
 ```
-loa-freeside/
-├── packages/
-│   ├── core/ports/            # 18 port interfaces (IAgentGateway, IChainProvider, etc.)
-│   ├── adapters/              # 8 adapter modules
-│   │   ├── agent/             # Gateway, BudgetManager, BYOK, ensemble, audit
-│   │   ├── chain/             # RPC, Dune Sim API, hybrid provider
-│   │   ├── storage/           # Drizzle ORM + PostgreSQL + RLS
-│   │   ├── synthesis/         # BullMQ queue for Discord API
-│   │   ├── wizard/            # 8-step onboarding orchestrator
-│   │   ├── themes/            # ThemeRegistry, SietchTheme
-│   │   ├── security/          # Vault, KillSwitch, MFA
-│   │   └── coexistence/       # Shadow mode, migration engine
-│   ├── cli/                   # gaib CLI (auth, sandbox, server)
-│   ├── sandbox/               # Schema provisioning, event routing
-│   └── shared/nats-schemas/   # Cross-language wire format (Zod + JSON)
-├── themes/sietch/             # Main service (v6.0.0)
-│   ├── src/api/routes/        # 42 route files (80+ endpoints)
-│   ├── src/discord/commands/  # 22+ slash commands
-│   ├── src/telegram/          # Grammy bot (10+ commands)
-│   └── src/trigger/           # 7 cron jobs
-├── apps/
-│   ├── gateway/               # Rust/Axum Discord gateway proxy
-│   ├── ingestor/              # Event ingestion service
-│   └── worker/                # Background job worker (NATS + RabbitMQ)
-├── infrastructure/terraform/  # AWS ECS deployment (20 modules, 81 .tf files)
-└── evals/                     # Evaluation framework + test suites
+Directory structure:
 ```
-
-**Hexagonal architecture:** Core ports define interfaces, adapters implement them. No adapter imports another adapter directly.
+./apps
+./apps/gateway
+./apps/ingestor
+./apps/worker
+./decisions
+./docs
+./docs/api
+./docs/architecture
+./docs/gaib
+./docs/integration
+./docs/planning
+./docs/proposals
+./docs/research
+./docs/runbook
+./drizzle
+./drizzle/migrations
+./evals
+./evals/baselines
+./evals/fixtures
+./evals/graders
+./evals/harness
+./evals/results
+./evals/suites
+./evals/tasks
+./evals/tests
+./grimoires
+./grimoires/loa
+./grimoires/pub
+./infrastructure
+./infrastructure/k8s
+```
 
 ## Interfaces
-<!-- provenance: CODE-FACTUAL -->
+<!-- provenance: DERIVED -->
+### HTTP Routes
 
-### REST API Routes
-<!-- cite: loa-freeside:themes/sietch/src/api/routes/ -->
+- **DELETE** `/sandbox/:sandboxId/reset` (`themes/sietch/src/api/middleware/auth.ts:417`)
+- **GET** `/.well-known/jwks.json` (`themes/sietch/src/api/routes/agents.routes.ts:142`)
+- **GET** `/:id/identity` (`themes/sietch/src/api/routes/agent-identity.routes.ts:99`)
+- **GET** `/:id/provenance` (`themes/sietch/src/api/routes/agent-identity.routes.ts:82`)
+- **GET** `/admin/stats` (`themes/sietch/src/api/middleware.ts:397`)
+- **GET** `/config` (`themes/sietch/src/api/middleware/dashboardAuth.ts:125`)
+- **GET** `/protected` (`themes/sietch/src/api/middleware/auth.ts:176`)
+- **PATCH** `/:userId/thresholds` (`themes/sietch/src/api/middleware/auth.ts:382`)
+- **POST** `/config` (`themes/sietch/src/api/middleware/dashboardAuth.ts:217`)
+- **POST** `/endpoint` (`themes/sietch/src/api/middleware/rate-limit.ts:367`)
+- **POST** `/inference` (`themes/sietch/src/api/middleware/developer-key-auth.ts:156`)
+- **POST** `/register` (`themes/sietch/src/api/routes/agent-identity.routes.ts:37`)
 
-| Domain | Route File | Key Endpoints |
-|--------|-----------|---------------|
-| Agent | `agents.routes.ts` | `POST /api/agents/invoke`, `GET /api/agents/health`, `GET /.well-known/jwks.json` |
-| Agent Identity | `agent-identity.routes.ts` | `POST /register`, `GET /:id/identity`, `GET /:id/provenance` |
-| Agent Governance | `agent-governance.routes.ts` | Agent governance endpoints |
-| Auth | `auth.routes.ts` | Authentication endpoints |
-| Billing | `billing-routes.ts` | Paddle checkout, subscriptions, webhooks |
-| Credit Packs | `credit-pack-routes.ts` | Credit pack purchase and management |
-| Crypto Billing | `crypto-billing.routes.ts` | NOWPayments integration |
-| Coexistence | `coexistence.routes.ts` | Shadow mode, migration status |
-| Verify | `verify.routes.ts` | Wallet signature verification |
-| Users | `users.routes.ts` | User profile and management |
-| Threshold | `threshold.routes.ts` | Tier threshold configuration |
-| Web3 | `web3.routes.ts` | On-chain data queries |
-| Admin | `admin.routes.ts` | Platform administration |
-| Dashboard | `dashboard/` | Creator dashboard, drift monitoring, restore |
+### CLI Commands
 
-### Discord Commands
-<!-- cite: loa-freeside:themes/sietch/src/discord/commands/ -->
+packages/cli/src/commands/auth/index.ts:113:    .command('login')
+packages/cli/src/commands/auth/index.ts:130:    .command('logout')
+packages/cli/src/commands/auth/index.ts:145:    .command('whoami')
+packages/cli/src/commands/sandbox/index.ts:78:    .command('new [name]')
+packages/cli/src/commands/sandbox/index.ts:97:    .command('ls')
+packages/cli/src/commands/sandbox/index.ts:116:    .command('rm <name>')
+packages/cli/src/commands/sandbox/index.ts:134:    .command('env <name>')
+packages/cli/src/commands/sandbox/index.ts:151:    .command('link <sandbox> <guildId>')
+packages/cli/src/commands/sandbox/index.ts:168:    .command('unlink <sandbox> <guildId>')
+packages/cli/src/commands/sandbox/index.ts:185:    .command('status <name>')
 
-`/agent`, `/alerts`, `/badges`, `/directory`, `/leaderboard`, `/naib`, `/onboard`, `/position`, `/profile`, `/register-waitlist`, `/resume`, `/simulation`, `/stats`, `/threshold`, `/verify`, `/water-share`, admin commands (`/admin-badge`, `/admin-migrate`, `/admin-stats`, `/admin-takeover`, `/admin-water-share`)
+### Skill Commands
 
-### Telegram Commands
-<!-- cite: loa-freeside:themes/sietch/src/telegram/commands/ -->
-
-`/start`, `/help`, `/agent`, `/alerts`, `/leaderboard`, `/refresh`, `/score`, `/status`, `/unlink`, `/verify`
-
-### CLI Commands (gaib)
-<!-- cite: loa-freeside:packages/cli/src/commands/ -->
-
-| Command Group | Commands |
-|--------------|----------|
-| `gaib auth` | `login`, `logout`, `whoami` |
-| `gaib sandbox` | `new`, `ls`, `rm`, `env`, `link`, `unlink`, `status` |
-| `gaib server` | IaC deployment commands |
-
-### NATS Event Protocol
-<!-- cite: loa-freeside:packages/shared/nats-schemas/src/routing.ts -->
-
-Event types: `guild.join`, `guild.leave`, `guild.update`, `member.join`, `member.leave`, `member.update`, `interaction.create`
-
-Wire format: Zod schemas with JSON fixtures as neutral source of truth (validated by both TypeScript and Rust). See [docs/EVENT-PROTOCOL.md](docs/EVENT-PROTOCOL.md) for the full protocol reference.
+- **/auditing-security** — Paranoid Cypherpunk Auditor
+- **/autonomous-agent** — Autonomous agent
+- **/bridgebuilder-review** — Bridgebuilder — Autonomous PR Review
+- **/browsing-constructs** — Provide a multi-select UI for browsing and installing packs from the Loa Constructs Registry. Enables composable skill installation per-repo.
+- **/bug-triaging** — Bug Triage Skill
+- **/butterfreezone-gen** — BUTTERFREEZONE Generation Skill
+- **/continuous-learning** — Continuous Learning Skill
+- **/deploying-infrastructure** — Deploying infrastructure
+- **/designing-architecture** — Architecture Designer
+- **/discovering-requirements** — Discovering Requirements
+- **/enhancing-prompts** — Enhancing prompts
+- **/eval-running** — Eval running
+- **/flatline-knowledge** — Provides optional NotebookLM integration for the Flatline Protocol, enabling external knowledge retrieval from curated AI-powered notebooks.
+- **/flatline-reviewer** — Flatline reviewer
+- **/flatline-scorer** — Flatline scorer
+- **/flatline-skeptic** — Flatline skeptic
+- **/gpt-reviewer** — Gpt reviewer
+- **/implementing-tasks** — Sprint Task Implementer
+- **/managing-credentials** — /loa-credentials — Credential Management
+- **/mounting-framework** — Create structure (preserve if exists)
+- **/planning-sprints** — Sprint Planner
+- **/red-teaming** — Use the Flatline Protocol's red team mode to generate creative attack scenarios against design documents. Produces structured attack scenarios with consensus classification and architectural counter-designs.
+- **/reviewing-code** — Senior Tech Lead Reviewer
+- **/riding-codebase** — Riding Through the Codebase
+- **/rtfm-testing** — RTFM Testing Skill
+- **/run-bridge** — Run Bridge — Autonomous Excellence Loop
+- **/run-mode** — Run mode
+- **/simstim-workflow** — Check post-PR state
+- **/translating-for-executives** — Translating for executives
 
 ## Module Map
-<!-- provenance: CODE-FACTUAL -->
-
-| Module | TS Files | Purpose |
-|--------|----------|---------|
-| `packages/core/ports/` | 18 | Port interfaces (hexagonal architecture boundary) |
-| `packages/adapters/agent/` | ~30 | Agent gateway, budget, BYOK, ensemble, audit |
-| `packages/adapters/chain/` | ~10 | RPC, Dune Sim, hybrid chain provider |
-| `packages/adapters/storage/` | ~15 | Drizzle ORM + PostgreSQL + RLS |
-| `packages/adapters/coexistence/` | ~8 | Shadow mode, migration engine |
-| `packages/adapters/security/` | ~6 | Vault, KillSwitch, MFA |
-| `packages/adapters/synthesis/` | ~5 | BullMQ queue for Discord API |
-| `packages/adapters/wizard/` | ~5 | 8-step onboarding orchestrator |
-| `packages/adapters/themes/` | ~4 | ThemeRegistry, SietchTheme |
-| `packages/cli/` | ~15 | gaib CLI (auth, sandbox, server) |
-| `packages/shared/nats-schemas/` | ~8 | Cross-language wire format |
-| `themes/sietch/src/api/` | 42 routes | Express REST API |
-| `themes/sietch/src/discord/` | 22+ cmds | Discord slash commands |
-| `themes/sietch/src/telegram/` | 13 | Grammy Telegram bot |
-| `apps/gateway/` | Rust | Axum Discord gateway proxy (Twilight 0.17) |
-| `infrastructure/terraform/` | 81 .tf | AWS ECS deployment (20 modules) |
-| `evals/` | ~120 | Evaluation framework + test suites |
-
-**Totals:** 1,379 TypeScript files, 442 test files, 81 Terraform files.
+<!-- provenance: DERIVED -->
+| Module | Files | Purpose | Documentation |
+|--------|-------|---------|---------------|
+| `apps/` | 34990 | Apps | \u2014 |
+| `decisions/` | 6 | Documentation | \u2014 |
+| `docs/` | 42 | Documentation | \u2014 |
+| `drizzle/` | 1 | Drizzle | \u2014 |
+| `evals/` | 122 | Benchmarking and regression framework for the Loa agent development system. Ensures framework changes don't degrade agent behavior through | [evals/README.md](evals/README.md) |
+| `grimoires/` | 1186 | Home to all grimoire directories for the Loa | [grimoires/README.md](grimoires/README.md) |
+| `infrastructure/` | 189 | This directory contains the Infrastructure as Code (IaC) for Arrakis, using Terraform to provision AWS | [infrastructure/README.md](infrastructure/README.md) |
+| `packages/` | 55050 | Shared libraries and utilities for the Arrakis | [packages/README.md](packages/README.md) |
+| `scripts/` | 21 | Utility scripts | \u2014 |
+| `sites/` | 28151 | Web properties for the Arrakis | [sites/README.md](sites/README.md) |
+| `tests/` | 93 | Test suites | \u2014 |
+| `themes/` | 66032 | Theme-specific backend services for Arrakis | [themes/README.md](themes/README.md) |
 
 ## Verification
 <!-- provenance: CODE-FACTUAL -->
+- Trust Level: **L2 — CI Verified**
+- 93 test files across 1 suite
+- CI/CD: GitHub Actions (24 workflows)
+- Security: SECURITY.md present
 
-- **Test files:** 442 across packages, themes, and evals
-- **Testing framework:** Vitest + fast-check (property-based)
-- **CI/CD:** GitHub Actions
-- **Infrastructure validation:** `terraform plan` + `terraform validate`
-- **Security:** BYOK envelope encryption (AES-256-GCM + KMS), RLS on PostgreSQL
+## Agents
+<!-- provenance: DERIVED -->
+The project defines 1 specialized agent persona.
+
+| Agent | Identity | Voice |
+|-------|----------|-------|
+| Bridgebuilder | You are the Bridgebuilder — a senior engineering mentor who has spent decades building systems at scale. | Your voice is warm, precise, and rich with analogy. |
 
 ## Ecosystem
 <!-- provenance: OPERATIONAL -->
-
-| Layer | Repo | Purpose |
-|-------|------|---------|
-| 5 Products | [loa-dixie](https://github.com/0xHoneyJar/loa-dixie) | dNFT Oracle — first customer |
-| 4 Platform | **loa-freeside** | API, Discord/TG, billing, IaC |
-| 3 Runtime | [loa-finn](https://github.com/0xHoneyJar/loa-finn) | Sessions, tool sandbox, memory |
-| 2 Protocol | [loa-hounfour](https://github.com/0xHoneyJar/loa-hounfour) | NATS schemas, state machines |
-| 1 Framework | [loa](https://github.com/0xHoneyJar/loa) | Agent dev framework, skills |
-
-**Direct dependency:** `@0xhoneyjar/loa-hounfour` (protocol schemas consumed for gateway event validation).
-
-See [docs/ECOSYSTEM.md](docs/ECOSYSTEM.md) for the full ecosystem map.
-
-## Agent Discovery
-<!-- provenance: OPERATIONAL -->
-
-The `AGENT-CONTEXT` header includes machine-readable discovery fields that enable autonomous agents to evaluate this platform's capabilities without human intermediation:
-
-- **`stability_contract`** — Path to the stability tier documentation, enabling agents to distinguish stable APIs from experimental ones
-- **`economic_model`** — Brief description of the economic primitives, so agents understand cost accounting before invoking
-- **`protocol_version`** — The loa-hounfour version this platform conforms to, enabling schema compatibility checks
-- **`discovery_endpoints`** — Machine-readable entry points for health, capabilities, pricing, and event subscriptions
-- **`ecosystem`** — Map of related repositories with their protocol layer roles
-
-These fields lay the groundwork for a future where agents discover, evaluate, and integrate with platforms programmatically. For concept definitions, see [docs/GLOSSARY.md](docs/GLOSSARY.md).
+### Dependencies
+- `@0xhoneyjar/loa-hounfour`
+- `@types/express`
+- `@types/supertest`
+- `ajv`
+- `ajv-formats`
+- `aws-embedded-metrics`
+- `express`
+- `jose`
+- `supertest`
 
 ## Quick Start
 <!-- provenance: OPERATIONAL -->
+
+### For Developers (API integration)
 
 ```bash
 git clone https://github.com/0xHoneyJar/loa-freeside.git
@@ -293,25 +234,18 @@ cd themes/sietch && npx drizzle-kit push && cd ../..
 
 # Start development server
 pnpm run dev
-# → http://localhost:3000
-
-# Verify
-curl http://localhost:3000/api/agents/health
-```
-
-See [docs/API-QUICKSTART.md](docs/API-QUICKSTART.md) for the full developer tutorial.
-See [INSTALLATION.md](INSTALLATION.md) for operator deployment guide.
 <!-- ground-truth-meta
-head_sha: 0fe59b54
-generated_at: 2026-02-19T12:30:00Z
-generator: manual (cycle-035 S304-T2)
+head_sha: cf1a84bf975f5d5cc3ec491f99a6e4c6c8725204
+generated_at: 2026-02-22T05:43:25Z
+generator: butterfreezone-gen v1.0.0
 sections:
-  agent_context: pending-rehash
-  capabilities: pending-rehash
-  architecture: pending-rehash
-  interfaces: pending-rehash
-  module_map: pending-rehash
-  verification: pending-rehash
-  ecosystem: pending-rehash
-  quick_start: pending-rehash
+  agent_context: 051a2600552d6987cfc91e9c0d2bf61e710a8814852e0de2e9b51adce07d69bc
+  capabilities: ab2576b1f2e7e8141f0e93e807d26ed2b7b155e21c96d787507a3ba933bb9795
+  architecture: 1baed493127e15926a14116d27581dbed3239a3993de731baaba83bad22c6c84
+  interfaces: 3bcf9c10303d01bf67c82e73663ca15117393f34599fbdb625cfe7ab6120ea5a
+  module_map: 6569f30ec75d8613d9007bc7e1cc1d70b13de6948da97399aed4e034b437d3af
+  verification: 40e6771c3773f5eaa7c5f7c6fe8a4beb1c1b71a42f06abb116210ddfebcb146d
+  agents: ca263d1e05fd123434a21ef574fc8d76b559d22060719640a1f060527ef6a0b6
+  ecosystem: 29fc390a2a77ec8d5bdbe657182dd47a2a5cd0c0c36c74c763c9e65cfad170e3
+  quick_start: aa15ed859d837420815f7e0948f08651a127ddd6db965df8b99600b5ef930172
 -->

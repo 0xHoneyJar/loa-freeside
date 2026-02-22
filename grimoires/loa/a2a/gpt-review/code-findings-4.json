@@ -1,18 +1,20 @@
 {
-  "verdict": "APPROVED",
-  "summary": "Both previously flagged INSERT statements were updated to include pool_id and reserved/consumed values, isolating the CHECK constraint behavior as requested.",
-  "previous_issues_status": [
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Routing override path can throw at runtime on malformed RoutingPolicy; add runtime validation to prevent crashes and unauthorized access bypass via exceptions.",
+  "issues": [
     {
-      "original_issue": "tba_deposit CHECK test could fail due to NULL pool_id and omitted reserved/consumed columns",
-      "status": "fixed",
-      "notes": "Insert now provides pool_id='general' and reserved_micro/consumed_micro=0."
-    },
-    {
-      "original_issue": "invalid source_type test could fail due to NULL pool_id and omitted reserved/consumed columns",
-      "status": "fixed",
-      "notes": "Insert now provides pool_id='general' and reserved_micro/consumed_micro=0."
+      "severity": "major",
+      "file": "pool-mapping.ts",
+      "line": 206,
+      "description": "resolvePoolId() assumes routingOverride.policy.personality array shape; if policy is malformed (e.g., personalities missing or not an array), .find throws and can take down routing, bypassing the intended fallback behavior.",
+      "current_code": "```typescript\n  // RoutingPolicy override — personality-based task-type routing (Sprint 324)\n  if (routingOverride) {\n    const personality = routingOverride.policy.personalities.find(\n      (p) => p.personality_id === routingOverride.personalityId,\n    );\n    if (personality) {\n      const routedPool = personality.task_routing[routingOverride.taskType] as string;\n      if (VALID_POOL_IDS.has(routedPool) && allowedPools.includes(routedPool as PoolId)) {\n        return { poolId: routedPool as PoolId, allowedPools };\n      }\n      // Routed pool not authorized for tier → fallback to tier default\n    }\n    // Personality not found → fall through to standard resolution\n  }\n```",
+      "fixed_code": "```typescript\n  // RoutingPolicy override — personality-based task-type routing (Sprint 324)\n  if (routingOverride) {\n    const personalities = Array.isArray(routingOverride.policy?.personalities)\n      ? routingOverride.policy.personalityies\n      : [];\n\n    const personality = personalities.find(\n      (p: any) => p && typeof p === 'object' && p.personality_id === routingOverride.personalityId,\n    );\n\n    const taskRouting = personality && typeof personality.task_routing === 'object'\n      ? personality.task_routing as Record<string, unknown>\n      : undefined;\n\n    const routedPool = taskRouting\n      ? taskRouting[routingOverride.taskType]\n      : undefined;\n\n    if (typeof routedPool === 'string' && VALID_POOL_IDS.has(routedPool) && allowedPools.includes(routedPool as PoolId)) {\n      return { poolId: routedPool as PoolId, allowedPools };\n    }\n    // Routed pool not authorized or invalid → fallback to tier default\n  }\n```",
+      "explanation": "This adds runtime validation to prevent .find from throwing on malformed policies. It safely narrows the personalities array and task_routing object before accessing, and only accepts a string pool ID that is both valid and allowed."
     }
   ],
-  "new_blocking_concerns": [],
-  "iteration": 2
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
 }

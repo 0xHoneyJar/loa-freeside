@@ -1,0 +1,38 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Two major issues found: stream processing can terminate early and skip budget finalization, and ownership cache keys can become stale when thread ownership changes.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "thread-message-handler.ts",
+      "line": 92,
+      "description": "Ownership cache key does not include the current ownerWallet or communityId, allowing stale authorization if thread ownership changes or cache is reused across contexts.",
+      "current_code": "```typescript\n  const cacheKey = `${OWNERSHIP_CACHE_PREFIX}${threadId}:${userId}`;\n```",
+      "fixed_code": "```typescript\n  const normalizedOwnerWallet = ownerWallet.toLowerCase();\n  const cacheKey = `${OWNERSHIP_CACHE_PREFIX}${threadId}:${userId}:${communityId}:${normalizedOwnerWallet}`;\n```",
+      "explanation": "Including the current ownerWallet and communityId in the cache key prevents stale or cross-context authorization when ownership changes or if data is reused."
+    },
+    {
+      "severity": "major",
+      "file": "thread-message-handler.ts",
+      "line": 119,
+      "description": "Wallet comparison recalculates toLowerCase on ownerWallet and is inconsistent with cache key normalization, increasing risk of mismatches if casing differs.",
+      "current_code": "```typescript\n  if (profile.walletAddress.toLowerCase() !== ownerWallet.toLowerCase()) {\n    return { verified: false };\n  }\n```",
+      "fixed_code": "```typescript\n  if (profile.walletAddress.toLowerCase() !== normalizedOwnerWallet) {\n    return { verified: false };\n  }\n```",
+      "explanation": "Reuses normalizedOwnerWallet to ensure consistent comparison and avoid casing-related mismatches."
+    },
+    {
+      "severity": "major",
+      "file": "thread-message-handler.ts",
+      "line": 169,
+      "description": "streamToDiscord returns early on send failure or error event, which can stop consuming the stream and potentially skip budget finalization and usage tracking.",
+      "current_code": "```typescript\n  for await (const event of gateway.stream(request)) {\n    if (event.type === 'content') {\n      buffer += event.data.text;\n\n      // Flush when buffer approaches Discord limit\n      while (buffer.length >= DISCORD_MAX_LENGTH) {\n        const chunk = buffer.slice(0, DISCORD_MAX_LENGTH);\n        buffer = buffer.slice(DISCORD_MAX_LENGTH);\n\n        const result = await discord.sendMessage(threadId, { content: chunk });\n        if (!result.success) {\n          log.error({ threadId, error: result.error }, 'Failed to send streamed chunk');\n          return;\n        }\n      }\n    } else if (event.type === 'error') {\n      log.error(\n        { threadId, code: event.data.code, message: event.data.message },\n        'Agent stream error',\n      );\n      await discord.sendMessage(threadId, {\n        content: 'An error occurred while processing your message. Please try again.',\n      });\n      return;\n    }\n    // 'usage' and 'done' events are handled by AgentGateway internally\n  }\n\n  // Flush remaining buffer\n  if (buffer.length > 0) {\n    const result = await discord.sendMessage(threadId, { content: buffer });\n    if (!result.success) {\n      log.error({ threadId, error: result.error }, 'Failed to send final chunk');\n    }\n  }\n```",
+      "fixed_code": "```typescript\n  let sendingDisabled = false;\n  let userNotified = false;\n\n  for await (const event of gateway.stream(request)) {\n    if (event.type === 'content') {\n      if (sendingDisabled) {\n        continue;\n      }\n      buffer += event.data.text ?? '';\n\n      // Flush when buffer approaches Discord limit\n      while (buffer.length >= DISCORD_MAX_LENGTH) {\n        const chunk = buffer.slice(0, DISCORD_MAX_LENGTH);\n        buffer = buffer.slice(DISCORD_MAX_LENGTH);\n\n        const result = await discord.sendMessage(threadId, { content: chunk });\n        if (!result.success) {\n          log.error({ threadId, error: result.error }, 'Failed to send streamed chunk');\n          sendingDisabled = true;\n          break;\n        }\n      }\n    } else if (event.type === 'error') {\n      log.error(\n        { threadId, code: event.data.code, message: event.data.message },\n        'Agent stream error',\n      );\n      if (!sendingDisabled && !userNotified) {\n        const result = await discord.sendMessage(threadId, {\n          content: 'An error occurred while processing your message. Please try again.',\n        }).catch((err) => ({ success: false, error: err } as const));\n        if (!result.success) {\n          log.error({ threadId, error: result.error }, 'Failed to send error notification');\n          sendingDisabled = true;\n        }\n        userNotified = true;\n      }\n      // Continue consuming the stream to allow gateway finalization\n    }\n    // 'usage' and 'done' events are handled by AgentGateway internally\n  }\n\n  // Flush remaining buffer if sending is still enabled\n  if (!sendingDisabled && buffer.length > 0) {\n    const result = await discord.sendMessage(threadId, { content: buffer });\n    if (!result.success) {\n      log.error({ threadId, error: result.error }, 'Failed to send final chunk');\n    }\n  }\n```",
+      "explanation": "By not returning early, the stream is fully consumed, ensuring AgentGateway can finalize budget and usage tracking. The fix also prevents repeated error notifications and safely handles send failures."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

@@ -1,24 +1,42 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "Found authorization and compatibility validation gaps in disabled paths that can accept invalid versions and unvalidated trust_level values.",
+  "summary": "Found async handling and JWKS integrity issues that can cause missing/invalid public keys and issuer mismatch; fixes provided.",
   "issues": [
     {
-      "severity": "major",
-      "file": "arrakis-compat.ts",
-      "line": 118,
-      "description": "When normalization is disabled, any trust_level value is accepted and mapped to a fixed scope set without validation, bypassing least-privilege mapping and range checks.",
-      "current_code": "```typescript\n    if (claims.trust_level !== undefined) {\n      return { trust_scopes: ['billing:read', 'agent:invoke'] as TrustScope[], source: 'v4_mapped' };\n    }\n```",
-      "fixed_code": "```typescript\n    if (claims.trust_level !== undefined) {\n      const level = claims.trust_level;\n      if (!Number.isInteger(level) || level < 0 || level > 9) {\n        throw new ClaimNormalizationError(\n          'INVALID_TRUST_LEVEL',\n          `trust_level must be integer in [0, 9], got ${level}`\n        );\n      }\n      const scopes = TRUST_LEVEL_TO_SCOPES[level as TrustLevel];\n      if (!scopes || scopes.length === 0) {\n        throw new ClaimNormalizationError(\n          'MAPPING_FAILURE',\n          `No scopes mapped for trust_level=${level}`\n        );\n      }\n      return { trust_scopes: scopes, source: 'v4_mapped' };\n    }\n```",
-      "explanation": "This enforces the same least-privilege mapping and range validation even when the feature flag is off, preventing invalid or out-of-range trust_level values from bypassing policy."
+      "severity": "critical",
+      "file": "src/services/s2s/S2SJwtSigner.ts",
+      "line": 92,
+      "description": "insertPublicKey is called without await, so Promise rejections are not caught and the JWKS insert may not complete before use.",
+      "current_code": "```typescript\n  try {\n    insertPublicKey({\n      kid,\n      kty: publicJwk.kty ?? 'EC',\n      crv: (publicJwk as jose.JWK).crv ?? 'P-256',\n      x: (publicJwk as jose.JWK).x ?? '',\n      y: (publicJwk as jose.JWK).y ?? '',\n      issuer: 'freeside',\n    });\n  } catch (err) {\n    // DB might not be initialized yet in some test scenarios\n    logger.warn({ err, kid }, 'Failed to insert ephemeral public key into JWKS table');\n  }\n```",
+      "fixed_code": "```typescript\n  try {\n    const { kty, crv, x, y } = requireEcPublicJwk(publicJwk);\n    await insertPublicKey({\n      kid,\n      kty,\n      crv,\n      x,\n      y,\n      issuer: JWT_ISSUER,\n    });\n    resetJwksCache();\n  } catch (err) {\n    // DB might not be initialized yet in some test scenarios\n    logger.warn({ err, kid }, 'Failed to insert ephemeral public key into JWKS table');\n  }\n```",
+      "explanation": "Awaiting ensures DB insertion completes and errors are caught. It also fixes issuer mismatch and avoids invalid key material insertion."
     },
     {
       "severity": "major",
-      "file": "arrakis-compat.ts",
-      "line": 203,
-      "description": "In the disabled coordination path, versions are only checked against the supported list and never validated for canonical compatibility, causing behavior to diverge from the enabled path and potentially accept incompatible versions.",
-      "current_code": "```typescript\n    const { supported } = negotiateVersion();\n    if (!supported.includes(message.version)) {\n      throw new ClaimNormalizationError(\n        'UNSUPPORTED_VERSION',\n        `Coordination message version ${message.version} not in supported set [${supported.join(', ')}]`\n      );\n    }\n    return { version: message.version, type: message.type, payload: message.payload };\n```",
-      "fixed_code": "```typescript\n    const { supported } = negotiateVersion();\n    if (!supported.includes(message.version)) {\n      throw new ClaimNormalizationError(\n        'UNSUPPORTED_VERSION',\n        `Coordination message version ${message.version} not in supported set [${supported.join(', ')}]`\n      );\n    }\n\n    if (LOCAL_TRANSITION_VERSIONS.has(message.version)) {\n      return { version: message.version, type: message.type, payload: message.payload };\n    }\n\n    const compat = validateCompatibility(message.version);\n    if (!compat.compatible) {\n      throw new ClaimNormalizationError(\n        'INCOMPATIBLE_VERSION',\n        `Version ${message.version} is incompatible: ${compat.error || 'unknown reason'}`\n      );\n    }\n\n    return { version: message.version, type: message.type, payload: message.payload };\n```",
-      "explanation": "This aligns the disabled path with the enabled path: supported set gating plus canonical compatibility checks for non-transition versions."
+      "file": "src/services/s2s/S2SJwtSigner.ts",
+      "line": 138,
+      "description": "Public key insertion uses hardcoded issuer and defaults missing JWK fields to empty strings, producing invalid JWKS and issuer mismatch.",
+      "current_code": "```typescript\n    const publicJwk = await jose.exportJWK(envKey.publicKey);\n    try {\n      insertPublicKey({\n        kid: envKey.kid,\n        kty: publicJwk.kty ?? 'EC',\n        crv: (publicJwk as jose.JWK).crv ?? 'P-256',\n        x: (publicJwk as jose.JWK).x ?? '',\n        y: (publicJwk as jose.JWK).y ?? '',\n        issuer: 'freeside',\n      });\n    } catch {\n      // Key might already exist from a previous run\n      logger.debug({ kid: envKey.kid }, 'Public key may already exist in JWKS table');\n    }\n```",
+      "fixed_code": "```typescript\n    const publicJwk = await jose.exportJWK(envKey.publicKey);\n    try {\n      const { kty, crv, x, y } = requireEcPublicJwk(publicJwk);\n      await insertPublicKey({\n        kid: envKey.kid,\n        kty,\n        crv,\n        x,\n        y,\n        issuer: JWT_ISSUER,\n      });\n      resetJwksCache();\n    } catch (err) {\n      // Key might already exist from a previous run\n      logger.debug({ err, kid: envKey.kid }, 'Public key may already exist in JWKS table');\n    }\n```",
+      "explanation": "Ensures only valid EC public keys are stored and issuer matches the JWT issuer. Awaiting avoids silent failures; cache reset ensures JWKS endpoint reflects new keys."
+    },
+    {
+      "severity": "major",
+      "file": "src/services/s2s/S2SJwtSigner.ts",
+      "line": 196,
+      "description": "Key rotation path inserts public keys without await and defaults missing fields to empty strings, which can create invalid JWKS and missed insertions.",
+      "current_code": "```typescript\n    const publicJwk = await jose.exportJWK(newKey.publicKey);\n    try {\n      insertPublicKey({\n        kid: newKey.kid,\n        kty: publicJwk.kty ?? 'EC',\n        crv: (publicJwk as jose.JWK).crv ?? 'P-256',\n        x: (publicJwk as jose.JWK).x ?? '',\n        y: (publicJwk as jose.JWK).y ?? '',\n        issuer: 'freeside',\n      });\n    } catch {\n      // Key might already exist\n    }\n```",
+      "fixed_code": "```typescript\n    const publicJwk = await jose.exportJWK(newKey.publicKey);\n    try {\n      const { kty, crv, x, y } = requireEcPublicJwk(publicJwk);\n      await insertPublicKey({\n        kid: newKey.kid,\n        kty,\n        crv,\n        x,\n        y,\n        issuer: JWT_ISSUER,\n      });\n      resetJwksCache();\n    } catch (err) {\n      // Key might already exist\n      logger.debug({ err, kid: newKey.kid }, 'Public key may already exist in JWKS table');\n    }\n```",
+      "explanation": "Prevents invalid JWK data, uses the correct issuer, and ensures DB insert errors are caught. Cache reset ensures rotated keys are visible immediately."
+    },
+    {
+      "severity": "major",
+      "file": "src/services/s2s/S2SJwtSigner.ts",
+      "line": 63,
+      "description": "No validation exists for required EC public JWK fields before insertion, allowing invalid JWKS entries with missing x/y/crv/kty.",
+      "current_code": "```typescript\n// --------------------------------------------------------------------------\n// State\n// --------------------------------------------------------------------------\n\nlet activeSigningKey: SigningKeyState | null = null;\n```",
+      "fixed_code": "```typescript\n// --------------------------------------------------------------------------\n// State\n// --------------------------------------------------------------------------\n\nlet activeSigningKey: SigningKeyState | null = null;\n\n// --------------------------------------------------------------------------\n// Helpers\n// --------------------------------------------------------------------------\n\nfunction requireEcPublicJwk(jwk: jose.JWK): { kty: string; crv: string; x: string; y: string } {\n  const kty = jwk.kty;\n  const crv = (jwk as jose.JWK).crv;\n  const x = (jwk as jose.JWK).x;\n  const y = (jwk as jose.JWK).y;\n\n  if (!kty || !crv || !x || !y) {\n    throw new Error('Invalid EC public JWK: missing kty/crv/x/y');\n  }\n\n  return { kty, crv, x, y };\n}\n```",
+      "explanation": "Adds a single validation point to prevent invalid EC public keys from being inserted into JWKS, ensuring verifiers can parse and use the key."
     }
   ],
   "fabrication_check": {

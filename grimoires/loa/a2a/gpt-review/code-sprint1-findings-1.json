@@ -1,0 +1,20 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Seed audit insert is not idempotent because OR IGNORE has no conflict target; it will duplicate audit rows on re-run.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "themes/sietch/src/db/migrations/050_system_config.ts",
+      "line": 150,
+      "description": "The audit seed uses INSERT OR IGNORE without any unique constraint, so it will still insert duplicate audit rows on rerun, violating the idempotent seed requirement.",
+      "current_code": "```sql\n-- Seed audit entries for all seeded configs\nINSERT OR IGNORE INTO system_config_audit (config_id, action, actor, previous_status, new_status, config_version, metadata)\nSELECT id, 'activated', 'migration', NULL, 'active', 1,\n  '{\"reason\":\"Initial seed from migration 050\"}'\nFROM system_config WHERE proposed_by = 'migration';\n```",
+      "fixed_code": "```sql\n-- Seed audit entries for all seeded configs (idempotent)\nINSERT INTO system_config_audit (config_id, action, actor, previous_status, new_status, config_version, metadata)\nSELECT sc.id, 'activated', 'migration', NULL, 'active', 1,\n  '{\"reason\":\"Initial seed from migration 050\"}'\nFROM system_config sc\nWHERE sc.proposed_by = 'migration'\n  AND NOT EXISTS (\n    SELECT 1 FROM system_config_audit a\n    WHERE a.config_id = sc.id\n      AND a.action = 'activated'\n      AND a.actor = 'migration'\n  );\n```",
+      "explanation": "SQLite will not ignore inserts unless a uniqueness conflict occurs. Adding a NOT EXISTS guard makes the seed truly idempotent without constraining the audit table’s append-only design."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

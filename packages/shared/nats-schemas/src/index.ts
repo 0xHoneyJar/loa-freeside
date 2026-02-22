@@ -36,4 +36,8 @@ export {
   type MemberUpdateData,
   type InteractionCreateData,
 } from './schemas/event-data.js';
+export {
+  UsageFinalizedSchema,
+  type UsageFinalizedEvent,
+} from './schemas/usage-finalized.js';
 export { NATS_ROUTING, type NatsRouting } from './routing.js';

@@ -1,0 +1,28 @@
+{
+  "verdict": "APPROVED",
+  "summary": "Previous feedback was addressed: reconciliation history is now scoped when possible and the column-detection helper is implemented.",
+  "previous_issues_status": [
+    {
+      "original_issue": "Reconciliation run history not scoped to community (data leakage risk)",
+      "status": "fixed",
+      "notes": "Now checks for community_id column and scopes to community when present; otherwise explicitly labels system scope."
+    },
+    {
+      "original_issue": "Conservation endpoint crashes if credit_lots/credit_balances tables missing",
+      "status": "fixed",
+      "notes": "Still guarded by tableExists with safe defaults."
+    },
+    {
+      "original_issue": "Missing helper to detect missing tables/columns",
+      "status": "fixed",
+      "notes": "tableHasColumn helper added and used for reconciliation_runs."
+    },
+    {
+      "original_issue": "Invariant violations query runs even if credit_lots missing",
+      "status": "fixed",
+      "notes": "Still gated by tableExists."
+    }
+  ],
+  "new_blocking_concerns": [],
+  "iteration": 3
+}

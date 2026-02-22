@@ -1,0 +1,28 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Most defensive guards were added, but the reconciliation history scoping regression reintroduces cross‑community data leakage and the column-detection helper is missing.",
+  "previous_issues_status": [
+    {
+      "original_issue": "Reconciliation run history not scoped to community (data leakage risk)",
+      "status": "not_fixed",
+      "notes": "Current code queries reconciliation_runs without community_id filtering and explicitly comments it's system-wide; this reintroduces the leakage."
+    },
+    {
+      "original_issue": "Conservation endpoint crashes if credit_lots/credit_balances tables missing",
+      "status": "fixed",
+      "notes": "tableExists guards now prevent queries when tables are missing and default to zeroed summaries."
+    },
+    {
+      "original_issue": "Missing helper to detect missing tables/columns",
+      "status": "not_fixed",
+      "notes": "tableExists exists, but tableHasColumn is not present and no column guard is used for community_id scoping."
+    },
+    {
+      "original_issue": "Invariant violations query runs even if credit_lots missing",
+      "status": "fixed",
+      "notes": "Invariant query is now gated by tableExists."
+    }
+  ],
+  "new_blocking_concerns": [],
+  "iteration": 2
+}

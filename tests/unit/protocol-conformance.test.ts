@@ -14,6 +14,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import {
   computeReqHash,
   verifyReqHash,
@@ -33,10 +34,10 @@ import {
 
 /** Resolve the vectors directory inside the installed loa-hounfour package. */
 function resolveVectorsDir(): string {
-  // Find the package by resolving its main entry, then navigate to vectors/
-  const hounfourMain = import.meta.resolve('@0xhoneyjar/loa-hounfour');
-  const hounfourDir = resolve(fileURLToPath(hounfourMain), '..', '..');
-  return resolve(hounfourDir, 'vectors');
+  // Walk up from this test file to find node_modules (vitest doesn't support import.meta.resolve)
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const root = resolve(__dirname, '..', '..');
+  return resolve(root, 'node_modules', '@0xhoneyjar', 'loa-hounfour', 'vectors');
 }
 
 function loadJson(path: string): unknown {
@@ -54,12 +55,18 @@ describe('CONTRACT_VERSION', () => {
     expect(CONTRACT_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
-  it('is 1.1.0', () => {
-    expect(CONTRACT_VERSION).toBe('1.1.0');
+  it('is 7.0.0', () => {
+    expect(CONTRACT_VERSION).toBe('7.0.0');
   });
 
   it('validateCompatibility accepts matching major.minor', () => {
-    const result = validateCompatibility('1.1.0', '1.1.0');
+    const result = validateCompatibility('7.0.0', '7.0.0');
+    expect(result.compatible).toBe(true);
+  });
+
+  // DUAL-ACCEPT: remove after telemetry cutoff (Task 2.7)
+  it('validateCompatibility accepts v6.0.0 within min_supported_version window', () => {
+    const result = validateCompatibility('7.0.0', '6.0.0');
     expect(result.compatible).toBe(true);
   });
 });
@@ -329,5 +336,46 @@ describe('Vector count gate', () => {
     }
 
     expect(total).toBeGreaterThanOrEqual(70);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 9. v7.0.0 Canonical Type Re-Exports (Sprint 325, Task 4.5)
+// ---------------------------------------------------------------------------
+
+describe('v7.0.0 canonical type re-exports', () => {
+  it('exports ProtocolDiscovery schema and builder', async () => {
+    const mod = await import('@0xhoneyjar/loa-hounfour');
+    expect(mod.buildDiscoveryDocument).toBeTypeOf('function');
+    expect(mod.ProtocolDiscoverySchema).toBeDefined();
+    expect(mod.SCHEMA_BASE_URL).toMatch(/^https:\/\//);
+  });
+
+  it('exports RoutingPolicy schema', async () => {
+    const mod = await import('@0xhoneyjar/loa-hounfour');
+    expect(mod.RoutingPolicySchema).toBeDefined();
+    expect(mod.TaskTypeSchema).toBeDefined();
+  });
+
+  it('exports Conversation schema and validators', async () => {
+    const mod = await import('@0xhoneyjar/loa-hounfour');
+    expect(mod.ConversationSchema).toBeDefined();
+    expect(mod.validateSealingPolicy).toBeTypeOf('function');
+    expect(mod.validateAccessPolicy).toBeTypeOf('function');
+  });
+
+  it('exports EscrowEntry and economic schemas', async () => {
+    const { EscrowEntrySchema, MonetaryPolicySchema, MintingPolicySchema, ESCROW_TRANSITIONS, isValidEscrowTransition } = await import('@0xhoneyjar/loa-hounfour/economy');
+    expect(EscrowEntrySchema).toBeDefined();
+    expect(MonetaryPolicySchema).toBeDefined();
+    expect(MintingPolicySchema).toBeDefined();
+    expect(ESCROW_TRANSITIONS).toBeDefined();
+    expect(isValidEscrowTransition).toBeTypeOf('function');
+  });
+
+  it('exports BudgetScope and PreferenceSignal from model sub-package', async () => {
+    const mod = await import('@0xhoneyjar/loa-hounfour/model');
+    expect(mod.CompletionRequestSchema).toBeDefined();
+    expect(mod.CompletionResultSchema).toBeDefined();
   });
 });

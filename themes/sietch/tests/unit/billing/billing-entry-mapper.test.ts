@@ -53,7 +53,7 @@ describe('toLohBillingEntry', () => {
     expect(result.reference_id).toBe('lot-001'); // lotId takes priority
     expect(result.created_at).toBe('2026-02-15T08:00:00.000Z');
     expect(result.metadata).toBe('{"source": "test"}');
-    expect(result.contract_version).toBe('4.6.0');
+    expect(result.contract_version).toBe('7.0.0');
   });
 
   it('maps reserve entry correctly', () => {
@@ -154,7 +154,7 @@ describe('toLohBillingEntry', () => {
     const result = toLohBillingEntry(entry);
 
     expect(result.contract_version).toBe(BILLING_ENTRY_CONTRACT_VERSION);
-    expect(result.contract_version).toBe('4.6.0');
+    expect(result.contract_version).toBe('7.0.0');
   });
 
   it('maps shadow_charge entry correctly', () => {

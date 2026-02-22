@@ -89,22 +89,24 @@ describe('Credit Pack Tiers', () => {
     expect(errors).toHaveLength(0);
   });
 
-  it('starter tier: $5 at 1.0 markup → 5_000_000 credits', () => {
+  it('starter tier: $5 at 1.0 markup → 5_000_000 credits (0% bonus)', () => {
     const resolved = resolveCreditPack('starter', 1.0);
     expect(resolved).not.toBeNull();
     expect(resolved!.creditsMicro).toBe(5_000_000n);
   });
 
-  it('builder tier: $10 at 1.0 markup → 10_000_000 credits', () => {
-    const resolved = resolveCreditPack('builder', 1.0);
+  it('standard tier: $10 at 1.0 markup → 10_500_000 credits (5% bonus)', () => {
+    const resolved = resolveCreditPack('standard', 1.0);
     expect(resolved).not.toBeNull();
-    expect(resolved!.creditsMicro).toBe(10_000_000n);
+    // base: 10_000_000 + bonus: floor(10_000_000 * 500 / 10_000) = 500_000
+    expect(resolved!.creditsMicro).toBe(10_500_000n);
   });
 
-  it('pro tier: $25 at 1.0 markup → 25_000_000 credits', () => {
-    const resolved = resolveCreditPack('pro', 1.0);
+  it('premium tier: $25 at 1.0 markup → 27_500_000 credits (10% bonus)', () => {
+    const resolved = resolveCreditPack('premium', 1.0);
     expect(resolved).not.toBeNull();
-    expect(resolved!.creditsMicro).toBe(25_000_000n);
+    // base: 25_000_000 + bonus: floor(25_000_000 * 1000 / 10_000) = 2_500_000
+    expect(resolved!.creditsMicro).toBe(27_500_000n);
   });
 
   it('unknown packId returns null', () => {
@@ -115,7 +117,7 @@ describe('Credit Pack Tiers', () => {
   it('validation rejects tiers with excessive markup', () => {
     // Custom tiny tiers where 10x markup would drop below minimum
     const tinyTiers = [
-      { id: 'tiny', name: 'Tiny', priceMicro: 5000n, description: 'Too small' },
+      { id: 'tiny', name: 'Tiny', priceMicro: 5000n, bonusBps: 0, description: 'Too small' },
     ];
     const errors = validateTierConfig(10.0, tinyTiers);
     expect(errors.length).toBeGreaterThan(0);
@@ -123,7 +125,7 @@ describe('Credit Pack Tiers', () => {
 
   it('tier count matches expected (3 default tiers)', () => {
     expect(CREDIT_PACK_TIERS).toHaveLength(3);
-    expect(CREDIT_PACK_TIERS.map(t => t.id)).toEqual(['starter', 'builder', 'pro']);
+    expect(CREDIT_PACK_TIERS.map(t => t.id)).toEqual(['starter', 'standard', 'premium']);
   });
 });
 

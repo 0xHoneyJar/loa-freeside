@@ -36,6 +36,8 @@ services:
       # Chain provider
       CHAIN_PROVIDER: ${CHAIN_PROVIDER:-rpc}
       DUNE_SIM_API_KEY: ${DUNE_SIM_API_KEY:-}
+      # Cycle 036: loa-finn service discovery (local dev)
+      LOA_FINN_BASE_URL: http://loa-finn:3000
     volumes:
       # =======================================================================
       # HOT-RELOADED: sietch source only (per ADR-006)
@@ -64,6 +66,47 @@ services:
         limits:
           memory: 4G
           cpus: "2"
+    restart: unless-stopped
+
+  # =========================================================================
+  # loa-finn: Inference + Payments microservice (Cycle 036)
+  # =========================================================================
+  # By default uses a placeholder health-only image. To use a real finn build:
+  #   LOA_FINN_IMAGE=your-ecr-url:tag docker compose -f docker-compose.dev.yml up
+  # Or clone loa-finn alongside this repo and set LOA_FINN_BUILD_CONTEXT.
+  loa-finn:
+    image: ${LOA_FINN_IMAGE:-nginx:alpine}
+    container_name: arrakis-finn-dev
+    ports:
+      - "3001:3000"
+    environment:
+      DATABASE_URL: postgresql://arrakis:arrakis@postgres:5432/arrakis
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: development
+      LOG_LEVEL: debug
+      PORT: "3000"
+      # S2S communication — freeside is reachable at http://sietch-dev:3000
+      FREESIDE_BASE_URL: http://sietch-dev:3000
+      NATS_URL: nats://nats:4222
+      # Payments (user provides via .env.development)
+      NOWPAYMENTS_API_KEY: ${NOWPAYMENTS_API_KEY:-}
+      NOWPAYMENTS_IPN_SECRET: ${NOWPAYMENTS_IPN_SECRET:-}
+      # Feature flags
+      FEATURE_PAYMENTS_ENABLED: "false"
+      FEATURE_INFERENCE_ENABLED: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/health || wget -q --spider http://localhost:80/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - arrakis-dev
     restart: unless-stopped
 
   postgres:

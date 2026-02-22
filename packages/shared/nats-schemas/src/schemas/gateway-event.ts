@@ -68,6 +68,7 @@ export const KNOWN_EVENT_TYPES = [
   'member.leave',
   'member.update',
   'interaction.create',
+  'message.create',
 ] as const;
 
 export type KnownEventType = (typeof KNOWN_EVENT_TYPES)[number];

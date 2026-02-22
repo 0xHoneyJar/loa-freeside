@@ -1,28 +1,15 @@
 /**
- * Vendored loa-hounfour State Machine Definitions
+ * Freeside State Machine Definitions
  *
- * Canonical state machine definitions shared between arrakis and loa-finn.
- * Each state machine defines allowed transitions and terminal states.
+ * Freeside-local state machine definitions for billing, governance, and payment.
+ * These are distinct from the canonical hounfour state machines (escrow/stake/credit)
+ * which model agent lifecycle. The Freeside machines model economic transactions.
  *
- * Vendored from: loa-hounfour (pinned commit, see @0xhoneyjar/loa-hounfour v7.0.0)
+ * StateMachineDefinition<S> is a Freeside-local generic interface. The canonical
+ * hounfour package uses a different state machine abstraction (AgentLifecycleState).
  *
  * @module packages/core/protocol/state-machines
  */
-
-// =============================================================================
-// Upstream Provenance
-// =============================================================================
-
-/**
- * Upstream vendoring provenance for state machine definitions.
- * Used by equivalence tests to verify hash drift against the canonical source.
- */
-export const VENDORED_FROM = {
-  repo: '0xHoneyJar/loa-hounfour',
-  commit: 'd297b0199c04e40c3d5e056fcb3470fd4c342638',
-  date: '2026-02-15',
-  pr: 'https://github.com/0xHoneyJar/loa-hounfour/pull/2',
-} as const;
 
 // =============================================================================
 // State Machine Definition Type

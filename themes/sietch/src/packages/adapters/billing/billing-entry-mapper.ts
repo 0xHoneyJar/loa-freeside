@@ -13,7 +13,7 @@
  *   LedgerEntry.lotId ?? LedgerEntry.reservationId → BillingEntry.reference_id
  *   LedgerEntry.createdAt   → BillingEntry.created_at
  *   LedgerEntry.metadata    → BillingEntry.metadata
- *   constant "4.6.0"        → BillingEntry.contract_version
+ *   BILLING_ENTRY_CONTRACT_VERSION → BillingEntry.contract_version
  *
  * Sprint refs: Sprint 255 Task 4.2
  *

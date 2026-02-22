@@ -1,48 +1,66 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "The plan is close, but several dependency/consistency breaks and a couple of missing integration tasks will cause gates to fail (or be untestable) in Sprint 4+ and Sprint 10.",
+  "summary": "As written, this plan is likely to fail because several sprint gates depend on missing cross-repo/IaC tasks (freeside ECS service, finn JWT verification, WebSocket/ALB wiring, Discord ownership verification, and message storage), and some acceptance criteria can’t be objectively verified with the described work.",
   "blocking_issues": [
     {
-      "location": "Sprint 4 / Task 4.1 (ECONOMICS.md) pre-flight source paths",
-      "issue": "Pre-flight cites a file path that appears to still use the old name: `themes/sietch/src/packages/core/protocol/arrakis-conservation.ts`.",
-      "why_blocking": "Your global requirement is zero naming violations in platform context and Sprint 1/3 enforce `arrakis` grep checks. If the code path really contains `arrakis-*`, either (a) the naming gate will fail, or (b) ECONOMICS.md will be forced to cite a path that violates the naming policy. Either way, Sprint 4’s gate (“grounded + citations valid”) becomes unachievable without changing either code or the naming rule.",
-      "fix": "Before Sprint 4 starts, add an explicit task to reconcile this: either rename the source file/module to loa-freeside naming (and update imports), or update the naming policy to allow `arrakis` in code paths while still banning it in docs prose. Then update all planned citations/paths accordingly."
+      "location": "Sprint 1 (Issue #77) — overall deployment gate / Task 1.1",
+      "issue": "Plan verifies/enables loa-finn ECS, but does not include the critical work to deploy loa-freeside to ECS in production (task definition/service/ALB target group/env/secrets) even though G-1 requires both services deployed and healthy.",
+      "why_blocking": "You can’t meet G-1 (“Both services deployed to production on ECS with health checks”) if only finn is explicitly enabled/verified; freeside deployment could be assumed “already exists” but there is no task to confirm desired_count, ALB routing, env vars, Secrets Manager bindings, Cloud Map/SG rules, or health check path alignment for freeside in the same sprint.",
+      "fix": "Add a Sprint 1 task explicitly verifying/enabling loa-freeside ECS/Terraform resources (desired_count, task definition env/secrets, ALB listener rules, target group health check path, SG ingress/egress, Cloud Map if used) with acceptance criteria: `terraform plan` clean, service stable, ALB returns 200 on /health, and both services reachable as intended (public vs internal)."
     },
     {
-      "location": "Sprint 2 / Task 2.1 (extract-routes.sh) vs Sprint 4 / Task 4.4 (coverage note)",
-      "issue": "Task 2.1 specifies a ts-morph AST parser, but Sprint 4.4 states the actual implementation is grep-based and must be documented as such.",
-      "why_blocking": "This is a direct plan contradiction that will cause either implementation churn (building AST when you later document grep) or doc/code truth violations (documenting grep when code is AST). It also impacts RTFM check #8 (route diff completeness) and Sprint 2 acceptance criteria (supported patterns, unresolvable linter) which are AST-specific.",
-      "fix": "Decide and lock the extraction approach in Sprint 2: either (A) keep ts-morph and remove the Sprint 4.4 note about grep, or (B) change Sprint 2.1 acceptance criteria to match a grep-based extractor (supported patterns, limitations, and linter semantics) and update Sprint 2.2/2.3/RTFM check #8 expectations accordingly."
+      "location": "Sprint 1 — Task 1.3 (ES256 JWKS + signer) and Sprint 3 dependencies",
+      "issue": "Only the signing/JWKS publishing side is planned; there is no corresponding task to implement/verify JWT validation in loa-finn (JWKS fetch, caching, aud/iss/exp enforcement).",
+      "why_blocking": "Sprint 1 gate says “S2S JWT validated” and Sprint 3 requires authenticated freeside→finn calls. Without finn-side verification work (likely in loa-finn repo), S2S auth cannot be proven working and integration will stall.",
+      "fix": "Add an explicit cross-repo task (loa-finn) to implement ES256 JWT verification against freeside JWKS (iss/aud/exp/iat checks, clock skew handling, JWKS cache/refresh, kid selection) plus an integration test or curl-based proof in staging. Also add a mitigation plan if loa-finn changes can’t land (temporary shared secret HS256 is not acceptable per security req; better: ship JWKS verifier first)."
     },
     {
-      "location": "Sprint 4 / Task 4.1 (ECONOMICS.md) and Sprint 9 / Task 9.1 (Formal Specification)",
-      "issue": "The plan requires documenting “exactly the properties found in arrakis-conservation.ts” (Sprint 4) and later a table of “all 14 canonical properties” (Sprint 9), while Sprint 6.4 says freeside enforces only N of 14 and some are protocol-only.",
-      "why_blocking": "As written, these requirements can conflict and become untestable: Sprint 4 demands exactness from a freeside adapter file, Sprint 9 demands completeness from loa-hounfour, and Sprint 6.4 demands partial enforcement disclosure. Without a defined reconciliation rule, reviewers/RTFM can’t determine correctness, and you risk rework across three sprints.",
-      "fix": "Add an explicit acceptance rule: ECONOMICS.md must (1) list the canonical 14 from loa-hounfour as the normative set, (2) separately state which subset is enforced in freeside (with citations to freeside enforcement points), and (3) treat any freeside adapter list as “implemented coverage,” not the canonical list. Update Sprint 4.1 acceptance criteria to reference loa-hounfour as canonical, not the freeside adapter file."
+      "location": "Sprint 1 — Task 1.1 env var `FREESIDE_JWKS_URL=http://api.arrakis-{env}.local:3000/.well-known/jwks.json`",
+      "issue": "JWKS URL/hostname is underspecified and likely wrong for ECS networking; it assumes an internal DNS name for freeside (`api.arrakis-{env}.local`) that isn’t defined in the “What Already Exists” table (only finn Cloud Map is listed).",
+      "why_blocking": "If finn can’t resolve/reach the JWKS endpoint from inside the VPC, JWT verification will fail and all authenticated calls will fail. This is a common ECS/Cloud Map pitfall: ALB public DNS vs internal service discovery vs task ENI reachability.",
+      "fix": "Decide and implement one concrete JWKS reachability path: (a) register freeside in Cloud Map (e.g., `freeside.arrakis-{env}.local`) and use that, or (b) expose JWKS via internal ALB listener/DNS, or (c) host JWKS in S3/CloudFront (but that’s new infra). Add Terraform changes + acceptance criteria: from a finn task, `curl $FREESIDE_JWKS_URL` succeeds and returns JWKS."
     },
     {
-      "location": "Sprint 7 / Sprint 8 / Sprint 10 RTFM scope management",
-      "issue": "RTFM managed-doc scope updates are split across Sprint 5 (adds ECONOMICS/EVENT-PROTOCOL), Sprint 8.3 (adds GLOSSARY), and Sprint 10.1 (adds GLOSSARY again). Sprint 10.1 also says it depends on Sprints 7–9, but GLOSSARY is introduced in Sprint 8.",
-      "why_blocking": "This creates a real risk that Sprint 8’s gate (“RTFM 8/8”) is impossible if GLOSSARY isn’t in MANAGED_DOCS yet (or conversely, that Sprint 10 is redundant and drifts). It also makes it unclear which sprint is responsible for keeping validation scope authoritative, which is critical because “docs are the product surface” and gates rely on RTFM.",
-      "fix": "Make RTFM scope ownership single-source: (a) require each sprint that introduces a new managed doc to update MANAGED_DOCS in the same sprint (so Sprint 8.3 is the only place GLOSSARY is added), and (b) remove Sprint 10.1 or change it to a pure verification task (“confirm MANAGED_DOCS already includes all docs”). Also correct Sprint 10.1 dependencies to match the actual introduction point."
+      "location": "Sprint 4 — Task 4.1 (WebSocket endpoint) + existing ALB/WAF",
+      "issue": "No IaC task to ensure ALB listener rules, target group settings, idle timeouts, and WAF behavior are compatible with WebSocket streaming for `/chat/:tokenId/ws`.",
+      "why_blocking": "G-9 requires streaming via WebSocket. Even if the app code works locally, production commonly fails without ALB idle timeout tuning, correct listener rule path patterns, and ensuring WAF doesn’t block upgrade requests. The plan lists “ALB + WAF supports WebSocket” but doesn’t include a verification/deploy task for the specific route.",
+      "fix": "Add a Terraform+staging verification task before/within Sprint 4: confirm ALB idle timeout (e.g., 60–300s), listener rules route `/chat/*` and `/chat/*/ws`, WAF allows `Upgrade: websocket`, and CloudWatch metrics show successful 101 upgrades. Acceptance: `wscat`/browser connects in staging and streams for N minutes without disconnect."
     },
     {
-      "location": "Sprint 2 / Task 2.4 (verify-routes.sh) acceptance criteria",
-      "issue": "The contract check requires sending unauthenticated HEAD/GET to “each indexed route” and expecting 401/403 vs 2xx/3xx, but many routes may not support HEAD, may require POST, or may have side effects; also “auth” classification is derived from static extraction which may not map cleanly to runtime behavior.",
-      "why_blocking": "This can make Sprint 2’s gate (“smoke-test checklist passes”) fail for reasons unrelated to docs correctness, and can make verify-routes.sh flaky/unreliable. A flaky required check will block merges in Sprint 5/10.",
-      "fix": "Constrain verify-routes.sh to a safe, testable subset: (1) only methods that are safe to probe (GET/HEAD where implemented), (2) allow per-route probe method override in the extracted JSON, and (3) treat “method not allowed/405” as non-fatal for HEAD probes. Add explicit acceptance criteria for how to handle non-idempotent routes (POST/PUT/DELETE) and routes requiring bodies."
+      "location": "Sprint 4 — Task 4.6 (Channel synchronization design)",
+      "issue": "It proposes storing “all messages” in `agent_threads` table, but migration 063 defines `agent_threads` as thread mapping metadata only; there is no messages table/schema or tasks to implement message persistence.",
+      "why_blocking": "Acceptance criteria for 4.6 (“Messages from both surfaces stored in same table”, “Web chat displays full conversation history including Discord messages”) cannot be met with the current schema/tasks. This will stall implementation or cause last-minute schema churn mid-sprint.",
+      "fix": "Add a migration for `agent_messages` (or similar) with fields: message_id, thread_id, nft_id, community_id, source, author_wallet/discord_user_id, content, created_at, and any token usage metadata. Update 4.6 to write/read from that table, and update 4.1 to render history from it."
     },
     {
-      "location": "Sprint 9 / Task 9.2 (BUTTERFREEZONE discovery fields) vs Sprint 1 / Task 1.2 (golden vectors + determinism)",
-      "issue": "Sprint 9 changes the BUTTERFREEZONE header schema but does not include an explicit task to update the golden vectors/fixtures and any schema expectations in butterfreezone-validate.sh beyond “updated to validate new fields (or passes with advisory warnings)”.",
-      "why_blocking": "If golden vectors are strict (as Sprint 1.2 implies) and hashes are per-section, adding fields will change hashes and likely fail butterfreezone-validate.sh and RTFM check #7 until fixtures are updated. “Or passes with advisory warnings” is ambiguous and risks a gate deadlock.",
-      "fix": "Add an explicit subtask in Sprint 9.2 (or Sprint 10.2) to regenerate and commit updated golden vectors and to define validator behavior: either (A) new fields are required and fixtures updated accordingly, or (B) new fields are optional and validator treats absence as warning with a specific exit code that RTFM accepts. Then align RTFM check #7 to the chosen exit-code policy."
+      "location": "Sprint 4 — Task 4.2 (SIWE) and Task 4.4/4.5 (Discord ownership verification)",
+      "issue": "Discord commands require “verify wallet ownership” but the plan does not include a concrete linking mechanism between a Discord user and a wallet (or how ownership is proven inside Discord).",
+      "why_blocking": "G-5 depends on gating: “NFT holder invokes /my-agent and gets dedicated thread” and “Non-owner cannot write”. Without a defined Discord↔wallet binding (SIWE in web doesn’t automatically apply to Discord), you can’t reliably enforce ownership and the feature will fail or be insecure.",
+      "fix": "Add an explicit task to implement Discord wallet linking (e.g., `/link-wallet` that issues a nonce and verifies an EIP-4361 signature via DM/web callback), store mapping in DB, and use it for ownership checks. Acceptance: a Discord user links wallet, bot verifies NFT ownership, then /my-agent works; unlinked users are blocked with a clear instruction."
     },
     {
-      "location": "Bridge/deep review coverage tracking across Sprints 4–7",
-      "issue": "The plan claims all bridge findings and deep review gaps are addressed, but there is no explicit “findings closure checklist” task that maps each finding ID (3 MEDIUM, 2 LOW, 1 REFRAME, 3 SPECULATION, 4 gaps) to a concrete doc section/commit and re-validates after subsequent edits.",
-      "why_blocking": "Because later sprints (7–10) modify the same docs, it’s easy to regress a previously “addressed” finding. Without a closure artifact, Sprint 10’s merge-readiness gate can fail in review even if RTFM passes (human reviewer says a finding is still open).",
-      "fix": "Add a lightweight but explicit task (ideally Sprint 10) to create/update `grimoires/loa/bridge-findings-closure.md` (or NOTES.md section) with a table: finding → implemented change → doc section link → citations → validation evidence. Make Sprint 10 gate require this table to show all findings closed."
+      "location": "Sprint 2 — Task 2.4 (Webhook verification) / overall payments gate G-2",
+      "issue": "The plan relies on NOWPayments webhook configuration but does not include an end-to-end staging test harness for HMAC-SHA512 verification + idempotency + state machine transitions using real NOWPayments IPN payloads/signature headers.",
+      "why_blocking": "G-2 is “First real credit pack purchase”. Webhook signature mismatches, header naming differences, or body canonicalization issues are a top cause of launch failure; without a concrete test step using captured real payloads (or NOWPayments test IPNs), you risk discovering it only in production.",
+      "fix": "Add a Sprint 2 task: capture a real/sandbox IPN request (raw body + headers), add an automated verification test (or replay tool) that posts it to staging and asserts: signature valid, state transition correct, idempotent replay safe, credits minted exactly once."
+    },
+    {
+      "location": "Sprint 3 — Task 3.1 (cache invalidation on NFT transfer event)",
+      "issue": "Cache invalidation depends on an “NFT transfer event” source, but no event ingestion/indexer task is included (what chain, what contract, where events come from, how they reach freeside).",
+      "why_blocking": "Acceptance criterion “Cache invalidated on transfer event” cannot be implemented without an event pipeline. This will either be skipped (failing AC) or cause scope explosion mid-sprint.",
+      "fix": "Either (a) cut/relax the AC for this sprint (invalidate by TTL only) or (b) add a concrete task to consume transfer events (existing indexer/webhook if it exists) and trigger Redis invalidation. Make the dependency explicit and verifiable."
+    },
+    {
+      "location": "Sprint 5 — Task 5.1/5.2 (admin spend breakdown + JSONL audit) and Sprint 3 budget finalization",
+      "issue": "Admin spend breakdown and JSONL audit require a durable ledger of per-inference spend by pool (finalized amounts, pool_id, tokens used, reservation/finalization ids), but the plan doesn’t include tasks to persist these usage records (it only mentions parsing response headers).",
+      "why_blocking": "G-6 and G-7 can’t be satisfied if the system doesn’t store per-request accounting events in a queryable/auditable table. Relying on logs/headers at request time won’t support exports and breakdowns.",
+      "fix": "Add a migration + write-path task to persist an immutable accounting/audit event per reservation finalization (e.g., `credit_ledger` / `usage_events`) including: community_id, nft_id, pool_id, tokens, amount_micro, finalization_id, conservation_guard_result, timestamps. Then base admin endpoints/export on that table."
+    },
+    {
+      "location": "Sprint 6 — Task 6.2 (Conservation guard failure alert within 60s)",
+      "issue": "No task defines how conservation guard failures are emitted as metrics/log events that CloudWatch/AMP alarms can actually trigger on (what metric name, where it’s incremented, and how it reaches AMP/CloudWatch).",
+      "why_blocking": "G-3 requires an alert within 60s. Terraform alarms alone won’t work unless the application emits a signal (custom metric, log filter metric, or Prometheus counter) on invariant failure.",
+      "fix": "Add an instrumentation task: on any conservation guard violation, increment a Prometheus counter (e.g., `conservation_guard_failures_total{invariant=...}`) and/or emit a structured log line that a CloudWatch metric filter converts to a metric. Then define the alarm on that metric with a 60s evaluation period and test by forcing a known failure in staging."
     }
   ],
   "question": "",

@@ -109,7 +109,7 @@ describe('Cross-System Contract Validation', () => {
         reference_id: 'res-001',
         created_at: new Date().toISOString(),
         metadata: null,
-        contract_version: '4.6.0',
+        contract_version: '7.0.0',
       };
 
       const result = await validatePayload('billing-entry', validEntry);
@@ -125,7 +125,7 @@ describe('Cross-System Contract Validation', () => {
         total_micro: 'not-a-number', // should be numeric string
         entry_type: 'invalid_type', // not in enum
         created_at: 'not-a-date',
-        contract_version: '4.6.0',
+        contract_version: '7.0.0',
       };
 
       const result = await validatePayload('billing-entry', invalidEntry);

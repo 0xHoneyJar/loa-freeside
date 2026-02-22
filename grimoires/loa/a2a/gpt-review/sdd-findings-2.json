@@ -1,44 +1,54 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "All six prior blockers appear addressed in substance, but the revised SDD introduces a new truly blocking contradiction: the canonicalization implementation described (jq -Sc) is not RFC 8785 JCS and will not produce a stable, spec-compliant canonical byte stream for hashing across environments.",
+  "summary": "7 of the 8 previously-blocking issues are addressed correctly, but the revised payment state-machine/anti-double-mint design still allows a real double-mint path via reconciliation/admin flows and lacks a DB-enforced “minted exactly once” guard tied to the terminal paid transition.",
   "previous_issues_status": [
     {
-      "original_issue": "Canonicalization rules were underspecified/unsafe (array ordering + string trimming) and could change semantics / destabilize hashes",
+      "original_issue": "JWKS trust boundary contradiction (finn depending on public ALB JWKS)",
+      "status": "fixed",
+      "notes": "Finn now fetches JWKS from an internal Cloud Map URL and the public JWKS is explicitly for third-party verifiers only. This removes the runtime dependency on public egress/ALB and matches the stated trust boundary."
+    },
+    {
+      "original_issue": "JWKS key store: DB storing private_key_secret_arn / DB as signing trust root",
+      "status": "fixed",
+      "notes": "Private key material and active-kid selection moved to Secrets Manager with in-memory caching; DB stores only public JWKs for serving JWKS. This removes DB from the signing critical path and eliminates the private-key reference leakage vector."
+    },
+    {
+      "original_issue": "Payment state machine underspecified; double-mint risk; out-of-order/replay handling",
       "status": "not_fixed",
-      "notes": "You fixed the *rules* (no trimming, arrays deterministic at extraction, object-key sorting) and referenced RFC 8785, which is correct. However, the implementation claim “single jq -Sc code path” is incompatible with RFC 8785 JCS (notably number formatting and full JCS canonical output requirements). This means the hash can still be unstable or non-portable, so the integrity gate can fail in real use."
+      "notes": "You added a CHECK-constrained status set, status_rank monotonic guard, and UNIQUE(credit_lots.payment_id), which is good. However, the design still permits double-mint in realistic flows because minting is not guarded by a single DB-atomic “minted_at/minted_event_id” on the payment itself, and reconciliation/admin actions can re-trigger minting when the original mint either (a) happened but credit_lots.payment_id was NULL, or (b) happened in a separate lot not linked to payment_id, or (c) the mint step is retried after a partial failure. The SDD also states terminal-to-terminal transitions are rejected, but also lists refunded as terminal and mentions reversal “if minted” without defining a safe reversal ledger path—this is an accounting integrity hole."
     },
     {
-      "original_issue": "Golden vectors were inconsistent with the described extractor inputs (input.md vs codebase scan)",
+      "original_issue": "Webhook verification missing raw-body capture/canonicalization and replay protection",
       "status": "fixed",
-      "notes": "Fixture directory trees that mimic minimal repo structure and running the same extractor code path resolves the inconsistency and makes the gate implementable."
+      "notes": "Raw body capture via Express json verify hook is explicitly specified; HMAC computed over raw bytes; timingSafeEqual used. Replay protection is described via (payment_id, ipn_status) dedup plus status_rank guard—acceptable for NOWPayments’ typical behavior."
     },
     {
-      "original_issue": "Route extraction via grep would miss common Express patterns, producing incomplete route index",
+      "original_issue": "Budget streaming finalization atomicity/idempotency and ledger linkage",
       "status": "fixed",
-      "notes": "Switching to ts-morph AST parsing + resolving router.use mounts/constants + adding a baseline-count completeness gate addresses the reliability/completeness risk sufficiently for FR-4."
+      "notes": "Added finalized_at IS NULL guard + finalization_id UNIQUE and a spend_events table with UNIQUE(budget_reservation_id) linking to the debit ledger. This is the DB-enforced single-finalization/ledger-link that was missing."
     },
     {
-      "original_issue": "Citation model mismatch between syntax and validation/pinning (source: vs repo@version:path)",
+      "original_issue": "Discord thread gating not implementable at scale; caching vs transfer correctness",
       "status": "fixed",
-      "notes": "Standardizing on a single machine-readable <!-- cite: ... --> format and having both pinning + RTFM validation parse the same syntax resolves the automation mismatch."
+      "notes": "Ownership checks are now explicitly via an indexed verifier (not on-chain per message), with Redis TTL cache, event-driven invalidation on transfer, background re-verify, and fail-closed on verifier outage. This is implementable and matches the requirement intent."
     },
     {
-      "original_issue": "Smoke tests assumed a JWT existed but did not specify how to obtain one locally",
+      "original_issue": "API key hashing design (bcrypt hot path + prefix lookup pitfalls)",
       "status": "fixed",
-      "notes": "Adding explicit local-auth setup (setup-dev + token minting), required claims, and an alternative manual path makes the smoke-test protocol executable."
+      "notes": "Two-part key with sufficiently long random prefix, HMAC-SHA256 with pepper for O(1) verification, timingSafeEqual, negative caching, and rate limiting are all appropriate for high-QPS auth."
     },
     {
-      "original_issue": "Ecosystem stats relied on non-existent/undefined GitHub API data and vague caching",
+      "original_issue": "PgBouncer read-only pool not enforceable without DB role controls",
       "status": "fixed",
-      "notes": "Shallow-clone at pinned refs + run cloc/test discovery locally with a defined cache/TTL and --fresh flag is concrete and implementable."
+      "notes": "Dedicated SELECT-only role plus default_transaction_read_only=on and PgBouncer mapping is the correct enforcement mechanism."
     }
   ],
   "new_blocking_concerns": [
     {
-      "location": "3.2 BUTTERFREEZONE.md — Canonicalization architecture + 'Single implementation' section (jq -Sc '.')",
-      "description": "The SDD claims RFC 8785 JCS canonicalization but also states canonical JSON is produced via `jq -Sc '.'`, which is not an RFC 8785 JCS implementation and will not guarantee JCS-compliant canonical bytes (especially for number formatting/normalization).",
-      "why_blocking": "FR-2/NFR-2 depend on a trustworthy, deterministic, cross-environment integrity hash. If the implementation is not actually JCS, hashes may differ across tool versions or differ from any other JCS implementation, breaking verification and undermining the 'spec-defined' integrity guarantee. This is a functional contradiction that can cause CI gates to fail or produce unverifiable artifacts.",
-      "fix": "Either (A) actually implement RFC 8785 JCS using a real JCS library/tool (Node: a JCS package; Go/Rust equivalents) and hash the exact UTF-8 bytes it emits, or (B) drop the RFC 8785 claim and precisely specify 'jq canonicalization' as the project’s canonical form (including pinned jq version) and accept it as the normative algorithm. Best is (A): keep RFC 8785 as the normative spec and ensure both gen/validate call the same JCS implementation."
+      "location": "3.2 Payment State Machine Extension + 5.5 Admin reconcile endpoint + Phase 2 reconciliation job",
+      "description": "Credit minting is not DB-atomically tied to a single irreversible ‘paid’ transition on the payment record, leaving a double-mint path through retries/reconciliation/admin reconcile when minting partially fails or when credit_lots are created without a non-NULL payment_id linkage.",
+      "why_blocking": "This is direct revenue loss/accounting integrity failure. In production, webhook handling and reconciliation/admin repair are exactly where partial failures and retries occur. Relying only on UNIQUE(credit_lots.payment_id) is insufficient unless you can guarantee every mint always sets payment_id and that no other credit issuance path exists. The SDD does not define that invariant, and it explicitly introduces additional mint-triggering paths (poll reconciliation + admin reconcile). Without a payment-level minted guard, you can mint twice across these paths.",
+      "fix": "Add a DB-enforced mint guard on crypto_payments and make minting conditional on it in the same transaction as the status update. Concretely: (1) add columns like crypto_payments.credits_minted_at TIMESTAMPTZ NULL and crypto_payments.credits_mint_event_id TEXT UNIQUE (or UUID) NULL; (2) in the webhook/reconcile/admin code, perform a single transaction that updates status_rank AND sets credits_minted_at/event_id only if currently NULL, then inserts the credit_lot referencing payment_id. Example pattern: UPDATE crypto_payments SET ... , credits_minted_at=NOW(), credits_mint_event_id=$eid WHERE payment_id=$pid AND credits_minted_at IS NULL AND new_status='finished' AND status_rank < new_rank RETURNING ...; only if that UPDATE returns a row do you INSERT credit_lots(payment_id=...) ...; otherwise no-op. Also explicitly define refund handling as a separate compensating ledger entry (negative credit lot or debit) rather than allowing terminal-to-terminal transitions to implicitly ‘reverse’ without a defined invariant."
     }
   ],
   "iteration": 2

@@ -1,41 +1,36 @@
 {
   "verdict": "APPROVED",
-  "summary": "All nine Flatline improvements appear integrated cleanly, FR-9/FR-10 are consistent with existing scope/acceptance gates, and no new truly blocking contradictions or impossible requirements were introduced.",
+  "summary": "All previously raised blockers are addressed, including the Track 2 personality-bridge contradiction, and no new truly blocking problems were introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "FR-2 BUTTERFREEZONE hashing was underspecified and brittle (algorithm, normalization, validation reliability)",
+      "original_issue": "Auth boundary between loa-freeside and loa-finn (S2S JWT ES256) was underspecified/inconsistent (JWKS hosting, rotation, internal-only vs public).",
       "status": "fixed",
-      "notes": "Now specifies SHA-256 plus a structured JSON extraction/canonicalization step (sorted keys, trimmed values, deterministic arrays, UTF-8), excludes the meta block to avoid circularity, and adds a reference implementation + golden test vectors + validate script. This closes the prior verification gap and reduces OS/whitespace brittleness."
+      "notes": "Track 0 now clearly defines finn as internal-only, SG inbound only from freeside, JWKS hosted by freeside (issuer), explicit iss/aud/TTL, and a concrete rotation mechanism via Secrets Manager + scheduled Lambda. This is implementable on ECS and resolves the earlier inconsistency."
     },
     {
-      "original_issue": "API docs scope/verification risk: too many endpoints to hand-document and keep accurate; missing enforceable contract and validation gate",
+      "original_issue": "NOWPayments webhook ingress not concretely defined for ALB/TLS + idempotency semantics ambiguous (risk double-mint).",
       "status": "fixed",
-      "notes": "FR-4 is now explicitly constrained to 7 guaranteed-stable endpoints with full examples, while the remaining routes are covered via an auto-extracted route index (method/path/auth/description) and labeled internal/unstable. Smoke-test checklist remains the validation gate, which makes the quick-start verifiable against a local instance."
+      "notes": "FR-1.2 specifies a stable public HTTPS endpoint on freeside, HMAC-SHA512 verification, and idempotency keyed on payment_id with a UNIQUE constraint and replay behavior (200/no extra credits). This is sufficient to prevent double-minting and aligns with the stated existing adapter assets."
     },
     {
-      "original_issue": "Auth ambiguity (JWT vs API keys) could lead to incorrect onboarding steps",
+      "original_issue": "“Private to holder” Discord thread likely infeasible; permission model/fallback missing.",
       "status": "fixed",
-      "notes": "JWT (ES256 + JWKS) remains the only auth method with operational steps; API keys are explicitly marked Planned with no operational steps. This stays consistent with the quick-start and acceptance criteria."
+      "notes": "FR-3.1 now uses public threads with bot-enforced gating by default, and private threads only when supported, with explicit fallback. This matches Discord constraints and is shippable."
     },
     {
-      "original_issue": "Security guidance missing for auth/keys/admin scoping (risk of shipping unsafe docs)",
+      "original_issue": "Personality bridge ownership/call flow unclear and internally contradictory (dependencies/graph required a personality lookup endpoint despite stating finn derives personality inside inference).",
       "status": "fixed",
-      "notes": "FR-4 acceptance criteria now explicitly requires security disclaimers (no private keys in code, dev/prod JWKS separation, rotation expectations, TTL guidance, aud/iss validation, least privilege, admin endpoint scoping). This is additive and does not contradict scope."
+      "notes": "Track 2 is now consistent end-to-end: FR-2.1 explicitly says freeside passes nft_id/tier/budget_reservation_id in the S2S JWT and finn resolves personality/selects pool; dependencies no longer require a separate GET personality endpoint; the dependency graph nodes are updated to 'Inference request enrichment' and 'metadata headers'. This removes the integration-blocking mismatch."
     },
     {
-      "original_issue": "Docs would re-drift without ownership/maintenance triggers and cadence",
+      "original_issue": "Web chat widget auth/gating undefined; risk of leaking API keys in browser or bypassing token gating.",
       "status": "fixed",
-      "notes": "FR-9 introduces a DRI table, concrete update triggers mapped to code paths, doc versioning/errata expectations, and a weekly verification spot-check with a logging location. This is internally consistent with the RTFM validation gate and the overall 'docs-as-product' framing."
+      "notes": "FR-3.6/FR-3.7 define SIWE → server-issued short-lived session token, explicitly forbid API keys in browser, and provide a server-side key option for embedded widgets plus read-only unauthenticated mode. This is a viable MVP security posture."
     },
     {
-      "original_issue": "Execution plan lacked sequencing/gates, increasing risk of scope creep and missed launch window",
+      "original_issue": "Prometheus requirement lacked a viable ECS/Fargate scraping architecture.",
       "status": "fixed",
-      "notes": "FR-10 adds a 5-phase 10-day plan with dependency order and explicit gates aligned to existing acceptance criteria (smoke tests, terraform plan, RTFM, naming grep, hash validation). Circuit breaker is consistent with the earlier staging-only IaC scope (it further reduces work rather than expanding it)."
-    },
-    {
-      "original_issue": "Cross-repo truth-grounded citations were hard to keep stable and verifiable",
-      "status": "fixed",
-      "notes": "NFR-1 now adds citation automation via scripts/pin-citations.sh to resolve repo@version:path into commit-SHA permalinks using gh api, while retaining the prohibition on branch links and the grep-based acceptance check. This improves maintainability without weakening the stability requirement."
+      "notes": "FR-0.5 specifies AMP + ADOT collector sidecars with ECS task metadata discovery, retaining CloudWatch Container Insights. This is an AWS-supported pattern and meets the 60s alerting requirement in FR-0.7."
     }
   ],
   "new_blocking_concerns": [],

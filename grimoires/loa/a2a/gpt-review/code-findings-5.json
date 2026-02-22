@@ -1,23 +1,13 @@
 {
   "verdict": "APPROVED",
-  "summary": "All previously reported issues remain fixed and no new blocking problems were introduced in this revision.",
+  "summary": "The routing override now validates shapes at runtime and safely falls back, resolving the prior crash risk.",
   "previous_issues_status": [
     {
-      "original_issue": "Indexes not recreated due to name conflicts after rename",
+      "original_issue": "resolvePoolId() assumed routingOverride.policy.personalities array shape and could throw on malformed policy",
       "status": "fixed",
-      "notes": "Drop/recreate logic for idx_credit_lots_* remains in place before creating new indexes."
-    },
-    {
-      "original_issue": "FK verification incomplete for lot_id/source_lot_id and backup names",
-      "status": "fixed",
-      "notes": "verifyFkTargets still enforces lot-related FKs target credit_lots and flags any credit_lots-like backup names."
-    },
-    {
-      "original_issue": "foreign_keys state not restored to prior value",
-      "status": "fixed",
-      "notes": "FK state capture and restore in finally block remains intact."
+      "notes": "Runtime validation now guards personalities array and task_routing object before access, preventing .find crashes and preserving fallback behavior."
     }
   ],
   "new_blocking_concerns": [],
-  "iteration": 3
+  "iteration": 2
 }

@@ -50,6 +50,7 @@
     "@trigger.dev/sdk": "^3.0.0",
     "@types/cookie-parser": "^1.4.10",
     "@types/ioredis": "^5.0.0",
+    "@types/ws": "^8.18.1",
     "argon2": "^0.44.0",
     "axios": "^1.7.9",
     "bcrypt": "^6.0.0",
@@ -77,6 +78,7 @@
     "sharp": "^0.34.5",
     "swagger-ui-express": "^5.0.1",
     "viem": "^2.44.1",
+    "ws": "^8.19.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

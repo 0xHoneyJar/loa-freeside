@@ -369,7 +369,9 @@ export type BillingAuditEventType =
   | 'crypto_payment_expired'
   | 'crypto_webhook_received'
   | 'crypto_webhook_failed'
-  | 'subscription_activated_crypto';
+  | 'subscription_activated_crypto'
+  // Admin reconciliation events (Sprint 318, Task 5.5)
+  | 'admin_manual_reconciliation';
 
 // =============================================================================
 // Billing Service Types

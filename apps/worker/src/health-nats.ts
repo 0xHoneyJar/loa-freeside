@@ -20,10 +20,11 @@ export interface NatsConsumerStats {
 }
 
 export interface NatsHealthChecker {
-  getNatsStatus: () => { connected: boolean };
+  getNatsStatus: () => { connected: boolean; gatewayDegraded?: boolean };
   getCommandConsumerStats: () => NatsConsumerStats;
   getEventConsumerStats: () => NatsConsumerStats;
   getEligibilityConsumerStats: () => NatsConsumerStats;
+  getUsageConsumerStats: () => NatsConsumerStats;
   getRedisStatus: () => boolean;
   getRedisLatency: () => Promise<number | null>;
   getStartTime: () => number;
@@ -41,6 +42,7 @@ export interface NatsWorkerHealthStatus {
       command: NatsConsumerStats;
       event: NatsConsumerStats;
       eligibility: NatsConsumerStats;
+      usage: NatsConsumerStats;
     };
     redis: {
       connected: boolean;
@@ -137,6 +139,7 @@ async function getHealthStatus(
   const commandStats = checker.getCommandConsumerStats();
   const eventStats = checker.getEventConsumerStats();
   const eligibilityStats = checker.getEligibilityConsumerStats();
+  const usageStats = checker.getUsageConsumerStats();
   const redisConnected = checker.getRedisStatus();
   const redisLatency = await checker.getRedisLatency();
   const startTime = checker.getStartTime();
@@ -146,15 +149,15 @@ async function getHealthStatus(
   const belowThreshold = heapUsedMb < memoryThresholdMb;
 
   // Calculate totals
-  const totalProcessed = commandStats.processed + eventStats.processed + eligibilityStats.processed;
-  const totalErrored = commandStats.errored + eventStats.errored + eligibilityStats.errored;
+  const totalProcessed = commandStats.processed + eventStats.processed + eligibilityStats.processed + usageStats.processed;
+  const totalErrored = commandStats.errored + eventStats.errored + eligibilityStats.errored + usageStats.errored;
 
   // Health criteria:
   // 1. NATS connected
   // 2. At least one consumer running
   // 3. Redis connected
   // 4. Memory below threshold
-  const consumersRunning = commandStats.running || eventStats.running || eligibilityStats.running;
+  const consumersRunning = commandStats.running || eventStats.running || eligibilityStats.running || usageStats.running;
   const isHealthy = natsStatus.connected && consumersRunning && redisConnected && belowThreshold;
 
   return {
@@ -167,6 +170,7 @@ async function getHealthStatus(
         command: commandStats,
         event: eventStats,
         eligibility: eligibilityStats,
+        usage: usageStats,
       },
       redis: {
         connected: redisConnected,
@@ -189,6 +193,7 @@ async function getHealthStatus(
 
 /**
  * Check if worker is ready to accept traffic
+ * Sprint 321 (high-5): Returns false when agent gateway is degraded
  */
 async function checkReadiness(checker: NatsHealthChecker): Promise<boolean> {
   const natsStatus = checker.getNatsStatus();
@@ -200,5 +205,7 @@ async function checkReadiness(checker: NatsHealthChecker): Promise<boolean> {
   // 1. NATS connected
   // 2. At least command or event consumer running
   // 3. Redis connected
-  return natsStatus.connected && (commandStats.running || eventStats.running) && redisConnected;
+  // 4. Agent gateway not degraded (Sprint 321, high-5)
+  const baseReady = natsStatus.connected && (commandStats.running || eventStats.running) && redisConnected;
+  return baseReady && !natsStatus.gatewayDegraded;
 }

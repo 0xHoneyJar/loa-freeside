@@ -1,45 +1,40 @@
 {
-  "plan_id": "plan-20260219-cycle035",
-  "branch": "docs/infra-as-product-gtm",
-  "state": "RUNNING",
+  "plan_id": "plan-20260222-bridge",
+  "branch": "feature/launch-readiness",
+  "state": "JACKED_OUT",
   "timestamps": {
-    "started": "2026-02-19T12:01:12Z",
-    "last_activity": "2026-02-19T12:37:21Z"
+    "started": "2026-02-22T01:00:00Z",
+    "last_activity": "2026-02-22T05:43:00Z"
   },
   "sprints": {
-    "total": 3,
+    "total": 6,
     "completed": 1,
-    "current": "sprint-305",
+    "current": "sprint-1",
     "list": [
-      {
-        "id": "sprint-304",
-        "status": "completed",
-        "cycles": 1,
-        "files_changed": 6
-      },
-      {
-        "id": "sprint-305",
-        "status": "in_progress",
-        "cycles": 0,
-        "files_changed": 0
-      },
-      {
-        "id": "sprint-306",
-        "status": "pending",
-        "cycles": 0,
-        "files_changed": 0
-      }
+      { "id": "sprint-1", "status": "completed", "cycles": 1, "note": "Executed as bridge iteration 1 — S2S JWT, migrations, protocol alignment" },
+      { "id": "sprint-2", "status": "pending", "cycles": 0 },
+      { "id": "sprint-3", "status": "pending", "cycles": 0 },
+      { "id": "sprint-4", "status": "pending", "cycles": 0 },
+      { "id": "sprint-5", "status": "pending", "cycles": 0 },
+      { "id": "sprint-6", "status": "pending", "cycles": 0 }
     ]
   },
   "options": {
-    "from": 304,
-    "to": 306,
+    "from": 1,
+    "to": 6,
     "max_cycles": 20,
     "timeout_hours": 8
   },
   "metrics": {
-    "total_cycles": 1,
-    "total_files_changed": 6,
-    "total_findings_fixed": 0
+    "total_cycles": 2,
+    "total_files_changed": 37,
+    "total_findings_fixed": 6
+  },
+  "bridge": {
+    "bridge_id": "bridge-20260222-1d94d2",
+    "state": "JACKED_OUT",
+    "iterations_completed": 2,
+    "convergence_rate": 0.947,
+    "termination_reason": "kaironic_convergence"
   }
 }

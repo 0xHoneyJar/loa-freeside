@@ -1,36 +1,46 @@
 {
   "verdict": "APPROVED",
-  "summary": "Yes—dropping the RFC 8785 claim and making `jq -Sc '.'` the explicitly non-JCS, project-normative canonicalization algorithm resolves the prior contradiction, and the rest of the previously-blocking items remain fixed with no new truly blocking issues introduced.",
+  "summary": "The remaining double-mint risk is now correctly closed with a DB-enforced, payment-level mint claim guard used uniformly across webhook/poll/admin paths, and no new truly-blocking issues were introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "Canonicalization rules were underspecified/unsafe (array ordering + string trimming) and could change semantics / destabilize hashes",
+      "original_issue": "JWKS trust boundary contradiction (finn depending on public ALB JWKS)",
       "status": "fixed",
-      "notes": "The SDD now cleanly specifies: no string mutation, arrays are deterministically ordered at extraction (not re-sorted in canonicalization), object keys sorted via jq, UTF-8/LF/no trailing newline, and SHA-256 over canonical bytes. Most importantly, it removes the RFC 8785 claim and states jq canonicalization is normative, eliminating the spec/implementation contradiction."
+      "notes": "Still correct: finn fetches JWKS via internal Cloud Map URL; public JWKS is explicitly for third-party verifiers only."
     },
     {
-      "original_issue": "Golden vectors were inconsistent with the described extractor inputs (input.md vs codebase scan)",
+      "original_issue": "JWKS key store: DB storing private_key_secret_arn / DB as signing trust root",
       "status": "fixed",
-      "notes": "Vectors are now fixture directory trees that run through the same extractor path (scan repo structure → extract JSON → canonicalize → hash). This is implementable and consistent with the production pipeline."
+      "notes": "Still correct: Secrets Manager is the sole source of truth for private keys/active kid; DB stores only public JWKs for serving JWKS."
     },
     {
-      "original_issue": "Route extraction via grep would miss common Express patterns, producing incomplete route index",
+      "original_issue": "Payment state machine underspecified; double-mint risk; out-of-order/replay handling",
       "status": "fixed",
-      "notes": "The SDD specifies ts-morph AST parsing, mount resolution via router.use, and a baseline-count completeness gate, which addresses the completeness risk for the route index."
+      "notes": "The added crypto_payments-level mint guard (credits_minted_at + UNIQUE credits_mint_event_id) plus the required single-transaction UPDATE-then-conditional-INSERT pattern across IPN/poll/admin closes the realistic double-mint paths previously called out. Refunds are now explicitly compensating ledger entries and do not clear the mint guard, preventing re-mint via refund/reconcile loops. Belt-and-suspenders with UNIQUE(credit_lots.payment_id) further reduces risk."
     },
     {
-      "original_issue": "Citation model mismatch between syntax and validation/pinning (source: vs repo@version:path)",
+      "original_issue": "Webhook verification missing raw-body capture/canonicalization and replay protection",
       "status": "fixed",
-      "notes": "A single machine-readable `<!-- cite: ... -->` format is defined and explicitly shared by both pinning and validation tooling."
+      "notes": "Raw body capture and timingSafeEqual comparison remain explicitly specified; replay/out-of-order is handled by monotonic status_rank plus dedup strategy."
     },
     {
-      "original_issue": "Smoke tests assumed a JWT existed but did not specify how to obtain one locally",
+      "original_issue": "Budget streaming finalization atomicity/idempotency and ledger linkage",
       "status": "fixed",
-      "notes": "The quick-start now includes an executable local auth flow (`gaib auth setup-dev` + `gaib auth token --dev`) plus a manual fallback, and the smoke-test protocol references `$JWT` from that flow."
+      "notes": "Finalization guard (finalized_at IS NULL) + finalization_id UNIQUE + spend_events UNIQUE(budget_reservation_id) remains intact and DB-enforced."
     },
     {
-      "original_issue": "Ecosystem stats relied on non-existent/undefined GitHub API data and vague caching",
+      "original_issue": "Discord thread gating not implementable at scale; caching vs transfer correctness",
       "status": "fixed",
-      "notes": "Stats are computed via shallow clones at pinned refs + local cloc/test discovery with a concrete cache location, TTL, and `--fresh` override."
+      "notes": "Layered verifier + Redis TTL + event-driven invalidation + fail-closed behavior remains implementable and consistent."
+    },
+    {
+      "original_issue": "API key hashing design (bcrypt hot path + prefix lookup pitfalls)",
+      "status": "fixed",
+      "notes": "Two-part key with prefix lookup + HMAC-SHA256(secret, pepper) + timingSafeEqual + negative caching/rate limiting remains correct for scale."
+    },
+    {
+      "original_issue": "PgBouncer read-only pool not enforceable without DB role controls",
+      "status": "fixed",
+      "notes": "Dedicated read-only role with default_transaction_read_only=on and PgBouncer mapping remains the right enforcement."
     }
   ],
   "new_blocking_concerns": [],

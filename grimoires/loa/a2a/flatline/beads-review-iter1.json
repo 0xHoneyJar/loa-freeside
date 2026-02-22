@@ -1,0 +1,36 @@
+{
+  "phase": "beads",
+  "iteration": 1,
+  "document": ".run/flatline-beads-export.json",
+  "timestamp": "2026-02-20T10:03:13Z",
+  "consensus_summary": {
+    "high_consensus_count": 3,
+    "disputed_count": 2,
+    "low_value_count": 0,
+    "blocker_count": 8,
+    "model_agreement_percent": 80,
+    "confidence": "full"
+  },
+  "high_consensus": [
+    {
+      "id": "IMP-001",
+      "description": "Add explicit depends-on links at epic and major task level",
+      "average_score": 820,
+      "action": "NOTED — br link not supported in beads_rust 0.1.7; dependencies documented in sprint.md task descriptions"
+    },
+    {
+      "id": "IMP-006",
+      "description": "Add security review gate task with threat model, findings, remediation, sign-off",
+      "average_score": 815,
+      "action": "INTEGRATED — added Task 7.0 Security Review Gate to Sprint 7"
+    },
+    {
+      "id": "IMP-007",
+      "description": "Add CI/CD pipeline tasks",
+      "average_score": 785,
+      "action": "NOTED — existing GitHub Actions CI/CD covers build/test/deploy; Task 7.8 covers final production gate"
+    }
+  ],
+  "blockers_assessment": "7 of 8 blockers already addressed in sprint.md ACs (Flatline sprint SKP-001-007). Beads export only has titles, not full ACs. SKP-009 (admin RBAC) addressed by security review gate.",
+  "change_percent": 3
+}

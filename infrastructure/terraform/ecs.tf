@@ -130,7 +130,8 @@ resource "aws_iam_role_policy" "ecs_execution_api_secrets" {
           data.aws_secretsmanager_secret.app_config.arn,
           aws_secretsmanager_secret.db_credentials.arn,
           aws_secretsmanager_secret.redis_credentials.arn,
-          aws_secretsmanager_secret.agent_jwt_signing_key.arn  # Hounfour Phase 4
+          aws_secretsmanager_secret.agent_jwt_signing_key.arn,  # Hounfour Phase 4
+          aws_secretsmanager_secret.siwe_session_secret.arn     # Sprint 6, Task 6.7
         ]
       }
     ]
@@ -469,13 +470,19 @@ resource "aws_ecs_task_definition" "api" {
         { name = "FEATURE_BILLING_ENABLED", value = "false" },
         { name = "FEATURE_REDIS_ENABLED", value = "true" },
         { name = "FEATURE_TELEGRAM_ENABLED", value = "false" },
+        { name = "FEATURE_CRYPTO_PAYMENTS_ENABLED", value = var.feature_crypto_payments_enabled },
+        { name = "FEATURE_API_KEYS_ENABLED", value = var.feature_api_keys_enabled },
+        { name = "FEATURE_WEB_CHAT_ENABLED", value = var.feature_web_chat_enabled },
         # Sprint 172: In-house wallet verification base URL (derived from domain)
         { name = "VERIFY_BASE_URL", value = "https://${var.domain_name}" },
         # Hounfour Phase 4: Agent gateway
         { name = "AGENT_ENABLED", value = var.agent_enabled },
         { name = "ENSEMBLE_ENABLED", value = var.ensemble_enabled },
         { name = "BYOK_ENABLED", value = var.byok_enabled ? "true" : "false" },
-        { name = "LOA_FINN_BASE_URL", value = var.loa_finn_base_url }
+        # Cycle 036: Use Cloud Map DNS for finn discovery in ECS
+        { name = "LOA_FINN_BASE_URL", value = var.enable_service_discovery ? "http://finn.${local.name_prefix}.local:3000" : var.loa_finn_base_url },
+        # Sprint 6 (319), Task 6.7: SIWE session — kid for secret routing
+        { name = "SIWE_SESSION_SECRET_KID", value = var.siwe_session_secret_kid }
       ]
 
       secrets = [
@@ -505,7 +512,9 @@ resource "aws_ecs_task_definition" "api" {
         { name = "CORS_ALLOWED_ORIGINS", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:CORS_ALLOWED_ORIGINS::" },
         # Hounfour Phase 4: Agent gateway configuration
         { name = "AGENT_JWT_SIGNING_KEY", valueFrom = aws_secretsmanager_secret.agent_jwt_signing_key.arn },
-        { name = "AGENT_JWT_KEY_ID", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:AGENT_JWT_KEY_ID::" }
+        { name = "AGENT_JWT_KEY_ID", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:AGENT_JWT_KEY_ID::" },
+        # Sprint 6 (319), Task 6.7: SIWE session token signing
+        { name = "SIWE_SESSION_SECRET", valueFrom = aws_secretsmanager_secret.siwe_session_secret.arn }
       ]
 
       logConfiguration = {
@@ -545,6 +554,21 @@ resource "aws_secretsmanager_secret" "agent_jwt_signing_key" {
 
   tags = merge(local.common_tags, {
     Sprint = "Hounfour-Phase4"
+  })
+}
+
+# =============================================================================
+# Sprint 6 (319), Task 6.7: SIWE Session Secret
+# =============================================================================
+
+# HS256 secret for signing SIWE session JWTs (min 32 bytes)
+resource "aws_secretsmanager_secret" "siwe_session_secret" {
+  name        = "${local.name_prefix}/siwe-session-secret"
+  description = "HS256 secret for signing SIWE session JWTs"
+  kms_key_id  = aws_kms_key.secrets.arn
+
+  tags = merge(local.common_tags, {
+    Sprint = "319-Task-6.7"
   })
 }
 
@@ -630,8 +654,15 @@ resource "aws_ecs_service" "api" {
     container_port   = 3000
   }
 
+  # Cloud Map service discovery — resolves as freeside.arrakis-{env}.local
+  # Cycle 036: Enables finn → freeside S2S communication via DNS
+  service_registries {
+    registry_arn = aws_service_discovery_service.freeside.arn
+  }
+
   deployment_maximum_percent         = 200
-  deployment_minimum_healthy_percent = 100
+  # Sprint 6 (319), Task 6.5: Lower from 100→50 for graceful WebSocket drain
+  deployment_minimum_healthy_percent = 50
 
   deployment_circuit_breaker {
     enable   = true

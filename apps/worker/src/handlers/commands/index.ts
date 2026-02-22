@@ -33,6 +33,10 @@ export {
   createAdminBadgeAutocompleteHandler,
 } from './admin-badge.js';
 
+// Sprint 4: Agent Thread Commands
+export { createMyAgentHandler } from './my-agent.js';
+export { createAgentInfoHandler } from './agent-info.js';
+
 // Sprint S-9: Hot-Path Handlers (ScyllaDB)
 export { createPositionHotPathHandler } from './position-hotpath.js';
 export { createThresholdHotPathHandler } from './threshold-hotpath.js';

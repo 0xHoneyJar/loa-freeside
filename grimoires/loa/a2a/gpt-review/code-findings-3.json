@@ -1,26 +1,7 @@
 {
-  "verdict": "CHANGES_REQUIRED",
-  "summary": "Two INSERT statements can fail due to missing NOT NULL/defaulted columns and NULL pool_id; make them explicit to avoid false negatives and ensure constraint testing is isolated to source_type.",
-  "issues": [
-    {
-      "severity": "major",
-      "file": "tests/migrations/migration_fk_integrity.test.ts",
-      "line": 260,
-      "description": "The tba_deposit CHECK constraint test inserts NULL pool_id and omits reserved_micro/consumed_micro. If these columns are NOT NULL (common in credit_lots), the test will fail for the wrong reason, masking the CHECK constraint behavior.",
-      "current_code": "```typescript\n        db.exec(`\n          INSERT INTO credit_lots (id, account_id, pool_id, source_type, source_id, original_micro, available_micro)\n          VALUES ('lot-tba', 'acct-tba', NULL, 'tba_deposit', 'tba-src-1', 500000, 500000);\n        `);\n```",
-      "fixed_code": "```typescript\n        db.exec(`\n          INSERT INTO credit_lots (\n            id,\n            account_id,\n            pool_id,\n            source_type,\n            source_id,\n            original_micro,\n            available_micro,\n            reserved_micro,\n            consumed_micro\n          )\n          VALUES (\n            'lot-tba',\n            'acct-tba',\n            'general',\n            'tba_deposit',\n            'tba-src-1',\n            500000,\n            500000,\n            0,\n            0\n          );\n        `);\n```",
-      "explanation": "Providing pool_id and explicit reserved/consumed values ensures the insert only exercises the source_type CHECK constraint and does not fail due to unrelated NOT NULL/default constraints."
-    },
-    {
-      "severity": "major",
-      "file": "tests/migrations/migration_fk_integrity.test.ts",
-      "line": 275,
-      "description": "The invalid source_type test also inserts NULL pool_id and omits reserved_micro/consumed_micro, which can cause the insert to fail for unrelated reasons, weakening the CHECK constraint test.",
-      "current_code": "```typescript\n        db.exec(`\n          INSERT INTO credit_lots (id, account_id, pool_id, source_type, source_id, original_micro, available_micro)\n          VALUES ('lot-bad', 'acct-bad', NULL, 'invalid_type', 'bad-src', 100000, 100000);\n        `);\n```",
-      "fixed_code": "```typescript\n        db.exec(`\n          INSERT INTO credit_lots (\n            id,\n            account_id,\n            pool_id,\n            source_type,\n            source_id,\n            original_micro,\n            available_micro,\n            reserved_micro,\n            consumed_micro\n          )\n          VALUES (\n            'lot-bad',\n            'acct-bad',\n            'general',\n            'invalid_type',\n            'bad-src',\n            100000,\n            100000,\n            0,\n            0\n          );\n        `);\n```",
-      "explanation": "This isolates the failure to the invalid source_type CHECK constraint instead of unrelated NOT NULL/default constraints, making the test reliable."
-    }
-  ],
+  "verdict": "APPROVED",
+  "summary": "No bugs or security issues found in the discovery endpoint implementation.",
+  "issues": [],
   "fabrication_check": {
     "passed": true,
     "concerns": []

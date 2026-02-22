@@ -34,3 +34,8 @@ export {
   type EligibilityResult,
   type EligibilityHandler,
 } from './EligibilityNatsConsumer.js';
+export {
+  UsageNatsConsumer,
+  createUsageNatsConsumer,
+  type UsageConsumerDeps,
+} from './UsageNatsConsumer.js';

@@ -38,6 +38,18 @@ resource "aws_lb" "main" {
 
   enable_deletion_protection = false # Set to true for production
 
+  # Sprint 6 (319), Task 6.5: WebSocket support — ALB must not close idle WS
+  # connections before the app's heartbeat interval (30s). Set to 300s to
+  # allow long-running chat sessions and SSE streams.
+  idle_timeout = 300
+
+  # Sprint 6 (319), Task 6.5: ALB access logs for debugging connection drops
+  access_logs {
+    bucket  = aws_s3_bucket.alb_logs.id
+    prefix  = "alb"
+    enabled = true
+  }
+
   tags = local.common_tags
 }
 
@@ -47,6 +59,11 @@ resource "aws_lb_target_group" "api" {
   protocol    = "HTTP"
   vpc_id      = module.vpc.vpc_id
   target_type = "ip"
+
+  # Sprint 6 (319), Task 6.5: Align deregistration delay with container drain.
+  # ECS container stopTimeout = 120s, so deregistration must exceed that to
+  # allow in-flight WebSocket/SSE connections to finish gracefully.
+  deregistration_delay = 130
 
   health_check {
     enabled             = true
@@ -58,6 +75,14 @@ resource "aws_lb_target_group" "api" {
     protocol            = "HTTP"
     timeout             = 5
     unhealthy_threshold = 3
+  }
+
+  # Sprint 6 (319), Task 6.5: Sticky sessions for WebSocket connection affinity.
+  # WebSocket upgrade must route to the same backend that accepted the handshake.
+  stickiness {
+    type            = "lb_cookie"
+    cookie_duration = 300 # Match ALB idle timeout
+    enabled         = true
   }
 
   tags = local.common_tags

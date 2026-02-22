@@ -1,68 +1,79 @@
 {
   "phase": "sdd",
   "document": "grimoires/loa/sdd.md",
-  "timestamp": "2026-02-19T20:32:39Z",
+  "timestamp": "2026-02-20T08:49:36Z",
   "consensus_summary": {
-    "high_consensus_count": 4,
-    "disputed_count": 1,
+    "high_consensus_count": 5,
+    "disputed_count": 0,
     "low_value_count": 0,
     "blocker_count": 5,
-    "model_agreement_percent": 90
+    "model_agreement_percent": 100,
+    "confidence": "full"
   },
   "high_consensus": [
     {
       "id": "IMP-001",
-      "description": "Define error taxonomy for gen/validate scripts — parse error, missing file, partial scan — with non-zero exit codes and fail-closed behavior. Without minimum-field gates, gen/validate sharing same broken logic gives false confidence.",
-      "average_score": 900
+      "description": "Add per-phase rollback runbooks (ECS task def rollback, DB migration remediation patterns) and acceptance criteria (RTO/RPO targets)",
+      "gpt_score": 820,
+      "opus_score": 780,
+      "average_score": 800
     },
     {
       "id": "IMP-002",
-      "description": "Route extraction needs to define supported Express patterns and explicit fallback behavior for unresolvable patterns (dynamic registration, conditional routes, computed strings).",
-      "average_score": 785
+      "description": "Specify ALB/WAF rate limits for webhook endpoints, per-payment-id dedupe/throttle, and retry-aware limits",
+      "gpt_score": 760,
+      "opus_score": 920,
+      "average_score": 840
     },
     {
       "id": "IMP-003",
-      "description": "Define stability semantics for 'guaranteed-stable' endpoints — versioning (path/header/semver), compatibility guarantees, deprecation windows, and promotion criteria from Tier 2 to Tier 1.",
-      "average_score": 835
+      "description": "Define SIWE nonce/session/domain/chain-id validation details per EIP-4361",
+      "gpt_score": 880,
+      "opus_score": 830,
+      "average_score": 855
     },
     {
       "id": "IMP-004",
-      "description": "Document recognized AST patterns for extractor with examples and non-examples. Add a linter/gate that flags unrecognized route registration constructs in scanned directories.",
-      "average_score": 810
-    }
-  ],
-  "disputed": [
+      "description": "Add WebSocket lifecycle constraints (idle timeout, heartbeat, max conns/user, drain on deploy)",
+      "gpt_score": 740,
+      "opus_score": 850,
+      "average_score": 795
+    },
     {
-      "id": "IMP-008",
-      "description": "Accessibility/i18n guidelines for documentation. GPT scored low (320), Opus higher (680). Not tied to current scope.",
-      "average_score": 500
+      "id": "IMP-010",
+      "description": "Define pricing tiers, USD->micro-credit conversion, rounding/precision, min/max, and handling partial payments",
+      "gpt_score": 780,
+      "opus_score": 880,
+      "average_score": 830
     }
   ],
+  "disputed": [],
+  "low_value": [],
   "blockers": [
     {
-      "id": "SKP-001",
-      "concern": "No mechanism to detect behavioral drift in 70+ indexed endpoints. Smoke tests only cover 7 stable. Indexed endpoints' auth/status/response can change silently.",
-      "severity_score": 900
+      "id": "SKP-005",
+      "concern": "API key HMAC+PEPPER blast radius; missing per-key salt and breach response plan",
+      "severity_score": 720
     },
     {
       "id": "SKP-002",
-      "concern": "Route extraction via ts-morph is likely incomplete for real-world Express patterns (dynamic composition, HOFs, env-gated, computed strings). Baseline count gate can still pass with wrong routes.",
-      "severity_score": 860
-    },
-    {
-      "id": "SKP-003",
-      "concern": "Citation pinning depends on GitHub API availability, tag immutability, network access. No offline mode, no retry/backoff, no caching of already-pinned refs.",
-      "severity_score": 760
+      "concern": "Budget finalization relies on headers/stream-end signals not reliable under disconnects",
+      "severity_score": 900
     },
     {
       "id": "SKP-004",
-      "concern": "BUTTERFREEZONE extraction determinism not proven across OS/filesystem/Node/ts-morph versions. Glob order, locale, line endings can vary.",
-      "severity_score": 740
+      "concern": "JWKS table naming mismatch and rotation propagation risks",
+      "severity_score": 760
     },
     {
-      "id": "SKP-005",
-      "concern": "AUTH_BYPASS and dev JWKS are documentation-only safeguards with no code-level enforcement. Docs teaching shortcuts get copied to production.",
-      "severity_score": 720
+      "id": "SKP-003",
+      "concern": "Payment mint guard concurrency/row-locking under concurrent webhook+poll+admin paths",
+      "severity_score": 880
+    },
+    {
+      "id": "SKP-001",
+      "concern": "loa-finn contract and build/deploy still TBD but on critical path",
+      "severity_score": 930
     }
   ]
 }

@@ -1,0 +1,123 @@
+{
+  "consensus_summary": {
+    "high_consensus_count": 4,
+    "disputed_count": 0,
+    "low_value_count": 0,
+    "blocker_count": 5,
+    "model_agreement_percent": 100,
+    "confidence": "full"
+  },
+  "high_consensus": [
+    {
+      "id": "IMP-001",
+      "description": "Real gap: dependency_count/dependent_count without a canonical mapping (and at least one task lacking explicit DEPENDS) creates execution-order ambiguity. Actionable via a generated DAG (Mermaid/Graphviz) plus a rule that every nonzero dependency_count must list explicit DEPENDS. Moderate effort; high coordination value, but not always necessary if the project is small—hence not quite 800+.",
+      "gpt_score": 780,
+      "opus_score": 820,
+      "delta": 40,
+      "average_score": 800,
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-002",
+      "description": "Critical missing shared reference: multiple tasks depend on the '7 guaranteed-stable endpoints' but the list is not present, blocking parallelization and review. Very low cost to enumerate (even provisional with a gate), high ROI, and directly improves scoping and acceptance criteria clarity.",
+      "gpt_score": 860,
+      "opus_score": 750,
+      "delta": 110,
+      "average_score": 805,
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-004",
+      "description": "Critical context omission: 'all 5 repos' is referenced as scope but not enumerated, making the task non-auditable and easy to under/over-scope. Extremely actionable (list repo names + canonical URLs) and low effort with high impact across multiple tasks.",
+      "gpt_score": 900,
+      "opus_score": 920,
+      "delta": 20,
+      "average_score": 910,
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-006",
+      "description": "High ROI sequencing fix: cite syntax is a cross-cutting contract used in Sprint 1 acceptance criteria but specified only in Sprint 3. Centralizing the spec (or duplicating a short canonical snippet with a single source of truth) prevents rework and inconsistent tagging. Low cost, high leverage.",
+      "gpt_score": 820,
+      "opus_score": 810,
+      "delta": 10,
+      "average_score": 815,
+      "would_integrate": true,
+      "agreement": "HIGH"
+    }
+  ],
+  "disputed": [],
+  "low_value": [],
+  "blockers": [
+    {
+      "id": "SKP-005",
+      "concern": "AUTH_BYPASS safeguard is narrowly scoped and may miss other bypass paths (debug endpoints, dev-only middleware, alternate env vars, or mis-set NODE_ENV in containers)",
+      "severity": "CRITICAL",
+      "severity_score": 880,
+      "why_matters": "A single missed bypass path can expose the entire API. Relying on NODE_ENV correctness is risky in multi-stage builds and orchestrators. Also, docs require disclaimers, but the actual security posture depends on code and deployment enforcement.",
+      "location": "S305-T7 threat model and acceptance criteria; S305-T2 security disclaimers mention AUTH_BYPASS safeguards",
+      "recommendation": "Centralize auth enforcement in one module with an explicit 'bypass policy' object and unit tests. Add a production runtime assertion that refuses to start if any bypass-related env var is set. Extend CI scanning beyond a couple of files to all manifests and Helm/K8s if present.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-001",
+      "concern": "Repo reality gap: docs are required to describe many capabilities (multi-model inference, budget atomicity, token gating, payment rails, RLS, Discord/TG distribution, IaC) but the plan provides no proof these are actually implemented across the 5 repos",
+      "severity": "CRITICAL",
+      "severity_score": 930,
+      "why_matters": "If the code does not actually implement the claimed platform features, the rewrite becomes either blocked (can’t cite) or misleading (pressure to over-claim). This can stall the entire documentation program and undermine trust.",
+      "location": "S304-T1 acceptance criteria (feature inventory must cover only implemented features with citations); S304-T2 key_files/capabilities grounding; S304-T3 ecosystem map claims",
+      "recommendation": "Run a preflight capability audit before writing: enumerate concrete files/routes/terraform resources per claimed capability and produce a 'capability-to-evidence matrix'. If evidence is missing, move items explicitly to Roadmap and adjust acceptance criteria to match reality.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-003",
+      "concern": "Tier 2 contract verification via GET/HEAD 'not 404' is a weak proxy and will fail on routes requiring specific headers/body/query, content-type negotiation, or method-only handlers",
+      "severity": "HIGH",
+      "severity_score": 720,
+      "why_matters": "Many endpoints return 404/405/415/400 depending on missing params, Accept headers, or method mismatch. A simplistic probe can produce noisy failures or, worse, pass while the endpoint is unusable. This undermines the stability contract and wastes time debugging tests rather than improving docs.",
+      "location": "S305-T4 acceptance criteria (GET/HEAD only, not-404 validation, auth validation expectations)",
+      "recommendation": "Define per-route probe metadata (required headers, minimal query params, expected status class). Treat 405/415/400 as 'reachable' for certain routes. Add a small schema for probes in the extracted JSON or a companion allowlist file.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-010",
+      "concern": "Timeline/effort estimates appear optimistic given the number of interdependent scripts, CI workflows, and cross-repo coordination; high risk of partial completion and rework",
+      "severity": "HIGH",
+      "severity_score": 740,
+      "why_matters": "Many tasks are labeled 1–6 hours but include non-trivial engineering: AST parsing, deterministic hashing pipelines, CI workflows, Terraform plan harness, cross-repo pinning, and golden fixtures. Underestimation leads to rushed implementations, brittle tooling, and missed acceptance criteria.",
+      "location": "Effort estimates across S304-T1/T2, S305-T1/T4/T6, S306-T3/T4; dependency chains (e.g., S304-T4 depends on T1/T2/T3; S306-T1 depends on 4 tasks)",
+      "recommendation": "Re-plan as milestones with explicit integration buffers. Build the validation/CI skeleton early and iterate. Add a 'definition of done' checklist per script (unit tests, fixture coverage, CI matrix) and reserve time for stabilization after first CI run.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-002",
+      "concern": "ts-morph route extraction is likely to be brittle against real-world Express/Fastify patterns, causing false negatives and CI churn",
+      "severity": "HIGH",
+      "severity_score": 760,
+      "why_matters": "AST-based extraction often breaks on indirection (re-exported routers, higher-order wrappers, computed paths, shared middleware factories). The 5% unresolvable threshold and '>=80 routes' target can become a constant source of failures, blocking doc PRs and slowing development.",
+      "location": "S305-T1 supported/unsupported patterns, 5% unresolvable linter, snapshot diff requirements; S306-T4 check #8 depends on extract-routes.sh --diff exiting 0",
+      "recommendation": "Start with a baseline measurement and explicitly list known patterns in the codebase. Add a structured annotation system (not just freeform comments) and a per-module allowlist. Consider runtime introspection (where possible) as the primary source, with AST extraction as a secondary cross-check.",
+      "source": "tertiary_skeptic"
+    }
+  ],
+  "degraded": false,
+  "degraded_model": null,
+  "confidence": "full",
+  "phase": "beads",
+  "document": "grimoires/loa/a2a/flatline/beads-export-cycle035.json",
+  "domain": "s304 t1 readme md rewrite",
+  "execution": {
+    "mode": "hitl",
+    "mode_reason": "Simstim workflow active (.run/simstim-state.json state=RUNNING)",
+    "run_id": null
+  },
+  "timestamp": "2026-02-19T11:26:20Z",
+  "metrics": {
+    "total_latency_ms": 220000,
+    "cost_cents": 0,
+    "cost_usd": 0
+  }
+}

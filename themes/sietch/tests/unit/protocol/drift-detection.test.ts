@@ -22,7 +22,7 @@ import { CONTRACT_VERSION } from '../../../src/packages/core/protocol/arrakis-co
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const EXPECTED_SHA = 'd091a3c0d4802402825fc7765bcc888f2477742f';
+const EXPECTED_SHA = 'ec5024938339121dbb25d3b72f8b67fdb0432cad';
 
 /**
  * Find an installed package's package.json by walking up the directory tree

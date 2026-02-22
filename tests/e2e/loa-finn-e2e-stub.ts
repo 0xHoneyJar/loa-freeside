@@ -64,7 +64,7 @@ export interface UsageReport {
   accountingMode: string;
   usageTokens?: number;
   timestamp: string;
-  /** Per-model cost breakdown (contract v1.1.0, cycle-019 BB6 Finding #6) */
+  /** Per-model cost breakdown (contract v7.0.0, cycle-019 BB6 Finding #6) */
   modelBreakdown?: Array<{
     model_id: string;
     provider: string;
@@ -76,7 +76,7 @@ export interface UsageReport {
     latency_ms?: number;
     error_code?: string;
   }>;
-  /** Aggregate ensemble accounting (contract v1.1.0) */
+  /** Aggregate ensemble accounting (contract v7.0.0) */
   ensembleAccounting?: Record<string, unknown>;
   /** Signed JWS token for S2S verification tests */
   signedJws?: string;
@@ -425,7 +425,7 @@ export class LoaFinnE2EStub {
 
   /**
    * Receive usage reports from arrakis.
-   * Accepts both v1.0.0 (no model_breakdown) and v1.1.0 (with model_breakdown) payloads.
+   * Accepts both legacy (no model_breakdown) and v7.0.0 (with model_breakdown) payloads.
    * Unknown fields are silently accepted (additionalProperties tolerance — AC-1.19).
    */
   private async handleUsageReport(
@@ -451,7 +451,7 @@ export class LoaFinnE2EStub {
       accountingMode: (parsed.accountingMode as string) ?? (parsed.accounting_mode as string) ?? 'PLATFORM_BUDGET',
       usageTokens: (parsed.usageTokens as number) ?? (parsed.usage_tokens as number) ?? undefined,
       timestamp: (parsed.timestamp as string) ?? new Date().toISOString(),
-      // v1.1.0 fields — optional, ignored if absent
+      // v7.0.0 fields — optional, ignored if absent (DUAL-ACCEPT: remove after telemetry cutoff)
       modelBreakdown: parsed.model_breakdown as UsageReport['modelBreakdown'],
       ensembleAccounting: parsed.ensemble_accounting as Record<string, unknown> | undefined,
     };
@@ -548,7 +548,7 @@ export class LoaFinnE2EStub {
         (vectorPayload.accounting_mode as string) ?? 'PLATFORM_BUDGET',
       usageTokens: vectorPayload.usage_tokens as number | undefined,
       timestamp: new Date().toISOString(),
-      // Contract v1.1.0: per-model breakdown (optional, backward-compatible)
+      // Contract v7.0.0: per-model breakdown (optional, backward-compatible)
       modelBreakdown: vectorPayload.model_breakdown as UsageReport['modelBreakdown'],
       ensembleAccounting: vectorPayload.ensemble_accounting as Record<string, unknown> | undefined,
     };

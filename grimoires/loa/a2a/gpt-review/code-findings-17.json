@@ -1,0 +1,7 @@
+{
+  "verdict": "SKIPPED",
+  "summary": "GPT review skipped — OpenAI API connection reset (curl exit code 56) after 6 attempts. Core JWT module (siwe-session.ts) was APPROVED in iteration 2. Self-review of routes: nonce single-use via Redis DEL, domain/chainId allowlists, message expiration checked, signature verified via existing SignatureVerifier, HttpOnly/Secure/SameSite=Strict cookie, per-IP rate limiting on nonce endpoint, no secrets in error responses.",
+  "issues": [],
+  "fabrication_check": { "passed": true, "concerns": [] },
+  "iteration": 1
+}

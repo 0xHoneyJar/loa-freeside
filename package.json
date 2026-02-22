@@ -3,8 +3,12 @@
   "engines": {
     "node": ">=22"
   },
+  "scripts": {
+    "build:hounfour": "scripts/rebuild-hounfour-dist.sh",
+    "postinstall": "scripts/rebuild-hounfour-dist.sh"
+  },
   "devDependencies": {
-    "@0xhoneyjar/loa-hounfour": "github:0xHoneyJar/loa-hounfour#d091a3c0d4802402825fc7765bcc888f2477742f",
+    "@0xhoneyjar/loa-hounfour": "github:0xHoneyJar/loa-hounfour#ec5024938339121dbb25d3b72f8b67fdb0432cad",
     "@types/express": "^5.0.6",
     "@types/supertest": "^6.0.3",
     "ajv": "^8.18.0",

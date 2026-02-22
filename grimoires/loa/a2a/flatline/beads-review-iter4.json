@@ -1,0 +1,134 @@
+{
+  "consensus_summary": {
+    "high_consensus_count": 3,
+    "disputed_count": 2,
+    "low_value_count": 0,
+    "blocker_count": 5,
+    "model_agreement_percent": 80,
+    "confidence": "full"
+  },
+  "high_consensus": [
+    {
+      "id": "IMP-001",
+      "description": "Real structural gap: dependencies are currently non-machine-readable (counts + free-text). Adding explicit depends_on IDs enables DAG validation, cycle detection, critical path, and reliable automation. Low-to-moderate effort with high downstream ROI for planning and tooling.",
+      "gpt_score": 910,
+      "opus_score": 750,
+      "delta": 160,
+      "average_score": 830,
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-002",
+      "description": "Valuable for execution clarity: relying on title prefixes for sprint mapping is brittle, and lack of parent_epic linkage reduces traceability. Moderate effort to add fields and keep them updated; benefit is mostly operational/project-management rather than technical correctness.",
+      "gpt_score": 760,
+      "opus_score": 820,
+      "delta": 60,
+      "average_score": 790,
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-004",
+      "description": "Strong, domain-appropriate gap: scripts without defined failure behavior create flaky CI and ambiguous operator experience. Standardizing exit codes/error taxonomy (as already done in one task) is actionable and high ROI with modest implementation cost.",
+      "gpt_score": 840,
+      "opus_score": 870,
+      "delta": 30,
+      "average_score": 855,
+      "would_integrate": true,
+      "agreement": "HIGH"
+    }
+  ],
+  "disputed": [
+    {
+      "id": "IMP-005",
+      "description": "Critical traceability gap: FR/NFR identifiers are referenced but undefined, making review/coverage verification impossible. Adding a requirements bead or embedding the FR/NFR definitions is straightforward and materially improves correctness and auditability.",
+      "gpt_score": 930,
+      "opus_score": 620,
+      "delta": 310,
+      "average_score": 775,
+      "would_integrate": true,
+      "agreement": "DISPUTED"
+    },
+    {
+      "id": "IMP-010",
+      "description": "Good risk-management callout: changing runtime behavior around AUTH_BYPASS can break existing non-dev environments. Adding rollout/compat guidance (warn-then-enforce, env update checklist) is actionable and reduces deployment risk, though it adds some policy/process complexity.",
+      "gpt_score": 720,
+      "opus_score": 380,
+      "delta": 340,
+      "average_score": 550,
+      "would_integrate": true,
+      "agreement": "DISPUTED"
+    }
+  ],
+  "low_value": [],
+  "blockers": [
+    {
+      "id": "SKP-005",
+      "concern": "AUTH_BYPASS safeguard is incomplete without a broader auth threat model (JWT validation, key management, JWKS rotation, audience/issuer enforcement)",
+      "severity": "CRITICAL",
+      "severity_score": 840,
+      "why_matters": "Preventing AUTH_BYPASS in prod is necessary but not sufficient. The docs require manual JWT minting and mention JWKS separation, TTL, aud/iss validation, but there is no explicit requirement that the server enforces these correctly. Weak JWT validation (alg confusion, missing aud/iss, accepting expired tokens, weak keys) can be as catastrophic as AUTH_BYPASS.",
+      "location": "S305-T2: API-QUICKSTART security disclaimers; S305-T7: AUTH_BYPASS Code Safeguard",
+      "recommendation": "Add explicit server-side security requirements and tests: enforce aud/iss, exp/nbf, key rotation strategy, JWKS caching/refresh, algorithm allowlist, and rejection of 'none'. Include negative tests in CI. Document operational key management (KMS, rotation cadence, incident response).",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-002",
+      "concern": "Cross-repo citation pinning is brittle and may fail in CI due to GitHub API limits, auth, forks, or repo access constraints",
+      "severity": "HIGH",
+      "severity_score": 760,
+      "why_matters": "S306-T3 depends on gh api resolution to commit SHAs. In forks/PRs, tokens may be unavailable or lack access to private repos; rate limits and transient failures can cause flaky CI. Flaky doc validation will block merges and erode confidence in the validation pipeline.",
+      "location": "S306-T3: Citation Pinning; S306-T4: RTFM Validator (checks #1 and #5)",
+      "recommendation": "Define an explicit 'offline-first' contract: PR validation must never require cross-repo network calls. Require cross-repo citations to already be pinned (SHA) in PRs; only scheduled main-branch jobs may repin. Add deterministic failure modes and a clear remediation path when a repo is inaccessible.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-001",
+      "concern": "Repo reality mismatch: docs may assert a 'multi-model agent economy infrastructure platform' that the codebase cannot substantiate with citations",
+      "severity": "CRITICAL",
+      "severity_score": 920,
+      "why_matters": "The entire plan hinges on 'capability grounding' via cite tags. If the repos don't actually implement the claimed platform capabilities (billing, multi-model orchestration, agent runtime, etc.), the README/BUTTERFREEZONE/ECOSYSTEM work either stalls or devolves into vague language that fails acceptance criteria and undermines trust.",
+      "location": "S304-T1: README.md Rewrite (Capability grounding requirement); S304-T2: BUTTERFREEZONE regeneration; S304-T3: ECOSYSTEM.md creation",
+      "recommendation": "Run a pre-flight capability inventory across all 5 repos before writing. Produce a short 'Implemented vs Planned' matrix with hard evidence (routes, modules, Terraform resources). If gaps exist, explicitly scope docs to what is verifiably implemented and move the rest to Roadmap.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-003",
+      "concern": "Route extraction via ts-morph will miss real-world Express/Router patterns, causing false failures and ongoing maintenance burden",
+      "severity": "CRITICAL",
+      "severity_score": 880,
+      "why_matters": "The plan makes route extraction a foundation for Tier 2 docs and validation (snapshot diff, completeness, verify-routes). Express routing often uses indirection (arrays of middleware, imported routers, computed paths, template literals, conditional registration). A 5% unresolvable threshold plus '>=80 routes' target can easily fail as patterns evolve, turning docs CI into a constant firefight.",
+      "location": "S305-T1: scripts/extract-routes.sh; S306-T4: RTFM Validator check #8; S305-T3: API-REFERENCE Tier 2",
+      "recommendation": "Start by measuring current resolvability and cataloging patterns before enforcing thresholds. Prefer runtime introspection (if feasible) as the source of truth, or add a lightweight explicit route registry in code. If AST parsing remains, narrow scope to the API gateway package only and require @route annotations for any non-trivial registration.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-004",
+      "concern": "Tier 2 contract checks (GET/HEAD only) can still trigger side effects or fail due to auth/method semantics, leading to unreliable tests",
+      "severity": "HIGH",
+      "severity_score": 720,
+      "why_matters": "Not all endpoints safely support HEAD; some frameworks auto-handle it inconsistently. GET endpoints can still mutate state (badly designed endpoints, analytics triggers, cache warmers). Also, expecting 401/403 vs 2xx/3xx based on extracted 'auth' metadata assumes the extractor can correctly infer auth requirements, which is often non-local (middleware stacks, mounts).",
+      "location": "S305-T4: Tier 2 Contract Checks",
+      "recommendation": "Use OPTIONS or a dedicated non-invasive introspection endpoint in dev/test to validate existence/auth classification. If using GET/HEAD, maintain an explicit allowlist of safe routes and skip known unsafe ones. Treat auth inference as 'unknown' unless explicitly annotated.",
+      "source": "tertiary_skeptic"
+    }
+  ],
+  "degraded": false,
+  "degraded_model": null,
+  "confidence": "full",
+  "phase": "beads",
+  "document": "grimoires/loa/a2a/flatline/beads-export-cycle035.json",
+  "domain": "s304 t1 readme md rewrite",
+  "execution": {
+    "mode": "hitl",
+    "mode_reason": "Simstim workflow active (.run/simstim-state.json state=RUNNING)",
+    "run_id": null
+  },
+  "timestamp": "2026-02-19T11:31:52Z",
+  "metrics": {
+    "total_latency_ms": 215000,
+    "cost_cents": 0,
+    "cost_usd": 0
+  }
+}

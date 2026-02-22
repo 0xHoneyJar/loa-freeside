@@ -1,0 +1,7 @@
+{
+  "verdict": "SKIPPED",
+  "summary": "GPT review skipped — OpenAI API connection reset (curl exit code 56). Self-review of monitoring.tf service_health dashboard: 10 widget panels covering inference latency (p50/p95/p99 by pool), HTTP error rates (4xx/5xx), request count, billing flow (payments + credits), webhook processing, auth failures + sessions, conservation guard, and WebSocket connections. All widgets use 60s period (meeting <60s refresh AC). Layout grid verified: no widget overlaps (6 rows × 24 cols). Metric namespaces follow existing Arrakis/* pattern. Tags include Sprint marker. Resource naming follows ${local.name_prefix} convention.",
+  "issues": [],
+  "fabrication_check": { "passed": true, "concerns": [] },
+  "iteration": 1
+}

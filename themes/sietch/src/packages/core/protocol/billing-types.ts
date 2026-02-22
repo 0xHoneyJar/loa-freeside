@@ -1,10 +1,10 @@
 /**
- * Vendored loa-hounfour Billing Types
+ * Freeside Billing Types
  *
- * Shared type definitions for cross-system billing between arrakis and loa-finn.
- * These types represent the wire format and domain concepts shared by both systems.
- *
- * Vendored from: loa-hounfour (pinned commit, see @0xhoneyjar/loa-hounfour v7.0.0)
+ * Freeside-local billing type definitions for credit lifecycle, usage tracking,
+ * and constitutional governance. These are distinct from the canonical hounfour
+ * BillingEntry/BillingRecipient types which model provider cost distribution.
+ * The Freeside types model the credit-based economy (reserves, refunds, grants).
  *
  * @module packages/core/protocol/billing-types
  */

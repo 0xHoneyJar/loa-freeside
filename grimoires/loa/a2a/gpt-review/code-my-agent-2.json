@@ -1,0 +1,28 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Previous critical issues were not fixed; the code still uses wallet-based dedup/thread naming, always creates public threads, and lacks permission-specific error handling.",
+  "previous_issues_status": [
+    {
+      "original_issue": "Thread deduplication and naming are based on wallet address instead of tokenId (per-NFT thread requirement).",
+      "status": "not_fixed",
+      "notes": "Code still uses nftId = `${profile.walletAddress}:${community.id}` and thread name doesn’t include tokenId."
+    },
+    {
+      "original_issue": "Thread type always PUBLIC_THREAD; should create PRIVATE_THREAD when guild supports it.",
+      "status": "not_fixed",
+      "notes": "Code still hardcodes type: 11 with a comment to upgrade later."
+    },
+    {
+      "original_issue": "Missing-permissions handling is incomplete; required user-facing message may not be shown.",
+      "status": "not_fixed",
+      "notes": "No try/catch around createThread and no specific missing-permissions messaging."
+    },
+    {
+      "original_issue": "Welcome/response messages reference wallet address; should use tokenId to avoid exposure.",
+      "status": "not_fixed",
+      "notes": "Wallet address is not shown, but tokenId is also not used; thread name and messages don’t reflect per-NFT requirement."
+    }
+  ],
+  "new_blocking_concerns": [],
+  "iteration": 2
+}

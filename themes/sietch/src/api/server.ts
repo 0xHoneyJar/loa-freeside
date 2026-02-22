@@ -15,6 +15,23 @@ import { createVerifyIntegration } from './routes/verify.integration.js';
 import { createAuthRouter, addApiKeyVerifyRoute } from './routes/auth.routes.js';
 // Hounfour Integration (cycle-012): S2S loa-finn → arrakis usage report ingestion
 import { createInternalAgentRoutes } from './routes/agents.routes.js';
+// Sprint 5 (318): Admin Agent Dashboard
+import { adminAgentRouter } from './routes/admin-agent.routes.js';
+// Sprint 6 (319): Developer API Key Management
+import { apiKeysRouter } from './routes/api-keys.routes.js';
+// Sprint 6 (319), Task 6.4: Developer Onboarding Flow
+import { developerRouter } from './routes/developer.routes.js';
+// Sprint 6 (319), Task 6.7: SIWE Auth Flow (EIP-4361)
+import { siweRouter, setSiweRedisClient } from './routes/siwe.routes.js';
+import cookieParser from 'cookie-parser';
+// Sprint 6 (319), Task 6.8: Standalone Chat Page
+import { chatPageRouter } from './routes/chat-page.routes.js';
+// Sprint 324, Task 3.1: Protocol Discovery Endpoint
+import { discoveryRouter } from './routes/discovery.routes.js';
+// Sprint 6 (319), Task 6.6: Web Chat Widget + WebSocket
+import { createChatWebSocket, drainChatWebSocket } from './websocket/chat-ws.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { S2SJwtValidator } from '@arrakis/adapters/agent/s2s-jwt-validator';
 import { UsageReceiver } from '@arrakis/adapters/agent/usage-receiver';
 import { createS2SAuthMiddleware } from '@arrakis/adapters/agent/s2s-auth-middleware';
@@ -64,6 +81,11 @@ let server: ReturnType<Application['listen']> | null = null;
  * PostgreSQL client for verification routes (Sprint 79)
  */
 let verifyPostgresClient: ReturnType<typeof postgres> | null = null;
+
+/**
+ * Redis client for SIWE nonce store (Sprint 6, Task 6.7)
+ */
+let siweRedisClient: any | null = null;
 
 /**
  * Create and configure the Express application
@@ -234,6 +256,12 @@ function createApp(): Application {
   // @security HIGH-7: Allocation of Resources Without Limits (CWE-770)
   expressApp.use(express.json({ limit: '1mb' }));
   expressApp.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+  // Sprint 6 (319), Task 6.7: Cookie parser for SIWE session tokens
+  expressApp.use(cookieParser());
+
+  // Protocol Discovery (Sprint 324, Task 3.1) — public, no auth
+  expressApp.use('/.well-known/loa-hounfour', discoveryRouter);
 
   // Public routes
   expressApp.use('/', publicRouter);
@@ -480,6 +508,50 @@ function createApp(): Application {
 
   // Billing admin routes (v4.0 - Sprint 26)
   expressApp.use('/admin', billingAdminRouter);
+
+  // Admin agent dashboard routes (Sprint 5 / 318)
+  expressApp.use('/admin/agents', adminAgentRouter);
+  logger.info('Admin agent routes mounted at /admin/agents');
+
+  // Developer API key management routes (Sprint 6 / 319)
+  expressApp.use('/api/v1/keys', apiKeysRouter);
+  logger.info('API key management routes mounted at /api/v1/keys');
+
+  // Developer onboarding routes (Sprint 6 / 319, Task 6.4)
+  expressApp.use('/api/v1/developers', developerRouter);
+  logger.info('Developer onboarding routes mounted at /api/v1/developers');
+
+  // SIWE auth routes (Sprint 6 / 319, Task 6.7)
+  expressApp.use('/api/v1/siwe', siweRouter);
+  logger.info('SIWE auth routes mounted at /api/v1/siwe');
+
+  // Standalone chat page (Sprint 6 / 319, Task 6.8)
+  expressApp.use('/chat', chatPageRouter);
+  logger.info('Standalone chat page mounted at /chat/:tokenId');
+
+  // Developer onboarding page (Sprint 6 / 319, Task 6.4)
+  expressApp.get('/developers', (_req, res) => {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(getDeveloperOnboardingPage());
+  });
+
+  // Sprint 6 (319), Task 6.6: Web Chat Widget — versioned immutable path (SKP-007)
+  const __filename_server = fileURLToPath(import.meta.url);
+  const __dirname_server = path.dirname(__filename_server);
+  const widgetPath = path.resolve(__dirname_server, '../static/widget.js');
+
+  expressApp.get('/widget/v1/widget.js', (_req, res) => {
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, immutable, max-age=31536000');
+    res.sendFile(widgetPath);
+  });
+
+  // Legacy short path redirects to versioned path
+  expressApp.get('/widget.js', (_req, res) => {
+    res.redirect(301, '/widget/v1/widget.js');
+  });
+
+  logger.info('Chat widget served at /widget/v1/widget.js');
 
   // API Documentation (v5.1 - Sprint 52)
   expressApp.use('/docs', docsRouter);
@@ -738,6 +810,25 @@ export async function startServer(): Promise<void> {
     });
   });
 
+  // Sprint 6 (319), Task 6.7: Inject Redis client into SIWE nonce store
+  if (config.features.redisEnabled && config.redis.url) {
+    try {
+      siweRedisClient = new IoRedis(config.redis.url, {
+        maxRetriesPerRequest: 1,
+        commandTimeout: 500,
+        connectTimeout: 5_000,
+        lazyConnect: true,
+      });
+      setSiweRedisClient(siweRedisClient);
+      logger.info('SIWE Redis client injected for nonce store');
+    } catch (err) {
+      logger.warn({ err }, 'Failed to create SIWE Redis client — using in-memory nonce fallback');
+    }
+  }
+
+  // Sprint 6 (319), Task 6.6: Attach WebSocket server for chat widget
+  createChatWebSocket(server!);
+
   // Set up graceful shutdown
   setupGracefulShutdown();
 }
@@ -751,6 +842,21 @@ export async function stopServer(): Promise<void> {
   }
 
   logger.info('Stopping API server...');
+
+  // Sprint 6 (319), Task 6.6: Drain WebSocket connections gracefully
+  await drainChatWebSocket();
+
+  // Sprint 6 (319), Task 6.7: Close SIWE Redis client
+  if (siweRedisClient) {
+    try {
+      await siweRedisClient.quit();
+    } catch {
+      siweRedisClient.disconnect();
+    } finally {
+      siweRedisClient = null;
+    }
+    logger.info('SIWE Redis client closed');
+  }
 
   await new Promise<void>((resolve) => {
     server!.close(() => {
@@ -824,4 +930,159 @@ function setupGracefulShutdown(): void {
  */
 export function getApp(): Application | null {
   return app;
+}
+
+// =============================================================================
+// Developer Onboarding Page (Sprint 6 / 319, Task 6.4)
+// =============================================================================
+
+function getDeveloperOnboardingPage(): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Developer Portal — Freeside API</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;line-height:1.6;color:#e0e0e0;background:#0d1117;padding:2rem}
+    .container{max-width:800px;margin:0 auto}
+    h1{color:#58a6ff;margin-bottom:.5rem;font-size:2rem}
+    h2{color:#79c0ff;margin:2rem 0 .75rem;font-size:1.4rem;border-bottom:1px solid #21262d;padding-bottom:.5rem}
+    h3{color:#d2a8ff;margin:1.5rem 0 .5rem;font-size:1.1rem}
+    p{margin:.5rem 0;color:#c9d1d9}
+    a{color:#58a6ff;text-decoration:none}
+    a:hover{text-decoration:underline}
+    code{background:#161b22;padding:2px 6px;border-radius:4px;font-size:.9em;color:#f0883e}
+    pre{background:#161b22;padding:1rem;border-radius:8px;overflow-x:auto;margin:1rem 0;border:1px solid #21262d}
+    pre code{padding:0;background:none;color:#c9d1d9}
+    .badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:.75rem;font-weight:600}
+    .badge-sandbox{background:#1f6feb33;color:#58a6ff}
+    .badge-live{background:#23863533;color:#3fb950}
+    table{width:100%;border-collapse:collapse;margin:1rem 0}
+    th,td{padding:.5rem .75rem;text-align:left;border-bottom:1px solid #21262d}
+    th{color:#8b949e;font-weight:600;font-size:.85rem;text-transform:uppercase}
+    .step{counter-increment:steps;padding-left:2.5rem;position:relative;margin:1.5rem 0}
+    .step::before{content:counter(steps);position:absolute;left:0;top:0;width:1.8rem;height:1.8rem;background:#1f6feb;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.85rem}
+    .steps{counter-reset:steps}
+    .note{background:#0d1117;border-left:3px solid #d29922;padding:.75rem 1rem;margin:1rem 0;border-radius:0 4px 4px 0}
+    .hero{text-align:center;padding:3rem 0 2rem}
+    .hero p{font-size:1.1rem;color:#8b949e}
+  </style>
+</head>
+<body>
+<div class="container">
+
+<div class="hero">
+  <h1>Freeside Developer API</h1>
+  <p>Multi-model AI inference — from sandbox to production in minutes</p>
+</div>
+
+<h2>Quick Start</h2>
+<div class="steps">
+
+<div class="step">
+<h3>Get your sandbox key</h3>
+<pre><code>curl -X POST /api/v1/developers/register \\
+  -H "Content-Type: application/json" \\
+  -d '{"name": "My App"}'</code></pre>
+<p>Returns your <span class="badge badge-sandbox">sandbox</span> API key (<code>lf_test_...</code>) with free-tier limits.</p>
+</div>
+
+<div class="step">
+<h3>Make your first inference call</h3>
+<pre><code>curl -X POST /api/v1/developers/invoke \\
+  -H "Authorization: Bearer lf_test_YOUR_KEY_HERE" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "max_tokens": 256
+  }'</code></pre>
+</div>
+
+<div class="step">
+<h3>Stream responses (SSE)</h3>
+<pre><code>curl -X POST /api/v1/developers/stream \\
+  -H "Authorization: Bearer lf_test_YOUR_KEY_HERE" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "messages": [{"role": "user", "content": "Explain Berachain in one paragraph"}],
+    "max_tokens": 512
+  }'</code></pre>
+</div>
+
+<div class="step">
+<h3>Upgrade to production</h3>
+<pre><code>curl -X POST /api/v1/developers/upgrade \\
+  -H "Authorization: Bearer lf_test_YOUR_KEY_HERE" \\
+  -H "Content-Type: application/json" \\
+  -d '{"sandboxKeyId": "YOUR_KEY_ID"}'</code></pre>
+<p>Returns a <span class="badge badge-live">live</span> key (<code>lf_live_...</code>) with higher limits and more model pools.</p>
+</div>
+
+</div>
+
+<h2>API Endpoints</h2>
+<table>
+  <thead><tr><th>Method</th><th>Endpoint</th><th>Auth</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td><code>POST</code></td><td><code>/api/v1/developers/register</code></td><td>None</td><td>Create sandbox key</td></tr>
+    <tr><td><code>POST</code></td><td><code>/api/v1/developers/invoke</code></td><td>Bearer</td><td>Synchronous inference</td></tr>
+    <tr><td><code>POST</code></td><td><code>/api/v1/developers/stream</code></td><td>Bearer</td><td>SSE streaming inference</td></tr>
+    <tr><td><code>GET</code></td><td><code>/api/v1/developers/models</code></td><td>Bearer</td><td>List available models</td></tr>
+    <tr><td><code>POST</code></td><td><code>/api/v1/developers/upgrade</code></td><td>Bearer</td><td>Upgrade to production key</td></tr>
+    <tr><td><code>GET</code></td><td><code>/api/v1/keys</code></td><td>Admin</td><td>List your keys</td></tr>
+    <tr><td><code>DELETE</code></td><td><code>/api/v1/keys/:id</code></td><td>Admin</td><td>Revoke a key</td></tr>
+    <tr><td><code>POST</code></td><td><code>/api/v1/keys/:id/rotate</code></td><td>Admin</td><td>Rotate a key</td></tr>
+  </tbody>
+</table>
+
+<h2>Rate Limits</h2>
+<table>
+  <thead><tr><th>Key Type</th><th>RPM</th><th>Tokens/Day</th><th>Pools</th></tr></thead>
+  <tbody>
+    <tr><td><span class="badge badge-sandbox">sandbox</span></td><td>10</td><td>10,000</td><td>cheap</td></tr>
+    <tr><td><span class="badge badge-live">live (free)</span></td><td>60</td><td>100,000</td><td>cheap, fast-code</td></tr>
+  </tbody>
+</table>
+<p>Rate limit headers: <code>X-RateLimit-Limit</code>, <code>X-RateLimit-Remaining</code>, <code>X-RateLimit-Reset</code></p>
+
+<h2>Authentication</h2>
+<p>Include your API key in the <code>Authorization</code> header:</p>
+<pre><code>Authorization: Bearer lf_test_ABCDEF123456_yourSecretHere</code></pre>
+<div class="note">
+  <strong>Keep your key secret.</strong> It is shown only once at creation. If compromised, revoke it via <code>DELETE /api/v1/keys/:id</code> and create a new one.
+</div>
+
+<h2>Model Pools</h2>
+<table>
+  <thead><tr><th>Pool</th><th>Description</th><th>Access</th></tr></thead>
+  <tbody>
+    <tr><td><code>cheap</code></td><td>Cost-optimized models (GPT-4o-mini, Claude Haiku)</td><td>All keys</td></tr>
+    <tr><td><code>fast-code</code></td><td>Code-specialized models (GPT-4o, Claude Sonnet)</td><td>Live keys</td></tr>
+    <tr><td><code>reasoning</code></td><td>Advanced reasoning models</td><td>Enterprise</td></tr>
+    <tr><td><code>architect</code></td><td>Architecture-grade models</td><td>Enterprise</td></tr>
+  </tbody>
+</table>
+
+<h2>Error Codes</h2>
+<table>
+  <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>401</code></td><td>Missing or invalid API key</td></tr>
+    <tr><td><code>403</code></td><td>Pool not available for your key type</td></tr>
+    <tr><td><code>429</code></td><td>Rate limit exceeded (check <code>retryAfter</code>)</td></tr>
+    <tr><td><code>503</code></td><td>Inference service unavailable</td></tr>
+    <tr><td><code>504</code></td><td>Gateway timeout</td></tr>
+  </tbody>
+</table>
+
+<p style="margin-top:3rem;color:#484f58;text-align:center;font-size:.85rem">
+  Freeside API &mdash; Part of the <a href="https://thehoneyjar.xyz">HoneyJar</a> ecosystem on Berachain
+  &bull; <a href="/docs">Full API Docs</a>
+</p>
+
+</div>
+</body>
+</html>`;
 }

@@ -63,12 +63,18 @@ export interface OutboundClaims {
   jti: string;
   /** Reservation ID in arrakis */
   reservation_id: string;
+  /** Budget reservation ID — explicit alias for finn-side finalization (Sprint 4.1) */
+  budget_reservation_id: string;
   /** Reserved amount in micro-USD (string for BigInt safety) */
   reserved_micro: string;
   /** Model pool requested */
   pool_id: string;
   /** Account making the request */
   account_id: string;
+  /** NFT token ID for personality routing (Sprint 4.1) */
+  nft_id: string | null;
+  /** Community tier (1-9) for pool selection (Sprint 4.1) */
+  tier: number;
 }
 
 /**

@@ -1,0 +1,29 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Found timestamp format mismatches that will break SQLite lexicographic comparisons for proposal expiry and reputation window filtering.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "adapters/billing/AgentGovernanceService.ts",
+      "line": 86,
+      "description": "Proposal expiry is stored in ISO 8601 format with a 'T', but later compared against sqliteTimestamp() format. This makes `expires_at <= now` comparisons incorrect, causing proposals not to expire as expected.",
+      "current_code": "```typescript\n    const now = sqliteTimestamp();\n    const expiresAt = new Date(Date.now() + DEFAULT_PROPOSAL_EXPIRY_SECONDS * 1000).toISOString();\n    const proposalId = randomUUID();\n```",
+      "fixed_code": "```typescript\n    const now = sqliteTimestamp();\n    const expiresAt = sqliteTimestamp(new Date(Date.now() + DEFAULT_PROPOSAL_EXPIRY_SECONDS * 1000));\n    const proposalId = randomUUID();\n```",
+      "explanation": "Stores expiry timestamps in the same SQLite-compatible format used for comparisons, ensuring lexicographic ordering works correctly."
+    },
+    {
+      "severity": "major",
+      "file": "adapters/billing/AgentGovernanceService.ts",
+      "line": 214,
+      "description": "Reputation window cutoff uses ISO 8601 string, but economic_events.created_at is compared lexicographically against sqliteTimestamp format. This can exclude valid events or include invalid ones.",
+      "current_code": "```typescript\n        const windowSeconds = this.resolveNumericParam('governance.reputation_window_seconds');\n        const scaleFactor = this.resolveNumericParam('governance.reputation_scale_factor');\n        const cutoff = new Date(Date.now() - windowSeconds * 1000).toISOString();\n```",
+      "fixed_code": "```typescript\n        const windowSeconds = this.resolveNumericParam('governance.reputation_window_seconds');\n        const scaleFactor = this.resolveNumericParam('governance.reputation_scale_factor');\n        const cutoff = sqliteTimestamp(new Date(Date.now() - windowSeconds * 1000));\n```",
+      "explanation": "Ensures the cutoff timestamp format matches the stored SQLite datetime format for correct lexicographic comparisons."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

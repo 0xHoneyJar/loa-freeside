@@ -180,6 +180,35 @@ export const badges = pgTable(
 );
 
 // =============================================================================
+// Agent Threads Table (Sprint 4, Task 4.6)
+// =============================================================================
+
+export const agentThreads = pgTable(
+  'agent_threads',
+  {
+    id: text('id').primaryKey(),
+    nftId: text('nft_id').notNull(),
+    channelId: text('channel_id').notNull(),
+    threadId: text('thread_id').notNull().unique(),
+    ownerWallet: text('owner_wallet').notNull(),
+    communityId: text('community_id').notNull(),
+    isActive: integer('is_active').notNull().default(1),
+    createdAt: text('created_at').notNull(),
+    lastActiveAt: text('last_active_at').notNull(),
+    ownershipVerifiedAt: text('ownership_verified_at').notNull(),
+  },
+  (table) => ({
+    communityActiveIdx: index('idx_agent_threads_community').on(table.communityId, table.isActive),
+    nftIdx: index('idx_agent_threads_nft').on(table.nftId),
+    walletIdx: index('idx_agent_threads_wallet').on(table.ownerWallet),
+    // Sprint 321 (high-3): Dedup enforced at application layer (insert-or-find pattern in my-agent-data.ts).
+    // Drizzle does not support partial unique indexes. Deploy raw migration for production:
+    // CREATE UNIQUE INDEX uq_agent_threads_active_nft ON agent_threads (community_id, nft_id) WHERE is_active = 1;
+    // This allows multiple deactivated rows per (community_id, nft_id) while preventing duplicate active threads.
+  })
+);
+
+// =============================================================================
 // Type Exports
 // =============================================================================
 
@@ -191,3 +220,6 @@ export type NewProfile = typeof profiles.$inferInsert;
 
 export type Badge = typeof badges.$inferSelect;
 export type NewBadge = typeof badges.$inferInsert;
+
+export type AgentThread = typeof agentThreads.$inferSelect;
+export type NewAgentThread = typeof agentThreads.$inferInsert;

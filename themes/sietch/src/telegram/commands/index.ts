@@ -16,6 +16,8 @@ import { registerRefreshCommand } from './refresh.js';
 import { registerUnlinkCommand } from './unlink.js';
 import { registerAlertsCommand } from './alerts.js';
 import { registerInlineQueries } from '../inline.js';
+// Cycle 036: Credit Pack Purchase
+import { registerBuyCreditsCommand } from './buy-credits.js';
 
 /**
  * Register all command handlers on the bot
@@ -41,6 +43,9 @@ export function registerAllCommands(bot: Bot<BotContext>): void {
   // Inline queries (Sprint 33)
   registerInlineQueries(bot);
 
+  // Cycle 036: Credit Pack Purchase
+  registerBuyCreditsCommand(bot);
+
   // Set bot commands for the menu
   bot.api.setMyCommands([
     { command: 'start', description: 'Start the bot and see welcome message' },
@@ -52,6 +57,7 @@ export function registerAllCommands(bot: Bot<BotContext>): void {
     { command: 'refresh', description: 'Refresh your score data' },
     { command: 'unlink', description: 'Disconnect your wallet' },
     { command: 'help', description: 'Get help with commands' },
+    { command: 'buy_credits', description: 'Purchase a credit pack with crypto' },
   ]).catch((error) => {
     // Non-fatal - bot works without command menu
     console.error('Failed to set bot commands:', error);
