@@ -106,8 +106,12 @@ resource "aws_ecs_task_definition" "pgbouncer" {
           value = "5"
         },
         {
+          name  = "RESERVE_POOL_TIMEOUT"
+          value = tostring(var.pgbouncer_reserve_pool_timeout)
+        },
+        {
           name  = "SERVER_IDLE_TIMEOUT"
-          value = "300"
+          value = tostring(var.pgbouncer_server_idle_timeout)
         },
         {
           name  = "QUERY_TIMEOUT"

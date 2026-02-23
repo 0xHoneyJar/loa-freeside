@@ -1,68 +1,44 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "As written, this plan is likely to fail because several sprint gates depend on missing cross-repo/IaC tasks (freeside ECS service, finn JWT verification, WebSocket/ALB wiring, Discord ownership verification, and message storage), and some acceptance criteria can’t be objectively verified with the described work.",
+  "summary": "Plan is close, but a few missing/incorrect dependencies and migration/flag coupling issues would likely break sequencing, block deploys, or make features non-toggleable as claimed.",
   "blocking_issues": [
     {
-      "location": "Sprint 1 (Issue #77) — overall deployment gate / Task 1.1",
-      "issue": "Plan verifies/enables loa-finn ECS, but does not include the critical work to deploy loa-freeside to ECS in production (task definition/service/ALB target group/env/secrets) even though G-1 requires both services deployed and healthy.",
-      "why_blocking": "You can’t meet G-1 (“Both services deployed to production on ECS with health checks”) if only finn is explicitly enabled/verified; freeside deployment could be assumed “already exists” but there is no task to confirm desired_count, ALB routing, env vars, Secrets Manager bindings, Cloud Map/SG rules, or health check path alignment for freeside in the same sprint.",
-      "fix": "Add a Sprint 1 task explicitly verifying/enabling loa-freeside ECS/Terraform resources (desired_count, task definition env/secrets, ALB listener rules, target group health check path, SG ingress/egress, Cloud Map if used) with acceptance criteria: `terraform plan` clean, service stable, ALB returns 200 on /health, and both services reachable as intended (public vs internal)."
+      "location": "Sprint 1 / Task 1.2 (insertLotEntry) + Sprint 4 / Task 4.1 (event sourcing columns)",
+      "issue": "insertLotEntry AC requires allocating sequence_number when FEATURE_EVENT_SOURCING is enabled, but the required schema (sequence_number column + community_event_sequences table + trigger) is only created in Sprint 4.",
+      "why_blocking": "If FEATURE_EVENT_SOURCING is enabled in any environment before Sprint 4 lands (or if tests toggle it), insertLotEntry will fail at runtime (missing column/table) or cannot satisfy AC-1.2.3. This is an impossible dependency ordering as written.",
+      "fix": "Either (A) move Migration 0013a (or at least the minimal columns/table needed for allocation) into Sprint 1 before Task 1.2, or (B) change Task 1.2 to explicitly NOT allocate sequences until Sprint 4 (feature flag must remain false), with an acceptance criterion that insertLotEntry degrades safely when event-sourcing schema is absent (e.g., detects column existence once at startup and disables allocation)."
     },
     {
-      "location": "Sprint 1 — Task 1.3 (ES256 JWKS + signer) and Sprint 3 dependencies",
-      "issue": "Only the signing/JWKS publishing side is planned; there is no corresponding task to implement/verify JWT validation in loa-finn (JWKS fetch, caching, aud/iss/exp enforcement).",
-      "why_blocking": "Sprint 1 gate says “S2S JWT validated” and Sprint 3 requires authenticated freeside→finn calls. Without finn-side verification work (likely in loa-finn repo), S2S auth cannot be proven working and integration will stall.",
-      "fix": "Add an explicit cross-repo task (loa-finn) to implement ES256 JWT verification against freeside JWKS (iss/aud/exp/iat checks, clock skew handling, JWKS cache/refresh, kid selection) plus an integration test or curl-based proof in staging. Also add a mitigation plan if loa-finn changes can’t land (temporary shared secret HS256 is not acceptable per security req; better: ship JWKS verifier first)."
+      "location": "Sprint 2 / Task 2.3 (Integration into Debit Path) and Sprint 1 / Task 1.2",
+      "issue": "Task 2.3 says debitLots() accepts purpose and “all INSERTs go through insertLotEntry()”, but Task 1.2 already requires refactoring debitLots/mint/reserve/release/expire to use insertLotEntry. The sequencing implies debitLots is refactored before purpose exists, then refactored again.",
+      "why_blocking": "This creates a high chance of merge conflicts and duplicated work for a single engineer, and more importantly it risks landing an intermediate state where debitLots is refactored but purpose is not written (or vice versa), violating Sprint 2 success criteria (“Every debit operation records a purpose”).",
+      "fix": "Make the dependency explicit: either (A) in Sprint 1 refactor to insertLotEntry but keep a purpose parameter plumbed through as optional (writing only when column exists/flag enabled), or (B) defer the debitLots refactor portion of Task 1.2 for debitLots specifically into Sprint 2 so the refactor and purpose plumbing happen in one change. Update ACs to avoid double-touching the same hot path."
     },
     {
-      "location": "Sprint 1 — Task 1.1 env var `FREESIDE_JWKS_URL=http://api.arrakis-{env}.local:3000/.well-known/jwks.json`",
-      "issue": "JWKS URL/hostname is underspecified and likely wrong for ECS networking; it assumes an internal DNS name for freeside (`api.arrakis-{env}.local`) that isn’t defined in the “What Already Exists” table (only finn Cloud Map is listed).",
-      "why_blocking": "If finn can’t resolve/reach the JWKS endpoint from inside the VPC, JWT verification will fail and all authenticated calls will fail. This is a common ECS/Cloud Map pitfall: ALB public DNS vs internal service discovery vs task ENI reachability.",
-      "fix": "Decide and implement one concrete JWKS reachability path: (a) register freeside in Cloud Map (e.g., `freeside.arrakis-{env}.local`) and use that, or (b) expose JWKS via internal ALB listener/DNS, or (c) host JWKS in S3/CloudFront (but that’s new infra). Add Terraform changes + acceptance criteria: from a finn task, `curl $FREESIDE_JWKS_URL` succeeds and returns JWKS."
+      "location": "Sprint 3 / Task 3.2 (Debit Hourly Rollup Job) and Sprint 2 / Purpose column",
+      "issue": "Sprint dependency graph states Velocity depends on purpose column, but Task 3.2/3.3 do not list Task 2.1 as a dependency and do not specify whether rollups are purpose-segmented or purpose-agnostic.",
+      "why_blocking": "If the SDD expects velocity to be computed per purpose (or filtered by purpose), the rollup schema/job will be wrong and require rework. If velocity is purpose-agnostic, then the stated dependency on purpose is incorrect and will cause planning/implementation mismatch. Either way, ambiguity here can derail Sprint 3 implementation.",
+      "fix": "Clarify in Sprint 3 tasks/ACs whether community_debit_hourly includes purpose (e.g., PK (community_id, hour, purpose)) or explicitly does not. Then align dependencies: add Task 2.1 as a dependency if purpose is required; otherwise remove the dependency from the graph and ensure the rollup query ignores purpose safely."
     },
     {
-      "location": "Sprint 4 — Task 4.1 (WebSocket endpoint) + existing ALB/WAF",
-      "issue": "No IaC task to ensure ALB listener rules, target group settings, idle timeouts, and WAF behavior are compatible with WebSocket streaming for `/chat/:tokenId/ws`.",
-      "why_blocking": "G-9 requires streaming via WebSocket. Even if the app code works locally, production commonly fails without ALB idle timeout tuning, correct listener rule path patterns, and ensuring WAF doesn’t block upgrade requests. The plan lists “ALB + WAF supports WebSocket” but doesn’t include a verification/deploy task for the specific route.",
-      "fix": "Add a Terraform+staging verification task before/within Sprint 4: confirm ALB idle timeout (e.g., 60–300s), listener rules route `/chat/*` and `/chat/*/ws`, WAF allows `Upgrade: websocket`, and CloudWatch metrics show successful 101 upgrades. Acceptance: `wscat`/browser connects in staging and streams for N minutes without disconnect."
+      "location": "Sprint 1 / Task 1.5 (Feature Flag Infrastructure) + Rollout Strategy section",
+      "issue": "AC-1.5.3 says disabled features produce “no column writes”, but multiple tasks add columns/constraints/triggers that will exist regardless of flags (purpose column default + NOT NULL check; event sourcing trigger enforcing fields; governance tables). Also, Task 4.1 makes correlation_id NOT NULL DEFAULT, while Task 1.2 also claims to always set correlation_id.",
+      "why_blocking": "This is a deploy/runtime failure risk because the plan claims flags can be independently toggled, but DB-level enforcement (defaults/triggers/checks) can force writes or reject writes even when a feature is “disabled”. That breaks the stated rollout strategy and can cause production incidents when toggling flags.",
+      "fix": "Make DB enforcement explicitly compatible with flags: (A) ensure triggers/check constraints are conditional on a per-community flag stored in DB (not just app env), or (B) delay installing strict triggers/NOT NULL checks until the corresponding feature is enabled everywhere. Update AC-1.5.3 to a testable statement like: “When FEATURE_X is false, application code does not read/write X fields and endpoints are not registered; DB schema may exist.”"
     },
     {
-      "location": "Sprint 4 — Task 4.6 (Channel synchronization design)",
-      "issue": "It proposes storing “all messages” in `agent_threads` table, but migration 063 defines `agent_threads` as thread mapping metadata only; there is no messages table/schema or tasks to implement message persistence.",
-      "why_blocking": "Acceptance criteria for 4.6 (“Messages from both surfaces stored in same table”, “Web chat displays full conversation history including Discord messages”) cannot be met with the current schema/tasks. This will stall implementation or cause last-minute schema churn mid-sprint.",
-      "fix": "Add a migration for `agent_messages` (or similar) with fields: message_id, thread_id, nft_id, community_id, source, author_wallet/discord_user_id, content, created_at, and any token usage metadata. Update 4.6 to write/read from that table, and update 4.1 to render history from it."
+      "location": "Sprint 5 / Task 5.4 (Outbox Worker)",
+      "issue": "Outbox processing concurrency/locking semantics are not specified (e.g., SELECT ... FOR UPDATE SKIP LOCKED), and idempotency keying is underspecified beyond “policy_id version check”.",
+      "why_blocking": "Without a clear locking strategy, multiple worker instances (or retries) can process the same outbox row concurrently, causing duplicate conservationGuard.updateLimit() calls and inconsistent policy enforcement. This is a classic source of production failure for outbox patterns.",
+      "fix": "Add explicit ACs: worker claims rows with `FOR UPDATE SKIP LOCKED` (or an atomic UPDATE ... WHERE processed_at IS NULL RETURNING), uses a unique idempotency key (policy_id + policy_version or outbox_id) at the conservation guard boundary, and guarantees exactly-once side effects from at-least-once delivery. Include a concurrency integration test with 2 workers."
     },
     {
-      "location": "Sprint 4 — Task 4.2 (SIWE) and Task 4.4/4.5 (Discord ownership verification)",
-      "issue": "Discord commands require “verify wallet ownership” but the plan does not include a concrete linking mechanism between a Discord user and a wallet (or how ownership is proven inside Discord).",
-      "why_blocking": "G-5 depends on gating: “NFT holder invokes /my-agent and gets dedicated thread” and “Non-owner cannot write”. Without a defined Discord↔wallet binding (SIWE in web doesn’t automatically apply to Discord), you can’t reliably enforce ownership and the feature will fail or be insecure.",
-      "fix": "Add an explicit task to implement Discord wallet linking (e.g., `/link-wallet` that issues a nonce and verifies an EIP-4361 signature via DM/web callback), store mapping in DB, and use it for ownership checks. Acceptance: a Discord user links wallet, bot verifies NFT ownership, then /my-agent works; unlinked users are blocked with a clear instruction."
-    },
-    {
-      "location": "Sprint 2 — Task 2.4 (Webhook verification) / overall payments gate G-2",
-      "issue": "The plan relies on NOWPayments webhook configuration but does not include an end-to-end staging test harness for HMAC-SHA512 verification + idempotency + state machine transitions using real NOWPayments IPN payloads/signature headers.",
-      "why_blocking": "G-2 is “First real credit pack purchase”. Webhook signature mismatches, header naming differences, or body canonicalization issues are a top cause of launch failure; without a concrete test step using captured real payloads (or NOWPayments test IPNs), you risk discovering it only in production.",
-      "fix": "Add a Sprint 2 task: capture a real/sandbox IPN request (raw body + headers), add an automated verification test (or replay tool) that posts it to staging and asserts: signature valid, state transition correct, idempotent replay safe, credits minted exactly once."
-    },
-    {
-      "location": "Sprint 3 — Task 3.1 (cache invalidation on NFT transfer event)",
-      "issue": "Cache invalidation depends on an “NFT transfer event” source, but no event ingestion/indexer task is included (what chain, what contract, where events come from, how they reach freeside).",
-      "why_blocking": "Acceptance criterion “Cache invalidated on transfer event” cannot be implemented without an event pipeline. This will either be skipped (failing AC) or cause scope explosion mid-sprint.",
-      "fix": "Either (a) cut/relax the AC for this sprint (invalidate by TTL only) or (b) add a concrete task to consume transfer events (existing indexer/webhook if it exists) and trigger Redis invalidation. Make the dependency explicit and verifiable."
-    },
-    {
-      "location": "Sprint 5 — Task 5.1/5.2 (admin spend breakdown + JSONL audit) and Sprint 3 budget finalization",
-      "issue": "Admin spend breakdown and JSONL audit require a durable ledger of per-inference spend by pool (finalized amounts, pool_id, tokens used, reservation/finalization ids), but the plan doesn’t include tasks to persist these usage records (it only mentions parsing response headers).",
-      "why_blocking": "G-6 and G-7 can’t be satisfied if the system doesn’t store per-request accounting events in a queryable/auditable table. Relying on logs/headers at request time won’t support exports and breakdowns.",
-      "fix": "Add a migration + write-path task to persist an immutable accounting/audit event per reservation finalization (e.g., `credit_ledger` / `usage_events`) including: community_id, nft_id, pool_id, tokens, amount_micro, finalization_id, conservation_guard_result, timestamps. Then base admin endpoints/export on that table."
-    },
-    {
-      "location": "Sprint 6 — Task 6.2 (Conservation guard failure alert within 60s)",
-      "issue": "No task defines how conservation guard failures are emitted as metrics/log events that CloudWatch/AMP alarms can actually trigger on (what metric name, where it’s incremented, and how it reaches AMP/CloudWatch).",
-      "why_blocking": "G-3 requires an alert within 60s. Terraform alarms alone won’t work unless the application emits a signal (custom metric, log filter metric, or Prometheus counter) on invariant failure.",
-      "fix": "Add an instrumentation task: on any conservation guard violation, increment a Prometheus counter (e.g., `conservation_guard_failures_total{invariant=...}`) and/or emit a structured log line that a CloudWatch metric filter converts to a metric. Then define the alarm on that metric with a 60s evaluation period and test by forcing a known failure in staging."
+      "location": "Sprint 5 / Migrations numbering (Task 5.2 labeled Migration 0015) vs Sprint 3 (Task 3.1 labeled Migration 0015)",
+      "issue": "Two different migrations are both numbered 0015.",
+      "why_blocking": "Most migration runners will fail or behave unpredictably with duplicate version identifiers, blocking deploy and halting the sprint’s ability to ship.",
+      "fix": "Renumber one migration (e.g., make admin audit log 0016) and add an acceptance criterion that the migration tool’s ordering/versioning is validated in CI (e.g., “no duplicate migration IDs”)."
     }
   ],
-  "question": "",
+  "question": null,
   "iteration": 1
 }

@@ -1,498 +1,762 @@
-# PRD: Launch Readiness — Production Stack, Payments & Agent Surfaces
+# PRD: The Ostrom Protocol — Economic Memory, Velocity, Event Sourcing & Governance
 
-**Version:** 1.1.0
-**Date:** 2026-02-20
+**Version:** 1.2.0
+**Date:** 2026-02-24
 **Status:** Active
-**Cycle:** cycle-036
-**Predecessor:** cycle-035 "The Neuromancer Codex" (archived — documentation complete)
-**Source:** [loa-finn#66](https://github.com/0xHoneyJar/loa-finn/issues/66) (Launch Readiness RFC), Issues [#77](https://github.com/0xHoneyJar/loa-freeside/issues/77)–[#85](https://github.com/0xHoneyJar/loa-freeside/issues/85)
+**Cycle:** cycle-038
+**Predecessor:** cycle-037 "Proof of Economic Life" (archived — Bridgebuilder converged at 14→3→0, PR #90)
+**Source:** Bridgebuilder Architectural Meditation [Part IV: The Creative Edge](https://github.com/0xHoneyJar/loa-freeside/pull/90), [Ostrom Analysis](https://github.com/0xHoneyJar/loa-freeside/pull/90#issuecomment-3942458906)
+**Ecosystem Context:** [Launch Readiness RFC](https://github.com/0xHoneyJar/loa-finn/issues/66), [Permissionscape RFC](https://github.com/0xHoneyJar/loa-finn/issues/31), [Billing RFC](https://github.com/0xHoneyJar/loa-freeside/issues/62), [Web4 Manifesto](https://meow.bio/web4.html)
 
 ---
 
 ## 0. The Question Behind the Question
 
-The request is "deploy and launch." The real problem is **the last mile between infrastructure and revenue**.
+The request is "implement the four Creative Edge proposals from the Bridgebuilder review." The real question is: **should the economic loop become conscious of itself?**
 
-52 global sprints across 20 cycles produced a complete multi-model inference platform: 5-pool model routing, budget-atomic accounting, token-gated access, 9-tier conviction scoring, ensemble strategies, BYOK encryption, and a full NOWPayments crypto billing adapter with 95 passing tests. The documentation is now production-grade (cycle-035).
+Cycle-037 proved the economic loop turns. Conservation invariants hold. Three payment sources work. Reconciliation recovers missed webhooks. The code works. But the code doesn't *know what it's doing*. It tracks amounts but not purposes. It measures balances but not velocity. It records events but can't replay them. It enforces limits but doesn't let communities set them.
 
-But none of it is deployed. The NOWPayments adapter is feature-flagged off. The loa-finn inference engine has no production container. Users can't buy credits, can't talk to their NFT agents, and community admins can't see what's happening.
+The Bridgebuilder review found that the architecture unconsciously implements Elinor Ostrom's principles for managing commons — the same framework that won the 2009 Nobel in Economics. Community-scoped budgets as defined boundaries. Conservation invariants as social contracts. Graduated sanctions via circuit breakers. Reconciliation as conflict resolution. These patterns are already in the code. They are not named. They are not deliberate. They are not exposed to the communities they serve.
 
-This is the "last mile" problem that kills platforms. Stripe had the best payment API in 2011 — but it didn't matter until developers could `curl` it from production. We have the agent economy infrastructure. This cycle makes it real.
+This cycle makes the unconscious conscious. It adds four capabilities that transform the economic loop from a billing mechanism into an economic protocol:
 
-> The gap between "infrastructure ready" and "users can use it" — loa-finn#66 §6
+1. **Economic Memory** — Lots remember what they funded, not just how much
+2. **Economic Velocity** — The system predicts when communities will exhaust credits
+3. **Event Sourcing** — The append-only ledger becomes a replayable history
+4. **Governance Layer** — Communities govern their own economic policies
+
+> "The conservation invariants aren't just accounting rules — they're the social contract that lets a community say: we created 10,000 credits, and we know exactly where every credit went." — Bridgebuilder, PR #90
+
+The deeper insight: when you build an economic system for communities rather than individuals, you inevitably rediscover Ostrom. The question is whether you discover her *consciously* and encode her principles *deliberately*, or whether you stumble into them and encode them *accidentally*. Right now, the code stumbles into Ostrom. This cycle stumbles *on purpose*.
 
 ---
 
 ## 1. Problem Statement
 
-| ID | Problem | Evidence |
-|----|---------|----------|
-| P-1 | Neither loa-finn nor loa-freeside is deployed to production | Issue #77 — "Neither loa-finn nor loa-freeside is deployed to production" |
-| P-2 | No way to collect money despite fully-built billing adapter | Issue #79 — "We have no way to collect money" (loa-freeside#62) |
-| P-3 | No production monitoring — failures detected in code but no human alerting | Issue #78 — "The code detects failures; nothing alerts humans about them" |
-| P-4 | NFT personality routing bridge doesn't exist between loa-freeside and loa-finn | Issue #80 — "The bridge between them doesn't exist yet" |
-| P-5 | No per-NFT conversational spaces in Discord | Issue #81 — each NFT agent needs its own thread |
-| P-6 | Community admins have zero visibility into spend, usage, or model allocation | Issue #82 — "Without a dashboard, communities can't manage their agent budgets" |
-| P-7 | No audit trail or pool enforcement transparency | Issue #83 — "Communities won't adopt infrastructure they can't audit" |
-| P-8 | No self-service developer onboarding for the API platform (Product B) | Issue #84 — developers need API keys without manual intervention |
-| P-9 | No web surface for non-Discord users | Issue #85 — "Not all users are on Discord" |
+### What Exists (Cycle-037 Delivery)
+
+| Component | Status | Evidence |
+|-----------|--------|----------|
+| Conservation Guard | Production-ready | BigInt-pure arithmetic, monotonic fencing, 5 invariants (I-1…I-5) |
+| Credit Lot Ledger | Production-ready | Double-entry append-only, earliest-expiry-first debit, multi-lot split |
+| NOWPayments | Production-ready | HMAC-SHA512 webhook, idempotent mint, Redis budget adjustment |
+| x402 Settlement | Production-ready | Conservative-quote-settle, transactional nonce, credit-back |
+| Reconciliation Sweep | Production-ready | Cursor-based, Redis-independent fallback, 5-min EventBridge schedule |
+| Feature Flags | In place | `FEATURE_BILLING_ENABLED`, `FEATURE_X402_ENABLED` |
+| Observability | In place | CloudWatch EMF metrics for all economic operations |
+
+### What's Missing (The Four Gaps)
+
+| Gap | Current State | Impact |
+|-----|--------------|--------|
+| **G-1: Economic Memory** | Lots track `source` and `amount_micro` but not what was purchased | Communities can't answer "what did we spend our money on?" — the most basic economic question |
+| **G-2: Economic Velocity** | Conservation guard checks snapshots at time T | No predictive capability — communities discover they're out of credits when a request fails, not before |
+| **G-3: Event Sourcing** | Lot entries are append-only but lack formal event semantics | Can't replay history, branch for what-if, debug conservation violations, or build cross-community models |
+| **G-4: Governance Layer** | Budget limits are admin-set numbers | Communities can't govern their own economics — the Ostrom principle most conspicuously absent |
+
+### The Ostrom Gap
+
+Elinor Ostrom identified 8 principles for successful commons governance. Cycle-037 implements 6 of them unconsciously. This cycle makes them explicit and adds the 2 that are missing:
+
+| Ostrom Principle | Cycle-037 Status | Cycle-038 Action |
+|-----------------|------------------|------------------|
+| 1. Clearly defined boundaries | `community_id` as tenant key | No change needed |
+| 2. Proportional equivalence | Credit lots: what you fund is what you consume | **G-1**: Add purpose tracking — proportionality becomes visible |
+| 3. Collective-choice arrangements | Admin-set limits only | **G-4**: Governance layer — communities set their own policies |
+| 4. Monitoring | Conservation guard + CloudWatch EMF | **G-2**: Add velocity — monitoring becomes predictive |
+| 5. Graduated sanctions | Warning → Critical → Circuit breaker | No change needed |
+| 6. Conflict resolution | Reconciliation sweep | No change needed |
+| 7. Minimal recognition of rights to organize | Feature flags for adoption pace | **G-4**: Governance layer — communities adopt economic features with agency |
+| 8. Nested enterprises | Per-community pools within platform | **G-3**: Event sourcing — cross-community modeling becomes possible |
 
 ---
 
 ## 2. Goals & Success Metrics
 
-| ID | Goal | Metric | Source |
-|----|------|--------|--------|
-| G-1 | Deploy full stack to production on existing AWS ECS infrastructure | Both services responding on HTTPS with health checks | #77 |
-| G-2 | Enable crypto payment revenue collection | First real credit pack purchase via NOWPayments | #79 |
-| G-3 | Production observability with human alerting | Conservation guard failure triggers alert within 60s | #78 |
-| G-4 | Per-NFT personality-driven inference routing | Two different NFTs get different model pool selections | #80 |
-| G-5 | Per-NFT Discord conversational spaces | NFT holder invokes `/my-agent` and gets dedicated thread | #81 |
-| G-6 | Community admin budget visibility | Admin views spend breakdown by model pool | #82 |
-| G-7 | Auditable billing and pool enforcement | Community downloads JSONL audit trail of all credit operations | #83 |
-| G-8 | Self-service developer API keys | Developer creates key, makes inference request, zero manual intervention | #84 |
-| G-9 | Web chat surface for agents | Embeddable widget streams responses via WebSocket | #85 |
+| ID | Goal | Metric | Measurement |
+|----|------|--------|-------------|
+| G-1 | **Economic Memory**: Lots track what they funded | 100% of new debit lot_entries have `purpose` != 'unclassified' | Query: `SELECT COUNT(*) FROM lot_entries WHERE entry_type = 'debit' AND purpose = 'unclassified' AND created_at > migration_date` = 0 |
+| G-2 | **Economic Velocity**: Predictive credit exhaustion | Velocity alerts fire ≥24h before actual exhaustion in test scenarios | E2E test with controlled burn rate validates prediction accuracy |
+| G-3 | **Event Sourcing**: Replayable economic history | Community economic state reconstructable from lot_entries alone | Replay test: `rebuild_state(community_id)` matches `lot_balances` view within 1 micro |
+| G-4 | **Governance Layer**: Community-governed economic policies | Communities can set budget limits, pool priorities, and spending alerts via governance API | E2E test: governance proposal → approval → policy change → enforcement |
 
-### Timeline
+### Non-Goals (Explicit)
 
-**Target: 1-2 weeks to Product A launch (NFT agents live in Discord with billing).**
-Product B (API platform) and web chat widget are in-scope but can trail by days.
-
-### Critical Path (P0 Minimum Viable Launch)
-
-The 1-2 week target is achievable ONLY if P0 is scoped to the true critical path. If any item below slips, the entire launch slips:
-
-1. **Deploy** — loa-freeside + loa-finn on ECS with health checks (FR-0.1, FR-0.3)
-2. **S2S Auth** — JWT exchange validated in staging (FR-0.3, go/no-go gate)
-3. **Basic Discord chat** — `/my-agent` → streamed inference via personality bridge (FR-3.1, FR-2.1)
-4. **Payment + credit mint** — NOWPayments checkout → webhook → credits arrive (FR-1.2, FR-1.4)
-5. **Minimal alerting** — Conservation guard failure → Slack within 60s (FR-0.7)
-
-Everything else (dashboards, audit exports, web widget, API portal, Telegram) follows in P1/P2 and MUST NOT block the P0 launch date. If cross-repo blockers (loa-finn Dockerfile, personality derivation) slip >3 days, escalate to loa-finn team immediately.
+| Non-Goal | Rationale |
+|----------|-----------|
+| User-facing dashboard UI | This cycle builds the data layer; UI is a separate cycle |
+| On-chain governance (DAO voting) | Start with off-chain governance via Arrakis conviction scoring; on-chain is future |
+| Cross-community credit transfer | Requires bilateral governance agreement — depends on G-4 maturity |
+| Real-time streaming of economic events | WebSocket/SSE layer for economic events is future (depends on G-3 event log) |
 
 ---
 
 ## 3. User & Stakeholder Context
 
-### Primary Personas
+### Primary Persona: Community Operator
 
-| Persona | Description | Key Needs |
-|---------|-------------|-----------|
-| **NFT Holder** | Owns a finnNFT, wants to interact with their agent | Chat with their NFT personality, see it respond uniquely, buy credits |
-| **Community Admin** | Manages a Discord community using Loa platform | Budget visibility, usage dashboards, audit trails, tier configuration |
-| **Developer** | Building on the Loa API (Product B) | Self-service API keys, sandbox testing, clear documentation |
-| **Platform Operator** | THJ team deploying and maintaining infrastructure | Production monitoring, alerting, deployment automation |
+A community operator manages a Discord/Telegram community that uses THJ's AI agents. They fund agents via NOWPayments or x402, configure which models are available via pool routing, and monitor usage. Today they see a balance. Tomorrow they should see:
+- What their credits funded (inference vs. tool use vs. storage)
+- How fast credits are being consumed (and when they'll run out)
+- Full economic history from genesis (who spent what, when, why)
+- The ability to set their own economic policies (limits, priorities, alerts)
 
-### User Journeys
+### Secondary Persona: Platform Operator (THJ Team)
 
-**NFT Holder Journey:**
-1. Verify wallet in Discord → tier assigned based on conviction score
-2. `/my-agent` → dedicated Discord thread created with NFT personality
-3. Chat with agent → personality-routed inference through correct model pool
-4. Credits run low → `/buy-credits 10` → NOWPayments checkout → credits arrive
-5. Continue chatting
+The platform operator needs cross-community economic intelligence: which communities are growing? Which are about to churn (credits exhausting with no replenishment)? What's the aggregate revenue velocity? Event sourcing enables this analysis without building separate analytics pipelines.
 
-**Developer Journey (Product B):**
-1. Sign up via web form → get sandbox API key (`lf_test_...`)
-2. Make first inference request against `cheap` pool (free tier)
-3. Verify it works → upgrade to production key (`lf_live_...`)
-4. View usage dashboard → manage rate limits and budget
+### Tertiary Persona: AI Agent (Future)
 
-**Community Admin Journey:**
-1. View budget dashboard → see spend by model pool
-2. Download audit trail as JSONL → verify conservation invariants
-3. See pool enforcement decisions → understand why a request was routed where
-4. Set budget caps → control community spending
+In the Conway-divergent architecture (THJ = communitarian, Conway = sovereign), agents are servants of community governance. The governance layer defines what agents can do economically. An agent that needs more tokens for a complex task should be able to request a budget increase *from the community governance process*, not from an admin.
 
 ---
 
 ## 4. Functional Requirements
 
-### Track 0: Make It Run (Issues #77, #78)
+### F-1: Purpose Field on Credit Lots (Economic Memory)
 
-| ID | Requirement | Acceptance Criteria | Source |
-|----|-------------|---------------------|--------|
-| FR-0.1 | Deploy loa-finn as ECS service in existing AWS cluster | ECS task definition, service, ALB target group, health check passing | #77 |
-| FR-0.2 | Docker Compose for local full-stack development | `docker compose up` starts loa-freeside + loa-finn + Redis + PostgreSQL | #77 |
-| FR-0.3 | S2S JWT exchange working in production | loa-freeside signs ES256 JWT (`iss: loa-freeside`, `aud: loa-finn`) → loa-finn validates via JWKS; loa-finn rejects all requests without valid S2S JWT | #77 |
-| FR-0.4 | At least one model pool responds to inference in production | Discord `/agent` → streamed response via loa-finn | #77 |
-| FR-0.5 | Metrics collection from both services | Amazon Managed Prometheus (AMP) workspace with ADOT collector sidecar containers on each ECS task; ADOT discovers targets via ECS task metadata endpoint; existing CloudWatch Container Insights remain for ECS-level metrics | #78 |
-| FR-0.6 | CloudWatch dashboards for unified service health | Inference latency, error rate, billing flow, auth failures, conservation guard panels; sourced from AMP via CloudWatch data source or Grafana on AMP | #78 |
-| FR-0.7 | Alerting on conservation guard failure and service downtime | AMP alerting rules → SNS topic → Slack webhook; fires within 60s of conservation guard failure or service health check failure | #78 |
+**What**: Add a constrained `purpose` type to `lot_entries` that classifies what the credit funded. Purpose is the **source of truth on lot_entries** — it is populated at debit time from the pool_id → purpose mapping. The `usage_events` table does NOT carry its own purpose field; purpose is derived from lot_entries when needed for cross-referencing.
 
-**CRITICAL CONSTRAINT:** Use existing Terraform/AWS ECS infrastructure. No Fly.io. loa-finn deploys as a new ECS service in the existing cluster, behind the existing ALB, using existing RDS/ElastiCache/VPC/Route53. Reference: `infrastructure/terraform/ecs.tf`, `alb.tf`, `variables.tf`.
+**Purpose Values** (Postgres ENUM — extensible via ALTER TYPE ADD VALUE):
+- `inference` — LLM completion (tokens in + tokens out)
+- `tool_use` — Tool execution (function calls, API integrations)
+- `embedding` — Embedding generation
+- `image_gen` — Image generation
+- `storage` — Persistent storage consumption
+- `governance` — Governance operations (voting, proposal creation)
+- `unclassified` — Legacy entries or entries where purpose couldn't be determined
 
-**S2S TRUST MODEL:** loa-finn is internal-only — not directly reachable from the internet. loa-freeside is the sole public-facing gateway. Network enforcement: loa-finn's security group allows inbound only from loa-freeside's security group (no public ALB listener rule for finn). loa-freeside calls loa-finn via internal service discovery (`finn.arrakis-{env}.local`) or private ALB target group. JWKS endpoint hosted by loa-freeside (the issuer), not loa-finn (the verifier). JWT claims: `iss: loa-freeside`, `aud: loa-finn`, TTL: 60s. Key rotation: ES256 keypair in Secrets Manager, rotated via scheduled Lambda (quarterly). loa-finn MUST reject all requests without valid S2S JWT bearing correct `aud`.
+**Schema Change**:
+```sql
+-- Migration: Create purpose enum type
+CREATE TYPE economic_purpose AS ENUM (
+  'inference', 'tool_use', 'embedding', 'image_gen',
+  'storage', 'governance', 'unclassified'
+);
 
-### Track 1A: Make It Pay (Issue #79)
+-- Add purpose to lot_entries with constrained type
+ALTER TABLE lot_entries ADD COLUMN purpose economic_purpose NOT NULL DEFAULT 'unclassified';
 
-| ID | Requirement | Acceptance Criteria | Source |
-|----|-------------|---------------------|--------|
-| FR-1.1 | Enable NOWPayments feature flag in production | `FEATURE_CRYPTO_PAYMENTS_ENABLED=true`, API key + IPN secret configured | #79 |
-| FR-1.2 | Wire NOWPayments webhook to credit mint | `POST https://api.{domain}/api/crypto/webhook` (loa-freeside, public via ALB) receives IPN; HMAC-SHA512 verified against `NOWPAYMENTS_IPN_SECRET`; idempotency key = `payment_id` (UNIQUE constraint in `crypto_payments` table); replay of identical payload = HTTP 200, no additional credit lots; payment `finished` → credit lot created, conservation guard verifies | #79 |
-| FR-1.3 | Credit pack tiers defined in config | $5 Starter, $10 Basic, $25 Pro (configurable, not hardcoded) | #79 |
-| FR-1.4 | Discord `/buy-credits [amount]` command | Returns NOWPayments checkout URL, confirms on completion | #79 |
-| FR-1.5 | Telegram `/buy-credits` equivalent | Same flow as Discord | #79 |
-| FR-1.6 | Idempotent double-payment handling | Same payment ID = no duplicate credits | #79 |
+-- Create purpose breakdown view
+CREATE VIEW community_purpose_breakdown AS
+SELECT
+  community_id,
+  purpose,
+  SUM(amount_micro) FILTER (WHERE entry_type = 'debit') AS total_spent_micro,
+  COUNT(*) FILTER (WHERE entry_type = 'debit') AS operation_count,
+  date_trunc('day', created_at) AS day
+FROM lot_entries
+GROUP BY community_id, purpose, date_trunc('day', created_at);
+```
 
-**PAYMENT STATE MACHINE:** NOWPayments IPN delivers status transitions. The platform must handle all edge states:
+**Pool-to-Purpose Mapping** (configuration, not code):
+```typescript
+const POOL_PURPOSE_MAP: Record<string, EconomicPurpose> = {
+  cheap: 'inference',
+  'fast-code': 'inference',
+  reasoning: 'inference',
+  architect: 'inference',
+  reviewer: 'inference',
+  embedding: 'embedding',
+  image: 'image_gen',
+  tool: 'tool_use',
+};
+// Unknown pool_id → 'unclassified' (never reject, always classify)
+```
 
-| IPN Status | Action | Credit Outcome | User-Facing |
-|------------|--------|---------------|-------------|
-| `waiting` | Record payment, show pending | None | "Payment pending — waiting for confirmation" |
-| `confirming` | Update status | None | "Payment detected — confirming on-chain" |
-| `confirmed` | Update status | None | "Payment confirmed — processing" |
-| `finished` | Mint credits, conservation guard | Credits created | "Credits added to your account!" |
-| `partially_paid` | Record underpayment, notify | None (require full payment) | "Underpaid — send remaining or contact support" |
-| `failed` | Record failure, allow retry | None | "Payment failed — please try again" |
-| `expired` | Mark expired, allow new checkout | None | "Invoice expired — use /buy-credits for a new one" |
-| `refunded` | Reverse credits if minted | Credits reversed | "Refund processed" |
+**Purpose Classification Resilience** (SKP-001 — Flatline BLOCKER, accepted):
+The static `POOL_PURPOSE_MAP` is a known simplification. Mitigations:
+- **Runtime observability**: CloudWatch metric `purpose_unclassified_rate` tracks the percentage of new debits mapped to `unclassified`. Alert if >5% over any 1h window — indicates mapping staleness or new pool without purpose assignment.
+- **Multi-purpose pools**: If a pool serves multiple purposes (e.g., a future `multi-modal` pool doing both inference and tool_use), the mapping returns `unclassified` and the metric fires. Resolution: either split the pool or extend the ENUM with a composite purpose. The PRD does NOT attempt to solve multi-purpose classification at debit time — that requires request-level metadata not available in the current debit path.
+- **Mapping as configuration, not code**: The `POOL_PURPOSE_MAP` is loaded from environment/config, not hardcoded. New pools can be mapped without code changes. Missing mappings default to `unclassified` (never reject).
+- **Retrospective reclassification**: Event replay (F-3) enables bulk reclassification of `unclassified` entries when better mapping data becomes available. Reclassification emits a `governance` event with the old and new purpose for auditability.
 
-**Edge cases:**
-- **Double IPN delivery:** Idempotency on `payment_id` (UNIQUE constraint) — replay returns 200, no duplicate credits.
-- **Out-of-order delivery:** Accept any valid status transition; ignore stale/backward transitions (e.g., `finished` then `confirming`).
-- **Timeout without IPN:** Reconciliation job polls NOWPayments API by `payment_id` every 5 minutes for invoices >15 min old, resolves stuck payments.
-- **Currency conversion:** Credit lot denomination is always in USD equivalent; NOWPayments handles crypto→USD conversion; platform records both crypto amount and USD equivalent.
-- **Retry after failure:** User can invoke `/buy-credits` again; new `payment_id` generated; old failed record retained for audit.
+**Integration Points**:
+- `debitLots()` in credit-lot-service.ts accepts required `purpose` parameter
+- Budget finalize Lua script passes pool_id; application layer maps to purpose before calling debitLots
+- Reconciliation sweep backfills purpose from pool_id in usage_events metadata where possible
+- New debit entries with unknown purpose are classified as `unclassified` (ENUM constraint ensures only valid values)
 
-**Reconciliation & admin tools:**
-- **Reconciliation job:** Scheduled task (every 5 min) polls NOWPayments API for invoices with `waiting`/`confirming` status older than 15 minutes. Resolves stuck payments by fetching current status and processing any missed IPN transitions.
-- **Supported currencies:** All currencies supported by NOWPayments (BTC, ETH, USDT, USDC, etc.); credit lot always denominated in USD equivalent using NOWPayments' conversion rate at `finished` time.
-- **Rounding rules:** Credit lots rounded DOWN to nearest micro-USD (floor). Platform never over-credits.
-- **Admin repair endpoint:** `POST /api/v1/admin/payments/:paymentId/reconcile` — manually triggers status check against NOWPayments API and processes any missed transitions. Requires admin auth. Logs all manual reconciliations to audit trail.
-- **Admin payment dashboard:** `GET /api/v1/admin/payments?status=stuck` — lists payments in limbo (>30 min without `finished`/`failed`/`expired`).
+**FAANG Parallel**: Google's Borg cost attribution tracks purpose per dollar. This enabled the insight that inference cost was growing faster than training cost, leading to TPU development. Purpose tracking turns a bank statement into an economic dashboard.
 
-**EXISTING ASSETS:** NOWPayments adapter fully built (557 LOC, 23 tests). CryptoWebhookService with LVVER pattern (486 LOC, 26 tests). Database migration `021_crypto_payments.ts` ready. Routes at `/api/crypto/*` implemented (440 LOC, 7 tests). Total: 95 tests passing. NOWPayments account exists, API key available as env var.
+**Acceptance Criteria**:
+- [ ] AC-1.1: `lot_entries` table has `purpose` column of type `economic_purpose` with default 'unclassified'
+- [ ] AC-1.2: All new debit entries populate `purpose` from pool_id → purpose mapping; unknown pool_id maps to 'unclassified'
+- [ ] AC-1.3: `community_purpose_breakdown` view returns per-community, per-purpose, per-day aggregates
+- [ ] AC-1.4: Existing entries remain valid with 'unclassified' purpose (backwards compatible)
+- [ ] AC-1.5: Conservation invariants still hold (purpose field is metadata, not accounting)
+- [ ] AC-1.6: Invalid purpose values rejected at database level (ENUM constraint test)
+- [ ] AC-1.7: Purpose is queryable from lot_entries only — no parallel purpose column on usage_events
 
-### Track 2: Make It Personal (Issue #80)
+### F-2: Economic Velocity Service (Temporal Dimension)
 
-| ID | Requirement | Acceptance Criteria | Source |
-|----|-------------|---------------------|--------|
-| FR-2.1 | Inference request enrichment with NFT context | loa-freeside includes `nft_id` + `tier` + `budget_reservation_id` in S2S JWT claims sent to loa-finn; loa-finn resolves personality and selects pool | #80 |
-| FR-2.2 | Pool/personality metadata in inference response | loa-finn returns `X-Pool-Used` + `X-Personality-Id` headers; loa-freeside uses these for budget finalization and audit logging | #80 |
-| FR-2.3 | Anti-narration enforcement | No forbidden identity terms appear in streamed responses; loa-finn's reviewer-adapter anti-narration rules respected | #80 |
-| FR-2.4 | Two different NFTs get different model pool routing | Verified in integration test — different `nft_id` values produce different `X-Pool-Used` and `X-Personality-Id` | #80 |
+**What**: A service that computes credit consumption rate and predicts exhaustion.
 
-**PERSONALITY OWNERSHIP:** loa-finn owns personality derivation (it has the NFT metadata, BEAUVOIR.md loader, and NameKDF). loa-freeside passes `nft_id` from JWT claims in the inference request; loa-finn's inference endpoint selects the personality, chooses the pool, and returns pool/personality metadata in the response for auditability. loa-freeside does NOT independently look up personality — it trusts loa-finn's routing decision. This avoids circular dependencies (freeside needs finn for personality; finn needs freeside for auth/budget).
+**Core Computation** (BigInt-only — no floating-point in the economic path):
+```typescript
+interface VelocitySnapshot {
+  community_id: string;
+  window_hours: number;        // Observation window (default: 24h) — display only
+  velocity_micro_per_hour: bigint;  // Average burn rate (integer division: total_micro / hours)
+  acceleration_micro_per_hour_sq: bigint;  // Rate of change (second_half_velocity - first_half_velocity)
+  balance_remaining_micro: bigint;
+  estimated_exhaustion_hours: bigint | null;  // null = velocity ≤ 0; BigInt integer division
+  confidence: 'high' | 'medium' | 'low';  // Based on data density in window
+  computed_at: Date;
+}
+```
 
-**Call flow:** User → loa-freeside (auth, budget reservation, tier check) → S2S JWT with `nft_id` + `tier` + `budget_reservation_id` → loa-finn (personality lookup, pool selection, inference) → streamed response with `X-Pool-Used` + `X-Personality-Id` headers → loa-freeside (budget finalization, audit).
+**Algorithm** (all arithmetic in BigInt — no Math.*, no Number conversion for monetary values):
+1. Query `lot_entries` debits in the observation window (default 24h), bucketed into hourly sums (BigInt)
+2. Compute velocity via integer division: `velocity = total_debit_micro / window_hours_bigint` (floor division — conservative estimate)
+3. Compute acceleration via half-window comparison: split window into first/second half, compute velocity for each half, acceleration = `(v2 - v1) / half_window_hours` (BigInt integer division)
+4. Extrapolate exhaustion: `hours_remaining = balance_remaining_micro / velocity_micro_per_hour` (BigInt integer division, conservative floor)
+5. Confidence: `high` if ≥12 hourly buckets with data, `medium` if ≥4, `low` if <4
 
-**STREAMING BUDGET LIFECYCLE:** Inference requests use streaming, which requires explicit reservation→finalization semantics to prevent credit leakage or double-spend:
+**Fixed-Point Rationale**: Velocity is expressed in micro-USD per hour (BigInt). Since micro-USD is already 10^6 precision, integer division by hours produces sufficient resolution (±1 micro/hour). No fractional slopes or regression coefficients needed — the half-window acceleration comparison achieves the same predictive value as linear regression for the alert use case, without requiring floating-point arithmetic. This mirrors the `usdToMicroSafe()` pattern from cycle-037: stay in integer space, accept floor-division rounding.
 
-| Phase | Trigger | Action |
-|-------|---------|--------|
-| **Reserve** | loa-freeside receives inference request | Create `budget_reservation_id`, deduct estimated max cost from available balance (pessimistic reserve based on `max_tokens` or pool default) |
-| **Stream** | loa-finn begins streaming tokens | Token count tracked in real-time via `X-Token-Count` trailer or post-stream summary |
-| **Finalize** | Stream completes (200 OK + final chunk) | Calculate actual cost from real token usage; release unused reservation back to balance; write audit record |
-| **Partial completion** | Client disconnect or upstream error mid-stream | Charge for tokens actually delivered (loa-finn returns partial token count in error response or trailer); release remainder |
-| **Retry** | Client retries same request | New `budget_reservation_id` — original reservation finalized (partial or zero); no double-spend because each reservation is independent |
-| **Timeout** | No response from loa-finn within 60s | Release full reservation; log timeout; return error to user |
-| **Orphan cleanup** | Reservation >5 min without finalization | Scheduled job releases orphaned reservations back to balance; logs anomaly |
+**Acceptance Criteria**:
+- [ ] AC-2.1: `VelocityService.computeSnapshot(communityId)` returns accurate velocity for controlled test scenarios
+- [ ] AC-2.2: Velocity computation handles edge cases: zero usage, single data point, burst followed by silence
+- [ ] AC-2.3: Exhaustion prediction within ±10% of actual for linear consumption patterns
+- [ ] AC-2.4: CloudWatch metrics emitted for velocity and estimated exhaustion
+- [ ] AC-2.5: Alert thresholds trigger SNS notifications at configured levels
+- [ ] AC-2.6: **No floating-point arithmetic** in velocity computation code paths (enforced by lint rule or code review checklist)
+- [ ] AC-2.7: Velocity values are BigInt throughout — `number` type only used for display-layer `window_hours` and `confidence`
 
-**Idempotency:** Each inference request carries a unique `budget_reservation_id` in the S2S JWT. loa-finn includes this ID in response headers. loa-freeside uses it for finalization — duplicate finalization requests are no-ops.
+**Alert Thresholds** (configurable per community via governance layer):
+- `warning`: Estimated exhaustion within 72 hours
+- `critical`: Estimated exhaustion within 24 hours
+- `emergency`: Estimated exhaustion within 4 hours
 
-**DEPENDENCY:** loa-finn#88 (static personality config) or loa-finn#86 (dynamic derivation) must provide personality selection within the inference endpoint. No separate personality lookup endpoint needed.
+**Integration Points**:
+- EventBridge scheduled task (every 15 min) computes velocity for active communities
+- CloudWatch EMF metrics: `velocity_micro_per_hour`, `estimated_exhaustion_hours`
+- Alert via SNS topic for warning/critical/emergency thresholds
+- Velocity data stored in `community_velocity` table for historical trending
 
-### Track 3: Make It Visible (Issues #81, #82, #85)
+**FAANG Parallel**: Netflix's Zuul gateway tracks not just request rate but rate-of-change-of-rate (second derivative). A sudden increase in *acceleration* triggers circuit breakers before the absolute rate becomes problematic. Our velocity service is the economic equivalent.
 
-| ID | Requirement | Acceptance Criteria | Source |
-|----|-------------|---------------------|--------|
-| FR-3.1 | `/my-agent` creates dedicated Discord thread per NFT | Public thread in designated agent channel; bot-enforced access control (bot responds only to verified holder in that thread); thread name = agent name or `Agent #[tokenId]`; if server supports private threads (boost level 2+), use private thread; otherwise public with bot-level gating; **token transfer handling:** bot re-verifies ownership on every message (cached 60s); if ownership changed, bot posts "ownership transferred" notice, stops responding to old holder, and creates new thread for new holder on their next `/my-agent`; **re-verification cadence:** wallet verification refreshed every 24h via background job — stale verifications (>48h) revoke thread access; **bot permissions required:** `MANAGE_THREADS`, `SEND_MESSAGES_IN_THREADS`, `READ_MESSAGE_HISTORY`; bot degrades gracefully if permissions missing (responds with "missing permissions" instead of silent failure) | #81 |
-| FR-3.2 | Thread messages routed through personality bridge | Personality tier + emphasis applied to every message | #81 |
-| FR-3.3 | `/agent-info` shows personality summary | Anti-narration-safe display, no identity labels | #81 |
-| FR-3.4 | Community admin usage dashboard | Total spend, per-pool breakdown, per-user breakdown, projected depletion | #82 |
-| FR-3.5 | Admin API endpoints for usage/billing/agents | `GET /api/v1/admin/community/:id/{usage,billing,agents}` | #82 |
-| FR-3.6 | Embeddable web chat widget | Single `<script>` tag, WebSocket streaming, personality-aware styling; auth via SIWE wallet login → server-issued short-lived session token (no API keys in browser); community-embedded widgets use server-side API key (not client-exposed); unauthenticated users see read-only agent profile | #85 |
-| FR-3.7 | Standalone chat page at `/chat/:tokenId` | Shareable URL, mobile-responsive; read-only mode (personality display, past public interactions) without auth; SIWE login required to send messages; rate-limited per session | #85 |
+### F-3: Event Sourcing Formalization (Replayable History)
 
-### Track 4: Make It Trustworthy (Issue #83)
+**What**: Formalize `lot_entries` as the canonical event log with formal event semantics. The canonical model is **posting-level**: each `lot_entries` row is a posting (one side of a double-entry pair). The `correlation_id` groups postings that belong to the same economic operation (e.g., a debit and credit_back from x402 settlement share a correlation_id). There is no separate envelope table — `lot_entries` IS the event log.
 
-| ID | Requirement | Acceptance Criteria | Source |
-|----|-------------|---------------------|--------|
-| FR-4.1 | Billing audit trail export as JSONL | Includes timestamp, operation type, amount, pool, user, conservation result | #83 |
-| FR-4.2 | Pool enforcement transparency | Admins see which pools agents access and why | #83 |
-| FR-4.3 | Conservation guard status endpoint | `GET /api/v1/admin/community/:id/conservation` with current status + history | #83 |
-| FR-4.4 | No PII in audit exports | Wallet addresses only (pseudonymous) | #83 |
+**Event Types** (expanding existing `entry_type`):
+```typescript
+type EconomicEventType =
+  | 'credit'       // Lot funded (purchase, grant, seed, x402, transfer_in, tba_deposit)
+  | 'debit'        // Credits consumed (inference, tool_use, etc.)
+  | 'reserve'      // Credits reserved for pending operation
+  | 'release'      // Reserved credits released (operation cancelled)
+  | 'expire'       // Lot expired (time-based)
+  | 'credit_back'  // Overpayment returned (x402 settlement remainder)
+  | 'governance'   // Governance action (limit change, policy update)
+```
 
-### Product B: API Platform (Issue #84)
+**Canonical Model — Posting-Level Events**:
+```typescript
+// Each lot_entries row IS a posting-level event.
+// correlation_id groups related postings into an economic operation.
+// Example: x402 settlement produces 3 postings with the same correlation_id:
+//   1. credit (lot funded from x402 quote)
+//   2. debit (actual cost consumed)
+//   3. credit_back (remainder returned)
+// Example: multi-lot debit produces N postings with the same correlation_id:
+//   N debit rows, one per lot touched, all sharing correlation_id + reservation_id
 
-| ID | Requirement | Acceptance Criteria | Source |
-|----|-------------|---------------------|--------|
-| FR-5.1 | API key generation | Scoped keys: `lf_live_...` (prod), `lf_test_...` (sandbox), shown once | #84 |
-| FR-5.2 | API key authentication on inference requests | `Authorization: Bearer lf_live_...` → pool access + rate limits | #84 |
-| FR-5.3 | Rate limiting per API key | Requests/minute and tokens/day configurable per key | #84 |
-| FR-5.4 | Self-service portal | Key creation, rotation, revocation, usage dashboard | #84 |
-| FR-5.5 | Developer onboarding flow | Sign up → sandbox key → free inference → upgrade to production | #84 |
+interface EconomicEvent {
+  event_id: string;          // UUID (lot_entries.id), globally unique
+  event_type: EconomicEventType;  // lot_entries.entry_type
+  community_id: string;
+  lot_id: string | null;     // null for governance events only
+  amount_micro: bigint;
+  purpose: EconomicPurpose;  // From F-1 (Postgres ENUM)
+  metadata: Record<string, unknown>;  // Event-type-specific data (JSONB)
+  causation_id: string | null;  // What caused this event (parent event_id)
+  correlation_id: string;    // Groups postings in same operation
+  sequence_number: bigint;   // Monotonic per-community sequence (NOT NULL for new rows)
+  created_at: Date;
+}
+```
+
+**Replay Rules** (how event types map to state changes):
+```
+credit:      lot.balance += amount_micro
+debit:       lot.balance -= amount_micro  (across multiple lots if multi-lot split)
+reserve:     community.reserved += amount_micro
+release:     community.reserved -= amount_micro
+expire:      lot.balance = 0, lot.status = 'expired'
+credit_back: lot.balance += amount_micro
+governance:  community.policy updated (lot_id = null, metadata contains policy change)
+```
+Replay processes postings in `sequence_number` order per community. Multi-lot splits are N postings with the same `correlation_id` — each posting debits one lot.
+
+**Consumer Safety — Correlation-Aware Aggregation** (SKP-002 — Flatline BLOCKER, accepted):
+The posting-level canonical model means a single economic operation (e.g., a multi-lot debit of 500 micro spread across 3 lots) produces N rows. Naive `SUM(amount_micro)` across all postings counts the operation's total correctly (each posting is a distinct debit from a distinct lot), but operation-level aggregation requires grouping by `correlation_id`:
+- **Per-lot queries** (e.g., "how much was debited from lot X?"): Use postings directly — no grouping needed, each row is one lot's contribution.
+- **Per-operation queries** (e.g., "how many operations happened today?"): Group by `correlation_id` — `COUNT(DISTINCT correlation_id)` gives operation count; `SUM(amount_micro)` within a correlation group gives operation total.
+- **Per-community totals** (e.g., "total spend this month"): `SUM(amount_micro) WHERE entry_type = 'debit'` is correct without grouping — each posting is a real debit from a real lot, and the sum of all postings equals the sum of all operations.
+- **Dangerous pattern**: `COUNT(*) WHERE entry_type = 'debit'` counts *postings*, not *operations*. Always document which level (posting vs operation) a query targets.
+
+A database view `community_operations` is provided for operation-level queries:
+```sql
+CREATE VIEW community_operations AS
+SELECT
+  correlation_id,
+  community_id,
+  entry_type,
+  purpose,
+  SUM(amount_micro) AS total_amount_micro,
+  COUNT(*) AS posting_count,
+  MIN(created_at) AS operation_at,
+  MIN(sequence_number) AS first_sequence
+FROM lot_entries
+GROUP BY correlation_id, community_id, entry_type, purpose;
+```
+
+**Replay Capability**:
+```typescript
+// Rebuild community economic state from postings (lot_entries)
+async function replayState(
+  communityId: string,
+  options?: { upTo?: Date; eventTypes?: EconomicEventType[] }
+): Promise<CommunityEconomicState>;
+
+// Compare replayed state to current materialized state (lot_balances view)
+async function verifyConsistency(
+  communityId: string
+): Promise<ConsistencyReport>;
+```
+
+**Per-Community Monotonic Sequencing** (concrete design — application-level counter with SELECT FOR UPDATE):
+```sql
+-- Counter table: one row per community
+CREATE TABLE community_event_sequences (
+  community_id UUID PRIMARY KEY REFERENCES communities(id),
+  next_sequence BIGINT NOT NULL DEFAULT 1
+);
+
+-- Allocation: inside the same transaction as INSERT lot_entries
+-- BEGIN;
+--   SELECT next_sequence FROM community_event_sequences
+--     WHERE community_id = $1 FOR UPDATE;
+--   UPDATE community_event_sequences
+--     SET next_sequence = next_sequence + 1
+--     WHERE community_id = $1;
+--   INSERT INTO lot_entries (..., sequence_number) VALUES (..., $allocated_seq);
+-- COMMIT;
+--
+-- FOR UPDATE ensures strict ordering even under concurrent debits/reserves.
+-- Advisory locks are an alternative but SELECT FOR UPDATE is simpler and proven.
+--
+-- SEQUENCE GAPS (IMP-002 — Flatline HIGH_CONSENSUS):
+-- Transaction rollbacks produce gaps in sequence_number. This is EXPECTED and ACCEPTABLE.
+-- Gaps do NOT indicate lost events — they indicate rolled-back transactions.
+-- Replay consumers MUST tolerate gaps (process events in sequence order, skip missing numbers).
+-- SELECT FOR UPDATE chosen over advisory locks because:
+--   1. Lock scope matches transaction scope automatically (no manual release)
+--   2. Deadlock detection is built into Postgres (advisory locks require manual timeout)
+--   3. Simpler to reason about in code review and incident response
+-- Advisory locks MAY be considered if benchmarking reveals hot-row contention at >100 TPS/community.
+--
+-- CONTENTION MITIGATION (SKP-003 — Flatline BLOCKER, accepted):
+-- Under concurrent load, the sequence row becomes a serialization point.
+-- Measured impact: lock queue depth ≈ TPS × avg_txn_duration_ms / 1000.
+-- At 50 TPS with 10ms txns: queue depth ≈ 0.5 (negligible).
+-- At 200 TPS with 10ms txns: queue depth ≈ 2.0 (noticeable p99 latency).
+--
+-- Tiered mitigation strategy:
+--   Tier 1 (default): SELECT FOR UPDATE as specified. Sufficient for ≤100 TPS/community.
+--   Tier 2 (config flag): Advisory lock alternative — pg_advisory_xact_lock(community_id_hash).
+--     Eliminates row-level lock overhead but requires manual deadlock timeout (SET LOCAL
+--     lock_timeout = '500ms'). Migration: feature flag SEQUENCE_LOCK_MODE = 'advisory'.
+--   Tier 3 (future): Pre-allocated sequence ranges — allocate N sequence numbers in one lock
+--     acquisition, assign from local cache. Reduces lock frequency by N×. Requires gap tolerance
+--     (already established in IMP-002).
+--
+-- Benchmark AC: Measure p99 latency of sequence allocation under 50, 100, 200 concurrent
+-- transactions per community. Document results in SDD. Switch to Tier 2 if p99 > 50ms at
+-- expected load.
+```
+
+**Schema Changes**:
+```sql
+-- Add event sourcing columns to lot_entries
+ALTER TABLE lot_entries ADD COLUMN causation_id UUID;
+ALTER TABLE lot_entries ADD COLUMN correlation_id UUID NOT NULL DEFAULT gen_random_uuid();
+ALTER TABLE lot_entries ADD COLUMN sequence_number BIGINT;
+-- sequence_number is nullable for legacy rows; NOT NULL enforced at application
+-- level when FEATURE_EVENT_SOURCING is enabled for a community.
+
+-- Per-community monotonic sequence counter
+CREATE TABLE community_event_sequences (
+  community_id UUID PRIMARY KEY,
+  next_sequence BIGINT NOT NULL DEFAULT 1
+);
+
+-- Index for replay queries (covers both legacy and new rows)
+CREATE INDEX idx_lot_entries_replay
+  ON lot_entries (community_id, sequence_number ASC)
+  WHERE sequence_number IS NOT NULL;
+
+-- Index for velocity windowed queries (F-2 integration)
+CREATE INDEX idx_lot_entries_velocity
+  ON lot_entries (community_id, created_at DESC)
+  WHERE entry_type = 'debit';
+```
+
+**Legacy Row Backfill Strategy**:
+When `FEATURE_EVENT_SOURCING` is enabled for a community, a one-time backfill job assigns sequence numbers to existing rows ordered by `(created_at, id)`. This produces a deterministic ordering for legacy data. After backfill, the `community_event_sequences.next_sequence` is set to `MAX(sequence_number) + 1`. Replay of legacy rows uses the backfilled order.
+
+**Event Log Lifecycle** (IMP-003 — Flatline HIGH_CONSENSUS):
+As event logs grow, production systems require lifecycle management:
+- **Snapshots**: Periodic materialized snapshots of community economic state (e.g., monthly). Snapshots record `(community_id, snapshot_at, state_json, last_sequence_number)`. Replay can start from the nearest snapshot instead of genesis, reducing replay time from O(all events) to O(events since snapshot).
+- **Compaction**: Events older than the retention window (default: 2 years) MAY be compacted into summary records. Compaction preserves aggregate truth (total debits by purpose, total credits by source) while reducing row count. Compaction is a future operation — the schema supports it but this cycle does NOT implement compaction.
+- **Archival**: Events beyond the retention window are archived to cold storage (S3) before compaction. Archived events retain full fidelity and can be restored for forensic replay.
+- **Retention policy**: Configurable per community via governance (F-4). Default: 2 years hot, unlimited cold archive.
+
+**FAANG Parallel**: This is the trajectory from PostgreSQL-as-database to PostgreSQL-as-event-store. Stripe's billing system went through three architectures before arriving at append-only entries as the atom of truth. Event sourcing gives you what the Venetians didn't have: the ability to ask "what if?" about any past state.
+
+**Acceptance Criteria**:
+- [ ] AC-3.1: All new lot_entries include `correlation_id` and `sequence_number` (when `FEATURE_EVENT_SOURCING` enabled)
+- [ ] AC-3.2: `replayState(communityId)` reconstructs community economic state matching `lot_balances` view within 1 micro — validated at posting level (per-lot balance reconstruction)
+- [ ] AC-3.3: `verifyConsistency(communityId)` detects intentional drift injected in tests
+- [ ] AC-3.4: Existing entries without event sourcing fields remain valid (null causation_id, null sequence_number)
+- [ ] AC-3.5: Replay performance: ≤500ms for communities with ≤10,000 events (verified via EXPLAIN ANALYZE with RLS-safe query plan)
+- [ ] AC-3.6: Conservation invariants verified through replay (cross-validation with I-1 through I-5)
+- [ ] AC-3.7: `sequence_number` is strictly monotonically increasing per community even under concurrent debits/reserves (concurrent test with 10 parallel transactions)
+- [ ] AC-3.8: Legacy backfill job correctly assigns sequence numbers ordered by `(created_at, id)` and sets `next_sequence` to `MAX + 1`
+
+### F-4: Governance Layer (Community-Governed Economics)
+
+**What**: A governance API that lets communities define their own economic policies.
+
+**Governance Primitives**:
+
+```typescript
+interface EconomicPolicy {
+  community_id: string;
+  policy_type: PolicyType;
+  value: PolicyValue;
+  proposed_by: string;        // User/agent who proposed
+  approved_at: Date | null;   // null = pending proposal
+  approval_method: 'conviction' | 'majority' | 'admin';
+  effective_from: Date;
+  effective_until: Date | null;  // null = no expiry
+}
+
+type PolicyType =
+  | 'budget_limit'          // Total budget limit (I-1 limit)
+  | 'pool_priority'         // Pool access priority ordering
+  | 'spending_alert'        // Custom alert thresholds (extends F-2)
+  | 'purpose_allocation'    // Target spend distribution by purpose
+  | 'auto_replenish'        // Automatic credit replenishment trigger
+  | 'ensemble_strategy';    // Preferred ensemble strategy for this community
+
+type ApprovalMethod =
+  | 'conviction'    // Arrakis conviction scoring (time-weighted staking)
+  | 'majority'      // Simple majority of community members
+  | 'admin';        // Single admin approval (legacy, backwards-compatible)
+```
+
+**Governance Lifecycle**:
+```
+Propose → Review (optional conviction period) → Approve/Reject → Enforce → Log
+```
+
+**Schema**:
+```sql
+CREATE TABLE economic_policies (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  community_id UUID NOT NULL,
+  policy_type TEXT NOT NULL,
+  policy_value JSONB NOT NULL,
+  proposed_by UUID NOT NULL,
+  proposal_reason TEXT,
+  approval_method TEXT NOT NULL DEFAULT 'admin',
+  conviction_score NUMERIC,     -- Arrakis conviction score at approval time
+  approved_at TIMESTAMPTZ,
+  approved_by UUID,
+  effective_from TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  effective_until TIMESTAMPTZ,
+  superseded_by UUID,           -- Newer policy that replaced this one
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- RLS: community_id = app.current_community_id()
+ALTER TABLE economic_policies ENABLE ROW LEVEL SECURITY;
+
+-- Index for active policy lookup
+CREATE INDEX idx_active_policies
+  ON economic_policies (community_id, policy_type)
+  WHERE approved_at IS NOT NULL
+    AND (effective_until IS NULL OR effective_until > NOW())
+    AND superseded_by IS NULL;
+```
+
+**Concurrent Policy Resolution** (IMP-004 — Flatline HIGH_CONSENSUS):
+When multiple proposals for the same `policy_type` are approved concurrently:
+- **Latest-wins**: The policy with the latest `approved_at` timestamp takes precedence
+- **Atomic supersession**: Approval transaction atomically sets `superseded_by` on the previously active policy and activates the new one — single transaction, no window of ambiguity
+- **Conflict detection**: If two approvals race, the second `UPDATE ... SET superseded_by` will find the row already superseded and raise a conflict error; the application retries with the new current policy
+- **Audit trail**: Both the superseding and superseded policies retain full history in `economic_policies` (no deletes, append-only)
+
+**Integration with Conservation Guard**:
+- `budget_limit` policies feed into I-1's `limit` value
+- Policy changes emit `governance` events in the event log (F-3)
+- Conservation guard reads active policies at fence token acquisition time
+- Policy transitions are atomic: old policy superseded, new policy effective, event logged — in one transaction
+
+**Limit Decrease Safety** (critical invariant protection):
+Budget limit decreases must not violate `I-1: committed + reserved + available = limit`. Enforcement rules:
+1. **Hard floor**: `new_limit >= committed + reserved` at enforcement time. If the proposed limit would make `available` negative, the policy enters `pending_enforcement` state.
+2. **Pending enforcement**: A pending policy is checked on every subsequent finalize/release. When `committed + reserved` drops below `new_limit` (through natural consumption or reservation expiry), the policy activates automatically.
+3. **Platform minimum**: Governance can never set limit below a platform-defined floor (default: `100_000n` micro = $0.10). This prevents governance-as-DoS.
+4. **Limit increases**: Always immediately enforceable — they only expand `available`.
+
+```typescript
+type PolicyEnforcementState =
+  | 'proposed'            // Awaiting approval (initial state)
+  | 'active'              // Policy is currently enforced
+  | 'pending_enforcement'  // Approved but waiting for usage to drop below new limit
+  | 'superseded'          // Replaced by newer policy
+  | 'rejected'            // Approval denied
+  | 'expired';            // effective_until has passed
+```
+
+**Governance State Machine** (SKP-006 — Flatline BLOCKER, accepted):
+
+Valid transitions (all others are illegal and rejected):
+
+```
+proposed → active             (approval, limit increase or limit within budget)
+proposed → pending_enforcement (approval, limit decrease below committed+reserved)
+proposed → rejected           (explicit rejection)
+proposed → superseded         (newer proposal for same type approved while this is pending)
+
+active → superseded           (newer policy for same type activated)
+active → expired              (effective_until reached — checked by periodic sweep)
+
+pending_enforcement → active  (usage dropped below new_limit — checked on every finalize/release)
+pending_enforcement → superseded (newer policy for same type activated)
+pending_enforcement → expired (effective_until reached before activation — policy never took effect)
+
+rejected → (terminal)
+superseded → (terminal)
+expired → (terminal)
+```
+
+**Concurrency rules**:
+- Only ONE policy per `(community_id, policy_type)` can be `active` or `pending_enforcement` at a time. Database enforced via partial unique index:
+  ```sql
+  CREATE UNIQUE INDEX idx_one_active_policy
+    ON economic_policies (community_id, policy_type)
+    WHERE state IN ('active', 'pending_enforcement');
+  ```
+- Approving a new policy atomically supersedes the current active/pending policy (IMP-004 concurrent resolution applies).
+- `proposed` policies are not unique-constrained — multiple proposals can coexist. Only approval triggers supersession.
+- State transitions emit `governance` events in lot_entries (F-3 integration) with `metadata` containing `{from_state, to_state, policy_id}`.
+- Background sweep (EventBridge, 5-min interval) checks for `expired` transitions and `pending_enforcement → active` activations.
+
+**Governance Rate Limiting** (IMP-001 — Flatline HIGH_CONSENSUS):
+Governance API calls are rate-limited to prevent abuse and governance-as-DoS:
+- Per-role quotas: `member` ≤5 proposals/day, `operator` ≤20 approvals/day, `admin` unlimited
+- Per-community burst limit: ≤10 governance operations per minute (across all roles)
+- Backoff: 429 Too Many Requests with `Retry-After` header; exponential backoff recommended
+- Rate limit state stored in Redis with per-community key (`gov:rate:{community_id}:{role}`)
+- Rate limits are NOT configurable via governance (prevents self-escalation)
+
+**Conviction Scoring Bridge** (Arrakis integration):
+- Community members express preference for economic policies via conviction staking
+- Policies that accumulate sufficient conviction score are auto-approved
+- Threshold configurable per community (default: 50% of active stake-time)
+- Admin override preserved as fallback
+
+**FAANG Parallel**: This is where Ostrom's principles become explicit rather than implicit. The infrastructure for community-governed AI economics is present — credit lots, per-community boundaries, conservation invariants. The governance *mechanism* is what this delivers. As the Web4 manifesto argues: "millions of social monies will coexist, each fiercely competing on memetic appeal, utility, and trustworthiness." Each community's economic boundary becomes a distinct social money with its own embedded governance values.
+
+**Authorization Model**:
+
+The governance API is a privileged control plane. Explicit role-based authorization prevents economic manipulation:
+
+| Role | Can Propose | Can Approve | Can Override | How Determined |
+|------|------------|-------------|--------------|----------------|
+| `member` | Yes (any policy type) | No | No | Arrakis token-gate (holds community NFT) |
+| `operator` | Yes | Yes (non-limit policies) | No | Arrakis role assignment (conviction threshold or admin-granted) |
+| `admin` | Yes | Yes (all policy types) | Yes (with audit trail) | Community creator or platform-designated |
+| `agent` | No | No | No | Agent identity — agents cannot propose or approve economic policies |
+
+**End-to-end authorization flow**:
+1. Request arrives with S2S JWT or session token
+2. Community membership verified via Arrakis token-gate (or platform auth)
+3. Role resolved: `member` / `operator` / `admin` (from Arrakis or platform role table)
+4. Authorization checked: role must have permission for the requested action
+5. RLS enforced: `SET LOCAL app.community_id` scopes all queries to the community
+6. Audit event emitted: who did what, when, with what role
+
+**Service role safety**: The governance service uses `SET LOCAL app.community_id` inside every transaction (same pattern as credit-lot-service.ts). It does NOT bypass RLS. Cross-tenant access is impossible at the database level.
+
+**Acceptance Criteria**:
+- [ ] AC-4.1: `economic_policies` table with RLS enforcement
+- [ ] AC-4.2: Governance API: `propose()`, `approve()`, `reject()`, `getActivePolicy()`
+- [ ] AC-4.3: `budget_limit` policy changes propagate to conservation guard I-1 limit
+- [ ] AC-4.4: Policy changes emit governance events in lot_entries (F-3 integration)
+- [ ] AC-4.5: Admin approval method works standalone (no Arrakis dependency for MVP)
+- [ ] AC-4.6: Conviction scoring bridge functional when Arrakis is available (graceful degradation when not)
+- [ ] AC-4.7: Limit decrease with `new_limit < committed + reserved` enters `pending_enforcement` state (not rejected, not immediately enforced)
+- [ ] AC-4.8: Platform minimum limit enforced — governance cannot set limit below `100_000n` micro
+- [ ] AC-4.9: **Negative test**: Cross-tenant policy access denied (community A cannot read/write community B's policies)
+- [ ] AC-4.10: **Negative test**: `member` role cannot approve policies; `agent` role cannot propose or approve
+- [ ] AC-4.11: **Negative test**: Admin override without audit trail entry is rejected
+- [ ] AC-4.12: Every governance API call produces an append-only audit event with actor, role, action, and community_id
 
 ---
 
 ## 5. Technical & Non-Functional Requirements
 
-### Infrastructure (MANDATORY: Existing AWS Stack)
+### NF-1: Backwards Compatibility
 
-| Requirement | Implementation | Reference |
-|-------------|----------------|-----------|
-| loa-finn runs as ECS Fargate service | New task definition in `ecs.tf`, same cluster | `infrastructure/terraform/ecs.tf` |
-| ALB routes to loa-finn | Path-based (`/finn/*`) or subdomain (`finn.{domain}`) routing | `infrastructure/terraform/alb.tf` |
-| Shared Redis (ElastiCache) | loa-finn connects to existing cache.t3.micro Redis 7.0; **capacity plan:** maxmemory-policy `allkeys-lru`; key TTLs enforced (rate-limit: 60s, session: 1h, cache: 5m); expected QPS: <100 at launch; upgrade to cache.t3.small if memory >80% sustained; **circuit breaker:** Redis unavailability degrades rate limiting to in-memory fallback, does NOT block inference | `infrastructure/terraform/elasticache.tf` |
-| Shared PostgreSQL (RDS) | loa-finn connects via existing PgBouncer (port 6432); **capacity plan:** PgBouncer pool_size=20 (per service), max_client_conn=100; expected concurrent connections: <30 at launch; **isolation:** loa-finn uses read-only connection for queries, separate connection pool from loa-freeside writes; **backpressure:** connection queue timeout 5s, return 503 instead of blocking indefinitely | `infrastructure/terraform/rds.tf`, `pgbouncer.tf` |
-| ECR repository for loa-finn | `arrakis-{env}-loa-finn` container registry | `infrastructure/terraform/ecr.tf` |
-| Secrets via AWS Secrets Manager | Model API keys, ES256 keypair, NOWPayments creds | `infrastructure/terraform/secrets.tf` |
-| CloudWatch logging | `/ecs/arrakis-{env}/loa-finn` log group | `infrastructure/terraform/monitoring.tf` |
-| Route53 DNS | Subdomain for loa-finn endpoint | `infrastructure/terraform/route53.tf` |
+All changes must be backwards-compatible with cycle-037 infrastructure:
+- Existing lot_entries without `purpose`, `causation_id`, `sequence_number` remain valid
+- Conservation invariants I-1 through I-5 continue to function identically
+- Feature flags gate new capabilities independently
+- Zero-downtime migration path (online DDL only)
 
-### Performance
+### NF-2: Performance
 
-| Metric | Target | Rationale |
-|--------|--------|-----------|
-| Inference latency (p95) | <30s (model-dependent) | Streaming mitigates perceived latency |
-| Health check response | <200ms | ALB health check interval |
-| Credit creation latency | <2s from webhook receipt | Conservation guard + DB write |
-| Dashboard data freshness | <60s | Near-real-time spend visibility |
+| Operation | Target | Constraint |
+|-----------|--------|------------|
+| Purpose-annotated debit | ≤5ms overhead vs current debit | Purpose is a write-side annotation only |
+| Velocity computation | ≤200ms per community | Windowed query with pre-computed hourly buckets |
+| State replay (10k events) | ≤500ms | Sequential scan with in-memory accumulation |
+| Policy lookup | ≤10ms | Indexed active policy query |
+| Governance proposal | ≤100ms | Single INSERT with event emission |
 
-### Security
+**Aggregate Scaling Assumptions** (IMP-008 — Flatline HIGH_CONSENSUS):
+Performance targets above are per-community. Platform-wide assumptions:
+- **Active communities**: Design for ≤1,000 active communities (communities with ≥1 economic operation in the last 24h)
+- **Peak concurrency per community**: ≤50 concurrent economic operations (debits/reserves/releases)
+- **Velocity computation batching**: EventBridge scheduled task processes communities in batches of 100, with configurable parallelism (default: 10 concurrent)
+- **Sequence contention ceiling**: SELECT FOR UPDATE serializes at the community level; at >100 TPS per community, evaluate advisory lock alternative (see F-3 sequencing notes)
+- **Event log growth**: Estimated ≤100K events/community/month at current usage; snapshot strategy (IMP-003) ensures replay remains within NF-2 targets as logs grow
 
-| Requirement | Implementation |
-|-------------|----------------|
-| S2S JWT (ES256) | loa-freeside signs, loa-finn validates via JWKS |
-| NOWPayments webhook HMAC-SHA512 | Existing LVVER pattern in CryptoWebhookService |
-| API keys hashed at rest | Cleartext shown once at creation only |
-| Rate limiting | 4-dimension (community/user/channel/burst) + per-API-key |
-| BYOK key isolation | Envelope encryption (AES-256-GCM + KMS) — already built |
-| Audit trail immutability | Append-only JSONL with conservation guard results |
+### NF-3: Security
 
-### Existing Assets (DO NOT REBUILD)
+- Governance API requires community membership verification (Arrakis token-gate or equivalent)
+- Role-based authorization: `member` (propose only), `operator` (propose + approve non-limit), `admin` (full), `agent` (no governance access) — see F-4 Authorization Model
+- Policy changes produce audit events (append-only, non-repudiable) with actor, role, action, community_id
+- RLS enforcement on `economic_policies` table via `SET LOCAL app.community_id` (community isolation — service role does NOT bypass RLS)
+- Admin override of governance requires explicit audit trail entry (AC-4.11 enforces)
+- No elevation of privilege through governance (policies can only adjust within platform-defined bounds; platform minimum limit = `100_000n` micro)
+- Cross-tenant isolation verified by negative tests (AC-4.9)
 
-| Asset | Status | Tests | Location |
-|-------|--------|-------|----------|
-| NOWPayments adapter | Production-ready, feature-flagged off | 23 | `themes/sietch/src/packages/adapters/billing/NOWPaymentsAdapter.ts` |
-| Crypto webhook service (LVVER) | Production-ready | 26 | `themes/sietch/src/services/billing/CryptoWebhookService.ts` |
-| Crypto billing routes | Production-ready | 7 | `themes/sietch/src/api/crypto-billing.routes.ts` |
-| Credit pack system | Production-ready | 39 | `themes/sietch/src/packages/core/billing/credit-packs.ts` |
-| Budget manager (BigInt) | Production-ready | Covered | `packages/adapters/agent/budget-manager.ts` |
-| Pool mapping (5 pools) | Production-ready | Covered | `packages/adapters/agent/pool-mapping.ts` |
-| Ensemble accounting | Production-ready | Covered | `packages/adapters/agent/ensemble-accounting.ts` |
-| BYOK encryption | Production-ready | Covered | `packages/adapters/agent/byok-manager.ts` |
-| Discord 22+ commands | Production-ready | Covered | `themes/sietch/src/discord/commands/` |
-| Telegram 10+ commands | Production-ready | Covered | `themes/sietch/src/telegram/commands/` |
-| Terraform (20 modules, 81 .tf files) | Staging-ready | N/A | `infrastructure/terraform/` |
-| Conservation guard | Production-ready | Covered | Multiple locations |
+**RLS Enforcement Completeness** (SKP-007 — Flatline BLOCKER, accepted):
+Every code path that touches `lot_entries`, `economic_policies`, or `community_event_sequences` MUST execute within a transaction that has called `SET LOCAL app.community_id = $community_id`. No exceptions. Enumeration of all code paths:
+
+| Code Path | Runs As | RLS Requirement |
+|-----------|---------|-----------------|
+| `debitLots()` / `reserveCredits()` / `releaseCredits()` | Application (per-request) | SET LOCAL in existing transaction wrapper — **already implemented in cycle-037** |
+| `creditLots()` (NOWPayments webhook, x402 settle) | Application (webhook handler) | SET LOCAL before mint — **already implemented** |
+| Reconciliation sweep (EventBridge) | Background job | SET LOCAL per-community iteration — **already implemented** |
+| Velocity computation (EventBridge, F-2) | Background job | **NEW**: Must SET LOCAL before querying lot_entries for each community batch |
+| Legacy backfill job (F-3) | One-time migration | **NEW**: Must SET LOCAL per-community before assigning sequence numbers |
+| Governance API (F-4) | Application (per-request) | **NEW**: Must SET LOCAL before any economic_policies read/write |
+| Governance sweep (expiry/activation) | Background job | **NEW**: Must SET LOCAL per-community iteration — same pattern as reconciliation |
+| Admin tooling / debugging queries | Superuser | **EXCEPTION**: Admin queries MAY bypass RLS via `SET ROLE` with explicit audit logging. Admin bypass MUST be logged to a separate `admin_audit_log` table with actor, action, community_id, and timestamp. |
+
+**Enforcement mechanism**: A shared database middleware function `withCommunityScope(communityId, fn)` wraps all economic operations:
+```typescript
+async function withCommunityScope<T>(
+  communityId: string,
+  tx: Transaction,
+  fn: () => Promise<T>
+): Promise<T> {
+  await tx.query('SET LOCAL app.community_id = $1', [communityId]);
+  return fn();
+}
+```
+All new code paths (F-2 velocity, F-3 backfill, F-4 governance) MUST use `withCommunityScope`. This is enforced by:
+1. Code review checklist item: "Does this query touch lot_entries/economic_policies? → Must use withCommunityScope"
+2. Integration test: Attempt query without SET LOCAL → verify RLS denies access
+3. AC-4.9 cross-tenant negative test covers the governance path specifically
+
+### NF-4: Observability
+
+| Metric | Dimension | Source |
+|--------|-----------|--------|
+| `purpose_spend_micro` | community_id, purpose | F-1 debit path |
+| `velocity_micro_per_hour` | community_id | F-2 velocity service |
+| `estimated_exhaustion_hours` | community_id | F-2 velocity service |
+| `event_replay_duration_ms` | community_id | F-3 replay service |
+| `replay_consistency_drift_micro` | community_id | F-3 verify service |
+| `governance_proposal_count` | community_id, policy_type | F-4 governance API |
+| `governance_approval_count` | community_id, approval_method | F-4 governance API |
+| `policy_enforcement_count` | community_id, policy_type | F-4 conservation guard integration |
 
 ---
 
 ## 6. Scope & Prioritization
 
-### In Scope (P0 — Must Ship)
+### Sprint Structure
 
-| Track | Issues | What | Why |
-|-------|--------|------|-----|
-| Track 0 | #77, #78 | Production deployment + monitoring | Nothing works without this |
-| Track 1A | #79 | NOWPayments credit purchase flow | Revenue — "we have no way to collect money" |
-| Track 2 | #80 | Per-NFT personality routing bridge | Core differentiator — "talk to your NFT" |
-| Track 3 | #81, #82 | Discord threads + budget dashboard | User surface + admin visibility |
-| Track 4 | #83 | Audit trail + pool transparency | Trust — communities won't adopt without it |
+| Sprint | Focus | Features | Dependencies |
+|--------|-------|----------|-------------|
+| Sprint 1: Economic Memory | Purpose tracking on all economic operations | F-1 | None — purely additive |
+| Sprint 2: Temporal Dimension | Velocity computation and predictive alerts | F-2 | F-1 (purpose enables per-purpose velocity) |
+| Sprint 3: Event Formalization | Event sourcing columns, replay capability, consistency verification | F-3 | F-1 (purpose in events), F-2 (velocity events) |
+| Sprint 4: Governance | Policy table, governance API, conservation guard integration, conviction bridge | F-4 | F-3 (governance events), F-1 (purpose allocation policy) |
 
-### In Scope (P1 — Ship Within Days of P0)
+### Feature Flags
 
-| Track | Issues | What | Why |
-|-------|--------|------|-----|
-| Product B | #84 | API key management + developer onboarding | Second revenue stream |
-| Track 3 | #85 | Embeddable web chat widget | Non-Discord user acquisition |
+| Flag | Default | Gates |
+|------|---------|-------|
+| `FEATURE_PURPOSE_TRACKING` | `true` | F-1: Purpose field population |
+| `FEATURE_VELOCITY_ALERTS` | `false` | F-2: Velocity computation and alerts |
+| `FEATURE_EVENT_SOURCING` | `false` | F-3: Event correlation/sequence/replay |
+| `FEATURE_GOVERNANCE` | `false` | F-4: Governance API and policy enforcement |
 
-### Out of Scope (This Cycle)
+### What's Explicitly Out of Scope
 
-| Feature | Why Deferred | Reference |
-|---------|-------------|-----------|
-| Soul memory (persistent knowledge) | Post-launch flagship | loa-finn#27 Phase 1 |
-| Inbox privacy (encrypted owner-scoped conversations) | Post-launch | loa-finn#27 Phase 2 |
-| Personality evolution (compound learning) | Post-launch | loa-finn#27 Phase 3 |
-| On-chain autonomous actions (ERC-6551 TBA) | Post-launch | loa-finn#27 Phase 4 |
-| Voice transcription (Whisper) | P2 feature | loa-finn#66 §6 |
-| Natural language scheduling | P2 feature | loa-finn#66 §6 |
-| Agent social network | P2+ feature | loa-finn#66 §6 |
-| WhatsApp/Slack adapters | P2 channel expansion | loa-finn#66 §4 |
+- Frontend/UI for economic dashboard (data layer only)
+- On-chain governance voting (off-chain conviction scoring only)
+- Cross-community economic modeling (infrastructure is laid, analysis is future)
+- Real-time event streaming (WebSocket/SSE for economic events — future cycle)
+- What-if branching on replayed history (replay infrastructure only this cycle)
 
 ---
 
 ## 7. Risks & Dependencies
 
-### Cross-Repo Dependencies
-
-| Dependency | Owner | Status | Blocks |
-|------------|-------|--------|--------|
-| loa-finn Dockerfile | loa-finn#84 | Needed | FR-0.1 (ECS deployment) |
-| loa-finn Prometheus metrics endpoint | loa-finn#90 | Needed | FR-0.5 (monitoring) |
-| loa-finn personality derivation within inference endpoint (returns `X-Pool-Used`/`X-Personality-Id` headers) | loa-finn#88 or #86 | Needed | FR-2.1 (inference enrichment) |
-| loa-finn OpenAPI spec | loa-finn#91 | Needed | FR-5.1 (developer onboarding) |
-| loa-finn x402 permissionless auth | loa-finn#85 | Nice-to-have | FR-3.6 (widget permissionless mode) |
-
-### Technical Risks
-
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
-| loa-finn Dockerfile not ready | Medium | Blocks all of Track 0 | Can create Dockerfile from freeside side if needed |
-| ES256 key rotation in production | Low | Auth failures | Test key rotation in staging first |
-| NOWPayments webhook delivery reliability | Low | Missed payments | LVVER pattern + dead-letter + reconciliation already built |
-| Redis memory pressure (shared instance) | Low | Latency | Monitor via CloudWatch, upgrade cache class if needed |
-| ALB path routing conflicts | Low | 502 errors | Test routing rules in staging before production |
+| Purpose classification is incorrect for edge cases | Medium | Low | Default to 'unclassified'; retrospective reclassification via event replay |
+| Velocity prediction inaccurate for bursty workloads | Medium | Medium | Confidence scoring; only alert at 'high' confidence by default |
+| Event sequence numbering contention under high concurrency | Low | Medium | Per-community sequence via advisory locks; benchmark at expected load |
+| Governance layer used to set limit to zero (DoS) | Low | High | Platform-enforced minimum limit (e.g., 100 micro); governance can only adjust within bounds |
+| Arrakis conviction scoring not available at integration time | Medium | Low | Admin-only approval method as complete fallback; conviction is additive |
 
-### Environment Variables (New for This Cycle)
+### External Dependencies
 
-```bash
-# NOWPayments (account exists, keys available)
-FEATURE_CRYPTO_PAYMENTS_ENABLED=true
-NOWPAYMENTS_API_KEY=<from env>
-NOWPAYMENTS_IPN_SECRET=<from env>
-NOWPAYMENTS_ENVIRONMENT=production
-
-# loa-finn service (internal only — not public-facing)
-LOA_FINN_URL=http://finn.arrakis-{env}.local:3000  # ECS service discovery, NOT public ALB
-# JWKS hosted by freeside (the JWT issuer), consumed by finn (the verifier)
-FREESIDE_JWKS_URL=https://api.{domain}/.well-known/jwks.json  # finn reads this to validate S2S JWTs
-
-# Model API keys (in Secrets Manager)
-OPENAI_API_KEY=<secrets manager>
-ANTHROPIC_API_KEY=<secrets manager>
-```
+| Dependency | Required For | Fallback |
+|-----------|-------------|----------|
+| Arrakis conviction scoring | F-4 conviction-based approval | Admin approval method |
+| CloudWatch EMF | F-2 velocity metrics | Log-based metrics (existing pattern) |
+| EventBridge | F-2 velocity scheduled computation | Cron-equivalent on ECS |
 
 ---
 
-## 8. Launch Readiness Requirements
+## 8. The Ostrom Framing
 
-### Rollback & Disaster Recovery (IMP-001)
+This PRD is informed by Elinor Ostrom's research on commons governance, as surfaced by the Bridgebuilder review of PR #90. The four features map to Ostrom's principles:
 
-First production deploy requires explicit rollback procedures:
+| Feature | Ostrom Principle | Manifestation |
+|---------|-----------------|---------------|
+| Economic Memory (F-1) | Proportional equivalence between benefits and costs | Communities see what their contributions funded — proportionality becomes visible |
+| Economic Velocity (F-2) | Monitoring | Surveillance of resource consumption becomes predictive, not just detective |
+| Event Sourcing (F-3) | Nested enterprises | Cross-community economic modeling becomes possible through replayable history |
+| Governance Layer (F-4) | Collective-choice arrangements + minimal recognition of rights to organize | Communities govern their own economic policies through conviction-weighted proposals |
 
-| Component | Rollback Strategy |
-|-----------|------------------|
-| ECS task definition | Revert to previous task def revision (`aws ecs update-service --task-definition <prev>`) |
-| Database migrations | Forward-only migrations with expand/contract pattern — no `DROP` in initial migration; old columns retained for 1 cycle |
-| Feature flags | Kill switch for NOWPayments (`FEATURE_CRYPTO_PAYMENTS_ENABLED=false`), personality routing, Discord thread creation |
-| DNS/ALB | Route53 weighted routing for blue/green; ALB target group swap |
-| Secrets rotation | Previous ES256 keypair retained in Secrets Manager for JWT validation overlap window (24h) |
-| Full rollback | Revert ECS services to previous task def, disable feature flags, no schema rollback needed (forward-only) |
+The Web4 manifesto's vision of monetary pluralism — "millions of social monies will coexist" — is the philosophical north star. Each community's economic boundary, governed by its own policies, with full economic memory and replayable history, becomes a distinct social money with its own embedded values. The credit lot `source` field already implements monetary provenance. The `purpose` field adds monetary intentionality. The governance layer adds monetary sovereignty.
 
-**RTO target:** <15 minutes for ECS rollback, <5 minutes for feature flag kill switch.
+This is not a billing platform with community features. This is an economic protocol for community-governed AI agent access. The code already knows this. Now the architecture will too.
 
-### Database Migration Strategy (IMP-006)
-
-ECS rolling deploys with shared database require:
-
-| Rule | Implementation |
-|------|---------------|
-| Forward-only migrations | No `DROP COLUMN`, `DROP TABLE`, or destructive DDL in initial deploy |
-| Expand/contract pattern | Phase 1: add new columns/tables (backward-compatible). Phase 2 (next cycle): remove deprecated columns |
-| Pre-deploy migration step | Migrations run as ECS task (one-shot) before service update, not during app startup |
-| Zero-downtime constraint | Old code must work with new schema; new code must work with old schema during rolling update |
-| Migration ownership | loa-freeside owns all schema migrations; loa-finn reads only via views or explicit grants |
-| Rollback testing | Every migration tested in staging with rollback to previous task def to verify backward compatibility |
-
-### Go/No-Go Launch Gate (IMP-002)
-
-Before production deploy, an explicit checklist must pass:
-
-| Gate | Verification | Pass Criteria |
-|------|-------------|---------------|
-| E2E payment | NOWPayments sandbox → webhook → credit mint | Credits appear in account, conservation guard passes |
-| S2S JWT exchange | loa-freeside → loa-finn authenticated inference via real ALB/service discovery in staging | Streamed response received, JWT claims (`iss`, `aud`, `exp`) validated; finn rejects expired/wrong-aud tokens |
-| JWT rotation | Rotate ES256 keypair in Secrets Manager, verify both old and new keys work during overlap window | Old key valid for 24h after rotation; new key used for signing; finn fetches updated JWKS within 60s |
-| Personality routing | Two different NFTs → different pool/personality | `X-Pool-Used` and `X-Personality-Id` differ |
-| Webhook delivery | NOWPayments IPN → ALB → credit mint | Idempotent replay returns 200, no duplicates |
-| Monitoring | Conservation guard failure → alert | Slack notification within 60s |
-| Health checks | Both services pass ALB health checks | 200 on `/health` for 5 consecutive checks |
-| Rollback | Feature flag kill switch tested | Payments disabled within 5 minutes |
-| Load baseline | Staging load test (10 concurrent users) | No 5xx errors, p95 latency within targets |
-
-**Decision:** All gates must pass in staging before production deploy. Any failure = no-go.
-
----
-
-## 9. Dependency Graph
-
-```
-Track 0: Deploy (#77)
-    ├── FR-0.1: ECS task def + service (loa-finn)
-    ├── FR-0.2: Docker Compose (local dev)
-    ├── FR-0.3: S2S JWT exchange
-    └── FR-0.4: First inference in production
-         │
-         ├──► Track 0: Monitor (#78)
-         │    ├── FR-0.5: Prometheus
-         │    ├── FR-0.6: CloudWatch dashboards
-         │    └── FR-0.7: Alerting
-         │
-         ├──► Track 1A: Pay (#79)
-         │    ├── FR-1.1: Enable NOWPayments flag
-         │    ├── FR-1.2: Wire webhook → credit mint
-         │    ├── FR-1.3: Credit pack tiers
-         │    ├── FR-1.4: Discord /buy-credits
-         │    └── FR-1.5: Telegram /buy-credits
-         │
-         ├──► Track 2: Personalize (#80)
-         │    ├── FR-2.1: Inference request enrichment (nft_id in JWT)
-         │    ├── FR-2.2: Pool/personality metadata headers in response
-         │    └── FR-2.3: Anti-narration enforcement
-         │         │
-         │         └──► Track 3: Discord Threads (#81)
-         │              ├── FR-3.1: /my-agent thread creation
-         │              ├── FR-3.2: Thread routing
-         │              └── FR-3.3: /agent-info
-         │
-         ├──► Track 3: Dashboard (#82)
-         │    ├── FR-3.4: Usage dashboard
-         │    └── FR-3.5: Admin API endpoints
-         │
-         ├──► Track 4: Audit (#83)
-         │    ├── FR-4.1: JSONL audit trail
-         │    ├── FR-4.2: Pool transparency
-         │    └── FR-4.3: Conservation endpoint
-         │
-         ├──► Product B: API Keys (#84)
-         │    ├── FR-5.1: Key generation
-         │    ├── FR-5.2: Key auth on inference
-         │    ├── FR-5.3: Per-key rate limits
-         │    └── FR-5.4: Self-service portal
-         │
-         └──► Track 3: Web Chat (#85)
-              ├── FR-3.6: Embeddable widget
-              └── FR-3.7: Standalone chat page
-```
-
-**Critical path:** Deploy (#77) → Pay (#79) + Personalize (#80) → Discord Threads (#81)
-
----
-
-## 10. The Competitive Positioning
-
-From loa-finn#66 §9:
-
-```
-Our moat is the intersection of:
-  1. On-chain identity      → Token-gated model access (conviction scoring)
-  2. Multi-model orchestration → 5 pools, ensemble strategies, per-model cost attribution
-  3. Cost governance         → BigInt micro-USD, conservation invariants, budget atomicity
-
-No competitor offers all three.
-```
-
-**vs. Nanobot:** They have 9 channels, we have 2 (Discord, Telegram) + API. But they have no cost governance, no token-gating, no NFT identity. We win on infrastructure depth.
-
-**vs. Hive:** They have goal-driven agent generation and self-improvement. But they have no NFT identity, no on-chain gating, no formal economic verification. We win on the capability market model.
-
-**This cycle closes the gap between "infrastructure advantage" and "users can experience it."**
-
----
-
-## Appendix A: Issue Index
-
-| Issue | Track | Title | Blocked By |
-|-------|-------|-------|------------|
-| [#77](https://github.com/0xHoneyJar/loa-freeside/issues/77) | Track 0 | Production Deployment | loa-finn#84 (Dockerfile) |
-| [#78](https://github.com/0xHoneyJar/loa-freeside/issues/78) | Track 0 | Production Monitoring | #77 |
-| [#79](https://github.com/0xHoneyJar/loa-freeside/issues/79) | Track 1A | NOWPayments Credit Purchase | Nothing (adapter built) |
-| [#80](https://github.com/0xHoneyJar/loa-freeside/issues/80) | Track 2 | Per-NFT Personality Routing | loa-finn#88 or #86 (personality derivation in inference endpoint) |
-| [#81](https://github.com/0xHoneyJar/loa-freeside/issues/81) | Track 3 | Per-NFT Discord Threads | #80, #77 |
-| [#82](https://github.com/0xHoneyJar/loa-freeside/issues/82) | Track 3 | Community Budget Dashboard | #77 |
-| [#83](https://github.com/0xHoneyJar/loa-freeside/issues/83) | Track 4 | Billing Audit Trail | #77 |
-| [#84](https://github.com/0xHoneyJar/loa-freeside/issues/84) | Product B | API Key Management | #77, loa-finn#91 |
-| [#85](https://github.com/0xHoneyJar/loa-freeside/issues/85) | Track 3 | Web Chat Widget | #77, #80 |
+> *"When you build an economic system for communities rather than individuals, you inevitably rediscover Ostrom. The question is whether you discover her consciously."* — Bridgebuilder, PR #90

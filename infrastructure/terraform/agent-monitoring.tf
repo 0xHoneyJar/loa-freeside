@@ -453,6 +453,175 @@ resource "aws_cloudwatch_dashboard" "agent_gateway" {
             left = { min = 0, max = 3 }
           }
         }
+      },
+
+      # =====================================================================
+      # Cycle-037 Economic Health Widgets (Sprint 0B — Task 0B.4)
+      # =====================================================================
+
+      # Row 8: Header
+      {
+        type   = "text"
+        x      = 0
+        y      = 38
+        width  = 24
+        height = 1
+        properties = {
+          markdown = "## Economic Health — Conservation Guard & Budget Lifecycle\n**Cycle:** 037 | **Namespace:** `Arrakis/Economic` | **Source:** economic-metrics.ts (EMF)"
+        }
+      },
+
+      # Row 9: Reserve Latency p99
+      {
+        type   = "metric"
+        x      = 0
+        y      = 39
+        width  = 8
+        height = 6
+        properties = {
+          title  = "Reserve Latency p99"
+          region = var.aws_region
+          stat   = "p99"
+          period = 60
+          view   = "timeSeries"
+          metrics = [
+            ["Arrakis/Economic", "reserve_latency_ms", "operation", "reserve", { label = "reserve p99" }]
+          ]
+          annotations = {
+            horizontal = [
+              { value = 100, label = "SLA 100ms", color = "#d62728" }
+            ]
+          }
+          yAxis = {
+            left = { label = "ms", min = 0 }
+          }
+        }
+      },
+
+      # Row 9: Finalize Latency p99
+      {
+        type   = "metric"
+        x      = 8
+        y      = 39
+        width  = 8
+        height = 6
+        properties = {
+          title  = "Finalize Latency p99 (Postgres-first)"
+          region = var.aws_region
+          stat   = "p99"
+          period = 60
+          view   = "timeSeries"
+          metrics = [
+            ["Arrakis/Economic", "finalize_latency_ms", "operation", "finalize", { label = "finalize p99" }]
+          ]
+          annotations = {
+            horizontal = [
+              { value = 500, label = "SLA 500ms", color = "#d62728" }
+            ]
+          }
+          yAxis = {
+            left = { label = "ms", min = 0 }
+          }
+        }
+      },
+
+      # Row 9: Conservation Guard Result
+      {
+        type   = "metric"
+        x      = 16
+        y      = 39
+        width  = 8
+        height = 6
+        properties = {
+          title  = "Conservation Guard (1=pass, 0=violation)"
+          region = var.aws_region
+          stat   = "Minimum"
+          period = 60
+          view   = "timeSeries"
+          metrics = [
+            ["Arrakis/Economic", "conservation_result", { label = "guard result", color = "#2ca02c" }]
+          ]
+          annotations = {
+            horizontal = [
+              { value = 0, label = "VIOLATION", color = "#d62728" }
+            ]
+          }
+          yAxis = {
+            left = { min = 0, max = 1 }
+          }
+        }
+      },
+
+      # Row 10: Budget Drift (Redis vs Postgres)
+      {
+        type   = "metric"
+        x      = 0
+        y      = 45
+        width  = 8
+        height = 6
+        properties = {
+          title  = "Budget Drift (Redis vs Postgres)"
+          region = var.aws_region
+          stat   = "Maximum"
+          period = 60
+          view   = "timeSeries"
+          metrics = [
+            ["Arrakis/Economic", "conservation_drift_micro", { label = "drift (micro-USD)", color = "#ff7f0e" }]
+          ]
+          yAxis = {
+            left = { label = "micro-USD", min = 0 }
+          }
+        }
+      },
+
+      # Row 10: Lot Expiry Count
+      {
+        type   = "metric"
+        x      = 8
+        y      = 45
+        width  = 8
+        height = 6
+        properties = {
+          title  = "Lot Expiry Count (per sweep)"
+          region = var.aws_region
+          stat   = "Sum"
+          period = 300
+          view   = "timeSeries"
+          metrics = [
+            ["Arrakis/Economic", "lot_expiry_count", { label = "expired lots" }]
+          ]
+          yAxis = {
+            left = { label = "count", min = 0 }
+          }
+        }
+      },
+
+      # Row 10: PgBouncer Pool Utilization
+      {
+        type   = "metric"
+        x      = 16
+        y      = 45
+        width  = 8
+        height = 6
+        properties = {
+          title  = "PgBouncer Pool Utilization"
+          region = var.aws_region
+          stat   = "Maximum"
+          period = 60
+          view   = "timeSeries"
+          metrics = [
+            ["Arrakis/Economic", "pgbouncer_pool_utilization", { label = "utilization %", color = "#1f77b4" }]
+          ]
+          annotations = {
+            horizontal = [
+              { value = 95, label = "Alarm 95%", color = "#d62728" },
+              { value = 80, label = "Warn 80%", color = "#ff7f0e" }
+            ]
+          }
+          yAxis = {
+            left = { label = "%", min = 0, max = 100 }
+          }
+        }
       }
     ]
   })
@@ -644,6 +813,7 @@ resource "aws_cloudwatch_metric_alarm" "agent_token_estimate_drift" {
 }
 
 # 8. Ensemble budget overrun (savings < 0) for any request (AC-4.14)
+# NOTE: Alarms 9-10 are below alarm 8 (Cycle 037, Sprint 0B)
 resource "aws_cloudwatch_metric_alarm" "agent_ensemble_budget_overrun" {
   alarm_name          = "${local.name_prefix}-agent-ensemble-budget-overrun"
   comparison_operator = "LessThanThreshold"
@@ -662,5 +832,56 @@ resource "aws_cloudwatch_metric_alarm" "agent_ensemble_budget_overrun" {
   tags = merge(local.common_tags, {
     Service  = "AgentGateway"
     Severity = "critical"
+  })
+}
+
+# =============================================================================
+# Cycle 037 Economic Health Alarms (Sprint 0B, Task 0B.4)
+# Namespace: Arrakis/Economic | Emitter: economic-metrics.ts
+# =============================================================================
+
+# 9. Conservation violation — guard check failed
+resource "aws_cloudwatch_metric_alarm" "economic_conservation_violation" {
+  alarm_name          = "${local.name_prefix}-economic-conservation-violation"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "conservation_result"
+  namespace           = "Arrakis/Economic"
+  period              = 60
+  statistic           = "Minimum"
+  threshold           = 1
+  alarm_description   = "Economic conservation guard failed — invariant violation detected. Check Redis vs Postgres drift. Run reconciliation sweep."
+  treat_missing_data  = "notBreaching"
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+
+  tags = merge(local.common_tags, {
+    Service  = "Economic"
+    Severity = "critical"
+    Sprint   = "C037-0B"
+  })
+}
+
+# 10. Budget drift > 5% of limit (circuit breaker threshold)
+resource "aws_cloudwatch_metric_alarm" "economic_budget_drift" {
+  alarm_name          = "${local.name_prefix}-economic-budget-drift"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 3
+  metric_name         = "conservation_drift_micro"
+  namespace           = "Arrakis/Economic"
+  period              = 60
+  statistic           = "Maximum"
+  threshold           = 500000
+  alarm_description   = "Economic budget drift > 500,000 micro-USD ($0.50) — Redis and Postgres diverging. Conservation circuit breaker may trip at 5% of budget limit."
+  treat_missing_data  = "notBreaching"
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+
+  tags = merge(local.common_tags, {
+    Service  = "Economic"
+    Severity = "high"
+    Sprint   = "C037-0B"
   })
 }

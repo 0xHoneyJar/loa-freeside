@@ -536,6 +536,74 @@ resource "aws_ecs_task_definition" "api" {
 
       # Hounfour Phase 4 (IMP-003): Allow SSE stream drain before SIGKILL
       stopTimeout = 120
+    },
+    # =================================================================
+    # Cycle 037 (Sprint 0B, Task 0B.4): ADOT sidecar for economic metrics
+    # =================================================================
+    {
+      name      = "adot-collector"
+      image     = "public.ecr.aws/aws-observability/aws-otel-collector:v0.40.0"
+      essential = false
+
+      portMappings = [
+        {
+          containerPort = 4317
+          hostPort      = 4317
+          protocol      = "tcp"
+          name          = "otlp-grpc"
+        },
+        {
+          containerPort = 4318
+          hostPort      = 4318
+          protocol      = "tcp"
+          name          = "otlp-http"
+        }
+      ]
+
+      environment = [
+        { name = "AOT_CONFIG_CONTENT", value = yamlencode({
+          receivers = {
+            prometheus = {
+              config = {
+                scrape_configs = [
+                  {
+                    job_name        = "freeside-metrics"
+                    scrape_interval = "30s"
+                    static_configs  = [
+                      { targets = ["localhost:3000"] }
+                    ]
+                    metrics_path = "/metrics"
+                  }
+                ]
+              }
+            }
+          }
+          exporters = {
+            awsemf = {
+              region         = var.aws_region
+              namespace      = "Arrakis/Economic"
+              log_group_name = "/ecs/${local.name_prefix}/api/metrics"
+            }
+          }
+          service = {
+            pipelines = {
+              metrics = {
+                receivers = ["prometheus"]
+                exporters = ["awsemf"]
+              }
+            }
+          }
+        })}
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.api.name
+          "awslogs-region"        = var.aws_region
+          "awslogs-stream-prefix" = "adot"
+        }
+      }
     }
   ])
 

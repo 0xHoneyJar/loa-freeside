@@ -31,6 +31,17 @@ export {
 } from './drizzle-storage-adapter.js';
 
 // =============================================================================
+// Lot Entry Repository
+// =============================================================================
+
+export {
+  insertLotEntry,
+  type InsertLotEntryParams,
+  type InsertLotEntryResult,
+  type LotEntryType,
+} from './lot-entry-repository.js';
+
+// =============================================================================
 // Schema
 // =============================================================================
 

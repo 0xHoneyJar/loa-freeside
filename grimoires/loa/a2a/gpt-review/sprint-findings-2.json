@@ -1,58 +1,45 @@
 {
-  "verdict": "APPROVED",
-  "summary": "All previously blocking gaps were addressed with explicit cross-repo/IaC tasks and objectively testable acceptance criteria, and no new truly blocking problems were introduced.",
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "5 of the 6 prior blockers are fixed and integrated cleanly, but the event-sourcing DB enforcement vs feature-flag compatibility is still internally inconsistent in a way that can break production writes when FEATURE_EVENT_SOURCING is disabled.",
   "previous_issues_status": [
     {
-      "original_issue": "Sprint 1 gate required both services healthy on ECS but freeside ECS/ALB/env/secrets/health checks were not explicitly verified/enabled",
+      "original_issue": "insertLotEntry requires sequence allocation before event-sourcing schema exists (Sprint ordering mismatch)",
       "status": "fixed",
-      "notes": "Added Sprint 1 Task 1.0 explicitly verifying/enabling freeside ECS resources, ALB routing, health check path, SG rules, Cloud Map, and clean terraform plan, with concrete AC including ALB /health=200."
+      "notes": "AC-1.2.3/1.2.4 now explicitly gate allocation on (flag enabled AND schema detected at startup) and otherwise skip without error, removing the impossible dependency on Sprint 4."
     },
     {
-      "original_issue": "JWT work only covered signing/JWKS publishing; missing finn-side ES256 JWT validation (JWKS fetch/cache, iss/aud/exp enforcement) needed for S2S auth and later sprints",
+      "original_issue": "debitLots double-refactoring across Sprint 1 and Sprint 2",
       "status": "fixed",
-      "notes": "Added Sprint 1 Task 1.6 as a cross-repo loa-finn task implementing JWKS client + verification middleware + staging integration test, and explicitly blocks Sprint 3 if not landed."
+      "notes": "Sprint 1 establishes insertLotEntry with an optional purpose parameter; Sprint 2 only adds purpose resolution/wiring (AC-2.3.4), avoiding a second refactor of the hot path."
     },
     {
-      "original_issue": "JWKS URL/hostname was underspecified/likely wrong for ECS networking (internal DNS name not defined)",
+      "original_issue": "Velocity rollup ambiguity re: purpose dimension and missing dependency on purpose migration",
       "status": "fixed",
-      "notes": "Cloud Map for freeside is now explicitly listed as existing and verified in Task 1.0, and finn uses FREESIDE_JWKS_URL pointing at freeside Cloud Map DNS with an explicit 'curl from finn task' acceptance test."
+      "notes": "Sprint 3 is now explicitly purpose-agnostic with PK (community_id, hour), and AC-3.1.5 states rollups must be safe regardless of purpose column presence; dependency graph updated accordingly."
     },
     {
-      "original_issue": "WebSocket streaming likely to fail without ALB/WAF/IaC verification (listener rules, idle timeout, WAF upgrade behavior)",
-      "status": "fixed",
-      "notes": "Added Sprint 4 Task 4.0 to verify/update ALB idle timeout, listener rules for /chat/* and /chat/*/ws, WAF upgrade allowance, and a staging wscat test with 101 verification."
+      "original_issue": "Feature flags claimed 'no column writes' but DB enforcement could force/reject writes; flags not truly independent",
+      "status": "not_fixed",
+      "notes": "AC-1.5.3 was corrected (schema may exist; app bypasses), but AC-1.5.4 plus Sprint 4 Task 4.1 still installs an enforcement trigger that (as written) is not shown to be conditional on the feature flag. That can cause runtime failures when FEATURE_EVENT_SOURCING=false if the trigger requires fields the app intentionally does not set."
     },
     {
-      "original_issue": "Sprint 4 channel sync proposed storing messages in agent_threads but schema only supported thread metadata; missing messages persistence",
+      "original_issue": "Outbox worker concurrency/locking and idempotency underspecified",
       "status": "fixed",
-      "notes": "Added migration 066 agent_messages and updated Task 4.6 to store/read unified history from agent_messages, with pagination API AC."
+      "notes": "AC-5.4.2 adds FOR UPDATE SKIP LOCKED claiming semantics; AC-5.4.3 defines an idempotency key; AC-5.4.8 adds a 2-worker concurrency test."
     },
     {
-      "original_issue": "Discord ownership verification lacked a concrete Discord↔wallet linking mechanism",
+      "original_issue": "Duplicate migration number 0015",
       "status": "fixed",
-      "notes": "Plan now relies on an explicitly stated existing /verify command + SIWE/DM/web callback binding, and Task 4.4 enforces 'wallet linked' as a prerequisite with clear user guidance."
-    },
-    {
-      "original_issue": "NOWPayments webhook verification/idempotency lacked an end-to-end staging replay harness using real/sandbox payloads and headers",
-      "status": "fixed",
-      "notes": "Added Sprint 2 Task 2.6 with captured raw payload+headers fixture, replay to staging, signature validation assertion, state transition assertion, and idempotent double-replay assertion."
-    },
-    {
-      "original_issue": "NFT transfer cache invalidation depended on an unspecified event ingestion pipeline",
-      "status": "fixed",
-      "notes": "Task 3.1 explicitly scopes cache invalidation to TTL-only for launch and defers event-driven invalidation post-launch, removing the impossible dependency from sprint AC."
-    },
-    {
-      "original_issue": "Admin spend breakdown + JSONL audit required a durable per-finalization ledger; plan didn’t persist usage records",
-      "status": "fixed",
-      "notes": "Added migration 067 usage_events plus Sprint 3 Task 3.5 to write immutable usage events atomically with finalization; Sprint 5 endpoints/export now explicitly query usage_events."
-    },
-    {
-      "original_issue": "Conservation guard alert within 60s lacked a defined emitted signal for alarms to trigger on",
-      "status": "fixed",
-      "notes": "Added Sprint 6 Task 6.0 instrumentation (Prometheus counters + structured log) and Task 6.2 dual alert path (AMP counter and CloudWatch metric filter) with a forced-failure staging test AC."
+      "notes": "Sprint 5 Task 5.2 is now Migration 0016; migration set is unique as listed (0012, 0013a, 0013b, 0014, 0015, 0016)."
     }
   ],
-  "new_blocking_concerns": [],
+  "new_blocking_concerns": [
+    {
+      "location": "Sprint 1 / Task 1.5 (AC-1.5.4) + Sprint 4 / Task 4.1 (AC-4.1.4 enforce_event_sourcing_fields trigger) + Sprint 4 Success Criteria ('DB trigger catches any bypass of insertLotEntry repository')",
+      "description": "Event-sourcing enforcement trigger is installed unconditionally in Migration 0013a, but the plan also requires that when FEATURE_EVENT_SOURCING is disabled the application bypasses event-sourcing fields. Without an explicit guarantee that the trigger is conditional (or only validates when fields are present), disabling FEATURE_EVENT_SOURCING can cause legitimate writes to lot_entries to fail once the migration is deployed.",
+      "why_blocking": "This breaks the stated rollout strategy ('Each flag can be independently toggled') and can produce a production incident: after deploying 0013a, any code path that does not populate causation_id/sequence_number (because the flag is off) may be rejected by the trigger depending on its logic. The document does not specify trigger behavior sufficiently to ensure compatibility with FEATURE_EVENT_SOURCING=false, yet it also claims the trigger 'catches any bypass'—those two goals conflict unless the trigger is explicitly flag-aware or only enforces invariants that are always satisfied.",
+      "fix": "Make the enforcement semantics explicit and compatible with flags in acceptance criteria:\n- Update AC-4.1.4 to state the trigger validates conditionally, e.g. \"Trigger enforces: (a) correlation_id always non-null (already defaulted), and (b) sequence_number/causation_id requirements ONLY when FEATURE_EVENT_SOURCING is enabled for that community OR when sequence_number is non-null.\" \n- If per-community enablement is required (AC-1.5 says per-community override), store a DB-side flag (e.g., community_features table or setting) that the trigger can read; otherwise delay installing the strict trigger until RC when FEATURE_EVENT_SOURCING is enabled everywhere.\n- Add an integration test AC under Sprint 4: \"With FEATURE_EVENT_SOURCING=false and migration 0013a applied, insertLotEntry writes succeed and sequence_number remains NULL.\""
+    }
+  ],
   "iteration": 2
 }

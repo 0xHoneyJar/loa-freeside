@@ -23,6 +23,9 @@ import { referralRouter } from './referral.routes.js';
 import { transferRouter } from './transfer.routes.js';
 import { agentTbaRouter } from './agent-tba.routes.js';
 import { agentGovernanceRouter } from './agent-governance.routes.js';
+import { velocityRouter } from './velocity-routes.js';
+import { eventsRouter } from './events-routes.js';
+import { governanceRouter } from './governance-routes.js';
 
 /**
  * Combined API router that mounts all sub-routers
@@ -73,6 +76,15 @@ apiRouter.use('/agent/tba', agentTbaRouter);
 
 // Mount agent governance routes at /agent/governance (Sprint 289 - Agent Governance)
 apiRouter.use('/agent/governance', agentGovernanceRouter);
+
+// Mount velocity routes (Ostrom Protocol Sprint 3 — Temporal Dimension)
+apiRouter.use('/', velocityRouter);
+
+// Mount events routes (Ostrom Protocol Sprint 4 — Event Formalization)
+apiRouter.use('/', eventsRouter);
+
+// Mount governance routes (Ostrom Protocol Sprint 5 — Governance Layer)
+apiRouter.use('/', governanceRouter);
 
 /**
  * Re-export individual routers for backward compatibility and direct access
@@ -178,3 +190,27 @@ export { agentTbaRouter, setProvenanceVerifier, setDepositBridge } from './agent
  * Weighted proposals, voting, delegation-based weight computation
  */
 export { agentGovernanceRouter, setAgentGovernanceService } from './agent-governance.routes.js';
+
+/**
+ * Purpose breakdown routes (Ostrom Protocol Sprint 2 — Economic Memory)
+ * Purpose breakdown analytics and unclassified rate monitoring
+ */
+export { purposeRouter, setPurposePool } from './purpose-routes.js';
+
+/**
+ * Velocity routes (Ostrom Protocol Sprint 3 — Temporal Dimension)
+ * Community velocity snapshot with Redis cache and DB fallback
+ */
+export { velocityRouter, setVelocityPool, setVelocityRedis } from './velocity-routes.js';
+
+/**
+ * Events routes (Ostrom Protocol Sprint 4 — Event Formalization)
+ * Event stream pagination and consistency verification
+ */
+export { eventsRouter, setEventsPool } from './events-routes.js';
+
+/**
+ * Governance routes (Ostrom Protocol Sprint 5 — Governance Layer)
+ * Policy lifecycle: propose, approve, reject, list
+ */
+export { governanceRouter, setGovernanceService, setGovernanceRateLimiter } from './governance-routes.js';

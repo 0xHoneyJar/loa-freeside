@@ -1,16 +1,21 @@
 {
   "verdict": "APPROVED",
-  "summary": "Both previously reported issues were addressed with proper header/kid routing, origin binding, and stricter exp/iat validation, and no new blocking problems were introduced.",
+  "summary": "All previously reported issues were addressed and no new blocking problems were introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "verifySessionToken did not parse/validate JWT header or use kid-based secret routing",
+      "original_issue": "Non-positive exhaustion hours should not trigger alerts (single snapshot)",
       "status": "fixed",
-      "notes": "Header is now decoded and validated, and kid-based secret selection is implemented with a legacy fallback."
+      "notes": "Guard now checks for null or <= 0n before alert evaluation."
     },
     {
-      "original_issue": "Expiration validation allowed exp==now and did not validate exp/iat types or enforce origin binding",
+      "original_issue": "Single-snapshot evaluation returns alert but doesn’t emit alert metric",
       "status": "fixed",
-      "notes": "exp/iat types are validated, exp is treated as exclusive upper bound, and expectedOrigin is enforced when provided."
+      "notes": "Alert metric emission added before returning the alert."
+    },
+    {
+      "original_issue": "Batch evaluation should skip non-positive exhaustion hours",
+      "status": "fixed",
+      "notes": "Batch now continues when estimatedExhaustionHours is null or <= 0n."
     }
   ],
   "new_blocking_concerns": [],

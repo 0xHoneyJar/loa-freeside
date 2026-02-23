@@ -1,40 +1,36 @@
 {
-  "plan_id": "plan-20260222-bridge",
+  "plan_id": "plan-20260224-cycle038",
   "branch": "feature/launch-readiness",
   "state": "JACKED_OUT",
   "timestamps": {
-    "started": "2026-02-22T01:00:00Z",
-    "last_activity": "2026-02-22T05:43:00Z"
+    "started": "2026-02-24T14:30:00Z",
+    "last_activity": "2026-02-23T21:05:00Z"
   },
   "sprints": {
-    "total": 6,
-    "completed": 1,
-    "current": "sprint-1",
+    "total": 5,
+    "completed": 5,
+    "current": null,
     "list": [
-      { "id": "sprint-1", "status": "completed", "cycles": 1, "note": "Executed as bridge iteration 1 — S2S JWT, migrations, protocol alignment" },
-      { "id": "sprint-2", "status": "pending", "cycles": 0 },
-      { "id": "sprint-3", "status": "pending", "cycles": 0 },
-      { "id": "sprint-4", "status": "pending", "cycles": 0 },
-      { "id": "sprint-5", "status": "pending", "cycles": 0 },
-      { "id": "sprint-6", "status": "pending", "cycles": 0 }
+      { "id": "sprint-1", "global_id": 336, "status": "completed", "cycles": 1, "files_changed": 14 },
+      { "id": "sprint-2", "global_id": 337, "status": "completed", "cycles": 1, "files_changed": 9 },
+      { "id": "sprint-3", "global_id": 338, "status": "completed", "cycles": 1, "files_changed": 9 },
+      { "id": "sprint-4", "global_id": 339, "status": "completed", "cycles": 1, "files_changed": 8 },
+      { "id": "sprint-5", "global_id": 340, "status": "completed", "cycles": 1, "files_changed": 11 }
     ]
   },
   "options": {
     "from": 1,
-    "to": 6,
+    "to": 5,
     "max_cycles": 20,
     "timeout_hours": 8
   },
   "metrics": {
-    "total_cycles": 2,
-    "total_files_changed": 37,
-    "total_findings_fixed": 6
+    "total_cycles": 5,
+    "total_files_changed": 51,
+    "total_findings_fixed": 30
   },
-  "bridge": {
-    "bridge_id": "bridge-20260222-1d94d2",
-    "state": "JACKED_OUT",
-    "iterations_completed": 2,
-    "convergence_rate": 0.947,
-    "termination_reason": "kaironic_convergence"
+  "simstim": {
+    "simstim_id": "simstim-20260224-ostrom",
+    "phase": "complete"
   }
 }

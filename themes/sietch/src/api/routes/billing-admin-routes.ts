@@ -32,6 +32,7 @@ import {
   overrideCooldownSchema,
   proposeFraudRuleSchema,
 } from '../../packages/core/contracts/admin-billing.js';
+import { purposeRouter } from './purpose-routes.js';
 
 // =============================================================================
 // Router Setup
@@ -204,6 +205,12 @@ const adminRateLimiter = rateLimit({
     });
   },
 });
+
+// =============================================================================
+// Mount Purpose Routes (Sprint 2, Task 2.4 — Economic Memory)
+// =============================================================================
+
+billingAdminRouter.use('/', requireAdminAuth, adminRateLimiter, purposeRouter);
 
 // =============================================================================
 // POST /admin/billing/campaigns/:id/grants/batch

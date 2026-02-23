@@ -303,3 +303,90 @@ resource "aws_cloudwatch_metric_alarm" "api_key_failure_spike" {
     Sprint   = "320-Task-7.2"
   })
 }
+
+# -----------------------------------------------------------------------------
+# Velocity Exhaustion Alarms (AC-3.5.1, AC-3.5.2)
+# Sprint 3, Task 3.5 — Velocity Alerts
+# Uses existing aws_sns_topic.alerts for routing
+# -----------------------------------------------------------------------------
+
+# Emergency: community will exhaust funds within 4 hours
+resource "aws_cloudwatch_metric_alarm" "velocity_exhaustion_emergency" {
+  alarm_name          = "${local.name_prefix}-velocity-exhaustion-emergency"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "velocity_exhaustion_alert"
+  namespace           = "Arrakis/Economic"
+  period              = 900 # 15min — matches batch processor schedule
+  statistic           = "Sum"
+  threshold           = 0
+  alarm_description   = "Velocity exhaustion EMERGENCY — community will exhaust funds within 4 hours. Dashboard: https://${var.aws_region}.console.aws.amazon.com/cloudwatch/home?region=${var.aws_region}#dashboards:name=${local.name_prefix}-service-health"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    severity = "emergency"
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+
+  tags = merge(local.common_tags, {
+    Service  = "Velocity"
+    Severity = "critical"
+    Sprint   = "338-Task-3.5"
+  })
+}
+
+# Critical: community will exhaust funds within 24 hours
+resource "aws_cloudwatch_metric_alarm" "velocity_exhaustion_critical" {
+  alarm_name          = "${local.name_prefix}-velocity-exhaustion-critical"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "velocity_exhaustion_alert"
+  namespace           = "Arrakis/Economic"
+  period              = 900
+  statistic           = "Sum"
+  threshold           = 0
+  alarm_description   = "Velocity exhaustion CRITICAL — community will exhaust funds within 24 hours. Dashboard: https://${var.aws_region}.console.aws.amazon.com/cloudwatch/home?region=${var.aws_region}#dashboards:name=${local.name_prefix}-service-health"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    severity = "critical"
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+
+  tags = merge(local.common_tags, {
+    Service  = "Velocity"
+    Severity = "high"
+    Sprint   = "338-Task-3.5"
+  })
+}
+
+# Warning: community will exhaust funds within 72 hours
+resource "aws_cloudwatch_metric_alarm" "velocity_exhaustion_warning" {
+  alarm_name          = "${local.name_prefix}-velocity-exhaustion-warning"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2 # 2 consecutive 15min periods to reduce noise
+  metric_name         = "velocity_exhaustion_alert"
+  namespace           = "Arrakis/Economic"
+  period              = 900
+  statistic           = "Sum"
+  threshold           = 0
+  alarm_description   = "Velocity exhaustion WARNING — community will exhaust funds within 72 hours. Dashboard: https://${var.aws_region}.console.aws.amazon.com/cloudwatch/home?region=${var.aws_region}#dashboards:name=${local.name_prefix}-service-health"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    severity = "warning"
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+
+  tags = merge(local.common_tags, {
+    Service  = "Velocity"
+    Severity = "medium"
+    Sprint   = "338-Task-3.5"
+  })
+}

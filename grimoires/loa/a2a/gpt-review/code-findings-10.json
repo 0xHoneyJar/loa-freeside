@@ -1,24 +1,33 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "Potential async build handling and error propagation are missing; fix lazy init to handle Promise builds, concurrent requests, and failures safely.",
+  "summary": "Unsafe BigInt-to-Number conversions can overflow and silently corrupt emitted metrics; add a safe conversion helper and use it.",
   "issues": [
     {
       "severity": "major",
-      "file": "src/routes/discovery.ts",
-      "line": 31,
-      "description": "If buildDiscoveryDocument is async (returns a Promise), the current lazy init returns a Promise object to res.json and never awaits it, causing incorrect responses. It also allows duplicate builds on concurrent requests and doesn't reset on failure.",
-      "current_code": "```typescript\n// Lazy-initialized discovery document (medium-3: avoids module-level side effects).\n// Built on first request, then cached for subsequent calls.\nlet cachedDiscoveryDocument: ReturnType<typeof buildDiscoveryDocument> | null = null;\n\nfunction getDiscoveryDocument() {\n  if (!cachedDiscoveryDocument) {\n    cachedDiscoveryDocument = buildDiscoveryDocument(\n      ADVERTISED_SCHEMAS.map(name => `${SCHEMA_BASE_URL}/${CONTRACT_VERSION}/${name}`),\n      {\n        aggregateTypes: [\n          'billing',\n          'agent',\n          'conversation',\n          'transfer',\n          'tool',\n        ],\n      },\n    );\n  }\n  return cachedDiscoveryDocument;\n}\n```\n",
-      "fixed_code": "```typescript\n// Lazy-initialized discovery document (medium-3: avoids module-level side effects).\n// Built on first request, then cached for subsequent calls.\nlet cachedDiscoveryDocument: Awaited<ReturnType<typeof buildDiscoveryDocument>> | null = null;\nlet discoveryDocumentPromise: Promise<Awaited<ReturnType<typeof buildDiscoveryDocument>>> | null = null;\n\nasync function getDiscoveryDocument() {\n  if (cachedDiscoveryDocument) return cachedDiscoveryDocument;\n  if (!discoveryDocumentPromise) {\n    discoveryDocumentPromise = Promise.resolve(\n      buildDiscoveryDocument(\n        ADVERTISED_SCHEMAS.map(name => `${SCHEMA_BASE_URL}/${CONTRACT_VERSION}/${name}`),\n        {\n          aggregateTypes: [\n            'billing',\n            'agent',\n            'conversation',\n            'transfer',\n            'tool',\n          ],\n        },\n      ),\n    ).then(doc => {\n      cachedDiscoveryDocument = doc;\n      return doc;\n    }).catch(err => {\n      discoveryDocumentPromise = null; // allow retry after failure\n      throw err;\n    });\n  }\n  return discoveryDocumentPromise;\n}\n```\n",
-      "explanation": "This fix correctly handles both sync and async implementations of buildDiscoveryDocument, prevents concurrent duplicate builds, and resets the promise on failure so future requests can retry."
+      "file": "packages/adapters/telemetry/economic-metrics.ts",
+      "line": 120,
+      "description": "BigInt is converted to Number without bounds checks; values above Number.MAX_SAFE_INTEGER will be truncated and corrupt the metric.",
+      "current_code": "```typescript\n  emitEconomicMetric({\n    name: 'conservation_drift_micro',\n    value: Number(driftMicro),\n    unit: 'None',\n    dimensions: { community_id: communityId },\n  });\n```",
+      "fixed_code": "```typescript\n  emitEconomicMetric({\n    name: 'conservation_drift_micro',\n    value: toSafeNumber(driftMicro, 'conservation_drift_micro'),\n    unit: 'None',\n    dimensions: { community_id: communityId },\n  });\n```",
+      "explanation": "Using a bounded conversion prevents silent precision loss when values exceed Number.MAX_SAFE_INTEGER."
     },
     {
       "severity": "major",
-      "file": "src/routes/discovery.ts",
-      "line": 56,
-      "description": "The route handler doesn't handle errors from getDiscoveryDocument (now async). A thrown error will crash the request without a proper response.",
-      "current_code": "```typescript\ndiscoveryRouter.get('/', (_req, res) => {\n  const doc = getDiscoveryDocument();\n  res.setHeader('Cache-Control', 'public, max-age=3600');\n  res.setHeader('ETag', `\"hounfour-${CONTRACT_VERSION}\"`);\n  res.setHeader('Content-Type', 'application/json; charset=utf-8');\n  res.json(doc);\n});\n```\n",
-      "fixed_code": "```typescript\ndiscoveryRouter.get('/', async (_req, res) => {\n  try {\n    const doc = await getDiscoveryDocument();\n    res.setHeader('Cache-Control', 'public, max-age=3600');\n    res.setHeader('ETag', `\"hounfour-${CONTRACT_VERSION}\"`);\n    res.setHeader('Content-Type', 'application/json; charset=utf-8');\n    res.json(doc);\n  } catch (err) {\n    res.status(500).json({\n      error: 'discovery_document_unavailable',\n      message: 'Failed to build discovery document',\n    });\n  }\n});\n```\n",
-      "explanation": "Awaiting the document and catching errors ensures correct JSON responses and prevents uncaught exceptions from crashing or hanging the request."
+      "file": "packages/adapters/telemetry/economic-metrics.ts",
+      "line": 173,
+      "description": "BigInt amount is converted to Number without bounds checks; large debits will overflow and emit corrupt values.",
+      "current_code": "```typescript\n  emitEconomicMetric({\n    name: 'purpose_spend_micro',\n    value: Number(amountMicro),\n    unit: 'None',\n    dimensions: { community_id: communityId, purpose },\n  });\n```",
+      "fixed_code": "```typescript\n  emitEconomicMetric({\n    name: 'purpose_spend_micro',\n    value: toSafeNumber(amountMicro, 'purpose_spend_micro'),\n    unit: 'None',\n    dimensions: { community_id: communityId, purpose },\n  });\n```",
+      "explanation": "Ensures emitted metrics are safe and accurate for large BigInt values."
+    },
+    {
+      "severity": "major",
+      "file": "packages/adapters/telemetry/economic-metrics.ts",
+      "line": 46,
+      "description": "No safe conversion utility exists to guard BigInt->Number conversions; add a helper to bound values and log overflow.",
+      "current_code": "```typescript\nconst EMF_NAMESPACE = 'Arrakis/Economic';\n```",
+      "fixed_code": "```typescript\nconst EMF_NAMESPACE = 'Arrakis/Economic';\nconst MAX_SAFE_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);\n\nfunction toSafeNumber(value: bigint, metricName: EconomicMetricName): number {\n  if (value > MAX_SAFE_BIGINT) {\n    process.stderr.write(\n      `[metrics] ${metricName} overflow: ${value.toString()} > MAX_SAFE_INTEGER; capping.\\n`,\n    );\n    return Number.MAX_SAFE_INTEGER;\n  }\n  if (value < -MAX_SAFE_BIGINT) {\n    process.stderr.write(\n      `[metrics] ${metricName} underflow: ${value.toString()} < -MAX_SAFE_INTEGER; capping.\\n`,\n    );\n    return -Number.MAX_SAFE_INTEGER;\n  }\n  return Number(value);\n}\n```",
+      "explanation": "Adds a single, consistent bounded conversion that avoids precision loss while keeping the system resilient by capping and logging overflows."
     }
   ],
   "fabrication_check": {

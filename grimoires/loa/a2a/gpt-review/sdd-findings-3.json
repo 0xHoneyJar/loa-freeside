@@ -1,46 +1,16 @@
 {
   "verdict": "APPROVED",
-  "summary": "The remaining double-mint risk is now correctly closed with a DB-enforced, payment-level mint claim guard used uniformly across webhook/poll/admin paths, and no new truly-blocking issues were introduced.",
+  "summary": "The two remaining iteration-2 blockers (invalid DO/COMMIT backfill pattern and cross-tenant admin_audit_log readability by app_role) are fixed correctly, and no new truly blocking issues were introduced by the changes.",
   "previous_issues_status": [
     {
-      "original_issue": "JWKS trust boundary contradiction (finn depending on public ALB JWKS)",
+      "original_issue": "Migration 0012 Phase 2 backfill used DO $$ ... COMMIT; inside loop (invalid in PostgreSQL)",
       "status": "fixed",
-      "notes": "Still correct: finn fetches JWKS via internal Cloud Map URL; public JWKS is explicitly for third-party verifiers only."
+      "notes": "The SDD now correctly states that DO blocks cannot COMMIT, and replaces the guidance with (a) an application/psql batch loop using UPDATE ... LIMIT ... FOR UPDATE SKIP LOCKED with per-iteration commits, and (b) an optional CREATE PROCEDURE approach where COMMIT is valid. This resolves the operational correctness and online/backfill safety requirement."
     },
     {
-      "original_issue": "JWKS key store: DB storing private_key_secret_arn / DB as signing trust root",
+      "original_issue": "admin_audit_log privilege model allowed app_role SELECT with no RLS (cross-tenant audit log exposure)",
       "status": "fixed",
-      "notes": "Still correct: Secrets Manager is the sole source of truth for private keys/active kid; DB stores only public JWKs for serving JWKS."
-    },
-    {
-      "original_issue": "Payment state machine underspecified; double-mint risk; out-of-order/replay handling",
-      "status": "fixed",
-      "notes": "The added crypto_payments-level mint guard (credits_minted_at + UNIQUE credits_mint_event_id) plus the required single-transaction UPDATE-then-conditional-INSERT pattern across IPN/poll/admin closes the realistic double-mint paths previously called out. Refunds are now explicitly compensating ledger entries and do not clear the mint guard, preventing re-mint via refund/reconcile loops. Belt-and-suspenders with UNIQUE(credit_lots.payment_id) further reduces risk."
-    },
-    {
-      "original_issue": "Webhook verification missing raw-body capture/canonicalization and replay protection",
-      "status": "fixed",
-      "notes": "Raw body capture and timingSafeEqual comparison remain explicitly specified; replay/out-of-order is handled by monotonic status_rank plus dedup strategy."
-    },
-    {
-      "original_issue": "Budget streaming finalization atomicity/idempotency and ledger linkage",
-      "status": "fixed",
-      "notes": "Finalization guard (finalized_at IS NULL) + finalization_id UNIQUE + spend_events UNIQUE(budget_reservation_id) remains intact and DB-enforced."
-    },
-    {
-      "original_issue": "Discord thread gating not implementable at scale; caching vs transfer correctness",
-      "status": "fixed",
-      "notes": "Layered verifier + Redis TTL + event-driven invalidation + fail-closed behavior remains implementable and consistent."
-    },
-    {
-      "original_issue": "API key hashing design (bcrypt hot path + prefix lookup pitfalls)",
-      "status": "fixed",
-      "notes": "Two-part key with prefix lookup + HMAC-SHA256(secret, pepper) + timingSafeEqual + negative caching/rate limiting remains correct for scale."
-    },
-    {
-      "original_issue": "PgBouncer read-only pool not enforceable without DB role controls",
-      "status": "fixed",
-      "notes": "Dedicated read-only role with default_transaction_read_only=on and PgBouncer mapping remains the right enforcement."
+      "notes": "The SDD now explicitly REVOKEs ALL from app_role and GRANTs INSERT only, with SELECT reserved for a separate audit_reader_role. This removes the cross-tenant read exposure and matches the stated platform-level audit intent."
     }
   ],
   "new_blocking_concerns": [],

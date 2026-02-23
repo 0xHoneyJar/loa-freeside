@@ -1,0 +1,243 @@
+{
+  "schema": "loa-hounfour-v7-test-vectors",
+  "domain": "ConservationInvariants",
+  "description": "Conservation invariant validation vectors for I-1 through I-5. Each vector tests a specific invariant with pass/fail scenarios.",
+  "invariants": {
+    "I-1": "committed + reserved + available = limit",
+    "I-2": "SUM(lot_entries.amount_micro) per lot = credits - debits = remaining",
+    "I-3": "Redis.committed ≈ Postgres.SUM(usage_events.amount_micro) within drift tolerance",
+    "I-4": "Fence tokens are strictly monotonic per community",
+    "I-5": "Usage events are idempotent (finalization_id UNIQUE)"
+  },
+  "vectors": [
+    {
+      "id": "CI-001",
+      "invariant_id": "I-1",
+      "description": "I-1 PASS: committed + reserved + available = limit (clean state)",
+      "input": {
+        "limit_cents": 1000,
+        "committed_cents": 200,
+        "reserved_cents": 100
+      },
+      "derived": {
+        "available_cents": 700
+      },
+      "expected_pass": true,
+      "expected_sum": 1000
+    },
+    {
+      "id": "CI-002",
+      "invariant_id": "I-1",
+      "description": "I-1 FAIL: overspend — committed + reserved > limit",
+      "input": {
+        "limit_cents": 1000,
+        "committed_cents": 800,
+        "reserved_cents": 300
+      },
+      "derived": {
+        "available_cents": -100
+      },
+      "expected_pass": false,
+      "violation": "overspend by 100 cents"
+    },
+    {
+      "id": "CI-003",
+      "invariant_id": "I-1",
+      "description": "I-1 PASS: zero usage (fresh community)",
+      "input": {
+        "limit_cents": 500,
+        "committed_cents": 0,
+        "reserved_cents": 0
+      },
+      "derived": {
+        "available_cents": 500
+      },
+      "expected_pass": true,
+      "expected_sum": 500
+    },
+    {
+      "id": "CI-004",
+      "invariant_id": "I-2",
+      "description": "I-2 PASS: single lot, one credit one debit",
+      "input": {
+        "lot_id": "lot-001",
+        "entries": [
+          { "entry_type": "credit", "amount_micro": 10000000 },
+          { "entry_type": "debit", "amount_micro": 500000 }
+        ]
+      },
+      "expected": {
+        "total_credits": 10000000,
+        "total_debits": 500000,
+        "remaining": 9500000
+      },
+      "expected_pass": true
+    },
+    {
+      "id": "CI-005",
+      "invariant_id": "I-2",
+      "description": "I-2 PASS: lot fully depleted",
+      "input": {
+        "lot_id": "lot-002",
+        "entries": [
+          { "entry_type": "credit", "amount_micro": 1000000 },
+          { "entry_type": "debit", "amount_micro": 600000 },
+          { "entry_type": "debit", "amount_micro": 400000 }
+        ]
+      },
+      "expected": {
+        "total_credits": 1000000,
+        "total_debits": 1000000,
+        "remaining": 0
+      },
+      "expected_pass": true
+    },
+    {
+      "id": "CI-006",
+      "invariant_id": "I-2",
+      "description": "I-2 FAIL: debits exceed credits (should never happen)",
+      "input": {
+        "lot_id": "lot-003",
+        "entries": [
+          { "entry_type": "credit", "amount_micro": 1000000 },
+          { "entry_type": "debit", "amount_micro": 1200000 }
+        ]
+      },
+      "expected": {
+        "total_credits": 1000000,
+        "total_debits": 1200000,
+        "remaining": -200000
+      },
+      "expected_pass": false,
+      "violation": "debits exceed credits by 200,000 micro-USD"
+    },
+    {
+      "id": "CI-007",
+      "invariant_id": "I-3",
+      "description": "I-3 PASS: Redis and Postgres agree exactly",
+      "input": {
+        "redis_committed_cents": 50,
+        "pg_committed_micro": 500000,
+        "limit_micro": 10000000,
+        "drift_tolerance_percent": 0.01
+      },
+      "derived": {
+        "redis_committed_micro": 500000,
+        "drift_micro": 0,
+        "tolerance_micro": 100000
+      },
+      "expected_pass": true
+    },
+    {
+      "id": "CI-008",
+      "invariant_id": "I-3",
+      "description": "I-3 PASS: small drift within tolerance (±1%)",
+      "input": {
+        "redis_committed_cents": 51,
+        "pg_committed_micro": 500000,
+        "limit_micro": 10000000,
+        "drift_tolerance_percent": 0.01
+      },
+      "derived": {
+        "redis_committed_micro": 510000,
+        "drift_micro": 10000,
+        "tolerance_micro": 100000
+      },
+      "expected_pass": true
+    },
+    {
+      "id": "CI-009",
+      "invariant_id": "I-3",
+      "description": "I-3 FAIL: drift exceeds tolerance (>1%)",
+      "input": {
+        "redis_committed_cents": 70,
+        "pg_committed_micro": 500000,
+        "limit_micro": 10000000,
+        "drift_tolerance_percent": 0.01
+      },
+      "derived": {
+        "redis_committed_micro": 700000,
+        "drift_micro": 200000,
+        "tolerance_micro": 100000
+      },
+      "expected_pass": false,
+      "violation": "drift 200,000 exceeds tolerance 100,000"
+    },
+    {
+      "id": "CI-010",
+      "invariant_id": "I-3",
+      "description": "I-3 FAIL + CIRCUIT BREAKER: drift exceeds 5% of limit",
+      "input": {
+        "redis_committed_cents": 100,
+        "pg_committed_micro": 500000,
+        "limit_micro": 10000000,
+        "drift_tolerance_percent": 0.01,
+        "circuit_breaker_percent": 0.05
+      },
+      "derived": {
+        "redis_committed_micro": 1000000,
+        "drift_micro": 500000,
+        "tolerance_micro": 100000,
+        "circuit_breaker_threshold": 500000
+      },
+      "expected_pass": false,
+      "circuit_breaker_trip": true,
+      "violation": "drift 500,000 equals circuit breaker threshold 500,000"
+    },
+    {
+      "id": "CI-011",
+      "invariant_id": "I-4",
+      "description": "I-4 PASS: fence tokens are strictly monotonic",
+      "input": {
+        "fence_sequence": [1, 2, 3, 4, 5]
+      },
+      "expected_pass": true,
+      "reason": "each token > previous"
+    },
+    {
+      "id": "CI-012",
+      "invariant_id": "I-4",
+      "description": "I-4 FAIL: stale fence token (not monotonic)",
+      "input": {
+        "last_fence_token": 5,
+        "attempted_fence_token": 3
+      },
+      "expected_pass": false,
+      "violation": "fence token 3 is not greater than last token 5"
+    },
+    {
+      "id": "CI-013",
+      "invariant_id": "I-4",
+      "description": "I-4 FAIL: duplicate fence token (equal, not greater)",
+      "input": {
+        "last_fence_token": 5,
+        "attempted_fence_token": 5
+      },
+      "expected_pass": false,
+      "violation": "fence token 5 equals last token 5 (must be strictly greater)"
+    },
+    {
+      "id": "CI-014",
+      "invariant_id": "I-5",
+      "description": "I-5 PASS: first finalization with unique finalization_id",
+      "input": {
+        "finalization_id": "fin-001",
+        "existing_ids": []
+      },
+      "expected_pass": true,
+      "expected_result": "FINALIZED"
+    },
+    {
+      "id": "CI-015",
+      "invariant_id": "I-5",
+      "description": "I-5 PASS (idempotent): duplicate finalization_id returns DUPLICATE",
+      "input": {
+        "finalization_id": "fin-001",
+        "existing_ids": ["fin-001"]
+      },
+      "expected_pass": true,
+      "expected_result": "DUPLICATE",
+      "reason": "ON CONFLICT (finalization_id) DO NOTHING — no new rows created"
+    }
+  ]
+}

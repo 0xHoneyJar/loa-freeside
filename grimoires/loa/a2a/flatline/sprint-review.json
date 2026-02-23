@@ -1,59 +1,129 @@
 {
   "phase": "sprint",
   "document": "grimoires/loa/sprint.md",
-  "timestamp": "2026-02-21T17:19:53Z",
-  "simstim_id": "simstim-20260221-hounfour-v7",
+  "timestamp": "2026-02-23T12:44:12Z",
+  "cycle": "cycle-038",
   "consensus_summary": {
-    "high_consensus_count": 4,
-    "disputed_count": 0,
+    "high_consensus_count": 5,
+    "disputed_count": 1,
     "low_value_count": 0,
-    "blocker_count": 7,
-    "model_agreement_percent": 100,
+    "blocker_count": 8,
+    "model_agreement_percent": 90,
     "confidence": "full"
   },
   "high_consensus": [
     {
       "id": "IMP-001",
-      "description": "Add S2S rollback/canary/cutover plan for CONTRACT_VERSION jump to 7.0.0",
-      "gpt_score": 920,
-      "opus_score": 920,
-      "average_score": 920,
-      "integrated": true
+      "description": "Outbox permanent failure handling: DLQ/quarantine table, alerting, replay tooling, reconciliation job for terminal failures",
+      "average_score": 820,
+      "status": "auto_integrated",
+      "integration": "Added outbox DLQ, governance_outbox_dlq table, manual reprocess endpoint, and reconciliation sweep in Task 5.4"
     },
     {
       "id": "IMP-002",
-      "description": "Add pre-flight compile check before de-vendoring to prevent predictable failures",
-      "gpt_score": 780,
-      "opus_score": 870,
-      "average_score": 825,
-      "integrated": true
+      "description": "updateLimit + in-flight debits race: explicit concurrency semantics (transactional locking, compare-and-set with versioning)",
+      "average_score": 900,
+      "status": "auto_integrated",
+      "integration": "Added AC to Task 5.4 specifying updateLimit uses compare-and-set with policy version, and Task 5.3 approve() holds advisory lock during limit update"
     },
     {
       "id": "IMP-003",
-      "description": "Add type-shape contract tests to detect drift during vendored-to-canonical migration",
-      "gpt_score": 740,
-      "opus_score": 810,
-      "average_score": 775,
-      "integrated": true
+      "description": "Cross-sprint E2E integration test: golden-path scenario exercising purpose → velocity → replay → governance pipeline",
+      "average_score": 785,
+      "status": "auto_integrated",
+      "integration": "Added Task 5.10 cross-sprint E2E validation test with constrained scope (2 golden-path + 1 failure-path)"
     },
     {
       "id": "IMP-004",
-      "description": "Add schema validation tests for /.well-known/loa-hounfour discovery endpoint",
-      "gpt_score": 810,
-      "opus_score": 830,
-      "average_score": 820,
-      "integrated": true
+      "description": "Rollup lag handling: cursor semantics, lag metrics, catch-up mode, observability for stale rollups",
+      "average_score": 810,
+      "status": "auto_integrated",
+      "integration": "Added ACs to Task 3.2 for lag metrics, catch-up mode, and cursor based on lot_entries.id high-water mark"
+    },
+    {
+      "id": "IMP-008",
+      "description": "Migration ordering constraints: document required ordering, ensure additive/idempotent, code tolerates partial schema",
+      "average_score": 765,
+      "status": "auto_integrated",
+      "integration": "Added Migration Ordering section with explicit ordering constraints and partial-schema tolerance requirements"
     }
   ],
-  "disputed": [],
-  "low_value": [],
+  "disputed": [
+    {
+      "id": "IMP-010",
+      "description": "Load testing and contention modeling — disproportionate for sprint doc stage, better as lightweight AC with p95 guardrails",
+      "gpt_score": 430,
+      "opus_score": 850,
+      "average_score": 640,
+      "status": "deferred",
+      "rationale": "Deferred to operational readiness — lightweight concurrency budget and p95 guardrails added as ACs instead of full load test suite"
+    }
+  ],
   "blockers": [
-    {"id": "SKP-001", "concern": "Pin to immutable commit SHA, not tag reference", "severity_score": 920},
-    {"id": "SKP-002", "concern": "v4.6.0 compat removal could break loa-finn peers", "severity_score": 900},
-    {"id": "SKP-009", "concern": "CORS wildcard for SIWE is auth vulnerability, not just logging", "severity_score": 860},
-    {"id": "SKP-010", "concern": "Scope/timeline risk: 4 sprints, 1 engineer, cross-cutting", "severity_score": 780},
-    {"id": "SKP-003", "concern": "De-vendoring assumes identical export surface", "severity_score": 760},
-    {"id": "SKP-004", "concern": "NftId migration underspecified", "severity_score": 740},
-    {"id": "SKP-006", "concern": "JWT claim changes need versioning strategy", "severity_score": 720}
-  ]
+    {
+      "id": "SKP-001",
+      "concern": "Single-engineer schedule risk: 5 sprints with multiple Large tasks, cascade risk from Sprint 1/4 slips",
+      "severity_score": 920,
+      "status": "accepted",
+      "integration": "Added explicit timeboxes, de-scope options (Tier 3 allocation, Arrakis bridge), and stop-the-line gate after Sprint 1"
+    },
+    {
+      "id": "SKP-002",
+      "concern": "RLS + SET LOCAL fragile with connection pooling and background jobs; cross-tenant exposure risk",
+      "severity_score": 900,
+      "status": "accepted",
+      "integration": "Added DB assertion function requirement, runtime telemetry for unscoped queries, and explicit SET LOCAL enforcement in Task 1.1/1.4"
+    },
+    {
+      "id": "SKP-003",
+      "concern": "Static analysis grep can be bypassed by query builders, multiline SQL, or indirect calls",
+      "severity_score": 740,
+      "status": "accepted",
+      "integration": "Added DB-level enforcement: REVOKE INSERT on lot_entries from app_role, GRANT to insertLotEntry SECURITY DEFINER function. CI grep complemented by DB privilege test"
+    },
+    {
+      "id": "SKP-004",
+      "concern": "Feature-flag schema-detection caching inconsistent across instances during rolling deploys",
+      "severity_score": 720,
+      "status": "accepted",
+      "integration": "Changed from startup caching to migration-version check against migrations table. Fail-closed for event sourcing in RC/GA"
+    },
+    {
+      "id": "SKP-007",
+      "concern": "Legacy backfill concurrent safety: ordering and monotonicity can break under concurrent inserts",
+      "severity_score": 880,
+      "status": "accepted",
+      "integration": "Added per-community pause protocol: disable sequencing for community during backfill, then resume. Formal concurrent-write test added"
+    },
+    {
+      "id": "SKP-008",
+      "concern": "Velocity rollup cursoring and ON CONFLICT accumulation can double-count or miss data under retries",
+      "severity_score": 760,
+      "status": "accepted",
+      "integration": "Changed to idempotent aggregation: recompute last 2 hours each run with UPSERT replace semantics. Cursor based on lot_entries.id with high-water mark per community"
+    },
+    {
+      "id": "SKP-009",
+      "concern": "Replay performance target may be unrealistic; verify endpoint can DOS the DB",
+      "severity_score": 710,
+      "status": "accepted",
+      "integration": "Added range limits on replay, rate-limited verify endpoint, async job for full replay, materialized checkpoint consideration for future"
+    },
+    {
+      "id": "SKP-010",
+      "concern": "Governance outbox worker reliability underspecified (exactly-once, poison messages, scaling)",
+      "severity_score": 780,
+      "status": "accepted",
+      "integration": "Added governance_outbox_dlq table, manual reprocess endpoint, unique constraint on applied updates, backlog depth metrics, and auto-scaling strategy"
+    }
+  ],
+  "gpt_review": {
+    "iterations": 3,
+    "final_verdict": "APPROVED",
+    "findings_files": [
+      "grimoires/loa/a2a/gpt-review/sprint-findings-1.json",
+      "grimoires/loa/a2a/gpt-review/sprint-findings-2.json",
+      "grimoires/loa/a2a/gpt-review/sprint-findings-3.json"
+    ]
+  }
 }

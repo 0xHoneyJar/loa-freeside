@@ -1,36 +1,31 @@
 {
   "verdict": "APPROVED",
-  "summary": "All previously raised blockers are addressed, including the Track 2 personality-bridge contradiction, and no new truly blocking problems were introduced.",
+  "summary": "The five v1.2.0 Flatline HIGH_CONSENSUS integrations are consistent with the established posting-level event model, BigInt-only economics, and RLS tenant isolation, and they do not introduce contradictions with existing acceptance criteria or new truly blocking risks.",
   "previous_issues_status": [
     {
-      "original_issue": "Auth boundary between loa-freeside and loa-finn (S2S JWT ES256) was underspecified/inconsistent (JWKS hosting, rotation, internal-only vs public).",
+      "original_issue": "IMP-001: Governance rate limiting (per-role/per-community quotas in F-4)",
       "status": "fixed",
-      "notes": "Track 0 now clearly defines finn as internal-only, SG inbound only from freeside, JWKS hosted by freeside (issuer), explicit iss/aud/TTL, and a concrete rotation mechanism via Secrets Manager + scheduled Lambda. This is implementable on ECS and resolves the earlier inconsistency."
+      "notes": "Added explicit per-role daily quotas plus a per-community burst limit with Redis keys scoped by community_id and role, and made limits non-governable (prevents self-escalation). This does not create a governance deadlock because (a) admin remains unlimited, (b) limits are high enough for normal ops, and (c) 429 + Retry-After provides a deterministic recovery path rather than wedging state."
     },
     {
-      "original_issue": "NOWPayments webhook ingress not concretely defined for ALB/TLS + idempotency semantics ambiguous (risk double-mint).",
+      "original_issue": "IMP-002: Sequence gaps on rollback (clarification in F-3 sequencing)",
       "status": "fixed",
-      "notes": "FR-1.2 specifies a stable public HTTPS endpoint on freeside, HMAC-SHA512 verification, and idempotency keyed on payment_id with a UNIQUE constraint and replay behavior (200/no extra credits). This is sufficient to prevent double-minting and aligns with the stated existing adapter assets."
+      "notes": "PRD now explicitly states gaps are expected on rollback and consumers must tolerate them. This is consistent with the per-community counter-table allocation approach and does not break determinism: ordering is still strictly by (community_id, sequence_number) for committed rows."
     },
     {
-      "original_issue": "“Private to holder” Discord thread likely infeasible; permission model/fallback missing.",
+      "original_issue": "IMP-003: Event sourcing snapshots/compaction/archival (lifecycle section in F-3)",
       "status": "fixed",
-      "notes": "FR-3.1 now uses public threads with bot-enforced gating by default, and private threads only when supported, with explicit fallback. This matches Discord constraints and is shippable."
+      "notes": "Lifecycle section is compatible with posting-level canonicality: snapshots are derived state with a last_sequence_number pointer; compaction is explicitly deferred (no implementation this cycle), and archival preserves full-fidelity events for forensic replay. Nothing here requires an envelope model or violates append-only semantics."
     },
     {
-      "original_issue": "Personality bridge ownership/call flow unclear and internally contradictory (dependencies/graph required a personality lookup endpoint despite stating finn derives personality inside inference).",
+      "original_issue": "IMP-004: Concurrent policy approvals (latest-wins, atomic supersession in F-4)",
       "status": "fixed",
-      "notes": "Track 2 is now consistent end-to-end: FR-2.1 explicitly says freeside passes nft_id/tier/budget_reservation_id in the S2S JWT and finn resolves personality/selects pool; dependencies no longer require a separate GET personality endpoint; the dependency graph nodes are updated to 'Inference request enrichment' and 'metadata headers'. This removes the integration-blocking mismatch."
+      "notes": "Defines latest-wins plus atomic supersession in a single transaction, with retry-on-conflict behavior. This does not violate conservation invariants because budget_limit decreases are still gated by the existing pending_enforcement rule (cannot enforce below committed+reserved), and policy activation is described as atomic with event logging."
     },
     {
-      "original_issue": "Web chat widget auth/gating undefined; risk of leaking API keys in browser or bypassing token gating.",
+      "original_issue": "IMP-008: Aggregate scaling assumptions (community count, batching in NF-2)",
       "status": "fixed",
-      "notes": "FR-3.6/FR-3.7 define SIWE → server-issued short-lived session token, explicitly forbid API keys in browser, and provide a server-side key option for embedded widgets plus read-only unauthenticated mode. This is a viable MVP security posture."
-    },
-    {
-      "original_issue": "Prometheus requirement lacked a viable ECS/Fargate scraping architecture.",
-      "status": "fixed",
-      "notes": "FR-0.5 specifies AMP + ADOT collector sidecars with ECS task metadata discovery, retaining CloudWatch Container Insights. This is an AWS-supported pattern and meets the 60s alerting requirement in FR-0.7."
+      "notes": "Adds platform-wide assumptions and batching strategy that are coherent with the architecture: per-community sequencing serializes only within a tenant; velocity computation is scheduled and batched; and the stated contention threshold aligns with the earlier note about considering advisory locks only at high per-community TPS."
     }
   ],
   "new_blocking_concerns": [],

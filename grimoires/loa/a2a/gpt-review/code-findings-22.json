@@ -1,38 +1,18 @@
 {
-  "verdict": "CHANGES_REQUIRED",
-  "summary": "Critical Slack integration is misconfigured and will not deliver alerts; there are also alert-timing and math expression bugs that violate acceptance criteria.",
-  "issues": [
+  "verdict": "APPROVED",
+  "summary": "Both previously reported issues were addressed correctly and no new blocking problems were introduced.",
+  "previous_issues_status": [
     {
-      "severity": "critical",
-      "file": "alerting.tf",
-      "line": 18,
-      "description": "SNS subscription to a Slack webhook will not work for CloudWatch alarm payloads; SNS delivers a JSON envelope or raw message, not the Slack webhook JSON format. This breaks all alert delivery. Use AWS Chatbot for SNS→Slack routing as noted in the comments.",
-      "current_code": "```hcl\nresource \"aws_sns_topic_subscription\" \"slack_alerts\" {\n  count     = var.slack_webhook_url != \"\" ? 1 : 0\n  topic_arn = aws_sns_topic.alerts.arn\n  protocol  = \"https\"\n  endpoint  = var.slack_webhook_url\n\n  # Slack expects raw JSON, not SNS message wrapping\n  raw_message_delivery = false\n}\n```",
-      "fixed_code": "```hcl\n# AWS Chatbot provides managed SNS → Slack routing (no webhook required)\nresource \"aws_iam_role\" \"chatbot\" {\n  name = \"${local.name_prefix}-chatbot\"\n  assume_role_policy = jsonencode({\n    Version = \"2012-10-17\",\n    Statement = [\n      {\n        Effect = \"Allow\",\n        Principal = { Service = \"chatbot.amazonaws.com\" },\n        Action = \"sts:AssumeRole\"\n      }\n    ]\n  })\n}\n\nresource \"aws_iam_role_policy_attachment\" \"chatbot\" {\n  role       = aws_iam_role.chatbot.name\n  policy_arn = \"arn:aws:iam::aws:policy/AWSChatbotServiceRolePolicy\"\n}\n\nresource \"aws_chatbot_slack_channel_configuration\" \"slack_alerts\" {\n  count               = (var.slack_workspace_id != \"\" && var.slack_channel_id != \"\") ? 1 : 0\n  configuration_name  = \"${local.name_prefix}-alerts\"\n  slack_workspace_id  = var.slack_workspace_id\n  slack_channel_id    = var.slack_channel_id\n  sns_topic_arns       = [aws_sns_topic.alerts.arn]\n  iam_role_arn         = aws_iam_role.chatbot.arn\n  logging_level        = \"ERROR\"\n}\n```",
-      "explanation": "Slack webhooks cannot consume SNS alarm envelopes; AWS Chatbot is the supported SNS→Slack path and guarantees delivery formatting. The added IAM role is required by Chatbot."
+      "original_issue": "Hard 10k limit could be bypassed with negative limits (LIMIT -1)",
+      "status": "fixed",
+      "notes": "Limit is now clamped to a non-negative integer within MAX_REPLAY_EVENTS via clampReplayLimit, preventing negative values from disabling the cap."
     },
     {
-      "severity": "major",
-      "file": "alerting.tf",
-      "line": 69,
-      "description": "API health check failure alarm will not fire within 60s because evaluation_periods=2 at period=60s causes a 120s minimum delay, violating the acceptance criteria.",
-      "current_code": "```hcl\nresource \"aws_cloudwatch_metric_alarm\" \"api_health_check_failure\" {\n  alarm_name          = \"${local.name_prefix}-api-health-check-failure\"\n  comparison_operator = \"LessThanThreshold\"\n  evaluation_periods  = 2\n  metric_name         = \"HealthyHostCount\"\n  namespace           = \"AWS/ApplicationELB\"\n  period              = 60\n  statistic           = \"Minimum\"\n  threshold           = 1\n  alarm_description   = \"API service has no healthy targets — service is DOWN. Dashboard: https://${var.aws_region}.console.aws.amazon.com/cloudwatch/home?region=${var.aws_region}#dashboards:name=${local.name_prefix}-service-health\"\n  treat_missing_data  = \"breaching\"\n\n  dimensions = {\n    TargetGroup  = aws_lb_target_group.api.arn_suffix\n    LoadBalancer = aws_lb.main.arn_suffix\n  }\n\n  alarm_actions = [aws_sns_topic.alerts.arn]\n  ok_actions    = [aws_sns_topic.alerts.arn]\n\n  tags = merge(local.common_tags, {\n    Service  = \"API\"\n    Severity = \"critical\"\n    Sprint   = \"320-Task-7.2\"\n  })\n}\n```",
-      "fixed_code": "```hcl\nresource \"aws_cloudwatch_metric_alarm\" \"api_health_check_failure\" {\n  alarm_name          = \"${local.name_prefix}-api-health-check-failure\"\n  comparison_operator = \"LessThanThreshold\"\n  evaluation_periods  = 1\n  metric_name         = \"HealthyHostCount\"\n  namespace           = \"AWS/ApplicationELB\"\n  period              = 60\n  statistic           = \"Minimum\"\n  threshold           = 1\n  alarm_description   = \"API service has no healthy targets — service is DOWN. Dashboard: https://${var.aws_region}.console.aws.amazon.com/cloudwatch/home?region=${var.aws_region}#dashboards:name=${local.name_prefix}-service-health\"\n  treat_missing_data  = \"breaching\"\n\n  dimensions = {\n    TargetGroup  = aws_lb_target_group.api.arn_suffix\n    LoadBalancer = aws_lb.main.arn_suffix\n  }\n\n  alarm_actions = [aws_sns_topic.alerts.arn]\n  ok_actions    = [aws_sns_topic.alerts.arn]\n\n  tags = merge(local.common_tags, {\n    Service  = \"API\"\n    Severity = \"critical\"\n    Sprint   = \"320-Task-7.2\"\n  })\n}\n```",
-      "explanation": "Reducing evaluation_periods to 1 ensures the alarm can fire within 60s as required."
-    },
-    {
-      "severity": "major",
-      "file": "alerting.tf",
-      "line": 108,
-      "description": "The 5xx rate math expression divides by RequestCount without guarding for zero, which can produce NaN and prevent alarm evaluation during low traffic.",
-      "current_code": "```hcl\nmetric_query {\n  id          = \"e1\"\n  expression  = \"(m2 / m1) * 100\"\n  label       = \"5xx Error Rate %\"\n  return_data = true\n}\n```",
-      "fixed_code": "```hcl\nmetric_query {\n  id          = \"e1\"\n  expression  = \"IF(m1 > 0, (m2 / m1) * 100, 0)\"\n  label       = \"5xx Error Rate %\"\n  return_data = true\n}\n```",
-      "explanation": "Guarding against zero RequestCount prevents NaN and ensures the alarm evaluates consistently in low-traffic periods."
+      "original_issue": "verifyConsistency replay and balance checks were in separate transactions causing inconsistent snapshots",
+      "status": "fixed",
+      "notes": "verifyConsistency now replays and reads balances within the same transaction using replayStateWithClient."
     }
   ],
-  "fabrication_check": {
-    "passed": true,
-    "concerns": []
-  },
-  "iteration": 1
+  "new_blocking_concerns": [],
+  "iteration": 2
 }

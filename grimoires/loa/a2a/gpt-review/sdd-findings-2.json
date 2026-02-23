@@ -1,54 +1,70 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "7 of the 8 previously-blocking issues are addressed correctly, but the revised payment state-machine/anti-double-mint design still allows a real double-mint path via reconciliation/admin flows and lacks a DB-enforced “minted exactly once” guard tied to the terminal paid transition.",
+  "summary": "Most iteration-1 blockers were addressed correctly, but two fixes introduce truly blocking problems: the backfill DO/COMMIT pattern is invalid SQL for PostgreSQL, and the admin_audit_log privilege model still allows cross-tenant audit log reads by the app role.",
   "previous_issues_status": [
     {
-      "original_issue": "JWKS trust boundary contradiction (finn depending on public ALB JWKS)",
+      "original_issue": "0012 purpose column added as NOT NULL DEFAULT could block; needed phased online approach",
       "status": "fixed",
-      "notes": "Finn now fetches JWKS from an internal Cloud Map URL and the public JWKS is explicitly for third-party verifiers only. This removes the runtime dependency on public egress/ALB and matches the stated trust boundary."
+      "notes": "Now uses nullable add + backfill + DEFAULT + CHECK NOT VALID + VALIDATE, and explicitly avoids SET NOT NULL. That’s the correct online pattern."
     },
     {
-      "original_issue": "JWKS key store: DB storing private_key_secret_arn / DB as signing trust root",
+      "original_issue": "0014 partial index predicate used NOW() (non-immutable) so migration would fail",
       "status": "fixed",
-      "notes": "Private key material and active-kid selection moved to Secrets Manager with in-memory caching; DB stores only public JWKs for serving JWKS. This removes DB from the signing critical path and eliminates the private-key reference leakage vector."
+      "notes": "NOW() removed from predicate; effective_until handled at query time. DDL is valid."
     },
     {
-      "original_issue": "Payment state machine underspecified; double-mint risk; out-of-order/replay handling",
+      "original_issue": "0015 trigger referenced prevent_mutation() but function missing",
+      "status": "fixed",
+      "notes": "prevent_mutation() is defined before trigger. DDL will apply."
+    },
+    {
+      "original_issue": "0013 correlation_id default requires pgcrypto; and CONCURRENTLY indexes require non-transactional migration",
+      "status": "fixed",
+      "notes": "CREATE EXTENSION IF NOT EXISTS pgcrypto added; migration split into 0013a/0013b with transaction:false for CONCURRENTLY is correct."
+    },
+    {
+      "original_issue": "community_operations view fragmented operations by grouping on purpose/entry_type; not correlation-aware",
+      "status": "fixed",
+      "notes": "Now groups strictly by (community_id, correlation_id) and provides JSON aggregates. This matches SKP-002 intent."
+    },
+    {
+      "original_issue": "Replay semantics inconsistent; expire double-subtract risk; governance lot_id NULL handling; enforce lot_id NOT NULL for economic types",
+      "status": "fixed",
+      "notes": "Canonical posting model is now explicit; expire uses explicit amount_micro; CHECK constraint enforces lot_id for non-governance. Replay switch aligns with the table."
+    },
+    {
+      "original_issue": "Governance approve(): BigInt conversion from JSONB numeric could throw / lose precision",
+      "status": "fixed",
+      "notes": "limit_micro required as string with Zod validation; approve() uses BigInt(string). This resolves the precision/throw risk."
+    },
+    {
+      "original_issue": "RLS completeness: current_setting missing_ok; admin_audit_log had no RLS/privilege model; risk of bypass/outages",
       "status": "not_fixed",
-      "notes": "You added a CHECK-constrained status set, status_rank monotonic guard, and UNIQUE(credit_lots.payment_id), which is good. However, the design still permits double-mint in realistic flows because minting is not guarded by a single DB-atomic “minted_at/minted_event_id” on the payment itself, and reconciliation/admin actions can re-trigger minting when the original mint either (a) happened but credit_lots.payment_id was NULL, or (b) happened in a separate lot not linked to payment_id, or (c) the mint step is retried after a partial failure. The SDD also states terminal-to-terminal transitions are rejected, but also lists refunded as terminal and mentions reversal “if minted” without defining a safe reversal ledger path—this is an accounting integrity hole."
+      "notes": "Tenant-table policies now use current_setting(..., true)+COALESCE which is good. However, admin_audit_log is still readable by app_role per the stated GRANT, which is a cross-tenant exposure for any endpoint/path that can query it (or future code). This remains a SKP-007-class blocker unless app_role SELECT is removed or RLS is added with a separate privileged reader role."
     },
     {
-      "original_issue": "Webhook verification missing raw-body capture/canonicalization and replay protection",
+      "original_issue": "Sequencing contention mitigation not concretely specified for Tier 2/3",
       "status": "fixed",
-      "notes": "Raw body capture via Express json verify hook is explicitly specified; HMAC computed over raw bytes; timingSafeEqual used. Replay protection is described via (payment_id, ipn_status) dedup plus status_rank guard—acceptable for NOWPayments’ typical behavior."
+      "notes": "Tier 2 advisory lock and Tier 3 range allocation SQL are specified with monotonic/no-duplicate guarantees and gap tolerance. That satisfies SKP-003."
     },
     {
-      "original_issue": "Budget streaming finalization atomicity/idempotency and ledger linkage",
+      "original_issue": "CommunityId in path vs actor.community_id missing explicit cross-check (IDOR class)",
       "status": "fixed",
-      "notes": "Added finalized_at IS NULL guard + finalization_id UNIQUE and a spend_events table with UNIQUE(budget_reservation_id) linking to the debit ledger. This is the DB-enforced single-finalization/ledger-link that was missing."
-    },
-    {
-      "original_issue": "Discord thread gating not implementable at scale; caching vs transfer correctness",
-      "status": "fixed",
-      "notes": "Ownership checks are now explicitly via an indexed verifier (not on-chain per message), with Redis TTL cache, event-driven invalidation on transfer, background re-verify, and fail-closed on verifier outage. This is implementable and matches the requirement intent."
-    },
-    {
-      "original_issue": "API key hashing design (bcrypt hot path + prefix lookup pitfalls)",
-      "status": "fixed",
-      "notes": "Two-part key with sufficiently long random prefix, HMAC-SHA256 with pepper for O(1) verification, timingSafeEqual, negative caching, and rate limiting are all appropriate for high-QPS auth."
-    },
-    {
-      "original_issue": "PgBouncer read-only pool not enforceable without DB role controls",
-      "status": "fixed",
-      "notes": "Dedicated SELECT-only role plus default_transaction_read_only=on and PgBouncer mapping is the correct enforcement mechanism."
+      "notes": "requireCommunityMatch() middleware added with platform-admin audited bypass. This addresses the multi-tenant guard requirement."
     }
   ],
   "new_blocking_concerns": [
     {
-      "location": "3.2 Payment State Machine Extension + 5.5 Admin reconcile endpoint + Phase 2 reconciliation job",
-      "description": "Credit minting is not DB-atomically tied to a single irreversible ‘paid’ transition on the payment record, leaving a double-mint path through retries/reconciliation/admin reconcile when minting partially fails or when credit_lots are created without a non-NULL payment_id linkage.",
-      "why_blocking": "This is direct revenue loss/accounting integrity failure. In production, webhook handling and reconciliation/admin repair are exactly where partial failures and retries occur. Relying only on UNIQUE(credit_lots.payment_id) is insufficient unless you can guarantee every mint always sets payment_id and that no other credit issuance path exists. The SDD does not define that invariant, and it explicitly introduces additional mint-triggering paths (poll reconciliation + admin reconcile). Without a payment-level minted guard, you can mint twice across these paths.",
-      "fix": "Add a DB-enforced mint guard on crypto_payments and make minting conditional on it in the same transaction as the status update. Concretely: (1) add columns like crypto_payments.credits_minted_at TIMESTAMPTZ NULL and crypto_payments.credits_mint_event_id TEXT UNIQUE (or UUID) NULL; (2) in the webhook/reconcile/admin code, perform a single transaction that updates status_rank AND sets credits_minted_at/event_id only if currently NULL, then inserts the credit_lot referencing payment_id. Example pattern: UPDATE crypto_payments SET ... , credits_minted_at=NOW(), credits_mint_event_id=$eid WHERE payment_id=$pid AND credits_minted_at IS NULL AND new_status='finished' AND status_rank < new_rank RETURNING ...; only if that UPDATE returns a row do you INSERT credit_lots(payment_id=...) ...; otherwise no-op. Also explicitly define refund handling as a separate compensating ledger entry (negative credit lot or debit) rather than allowing terminal-to-terminal transitions to implicitly ‘reverse’ without a defined invariant."
+      "location": "3.2.1 Migration 0012 Phase 2 backfill DO $$ ... COMMIT; inside loop",
+      "description": "The provided backfill snippet is not valid PostgreSQL: you cannot issue COMMIT inside a DO block (PL/pgSQL DO runs in a single transaction). As written, operators following the SDD will hit errors and/or attempt a long-running single transaction backfill that can bloat/lock and threaten production.",
+      "why_blocking": "This is the operational heart of the “online” migration. If the documented approach fails or runs as one huge transaction, it can cause severe bloat, long lock retention, replication lag, and potentially stall writes—contradicting the zero-downtime requirement.",
+      "fix": "Replace the DO-block example with an application-side or psql-side batch loop that commits between batches (each batch is its own transaction). Example operational guidance: run repeated statements like `UPDATE ... WHERE id IN (SELECT id ... LIMIT 5000 FOR UPDATE SKIP LOCKED);` in a script that COMMITs each iteration, with lock_timeout/statement_timeout set. Alternatively, use a server-side PROCEDURE (CREATE PROCEDURE) which can COMMIT, but DO cannot."
+    },
+    {
+      "location": "1.9 Security Architecture + 3.2.4 Migration 0015 admin_audit_log privileges",
+      "description": "The SDD grants SELECT on admin_audit_log to app_role while also stating the table has no RLS. That makes the entire platform audit log readable by the application DB role (cross-tenant), which is a data exposure risk and violates the stated intent of platform-level restricted access.",
+      "why_blocking": "Any compromised app path, SQL injection, misrouted query, or future feature that exposes audit logs would leak cross-tenant sensitive audit data. With no RLS, DB is not enforcing tenant isolation here. This is a security blocker (SKP-007 class).",
+      "fix": "Remove SELECT from app_role: `REVOKE ALL ON admin_audit_log FROM app_role; GRANT INSERT ON admin_audit_log TO app_role;` and create a separate `audit_reader_role` (or platform-admin service role) with SELECT. If the app must read its own audit entries, then enable RLS on admin_audit_log and scope by community_id (and handle NULL community_id rows carefully), or expose reads only via a separate privileged connection with explicit platform-admin authorization."
     }
   ],
   "iteration": 2

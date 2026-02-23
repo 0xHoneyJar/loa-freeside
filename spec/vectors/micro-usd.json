@@ -1,0 +1,118 @@
+{
+  "schema": "loa-hounfour-v7-test-vectors",
+  "domain": "MicroUSD",
+  "description": "MicroUSD arithmetic test vectors. 1 USD = 1,000,000 micro-USD. All values are integers (BigInt). No floating-point in the economic path.",
+  "vectors": [
+    {
+      "id": "MUSD-001",
+      "description": "Basic conversion: $1.00 = 1,000,000 micro-USD",
+      "input": { "usd": "1.00" },
+      "expected_micro": 1000000,
+      "invariant_id": null
+    },
+    {
+      "id": "MUSD-002",
+      "description": "Fractional cent: $0.001 = 1,000 micro-USD",
+      "input": { "usd": "0.001" },
+      "expected_micro": 1000,
+      "invariant_id": null
+    },
+    {
+      "id": "MUSD-003",
+      "description": "Zero value: $0.00 = 0 micro-USD",
+      "input": { "usd": "0.00" },
+      "expected_micro": 0,
+      "invariant_id": null
+    },
+    {
+      "id": "MUSD-004",
+      "description": "Maximum safe value: $9,007,199,254.740992 (Number.MAX_SAFE_INTEGER micro-USD)",
+      "input": { "micro": 9007199254740992 },
+      "expected_usd": "9007199254.740992",
+      "invariant_id": null
+    },
+    {
+      "id": "MUSD-005",
+      "description": "Addition: 500,000 + 500,000 = 1,000,000 micro-USD",
+      "operation": "add",
+      "input": { "a_micro": 500000, "b_micro": 500000 },
+      "expected_micro": 1000000,
+      "invariant_id": null
+    },
+    {
+      "id": "MUSD-006",
+      "description": "Subtraction: 1,000,000 - 300,000 = 700,000 micro-USD",
+      "operation": "subtract",
+      "input": { "a_micro": 1000000, "b_micro": 300000 },
+      "expected_micro": 700000,
+      "invariant_id": null
+    },
+    {
+      "id": "MUSD-007",
+      "description": "Underflow protection: 100,000 - 200,000 should be rejected (negative balance)",
+      "operation": "subtract",
+      "input": { "a_micro": 100000, "b_micro": 200000 },
+      "expected_error": "UNDERFLOW",
+      "invariant_id": null
+    },
+    {
+      "id": "MUSD-008",
+      "description": "Division truncates (no rounding): 10,000,001 / 10,000 = 1000 (not 1000.0001)",
+      "operation": "integer_divide",
+      "input": { "a_micro": 10000001, "divisor": 10000 },
+      "expected_quotient": 1000,
+      "expected_remainder": 1,
+      "invariant_id": null
+    },
+    {
+      "id": "MUSD-009",
+      "description": "Cents-to-micro conversion: 100 cents = 1,000,000 micro-USD",
+      "operation": "cents_to_micro",
+      "input": { "cents": 100 },
+      "expected_micro": 1000000,
+      "conversion_factor": 10000,
+      "invariant_id": null
+    },
+    {
+      "id": "MUSD-010",
+      "description": "Micro-to-cents truncation: 999,999 micro / 10,000 = 99 cents (truncated)",
+      "operation": "micro_to_cents",
+      "input": { "micro": 999999 },
+      "expected_cents": 99,
+      "lost_micro": 9999,
+      "invariant_id": null
+    },
+    {
+      "id": "MUSD-011",
+      "description": "Split debit across lots: 500,000 from lot with 300,000 remaining",
+      "operation": "split_debit",
+      "input": {
+        "total_debit_micro": 500000,
+        "lots": [
+          { "lot_id": "lot-a", "remaining_micro": 300000 },
+          { "lot_id": "lot-b", "remaining_micro": 700000 }
+        ]
+      },
+      "expected_entries": [
+        { "lot_id": "lot-a", "debit_micro": 300000 },
+        { "lot_id": "lot-b", "debit_micro": 200000 }
+      ],
+      "expected_total_debited": 500000,
+      "invariant_id": "I-2"
+    },
+    {
+      "id": "MUSD-012",
+      "description": "Budget exceeded: total debit > total available across all lots",
+      "operation": "split_debit",
+      "input": {
+        "total_debit_micro": 500000,
+        "lots": [
+          { "lot_id": "lot-a", "remaining_micro": 200000 },
+          { "lot_id": "lot-b", "remaining_micro": 100000 }
+        ]
+      },
+      "expected_error": "BUDGET_EXCEEDED",
+      "invariant_id": "I-1"
+    }
+  ]
+}

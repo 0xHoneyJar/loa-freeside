@@ -135,7 +135,9 @@ variable "gp_worker_desired_count" {
   default     = 1
 }
 
-# PgBouncer Configuration (Sprint S-1: Scaling Foundation)
+# PgBouncer Configuration (Sprint S-1 + C037-2: Pool Sizing)
+# PostgreSQL max_connections=120, 20 reserved for admin = 100 available
+# Per-service: API=60, worker=20, reconciliation=10, headroom=10
 variable "pgbouncer_max_client_conn" {
   description = "Maximum client connections to PgBouncer"
   type        = number
@@ -143,7 +145,7 @@ variable "pgbouncer_max_client_conn" {
 }
 
 variable "pgbouncer_default_pool_size" {
-  description = "Default pool size per database/user pair"
+  description = "Default pool size per database/user pair (100 total via per-service pools)"
   type        = number
   default     = 25
 }
@@ -152,6 +154,18 @@ variable "pgbouncer_desired_count" {
   description = "Desired PgBouncer task count"
   type        = number
   default     = 1
+}
+
+variable "pgbouncer_reserve_pool_timeout" {
+  description = "Queue timeout in seconds — exceeding returns 503 Retry-After:5"
+  type        = number
+  default     = 5
+}
+
+variable "pgbouncer_server_idle_timeout" {
+  description = "Server idle timeout in seconds"
+  type        = number
+  default     = 300
 }
 
 variable "enable_service_discovery" {

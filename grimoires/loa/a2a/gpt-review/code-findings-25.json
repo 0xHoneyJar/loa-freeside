@@ -1,13 +1,29 @@
 {
-  "verdict": "APPROVED",
-  "summary": "The previous issue was addressed by limiting the kill switch to creation/rotation endpoints, preserving access to existing keys.",
-  "previous_issues_status": [
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Two blocking issues found: invalid UUIDs can trigger 500s before validation, and from_sequence uses Number causing precision loss for bigint sequences.",
+  "issues": [
     {
-      "original_issue": "Kill switch mounted at router level blocked listing/revoking existing keys, violating requirement that existing keys continue to work when creation is disabled.",
-      "status": "fixed",
-      "notes": "Kill switch now applies only to create/rotate routes; list/revoke remain accessible."
+      "severity": "major",
+      "file": "api/routes/events-routes.ts",
+      "line": 88,
+      "description": "requireCommunityMatch runs before params validation and does not validate UUID format, so invalid communityId (non-UUID) can cause a DB error and return 500 instead of 400.",
+      "current_code": "```typescript\nasync function requireCommunityMatch(\n  req: AuthenticatedRequest,\n  res: Response,\n  next: () => void,\n): Promise<void> {\n  const { communityId } = req.params;\n\n  if (!communityId) {\n    res.status(400).json({ error: 'Missing communityId parameter' });\n    return;\n  }\n\n  if (!req.caller) {\n    res.status(401).json({ error: 'Authentication required' });\n    return;\n  }\n\n  // Admins can query any community\n  const roles = req.caller?.roles ?? [];\n  const isAdmin = roles.some((r: string) => r === 'admin' || r === 'qa_admin');\n  if (isAdmin) {\n    return next();\n  }\n\n  try {\n    const pool = getPool();\n    const result = await pool.query<{ exists: boolean }>(\n      `SELECT EXISTS(\n        SELECT 1 FROM community_members\n        WHERE community_id = $1 AND user_id = $2\n      ) AS exists`,\n      [communityId, req.caller.userId],\n    );\n\n    if (!result.rows[0]?.exists) {\n      res.status(403).json({ error: 'Not a member of this community' });\n      return;\n    }\n\n    next();\n  } catch (err) {\n    logger.error({ event: 'events.community_match.error', err }, 'Community match check failed');\n    res.status(500).json({ error: 'Internal server error' });\n  }\n}\n```",
+      "fixed_code": "```typescript\nasync function requireCommunityMatch(\n  req: AuthenticatedRequest,\n  res: Response,\n  next: () => void,\n): Promise<void> {\n  const { communityId } = req.params;\n\n  if (!communityId) {\n    res.status(400).json({ error: 'Missing communityId parameter' });\n    return;\n  }\n\n  const idParsed = z.string().uuid().safeParse(communityId);\n  if (!idParsed.success) {\n    res.status(400).json({\n      error: 'Validation Error',\n      details: idParsed.error.issues.map((i) => ({\n        field: i.path.join('.'),\n        message: i.message,\n      })),\n    });\n    return;\n  }\n\n  const validatedCommunityId = idParsed.data;\n\n  if (!req.caller) {\n    res.status(401).json({ error: 'Authentication required' });\n    return;\n  }\n\n  // Admins can query any community\n  const roles = req.caller?.roles ?? [];\n  const isAdmin = roles.some((r: string) => r === 'admin' || r === 'qa_admin');\n  if (isAdmin) {\n    return next();\n  }\n\n  try {\n    const pool = getPool();\n    const result = await pool.query<{ exists: boolean }>(\n      `SELECT EXISTS(\n        SELECT 1 FROM community_members\n        WHERE community_id = $1 AND user_id = $2\n      ) AS exists`,\n      [validatedCommunityId, req.caller.userId],\n    );\n\n    if (!result.rows[0]?.exists) {\n      res.status(403).json({ error: 'Not a member of this community' });\n      return;\n    }\n\n    next();\n  } catch (err) {\n    logger.error({ event: 'events.community_match.error', err }, 'Community match check failed');\n    res.status(500).json({ error: 'Internal server error' });\n  }\n}\n```",
+      "explanation": "Validates the UUID before any DB query, preventing database type errors and ensuring invalid IDs return 400 consistently even when middleware runs before the handler."
+    },
+    {
+      "severity": "major",
+      "file": "api/routes/events-routes.ts",
+      "line": 47,
+      "description": "from_sequence is parsed as Number; for bigint sequence numbers this loses precision and can return incorrect pagination results. JSON responses should also avoid BigInt serialization errors.",
+      "current_code": "```typescript\nconst eventsQuerySchema = z.object({\n  from_sequence: z.coerce.number().int().min(0).optional().default(0),\n  limit: z.coerce.number().int().min(1).max(MAX_LIMIT).optional().default(DEFAULT_LIMIT),\n});\n```\n\n```typescript\nconst { communityId } = paramsParsed.data;\nconst { from_sequence, limit } = queryParsed.data;\n...\nconst result = await pool.query<...>(\n  `SELECT ...\n   WHERE community_id = $1\n     AND sequence_number IS NOT NULL\n     AND sequence_number >= $2\n   ORDER BY sequence_number ASC\n   LIMIT $3`,\n  [communityId, from_sequence, limit + 1],\n);\n...\nres.json({\n  community_id: communityId,\n  ...\n  pagination: {\n    from_sequence,\n    limit,\n    has_more: hasMore,\n    next_sequence: nextSequence !== null ? nextSequence.toString() : null,\n    count: events.length,\n  },\n});\n```",
+      "fixed_code": "```typescript\nconst eventsQuerySchema = z.object({\n  from_sequence: z.coerce.bigint().min(0n).optional().default(0n),\n  limit: z.coerce.number().int().min(1).max(MAX_LIMIT).optional().default(DEFAULT_LIMIT),\n});\n```\n\n```typescript\nconst { communityId } = paramsParsed.data;\nconst { from_sequence, limit } = queryParsed.data;\n...\nconst result = await pool.query<...>(\n  `SELECT ...\n   WHERE community_id = $1\n     AND sequence_number IS NOT NULL\n     AND sequence_number >= $2\n   ORDER BY sequence_number ASC\n   LIMIT $3`,\n  [communityId, from_sequence.toString(), limit + 1],\n);\n...\nres.json({\n  community_id: communityId,\n  ...\n  pagination: {\n    from_sequence: from_sequence.toString(),\n    limit,\n    has_more: hasMore,\n    next_sequence: nextSequence !== null ? nextSequence.toString() : null,\n    count: events.length,\n  },\n});\n```",
+      "explanation": "Using bigint preserves correct sequence ordering and avoids precision loss for large sequence numbers. Converting to string for SQL and JSON ensures compatibility without BigInt serialization errors."
     }
   ],
-  "new_blocking_concerns": [],
-  "iteration": 2
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
 }

@@ -1,23 +1,20 @@
 {
-  "verdict": "APPROVED",
-  "summary": "Previous feedback has been addressed with proper Redis shutdown handling and configurable SIWE KID via Terraform variables.",
-  "previous_issues_status": [
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "RLS update policy allows cross-tenant row mutation because it lacks a WITH CHECK clause.",
+  "issues": [
     {
-      "original_issue": "SIWE Redis client created but never closed on shutdown",
-      "status": "fixed",
-      "notes": "Module-level reference added and quit/disconnect invoked during shutdown."
-    },
-    {
-      "original_issue": "SIWE_SESSION_SECRET_KID hardcoded to v1 in ECS task definition",
-      "status": "fixed",
-      "notes": "Replaced with Terraform variable var.siwe_session_secret_kid."
-    },
-    {
-      "original_issue": "Missing Terraform variable declaration for SIWE_SESSION_SECRET_KID",
-      "status": "fixed",
-      "notes": "Variable declared with default v1."
+      "severity": "critical",
+      "file": "migration_0015.sql",
+      "line": 82,
+      "description": "UPDATE policy for community_event_sequences lacks WITH CHECK, allowing a user to update a row they can see and change community_id to another tenant (bypassing isolation).",
+      "current_code": "```sql\nDROP POLICY IF EXISTS ces_tenant_update ON community_event_sequences;\nCREATE POLICY ces_tenant_update ON community_event_sequences\n    FOR UPDATE USING (\n        community_id = COALESCE(\n            NULLIF(current_setting('app.community_id', true), ''),\n            '00000000-0000-0000-0000-000000000000'\n        )::UUID\n    );\n```",
+      "fixed_code": "```sql\nDROP POLICY IF EXISTS ces_tenant_update ON community_event_sequences;\nCREATE POLICY ces_tenant_update ON community_event_sequences\n    FOR UPDATE\n    USING (\n        community_id = COALESCE(\n            NULLIF(current_setting('app.community_id', true), ''),\n            '00000000-0000-0000-0000-000000000000'\n        )::UUID\n    )\n    WITH CHECK (\n        community_id = COALESCE(\n            NULLIF(current_setting('app.community_id', true), ''),\n            '00000000-0000-0000-0000-000000000000'\n        )::UUID\n    );\n```",
+      "explanation": "RLS UPDATE policies require WITH CHECK to validate the new row values; without it, a user can update the community_id to another tenant, breaking isolation. This fix enforces tenant consistency on both old and new rows."
     }
   ],
-  "new_blocking_concerns": [],
-  "iteration": 2
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
 }
