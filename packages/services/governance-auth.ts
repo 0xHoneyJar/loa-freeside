@@ -8,6 +8,18 @@
  *   member: 5/day, operator: 20/day, admin: unlimited, agent: cannot propose
  * Burst limit (AC-5.5.2): 10/min per community
  *
+ * Key Cardinality (F-4 / Bridgebuilder):
+ *   Each active actor generates 2 Redis keys (daily + burst) with
+ *   24h/60s TTL respectively. For N actors per community: 2N keys.
+ *   At ~100 bytes/key, 10k actors = ~2MB — negligible at current scale.
+ *   Monitor `governance_rate_limit_key_count` for scaling trajectory.
+ *
+ *   Future scaling (Stripe parallel): Stripe uses hierarchical rate limit
+ *   keys (customer → merchant → global) to bound cardinality. At scale,
+ *   a Count-Min Sketch probabilistic approach could replace per-actor
+ *   keys while maintaining bounded memory and acceptable false-positive
+ *   rates for rate limiting.
+ *
  * @see SDD §5.4 Authorization Middleware
  * @see Sprint 5, Task 5.5 (AC-5.5.1 through AC-5.5.5)
  * @module packages/services/governance-auth
@@ -75,7 +87,12 @@ const DAILY_WINDOW_SECONDS = 86400;
 // Rate Limiter
 // --------------------------------------------------------------------------
 
-export function createGovernanceRateLimiter(redis: Redis) {
+/** Metrics port for observability */
+export interface GovernanceMetricsPort {
+  putMetric(name: string, value: number, unit?: string): void;
+}
+
+export function createGovernanceRateLimiter(redis: Redis, metricsPort?: GovernanceMetricsPort) {
   /**
    * Atomic INCR + EXPIRE via Lua script — AC-5.5.4.
    * Returns [count, ttl] to ensure keys always have correct TTL
@@ -102,6 +119,10 @@ export function createGovernanceRateLimiter(redis: Redis) {
   async function checkRateLimit(actor: Actor): Promise<RateLimitResult> {
     const dailyLimit = ROLE_DAILY_LIMITS[actor.role];
 
+    // F-4: Emit rate limit key count metric for cardinality monitoring
+    // Each invocation checks 1-2 keys (burst + optionally daily role key)
+    let keysChecked = 0;
+
     // Agent role cannot perform governance actions
     if (dailyLimit === 0) {
       return {
@@ -113,6 +134,7 @@ export function createGovernanceRateLimiter(redis: Redis) {
     // AC-5.5.2: Burst limit check (per-community, per-minute)
     const burstKey = `gov:burst:${actor.community_id}`;
     const [burstCount, burstTtl] = await incrWithTtl(burstKey, BURST_WINDOW_SECONDS);
+    keysChecked++;
 
     if (burstCount > BURST_LIMIT) {
       return {
@@ -126,8 +148,10 @@ export function createGovernanceRateLimiter(redis: Redis) {
     if (dailyLimit !== null) {
       const roleKey = `gov:rate:${actor.community_id}:${actor.role}:${actor.id}`;
       const [roleCount, roleTtl] = await incrWithTtl(roleKey, DAILY_WINDOW_SECONDS);
+      keysChecked++;
 
       if (roleCount > dailyLimit) {
+        metricsPort?.putMetric('governance_rate_limit_key_count', keysChecked);
         return {
           allowed: false,
           retryAfterSeconds: roleTtl > 0 ? roleTtl : DAILY_WINDOW_SECONDS,
@@ -135,6 +159,9 @@ export function createGovernanceRateLimiter(redis: Redis) {
         };
       }
     }
+
+    // F-4: Emit cardinality metric for operational awareness
+    metricsPort?.putMetric('governance_rate_limit_key_count', keysChecked);
 
     return { allowed: true };
   }
