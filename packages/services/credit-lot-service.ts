@@ -79,6 +79,9 @@ export async function debitLots(
   reservationId: string,
   usageEventId?: string,
 ): Promise<DebitResult> {
+  // Set tenant context for RLS (migration 0008 infrastructure)
+  await client.query('SET LOCAL app.community_id = $1', [communityId]);
+
   // Step 1: Select available lots (earliest-expiry-first)
   // FOR UPDATE locks rows in deterministic order (lot_id ASC) per IMP-005
   const lotsResult = await client.query<{

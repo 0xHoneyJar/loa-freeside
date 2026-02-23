@@ -146,10 +146,10 @@ export function generateQuote(
  * @returns true if nonce is fresh, false if replayed
  */
 export async function verifyNonceUnique(
-  pool: Pool,
+  clientOrPool: Pool | PoolClient,
   nonce: string,
 ): Promise<boolean> {
-  const result = await pool.query<{ id: string }>(
+  const result = await clientOrPool.query<{ id: string }>(
     `INSERT INTO webhook_events (provider, event_id, event_type, payload, processed_at)
      VALUES ('x402', $1, 'payment_proof', '{}', NOW())
      ON CONFLICT (provider, event_id) DO NOTHING
@@ -198,18 +198,19 @@ export async function settle(
     );
   }
 
-  // Step 1: Verify nonce (replay prevention)
-  const nonceUnique = await verifyNonceUnique(pgPool, proof.nonce);
-  if (!nonceUnique) {
-    throw new Error(`x402 nonce replay detected: ${proof.nonce}`);
-  }
-
   const client = await pgPool.connect();
   let lotId: string | null = null;
   let usageEventId = '';
 
   try {
     await client.query('BEGIN');
+
+    // Step 1: Verify nonce inside transaction (rolls back on settlement failure)
+    const nonceUnique = await verifyNonceUnique(client, proof.nonce);
+    if (!nonceUnique) {
+      // Let error propagate to catch block for single ROLLBACK
+      throw new Error(`x402 nonce replay detected: ${proof.nonce}`);
+    }
 
     // Step 2: Mint credit lot (idempotent via tx_hash as payment_id)
     const expiresAt = new Date(Date.now() + X402_LOT_EXPIRY_HOURS * 60 * 60 * 1000);

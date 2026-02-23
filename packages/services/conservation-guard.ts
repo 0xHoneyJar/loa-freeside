@@ -64,11 +64,15 @@ export interface ReconciliationResult {
 // Configuration
 // --------------------------------------------------------------------------
 
-/** Drift tolerance: ±1% of budget limit (IMP-004) */
-const DRIFT_TOLERANCE_PERCENT = 0.01;
+/** Drift tolerance: ±1% of budget limit (IMP-004) — BigInt numerator */
+const DRIFT_TOLERANCE_NUM = 1n;
+/** Drift tolerance denominator (1/100 = 1%) */
+const DRIFT_TOLERANCE_DEN = 100n;
 
-/** Circuit breaker: halt finalize if drift >5% of limit (IMP-004) */
-const DRIFT_CIRCUIT_BREAKER_PERCENT = 0.05;
+/** Circuit breaker: halt finalize if drift >5% of limit (IMP-004) — BigInt numerator */
+const DRIFT_CIRCUIT_BREAKER_NUM = 5n;
+/** Circuit breaker denominator (5/100 = 5%) */
+const DRIFT_CIRCUIT_BREAKER_DEN = 100n;
 
 /** Lock renewal interval in milliseconds */
 const LOCK_RENEWAL_INTERVAL_MS = 10_000;
@@ -78,6 +82,9 @@ const LOCK_TTL_MS = 30_000;
 
 /** Maximum events to process per reconciliation sweep */
 const RECONCILIATION_BATCH_SIZE = 1000;
+
+/** Fence token TTL in days (matches credit lot expiry window) */
+const FENCE_TOKEN_TTL_DAYS = 90;
 
 // --------------------------------------------------------------------------
 // Fence Token Management
@@ -97,8 +104,8 @@ export async function acquireFenceToken(
 ): Promise<bigint> {
   const key = `conservation:fence:${communityId}`;
   const token = await redis.incr(key);
-  // Set TTL to 90 days (fence tokens are persistent but we don't want unbounded growth)
-  await redis.pexpire(key, 90 * 24 * 60 * 60 * 1000);
+  // Fence tokens are persistent but bounded to lot expiry window
+  await redis.pexpire(key, FENCE_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
   return BigInt(token);
 }
 
@@ -227,7 +234,7 @@ export async function checkConservation(
 
   const limitMicro = redisLimit * 10000n;
   const toleranceMicro = limitMicro > 0n
-    ? BigInt(Math.floor(Number(limitMicro) * DRIFT_TOLERANCE_PERCENT))
+    ? (limitMicro * DRIFT_TOLERANCE_NUM) / DRIFT_TOLERANCE_DEN
     : 100000n; // 10 cents default tolerance
 
   const driftExceeded = driftMicro > toleranceMicro;
@@ -237,7 +244,7 @@ export async function checkConservation(
       invariant: 'I-3',
       expected: `drift <= ${toleranceMicro} micro`,
       actual: `drift = ${driftMicro} micro`,
-      severity: driftMicro > BigInt(Math.floor(Number(limitMicro) * DRIFT_CIRCUIT_BREAKER_PERCENT))
+      severity: driftMicro > (limitMicro * DRIFT_CIRCUIT_BREAKER_NUM) / DRIFT_CIRCUIT_BREAKER_DEN
         ? 'critical'
         : 'warning',
     });
@@ -275,7 +282,7 @@ export function shouldTripCircuitBreaker(
   limitMicro: bigint,
 ): boolean {
   if (limitMicro <= 0n) return false;
-  const threshold = BigInt(Math.floor(Number(limitMicro) * DRIFT_CIRCUIT_BREAKER_PERCENT));
+  const threshold = (limitMicro * DRIFT_CIRCUIT_BREAKER_NUM) / DRIFT_CIRCUIT_BREAKER_DEN;
   return driftMicro > threshold;
 }
 
@@ -395,8 +402,10 @@ export async function reconcile(
 // --------------------------------------------------------------------------
 
 export const CONSERVATION_CONFIG = {
-  DRIFT_TOLERANCE_PERCENT,
-  DRIFT_CIRCUIT_BREAKER_PERCENT,
+  DRIFT_TOLERANCE_NUM,
+  DRIFT_TOLERANCE_DEN,
+  DRIFT_CIRCUIT_BREAKER_NUM,
+  DRIFT_CIRCUIT_BREAKER_DEN,
   LOCK_RENEWAL_INTERVAL_MS,
   LOCK_TTL_MS,
   RECONCILIATION_BATCH_SIZE,

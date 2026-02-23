@@ -15,6 +15,7 @@
 import type { Pool } from 'pg';
 import type { Redis } from 'ioredis';
 import { processPaymentForLedger } from './nowpayments-handler.js';
+import { mintCreditLot } from './credit-lot-service.js';
 
 // --------------------------------------------------------------------------
 // Types
@@ -90,6 +91,9 @@ const TERMINAL_SUCCESS = ['finished'];
 /** Terminal statuses that mean payment failed */
 const TERMINAL_FAILED = ['failed', 'expired', 'refunded'];
 
+/** Credit lot expiry for recovered payments (matches nowpayments-handler) */
+const LOT_EXPIRY_DAYS = 90;
+
 // --------------------------------------------------------------------------
 // Sweep
 // --------------------------------------------------------------------------
@@ -126,10 +130,10 @@ export async function runReconciliationSweep(
     `SELECT payment_id, community_id, status, price_amount, order_id
      FROM crypto_payments
      WHERE status IN ('waiting', 'confirming', 'confirmed', 'sending')
-       AND created_at < NOW() - INTERVAL '${mergedConfig.minAgeMins} minutes'
+       AND created_at < NOW() - $1 * INTERVAL '1 minute'
      ORDER BY created_at ASC
-     LIMIT $1`,
-    [mergedConfig.batchSize],
+     LIMIT $2`,
+    [mergedConfig.minAgeMins, mergedConfig.batchSize],
   );
 
   const result: ReconciliationSweepResult = {
@@ -229,15 +233,40 @@ async function reconcilePayment(
 
     let lotId: string | null = null;
 
-    if (existingLot.rows.length === 0 && redis) {
-      // Missed webhook — trigger idempotent mint
-      const lotResult = await processPaymentForLedger(pool, redis, {
-        paymentId: payment.payment_id,
-        communityId: payment.community_id,
-        priceUsd: apiStatus.price_amount,
-        orderId: apiStatus.order_id,
-      });
-      lotId = lotResult.lotId;
+    if (existingLot.rows.length === 0) {
+      if (redis) {
+        // Missed webhook — full mint with Redis budget adjustment
+        const lotResult = await processPaymentForLedger(pool, redis, {
+          paymentId: payment.payment_id,
+          communityId: payment.community_id,
+          priceUsd: apiStatus.price_amount,
+          orderId: apiStatus.order_id,
+        });
+        lotId = lotResult.lotId;
+      } else {
+        // Redis unavailable — Postgres-only mint, budget adjustment deferred
+        // Conservation guard reconciliation will correct Redis on recovery
+        const amountMicro = BigInt(Math.round(apiStatus.price_amount * 1_000_000));
+        const expiresAt = new Date(Date.now() + LOT_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+        const client = await pool.connect();
+        try {
+          await client.query('BEGIN');
+          await client.query('SET LOCAL app.community_id = $1', [payment.community_id]);
+          lotId = await mintCreditLot(client, {
+            community_id: payment.community_id,
+            source: 'purchase',
+            amount_micro: amountMicro,
+            payment_id: payment.payment_id,
+            expires_at: expiresAt,
+          });
+          await client.query('COMMIT');
+        } catch (mintErr) {
+          await client.query('ROLLBACK');
+          throw mintErr;
+        } finally {
+          client.release();
+        }
+      }
     }
 
     // Update payment status
