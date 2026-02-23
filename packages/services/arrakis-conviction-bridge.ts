@@ -5,6 +5,29 @@
  * Graceful degradation: approval proceeds without conviction score
  * when the circuit is open or requests fail.
  *
+ * Governance Resilience Pattern (F-5 / Bridgebuilder PRAISE):
+ *   This circuit breaker is a GOVERNANCE resilience pattern, not merely
+ *   a reliability feature. The distinction matters:
+ *
+ *   - Microservice circuit breaker: protects the caller from a slow
+ *     dependency. Opens when response time SLA is violated.
+ *   - Governance circuit breaker: protects the community's ability to
+ *     make decisions. Opens when the democratic process (external
+ *     consensus via conviction scoring) becomes unavailable.
+ *
+ *   The fallback `{ score: null, fromFallback: true }` means "fall back
+ *   to simpler but still legitimate governance" — not "skip governance."
+ *   When external consensus fails, the community falls back to internal
+ *   governance (admin approval). This matches Ostrom's fieldwork on
+ *   commons governance systems: successful commons always have fallback
+ *   mechanisms for when primary governance processes are disrupted.
+ *
+ *   Conway Automaton contrast: ungoverned agents stop when infrastructure
+ *   fails; governed agents fall back to a less-autonomous but still-
+ *   operational mode. The circuit breaker IS the governance guarantee —
+ *   it ensures the community can always act, even when the most
+ *   sophisticated decision mechanism is temporarily unavailable.
+ *
  * Circuit breaker (IMP-002):
  *   - Timeout: 3s per request
  *   - Error threshold: 50%
