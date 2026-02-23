@@ -1,23 +1,20 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "Two of the three prior issues were fixed, but the missing PoolClient import still appears unresolved and would cause a TypeScript compile error.",
-  "previous_issues_status": [
+  "summary": "BigInt values in unclassified-rate response are not serialized, which can crash JSON responses.",
+  "issues": [
     {
-      "original_issue": "verifyNonceUnique now accepts PoolClient but PoolClient is not imported",
-      "status": "not_fixed",
-      "notes": "The diff does not show any change to the import statement; without adding PoolClient to the pg import, TypeScript will fail to compile."
-    },
-    {
-      "original_issue": "Double rollback in nonce replay path causing 'no transaction in progress'",
-      "status": "fixed",
-      "notes": "The explicit rollback inside the try block was removed; errors now propagate to the single catch rollback."
-    },
-    {
-      "original_issue": "Missing SET LOCAL app.community_id in Postgres-only mint path",
-      "status": "fixed",
-      "notes": "SET LOCAL app.community_id is now set before mintCreditLot in the Postgres-only path."
+      "severity": "major",
+      "file": "api/routes/purpose-routes.ts",
+      "line": 112,
+      "description": "Response from /purpose-unclassified-rate is not passed through serializeBigInt, so if totalEntries or unclassifiedEntries are BigInt, res.json will throw.",
+      "current_code": "```typescript\n      res.json({\n        communityId,\n        windowHours,\n        totalEntries: result.totalEntries,\n        unclassifiedEntries: result.unclassifiedEntries,\n        rate: result.rate,\n      });\n```",
+      "fixed_code": "```typescript\n      res.json(serializeBigInt({\n        communityId,\n        windowHours,\n        totalEntries: result.totalEntries,\n        unclassifiedEntries: result.unclassifiedEntries,\n        rate: result.rate,\n      }));\n```",
+      "explanation": "serializeBigInt safely converts BigInt values to strings for JSON transport, preventing runtime failures when BigInt fields are present."
     }
   ],
-  "new_blocking_concerns": [],
-  "iteration": 2
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
 }

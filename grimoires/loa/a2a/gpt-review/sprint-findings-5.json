@@ -1,38 +1,38 @@
 {
   "verdict": "APPROVED",
-  "summary": "All previously blocking HIGH issues are now covered with concrete tasks, explicit dependencies, and measurable acceptance criteria, and the MEDIUM infra items are sufficiently specified without introducing new blocking risks.",
+  "summary": "Both previously-blocking inconsistencies (x402 replay dedup schema mismatch and NOWPayments mint idempotency uniqueness) are now fixed in a way that is internally consistent with the sprint tasks and acceptance criteria, and no new truly-blocking issues were introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "Thread creation race condition needed a DB-level UNIQUE constraint/migration and an integration test to make 'exactly one thread' achievable",
+      "original_issue": "Internal TLS for JWKS fetch was not implementable (no concrete cert/listener/DNS plan; URL used Cloud Map name + :3000)",
       "status": "fixed",
-      "notes": "Task 1.3 now explicitly adds/verifies a partial UNIQUE index, requires a migration if missing, mandates deploy migration before code, switches to insert-or-find with ON CONFLICT/unique-violation handling, and includes a concurrent insert test with the correct expected outcome (one row)."
+      "notes": "Still fixed: Task 0A.3b provides an internal ALB HTTPS listener + ACM cert + DNS to ALB, and 0A.4/0A.3b use an HTTPS JWKS URL with TLS verification."
     },
     {
-      "original_issue": "SIWE origin validation required a single source of truth aligned with runtime CORS behavior, plus tests for allowed/disallowed/missing Origin",
+      "original_issue": "PgBouncer/SET LOCAL/RLS verification was required in Sprint 0A before PgBouncer existed",
       "status": "fixed",
-      "notes": "Task 1.1 names the canonical source (`config.cors.allowedOrigins` from config.ts used by server CORS middleware), removes the parsed.domain fallback, enforces missing/disallowed Origin as 400, and includes the three required tests."
+      "notes": "Still fixed: PgBouncer scoping verification remains deferred to Task 2.5; Sprint 0A tests run direct to Postgres."
     },
     {
-      "original_issue": "Rate bucket cleanup logic lacked objective cap/eviction details and a measurable way to prove no unbounded growth",
+      "original_issue": "Tenant context enforcement (TENANT_CONTEXT_MISSING) was not achievable without an explicit guard mechanism and app transaction scoping",
       "status": "fixed",
-      "notes": "Task 1.2 identifies the exact structure (`rateBuckets` Map), fixes AND→OR, defines a concrete cap (50,000), defines eviction behavior (oldest 10% by rpmWindowStart), adds logging, and includes a unit test with explicit numbers (60,000 → ≤50,000)."
+      "notes": "Still fixed: 0A.2 defines app.current_community_id() raising when unset, and requires SET LOCAL app.community_id at transaction begin; 0A.5 tests the raised error."
     },
     {
-      "original_issue": "Wallet normalization plan didn’t address existing mixed-case persisted data and could break lookups without backfill; checksum vs normalization policy was unclear",
+      "original_issue": "Idempotent minting referenced ON CONFLICT but no unique constraint/key was defined, so duplicates could mint on retries",
       "status": "fixed",
-      "notes": "Task 1.4 states an explicit policy (normalize to lowercase; no EIP-55 requirement), introduces a shared normalize utility, applies it at all listed boundaries (insert/query/cache/compare), and includes a backfill SQL plus a test ensuring mixed-case input still works."
+      "notes": "Fixed as described: 0A.2 AC now explicitly requires the partial unique index `credit_lots_payment_id_uq` on (payment_id) WHERE payment_id IS NOT NULL, which makes `ON CONFLICT (payment_id)` enforceable for payment-backed lots."
     },
     {
-      "original_issue": "Agent gateway init failure fallback was underspecified and might not be able to deliver a user-visible error if the gateway is required for posting",
+      "original_issue": "x402 proof verification and replay protection were undefined / internally inconsistent with webhook_events schema",
       "status": "fixed",
-      "notes": "Task 1.5 clarifies the failure mode (NATS + Discord REST still available), specifies where the fallback is registered (message.create handler in main-nats catch path), defines the delivery mechanism (Discord REST sendMessage), adds readiness degradation behavior, and includes a manual verification step."
+      "notes": "Fixed as described: 070-webhook-events is now a generic dedup table with UNIQUE(provider, event_id) and provider constrained to ('nowpayments','x402'); Task 2.3 replay protection now uses `webhook_events(provider='x402', event_id=proof_nonce)` which matches the schema and is enforceable at the DB layer."
     },
     {
-      "original_issue": "Infra tasks (1.6–1.8) lacked exact variables/resources and end-to-end acceptance criteria to ensure changes apply cleanly",
+      "original_issue": "Redis+Postgres dual-state idempotency key strategy was missing, risking double-apply on retries across finalize/expiry/reconciliation",
       "status": "fixed",
-      "notes": "Tasks 1.6–1.8 now name specific files, variables, and Terraform resource addresses, and include plan/apply/behavior verification criteria (including SNS encryption and alarm publish verification)."
+      "notes": "Still fixed: Task 2.4 retains the durable-ID keyed Redis dedup invariant (usage_event.id / lot_entry.id / credit_lots.id) with Lua-side processed checks and an AC that reruns produce identical Redis state."
     }
   ],
   "new_blocking_concerns": [],
-  "iteration": 2
+  "iteration": 3
 }

@@ -1,41 +1,36 @@
 {
   "verdict": "APPROVED",
-  "summary": "The iteration-2 blocking contradiction around removing v4.6.0 JWT vectors during the dual-accept window is fixed correctly, and no new truly blocking issues were introduced in this revision.",
+  "summary": "The conditional trigger semantics are now consistent with the feature-flag rollout strategy, and all previously identified blockers (including the iteration-2 trigger/flag incompatibility) are addressed without introducing new truly blocking issues.",
   "previous_issues_status": [
     {
-      "original_issue": "SHA pinning was ambiguous (tag/main allowed) and could make builds non-reproducible",
+      "original_issue": "insertLotEntry requires sequence allocation before event-sourcing schema exists (Sprint ordering mismatch)",
       "status": "fixed",
-      "notes": "Task 1.1 still explicitly requires resolving the v7.0.0 tag to an immutable commit SHA, pinning to that SHA in package.json, and verifying lockfile/CI regex gates."
+      "notes": "Still correctly gated: AC-1.2.3/1.2.4 require (flag enabled AND schema detected) to allocate; otherwise it skips without error."
     },
     {
-      "original_issue": "JWT migration removed v4.6.0 compatibility without a dual-accept window, TTL strategy, and telemetry",
+      "original_issue": "debitLots double-refactoring across Sprint 1 and Sprint 2",
       "status": "fixed",
-      "notes": "Tasks 2.1 and 2.7 retain dual-accept (v4.6.0 trust_level + v7 trust_scopes), single-write v7, and a bounded telemetry-based cutoff policy tied to TTL."
+      "notes": "Still clean: Sprint 1 establishes insertLotEntry with optional purpose; Sprint 2 only wires purpose resolution (AC-2.3.4 explicitly prevents re-refactor)."
     },
     {
-      "original_issue": "NftId canonicalization lacked DB/backfill + read-compat plan",
+      "original_issue": "Velocity rollup ambiguity re: purpose dimension and missing dependency on purpose migration",
       "status": "fixed",
-      "notes": "Task 2.3 includes inventory, dual-read/single-write, idempotent backfill with collision/ambiguity handling, and integration tests for old-format accessibility."
+      "notes": "Still purpose-agnostic with PK (community_id, hour) and AC-3.1.5 explicitly requires safety regardless of purpose column presence."
     },
     {
-      "original_issue": "No concrete S2S peer verification/compatibility window against real loa-finn deployments",
+      "original_issue": "Feature flags claimed 'no column writes' but DB enforcement could force/reject writes; flags not truly independent",
       "status": "fixed",
-      "notes": "Task 4.9 defines a pre-deploy verification gate plus a bounded dual-accept policy for v6.x/7.0.0 and requires integration tests for both peer versions."
+      "notes": "Now internally consistent: AC-1.5.4 states DB enforcement must be compatible with disabled flags, and Sprint 4 AC-4.1.4 defines conditional enforcement keyed off sequence_number being non-NULL (flag-off leaves it NULL). AC-4.1.5 adds the required integration test proving flag-off writes succeed post-0013a."
     },
     {
-      "original_issue": "SSE/Completion wire changes lacked end-to-end integration tests (stub-only risk)",
+      "original_issue": "Outbox worker concurrency/locking and idempotency underspecified",
       "status": "fixed",
-      "notes": "Task 4.10 adds transcript replay tests, forward-compat unknown event handling, and ajv schema validation for CompletionRequest/Result."
+      "notes": "Still specified with FOR UPDATE SKIP LOCKED (AC-5.4.2), explicit idempotency key (AC-5.4.3), and a 2-worker concurrency test (AC-5.4.8)."
     },
     {
-      "original_issue": "Duplicate task IDs created sequencing ambiguity",
+      "original_issue": "Duplicate migration number 0015",
       "status": "fixed",
-      "notes": "Task numbering remains unique and cross-references appear consistent in this revision."
-    },
-    {
-      "original_issue": "Auth-migration contradiction: Sprint 4.5 removed v4.6.0 JWT test vectors while Sprint 2 required dual-accept during telemetry window",
-      "status": "fixed",
-      "notes": "Task 4.5 now explicitly keeps v4.6.0 dual-accept vectors and annotates removal as gated on the Task 2.7 telemetry cutoff; Task 4.8/NOTES.md also reflects that removal is deferred post-cutoff."
+      "notes": "Still resolved: admin audit log is Migration 0016; numbering is unique as listed."
     }
   ],
   "new_blocking_concerns": [],

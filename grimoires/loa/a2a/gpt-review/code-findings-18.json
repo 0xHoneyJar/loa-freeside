@@ -1,38 +1,18 @@
 {
-  "verdict": "CHANGES_REQUIRED",
-  "summary": "Found a resource leak in Redis client lifecycle and a hardcoded SIWE KID that blocks rotation; both need code fixes.",
-  "issues": [
+  "verdict": "APPROVED",
+  "summary": "Previous authorization issues were addressed with explicit role enforcement and safe role access, and no new blocking problems were introduced.",
+  "previous_issues_status": [
     {
-      "severity": "major",
-      "file": "themes/sietch/src/api/server.ts",
-      "line": 738,
-      "description": "The SIWE Redis client is created but never closed on shutdown; if it connects, it can keep the Node process alive and leak resources.",
-      "current_code": "```typescript\n  if (config.features.redisEnabled && config.redis.url) {\n    try {\n      const siweRedis = new IoRedis(config.redis.url, {\n        maxRetriesPerRequest: 1,\n        commandTimeout: 500,\n        connectTimeout: 5_000,\n        lazyConnect: true,\n      });\n      setSiweRedisClient(siweRedis);\n      logger.info('SIWE Redis client injected for nonce store');\n    } catch (err) {\n      logger.warn({ err }, 'Failed to create SIWE Redis client — using in-memory nonce fallback');\n    }\n  }\n```\n```typescript\n  // Sprint 6 (319), Task 6.6: Drain WebSocket connections gracefully\n  await drainChatWebSocket();\n\n  await new Promise<void>((resolve) => {\n    server!.close(() => {\n      logger.info('API server stopped');\n      resolve();\n    });\n  });\n```",
-      "fixed_code": "```typescript\n// add near top-level module scope\nlet siweRedisClient: IoRedis | null = null;\n```\n```typescript\n  if (config.features.redisEnabled && config.redis.url) {\n    try {\n      siweRedisClient = new IoRedis(config.redis.url, {\n        maxRetriesPerRequest: 1,\n        commandTimeout: 500,\n        connectTimeout: 5_000,\n        lazyConnect: true,\n      });\n      setSiweRedisClient(siweRedisClient);\n      logger.info('SIWE Redis client injected for nonce store');\n    } catch (err) {\n      logger.warn({ err }, 'Failed to create SIWE Redis client — using in-memory nonce fallback');\n    }\n  }\n```\n```typescript\n  // Sprint 6 (319), Task 6.6: Drain WebSocket connections gracefully\n  await drainChatWebSocket();\n\n  if (siweRedisClient) {\n    try {\n      await siweRedisClient.quit();\n    } catch (_err) {\n      siweRedisClient.disconnect();\n    } finally {\n      siweRedisClient = null;\n    }\n  }\n\n  await new Promise<void>((resolve) => {\n    server!.close(() => {\n      logger.info('API server stopped');\n      resolve();\n    });\n  });\n```",
-      "explanation": "Keeping a module-level reference allows graceful shutdown of the Redis connection. Calling quit()/disconnect() prevents resource leaks and ensures the process can exit cleanly."
+      "original_issue": "Route does not explicitly enforce member/operator/admin roles; any authenticated user could access if requireAuth doesn't enforce roles.",
+      "status": "fixed",
+      "notes": "Added requireVelocityRole middleware enforcing allowed roles."
     },
     {
-      "severity": "major",
-      "file": "infrastructure/terraform/ecs.tf",
-      "line": 476,
-      "description": "The SIWE_SESSION_SECRET_KID is hardcoded to \"v1\", which blocks rotation and makes environments inflexible; it should be configurable via a Terraform variable.",
-      "current_code": "```hcl\n        { name = \"LOA_FINN_BASE_URL\", value = var.enable_service_discovery ? \"http://finn.${local.name_prefix}.local:3000\" : var.loa_finn_base_url },\n        # Sprint 6 (319), Task 6.7: SIWE session — kid for secret routing\n        { name = \"SIWE_SESSION_SECRET_KID\", value = \"v1\" }\n```\n",
-      "fixed_code": "```hcl\n        { name = \"LOA_FINN_BASE_URL\", value = var.enable_service_discovery ? \"http://finn.${local.name_prefix}.local:3000\" : var.loa_finn_base_url },\n        # Sprint 6 (319), Task 6.7: SIWE session — kid for secret routing\n        { name = \"SIWE_SESSION_SECRET_KID\", value = var.siwe_session_secret_kid }\n```\n",
-      "explanation": "Using a variable allows KID changes during rotation without code changes and keeps environments configurable."
-    },
-    {
-      "severity": "major",
-      "file": "infrastructure/terraform/variables.tf",
-      "line": 1,
-      "description": "The new SIWE_SESSION_SECRET_KID variable must be declared; otherwise Terraform will fail with an undefined variable.",
-      "current_code": "```hcl\n# (no variable for SIWE_SESSION_SECRET_KID exists)\n```",
-      "fixed_code": "```hcl\nvariable \"siwe_session_secret_kid\" {\n  description = \"Key ID (kid) for SIWE session secret routing\"\n  type        = string\n  default     = \"v1\"\n}\n```",
-      "explanation": "Declaring the variable makes the task definition configuration valid and provides a safe default while allowing overrides for rotation."
+      "original_issue": "Accessing req.caller.roles without a null/undefined guard can throw, causing a 500 and bypassing proper authorization handling.",
+      "status": "fixed",
+      "notes": "Roles are now accessed with a null-safe guard (req.caller?.roles ?? [])."
     }
   ],
-  "fabrication_check": {
-    "passed": true,
-    "concerns": []
-  },
-  "iteration": 1
+  "new_blocking_concerns": [],
+  "iteration": 2
 }

@@ -1,11 +1,16 @@
 {
   "verdict": "APPROVED",
-  "summary": "The previous runtime error issue in transfer_conservation details has been corrected and no new blocking problems were introduced.",
+  "summary": "Both previously identified blocking issues were addressed without introducing new blocking problems.",
   "previous_issues_status": [
     {
-      "original_issue": "checkTransferConservation returned details referencing undefined variables, causing runtime ReferenceError",
+      "original_issue": "requireCommunityMatch ran before validation so invalid UUIDs could trigger DB errors and return 500",
       "status": "fixed",
-      "notes": "Details now reference existing values (transferTotal, entryTotal, orphanCompletedTransfers) and no longer use undefined variables."
+      "notes": "UUID format is now validated in requireCommunityMatch before any DB access, returning 400 on invalid input."
+    },
+    {
+      "original_issue": "from_sequence parsed as Number causing precision loss for bigint sequences",
+      "status": "fixed",
+      "notes": "from_sequence is now treated as a string of digits and passed as string to SQL/JSON, avoiding precision loss."
     }
   ],
   "new_blocking_concerns": [],

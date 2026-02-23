@@ -1,23 +1,20 @@
 {
-  "verdict": "APPROVED",
-  "summary": "All previously flagged issues have been addressed with appropriate fixes and no new blocking problems introduced.",
-  "previous_issues_status": [
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Net amount calculation can invert debits if amount_micro is already signed; normalize with ABS before applying polarity.",
+  "issues": [
     {
-      "original_issue": "SNS subscription directly to Slack webhook would not deliver alarms; required AWS Chatbot",
-      "status": "fixed",
-      "notes": "Slack integration now uses aws_chatbot_slack_channel_configuration with required IAM role and policy."
-    },
-    {
-      "original_issue": "API health check alarm could not fire within 60s due to evaluation_periods=2",
-      "status": "fixed",
-      "notes": "evaluation_periods reduced to 1 at 60s period."
-    },
-    {
-      "original_issue": "5xx rate math expression could divide by zero causing NaN",
-      "status": "fixed",
-      "notes": "Expression now guards with IF(m1 > 0, ..., 0)."
+      "severity": "major",
+      "file": "migrations/0016_community_operations_view.sql",
+      "line": 32,
+      "description": "net_amount_micro applies a negative sign to debits without normalizing amount_micro; if debits are already stored as negative values (suggested by use of ABS elsewhere), this will flip the sign and inflate credits.",
+      "current_code": "```sql\n    SUM(\n        CASE\n            WHEN le.entry_type IN ('credit', 'credit_back', 'governance_credit')\n                THEN le.amount_micro\n            WHEN le.entry_type IN ('debit', 'expiry', 'governance_debit')\n                THEN -le.amount_micro\n            ELSE 0\n        END\n    ) AS net_amount_micro,\n```",
+      "fixed_code": "```sql\n    SUM(\n        CASE\n            WHEN le.entry_type IN ('credit', 'credit_back', 'governance_credit')\n                THEN ABS(le.amount_micro)\n            WHEN le.entry_type IN ('debit', 'expiry', 'governance_debit')\n                THEN -ABS(le.amount_micro)\n            ELSE 0\n        END\n    ) AS net_amount_micro,\n```",
+      "explanation": "Using ABS() normalizes both positive and negative stored amounts, then applies the correct polarity based on entry_type to avoid sign inversion."
     }
   ],
-  "new_blocking_concerns": [],
-  "iteration": 2
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
 }

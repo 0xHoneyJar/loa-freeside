@@ -1,45 +1,43 @@
 {
-  "verdict": "CHANGES_REQUIRED",
-  "summary": "Most prior blockers were addressed (S2S boundary/JWKS, webhook ingress+idempotency, Discord thread feasibility, widget auth, Prometheus-on-Fargate), but one personality-bridge fix introduced a direct contradiction that is truly blocking for implementation.",
+  "verdict": "APPROVED",
+  "summary": "All previously blocking issues are addressed with concrete, enforceable designs that preserve invariants, deterministic replay, BigInt-only economics, and tenant isolation; no new truly blocking problems were introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "Auth boundary between loa-freeside and loa-finn (S2S JWT ES256) was underspecified/inconsistent (JWKS hosting, rotation, internal-only vs public).",
+      "original_issue": "Governance can decrease budget_limit below committed+reserved and violate I-1 / force negative available",
       "status": "fixed",
-      "notes": "Now explicitly states finn is internal-only, SG allows inbound only from freeside, JWKS hosted by freeside (issuer), includes iss/aud/TTL, and defines rotation via Secrets Manager + scheduled Lambda. This resolves the original contradiction and is production-implementable on ECS."
+      "notes": "PRD now defines hard enforcement rules: new_limit must be >= committed+reserved at enforcement time, otherwise policy becomes pending_enforcement and activates only once usage drops; also adds a platform minimum floor and explicit AC-4.7/4.8. This prevents invariant breakage and governance-as-DoS."
     },
     {
-      "original_issue": "NOWPayments webhook ingress not concretely defined for ALB/TLS + idempotency semantics ambiguous (risk double-mint).",
+      "original_issue": "Per-community monotonic sequence incorrectly proposed as a single PostgreSQL SEQUENCE; replay ordering not deterministic per tenant",
       "status": "fixed",
-      "notes": "Defines a stable public HTTPS endpoint on freeside (`POST https://api.{domain}/api/crypto/webhook`), HMAC-SHA512 verification, and idempotency keyed on `payment_id` with UNIQUE constraint + replay behavior. This is sufficient to ship payments safely."
+      "notes": "PRD now specifies a concrete per-community counter table (community_event_sequences) with SELECT ... FOR UPDATE allocation inside the same transaction as inserting lot_entries, plus AC-3.7 concurrent test. This yields strict per-community monotonicity under concurrency."
     },
     {
-      "original_issue": "“Private to holder” Discord thread likely infeasible; permission model/fallback missing.",
+      "original_issue": "Event types vs double-entry semantics ambiguous (posting-level vs envelope); replay could be implemented inconsistently",
       "status": "fixed",
-      "notes": "Requirement now uses public thread with bot-enforced gating by default, and private threads only when server supports them, with explicit fallback. This is implementable and matches Discord constraints."
+      "notes": "PRD explicitly chooses posting-level canonicality: each lot_entries row is a posting-level event; correlation_id groups postings for an operation; no envelope table. Replay rules and examples (multi-lot split, x402 credit/debit/credit_back) are spelled out, and AC-3.2 requires posting-level validation."
     },
     {
-      "original_issue": "Personality bridge ownership/call flow unclear (freeside calling finn personality endpoint vs ‘route through bridge’).",
-      "status": "not_fixed",
-      "notes": "You correctly chose a single source of truth (finn owns personality derivation) and removed the need for a separate personality lookup endpoint in the Track 2 narrative. However, the Dependency table still lists a required `GET /api/v1/nft/:tokenId/personality` endpoint, and the Dependency Graph still says “FR-2.1: Personality lookup client” / “FR-2.3: System prompt injection,” which contradicts the stated approach (freeside passes nft_id; finn derives personality inside inference). This contradiction will cause the team to build the wrong interface and block integration."
+      "original_issue": "Governance authorization / tenant isolation underspecified; RLS only mentioned for economic_policies; risk of privilege escalation or cross-tenant writes via service role",
+      "status": "fixed",
+      "notes": "PRD now defines roles (member/operator/admin/agent), explicit propose/approve permissions, negative tests (AC-4.9–4.11), and states the service does not bypass RLS and uses SET LOCAL app.community_id within transactions. This closes the control-plane escalation vector at the spec level."
     },
     {
-      "original_issue": "Web chat widget auth/gating undefined; risk of leaking API keys in browser or bypassing token gating.",
+      "original_issue": "Velocity computation required fractional regression but BigInt-only monetary arithmetic mandated; risk of using Number/float in economic path",
       "status": "fixed",
-      "notes": "Defines SIWE → server-issued short-lived session token, explicitly forbids API keys in browser, and provides a community-embedded server-side key option plus read-only unauthenticated mode. This is a viable MVP security model."
+      "notes": "PRD replaces regression with an integer bucket + half-window acceleration method, keeps velocity/acceleration/exhaustion as BigInt, defines conservative floor division, and adds AC-2.6 to enforce no floating-point in the computation path. This is implementable without violating BigInt purity."
     },
     {
-      "original_issue": "Prometheus requirement lacked a viable ECS/Fargate scraping architecture.",
+      "original_issue": "Purpose field inconsistent: enum vs TEXT; mismatch between usage_events vs lot_entries as source of truth; success metric ambiguous",
       "status": "fixed",
-      "notes": "Specifies AMP + ADOT sidecars using ECS task metadata discovery, with CloudWatch Container Insights retained. This is an AWS-supported pattern and meets the 60s alerting goal."
+      "notes": "PRD now makes purpose a Postgres ENUM (economic_purpose), explicitly declares lot_entries as the sole source of truth, and states usage_events does not carry purpose. Success metric is aligned to new debit lot_entries (G-1), and AC-1.7 enforces no parallel purpose column."
+    },
+    {
+      "original_issue": "Replay/performance targets lacked plan for RLS/indexing and sequence_number nullability/backfill; risk of nondeterministic ordering and missing events",
+      "status": "fixed",
+      "notes": "PRD now includes: partial index on (community_id, sequence_number) where not null, velocity index on (community_id, created_at) for debits, explicit legacy backfill assigning sequence_number ordered by (created_at, id) upon enabling FEATURE_EVENT_SOURCING, and AC-3.5 requiring EXPLAIN ANALYZE with an RLS-safe plan. This resolves the nullability/backfill and query-path concerns."
     }
   ],
-  "new_blocking_concerns": [
-    {
-      "location": "Section 7 'Cross-Repo Dependencies' + Section 8 'Dependency Graph' vs Track 2 'PERSONALITY OWNERSHIP' and FR-2.1 wording",
-      "description": "Personality bridge is internally contradictory: the PRD says no separate personality lookup endpoint is needed and finn derives personality inside inference, but dependencies/graph still require a `GET /api/v1/nft/:tokenId/personality` endpoint and describe a 'personality lookup client'.",
-      "why_blocking": "This will misdirect implementation across repos: freeside engineers may build a client and routing around a personality endpoint that the Track 2 design explicitly says should not exist, while finn engineers may not implement it. That mismatch blocks integration testing for #80 and cascades into #81/#85 (Discord threads + web chat) because both rely on the personality bridge being callable in the agreed way.",
-      "fix": "Make the document consistent with the chosen model (finn owns derivation inside inference): (1) Remove/replace the dependency row that names `GET /api/v1/nft/:tokenId/personality` with 'Personality derivation within inference endpoint (returns X-Pool-Used/X-Personality-Id)'. (2) Update the dependency graph nodes under Track 2 to reflect 'FR-2.1: Inference request enrichment (nft_id in JWT)' and 'FR-2.2: Pool/personality metadata headers' (and remove 'personality lookup client' / 'system prompt injection' if prompts are fully on finn). (3) Optionally tighten FR-2.1 acceptance criteria to state explicitly that freeside does not call a personality endpoint; it only passes nft_id/tier/budget_reservation_id and finn returns metadata."
-    }
-  ],
+  "new_blocking_concerns": [],
   "iteration": 2
 }
