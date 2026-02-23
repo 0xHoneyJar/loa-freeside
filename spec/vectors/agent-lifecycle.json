@@ -1,0 +1,91 @@
+{
+  "schema": "loa-hounfour-v7-test-vectors",
+  "domain": "AgentLifecycle",
+  "description": "Agent lifecycle state machine test vectors. Valid transitions, invalid transitions, and terminal states.",
+  "states": ["IDLE", "RESERVED", "ROUTING", "STREAMING", "FINALIZED", "FAILED", "CANCELLED"],
+  "terminal_states": ["FINALIZED", "FAILED", "CANCELLED"],
+  "vectors": [
+    {
+      "id": "ALC-001",
+      "description": "Happy path: IDLE → RESERVED → ROUTING → STREAMING → FINALIZED",
+      "transitions": [
+        { "from": "IDLE", "to": "RESERVED", "trigger": "reserve", "valid": true },
+        { "from": "RESERVED", "to": "ROUTING", "trigger": "route", "valid": true },
+        { "from": "ROUTING", "to": "STREAMING", "trigger": "stream_start", "valid": true },
+        { "from": "STREAMING", "to": "FINALIZED", "trigger": "finalize", "valid": true }
+      ]
+    },
+    {
+      "id": "ALC-002",
+      "description": "Budget exceeded at reserve: IDLE → FAILED",
+      "transitions": [
+        { "from": "IDLE", "to": "FAILED", "trigger": "budget_exceeded", "valid": true }
+      ]
+    },
+    {
+      "id": "ALC-003",
+      "description": "Routing failure: RESERVED → FAILED",
+      "transitions": [
+        { "from": "IDLE", "to": "RESERVED", "trigger": "reserve", "valid": true },
+        { "from": "RESERVED", "to": "FAILED", "trigger": "route_error", "valid": true }
+      ]
+    },
+    {
+      "id": "ALC-004",
+      "description": "User cancellation during routing: ROUTING → CANCELLED",
+      "transitions": [
+        { "from": "IDLE", "to": "RESERVED", "trigger": "reserve", "valid": true },
+        { "from": "RESERVED", "to": "ROUTING", "trigger": "route", "valid": true },
+        { "from": "ROUTING", "to": "CANCELLED", "trigger": "cancel", "valid": true }
+      ]
+    },
+    {
+      "id": "ALC-005",
+      "description": "Stream error mid-flight: STREAMING → FAILED",
+      "transitions": [
+        { "from": "IDLE", "to": "RESERVED", "trigger": "reserve", "valid": true },
+        { "from": "RESERVED", "to": "ROUTING", "trigger": "route", "valid": true },
+        { "from": "ROUTING", "to": "STREAMING", "trigger": "stream_start", "valid": true },
+        { "from": "STREAMING", "to": "FAILED", "trigger": "stream_error", "valid": true }
+      ]
+    },
+    {
+      "id": "ALC-006",
+      "description": "Invalid: cannot go backwards from STREAMING to RESERVED",
+      "transitions": [
+        { "from": "STREAMING", "to": "RESERVED", "trigger": "reserve", "valid": false }
+      ]
+    },
+    {
+      "id": "ALC-007",
+      "description": "Invalid: cannot transition from terminal state FINALIZED",
+      "transitions": [
+        { "from": "FINALIZED", "to": "IDLE", "trigger": "reset", "valid": false },
+        { "from": "FINALIZED", "to": "RESERVED", "trigger": "reserve", "valid": false }
+      ]
+    },
+    {
+      "id": "ALC-008",
+      "description": "Invalid: cannot transition from terminal state FAILED",
+      "transitions": [
+        { "from": "FAILED", "to": "IDLE", "trigger": "reset", "valid": false },
+        { "from": "FAILED", "to": "RESERVED", "trigger": "reserve", "valid": false }
+      ]
+    },
+    {
+      "id": "ALC-009",
+      "description": "Invalid: cannot skip RESERVED and go directly to ROUTING",
+      "transitions": [
+        { "from": "IDLE", "to": "ROUTING", "trigger": "route", "valid": false }
+      ]
+    },
+    {
+      "id": "ALC-010",
+      "description": "Cancellation during reserve: RESERVED → CANCELLED",
+      "transitions": [
+        { "from": "IDLE", "to": "RESERVED", "trigger": "reserve", "valid": true },
+        { "from": "RESERVED", "to": "CANCELLED", "trigger": "cancel", "valid": true }
+      ]
+    }
+  ]
+}

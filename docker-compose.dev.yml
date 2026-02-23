@@ -109,6 +109,41 @@ services:
       - arrakis-dev
     restart: unless-stopped
 
+  # =========================================================================
+  # PgBouncer: Connection Pooler (Cycle 037, Sprint 2)
+  # =========================================================================
+  # Transaction mode pooling. Services connect via pgbouncer:6432 in dev.
+  # Pool sizing: API=60, worker=20, reconciliation=10, headroom=10 (total=100)
+  pgbouncer:
+    image: edoburu/pgbouncer:1.21.0
+    container_name: arrakis-pgbouncer-dev
+    environment:
+      DATABASE_URL: postgresql://arrakis:arrakis@postgres:5432/arrakis
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "200"
+      DEFAULT_POOL_SIZE: "20"
+      MIN_POOL_SIZE: "5"
+      RESERVE_POOL_SIZE: "5"
+      RESERVE_POOL_TIMEOUT: "5"
+      SERVER_IDLE_TIMEOUT: "300"
+      QUERY_TIMEOUT: "30"
+      STATS_PERIOD: "60"
+      AUTH_TYPE: plain
+      ADMIN_USERS: arrakis
+    ports:
+      - "6432:6432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -p 6432 -U arrakis || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - arrakis-dev
+
   postgres:
     image: postgres:15-alpine
     container_name: arrakis-postgres-dev

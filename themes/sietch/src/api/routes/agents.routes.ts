@@ -147,7 +147,10 @@ export function createAgentRoutes(deps: AgentRoutesDeps): Router {
     const etag = `W/"${createHash('sha256').update(body).digest('hex').slice(0, 16)}"`;
 
     res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Cache-Control', 'public, max-age=3600');
+    // max-age=60: aligned with JWKS cache TTL and key refresh interval.
+    // During rotation, both old and new keys are served for ≥15 minutes.
+    // @see packages/services/jwks-pg-service.ts CACHE_TTL_MS
+    res.setHeader('Cache-Control', 'public, max-age=60');
     res.setHeader('ETag', etag);
 
     if (matchesEtag(req.headers['if-none-match'], etag)) {

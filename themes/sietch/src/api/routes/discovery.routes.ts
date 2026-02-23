@@ -31,6 +31,12 @@ const ADVERTISED_SCHEMAS = [
   'MintingPolicy',
   'AgentIdentity',
   'ProtocolDiscovery',
+  // Cycle 037: Economic ledger schemas
+  'CreditLot',
+  'LotEntry',
+  'UsageEvent',
+  'ConservationInvariant',
+  'BudgetReservation',
 ];
 
 // Lazy-initialized discovery document (medium-3: avoids module-level side effects).
