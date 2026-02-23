@@ -5,9 +5,27 @@
  * All sequence allocation is race-safe with INSERT ON CONFLICT DO NOTHING
  * for first-write initialization.
  *
+ * Dual Replay Architecture (F-2 / Bridgebuilder):
+ *   The ledger serves a dual purpose — economic events (credit, debit,
+ *   expiry, credit_back) and governance events (governance_debit,
+ *   governance_credit). This mirrors Ethereum's dual event log model:
+ *   ERC-20 Transfer events serve both balance reconstruction and
+ *   governance history (delegation, voting power snapshots).
+ *
+ *   - `replayState()`: Economic replay — reconstructs lot balances from
+ *     the full event journal (balance reconstruction).
+ *   - `replayGovernanceHistory()`: Governance replay — filters for
+ *     governance entry types and returns a decision timeline
+ *     (governance audit trail).
+ *
+ *   The distinction matters because economic replay aggregates by lot
+ *   (per-lot balance state), while governance replay aggregates by time
+ *   (chronological decision history). Same events, different projections.
+ *
  * Design:
  *   - allocateSequence: race-safe per-community monotonic sequence (AC-4.3.1)
  *   - replayState: canonical posting model replay (AC-4.3.2)
+ *   - replayGovernanceHistory: governance decision timeline (F-2)
  *   - verifyConsistency: compare replay vs lot_balances (AC-4.3.4)
  *   - sequenceGapReport: identify gaps with probable cause (AC-4.3.6)
  *   - Hard 10k event limit per replay invocation (AC-4.3.7)
@@ -78,6 +96,18 @@ export interface SequenceGap {
   probableCause: 'transaction_rollback' | 'range_allocation_skip' | 'backfill_gap' | 'unknown';
 }
 
+/** Governance replay event (F-2) */
+export interface GovernanceReplayEvent {
+  id: string;
+  communityId: string;
+  entryType: 'governance_debit' | 'governance_credit';
+  amountMicro: bigint;
+  sequenceNumber: bigint;
+  correlationId: string;
+  causationId: string;
+  createdAt: Date;
+}
+
 /** Allocated sequence result */
 export interface AllocatedSequence {
   sequenceNumber: bigint;
@@ -104,6 +134,8 @@ export function createEventSourcingService(pool: Pool) {
       allocateSequence(pool, communityId),
     replayState: (communityId: string, fromSequence?: bigint, limit?: number) =>
       replayState(pool, communityId, fromSequence, limit),
+    replayGovernanceHistory: (communityId: string, fromSequence?: bigint, limit?: number) =>
+      replayGovernanceHistory(pool, communityId, fromSequence, limit),
     verifyConsistency: (communityId: string) =>
       verifyConsistency(pool, communityId),
     sequenceGapReport: (communityId: string) =>
@@ -377,6 +409,71 @@ export async function replayState(
 ): Promise<Map<string, ReplayedLotState>> {
   return withCommunityScope(communityId, pool, async (client) => {
     return replayStateWithClient(client, communityId, fromSequence, limit);
+  });
+}
+
+// --------------------------------------------------------------------------
+// Governance Replay (F-2)
+// --------------------------------------------------------------------------
+
+/**
+ * Replay governance-specific history for a community.
+ *
+ * Unlike `replayState()` which reconstructs per-lot balances from ALL event
+ * types, this method filters for governance entry types only and returns a
+ * chronological decision timeline. Think of it as the governance audit trail:
+ * when were limits changed, by how much, and in what sequence?
+ *
+ * Entry types: `governance_debit` and `governance_credit` (confirmed from
+ * the `replayStateWithClient` switch cases at lines 339-346).
+ *
+ * @param pool - PostgreSQL connection pool
+ * @param communityId - Community UUID
+ * @param fromSequence - Start from this sequence (inclusive)
+ * @param limit - Max events to return (capped at 10k)
+ * @returns Chronological governance decision timeline
+ */
+export async function replayGovernanceHistory(
+  pool: Pool,
+  communityId: string,
+  fromSequence: bigint = 1n,
+  limit: number = MAX_REPLAY_EVENTS,
+): Promise<GovernanceReplayEvent[]> {
+  return withCommunityScope(communityId, pool, async (client) => {
+    const effectiveLimit = clampReplayLimit(limit);
+
+    const result = await client.query<{
+      id: string;
+      community_id: string;
+      entry_type: string;
+      amount_micro: string;
+      sequence_number: string;
+      correlation_id: string;
+      causation_id: string;
+      created_at: Date;
+    }>(
+      `SELECT id, community_id, entry_type, amount_micro,
+              sequence_number, correlation_id, causation_id, created_at
+       FROM lot_entries
+       WHERE community_id = $1
+         AND sequence_number IS NOT NULL
+         AND sequence_number >= $2
+         AND entry_type IN ('governance_debit', 'governance_credit')
+       ORDER BY sequence_number ASC
+       LIMIT $3`,
+      [communityId, fromSequence.toString(), effectiveLimit],
+    );
+
+    return result.rows.map((row) => ({
+      id: row.id,
+      communityId: row.community_id,
+      entryType: row.entry_type as 'governance_debit' | 'governance_credit',
+      amountMicro: BigInt(row.amount_micro),
+      sequenceNumber: BigInt(row.sequence_number),
+      correlationId: row.correlation_id,
+      causationId: row.causation_id,
+      createdAt: row.created_at,
+    }));
   });
 }
 
