@@ -58,8 +58,18 @@ const MICRO_PER_CENT = 10_000n;
 /** Redis idempotency key TTL: 24 hours */
 const REDIS_PROCESSED_TTL = 86_400;
 
-/** Default lot expiry: 90 days from now */
-const LOT_EXPIRY_DAYS = 90;
+/** Default lot expiry: 90 days from purchase */
+export const LOT_EXPIRY_DAYS = 90;
+
+/**
+ * Convert a USD float to BigInt micro-USD with minimal floating-point exposure.
+ * Converts to integer cents first (2 decimal places), then scales to micro-USD.
+ * This reduces the floating-point multiplication range from 1e6 to 1e2.
+ */
+export function usdToMicroSafe(priceUsd: number): bigint {
+  const cents = Math.round(priceUsd * 100);
+  return BigInt(cents) * MICRO_PER_CENT;
+}
 
 // --------------------------------------------------------------------------
 // Handler
@@ -125,7 +135,7 @@ export async function processPaymentForLedger(
   redis: Redis,
   event: WebhookLotEvent,
 ): Promise<NowpaymentsLotResult> {
-  const amountMicro = BigInt(Math.round(event.priceUsd * Number(MICRO_PER_USD)));
+  const amountMicro = usdToMicroSafe(event.priceUsd);
 
   // Lot expiry: 90 days from now
   const expiresAt = new Date(Date.now() + LOT_EXPIRY_DAYS * 24 * 60 * 60 * 1000);

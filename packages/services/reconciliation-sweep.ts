@@ -14,7 +14,7 @@
 
 import type { Pool } from 'pg';
 import type { Redis } from 'ioredis';
-import { processPaymentForLedger } from './nowpayments-handler.js';
+import { processPaymentForLedger, LOT_EXPIRY_DAYS, usdToMicroSafe } from './nowpayments-handler.js';
 import { mintCreditLot } from './credit-lot-service.js';
 
 // --------------------------------------------------------------------------
@@ -91,8 +91,7 @@ const TERMINAL_SUCCESS = ['finished'];
 /** Terminal statuses that mean payment failed */
 const TERMINAL_FAILED = ['failed', 'expired', 'refunded'];
 
-/** Credit lot expiry for recovered payments (matches nowpayments-handler) */
-const LOT_EXPIRY_DAYS = 90;
+// LOT_EXPIRY_DAYS imported from nowpayments-handler (single source of truth)
 
 // --------------------------------------------------------------------------
 // Sweep
@@ -246,7 +245,7 @@ async function reconcilePayment(
       } else {
         // Redis unavailable — Postgres-only mint, budget adjustment deferred
         // Conservation guard reconciliation will correct Redis on recovery
-        const amountMicro = BigInt(Math.round(apiStatus.price_amount * 1_000_000));
+        const amountMicro = usdToMicroSafe(apiStatus.price_amount);
         const expiresAt = new Date(Date.now() + LOT_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
         const client = await pool.connect();
         try {
