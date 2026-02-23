@@ -5,6 +5,15 @@
  * from pre-aggregated hourly rollups. ALL arithmetic uses BigInt —
  * no Number, parseFloat, or Math.* in the computation path.
  *
+ * BigInt Truncation Bias (F-3 / Bridgebuilder):
+ *   BigInt division truncates toward zero. This creates a systematic bias:
+ *   - Velocity is systematically underestimated (floor)
+ *   - Exhaustion time is systematically overestimated
+ *   This is CONSERVATIVE for budget protection (we undercount spend rate)
+ *   but OPTIMISTIC for alerting (we overcount time-to-exhaustion).
+ *   For alerting use cases that need conservative-safe estimates, use
+ *   `velocityCeilingMicroPerHour` — the truncation-corrected ceiling.
+ *
  * Design:
  *   - Reads from community_debit_hourly (not raw lot_entries) (AC-3.3.1)
  *   - BigInt-only arithmetic (AC-3.3.2)
@@ -31,6 +40,8 @@ export interface VelocitySnapshot {
   computedAt: Date;
   windowHours: bigint;
   velocityMicroPerHour: bigint;
+  /** Truncation-corrected ceiling velocity for alerting (F-3). */
+  velocityCeilingMicroPerHour?: bigint;
   accelerationMicroPerHour2: bigint;
   availableBalanceMicro: bigint;
   estimatedExhaustionHours: bigint | null;
@@ -116,6 +127,10 @@ export async function computeSnapshot(
       ? totalSpend / effectiveWindow
       : 0n;
 
+    // F-3: Truncation-corrected ceiling for alerting use cases
+    const velocityCeilingMicroPerHour = velocityMicroPerHour +
+      (totalSpend % effectiveWindow > 0n ? 1n : 0n);
+
     // Step 3: Compute acceleration from half-window comparison (AC-3.3.4)
     const accelerationMicroPerHour2 = computeAcceleration(
       buckets,
@@ -142,6 +157,7 @@ export async function computeSnapshot(
       computedAt: new Date(),
       windowHours: effectiveWindow,
       velocityMicroPerHour,
+      velocityCeilingMicroPerHour,
       accelerationMicroPerHour2,
       availableBalanceMicro,
       estimatedExhaustionHours,
