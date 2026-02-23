@@ -5,12 +5,30 @@
  * conservationGuard.updateLimit() idempotently. Implements exponential
  * backoff with DLQ for failed rows.
  *
+ * Two Generals Problem (F-1 / Bridgebuilder):
+ *   This worker faces a variant of the Two Generals problem applied to
+ *   economic governance: the governance lot entry is committed in Postgres,
+ *   but the conservation guard's Redis limit must be updated separately.
+ *   There is no atomic cross-store transaction.
+ *
+ *   The `governance_pending:{community_id}` Redis key makes this gap
+ *   visible. The worker sets it BEFORE calling `updateLimit()` and DELetes
+ *   it after success. Crash safety: the key auto-expires via TTL
+ *   (staleThresholdMinutes * 60s), and the outbox row is retried on the
+ *   next poll because it was never marked `processed_at`.
+ *
+ *   Concurrency safety: outbox rows are claimed with FOR UPDATE SKIP LOCKED,
+ *   ensuring only one worker processes a given community's policy at a time.
+ *   The Redis key is per-community (not per-row), so setting it again on
+ *   retry is idempotent (same key, refreshed TTL).
+ *
  * @see SDD §5.4 Outbox Pattern
  * @see Sprint 5, Task 5.4 (AC-5.4.1 through AC-5.4.12)
  * @module packages/services/governance-outbox-worker
  */
 
 import type { Pool, PoolClient } from 'pg';
+import type { Redis } from 'ioredis';
 
 // --------------------------------------------------------------------------
 // Types
@@ -50,6 +68,7 @@ export interface MetricsPort {
 /** Worker dependencies */
 export interface OutboxWorkerDeps {
   pool: Pool;
+  redis: Redis;
   conservationGuard: ConservationGuardPort;
   logger: Logger;
   metrics: MetricsPort;
@@ -88,7 +107,7 @@ const DEFAULT_STALE_THRESHOLD_MINUTES = 5;
 // --------------------------------------------------------------------------
 
 export function createOutboxWorker(deps: OutboxWorkerDeps, config: OutboxWorkerConfig = {}) {
-  const { pool, conservationGuard, logger, metrics } = deps;
+  const { pool, redis, conservationGuard, logger, metrics } = deps;
   const maxAttempts = config.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   const batchSize = config.batchSize ?? DEFAULT_BATCH_SIZE;
   const pollIntervalMs = config.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
@@ -125,7 +144,15 @@ export function createOutboxWorker(deps: OutboxWorkerDeps, config: OutboxWorkerC
     try {
       // AC-5.4.3: Call conservationGuard.updateLimit() with idempotency
       if (row.action === 'update_limit') {
+        // F-1: Set governance_pending BEFORE updateLimit (TTL = staleThresholdMinutes)
+        const pendingKey = `governance_pending:${row.community_id}`;
+        const pendingTtlSeconds = staleThresholdMinutes * 60;
+        await redis.set(pendingKey, '1', 'EX', pendingTtlSeconds);
+
         await conservationGuard.updateLimit(row.community_id, row.payload.limit_micro);
+
+        // F-1: Clear governance_pending AFTER successful updateLimit
+        await redis.del(pendingKey);
       } else {
         logger.warn('Unknown outbox action', { action: row.action, outboxId: row.id });
       }

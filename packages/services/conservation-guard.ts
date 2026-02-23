@@ -12,6 +12,22 @@
  *   I-2: SUM(lot_entries.amount_micro) per lot = original_micro
  *   I-3: Redis.committed ≈ Postgres.SUM(usage_events.amount_micro) within drift tolerance
  *
+ * Outbox Propagation Invariant Gap (F-1 / Bridgebuilder):
+ *   There is a known window between governance lot entry commit and
+ *   conservation guard Redis limit update — analogous to how Google
+ *   Spanner documents TrueTime clock uncertainty as an explicit bound
+ *   rather than hiding it.
+ *
+ *   During this window, the Redis limit is stale (reflects the previous
+ *   policy). The `governance_pending:{community_id}` Redis key makes this
+ *   uncertainty visible: when set, `checkConservation()` reports
+ *   `governancePending: true` to signal that a limit change is in-flight.
+ *
+ *   IMPORTANT: The pending flag is INFORMATIONAL. It does NOT block debits.
+ *   Debits continue under the current (still-valid) Redis limit. The flag
+ *   enables callers to make informed decisions (e.g., log warnings, defer
+ *   optional limit-dependent operations).
+ *
  * @see SDD §4.2 Conservation Guard
  * @see Sprint 0B, Task 0B.1
  * @module packages/services/conservation-guard
@@ -34,6 +50,8 @@ export interface ConservationCheckResult {
   driftMicro: bigint;
   /** Whether drift exceeds tolerance */
   driftExceeded: boolean;
+  /** Whether a governance limit update is in-flight (F-1) */
+  governancePending: boolean;
   /** Individual invariant results */
   violations: ConservationViolation[];
 }
@@ -126,6 +144,30 @@ export async function getCurrentFenceToken(
 }
 
 // --------------------------------------------------------------------------
+// Governance Pending Flag (F-1)
+// --------------------------------------------------------------------------
+
+/**
+ * Check if a governance limit update is in-flight for a community.
+ *
+ * The outbox worker sets `governance_pending:{community_id}` before calling
+ * `updateLimit()` and DELetes it after success. TTL auto-expires the key
+ * on worker crash (default: staleThresholdMinutes * 60s).
+ *
+ * @param redis - Redis client
+ * @param communityId - Community UUID
+ * @returns true if a governance propagation is in-flight
+ */
+export async function isGovernancePending(
+  redis: Redis,
+  communityId: string,
+): Promise<boolean> {
+  const key = `governance_pending:${communityId}`;
+  const exists = await redis.exists(key);
+  return exists === 1;
+}
+
+// --------------------------------------------------------------------------
 // Postgres Fence Verification
 // --------------------------------------------------------------------------
 
@@ -195,6 +237,9 @@ export async function checkConservation(
 ): Promise<ConservationCheckResult> {
   const fenceToken = await acquireFenceToken(redis, communityId);
   const violations: ConservationViolation[] = [];
+
+  // F-1: Check if a governance limit update is in-flight
+  const governancePending = await isGovernancePending(redis, communityId);
 
   // Read Redis state
   const redisCommitted = BigInt(
@@ -266,6 +311,7 @@ export async function checkConservation(
     fenceToken,
     driftMicro,
     driftExceeded,
+    governancePending,
     violations,
   };
 }
