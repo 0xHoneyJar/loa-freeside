@@ -32,7 +32,12 @@ export type EconomicMetricName =
   | 'circuit_breaker_state'
   | 'pgbouncer_pool_utilization'
   | 'budget_drift'
-  | 'usage_event_count';
+  | 'usage_event_count'
+  | 'purpose_spend_micro'
+  | 'purpose_unclassified_rate'
+  | 'velocity_micro_per_hour'
+  | 'estimated_exhaustion_hours'
+  | 'velocity_exhaustion_alert';
 
 /** Dimension key-value pairs for metric context */
 export interface MetricDimensions {
@@ -56,6 +61,24 @@ export interface MetricEmission {
 // --------------------------------------------------------------------------
 
 const EMF_NAMESPACE = 'Arrakis/Economic';
+const MAX_SAFE_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
+
+/** Convert BigInt to Number with overflow protection for metric emission. */
+function toSafeNumber(value: bigint, metricName: EconomicMetricName): number {
+  if (value > MAX_SAFE_BIGINT) {
+    process.stderr.write(
+      `[metrics] ${metricName} overflow: ${value.toString()} > MAX_SAFE_INTEGER; capping.\n`,
+    );
+    return Number.MAX_SAFE_INTEGER;
+  }
+  if (value < -MAX_SAFE_BIGINT) {
+    process.stderr.write(
+      `[metrics] ${metricName} underflow: ${value.toString()} < -MAX_SAFE_INTEGER; capping.\n`,
+    );
+    return -Number.MAX_SAFE_INTEGER;
+  }
+  return Number(value);
+}
 
 // --------------------------------------------------------------------------
 // EMF Emitter
@@ -161,7 +184,7 @@ export function emitConservationResult(
 
   emitEconomicMetric({
     name: 'conservation_drift_micro',
-    value: Number(driftMicro),
+    value: toSafeNumber(driftMicro, 'conservation_drift_micro'),
     unit: 'None',
     dimensions: { community_id: communityId },
   });
@@ -206,6 +229,49 @@ export function emitPgBouncerUtilization(utilizationPercent: number): void {
     name: 'pgbouncer_pool_utilization',
     value: utilizationPercent,
     unit: 'Percent',
+  });
+}
+
+/**
+ * Emit purpose spend metric (AC-2.5.1).
+ *
+ * Emitted per-debit with purpose dimension for spend-by-purpose dashboards.
+ *
+ * @param communityId - Tenant community UUID
+ * @param purpose - Economic purpose classification
+ * @param amountMicro - Debit amount in micro-USD
+ */
+export function emitPurposeSpend(
+  communityId: string,
+  purpose: string,
+  amountMicro: bigint,
+): void {
+  emitEconomicMetric({
+    name: 'purpose_spend_micro',
+    value: toSafeNumber(amountMicro, 'purpose_spend_micro'),
+    unit: 'None',
+    dimensions: { community_id: communityId, purpose },
+  });
+}
+
+/**
+ * Emit unclassified rate metric (AC-2.5.2).
+ *
+ * Emitted periodically by the observability sweep for alerting
+ * when unclassified entries exceed threshold.
+ *
+ * @param communityId - Tenant community UUID
+ * @param rate - Unclassified ratio (0.0 to 1.0)
+ */
+export function emitUnclassifiedRate(
+  communityId: string,
+  rate: number,
+): void {
+  emitEconomicMetric({
+    name: 'purpose_unclassified_rate',
+    value: rate,
+    unit: 'None',
+    dimensions: { community_id: communityId },
   });
 }
 

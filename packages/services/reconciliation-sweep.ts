@@ -16,6 +16,7 @@ import type { Pool } from 'pg';
 import type { Redis } from 'ioredis';
 import { processPaymentForLedger, LOT_EXPIRY_DAYS, usdToMicroSafe } from './nowpayments-handler.js';
 import { mintCreditLot } from './credit-lot-service.js';
+import { withCommunityScope } from './community-scope.js';
 
 // --------------------------------------------------------------------------
 // Types
@@ -247,24 +248,16 @@ async function reconcilePayment(
         // Conservation guard reconciliation will correct Redis on recovery
         const amountMicro = usdToMicroSafe(apiStatus.price_amount);
         const expiresAt = new Date(Date.now() + LOT_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
-        const client = await pool.connect();
-        try {
-          await client.query('BEGIN');
-          await client.query('SET LOCAL app.community_id = $1', [payment.community_id]);
-          lotId = await mintCreditLot(client, {
+        // Use withCommunityScope for standardized BEGIN/SET LOCAL/COMMIT (Sprint 1, Task 1.1)
+        lotId = await withCommunityScope(payment.community_id, pool, async (client) => {
+          return mintCreditLot(client, {
             community_id: payment.community_id,
             source: 'purchase',
             amount_micro: amountMicro,
             payment_id: payment.payment_id,
             expires_at: expiresAt,
           });
-          await client.query('COMMIT');
-        } catch (mintErr) {
-          await client.query('ROLLBACK');
-          throw mintErr;
-        } finally {
-          client.release();
-        }
+        });
       }
     }
 

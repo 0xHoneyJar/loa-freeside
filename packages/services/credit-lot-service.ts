@@ -16,6 +16,8 @@
  */
 
 import type { Pool, PoolClient } from 'pg';
+import { insertLotEntry } from '../adapters/storage/lot-entry-repository.js';
+import type { EconomicPurpose } from './purpose-service.js';
 
 /**
  * Lot balance row from lot_balances view
@@ -78,9 +80,10 @@ export async function debitLots(
   amountMicro: bigint,
   reservationId: string,
   usageEventId?: string,
+  purpose?: EconomicPurpose,
 ): Promise<DebitResult> {
-  // Set tenant context for RLS (migration 0008 infrastructure)
-  await client.query('SET LOCAL app.community_id = $1', [communityId]);
+  // NOTE: Caller must set community scope via withCommunityScope or withCommunityBoundary
+  // before calling debitLots(). SET LOCAL is no longer done here (Sprint 1, Task 1.1).
 
   // Step 1: Select available lots (earliest-expiry-first)
   // FOR UPDATE locks rows in deterministic order (lot_id ASC) per IMP-005
@@ -114,21 +117,22 @@ export async function debitLots(
     const lotRemaining = BigInt(lot.remaining_micro);
     const debitAmount = remaining < lotRemaining ? remaining : lotRemaining;
 
-    // Insert debit entry (idempotent via UNIQUE(lot_id, reservation_id))
-    const entryResult = await client.query<{ id: string }>(
-      `INSERT INTO lot_entries (lot_id, community_id, entry_type, amount_micro, reservation_id, usage_event_id)
-       VALUES ($1, $2, 'debit', $3, $4, $5)
-       ON CONFLICT (lot_id, reservation_id)
-         WHERE reservation_id IS NOT NULL AND entry_type = 'debit'
-       DO NOTHING
-       RETURNING id`,
-      [lot.lot_id, communityId, debitAmount.toString(), reservationId, usageEventId]
-    );
+    // Insert debit entry via SECURITY DEFINER function (idempotent)
+    const entryResult = await insertLotEntry(client, {
+      lotId: lot.lot_id,
+      communityId,
+      entryType: 'debit',
+      amountMicro: debitAmount,
+      reservationId,
+      usageEventId,
+      purpose,
+      idempotent: true,
+    });
 
-    if (entryResult.rows.length > 0) {
+    if (entryResult.inserted) {
       entries.push({
         lot_id: lot.lot_id,
-        entry_id: entryResult.rows[0].id,
+        entry_id: entryResult.id!,
         amount_micro: debitAmount,
       });
 
@@ -195,12 +199,14 @@ export async function mintCreditLot(
 
   const lotId = lotResult.rows[0].id;
 
-  // Step 2: Insert initial credit entry
-  await client.query(
-    `INSERT INTO lot_entries (lot_id, community_id, entry_type, amount_micro, reference_id)
-     VALUES ($1, $2, 'credit', $3, $4)`,
-    [lotId, params.community_id, params.amount_micro.toString(), params.payment_id || lotId]
-  );
+  // Step 2: Insert initial credit entry via SECURITY DEFINER function
+  await insertLotEntry(client, {
+    lotId,
+    communityId: params.community_id,
+    entryType: 'credit',
+    amountMicro: params.amount_micro,
+    referenceId: params.payment_id || lotId,
+  });
 
   return lotId;
 }

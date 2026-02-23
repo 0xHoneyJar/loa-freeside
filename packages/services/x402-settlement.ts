@@ -18,6 +18,8 @@
 import type { Pool, PoolClient } from 'pg';
 import type { Redis } from 'ioredis';
 import { mintCreditLot, debitLots } from './credit-lot-service.js';
+import { withCommunityScope } from './community-scope.js';
+import { insertLotEntry } from '../adapters/storage/lot-entry-repository.js';
 
 // --------------------------------------------------------------------------
 // Types
@@ -198,24 +200,19 @@ export async function settle(
     );
   }
 
-  const client = await pgPool.connect();
-  let lotId: string | null = null;
-  let usageEventId = '';
-
-  try {
-    await client.query('BEGIN');
-
+  // Use withCommunityScope for standardized BEGIN/SET LOCAL/COMMIT (Sprint 1, Task 1.1)
+  // This also fixes a pre-existing bug: mintCreditLot previously ran without community scope set.
+  const txResult = await withCommunityScope(proof.community_id, pgPool, async (client) => {
     // Step 1: Verify nonce inside transaction (rolls back on settlement failure)
     const nonceUnique = await verifyNonceUnique(client, proof.nonce);
     if (!nonceUnique) {
-      // Let error propagate to catch block for single ROLLBACK
       throw new Error(`x402 nonce replay detected: ${proof.nonce}`);
     }
 
     // Step 2: Mint credit lot (idempotent via tx_hash as payment_id)
     const expiresAt = new Date(Date.now() + X402_LOT_EXPIRY_HOURS * 60 * 60 * 1000);
 
-    lotId = await mintCreditLot(client, {
+    const mintedLotId = await mintCreditLot(client, {
       community_id: proof.community_id,
       source: 'x402',
       amount_micro: quotedMicro,
@@ -223,8 +220,7 @@ export async function settle(
       expires_at: expiresAt,
     });
 
-    if (!lotId) {
-      // Duplicate tx_hash — already settled
+    if (!mintedLotId) {
       throw new Error(`x402 payment already settled: ${proof.tx_hash}`);
     }
 
@@ -235,29 +231,29 @@ export async function settle(
        RETURNING id`,
       [proof.community_id, actualMicro.toString(), proof.tx_hash],
     );
-    usageEventId = usageResult.rows[0].id;
+    const eventId = usageResult.rows[0].id;
 
     // Step 4: Debit actual cost from the lot
-    await debitLots(client, proof.community_id, actualMicro, reservationId, usageEventId);
+    await debitLots(client, proof.community_id, actualMicro, reservationId, eventId);
 
     // Step 5: If there's a remainder (quoted > actual), record credit-back entry
     const remainder = quotedMicro - actualMicro;
 
     if (remainder > 0n) {
-      await client.query(
-        `INSERT INTO lot_entries (lot_id, community_id, entry_type, amount_micro, reference_id)
-         VALUES ($1, $2, 'credit_back', $3, $4)`,
-        [lotId, proof.community_id, remainder.toString(), `x402:creditback:${proof.tx_hash}`],
-      );
+      await insertLotEntry(client, {
+        lotId: mintedLotId,
+        communityId: proof.community_id,
+        entryType: 'credit_back',
+        amountMicro: remainder,
+        referenceId: `x402:creditback:${proof.tx_hash}`,
+      });
     }
 
-    await client.query('COMMIT');
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
+    return { lotId: mintedLotId, usageEventId: eventId };
+  });
+
+  const lotId = txResult.lotId;
+  const usageEventId = txResult.usageEventId;
 
   // Step 6: Redis budget adjustment (best-effort)
   const creditedBack = quotedMicro - actualMicro;
