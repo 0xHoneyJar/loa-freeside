@@ -32,13 +32,23 @@ import type { ConservationCheckResult } from './conservation-guard.js';
 // Feature Flag
 // =============================================================================
 
+let cachedEngineEnabled: boolean | null = null;
+
 /**
  * Check if the canonical boundary engine is enabled.
+ * Cached at first call to avoid process.env read on every check.
  * Default: false — the engine is off unless explicitly enabled.
  */
 export function isBoundaryEngineEnabled(): boolean {
+  if (cachedEngineEnabled !== null) return cachedEngineEnabled;
   const flag = process.env.ENABLE_CANONICAL_BOUNDARY_ENGINE;
-  return flag === 'true' || flag === '1';
+  cachedEngineEnabled = flag === 'true' || flag === '1';
+  return cachedEngineEnabled;
+}
+
+/** Reset the cached boundary engine flag — for use in tests. */
+export function resetBoundaryEngineCache(): void {
+  cachedEngineEnabled = null;
 }
 
 // =============================================================================

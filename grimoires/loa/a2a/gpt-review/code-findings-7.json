@@ -1,17 +1,7 @@
 {
-  "verdict": "CHANGES_REQUIRED",
-  "summary": "Raw communityId (PII) is logged in multiple paths, violating the requirement to never log tenant identifiers un-hashed.",
-  "issues": [
-    {
-      "severity": "major",
-      "file": "boundary-engine-shadow.ts",
-      "line": 1,
-      "description": "Logs include raw communityId (PII). Requirement states tenant IDs must never be logged raw. This occurs in both warn/info branches and the exception handler.",
-      "current_code": "```typescript\nimport {\n  evaluateEconomicBoundary,\n} from '@0xhoneyjar/loa-hounfour';\n\n// ...\n    logger.warn(\n      {\n        error: err instanceof Error ? err.message : String(err),\n        communityId: ctx.communityId,\n        tier: ctx.tier,\n      },\n      'boundary-engine-shadow: canonical engine threw unexpectedly',\n    );\n\n// ...\n    logger.info(\n      {\n        communityId: ctx.communityId,\n        decision: canonicalGranted ? 'ALLOW' : 'DENY',\n        tier: ctx.tier,\n        reputationState: trustSnapshot.reputation_state,\n        budgetRemainingMicro: capitalSnapshot.budget_remaining,\n      },\n      'boundary-engine-shadow: canonical and existing AGREE',\n    );\n  } else {\n    logger.warn(\n      {\n        communityId: ctx.communityId,\n        existingPass,\n        canonicalGranted,\n        tier: ctx.tier,\n        reputationState: trustSnapshot.reputation_state,\n        blendedScore: trustSnapshot.blended_score,\n        budgetRemainingMicro: capitalSnapshot.budget_remaining,\n        canonicalDenialReason: canonicalResult.access_decision.denial_reason,\n        existingViolations: existingResult.violations.map(v => v.invariant),\n        trustEvaluation: canonicalResult.trust_evaluation,\n        capitalEvaluation: canonicalResult.capital_evaluation,\n      },\n      'boundary-engine-shadow: canonical and existing DIVERGE',\n    );\n  }\n```",
-      "fixed_code": "```typescript\nimport {\n  evaluateEconomicBoundary,\n} from '@0xhoneyjar/loa-hounfour';\nimport { createHash } from 'crypto';\n\n// ...\nfunction hashCommunityId(id: string): string {\n  const salt = process.env.TENANT_ID_LOG_SALT ?? '';\n  return createHash('sha256').update(salt).update(id).digest('hex');\n}\n\n// ...\n    const communityIdHash = hashCommunityId(ctx.communityId);\n    logger.warn(\n      {\n        error: err instanceof Error ? err.message : String(err),\n        communityIdHash,\n        tier: ctx.tier,\n      },\n      'boundary-engine-shadow: canonical engine threw unexpectedly',\n    );\n\n// ...\n  const communityIdHash = hashCommunityId(ctx.communityId);\n  if (match) {\n    logger.info(\n      {\n        communityIdHash,\n        decision: canonicalGranted ? 'ALLOW' : 'DENY',\n        tier: ctx.tier,\n        reputationState: trustSnapshot.reputation_state,\n        budgetRemainingMicro: capitalSnapshot.budget_remaining,\n      },\n      'boundary-engine-shadow: canonical and existing AGREE',\n    );\n  } else {\n    logger.warn(\n      {\n        communityIdHash,\n        existingPass,\n        canonicalGranted,\n        tier: ctx.tier,\n        reputationState: trustSnapshot.reputation_state,\n        blendedScore: trustSnapshot.blended_score,\n        budgetRemainingMicro: capitalSnapshot.budget_remaining,\n        canonicalDenialReason: canonicalResult.access_decision.denial_reason,\n        existingViolations: existingResult.violations.map(v => v.invariant),\n        trustEvaluation: canonicalResult.trust_evaluation,\n        capitalEvaluation: canonicalResult.capital_evaluation,\n      },\n      'boundary-engine-shadow: canonical and existing DIVERGE',\n    );\n  }\n```",
-      "explanation": "Hashes the communityId before logging so no raw tenant identifier is emitted. This satisfies the PII logging requirement while preserving observability through a consistent hash."
-    }
-  ],
+  "verdict": "APPROVED",
+  "summary": "No blocking bugs, security issues, or logic errors found in the provided changes.",
+  "issues": [],
   "fabrication_check": {
     "passed": true,
     "concerns": []

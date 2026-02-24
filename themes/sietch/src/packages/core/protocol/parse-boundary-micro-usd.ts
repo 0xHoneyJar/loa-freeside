@@ -42,8 +42,11 @@ export const MAX_INPUT_LENGTH = 50;
 /** Regex for non-ASCII characters */
 const NON_ASCII_REGEX = /[^\x00-\x7F]/;
 
-/** Regex for ASCII whitespace */
+/** Regex for ASCII whitespace: \t(0x09), \n(0x0A), \v(0x0B), \f(0x0C), \r(0x0D), space(0x20) */
 const ASCII_WHITESPACE_REGEX = /[\t\n\r\f\v ]/;
+
+/** Regex for C0 control chars NOT already caught by whitespace: 0x00-0x08, 0x0E-0x1F, 0x7F (DEL) */
+const CONTROL_CHAR_REGEX = /[\x00-\x08\x0E-\x1F\x7F]/;
 
 // =============================================================================
 // Types
@@ -70,6 +73,7 @@ export type BoundaryParseResult =
       legacyResult: bigint;
       canonicalResult?: bigint;
       diverged?: boolean;
+      legacyFailed?: boolean;
     }
   | {
       ok: false;
@@ -84,6 +88,7 @@ export type BoundaryErrorCode =
   | 'SAFETY_MAX_LENGTH'
   | 'SAFETY_MAX_VALUE'
   | 'SAFETY_NON_ASCII'
+  | 'SAFETY_CONTROL_CHAR'
   | 'SAFETY_WHITESPACE'
   | 'SAFETY_NEGATIVE_AT_BOUNDARY'
   | 'LEGACY_PARSE_FAILURE'
@@ -121,16 +126,27 @@ const NO_OP_METRICS: BoundaryMetrics = {
 // Mode Resolution
 // =============================================================================
 
+let cachedMode: ParseMode | null = null;
+
 /**
  * Resolve the parse mode from environment variable.
+ * Cached at first call to avoid process.env read on every parse.
  * Default is 'shadow' if not set or invalid.
  */
 export function resolveParseMode(): ParseMode {
+  if (cachedMode !== null) return cachedMode;
   const env = process.env.PARSE_MICRO_USD_MODE;
   if (env === 'legacy' || env === 'shadow' || env === 'enforce') {
+    cachedMode = env;
     return env;
   }
+  cachedMode = 'shadow';
   return 'shadow';
+}
+
+/** Reset the cached parse mode — for use in tests that change mode between cases. */
+export function resetParseModeCache(): void {
+  cachedMode = null;
 }
 
 // =============================================================================
@@ -164,7 +180,16 @@ export function checkSafetyFloor(
     };
   }
 
-  // 3. ASCII whitespace check — reject, don't trim
+  // 3. C0 control character check — catches 0x00-0x08, 0x0E-0x1F, 0x7F (DEL)
+  //    These are the C0/DEL characters NOT already caught by the whitespace regex.
+  if (CONTROL_CHAR_REGEX.test(raw)) {
+    return {
+      errorCode: 'SAFETY_CONTROL_CHAR',
+      reason: 'Input contains C0 control character or DEL',
+    };
+  }
+
+  // 4. ASCII whitespace check — reject, don't trim
   if (ASCII_WHITESPACE_REGEX.test(raw)) {
     return {
       errorCode: 'SAFETY_WHITESPACE',
@@ -172,7 +197,7 @@ export function checkSafetyFloor(
     };
   }
 
-  // 4. Try to parse as BigInt for value-based checks
+  // 5. Try to parse as BigInt for value-based checks
   //    This is a pre-check — the actual parsing is done by the mode-specific logic
   let numericValue: bigint | null = null;
   try {
@@ -182,7 +207,7 @@ export function checkSafetyFloor(
     return null;
   }
 
-  // 5. Context-aware negativity check
+  // 6. Context-aware negativity check
   //    All non-DB boundaries must be non-negative (>= 0 enforced explicitly)
   //    DB context may encounter signed values — applies absolute-value bounds
   if (context !== 'db') {
@@ -194,7 +219,7 @@ export function checkSafetyFloor(
     }
   }
 
-  // 6. Max value check (absolute value for DB context)
+  // 7. Max value check (absolute value for DB context)
   const absValue = numericValue < 0n ? -numericValue : numericValue;
   if (absValue > MAX_SAFE_MICRO_USD) {
     return {
@@ -317,7 +342,9 @@ export function parseBoundaryMicroUsd(
       };
     }
 
-    // Both parsers rejected
+    // Legacy rejected — two sub-cases:
+    //   (a) canonical also failed → CANONICAL_REJECTION
+    //   (b) canonical succeeded but legacy failed → LEGACY_PARSE_FAILURE
     const errorCode: BoundaryErrorCode = canonical.valid
       ? 'LEGACY_PARSE_FAILURE'
       : 'CANONICAL_REJECTION';
@@ -339,7 +366,8 @@ export function parseBoundaryMicroUsd(
       mode: 'enforce',
       legacyResult: legacyValue ?? canonical.amount,
       canonicalResult: canonical.amount,
-      diverged: legacyValue !== null ? canonical.amount !== legacyValue : false,
+      diverged: legacyValue !== null ? canonical.amount !== legacyValue : true,
+      ...(legacyValue === null ? { legacyFailed: true } : {}),
     };
   }
 

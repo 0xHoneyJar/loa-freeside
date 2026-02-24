@@ -40,6 +40,22 @@ export interface QuarantineParams {
   reason?: string;
 }
 
+/** Raw row interface matching the micro_usd_parse_failures SQLite table schema */
+interface QuarantineRow {
+  id: number;
+  original_row_id: string;
+  table_name: string;
+  raw_value: string;
+  context: string;
+  error_code: string;
+  reason: string | null;
+  source_fingerprint: string;
+  replayed_at: string | null;
+  replay_attempts: number;
+  last_replay_error: string | null;
+  created_at: string;
+}
+
 // =============================================================================
 // Fingerprint
 // =============================================================================
@@ -107,7 +123,7 @@ export function getUnreplayedQuarantineEntries(
     WHERE replayed_at IS NULL
     ORDER BY created_at ASC
     LIMIT ?
-  `).all(limit) as any[];
+  `).all(limit) as QuarantineRow[];
 
   return rows.map(rowToEntry);
 }
@@ -177,7 +193,7 @@ export function countQuarantineEntries(
       COUNT(CASE WHEN replayed_at IS NULL THEN 1 END) as unreplayed,
       COUNT(CASE WHEN replayed_at IS NOT NULL THEN 1 END) as replayed
     FROM micro_usd_parse_failures
-  `).get() as any;
+  `).get() as { total: number; unreplayed: number; replayed: number };
 
   return {
     total: row.total,
@@ -190,7 +206,7 @@ export function countQuarantineEntries(
 // Row Mapper
 // =============================================================================
 
-function rowToEntry(row: any): QuarantineEntry {
+function rowToEntry(row: QuarantineRow): QuarantineEntry {
   return {
     id: row.id,
     originalRowId: row.original_row_id,
