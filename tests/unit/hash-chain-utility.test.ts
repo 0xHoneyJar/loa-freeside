@@ -43,9 +43,9 @@ describe('SCORING_PATH_GENESIS_HASH', () => {
 // ---------------------------------------------------------------------------
 
 describe('computeScoringPathHash determinism', () => {
-  // Uses actual ScoringPathLog entry shape: path, model_id, task_type, reason, scored_at
+  // ScoringPathLog entry with domain-valid ScoringPath literal
   const sampleInput = {
-    path: [{ score: 85, weight: 1.0 }],
+    path: 'task_cohort' as const,
     model_id: 'model-001',
     task_type: 'review',
     reason: 'quality check',
@@ -62,7 +62,7 @@ describe('computeScoringPathHash determinism', () => {
     const hashA = computeScoringPathHash(sampleInput);
     const hashB = computeScoringPathHash({
       ...sampleInput,
-      path: [{ score: 90, weight: 0.5 }],
+      path: 'aggregate' as const,
     });
     expect(hashA).not.toBe(hashB);
   });
@@ -75,7 +75,7 @@ describe('computeScoringPathHash determinism', () => {
 describe('computeScoringPathHash output format', () => {
   it('produces a valid sha256-prefixed hex string', () => {
     const hash = computeScoringPathHash({
-      path: [{ score: 100, weight: 1.0 }],
+      path: 'tier_default' as const,
       model_id: 'model-test',
       task_type: 'moderation',
       scored_at: '2026-02-01T00:00:00Z',
