@@ -1,376 +1,213 @@
-# Sprint Plan: The Naming — Engineering Excellence & Protocol Identity
+# Sprint Plan: Launch Readiness — loa-hounfour v7.11.0 Full Adoption
 
-**Cycle:** cycle-040
-**PRD:** v1.1.0 (GPT-APPROVED)
-**SDD:** v1.1.0 (GPT-APPROVED, iteration 4)
+**Version:** 1.1.0
+**Cycle:** cycle-041
 **Date:** 2026-02-24
-**Sprints:** 4 (global IDs 349–352)
+**PRD:** v1.1.0 (GPT-APPROVED)
+**SDD:** v1.1.0 (GPT-APPROVED)
+**Sprints:** 2 (global IDs 353–354)
 
 ---
 
 ## Sprint Overview
 
-This cycle addresses six Bridgebuilder recommendations from cycle-039's kaironic convergence. The work is primarily specification, documentation, and lightweight code (~18 files). Sprints are organized by PRD priority (P0 first) with independent FRs grouped for efficiency.
+This cycle adopts loa-hounfour v7.11.0 governance schemas into the freeside protocol barrel — schema-only, no runtime changes. Sprints are sequenced so the foundation (pin + barrel) precedes contract/testing.
 
 | Sprint | FRs | Focus | Files |
 |--------|-----|-------|-------|
-| Sprint 1 | FR-6, FR-1 | Protocol naming + graduation criteria (P0) | ~7 files |
-| Sprint 2 | FR-3, FR-4 | Gateway schema + config strategy (P1) | ~8 files |
-| Sprint 3 | FR-2, FR-5 | Contract testing + ceremony (P1/P2) | ~7 files |
-| Sprint 4 | BB-M1,M3,L | Bridgebuilder finding polish + merge readiness | ~6 files |
+| Sprint 1 | FR-1, FR-2, FR-3, FR-4, FR-6 | Version pin + barrel expansion | ~4 files |
+| Sprint 2 | FR-5, FR-7 | Contract + tests + documentation | ~6 files |
 
 ---
 
-## Sprint 1: Protocol Naming & Graduation Criteria (P0)
+## Sprint 1: Version Pin + Barrel Expansion
 
-**Goal:** Name the protocol and define shadow-to-enforce graduation criteria.
+**Global Sprint ID:** 353
+**Goal:** Migrate hounfour to v7.11.0 and expand the protocol barrel with governance types.
+**Priority:** P0
+**Dependencies:** None (foundational)
 
-**Rationale:** FR-6 (naming) is pure documentation and must be done first so other artifacts can reference the protocol name. FR-1 (graduation) is the highest-impact engineering deliverable — defining when shadow mode graduates to enforce.
+### Task 1.1: Version Pin Migration (FR-6)
 
-### Task 1.1: Choose Protocol Name and Propagate (FR-6)
-
-**Description:** Present the 3 proposed names (Loa Economic Protocol, Conviction Protocol, Commons Protocol) to the user via `AskUserQuestion`. If user does not respond within the implementation session, default to **Commons Protocol** (best alignment with Ostrom governance heritage in the codebase). Update documentation with the chosen name.
-
-**Decision mechanism:** `AskUserQuestion` tool during `/implement sprint-1`. The chosen name is propagated as a string constant in all downstream artifacts — no separate file needed since it appears in exactly 3 locations.
-
-**Files:**
-- `README.md` — Update "What is Freeside?" section (AC-6.2)
-- `BUTTERFREEZONE.md` — Update purpose/summary line (AC-6.3)
-- `themes/sietch/src/packages/core/protocol/index.ts` — Update module doc comment (AC-6.4)
+**Description:** Determine the correct v7.11.0 pin format (npm registry > git tag > tagged-commit SHA) and update both package.json files. Run install and verify the rebuild script succeeds. Record new DIST_HASH.
 
 **Acceptance Criteria:**
-- [ ] Protocol name chosen (via user input or fallback default) and documented (AC-6.1)
-- [ ] README.md references protocol by name (AC-6.2)
-- [ ] BUTTERFREEZONE.md includes protocol name (AC-6.3)
-- [ ] Protocol barrel module doc references name (AC-6.4)
-- [ ] Name is not a Dune reference (AC-6.5)
+- AC-6.1: `package.json` (root) dependency uses exact version pin (no `^`/`~` range) — npm `"7.11.0"`, git tag `#v7.11.0`, or tagged-commit SHA
+- AC-6.2: `packages/adapters/package.json` updated with same exact pin
+- AC-6.3: `pnpm install` succeeds and lockfile updated
+- AC-6.4: Rebuild script completes without error
+- AC-6.5: Reinstall from clean `node_modules` reproduces same DIST_HASH (supply-chain determinism)
+- New DIST_HASH recorded in NOTES.md (SDD §3.5.3)
+- `CONTRACT_VERSION` import resolves — document new value if changed
 
-### Task 1.2: Create Graduation Type and Evaluator (FR-1)
+**Effort:** Low
+**Testing:** `pnpm install` success, `CONTRACT_VERSION` import check, DIST_HASH reproducibility
+**SDD Reference:** §3.5
 
-**Description:** Implement `BoundaryGraduationCriteria` type and `evaluateGraduation()` function using BigInt PPM arithmetic per SDD §3.1.
+### Task 1.2: Export Surface Verification Gate (SDD §3.1.1)
 
-**Files:**
-- `themes/sietch/src/packages/core/protocol/graduation.ts` — New file with type, constants, evaluator function
-- `themes/sietch/src/packages/core/protocol/index.ts` — Add re-exports for graduation module
-
-**Acceptance Criteria:**
-- [ ] `BoundaryGraduationCriteria` type defined with three thresholds (AC-1.2)
-- [ ] `evaluateGraduation()` uses BigInt PPM arithmetic — no Number conversion (SDD §3.1.2)
-- [ ] Default thresholds: 0.1% divergence (1000 PPM), 7-day observation, 72h consecutive clean (AC-1.1)
-- [ ] Zero-traffic rule: when `shadowTotal === 0n`, divergence criterion is vacuously met (no data to diverge), but observation window and consecutive-clean window criteria still apply (time must elapse regardless of traffic volume)
-- [ ] Existing metrics (`shadowTotal`, `wouldRejectTotal`, `divergenceTotal`) are sufficient — no new counters (AC-1.3)
-- [ ] Graduation module exported from protocol barrel
-
-### Task 1.3: Create Graduation Unit Tests (FR-1)
-
-**Description:** Write unit tests for `evaluateGraduation()` covering all threshold combinations.
-
-**Files:**
-- `themes/sietch/tests/unit/graduation.test.ts` — New test file
+**Description:** Run the mandatory runtime export verification to confirm all planned symbols exist at their expected entrypoints in the installed v7.11.0 package.
 
 **Acceptance Criteria:**
-- [ ] Test: returns `ready: false` when divergence rate exceeds threshold
-- [ ] Test: returns `ready: false` when observation window insufficient
-- [ ] Test: returns `ready: false` when wouldRejectTotal > 0 within consecutive window
-- [ ] Test: returns `ready: true` when all three criteria met
-- [ ] Test: BigInt precision preserved (no Number overflow) for large counter values (AC-1.5)
-- [ ] Test: when `shadowTotal === 0n`, divergence is vacuously met but `ready` is still `false` if observation window or consecutive-clean window criteria are not met (time gates still apply)
+- Root entrypoint verified: `GovernanceTaskType`, `GovernanceTaskTypeSchema`, `GovernanceReputationEvent`, `GovernanceReputationEventSchema`, `computeScoringPathHash`, `SCORING_PATH_GENESIS_HASH`
+- Governance entrypoint verified: `TASK_TYPES`, `validateTaskCohortUniqueness`, `TaskTypeCohortSchema`, `QualitySignalEventSchema`, `TaskCompletedEventSchema`, `CredentialUpdateEventSchema`, `ScoringPathSchema`, `ScoringPathLogSchema`
+- Root or appropriate entrypoint verified: `NativeEnforcement` (may be type-only — if so, document as type-only export, do not add to contract.json)
+- `Constraint` type/schema barrel exposure verified (SDD §3.3) — if `ConstraintSchema` is a runtime export, add to contract.json
+- Any MISSING symbol: move to correct entrypoint, mark type-only, or log as PRD deviation
+- Produce **export mapping table** artifact: for each symbol, record {entrypoint, runtime/type-only, barrel-action, contract-action}
 
-### Task 1.4: Wire Graduation into Metrics Emission and Expose Gauge (FR-1)
+**Effort:** Low
+**Testing:** `node -e "import(...).then(...)"` verification scripts
+**SDD Reference:** §3.1.1, §3.3
+**Dependencies:** Task 1.1
 
-**Description:** Integrate `evaluateGraduation()` into the existing metrics emission path where `shadowTotal`/`wouldRejectTotal`/`divergenceTotal` are already incremented. Add `boundary_graduation_ready` Prometheus gauge. Extend `boundary-mode-toggle.test.ts` with graduation assertions.
+### Task 1.3: Protocol Barrel Governance Re-exports (FR-1, FR-3)
 
-**Integration point:** Identify the module that currently increments shadow metrics (the `parseBoundaryMicroUsd` metrics emitter) and call `evaluateGraduation()` on the same cadence to update the gauge. Also track `lastWouldRejectTimestamp` as an in-memory `Date.now()` updated when `wouldRejectTotal` increments.
-
-**Files:**
-- `themes/sietch/src/packages/core/protocol/graduation.ts` — Add gauge registration helper
-- `themes/sietch/src/packages/core/protocol/parse-boundary-micro-usd.ts` — Wire `evaluateGraduation()` call + `lastWouldRejectTimestamp` tracking into existing metrics path
-- Existing boundary mode test — Extend with graduation criteria assertions (AC-1.5)
+**Description:** Add v7.10.0-7.11.0 governance type re-exports to `protocol/index.ts`. Use ADR-001 aliases. Adjust import paths based on Task 1.2 results.
 
 **Acceptance Criteria:**
-- [ ] Prometheus gauge `boundary_graduation_ready{context}` emits 0 or 1 (AC-1.4)
-- [ ] Gauge updates on the same cadence as existing shadow metrics — not a separate loop
-- [ ] `lastWouldRejectTimestamp` tracked in-memory, updated when `wouldRejectTotal` increments
-- [ ] Gauge is protected by existing metrics port (internal-only, not tenant-accessible)
-- [ ] Integration test: gauge transitions from 0→1 under simulated-ready state
-- [ ] Mode-toggle tests reference graduation criteria (AC-1.5)
+- AC-1.1: All symbols marked "barrel-export" in Task 1.2 mapping table are imported in protocol barrel
+- AC-1.2: ADR-001 aliases used for colliding names — governance types use `Governance*` prefix only
+- AC-1.4: TypeScript compiles cleanly
+- AC-1.5: Existing `TaskType` in `pool-mapping.ts` unchanged
+- AC-3.1: ONLY aliased `Governance*` variants at barrel level — no unaliased governance `TaskType` or `ReputationEvent` re-exported under their original names
+- AC-3.4: Barrel JSDoc documents ADR-001 rationale
+- Export mapping table from Task 1.2 used as authoritative source for which symbols to export and under what names
+
+**Effort:** Medium
+**Testing:** `tsc --noEmit`
+**SDD Reference:** §3.1.1
+**Dependencies:** Task 1.2 (export mapping table)
+
+### Task 1.4: Hash Chain + Evaluation Geometry Re-exports (FR-2, FR-4)
+
+**Description:** Add `computeScoringPathHash`, `SCORING_PATH_GENESIS_HASH`, and `NativeEnforcement` re-exports to barrel.
+
+**Acceptance Criteria:**
+- AC-2.1: Hash utilities re-exported through barrel
+- AC-4.1: `NativeEnforcement` type re-exported
+- AC-4.3: No runtime constraint evaluation behavior changed
+- TypeScript compiles cleanly
+
+**Effort:** Low
+**Testing:** `tsc --noEmit`
+**SDD Reference:** §3.2.1, §3.3
+**Dependencies:** Task 1.2
 
 ---
 
-## Sprint 2: Gateway Schema & Config Strategy (P1)
+## Sprint 2: Contract + Tests + Documentation
 
-**Goal:** Add schema-level micro-USD validation at the API gateway and formalize the cold-restart config strategy.
+**Global Sprint ID:** 354
+**Goal:** Update consumer-driven contract, add guard/conformance tests, document launch readiness.
+**Priority:** P0
+**Dependencies:** Sprint 1
 
-**Rationale:** FR-3 and FR-4 are independent of each other but both modify the protocol/config layer. Grouping them keeps the scope tight. FR-3 depends on the naming from Sprint 1 only for comments.
+### Task 2.1: Contract Entrypoint + Version Update (FR-5)
 
-### Task 2.1: Create Mode-Aware Zod Micro-USD Schema (FR-3)
-
-**Description:** Implement `createMicroUsdSchema()` per SDD §3.3. Legacy/shadow mode accepts BigInt-permissive inputs; enforce mode applies canonical validation with `MAX_SAFE_MICRO_USD` bound.
-
-**Files:**
-- `themes/sietch/src/packages/core/protocol/micro-usd-schema.ts` — New file
-- `themes/sietch/src/packages/core/protocol/index.ts` — Add re-exports
+**Description:** Update `contract.json` with new governance symbols (only verified runtime exports from Task 1.2) and bump `provider_version_range` to `>=7.11.0`.
 
 **Acceptance Criteria:**
-- [ ] Shared Zod schema with two modes: legacy (BigInt-permissive) and canonical (strict) (AC-3.1)
-- [ ] Mode driven by `resolveParseMode()` from `parse-boundary-micro-usd.ts` (AC-3.2)
-- [ ] Schema calls `resolveParseMode()`, NOT `process.env` directly (SDD §3.3.2)
-- [ ] Canonical mode uses `CANONICAL_MICRO_USD_PATTERN` regex + `MAX_SAFE_MICRO_USD` BigInt bound
-- [ ] Schema exported from protocol barrel
-- [ ] FR-3/FR-4 coordination: schema mode is fixed at process start via `resolveParseMode()` module-level cache, consistent with cold-restart constraint (SDD §3.4). Add a test asserting `createMicroUsdSchema()` mode matches `resolveParseMode()` under controlled env setup
+- AC-5.1: Entrypoints updated with all verified runtime governance symbols
+- AC-5.2: `provider_version_range` bumped to `>=7.11.0`
+- AC-5.6: All 65 previously-pinned entrypoints remain (strict superset)
+- Contract changelog documents deliberate version bump
 
-### Task 2.2: Inventory and Integrate Schema into API Routes (FR-3)
+**Effort:** Low
+**Testing:** `node spec/contracts/validate.mjs`
+**SDD Reference:** §3.4.1, §3.4.2
+**Dependencies:** Sprint 1
 
-**Description:** First, inventory all micro-USD entry points by grepping for `parseBoundaryMicroUsd` and `parseMicroUsd` call sites to identify every route that accepts micro-USD user input. Then apply `createMicroUsdSchema()` to each identified route per SDD §3.3.3. Include the inventory checklist in the PR description.
+### Task 2.2: Bundle Hash Recomputation (FR-5)
 
-**Inventory step:** `grep -r 'parseBoundaryMicroUsd\|parseMicroUsd' themes/sietch/src/ --include='*.ts' -l` to find all call sites. Classify each as user-facing (needs schema) or internal-only (skip with justification).
-
-**Files (expected, subject to inventory):**
-- `billing-routes.ts` — `amount_micro` body field
-- `transfer.routes.ts` — transfer amounts
-- `credit-pack-routes.ts` — credit pack amounts
-- `spending-visibility.ts` — spending query parameters
+**Description:** Recompute `vectors-bundle.sha256` and update `contract.json` `bundle_hash` + `vector_count`. Must run AFTER Task 2.1 to avoid overwriting entrypoint changes.
 
 **Acceptance Criteria:**
-- [ ] Inventory: all `parseBoundaryMicroUsd`/`parseMicroUsd` call sites identified and classified as user-facing or internal-only
-- [ ] All user-facing routes use `createMicroUsdSchema()` in request validation
-- [ ] Internal-only call sites explicitly justified as not needing gateway schema (e.g., DB mappers, Redis cache readers)
-- [ ] Invalid inputs return 400 with `MicroUsdValidationError` before reaching boundary parser (AC-3.3)
-- [ ] In enforce mode, gateway is equal-or-tighter than `parseBoundaryMicroUsd` (AC-3.4)
-- [ ] In legacy/shadow mode, gateway does NOT reject currently accepted inputs (AC-3.5, NFR-3)
+- AC-5.3: Hash recomputed via `find spec/vectors/ -name '*.json' -type f | sort | xargs sha256sum | sha256sum`
+- `contract.json` `bundle_hash` matches new hash
+- `vector_count` updated if new vector files added
+- `node spec/contracts/validate.mjs` passes after both Task 2.1 and 2.2 changes in final `contract.json` state
 
-### Task 2.3: Create Micro-USD Schema Unit Tests (FR-3)
+**Effort:** Low
+**Testing:** `contract-spec.test.ts` bundle hash test passes, `validate.mjs` passes
+**SDD Reference:** §3.4.3
+**Dependencies:** Task 2.1 (both edit contract.json — must be sequenced)
 
-**Description:** Test both schema modes against the SDD §5.2 test matrix.
+### Task 2.3: Hash Chain Utility Tests (FR-2)
 
-**Files:**
-- `themes/sietch/tests/unit/micro-usd-schema.test.ts` — New test file
-
-**Acceptance Criteria:**
-- [ ] Canonical mode: accepts "100", "0", MAX_SAFE_MICRO_USD; rejects leading zeros, whitespace, plus sign, negative, decimal, empty, non-numeric, MAX+1 (AC-3.6)
-- [ ] Legacy mode: accepts "100", "0100", " 100", "+100", "-100"; rejects "100.5", "", "abc" (AC-3.6)
-- [ ] Both modes synchronized via `resolveParseMode()` (AC-3.2)
-
-### Task 2.4: Add Config Doc Comment and Fingerprint (FR-4)
-
-**Description:** Document cold-restart constraint in `config.ts` and add startup config fingerprint per SDD §3.4.
-
-**Files:**
-- `themes/sietch/src/config.ts` — Add module doc comment + `emitConfigFingerprint()` function
+**Description:** Create `tests/unit/hash-chain-utility.test.ts` with 3 test cases.
 
 **Acceptance Criteria:**
-- [ ] Module doc comment states cold-restart constraint (AC-4.3)
-- [ ] Startup log emits config fingerprint hash (AC-4.4)
-- [ ] Fingerprint hashes config keys (not values — values may contain secrets)
-- [ ] Behavior fingerprint includes `PARSE_MICRO_USD_MODE` and feature flags
-- [ ] Runtime-evaluable flags enumerated (currently none) (AC-4.5)
+- AC-2.2: Hash determinism test (same input → same hash)
+- AC-2.3: Genesis hash valid SHA-256 hex (64 chars)
+- AC-2.4: `computeScoringPathHash` produces valid SHA-256 from sample input (utility only)
 
-### Task 2.5: Create Config Fingerprint Test (FR-4)
+**Effort:** Low
+**Testing:** `pnpm vitest run tests/unit/hash-chain-utility.test.ts`
+**SDD Reference:** §3.2.2
 
-**Description:** Verify fingerprint emission at startup. Test approach: refactor `emitConfigFingerprint()` to accept an injected logger (default: the real logger), then test deterministically by passing a mock logger and asserting the structured log fields.
+### Task 2.4: ADR-001 Import Guard Tests (SDD §4.2)
 
-**Files:**
-- `themes/sietch/src/__tests__/config-fingerprint.test.ts` — New test file
+**Description:** Add two-layer ADR-001 guard: schema identity assertion + routing module denylist.
 
 **Acceptance Criteria:**
-- [ ] `emitConfigFingerprint()` accepts an injected logger parameter for testability
-- [ ] Test: fingerprint emitted on config load (mock logger captures structured log with `configFingerprint` and `behaviorFingerprint` fields)
-- [ ] Test: fingerprint changes when behavior-affecting env vars change (set `PARSE_MICRO_USD_MODE` to different values, compare hashes)
-- [ ] Test: fingerprint does NOT leak secret values (assert no `JWT_SECRET`, `DATABASE_URL`, etc. in log output)
+- AC-1.6: No governance TaskType in routing/mapping paths — CI-enforced
+- Layer 1: Schema identity via reference equality — `expect(BarrelTaskTypeSchema).toBe(RoutingTaskTypeSchema)` where both are imported from their exact module paths (`protocol/index` and `@0xhoneyjar/loa-hounfour` root respectively). Also `expect(BarrelTaskTypeSchema).not.toBe(GovernanceTaskTypeSchemaFromSubpath)`. Precondition: verify only one resolved copy of loa-hounfour in `node_modules` (pnpm dedup check) to avoid false reference inequality from duplicate module instances
+- Layer 2: Routing modules (`pool-mapping.ts` + curated denylist) contain no `GovernanceTaskType`, `GovernanceReputationEvent` identifiers AND no imports from `@0xhoneyjar/loa-hounfour/governance` subpath
+- AC-3.2: `pool-mapping.ts` `TaskType` still routing-policy
+- AC-3.3: No ambiguous type resolution errors
+- If `TaskTypeSchema` is type-only (not runtime): skip Layer 1, rely on Layer 2 only, document limitation
+
+**Effort:** Low-Medium
+**Testing:** `pnpm vitest run tests/unit/protocol-conformance.test.ts`
+**SDD Reference:** §4.2
+
+### Task 2.5: Conformance Test Updates
+
+**Description:** Update `protocol-conformance.test.ts` to verify new governance symbols importable from barrel.
+
+**Acceptance Criteria:**
+- AC-1.3: Conformance vocabulary includes `task-type`, `task-type-cohort`, `reputation-event`, `scoring-path-log`
+- New governance symbols verified importable
+- All existing conformance tests pass
+
+**Effort:** Low
+**Testing:** `pnpm vitest run tests/unit/protocol-conformance.test.ts`
+**SDD Reference:** §4.1
+
+### Task 2.6: Launch Readiness Documentation + Full Regression (FR-7)
+
+**Description:** Update NOTES.md with cycle-041 status and P0 gap table. Run full test suite.
+
+**Acceptance Criteria:**
+- AC-7.1: NOTES.md documents P0 gap status (resolved/deferred/in-progress)
+- AC-7.2: Freeside-controlled P0 gaps addressed or deferred with rationale
+- NFR-1: ALL existing tests pass — zero regression
+- Full `pnpm test` green
+
+**Effort:** Low
+**Testing:** `pnpm test` (full suite)
+**SDD Reference:** §3.6
 
 ---
 
-## Sprint 3: Contract Testing & Ceremony (P1/P2)
+## Risk Assessment
 
-**Goal:** Establish consumer-driven contract testing and execute the inaugural post-merge ceremony.
+| Risk | Mitigation | Task |
+|------|-----------|------|
+| v7.11.0 tag/npm resolution failure | Three-tier fallback; blocker escalation | 1.1 |
+| Runtime export verification finds MISSING symbols | SDD §3.1.1 fallback procedure | 1.2 |
+| Rebuild script fails with tag pin | Investigate ref resolution; document | 1.1 |
+| TaskTypeSchema identity check not applicable | Fall back to Layer 2 denylist only | 2.4 |
+| CONTRACT_VERSION value changes significantly | Update `negotiateVersion()` supported array | 1.1 |
 
-**Rationale:** FR-2 (contract testing) is the most complex specification work but is P2 — independent of the other deliverables. FR-5 (ceremony) is pure documentation and pairs well since both produce artifacts in new directories.
+## Success Criteria
 
-### Task 3.1: Create Contract Specification (FR-2)
-
-**Description:** Create `spec/contracts/` directory with `contract.json` pinning entrypoints and conformance vector behavioral contract per SDD §3.2.
-
-**Files:**
-- `spec/contracts/contract.json` — New: entrypoints + conformance vectors bundle spec
-- `spec/contracts/vectors-bundle.sha256` — New: computed hash of `spec/vectors/*.json`
-
-**Acceptance Criteria:**
-- [ ] Contract JSON pins exact module entrypoints and function signatures (AC-2.1, AC-2.4)
-- [ ] Conformance vector bundle hash computed from `spec/vectors/*.json` (AC-2.2)
-- [ ] Counts are informational metadata only, not gating criteria (AC-2.7)
-- [ ] Contract placed in `spec/contracts/` directory (AC-2.3)
-- [ ] Provider version range >=7.9.2 — sourced from the installed `@0xhoneyjar/loa-hounfour` version in `package.json` (the range is a semver floor, validated by Task 3.4 against the actual installed version)
-
-### Task 3.2: Create Validation Script (FR-2)
-
-**Description:** Implement `validate.mjs` ESM validation script per SDD §3.2.4.
-
-**Files:**
-- `spec/contracts/validate.mjs` — New: ESM validation script using dynamic import()
-
-**Acceptance Criteria:**
-- [ ] Uses `import()` for ESM compatibility — not `require()` (SDD §3.2.4)
-- [ ] Validates entrypoint availability by importing each specifier
-- [ ] Optional `--run-vectors` flag for consumer CI (AC-2.5)
-- [ ] `--repo-root` argument for vector run context resolution
-- [ ] Provider CI: entrypoint checks only; Consumer CI: entrypoints + vectors
-
-### Task 3.3: Create Contract README (FR-2)
-
-**Description:** Document how hounfour's CI would consume the contract.
-
-**Files:**
-- `spec/contracts/README.md` — New: hounfour CI consumption instructions
-
-**Acceptance Criteria:**
-- [ ] Documents what the contract covers (AC-2.6)
-- [ ] Documents how to run validation in hounfour CI
-- [ ] Documents how to update contract when imports change
-- [ ] Documents what happens when contract breaks
-
-### Task 3.4: Create Contract Verification Test and Wire into CI (FR-2)
-
-**Description:** Test that `contract.json` entrypoints match actual protocol barrel exports. Wire the test into the existing test suite so CI catches barrel drift automatically.
-
-**Files:**
-- `themes/sietch/tests/unit/contract-spec.test.ts` — New test file
-
-**Acceptance Criteria:**
-- [ ] Test: all contract entrypoint symbols exist in actual barrel exports
-- [ ] Test: contract version is valid semver
-- [ ] Test: provider version range floor matches or is below installed `@0xhoneyjar/loa-hounfour` version
-- [ ] Test: vectors bundle hash matches computed hash from `spec/vectors/*.json`
-- [ ] CI integration: test file at `themes/sietch/tests/unit/contract-spec.test.ts` included in standard Vitest run — CI fails if an entrypoint is removed/renamed or vectors hash changes without updating the contract
-
-### Task 3.5: Create Ceremony Spec and Inaugural Artifact (FR-5)
-
-**Description:** Create ceremony specification and execute inaugural ceremony for cycle-039 merge (PR #94).
-
-**Files:**
-- `grimoires/loa/ceremonies/README.md` — New: ceremony spec (trigger, format, participants)
-- `grimoires/loa/ceremonies/2026-02-24-cycle-039-protocol-convergence.md` — New: inaugural ceremony artifact
-
-**Acceptance Criteria:**
-- [ ] Ceremony spec documented (format, participants, outputs, trigger) (AC-5.1)
-- [ ] Inaugural ceremony covers: what was built, why it matters, identity change, remaining questions (AC-5.2, AC-5.5)
-- [ ] Ceremony triggered by significant cycle merges, not every PR (AC-5.3)
-- [ ] Inaugural instance executed for cycle-039/PR #94 (AC-5.4)
-- [ ] Ceremony references protocol name from Sprint 1 (AC-5.5)
-
----
-
-## Sprint 4: Bridgebuilder Finding Polish & Merge Readiness
-
-**Goal:** Address remaining MEDIUM and LOW findings from the Bridgebuilder review (bridge-20260224-a79420, iteration 1) to bring the PR to merge-ready quality. One LOW finding (error mode reporting) was already fixed in commit `1746fc64`.
-
-**Rationale:** The initial 3 sprints addressed all 6 Bridgebuilder recommendations from cycle-039. The iteration-1 Bridgebuilder review of this PR surfaced 3 MEDIUM and 4 LOW findings. MEDIUM-2 (admin rate-limiter key) is pre-existing middleware outside PR scope. The remaining findings are small, testable improvements that close the quality gap.
-
-### Task 4.1: Add Warnings to GraduationStatus (MEDIUM-1, LOW)
-
-**Description:** Add a `warnings: readonly string[]` field to `GraduationStatus` to surface operational anomalies without introducing a logger dependency (keeping the function pure and testable). Two warnings:
-
-1. **Clock-skew warning (MEDIUM-1):** When `now < deployTimestamp`, the evaluator clamps elapsed observation to 0. This is correct behavior but silent — operators get no signal that clock skew occurred. Add warning: `"clock_skew: now < deployTimestamp, observation window clamped to 0"`.
-2. **Zero-traffic warning (LOW):** When `shadowTotal === 0n`, divergence is vacuously met. This is mathematically correct but can surprise operators who see "graduation ready" before real traffic. Add warning: `"zero_traffic: graduation evaluated with no shadow traffic, divergence criterion is vacuously met"`.
-
-**Files:**
-- `themes/sietch/src/packages/core/protocol/graduation.ts` — Add `warnings` field to `GraduationStatus`, populate in `evaluateGraduation()`
-- `themes/sietch/tests/unit/graduation.test.ts` — Add tests for both warning conditions
-
-**Acceptance Criteria:**
-- [ ] `GraduationStatus.warnings` is `readonly string[]`, empty when no anomalies
-- [ ] When `now < deployTimestamp`, evaluator (a) treats elapsed observation as 0, and (b) includes `clock_skew` warning string
-- [ ] When `shadowTotal === 0n`, evaluator (a) treats divergence as vacuously met, and (b) includes `zero_traffic` warning string
-- [ ] Existing tests still pass (warnings array is empty for normal scenarios)
-- [ ] Two new test cases: one for clock skew, one for zero traffic
-
-### Task 4.2: Mode Consistency Defense-in-Depth (MEDIUM-3)
-
-**Description:** The gateway schema (`createMicroUsdSchema()`) and boundary parser (`parseBoundaryMicroUsd()`) both call `resolveParseMode()` independently. Since `resolveParseMode()` caches its result, they always agree. Add defense-in-depth:
-
-1. **Doc comment:** Add explicit note in `createMicroUsdSchema()` explaining the cache invariant and why the modes are guaranteed consistent.
-2. **Test:** Add a test in `micro-usd-schema.test.ts` that verifies `createMicroUsdSchema()` uses the same mode as `resolveParseMode()` under controlled env var settings (legacy, shadow, enforce).
-
-No runtime assertion needed — the cache guarantees consistency, and a runtime assertion would add overhead to every request for a condition that cannot occur. A test is the correct defense layer.
-
-**Test strategy:** `parse-boundary-micro-usd.ts` exports `resetParseModeCache()` for exactly this purpose. Each test case should: (1) call `resetParseModeCache()`, (2) set `process.env.PARSE_MICRO_USD_MODE` to the desired value, (3) verify `createMicroUsdSchema()` behavior matches the mode, (4) clean up. This avoids `vi.resetModules()` or worker isolation since the cache has an explicit reset API.
-
-**Files:**
-- `themes/sietch/src/packages/core/protocol/micro-usd-schema.ts` — Enhance doc comment on `createMicroUsdSchema()`
-- `themes/sietch/tests/unit/micro-usd-schema.test.ts` — Add mode consistency test
-
-**Acceptance Criteria:**
-- [ ] Doc comment in `createMicroUsdSchema()` explains cache invariant with `resolveParseMode()`
-- [ ] Test uses `resetParseModeCache()` to verify schema mode matches `resolveParseMode()` for all three modes (legacy, shadow, enforce)
-- [ ] Each test case resets the mode cache, sets env var, and verifies `createMicroUsdSchema()` produces the expected validation behavior
-- [ ] No runtime overhead added to request path
-
-### Task 4.3: Documentation Polish (LOW findings)
-
-**Description:** Address three LOW documentation findings in a single task:
-
-1. **MAX_INPUT_LENGTH doc (LOW):** Enhance the doc comment on `MAX_INPUT_LENGTH = 50` in `parse-boundary-micro-usd.ts` to explain derivation: `MAX_SAFE_MICRO_USD` is 15 digits, plus margin for sign/whitespace that may arrive from legacy clients, capped well below pathological parsing territory.
-
-2. **Config fingerprint replica comparison (LOW):** Add a doc comment to `emitConfigFingerprint()` in `config.ts` explaining how to compare fingerprints across replicas: grep structured logs for `configFingerprint`/`behaviorFingerprint` fields, alert when values diverge across instances within a deployment.
-
-3. **Contract README version guidance (LOW):** Add a section to `spec/contracts/README.md` explaining:
-   - What `provider_version_range` means (semver floor — freeside requires at least this version)
-   - How to bump it when freeside adopts new hounfour features
-   - Reference to SDD §3.2 for the contract schema specification
-
-**Files:**
-- `themes/sietch/src/packages/core/protocol/parse-boundary-micro-usd.ts` — Enhance `MAX_INPUT_LENGTH` doc comment
-- `themes/sietch/src/config.ts` — Enhance `emitConfigFingerprint()` doc comment
-- `spec/contracts/README.md` — Add version guidance section
-
-4. **MEDIUM-2 deferral record:** Add a note to the PR description documenting that MEDIUM-2 (admin rate-limiter IP fallback) is deferred because it is pre-existing middleware behavior outside this PR's scope. Include a follow-up recommendation for a dedicated hardening PR.
-
-**Acceptance Criteria:**
-- [ ] `MAX_INPUT_LENGTH` doc comment explains derivation from `MAX_SAFE_MICRO_USD` digit count
-- [ ] `emitConfigFingerprint()` doc comment includes replica comparison guidance
-- [ ] Contract README explains `provider_version_range` semantics and update procedure
-- [ ] MEDIUM-2 deferral documented in PR description with justification and follow-up pointer
-- [ ] No behavior changes — documentation only
-
----
-
-## Dependencies
-
-```
-Sprint 1 (FR-6 naming + FR-1 graduation) → no dependencies
-Sprint 2 (FR-3 schema + FR-4 config)     → Sprint 1 (for protocol name in comments)
-Sprint 3 (FR-2 contract + FR-5 ceremony)  → Sprint 1 (protocol name for ceremony)
-Sprint 4 (BB finding polish)              → Sprints 1-3 (fixes review findings from implemented code)
-```
-
-Sprint 2 and Sprint 3 are independent of each other (could theoretically run in parallel).
-Sprint 4 depends on all prior sprints being complete (it polishes their output).
-
----
-
-## NFR Compliance
-
-| NFR | How Addressed |
-|-----|---------------|
-| NFR-1 Zero Regression | No existing tests modified; all new files/tests are additive |
-| NFR-2 Documentation-First | FR-1, FR-4, FR-5, FR-6 produce verifiable documentation artifacts |
-| NFR-3 Backward Compatibility | FR-3 schema uses BigInt-permissive in legacy/shadow mode — identical to current behavior |
-| NFR-4 Observability | FR-1 adds Prometheus gauge from existing metrics; FR-4 adds config fingerprint log; Sprint 4 adds graduation warnings |
-
----
-
-## Success Criteria (from PRD §8)
-
-| Criterion | Sprint | Task |
-|-----------|--------|------|
-| SDD contains graduation criteria with three measurable thresholds | Sprint 1 | 1.2 |
-| Contract testing spec exists in `spec/contracts/` | Sprint 3 | 3.1–3.4 |
-| API routes validate micro-USD inputs at schema level | Sprint 2 | 2.1–2.3 |
-| Config caching strategy documented and enforced | Sprint 2 | 2.4–2.5 |
-| Inaugural ceremony executed for PR #94 | Sprint 3 | 3.5 |
-| Protocol has a name in README, BUTTERFREEZONE, barrel | Sprint 1 | 1.1 |
-
-| Bridgebuilder MEDIUM findings addressed (M1, M3) | Sprint 4 | 4.1, 4.2 |
-| Bridgebuilder LOW findings addressed (all 4) | Sprint 4 | 4.1, 4.3 + commit `1746fc64` |
-| Documentation polish complete | Sprint 4 | 4.3 |
-
-**Meta-criterion:** The Bridgebuilder, if re-run, would find zero of its six original recommendations still unaddressed, and all iteration-1 MEDIUM/LOW findings resolved or explicitly deferred (MEDIUM-2 deferred: pre-existing middleware outside PR scope).
+Complete when:
+1. `package.json` pins v7.11.0 via immutable semver reference
+2. Protocol barrel re-exports all verified governance types with `Governance*` aliases
+3. `computeScoringPathHash` + `SCORING_PATH_GENESIS_HASH` available and utility-tested
+4. `contract.json` updated with `>=7.11.0`, strict superset verified
+5. ADR-001 guard tests passing in CI
+6. All existing tests pass (zero regression)
+7. Launch readiness P0 gaps documented

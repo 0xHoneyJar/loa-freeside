@@ -1,46 +1,31 @@
 {
   "verdict": "APPROVED",
-  "summary": "All previously blocking gaps (decision mechanism, graduation integration, criteria ambiguity, route inventory, FR-3/FR-4 coordination, startup fingerprint testability, and CI enforcement + version source for contracts) are addressed with implementable tasks and testable acceptance criteria, and no new truly blocking problems were introduced.",
+  "summary": "All five previously-blocking issues were addressed with concrete, testable acceptance criteria and the updated task dependencies remove the earlier sequencing/verification gaps.",
   "previous_issues_status": [
     {
-      "original_issue": "FR-6 naming lacked an explicit decision mechanism/owner/timebox; downstream tasks depended on the chosen name",
+      "original_issue": "Version pin immutability mismatch between Task 1.1 and Success Criteria #1 (ranges not immutable; DIST_HASH reproducibility risk)",
       "status": "fixed",
-      "notes": "Task 1.1 now defines a concrete decision mechanism (AskUserQuestion during implementation) plus an explicit fallback default (Commons Protocol) if no response, which unblocks Sprint 1 completion and downstream references."
+      "notes": "Task 1.1 AC now explicitly requires an exact pin (no ^/~), lockfile update, and clean reinstall DIST_HASH reproducibility; Success Criteria #1 was updated to match. This satisfies the supply-chain determinism intent."
     },
     {
-      "original_issue": "FR-1 graduation added a gauge but didn’t wire evaluator into the runtime metrics update path",
+      "original_issue": "NativeEnforcement re-export planned in 1.4 but not included in 1.2 export verification gate (could export non-existent/type-only symbol)",
       "status": "fixed",
-      "notes": "Task 1.4 explicitly identifies the integration point (existing parseBoundaryMicroUsd metrics emitter), requires calling evaluateGraduation() on the same cadence, and includes an integration test asserting gauge 0→1 transition."
+      "notes": "Task 1.2 now includes explicit verification for NativeEnforcement with a type-only note and a rule to keep type-only items out of contract.json. The added export mapping table artifact also prevents future ambiguity."
     },
     {
-      "original_issue": "Ambiguity/contradiction around zero-traffic rule vs 7-day observation and 72h consecutive clean windows",
+      "original_issue": "Task 2.2 (bundle hash recomputation) lacked explicit dependency on Task 2.1 though both edit contract.json (merge/overwrite risk)",
       "status": "fixed",
-      "notes": "Task 1.2 now states the explicit rule: shadowTotal==0 vacuously satisfies divergence only, but time windows still must elapse; Task 1.3 includes a matching test."
+      "notes": "Task 2.2 now depends on 2.1 and includes an AC requiring validate.mjs to pass after both changes in the final contract.json state, which closes the sequencing/consistency gap."
     },
     {
-      "original_issue": "FR-3 route integration lacked an inventory/checklist to ensure all micro-USD entry points were updated",
+      "original_issue": "Task 2.4 identity check was underspecified (how to assert identity; runtime vs type-only; duplicate module instance risk)",
       "status": "fixed",
-      "notes": "Task 2.2 adds an explicit grep-based inventory step, classification (user-facing vs internal-only), and requires the checklist be included in the PR description, closing the partial-rollout risk."
+      "notes": "Layer 1 now specifies reference-equality assertions with explicit import paths, adds a negative assertion against the governance subpath schema, and adds a single-resolved-copy precondition (pnpm dedup). The fallback to Layer 2 if schema is type-only is a reasonable, non-blocking contingency."
     },
     {
-      "original_issue": "FR-3 schema mode-awareness via resolveParseMode() wasn’t coordinated with FR-4 cold-restart/module-level caching constraints",
+      "original_issue": "Task 1.3 lacked a concrete constraint on what must be barrel-exported vs contract-listed, risking non-aliased governance exports and collisions",
       "status": "fixed",
-      "notes": "Task 2.1 now explicitly states the coordination: schema mode fixed at process start via resolveParseMode() module cache, and adds a test asserting schema mode matches resolveParseMode() under controlled env."
-    },
-    {
-      "original_issue": "FR-4 fingerprint emission test was underspecified/likely flaky without a defined harness",
-      "status": "fixed",
-      "notes": "Task 2.5 specifies a deterministic approach: refactor emitConfigFingerprint() to accept an injected logger and test via a mock logger, including non-leakage assertions."
-    },
-    {
-      "original_issue": "FR-2 contract testing lacked CI wiring/enforcement; contract could exist but not prevent drift",
-      "status": "fixed",
-      "notes": "Task 3.4 explicitly adds a verification test and requires inclusion in standard pnpm test/CI discovery so CI fails on entrypoint drift or vectors hash mismatch."
-    },
-    {
-      "original_issue": "FR-2 provider version range (>=7.9.2) wasn’t tied to a source of truth or validated",
-      "status": "fixed",
-      "notes": "Task 3.1 defines the source as the installed @0xhoneyjar/loa-hounfour version in package.json, and Task 3.4 adds a test validating the semver floor against the installed version."
+      "notes": "Task 1.3 now explicitly forbids unaliased governance TaskType/ReputationEvent exports and uses the Task 1.2 export mapping table as the authoritative source for barrel vs contract actions, which makes the governance surface controllable and reviewable."
     }
   ],
   "new_blocking_concerns": [],

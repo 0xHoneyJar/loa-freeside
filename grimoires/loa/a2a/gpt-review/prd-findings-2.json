@@ -1,31 +1,31 @@
 {
   "verdict": "APPROVED",
-  "summary": "All previously blocking contradictions and underspecifications are resolved in a mode-aware, measurable way without introducing new release-blocking risks.",
+  "summary": "All five previously blocking inconsistencies were addressed in a way that makes the PRD internally consistent with a schema-only adoption scope, and no new truly blocking problems were introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "Contradiction between “gateway schema equal-or-tighter than boundary parser” and “must not reject any production-accepted inputs”",
+      "original_issue": "NFR-2 (Additive Only) conflicted with FR-4 (evaluation geometry) and FR-2 (hash chain verification) implying runtime behavior changes",
       "status": "fixed",
-      "notes": "FR-3/NFR-3 are now explicitly mode-aware: legacy/shadow schema preserves current production acceptance, enforce/canonical tightens and must be equal-or-tighter than the boundary parser. This directly resolves the earlier logical impossibility."
+      "notes": "NFR-2 now explicitly constrains the cycle to schema-only adoption; FR-2 AC-2.4 is utility-only (no chain construction/verification) and FR-4 ACs explicitly state re-export only / no runtime behavior change."
     },
     {
-      "original_issue": "Graduation criteria referenced quarantine/replay but lacked a defined quarantine mechanism and computable thresholds",
+      "original_issue": "ADR-001 aliasing ambiguity: barrel re-exporting both aliased and unaliased governance names would reintroduce collisions/type identity drift",
       "status": "fixed",
-      "notes": "FR-1 now removes quarantine/replay from this cycle and makes all three criteria computable from existing counters + deployment timestamps. AC-1.4 also makes the graduation status reportable via gauge/health check, which makes the criteria operationally evaluable."
+      "notes": "FR-3 AC-3.1 now requires ONLY aliased Governance* variants at the protocol barrel and explicitly forbids re-exporting unaliased governance TaskType/ReputationEvent at the barrel level; this resolves the collision risk cleanly."
     },
     {
-      "original_issue": "Consumer-driven contract spec was defined in terms of provider internals (counts, implementation details), undermining stability",
+      "original_issue": "Contract versioning strategy was underspecified and could break convergence (provider_version_range bump vs 'strict superset' and unclear contract subject)",
       "status": "fixed",
-      "notes": "FR-2 reframes the contract at the integration seam: pinned entrypoints + semantic behavior via a versioned conformance vector bundle hash. Internal counts are explicitly informational-only (AC-2.7), avoiding CI brittleness from refactors."
+      "notes": "FR-5 now clearly defines the contract subject (freeside barrel imports asserted against hounfour provider), declares the provider_version_range bump to >=7.11.0 as deliberate, and adds AC-5.6 to enforce strict superset of prior entrypoints."
     },
     {
-      "original_issue": "Admin readiness endpoint introduced without explicit authz/network exposure constraints (multi-tenant leakage risk)",
+      "original_issue": "Version pin contradiction: requirement said 'tag not SHA' but risk mitigation allowed SHA fallback",
       "status": "fixed",
-      "notes": "AC-1.4 now requires protection via admin JWT claim check and internal-only network policy, and explicitly states it must not be tenant-accessible. This addresses the security blocker."
+      "notes": "FR-6 now enumerates acceptable immutable references, bans untagged SHAs, and makes failure to resolve tag/npm a blocker with escalation rather than silent SHA fallback."
     },
     {
-      "original_issue": "TTL-based invalidation/hot-reload risk given module-import-time config caching could cause split-brain within a process",
+      "original_issue": "Open TaskType union could break closed-world assumptions downstream even if upstream change is additive",
       "status": "fixed",
-      "notes": "FR-4 chooses cold-restart as the strategy, explicitly marks TTL hot-reload out of scope, and explains the split-brain risk. AC-4.2/AC-4.3/AC-4.4 add enforceable documentation + fingerprinting to make the constraint operationally real."
+      "notes": "FR-1 adds an explicit closed-world audit statement and AC-1.6/AC-1.5 constrain this cycle to schema-only re-export without introducing governance TaskType into routing/mapping/switch logic, preventing accidental behavioral/validation breakage."
     }
   ],
   "new_blocking_concerns": [],

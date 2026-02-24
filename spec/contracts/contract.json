@@ -3,7 +3,7 @@
   "contract_version": "1.0.0",
   "consumer": "loa-freeside",
   "provider": "loa-hounfour",
-  "provider_version_range": ">=7.0.0",
+  "provider_version_range": ">=7.11.0",
 
   "entrypoints": [
     {
@@ -13,6 +13,8 @@
         "AGENT_LIFECYCLE_TRANSITIONS",
         "CAPABILITY_SCOPES",
         "CREDENTIAL_CONFIDENCE_THRESHOLD",
+        "GovernanceReputationEventSchema",
+        "GovernanceTaskTypeSchema",
         "TRUST_LEVELS",
         "computeCredentialPrior",
         "computeEventStreamHash",
@@ -57,17 +59,27 @@
       "specifier": "@0xhoneyjar/loa-hounfour/governance",
       "symbols": [
         "ContributionRecordSchema",
+        "CredentialUpdateEventSchema",
         "DisputeRecordSchema",
         "ESCALATION_RULES",
         "PerformanceOutcomeSchema",
         "PerformanceRecordSchema",
+        "QualitySignalEventSchema",
         "REPUTATION_STATES",
         "REPUTATION_STATE_ORDER",
         "ReputationScoreSchema",
         "SANCTION_SEVERITY_LEVELS",
+        "SCORING_PATH_GENESIS_HASH",
         "SanctionSchema",
+        "ScoringPathLogSchema",
+        "ScoringPathSchema",
+        "TASK_TYPES",
+        "TaskCompletedEventSchema",
+        "TaskTypeCohortSchema",
         "VIOLATION_TYPES",
-        "ValidatedOutcomeSchema"
+        "ValidatedOutcomeSchema",
+        "computeScoringPathHash",
+        "validateTaskCohortUniqueness"
       ]
     },
     {

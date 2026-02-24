@@ -1,10 +1,13 @@
 {
   "verdict": "APPROVED",
-  "summary": "No bugs or security issues found in the discovery endpoint implementation.",
-  "issues": [],
-  "fabrication_check": {
-    "passed": true,
-    "concerns": []
-  },
-  "iteration": 1
+  "summary": "Previous feedback was addressed by asserting the exact expected genesis hash value, and no new blocking issues were introduced.",
+  "previous_issues_status": [
+    {
+      "original_issue": "Tests only validated format of SCORING_PATH_GENESIS_HASH and not the exact expected value",
+      "status": "fixed",
+      "notes": "Added an exact match assertion for the SHA-256 of the empty string."
+    }
+  ],
+  "new_blocking_concerns": [],
+  "iteration": 2
 }

@@ -1,28 +1,20 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "Previous issues about awaiting JWKS insertion were not fixed; validation and issuer fixes are present but the async handling remains incorrect.",
-  "previous_issues_status": [
+  "summary": "Tests miss validating the exact genesis hash value, allowing an incorrect constant to pass.",
+  "issues": [
     {
-      "original_issue": "insertPublicKey is called without await, so Promise rejections are not caught and the JWKS insert may not complete before use",
-      "status": "not_fixed",
-      "notes": "Current code still calls insertPublicKey without await in generateEphemeralKey, initS2SJwtSigner, and refreshSigningKeyIfStale."
-    },
-    {
-      "original_issue": "Public key insertion uses hardcoded issuer and defaults missing JWK fields to empty strings, producing invalid JWKS and issuer mismatch",
-      "status": "fixed",
-      "notes": "Issuer is now JWT_ISSUER and requireEcPublicJwk prevents missing fields."
-    },
-    {
-      "original_issue": "Key rotation path inserts public keys without await and defaults missing fields to empty strings, which can create invalid JWKS and missed insertions",
-      "status": "not_fixed",
-      "notes": "Rotation path still inserts without await; validation is fixed but async handling remains."
-    },
-    {
-      "original_issue": "No validation exists for required EC public JWK fields before insertion, allowing invalid JWKS entries with missing x/y/crv/kty",
-      "status": "fixed",
-      "notes": "requireEcPublicJwk added and used."
+      "severity": "major",
+      "file": "tests/unit/hash-chain-utility.test.ts",
+      "line": 24,
+      "description": "The tests only validate the format of SCORING_PATH_GENESIS_HASH but do not assert the exact expected genesis hash value, so a wrong constant could still pass.",
+      "current_code": "```typescript\n// ---------------------------------------------------------------------------\n// AC-2.3: Genesis hash valid SHA-256 hex (64 chars)\n// ---------------------------------------------------------------------------\n\ndescribe('SCORING_PATH_GENESIS_HASH', () => {\n  it('is a valid sha256-prefixed hex string', () => {\n    expect(SCORING_PATH_GENESIS_HASH).toMatch(SHA256_PATTERN);\n  });\n\n  it('has exactly 64 hex characters after the sha256: prefix', () => {\n    const hex = SCORING_PATH_GENESIS_HASH.replace('sha256:', '');\n    expect(hex).toHaveLength(64);\n  });\n});\n```",
+      "fixed_code": "```typescript\n// ---------------------------------------------------------------------------\n// AC-2.3: Genesis hash valid SHA-256 hex (64 chars)\n// ---------------------------------------------------------------------------\n\ndescribe('SCORING_PATH_GENESIS_HASH', () => {\n  it('is a valid sha256-prefixed hex string', () => {\n    expect(SCORING_PATH_GENESIS_HASH).toMatch(SHA256_PATTERN);\n  });\n\n  it('has exactly 64 hex characters after the sha256: prefix', () => {\n    const hex = SCORING_PATH_GENESIS_HASH.replace('sha256:', '');\n    expect(hex).toHaveLength(64);\n  });\n\n  it('matches the expected genesis hash (sha256 of empty string)', () => {\n    expect(SCORING_PATH_GENESIS_HASH).toBe(\n      'sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'\n    );\n  });\n});\n```",
+      "explanation": "The genesis hash is a fixed constant (SHA-256 of empty string). Asserting the exact value ensures incorrect constants do not pass while still meeting the acceptance criteria."
     }
   ],
-  "new_blocking_concerns": [],
-  "iteration": 2
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
 }

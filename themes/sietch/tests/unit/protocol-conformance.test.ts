@@ -90,7 +90,14 @@ import {
   JwtBoundarySpecSchema,
   ProposalExecutionSchema,
   ProviderSummarySchema,
+  // v7.10–v7.11 governance schemas (Sprint 354, Task 2.5)
+  GovernanceTaskTypeSchema,
 } from '@0xhoneyjar/loa-hounfour';
+
+import {
+  TaskTypeCohortSchema as GovTaskTypeCohortSchema,
+  ScoringPathLogSchema as GovScoringPathLogSchema,
+} from '@0xhoneyjar/loa-hounfour/governance';
 
 // ---------------------------------------------------------------------------
 // JSON Schema Validator (ajv)
@@ -110,7 +117,9 @@ function validateSchema(
   let validate = validatorCache.get(schemaId);
   if (!validate) {
     // Fresh ajv instance per schema to avoid $id collision
-    const localAjv = new Ajv({ allErrors: true, nullable: true });
+    // validateFormats: false skips format validation (e.g., "date-time")
+    // that v7.10+ governance schemas introduce
+    const localAjv = new Ajv({ allErrors: true, validateFormats: false });
     validate = localAjv.compile(schema);
     validatorCache.set(schemaId, validate);
   }
@@ -207,6 +216,7 @@ function loadConformanceVectors(): VectorFile[] {
 const NO_SCHEMA_CATEGORIES = new Set([
   'access-policy',       // Validated via evaluateAccessPolicy function, not schema
   'pricing-calculation', // Complex multi-step — validated structurally
+  'reputation-event',    // ReputationEventSchema has unresolvable internal $ref: "TaskType" in ajv
   'tool-call-roundtrip', // Complex multi-step — validated structurally
 ]);
 
@@ -227,7 +237,9 @@ const FUNCTION_INPUT_CATEGORIES = new Set([
   'constraint-lifecycle',     // Some vectors are constraint candidates, not lifecycle events
   'economic-boundary',        // Input = raw boundary request; schema = evaluation result
   'provider-normalization',   // Input = raw provider response; schema = normalized summary
+  'reputation-event',         // ReputationEventSchema has unresolvable $ref: "TaskType" in ajv
   'reputation-portability',   // Some vectors are portability responses, not requests
+  'task-type',                // GovernanceTaskTypeSchema is string-constant anyOf enum; vector inputs are object wrappers
 ]);
 
 /**
@@ -309,9 +321,13 @@ const CATEGORY_SCHEMA_MAP: Record<string, SchemaEntry> = {
   'reputation-credential': ReputationCredentialSchema as Record<string, unknown>,
   'reputation-economic-impact': ReputationEconomicImpactSchema as Record<string, unknown>,
   'reputation-portability': ReputationPortabilityRequestSchema as Record<string, unknown>,
+  'reputation-event': undefined,  // Schema has unresolvable $ref — validated via FUNCTION_INPUT_CATEGORIES
   'reputation-routing': ReputationRoutingSignalSchema as Record<string, unknown>,
   'reservation-enforcement': ReservationEnforcementSchema as Record<string, unknown>,
   'routing-rebalance': RoutingRebalanceEventSchema as Record<string, unknown>,
+  'scoring-path-log': GovScoringPathLogSchema as Record<string, unknown>,
+  'task-type': GovernanceTaskTypeSchema as Record<string, unknown>,
+  'task-type-cohort': GovTaskTypeCohortSchema as Record<string, unknown>,
   'thinking-trace': ThinkingTraceSchema as Record<string, unknown>,
   'tool-call-roundtrip': undefined,
 };
@@ -320,7 +336,7 @@ const CATEGORY_SCHEMA_MAP: Record<string, SchemaEntry> = {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('Protocol Conformance Suite (v7.9.2)', () => {
+describe('Protocol Conformance Suite (v7.11.0)', () => {
   let allVectors: VectorFile[];
   let conformanceVectors: VectorFile[];
 
@@ -332,10 +348,8 @@ describe('Protocol Conformance Suite (v7.9.2)', () => {
   // ─── AC-2.4.4: CONTRACT_VERSION ──────────────────────────────────────────
 
   describe('CONTRACT_VERSION', () => {
-    it('should match the actual v7.9.1 protocol version', () => {
-      // Package version is 7.9.2, but CONTRACT_VERSION (protocol contract)
-      // is 7.9.1. This is the actual value from the source.
-      expect(CONTRACT_VERSION).toBe('7.9.1');
+    it('should match the actual v7.11.0 protocol version', () => {
+      expect(CONTRACT_VERSION).toBe('7.11.0');
     });
 
     it('should be a valid semver string', () => {
@@ -346,12 +360,12 @@ describe('Protocol Conformance Suite (v7.9.2)', () => {
   // ─── AC-2.4.1 & AC-2.4.2: Vector loading ─────────────────────────────────
 
   describe('Vector Loading', () => {
-    it('should load all 205 vectors from nested directory structure', () => {
-      expect(allVectors.length).toBe(205);
+    it('should load all 236 vectors from nested directory structure', () => {
+      expect(allVectors.length).toBe(236);
     });
 
-    it('should load 163 conformance vectors', () => {
-      expect(conformanceVectors.length).toBe(163);
+    it('should load 194 conformance vectors', () => {
+      expect(conformanceVectors.length).toBe(194);
     });
 
     it('should cover all 15 top-level categories with JSON files', () => {

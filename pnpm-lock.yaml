@@ -13,8 +13,8 @@ importers:
         version: 4.2.1
     devDependencies:
       '@0xhoneyjar/loa-hounfour':
-        specifier: github:0xHoneyJar/loa-hounfour#ff8c16b899b5bbebb9bf1a5e3f9e791342b49bea
-        version: https://codeload.github.com/0xHoneyJar/loa-hounfour/tar.gz/ff8c16b899b5bbebb9bf1a5e3f9e791342b49bea
+        specifier: github:0xHoneyJar/loa-hounfour#7e2294b6f62ac1aa17451d61c1bb91a4ba71daea
+        version: https://codeload.github.com/0xHoneyJar/loa-hounfour/tar.gz/7e2294b6f62ac1aa17451d61c1bb91a4ba71daea
       '@types/express':
         specifier: ^5.0.6
         version: 5.0.6
@@ -39,9 +39,9 @@ importers:
 
 packages:
 
-  '@0xhoneyjar/loa-hounfour@https://codeload.github.com/0xHoneyJar/loa-hounfour/tar.gz/ff8c16b899b5bbebb9bf1a5e3f9e791342b49bea':
-    resolution: {tarball: https://codeload.github.com/0xHoneyJar/loa-hounfour/tar.gz/ff8c16b899b5bbebb9bf1a5e3f9e791342b49bea}
-    version: 7.9.2
+  '@0xhoneyjar/loa-hounfour@https://codeload.github.com/0xHoneyJar/loa-hounfour/tar.gz/7e2294b6f62ac1aa17451d61c1bb91a4ba71daea':
+    resolution: {tarball: https://codeload.github.com/0xHoneyJar/loa-hounfour/tar.gz/7e2294b6f62ac1aa17451d61c1bb91a4ba71daea}
+    version: 7.11.0
     engines: {node: '>=22'}
 
   '@datastructures-js/heap@4.3.7':
@@ -464,7 +464,7 @@ packages:
 
 snapshots:
 
-  '@0xhoneyjar/loa-hounfour@https://codeload.github.com/0xHoneyJar/loa-hounfour/tar.gz/ff8c16b899b5bbebb9bf1a5e3f9e791342b49bea':
+  '@0xhoneyjar/loa-hounfour@https://codeload.github.com/0xHoneyJar/loa-hounfour/tar.gz/7e2294b6f62ac1aa17451d61c1bb91a4ba71daea':
     dependencies:
       '@noble/hashes': 2.0.1
       '@sinclair/typebox': 0.34.48

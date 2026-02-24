@@ -370,6 +370,61 @@ export {
   type NameCollision,
 } from '@0xhoneyjar/loa-hounfour';
 
+// ============================================================================
+// Canonical hounfour types — v7.10–v7.11 governance expansion (Sprint 353, cycle-041)
+// Per SDD §3.1.1, all symbols verified via Task 1.2 export mapping table.
+//
+// ADR-001: Root Barrel Precedence
+//   Governance types use Governance* prefix at barrel level to avoid collision
+//   with the routing-policy TaskType/TaskTypeSchema already exported above.
+//   Only aliased Governance* variants are exported — no unaliased governance
+//   TaskType or ReputationEvent re-exported under their original names.
+// ============================================================================
+
+// ─── Task-Dimensional Reputation (v7.10) ───────────────────────────────────
+// GovernanceTaskTypeSchema and GovernanceReputationEventSchema are already
+// Governance*-prefixed at the hounfour root — import from root, not /governance.
+export type {
+  GovernanceTaskType,
+  GovernanceReputationEvent,
+} from '@0xhoneyjar/loa-hounfour';
+
+export {
+  GovernanceTaskTypeSchema,
+  GovernanceReputationEventSchema,
+} from '@0xhoneyjar/loa-hounfour';
+
+// Governance-specific domain schemas (no naming collision — exported as-is)
+export {
+  TASK_TYPES as GovernanceTaskTypes,
+  validateTaskCohortUniqueness,
+  TaskTypeCohortSchema,
+  QualitySignalEventSchema,
+  TaskCompletedEventSchema,
+  CredentialUpdateEventSchema,
+  ScoringPathSchema,
+  ScoringPathLogSchema,
+} from '@0xhoneyjar/loa-hounfour/governance';
+
+export type {
+  TaskTypeCohort,
+} from '@0xhoneyjar/loa-hounfour/governance';
+
+// ─── Tamper-Evident Hash Chains (v7.11) ────────────────────────────────────
+// computeScoringPathHash and SCORING_PATH_GENESIS_HASH are governance-subpath
+// exports per Task 1.2 verification.
+export {
+  computeScoringPathHash,
+  SCORING_PATH_GENESIS_HASH,
+} from '@0xhoneyjar/loa-hounfour/governance';
+
+// ─── Evaluation Geometry (v7.10–v7.11) ─────────────────────────────────────
+// NativeEnforcement is type-only (no runtime export). Re-exported for
+// type-level constraint evaluation geometry support.
+export type {
+  NativeEnforcement,
+} from '@0xhoneyjar/loa-hounfour/constraints';
+
 // Compatibility — re-export from arrakis extension module
 export {
   CONTRACT_VERSION,

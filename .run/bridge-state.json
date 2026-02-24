@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "bridge_id": "bridge-20260224-a79420",
-  "state": "ITERATING",
+  "state": "JACKED_OUT",
   "config": {
     "depth": 3,
     "mode": "full",
@@ -12,7 +12,7 @@
   },
   "timestamps": {
     "started": "2026-02-24T08:04:31Z",
-    "last_activity": "2026-02-25T02:30:00Z"
+    "last_activity": "2026-02-25T04:45:00Z"
   },
   "iterations": [
     {
@@ -53,38 +53,50 @@
     },
     {
       "iteration": 2,
-      "state": "in_progress",
+      "state": "completed",
       "sprint_plan_source": "findings_from_iter_1",
-      "sprints_executed": 0,
+      "sprints_executed": 1,
       "bridgebuilder": {
-        "total_findings": 0,
-        "by_severity": {},
-        "severity_weighted_score": 0,
-        "pr_comment_url": ""
+        "total_findings": 7,
+        "by_severity": {
+          "critical": 0,
+          "high": 0,
+          "medium": 0,
+          "low": 4,
+          "vision": 0,
+          "praise": 3
+        },
+        "severity_weighted_score": 0.04,
+        "pr_comment_url": "https://github.com/0xHoneyJar/loa-freeside/pull/95#issuecomment-3950399779"
       },
       "enrichment": {
-        "persona_loaded": false,
-        "persona_validation": "pending",
+        "persona_loaded": true,
+        "persona_validation": "passed",
         "findings_format": "structured",
-        "field_fill_rates": {},
-        "praise_count": 0,
+        "field_fill_rates": {
+          "faang_parallel": 0,
+          "metaphor": 0,
+          "teachable_moment": 0,
+          "connection": 0
+        },
+        "praise_count": 3,
         "insights_size_bytes": 0,
         "redactions_applied": 0
       },
       "visions_captured": 0,
       "started_at": "2026-02-25T02:30:00Z",
-      "updated_at": "2026-02-25T02:30:00Z"
+      "updated_at": "2026-02-25T04:45:00Z"
     }
   ],
   "flatline": {
     "initial_score": 0.14,
-    "last_score": 0.14,
-    "consecutive_below_threshold": 1
+    "last_score": 0.04,
+    "consecutive_below_threshold": 2
   },
   "metrics": {
-    "total_sprints_executed": 3,
-    "total_files_changed": 26,
-    "total_findings_addressed": 6,
+    "total_sprints_executed": 4,
+    "total_files_changed": 34,
+    "total_findings_addressed": 13,
     "total_visions_captured": 0
   },
   "finalization": {
