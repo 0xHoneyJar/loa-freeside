@@ -321,7 +321,7 @@ const CATEGORY_SCHEMA_MAP: Record<string, SchemaEntry> = {
   'reputation-credential': ReputationCredentialSchema as Record<string, unknown>,
   'reputation-economic-impact': ReputationEconomicImpactSchema as Record<string, unknown>,
   'reputation-portability': ReputationPortabilityRequestSchema as Record<string, unknown>,
-  'reputation-event': undefined,  // Schema has unresolvable $ref — validated via FUNCTION_INPUT_CATEGORIES
+  'reputation-event': undefined,  // Schema has unresolvable $ref — skipped via NO_SCHEMA_CATEGORIES
   'reputation-routing': ReputationRoutingSignalSchema as Record<string, unknown>,
   'reservation-enforcement': ReservationEnforcementSchema as Record<string, unknown>,
   'routing-rebalance': RoutingRebalanceEventSchema as Record<string, unknown>,
