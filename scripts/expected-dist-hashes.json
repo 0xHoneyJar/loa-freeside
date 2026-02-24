@@ -1,0 +1,13 @@
+{
+  "description": "Expected DIST_HASH values for verified hounfour builds, keyed by commit SHA",
+  "version": "1.0.0",
+  "hashes": {
+    "ff8c16b899b5bbebb9bf1a5e3f9e791342b49bea": {
+      "dist_hash": "7ad1772f4ae3f5e5fbdc85a067b3744b3db0dba541dd7057afb881f246a8931b",
+      "contract_version": "7.9.1",
+      "package_version": "7.9.2",
+      "verified_at": "2026-02-24T00:00:00Z",
+      "note": "Initial v7.9.2 build — cycle-039 Sprint 1"
+    }
+  }
+}

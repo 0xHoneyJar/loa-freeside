@@ -55,8 +55,10 @@ describe('CONTRACT_VERSION', () => {
     expect(CONTRACT_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
-  it('is 7.0.0', () => {
-    expect(CONTRACT_VERSION).toBe('7.0.0');
+  it('is 7.9.1 (contract version, not package version)', () => {
+    // CONTRACT_VERSION tracks the protocol contract version (7.9.1)
+    // Package version is 7.9.2 — they are distinct
+    expect(CONTRACT_VERSION).toBe('7.9.1');
   });
 
   it('validateCompatibility accepts matching major.minor', () => {

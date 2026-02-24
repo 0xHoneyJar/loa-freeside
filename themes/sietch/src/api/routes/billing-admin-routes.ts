@@ -19,6 +19,8 @@ import { z } from 'zod';
 import { randomUUID, createHmac, timingSafeEqual } from 'crypto';
 import { logger } from '../../utils/logger.js';
 import { serializeBigInt } from '../../packages/core/protocol/arrakis-arithmetic.js';
+import { parseBoundaryMicroUsd } from '../../packages/core/protocol/parse-boundary-micro-usd.js';
+import { getBoundaryMetrics } from '../../packages/core/protocol/boundary-metrics.js';
 import type { ICampaignService, GrantInput } from '../../packages/core/ports/ICampaignService.js';
 import type { ICreditLedgerService } from '../../packages/core/ports/ICreditLedgerService.js';
 import type { IRevenueRulesService } from '../../packages/core/ports/IRevenueRulesService.js';
@@ -305,9 +307,24 @@ billingAdminRouter.post(
     const { amountMicro, sourceType, description, poolId } = result.data;
 
     try {
+      // Sprint 4, Task 4.3: boundary-hardened parsing for admin mint
+      const mintParse = parseBoundaryMicroUsd(
+        String(amountMicro ?? ''),
+        'http',
+        logger,
+        getBoundaryMetrics(),
+      );
+      if (!mintParse.ok) {
+        res.status(400).json({
+          error: 'Invalid amountMicro',
+          errorCode: mintParse.errorCode,
+          reason: mintParse.reason,
+        });
+        return;
+      }
       const lot = await ledgerService.mintLot(
         accountId,
-        BigInt(amountMicro),
+        mintParse.value,
         sourceType,
         {
           sourceId: `admin-mint-${randomUUID().slice(0, 8)}`,

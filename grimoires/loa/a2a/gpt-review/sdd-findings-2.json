@@ -1,70 +1,50 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "Most iteration-1 blockers were addressed correctly, but two fixes introduce truly blocking problems: the backfill DO/COMMIT pattern is invalid SQL for PostgreSQL, and the admin_audit_log privilege model still allows cross-tenant audit log reads by the app role.",
+  "summary": "Most previously-blocking issues were fixed (artifact-bound verification, determinism framing, import access control, dual-version replay strategy, export-map alignment, and staged dual-parse), but two new/remaining blocking problems exist: the rebuild script’s clone/checkout is not actually pinned to the expected SHA, and the rollback env var name contradicts the implementation.",
   "previous_issues_status": [
     {
-      "original_issue": "0012 purpose column added as NOT NULL DEFAULT could block; needed phased online approach",
+      "original_issue": "Supply-chain verification was TOCTOU / verified SHA but required from workspace node_modules (wrong artifact)",
       "status": "fixed",
-      "notes": "Now uses nullable add + backfill + DEFAULT + CHECK NOT VALID + VALIDATE, and explicitly avoids SET NOT NULL. That’s the correct online pattern."
+      "notes": "Now builds in an isolated temp clone, embeds dist/SOURCE_SHA, computes a dist hash, and validates resolution against the built dist path rather than node_modules. This correctly binds verification to the artifact being produced/consumed."
     },
     {
-      "original_issue": "0014 partial index predicate used NOW() (non-immutable) so migration would fail",
+      "original_issue": "Determinism claim incorrectly used `tsc --strict` as a reproducibility control",
       "status": "fixed",
-      "notes": "NOW() removed from predicate; effective_until handled at query time. DDL is valid."
+      "notes": "SDD now correctly states strict is not determinism, and adds real controls (pinned Node/TS, npm ci/frozen lockfile, stable tsconfig, SOURCE_DATE_EPOCH)."
     },
     {
-      "original_issue": "0015 trigger referenced prevent_mutation() but function missing",
+      "original_issue": "Import access control enforcement used the wrong ESLint mechanism (`import/no-restricted-paths`)",
       "status": "fixed",
-      "notes": "prevent_mutation() is defined before trigger. DDL will apply."
+      "notes": "Switched to ESLint core `no-restricted-imports` with specifier patterns and allowlisted overrides, plus CI AST fallback. This is implementable and matches the requirement."
     },
     {
-      "original_issue": "0013 correlation_id default requires pgcrypto; and CONCURRENTLY indexes require non-transactional migration",
+      "original_issue": "Boundary payload replay required comparing v7.0.0 vs v7.9.2 but only one version can be installed; harness not specified",
       "status": "fixed",
-      "notes": "CREATE EXTENSION IF NOT EXISTS pgcrypto added; migration split into 0013a/0013b with transaction:false for CONCURRENTLY is correct."
+      "notes": "Replaced dual-install with a golden-baseline strategy (generate under v7.0.0, commit, then compare under v7.9.2). This is implementable and meets AC-1.6 intent."
     },
     {
-      "original_issue": "community_operations view fragmented operations by grouping on purpose/entry_type; not correlation-aware",
+      "original_issue": "Barrel re-exports may use wrong specifiers vs export map (root vs subpath), causing runtime resolution failures",
       "status": "fixed",
-      "notes": "Now groups strictly by (community_id, correlation_id) and provides JSON aggregates. This matches SKP-002 intent."
+      "notes": "SDD explicitly requires aligning to v7.9.2 exports map and adds an export-map validation test that imports from the exact specifiers used. That addresses the runtime failure risk."
     },
     {
-      "original_issue": "Replay semantics inconsistent; expire double-subtract risk; governance lot_id NULL handling; enforce lot_id NOT NULL for economic types",
+      "original_issue": "parseMicroUsd dual-parse wrapper could prevent safe cutover (legacy fallback forever) and lacked operational gating",
       "status": "fixed",
-      "notes": "Canonical posting model is now explicit; expire uses explicit amount_micro; CHECK constraint enforces lot_id for non-governance. Replay switch aligns with the table."
-    },
-    {
-      "original_issue": "Governance approve(): BigInt conversion from JSONB numeric could throw / lose precision",
-      "status": "fixed",
-      "notes": "limit_micro required as string with Zod validation; approve() uses BigInt(string). This resolves the precision/throw risk."
-    },
-    {
-      "original_issue": "RLS completeness: current_setting missing_ok; admin_audit_log had no RLS/privilege model; risk of bypass/outages",
-      "status": "not_fixed",
-      "notes": "Tenant-table policies now use current_setting(..., true)+COALESCE which is good. However, admin_audit_log is still readable by app_role per the stated GRANT, which is a cross-tenant exposure for any endpoint/path that can query it (or future code). This remains a SKP-007-class blocker unless app_role SELECT is removed or RLS is added with a separate privileged reader role."
-    },
-    {
-      "original_issue": "Sequencing contention mitigation not concretely specified for Tier 2/3",
-      "status": "fixed",
-      "notes": "Tier 2 advisory lock and Tier 3 range allocation SQL are specified with monotonic/no-duplicate guarantees and gap tolerance. That satisfies SKP-003."
-    },
-    {
-      "original_issue": "CommunityId in path vs actor.community_id missing explicit cross-check (IDOR class)",
-      "status": "fixed",
-      "notes": "requireCommunityMatch() middleware added with platform-admin audited bypass. This addresses the multi-tenant guard requirement."
+      "notes": "Now has explicit staged modes (legacy/shadow/enforce), a discriminated union return, caller responsibility by boundary type, metrics + threshold, timebox to remove shadow, and a kill-switch. This is operationally sound."
     }
   ],
   "new_blocking_concerns": [
     {
-      "location": "3.2.1 Migration 0012 Phase 2 backfill DO $$ ... COMMIT; inside loop",
-      "description": "The provided backfill snippet is not valid PostgreSQL: you cannot issue COMMIT inside a DO block (PL/pgSQL DO runs in a single transaction). As written, operators following the SDD will hit errors and/or attempt a long-running single transaction backfill that can bloat/lock and threaten production.",
-      "why_blocking": "This is the operational heart of the “online” migration. If the documented approach fails or runs as one huge transaction, it can cause severe bloat, long lock retention, replication lag, and potentially stall writes—contradicting the zero-downtime requirement.",
-      "fix": "Replace the DO-block example with an application-side or psql-side batch loop that commits between batches (each batch is its own transaction). Example operational guidance: run repeated statements like `UPDATE ... WHERE id IN (SELECT id ... LIMIT 5000 FOR UPDATE SKIP LOCKED);` in a script that COMMITs each iteration, with lock_timeout/statement_timeout set. Alternatively, use a server-side PROCEDURE (CREATE PROCEDURE) which can COMMIT, but DO cannot."
+      "location": "SDD §3.2 FR-2 Rebuild Script Update — Step 1/2 (git clone/checkout)",
+      "description": "The script uses `git clone --depth 1` and then `git checkout \"$EXPECTED_SHA\"`. With a depth-1 clone of the default branch tip, the expected commit SHA will often not exist locally, causing checkout to fail (or forcing an implicit fetch that is not specified). This makes the rebuild pipeline unreliable and can block the upgrade or lead engineers to weaken verification to “make it work.”",
+      "why_blocking": "FR-2 is a hard security requirement (AC-2.4). If the script cannot reliably check out the pinned SHA, the supply-chain verification mechanism will fail in CI/automation, blocking the release or encouraging insecure workarounds.",
+      "fix": "Make the clone fetch the exact commit deterministically. For example:\n- Option A (recommended): `git init`, `git remote add origin`, `git fetch --depth 1 origin $EXPECTED_SHA`, then `git checkout --detach FETCH_HEAD`.\n- Option B: `git clone --no-checkout $HOUNFOUR_REPO $CLONE_DIR && cd $CLONE_DIR && git fetch --depth 1 origin $EXPECTED_SHA && git checkout --detach $EXPECTED_SHA`.\nAlso add `set -euo pipefail` and explicit error messages on fetch/checkout failure."
     },
     {
-      "location": "1.9 Security Architecture + 3.2.4 Migration 0015 admin_audit_log privileges",
-      "description": "The SDD grants SELECT on admin_audit_log to app_role while also stating the table has no RLS. That makes the entire platform audit log readable by the application DB role (cross-tenant), which is a data exposure risk and violates the stated intent of platform-level restricted access.",
-      "why_blocking": "Any compromised app path, SQL injection, misrouted query, or future feature that exposes audit logs would leak cross-tenant sensitive audit data. With no RLS, DB is not enforcing tenant isolation here. This is a security blocker (SKP-007 class).",
-      "fix": "Remove SELECT from app_role: `REVOKE ALL ON admin_audit_log FROM app_role; GRANT INSERT ON admin_audit_log TO app_role;` and create a separate `audit_reader_role` (or platform-admin service role) with SELECT. If the app must read its own audit entries, then enable RLS on admin_audit_log and scope by community_id (and handle NULL community_id rows carefully), or expose reads only via a separate privileged connection with explicit platform-admin authorization."
+      "location": "SDD §7 Rollback Strategy vs §3.6 FR-6 parseMicroUsd rollout",
+      "description": "Rollback table specifies `PARSE_MICRO_USD_LEGACY=true`, but the implementation uses `PARSE_MICRO_USD_MODE=legacy|shadow|enforce`. This mismatch will cause the documented kill-switch to not work during an incident.",
+      "why_blocking": "Rollback must be practical and correct per the verification checklist. In an outage caused by boundary tightening, operators will follow the runbook; if the env var is wrong, the service will continue rejecting inputs and recovery will fail.",
+      "fix": "Unify on a single control. Either (a) update rollback docs to `PARSE_MICRO_USD_MODE=legacy`, or (b) support both by implementing `if (process.env.PARSE_MICRO_USD_LEGACY === 'true') mode='legacy'` as a backward-compatible alias, and document precedence."
     }
   ],
   "iteration": 2

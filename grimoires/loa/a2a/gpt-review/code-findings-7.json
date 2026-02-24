@@ -1,6 +1,6 @@
 {
   "verdict": "APPROVED",
-  "summary": "No blocking bugs or security issues found in the reviewed finalize flow.",
+  "summary": "No blocking bugs, security issues, or logic errors found in the provided changes.",
   "issues": [],
   "fabrication_check": {
     "passed": true,

@@ -1,44 +1,50 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "Plan is close, but a few missing/incorrect dependencies and migration/flag coupling issues would likely break sequencing, block deploys, or make features non-toggleable as claimed.",
+  "summary": "The plan is close, but a few tasks/criteria are internally inconsistent or missing critical implementation details that would likely block the upgrade or make it non-reproducible at runtime/CI.",
   "blocking_issues": [
     {
-      "location": "Sprint 1 / Task 1.2 (insertLotEntry) + Sprint 4 / Task 4.1 (event sourcing columns)",
-      "issue": "insertLotEntry AC requires allocating sequence_number when FEATURE_EVENT_SOURCING is enabled, but the required schema (sequence_number column + community_event_sequences table + trigger) is only created in Sprint 4.",
-      "why_blocking": "If FEATURE_EVENT_SOURCING is enabled in any environment before Sprint 4 lands (or if tests toggle it), insertLotEntry will fail at runtime (missing column/table) or cannot satisfy AC-1.2.3. This is an impossible dependency ordering as written.",
-      "fix": "Either (A) move Migration 0013a (or at least the minimal columns/table needed for allocation) into Sprint 1 before Task 1.2, or (B) change Task 1.2 to explicitly NOT allocate sequences until Sprint 4 (feature flag must remain false), with an acceptance criterion that insertLotEntry degrades safely when event-sourcing schema is absent (e.g., detects column existence once at startup and disables allocation)."
+      "location": "Sprint 1 / Task 1.1 (AC-1.1.4) and overall sequencing",
+      "issue": "AC allows “temporary any stubs” to make tsc pass immediately after the pin bump, but there is no explicit follow-up task to remove those stubs before later sprints rely on type correctness (barrel/type reduction/boundary hardening).",
+      "why_blocking": "If the pin bump is made to compile via stubs, later work can silently build on incorrect types and then fail during reduction/migration (or worse: pass CI but regress runtime behavior). This is a classic sprint-failure mode in protocol upgrades because the “temporary” workaround becomes the de facto baseline.",
+      "fix": "Either (a) remove the allowance and require real fixes in Sprint 1, or (b) add an explicit tracked task (e.g., Sprint 2 Task 2.x) with AC: “all temporary any stubs removed; diff list empty; tsc passes without stubs” and gate Sprint 3+ on it."
     },
     {
-      "location": "Sprint 2 / Task 2.3 (Integration into Debit Path) and Sprint 1 / Task 1.2",
-      "issue": "Task 2.3 says debitLots() accepts purpose and “all INSERTs go through insertLotEntry()”, but Task 1.2 already requires refactoring debitLots/mint/reserve/release/expire to use insertLotEntry. The sequencing implies debitLots is refactored before purpose exists, then refactored again.",
-      "why_blocking": "This creates a high chance of merge conflicts and duplicated work for a single engineer, and more importantly it risks landing an intermediate state where debitLots is refactored but purpose is not written (or vice versa), violating Sprint 2 success criteria (“Every debit operation records a purpose”).",
-      "fix": "Make the dependency explicit: either (A) in Sprint 1 refactor to insertLotEntry but keep a purpose parameter plumbed through as optional (writing only when column exists/flag enabled), or (B) defer the debitLots refactor portion of Task 1.2 for debitLots specifically into Sprint 2 so the refactor and purpose plumbing happen in one change. Update ACs to avoid double-touching the same hot path."
+      "location": "Sprint 1 / Task 1.2 (AC-1.2.3, AC-1.2.5, AC-1.2.8) — supply-chain verification",
+      "issue": "The rebuild/verification approach is not fully artifact-bound/deterministic as written: `npm ci --ignore-scripts` may prevent the library build from producing `dist`, and the DIST_HASH recipe is vulnerable to non-determinism (file metadata, line endings, build timestamps) without explicit SOURCE_DATE_EPOCH / deterministic build settings.",
+      "why_blocking": "This can cause the sprint to fail in CI because you won’t be able to reproduce the expected DIST_HASH across machines/runs, or you won’t be able to build dist at all if build steps rely on lifecycle scripts. That directly violates the critical requirement: “artifact-bound verification” and reproducible builds.",
+      "fix": "Clarify the build pipeline: fetch+checkout SHA, install deps in a way that still allows building (e.g., `npm ci` then explicitly run the build command with scripts allowed, or use `pnpm --ignore-scripts` only for the *consumer* install but not for the isolated build). Add explicit determinism controls in AC: set `SOURCE_DATE_EPOCH`, ensure build does not embed timestamps, and compute DIST_HASH from a canonical tarball (e.g., `npm pack` output) or from normalized file contents (fixed ordering + fixed newlines) with documented exclusions."
     },
     {
-      "location": "Sprint 3 / Task 3.2 (Debit Hourly Rollup Job) and Sprint 2 / Purpose column",
-      "issue": "Sprint dependency graph states Velocity depends on purpose column, but Task 3.2/3.3 do not list Task 2.1 as a dependency and do not specify whether rollups are purpose-segmented or purpose-agnostic.",
-      "why_blocking": "If the SDD expects velocity to be computed per purpose (or filtered by purpose), the rollup schema/job will be wrong and require rework. If velocity is purpose-agnostic, then the stated dependency on purpose is incorrect and will cause planning/implementation mismatch. Either way, ambiguity here can derail Sprint 3 implementation.",
-      "fix": "Clarify in Sprint 3 tasks/ACs whether community_debit_hourly includes purpose (e.g., PK (community_id, hour, purpose)) or explicitly does not. Then align dependencies: add Task 2.1 as a dependency if purpose is required; otherwise remove the dependency from the graph and ensure the rollup query ignores purpose safely."
+      "location": "Sprint 1 / Task 1.2 (AC-1.2.6) and Sprint 2 / Task 2.1 vs exports map reality",
+      "issue": "The plan hard-codes “All 7 export specifiers resolve” and later enumerates ~60 symbols to re-export, but there is no task to confirm the actual `@0xhoneyjar/loa-hounfour` v7.9.2 `package.json#exports` map shape (ESM/CJS, types entrypoints, conditional exports) and align Node/TS resolution accordingly.",
+      "why_blocking": "If the exports map differs (missing subpaths, different conditions, or types-only paths), you can end up with TS compiling while Node runtime fails (or tests fail depending on runner). This is a frequent hard blocker during upgrades with subpath exports.",
+      "fix": "Add an explicit “exports map audit” task before barrel expansion (or fold into Task 2.1 with concrete AC): record the exact exports map for v7.9.2, confirm which conditions are used in your runtime (node/jest/vitest/ts-node), and update tooling config if needed (e.g., `moduleResolution: nodenext`, jest ESM handling). Gate Task 2.1 on that audit."
     },
     {
-      "location": "Sprint 1 / Task 1.5 (Feature Flag Infrastructure) + Rollout Strategy section",
-      "issue": "AC-1.5.3 says disabled features produce “no column writes”, but multiple tasks add columns/constraints/triggers that will exist regardless of flags (purpose column default + NOT NULL check; event sourcing trigger enforcing fields; governance tables). Also, Task 4.1 makes correlation_id NOT NULL DEFAULT, while Task 1.2 also claims to always set correlation_id.",
-      "why_blocking": "This is a deploy/runtime failure risk because the plan claims flags can be independently toggled, but DB-level enforcement (defaults/triggers/checks) can force writes or reject writes even when a feature is “disabled”. That breaks the stated rollout strategy and can cause production incidents when toggling flags.",
-      "fix": "Make DB enforcement explicitly compatible with flags: (A) ensure triggers/check constraints are conditional on a per-community flag stored in DB (not just app env), or (B) delay installing strict triggers/NOT NULL checks until the corresponding feature is enabled everywhere. Update AC-1.5.3 to a testable statement like: “When FEATURE_X is false, application code does not read/write X fields and endpoints are not registered; DB schema may exist.”"
+      "location": "Sprint 2 / Task 2.1 (AC-2.1.8) — barrel scope contradiction",
+      "issue": "AC-2.1.8 says “Only symbols consumed by arrakis code are re-exported,” but the task description says “re-export ~60 new canonical symbols,” and the AC list enumerates many symbols that may not be consumed.",
+      "why_blocking": "This is not just wording: it creates an untestable/contradictory completion condition. The engineer can’t satisfy both if arrakis doesn’t currently consume many of the listed exports. That ambiguity can stall the sprint at review time.",
+      "fix": "Pick one measurable rule: either (a) “export exactly the allowlisted set in SDD §3.3 (the ~60 symbols)” or (b) “export only what is referenced in repo (automated by a script that derives used symbols).” Update AC accordingly and add a simple verification method (script/grep output committed)."
     },
     {
-      "location": "Sprint 5 / Task 5.4 (Outbox Worker)",
-      "issue": "Outbox processing concurrency/locking semantics are not specified (e.g., SELECT ... FOR UPDATE SKIP LOCKED), and idempotency keying is underspecified beyond “policy_id version check”.",
-      "why_blocking": "Without a clear locking strategy, multiple worker instances (or retries) can process the same outbox row concurrently, causing duplicate conservationGuard.updateLimit() calls and inconsistent policy enforcement. This is a classic source of production failure for outbox patterns.",
-      "fix": "Add explicit ACs: worker claims rows with `FOR UPDATE SKIP LOCKED` (or an atomic UPDATE ... WHERE processed_at IS NULL RETURNING), uses a unique idempotency key (policy_id + policy_version or outbox_id) at the conservation guard boundary, and guarantees exactly-once side effects from at-least-once delivery. Include a concurrency integration test with 2 workers."
+      "location": "Sprint 4 / Task 4.2 (PagerDuty + dashboard) and Sprint 4 overall success criteria",
+      "issue": "PagerDuty alerting and dashboard work is included, but there is no explicit task to wire metrics to the actual metrics backend used in arrakis (namespacing, registry, test environment), nor acceptance criteria that can be validated in CI (PagerDuty config typically can’t be proven from unit tests alone).",
+      "why_blocking": "This can block sprint completion because the AC requires external system configuration (“PagerDuty alert configured”, “Dashboard panel”) that a single engineer may not be able to validate/merge purely via code, and CI cannot assert it reliably. It risks ending Sprint 4 with “done in code” but failing acceptance.",
+      "fix": "Split into (1) code-level instrumentation with CI-verifiable AC (counter registration + emission + snapshot/unit tests), and (2) ops/config task with a concrete, repo-based artifact (e.g., Terraform/JSON dashboard + alert rule definitions) that can be code-reviewed and tested (lint/plan). If ops config is out-of-repo, change AC to “PR created in ops repo and linked” and make that dependency explicit."
     },
     {
-      "location": "Sprint 5 / Migrations numbering (Task 5.2 labeled Migration 0015) vs Sprint 3 (Task 3.1 labeled Migration 0015)",
-      "issue": "Two different migrations are both numbered 0015.",
-      "why_blocking": "Most migration runners will fail or behave unpredictably with duplicate version identifiers, blocking deploy and halting the sprint’s ability to ship.",
-      "fix": "Renumber one migration (e.g., make admin audit log 0016) and add an acceptance criterion that the migration tool’s ordering/versioning is validated in CI (e.g., “no duplicate migration IDs”)."
+      "location": "Sprint 4 / Task 4.6 (AC-4.6.1) — kill-switch verification",
+      "issue": "AC-4.6.1 says “verify all boundary entry points use BigInt() directly” in legacy mode, but the design introduces a wrapper (`parseBoundaryMicroUsd`) that will still be called; it would internally choose legacy parsing. The AC as written is likely impossible once migrations are done.",
+      "why_blocking": "This is a concrete acceptance mismatch that will fail review/testing: after migration, entry points should call the wrapper, not BigInt directly. You can’t satisfy “all entry points use BigInt directly” without undoing the migration.",
+      "fix": "Rewrite AC-4.6.1 to: “In legacy mode, wrapper returns legacy BigInt parse result and does not reject inputs that legacy accepts; canonical parser is not invoked (or is invoked but ignored) per design.” Add an assertion via spies/counters: canonical parse call count is 0 in legacy mode (if that’s required) or canonical result is never used."
+    },
+    {
+      "location": "FR sequencing / dependency graph vs tasks (FR-6 → FR-5 ordering)",
+      "issue": "The stated phased dependency order is FR-1→FR-2→FR-3→FR-4→FR-6→FR-5, but the FR dependency graph also shows FR-7 and FR-8 branching off FR-2/FR-3. The plan schedules FR-7/FR-8 in Sprint 2 (good), but there is no explicit gating that FR-7 conformance + golden baseline replay must be green before starting boundary enforcement work in Sprint 4.",
+      "why_blocking": "Boundary hardening (FR-6) without a green compatibility baseline/conformance suite increases the chance of runtime regressions and makes it hard to distinguish “parser hardening intended change” from “upgrade regression.” This can cause Sprint 4 to stall in debugging without a trusted baseline.",
+      "fix": "Add an explicit dependency/gate: Sprint 4 cannot start until Sprint 2 conformance (202 vectors) + Sprint 1 golden replay are green in CI. Make it a Sprint 3 or Sprint 4 entry criterion."
     }
   ],
-  "question": null,
+  "question": "",
   "iteration": 1
 }

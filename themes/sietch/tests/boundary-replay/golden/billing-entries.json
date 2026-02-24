@@ -1,0 +1,67 @@
+{
+  "classification": "MUST_MATCH",
+  "description": "Billing entry schema validation — amounts must parse identically across versions to preserve financial correctness",
+  "version": "v7.0.0-baseline",
+  "fixtures": [
+    {
+      "id": "billing-standard-invoke",
+      "description": "Standard model invoke billing entry",
+      "input": {
+        "id": "bill-001",
+        "tenant_id": "tenant-abc",
+        "agent_id": "agent-123",
+        "type": "invoke",
+        "amount_micro": "1500000",
+        "currency": "USD",
+        "provider": "openai",
+        "model": "gpt-4o",
+        "pool_id": "cheap",
+        "created_at": "2026-02-01T00:00:00Z"
+      },
+      "expected": {
+        "valid": true,
+        "amount_micro_bigint": "1500000"
+      }
+    },
+    {
+      "id": "billing-zero-amount",
+      "description": "Zero-amount billing entry (free tier usage)",
+      "input": {
+        "id": "bill-002",
+        "tenant_id": "tenant-free",
+        "agent_id": "agent-456",
+        "type": "invoke",
+        "amount_micro": "0",
+        "currency": "USD",
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "pool_id": "cheap",
+        "created_at": "2026-02-01T00:00:00Z"
+      },
+      "expected": {
+        "valid": true,
+        "amount_micro_bigint": "0"
+      }
+    },
+    {
+      "id": "billing-large-amount",
+      "description": "Large billing amount (enterprise heavy usage)",
+      "input": {
+        "id": "bill-003",
+        "tenant_id": "enterprise-corp",
+        "agent_id": "agent-ent-001",
+        "type": "invoke",
+        "amount_micro": "999999999",
+        "currency": "USD",
+        "provider": "anthropic",
+        "model": "claude-opus-4-6",
+        "pool_id": "reasoning",
+        "created_at": "2026-02-01T00:00:00Z"
+      },
+      "expected": {
+        "valid": true,
+        "amount_micro_bigint": "999999999"
+      }
+    }
+  ]
+}

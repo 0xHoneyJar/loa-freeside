@@ -1,0 +1,105 @@
+{
+  "classification": "MUST_MATCH",
+  "description": "JWT claims parsed through JwtClaimsSchema — billing amounts and conservation decisions depend on these values being identical across versions",
+  "version": "v7.0.0-baseline",
+  "fixtures": [
+    {
+      "id": "jwt-standard-pro",
+      "description": "Standard pro-tier JWT with all required fields",
+      "input": {
+        "iss": "https://auth.honeyjar.xyz",
+        "aud": "loa-finn",
+        "sub": "user-123",
+        "tenant_id": "tenant-abc",
+        "tier": "pro",
+        "req_hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "iat": 1707700000,
+        "exp": 1707703600,
+        "jti": "unique-jti-001"
+      },
+      "expected": {
+        "valid": true,
+        "tier": "pro",
+        "sub": "user-123",
+        "tenant_id": "tenant-abc"
+      }
+    },
+    {
+      "id": "jwt-enterprise-full",
+      "description": "Enterprise-tier JWT with optional fields",
+      "input": {
+        "iss": "https://auth.honeyjar.xyz",
+        "aud": "loa-finn",
+        "sub": "agent-enterprise-001",
+        "tenant_id": "enterprise-corp",
+        "tier": "enterprise",
+        "req_hash": "sha256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+        "iat": 1707700000,
+        "exp": 1707703600,
+        "jti": "ent-jti-002"
+      },
+      "expected": {
+        "valid": true,
+        "tier": "enterprise",
+        "sub": "agent-enterprise-001",
+        "tenant_id": "enterprise-corp"
+      }
+    },
+    {
+      "id": "jwt-free-tier",
+      "description": "Free-tier JWT",
+      "input": {
+        "iss": "https://auth.honeyjar.xyz",
+        "aud": "loa-finn",
+        "sub": "user-free-456",
+        "tenant_id": "tenant-free",
+        "tier": "free",
+        "req_hash": "sha256:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+        "iat": 1707700000,
+        "exp": 1707703600,
+        "jti": "free-jti-003"
+      },
+      "expected": {
+        "valid": true,
+        "tier": "free",
+        "sub": "user-free-456",
+        "tenant_id": "tenant-free"
+      }
+    },
+    {
+      "id": "jwt-invalid-tier-integer",
+      "description": "JWT with integer tier should be rejected",
+      "input": {
+        "iss": "https://auth.honeyjar.xyz",
+        "aud": "loa-finn",
+        "sub": "user-bad",
+        "tenant_id": "tenant-bad",
+        "tier": 7,
+        "req_hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "iat": 1707700000,
+        "exp": 1707703600,
+        "jti": "bad-jti-004"
+      },
+      "expected": {
+        "valid": false
+      }
+    },
+    {
+      "id": "jwt-missing-sub",
+      "description": "JWT missing required sub field",
+      "input": {
+        "iss": "https://auth.honeyjar.xyz",
+        "aud": "loa-finn",
+        "tenant_id": "tenant-nosub",
+        "tier": "pro",
+        "req_hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "iat": 1707700000,
+        "exp": 1707703600,
+        "jti": "nosub-jti-005"
+      },
+      "expected": {
+        "valid": false
+      }
+    }
+  ]
+}

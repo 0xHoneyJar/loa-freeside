@@ -1,0 +1,36 @@
+{
+  "classification": "MUST_MATCH",
+  "description": "Conservation property evaluation — the 14 canonical properties must evaluate identically across versions",
+  "version": "v7.0.0-baseline",
+  "fixtures": [
+    {
+      "id": "conservation-properties-count",
+      "description": "Canonical conservation properties count must be exactly 14",
+      "expected": {
+        "property_count": 14
+      }
+    },
+    {
+      "id": "conservation-property-names",
+      "description": "All 14 canonical property names must be present",
+      "expected": {
+        "property_names_sorted": [
+          "Budget monotonic decrease",
+          "Entry type taxonomy",
+          "Expiration liveness",
+          "Idempotency",
+          "Ledger entry uniqueness",
+          "Lot balance non-negativity",
+          "Lot conservation",
+          "Platform conservation",
+          "Receivable bounded by reserved",
+          "Reservation liveness",
+          "Revenue rule total",
+          "Terminal state absorption",
+          "Transfer conservation",
+          "Treasury adequacy"
+        ]
+      }
+    }
+  ]
+}

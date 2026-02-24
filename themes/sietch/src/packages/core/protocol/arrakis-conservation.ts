@@ -2,20 +2,25 @@
  * Arrakis Conservation Error Taxonomy Adapter
  *
  * Maps between arrakis conservation error codes and the canonical
- * loa-hounfour v7.0.0 conservation property schema.
+ * loa-hounfour v7.0.0+ conservation property schema.
  *
  * Arrakis uses typed ConservationViolationError with specific error codes.
  * v7.0.0 uses a different schema (invariant_id, ltl_formula, enforcement, etc.).
  * This adapter bridges both representations.
  *
- * Task: 300.6 (Sprint 300, cycle-034)
- * SDD ref: §3.5
+ * v6.0.0+ liveness properties are also imported and re-exported for consumer
+ * access, complementing the 14 safety (conservation) invariants.
+ *
+ * Task: 300.6 (Sprint 300, cycle-034), updated Sprint 345 (cycle-039)
+ * SDD ref: §3.5, §3.4.4
  */
 
 import {
   CANONICAL_CONSERVATION_PROPERTIES,
   type ConservationProperty as CanonicalConservationProperty,
   type EnforcementMechanism as CanonicalEnforcementMechanism,
+  CANONICAL_LIVENESS_PROPERTIES,
+  type LivenessProperty,
 } from '@0xhoneyjar/loa-hounfour/integrity';
 
 // =============================================================================
@@ -175,3 +180,12 @@ export function getPropertiesByEnforcement(mechanism: EnforcementMechanism): Con
 
 export { CANONICAL_CONSERVATION_PROPERTIES };
 export type { CanonicalConservationProperty };
+
+// =============================================================================
+// Canonical Liveness Properties (v6.0.0+, Sprint 345 cycle-039)
+// Complement the 14 safety (conservation) invariants with liveness guarantees.
+// Imported from @0xhoneyjar/loa-hounfour/integrity per SDD §3.4.4.
+// =============================================================================
+
+export { CANONICAL_LIVENESS_PROPERTIES };
+export type { LivenessProperty };

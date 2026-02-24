@@ -1,20 +1,22 @@
 /**
  * Arrakis Arithmetic Extension Module
  *
- * Imports canonical branded types from @0xhoneyjar/loa-hounfour v7.0.0
+ * Imports canonical branded types from @0xhoneyjar/loa-hounfour v7.0.0+
  * and provides arrakis-specific arithmetic helpers not in the canonical package.
  *
- * Canonical re-exports: MicroUSD, BasisPoints, AccountId, microUSD, basisPoints,
- *   accountId, addMicroUSD, subtractMicroUSD, multiplyBPS, bpsShare,
+ * Canonical re-exports (v7.0.0): MicroUSD, BasisPoints, AccountId, microUSD,
+ *   basisPoints, accountId, addMicroUSD, subtractMicroUSD, multiplyBPS, bpsShare,
  *   serializeMicroUSD, deserializeMicroUSD, serializeBasisPoints, deserializeBasisPoints
+ *
+ * Canonical re-exports (v7.9.0+): parseMicroUsd, ParseMicroUsdResult
  *
  * Arrakis-specific: MICRO_USD_PER_DOLLAR, MAX_MICRO_USD, TOTAL_BPS,
  *   SafeArithmeticError, dollarsToMicro, microToDollarsDisplay, assertMicroUSD,
  *   assertBpsSum, divideWithFloor, serializeBigInt, microUsdSchema,
  *   microUsdWithCeilingSchema
  *
- * Task: 300.4 (Sprint 300, cycle-034)
- * SDD ref: §3.4
+ * Task: 300.4 (Sprint 300, cycle-034), updated Sprint 345 (cycle-039)
+ * SDD ref: §3.4, §3.4.3
  */
 
 import { z } from 'zod';
@@ -23,8 +25,12 @@ import { z } from 'zod';
 // Canonical Re-exports from @0xhoneyjar/loa-hounfour v7.0.0
 // =============================================================================
 
+import type { BrandedMicroUSD } from '@0xhoneyjar/loa-hounfour/economy';
+
+/** Branded micro-USD type re-exported from canonical economy module */
+export type MicroUSD = BrandedMicroUSD;
+
 export {
-  type BrandedMicroUSD as MicroUSD,
   type BasisPoints,
   type AccountId,
   microUSD,
@@ -39,6 +45,17 @@ export {
   serializeBasisPoints,
   deserializeBasisPoints,
 } from '@0xhoneyjar/loa-hounfour/economy';
+
+// =============================================================================
+// Canonical Re-exports from @0xhoneyjar/loa-hounfour v7.9.0+ (Sprint 345)
+// parseMicroUsd is root-only per v7.9.2 exports map audit §3.
+// Note: parseMicroUSD (uppercase D, /economy) is a DIFFERENT pricing function.
+// =============================================================================
+
+export {
+  parseMicroUsd,
+  type ParseMicroUsdResult,
+} from '@0xhoneyjar/loa-hounfour';
 
 // =============================================================================
 // Arrakis-Specific Constants

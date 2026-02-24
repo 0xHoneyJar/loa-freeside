@@ -1,38 +1,20 @@
 {
-  "verdict": "APPROVED",
-  "summary": "The conditional trigger semantics are now consistent with the feature-flag rollout strategy, and all previously identified blockers (including the iteration-2 trigger/flag incompatibility) are addressed without introducing new truly blocking issues.",
-  "previous_issues_status": [
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "This plan is close, but two acceptance criteria are internally inconsistent/incorrect and will likely cause implementation churn or failing tests during the sprint.",
+  "blocking_issues": [
     {
-      "original_issue": "insertLotEntry requires sequence allocation before event-sourcing schema exists (Sprint ordering mismatch)",
-      "status": "fixed",
-      "notes": "Still correctly gated: AC-1.2.3/1.2.4 require (flag enabled AND schema detected) to allocate; otherwise it skips without error."
+      "location": "Task 1.1 (AC-1.1.1 vs AC-1.1.3)",
+      "issue": "The control-character regex and the stated target ranges conflict: AC-1.1.1 says to target remaining C0 chars excluding those already caught by whitespace (including \\x0E-\\x1F), but AC-1.1.3’s regex `/[\\x00-\\x08\\x0E-\\x1F\\x7F]/` does NOT include \\x0B (\\v) and \\x0C (\\f), which are in \\x0E-\\x1F? (No—\\x0B/\\x0C are outside), and it also omits \\x0D (\\r) and \\x0A (\\n) intentionally, but the narrative about “remaining C0 characters” is easy to misapply and can lead to either double-reporting or missing characters depending on the existing whitespace regex implementation.",
+      "why_blocking": "If the existing whitespace check differs even slightly from the assumption (e.g., it includes \\x0B/\\x0C or uses `\\s`), the new control-char check ordering and ranges can produce wrong error codes and break the “existing whitespace rejection tests unchanged” requirement. This is a classic source of test failures and rework because the ACs prescribe exact ordering + exact regex + exact expected codes.",
+      "fix": "Make the ACs unambiguous and aligned with the actual whitespace regex in code: (1) explicitly list the exact whitespace characters currently rejected and confirm the regex used; (2) define control-char detection as “ASCII < 0x20 or 0x7F excluding those already classified as whitespace by our whitespace check,” and either (a) derive the control-char regex from that set, or (b) update AC-1.1.3 to the precise complement set. Also add one test asserting that \\t/\\n/\\r/\\f/\\v still map to SAFETY_WHITESPACE while a nearby control char (e.g., \\x0E) maps to SAFETY_CONTROL_CHAR."
     },
     {
-      "original_issue": "debitLots double-refactoring across Sprint 1 and Sprint 2",
-      "status": "fixed",
-      "notes": "Still clean: Sprint 1 establishes insertLotEntry with optional purpose; Sprint 2 only wires purpose resolution (AC-2.3.4 explicitly prevents re-refactor)."
-    },
-    {
-      "original_issue": "Velocity rollup ambiguity re: purpose dimension and missing dependency on purpose migration",
-      "status": "fixed",
-      "notes": "Still purpose-agnostic with PK (community_id, hour) and AC-3.1.5 explicitly requires safety regardless of purpose column presence."
-    },
-    {
-      "original_issue": "Feature flags claimed 'no column writes' but DB enforcement could force/reject writes; flags not truly independent",
-      "status": "fixed",
-      "notes": "Now internally consistent: AC-1.5.4 states DB enforcement must be compatible with disabled flags, and Sprint 4 AC-4.1.4 defines conditional enforcement keyed off sequence_number being non-NULL (flag-off leaves it NULL). AC-4.1.5 adds the required integration test proving flag-off writes succeed post-0013a."
-    },
-    {
-      "original_issue": "Outbox worker concurrency/locking and idempotency underspecified",
-      "status": "fixed",
-      "notes": "Still specified with FOR UPDATE SKIP LOCKED (AC-5.4.2), explicit idempotency key (AC-5.4.3), and a 2-worker concurrency test (AC-5.4.8)."
-    },
-    {
-      "original_issue": "Duplicate migration number 0015",
-      "status": "fixed",
-      "notes": "Still resolved: admin audit log is Migration 0016; numbering is unique as listed."
+      "location": "Task 1.5 (AC-1.5.2)",
+      "issue": "The proposed replacement `'1'.repeat(15)` is not “within MAX_SAFE_MICRO_USD” unless MAX_SAFE_MICRO_USD is >= 111,111,111,111,111; the example text also incorrectly equates `'1'.repeat(15)` with 999,999,999,999,999.",
+      "why_blocking": "This is a direct recipe for the test fix to still fail (or to be “fixed” by guessing), which defeats the sprint’s goal of surgical, CI-verifiable corrections. If MAX_SAFE_MICRO_USD is lower than that 15-digit value, the test will continue failing; if it’s higher, the rationale is still wrong and invites future regressions.",
+      "fix": "Change AC-1.5.2 to be computed from the constant, not a hardcoded guess: e.g., set the test input to `String(MAX_SAFE_MICRO_USD)` (or `MAX_SAFE_MICRO_USD.toString()` if it’s bigint) and separately add a boundary-length test that uses `String(MAX_SAFE_MICRO_USD).length` to construct a same-length value that is <= MAX_SAFE_MICRO_USD. Acceptance should assert the exact intended property (\"at max allowed value\" or \"at max allowed digit length\") rather than a specific repeat-count."
     }
   ],
-  "new_blocking_concerns": [],
-  "iteration": 3
+  "question": "",
+  "iteration": 1
 }

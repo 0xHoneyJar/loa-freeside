@@ -31,7 +31,7 @@ set -euo pipefail
 # Constants — canonical from @0xhoneyjar/loa-hounfour
 # ---------------------------------------------------------------------------
 
-CONTRACT_VERSION="7.0.0"
+CONTRACT_VERSION="7.9.1"
 MIN_SUPPORTED_VERSION="6.0.0"
 CURL_TIMEOUT=10
 

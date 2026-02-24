@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "_meta": {
+    "description": "PagerDuty alert rule for parseMicroUsd shadow-mode rejections",
+    "sprint": "Sprint 4 (346), Task 4.2b",
+    "sdd_ref": "SDD §3.6 IMP-003",
+    "created": "2026-02-24"
+  },
+  "alert_rules": [
+    {
+      "name": "parsemicro-shadow-would-reject",
+      "description": "Fires when canonical parser would reject inputs that legacy parser accepts. Indicates inputs that will fail when switching from shadow to enforce mode.",
+      "metric": "parseMicroUsd_would_reject_total",
+      "condition": {
+        "type": "threshold",
+        "operator": "greater_than",
+        "threshold": 0,
+        "window_seconds": 300,
+        "evaluation_periods": 1
+      },
+      "severity": "warning",
+      "routing": {
+        "service": "arrakis-billing",
+        "escalation_policy": "billing-oncall",
+        "urgency": "low"
+      },
+      "annotations": {
+        "summary": "parseMicroUsd shadow mode detected would-reject inputs",
+        "description": "{{ $value }} inputs in the last 5 minutes would be rejected by the canonical parser but were accepted by the legacy parser. Review divergence logs before switching to enforce mode.",
+        "runbook_url": "grimoires/loa/a2a/rollback-runbook.md",
+        "dashboard_url": "/d/parsemicro-shadow"
+      },
+      "labels": {
+        "component": "protocol-boundary",
+        "mode": "shadow",
+        "team": "platform"
+      },
+      "group_by": ["context"]
+    },
+    {
+      "name": "parsemicro-shadow-divergence",
+      "description": "Fires when canonical and legacy parsers produce different values for the same input. Indicates semantic differences that need investigation.",
+      "metric": "parseMicroUsd_divergence_total",
+      "condition": {
+        "type": "threshold",
+        "operator": "greater_than",
+        "threshold": 0,
+        "window_seconds": 300,
+        "evaluation_periods": 1
+      },
+      "severity": "critical",
+      "routing": {
+        "service": "arrakis-billing",
+        "escalation_policy": "billing-oncall",
+        "urgency": "high"
+      },
+      "annotations": {
+        "summary": "parseMicroUsd value divergence detected",
+        "description": "{{ $value }} inputs produced different values from canonical vs legacy parser. This may indicate data corruption risk. Investigate immediately.",
+        "runbook_url": "grimoires/loa/a2a/rollback-runbook.md",
+        "dashboard_url": "/d/parsemicro-shadow"
+      },
+      "labels": {
+        "component": "protocol-boundary",
+        "mode": "shadow",
+        "team": "platform"
+      },
+      "group_by": ["context"]
+    },
+    {
+      "name": "parsemicro-db-quarantine",
+      "description": "Fires when database rows are quarantined due to parse failures.",
+      "metric": "parseMicroUsd_db_quarantine",
+      "condition": {
+        "type": "threshold",
+        "operator": "greater_than",
+        "threshold": 0,
+        "window_seconds": 300,
+        "evaluation_periods": 1
+      },
+      "severity": "warning",
+      "routing": {
+        "service": "arrakis-billing",
+        "escalation_policy": "billing-oncall",
+        "urgency": "low"
+      },
+      "annotations": {
+        "summary": "DB rows quarantined due to micro-USD parse failure",
+        "description": "{{ $value }} database rows quarantined in micro_usd_parse_failures table. Review quarantined rows and consider replay after data normalization.",
+        "runbook_url": "grimoires/loa/a2a/rollback-runbook.md"
+      },
+      "labels": {
+        "component": "protocol-boundary",
+        "mode": "all",
+        "team": "platform"
+      }
+    }
+  ]
+}

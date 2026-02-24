@@ -1,16 +1,16 @@
 {
   "verdict": "APPROVED",
-  "summary": "The two remaining iteration-2 blockers (invalid DO/COMMIT backfill pattern and cross-tenant admin_audit_log readability by app_role) are fixed correctly, and no new truly blocking issues were introduced by the changes.",
+  "summary": "The two previously-blocking issues (unpinned clone/checkout and rollback env var mismatch) are fixed correctly, and the revised SDD remains internally consistent and implementable without introducing new truly-blocking problems.",
   "previous_issues_status": [
     {
-      "original_issue": "Migration 0012 Phase 2 backfill used DO $$ ... COMMIT; inside loop (invalid in PostgreSQL)",
+      "original_issue": "Rebuild script clone/checkout was not actually pinned to the expected SHA (depth-1 clone then checkout could fail or drift)",
       "status": "fixed",
-      "notes": "The SDD now correctly states that DO blocks cannot COMMIT, and replaces the guidance with (a) an application/psql batch loop using UPDATE ... LIMIT ... FOR UPDATE SKIP LOCKED with per-iteration commits, and (b) an optional CREATE PROCEDURE approach where COMMIT is valid. This resolves the operational correctness and online/backfill safety requirement."
+      "notes": "SDD §3.2 now uses a deterministic fetch-by-SHA flow (`git init` → `git fetch --depth 1 origin $EXPECTED_SHA` → `git checkout --detach FETCH_HEAD`) and then verifies `HEAD` equals `EXPECTED_SHA`. This reliably pins the build to the intended commit and satisfies the security intent of FR-2/AC-2.4."
     },
     {
-      "original_issue": "admin_audit_log privilege model allowed app_role SELECT with no RLS (cross-tenant audit log exposure)",
+      "original_issue": "Rollback env var name contradicted implementation (runbook said PARSE_MICRO_USD_LEGACY but code used PARSE_MICRO_USD_MODE)",
       "status": "fixed",
-      "notes": "The SDD now explicitly REVOKEs ALL from app_role and GRANTs INSERT only, with SELECT reserved for a separate audit_reader_role. This removes the cross-tenant read exposure and matches the stated platform-level audit intent."
+      "notes": "SDD §7 rollback now correctly references `PARSE_MICRO_USD_MODE=legacy`, matching §3.6 implementation. This makes the kill-switch operational during incidents."
     }
   ],
   "new_blocking_concerns": [],

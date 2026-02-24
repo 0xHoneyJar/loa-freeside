@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "bridge_id": "bridge-20260223-c037eco",
+  "bridge_id": "bridge-20260224-d039eco",
   "state": "JACKED_OUT",
   "config": {
     "depth": 3,
@@ -11,114 +11,63 @@
     "repo": "0xHoneyJar/loa-freeside"
   },
   "timestamps": {
-    "started": "2026-02-23T21:00:00Z",
-    "last_activity": "2026-02-24T06:00:00Z",
-    "completed": "2026-02-24T06:00:00Z"
+    "started": "2026-02-24T12:00:00Z",
+    "last_activity": "2026-02-24T14:45:00Z",
+    "completed": "2026-02-24T14:45:00Z"
   },
   "iterations": [
     {
       "iteration": 1,
-      "state": "completed",
-      "sprint_plan_source": "existing",
-      "sprints_executed": 4,
-      "bridgebuilder": {
-        "total_findings": 12,
-        "by_severity": {
-          "HIGH": 3,
-          "MEDIUM": 2,
-          "LOW": 1,
-          "PRAISE": 4,
-          "REFRAME": 1,
-          "SPECULATION": 1
-        },
-        "severity_weighted_score": 14
+      "commit": "44f40059",
+      "review_path": ".run/bridge-reviews/bridge-20260224-d039eco-iter1-full.md",
+      "findings": {
+        "total": 10,
+        "high": 1,
+        "medium": 1,
+        "low": 2,
+        "praise": 5,
+        "speculation": 1,
+        "false_positives": 1
       },
-      "enrichment": {
-        "persona_loaded": true,
-        "persona_validation": "passed",
-        "findings_format": "json"
-      },
-      "fixes": {
-        "commit": "bc80c527",
-        "files_changed": 4,
-        "findings_addressed": 6,
-        "gpt_review": {
-          "iterations": 2,
-          "verdict": "APPROVED",
-          "false_positives": 1
-        }
-      },
-      "visions_captured": 0,
-      "started_at": "2026-02-23T21:00:00Z",
-      "completed_at": "2026-02-24T05:30:00Z"
+      "severity_weighted_score": 9,
+      "effective_score": 4,
+      "sprint_generated": true,
+      "sprint_id": "sprint-348-iter1-fix",
+      "files_changed": 1,
+      "findings_addressed": 1
     },
     {
       "iteration": 2,
-      "state": "completed",
-      "sprint_plan_source": "bridge_findings",
-      "sprints_executed": 0,
-      "bridgebuilder": {
-        "total_findings": 5,
-        "by_severity": {
-          "MEDIUM": 1,
-          "LOW": 1,
-          "PRAISE": 3
-        },
-        "severity_weighted_score": 3
+      "commit": "72cd0cce",
+      "review_path": ".run/bridge-reviews/bridge-20260224-d039eco-iter2-full.md",
+      "findings": {
+        "total": 4,
+        "high": 0,
+        "medium": 0,
+        "low": 1,
+        "praise": 3,
+        "speculation": 0,
+        "false_positives": 1
       },
-      "enrichment": {
-        "persona_loaded": true,
-        "persona_validation": "passed",
-        "findings_format": "json"
-      },
-      "fixes": {
-        "commit": "2a6f6f97",
-        "files_changed": 2,
-        "findings_addressed": 2,
-        "gpt_review": {
-          "iterations": 1,
-          "verdict": "APPROVED",
-          "false_positives": 0
-        }
-      },
-      "visions_captured": 0,
-      "started_at": "2026-02-24T05:30:00Z",
-      "completed_at": "2026-02-24T06:00:00Z"
-    },
-    {
-      "iteration": 3,
-      "state": "completed",
-      "sprint_plan_source": "bridge_findings",
-      "sprints_executed": 0,
-      "bridgebuilder": {
-        "total_findings": 3,
-        "by_severity": {
-          "PRAISE": 3
-        },
-        "severity_weighted_score": 0
-      },
-      "enrichment": {
-        "persona_loaded": true,
-        "persona_validation": "passed",
-        "findings_format": "json"
-      },
-      "visions_captured": 0,
-      "started_at": "2026-02-24T06:00:00Z",
-      "completed_at": "2026-02-24T06:00:00Z"
+      "severity_weighted_score": 1,
+      "effective_score": 0,
+      "sprint_generated": false,
+      "files_changed": 0,
+      "findings_addressed": 0
     }
   ],
   "flatline": {
-    "initial_score": 14,
+    "initial_score": 4,
     "last_score": 0,
-    "scores": [14, 3, 0],
+    "scores": [4, 0],
     "consecutive_below_threshold": 1,
     "convergence": "kaironic",
-    "convergence_rate": "100%"
+    "convergence_rate": 1.0
   },
   "metrics": {
-    "total_sprints_executed": 4,
-    "total_files_changed": 37,
-    "total_findings_addressed": 8,
+    "total_sprints_executed": 1,
+    "total_files_changed": 5,
+    "total_findings_addressed": 6,
     "total_visions_captured": 0
   }
 }
