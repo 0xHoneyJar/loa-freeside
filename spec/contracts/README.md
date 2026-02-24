@@ -57,6 +57,10 @@ If hounfour CI detects a contract failure:
 2. If intentional: coordinate with freeside to update the contract
 3. If accidental: fix in hounfour before release
 
+## Version Compatibility
+
+The `provider_version_range` field in `contract.json` (currently `>=7.0.0`) expresses the minimum hounfour version that satisfies all entrypoint and behavioral contracts. When hounfour makes a **breaking change** (removes/renames symbols, changes return types), bump the range floor. When freeside adopts new exports from a newer hounfour release, bump the range to match.
+
 ## Files
 
 | File | Purpose |

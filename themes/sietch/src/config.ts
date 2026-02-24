@@ -1183,6 +1183,11 @@ const BEHAVIOR_KEYS = [
  *   - `behaviorFingerprint`: SHA-256 of behavior-affecting env var key=value
  *     pairs. Detects mode/flag changes between deploys.
  *
+ * Operator guidance: compare `behaviorFingerprint` across replicas to detect
+ * config drift. Identical hashes confirm all instances share the same mode
+ * and feature flag state. Mismatches indicate an env var divergence — check
+ * PARSE_MICRO_USD_MODE and FEATURE_* values across the fleet.
+ *
  * @param log - Injectable logger for testability (defaults to module logger)
  */
 export function emitConfigFingerprint(

@@ -5,27 +5,28 @@
   "bridge_id": "bridge-20260224-a79420",
   "timestamps": {
     "started": "2026-02-24T16:00:00Z",
-    "last_activity": "2026-02-24T16:00:00Z"
+    "last_activity": "2026-02-25T02:30:00Z"
   },
   "sprints": {
-    "total": 3,
-    "completed": 0,
-    "current": "sprint-1",
+    "total": 4,
+    "completed": 3,
+    "current": "sprint-4",
     "list": [
-      {"id": "sprint-1", "global_id": 349, "status": "pending", "cycles": 0},
-      {"id": "sprint-2", "global_id": 350, "status": "pending", "cycles": 0},
-      {"id": "sprint-3", "global_id": 351, "status": "pending", "cycles": 0}
+      {"id": "sprint-1", "global_id": 349, "status": "completed", "cycles": 1, "files_changed": 7},
+      {"id": "sprint-2", "global_id": 350, "status": "completed", "cycles": 1, "files_changed": 12},
+      {"id": "sprint-3", "global_id": 351, "status": "completed", "cycles": 1, "files_changed": 7},
+      {"id": "sprint-4", "global_id": 352, "status": "in_progress", "cycles": 0, "files_changed": 0}
     ]
   },
   "options": {
-    "from": 1,
-    "to": 3,
+    "from": 4,
+    "to": 4,
     "max_cycles": 20,
     "timeout_hours": 8
   },
   "metrics": {
-    "total_cycles": 0,
-    "total_files_changed": 0,
-    "total_findings_fixed": 0
+    "total_cycles": 3,
+    "total_files_changed": 26,
+    "total_findings_fixed": 6
   }
 }

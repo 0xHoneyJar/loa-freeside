@@ -36,9 +36,12 @@ export const CANONICAL_MICRO_USD_PATTERN = /^(0|[1-9]\d*)$/;
 /**
  * Create a mode-aware micro-USD Zod schema.
  *
- * FR-3/FR-4 coordination: schema mode is fixed at process start via
- * resolveParseMode() module-level cache, consistent with cold-restart
- * constraint (SDD §3.4).
+ * FR-3/FR-4 coordination: both this function and parseBoundaryMicroUsd()
+ * delegate to resolveParseMode(), which caches the resolved mode at first
+ * invocation (module-level singleton). This guarantees schema validation
+ * and boundary parsing always operate in the same mode within a process,
+ * consistent with the cold-restart constraint (SDD §3.4) — mode changes
+ * require a process restart to take effect.
  *
  * @param mode - Parse mode override. If omitted, reads from PARSE_MICRO_USD_MODE env var.
  */

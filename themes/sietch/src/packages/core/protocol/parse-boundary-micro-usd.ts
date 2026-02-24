@@ -36,7 +36,14 @@ import type { ParseMicroUsdResult } from '@0xhoneyjar/loa-hounfour';
  */
 export const MAX_SAFE_MICRO_USD = 1_000_000_000_000_000n; // $1B
 
-/** Maximum input string length to prevent pathological parsing */
+/**
+ * Maximum input string length to prevent pathological parsing.
+ *
+ * Derivation: MAX_SAFE_MICRO_USD = 1e15 → 16 digits. Allowing for optional
+ * sign prefix and generous headroom gives 50 characters — well above any
+ * legitimate micro-USD representation while blocking megabyte-sized inputs
+ * that could cause pathological BigInt parsing.
+ */
 export const MAX_INPUT_LENGTH = 50;
 
 /** Regex for non-ASCII characters */

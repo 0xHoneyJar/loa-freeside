@@ -22,6 +22,7 @@ import {
 import {
   MAX_SAFE_MICRO_USD,
   MAX_INPUT_LENGTH,
+  resetParseModeCache,
 } from '../../src/packages/core/protocol/parse-boundary-micro-usd.js';
 
 // ---------------------------------------------------------------------------
@@ -194,6 +195,61 @@ describe('CANONICAL_MICRO_USD_PATTERN', () => {
 
   it('does not match " 100" (whitespace)', () => {
     expect(CANONICAL_MICRO_USD_PATTERN.test(' 100')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Mode Consistency via resolveParseMode() Cache (Task 4.2)
+// ---------------------------------------------------------------------------
+
+describe('createMicroUsdSchema — resolveParseMode() cache consistency', () => {
+  const originalEnv = process.env.PARSE_MICRO_USD_MODE;
+
+  afterEach(() => {
+    resetParseModeCache();
+    if (originalEnv !== undefined) {
+      process.env.PARSE_MICRO_USD_MODE = originalEnv;
+    } else {
+      delete process.env.PARSE_MICRO_USD_MODE;
+    }
+  });
+
+  it('produces enforce-mode schema when PARSE_MICRO_USD_MODE=enforce', () => {
+    resetParseModeCache();
+    process.env.PARSE_MICRO_USD_MODE = 'enforce';
+
+    const schema = createMicroUsdSchema(); // no explicit mode — uses resolveParseMode()
+    // Enforce rejects leading zeros
+    expect(schema.safeParse('0100').success).toBe(false);
+    // Enforce accepts canonical integers
+    expect(schema.safeParse('100').success).toBe(true);
+  });
+
+  it('produces legacy-mode schema when PARSE_MICRO_USD_MODE=legacy', () => {
+    resetParseModeCache();
+    process.env.PARSE_MICRO_USD_MODE = 'legacy';
+
+    const schema = createMicroUsdSchema(); // no explicit mode — uses resolveParseMode()
+    // Legacy accepts leading zeros (BigInt coerces them)
+    expect(schema.safeParse('0100').success).toBe(true);
+  });
+
+  it('produces shadow-mode (legacy-permissive) schema when PARSE_MICRO_USD_MODE=shadow', () => {
+    resetParseModeCache();
+    process.env.PARSE_MICRO_USD_MODE = 'shadow';
+
+    const schema = createMicroUsdSchema(); // no explicit mode — uses resolveParseMode()
+    // Shadow mode uses legacy-permissive validation
+    expect(schema.safeParse('0100').success).toBe(true);
+  });
+
+  it('defaults to shadow (legacy-permissive) when env var is unset', () => {
+    resetParseModeCache();
+    delete process.env.PARSE_MICRO_USD_MODE;
+
+    const schema = createMicroUsdSchema();
+    // Default shadow = legacy-permissive
+    expect(schema.safeParse('0100').success).toBe(true);
   });
 });
 

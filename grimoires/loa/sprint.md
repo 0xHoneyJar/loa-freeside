@@ -4,7 +4,7 @@
 **PRD:** v1.1.0 (GPT-APPROVED)
 **SDD:** v1.1.0 (GPT-APPROVED, iteration 4)
 **Date:** 2026-02-24
-**Sprints:** 3 (global IDs 349–351)
+**Sprints:** 4 (global IDs 349–352)
 
 ---
 
@@ -17,6 +17,7 @@ This cycle addresses six Bridgebuilder recommendations from cycle-039's kaironic
 | Sprint 1 | FR-6, FR-1 | Protocol naming + graduation criteria (P0) | ~7 files |
 | Sprint 2 | FR-3, FR-4 | Gateway schema + config strategy (P1) | ~8 files |
 | Sprint 3 | FR-2, FR-5 | Contract testing + ceremony (P1/P2) | ~7 files |
+| Sprint 4 | BB-M1,M3,L | Bridgebuilder finding polish + merge readiness | ~6 files |
 
 ---
 
@@ -65,7 +66,7 @@ This cycle addresses six Bridgebuilder recommendations from cycle-039's kaironic
 **Description:** Write unit tests for `evaluateGraduation()` covering all threshold combinations.
 
 **Files:**
-- `themes/sietch/src/packages/core/protocol/__tests__/graduation.test.ts` — New test file
+- `themes/sietch/tests/unit/graduation.test.ts` — New test file
 
 **Acceptance Criteria:**
 - [ ] Test: returns `ready: false` when divergence rate exceeds threshold
@@ -143,7 +144,7 @@ This cycle addresses six Bridgebuilder recommendations from cycle-039's kaironic
 **Description:** Test both schema modes against the SDD §5.2 test matrix.
 
 **Files:**
-- `themes/sietch/src/packages/core/protocol/__tests__/micro-usd-schema.test.ts` — New test file
+- `themes/sietch/tests/unit/micro-usd-schema.test.ts` — New test file
 
 **Acceptance Criteria:**
 - [ ] Canonical mode: accepts "100", "0", MAX_SAFE_MICRO_USD; rejects leading zeros, whitespace, plus sign, negative, decimal, empty, non-numeric, MAX+1 (AC-3.6)
@@ -232,16 +233,14 @@ This cycle addresses six Bridgebuilder recommendations from cycle-039's kaironic
 **Description:** Test that `contract.json` entrypoints match actual protocol barrel exports. Wire the test into the existing test suite so CI catches barrel drift automatically.
 
 **Files:**
-- `spec/contracts/__tests__/contract-spec.test.ts` — New test file
-- `package.json` or vitest config — Ensure `spec/contracts/__tests__/` is included in test discovery
+- `themes/sietch/tests/unit/contract-spec.test.ts` — New test file
 
 **Acceptance Criteria:**
 - [ ] Test: all contract entrypoint symbols exist in actual barrel exports
 - [ ] Test: contract version is valid semver
 - [ ] Test: provider version range floor matches or is below installed `@0xhoneyjar/loa-hounfour` version
 - [ ] Test: vectors bundle hash matches computed hash from `spec/vectors/*.json`
-- [ ] CI integration: `spec/contracts/__tests__/` included in standard `pnpm test` run — CI fails if an entrypoint is removed/renamed or vectors hash changes without updating the contract
-- [ ] Catches barrel drift in CI automatically
+- [ ] CI integration: test file at `themes/sietch/tests/unit/contract-spec.test.ts` included in standard Vitest run — CI fails if an entrypoint is removed/renamed or vectors hash changes without updating the contract
 
 ### Task 3.5: Create Ceremony Spec and Inaugural Artifact (FR-5)
 
@@ -260,15 +259,91 @@ This cycle addresses six Bridgebuilder recommendations from cycle-039's kaironic
 
 ---
 
+## Sprint 4: Bridgebuilder Finding Polish & Merge Readiness
+
+**Goal:** Address remaining MEDIUM and LOW findings from the Bridgebuilder review (bridge-20260224-a79420, iteration 1) to bring the PR to merge-ready quality. One LOW finding (error mode reporting) was already fixed in commit `1746fc64`.
+
+**Rationale:** The initial 3 sprints addressed all 6 Bridgebuilder recommendations from cycle-039. The iteration-1 Bridgebuilder review of this PR surfaced 3 MEDIUM and 4 LOW findings. MEDIUM-2 (admin rate-limiter key) is pre-existing middleware outside PR scope. The remaining findings are small, testable improvements that close the quality gap.
+
+### Task 4.1: Add Warnings to GraduationStatus (MEDIUM-1, LOW)
+
+**Description:** Add a `warnings: readonly string[]` field to `GraduationStatus` to surface operational anomalies without introducing a logger dependency (keeping the function pure and testable). Two warnings:
+
+1. **Clock-skew warning (MEDIUM-1):** When `now < deployTimestamp`, the evaluator clamps elapsed observation to 0. This is correct behavior but silent — operators get no signal that clock skew occurred. Add warning: `"clock_skew: now < deployTimestamp, observation window clamped to 0"`.
+2. **Zero-traffic warning (LOW):** When `shadowTotal === 0n`, divergence is vacuously met. This is mathematically correct but can surprise operators who see "graduation ready" before real traffic. Add warning: `"zero_traffic: graduation evaluated with no shadow traffic, divergence criterion is vacuously met"`.
+
+**Files:**
+- `themes/sietch/src/packages/core/protocol/graduation.ts` — Add `warnings` field to `GraduationStatus`, populate in `evaluateGraduation()`
+- `themes/sietch/tests/unit/graduation.test.ts` — Add tests for both warning conditions
+
+**Acceptance Criteria:**
+- [ ] `GraduationStatus.warnings` is `readonly string[]`, empty when no anomalies
+- [ ] When `now < deployTimestamp`, evaluator (a) treats elapsed observation as 0, and (b) includes `clock_skew` warning string
+- [ ] When `shadowTotal === 0n`, evaluator (a) treats divergence as vacuously met, and (b) includes `zero_traffic` warning string
+- [ ] Existing tests still pass (warnings array is empty for normal scenarios)
+- [ ] Two new test cases: one for clock skew, one for zero traffic
+
+### Task 4.2: Mode Consistency Defense-in-Depth (MEDIUM-3)
+
+**Description:** The gateway schema (`createMicroUsdSchema()`) and boundary parser (`parseBoundaryMicroUsd()`) both call `resolveParseMode()` independently. Since `resolveParseMode()` caches its result, they always agree. Add defense-in-depth:
+
+1. **Doc comment:** Add explicit note in `createMicroUsdSchema()` explaining the cache invariant and why the modes are guaranteed consistent.
+2. **Test:** Add a test in `micro-usd-schema.test.ts` that verifies `createMicroUsdSchema()` uses the same mode as `resolveParseMode()` under controlled env var settings (legacy, shadow, enforce).
+
+No runtime assertion needed — the cache guarantees consistency, and a runtime assertion would add overhead to every request for a condition that cannot occur. A test is the correct defense layer.
+
+**Test strategy:** `parse-boundary-micro-usd.ts` exports `resetParseModeCache()` for exactly this purpose. Each test case should: (1) call `resetParseModeCache()`, (2) set `process.env.PARSE_MICRO_USD_MODE` to the desired value, (3) verify `createMicroUsdSchema()` behavior matches the mode, (4) clean up. This avoids `vi.resetModules()` or worker isolation since the cache has an explicit reset API.
+
+**Files:**
+- `themes/sietch/src/packages/core/protocol/micro-usd-schema.ts` — Enhance doc comment on `createMicroUsdSchema()`
+- `themes/sietch/tests/unit/micro-usd-schema.test.ts` — Add mode consistency test
+
+**Acceptance Criteria:**
+- [ ] Doc comment in `createMicroUsdSchema()` explains cache invariant with `resolveParseMode()`
+- [ ] Test uses `resetParseModeCache()` to verify schema mode matches `resolveParseMode()` for all three modes (legacy, shadow, enforce)
+- [ ] Each test case resets the mode cache, sets env var, and verifies `createMicroUsdSchema()` produces the expected validation behavior
+- [ ] No runtime overhead added to request path
+
+### Task 4.3: Documentation Polish (LOW findings)
+
+**Description:** Address three LOW documentation findings in a single task:
+
+1. **MAX_INPUT_LENGTH doc (LOW):** Enhance the doc comment on `MAX_INPUT_LENGTH = 50` in `parse-boundary-micro-usd.ts` to explain derivation: `MAX_SAFE_MICRO_USD` is 15 digits, plus margin for sign/whitespace that may arrive from legacy clients, capped well below pathological parsing territory.
+
+2. **Config fingerprint replica comparison (LOW):** Add a doc comment to `emitConfigFingerprint()` in `config.ts` explaining how to compare fingerprints across replicas: grep structured logs for `configFingerprint`/`behaviorFingerprint` fields, alert when values diverge across instances within a deployment.
+
+3. **Contract README version guidance (LOW):** Add a section to `spec/contracts/README.md` explaining:
+   - What `provider_version_range` means (semver floor — freeside requires at least this version)
+   - How to bump it when freeside adopts new hounfour features
+   - Reference to SDD §3.2 for the contract schema specification
+
+**Files:**
+- `themes/sietch/src/packages/core/protocol/parse-boundary-micro-usd.ts` — Enhance `MAX_INPUT_LENGTH` doc comment
+- `themes/sietch/src/config.ts` — Enhance `emitConfigFingerprint()` doc comment
+- `spec/contracts/README.md` — Add version guidance section
+
+4. **MEDIUM-2 deferral record:** Add a note to the PR description documenting that MEDIUM-2 (admin rate-limiter IP fallback) is deferred because it is pre-existing middleware behavior outside this PR's scope. Include a follow-up recommendation for a dedicated hardening PR.
+
+**Acceptance Criteria:**
+- [ ] `MAX_INPUT_LENGTH` doc comment explains derivation from `MAX_SAFE_MICRO_USD` digit count
+- [ ] `emitConfigFingerprint()` doc comment includes replica comparison guidance
+- [ ] Contract README explains `provider_version_range` semantics and update procedure
+- [ ] MEDIUM-2 deferral documented in PR description with justification and follow-up pointer
+- [ ] No behavior changes — documentation only
+
+---
+
 ## Dependencies
 
 ```
 Sprint 1 (FR-6 naming + FR-1 graduation) → no dependencies
 Sprint 2 (FR-3 schema + FR-4 config)     → Sprint 1 (for protocol name in comments)
 Sprint 3 (FR-2 contract + FR-5 ceremony)  → Sprint 1 (protocol name for ceremony)
+Sprint 4 (BB finding polish)              → Sprints 1-3 (fixes review findings from implemented code)
 ```
 
 Sprint 2 and Sprint 3 are independent of each other (could theoretically run in parallel).
+Sprint 4 depends on all prior sprints being complete (it polishes their output).
 
 ---
 
@@ -279,7 +354,7 @@ Sprint 2 and Sprint 3 are independent of each other (could theoretically run in 
 | NFR-1 Zero Regression | No existing tests modified; all new files/tests are additive |
 | NFR-2 Documentation-First | FR-1, FR-4, FR-5, FR-6 produce verifiable documentation artifacts |
 | NFR-3 Backward Compatibility | FR-3 schema uses BigInt-permissive in legacy/shadow mode — identical to current behavior |
-| NFR-4 Observability | FR-1 adds Prometheus gauge from existing metrics; FR-4 adds config fingerprint log |
+| NFR-4 Observability | FR-1 adds Prometheus gauge from existing metrics; FR-4 adds config fingerprint log; Sprint 4 adds graduation warnings |
 
 ---
 
@@ -294,4 +369,8 @@ Sprint 2 and Sprint 3 are independent of each other (could theoretically run in 
 | Inaugural ceremony executed for PR #94 | Sprint 3 | 3.5 |
 | Protocol has a name in README, BUTTERFREEZONE, barrel | Sprint 1 | 1.1 |
 
-**Meta-criterion:** The Bridgebuilder, if re-run, would find zero of its six original recommendations still unaddressed.
+| Bridgebuilder MEDIUM findings addressed (M1, M3) | Sprint 4 | 4.1, 4.2 |
+| Bridgebuilder LOW findings addressed (all 4) | Sprint 4 | 4.1, 4.3 + commit `1746fc64` |
+| Documentation polish complete | Sprint 4 | 4.3 |
+
+**Meta-criterion:** The Bridgebuilder, if re-run, would find zero of its six original recommendations still unaddressed, and all iteration-1 MEDIUM/LOW findings resolved or explicitly deferred (MEDIUM-2 deferred: pre-existing middleware outside PR scope).

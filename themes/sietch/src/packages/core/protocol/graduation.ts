@@ -49,6 +49,8 @@ export interface GraduationStatus {
     observationWindow: { met: boolean; currentMs: number; thresholdMs: number };
     wouldRejectClean: { met: boolean; wouldRejectTotal: bigint; consecutiveCleanMs: number; thresholdMs: number };
   };
+  /** Operational warnings — empty when no anomalies detected */
+  readonly warnings: readonly string[];
   readonly evaluatedAt: string; // ISO 8601
 }
 
@@ -80,6 +82,8 @@ export function evaluateGraduation(
   criteria: BoundaryGraduationCriteria = DEFAULT_GRADUATION_CRITERIA,
   now: number = Date.now(),
 ): GraduationStatus {
+  const warnings: string[] = [];
+
   // BigInt integer arithmetic: divergenceTotal * 1_000_000 <= shadowTotal * thresholdPpm
   // This avoids Number conversion and maintains full precision.
   const divergenceMet = counters.shadowTotal > 0n
@@ -89,8 +93,15 @@ export function evaluateGraduation(
     ? (counters.divergenceTotal * PPM) / counters.shadowTotal
     : 0n;
 
+  if (counters.shadowTotal === 0n) {
+    warnings.push('zero_traffic: graduation evaluated with no shadow traffic, divergence criterion is vacuously met');
+  }
+
   // Clamp to zero to prevent negative window durations under clock skew
   const observationMs = Math.max(0, now - deployTimestamp);
+  if (now < deployTimestamp) {
+    warnings.push('clock_skew: now < deployTimestamp, observation window clamped to 0');
+  }
   const observationMet = observationMs >= criteria.minObservationWindowMs;
 
   // Would-reject consecutive-clean window:
@@ -113,6 +124,7 @@ export function evaluateGraduation(
       observationWindow: { met: observationMet, currentMs: observationMs, thresholdMs: criteria.minObservationWindowMs },
       wouldRejectClean: { met: wouldRejectMet, wouldRejectTotal: counters.wouldRejectTotal, consecutiveCleanMs, thresholdMs: criteria.wouldRejectConsecutiveWindowMs },
     },
+    warnings,
     evaluatedAt: new Date(now).toISOString(),
   };
 }

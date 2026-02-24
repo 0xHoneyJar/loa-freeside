@@ -78,6 +78,7 @@ describe('evaluateGraduation', () => {
       expect(result.criteria.divergenceRate.met).toBe(true);
       expect(result.criteria.observationWindow.met).toBe(true);
       expect(result.criteria.wouldRejectClean.met).toBe(true);
+      expect(result.warnings).toEqual([]);
     });
 
     it('should return ready when divergence is exactly at threshold (0.1% = 1000 PPM)', () => {
@@ -273,6 +274,7 @@ describe('evaluateGraduation', () => {
 
       expect(result.criteria.divergenceRate.met).toBe(true);
       expect(result.criteria.divergenceRate.currentPpm).toBe(0n);
+      expect(result.warnings).toContain('zero_traffic: graduation evaluated with no shadow traffic, divergence criterion is vacuously met');
     });
 
     it('should still require observation window even with zero traffic', () => {
@@ -340,6 +342,7 @@ describe('evaluateGraduation', () => {
 
       expect(result.ready).toBe(false);
       expect(result.criteria.observationWindow.currentMs).toBe(0);
+      expect(result.warnings).toContain('clock_skew: now < deployTimestamp, observation window clamped to 0');
     });
 
     it('should clamp consecutive-clean to 0 when lastWouldRejectTimestamp is in the future', () => {
