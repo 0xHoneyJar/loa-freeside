@@ -1,31 +1,31 @@
 {
   "verdict": "APPROVED",
-  "summary": "All previously-blocking contradictions and unverifiable assumptions were resolved with concrete scoping, measurable criteria, and explicit compatibility/negotiation rules, and no new truly blocking issues were introduced.",
+  "summary": "All previously blocking contradictions and underspecifications are resolved in a mode-aware, measurable way without introducing new release-blocking risks.",
   "previous_issues_status": [
     {
-      "original_issue": "Strict parsing (`parseMicroUsd`) adoption contradicts “zero breaking changes / no behavior changes” and could reject previously-accepted inputs",
+      "original_issue": "Contradiction between “gateway schema equal-or-tighter than boundary parser” and “must not reject any production-accepted inputs”",
       "status": "fixed",
-      "notes": "You explicitly narrowed FR-6 to protocol-boundary entry points, added an audit-before-replace requirement, allowed internal trusted paths to keep `BigInt()`, and updated NFR-1 to acknowledge intentional tightening with required tests/approval. This resolves the contradiction and makes rollout failure much less likely."
+      "notes": "FR-3/NFR-3 are now explicitly mode-aware: legacy/shadow schema preserves current production acceptance, enforce/canonical tightens and must be equal-or-tighter than the boundary parser. This directly resolves the earlier logical impossibility."
     },
     {
-      "original_issue": "Decision engine adoption (`evaluateEconomicBoundary`) required while also requiring identical allow/deny outcomes, potentially impossible",
+      "original_issue": "Graduation criteria referenced quarantine/replay but lacked a defined quarantine mechanism and computable thresholds",
       "status": "fixed",
-      "notes": "FR-5 is now clearly a stretch spike behind a feature flag on a new/secondary path, with equivalence only on a defined scenario set and an explicit deferral clause if equivalence can’t be proven. This removes the “must be identical everywhere” impossibility."
+      "notes": "FR-1 now removes quarantine/replay from this cycle and makes all three criteria computable from existing counters + deployment timestamps. AC-1.4 also makes the graduation status reportable via gauge/health check, which makes the criteria operationally evaluable."
     },
     {
-      "original_issue": "“95% of public API surface” goal is not measurable and encourages over-exporting/instability; FR-3 had speculative exports",
+      "original_issue": "Consumer-driven contract spec was defined in terms of provider internals (counts, implementation details), undermining stability",
       "status": "fixed",
-      "notes": "G-2 and FR-3 ACs now define a concrete, testable rule: export exactly what arrakis consumes, enforce via ‘zero direct imports outside barrel + designated modules’ and a grep check. This is measurable and avoids the arbitrary percentage target."
+      "notes": "FR-2 reframes the contract at the integration seam: pinned entrypoints + semantic behavior via a versioned conformance vector bundle hash. Internal counts are explicitly informational-only (AC-2.7), avoiding CI brittleness from refactors."
     },
     {
-      "original_issue": "Rebuild script AC assumed dist directory layout; should validate via resolvable specifiers/exports map instead",
+      "original_issue": "Admin readiness endpoint introduced without explicit authz/network exposure constraints (multi-tenant leakage risk)",
       "status": "fixed",
-      "notes": "FR-2 AC-2.2 is now expressed in terms of import specifiers resolving/typechecking per `package.json#exports`, not physical directories. That directly addresses the blocking assumption."
+      "notes": "AC-1.4 now requires protection via admin JWT claim check and internal-only network policy, and explicitly states it must not be tenant-accessible. This addresses the security blocker."
     },
     {
-      "original_issue": "Backward compatibility claim lacked a precise version negotiation predicate and concrete acceptance tests",
+      "original_issue": "TTL-based invalidation/hot-reload risk given module-import-time config caching could cause split-brain within a process",
       "status": "fixed",
-      "notes": "FR-8 now states an explicit compatibility predicate (as sourced from `validateCompatibility()`), and AC-8.2 provides concrete version-pair tests including the critical arrakis 7.9.2 ↔ finn 7.0.0 PASS case. NFR-4 is aligned with this."
+      "notes": "FR-4 chooses cold-restart as the strategy, explicitly marks TTL hot-reload out of scope, and explains the split-brain risk. AC-4.2/AC-4.3/AC-4.4 add enforceable documentation + fingerprinting to make the constraint operationally real."
     }
   ],
   "new_blocking_concerns": [],

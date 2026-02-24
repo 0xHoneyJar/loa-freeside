@@ -1,18 +1,51 @@
 {
-  "verdict": "APPROVED",
-  "summary": "The two previously-blocking issues (unpinned clone/checkout and rollback env var mismatch) are fixed correctly, and the revised SDD remains internally consistent and implementable without introducing new truly-blocking problems.",
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Most prior feedback is addressed (durable graduation via PromQL guidance, robust vector-run repo-root handling, and clearer mode sync), but the conformance vector bundle path story and the canonical micro-USD bound/limit remain internally contradictory and would cause incorrect gating/rejections in enforce mode.",
   "previous_issues_status": [
     {
-      "original_issue": "Rebuild script clone/checkout was not actually pinned to the expected SHA (depth-1 clone then checkout could fail or drift)",
+      "original_issue": "Graduation logic converts BigInt counters to Number causing precision loss",
       "status": "fixed",
-      "notes": "SDD §3.2 now uses a deterministic fetch-by-SHA flow (`git init` → `git fetch --depth 1 origin $EXPECTED_SHA` → `git checkout --detach FETCH_HEAD`) and then verifies `HEAD` equals `EXPECTED_SHA`. This reliably pins the build to the intended commit and satisfies the security intent of FR-2/AC-2.4."
+      "notes": "evaluateGraduation() keeps counters as BigInt and compares using integer PPM arithmetic; no lossy Number conversion."
     },
     {
-      "original_issue": "Rollback env var name contradicted implementation (runbook said PARSE_MICRO_USD_LEGACY but code used PARSE_MICRO_USD_MODE)",
+      "original_issue": "Graduation criteria requires deployTimestamp/lastWouldRejectTimestamp without a reliable source using existing metrics only",
       "status": "fixed",
-      "notes": "SDD §7 rollback now correctly references `PARSE_MICRO_USD_MODE=legacy`, matching §3.6 implementation. This makes the kill-switch operational during incidents."
+      "notes": "SDD now explicitly makes PromQL window check (increase(wouldRejectTotal[72h])==0) the durable source of truth and scopes the in-process timestamp as a real-time signal that resets on restart; this resolves the earlier contradiction."
+    },
+    {
+      "original_issue": "Contract validator uses require() and ignores path override; unreliable for ESM/subpath exports and can validate wrong artifact",
+      "status": "fixed",
+      "notes": "validate.mjs uses dynamic import() against installed package specifiers; this addresses ESM/subpath export resolution."
+    },
+    {
+      "original_issue": "Conformance vector bundle path mismatch (contract.json vs actual suite location)",
+      "status": "not_fixed",
+      "notes": "contract.json still asserts vectors live in spec/vectors/ and runners in spec/conformance/, but your stated repo context says the 205-vector suite lives in spec/conformance/. As written, the contract will hash/verify the wrong directory (or a non-existent one), breaking hash verification and/or behavioral gating."
+    },
+    {
+      "original_issue": "Canonical schema hard-codes max 18 digits which is wrong for $1T micro-USD and may reject legitimate requests",
+      "status": "not_fixed",
+      "notes": "The header comment still says canonical mode has a 'max 18 digits' constraint, while the code says 'no hardcoded digit limit' but then enforces MAX_SAFE_MICRO_USD = 1e15 ($1B). This is an unresolved platform-limit decision embedded into gateway validation and can catastrophically reject legitimate traffic on enforce."
+    },
+    {
+      "original_issue": "Claim 'no configuration drift is possible'—mode resolution could drift within a process",
+      "status": "fixed",
+      "notes": "SDD correctly scopes the guarantee to within a single process and requires resolveParseMode() as the single source of truth."
     }
   ],
-  "new_blocking_concerns": [],
+  "new_blocking_concerns": [
+    {
+      "location": "§3.2 FR-2 — contract.json conformance_vectors + §3.2.3 bundle hash generation",
+      "description": "The contract now defines conformance vectors as JSON files under spec/vectors/ and hashes that directory, but the provided architecture context says the conformance suite (205 vectors) is in spec/conformance/. If spec/vectors/ does not exist or is incomplete, the bundle hash is meaningless and provider/consumer CI will validate the wrong artifact.",
+      "why_blocking": "This breaks the core purpose of FR-2 (behavioral contract). Either CI fails spuriously (missing path) or, worse, passes while hashing the wrong data, allowing behavioral regressions through.",
+      "fix": "Make contract.json match reality and be unambiguous: either (A) set data_path to spec/conformance/ (if vectors are actually there) and define exactly what files are hashed (e.g., spec/conformance/vectors/*.json), or (B) actually introduce spec/vectors/ as the canonical data location and update the repo accordingly (move/copy vectors + update runners). Then regenerate vectors-bundle.sha256 from that canonical location and ensure validate.mjs verifies the hash against that same path."
+    },
+    {
+      "location": "§3.3 FR-3 — micro-usd-schema.ts canonical/enforce mode",
+      "description": "Canonical gateway validation enforces MAX_SAFE_MICRO_USD (documented as 1e15 = $1B) while also claiming canonical matches parseMicroUsd acceptance and simultaneously mentioning 'max 18 digits'. This embeds an arbitrary cap at the gateway that may not be the platform economic limit and may not match boundary/canonical behavior.",
+      "why_blocking": "On graduation to enforce, the gateway can begin rejecting previously valid (and economically legitimate) requests, causing production outages or forced rollback. This is a correctness/security boundary issue because it changes economic behavior at the perimeter without a clearly defined, shared source of truth.",
+      "fix": "Pick one consistent, shared rule and wire it to a single source of truth used by BOTH gateway schema and boundary parser: (1) If the platform has a real max (limit/budget max), define MAX_MICRO_USD as that platform maximum (config-validated) and enforce it consistently everywhere; remove all '18 digits' references. OR (2) If there is no global cap at parse time, remove the MAX_SAFE_MICRO_USD refine from the gateway and validate only format + BigInt parseability (and let downstream limit checks enforce budgets). In either case, update the comments and the FR-3 test table to match."
+    }
+  ],
   "iteration": 3
 }

@@ -1,50 +1,50 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "Most previously-blocking issues were fixed (artifact-bound verification, determinism framing, import access control, dual-version replay strategy, export-map alignment, and staged dual-parse), but two new/remaining blocking problems exist: the rebuild script’s clone/checkout is not actually pinned to the expected SHA, and the rollback env var name contradicts the implementation.",
+  "summary": "Some key fixes landed (BigInt-safe graduation math and ESM contract validator), but two previously-blocking items remain inconsistent/incorrect: the conformance vector bundle path/location and the canonical micro-USD bound/limit story (including an internal contradiction about digit caps).",
   "previous_issues_status": [
     {
-      "original_issue": "Supply-chain verification was TOCTOU / verified SHA but required from workspace node_modules (wrong artifact)",
+      "original_issue": "Graduation logic converts BigInt counters to Number causing precision loss",
       "status": "fixed",
-      "notes": "Now builds in an isolated temp clone, embeds dist/SOURCE_SHA, computes a dist hash, and validates resolution against the built dist path rather than node_modules. This correctly binds verification to the artifact being produced/consumed."
+      "notes": "evaluateGraduation() now keeps counters as BigInt and compares divergence as a rational using PPM integer arithmetic; no lossy Number conversion."
     },
     {
-      "original_issue": "Determinism claim incorrectly used `tsc --strict` as a reproducibility control",
-      "status": "fixed",
-      "notes": "SDD now correctly states strict is not determinism, and adds real controls (pinned Node/TS, npm ci/frozen lockfile, stable tsconfig, SOURCE_DATE_EPOCH)."
+      "original_issue": "Graduation criteria requires deployTimestamp/lastWouldRejectTimestamp without a reliable source using existing metrics only",
+      "status": "not_fixed",
+      "notes": "The SDD still requires deployTimestamp and introduces lastWouldRejectTimestamp as an in-memory per-process timestamp. That is not computable from existing Prometheus counters alone and is explicitly non-durable across restarts, which breaks the stated requirement 'computed entirely from existing metrics' and makes the 72h consecutive-clean criterion non-portable/incorrect unless you formally switch to a PromQL window check as the actual source of truth."
     },
     {
-      "original_issue": "Import access control enforcement used the wrong ESLint mechanism (`import/no-restricted-paths`)",
+      "original_issue": "Contract validator uses require() and ignores path override; unreliable for ESM/subpath exports and can validate wrong artifact",
       "status": "fixed",
-      "notes": "Switched to ESLint core `no-restricted-imports` with specifier patterns and allowlisted overrides, plus CI AST fallback. This is implementable and matches the requirement."
+      "notes": "validate.mjs uses dynamic import() and validates the installed package entrypoints, which addresses ESM/subpath exports reliability and avoids the prior 'wrong artifact' issue."
     },
     {
-      "original_issue": "Boundary payload replay required comparing v7.0.0 vs v7.9.2 but only one version can be installed; harness not specified",
-      "status": "fixed",
-      "notes": "Replaced dual-install with a golden-baseline strategy (generate under v7.0.0, commit, then compare under v7.9.2). This is implementable and meets AC-1.6 intent."
+      "original_issue": "Conformance vector bundle path mismatch (contract.json vs actual suite location)",
+      "status": "not_fixed",
+      "notes": "contract.json still sets conformance_vectors.bundle_path to \"spec/vectors/\" while earlier context says the 205-vector suite lives in spec/conformance/. The SDD tries to split 'data in spec/vectors' vs 'runners in spec/conformance', but the provided repo context you gave says vectors are in spec/conformance/. As written, this is still inconsistent and will break hash verification or validate the wrong thing."
     },
     {
-      "original_issue": "Barrel re-exports may use wrong specifiers vs export map (root vs subpath), causing runtime resolution failures",
-      "status": "fixed",
-      "notes": "SDD explicitly requires aligning to v7.9.2 exports map and adds an export-map validation test that imports from the exact specifiers used. That addresses the runtime failure risk."
+      "original_issue": "Canonical schema hard-codes max 18 digits which is wrong for $1T micro-USD and may reject legitimate requests",
+      "status": "not_fixed",
+      "notes": "The schema text still claims 'max 18 digits' in multiple places (header comment + test table), but the implementation now says 'no hardcoded digit limit' and instead references MAX_SAFE_MICRO_USD (1e15 = $1B). That is a new bound that is not justified as the platform limit and would be catastrophically restrictive if real limits exceed $1B. This remains a blocking correctness risk for enforce mode."
     },
     {
-      "original_issue": "parseMicroUsd dual-parse wrapper could prevent safe cutover (legacy fallback forever) and lacked operational gating",
+      "original_issue": "Claim 'no configuration drift is possible'—mode resolution could drift within a process",
       "status": "fixed",
-      "notes": "Now has explicit staged modes (legacy/shadow/enforce), a discriminated union return, caller responsibility by boundary type, metrics + threshold, timebox to remove shadow, and a kill-switch. This is operationally sound."
+      "notes": "The SDD now scopes the guarantee to 'within a single Node.js process' and requires both gateway schema and boundary parser to call the same resolveParseMode() function, which is an acceptable single-source-of-truth approach under the cold-restart strategy."
     }
   ],
   "new_blocking_concerns": [
     {
-      "location": "SDD §3.2 FR-2 Rebuild Script Update — Step 1/2 (git clone/checkout)",
-      "description": "The script uses `git clone --depth 1` and then `git checkout \"$EXPECTED_SHA\"`. With a depth-1 clone of the default branch tip, the expected commit SHA will often not exist locally, causing checkout to fail (or forcing an implicit fetch that is not specified). This makes the rebuild pipeline unreliable and can block the upgrade or lead engineers to weaken verification to “make it work.”",
-      "why_blocking": "FR-2 is a hard security requirement (AC-2.4). If the script cannot reliably check out the pinned SHA, the supply-chain verification mechanism will fail in CI/automation, blocking the release or encouraging insecure workarounds.",
-      "fix": "Make the clone fetch the exact commit deterministically. For example:\n- Option A (recommended): `git init`, `git remote add origin`, `git fetch --depth 1 origin $EXPECTED_SHA`, then `git checkout --detach FETCH_HEAD`.\n- Option B: `git clone --no-checkout $HOUNFOUR_REPO $CLONE_DIR && cd $CLONE_DIR && git fetch --depth 1 origin $EXPECTED_SHA && git checkout --detach $EXPECTED_SHA`.\nAlso add `set -euo pipefail` and explicit error messages on fetch/checkout failure."
+      "location": "§3.3 FR-3 — createMicroUsdSchema() references MAX_SAFE_MICRO_USD and MAX_INPUT_LENGTH but neither is defined/imported in the snippet",
+      "description": "The proposed schema code as written will not compile (undefined identifiers), and the bound constant is described as an 'existing safety floor' but not actually wired to an existing source of truth.",
+      "why_blocking": "This is not a style issue: it prevents implementation as specified and, more importantly, risks enforcing an arbitrary cap at the gateway that can reject legitimate traffic on graduation.",
+      "fix": "Define/import these constants from an explicit, existing economic-limit source of truth (e.g., config-derived MAX_BUDGET_MICRO_USD / MAX_LIMIT_MICRO_USD) and make the SDD consistent: either (a) no numeric cap at gateway beyond 'fits BigInt + format', or (b) a cap that is explicitly the platform maximum and matches boundary/canonical parse behavior. Remove the lingering '18 digits' statements and update tests accordingly."
     },
     {
-      "location": "SDD §7 Rollback Strategy vs §3.6 FR-6 parseMicroUsd rollout",
-      "description": "Rollback table specifies `PARSE_MICRO_USD_LEGACY=true`, but the implementation uses `PARSE_MICRO_USD_MODE=legacy|shadow|enforce`. This mismatch will cause the documented kill-switch to not work during an incident.",
-      "why_blocking": "Rollback must be practical and correct per the verification checklist. In an outage caused by boundary tightening, operators will follow the runbook; if the env var is wrong, the service will continue rejecting inputs and recovery will fail.",
-      "fix": "Unify on a single control. Either (a) update rollback docs to `PARSE_MICRO_USD_MODE=legacy`, or (b) support both by implementing `if (process.env.PARSE_MICRO_USD_LEGACY === 'true') mode='legacy'` as a backward-compatible alias, and document precedence."
+      "location": "§3.2 FR-2 — validate.mjs conformance run uses cwd join(__dirname, '../..')",
+      "description": "The script assumes a specific directory layout when executed from node_modules (as suggested in the comment). In node_modules, '../..' from spec/contracts may not land on the consumer repo root that contains spec/conformance/.",
+      "why_blocking": "In provider CI (hounfour), this can make --run-vectors fail even when the contract is satisfied, breaking the release gate or forcing teams to disable vector runs (defeating the behavioral contract).",
+      "fix": "Resolve the consumer package root robustly (e.g., walk up to the nearest package.json for loa-freeside, or accept an explicit --repo-root argument). Alternatively, run vectors only in the consumer repo CI and keep provider CI to entrypoint export validation + bundle hash verification."
     }
   ],
   "iteration": 2
