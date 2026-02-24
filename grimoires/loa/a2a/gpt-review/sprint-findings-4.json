@@ -1,18 +1,35 @@
 {
-  "verdict": "APPROVED",
-  "summary": "Both previously-blocking acceptance-criteria inconsistencies were corrected cleanly, and the revisions do not introduce any new truly blocking problems.",
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Most Sprint 4 fixes correctly address the Bridgebuilder findings, but the plan still has a truly blocking inconsistency around test file locations that can cause CI/test discovery failure or false-green coverage.",
   "previous_issues_status": [
     {
-      "original_issue": "Task 1.1 ACs were internally inconsistent about which control characters are targeted vs the provided regex, risking wrong error-code classification and whitespace-test regressions.",
-      "status": "fixed",
-      "notes": "The plan now explicitly pins the whitespace regex to `/[\\t\\n\\r\\f\\v ]/` (the exact 6 chars) and defines the control-char set as the complement: `\\x00-\\x08`, `\\x0E-\\x1F`, `\\x7F`, with regex `/[\\x00-\\x08\\x0E-\\x1F\\x7F]/`. It also adds a partitioning test ensuring \\t/\\n/\\r/\\f/\\v map to SAFETY_WHITESPACE while nearby controls map to SAFETY_CONTROL_CHAR, which directly addresses the earlier ambiguity/churn risk."
+      "original_issue": "Inconsistent/likely incorrect test file locations between Sprints 1/2 and Sprint 4",
+      "status": "not_fixed",
+      "notes": "Sprint 4 explicitly keeps tests in `themes/sietch/tests/unit/...` while Sprint 1/2 still specify `themes/sietch/src/packages/core/protocol/__tests__/...`. This is exactly the mismatch previously flagged. Unless the repo’s test runner is already configured to discover both locations (not stated here), this remains a merge/CI blocker (either tests won’t run or CI will fail due to missing/duplicated suites). The plan needs to converge on one convention or explicitly add the wiring/AC to include `tests/unit/**` in discovery and update earlier sprint paths accordingly."
     },
     {
-      "original_issue": "Task 1.5 AC-1.5.2 used an incorrect hardcoded `'1'.repeat(15)` example and incorrect numeric equivalence, which could keep the test failing depending on MAX_SAFE_MICRO_USD.",
+      "original_issue": "MEDIUM-2 deferral needed an explicit deliverable (recorded with justification + follow-up pointer)",
       "status": "fixed",
-      "notes": "AC-1.5.2 now derives the test input from the constant (`String(MAX_SAFE_MICRO_USD)`) and adds a just-below-boundary test (`String(MAX_SAFE_MICRO_USD - 1n)`), making the expectation CI-verifiable and immune to future constant changes."
+      "notes": "Task 4.3 now includes an explicit “MEDIUM-2 deferral record” item with justification and a follow-up pointer requirement in the acceptance criteria. This satisfies the cycle acceptance criterion."
+    },
+    {
+      "original_issue": "Mode consistency testability gap due to module-level caching of resolveParseMode()",
+      "status": "fixed",
+      "notes": "Sprint 4.2 introduces `resetParseModeCache()` as the test strategy, avoiding `vi.resetModules()`/worker isolation and making the mode-matrix test achievable under cold-restart caching constraints. This directly resolves the prior testability concern (assuming the reset API exists/gets added as part of the implementation)."
+    },
+    {
+      "original_issue": "Clock-skew warning task was too line/implementation-specific (Math.max clamp) rather than behavior-based",
+      "status": "fixed",
+      "notes": "Task 4.1 acceptance criteria are now behavior-based: when `now < deployTimestamp`, treat elapsed as 0 and emit a warning. It no longer depends on a specific `Math.max` implementation detail, while still addressing the MEDIUM-1 symptom."
     }
   ],
-  "new_blocking_concerns": [],
+  "new_blocking_concerns": [
+    {
+      "location": "Sprint 4 Task 4.1 and 4.2 test file paths vs Sprint 1 Task 1.3 and Sprint 2 Task 2.3",
+      "description": "The plan now codifies two different test directory conventions (`src/**/__tests__` vs `tests/unit/**`) without adding any explicit test-runner discovery wiring or updating earlier sprint tasks to match.",
+      "why_blocking": "This can realistically break CI (missing files, tests not executed, or duplicate suites) and can also produce false-green results where the new Sprint 4 tests never run. Given Sprint 4’s purpose is to close Bridgebuilder findings with tests, undiscovered tests would fail the acceptance criteria in practice and risk re-flagging on re-review.",
+      "fix": "Choose one convention and make it consistent across the plan. Either: (A) update Sprint 4 to modify/add tests in the original locations: `themes/sietch/src/packages/core/protocol/__tests__/graduation.test.ts` and `.../__tests__/micro-usd-schema.test.ts`; or (B) update Sprint 1/2 tasks to use `themes/sietch/tests/unit/...` and add an explicit Sprint task/AC to ensure Vitest/Jest discovery includes `themes/sietch/tests/unit/**` (and that `pnpm test` in CI runs them)."
+    }
+  ],
   "iteration": 2
 }

@@ -1,36 +1,32 @@
 {
-  "plan_id": "plan-20260223-cycle039-hounfour",
-  "branch": "feature/launch-readiness",
-  "state": "JACKED_OUT",
+  "plan_id": "plan-20260224-the-naming",
+  "branch": "feature/the-naming",
+  "state": "RUNNING",
+  "bridge_id": "bridge-20260224-a79420",
   "timestamps": {
-    "started": "2026-02-23T13:25:00Z",
-    "last_activity": "2026-02-24T05:00:00Z"
+    "started": "2026-02-24T16:00:00Z",
+    "last_activity": "2026-02-25T02:30:00Z"
   },
   "sprints": {
-    "total": 5,
-    "completed": 5,
-    "current": null,
+    "total": 4,
+    "completed": 3,
+    "current": "sprint-4",
     "list": [
-      { "id": "sprint-1", "global_id": 343, "status": "completed", "cycles": 1, "files_changed": 9 },
-      { "id": "sprint-2", "global_id": 344, "status": "completed", "cycles": 1, "files_changed": 12 },
-      { "id": "sprint-3", "global_id": 345, "status": "completed", "cycles": 1, "files_changed": 5 },
-      { "id": "sprint-4", "global_id": 346, "status": "completed", "cycles": 1, "files_changed": 15 },
-      { "id": "sprint-5", "global_id": 347, "status": "completed", "cycles": 1, "files_changed": 8 }
+      {"id": "sprint-1", "global_id": 349, "status": "completed", "cycles": 1, "files_changed": 7},
+      {"id": "sprint-2", "global_id": 350, "status": "completed", "cycles": 1, "files_changed": 12},
+      {"id": "sprint-3", "global_id": 351, "status": "completed", "cycles": 1, "files_changed": 7},
+      {"id": "sprint-4", "global_id": 352, "status": "in_progress", "cycles": 0, "files_changed": 0}
     ]
   },
   "options": {
-    "from": 1,
-    "to": 5,
+    "from": 4,
+    "to": 4,
     "max_cycles": 20,
     "timeout_hours": 8
   },
   "metrics": {
-    "total_cycles": 5,
-    "total_files_changed": 49,
-    "total_findings_fixed": 24
-  },
-  "simstim": {
-    "simstim_id": "simstim-20260223-hounfour-convergence",
-    "phase": "complete"
+    "total_cycles": 3,
+    "total_files_changed": 26,
+    "total_findings_fixed": 6
   }
 }

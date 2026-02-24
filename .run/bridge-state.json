@@ -1,73 +1,96 @@
 {
   "schema_version": 1,
-  "bridge_id": "bridge-20260224-d039eco",
-  "state": "JACKED_OUT",
+  "bridge_id": "bridge-20260224-a79420",
+  "state": "ITERATING",
   "config": {
     "depth": 3,
     "mode": "full",
     "flatline_threshold": 0.05,
     "per_sprint": false,
-    "branch": "feature/launch-readiness",
-    "repo": "0xHoneyJar/loa-freeside"
+    "branch": "feature/the-naming",
+    "repo": ""
   },
   "timestamps": {
-    "started": "2026-02-24T12:00:00Z",
-    "last_activity": "2026-02-24T14:45:00Z",
-    "completed": "2026-02-24T14:45:00Z"
+    "started": "2026-02-24T08:04:31Z",
+    "last_activity": "2026-02-25T02:30:00Z"
   },
   "iterations": [
     {
       "iteration": 1,
-      "commit": "44f40059",
-      "review_path": ".run/bridge-reviews/bridge-20260224-d039eco-iter1-full.md",
-      "findings": {
-        "total": 10,
-        "high": 1,
-        "medium": 1,
-        "low": 2,
-        "praise": 5,
-        "speculation": 1,
-        "false_positives": 1
+      "state": "completed",
+      "sprint_plan_source": "existing",
+      "sprints_executed": 3,
+      "bridgebuilder": {
+        "total_findings": 12,
+        "by_severity": {
+          "critical": 0,
+          "high": 0,
+          "medium": 3,
+          "low": 4,
+          "vision": 0,
+          "praise": 5
+        },
+        "severity_weighted_score": 0.14,
+        "pr_comment_url": "https://github.com/0xHoneyJar/loa-freeside/pull/95#issuecomment-3950120492"
       },
-      "severity_weighted_score": 9,
-      "effective_score": 4,
-      "sprint_generated": true,
-      "sprint_id": "sprint-348-iter1-fix",
-      "files_changed": 1,
-      "findings_addressed": 1
+      "enrichment": {
+        "persona_loaded": false,
+        "persona_validation": "skipped",
+        "findings_format": "structured",
+        "field_fill_rates": {
+          "faang_parallel": 0,
+          "metaphor": 0,
+          "teachable_moment": 0,
+          "connection": 0
+        },
+        "praise_count": 5,
+        "insights_size_bytes": 0,
+        "redactions_applied": 0
+      },
+      "visions_captured": 0,
+      "started_at": "2026-02-24T08:04:31Z",
+      "updated_at": "2026-02-25T01:47:00Z"
     },
     {
       "iteration": 2,
-      "commit": "72cd0cce",
-      "review_path": ".run/bridge-reviews/bridge-20260224-d039eco-iter2-full.md",
-      "findings": {
-        "total": 4,
-        "high": 0,
-        "medium": 0,
-        "low": 1,
-        "praise": 3,
-        "speculation": 0,
-        "false_positives": 1
+      "state": "in_progress",
+      "sprint_plan_source": "findings_from_iter_1",
+      "sprints_executed": 0,
+      "bridgebuilder": {
+        "total_findings": 0,
+        "by_severity": {},
+        "severity_weighted_score": 0,
+        "pr_comment_url": ""
       },
-      "severity_weighted_score": 1,
-      "effective_score": 0,
-      "sprint_generated": false,
-      "files_changed": 0,
-      "findings_addressed": 0
+      "enrichment": {
+        "persona_loaded": false,
+        "persona_validation": "pending",
+        "findings_format": "structured",
+        "field_fill_rates": {},
+        "praise_count": 0,
+        "insights_size_bytes": 0,
+        "redactions_applied": 0
+      },
+      "visions_captured": 0,
+      "started_at": "2026-02-25T02:30:00Z",
+      "updated_at": "2026-02-25T02:30:00Z"
     }
   ],
   "flatline": {
-    "initial_score": 4,
-    "last_score": 0,
-    "scores": [4, 0],
-    "consecutive_below_threshold": 1,
-    "convergence": "kaironic",
-    "convergence_rate": 1.0
+    "initial_score": 0.14,
+    "last_score": 0.14,
+    "consecutive_below_threshold": 1
   },
   "metrics": {
-    "total_sprints_executed": 1,
-    "total_files_changed": 5,
+    "total_sprints_executed": 3,
+    "total_files_changed": 26,
     "total_findings_addressed": 6,
     "total_visions_captured": 0
+  },
+  "finalization": {
+    "ground_truth_updated": false,
+    "rtfm_passed": true,
+    "pr_url": "https://github.com/0xHoneyJar/loa-freeside/pull/95",
+    "butterfreezone_generated": true
   }
 }

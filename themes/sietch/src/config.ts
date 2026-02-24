@@ -1,4 +1,28 @@
+/**
+ * Application Configuration — Cold-Restart Strategy
+ *
+ * All configuration is read from environment variables at module load time and
+ * validated via Zod schemas. Configuration is immutable for the lifetime of the
+ * process — changes require a cold restart (process restart / redeployment).
+ *
+ * Cold-restart constraint rationale (SDD §3.4, cycle-040 FR-4):
+ *   Module-level caching in resolveParseMode(), config parsing, and Zod schema
+ *   creation means that env var mutations after startup are invisible to cached
+ *   values. Hot-reload would create split-brain between cached and fresh reads.
+ *   Cold restart is the only safe invalidation strategy.
+ *
+ * Behavior-affecting env vars (cached at module load):
+ *   - PARSE_MICRO_USD_MODE: Controls parseBoundaryMicroUsd + createMicroUsdSchema mode
+ *   - FEATURE_*: All feature flags (cached via Zod parse)
+ *
+ * Runtime-evaluable flags: None currently. All flags require cold restart.
+ *
+ * @see SDD cycle-040 §3.4 — Cold-Restart Config Strategy
+ * @module config
+ */
+
 import { z } from 'zod';
+import { createHash } from 'crypto';
 import { config as dotenvConfig } from 'dotenv';
 import type { Address } from 'viem';
 import { logger } from './utils/logger.js';
@@ -1126,6 +1150,76 @@ function validateStartupConfig(cfg: typeof parsedConfig): void {
 
 // Run startup validation
 validateStartupConfig(parsedConfig);
+
+// ---------------------------------------------------------------------------
+// Config Fingerprint (cycle-040, FR-4, AC-4.4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Behavior-affecting env var keys whose values influence runtime behavior.
+ * Hashed into the behavior fingerprint so operators can detect config drift
+ * between deploys without leaking secret values.
+ */
+const BEHAVIOR_KEYS = [
+  'PARSE_MICRO_USD_MODE',
+  'FEATURE_BILLING_ENABLED',
+  'FEATURE_GATEKEEPER_ENABLED',
+  'FEATURE_REDIS_ENABLED',
+  'FEATURE_TELEGRAM_ENABLED',
+  'FEATURE_VAULT_ENABLED',
+  'USE_GATEWAY_PROXY',
+  'FEATURE_CRYPTO_PAYMENTS_ENABLED',
+  'FEATURE_API_KEYS_ENABLED',
+  'FEATURE_WEB_CHAT_ENABLED',
+  'CHAIN_PROVIDER',
+] as const;
+
+/**
+ * Emit a deterministic config fingerprint at startup.
+ *
+ * Two fingerprints are logged:
+ *   - `configFingerprint`: SHA-256 of sorted top-level config *key names* only
+ *     (not values — values may contain secrets). Detects schema shape drift.
+ *   - `behaviorFingerprint`: SHA-256 of behavior-affecting env var key=value
+ *     pairs. Detects mode/flag changes between deploys.
+ *
+ * Operator guidance: compare `behaviorFingerprint` across replicas to detect
+ * config drift. Identical hashes confirm all instances share the same mode
+ * and feature flag state. Mismatches indicate an env var divergence — check
+ * PARSE_MICRO_USD_MODE and FEATURE_* values across the fleet.
+ *
+ * @param log - Injectable logger for testability (defaults to module logger)
+ */
+export function emitConfigFingerprint(
+  log: { info: (obj: Record<string, unknown>, msg: string) => void } = logger,
+): { configFingerprint: string; behaviorFingerprint: string } {
+  // Config shape fingerprint: sorted top-level key names
+  const configKeys = Object.keys(parsedConfig).sort().join(',');
+  const configFingerprint = createHash('sha256').update(configKeys).digest('hex').slice(0, 16);
+
+  // Behavior fingerprint: sorted behavior-affecting env var key=value pairs
+  const behaviorPairs = BEHAVIOR_KEYS
+    .map((key) => `${key}=${process.env[key] ?? ''}`)
+    .sort()
+    .join('\n');
+  const behaviorFingerprint = createHash('sha256').update(behaviorPairs).digest('hex').slice(0, 16);
+
+  log.info(
+    {
+      event: 'config.fingerprint',
+      configFingerprint,
+      behaviorFingerprint,
+      behaviorKeys: [...BEHAVIOR_KEYS],
+      runtimeEvaluable: [] as string[],
+    },
+    `Config fingerprint: config=${configFingerprint} behavior=${behaviorFingerprint}`,
+  );
+
+  return { configFingerprint, behaviorFingerprint };
+}
+
+// Emit fingerprint at startup
+emitConfigFingerprint();
 
 /**
  * Validated and typed configuration

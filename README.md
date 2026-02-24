@@ -11,7 +11,7 @@ Multi-model agent economy infrastructure platform. Token-gated AI capabilities, 
 
 ## What is Freeside?
 
-Freeside is the platform layer of the [Loa protocol](https://github.com/0xHoneyJar/loa) — a multi-tenant infrastructure for building and operating AI agent economies on-chain. It connects on-chain token holdings to AI capabilities: communities configure conviction-based tiers, each tier unlocks access to different model pools, and all inference runs through budget-atomic accounting with per-model cost attribution.
+Freeside is the platform layer of the [Loa protocol](https://github.com/0xHoneyJar/loa) — a multi-tenant infrastructure for building and operating AI agent economies on-chain. Freeside implements the **Commons Protocol** — a community-governed economic protocol for AI inference with conservation invariants, conviction-gated access, and transparent disagreement resolution. It connects on-chain token holdings to AI capabilities: communities configure conviction-based tiers, each tier unlocks access to different model pools, and all inference runs through budget-atomic accounting with per-model cost attribution.
 
 <!-- cite: loa-freeside:packages/core/ports/ -->
 

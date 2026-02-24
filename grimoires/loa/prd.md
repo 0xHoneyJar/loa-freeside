@@ -1,35 +1,35 @@
-# PRD: Hounfour v7.9.2 Full Adoption — Protocol Convergence
+# PRD: The Naming — Engineering Excellence & Protocol Identity
 
-**Version:** 1.2.0
-**Cycle:** cycle-039
-**Date:** 2026-02-23
+**Version:** 1.1.0
+**Cycle:** cycle-040
+**Date:** 2026-02-24
 **Status:** Draft
 
-> Sources: loa-finn#66 (Launch Readiness RFC), loa-hounfour v7.9.2 release notes,
-> grimoires/loa/context/v7-export-audit.md (cycle-034), grimoires/loa/context/rfc31-hounfour.md
+> Sources: Bridgebuilder review (bridge-20260224-d039eco, iteration 1-2),
+> cycle-039 archive (PR #94), ground-truth/architecture.md, ground-truth/contracts.md,
+> grimoires/loa/context/rfc31-hounfour.md, README.md
 
 ---
 
 ## 1. Problem Statement
 
-Freeside (arrakis) pins loa-hounfour at commit `ec50249` (v7.0.0), released 2026-02-17. The canonical protocol has since evolved through 9 additive minor releases to v7.9.2 (2026-02-23), introducing:
+Cycle 039 achieved full protocol convergence with loa-hounfour v7.9.2 — 513 files changed, 202 conformance vectors passing, shadow-to-enforce parsing deployed, conservation guard with fencing tokens, JWT boundary verification. The Bridgebuilder review (kaironic convergence, scores [4, 0]) surfaced six structural recommendations that represent the difference between "working software" and "excellent engineering."
 
-- A **shared decision engine** (`evaluateEconomicBoundary`) that codifies trust × capital → access decisions
-- **Strict BigInt parsing** (`parseMicroUsd`) replacing ad-hoc string→bigint conversion
-- **6-dimensional capability-scoped trust** replacing flat trust levels
-- **Liveness properties** complementing the 14 safety (conservation) invariants
-- **Governance vocabulary** (sanctions, disputes, reputation) formalizing patterns arrakis implements locally
-- **Doubled conformance coverage** (91 → 202 test vectors)
-- **42 evaluator builtins** (was 31), enabling richer constraint evaluation
+These six gaps share a common root: **the codebase does operational things well but doesn't formalize the operational knowledge into enforceable contracts, documented strategies, or named identity.** Specifically:
 
-Freeside's local protocol layer (`themes/sietch/src/packages/core/protocol/`) contains vendored types that duplicate, shadow, or lag behind canonical equivalents. The v7-export-audit (cycle-034) identified the disposition of each file but only the v7.0.0 baseline was adopted. Nine minor versions of protocol evolution remain unconsumed.
+1. **Shadow-to-enforce has no graduation criteria.** The `parseBoundaryMicroUsd` three-mode pattern (legacy/shadow/enforce) exists and is tested, but there are no explicit criteria for when shadow mode should graduate to enforce mode. Without criteria, the migration will stall — shadow mode becomes permanent rather than transitional.
 
-**This creates three risks:**
-1. **Drift**: Local types diverge from canonical definitions, creating subtle incompatibilities
-2. **Duplication**: Engineering effort spent maintaining local versions of types that exist upstream
-3. **Feature gap**: New canonical capabilities (decision engine, liveness properties, governance) go unused despite being directly relevant to arrakis's conservation guard, velocity service, and governance auth
+2. **Conformance testing is unidirectional.** The 205-vector conformance suite runs in freeside's CI after hounfour releases, but not in hounfour's CI before release. This means breaking changes in hounfour can ship without freeside knowing until after the fact.
 
-> Source: v7-export-audit.md, v7.9.2 release notes
+3. **Micro-USD validation lacks a first line of defense.** The `parseBoundaryMicroUsd` safety floor is the correct last line of defense, but API gateway inputs accept raw strings without OpenAPI schema constraints. Invalid inputs travel through the entire request path before being rejected at the boundary parser.
+
+4. **Module-level env var caching has no invalidation strategy.** `config.ts` loads and validates environment variables at module import time. There is no TTL-based invalidation and no documentation that mode changes require cold restart.
+
+5. **Post-merge synthesis is informal.** Field reports on GitHub issue #24 serve as post-merge ceremony informally, but there is no structural post-merge ritual that connects what was built to what it means. The Bridgebuilder reviews themselves are the closest thing, but they are pre-merge, not post-merge.
+
+6. **The protocol has no name.** The README says "distribution platform." The PR title says "Protocol Convergence." The web4 manifesto says "social monies." But the code says something more specific: a community-governed economic protocol for AI inference, with conservation invariants, conviction-gated access, and transparent disagreement resolution. Without a name, the architecture has no north star to follow.
+
+> Source: Bridgebuilder bridge-20260224-d039eco, iterations 1-2
 
 ---
 
@@ -37,246 +37,162 @@ Freeside's local protocol layer (`themes/sietch/src/packages/core/protocol/`) co
 
 | ID | Goal | Metric |
 |----|------|--------|
-| G-1 | Pin hounfour at v7.9.2 (`ff8c16b`) with zero runtime regressions | All existing 5420+ tests pass |
-| G-2 | Adopt new canonical types in protocol barrel | Protocol barrel exports exactly the symbols consumed by arrakis adapters, services, routes, and conformance suite — verified by zero direct `@0xhoneyjar/loa-hounfour` imports outside the barrel and designated low-level modules |
-| G-3 | Replace local implementations with canonical equivalents where audit says REDUCE/DELETE | ≥5 local implementations replaced |
-| G-4 | Expand conformance test coverage to v7.9.2 vectors | 202 conformance vectors passing (was 91) |
-| G-5 | Spike `evaluateEconomicBoundary` behind feature flag on one new path | Feature-flagged integration with equivalence test on ≥10 defined scenarios |
-| G-6 | Adopt `parseMicroUsd` at protocol boundary parsing layer | Protocol boundary entry points use `parseMicroUsd`; internal trusted paths may retain `BigInt()` where inputs are pre-validated |
+| G-1 | Define and document shadow-to-enforce graduation criteria | SDD contains explicit graduation criteria with 3 measurable thresholds (divergence rate, time window, quarantine replay success rate) |
+| G-2 | Establish consumer-driven contract testing between hounfour and freeside | Pact-pattern contract test spec exists; conformance vectors exportable for hounfour CI consumption |
+| G-3 | Add schema-level validation at API gateway for micro-USD inputs | OpenAPI/Zod constraints reject invalid micro-USD strings before they reach the boundary parser |
+| G-4 | Document cache invalidation strategy for module-level env var caching | Strategy documented in SDD; either TTL-based invalidation implemented or cold-restart requirement made explicit and enforced |
+| G-5 | Design the Ceremony geometry — a structural post-merge synthesis ritual | Post-merge ceremony spec documented; at minimum one ceremony executed for cycle-039's merge |
+| G-6 | Name the protocol and propagate the name through documentation and code | Protocol name chosen, README updated, BUTTERFREEZONE updated, protocol barrel module doc updated |
 
 ---
 
 ## 3. User & Stakeholder Context
 
 ### Primary Persona: Platform Engineer (Internal)
-- Maintains the arrakis codebase
-- Needs protocol types to match what loa-finn expects
-- Benefits from reduced local type surface and canonical conformance
 
-### Secondary Persona: Community Admin
-- Indirectly affected — governance and conservation improvements increase system reliability
-- No direct interaction with protocol types
+- Maintains the arrakis codebase across 39+ development cycles
+- Needs clear graduation criteria to know when shadow mode is safe to promote
+- Benefits from contract testing that catches upstream breaking changes early
+- Needs env var behavior documented to avoid production surprises
 
-### Tertiary: loa-finn (System)
-- Protocol peer — contract version negotiation must succeed
-- v7.9.2 is backward-compatible; existing v7.0.0 interactions remain valid
+### Secondary Persona: Protocol Author (loa-hounfour Maintainer)
+
+- Publishes protocol releases consumed by freeside
+- Benefits from consumer-driven contract tests that prevent accidental breaks
+- Needs the protocol's identity named to guide future evolution
+
+### Tertiary Persona: Community Operator
+
+- Indirectly benefits from improved engineering rigor
+- Benefits from named protocol identity for understanding what they're operating
 
 ---
 
 ## 4. Functional Requirements
 
-### FR-1: SHA Pin Bump
+### FR-1: Shadow-to-Enforce Graduation Criteria
 
-**Update the dependency pin in both `package.json` files** (root + `packages/adapters/`) from `ec5024938339121dbb25d3b72f8b67fdb0432cad` to `ff8c16b899b5bbebb9bf1a5e3f9e791342b49bea`.
+**Define explicit, measurable criteria for graduating `parseBoundaryMicroUsd` from shadow mode to enforce mode.**
 
-**Acceptance Criteria:**
-- AC-1.1: Root `package.json` references `ff8c16b...`
-- AC-1.2: `packages/adapters/package.json` references `ff8c16b...`
-- AC-1.3: `npm install` / `pnpm install` resolves successfully
-- AC-1.4: `rebuild-hounfour-dist.sh` builds v7.9.2 dist successfully
-- AC-1.5: `CONTRACT_VERSION` accessible and matches expected value
-- AC-1.6: **Boundary payload replay** (Flatline SKP-001): Representative payloads from existing test fixtures (HTTP request bodies, database row snapshots, Redis cached values, JWT claims) are replayed through v7.9.2 boundary parsers. Zero unexpected rejections or semantic changes compared to v7.0.0 behavior. Any upstream behavioral deltas between v7.0.0 and v7.9.2 that affect runtime semantics are documented in a delta log.
+The criteria must include:
 
-### FR-2: Rebuild Script Update
+1. **Divergence rate threshold**: Maximum percentage of requests where shadow mode detects canonical/legacy divergence. Must be ≤ N% over a rolling window. Computable from existing `divergenceTotal / shadowTotal` counters.
+2. **Observation time window**: Minimum duration in shadow mode before graduation is permitted. Computable from deployment timestamps.
+3. **Would-reject rate threshold**: Maximum percentage of requests where canonical would reject but legacy accepts (`wouldRejectTotal / shadowTotal`). Must be 0% for a consecutive observation window — any non-zero value means canonical is stricter on real traffic.
 
-**Update `scripts/rebuild-hounfour-dist.sh`** to handle v7.9.2's package structure (Loa framework ejected — cleaner dist).
+All three criteria are computable from existing `parseBoundaryMicroUsd` metrics without new storage. No quarantine mechanism is required this cycle.
 
 **Acceptance Criteria:**
-- AC-2.1: Script detects v7.9.2 structure (no `.claude/`, no `grimoires/`)
-- AC-2.2: The following import specifiers resolve and typecheck after build: `@0xhoneyjar/loa-hounfour`, `@0xhoneyjar/loa-hounfour/core`, `/economy`, `/model`, `/governance`, `/constraints`, `/integrity` (per v7.9.2 `package.json#exports` map)
-- AC-2.3: Stale-detection logic updated for v7.9.2 fingerprint
-- AC-2.4: **Supply-chain verification** (Flatline SKP-003): Script verifies upstream commit SHA matches expected `ff8c16b...` before building. Built dist is validated against a manifest of expected export specifiers (all 7 subpackage entry points resolve). Build output is deterministic — running the script twice on the same commit produces identical dist.
+- AC-1.1: SDD §X documents three graduation thresholds with specific numeric values
+- AC-1.2: A `BoundaryGraduationCriteria` type is defined in the protocol layer
+- AC-1.3: `parseBoundaryMicroUsd` metrics (`shadowTotal`, `wouldRejectTotal`, `divergenceTotal`) are sufficient to compute all three criteria — no new counters or storage required
+- AC-1.4: A Prometheus gauge or internal health check reports current graduation status against the criteria. If exposed as an HTTP endpoint, it must be protected by admin JWT claim check and internal-only network policy (not tenant-accessible)
+- AC-1.5: Graduation criteria are referenced in the existing mode-toggle test suite
 
-### FR-3: Protocol Barrel Expansion
+### FR-2: Consumer-Driven Contract Testing (Pact Pattern)
 
-**Update `themes/sietch/src/packages/core/protocol/index.ts`** to re-export new v7.1–v7.9 types from canonical source.
+**Establish a contract testing pattern between hounfour (provider) and freeside (consumer) so that freeside's conformance expectations can run in hounfour's CI.**
 
-New exports to add (organized by domain):
-
-**Reputation & Trust (v7.1–v7.6):**
-- `evaluateAccessPolicy`, `AccessPolicyContext`, `AccessPolicyResult`
-- `CapabilityScopedTrust` (already imported in compat, expose in barrel)
-- `REPUTATION_STATES`, `REPUTATION_STATE_ORDER`, `isKnownReputationState`, `ReputationStateName`
-- `ReputationScoreSchema`, `ReputationScore`
-
-**Event Sourcing & Replay (v7.3):**
-- `reconstructAggregateFromEvents`, `verifyAggregateConsistency`, `computeEventStreamHash`
-- `ReconstructedAggregate`, `ConsistencyReport`
-- `computeCredentialPrior`, `isCredentialExpired`, `CREDENTIAL_CONFIDENCE_THRESHOLD`
-
-**Governance (v7.3–v7.7):**
-- `SanctionSchema`, `Sanction`, `SANCTION_SEVERITY_LEVELS`, `VIOLATION_TYPES`, `ESCALATION_RULES`
-- `DisputeRecordSchema`, `DisputeRecord`
-- `ValidatedOutcomeSchema`, `ValidatedOutcome`
-- `PerformanceRecordSchema`, `PerformanceOutcome`
-- `ContributionRecordSchema`, `ContributionRecord`
-
-**Economy Extensions (v7.5–v7.9):**
-- `parseMicroUsd`, `ParseMicroUsdResult`
-- `evaluateEconomicBoundary`, `evaluateFromBoundary`
-- `subtractMicroSigned`, `negateMicro`, `isNegativeMicro`
-- `StakePositionSchema`, `StakePosition`
-- `CommonsDividendSchema`, `CommonsDividend`
-- `MutualCreditSchema`, `MutualCredit`
-- `TRANSFER_CHOREOGRAPHY`, `TRANSFER_INVARIANTS`
-
-**Integrity Extensions (v6.0–v7.8):**
-- `LivenessPropertySchema`, `CANONICAL_LIVENESS_PROPERTIES`, `LivenessProperty`
-- `detectReservedNameCollisions`, `NameCollision`
+The contract is defined at the actual integration seam — exported entrypoints and semantic behaviors — not internal implementation details like counts or data structures.
 
 **Acceptance Criteria:**
-- AC-3.1: All new types compile without errors
-- AC-3.2: Protocol barrel exports are organized by domain with section comments
-- AC-3.3: No duplicate exports (canonical takes precedence over local)
-- AC-3.4: Existing consumers remain unaffected (additive only)
-- AC-3.5: Only symbols actually consumed by arrakis code (adapters, services, routes, tests) are re-exported — no speculative re-exports of unused upstream symbols
-- AC-3.6: Automated enforcement via ESLint `import/no-restricted-paths` rule (preferred) or grep check. **Explicit allowlist** of modules permitted to import directly from `@0xhoneyjar/loa-hounfour` (Flatline IMP-005):
-  - `packages/adapters/agent/*.ts` — low-level JWT, pool, and compatibility adapter layer
-  - `themes/sietch/src/packages/core/protocol/arrakis-*.ts` — canonical adapter files
-  - `themes/sietch/src/api/routes/discovery.routes.ts` — discovery endpoint
-  - `tests/**/*.ts` — conformance and E2E test suites
-  - All other modules must import via the protocol barrel only
+- AC-2.1: Freeside exports a contract specification (JSON/YAML) pinning the exact module entrypoints (paths + function signatures) it imports from hounfour
+- AC-2.2: The contract includes a versioned bundle of conformance vectors (hash + count) as the behavioral contract — vectors ARE the test, not internal property/builtin counts
+- AC-2.3: A `spec/contracts/` directory contains the exported contract and vectors bundle
+- AC-2.4: Contract spec includes: module paths consumed, function signatures depended on, conformance vector bundle hash, minimum `CONTRACT_VERSION` semver range
+- AC-2.5: A validation script verifies the current hounfour version satisfies the contract by running vectors and checking entrypoint availability
+- AC-2.6: Documentation describes how hounfour's CI would consume the contract (README in spec/contracts/)
+- AC-2.7: Counts (invariant count, evaluator builtin count) are informational metadata only, not gating criteria
 
-### FR-4: Local Type Reduction
+### FR-3: Schema-Level Micro-USD Validation at API Gateway
 
-**Replace local implementations with canonical equivalents** per the v7-export-audit disposition table.
+**Add OpenAPI/Zod schema constraints on micro-USD input fields at the API gateway layer, so invalid inputs are rejected before reaching the boundary parser.**
 
-| Local File | Disposition | Action |
-|------------|-------------|--------|
-| `compatibility.ts` | DELETE | Remove — `validateCompatibility()` imported from canonical |
-| `VENDORED.md` | DELETE | Remove — vendoring metadata obsolete |
-| `arrakis-arithmetic.ts` | REDUCE | Import branded types + helpers from `@0xhoneyjar/loa-hounfour/economy`; keep only local helpers (`dollarsToMicro`, `microToDollarsDisplay`, `assertMicroUSD`, `assertBpsSum`) |
-| `arrakis-conservation.ts` | REDUCE | Import canonical 14 properties from `/integrity`; keep only adapter layer |
-| `jwt-boundary.ts` | REDUCE | Import canonical verification steps; keep arrakis-specific claim types |
+The gateway schema must be mode-aware: in shadow mode, the schema matches legacy acceptance (no production breakage); in enforce mode, the schema tightens to canonical acceptance. This resolves the tension between NFR-3 (no production regressions) and the safety goal (reject invalid inputs early).
 
 **Acceptance Criteria:**
-- AC-4.1: `compatibility.ts` and `VENDORED.md` deleted
-- AC-4.2: `arrakis-arithmetic.ts` imports branded types from canonical, exports only local extensions
-- AC-4.3: `arrakis-conservation.ts` imports `CANONICAL_CONSERVATION_PROPERTIES` and `LivenessPropertySchema` from canonical
-- AC-4.4: All consumers of deleted/reduced types updated to import from protocol barrel or canonical
-- AC-4.5: Zero TypeScript compilation errors introduced
+- AC-3.1: A shared Zod micro-USD schema is defined once with two modes: `legacy` (accepts what `BigInt()` accepts — permissive) and `canonical` (matches `parseMicroUsd` — strict: non-negative integer string, no leading zeros except "0", max 18 digits)
+- AC-3.2: The schema mode is driven by the same `BOUNDARY_PARSE_MODE` env var that controls `parseBoundaryMicroUsd`, ensuring gateway and boundary parser are always in the same mode
+- AC-3.3: Invalid inputs return 400 with a structured error before reaching the boundary parser
+- AC-3.4: In canonical/enforce mode, the gateway schema is strictly equal-or-tighter than `parseBoundaryMicroUsd` — it must never accept a string that the boundary parser would reject
+- AC-3.5: In legacy/shadow mode, the gateway schema must not reject any inputs that production currently accepts (NFR-3 compliance)
+- AC-3.6: Integration tests verify both modes: legacy accepts permissive inputs, canonical rejects leading zeros and non-integer strings
 
-### FR-5: `evaluateEconomicBoundary` Spike (Stretch — Feature-Flagged)
+### FR-4: Cache Invalidation Strategy Documentation
 
-**Spike the canonical decision engine behind a feature flag** on a new or secondary decision path. This is exploratory — the goal is to prove equivalence, not replace the production conservation guard.
+**Document the env var caching behavior and make cold-restart a documented, enforced constraint.**
 
-`evaluateEconomicBoundary()` provides: trust × capital → access decision with structured denial reasons. The spike maps arrakis's trust dimensions (tier, conviction score) and capital variable (remaining budget micro-USD) into the canonical engine's input schema.
-
-**Acceptance Criteria:**
-- AC-5.1: Feature-flagged callsite (`ENABLE_CANONICAL_BOUNDARY_ENGINE=true`) uses `evaluateEconomicBoundary()`
-- AC-5.2: Equivalence test suite defines ≥10 scenarios (allow, deny-budget, deny-tier, edge cases) and asserts canonical engine matches existing logic on all of them
-- AC-5.3: When flag is off (default), existing behavior is completely unchanged — zero code path difference
-- AC-5.4: If equivalence cannot be proven on all scenarios, findings are documented and FR-5 is deferred to next cycle
-- AC-5.5: Input mapping is documented: which arrakis fields map to which canonical trust dimensions and capital variables
-
-### FR-6: `parseMicroUsd` Adoption (Protocol Boundary Scope)
-
-**Adopt `parseMicroUsd()` at protocol boundary entry points** — where external input (HTTP request bodies, database row strings, Redis values, JWT claims) is first parsed into micro-USD BigInt values.
-
-`parseMicroUsd()` is strict: no floating-point, no leading zeros, discriminated union return. This is safer than `BigInt(value)` which silently accepts some invalid inputs.
-
-**Scope boundary:** Internal trusted paths where values are already validated BigInts or come from prior `parseMicroUsd()` calls may retain direct `BigInt()` construction. The goal is to harden the system boundary, not rewrite all internal arithmetic.
-
-**Migration safety:** Before replacing any `BigInt()` call, audit the actual input values at that callsite. If inputs could contain formats that `parseMicroUsd()` rejects (leading zeros, whitespace, plus signs), add a normalization step or log-and-compare period before switching.
+The chosen strategy is **cold-restart** for this cycle. TTL-based hot-reload is explicitly out of scope because `config.ts` is imported at module load time and many call sites capture config values in closures/constants. A partial hot-reload would create split-brain behavior within a single process — dangerous for economic invariants and auth. TTL-based invalidation may be reconsidered in a future cycle with a full call-site audit.
 
 **Acceptance Criteria:**
-- AC-6.1: Protocol boundary entry points (HTTP route handlers, database row mappers, Redis value readers) use `parseMicroUsd()` for micro-USD string parsing
-- AC-6.2: Error cases handled via discriminated union (not thrown exceptions) with structured error propagation
-- AC-6.3: Unit tests verify strict parsing rejects invalid inputs (leading zeros, whitespace, floats, empty strings)
-- AC-6.4: Internal trusted paths explicitly documented as out-of-scope with rationale
-- AC-6.5: No runtime regressions — existing valid inputs continue to parse successfully (verified by existing test suite)
-- AC-6.6: **Dual-parse rollout** (Flatline IMP-003): Before switching any callsite, run a log-and-compare period:
-  - Duration: ≥1 sprint (run both parsers, log divergences)
-  - Threshold: <0.1% divergence rate before cutover
-  - Sampling: 100% of boundary calls during comparison period
-  - Cutover criteria: Zero divergences for ≥24h OR all divergences audited and normalized
-  - Kill-switch: Environment variable `PARSE_MICRO_USD_LEGACY=true` falls back to `BigInt()` at any callsite
+- AC-4.1: SDD §X documents the current module-level env var caching behavior in `config.ts`
+- AC-4.2: The strategy explicitly states that ALL env var changes (including `BOUNDARY_PARSE_MODE`, feature flags, secrets) require cold restart (process restart / ECS task replacement)
+- AC-4.3: `config.ts` module doc comment states the cold-restart constraint
+- AC-4.4: A startup log line emits a config fingerprint (hash of all loaded config keys) for audit and drift detection
+- AC-4.5: Feature flags that support runtime re-evaluation (via Redis reads, not env vars) are explicitly enumerated and distinguished from env-var-backed flags that require cold restart
 
-### FR-7: Conformance Test Expansion
+### FR-5: Ceremony Geometry — Post-Merge Synthesis Ritual
 
-**Update the conformance test suite** from 91 to 202 test vectors.
+**Design and document a structural post-merge ceremony that connects what was built to what it means.**
 
 **Acceptance Criteria:**
-- AC-7.1: `tests/unit/protocol-conformance.test.ts` loads all 202 v7.9.2 vectors
-- AC-7.2: All 202 vectors pass
-- AC-7.3: New vector categories (governance, reputation, liveness) included
-- AC-7.4: Vector loader updated to handle v7.9.2 vector directory structure
+- AC-5.1: A ceremony spec is documented (format, participants, outputs, trigger conditions)
+- AC-5.2: The ceremony produces a synthesis artifact (field report, architectural reflection, or decision record)
+- AC-5.3: The ceremony is triggered after significant cycle merges (not every PR)
+- AC-5.4: At minimum, a ceremony is executed for cycle-039's merge (PR #94) as the inaugural instance
+- AC-5.5: The ceremony artifact references: what was built, why it matters, what it changes about the system's identity, what questions remain
 
-### FR-8: Verify-Peer-Version Update
+### FR-6: Name the Protocol
 
-**Update `scripts/verify-peer-version.sh`** if CONTRACT_VERSION or MIN_SUPPORTED_VERSION changed in v7.9.2.
+**Choose a name for the economic protocol and propagate it through documentation and code.**
 
-**Version negotiation predicate** (from hounfour `validateCompatibility()`):
-- Accept peer if `peer.major == self.major && peer.minor >= 0` (any v7.x accepts any v7.y)
-- Accept peer if `peer.major == self.major - 1 && peer.version >= MIN_SUPPORTED_VERSION` (cross-major window)
-- Reject otherwise
+The name must capture: community-governed economic protocol for AI inference, with conservation invariants, conviction-gated access, and transparent disagreement resolution.
 
 **Acceptance Criteria:**
-- AC-8.1: Script reflects current CONTRACT_VERSION and MIN_SUPPORTED_VERSION from v7.9.2
-- AC-8.2: Concrete version pair tests:
-  - arrakis v7.9.2 ↔ finn v7.0.0 → PASS (same major)
-  - arrakis v7.9.2 ↔ finn v7.5.0 → PASS (same major)
-  - arrakis v7.9.2 ↔ finn v6.0.0 → PASS (cross-major, within window)
-  - arrakis v7.9.2 ↔ finn v5.9.0 → FAIL (below MIN_SUPPORTED)
-  - arrakis v7.9.2 ↔ finn v8.0.0 → FAIL (future major)
-- AC-8.3: Script passes when run against mock discovery endpoint returning each test pair
+- AC-6.1: A protocol name is chosen and documented
+- AC-6.2: README.md "What is Freeside?" section references the protocol by name
+- AC-6.3: BUTTERFREEZONE.md includes the protocol name in its summary
+- AC-6.4: The protocol barrel (`themes/sietch/src/packages/core/protocol/index.ts`) module doc references the protocol name
+- AC-6.5: The name is not a Dune reference (the codebase already has enough of those — the protocol deserves its own identity)
 
 ---
 
 ## 5. Technical & Non-Functional Requirements
 
-### NFR-1: Zero Runtime Regressions (with intentional tightening)
-All existing 5420+ tests must continue passing. The SHA pin bump itself is additive (no breaking changes in v7.9.2). FR-6 (`parseMicroUsd` adoption) intentionally tightens input validation at protocol boundaries — this is a security improvement, not a regression. Any callsite where `parseMicroUsd()` rejects inputs that `BigInt()` previously accepted must be audited and explicitly approved before migration, with tests covering the specific input formats.
+### NFR-1: Zero Regression
+All changes must pass the existing test suite. No existing conformance vectors, conservation tests, or boundary tests may break.
 
-### NFR-2: Build Performance
-`rebuild-hounfour-dist.sh` should complete in <60 seconds (v7.9.2 is cleaner, should be faster).
+### NFR-2: Documentation-First
+FR-1, FR-4, FR-5, and FR-6 are primarily documentation and specification work. They should produce artifacts that are verifiable by reading, not just by running tests.
 
-### NFR-3: Type Safety
-Zero `any` casts at protocol boundaries. All new imports must be properly typed.
+### NFR-3: Backward Compatibility
+FR-3 (schema validation) is mode-aware: in legacy/shadow mode, the gateway schema must not reject inputs that production currently accepts. In enforce mode, the schema tightens to match canonical acceptance. The gateway schema mode is always synchronized with `BOUNDARY_PARSE_MODE` to prevent inconsistency between gateway rejection and boundary parser acceptance.
 
-### NFR-4: Backward Compatibility
-Existing loa-finn instances running v7.0.0 must still negotiate successfully with updated arrakis. The compatibility predicate is: accept any peer with `major == 7` (same major), or `major == 6 && version >= MIN_SUPPORTED_VERSION`. This is enforced by `validateCompatibility()` from hounfour and verified by the concrete version pair tests in FR-8 AC-8.2.
+### NFR-4: Observability
+FR-1 (graduation criteria) requires that existing metrics are sufficient. If not, new metrics must be added without breaking existing dashboards.
 
 ---
 
 ## 6. Scope & Prioritization
 
-### In Scope (MVP)
-- SHA pin bump and rebuild script update (FR-1, FR-2)
-- Protocol barrel expansion (FR-3)
-- Local type reduction per audit (FR-4)
-- Conformance test expansion (FR-7)
-- `parseMicroUsd` adoption (FR-6)
-- Verify-peer-version update (FR-8)
+### In Scope (This Cycle)
 
-### Stretch Goals
-- `evaluateEconomicBoundary` integration (FR-5) — high value but requires careful conservation guard integration
-- Governance vocabulary adoption beyond barrel exports
-
-### FR Dependency Order (Flatline IMP-002)
-
-FRs have implicit dependencies that constrain parallelization:
-
-```
-FR-1 (SHA pin) → FR-2 (rebuild script) → FR-3 (barrel expansion)
-                                        → FR-7 (conformance vectors)
-                                        → FR-8 (verify-peer-version)
-FR-3 (barrel) → FR-4 (local type reduction)
-FR-4 (type reduction) → FR-6 (parseMicroUsd adoption)
-FR-6 (parseMicroUsd) → FR-5 (boundary engine spike, stretch)
-```
-
-**Phase 1** (sequential): FR-1 → FR-2
-**Phase 2** (parallel): FR-3, FR-7, FR-8
-**Phase 3** (sequential): FR-4 (depends on FR-3 barrel being complete)
-**Phase 4** (sequential): FR-6 (depends on FR-4 reducing local types)
-**Phase 5** (stretch): FR-5 (depends on FR-6 boundary parsing being stable)
+| Priority | Requirement | Effort |
+|----------|------------|--------|
+| P0 | FR-6: Name the protocol | Low (documentation) |
+| P0 | FR-1: Shadow-to-enforce graduation criteria | Medium (spec + type + endpoint) |
+| P1 | FR-3: Schema-level micro-USD validation | Medium (code + tests) |
+| P1 | FR-4: Cache invalidation strategy | Low (documentation + small code) |
+| P1 | FR-5: Ceremony geometry | Low (spec + inaugural execution) |
+| P2 | FR-2: Consumer-driven contract testing | Medium (spec + script + docs) |
 
 ### Out of Scope
-- Rewriting arrakis state machines to use hounfour vocabulary (audit says KEEP — different machine sets)
-- Rewriting billing-types.ts or billing-entry.ts (audit says KEEP — different field structures)
-- Rewriting economic-events.ts (audit says KEEP — different envelope format)
-- loa-finn deployment or E2E integration testing (separate cycle per issue #66)
+
+- Implementing the actual shadow→enforce graduation (that's a future operational decision)
+- Running the contract tests in hounfour's CI (requires hounfour repo changes — this cycle provides the spec)
+- TTL-based hot-reload for env vars (cold-restart is the chosen strategy; hot-reload requires a full call-site audit deferred to a future cycle)
+- Quarantine storage or replay infrastructure (graduation criteria use existing metrics only)
+- Renaming existing Dune references in the codebase (the protocol gets its own name; existing code names stay)
 
 ---
 
@@ -284,39 +200,21 @@ FR-6 (parseMicroUsd) → FR-5 (boundary engine spike, stretch)
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
-| v7.9.2 dist build fails (missing files) | Low | High | v7-export-audit documented workaround; v7.9.2 is cleaner (ejected Loa) |
-| Subpackage import paths changed | Low | Medium | Verify against v7.9.2 package.json exports map |
-| Conformance vectors require new test infrastructure | Medium | Low | Existing vector loader handles JSON, just needs path update |
-| `evaluateEconomicBoundary` semantics don't map 1:1 to conservation guard | Medium | Medium | FR-5 is stretch — can defer if mapping is complex |
-| TypeScript version incompatibility with v7.9.2 TypeBox schemas | Low | High | Both use TypeBox; version alignment checked at install |
-
-### Rollback Runbook (Flatline IMP-001)
-
-If the v7.9.2 upgrade causes production issues:
-
-1. **Immediate revert**: Change SHA pin back to `ec50249...` in both `package.json` files, run `pnpm install`, redeploy. All local protocol types remain functional (they were only reduced, not removed).
-2. **Per-feature kill-switches**:
-   - `PARSE_MICRO_USD_LEGACY=true` — reverts `parseMicroUsd()` to `BigInt()` at boundary callsites
-   - `ENABLE_CANONICAL_BOUNDARY_ENGINE=false` (default) — FR-5 decision engine is already feature-flagged
-3. **Re-vendoring**: If barrel imports cause issues, the reduced files (`arrakis-arithmetic.ts`, `arrakis-conservation.ts`, `jwt-boundary.ts`) still contain full local implementations behind a thin canonical import layer. Reverting the REDUCE changes restores vendored behavior.
-4. **Recovery steps**: Run conformance suite against reverted state to verify v7.0.0 compatibility. Check `verify-peer-version.sh` against loa-finn discovery endpoint.
-
-### Dependencies
-- **loa-hounfour v7.9.2** (`ff8c16b899b5bbebb9bf1a5e3f9e791342b49bea`) — published 2026-02-23
-- **Node.js 20+** — existing requirement
-- **TypeScript 5.x** — existing requirement
+| Naming bikeshed — can't agree on protocol name | Medium | Low | User chooses; we propose 2-3 options with rationale |
+| Schema validation too tight — rejects valid production inputs | Low | High | Schema derived from canonical `parseMicroUsd` spec; integration test coverage |
+| Graduation criteria too strict — shadow mode never graduates | Low | Medium | Criteria based on observed divergence rates from cycle-039 bridge data |
+| Contract spec too coupled to hounfour internals | Medium | Medium | Spec tests behaviors, not implementation details |
 
 ---
 
 ## 8. Success Criteria
 
-| Criterion | Measurement |
-|-----------|-------------|
-| SHA pin at v7.9.2 | `package.json` references `ff8c16b...` |
-| All existing tests pass | CI green (5420+ tests) |
-| 202 conformance vectors pass | Conformance test suite |
-| ≥5 local types replaced with canonical | Code diff shows deletions in protocol/ |
-| `parseMicroUsd` at protocol boundaries | Protocol boundary entry points audited and migrated |
-| Protocol barrel covers consumed surface | Zero direct hounfour imports outside barrel + designated modules |
-| Version negotiation verified | 5 concrete version pair tests pass (FR-8 AC-8.2) |
-| Rebuild script resolves subpackages | All 7 import specifiers typecheck after build (FR-2 AC-2.2) |
+This cycle succeeds when:
+1. The SDD contains graduation criteria with three measurable thresholds
+2. A contract testing spec exists in `spec/contracts/`
+3. API routes validate micro-USD inputs at the schema level
+4. Config caching strategy is documented and enforced
+5. The inaugural ceremony is executed for PR #94
+6. The protocol has a name that appears in README, BUTTERFREEZONE, and the protocol barrel
+
+**Meta-criterion**: The Bridgebuilder, if re-run, would find zero of its six original recommendations still unaddressed.

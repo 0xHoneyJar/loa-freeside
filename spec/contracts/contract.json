@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "contract_version": "1.0.0",
+  "consumer": "loa-freeside",
+  "provider": "loa-hounfour",
+  "provider_version_range": ">=7.0.0",
+
+  "entrypoints": [
+    {
+      "specifier": "@0xhoneyjar/loa-hounfour",
+      "symbols": [
+        "AGENT_LIFECYCLE_STATES",
+        "AGENT_LIFECYCLE_TRANSITIONS",
+        "CAPABILITY_SCOPES",
+        "CREDENTIAL_CONFIDENCE_THRESHOLD",
+        "TRUST_LEVELS",
+        "computeCredentialPrior",
+        "computeEventStreamHash",
+        "detectReservedNameCollisions",
+        "effectiveTrustLevel",
+        "evaluateAccessPolicy",
+        "evaluateEconomicBoundary",
+        "evaluateFromBoundary",
+        "flatTrustToScoped",
+        "isCredentialExpired",
+        "isKnownReputationState",
+        "isValidTransition",
+        "meetsThresholdForScope",
+        "parseAgentIdentity",
+        "parseMicroUsd",
+        "reconstructAggregateFromEvents",
+        "trustLevelForScope",
+        "trustLevelIndex",
+        "verifyAggregateConsistency"
+      ]
+    },
+    {
+      "specifier": "@0xhoneyjar/loa-hounfour/economy",
+      "symbols": [
+        "ESCROW_TRANSITIONS",
+        "EscrowEntrySchema",
+        "MintingPolicySchema",
+        "MonetaryPolicySchema",
+        "NFT_ID_PATTERN",
+        "TRANSFER_CHOREOGRAPHY",
+        "TRANSFER_INVARIANTS",
+        "formatNftId",
+        "isNegativeMicro",
+        "isValidEscrowTransition",
+        "isValidNftId",
+        "negateMicro",
+        "parseNftId",
+        "subtractMicroSigned"
+      ]
+    },
+    {
+      "specifier": "@0xhoneyjar/loa-hounfour/governance",
+      "symbols": [
+        "ContributionRecordSchema",
+        "DisputeRecordSchema",
+        "ESCALATION_RULES",
+        "PerformanceOutcomeSchema",
+        "PerformanceRecordSchema",
+        "REPUTATION_STATES",
+        "REPUTATION_STATE_ORDER",
+        "ReputationScoreSchema",
+        "SANCTION_SEVERITY_LEVELS",
+        "SanctionSchema",
+        "VIOLATION_TYPES",
+        "ValidatedOutcomeSchema"
+      ]
+    },
+    {
+      "specifier": "@0xhoneyjar/loa-hounfour/integrity",
+      "symbols": [
+        "CANONICAL_LIVENESS_PROPERTIES",
+        "LivenessPropertySchema"
+      ]
+    },
+    {
+      "specifier": "@0xhoneyjar/loa-hounfour/model",
+      "symbols": []
+    }
+  ],
+
+  "conformance_vectors": {
+    "note": "spec/vectors/ contains golden JSON test vector files. spec/conformance/ contains TypeScript test runners that import and execute these vectors.",
+    "data_path": "spec/vectors/",
+    "runner_path": "spec/conformance/",
+    "bundle_hash_algorithm": "sha256",
+    "bundle_hash": "b8314b1d78be68ce4c6b8cfab5fa9309d998230a8695d087ea5a982622f6c447",
+    "vector_count": 3
+  },
+
+  "metadata": {
+    "informational_only": {
+      "note": "The following counts are informational metadata, not gating criteria (AC-2.7)",
+      "conservation_property_count": 14,
+      "liveness_property_count": 5,
+      "evaluator_builtin_count": 7
+    }
+  }
+}

@@ -16,6 +16,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { BoundaryLogger, BoundaryMetrics } from '../../src/packages/core/protocol/parse-boundary-micro-usd.js';
+import { evaluateGraduation, DEFAULT_GRADUATION_CRITERIA, type GraduationCounters } from '../../src/packages/core/protocol/graduation.js';
+import { BoundaryMetricsRegistry, METRIC_NAMES, resetBoundaryMetricsRegistry } from '../../src/packages/core/protocol/boundary-metrics.js';
 
 // ---------------------------------------------------------------------------
 // Test Helpers
@@ -305,5 +307,81 @@ describe('parseBoundaryMicroUsd — env var mode resolution', () => {
     const result = parseBoundaryMicroUsd('0100', 'http', logger);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.mode).toBe('enforce');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Graduation Criteria Integration (AC-1.5, cycle-040 FR-1)
+// ---------------------------------------------------------------------------
+
+describe('graduation criteria — mode-toggle integration (AC-1.5)', () => {
+  const EIGHT_DAYS_MS = 8 * 24 * 60 * 60 * 1000;
+  const NOW = Date.now();
+  const DEPLOY_TIME = NOW - EIGHT_DAYS_MS;
+
+  it('graduation gauge transitions 0→1 under simulated-ready state', () => {
+    const registry = new BoundaryMetricsRegistry();
+    const metrics = registry.toBoundaryMetrics();
+
+    // Simulate shadow traffic with no divergence and no would-rejects
+    for (let i = 0; i < 1000; i++) {
+      metrics.shadowTotal('http');
+    }
+
+    const counters = registry.getGraduationCounters('http');
+    expect(counters.shadowTotal).toBe(1000n);
+    expect(counters.wouldRejectTotal).toBe(0n);
+    expect(counters.divergenceTotal).toBe(0n);
+
+    // Evaluate graduation — should be ready (all criteria met)
+    const status = evaluateGraduation(
+      'http',
+      counters,
+      DEPLOY_TIME,
+      0,
+      DEFAULT_GRADUATION_CRITERIA,
+      NOW,
+    );
+
+    expect(status.ready).toBe(true);
+    expect(status.criteria.divergenceRate.met).toBe(true);
+    expect(status.criteria.observationWindow.met).toBe(true);
+    expect(status.criteria.wouldRejectClean.met).toBe(true);
+  });
+
+  it('graduation returns not-ready when would-rejects exist recently', () => {
+    const registry = new BoundaryMetricsRegistry();
+    const metrics = registry.toBoundaryMetrics();
+
+    // Simulate shadow traffic with some would-rejects
+    for (let i = 0; i < 100; i++) {
+      metrics.shadowTotal('http');
+    }
+    metrics.wouldRejectTotal('http'); // triggers lastWouldRejectTimestamp
+
+    const counters = registry.getGraduationCounters('http');
+    const lastRejectTs = registry.getLastWouldRejectTimestamp('http');
+
+    expect(counters.wouldRejectTotal).toBe(1n);
+    expect(lastRejectTs).toBeGreaterThan(0);
+
+    // Evaluate — should NOT be ready (recent would-reject)
+    const status = evaluateGraduation(
+      'http',
+      counters,
+      DEPLOY_TIME,
+      lastRejectTs,
+      DEFAULT_GRADUATION_CRITERIA,
+      NOW,
+    );
+
+    expect(status.ready).toBe(false);
+    expect(status.criteria.wouldRejectClean.met).toBe(false);
+  });
+
+  it('graduation references default criteria thresholds (AC-1.1)', () => {
+    expect(DEFAULT_GRADUATION_CRITERIA.maxDivergenceRatePpm).toBe(1000n); // 0.1%
+    expect(DEFAULT_GRADUATION_CRITERIA.minObservationWindowMs).toBe(604_800_000); // 7 days
+    expect(DEFAULT_GRADUATION_CRITERIA.wouldRejectConsecutiveWindowMs).toBe(259_200_000); // 72h
   });
 });

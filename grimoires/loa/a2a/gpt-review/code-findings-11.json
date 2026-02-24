@@ -1,17 +1,7 @@
 {
-  "verdict": "CHANGES_REQUIRED",
-  "summary": "Metric emission can throw after COMMIT and incorrectly fail the finalize call; wrap it as fire-and-forget with error swallowing.",
-  "issues": [
-    {
-      "severity": "major",
-      "file": "packages/services/budget-finalize-pg/index.ts",
-      "line": 171,
-      "description": "emitPurposeSpend is called after COMMIT but any thrown/rejected error will bubble and fail finalizePg, violating the fire-and-forget requirement and potentially masking successful commits.",
-      "current_code": "```typescript\n    // Step 8: Emit purpose spend metric (AC-2.5.1, after commit — fire-and-forget)\n    emitPurposeSpend(params.communityId, purpose, params.amountMicro);\n\n    return {\n      status: 'FINALIZED',\n      eventId,\n      fenceToken,\n      lotEntries: debitResult.entries,\n    };\n```",
-      "fixed_code": "```typescript\n    // Step 8: Emit purpose spend metric (AC-2.5.1, after commit — fire-and-forget)\n    try {\n      void emitPurposeSpend(params.communityId, purpose, params.amountMicro)\n        .catch((err) => {\n          // Swallow errors to avoid breaking finalize result\n          console.warn('emitPurposeSpend failed', err);\n        });\n    } catch (err) {\n      // Swallow sync errors as well\n      console.warn('emitPurposeSpend failed', err);\n    }\n\n    return {\n      status: 'FINALIZED',\n      eventId,\n      fenceToken,\n      lotEntries: debitResult.entries,\n    };\n```",
-      "explanation": "This ensures metric emission cannot throw or reject in a way that breaks the finalize result after a successful COMMIT, while still logging failures for observability."
-    }
-  ],
+  "verdict": "APPROVED",
+  "summary": "No bugs, security issues, or logic errors found; implementation meets the specified acceptance criteria.",
+  "issues": [],
   "fabrication_check": {
     "passed": true,
     "concerns": []

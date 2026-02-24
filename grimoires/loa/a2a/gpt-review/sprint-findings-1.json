@@ -1,48 +1,54 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "The plan is close, but a few tasks/criteria are internally inconsistent or missing critical implementation details that would likely block the upgrade or make it non-reproducible at runtime/CI.",
+  "summary": "This plan covers all six FRs, but a few missing integration/dependency tasks and some acceptance criteria gaps would likely cause implementation or CI to fail (or ship without actually meeting the PRD intent).",
   "blocking_issues": [
     {
-      "location": "Sprint 1 / Task 1.1 (AC-1.1.4) and overall sequencing",
-      "issue": "AC allows “temporary any stubs” to make tsc pass immediately after the pin bump, but there is no explicit follow-up task to remove those stubs before later sprints rely on type correctness (barrel/type reduction/boundary hardening).",
-      "why_blocking": "If the pin bump is made to compile via stubs, later work can silently build on incorrect types and then fail during reduction/migration (or worse: pass CI but regress runtime behavior). This is a classic sprint-failure mode in protocol upgrades because the “temporary” workaround becomes the de facto baseline.",
-      "fix": "Either (a) remove the allowance and require real fixes in Sprint 1, or (b) add an explicit tracked task (e.g., Sprint 2 Task 2.x) with AC: “all temporary any stubs removed; diff list empty; tsc passes without stubs” and gate Sprint 3+ on it."
+      "location": "Sprint 1 / Task 1.1 (FR-6 naming)",
+      "issue": "Task requires presenting 3 names “to the user” and choosing one, but the sprint plan has no mechanism/owner/timebox for making that decision; downstream tasks depend on the chosen name for docs and ceremony.",
+      "why_blocking": "If the name isn’t decided early, Sprint 1 can’t complete AC-6.1–6.4 and Sprint 3 Task 3.5 explicitly depends on it; this creates a real risk of Sprint 1 stalling or later rework across multiple artifacts.",
+      "fix": "Add an explicit decision task with a timebox and decision owner (e.g., “Decision meeting / async vote closes by day 2”), plus a fallback default name if no decision is reached. Make the chosen name an output artifact (e.g., `spec/protocol-name.md` or a single source-of-truth constant) referenced by docs."
     },
     {
-      "location": "Sprint 1 / Task 1.2 (AC-1.2.3, AC-1.2.5, AC-1.2.8) — supply-chain verification",
-      "issue": "The rebuild/verification approach is not fully artifact-bound/deterministic as written: `npm ci --ignore-scripts` may prevent the library build from producing `dist`, and the DIST_HASH recipe is vulnerable to non-determinism (file metadata, line endings, build timestamps) without explicit SOURCE_DATE_EPOCH / deterministic build settings.",
-      "why_blocking": "This can cause the sprint to fail in CI because you won’t be able to reproduce the expected DIST_HASH across machines/runs, or you won’t be able to build dist at all if build steps rely on lifecycle scripts. That directly violates the critical requirement: “artifact-bound verification” and reproducible builds.",
-      "fix": "Clarify the build pipeline: fetch+checkout SHA, install deps in a way that still allows building (e.g., `npm ci` then explicitly run the build command with scripts allowed, or use `pnpm --ignore-scripts` only for the *consumer* install but not for the isolated build). Add explicit determinism controls in AC: set `SOURCE_DATE_EPOCH`, ensure build does not embed timestamps, and compute DIST_HASH from a canonical tarball (e.g., `npm pack` output) or from normalized file contents (fixed ordering + fixed newlines) with documented exclusions."
+      "location": "Sprint 1 / Tasks 1.2–1.4 (FR-1 graduation)",
+      "issue": "Graduation work adds a Prometheus gauge but does not include a task to wire the evaluator into the runtime metrics update path (where existing shadow metrics are computed/emitted).",
+      "why_blocking": "You can implement `evaluateGraduation()` and even register a gauge, but without integration into the metrics emission loop/request path, `boundary_graduation_ready` may never be set or may always be default/undefined—failing AC-1.4 in practice and making tests brittle or impossible.",
+      "fix": "Add a concrete integration subtask: identify the module that currently increments `shadowTotal/wouldRejectTotal/divergenceTotal` and update it to call `evaluateGraduation()` and set the gauge per context on the same cadence. Acceptance: gauge changes from 0→1 under a simulated-ready state in an integration/unit test."
     },
     {
-      "location": "Sprint 1 / Task 1.2 (AC-1.2.6) and Sprint 2 / Task 2.1 vs exports map reality",
-      "issue": "The plan hard-codes “All 7 export specifiers resolve” and later enumerates ~60 symbols to re-export, but there is no task to confirm the actual `@0xhoneyjar/loa-hounfour` v7.9.2 `package.json#exports` map shape (ESM/CJS, types entrypoints, conditional exports) and align Node/TS resolution accordingly.",
-      "why_blocking": "If the exports map differs (missing subpaths, different conditions, or types-only paths), you can end up with TS compiling while Node runtime fails (or tests fail depending on runner). This is a frequent hard blocker during upgrades with subpath exports.",
-      "fix": "Add an explicit “exports map audit” task before barrel expansion (or fold into Task 2.1 with concrete AC): record the exact exports map for v7.9.2, confirm which conditions are used in your runtime (node/jest/vitest/ts-node), and update tooling config if needed (e.g., `moduleResolution: nodenext`, jest ESM handling). Gate Task 2.1 on that audit."
+      "location": "Sprint 1 / Task 1.3 (FR-1 tests)",
+      "issue": "Acceptance criteria include “vacuously true when shadowTotal is 0” but Task 1.2 AC-1.1 also requires a 7-day observation window and 72h consecutive clean; these can conflict unless explicitly defined in the evaluator spec.",
+      "why_blocking": "Ambiguous/contradictory criteria will cause churn: implementers won’t know whether `shadowTotal=0` should override time windows or still require elapsed time. This can block sign-off and lead to failing tests depending on interpretation.",
+      "fix": "Add an explicit rule in the SDD/PRD mapping and in Task 1.2 AC: e.g., “If shadowTotal==0, ready=false (or true) regardless of time windows” OR “shadowTotal==0 short-circuits only divergence criterion but still requires observation/consecutive windows.” Then align Task 1.3 tests to that rule."
     },
     {
-      "location": "Sprint 2 / Task 2.1 (AC-2.1.8) — barrel scope contradiction",
-      "issue": "AC-2.1.8 says “Only symbols consumed by arrakis code are re-exported,” but the task description says “re-export ~60 new canonical symbols,” and the AC list enumerates many symbols that may not be consumed.",
-      "why_blocking": "This is not just wording: it creates an untestable/contradictory completion condition. The engineer can’t satisfy both if arrakis doesn’t currently consume many of the listed exports. That ambiguity can stall the sprint at review time.",
-      "fix": "Pick one measurable rule: either (a) “export exactly the allowlisted set in SDD §3.3 (the ~60 symbols)” or (b) “export only what is referenced in repo (automated by a script that derives used symbols).” Update AC accordingly and add a simple verification method (script/grep output committed)."
+      "location": "Sprint 2 / Task 2.2 (FR-3 route integration)",
+      "issue": "The plan names several route areas but does not enumerate the exact route files/endpoints and input fields that must be covered, nor does it include an inventory step to ensure all micro-USD entry points are updated.",
+      "why_blocking": "This is a classic gap that leads to partial rollout: one missed endpoint means the gateway validation requirement (AC-3.3/3.4) is not actually satisfied, and regressions can slip through because tests may not cover the missed path.",
+      "fix": "Add a short “inventory + checklist” task/subtask: grep for `parseBoundaryMicroUsd` (and any other micro-USD parsing helpers) and list all call sites/endpoints; make the checklist part of the PR description. Acceptance: all call sites either use the schema or are explicitly justified as internal-only."
     },
     {
-      "location": "Sprint 4 / Task 4.2 (PagerDuty + dashboard) and Sprint 4 overall success criteria",
-      "issue": "PagerDuty alerting and dashboard work is included, but there is no explicit task to wire metrics to the actual metrics backend used in arrakis (namespacing, registry, test environment), nor acceptance criteria that can be validated in CI (PagerDuty config typically can’t be proven from unit tests alone).",
-      "why_blocking": "This can block sprint completion because the AC requires external system configuration (“PagerDuty alert configured”, “Dashboard panel”) that a single engineer may not be able to validate/merge purely via code, and CI cannot assert it reliably. It risks ending Sprint 4 with “done in code” but failing acceptance.",
-      "fix": "Split into (1) code-level instrumentation with CI-verifiable AC (counter registration + emission + snapshot/unit tests), and (2) ops/config task with a concrete, repo-based artifact (e.g., Terraform/JSON dashboard + alert rule definitions) that can be code-reviewed and tested (lint/plan). If ops config is out-of-repo, change AC to “PR created in ops repo and linked” and make that dependency explicit."
+      "location": "Sprint 2 / Task 2.1 (FR-3 schema)",
+      "issue": "Schema is required to be mode-aware via `resolveParseMode()`, but there is no task ensuring `resolveParseMode()` is safe to call at request time given the module-level env var caching/cold-restart constraints (ties directly to FR-4).",
+      "why_blocking": "If `resolveParseMode()` reads cached env at module init while routes expect runtime changes (or vice versa), you can end up with schema mode diverging from parser mode, violating AC-3.2 and potentially breaking backward compatibility in shadow/legacy mode.",
+      "fix": "Add an explicit dependency/coordination step between FR-3 and FR-4: document and enforce that parse mode is fixed at process start (cold restart), and ensure both `resolveParseMode()` and schema creation share the same cached config source. Add a test asserting schema mode matches parser mode under controlled env setup."
     },
     {
-      "location": "Sprint 4 / Task 4.6 (AC-4.6.1) — kill-switch verification",
-      "issue": "AC-4.6.1 says “verify all boundary entry points use BigInt() directly” in legacy mode, but the design introduces a wrapper (`parseBoundaryMicroUsd`) that will still be called; it would internally choose legacy parsing. The AC as written is likely impossible once migrations are done.",
-      "why_blocking": "This is a concrete acceptance mismatch that will fail review/testing: after migration, entry points should call the wrapper, not BigInt directly. You can’t satisfy “all entry points use BigInt directly” without undoing the migration.",
-      "fix": "Rewrite AC-4.6.1 to: “In legacy mode, wrapper returns legacy BigInt parse result and does not reject inputs that legacy accepts; canonical parser is not invoked (or is invoked but ignored) per design.” Add an assertion via spies/counters: canonical parse call count is 0 in legacy mode (if that’s required) or canonical result is never used."
+      "location": "Sprint 2 / Task 2.5 (FR-4 test)",
+      "issue": "“Verify fingerprint emission at startup” is underspecified for a Node/TS module that may emit logs during import; without a defined test harness (spawning a subprocess vs mocking logger), this is likely to be flaky or infeasible.",
+      "why_blocking": "Teams often get stuck here: unit tests can’t reliably assert “startup log emitted” without controlling module cache and process env. This can block CI or lead to skipping the test, leaving FR-4 incomplete.",
+      "fix": "Specify the test approach in the task: either (a) spawn a node subprocess that imports `config.ts` and capture stdout/stderr, or (b) refactor `emitConfigFingerprint()` to accept an injected logger and test deterministically. Update AC to match the chosen approach."
     },
     {
-      "location": "FR sequencing / dependency graph vs tasks (FR-6 → FR-5 ordering)",
-      "issue": "The stated phased dependency order is FR-1→FR-2→FR-3→FR-4→FR-6→FR-5, but the FR dependency graph also shows FR-7 and FR-8 branching off FR-2/FR-3. The plan schedules FR-7/FR-8 in Sprint 2 (good), but there is no explicit gating that FR-7 conformance + golden baseline replay must be green before starting boundary enforcement work in Sprint 4.",
-      "why_blocking": "Boundary hardening (FR-6) without a green compatibility baseline/conformance suite increases the chance of runtime regressions and makes it hard to distinguish “parser hardening intended change” from “upgrade regression.” This can cause Sprint 4 to stall in debugging without a trusted baseline.",
-      "fix": "Add an explicit dependency/gate: Sprint 4 cannot start until Sprint 2 conformance (202 vectors) + Sprint 1 golden replay are green in CI. Make it a Sprint 3 or Sprint 4 entry criterion."
+      "location": "Sprint 3 / Tasks 3.1–3.4 (FR-2 contract testing)",
+      "issue": "No task adds the contract validation to CI (provider-side) or defines how consumers will run it beyond README; without wiring, the contract won’t actually prevent drift.",
+      "why_blocking": "FR-2’s value is enforcement. If CI isn’t updated to run `spec/contracts/validate.mjs` (and/or the Jest test), the sprint can “complete” files but still fail the PRD intent and the meta-criterion (Bridgebuilder would still flag lack of enforcement).",
+      "fix": "Add a task to update the repo’s CI pipeline/package scripts: e.g., `pnpm test` includes `spec/contracts/__tests__` and/or a dedicated `pnpm contract:validate` run in CI. Acceptance: CI fails if an entrypoint is removed/renamed or vectors hash changes without updating the contract."
+    },
+    {
+      "location": "Sprint 3 / Task 3.1 (FR-2 contract spec)",
+      "issue": "“Provider version range >=7.9.2” is stated but not tied to an actual source of truth (package.json version? protocol package version? git tag?) and not validated anywhere.",
+      "why_blocking": "Implementers won’t know what to put in `contract.json`, and reviewers can’t test it. This can stall Task 3.1/3.4 or lead to a meaningless field that doesn’t satisfy AC-2.x expectations.",
+      "fix": "Define the version source explicitly (e.g., `themes/sietch/src/packages/core/package.json` version, or monorepo root version) and add a validation in Task 3.4 that compares contract’s provider range against that source."
     }
   ],
   "question": "",

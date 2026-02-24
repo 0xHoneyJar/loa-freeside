@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "next_sprint_number": 349,
-  "active_cycle": "cycle-039",
+  "next_sprint_number": 352,
+  "active_cycle": "cycle-040",
   "cycles": [
     {
       "id": "cycle-001",
@@ -1524,8 +1524,10 @@
     {
       "id": "cycle-039",
       "label": "Hounfour v7.9.2 Full Adoption — Protocol Convergence",
-      "status": "active",
+      "status": "archived",
       "created": "2026-02-23T23:59:00Z",
+      "archived": "2026-02-24T14:45:00Z",
+      "archive_path": "grimoires/loa/archive/2026-02-24-hounfour-v792-protocol-convergence-complete",
       "prd": "grimoires/loa/prd.md",
       "sdd": "grimoires/loa/sdd.md",
       "sprint_plan": "grimoires/loa/sprint.md",
@@ -1559,6 +1561,32 @@
           "global_id": 348,
           "local_label": "sprint-1",
           "status": "in_progress"
+        }
+      ]
+    },
+    {
+      "id": "cycle-040",
+      "label": "The Naming — Engineering Excellence & Protocol Identity",
+      "status": "active",
+      "created": "2026-02-24T15:00:00Z",
+      "prd": "grimoires/loa/prd.md",
+      "sdd": "grimoires/loa/sdd.md",
+      "sprint_plan": "grimoires/loa/sprint.md",
+      "sprints": [
+        {
+          "global_id": 349,
+          "local_label": "sprint-1",
+          "status": "pending"
+        },
+        {
+          "global_id": 350,
+          "local_label": "sprint-2",
+          "status": "pending"
+        },
+        {
+          "global_id": 351,
+          "local_label": "sprint-3",
+          "status": "pending"
         }
       ]
     }
