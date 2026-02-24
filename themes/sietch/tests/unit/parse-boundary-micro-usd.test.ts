@@ -254,17 +254,15 @@ describe('checkSafetyFloor — control characters', () => {
 describe('parseBoundaryMicroUsd — enforce mode legacyFailed', () => {
   const logger = createMockLogger();
 
-  it('sets diverged: true and legacyFailed: true when legacy cannot parse (1e6)', () => {
-    // '1e6' is valid for parseMicroUsd (canonical) but invalid for BigInt (legacy)
+  it('rejects scientific notation in enforce mode (both parsers reject 1e6)', () => {
+    // Both BigInt('1e6') and parseMicroUsd('1e6') reject scientific notation.
+    // The legacyFailed pathway (diverged: true, legacyFailed: true) is defensive
+    // code for future parser divergence — no known production input triggers it today.
     const result = parseBoundaryMicroUsd('1e6', 'http', logger, undefined, 'enforce');
-    // Canonical may accept or reject '1e6' depending on parseMicroUsd behavior
-    // If canonical rejects, this becomes an ENFORCE_REJECTION
-    // If canonical accepts, we should see legacyFailed
-    if (result.ok) {
-      expect(result.diverged).toBe(true);
-      expect(result.legacyFailed).toBe(true);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errorCode).toBe('ENFORCE_REJECTION');
     }
-    // Either way, no crash — graceful handling
   });
 
   it('does not set legacyFailed when legacy succeeds', () => {
