@@ -1,14 +1,14 @@
 /**
- * Protocol Conformance Test Suite — Task 2.4 (Sprint 344, cycle-039)
+ * Protocol Conformance Test Suite — v7.11.0 (cycle-041)
  *
- * Loads all 205 conformance vectors from @0xhoneyjar/loa-hounfour/vectors
- * and validates them against the protocol's JSON Schema definitions using ajv.
- * Vector loader uses recursive readdir for v7.9.2 nested directory structure.
+ * Loads all conformance vectors from @0xhoneyjar/loa-hounfour/vectors
+ * and validates them against the protocol's JSON Schema definitions using ajv v8.
+ * Vector loader uses recursive readdir for nested directory structure.
  *
  * AC-2.4.1: Vector loader updated: recursive readdir for nested categories
- * AC-2.4.2: All 205 vectors load and parse successfully
- * AC-2.4.3: New test blocks for governance, reputation, liveness categories
- * AC-2.4.4: CONTRACT_VERSION assertion matches actual v7.9.1 value
+ * AC-2.4.2: All vectors load and parse successfully
+ * AC-2.4.3: Test blocks for governance, reputation, liveness categories
+ * AC-2.4.4: CONTRACT_VERSION assertion matches actual value
  * AC-2.4.5: Dual-accept test (v6.0.0 support) preserved
  * AC-2.4.6: All vectors pass
  */
@@ -103,9 +103,10 @@ import {
 // JSON Schema Validator (ajv)
 // ---------------------------------------------------------------------------
 
-// The hounfour schemas are JSON Schema objects (not Zod), so we use ajv v6.
-// Each compile call gets a fresh ajv instance to avoid $id collision errors
-// (ajv v6 registers schemas globally by $id and rejects duplicates).
+// The hounfour schemas are JSON Schema objects (not Zod), so we use ajv v8.
+// validateFormats: false is needed because v7.10+ governance schemas use format
+// keywords (e.g., "date-time") that require ajv-formats to validate.
+// Each compile call gets a fresh ajv instance to avoid $id collision errors.
 const validatorCache = new Map<string, ReturnType<InstanceType<typeof Ajv>['compile']>>();
 
 /** Validate data against a JSON Schema object. Returns { valid, errors }. */
@@ -237,7 +238,6 @@ const FUNCTION_INPUT_CATEGORIES = new Set([
   'constraint-lifecycle',     // Some vectors are constraint candidates, not lifecycle events
   'economic-boundary',        // Input = raw boundary request; schema = evaluation result
   'provider-normalization',   // Input = raw provider response; schema = normalized summary
-  'reputation-event',         // ReputationEventSchema has unresolvable $ref: "TaskType" in ajv
   'reputation-portability',   // Some vectors are portability responses, not requests
   'task-type',                // GovernanceTaskTypeSchema is string-constant anyOf enum; vector inputs are object wrappers
 ]);
