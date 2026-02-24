@@ -1,54 +1,36 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "This plan covers all six FRs, but a few missing integration/dependency tasks and some acceptance criteria gaps would likely cause implementation or CI to fail (or ship without actually meeting the PRD intent).",
+  "summary": "This plan is close, but it has a few missing/incorrectly-specified tasks and dependency gaps that can prevent a successful, CI-green schema-only adoption.",
   "blocking_issues": [
     {
-      "location": "Sprint 1 / Task 1.1 (FR-6 naming)",
-      "issue": "Task requires presenting 3 names “to the user” and choosing one, but the sprint plan has no mechanism/owner/timebox for making that decision; downstream tasks depend on the chosen name for docs and ceremony.",
-      "why_blocking": "If the name isn’t decided early, Sprint 1 can’t complete AC-6.1–6.4 and Sprint 3 Task 3.5 explicitly depends on it; this creates a real risk of Sprint 1 stalling or later rework across multiple artifacts.",
-      "fix": "Add an explicit decision task with a timebox and decision owner (e.g., “Decision meeting / async vote closes by day 2”), plus a fallback default name if no decision is reached. Make the chosen name an output artifact (e.g., `spec/protocol-name.md` or a single source-of-truth constant) referenced by docs."
+      "location": "Sprint 1 / Task 1.1 (Version Pin Migration) + Success Criteria #1",
+      "issue": "Acceptance criteria requires an “immutable semver reference” while Task 1.1 explicitly allows npm semver, git tag, or SHA; npm semver ranges are not immutable and can violate the supply-chain trust boundary intent.",
+      "why_blocking": "If the team chooses an npm semver/range (even if it resolves today), the sprint can fail review/verification against SDD §3.5.3 trust boundary expectations and can also make DIST_HASH non-reproducible across installs, breaking later contract/bundle verification confidence.",
+      "fix": "Make the pin requirement explicit and testable: require either (a) exact version (no ^/~) plus lockfile integrity, or (b) git commit SHA. Add AC: “dependency spec is exact (no range) and lockfile updated; reinstall reproduces same DIST_HASH.” Update Success Criteria #1 to match."
     },
     {
-      "location": "Sprint 1 / Tasks 1.2–1.4 (FR-1 graduation)",
-      "issue": "Graduation work adds a Prometheus gauge but does not include a task to wire the evaluator into the runtime metrics update path (where existing shadow metrics are computed/emitted).",
-      "why_blocking": "You can implement `evaluateGraduation()` and even register a gauge, but without integration into the metrics emission loop/request path, `boundary_graduation_ready` may never be set or may always be default/undefined—failing AC-1.4 in practice and making tests brittle or impossible.",
-      "fix": "Add a concrete integration subtask: identify the module that currently increments `shadowTotal/wouldRejectTotal/divergenceTotal` and update it to call `evaluateGraduation()` and set the gauge per context on the same cadence. Acceptance: gauge changes from 0→1 under a simulated-ready state in an integration/unit test."
+      "location": "Sprint 1 / Task 1.4 (Hash Chain + Evaluation Geometry Re-exports)",
+      "issue": "Task 1.4 includes re-exporting `NativeEnforcement` but Task 1.2’s export verification list does not include `NativeEnforcement` (or its actual entrypoint), so 1.4 can be blocked by missing/unknown symbol location.",
+      "why_blocking": "SDD §3.1.1 makes runtime export verification mandatory before adding to the barrel/contract. As written, 1.4 may attempt to export a symbol that wasn’t verified, causing implementation churn or CI failures if the symbol isn’t present at runtime or is type-only.",
+      "fix": "Add `NativeEnforcement` (and any other 1.4 symbols) to Task 1.2’s verification checklist with explicit entrypoints. Alternatively, change 1.4 dependency to: “depends on 1.2 verifying `NativeEnforcement` export surface” and add a fallback rule if it is type-only."
     },
     {
-      "location": "Sprint 1 / Task 1.3 (FR-1 tests)",
-      "issue": "Acceptance criteria include “vacuously true when shadowTotal is 0” but Task 1.2 AC-1.1 also requires a 7-day observation window and 72h consecutive clean; these can conflict unless explicitly defined in the evaluator spec.",
-      "why_blocking": "Ambiguous/contradictory criteria will cause churn: implementers won’t know whether `shadowTotal=0` should override time windows or still require elapsed time. This can block sign-off and lead to failing tests depending on interpretation.",
-      "fix": "Add an explicit rule in the SDD/PRD mapping and in Task 1.2 AC: e.g., “If shadowTotal==0, ready=false (or true) regardless of time windows” OR “shadowTotal==0 short-circuits only divergence criterion but still requires observation/consecutive windows.” Then align Task 1.3 tests to that rule."
+      "location": "Sprint 2 / Task 2.2 (Bundle Hash Recomputation) dependencies",
+      "issue": "Task 2.2 updates `contract.json` fields (`bundle_hash`, `vector_count`) but does not depend on Task 2.1, which also edits `contract.json` (entrypoints + provider_version_range).",
+      "why_blocking": "Two independent edits to the same file in the same sprint without an explicit ordering is a common source of merge conflicts and accidental overwrites (e.g., recomputing hash on an outdated contract.json or losing entrypoint updates), which can break contract validation and CI.",
+      "fix": "Add an explicit dependency: Task 2.2 depends on Task 2.1 (or combine them into a single “contract.json update + hash recompute” task with one set of acceptance criteria). Also add AC: “validate.mjs passes after both changes in one final contract.json state.”"
     },
     {
-      "location": "Sprint 2 / Task 2.2 (FR-3 route integration)",
-      "issue": "The plan names several route areas but does not enumerate the exact route files/endpoints and input fields that must be covered, nor does it include an inventory step to ensure all micro-USD entry points are updated.",
-      "why_blocking": "This is a classic gap that leads to partial rollout: one missed endpoint means the gateway validation requirement (AC-3.3/3.4) is not actually satisfied, and regressions can slip through because tests may not cover the missed path.",
-      "fix": "Add a short “inventory + checklist” task/subtask: grep for `parseBoundaryMicroUsd` (and any other micro-USD parsing helpers) and list all call sites/endpoints; make the checklist part of the PR description. Acceptance: all call sites either use the schema or are explicitly justified as internal-only."
+      "location": "Sprint 2 / Task 2.4 (ADR-001 Import Guard Tests) acceptance criteria",
+      "issue": "Layer 1 identity check is specified as “`TaskTypeSchema` barrel identity = routing-policy variant,” but the plan does not define how identity is asserted (reference equality vs deep equality) nor does it ensure both symbols are runtime values (schemas are runtime, types are not).",
+      "why_blocking": "Without a concrete, testable method, the team can implement a non-working identity assertion (e.g., comparing types, or comparing two separately-imported schema instances that are structurally equal but not referentially equal due to module duplication). This can cause flaky or failing CI and block the sprint’s core guardrail (SDD §4.2).",
+      "fix": "Specify the exact assertion and import paths to avoid type identity drift: e.g., `expect(TaskTypeSchema).toBe(RoutingTaskTypeSchema)` (reference equality) and ensure both are imported from the exact intended modules. Add a precondition task/AC to detect duplicate module instances (e.g., ensure only one resolved copy of loa-hounfour in pnpm lock / node_modules)."
     },
     {
-      "location": "Sprint 2 / Task 2.1 (FR-3 schema)",
-      "issue": "Schema is required to be mode-aware via `resolveParseMode()`, but there is no task ensuring `resolveParseMode()` is safe to call at request time given the module-level env var caching/cold-restart constraints (ties directly to FR-4).",
-      "why_blocking": "If `resolveParseMode()` reads cached env at module init while routes expect runtime changes (or vice versa), you can end up with schema mode diverging from parser mode, violating AC-3.2 and potentially breaking backward compatibility in shadow/legacy mode.",
-      "fix": "Add an explicit dependency/coordination step between FR-3 and FR-4: document and enforce that parse mode is fixed at process start (cold restart), and ensure both `resolveParseMode()` and schema creation share the same cached config source. Add a test asserting schema mode matches parser mode under controlled env setup."
-    },
-    {
-      "location": "Sprint 2 / Task 2.5 (FR-4 test)",
-      "issue": "“Verify fingerprint emission at startup” is underspecified for a Node/TS module that may emit logs during import; without a defined test harness (spawning a subprocess vs mocking logger), this is likely to be flaky or infeasible.",
-      "why_blocking": "Teams often get stuck here: unit tests can’t reliably assert “startup log emitted” without controlling module cache and process env. This can block CI or lead to skipping the test, leaving FR-4 incomplete.",
-      "fix": "Specify the test approach in the task: either (a) spawn a node subprocess that imports `config.ts` and capture stdout/stderr, or (b) refactor `emitConfigFingerprint()` to accept an injected logger and test deterministically. Update AC to match the chosen approach."
-    },
-    {
-      "location": "Sprint 3 / Tasks 3.1–3.4 (FR-2 contract testing)",
-      "issue": "No task adds the contract validation to CI (provider-side) or defines how consumers will run it beyond README; without wiring, the contract won’t actually prevent drift.",
-      "why_blocking": "FR-2’s value is enforcement. If CI isn’t updated to run `spec/contracts/validate.mjs` (and/or the Jest test), the sprint can “complete” files but still fail the PRD intent and the meta-criterion (Bridgebuilder would still flag lack of enforcement).",
-      "fix": "Add a task to update the repo’s CI pipeline/package scripts: e.g., `pnpm test` includes `spec/contracts/__tests__` and/or a dedicated `pnpm contract:validate` run in CI. Acceptance: CI fails if an entrypoint is removed/renamed or vectors hash changes without updating the contract."
-    },
-    {
-      "location": "Sprint 3 / Task 3.1 (FR-2 contract spec)",
-      "issue": "“Provider version range >=7.9.2” is stated but not tied to an actual source of truth (package.json version? protocol package version? git tag?) and not validated anywhere.",
-      "why_blocking": "Implementers won’t know what to put in `contract.json`, and reviewers can’t test it. This can stall Task 3.1/3.4 or lead to a meaningless field that doesn’t satisfy AC-2.x expectations.",
-      "fix": "Define the version source explicitly (e.g., `themes/sietch/src/packages/core/package.json` version, or monorepo root version) and add a validation in Task 3.4 that compares contract’s provider range against that source."
+      "location": "Sprint 1 / Task 1.3 (Protocol Barrel Governance Re-exports) vs PRD/SDD constraint",
+      "issue": "AC-1.1 says “All verified governance types imported in protocol barrel,” but Task 1.2’s list includes several items that may be runtime-only, type-only, or belong in non-barrel surfaces; the plan doesn’t constrain “what must be barrel-exported” vs “what must only be contract-listed,” risking violation of NFR-2 (schema-only) and AC-3.1 (ONLY aliased Governance* variants).",
+      "why_blocking": "If the team barrel-exports non-governance names, or exports governance symbols without the required aliasing discipline, you can get naming collisions / type identity drift / routing contamination—exactly what ADR-001 is meant to prevent—leading to failing conformance tests or review rejection.",
+      "fix": "Add an explicit mapping table as an acceptance artifact for 1.3: for each verified symbol, mark {barrel-exported as Governance*, contract-only, internal-only}. Add AC: “No non-aliased governance symbol names are exported from protocol/index.ts; governance subpath exports are not re-exported under their original names.”"
     }
   ],
   "question": "",

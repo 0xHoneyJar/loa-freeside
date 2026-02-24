@@ -1,50 +1,39 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "Some key fixes landed (BigInt-safe graduation math and ESM contract validator), but two previously-blocking items remain inconsistent/incorrect: the conformance vector bundle path/location and the canonical micro-USD bound/limit story (including an internal contradiction about digit caps).",
+  "summary": "4/5 prior blockers are addressed with acceptable verification gates and documentation, but the revised ADR-001 “type identity” guard is still fundamentally incorrect and will either fail to compile or provide no protection, making AC-1.6 unenforceable in CI.",
   "previous_issues_status": [
     {
-      "original_issue": "Graduation logic converts BigInt counters to Number causing precision loss",
+      "original_issue": "Barrel re-exports governance subpath symbols without verifying they exist at runtime (TASK_TYPES, validateTaskCohortUniqueness)",
       "status": "fixed",
-      "notes": "evaluateGraduation() now keeps counters as BigInt and compares divergence as a rational using PPM integer arithmetic; no lossy Number conversion."
+      "notes": "The added mandatory runtime export verification gate using dynamic import of the provider entrypoints is sufficient to prevent deterministic contract-spec failures, and the documented fallback actions (move entrypoint / type-only / remove+note) are appropriate."
     },
     {
-      "original_issue": "Graduation criteria requires deployTimestamp/lastWouldRejectTimestamp without a reliable source using existing metrics only",
-      "status": "not_fixed",
-      "notes": "The SDD still requires deployTimestamp and introduces lastWouldRejectTimestamp as an in-memory per-process timestamp. That is not computable from existing Prometheus counters alone and is explicitly non-durable across restarts, which breaks the stated requirement 'computed entirely from existing metrics' and makes the 72h consecutive-clean criterion non-portable/incorrect unless you formally switch to a PromQL window check as the actual source of truth."
-    },
-    {
-      "original_issue": "Contract validator uses require() and ignores path override; unreliable for ESM/subpath exports and can validate wrong artifact",
+      "original_issue": "Assumed computeScoringPathHash and SCORING_PATH_GENESIS_HASH are root exports; contract.json may point at wrong entrypoint",
       "status": "fixed",
-      "notes": "validate.mjs uses dynamic import() and validates the installed package entrypoints, which addresses ESM/subpath exports reliability and avoids the prior 'wrong artifact' issue."
+      "notes": "The SDD now explicitly requires verifying the root export surface and moving both the barrel import path and contract.json entry to the correct subpath if needed. This addresses the CI-failure mode."
     },
     {
-      "original_issue": "Conformance vector bundle path mismatch (contract.json vs actual suite location)",
-      "status": "not_fixed",
-      "notes": "contract.json still sets conformance_vectors.bundle_path to \"spec/vectors/\" while earlier context says the 205-vector suite lives in spec/conformance/. The SDD tries to split 'data in spec/vectors' vs 'runners in spec/conformance', but the provided repo context you gave says vectors are in spec/conformance/. As written, this is still inconsistent and will break hash verification or validate the wrong thing."
-    },
-    {
-      "original_issue": "Canonical schema hard-codes max 18 digits which is wrong for $1T micro-USD and may reject legitimate requests",
-      "status": "not_fixed",
-      "notes": "The schema text still claims 'max 18 digits' in multiple places (header comment + test table), but the implementation now says 'no hardcoded digit limit' and instead references MAX_SAFE_MICRO_USD (1e15 = $1B). That is a new bound that is not justified as the platform limit and would be catastrophically restrictive if real limits exceed $1B. This remains a blocking correctness risk for enforce mode."
-    },
-    {
-      "original_issue": "Claim 'no configuration drift is possible'—mode resolution could drift within a process",
+      "original_issue": "evaluation_geometry exposure relied on an assumption that Constraint is already exported from the freeside barrel",
       "status": "fixed",
-      "notes": "The SDD now scopes the guarantee to 'within a single Node.js process' and requires both gateway schema and boundary parser to call the same resolveParseMode() function, which is an acceptable single-source-of-truth approach under the cold-restart strategy."
+      "notes": "The revised §3.3 makes exposure conditional on verifying existing barrel exports and requires adding Constraint/ConstraintSchema (and contract entry if runtime) if missing. That resolves the schema-access risk."
+    },
+    {
+      "original_issue": "Rebuild script violates 'schema-only' intent and can introduce non-determinism/supply-chain risk",
+      "status": "fixed",
+      "notes": "§3.5.3 now clearly states the trust boundary (rebuilt dist is what executes) and adds concrete verification requirements (exact ref, DIST_HASH recording/compare, tag compatibility, toolchain pin/limitation). This is sufficient for this cycle’s stated constraints."
+    },
+    {
+      "original_issue": "ADR-001 guard was brittle (grep-based) and could false-fail/false-pass; needed AST-based or stronger enforcement",
+      "status": "not_fixed",
+      "notes": "The new two-layer approach still has a truly blocking flaw: Layer 1 attempts `expect(BarrelTaskType).toBe(RoutingTaskType)` while importing `TaskType` as a value. In the SDD itself, TaskType is used as a type-only import in routing code, and in most TS setups TaskType is not a runtime value. This will either (a) fail TypeScript compilation ('TaskType only refers to a type, but is being used as a value') or (b) be meaningless if it compiles due to some unrelated runtime export. Either way it does not reliably enforce that the *type identity* used in routing remains the routing-policy variant. Layer 2 is still text scanning (now scoped), which can still false-pass via indirect usage or aliasing and does not meet the original goal of robust enforcement."
     }
   ],
   "new_blocking_concerns": [
     {
-      "location": "§3.3 FR-3 — createMicroUsdSchema() references MAX_SAFE_MICRO_USD and MAX_INPUT_LENGTH but neither is defined/imported in the snippet",
-      "description": "The proposed schema code as written will not compile (undefined identifiers), and the bound constant is described as an 'existing safety floor' but not actually wired to an existing source of truth.",
-      "why_blocking": "This is not a style issue: it prevents implementation as specified and, more importantly, risks enforcing an arbitrary cap at the gateway that can reject legitimate traffic on graduation.",
-      "fix": "Define/import these constants from an explicit, existing economic-limit source of truth (e.g., config-derived MAX_BUDGET_MICRO_USD / MAX_LIMIT_MICRO_USD) and make the SDD consistent: either (a) no numeric cap at gateway beyond 'fits BigInt + format', or (b) a cap that is explicitly the platform maximum and matches boundary/canonical parse behavior. Remove the lingering '18 digits' statements and update tests accordingly."
-    },
-    {
-      "location": "§3.2 FR-2 — validate.mjs conformance run uses cwd join(__dirname, '../..')",
-      "description": "The script assumes a specific directory layout when executed from node_modules (as suggested in the comment). In node_modules, '../..' from spec/contracts may not land on the consumer repo root that contains spec/conformance/.",
-      "why_blocking": "In provider CI (hounfour), this can make --run-vectors fail even when the contract is satisfied, breaking the release gate or forcing teams to disable vector runs (defeating the behavioral contract).",
-      "fix": "Resolve the consumer package root robustly (e.g., walk up to the nearest package.json for loa-freeside, or accept an explicit --repo-root argument). Alternatively, run vectors only in the consumer repo CI and keep provider CI to entrypoint export validation + bundle hash verification."
+      "location": "§4.2 ADR-001 Import Guard Test — Layer 1 type identity assertion",
+      "description": "The proposed identity test treats TaskType as a runtime value and compares object reference equality, which is not valid for a TypeScript type alias/union and will likely not compile or will provide no real guarantee.",
+      "why_blocking": "AC-1.6 is a hard constraint and is enforced via CI tests. As written, this guard is either a compile-time error (blocking the build) or a false sense of safety (test passes without actually preventing governance TaskType leakage). That reintroduces the original blocker: the guard can’t be trusted to prevent accidental coupling in routing/mapping code paths.",
+      "fix": "Replace Layer 1 with a check that is actually enforceable:\n- If you want a runtime identity check, compare *schemas* (e.g., `TaskTypeSchema`) that are known runtime exports, not the `TaskType` type. Only do this if both routing-policy and governance variants have distinct runtime schema objects.\n- Otherwise, implement the guard using TypeScript AST (ts-morph / compiler API) over the curated ROUTING_MODULES list to detect any import (type or value) from `@0xhoneyjar/loa-hounfour/governance` and any identifier usage of `GovernanceTaskType`/`GovernanceReputationEvent` (including aliased imports).\n- Minimal acceptable alternative (still deterministic): in each routing module, enforce an allowlist of import specifiers and fail if any specifier matches `/Governance(TaskType|ReputationEvent)/` or any module specifier contains `/governance`.\nThis restores a CI-enforceable, non-brittle guard without requiring whole-repo grep."
     }
   ],
   "iteration": 2

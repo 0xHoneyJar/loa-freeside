@@ -55,10 +55,8 @@ describe('CONTRACT_VERSION', () => {
     expect(CONTRACT_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
-  it('is 7.9.1 (contract version, not package version)', () => {
-    // CONTRACT_VERSION tracks the protocol contract version (7.9.1)
-    // Package version is 7.9.2 — they are distinct
-    expect(CONTRACT_VERSION).toBe('7.9.1');
+  it('is 7.11.0 (contract version, tracks protocol version)', () => {
+    expect(CONTRACT_VERSION).toBe('7.11.0');
   });
 
   it('validateCompatibility accepts matching major.minor', () => {
@@ -379,5 +377,45 @@ describe('v7.0.0 canonical type re-exports', () => {
     const mod = await import('@0xhoneyjar/loa-hounfour/model');
     expect(mod.CompletionRequestSchema).toBeDefined();
     expect(mod.CompletionResultSchema).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 10. ADR-001 Import Guard — Schema Identity + Routing Denylist (Sprint 354, Task 2.4)
+// ---------------------------------------------------------------------------
+
+describe('ADR-001: TaskType schema identity guard', () => {
+  it('Layer 1: root.GovernanceTaskTypeSchema === governance.TaskTypeSchema (same object)', async () => {
+    const root = await import('@0xhoneyjar/loa-hounfour');
+    const gov = await import('@0xhoneyjar/loa-hounfour/governance');
+    expect(root.GovernanceTaskTypeSchema).toBe(gov.TaskTypeSchema);
+  });
+
+  it('Layer 1: root.TaskTypeSchema !== governance.TaskTypeSchema (routing vs governance)', async () => {
+    const root = await import('@0xhoneyjar/loa-hounfour');
+    const gov = await import('@0xhoneyjar/loa-hounfour/governance');
+    expect(root.TaskTypeSchema).not.toBe(gov.TaskTypeSchema);
+  });
+
+  it('Layer 1: root.TaskTypeSchema !== root.GovernanceTaskTypeSchema (distinct schemas)', async () => {
+    const root = await import('@0xhoneyjar/loa-hounfour');
+    expect(root.TaskTypeSchema).not.toBe(root.GovernanceTaskTypeSchema);
+  });
+
+  it('Layer 2: pool-mapping.ts imports TaskType from root, not governance', async () => {
+    const poolMappingSrc = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'packages', 'adapters', 'agent', 'pool-mapping.ts'),
+      'utf8',
+    );
+
+    // Must NOT contain governance-specific identifiers
+    expect(poolMappingSrc).not.toMatch(/GovernanceTaskType/);
+    expect(poolMappingSrc).not.toMatch(/GovernanceReputationEvent/);
+
+    // Must NOT import from /governance subpath
+    expect(poolMappingSrc).not.toMatch(/from\s+['"]@0xhoneyjar\/loa-hounfour\/governance['"]/);
+
+    // MUST import TaskType from root (positive check)
+    expect(poolMappingSrc).toMatch(/from\s+['"]@0xhoneyjar\/loa-hounfour['"]/);
   });
 });

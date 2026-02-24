@@ -1,7 +1,26 @@
 {
-  "verdict": "APPROVED",
-  "summary": "No blocking bugs, security issues, or logic errors found in the provided changes.",
-  "issues": [],
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Graduation readiness logic incorrectly blocks when wouldRejectTotal > 0 even if the consecutive clean window has elapsed, and time window math can go negative.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "parse-boundary-micro-usd.ts",
+      "line": 94,
+      "description": "The consecutive clean window is incorrectly treated as failing whenever wouldRejectTotal > 0. This blocks graduation even if the last would-reject event occurred long enough ago to satisfy the consecutive-clean window, contradicting the stated criteria.",
+      "current_code": "```typescript\n  const consecutiveCleanMs = counters.wouldRejectTotal === 0n\n    ? observationMs // never incremented — clean since deploy\n    : now - lastWouldRejectTimestamp;\n  const wouldRejectMet = counters.wouldRejectTotal === 0n\n    ? consecutiveCleanMs >= criteria.wouldRejectConsecutiveWindowMs\n    : false; // any non-zero means not ready\n```",
+      "fixed_code": "```typescript\n  const consecutiveCleanMs = counters.wouldRejectTotal === 0n\n    ? observationMs // never incremented — clean since deploy\n    : Math.max(0, now - lastWouldRejectTimestamp);\n  const wouldRejectMet = consecutiveCleanMs >= criteria.wouldRejectConsecutiveWindowMs;\n```",
+      "explanation": "The criteria require a consecutive window with no increments, not a total of zero forever. This fix correctly allows graduation once the clean window has elapsed and also guards against negative time deltas."
+    },
+    {
+      "severity": "major",
+      "file": "parse-boundary-micro-usd.ts",
+      "line": 86,
+      "description": "Observation window can become negative if deployTimestamp is in the future (clock skew/testing), which can incorrectly fail windows. This is a time-window logic bug.",
+      "current_code": "```typescript\n  const observationMs = now - deployTimestamp;\n  const observationMet = observationMs >= criteria.minObservationWindowMs;\n```",
+      "fixed_code": "```typescript\n  const observationMs = Math.max(0, now - deployTimestamp);\n  const observationMet = observationMs >= criteria.minObservationWindowMs;\n```",
+      "explanation": "Clamping to zero prevents negative window durations and ensures observation and consecutive-clean windows behave correctly under clock skew or test setups."
+    }
+  ],
   "fabrication_check": {
     "passed": true,
     "concerns": []

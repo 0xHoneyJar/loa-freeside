@@ -1,10 +1,18 @@
 {
   "verdict": "APPROVED",
-  "summary": "No bugs or security issues found in the reviewed code.",
-  "issues": [],
-  "fabrication_check": {
-    "passed": true,
-    "concerns": []
-  },
-  "iteration": 1
+  "summary": "Previous issues were addressed with correct time window clamping and proper consecutive-clean logic.",
+  "previous_issues_status": [
+    {
+      "original_issue": "Consecutive clean window incorrectly failed whenever wouldRejectTotal > 0",
+      "status": "fixed",
+      "notes": "Now uses elapsed time since last would-reject and compares against window regardless of total."
+    },
+    {
+      "original_issue": "Observation window could go negative under clock skew",
+      "status": "fixed",
+      "notes": "Now clamps observationMs to zero via Math.max(0, now - deployTimestamp)."
+    }
+  ],
+  "new_blocking_concerns": [],
+  "iteration": 2
 }
