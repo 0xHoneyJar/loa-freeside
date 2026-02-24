@@ -15,7 +15,7 @@
 import { Router, type Response } from 'express';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { logger } from '../../utils/logger.js';
-import { parseBoundaryMicroUsd } from '../../packages/core/protocol/parse-boundary-micro-usd.js';
+import { parseBoundaryMicroUsd, resolveParseMode } from '../../packages/core/protocol/parse-boundary-micro-usd.js';
 import { getBoundaryMetrics } from '../../packages/core/protocol/boundary-metrics.js';
 import { createMicroUsdSchema, buildMicroUsdError } from '../../packages/core/protocol/micro-usd-schema.js';
 import type { IPeerTransferService, TransferDirection } from '../../packages/core/ports/IPeerTransferService.js';
@@ -92,7 +92,7 @@ transferRouter.post(
     // Gateway schema pre-validation (cycle-040, FR-3 AC-3.3)
     const schemaResult = createMicroUsdSchema().safeParse(rawAmount);
     if (!schemaResult.success) {
-      res.status(400).json(buildMicroUsdError('amountMicro', schemaResult.error.issues[0].message, 'legacy'));
+      res.status(400).json(buildMicroUsdError('amountMicro', schemaResult.error.issues[0].message, resolveParseMode()));
       return;
     }
 

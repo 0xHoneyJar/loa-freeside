@@ -19,7 +19,7 @@ import { z } from 'zod';
 import { randomUUID, createHmac, timingSafeEqual } from 'crypto';
 import { logger } from '../../utils/logger.js';
 import { serializeBigInt } from '../../packages/core/protocol/arrakis-arithmetic.js';
-import { parseBoundaryMicroUsd } from '../../packages/core/protocol/parse-boundary-micro-usd.js';
+import { parseBoundaryMicroUsd, resolveParseMode } from '../../packages/core/protocol/parse-boundary-micro-usd.js';
 import { getBoundaryMetrics } from '../../packages/core/protocol/boundary-metrics.js';
 import { createMicroUsdSchema, buildMicroUsdError } from '../../packages/core/protocol/micro-usd-schema.js';
 import type { ICampaignService, GrantInput } from '../../packages/core/ports/ICampaignService.js';
@@ -312,7 +312,7 @@ billingAdminRouter.post(
       // Gateway schema pre-validation (cycle-040, FR-3 AC-3.3)
       const schemaResult = createMicroUsdSchema().safeParse(rawMintAmount);
       if (!schemaResult.success) {
-        res.status(400).json(buildMicroUsdError('amountMicro', schemaResult.error.issues[0].message, 'legacy'));
+        res.status(400).json(buildMicroUsdError('amountMicro', schemaResult.error.issues[0].message, resolveParseMode()));
         return;
       }
       // Sprint 4, Task 4.3: boundary-hardened parsing for admin mint
