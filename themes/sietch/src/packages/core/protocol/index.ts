@@ -1,5 +1,9 @@
 /**
- * Arrakis Protocol Types — Barrel Export
+ * Commons Protocol — Arrakis Protocol Types — Barrel Export
+ *
+ * The Commons Protocol is a community-governed economic protocol for AI inference
+ * with conservation invariants, conviction-gated access, and transparent
+ * disagreement resolution.
  *
  * Re-exports arrakis-specific protocol types and extensions.
  * Canonical types should be imported directly from @0xhoneyjar/loa-hounfour.
@@ -8,6 +12,7 @@
  *   arrakis-arithmetic.ts  — Branded types + arrakis arithmetic helpers
  *   arrakis-compat.ts      — Protocol version negotiation + boundary normalization
  *   arrakis-conservation.ts — Conservation error taxonomy adapter
+ *   graduation.ts          — Shadow-to-enforce graduation criteria (cycle-040)
  *
  * @module packages/core/protocol
  */
@@ -461,3 +466,16 @@ export type {
   BoundaryMetrics,
   ParseMode,
 } from './parse-boundary-micro-usd.js';
+
+// Graduation — shadow-to-enforce graduation criteria (cycle-040, FR-1)
+export {
+  DEFAULT_GRADUATION_CRITERIA,
+  evaluateGraduation,
+  computeGraduationGauge,
+} from './graduation.js';
+
+export type {
+  BoundaryGraduationCriteria,
+  GraduationCounters,
+  GraduationStatus,
+} from './graduation.js';

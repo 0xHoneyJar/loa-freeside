@@ -14,6 +14,7 @@
  */
 
 import type { BoundaryContext, BoundaryMetrics } from './parse-boundary-micro-usd.js';
+import type { GraduationCounters } from './graduation.js';
 
 // =============================================================================
 // Types
@@ -59,6 +60,8 @@ export class BoundaryMetricsRegistry {
   private readonly counters = new Map<MetricKey, number>();
   private readonly emissions: MetricEmission[] = [];
   private readonly maxEmissions: number;
+  /** Per-context timestamp of last wouldRejectTotal increment (cycle-040 FR-1) */
+  private readonly lastWouldRejectTimestamps = new Map<BoundaryContext, number>();
 
   constructor(options?: { maxEmissions?: number }) {
     this.maxEmissions = options?.maxEmissions ?? 10_000;
@@ -116,6 +119,28 @@ export class BoundaryMetricsRegistry {
   }
 
   /**
+   * Get the last wouldRejectTotal timestamp for a given context.
+   * Returns 0 if no would-reject event has occurred for that context.
+   */
+  getLastWouldRejectTimestamp(context: BoundaryContext): number {
+    return this.lastWouldRejectTimestamps.get(context) ?? 0;
+  }
+
+  /**
+   * Get graduation-compatible counter snapshot for a given context.
+   * Converts internal number counters to BigInt for precision-safe comparison.
+   *
+   * @see SDD cycle-040 §3.1
+   */
+  getGraduationCounters(context: BoundaryContext): GraduationCounters {
+    return {
+      shadowTotal: BigInt(this.get(METRIC_NAMES.SHADOW_TOTAL, context)),
+      wouldRejectTotal: BigInt(this.get(METRIC_NAMES.WOULD_REJECT_TOTAL, context)),
+      divergenceTotal: BigInt(this.get(METRIC_NAMES.DIVERGENCE_TOTAL, context)),
+    };
+  }
+
+  /**
    * Reset all counters to 0 and clear emissions.
    */
   reset(): void {
@@ -123,6 +148,7 @@ export class BoundaryMetricsRegistry {
       this.counters.set(key, 0);
     }
     this.emissions.length = 0;
+    this.lastWouldRejectTimestamps.clear();
   }
 
   /**
@@ -137,6 +163,7 @@ export class BoundaryMetricsRegistry {
       },
       wouldRejectTotal: (context: BoundaryContext) => {
         this.increment(METRIC_NAMES.WOULD_REJECT_TOTAL, context);
+        this.lastWouldRejectTimestamps.set(context, Date.now());
       },
       divergenceTotal: (context: BoundaryContext) => {
         this.increment(METRIC_NAMES.DIVERGENCE_TOTAL, context);

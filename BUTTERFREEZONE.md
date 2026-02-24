@@ -1,7 +1,7 @@
 <!-- AGENT-CONTEXT
 name: arrakis
 type: framework
-purpose: Multi-model agent economy infrastructure platform.
+purpose: Commons Protocol — community-governed economic protocol for AI inference. Multi-model agent economy infrastructure platform.
 key_files: [CLAUDE.md, .claude/loa/CLAUDE.loa.md, .loa.config.yaml, .claude/scripts/, .claude/skills/, package.json]
 interfaces: [/auditing-security, /autonomous-agent, /bridgebuilder-review, /browsing-constructs, /bug-triaging]
 dependencies: [git, jq, yq, node]
@@ -12,14 +12,14 @@ capability_requirements:
   - git: read_write
   - shell: execute
   - github_api: read_write (scope: external)
-version: v1.39.1
+version: v1.32.0
 trust_level: L2-verified
 -->
 
 # loa-freeside
 
 <!-- provenance: DERIVED -->
-Multi-model agent economy infrastructure platform.
+Commons Protocol — community-governed economic protocol for AI inference. Multi-model agent economy infrastructure platform.
 
 The framework provides 29 specialized skills, built with TypeScript/JavaScript, Python, Shell.
 
@@ -58,18 +58,18 @@ graph TD
     docs[docs]
     drizzle[drizzle]
     evals[evals]
+    github_fetch[github-fetch]
     grimoires[grimoires]
     infrastructure[infrastructure]
-    packages[packages]
     Root[Project Root]
     Root --> apps
     Root --> decisions
     Root --> docs
     Root --> drizzle
     Root --> evals
+    Root --> github_fetch
     Root --> grimoires
     Root --> infrastructure
-    Root --> packages
 ```
 Directory structure:
 ```
@@ -98,11 +98,11 @@ Directory structure:
 ./evals/suites
 ./evals/tasks
 ./evals/tests
+./github-fetch
 ./grimoires
 ./grimoires/loa
 ./grimoires/pub
 ./infrastructure
-./infrastructure/k8s
 ```
 
 ## Interfaces
@@ -110,16 +110,16 @@ Directory structure:
 ### HTTP Routes
 
 - **DELETE** `/sandbox/:sandboxId/reset` (`themes/sietch/src/api/middleware/auth.ts:417`)
-- **GET** `/.well-known/jwks.json` (`themes/sietch/src/api/routes/agents.routes.ts:142`)
-- **GET** `/:id/identity` (`themes/sietch/src/api/routes/agent-identity.routes.ts:99`)
-- **GET** `/:id/provenance` (`themes/sietch/src/api/routes/agent-identity.routes.ts:82`)
 - **GET** `/admin/stats` (`themes/sietch/src/api/middleware.ts:397`)
 - **GET** `/config` (`themes/sietch/src/api/middleware/dashboardAuth.ts:125`)
 - **GET** `/protected` (`themes/sietch/src/api/middleware/auth.ts:176`)
+- **GET** `/quote` (`packages/routes/x402.routes.ts:92`)
 - **PATCH** `/:userId/thresholds` (`themes/sietch/src/api/middleware/auth.ts:382`)
+- **POST** `/agents/:agentId/chat` (`packages/routes/x402.routes.ts:140`)
 - **POST** `/config` (`themes/sietch/src/api/middleware/dashboardAuth.ts:217`)
 - **POST** `/endpoint` (`themes/sietch/src/api/middleware/rate-limit.ts:367`)
 - **POST** `/inference` (`themes/sietch/src/api/middleware/developer-key-auth.ts:156`)
+- **POST** `/nowpayments` (`packages/routes/webhooks.routes.ts:92`)
 - **POST** `/register` (`themes/sietch/src/api/routes/agent-identity.routes.ts:37`)
 
 ### CLI Commands
@@ -173,22 +173,24 @@ packages/cli/src/commands/sandbox/index.ts:185:    .command('status <name>')
 |--------|-------|---------|---------------|
 | `apps/` | 34990 | Apps | \u2014 |
 | `decisions/` | 6 | Documentation | \u2014 |
-| `docs/` | 42 | Documentation | \u2014 |
+| `docs/` | 43 | Documentation | \u2014 |
 | `drizzle/` | 1 | Drizzle | \u2014 |
 | `evals/` | 122 | Benchmarking and regression framework for the Loa agent development system. Ensures framework changes don't degrade agent behavior through | [evals/README.md](evals/README.md) |
-| `grimoires/` | 1186 | Home to all grimoire directories for the Loa | [grimoires/README.md](grimoires/README.md) |
-| `infrastructure/` | 189 | This directory contains the Infrastructure as Code (IaC) for Arrakis, using Terraform to provision AWS | [infrastructure/README.md](infrastructure/README.md) |
-| `packages/` | 55050 | Shared libraries and utilities for the Arrakis | [packages/README.md](packages/README.md) |
-| `scripts/` | 21 | Utility scripts | \u2014 |
+| `github-fetch/` | 11 | Github fetch | \u2014 |
+| `grimoires/` | 1583 | Home to all grimoire directories for the Loa | [grimoires/README.md](grimoires/README.md) |
+| `infrastructure/` | 193 | This directory contains the Infrastructure as Code (IaC) for Arrakis, using Terraform to provision AWS | [infrastructure/README.md](infrastructure/README.md) |
+| `packages/` | 55089 | Shared libraries and utilities for the Arrakis | [packages/README.md](packages/README.md) |
+| `scripts/` | 26 | Utility scripts | \u2014 |
 | `sites/` | 28151 | Web properties for the Arrakis | [sites/README.md](sites/README.md) |
-| `tests/` | 93 | Test suites | \u2014 |
-| `themes/` | 66032 | Theme-specific backend services for Arrakis | [themes/README.md](themes/README.md) |
+| `spec/` | 6 | Test suites | \u2014 |
+| `tests/` | 97 | Test suites | \u2014 |
+| `themes/` | 66066 | Theme-specific backend services for Arrakis | [themes/README.md](themes/README.md) |
 
 ## Verification
 <!-- provenance: CODE-FACTUAL -->
 - Trust Level: **L2 — CI Verified**
-- 93 test files across 1 suite
-- CI/CD: GitHub Actions (24 workflows)
+- 103 test files across 2 suites
+- CI/CD: GitHub Actions (25 workflows)
 - Security: SECURITY.md present
 
 ## Agents
@@ -235,16 +237,16 @@ cd themes/sietch && npx drizzle-kit push && cd ../..
 # Start development server
 pnpm run dev
 <!-- ground-truth-meta
-head_sha: cf1a84bf975f5d5cc3ec491f99a6e4c6c8725204
-generated_at: 2026-02-22T05:43:25Z
+head_sha: ab51fc464aa6580568966d99df802f3a9b4107b1
+generated_at: 2026-02-24T08:04:34Z
 generator: butterfreezone-gen v1.0.0
 sections:
-  agent_context: 051a2600552d6987cfc91e9c0d2bf61e710a8814852e0de2e9b51adce07d69bc
+  agent_context: 9153dda48b2c1ccafbd76cccde885039f7ba5f00a2b152e44e69ea6a28111685
   capabilities: ab2576b1f2e7e8141f0e93e807d26ed2b7b155e21c96d787507a3ba933bb9795
-  architecture: 1baed493127e15926a14116d27581dbed3239a3993de731baaba83bad22c6c84
-  interfaces: 3bcf9c10303d01bf67c82e73663ca15117393f34599fbdb625cfe7ab6120ea5a
-  module_map: 6569f30ec75d8613d9007bc7e1cc1d70b13de6948da97399aed4e034b437d3af
-  verification: 40e6771c3773f5eaa7c5f7c6fe8a4beb1c1b71a42f06abb116210ddfebcb146d
+  architecture: 4986601f929268fa86e95a13b5612852a9e41efb05e98d20d6cc4c82603501ac
+  interfaces: 8a27e7dd9f0927654886f67ab89c3f127278c6651246f55052368a4ca60f5dd9
+  module_map: 2e1490059891ed129bfb98b396394b9cd0e77455acad02b3380eff86e9d97b9c
+  verification: 88a72d1151e45027dfeadb411d3f41b1d71d2ac779bcc921db9e99b7c5d3a2ac
   agents: ca263d1e05fd123434a21ef574fc8d76b559d22060719640a1f060527ef6a0b6
   ecosystem: 29fc390a2a77ec8d5bdbe657182dd47a2a5cd0c0c36c74c763c9e65cfad170e3
   quick_start: aa15ed859d837420815f7e0948f08651a127ddd6db965df8b99600b5ef930172
