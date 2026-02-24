@@ -1,15 +1,15 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "Found a bug that treats valid 0n costs as missing and can cause incorrect reservation release.",
+  "summary": "Legacy mode schema is looser than boundary parser due to missing MAX_INPUT_LENGTH check, violating equal-or-tighter requirement.",
   "issues": [
     {
       "severity": "major",
-      "file": "api/middleware/billing-guard.ts",
-      "line": 301,
-      "description": "actualCostMicro is checked with a falsy test, which treats a valid 0n cost as missing and triggers a reservation release instead of finalization.",
-      "current_code": "```typescript\n    const actualCostMicro = (req as any).actualCostMicro as bigint | undefined;\n    if (!actualCostMicro) {\n      // No cost reported — release reservation if present\n      if (billing.reservation) {\n        try {\n          await config.ledger.release(billing.reservation.reservationId);\n        } catch (err) {\n          logger.error({\n            event: 'billing.release.error',\n            reservationId: billing.reservation.reservationId,\n            err,\n          }, 'Failed to release reservation');\n        }\n      }\n      next();\n      return;\n    }\n```",
-      "fixed_code": "```typescript\n    const actualCostMicro = (req as any).actualCostMicro as unknown;\n    if (actualCostMicro === undefined || actualCostMicro === null) {\n      // No cost reported — release reservation if present\n      if (billing.reservation) {\n        try {\n          await config.ledger.release(billing.reservation.reservationId);\n        } catch (err) {\n          logger.error({\n            event: 'billing.release.error',\n            reservationId: billing.reservation.reservationId,\n            err,\n          }, 'Failed to release reservation');\n        }\n      }\n      next();\n      return;\n    }\n\n    if (typeof actualCostMicro !== 'bigint') {\n      logger.error({\n        event: 'billing.finalize.invalid_cost_type',\n        accountId: billing.accountId,\n        valueType: typeof actualCostMicro,\n      }, 'Invalid actualCostMicro type; expected bigint');\n      if (billing.reservation) {\n        try {\n          await config.ledger.release(billing.reservation.reservationId);\n        } catch (err) {\n          logger.error({\n            event: 'billing.release.error',\n            reservationId: billing.reservation.reservationId,\n            err,\n          }, 'Failed to release reservation');\n        }\n      }\n      next();\n      return;\n    }\n```",
-      "explanation": "This change ensures 0n is treated as a valid cost and not as a missing value, preventing incorrect reservation releases. It also guards against invalid types to avoid runtime failures during finalize."
+      "file": "path/to/micro-usd-schema.ts",
+      "line": 71,
+      "description": "Legacy mode omits MAX_INPUT_LENGTH, so gateway can accept oversized inputs that parseBoundaryMicroUsd would reject, violating the equal-or-tighter contract and NFR-3 boundary parity.",
+      "current_code": "```typescript\n  return z.string()\n    .min(1, 'micro-USD value must not be empty')\n    .refine(\n      (val) => {\n        try {\n          BigInt(val);\n          return true;\n        } catch {\n          return false;\n        }\n      },\n      { message: 'micro-USD must be a valid integer string' },\n    )\n    .describe('Micro-USD amount (legacy mode)');\n```",
+      "fixed_code": "```typescript\n  return z.string()\n    .min(1, 'micro-USD value must not be empty')\n    .max(MAX_INPUT_LENGTH, `micro-USD input exceeds max length (${MAX_INPUT_LENGTH})`)\n    .refine(\n      (val) => {\n        try {\n          BigInt(val);\n          return true;\n        } catch {\n          return false;\n        }\n      },\n      { message: 'micro-USD must be a valid integer string' },\n    )\n    .describe('Micro-USD amount (legacy mode)');\n```",
+      "explanation": "parseBoundaryMicroUsd enforces MAX_INPUT_LENGTH as a safety check; adding the same limit ensures the gateway schema is equal-or-tighter in legacy mode and prevents oversized inputs from being accepted upstream."
     }
   ],
   "fabrication_check": {

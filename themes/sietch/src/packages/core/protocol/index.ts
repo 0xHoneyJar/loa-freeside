@@ -13,6 +13,7 @@
  *   arrakis-compat.ts      — Protocol version negotiation + boundary normalization
  *   arrakis-conservation.ts — Conservation error taxonomy adapter
  *   graduation.ts          — Shadow-to-enforce graduation criteria (cycle-040)
+ *   micro-usd-schema.ts    — Mode-aware Zod gateway schema (cycle-040)
  *
  * @module packages/core/protocol
  */
@@ -479,3 +480,14 @@ export type {
   GraduationCounters,
   GraduationStatus,
 } from './graduation.js';
+
+// Micro-USD gateway schema — mode-aware Zod validation (cycle-040, FR-3)
+export {
+  createMicroUsdSchema,
+  buildMicroUsdError,
+  CANONICAL_MICRO_USD_PATTERN,
+} from './micro-usd-schema.js';
+
+export type {
+  MicroUsdValidationError,
+} from './micro-usd-schema.js';

@@ -21,6 +21,7 @@ import { logger } from '../../utils/logger.js';
 import { serializeBigInt } from '../../packages/core/protocol/arrakis-arithmetic.js';
 import { parseBoundaryMicroUsd } from '../../packages/core/protocol/parse-boundary-micro-usd.js';
 import { getBoundaryMetrics } from '../../packages/core/protocol/boundary-metrics.js';
+import { createMicroUsdSchema, buildMicroUsdError } from '../../packages/core/protocol/micro-usd-schema.js';
 import type { ICampaignService, GrantInput } from '../../packages/core/ports/ICampaignService.js';
 import type { ICreditLedgerService } from '../../packages/core/ports/ICreditLedgerService.js';
 import type { IRevenueRulesService } from '../../packages/core/ports/IRevenueRulesService.js';
@@ -307,9 +308,16 @@ billingAdminRouter.post(
     const { amountMicro, sourceType, description, poolId } = result.data;
 
     try {
+      const rawMintAmount = String(amountMicro ?? '');
+      // Gateway schema pre-validation (cycle-040, FR-3 AC-3.3)
+      const schemaResult = createMicroUsdSchema().safeParse(rawMintAmount);
+      if (!schemaResult.success) {
+        res.status(400).json(buildMicroUsdError('amountMicro', schemaResult.error.issues[0].message, 'legacy'));
+        return;
+      }
       // Sprint 4, Task 4.3: boundary-hardened parsing for admin mint
       const mintParse = parseBoundaryMicroUsd(
-        String(amountMicro ?? ''),
+        rawMintAmount,
         'http',
         logger,
         getBoundaryMetrics(),

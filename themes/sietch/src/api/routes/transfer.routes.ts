@@ -17,6 +17,7 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { logger } from '../../utils/logger.js';
 import { parseBoundaryMicroUsd } from '../../packages/core/protocol/parse-boundary-micro-usd.js';
 import { getBoundaryMetrics } from '../../packages/core/protocol/boundary-metrics.js';
+import { createMicroUsdSchema, buildMicroUsdError } from '../../packages/core/protocol/micro-usd-schema.js';
 import type { IPeerTransferService, TransferDirection } from '../../packages/core/ports/IPeerTransferService.js';
 
 // =============================================================================
@@ -87,6 +88,14 @@ transferRouter.post(
 
     // amountMicro: accept number or string, parse via boundary wrapper (Sprint 4, Task 4.3)
     const rawAmount = amountMicro !== undefined && amountMicro !== null ? String(amountMicro) : '';
+
+    // Gateway schema pre-validation (cycle-040, FR-3 AC-3.3)
+    const schemaResult = createMicroUsdSchema().safeParse(rawAmount);
+    if (!schemaResult.success) {
+      res.status(400).json(buildMicroUsdError('amountMicro', schemaResult.error.issues[0].message, 'legacy'));
+      return;
+    }
+
     const parseResult = parseBoundaryMicroUsd(rawAmount, 'http', logger, getBoundaryMetrics());
     if (!parseResult.ok) {
       res.status(400).json({
