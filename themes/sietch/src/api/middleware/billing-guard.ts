@@ -18,7 +18,7 @@
 
 import type { Request, Response, NextFunction } from 'express';
 import { randomUUID } from 'crypto';
-import type { ICreditLedgerService, ReservationResult, FinalizeResult } from '../../packages/core/ports/ICreditLedgerService.js';
+import type { ICreditLedgerService, ReservationResult } from '../../packages/core/ports/ICreditLedgerService.js';
 import type { IdentityTrustConfig } from '../../packages/core/protocol/identity-trust.js';
 import type { IPaymentVerifier, PaymentProof } from '../../packages/core/ports/IPaymentVerifier.js';
 import { DEFAULT_IDENTITY_TRUST, evaluateIdentityTrust } from '../../packages/core/protocol/identity-trust.js';

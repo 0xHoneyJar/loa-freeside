@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "bridge_id": "bridge-20260224-d039eco",
-  "state": "ITERATING",
+  "state": "JACKED_OUT",
   "config": {
     "depth": 3,
     "mode": "full",
@@ -12,7 +12,8 @@
   },
   "timestamps": {
     "started": "2026-02-24T12:00:00Z",
-    "last_activity": "2026-02-24T14:15:00Z"
+    "last_activity": "2026-02-24T14:45:00Z",
+    "completed": "2026-02-24T14:45:00Z"
   },
   "iterations": [
     {
@@ -34,15 +35,34 @@
       "sprint_id": "sprint-348-iter1-fix",
       "files_changed": 1,
       "findings_addressed": 1
+    },
+    {
+      "iteration": 2,
+      "commit": "72cd0cce",
+      "review_path": ".run/bridge-reviews/bridge-20260224-d039eco-iter2-full.md",
+      "findings": {
+        "total": 4,
+        "high": 0,
+        "medium": 0,
+        "low": 1,
+        "praise": 3,
+        "speculation": 0,
+        "false_positives": 1
+      },
+      "severity_weighted_score": 1,
+      "effective_score": 0,
+      "sprint_generated": false,
+      "files_changed": 0,
+      "findings_addressed": 0
     }
   ],
   "flatline": {
     "initial_score": 4,
-    "last_score": 4,
-    "scores": [4],
-    "consecutive_below_threshold": 0,
-    "convergence": null,
-    "convergence_rate": null
+    "last_score": 0,
+    "scores": [4, 0],
+    "consecutive_below_threshold": 1,
+    "convergence": "kaironic",
+    "convergence_rate": 1.0
   },
   "metrics": {
     "total_sprints_executed": 1,
