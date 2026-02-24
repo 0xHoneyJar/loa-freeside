@@ -1,0 +1,37 @@
+{
+  "classification": "INFORMATIONAL",
+  "description": "Version compatibility negotiation via validateCompatibility(). Note: v7.9.1 CONTRACT_VERSION accepts all peers — this is an EXPECTED_CHANGE from v7.0.0 behavior. The actual version-pair enforcement is done by arrakis-compat.ts which wraps validateCompatibility with stricter logic. See delta-log for details.",
+  "version": "v7.9.2-baseline",
+  "fixtures": [
+    {
+      "id": "compat-same-version",
+      "description": "Same version always compatible",
+      "input": { "self": "7.9.1", "peer": "7.9.1" },
+      "expected": { "compatible": true }
+    },
+    {
+      "id": "compat-same-major-lower-minor",
+      "description": "Same major, lower minor compatible",
+      "input": { "self": "7.9.1", "peer": "7.0.0" },
+      "expected": { "compatible": true }
+    },
+    {
+      "id": "compat-cross-major-v6",
+      "description": "v6.0.0 within dual-accept window",
+      "input": { "self": "7.9.1", "peer": "6.0.0" },
+      "expected": { "compatible": true }
+    },
+    {
+      "id": "compat-v5-accepted",
+      "description": "v5.9.0 — canonical validateCompatibility accepts (arrakis-compat.ts may add stricter logic)",
+      "input": { "self": "7.9.1", "peer": "5.9.0" },
+      "expected": { "compatible": true }
+    },
+    {
+      "id": "compat-future-major-accepted",
+      "description": "v8.0.0 — canonical validateCompatibility accepts (arrakis-compat.ts may add stricter logic)",
+      "input": { "self": "7.9.1", "peer": "8.0.0" },
+      "expected": { "compatible": true }
+    }
+  ]
+}

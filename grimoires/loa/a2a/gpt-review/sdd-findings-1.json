@@ -1,68 +1,44 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "Core direction is workable, but several database/migration and RLS/authz gaps will cause production outages or cross-tenant data exposure, and the event-sourcing/governance models have correctness holes that will break replay and policy enforcement under concurrency.",
+  "summary": "The overall approach is implementable, but several specified mechanisms (supply-chain verification, determinism, import access control, and boundary replay) as written will not reliably work and can cause either security failure or a blocked rollout.",
   "blocking_issues": [
     {
-      "location": "3.2.1 Migration 0012: ALTER TABLE lot_entries ADD COLUMN purpose ... NOT NULL DEFAULT 'unclassified'",
-      "issue": "This is not guaranteed to be non-blocking/online on a large hot table; it can still take an ACCESS EXCLUSIVE lock and/or create long lock waits during the catalog change, and the new DEFAULT/NOT NULL semantics can create unexpected write amplification during peak traffic depending on tooling and statement timeout.",
-      "why_blocking": "If lot_entries is large and continuously written, a blocking ALTER can stall all ledger writes (debits/credits/reserves), effectively halting the economic system. The SDD claims “zero downtime” without a safe phased approach.",
-      "fix": "Use a phased, truly online pattern: (1) ADD COLUMN purpose economic_purpose NULL (no default), (2) backfill in small batches (UPDATE ... WHERE purpose IS NULL LIMIT ... via id ranges), (3) ADD DEFAULT 'unclassified' (metadata-only), (4) VALIDATE with CHECK constraint first (ADD CONSTRAINT purpose_not_null CHECK (purpose IS NOT NULL) NOT VALID; then VALIDATE CONSTRAINT), (5) only then SET NOT NULL in a maintenance window if required—or keep CHECK constraint as enforcement. Ensure Drizzle migration uses separate statements and sets lock_timeout/statement_timeout appropriately."
+      "location": "3.2 FR-2: Rebuild Script Update (Supply-chain verification)",
+      "issue": "The script verifies only the git commit SHA of a cloned repo and then runs `require('@0xhoneyjar/loa-hounfour...')` from the current workspace, which does not prove the built dist artifacts correspond to the verified SHA (TOCTOU / wrong-artifact verification).",
+      "why_blocking": "This can pass verification while consuming a different artifact (e.g., cached node_modules, a different install source, or a tampered package), violating the PRD security requirement and creating a supply-chain gap that can ship compromised code.",
+      "fix": "Bind verification to the exact artifact you will publish/consume: (1) build in an isolated temp dir, (2) compute and record a content hash of the produced dist (or pack tarball) and verify it in CI, and (3) run the export-resolution checks against that built output (e.g., `node -e \"require('./dist/core')\"` or `node --conditions=...` with explicit path), not against whatever happens to be installed in node_modules. If the dependency is installed via git SHA in package.json, also verify the installed package’s `gitHead`/embedded version metadata (or vendor a `SOURCE_SHA` file into dist during build) and assert it equals EXPECTED_SHA."
     },
     {
-      "location": "3.2.3 Migration 0014: idx_active_policies partial index uses NOW() in predicate",
-      "issue": "PostgreSQL does not allow non-immutable functions like NOW() in index predicates; this index DDL will fail at migration time.",
-      "why_blocking": "Migration failure blocks deployment; governance feature cannot ship and may block other migrations if run as a batch.",
-      "fix": "Remove NOW() from the predicate. Model “active” via state + effective_until column comparisons at query time, or add a derived boolean column (e.g., is_effective) maintained by application/sweep and index that. Example: partial index WHERE state='active' AND superseded_by IS NULL; then filter effective_until in query."
+      "location": "3.2 FR-2: Rebuild Script Update (Determinism claim)",
+      "issue": "Adding `tsc --strict` does not make builds deterministic; `--strict` is a type-checking mode, not a reproducibility control, and may not even apply if the project uses a tsconfig with different settings.",
+      "why_blocking": "The SDD claims deterministic builds as a mitigation (NFR / security posture). This will not achieve the stated property and can lead to non-reproducible artifacts across environments, undermining the supply-chain verification story and causing CI/prod drift.",
+      "fix": "Define actual determinism controls: pin Node + TypeScript versions (e.g., via `.nvmrc`/Volta + `devDependencies`), use `npm ci`/`pnpm --frozen-lockfile`, ensure `tsconfig` has stable settings (`declaration`, `sourceMap` policy, `newLine`, `importsNotUsedAsValues`, etc.), and (if needed) set `SOURCE_DATE_EPOCH` and avoid embedding timestamps. Update the script to use the repo’s `node_modules/.bin/tsc -p tsconfig.json` and fail if lockfile is not honored."
     },
     {
-      "location": "3.2.4 Migration 0015: admin_audit_log trigger references prevent_mutation() which is not defined in this SDD",
-      "issue": "Migration references a missing function; DDL will fail.",
-      "why_blocking": "Deployment/migration failure. Also undermines SKP-007 admin audit trail requirement if immutability isn’t actually enforced.",
-      "fix": "Define prevent_mutation() in this SDD/migration set (or reuse an existing function explicitly by name/path). Ensure it blocks UPDATE/DELETE and is installed before the trigger. Also consider REVOKE UPDATE/DELETE at role level for defense-in-depth."
+      "location": "2.2 Import Access Control (Enforcement)",
+      "issue": "The proposed ESLint rule `import/no-restricted-paths` is the wrong mechanism for restricting package specifier imports like `@0xhoneyjar/loa-hounfour` and will not reliably prevent direct canonical imports outside the allowlist.",
+      "why_blocking": "PRD requires import access control enforcement. If enforcement is ineffective, consumers can bypass the adapter/barrel, causing type divergence, boundary parsing bypass (FR-6), and inconsistent runtime behavior—exactly the regression risk this cycle is trying to eliminate.",
+      "fix": "Use an enforcement that matches module specifiers: `no-restricted-imports` (ESLint core) with patterns for `@0xhoneyjar/loa-hounfour*`, plus an override allowlist for the permitted globs. Alternatively enforce via TypeScript project references + path mapping (only barrel exposed) or a CI check that parses import specifiers (AST-based) rather than grep."
     },
     {
-      "location": "3.2.2 Migration 0013: correlation_id UUID NOT NULL DEFAULT gen_random_uuid() on lot_entries",
-      "issue": "gen_random_uuid() requires pgcrypto; SDD doesn’t assert extension presence. Also adding NOT NULL with default on a hot table is presented as rewrite-free; the extension dependency and migration tool behavior can still break production rollout.",
-      "why_blocking": "If pgcrypto isn’t enabled in prod, migration fails. If migration tool wraps statements in a transaction, CREATE INDEX CONCURRENTLY will fail (cannot run inside a transaction block), causing partial migration and broken deploy.",
-      "fix": "Explicitly include `CREATE EXTENSION IF NOT EXISTS pgcrypto;` (or switch to uuid-ossp and uuid_generate_v4 with extension). Also specify migration execution constraints: Drizzle must run 0013 with `transaction: false` (or split into separate migrations) so CONCURRENTLY indexes are executed outside a transaction."
+      "location": "3.1 FR-1: Boundary payload replay (AC-1.6)",
+      "issue": "The design asserts comparing parsed output between v7.0.0 and v7.9.2, but the repo will only have one version installed at a time; the SDD does not specify how both versions are loaded/executed in the same test run.",
+      "why_blocking": "This test as described is not implementable without a dual-install strategy; it will block Phase 1/2 validation or devolve into a no-op comparison against the same version, missing regressions.",
+      "fix": "Specify a concrete dual-version harness: install v7.0.0 under an alias (e.g., `@0xhoneyjar/loa-hounfour-v7_0_0` via npm alias or a second git dependency) and import both in the replay test, or run the replay test twice in CI (matrix) and compare serialized golden outputs committed to the repo. Define the exact fixtures and the canonical serialization format for comparison."
     },
     {
-      "location": "3.2.2 Migration 0013: CREATE VIEW community_operations groups by correlation_id, community_id, entry_type, purpose",
-      "issue": "This view is not correlation-aware in the way SKP-002 requires: a single economic operation can include multiple purposes (or mixed entry types) and multi-lot splits; grouping by purpose and entry_type fragments the operation and can double-count or misrepresent operation totals.",
-      "why_blocking": "Downstream aggregation (velocity, governance audit, reporting) will be wrong, and replay/consistency checks that rely on operation grouping will be inconsistent. This is a correctness failure, not a cosmetic issue.",
-      "fix": "Define a canonical operation model: group strictly by (community_id, correlation_id) and compute per-operation rollups with structured breakdowns (e.g., JSONB aggregates by purpose/entry_type) or provide two views: (1) operations header (one row per correlation_id) and (2) operation_lines (per purpose/entry_type). Also specify correlation_id propagation rules: all postings created by one logical operation MUST share the same correlation_id across lots and entry types."
+      "location": "3.3 FR-3: Protocol barrel expansion (TypeScript correctness / export surface)",
+      "issue": "Several barrel exports are asserted to come from `@0xhoneyjar/loa-hounfour` root when other parts of the SDD imply subpath exports (`/economy`, `/integrity`, etc.). If the package uses export maps, importing from the wrong specifier will fail at runtime even if types compile (or vice versa).",
+      "why_blocking": "A mismatched export map will cause runtime module resolution failures in Node (especially under ESM/exports), breaking the app and tests immediately after the pin bump.",
+      "fix": "Validate each re-export against the actual v7.9.2 `package.json#exports` map and align specifiers accordingly (root vs subpath). Add an automated export-map validation test that imports every barrel re-exported symbol from the exact specifier used (not just `require('@0xhoneyjar/loa-hounfour/subpath')`). If the project is ESM, use dynamic `import()` rather than `require()`."
     },
     {
-      "location": "5.3 Event Sourcing Service: replayState() switch logic for debit/reserve/release/expire",
-      "issue": "Replay semantics are inconsistent with a double-entry append-only ledger and will drift: (a) debit increases total_committed_micro but reserve/release do not affect committed; (b) expire subtracts the lot’s current balance regardless of whether prior debits already reduced it, which can double-subtract depending on how expire is represented in lot_entries; (c) governance events insert lot_id NULL but replay assumes event.lot_id exists for most types.",
-      "why_blocking": "verifyConsistency will frequently report drift or, worse, produce incorrect reconstructed state. This breaks the event-sourcing feature and any governance/audit that depends on replay correctness.",
-      "fix": "Define the canonical posting model precisely: for each entry_type, specify which accounts/aggregates change and whether amount_micro is signed/unsigned. Ensure expire is represented as explicit postings (e.g., debit remaining balance to an expiry sink) rather than “subtract current lot balance” during replay. Enforce NOT NULL lot_id for economic entry types at DB level (CHECK constraint) and handle governance as a separate event table or a dedicated nullable-safe branch with schema constraints."
-    },
-    {
-      "location": "5.4 Governance approve(): BigInt conversion from JSON policy_value.limit_micro",
-      "issue": "BigInt(policy.policy_value.limit_micro) will throw if limit_micro is a JSON number (not a string) or exceeds JS safe integer when parsed by the driver; also policy_value is JSONB and returned as an object—type ambiguity can break approvals in production.",
-      "why_blocking": "Governance approvals will intermittently fail depending on how clients send JSON and how pg driver deserializes JSONB. This blocks policy lifecycle and can deadlock communities in pending enforcement.",
-      "fix": "Require limit_micro to be stored and transported as a string everywhere (API schema + DB constraint). Add validation: zod refine that limit_micro is a decimal string representing a non-negative integer within BigInt range. Consider storing policy_value fields that are monetary as TEXT columns (limit_micro_text) to avoid JSON numeric ambiguity."
-    },
-    {
-      "location": "1.9 / 5.5 RLS enforcement completeness (SKP-007): withCommunityScope only sets app.community_id; policies use current_setting('app.community_id') without missing_ok; admin_audit_log has no RLS",
-      "issue": "RLS can be bypassed or cause unsafe failures: (a) any query path that forgets withCommunityScope will error or, worse, run without tenant filter if a table lacks RLS; (b) current_setting('app.community_id') without `missing_ok=true` throws, turning some bugs into outages; (c) admin_audit_log has no RLS and no explicit privilege model described—any DB role used by the app could read all audit logs cross-tenant.",
-      "why_blocking": "This is a cross-tenant data exposure risk and/or an availability risk. SKP-007 requires enforcement across ALL code paths; the SDD doesn’t define DB role privileges and relies on middleware discipline.",
-      "fix": "Harden at the DB layer: (1) use `current_setting('app.community_id', true)` in policies and add a policy clause that denies when NULL; (2) enable RLS on all tenant tables and REVOKE BYPASSRLS from app roles; (3) ensure the app DB role has no SELECT on admin_audit_log unless explicitly needed, or add RLS + separate privileged role for platform audit access; (4) add automated tests that scan adapters for any pool.query usage not wrapped by withCommunityScope and fail CI."
-    },
-    {
-      "location": "3.2.2 Migration 0013 + 5.3 allocateSequence(): sequencing contention mitigation (SKP-003) is not actually specified beyond flags",
-      "issue": "Tiered contention mitigation is asserted but not designed: advisory locks and pre-allocated ranges are mentioned without concrete algorithm, failure modes, or correctness guarantees (especially under retries/rollbacks).",
-      "why_blocking": "Under the stated upper bound (≤50 concurrent ops/community), SELECT FOR UPDATE may be fine, but without a real Tier 2/3 design you risk hitting a hard ceiling and having no safe upgrade path. If you flip SEQUENCE_LOCK_MODE without a specified algorithm, you can create duplicate or skipped sequences that break replay ordering assumptions.",
-      "fix": "Specify exact Tier 2 and Tier 3 mechanisms: Tier 2: pg_advisory_xact_lock(hash(community_id)) + UPDATE ... RETURNING next_sequence in one statement. Tier 3: allocate ranges by atomically incrementing next_sequence by N and returning [start,end], store range in-process with lease/expiry; define behavior on crash (ranges may be skipped but never duplicated) and require replay consumers tolerate gaps (IMP-002). Include SQL for atomic increment: `UPDATE community_event_sequences SET next_sequence = next_sequence + $N WHERE community_id=$1 RETURNING next_sequence - $N AS start;`."
-    },
-    {
-      "location": "4.x API + 5.4 Governance: communityId in path vs actor.community_id; missing explicit cross-check",
-      "issue": "Endpoints accept :communityId but middleware/handlers don’t explicitly enforce actor.community_id === req.params.communityId before withCommunityScope. If resolveActor returns a community_id and a caller supplies a different path id, you can get confusing authorization behavior and potential data leakage depending on how withCommunityScope is invoked.",
-      "why_blocking": "This is a classic multi-tenant bug class. Even if RLS blocks some reads, writes can fail unpredictably or leak metadata via timing/errors; it also violates SKP-007’s “across ALL code paths” intent.",
-      "fix": "Add a mandatory guard in routing middleware: reject if actor.community_id !== params.communityId unless actor.role is platform-admin with explicit audited override. Ensure withCommunityScope always uses params.communityId after this check (or always uses actor.community_id and ignore the path)."
+      "location": "3.6 FR-6: parseMicroUsd boundary adoption (Dual-parse operational safety)",
+      "issue": "The wrapper returns legacy values when canonical rejects but legacy accepts, meaning the system continues to accept inputs the new boundary intends to forbid; combined with logging-only, this can prevent ever reaching a safe cutover and can mask active abuse at boundaries.",
+      "why_blocking": "PRD/NFR requires boundary tightening with safe transition. As written, you may never enforce the stricter boundary (attackers can keep sending rejected-by-canonical inputs), and you also risk inconsistent behavior across services depending on env var state.",
+      "fix": "Make the rollout explicitly staged with measurable gates: (1) shadow mode logs only but still rejects obviously dangerous classes (e.g., whitespace/plus/leading zeros) behind a separate flag, or (2) return a discriminated union from the wrapper (`{ok:true,value}` / `{ok:false,reason}`) and force callers to decide; then implement a progressive enforcement flag (`PARSE_MICRO_USD_ENFORCE=true`) that flips canonical rejection into a hard 400/validation error at HTTP/JWT boundaries while keeping DB/Redis readers tolerant with normalization. Also define a metric + threshold and a timeboxed plan to remove legacy fallback."
     }
   ],
-  "question": "",
+  "question": null,
   "iteration": 1
 }

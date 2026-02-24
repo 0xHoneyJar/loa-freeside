@@ -233,6 +233,137 @@ export {
   MintingPolicySchema,
 } from '@0xhoneyjar/loa-hounfour/economy';
 
+// ============================================================================
+// Canonical hounfour types — v7.1–v7.9 expansion (Sprint 344, cycle-039)
+// Per SDD §3.3, exports map audit: grimoires/loa/a2a/v792-exports-map.md
+// ============================================================================
+
+// ─── Reputation & Trust (v7.1–v7.6) ────────────────────────────────────────
+// evaluateAccessPolicy, isKnownReputationState, ReputationStateName are
+// root-only exports (not on /governance subpath) per exports map audit §2.
+export {
+  evaluateAccessPolicy,
+  type AccessPolicyContext,
+  type AccessPolicyResult,
+} from '@0xhoneyjar/loa-hounfour';
+
+export {
+  isKnownReputationState,
+  type ReputationStateName,
+} from '@0xhoneyjar/loa-hounfour';
+
+// REPUTATION_STATES and REPUTATION_STATE_ORDER are available on both root
+// and /governance. Use /governance for subpath alignment.
+export {
+  REPUTATION_STATES,
+  REPUTATION_STATE_ORDER,
+} from '@0xhoneyjar/loa-hounfour/governance';
+
+export {
+  ReputationScoreSchema,
+  type ReputationScore,
+} from '@0xhoneyjar/loa-hounfour/governance';
+
+// ─── Event Sourcing & Replay (v7.3) ────────────────────────────────────────
+// Root-only exports per exports map audit §2.
+export {
+  reconstructAggregateFromEvents,
+  verifyAggregateConsistency,
+  computeEventStreamHash,
+  type ReconstructedAggregate,
+  type ConsistencyReport,
+} from '@0xhoneyjar/loa-hounfour';
+
+export {
+  computeCredentialPrior,
+  isCredentialExpired,
+  CREDENTIAL_CONFIDENCE_THRESHOLD,
+} from '@0xhoneyjar/loa-hounfour';
+
+// ─── Governance (v7.3–v7.7) ────────────────────────────────────────────────
+export {
+  SanctionSchema,
+  type Sanction,
+  SANCTION_SEVERITY_LEVELS,
+  VIOLATION_TYPES,
+  ESCALATION_RULES,
+} from '@0xhoneyjar/loa-hounfour/governance';
+
+export {
+  DisputeRecordSchema,
+  type DisputeRecord,
+} from '@0xhoneyjar/loa-hounfour/governance';
+
+export {
+  ValidatedOutcomeSchema,
+  type ValidatedOutcome,
+} from '@0xhoneyjar/loa-hounfour/governance';
+
+export {
+  PerformanceRecordSchema,
+  PerformanceOutcomeSchema,
+  type PerformanceRecord,
+  type PerformanceOutcome,
+} from '@0xhoneyjar/loa-hounfour/governance';
+
+export {
+  ContributionRecordSchema,
+  type ContributionRecord,
+} from '@0xhoneyjar/loa-hounfour/governance';
+
+// ─── Economy Extensions (v7.5–v7.9) ────────────────────────────────────────
+// parseMicroUsd (strict boundary parser) is root-only per exports map audit §3.
+// Note: parseMicroUSD (uppercase D, /economy) is a DIFFERENT function for pricing.
+export {
+  parseMicroUsd,
+  type ParseMicroUsdResult,
+} from '@0xhoneyjar/loa-hounfour';
+
+// evaluateEconomicBoundary and evaluateFromBoundary are root-only exports.
+export {
+  evaluateEconomicBoundary,
+  evaluateFromBoundary,
+} from '@0xhoneyjar/loa-hounfour';
+
+export {
+  subtractMicroSigned,
+  negateMicro,
+  isNegativeMicro,
+} from '@0xhoneyjar/loa-hounfour/economy';
+
+export {
+  StakePositionSchema,
+  type StakePosition,
+} from '@0xhoneyjar/loa-hounfour/economy';
+
+export {
+  CommonsDividendSchema,
+  type CommonsDividend,
+} from '@0xhoneyjar/loa-hounfour/economy';
+
+export {
+  MutualCreditSchema,
+  type MutualCredit,
+} from '@0xhoneyjar/loa-hounfour/economy';
+
+export {
+  TRANSFER_CHOREOGRAPHY,
+  TRANSFER_INVARIANTS,
+} from '@0xhoneyjar/loa-hounfour/economy';
+
+// ─── Integrity Extensions (v6.0–v7.8) ──────────────────────────────────────
+export {
+  LivenessPropertySchema,
+  CANONICAL_LIVENESS_PROPERTIES,
+  type LivenessProperty,
+} from '@0xhoneyjar/loa-hounfour/integrity';
+
+// detectReservedNameCollisions is root-only per exports map audit §2.
+export {
+  detectReservedNameCollisions,
+  type NameCollision,
+} from '@0xhoneyjar/loa-hounfour';
+
 // Compatibility — re-export from arrakis extension module
 export {
   CONTRACT_VERSION,
@@ -312,3 +443,21 @@ export {
   CONFIG_FALLBACKS,
   validateConfigValue,
 } from './config-schema.js';
+
+// Boundary parsing — parseMicroUsd dual-parse wrapper (Sprint 346, cycle-039)
+export {
+  parseBoundaryMicroUsd,
+  checkSafetyFloor,
+  resolveParseMode,
+  MAX_SAFE_MICRO_USD,
+  MAX_INPUT_LENGTH,
+} from './parse-boundary-micro-usd.js';
+
+export type {
+  BoundaryParseResult,
+  BoundaryContext,
+  BoundaryErrorCode,
+  BoundaryLogger,
+  BoundaryMetrics,
+  ParseMode,
+} from './parse-boundary-micro-usd.js';

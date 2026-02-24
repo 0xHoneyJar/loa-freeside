@@ -1,45 +1,43 @@
 {
-  "verdict": "CHANGES_REQUIRED",
-  "summary": "5 of the 6 prior blockers are fixed and integrated cleanly, but the event-sourcing DB enforcement vs feature-flag compatibility is still internally inconsistent in a way that can break production writes when FEATURE_EVENT_SOURCING is disabled.",
+  "verdict": "APPROVED",
+  "summary": "All previously blocking inconsistencies were addressed with concrete gating, deterministic artifact verification, an exports-map audit, non-contradictory barrel criteria, CI-verifiable ops artifacts, and corrected kill-switch acceptance criteria; no new truly blocking issues introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "insertLotEntry requires sequence allocation before event-sourcing schema exists (Sprint ordering mismatch)",
+      "original_issue": "Sprint 1 allowed temporary `any` stubs with no explicit removal gate, risking later work building on incorrect types",
       "status": "fixed",
-      "notes": "AC-1.2.3/1.2.4 now explicitly gate allocation on (flag enabled AND schema detected at startup) and otherwise skip without error, removing the impossible dependency on Sprint 4."
+      "notes": "AC-1.1.4 now requires tsc passes with zero `any` stubs and only allows deferral when it explicitly requires barrel expansion, with a tracked follow-up prerequisite into Task 2.1. This closes the “temporary becomes permanent” failure mode."
     },
     {
-      "original_issue": "debitLots double-refactoring across Sprint 1 and Sprint 2",
+      "original_issue": "Supply-chain rebuild/verification was not artifact-bound/deterministic; `npm ci --ignore-scripts` could prevent dist build; DIST_HASH recipe non-deterministic without SOURCE_DATE_EPOCH/canonicalization",
       "status": "fixed",
-      "notes": "Sprint 1 establishes insertLotEntry with an optional purpose parameter; Sprint 2 only adds purpose resolution/wiring (AC-2.3.4), avoiding a second refactor of the hot path."
+      "notes": "Task 1.2 now specifies a two-phase install/build, sets SOURCE_DATE_EPOCH, pins Node via .nvmrc, and computes DIST_HASH from an `npm pack` tarball hash (artifact-bound and normalized). CI verification is added in Task 1.4. This is now reproducible and verifiable in principle."
     },
     {
-      "original_issue": "Velocity rollup ambiguity re: purpose dimension and missing dependency on purpose migration",
+      "original_issue": "No explicit confirmation of actual v7.9.2 exports map / conditions; risk TS compiles but Node runtime fails due to exports/conditions mismatch",
       "status": "fixed",
-      "notes": "Sprint 3 is now explicitly purpose-agnostic with PK (community_id, hour), and AC-3.1.5 states rollups must be safe regardless of purpose column presence; dependency graph updated accordingly."
+      "notes": "Task 2.0 adds an explicit exports-map audit with documented conditions and tooling alignment, and Task 2.2 adds a runtime import validation test to catch TS-vs-runtime mismatches."
     },
     {
-      "original_issue": "Feature flags claimed 'no column writes' but DB enforcement could force/reject writes; flags not truly independent",
-      "status": "not_fixed",
-      "notes": "AC-1.5.3 was corrected (schema may exist; app bypasses), but AC-1.5.4 plus Sprint 4 Task 4.1 still installs an enforcement trigger that (as written) is not shown to be conditional on the feature flag. That can cause runtime failures when FEATURE_EVENT_SOURCING=false if the trigger requires fields the app intentionally does not set."
+      "original_issue": "Barrel scope contradiction: 'only consumed symbols' vs 'export ~60 symbols' created untestable AC",
+      "status": "fixed",
+      "notes": "AC-2.1.8 now defines a measurable rule: export the SDD §3.3 set, run and commit a consumption audit, and only remove zero-consumer symbols if not required by FRs in this cycle. This resolves the contradiction and makes reviewable completion criteria."
     },
     {
-      "original_issue": "Outbox worker concurrency/locking and idempotency underspecified",
+      "original_issue": "PagerDuty/dashboard work lacked CI-verifiable acceptance and wiring to actual metrics backend; could block sprint completion on external config",
       "status": "fixed",
-      "notes": "AC-5.4.2 adds FOR UPDATE SKIP LOCKED claiming semantics; AC-5.4.3 defines an idempotency key; AC-5.4.8 adds a 2-worker concurrency test."
+      "notes": "Sprint 4 splits into 4.2 (code-level instrumentation with unit/integration tests) and 4.2b (repo-based ops artifacts with lint/validate or an explicit external PR link). This makes the work mergeable and verifiable."
     },
     {
-      "original_issue": "Duplicate migration number 0015",
+      "original_issue": "Kill-switch AC required boundary entry points to use BigInt directly, conflicting with wrapper-based design and making AC impossible post-migration",
       "status": "fixed",
-      "notes": "Sprint 5 Task 5.2 is now Migration 0016; migration set is unique as listed (0012, 0013a, 0013b, 0014, 0015, 0016)."
+      "notes": "Task 4.6 now correctly asserts legacy mode behavior via the wrapper and uses a spy/counter to ensure canonical `parseMicroUsd` is not consulted (call count 0), matching the intended kill-switch semantics."
+    },
+    {
+      "original_issue": "FR sequencing lacked an explicit gate requiring conformance + golden baseline replay to be green before boundary hardening (FR-6)",
+      "status": "fixed",
+      "notes": "Sprint 4 now has an explicit CI entry gate requiring Sprint 1 golden replay + Sprint 2 conformance + semantic invariants to be green before starting boundary hardening, aligning with the dependency/rollback strategy."
     }
   ],
-  "new_blocking_concerns": [
-    {
-      "location": "Sprint 1 / Task 1.5 (AC-1.5.4) + Sprint 4 / Task 4.1 (AC-4.1.4 enforce_event_sourcing_fields trigger) + Sprint 4 Success Criteria ('DB trigger catches any bypass of insertLotEntry repository')",
-      "description": "Event-sourcing enforcement trigger is installed unconditionally in Migration 0013a, but the plan also requires that when FEATURE_EVENT_SOURCING is disabled the application bypasses event-sourcing fields. Without an explicit guarantee that the trigger is conditional (or only validates when fields are present), disabling FEATURE_EVENT_SOURCING can cause legitimate writes to lot_entries to fail once the migration is deployed.",
-      "why_blocking": "This breaks the stated rollout strategy ('Each flag can be independently toggled') and can produce a production incident: after deploying 0013a, any code path that does not populate causation_id/sequence_number (because the flag is off) may be rejected by the trigger depending on its logic. The document does not specify trigger behavior sufficiently to ensure compatibility with FEATURE_EVENT_SOURCING=false, yet it also claims the trigger 'catches any bypass'—those two goals conflict unless the trigger is explicitly flag-aware or only enforces invariants that are always satisfied.",
-      "fix": "Make the enforcement semantics explicit and compatible with flags in acceptance criteria:\n- Update AC-4.1.4 to state the trigger validates conditionally, e.g. \"Trigger enforces: (a) correlation_id always non-null (already defaulted), and (b) sequence_number/causation_id requirements ONLY when FEATURE_EVENT_SOURCING is enabled for that community OR when sequence_number is non-null.\" \n- If per-community enablement is required (AC-1.5 says per-community override), store a DB-side flag (e.g., community_features table or setting) that the trigger can read; otherwise delay installing the strict trigger until RC when FEATURE_EVENT_SOURCING is enabled everywhere.\n- Add an integration test AC under Sprint 4: \"With FEATURE_EVENT_SOURCING=false and migration 0013a applied, insertLotEntry writes succeed and sequence_number remains NULL.\""
-    }
-  ],
+  "new_blocking_concerns": [],
   "iteration": 2
 }

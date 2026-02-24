@@ -1,7 +1,33 @@
 {
   "verdict": "APPROVED",
-  "summary": "Auto-approved after 3 iterations (max_iterations reached)",
-  "auto_approved": true,
-  "iteration": 4,
-  "note": "Review converged by iteration limit. Consider adjusting max_iterations in config if needed."
+  "summary": "All five previously-blocking issues were addressed with concrete, CI-verifiable acceptance criteria and the fixes do not introduce any new truly blocking problems.",
+  "previous_issues_status": [
+    {
+      "original_issue": "Dead-letter schema missing replay/idempotency fields and no dedupe mechanism for “same row not re-quarantined on retry”",
+      "status": "fixed",
+      "notes": "AC-4.4.3b now includes `replayed_at`, `replay_attempts`, `last_replay_error`, and a `source_fingerprint` with `UNIQUE(source_fingerprint)` plus `ON CONFLICT DO NOTHING`. Replay semantics in AC-4.4.3e set `replayed_at` and increment attempts in the same transaction as write-back, and AC-4.4.3f explicitly tests dedupe + replay skipping. This is sufficient to implement safely and to make the test reliably satisfiable."
+    },
+    {
+      "original_issue": "Retention policy mechanism unspecified and not deterministically testable in CI",
+      "status": "fixed",
+      "notes": "AC-4.4.3d now chooses an app/script mechanism (`scripts/purge-quarantine.sh`) and adds a CI-verifiable integration test that inserts 31-day-old rows, runs the purge script, and asserts deletion. Ops scheduling is explicitly documented and uses the tracking-issue pattern if external. This removes the integration ambiguity and makes the AC closeable."
+    },
+    {
+      "original_issue": "Reproducible build chain underspecified/inconsistent (npm vs pnpm, allowlist vs ignore-scripts, lockfile strategy, two-runner hash verification)",
+      "status": "fixed",
+      "notes": "AC-1.2.3/1.2.10 now consistently use `npm ci --ignore-scripts` with an explicit requirement that `package-lock.json` exists at the pinned SHA (fail if missing), pinned registry, fund/audit disabled, and a deterministic build step. AC-1.2.10 adds two independent CI jobs using the same pinned container image and compares hashes, failing on mismatch. This closes the determinism gap that would otherwise keep CI red."
+    },
+    {
+      "original_issue": "Dual-mode CJS/ESM validation feasibility unclear (how to run tests in both modes and what artifact is being smoke-tested)",
+      "status": "fixed",
+      "notes": "AC-2.2.6–2.2.8 now defines two concrete commands (`pnpm test:exports:cjs` and `pnpm test:exports:esm`) with an explicit Jest ESM strategy, plus a prerequisite build step and Node-level smoke tests for both `require()` and `import()` against built JS. It also requires committed config files. This is enough to avoid tooling churn becoming a Sprint 2 blocker."
+    },
+    {
+      "original_issue": "Shadow-mode safety floor could break compatibility (cap justification, negative handling, whitespace/non-ASCII behavior)",
+      "status": "fixed",
+      "notes": "AC-4.1.8 now derives `MAX_SAFE_MICRO_USD` from product constraints and requires confirmation it exceeds observed production p100 (documented in the implementation PR). It also clarifies sign handling by context (HTTP/JWT non-negative; DB uses absolute-value bounds) and keeps whitespace rejection explicit. Boundary fuzz tests include MAX +/- 1 and negative-at-HTTP cases. This aligns with the rollout intent while still enforcing a safety floor."
+    }
+  ],
+  "new_blocking_concerns": [],
+  "iteration": 2
 }

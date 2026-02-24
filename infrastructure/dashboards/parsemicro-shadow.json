@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "_meta": {
+    "description": "Dashboard definition for parseMicroUsd shadow-mode monitoring",
+    "sprint": "Sprint 4 (346), Task 4.2b",
+    "sdd_ref": "SDD §3.6 IMP-003",
+    "created": "2026-02-24"
+  },
+  "dashboard": {
+    "uid": "parsemicro-shadow",
+    "title": "parseMicroUsd Shadow Mode — Boundary Hardening",
+    "description": "Per-boundary-context rejection rate and divergence monitoring for the parseMicroUsd dual-parse rollout.",
+    "tags": ["billing", "protocol-boundary", "shadow-mode"],
+    "refresh": "30s",
+    "time": {
+      "from": "now-6h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Shadow Mode Parse Volume",
+        "description": "Total shadow-mode dual-parse invocations per boundary context",
+        "type": "timeseries",
+        "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "metric": "parseMicroUsd_shadow_total",
+            "legend": "{{ context }}",
+            "group_by": ["context"]
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Would-Reject Rate (per context)",
+        "description": "Inputs that canonical parser would reject but legacy accepts. These will fail when switching to enforce mode.",
+        "type": "timeseries",
+        "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "metric": "parseMicroUsd_would_reject_total",
+            "legend": "{{ context }}",
+            "group_by": ["context"]
+          }
+        ],
+        "thresholds": [
+          { "value": 0, "color": "green" },
+          { "value": 1, "color": "yellow" },
+          { "value": 10, "color": "red" }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Value Divergence Rate (per context)",
+        "description": "Inputs where canonical and legacy parsers produce DIFFERENT values. Critical: investigate immediately.",
+        "type": "timeseries",
+        "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "metric": "parseMicroUsd_divergence_total",
+            "legend": "{{ context }}",
+            "group_by": ["context"]
+          }
+        ],
+        "thresholds": [
+          { "value": 0, "color": "green" },
+          { "value": 1, "color": "red" }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Rejection Ratio (would-reject / shadow-total)",
+        "description": "Percentage of inputs that would be rejected. Target: 0% for 24h before cutover.",
+        "type": "gauge",
+        "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "parseMicroUsd_would_reject_total / parseMicroUsd_shadow_total * 100",
+            "legend": "{{ context }}",
+            "group_by": ["context"]
+          }
+        ],
+        "thresholds": [
+          { "value": 0, "color": "green" },
+          { "value": 0.1, "color": "yellow" },
+          { "value": 1, "color": "red" }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "DB Quarantine Events",
+        "description": "Database rows quarantined due to parse failures (dead-letter table).",
+        "type": "stat",
+        "gridPos": { "x": 0, "y": 16, "w": 6, "h": 4 },
+        "targets": [
+          {
+            "metric": "parseMicroUsd_db_quarantine",
+            "legend": "quarantined rows"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Current Parse Mode",
+        "description": "Active PARSE_MICRO_USD_MODE across all replicas. Should be uniform.",
+        "type": "stat",
+        "gridPos": { "x": 6, "y": 16, "w": 6, "h": 4 },
+        "targets": [
+          {
+            "metric": "parseMicroUsd_mode_current",
+            "legend": "mode"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Safety Floor Rejections",
+        "description": "Inputs rejected by safety floor (max length, max value, non-ASCII, whitespace, negative at boundary).",
+        "type": "timeseries",
+        "gridPos": { "x": 12, "y": 16, "w": 12, "h": 4 },
+        "targets": [
+          {
+            "metric": "parseMicroUsd_error_total",
+            "legend": "{{ context }} - {{ error_code }}",
+            "group_by": ["context", "error_code"]
+          }
+        ]
+      }
+    ]
+  }
+}

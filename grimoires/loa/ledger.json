@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
   "next_sprint_number": 343,
-  "active_cycle": "cycle-038",
+  "active_cycle": "cycle-039",
   "cycles": [
     {
       "id": "cycle-001",
@@ -1476,8 +1476,10 @@
     {
       "id": "cycle-038",
       "label": "The Ostrom Protocol \u2014 Economic Memory, Velocity, Event Sourcing & Governance",
-      "status": "active",
+      "status": "archived",
       "created": "2026-02-24T06:30:00Z",
+      "archived": "2026-02-23T23:59:00Z",
+      "archive_path": "grimoires/loa/archive/2026-02-23-ostrom-protocol-merge-ready",
       "prd": "grimoires/loa/prd.md",
       "sdd": "grimoires/loa/sdd.md",
       "sprint_plan": "grimoires/loa/sprint.md",
@@ -1518,6 +1520,43 @@
           "status": "pending"
         }
       ]
+    },
+    {
+      "id": "cycle-039",
+      "label": "Hounfour v7.9.2 Full Adoption — Protocol Convergence",
+      "status": "active",
+      "created": "2026-02-23T23:59:00Z",
+      "prd": "grimoires/loa/prd.md",
+      "sdd": "grimoires/loa/sdd.md",
+      "sprint_plan": "grimoires/loa/sprint.md",
+      "sprints": [
+        {
+          "global_id": 343,
+          "local_label": "sprint-1",
+          "status": "pending"
+        },
+        {
+          "global_id": 344,
+          "local_label": "sprint-2",
+          "status": "pending"
+        },
+        {
+          "global_id": 345,
+          "local_label": "sprint-3",
+          "status": "completed"
+        },
+        {
+          "global_id": 346,
+          "local_label": "sprint-4",
+          "status": "completed"
+        },
+        {
+          "global_id": 347,
+          "local_label": "sprint-5",
+          "status": "completed"
+        }
+      ]
     }
-  ]
+  ],
+  "next_sprint_number": 348
 }

@@ -1,41 +1,31 @@
 {
   "verdict": "APPROVED",
-  "summary": "All previously blocking issues are addressed with concrete, enforceable designs that preserve invariants, deterministic replay, BigInt-only economics, and tenant isolation; no new truly blocking problems were introduced.",
+  "summary": "All previously-blocking contradictions and unverifiable assumptions were resolved with concrete scoping, measurable criteria, and explicit compatibility/negotiation rules, and no new truly blocking issues were introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "Governance can decrease budget_limit below committed+reserved and violate I-1 / force negative available",
+      "original_issue": "Strict parsing (`parseMicroUsd`) adoption contradicts “zero breaking changes / no behavior changes” and could reject previously-accepted inputs",
       "status": "fixed",
-      "notes": "PRD now defines hard enforcement rules: new_limit must be >= committed+reserved at enforcement time, otherwise policy becomes pending_enforcement and activates only once usage drops; also adds a platform minimum floor and explicit AC-4.7/4.8. This prevents invariant breakage and governance-as-DoS."
+      "notes": "You explicitly narrowed FR-6 to protocol-boundary entry points, added an audit-before-replace requirement, allowed internal trusted paths to keep `BigInt()`, and updated NFR-1 to acknowledge intentional tightening with required tests/approval. This resolves the contradiction and makes rollout failure much less likely."
     },
     {
-      "original_issue": "Per-community monotonic sequence incorrectly proposed as a single PostgreSQL SEQUENCE; replay ordering not deterministic per tenant",
+      "original_issue": "Decision engine adoption (`evaluateEconomicBoundary`) required while also requiring identical allow/deny outcomes, potentially impossible",
       "status": "fixed",
-      "notes": "PRD now specifies a concrete per-community counter table (community_event_sequences) with SELECT ... FOR UPDATE allocation inside the same transaction as inserting lot_entries, plus AC-3.7 concurrent test. This yields strict per-community monotonicity under concurrency."
+      "notes": "FR-5 is now clearly a stretch spike behind a feature flag on a new/secondary path, with equivalence only on a defined scenario set and an explicit deferral clause if equivalence can’t be proven. This removes the “must be identical everywhere” impossibility."
     },
     {
-      "original_issue": "Event types vs double-entry semantics ambiguous (posting-level vs envelope); replay could be implemented inconsistently",
+      "original_issue": "“95% of public API surface” goal is not measurable and encourages over-exporting/instability; FR-3 had speculative exports",
       "status": "fixed",
-      "notes": "PRD explicitly chooses posting-level canonicality: each lot_entries row is a posting-level event; correlation_id groups postings for an operation; no envelope table. Replay rules and examples (multi-lot split, x402 credit/debit/credit_back) are spelled out, and AC-3.2 requires posting-level validation."
+      "notes": "G-2 and FR-3 ACs now define a concrete, testable rule: export exactly what arrakis consumes, enforce via ‘zero direct imports outside barrel + designated modules’ and a grep check. This is measurable and avoids the arbitrary percentage target."
     },
     {
-      "original_issue": "Governance authorization / tenant isolation underspecified; RLS only mentioned for economic_policies; risk of privilege escalation or cross-tenant writes via service role",
+      "original_issue": "Rebuild script AC assumed dist directory layout; should validate via resolvable specifiers/exports map instead",
       "status": "fixed",
-      "notes": "PRD now defines roles (member/operator/admin/agent), explicit propose/approve permissions, negative tests (AC-4.9–4.11), and states the service does not bypass RLS and uses SET LOCAL app.community_id within transactions. This closes the control-plane escalation vector at the spec level."
+      "notes": "FR-2 AC-2.2 is now expressed in terms of import specifiers resolving/typechecking per `package.json#exports`, not physical directories. That directly addresses the blocking assumption."
     },
     {
-      "original_issue": "Velocity computation required fractional regression but BigInt-only monetary arithmetic mandated; risk of using Number/float in economic path",
+      "original_issue": "Backward compatibility claim lacked a precise version negotiation predicate and concrete acceptance tests",
       "status": "fixed",
-      "notes": "PRD replaces regression with an integer bucket + half-window acceleration method, keeps velocity/acceleration/exhaustion as BigInt, defines conservative floor division, and adds AC-2.6 to enforce no floating-point in the computation path. This is implementable without violating BigInt purity."
-    },
-    {
-      "original_issue": "Purpose field inconsistent: enum vs TEXT; mismatch between usage_events vs lot_entries as source of truth; success metric ambiguous",
-      "status": "fixed",
-      "notes": "PRD now makes purpose a Postgres ENUM (economic_purpose), explicitly declares lot_entries as the sole source of truth, and states usage_events does not carry purpose. Success metric is aligned to new debit lot_entries (G-1), and AC-1.7 enforces no parallel purpose column."
-    },
-    {
-      "original_issue": "Replay/performance targets lacked plan for RLS/indexing and sequence_number nullability/backfill; risk of nondeterministic ordering and missing events",
-      "status": "fixed",
-      "notes": "PRD now includes: partial index on (community_id, sequence_number) where not null, velocity index on (community_id, created_at) for debits, explicit legacy backfill assigning sequence_number ordered by (created_at, id) upon enabling FEATURE_EVENT_SOURCING, and AC-3.5 requiring EXPLAIN ANALYZE with an RLS-safe plan. This resolves the nullability/backfill and query-path concerns."
+      "notes": "FR-8 now states an explicit compatibility predicate (as sourced from `validateCompatibility()`), and AC-8.2 provides concrete version-pair tests including the critical arrakis 7.9.2 ↔ finn 7.0.0 PASS case. NFR-4 is aligned with this."
     }
   ],
   "new_blocking_concerns": [],

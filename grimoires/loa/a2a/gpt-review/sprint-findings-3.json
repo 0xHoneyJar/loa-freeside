@@ -1,38 +1,38 @@
 {
-  "verdict": "APPROVED",
-  "summary": "The conditional trigger semantics are now consistent with the feature-flag rollout strategy, and all previously identified blockers (including the iteration-2 trigger/flag incompatibility) are addressed without introducing new truly blocking issues.",
-  "previous_issues_status": [
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "This plan is close, but a few acceptance criteria and dependency gaps (dead-letter schema/idempotency, reproducible build chain completeness, and CJS/ESM runtime validation feasibility) can realistically block implementation or make CI permanently red.",
+  "blocking_issues": [
     {
-      "original_issue": "insertLotEntry requires sequence allocation before event-sourcing schema exists (Sprint ordering mismatch)",
-      "status": "fixed",
-      "notes": "Still correctly gated: AC-1.2.3/1.2.4 require (flag enabled AND schema detected) to allocate; otherwise it skips without error."
+      "location": "Sprint 4 / Task 4.4 (AC-4.4.3b–f dead-letter quarantine + replay)",
+      "issue": "Dead-letter schema is incomplete/contradictory with the replay/idempotency requirements: AC-4.4.3e requires a `replayed_at` column, but AC-4.4.3b schema does not include it; AC-4.4.3f requires “same row not re-quarantined on retry” but there is no uniqueness constraint or dedupe key defined to enforce that behavior.",
+      "why_blocking": "Without a schema that supports idempotency and deduplication, the replay script cannot be implemented safely, and the integration test in AC-4.4.3f is not reliably satisfiable (retries can insert duplicates indefinitely). This will either block the migration or create flaky/unsafe behavior that fails CI or production-readiness gates.",
+      "fix": "Update AC-4.4.3b schema to include: (1) `replayed_at TIMESTAMPTZ NULL`, (2) `replay_attempts INT DEFAULT 0`, (3) `last_replay_error TEXT NULL` (optional but helps), and (4) a dedupe mechanism. Minimum viable dedupe: add `source_fingerprint TEXT NOT NULL` computed as hash of `(table_name, original_row_id, raw_value, error_code)` and a `UNIQUE(source_fingerprint)` index, or alternatively `UNIQUE(table_name, original_row_id, raw_value, error_code)` if sizes allow. Then specify replay script semantics: mark `replayed_at` in the same transaction as successful normalization write-back (or as a separate update if write-back is out of scope), and ensure the script is safe to re-run."
     },
     {
-      "original_issue": "debitLots double-refactoring across Sprint 1 and Sprint 2",
-      "status": "fixed",
-      "notes": "Still clean: Sprint 1 establishes insertLotEntry with optional purpose; Sprint 2 only wires purpose resolution (AC-2.3.4 explicitly prevents re-refactor)."
+      "location": "Sprint 4 / Task 4.4 (AC-4.4.3d retention policy)",
+      "issue": "Retention policy is specified as a cron/scheduled job, but the plan does not define where that job runs (DB-native vs app worker vs CI), nor does it define a testable acceptance criterion for it beyond “purges rows older than 30 days.”",
+      "why_blocking": "If the repo does not currently have an established scheduler mechanism, this becomes an integration task that can stall Sprint 4 (especially for a single engineer). Also, without a deterministic test strategy, CI cannot verify AC-4.4.3d, risking an uncloseable task.",
+      "fix": "Choose one mechanism and make it testable: (A) DB-native (preferred): add a SQL migration that creates a scheduled job if using pg_cron, or (B) app-level: add a script + documented ops schedule. Update AC-4.4.3d to be CI-verifiable by testing the purge query itself (e.g., unit/integration test that inserts rows with `created_at = now() - interval '31 days'` and asserts they are deleted when running `scripts/purge-quarantine.sh`). If ops scheduling is external, mirror the pattern used in Task 4.2b (tracking issue + link)."
     },
     {
-      "original_issue": "Velocity rollup ambiguity re: purpose dimension and missing dependency on purpose migration",
-      "status": "fixed",
-      "notes": "Still purpose-agnostic with PK (community_id, hour) and AC-3.1.5 explicitly requires safety regardless of purpose column presence."
+      "location": "Sprint 1 / Task 1.2 (AC-1.2.3, AC-1.2.10 reproducible build chain)",
+      "issue": "The reproducible build chain is underspecified/internally inconsistent: the plan uses `npm ci` inside the rebuild script while the repo uses pnpm elsewhere, and it mentions allowlisting scripts in `.npmrc` but also runs `npm ci --ignore-scripts` (which ignores all scripts regardless of allowlist). It also doesn’t pin/verify the exact dependency graph for the cloned hounfour build (lockfile strategy not stated).",
+      "why_blocking": "This can cause non-deterministic DIST_HASH across runners (exactly what AC-1.2.10 is trying to prevent) and can lead to a situation where CI cannot ever satisfy “two independent runners produce identical DIST_HASH” because the dependency graph differs subtly by npm resolution, registry metadata, or missing lockfile enforcement.",
+      "fix": "Make the rebuild deterministic end-to-end: (1) explicitly state and enforce the package manager + lockfile used for building hounfour (e.g., require `package-lock.json` present at ff8c16b and fail if missing; or use pnpm with a pinned pnpm version and `pnpm-lock.yaml`). (2) Remove the `.npmrc allowlist` language if `--ignore-scripts` is always used; instead, explicitly run only the required build steps. (3) Pin registry config (registry URL) and set `npm config set fund false audit false` to reduce network variance. (4) In AC-1.2.10, specify the “two runners” as two separate GitHub Actions jobs on different runner types/architectures (or at least different runners) using the same container image, and ensure the script fails if hashes differ."
     },
     {
-      "original_issue": "Feature flags claimed 'no column writes' but DB enforcement could force/reject writes; flags not truly independent",
-      "status": "fixed",
-      "notes": "Now internally consistent: AC-1.5.4 states DB enforcement must be compatible with disabled flags, and Sprint 4 AC-4.1.4 defines conditional enforcement keyed off sequence_number being non-NULL (flag-off leaves it NULL). AC-4.1.5 adds the required integration test proving flag-off writes succeed post-0013a."
+      "location": "Sprint 2 / Task 2.2 (AC-2.2.6–2.2.8 dual-mode CJS/ESM validation)",
+      "issue": "The plan requires running the export-map test in both CJS and ESM modes, plus a built-JS `node -e require(...)` smoke test, but it does not define how the project will produce ESM-compatible test execution given existing Jest/ts-jest defaults, nor does it define the build artifact path to test (workspace package vs ts-node).",
+      "why_blocking": "Mixed CJS/ESM testing is a common time sink; without an explicit execution strategy, Sprint 2 can get stuck in tooling churn (exactly the failure mode SKP-003 is about). Also, if the package under test is TypeScript-only in-repo, `node -e require('...')` may not resolve without a prior build step and correct `exports`/`main` fields.",
+      "fix": "Add an explicit, minimal strategy to AC-2.2.6–2.2.8: (1) define two commands, e.g. `pnpm test:exports:cjs` (Jest in CJS) and `pnpm test:exports:esm` (Node’s built-in test runner or a separate Jest config with `extensionsToTreatAsEsm` + Babel/ts-jest ESM preset). (2) Add a prerequisite build step for the smoke test: `pnpm -w build` (or a targeted build) and then `node -e \"require('./dist/...')\"` or `node -e \"require(require.resolve('@arrakis/protocol'))\"` depending on actual package name. (3) Lock the exact tsconfig fields (`module`, `moduleResolution`) and Jest config files that will be used, not just “documented.”"
     },
     {
-      "original_issue": "Outbox worker concurrency/locking and idempotency underspecified",
-      "status": "fixed",
-      "notes": "Still specified with FOR UPDATE SKIP LOCKED (AC-5.4.2), explicit idempotency key (AC-5.4.3), and a 2-worker concurrency test (AC-5.4.8)."
-    },
-    {
-      "original_issue": "Duplicate migration number 0015",
-      "status": "fixed",
-      "notes": "Still resolved: admin audit log is Migration 0016; numbering is unique as listed."
+      "location": "Sprint 4 / Task 4.1 (AC-4.1.8 shadow-mode safety floor bounds)",
+      "issue": "The safety floor hard-rejects values > 1e15 micro-USD and non-ASCII characters in all modes (including legacy), but the plan does not confirm that 1e15 is above all legitimate production values, nor does it specify what happens for negative values (which may appear in internal DB rows) vs boundary inputs.",
+      "why_blocking": "Because AC-4.1.8 applies regardless of mode, it can break production compatibility immediately (even before enforce mode) if any legitimate payload exceeds the cap or contains non-ASCII (e.g., copied values with non-breaking spaces). That would violate the rollout intent and can block Sprint 4 exit gate if fixtures include such cases.",
+      "fix": "Make the bound explicitly derived and testable: (1) add an AC to compute/justify `MAX_SAFE_MICRO_USD` from product constraints (e.g., max budget * max duration) and confirm it exceeds current observed p99/p100 by margin using a one-off query/log sample (even a manual note). (2) Clarify sign handling: if boundary inputs must be non-negative, enforce `>= 0` explicitly; if negatives can occur in DB, apply different bounds by context (HTTP/JWT non-negative; DB may allow signed). (3) Consider allowing ASCII whitespace trimming only if explicitly desired; otherwise keep rejection but add a migration note."
     }
   ],
-  "new_blocking_concerns": [],
-  "iteration": 3
+  "question": "",
+  "iteration": 1
 }

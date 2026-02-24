@@ -71,7 +71,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@0xhoneyjar/loa-hounfour": "github:0xHoneyJar/loa-hounfour#ec5024938339121dbb25d3b72f8b67fdb0432cad",
+    "@0xhoneyjar/loa-hounfour": "github:0xHoneyJar/loa-hounfour#ff8c16b899b5bbebb9bf1a5e3f9e791342b49bea",
     "@arrakis/core": "file:../core",
     "drizzle-orm": "^0.33.0",
     "ioredis": "^5.9.2",

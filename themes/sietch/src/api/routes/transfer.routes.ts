@@ -15,6 +15,8 @@
 import { Router, type Response } from 'express';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { logger } from '../../utils/logger.js';
+import { parseBoundaryMicroUsd } from '../../packages/core/protocol/parse-boundary-micro-usd.js';
+import { getBoundaryMetrics } from '../../packages/core/protocol/boundary-metrics.js';
 import type { IPeerTransferService, TransferDirection } from '../../packages/core/ports/IPeerTransferService.js';
 
 // =============================================================================
@@ -83,16 +85,20 @@ transferRouter.post(
       return;
     }
 
-    // amountMicro: accept number or string, convert to bigint
-    let amount: bigint;
-    try {
-      amount = BigInt(amountMicro);
-      if (amount <= 0n) {
-        res.status(400).json({ error: 'amountMicro must be positive' });
-        return;
-      }
-    } catch {
-      res.status(400).json({ error: 'amountMicro must be a valid integer' });
+    // amountMicro: accept number or string, parse via boundary wrapper (Sprint 4, Task 4.3)
+    const rawAmount = amountMicro !== undefined && amountMicro !== null ? String(amountMicro) : '';
+    const parseResult = parseBoundaryMicroUsd(rawAmount, 'http', logger, getBoundaryMetrics());
+    if (!parseResult.ok) {
+      res.status(400).json({
+        error: 'amountMicro must be a valid integer',
+        errorCode: parseResult.errorCode,
+        reason: parseResult.reason,
+      });
+      return;
+    }
+    const amount = parseResult.value;
+    if (amount <= 0n) {
+      res.status(400).json({ error: 'amountMicro must be positive' });
       return;
     }
 

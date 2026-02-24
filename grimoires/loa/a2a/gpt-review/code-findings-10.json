@@ -1,33 +1,15 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "Unsafe BigInt-to-Number conversions can overflow and silently corrupt emitted metrics; add a safe conversion helper and use it.",
+  "summary": "One validation bug found: the UUID v4 regex is overly permissive and does not enforce v4/variant bits.",
   "issues": [
     {
       "severity": "major",
-      "file": "packages/adapters/telemetry/economic-metrics.ts",
-      "line": 120,
-      "description": "BigInt is converted to Number without bounds checks; values above Number.MAX_SAFE_INTEGER will be truncated and corrupt the metric.",
-      "current_code": "```typescript\n  emitEconomicMetric({\n    name: 'conservation_drift_micro',\n    value: Number(driftMicro),\n    unit: 'None',\n    dimensions: { community_id: communityId },\n  });\n```",
-      "fixed_code": "```typescript\n  emitEconomicMetric({\n    name: 'conservation_drift_micro',\n    value: toSafeNumber(driftMicro, 'conservation_drift_micro'),\n    unit: 'None',\n    dimensions: { community_id: communityId },\n  });\n```",
-      "explanation": "Using a bounded conversion prevents silent precision loss when values exceed Number.MAX_SAFE_INTEGER."
-    },
-    {
-      "severity": "major",
-      "file": "packages/adapters/telemetry/economic-metrics.ts",
-      "line": 173,
-      "description": "BigInt amount is converted to Number without bounds checks; large debits will overflow and emit corrupt values.",
-      "current_code": "```typescript\n  emitEconomicMetric({\n    name: 'purpose_spend_micro',\n    value: Number(amountMicro),\n    unit: 'None',\n    dimensions: { community_id: communityId, purpose },\n  });\n```",
-      "fixed_code": "```typescript\n  emitEconomicMetric({\n    name: 'purpose_spend_micro',\n    value: toSafeNumber(amountMicro, 'purpose_spend_micro'),\n    unit: 'None',\n    dimensions: { community_id: communityId, purpose },\n  });\n```",
-      "explanation": "Ensures emitted metrics are safe and accurate for large BigInt values."
-    },
-    {
-      "severity": "major",
-      "file": "packages/adapters/telemetry/economic-metrics.ts",
-      "line": 46,
-      "description": "No safe conversion utility exists to guard BigInt->Number conversions; add a helper to bound values and log overflow.",
-      "current_code": "```typescript\nconst EMF_NAMESPACE = 'Arrakis/Economic';\n```",
-      "fixed_code": "```typescript\nconst EMF_NAMESPACE = 'Arrakis/Economic';\nconst MAX_SAFE_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);\n\nfunction toSafeNumber(value: bigint, metricName: EconomicMetricName): number {\n  if (value > MAX_SAFE_BIGINT) {\n    process.stderr.write(\n      `[metrics] ${metricName} overflow: ${value.toString()} > MAX_SAFE_INTEGER; capping.\\n`,\n    );\n    return Number.MAX_SAFE_INTEGER;\n  }\n  if (value < -MAX_SAFE_BIGINT) {\n    process.stderr.write(\n      `[metrics] ${metricName} underflow: ${value.toString()} < -MAX_SAFE_INTEGER; capping.\\n`,\n    );\n    return -Number.MAX_SAFE_INTEGER;\n  }\n  return Number(value);\n}\n```",
-      "explanation": "Adds a single, consistent bounded conversion that avoids precision loss while keeping the system resilient by capping and logging overflows."
+      "file": "packages/core/protocol/jwt-boundary.ts",
+      "line": 86,
+      "description": "UUID_PATTERN claims to validate v4 UUIDs but the regex allows any UUID version/variant, violating the stated requirement and allowing invalid jti values through.",
+      "current_code": "```typescript\n/** UUID v4 pattern for jti validation */\nconst UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;\n```",
+      "fixed_code": "```typescript\n/** UUID v4 pattern for jti validation */\nconst UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;\n```",
+      "explanation": "This regex enforces the UUID v4 version nibble (\"4\") and the correct RFC 4122 variant (\"8\", \"9\", \"a\", or \"b\"), matching the documented validation intent."
     }
   ],
   "fabrication_check": {

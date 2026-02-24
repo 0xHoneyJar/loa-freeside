@@ -25,6 +25,8 @@ import { DEFAULT_IDENTITY_TRUST, evaluateIdentityTrust } from '../../packages/co
 import type { X402Config } from '../../packages/core/billing/x402-config.js';
 import { DEFAULT_X402_CONFIG, NonceCache } from '../../packages/core/billing/x402-config.js';
 import { resolveCreditPack, CREDIT_PACK_TIERS, DEFAULT_MARKUP_FACTOR } from '../../packages/core/billing/credit-packs.js';
+import { parseBoundaryMicroUsd } from '../../packages/core/protocol/parse-boundary-micro-usd.js';
+import { getBoundaryMetrics } from '../../packages/core/protocol/boundary-metrics.js';
 import { logger } from '../../utils/logger.js';
 
 // =============================================================================
@@ -188,7 +190,19 @@ async function tryInlinePayment(
     proof = {
       reference: decoded.reference,
       recipient_address: decoded.recipient_address,
-      amount_micro: BigInt(decoded.amount_micro),
+      amount_micro: (() => {
+        // Sprint 4, Task 4.3: boundary-hardened parsing for x402 payment proof
+        const parseResult = parseBoundaryMicroUsd(
+          String(decoded.amount_micro ?? ''),
+          'http',
+          logger,
+          getBoundaryMetrics(),
+        );
+        if (!parseResult.ok) {
+          throw new Error(`Invalid amount_micro in payment proof: ${parseResult.reason}`);
+        }
+        return parseResult.value;
+      })(),
       payer: decoded.payer,
       chain_id: decoded.chain_id,
     };

@@ -11,8 +11,15 @@
  * 5. Replay detection (keyed by jti)
  * 6. Overspend guard (cost ≤ reserved)
  *
- * SDD refs: §3.3.1 JWT boundary
- * Sprint refs: Task 4.1
+ * The 6-step pipeline aligns with the canonical CANONICAL_JWT_BOUNDARY_STEPS
+ * from @0xhoneyjar/loa-hounfour/economy (v7.9.2). The arrakis implementation
+ * retains its own claim types (OutboundClaims, InboundClaims) because:
+ * - Arrakis claims include pool_id, nft_id, tier, models_used (S2S extensions)
+ * - Canonical claims use different field names (budget_remaining_micro, authority_scope)
+ * - Runtime verification uses jose + zod (canonical defines spec only, not runtime)
+ *
+ * SDD refs: §3.3.1 JWT boundary, §3.4.5
+ * Sprint refs: Task 4.1, Sprint 345 Task 3.4 (cycle-039)
  *
  * @module packages/core/protocol/jwt-boundary
  */
@@ -20,6 +27,20 @@
 import { z } from 'zod';
 import { jwtVerify } from 'jose';
 import type { KeyObject } from 'crypto';
+import { parseBoundaryMicroUsd, type BoundaryLogger } from './parse-boundary-micro-usd.js';
+import { getBoundaryMetrics } from './boundary-metrics.js';
+
+// =============================================================================
+// Canonical JWT Boundary Alignment (Sprint 345, cycle-039)
+// The canonical 6-step spec is re-exported for reference/documentation.
+// Arrakis-specific claim types and verification logic remain local.
+// =============================================================================
+
+export {
+  CANONICAL_JWT_BOUNDARY_STEPS,
+  type JwtVerificationStep,
+  type JwtBoundarySpec,
+} from '@0xhoneyjar/loa-hounfour/economy';
 
 // =============================================================================
 // Error Taxonomy
@@ -216,8 +237,25 @@ export async function verifyUsageJWT(
     throw new JwtBoundaryError('REPLAY', `Duplicate jti: ${claims.jti}`);
   }
 
-  // Step 6: Overspend guard
-  const actualCost = BigInt(claims.actual_cost_micro);
+  // Step 6: Overspend guard — boundary-hardened parsing (Sprint 4, Task 4.3)
+  const jwtLogger: BoundaryLogger = {
+    warn: (obj, msg) => { /* JWT boundary errors are thrown, not logged */ },
+    info: (obj, msg) => { /* noop */ },
+    error: (obj, msg) => { /* noop */ },
+  };
+  const costParseResult = parseBoundaryMicroUsd(
+    claims.actual_cost_micro,
+    'jwt',
+    jwtLogger,
+    getBoundaryMetrics(),
+  );
+  if (!costParseResult.ok) {
+    throw new JwtBoundaryError(
+      'CLAIMS_SCHEMA',
+      `Invalid actual_cost_micro: ${costParseResult.reason}`,
+    );
+  }
+  const actualCost = costParseResult.value;
   if (actualCost > reservedMicro) {
     throw new JwtBoundaryError(
       'OVERSPEND',

@@ -24,6 +24,8 @@ import { CONTRACT_VERSION, validateCompatibility } from '../../packages/core/pro
 import { verifyIdentityAnchor } from '../../packages/core/protocol/identity-trust.js';
 import { fromFinalizeResult } from '../../packages/adapters/billing/billing-entry-mapper.js';
 import { s2sFinalizeRequestSchema, historyQuerySchema } from '../../packages/core/contracts/s2s-billing.js';
+import { parseBoundaryMicroUsd } from '../../packages/core/protocol/parse-boundary-micro-usd.js';
+import { getBoundaryMetrics } from '../../packages/core/protocol/boundary-metrics.js';
 import { logger } from '../../utils/logger.js';
 import type { IPaymentService } from '../../packages/core/ports/IPaymentService.js';
 import type { ICreditLedgerService } from '../../packages/core/ports/ICreditLedgerService.js';
@@ -463,9 +465,24 @@ creditBillingRouter.post(
     }
 
     try {
+      // Sprint 4, Task 4.3: boundary-hardened parsing for S2S finalize
+      const costParse = parseBoundaryMicroUsd(
+        String(actualCostMicro ?? ''),
+        'http',
+        logger,
+        getBoundaryMetrics(),
+      );
+      if (!costParse.ok) {
+        res.status(400).json({
+          error: 'Invalid actualCostMicro',
+          errorCode: costParse.errorCode,
+          reason: costParse.reason,
+        });
+        return;
+      }
       const finalizeResult = await ledger.finalize(
         reservationId,
-        BigInt(actualCostMicro),
+        costParse.value,
       );
 
       logger.info({

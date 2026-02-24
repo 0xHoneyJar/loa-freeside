@@ -1,7 +1,17 @@
 {
-  "verdict": "APPROVED",
-  "summary": "No bugs, security issues, or logic errors found in the provided diff.",
-  "issues": [],
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Found a bug that treats valid 0n costs as missing and can cause incorrect reservation release.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "api/middleware/billing-guard.ts",
+      "line": 301,
+      "description": "actualCostMicro is checked with a falsy test, which treats a valid 0n cost as missing and triggers a reservation release instead of finalization.",
+      "current_code": "```typescript\n    const actualCostMicro = (req as any).actualCostMicro as bigint | undefined;\n    if (!actualCostMicro) {\n      // No cost reported — release reservation if present\n      if (billing.reservation) {\n        try {\n          await config.ledger.release(billing.reservation.reservationId);\n        } catch (err) {\n          logger.error({\n            event: 'billing.release.error',\n            reservationId: billing.reservation.reservationId,\n            err,\n          }, 'Failed to release reservation');\n        }\n      }\n      next();\n      return;\n    }\n```",
+      "fixed_code": "```typescript\n    const actualCostMicro = (req as any).actualCostMicro as unknown;\n    if (actualCostMicro === undefined || actualCostMicro === null) {\n      // No cost reported — release reservation if present\n      if (billing.reservation) {\n        try {\n          await config.ledger.release(billing.reservation.reservationId);\n        } catch (err) {\n          logger.error({\n            event: 'billing.release.error',\n            reservationId: billing.reservation.reservationId,\n            err,\n          }, 'Failed to release reservation');\n        }\n      }\n      next();\n      return;\n    }\n\n    if (typeof actualCostMicro !== 'bigint') {\n      logger.error({\n        event: 'billing.finalize.invalid_cost_type',\n        accountId: billing.accountId,\n        valueType: typeof actualCostMicro,\n      }, 'Invalid actualCostMicro type; expected bigint');\n      if (billing.reservation) {\n        try {\n          await config.ledger.release(billing.reservation.reservationId);\n        } catch (err) {\n          logger.error({\n            event: 'billing.release.error',\n            reservationId: billing.reservation.reservationId,\n            err,\n          }, 'Failed to release reservation');\n        }\n      }\n      next();\n      return;\n    }\n```",
+      "explanation": "This change ensures 0n is treated as a valid cost and not as a missing value, preventing incorrect reservation releases. It also guards against invalid types to avoid runtime failures during finalize."
+    }
+  ],
   "fabrication_check": {
     "passed": true,
     "concerns": []
