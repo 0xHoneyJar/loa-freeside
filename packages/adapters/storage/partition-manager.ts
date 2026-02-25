@@ -78,7 +78,8 @@ export class PartitionManager {
     const client = await this.pool.connect();
     try {
       // Query existing partitions from pg_catalog
-      const result = await client.query<{ partition_name: string; range_start: string; range_end: string }>(
+      // SQL returns partition_name and bound_expr; range_start/range_end are parsed from bound_expr below
+      const result = await client.query<{ partition_name: string; bound_expr: string }>(
         `SELECT
            c.relname AS partition_name,
            pg_get_expr(c.relpartbound, c.oid) AS bound_expr
@@ -90,7 +91,7 @@ export class PartitionManager {
          ORDER BY c.relname`,
       );
 
-      // Parse partition bounds to determine latest month covered
+      // Parse bound_expr → range_start/range_end for PartitionInfo
       const partitions: PartitionInfo[] = result.rows.map((row) => {
         // bound_expr format: "FOR VALUES FROM ('2026-02-01') TO ('2026-03-01')"
         const matches = row.bound_expr?.match(/FROM \('([^']+)'\) TO \('([^']+)'\)/);

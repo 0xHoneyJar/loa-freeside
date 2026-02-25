@@ -21,6 +21,11 @@ import {
 import type { AuditTrailPort } from '../../adapters/agent/reputation-event-router.js';
 import { advisoryLockKey, sleep } from './audit-helpers.js';
 
+// ─── Constants ──────────────────────────────────────────────────────────────
+
+/** Safety limit for verify() when called without domainTag or explicit limit */
+const DEFAULT_VERIFY_LIMIT = 10_000;
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface AuditEntry {
@@ -239,11 +244,17 @@ export class AuditTrailService implements AuditTrailPort {
       const params: unknown[] = [];
       const conditions: string[] = [];
 
-      if (options?.domainTag) {
+      const hasDomainTag = options?.domainTag !== undefined;
+      const hasLimit = options?.limit !== undefined;
+
+      if (hasDomainTag) {
         conditions.push(`domain_tag = $${params.length + 1}`);
-        params.push(options.domainTag);
+        params.push(options!.domainTag);
       }
-      if (options?.fromId) {
+      if (options?.fromId !== undefined) {
+        if (!Number.isInteger(options.fromId) || options.fromId < 0) {
+          throw new Error('fromId must be a non-negative integer');
+        }
         conditions.push(`id >= $${params.length + 1}`);
         params.push(options.fromId);
       }
@@ -254,9 +265,21 @@ export class AuditTrailService implements AuditTrailPort {
 
       query += ' ORDER BY id ASC';
 
-      if (options?.limit) {
+      if (hasLimit) {
+        if (!Number.isInteger(options!.limit) || (options!.limit as number) < 0) {
+          throw new Error('limit must be a non-negative integer');
+        }
+        // Caller-provided limit — use as-is
         query += ` LIMIT $${params.length + 1}`;
-        params.push(options.limit);
+        params.push(options!.limit);
+      } else if (!hasDomainTag) {
+        // No domainTag and no explicit limit — apply safety default to prevent unbounded scan
+        this.log.warn(
+          { safety_limit: DEFAULT_VERIFY_LIMIT },
+          `verify() called without domainTag or limit — applying safety limit of ${DEFAULT_VERIFY_LIMIT} entries. Consider passing domainTag for targeted verification.`,
+        );
+        query += ` LIMIT $${params.length + 1}`;
+        params.push(DEFAULT_VERIFY_LIMIT);
       }
 
       const result = await client.query(query, params);

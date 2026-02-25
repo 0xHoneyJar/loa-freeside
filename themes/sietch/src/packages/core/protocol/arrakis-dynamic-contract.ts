@@ -10,6 +10,7 @@
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Static } from '@sinclair/typebox';
 import {
   DynamicContractSchema,
@@ -53,11 +54,28 @@ export class DynamicContractError extends Error {
 
 const OVERRIDE_MAX_SIZE_BYTES = 64 * 1024; // 64KB
 
+// Resolved relative to this module's location, not process.cwd() (which varies by
+// execution context: test runner, worker threads, serverless functions).
 const DEFAULT_CONTRACT_PATH = resolve(
-  process.cwd(),
+  fileURLToPath(new URL('.', import.meta.url)),
+  '..', '..', '..', '..', '..',
   'config',
   'dynamic-contract.json',
 );
+
+/**
+ * Guard: block env-var overrides in production unless explicitly allowed.
+ * Reusable for DYNAMIC_CONTRACT_OVERRIDE and DYNAMIC_CONTRACT_PATH.
+ */
+function assertNotProdOverride(envVarName: string): void {
+  const allowFlag = `ALLOW_${envVarName}`;
+  if (process.env.NODE_ENV === 'production' && process.env[allowFlag] !== 'true') {
+    throw new DynamicContractError(
+      'FILE_READ_ERROR',
+      `${envVarName} is blocked in production. Set ${allowFlag}=true in deployment manifest to allow.`,
+    );
+  }
+}
 
 // ─── Singleton ───────────────────────────────────────────────────────────────
 
@@ -85,16 +103,14 @@ export function loadDynamicContract(
 
   let raw: string;
 
-  // Check for override
+  // Check for JSON override via env var
   const overrideJson = process.env.DYNAMIC_CONTRACT_OVERRIDE;
   if (overrideJson) {
-    // Block override in production
-    if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DYNAMIC_CONTRACT_OVERRIDE !== 'true') {
-      const err = new DynamicContractError(
-        'FILE_READ_ERROR',
-        'DYNAMIC_CONTRACT_OVERRIDE is blocked in production. Set ALLOW_DYNAMIC_CONTRACT_OVERRIDE=true in deployment manifest to allow.',
-      );
-      log.fatal({ failure: err.failure }, err.message);
+    // Block override in production unless explicitly allowed
+    try {
+      assertNotProdOverride('DYNAMIC_CONTRACT_OVERRIDE');
+    } catch (err) {
+      log.fatal({ failure: (err as DynamicContractError).failure }, (err as Error).message);
       throw err;
     }
 
@@ -110,8 +126,21 @@ export function loadDynamicContract(
 
     raw = overrideJson;
   } else {
-    // Load from file
-    const filePath = contractPath ?? DEFAULT_CONTRACT_PATH;
+    // Resolution priority: explicit param > DYNAMIC_CONTRACT_PATH env > import.meta.url-relative
+    let filePath: string;
+    if (contractPath) {
+      filePath = contractPath;
+    } else if (process.env.DYNAMIC_CONTRACT_PATH) {
+      try {
+        assertNotProdOverride('DYNAMIC_CONTRACT_PATH');
+      } catch (err) {
+        log.fatal({ failure: (err as DynamicContractError).failure }, (err as Error).message);
+        throw err;
+      }
+      filePath = process.env.DYNAMIC_CONTRACT_PATH;
+    } else {
+      filePath = DEFAULT_CONTRACT_PATH;
+    }
     try {
       raw = readFileSync(filePath, 'utf8');
     } catch (e) {
