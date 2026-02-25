@@ -286,6 +286,7 @@ jobs:
     name: Unit Tests
     needs: template-guard
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout code
@@ -319,6 +320,7 @@ jobs:
     name: Integration Tests
     needs: template-guard
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     services:
       redis:

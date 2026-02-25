@@ -15,28 +15,17 @@
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import { resolve, dirname, join } from 'node:path';
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import Ajv from 'ajv';
 
 // ---------------------------------------------------------------------------
-// Resolve the hounfour package root by walking up from the test file
+// Resolve the hounfour package root using Node module resolution
+// (topology-independent: works regardless of pnpm hoist settings)
 // ---------------------------------------------------------------------------
 
-function findHounfourRoot(): string {
-  let dir = dirname(new URL(import.meta.url).pathname);
-  for (let i = 0; i < 10; i++) {
-    const candidate = join(dir, 'node_modules', '@0xhoneyjar', 'loa-hounfour', 'package.json');
-    if (existsSync(candidate)) {
-      return dirname(candidate);
-    }
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  throw new Error('Could not find @0xhoneyjar/loa-hounfour package root');
-}
-
-const hounfourRoot = findHounfourRoot();
+const require = createRequire(import.meta.url);
+const hounfourRoot = dirname(require.resolve('@0xhoneyjar/loa-hounfour/package.json'));
 
 // ---------------------------------------------------------------------------
 // Import protocol exports for validation
