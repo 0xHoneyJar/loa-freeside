@@ -94,3 +94,9 @@ export {
   type PartitionHealthResult,
   type PartitionManagerConfig,
 } from './partition-manager.js';
+
+// =============================================================================
+// Audit Helpers (cycle-043, bridge iteration 2 — shared advisory lock hashing)
+// =============================================================================
+
+export { advisoryLockKey, sleep } from './audit-helpers.js';

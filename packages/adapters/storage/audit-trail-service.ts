@@ -19,6 +19,7 @@ import {
   AUDIT_TRAIL_GENESIS_HASH,
 } from '@0xhoneyjar/loa-hounfour/commons';
 import type { AuditTrailPort } from '../../adapters/agent/reputation-event-router.js';
+import { advisoryLockKey, sleep } from './audit-helpers.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -135,8 +136,8 @@ export class AuditTrailService implements AuditTrailPort {
       try {
         await client.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
 
-        // Advisory lock scoped by domain_tag hash
-        const lockKey = hashCode(domainTag);
+        // Advisory lock scoped by domain_tag hash (FNV-1a via shared helper)
+        const lockKey = advisoryLockKey(domainTag);
         await client.query('SELECT pg_advisory_xact_lock($1)', [lockKey]);
 
         // Read chain head
@@ -414,18 +415,4 @@ export class AuditQuarantineError extends Error {
   }
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function hashCode(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash | 0; // Convert to 32-bit integer
-  }
-  return Math.abs(hash);
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+// Advisory lock hashing and sleep utilities imported from ./audit-helpers.ts

@@ -154,6 +154,16 @@ export async function routeReputationEvent(
 ): Promise<RoutingResult> {
   const { logger, auditTrail, enqueueForScoring } = deps;
 
+  // Validate timestamp before routing — Invalid Date in a hash chain corrupts the entire domain
+  const eventTime = new Date(event.timestamp);
+  if (isNaN(eventTime.getTime())) {
+    logger.warn(
+      { event_id: event.event_id, timestamp: event.timestamp },
+      'reputation event rejected: invalid timestamp',
+    );
+    return { routed: false, variant: event.type, error: `invalid timestamp: ${event.timestamp}` };
+  }
+
   switch (event.type) {
     case 'quality_signal': {
       logger.info(
@@ -166,7 +176,7 @@ export async function routeReputationEvent(
         event_type: 'quality_signal',
         actor_id: event.agent_id,
         payload: { event_id: event.event_id, score: event.score, task_type: event.task_type },
-        event_time: new Date(event.timestamp),
+        event_time: eventTime,
       });
 
       if (enqueueForScoring) {
@@ -187,7 +197,7 @@ export async function routeReputationEvent(
         event_type: 'task_completed',
         actor_id: event.agent_id,
         payload: { event_id: event.event_id, task_type: event.task_type, success: event.success },
-        event_time: new Date(event.timestamp),
+        event_time: eventTime,
       });
 
       if (enqueueForScoring) {
@@ -208,7 +218,7 @@ export async function routeReputationEvent(
         event_type: 'credential_update',
         actor_id: event.agent_id,
         payload: { event_id: event.event_id, credential_id: event.credential_id, action: event.action },
-        event_time: new Date(event.timestamp),
+        event_time: eventTime,
       });
 
       if (enqueueForScoring) {
@@ -257,7 +267,7 @@ export async function routeReputationEvent(
           task_type: event.task_type,
           aggregate_only: aggregateOnly,
         },
-        event_time: new Date(event.timestamp),
+        event_time: eventTime,
       });
 
       if (enqueueForScoring) {

@@ -15,6 +15,7 @@ import {
   computeAuditEntryHash,
   AUDIT_TRAIL_GENESIS_HASH,
 } from '@0xhoneyjar/loa-hounfour/commons';
+import { advisoryLockKey, sleep } from './audit-helpers.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -84,8 +85,8 @@ export class GovernedMutationService {
         // 1. Execute state mutation
         const result = await params.mutate(client);
 
-        // 2. Advisory lock for chain linearization
-        const lockKey = hashCode(domainTag);
+        // 2. Advisory lock for chain linearization (FNV-1a via shared helper)
+        const lockKey = advisoryLockKey(domainTag);
         await client.query('SELECT pg_advisory_xact_lock($1)', [lockKey]);
 
         // 3. Read chain head
@@ -182,18 +183,4 @@ export class GovernedMutationService {
   }
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function hashCode(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash | 0;
-  }
-  return Math.abs(hash);
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+// Advisory lock hashing and sleep utilities imported from ./audit-helpers.ts

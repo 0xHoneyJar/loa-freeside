@@ -397,3 +397,54 @@ describe('structured logging — no PII', () => {
     expect(logObj.score).toBe(0.88);
   });
 });
+
+// ─── Timestamp Validation (Bridge finding high-1) ───────────────────────────
+
+describe('routeReputationEvent — timestamp validation', () => {
+  it('rejects events with invalid timestamp string', async () => {
+    const deps = makeDeps();
+    const event: QualitySignalEvent = {
+      ...BASE_EVENT,
+      type: 'quality_signal',
+      score: 0.5,
+      timestamp: 'not-a-date',
+    };
+
+    const result = await routeReputationEvent(event, deps);
+
+    expect(result.routed).toBe(false);
+    expect(result.error).toContain('invalid timestamp');
+    expect(deps.auditTrail.append).not.toHaveBeenCalled();
+  });
+
+  it('rejects events with empty timestamp', async () => {
+    const deps = makeDeps();
+    const event: TaskCompletedEvent = {
+      ...BASE_EVENT,
+      type: 'task_completed',
+      task_type: 'inference',
+      success: true,
+      timestamp: '',
+    };
+
+    const result = await routeReputationEvent(event, deps);
+
+    expect(result.routed).toBe(false);
+    expect(result.error).toContain('invalid timestamp');
+  });
+
+  it('accepts events with valid ISO 8601 timestamp', async () => {
+    const deps = makeDeps();
+    const event: QualitySignalEvent = {
+      ...BASE_EVENT,
+      type: 'quality_signal',
+      score: 0.7,
+      timestamp: '2026-02-26T12:00:00.000Z',
+    };
+
+    const result = await routeReputationEvent(event, deps);
+
+    expect(result.routed).toBe(true);
+    expect(deps.auditTrail.append).toHaveBeenCalled();
+  });
+});

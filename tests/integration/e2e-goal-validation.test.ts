@@ -173,12 +173,15 @@ describe('G-4: ModelPerformanceEvent ready — 4th variant in router', () => {
 // ─── G-5: Import Discipline ─────────────────────────────────────────────────
 
 describe('G-5: Import discipline — ADR-001 Layer 3', () => {
-  it('contract.json includes /commons entrypoint', () => {
+  it('contract.json includes /commons entrypoint with 40+ symbols', () => {
     const contract = JSON.parse(
       readFileSync(resolve(ROOT, 'spec/contracts/contract.json'), 'utf8'),
     );
-    expect(contract.entrypoints['/commons']).toBeDefined();
-    expect(contract.entrypoints['/commons'].symbols.length).toBeGreaterThanOrEqual(40);
+    // contract.json uses array format with specifier fields
+    const commons = (contract.entrypoints as { specifier: string; symbols: string[] }[])
+      .find((e) => e.specifier === '@0xhoneyjar/loa-hounfour/commons');
+    expect(commons).toBeDefined();
+    expect(commons!.symbols.length).toBeGreaterThanOrEqual(40);
   });
 
   it('arrakis-dynamic-contract.ts imports from hounfour/commons, not direct paths', () => {
