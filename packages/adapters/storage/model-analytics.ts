@@ -177,8 +177,8 @@ export class ModelAnalytics {
 
     const row = result.rows[0];
     return {
-      aggregate: parseInt(row.aggregate_count, 10),
-      taskSpecific: parseInt(row.task_specific_count, 10),
+      aggregate: row.aggregate_count != null ? parseInt(row.aggregate_count, 10) : 0,
+      taskSpecific: row.task_specific_count != null ? parseInt(row.task_specific_count, 10) : 0,
     };
   }
 }

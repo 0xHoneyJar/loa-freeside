@@ -17,8 +17,10 @@
  * Sprint: 365, Task 4.1
  */
 
+import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import type { Logger } from 'pino';
+import { resolveConvictionWeight } from './amendment-voting.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -117,7 +119,7 @@ export class AmendmentService {
         ? paramResult.rows[0].version
         : 0;
 
-      const amendmentId = `amend-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const amendmentId = `amend-${randomUUID()}`;
 
       const amendment: GovernanceAmendment = {
         amendment_id: amendmentId,
@@ -197,7 +199,7 @@ export class AmendmentService {
         decision: input.decision,
         rationale: input.rationale,
         governance_tier: input.governance_tier,
-        conviction_weight: input.conviction_weight ?? 1,
+        conviction_weight: input.conviction_weight ?? resolveConvictionWeight(input.governance_tier),
       };
 
       await client.query(
@@ -398,9 +400,9 @@ export class AmendmentService {
     const row = result.rows[0];
     return {
       ...row,
-      current_value: typeof row.current_value === 'string' ? JSON.parse(row.current_value) : row.current_value,
-      proposed_value: typeof row.proposed_value === 'string' ? JSON.parse(row.proposed_value) : row.proposed_value,
-      votes: Array.isArray(row.votes) ? row.votes : JSON.parse(row.votes),
+      current_value: this.safeJsonParse(row.current_value),
+      proposed_value: this.safeJsonParse(row.proposed_value),
+      votes: Array.isArray(row.votes) ? row.votes : this.safeJsonParse(row.votes, []),
     };
   }
 
@@ -425,10 +427,20 @@ export class AmendmentService {
     const row = result.rows[0];
     return {
       ...row,
-      current_value: typeof row.current_value === 'string' ? JSON.parse(row.current_value) : row.current_value,
-      proposed_value: typeof row.proposed_value === 'string' ? JSON.parse(row.proposed_value) : row.proposed_value,
+      current_value: this.safeJsonParse(row.current_value),
+      proposed_value: this.safeJsonParse(row.proposed_value),
       votes: voteResult.rows,
     };
+  }
+
+  private safeJsonParse(value: unknown, fallback: unknown = null): unknown {
+    if (typeof value !== 'string') return value;
+    try {
+      return JSON.parse(value);
+    } catch {
+      this.log.warn(`Failed to parse JSON value: ${String(value).slice(0, 100)}`);
+      return fallback;
+    }
   }
 
   private async updateAmendmentStatus(client: PoolClient, amendmentId: string, status: AmendmentStatus): Promise<void> {
