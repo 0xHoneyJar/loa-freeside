@@ -1,0 +1,31 @@
+{
+  "contract_id": "arrakis-default-v8.2.0",
+  "surfaces": {
+    "cold": {
+      "schemas": ["JwtClaimsSchema", "CompletionRequestSchema", "CompletionResultSchema"],
+      "capabilities": ["inference"],
+      "rate_limit_tier": "restricted",
+      "ensemble_strategies": []
+    },
+    "warming": {
+      "schemas": ["JwtClaimsSchema", "CompletionRequestSchema", "CompletionResultSchema", "BudgetScopeSchema", "EscrowEntrySchema"],
+      "capabilities": ["inference", "tools"],
+      "rate_limit_tier": "standard",
+      "ensemble_strategies": []
+    },
+    "established": {
+      "schemas": ["JwtClaimsSchema", "CompletionRequestSchema", "CompletionResultSchema", "BudgetScopeSchema", "EscrowEntrySchema", "GovernedCreditsSchema", "GovernedReputationSchema"],
+      "capabilities": ["inference", "tools", "ensemble"],
+      "rate_limit_tier": "extended",
+      "ensemble_strategies": ["quality_first", "cost_optimized"]
+    },
+    "authoritative": {
+      "schemas": ["JwtClaimsSchema", "CompletionRequestSchema", "CompletionResultSchema", "BudgetScopeSchema", "EscrowEntrySchema", "GovernedCreditsSchema", "GovernedReputationSchema", "DynamicContractSchema", "GovernanceMutationSchema"],
+      "capabilities": ["inference", "tools", "ensemble", "governance", "byok"],
+      "rate_limit_tier": "unlimited",
+      "ensemble_strategies": ["quality_first", "cost_optimized", "latency_optimized", "consensus"]
+    }
+  },
+  "contract_version": "8.2.0",
+  "created_at": "2026-02-26T00:00:00Z"
+}

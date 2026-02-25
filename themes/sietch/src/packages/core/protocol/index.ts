@@ -718,3 +718,20 @@ export {
 export type {
   MicroUsdValidationError,
 } from './micro-usd-schema.js';
+
+// Dynamic Contract — reputation-gated capability resolution (cycle-043, FR-4)
+export {
+  loadDynamicContract,
+  resetDynamicContract,
+  resolveProtocolSurface,
+  isCapabilityGranted,
+  validateContractFile,
+  DynamicContractError,
+} from './arrakis-dynamic-contract.js';
+
+export type {
+  ReputationStateName,
+  DynamicContract,
+  ProtocolSurface,
+  DynamicContractFailure,
+} from './arrakis-dynamic-contract.js';
