@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
   "next_sprint_number": 358,
-  "active_cycle": "cycle-042",
+  "active_cycle": null,
   "cycles": [
     {
       "id": "cycle-001",
@@ -1623,8 +1623,10 @@
     {
       "id": "cycle-042",
       "label": "The Sietch Opening — E2E Validation & Test Community Launch",
-      "status": "active",
+      "status": "archived",
       "created": "2026-02-25T02:00:00Z",
+      "archived": "2026-02-25T02:30:00Z",
+      "archive_path": "grimoires/loa/archive/2026-02-25-the-sietch-opening",
       "prd": "grimoires/loa/prd.md",
       "sdd": "grimoires/loa/sdd.md",
       "sprints": [
