@@ -1,585 +1,631 @@
-# SDD: Launch Readiness — loa-hounfour v7.11.0 Full Adoption
+# SDD: The Sietch Opening — E2E Validation & Test Community Launch
 
-**Version:** 1.1.0
-**Cycle:** cycle-041
-**Date:** 2026-02-24
-**PRD:** v1.1.0 (GPT-APPROVED, iteration 2)
+**Version:** 1.4.0
+**Cycle:** cycle-042
+**Date:** 2026-02-25
+**PRD:** v1.2.0 (GPT-APPROVED iteration 3, Flatline integrated)
+**PRD Checksum:** `sha256:b83339d8274bebdaf8a736bbe8f2d7e83f86364d52b20140ae1971550ab2513a`
+**PRD Goals:** G-1..G-7 (§Goals), **FRs:** FR-1..FR-7 (§Functional Requirements), **NFRs:** NFR-1..NFR-5 (§Non-Functional Requirements)
 
 ---
 
 ## 1. Executive Summary
 
-This SDD designs the schema-only adoption of loa-hounfour v7.11.0 into loa-freeside. Unlike previous cycles that introduced runtime behavior (boundary engine, event sourcing, governance), this cycle is strictly additive: new type re-exports through the protocol barrel, updated contract entrypoints, version pin migration, and utility tests. **No runtime evaluation logic changes.**
+This SDD designs the infrastructure validation, test isolation, and documentation needed to close the gap between "code complete" and "test community using it." Unlike previous cycles that introduced runtime behavior, this cycle writes **zero new application logic**. All changes are to test infrastructure, CI pipelines, documentation, and vitest configuration.
 
 **Key architectural decisions:**
-- Protocol barrel extends with governance types using `Governance*` aliases only (ADR-001 compliance) — unaliased governance `TaskType`/`ReputationEvent` are NOT re-exported at barrel level
-- `computeScoringPathHash` and `SCORING_PATH_GENESIS_HASH` re-exported as utilities only — freeside does NOT build or persist `ScoringPathLog` chains this cycle
-- `evaluation_geometry` type re-exported for consumer access — no constraint evaluation runtime changes
-- Contract version bump to `provider_version_range: ">=7.11.0"` is deliberate — all previous entrypoints preserved (strict superset)
-- Version pin migrates from commit SHA `ff8c16b` to immutable semver reference (npm registry preferred, git tag fallback)
+- E2E runner uses host-side vitest against containerized services (not in-container test execution) — matches existing `e2e-billing.yml` CI pattern
+- Test taxonomy uses vitest workspace projects with file-suffix classification (`*.test.ts` = unit, `*.integration.test.ts` = integration) — no vitest plugin or custom reporter needed
+- JWKS bootstrap uses atomic file write with health-gate synchronization — no HTTP endpoint needed for E2E (shared volume is simpler and matches existing compose file)
+- Network isolation uses layered defense: single Docker network + test-design enforcement + no external credentials in CI — Docker `internal: true` alone does not reliably block egress when ports are published
+- Admin guide lives at `themes/sietch/docs/ADMIN_SETUP_GUIDE.md` — co-located with existing docs structure
+- CI E2E pipeline extends existing `e2e-billing.yml` pattern rather than creating a new workflow
 
-**Scope:** ~8 files modified, primarily `protocol/index.ts` (barrel), `spec/contracts/contract.json`, `spec/contracts/vectors-bundle.sha256`, `package.json` (x2), and new conformance tests.
+**Scope:** ~15 files modified/created. No new npm dependencies. No new services. No application code changes except test file renames.
 
 ---
 
 ## 2. System Architecture
 
-### 2.1 Affected Components
+### 2.1 Component Overview
 
-This cycle adds type re-exports and contract metadata to the existing three-layer integration model. No new modules, services, or runtime behavior introduced.
+This cycle touches four architectural layers. No new components — all work extends or fixes existing infrastructure.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                    BARREL LAYER (MODIFIED)                     │
-│  protocol/index.ts — Add governance type re-exports           │
-│    + GovernanceTaskType, GovernanceTaskTypeSchema              │
-│    + GovernanceReputationEvent, GovernanceReputationEventSchema│
-│    + TaskTypeCohort, ScoringPath, ScoringPathLog types        │
-│    + computeScoringPathHash, SCORING_PATH_GENESIS_HASH        │
-│    + NativeEnforcement, evaluation_geometry types              │
+│                    DOCUMENTATION LAYER (NEW)                   │
+│  themes/sietch/docs/ADMIN_SETUP_GUIDE.md                      │
+│  themes/sietch/docs/STAGING_CHECKLIST.md                      │
+│  themes/sietch/docs/community/onboarding.md (MODIFIED)        │
 ├──────────────────────────────────────────────────────────────┤
-│                    CONTRACT LAYER (MODIFIED)                   │
-│  spec/contracts/                                              │
-│  ├── contract.json          (new entrypoints, version bump)   │
-│  ├── vectors-bundle.sha256  (recomputed hash)                 │
-│  └── validate.mjs           (no change — dynamic import)      │
+│                    CI PIPELINE LAYER (MODIFIED)                 │
+│  .github/workflows/e2e-billing.yml (extend)                   │
+│  .github/workflows/ci.yml (add unit/integration split)        │
 ├──────────────────────────────────────────────────────────────┤
-│                    TEST LAYER (NEW)                            │
-│  tests/unit/                                                  │
-│  ├── hash-chain-utility.test.ts  (FR-2: determinism tests)   │
-│  └── protocol-conformance.test.ts (updated: new symbols)     │
-│  themes/sietch/tests/unit/                                    │
-│  └── contract-spec.test.ts       (updated: new entrypoints)  │
+│                    TEST INFRASTRUCTURE LAYER (MODIFIED)         │
+│  tests/e2e/run-e2e.sh (NEW — host-side runner script)         │
+│  themes/sietch/vitest.config.ts (MODIFIED — workspace)        │
+│  themes/sietch/vitest.workspace.ts (NEW — project split)      │
+│  themes/sietch/package.json (MODIFIED — test scripts)         │
 ├──────────────────────────────────────────────────────────────┤
-│                    DEPENDENCY LAYER (MODIFIED)                 │
-│  package.json (root + adapters) — SHA → v7.11.0 tag/npm      │
-├──────────────────────────────────────────────────────────────┤
-│                    EXISTING (UNCHANGED)                        │
-│  pool-mapping.ts          (TaskType import still routing-     │
-│                            policy variant, zero change)       │
-│  boundary-engine-shadow.ts (no evaluation geometry change)    │
-│  arrakis-compat.ts        (negotiation version unchanged)     │
-│  All runtime evaluation paths — UNTOUCHED                     │
+│                    DOCKER COMPOSE LAYER (MODIFIED)              │
+│  tests/e2e/docker-compose.e2e.yml (fix + network isolation)   │
+│  tests/e2e/loa-finn-e2e-stub.ts (JWKS sync + negative tests) │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-### 2.2 Import Path Architecture
-
-loa-hounfour v7.11.0 organizes exports across 5 subpaths. The protocol barrel selectively re-exports from each:
+### 2.2 Data Flow: E2E Test Execution
 
 ```
-@0xhoneyjar/loa-hounfour (root)
-├── Core types: AgentIdentity, TrustLevel, RoutingPolicy, TaskType (routing-policy)
-├── Functions: evaluateAccessPolicy, parseMicroUsd, computeReqHash
-├── NEW v7.11.0: computeScoringPathHash, SCORING_PATH_GENESIS_HASH
-└── ADR-001 aliases: GovernanceTaskType, GovernanceReputationEvent (+Schema variants)
-
-@0xhoneyjar/loa-hounfour/economy
-├── Escrow, NFT, economy types
-└── evaluateEconomicBoundary, TRANSFER_CHOREOGRAPHY
-
-@0xhoneyjar/loa-hounfour/governance
-├── Existing: SanctionSchema, DisputeRecordSchema, etc.
-├── NEW v7.10.0: TaskTypeSchema, TaskTypeCohortSchema, ReputationEventSchema
-├── NEW v7.10.0: ScoringPathSchema, ScoringPathLogSchema
-└── NEW v7.10.0: QualitySignalEventSchema, TaskCompletedEventSchema, CredentialUpdateEventSchema
-
-@0xhoneyjar/loa-hounfour/integrity
-├── LivenessPropertySchema, CANONICAL_LIVENESS_PROPERTIES
-└── NEW v7.10.1: detectReservedNameCollisions (already re-exported)
-
-@0xhoneyjar/loa-hounfour/model
-└── Type-only entrypoint (0 runtime symbols)
+run-e2e.sh (host-side runner)
+  │
+  ├─1─► docker compose up -d (build + start)
+  │       ├── redis-e2e (port 6379)
+  │       ├── arrakis-e2e (port 3099)
+  │       │     └── CMD: e2e-entrypoint.sh (starts server, then atomic JWKS export)
+  │       │           curl → .tmp → jq validate → mv /shared/arrakis-jwks.json
+  │       ├── loa-finn-e2e (port 8099)
+  │       │     └── reads /shared/arrakis-jwks.json (health gate waits for file)
+  │       └── contract-validator (port 3199)
+  │
+  ├─2─► health_wait (60s timeout per service, via docker compose exec -T)
+  │       ├── redis-e2e: redis-cli ping
+  │       ├── arrakis-e2e: curl -sf http://localhost:3000/health
+  │       ├── loa-finn-e2e: curl -sf http://localhost:8080/v1/health
+  │       └── contract-validator: wget -qO- http://localhost:3100/health
+  │
+  ├─3─► vitest run tests/e2e/ --testTimeout 120000
+  │       ├── billing-smoke.e2e.test.ts
+  │       ├── billing-full-loop.e2e.test.ts
+  │       └── economic-loop-replay.test.ts (in-memory, no Docker)
+  │
+  ├─4─► capture exit code
+  │
+  └─5─► trap: docker compose down -v --remove-orphans (ALWAYS)
+          └── exit with vitest code (0=pass, 1=fail, 2=build error)
 ```
 
-### 2.3 ADR-001 Aliasing Strategy
+### 2.3 Data Flow: Test Taxonomy
 
-ADR-001 establishes root barrel precedence for naming collisions:
-
-| Collision | Root Barrel Name | Direct Import Path |
-|-----------|-----------------|-------------------|
-| Governance `TaskType` vs routing-policy `TaskType` | `GovernanceTaskType` | `@0xhoneyjar/loa-hounfour/governance` |
-| Governance `ReputationEvent` vs future core `ReputationEvent` | `GovernanceReputationEvent` | `@0xhoneyjar/loa-hounfour/governance` |
-
-**Freeside policy**: The protocol barrel (`protocol/index.ts`) re-exports ONLY the aliased `Governance*` variants. The unaliased `TaskType` from the root barrel continues to reference the routing-policy type used by `pool-mapping.ts`. Consumers needing unaliased governance types must import directly from the `/governance` subpath.
-
-```mermaid
-graph LR
-    subgraph "hounfour root barrel"
-        RT[TaskType<br/>routing-policy]
-        GT[GovernanceTaskType<br/>alias → governance/TaskType]
-        GRE[GovernanceReputationEvent<br/>alias → governance/ReputationEvent]
-    end
-
-    subgraph "freeside protocol/index.ts"
-        FRT[TaskType<br/>re-export from root]
-        FGT[GovernanceTaskType<br/>re-export from root]
-        FGRE[GovernanceReputationEvent<br/>re-export from root]
-    end
-
-    subgraph "freeside consumers"
-        PM[pool-mapping.ts<br/>uses TaskType]
-        FUTURE[future governance code<br/>uses GovernanceTaskType]
-    end
-
-    RT --> FRT
-    GT --> FGT
-    GRE --> FGRE
-    FRT --> PM
-    FGT --> FUTURE
-    FGRE --> FUTURE
+```
+pnpm test (default) ──► pnpm test:unit
+                          │
+                          ├── vitest --project unit
+                          │     └── *.test.ts (excludes *.integration.test.ts)
+                          │     └── No Redis, no Postgres, no NATS
+                          │
+pnpm test:integration ──► vitest --project integration
+                          │     └── *.integration.test.ts
+                          │     └── Requires Redis service container
+                          │
+pnpm test:e2e ──────────► ./tests/e2e/run-e2e.sh
+                                └── Full Docker Compose topology
 ```
 
 ---
 
 ## 3. Component Design
 
-### 3.1 FR-1 + FR-3: Governance Schema Re-exports (Protocol Barrel)
+### 3.1 E2E Runner Script (`tests/e2e/run-e2e.sh`)
 
-**File:** `themes/sietch/src/packages/core/protocol/index.ts`
+**Purpose:** Deterministic E2E test execution with guaranteed teardown.
 
-**Change type:** Additive — new export block appended after existing v7.9.x exports (after line ~372).
-
-#### 3.1.1 New Exports Section
-
-Add a new clearly-demarcated section for v7.10.0-7.11.0 governance types.
-
-**CRITICAL — Export Surface Verification Gate:** Before adding ANY symbol to the barrel or `contract.json`, the implementer MUST verify it exists as a runtime export in the installed provider package. Type-only symbols (erased at runtime) must NOT appear in contract.json.
-
-Verification procedure (run after `pnpm install` with v7.11.0 pin):
-
+**Design:**
 ```bash
-# Verify root entrypoint runtime exports
-node -e "import('@0xhoneyjar/loa-hounfour').then(m => {
-  const expected = ['GovernanceTaskType','GovernanceTaskTypeSchema',
-    'GovernanceReputationEvent','GovernanceReputationEventSchema',
-    'computeScoringPathHash','SCORING_PATH_GENESIS_HASH'];
-  expected.forEach(s => console.log(s, s in m ? 'OK' : 'MISSING'));
-})"
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Verify governance entrypoint runtime exports
-node -e "import('@0xhoneyjar/loa-hounfour/governance').then(m => {
-  const expected = ['TASK_TYPES','validateTaskCohortUniqueness',
-    'TaskTypeCohortSchema','QualitySignalEventSchema',
-    'TaskCompletedEventSchema','CredentialUpdateEventSchema',
-    'ScoringPathSchema','ScoringPathLogSchema'];
-  expected.forEach(s => console.log(s, s in m ? 'OK' : 'MISSING'));
-})"
+COMPOSE_FILE="tests/e2e/docker-compose.e2e.yml"
+HEALTH_TIMEOUT=60
+TEST_TIMEOUT=120000
+
+# Health wait function — uses docker compose exec for portability
+# No host-side redis-cli/wget dependency required
+wait_for_health() {
+  local service="$1"
+  local check_cmd="$2"
+  local timeout="$3"
+  local elapsed=0
+
+  echo "Waiting for $service..."
+  while [ $elapsed -lt $timeout ]; do
+    if docker compose -f "$COMPOSE_FILE" exec -T "$service" sh -c "$check_cmd" >/dev/null 2>&1; then
+      echo "$service healthy (${elapsed}s)"
+      return 0
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+  echo "ERROR: $service failed health check after ${timeout}s"
+  return 1
+}
+
+# Trap ensures teardown on any exit — capture logs BEFORE tearing down
+cleanup() {
+  local log_dir="${E2E_LOG_DIR:-tests/e2e/logs}"
+  mkdir -p "$log_dir"
+  docker compose -f "$COMPOSE_FILE" logs --no-color > "$log_dir/compose-all.log" 2>&1 || true
+  for svc in redis-e2e arrakis-e2e loa-finn-e2e contract-validator; do
+    docker compose -f "$COMPOSE_FILE" logs --no-color "$svc" > "$log_dir/${svc}.log" 2>&1 || true
+  done
+  docker compose -f "$COMPOSE_FILE" down -v --remove-orphans 2>/dev/null || true
+}
+trap cleanup EXIT
+
+# Phase 1: Build and start
+docker compose -f "$COMPOSE_FILE" up -d --build || exit 2
+
+# Phase 2: Health wait via docker compose exec (runs inside containers — uses internal ports)
+wait_for_health "redis-e2e" "redis-cli ping" $HEALTH_TIMEOUT
+wait_for_health "arrakis-e2e" "curl -sf http://localhost:3000/health" $HEALTH_TIMEOUT
+wait_for_health "loa-finn-e2e" "curl -sf http://localhost:8080/v1/health" $HEALTH_TIMEOUT
+wait_for_health "contract-validator" "wget -qO- http://localhost:3100/health" $HEALTH_TIMEOUT
+
+# Phase 3: Run tests (host-side vitest, matching existing e2e-billing.yml pattern)
+# Ports match docker-compose.e2e.yml env var defaults
+ARRAKIS_PORT="${E2E_ARRAKIS_PORT:-3099}"
+cd themes/sietch
+SKIP_E2E=false \
+ARRAKIS_BASE_URL="http://localhost:${ARRAKIS_PORT}" \
+  npx vitest run ../../tests/e2e/ \
+    --testTimeout $TEST_TIMEOUT \
+    --sequence.shuffle false \
+    --reporter=verbose
+
+# Exit code propagated via set -e
 ```
 
-If any symbol reports `MISSING`:
-- If it exists on a different entrypoint (e.g., `/governance` instead of root): move the barrel import and contract entry to the correct entrypoint
-- If it is type-only (erased at compile): keep in barrel as `export type`, remove from `contract.json`
-- If it does not exist at all in v7.11.0: remove from both barrel and contract; log as a PRD deviation in NOTES.md
+**Key design decisions:**
+- `wait_for_health` function defined explicitly — uses `docker compose exec -T` to run health checks inside containers. No host-side `redis-cli` or `wget` dependency. Portable across dev machines and CI runners.
+- `trap cleanup EXIT` — unconditional teardown with log capture. Captures per-service compose logs BEFORE `docker compose down` so failures are debuggable. Logs published as CI artifacts on failure.
+- `set -euo pipefail` — fail fast on any error. No silent failures.
+- Health wait is per-service with explicit timeout — logs which service failed.
+- `--sequence.shuffle false` — deterministic test ordering for reproducibility.
+- Parameterized host ports — matches compose env vars (`E2E_ARRAKIS_PORT`, etc.) to avoid conflicts.
+- Exit codes: 0=tests pass, 1=tests fail or health timeout, 2=compose build failure.
+- Host-side vitest execution matches existing `e2e-billing.yml` CI pattern (services publish ports to host).
 
-**Proposed barrel code** (subject to verification gate above):
+### 3.2 Vitest Workspace Configuration
+
+**Purpose:** Split unit and integration tests without changing existing test file locations.
+
+**File: `themes/sietch/vitest.workspace.ts`**
 
 ```typescript
-// ═══════════════════════════════════════════════════════════════
-// hounfour v7.10.0-7.11.0 — Task-Dimensional Reputation (cycle-041)
-// ADR-001: Root barrel precedence — governance types use Governance* prefix
-// to avoid collision with routing-policy TaskType already exported above.
-// Consumers needing unaliased governance types must import directly from
-// @0xhoneyjar/loa-hounfour/governance
-// ═══════════════════════════════════════════════════════════════
+import { defineWorkspace } from 'vitest/config';
 
-// --- ADR-001 Aliased Root Barrel Exports ---
-export {
-  GovernanceTaskType,
-  GovernanceTaskTypeSchema,
-  GovernanceReputationEvent,
-  GovernanceReputationEventSchema,
-} from '@0xhoneyjar/loa-hounfour';
-
-// --- Governance Subpath: Task-Dimensional Reputation ---
-export {
-  // TaskType taxonomy (v7.10.0)
-  TASK_TYPES,
-  validateTaskCohortUniqueness,
-
-  // TaskTypeCohort: per-(model, task_type) reputation
-  TaskTypeCohortSchema,
-  type TaskTypeCohort,
-
-  // ReputationEvent: 3-variant discriminated union
-  QualitySignalEventSchema,
-  type QualitySignalEvent,
-  TaskCompletedEventSchema,
-  type TaskCompletedEvent,
-  CredentialUpdateEventSchema,
-  type CredentialUpdateEvent,
-
-  // ScoringPath: three-tier cascade (task_cohort → aggregate → tier_default)
-  ScoringPathSchema,
-  type ScoringPath,
-
-  // ScoringPathLog: audit record
-  ScoringPathLogSchema,
-  type ScoringPathLog,
-} from '@0xhoneyjar/loa-hounfour/governance';
-
-// --- Hash Chain Utilities (v7.11.0) ---
-// NOTE: Verify these are root exports; if they live under /governance or
-// /integrity instead, change the import path here AND in contract.json
-export {
-  computeScoringPathHash,
-  SCORING_PATH_GENESIS_HASH,
-} from '@0xhoneyjar/loa-hounfour';
-
-// --- Evaluation Geometry (v7.11.0) ---
-export type { NativeEnforcement } from '@0xhoneyjar/loa-hounfour';
-// evaluation_geometry is a literal union 'expression' | 'native' on the
-// Constraint type — see §3.3 for exposure strategy
+export default defineWorkspace([
+  {
+    extends: './vitest.config.ts',
+    test: {
+      name: 'unit',
+      include: ['tests/**/*.test.ts'],
+      exclude: [
+        'tests/**/*.integration.test.ts',
+        'tests/**/*.e2e.test.ts',
+        'tests/e2e/**',
+      ],
+    },
+  },
+  {
+    extends: './vitest.config.ts',
+    test: {
+      name: 'integration',
+      include: ['tests/**/*.integration.test.ts'],
+    },
+  },
+]);
 ```
 
-#### 3.1.2 Closed-World Safety Verification
+**Key design decisions:**
+- Workspace projects share the same `vitest.config.ts` base (alias resolution, coverage settings).
+- Classification by file suffix — no tags, no environment variables, no custom reporters.
+- Unit project explicitly excludes `*.integration.test.ts` — no Redis imports allowed.
+- Integration project includes only `*.integration.test.ts` — Redis expected.
+- E2E tests live in `tests/e2e/` and run via the runner script, not vitest workspace.
 
-Before adding re-exports, verify that governance `TaskType` does NOT enter routing code paths:
-
-**Existing `pool-mapping.ts` import** (line 16):
-```typescript
-import type { RoutingPolicy, TaskType } from '@0xhoneyjar/loa-hounfour';
-```
-
-This imports the routing-policy `TaskType` from the root barrel. The `resolvePoolId()` function uses open-world dynamic dispatch (`personality.task_routing[taskType]` object indexing with `VALID_POOL_IDS.has()` validation) — no exhaustive switch/case. This is already safe for type extensions.
-
-**Verification gate (AC-1.6):** After barrel update, grep the codebase to confirm no file imports `GovernanceTaskType` into routing/mapping/switch logic. This is a test assertion, not a runtime guard.
-
-### 3.2 FR-2: Scoring Path Hash Chain Utilities
-
-**File:** `themes/sietch/src/packages/core/protocol/index.ts` (re-export only)
-
-**New test file:** `tests/unit/hash-chain-utility.test.ts`
-
-#### 3.2.1 Utility Re-export
-
-`computeScoringPathHash` and `SCORING_PATH_GENESIS_HASH` are re-exported from the hounfour root barrel (see §3.1.1). No freeside wrapper function needed — the canonical implementation is sufficient.
-
-#### 3.2.2 Test Design
-
-Three test cases verifying utility correctness (NOT chain construction):
-
-```typescript
-describe('computeScoringPathHash (utility)', () => {
-  it('produces deterministic output: same input → same hash', () => {
-    const input = { /* sample ScoringPathLog fields */ };
-    const hash1 = computeScoringPathHash(input);
-    const hash2 = computeScoringPathHash(input);
-    expect(hash1).toBe(hash2);
-  });
-
-  it('produces valid SHA-256 hex string (64 characters)', () => {
-    const input = { /* sample */ };
-    const hash = computeScoringPathHash(input);
-    expect(hash).toMatch(/^[0-9a-f]{64}$/);
-  });
-
-  it('SCORING_PATH_GENESIS_HASH is valid SHA-256 hex string', () => {
-    expect(SCORING_PATH_GENESIS_HASH).toMatch(/^[0-9a-f]{64}$/);
-  });
-});
-```
-
-**Scope boundary:** These tests verify the utility function works correctly in isolation. Freeside does NOT build `ScoringPathLog` chains, verify chain integrity, or persist hashes this cycle.
-
-### 3.3 FR-4: Evaluation Geometry Type Re-export
-
-**File:** `themes/sietch/src/packages/core/protocol/index.ts`
-
-The `evaluation_geometry` field (`'expression' | 'native'`) is part of the `Constraint` type in loa-hounfour. The `NativeEnforcement` type is a standalone interface used with `native_enforcement` metadata.
-
-**Re-export strategy:**
-- `NativeEnforcement` — type-only re-export from root barrel
-- `evaluation_geometry` — this is a property on the `Constraint` type. The implementer MUST verify whether the `Constraint` type/schema is already re-exported from `protocol/index.ts`:
-  - **If already exported:** No action needed — consumers already have access to `evaluation_geometry` through the existing `Constraint` re-export. Add an explicit note in the barrel JSDoc referencing the v7.11.0 `evaluation_geometry` field.
-  - **If NOT exported:** Add the `Constraint` type (and `ConstraintSchema` if it's a runtime Zod/TypeBox schema) to the barrel re-exports. If `ConstraintSchema` is a runtime export, add it to `contract.json` as well.
-
-**Verification step** (run during Sprint 1):
-```bash
-# Check if Constraint is already re-exported from the barrel
-node -e "import('./themes/sietch/src/packages/core/protocol/index.ts')" 2>/dev/null
-# Or check TS source directly for existing Constraint export
-grep -n 'Constraint' themes/sietch/src/packages/core/protocol/index.ts
-```
-
-**Runtime impact:** None. Freeside's boundary engine (`boundary-engine-shadow.ts`) wraps `evaluateEconomicBoundary()` from hounfour/economy, which already handles the `evaluation_geometry` field internally. No freeside code reads `evaluation_geometry` directly.
-
-### 3.4 FR-5: Contract and Conformance Vector Update
-
-**File:** `spec/contracts/contract.json`
-
-#### 3.4.1 New Entrypoints
-
-Add governance symbols to the appropriate entrypoint specifiers:
-
-**Root entrypoint** (`@0xhoneyjar/loa-hounfour`) — add:
+**Package.json script additions:**
 ```json
-"GovernanceTaskType",
-"GovernanceTaskTypeSchema",
-"GovernanceReputationEvent",
-"GovernanceReputationEventSchema",
-"computeScoringPathHash",
-"SCORING_PATH_GENESIS_HASH"
+{
+  "test": "vitest --workspace vitest.workspace.ts --project unit",
+  "test:unit": "vitest run --workspace vitest.workspace.ts --project unit",
+  "test:integration": "REDIS_URL=redis://localhost:6379 vitest run --workspace vitest.workspace.ts --project integration",
+  "test:e2e": "../../tests/e2e/run-e2e.sh",
+  "test:run": "vitest run --workspace vitest.workspace.ts --project unit",
+  "test:coverage": "vitest run --workspace vitest.workspace.ts --project unit --coverage"
+}
 ```
 
-**Governance entrypoint** (`@0xhoneyjar/loa-hounfour/governance`) — add:
-```json
-"TASK_TYPES",
-"validateTaskCohortUniqueness",
-"TaskTypeCohortSchema",
-"QualitySignalEventSchema",
-"TaskCompletedEventSchema",
-"CredentialUpdateEventSchema",
-"ScoringPathSchema",
-"ScoringPathLogSchema"
-```
+**Key script decisions:**
+- Explicit `--workspace vitest.workspace.ts` in all scripts — prevents vitest from falling back to default config and silently running all tests (which would reintroduce ECONNREFUSED).
+- `REDIS_URL=redis://localhost:6379` set in `test:integration` — canonical env var for Redis host. Integration tests must read this env var rather than hardcoding `localhost:6379`. In CI, the GitHub Actions Redis service container maps to the same address.
+- `test:e2e` delegates to the runner script — no vitest flags needed (the script handles everything).
 
-**Note:** Type-only exports (`type TaskTypeCohort`, `type ScoringPath`, etc.) are NOT listed in contract.json because they have no runtime representation. Contract testing uses dynamic `import()` which only sees runtime exports.
+### 3.3 Redis Test File Classification
 
-#### 3.4.2 Version Range Bump
+**Purpose:** Identify and reclassify the 202 failing tests.
 
-```json
-"provider_version_range": ">=7.11.0"
-```
+**Audit procedure:**
+1. Scan for Redis imports: `grep -rl "import.*redis\|import.*ioredis\|from.*redis\|from.*ioredis" themes/sietch/tests/`
+2. For each file found:
+   - If the file tests Redis-specific behavior (cache, pub/sub, rate limiting) → rename to `*.integration.test.ts`
+   - If the file tests application logic that happens to use Redis → refactor to mock Redis (use `vi.mock`)
+3. Decision criterion: **Does this test's value come from Redis interaction, or from application logic?**
+   - Redis interaction value → integration test (rename)
+   - Application logic value → unit test (mock Redis)
 
-This is a deliberate contract version bump. The new entrypoints (`computeScoringPathHash`, governance schemas) do not exist in hounfour <7.11.0. The bump means hounfour CI must run v7.11.0+ when validating the contract.
+**Expected distribution (based on 202 ECONNREFUSED errors):**
+- ~150 tests: Application logic using Redis as side effect → mock Redis, keep as `*.test.ts`
+- ~50 tests: Redis-specific behavior (caching, rate limiting, session) → rename to `*.integration.test.ts`
 
-**Backward compatibility:** All 65 previously-pinned symbols remain. The new contract is a strict superset.
+This is an estimate. The actual split is determined during the audit step.
 
-#### 3.4.3 Bundle Hash Recomputation
+**Timeboxed Spike (Flatline SKP-010 mitigation):** The first sprint task for Redis reclassification is a 2-hour timeboxed audit spike that:
+1. Produces the exact file list with classification decision for each file
+2. Identifies any files where mocking requires production code refactors (e.g., tightly coupled Redis clients without dependency injection)
+3. If >10 files require production refactors, escalates to user for scope adjustment: either (a) allow scoped app changes to enable DI for those modules, or (b) reclassify those files as integration tests instead of mocking
 
-After any changes to `spec/vectors/` (if new vector files are added for governance schemas):
+This ensures scope risk is detected early rather than discovered mid-implementation.
+
+**Static Import Guard (Hard Gate):** After reclassification, a CI step verifies no `*.test.ts` file (unit tests) imports Redis directly:
 
 ```bash
-find spec/vectors/ -name '*.json' -type f | sort | xargs sha256sum | sha256sum
+# CI step: fail if any unit test file imports redis/ioredis
+if grep -rl --include='*.test.ts' -E 'from.*["\x27](redis|ioredis)' themes/sietch/tests/ | grep -v '.integration.test.ts'; then
+  echo "ERROR: Unit test files import Redis directly. Rename to *.integration.test.ts or mock Redis."
+  exit 1
+fi
 ```
 
-Update `vectors-bundle.sha256` and `contract.json` `bundle_hash` field with new hash.
+This is a static check — no runtime dependency. It catches reclassification misses before they cause ECONNREFUSED in CI. The check runs in the unit test CI job as a pre-test step.
 
-**Vector count update:** If new conformance vectors are added for governance types, update `vector_count` accordingly. If no new vector files, the count stays at 3 and only the bundle hash changes if existing vectors are modified.
+### 3.4 Network Isolation (Layered Defense)
 
-#### 3.4.4 Contract Test Update
+**Purpose:** Prevent E2E tests from making accidental external network calls.
 
-**File:** `themes/sietch/tests/unit/contract-spec.test.ts`
+**Design approach:** Docker Compose `internal: true` alone does not reliably prevent egress when containers also need host-published ports (for host-side vitest). Instead, network isolation uses a **three-layer defense** that does not require new infrastructure:
 
-The existing parametrized test iterates over `contract.json` entrypoints and verifies each symbol exists via dynamic import. No test code changes needed — adding symbols to `contract.json` automatically extends coverage.
+**Layer 1: Test Design (Primary)**
+All E2E tests use in-repo stubs exclusively. No test imports external API clients (NOWPayments, Paddle, Discord API). The loa-finn stub handles all S2S interactions. No external API keys or credentials exist in the E2E environment.
 
-The version range test (line 78-107) will need the floor comparison updated: the installed hounfour version must satisfy `>=7.11.0` after the pin migration.
+**Layer 2: No External Credentials (CI)**
+The CI environment does not provide `NOWPAYMENTS_API_KEY`, `PADDLE_API_KEY`, or any external service credentials. Even if code attempted an external call, authentication would fail.
 
-### 3.5 FR-6: Version Pin Migration
+**Layer 3: Static Egress Assertion (CI)**
+A post-test step in CI runs `docker compose exec -T arrakis-e2e sh -c "cat /proc/net/tcp6 2>/dev/null || cat /proc/net/tcp"` and parses remote addresses to verify no unexpected outbound connections were established to non-RFC1918 IPs during the test run. The check also inspects DNS query logs if available (`/var/log/dnsmasq` or container DNS cache). This is an assertion, not a firewall — it catches accidental regressions. If the assertion fails, CI logs the offending connections and fails the job.
 
-**Files:** `package.json` (root), `packages/adapters/package.json`
+**Note:** This layer is a detection control, not a prevention control. Hard egress blocking (iptables DOCKER-USER rules, network policy) is deferred as out-of-scope for this cycle's "no new infrastructure" constraint. The combination of Layers 1+2 prevents authenticated external calls; Layer 3 detects unauthenticated leaks.
 
-#### 3.5.1 Pin Format Selection
+**Docker Compose modification:** The existing single-network topology is preserved with published ports for host-side test execution. No `internal: true` dual-network — this avoids the routing complexity that GPT review identified.
 
-Attempt in preference order:
+```yaml
+# docker-compose.e2e.yml — network section unchanged
+# Services publish ports to host for vitest runner access
+# Ports are parameterized via env vars with defaults to avoid conflicts
+services:
+  redis-e2e:
+    ports: ["${E2E_REDIS_PORT:-6399}:6379"]
+  arrakis-e2e:
+    ports: ["${E2E_ARRAKIS_PORT:-3099}:3000"]
+  loa-finn-e2e:
+    ports: ["${E2E_LOAFINN_PORT:-8099}:8080"]
+  contract-validator:
+    ports: ["${E2E_VALIDATOR_PORT:-3199}:3100"]
+```
 
-1. **npm registry** (preferred): `"@0xhoneyjar/loa-hounfour": "7.11.0"` — check if the package is published to npm
-2. **git tag**: `"@0xhoneyjar/loa-hounfour": "github:0xHoneyJar/loa-hounfour#v7.11.0"` — check if v7.11.0 git tag exists
-3. **tagged-commit SHA**: `"@0xhoneyjar/loa-hounfour": "github:0xHoneyJar/loa-hounfour#<sha>"` where `<sha>` is the commit that the v7.11.0 tag points to — only if options 1 and 2 fail
+**Key design decisions:**
+- Single default bridge network — simple, reliable host-to-container connectivity.
+- No `internal: true` — avoids dual-network routing complexity that breaks published ports.
+- Parameterized host ports via env vars with defaults — avoids port conflicts when multiple developers or CI jobs run concurrently. Override via `E2E_ARRAKIS_PORT=3199 pnpm test:e2e`.
+- Egress prevention via test design + missing credentials + post-test assertion — defense-in-depth without new infrastructure.
+- Cloud metadata endpoint blocked — `extra_hosts: ["metadata.google.internal:127.0.0.1", "169.254.169.254:127.0.0.1"]` added to arrakis-e2e and loa-finn-e2e services. This is a minimal, no-new-infra egress control that prevents SSRF and metadata service access without iptables.
+- Redis port published to host — enables both E2E runner and future host-side integration test access.
+- Compose `depends_on` with `condition: service_healthy` is used for startup ordering (existing pattern). The `run-e2e.sh` health waits provide a complementary second layer — both are retained as defense-in-depth.
 
-If all three options fail, this is a **blocker** — escalate, do not silently fall back to an arbitrary SHA.
+### 3.5 JWKS Bootstrap Protocol
 
-#### 3.5.2 Migration Steps
+**Purpose:** Reliable JWKS sharing between arrakis (issuer) and loa-finn (audience) via shared volume.
 
-1. Determine available pin format (try npm → git tag → tagged SHA)
-2. Update `@0xhoneyjar/loa-hounfour` in root `package.json`
-3. Update `@0xhoneyjar/loa-hounfour` in `packages/adapters/package.json`
-4. Run `pnpm install` (or `npm install`) to update lockfile
-5. Verify `CONTRACT_VERSION` import resolves (may change from `7.9.1` — document new value)
-6. Run full test suite to verify zero regression
+**Existing mechanism — sole writer is `e2e-entrypoint.sh` (arrakis-e2e container CMD):**
 
-#### 3.5.3 Rebuild Script Impact and Supply-Chain Trust Boundary
+The arrakis-e2e Docker image uses `e2e-entrypoint.sh` as its CMD (see `themes/sietch/Dockerfile` line 189). This script:
+1. Starts the Node.js server in the background (`node dist/index.js &`)
+2. Waits for `/health` to become available
+3. Curls `/.well-known/jwks.json` from the local server to a `.tmp` file
+4. Validates JSON with `jq`
+5. Performs POSIX-atomic `mv` rename to `/shared/arrakis-jwks.json`
 
-The existing `scripts/rebuild-hounfour-dist.sh` postinstall hook will run automatically on `pnpm install`. This script clones the provider repo at the pinned ref and rebuilds the dist locally.
+loa-finn-e2e mounts the same `jwks-shared` volume read-only and reads the file via `ARRAKIS_JWKS_FILE=/shared/arrakis-jwks.json`.
 
-**Trust boundary:** The rebuilt dist is what freeside executes in both CI and production. Even though this cycle is "schema adoption only" (no freeside runtime logic changes), the provider version bump changes the provider code that freeside executes (e.g., `evaluateEconomicBoundary`, `parseMicroUsd`). This is inherent to any dependency upgrade.
+**This mechanism already exists and is fully atomic.** The Dockerfile installs `jq` for validation (line 184). No arrakis application code changes are needed — the "zero new application logic" scope constraint is satisfied.
 
-**Supply-chain verification requirements:**
-1. **Deterministic ref resolution:** The rebuild script must clone at the exact tag/SHA. Verify: `git -C <clone_dir> rev-parse HEAD` matches the expected v7.11.0 commit
-2. **DIST_HASH verification:** The existing script computes a `DIST_HASH` (SHA-256 of built artifacts). After the v7.11.0 rebuild, record the new DIST_HASH in NOTES.md. If loa-hounfour publishes an expected dist hash for v7.11.0, compare against it
-3. **Tag-based ref compatibility:** The rebuild script uses `git clone --branch <ref>`. Both tags (`v7.11.0`) and SHAs work as `--branch` arguments. Verify: `git clone --branch v7.11.0 <repo>` succeeds and resolves to the expected commit
-4. **Build toolchain pin:** The rebuild script should use the same TypeScript/build tool version as hounfour CI. If not pinned, document this as a known limitation (non-deterministic builds across environments)
+**Enhancements for this cycle (all in E2E test infrastructure — no arrakis runtime changes):**
 
-**If the rebuild produces unexpected output** (compilation errors, missing exports, hash mismatch): treat as a blocker — do not proceed with barrel re-exports until the provider dist is verified.
+1. **Atomic write — already implemented:** The existing `e2e-entrypoint.sh` (lines 36-54) performs: `curl → .tmp → jq validate → mv`. This is the sole writer of `/shared/arrakis-jwks.json`. No changes needed.
+2. **Health gate:** loa-finn stub's `/v1/health` endpoint is modified to return unhealthy (503) until the JWKS file exists and parses as valid JSON. This ensures `run-e2e.sh`'s `wait_for_health` blocks until JWKS is ready. This change is in `loa-finn-e2e-stub.ts` (test infrastructure), not arrakis.
+3. **Public key only:** The JWKS file contains only the public key (`kty`, `crv`, `x`, `y`, `kid`). Private key (`d` parameter) never leaves arrakis process memory. This is already the case — verified during implementation.
+4. **Negative test:** A dedicated E2E test case verifies loa-finn stub rejects JWTs when JWKS file is absent or contains malformed JSON. This is a new test file, not an arrakis change.
 
-### 3.6 FR-7: Launch Readiness Documentation
+**JWT claim requirements (NFR-5):**
 
-**File:** `grimoires/loa/NOTES.md` (add cycle-041 section)
+```typescript
+// arrakis signs with these claims:
+{
+  iss: 'arrakis-e2e',          // Issuer identity
+  aud: 'loa-finn-e2e',         // Audience
+  exp: Math.floor(Date.now()/1000) + 300,  // 5 min max TTL
+  iat: Math.floor(Date.now()/1000),
+  jti: crypto.randomUUID(),    // Unique token ID
+  sub: 'billing-finalize',     // Subject (operation)
+}
 
-Document the status of each P0 gap from loa-finn issue #66 §6:
+// loa-finn validates:
+// - iss === 'arrakis-e2e'
+// - aud === 'loa-finn-e2e'
+// - exp > now - 30s (30s clock skew tolerance)
+// - jti not seen before within TTL window
+// - kid matches JWKS entry
+// - signature valid against public key
+```
 
-| Gap | Status | Notes |
-|-----|--------|-------|
-| Arrakis adopts loa-hounfour | Resolved | v7.11.0 pin (this cycle) |
-| Cross-system E2E smoke test | Deferred | Requires loa-finn docker-compose; separate infra cycle |
-| Production deployment | Deferred | Infrastructure concern; not code adoption |
-| NativeRuntimeAdapter spike | Deferred | loa-finn scope |
-| Integration test with real ES256 keys | Partial | Existing JWT vectors; full key rotation test deferred |
+### 3.6 Admin Setup Guide Structure
+
+**Purpose:** Step-by-step deployment guide for community admins.
+
+**File:** `themes/sietch/docs/ADMIN_SETUP_GUIDE.md`
+
+**Structure:**
+```markdown
+# Admin Setup Guide
+
+## Prerequisites
+- Node.js 20+, Docker, git
+- Discord account with server admin permissions
+
+## 1. Discord Application Setup
+- Create application at discord.com/developers
+- Create bot, copy token
+- Configure OAuth2 scopes and permissions
+- Invite bot to server
+
+## 2. Environment Configuration
+### Minimal Viable Config (~15 vars)
+- DISCORD_BOT_TOKEN, GUILD_ID, CLIENT_ID
+- DATABASE_PATH (SQLite)
+- FEATURE_BILLING_ENABLED=false (start without billing)
+- [remaining critical vars from .env.example]
+
+### Full Configuration
+- Reference to .env.example with descriptions
+
+## 3. Database Initialization
+- pnpm run db:migrate
+- pnpm run db:seed (if applicable)
+
+## 4. Starting the Bot
+- pnpm run dev (development)
+- docker compose up (production-like)
+
+## 5. Feature Flags
+| Flag | Default | Description | Safe to Disable? |
+|------|---------|-------------|-----------------|
+| FEATURE_BILLING_ENABLED | false | Credit billing | Yes (start without) |
+| X402_ENABLED | false | Payment middleware | Yes |
+| IDENTITY_ANCHOR_ENABLED | false | High-value anchoring | Yes |
+
+## 6. Verification Checklist
+- [ ] Bot appears online in Discord
+- [ ] /help slash command responds
+- [ ] /health endpoint returns 200
+- [ ] Slash commands registered (may take ~1 hour)
+
+## 7. Troubleshooting
+- Missing DISCORD_BOT_TOKEN → "Used disallowed intents"
+- Missing GUILD_ID → "Cannot read guild"
+- Rate limits → "429 Too Many Requests"
+```
+
+**Key design decisions:**
+- Minimal viable config section first — get the bot running before configuring everything.
+- Feature flags table with "Safe to Disable?" — reduces overwhelm for initial setup.
+- Verification checklist is the RTFM pass/fail gate (AC-3.5, AC-3.6).
+- References actual env var names from `.env.example` — no hypothetical names.
+
+### 3.7 Staging Deployment Checklist Structure
+
+**Purpose:** Operational checklist for staging deployment.
+
+**File:** `themes/sietch/docs/STAGING_CHECKLIST.md`
+
+**Structure:**
+```markdown
+# Staging Deployment Checklist
+
+## Secrets Inventory
+Derived from infrastructure/terraform/variables.tf + .env.example
+
+| Secret | Terraform Module | .env.example Var | Status |
+|--------|-----------------|------------------|--------|
+| discord-bot-token | ecs-task-def | DISCORD_BOT_TOKEN | placeholder |
+| rds-password | rds-instance | DATABASE_URL | placeholder |
+| [... enumerate all] |
+
+## Pre-Deployment
+- [ ] All secrets have real values (not placeholder)
+- [ ] Discord bot token rotated (current one expired)
+- [ ] terraform plan shows no unexpected changes
+
+## Deployment Steps
+- [ ] Run database migrations
+- [ ] Deploy via terraform apply
+- [ ] Verify /health returns 200
+
+## Verification Gate
+- [ ] terraform plan succeeds (no drift)
+- [ ] Service /health endpoint returns 200
+```
+
+### 3.8 Onboarding Documentation Update
+
+**Purpose:** Replace Collab.Land references with in-house `/verify`.
+
+**Files affected:**
+- `themes/sietch/docs/community/onboarding.md` — primary onboarding guide
+- Any file in `themes/sietch/docs/` referencing "Collab.Land" or "collabland"
+
+**Approach:**
+1. `grep -rl "collab.land\|Collab.Land\|collabland" themes/sietch/docs/` to find all references
+2. Replace wallet verification flow description with EIP-191 `/verify` command
+3. Update `.env.example` placeholder Discord IDs with descriptive comments
+
+### 3.9 CI Pipeline Design
+
+**Purpose:** Run unit, integration, and E2E tests in CI with appropriate infrastructure.
+
+**Approach:** Extend existing `e2e-billing.yml` rather than creating new workflows.
+
+**CI Job Matrix:**
+
+| Job | Trigger | Infrastructure | Script | Timeout |
+|-----|---------|---------------|--------|---------|
+| `unit` | PR, push to main | None | `pnpm test:unit` | 5 min |
+| `integration` | PR, push to main | Redis service container | `pnpm test:integration` | 10 min |
+| `e2e` | PR (billing paths), push to main | Docker Compose (full topology) | `./tests/e2e/run-e2e.sh` | 15 min |
+
+**Unit job (new, in existing `ci.yml`):**
+```yaml
+unit-tests:
+  runs-on: ubuntu-latest
+  timeout-minutes: 5
+  steps:
+    - uses: actions/checkout@v4
+    - uses: pnpm/action-setup@v4
+    - uses: actions/setup-node@v4
+      with: { node-version: 22, cache: pnpm }
+    - run: pnpm install --frozen-lockfile
+    - run: cd themes/sietch && pnpm test:unit
+```
+
+**Integration job (new, in existing `ci.yml`):**
+```yaml
+integration-tests:
+  runs-on: ubuntu-latest
+  timeout-minutes: 10
+  services:
+    redis:
+      image: redis:7-alpine
+      ports: ['6379:6379']
+      options: --health-cmd "redis-cli ping" --health-interval 5s
+  steps:
+    - uses: actions/checkout@v4
+    - uses: pnpm/action-setup@v4
+    - uses: actions/setup-node@v4
+      with: { node-version: 22, cache: pnpm }
+    - run: pnpm install --frozen-lockfile
+    - run: cd themes/sietch && pnpm test:integration
+```
+
+**E2E job (existing `e2e-billing.yml`, modified):**
+- Replace manual health-wait loop with `run-e2e.sh`
+- Add `--remove-orphans` to teardown
+- Add failure artifact collection (container logs):
+
+```yaml
+    - name: Run E2E tests
+      run: ./tests/e2e/run-e2e.sh
+      env:
+        E2E_LOG_DIR: tests/e2e/logs
+
+    - name: Upload E2E logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: e2e-compose-logs
+        path: tests/e2e/logs/
+        retention-days: 7
+```
 
 ---
 
-## 4. Testing Strategy
+## 4. Security Architecture
 
-### 4.1 Test Categories
+### 4.1 JWT/JWKS Security (NFR-5)
 
-| Category | Scope | Files |
-|----------|-------|-------|
-| **Barrel Exports** | Verify all new types importable from `protocol/index.ts` | `protocol-conformance.test.ts` |
-| **Hash Utility** | Determinism, format validation, genesis constant | `hash-chain-utility.test.ts` (NEW) |
-| **Contract Entrypoints** | Dynamic import of all symbols in contract.json | `contract-spec.test.ts` |
-| **Bundle Hash** | SHA-256 integrity of vector files | `contract-spec.test.ts` |
-| **ADR-001 Guard** | No unaliased governance TaskType in routing paths | `protocol-conformance.test.ts` |
-| **Regression** | All existing tests pass unchanged | Full suite |
+| Aspect | Requirement | Implementation |
+|--------|-------------|----------------|
+| Algorithm | ES256 (P-256) | `jose` library, `generateKeyPair('ES256')` |
+| Key lifecycle | Ephemeral per run | Generated at container startup, discarded on `down -v` |
+| Key storage | Public JWKS only in shared volume | Private key in arrakis process memory only |
+| Mandatory claims | iss, aud, exp, iat, jti | Validated by loa-finn stub |
+| Clock skew | 30 seconds | `clockTolerance: '30s'` in jose options |
+| Token TTL | 5 minutes max | `exp - iat <= 300` |
+| Replay protection | jti uniqueness | In-memory Set in loa-finn stub (cleared per run) |
+| Secrets scanning | No committed credentials | `.gitignore` covers `.env`, `.env.*` (not `.env.example`) |
 
-### 4.2 ADR-001 Import Guard Test
+### 4.2 Network Isolation (Three-Layer Defense)
 
-The guard for AC-1.6 uses a two-layer approach to avoid false positives/negatives from naive grep:
+| Layer | Mechanism | What it prevents |
+|-------|-----------|-----------------|
+| Test design (Primary) | In-repo stubs only, no external API imports | Accidental external API calls at code level |
+| No credentials (CI) | External API keys not in E2E environment | Auth failure if external call attempted |
+| Metadata endpoint block | `extra_hosts` maps 169.254.169.254 to 127.0.0.1 | Cloud metadata SSRF, credential leakage |
+| Static egress assertion | Post-test `/proc/net/tcp` inspection for non-RFC1918 connections | Catches accidental unauthenticated external calls |
 
-**Layer 1 — Schema identity assertion** (in `protocol-conformance.test.ts`):
-
-Verify that the barrel's `TaskType` schema export is the routing-policy variant, not the governance variant. This uses **runtime schema objects** (Zod/TypeBox), not TypeScript type aliases (which are erased at runtime and cannot be compared):
-
-```typescript
-// Import SCHEMAS (runtime objects), not TYPE ALIASES
-import { TaskTypeSchema as BarrelTaskTypeSchema } from '../packages/core/protocol/index';
-import { TaskTypeSchema as RoutingTaskTypeSchema } from '@0xhoneyjar/loa-hounfour';
-import { TaskTypeSchema as GovernanceTaskTypeSchema } from '@0xhoneyjar/loa-hounfour/governance';
-
-describe('ADR-001 barrel schema identity', () => {
-  it('barrel TaskTypeSchema is the routing-policy variant (not governance)', () => {
-    // Runtime reference equality: the barrel re-exports the root barrel's
-    // routing-policy schema, NOT the governance subpath's schema
-    expect(BarrelTaskTypeSchema).toBe(RoutingTaskTypeSchema);
-  });
-
-  it('barrel TaskTypeSchema is NOT the governance variant', () => {
-    expect(BarrelTaskTypeSchema).not.toBe(GovernanceTaskTypeSchema);
-  });
-});
-```
-
-This catches re-export mistakes where someone accidentally exports the governance `TaskTypeSchema` under the unaliased name. If `TaskTypeSchema` is not a runtime export (type-only), fall back to Layer 2 only.
-
-**Layer 2 — Import specifier + identifier denylist** (in `protocol-conformance.test.ts`):
-
-Check a curated set of routing/mapping modules for both forbidden identifiers AND forbidden import paths:
-
-```typescript
-import { readFileSync } from 'fs';
-
-const ROUTING_MODULES = [
-  'packages/adapters/agent/pool-mapping.ts',
-  // Add other routing/mapping modules as they emerge
-];
-
-describe('ADR-001 routing isolation', () => {
-  ROUTING_MODULES.forEach(modulePath => {
-    it(`${modulePath} does not reference governance types`, () => {
-      const source = readFileSync(modulePath, 'utf-8');
-      // Forbidden identifiers (including aliased imports)
-      expect(source).not.toMatch(/GovernanceTaskType/);
-      expect(source).not.toMatch(/GovernanceReputationEvent/);
-    });
-
-    it(`${modulePath} does not import from governance subpath`, () => {
-      const source = readFileSync(modulePath, 'utf-8');
-      // Forbidden import specifiers — governance subpath should never
-      // appear in routing modules (catches aliased imports too)
-      expect(source).not.toMatch(/from\s+['"]@0xhoneyjar\/loa-hounfour\/governance['"]/);
-    });
-  });
-});
-```
-
-This uses a curated denylist of routing modules rather than a full codebase grep, avoiding false positives from test files and type-only imports elsewhere. The denylist is maintained alongside the routing module inventory. The import specifier check catches cases where governance types are imported under aliased names (e.g., `import { TaskType as GovTT } from '.../governance'`).
-
-### 4.3 Test Execution
-
-```bash
-# Full regression + new tests
-pnpm test
-
-# Targeted contract verification
-node spec/contracts/validate.mjs
-
-# Targeted conformance vectors
-pnpm vitest run spec/conformance/
-```
+Note: Docker `internal: true` network was considered but rejected — it does not reliably block egress when ports are published to host, and adds routing complexity. Hard egress enforcement (iptables DOCKER-USER rules) is deferred as out-of-scope for "no new infrastructure." The four-layer defense achieves pragmatic isolation for this cycle.
 
 ---
 
-## 5. Development Phases
+## 5. File Inventory
 
-### Sprint 1: Version Pin + Barrel Expansion
+### 5.1 New Files
 
-**Tasks:**
-1. Determine v7.11.0 pin format (npm/tag/SHA) and update both `package.json` files
-2. Run `pnpm install`, verify rebuild script succeeds
-3. Add governance type re-exports to `protocol/index.ts` (§3.1.1)
-4. Add hash chain utility re-exports (§3.2.1)
-5. Add evaluation geometry type re-export (§3.3)
-6. Add barrel JSDoc comment documenting ADR-001 rationale
-7. Verify TypeScript compiles cleanly
+| File | Purpose | FR |
+|------|---------|-----|
+| `tests/e2e/run-e2e.sh` | Deterministic E2E host-side runner | FR-1 |
+| `themes/sietch/vitest.workspace.ts` | Unit/integration project split | FR-2 |
+| `themes/sietch/docs/ADMIN_SETUP_GUIDE.md` | Community admin deployment guide | FR-3 |
+| `themes/sietch/docs/STAGING_CHECKLIST.md` | Staging deployment checklist | FR-5 |
 
-**Dependencies:** None (foundational)
+### 5.2 Modified Files
 
-### Sprint 2: Contract + Tests + Documentation
+| File | Change | FR |
+|------|--------|-----|
+| `tests/e2e/docker-compose.e2e.yml` | Preserve single-network topology, fix any bitrot, verify published ports | FR-1, FR-6 |
+| `tests/e2e/loa-finn-e2e-stub.ts` | JWKS health gate, atomic write validation, jti replay check | FR-1, NFR-5 |
+| `themes/sietch/vitest.config.ts` | Adjust for workspace compatibility | FR-2 |
+| `themes/sietch/package.json` | Add test:unit, test:integration, test:e2e scripts | FR-2 |
+| `themes/sietch/docs/community/onboarding.md` | Replace Collab.Land with /verify | FR-4 |
+| `.github/workflows/ci.yml` | Add unit + integration CI jobs | FR-7 |
+| `.github/workflows/e2e-billing.yml` | Use run-e2e.sh, add artifact collection | FR-7 |
+| `themes/sietch/.env.example` | Replace placeholder Discord IDs with instructions | FR-4 |
 
-**Tasks:**
-1. Update `contract.json` with new entrypoints and version bump (§3.4.1-3.4.2)
-2. Recompute `vectors-bundle.sha256` (§3.4.3)
-3. Create `hash-chain-utility.test.ts` with 3 test cases (§3.2.2)
-4. Add ADR-001 import guard test to `protocol-conformance.test.ts` (§4.2)
-5. Update `protocol-conformance.test.ts` to verify new governance symbols
-6. Run full test suite — verify zero regression
-7. Update NOTES.md with launch readiness gap status (§3.6)
+### 5.3 Renamed Files (Test Reclassification)
 
-**Dependencies:** Sprint 1 (barrel must exist before contract/tests reference it)
+Files identified during the Redis audit (Section 3.3) will be renamed from `*.test.ts` to `*.integration.test.ts`. The exact list is determined during implementation — estimated ~20-30 files based on 202 ECONNREFUSED errors and the assumption that most can be mocked rather than reclassified.
 
 ---
 
-## 6. Risks & Mitigation
+## 6. Technical Risks & Mitigation
 
 | Risk | Severity | Mitigation |
 |------|----------|------------|
-| v7.11.0 not published to npm or git tag missing | Medium | Three-tier fallback (§3.5.1); blocker escalation if all fail |
-| Rebuild script breaks with tag-based pin | Low | Script uses `git clone` with ref — tags and SHAs both work as refs |
-| New governance type names conflict with local types | Low | ADR-001 aliasing prevents root-level collision; grep audit before merge |
-| `computeScoringPathHash` has undocumented peer dependency | Low | loa-hounfour bundles `@noble/hashes` in dist — no new peer dep |
-| `CONTRACT_VERSION` value changes in v7.11.0 | Low | Document new value; `arrakis-compat.ts` `negotiateVersion()` may need supported array update if contract version changes significantly |
-| Bundle hash becomes stale if vectors are modified independently | Low | CI test computes hash at test time and compares — drift detected immediately |
+| E2E containers could make external calls if misconfigured | Medium | Three-layer defense (3.4): no external credentials in CI, stub-only endpoints, post-test static assertion |
+| Vitest workspace changes break existing test runs | Medium | `pnpm test` defaults to `--project unit` — same behavior as before minus Redis tests |
+| JWKS file race condition (reader before writer) | Low | Health gate (3.5): loa-finn reports unhealthy until JWKS exists |
+| Test reclassification misses some Redis-dependent files | Medium | CI integration job will catch: if a `*.test.ts` still imports Redis, unit job fails with ECONNREFUSED |
+| `.env.example` changes confuse existing developers | Low | Add clear comments: `# Replace with your Discord Application ID` |
+| E2E timeout too short for CI runners | Medium | 120s test timeout + 60s health wait; CI job timeout 15 min total |
 
 ---
 
-## 7. Architecture Decision Records
+## 7. Appendix: Goal → Component Traceability
 
-### ADR-CYCLE-041-001: Schema-Only Adoption Scope
-
-**Context:** loa-hounfour v7.11.0 introduces task-dimensional reputation, hash chains, and evaluation geometry. These could enable new runtime features (task-aware routing, tamper-evident audit, native constraint evaluation).
-
-**Decision:** This cycle adopts types and utilities only. No runtime behavior changes.
-
-**Rationale:** The PRD (NFR-2) explicitly constrains this cycle to schema adoption. Runtime features require separate PRDs with their own risk analysis (open-world TaskType in routing, hash chain persistence, evaluation geometry dispatch).
-
-**Consequences:** Future cycles can build on the adopted types without re-importing them. The governance types are "loaded and ready" but not wired into any execution path.
-
-### ADR-CYCLE-041-002: Governance* Alias-Only Barrel Re-export
-
-**Context:** Governance `TaskType` and `ReputationEvent` collide with existing routing-policy types at the root barrel level.
-
-**Decision:** Re-export ONLY the `Governance*` aliased variants. Unaliased governance types are NOT available through the freeside protocol barrel.
-
-**Rationale:** ADR-001 from loa-hounfour establishes this pattern. Re-exporting both would reintroduce the collision that ADR-001 solves. Consumers needing unaliased types can import directly from the `/governance` subpath.
-
-**Consequences:** Slightly less convenient for consumers who want unaliased names, but eliminates type identity drift and ambiguous imports.
-
-### ADR-CYCLE-041-003: Deliberate Contract Version Bump
-
-**Context:** Adding v7.11.0-only symbols to `contract.json` means the contract can only be satisfied by hounfour >=7.11.0.
-
-**Decision:** Bump `provider_version_range` to `>=7.11.0`. This is a deliberate compatibility cut, not an accidental breakage.
-
-**Rationale:** The contract tests the provider package exports what the consumer actually imports. Since we're importing symbols that only exist in v7.11.0+, the contract must reflect that. The contract only runs in CI, not at runtime.
-
-**Consequences:** loa-hounfour CI must use v7.11.0+ when running the freeside contract. No runtime impact.
+| Goal | Components | Acceptance Criteria |
+|------|-----------|-------------------|
+| G-1 | 3.1 (runner), 3.4 (network), 3.5 (JWKS) | AC-1.1 through AC-1.9 |
+| G-2 | 3.2 (workspace), 3.3 (classification) | AC-2.1 through AC-2.5 |
+| G-3 | 3.6 (admin guide) | AC-3.1 through AC-3.6 |
+| G-4 | 3.8 (onboarding update) | AC-4.1 through AC-4.3 |
+| G-5 | 3.7 (staging checklist) | AC-5.1 through AC-5.5 |
+| G-6 | 3.4 (network isolation), 3.5 (JWKS) | AC-6.1 through AC-6.6 |
+| G-7 | 3.9 (CI pipeline) | AC-7.1 through AC-7.5 |

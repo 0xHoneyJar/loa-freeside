@@ -1,6 +1,6 @@
 # Sietch Admin Setup Guide
 
-**Last verified**: 2026-02-04
+**Last verified**: 2026-02-25
 **Source**: `themes/sietch/src/config.ts`, `themes/sietch/src/discord/commands/verify.ts`
 
 This guide walks you through setting up a Sietch Discord server from scratch. Follow these steps in order.

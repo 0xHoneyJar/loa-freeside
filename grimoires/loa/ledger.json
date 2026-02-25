@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "next_sprint_number": 353,
-  "active_cycle": "cycle-041",
+  "next_sprint_number": 358,
+  "active_cycle": "cycle-042",
   "cycles": [
     {
       "id": "cycle-001",
@@ -1600,8 +1600,10 @@
     {
       "id": "cycle-041",
       "label": "Launch Readiness — loa-hounfour v7.11.0 Full Adoption",
-      "status": "active",
+      "status": "archived",
       "created": "2026-02-24T21:00:00Z",
+      "archived": "2026-02-25T01:35:00Z",
+      "archive_path": "grimoires/loa/archive/2026-02-25-launch-readiness-v7110-complete",
       "prd": "grimoires/loa/prd.md",
       "sdd": "grimoires/loa/sdd.md",
       "sprint_plan": "grimoires/loa/sprint.md",
@@ -1609,12 +1611,40 @@
         {
           "global_id": 353,
           "local_label": "sprint-1",
-          "status": "pending"
+          "status": "completed"
         },
         {
           "global_id": 354,
           "local_label": "sprint-2",
-          "status": "pending"
+          "status": "completed"
+        }
+      ]
+    },
+    {
+      "id": "cycle-042",
+      "label": "The Sietch Opening — E2E Validation & Test Community Launch",
+      "status": "active",
+      "created": "2026-02-25T02:00:00Z",
+      "prd": "grimoires/loa/prd.md",
+      "sdd": "grimoires/loa/sdd.md",
+      "sprints": [
+        {
+          "local_label": "sprint-1",
+          "global_id": 355,
+          "title": "Redis Test Isolation",
+          "status": "completed"
+        },
+        {
+          "local_label": "sprint-2",
+          "global_id": 356,
+          "title": "E2E Runner + JWKS Validation + Economic Loop",
+          "status": "completed"
+        },
+        {
+          "local_label": "sprint-3",
+          "global_id": 357,
+          "title": "Documentation + CI Pipeline",
+          "status": "completed"
         }
       ]
     }

@@ -82,7 +82,7 @@
 ### 3. Application: Sietch Service
 
 **Components**:
-- **Express API** (port 3000): REST API for Collab.Land integration
+- **Express API** (port 3000): REST API for wallet verification and eligibility queries
 - **Discord Bot**: discord.js bot for slash commands and DM onboarding
 - **SQLite Database**: Persistent storage in `/opt/sietch-service/data/`
 - **Scheduled Tasks**: trigger.dev cloud for cron jobs
@@ -102,7 +102,6 @@
 | Discord API | Bot interactions | Standard rate limits |
 | Berachain RPC | Chain queries | Provider-specific |
 | trigger.dev | Scheduled tasks | Based on plan |
-| Collab.Land | Token-gating | N/A (webhook) |
 
 ## Directory Structure
 

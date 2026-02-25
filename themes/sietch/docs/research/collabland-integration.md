@@ -1,5 +1,10 @@
 # Collab.Land Integration Research
 
+> **SUPERSEDED**: This research document is historical. Sietch now uses in-house
+> EIP-191 wallet verification via the `/verify` slash command instead of Collab.Land.
+> No third-party subscription is required. See `docs/deployment/collabland-setup.md`
+> for the current Wallet Verification Setup Guide.
+
 **Date**: December 17, 2025
 **Sprint**: Sprint 2
 **Task**: S2-T6

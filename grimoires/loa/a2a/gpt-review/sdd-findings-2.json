@@ -1,39 +1,50 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "4/5 prior blockers are addressed with acceptable verification gates and documentation, but the revised ADR-001 “type identity” guard is still fundamentally incorrect and will either fail to compile or provide no protection, making AC-1.6 unenforceable in CI.",
+  "summary": "Most of the previously blocking items are fixed (runner health checks, vitest workspace selection, Redis isolation gate, CI Redis wiring, and the network-isolation claim), but the SDD now contains a contradictory and still-blocking Compose/network spec plus an unresolved JWKS atomic-write responsibility that can reintroduce E2E flakiness.",
   "previous_issues_status": [
     {
-      "original_issue": "Barrel re-exports governance subpath symbols without verifying they exist at runtime (TASK_TYPES, validateTaskCohortUniqueness)",
+      "original_issue": "Dual-network + `internal: true` egress-blocking claim is incorrect and can break connectivity",
       "status": "fixed",
-      "notes": "The added mandatory runtime export verification gate using dynamic import of the provider entrypoints is sufficient to prevent deterministic contract-spec failures, and the documented fallback actions (move entrypoint / type-only / remove+note) are appropriate."
+      "notes": "Section 3.4 correctly retracts the `internal: true`/dual-network approach and documents a layered-defense model with a single network and published ports, which aligns with host-side vitest and avoids the earlier routing/egress misconception."
     },
     {
-      "original_issue": "Assumed computeScoringPathHash and SCORING_PATH_GENESIS_HASH are root exports; contract.json may point at wrong entrypoint",
+      "original_issue": "`wait_for_health` missing and host-side tooling assumptions (`redis-cli`, `wget`) make runner non-portable",
       "status": "fixed",
-      "notes": "The SDD now explicitly requires verifying the root export surface and moving both the barrel import path and contract.json entry to the correct subpath if needed. This addresses the CI-failure mode."
+      "notes": "`wait_for_health` is now defined and uses `docker compose exec -T` so checks run inside containers, removing host tool dependencies and aligning with Redis not needing host routing for health checks."
     },
     {
-      "original_issue": "evaluation_geometry exposure relied on an assumption that Constraint is already exported from the freeside barrel",
+      "original_issue": "Vitest workspace/project selection unreliable; scripts may not load workspace and `--project unit` can fail",
       "status": "fixed",
-      "notes": "The revised §3.3 makes exposure conditional on verifying existing barrel exports and requires adding Constraint/ConstraintSchema (and contract entry if runtime) if missing. That resolves the schema-access risk."
+      "notes": "Scripts now explicitly pass `--workspace vitest.workspace.ts` and standardize on `vitest run` for CI determinism, which should prevent the prior “Project not found”/fallback behavior."
     },
     {
-      "original_issue": "Rebuild script violates 'schema-only' intent and can introduce non-determinism/supply-chain risk",
+      "original_issue": "Redis isolation relies on ECONNREFUSED instead of preventing Redis-dependent tests from running in unit",
       "status": "fixed",
-      "notes": "§3.5.3 now clearly states the trust boundary (rebuilt dist is what executes) and adds concrete verification requirements (exact ref, DIST_HASH recording/compare, tag compatibility, toolchain pin/limitation). This is sufficient for this cycle’s stated constraints."
+      "notes": "A static import guard is added to fail CI if unit `*.test.ts` imports redis/ioredis, which is the hard gate requested and avoids relying on flaky runtime connection failures."
     },
     {
-      "original_issue": "ADR-001 guard was brittle (grep-based) and could false-fail/false-pass; needed AST-based or stronger enforcement",
+      "original_issue": "JWKS atomic write requirement conflicts with 'zero new application logic' and can cause partial-read race",
       "status": "not_fixed",
-      "notes": "The new two-layer approach still has a truly blocking flaw: Layer 1 attempts `expect(BarrelTaskType).toBe(RoutingTaskType)` while importing `TaskType` as a value. In the SDD itself, TaskType is used as a type-only import in routing code, and in most TS setups TaskType is not a runtime value. This will either (a) fail TypeScript compilation ('TaskType only refers to a type, but is being used as a value') or (b) be meaningless if it compiles due to some unrelated runtime export. Either way it does not reliably enforce that the *type identity* used in routing remains the routing-policy variant. Layer 2 is still text scanning (now scoped), which can still false-pass via indirect usage or aliasing and does not meet the original goal of robust enforcement."
+      "notes": "The SDD still requires 'atomic write verification' but does not specify a concrete, repo-real mechanism that guarantees atomicity without changing Arrakis runtime code. As written, it’s conditional ('If not atomic... fix in Dockerfile entrypoint or helper script') but doesn’t define how that helper script can safely intercept/produce the JWKS file if Arrakis is the writer. This leaves the race condition potentially unresolved and the scope constraint ambiguous."
+    },
+    {
+      "original_issue": "Integration CI Redis service container lacks canonical env wiring/readiness gate; may still ECONNREFUSED",
+      "status": "fixed",
+      "notes": "The integration script sets `REDIS_URL=redis://localhost:6379`, and the workflow defines a Redis service with a health check. This is sufficient provided the integration code reads `REDIS_URL` (the SDD explicitly requires that)."
     }
   ],
   "new_blocking_concerns": [
     {
-      "location": "§4.2 ADR-001 Import Guard Test — Layer 1 type identity assertion",
-      "description": "The proposed identity test treats TaskType as a runtime value and compares object reference equality, which is not valid for a TypeScript type alias/union and will likely not compile or will provide no real guarantee.",
-      "why_blocking": "AC-1.6 is a hard constraint and is enforced via CI tests. As written, this guard is either a compile-time error (blocking the build) or a false sense of safety (test passes without actually preventing governance TaskType leakage). That reintroduces the original blocker: the guard can’t be trusted to prevent accidental coupling in routing/mapping code paths.",
-      "fix": "Replace Layer 1 with a check that is actually enforceable:\n- If you want a runtime identity check, compare *schemas* (e.g., `TaskTypeSchema`) that are known runtime exports, not the `TaskType` type. Only do this if both routing-policy and governance variants have distinct runtime schema objects.\n- Otherwise, implement the guard using TypeScript AST (ts-morph / compiler API) over the curated ROUTING_MODULES list to detect any import (type or value) from `@0xhoneyjar/loa-hounfour/governance` and any identifier usage of `GovernanceTaskType`/`GovernanceReputationEvent` (including aliased imports).\n- Minimal acceptable alternative (still deterministic): in each routing module, enforce an allowlist of import specifiers and fail if any specifier matches `/Governance(TaskType|ReputationEvent)/` or any module specifier contains `/governance`.\nThis restores a CI-enforceable, non-brittle guard without requiring whole-repo grep."
+      "location": "Section 5.2 Modified Files + Section 6 Technical Risks (and implied compose changes)",
+      "description": "The file inventory and risks still state adding an `internal: true` network / dual-network design, contradicting Section 3.4 which explicitly rejects it and specifies a single default bridge network.",
+      "why_blocking": "This is not a stylistic inconsistency: it creates an implementer fork where following 5.2/6 reintroduces the previously-blocking network design (and breaks the stated architecture). It will cause PR churn and can lead to a broken E2E topology if the wrong section is implemented.",
+      "fix": "Update 5.2 and 6 to match 3.4: remove 'Add `internal: true` network' and remove/replace the dual-network mitigation. Replace with: 'Preserve single network; publish ports; layered defense (no creds + stub-only + post-test assertion)'."
+    },
+    {
+      "location": "Section 3.5 JWKS Bootstrap Protocol (atomic write responsibility)",
+      "description": "Atomic JWKS write is still not concretely guaranteed without changing Arrakis application behavior; the proposed 'fix in Dockerfile entrypoint or helper script' is underspecified and may be impossible if Arrakis writes the file internally.",
+      "why_blocking": "If Arrakis writes `/shared/arrakis-jwks.json` non-atomically, loa-finn’s health gate can observe partial JSON and flap (503/parse errors), producing nondeterministic E2E startup failures. Also, if the only way to ensure atomicity is to change Arrakis code, that violates the cycle constraint ('zero new application logic') unless the SDD explicitly relaxes it.",
+      "fix": "Pick one explicit, implementable path and document it: (A) Confirm Arrakis already writes atomically (cite the exact file/function) and state 'no change required'; or (B) Move JWKS generation/writing entirely into test infrastructure (e.g., loa-finn stub or a tiny existing-node script run as a compose sidecar) and have Arrakis read it (only if Arrakis already supports that); or (C) If Arrakis must be the writer and is not atomic today, explicitly allow a minimal Arrakis change and update scope to permit it. Do not leave it conditional/implicit."
     }
   ],
   "iteration": 2

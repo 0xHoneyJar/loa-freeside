@@ -13,7 +13,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MFAService, MFAError } from '../../../../src/packages/security/MFAService.js';
-import { Redis } from 'ioredis';
+import type { Redis } from 'ioredis';
 
 describe('MFAService', () => {
   let redis: any; // Mocked Redis

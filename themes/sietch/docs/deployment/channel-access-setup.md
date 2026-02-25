@@ -9,10 +9,9 @@ Create roles in this order (top to bottom) in Discord Server Settings > Roles:
 | Position | Role Name | Color | Assigned By |
 |----------|-----------|-------|-------------|
 | 1 | @Admin | Red | Manual |
-| 2 | @Collab.Land | - | Collab.Land bot |
-| 3 | @Sietch Bot | - | Bot role |
-| 4 | @Naib | Gold (#F5A623) | Collab.Land (top 7) |
-| 5 | @Fedaykin | Blue (#3498DB) | Collab.Land (8-69) |
+| 2 | @Sietch Bot | - | Bot role (must be above all managed roles) |
+| 3 | @Naib | Gold (#F5A623) | Sietch bot via /verify (top 7) |
+| 4 | @Fedaykin | Blue (#3498DB) | Sietch bot via /verify (8-69) |
 | 6 | @Trusted | Purple (#9B59B6) | Sietch bot (10+ badges OR Helper) |
 | 7 | @Veteran | Silver (#95A5A6) | Sietch bot (90+ days) |
 | 8 | @Engaged | Green (#2ECC71) | Sietch bot (5+ badges OR 200+ activity) |
@@ -27,7 +26,7 @@ Create roles in this order (top to bottom) in Discord Server Settings > Roles:
 
 | Channel | Category | Purpose |
 |---------|----------|---------|
-| #water-discipline | Verification | Collab.Land verification channel |
+| #water-discipline | Verification | Wallet verification channel (`/verify start`) |
 | #the-door | Announcements | Eligibility announcements |
 | #rules | Information | Server rules |
 | #faq | Information | Frequently asked questions |
@@ -133,7 +132,7 @@ Use category permissions for easier management:
 Add these role IDs to your `.env`:
 
 ```bash
-# Collab.Land assigned roles (existing)
+# Wallet verification assigned roles (via /verify)
 DISCORD_ROLE_NAIB=your_naib_role_id
 DISCORD_ROLE_FEDAYKIN=your_fedaykin_role_id
 
@@ -168,8 +167,8 @@ After setup, verify:
 
 | Role | Criteria | Removal |
 |------|----------|---------|
-| @Naib | Top 7 BGT holders | Collab.Land auto-removes |
-| @Fedaykin | Ranks 8-69 BGT | Collab.Land auto-removes |
+| @Naib | Top 7 BGT holders | Sietch bot auto-removes on eligibility sync |
+| @Fedaykin | Ranks 8-69 BGT | Sietch bot auto-removes on eligibility sync |
 | @Trusted | 10+ badges OR Helper badge | When criteria no longer met |
 | @Veteran | 90+ days tenure | Never (permanent) |
 | @Engaged | 5+ badges OR 200+ activity | When criteria no longer met |

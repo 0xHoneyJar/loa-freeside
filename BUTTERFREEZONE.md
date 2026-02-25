@@ -1,7 +1,7 @@
 <!-- AGENT-CONTEXT
 name: arrakis
 type: framework
-purpose: Commons Protocol — community-governed economic protocol for AI inference. Multi-model agent economy infrastructure platform.
+purpose: Multi-model agent economy infrastructure platform.
 key_files: [CLAUDE.md, .claude/loa/CLAUDE.loa.md, .loa.config.yaml, .claude/scripts/, .claude/skills/, package.json]
 interfaces: [/auditing-security, /autonomous-agent, /bridgebuilder-review, /browsing-constructs, /bug-triaging]
 dependencies: [git, jq, yq, node]
@@ -19,7 +19,7 @@ trust_level: L2-verified
 # loa-freeside
 
 <!-- provenance: DERIVED -->
-Commons Protocol — community-governed economic protocol for AI inference. Multi-model agent economy infrastructure platform.
+Multi-model agent economy infrastructure platform.
 
 The framework provides 29 specialized skills, built with TypeScript/JavaScript, Python, Shell.
 
@@ -177,19 +177,19 @@ packages/cli/src/commands/sandbox/index.ts:185:    .command('status <name>')
 | `drizzle/` | 1 | Drizzle | \u2014 |
 | `evals/` | 122 | Benchmarking and regression framework for the Loa agent development system. Ensures framework changes don't degrade agent behavior through | [evals/README.md](evals/README.md) |
 | `github-fetch/` | 11 | Github fetch | \u2014 |
-| `grimoires/` | 1583 | Home to all grimoire directories for the Loa | [grimoires/README.md](grimoires/README.md) |
+| `grimoires/` | 1590 | Home to all grimoire directories for the Loa | [grimoires/README.md](grimoires/README.md) |
 | `infrastructure/` | 193 | This directory contains the Infrastructure as Code (IaC) for Arrakis, using Terraform to provision AWS | [infrastructure/README.md](infrastructure/README.md) |
-| `packages/` | 55089 | Shared libraries and utilities for the Arrakis | [packages/README.md](packages/README.md) |
+| `packages/` | 2341 | Shared libraries and utilities for the Arrakis | [packages/README.md](packages/README.md) |
 | `scripts/` | 26 | Utility scripts | \u2014 |
 | `sites/` | 28151 | Web properties for the Arrakis | [sites/README.md](sites/README.md) |
-| `spec/` | 6 | Test suites | \u2014 |
-| `tests/` | 97 | Test suites | \u2014 |
-| `themes/` | 66066 | Theme-specific backend services for Arrakis | [themes/README.md](themes/README.md) |
+| `spec/` | 10 | Test suites | \u2014 |
+| `tests/` | 98 | Test suites | \u2014 |
+| `themes/` | 66072 | Theme-specific backend services for Arrakis | [themes/README.md](themes/README.md) |
 
 ## Verification
 <!-- provenance: CODE-FACTUAL -->
 - Trust Level: **L2 — CI Verified**
-- 103 test files across 2 suites
+- 108 test files across 2 suites
 - CI/CD: GitHub Actions (25 workflows)
 - Security: SECURITY.md present
 
@@ -237,16 +237,16 @@ cd themes/sietch && npx drizzle-kit push && cd ../..
 # Start development server
 pnpm run dev
 <!-- ground-truth-meta
-head_sha: ab51fc464aa6580568966d99df802f3a9b4107b1
-generated_at: 2026-02-24T08:04:34Z
+head_sha: 717535e36f873bfa8a965fd226adecc0af3d30ea
+generated_at: 2026-02-24T13:31:44Z
 generator: butterfreezone-gen v1.0.0
 sections:
   agent_context: 9153dda48b2c1ccafbd76cccde885039f7ba5f00a2b152e44e69ea6a28111685
   capabilities: ab2576b1f2e7e8141f0e93e807d26ed2b7b155e21c96d787507a3ba933bb9795
   architecture: 4986601f929268fa86e95a13b5612852a9e41efb05e98d20d6cc4c82603501ac
   interfaces: 8a27e7dd9f0927654886f67ab89c3f127278c6651246f55052368a4ca60f5dd9
-  module_map: 2e1490059891ed129bfb98b396394b9cd0e77455acad02b3380eff86e9d97b9c
-  verification: 88a72d1151e45027dfeadb411d3f41b1d71d2ac779bcc921db9e99b7c5d3a2ac
+  module_map: d3f874fcf8a8fa43c157f9249c29f4f5a142b42f682c9f2c816adf72efb5af9b
+  verification: 8871ca53b1ded7ba106c2f6018e9cb890c858c928ae68a09c3f538f0e89756d9
   agents: ca263d1e05fd123434a21ef574fc8d76b559d22060719640a1f060527ef6a0b6
   ecosystem: 29fc390a2a77ec8d5bdbe657182dd47a2a5cd0c0c36c74c763c9e65cfad170e3
   quick_start: aa15ed859d837420815f7e0948f08651a127ddd6db965df8b99600b5ef930172

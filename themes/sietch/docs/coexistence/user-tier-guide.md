@@ -16,7 +16,7 @@ When your community uses Arrakis alongside an existing token-gating bot, you'll 
 
 ### Incumbent Only
 
-**What it means**: You've been verified by the community's original token-gating bot (e.g., Collab.Land, Guild.xyz).
+**What it means**: You've been verified by the community's original token-gating bot (e.g., Guild.xyz or another third-party service).
 
 **Features available:**
 - Basic channel access as configured by the incumbent bot

@@ -1,31 +1,36 @@
 {
   "verdict": "APPROVED",
-  "summary": "The five v1.2.0 Flatline HIGH_CONSENSUS integrations are consistent with the established posting-level event model, BigInt-only economics, and RLS tenant isolation, and they do not introduce contradictions with existing acceptance criteria or new truly blocking risks.",
+  "summary": "The v1.2.0 PRD keeps the original P0 launch blockers intact while correctly integrating the Flatline additions (determinism, JWKS security, network isolation, RTFM protocol, invariants) in a way that remains achievable in-repo with specific, testable acceptance criteria and no new blocking contradictions.",
   "previous_issues_status": [
     {
-      "original_issue": "IMP-001: Governance rate limiting (per-role/per-community quotas in F-4)",
+      "original_issue": "E2E success criteria incorrectly relied on `docker compose up` rather than a deterministic test runner with teardown and exit code",
       "status": "fixed",
-      "notes": "Added explicit per-role daily quotas plus a per-community burst limit with Redis keys scoped by community_id and role, and made limits non-governable (prevents self-escalation). This does not create a governance deadlock because (a) admin remains unlimited, (b) limits are high enough for normal ops, and (c) 429 + Retry-After provides a deterministic recovery path rather than wedging state."
+      "notes": "FR-1 still anchors on `tests/e2e/e2e-entrypoint.sh` with explicit timeouts (AC-1.8), trap-based teardown (AC-1.7), and exit-code semantics; this remains deterministic and measurable."
     },
     {
-      "original_issue": "IMP-002: Sequence gaps on rollback (clarification in F-3 sequencing)",
+      "original_issue": "CI/E2E topology ambiguously depended on external loa-finn repo via LOA_FINN_DIR, risking non-reproducible CI and fork failures",
       "status": "fixed",
-      "notes": "PRD now explicitly states gaps are expected on rollback and consumers must tolerate them. This is consistent with the per-community counter-table allocation approach and does not break determinism: ordering is still strictly by (community_id, sequence_number) for committed rows."
+      "notes": "FR-1/FR-7 continue to state stub-by-default and stub-in-CI with LOA_FINN_DIR as local-dev-only; no cross-repo dependency is assumed for success."
     },
     {
-      "original_issue": "IMP-003: Event sourcing snapshots/compaction/archival (lifecycle section in F-3)",
+      "original_issue": "Redis isolation allowed skipping/mocking without defining which tests must still run, risking meaningless green CI or persistent red CI",
       "status": "fixed",
-      "notes": "Lifecycle section is compatible with posting-level canonicality: snapshots are derived state with a last_sequence_number pointer; compaction is explicitly deferred (no implementation this cycle), and archival preserves full-fidelity events for forensic replay. Nothing here requires an envelope model or violates append-only semantics."
+      "notes": "FR-2’s taxonomy + default `pnpm test` → unit-only (AC-2.4) and separate CI jobs for integration with Redis (AC-2.3) keeps NFR-4 achievable and prevents “green but meaningless” outcomes."
     },
     {
-      "original_issue": "IMP-004: Concurrent policy approvals (latest-wins, atomic supersession in F-4)",
+      "original_issue": "Economic loop E2E referenced payment flows without specifying how external providers are avoided, risking flaky/impossible CI",
       "status": "fixed",
-      "notes": "Defines latest-wins plus atomic supersession in a single transaction, with retry-on-conflict behavior. This does not violate conservation invariants because budget_limit decreases are still gated by the existing pending_enforcement rule (cannot enforce below committed+reserved), and policy activation is described as atomic with event logging."
+      "notes": "FR-6’s external dependency policy + explicit zero-egress requirement (AC-6.1/6.5/6.6) keeps the loop test feasible and deterministic using only in-repo stubs/simulation."
     },
     {
-      "original_issue": "IMP-008: Aggregate scaling assumptions (community count, batching in NF-2)",
+      "original_issue": "JWKS bootstrap and S2S JWT flow direction was underspecified and could be inverted vs reality",
       "status": "fixed",
-      "notes": "Adds platform-wide assumptions and batching strategy that are coherent with the architecture: per-community sequencing serializes only within a tenant; velocity computation is scheduled and batched; and the stated contention threshold aligns with the earlier note about considering advisory locks only at high per-community TPS."
+      "notes": "FR-1 clearly defines issuer/audience direction and shared-volume JWKS bootstrap, and v1.2.0 strengthens it with public-only, ephemeral keys, atomic write, and a negative JWKS test (AC-1.9)."
+    },
+    {
+      "original_issue": "Staging checklist required enumerating secrets but lacked an authoritative inventory source and measurable deployable verification",
+      "status": "fixed",
+      "notes": "FR-5 still ties inventory to Terraform variables + `.env.example` and includes measurable gates (`terraform plan` + `/health` 200) in AC-5.5."
     }
   ],
   "new_blocking_concerns": [],

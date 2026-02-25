@@ -24,7 +24,7 @@ Sietch is a token-gated Discord community for the top 69 BGT (Bera Governance To
 1. Queries Berachain RPC for BGT claim and burn events
 2. Calculates unredeemed BGT balances per wallet
 3. Ranks wallets and determines top 69 eligibility
-4. Exposes a REST API for Collab.Land integration
+4. Manages wallet verification via EIP-191 `/verify` slash command
 5. Manages Discord notifications for eligibility changes
 
 ### Technology Stack
@@ -49,7 +49,7 @@ Sietch is a token-gated Discord community for the top 69 BGT (Bera Governance To
 | API Production | https://sietch-api.honeyjar.xyz |
 | trigger.dev Dashboard | https://trigger.dev |
 | Discord Developer Portal | https://discord.com/developers |
-| Collab.Land Dashboard | https://cc.collab.land |
+| Wallet Verification Guide | `docs/deployment/collabland-setup.md` |
 
 ---
 
@@ -84,10 +84,10 @@ Sietch is a token-gated Discord community for the top 69 BGT (Bera Governance To
                             │
        ┌────────────────────┼────────────────────┐
        ▼                    ▼                    ▼
-┌─────────────┐      ┌─────────────┐      ┌─────────────┐
-│ Berachain   │      │  Discord    │      │ Collab.Land │
-│    RPC      │      │   API       │      │    API      │
-└─────────────┘      └─────────────┘      └─────────────┘
+┌─────────────┐      ┌─────────────┐
+│ Berachain   │      │  Discord    │
+│    RPC      │      │   API       │
+└─────────────┘      └─────────────┘
 ```
 
 ### Data Flow
@@ -101,10 +101,11 @@ Sietch is a token-gated Discord community for the top 69 BGT (Bera Governance To
    - Compute diff from previous snapshot
    - Send Discord notifications for changes
 
-2. **API Requests** (from Collab.Land):
-   - Collab.Land queries `/eligibility` endpoint
-   - Service returns top_7 and top_69 arrays
-   - Collab.Land assigns Discord roles based on response
+2. **Wallet Verification** (via `/verify` command):
+   - User runs `/verify start` in Discord
+   - Bot generates unique EIP-191 signing link
+   - User signs message with wallet to prove ownership
+   - Bot assigns tier roles based on BGT rank
 
 3. **Discord Integration**:
    - Bot posts leaderboard to #census after each sync
@@ -163,20 +164,7 @@ BERACHAIN_RPC_URLS=https://rpc.berachain.com,https://bera-rpc.publicnode.com
 - `DISCORD_CHANNEL_*` - Channel IDs for #the-door, #census
 - `DISCORD_ROLE_*` - Role IDs for Naib, Fedaykin
 
-### 4. Collab.Land
-
-**Purpose**: Token-gated role management
-
-**Subscription**: Premium (required for Custom API token gates)
-**Dashboard**: https://cc.collab.land
-
-**Configuration**:
-- Custom API token gate pointing to `https://sietch-api.honeyjar.xyz/eligibility/{wallet}`
-- Success conditions based on `isEligible` and `currentTier` fields
-
-**Setup Documentation**: `docs/deployment/collabland-setup.md`
-
-### 5. Let's Encrypt
+### 4. Let's Encrypt
 
 **Purpose**: SSL certificates
 
@@ -345,7 +333,7 @@ See `docs/deployment/DEPLOYMENT_RUNBOOK.md` for:
 | Service | Support Channel |
 |---------|-----------------|
 | trigger.dev | https://trigger.dev/support |
-| Collab.Land | https://collabland.freshdesk.com/ |
+| Wallet Verification | See `docs/deployment/collabland-setup.md` |
 | Discord | https://support.discord.com/ |
 | Berachain | [Community Discord] |
 

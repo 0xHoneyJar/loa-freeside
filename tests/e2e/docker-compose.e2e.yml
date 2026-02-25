@@ -22,7 +22,7 @@ services:
     # Redis 7.2 — pinned by digest for reproducibility
     image: redis:7.2@sha256:e422889e156ebea83856b6ff973bfe0c86bce867d80def228044eeecf925592b
     ports:
-      - "6399:6379"
+      - "${E2E_REDIS_PORT:-6399}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "-h", "localhost", "ping"]
       interval: 5s
@@ -61,7 +61,10 @@ services:
       - IDENTITY_ANCHOR_ENABLED=${IDENTITY_ANCHOR_ENABLED:-true}
       - IDENTITY_ANCHOR_HIGH_VALUE_THRESHOLD_MICRO=100000000
     ports:
-      - "3099:3000"
+      - "${E2E_ARRAKIS_PORT:-3099}:3000"
+    extra_hosts:
+      - "169.254.169.254:127.0.0.1"
+      - "metadata.google.internal:127.0.0.1"
     depends_on:
       redis-e2e:
         condition: service_healthy
@@ -87,7 +90,10 @@ services:
       - ARRAKIS_FINALIZE_URL=http://arrakis-e2e:3000/api/internal/finalize
       - BILLING_INTERNAL_JWT_SECRET=${BILLING_INTERNAL_JWT_SECRET:-e2e-s2s-jwt-secret-for-testing-only-32chr}
     ports:
-      - "8099:8080"
+      - "${E2E_LOAFINN_PORT:-8099}:8080"
+    extra_hosts:
+      - "169.254.169.254:127.0.0.1"
+      - "metadata.google.internal:127.0.0.1"
     depends_on:
       redis-e2e:
         condition: service_healthy
@@ -108,7 +114,7 @@ services:
       context: ./contract-validator
       dockerfile: Dockerfile
     ports:
-      - "3199:3100"
+      - "${E2E_VALIDATOR_PORT:-3199}:3100"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3100/health"]
       interval: 5s

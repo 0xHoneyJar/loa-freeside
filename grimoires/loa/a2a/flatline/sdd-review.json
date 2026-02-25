@@ -1,106 +1,110 @@
 {
-  "phase": "sdd",
-  "document": "grimoires/loa/sdd.md",
-  "timestamp": "2026-02-23T07:20:23Z",
-  "cycle": "cycle-038",
   "consensus_summary": {
-    "high_consensus_count": 6,
-    "disputed_count": 0,
+    "high_consensus_count": 4,
+    "disputed_count": 1,
     "low_value_count": 0,
-    "blocker_count": 5,
-    "model_agreement_percent": 100,
+    "blocker_count": 4,
+    "model_agreement_percent": 90,
     "confidence": "full"
   },
   "high_consensus": [
     {
       "id": "IMP-001",
-      "description": "Migration operational resilience: document CONCURRENTLY failure recovery (DROP INVALID INDEX + retry), backfill resume/abort steps, verification queries",
-      "average_score": 915,
-      "status": "auto_integrated",
-      "integration": "Added Operational Resilience section to 3.4 Migration Strategy with CONCURRENTLY recovery, backfill resume, verification SQL"
+      "description": "Real documentation gap: the SDD references AC and Goals but doesn't define or link them in a versioned, anchorable way, making traceability unverifiable. Actionable fix (embed table or add explicit PRD link + version/hash + section anchors). High ROI and low effort; improves the SDD's usefulness as a standalone artifact.",
+      "gpt_score": 860,
+      "opus_score": 950,
+      "delta": 90,
+      "average_score": 905,
+      "would_integrate": true,
+      "agreement": "HIGH"
     },
     {
       "id": "IMP-002",
-      "description": "Arrakis client circuit breaker: specify timeouts, breaker thresholds, retries, fallback semantics, max added latency",
-      "average_score": 850,
-      "status": "auto_integrated",
-      "integration": "Added Arrakis Client Circuit Breaker spec in 1.6 External Integrations: 3s timeout, 50% threshold, 1 retry, admin fallback, 6.5s max latency"
+      "description": "Critical correctness gap: the described egress assertion mechanism is technically wrong/insufficient (docker stats won't provide destination/connection evidence). This creates false assurance for a security/isolation control. Very actionable to specify a concrete method (iptables counters, tcpdump/pcap, eBPF, DNS logs) with thresholds and CI steps, or explicitly mark as not implemented. High impact if left vague.",
+      "gpt_score": 910,
+      "opus_score": 780,
+      "delta": 130,
+      "average_score": 845,
+      "would_integrate": true,
+      "agreement": "HIGH"
     },
     {
       "id": "IMP-003",
-      "description": "community_velocity pruning mechanism: scheduler, batch size, idempotency, metrics, failure handling for 90-day retention",
-      "average_score": 835,
-      "status": "auto_integrated",
-      "integration": "Added detailed pruning SQL and mechanism in Migration 0015: EventBridge daily, 10k batch, SKIP LOCKED, configurable retention"
+      "description": "High ROI CI operability improvement: failing health checks without capturing logs is a common and costly failure mode. The proposed change is specific (capture compose logs before teardown; publish as CI artifact) and low complexity. Strongly improves debuggability and reduces developer time wasted.",
+      "gpt_score": 880,
+      "opus_score": 820,
+      "delta": 60,
+      "average_score": 850,
+      "would_integrate": true,
+      "agreement": "HIGH"
     },
     {
-      "id": "IMP-004",
-      "description": "Sequence initialization race: INSERT ON CONFLICT DO NOTHING + re-select for first-write to community_event_sequences",
-      "average_score": 855,
-      "status": "auto_integrated",
-      "integration": "Updated allocateSequence() in 5.3: INSERT ON CONFLICT DO NOTHING + re-select with FOR UPDATE on race loss"
-    },
-    {
-      "id": "IMP-008",
-      "description": "Legacy backfill ordering/idempotency: handle mixed sequenced/unsequenced rows, prevent corruption during migration",
-      "average_score": 785,
-      "status": "auto_integrated",
-      "integration": "Expanded Sprint 3 Task 4 with ordering, idempotency, mixed-state handling, range reservation, verification query"
-    },
-    {
-      "id": "IMP-010",
-      "description": "Velocity exhaustion prediction: resolve whether reserved amounts should be included in balance for prediction accuracy",
-      "average_score": 730,
-      "status": "auto_integrated",
-      "integration": "Resolved Open Question: use available_balance = total - reserved. Updated computeSnapshot() and VelocitySnapshot interface"
+      "id": "IMP-005",
+      "description": "Practical developer-experience gap: fixed host port publishing commonly breaks local runs due to conflicts. Actionable mitigations exist (dynamic ports, env-configurable ports/offset, or run on a dedicated network without host publishing where possible). Moderate effort depending on tooling, but high day-1 impact for contributors.",
+      "gpt_score": 720,
+      "opus_score": 720,
+      "delta": 0,
+      "average_score": 720,
+      "would_integrate": true,
+      "agreement": "HIGH"
     }
   ],
-  "disputed": [],
+  "disputed": [
+    {
+      "id": "IMP-010",
+      "description": "Nice-to-have: startup ordering is already enforced by the runner's health-gated sequencing, so adding compose-level depends_on/health conditions is optional redundancy. It can help if someone runs compose directly, but also introduces another source of truth. Worth a brief explicit statement of the chosen approach; full dependency graph is moderate value.",
+      "gpt_score": 520,
+      "opus_score": 880,
+      "delta": 360,
+      "average_score": 700,
+      "would_integrate": true,
+      "agreement": "DISPUTED"
+    }
+  ],
   "blockers": [
     {
       "id": "SKP-001",
-      "concern": "Event sourcing partially enforced — sequence_number/correlation_id nullable, not guaranteed on all write paths, broken replay risk",
-      "severity_score": 930,
-      "status": "accepted",
-      "integration": "Added enforce_event_sourcing_fields() DB trigger in 0013a, single insertLotEntry() repository function in 5.1, CI static analysis guard"
-    },
-    {
-      "id": "SKP-002",
-      "concern": "Tier 3 range allocation gap semantics undefined — can break pagination, verifyConsistency, audit reasoning",
-      "severity_score": 760,
-      "status": "accepted",
-      "integration": "Added Gap Semantics section in 1.8: acceptable causes, max gap size, API pagination with gaps, verifyConsistency treatment, allocation_lease tracking, monitoring"
+      "concern": "Egress prevention is largely policy-based; no hard network enforcement exists",
+      "severity": "CRITICAL",
+      "severity_score": 920,
+      "why_matters": "The design explicitly avoids Docker network egress blocking and relies on (a) test discipline, (b) absence of credentials, and (c) a post-test 'static egress assertion'. Any accidental dependency (telemetry, package update checks, DNS lookups, webhook retries) can still reach the public internet and cause flaky tests, data leakage, or unexpected costs.",
+      "location": "Section 3.4 Network Isolation; Section 4.2 Network Isolation",
+      "recommendation": "Add a hard egress control for CI E2E runs (e.g., run containers on an internal network with a dedicated test-runner container, or use iptables/DOCKER-USER rules to deny outbound except allowlist). At minimum, block access to cloud metadata IPs (169.254.169.254) and enforce DNS restrictions."
     },
     {
       "id": "SKP-003",
-      "concern": "RLS + SET LOCAL fragile under pooled connections; platform_admin not in Actor type; role model drift",
-      "severity_score": 900,
-      "status": "accepted",
-      "integration": "Added 4-layer RLS enforcement in 1.9: DB role isolation (app_role/admin_tooling_role/migration_role), policies, middleware, automated tests. Reconciled role taxonomy in Actor interface docs"
-    },
-    {
-      "id": "SKP-004",
-      "concern": "Governance approval not fully atomic with conservation guard — policy/limit out-of-sync on partial failure",
-      "severity_score": 880,
-      "status": "accepted",
-      "integration": "Added governance_outbox table in 0014, outbox pattern in approve() step 7, idempotent worker with version checking, stale row monitoring"
-    },
-    {
-      "id": "SKP-005",
-      "concern": "Velocity computation N×aggregation can thrash Postgres caches — needs pre-aggregation or incremental approach",
+      "concern": "Health checks are brittle and may not reflect real readiness (especially JWKS readiness and downstream dependencies)",
+      "severity": "HIGH",
       "severity_score": 720,
-      "status": "accepted",
-      "integration": "Added community_debit_hourly rollup table with RLS, incremental rollup job (5min), velocity reads from rollups, backpressure mechanism with latency monitoring"
+      "why_matters": "The script uses curl/health and wget/health with a 60s timeout. A service can return 200 before it is actually ready to serve the specific endpoints used in tests.",
+      "location": "Section 3.1 E2E Runner Script; Section 3.5 JWKS Bootstrap Protocol",
+      "recommendation": "Define readiness checks that validate the exact dependencies needed. Make timeouts configurable via env, add exponential backoff, and capture diagnostics on readiness failure."
+    },
+    {
+      "id": "SKP-002",
+      "concern": "Host-side vitest + published ports increases flakiness and cross-test interference risk",
+      "severity": "HIGH",
+      "severity_score": 760,
+      "why_matters": "Publishing Redis and service ports to the host invites port collisions on developer machines and shared CI runners, and can allow other local processes to interfere with tests.",
+      "location": "Section 2.2 Data Flow: E2E Test Execution; Section 3.4 Docker Compose modification",
+      "recommendation": "Avoid fixed host ports; use dynamic port mapping and discover ports via docker compose port, or run the test runner in a container on the compose network (no published ports). If host-side execution is required, parameterize ports and fail fast if already in use."
+    },
+    {
+      "id": "SKP-010",
+      "concern": "Scope risk hidden in 'reclassify 202 failing tests' — effort and behavioral changes likely exceed estimates",
+      "severity": "CRITICAL",
+      "severity_score": 880,
+      "why_matters": "Renaming/refactoring ~200 tests is not 'infrastructure only' in practice: mocking Redis correctly can require significant code changes, and test meaning may change (false confidence).",
+      "location": "Section 3.3 Redis Test File Classification; Section 5.3 Renamed Files; Section 1 Executive Summary",
+      "recommendation": "Timebox the audit with a measured spike, produce an actual file list early, and define acceptance criteria for mocking vs integration. If mocking requires production code refactors, explicitly allow scoped app changes or adjust timeline/scope."
     }
   ],
-  "gpt_review": {
-    "iterations": 4,
-    "final_verdict": "APPROVED",
-    "findings_files": [
-      "grimoires/loa/a2a/gpt-review/sdd-findings-1.json",
-      "grimoires/loa/a2a/gpt-review/sdd-findings-2.json",
-      "grimoires/loa/a2a/gpt-review/sdd-findings-3.json",
-      "grimoires/loa/a2a/gpt-review/sdd-findings-4.json"
-    ]
+  "phase": "sdd",
+  "document": "grimoires/loa/sdd.md",
+  "cycle": "cycle-042",
+  "timestamp": "2026-02-25T04:51:03Z",
+  "metrics": {
+    "total_latency_ms": 210000,
+    "cost_cents": 0
   }
 }
