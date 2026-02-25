@@ -425,6 +425,178 @@ export type {
   NativeEnforcement,
 } from '@0xhoneyjar/loa-hounfour/constraints';
 
+// ============================================================================
+// Canonical hounfour types — v8.0.0 Commons Module (cycle-043)
+// Governance substrate: conservation laws, audit trails, dynamic contracts,
+// governed resources, enforcement SDK, error taxonomy.
+// ============================================================================
+
+// ─── Foundation Schemas ──────────────────────────────────────────────────────
+export {
+  InvariantSchema,
+  type Invariant,
+} from '@0xhoneyjar/loa-hounfour/commons';
+
+export {
+  ConservationLawSchema,
+  type ConservationLaw,
+} from '@0xhoneyjar/loa-hounfour/commons';
+
+export {
+  AuditEntrySchema,
+  AuditTrailSchema,
+  AUDIT_TRAIL_GENESIS_HASH,
+  type AuditEntry,
+  type AuditTrail,
+} from '@0xhoneyjar/loa-hounfour/commons';
+
+// State/Transition/StateMachineConfig aliased with Commons prefix to avoid
+// collision with Freeside-local state-machines.js types (lines 53-69).
+export {
+  StateSchema as CommonsStateSchema,
+  TransitionSchema as CommonsTransitionSchema,
+  StateMachineConfigSchema as CommonsStateMachineConfigSchema,
+} from '@0xhoneyjar/loa-hounfour/commons';
+
+export type {
+  State as CommonsState,
+  Transition as CommonsTransition,
+  StateMachineConfig as CommonsStateMachineConfig,
+} from '@0xhoneyjar/loa-hounfour/commons';
+
+export {
+  GovernanceClassSchema,
+  GOVERNED_RESOURCE_FIELDS,
+  GovernanceMutationSchema,
+  type GovernanceClass,
+  type GovernanceMutation,
+} from '@0xhoneyjar/loa-hounfour/commons';
+
+// ─── Governed Resources ──────────────────────────────────────────────────────
+export {
+  GovernedCreditsSchema,
+  type GovernedCredits,
+} from '@0xhoneyjar/loa-hounfour/commons';
+
+export {
+  GovernedReputationSchema,
+  type GovernedReputation,
+} from '@0xhoneyjar/loa-hounfour/commons';
+
+export {
+  GovernedFreshnessSchema,
+  type GovernedFreshness,
+} from '@0xhoneyjar/loa-hounfour/commons';
+
+// ─── Hash Chain Operations (ADR-006) ─────────────────────────────────────────
+export {
+  HashChainDiscontinuitySchema,
+  type HashChainDiscontinuity,
+} from '@0xhoneyjar/loa-hounfour/commons';
+
+export {
+  QuarantineStatusSchema,
+  QuarantineRecordSchema,
+  type QuarantineStatus,
+  type QuarantineRecord,
+} from '@0xhoneyjar/loa-hounfour/commons';
+
+export {
+  buildDomainTag,
+  computeAuditEntryHash,
+  verifyAuditTrailIntegrity,
+  type AuditEntryHashInput,
+  type AuditTrailVerificationResult,
+} from '@0xhoneyjar/loa-hounfour/commons';
+
+export {
+  createCheckpoint,
+  verifyCheckpointContinuity,
+  pruneBeforeCheckpoint,
+  type CheckpointResult,
+} from '@0xhoneyjar/loa-hounfour/commons';
+
+// ─── Dynamic Contracts (ADR-009) ─────────────────────────────────────────────
+export {
+  ProtocolCapabilitySchema,
+  RateLimitTierSchema,
+  ProtocolSurfaceSchema,
+  DynamicContractSchema,
+  type ProtocolCapability,
+  type RateLimitTier,
+  type ProtocolSurface,
+  type DynamicContract,
+} from '@0xhoneyjar/loa-hounfour/commons';
+
+export {
+  AssertionMethodSchema,
+  ContractNegotiationSchema,
+  type AssertionMethod,
+  type ContractNegotiation,
+} from '@0xhoneyjar/loa-hounfour/commons';
+
+export {
+  isNegotiationValid,
+  computeNegotiationExpiry,
+  type NegotiationValidityResult,
+} from '@0xhoneyjar/loa-hounfour/commons';
+
+export {
+  verifyMonotonicExpansion,
+  type MonotonicViolation,
+  type MonotonicExpansionResult,
+} from '@0xhoneyjar/loa-hounfour/commons';
+
+// ─── Enforcement SDK (ADR-008) ───────────────────────────────────────────────
+export {
+  evaluateGovernanceMutation,
+  type GovernanceMutationEvalResult,
+} from '@0xhoneyjar/loa-hounfour/commons';
+
+export {
+  buildSumInvariant,
+  buildNonNegativeInvariant,
+  buildBoundedInvariant,
+  createBalanceConservation,
+  createNonNegativeConservation,
+  createBoundedConservation,
+  createMonotonicConservation,
+  resetFactoryCounter,
+} from '@0xhoneyjar/loa-hounfour/commons';
+
+// ─── Error Taxonomy ──────────────────────────────────────────────────────────
+export {
+  InvariantViolationSchema,
+  InvalidTransitionSchema,
+  GuardFailureSchema,
+  EvaluationErrorSchema,
+  HashDiscontinuityErrorSchema,
+  PartialApplicationSchema,
+  GovernanceErrorSchema,
+  type InvariantViolation,
+  type InvalidTransition,
+  type GuardFailure,
+  type EvaluationError,
+  type HashDiscontinuityError,
+  type PartialApplication,
+  type GovernanceError,
+} from '@0xhoneyjar/loa-hounfour/commons';
+
+// ============================================================================
+// Canonical hounfour types — v8.2.0 Governance Extensions (cycle-043)
+// ModelPerformanceEvent (4th ReputationEvent variant), QualityObservation.
+// ============================================================================
+
+export {
+  ModelPerformanceEventSchema,
+  type ModelPerformanceEvent,
+} from '@0xhoneyjar/loa-hounfour/governance';
+
+export {
+  QualityObservationSchema,
+  type QualityObservation,
+} from '@0xhoneyjar/loa-hounfour/governance';
+
 // Compatibility — re-export from arrakis extension module
 export {
   CONTRACT_VERSION,

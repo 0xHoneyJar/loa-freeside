@@ -55,19 +55,25 @@ describe('CONTRACT_VERSION', () => {
     expect(CONTRACT_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
-  it('is 7.11.0 (contract version, tracks protocol version)', () => {
-    expect(CONTRACT_VERSION).toBe('7.11.0');
+  it('is 8.2.0 (contract version, tracks protocol version)', () => {
+    expect(CONTRACT_VERSION).toBe('8.2.0');
   });
 
-  it('validateCompatibility accepts matching major.minor', () => {
-    const result = validateCompatibility('7.0.0', '7.0.0');
+  it('validateCompatibility accepts matching version', () => {
+    const result = validateCompatibility('8.2.0', '8.2.0');
     expect(result.compatible).toBe(true);
   });
 
-  // DUAL-ACCEPT: remove after telemetry cutoff (Task 2.7)
-  it('validateCompatibility accepts v6.0.0 within min_supported_version window', () => {
-    const result = validateCompatibility('7.0.0', '6.0.0');
+  // Phase A dual-accept: v8.2.0 ↔ v7.11.0 PASS
+  it('validateCompatibility accepts v7.11.0 within dual-accept window (Phase A)', () => {
+    const result = validateCompatibility('8.2.0', '7.11.0');
     expect(result.compatible).toBe(true);
+  });
+
+  // Phase A: v8.2.0 ↔ v6.0.0 FAIL (too old)
+  it('validateCompatibility rejects v6.0.0 (outside dual-accept window)', () => {
+    const result = validateCompatibility('8.2.0', '6.0.0');
+    expect(result.compatible).toBe(false);
   });
 });
 
@@ -417,5 +423,138 @@ describe('ADR-001: TaskType schema identity guard', () => {
 
     // MUST import TaskType from root (positive check)
     expect(poolMappingSrc).toMatch(/from\s+['"]@0xhoneyjar\/loa-hounfour['"]/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 11. ADR-001 Import Guard — Layer 3: /commons Symbol Accessibility (cycle-043)
+// ---------------------------------------------------------------------------
+
+describe('ADR-001: /commons symbol accessibility guard', () => {
+  it('Layer 3: /commons schemas accessible from barrel', async () => {
+    const barrel = await import(
+      '../../themes/sietch/src/packages/core/protocol/index.js'
+    );
+
+    // Foundation schemas
+    expect(barrel.ConservationLawSchema).toBeDefined();
+    expect(barrel.AuditEntrySchema).toBeDefined();
+    expect(barrel.AuditTrailSchema).toBeDefined();
+    expect(barrel.AUDIT_TRAIL_GENESIS_HASH).toBeDefined();
+
+    // Governed resources
+    expect(barrel.GovernedCreditsSchema).toBeDefined();
+    expect(barrel.GovernedReputationSchema).toBeDefined();
+    expect(barrel.GovernedFreshnessSchema).toBeDefined();
+
+    // Hash chain
+    expect(barrel.HashChainDiscontinuitySchema).toBeDefined();
+    expect(barrel.QuarantineStatusSchema).toBeDefined();
+
+    // Dynamic contracts
+    expect(barrel.DynamicContractSchema).toBeDefined();
+    expect(barrel.ProtocolSurfaceSchema).toBeDefined();
+
+    // Error taxonomy
+    expect(barrel.GovernanceErrorSchema).toBeDefined();
+    expect(barrel.InvariantViolationSchema).toBeDefined();
+  });
+
+  it('Layer 3: /commons functions accessible from barrel', async () => {
+    const barrel = await import(
+      '../../themes/sietch/src/packages/core/protocol/index.js'
+    );
+
+    // Enforcement SDK
+    expect(barrel.evaluateGovernanceMutation).toBeTypeOf('function');
+    expect(barrel.createBalanceConservation).toBeTypeOf('function');
+    expect(barrel.createNonNegativeConservation).toBeTypeOf('function');
+    expect(barrel.buildSumInvariant).toBeTypeOf('function');
+
+    // Hash chain operations
+    expect(barrel.computeAuditEntryHash).toBeTypeOf('function');
+    expect(barrel.verifyAuditTrailIntegrity).toBeTypeOf('function');
+    expect(barrel.buildDomainTag).toBeTypeOf('function');
+    expect(barrel.createCheckpoint).toBeTypeOf('function');
+
+    // Dynamic contract validation
+    expect(barrel.verifyMonotonicExpansion).toBeTypeOf('function');
+    expect(barrel.isNegotiationValid).toBeTypeOf('function');
+  });
+
+  it('Layer 3: Commons State/Transition aliased with Commons prefix (no collision)', async () => {
+    const barrel = await import(
+      '../../themes/sietch/src/packages/core/protocol/index.js'
+    );
+
+    // Aliased commons schemas (avoid collision with Freeside state-machines.js)
+    expect(barrel.CommonsStateSchema).toBeDefined();
+    expect(barrel.CommonsTransitionSchema).toBeDefined();
+    expect(barrel.CommonsStateMachineConfigSchema).toBeDefined();
+
+    // Freeside-local state machine exports still work
+    expect(barrel.RESERVATION_MACHINE).toBeDefined();
+    expect(barrel.isValidTransition).toBeTypeOf('function');
+  });
+
+  it('Layer 3: v8.2.0 governance extensions in barrel', async () => {
+    const barrel = await import(
+      '../../themes/sietch/src/packages/core/protocol/index.js'
+    );
+
+    expect(barrel.ModelPerformanceEventSchema).toBeDefined();
+    expect(barrel.QualityObservationSchema).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 12. v8.2.0 Version Negotiation (cycle-043)
+// ---------------------------------------------------------------------------
+
+describe('v8.2.0 version negotiation', () => {
+  it('negotiateVersion returns preferred 8.2.0', async () => {
+    const barrel = await import(
+      '../../themes/sietch/src/packages/core/protocol/index.js'
+    );
+    const negotiation = barrel.negotiateVersion();
+    expect(negotiation.preferred).toBe('8.2.0');
+  });
+
+  it('negotiateVersion supports dual-accept [7.11.0, 8.2.0]', async () => {
+    const barrel = await import(
+      '../../themes/sietch/src/packages/core/protocol/index.js'
+    );
+    const negotiation = barrel.negotiateVersion();
+    expect(negotiation.supported).toContain('7.11.0');
+    expect(negotiation.supported).toContain('8.2.0');
+  });
+
+  it('CONTRACT_VERSION matches v8.2.0', async () => {
+    const barrel = await import(
+      '../../themes/sietch/src/packages/core/protocol/index.js'
+    );
+    expect(barrel.CONTRACT_VERSION).toBe('8.2.0');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 13. ModelPerformanceEvent & QualityObservation (v8.2.0, cycle-043)
+// ---------------------------------------------------------------------------
+
+describe('ModelPerformanceEvent v8.2.0', () => {
+  it('ModelPerformanceEventSchema is a valid TypeBox schema', async () => {
+    const { ModelPerformanceEventSchema } = await import(
+      '@0xhoneyjar/loa-hounfour/governance'
+    );
+    expect(ModelPerformanceEventSchema).toBeDefined();
+    expect(ModelPerformanceEventSchema).toHaveProperty('type');
+  });
+
+  it('QualityObservationSchema is a valid TypeBox schema', async () => {
+    const { QualityObservationSchema } = await import(
+      '@0xhoneyjar/loa-hounfour/governance'
+    );
+    expect(QualityObservationSchema).toBeDefined();
+    expect(QualityObservationSchema).toHaveProperty('type');
   });
 });
