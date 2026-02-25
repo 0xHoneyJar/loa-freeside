@@ -1,36 +1,41 @@
 {
   "verdict": "APPROVED",
-  "summary": "All previously-blocking requirement conflicts were resolved with deterministic E2E execution, explicit stub-only CI behavior, a defined test taxonomy for Redis isolation, clarified JWKS/S2S flow, and a Terraform-derived staging secrets checklist—without introducing new blocking constraints.",
+  "summary": "All previously blocking issues are addressed with a workable compatibility rollout, explicit CI strategy, clarified barrel/import-guard rules, and concrete canonicalization requirements, with no new truly blocking problems introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "E2E success criteria incorrectly relied on `docker compose up` rather than a deterministic test runner with teardown and exit code",
+      "original_issue": "“Zero breaking changes” contradicted by hard contract-version gate rejecting v7.x peers",
       "status": "fixed",
-      "notes": "FR-1 now defines an explicit runner model via `tests/e2e/e2e-entrypoint.sh` (start → health wait → run tests → exit code → `down -v`) and AC-1.1/1.7 make pass/fail + teardown measurable."
+      "notes": "PRD now defines a phased rollout with Phase A dual-accept (`validateCompatibility >=7.11.0 <9.0.0`) and only tightens after coordination (Phase C), aligning NFR-1 with distributed interoperability reality."
     },
     {
-      "original_issue": "CI/E2E topology ambiguously depended on external loa-finn repo via LOA_FINN_DIR, risking non-reproducible CI and fork failures",
+      "original_issue": "loa-finn coordination treated as out-of-scope without an executable gate/sequence/rollback",
       "status": "fixed",
-      "notes": "FR-1 and G-7 now explicitly state: default + CI use the in-repo stub with zero extra inputs; LOA_FINN_DIR is local-dev-only. AC-1.6 and FR-7 align CI to stub mode (no cross-repo checkout)."
+      "notes": "Section 3 adds Phase A/B/C sequencing, an explicit release gate preventing Phase C merge until loa-finn pins >=8.2.0, and a rollback/indefinite dual-accept plan."
     },
     {
-      "original_issue": "Redis isolation allowed skipping/mocking without defining which tests must still run, risking meaningless green CI or persistent red CI",
+      "original_issue": "Conformance vectors 3 → 219 lacked CI execution strategy, determinism rules, and time budget",
       "status": "fixed",
-      "notes": "FR-2 now defines a hard unit/integration/e2e taxonomy, maps `pnpm test` to unit, and requires integration tests to run in CI with a Redis service container (AC-2.3) while keeping unit tests Redis-free (AC-2.1)."
+      "notes": "FR-9 and NFR-5 define P0 vs nightly split, explicit wall-time budgets, parallelism, caching, fixed-clock injection, and hard-fail flake policy."
     },
     {
-      "original_issue": "Economic loop E2E referenced payment flows without specifying how external providers are avoided, risking flaky/impossible CI",
+      "original_issue": "Import guard vs barrel single-import-point contradiction (direct /commons imports allowed alongside barrel rule)",
       "status": "fixed",
-      "notes": "FR-6 adds an explicit external dependency policy (zero external network calls) and requires in-repo stubs/simulation for payment interactions, with concrete ACs (AC-6.1, AC-6.5)."
+      "notes": "FR-2/FR-10 now state a single rule: only the barrel may import `@0xhoneyjar/loa-hounfour/*`; all app code must import via `@arrakis/core/protocol`, including commons."
     },
     {
-      "original_issue": "JWKS bootstrap and S2S JWT flow direction was underspecified and could be inverted vs reality",
+      "original_issue": "GovernanceMutation actor_id premise contradicted by FR-5 requiring evaluateGovernanceMutation wiring",
       "status": "fixed",
-      "notes": "FR-1 now anchors issuer/audience and bootstrap mechanism: arrakis issues/signs, writes JWKS to shared volume; loa-finn stub reads/validates including `kid` match (AC-1.3/1.4)."
+      "notes": "NFR-1 is clarified: pin upgrade is non-breaking because current code doesn’t construct mutations, but FR-5 introduces new mutation construction and explicitly requires actor_id sourcing + acceptance/rejection tests."
     },
     {
-      "original_issue": "Staging checklist required enumerating secrets but lacked an authoritative inventory source and measurable deployable verification",
+      "original_issue": "Hash chain design lacked explicit canonicalization and hashed-field selection, risking integrity verification failures",
       "status": "fixed",
-      "notes": "FR-5 defines the inventory source (Terraform variable definitions + `.env.example`) and adds measurable verification gates (`terraform plan` success and `/health` 200) in AC-5.5."
+      "notes": "FR-6 now mandates using hounfour helpers end-to-end, explicitly calls out RFC 8785 JCS canonicalization inside `computeAuditEntryHash()`, specifies domain tag construction via `buildDomainTag()`, and states only `content_fields` participates per `AuditEntrySchema`, with conformance vectors referenced."
+    },
+    {
+      "original_issue": "Missing v8.x completeness checklist tying release deltas to consumed symbols/contract.json/barrel exports",
+      "status": "fixed",
+      "notes": "Section 8 provides a v8.x symbol delta checklist with ADOPT/DEFER decisions and FR mapping, plus an explicit statement that existing contract.json symbols remain valid and were typechecked after pin update."
     }
   ],
   "new_blocking_concerns": [],

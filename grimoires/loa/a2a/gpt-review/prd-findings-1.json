@@ -1,42 +1,48 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "This PRD targets the right launch blockers, but a few requirements conflict with the stated constraints and would likely leave CI/E2E non-reproducible or impossible to satisfy within this repo as written.",
+  "summary": "As written, this PRD will likely break S2S compatibility and/or fail CI because it asserts “zero breaking changes” while simultaneously requiring a hard contract-version gate and a 73× conformance-vector jump without a workable compatibility/rollout plan.",
   "blocking_issues": [
     {
-      "location": "FR-1 / G-1 / Success Criteria #1 (E2E topology runs)",
-      "issue": "Success criteria requires `docker compose ... up` to both start services and complete tests, but `up` alone does not run/complete an E2E test suite deterministically (it typically blocks and leaves services running).",
-      "why_blocking": "Teams will “pass” the requirement by getting containers to start, while the actual goal (a repeatable E2E validation run with teardown and a pass/fail exit code) remains unmet; CI cannot rely on a blocking `up` command as the success signal.",
-      "fix": "Change the canonical command to a deterministic runner, e.g. `docker compose -f ... up --build -d && ./tests/e2e/e2e-entrypoint.sh` or `docker compose -f ... run --rm e2e-runner` (preferred: add a dedicated `e2e-runner` service). Update AC-1.1 / Success Criteria #1 to require an exit code and teardown (`down -v`) and to specify where the tests execute (inside a container vs host)."
+      "location": "NFR-1 (Zero Breaking Changes) vs FR-8 / G-6 (provider_version_range >=8.2.0, CONTRACT_VERSION bump, validateCompatibility window tightened)",
+      "issue": "The PRD claims “zero breaking changes,” but it explicitly introduces a breaking interoperability change by rejecting v7.x peers via contract/JWT version negotiation.",
+      "why_blocking": "Even if the TypeScript build compiles, production-like integration between arrakis and loa-finn will fail immediately unless loa-finn upgrades in lockstep. That is a breaking change in the distributed system contract, and the PRD currently treats the loa-finn upgrade as out-of-scope while simultaneously requiring fail-fast rejection of v7.x peers.",
+      "fix": "Either (A) change the requirement to a compatibility window/dual-accept period (e.g., accept >=7.11.0 <9 with feature-gated commons usage) and define a deprecation timeline, or (B) move the loa-finn coordinated upgrade into in-scope with an explicit rollout plan, gating, and a CI integration check that proves negotiation succeeds end-to-end before merging."
     },
     {
-      "location": "FR-7 (CI E2E Pipeline) + NFR-2 (No New Dependencies) + FR-1 (compose includes `loa-finn-e2e` as stub or real via LOA_FINN_DIR)",
-      "issue": "CI requirement implies building/running the full topology on PR, but the topology optionally depends on an external repo (`LOA_FINN_DIR`) and/or a stub; the PRD does not mandate which mode CI uses, nor guarantee the stub is sufficient for all E2E assertions.",
-      "why_blocking": "If CI accidentally requires the external repo checkout, the requirement violates 'achievable within loa-freeside repo' and will be flaky/unbuildable on forks. If CI uses the stub but the tests implicitly expect real loa-finn behavior, E2E will fail or provide false confidence.",
-      "fix": "Make CI mode explicit: CI must run against the in-repo stub only (no cross-repo checkout). Add an acceptance criterion that the compose file defaults to stub mode with zero extra inputs, and that `LOA_FINN_DIR` is an optional local-dev override only. If any tests require real loa-finn, move them to a separate, non-blocking workflow."
+      "location": "Section 6 Out of Scope: “loa-finn v8.2.0 coordinated upgrade — Separate repo” vs Section 3/FR-8/Risks",
+      "issue": "Coordination with loa-finn is treated as a dependency but not made executable: no acceptance criteria, no sequencing, no rollback/temporary widening plan is actually required by the PRD.",
+      "why_blocking": "This creates a high probability of landing arrakis changes that cannot communicate with loa-finn (hard failure at auth/negotiation). In distributed protocol upgrades, “separate repo” is not a mitigation; it’s a failure mode unless the PRD enforces a coordination gate.",
+      "fix": "Add a blocking release criterion: ‘Do not merge unless loa-finn main is pinned to >=8.2.0 OR arrakis validateCompatibility accepts 7.11.0 during a defined window.’ Include a concrete sequence (who upgrades first), and a rollback plan (revert provider_version_range / widen window) if negotiation fails."
     },
     {
-      "location": "FR-2 (Redis Test Isolation) + NFR-1 (Zero Regression) + NFR-4 (CI must be green)",
-      "issue": "FR-2 allows either mocking Redis or conditionally skipping Redis-dependent tests, but NFR-1 forbids breaking existing tests and the PRD does not define which tests are allowed to be skipped vs must still run somewhere else.",
-      "why_blocking": "A common failure mode is making `pnpm test` green by skipping large integration coverage, silently reducing regression protection; alternatively, trying to keep all tests running without Redis contradicts the stated problem (202 tests require Redis). Without a defined test taxonomy and where each class runs, CI will either stay red or become meaningless.",
-      "fix": "Define a hard split: (a) `pnpm test` = unit-only, no external deps; (b) `pnpm test:integration` (or vitest project) = requires Redis; (c) CI runs both in separate jobs (unit always, integration optionally or on main/label). Update AC-2.2/2.3 to require that Redis-dependent tests still run in CI (just not in the default unit path), and specify the mechanism (vitest workspaces/projects + file globs)."
+      "location": "FR-9 / G-7 / Risk table: conformance vectors 3 → 219",
+      "issue": "CI impact is materially underestimated and the PRD doesn’t define how conformance vectors are executed (runtime, parallelism, caching, flake policy, time budget).",
+      "why_blocking": "A 73× increase can easily blow CI time limits, cause intermittent failures (hash/canonicalization differences, clock-dependent TTL vectors), or block merges. Without an explicit CI strategy and pass/fail policy, the upgrade can stall indefinitely even if code is correct.",
+      "fix": "Add explicit non-functional acceptance criteria: max CI time increase, parallelization approach, caching strategy, and deterministic execution rules (e.g., fixed clock injection for TTL vectors). If needed, stage vectors (P0 subset required to pass; remainder behind a nightly job) with a deadline to make all blocking."
     },
     {
-      "location": "FR-6 (Economic Loop E2E Validation) + FR-1 (Compose topology lists only 4 services: arrakis-e2e, redis-e2e, loa-finn-e2e, contract-validator)",
-      "issue": "Economic loop tests mention x402 settlement and NOWPayments handler, but the compose topology described does not include any payment provider stub/service, and the PRD does not state how external payment flows are simulated to make the test deterministic.",
-      "why_blocking": "If the billing full-loop test truly touches NOWPayments or any external network, E2E will be flaky or impossible in CI. If it doesn’t, the PRD is misrepresenting what is being validated, risking a false “economic loop validated” claim.",
-      "fix": "Make the test’s dependencies explicit and fully in-compose: either (1) confirm `billing-full-loop.e2e.test.ts` uses only internal stubs (loa-finn stub + local settlement simulation) and does not call external providers, or (2) add an in-repo stub container for the payment provider endpoints (still consistent with 'no new services' only if it already exists; otherwise relax NFR-2 or re-scope FR-6). Update AC-6.2 to specify exactly which endpoints are exercised and that no external network calls occur in CI."
+      "location": "FR-10 (Import guard extension) vs FR-2/FR-3 (barrel-as-single-import-point) and ADR-001 constraints",
+      "issue": "The PRD simultaneously reinforces ‘barrel as single import point’ (G-5) while allowing direct imports from @0xhoneyjar/loa-hounfour/commons and even allowing Enforcement SDK functions from both places.",
+      "why_blocking": "This is a governance/architecture contradiction that will cause drift: some call sites will bypass the barrel, leading to missing re-exports, inconsistent symbol resolution, and future upgrade pain (exactly the failure mode the barrel pattern is meant to prevent). It also weakens the import-guard’s ability to enforce protocol boundaries.",
+      "fix": "Pick one rule and enforce it: either (A) require all hounfour imports (including /commons) to go through @arrakis/core/protocol, and only allow the barrel to import subpaths; or (B) explicitly allow /commons direct imports and update G-5 to reflect that the barrel is not the single import point. Do not allow both for the same symbols."
     },
     {
-      "location": "FR-1 AC-1.3 (JWKS shared volume bootstrap) + FR-1 AC-1.4 (S2S JWT exchange succeeds)",
-      "issue": "The PRD assumes a specific JWKS bootstrap direction (arrakis writes JWKS, loa-finn reads it) and a specific S2S JWT validation flow, but does not define the source of truth for keys (who is issuer, who hosts JWKS) or how rotation is handled in the compose run.",
-      "why_blocking": "If the actual implementation expects the opposite (loa-finn hosts JWKS, arrakis fetches), the team will “fix” compose/tests in the wrong direction and break real integration. Key bootstrap mismatches are a classic E2E blocker that can consume the whole cycle.",
-      "fix": "Anchor this to the contract/implementation reality: specify issuer/audience, which service hosts JWKS endpoint, and the exact discovery mechanism used in E2E (shared volume vs HTTP). Update AC-1.3/1.4 to match the real flow and include a concrete assertion (e.g., request signed by X validated by Y with kid=...)."
+      "location": "FR-5 (GovernedCredits + evaluateGovernanceMutation) and NFR-1 claim: “GovernanceMutation is NOT constructed in freeside (actor_id safe)”",
+      "issue": "FR-5 requires wiring evaluateGovernanceMutation as an authorization gate for credit mutations, which necessarily implies constructing/handling GovernanceMutation inputs (including actor_id). This contradicts the NFR-1 analysis premise.",
+      "why_blocking": "If the team follows NFR-1’s assumption, they may not implement the required mutation construction paths correctly (or miss required fields), leading to runtime rejection of mutations or incorrect authorization behavior—core billing invariants failing is a launch-blocker.",
+      "fix": "Update the breaking-change analysis: acknowledge that freeside WILL construct GovernanceMutation as part of FR-5, and define the exact mutation shape(s) used for credits, including actor_id sourcing, and tests proving both acceptance and rejection paths."
     },
     {
-      "location": "FR-5 (Staging Deployment Checklist) + Goal G-5 ('deployable by following the steps')",
-      "issue": "The checklist is required to enumerate 'every AWS Secrets Manager secret' and make staging 'deployable', but the PRD does not define the authoritative inventory source (Terraform outputs? naming convention? environments) or the minimum bar for 'deployable' given secrets are explicitly a human step and placeholders exist.",
-      "why_blocking": "Without a defined inventory source, the checklist will drift immediately and miss a secret, causing staging deploy failure—the exact blocker this PRD is trying to remove. 'Deployable' is not measurable unless you define a verification step that can be executed.",
-      "fix": "Define the inventory source and verification: e.g., 'Secrets list is derived from Terraform module X / variables in infrastructure/terraform/env/staging' and include a final step 'terraform plan/apply succeeds and service reaches /health 200'. If full deploy is out of scope, change the goal to 'checklist complete and validated against Terraform-defined secrets list'."
+      "location": "FR-6 (hash chain) design note: domain tag format and canonicalization",
+      "issue": "The PRD specifies a domain tag format and hashing formula, but it does not require RFC 8785 JCS canonicalization (or equivalent) nor does it define what fields are included/excluded in ‘content_fields’ for hashing.",
+      "why_blocking": "Audit-trail integrity is extremely sensitive to canonicalization and field selection. If different services hash slightly different JSON (key order, number formatting, omitted undefineds), integrity verification will fail and quarantine will trigger incorrectly—effectively bricking audit trails.",
+      "fix": "Make canonicalization and field selection explicit and testable: require JCS canonicalization (or explicitly require using the library helper end-to-end with no reimplementation), define the hashed payload schema (exact fields), and add conformance vectors/tests that cover canonicalization edge cases."
+    },
+    {
+      "location": "Completeness requirement (Review Focus #1) vs PRD content: v8.0.0–v8.2.0 coverage",
+      "issue": "The PRD asserts completeness based on release notes/MIGRATION/ADRs, but it does not enumerate all v8.x changes in a checklist that can be verified against the actual consumed symbol set and contract.json.",
+      "why_blocking": "If any consumed symbol or required schema change is missed (common in union expansions, new modules, or barrel re-export gaps), you can ship an ‘upgraded’ dependency while silently not adopting required primitives—leading to drift, runtime negotiation mismatches, or missing types at compile time.",
+      "fix": "Add a blocking ‘v8.x delta checklist’ section generated from: (1) diff of exported symbols between v7.11.0 and v8.2.0 for the subpaths you consume, (2) diff of contract.json consumed symbols, and (3) a grep-based inventory of imports. Require sign-off that every new/changed consumed symbol is either adopted or explicitly deferred with rationale."
     }
   ],
   "question": "",

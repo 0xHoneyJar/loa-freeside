@@ -1,45 +1,48 @@
 {
-  "verdict": "CHANGES_REQUIRED",
-  "summary": "Most previously-blocking items are now aligned (network isolation contradiction removed; health checks and vitest workspace selection remain solid), but the JWKS atomic-write responsibility is still not concretely/consistently implementable as written and can reintroduce E2E startup flakiness.",
+  "verdict": "APPROVED",
+  "summary": "Iteration 3 integrates the Flatline findings without regressing the previously-approved fixes; the chain linearization/uniqueness, timestamp split, fail-closed safeguards, single-entry mutation coupling, reputation resolution, Phase C tightening, and pgaudit/partition-trigger defense-in-depth are all specified in an operationally sound way.",
   "previous_issues_status": [
     {
-      "original_issue": "Dual-network + `internal: true` egress-blocking claim is incorrect and can break connectivity",
+      "original_issue": "append() concurrency could fork the hash chain (no DB-enforced linearization)",
       "status": "fixed",
-      "notes": "Section 3.4/4.2/5.2/6 now consistently describe a single-network, published-ports topology with layered defenses, and explicitly reject `internal: true` dual-network. The earlier contradictory file inventory/risk language appears corrected."
+      "notes": "Still fixed: SERIALIZABLE + per-domain_tag pg_advisory_xact_lock + audit_trail_head sequencing remains a clear linearization mechanism."
     },
     {
-      "original_issue": "`wait_for_health` missing and host-side tooling assumptions (`redis-cli`, `wget`) make runner non-portable",
+      "original_issue": "Prune plan contradicted append-only enforcement and implied trigger disablement",
       "status": "fixed",
-      "notes": "Runner uses `docker compose exec -T` for health checks, removing host dependencies. This addresses the portability concern."
+      "notes": "Still fixed: pruning is partition detach/drop with explicit 'triggers are NEVER disabled' plus checkpoint anchoring and continuity verification."
     },
     {
-      "original_issue": "Vitest workspace/project selection unreliable; scripts may not load workspace and `--project unit` can fail",
+      "original_issue": "Append-only enforcement via RLS/privileges was claimed but not defined",
       "status": "fixed",
-      "notes": "All scripts explicitly pass `--workspace vitest.workspace.ts` and use `vitest run` for CI determinism, which resolves the prior selection/fallback failure mode."
+      "notes": "Still fixed and strengthened: explicit RLS policies, explicit role separation (app not owner), and least-privilege statements remain consistent with the design."
     },
     {
-      "original_issue": "Redis isolation relies on ECONNREFUSED instead of preventing Redis-dependent tests from running in unit",
+      "original_issue": "Quarantine did not define in-flight request behavior (fail closed vs buffer vs partial apply)",
       "status": "fixed",
-      "notes": "Static import guard is present and is a hard gate to prevent Redis imports in unit tests."
+      "notes": "Still fixed: governance-critical mutations rejected with 503 + Retry-After; non-critical telemetry explicitly routed outside the hash chain during quarantine; runbook added."
     },
     {
-      "original_issue": "JWKS atomic write requirement conflicts with 'zero new application logic' and can cause partial-read race",
-      "status": "not_fixed",
-      "notes": "Section 3.5 claims the runner 'already implements atomic JWKS writes' by curling JWKS to a tmp file + `jq` + `mv`, but the provided `e2e-entrypoint.sh` snippet in 3.1 does not contain that logic, and the overall architecture elsewhere still states 'arrakis writes /shared/arrakis-jwks.json (atomic)'. As written, it is unclear who is the writer of `/shared/arrakis-jwks.json` (Arrakis vs runner), and therefore unclear how atomicity is actually guaranteed without changing Arrakis. This ambiguity is exactly the race/flakiness risk from the prior review."
+      "original_issue": "actor_id trust boundary underspecified; actor_id nullable allowed unauthenticated entries",
+      "status": "fixed",
+      "notes": "Still fixed: actor_id is NOT NULL + non-empty CHECK; resolveActorId() throws if no authenticated identity; service identity is mTLS-derived; JWT verification requirements are stated."
     },
     {
-      "original_issue": "Integration CI Redis service container lacks canonical env wiring/readiness gate; may still ECONNREFUSED",
+      "original_issue": "DynamicContract loader failure modes and override controls were underspecified",
       "status": "fixed",
-      "notes": "Integration script sets `REDIS_URL=redis://localhost:6379` and the workflow defines a Redis service with a health check, which is sufficient assuming integration code reads `REDIS_URL` as required."
+      "notes": "Still fixed and improved: startup failure matrix is explicit; override blocked in production and size-limited; monotonic expansion violations are fatal; CI/CD config gate + checksum + canary reduce outage risk while preserving fail-closed semantics."
+    },
+    {
+      "original_issue": "append() hashing inputs used non-deterministic timestamps, breaking idempotency on retry",
+      "status": "fixed",
+      "notes": "Still fixed: event_time is caller-provided and included in hash; created_at is server-generated and excluded from hash; retry determinism is preserved."
+    },
+    {
+      "original_issue": "Version negotiation authority was ambiguous between local logic and hounfour",
+      "status": "fixed",
+      "notes": "Still fixed: validateCompatibility() remains the sole authority (delegated to hounfour), with explicit mixed-version tests and contract.json CI-only."
     }
   ],
-  "new_blocking_concerns": [
-    {
-      "location": "Section 3.5 JWKS Bootstrap Protocol (and mismatch with 3.1 runner + 2.2 data flow)",
-      "description": "JWKS atomic-write guarantee is internally inconsistent and not concretely implementable as specified: the SDD simultaneously asserts (a) Arrakis writes `/shared/arrakis-jwks.json` and (b) the runner script already performs an atomic curl/jq/mv write, but the runner snippet does not include that logic and there is no explicit mechanism that ensures the file is written atomically if Arrakis is the writer.",
-      "why_blocking": "If Arrakis writes the JWKS file non-atomically (or writes then truncates/rewrites), loa-finn’s health gate can observe partial JSON and flap, causing nondeterministic E2E startup failures. This is a determinism blocker for E2E and violates the stated goal of eliminating race conditions.",
-      "fix": "Pick one explicit, repo-real writer and document it end-to-end:\n- Option A (preferred if true): Confirm Arrakis already writes JWKS atomically (cite exact code path/function) and remove the runner 'curl/jq/mv' claim.\n- Option B: Make the runner (or a dedicated sidecar) the sole writer of `/shared/arrakis-jwks.json` using curl/jq/mv, and update the compose/data-flow so Arrakis serves JWKS over HTTP (or exposes a file) that the runner copies atomically. Ensure required tools (`jq`, `curl`) exist in the container where the command runs.\n- Option C: If Arrakis must write and is not atomic today, explicitly relax 'zero new application logic' to allow a minimal atomic-write change in Arrakis, and state that as an exception.\nIn all cases, update 2.2 + 3.1 + 3.5 so they agree on the single mechanism."
-    }
-  ],
+  "new_blocking_concerns": [],
   "iteration": 3
 }
