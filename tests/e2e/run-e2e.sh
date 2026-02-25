@@ -134,7 +134,7 @@ export VALIDATOR_URL="http://localhost:$E2E_VALIDATOR_PORT"
 export SKIP_E2E=false
 
 # Discover E2E test files (fail if zero — prevents false-green)
-e2e_files=$(find "$SCRIPT_DIR" -maxdepth 1 -name '*.e2e.test.ts' -o -name '*.test.ts' | grep -v 'stub' | sort)
+e2e_files=$(find "$SCRIPT_DIR" -maxdepth 1 \( -name '*.e2e.test.ts' -o -name '*.test.ts' \) | grep -v 'stub' | sort)
 e2e_count=$(echo "$e2e_files" | grep -c . || true)
 
 if [ "$e2e_count" -eq 0 ]; then

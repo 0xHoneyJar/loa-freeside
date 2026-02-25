@@ -83,16 +83,20 @@ is_private_ip() {
   return 1
 }
 
-# Check if IP is within Docker bridge subnet
+# Check if IP is within Docker bridge subnet (proper CIDR arithmetic)
 is_docker_subnet() {
   local ip="$1"
   [ -z "$DOCKER_SUBNET" ] && return 1
 
-  # Simple prefix check (works for /16 and /24 subnets)
-  local subnet_prefix="${DOCKER_SUBNET%%.*.*/*}"
-  local ip_prefix="${ip%%.*.*}"
-  [ "$subnet_prefix" = "$ip_prefix" ] && return 0
-  return 1
+  local subnet_ip="${DOCKER_SUBNET%%/*}"
+  local cidr="${DOCKER_SUBNET##*/}"
+  local -a s_octets i_octets
+  IFS='.' read -ra s_octets <<< "$subnet_ip"
+  IFS='.' read -ra i_octets <<< "$ip"
+  local s_int=$(( (s_octets[0]<<24) + (s_octets[1]<<16) + (s_octets[2]<<8) + s_octets[3] ))
+  local i_int=$(( (i_octets[0]<<24) + (i_octets[1]<<16) + (i_octets[2]<<8) + i_octets[3] ))
+  local mask=$(( 0xFFFFFFFF << (32-cidr) & 0xFFFFFFFF ))
+  [ $(( s_int & mask )) -eq $(( i_int & mask )) ]
 }
 
 # ---------------------------------------------------------------------------

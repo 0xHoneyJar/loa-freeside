@@ -56,9 +56,9 @@ jobs:
       IDENTITY_ANCHOR_ENABLED: 'true'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
 
@@ -91,8 +91,7 @@ jobs:
           path: /tmp/e2e-logs/
           retention-days: 7
 
-      - name: Tear down
+      - name: Clean up ephemeral keys
         if: always()
-        run: |
-          docker compose -f tests/e2e/docker-compose.e2e.yml down -v --remove-orphans 2>/dev/null || true
-          rm -rf .e2e-keys
+        run: rm -rf .e2e-keys
+        # Docker teardown handled by run-e2e.sh EXIT trap
