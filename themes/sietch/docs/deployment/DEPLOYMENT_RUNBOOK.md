@@ -23,7 +23,6 @@ This runbook provides step-by-step instructions for deploying and operating the 
 - Domain DNS configured (sietch-api.honeyjar.xyz)
 - GitHub repository access (SSH key)
 - Discord bot token and server IDs
-- Collab.Land Premium subscription
 - trigger.dev project credentials
 
 ### Step 1: VPS Setup
@@ -120,12 +119,12 @@ curl https://sietch-api.honeyjar.xyz/health
 tail -f /opt/sietch/logs/out.log
 ```
 
-### Step 7: Configure Collab.Land
+### Step 7: Configure Wallet Verification
 
-Follow `docs/deployment/collabland-setup.md` to:
-1. Add Collab.Land bot to Discord server
-2. Create custom API token gates
-3. Test verification flow
+Follow `docs/deployment/collabland-setup.md` (Wallet Verification Setup Guide) to:
+1. Configure wallet verification environment variables
+2. Set up Discord role hierarchy
+3. Test `/verify start` flow
 
 ### Step 8: Setup Backups
 
@@ -187,9 +186,9 @@ sqlite3 /opt/sietch/data/sietch.db "SELECT COUNT(*) FROM member_profiles WHERE o
 
 This shows how many v1.0 members need to complete onboarding.
 
-### Step 5: Configure Collab.Land for v2.0
+### Step 5: Configure Wallet Verification for v2.0
 
-Follow `collabland-setup.md` to update token gates for the new role structure.
+Follow `collabland-setup.md` (Wallet Verification Setup Guide) to configure the new dynamic role structure.
 
 ---
 
@@ -504,5 +503,5 @@ PM2 log rotation is configured automatically. Logs are:
 
 - **Repository**: https://github.com/0xHoneyJar/arrakis
 - **trigger.dev Dashboard**: https://trigger.dev
-- **Collab.Land Support**: https://collabland.freshdesk.com/
+- **Wallet Verification Guide**: `docs/deployment/collabland-setup.md`
 - **Discord Developer Portal**: https://discord.com/developers/applications

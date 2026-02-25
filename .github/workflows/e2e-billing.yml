@@ -45,7 +45,7 @@ concurrency:
 jobs:
   billing-e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
 
     env:
       BILLING_ADMIN_JWT_SECRET: e2e-admin-jwt-secret-for-testing-only-32ch
@@ -56,11 +56,20 @@ jobs:
       IDENTITY_ANCHOR_ENABLED: 'true'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install dependencies
+        working-directory: themes/sietch
+        run: pnpm install --frozen-lockfile
 
       - name: Generate ES256 test keypair
         run: |
@@ -69,89 +78,20 @@ jobs:
           cat .e2e-keys/arrakis-private.pem >> "$GITHUB_ENV"
           echo "KEYPAIR_EOF" >> "$GITHUB_ENV"
 
-      - name: Build and start Docker Compose stack
-        run: |
-          docker compose -f tests/e2e/docker-compose.e2e.yml build arrakis-e2e contract-validator
-          docker compose -f tests/e2e/docker-compose.e2e.yml up -d redis-e2e arrakis-e2e contract-validator
-
-      - name: Wait for services to be healthy
-        run: |
-          echo "Waiting for arrakis to be healthy..."
-          for i in $(seq 1 60); do
-            if curl -sf http://localhost:3099/health > /dev/null 2>&1; then
-              echo "Arrakis healthy after ${i}s"
-              break
-            fi
-            if [ "$i" -eq 60 ]; then
-              echo "Timeout waiting for arrakis"
-              docker compose -f tests/e2e/docker-compose.e2e.yml logs arrakis-e2e
-              exit 1
-            fi
-            sleep 1
-          done
-          echo "Waiting for contract-validator to be healthy..."
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:3199/health > /dev/null 2>&1; then
-              echo "Contract validator healthy after ${i}s"
-              break
-            fi
-            if [ "$i" -eq 30 ]; then
-              echo "Timeout waiting for contract-validator"
-              docker compose -f tests/e2e/docker-compose.e2e.yml logs contract-validator
-              exit 1
-            fi
-            sleep 1
-          done
-
-      - name: Install test dependencies
-        working-directory: themes/sietch
-        run: npm ci
-
-      - name: Run billing E2E smoke tests
-        run: |
-          cd themes/sietch
-          SKIP_E2E=false \
-          ARRAKIS_BASE_URL=http://localhost:3099 \
-          COMPOSE_FILE=../../tests/e2e/docker-compose.e2e.yml \
-            npx vitest run ../../tests/e2e/billing-smoke.e2e.test.ts \
-              --reporter=verbose
+      - name: Run E2E tests via runner
+        run: ./tests/e2e/run-e2e.sh
         env:
-          SKIP_E2E: 'false'
+          E2E_LOG_DIR: /tmp/e2e-logs
 
-      - name: Run full-loop billing E2E tests
-        run: |
-          cd themes/sietch
-          SKIP_E2E=false \
-          ARRAKIS_BASE_URL=http://localhost:3099 \
-          COMPOSE_FILE=../../tests/e2e/docker-compose.e2e.yml \
-            npx vitest run ../../tests/e2e/billing-full-loop.e2e.test.ts \
-              --reporter=verbose
-        env:
-          SKIP_E2E: 'false'
-
-      # Sprint 256, Task 5.4: Cross-system contract validation tests
-      - name: Run cross-system contract tests
-        run: |
-          cd themes/sietch
-          ARRAKIS_E2E_URL=http://localhost:3099 \
-          VALIDATOR_E2E_URL=http://localhost:3199 \
-            npx vitest run tests/e2e/cross-system-contract.e2e.test.ts \
-              --reporter=verbose
-        env:
-          BILLING_INTERNAL_JWT_SECRET: e2e-s2s-jwt-secret-for-testing-only-32chr
-
-      - name: Collect logs on failure
+      - name: Upload E2E logs on failure
         if: failure()
-        run: |
-          echo "=== arrakis-e2e logs ==="
-          docker compose -f tests/e2e/docker-compose.e2e.yml logs --tail=100 arrakis-e2e
-          echo "=== redis-e2e logs ==="
-          docker compose -f tests/e2e/docker-compose.e2e.yml logs --tail=50 redis-e2e
-          echo "=== contract-validator logs ==="
-          docker compose -f tests/e2e/docker-compose.e2e.yml logs --tail=50 contract-validator
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-billing-logs
+          path: /tmp/e2e-logs/
+          retention-days: 7
 
-      - name: Tear down
+      - name: Clean up ephemeral keys
         if: always()
-        run: |
-          docker compose -f tests/e2e/docker-compose.e2e.yml down -v --remove-orphans
-          rm -rf .e2e-keys
+        run: rm -rf .e2e-keys
+        # Docker teardown handled by run-e2e.sh EXIT trap

@@ -1,6 +1,6 @@
 # Coexistence Mode Admin Setup Guide
 
-This guide explains how to set up and manage Arrakis coexistence mode alongside an existing token-gating bot (e.g., Collab.Land, Guild.xyz).
+This guide explains how to set up and manage Arrakis coexistence mode alongside an existing token-gating bot (e.g., Guild.xyz or another third-party service).
 
 ## Overview
 
@@ -42,7 +42,7 @@ Use the Discord command or API to initialize coexistence mode:
 POST /api/v1/coexistence/:guildId/init
 {
   "incumbentBotId": "123456789012345678",
-  "incumbentBotName": "Collab.Land",
+  "incumbentBotName": "IncumbentBot",
   "managedRoleIds": ["role1", "role2", "role3"],
   "rolePrefix": "[Holder]"
 }

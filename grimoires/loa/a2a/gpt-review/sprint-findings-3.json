@@ -1,32 +1,33 @@
 {
-  "verdict": "CHANGES_REQUIRED",
-  "summary": "Sprint 4 mostly maps to the Bridgebuilder findings, but there are a few concrete plan defects (wrong test paths, missing handling of MEDIUM-2 deferral, and a mode-caching testability gap) that can cause implementation/CI to fail or the review to re-flag issues.",
-  "blocking_issues": [
+  "verdict": "APPROVED",
+  "summary": "All three Flatline integrations (duration estimates, explicit e2e workspace project, and gate failure handling) are internally consistent with the existing plan, don’t conflict with the runner-based E2E execution, and no acceptance criteria appear removed or materially altered.",
+  "previous_issues_status": [
     {
-      "location": "Sprint 4 Task 4.1 (tests path) + Sprint 1 Task 1.3 (tests path)",
-      "issue": "Inconsistent/likely incorrect test file locations: Sprint 1 creates `themes/sietch/src/packages/core/protocol/__tests__/graduation.test.ts`, but Sprint 4 references `themes/sietch/tests/unit/graduation.test.ts` (different root and naming). Same mismatch appears for micro-usd-schema tests in Task 4.2 (`themes/sietch/tests/unit/...`) vs Sprint 2 Task 2.3 (`themes/sietch/src/packages/core/protocol/__tests__/...`).",
-      "why_blocking": "If the repo’s test discovery is configured for one convention (e.g., `src/**/__tests__`), adding/altering tests in a different directory can lead to tests not running (false green) or CI failing due to missing files/duplicate suites. This is a common, real merge blocker because the acceptance criteria require tests to exist and pass in CI.",
-      "fix": "Pick one test location convention and use it consistently across Sprints 1/2/4. Concretely: update Sprint 4 to modify the existing files created in Sprint 1/2 (`themes/sietch/src/packages/core/protocol/__tests__/graduation.test.ts` and `.../micro-usd-schema.test.ts`), or explicitly add a task/AC to wire `themes/sietch/tests/unit/**` into the test runner if that’s the intended location."
+      "original_issue": "Integration tests require Redis, but plan didn’t specify local/CI Redis provisioning or REDIS_URL wiring",
+      "status": "fixed",
+      "notes": "Still fixed: Task 1.1 continues to specify local Redis options and CI redis service + REDIS_URL wiring."
     },
     {
-      "location": "Sprint 4 scope vs Bridgebuilder MEDIUM-2 deferral",
-      "issue": "MEDIUM-2 is stated as deferred, but Sprint 4 has no explicit task/acceptance criterion to document the deferral in the PR (or in a tracked artifact) with justification and a follow-up pointer.",
-      "why_blocking": "Your cycle acceptance criteria require: “All MEDIUM findings either addressed or explicitly deferred with justification.” Without an explicit deliverable, this can be missed during implementation and the Bridgebuilder re-review can re-flag it as “silently dropped,” blocking merge readiness.",
-      "fix": "Add a small Sprint 4 task (or add an AC to 4.3) to: (a) record MEDIUM-2 deferral in the PR description or a `docs/reviews/bridge-20260224-a79420.md` note, (b) state it is pre-existing middleware outside PR scope, and (c) link to a follow-up issue/PR stub."
+      "original_issue": "E2E runner criteria didn’t specify how E2E tests are invoked / tied to test:e2e script",
+      "status": "fixed",
+      "notes": "Still fixed: Task 1.1 maps pnpm test:e2e to run-e2e.sh, and Task 2.1 pins the vitest invocation and zero-test discovery failure behavior."
     },
     {
-      "location": "Sprint 4 Task 4.2 (mode consistency test) + architecture constraint (module-level caching / cold-restart)",
-      "issue": "The plan requires testing mode consistency across legacy/shadow/enforce “under controlled env var settings,” but `resolveParseMode()` is module-cached by design. Without an explicit test strategy (module reset / isolated import), the test can be impossible or flaky because once imported, changing `process.env.PARSE_MICRO_USD_MODE` won’t affect the cached mode.",
-      "why_blocking": "This can cause the Sprint 4 acceptance criteria to be unachievable in the existing test process (single Node/Vitest worker), leading to either failing tests or a compromised test that doesn’t actually validate the invariant—both are merge blockers given the MEDIUM finding is about mode consistency.",
-      "fix": "Add explicit implementation notes/AC for how to test cached-mode modules: e.g., in Vitest use `vi.resetModules()` + dynamic `import()` per mode, or run the mode-matrix as separate test files executed in separate workers/processes. Also ensure `resolveParseMode()` reads env only at first import (as intended) and tests reflect that by setting env before import."
+      "original_issue": "JWKS/JWT validation might violate “zero new application logic” if stub changes aren’t allowed",
+      "status": "fixed",
+      "notes": "Still fixed: Task 2.3 scope note explicitly allows tests/e2e/* harness changes while forbidding production package changes."
     },
     {
-      "location": "Sprint 4 Task 4.1 (clock-skew warning) vs stated MEDIUM-1 symptom",
-      "issue": "MEDIUM-1 references a silent clamp via `Math.max(0, ...)` in `graduation.ts`, but Sprint 1’s design for `evaluateGraduation()` is BigInt/PPM-focused and may not even use `Math.max` (or may use BigInt time arithmetic). Sprint 4.1 is written against a specific line-level implementation detail that may not exist after Sprint 1 implementation.",
-      "why_blocking": "This can cause Sprint 4 to be blocked waiting on a specific code shape, or lead to a warning condition that never triggers (or triggers incorrectly), failing the “clear, testable acceptance criteria” requirement and risking the Bridgebuilder re-review still seeing “silent clamp” behavior.",
-      "fix": "Rewrite Task 4.1 acceptance criteria to be behavior-based rather than line-based: e.g., “If `now < deployTimestamp`, evaluator must (a) treat elapsed observation as 0, and (b) include a clock-skew warning.” Avoid referencing `Math.max`/line numbers; specify the invariant and test it."
+      "original_issue": "Static egress assertion via /proc/net/tcp was underspecified and likely infeasible/flaky",
+      "status": "fixed",
+      "notes": "Still fixed: Task 2.5 retains the concrete parsing/allowlist algorithm and determinism proof AC."
+    },
+    {
+      "original_issue": "Static import guard was too narrow (directory scope + only ESM import style)",
+      "status": "fixed",
+      "notes": "Still fixed: Task 1.5 continues to cover all workspace test dirs and ESM/CJS/dynamic patterns with a regression-proof AC."
     }
   ],
-  "question": "",
-  "iteration": 1
+  "new_blocking_concerns": [],
+  "iteration": 3
 }

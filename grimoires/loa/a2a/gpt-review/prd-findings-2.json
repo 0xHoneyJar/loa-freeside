@@ -1,31 +1,36 @@
 {
   "verdict": "APPROVED",
-  "summary": "All five previously blocking inconsistencies were addressed in a way that makes the PRD internally consistent with a schema-only adoption scope, and no new truly blocking problems were introduced.",
+  "summary": "All previously-blocking requirement conflicts were resolved with deterministic E2E execution, explicit stub-only CI behavior, a defined test taxonomy for Redis isolation, clarified JWKS/S2S flow, and a Terraform-derived staging secrets checklist—without introducing new blocking constraints.",
   "previous_issues_status": [
     {
-      "original_issue": "NFR-2 (Additive Only) conflicted with FR-4 (evaluation geometry) and FR-2 (hash chain verification) implying runtime behavior changes",
+      "original_issue": "E2E success criteria incorrectly relied on `docker compose up` rather than a deterministic test runner with teardown and exit code",
       "status": "fixed",
-      "notes": "NFR-2 now explicitly constrains the cycle to schema-only adoption; FR-2 AC-2.4 is utility-only (no chain construction/verification) and FR-4 ACs explicitly state re-export only / no runtime behavior change."
+      "notes": "FR-1 now defines an explicit runner model via `tests/e2e/e2e-entrypoint.sh` (start → health wait → run tests → exit code → `down -v`) and AC-1.1/1.7 make pass/fail + teardown measurable."
     },
     {
-      "original_issue": "ADR-001 aliasing ambiguity: barrel re-exporting both aliased and unaliased governance names would reintroduce collisions/type identity drift",
+      "original_issue": "CI/E2E topology ambiguously depended on external loa-finn repo via LOA_FINN_DIR, risking non-reproducible CI and fork failures",
       "status": "fixed",
-      "notes": "FR-3 AC-3.1 now requires ONLY aliased Governance* variants at the protocol barrel and explicitly forbids re-exporting unaliased governance TaskType/ReputationEvent at the barrel level; this resolves the collision risk cleanly."
+      "notes": "FR-1 and G-7 now explicitly state: default + CI use the in-repo stub with zero extra inputs; LOA_FINN_DIR is local-dev-only. AC-1.6 and FR-7 align CI to stub mode (no cross-repo checkout)."
     },
     {
-      "original_issue": "Contract versioning strategy was underspecified and could break convergence (provider_version_range bump vs 'strict superset' and unclear contract subject)",
+      "original_issue": "Redis isolation allowed skipping/mocking without defining which tests must still run, risking meaningless green CI or persistent red CI",
       "status": "fixed",
-      "notes": "FR-5 now clearly defines the contract subject (freeside barrel imports asserted against hounfour provider), declares the provider_version_range bump to >=7.11.0 as deliberate, and adds AC-5.6 to enforce strict superset of prior entrypoints."
+      "notes": "FR-2 now defines a hard unit/integration/e2e taxonomy, maps `pnpm test` to unit, and requires integration tests to run in CI with a Redis service container (AC-2.3) while keeping unit tests Redis-free (AC-2.1)."
     },
     {
-      "original_issue": "Version pin contradiction: requirement said 'tag not SHA' but risk mitigation allowed SHA fallback",
+      "original_issue": "Economic loop E2E referenced payment flows without specifying how external providers are avoided, risking flaky/impossible CI",
       "status": "fixed",
-      "notes": "FR-6 now enumerates acceptable immutable references, bans untagged SHAs, and makes failure to resolve tag/npm a blocker with escalation rather than silent SHA fallback."
+      "notes": "FR-6 adds an explicit external dependency policy (zero external network calls) and requires in-repo stubs/simulation for payment interactions, with concrete ACs (AC-6.1, AC-6.5)."
     },
     {
-      "original_issue": "Open TaskType union could break closed-world assumptions downstream even if upstream change is additive",
+      "original_issue": "JWKS bootstrap and S2S JWT flow direction was underspecified and could be inverted vs reality",
       "status": "fixed",
-      "notes": "FR-1 adds an explicit closed-world audit statement and AC-1.6/AC-1.5 constrain this cycle to schema-only re-export without introducing governance TaskType into routing/mapping/switch logic, preventing accidental behavioral/validation breakage."
+      "notes": "FR-1 now anchors issuer/audience and bootstrap mechanism: arrakis issues/signs, writes JWKS to shared volume; loa-finn stub reads/validates including `kid` match (AC-1.3/1.4)."
+    },
+    {
+      "original_issue": "Staging checklist required enumerating secrets but lacked an authoritative inventory source and measurable deployable verification",
+      "status": "fixed",
+      "notes": "FR-5 defines the inventory source (Terraform variable definitions + `.env.example`) and adds measurable verification gates (`terraform plan` success and `/health` 200) in AC-5.5."
     }
   ],
   "new_blocking_concerns": [],

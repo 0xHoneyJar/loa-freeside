@@ -97,6 +97,10 @@ export class LoaFinnE2EStub {
 
   // arrakis JWKS for inbound JWT validation
   private arrakisJwks: ReturnType<typeof createRemoteJWKSet> | null = null;
+  private jwksLoaded = false;
+
+  // jti replay protection (NFR-5)
+  private seenJtis = new Set<string>();
 
   // Collected usage reports for assertion
   private usageReports: UsageReport[] = [];
@@ -139,6 +143,13 @@ export class LoaFinnE2EStub {
         this.config.arrakisBaseUrl,
       );
       this.arrakisJwks = createRemoteJWKSet(jwksUrl);
+
+      // Probe JWKS endpoint to set jwksLoaded flag (health gate)
+      this.probeJwks(jwksUrl.toString()).catch(() => {
+        // Will be retried via health check polling
+      });
+    } else {
+      this.jwksLoaded = true; // No validation = no gate
     }
 
     return new Promise((resolve, reject) => {
@@ -199,6 +210,7 @@ export class LoaFinnE2EStub {
   reset(): void {
     this.requestLog = [];
     this.usageReports = [];
+    this.seenJtis.clear();
   }
 
   // --------------------------------------------------------------------------
@@ -466,6 +478,20 @@ export class LoaFinnE2EStub {
   // --------------------------------------------------------------------------
 
   private handleHealth(res: ServerResponse): void {
+    // JWKS health gate: return 503 until JWKS parses as valid JSON (AC-1.3)
+    if (!this.jwksLoaded) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          status: 'unavailable',
+          reason: 'JWKS not loaded',
+          contract_version: CONTRACT_VERSION,
+          stub: true,
+        }),
+      );
+      return;
+    }
+
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(
       JSON.stringify({
@@ -479,6 +505,29 @@ export class LoaFinnE2EStub {
   // --------------------------------------------------------------------------
   // JWT Validation
   // --------------------------------------------------------------------------
+
+  /**
+   * Probe arrakis JWKS endpoint to set jwksLoaded flag.
+   * Retries until successful or caller gives up.
+   */
+  private async probeJwks(jwksUrl: string): Promise<void> {
+    const maxRetries = 20;
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        const resp = await fetch(jwksUrl);
+        if (resp.ok) {
+          const body = await resp.json();
+          if (body && Array.isArray(body.keys) && body.keys.length > 0) {
+            this.jwksLoaded = true;
+            return;
+          }
+        }
+      } catch {
+        // JWKS not ready yet
+      }
+      await this.delay(1000);
+    }
+  }
 
   private async validateJwt(
     req: IncomingMessage,
@@ -499,8 +548,32 @@ export class LoaFinnE2EStub {
       const { payload } = await jwtVerify(token, this.arrakisJwks, {
         issuer: 'arrakis',
         audience: 'loa-finn',
-        clockTolerance: 30,
+        clockTolerance: 30, // NFR-5: 30s clock skew tolerance
       });
+
+      // NFR-5: Mandatory claim validation (iss, aud, exp, iat, jti)
+      if (!payload.iss || !payload.aud || !payload.exp || !payload.iat || !payload.jti) {
+        return null; // Missing mandatory claims
+      }
+
+      // NFR-5: TTL max 5 minutes
+      const ttl = (payload.exp as number) - (payload.iat as number);
+      if (ttl > 300) {
+        return null; // TTL exceeds 5 min
+      }
+
+      // NFR-5: jti uniqueness — replay protection
+      const jti = payload.jti as string;
+      if (this.seenJtis.has(jti)) {
+        return null; // Replay detected
+      }
+      this.seenJtis.add(jti);
+
+      // Mark JWKS as loaded on first successful validation
+      if (!this.jwksLoaded) {
+        this.jwksLoaded = true;
+      }
+
       return payload as Record<string, unknown>;
     } catch {
       return null;

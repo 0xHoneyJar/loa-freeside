@@ -399,7 +399,7 @@ For comprehensive permission testing, create test accounts for each tier:
 
 ### Manual Testing Procedure
 
-1. Create test accounts with Collab.Land token verification
+1. Create test accounts with wallet verification (`/verify start`)
 2. Complete onboarding for each account
 3. Verify channel visibility matches permission matrix
 4. Test message sending permissions (should fail where read-only)

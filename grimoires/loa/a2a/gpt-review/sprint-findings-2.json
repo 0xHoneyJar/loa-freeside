@@ -1,31 +1,31 @@
 {
   "verdict": "APPROVED",
-  "summary": "All five previously-blocking issues were addressed with concrete, testable acceptance criteria and the updated task dependencies remove the earlier sequencing/verification gaps.",
+  "summary": "All previously-blocking gaps (Redis provisioning, deterministic E2E invocation, JWKS scope feasibility, egress check feasibility, and the Redis import guard) are addressed with concrete, measurable acceptance criteria, and no new truly-blocking issues were introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "Version pin immutability mismatch between Task 1.1 and Success Criteria #1 (ranges not immutable; DIST_HASH reproducibility risk)",
+      "original_issue": "Integration tests require Redis, but plan didn’t specify local/CI Redis provisioning or REDIS_URL wiring",
       "status": "fixed",
-      "notes": "Task 1.1 AC now explicitly requires an exact pin (no ^/~), lockfile update, and clean reinstall DIST_HASH reproducibility; Success Criteria #1 was updated to match. This satisfies the supply-chain determinism intent."
+      "notes": "Task 1.1 now explicitly defines local dev Redis options (compose redis-e2e or redis-server), and CI integration job uses a GitHub Actions redis service with health check plus REDIS_URL=redis://localhost:6379. This closes the common ECONNREFUSED-in-CI failure mode."
     },
     {
-      "original_issue": "NativeEnforcement re-export planned in 1.4 but not included in 1.2 export verification gate (could export non-existent/type-only symbol)",
+      "original_issue": "E2E runner criteria didn’t specify how E2E tests are invoked / tied to test:e2e script",
       "status": "fixed",
-      "notes": "Task 1.2 now includes explicit verification for NativeEnforcement with a type-only note and a rule to keep type-only items out of contract.json. The added export mapping table artifact also prevents future ambiguity."
+      "notes": "Task 2.1 now pins an explicit vitest invocation, requires non-zero test discovery, and states it is the command that pnpm test:e2e calls via run-e2e.sh. Exit code propagation is also specified."
     },
     {
-      "original_issue": "Task 2.2 (bundle hash recomputation) lacked explicit dependency on Task 2.1 though both edit contract.json (merge/overwrite risk)",
+      "original_issue": "JWKS/JWT validation might violate “zero new application logic” if stub changes aren’t allowed",
       "status": "fixed",
-      "notes": "Task 2.2 now depends on 2.1 and includes an AC requiring validate.mjs to pass after both changes in the final contract.json state, which closes the sequencing/consistency gap."
+      "notes": "Task 2.3 adds a clear scope boundary: changes under tests/e2e/* (stub/harness) are allowed as test infrastructure; production packages are not. That makes the task executable under the constraint."
     },
     {
-      "original_issue": "Task 2.4 identity check was underspecified (how to assert identity; runtime vs type-only; duplicate module instance risk)",
+      "original_issue": "Static egress assertion via /proc/net/tcp was underspecified and likely infeasible/flaky",
       "status": "fixed",
-      "notes": "Layer 1 now specifies reference-equality assertions with explicit import paths, adds a negative assertion against the governance subpath schema, and adds a single-resolved-copy precondition (pnpm dedup). The fallback to Layer 2 if schema is type-only is a reasonable, non-blocking contingency."
+      "notes": "Task 2.5 now specifies a concrete algorithm (tcp/tcp6 parsing, state filtering, RFC1918 + loopback + link-local ignores, Docker subnet allowlisting via docker network inspect) and includes a determinism proof (clean run passes; injected curl to example.com fails with decoded IP). This is sufficient to implement deterministically without new deps."
     },
     {
-      "original_issue": "Task 1.3 lacked a concrete constraint on what must be barrel-exported vs contract-listed, risking non-aliased governance exports and collisions",
+      "original_issue": "Static import guard was too narrow (directory scope + only ESM import style)",
       "status": "fixed",
-      "notes": "Task 1.3 now explicitly forbids unaliased governance TaskType/ReputationEvent exports and uses the Task 1.2 export mapping table as the authoritative source for barrel vs contract actions, which makes the governance surface controllable and reviewable."
+      "notes": "Task 1.5 expands scope to all workspace test dirs, excludes integration/e2e suffixes, matches ESM+CJS+dynamic import patterns for redis/ioredis, and includes an explicit regression-proof AC (temporary require('ioredis') must fail)."
     }
   ],
   "new_blocking_concerns": [],

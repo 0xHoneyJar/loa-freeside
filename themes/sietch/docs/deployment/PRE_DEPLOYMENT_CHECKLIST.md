@@ -7,7 +7,7 @@ This checklist guides you through obtaining all required credentials and configu
 1. [DNS Configuration](#1-dns-configuration)
 2. [Discord Bot Setup](#2-discord-bot-setup)
 3. [trigger.dev Setup](#3-triggerdev-setup)
-4. [Collab.Land Setup](#4-collabland-setup)
+4. [Wallet Verification Setup](#4-wallet-verification-setup-eip-191)
 5. [Berachain RPC Configuration](#5-berachain-rpc-configuration)
 6. [Admin API Keys](#6-admin-api-keys)
 7. [Final Checklist](#7-final-checklist)
@@ -174,46 +174,40 @@ The `sync-eligibility` task runs every 6 hours automatically.
 
 ---
 
-## 4. Collab.Land Setup
+## 4. Wallet Verification Setup (EIP-191)
 
-### Step 4.1: Invite Collab.Land Bot
+> Sietch uses in-house EIP-191 wallet verification via the `/verify` slash command.
+> No third-party subscription required.
 
-1. Go to [Collab.Land](https://collab.land)
-2. Click "Get Started" → "Invite to Discord"
-3. Select your Sietch Discord server
-4. Authorize the bot
+### Step 4.1: Configure Environment
 
-### Step 4.2: Access Command Center
+Add to your `.env.local`:
 
-1. In your Discord server, type `/collabland-config`
-2. Click the link to open Command Center
-3. Log in with Discord
+```bash
+WALLET_VERIFICATION_ENABLED=true
+VERIFY_SESSION_EXPIRY_MINUTES=15
+VERIFY_BASE_URL=https://your-domain.com/verify
+```
 
-### Step 4.3: Configure Token Gate (Custom API)
+### Step 4.2: Configure Role Hierarchy
 
-**Note**: Custom API token gates require Collab.Land Premium subscription.
+In Discord Server Settings > Roles, arrange (top to bottom):
 
-1. Navigate to "Token Gating Rules"
-2. Click "Create Rule" → "Custom API"
-3. Configure the rule:
+1. @Admin
+2. @Sietch Bot (must be above all managed roles)
+3. @Naib
+4. @Fedaykin
+5. @Trusted, @Veteran, @Engaged, @Onboarded
+6. @everyone
 
-**For Fedaykin (top 8-69)**:
-- **Name**: Sietch Fedaykin
-- **API Endpoint**: `https://sietch-api.honeyjar.xyz/eligibility/{wallet}`
-- **Method**: GET
-- **Success Condition**: `$.isEligible == true && $.currentTier == "fedaykin"`
-- **Role to Grant**: Fedaykin
+### Step 4.3: Test Verification
 
-**For Naib (top 7)**:
-- **Name**: Sietch Naib
-- **API Endpoint**: `https://sietch-api.honeyjar.xyz/eligibility/{wallet}`
-- **Method**: GET
-- **Success Condition**: `$.isEligible == true && $.currentTier == "naib"`
-- **Role to Grant**: Naib
+1. In Discord, run `/verify start`
+2. Click the verification link
+3. Connect wallet and sign EIP-191 message
+4. Return to Discord — role should be assigned based on BGT rank
 
-4. Save and test with a known eligible wallet
-
-**No env vars needed** - Collab.Land calls your API.
+See `docs/deployment/collabland-setup.md` (now the Wallet Verification Setup Guide) for detailed testing steps.
 
 ---
 
@@ -297,8 +291,7 @@ Store these keys in your password manager (1Password).
 - [ ] DNS A record created and propagated
 - [ ] Discord bot invited to server
 - [ ] Discord bot has required permissions
-- [ ] Collab.Land bot invited to server
-- [ ] Collab.Land Premium subscription active
+- [ ] Wallet verification configured (`WALLET_VERIFICATION_ENABLED=true`)
 - [ ] trigger.dev account created
 
 ### Secure Storage
@@ -370,7 +363,7 @@ Once all items are checked off:
 2. Run the setup script: `sudo bash setup-vps.sh`
 3. Edit `.env` with your credentials
 4. Run the deploy script: `./deploy.sh main`
-5. Configure Collab.Land token gates
-6. Test the full flow!
+5. Test `/verify start` flow in Discord
+6. Verify role assignment works!
 
 See `DEPLOYMENT_RUNBOOK.md` for detailed deployment steps.

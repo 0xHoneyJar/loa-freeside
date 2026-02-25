@@ -278,3 +278,81 @@ jobs:
       - name: Lint YAML files
         run: yamllint .github/ || true
         # Note: Using || true to not fail on lint warnings for now
+
+  # =============================================================================
+  # UNIT TESTS - No external services required
+  # =============================================================================
+  unit-tests:
+    name: Unit Tests
+    needs: template-guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install dependencies
+        working-directory: themes/sietch
+        run: pnpm install --frozen-lockfile
+
+      - name: Static import guard (Redis in unit tests)
+        run: bash scripts/check-redis-imports.sh
+
+      - name: Run unit tests
+        working-directory: themes/sietch
+        run: pnpm test:unit
+
+  # =============================================================================
+  # INTEGRATION TESTS - Requires Redis service container
+  # =============================================================================
+  integration-tests:
+    name: Integration Tests
+    needs: template-guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      redis:
+        image: redis:7.2@sha256:e422889e156ebea83856b6ff973bfe0c86bce867d80def228044eeecf925592b
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install dependencies
+        working-directory: themes/sietch
+        run: pnpm install --frozen-lockfile
+
+      - name: Run integration tests
+        working-directory: themes/sietch
+        run: pnpm test:integration
+        env:
+          REDIS_URL: redis://localhost:6379
