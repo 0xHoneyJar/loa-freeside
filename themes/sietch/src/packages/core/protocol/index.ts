@@ -735,3 +735,17 @@ export type {
   ProtocolSurface,
   DynamicContractFailure,
 } from './arrakis-dynamic-contract.js';
+
+// Governance — conservation laws, actor resolution, mutation authorization (cycle-043, FR-5)
+export {
+  LOT_CONSERVATION,
+  ACCOUNT_NON_NEGATIVE,
+  resolveActorId,
+  authorizeCreditMutation,
+  createMutationContext,
+  GovernanceMutationError,
+} from './arrakis-governance.js';
+
+export type {
+  CreditMutationContext,
+} from './arrakis-governance.js';
