@@ -251,3 +251,18 @@ export { CONTRACT_VERSION, validateCompatibility } from '@0xhoneyjar/loa-hounfou
 
 // Contract Version Mismatch Error (cycle-019 AC-2.21)
 export { ContractVersionMismatchError } from './loa-finn-client.js';
+
+// Reputation Event Router (cycle-043, FR-7 — exhaustive 4-variant routing)
+export {
+  routeReputationEvent,
+  failClosedAuditStub,
+  AuditTrailNotReady,
+  type AuditTrailPort,
+  type ReputationEvent,
+  type QualitySignalEvent,
+  type TaskCompletedEvent,
+  type CredentialUpdateEvent,
+  type ModelPerformanceEvent,
+  type ReputationEventRouterDeps,
+  type RoutingResult,
+} from './reputation-event-router.js';

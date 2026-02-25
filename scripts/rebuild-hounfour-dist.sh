@@ -241,7 +241,7 @@ echo "$TAG Embedded SOURCE_SHA: $ACTUAL_SHA"
 # =============================================================================
 
 echo "$TAG Verifying export specifiers..."
-SPECIFIERS=("" "/core" "/economy" "/model" "/governance" "/constraints" "/integrity")
+SPECIFIERS=("" "/core" "/economy" "/model" "/governance" "/constraints" "/integrity" "/commons")
 for specifier in "${SPECIFIERS[@]}"; do
   ENTRY_DIR="dist${specifier}"
   if [[ -n "$specifier" ]]; then

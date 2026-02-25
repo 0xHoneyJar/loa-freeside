@@ -1,0 +1,29 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Found privilege escalation via unknown tiers, unsafe weight handling, and sovereign veto not enforced when weight is zero/invalid.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "conviction-voting.ts",
+      "line": 43,
+      "description": "Unknown or missing tiers default to weight=1, which grants unintended voting power to invalid tiers and undefined values.",
+      "current_code": "```typescript\nexport function resolveConvictionWeight(\n  tier: string | undefined,\n  customWeights?: ReadonlyMap<string, number>,\n): number {\n  if (!tier) return 1;\n\n  if (customWeights) {\n    const w = customWeights.get(tier);\n    if (w !== undefined) return w;\n  }\n\n  const defaultWeight = DEFAULT_TIER_WEIGHTS.get(tier as GovernanceTier);\n  return defaultWeight !== undefined ? defaultWeight : 1;\n}\n```",
+      "fixed_code": "```typescript\nexport function resolveConvictionWeight(\n  tier: string | undefined,\n  customWeights?: ReadonlyMap<string, number>,\n): number {\n  if (!tier) return 0;\n\n  const custom = customWeights?.get(tier);\n  if (custom !== undefined && Number.isFinite(custom)) {\n    return Math.max(0, custom);\n  }\n\n  const defaultWeight = DEFAULT_TIER_WEIGHTS.get(tier as GovernanceTier);\n  if (defaultWeight !== undefined && Number.isFinite(defaultWeight)) {\n    return Math.max(0, defaultWeight);\n  }\n\n  return 0;\n}\n```",
+      "explanation": "Unknown or missing tiers should not receive voting power; returning 0 prevents privilege escalation while still honoring valid custom/default weights."
+    },
+    {
+      "severity": "major",
+      "file": "conviction-voting.ts",
+      "line": 71,
+      "description": "Sovereign veto is only set when weight > 0, allowing a sovereign reject with zero/invalid weight to bypass veto; also NaN/Infinity/negative weights can corrupt totals.",
+      "current_code": "```typescript\nexport function computeConvictionResult(\n  votes: AmendmentVote[],\n  threshold: number,\n  customWeights?: ReadonlyMap<string, number>,\n): ConvictionResult {\n  let approveWeight = 0;\n  let rejectWeight = 0;\n  let hasSovereignVeto = false;\n\n  for (const vote of votes) {\n    const weight = vote.conviction_weight ?? resolveConvictionWeight(vote.governance_tier, customWeights);\n\n    if (weight <= 0) continue; // Observer abstention\n\n    if (vote.decision === 'approve') {\n      approveWeight += weight;\n    } else if (vote.decision === 'reject') {\n      rejectWeight += weight;\n\n      if (vote.governance_tier === 'sovereign') {\n        hasSovereignVeto = true;\n      }\n    }\n  }\n\n  return {\n    approve_weight: approveWeight,\n    reject_weight: rejectWeight,\n    total_weight: approveWeight + rejectWeight,\n    voter_count: votes.filter((v) => {\n      const w = v.conviction_weight ?? resolveConvictionWeight(v.governance_tier, customWeights);\n      return w > 0;\n    }).length,\n    is_approved: !hasSovereignVeto && approveWeight >= threshold,\n    is_rejected: hasSovereignVeto || rejectWeight >= threshold,\n    has_sovereign_veto: hasSovereignVeto,\n  };\n}\n```",
+      "fixed_code": "```typescript\nexport function computeConvictionResult(\n  votes: AmendmentVote[],\n  threshold: number,\n  customWeights?: ReadonlyMap<string, number>,\n): ConvictionResult {\n  let approveWeight = 0;\n  let rejectWeight = 0;\n  let hasSovereignVeto = false;\n  let voterCount = 0;\n\n  for (const vote of votes) {\n    // Sovereign veto applies regardless of weight\n    if (vote.decision === 'reject' && vote.governance_tier === 'sovereign') {\n      hasSovereignVeto = true;\n    }\n\n    const rawWeight = vote.conviction_weight ?? resolveConvictionWeight(vote.governance_tier, customWeights);\n    const weight = Number.isFinite(rawWeight) ? Math.max(0, rawWeight) : 0;\n\n    if (weight <= 0) continue; // Observer/invalid/negative abstention\n\n    voterCount++;\n\n    if (vote.decision === 'approve') {\n      approveWeight += weight;\n    } else if (vote.decision === 'reject') {\n      rejectWeight += weight;\n    }\n  }\n\n  return {\n    approve_weight: approveWeight,\n    reject_weight: rejectWeight,\n    total_weight: approveWeight + rejectWeight,\n    voter_count: voterCount,\n    is_approved: !hasSovereignVeto && approveWeight >= threshold,\n    is_rejected: hasSovereignVeto || rejectWeight >= threshold,\n    has_sovereign_veto: hasSovereignVeto,\n  };\n}\n```",
+      "explanation": "Veto is enforced regardless of weight, and weights are sanitized to finite non-negative numbers to prevent NaN/Infinity/negative values from breaking totals. Voter count is computed consistently with the same sanitized weights."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

@@ -1,0 +1,20 @@
+{
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "One major issue found: unescaped LIKE patterns allow wildcard expansion and incorrect matches; fix by escaping user input and using ESCAPE in SQL.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "audit-query-service.ts",
+      "line": 93,
+      "description": "LIKE patterns in getModelPairInteractions use raw user input (%${modelA}%) which allows wildcard expansion (e.g., '%' or '_' in model IDs) causing incorrect matching and potentially overbroad results.",
+      "current_code": "```typescript\n    const result = await this.pool.query(\n      `SELECT payload, event_time\n       FROM audit_trail\n       WHERE event_type = 'model_performance'\n         AND event_time >= $1 AND event_time < $2\n         AND (\n           payload->>'model_id' = $3\n           OR payload->'request_context'->>'delegation_id' LIKE $4\n           OR payload->'request_context'->>'delegation_id' LIKE $5\n         )\n       ORDER BY event_time ASC`,\n      [timeRange.from, timeRange.to, modelA, `%${modelA}%`, `%${modelB}%`],\n    );\n```",
+      "fixed_code": "```typescript\n  private escapeLike(input: string): string {\n    // Escape %, _ and backslash for safe LIKE patterns\n    return input.replace(/[\\\\%_]/g, '\\\\$&');\n  }\n\n  async getModelPairInteractions(\n    modelA: string,\n    modelB: string,\n    timeRange: TimeRange,\n  ): Promise<InteractionRecord[]> {\n    const escapedA = this.escapeLike(modelA);\n    const escapedB = this.escapeLike(modelB);\n\n    const result = await this.pool.query(\n      `SELECT payload, event_time\n       FROM audit_trail\n       WHERE event_type = 'model_performance'\n         AND event_time >= $1 AND event_time < $2\n         AND (\n           payload->>'model_id' = $3\n           OR payload->'request_context'->>'delegation_id' LIKE $4 ESCAPE '\\\\'\n           OR payload->'request_context'->>'delegation_id' LIKE $5 ESCAPE '\\\\'\n         )\n       ORDER BY event_time ASC`,\n      [timeRange.from, timeRange.to, modelA, `%${escapedA}%`, `%${escapedB}%`],\n    );\n\n    // Aggregate interactions between the pair\n    let totalObservations = 0;\n    let totalScore = 0;\n\n    for (const row of result.rows) {\n      const payload = row.payload as Record<string, any>;\n      const delegationId = payload?.request_context?.delegation_id ?? '';\n      const rowModelId = payload?.model_id ?? '';\n\n      const involvesBoth =\n        (rowModelId === modelA && delegationId.includes(modelB)) ||\n        (rowModelId === modelB && delegationId.includes(modelA));\n\n      if (involvesBoth) {\n        totalObservations++;\n        totalScore += payload?.quality_observation?.score ?? 0;\n      }\n    }\n\n    if (totalObservations === 0) {\n      return [];\n    }\n\n    const [a, b] = [modelA, modelB].sort();\n    return [{\n      model_pair: [a, b] as [string, string],\n      quality_score: totalScore / totalObservations,\n      observation_count: totalObservations,\n    }];\n  }\n```",
+      "explanation": "Escaping LIKE metacharacters prevents wildcard expansion and guarantees literal matching of model IDs while still using parameterized queries. The ESCAPE clause ensures the backslash is interpreted as the escape character."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
+}

@@ -59,3 +59,44 @@ export {
   type DrizzleBadge,
   type DrizzleNewBadge,
 } from './schema.js';
+
+// =============================================================================
+// Audit Trail Service (cycle-043, FR-6 — hash-chained append-only audit trail)
+// =============================================================================
+
+export {
+  AuditTrailService,
+  AuditQuarantineError,
+  type AuditEntry,
+  type AuditTrailVerificationResult,
+  type CheckpointResult,
+  type AuditTrailServiceConfig,
+} from './audit-trail-service.js';
+
+// =============================================================================
+// Governed Mutation Service (cycle-043, FR-6 — transactional state + audit)
+// =============================================================================
+
+export {
+  GovernedMutationService,
+  type MutationParams,
+  type MutationResult,
+  type GovernedMutationServiceConfig,
+} from './governed-mutation-service.js';
+
+// =============================================================================
+// Partition Manager (cycle-043, FR-6 — audit trail partition lifecycle)
+// =============================================================================
+
+export {
+  PartitionManager,
+  type PartitionInfo,
+  type PartitionHealthResult,
+  type PartitionManagerConfig,
+} from './partition-manager.js';
+
+// =============================================================================
+// Audit Helpers (cycle-043, bridge iteration 2 — shared advisory lock hashing)
+// =============================================================================
+
+export { advisoryLockKey, sleep } from './audit-helpers.js';

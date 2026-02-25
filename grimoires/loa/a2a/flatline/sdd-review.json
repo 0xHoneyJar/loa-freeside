@@ -1,110 +1,20 @@
 {
-  "consensus_summary": {
-    "high_consensus_count": 4,
-    "disputed_count": 1,
-    "low_value_count": 0,
-    "blocker_count": 4,
-    "model_agreement_percent": 90,
-    "confidence": "full"
-  },
-  "high_consensus": [
-    {
-      "id": "IMP-001",
-      "description": "Real documentation gap: the SDD references AC and Goals but doesn't define or link them in a versioned, anchorable way, making traceability unverifiable. Actionable fix (embed table or add explicit PRD link + version/hash + section anchors). High ROI and low effort; improves the SDD's usefulness as a standalone artifact.",
-      "gpt_score": 860,
-      "opus_score": 950,
-      "delta": 90,
-      "average_score": 905,
-      "would_integrate": true,
-      "agreement": "HIGH"
-    },
-    {
-      "id": "IMP-002",
-      "description": "Critical correctness gap: the described egress assertion mechanism is technically wrong/insufficient (docker stats won't provide destination/connection evidence). This creates false assurance for a security/isolation control. Very actionable to specify a concrete method (iptables counters, tcpdump/pcap, eBPF, DNS logs) with thresholds and CI steps, or explicitly mark as not implemented. High impact if left vague.",
-      "gpt_score": 910,
-      "opus_score": 780,
-      "delta": 130,
-      "average_score": 845,
-      "would_integrate": true,
-      "agreement": "HIGH"
-    },
-    {
-      "id": "IMP-003",
-      "description": "High ROI CI operability improvement: failing health checks without capturing logs is a common and costly failure mode. The proposed change is specific (capture compose logs before teardown; publish as CI artifact) and low complexity. Strongly improves debuggability and reduces developer time wasted.",
-      "gpt_score": 880,
-      "opus_score": 820,
-      "delta": 60,
-      "average_score": 850,
-      "would_integrate": true,
-      "agreement": "HIGH"
-    },
-    {
-      "id": "IMP-005",
-      "description": "Practical developer-experience gap: fixed host port publishing commonly breaks local runs due to conflicts. Actionable mitigations exist (dynamic ports, env-configurable ports/offset, or run on a dedicated network without host publishing where possible). Moderate effort depending on tooling, but high day-1 impact for contributors.",
-      "gpt_score": 720,
-      "opus_score": 720,
-      "delta": 0,
-      "average_score": 720,
-      "would_integrate": true,
-      "agreement": "HIGH"
-    }
-  ],
-  "disputed": [
-    {
-      "id": "IMP-010",
-      "description": "Nice-to-have: startup ordering is already enforced by the runner's health-gated sequencing, so adding compose-level depends_on/health conditions is optional redundancy. It can help if someone runs compose directly, but also introduces another source of truth. Worth a brief explicit statement of the chosen approach; full dependency graph is moderate value.",
-      "gpt_score": 520,
-      "opus_score": 880,
-      "delta": 360,
-      "average_score": 700,
-      "would_integrate": true,
-      "agreement": "DISPUTED"
-    }
-  ],
-  "blockers": [
-    {
-      "id": "SKP-001",
-      "concern": "Egress prevention is largely policy-based; no hard network enforcement exists",
-      "severity": "CRITICAL",
-      "severity_score": 920,
-      "why_matters": "The design explicitly avoids Docker network egress blocking and relies on (a) test discipline, (b) absence of credentials, and (c) a post-test 'static egress assertion'. Any accidental dependency (telemetry, package update checks, DNS lookups, webhook retries) can still reach the public internet and cause flaky tests, data leakage, or unexpected costs.",
-      "location": "Section 3.4 Network Isolation; Section 4.2 Network Isolation",
-      "recommendation": "Add a hard egress control for CI E2E runs (e.g., run containers on an internal network with a dedicated test-runner container, or use iptables/DOCKER-USER rules to deny outbound except allowlist). At minimum, block access to cloud metadata IPs (169.254.169.254) and enforce DNS restrictions."
-    },
-    {
-      "id": "SKP-003",
-      "concern": "Health checks are brittle and may not reflect real readiness (especially JWKS readiness and downstream dependencies)",
-      "severity": "HIGH",
-      "severity_score": 720,
-      "why_matters": "The script uses curl/health and wget/health with a 60s timeout. A service can return 200 before it is actually ready to serve the specific endpoints used in tests.",
-      "location": "Section 3.1 E2E Runner Script; Section 3.5 JWKS Bootstrap Protocol",
-      "recommendation": "Define readiness checks that validate the exact dependencies needed. Make timeouts configurable via env, add exponential backoff, and capture diagnostics on readiness failure."
-    },
-    {
-      "id": "SKP-002",
-      "concern": "Host-side vitest + published ports increases flakiness and cross-test interference risk",
-      "severity": "HIGH",
-      "severity_score": 760,
-      "why_matters": "Publishing Redis and service ports to the host invites port collisions on developer machines and shared CI runners, and can allow other local processes to interfere with tests.",
-      "location": "Section 2.2 Data Flow: E2E Test Execution; Section 3.4 Docker Compose modification",
-      "recommendation": "Avoid fixed host ports; use dynamic port mapping and discover ports via docker compose port, or run the test runner in a container on the compose network (no published ports). If host-side execution is required, parameterize ports and fail fast if already in use."
-    },
-    {
-      "id": "SKP-010",
-      "concern": "Scope risk hidden in 'reclassify 202 failing tests' — effort and behavioral changes likely exceed estimates",
-      "severity": "CRITICAL",
-      "severity_score": 880,
-      "why_matters": "Renaming/refactoring ~200 tests is not 'infrastructure only' in practice: mocking Redis correctly can require significant code changes, and test meaning may change (false confidence).",
-      "location": "Section 3.3 Redis Test File Classification; Section 5.3 Renamed Files; Section 1 Executive Summary",
-      "recommendation": "Timebox the audit with a measured spike, produce an actual file list early, and define acceptance criteria for mocking vs integration. If mocking requires production code refactors, explicitly allow scoped app changes or adjust timeline/scope."
-    }
-  ],
   "phase": "sdd",
   "document": "grimoires/loa/sdd.md",
-  "cycle": "cycle-042",
-  "timestamp": "2026-02-25T04:51:03Z",
-  "metrics": {
-    "total_latency_ms": 210000,
-    "cost_cents": 0
+  "timestamp": "2026-02-25T12:48:43Z",
+  "consensus_summary": {
+    "high_consensus_count": 5,
+    "disputed_count": 2,
+    "low_value_count": 0,
+    "blocker_count": 6,
+    "model_agreement_percent": 80,
+    "confidence": "full"
+  },
+  "high_consensus": ["IMP-001", "IMP-002", "IMP-003", "IMP-004", "IMP-005"],
+  "disputed": ["IMP-006", "IMP-010"],
+  "blockers": ["SKP-001", "SKP-002", "SKP-003", "SKP-004", "SKP-005", "SKP-006"],
+  "execution": {
+    "mode": "hitl",
+    "simstim_id": "simstim-20260225-governance-substrate"
   }
 }

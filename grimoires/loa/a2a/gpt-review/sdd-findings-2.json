@@ -1,51 +1,48 @@
 {
-  "verdict": "CHANGES_REQUIRED",
-  "summary": "Most of the previously blocking items are fixed (runner health checks, vitest workspace selection, Redis isolation gate, CI Redis wiring, and the network-isolation claim), but the SDD now contains a contradictory and still-blocking Compose/network spec plus an unresolved JWKS atomic-write responsibility that can reintroduce E2E flakiness.",
+  "verdict": "APPROVED",
+  "summary": "All 8 previously-blocking gaps are addressed with concrete DB linearization, append-only/prune semantics, explicit fail-closed quarantine behavior, hardened actor_id provenance, deterministic append idempotency, and a single authoritative version-compatibility source.",
   "previous_issues_status": [
     {
-      "original_issue": "Dual-network + `internal: true` egress-blocking claim is incorrect and can break connectivity",
+      "original_issue": "append() concurrency could fork the hash chain (no DB-enforced linearization)",
       "status": "fixed",
-      "notes": "Section 3.4 correctly retracts the `internal: true`/dual-network approach and documents a layered-defense model with a single network and published ports, which aligns with host-side vitest and avoids the earlier routing/egress misconception."
+      "notes": "The combination of per-domain_tag advisory xact lock + audit_trail_head row + SERIALIZABLE + bounded retries provides a clear DB-level linearization mechanism and avoids fork formation under concurrency."
     },
     {
-      "original_issue": "`wait_for_health` missing and host-side tooling assumptions (`redis-cli`, `wget`) make runner non-portable",
+      "original_issue": "Prune plan contradicted append-only enforcement and implied trigger disablement",
       "status": "fixed",
-      "notes": "`wait_for_health` is now defined and uses `docker compose exec -T` so checks run inside containers, removing host tool dependencies and aligning with Redis not needing host routing for health checks."
+      "notes": "Pruning is now partition detach/drop with an explicit principle that triggers are never disabled, plus checkpoint anchoring for post-prune verification."
     },
     {
-      "original_issue": "Vitest workspace/project selection unreliable; scripts may not load workspace and `--project unit` can fail",
+      "original_issue": "Append-only enforcement via RLS/privileges was claimed but not defined",
       "status": "fixed",
-      "notes": "Scripts now explicitly pass `--workspace vitest.workspace.ts` and standardize on `vitest run` for CI determinism, which should prevent the prior “Project not found”/fallback behavior."
+      "notes": "RLS policies are explicitly defined and a 3-role model is documented; app role is not owner and lacks ALTER/DROP/GRANT, providing the defense-in-depth that was missing."
     },
     {
-      "original_issue": "Redis isolation relies on ECONNREFUSED instead of preventing Redis-dependent tests from running in unit",
+      "original_issue": "Quarantine did not define in-flight request behavior (fail closed vs buffer vs partial apply)",
       "status": "fixed",
-      "notes": "A static import guard is added to fail CI if unit `*.test.ts` imports redis/ioredis, which is the hard gate requested and avoids relying on flaky runtime connection failures."
+      "notes": "Governance-critical mutations are explicitly rejected (503 + Retry-After) during quarantine, with idempotency keys for safe retries; telemetry is explicitly separated and does not use the hash chain."
     },
     {
-      "original_issue": "JWKS atomic write requirement conflicts with 'zero new application logic' and can cause partial-read race",
-      "status": "not_fixed",
-      "notes": "The SDD still requires 'atomic write verification' but does not specify a concrete, repo-real mechanism that guarantees atomicity without changing Arrakis runtime code. As written, it’s conditional ('If not atomic... fix in Dockerfile entrypoint or helper script') but doesn’t define how that helper script can safely intercept/produce the JWKS file if Arrakis is the writer. This leaves the race condition potentially unresolved and the scope constraint ambiguous."
+      "original_issue": "actor_id trust boundary underspecified; actor_id nullable allowed unauthenticated entries",
+      "status": "fixed",
+      "notes": "JWT verification requirements are stated, sub format constrained, service identity is mTLS-derived (not headers), and actor_id is NOT NULL with a non-empty CHECK; resolveActorId() cannot return empty."
     },
     {
-      "original_issue": "Integration CI Redis service container lacks canonical env wiring/readiness gate; may still ECONNREFUSED",
+      "original_issue": "DynamicContract loader failure modes and override controls were underspecified",
       "status": "fixed",
-      "notes": "The integration script sets `REDIS_URL=redis://localhost:6379`, and the workflow defines a Redis service with a health check. This is sufficient provided the integration code reads `REDIS_URL` (the SDD explicitly requires that)."
+      "notes": "Startup failure modes are enumerated; override is blocked in production and size-limited; fail-closed semantics are explicit (no last-known-good fallback by design)."
+    },
+    {
+      "original_issue": "append() hashing inputs used non-deterministic timestamps, breaking idempotency on retry",
+      "status": "fixed",
+      "notes": "Caller-provided stable timestamp + stable entry_id are required; duplicate insert returns existing entry, giving deterministic hashing and retry safety."
+    },
+    {
+      "original_issue": "Version negotiation authority was ambiguous between local logic and hounfour",
+      "status": "fixed",
+      "notes": "Hounfour validateCompatibility() is defined as the sole authority; local code delegates; mixed-version integration tests are required; contract.json is CI-only."
     }
   ],
-  "new_blocking_concerns": [
-    {
-      "location": "Section 5.2 Modified Files + Section 6 Technical Risks (and implied compose changes)",
-      "description": "The file inventory and risks still state adding an `internal: true` network / dual-network design, contradicting Section 3.4 which explicitly rejects it and specifies a single default bridge network.",
-      "why_blocking": "This is not a stylistic inconsistency: it creates an implementer fork where following 5.2/6 reintroduces the previously-blocking network design (and breaks the stated architecture). It will cause PR churn and can lead to a broken E2E topology if the wrong section is implemented.",
-      "fix": "Update 5.2 and 6 to match 3.4: remove 'Add `internal: true` network' and remove/replace the dual-network mitigation. Replace with: 'Preserve single network; publish ports; layered defense (no creds + stub-only + post-test assertion)'."
-    },
-    {
-      "location": "Section 3.5 JWKS Bootstrap Protocol (atomic write responsibility)",
-      "description": "Atomic JWKS write is still not concretely guaranteed without changing Arrakis application behavior; the proposed 'fix in Dockerfile entrypoint or helper script' is underspecified and may be impossible if Arrakis writes the file internally.",
-      "why_blocking": "If Arrakis writes `/shared/arrakis-jwks.json` non-atomically, loa-finn’s health gate can observe partial JSON and flap (503/parse errors), producing nondeterministic E2E startup failures. Also, if the only way to ensure atomicity is to change Arrakis code, that violates the cycle constraint ('zero new application logic') unless the SDD explicitly relaxes it.",
-      "fix": "Pick one explicit, implementable path and document it: (A) Confirm Arrakis already writes atomically (cite the exact file/function) and state 'no change required'; or (B) Move JWKS generation/writing entirely into test infrastructure (e.g., loa-finn stub or a tiny existing-node script run as a compose sidecar) and have Arrakis read it (only if Arrakis already supports that); or (C) If Arrakis must be the writer and is not atomic today, explicitly allow a minimal Arrakis change and update scope to permit it. Do not leave it conditional/implicit."
-    }
-  ],
+  "new_blocking_concerns": [],
   "iteration": 2
 }

@@ -1,47 +1,46 @@
 {
-  "simstim_id": "simstim-20260225-sietch-opening",
+  "simstim_id": "simstim-20260225-governance-substrate",
   "schema_version": 1,
-  "state": "COMPLETE",
-  "phase": "complete",
+  "state": "RUNNING",
+  "phase": "implementation",
   "timestamps": {
-    "started": "2026-02-25T02:00:00Z",
-    "last_activity": "2026-02-25T14:30:00Z",
-    "completed": "2026-02-25T14:30:00Z"
+    "started": "2026-02-25T22:00:00Z",
+    "last_activity": "2026-02-26T03:45:00Z"
   },
   "phases": {
     "preflight": "completed",
-    "discovery": "completed",
-    "flatline_prd": "completed",
+    "discovery": "skipped",
+    "flatline_prd": "skipped",
     "architecture": "completed",
     "flatline_sdd": "completed",
     "planning": "completed",
     "flatline_sprint": "completed",
     "flatline_beads": "skipped",
-    "implementation": "completed",
-    "complete": "completed"
+    "implementation": "in_progress",
+    "complete": "pending"
   },
   "artifacts": {
     "prd": {
       "path": "grimoires/loa/prd.md",
-      "checksum": "sha256:b83339d8274bebdaf8a736bbe8f2d7e83f86364d52b20140ae1971550ab2513a",
-      "note": "v1.2.0: GPT-APPROVED (3 iter). Flatline integrated."
+      "checksum": "pending_recompute",
+      "note": "v1.1.0: GPT-APPROVED (2 iter, 7 findings resolved). Created via /plan-and-analyze."
     },
     "sdd": {
       "path": "grimoires/loa/sdd.md",
-      "checksum": "sha256:9889b3c5325ccf6f7b3ba72adbd4ae1cbb2fb28dae8ec714204c8f4e401fafe3",
-      "note": "v1.4.0: GPT-APPROVED (5 iter). Flatline integrated."
+      "checksum": "sha256:acf63a89bf84eb4494e2c2b530f60883a4d546fddae63d893bc163647cd88f48",
+      "note": "v1.2.0: GPT-APPROVED (3 iter). Flatline: 5 HIGH + 2 DISPUTED + 6 BLOCKERS integrated."
     },
     "sprint": {
       "path": "grimoires/loa/sprint.md",
-      "checksum": "sha256:7ed5dfe5f6ed18fd9b3766548e08f085ac4b4e617f74ef1f1281b4a2bb045413",
-      "note": "v1.2.0: GPT-APPROVED (4 iter). Flatline integrated. 3 sprints (global 355-357). Gate failure handling, duration estimates, E2E workspace project, transitive import note, 5 BLOCKER risk notes."
+      "checksum": "sha256:1c4cad6ca7a4b05e29b89672abc783f509b3325c90785fdbdc2e7f87b2978473",
+      "note": "v1.2.0: GPT-APPROVED (3 iter, 10 Flatline findings integrated). 4 sprints (358-361), 12 tasks."
     }
   },
   "beads": {},
   "context": {
-    "cycle": "cycle-042",
-    "codename": "The Sietch Opening — E2E Validation & Test Community Launch",
-    "source": "loa-finn#66, test-community-readiness.md, PR#96 (v7.11.0), prd-findings-1/2/3.json, flatline prd-review.json, sdd-findings-1..5.json, flatline sdd-review.json, sprint-findings-1..4.json, flatline sprint-review.json",
-    "previous_simstim": "simstim-20260224-launch-readiness"
+    "cycle": "cycle-043",
+    "codename": "The Governance Substrate — loa-hounfour v8.2.0 Full Adoption",
+    "source": "hounfour v8.2.0 release, MIGRATION.md, ADR-006..009, prd-findings-1/2.json",
+    "previous_simstim": "simstim-20260225-sietch-opening"
   }
 }

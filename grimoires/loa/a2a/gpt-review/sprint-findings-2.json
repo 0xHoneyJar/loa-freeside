@@ -1,31 +1,31 @@
 {
   "verdict": "APPROVED",
-  "summary": "All previously-blocking gaps (Redis provisioning, deterministic E2E invocation, JWKS scope feasibility, egress check feasibility, and the Redis import guard) are addressed with concrete, measurable acceptance criteria, and no new truly-blocking issues were introduced.",
+  "summary": "All five previously-blocking issues are addressed with concrete scoping, explicit partitioning mechanics, defined governed-write scope, and CI-verifiable integration coverage, with no new truly-blocking problems introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "Integration tests require Redis, but plan didn’t specify local/CI Redis provisioning or REDIS_URL wiring",
+      "original_issue": "Task 3.2 mixed CI-implementable code/DB work with untestable ops/infra deliverables (pgaudit/CloudWatch/cron/SLOs), making DoD unachievable",
       "status": "fixed",
-      "notes": "Task 1.1 now explicitly defines local dev Redis options (compose redis-e2e or redis-server), and CI integration job uses a GitHub Actions redis service with health check plus REDIS_URL=redis://localhost:6379. This closes the common ECONNREFUSED-in-CI failure mode."
+      "notes": "3.2 is now explicitly code+DB-migration only with CI-provable acceptance criteria, and ops/infra moved to 3.3 as a non-blocking deployment ticket with clear deliverables."
     },
     {
-      "original_issue": "E2E runner criteria didn’t specify how E2E tests are invoked / tied to test:e2e script",
+      "original_issue": "Partitioning plan was ambiguous/incorrectly described (\"partition trigger inheritance\"), risking runtime insert failures when partitions are missing",
       "status": "fixed",
-      "notes": "Task 2.1 now pins an explicit vitest invocation, requires non-zero test discovery, and states it is the command that pnpm test:e2e calls via run-e2e.sh. Exit code propagation is also specified."
+      "notes": "Now specifies native RANGE partitioning on created_at plus a DEFAULT partition safety net, an idempotent SQL partition-creation function, and both scheduled job + CI headroom gate. This removes the outage mode and is implementable."
     },
     {
-      "original_issue": "JWKS/JWT validation might violate “zero new application logic” if stub changes aren’t allowed",
+      "original_issue": "GovernedMutationService coupling requirement lacked explicit scope (tables/write paths), making it impossible to prove all governed writes route through the service",
       "status": "fixed",
-      "notes": "Task 2.3 adds a clear scope boundary: changes under tests/e2e/* (stub/harness) are allowed as test infrastructure; production packages are not. That makes the task executable under the constraint."
+      "notes": "Adds an explicit governed write-path inventory (credit_lots, credit_reservations, agent_reputation), excludes non-governed tables, and includes acceptance/tests for routing and for direct updates failing."
     },
     {
-      "original_issue": "Static egress assertion via /proc/net/tcp was underspecified and likely infeasible/flaky",
+      "original_issue": "Sprint 2 Task 2.2 depended on Sprint 3 FR-6 audit trail without a port/stub, creating a cross-sprint blocker",
       "status": "fixed",
-      "notes": "Task 2.5 now specifies a concrete algorithm (tcp/tcp6 parsing, state filtering, RFC1918 + loopback + link-local ignores, Docker subnet allowlisting via docker network inspect) and includes a determinism proof (clean run passes; injected curl to example.com fails with decoded IP). This is sufficient to implement deterministically without new deps."
+      "notes": "Audit emission removed from 2.2, AuditTrailPort introduced with fail-closed stub behavior, and real wiring deferred to Sprint 4 integration—unblocks Sprint 2 while preserving fail-closed semantics."
     },
     {
-      "original_issue": "Static import guard was too narrow (directory scope + only ESM import style)",
+      "original_issue": "Integration tests did not cover several DB-enforced invariants required by Task 3.2 (RLS/privileges, triggers, uniqueness, skew, idempotency), risking unverified life-critical properties",
       "status": "fixed",
-      "notes": "Task 1.5 expands scope to all workspace test dirs, excludes integration/e2e suffixes, matches ESM+CJS+dynamic import patterns for redis/ioredis, and includes an explicit regression-proof AC (temporary require('ioredis') must fail)."
+      "notes": "Task 4.2 adds a DB harness that provisions roles/migrations/RLS/triggers and enumerates 13 scenarios explicitly covering the previously-missing invariants, including privilege/RLS/trigger enforcement, cross-partition uniqueness, skew constraint, and idempotency."
     }
   ],
   "new_blocking_concerns": [],

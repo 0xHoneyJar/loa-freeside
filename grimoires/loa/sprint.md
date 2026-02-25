@@ -1,334 +1,458 @@
-# Sprint Plan: The Sietch Opening — E2E Validation & Test Community Launch
+# Sprint Plan: The Governance Substrate — cycle-043
 
-**Version:** 1.1.0
-**Cycle:** cycle-042
-**Date:** 2026-02-25
-**PRD:** v1.2.0 (GPT-APPROVED, Flatline integrated)
-**SDD:** v1.4.0 (GPT-APPROVED, Flatline integrated)
-**Sprints:** 3 (global IDs 355–357)
+**Cycle:** cycle-043
+**Sprints:** 4 (global IDs: 358–361)
+**PRD:** v1.1.0 (GPT-APPROVED)
+**SDD:** v1.2.0 (GPT-APPROVED + Flatline integrated)
 
 ---
 
 ## Sprint Overview
 
-This cycle writes **zero new application logic**. All work is test infrastructure, CI pipelines, documentation, and vitest configuration. Sprints are sequenced so test isolation (Sprint 1) enables E2E validation (Sprint 2), which enables documentation and CI (Sprint 3).
-
-| Sprint | FRs | Focus | Estimated Files | Duration |
-|--------|-----|-------|----------------|----------|
-| Sprint 1 | FR-2 | Redis test isolation — vitest workspace + reclassification spike | ~25 files | 2–3 days |
-| Sprint 2 | FR-1, FR-6, NFR-5 | E2E runner + JWKS validation + economic loop | ~8 files | 2 days |
-| Sprint 3 | FR-3, FR-4, FR-5, FR-7 | Documentation + CI pipeline | ~8 files | 1–2 days |
-
-**Total estimated duration:** 5–7 working days (single engineer).
+| Sprint | Global ID | Focus | Key Deliverables |
+|--------|-----------|-------|-----------------|
+| 1 | 358 | Foundation | Dependency pin, protocol barrel, contract spec, import guards |
+| 2 | 359 | Gateway + Events | DynamicContract validation, reputation event router |
+| 3 | 360 | Governance Enforcement | Conservation laws, mutation service, audit trail hash chain |
+| 4 | 361 | Conformance & E2E | P0/nightly vectors, integration tests, E2E validation |
 
 ---
 
-## Sprint 1: Redis Test Isolation
+## Sprint 1: Foundation (Global ID: 358)
 
-**Global Sprint ID:** 355
-**Goal:** Fix the 202 ECONNREFUSED failures by splitting unit and integration tests via vitest workspace projects.
-**Priority:** P0
-**Dependencies:** None (foundational — enables all other sprints)
+**Goal**: Pin v8.2.0 dependency and expose all new symbols through the protocol barrel. Establish dual-accept version negotiation and import guard enforcement.
 
-### Task 1.1: Vitest Workspace Configuration (SDD §3.2)
+### Task 1.1: FR-1 — Dependency Pin Update
+**FR**: FR-1 → G-1
+**Files modified**: `package.json`, `packages/adapters/package.json`
+**Effort**: Small
 
-**Description:** Create `themes/sietch/vitest.workspace.ts` with `unit` and `integration` project definitions. Update `themes/sietch/package.json` with `test:unit`, `test:integration`, and `test:e2e` scripts. Ensure `pnpm test` defaults to `test:unit`.
+**Description**: Update loa-hounfour pin from commit `7e2294b` (v7.11.0) to exact version `8.2.0` (NOT caret range — exact pin enforced by lockfile + CI). Run `pnpm install` and verify lockfile resolves correctly.
 
-**Acceptance Criteria:**
-- AC-2.1 (partial): `vitest.workspace.ts` exists with `unit` (includes `*.test.ts`, excludes `*.integration.test.ts`), `integration` (includes `*.integration.test.ts`), and `e2e` (includes `*.e2e.test.ts`, root `tests/e2e/`) projects
-- AC-2.4: `pnpm test` maps to `pnpm test:unit` — `vitest run --workspace vitest.workspace.ts --project unit`
-- AC-2.5 (partial): `package.json` has `test:unit`, `test:integration`, `test:e2e` scripts with explicit `--workspace vitest.workspace.ts` flag
-- `pnpm test:integration` includes `REDIS_URL=redis://localhost:6379` in script definition
-- `pnpm test:e2e` maps to `../../tests/e2e/run-e2e.sh` (host-side E2E runner from Sprint 2)
-- Existing `vitest.config.ts` adjusted for workspace compatibility (no conflicting includes/excludes)
-- **Redis for integration (local dev):** `pnpm test:integration` requires Redis running locally — documented in package.json comments or test README. Developers run `docker compose -f tests/e2e/docker-compose.e2e.yml up -d redis-e2e` or have `redis-server` running.
-- **Redis for integration (CI):** GitHub Actions integration job uses `services: redis:` with health check (SDD §3.9). `REDIS_URL=redis://localhost:6379` set in workflow `env:`.
+**Rollback plan (IMP-001)**: If regressions appear after pin update that are outside compile/test coverage:
+1. Revert `package.json` changes (restore v7.11.0 commit hash pin)
+2. Run `pnpm install` to restore lockfile
+3. All subsequent barrel/contract work is paused until regression is resolved
+4. **Time-box**: If pin update causes >2 hours of unexpected failures, escalate and revert
 
-**Effort:** Low
-**Testing:** `pnpm test:unit` runs without error (may still have Redis failures until Task 1.2); `pnpm test:integration` passes on clean runner with Redis service container
-**SDD Reference:** §3.2
-
-### Task 1.2: Redis Test Audit Spike (SDD §3.3, Flatline SKP-010)
-
-**Description:** Timeboxed 2-hour audit to identify all test files that import Redis/ioredis directly. Produce an exact file list with classification decision for each file (mock vs reclassify). If >10 files require production code refactors to mock, escalate for scope decision.
-
-**Acceptance Criteria:**
-- File list produced: each entry has {path, classification: "mock" | "reclassify" | "needs-refactor", rationale}
-- Total mock count, reclassify count, and needs-refactor count documented
-- If needs-refactor > 10: scope escalation note added to NOTES.md
-- Spike completes within 2 hours — partial results are acceptable
-
-**Effort:** Low-Medium (timeboxed)
-**Testing:** Audit artifact validated by reviewer
-**SDD Reference:** §3.3
-
-### Task 1.3: Test Reclassification — Mock Redis (SDD §3.3)
-
-**Description:** For files classified as "mock" in Task 1.2, add `vi.mock` for Redis/ioredis imports so they run without a Redis connection. Keep them as `*.test.ts` (unit tests).
-
-**Acceptance Criteria:**
-- AC-2.1 (full): `pnpm test:unit` passes without a running Redis instance — zero ECONNREFUSED
-- Each mocked file still tests its original application logic (mock correctness)
-- No production code changes — only test files modified
-
-**Effort:** Medium-High (depends on Task 1.2 count)
-**Testing:** `pnpm test:unit` green with zero ECONNREFUSED
-**SDD Reference:** §3.3
-**Dependencies:** Task 1.2 (file list)
-
-### Task 1.4: Test Reclassification — Rename Integration Tests (SDD §3.3)
-
-**Description:** For files classified as "reclassify" in Task 1.2, rename from `*.test.ts` to `*.integration.test.ts`. Update any imports referencing the old filenames.
-
-**Acceptance Criteria:**
-- AC-2.2: Tests that require Redis use `.integration.test.ts` suffix
-- Renamed files still pass when Redis is available
-- No broken imports or references
-
-**Effort:** Low
-**Testing:** `pnpm test:integration` with Redis service runs renamed files
-**SDD Reference:** §3.3
-**Dependencies:** Task 1.2 (file list)
-
-### Task 1.5: Static Import Guard (SDD §3.3)
-
-**Description:** Add a CI pre-step that fails if any `*.test.ts` file imports Redis/ioredis directly. This is a hard gate to prevent reclassification regressions.
-
-**Acceptance Criteria:**
-- CI step searches all workspace test directories (not just `themes/sietch/tests/`) for unit test files (`*.test.ts`, excluding `*.integration.test.ts` and `*.e2e.test.ts`)
-- Pattern matches both ESM and CJS: `from ['"](?:redis|ioredis)`, `require\(['"](?:redis|ioredis)`, `import\(['"](?:redis|ioredis)`
-- Step fails with clear error message listing offending files
-- Step passes after reclassification is complete
-- AC-2.3 (partial): Unit CI job includes this guard as pre-step
-- **Regression proof AC:** Introduce a temporary `require('ioredis')` in a unit test file and confirm the guard fails; remove it and confirm the guard passes
-- **Transitive import note (Flatline IMP-006):** This guard catches direct imports only. Transitive Redis usage (a module that internally imports Redis) is caught at runtime by ECONNREFUSED in `pnpm test:unit`. The static guard is a fast-feedback first line, not exhaustive coverage.
-
-**Effort:** Low
-**Testing:** Verify guard catches ESM import, CJS require, and dynamic import of Redis in unit test files
-**SDD Reference:** §3.3
+**Acceptance Criteria**:
+- [ ] `pnpm-lock.yaml` reflects exact v8.2.0 (not a range — lockfile pins exact version)
+- [ ] `pnpm tsc --noEmit` passes with zero errors
+- [ ] All existing tests pass (no breaking changes from pin update)
+- [ ] CI enforces lockfile-only resolution (no floating ranges)
 
 ---
 
-## Sprint 2: E2E Runner + JWKS Validation + Economic Loop
+### Task 1.2: FR-2 + FR-3 — Protocol Barrel Extension (Commons + Governance v8.2.0)
+**FR**: FR-2, FR-3 → G-2, G-5
+**Files modified**: `themes/sietch/src/packages/core/protocol/index.ts`
+**Effort**: Medium
 
-**Global Sprint ID:** 356
-**Goal:** Validate the full E2E Docker Compose topology with deterministic runner, JWKS bootstrap, and economic loop tests.
-**Priority:** P0
-**Dependencies:** Sprint 1 (clean unit test path needed for CI confidence)
+**Description**: Extend the protocol barrel to re-export all symbols from the commons module (v8.0.0) and governance v8.2.0 additions. Organized into 7 sections: Foundation Schemas, Governed Resources, Hash Chain Operations, Dynamic Contracts, Enforcement SDK, Error Taxonomy, Governance v8.2.0. Handle naming collisions (State/Transition/StateMachineConfig aliased with `Commons` prefix).
 
-### Task 2.1: E2E Runner Script (SDD §3.1)
-
-**Description:** Create `tests/e2e/run-e2e.sh` — the host-side deterministic E2E runner with `wait_for_health` via `docker compose exec -T`, trap-based cleanup with log capture, and parameterized ports.
-
-**Acceptance Criteria:**
-- AC-1.1: `./tests/e2e/run-e2e.sh` completes with exit code 0 when all services healthy and tests pass
-- AC-1.2: All 4 services health-checked via `docker compose exec -T` (internal ports)
-- AC-1.7: `docker compose down -v` runs unconditionally via trap
-- AC-1.8: Health wait timeout (60s) and test timeout (120s) explicit
-- Log capture to `$E2E_LOG_DIR` before teardown (SDD IMP-003)
-- Ports parameterized via `E2E_*_PORT` env vars (SDD IMP-005)
-- `set -euo pipefail` and clear exit codes (0=pass, 1=fail, 2=build failure)
-- Runner invokes `npx vitest run ../../tests/e2e/ --testTimeout $TEST_TIMEOUT --sequence.shuffle false --reporter=verbose` from `themes/sietch/` directory
-- Runner fails if vitest discovers zero E2E test files (prevents false-green)
-- This is the same command that `pnpm test:e2e` (from Task 1.1) invokes via the runner script
-
-**Effort:** Medium
-**Testing:** Run script locally against compose topology; verify it runs the E2E test files and propagates exit code
-**SDD Reference:** §3.1
-
-### Task 2.2: Docker Compose Updates (SDD §3.4)
-
-**Description:** Update `tests/e2e/docker-compose.e2e.yml` to parameterize host ports, add metadata endpoint blocking, and fix any bitrot.
-
-**Acceptance Criteria:**
-- Ports use env vars: `${E2E_REDIS_PORT:-6399}:6379`, `${E2E_ARRAKIS_PORT:-3099}:3000`, etc.
-- `extra_hosts` blocks `169.254.169.254` and `metadata.google.internal` on arrakis-e2e and loa-finn-e2e
-- Existing `depends_on` with `condition: service_healthy` preserved
-- All 4 services start and pass health checks
-
-**Effort:** Low
-**Testing:** `docker compose -f tests/e2e/docker-compose.e2e.yml up -d` succeeds; health checks pass
-**SDD Reference:** §3.4
-**Dependencies:** Task 2.1
-
-### Task 2.3: JWKS Health Gate + JWT Validation (SDD §3.5, NFR-5)
-
-**Description:** Enhance `tests/e2e/loa-finn-e2e-stub.ts` with JWKS health gate (return 503 until JWKS file valid), `jti` replay protection, and mandatory claim validation (iss, aud, exp, iat, jti). **Scope note:** Changes to `tests/e2e/*` stubs and harness code are considered test infrastructure, not application logic. The "zero new application logic" constraint applies to production packages (`packages/`, `themes/sietch/src/`) only.
-
-**Acceptance Criteria:**
-- AC-1.3: JWKS bootstrap verified — arrakis writes JWKS atomically (already implemented), loa-finn reads and validates with correct `kid` matching
-- AC-1.4: S2S JWT exchange verified — arrakis signs billing finalize, loa-finn validates signature
-- AC-1.9: Negative test — loa-finn rejects JWTs when JWKS absent or malformed
-- NFR-5: Clock skew 30s, TTL 5 min max, jti uniqueness enforced
-- loa-finn `/v1/health` returns 503 until JWKS parses as valid JSON
-
-**Effort:** Medium
-**Testing:** E2E test suite with JWT assertions
-**SDD Reference:** §3.5, NFR-5
-**Dependencies:** Task 2.1 (runner needed to validate)
-
-### Task 2.4: Economic Loop E2E Validation (SDD §3.4, FR-6)
-
-**Description:** Run the existing billing E2E tests (`billing-full-loop.e2e.test.ts`, `billing-smoke.e2e.test.ts`, `economic-loop-replay.test.ts`) against the Docker Compose topology. Fix any failures. Validate conservation invariants I-1 through I-5.
-
-**Acceptance Criteria:**
-- AC-6.1: `billing-full-loop.e2e.test.ts` passes with zero external network calls
-- AC-6.2: Test exercises credit minting → lot creation → debit → conservation checks (I-1..I-5)
-- AC-6.3: `economic-loop-replay.test.ts` passes
-- AC-6.4: `billing-smoke.e2e.test.ts` passes
-- AC-6.5: No test calls NOWPayments, Paddle, or external payment APIs
-- AC-1.5: Contract-validator confirms schema conformance
-
-**Effort:** Medium (debugging existing tests against live topology)
-**Testing:** Full E2E run via `run-e2e.sh`
-**SDD Reference:** §3.4, FR-6
-**Dependencies:** Tasks 2.1, 2.2, 2.3
-
-### Task 2.5: Static Egress Assertion (SDD §3.4, Layer 3)
-
-**Description:** Add a post-test step in the runner that inspects container `/proc/net/tcp` for unexpected non-RFC1918 outbound connections.
-
-**Acceptance Criteria:**
-- AC-6.6: Post-test assertion verifies no unexpected external connections
-- Assertion algorithm: `docker compose exec -T <service> cat /proc/net/tcp6 /proc/net/tcp 2>/dev/null` → parse hex remote addresses → ignore 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, ::1, fe80::/10, LISTEN state, and Docker bridge subnet (discovered via `docker network inspect`) → flag any ESTABLISHED connection to non-allowlisted remote as violation
-- Non-RFC1918 connections logged with decoded IP and cause runner to exit with failure
-- Clear error message identifying offending connections and container
-- **Determinism proof AC:** On a clean E2E run, assertion produces zero findings. When a `curl https://example.com` is injected into a test, assertion fails and prints the remote IP.
-
-**Effort:** Medium
-**Testing:** Verify assertion passes on clean run; inject external curl to confirm detection
-**SDD Reference:** §3.4
-**Dependencies:** Task 2.1
+**Acceptance Criteria**:
+- [ ] All 39+ commons symbols re-exported from barrel
+- [ ] `ModelPerformanceEventSchema` and `QualityObservationSchema` re-exported from `/governance`
+- [ ] Naming collisions resolved with `Commons` prefix aliases
+- [ ] Barrel compiles with zero TypeScript errors
+- [ ] Existing barrel exports unchanged (backwards-compatible)
 
 ---
 
-## Sprint 3: Documentation + CI Pipeline ✅
+### Task 1.3: FR-8 — Contract Spec & Version Negotiation (Phase A)
+**FR**: FR-8 → G-6
+**Files modified**: `spec/contracts/contract.json`, `themes/sietch/src/packages/core/protocol/arrakis-compat.ts`
+**Effort**: Medium
 
-**Global Sprint ID:** 357
-**Goal:** Write admin guide, staging checklist, update onboarding docs, and wire CI pipeline.
-**Priority:** P0 (FR-3), P1 (FR-4, FR-5, FR-7)
-**Dependencies:** Sprint 2 (E2E validated — CI can reference working runner)
-**Review:** APPROVED (2026-02-25)
+**Description**: Update consumer contract to add `/commons` entrypoint with all consumed symbols. Update `arrakis-compat.ts` to dual-accept window: preferred `8.2.0`, supported `['7.11.0', '8.2.0']`. `validateCompatibility()` delegates entirely to hounfour — no local range logic. Document Phase C transition criteria in code comments.
 
-### Task 3.1: Admin Setup Guide (SDD §3.6, FR-3)
-
-**Description:** Write `themes/sietch/docs/ADMIN_SETUP_GUIDE.md` covering Discord setup, env config, DB init, feature flags, verification checklist, and troubleshooting.
-
-**Acceptance Criteria:**
-- AC-3.1: Guide exists and covers all required sections
-- AC-3.2: References actual env var names from `.env.example`
-- AC-3.3: Includes minimal viable config (smallest set of env vars)
-- AC-3.4: Documents safe-to-disable feature flags
-- AC-3.5: Includes verification checklist (bot responds, health 200)
-- NFR-3: Written for community admin persona, not engineers
-
-**Effort:** Medium
-**Testing:** `/rtfm` validation (Task 3.5)
-**SDD Reference:** §3.6
-
-### Task 3.2: Onboarding Documentation Update (SDD §3.8, FR-4)
-
-**Description:** Replace Collab.Land references with `/verify` command documentation. Update `.env.example` placeholder Discord IDs.
-
-**Acceptance Criteria:**
-- AC-4.1: Zero references to "Collab.Land" or "collabland" in user-facing docs
-- AC-4.2: Onboarding guide documents `/verify` slash command with EIP-191 flow
-- AC-4.3: `.env.example` placeholder Discord IDs replaced with instructions
-
-**Effort:** Low
-**Testing:** `grep -ri collab.land themes/sietch/docs/` returns empty
-**SDD Reference:** §3.8
-
-### Task 3.3: Staging Deployment Checklist (SDD §3.7, FR-5)
-
-**Description:** Create `themes/sietch/docs/STAGING_CHECKLIST.md` with secrets inventory from Terraform variables and `.env.example`, operational steps, and verification gate.
-
-**Acceptance Criteria:**
-- AC-5.1: Checklist exists
-- AC-5.2: Enumerates secrets from Terraform + `.env.example` with status
-- AC-5.3: Includes rotate token, terraform plan, migrations, health check steps
-- AC-5.4: References existing deployment runbooks
-- AC-5.5: Verification gate: `terraform plan` succeeds + `/health` returns 200
-
-**Effort:** Low-Medium
-**Testing:** Checklist reviewed against actual Terraform variables
-**SDD Reference:** §3.7
-
-### Task 3.4: CI Pipeline Wiring (SDD §3.9, FR-7)
-
-**Description:** Update `.github/workflows/ci.yml` with unit + integration split jobs. Update `.github/workflows/e2e-billing.yml` to use `run-e2e.sh` with artifact collection.
-
-**Acceptance Criteria:**
-- AC-2.3: Unit job runs `pnpm test:unit` (no Redis); integration job runs `pnpm test:integration` (with Redis service container)
-- AC-7.1: E2E workflow updated to use `run-e2e.sh`
-- AC-7.2: CI builds Docker images, starts services, runs E2E, reports results
-- AC-7.3: E2E job timeout 15 minutes
-- AC-7.4: Failure artifacts include compose logs (`actions/upload-artifact@v4`)
-- AC-7.5: Runs on PRs targeting main
-- Static import guard runs as unit job pre-step (Task 1.5 wired into CI)
-
-**Effort:** Medium
-**Testing:** CI workflow dry-run via `act` or push to feature branch
-**SDD Reference:** §3.9
-**Dependencies:** Sprint 1 (workspace config), Sprint 2 (runner script)
-
-### Task 3.5: RTFM Validation (SDD §3.6, AC-3.6)
-
-**Description:** Run `/rtfm` validation on the admin setup guide to verify a zero-context agent can follow it.
-
-**Acceptance Criteria:**
-- AC-3.6: `/rtfm` passes with zero BLOCKING gaps
-- If BLOCKING gaps found: fix guide and re-test (max 1 retry)
-- RTFM report saved to `grimoires/loa/a2a/rtfm/`
-
-**Effort:** Low
-**Testing:** `/rtfm --template install themes/sietch/docs/ADMIN_SETUP_GUIDE.md`
-**SDD Reference:** §3.6
-**Dependencies:** Task 3.1
+**Acceptance Criteria**:
+- [ ] `contract.json` includes `/commons` entrypoint with 39+ symbols
+- [ ] `provider_version_range` stays `>=7.11.0` (Phase A dual-accept)
+- [ ] `CONTRACT_VERSION` = `8.2.0` (auto via re-export)
+- [ ] `negotiateVersion()` returns preferred `8.2.0`, supported includes `7.11.0`
+- [ ] `validateCompatibility()` delegates to hounfour, no local range logic
+- [ ] Mixed-version peer simulation test: arrakis 8.2.0 ↔ finn 7.11.0 PASS, ↔ finn 6.0.0 FAIL
 
 ---
 
-## Gate Failure Handling
+### Task 1.4: FR-10 — ADR-001 Import Guard Extension
+**FR**: FR-10 → G-5
+**Files modified**: `tests/unit/protocol-conformance.test.ts`
+**Effort**: Small
 
-Each sprint has a quality gate. If a gate fails, follow the corresponding action:
+**Description**: Add Layer 3 conformance test verifying `/commons` symbols are accessible via barrel only, not via direct import. Verify ESLint `arrakis-*.ts` glob covers new extension modules (no config change needed).
 
-| Gate | Trigger | Action |
-|------|---------|--------|
-| Sprint 1: Unit tests green | `pnpm test:unit` has ECONNREFUSED | Re-audit Task 1.2 file list; reclassify missed files. Do not proceed to Sprint 2. |
-| Sprint 1: Integration tests green | `pnpm test:integration` fails with Redis running | Debug individual test failures; file may need mock, not reclassification. |
-| Sprint 2: E2E runner exits 0 | `run-e2e.sh` fails on healthy services | Capture compose logs (IMP-003); isolate failing test; fix before proceeding. |
-| Sprint 2: Egress assertion clean | Non-RFC1918 connection detected | Identify offending test; add to allowlist if Docker-internal, fix if genuine egress. |
-| Sprint 3: RTFM passes | BLOCKING gaps in admin guide | Fix guide and re-test (max 1 retry per Task 3.5). |
-| Sprint 3: CI green | Workflow failures | Test with `act` locally; fix YAML syntax or service config before merge. |
-
-**Stop-the-line rule:** If Sprint 1 Task 1.2 (Redis audit spike) finds >10 files needing production refactors, HALT and escalate per the timeboxed spike protocol (SDD §3.3, Flatline SKP-010).
+**Acceptance Criteria**:
+- [ ] Layer 3 test: `/commons` symbols accessible from `@arrakis/core/protocol`, NOT from direct hounfour import
+- [ ] ESLint passes with no new import violations
+- [ ] `CONTRACT_VERSION` assertion updated: `7.11.0` → `8.2.0`
+- [ ] Vector count gate updated to P0 threshold
 
 ---
 
-## Risk Assessment
+## Sprint 2: Gateway + Events (Global ID: 359)
 
-| Risk | Severity | Mitigation | Sprint |
-|------|----------|------------|--------|
-| Redis mocking requires production refactors | High | Timeboxed spike (Task 1.2); escalation if >10 files need refactors | 1 |
-| Redis mocking soft-escalation gap (Flatline SKP-002) | Medium | If audit finds 7–10 files needing complex mocks, flag in NOTES.md for capacity review even if below hard threshold | 1 |
-| E2E topology bitrot — services fail to start | Medium | Incremental debugging via `run-e2e.sh` with log capture | 2 |
-| JWKS health gate timing — loa-finn starts before JWKS ready | Low | Health gate already implemented; `depends_on` + runner health wait | 2 |
-| JWKS volume driver semantics (Flatline SKP-006) | Low | Atomic `mv` on named Docker volumes uses overlay2 by default; if CI uses fuse-overlayfs, add explicit storage driver check to preflight | 2 |
-| Stub behavior drift (Flatline SKP-001) | Medium | E2E stubs (Task 2.3) document explicit "test-only" boundaries; production JWKS validation is designed from requirements, not reverse-engineered from stubs | 2 |
-| Port conflicts on developer machines | Medium | Parameterized ports via env vars (SDD IMP-005) | 2 |
-| Docker env differences (Flatline SKP-005) | Medium | Minimum versions: Docker 24+, Compose v2.20+. Document in `run-e2e.sh` header and CI workflow. | 2 |
-| Workspace test classification gaps (Flatline SKP-003) | Low | Add catch-all vitest project for unclassified test files (`*.spec.ts` etc.) that logs a warning — prevents silent test omission | 1 |
-| RTFM fails — admin guide has gaps | Medium | Budget 1 fix iteration in Task 3.5 | 3 |
-| CI workflow changes break existing jobs | Medium | Feature branch testing before merge to main | 3 |
+**Goal**: Wire DynamicContract validation into the gateway request lifecycle and implement exhaustive ReputationEvent routing with ModelPerformanceEvent support.
 
-## Success Criteria
+### Task 2.1: FR-4 — DynamicContract Validation at Gateway
+**FR**: FR-4 → G-2, G-3
+**Files new**: `themes/sietch/src/packages/core/protocol/arrakis-dynamic-contract.ts`, `config/dynamic-contract.json`, `tests/unit/dynamic-contract.test.ts`
+**Files modified**: `packages/adapters/agent/request-lifecycle.ts`
+**Effort**: Large
 
-Complete when:
-1. `pnpm test:unit` passes with zero ECONNREFUSED (Sprint 1)
-2. `pnpm test:integration` passes with Redis service (Sprint 1)
-3. `./tests/e2e/run-e2e.sh` exits 0 with all 4 services healthy (Sprint 2)
-4. Economic loop tests validate I-1..I-5 conservation invariants (Sprint 2)
-5. ADMIN_SETUP_GUIDE.md passes RTFM validation (Sprint 3)
-6. CI runs unit, integration, and E2E in separate jobs — all green (Sprint 3)
-7. Zero references to Collab.Land in user-facing docs (Sprint 3)
-8. Staging checklist covers all Terraform secrets (Sprint 3)
+**Description**: Create `arrakis-dynamic-contract.ts` with `loadDynamicContract()` (startup validation with 6 failure modes), `resolveProtocolSurface()`, `isCapabilityGranted()`. Load contract as singleton at startup; verify monotonic expansion. Integrate at VALIDATED → RESERVED transition in request lifecycle. Implement reputation state resolution (SKP-006): service as authority, JWT as cache hint, 60s TTL, fail-closed to `cold` surface. Add CI/CD config validation gate (SKP-003).
+
+**Acceptance Criteria**:
+- [ ] `loadDynamicContract()` validates against `DynamicContractSchema` + `verifyMonotonicExpansion()`
+- [ ] All 6 startup failure modes produce correct behavior (FATAL with structured log)
+- [ ] `DYNAMIC_CONTRACT_OVERRIDE` blocked in production (`NODE_ENV !== 'production'`)
+- [ ] Override max size 64KB enforced
+- [ ] `resolveProtocolSurface(contract, state)` returns correct surface per reputation state
+- [ ] `isCapabilityGranted(surface, capability)` filters correctly
+- [ ] Request lifecycle: surface denied → FAILED state
+- [ ] Reputation resolution: service authoritative, JWT cache hint, 60s TTL
+- [ ] Fail-closed to `cold` surface when reputation service down + stale JWT
+- [ ] Downgrade push-invalidation prevents privilege escalation
+- [ ] CI pre-deploy validates `dynamic-contract.json`
+- [ ] Monotonic expansion formally defined: each higher reputation state's surface is a strict superset of lower state's capabilities and schemas (property-based test)
+- [ ] Override blocking via explicit deployment config flag (not solely NODE_ENV) — `ALLOW_DYNAMIC_CONTRACT_OVERRIDE=false` in production deployment manifest
+- [ ] Reputation cache TTL test: cached value expires after 60s, fresh lookup occurs
+- [ ] Reputation cache stale-while-revalidate test: stale value served for up to 120s while background refresh
+- [ ] Downgrade race window test: push-invalidation arrives mid-request → next request gets lower surface (not stale higher)
+- [ ] JWT freshness test: JWT with iat >300s old + service available → service value used (not stale JWT)
+
+---
+
+### Task 2.2: FR-7 — ModelPerformanceEvent Handler
+**FR**: FR-7 → G-4
+**Files new**: `packages/adapters/agent/reputation-event-router.ts`, `tests/unit/reputation-event-router.test.ts`
+**Effort**: Medium
+
+**Description**: Create exhaustive `routeReputationEvent()` switch covering all 4 ReputationEvent variants. For `model_performance`: validate QualityObservation (score in [0,1], dimension patterns), route `'unspecified'` TaskType to aggregate-only scoring, forward to reputation scoring pipeline via BullMQ queue. Audit trail integration is via an `AuditTrailPort` interface — this sprint provides a fail-closed stub that throws `AuditTrailNotReady`; Sprint 3 wires the real implementation.
+
+**Acceptance Criteria**:
+- [ ] All 4 ReputationEvent variants handled (quality_signal, task_completed, credential_update, model_performance)
+- [ ] Exhaustive switch with `never` type check (compile-time safety for future variants)
+- [ ] `model_performance` validates QualityObservation structure
+- [ ] `'unspecified'` TaskType → aggregate-only scoring (no task-type cohort)
+- [ ] Structured logging: model_id, provider, pool_id, score (no PII)
+- [ ] Unit tests: valid/invalid ModelPerformanceEvent, QualityObservation bounds
+- [ ] `AuditTrailPort` interface defined with `append()` method
+- [ ] Fail-closed stub: audit append failure → event routing fails (not silently swallowed)
+- [ ] Integration with real AuditTrailService deferred to Sprint 4 Task 4.2
+
+---
+
+## Sprint 3: Governance Enforcement (Global ID: 360)
+
+**Goal**: Implement conservation law enforcement, mutation authorization with actor_id, and the life-critical audit trail hash chain infrastructure.
+
+### Task 3.1: FR-5 — GovernedCredits & Conservation Laws
+**FR**: FR-5 → G-2, G-3
+**Files new**: `themes/sietch/src/packages/core/protocol/arrakis-governance.ts`, `tests/unit/governance-mutation.test.ts`
+**Effort**: Large
+
+**Description**: Create `arrakis-governance.ts` with canonical conservation law instances (`LOT_CONSERVATION` via `createBalanceConservation()`, `ACCOUNT_NON_NEGATIVE` via `createNonNegativeConservation()`). Implement `resolveActorId()` with JWT sub (UUID validated) and mTLS service identity sourcing — never returns empty string. Implement `authorizeCreditMutation()` wrapping `evaluateGovernanceMutation()` with role-based context.
+
+**Acceptance Criteria**:
+- [ ] `LOT_CONSERVATION` uses `createBalanceConservation(['balance', 'reserved', 'consumed'], 'original_allocation', 'strict')`
+- [ ] `ACCOUNT_NON_NEGATIVE` uses `createNonNegativeConservation(['balance', 'reserved'], 'strict')`
+- [ ] `resolveActorId()`: JWT sub validated as UUID, service identity as `service:<name>` from mTLS
+- [ ] `resolveActorId()` throws `GovernanceMutationError` if no authenticated identity
+- [ ] `authorizeCreditMutation()` delegates to `evaluateGovernanceMutation()` correctly
+- [ ] CreditMutationContext includes stable `mutationId` + `timestamp` for idempotency
+- [ ] Unit tests: accept/reject cases, UUID validation, empty actor rejection
+- [ ] `resetFactoryCounter()` in test `beforeEach` (prevents flakiness)
+
+---
+
+### Task 3.2: FR-6a — Audit Trail Hash Chain (Code + DB Migration)
+**FR**: FR-6 → G-2, G-3
+**Files new**: `packages/adapters/storage/audit-trail-service.ts`, `packages/adapters/storage/governed-mutation-service.ts`, `packages/adapters/storage/migrations/XXXX_audit_trail.sql`, `packages/adapters/storage/partition-manager.ts`, `tests/unit/audit-trail.test.ts`
+**Effort**: Very Large (critical path)
+
+**Description**: This is the life-critical infrastructure task. Code and DB migration deliverables only — ops/infra deliverables are in Task 3.3.
+
+**Database** (`XXXX_audit_trail.sql`):
+- 4 tables: `audit_trail` (partitioned by month), `audit_trail_chain_links` (global uniqueness), `audit_trail_head` (linearization), `audit_trail_checkpoints` (metadata)
+- **Partitioning strategy**: Native PostgreSQL RANGE partitioning on `created_at` with a DEFAULT partition (`audit_trail_default`) to catch inserts that miss named partitions. Named partitions created for current + next 2 months. Default partition acts as safety net — any row landing there triggers an alert (should have had a named partition).
+- **Partition creation mechanism**: SQL function `create_audit_partitions(months_ahead INTEGER)` that creates named monthly partitions idempotently (`IF NOT EXISTS`). Called by: (a) the migration itself for initial partitions, (b) `partition-manager.ts` scheduled job, (c) CI pre-deploy check.
+- Append-only triggers (BEFORE UPDATE/DELETE → EXCEPTION) — PostgreSQL >= 14 clones these to each partition automatically
+- RLS: INSERT + SELECT only for `arrakis_app` role
+- 3 DB roles: `arrakis_app` (runtime), `arrakis_migrator` (DDL), `arrakis_dba` (break-glass)
+- `event_time` (caller-provided, in hash) vs `created_at` (server-generated `DEFAULT NOW()`, partitioning)
+- `event_time_skew` CHECK constraint (±5 minutes)
+
+**Partition Manager** (`partition-manager.ts`):
+- `ensurePartitions(monthsAhead: number)`: calls `create_audit_partitions()` SQL function
+- `checkPartitionHealth()`: returns months of headroom; alerts if < 1 month ahead
+- CI integration: `checkPartitionHealth()` called in pre-deploy step, fails deploy if headroom < 2 months
+
+**AuditTrailService** (`audit-trail-service.ts`):
+- `append()`: SERIALIZABLE tx → advisory lock → read head → compute hash (hounfour library ONLY) → INSERT audit_trail → INSERT chain_links → UPSERT head → COMMIT
+- `verify()`: delegates to `verifyAuditTrailIntegrity()` from hounfour
+- `checkpoint()`: delegates to `createCheckpoint()` + INSERT into checkpoints
+- Retry: 3x with backoff on serialization failure; emit metric on exhaustion
+- Quarantine: circuit breaker halts writes, mutations rejected 503 + Retry-After
+
+**GovernedMutationService** (`governed-mutation-service.ts`):
+- `executeMutation()`: state change + audit append in SAME SERIALIZABLE transaction
+- Single entry point for ALL governed state mutations
+
+**Governed write path inventory** (tables requiring GovernedMutationService routing):
+
+| Table | Write Paths Today | Migration to GovernedMutationService |
+|-------|------------------|--------------------------------------|
+| `credit_lots` | `CreditLotRepository.create/update` | Route through `executeMutation()` |
+| `credit_reservations` | `ReservationService.reserve/release` | Route through `executeMutation()` |
+| `agent_reputation` | `ReputationService.updateScore` | Route through `executeMutation()` |
+
+All other tables (sessions, requests, telemetry) are NOT governed — no routing change needed.
+
+**Acceptance Criteria** (CI-provable):
+- [ ] All 4 tables created with correct schema, constraints, triggers, RLS
+- [ ] DEFAULT partition exists as safety net for unmapped months
+- [ ] `create_audit_partitions()` SQL function creates partitions idempotently
+- [ ] `partition-manager.ts` calls function and checks headroom
+- [ ] App role cannot ALTER/DROP/GRANT (privilege test via DB integration harness)
+- [ ] Triggers prevent UPDATE/DELETE on `audit_trail` (trigger test via DB integration harness)
+- [ ] Advisory lock prevents concurrent forks (linearization test with 2 concurrent appends)
+- [ ] `audit_trail_chain_links` prevents global forks (cross-partition uniqueness test)
+- [ ] `computeAuditEntryHash()` from hounfour library ONLY (no local reimplementation)
+- [ ] `event_time` in hash, `created_at` excluded from hash (timestamp split test)
+- [ ] `event_time_skew` CHECK rejects entries with >5min skew
+- [ ] `entry_id` UNIQUE constraint provides idempotency (duplicate test)
+- [ ] `verifyAuditTrailIntegrity()` detects chain discontinuity (integrity test)
+- [ ] Quarantine fail-closed: broken chain → mutation rejected with `AUDIT_QUARANTINE`
+- [ ] `GovernedMutationService.executeMutation()` couples state + audit in same tx
+- [ ] All 3 governed tables routed through GovernedMutationService
+- [ ] Direct table UPDATE on governed tables outside service fails (privilege test)
+- [ ] AuditTrailPort wired to real AuditTrailService (replaces Sprint 2 stub)
+
+**Staged milestones (SKP-001)** — exit criteria for each stage:
+
+| Stage | Deliverable | Exit Criteria | Rollback |
+|-------|------------|---------------|----------|
+| 3.2a | Schema + RLS + roles | Migration applies, privilege tests pass | Drop tables |
+| 3.2b | AuditTrailService.append() | Linearization + hash correctness tests pass | Revert service code |
+| 3.2c | verify() + quarantine | Chain discontinuity detected, fail-closed works | Disable quarantine circuit breaker |
+| 3.2d | GovernedMutationService | Transactional coupling tests pass, governed tables routed | Revert adapter wiring |
+| 3.2e | Partition manager + CI gate | Idempotent creation, headroom check | Revert to manual partition creation |
+
+If quarantine triggers in production: immediate rollback to pre-governed mutation paths (direct DB writes) while investigation proceeds. Governed mutations re-enabled only after full chain re-verification.
+
+**Performance acceptance criteria (IMP-002 + SKP-007)**:
+- [ ] Append p95 < 30ms, p99 < 50ms (measured under 10 concurrent writers per domain_tag)
+- [ ] Lock wait p95 < 5ms, p99 < 10ms
+- [ ] Serialization retry rate < 1% at 10 concurrent writers
+- [ ] Load test: 100 appends/sec sustained for 60s with < 1% error rate
+- [ ] Lock granularity: advisory lock keyed by `hashCode(domainTag)` — different domain_tags have zero contention
+
+**Circuit breaker specification (IMP-003)**:
+- **Closed → Open**: 3 consecutive `verifyAuditTrailIntegrity()` failures OR 1 hash discontinuity detection
+- **Open state**: All audit appends for affected domain_tag rejected with `AUDIT_QUARANTINE`
+- **Open → Half-Open**: After manual operator approval (NOT automatic timer)
+- **Half-Open probe**: Run `verify()` on last N entries; if PASS → Closed, if FAIL → Open
+- **Reset criteria**: Full chain verification PASS from last checkpoint + 2-person approval
+
+**Migration naming convention (IMP-007)**: Migration file uses format `NNNN_audit_trail.sql` where NNNN is the next sequential migration number from `packages/adapters/storage/migrations/`. Verified by CI (migration order check).
+
+---
+
+### Task 3.3: FR-6b — Audit Trail Ops/Infra (Release Gate)
+**FR**: FR-6 → G-3
+**Effort**: Medium (ops ticket — not blocking code merge, but IS a release gate)
+
+**Description**: Operational infrastructure that cannot be proven in CI. These are deployment-time deliverables tracked as a separate ops ticket. Code merge is NOT blocked, but **production release IS gated** on a minimal ops baseline (SKP-002). Governed mutations MUST NOT be enabled in production until the release checklist is signed off.
+
+**Deliverables**:
+- [ ] pgaudit extension enabled on production PostgreSQL (`CREATE EXTENSION pgaudit`)
+- [ ] pgaudit output → CloudWatch Logs with WORM retention policy
+- [ ] Superuser session detection: pgaudit log entries with `role = arrakis_dba` → CloudWatch alarm → PagerDuty
+- [ ] pg_cron or external scheduler calling `create_audit_partitions(2)` daily
+- [ ] CloudWatch alarm if partition headroom < 1 month
+- [ ] Quarantine recovery runbook documented in runbook repo (8-step procedure)
+- [ ] Append SLO dashboards deployed (p99 latency, lock wait, serialization retries)
+- [ ] Archive signing pipeline for pruned partitions (S3 + checksum)
+
+**Release gate — minimal ops baseline (SKP-002)**:
+
+The following items constitute the minimal ops baseline. ALL must have evidence before governed mutations are enabled in production:
+
+| # | Baseline Item | Evidence Required |
+|---|--------------|-------------------|
+| 1 | Partition scheduler running | Screenshot/log of `create_audit_partitions(2)` cron execution |
+| 2 | Partition headroom alarm active | CloudWatch alarm ARN + test alert verification |
+| 3 | Quarantine recovery runbook published | Runbook URL + walkthrough date with on-call team |
+| 4 | Log retention configured | CloudWatch WORM policy ARN, retention period ≥ 90 days |
+| 5 | Append SLO dashboard live | Dashboard URL + metrics populating from staging |
+
+**Deployment checklist** — signed by deployer before enabling governed mutations:
+
+```
+[ ] All Task 3.2 acceptance criteria passing in CI (code gate ✓)
+[ ] Baseline items 1-5 above have evidence links attached to this ticket
+[ ] Staging environment running with governed mutations for ≥24h without quarantine trigger
+[ ] On-call team has reviewed quarantine runbook (date: ______)
+[ ] GOVERNED_MUTATIONS_ENABLED=true added to production deployment manifest
+[ ] Deployer sign-off: _________________ Date: _______
+```
+
+**Note**: Code merge is NOT blocked on ops deliverables. Task 3.2 acceptance criteria are all CI-provable. However, **production release of governed mutations IS gated** on the minimal ops baseline above. The deployment checklist prevents enabling governed mutations without operational readiness.
+
+---
+
+## Sprint 4: Conformance & E2E Validation (Global ID: 361)
+
+**Goal**: Complete conformance test alignment, run full integration test suite, and validate all goals end-to-end.
+
+### Task 4.1: FR-9 — Conformance Test Alignment
+**FR**: FR-9 → G-7
+**Files new**: `spec/conformance/test-commons-p0.ts`, `spec/conformance/test-full-vectors.ts`
+**Files modified**: `tests/unit/protocol-conformance.test.ts`
+**Effort**: Large
+
+**Description**: Create P0 conformance vector runner (~40 vectors, <30s, runs in CI) covering consumed symbols: audit trail hash, governed resources, reputation events, dynamic contracts. Create full nightly vector runner (219 vectors, <120s). All vectors use explicit `clockTime` parameter — no `Date.now()`. Update existing conformance test with dual-accept tests, ModelPerformanceEvent variant, QualityObservation validation.
+
+**Acceptance Criteria**:
+- [ ] P0 vectors pass in CI (<30s wall time)
+- [ ] Full 219 vectors pass in nightly (<120s wall time)
+- [ ] All vectors use explicit `clockTime` injection (no flakes)
+- [ ] `CONTRACT_VERSION` assertion = `8.2.0`
+- [ ] Dual-accept: 8.2.0 ↔ 7.11.0 PASS, 8.2.0 ↔ 6.0.0 FAIL
+- [ ] ModelPerformanceEvent variant construct/validate tests pass
+- [ ] QualityObservation score bounds + dimension pattern tests pass
+- [ ] Vector failures are hard failures (no retry/skip)
+
+---
+
+### Task 4.2: Integration Tests + DB Test Harness
+**FR**: FR-4, FR-5, FR-6, FR-7, FR-8 → G-2, G-3, G-6
+**Files new**: `tests/integration/db-harness.ts`, `tests/integration/audit-trail.integration.test.ts`, `tests/integration/governed-mutations.integration.test.ts`, `tests/integration/gateway.integration.test.ts`
+**Effort**: Large
+
+**Description**: Build a DB integration test harness and run end-to-end integration tests covering cross-component interactions.
+
+**DB Integration Test Harness** (`tests/integration/db-harness.ts`):
+- Spins up a PostgreSQL >= 14 instance (testcontainers or pg_tmp)
+- Applies full migration (`XXXX_audit_trail.sql`) including roles, triggers, RLS
+- Creates all 3 DB roles (`arrakis_app`, `arrakis_migrator`, `arrakis_dba`)
+- Provides connection pool per role for privilege testing
+- Teardown: drops test database after suite
+
+**Integration Scenarios**:
+
+| Scenario | Components | Verifies |
+|----------|-----------|----------|
+| DynamicContract + request lifecycle | Gateway → surface check | Capability gating by reputation state |
+| Credit mutation + audit trail | GovernedMutationService → audit in same tx | Transactional coupling, fail-closed |
+| Version negotiation dual-accept | arrakis 8.2.0 ↔ finn 7.11.0 | Mixed-version peer communication |
+| Audit linearization | 2 concurrent appends | Advisory lock prevents forks |
+| Quarantine fail-closed | Broken chain → mutation rejected | No un-audited state transitions |
+| Reputation resolution failure | Service down + stale JWT | Fail-closed to cold surface |
+| DB privilege enforcement | arrakis_app role | Cannot ALTER/DROP/GRANT |
+| Trigger enforcement | UPDATE/DELETE on audit_trail | Blocked by BEFORE trigger |
+| RLS enforcement | arrakis_app via RLS | INSERT + SELECT only, no UPDATE/DELETE |
+| Cross-partition uniqueness | chain_links table | Fork attempt across months blocked |
+| event_time_skew constraint | Entry with >5min skew | Rejected by CHECK constraint |
+| Idempotency via entry_id | Duplicate entry_id INSERT | Returns existing entry, no duplicate |
+| Reputation event → audit trail | Router with real AuditTrailService | Wire Sprint 2 AuditTrailPort to real impl |
+
+**Acceptance Criteria**:
+- [ ] DB test harness creates PostgreSQL with roles, migrations, triggers, RLS
+- [ ] All 13 integration scenarios pass
+- [ ] Transactional coupling: state mutation + audit in same tx (rollback test)
+- [ ] Quarantine: broken chain → 503 with `AUDIT_QUARANTINE` code
+- [ ] Linearization: concurrent appends produce valid chain (no forks)
+- [ ] Reputation fail-closed: service outage → cold surface
+- [ ] arrakis_app: ALTER TABLE → permission denied
+- [ ] arrakis_app: UPDATE on audit_trail → trigger exception
+- [ ] arrakis_app: DELETE on audit_trail → trigger exception
+- [ ] chain_links UNIQUE prevents cross-partition forks
+- [ ] event_time_skew CHECK rejects >5min entries
+- [ ] Duplicate entry_id → idempotent (no error, returns existing)
+- [ ] AuditTrailPort wired: reputation event router → real audit trail append
+
+---
+
+### Task 4.3: E2E Goal Validation
+**FR**: All → G-1 through G-7
+**Effort**: Medium
+
+**Description**: Validate all 7 PRD goals are met end-to-end:
+
+| Goal | Validation |
+|------|-----------|
+| G-1: Single-source governance | All conservation laws from hounfour factories, no local reimplementation |
+| G-2: Full commons adoption | All 39+ commons symbols accessible via barrel |
+| G-3: Enforcement SDK wired | `evaluateGovernanceMutation()` + conservation factories in use |
+| G-4: ModelPerformanceEvent ready | Event router handles 4th variant, aggregate-only for unspecified |
+| G-5: Import discipline | ADR-001 Layer 3 test passes, ESLint enforces |
+| G-6: Safe rollout | Dual-accept window operational, Phase C criteria documented |
+| G-7: Contract coverage | P0 vectors pass in CI, nightly passes 219 vectors |
+
+**Acceptance Criteria**:
+- [ ] All 7 goals validated with evidence (test results, code references)
+- [ ] GitHub issue created for loa-dixie: ModelPerformanceEvent emission
+- [ ] GitHub issue created for loa-finn: v8.2.0 upgrade (Phase C prerequisite)
+
+---
+
+## Appendix A: Dependency Graph
+
+```
+Sprint 1 (358): FR-1 → FR-2,FR-3 → FR-8,FR-10
+                         ↓
+Sprint 2 (359): FR-4, FR-7 (parallel)
+                         ↓
+Sprint 3 (360): FR-5, FR-6 (parallel, FR-6 depends on FR-5 for GovernedMutationService)
+                         ↓
+Sprint 4 (361): FR-9, Integration Tests, E2E Validation
+```
+
+## Appendix B: New Files Summary
+
+| # | File | Sprint | FR |
+|---|------|--------|----|
+| 1 | `themes/sietch/src/packages/core/protocol/arrakis-dynamic-contract.ts` | 2 | FR-4 |
+| 2 | `themes/sietch/src/packages/core/protocol/arrakis-governance.ts` | 3 | FR-5 |
+| 3 | `packages/adapters/storage/audit-trail-service.ts` | 3 | FR-6 |
+| 4 | `packages/adapters/storage/governed-mutation-service.ts` | 3 | FR-5, FR-6 |
+| 5 | `packages/adapters/storage/migrations/XXXX_audit_trail.sql` | 3 | FR-6 |
+| 6 | `packages/adapters/storage/partition-manager.ts` | 3 | FR-6 |
+| 7 | `packages/adapters/agent/reputation-event-router.ts` | 2 | FR-7 |
+| 8 | `config/dynamic-contract.json` | 2 | FR-4 |
+| 9 | `spec/conformance/test-commons-p0.ts` | 4 | FR-9 |
+| 10 | `spec/conformance/test-full-vectors.ts` | 4 | FR-9 |
+| 11 | `tests/unit/governance-mutation.test.ts` | 3 | FR-5 |
+| 12 | `tests/unit/dynamic-contract.test.ts` | 2 | FR-4 |
+| 13 | `tests/unit/reputation-event-router.test.ts` | 2 | FR-7 |
+| 14 | `tests/unit/audit-trail.test.ts` | 3 | FR-6 |
+| 15 | `tests/integration/db-harness.ts` | 4 | FR-6 |
+| 16 | `tests/integration/audit-trail.integration.test.ts` | 4 | FR-6 |
+| 17 | `tests/integration/governed-mutations.integration.test.ts` | 4 | FR-5, FR-6 |
+| 18 | `tests/integration/gateway.integration.test.ts` | 4 | FR-4 |
+
+## Appendix C: Goal Traceability Matrix
+
+| Goal | FRs | Sprint Tasks | Validation |
+|------|-----|-------------|-----------|
+| G-1 | FR-1, FR-2, FR-5 | 1.1, 1.2, 3.1 | Hounfour factories used, no local reimplementation |
+| G-2 | FR-2, FR-3, FR-4, FR-5 | 1.2, 2.1, 3.1 | All commons symbols in barrel, governance wired |
+| G-3 | FR-4, FR-5, FR-6 | 2.1, 3.1, 3.2 | DynamicContract + conservation + audit trail operational |
+| G-4 | FR-7 | 2.2 | 4-variant exhaustive switch, aggregate-only routing |
+| G-5 | FR-2, FR-10 | 1.2, 1.4 | ADR-001 Layer 3 test, ESLint enforcement |
+| G-6 | FR-8 | 1.3 | Dual-accept window, Phase C criteria documented |
+| G-7 | FR-9 | 4.1 | P0 CI + 219 nightly vectors pass |
+
+## Appendix D: Risk Register
+
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| Audit trail canonicalization divergence | Chain quarantine | Use hounfour library ONLY; conformance vectors catch immediately |
+| Missing future partition | Insert failure → outage | Automated 2-month look-ahead + CloudWatch alert + CI gate |
+| Advisory lock contention under burst | Append latency spike | Per-domain-tag locking; SLO monitoring; escalation procedure |
+| Factory counter shared state | Test flakiness | `resetFactoryCounter()` in `beforeEach` |
+| loa-finn not yet on v8.2.0 | Phase C blocked | Dual-accept window operates indefinitely; GitHub issue tracks |
+| Quarantine recovery complexity | Extended outage | 8-step runbook, 2-person approval, flap prevention |

@@ -1,31 +1,31 @@
 {
   "verdict": "APPROVED",
-  "summary": "All three Flatline integrations (duration estimates, explicit e2e workspace project, and gate failure handling) are internally consistent with the existing plan, don’t conflict with the runner-based E2E execution, and no acceptance criteria appear removed or materially altered.",
+  "summary": "All previously-fixed items remain correctly addressed, and the new iteration-3 additions (rollback time-box, perf targets, circuit breaker spec, migration naming, ops baseline release gate, and expanded cache tests) do not introduce any new truly-blocking problems.",
   "previous_issues_status": [
     {
-      "original_issue": "Integration tests require Redis, but plan didn’t specify local/CI Redis provisioning or REDIS_URL wiring",
+      "original_issue": "Task 3.2 mixed CI-implementable code/DB work with untestable ops/infra deliverables (pgaudit/CloudWatch/cron/SLOs), making DoD unachievable",
       "status": "fixed",
-      "notes": "Still fixed: Task 1.1 continues to specify local Redis options and CI redis service + REDIS_URL wiring."
+      "notes": "Still cleanly separated: 3.2 is explicitly code+DB migration with CI-provable AC; 3.3 is ops/infra and now explicitly a production release gate (which is consistent with the original intent and does not block code merge)."
     },
     {
-      "original_issue": "E2E runner criteria didn’t specify how E2E tests are invoked / tied to test:e2e script",
+      "original_issue": "Partitioning plan was ambiguous/incorrectly described (\"partition trigger inheritance\"), risking runtime insert failures when partitions are missing",
       "status": "fixed",
-      "notes": "Still fixed: Task 1.1 maps pnpm test:e2e to run-e2e.sh, and Task 2.1 pins the vitest invocation and zero-test discovery failure behavior."
+      "notes": "Still fixed and strengthened: native RANGE partitioning + DEFAULT partition safety net + idempotent partition creation function + scheduled job + CI headroom gate. This removes the insert-failure outage mode."
     },
     {
-      "original_issue": "JWKS/JWT validation might violate “zero new application logic” if stub changes aren’t allowed",
+      "original_issue": "GovernedMutationService coupling requirement lacked explicit scope (tables/write paths), making it impossible to prove all governed writes route through the service",
       "status": "fixed",
-      "notes": "Still fixed: Task 2.3 scope note explicitly allows tests/e2e/* harness changes while forbidding production package changes."
+      "notes": "Still fixed: explicit governed write-path inventory (credit_lots, credit_reservations, agent_reputation), explicit non-governed exclusions, and CI/integration criteria for routing and for direct updates failing."
     },
     {
-      "original_issue": "Static egress assertion via /proc/net/tcp was underspecified and likely infeasible/flaky",
+      "original_issue": "Sprint 2 Task 2.2 depended on Sprint 3 FR-6 audit trail without a port/stub, creating a cross-sprint blocker",
       "status": "fixed",
-      "notes": "Still fixed: Task 2.5 retains the concrete parsing/allowlist algorithm and determinism proof AC."
+      "notes": "Still fixed: AuditTrailPort + fail-closed stub in Sprint 2, real wiring deferred and explicitly covered later (3.2/4.2). No cross-sprint blocker reintroduced."
     },
     {
-      "original_issue": "Static import guard was too narrow (directory scope + only ESM import style)",
+      "original_issue": "Integration tests did not cover several DB-enforced invariants required by Task 3.2 (RLS/privileges, triggers, uniqueness, skew, idempotency), risking unverified life-critical properties",
       "status": "fixed",
-      "notes": "Still fixed: Task 1.5 continues to cover all workspace test dirs and ESM/CJS/dynamic patterns with a regression-proof AC."
+      "notes": "Still fixed: Sprint 4 Task 4.2 DB harness + enumerated 13 scenarios that cover privilege/RLS/trigger enforcement, cross-partition uniqueness, skew constraint, idempotency, and quarantine fail-closed behavior."
     }
   ],
   "new_blocking_concerns": [],

@@ -1,13 +1,22 @@
 /**
  * Arrakis Compatibility & Boundary Normalization Module
  *
- * Handles v4.6.0 ↔ v7.0.0 protocol boundary during transition:
- * - Version negotiation (advertise v7.0.0 preferred, accept v4.6.0)
+ * Handles protocol version negotiation and boundary normalization:
+ * - Version negotiation (advertise v8.2.0 preferred, dual-accept v7.11.0)
  * - Inbound claim normalization (trust_level → trust_scopes mapping)
  * - Coordination message normalization (reject missing version discriminator)
  * - Feature flag for quick disable without code rollback
  *
- * Task: 300.5 (Sprint 300, cycle-034)
+ * Phase A (Cycle 043): Dual-accept v7.11.0 and v8.2.0 (both supported)
+ * Phase B: loa-finn upgrades to v8.2.0 (tracked via GitHub issue)
+ * Phase C: Tighten to >=8.2.0 only when ALL transition criteria met:
+ *   1. Telemetry confirms 0 v7.11.0 consumers for 7 consecutive days
+ *   2. loa-finn upgraded to v8.2.0 (prerequisite: loa-dixie emits ModelPerformanceEvent)
+ *   3. All internal services confirmed v8.2.0 compatible
+ *   4. 14-day deprecation notice period completed
+ *   5. Straggler handling: any remaining v7.11.0 peers get 400 with migration guide
+ *
+ * Task: 300.5 (Sprint 300, cycle-034), updated cycle-043
  * SDD ref: §3.6, §3.7, §8.3
  */
 
@@ -31,12 +40,13 @@ export interface VersionNegotiation {
 
 /**
  * Advertise supported protocol versions.
- * Outbound: always v7.0.0. Inbound: accept both v4.6.0 and v7.0.0.
+ * Phase A (cycle-043): Prefer v8.2.0, dual-accept v7.11.0.
+ * validateCompatibility() delegates entirely to hounfour — no local range logic.
  */
 export function negotiateVersion(): VersionNegotiation {
   return {
-    preferred: '7.0.0',
-    supported: ['4.6.0', '7.0.0'] as const,
+    preferred: '8.2.0',
+    supported: ['7.11.0', '8.2.0'] as const,
   };
 }
 
@@ -110,8 +120,10 @@ const TRUST_LEVEL_TO_SCOPES: Record<TrustLevel, readonly TrustScope[]> = {
   9: ['billing:read', 'billing:write', 'agent:invoke', 'agent:manage', 'governance:propose', 'governance:vote'],
 };
 
-/** Versions in the local transition window that bypass canonical validateCompatibility. */
-const LOCAL_TRANSITION_VERSIONS = new Set(['4.6.0']);
+/** Versions in the local transition window that bypass canonical validateCompatibility.
+ * Phase A (cycle-043): v7.11.0 is the backward-compat target.
+ * v4.6.0 removed from transition window — no longer supported. */
+const LOCAL_TRANSITION_VERSIONS = new Set(['7.11.0']);
 
 /** Runtime-valid trust scopes for defense-in-depth validation (F-6). */
 const VALID_SCOPES = new Set<TrustScope>([
