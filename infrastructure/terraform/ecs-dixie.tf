@@ -493,7 +493,7 @@ resource "aws_lb_listener_rule" "dixie" {
 
   condition {
     host_header {
-      values = ["dixie.${var.domain_name}"]
+      values = ["dixie.${var.environment}.${var.root_domain}"]
     }
   }
 

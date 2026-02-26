@@ -367,6 +367,8 @@ resource "aws_ecs_task_definition" "finn" {
         { name = "LOG_LEVEL", value = var.log_level },
         # Service discovery URLs (resolved via Cloud Map)
         { name = "FREESIDE_BASE_URL", value = "http://freeside.${local.name_prefix}.local:3000" },
+        { name = "ARRAKIS_JWKS_URL", value = "http://freeside.${local.name_prefix}.local:3000/.well-known/jwks.json" },
+        { name = "DIXIE_REPUTATION_URL", value = "http://dixie.${local.name_prefix}.local:3001/api/reputation/query" },
         { name = "NATS_URL", value = "nats://nats.${local.name_prefix}.local:4222" },
         # Feature flags
         { name = "FEATURE_PAYMENTS_ENABLED", value = "false" },

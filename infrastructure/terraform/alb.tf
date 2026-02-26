@@ -122,9 +122,11 @@ resource "aws_lb_listener" "http_redirect" {
 }
 
 # ACM Certificate
+# Cycle 044: Added dixie subdomain as SAN for host-based routing
 resource "aws_acm_certificate" "main" {
-  domain_name       = var.domain_name
-  validation_method = "DNS"
+  domain_name               = var.domain_name
+  subject_alternative_names = ["dixie.${var.environment}.${var.root_domain}"]
+  validation_method         = "DNS"
 
   lifecycle {
     create_before_destroy = true

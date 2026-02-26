@@ -422,3 +422,91 @@ resource "aws_cloudwatch_metric_alarm" "rds_connection_count_high" {
     Sprint   = "C44-2"
   })
 }
+
+# =============================================================================
+# Cycle 044: Dixie Service Alarms (SDD §8.3)
+# =============================================================================
+
+# Dixie health check failure — no healthy targets behind ALB
+resource "aws_cloudwatch_metric_alarm" "dixie_health_check_failure" {
+  alarm_name          = "${local.name_prefix}-dixie-health-check-failure"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "HealthyHostCount"
+  namespace           = "AWS/ApplicationELB"
+  period              = 60
+  statistic           = "Minimum"
+  threshold           = 1
+  alarm_description   = "Dixie service has no healthy targets — service is DOWN."
+  treat_missing_data  = "breaching"
+
+  dimensions = {
+    TargetGroup  = aws_lb_target_group.dixie.arn_suffix
+    LoadBalancer = aws_lb.main.arn_suffix
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+
+  tags = merge(local.common_tags, {
+    Service  = "Dixie"
+    Severity = "critical"
+    Sprint   = "C44-3"
+  })
+}
+
+# Dixie CPU utilization >80%
+resource "aws_cloudwatch_metric_alarm" "dixie_cpu_high" {
+  alarm_name          = "${local.name_prefix}-dixie-cpu-high"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 3
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/ECS"
+  period              = 300
+  statistic           = "Average"
+  threshold           = 80
+  alarm_description   = "Dixie CPU utilization > 80% for 15 minutes. Consider scaling."
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    ClusterName = aws_ecs_cluster.main.name
+    ServiceName = aws_ecs_service.dixie.name
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+
+  tags = merge(local.common_tags, {
+    Service  = "Dixie"
+    Severity = "warning"
+    Sprint   = "C44-3"
+  })
+}
+
+# Dixie memory utilization >80%
+resource "aws_cloudwatch_metric_alarm" "dixie_memory_high" {
+  alarm_name          = "${local.name_prefix}-dixie-memory-high"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 3
+  metric_name         = "MemoryUtilization"
+  namespace           = "AWS/ECS"
+  period              = 300
+  statistic           = "Average"
+  threshold           = 80
+  alarm_description   = "Dixie memory utilization > 80% for 15 minutes. Investigate memory leak."
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    ClusterName = aws_ecs_cluster.main.name
+    ServiceName = aws_ecs_service.dixie.name
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+
+  tags = merge(local.common_tags, {
+    Service  = "Dixie"
+    Severity = "warning"
+    Sprint   = "C44-3"
+  })
+}

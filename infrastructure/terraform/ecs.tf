@@ -482,6 +482,8 @@ resource "aws_ecs_task_definition" "api" {
         { name = "BYOK_ENABLED", value = var.byok_enabled ? "true" : "false" },
         # Cycle 036: Use Cloud Map DNS for finn discovery in ECS
         { name = "LOA_FINN_BASE_URL", value = var.enable_service_discovery ? "http://finn.${local.name_prefix}.local:3000" : var.loa_finn_base_url },
+        # Cycle 044: Cloud Map DNS for dixie discovery
+        { name = "DIXIE_BASE_URL", value = var.enable_service_discovery ? "http://dixie.${local.name_prefix}.local:3001" : "http://localhost:3001" },
         # Sprint 6 (319), Task 6.7: SIWE session — kid for secret routing
         { name = "SIWE_SESSION_SECRET_KID", value = var.siwe_session_secret_kid }
       ]
@@ -515,7 +517,9 @@ resource "aws_ecs_task_definition" "api" {
         { name = "AGENT_JWT_SIGNING_KEY", valueFrom = aws_secretsmanager_secret.agent_jwt_signing_key.arn },
         { name = "AGENT_JWT_KEY_ID", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:AGENT_JWT_KEY_ID::" },
         # Sprint 6 (319), Task 6.7: SIWE session token signing
-        { name = "SIWE_SESSION_SECRET", valueFrom = aws_secretsmanager_secret.siwe_session_secret.arn }
+        { name = "SIWE_SESSION_SECRET", valueFrom = aws_secretsmanager_secret.siwe_session_secret.arn },
+        # Cycle 044: ES256 key for S2S JWT signing (freeside → finn, freeside → dixie)
+        { name = "ES256_PRIVATE_KEY", valueFrom = aws_secretsmanager_secret.freeside_es256_private_key.arn }
       ]
 
       logConfiguration = {
