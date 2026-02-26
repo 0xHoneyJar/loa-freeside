@@ -10,8 +10,8 @@
 #
 # Models:
 #   gpt-5.2              OpenAI GPT-5.2
-#   gpt-5.2-codex        OpenAI GPT-5.2 Codex
 #   gpt-5.3-codex        OpenAI GPT-5.3 Codex
+#   gpt-5.2-codex        Backward compat alias → gpt-5.3-codex
 #   opus                 Claude Opus 4.6 (alias for claude-opus-4.6)
 #   claude-opus-4.6      Claude Opus 4.6
 #   gemini-2.5-flash     Google Gemini 2.5 Flash
@@ -71,52 +71,60 @@ RETRY_BASE_DELAY=5
 # Model configurations
 declare -A MODEL_PROVIDERS=(
     ["gpt-5.2"]="openai"
-    ["gpt-5.2-codex"]="openai"
     ["gpt-5.3-codex"]="openai"
+    ["gpt-5.2-codex"]="openai"       # Backward compat alias → 5.3-codex
     ["opus"]="anthropic"
     ["claude-opus-4.6"]="anthropic"
     ["claude-opus-4.5"]="anthropic"    # Backward compat alias → 4.6
     ["gemini-2.0"]="google"
     ["gemini-2.5-flash"]="google"
     ["gemini-2.5-pro"]="google"
+    ["gemini-3-flash"]="google"
+    ["gemini-3-pro"]="google"
 )
 
 declare -A MODEL_IDS=(
     ["gpt-5.2"]="gpt-5.2"
-    ["gpt-5.2-codex"]="gpt-5.2-codex"
     ["gpt-5.3-codex"]="gpt-5.3-codex"
+    ["gpt-5.2-codex"]="gpt-5.3-codex"              # Alias → current
     ["opus"]="claude-opus-4-6"
     ["claude-opus-4.6"]="claude-opus-4-6"
     ["claude-opus-4.5"]="claude-opus-4-6"              # Alias → current
     ["gemini-2.0"]="gemini-2.0-flash"
     ["gemini-2.5-flash"]="gemini-2.5-flash"
     ["gemini-2.5-pro"]="gemini-2.5-pro"
+    ["gemini-3-flash"]="gemini-3-flash"
+    ["gemini-3-pro"]="gemini-3-pro"
 )
 
 # Cost per 1K tokens (approximate, 2026-02 pricing)
 # Opus 4.6: $5/$25 per MTok → $0.005/$0.025 per 1K tokens
 declare -A COST_INPUT=(
     ["gpt-5.2"]="0.01"
-    ["gpt-5.2-codex"]="0.015"
-    ["gpt-5.3-codex"]="0.015"
+    ["gpt-5.3-codex"]="0.00175"
+    ["gpt-5.2-codex"]="0.00175"      # Alias → 5.3-codex pricing
     ["opus"]="0.005"
     ["claude-opus-4.6"]="0.005"
     ["claude-opus-4.5"]="0.005"        # Alias → 4.6 pricing
     ["gemini-2.0"]="0.00015"
     ["gemini-2.5-flash"]="0.00015"
     ["gemini-2.5-pro"]="0.00125"
+    ["gemini-3-flash"]="0.0002"
+    ["gemini-3-pro"]="0.0025"
 )
 
 declare -A COST_OUTPUT=(
     ["gpt-5.2"]="0.03"
-    ["gpt-5.2-codex"]="0.06"
-    ["gpt-5.3-codex"]="0.06"
+    ["gpt-5.3-codex"]="0.014"
+    ["gpt-5.2-codex"]="0.014"        # Alias → 5.3-codex pricing
     ["opus"]="0.025"
     ["claude-opus-4.6"]="0.025"
     ["claude-opus-4.5"]="0.025"        # Alias → 4.6 pricing
     ["gemini-2.0"]="0.0006"
     ["gemini-2.5-flash"]="0.0006"
     ["gemini-2.5-pro"]="0.01"
+    ["gemini-3-flash"]="0.0008"
+    ["gemini-3-pro"]="0.015"
 )
 
 # =============================================================================
@@ -253,15 +261,25 @@ call_openai_api() {
         set +x
     fi
 
-    local api_url="https://api.openai.com/v1/chat/completions"
-
-    # Escape for JSON
+    # Codex models use Responses API; standard models use Chat Completions
+    local api_url payload
     local escaped_system escaped_user
     escaped_system=$(printf '%s' "$system_prompt" | jq -Rs .)
     escaped_user=$(printf '%s' "$user_prompt" | jq -Rs .)
 
-    local payload
-    payload=$(cat <<EOF
+    if [[ "$model_id" == *"codex"* ]]; then
+        api_url="https://api.openai.com/v1/responses"
+
+        local combined_input
+        combined_input=$(printf '%s\n\n---\n\n%s\n\n---\n\nRespond with valid JSON only.' "$system_prompt" "$user_prompt")
+        local escaped_input
+        escaped_input=$(printf '%s' "$combined_input" | jq -Rs .)
+
+        payload=$(printf '{"model":"%s","input":%s,"reasoning":{"effort":"medium"}}' "$model_id" "$escaped_input")
+    else
+        api_url="https://api.openai.com/v1/chat/completions"
+
+        payload=$(cat <<EOF
 {
     "model": "${model_id}",
     "messages": [
@@ -273,6 +291,7 @@ call_openai_api() {
 }
 EOF
 )
+    fi
 
     local response
 
@@ -550,7 +569,12 @@ call_api_with_retry() {
         local content
         case "$provider" in
             openai)
-                content=$(echo "$response" | jq -r '.choices[0].message.content // empty')
+                # Responses API (codex) returns .output[].content[].text; Chat Completions returns .choices[0].message.content
+                content=$(echo "$response" | jq -r '
+                    .choices[0].message.content //
+                    (.output[] | select(.type == "message") | .content[] | select(.type == "output_text") | .text) //
+                    empty
+                ')
                 ;;
             anthropic)
                 content=$(echo "$response" | jq -r '.content[0].text // empty')
@@ -586,8 +610,15 @@ call_api_with_retry() {
         local tokens_input tokens_output
         case "$provider" in
             openai)
-                tokens_input=$(echo "$response" | jq -r '.usage.prompt_tokens // 0')
-                tokens_output=$(echo "$response" | jq -r '.usage.completion_tokens // 0')
+                # Responses API (codex) uses input_tokens/output_tokens;
+                # Chat Completions uses prompt_tokens/completion_tokens
+                if [[ "$model_id" == *"codex"* ]]; then
+                    tokens_input=$(echo "$response" | jq -r '.usage.input_tokens // 0')
+                    tokens_output=$(echo "$response" | jq -r '.usage.output_tokens // 0')
+                else
+                    tokens_input=$(echo "$response" | jq -r '.usage.prompt_tokens // 0')
+                    tokens_output=$(echo "$response" | jq -r '.usage.completion_tokens // 0')
+                fi
                 ;;
             anthropic)
                 tokens_input=$(echo "$response" | jq -r '.usage.input_tokens // 0')
@@ -753,8 +784,8 @@ usage() {
 Usage: model-adapter.sh --model <model> --mode <mode> [options]
 
 Models:
-  gpt-5.2, gpt-5.2-codex    OpenAI GPT-5.2 variants
-  gpt-5.3-codex             OpenAI GPT-5.3 Codex
+  gpt-5.2                    OpenAI GPT-5.2
+  gpt-5.3-codex              OpenAI GPT-5.3 Codex
   opus, claude-opus-4.6     Claude Opus 4.6 (claude-opus-4.5 also accepted)
   gemini-2.5-flash          Google Gemini 2.5 Flash
   gemini-2.5-pro            Google Gemini 2.5 Pro

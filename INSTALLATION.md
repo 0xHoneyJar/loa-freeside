@@ -1,16 +1,16 @@
 # Installation Guide
 
-> **Historical note:** Some internal package names (e.g., `@arrakis/`) reflect the project's original Dune-themed naming. External-facing documentation now uses the current Neuromancer-derived naming (Freeside, Sietch). See [README.md](README.md) for the full naming context.
-
-Loa can be installed in two ways: **mounting onto an existing repository** (recommended) or **cloning the template**.
+Loa can be installed in three ways: **submodule mode** (default, recommended), **cloning the template** (new projects), or **vendored mode** (legacy).
 
 **Time to first command**: ~2 minutes (one-liner install) | ~5 minutes (manual install with optional tools)
 
 ## Contents
 
 - [Prerequisites](#prerequisites)
-- [Method 1: Mount onto Existing Repository](#method-1-mount-onto-existing-repository-recommended) (you want to adopt loa in an existing project)
+- [Method 1: Submodule Mode](#method-1-submodule-mode-default) (recommended - adds Loa as git submodule)
 - [Method 2: Clone Template](#method-2-clone-template) (start a new project from scratch using loa)
+- [Method 3: Vendored Mode](#method-3-vendored-mode-legacy) (legacy - copies files into .claude/)
+- [Migrating from Vendored to Submodule](#migrating-from-vendored-to-submodule)
 - [Verify Installation](#verify-installation)
 - [Post-Install Enhancements](#post-install-enhancements) (optional tools that extend Loa)
 - [Ownership Model](#ownership-model-v1150)
@@ -51,9 +51,25 @@ yq --version   # Should show "mikefarah/yq"
 git --version
 ```
 
-## Method 1: Mount onto Existing Repository (Recommended)
+## Choosing Your Installation Method
 
-Mount Loa onto any existing git repository. This is the **sidecar pattern** - Loa rides alongside your project.
+| Factor | Submodule (Default) | Clone Template | Vendored (Legacy) |
+|--------|--------------------|-----------------|--------------------|
+| **Best for** | Existing projects | New projects from scratch | No git submodule/symlink support |
+| **Framework updates** | `git submodule update` or `/update-loa` | `git pull` from upstream | `/update-loa` (full copy) |
+| **Tracked files added** | ~5 (submodule ref + config) | 800+ (full framework) | 800+ (full framework) |
+| **Separation** | Clean — framework in `.loa/`, symlinks in `.claude/` | Mixed — framework files in your tree | Mixed — copied into `.claude/` |
+| **Version pinning** | `cd .loa && git checkout v1.39.0` | Standard git tags | Manual update script |
+| **CI/CD setup** | Needs `--recurse-submodules` | Nothing extra | Nothing extra |
+| **Symlink support** | Required | Not needed | Not needed |
+| **Disk footprint** | ~2 MB (shared .loa/) | Full repo clone | ~2 MB (copied) |
+| **Recommended?** | Yes | Yes (new projects only) | Only if submodules unavailable |
+
+**Our recommendation**: Use **Submodule Mode** for existing projects (Method 1) or **Clone Template** for brand new projects (Method 2). Vendored mode exists for environments without submodule/symlink support (rare).
+
+## Method 1: Submodule Mode (Default)
+
+Adds Loa as a git submodule at `.loa/`, with symlinks from `.claude/` into the submodule. This provides version isolation, easy updates, and clean separation of framework from project code.
 
 ### One-Line Install
 
@@ -61,42 +77,59 @@ Mount Loa onto any existing git repository. This is the **sidecar pattern** - Lo
 curl -fsSL https://raw.githubusercontent.com/0xHoneyJar/loa/main/.claude/scripts/mount-loa.sh | bash
 ```
 
+This automatically uses submodule mode. The installer handles git submodule setup, symlink creation, and configuration.
+
+> **Security note**: Piping curl to bash executes remote code without prior inspection. This is standard practice for developer tools (Homebrew, Rust, nvm) but carries inherent supply-chain risk. For higher-assurance installs, download and inspect first:
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/0xHoneyJar/loa/main/.claude/scripts/mount-loa.sh -o mount-loa.sh
+> less mount-loa.sh  # inspect the script
+> bash mount-loa.sh  # run after review
+> ```
+> Or use the [manual install](#manual-install), [verify after install](#verify-installation), or pin to a release tag with `--tag v1.39.0`.
+
 ### Manual Install
 
 ```bash
 # 1. Navigate to your project
 cd your-existing-project
 
-# 2. Add Loa remote (if loa-upstream already exists, skip this step)
-git remote add loa-upstream https://github.com/0xHoneyJar/loa.git
-git fetch loa-upstream main
+# 2. Add Loa as submodule
+git submodule add -b main https://github.com/0xHoneyJar/loa.git .loa
 
-# 3. Pull System Zone only
-git checkout loa-upstream/main -- .claude
+# 3. Pin to a specific version (recommended)
+cd .loa && git checkout v1.39.0 && cd ..
 
-# 4. Create State Zone
-mkdir -p grimoires/loa/{context,discovery,a2a/trajectory}
+# 4. Run the submodule mount script
+.loa/.claude/scripts/mount-submodule.sh --force
 
-# 5. Initialize config (copy the example file and customize)
-cp .loa.config.yaml.example .loa.config.yaml
-
-# 6. Start Claude Code
+# 5. Start Claude Code
 claude
 ```
 
-> **Note**: The `.beads/` directory is only needed if you install beads_rust (see [Post-Install Enhancements](#post-install-enhancements)). The one-line installer creates it automatically.
+### Pin to Specific Version
+
+```bash
+# Pin to tag
+mount-loa.sh --tag v1.39.0
+
+# Pin to specific commit
+mount-loa.sh --ref abc1234
+```
 
 ### What Gets Installed
 
 ```
 your-project/
-├── .claude/                    # System Zone (framework-managed)
-│   ├── skills/                 # 17 agent skills
-│   ├── commands/               # Slash commands
-│   ├── protocols/              # Framework protocols
-│   ├── scripts/                # Helper scripts
-│   └── overrides/              # Your customizations (preserved on updates)
-├── grimoires/loa/               # State Zone (project memory)
+├── .loa/                       # Git submodule (Loa framework source)
+│   └── .claude/                # Framework files (source of truth)
+├── .claude/                    # Symlinks into .loa/.claude/
+│   ├── skills/ -> ../.loa/.claude/skills/
+│   ├── commands/ -> ../.loa/.claude/commands/
+│   ├── scripts/ -> ../.loa/.claude/scripts/
+│   ├── protocols/ -> ../.loa/.claude/protocols/
+│   ├── hooks/ -> ../.loa/.claude/hooks/
+│   └── overrides/              # Your customizations (NOT a symlink)
+├── grimoires/loa/              # State Zone (project memory)
 │   ├── NOTES.md                # Structured agentic memory
 │   ├── a2a/trajectory/         # Agent trajectory logs
 │   └── ...                     # Your project docs
@@ -104,6 +137,8 @@ your-project/
 ├── .loa-version.json           # Version manifest
 └── .loa.config.yaml            # Your configuration
 ```
+
+> **Note**: `.claude/overrides/` is a real directory you own. Everything else in `.claude/` is a symlink to the submodule.
 
 ## Method 2: Clone Template
 
@@ -124,9 +159,46 @@ git commit -m "Initial commit from Loa template"
 claude
 ```
 
+## Method 3: Vendored Mode (Legacy)
+
+Copies framework files directly into `.claude/`. Use this only if your environment does not support git submodules or symlinks.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/0xHoneyJar/loa/main/.claude/scripts/mount-loa.sh | bash -s -- --vendored
+```
+
+Or manually:
+
+```bash
+mount-loa.sh --vendored
+```
+
+> **Note**: Vendored mode is maintained for backward compatibility. New installations should use submodule mode (the default).
+
+## Migrating from Vendored to Submodule
+
+If you have an existing vendored installation, migrate with one command:
+
+```bash
+# Preview migration (dry run - no changes)
+mount-loa.sh --migrate-to-submodule
+
+# Execute migration
+mount-loa.sh --migrate-to-submodule --apply
+```
+
+The migration:
+1. Classifies files as FRAMEWORK, USER_MODIFIED, or USER_OWNED
+2. Creates a timestamped backup at `.claude.backup.{timestamp}/`
+3. Removes vendored files and adds Loa as a submodule
+4. Creates symlinks and restores user-owned files
+5. Commits the migration
+
+**Rollback**: `git checkout <pre-migration-commit>` restores the exact pre-migration state.
+
 ## Verify Installation
 
-After either install method, verify everything is working:
+After any install method, verify everything is working:
 
 ```bash
 # 1. Check that the files exist in your repo
@@ -141,6 +213,27 @@ claude
 A healthy system shows all green checks. Any issues include structured error codes (LOA-E001+) with fix instructions. If the health check fails, see [Troubleshooting](#troubleshooting).
 
 > `/loa doctor` is a slash command typed inside the Claude Code interactive session, not a shell command. All `/` commands in this guide work the same way.
+
+### Integrity Verification (Optional)
+
+After installation, verify that framework files match the expected checksums from the pinned version:
+
+```bash
+# Compare local checksums against the release tag
+cd .loa && git diff --stat HEAD  # Should show no changes if pinned correctly
+
+# Verify the submodule commit matches the expected tag
+cd .loa && git describe --tags --exact-match 2>/dev/null || echo "Not on a tagged release"
+
+# For vendored installs: validate checksums file
+cat .claude/checksums.json | jq '.files | length'  # Should match expected file count
+```
+
+If you used the one-line curl installer without `--tag`, you can verify what was installed by checking the git log of the submodule:
+
+```bash
+cd .loa && git log --oneline -1
+```
 
 ## Post-Install Enhancements
 
@@ -216,7 +309,7 @@ cargo install ck-search
 
 # Or manual setup
 pip install sentence-transformers
-mkdir -p .loa
+mkdir -p .loa-state
 ```
 
 **Configuration** (add to `.loa.config.yaml`):
@@ -588,23 +681,115 @@ git checkout --theirs .claude/
 git checkout --ours grimoires/loa/
 ```
 
-## Uninstalling Loa
+## CI/CD Configuration
 
-To completely remove Loa from your project:
+When using submodule mode in CI/CD environments, you must ensure the submodule is initialized. Without `--recurse-submodules`, the `.loa/` directory will be empty and Loa will not function.
+
+### GitHub Actions
+
+```yaml
+# .github/workflows/ci.yml
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive   # Required for Loa submodule
+          # fetch-depth: 0       # Optional: full history for git describe
+
+      # Loa symlinks are recreated automatically on mount
+      - name: Verify Loa
+        run: |
+          ls .loa/.claude/scripts/  # Verify submodule is populated
+```
+
+### GitLab CI
+
+```yaml
+# .gitlab-ci.yml
+variables:
+  GIT_SUBMODULE_STRATEGY: recursive  # Required for Loa submodule
+
+build:
+  script:
+    - ls .loa/.claude/scripts/  # Verify submodule is populated
+```
+
+### Shallow Clones
+
+Shallow clones (`--depth 1`) work with submodules. Combine both flags:
 
 ```bash
-# Remove the framework (System Zone)
+git clone --depth 1 --recurse-submodules https://github.com/your-org/your-repo.git
+```
+
+In GitHub Actions:
+
+```yaml
+- uses: actions/checkout@v4
+  with:
+    submodules: recursive
+    fetch-depth: 1  # Shallow clone + submodule works
+```
+
+### Post-Clone Recovery
+
+If a clone was made without `--recurse-submodules`, initialize manually:
+
+```bash
+git submodule update --init .loa
+```
+
+Loa's mount script also auto-detects uninitialized submodules and runs this automatically when `/mount` is invoked.
+
+## Uninstalling Loa
+
+### Submodule Mode (Default)
+
+```bash
+# 1. Remove symlinks (these point into .loa/)
 rm -rf .claude/
 
-# Remove state files (optional — contains your project memory and docs)
-rm -rf grimoires/loa/ .beads/ .loa-version.json .loa.config.yaml
+# 2. Remove the submodule
+git submodule deinit -f .loa
+git rm -f .loa
+rm -rf .git/modules/.loa  # Clean submodule cache
 
-# Remove from git tracking
+# 3. Remove state files (optional — contains your project memory and docs)
+rm -rf grimoires/loa/ .beads/ .loa-state/ .loa-version.json .loa.config.yaml
+
+# 4. Commit the removal
+git commit -m "chore: remove Loa framework (submodule)"
+```
+
+### Vendored Mode (Legacy)
+
+```bash
+# 1. Remove the framework (System Zone)
+rm -rf .claude/
+
+# 2. Remove state files (optional — contains your project memory and docs)
+rm -rf grimoires/loa/ .beads/ .loa-state/ .loa-version.json .loa.config.yaml
+
+# 3. Remove from git tracking
 git rm -r --cached .claude/ grimoires/loa/ .loa-version.json .loa.config.yaml 2>/dev/null
-git commit -m "chore: remove Loa framework"
+git commit -m "chore: remove Loa framework (vendored)"
 
-# Remove the upstream remote (if mounted)
+# 4. Remove the upstream remote (if mounted)
 git remote remove loa-upstream 2>/dev/null
+```
+
+### Using /loa-eject (Recommended)
+
+The safest way to uninstall is `/loa-eject`, which creates a backup before removing:
+
+```bash
+# Preview what will be removed
+/loa-eject --dry-run
+
+# Execute with backup
+/loa-eject
 ```
 
 > **Note**: Your application code (`src/`, `lib/`, etc.) is never touched by Loa and remains unaffected.

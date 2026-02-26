@@ -77,10 +77,29 @@ interprets and acts on:
 | `RUN_SPRINT_PLAN` | Execute `/run sprint-plan` |
 | `RUN_PER_SPRINT` | Execute per-sprint mode |
 | `BRIDGEBUILDER_REVIEW` | Invoke Bridgebuilder on changes |
-| `VISION_CAPTURE` | Run `bridge-vision-capture.sh` |
+| `VISION_CAPTURE` | Check findings for VISION/SPECULATION severity → invoke `bridge-vision-capture.sh` (gated by `vision_registry.bridge_auto_capture`) |
 | `GITHUB_TRAIL` | Run `bridge-github-trail.sh` |
 | `FLATLINE_CHECK` | Evaluate flatline condition |
-| `LORE_DISCOVERY` | Run `lore-discover.sh` to extract patterns from bridge reviews (v1.39.0) |
+| `LORE_DISCOVERY` | Run `lore-discover.sh` → call `vision_check_lore_elevation()` for visions with refs > 0 (v1.42.0) |
+
+#### VISION_CAPTURE → LORE_DISCOVERY Chain (v1.42.0)
+
+After `BRIDGEBUILDER_REVIEW` completes and findings are parsed:
+
+1. **VISION_CAPTURE** (conditional):
+   - Only fires when `vision_registry.bridge_auto_capture: true` in `.loa.config.yaml`
+   - Filters parsed findings for VISION or SPECULATION severity
+   - Invokes `bridge-vision-capture.sh` with findings JSON path
+   - Creates vision entries in `grimoires/loa/visions/entries/`
+   - Updates `grimoires/loa/visions/index.md`
+
+2. **LORE_DISCOVERY** (always after VISION_CAPTURE):
+   - Invokes `lore-discover.sh` to extract patterns from bridge reviews
+   - Sources `vision-lib.sh` and calls `vision_check_lore_elevation()` for each vision with `refs > 0`
+   - If elevation threshold met, calls `vision_generate_lore_entry()` and `vision_append_lore_entry()`
+   - Logs elevation events to trajectory JSONL
+
+Data flow: `bridge finding JSON → vision entry → index update → lore elevation check`
 
 ### Phase 3.1: Enriched Bridgebuilder Review
 
@@ -102,65 +121,15 @@ When the `BRIDGEBUILDER_REVIEW` signal fires, execute this 10-step workflow:
    If any section is missing or empty, log WARNING and disable persona enrichment for
    this iteration (fall back to unadorned review).
 
-3. **Lore Load**: Query lore index for relevant entries:
+3. **Lore Load**: Query lore index for relevant entries from both discovered
+   patterns AND elevated visions (closing the autopoietic loop):
    ```bash
    categories=$(yq '.run_bridge.lore.categories[]' .loa.config.yaml 2>/dev/null)
+   # Load from both patterns.yaml (discovered patterns) and visions.yaml (elevated visions)
    ```
    Load `short` fields inline in the review prompt. Use `context` for teaching moments.
-
-4. **Embody Persona**: Include the persona file content in the review prompt as the
-   agent's identity and voice instructions. The persona defines HOW to review, not
-   WHAT to review.
-
-5. **Dual-Stream Review**: The review agent produces two streams:
-   - **Findings stream**: Structured JSON inside `<!-- bridge-findings-start/end -->` markers.
-     Includes enriched fields (`faang_parallel`, `metaphor`, `teachable_moment`, `connection`)
-     and PRAISE findings when warranted.
-   - **Insights stream**: Rich prose surrounding the findings block — opening context,
-     architectural meditations, FAANG parallels, closing reflections.
-
-6. **Save Full Review**: Write complete review (both streams) to
-   `.run/bridge-reviews/{bridge_id}-iter{N}-full.md` with 0600 permissions.
-
-7. **Size Enforcement** (SDD 3.5.1):
-   - Body ≤ 65KB: post as-is
-   - Body > 65KB: truncate prose, preserve findings JSON block
-   - Body > 256KB: extract findings-only fallback
-
-8. **Content Redaction** (SDD 3.5.2, Flatline SKP-006): Apply `redact_security_content()`
-   with gitleaks-inspired patterns (AWS AKIA, GitHub ghp_/gho_/ghs_/ghr_, JWT eyJ,
-   generic secrets). Allowlist protects sha256 hashes in markers and base64 diagram URLs.
-
-9. **Post-Redaction Safety Check** (Flatline SKP-006): Scan redacted output for known
-   secret prefixes (`ghp_`, `gho_`, `AKIA`, `eyJ`). If any remain, **block posting**
-   and log error with line reference. The full review is still available in `.run/`.
-
-10. **Parse + Post**: Parse findings via `bridge-findings-parser.sh` (JSON path with
-    legacy fallback), then post via `bridge-github-trail.sh comment`.
-
-### Phase 3.1: Enriched Bridgebuilder Review
-
-When the `BRIDGEBUILDER_REVIEW` signal fires, execute this 10-step workflow:
-
-1. **Persona Integrity Check**: Compare `sha256sum .claude/data/bridgebuilder-persona.md`
-   against the base-branch version (`git show origin/main:.claude/data/bridgebuilder-persona.md | sha256sum`).
-   If hashes differ, log WARNING and fall back to the base-branch version.
-   If base-branch version doesn't exist (first deployment), proceed with local copy.
-
-2. **Persona Content Validation**: Verify all 5 required sections exist and are non-empty:
-   - `# Bridgebuilder`
-   - `## Identity`
-   - `## Voice`
-   - `## Review Output Format`
-   - `## Content Policy`
-   If any section is missing or empty, log WARNING and disable persona enrichment for
-   this iteration (fall back to unadorned review).
-
-3. **Lore Load**: Query lore index for relevant entries:
-   ```bash
-   categories=$(yq '.run_bridge.lore.categories[]' .loa.config.yaml 2>/dev/null)
-   ```
-   Load `short` fields inline in the review prompt. Use `context` for teaching moments.
+   The visions.yaml source ensures that insights which accumulated enough references
+   through the vision registry feed back into future bridge reviews.
 
 4. **Embody Persona**: Include the persona file content in the review prompt as the
    agent's identity and voice instructions. The persona defines HOW to review, not

@@ -21,6 +21,7 @@ const DEFAULTS: BridgebuilderConfig = {
   excludePatterns: [],
   sanitizerMode: "default",
   maxRuntimeMinutes: 30,
+  reviewMode: "two-pass",
 };
 
 export interface CLIArgs {
@@ -36,6 +37,7 @@ export interface CLIArgs {
   exclude?: string[];
   forceFullReview?: boolean;
   repoRoot?: string;
+  reviewMode?: "two-pass" | "single-pass";
 }
 
 export interface YamlConfig {
@@ -55,6 +57,9 @@ export interface YamlConfig {
   max_runtime_minutes?: number;
   loa_aware?: boolean;
   persona?: string;
+  review_mode?: "two-pass" | "single-pass";
+  ecosystem_context_path?: string;
+  pass1_cache_enabled?: boolean;
 }
 
 export interface EnvVars {
@@ -62,6 +67,8 @@ export interface EnvVars {
   BRIDGEBUILDER_MODEL?: string;
   BRIDGEBUILDER_DRY_RUN?: string;
   BRIDGEBUILDER_REPO_ROOT?: string;
+  LOA_BRIDGE_REVIEW_MODE?: string;
+  BRIDGEBUILDER_PASS1_CACHE?: string;
 }
 
 /**
@@ -114,6 +121,12 @@ export function parseCLIArgs(argv: string[]): CLIArgs {
       args.forceFullReview = true;
     } else if (arg === "--repo-root" && i + 1 < argv.length) {
       args.repoRoot = argv[++i];
+    } else if (arg === "--review-mode" && i + 1 < argv.length) {
+      const mode = argv[++i];
+      if (mode !== "two-pass" && mode !== "single-pass") {
+        throw new Error(`Invalid --review-mode value: ${mode}. Must be "two-pass" or "single-pass".`);
+      }
+      args.reviewMode = mode;
     }
   }
 
@@ -128,11 +141,14 @@ async function autoDetectRepo(): Promise<{ owner: string; repo: string } | null>
     const { stdout } = await execFileAsync("git", ["remote", "-v"], {
       timeout: 5_000,
     });
-    // Match first line: origin	git@github.com:owner/repo.git (fetch)
-    // or:               origin	https://github.com/owner/repo.git (fetch)
-    const match = stdout.match(
-      /(?:github\.com)[:/]([^/\s]+)\/([^/\s.]+?)(?:\.git)?\s/,
+    const lines = stdout.split("\n");
+    const ghPattern = /(?:github\.com)[:/]([^/\s]+)\/([^/\s.]+?)(?:\.git)?\s/;
+    // Prefer "origin" remote — avoids picking framework remote alphabetically (#395)
+    const originLine = lines.find(
+      (l) => l.startsWith("origin\t") && l.includes("(fetch)"),
     );
+    const targetLine = originLine ?? lines.find((l) => l.includes("(fetch)"));
+    const match = targetLine?.match(ghPattern);
     if (match) {
       return { owner: match[1], repo: match[2] };
     }
@@ -250,6 +266,17 @@ async function loadYamlConfig(): Promise<YamlConfig> {
         case "persona":
           config.persona = value;
           break;
+        case "review_mode":
+          if (value === "two-pass" || value === "single-pass") {
+            config.review_mode = value;
+          }
+          break;
+        case "ecosystem_context_path":
+          config.ecosystem_context_path = value;
+          break;
+        case "pass1_cache_enabled":
+          config.pass1_cache_enabled = value === "true";
+          break;
       }
     }
 
@@ -280,6 +307,21 @@ export function resolveRepoRoot(cli: CLIArgs, env: EnvVars): string | undefined 
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Resolve pass1Cache.enabled: env > yaml > default (false).
+ * Returns boolean or null if no explicit config.
+ */
+function resolvePass1Cache(
+  _cliArgs: CLIArgs,
+  env: EnvVars,
+  yaml: YamlConfig,
+): boolean | null {
+  if (env.BRIDGEBUILDER_PASS1_CACHE === "true") return true;
+  if (env.BRIDGEBUILDER_PASS1_CACHE === "false") return false;
+  if (yaml.pass1_cache_enabled != null) return yaml.pass1_cache_enabled;
+  return null;
 }
 
 /**
@@ -413,7 +455,29 @@ export async function resolveConfig(
       ? { personaFilePath: yaml.persona_path }
       : {}),
     ...(cliArgs.forceFullReview ? { forceFullReview: true } : {}),
+    ...(yaml.ecosystem_context_path != null
+      ? { ecosystemContextPath: yaml.ecosystem_context_path }
+      : {}),
+    ...(resolvePass1Cache(cliArgs, env, yaml) != null
+      ? { pass1Cache: { enabled: resolvePass1Cache(cliArgs, env, yaml)! } }
+      : {}),
+    reviewMode:
+      cliArgs.reviewMode ??
+      (env.LOA_BRIDGE_REVIEW_MODE === "two-pass" || env.LOA_BRIDGE_REVIEW_MODE === "single-pass"
+        ? env.LOA_BRIDGE_REVIEW_MODE
+        : undefined) ??
+      yaml.review_mode ??
+      DEFAULTS.reviewMode,
   };
+
+  // Track reviewMode provenance
+  const reviewModeSource: ConfigSource = cliArgs.reviewMode
+    ? "cli"
+    : env.LOA_BRIDGE_REVIEW_MODE === "two-pass" || env.LOA_BRIDGE_REVIEW_MODE === "single-pass"
+      ? "env"
+      : yaml.review_mode
+        ? "yaml"
+        : "default";
 
   const provenance: ConfigProvenance = {
     repos: reposSource,
@@ -422,6 +486,7 @@ export async function resolveConfig(
     maxInputTokens: maxInputTokensSource,
     maxOutputTokens: maxOutputTokensSource,
     maxDiffBytes: maxDiffBytesSource,
+    reviewMode: reviewModeSource,
   };
 
   return { config, provenance };
@@ -452,6 +517,7 @@ export interface ConfigProvenance {
   maxInputTokens: ConfigSource;
   maxOutputTokens: ConfigSource;
   maxDiffBytes: ConfigSource;
+  reviewMode: ConfigSource;
 }
 
 /**
@@ -485,6 +551,7 @@ export function formatEffectiveConfig(
     `max_output_tokens=${config.maxOutputTokens}${outputSrc}, ` +
     `max_diff_bytes=${config.maxDiffBytes}${diffSrc}, ` +
     `dry_run=${config.dryRun}${drySrc}, sanitizer_mode=${config.sanitizerMode}${prFilter}` +
-    `${personaInfo}${excludeInfo}`
+    `${personaInfo}${excludeInfo}` +
+    `, review_mode=${config.reviewMode}${p ? ` (${p.reviewMode})` : ""}`
   );
 }

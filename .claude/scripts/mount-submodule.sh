@@ -52,6 +52,9 @@ VERSION_FILE=".loa-version.json"
 CONFIG_FILE=".loa.config.yaml"
 FORCE_MODE=false
 NO_COMMIT=false
+CHECK_SYMLINKS=false
+RECONCILE_SYMLINKS=false
+SOURCE_ONLY=false
 
 # === Argument Parsing ===
 while [[ $# -gt 0 ]]; do
@@ -76,6 +79,19 @@ while [[ $# -gt 0 ]]; do
       NO_COMMIT=true
       shift
       ;;
+    --check-symlinks)
+      CHECK_SYMLINKS=true
+      shift
+      ;;
+    --reconcile)
+      RECONCILE_SYMLINKS=true
+      shift
+      ;;
+    --source-only)
+      # Allow sourcing this script for its functions without running main
+      SOURCE_ONLY=true
+      shift
+      ;;
     -h|--help)
       echo "Usage: mount-submodule.sh [OPTIONS]"
       echo ""
@@ -87,6 +103,8 @@ while [[ $# -gt 0 ]]; do
       echo "  --ref <ref>       Loa ref to pin to (commit, branch, or tag)"
       echo "  --force, -f       Force remount without prompting"
       echo "  --no-commit       Skip creating git commit after mount"
+      echo "  --check-symlinks  Check symlink health (no changes)"
+      echo "  --reconcile       Check and fix symlink health"
       echo "  -h, --help        Show this help message"
       echo ""
       echo "Examples:"
@@ -127,6 +145,127 @@ yq_read() {
   fi
 }
 
+# === Memory Stack Path Utility (Task 2.3 — cycle-035 sprint-2) ===
+# Returns the canonical Memory Stack path, checking both new (.loa-state/)
+# and legacy (.loa/) locations. Reusable across scripts.
+# Returns: path on stdout, exit 0 if found, exit 1 if no Memory Stack exists.
+get_memory_stack_path() {
+  local project_root="${PROJECT_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+
+  # Priority 1: New location (.loa-state/) — post-migration
+  if [[ -d "${project_root}/.loa-state" ]]; then
+    echo "${project_root}/.loa-state"
+    return 0
+  fi
+
+  # Priority 2: Legacy location (.loa/) — only if NOT a git submodule
+  if [[ -d "${project_root}/.loa" ]]; then
+    if [[ -f "${project_root}/.gitmodules" ]] && grep -q ".loa" "${project_root}/.gitmodules" 2>/dev/null; then
+      # .loa/ is a submodule, not Memory Stack data
+      return 1
+    fi
+    echo "${project_root}/.loa"
+    return 0
+  fi
+
+  return 1
+}
+
+# === Memory Stack Relocation (Flatline IMP-002) ===
+# Safely relocates .loa/ Memory Stack data to .loa-state/ before submodule add
+relocate_memory_stack() {
+  local source=".loa"
+  local target=".loa-state"
+  local migration_lock="${target}/.migration-lock"
+
+  if [[ ! -d "$source" ]]; then
+    return 0  # Nothing to relocate
+  fi
+
+  # Skip if it's already a git submodule
+  if [[ -f ".gitmodules" ]] && grep -q "$source" .gitmodules 2>/dev/null; then
+    return 0  # Already a submodule, not Memory Stack data
+  fi
+
+  step "Relocating Memory Stack from .loa/ to .loa-state/..."
+
+  # Create target directory for lock file
+  mkdir -p "$target"
+
+  # Acquire migration lock — prefer flock, fall back to PID+timestamp (F-003)
+  # flock releases automatically on process death — no PID recycling risk.
+  # Fallback uses PID + epoch timestamp — 1-hour staleness threshold prevents false-positive blocks.
+  if command -v flock &>/dev/null; then
+    exec 200>"$migration_lock"
+    if ! flock -n 200; then
+      err "Memory Stack migration already in progress."
+    fi
+  else
+    # Fallback: PID + epoch timestamp for stale detection (>1 hour = stale)
+    if [[ -f "$migration_lock" ]]; then
+      local lock_info lock_pid lock_time
+      lock_info=$(cat "$migration_lock" 2>/dev/null || echo "")
+      lock_pid="${lock_info%%:*}"
+      lock_time="${lock_info##*:}"
+      local now; now=$(date +%s)
+      if [[ -n "$lock_pid" ]] && kill -0 "$lock_pid" 2>/dev/null; then
+        if [[ -n "$lock_time" ]] && (( now - lock_time < 3600 )); then
+          err "Migration in progress (PID: $lock_pid, started $(( (now - lock_time) / 60 ))m ago)."
+        fi
+        warn "Stale lock (PID $lock_pid, >1h old). Removing."
+      fi
+      rm -f "$migration_lock"
+    fi
+    echo "$$:$(date +%s)" > "$migration_lock"
+  fi
+
+  # Copy-then-verify-then-switch (Flatline IMP-002)
+  local source_count target_count
+  source_count=$(find "$source" -type f | wc -l)
+
+  # Handle empty directory (ADV-2)
+  if [[ "$source_count" -eq 0 ]]; then
+    rm -rf "$source"
+    rm -f "$migration_lock"
+    log "Memory Stack was empty, removed .loa/"
+    return 0
+  fi
+
+  if ! cp -r "$source"/. "$target"/ 2>/dev/null; then
+    # Rollback: remove partial target
+    rm -rf "$target"
+    err "Memory Stack copy failed. Original data preserved at .loa/"
+  fi
+
+  target_count=$(find "$target" -type f -not -name ".migration-lock" | wc -l)
+
+  if [[ "$source_count" -ne "$target_count" ]]; then
+    # Rollback: remove partial target
+    rm -f "$migration_lock"
+    rm -rf "$target"
+    err "Memory Stack verification failed (source: $source_count files, target: $target_count files). Original data preserved at .loa/"
+  fi
+
+  # Verification passed — remove source
+  rm -rf "$source"
+  rm -f "$migration_lock"
+
+  log "Memory Stack relocated: .loa/ -> .loa-state/ ($source_count files)"
+}
+
+# === Auto-Init Submodule (post-clone recovery) ===
+auto_init_submodule() {
+  if [[ -f ".gitmodules" ]] && grep -q "$SUBMODULE_PATH" .gitmodules 2>/dev/null; then
+    if [[ ! -d "$SUBMODULE_PATH/.claude" ]]; then
+      step "Initializing uninitialized submodule..."
+      git submodule update --init "$SUBMODULE_PATH" || {
+        err "Failed to initialize submodule. Run: git submodule update --init $SUBMODULE_PATH"
+      }
+      log "Submodule initialized"
+    fi
+  fi
+}
+
 # === Pre-flight Checks ===
 preflight() {
   log "Running pre-flight checks..."
@@ -135,6 +274,12 @@ preflight() {
   if ! git rev-parse --git-dir > /dev/null 2>&1; then
     err "Not a git repository. Initialize with 'git init' first."
   fi
+
+  # Relocate Memory Stack if .loa/ contains non-submodule data (Flatline IMP-002)
+  relocate_memory_stack
+
+  # Auto-init submodule if already registered but not initialized
+  auto_init_submodule
 
   # Check if standard mount already exists
   if [[ -f "$VERSION_FILE" ]]; then
@@ -154,7 +299,9 @@ preflight() {
 
   # Check for existing .claude directory (non-symlink)
   if [[ -d ".claude" ]] && [[ ! -L ".claude" ]]; then
-    err ".claude/ directory exists and is not a symlink. Run mount-loa.sh for standard mode."
+    # Allow .claude/ to exist if it contains user-owned files (overrides, config)
+    # Just warn instead of erroring — create_symlinks handles merging
+    warn ".claude/ directory exists and is not a symlink. Existing files will be preserved."
   fi
 
   # Check for required tools
@@ -257,7 +404,14 @@ safe_symlink() {
   ln -sf "$target" "$source"
 }
 
+# === Authoritative Symlink Manifest (DRY — Bridgebuilder Tension 1) ===
+# Sourced from shared library: lib/symlink-manifest.sh
+# To add a new symlink target, change ONLY the library file — all consumers inherit.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/symlink-manifest.sh"
+
 # === Create Symlinks ===
+# Consumes get_symlink_manifest() — single source of truth for symlink topology.
 create_symlinks() {
   step "Creating symlinks from .claude/ to submodule..."
 
@@ -267,78 +421,60 @@ create_symlinks() {
   fi
 
   # Create .claude directory structure
-  mkdir -p .claude
+  mkdir -p .claude .claude/skills .claude/commands .claude/loa
 
-  # === Skills Symlinks ===
-  step "Linking skills..."
-  mkdir -p .claude/skills
-  if [[ -d "$SUBMODULE_PATH/.claude/skills" ]]; then
-    for skill_dir in "$SUBMODULE_PATH"/.claude/skills/*/; do
-      if [[ -d "$skill_dir" ]]; then
-        local skill_name=$(basename "$skill_dir")
-        # MED-004 FIX: Use safe_symlink with validation
-        safe_symlink ".claude/skills/$skill_name" "../../$SUBMODULE_PATH/.claude/skills/$skill_name"
-        log "  Linked skill: $skill_name"
-      fi
-    done
-  fi
+  # Load authoritative manifest
+  get_symlink_manifest "$SUBMODULE_PATH"
 
-  # === Commands Symlinks ===
-  step "Linking commands..."
-  mkdir -p .claude/commands
-  if [[ -d "$SUBMODULE_PATH/.claude/commands" ]]; then
-    for cmd_file in "$SUBMODULE_PATH"/.claude/commands/*.md; do
-      if [[ -f "$cmd_file" ]]; then
-        local cmd_name=$(basename "$cmd_file")
-        # MED-004 FIX: Use safe_symlink with validation
-        safe_symlink ".claude/commands/$cmd_name" "../../$SUBMODULE_PATH/.claude/commands/$cmd_name"
-        log "  Linked command: $cmd_name"
-      fi
-    done
-  fi
-
-  # === Scripts Directory Symlink ===
-  step "Linking scripts directory..."
-  if [[ -d "$SUBMODULE_PATH/.claude/scripts" ]]; then
+  # Phase 1: Directory symlinks
+  step "Linking directories..."
+  for entry in "${MANIFEST_DIR_SYMLINKS[@]}"; do
+    local link_path="${entry%%:*}"
+    local target="${entry#*:}"
     # MED-004 FIX: Use safe_symlink with validation
-    safe_symlink ".claude/scripts" "../$SUBMODULE_PATH/.claude/scripts"
-    log "  Linked: .claude/scripts/"
-  fi
-
-  # === Protocols Directory Symlink ===
-  step "Linking protocols directory..."
-  if [[ -d "$SUBMODULE_PATH/.claude/protocols" ]]; then
-    # MED-004 FIX: Use safe_symlink with validation
-    safe_symlink ".claude/protocols" "../$SUBMODULE_PATH/.claude/protocols"
-    log "  Linked: .claude/protocols/"
-  fi
-
-  # === Schemas Directory Symlink ===
-  step "Linking schemas directory..."
-  if [[ -d "$SUBMODULE_PATH/.claude/schemas" ]]; then
-    # MED-004 FIX: Use safe_symlink with validation
-    safe_symlink ".claude/schemas" "../$SUBMODULE_PATH/.claude/schemas"
-    log "  Linked: .claude/schemas/"
-  fi
-
-  # === Loa Directory (CLAUDE.loa.md) ===
-  step "Linking loa directory..."
-  mkdir -p .claude/loa
-  if [[ -f "$SUBMODULE_PATH/.claude/loa/CLAUDE.loa.md" ]]; then
-    # MED-004 FIX: Use safe_symlink with validation
-    safe_symlink ".claude/loa/CLAUDE.loa.md" "../../$SUBMODULE_PATH/.claude/loa/CLAUDE.loa.md"
-    log "  Linked: .claude/loa/CLAUDE.loa.md"
-  fi
-
-  # === Settings and other root files ===
-  step "Linking settings files..."
-  for config_file in settings.json settings.local.json checksums.json; do
-    if [[ -f "$SUBMODULE_PATH/.claude/$config_file" ]]; then
-      # MED-004 FIX: Use safe_symlink with validation
-      safe_symlink ".claude/$config_file" "../$SUBMODULE_PATH/.claude/$config_file"
-      log "  Linked: .claude/$config_file"
-    fi
+    safe_symlink "$link_path" "$target"
+    log "  Linked: ${link_path}/"
   done
+
+  # Phase 2: File/nested symlinks
+  step "Linking files..."
+  for entry in "${MANIFEST_FILE_SYMLINKS[@]}"; do
+    local link_path="${entry%%:*}"
+    local target="${entry#*:}"
+    local parent_dir
+    parent_dir=$(dirname "$link_path")
+    mkdir -p "$parent_dir"
+    safe_symlink "$link_path" "$target"
+    log "  Linked: ${link_path}"
+  done
+
+  # Phase 3: Per-skill symlinks (dynamic from manifest)
+  step "Linking skills..."
+  for entry in "${MANIFEST_SKILL_SYMLINKS[@]}"; do
+    local link_path="${entry%%:*}"
+    local target="${entry#*:}"
+    local skill_name
+    skill_name=$(basename "$link_path")
+    safe_symlink "$link_path" "$target"
+    log "  Linked skill: $skill_name"
+  done
+
+  # Phase 4: Per-command symlinks (dynamic from manifest)
+  step "Linking commands..."
+  for entry in "${MANIFEST_CMD_SYMLINKS[@]}"; do
+    local link_path="${entry%%:*}"
+    local target="${entry#*:}"
+    local cmd_name
+    cmd_name=$(basename "$link_path")
+    safe_symlink "$link_path" "$target"
+    log "  Linked command: $cmd_name"
+  done
+
+  # Also link settings.local.json if it exists (not in manifest — optional file)
+  if [[ -f "$SUBMODULE_PATH/.claude/settings.local.json" ]]; then
+    safe_symlink ".claude/settings.local.json" "../$SUBMODULE_PATH/.claude/settings.local.json"
+    log "  Linked: .claude/settings.local.json"
+  fi
 
   # === Create overrides directory (user-owned) ===
   mkdir -p .claude/overrides
@@ -529,9 +665,40 @@ EOF
     log "Created NOTES.md"
   fi
 
-  # Create .beads directory
+  # Create .beads directory (legacy — kept for backward compat)
   mkdir -p .beads
   touch .beads/.gitkeep
+
+  # Initialize consolidated state structure (.loa-state/)
+  local SCRIPT_DIR_LOCAL
+  SCRIPT_DIR_LOCAL="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  if [[ -f "${SCRIPT_DIR_LOCAL}/bootstrap.sh" ]]; then
+    (
+      export PROJECT_ROOT
+      PROJECT_ROOT="${PROJECT_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+      source "${SCRIPT_DIR_LOCAL}/bootstrap.sh"
+      if command -v ensure_state_structure &>/dev/null; then
+        ensure_state_structure
+        log "State structure initialized (.loa-state/)"
+      fi
+
+      # Detect old layout and suggest migration
+      if command -v detect_state_layout &>/dev/null; then
+        local layout_ver
+        layout_ver=$(detect_state_layout)
+        if [[ "$layout_ver" == "1" ]]; then
+          echo ""
+          warn "Legacy state layout detected (v1)."
+          info "State is scattered across .beads/, .ck/, .run/"
+          info "To consolidate into .loa-state/, run:"
+          echo ""
+          echo "  .claude/scripts/migrate-state-layout.sh --dry-run"
+          echo "  .claude/scripts/migrate-state-layout.sh --apply"
+          echo ""
+        fi
+      fi
+    )
+  fi
 
   log "State Zone initialized"
 }
@@ -566,6 +733,8 @@ To update: git submodule update --remote $SUBMODULE_PATH
 
 Generated by Loa mount-submodule.sh"
 
+  # --no-verify: Framework install commits only touch tooling (symlinks, manifests, .gitignore).
+  # User pre-commit hooks (lint, typecheck, test) target app code and would fail on framework-only changes.
   git commit -m "$commit_msg" --no-verify 2>/dev/null || {
     warn "Failed to create commit"
     return 1
@@ -574,8 +743,165 @@ Generated by Loa mount-submodule.sh"
   log "Created commit"
 }
 
+# === Update .gitignore for Submodule Mode (Task 1.6) ===
+update_gitignore_for_submodule() {
+  step "Updating .gitignore for submodule mode..."
+
+  local gitignore=".gitignore"
+  touch "$gitignore"
+
+  # Symlink entries — these are created by mount-submodule.sh and should not be tracked
+  local symlink_entries=(
+    ".claude/scripts"
+    ".claude/protocols"
+    ".claude/hooks"
+    ".claude/data"
+    ".claude/schemas"
+    ".claude/loa/CLAUDE.loa.md"
+    ".claude/loa/reference"
+    ".claude/loa/feedback-ontology.yaml"
+    ".claude/loa/learnings"
+    ".claude/settings.json"
+    ".claude/checksums.json"
+  )
+
+  # State and backup entries (not symlinks but must be gitignored)
+  local state_entries=(
+    ".loa-state/"
+    ".claude.backup.*"
+  )
+
+  # Add header if not present
+  if ! grep -q "LOA SUBMODULE SYMLINKS" "$gitignore" 2>/dev/null; then
+    echo "" >> "$gitignore"
+    echo "# LOA SUBMODULE SYMLINKS (added by mount-submodule.sh)" >> "$gitignore"
+    echo "# Symlinks to .loa/ submodule — recreated on mount" >> "$gitignore"
+  fi
+
+  # Add each entry if not already present
+  for entry in "${symlink_entries[@]}" "${state_entries[@]}"; do
+    grep -qxF "$entry" "$gitignore" 2>/dev/null || echo "$entry" >> "$gitignore"
+  done
+
+  # Remove .loa/ from gitignore if present (submodule must be tracked)
+  if grep -q "^\.loa/$" "$gitignore" 2>/dev/null; then
+    sed -i '/^\.loa\/$/d' "$gitignore"
+    log "  Removed .loa/ from .gitignore (submodule must be tracked)"
+  fi
+
+  log ".gitignore updated for submodule mode"
+}
+
+# === Verify and Reconcile Symlinks (Task 2.6 — cycle-035 sprint-2) ===
+# Authoritative symlink manifest. Detects dangling, removes stale, recreates from manifest.
+# Uses canonical path resolver (realpath) to avoid CWD assumptions (Flatline SKP-002).
+# Returns: 0 if all healthy, 1 if issues were found (and fixed in reconcile mode).
+verify_and_reconcile_symlinks() {
+  local reconcile="${1:-true}"  # true = fix issues, false = check only
+  local repo_root
+  repo_root=$(get_repo_root)
+
+  local submodule="${SUBMODULE_PATH:-.loa}"
+  local fixed=0
+  local dangling=0
+  local stale=0
+  local ok=0
+
+  # Load authoritative manifest (DRY — single source of truth)
+  get_symlink_manifest "$submodule" "$repo_root"
+  local -a all_symlinks=("${MANIFEST_DIR_SYMLINKS[@]}" "${MANIFEST_FILE_SYMLINKS[@]}" "${MANIFEST_SKILL_SYMLINKS[@]}" "${MANIFEST_CMD_SYMLINKS[@]}")
+
+  step "Verifying ${#all_symlinks[@]} symlinks..."
+
+  for entry in "${all_symlinks[@]}"; do
+    local link_path="${entry%%:*}"
+    local target="${entry#*:}"
+    local full_link="${repo_root}/${link_path}"
+
+    if [[ -L "$full_link" ]]; then
+      # Check if dangling
+      if [[ ! -e "$full_link" ]]; then
+        dangling=$((dangling + 1))
+        warn "  DANGLING: $link_path"
+        if [[ "$reconcile" == "true" ]]; then
+          rm -f "$full_link"
+          local parent_dir
+          parent_dir=$(dirname "$full_link")
+          mkdir -p "$parent_dir"
+          ln -sf "$target" "$full_link"
+          fixed=$((fixed + 1))
+          log "  FIXED: $link_path"
+        fi
+      else
+        ok=$((ok + 1))
+      fi
+    elif [[ -e "$full_link" ]]; then
+      # Exists but not a symlink — skip (user-owned file)
+      ok=$((ok + 1))
+    else
+      # Missing entirely
+      stale=$((stale + 1))
+      warn "  MISSING: $link_path"
+      if [[ "$reconcile" == "true" ]]; then
+        local parent_dir
+        parent_dir=$(dirname "$full_link")
+        mkdir -p "$parent_dir"
+        # Only create if target exists in submodule
+        local resolved_target
+        resolved_target=$(cd "$(dirname "$full_link")" 2>/dev/null && realpath -m "$target" 2>/dev/null || echo "")
+        if [[ -n "$resolved_target" && -e "$resolved_target" ]]; then
+          ln -sf "$target" "$full_link"
+          fixed=$((fixed + 1))
+          log "  CREATED: $link_path"
+        fi
+      fi
+    fi
+  done
+
+  # Summary
+  echo ""
+  log "Symlink health: ${ok} ok, ${dangling} dangling, ${stale} missing, ${fixed} fixed"
+
+  if [[ $((dangling + stale)) -gt 0 && "$reconcile" != "true" ]]; then
+    return 1
+  fi
+  return 0
+}
+
+# === Check Symlinks Subcommand (Task 2.6) ===
+# Standalone health check: mount-submodule.sh --check-symlinks
+check_symlinks_subcommand() {
+  echo ""
+  log "======================================================================="
+  log "  Symlink Health Check"
+  log "======================================================================="
+  echo ""
+  verify_and_reconcile_symlinks "false"
+  local result=$?
+  if [[ $result -eq 0 ]]; then
+    log "All symlinks healthy."
+  else
+    warn "Symlink issues detected. Run with --reconcile to fix."
+  fi
+  exit $result
+}
+
 # === Main ===
 main() {
+  # Route to subcommands
+  if [[ "$SOURCE_ONLY" == "true" ]]; then
+    return 0
+  fi
+  if [[ "$CHECK_SYMLINKS" == "true" ]]; then
+    check_symlinks_subcommand
+  fi
+  if [[ "$RECONCILE_SYMLINKS" == "true" ]]; then
+    echo ""
+    log "Reconciling symlinks..."
+    verify_and_reconcile_symlinks "true"
+    exit $?
+  fi
+
   echo ""
   log "======================================================================="
   log "  Loa Framework Mount (Submodule Mode)"
@@ -587,6 +913,7 @@ main() {
   preflight
   add_submodule
   create_symlinks
+  update_gitignore_for_submodule
   create_claude_md
   create_config
   create_manifest

@@ -25,7 +25,7 @@ ROUTING_CONFIG = {
                 "gpt-5.2": {
                     "capabilities": ["chat", "tools", "function_calling"],
                 },
-                "gpt-5.2-codex": {
+                "gpt-5.3-codex": {
                     "capabilities": ["chat", "tools", "function_calling", "code"],
                 },
             },

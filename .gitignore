@@ -1,3 +1,7 @@
+# Key material — prevent accidental commits (cycle-028 FR-1)
+tests/fixtures/*.pem
+tests/fixtures/*.key
+
 # Dependencies
 node_modules/
 .pnp
@@ -66,9 +70,16 @@ temp/
 # Must be preserved locally for resume capability but not committed
 .run/
 
-# Loa Memory Stack state (v1.8.0)
+# Framework migration/eject backups (created by mount-loa.sh, update.sh, loa-eject.sh)
+# Timestamped directories that should never be committed
+.claude.backup.*
+
+# Loa Memory Stack persistent state (renamed from .loa-cache/ in cycle-035)
 # Contains vector database, embeddings, QMD indexes - machine-specific
-.loa/
+# Semantics: NOT a cache (not ephemeral) — this is persistent local state
+# Note: .loa/ is the submodule path (tracked). .loa-state/ is local state (ignored).
+# Migration from old .loa/ data dir is handled by mount-submodule.sh:relocate_memory_stack()
+.loa-state/
 
 # User context files (discovery inputs, uploaded docs, extracted content)
 # These are user-specific inputs that should never be committed
@@ -160,6 +171,22 @@ grimoires/loa/analytics/*
 grimoires/loa/research/*
 !grimoires/loa/research/README.md
 
+# Ground truth (generated codebase analysis, project-specific)
+grimoires/loa/ground-truth/*
+!grimoires/loa/ground-truth/README.md
+
+# Vision registry (speculative insights captured per-project)
+grimoires/loa/visions/entries/*
+!grimoires/loa/visions/entries/.gitkeep
+grimoires/loa/visions/index.md
+
+# Feedback files (developer feedback, project-specific)
+grimoires/loa/feedback/*
+!grimoires/loa/feedback/README.md
+
+# Invariants (generated per-project)
+grimoires/loa/invariants.yaml
+
 # Public grimoires (project-specific outputs, not template content)
 # Only README.md files and research documents are tracked
 # Research documents contain reusable framework insights
@@ -212,6 +239,10 @@ docs/screenshots/
 # Beads binary databases in subprojects
 **/themes/**/.beads/beads.db
 **/packages/**/.beads/beads.db
+
+# Eval results (run-specific, gitignored except baselines and .gitkeep)
+evals/results/*
+!evals/results/.gitkeep
 
 # Eval results (run-specific, gitignored except baselines and .gitkeep)
 evals/results/*

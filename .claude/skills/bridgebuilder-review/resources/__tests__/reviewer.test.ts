@@ -1,5 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync, writeFileSync, unlinkSync, mkdtempSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { ReviewPipeline } from "../core/reviewer.js";
 import { PRReviewTemplate } from "../core/template.js";
 import { BridgebuilderContext } from "../core/context.js";
@@ -30,6 +34,7 @@ function mockConfig(overrides?: Partial<BridgebuilderConfig>): BridgebuilderConf
     excludePatterns: [],
     sanitizerMode: "default" as const,
     maxRuntimeMinutes: 30,
+    reviewMode: "single-pass" as const,
     ...overrides,
   };
 }
@@ -617,6 +622,994 @@ describe("ReviewPipeline", () => {
       });
       const summary = await pipeline.run("run-first");
       assert.equal(summary.reviewed, 1);
+    });
+  });
+
+  describe("two-pass review mode", () => {
+    const VALID_PASS1_CONTENT = [
+      "<!-- bridge-findings-start -->",
+      "```json",
+      JSON.stringify({
+        schema_version: 1,
+        findings: [
+          { id: "F001", title: "Issue", severity: "HIGH", category: "security", file: "src/app.ts:1", description: "d", suggestion: "s" },
+          { id: "F002", title: "Good", severity: "PRAISE", category: "quality", file: "src/app.ts:5", description: "d", suggestion: "s" },
+        ],
+      }),
+      "```",
+      "<!-- bridge-findings-end -->",
+    ].join("\n");
+
+    const VALID_PASS2_CONTENT = [
+      "## Summary",
+      "",
+      "Two-pass enriched review.",
+      "",
+      "## Findings",
+      "",
+      "<!-- bridge-findings-start -->",
+      "```json",
+      JSON.stringify({
+        schema_version: 1,
+        findings: [
+          { id: "F001", title: "Issue", severity: "HIGH", category: "security", file: "src/app.ts:1", description: "d", suggestion: "s", faang_parallel: "Google SRE" },
+          { id: "F002", title: "Good", severity: "PRAISE", category: "quality", file: "src/app.ts:5", description: "d", suggestion: "s", metaphor: "Like a well-oiled machine" },
+        ],
+      }),
+      "```",
+      "<!-- bridge-findings-end -->",
+      "",
+      "## Callouts",
+      "",
+      "- Good architecture.",
+    ].join("\n");
+
+    it("routes to two-pass when reviewMode is 'two-pass'", async () => {
+      let callCount = 0;
+      const pipeline = buildPipeline({
+        config: { reviewMode: "two-pass" },
+        llm: {
+          generateReview: async () => {
+            callCount++;
+            if (callCount === 1) {
+              return { content: VALID_PASS1_CONTENT, inputTokens: 500, outputTokens: 200, model: "test" };
+            }
+            return { content: VALID_PASS2_CONTENT, inputTokens: 100, outputTokens: 300, model: "test" };
+          },
+        },
+      });
+      const summary = await pipeline.run("run-2p");
+      assert.equal(summary.reviewed, 1);
+      assert.equal(callCount, 2, "Should make exactly 2 LLM calls");
+    });
+
+    it("returns pass1Tokens and pass2Tokens in two-pass mode", async () => {
+      let callCount = 0;
+      const pipeline = buildPipeline({
+        config: { reviewMode: "two-pass" },
+        llm: {
+          generateReview: async () => {
+            callCount++;
+            if (callCount === 1) {
+              return { content: VALID_PASS1_CONTENT, inputTokens: 500, outputTokens: 200, model: "test" };
+            }
+            return { content: VALID_PASS2_CONTENT, inputTokens: 100, outputTokens: 300, model: "test" };
+          },
+        },
+      });
+      const summary = await pipeline.run("run-tokens");
+      const result = summary.results[0];
+      assert.ok(result.pass1Tokens, "Should have pass1Tokens");
+      assert.equal(result.pass1Tokens!.input, 500);
+      assert.equal(result.pass1Tokens!.output, 200);
+      assert.ok(result.pass2Tokens, "Should have pass2Tokens");
+      assert.equal(result.pass2Tokens!.input, 100);
+      assert.equal(result.pass2Tokens!.output, 300);
+      assert.equal(result.inputTokens, 600, "Total inputTokens = pass1 + pass2");
+      assert.equal(result.outputTokens, 500, "Total outputTokens = pass1 + pass2");
+    });
+
+    it("saves pass1Output for observability", async () => {
+      let callCount = 0;
+      const pipeline = buildPipeline({
+        config: { reviewMode: "two-pass" },
+        llm: {
+          generateReview: async () => {
+            callCount++;
+            if (callCount === 1) {
+              return { content: VALID_PASS1_CONTENT, inputTokens: 500, outputTokens: 200, model: "test" };
+            }
+            return { content: VALID_PASS2_CONTENT, inputTokens: 100, outputTokens: 300, model: "test" };
+          },
+        },
+      });
+      const summary = await pipeline.run("run-obs");
+      assert.ok(summary.results[0].pass1Output, "Should save pass1Output");
+      assert.ok(summary.results[0].pass1Output!.includes("bridge-findings-start"));
+    });
+
+    it("falls back to unenriched output when Pass 2 fails", async () => {
+      let callCount = 0;
+      let postedBody = "";
+      const pipeline = buildPipeline({
+        config: { reviewMode: "two-pass" },
+        llm: {
+          generateReview: async () => {
+            callCount++;
+            if (callCount === 1) {
+              return { content: VALID_PASS1_CONTENT, inputTokens: 500, outputTokens: 200, model: "test" };
+            }
+            throw new Error("Pass 2 LLM failure");
+          },
+        },
+        poster: {
+          postReview: async (input) => { postedBody = input.body; return true; },
+        },
+      });
+      const summary = await pipeline.run("run-fallback");
+      assert.equal(summary.reviewed, 1);
+      assert.ok(postedBody.includes("## Summary"), "Fallback should have Summary");
+      assert.ok(postedBody.includes("## Findings"), "Fallback should have Findings");
+      assert.ok(postedBody.includes("bridge-findings-start"), "Fallback should preserve findings");
+      assert.ok(postedBody.includes("Enrichment unavailable"), "Fallback should note enrichment was unavailable");
+    });
+
+    it("falls back when Pass 2 adds findings (preservation check)", async () => {
+      let callCount = 0;
+      const addedFindingsContent = [
+        "## Summary", "", "Review.", "",
+        "## Findings", "",
+        "<!-- bridge-findings-start -->",
+        "```json",
+        JSON.stringify({
+          schema_version: 1,
+          findings: [
+            { id: "F001", title: "Issue", severity: "HIGH", category: "security", file: "src/app.ts:1", description: "d", suggestion: "s" },
+            { id: "F002", title: "Good", severity: "PRAISE", category: "quality", file: "src/app.ts:5", description: "d", suggestion: "s" },
+            { id: "F003", title: "Hallucinated", severity: "LOW", category: "quality", file: "src/x.ts:1", description: "d", suggestion: "s" },
+          ],
+        }),
+        "```",
+        "<!-- bridge-findings-end -->",
+        "", "## Callouts", "", "- Ok.",
+      ].join("\n");
+
+      let postedBody = "";
+      const pipeline = buildPipeline({
+        config: { reviewMode: "two-pass" },
+        llm: {
+          generateReview: async () => {
+            callCount++;
+            if (callCount === 1) {
+              return { content: VALID_PASS1_CONTENT, inputTokens: 500, outputTokens: 200, model: "test" };
+            }
+            return { content: addedFindingsContent, inputTokens: 100, outputTokens: 300, model: "test" };
+          },
+        },
+        poster: {
+          postReview: async (input) => { postedBody = input.body; return true; },
+        },
+      });
+      const summary = await pipeline.run("run-added");
+      assert.equal(summary.reviewed, 1);
+      assert.ok(postedBody.includes("Enrichment unavailable"), "Should fall back to unenriched output");
+    });
+
+    it("falls back when Pass 2 reclassifies severity", async () => {
+      let callCount = 0;
+      const reclassifiedContent = [
+        "## Summary", "", "Review.", "",
+        "## Findings", "",
+        "<!-- bridge-findings-start -->",
+        "```json",
+        JSON.stringify({
+          schema_version: 1,
+          findings: [
+            { id: "F001", title: "Issue", severity: "CRITICAL", category: "security", file: "src/app.ts:1", description: "d", suggestion: "s" },
+            { id: "F002", title: "Good", severity: "PRAISE", category: "quality", file: "src/app.ts:5", description: "d", suggestion: "s" },
+          ],
+        }),
+        "```",
+        "<!-- bridge-findings-end -->",
+        "", "## Callouts", "", "- Ok.",
+      ].join("\n");
+
+      let postedBody = "";
+      const pipeline = buildPipeline({
+        config: { reviewMode: "two-pass" },
+        llm: {
+          generateReview: async () => {
+            callCount++;
+            if (callCount === 1) {
+              return { content: VALID_PASS1_CONTENT, inputTokens: 500, outputTokens: 200, model: "test" };
+            }
+            return { content: reclassifiedContent, inputTokens: 100, outputTokens: 300, model: "test" };
+          },
+        },
+        poster: {
+          postReview: async (input) => { postedBody = input.body; return true; },
+        },
+      });
+      const summary = await pipeline.run("run-reclass");
+      assert.equal(summary.reviewed, 1);
+      assert.ok(postedBody.includes("Enrichment unavailable"), "Should fall back when severity reclassified");
+    });
+
+    it("falls back when Pass 2 response is invalid (no Summary heading)", async () => {
+      let callCount = 0;
+      let postedBody = "";
+      const pipeline = buildPipeline({
+        config: { reviewMode: "two-pass" },
+        llm: {
+          generateReview: async () => {
+            callCount++;
+            if (callCount === 1) {
+              return { content: VALID_PASS1_CONTENT, inputTokens: 500, outputTokens: 200, model: "test" };
+            }
+            return { content: "Just some random text without proper headings or structure for the review output format.", inputTokens: 100, outputTokens: 50, model: "test" };
+          },
+        },
+        poster: {
+          postReview: async (input) => { postedBody = input.body; return true; },
+        },
+      });
+      const summary = await pipeline.run("run-invalid");
+      assert.equal(summary.reviewed, 1);
+      assert.ok(postedBody.includes("Enrichment unavailable"), "Should fall back to unenriched output");
+    });
+
+    it("skips when Pass 1 produces no findings and no valid response", async () => {
+      const pipeline = buildPipeline({
+        config: { reviewMode: "two-pass" },
+        llm: {
+          generateReview: async () => ({
+            content: "No structured findings here.",
+            inputTokens: 100,
+            outputTokens: 50,
+            model: "test",
+          }),
+        },
+      });
+      const summary = await pipeline.run("run-nofind");
+      assert.equal(summary.skipped, 1);
+      assert.equal(summary.results[0].skipReason, "invalid_llm_response");
+    });
+
+    it("single-pass mode is unchanged (default path)", async () => {
+      let callCount = 0;
+      const pipeline = buildPipeline({
+        config: { reviewMode: "single-pass" },
+        llm: {
+          generateReview: async () => {
+            callCount++;
+            return {
+              content: "## Summary\nGood PR.\n\n## Findings\n- No issues found.\n\n## Callouts\n- Clean code.",
+              inputTokens: 100, outputTokens: 50, model: "test",
+            };
+          },
+        },
+      });
+      const summary = await pipeline.run("run-sp");
+      assert.equal(summary.reviewed, 1);
+      assert.equal(callCount, 1, "Single-pass should make exactly 1 LLM call");
+    });
+
+    it("two-pass respects dryRun flag", async () => {
+      let callCount = 0;
+      let postCalled = false;
+      const pipeline = buildPipeline({
+        config: { reviewMode: "two-pass", dryRun: true },
+        llm: {
+          generateReview: async () => {
+            callCount++;
+            if (callCount === 1) {
+              return { content: VALID_PASS1_CONTENT, inputTokens: 500, outputTokens: 200, model: "test" };
+            }
+            return { content: VALID_PASS2_CONTENT, inputTokens: 100, outputTokens: 300, model: "test" };
+          },
+        },
+        poster: {
+          postReview: async () => { postCalled = true; return true; },
+        },
+      });
+      const summary = await pipeline.run("run-dry");
+      assert.ok(!postCalled, "Should not post in dry run");
+      assert.equal(summary.results[0].posted, false);
+    });
+
+    it("two-pass handles all-files-excluded by Loa filtering", async () => {
+      let postBody = "";
+      const pipeline = buildPipeline({
+        config: { reviewMode: "two-pass", loaAware: true },
+        git: {
+          listOpenPRs: async () => [
+            { number: 1, title: "PR", headSha: "sha1", baseBranch: "main", labels: [], author: "dev" },
+          ],
+          getPRFiles: async () => [
+            { filename: ".claude/loa/something.md", status: "modified" as const, additions: 5, deletions: 3, patch: "+code" },
+          ],
+          getPRReviews: async () => [],
+          preflight: async () => ({ remaining: 5000, scopes: ["repo"] }),
+          preflightRepo: async () => ({ owner: "test", repo: "repo", accessible: true }),
+        },
+        poster: {
+          postReview: async (input) => { postBody = input.body; return true; },
+        },
+      });
+      const summary = await pipeline.run("run-loa");
+      assert.equal(summary.skipped, 1);
+      assert.equal(summary.results[0].skipReason, "all_files_excluded");
+    });
+
+    it("two-pass falls back to unenriched when enrichment-only fields preserved but pass2 valid", async () => {
+      let callCount = 0;
+      let postedBody = "";
+      const pipeline = buildPipeline({
+        config: { reviewMode: "two-pass" },
+        llm: {
+          generateReview: async () => {
+            callCount++;
+            if (callCount === 1) {
+              return { content: VALID_PASS1_CONTENT, inputTokens: 500, outputTokens: 200, model: "test" };
+            }
+            return { content: VALID_PASS2_CONTENT, inputTokens: 100, outputTokens: 300, model: "test" };
+          },
+        },
+        poster: {
+          postReview: async (input) => { postedBody = input.body; return true; },
+        },
+      });
+      const summary = await pipeline.run("run-enrich-ok");
+      assert.equal(summary.reviewed, 1);
+      assert.ok(postedBody.includes("## Summary"), "Enriched output should have Summary");
+      assert.ok(postedBody.includes("## Findings"), "Enriched output should have Findings");
+      assert.ok(!postedBody.includes("Enrichment unavailable"), "Should NOT be the fallback");
+    });
+
+    it("falls back when Pass 2 reclassifies category", async () => {
+      let callCount = 0;
+      const categoryChangedContent = [
+        "## Summary", "", "Review.", "",
+        "## Findings", "",
+        "<!-- bridge-findings-start -->",
+        "```json",
+        JSON.stringify({
+          schema_version: 1,
+          findings: [
+            { id: "F001", title: "Issue", severity: "HIGH", category: "correctness", file: "src/app.ts:1", description: "d", suggestion: "s" },
+            { id: "F002", title: "Good", severity: "PRAISE", category: "quality", file: "src/app.ts:5", description: "d", suggestion: "s" },
+          ],
+        }),
+        "```",
+        "<!-- bridge-findings-end -->",
+        "", "## Callouts", "", "- Ok.",
+      ].join("\n");
+
+      let postedBody = "";
+      const pipeline = buildPipeline({
+        config: { reviewMode: "two-pass" },
+        llm: {
+          generateReview: async () => {
+            callCount++;
+            if (callCount === 1) {
+              return { content: VALID_PASS1_CONTENT, inputTokens: 500, outputTokens: 200, model: "test" };
+            }
+            return { content: categoryChangedContent, inputTokens: 100, outputTokens: 300, model: "test" };
+          },
+        },
+        poster: {
+          postReview: async (input) => { postedBody = input.body; return true; },
+        },
+      });
+      const summary = await pipeline.run("run-cat-change");
+      assert.equal(summary.reviewed, 1);
+      assert.ok(postedBody.includes("Enrichment unavailable"), "Should fall back when category reclassified");
+    });
+
+    it("falls back when Pass 2 has valid prose but no findings markers", async () => {
+      let callCount = 0;
+      const noMarkersContent = [
+        "## Summary",
+        "",
+        "This is a valid-looking review with proper headings.",
+        "",
+        "## Findings",
+        "",
+        "Here are the findings in prose form without any JSON markers.",
+        "- F001: Some issue was found",
+        "- F002: Some good thing was found",
+        "",
+        "## Callouts",
+        "",
+        "- Good architecture overall.",
+      ].join("\n");
+
+      let postedBody = "";
+      const pipeline = buildPipeline({
+        config: { reviewMode: "two-pass" },
+        llm: {
+          generateReview: async () => {
+            callCount++;
+            if (callCount === 1) {
+              return { content: VALID_PASS1_CONTENT, inputTokens: 500, outputTokens: 200, model: "test" };
+            }
+            return { content: noMarkersContent, inputTokens: 100, outputTokens: 300, model: "test" };
+          },
+        },
+        poster: {
+          postReview: async (input) => { postedBody = input.body; return true; },
+        },
+      });
+      const summary = await pipeline.run("run-no-markers");
+      assert.equal(summary.reviewed, 1);
+      assert.ok(postedBody.includes("Enrichment unavailable"), "Should fall back when findings markers missing from Pass 2");
+      assert.ok(postedBody.includes("bridge-findings-start"), "Fallback should preserve structured findings from Pass 1");
+    });
+
+    it("two-pass sanitizer warn-and-continue posts redacted review in default mode", async () => {
+      let callCount = 0;
+      let posted = false;
+      const pipeline = buildPipeline({
+        config: { reviewMode: "two-pass", sanitizerMode: "default" },
+        llm: {
+          generateReview: async () => {
+            callCount++;
+            if (callCount === 1) {
+              return { content: VALID_PASS1_CONTENT, inputTokens: 500, outputTokens: 200, model: "test" };
+            }
+            return { content: VALID_PASS2_CONTENT, inputTokens: 100, outputTokens: 300, model: "test" };
+          },
+        },
+        sanitizer: {
+          sanitize: () => ({
+            safe: false,
+            sanitizedContent: VALID_PASS2_CONTENT,
+            redactedPatterns: ["api_key"],
+          }),
+        },
+        poster: {
+          postReview: async () => { posted = true; return true; },
+        },
+      });
+      const summary = await pipeline.run("run-2p-sanitizer-warn");
+      assert.equal(summary.reviewed, 1);
+      assert.ok(posted, "Should still post when sanitizer warns in default mode");
+    });
+
+    it("two-pass recheck-fail returns skip when hasExistingReview throws twice", async () => {
+      let llmCallCount = 0;
+      let recheckCallCount = 0;
+      const pipeline = buildPipeline({
+        config: { reviewMode: "two-pass" },
+        llm: {
+          generateReview: async () => {
+            llmCallCount++;
+            if (llmCallCount === 1) {
+              return { content: VALID_PASS1_CONTENT, inputTokens: 500, outputTokens: 200, model: "test" };
+            }
+            return { content: VALID_PASS2_CONTENT, inputTokens: 100, outputTokens: 300, model: "test" };
+          },
+        },
+        poster: {
+          hasExistingReview: async () => {
+            recheckCallCount++;
+            // First call is the initial check (step 2) — return false (no existing review)
+            if (recheckCallCount === 1) return false;
+            // Subsequent calls are the recheck in postAndFinalize — throw
+            throw new Error("GitHub API unavailable");
+          },
+          postReview: async () => true,
+        },
+      });
+      const summary = await pipeline.run("run-2p-recheck-fail");
+      assert.equal(summary.skipped, 1);
+      assert.equal(summary.results[0].skipReason, "recheck_failed");
+    });
+  });
+
+  describe("confidence pipeline (Sprint 66)", () => {
+    const FINDINGS_WITH_CONFIDENCE = [
+      "<!-- bridge-findings-start -->",
+      "```json",
+      JSON.stringify({
+        schema_version: 1,
+        findings: [
+          { id: "F001", title: "Issue", severity: "HIGH", category: "security", file: "src/app.ts:1", description: "d", suggestion: "s", confidence: 0.9 },
+          { id: "F002", title: "Good", severity: "PRAISE", category: "quality", file: "src/app.ts:5", description: "d", suggestion: "s", confidence: 0.7 },
+          { id: "F003", title: "Maybe", severity: "LOW", category: "style", file: "src/app.ts:10", description: "d", suggestion: "s", confidence: 0.3 },
+        ],
+      }),
+      "```",
+      "<!-- bridge-findings-end -->",
+    ].join("\n");
+
+    function makePass2WithConfidence(findings: Array<Record<string, unknown>>): string {
+      return [
+        "## Summary", "", "Review.", "",
+        "## Findings", "",
+        "<!-- bridge-findings-start -->",
+        "```json",
+        JSON.stringify({ schema_version: 1, findings }),
+        "```",
+        "<!-- bridge-findings-end -->",
+        "", "## Callouts", "", "- Ok.",
+      ].join("\n");
+    }
+
+    it("parses confidence values from Pass 1 and includes stats in result", async () => {
+      let callCount = 0;
+      const pass2Findings = [
+        { id: "F001", title: "Issue", severity: "HIGH", category: "security", file: "src/app.ts:1", description: "d", suggestion: "s", confidence: 0.9, faang_parallel: "Google" },
+        { id: "F002", title: "Good", severity: "PRAISE", category: "quality", file: "src/app.ts:5", description: "d", suggestion: "s", confidence: 0.7, metaphor: "Well-oiled" },
+        { id: "F003", title: "Maybe", severity: "LOW", category: "style", file: "src/app.ts:10", description: "d", suggestion: "s", confidence: 0.3 },
+      ];
+      const pipeline = buildPipeline({
+        config: { reviewMode: "two-pass" },
+        llm: {
+          generateReview: async () => {
+            callCount++;
+            if (callCount === 1) {
+              return { content: FINDINGS_WITH_CONFIDENCE, inputTokens: 500, outputTokens: 200, model: "test" };
+            }
+            return { content: makePass2WithConfidence(pass2Findings), inputTokens: 100, outputTokens: 300, model: "test" };
+          },
+        },
+      });
+      const summary = await pipeline.run("run-conf-stats");
+      const result = summary.results[0];
+      assert.equal(summary.reviewed, 1);
+      assert.ok(result.pass1ConfidenceStats, "Should have pass1ConfidenceStats");
+      assert.equal(result.pass1ConfidenceStats!.min, 0.3);
+      assert.equal(result.pass1ConfidenceStats!.max, 0.9);
+      assert.equal(result.pass1ConfidenceStats!.count, 3);
+      assert.ok(result.pass1ConfidenceStats!.mean > 0.6 && result.pass1ConfidenceStats!.mean < 0.7);
+    });
+
+    it("silently drops invalid confidence values (negative, >1, string)", async () => {
+      let callCount = 0;
+      const invalidConfidenceFindings = [
+        "<!-- bridge-findings-start -->",
+        "```json",
+        JSON.stringify({
+          schema_version: 1,
+          findings: [
+            { id: "F001", title: "Issue", severity: "HIGH", category: "security", file: "f:1", description: "d", suggestion: "s", confidence: -0.5 },
+            { id: "F002", title: "Good", severity: "PRAISE", category: "quality", file: "f:2", description: "d", suggestion: "s", confidence: 1.5 },
+            { id: "F003", title: "Low", severity: "LOW", category: "style", file: "f:3", description: "d", suggestion: "s", confidence: "high" },
+            { id: "F004", title: "Ok", severity: "MEDIUM", category: "perf", file: "f:4", description: "d", suggestion: "s", confidence: 0.8 },
+          ],
+        }),
+        "```",
+        "<!-- bridge-findings-end -->",
+      ].join("\n");
+
+      const pass2 = makePass2WithConfidence([
+        { id: "F001", title: "Issue", severity: "HIGH", category: "security", file: "f:1", description: "d", suggestion: "s" },
+        { id: "F002", title: "Good", severity: "PRAISE", category: "quality", file: "f:2", description: "d", suggestion: "s" },
+        { id: "F003", title: "Low", severity: "LOW", category: "style", file: "f:3", description: "d", suggestion: "s" },
+        { id: "F004", title: "Ok", severity: "MEDIUM", category: "perf", file: "f:4", description: "d", suggestion: "s", confidence: 0.8 },
+      ]);
+
+      const pipeline = buildPipeline({
+        config: { reviewMode: "two-pass" },
+        llm: {
+          generateReview: async () => {
+            callCount++;
+            if (callCount === 1) {
+              return { content: invalidConfidenceFindings, inputTokens: 500, outputTokens: 200, model: "test" };
+            }
+            return { content: pass2, inputTokens: 100, outputTokens: 300, model: "test" };
+          },
+        },
+      });
+      const summary = await pipeline.run("run-conf-invalid");
+      const result = summary.results[0];
+      assert.equal(summary.reviewed, 1);
+      // Only F004 has valid confidence (0.8)
+      assert.ok(result.pass1ConfidenceStats, "Should have stats from valid confidence values");
+      assert.equal(result.pass1ConfidenceStats!.count, 1);
+      assert.equal(result.pass1ConfidenceStats!.min, 0.8);
+      assert.equal(result.pass1ConfidenceStats!.max, 0.8);
+    });
+
+    it("omits confidence stats when no findings have confidence", async () => {
+      let callCount = 0;
+      const noConfFindings = [
+        "<!-- bridge-findings-start -->",
+        "```json",
+        JSON.stringify({
+          schema_version: 1,
+          findings: [
+            { id: "F001", title: "Issue", severity: "HIGH", category: "security", file: "f:1", description: "d", suggestion: "s" },
+            { id: "F002", title: "Good", severity: "PRAISE", category: "quality", file: "f:2", description: "d", suggestion: "s" },
+          ],
+        }),
+        "```",
+        "<!-- bridge-findings-end -->",
+      ].join("\n");
+
+      const pass2 = makePass2WithConfidence([
+        { id: "F001", title: "Issue", severity: "HIGH", category: "security", file: "f:1", description: "d", suggestion: "s" },
+        { id: "F002", title: "Good", severity: "PRAISE", category: "quality", file: "f:2", description: "d", suggestion: "s" },
+      ]);
+
+      const pipeline = buildPipeline({
+        config: { reviewMode: "two-pass" },
+        llm: {
+          generateReview: async () => {
+            callCount++;
+            if (callCount === 1) {
+              return { content: noConfFindings, inputTokens: 500, outputTokens: 200, model: "test" };
+            }
+            return { content: pass2, inputTokens: 100, outputTokens: 300, model: "test" };
+          },
+        },
+      });
+      const summary = await pipeline.run("run-conf-none");
+      const result = summary.results[0];
+      assert.equal(summary.reviewed, 1);
+      assert.equal(result.pass1ConfidenceStats, undefined, "Should not have stats when no findings have confidence");
+    });
+
+    it("mixed findings: stats computed from available confidence values only", async () => {
+      let callCount = 0;
+      const mixedFindings = [
+        "<!-- bridge-findings-start -->",
+        "```json",
+        JSON.stringify({
+          schema_version: 1,
+          findings: [
+            { id: "F001", title: "Issue", severity: "HIGH", category: "security", file: "f:1", description: "d", suggestion: "s", confidence: 0.9 },
+            { id: "F002", title: "Good", severity: "PRAISE", category: "quality", file: "f:2", description: "d", suggestion: "s" },
+            { id: "F003", title: "Maybe", severity: "LOW", category: "style", file: "f:3", description: "d", suggestion: "s", confidence: 0.5 },
+          ],
+        }),
+        "```",
+        "<!-- bridge-findings-end -->",
+      ].join("\n");
+
+      const pass2 = makePass2WithConfidence([
+        { id: "F001", title: "Issue", severity: "HIGH", category: "security", file: "f:1", description: "d", suggestion: "s", confidence: 0.9 },
+        { id: "F002", title: "Good", severity: "PRAISE", category: "quality", file: "f:2", description: "d", suggestion: "s" },
+        { id: "F003", title: "Maybe", severity: "LOW", category: "style", file: "f:3", description: "d", suggestion: "s", confidence: 0.5 },
+      ]);
+
+      const pipeline = buildPipeline({
+        config: { reviewMode: "two-pass" },
+        llm: {
+          generateReview: async () => {
+            callCount++;
+            if (callCount === 1) {
+              return { content: mixedFindings, inputTokens: 500, outputTokens: 200, model: "test" };
+            }
+            return { content: pass2, inputTokens: 100, outputTokens: 300, model: "test" };
+          },
+        },
+      });
+      const summary = await pipeline.run("run-conf-mixed");
+      const result = summary.results[0];
+      assert.equal(summary.reviewed, 1);
+      assert.ok(result.pass1ConfidenceStats);
+      assert.equal(result.pass1ConfidenceStats!.count, 2, "Only 2 findings have confidence");
+      assert.equal(result.pass1ConfidenceStats!.min, 0.5);
+      assert.equal(result.pass1ConfidenceStats!.max, 0.9);
+    });
+
+    it("preservation guard passes when confidence differs between Pass 1 and Pass 2", async () => {
+      let callCount = 0;
+      // Pass 2 changes confidence values but preserves id/severity/category
+      const pass2 = makePass2WithConfidence([
+        { id: "F001", title: "Issue", severity: "HIGH", category: "security", file: "src/app.ts:1", description: "d", suggestion: "s", confidence: 0.95 },
+        { id: "F002", title: "Good", severity: "PRAISE", category: "quality", file: "src/app.ts:5", description: "d", suggestion: "s", confidence: 0.6 },
+        { id: "F003", title: "Maybe", severity: "LOW", category: "style", file: "src/app.ts:10", description: "d", suggestion: "s" },
+      ]);
+
+      let postedBody = "";
+      const pipeline = buildPipeline({
+        config: { reviewMode: "two-pass" },
+        llm: {
+          generateReview: async () => {
+            callCount++;
+            if (callCount === 1) {
+              return { content: FINDINGS_WITH_CONFIDENCE, inputTokens: 500, outputTokens: 200, model: "test" };
+            }
+            return { content: pass2, inputTokens: 100, outputTokens: 300, model: "test" };
+          },
+        },
+        poster: {
+          postReview: async (input) => { postedBody = input.body; return true; },
+        },
+      });
+      const summary = await pipeline.run("run-conf-preserve");
+      assert.equal(summary.reviewed, 1);
+      assert.ok(!postedBody.includes("Enrichment unavailable"), "Should NOT fall back — confidence is not a preserved attribute");
+    });
+  });
+
+  describe("persona provenance (Sprint 67)", () => {
+    it("parses persona with valid frontmatter", () => {
+      const metadata = ReviewPipeline.parsePersonaMetadata(
+        "<!-- persona-version: 1.0.0 | agent: bridgebuilder -->\n# Bridgebuilder\nContent here.",
+      );
+      assert.equal(metadata.id, "bridgebuilder");
+      assert.equal(metadata.version, "1.0.0");
+      assert.ok(metadata.hash.length === 64, "Should be a SHA-256 hex digest");
+    });
+
+    it("defaults to unknown/0.0.0 when no frontmatter", () => {
+      const metadata = ReviewPipeline.parsePersonaMetadata(
+        "# Just a persona\nNo frontmatter here.",
+      );
+      assert.equal(metadata.id, "unknown");
+      assert.equal(metadata.version, "0.0.0");
+      assert.ok(metadata.hash.length === 64, "Should still compute hash");
+    });
+
+    it("two-pass ReviewResult includes personaId and personaHash", async () => {
+      let callCount = 0;
+      const pass1 = [
+        "<!-- bridge-findings-start -->",
+        "```json",
+        JSON.stringify({
+          schema_version: 1,
+          findings: [
+            { id: "F001", title: "Issue", severity: "HIGH", category: "security", file: "f:1", description: "d", suggestion: "s" },
+          ],
+        }),
+        "```",
+        "<!-- bridge-findings-end -->",
+      ].join("\n");
+
+      const pass2 = [
+        "## Summary", "", "Review.", "",
+        "## Findings", "",
+        "<!-- bridge-findings-start -->",
+        "```json",
+        JSON.stringify({
+          schema_version: 1,
+          findings: [
+            { id: "F001", title: "Issue", severity: "HIGH", category: "security", file: "f:1", description: "d", suggestion: "s", faang_parallel: "Google" },
+          ],
+        }),
+        "```",
+        "<!-- bridge-findings-end -->",
+        "", "## Callouts", "", "- Good.",
+      ].join("\n");
+
+      const pipeline = buildPipeline({
+        config: { reviewMode: "two-pass" },
+        llm: {
+          generateReview: async () => {
+            callCount++;
+            if (callCount === 1) {
+              return { content: pass1, inputTokens: 500, outputTokens: 200, model: "test" };
+            }
+            return { content: pass2, inputTokens: 100, outputTokens: 300, model: "test" };
+          },
+        },
+      });
+      const summary = await pipeline.run("run-persona");
+      const result = summary.results[0];
+      assert.equal(summary.reviewed, 1);
+      // The default persona is "You are a code reviewer." — no frontmatter
+      assert.equal(result.personaId, "unknown");
+      assert.ok(result.personaHash, "Should have personaHash");
+      assert.ok(result.personaHash!.length === 64, "Hash should be SHA-256");
+    });
+
+    it("single-pass ReviewResult does NOT include personaId", async () => {
+      const pipeline = buildPipeline({
+        config: { reviewMode: "single-pass" },
+      });
+      const summary = await pipeline.run("run-sp-persona");
+      const result = summary.results[0];
+      assert.equal(summary.reviewed, 1);
+      assert.equal(result.personaId, undefined, "Single-pass should not include personaId");
+      assert.equal(result.personaHash, undefined, "Single-pass should not include personaHash");
+    });
+  });
+
+  describe("ecosystem context (Sprint 68)", () => {
+    it("loadEcosystemContext returns undefined for missing file", () => {
+      const result = ReviewPipeline.loadEcosystemContext(
+        "/nonexistent/path/ecosystem.json",
+        mockLogger(),
+      );
+      assert.equal(result, undefined);
+    });
+
+    it("loadEcosystemContext returns undefined for undefined path", () => {
+      const result = ReviewPipeline.loadEcosystemContext(undefined, mockLogger());
+      assert.equal(result, undefined);
+    });
+
+    it("loadEcosystemContext validates structure and filters invalid patterns", () => {
+      const dir = mkdtempSync(join(tmpdir(), "bb-eco-"));
+      const filePath = join(dir, "ecosystem.json");
+
+      writeFileSync(filePath, JSON.stringify({
+        patterns: [
+          { repo: "valid/repo", pattern: "Pattern A", connection: "Connection A" },
+          { repo: "valid/repo2", pr: 42, pattern: "Pattern B", connection: "Connection B" },
+          { missing: "fields" },
+          { repo: "no-connection", pattern: "P" },
+        ],
+        lastUpdated: "2026-02-25T12:00:00Z",
+      }));
+
+      try {
+        const result = ReviewPipeline.loadEcosystemContext(filePath, mockLogger());
+        assert.ok(result, "Should return context for valid file");
+        assert.equal(result!.patterns.length, 2, "Should filter to only valid patterns");
+        assert.equal(result!.patterns[0].repo, "valid/repo");
+        assert.equal(result!.patterns[1].pr, 42);
+        assert.equal(result!.lastUpdated, "2026-02-25T12:00:00Z");
+      } finally {
+        unlinkSync(filePath);
+      }
+    });
+
+    it("loadEcosystemContext returns undefined for invalid JSON", () => {
+      const dir = mkdtempSync(join(tmpdir(), "bb-eco-"));
+      const filePath = join(dir, "bad.json");
+
+      writeFileSync(filePath, "not valid json {{{");
+
+      try {
+        const result = ReviewPipeline.loadEcosystemContext(filePath, mockLogger());
+        assert.equal(result, undefined, "Should return undefined for invalid JSON");
+      } finally {
+        unlinkSync(filePath);
+      }
+    });
+
+    it("loadEcosystemContext warns on missing lastUpdated", () => {
+      const dir = mkdtempSync(join(tmpdir(), "bb-eco-"));
+      const filePath = join(dir, "no-date.json");
+
+      writeFileSync(filePath, JSON.stringify({
+        patterns: [{ repo: "r", pattern: "p", connection: "c" }],
+      }));
+
+      const warns: string[] = [];
+      const logger: ILogger = {
+        ...mockLogger(),
+        warn: (msg: string) => { warns.push(msg); },
+      };
+
+      try {
+        const result = ReviewPipeline.loadEcosystemContext(filePath, logger);
+        assert.equal(result, undefined, "Should return undefined when lastUpdated missing");
+        assert.ok(warns.some((w) => w.includes("invalid structure")), "Should warn about invalid structure");
+      } finally {
+        unlinkSync(filePath);
+      }
+    });
+  });
+
+  describe("fixture-based tests", () => {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = dirname(__filename);
+    const fixturesDir = join(__dirname, "fixtures");
+
+    it("extractFindingsJSON parses pass1-valid-findings.json fixture", async () => {
+      const fixtureContent = readFileSync(join(fixturesDir, "pass1-valid-findings.json"), "utf-8");
+      // Use a two-pass pipeline to exercise extractFindingsJSON via the public flow
+      let callCount = 0;
+      const pipeline = buildPipeline({
+        config: { reviewMode: "two-pass" },
+        llm: {
+          generateReview: async () => {
+            callCount++;
+            if (callCount === 1) {
+              return { content: fixtureContent, inputTokens: 500, outputTokens: 200, model: "test" };
+            }
+            // Return valid enriched version of the fixture
+            const enriched = [
+              "## Summary", "", "Enriched review.", "",
+              "## Findings", "", fixtureContent, "",
+              "## Callouts", "", "- Good.",
+            ].join("\n");
+            return { content: enriched, inputTokens: 100, outputTokens: 300, model: "test" };
+          },
+        },
+      });
+      const summary = await pipeline.run("run-fixture-p1");
+      // Should successfully extract and process — not skip
+      assert.equal(summary.reviewed, 1);
+    });
+
+    it("extractFindingsJSON returns null for pass1-malformed.txt fixture", async () => {
+      const fixtureContent = readFileSync(join(fixturesDir, "pass1-malformed.txt"), "utf-8");
+      const pipeline = buildPipeline({
+        config: { reviewMode: "two-pass" },
+        llm: {
+          generateReview: async () => ({
+            content: fixtureContent,
+            inputTokens: 100,
+            outputTokens: 50,
+            model: "test",
+          }),
+        },
+      });
+      const summary = await pipeline.run("run-fixture-malformed");
+      // Malformed content should result in skip (no valid findings and no valid response)
+      assert.equal(summary.skipped, 1);
+    });
+
+    it("validateFindingPreservation rejects pass2-findings-added.md fixture", async () => {
+      const pass1Content = readFileSync(join(fixturesDir, "pass1-valid-findings.json"), "utf-8");
+      const pass2Content = readFileSync(join(fixturesDir, "pass2-findings-added.md"), "utf-8");
+      let callCount = 0;
+      let postedBody = "";
+      const pipeline = buildPipeline({
+        config: { reviewMode: "two-pass" },
+        llm: {
+          generateReview: async () => {
+            callCount++;
+            if (callCount === 1) {
+              return { content: pass1Content, inputTokens: 500, outputTokens: 200, model: "test" };
+            }
+            return { content: pass2Content, inputTokens: 100, outputTokens: 300, model: "test" };
+          },
+        },
+        poster: {
+          postReview: async (input) => { postedBody = input.body; return true; },
+        },
+      });
+      const summary = await pipeline.run("run-fixture-added");
+      assert.equal(summary.reviewed, 1);
+      assert.ok(postedBody.includes("Enrichment unavailable"), "Should fall back when Pass 2 adds findings");
+    });
+
+    it("validateFindingPreservation rejects pass2-severity-changed.md fixture", async () => {
+      const pass1Content = readFileSync(join(fixturesDir, "pass1-valid-findings.json"), "utf-8");
+      const pass2Content = readFileSync(join(fixturesDir, "pass2-severity-changed.md"), "utf-8");
+      let callCount = 0;
+      let postedBody = "";
+      const pipeline = buildPipeline({
+        config: { reviewMode: "two-pass" },
+        llm: {
+          generateReview: async () => {
+            callCount++;
+            if (callCount === 1) {
+              return { content: pass1Content, inputTokens: 500, outputTokens: 200, model: "test" };
+            }
+            return { content: pass2Content, inputTokens: 100, outputTokens: 300, model: "test" };
+          },
+        },
+        poster: {
+          postReview: async (input) => { postedBody = input.body; return true; },
+        },
+      });
+      const summary = await pipeline.run("run-fixture-severity");
+      assert.equal(summary.reviewed, 1);
+      assert.ok(postedBody.includes("Enrichment unavailable"), "Should fall back when Pass 2 changes severity");
+    });
+
+    it("validateFindingPreservation rejects pass2-category-changed.md fixture", async () => {
+      const pass1Content = readFileSync(join(fixturesDir, "pass1-valid-findings.json"), "utf-8");
+      const pass2Content = readFileSync(join(fixturesDir, "pass2-category-changed.md"), "utf-8");
+      let callCount = 0;
+      let postedBody = "";
+      const pipeline = buildPipeline({
+        config: { reviewMode: "two-pass" },
+        llm: {
+          generateReview: async () => {
+            callCount++;
+            if (callCount === 1) {
+              return { content: pass1Content, inputTokens: 500, outputTokens: 200, model: "test" };
+            }
+            return { content: pass2Content, inputTokens: 100, outputTokens: 300, model: "test" };
+          },
+        },
+        poster: {
+          postReview: async (input) => { postedBody = input.body; return true; },
+        },
+      });
+      const summary = await pipeline.run("run-fixture-category");
+      assert.equal(summary.reviewed, 1);
+      assert.ok(postedBody.includes("Enrichment unavailable"), "Should fall back when Pass 2 changes category");
     });
   });
 });
