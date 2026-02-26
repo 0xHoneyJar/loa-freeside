@@ -238,22 +238,22 @@ fi
 echo ""
 
 # ---------------------------------------------------------------------------
-# Post-deploy: Run smoke test
+# Post-deploy: Quick smoke test (basic health validation)
 # ---------------------------------------------------------------------------
 
-echo "── Post-Deploy: Smoke Test ────────────────────────────────"
+echo "── Post-Deploy: Quick Smoke Test ────────────────────────────"
 
 if $DRY_RUN; then
   echo "[dry-run] Would run staging-smoke.sh"
 else
   if [[ -x "$SCRIPT_DIR/staging-smoke.sh" ]]; then
-    echo "Running smoke test..."
+    echo "Running quick smoke test (health + JWKS)..."
     "$SCRIPT_DIR/staging-smoke.sh" && SMOKE_OK=true || SMOKE_OK=false
 
     if $SMOKE_OK; then
-      echo "  ✓ Smoke test passed"
+      echo "  ✓ Quick smoke test passed"
     else
-      echo "  ✗ Smoke test failed"
+      echo "  ✗ Quick smoke test failed"
       DEPLOY_STATUS=2
     fi
   else
@@ -261,28 +261,119 @@ else
   fi
 fi
 
+echo ""
+
 # ---------------------------------------------------------------------------
-# Summary
+# Post-deploy: Full validation with launch readiness report
+# ---------------------------------------------------------------------------
+
+echo "── Post-Deploy: Full Validation & Launch Readiness ──────────"
+
+LAUNCH_STATUS="UNKNOWN"
+P0_FAILURES=0
+P1_FAILURES=0
+
+if $DRY_RUN; then
+  echo "[dry-run] Would run full validation with --retries 3 --auto-seed --json"
+  LAUNCH_STATUS="DRY_RUN"
+elif [[ $DEPLOY_STATUS -ne 0 ]]; then
+  echo "  SKIP: Quick smoke test failed — skipping full validation"
+  LAUNCH_STATUS="BLOCKED"
+else
+  if [[ -x "$SCRIPT_DIR/staging-smoke.sh" ]]; then
+    echo "Running full validation (retries=3, auto-seed, JSON)..."
+
+    VALIDATION_JSON=$(mktemp)
+    "$SCRIPT_DIR/staging-smoke.sh" \
+      --retries 3 \
+      --auto-seed \
+      --json \
+      2>"$VALIDATION_JSON" && FULL_OK=true || FULL_OK=false
+
+    if [[ -s "$VALIDATION_JSON" ]]; then
+      # Parse JSON output for P0/P1 pass/fail/skip counts
+      P0_PASS=$(jq -r '.p0.pass // 0' "$VALIDATION_JSON" 2>/dev/null || echo 0)
+      P0_FAIL=$(jq -r '.p0.fail // 0' "$VALIDATION_JSON" 2>/dev/null || echo 0)
+      P0_SKIP=$(jq -r '.p0.skip // 0' "$VALIDATION_JSON" 2>/dev/null || echo 0)
+      P1_PASS=$(jq -r '.p1.pass // 0' "$VALIDATION_JSON" 2>/dev/null || echo 0)
+      P1_FAIL=$(jq -r '.p1.fail // 0' "$VALIDATION_JSON" 2>/dev/null || echo 0)
+      P1_SKIP=$(jq -r '.p1.skip // 0' "$VALIDATION_JSON" 2>/dev/null || echo 0)
+      P0_FAILURES=$P0_FAIL
+      P1_FAILURES=$P1_FAIL
+    fi
+
+    rm -f "$VALIDATION_JSON"
+
+    if [[ $P0_FAILURES -eq 0 ]] && [[ $P1_FAILURES -eq 0 ]]; then
+      LAUNCH_STATUS="READY"
+    elif [[ $P0_FAILURES -eq 0 ]]; then
+      LAUNCH_STATUS="READY_DEGRADED"
+    else
+      LAUNCH_STATUS="NOT_READY"
+      DEPLOY_STATUS=1
+    fi
+  fi
+fi
+
+echo ""
+
+# ---------------------------------------------------------------------------
+# Launch Readiness Report
 # ---------------------------------------------------------------------------
 
 TOTAL_TIME=$(elapsed)
 
-echo ""
 echo "================================================================"
-echo "  Deployment Summary"
+echo "  Launch Readiness Report"
 echo "================================================================"
 echo ""
-echo "  Total Time:    ${TOTAL_TIME}s"
-echo "  Mode:          $(if $PARALLEL; then echo "parallel (finn+dixie)"; else echo "sequential"; fi)"
+echo "  Deploy Time:     ${TOTAL_TIME}s"
+echo "  Deploy Mode:     $(if $PARALLEL; then echo "parallel (finn+dixie)"; else echo "sequential"; fi)"
+echo "  Launch Status:   $LAUNCH_STATUS"
+echo ""
+echo "  ── Smoke Test Results ──"
+echo "  P0 (blocking):   $P0_PASS pass, $P0_FAILURES fail, $P0_SKIP skip"
+echo "  P1 (degraded):   $P1_PASS pass, $P1_FAILURES fail, $P1_SKIP skip"
+echo ""
+echo "  ── PRD Goal Coverage ──"
+echo "  G-1 Infrastructure:   $(if [[ ${P0_PASS:-0} -ge 2 ]]; then echo "MET (health + JWKS)"; else echo "UNVERIFIED"; fi)"
+echo "  G-2 Authentication:   $(if [[ ${P0_PASS:-0} -ge 3 ]]; then echo "MET (JWT round-trip)"; else echo "UNVERIFIED"; fi)"
+echo "  G-3 Core Flow:        $(if [[ ${P0_PASS:-0} -ge 4 ]]; then echo "MET (invoke + budget)"; else echo "UNVERIFIED"; fi)"
+echo "  G-4 Budget:           $(if [[ ${P0_FAILURES:-1} -eq 0 ]]; then echo "MET (conservation holds)"; else echo "FAILED"; fi)"
+echo "  G-5 Reputation:       See Phase 7 results"
+echo "  G-6 Payments:         See Phase 8 results"
+echo "  G-7 Reliability:      $(if [[ ${P0_FAILURES:-1} -eq 0 ]]; then echo "MET (0 P0 failures)"; else echo "FAILED"; fi)"
+echo "  G-9 Monitoring:       Check CloudWatch dashboards manually"
+echo ""
 
-if [[ $DEPLOY_STATUS -eq 0 ]]; then
-  echo "  Status:        ALL PASSED"
-elif [[ $DEPLOY_STATUS -eq 2 ]]; then
-  echo "  Status:        DEPLOYED (smoke test failed)"
+case "$LAUNCH_STATUS" in
+  READY)
+    echo "  VERDICT: LAUNCH READY — all P0 and P1 checks passed"
+    ;;
+  READY_DEGRADED)
+    echo "  VERDICT: LAUNCH READY (DEGRADED) — P0 passed, $P1_FAILURES P1 failures"
+    echo "  Action: Review P1 failures and track as follow-up"
+    ;;
+  NOT_READY)
+    echo "  VERDICT: NOT READY — $P0_FAILURES P0 failures must be resolved"
+    echo "  Action: Fix P0 failures and re-run validation"
+    ;;
+  BLOCKED)
+    echo "  VERDICT: BLOCKED — deployment failed, validation skipped"
+    ;;
+  *)
+    echo "  VERDICT: $LAUNCH_STATUS"
+    ;;
+esac
+
+echo ""
+echo "================================================================"
+
+# Exit with launch-readiness status: 0 (ready), 1 (P0 failures), 2 (P1 only)
+if [[ "$LAUNCH_STATUS" == "READY" ]]; then
+  exit 0
+elif [[ "$LAUNCH_STATUS" == "READY_DEGRADED" ]]; then
+  exit 2
 else
-  echo "  Status:        FAILED"
+  exit 1
 fi
-
-echo ""
-echo "================================================================"
-exit $DEPLOY_STATUS

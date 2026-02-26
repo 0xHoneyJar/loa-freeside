@@ -1592,3 +1592,41 @@ resource "aws_cloudwatch_dashboard" "economic_health" {
     Sprint = "375-Task-2.1"
   })
 }
+
+# =============================================================================
+# Cross-Service Latency Alarm — p99 Invoke Path (Constellation Review §V.2c)
+# Sprint 376, Task 3.4
+# =============================================================================
+# Completes Four Golden Signals coverage: latency alarm for the critical
+# freeside -> finn invoke path. PRD G-3 requires <10s p95; we alarm at p99 > 10s.
+
+resource "aws_cloudwatch_metric_alarm" "invoke_latency_p99" {
+  alarm_name          = "${local.name_prefix}-invoke-latency-p99"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "InvokeLatencyMs"
+  namespace           = "${local.name_prefix}/AppMetrics"
+  period              = 300
+  extended_statistic  = "p99"
+  threshold           = 10000
+  alarm_description   = <<-EOT
+    INVOKE LATENCY P99 > 10s — critical cross-service path (freeside -> finn) is slow.
+    Investigation steps:
+    1. Check finn service health: ECS task count, CPU, memory
+    2. Check model provider latency: CloudWatch Arrakis/Agent InferenceLatencyMs
+    3. Check Redis latency: ElastiCache dashboard for budget operations
+    4. Check network: Security group rules, Cloud Map DNS resolution
+    5. If model provider: Consider pool fallback or circuit breaker activation
+    PRD G-3 target: <10s p95. This alarm fires at p99 > 10s (more permissive).
+  EOT
+  treat_missing_data  = "notBreaching"
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+
+  tags = merge(local.common_tags, {
+    Service  = "AgentGateway"
+    Severity = "high"
+    Sprint   = "376-Task-3.4"
+  })
+}
