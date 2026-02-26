@@ -90,3 +90,12 @@ ensemble_enabled = "true"
 
 # BYOK key management (bring-your-own-key with Network Firewall)
 byok_enabled = true
+
+# =============================================================================
+# loa-dixie Service (Cycle 044: Staging Integration)
+# =============================================================================
+
+dixie_cpu           = 256
+dixie_memory        = 512
+dixie_desired_count = 1
+dixie_image_tag     = "latest"  # Override with git SHA in CI/CD

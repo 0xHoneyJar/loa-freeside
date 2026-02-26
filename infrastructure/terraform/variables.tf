@@ -325,6 +325,34 @@ variable "finn_desired_count" {
   default     = 1
 }
 
+# =============================================================================
+# loa-dixie Service (Cycle 044)
+# =============================================================================
+
+variable "dixie_cpu" {
+  description = "loa-dixie task CPU units"
+  type        = number
+  default     = 256
+}
+
+variable "dixie_memory" {
+  description = "loa-dixie task memory (MB)"
+  type        = number
+  default     = 512
+}
+
+variable "dixie_desired_count" {
+  description = "Desired loa-dixie task count"
+  type        = number
+  default     = 1
+}
+
+variable "dixie_image_tag" {
+  description = "Docker image tag for loa-dixie (git SHA for immutable deploys per IMP-003)"
+  type        = string
+  default     = "latest"
+}
+
 # SNS Alarm Topic
 variable "sns_alarm_topic_arn" {
   description = "SNS topic ARN for CloudWatch alarm notifications (empty = no notifications)"
