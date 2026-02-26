@@ -32,7 +32,7 @@ setup() {
 
     # Set defaults that load_adversarial_config would set
     CONF_ENABLED="true"
-    CONF_MODEL="gpt-5.2-codex"
+    CONF_MODEL="gpt-5.3-codex"
     CONF_TIMEOUT=60
     CONF_BUDGET_CENTS=150
     CONF_ESCALATION_ENABLED="true"
@@ -295,7 +295,7 @@ setup() {
 # =============================================================================
 
 @test "process_findings: STATE 1 — api_failure" {
-    result=$(process_findings "" "review" "gpt-5.2-codex" "sprint-1" "3" "")
+    result=$(process_findings "" "review" "gpt-5.3-codex" "sprint-1" "3" "")
     local status
     status=$(echo "$result" | jq -r '.metadata.status')
     [[ "$status" == "api_failure" ]]
@@ -306,7 +306,7 @@ setup() {
 }
 
 @test "process_findings: STATE 1 — api_failure sets degraded for audit" {
-    result=$(process_findings "" "audit" "gpt-5.2-codex" "sprint-1" "3" "")
+    result=$(process_findings "" "audit" "gpt-5.3-codex" "sprint-1" "3" "")
     local degraded
     degraded=$(echo "$result" | jq -r '.metadata.degraded')
     [[ "$degraded" == "true" ]]
@@ -314,7 +314,7 @@ setup() {
 
 @test "process_findings: STATE 2 — malformed_response" {
     local raw='{"content": "{\"suggestions\": [\"wrong format\"]}"}'
-    result=$(process_findings "$raw" "review" "gpt-5.2-codex" "sprint-1" "0" "")
+    result=$(process_findings "$raw" "review" "gpt-5.3-codex" "sprint-1" "0" "")
     local status
     status=$(echo "$result" | jq -r '.metadata.status')
     [[ "$status" == "malformed_response" ]]
@@ -322,7 +322,7 @@ setup() {
 
 @test "process_findings: STATE 3 — clean (empty findings)" {
     local raw='{"content": "{\"findings\": []}", "tokens_input": 100, "tokens_output": 50, "cost_usd": 0.01, "latency_ms": 500}'
-    result=$(process_findings "$raw" "review" "gpt-5.2-codex" "sprint-1" "0" "")
+    result=$(process_findings "$raw" "review" "gpt-5.3-codex" "sprint-1" "0" "")
     local status count
     status=$(echo "$result" | jq -r '.metadata.status')
     count=$(echo "$result" | jq '.findings | length')
@@ -335,7 +335,7 @@ setup() {
     findings_json=$(cat "$FIXTURES_DIR/valid-review-response.json")
     local raw
     raw=$(jq -n --arg c "$findings_json" '{"content": $c, "tokens_input": 1000, "tokens_output": 200, "cost_usd": 0.05, "latency_ms": 2000}')
-    result=$(process_findings "$raw" "review" "gpt-5.2-codex" "sprint-1" "0" "src/auth.ts")
+    result=$(process_findings "$raw" "review" "gpt-5.3-codex" "sprint-1" "0" "src/auth.ts")
     local status count
     status=$(echo "$result" | jq -r '.metadata.status')
     count=$(echo "$result" | jq '.findings | length')
@@ -347,7 +347,7 @@ setup() {
     local content='{"findings": [{"id":"DISS-001","severity":"INVALID","category":"injection","description":"test","failure_mode":"crash"}]}'
     local raw
     raw=$(jq -n --arg c "$content" '{"content": $c, "tokens_input": 100, "tokens_output": 50, "cost_usd": 0.01, "latency_ms": 500}')
-    result=$(process_findings "$raw" "review" "gpt-5.2-codex" "sprint-1" "0" "src/auth.ts")
+    result=$(process_findings "$raw" "review" "gpt-5.3-codex" "sprint-1" "0" "src/auth.ts")
     local count
     count=$(echo "$result" | jq '.findings | length')
     [[ "$count" == "0" ]]

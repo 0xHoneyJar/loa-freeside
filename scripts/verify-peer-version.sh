@@ -12,7 +12,7 @@
 #
 # Usage:
 #   ./scripts/verify-peer-version.sh
-#   ./scripts/verify-peer-version.sh --url https://loa-finn-staging.fly.dev
+#   ./scripts/verify-peer-version.sh --url http://finn.arrakis-staging.local:3000
 #   ./scripts/verify-peer-version.sh --skip   # local dev bypass
 #
 # Exit codes:
@@ -45,7 +45,7 @@ ACCEPT_MAJOR_MAX=7
 # Parse Arguments
 # ---------------------------------------------------------------------------
 
-FINN_URL="${LOA_FINN_URL:-https://loa-finn-staging.fly.dev}"
+FINN_URL="${LOA_FINN_URL:-http://finn.arrakis-staging.local:3000}"
 SKIP=false
 
 while [[ $# -gt 0 ]]; do
@@ -64,7 +64,7 @@ while [[ $# -gt 0 ]]; do
       echo "Pre-deploy verification that loa-finn supports the contract version."
       echo ""
       echo "Options:"
-      echo "  --url   loa-finn endpoint (default: \$LOA_FINN_URL or https://loa-finn-staging.fly.dev)"
+      echo "  --url   loa-finn endpoint (default: \$LOA_FINN_URL or http://finn.arrakis-staging.local:3000)"
       echo "  --skip  Skip verification (local dev bypass)"
       echo "  -h      Show this help"
       echo ""

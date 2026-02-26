@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "next_sprint_number": 362,
-  "active_cycle": "cycle-043",
+  "next_sprint_number": 366,
+  "active_cycle": null,
   "cycles": [
     {
       "id": "cycle-001",
@@ -1653,36 +1653,63 @@
     {
       "id": "cycle-043",
       "label": "The Governance Substrate — loa-hounfour v8.2.0 Full Adoption",
-      "status": "active",
+      "status": "archived",
       "created": "2026-02-25T22:00:00Z",
+      "archived": "2026-02-26T13:00:00Z",
+      "archive_path": "grimoires/loa/archive/2026-02-26-the-governance-substrate",
+      "prd": "grimoires/loa/prd.md",
+      "sdd": "grimoires/loa/sdd.md",
+      "sprint_plan": "grimoires/loa/sprint.md",
       "sprints": [
         {
           "global_id": 358,
           "local_label": "sprint-1",
-          "status": "pending",
+          "status": "completed",
           "title": "Foundation"
         },
         {
           "global_id": 359,
           "local_label": "sprint-2",
-          "status": "pending",
+          "status": "completed",
           "title": "Gateway + Events"
         },
         {
           "global_id": 360,
           "local_label": "sprint-3",
-          "status": "pending",
+          "status": "completed",
           "title": "Governance Enforcement"
         },
         {
           "global_id": 361,
           "local_label": "sprint-4",
-          "status": "pending",
+          "status": "completed",
           "title": "Conformance & E2E"
+        },
+        {
+          "global_id": 362,
+          "local_label": "sprint-5",
+          "status": "completed",
+          "title": "Bridge Convergence Polish"
+        },
+        {
+          "global_id": 363,
+          "local_label": "sprint-6",
+          "status": "completed",
+          "title": "DynamicContract Evolution"
+        },
+        {
+          "global_id": 364,
+          "local_label": "sprint-7",
+          "status": "completed",
+          "title": "Audit Intelligence Pipeline"
+        },
+        {
+          "global_id": 365,
+          "local_label": "sprint-8",
+          "status": "completed",
+          "title": "Meta-Governance"
         }
-      ],
-      "sdd": "grimoires/loa/sdd.md",
-      "sprint_plan": "grimoires/loa/sprint.md"
+      ]
     }
   ]
 }

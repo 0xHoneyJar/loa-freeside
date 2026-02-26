@@ -131,7 +131,8 @@ resource "aws_iam_role_policy" "ecs_execution_api_secrets" {
           aws_secretsmanager_secret.db_credentials.arn,
           aws_secretsmanager_secret.redis_credentials.arn,
           aws_secretsmanager_secret.agent_jwt_signing_key.arn,  # Hounfour Phase 4
-          aws_secretsmanager_secret.siwe_session_secret.arn     # Sprint 6, Task 6.7
+          aws_secretsmanager_secret.siwe_session_secret.arn,    # Sprint 6, Task 6.7
+          aws_secretsmanager_secret.freeside_es256_private_key.arn  # C44: S2S JWT signing
         ]
       }
     ]
@@ -481,6 +482,8 @@ resource "aws_ecs_task_definition" "api" {
         { name = "BYOK_ENABLED", value = var.byok_enabled ? "true" : "false" },
         # Cycle 036: Use Cloud Map DNS for finn discovery in ECS
         { name = "LOA_FINN_BASE_URL", value = var.enable_service_discovery ? "http://finn.${local.name_prefix}.local:3000" : var.loa_finn_base_url },
+        # Cycle 044: Cloud Map DNS for dixie discovery
+        { name = "DIXIE_BASE_URL", value = var.enable_service_discovery ? "http://dixie.${local.name_prefix}.local:3001" : "http://localhost:3001" },
         # Sprint 6 (319), Task 6.7: SIWE session — kid for secret routing
         { name = "SIWE_SESSION_SECRET_KID", value = var.siwe_session_secret_kid }
       ]
@@ -514,7 +517,9 @@ resource "aws_ecs_task_definition" "api" {
         { name = "AGENT_JWT_SIGNING_KEY", valueFrom = aws_secretsmanager_secret.agent_jwt_signing_key.arn },
         { name = "AGENT_JWT_KEY_ID", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:AGENT_JWT_KEY_ID::" },
         # Sprint 6 (319), Task 6.7: SIWE session token signing
-        { name = "SIWE_SESSION_SECRET", valueFrom = aws_secretsmanager_secret.siwe_session_secret.arn }
+        { name = "SIWE_SESSION_SECRET", valueFrom = aws_secretsmanager_secret.siwe_session_secret.arn },
+        # Cycle 044: ES256 key for S2S JWT signing (freeside → finn, freeside → dixie)
+        { name = "ES256_PRIVATE_KEY", valueFrom = aws_secretsmanager_secret.freeside_es256_private_key.arn }
       ]
 
       logConfiguration = {
@@ -1320,5 +1325,123 @@ resource "aws_ecs_service" "gp_worker" {
 
   tags = merge(local.common_tags, {
     Service = "GatewayProxy"
+  })
+}
+
+# =============================================================================
+# Cycle 044: Staging Integration — Freeside ES256 Key (SDD §4.2)
+# =============================================================================
+
+resource "aws_secretsmanager_secret" "freeside_es256_private_key" {
+  name                    = "${local.name_prefix}/freeside/es256-private-key"
+  description             = "ES256 private key for S2S JWT signing (loa-freeside)"
+  recovery_window_in_days = 7
+  kms_key_id              = aws_kms_key.secrets.arn
+
+  tags = merge(local.common_tags, {
+    Service  = "API"
+    Sprint   = "C44-2"
+    Rotation = "quarterly"
+  })
+}
+
+# =============================================================================
+# Cycle 044: Staging Integration — Freeside Migration Task (SDD §5.2)
+# =============================================================================
+# One-shot ECS task for database migrations. NOT run inside the service
+# container. Invoked via `aws ecs run-task` in CI/CD pipeline.
+
+resource "aws_ecs_task_definition" "freeside_migration" {
+  family                   = "${local.name_prefix}-freeside-migration"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = 256
+  memory                   = 512
+  execution_role_arn       = aws_iam_role.ecs_execution_migration.arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
+
+  container_definitions = jsonencode([
+    {
+      name      = "migration"
+      image     = "${aws_ecr_repository.api.repository_url}:${var.environment}"
+      essential = true
+
+      command = ["pnpm", "drizzle-kit", "push"]
+
+      environment = [
+        { name = "NODE_ENV", value = "production" },
+        { name = "MIGRATION_TIMEOUT_MS", value = "90000" }
+      ]
+
+      secrets = [
+        { name = "DATABASE_URL", valueFrom = "${aws_secretsmanager_secret.db_credentials.arn}:url::" }
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.api.name
+          "awslogs-region"        = var.aws_region
+          "awslogs-stream-prefix" = "migration"
+        }
+      }
+
+      # IMP-004: Prevent hung migration tasks
+      stopTimeout = 120
+    }
+  ])
+
+  tags = merge(local.common_tags, {
+    Service = "API"
+    Sprint  = "C44-2"
+    Purpose = "migration"
+  })
+}
+
+# Minimal execution role for migration tasks — DATABASE_URL only
+resource "aws_iam_role" "ecs_execution_migration" {
+  name = "${local.name_prefix}-ecs-execution-migration"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "ecs-tasks.amazonaws.com"
+      }
+    }]
+  })
+
+  tags = merge(local.common_tags, {
+    Sprint  = "C44-2"
+    Purpose = "migration"
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_execution_migration" {
+  role       = aws_iam_role.ecs_execution_migration.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+resource "aws_iam_role_policy" "ecs_execution_migration_secrets" {
+  name = "${local.name_prefix}-ecs-execution-migration-secrets"
+  role = aws_iam_role.ecs_execution_migration.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "MigrationSecrets"
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = [
+          aws_secretsmanager_secret.db_credentials.arn,
+          aws_secretsmanager_secret.dixie_db_url.arn
+        ]
+      }
+    ]
   })
 }

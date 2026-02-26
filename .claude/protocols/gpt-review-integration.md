@@ -67,8 +67,8 @@ gpt_review:
   timeout_seconds: 300       # API timeout
   max_iterations: 3          # Auto-approve after this
   models:
-    documents: "gpt-5.2"     # PRD, SDD, Sprint reviews
-    code: "gpt-5.2-codex"    # Code reviews (gpt-5.3-codex when API available)
+    documents: "gpt-5.3-codex"  # PRD, SDD, Sprint reviews
+    code: "gpt-5.3-codex"    # Code reviews
   phases:
     prd: true
     sdd: true
@@ -232,7 +232,7 @@ The context file (created by toggle script when enabled) provides detailed instr
 
 ### GPT Codex (Code)
 - Endpoint: `https://api.openai.com/v1/responses`
-- Model: `gpt-5.2-codex` (default; `gpt-5.3-codex` registered, awaiting API availability)
+- Model: `gpt-5.3-codex`
 - Format: `input` field (not messages)
 - Supports: `reasoning: {effort: "medium"}`
 

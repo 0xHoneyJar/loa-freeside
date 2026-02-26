@@ -13,7 +13,7 @@
 #   --sprint-id <id>          Sprint identifier (required)
 #   --diff-file <path>        Path to git diff file (required)
 #   --context-file <path>     Reviewer findings (review only; omit for audit independence)
-#   --model <model>           Dissenter model (default: from config or gpt-5.2-codex)
+#   --model <model>           Dissenter model (default: from config or gpt-5.3-codex)
 #   --budget <cents>          Max cost in cents (default: from config or 150)
 #   --timeout <seconds>       API timeout (default: from config or 60)
 #   --dry-run                 Assemble context without calling API
@@ -71,7 +71,7 @@ load_adversarial_config() {
 
   # Defaults
   CONF_ENABLED="false"
-  CONF_MODEL="gpt-5.2-codex"
+  CONF_MODEL="gpt-5.3-codex"
   CONF_TIMEOUT=60
   CONF_BUDGET_CENTS=150
   CONF_ESCALATION_ENABLED="true"
@@ -99,7 +99,7 @@ load_adversarial_config() {
   fi
 
   CONF_ENABLED=$(yq eval ".flatline_protocol.${config_key}.enabled // false" "$CONFIG_FILE" 2>/dev/null || echo "false")
-  CONF_MODEL=$(yq eval ".flatline_protocol.${config_key}.model // \"gpt-5.2-codex\"" "$CONFIG_FILE" 2>/dev/null || echo "gpt-5.2-codex")
+  CONF_MODEL=$(yq eval ".flatline_protocol.${config_key}.model // \"gpt-5.3-codex\"" "$CONFIG_FILE" 2>/dev/null || echo "gpt-5.3-codex")
   CONF_TIMEOUT=$(yq eval ".flatline_protocol.${config_key}.timeout_seconds // 60" "$CONFIG_FILE" 2>/dev/null || echo "60")
   CONF_BUDGET_CENTS=$(yq eval ".flatline_protocol.${config_key}.budget_cents // 150" "$CONFIG_FILE" 2>/dev/null || echo "150")
   CONF_ESCALATION_ENABLED=$(yq eval ".flatline_protocol.context_escalation.enabled // true" "$CONFIG_FILE" 2>/dev/null || echo "true")

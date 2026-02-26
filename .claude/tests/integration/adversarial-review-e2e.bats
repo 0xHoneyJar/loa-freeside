@@ -23,12 +23,12 @@ setup() {
 flatline_protocol:
   code_review:
     enabled: true
-    model: "gpt-5.2-codex"
+    model: "gpt-5.3-codex"
     timeout_seconds: 60
     budget_cents: 150
   security_audit:
     enabled: true
-    model: "gpt-5.2-codex"
+    model: "gpt-5.3-codex"
     timeout_seconds: 60
     budget_cents: 150
   context_escalation:
@@ -159,7 +159,7 @@ teardown() {
 
     # Simulate API failure
     local result
-    result=$(process_findings "" "audit" "gpt-5.2-codex" "sprint-test" "3" "")
+    result=$(process_findings "" "audit" "gpt-5.3-codex" "sprint-test" "3" "")
 
     local degraded status
     degraded=$(echo "$result" | jq -r '.metadata.degraded')
@@ -176,7 +176,7 @@ teardown() {
     PROJECT_ROOT="$saved_root"
 
     local result
-    result=$(process_findings "" "review" "gpt-5.2-codex" "sprint-test" "3" "")
+    result=$(process_findings "" "review" "gpt-5.3-codex" "sprint-test" "3" "")
 
     local degraded
     degraded=$(echo "$result" | jq -r '.metadata.degraded')

@@ -402,10 +402,131 @@ preflight() {
   log "Pre-flight checks passed"
 }
 
+# === Detect Installation Mode (Task 3.5, cycle-035 sprint-3) ===
+
+detect_installation_mode() {
+  if [[ ! -f "$VERSION_FILE" ]]; then
+    echo "standard"
+    return
+  fi
+  local mode
+  mode=$(jq -r '.installation_mode // "standard"' "$VERSION_FILE" 2>/dev/null) || true
+  echo "${mode:-standard}"
+}
+
+# === Submodule Eject (Task 3.5, cycle-035 sprint-3) ===
+# Converts submodule installation to vendored by:
+# 1. Copying framework files from .loa/.claude/ into .claude/ (replacing symlinks)
+# 2. Deinitializing the git submodule
+# 3. Updating .loa-version.json to standard mode
+
+eject_submodule() {
+  local submodule_path
+  submodule_path=$(jq -r '.submodule.path // ".loa"' "$VERSION_FILE" 2>/dev/null) || true
+  submodule_path="${submodule_path:-.loa}"
+
+  if [[ ! -d "$submodule_path/.claude" ]]; then
+    err "Submodule at $submodule_path does not contain .claude/ directory. Cannot eject."
+  fi
+
+  step "Ejecting from submodule mode..."
+
+  # === Phase 1: Replace symlinks with real copies ===
+  # Uses authoritative manifest (DRY — Bridgebuilder Tension 1)
+  step "Replacing symlinks with real files..."
+  local replaced=0
+
+  # Source shared symlink manifest and cross-platform compat layer
+  local _script_dir
+  _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  source "${_script_dir}/lib/symlink-manifest.sh"
+  source "${_script_dir}/compat-lib.sh"
+  get_symlink_manifest "$submodule_path" "$(pwd)"
+
+  # Iterate all manifest entries — replace symlinks with real copies
+  for entry in "${MANIFEST_DIR_SYMLINKS[@]}" "${MANIFEST_FILE_SYMLINKS[@]}" "${MANIFEST_SKILL_SYMLINKS[@]}" "${MANIFEST_CMD_SYMLINKS[@]}"; do
+    local link_path="${entry%%:*}"
+    if [[ -L "$link_path" ]]; then
+      # Resolve the real source path in the submodule
+      local real_src
+      # Use get_canonical_path() from compat-lib.sh for macOS portability (high-1)
+      # readlink -f is GNU coreutils only; macOS BSD readlink lacks -f flag
+      real_src=$(get_canonical_path "$link_path" 2>/dev/null || true)
+      if [[ "$DRY_RUN" == "true" ]]; then
+        step "[dry-run] Would replace symlink: $link_path"
+      else
+        rm -f "$link_path"
+        if [[ -n "$real_src" && -e "$real_src" ]]; then
+          cp -r "$real_src" "$link_path"
+          log "  Replaced: $link_path (symlink -> real copy)"
+          ((replaced++)) || true
+        fi
+      fi
+    fi
+  done
+
+  # Also check settings.local.json (not in manifest — user-owned extension)
+  if [[ -L ".claude/settings.local.json" ]]; then
+    local real_src
+    # Use get_canonical_path() from compat-lib.sh for macOS portability (high-1)
+    real_src=$(get_canonical_path ".claude/settings.local.json" 2>/dev/null || true)
+    if [[ "$DRY_RUN" == "true" ]]; then
+      step "[dry-run] Would replace symlink: .claude/settings.local.json"
+    else
+      rm -f ".claude/settings.local.json"
+      if [[ -n "$real_src" && -e "$real_src" ]]; then
+        cp "$real_src" ".claude/settings.local.json"
+        log "  Replaced: .claude/settings.local.json"
+        ((replaced++)) || true
+      fi
+    fi
+  fi
+
+  log "Replaced $replaced symlinks with real files"
+
+  # === Phase 2: Deinit submodule ===
+  if [[ "$DRY_RUN" == "true" ]]; then
+    step "[dry-run] Would deinit submodule: $submodule_path"
+    step "[dry-run] Would remove submodule entry from .gitmodules"
+  else
+    step "Deinitializing submodule..."
+    git submodule deinit -f "$submodule_path" 2>/dev/null || warn "submodule deinit returned non-zero"
+    git rm -f "$submodule_path" 2>/dev/null || warn "git rm submodule returned non-zero"
+    rm -rf ".git/modules/${submodule_path}" 2>/dev/null || true
+    rm -rf "$submodule_path" 2>/dev/null || true
+    # Remove .gitmodules if empty
+    if [[ -f ".gitmodules" ]] && [[ ! -s ".gitmodules" ]]; then
+      rm -f ".gitmodules"
+    fi
+    log "Submodule removed: $submodule_path"
+  fi
+
+  # === Phase 3: Update version manifest ===
+  if [[ "$DRY_RUN" == "true" ]]; then
+    step "[dry-run] Would update .loa-version.json to standard mode"
+  else
+    if [[ -f "$VERSION_FILE" ]]; then
+      local tmp
+      tmp=$(mktemp)
+      jq '.installation_mode = "standard" | del(.submodule)' "$VERSION_FILE" > "$tmp"
+      mv "$tmp" "$VERSION_FILE"
+      log "Updated $VERSION_FILE: installation_mode = standard"
+    fi
+  fi
+}
+
 # === Main Eject Process ===
 
 eject_files() {
   log "Starting eject process..."
+
+  # === 0. Detect installation mode and handle submodule (Task 3.5) ===
+  local install_mode
+  install_mode=$(detect_installation_mode)
+  if [[ "$install_mode" == "submodule" ]]; then
+    step "Detected submodule installation mode"
+    eject_submodule
+  fi
 
   # === 1. Create Backup ===
   step "Creating backup..."

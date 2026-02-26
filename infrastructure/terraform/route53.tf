@@ -63,6 +63,22 @@ resource "aws_route53_record" "api" {
 }
 
 # -----------------------------------------------------------------------------
+# Cycle 044: Dixie Endpoint Record (SDD §2.4)
+# Points dixie subdomain to the same ALB (host-based routing)
+# -----------------------------------------------------------------------------
+resource "aws_route53_record" "dixie" {
+  zone_id = aws_route53_zone.main.zone_id
+  name    = "dixie.${var.environment}.${var.root_domain}"
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.main.dns_name
+    zone_id                = aws_lb.main.zone_id
+    evaluate_target_health = true
+  }
+}
+
+# -----------------------------------------------------------------------------
 # Outputs
 # -----------------------------------------------------------------------------
 output "route53_zone_id" {
