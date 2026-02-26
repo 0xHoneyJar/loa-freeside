@@ -270,7 +270,7 @@ resource "aws_cloudwatch_metric_alarm" "jwt_validation_failure_spike" {
   period              = 60
   statistic           = "Sum"
   threshold           = 10
-  alarm_description   = "JWT validation failures >10 in 2 minutes — possible key rotation issue or attack. Dashboard: https://${var.aws_region}.console.aws.amazon.com/cloudwatch/home?region=${var.aws_region}#dashboards:name=${local.name_prefix}-service-health"
+  alarm_description   = "JWT validation failures >10 in 2 minutes — possible key rotation issue or attack. Investigate: check /ecs/${local.name_prefix}/api logs for JWT_VALIDATION_FAILED. If key compromise confirmed: ./scripts/revoke-staging-key.sh --service <service>. Dashboard: https://${var.aws_region}.console.aws.amazon.com/cloudwatch/home?region=${var.aws_region}#dashboards:name=${local.name_prefix}-service-health"
   treat_missing_data  = "notBreaching"
 
   alarm_actions = [aws_sns_topic.alerts.arn]

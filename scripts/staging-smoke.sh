@@ -45,6 +45,7 @@ TEST_KEY=""
 COMMUNITY_ID=""
 JSON_OUTPUT=false
 RETRY_COUNT=1
+AUTO_SEED=false
 
 usage() {
   echo "Usage: $0 [options]"
@@ -56,6 +57,7 @@ usage() {
   echo "  --dixie-url <url>     Override dixie URL"
   echo "  --json                Output results as JSON"
   echo "  --retries <n>         Retry count for flake detection (default: 1)"
+  echo "  --auto-seed           Run test data seeding if needed before tests"
   echo "  -h, --help            Show this help"
 }
 
@@ -67,6 +69,7 @@ while [[ $# -gt 0 ]]; do
     --dixie-url)     DIXIE_URL="$2"; shift 2 ;;
     --json)          JSON_OUTPUT=true; shift ;;
     --retries)       RETRY_COUNT="$2"; shift 2 ;;
+    --auto-seed)     AUTO_SEED=true; shift ;;
     -h|--help)       usage; exit 0 ;;
     *)               echo "Unknown option: $1"; usage; exit 1 ;;
   esac
@@ -91,6 +94,42 @@ fi
 if [[ -n "$TEST_KEY" ]] && ! command -v node &>/dev/null; then
   echo "ERROR: node required for JWT signing (sign-test-jwt.mjs)"
   exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Auto-Seed: Provision test data if --auto-seed and no --test-key provided
+# ---------------------------------------------------------------------------
+
+if $AUTO_SEED; then
+  SEED_SCRIPT="$SCRIPT_DIR/seed-staging-test-data.sh"
+
+  if [[ ! -x "$SEED_SCRIPT" ]]; then
+    echo "WARNING: --auto-seed specified but $SEED_SCRIPT not found or not executable"
+    echo "  Continuing without seeding..."
+  else
+    echo "Auto-seeding staging test data..."
+    seed_output=$("$SEED_SCRIPT" --ecs-exec 2>&1) || {
+      echo "WARNING: Test data seeding failed — continuing with manual config"
+      echo "  $seed_output"
+      seed_output=""
+    }
+
+    if [[ -n "$seed_output" ]]; then
+      # Extract seeded entity IDs from KEY=VALUE output
+      seeded_community=$(echo "$seed_output" | grep '^COMMUNITY_ID=' | cut -d= -f2)
+      seeded_key=$(echo "$seed_output" | grep '^TEST_KEY_PATH=' | cut -d= -f2)
+
+      if [[ -z "$COMMUNITY_ID" ]] && [[ -n "$seeded_community" ]]; then
+        COMMUNITY_ID="$seeded_community"
+        echo "  Using seeded COMMUNITY_ID=$COMMUNITY_ID"
+      fi
+
+      if [[ -z "$TEST_KEY" ]] && [[ -n "$seeded_key" ]] && [[ -f "$seeded_key" ]]; then
+        TEST_KEY="$seeded_key"
+        echo "  Using seeded TEST_KEY=$TEST_KEY"
+      fi
+    fi
+  fi
 fi
 
 # ---------------------------------------------------------------------------

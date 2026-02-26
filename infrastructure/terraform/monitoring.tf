@@ -241,6 +241,112 @@ resource "aws_cloudwatch_metric_alarm" "agent_redis_evictions" {
   tags = local.common_tags
 }
 
+# =============================================================================
+# Application-Level Log Metric Filters (Sprint 373 — Four Golden Signals)
+# =============================================================================
+# Defense-in-depth: extract metrics from log streams as leading indicators.
+# These complement the app-emitted metrics in Arrakis/Auth and Arrakis/Billing.
+
+# 1. JWT Validation Failure Rate (auth chain health)
+resource "aws_cloudwatch_log_metric_filter" "jwt_validation_failed" {
+  name           = "${local.name_prefix}-jwt-validation-failed"
+  pattern        = "JWT_VALIDATION_FAILED"
+  log_group_name = aws_cloudwatch_log_group.api.name
+
+  metric_transformation {
+    name          = "JwtValidationFailedCount"
+    namespace     = "${local.name_prefix}/AppMetrics"
+    value         = "1"
+    default_value = "0"
+  }
+}
+
+# 2. Budget Conservation Violation (financial invariant breach)
+resource "aws_cloudwatch_log_metric_filter" "conservation_violation" {
+  name           = "${local.name_prefix}-conservation-violation"
+  pattern        = "?CONSERVATION_VIOLATION ?budget_exceeded ?\"committed + reserved\""
+  log_group_name = aws_cloudwatch_log_group.api.name
+
+  metric_transformation {
+    name          = "ConservationViolationCount"
+    namespace     = "${local.name_prefix}/AppMetrics"
+    value         = "1"
+    default_value = "0"
+  }
+}
+
+# 3. Cross-Service Latency (freeside → finn invoke duration)
+resource "aws_cloudwatch_log_metric_filter" "invoke_latency" {
+  name           = "${local.name_prefix}-invoke-latency"
+  pattern        = "[..., duration_ms]"
+  log_group_name = aws_cloudwatch_log_group.api.name
+
+  metric_transformation {
+    name          = "InvokeLatencyMs"
+    namespace     = "${local.name_prefix}/AppMetrics"
+    value         = "$duration_ms"
+    default_value = "0"
+  }
+}
+
+# 4. Reputation Query Latency (finn → dixie)
+resource "aws_cloudwatch_log_metric_filter" "reputation_latency" {
+  name           = "${local.name_prefix}-reputation-latency"
+  pattern        = "[..., reputation_duration_ms]"
+  log_group_name = aws_cloudwatch_log_group.finn.name
+
+  metric_transformation {
+    name          = "ReputationQueryLatencyMs"
+    namespace     = "${local.name_prefix}/AppMetrics"
+    value         = "$reputation_duration_ms"
+    default_value = "0"
+  }
+}
+
+# Alarm: JWT validation failures from log metric filter (>5 in 5min)
+resource "aws_cloudwatch_metric_alarm" "jwt_log_validation_failures" {
+  alarm_name          = "${local.name_prefix}-jwt-log-validation-failures"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "JwtValidationFailedCount"
+  namespace           = "${local.name_prefix}/AppMetrics"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 5
+  alarm_description   = "POTENTIAL KEY COMPROMISE: JWT validation failures exceeding threshold (>5 in 5min). Investigate: check CloudWatch logs for JWT_VALIDATION_FAILED events in /ecs/${local.name_prefix}/api. If compromise confirmed: ./scripts/revoke-staging-key.sh --service <service>"
+  treat_missing_data  = "notBreaching"
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+
+  tags = merge(local.common_tags, {
+    Service  = "Auth"
+    Severity = "critical"
+    Sprint   = "373-Task-3.1"
+  })
+}
+
+# Alarm: Conservation violation — any occurrence is critical
+resource "aws_cloudwatch_metric_alarm" "conservation_log_violation" {
+  alarm_name          = "${local.name_prefix}-conservation-log-violation"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "ConservationViolationCount"
+  namespace           = "${local.name_prefix}/AppMetrics"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 0
+  alarm_description   = "CONSERVATION VIOLATION: Budget invariant breached (committed + reserved > monthlyBudgetCents). Immediate investigation required."
+  treat_missing_data  = "notBreaching"
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+
+  tags = merge(local.common_tags, {
+    Service  = "Billing"
+    Severity = "critical"
+    Sprint   = "373-Task-3.1"
+  })
+}
+
 # SNS Topic for alerts
 resource "aws_sns_topic" "alerts" {
   name              = "${local.name_prefix}-alerts"
