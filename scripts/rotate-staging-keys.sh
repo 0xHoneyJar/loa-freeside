@@ -100,13 +100,14 @@ CURRENT_SECRET=$(aws secretsmanager get-secret-value \
   exit 1
 }
 
-# Secret may be raw PEM or JSON with activeKid
+# Secret may be raw PEM or JSON with activeKid (schemaVersion 1+)
 if echo "$CURRENT_SECRET" | jq -e '.activeKid' >/dev/null 2>&1; then
   CURRENT_KID=$(echo "$CURRENT_SECRET" | jq -r '.activeKid')
-  echo "  Current KID: $CURRENT_KID (structured secret)"
+  SCHEMA_VERSION=$(echo "$CURRENT_SECRET" | jq -r '.schemaVersion // 0')
+  echo "  Current KID: $CURRENT_KID (structured secret, schema v${SCHEMA_VERSION})"
 else
   CURRENT_KID="legacy-$(date +%Y%m%d)"
-  echo "  Current KID: <raw PEM, no kid> — will migrate to structured format"
+  echo "  Current KID: <raw PEM, no kid> — will migrate to structured format (schema v1)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -135,8 +136,10 @@ echo "  New keypair generated and validated"
 if $DRY_RUN; then
   echo ""
   echo "[dry-run] Would update secret $SECRET_ID with dual-kid structure"
+  echo "[dry-run] Schema version: 1"
   echo "[dry-run] Old kid: $CURRENT_KID"
   echo "[dry-run] New kid: $NEW_KID"
+  echo "[dry-run] JWKS verification: skipped (no live endpoint in dry-run)"
   echo "[dry-run] No changes made"
   exit 0
 fi
@@ -147,9 +150,15 @@ fi
 
 echo "[step 3/8] Dual-publishing old + new kid..."
 
+# SECURITY NOTE: PEM material is held in shell variables during this script's
+# execution. Shell variables are visible in /proc/<pid>/environ and core dumps.
+# Exposure window: ~20min (rotation).
+# This is the same pattern AWS Secrets Manager rotation Lambdas use.
+# Alternative (piping openssl → aws CLI) creates fragile pipelines.
+# Mitigation: script runs with restricted permissions, temp dir is 0700.
 NEW_PRIVATE_PEM=$(cat "$TMPDIR/new-private.pem")
 
-# Build dual-kid secret value
+# Build dual-kid secret value with schema version
 # The JWKS endpoint reads activeKid to determine which key to use for signing,
 # but serves all keys in the keys array for verification
 DUAL_SECRET=$(jq -n \
@@ -158,6 +167,7 @@ DUAL_SECRET=$(jq -n \
   --arg new_key "$NEW_PRIVATE_PEM" \
   --arg old_key "$(echo "$CURRENT_SECRET" | jq -r '.privateKey // .')" \
   '{
+    schemaVersion: 1,
     activeKid: $old_kid,
     pendingKid: $new_kid,
     privateKey: $old_key,
@@ -174,6 +184,46 @@ aws secretsmanager put-secret-value \
   --region "$REGION" >/dev/null
 
 echo "  Both keys now in Secrets Manager (old=active, new=pending)"
+
+# ---------------------------------------------------------------------------
+# Step 3.5: Verify JWKS serves both kids (B-1)
+# ---------------------------------------------------------------------------
+# Google Certificate Transparency overlap verification pattern:
+# Before proceeding with cache TTL wait, confirm the JWKS endpoint actually
+# serves both the old and new kid. This prevents silent failures where
+# dual-publish succeeds in Secrets Manager but JWKS doesn't pick up the change.
+
+echo "[step 3.5/8] Verifying JWKS serves both kids..."
+
+FREESIDE_URL="${FREESIDE_URL:-https://staging.api.arrakis.community}"
+
+# Brief wait for secrets refresh (freeside polls every 60s)
+sleep 5
+
+JWKS_VERIFY=$(curl -sf --max-time 10 "$FREESIDE_URL/.well-known/jwks.json" 2>/dev/null) || {
+  echo "  ERROR: Cannot reach JWKS endpoint at $FREESIDE_URL/.well-known/jwks.json"
+  echo "  Dual-published keys remain in Secrets Manager — safe to retry"
+  echo "  Rollback: remove pendingKid from $SECRET_ID"
+  exit 1
+}
+
+OLD_KID_IN_JWKS=$(echo "$JWKS_VERIFY" | jq --arg kid "$CURRENT_KID" '[.keys[] | select(.kid == $kid)] | length' 2>/dev/null)
+NEW_KID_IN_JWKS=$(echo "$JWKS_VERIFY" | jq --arg kid "$NEW_KID" '[.keys[] | select(.kid == $kid)] | length' 2>/dev/null)
+
+if [[ "${OLD_KID_IN_JWKS:-0}" -lt 1 ]]; then
+  echo "  ERROR: Old kid '$CURRENT_KID' not found in JWKS response"
+  echo "  Rollback: remove pendingKid from $SECRET_ID"
+  exit 1
+fi
+
+if [[ "${NEW_KID_IN_JWKS:-0}" -lt 1 ]]; then
+  echo "  ERROR: New kid '$NEW_KID' not found in JWKS response"
+  echo "  This may indicate freeside hasn't refreshed secrets yet — wait and retry"
+  echo "  Rollback: remove pendingKid from $SECRET_ID"
+  exit 1
+fi
+
+echo "  JWKS verified: both $CURRENT_KID (old) and $NEW_KID (new) present"
 
 # ---------------------------------------------------------------------------
 # Step 4: Wait for JWKS cache refresh
@@ -199,7 +249,7 @@ echo "[step 5/8] Switching activeKid to new key..."
 SWITCHED_SECRET=$(jq -n \
   --arg kid "$NEW_KID" \
   --arg key "$NEW_PRIVATE_PEM" \
-  '{activeKid: $kid, privateKey: $key}')
+  '{schemaVersion: 1, activeKid: $kid, privateKey: $key}')
 
 echo "$SWITCHED_SECRET" > "$TMPDIR/secret-value.json"
 chmod 600 "$TMPDIR/secret-value.json"
@@ -210,6 +260,23 @@ aws secretsmanager put-secret-value \
   --region "$REGION" >/dev/null
 
 echo "  activeKid switched: $CURRENT_KID → $NEW_KID"
+
+# Post-switch JWKS verification (B-1)
+echo "  Verifying new kid is active in JWKS..."
+sleep 5
+
+JWKS_POST_SWITCH=$(curl -sf --max-time 10 "$FREESIDE_URL/.well-known/jwks.json" 2>/dev/null) || true
+
+if [[ -n "${JWKS_POST_SWITCH:-}" ]]; then
+  POST_SWITCH_KID=$(echo "$JWKS_POST_SWITCH" | jq -r '.keys[0].kid // empty' 2>/dev/null)
+  if [[ "$POST_SWITCH_KID" == "$NEW_KID" ]]; then
+    echo "  Verified: $NEW_KID is now primary in JWKS"
+  else
+    echo "  NOTE: JWKS primary kid is '$POST_SWITCH_KID' — may need cache refresh"
+  fi
+else
+  echo "  WARNING: Could not verify JWKS post-switch — continuing"
+fi
 
 # ---------------------------------------------------------------------------
 # Step 6: Monitor for errors (optional)

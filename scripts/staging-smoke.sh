@@ -147,22 +147,41 @@ record() {
     '. + [{"priority":$p,"phase":$ph,"name":$n,"status":$s,"classification":$c,"elapsed_ms":($e|tonumber),"detail":$d}]')
 }
 
-# Retry wrapper for flake detection
+# Retry wrapper for flake detection (B-3)
+# Usage: with_retry <name> <function>
+# Sets RETRY_WAS_USED=true if success required >1 attempt
+RETRY_WAS_USED=false
+
 with_retry() {
-  local fn="$1" priority="$2" phase="$3" name="$4"
-  local attempt=0 result=0
+  local name="$1" fn="$2"
+  local attempt=0
+  RETRY_WAS_USED=false
 
   while [[ $attempt -lt $RETRY_COUNT ]]; do
     attempt=$((attempt + 1))
     if "$fn"; then
+      [[ $attempt -gt 1 ]] && RETRY_WAS_USED=true
       return 0
     fi
     if [[ $attempt -lt $RETRY_COUNT ]]; then
-      echo "    Retry $((attempt))/$RETRY_COUNT for $name..."
+      echo "    Retry ${attempt}/$((RETRY_COUNT - 1)) for $name..."
       sleep 2
     fi
   done
   return 1
+}
+
+# Health check functions for retry wrapper
+_check_freeside_health() {
+  freeside_health=$(curl -sf --max-time 10 "$FREESIDE_URL/health" 2>/dev/null)
+}
+
+_check_dixie_health() {
+  dixie_health=$(curl -sf --max-time 10 "$DIXIE_URL/api/health" 2>/dev/null)
+}
+
+_check_jwks() {
+  jwks=$(curl -sf --max-time 10 "$FREESIDE_URL/.well-known/jwks.json" 2>/dev/null)
 }
 
 # ---------------------------------------------------------------------------
@@ -186,15 +205,17 @@ echo ""
 echo "── Phase 1: Health Checks (P0) ─────────────────────────"
 echo ""
 
-# Freeside health
+# Freeside health (with retry for flake detection — B-3)
 start=$(timer_ms)
-freeside_health=$(curl -sf --max-time 10 "$FREESIDE_URL/health" 2>/dev/null) && fh_ok=true || fh_ok=false
+with_retry "Freeside /health" _check_freeside_health && fh_ok=true || fh_ok=false
 elapsed=$(( $(timer_ms) - start ))
 
 if $fh_ok; then
   fh_status=$(echo "$freeside_health" | jq -r '.status // empty' 2>/dev/null)
+  fh_class=""
+  $RETRY_WAS_USED && fh_class="FLAKE"
   if [[ "$fh_status" == "healthy" ]] || [[ "$fh_status" == "degraded" ]]; then
-    record P0 health "Freeside /health (status: $fh_status)" PASS "" "$elapsed"
+    record P0 health "Freeside /health (status: $fh_status${fh_class:+, $fh_class})" PASS "$fh_class" "$elapsed"
   else
     record P0 health "Freeside /health" FAIL PLATFORM_BUG "$elapsed" "unexpected status: $fh_status"
   fi
@@ -202,15 +223,17 @@ else
   record P0 health "Freeside /health" FAIL PLATFORM_BUG "$elapsed" "unreachable"
 fi
 
-# Dixie health
+# Dixie health (with retry for flake detection — B-3)
 start=$(timer_ms)
-dixie_health=$(curl -sf --max-time 10 "$DIXIE_URL/api/health" 2>/dev/null) && dh_ok=true || dh_ok=false
+with_retry "Dixie /api/health" _check_dixie_health && dh_ok=true || dh_ok=false
 elapsed=$(( $(timer_ms) - start ))
 
 if $dh_ok; then
   dh_status=$(echo "$dixie_health" | jq -r '.status // empty' 2>/dev/null)
+  dh_class=""
+  $RETRY_WAS_USED && dh_class="FLAKE"
   if [[ "$dh_status" == "healthy" ]] || [[ "$dh_status" == "degraded" ]]; then
-    record P0 health "Dixie /api/health (status: $dh_status)" PASS "" "$elapsed"
+    record P0 health "Dixie /api/health (status: $dh_status${dh_class:+, $dh_class})" PASS "$dh_class" "$elapsed"
   else
     record P0 health "Dixie /api/health" FAIL PLATFORM_BUG "$elapsed" "unexpected status: $dh_status"
   fi
@@ -228,7 +251,7 @@ echo "── Phase 2: JWKS Verification (P0) ───────────�
 echo ""
 
 start=$(timer_ms)
-jwks=$(curl -sf --max-time 10 "$FREESIDE_URL/.well-known/jwks.json" 2>/dev/null) && jwks_ok=true || jwks_ok=false
+with_retry "JWKS verification" _check_jwks && jwks_ok=true || jwks_ok=false
 elapsed=$(( $(timer_ms) - start ))
 
 if $jwks_ok; then
@@ -236,8 +259,10 @@ if $jwks_ok; then
   first_alg=$(echo "$jwks" | jq -r '.keys[0].alg // empty' 2>/dev/null)
   first_kid=$(echo "$jwks" | jq -r '.keys[0].kid // empty' 2>/dev/null)
 
+  jwks_class=""
+  $RETRY_WAS_USED && jwks_class="FLAKE"
   if [[ "$key_count" -ge 1 ]] && [[ "$first_alg" == "ES256" ]] && [[ -n "$first_kid" ]]; then
-    record P0 jwks "JWKS (${key_count} key(s), alg=$first_alg, kid=$first_kid)" PASS "" "$elapsed"
+    record P0 jwks "JWKS (${key_count} key(s), alg=$first_alg, kid=$first_kid${jwks_class:+, $jwks_class})" PASS "$jwks_class" "$elapsed"
   elif [[ "$key_count" -ge 1 ]] && [[ "$first_alg" == "ES256" ]]; then
     record P0 jwks "JWKS (${key_count} key(s), alg=$first_alg, missing kid)" FAIL PLATFORM_BUG "$elapsed" "kid field required for key rotation"
   else

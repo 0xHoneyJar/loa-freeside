@@ -32,6 +32,7 @@ SERVICE=""
 REGION="${AWS_DEFAULT_REGION:-us-east-1}"
 ENV="staging"
 DRY_RUN=false
+WAIT_STABLE=false
 PREFIX=""
 CLUSTER=""
 
@@ -39,11 +40,12 @@ usage() {
   echo "Usage: $0 --service <freeside|finn|dixie> [options]"
   echo ""
   echo "Options:"
-  echo "  --service   Service with compromised key (required)"
-  echo "  --env       Environment (default: staging)"
-  echo "  --region    AWS region (default: us-east-1)"
-  echo "  --dry-run   Show what would happen without making changes"
-  echo "  -h, --help  Show this help"
+  echo "  --service       Service with compromised key (required)"
+  echo "  --env           Environment (default: staging)"
+  echo "  --region        AWS region (default: us-east-1)"
+  echo "  --dry-run       Show what would happen without making changes"
+  echo "  --wait-stable   Wait for full ECS service stability (conservative)"
+  echo "  -h, --help      Show this help"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -51,8 +53,9 @@ while [[ $# -gt 0 ]]; do
     --service)  SERVICE="$2"; shift 2 ;;
     --env)      ENV="$2"; shift 2 ;;
     --region)   REGION="$2"; shift 2 ;;
-    --dry-run)  DRY_RUN=true; shift ;;
-    -h|--help)  usage; exit 0 ;;
+    --dry-run)      DRY_RUN=true; shift ;;
+    --wait-stable)  WAIT_STABLE=true; shift ;;
+    -h|--help)      usage; exit 0 ;;
     *)          echo "Unknown: $1"; usage; exit 1 ;;
   esac
 done
@@ -118,13 +121,18 @@ echo "  Replacement key generated and validated"
 
 echo "[$(elapsed)s] Step 2: Deploying replacement key (revoking old)..."
 
+# SECURITY NOTE: PEM material is held in shell variables during this script's
+# execution. Shell variables are visible in /proc/<pid>/environ and core dumps.
+# Exposure window: ~5min (emergency revocation).
+# This is the same pattern AWS Secrets Manager rotation Lambdas use.
+# Mitigation: script runs with restricted permissions, temp dir is 0700.
 NEW_PRIVATE_PEM=$(cat "$TMPDIR/new-private.pem")
 
-# Build new secret with only the new key — old key is gone
+# Build new secret with only the new key — old key is gone (schema v1)
 REVOKED_SECRET=$(jq -n \
   --arg kid "$NEW_KID" \
   --arg key "$NEW_PRIVATE_PEM" \
-  '{activeKid: $kid, privateKey: $key, revocation: {timestamp: (now | strftime("%Y-%m-%dT%H:%M:%SZ")), reason: "emergency"}}')
+  '{schemaVersion: 1, activeKid: $kid, privateKey: $key, revocation: {timestamp: (now | strftime("%Y-%m-%dT%H:%M:%SZ")), reason: "emergency"}}')
 
 echo "$REVOKED_SECRET" > "$TMPDIR/secret-value.json"
 chmod 600 "$TMPDIR/secret-value.json"
@@ -176,20 +184,54 @@ if [[ "$SERVICE" == "freeside" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Step 4: Wait for services to stabilize
+# Step 4: Confirm new deployment is launching
 # ---------------------------------------------------------------------------
 
-echo "[$(elapsed)s] Step 4: Waiting for service stability..."
+echo "[$(elapsed)s] Step 4: Confirming new deployment is launching..."
 
-aws ecs wait services-stable \
+# Netflix circuit breaker pattern: verify tasks are launching, don't wait for
+# full stability. This saves 2-5min on the <5min revocation budget.
+DEPLOY_STATUS=$(aws ecs describe-services \
   --cluster "$CLUSTER" \
   --services "$ECS_SERVICE" \
-  --region "$REGION" 2>/dev/null || {
-  echo "  WARNING: Service did not stabilize within timeout"
-  echo "  Check ECS console for deployment status"
-}
+  --region "$REGION" \
+  --query 'services[0].deployments[0].{status:status,desired:desiredCount,running:runningCount}' \
+  --output json 2>/dev/null) || true
 
-echo "  Service stable"
+if [[ -n "${DEPLOY_STATUS:-}" ]]; then
+  DEP_STATUS=$(echo "$DEPLOY_STATUS" | jq -r '.status // "UNKNOWN"')
+  DEP_DESIRED=$(echo "$DEPLOY_STATUS" | jq -r '.desired // 0')
+  echo "  Deployment status: $DEP_STATUS (desired: $DEP_DESIRED tasks)"
+else
+  echo "  WARNING: Could not query deployment status"
+fi
+
+if $WAIT_STABLE; then
+  echo "  --wait-stable: Waiting for full service stability..."
+  aws ecs wait services-stable \
+    --cluster "$CLUSTER" \
+    --services "$ECS_SERVICE" \
+    --region "$REGION" || {
+    echo "  WARNING: Service did not stabilize within timeout"
+    echo "  Check ECS console for deployment status"
+  }
+  echo "  Service fully stable"
+else
+  # Quick check: wait briefly for at least one new task to be running
+  echo "  Waiting for new tasks to start (15s)..."
+  sleep 15
+  RUNNING_COUNT=$(aws ecs describe-services \
+    --cluster "$CLUSTER" \
+    --services "$ECS_SERVICE" \
+    --region "$REGION" \
+    --query 'services[0].deployments[0].runningCount' \
+    --output text 2>/dev/null) || true
+  if [[ "${RUNNING_COUNT:-0}" -gt 0 ]]; then
+    echo "  New tasks running ($RUNNING_COUNT) — proceeding to verification"
+  else
+    echo "  WARNING: No new tasks running yet — proceeding anyway"
+  fi
+fi
 
 # ---------------------------------------------------------------------------
 # Step 5: Verify
