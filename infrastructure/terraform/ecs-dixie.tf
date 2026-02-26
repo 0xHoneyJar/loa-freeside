@@ -553,6 +553,59 @@ resource "aws_ecs_service" "dixie" {
 }
 
 # -----------------------------------------------------------------------------
+# Migration Task Definition (SDD §5.2 / IMP-004)
+# One-shot ECS task for dixie database migrations.
+# Invoked via `aws ecs run-task` — NOT inside the service container.
+# -----------------------------------------------------------------------------
+
+resource "aws_ecs_task_definition" "dixie_migration" {
+  family                   = "${local.name_prefix}-dixie-migration"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = 256
+  memory                   = 512
+  execution_role_arn       = aws_iam_role.ecs_execution_migration.arn
+  task_role_arn            = aws_iam_role.dixie_task.arn
+
+  container_definitions = jsonencode([
+    {
+      name      = "migration"
+      image     = "${aws_ecr_repository.dixie.repository_url}:${var.dixie_image_tag}"
+      essential = true
+
+      command = ["node", "dist/db/migrate.js"]
+
+      environment = [
+        { name = "NODE_ENV", value = "production" },
+        { name = "MIGRATION_TIMEOUT_MS", value = "90000" }
+      ]
+
+      secrets = [
+        { name = "DATABASE_URL", valueFrom = aws_secretsmanager_secret.dixie_db_url.arn }
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.dixie.name
+          "awslogs-region"        = var.aws_region
+          "awslogs-stream-prefix" = "migration"
+        }
+      }
+
+      # IMP-004: Prevent hung migration tasks
+      stopTimeout = 120
+    }
+  ])
+
+  tags = merge(local.common_tags, {
+    Service = "Dixie"
+    Sprint  = "C44-2"
+    Purpose = "migration"
+  })
+}
+
+# -----------------------------------------------------------------------------
 # Outputs
 # -----------------------------------------------------------------------------
 

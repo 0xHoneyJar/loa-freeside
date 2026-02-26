@@ -390,3 +390,35 @@ resource "aws_cloudwatch_metric_alarm" "velocity_exhaustion_warning" {
     Sprint   = "338-Task-3.5"
   })
 }
+
+# =============================================================================
+# Cycle 044: RDS Connection Count — Early Warning (Flatline SKP-003)
+# =============================================================================
+# db.t3.micro supports ~85 max connections. Alarm at 70 (82%) gives time
+# to investigate before connection exhaustion causes service failures.
+
+resource "aws_cloudwatch_metric_alarm" "rds_connection_count_high" {
+  alarm_name          = "${local.name_prefix}-rds-connections-high"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "DatabaseConnections"
+  namespace           = "AWS/RDS"
+  period              = 300
+  statistic           = "Maximum"
+  threshold           = 70
+  alarm_description   = "RDS connection count > 70 (of ~85 max on db.t3.micro). Investigate PgBouncer pool usage. If sustained, scale to db.t3.small."
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    DBInstanceIdentifier = aws_db_instance.main.identifier
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+
+  tags = merge(local.common_tags, {
+    Service  = "RDS"
+    Severity = "warning"
+    Sprint   = "C44-2"
+  })
+}

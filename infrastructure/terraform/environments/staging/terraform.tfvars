@@ -59,11 +59,19 @@ gateway_memory        = 512
 gateway_desired_count = 1
 
 # PgBouncer Connection Pooling (Sprint S-1)
+# Connection budget math (Flatline BLOCKER SKP-003):
+#   db.t3.micro max_connections ≈ 85
+#   PgBouncer-freeside pool: 30 server conns (API + worker + migration)
+#   PgBouncer-dixie pool:    20 server conns (dixie service + migration)
+#   PgBouncer-finn pool:     15 server conns (finn service, read-only)
+#   Reserved:                10 (admin/monitoring/ECS Exec)
+#   Buffer:                  10
+#   Total:                   85
 pgbouncer_cpu               = 256
 pgbouncer_memory            = 512
 pgbouncer_desired_count     = 1
 pgbouncer_max_client_conn   = 100
-pgbouncer_default_pool_size = 10
+pgbouncer_default_pool_size = 15
 
 # Service Discovery (Part II)
 enable_service_discovery = true

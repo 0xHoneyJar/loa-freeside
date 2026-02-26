@@ -162,8 +162,8 @@ resource "aws_iam_role_policy" "ecs_execution_finn_servicediscovery" {
 # -----------------------------------------------------------------------------
 
 resource "aws_secretsmanager_secret" "finn_s2s_es256_private_key" {
-  name                    = "${local.name_prefix}/s2s-es256-private-key"
-  description             = "ES256 private key for S2S JWT signing (loa-finn ↔ loa-freeside)"
+  name                    = "${local.name_prefix}/finn/es256-private-key"
+  description             = "ES256 private key for S2S JWT signing (loa-finn)"
   recovery_window_in_days = 7
   kms_key_id              = aws_kms_key.secrets.arn
 
@@ -265,6 +265,17 @@ resource "aws_security_group" "finn" {
   lifecycle {
     create_before_destroy = true
   }
+}
+
+# Allow finn to reach dixie for reputation query (SDD §3.2)
+resource "aws_security_group_rule" "finn_to_dixie" {
+  type                     = "egress"
+  from_port                = 3001
+  to_port                  = 3001
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.finn.id
+  source_security_group_id = aws_security_group.dixie.id
+  description              = "loa-finn egress to loa-dixie for reputation query"
 }
 
 # Allow finn to reach freeside for JWKS endpoint
