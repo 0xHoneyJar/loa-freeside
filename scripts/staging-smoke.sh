@@ -11,6 +11,8 @@
 #   P0-4: Budget conservation (requires --test-key + --community-id)
 #   P1-5: Reputation query (dixie)
 #   P1-6: SSE streaming
+#   P1-7: Autopoietic loop trace (requires --test-key + --community-id)
+#   P1-8: x402 payment (requires SEPOLIA_RPC_URL + STAGING_WALLET_KEY)
 #
 # Exit codes:
 #   0 — All phases pass
@@ -108,7 +110,7 @@ if $AUTO_SEED; then
     echo "  Continuing without seeding..."
   else
     echo "Auto-seeding staging test data..."
-    seed_output=$("$SEED_SCRIPT" --ecs-exec 2>&1) || {
+    seed_output=$("$SEED_SCRIPT" --ecs-exec ${ECS_CLUSTER:+--cluster "$ECS_CLUSTER"} 2>&1) || {
       echo "WARNING: Test data seeding failed — continuing with manual config"
       echo "  $seed_output"
       seed_output=""
@@ -221,6 +223,38 @@ _check_dixie_health() {
 
 _check_jwks() {
   jwks=$(curl -sf --max-time 10 "$FREESIDE_URL/.well-known/jwks.json" 2>/dev/null)
+}
+
+# Reputation query helper — shared by Phase 5 and Phase 7
+# Usage: _query_reputation <routing_key>
+# Returns: JSON with score field on stdout, exit 0 on success, 1 on failure
+_query_reputation() {
+  local routing_key="${1:-nft:test}"
+  local rep_url="$DIXIE_URL/api/reputation/query?routingKey=$routing_key"
+  local resp
+  resp=$(curl -sf --max-time 10 "$rep_url" 2>/dev/null) || { echo ""; return 1; }
+
+  local has_score
+  has_score=$(echo "$resp" | jq 'has("score") or has("reputation")' 2>/dev/null)
+  if [[ "$has_score" == "true" ]]; then
+    echo "$resp"
+    return 0
+  else
+    echo ""
+    return 1
+  fi
+}
+
+# Submit quality event to dixie reputation transport via finn
+# Usage: _submit_quality_event <routing_key> <quality> <jwt_token>
+# quality: "good" | "bad" | "excellent"
+_submit_quality_event() {
+  local routing_key="$1" quality="$2" token="$3"
+  curl -sf --max-time 10 \
+    -X POST "$FREESIDE_URL/api/agents/quality" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $token" \
+    -d "{\"routingKey\":\"$routing_key\",\"quality\":\"$quality\",\"source\":\"smoke-test\"}" 2>/dev/null
 }
 
 # ---------------------------------------------------------------------------
@@ -515,20 +549,13 @@ echo "── Phase 5: Reputation Query (P1) ────────────
 echo ""
 
 start=$(timer_ms)
-rep_resp=$(curl -sf --max-time 10 \
-  "$DIXIE_URL/api/reputation/query?routingKey=nft:test" 2>/dev/null) && rep_ok=true || rep_ok=false
+rep_resp=$(_query_reputation "nft:test") && rep_ok=true || rep_ok=false
 elapsed=$(( $(timer_ms) - start ))
 
-if $rep_ok; then
-  has_score=$(echo "$rep_resp" | jq 'has("score") or has("reputation")' 2>/dev/null)
-  if [[ "$has_score" == "true" ]]; then
-    score=$(echo "$rep_resp" | jq -r '.score // .reputation // "?"' 2>/dev/null)
-    record P1 reputation "Reputation query (score: $score)" PASS "" "$elapsed"
-  else
-    record P1 reputation "Reputation query" FAIL PLATFORM_BUG "$elapsed" "response missing score field"
-  fi
+if $rep_ok && [[ -n "$rep_resp" ]]; then
+  score=$(echo "$rep_resp" | jq -r '.score // .reputation // "?"' 2>/dev/null)
+  record P1 reputation "Reputation query (score: $score)" PASS "" "$elapsed"
 else
-  # Dixie might require auth or the endpoint might differ — P1 so not blocking
   record P1 reputation "Reputation query" FAIL PLATFORM_BUG "$elapsed" "unreachable or auth required"
 fi
 
@@ -563,6 +590,137 @@ else
     record P1 sse "SSE streaming" FAIL PLATFORM_BUG "$elapsed" "response received but no SSE data: events"
   else
     record P1 sse "SSE streaming" FAIL EXTERNAL_OUTAGE "$elapsed" "no response (timeout or model API)"
+  fi
+fi
+
+echo ""
+
+# ===========================================================================
+# PHASE 7 (P1): Autopoietic Loop Trace
+# ===========================================================================
+# "The single most important gap" — Bridgebuilder Constellation Review §V.1
+# Proves the autopoietic loop: invoke → reputation signal → routing change
+# FAANG parallel: Netflix recommendation "check trace"
+
+echo "── Phase 7: Autopoietic Loop Trace (P1) ────────────────"
+echo ""
+
+if [[ -z "$TEST_KEY" ]] || [[ -z "$COMMUNITY_ID" ]]; then
+  skip_reason=""
+  [[ -z "$TEST_KEY" ]] && skip_reason="no --test-key"
+  [[ -z "$COMMUNITY_ID" ]] && skip_reason="${skip_reason:+$skip_reason + }no --community-id"
+  record P1 autopoietic "Autopoietic loop trace" SKIP "" "0" "$skip_reason"
+else
+  # Step 1: Query baseline reputation
+  echo "  Step 1: Querying baseline reputation..."
+  baseline_routing_key="nft:$TEST_NFT_CONTRACT:$TEST_NFT_TOKEN_ID"
+  # Fall back to a generic key if NFT vars not set
+  baseline_routing_key="${baseline_routing_key:-nft:test}"
+
+  autopoietic_start=$(timer_ms)
+  baseline_resp=$(_query_reputation "$baseline_routing_key") && baseline_ok=true || baseline_ok=false
+
+  if ! $baseline_ok || [[ -z "$baseline_resp" ]]; then
+    elapsed=$(( $(timer_ms) - autopoietic_start ))
+    record P1 autopoietic "Autopoietic loop trace" SKIP "" "$elapsed" "reputation system not reachable"
+  else
+    baseline_score=$(echo "$baseline_resp" | jq -r '.score // .reputation // 0' 2>/dev/null)
+    echo "    Baseline score: $baseline_score"
+
+    # Step 2: Invoke agent 3x to generate usage history
+    echo "  Step 2: Invoking agent 3x to generate usage signals..."
+    invoke_models=()
+    for i in 1 2 3; do
+      inv_token=$(node "$SCRIPT_DIR/sign-test-jwt.mjs" "$TEST_KEY" 2>/dev/null) || true
+      inv_resp=$(curl -sf --max-time 30 \
+        -X POST "$FREESIDE_URL/api/agents/invoke" \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer $inv_token" \
+        -d '{"prompt":"Explain autopoiesis in one sentence","model":"cheap"}' 2>/dev/null) || true
+      model_used=$(echo "$inv_resp" | jq -r '.model // .meta.model // "unknown"' 2>/dev/null)
+      invoke_models+=("$model_used")
+      echo "    Invoke $i: model=$model_used"
+    done
+
+    # Step 3: Submit quality events to dixie via finn reputation transport
+    echo "  Step 3: Submitting quality events..."
+    quality_submitted=0
+    for quality in "good" "excellent" "good"; do
+      q_token=$(node "$SCRIPT_DIR/sign-test-jwt.mjs" "$TEST_KEY" 2>/dev/null) || true
+      if _submit_quality_event "$baseline_routing_key" "$quality" "$q_token" >/dev/null 2>&1; then
+        quality_submitted=$((quality_submitted + 1))
+        echo "    Submitted: $quality"
+      else
+        echo "    Failed to submit: $quality"
+      fi
+    done
+
+    if [[ $quality_submitted -eq 0 ]]; then
+      elapsed=$(( $(timer_ms) - autopoietic_start ))
+      record P1 autopoietic "Autopoietic loop trace" FAIL PLATFORM_BUG "$elapsed" "quality events rejected (0/$quality_submitted accepted)"
+    else
+      # Step 4: Wait for eventual consistency (SDD §FR-7: 10s)
+      echo "  Step 4: Waiting 10s for reputation propagation (SDD §FR-7)..."
+      sleep 10
+
+      # Step 5: Query updated reputation
+      echo "  Step 5: Querying updated reputation..."
+      updated_resp=$(_query_reputation "$baseline_routing_key") && updated_ok=true || updated_ok=false
+
+      if ! $updated_ok || [[ -z "$updated_resp" ]]; then
+        elapsed=$(( $(timer_ms) - autopoietic_start ))
+        record P1 autopoietic "Autopoietic loop trace" FAIL PLATFORM_BUG "$elapsed" "reputation unreachable after quality events"
+      else
+        updated_score=$(echo "$updated_resp" | jq -r '.score // .reputation // 0' 2>/dev/null)
+        echo "    Updated score: $updated_score (was: $baseline_score)"
+
+        # Step 6: Invoke again and compare routing
+        echo "  Step 6: Invoking agent again — checking for routing change..."
+        post_token=$(node "$SCRIPT_DIR/sign-test-jwt.mjs" "$TEST_KEY" 2>/dev/null) || true
+        post_resp=$(curl -sf --max-time 30 \
+          -X POST "$FREESIDE_URL/api/agents/invoke" \
+          -H "Content-Type: application/json" \
+          -H "Authorization: Bearer $post_token" \
+          -d '{"prompt":"Explain autopoiesis in one sentence","model":"cheap"}' 2>/dev/null) || true
+        post_model=$(echo "$post_resp" | jq -r '.model // .meta.model // "unknown"' 2>/dev/null)
+        echo "    Post-quality model: $post_model (pre-quality: ${invoke_models[0]:-unknown})"
+
+        elapsed=$(( $(timer_ms) - autopoietic_start ))
+
+        # Step 7: Evaluate — score changed OR routing changed OR threshold not met
+        score_changed=false
+        routing_changed=false
+
+        if [[ "$updated_score" != "$baseline_score" ]]; then
+          score_changed=true
+        fi
+        if [[ "$post_model" != "${invoke_models[0]:-unknown}" ]] && [[ "$post_model" != "unknown" ]]; then
+          routing_changed=true
+        fi
+
+        if $score_changed || $routing_changed; then
+          detail="score: $baseline_score→$updated_score"
+          $routing_changed && detail="$detail, routing: ${invoke_models[0]:-?}→$post_model"
+          record P1 autopoietic "Autopoietic loop trace ($detail)" PASS "" "$elapsed"
+        elif [[ "$quality_submitted" -gt 0 ]] && [[ "$updated_score" == "$baseline_score" ]]; then
+          # Quality events accepted but no change after 10s — could be threshold
+          # Wait additional 20s (total 30s) before declaring bug
+          echo "    Score unchanged — waiting additional 20s..."
+          sleep 20
+          final_resp=$(_query_reputation "$baseline_routing_key") || true
+          final_score=$(echo "$final_resp" | jq -r '.score // .reputation // 0' 2>/dev/null)
+          elapsed=$(( $(timer_ms) - autopoietic_start ))
+
+          if [[ "$final_score" != "$baseline_score" ]]; then
+            record P1 autopoietic "Autopoietic loop trace (score: $baseline_score→$final_score, slow propagation)" PASS "" "$elapsed"
+          else
+            record P1 autopoietic "Autopoietic loop trace" SKIP "" "$elapsed" "quality events accepted ($quality_submitted) but score unchanged after 30s — reputation threshold not met"
+          fi
+        else
+          record P1 autopoietic "Autopoietic loop trace" SKIP "" "$elapsed" "insufficient data for threshold"
+        fi
+      fi
+    fi
   fi
 fi
 

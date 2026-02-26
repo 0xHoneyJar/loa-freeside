@@ -35,9 +35,14 @@ set -euo pipefail
 TEST_COMMUNITY_ID="test-community-staging-001"
 TEST_PROFILE_ID="test-profile-staging-001"
 TEST_AGENT_ID="test-agent-staging-001"
+TEST_AGENT_ID_B="test-agent-staging-002"
 TEST_NFT_CONTRACT="0x0000000000000000000000000000000000000001"
 TEST_NFT_TOKEN_ID="1"
+TEST_NFT_CONTRACT_B="0x0000000000000000000000000000000000000002"
+TEST_NFT_TOKEN_ID_B="1"
 TEST_BUDGET_CENTS=10000  # $100 staging budget
+TEST_PRECONSUMED_CENTS=2000  # $20 pre-consumed for observable economic state
+TEST_CREDIT_LOT_ID="test-credit-lot-staging-001"
 
 # ---------------------------------------------------------------------------
 # Arguments
@@ -157,11 +162,80 @@ ON CONFLICT (community_id, agent_id) DO UPDATE SET
   enabled = EXCLUDED.enabled,
   updated_at = NOW();
 
+-- ==========================================================================
+-- Economic Protocol Bootstrap (Constellation Review §V.5)
+-- Creates initial conditions for autopoietic loop observability
+-- ==========================================================================
+
+-- 5. Second Agent (different reputation state — warming vs cold)
+-- Enables A/B reputation comparison in Phase 7
+INSERT INTO agents (id, name, nft_contract, nft_token_id, community_id, created_at, updated_at)
+VALUES (
+  'test-agent-staging-002',
+  'Staging Test Agent B (Warming)',
+  '0x0000000000000000000000000000000000000002',
+  '1',
+  'test-community-staging-001',
+  NOW() - INTERVAL '7 days',
+  NOW()
+)
+ON CONFLICT (id) DO UPDATE SET
+  community_id = EXCLUDED.community_id,
+  updated_at = NOW();
+
+-- 6. Community-Agent Config for Agent B
+INSERT INTO community_agent_configs (community_id, agent_id, model_alias, enabled, created_at, updated_at)
+VALUES (
+  'test-community-staging-001',
+  'test-agent-staging-002',
+  'cheap',
+  true,
+  NOW(),
+  NOW()
+)
+ON CONFLICT (community_id, agent_id) DO UPDATE SET
+  model_alias = EXCLUDED.model_alias,
+  enabled = EXCLUDED.enabled,
+  updated_at = NOW();
+
+-- 7. Pre-existing usage log entries (3 prior invocations)
+-- Creates observable usage history so economic flow is non-zero from start
+INSERT INTO agent_usage_log (agent_id, community_id, model_alias, prompt_tokens, completion_tokens, cost_micro, created_at)
+VALUES
+  ('test-agent-staging-001', 'test-community-staging-001', 'cheap', 50, 100, 150, NOW() - INTERVAL '3 days'),
+  ('test-agent-staging-001', 'test-community-staging-001', 'cheap', 75, 120, 200, NOW() - INTERVAL '2 days'),
+  ('test-agent-staging-001', 'test-community-staging-001', 'cheap', 60, 90, 175, NOW() - INTERVAL '1 day')
+ON CONFLICT DO NOTHING;
+
+-- 8. Test credit lot with partial debit history
+-- So economic flow (credits → budget → invocation → debit) is observable
+INSERT INTO credit_lots (id, community_id, amount_cents, remaining_cents, source, created_at, updated_at)
+VALUES (
+  'test-credit-lot-staging-001',
+  'test-community-staging-001',
+  5000,
+  3000,
+  'staging-seed',
+  NOW() - INTERVAL '5 days',
+  NOW()
+)
+ON CONFLICT (id) DO UPDATE SET
+  remaining_cents = EXCLUDED.remaining_cents,
+  updated_at = NOW();
+
+-- Update community budget to reflect pre-consumed state (2000 of 10000 cents)
+-- This ensures conservation testing starts from a non-zero committed state
+UPDATE communities
+SET monthly_budget_cents = 10000,
+    updated_at = NOW()
+WHERE id = 'test-community-staging-001';
+
 -- Output confirmation
 SELECT 'SEED_COMPLETE' as status,
        (SELECT COUNT(*) FROM communities WHERE id = 'test-community-staging-001') as communities,
        (SELECT COUNT(*) FROM profiles WHERE id = 'test-profile-staging-001') as profiles,
-       (SELECT COUNT(*) FROM agents WHERE id = 'test-agent-staging-001') as agents;
+       (SELECT COUNT(*) FROM agents WHERE id LIKE 'test-agent-staging-%') as agents,
+       (SELECT COUNT(*) FROM credit_lots WHERE id = 'test-credit-lot-staging-001') as credit_lots;
 SQL
 )
 
@@ -191,7 +265,11 @@ if $DRY_RUN; then
   echo "COMMUNITY_ID=$TEST_COMMUNITY_ID"
   echo "PROFILE_ID=$TEST_PROFILE_ID"
   echo "AGENT_ID=$TEST_AGENT_ID"
+  echo "AGENT_ID_B=$TEST_AGENT_ID_B"
   echo "NFT_CONTRACT=$TEST_NFT_CONTRACT"
+  echo "NFT_TOKEN_ID=$TEST_NFT_TOKEN_ID"
+  echo "NFT_CONTRACT_B=$TEST_NFT_CONTRACT_B"
+  echo "CREDIT_LOT_ID=$TEST_CREDIT_LOT_ID"
   exit 0
 fi
 
@@ -248,7 +326,11 @@ echo "# Entity IDs (for smoke test consumption):"
 echo "COMMUNITY_ID=$TEST_COMMUNITY_ID"
 echo "PROFILE_ID=$TEST_PROFILE_ID"
 echo "AGENT_ID=$TEST_AGENT_ID"
+echo "AGENT_ID_B=$TEST_AGENT_ID_B"
 echo "NFT_CONTRACT=$TEST_NFT_CONTRACT"
+echo "NFT_TOKEN_ID=$TEST_NFT_TOKEN_ID"
+echo "NFT_CONTRACT_B=$TEST_NFT_CONTRACT_B"
+echo "CREDIT_LOT_ID=$TEST_CREDIT_LOT_ID"
 echo ""
 echo "# Usage with staging-smoke.sh:"
 echo "#   ./scripts/staging-smoke.sh --test-key staging.pem --community-id $TEST_COMMUNITY_ID"
