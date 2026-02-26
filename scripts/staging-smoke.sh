@@ -405,7 +405,61 @@ else
     elapsed=$(( $(timer_ms) - start ))
 
     if $conservation_ok; then
-      record P0 budget "Budget conservation (10 invocations, invariant held)" PASS "" "$elapsed"
+      record P0 budget "Budget conservation (10 sequential, invariant held)" PASS "" "$elapsed"
+
+      # B-4: Concurrent budget conservation test
+      # Stripe Rainforest pattern: sequential tests don't predict Redis MULTI/EXEC
+      # behavior under contention. Fire parallel requests and check invariant after.
+      echo ""
+      echo "  Running concurrent budget test (5 parallel requests)..."
+
+      concurrent_start=$(timer_ms)
+      concurrent_pids=()
+
+      for i in $(seq 1 5); do
+        (
+          c_token=$(node "$SCRIPT_DIR/sign-test-jwt.mjs" "$TEST_KEY" 2>/dev/null) || true
+          curl -sf --max-time 30 \
+            -X POST "$FREESIDE_URL/api/agents/invoke" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $c_token" \
+            -d '{"prompt":"Hi","model":"cheap"}' >/dev/null 2>&1 || true
+        ) &
+        concurrent_pids+=($!)
+      done
+
+      # Wait for all concurrent requests to complete
+      concurrent_failures=0
+      for pid in "${concurrent_pids[@]}"; do
+        wait "$pid" || concurrent_failures=$((concurrent_failures + 1))
+      done
+
+      # Check conservation invariant after concurrent burst
+      c_check_token=$(node "$SCRIPT_DIR/sign-test-jwt.mjs" "$TEST_KEY" 2>/dev/null) || true
+      budget_after_concurrent=$(curl -sf --max-time 10 \
+        "$FREESIDE_URL/api/v1/communities/$COMMUNITY_ID/budget" \
+        -H "Authorization: Bearer $c_check_token" 2>/dev/null) || true
+
+      concurrent_elapsed=$(( $(timer_ms) - concurrent_start ))
+      concurrent_ok=true
+
+      if [[ -n "$budget_after_concurrent" ]]; then
+        c_committed=$(echo "$budget_after_concurrent" | jq -r '.committed // .spentCents // 0' 2>/dev/null)
+        c_reserved=$(echo "$budget_after_concurrent" | jq -r '.reserved // 0' 2>/dev/null)
+        c_total=$((c_committed + c_reserved))
+
+        if [[ $c_total -gt $monthly_budget ]]; then
+          concurrent_ok=false
+          echo "    CONCURRENT VIOLATION: committed($c_committed) + reserved($c_reserved) = $c_total > budget($monthly_budget)"
+        fi
+      fi
+
+      if $concurrent_ok; then
+        record P0 budget "Budget conservation (5 concurrent, invariant held)" PASS "" "$concurrent_elapsed"
+      else
+        # Concurrent fail + sequential pass = PLATFORM_BUG (race condition in budget logic)
+        record P0 budget "Budget conservation (concurrent)" FAIL PLATFORM_BUG "$concurrent_elapsed" "invariant violated under concurrency"
+      fi
     else
       record P0 budget "Budget conservation" FAIL PLATFORM_BUG "$elapsed" "invariant violated"
     fi

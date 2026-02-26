@@ -182,11 +182,13 @@ jobs:
       - name: Run dixie migration
         run: |
           echo "Running dixie migration (node dist/db/migrate.js)..."
+          # B-5: Derive network config from dixie service (not freeside API)
+          # This eliminates implicit coupling between freeside and dixie network placement
           TASK_ARN=$(aws ecs run-task \
             --cluster ${{ env.ECS_CLUSTER }} \
             --task-definition arrakis-staging-dixie-migration \
             --launch-type FARGATE \
-            --network-configuration "awsvpcConfiguration={subnets=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_API }} --query 'services[0].networkConfiguration.awsvpcConfiguration.subnets' --output text | tr '\t' ','),securityGroups=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_API }} --query 'services[0].networkConfiguration.awsvpcConfiguration.securityGroups' --output text | tr '\t' ','),assignPublicIp=DISABLED}" \
+            --network-configuration "awsvpcConfiguration={subnets=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_DIXIE }} --query 'services[0].networkConfiguration.awsvpcConfiguration.subnets' --output text | tr '\t' ','),securityGroups=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_DIXIE }} --query 'services[0].networkConfiguration.awsvpcConfiguration.securityGroups' --output text | tr '\t' ','),assignPublicIp=DISABLED}" \
             --query 'tasks[0].taskArn' \
             --output text)
 
@@ -356,6 +358,19 @@ jobs:
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Verify Dixie image exists in ECR (B-6)
+        run: |
+          echo "Checking for dixie image: ${{ env.ECR_DIXIE_REPOSITORY }}:${{ needs.build.outputs.short_sha }}"
+          aws ecr describe-images \
+            --repository-name ${{ env.ECR_DIXIE_REPOSITORY }} \
+            --image-ids imageTag=${{ needs.build.outputs.short_sha }} \
+            --region ${{ env.AWS_REGION }} > /dev/null 2>&1 || {
+            echo "ERROR: Dixie image ${{ needs.build.outputs.short_sha }} not found in ECR"
+            echo "Ensure loa-dixie CI has built and pushed this SHA before deploying"
+            exit 1
+          }
+          echo "Dixie image verified in ECR"
 
       - name: Get and update Dixie task definition
         id: update
