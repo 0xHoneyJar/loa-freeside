@@ -18,13 +18,13 @@ providers:
         pricing:
           input_per_mtok: 10000    # $10.00 per million tokens (micro-USD)
           output_per_mtok: 30000   # $30.00 per million tokens
-      gpt-5.2-codex:
+      gpt-5.3-codex:
         capabilities: [chat, tools, function_calling, code]
-        context_window: 200000
+        context_window: 400000
         token_param: max_completion_tokens
         pricing:
-          input_per_mtok: 15000
-          output_per_mtok: 60000
+          input_per_mtok: 1750     # $1.75 per million tokens
+          output_per_mtok: 14000   # $14.00 per million tokens
 
   google:
     type: google

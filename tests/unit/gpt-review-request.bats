@@ -71,7 +71,7 @@ setup() {
     [[ "$output" == *"gpt-5.2"* ]] || [[ "$output" == *"gpt-5"* ]]
 }
 
-@test "code uses gpt-5.2-codex model" {
+@test "code uses gpt-5.3-codex model" {
     cd "$TEST_DIR"
     mock_curl_capture "$BODY_CAPTURE" "$FIXTURES_DIR/mock-responses/approved.json"
 

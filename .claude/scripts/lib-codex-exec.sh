@@ -198,7 +198,7 @@ codex_has_capability() {
 #
 # Args:
 #   prompt       - The review prompt text
-#   model        - Model to use (e.g., gpt-5.2-codex)
+#   model        - Model to use (e.g., gpt-5.3-codex)
 #   output_file  - Path to write output
 #   workspace    - Working directory (default: temp dir, NOT repo root)
 #   timeout_secs - Timeout in seconds (default: CODEX_DEFAULT_TIMEOUT)

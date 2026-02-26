@@ -679,12 +679,12 @@ hounfour:
           pricing:
             input_per_mtok: 10000000    # $10.00/M tokens (integer micro-USD)
             output_per_mtok: 30000000   # $30.00/M tokens
-        gpt-5.2-codex:
+        gpt-5.3-codex:
           capabilities: [chat, tools, function_calling, code]
-          context_window: 200000
+          context_window: 400000
           pricing:
-            input_per_mtok: 15000000
-            output_per_mtok: 60000000
+            input_per_mtok: 1750000     # $1.75/M tokens
+            output_per_mtok: 14000000   # $14.00/M tokens
 
     google:
       # type: google                    # Provider SDK type
@@ -1212,12 +1212,12 @@ flatline_protocol:
   # A second model reviews code that Claude already reviewed
   code_review:
     enabled: false               # Opt-in: enable for /review-sprint
-    model: "gpt-5.2-codex"      # Dissenter model
+    model: "gpt-5.3-codex"      # Dissenter model
     timeout_seconds: 60          # Per-call timeout
     budget_cents: 150            # Max cost per dissent call
   security_audit:
     enabled: false               # Opt-in: enable for /audit-sprint
-    model: "gpt-5.2-codex"      # Dissenter model
+    model: "gpt-5.3-codex"      # Dissenter model
     timeout_seconds: 60
     budget_cents: 150
   stable_anchors:

@@ -163,13 +163,13 @@ That is all.'
 
 @test "codex_exec_single: succeeds with mock codex" {
   local of="$TEST_DIR/output.json"
-  run codex_exec_single "Review this code" "gpt-5.2-codex" "$of" "$TEST_DIR" 30
+  run codex_exec_single "Review this code" "gpt-5.3-codex" "$of" "$TEST_DIR" 30
   [ "$status" -eq 0 ]
 }
 
 @test "codex_exec_single: fails without OPENAI_API_KEY" {
   unset OPENAI_API_KEY
   local of="$TEST_DIR/output.json"
-  run codex_exec_single "Review this" "gpt-5.2-codex" "$of" "$TEST_DIR" 30
+  run codex_exec_single "Review this" "gpt-5.3-codex" "$of" "$TEST_DIR" 30
   [ "$status" -eq 4 ]
 }

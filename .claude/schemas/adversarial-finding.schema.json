@@ -107,7 +107,7 @@
         },
         "model": {
           "type": "string",
-          "description": "Model used for dissent (e.g., gpt-5.2-codex)"
+          "description": "Model used for dissent (e.g., gpt-5.3-codex)"
         },
         "sprint_id": {
           "type": "string",
