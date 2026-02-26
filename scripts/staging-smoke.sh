@@ -737,9 +737,11 @@ if [[ -z "$TEST_KEY" ]] || [[ -z "$COMMUNITY_ID" ]]; then
 else
   # Step 1: Query baseline reputation
   echo "  Step 1: Querying baseline reputation..."
-  baseline_routing_key="nft:$TEST_NFT_CONTRACT:$TEST_NFT_TOKEN_ID"
-  # Fall back to a generic key if NFT vars not set
-  baseline_routing_key="${baseline_routing_key:-nft:test}"
+  if [[ -n "${TEST_NFT_CONTRACT:-}" ]] && [[ -n "${TEST_NFT_TOKEN_ID:-}" ]]; then
+    baseline_routing_key="nft:$TEST_NFT_CONTRACT:$TEST_NFT_TOKEN_ID"
+  else
+    baseline_routing_key="nft:test"
+  fi
 
   autopoietic_start=$(timer_ms)
   baseline_resp=$(_query_reputation "$baseline_routing_key") && baseline_ok=true || baseline_ok=false
@@ -781,7 +783,7 @@ else
 
     if [[ $quality_submitted -eq 0 ]]; then
       elapsed=$(( $(timer_ms) - autopoietic_start ))
-      record P1 autopoietic "Autopoietic loop trace" FAIL PLATFORM_BUG "$elapsed" "quality events rejected (0/$quality_submitted accepted)"
+      record P1 autopoietic "Autopoietic loop trace" FAIL PLATFORM_BUG "$elapsed" "quality events rejected (0/3 accepted)"
     else
       # Step 4: Wait for eventual consistency (SDD §FR-7: 10s)
       echo "  Step 4: Waiting 10s for reputation propagation (SDD §FR-7)..."

@@ -270,6 +270,12 @@ echo ""
 echo "── Post-Deploy: Full Validation & Launch Readiness ──────────"
 
 LAUNCH_STATUS="UNKNOWN"
+P0_PASS=0
+P0_FAIL=0
+P0_SKIP=0
+P1_PASS=0
+P1_FAIL=0
+P1_SKIP=0
 P0_FAILURES=0
 P1_FAILURES=0
 
@@ -288,7 +294,7 @@ else
       --retries 3 \
       --auto-seed \
       --json \
-      2>"$VALIDATION_JSON" && FULL_OK=true || FULL_OK=false
+      >"$VALIDATION_JSON" 2>&1 && FULL_OK=true || FULL_OK=false
 
     if [[ -s "$VALIDATION_JSON" ]]; then
       # Parse JSON output for P0/P1 pass/fail/skip counts
