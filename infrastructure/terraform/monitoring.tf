@@ -276,6 +276,7 @@ resource "aws_cloudwatch_log_metric_filter" "conservation_violation" {
 }
 
 # 3. Cross-Service Latency (freeside → finn invoke duration)
+# Space-delimited format: "INVOKE_COMPLETE ... duration_ms=1234"
 resource "aws_cloudwatch_log_metric_filter" "invoke_latency" {
   name           = "${local.name_prefix}-invoke-latency"
   pattern        = "[..., duration_ms]"
@@ -289,7 +290,24 @@ resource "aws_cloudwatch_log_metric_filter" "invoke_latency" {
   }
 }
 
+# 3b. Cross-Service Latency — JSON format fallback (low-1)
+# JSON format: {"event":"INVOKE_COMPLETE","duration_ms":1234}
+# Both filters write to the same metric — only one will match depending on log format
+resource "aws_cloudwatch_log_metric_filter" "invoke_latency_json" {
+  name           = "${local.name_prefix}-invoke-latency-json"
+  pattern        = "{ $.duration_ms = * }"
+  log_group_name = aws_cloudwatch_log_group.api.name
+
+  metric_transformation {
+    name          = "InvokeLatencyMs"
+    namespace     = "${local.name_prefix}/AppMetrics"
+    value         = "$.duration_ms"
+    default_value = "0"
+  }
+}
+
 # 4. Reputation Query Latency (finn → dixie)
+# Space-delimited format: "REPUTATION_QUERY ... reputation_duration_ms=567"
 resource "aws_cloudwatch_log_metric_filter" "reputation_latency" {
   name           = "${local.name_prefix}-reputation-latency"
   pattern        = "[..., reputation_duration_ms]"
@@ -299,6 +317,21 @@ resource "aws_cloudwatch_log_metric_filter" "reputation_latency" {
     name          = "ReputationQueryLatencyMs"
     namespace     = "${local.name_prefix}/AppMetrics"
     value         = "$reputation_duration_ms"
+    default_value = "0"
+  }
+}
+
+# 4b. Reputation Query Latency — JSON format fallback (low-1)
+# JSON format: {"event":"REPUTATION_QUERY","reputation_duration_ms":567}
+resource "aws_cloudwatch_log_metric_filter" "reputation_latency_json" {
+  name           = "${local.name_prefix}-reputation-latency-json"
+  pattern        = "{ $.reputation_duration_ms = * }"
+  log_group_name = aws_cloudwatch_log_group.finn.name
+
+  metric_transformation {
+    name          = "ReputationQueryLatencyMs"
+    namespace     = "${local.name_prefix}/AppMetrics"
+    value         = "$.reputation_duration_ms"
     default_value = "0"
   }
 }
@@ -1364,5 +1397,198 @@ resource "aws_cloudwatch_dashboard" "service_health" {
 
   tags = merge(local.common_tags, {
     Sprint = "320-Task-7.1"
+  })
+}
+
+# =============================================================================
+# Economic Health Dashboard — Conservation Invariant Observability
+# Sprint 375, Task 2.1 (Constellation Review §V.2)
+# =============================================================================
+# "Proof of economic life made visible" — the economic equivalent of Netflix's
+# traffic dashboard. Shows conservation invariant (committed + reserved + available = limit)
+# in real time per community.
+
+resource "aws_cloudwatch_dashboard" "economic_health" {
+  dashboard_name = "${local.name_prefix}-economic-health"
+
+  dashboard_body = jsonencode({
+    widgets = [
+      # Row 0: Header
+      {
+        type   = "text"
+        x      = 0
+        y      = 0
+        width  = 24
+        height = 1
+        properties = {
+          markdown = "# Economic Health Dashboard\n**Conservation Invariant:** committed + reserved + available = limit | **FAANG Parallel:** Stripe money-flow dashboard"
+        }
+      },
+
+      # Row 1: Budget Utilization per Community
+      {
+        type   = "metric"
+        x      = 0
+        y      = 1
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Budget Utilization — Committed vs Reserved vs Available"
+          region = var.aws_region
+          stat   = "Average"
+          period = 60
+          metrics = [
+            ["${local.name_prefix}/agent", "budget_committed_cents", "Environment", var.environment, { label = "Committed (cents)" }],
+            [".", "budget_reserved_cents", ".", ".", { label = "Reserved (cents)", color = "#ff7f0e" }],
+            [".", "budget_available_cents", ".", ".", { label = "Available (cents)", color = "#2ca02c" }],
+            [".", "budget_limit_cents", ".", ".", { label = "Limit (cents)", color = "#7f7f7f" }]
+          ]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 1
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Budget Utilization %"
+          region = var.aws_region
+          stat   = "Average"
+          period = 60
+          view   = "gauge"
+          metrics = [
+            ["${local.name_prefix}/agent", "budget_utilization_percent", "Environment", var.environment, { label = "Utilization %" }]
+          ]
+          yAxis = {
+            left = { min = 0, max = 100 }
+          }
+        }
+      },
+
+      # Row 2: Conservation Invariant Drift (I-3 Reconciliation)
+      {
+        type   = "metric"
+        x      = 0
+        y      = 7
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Conservation Invariant Drift (I-3 Reconciliation)"
+          region = var.aws_region
+          period = 60
+          metrics = [
+            ["${local.name_prefix}/agent", "conservation_drift_cents", "Environment", var.environment, { stat = "Maximum", label = "Max Drift (cents)", color = "#d62728" }],
+            [".", "reconciliation_sweep_count", ".", ".", { stat = "Sum", label = "Sweep Count", color = "#1f77b4" }],
+            [".", "reconciliation_corrections", ".", ".", { stat = "Sum", label = "Corrections Applied", color = "#ff7f0e" }]
+          ]
+          annotations = {
+            horizontal = [
+              { value = 0, label = "Zero Drift (ideal)", color = "#2ca02c" }
+            ]
+          }
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 7
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Conservation Guard — Pass/Fail Rate"
+          region = var.aws_region
+          stat   = "Sum"
+          period = 60
+          metrics = [
+            ["Arrakis/Billing", "ConservationCheckPassed", "Environment", var.environment, { label = "Passed", color = "#2ca02c" }],
+            [".", "ConservationCheckFailed", ".", ".", { label = "Failed", color = "#d62728" }]
+          ]
+        }
+      },
+
+      # Row 3: Invocation Cost Distribution
+      {
+        type   = "metric"
+        x      = 0
+        y      = 13
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Invocation Cost Distribution by Pool (p50, p90, p99)"
+          region = var.aws_region
+          period = 300
+          view   = "timeSeries"
+          metrics = [
+            ["${local.name_prefix}/agent", "invocation_cost_micro", "Pool", "cheap", "Environment", var.environment, { stat = "p50", label = "cheap p50" }],
+            ["...", { stat = "p90", label = "cheap p90" }],
+            ["...", { stat = "p99", label = "cheap p99", color = "#d62728" }],
+            ["${local.name_prefix}/agent", "invocation_cost_micro", "Pool", "reasoning", "Environment", var.environment, { stat = "p50", label = "reasoning p50" }],
+            ["...", { stat = "p90", label = "reasoning p90" }],
+            ["...", { stat = "p99", label = "reasoning p99", color = "#ff7f0e" }]
+          ]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 13
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Invocation Volume by Pool"
+          region = var.aws_region
+          stat   = "Sum"
+          period = 60
+          metrics = [
+            ["${local.name_prefix}/agent", "invocation_count", "Pool", "cheap", "Environment", var.environment, { label = "cheap" }],
+            [".", "invocation_count", "Pool", "fast-code", ".", ".", { label = "fast-code" }],
+            [".", "invocation_count", "Pool", "reasoning", ".", ".", { label = "reasoning" }],
+            [".", "invocation_count", "Pool", "architect", ".", ".", { label = "architect" }]
+          ]
+        }
+      },
+
+      # Row 4: Credit Lot Lifecycle
+      {
+        type   = "metric"
+        x      = 0
+        y      = 19
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Credit Lot Lifecycle"
+          region = var.aws_region
+          stat   = "Sum"
+          period = 300
+          metrics = [
+            ["Arrakis/Billing", "CreditsMinted", "Environment", var.environment, { label = "Lots Minted", color = "#2ca02c" }],
+            [".", "CreditsSpent", ".", ".", { label = "Lots Debited", color = "#ff7f0e" }],
+            [".", "LotsExhausted", ".", ".", { label = "Lots Exhausted", color = "#d62728" }]
+          ]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 19
+        width  = 12
+        height = 6
+        properties = {
+          title  = "Credit Lot Remaining Value"
+          region = var.aws_region
+          stat   = "Average"
+          period = 300
+          metrics = [
+            ["Arrakis/Billing", "CreditLotRemainingCents", "Environment", var.environment, { label = "Avg Remaining (cents)" }],
+            [".", "CreditLotTotalCents", ".", ".", { label = "Avg Total (cents)", color = "#7f7f7f" }]
+          ]
+        }
+      }
+    ]
+  })
+
+  tags = merge(local.common_tags, {
+    Sprint = "375-Task-2.1"
   })
 }

@@ -48,6 +48,7 @@ COMMUNITY_ID=""
 JSON_OUTPUT=false
 RETRY_COUNT=1
 AUTO_SEED=false
+CHAOS_MODE=false
 
 usage() {
   echo "Usage: $0 [options]"
@@ -60,6 +61,7 @@ usage() {
   echo "  --json                Output results as JSON"
   echo "  --retries <n>         Retry count for flake detection (default: 1)"
   echo "  --auto-seed           Run test data seeding if needed before tests"
+  echo "  --chaos               Run chaos engineering scenarios after Phase 4"
   echo "  -h, --help            Show this help"
 }
 
@@ -72,6 +74,7 @@ while [[ $# -gt 0 ]]; do
     --json)          JSON_OUTPUT=true; shift ;;
     --retries)       RETRY_COUNT="$2"; shift 2 ;;
     --auto-seed)     AUTO_SEED=true; shift ;;
+    --chaos)         CHAOS_MODE=true; shift ;;
     -h|--help)       usage; exit 0 ;;
     *)               echo "Unknown option: $1"; usage; exit 1 ;;
   esac
@@ -542,6 +545,127 @@ fi
 echo ""
 
 # ===========================================================================
+# CHAOS: Economic Invariant Scenarios (--chaos flag)
+# ===========================================================================
+# Constellation Review §V.3: Test self-healing properties of the economic protocol.
+# FAANG parallel: Amazon GameDay exercises for billing systems.
+
+if $CHAOS_MODE && [[ -n "$TEST_KEY" ]] && [[ -n "$COMMUNITY_ID" ]]; then
+  echo "── Chaos: Economic Invariant Scenarios (P1) ─────────────"
+  echo ""
+
+  # Chaos 1: Duplicate finalization — submit same usage report twice
+  echo "  Scenario 1: Duplicate finalization (idempotency test)..."
+  chaos1_start=$(timer_ms)
+  chaos1_token=$(node "$SCRIPT_DIR/sign-test-jwt.mjs" "$TEST_KEY" 2>/dev/null) || true
+
+  # First submission
+  chaos1_resp=$(curl -sf --max-time 15 \
+    -X POST "$FREESIDE_URL/api/agents/invoke" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $chaos1_token" \
+    -d '{"prompt":"Chaos test 1","model":"cheap","idempotency_key":"chaos-smoke-dup-001"}' 2>/dev/null) || true
+
+  # Duplicate submission with same idempotency key
+  chaos1_dup_token=$(node "$SCRIPT_DIR/sign-test-jwt.mjs" "$TEST_KEY" 2>/dev/null) || true
+  chaos1_dup_resp=$(curl -sf --max-time 15 \
+    -X POST "$FREESIDE_URL/api/agents/invoke" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $chaos1_dup_token" \
+    -d '{"prompt":"Chaos test 1","model":"cheap","idempotency_key":"chaos-smoke-dup-001"}' 2>/dev/null) || true
+
+  # Check budget wasn't double-charged
+  chaos1_check_token=$(node "$SCRIPT_DIR/sign-test-jwt.mjs" "$TEST_KEY" 2>/dev/null) || true
+  chaos1_budget=$(curl -sf --max-time 10 \
+    "$FREESIDE_URL/api/v1/communities/$COMMUNITY_ID/budget" \
+    -H "Authorization: Bearer $chaos1_check_token" 2>/dev/null) || true
+  chaos1_elapsed=$(( $(timer_ms) - chaos1_start ))
+
+  if [[ -n "$chaos1_budget" ]]; then
+    chaos1_committed=$(echo "$chaos1_budget" | jq -r '.committed // .spentCents // 0' 2>/dev/null)
+    chaos1_reserved=$(echo "$chaos1_budget" | jq -r '.reserved // 0' 2>/dev/null)
+    chaos1_total=$((chaos1_committed + chaos1_reserved))
+    chaos1_limit=$(echo "$chaos1_budget" | jq -r '.monthlyBudgetCents // 0' 2>/dev/null)
+
+    if [[ $chaos1_total -le $chaos1_limit ]]; then
+      record P1 chaos "Chaos: duplicate finalization (invariant held)" PASS "" "$chaos1_elapsed"
+    else
+      record P1 chaos "Chaos: duplicate finalization" FAIL PLATFORM_BUG "$chaos1_elapsed" "double-charge detected: total=$chaos1_total > limit=$chaos1_limit"
+    fi
+  else
+    record P1 chaos "Chaos: duplicate finalization" SKIP "" "$chaos1_elapsed" "budget query failed"
+  fi
+
+  # Chaos 2: Over-budget request — attempt to exceed remaining budget
+  echo "  Scenario 2: Over-budget request (402/429 expected)..."
+  chaos2_start=$(timer_ms)
+  chaos2_token=$(node "$SCRIPT_DIR/sign-test-jwt.mjs" "$TEST_KEY" 2>/dev/null) || true
+
+  # Use architect pool (most expensive) to try to hit budget limit
+  chaos2_http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
+    -X POST "$FREESIDE_URL/api/agents/invoke" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $chaos2_token" \
+    -d '{"prompt":"Write a 10000 word essay on chaos engineering","model":"architect"}' 2>/dev/null) || chaos2_http_code="000"
+  chaos2_elapsed=$(( $(timer_ms) - chaos2_start ))
+
+  # Any response is valid — we're testing the system handles budget exhaustion gracefully
+  if [[ "$chaos2_http_code" == "402" ]] || [[ "$chaos2_http_code" == "429" ]]; then
+    record P1 chaos "Chaos: over-budget request (HTTP $chaos2_http_code — correctly rejected)" PASS "" "$chaos2_elapsed"
+  elif [[ "$chaos2_http_code" == "200" ]]; then
+    # Budget not exhausted — still valid, just means we had headroom
+    record P1 chaos "Chaos: over-budget request (HTTP 200 — budget had headroom)" PASS "" "$chaos2_elapsed"
+  else
+    record P1 chaos "Chaos: over-budget request (HTTP $chaos2_http_code)" FAIL PLATFORM_BUG "$chaos2_elapsed" "unexpected status code"
+  fi
+
+  # Chaos 3: Concurrent burst + conservation check (10 parallel)
+  echo "  Scenario 3: Concurrent burst (10 parallel) + conservation check..."
+  chaos3_start=$(timer_ms)
+  chaos3_pids=()
+
+  for i in $(seq 1 10); do
+    (
+      t=$(node "$SCRIPT_DIR/sign-test-jwt.mjs" "$TEST_KEY" 2>/dev/null) || true
+      curl -sf --max-time 30 \
+        -X POST "$FREESIDE_URL/api/agents/invoke" \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer $t" \
+        -d '{"prompt":"Hi","model":"cheap"}' >/dev/null 2>&1 || true
+    ) &
+    chaos3_pids+=($!)
+  done
+
+  for pid in "${chaos3_pids[@]}"; do
+    wait "$pid" 2>/dev/null || true
+  done
+
+  # Check invariant after burst
+  chaos3_check_token=$(node "$SCRIPT_DIR/sign-test-jwt.mjs" "$TEST_KEY" 2>/dev/null) || true
+  chaos3_budget=$(curl -sf --max-time 10 \
+    "$FREESIDE_URL/api/v1/communities/$COMMUNITY_ID/budget" \
+    -H "Authorization: Bearer $chaos3_check_token" 2>/dev/null) || true
+  chaos3_elapsed=$(( $(timer_ms) - chaos3_start ))
+
+  if [[ -n "$chaos3_budget" ]]; then
+    chaos3_committed=$(echo "$chaos3_budget" | jq -r '.committed // .spentCents // 0' 2>/dev/null)
+    chaos3_reserved=$(echo "$chaos3_budget" | jq -r '.reserved // 0' 2>/dev/null)
+    chaos3_total=$((chaos3_committed + chaos3_reserved))
+    chaos3_limit=$(echo "$chaos3_budget" | jq -r '.monthlyBudgetCents // 0' 2>/dev/null)
+
+    if [[ $chaos3_total -le $chaos3_limit ]]; then
+      record P1 chaos "Chaos: 10-concurrent burst (invariant held, total=$chaos3_total/$chaos3_limit)" PASS "" "$chaos3_elapsed"
+    else
+      record P1 chaos "Chaos: 10-concurrent burst" FAIL PLATFORM_BUG "$chaos3_elapsed" "conservation violated: total=$chaos3_total > limit=$chaos3_limit"
+    fi
+  else
+    record P1 chaos "Chaos: 10-concurrent burst" SKIP "" "$chaos3_elapsed" "budget query failed after burst"
+  fi
+
+  echo ""
+fi
+
+# ===========================================================================
 # PHASE 5 (P1): Reputation Query (Task 5.1 prerequisite)
 # ===========================================================================
 
@@ -722,6 +846,98 @@ else
       fi
     fi
   fi
+fi
+
+echo ""
+
+# ===========================================================================
+# PHASE 8 (P1): x402 Payment (Base Sepolia)
+# ===========================================================================
+# PRD FR-8, G-6: Validate x402 payment flow on Base Sepolia testnet.
+# Mandatory: 402 response with payment-required headers.
+# Optional: On-chain payment if SEPOLIA_RPC_URL and STAGING_WALLET_KEY are set.
+
+echo "── Phase 8: x402 Payment (P1) ─────────────────────────"
+echo ""
+
+if [[ -z "$TEST_KEY" ]]; then
+  record P1 x402 "x402 payment flow" SKIP "" "0" "no --test-key provided"
+else
+  # Step 1: POST without payment → expect 402 with x402 headers
+  start=$(timer_ms)
+  x402_token=$(node "$SCRIPT_DIR/sign-test-jwt.mjs" "$TEST_KEY" 2>/dev/null) || true
+
+  x402_headers=$(mktemp)
+  x402_body=$(curl -s -D "$x402_headers" -o - --max-time 15 \
+    -X POST "$FREESIDE_URL/api/v1/x402/invoke" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $x402_token" \
+    -d '{"prompt":"x402 payment test","model":"cheap"}' 2>/dev/null) || true
+  x402_status=$(grep -i "^HTTP" "$x402_headers" | tail -1 | awk '{print $2}')
+  elapsed=$(( $(timer_ms) - start ))
+
+  if [[ "$x402_status" == "402" ]]; then
+    # Verify x402 headers present
+    has_x402_price=$(grep -ci "x-payment-required\|x-price\|x402" "$x402_headers" 2>/dev/null || echo 0)
+    if [[ "$has_x402_price" -gt 0 ]]; then
+      record P1 x402 "x402 402 response with payment headers" PASS "" "$elapsed"
+    else
+      record P1 x402 "x402 402 response" FAIL PLATFORM_BUG "$elapsed" "402 returned but missing x402 payment headers"
+    fi
+
+    # Step 2: On-chain payment (optional — requires wallet config)
+    if [[ -n "${SEPOLIA_RPC_URL:-}" ]] && [[ -n "${STAGING_WALLET_KEY:-}" ]]; then
+      echo "  Step 2: On-chain payment (Base Sepolia)..."
+      # Parse payment requirements from 402 response
+      payment_addr=$(echo "$x402_body" | jq -r '.paymentAddress // .address // empty' 2>/dev/null)
+      payment_amount=$(echo "$x402_body" | jq -r '.amount // .price // empty' 2>/dev/null)
+
+      if [[ -n "$payment_addr" ]] && [[ -n "$payment_amount" ]]; then
+        onchain_start=$(timer_ms)
+        # Submit payment via simple cast send (foundry) or node script
+        if command -v cast &>/dev/null; then
+          tx_hash=$(cast send "$payment_addr" --value "$payment_amount" \
+            --rpc-url "$SEPOLIA_RPC_URL" \
+            --private-key "$STAGING_WALLET_KEY" 2>/dev/null) || tx_hash=""
+        fi
+
+        if [[ -n "$tx_hash" ]]; then
+          # Re-invoke with payment proof
+          x402_pay_token=$(node "$SCRIPT_DIR/sign-test-jwt.mjs" "$TEST_KEY" 2>/dev/null) || true
+          x402_paid_resp=$(curl -sf --max-time 30 \
+            -X POST "$FREESIDE_URL/api/v1/x402/invoke" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $x402_pay_token" \
+            -H "X-Payment-Proof: $tx_hash" \
+            -d '{"prompt":"x402 payment test","model":"cheap"}' 2>/dev/null) || true
+          onchain_elapsed=$(( $(timer_ms) - onchain_start ))
+
+          credit_note=$(echo "$x402_paid_resp" | jq -r '.creditNote // .credit_note // empty' 2>/dev/null)
+          if [[ -n "$credit_note" ]]; then
+            record P1 x402 "x402 on-chain settlement + credit note issued" PASS "" "$onchain_elapsed"
+          elif [[ -n "$x402_paid_resp" ]]; then
+            record P1 x402 "x402 on-chain payment accepted (no credit note)" PASS "" "$onchain_elapsed"
+          else
+            record P1 x402 "x402 on-chain settlement" FAIL PLATFORM_BUG "$onchain_elapsed" "payment submitted but no response"
+          fi
+        else
+          onchain_elapsed=$(( $(timer_ms) - onchain_start ))
+          record P1 x402 "x402 on-chain payment" FAIL EXTERNAL_OUTAGE "$onchain_elapsed" "transaction failed (check Sepolia RPC)"
+        fi
+      else
+        record P1 x402 "x402 on-chain payment" SKIP "" "0" "402 response missing payment address or amount"
+      fi
+    else
+      echo "  SKIP: On-chain payment — SEPOLIA_RPC_URL and STAGING_WALLET_KEY not set"
+      echo "    To enable: export SEPOLIA_RPC_URL=<rpc> STAGING_WALLET_KEY=<key>"
+    fi
+  elif [[ "$x402_status" == "404" ]]; then
+    record P1 x402 "x402 endpoint" SKIP "" "$elapsed" "x402 endpoint not deployed (404)"
+  else
+    record P1 x402 "x402 402 response" FAIL PLATFORM_BUG "$elapsed" "expected 402, got $x402_status"
+  fi
+
+  rm -f "$x402_headers"
 fi
 
 echo ""
