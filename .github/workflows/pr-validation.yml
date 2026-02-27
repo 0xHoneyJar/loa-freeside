@@ -19,6 +19,8 @@ on:
     branches: [main, staging]
     paths:
       - 'themes/sietch/**'
+      - 'packages/core/**'
+      - 'packages/adapters/**'
       - '.github/workflows/pr-validation.yml'
 
 concurrency:
@@ -108,6 +110,14 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Install workspace package dependencies
+        run: |
+          # Vitest aliases resolve @arrakis/* to source in packages/.
+          # Bare imports (e.g. opossum) from those sources need their
+          # own node_modules to be present.
+          cd ../../packages/core && npm ci
+          cd ../adapters && npm ci
 
       - name: Run tests with coverage
         run: npm run test:coverage
