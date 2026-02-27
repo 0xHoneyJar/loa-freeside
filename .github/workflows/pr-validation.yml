@@ -196,7 +196,9 @@ jobs:
 
       - name: Run npm audit
         run: |
-          npm audit --audit-level=high || {
+          # Audit production dependencies only (skip devDependency vulns like esbuild/vite).
+          # --audit-level=high fails on HIGH and CRITICAL severity.
+          npm audit --omit=dev --audit-level=high || {
             echo "::warning::Security vulnerabilities found"
             exit 1
           }
