@@ -1,6 +1,6 @@
 # Packages
 
-Shared libraries and utilities for the Arrakis monorepo.
+Shared libraries and utilities for the Freeside monorepo.
 
 ## Structure
 
