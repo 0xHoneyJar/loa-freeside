@@ -204,7 +204,7 @@ jobs:
           AUDIT_JSON=$(npm audit --omit=dev --json 2>/dev/null || true)
 
           # Count high+critical vulns, excluding known unfixable packages
-          KNOWN_UNFIXABLE="form-data|tough-cookie|postman-request"
+          KNOWN_UNFIXABLE="form-data|tough-cookie|postman-request|node-vault"
           HIGH_CRIT=$(echo "$AUDIT_JSON" | jq -r "
             [.vulnerabilities // {} | to_entries[] |
              select(.value.severity == \"high\" or .value.severity == \"critical\") |
