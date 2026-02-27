@@ -32,7 +32,7 @@
     "@discordjs/rest": "^2.6.0",
     "amqplib": "^0.10.4",
     "cassandra-driver": "^4.7.2",
-    "discord-api-types": "^0.38.39",
+    "discord-api-types": "^0.38.40",
     "drizzle-orm": "^0.45.1",
     "ioredis": "^5.9.3",
     "nats": "^2.28.2",
