@@ -116,7 +116,7 @@ class AvatarService {
     const start = { x, y };
 
     // Mark starting position
-    grid[y]![x] = (grid[y]![x] ?? 0) + 1;
+    grid[y][x] = (grid[y][x] ?? 0) + 1;
 
     // Process hash bytes (32 bytes = 64 hex chars)
     for (let i = 0; i < hash.length; i += 2) {
@@ -125,14 +125,14 @@ class AvatarService {
       // Each byte has 4 2-bit pairs (processed LSB first)
       for (let bit = 0; bit < 4; bit++) {
         const direction = (byte >> (bit * 2)) & 0x03;
-        const dir = DIRECTIONS[direction]!;
+        const dir = DIRECTIONS[direction];
 
         // Move (with boundary clamping)
         x = Math.max(0, Math.min(width - 1, x + dir.dx));
         y = Math.max(0, Math.min(height - 1, y + dir.dy));
 
         // Increment visit count
-        grid[y]![x] = (grid[y]![x] ?? 0) + 1;
+        grid[y][x] = (grid[y][x] ?? 0) + 1;
       }
     }
 

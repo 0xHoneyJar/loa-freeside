@@ -594,7 +594,7 @@ function createApp(): Application {
       });
 
       const usageReceiver = new UsageReceiver(
-        { s2sValidator, db: drizzle(verifyPostgresClient!), redis: usageRedis, logger },
+        { s2sValidator, db: drizzle(verifyPostgresClient!) as any, redis: usageRedis, logger },
         agentConfig.usageReceiver,
       );
 

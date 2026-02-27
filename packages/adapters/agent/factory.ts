@@ -84,6 +84,8 @@ export async function createAgentGateway(
     config: {
       baseUrl: config.loaFinn.baseUrl,
       timeoutMs: config.loaFinn.timeoutMs,
+      circuitBreakerThreshold: config.loaFinn.circuitBreakerThreshold,
+      circuitBreakerResetMs: config.loaFinn.circuitBreakerResetMs,
     },
   });
 

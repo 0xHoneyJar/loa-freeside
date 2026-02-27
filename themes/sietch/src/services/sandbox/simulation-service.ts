@@ -823,7 +823,7 @@ export class SimulationService {
     // Get or create context
     const result = await this.getOrCreateContext(sandboxId, userId);
     if (!result.success || !result.data) {
-      return result as SimulationResult<SimulationContext>;
+      return result;
     }
 
     const context = result.data;
@@ -1106,7 +1106,7 @@ export class SimulationService {
     // Get or create context
     const result = await this.getOrCreateContext(sandboxId, userId);
     if (!result.success || !result.data) {
-      return result as SimulationResult<SimulationContext>;
+      return result;
     }
 
     const context = result.data;
@@ -1243,7 +1243,7 @@ export class SimulationService {
     // Get or create context
     const result = await this.getOrCreateContext(sandboxId, userId);
     if (!result.success || !result.data) {
-      return result as SimulationResult<SimulationContext>;
+      return result;
     }
 
     const context = result.data;

@@ -128,14 +128,14 @@ describe('AgentGateway invoke() — lifecycle ordering (F-2)', () => {
     expect(reserveCall.modelAlias).toBe('cheap') // resolved, not 'reasoning'
   })
 
-  it('native on enterprise → estimateCost uses architect (AC-H1.2)', async () => {
+  it('native on enterprise → estimateCost uses reviewer (hounfour canonical default)', async () => {
     const deps = createMockDeps()
     const gateway = new AgentGateway(deps)
 
     await gateway.invoke(createInvokeRequest('native', 'enterprise'))
 
     const estimateCall = (deps.budgetManager.estimateCost as any).mock.calls[0][0]
-    expect(estimateCall.modelAlias).toBe('architect')
+    expect(estimateCall.modelAlias).toBe('reviewer')
   })
 
   it('no alias → estimateCost uses tier default pool', async () => {

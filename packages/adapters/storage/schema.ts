@@ -35,7 +35,7 @@ import type {
   CommunitySettings,
   ProfileMetadata,
   BadgeMetadata,
-} from '../../core/ports/storage-provider.js';
+} from '@arrakis/core/ports';
 
 // =============================================================================
 // Communities Table

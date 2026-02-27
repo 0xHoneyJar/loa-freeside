@@ -38,6 +38,7 @@ export default defineWorkspace([
         'tests/e2e/**',
       ],
       environment: 'node',
+      setupFiles: ['./tests/setup-unit.ts'],
     },
     resolve: sharedResolve,
   },

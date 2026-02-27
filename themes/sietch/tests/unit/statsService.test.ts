@@ -132,12 +132,12 @@ describe('StatsService', () => {
       mockGetMemberBadges.mockReturnValue(badges);
       mockCalculateTenureCategory.mockReturnValue('veteran');
 
-      // Mock database query for eligibility
+      // Mock database queries: eligibility, currentStreak, longestStreak
       const mockPrepare = vi.fn();
-      const mockGet = vi.fn().mockReturnValue({
-        bgt_held: parseUnits('69', 18).toString(),
-        rank: null,
-      });
+      const mockGet = vi.fn()
+        .mockReturnValueOnce({ bgt_held: parseUnits('69', 18).toString(), rank: null }) // eligibility
+        .mockReturnValueOnce({ last_active_at: new Date().toISOString() }) // currentStreak
+        .mockReturnValueOnce({ total_messages: 50 }); // longestStreak
       mockPrepare.mockReturnValue({ get: mockGet });
       mockGetDatabase.mockReturnValue({ prepare: mockPrepare });
 

@@ -425,7 +425,7 @@ export class ParallelRoleManager {
       const rolesByTier = new Map(parallelRoles.map(r => [r.tier, r]));
 
       let membersProcessed = 0;
-      let membersSkipped = 0;
+      const membersSkipped = 0;
       let roleAdditions = 0;
       let roleRemovals = 0;
 

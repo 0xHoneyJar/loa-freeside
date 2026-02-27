@@ -52,9 +52,9 @@ describe('Pool mapping constants', () => {
     })
   })
 
-  it('enterprise tier: default=architect, allowed=all 5 pools', () => {
+  it('enterprise tier: default=reviewer, allowed=all 5 pools', () => {
     expect(ACCESS_LEVEL_POOLS.enterprise).toEqual({
-      default: 'architect',
+      default: 'reviewer',
       allowed: ['cheap', 'fast-code', 'reviewer', 'reasoning', 'architect'],
     })
   })
@@ -86,9 +86,9 @@ describe('resolvePoolId — no alias (tier default)', () => {
     expect(result.allowedPools).toEqual(['cheap', 'fast-code', 'reviewer'])
   })
 
-  it('enterprise: defaults to architect', () => {
+  it('enterprise: defaults to reviewer', () => {
     const result = resolvePoolId(undefined, 'enterprise')
-    expect(result.poolId).toBe('architect')
+    expect(result.poolId).toBe('reviewer')
     expect(result.allowedPools).toEqual(['cheap', 'fast-code', 'reviewer', 'reasoning', 'architect'])
   })
 })
@@ -108,9 +108,9 @@ describe('resolvePoolId — native alias (tier-aware)', () => {
     expect(result.poolId).toBe('fast-code')
   })
 
-  it('native on enterprise → architect (AC-3.4)', () => {
+  it('native on enterprise → reviewer (hounfour canonical default)', () => {
     const result = resolvePoolId('native', 'enterprise')
-    expect(result.poolId).toBe('architect')
+    expect(result.poolId).toBe('reviewer')
   })
 
   it('native always returns correct allowedPools for tier', () => {

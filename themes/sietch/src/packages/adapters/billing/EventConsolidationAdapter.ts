@@ -188,6 +188,6 @@ export class EventConsolidationAdapter implements IEconomicEventEmitter {
       causationId: event.correlationId ?? null,
       timestamp: sqliteTimestamp(),
       payload: event.payload,
-    } as BillingEvent;
+    } as unknown as BillingEvent;
   }
 }

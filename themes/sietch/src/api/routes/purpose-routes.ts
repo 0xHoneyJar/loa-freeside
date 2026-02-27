@@ -87,7 +87,7 @@ purposeRouter.get(
         communityId,
         from: from ?? null,
         to: to ?? null,
-        breakdown: rows.map(r => ({
+        breakdown: rows.map((r: { purpose: string; day: string; totalMicro: bigint; entryCount: number }) => ({
           purpose: r.purpose,
           day: r.day,
           totalMicro: r.totalMicro,

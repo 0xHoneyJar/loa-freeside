@@ -200,7 +200,7 @@ export class S2SJwtValidator {
       return this.handleFetchFailure(new Error(`JWKS fetch failed: HTTP ${res.status}`))
     }
 
-    const jwks: JwksResponse = await res.json()
+    const jwks = (await res.json()) as JwksResponse
     if (!jwks.keys || !Array.isArray(jwks.keys) || jwks.keys.length === 0) {
       throw new Error('JWKS response has no keys')
     }

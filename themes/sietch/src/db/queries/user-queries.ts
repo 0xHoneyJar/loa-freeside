@@ -118,7 +118,7 @@ export function getUserByUsername(username: string): User | null {
 export function listUsers(query: ListUsersQuery = {}): PaginatedResult<UserPublic> {
   const database = getDatabase();
   const params: unknown[] = [];
-  let whereClauses: string[] = [];
+  const whereClauses: string[] = [];
 
   if (query.isActive !== undefined) {
     whereClauses.push('is_active = ?');
@@ -426,7 +426,7 @@ export function logUserAuditEvent(params: {
 export function queryUserAuditLog(query: AuditLogQuery = {}): PaginatedResult<UserAuditEntry> {
   const database = getDatabase();
   const params: unknown[] = [];
-  let whereClauses: string[] = [];
+  const whereClauses: string[] = [];
 
   if (query.actorId) {
     whereClauses.push('actor_id = ?');

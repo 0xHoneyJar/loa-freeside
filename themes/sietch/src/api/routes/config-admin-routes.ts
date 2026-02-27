@@ -106,7 +106,7 @@ function handleError(err: unknown, res: Response): void {
   }
 }
 
-function ensureService(res: Response): governanceService is IConstitutionalGovernanceService {
+function ensureService(res: Response): boolean {
   if (!governanceService) {
     res.status(503).json({ error: 'Governance service not initialized' });
     return false;

@@ -53,7 +53,7 @@ const summarySchema = z.object({
 
 function getPeriodRange(period: 'daily' | 'weekly' | 'monthly'): { startDate: string; endDate: string } {
   const now = new Date();
-  const endDate = now.toISOString().split('T')[0]!;
+  const endDate = now.toISOString().split('T')[0];
 
   let startDate: string;
   switch (period) {

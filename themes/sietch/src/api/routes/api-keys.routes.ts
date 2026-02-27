@@ -32,7 +32,7 @@ import {
   requireApiKeyAsync,
   memberRateLimiter,
 } from '../middleware.js';
-import { getConfig } from '../../config.js';
+import { config } from '../../config.js';
 
 // =============================================================================
 // Validation Schemas
@@ -58,7 +58,6 @@ export const apiKeysRouter = Router();
 
 // Sprint 7 (320), Task 7.3: Feature flag kill switch (creation only — existing keys still work)
 function requireApiKeysEnabled(_req: AuthenticatedRequest, res: Response, next: () => void) {
-  const config = getConfig();
   if (!config.features.apiKeysEnabled) {
     res.status(503).json({
       error: 'API key creation not enabled',

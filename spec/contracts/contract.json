@@ -146,8 +146,8 @@
     },
     {
       "specifier": "@0xhoneyjar/loa-hounfour/constraints",
-      "symbols": ["NativeEnforcement"],
-      "note": "Type-only import — erased at runtime, tracked for compile-time contract coverage"
+      "symbols": [],
+      "note": "Type-only import — NativeEnforcement is erased at runtime, tracked for compile-time contract coverage"
     },
     {
       "specifier": "@0xhoneyjar/loa-hounfour/model",

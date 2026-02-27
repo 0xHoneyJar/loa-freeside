@@ -17,6 +17,7 @@ import Database from 'better-sqlite3';
 import { CREDIT_LEDGER_SCHEMA_SQL } from '../../../../src/db/migrations/030_credit_ledger.js';
 import { BILLING_OPS_SCHEMA_SQL } from '../../../../src/db/migrations/032_billing_ops.js';
 import { REVENUE_RULES_SCHEMA_SQL } from '../../../../src/db/migrations/035_revenue_rules.js';
+import { REVENUE_RULES_REFERRER_SQL } from '../../../../src/db/migrations/043_revenue_rules_referrer.js';
 import {
   CreditLedgerAdapter,
   InsufficientBalanceError,
@@ -36,6 +37,7 @@ function createFullDb(): Database.Database {
   testDb.exec(CREDIT_LEDGER_SCHEMA_SQL);
   testDb.exec(BILLING_OPS_SCHEMA_SQL);
   testDb.exec(REVENUE_RULES_SCHEMA_SQL);
+  testDb.exec(REVENUE_RULES_REFERRER_SQL);
   return testDb;
 }
 

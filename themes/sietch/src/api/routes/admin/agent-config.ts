@@ -109,7 +109,7 @@ function toResponse(row: AgentConfigRow) {
 
 /** Get admin user ID from request (set by auth middleware) */
 function getAdminUserId(req: Request): string {
-  const caller = (req as Record<string, unknown>).caller as { userId?: string } | undefined;
+  const caller = (req as unknown as Record<string, unknown>).caller as { userId?: string } | undefined;
   return caller?.userId ?? 'unknown';
 }
 

@@ -571,7 +571,7 @@ export interface SecurityServiceStatus {
 /**
  * Track security service failures
  */
-let securityServiceStatus: SecurityServiceStatus = {
+const securityServiceStatus: SecurityServiceStatus = {
   redis: true,
   auditPersistence: true,
   overall: true,

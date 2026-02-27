@@ -126,7 +126,7 @@ export class AgentWalletPrototype {
       this.db = redisOrOptions.db ?? null;
     } else {
       // Legacy signature: (ledger, redis?, db?)
-      const redis = redisOrOptions as AgentRedisClient | null | undefined;
+      const redis = redisOrOptions;
       this.db = legacyDb ?? null;
       this.counter = this.buildCounterChain(redis ?? null, this.db);
     }

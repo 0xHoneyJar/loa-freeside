@@ -231,7 +231,7 @@ export function createAgentRoutes(deps: AgentRoutesDeps): Router {
       const response = await gateway.invoke({
         context: agentReq.agentContext,
         ...parsed.data,
-      });
+      } as import('@arrakis/core/ports').AgentInvokeRequest);
 
       res.json(response);
     } catch (err: unknown) {
@@ -298,7 +298,8 @@ export function createAgentRoutes(deps: AgentRoutesDeps): Router {
           if (parsed_id.serverId && currentServerId && parsed_id.serverId !== currentServerId) {
             // Different server — STREAM_RESUME_LOST FSM will handle this upstream
             // Log for observability
-            (req as Record<string, unknown>).log?.({
+            const logFn = (req as unknown as Record<string, unknown>).log as ((obj: Record<string, unknown>) => void) | undefined;
+            logFn?.({
               lastEventServerId: parsed_id.serverId,
               currentServerId,
               msg: 'SSE server switch detected — deferring to STREAM_RESUME_LOST FSM',
@@ -306,7 +307,7 @@ export function createAgentRoutes(deps: AgentRoutesDeps): Router {
           }
         }
 
-        for await (const event of gateway.stream({
+        for await (const event of (gateway.stream as Function)({
           context: agentReq.agentContext,
           ...parsed.data,
         }, { signal: abort.signal, lastEventId })) {
@@ -350,7 +351,7 @@ export function createAgentRoutes(deps: AgentRoutesDeps): Router {
     const agentReq = req as AgentAuthenticatedRequest;
 
     // Explicit admin role check (Flatline SKP-005: not just authenticated)
-    const roles = (req as Record<string, unknown>).caller as { roles?: string[] } | undefined;
+    const roles = (req as unknown as Record<string, unknown>).caller as { roles?: string[] } | undefined;
     const isAdmin = roles?.roles?.includes('admin') || roles?.roles?.includes('qa_admin');
     if (!isAdmin) {
       res.status(403).json({ error: 'FORBIDDEN', message: 'Admin access required' });

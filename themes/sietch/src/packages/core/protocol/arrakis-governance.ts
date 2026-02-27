@@ -145,20 +145,19 @@ export function authorizeCreditMutation(
     {
       mutation_id: ctx.mutationId,
       actor_id: ctx.actorId,
-      timestamp: ctx.timestamp,
-      mutation_type: 'credit_mutation',
+      mutated_at: ctx.timestamp,
       expected_version: ctx.expectedVersion,
     },
     ctx.accessPolicy
-      ? {
+      ? ({
           required_reputation_state: ctx.accessPolicy.required_reputation_state,
           required_role: ctx.accessPolicy.required_role,
           min_reputation_score: ctx.accessPolicy.min_reputation_score,
-        }
+        } as any)
       : undefined,
     {
       role: ctx.role,
-      reputation_state: ctx.reputationState,
+      reputation_state: ctx.reputationState as any,
       reputation_score: ctx.reputationScore,
     },
   );

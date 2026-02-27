@@ -160,7 +160,7 @@ export class TwoTierChainProvider implements IChainProvider {
     const timestamp = new Date();
 
     // Try to get score data from Score Service
-    let scoreData = await this.getScoreDataWithFallback(address);
+    const scoreData = await this.getScoreDataWithFallback(address);
 
     if (!scoreData) {
       // Complete degradation - no data available

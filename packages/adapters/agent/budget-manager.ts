@@ -57,6 +57,7 @@ export const DEFAULT_MODEL_PRICING: Record<ModelAlias, { inputPer1k: number; out
   reviewer: { inputPer1k: 0.15, outputPer1k: 0.60 },
   reasoning: { inputPer1k: 1.5, outputPer1k: 6.0 },
   native: { inputPer1k: 0.3, outputPer1k: 1.2 },
+  architect: { inputPer1k: 1.5, outputPer1k: 6.0 },
 };
 
 /** Audit log entry for BullMQ queue */

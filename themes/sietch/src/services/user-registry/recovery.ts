@@ -90,7 +90,7 @@ export async function recoverIdentityAtTimestamp(
   }
 
   // Initialize empty state
-  let state: RecoveredIdentityState['state'] = {
+  const state: RecoveredIdentityState['state'] = {
     discordId: '',
     discordUsername: null,
     discordDiscriminator: null,

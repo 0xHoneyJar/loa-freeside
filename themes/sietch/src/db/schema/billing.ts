@@ -11,12 +11,11 @@
 import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
 
 /**
- * Helper: all monetary columns use integer({ mode: 'bigint' }) which:
- * - Stores as SQLite INTEGER (int64 affinity, matching the DDL)
- * - Deserializes to TypeScript bigint (not JS number)
- * Requires drizzle-orm >= 0.30.0 (current: 0.45.1).
+ * Helper: all monetary columns use integer (SQLite INTEGER, int64 affinity).
+ * Drizzle-orm SQLite driver does not support bigint mode; values are JS numbers.
+ * For micro-USD precision this is sufficient (Number.MAX_SAFE_INTEGER ≈ 9 trillion micro-USD).
  */
-const microUSD = (name: string) => integer(name, { mode: 'bigint' });
+const microUSD = (name: string) => integer(name);
 
 // =============================================================================
 // credit_accounts
@@ -45,9 +44,9 @@ export const creditLots = sqliteTable('credit_lots', {
   sourceType: text('source_type').notNull(),
   sourceId: text('source_id'),
   originalMicro: microUSD('original_micro').notNull(),
-  availableMicro: microUSD('available_micro').notNull().default(0n),
-  reservedMicro: microUSD('reserved_micro').notNull().default(0n),
-  consumedMicro: microUSD('consumed_micro').notNull().default(0n),
+  availableMicro: microUSD('available_micro').notNull().default(0),
+  reservedMicro: microUSD('reserved_micro').notNull().default(0),
+  consumedMicro: microUSD('consumed_micro').notNull().default(0),
   expiresAt: text('expires_at'),
   createdAt: text('created_at').notNull(),
 }, (table) => ({
@@ -68,8 +67,8 @@ export const creditLots = sqliteTable('credit_lots', {
 export const creditBalances = sqliteTable('credit_balances', {
   accountId: text('account_id').notNull().references(() => creditAccounts.id),
   poolId: text('pool_id'),
-  availableMicro: microUSD('available_micro').notNull().default(0n),
-  reservedMicro: microUSD('reserved_micro').notNull().default(0n),
+  availableMicro: microUSD('available_micro').notNull().default(0),
+  reservedMicro: microUSD('reserved_micro').notNull().default(0),
   updatedAt: text('updated_at').notNull(),
 }, (table) => ({
   pk: uniqueIndex('credit_balances_pk')

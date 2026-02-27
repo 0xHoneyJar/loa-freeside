@@ -373,7 +373,7 @@ billingRouter.get(
       res.json(response);
     } catch (error) {
       logger.error({ error, communityId: community_id }, 'Failed to get entitlements');
-      throw error;
+      res.status(500).json({ error: 'Internal server error' });
     }
   }
 );
@@ -391,24 +391,26 @@ billingRouter.post(
 
     if (!result.success) {
       const errors = result.error.issues.map((i) => i.message).join(', ');
-      throw new ValidationError(errors);
+      res.status(400).json({ error: errors });
+      return;
     }
 
     const { community_id, feature } = result.data;
 
     // Validate feature is a valid Feature type
     if (!isValidFeature(feature)) {
-      throw new ValidationError(`Invalid feature: ${feature}`);
+      res.status(400).json({ error: `Invalid feature: ${feature}` });
+      return;
     }
 
     try {
       const accessResult = await gatekeeperService.checkAccess({
         communityId: community_id,
-        feature: feature as Feature,
+        feature: feature,
       });
 
       const response: FeatureCheckResponse = {
-        feature: feature as Feature,
+        feature: feature,
         canAccess: accessResult.canAccess,
         currentTier: accessResult.tier,
         requiredTier: accessResult.requiredTier,
@@ -418,7 +420,7 @@ billingRouter.post(
       res.json(response);
     } catch (error) {
       logger.error({ error, communityId: community_id, feature }, 'Failed to check feature access');
-      throw error;
+      res.status(500).json({ error: 'Internal server error' });
     }
   }
 );

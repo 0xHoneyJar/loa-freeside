@@ -146,7 +146,7 @@ export function up(db: {
     db.exec(CREDIT_LOTS_REBUILD_SQL);
 
     // Row-level FK integrity check
-    const fkViolations = db.pragma('foreign_key_check') as unknown;
+    const fkViolations = db.pragma('foreign_key_check');
     if (Array.isArray(fkViolations) && fkViolations.length > 0) {
       throw new Error(`foreign_key_check failed: ${JSON.stringify(fkViolations)}`);
     }

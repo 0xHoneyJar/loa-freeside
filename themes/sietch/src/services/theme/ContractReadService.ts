@@ -319,7 +319,7 @@ export class ContractReadService {
       const client = this.chainService.getClient(chainId);
 
       const data = await client.readContract({
-        address: normalizedAddress as Address,
+        address: normalizedAddress,
         abi: abi as Abi,
         functionName,
         args,
@@ -415,18 +415,18 @@ export class ContractReadService {
       const [balanceResult, decimalsResult, symbolResult] = await client.multicall({
         contracts: [
           {
-            address: normalizedToken as Address,
+            address: normalizedToken,
             abi: ERC20_BALANCE_ABI,
             functionName: 'balanceOf',
-            args: [normalizedWallet as Address],
+            args: [normalizedWallet],
           },
           {
-            address: normalizedToken as Address,
+            address: normalizedToken,
             abi: ERC20_BALANCE_ABI,
             functionName: 'decimals',
           },
           {
-            address: normalizedToken as Address,
+            address: normalizedToken,
             abi: ERC20_BALANCE_ABI,
             functionName: 'symbol',
           },
@@ -442,12 +442,12 @@ export class ContractReadService {
         };
       }
 
-      const balance = balanceResult.result as bigint;
-      const decimals = decimalsResult.status === 'success' ? (decimalsResult.result as number) : 18;
-      const symbol = symbolResult.status === 'success' ? (symbolResult.result as string) : 'UNKNOWN';
+      const balance = balanceResult.result;
+      const decimals = decimalsResult.status === 'success' ? (decimalsResult.result) : 18;
+      const symbol = symbolResult.status === 'success' ? (symbolResult.result) : 'UNKNOWN';
 
       const tokenBalance: TokenBalance = {
-        address: normalizedWallet as Address,
+        address: normalizedWallet,
         balance: balance.toString(),
         decimals,
         symbol,
@@ -517,18 +517,18 @@ export class ContractReadService {
       if (tokenId !== undefined) {
         // Check specific token ownership (ERC721)
         const owner = await client.readContract({
-          address: normalizedNft as Address,
+          address: normalizedNft,
           abi: ERC721_ABI,
           functionName: 'ownerOf',
           args: [BigInt(tokenId)],
         });
 
-        const ownsToken = (owner as Address).toLowerCase() === normalizedWallet.toLowerCase();
+        const ownsToken = (owner).toLowerCase() === normalizedWallet.toLowerCase();
 
         return {
           success: true,
           data: {
-            address: normalizedWallet as Address,
+            address: normalizedWallet,
             tokenIds: ownsToken ? [tokenId] : [],
             count: ownsToken ? 1 : 0,
           },
@@ -538,18 +538,18 @@ export class ContractReadService {
       } else {
         // Check if wallet owns any tokens (ERC721 balanceOf)
         const balance = await client.readContract({
-          address: normalizedNft as Address,
+          address: normalizedNft,
           abi: ERC721_ABI,
           functionName: 'balanceOf',
-          args: [normalizedWallet as Address],
+          args: [normalizedWallet],
         });
 
-        const count = Number(balance as bigint);
+        const count = Number(balance);
 
         return {
           success: true,
           data: {
-            address: normalizedWallet as Address,
+            address: normalizedWallet,
             tokenIds: [], // Would need enumeration to get actual IDs
             count,
           },
@@ -599,15 +599,15 @@ export class ContractReadService {
       const client = this.chainService.getClient(chainId);
 
       const balance = await client.readContract({
-        address: normalizedContract as Address,
+        address: normalizedContract,
         abi: ERC1155_ABI,
         functionName: 'balanceOf',
-        args: [normalizedWallet as Address, BigInt(tokenId)],
+        args: [normalizedWallet, BigInt(tokenId)],
       });
 
       return {
         success: true,
-        data: balance as bigint,
+        data: balance,
         cached: false,
         cachedAt: new Date().toISOString(),
       };

@@ -123,7 +123,7 @@ function extractSessionFromCookies(cookieHeader: string | undefined): { userId: 
 function getClientIp(req: IncomingMessage): string {
   const forwarded = req.headers['x-forwarded-for'];
   if (typeof forwarded === 'string') {
-    return forwarded.split(',')[0]!.trim();
+    return forwarded.split(',')[0].trim();
   }
   return req.socket.remoteAddress || 'unknown';
 }

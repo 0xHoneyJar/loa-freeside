@@ -3,7 +3,8 @@ name: loa-freeside
 type: framework
 purpose: Multi-model agent economy infrastructure platform.
 key_files: [CLAUDE.md, .claude/loa/CLAUDE.loa.md, .loa.config.yaml, .claude/scripts/, .claude/skills/, package.json]
-interfaces: [/auditing-security, /autonomous-agent, /bridgebuilder-review, /browsing-constructs, /bug-triaging]
+interfaces:
+  core: [/auditing-security, /autonomous-agent, /bridgebuilder-review, /browsing-constructs, /bug-triaging]
 dependencies: [git, jq, yq, node]
 capability_requirements:
   - filesystem: read
@@ -12,8 +13,9 @@ capability_requirements:
   - git: read_write
   - shell: execute
   - github_api: read_write (scope: external)
-version: v1.32.0
-trust_level: L2-verified
+version: v7.0.0
+installation_mode: unknown
+trust_level: L3-hardened
 -->
 
 # loa-freeside
@@ -54,20 +56,20 @@ The architecture follows a three-zone model: System (`.claude/`) contains framew
 ```mermaid
 graph TD
     apps[apps]
+    config[config]
     decisions[decisions]
     docs[docs]
     drizzle[drizzle]
     evals[evals]
-    github_fetch[github-fetch]
     grimoires[grimoires]
     infrastructure[infrastructure]
     Root[Project Root]
     Root --> apps
+    Root --> config
     Root --> decisions
     Root --> docs
     Root --> drizzle
     Root --> evals
-    Root --> github_fetch
     Root --> grimoires
     Root --> infrastructure
 ```
@@ -77,6 +79,7 @@ Directory structure:
 ./apps/gateway
 ./apps/ingestor
 ./apps/worker
+./config
 ./decisions
 ./docs
 ./docs/api
@@ -87,6 +90,7 @@ Directory structure:
 ./docs/proposals
 ./docs/research
 ./docs/runbook
+./docs/runbooks
 ./drizzle
 ./drizzle/migrations
 ./evals
@@ -98,11 +102,9 @@ Directory structure:
 ./evals/suites
 ./evals/tasks
 ./evals/tests
-./github-fetch
 ./grimoires
 ./grimoires/loa
 ./grimoires/pub
-./infrastructure
 ```
 
 ## Interfaces
@@ -136,6 +138,8 @@ packages/cli/src/commands/sandbox/index.ts:168:    .command('unlink <sandbox> <g
 packages/cli/src/commands/sandbox/index.ts:185:    .command('status <name>')
 
 ### Skill Commands
+
+#### Loa Core
 
 - **/auditing-security** — Paranoid Cypherpunk Auditor
 - **/autonomous-agent** — Autonomous agent
@@ -171,25 +175,25 @@ packages/cli/src/commands/sandbox/index.ts:185:    .command('status <name>')
 <!-- provenance: DERIVED -->
 | Module | Files | Purpose | Documentation |
 |--------|-------|---------|---------------|
-| `apps/` | 34990 | Apps | \u2014 |
+| `apps/` | 198 | Apps | \u2014 |
+| `config/` | 1 | Configuration files | \u2014 |
 | `decisions/` | 6 | Documentation | \u2014 |
-| `docs/` | 43 | Documentation | \u2014 |
+| `docs/` | 46 | Documentation | \u2014 |
 | `drizzle/` | 1 | Drizzle | \u2014 |
 | `evals/` | 122 | Benchmarking and regression framework for the Loa agent development system. Ensures framework changes don't degrade agent behavior through | [evals/README.md](evals/README.md) |
-| `github-fetch/` | 11 | Github fetch | \u2014 |
-| `grimoires/` | 1590 | Home to all grimoire directories for the Loa | [grimoires/README.md](grimoires/README.md) |
-| `infrastructure/` | 193 | This directory contains the Infrastructure as Code (IaC) for Freeside, using Terraform to provision AWS | [infrastructure/README.md](infrastructure/README.md) |
-| `packages/` | 2341 | Shared libraries and utilities for the Freeside monorepo | [packages/README.md](packages/README.md) |
-| `scripts/` | 26 | Utility scripts | \u2014 |
-| `sites/` | 28151 | Web properties for Freeside | [sites/README.md](sites/README.md) |
-| `spec/` | 10 | Test suites | \u2014 |
-| `tests/` | 98 | Test suites | \u2014 |
-| `themes/` | 66072 | Theme-specific backend services for Freeside | [themes/README.md](themes/README.md) |
+| `grimoires/` | 885 | Home to all grimoire directories for the Loa | [grimoires/README.md](grimoires/README.md) |
+| `infrastructure/` | 66 | This directory contains the Infrastructure as Code (IaC) for Freeside, using Terraform to provision AWS | [infrastructure/README.md](infrastructure/README.md) |
+| `packages/` | 19742 | Shared libraries and utilities for the Freeside | [packages/README.md](packages/README.md) |
+| `scripts/` | 33 | Utility scripts | \u2014 |
+| `sites/` | 21 | Web properties for the Freeside | [sites/README.md](sites/README.md) |
+| `spec/` | 11 | Test suites | \u2014 |
+| `tests/` | 164 | Test suites | \u2014 |
+| `themes/` | 43400 | Theme-specific backend services for Freeside | [themes/README.md](themes/README.md) |
 
 ## Verification
 <!-- provenance: CODE-FACTUAL -->
-- Trust Level: **L2 — CI Verified**
-- 108 test files across 2 suites
+- Trust Level: **L3 — Property-Based**
+- 175 test files across 2 suites
 - CI/CD: GitHub Actions (25 workflows)
 - Security: SECURITY.md present
 
@@ -211,6 +215,7 @@ The project defines 1 specialized agent persona.
 - `ajv-formats`
 - `aws-embedded-metrics`
 - `express`
+- `fast-check`
 - `jose`
 - `supertest`
 
@@ -237,17 +242,17 @@ cd themes/sietch && npx drizzle-kit push && cd ../..
 # Start development server
 pnpm run dev
 <!-- ground-truth-meta
-head_sha: 717535e36f873bfa8a965fd226adecc0af3d30ea
-generated_at: 2026-02-24T13:31:44Z
+head_sha: ae360949f14298aa9a75499de292d16af673740a
+generated_at: 2026-02-27T05:49:05Z
 generator: butterfreezone-gen v1.0.0
 sections:
-  agent_context: 9153dda48b2c1ccafbd76cccde885039f7ba5f00a2b152e44e69ea6a28111685
+  agent_context: 0dd1d0aca7f36e10b1067270e822ef62726525092dd9eaa44b90ab7bb73f9108
   capabilities: ab2576b1f2e7e8141f0e93e807d26ed2b7b155e21c96d787507a3ba933bb9795
-  architecture: 4986601f929268fa86e95a13b5612852a9e41efb05e98d20d6cc4c82603501ac
-  interfaces: 8a27e7dd9f0927654886f67ab89c3f127278c6651246f55052368a4ca60f5dd9
-  module_map: d3f874fcf8a8fa43c157f9249c29f4f5a142b42f682c9f2c816adf72efb5af9b
-  verification: 8871ca53b1ded7ba106c2f6018e9cb890c858c928ae68a09c3f538f0e89756d9
+  architecture: dca8ab5c169c3a31fab7986c6e4db4d9e4e7bed2671a907237e9250cea262fd8
+  interfaces: 5e79f50d9f65db04426777ba9f2f7bbf8b259d2ab8f659c01c8230d37489b39c
+  module_map: ea9565b6fd67cf58b47e81445c8af715fc201bf0bf5fe63916b8c20e489c1c64
+  verification: bf726e4371d44fc68cd338689efea2e4d5acedc2930f002b8d73758e5424e846
   agents: ca263d1e05fd123434a21ef574fc8d76b559d22060719640a1f060527ef6a0b6
-  ecosystem: 29fc390a2a77ec8d5bdbe657182dd47a2a5cd0c0c36c74c763c9e65cfad170e3
+  ecosystem: 41df6a594f66dfdccfc9516499e4826c04118fae1a2850465624443977bfd207
   quick_start: aa15ed859d837420815f7e0948f08651a127ddd6db965df8b99600b5ef930172
 -->

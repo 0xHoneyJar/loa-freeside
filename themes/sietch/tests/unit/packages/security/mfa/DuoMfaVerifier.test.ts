@@ -7,6 +7,22 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// Mock config module so we can control Duo config values per test
+const mockDuoConfig = vi.hoisted(() => ({
+  integrationKey: undefined as string | undefined,
+  secretKey: undefined as string | undefined,
+  apiHostname: undefined as string | undefined,
+}));
+
+vi.mock('../../../../../src/config.js', () => ({
+  config: {
+    mfa: {
+      duo: mockDuoConfig,
+    },
+  },
+}));
+
 import {
   DuoMfaVerifier,
   createDuoMfaVerifierFromEnv,
@@ -363,20 +379,17 @@ describe('DuoMfaVerifier', () => {
   // ===========================================================================
 
   describe('createDuoMfaVerifierFromEnv()', () => {
-    const originalEnv = process.env;
-
-    beforeEach(() => {
-      process.env = { ...originalEnv };
-    });
-
     afterEach(() => {
-      process.env = originalEnv;
+      // Reset mock config to unconfigured state
+      mockDuoConfig.integrationKey = undefined;
+      mockDuoConfig.secretKey = undefined;
+      mockDuoConfig.apiHostname = undefined;
     });
 
     it('should create verifier from environment variables', () => {
-      process.env.DUO_INTEGRATION_KEY = 'DI00000000000000000';
-      process.env.DUO_SECRET_KEY = 'abcdefghijklmnopqrstuvwxyz123456';
-      process.env.DUO_API_HOSTNAME = 'api-00000000.duosecurity.com';
+      mockDuoConfig.integrationKey = 'DI00000000000000000';
+      mockDuoConfig.secretKey = 'abcdefghijklmnopqrstuvwxyz123456';
+      mockDuoConfig.apiHostname = 'api-00000000.duosecurity.com';
 
       const verifier = createDuoMfaVerifierFromEnv();
 
@@ -384,19 +397,19 @@ describe('DuoMfaVerifier', () => {
     });
 
     it('should throw error if environment variables are missing', () => {
-      delete process.env.DUO_INTEGRATION_KEY;
-      delete process.env.DUO_SECRET_KEY;
-      delete process.env.DUO_API_HOSTNAME;
+      mockDuoConfig.integrationKey = undefined;
+      mockDuoConfig.secretKey = undefined;
+      mockDuoConfig.apiHostname = undefined;
 
       expect(() => createDuoMfaVerifierFromEnv()).toThrow(
-        'Duo MFA environment variables not configured'
+        'Duo MFA not configured'
       );
     });
 
     it('should accept debug option', () => {
-      process.env.DUO_INTEGRATION_KEY = 'DI00000000000000000';
-      process.env.DUO_SECRET_KEY = 'abcdefghijklmnopqrstuvwxyz123456';
-      process.env.DUO_API_HOSTNAME = 'api-00000000.duosecurity.com';
+      mockDuoConfig.integrationKey = 'DI00000000000000000';
+      mockDuoConfig.secretKey = 'abcdefghijklmnopqrstuvwxyz123456';
+      mockDuoConfig.apiHostname = 'api-00000000.duosecurity.com';
 
       const verifier = createDuoMfaVerifierFromEnv({ debug: true });
 
@@ -405,44 +418,41 @@ describe('DuoMfaVerifier', () => {
   });
 
   describe('isDuoConfigured()', () => {
-    const originalEnv = process.env;
-
-    beforeEach(() => {
-      process.env = { ...originalEnv };
-    });
-
     afterEach(() => {
-      process.env = originalEnv;
+      // Reset mock config to unconfigured state
+      mockDuoConfig.integrationKey = undefined;
+      mockDuoConfig.secretKey = undefined;
+      mockDuoConfig.apiHostname = undefined;
     });
 
-    it('should return true when all Duo env vars are set', () => {
-      process.env.DUO_INTEGRATION_KEY = 'DI00000000000000000';
-      process.env.DUO_SECRET_KEY = 'abcdefghijklmnopqrstuvwxyz123456';
-      process.env.DUO_API_HOSTNAME = 'api-00000000.duosecurity.com';
+    it('should return true when all Duo config values are set', () => {
+      mockDuoConfig.integrationKey = 'DI00000000000000000';
+      mockDuoConfig.secretKey = 'abcdefghijklmnopqrstuvwxyz123456';
+      mockDuoConfig.apiHostname = 'api-00000000.duosecurity.com';
 
       expect(isDuoConfigured()).toBe(true);
     });
 
     it('should return false when integration key is missing', () => {
-      delete process.env.DUO_INTEGRATION_KEY;
-      process.env.DUO_SECRET_KEY = 'abcdefghijklmnopqrstuvwxyz123456';
-      process.env.DUO_API_HOSTNAME = 'api-00000000.duosecurity.com';
+      mockDuoConfig.integrationKey = undefined;
+      mockDuoConfig.secretKey = 'abcdefghijklmnopqrstuvwxyz123456';
+      mockDuoConfig.apiHostname = 'api-00000000.duosecurity.com';
 
       expect(isDuoConfigured()).toBe(false);
     });
 
     it('should return false when secret key is missing', () => {
-      process.env.DUO_INTEGRATION_KEY = 'DI00000000000000000';
-      delete process.env.DUO_SECRET_KEY;
-      process.env.DUO_API_HOSTNAME = 'api-00000000.duosecurity.com';
+      mockDuoConfig.integrationKey = 'DI00000000000000000';
+      mockDuoConfig.secretKey = undefined;
+      mockDuoConfig.apiHostname = 'api-00000000.duosecurity.com';
 
       expect(isDuoConfigured()).toBe(false);
     });
 
     it('should return false when API hostname is missing', () => {
-      process.env.DUO_INTEGRATION_KEY = 'DI00000000000000000';
-      process.env.DUO_SECRET_KEY = 'abcdefghijklmnopqrstuvwxyz123456';
-      delete process.env.DUO_API_HOSTNAME;
+      mockDuoConfig.integrationKey = 'DI00000000000000000';
+      mockDuoConfig.secretKey = 'abcdefghijklmnopqrstuvwxyz123456';
+      mockDuoConfig.apiHostname = undefined;
 
       expect(isDuoConfigured()).toBe(false);
     });

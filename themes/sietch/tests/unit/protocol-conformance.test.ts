@@ -15,17 +15,29 @@
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import { resolve, dirname, join } from 'node:path';
-import { readFileSync, readdirSync } from 'node:fs';
-import { createRequire } from 'node:module';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import Ajv from 'ajv';
 
 // ---------------------------------------------------------------------------
-// Resolve the hounfour package root using Node module resolution
+// Resolve the hounfour package root by walking up node_modules
 // (topology-independent: works regardless of pnpm hoist settings)
 // ---------------------------------------------------------------------------
 
-const require = createRequire(import.meta.url);
-const hounfourRoot = dirname(require.resolve('@0xhoneyjar/loa-hounfour/package.json'));
+function findHounfourRoot(): string {
+  let dir = dirname(new URL(import.meta.url).pathname);
+  for (let i = 0; i < 10; i++) {
+    const candidate = join(dir, 'node_modules', '@0xhoneyjar', 'loa-hounfour', 'package.json');
+    if (existsSync(candidate)) {
+      return dirname(candidate);
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  throw new Error('Could not find @0xhoneyjar/loa-hounfour package root');
+}
+
+const hounfourRoot = findHounfourRoot();
 
 // ---------------------------------------------------------------------------
 // Import protocol exports for validation
@@ -81,6 +93,13 @@ import {
   ProviderSummarySchema,
   // v7.10–v7.11 governance schemas (Sprint 354, Task 2.5)
   GovernanceTaskTypeSchema,
+  // v8.0.0 commons schemas (governance substrate)
+  DynamicContractSchema,
+  ContractNegotiationSchema,
+  GovernedCreditsSchema,
+  GovernedFreshnessSchema,
+  GovernedReputationSchema,
+  AuditEntrySchema,
 } from '@0xhoneyjar/loa-hounfour';
 
 import {
@@ -222,6 +241,7 @@ const NO_SCHEMA_CATEGORIES = new Set([
  * the schema. Vectors whose input shape diverges from the schema pass structurally.
  */
 const FUNCTION_INPUT_CATEGORIES = new Set([
+  'audit-trail',              // Input = hash computation inputs; schema = AuditEntry structure
   'capability-scoped-trust',  // Input = full agent identity; schema = trust_scopes sub-object
   'conservation-properties',  // Input = registry data; schema = registry + coverage + liveness
   'constraint-lifecycle',     // Some vectors are constraint candidates, not lifecycle events
@@ -273,9 +293,14 @@ type SchemaEntry = Record<string, unknown> | Record<string, unknown>[] | undefin
 const CATEGORY_SCHEMA_MAP: Record<string, SchemaEntry> = {
   'access-policy': undefined,
   'agent-identity': AgentIdentitySchema as Record<string, unknown>,
+  'audit-trail': AuditEntrySchema as Record<string, unknown>,
   'bridge-transfer-saga': BridgeTransferSagaSchema as Record<string, unknown>,
   'capability-scoped-trust': CapabilityScopedTrustSchema as Record<string, unknown>,
   'collection-governance-config': CollectionGovernanceConfigSchema as Record<string, unknown>,
+  'commons': [
+    DynamicContractSchema as Record<string, unknown>,
+    ContractNegotiationSchema as Record<string, unknown>,
+  ],
   'community-engagement': CommunityEngagementSignalSchema as Record<string, unknown>,
   'conservation-properties': ConservationPropertyRegistrySchema as Record<string, unknown>,
   'constraint-lifecycle': ConstraintLifecycleEventSchema as Record<string, unknown>,
@@ -289,6 +314,10 @@ const CATEGORY_SCHEMA_MAP: Record<string, SchemaEntry> = {
   'event-subscription': EventSubscriptionSchema as Record<string, unknown>,
   'execution-checkpoint': ExecutionCheckpointSchema as Record<string, unknown>,
   'governance-proposal': GovernanceProposalSchema as Record<string, unknown>,
+  'governed-credits': GovernedCreditsSchema as Record<string, unknown>,
+  'governed-freshness': GovernedFreshnessSchema as Record<string, unknown>,
+  'governed-reputation': GovernedReputationSchema as Record<string, unknown>,
+  'governed-resource': GovernedCreditsSchema as Record<string, unknown>,  // Representative schema; governed-resource neg vectors test governance fields
   'inter-agent-transaction': InterAgentTransactionAuditSchema as Record<string, unknown>,
   'jwt-boundary': JwtBoundarySpecSchema as Record<string, unknown>,
   'liveness-properties': LivenessPropertySchema as Record<string, unknown>,
@@ -337,8 +366,8 @@ describe('Protocol Conformance Suite (v7.11.0)', () => {
   // ─── AC-2.4.4: CONTRACT_VERSION ──────────────────────────────────────────
 
   describe('CONTRACT_VERSION', () => {
-    it('should match the actual v7.11.0 protocol version', () => {
-      expect(CONTRACT_VERSION).toBe('7.11.0');
+    it('should match the actual v8.2.0 protocol version', () => {
+      expect(CONTRACT_VERSION).toBe('8.2.0');
     });
 
     it('should be a valid semver string', () => {
@@ -349,18 +378,18 @@ describe('Protocol Conformance Suite (v7.11.0)', () => {
   // ─── AC-2.4.1 & AC-2.4.2: Vector loading ─────────────────────────────────
 
   describe('Vector Loading', () => {
-    it('should load all 236 vectors from nested directory structure', () => {
-      expect(allVectors.length).toBe(236);
+    it('should load all 262 vectors from nested directory structure', () => {
+      expect(allVectors.length).toBe(262);
     });
 
-    it('should load 194 conformance vectors', () => {
-      expect(conformanceVectors.length).toBe(194);
+    it('should load 219 conformance vectors', () => {
+      expect(conformanceVectors.length).toBe(219);
     });
 
-    it('should cover all 15 top-level categories with JSON files', () => {
+    it('should cover all 16 top-level categories with JSON files', () => {
       const categories = new Set(allVectors.map((v) => v.category));
-      // 15 categories have JSON files (runners/ is empty, VERSION is a file)
-      expect(categories.size).toBe(15);
+      // 16 categories have JSON files (runners/ is empty, VERSION is a file)
+      expect(categories.size).toBe(16);
       expect(categories).toContain('conformance');
       expect(categories).toContain('jwt');
       expect(categories).toContain('billing');

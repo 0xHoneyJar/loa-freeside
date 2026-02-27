@@ -227,7 +227,7 @@ export class TbaDepositBridge implements ITbaDepositBridge {
           args: [escrowAddress as `0x${string}`],
         });
         // USDC: raw balance = micro-USD (6 decimals, 1:1)
-        escrowBalance += balance as bigint;
+        escrowBalance += balance;
       } catch (err: any) {
         logger.warn({
           event: 'tba.escrow.balance_error',
