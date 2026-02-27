@@ -1,6 +1,6 @@
 # Sites
 
-Web properties for the Arrakis platform.
+Web properties for the Freeside platform.
 
 ## Structure
 

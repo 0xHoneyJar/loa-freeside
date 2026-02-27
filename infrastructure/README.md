@@ -1,6 +1,6 @@
 # Infrastructure
 
-This directory contains the Infrastructure as Code (IaC) for Arrakis, using Terraform to provision AWS resources.
+This directory contains the Infrastructure as Code (IaC) for Freeside, using Terraform to provision AWS resources.
 
 ## Architecture Overview
 

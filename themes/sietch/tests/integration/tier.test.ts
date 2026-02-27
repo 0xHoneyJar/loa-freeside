@@ -144,74 +144,59 @@ describe('Tier System Integration', () => {
   describe('Tier Progress Calculation', () => {
     it('should calculate progress from Hajra to Ichwan', () => {
       const bgt = parseUnits('30', 18); // 30 BGT
-      const progress = tierService.getTierProgressData('hajra', bgt);
+      const progress = tierService.getTierProgress('hajra', bgt.toString(), null);
 
       expect(progress.currentTier).toBe('hajra');
       expect(progress.nextTier).toBe('ichwan');
-      expect(progress.nextThreshold).toBe('69');
-      expect(progress.distance).toBe('39'); // 69 - 30 = 39
+      expect(progress.bgtToNextTierFormatted).toBe(39); // 69 - 30 = 39
     });
 
     it('should calculate progress from Ichwan to Qanat', () => {
       const bgt = parseUnits('150', 18); // 150 BGT
-      const progress = tierService.getTierProgressData('ichwan', bgt);
+      const progress = tierService.getTierProgress('ichwan', bgt.toString(), null);
 
       expect(progress.currentTier).toBe('ichwan');
       expect(progress.nextTier).toBe('qanat');
-      expect(progress.nextThreshold).toBe('222');
-      expect(progress.distance).toBe('72'); // 222 - 150 = 72
+      expect(progress.bgtToNextTierFormatted).toBe(72); // 222 - 150 = 72
     });
 
     it('should return null nextTier for Naib (highest tier)', () => {
       const bgt = parseUnits('5000', 18);
-      const progress = tierService.getTierProgressData('naib', bgt);
+      const progress = tierService.getTierProgress('naib', bgt.toString(), null);
 
       expect(progress.currentTier).toBe('naib');
       expect(progress.nextTier).toBeNull();
-      expect(progress.nextThreshold).toBeNull();
-      expect(progress.distance).toBeNull();
+      expect(progress.bgtToNextTier).toBeNull();
     });
 
     it('should calculate progress for Usul to Fedaykin (rank-based)', () => {
       const bgt = parseUnits('1200', 18);
-      const progress = tierService.getTierProgressData('usul', bgt);
+      const progress = tierService.getTierProgress('usul', bgt.toString(), null);
 
       expect(progress.currentTier).toBe('usul');
       expect(progress.nextTier).toBe('fedaykin');
-      expect(progress.nextThreshold).toBeNull(); // Rank-based, no BGT threshold
-      expect(progress.distance).toBeNull();
+      expect(progress.bgtToNextTier).toBeNull(); // Rank-based, no BGT threshold
     });
   });
 
   describe('Tier Update with History', () => {
     it('should update member tier and log history on promotion', async () => {
       const memberId = 'member-123';
-      const newTier = 'ichwan';
       const bgt = parseUnits('100', 18);
       const rank = null;
 
-      mockGetMemberProfileById.mockResolvedValue({
+      mockGetMemberProfileById.mockReturnValue({
         member_id: memberId,
         tier: 'hajra',
         tier_updated_at: Date.now() - 86400000, // 1 day ago
       });
 
-      await tierService.updateMemberTier(memberId, bgt.toString(), rank);
+      await tierService.updateMemberTier(memberId, 'ichwan', bgt.toString(), rank);
 
-      expect(mockUpdateMemberTier).toHaveBeenCalledWith(
-        memberId,
-        'ichwan',
-        expect.any(Number)
+      expect(mockUpdateMemberTier).toHaveBeenCalledWith(memberId, 'ichwan');
+      expect(mockInsertTierHistory).toHaveBeenCalledWith(
+        memberId, 'hajra', 'ichwan', bgt.toString(), null
       );
-
-      expect(mockInsertTierHistory).toHaveBeenCalledWith({
-        member_id: memberId,
-        from_tier: 'hajra',
-        to_tier: 'ichwan',
-        changed_at: expect.any(Number),
-        bgt_at_change: bgt.toString(),
-        rank_at_change: null,
-      });
     });
 
     it('should not log history if tier unchanged', async () => {
@@ -219,14 +204,15 @@ describe('Tier System Integration', () => {
       const bgt = parseUnits('80', 18);
       const rank = null;
 
-      mockGetMemberProfileById.mockResolvedValue({
+      mockGetMemberProfileById.mockReturnValue({
         member_id: memberId,
         tier: 'ichwan',
         tier_updated_at: Date.now() - 3600000, // 1 hour ago
       });
 
-      await tierService.updateMemberTier(memberId, bgt.toString(), rank);
+      const changed = await tierService.updateMemberTier(memberId, 'ichwan', bgt.toString(), rank);
 
+      expect(changed).toBe(false);
       expect(mockUpdateMemberTier).not.toHaveBeenCalled();
       expect(mockInsertTierHistory).not.toHaveBeenCalled();
     });
@@ -280,10 +266,10 @@ describe('Tier System Integration', () => {
       expect(tier).toBe('sihaya'); // Falls back to BGT-based
     });
 
-    it('should handle minimal BGT below threshold (returns null)', () => {
+    it('should handle minimal BGT below threshold (defaults to hajra)', () => {
       const bgt = parseUnits('5', 18); // Below 6.9 threshold
       const tier = tierService.calculateTier(bgt, null);
-      expect(tier).toBeNull();
+      expect(tier).toBe('hajra'); // Default fallback
     });
   });
 
@@ -298,7 +284,7 @@ describe('Tier System Integration', () => {
 
       mockGetTierHistory.mockResolvedValue(mockHistory);
 
-      const history = await tierService.getTierHistory(memberId);
+      const history = await tierService.getMemberTierHistory(memberId);
 
       expect(history).toHaveLength(3);
       expect(history[0].to_tier).toBe('hajra');

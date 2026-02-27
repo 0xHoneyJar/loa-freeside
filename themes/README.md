@@ -1,6 +1,6 @@
 # Themes
 
-Theme-specific backend services for Arrakis communities.
+Theme-specific backend services for Freeside communities.
 
 ## Concept
 

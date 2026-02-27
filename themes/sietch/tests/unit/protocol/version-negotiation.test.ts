@@ -3,17 +3,17 @@
  *
  * Verifies:
  * - negotiateVersion() returns correct preferred + supported versions
- * - CONTRACT_VERSION is 7.0.0 (canonical from @0xhoneyjar/loa-hounfour)
- * - normalizeCoordinationMessage() accepts v7.0.0 and v4.6.0 messages
+ * - CONTRACT_VERSION is 8.2.0 (canonical from @0xhoneyjar/loa-hounfour)
+ * - normalizeCoordinationMessage() accepts v8.2.0 and v7.11.0 messages
  * - normalizeCoordinationMessage() rejects missing version discriminator
  * - normalizeCoordinationMessage() rejects unknown versions
  * - Feature flag behavior (PROTOCOL_V7_NORMALIZATION)
  *
  * NOTE: The canonical validateCompatibility() from @0xhoneyjar/loa-hounfour
- * has MIN_SUPPORTED_VERSION=6.0.0, which rejects v4.6.0. Since arrakis-compat
- * locally advertises v4.6.0 in its supported set for the transition period,
- * the v4.6.0 acceptance tests mock the canonical validator so we can verify
- * the local normalization logic in isolation.
+ * has MIN_SUPPORTED_VERSION=6.0.0. Since arrakis-compat locally advertises
+ * v7.11.0 in its supported set for the transition period, the v7.11.0
+ * acceptance tests mock the canonical validator so we can verify the local
+ * normalization logic in isolation.
  *
  * SDD refs: §3.6, §3.7, §8.3
  * Sprint refs: Task 302.4
@@ -21,18 +21,19 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// Mock the canonical library so v4.6.0 passes validateCompatibility
+// Mock the canonical library so v7.11.0 passes validateCompatibility
 // during the transition period. The local negotiateVersion() advertises
-// v4.6.0 support; the mock makes the canonical validator agree.
+// v7.11.0 support; the mock makes the canonical validator agree.
 vi.mock('@0xhoneyjar/loa-hounfour', () => ({
-  CONTRACT_VERSION: '7.0.0',
+  CONTRACT_VERSION: '8.2.0',
   validateCompatibility: (version: string) => {
-    // Accept 4.6.0 and 7.0.0 (the transition support window)
-    if (version === '7.0.0' || version === '4.6.0') {
+    // Accept 7.11.0 and 8.2.0 (the transition support window)
+    if (version === '8.2.0' || version === '7.11.0') {
       return { compatible: true };
     }
     return { compatible: false, error: `Version ${version} is not supported` };
   },
+  flatTrustToScoped: vi.fn(),
 }));
 
 import {
@@ -50,15 +51,15 @@ describe('Coordination Schema & Version Negotiation (Task 302.4)', () => {
   // =========================================================================
 
   describe('negotiateVersion()', () => {
-    it('returns preferred 7.0.0', () => {
+    it('returns preferred 8.2.0', () => {
       const result = negotiateVersion();
-      expect(result.preferred).toBe('7.0.0');
+      expect(result.preferred).toBe('8.2.0');
     });
 
-    it('supports both 4.6.0 and 7.0.0', () => {
+    it('supports both 7.11.0 and 8.2.0', () => {
       const result = negotiateVersion();
-      expect(result.supported).toContain('4.6.0');
-      expect(result.supported).toContain('7.0.0');
+      expect(result.supported).toContain('7.11.0');
+      expect(result.supported).toContain('8.2.0');
     });
 
     it('returns exactly two supported versions', () => {
@@ -68,8 +69,8 @@ describe('Coordination Schema & Version Negotiation (Task 302.4)', () => {
 
     it('lists supported versions in ascending order', () => {
       const result = negotiateVersion();
-      expect(result.supported[0]).toBe('4.6.0');
-      expect(result.supported[1]).toBe('7.0.0');
+      expect(result.supported[0]).toBe('7.11.0');
+      expect(result.supported[1]).toBe('8.2.0');
     });
   });
 
@@ -78,8 +79,8 @@ describe('Coordination Schema & Version Negotiation (Task 302.4)', () => {
   // =========================================================================
 
   describe('CONTRACT_VERSION', () => {
-    it('is 7.0.0', () => {
-      expect(CONTRACT_VERSION).toBe('7.0.0');
+    it('is 8.2.0', () => {
+      expect(CONTRACT_VERSION).toBe('8.2.0');
     });
 
     it('matches negotiateVersion().preferred', () => {
@@ -93,27 +94,27 @@ describe('Coordination Schema & Version Negotiation (Task 302.4)', () => {
   // =========================================================================
 
   describe('normalizeCoordinationMessage()', () => {
-    it('accepts v7.0.0 coordination messages', () => {
+    it('accepts v8.2.0 coordination messages', () => {
       const result = normalizeCoordinationMessage({
-        version: '7.0.0', type: 'status', payload: { active: true },
+        version: '8.2.0', type: 'status', payload: { active: true },
       });
-      expect(result.version).toBe('7.0.0');
+      expect(result.version).toBe('8.2.0');
       expect(result.type).toBe('status');
       expect(result.payload).toEqual({ active: true });
     });
 
-    it('accepts v4.6.0 coordination messages (normalized)', () => {
+    it('accepts v7.11.0 coordination messages (transition window)', () => {
       const result = normalizeCoordinationMessage({
-        version: '4.6.0', type: 'heartbeat', payload: {},
+        version: '7.11.0', type: 'heartbeat', payload: {},
       });
-      expect(result.version).toBe('4.6.0');
+      expect(result.version).toBe('7.11.0');
       expect(result.type).toBe('heartbeat');
       expect(result.payload).toEqual({});
     });
 
     it('preserves message type through normalization', () => {
       const result = normalizeCoordinationMessage({
-        version: '7.0.0', type: 'sync', payload: { seq: 42 },
+        version: '8.2.0', type: 'sync', payload: { seq: 42 },
       });
       expect(result.type).toBe('sync');
     });
@@ -121,7 +122,7 @@ describe('Coordination Schema & Version Negotiation (Task 302.4)', () => {
     it('preserves payload through normalization', () => {
       const payload = { nested: { data: [1, 2, 3] } };
       const result = normalizeCoordinationMessage({
-        version: '7.0.0', type: 'data', payload,
+        version: '8.2.0', type: 'data', payload,
       });
       expect(result.payload).toEqual(payload);
     });
@@ -197,18 +198,18 @@ describe('Coordination Schema & Version Negotiation (Task 302.4)', () => {
 
       it('still accepts versioned messages when flag disabled', () => {
         const result = normalizeCoordinationMessage({
-          version: '7.0.0', type: 'status', payload: { ok: true },
+          version: '8.2.0', type: 'status', payload: { ok: true },
         });
-        expect(result.version).toBe('7.0.0');
+        expect(result.version).toBe('8.2.0');
       });
 
       it('passes through any supported version when flag disabled', () => {
         // With flag disabled, version is required but canonical validation
         // is bypassed — the message passes through as-is
         const result = normalizeCoordinationMessage({
-          version: '4.6.0', type: 'heartbeat', payload: {},
+          version: '7.11.0', type: 'heartbeat', payload: {},
         });
-        expect(result.version).toBe('4.6.0');
+        expect(result.version).toBe('7.11.0');
       });
     });
 

@@ -1,5 +1,5 @@
 <!-- AGENT-CONTEXT
-name: arrakis
+name: loa-freeside
 type: framework
 purpose: Multi-model agent economy infrastructure platform.
 key_files: [CLAUDE.md, .claude/loa/CLAUDE.loa.md, .loa.config.yaml, .claude/scripts/, .claude/skills/, package.json]
@@ -178,13 +178,13 @@ packages/cli/src/commands/sandbox/index.ts:185:    .command('status <name>')
 | `evals/` | 122 | Benchmarking and regression framework for the Loa agent development system. Ensures framework changes don't degrade agent behavior through | [evals/README.md](evals/README.md) |
 | `github-fetch/` | 11 | Github fetch | \u2014 |
 | `grimoires/` | 1590 | Home to all grimoire directories for the Loa | [grimoires/README.md](grimoires/README.md) |
-| `infrastructure/` | 193 | This directory contains the Infrastructure as Code (IaC) for Arrakis, using Terraform to provision AWS | [infrastructure/README.md](infrastructure/README.md) |
-| `packages/` | 2341 | Shared libraries and utilities for the Arrakis | [packages/README.md](packages/README.md) |
+| `infrastructure/` | 193 | This directory contains the Infrastructure as Code (IaC) for Freeside, using Terraform to provision AWS | [infrastructure/README.md](infrastructure/README.md) |
+| `packages/` | 2341 | Shared libraries and utilities for the Freeside monorepo | [packages/README.md](packages/README.md) |
 | `scripts/` | 26 | Utility scripts | \u2014 |
-| `sites/` | 28151 | Web properties for the Arrakis | [sites/README.md](sites/README.md) |
+| `sites/` | 28151 | Web properties for Freeside | [sites/README.md](sites/README.md) |
 | `spec/` | 10 | Test suites | \u2014 |
 | `tests/` | 98 | Test suites | \u2014 |
-| `themes/` | 66072 | Theme-specific backend services for Arrakis | [themes/README.md](themes/README.md) |
+| `themes/` | 66072 | Theme-specific backend services for Freeside | [themes/README.md](themes/README.md) |
 
 ## Verification
 <!-- provenance: CODE-FACTUAL -->

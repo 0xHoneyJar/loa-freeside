@@ -96,6 +96,21 @@ function createMockConfigService(config: CurrentConfiguration): IConfigService {
   };
 }
 
+function createMockDashboardAuth(): DriftRoutesDeps['dashboardAuth'] {
+  return {
+    requireDashboardAuth: (req: any, res: any, next: any) => {
+      req.dashboardSession = {
+        userId: 'test-user',
+        username: 'testuser',
+        adminGuilds: [{ id: 'server-123', name: 'Test Server', icon: null }],
+      };
+      next();
+    },
+    requireServerAccess: (_req: any, _res: any, next: any) => next(),
+    invalidateAdminCheckCache: vi.fn(),
+  } as unknown as DriftRoutesDeps['dashboardAuth'];
+}
+
 function createMockResponse(): Response & {
   json: ReturnType<typeof vi.fn>;
   status: ReturnType<typeof vi.fn>;
@@ -134,7 +149,7 @@ describe('Drift Routes', () => {
       });
       const configService = createMockConfigService(config);
 
-      const deps: DriftRoutesDeps = { guild, configService };
+      const deps: DriftRoutesDeps = { guild, configService, dashboardAuth: createMockDashboardAuth() };
       const router = createDriftRoutes(deps);
 
       // Find the GET handler
@@ -180,7 +195,7 @@ describe('Drift Routes', () => {
       });
       const configService = createMockConfigService(config);
 
-      const deps: DriftRoutesDeps = { guild, configService };
+      const deps: DriftRoutesDeps = { guild, configService, dashboardAuth: createMockDashboardAuth() };
       const router = createDriftRoutes(deps);
 
       const getHandler = router.stack.find(
@@ -212,7 +227,7 @@ describe('Drift Routes', () => {
       });
       const configService = createMockConfigService(config);
 
-      const deps: DriftRoutesDeps = { guild, configService };
+      const deps: DriftRoutesDeps = { guild, configService, dashboardAuth: createMockDashboardAuth() };
       const router = createDriftRoutes(deps);
 
       const getHandler = router.stack.find(
@@ -249,7 +264,7 @@ describe('Drift Routes', () => {
       });
       const configService = createMockConfigService(config);
 
-      const deps: DriftRoutesDeps = { guild, configService };
+      const deps: DriftRoutesDeps = { guild, configService, dashboardAuth: createMockDashboardAuth() };
       const router = createDriftRoutes(deps);
 
       const postHandler = router.stack.find(
@@ -295,7 +310,7 @@ describe('Drift API Response Format', () => {
     });
     const configService = createMockConfigService(config);
 
-    const deps: DriftRoutesDeps = { guild, configService };
+    const deps: DriftRoutesDeps = { guild, configService, dashboardAuth: createMockDashboardAuth() };
     const router = createDriftRoutes(deps);
 
     const getHandler = router.stack.find(
@@ -324,7 +339,7 @@ describe('Drift API Response Format', () => {
     });
     const configService = createMockConfigService(config);
 
-    const deps: DriftRoutesDeps = { guild, configService };
+    const deps: DriftRoutesDeps = { guild, configService, dashboardAuth: createMockDashboardAuth() };
     const router = createDriftRoutes(deps);
 
     const getHandler = router.stack.find(
