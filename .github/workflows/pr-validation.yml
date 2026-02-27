@@ -198,10 +198,39 @@ jobs:
         run: |
           # Audit production dependencies only (skip devDependency vulns like esbuild/vite).
           # --audit-level=high fails on HIGH and CRITICAL severity.
-          npm audit --omit=dev --audit-level=high || {
-            echo "::warning::Security vulnerabilities found"
+          #
+          # Known unfixable transitive vulns (node-vault → postman-request → form-data/qs/tough-cookie)
+          # are excluded via JSON filtering. node-vault is unmaintained; replacement tracked in backlog.
+          AUDIT_JSON=$(npm audit --omit=dev --json 2>/dev/null || true)
+
+          # Count high+critical vulns, excluding known unfixable packages
+          KNOWN_UNFIXABLE="form-data|tough-cookie|postman-request"
+          HIGH_CRIT=$(echo "$AUDIT_JSON" | jq -r "
+            [.vulnerabilities // {} | to_entries[] |
+             select(.value.severity == \"high\" or .value.severity == \"critical\") |
+             select(.key | test(\"$KNOWN_UNFIXABLE\") | not) |
+             .key] | length
+          ")
+
+          echo "High/Critical vulnerabilities (excluding known unfixable): $HIGH_CRIT"
+
+          if [ "$HIGH_CRIT" -gt 0 ]; then
+            echo "::error::$HIGH_CRIT actionable high/critical vulnerabilities found"
+            npm audit --omit=dev --audit-level=high
             exit 1
-          }
+          fi
+
+          # Log known unfixable for visibility
+          UNFIXABLE=$(echo "$AUDIT_JSON" | jq -r "
+            [.vulnerabilities // {} | to_entries[] |
+             select(.key | test(\"$KNOWN_UNFIXABLE\")) |
+             \"\(.key)@\(.value.severity)\"] | join(\", \")
+          ")
+          if [ -n "$UNFIXABLE" ]; then
+            echo "::warning::Known unfixable transitive vulns (node-vault chain): $UNFIXABLE"
+          fi
+
+          echo "Security audit passed"
 
       - name: Check for secrets in code
         run: |
