@@ -17,16 +17,18 @@ export default defineConfig({
       },
     ],
   },
-  // Ensure bare imports from aliased @arrakis/* source files resolve correctly.
-  // Without this, imports like 'opossum' from packages/adapters/ fail because
-  // Vitest can't find them relative to the aliased path.
-  ssr: {
-    noExternal: ['opossum'],
-  },
   test: {
     globals: true,
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    // Ensure bare imports from aliased @arrakis/* source files resolve correctly.
+    // Without this, imports like 'opossum' from packages/adapters/ fail in CI
+    // because node_modules only exists in themes/sietch/, not in packages/adapters/.
+    server: {
+      deps: {
+        moduleDirectories: ['node_modules', path.resolve(__dirname, 'node_modules')],
+      },
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html', 'lcov'],
