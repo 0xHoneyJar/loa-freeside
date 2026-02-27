@@ -14,7 +14,7 @@
     "test:integration": "REDIS_URL=redis://localhost:6379 vitest run --workspace vitest.workspace.ts --project integration",
     "test:e2e": "../../tests/e2e/run-e2e.sh",
     "test:run": "vitest run --workspace vitest.workspace.ts",
-    "test:coverage": "vitest run --workspace vitest.workspace.ts --coverage",
+    "test:coverage": "vitest run --workspace vitest.workspace.ts --project unit --coverage",
     "test:watch": "vitest --workspace vitest.workspace.ts --project unit",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
