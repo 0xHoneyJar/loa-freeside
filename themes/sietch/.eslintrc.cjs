@@ -91,5 +91,16 @@ module.exports = {
       },
     },
   ],
-  ignorePatterns: ['dist', 'node_modules', '*.cjs', 'vitest.config.ts'],
+  ignorePatterns: [
+    'dist',
+    'node_modules',
+    '*.cjs',
+    'vitest.config.ts',
+    // Match tsconfig.production.json excludes to prevent parsing errors
+    // (files outside the TS project can't be type-checked by ESLint)
+    'src/**/*.test.ts',
+    'src/**/*.spec.ts',
+    'src/test-utils/**',
+    'src/ui/**',
+  ],
 };
