@@ -68,13 +68,16 @@ WORKDIR /repo/themes/sietch
 # Copy package files for Sietch
 COPY themes/sietch/package*.json ./
 
-# Install dependencies with --ignore-scripts to prevent partial builds
-# Then manually rebuild native modules in correct order
+# Install dependencies with --ignore-scripts to prevent native module failures,
+# then rebuild each native module individually.
 RUN npm ci --ignore-scripts
 
-# Rebuild native modules that require compilation
-# Sharp uses prebuilt binaries when available, falls back to node-gyp
-RUN npm rebuild sharp || npm install sharp --build-from-source
+# Sharp: install the prebuilt binary for Alpine (linux-musl-x64) using the
+# platform-specific optional dependency, then rebuild to link against system vips.
+RUN npm install --no-save @img/sharp-linux-x64 2>/dev/null; \
+    npm rebuild sharp --build-from-source 2>/dev/null || true
+
+# Rebuild other native modules that need compilation
 RUN npm rebuild bcrypt
 RUN npm rebuild better-sqlite3
 
@@ -83,6 +86,10 @@ COPY themes/sietch/tsconfig.json themes/sietch/tsconfig.production.json ./
 COPY themes/sietch/src ./src
 COPY themes/sietch/drizzle ./drizzle
 COPY themes/sietch/drizzle.config.ts ./
+
+# Copy TypeScript declaration stubs for packages/services/ relative imports.
+# Route files use ../../../../packages/services/ which resolves to themes/packages/services/.
+COPY themes/packages/services /repo/themes/packages/services
 
 # Build TypeScript
 RUN npm run build

@@ -88,6 +88,13 @@
     "ws": "^8.19.0",
     "zod": "^3.23.8"
   },
+  "overrides": {
+    "fast-xml-parser": ">=5.3.8",
+    "postman-request": {
+      "form-data": ">=2.5.4",
+      "qs": ">=6.14.1"
+    }
+  },
   "devDependencies": {
     "@types/argon2": "^0.14.1",
     "@types/bcrypt": "^6.0.0",
