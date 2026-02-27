@@ -379,7 +379,7 @@ describe('Agent Routes — Input Validation (S10-T1)', () => {
       const res = await request(app).get('/.well-known/jwks.json');
 
       expect(res.headers['etag']).toBeDefined();
-      expect(res.headers['cache-control']).toContain('max-age=3600');
+      expect(res.headers['cache-control']).toContain('max-age=60');
     });
 
     it('should return 304 on If-None-Match hit', async () => {

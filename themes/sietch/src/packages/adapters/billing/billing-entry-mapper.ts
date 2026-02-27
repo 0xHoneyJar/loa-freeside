@@ -35,7 +35,7 @@ export function toLohBillingEntry(entry: LedgerEntry): BillingEntry {
     entry_id: entry.id,
     account_id: entry.accountId,
     total_micro: entry.amountMicro.toString(),
-    entry_type: entry.entryType as ProtocolEntryType,
+    entry_type: entry.entryType,
     reference_id: entry.lotId ?? entry.reservationId ?? null,
     created_at: entry.createdAt,
     metadata: entry.metadata,

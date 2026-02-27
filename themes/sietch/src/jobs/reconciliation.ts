@@ -29,7 +29,7 @@ export class ReconciliationJob {
   private timer: ReturnType<typeof setInterval> | null = null;
 
   constructor(config: ReconciliationJobConfig) {
-    this.service = new ReconciliationService(config.db, config.eventEmitter);
+    this.service = new ReconciliationService(config.db, config.eventEmitter as any);
     this.intervalMs = config.intervalMs ?? 21_600_000; // 6 hours
     this.logger = config.logger ?? defaultLogger;
   }

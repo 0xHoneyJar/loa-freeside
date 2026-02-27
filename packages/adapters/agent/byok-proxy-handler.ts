@@ -62,15 +62,12 @@ const STRIP_RESPONSE_HEADERS = new Set([
 // Private IP Ranges (RFC 1918, RFC 4193, link-local, loopback)
 // --------------------------------------------------------------------------
 
-interface CIDRRange {
-  addr: bigint;
-  mask: bigint;
-}
+// IPv6 CIDR support deferred — only IPv4 private ranges implemented
 
 /** Parse IPv4 address to 32-bit number */
 function ipv4ToNum(ip: string): number {
   const parts = ip.split('.');
-  return ((+parts[0]) << 24) | ((+parts[1]) << 16) | ((+parts[2]) << 8) | (+parts[3]);
+  return ((+(parts[0] ?? '0')) << 24) | ((+(parts[1] ?? '0')) << 16) | ((+(parts[2] ?? '0')) << 8) | (+(parts[3] ?? '0'));
 }
 
 /** IPv4 private ranges */
@@ -425,7 +422,9 @@ export class BYOKProxyHandler {
     }
 
     // Use first resolved address (resolve-once pattern)
-    const selected = addresses[0].address;
+    const firstAddr = addresses[0];
+    if (!firstAddr) throw new BYOKProxyError('BYOK_DNS_EMPTY', 'No DNS addresses resolved', 502);
+    const selected = firstAddr.address;
     log.info({ hostname, resolvedIP: selected }, 'DNS resolved for BYOK egress');
     return selected;
   }

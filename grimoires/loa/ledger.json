@@ -1710,6 +1710,29 @@
           "title": "Meta-Governance"
         }
       ]
+    },
+    {
+      "id": "cycle-045",
+      "label": "Clean Slate — Zero-Error CI Pipeline",
+      "status": "active",
+      "created": "2026-02-27T07:00:00Z",
+      "prd": "grimoires/loa/prd.md",
+      "sdd": "grimoires/loa/sdd.md",
+      "sprint_plan": "grimoires/loa/sprint.md",
+      "sprints": [
+        {
+          "global_id": 378,
+          "local_label": "sprint-1",
+          "status": "pending",
+          "title": "Build + Lint + Test Gates (MVP)"
+        },
+        {
+          "global_id": 379,
+          "local_label": "sprint-2",
+          "status": "pending",
+          "title": "Security + Docker Gates"
+        }
+      ]
     }
   ]
 }

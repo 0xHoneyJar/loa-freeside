@@ -52,7 +52,7 @@ const mockWaiver: FeeWaiver = {
   reason: 'Partner program',
   grantedBy: 'admin',
   grantedAt: new Date('2025-01-01T00:00:00Z'),
-  expiresAt: new Date('2026-12-31T23:59:59Z'), // ~1 year from now
+  expiresAt: new Date('2027-12-31T23:59:59Z'), // ~1 year from now
   revokedAt: undefined,
   revokedBy: undefined,
   revokeReason: undefined,
@@ -127,7 +127,7 @@ describe('WaiverService - grantWaiver', () => {
 
   it('should grant waiver with expiration date', async () => {
     // Arrange
-    const expiresAt = new Date('2026-01-01T00:00:00Z');
+    const expiresAt = new Date('2027-01-01T00:00:00Z');
     const params = {
       communityId: 'community-123',
       tier: 'enterprise' as SubscriptionTier,

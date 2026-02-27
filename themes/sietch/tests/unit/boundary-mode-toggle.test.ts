@@ -16,6 +16,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { BoundaryLogger, BoundaryMetrics } from '../../src/packages/core/protocol/parse-boundary-micro-usd.js';
+import { resetParseModeCache } from '../../src/packages/core/protocol/parse-boundary-micro-usd.js';
 import { evaluateGraduation, DEFAULT_GRADUATION_CRITERIA, type GraduationCounters } from '../../src/packages/core/protocol/graduation.js';
 import { BoundaryMetricsRegistry, METRIC_NAMES, resetBoundaryMetricsRegistry } from '../../src/packages/core/protocol/boundary-metrics.js';
 
@@ -281,9 +282,11 @@ describe('parseBoundaryMicroUsd — env var mode resolution', () => {
     } else {
       delete process.env.PARSE_MICRO_USD_MODE;
     }
+    resetParseModeCache();
   });
 
   it('PARSE_MICRO_USD_MODE=legacy activates legacy mode', async () => {
+    resetParseModeCache();
     process.env.PARSE_MICRO_USD_MODE = 'legacy';
     const { parseBoundaryMicroUsd } = await import(
       '../../src/packages/core/protocol/parse-boundary-micro-usd.js'
@@ -297,6 +300,7 @@ describe('parseBoundaryMicroUsd — env var mode resolution', () => {
   });
 
   it('PARSE_MICRO_USD_MODE=enforce activates enforce mode', async () => {
+    resetParseModeCache();
     process.env.PARSE_MICRO_USD_MODE = 'enforce';
     const { parseBoundaryMicroUsd } = await import(
       '../../src/packages/core/protocol/parse-boundary-micro-usd.js'

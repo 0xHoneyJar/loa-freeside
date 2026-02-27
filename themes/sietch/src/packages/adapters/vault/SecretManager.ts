@@ -254,7 +254,7 @@ export class SecretManager {
             success: true,
           });
           this.log('warn', `Using environment fallback for ${path} -> ${envVar}`);
-          return process.env[envVar]!;
+          return process.env[envVar];
         }
       }
 

@@ -93,9 +93,9 @@ interface SigningKeyState {
  */
 function requireEcPublicJwk(jwk: jose.JWK): { kty: string; crv: string; x: string; y: string } {
   const kty = jwk.kty;
-  const crv = (jwk as jose.JWK).crv;
-  const x = (jwk as jose.JWK).x;
-  const y = (jwk as jose.JWK).y;
+  const crv = (jwk).crv;
+  const x = (jwk).x;
+  const y = (jwk).y;
 
   if (!kty || !crv || !x || !y) {
     throw new Error(`Invalid EC public JWK: missing fields (kty=${kty}, crv=${crv}, x=${!!x}, y=${!!y})`);
@@ -139,7 +139,7 @@ async function loadKeyFromEnvironment(): Promise<SigningKeyState | null> {
     publicJwk.kid = kid;
     publicJwk.use = 'sig';
     publicJwk.alg = JWT_ALGORITHM;
-    const publicKey = await jose.importJWK(publicJwk, JWT_ALGORITHM);
+    const publicKey = await jose.importJWK(publicJwk, JWT_ALGORITHM) as jose.KeyLike;
 
     logger.info({ kid }, 'S2S signing key loaded from environment');
 

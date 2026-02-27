@@ -22,7 +22,7 @@ import { CONTRACT_VERSION } from '../../../src/packages/core/protocol/arrakis-co
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const EXPECTED_SHA = 'ec5024938339121dbb25d3b72f8b67fdb0432cad';
+const EXPECTED_SHA = 'b6e0027aea2f6e9c26726e29b44edbc1f3e3e290';
 
 /**
  * Find an installed package's package.json by walking up the directory tree
@@ -48,8 +48,8 @@ describe('Three-Layer Drift Detection (Task 303.1)', () => {
   // ===========================================================================
 
   describe('Layer 1: CONTRACT_VERSION', () => {
-    it('CONTRACT_VERSION is 7.0.0', () => {
-      expect(CONTRACT_VERSION).toBe('7.0.0');
+    it('CONTRACT_VERSION is 8.2.0', () => {
+      expect(CONTRACT_VERSION).toBe('8.2.0');
     });
   });
 
@@ -109,6 +109,8 @@ describe('Three-Layer Drift Detection (Task 303.1)', () => {
       'arrakis-arithmetic.ts',
       'arrakis-compat.ts',
       'arrakis-conservation.ts',
+      'arrakis-dynamic-contract.ts',
+      'arrakis-governance.ts',
       // KEEP files (local to arrakis, different from v7.0.0)
       'billing-types.ts',
       'billing-entry.ts',
@@ -119,6 +121,16 @@ describe('Three-Layer Drift Detection (Task 303.1)', () => {
       'identity-trust.ts',
       'atomic-counter.ts',
       'jwt-boundary.ts',
+      // Boundary hardening (Sprint 4)
+      'boundary-metrics.ts',
+      'graduation.ts',
+      'parse-boundary-micro-usd.ts',
+      'micro-usd-schema.ts',
+      // Capability mesh
+      'capability-catalog.ts',
+      'capability-mesh.ts',
+      // Quarantine
+      'quarantine.ts',
       // Barrel
       'index.ts',
     ]);

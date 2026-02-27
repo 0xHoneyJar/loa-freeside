@@ -190,14 +190,14 @@ export function normalizeInboundClaims(claims: {
     if (claims.trust_scopes && claims.trust_scopes.length > 0) {
       // Security invariant: always block admin:full regardless of feature flag state.
       // The privilege escalation guard is not a normalization behavior.
-      if ((claims.trust_scopes as string[]).includes('admin:full')) {
+      if ((claims.trust_scopes).includes('admin:full')) {
         throw new ClaimNormalizationError(
           'PRIVILEGE_ESCALATION',
           'Inbound token cannot contain admin:full scope'
         );
       }
       // Runtime scope validation even when disabled (defense-in-depth)
-      const unknownDisabled = (claims.trust_scopes as string[]).filter(s => !VALID_SCOPES.has(s as TrustScope));
+      const unknownDisabled = (claims.trust_scopes).filter(s => !VALID_SCOPES.has(s as TrustScope));
       if (unknownDisabled.length > 0) {
         throw new ClaimNormalizationError(
           'UNKNOWN_SCOPE',
@@ -344,7 +344,7 @@ export function normalizeCoordinationMessage(
   }
 
   const negotiation = negotiateVersion();
-  const supported = negotiation.supported as readonly string[];
+  const supported = negotiation.supported;
 
   // Check if version is supported
   if (!supported.includes(message.version)) {

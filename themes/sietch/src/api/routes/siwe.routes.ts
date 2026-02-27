@@ -252,7 +252,7 @@ siweRouter.post('/verify', async (req: Request, res: Response) => {
     const verifyResult = await signatureVerifier.verifyAddress(
       message,
       signature as Hex,
-      parsed.address as `0x${string}`
+      parsed.address
     );
 
     if (!verifyResult.valid) {
@@ -397,7 +397,7 @@ function parseSiweMessage(message: string): ParsedSiweMessage | null {
     for (const line of lines) {
       const kv = line.match(/^(URI|Version|Chain ID|Nonce|Issued At|Expiration Time): (.+)$/);
       if (kv) {
-        fields[kv[1]!] = kv[2]!;
+        fields[kv[1]] = kv[2]!;
       }
     }
 
@@ -405,17 +405,17 @@ function parseSiweMessage(message: string): ParsedSiweMessage | null {
       return null;
     }
 
-    const chainId = parseInt(fields['Chain ID']!, 10);
+    const chainId = parseInt(fields['Chain ID'], 10);
     if (isNaN(chainId)) return null;
 
     return {
-      domain: domainMatch[1]!,
+      domain: domainMatch[1],
       address,
-      uri: fields['URI']!,
+      uri: fields['URI'],
       chainId,
-      nonce: fields['Nonce']!,
-      issuedAt: fields['Issued At']!,
-      expirationTime: fields['Expiration Time']!,
+      nonce: fields['Nonce'],
+      issuedAt: fields['Issued At'],
+      expirationTime: fields['Expiration Time'],
     };
   } catch {
     return null;

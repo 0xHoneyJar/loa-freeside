@@ -369,7 +369,7 @@ export class SettlementService {
 
         // Resolve drip percentage
         const dripPct = this.governance
-          ? (() => { try { return this.governance!.resolveInTransaction<number>(this.db, 'agent.drip_recovery_pct', entityType).value; } catch { return 50; } })()
+          ? (() => { try { return this.governance.resolveInTransaction<number>(this.db, 'agent.drip_recovery_pct', entityType).value; } catch { return 50; } })()
           : (CONFIG_FALLBACKS['agent.drip_recovery_pct'] as number) ?? 50;
 
         const dripAmount = (earningAmountMicro * BigInt(dripPct)) / 100n;
@@ -474,7 +474,7 @@ export class SettlementService {
   private settleEarning(earning: EarningRow, opts?: { entityType?: EntityType }): void {
     const now = sqliteTimestamp();
     const holdResolved = this.governance
-      ? (() => { try { return this.governance!.resolveInTransaction<number>(this.db, 'settlement.hold_seconds', opts?.entityType); } catch { return null; } })()
+      ? (() => { try { return this.governance.resolveInTransaction<number>(this.db, 'settlement.hold_seconds', opts?.entityType); } catch { return null; } })()
       : null;
     const isInstant = holdResolved ? holdResolved.value === 0 : false;
 

@@ -93,7 +93,7 @@ export class AgentGovernanceService implements IAgentGovernanceService {
     const validation = validateConfigValue(paramKey, value);
     if (!validation.valid) {
       throw Object.assign(
-        new Error(validation.error!),
+        new Error(validation.error),
         { code: 'VALIDATION_ERROR', statusCode: 400 },
       );
     }

@@ -106,10 +106,10 @@ export function createOptimisticLockMiddleware(options: OptimisticLockOptions = 
     const body = req.body as Record<string, unknown> | undefined;
     if (body) {
       if (typeof body[bodyField] === 'number') {
-        return body[bodyField] as number;
+        return body[bodyField];
       }
       if (typeof body[bodyField] === 'string') {
-        const version = parseInt(body[bodyField] as string, 10);
+        const version = parseInt(body[bodyField], 10);
         if (!isNaN(version) && version >= 0) {
           return version;
         }
@@ -117,10 +117,10 @@ export function createOptimisticLockMiddleware(options: OptimisticLockOptions = 
 
       // Try fallback field
       if (typeof body[fallbackField] === 'number') {
-        return body[fallbackField] as number;
+        return body[fallbackField];
       }
       if (typeof body[fallbackField] === 'string') {
-        const version = parseInt(body[fallbackField] as string, 10);
+        const version = parseInt(body[fallbackField], 10);
         if (!isNaN(version) && version >= 0) {
           return version;
         }

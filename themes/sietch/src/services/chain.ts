@@ -239,7 +239,7 @@ class ChainService {
     }
 
     const result = await this.provider.getTopTokenHolders(
-      config.chain.bgtAddress as Address,
+      config.chain.bgtAddress,
       {
         chainId: BERACHAIN_CHAIN_ID,
         limit,
@@ -265,7 +265,7 @@ class ChainService {
     if (!isAddress(address)) {
       throw new Error(`Invalid Ethereum address: ${address}`);
     }
-    return address as Address;
+    return address;
   }
 
   /**
@@ -286,7 +286,7 @@ class ChainService {
     return this.provider.getBalanceWithUSD(
       BERACHAIN_CHAIN_ID,
       address,
-      config.chain.bgtAddress as Address
+      config.chain.bgtAddress
     );
   }
 
@@ -420,7 +420,7 @@ class ChainService {
     const eligibleAddresses: Address[] = [];
     for (const address of receivedWallets) {
       if (!burnedWallets.has(address.toLowerCase())) {
-        eligibleAddresses.push(address as Address);
+        eligibleAddresses.push(address);
       }
     }
     logger.info(
@@ -491,7 +491,7 @@ class ChainService {
 
       try {
         const batchLogs = await this.client.getLogs({
-          address: config.chain.bgtAddress as Address,
+          address: config.chain.bgtAddress,
           event: TRANSFER_EVENT,
           fromBlock,
           toBlock: endBlock,
@@ -543,7 +543,7 @@ class ChainService {
       try {
         const results = await this.client.multicall({
           contracts: batch.map((address) => ({
-            address: config.chain.bgtAddress as Address,
+            address: config.chain.bgtAddress,
             abi: BALANCE_OF_ABI,
             functionName: 'balanceOf',
             args: [address],
@@ -554,7 +554,7 @@ class ChainService {
           const result = results[j];
           const batchAddress = batch[j];
           if (result && result.status === 'success' && batchAddress) {
-            const balance = result.result as bigint;
+            const balance = result.result;
             entries.push({
               address: batchAddress,
               bgtClaimed: balance, // Using balance as "claimed" for backwards compatibility
@@ -585,7 +585,7 @@ class ChainService {
     const currentBlock = await this.client.getBlockNumber();
 
     return this.fetchTransferLogs(
-      config.chain.bgtAddress as Address,
+      config.chain.bgtAddress,
       currentBlock,
       ZERO_ADDRESS
     );
@@ -680,7 +680,7 @@ class ChainService {
 
       try {
         const logs = await this.client.getLogs({
-          address: config.chain.bgtAddress as Address,
+          address: config.chain.bgtAddress,
           event: TRANSFER_EVENT,
           args: { from: address, to: ZERO_ADDRESS },
           fromBlock,
@@ -719,7 +719,7 @@ class ChainService {
         const balance = await this.provider.getBalance(
           BERACHAIN_CHAIN_ID,
           address,
-          config.chain.bgtAddress as Address
+          config.chain.bgtAddress
         );
         return balance;
       } catch (error) {
@@ -730,12 +730,12 @@ class ChainService {
     // RPC fallback
     try {
       const balance = await this.client.readContract({
-        address: config.chain.bgtAddress as Address,
+        address: config.chain.bgtAddress,
         abi: BALANCE_OF_ABI,
         functionName: 'balanceOf',
         args: [address],
       });
-      return balance as bigint;
+      return balance;
     } catch (error) {
       logger.warn({ address, error }, 'Error fetching BGT balance');
       throw error;

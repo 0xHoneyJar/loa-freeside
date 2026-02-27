@@ -125,7 +125,7 @@ export function verifySessionToken(
   // Decode and validate header before selecting secret
   let header: JwtHeader;
   try {
-    header = JSON.parse(base64urlDecode(headerB64!)) as JwtHeader;
+    header = JSON.parse(base64urlDecode(headerB64)) as JwtHeader;
   } catch {
     return { valid: false, error: 'Invalid header' };
   }
@@ -152,7 +152,7 @@ export function verifySessionToken(
   let sigValid = false;
   for (const { secret, label } of secretsToTry) {
     const expectedSig = hmacSha256(secret, `${headerB64}.${payloadB64}`);
-    if (timingSafeEqual(signatureB64!, expectedSig)) {
+    if (timingSafeEqual(signatureB64, expectedSig)) {
       sigValid = true;
       if (label === 'previous') {
         logger.info('Session token verified with previous secret (rotation in progress)');
@@ -168,7 +168,7 @@ export function verifySessionToken(
   // Decode and validate payload
   let payload: SiweSessionPayload;
   try {
-    payload = JSON.parse(base64urlDecode(payloadB64!)) as SiweSessionPayload;
+    payload = JSON.parse(base64urlDecode(payloadB64)) as SiweSessionPayload;
   } catch {
     return { valid: false, error: 'Invalid payload' };
   }
@@ -204,7 +204,7 @@ function timingSafeEqual(a: string, b: string): boolean {
     // Fallback — still constant-time for equal lengths
     let result = 0;
     for (let i = 0; i < bufA.length; i++) {
-      result |= bufA[i]! ^ bufB[i]!;
+      result |= bufA[i] ^ bufB[i];
     }
     return result === 0;
   }

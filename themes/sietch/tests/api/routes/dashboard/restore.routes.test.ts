@@ -137,7 +137,20 @@ describe('Restore Routes', () => {
         createMockHistoryResult(checkpoints)
       );
 
-      const deps: RestoreRoutesDeps = { configService: mockConfigService };
+      const deps: RestoreRoutesDeps = {
+        configService: mockConfigService,
+        dashboardAuth: {
+          requireDashboardAuth: (req: Request, _res: Response, next: NextFunction) => {
+            (req as any).dashboardSession = {
+              userId: 'test-user',
+              username: 'testuser',
+              adminGuilds: [{ id: 'server-123', name: 'Test Server', icon: null }],
+            };
+            next();
+          },
+          requireServerAccess: (_req: Request, _res: Response, next: NextFunction) => { next(); },
+        } as any,
+      };
       const router = createRestoreRoutes(deps);
 
       const getHandler = router.stack.find(
@@ -181,7 +194,20 @@ describe('Restore Routes', () => {
         createMockHistoryResult([checkpoint])
       );
 
-      const deps: RestoreRoutesDeps = { configService: mockConfigService };
+      const deps: RestoreRoutesDeps = {
+        configService: mockConfigService,
+        dashboardAuth: {
+          requireDashboardAuth: (req: Request, _res: Response, next: NextFunction) => {
+            (req as any).dashboardSession = {
+              userId: 'test-user',
+              username: 'testuser',
+              adminGuilds: [{ id: 'server-123', name: 'Test Server', icon: null }],
+            };
+            next();
+          },
+          requireServerAccess: (_req: Request, _res: Response, next: NextFunction) => { next(); },
+        } as any,
+      };
       const router = createRestoreRoutes(deps);
 
       const postHandler = router.stack.find(
@@ -210,7 +236,20 @@ describe('Restore Routes', () => {
     });
 
     it('should return 400 for missing checkpoint ID', async () => {
-      const deps: RestoreRoutesDeps = { configService: mockConfigService };
+      const deps: RestoreRoutesDeps = {
+        configService: mockConfigService,
+        dashboardAuth: {
+          requireDashboardAuth: (req: Request, _res: Response, next: NextFunction) => {
+            (req as any).dashboardSession = {
+              userId: 'test-user',
+              username: 'testuser',
+              adminGuilds: [{ id: 'server-123', name: 'Test Server', icon: null }],
+            };
+            next();
+          },
+          requireServerAccess: (_req: Request, _res: Response, next: NextFunction) => { next(); },
+        } as any,
+      };
       const router = createRestoreRoutes(deps);
 
       const postHandler = router.stack.find(
@@ -254,7 +293,20 @@ describe('Restore Routes', () => {
         createMockHistoryResult([checkpoint])
       );
 
-      const deps: RestoreRoutesDeps = { configService: mockConfigService };
+      const deps: RestoreRoutesDeps = {
+        configService: mockConfigService,
+        dashboardAuth: {
+          requireDashboardAuth: (req: Request, _res: Response, next: NextFunction) => {
+            (req as any).dashboardSession = {
+              userId: 'test-user',
+              username: 'testuser',
+              adminGuilds: [{ id: 'server-123', name: 'Test Server', icon: null }],
+            };
+            next();
+          },
+          requireServerAccess: (_req: Request, _res: Response, next: NextFunction) => { next(); },
+        } as any,
+      };
       const router = createRestoreRoutes(deps);
 
       const postHandler = router.stack.find(
@@ -302,7 +354,20 @@ describe('Restore Routes', () => {
       (mockConfigService.updateFeatureGates as any).mockResolvedValue(undefined);
       (mockConfigService.updateRoleMappings as any).mockResolvedValue(undefined);
 
-      const deps: RestoreRoutesDeps = { configService: mockConfigService };
+      const deps: RestoreRoutesDeps = {
+        configService: mockConfigService,
+        dashboardAuth: {
+          requireDashboardAuth: (req: Request, _res: Response, next: NextFunction) => {
+            (req as any).dashboardSession = {
+              userId: 'test-user',
+              username: 'testuser',
+              adminGuilds: [{ id: 'server-123', name: 'Test Server', icon: null }],
+            };
+            next();
+          },
+          requireServerAccess: (_req: Request, _res: Response, next: NextFunction) => { next(); },
+        } as any,
+      };
       const router = createRestoreRoutes(deps);
 
       const postHandler = router.stack.find(
@@ -333,7 +398,20 @@ describe('Restore Routes', () => {
     });
 
     it('should return 400 for missing checkpoint ID', async () => {
-      const deps: RestoreRoutesDeps = { configService: mockConfigService };
+      const deps: RestoreRoutesDeps = {
+        configService: mockConfigService,
+        dashboardAuth: {
+          requireDashboardAuth: (req: Request, _res: Response, next: NextFunction) => {
+            (req as any).dashboardSession = {
+              userId: 'test-user',
+              username: 'testuser',
+              adminGuilds: [{ id: 'server-123', name: 'Test Server', icon: null }],
+            };
+            next();
+          },
+          requireServerAccess: (_req: Request, _res: Response, next: NextFunction) => { next(); },
+        } as any,
+      };
       const router = createRestoreRoutes(deps);
 
       const postHandler = router.stack.find(
@@ -359,7 +437,20 @@ describe('Restore Routes', () => {
     });
 
     it('should return 400 for missing confirmation code', async () => {
-      const deps: RestoreRoutesDeps = { configService: mockConfigService };
+      const deps: RestoreRoutesDeps = {
+        configService: mockConfigService,
+        dashboardAuth: {
+          requireDashboardAuth: (req: Request, _res: Response, next: NextFunction) => {
+            (req as any).dashboardSession = {
+              userId: 'test-user',
+              username: 'testuser',
+              adminGuilds: [{ id: 'server-123', name: 'Test Server', icon: null }],
+            };
+            next();
+          },
+          requireServerAccess: (_req: Request, _res: Response, next: NextFunction) => { next(); },
+        } as any,
+      };
       const router = createRestoreRoutes(deps);
 
       const postHandler = router.stack.find(

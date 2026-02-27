@@ -13,7 +13,7 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import { logger } from '../../utils/logger.js';
-import type { IAgentGateway, AgentRequestContext } from '@arrakis/core/ports';
+import type { IAgentGateway, AgentRequestContext, AgentInvokeRequest } from '@arrakis/core/ports';
 import { formatErrorMessage } from '@arrakis/adapters/agent';
 import type { AgentErrorCode } from '@arrakis/adapters/agent';
 import { deriveIdempotencyKey } from '@arrakis/adapters/agent/idempotency';
@@ -121,7 +121,7 @@ export async function handleAgentCommand(
       context,
       agent: 'default',
       messages: [{ role: 'user', content: message }],
-      modelAlias: modelAlias as AgentRequestContext['accessLevel'] | undefined,
+      modelAlias: modelAlias as AgentInvokeRequest['modelAlias'],
     })) {
       if (event.type === 'content') {
         fullContent += event.data.text;

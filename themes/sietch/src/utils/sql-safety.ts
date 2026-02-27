@@ -161,7 +161,7 @@ export function buildBadgeSettingsSetClause(
     const validColumn = validateBadgeSettingsColumn(key);
     if (validColumn !== 'updated_at' && validColumn !== 'created_at') {
       sets.push(`${validColumn} = ?`);
-      values.push(value as string | number);
+      values.push(value);
     }
   }
 
@@ -191,7 +191,7 @@ export function buildSubscriptionSetClause(
     const validColumn = validateSubscriptionColumn(key);
     if (validColumn !== 'updated_at') {
       sets.push(`${validColumn} = ?`);
-      values.push(value as string | number | null);
+      values.push(value);
     }
   }
 

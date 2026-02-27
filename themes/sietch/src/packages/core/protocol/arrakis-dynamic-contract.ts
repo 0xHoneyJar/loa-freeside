@@ -177,7 +177,7 @@ export function loadDynamicContract(
     throw err;
   }
 
-  const contract = parsed as DynamicContract;
+  const contract = parsed;
 
   // Verify monotonic expansion
   const expansion = verifyMonotonicExpansion(contract);

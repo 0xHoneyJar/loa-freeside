@@ -225,7 +225,7 @@ export async function handleWizardButton(
         const newSession = await engine.start({
           guildId: interaction.guildId!,
           userId: interaction.user.id,
-          channelId: interaction.channelId!,
+          channelId: interaction.channelId,
         });
         result = await engine.process(newSession.id);
         await sendWizardResponse(interaction, newSession, result);

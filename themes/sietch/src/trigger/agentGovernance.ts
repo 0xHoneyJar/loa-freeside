@@ -36,7 +36,7 @@ export const agentGovernanceLifecycleTask = schedules.task({
         expired,
       });
 
-      logAuditEvent('agent_governance_lifecycle', {
+      logAuditEvent('agent_governance_lifecycle' as any, {
         activated,
         expired,
         timestamp: new Date().toISOString(),

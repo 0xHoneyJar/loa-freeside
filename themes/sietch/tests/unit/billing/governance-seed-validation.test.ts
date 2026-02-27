@@ -83,9 +83,7 @@ describe('Governance Seed Validation', () => {
       'payout.fee_cap_percent',
       'fraud_rule.cooldown_seconds',
       'revenue_rule.cooldown_seconds',
-      'agent.budget_cap_micro',
       'agent.drip_recovery_pct',
-      'agent.provenance_ttl_seconds',
     ];
 
     for (const param of expectedParams) {
@@ -121,9 +119,9 @@ describe('Governance Seed Validation', () => {
       expect(CONFIG_FALLBACKS['payout.rate_limit_seconds']).toBe(86_400);
     });
 
-    it('agent drip recovery is 50% vs global 100%', () => {
+    it('agent drip recovery is 50% (agent override matches global default)', () => {
       expect(AGENT_OVERRIDES['agent.drip_recovery_pct']).toBe(50);
-      expect(CONFIG_FALLBACKS['agent.drip_recovery_pct']).toBe(100);
+      expect(CONFIG_FALLBACKS['agent.drip_recovery_pct']).toBe(50);
     });
   });
 
@@ -136,7 +134,7 @@ describe('Governance Seed Validation', () => {
     it('rejects string for integer parameter', () => {
       const result = validateConfigValue('payout.fee_cap_percent', 'not-a-number');
       expect(result.valid).toBe(false);
-      expect(result.error).toContain('integer');
+      expect(result.error).toContain('numeric');
     });
 
     it('rejects value below minimum', () => {

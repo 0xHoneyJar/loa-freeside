@@ -1,31 +1,36 @@
 {
   "verdict": "APPROVED",
-  "summary": "All five previously-blocking issues are addressed with concrete scoping, explicit partitioning mechanics, defined governed-write scope, and CI-verifiable integration coverage, with no new truly-blocking problems introduced.",
+  "summary": "All previously-blocking gaps (per-package lockfiles including core, sietch build parity, lint/scope verification, security scope + node-vault contingency compliance, and Dockerfile install/lockfile alignment) are addressed with concrete acceptance criteria and no new blocking issues introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "Task 3.2 mixed CI-implementable code/DB work with untestable ops/infra deliverables (pgaudit/CloudWatch/cron/SLOs), making DoD unachievable",
+      "original_issue": "Core lockfile/install path missing despite per-package `npm ci`",
       "status": "fixed",
-      "notes": "3.2 is now explicitly code+DB-migration only with CI-provable acceptance criteria, and ops/infra moved to 3.3 as a non-blocking deployment ticket with clear deliverables."
+      "notes": "Task 1.1 now explicitly regenerates `packages/core` lockfile and verifies `npm ci` succeeds in core/adapters/sietch."
     },
     {
-      "original_issue": "Partitioning plan was ambiguous/incorrectly described (\"partition trigger inheritance\"), risking runtime insert failures when partitions are missing",
+      "original_issue": "Sietch build not required (only `tsc --noEmit`), risking Build gate failure",
       "status": "fixed",
-      "notes": "Now specifies native RANGE partitioning on created_at plus a DEFAULT partition safety net, an idempotent SQL partition-creation function, and both scheduled job + CI headroom gate. This removes the outage mode and is implementable."
+      "notes": "Task 1.2 now requires `npm run build` for `themes/sietch` and keeps `tsc --noEmit` as an additional check, matching PRD criteria."
     },
     {
-      "original_issue": "GovernedMutationService coupling requirement lacked explicit scope (tables/write paths), making it impossible to prove all governed writes route through the service",
+      "original_issue": "ESLint plan assumed ignore behavior and didn’t mirror CI invocation / repo scope",
       "status": "fixed",
-      "notes": "Adds an explicit governed write-path inventory (credit_lots, credit_reservations, agent_reputation), excludes non-governed tables, and includes acceptance/tests for routing and for direct updates failing."
+      "notes": "Task 1.3 explicitly states CI lint runs only in sietch with `working-directory: ./themes/sietch`, mirrors the exact command (`npm run lint` -> `eslint src --ext .ts`), and includes AC to confirm scope and `.eslintignore` behavior."
     },
     {
-      "original_issue": "Sprint 2 Task 2.2 depended on Sprint 3 FR-6 audit trail without a port/stub, creating a cross-sprint blocker",
-      "status": "fixed",
-      "notes": "Audit emission removed from 2.2, AuditTrailPort introduced with fail-closed stub behavior, and real wiring deferred to Sprint 4 integration—unblocks Sprint 2 while preserving fail-closed semantics."
+      "original_issue": "Security remediation scoped only to sietch without acknowledging per-package gates",
+      "status": "rejected_with_valid_reason",
+      "notes": "The revised plan explicitly asserts (and makes an AC) that CI Security Scan is sietch-only via workflow `working-directory`. Given that constraint, limiting remediation to sietch is acceptable for getting required checks green and meeting PRD success criteria as written."
     },
     {
-      "original_issue": "Integration tests did not cover several DB-enforced invariants required by Task 3.2 (RLS/privileges, triggers, uniqueness, skew, idempotency), risking unverified life-critical properties",
+      "original_issue": "node-vault contingency could violate zero high/critical requirement",
       "status": "fixed",
-      "notes": "Task 4.2 adds a DB harness that provisions roles/migrations/RLS/triggers and enumerates 13 scenarios explicitly covering the previously-missing invariants, including privilege/RLS/trigger enforcement, cross-partition uniqueness, skew constraint, and idempotency."
+      "notes": "Task 2.2 contingency is now explicitly conditional on `npm audit --audit-level=high` exiting 0; otherwise the major upgrade must be completed within Sprint 2."
+    },
+    {
+      "original_issue": "Docker build task lacked explicit alignment with per-package lockfiles and Node version",
+      "status": "fixed",
+      "notes": "Task 2.4 now requires verifying base image `node:20-alpine` and that Docker runs per-package `npm ci` with correct lockfiles in build context, covering the common failure mode."
     }
   ],
   "new_blocking_concerns": [],

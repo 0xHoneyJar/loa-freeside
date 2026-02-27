@@ -237,8 +237,8 @@ export class ThemePreviewService {
     return components
       .map((component) => {
         const componentHtml = renderComponent(
-          component.type as ComponentType,
-          component.props as ComponentProps,
+          component.type,
+          component.props,
           context
         );
 

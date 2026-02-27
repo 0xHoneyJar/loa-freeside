@@ -657,7 +657,7 @@ export class PaddleBillingAdapter implements IBillingProvider {
     // Check customData first (preferred method)
     const customData = subscription.customData as Record<string, string> | undefined;
     if (customData?.tier && this.isValidTier(customData.tier)) {
-      return customData.tier as SubscriptionTier;
+      return customData.tier;
     }
 
     // Fallback: Lookup by price ID
@@ -665,7 +665,7 @@ export class PaddleBillingAdapter implements IBillingProvider {
     if (priceId) {
       for (const [tier, configuredPriceId] of this.config.priceIds.entries()) {
         if (configuredPriceId === priceId && this.isValidTier(tier)) {
-          return tier as SubscriptionTier;
+          return tier;
         }
       }
     }

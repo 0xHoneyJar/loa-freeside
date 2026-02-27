@@ -121,7 +121,7 @@ badgeRouter.get(
   requireApiKey,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const memberId: string = req.params.memberId!;
+      const memberId: string = req.params.memberId;
       const communityId: string = (req.query.communityId as string | undefined) ?? 'default';
 
       // Check badge entitlement
@@ -247,8 +247,8 @@ badgeRouter.get(
   requireApiKey,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const platformRaw: string = req.params.platform!;
-      const memberId: string = req.params.memberId!;
+      const platformRaw: string = req.params.platform;
+      const memberId: string = req.params.memberId;
       const communityId: string = (req.query.communityId as string | undefined) ?? 'default';
 
       // Validate platform
@@ -312,7 +312,7 @@ badgeRouter.get(
   requireApiKey,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const memberId: string = req.params.memberId!;
+      const memberId: string = req.params.memberId;
       const communityId: string = (req.query.communityId as string | undefined) ?? 'default';
 
       // Check badge access
@@ -357,7 +357,7 @@ badgeRouter.put(
   requireApiKey,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const memberId: string = req.params.memberId!;
+      const memberId: string = req.params.memberId;
       const communityId: string = (req.query.communityId as string | undefined) ?? 'default';
 
       // Validate request body

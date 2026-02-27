@@ -24,13 +24,50 @@ vi.mock('../../src/services/billing/GatekeeperService.js', () => ({
   },
 }));
 
+vi.mock('../../src/api/middleware.js', () => {
+  const passthrough = (_req: any, _res: any, next: any) => {
+    _req.adminName = 'test-admin';
+    _req.isAuthenticated = true;
+    next();
+  };
+  const rateLimiter = (_req: any, _res: any, next: any) => next();
+  return {
+    requireApiKey: passthrough,
+    requireApiKeyAsync: passthrough,
+    memberRateLimiter: rateLimiter,
+    webhookRateLimiter: rateLimiter,
+    publicRateLimiter: rateLimiter,
+    ValidationError: class ValidationError extends Error {
+      status = 400;
+      constructor(message: string) { super(message); this.name = 'ValidationError'; }
+    },
+    NotFoundError: class NotFoundError extends Error {
+      status = 404;
+      constructor(message: string) { super(message); this.name = 'NotFoundError'; }
+    },
+    getRateLimitMetrics: () => ({ hitCount: 0, redisFailures: 0 }),
+    resetRateLimitMetrics: () => {},
+  };
+});
+
 vi.mock('../../src/config.js', () => ({
   config: {
     featureFlags: {
       billingEnabled: true,
     },
+    features: {
+      redisEnabled: false,
+    },
+    boost: {
+      thresholds: { level1: 100, level2: 500, level3: 1000 },
+      pricing: { pricePerMonthCents: 999 },
+      bundles: null,
+    },
   },
   isBillingEnabled: () => true,
+  isPaddleEnabled: () => false,
+  validateApiKey: vi.fn(),
+  validateApiKeyAsync: vi.fn(),
   SUBSCRIPTION_TIERS: {
     starter: { name: 'Starter', maxMembers: 100 },
     basic: { name: 'Basic', maxMembers: 500 },

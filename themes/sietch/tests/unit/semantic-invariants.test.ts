@@ -378,7 +378,7 @@ describe('Semantic Compatibility Invariants (SDD §6.2)', () => {
     });
 
     it('should report incompatible for future major versions', () => {
-      const result = validateCompatibility('8.0.0', CONTRACT_VERSION);
+      const result = validateCompatibility('9.0.0', CONTRACT_VERSION);
       expect(result.compatible).toBe(false);
     });
   });

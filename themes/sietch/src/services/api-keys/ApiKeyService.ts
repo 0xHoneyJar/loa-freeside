@@ -172,9 +172,9 @@ function randomFromAlphabet(length: number, alphabet: string): string {
   while (result.length < length) {
     const bytes = crypto.randomBytes(length * 2); // over-provision for rejection
     for (let i = 0; i < bytes.length && result.length < length; i++) {
-      const b = bytes[i]!;
+      const b = bytes[i];
       if (b < maxByte) {
-        result.push(alphabet[b % alphabet.length]!);
+        result.push(alphabet[b % alphabet.length]);
       }
     }
   }
@@ -355,8 +355,8 @@ export function validateApiKey(cleartextKey: string): ApiKeyValidationResult {
     return { valid: false, reason: 'Invalid key format' };
   }
 
-  const prefix = match[1]!;
-  const secret = match[2]!;
+  const prefix = match[1];
+  const secret = match[2];
 
   // Check negative cache
   if (isNegativelyCached(prefix)) {

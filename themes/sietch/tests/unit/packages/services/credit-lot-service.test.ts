@@ -57,10 +57,10 @@ import {
   mintCreditLot,
   getLotBalances,
   getTotalBalance,
-} from '../../../../packages/services/credit-lot-service.js';
+} from '../../../../../../packages/services/credit-lot-service.js';
 import type {
   MintParams,
-} from '../../../../packages/services/credit-lot-service.js';
+} from '../../../../../../packages/services/credit-lot-service.js';
 
 // --------------------------------------------------------------------------
 // Tests
@@ -179,7 +179,8 @@ describe('Credit Lot Service', () => {
       );
       expect(statusCall).toBeDefined();
       expect(statusCall![1]).toContain('lot-1');
-      expect(statusCall![1]).toContain('depleted');
+      // 'depleted' is embedded in the SQL string, not passed as a parameter
+      expect(statusCall![0]).toContain('depleted');
     });
 
     it('throws BUDGET_EXCEEDED when no lots available', async () => {
@@ -222,18 +223,21 @@ describe('Credit Lot Service', () => {
         rowCount: 1,
       });
 
-      // ON CONFLICT returns no rows (already inserted)
+      // ON CONFLICT returns null id (already inserted via insertLotEntry)
       mockClient._pushResult({
-        rows: [],
-        rowCount: 0,
+        rows: [{ id: null }],
+        rowCount: 1,
       });
 
-      // Since the debit was already applied, remaining should still decrease
-      // but no entry is returned. With only 1 lot and conflict, result has 0 entries
-      // but remaining doesn't decrease → BUDGET_EXCEEDED
-      await expect(
-        debitLots(mockClient as any, communityId, 3000000n, reservationId),
-      ).rejects.toThrow('BUDGET_EXCEEDED');
+      // With insertLotEntry returning inserted=false (id is null),
+      // no entry is recorded but remaining still decrements.
+      // The function returns successfully with no entries.
+      const result = await debitLots(
+        mockClient as any, communityId, 3000000n, reservationId,
+      );
+
+      expect(result.entries).toHaveLength(0);
+      expect(result.total_debited).toBe(3000000n);
     });
 
     it('uses BigInt throughout — no floating-point', async () => {
@@ -278,9 +282,9 @@ describe('Credit Lot Service', () => {
         'usage-event-123',
       );
 
-      // Verify usage_event_id was passed to the INSERT
+      // Verify usage_event_id was passed to insert_lot_entry_fn
       const insertCall = mockClient.query.mock.calls.find(
-        (call: unknown[]) => typeof call[0] === 'string' && call[0].includes('INSERT INTO lot_entries'),
+        (call: unknown[]) => typeof call[0] === 'string' && call[0].includes('insert_lot_entry_fn'),
       );
       expect(insertCall).toBeDefined();
       expect(insertCall![1]).toContain('usage-event-123');

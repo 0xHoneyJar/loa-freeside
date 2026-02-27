@@ -730,7 +730,7 @@ export class AgentGateway implements IAgentGateway {
   private async resolveByokProvider(
     tenantId: string,
     poolId: string,
-    log: Logger,
+    _log: Logger,
   ): Promise<string | undefined> {
     if (!this.byokManager) return undefined;
 

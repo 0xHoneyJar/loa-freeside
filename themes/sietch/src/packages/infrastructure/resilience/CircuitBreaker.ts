@@ -225,7 +225,7 @@ export class CircuitBreaker<TArgs extends unknown[], TResult> {
     this.breaker.on('failure', (error) => {
       this.internalMetrics.failures++;
       this.logger.warn(
-        { name: this.options.name, error: (error as Error).message },
+        { name: this.options.name, error: (error).message },
         'Circuit breaker call failed'
       );
     });

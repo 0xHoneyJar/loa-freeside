@@ -86,7 +86,7 @@ export function registerBuyCreditsCommand(bot: Bot<BotContext>): void {
     }
 
     // Check feature flag
-    if (!config.billing?.cryptoPaymentsEnabled) {
+    if (!config.features.cryptoPaymentsEnabled) {
       await ctx.reply('Credit purchases are not currently available. Please try again later.');
       return;
     }
@@ -104,7 +104,7 @@ export function registerBuyCreditsCommand(bot: Bot<BotContext>): void {
     }
 
     // Validate base URL
-    const baseUrl = config.server?.publicUrl ?? config.server?.baseUrl;
+    const baseUrl = config.baseUrl;
     if (!baseUrl) {
       logger.error({ event: 'tg-buy-credits.no-base-url' }, 'Server base URL not configured');
       await ctx.reply('Payment service is misconfigured. Please contact support.');

@@ -434,7 +434,7 @@ export class SynthesisQueue {
 
     let cleaned = 0;
     for (const job of entries) {
-      const entry = job.data as any;
+      const entry = job.data;
       if (entry.failedAt && new Date(entry.failedAt).getTime() < cutoffTime) {
         await job.remove();
         cleaned++;

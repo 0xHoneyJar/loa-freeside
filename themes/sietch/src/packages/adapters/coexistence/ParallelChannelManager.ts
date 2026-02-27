@@ -502,7 +502,7 @@ export class ParallelChannelManager {
 
       const type = sourceChannel.type === ChannelType.GuildVoice ? 'voice' : 'text';
       const topic = sourceChannel.type === ChannelType.GuildText
-        ? (sourceChannel as TextChannel).topic ?? ''
+        ? (sourceChannel).topic ?? ''
         : '';
 
       definitions.push({

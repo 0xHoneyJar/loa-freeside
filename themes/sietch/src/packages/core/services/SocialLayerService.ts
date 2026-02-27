@@ -311,7 +311,7 @@ export class SocialLayerService {
       return null;
     }
 
-    const currentMode = migrationState.currentMode as CoexistenceMode;
+    const currentMode = migrationState.currentMode;
     const fullyUnlocked = FULL_SOCIAL_MODES.includes(currentMode);
 
     // Calculate feature statuses based on current mode

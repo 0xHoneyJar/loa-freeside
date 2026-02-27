@@ -659,7 +659,7 @@ class RedisService {
     try {
       // Use ioredis call() method for generic command execution
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return await (this.client as any).call(command, ...rest);
+      return await (this.client).call(command, ...rest);
     } catch (error) {
       logger.warn({ command, error: (error as Error).message }, 'Redis command failed');
       throw error;

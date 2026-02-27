@@ -107,7 +107,7 @@ export async function handleBuyCreditsCommand(
   }
 
   // Check feature flag
-  if (!config.billing?.cryptoPaymentsEnabled) {
+  if (!config.features.cryptoPaymentsEnabled) {
     await interaction.reply({
       content: 'Credit purchases are not currently available. Please try again later.',
       ephemeral: true,
@@ -138,7 +138,7 @@ export async function handleBuyCreditsCommand(
 
   try {
     // Validate base URL for IPN callback
-    const baseUrl = config.server?.publicUrl ?? config.server?.baseUrl;
+    const baseUrl = config.baseUrl;
     if (!baseUrl) {
       logger.error({ event: 'buy-credits.no-base-url' }, 'Server base URL not configured');
       await interaction.editReply({

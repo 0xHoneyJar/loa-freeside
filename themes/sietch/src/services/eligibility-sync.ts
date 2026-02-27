@@ -163,7 +163,7 @@ export async function runEligibilitySyncOnServer(): Promise<EligibilitySyncResul
     }
 
     // 9. Calculate and sync tier for each member (v3.0)
-    let tierStats = { updated: 0, promotions: 0, demotions: 0, roleChanges: 0, errors: 0, dmsSent: 0 };
+    const tierStats = { updated: 0, promotions: 0, demotions: 0, roleChanges: 0, errors: 0, dmsSent: 0 };
     if (isTierRolesConfigured()) {
       try {
         logger.info('Processing tier updates for members...');
@@ -342,7 +342,7 @@ export async function runEligibilitySyncOnServer(): Promise<EligibilitySyncResul
     }
 
     // 12. Process position and at-risk notifications (v2.1)
-    let notificationStats = { position: { sent: 0, skipped: 0, failed: 0 }, atRisk: { sent: 0, skipped: 0, failed: 0 } };
+    const notificationStats = { position: { sent: 0, skipped: 0, failed: 0 }, atRisk: { sent: 0, skipped: 0, failed: 0 } };
     try {
       logger.info('Processing member notifications...');
 

@@ -9,13 +9,12 @@
  */
 
 import { Router, type Request, type Response } from 'express';
-import { getConfig } from '../../config.js';
+import { config } from '../../config.js';
 
 export const chatPageRouter = Router();
 
 // Sprint 7 (320), Task 7.3: Feature flag kill switch
 chatPageRouter.use((_req: Request, res: Response, next) => {
-  const config = getConfig();
   if (!config.features.webChatEnabled) {
     res.status(503).send('Web chat is currently disabled');
     return;

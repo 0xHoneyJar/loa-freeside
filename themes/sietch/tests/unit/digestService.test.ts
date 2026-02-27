@@ -24,8 +24,10 @@ const mockGet = vi.fn();
 const mockAll = vi.fn();
 const mockRun = vi.fn();
 
+const mockTransaction = vi.fn((fn: () => unknown) => fn);
 const mockGetDatabase = vi.fn(() => ({
   prepare: mockPrepare,
+  transaction: mockTransaction,
 }));
 
 vi.mock('../../src/db/index.js', () => ({
@@ -287,6 +289,12 @@ describe('DigestService', () => {
   });
 
   describe('postDigest', () => {
+    beforeEach(() => {
+      // The postDigest method now uses db.transaction() for duplicate checking.
+      // Default: no duplicate exists (count: 0)
+      mockGet.mockReturnValue({ count: 0 });
+    });
+
     it('posts digest successfully and stores record', async () => {
       const stats = {
         weekIdentifier: '2025-W03',

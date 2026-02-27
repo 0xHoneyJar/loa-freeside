@@ -14,7 +14,7 @@ import {
   isValidTransition,
   isTerminal,
   deriveIdempotencyKey,
-} from '@arrakis/adapters/agent/idempotency';
+} from '@arrakis/adapters/agent/idempotency-state';
 
 // --------------------------------------------------------------------------
 // State Transition Table

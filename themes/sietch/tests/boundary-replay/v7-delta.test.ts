@@ -211,10 +211,9 @@ describe('Golden replay: Version compatibility (INFORMATIONAL)', () => {
     expect(CONTRACT_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
-  it('CONTRACT_VERSION is 7.9.1 (contract version, not package version)', () => {
+  it('CONTRACT_VERSION is 8.2.0', () => {
     // CONTRACT_VERSION tracks the protocol contract version
-    // Package version is 7.9.2 but contract version is 7.9.1
-    expect(CONTRACT_VERSION).toBe('7.9.1');
+    expect(CONTRACT_VERSION).toBe('8.2.0');
   });
 
   for (const fixture of golden.fixtures) {

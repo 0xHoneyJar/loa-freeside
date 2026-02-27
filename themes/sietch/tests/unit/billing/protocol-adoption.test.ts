@@ -210,12 +210,12 @@ describe('protocol/arithmetic', () => {
 
 describe('protocol/compatibility', () => {
   it('exports a valid semver contract version', () => {
-    expect(CONTRACT_VERSION).toBe('7.0.0');
+    expect(CONTRACT_VERSION).toBe('8.2.0');
   });
 
   describe('validateCompatibility', () => {
     it('reports current version as compatible', () => {
-      const result = validateCompatibility('7.0.0');
+      const result = validateCompatibility('8.2.0');
       expect(result.compatible).toBe(true);
     });
 

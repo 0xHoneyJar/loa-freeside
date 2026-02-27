@@ -730,9 +730,6 @@ export {
 } from './arrakis-dynamic-contract.js';
 
 export type {
-  ReputationStateName,
-  DynamicContract,
-  ProtocolSurface,
   DynamicContractFailure,
 } from './arrakis-dynamic-contract.js';
 

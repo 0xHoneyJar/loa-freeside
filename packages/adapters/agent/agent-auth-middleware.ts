@@ -12,7 +12,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Request, Response, NextFunction } from 'express';
 import type { Logger } from 'pino';
-import type { AgentRequestContext, AgentPlatform, AccessLevel, ModelAlias } from '@arrakis/core/ports';
+import type { AgentRequestContext, AgentPlatform } from '@arrakis/core/ports';
 import type { TierAccessMapper } from './tier-access-mapper.js';
 
 // --------------------------------------------------------------------------

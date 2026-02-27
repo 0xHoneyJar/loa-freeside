@@ -33,6 +33,7 @@ export {
   type NewCommunity,
   type Badge,
   type BadgeMetadata,
+  type ProfileMetadata,
   type NewBadge,
   type BadgeLineageNode,
   type IStorageProvider,

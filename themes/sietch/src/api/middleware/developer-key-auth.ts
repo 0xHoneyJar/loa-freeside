@@ -136,7 +136,7 @@ setInterval(() => {
       .sort((a, b) => a[1].rpmWindowStart - b[1].rpmWindowStart);
     const evictCount = Math.ceil(rateBuckets.size * 0.1);
     for (let i = 0; i < evictCount && i < entries.length; i++) {
-      rateBuckets.delete(entries[i]![0]);
+      rateBuckets.delete(entries[i][0]);
     }
   }
 }, 10 * 60 * 1000).unref();

@@ -255,7 +255,7 @@ export class IncumbentHealthMonitor {
     const report: HealthReport = {
       communityId,
       guildId,
-      provider: incumbentConfig.provider as IncumbentProvider,
+      provider: incumbentConfig.provider,
       overallStatus,
       checks: {
         botOnline: botOnlineCheck,

@@ -15,6 +15,14 @@ import path from 'node:path';
 const sharedResolve = {
   alias: [
     {
+      find: /^@arrakis\/core\/(.*)/,
+      replacement: path.resolve(__dirname, '../../packages/core/$1'),
+    },
+    {
+      find: '@arrakis/core',
+      replacement: path.resolve(__dirname, '../../packages/core'),
+    },
+    {
       find: /^@arrakis\/adapters\/(.*)/,
       replacement: path.resolve(__dirname, '../../packages/adapters/$1'),
     },
@@ -38,6 +46,7 @@ export default defineWorkspace([
         'tests/e2e/**',
       ],
       environment: 'node',
+      setupFiles: ['./tests/setup-unit.ts'],
     },
     resolve: sharedResolve,
   },

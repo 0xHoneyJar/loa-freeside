@@ -16,6 +16,21 @@ import { createDashboardAuthRouter, SESSION_COOKIE_NAME, CSRF_HEADER } from '../
 // Mocks
 // =============================================================================
 
+// Mock AuthService to prevent DB access during local session logout
+vi.mock('../../../../src/services/auth/AuthService.js', () => ({
+  getAuthService: () => ({
+    logout: vi.fn().mockResolvedValue(undefined),
+    getAuthContext: vi.fn().mockResolvedValue(null),
+  }),
+}));
+
+// Mock securityHeaders to prevent import chain issues
+vi.mock('../../../../src/api/middleware/securityHeaders.js', () => ({
+  getCorrelationId: () => undefined,
+  getClientIp: () => '127.0.0.1',
+  securityHeaders: (_req: any, _res: any, next: any) => next(),
+}));
+
 // Mock fetch for Discord API calls
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
@@ -167,9 +182,27 @@ describe('POST /api/dashboard/auth/logout', () => {
   it('should clear session cookie on logout', async () => {
     const { app, mockRedis } = createTestApp();
 
+    // Sprint 134/144: Logout now requires Discord session + CSRF token
+    // to go through the Redis delete path. Provide a valid session with CSRF.
+    const csrfToken = 'test-csrf-for-logout';
+    const mockSession = {
+      userId: 'user-123',
+      username: 'TestUser',
+      avatar: null,
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+      tokenExpiresAt: Date.now() + 3600000,
+      adminGuilds: [],
+      createdAt: Date.now(),
+      lastActivity: Date.now(),
+      csrfToken,
+    };
+    mockRedis.get.mockResolvedValueOnce(JSON.stringify(mockSession));
+
     const response = await request(app)
       .post('/api/dashboard/auth/logout')
       .set('Cookie', `${SESSION_COOKIE_NAME}=test-session-id`)
+      .set(CSRF_HEADER, csrfToken)
       .expect(200);
 
     expect(response.body.success).toBe(true);

@@ -139,8 +139,8 @@ class NaibService {
       // Calculate total tenure
       let totalTenureMs = 0;
       // We know seatHistory has at least 1 element from the check above
-      let firstSeatedAt = seatHistory[seatHistory.length - 1]!.seatedAt;
-      let lastUnseatedAt = seatHistory[0]!.unseatedAt || new Date();
+      let firstSeatedAt = seatHistory[seatHistory.length - 1].seatedAt;
+      let lastUnseatedAt = seatHistory[0].unseatedAt || new Date();
 
       for (const seat of seatHistory) {
         if (seat.seatedAt < firstSeatedAt) {

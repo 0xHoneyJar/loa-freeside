@@ -1,46 +1,36 @@
 {
   "verdict": "APPROVED",
-  "summary": "Iteration 3 integrates the Flatline findings without regressing the previously-approved fixes; the chain linearization/uniqueness, timestamp split, fail-closed safeguards, single-entry mutation coupling, reputation resolution, Phase C tightening, and pgaudit/partition-trigger defense-in-depth are all specified in an operationally sound way.",
+  "summary": "All previously raised blockers are now addressed, and the remaining plan is coherent, correctly ordered, and should unblock all five CI gates without relying on brittle workarounds.",
   "previous_issues_status": [
     {
-      "original_issue": "append() concurrency could fork the hash chain (no DB-enforced linearization)",
+      "original_issue": "Lockfile regeneration / monorepo install topology mismatch could leave CI installing old hounfour SHA",
       "status": "fixed",
-      "notes": "Still fixed: SERIALIZABLE + per-domain_tag pg_advisory_xact_lock + audit_trail_head sequencing remains a clear linearization mechanism."
+      "notes": "SDD clearly states CI is per-package `npm ci` with per-package lockfiles, and the hounfour re-pin + lockfile regeneration is explicitly performed in each consuming package directory. Verification steps (resolved package + dist file existence) remain appropriate."
     },
     {
-      "original_issue": "Prune plan contradicted append-only enforcement and implied trigger disablement",
+      "original_issue": "Breaking security upgrade mapping was incorrect/unrelated; needed targeted audit-path remediation",
       "status": "fixed",
-      "notes": "Still fixed: pruning is partition detach/drop with explicit 'triggers are NEVER disabled' plus checkpoint anchoring and continuity verification."
+      "notes": "Security section is now driven by concrete `npm audit --json` chains and removes the previously incorrect upgrade claims. Phase 1 uses non-breaking `npm audit fix`, and Phase 2 isolates the only breaking item (`node-vault`) with a clear contingency."
     },
     {
-      "original_issue": "Append-only enforcement via RLS/privileges was claimed but not defined",
+      "original_issue": "Disabling engine checks in CI is brittle and can still fail due to real Node incompatibility; should pin/enforce Node version instead",
       "status": "fixed",
-      "notes": "Still fixed and strengthened: explicit RLS policies, explicit role separation (app not owner), and least-privilege statements remain consistent with the design."
+      "notes": "The SDD no longer relies on `engine-strict=false`. It instead aligns `packages/adapters` engines to Node 20 (the CI reality) and includes a validation/fallback path (if Node 22 is truly required, then upgrade CI). This resolves the prior truly-blocking risk."
     },
     {
-      "original_issue": "Quarantine did not define in-flight request behavior (fail closed vs buffer vs partial apply)",
+      "original_issue": "TS2835 “add .js extensions” is only correct for certain ESM/NodeNext setups; bulk change could break runtime/tests",
       "status": "fixed",
-      "notes": "Still fixed: governance-critical mutations rejected with 503 + Retry-After; non-critical telemetry explicitly routed outside the hash chain during quarantine; runbook added."
+      "notes": "SDD explicitly confirms `type: module` and `module/moduleResolution: NodeNext` for the affected packages and frames `.js` extension changes as correct under that configuration."
     },
     {
-      "original_issue": "actor_id trust boundary underspecified; actor_id nullable allowed unauthenticated entries",
+      "original_issue": "ESLint builder exclusion might not be honored / could violate lint scope",
       "status": "fixed",
-      "notes": "Still fixed: actor_id is NOT NULL + non-empty CHECK; resolveActorId() throws if no authenticated identity; service identity is mTLS-derived; JWT verification requirements are stated."
+      "notes": "SDD ties the exclusion to the exact lint invocation (`eslint src --ext .ts`), confirms no `--no-ignore`, and aligns with the PRD scope (builder excluded). This should behave in CI as intended."
     },
     {
-      "original_issue": "DynamicContract loader failure modes and override controls were underspecified",
+      "original_issue": "Execution order applied breaking security upgrades before test stabilization, making attribution impossible",
       "status": "fixed",
-      "notes": "Still fixed and improved: startup failure matrix is explicit; override blocked in production and size-limited; monotonic expansion violations are fatal; CI/CD config gate + checksum + canary reduce outage risk while preserving fail-closed semantics."
-    },
-    {
-      "original_issue": "append() hashing inputs used non-deterministic timestamps, breaking idempotency on retry",
-      "status": "fixed",
-      "notes": "Still fixed: event_time is caller-provided and included in hash; created_at is server-generated and excluded from hash; retry determinism is preserved."
-    },
-    {
-      "original_issue": "Version negotiation authority was ambiguous between local logic and hounfour",
-      "status": "fixed",
-      "notes": "Still fixed: validateCompatibility() remains the sole authority (delegated to hounfour), with explicit mixed-version tests and contract.json CI-only."
+      "notes": "Order now stabilizes tests before applying security patches, with `node-vault` (breaking) after a green baseline, which is the correct dependency ordering for attribution and rollback."
     }
   ],
   "new_blocking_concerns": [],

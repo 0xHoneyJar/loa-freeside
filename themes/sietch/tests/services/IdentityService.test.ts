@@ -17,6 +17,21 @@ vi.mock('../../src/db/index.js', () => ({
   getDatabase: vi.fn(() => mockDb),
 }));
 
+// Mock config to provide VERIFY_BASE_URL for verification session tests
+vi.mock('../../src/config.js', async (importOriginal) => {
+  const mod = await importOriginal() as Record<string, unknown>;
+  const originalConfig = mod.config as Record<string, unknown>;
+  return {
+    ...mod,
+    config: {
+      ...originalConfig,
+      verification: {
+        baseUrl: 'https://verify.test.example.com',
+      },
+    },
+  };
+});
+
 // Create mock database with transaction support
 const mockDb = {
   prepare: vi.fn(),
@@ -266,7 +281,7 @@ describe('IdentityService', () => {
       const result = await identityService.createVerificationSession('telegram-123', 'username');
 
       expect(result.sessionId).toBeDefined();
-      expect(result.verifyUrl).toContain('session=');
+      expect(result.verifyUrl).toContain('/verify/');
       expect(result.verifyUrl).toContain('platform=telegram');
     });
 

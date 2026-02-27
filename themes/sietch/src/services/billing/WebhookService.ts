@@ -344,7 +344,7 @@ class WebhookService {
    * - Payment notifications (subscription-related)
    */
   private getLockTtlForEvent(event: ProviderWebhookEvent): number {
-    const data = event.data as Record<string, unknown>;
+    const data = event.data;
     const customData = data.customData as Record<string, string> | undefined;
     const paymentType = customData?.type;
 
@@ -414,7 +414,7 @@ class WebhookService {
    * Creates initial subscription record
    */
   private async handleSubscriptionCreated(event: ProviderWebhookEvent): Promise<void> {
-    const data = event.data as Record<string, unknown>;
+    const data = event.data;
     const customData = data.customData as Record<string, string> | undefined;
     const communityId = customData?.community_id;
     const tier = customData?.tier as SubscriptionTier;
@@ -478,7 +478,7 @@ class WebhookService {
    * Updates subscription to active status
    */
   private async handleSubscriptionActivated(event: ProviderWebhookEvent): Promise<void> {
-    const data = event.data as Record<string, unknown>;
+    const data = event.data;
     const customData = data.customData as Record<string, string> | undefined;
     const communityId = customData?.community_id;
 
@@ -525,7 +525,7 @@ class WebhookService {
    * Updates tier, status, and period information
    */
   private async handleSubscriptionUpdated(event: ProviderWebhookEvent): Promise<void> {
-    const data = event.data as Record<string, unknown>;
+    const data = event.data;
     const customData = data.customData as Record<string, string> | undefined;
     const communityId = customData?.community_id;
 
@@ -587,7 +587,7 @@ class WebhookService {
    * Downgrades to starter (free) tier and sets status to canceled
    */
   private async handleSubscriptionCanceled(event: ProviderWebhookEvent): Promise<void> {
-    const data = event.data as Record<string, unknown>;
+    const data = event.data;
     const customData = data.customData as Record<string, string> | undefined;
     const communityId = customData?.community_id;
 
@@ -628,7 +628,7 @@ class WebhookService {
    * Routes to appropriate handler based on payment type
    */
   private async handlePaymentCompleted(event: ProviderWebhookEvent): Promise<void> {
-    const data = event.data as Record<string, unknown>;
+    const data = event.data;
     const customData = data.customData as Record<string, string> | undefined;
     const paymentType = customData?.type;
 
@@ -691,7 +691,7 @@ class WebhookService {
    * Sets 24-hour grace period and updates status to past_due
    */
   private async handlePaymentFailed(event: ProviderWebhookEvent): Promise<void> {
-    const data = event.data as Record<string, unknown>;
+    const data = event.data;
     const subscriptionId = data.subscriptionId as string | undefined;
 
     if (!subscriptionId) {
@@ -759,7 +759,7 @@ class WebhookService {
   private async handleBoostPaymentCompleted(
     event: ProviderWebhookEvent
   ): Promise<void> {
-    const data = event.data as Record<string, unknown>;
+    const data = event.data;
     const customData = data.customData as Record<string, string> | undefined;
     const communityId = customData?.community_id;
     const memberId = customData?.member_id;
@@ -822,7 +822,7 @@ class WebhookService {
   private async handleBadgePaymentCompleted(
     event: ProviderWebhookEvent
   ): Promise<void> {
-    const data = event.data as Record<string, unknown>;
+    const data = event.data;
     const customData = data.customData as Record<string, string> | undefined;
     const communityId = customData?.communityId || customData?.community_id;
     const memberId = customData?.memberId || customData?.member_id;

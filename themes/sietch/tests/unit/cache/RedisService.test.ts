@@ -7,21 +7,38 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Entitlements } from '../../../types/billing.js';
 
-// Mock ioredis
+// Mock ioredis — must also intercept CJS require() via createRequire
+const mockRedisConstructor = vi.fn().mockImplementation(() => ({
+  status: 'ready',
+  ping: vi.fn().mockResolvedValue('PONG'),
+  get: vi.fn(),
+  set: vi.fn(),
+  setex: vi.fn(),
+  del: vi.fn(),
+  exists: vi.fn(),
+  info: vi.fn(),
+  quit: vi.fn().mockResolvedValue('OK'),
+  on: vi.fn(),
+}));
+
 vi.mock('ioredis', () => {
   return {
-    default: vi.fn().mockImplementation(() => ({
-      status: 'ready',
-      ping: vi.fn().mockResolvedValue('PONG'),
-      get: vi.fn(),
-      set: vi.fn(),
-      setex: vi.fn(),
-      del: vi.fn(),
-      exists: vi.fn(),
-      info: vi.fn(),
-      quit: vi.fn().mockResolvedValue('OK'),
-      on: vi.fn(),
-    })),
+    default: mockRedisConstructor,
+  };
+});
+
+// RedisService uses createRequire(import.meta.url) + require('ioredis')
+// which bypasses vi.mock. Override createRequire to return our mock.
+vi.mock('module', async (importOriginal) => {
+  const mod = await importOriginal() as Record<string, unknown>;
+  return {
+    ...mod,
+    createRequire: () => (id: string) => {
+      if (id === 'ioredis') return mockRedisConstructor;
+      // Fall back to real require for anything else
+      const { createRequire: realCreateRequire } = mod as any;
+      return realCreateRequire(import.meta.url)(id);
+    },
   };
 });
 
@@ -84,7 +101,7 @@ describe('RedisService', () => {
     });
 
     it('should handle Redis URL not configured', async () => {
-      const { config } = await import('../../../config.js');
+      const { config } = await import('../../../src/config.js');
       const originalUrl = config.redis.url;
       config.redis.url = undefined;
 

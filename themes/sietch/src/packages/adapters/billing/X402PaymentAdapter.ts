@@ -99,9 +99,9 @@ export class X402PaymentAdapter {
     this.minConfirmations = config.minConfirmations ?? DEFAULT_MIN_CONFIRMATIONS;
 
     this.client = createPublicClient({
-      chain: base,
+      chain: base as any,
       transport: http(config.rpcUrl),
-    });
+    }) as any;
   }
 
   /**

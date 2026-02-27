@@ -149,7 +149,10 @@ describe('MFAService', () => {
       await mfaService.verifyTOTP(userId, code);
 
       const config = await mfaService.getConfig(userId);
-      expect(config?.lastVerifiedAt).toBeInstanceOf(Date);
+      // getConfig uses JSON.parse which deserializes Date as ISO string, not Date object
+      expect(config?.lastVerifiedAt).toBeDefined();
+      expect(typeof config?.lastVerifiedAt).toBe('string');
+      expect(new Date(config!.lastVerifiedAt as unknown as string).toISOString()).toBe(config!.lastVerifiedAt);
     });
 
     it('should handle TOTP not configured', async () => {

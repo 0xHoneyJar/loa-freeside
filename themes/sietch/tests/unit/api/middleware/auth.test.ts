@@ -13,6 +13,13 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Request, Response, NextFunction } from 'express';
+
+// Mock AuthService used by Bearer token path
+vi.mock('../../../../src/services/auth/AuthService.js', () => ({
+  getAuthService: () => ({
+    getAuthContext: vi.fn().mockResolvedValue(null),
+  }),
+}));
 import {
   requireAuth,
   requireSandboxAccess,
@@ -174,7 +181,7 @@ describe('Authentication Middleware (CRITICAL-002)', () => {
       expect(req.caller!.roles).toContain('admin');
     });
 
-    it('should reject unsupported Bearer token authentication', async () => {
+    it('should reject invalid Bearer token authentication', async () => {
       const req = createMockRequest({
         headers: { authorization: 'Bearer some-jwt-token' },
       });
@@ -185,7 +192,7 @@ describe('Authentication Middleware (CRITICAL-002)', () => {
 
       expect(res.status).toHaveBeenCalledWith(401);
       expect(res.json).toHaveBeenCalledWith({
-        error: 'Bearer token authentication not yet supported',
+        error: 'Invalid or expired session',
       });
       expect(next).not.toHaveBeenCalled();
     });

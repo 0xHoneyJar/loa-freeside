@@ -142,7 +142,7 @@ function getCryptoProvider(): ICryptoPaymentProvider | null {
     if (!nowConfig) return null;
     _cryptoProvider = createCryptoPaymentProvider({
       provider: 'nowpayments',
-      nowpayments: nowConfig,
+      nowpayments: nowConfig as import('../../packages/core/ports/ICryptoPaymentProvider.js').NOWPaymentsConfig,
     });
     return _cryptoProvider;
   } catch {
@@ -166,16 +166,16 @@ function getPeriodStart(period: 'daily' | 'weekly' | 'monthly'): string {
   const now = new Date();
   switch (period) {
     case 'daily':
-      return now.toISOString().split('T')[0]!;
+      return now.toISOString().split('T')[0];
     case 'weekly': {
       const weekAgo = new Date(now);
       weekAgo.setDate(weekAgo.getDate() - 7);
-      return weekAgo.toISOString().split('T')[0]!;
+      return weekAgo.toISOString().split('T')[0];
     }
     case 'monthly': {
       const monthAgo = new Date(now);
       monthAgo.setMonth(monthAgo.getMonth() - 1);
-      return monthAgo.toISOString().split('T')[0]!;
+      return monthAgo.toISOString().split('T')[0];
     }
   }
 }
