@@ -6,16 +6,14 @@
  *
  * - v4.6.0 inbound JWT accepted (trust_level mapped to trust_scopes)
  * - v7.0.0 inbound JWT accepted (trust_scopes used directly)
- * - v4.6.0 coordination message accepted (normalized)
- * - v7.0.0 coordination message accepted (direct)
+ * - v7.11.0 coordination message accepted (transition window)
+ * - v8.2.0 coordination message accepted (preferred)
  * - Malformed messages rejected with correct error codes
  * - Feature flag: PROTOCOL_V7_NORMALIZATION=false reverts to v4.6 behavior
  * - Cross-boundary: combined JWT + coordination scenarios
  *
  * NOTE: The canonical validateCompatibility() from @0xhoneyjar/loa-hounfour
- * has MIN_SUPPORTED_VERSION=6.0.0, which rejects v4.6.0. We mock it to
- * accept both 4.6.0 and 7.0.0 since the arrakis transition window still
- * accepts v4.6.0.
+ * is mocked to accept both 7.11.0 and 8.2.0 (the current transition window).
  *
  * SDD refs: §3.6, §3.7, §8.3
  * Sprint refs: Task 302.5
@@ -23,18 +21,16 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// Mock the canonical library so v4.6.0 passes validateCompatibility
-// during the transition period. The local negotiateVersion() advertises
-// v4.6.0 support; the mock makes the canonical validator agree.
+// Mock the canonical library for the current transition window (7.11.0 + 8.2.0)
 vi.mock('@0xhoneyjar/loa-hounfour', () => ({
-  CONTRACT_VERSION: '7.0.0',
+  CONTRACT_VERSION: '8.2.0',
   validateCompatibility: (version: string) => {
-    // Accept 4.6.0 and 7.0.0 (the transition support window)
-    if (version === '7.0.0' || version === '4.6.0') {
+    if (version === '8.2.0' || version === '7.11.0') {
       return { compatible: true };
     }
     return { compatible: false, error: `Version ${version} is not supported` };
   },
+  flatTrustToScoped: vi.fn(),
 }));
 
 import {
@@ -82,29 +78,29 @@ describe('Backward Compatibility Integration Tests (Task 302.5)', () => {
   });
 
   // ===========================================================================
-  // v4.6.0 coordination message accepted (normalized)
+  // v7.11.0 coordination message accepted (transition window)
   // ===========================================================================
 
-  describe('v4.6.0 coordination message accepted (normalized)', () => {
-    it('normalizes v4.6.0 coordination message', () => {
+  describe('v7.11.0 coordination message accepted (transition window)', () => {
+    it('normalizes v7.11.0 coordination message', () => {
       const result = normalizeCoordinationMessage({
-        version: '4.6.0', type: 'heartbeat', payload: { status: 'alive' },
+        version: '7.11.0', type: 'heartbeat', payload: { status: 'alive' },
       });
-      expect(result.version).toBe('4.6.0');
+      expect(result.version).toBe('7.11.0');
       expect(result.type).toBe('heartbeat');
     });
   });
 
   // ===========================================================================
-  // v7.0.0 coordination message accepted (direct)
+  // v8.2.0 coordination message accepted (preferred)
   // ===========================================================================
 
-  describe('v7.0.0 coordination message accepted (direct)', () => {
-    it('passes through v7.0.0 messages', () => {
+  describe('v8.2.0 coordination message accepted (preferred)', () => {
+    it('passes through v8.2.0 messages', () => {
       const result = normalizeCoordinationMessage({
-        version: '7.0.0', type: 'capability_sync', payload: { scopes: ['billing:read'] },
+        version: '8.2.0', type: 'capability_sync', payload: { scopes: ['billing:read'] },
       });
-      expect(result.version).toBe('7.0.0');
+      expect(result.version).toBe('8.2.0');
     });
   });
 
@@ -221,8 +217,8 @@ describe('Backward Compatibility Integration Tests (Task 302.5)', () => {
     });
 
     it('coordination accepts supported versions when disabled', () => {
-      const result = normalizeCoordinationMessage({ version: '4.6.0', type: 'heartbeat', payload: {} });
-      expect(result.version).toBe('4.6.0');
+      const result = normalizeCoordinationMessage({ version: '7.11.0', type: 'heartbeat', payload: {} });
+      expect(result.version).toBe('7.11.0');
     });
 
     it('rejects out-of-range trust_level even when disabled', () => {
@@ -237,28 +233,28 @@ describe('Backward Compatibility Integration Tests (Task 302.5)', () => {
   // ===========================================================================
 
   describe('Cross-boundary: combined JWT + coordination scenario', () => {
-    it('full v4.6.0 upgrade path: JWT + coordination both normalized', () => {
-      // Step 1: Normalize v4.6.0 JWT claims
+    it('full v4.6.0 upgrade path: JWT mapped + coordination via transition window', () => {
+      // Step 1: Normalize v4.6.0 JWT claims (trust_level mapping still works)
       const claims = normalizeInboundClaims({ trust_level: 7 });
       expect(claims.source).toBe('v4_mapped');
       expect(claims.trust_scopes).toContain('governance:propose');
 
-      // Step 2: Normalize v4.6.0 coordination message
+      // Step 2: Coordination messages must use supported versions (7.11.0+)
       const msg = normalizeCoordinationMessage({
-        version: '4.6.0', type: 'capability_sync', payload: { scopes: [...claims.trust_scopes] },
+        version: '7.11.0', type: 'capability_sync', payload: { scopes: [...claims.trust_scopes] },
       });
-      expect(msg.version).toBe('4.6.0');
+      expect(msg.version).toBe('7.11.0');
       expect(msg.type).toBe('capability_sync');
     });
 
-    it('full v7.0.0 native path: JWT + coordination direct', () => {
+    it('full v8.2.0 native path: JWT + coordination direct', () => {
       const claims = normalizeInboundClaims({ trust_scopes: ['billing:read', 'billing:write', 'agent:invoke'] });
       expect(claims.source).toBe('v7_native');
 
       const msg = normalizeCoordinationMessage({
-        version: '7.0.0', type: 'capability_sync', payload: { scopes: [...claims.trust_scopes] },
+        version: '8.2.0', type: 'capability_sync', payload: { scopes: [...claims.trust_scopes] },
       });
-      expect(msg.version).toBe('7.0.0');
+      expect(msg.version).toBe('8.2.0');
     });
   });
 });
