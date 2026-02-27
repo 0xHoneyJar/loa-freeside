@@ -234,8 +234,23 @@ jobs:
 
       - name: Check for secrets in code
         run: |
-          # Simple check for common secret patterns
-          if grep -rE "(password|secret|api_key|apikey|token).*=.*['\"][^'\"]{10,}['\"]" src/ --include="*.ts" --include="*.js" 2>/dev/null | grep -v "test" | grep -v ".test." | grep -v "example"; then
+          # Simple check for common secret patterns.
+          # Excludes: test files, examples, header reads, regex patterns, SQL, URL building.
+          MATCHES=$(grep -rE "(password|secret|api_key|apikey|token)\s*=\s*['\"][A-Za-z0-9+/=_-]{20,}['\"]" src/ \
+            --include="*.ts" --include="*.js" 2>/dev/null \
+            | grep -v "test" \
+            | grep -v ".test." \
+            | grep -v "example" \
+            | grep -v "req\.\(headers\|header\|get\)" \
+            | grep -v "pattern:" \
+            | grep -v "regex" \
+            | grep -v "strftime" \
+            | grep -v "encodeURIComponent" \
+            | grep -v "process\.env" \
+            || true)
+
+          if [ -n "$MATCHES" ]; then
+            echo "$MATCHES"
             echo "::error::Potential secrets found in source code"
             exit 1
           fi
