@@ -1,41 +1,36 @@
 {
   "verdict": "APPROVED",
-  "summary": "All previously blocking issues are addressed with a workable compatibility rollout, explicit CI strategy, clarified barrel/import-guard rules, and concrete canonicalization requirements, with no new truly blocking problems introduced.",
+  "summary": "All previously blocking contradictions and feasibility gaps were addressed with explicit alignment to the actual required CI gates, a consistent security bar, a concrete Node-engine mitigation, and clear quarantine/rollback boundaries—without introducing new blocking risks.",
   "previous_issues_status": [
     {
-      "original_issue": "“Zero breaking changes” contradicted by hard contract-version gate rejecting v7.x peers",
+      "original_issue": "Security target inconsistent (G-2 vs Success Criteria) and Security Scan tool unspecified",
       "status": "fixed",
-      "notes": "PRD now defines a phased rollout with Phase A dual-accept (`validateCompatibility >=7.11.0 <9.0.0`) and only tightens after coordination (Phase C), aligning NFR-1 with distributed interoperability reality."
+      "notes": "G-2 and Success Criteria now consistently target `npm audit --audit-level=high` == 0 (allowing moderates), and the PRD explicitly states the Security Scan check is `npm audit --audit-level=high` confirmed from the workflow. This removes the merge-gate ambiguity."
     },
     {
-      "original_issue": "loa-finn coordination treated as out-of-scope without an executable gate/sequence/rollback",
+      "original_issue": "Node 20 in CI vs adapters engine >=22 mismatch relied on implicit ignore-engines behavior",
       "status": "fixed",
-      "notes": "Section 3 adds Phase A/B/C sequencing, an explicit release gate preventing Phase C merge until loa-finn pins >=8.2.0, and a rollback/indefinite dual-accept plan."
+      "notes": "The PRD now makes an explicit, implementable decision: set `engine-strict=false` in CI npm config for the adapters install step and document it. This is concrete and aligns with the success criteria (i.e., installs won’t unexpectedly hard-fail due to engines)."
     },
     {
-      "original_issue": "Conformance vectors 3 → 219 lacked CI execution strategy, determinism rules, and time budget",
+      "original_issue": "Single-cycle feasibility risk from committing to multiple breaking upgrades plus full lint/TS/test cleanup with no fallback",
       "status": "fixed",
-      "notes": "FR-9 and NFR-5 define P0 vs nightly split, explicit wall-time budgets, parallelism, caching, fixed-clock injection, and hard-fail flake policy."
+      "notes": "A contingency plan is now explicitly in-scope: timebox-based rollback via resolution overrides/pinning if a breaking upgrade destabilizes beyond a threshold, while still meeting the required Security Scan bar. Delivery strategy also allows staged PRs (MVP first, security second), preserving mergeability within the cycle."
     },
     {
-      "original_issue": "Import guard vs barrel single-import-point contradiction (direct /commons imports allowed alongside barrel rule)",
+      "original_issue": "Docker Build required check omitted from success criteria and potentially out-of-scope fixes",
       "status": "fixed",
-      "notes": "FR-2/FR-10 now state a single rule: only the barrel may import `@0xhoneyjar/loa-hounfour/*`; all app code must import via `@arrakis/core/protocol`, including commons."
+      "notes": "Docker Build is now included in Goals (G-1), constraints, and Success Criteria (all 5 checks green). Scope explicitly allows minimal Dockerfile changes if needed, removing the prior 'can’t merge even if everything else is green' failure mode."
     },
     {
-      "original_issue": "GovernanceMutation actor_id premise contradicted by FR-5 requiring evaluateGovernanceMutation wiring",
+      "original_issue": "Contradictory test scope: 'no new tests' vs test infra fixes; skipping tests loophole vs goal of 0 failing files",
       "status": "fixed",
-      "notes": "NFR-1 is clarified: pin upgrade is non-breaking because current code doesn’t construct mutations, but FR-5 introduces new mutation construction and explicitly requires actor_id sourcing + acceptance/rejection tests."
+      "notes": "The PRD now clearly allows minimal test helpers/fixtures for existing tests, and defines quarantining as an explicit, tracked mechanism with expiry. G-3 and Success Criteria are aligned around 'non-quarantined' tests, closing the loophole while keeping feasibility."
     },
     {
-      "original_issue": "Hash chain design lacked explicit canonicalization and hashed-field selection, risking integrity verification failures",
+      "original_issue": "Lint scope mismatch: repo-wide '0 errors' implied while builder excluded; risk CI lint still covers builder",
       "status": "fixed",
-      "notes": "FR-6 now mandates using hounfour helpers end-to-end, explicitly calls out RFC 8785 JCS canonicalization inside `computeAuditEntryHash()`, specifies domain tag construction via `buildDomainTag()`, and states only `content_fields` participates per `AuditEntrySchema`, with conformance vectors referenced."
-    },
-    {
-      "original_issue": "Missing v8.x completeness checklist tying release deltas to consumed symbols/contract.json/barrel exports",
-      "status": "fixed",
-      "notes": "Section 8 provides a v8.x symbol delta checklist with ADOPT/DEFER decisions and FR mapping, plus an explicit statement that existing contract.json symbols remain valid and were typechecked after pin update."
+      "notes": "G-4 and Success Criteria now explicitly define the lint target as 'linted paths' with `src/ui/builder/` excluded via `.eslintignore`. This aligns the metric with the intended gate behavior."
     }
   ],
   "new_blocking_concerns": [],
