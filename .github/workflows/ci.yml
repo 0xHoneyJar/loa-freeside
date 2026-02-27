@@ -26,7 +26,7 @@ jobs:
       - name: Validate JSON files
         run: |
           echo "Validating JSON files..."
-          for file in $(find . -name "*.json" -not -path "./node_modules/*" -not -path "./.git/*"); do
+          for file in $(find . -name "*.json" -not -path "./node_modules/*" -not -path "./.git/*" -not -path "./.claude/*"); do
             echo "Checking $file"
             python3 -m json.tool "$file" > /dev/null || { echo "Invalid JSON: $file"; exit 1; }
           done
@@ -212,8 +212,6 @@ jobs:
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Install dependencies
         working-directory: themes/sietch
@@ -256,8 +254,6 @@ jobs:
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Install dependencies
         working-directory: themes/sietch
