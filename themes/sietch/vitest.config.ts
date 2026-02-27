@@ -17,6 +17,12 @@ export default defineConfig({
       },
     ],
   },
+  // Ensure bare imports from aliased @arrakis/* source files resolve correctly.
+  // Without this, imports like 'opossum' from packages/adapters/ fail because
+  // Vitest can't find them relative to the aliased path.
+  ssr: {
+    noExternal: ['opossum'],
+  },
   test: {
     globals: true,
     environment: 'node',
