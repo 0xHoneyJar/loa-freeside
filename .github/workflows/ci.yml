@@ -210,19 +210,16 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-
       - name: Install dependencies
         working-directory: themes/sietch
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: Static import guard (Redis in unit tests)
         run: bash scripts/check-redis-imports.sh
 
       - name: Run unit tests
         working-directory: themes/sietch
-        run: pnpm test:unit
+        run: npm test
 
   # =============================================================================
   # INTEGRATION TESTS - Requires Redis service container
@@ -252,15 +249,12 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-
       - name: Install dependencies
         working-directory: themes/sietch
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: Run integration tests
         working-directory: themes/sietch
-        run: pnpm test:integration
+        run: npm run test:integration
         env:
           REDIS_URL: redis://localhost:6379

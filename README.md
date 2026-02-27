@@ -1,6 +1,6 @@
 # Freeside
 
-[![Version](https://img.shields.io/badge/version-6.0.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-7.0.0-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-green.svg)](LICENSE.md)
 
 Multi-model agent economy infrastructure platform. Token-gated AI capabilities, budget-atomic inference, and cross-chain community management delivered as Discord, Telegram, and REST APIs.
