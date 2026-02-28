@@ -353,6 +353,44 @@ variable "dixie_image_tag" {
   default     = "latest"
 }
 
+# =============================================================================
+# Finn Dedicated Redis (Cycle 046)
+# =============================================================================
+
+variable "finn_redis_node_type" {
+  description = "Finn dedicated Redis node type"
+  type        = string
+  default     = "cache.t3.micro"
+}
+
+# =============================================================================
+# Dixie Auto-Scaling (Cycle 046)
+# =============================================================================
+
+variable "dixie_max_count" {
+  description = "Maximum Dixie task count for auto-scaling"
+  type        = number
+  default     = 4
+}
+
+variable "autoscaling_cpu_target" {
+  description = "Target CPU utilization percentage for auto-scaling"
+  type        = number
+  default     = 70
+}
+
+variable "autoscaling_scale_in_cooldown" {
+  description = "Scale-in cooldown period in seconds"
+  type        = number
+  default     = 300
+}
+
+variable "autoscaling_scale_out_cooldown" {
+  description = "Scale-out cooldown period in seconds"
+  type        = number
+  default     = 60
+}
+
 # SNS Alarm Topic
 variable "sns_alarm_topic_arn" {
   description = "SNS topic ARN for CloudWatch alarm notifications (empty = no notifications)"
