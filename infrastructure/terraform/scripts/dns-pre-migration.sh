@@ -85,6 +85,34 @@ canonicalize_dns_value() {
     TXT)
       # Strip only outermost surrounding quotes per line
       canonical=$(printf '%s\n' "$canonical" | sed 's/^"//; s/"$//')
+      # SPF normalization (PRAISE-2 follow-up):
+      # For SPF records (v=spf1), normalize whitespace between mechanisms and sort
+      # mechanisms alphabetically (order-independent per RFC 7208 §4.6.4), keeping
+      # the all mechanism (~all, -all, +all, ?all) last.
+      # SPF normalization example:
+      # Input:  "v=spf1  include:_spf.google.com   include:sendgrid.net  ~all"
+      # Output: "v=spf1 include:_spf.google.com include:sendgrid.net ~all"
+      canonical=$(printf '%s\n' "$canonical" | while IFS= read -r line; do
+        if [[ "$line" =~ ^v=spf1([[:space:]]|$) ]]; then
+          # Extract all mechanism (must stay last)
+          local all_mech
+          all_mech=$(printf '%s' "$line" | grep -oE '[-~+?]all$' || true)
+          # Remove v=spf1 prefix and all mechanism, normalize whitespace, sort
+          local mechs
+          mechs=$(printf '%s' "$line" | sed 's/^v=spf1[[:space:]]*//' | sed 's/[[:space:]]*[-~+?]all$//' | tr -s ' ' '\n' | grep -v '^$' | sort | tr '\n' ' ' | sed 's/ $//')
+          if [[ -n "$mechs" && -n "$all_mech" ]]; then
+            printf '%s\n' "v=spf1 $mechs $all_mech"
+          elif [[ -n "$mechs" ]]; then
+            printf '%s\n' "v=spf1 $mechs"
+          elif [[ -n "$all_mech" ]]; then
+            printf '%s\n' "v=spf1 $all_mech"
+          else
+            printf '%s\n' "v=spf1"
+          fi
+        else
+          printf '%s\n' "$line"
+        fi
+      done)
       ;;
     CNAME|NS)
       # Strip trailing dots
