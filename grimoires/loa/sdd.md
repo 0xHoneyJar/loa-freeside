@@ -63,6 +63,8 @@ infrastructure/terraform/dns/       ← DNS ROOT (new, separate state)
         └── backend.tfvars          ← key = "dns/production.tfstate"
 ```
 
+**Dual justification**: The two-root layout serves both safety (blast-radius isolation between DNS and compute) and evolutionary independence (DNS can evolve into a programmable agent routing layer without affecting compute). See `infrastructure/terraform/DEPLOYMENT.md` § "Architectural Intent: Two-Root Pattern" for the full rationale.
+
 ### 2.2 State Backend Isolation
 
 Both roots share the same S3 bucket but use different key prefixes:

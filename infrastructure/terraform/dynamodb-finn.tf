@@ -4,6 +4,11 @@
 # SDD §3.2: dynamodb-finn.tf
 # =============================================================================
 #
+# Provenance: imported from loa-finn state (cycle-046, Sprint 1)
+# Original: loa-finn/infrastructure/terraform/dynamodb.tf
+# Import commit: d3d3ea68 (feat(sprint-1): stateful resource consolidation)
+# Lifecycle: prevent_destroy (conservation invariant — see docs/conservation-invariants.md)
+#
 # Two DynamoDB tables:
 # 1. scoring_path_log — Audit trail for scoring path evaluations
 # 2. x402_settlements — x402 payment settlement records

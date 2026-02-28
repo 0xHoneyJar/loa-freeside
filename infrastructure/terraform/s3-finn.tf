@@ -4,6 +4,11 @@
 # SDD §3.3: s3-finn.tf
 # =============================================================================
 #
+# Provenance: imported from loa-finn state (cycle-046, Sprint 1)
+# Original: loa-finn/infrastructure/terraform/s3.tf
+# Import commit: d3d3ea68 (feat(sprint-1): stateful resource consolidation)
+# Lifecycle: prevent_destroy (conservation invariant — see docs/conservation-invariants.md)
+#
 # Two S3 buckets:
 # 1. audit-anchors — Object Lock (COMPLIANCE 365d) for immutable audit records
 # 2. calibration — Versioned storage for calibration data

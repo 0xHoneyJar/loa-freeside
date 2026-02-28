@@ -4,6 +4,11 @@
 # SDD §3.4: kms-finn.tf
 # =============================================================================
 #
+# Provenance: imported from loa-finn state (cycle-046, Sprint 1)
+# Original: loa-finn/infrastructure/terraform/kms.tf
+# Import commit: d3d3ea68 (feat(sprint-1): stateful resource consolidation)
+# Lifecycle: prevent_destroy (conservation invariant — see docs/conservation-invariants.md)
+#
 # Dedicated KMS key for Finn audit signing, DynamoDB encryption, and S3
 # bucket encryption. Separate from the shared secrets KMS key to enforce
 # least-privilege: only the Finn task role and designated admin roles

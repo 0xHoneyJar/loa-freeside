@@ -4,6 +4,11 @@
 # SDD §3.1: elasticache-finn.tf
 # =============================================================================
 #
+# Provenance: imported from loa-finn state (cycle-046, Sprint 1)
+# Original: loa-finn/infrastructure/terraform/elasticache.tf
+# Import commit: d3d3ea68 (feat(sprint-1): stateful resource consolidation)
+# Lifecycle: prevent_destroy (conservation invariant — see docs/conservation-invariants.md)
+#
 # Dedicated Redis for Finn billing (noeviction + AOF). Separate from the
 # shared Redis cluster to isolate billing data and enforce persistence
 # guarantees. Auth token is managed externally via bootstrap script (SKP-003).

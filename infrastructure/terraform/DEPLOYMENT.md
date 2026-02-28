@@ -171,6 +171,33 @@ aws ecs update-service --cluster arrakis-staging --service arrakis-staging-finn 
 
 Rotation cadence: quarterly, or on security incident.
 
+## Architectural Intent: Two-Root Pattern
+
+The compute/DNS root separation (§2.1 in SDD) serves two purposes:
+
+**Safety rationale**: Blast-radius isolation. DNS changes (`infrastructure/terraform/dns/`) cannot destroy compute resources, and compute changes (`infrastructure/terraform/`) cannot corrupt DNS records. Each root has an independent state file, so a corrupted plan in one root cannot affect the other.
+
+**Evolutionary rationale**: DNS and compute will diverge in complexity at different rates as the agent economy scales. The agent economy (see loa-finn #31 Hounfour RFC, loa-finn #80 Conway research) envisions 100K+ finnNFT agents, each potentially needing distinct DNS records, x402 payment endpoints, and JWKS discovery URLs. The DNS root can evolve into a programmable routing layer — supporting per-agent records, dynamic endpoint routing, and certificate management — independently of compute infrastructure.
+
+**Industry parallel** (analogy, not dependency): Cloudflare's Workers platform similarly evolved its DNS infrastructure from zone management to a programmable routing layer (Workers Routes). This was only possible because DNS was architecturally isolated from their origin infrastructure. Our scale and context differ, but the structural principle — separation enables independent evolution — applies.
+
+**Extension path**: When per-agent DNS management is needed, the DNS root manages zone-level resources (CAA, DNSSEC, MX, wildcard fallback) while a DNS management microservice handles per-agent records via Route 53 API. See `docs/adr/003-agent-dns-programmatic-management.md` for the design.
+
+## Conservation Invariants
+
+This infrastructure implements a conservation invariant pattern that mirrors the application-layer budget conservation invariants (PR #90, Proof of Economic Life) and the governance-layer constitutional provenance (loa-hounfour #22, #29).
+
+**Shared principle**: Mutations must be auditable, reversible, and guarded by invariants — regardless of abstraction layer.
+
+| Infrastructure | Application (PR #90) | Governance (#22/#29) |
+|---------------|---------------------|---------------------|
+| `prevent_destroy` lifecycle | I-1: budget sum invariant | Genesis constraints |
+| `tf-plan-guard.sh` | Guard sweep (I-3) | Three-witness quorum |
+| State backend isolation | Append-only ledger (I-4) | Chain-bound hash chains |
+| `ignore_changes = [auth_token]` | BYOK key isolation | Constitutional provenance |
+
+See `docs/conservation-invariants.md` for the full three-layer mapping.
+
 ## Deploy Pipeline (Sprint 2)
 
 ### deploy-ring.sh Usage
