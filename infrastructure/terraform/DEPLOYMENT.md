@@ -170,3 +170,122 @@ aws ecs update-service --cluster arrakis-staging --service arrakis-staging-finn 
 ```
 
 Rotation cadence: quarterly, or on security incident.
+
+## Deploy Pipeline (Sprint 2)
+
+### deploy-ring.sh Usage
+
+```bash
+# Deploy all services to staging
+./scripts/deploy-ring.sh staging
+
+# Deploy specific services only
+./scripts/deploy-ring.sh staging --services finn,freeside
+
+# With custom health thresholds
+HEALTH_P99_THRESHOLD_MS=3000 HEALTH_5XX_LIMIT=5 ./scripts/deploy-ring.sh staging
+```
+
+**Phases**: Build → TF Apply → Dixie → Finn → Freeside → Wiring Tests
+
+**Health Gate Thresholds** (configurable via env vars):
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HEALTH_P99_THRESHOLD_MS` | 2000 | p99 latency must be below this (ms) |
+| `HEALTH_5XX_LIMIT` | 3 | Max 5xx errors before rollback |
+| `HEALTH_CONSECUTIVE_CHECKS` | 10 | Consecutive healthy checks required |
+| `HEALTH_TIMEOUT` | 300 | Timeout per health gate (seconds) |
+
+### Rollback Procedures (IMP-004)
+
+#### ECS Service Rollback (automated by deploy-ring.sh)
+
+```bash
+# Time limit: 5 minutes
+# Trigger: health gate failure (5xx > limit or p99 > threshold for > timeout)
+# deploy-ring.sh does this automatically, but manual override:
+aws ecs update-service \
+  --cluster arrakis-staging \
+  --service arrakis-staging-finn \
+  --task-definition <previous-task-definition-arn> \
+  --force-new-deployment
+
+# Verify: wait for service stability
+aws ecs wait services-stable --cluster arrakis-staging --services arrakis-staging-finn
+
+# Expected: service returns to previous healthy state within 5 minutes
+```
+
+#### Terraform Import Rollback
+
+```bash
+# Trigger: import produces force-replacement on any resource
+# Time limit: immediate
+terraform state rm <resource_address>
+# Fix HCL, re-import
+```
+
+#### Full State Rollback (emergency)
+
+```bash
+# Trigger: multiple import failures, state corruption
+# Time limit: 15 minutes
+aws s3 cp s3://arrakis-tfstate-891376933289/backups/backup-YYYYMMDD-HHMMSS.tfstate ./
+terraform state push backup-YYYYMMDD-HHMMSS.tfstate
+terraform plan -var-file=environments/staging/terraform.tfvars
+# Verify: plan shows expected state
+```
+
+### Secret Handling Protocol (IMP-008)
+
+- No credential values in commit messages, PR descriptions, or CI logs
+- `.tfstate` backups excluded from git (`.gitignore` pattern: `*.tfstate*`)
+- `bootstrap-redis-auth.sh` output must not be piped to log files
+- SSM SecureString values managed outside Terraform (`ignore_changes = [value]`)
+- All secrets encrypted with KMS (either `aws_kms_key.secrets` or `aws_kms_key.finn_audit_signing`)
+- Local `terraform apply` prohibited during migration — all applies via CI
+
+### Wiring Tests
+
+```bash
+# Run all 10 connectivity tests
+./scripts/staging-wiring-test.sh staging
+```
+
+| Test | Path | Method |
+|------|------|--------|
+| W-1 | External → Freeside | curl health endpoint |
+| W-2 | External → Finn | curl health endpoint |
+| W-3 | External → Dixie | curl health endpoint |
+| W-4 | Freeside → Finn | ECS Exec + Cloud Map |
+| W-5 | Freeside → Dixie | ECS Exec + Cloud Map |
+| W-6 | Finn → Dixie | ECS Exec + Cloud Map |
+| W-7 | Finn → Freeside (JWKS) | ECS Exec + Cloud Map |
+| W-8 | Finn → Redis | ECS Exec + ioredis ping |
+| W-9 | Freeside → PgBouncer | ECS Exec + pg query |
+| W-10 | Dixie → PgBouncer | ECS Exec + pg query |
+
+### CI Plan Guard
+
+```bash
+# Run after terraform plan in CI
+terraform show -json plan.tfplan > plan.json
+./scripts/tf-plan-guard.sh plan.json
+```
+
+Blocks replace/destroy on: ElastiCache, DynamoDB, S3, KMS, Route 53 zones.
+
+## Alarm Response Runbook (IMP-010)
+
+| Alarm | Owner | First Response | Escalation |
+|-------|-------|----------------|------------|
+| `finn-cpu-high` | Platform | Check ECS task count, review recent deploys | Scale up `finn_desired_count` |
+| `finn-memory-high` | Platform | Check for memory leaks via CloudWatch Logs Insights | Restart tasks, investigate OOM |
+| `finn-5xx` | Platform + Backend | Check application logs, recent deploys | Rollback via `deploy-ring.sh` |
+| `finn-task-count` | Platform | Check ECS events for placement failures | Verify subnet/SG config |
+| `finn-latency-p99` | Platform + Backend | Check Redis latency, DB query times | Scale Redis node type |
+| `finn-redis-connection` | Platform | Check SG rules, Redis status | Verify bootstrap-redis-auth.sh ran |
+| `dixie-cpu-high` | Platform | Check auto-scaling policy, recent traffic | Adjust `dixie_max_count` |
+| `dixie-memory-high` | Platform | Check task memory config | Increase `dixie_memory` |
+| `dixie-5xx` | Platform + Backend | Check application logs | Rollback via `deploy-ring.sh` |
+| `dixie-task-count` | Platform | Check ECS events | Verify auto-scaling target |
