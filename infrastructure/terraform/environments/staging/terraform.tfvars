@@ -106,4 +106,11 @@ byok_enabled = true
 dixie_cpu           = 256
 dixie_memory        = 512
 dixie_desired_count = 1
+dixie_max_count     = 2   # Staging: conservative auto-scaling ceiling
 dixie_image_tag     = "latest"  # Override with git SHA in CI/CD
+
+# =============================================================================
+# loa-finn Dedicated Redis (Cycle 046: Armitage Platform)
+# =============================================================================
+
+finn_redis_node_type = "cache.t3.micro"  # Staging: minimal instance

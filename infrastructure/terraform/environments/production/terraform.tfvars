@@ -27,3 +27,13 @@ redis_node_type = "cache.t3.micro"
 
 # Domain
 domain_name = "api.arrakis.community"
+
+# =============================================================================
+# Cycle 046: Armitage Platform — Finn/Dixie Consolidation
+# =============================================================================
+
+# Finn dedicated Redis
+finn_redis_node_type = "cache.t3.micro"
+
+# Dixie auto-scaling
+dixie_max_count = 4  # Production: allow scale-out to 4
