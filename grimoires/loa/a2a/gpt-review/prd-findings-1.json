@@ -1,42 +1,66 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "As written, the PRD is likely to fail in a single cycle because it commits to multiple breaking upgrades and a full lint/test cleanup without defining feasibility boundaries, and it contains contradictions in constraints/success criteria that make “done” ambiguous or unattainable.",
+  "summary": "As written, this PRD would likely cause either accidental destruction/recreation of stateful AWS resources or a DNS cutover that breaks email/Vercel due to incorrect assumptions about imports, record parity, and wildcard/delegation mechanics.",
   "blocking_issues": [
     {
-      "location": "2. Goals & Success Metrics (G-2) vs 6. Success Criteria (4) and CI Audit Findings",
-      "issue": "Security target is internally inconsistent: G-2 says “Zero critical/high vulnerabilities” (audit-level=high), but Success Criteria requires “0 vulnerabilities” while the audit currently includes 16 moderate. Also, branch protection includes a Security Scan check that may not be `npm audit`-based.",
-      "why_blocking": "Teams can meet G-2 but still fail Success Criteria (or vice versa), and you may “fix npm audit” but still fail the required Security Scan gate if it’s driven by a different tool (Dependabot/CodeQL/Snyk/Trivy). This can lead to shipping a PR that cannot merge even though it ‘meets the PRD’.",
-      "fix": "Pick one measurable security bar and align it to the actual required CI check implementation. Either: (a) set success to `npm audit --audit-level=high` == 0 (allow moderates), or (b) explicitly require 0 total vulns and include a plan to eliminate moderates. Also specify what the “Security Scan” check is (tool + config) and make the success criterion match that gate."
+      "location": "1. Problem Statement + 4. FR-1 + 7. Risks (R-3)",
+      "issue": "Contradiction: PRD says “system is not live, we can tear down and rebuild” while also requiring “must not recreate stateful resources (S3 Object Lock, KMS, DynamoDB)” and later suggests “Destroy old resources before applying new.”",
+      "why_blocking": "This creates a high-risk operator interpretation that teardown is acceptable. For Object Lock buckets and KMS keys, destroy/recreate is either impossible or catastrophic (data loss, broken signatures, irrecoverable key material). If the team follows the teardown guidance, the project fails its core safety requirement.",
+      "fix": "Make the safety invariant explicit and global: (a) no destroy/recreate for any stateful resources in any environment, even pre-prod; (b) remove/replace R-3 mitigation with a safe migration plan: freeze old TF applies, import into the new root, then deprecate old stacks without destroying shared/stateful components; (c) add an explicit “never run terraform destroy” rule for the legacy stacks until imports are verified."
     },
     {
-      "location": "4. Technical Constraints (Node 20 in CI; adapters requires >=22; ignore-engines) vs 6. Success Criteria (all required checks green)",
-      "issue": "Node version/engine mismatch is a merge blocker risk: CI runs Node 20 while a package requires >=22, and the PRD assumes CI proceeds via `--ignore-engines` “implicitly via npm warnings,” which is not a reliable or standard guarantee across npm versions and CI steps.",
-      "why_blocking": "If any CI step enforces engines (now or later), installs can hard-fail and you will not reach build/lint/test/security success. Even if it currently “works,” the PRD bakes in a fragile assumption that can break mid-cycle and prevent merging.",
-      "fix": "Make an explicit decision and encode it: either (a) upgrade CI to Node 22+ (and state it’s in-scope despite the ‘no workflow structural changes’ line), or (b) lower/adjust the adapters engine requirement to match CI, or (c) explicitly add `npm config set engine-strict false` / `--ignore-engines` to the install step and document it as a required constraint. Then align success criteria to the chosen approach."
+      "location": "7. Risks & Dependencies (R-1 mitigation)",
+      "issue": "Incorrect/unsafe Terraform guidance: “Dry-run import with -target” is not a real safety mechanism for imports and can create partial-state/graph inconsistencies; also import is not a dry-run operation.",
+      "why_blocking": "Teams may believe they can safely ‘dry-run’ imports. In reality, `terraform import` mutates state immediately; using `-target` during planning/apply can mask dependencies and lead to later unexpected destroys/creates—exactly what this PRD is trying to prevent for stateful resources.",
+      "fix": "Replace with a concrete, safe import workflow: (1) add resources to code with lifecycle protections (`prevent_destroy = true` for KMS/S3/DDB where appropriate); (2) run `terraform plan` to ensure only creates are proposed (expected before import); (3) run `terraform import` for each resource; (4) run `terraform plan` again until it shows 0 changes for imported resources; (5) only then allow apply for non-stateful deltas. Explicitly forbid `-target` except for narrowly documented break-glass cases."
     },
     {
-      "location": "3. Scope (In Scope #6 breaking upgrades) + 5. Risks vs “single cycle” feasibility",
-      "issue": "The PRD commits to attempting three breaking upgrades (vitest 4.x, discord.js, node-vault) while also requiring 0 lint errors (1,836), 0 failing tests (193 failing), and 0 TS errors (319) in the same cycle, without any fallback criteria if one upgrade explodes scope.",
-      "why_blocking": "This is a classic “all-or-nothing” plan: any one breaking upgrade can consume the cycle and prevent meeting the acceptance criteria, causing the project to fail its stated objective (mergeable PR with all gates green). The PRD lacks a defined rollback strategy (pin/override) that still achieves CI green.",
-      "fix": "Add explicit contingency paths that still satisfy the required gates: e.g., allow temporary pinning/resolutions for discord.js/node-vault/vitest if upgrade work exceeds a timebox, provided Security Scan passes and tests remain green. Alternatively, split into staged deliverables with a hard MVP: (1) hounfour repin + TS/lint/test fixes to green, (2) security upgrades, (3) breaking upgrades—each with its own mergeable PR and success criteria."
+      "location": "2. Goals & Success Metrics (G-1) + 9. Success Definition (1)",
+      "issue": "Success metric “0 drift / no unexpected changes” is not measurable as written and conflicts with the stated work (adding many missing resources will necessarily produce changes).",
+      "why_blocking": "This can’t be used as an acceptance gate: the plan will include expected creates/updates. Without a measurable definition of “unexpected,” the team can either block forever or accidentally apply destructive changes while rationalizing them as ‘expected.’",
+      "fix": "Define explicit acceptance criteria: e.g., (a) for imported stateful resources: plan must show 0 changes; (b) for new resources: plan may show creates only (no destroys/replaces) except an enumerated allowlist; (c) for existing ECS services/ALBs/SGs: specify whether updates are allowed and which attributes are permitted to change."
     },
     {
-      "location": "3. Scope (Out of Scope: “CI workflow structural changes”) vs 4. Technical Constraints (branch protection includes Docker Build required) vs 2/6 success metrics",
-      "issue": "Success criteria and goals omit the Docker Build required check, while constraints say it is required. Also, if Docker Build is failing due to Node version/lockfile/deps, fixing it may require workflow/Dockerfile changes that are declared out of scope.",
-      "why_blocking": "You can satisfy all listed success criteria and still be unable to merge because Docker Build is required. If Docker Build needs changes, the PRD currently forbids the likely fixes, making “mergeable” potentially impossible.",
-      "fix": "Include Docker Build in the success criteria explicitly (or confirm it is already green and will remain so). If it’s not guaranteed green, bring the minimal necessary Dockerfile/workflow adjustments into scope, or explicitly state why no changes are needed (with evidence)."
+      "location": "4. FR-4 DNS Authority Migration + 5. NFR-1 + 2. G-5/G-7",
+      "issue": "“100% record parity vs Gandi” is not achievable/meaningful for a Route 53 authoritative migration because some records must change (SOA/NS at minimum), and some providers synthesize/format records differently; also apex “A record (Vercel anycast)” is likely wrong for Vercel (commonly apex A=76.76.21.21, but many setups use ALIAS/ANAME semantics; Route 53 uses Alias A/AAAA to AWS targets, not to arbitrary anycast IPs).",
+      "why_blocking": "If the team tries to enforce literal parity, they will either (a) fail the project on a false negative, or (b) force incorrect records into Route 53. Mis-modeling Vercel apex/wildcards is a common cause of production outage (web traffic breaks) during NS cutover.",
+      "fix": "Redefine parity as “functional equivalence” with an explicit diff allowlist: NS/SOA will differ; TTLs may differ; formatting differences allowed. For Vercel, specify the exact required record set per Vercel’s current guidance for this domain: apex A/AAAA values (or CNAME flattening approach), and which subdomains use CNAME. Document the exact intended records, not “anycast” generically."
     },
     {
-      "location": "3. Scope (Out of Scope: “Adding new tests”) vs 3. Scope (In Scope: “Test infrastructure” fixes) and 6. Success Criteria (tests may be skipped with documentation)",
-      "issue": "Test-related scope is contradictory: you plan to change shared test infrastructure and mocks (which often requires adding/adjusting tests/fixtures), but “adding new tests” is out of scope; meanwhile success criteria allows skipping tests with documentation, which conflicts with G-3 “0 failing test files.”",
-      "why_blocking": "This creates a loophole where CI can be made green by skipping tests, undermining the stated goal of test recovery, or conversely blocks necessary work (new fixtures/helpers) to fix tests properly. Ambiguity here can lead to the wrong implementation (skip vs fix).",
-      "fix": "Clarify policy: either (a) disallow skipping except for quarantining with an explicit issue + expiry date, and allow adding minimal test fixtures/helpers as in-scope; or (b) explicitly permit quarantining a bounded set of flaky tests with a tracked follow-up, and update G-3 to match (e.g., “0 failing non-quarantined tests”)."
+      "location": "4. FR-4 (dns/honeyjar-xyz-vercel.tf, dns/honeyjar-xyz-agents.tf) + 7. Risks (R-4)",
+      "issue": "Wildcard/delegation misunderstanding: PRD mixes “wildcard CNAME”, “_acme-challenge NS delegation”, and “*.agents.0xhoneyjar.xyz wildcard resolves CNAME active” without defining whether `agents.0xhoneyjar.xyz` is delegated to another zone or kept in the same zone. Also, a wildcard at `*.agents` does not isolate you from an apex wildcard `*` if one exists; precedence rules matter.",
+      "why_blocking": "This is a classic DNS migration failure mode: you can easily create conflicting wildcards (e.g., `*.0xhoneyjar.xyz` vs `*.agents.0xhoneyjar.xyz`) or break certificate issuance if `_acme-challenge` delegation is wrong. If the agent economy depends on 100K+ subdomains, getting this wrong is a launch-blocker.",
+      "fix": "Choose and specify one model: (A) keep everything in the apex hosted zone and create `*.agents` CNAME + explicit records for `agents` itself; or (B) delegate `agents.0xhoneyjar.xyz` to a separate hosted zone (recommended at scale) and manage that zone in Terraform too. Explicitly document wildcard precedence and required non-wildcard records (`agents.0xhoneyjar.xyz` itself, `_acme-challenge.agents...` behavior)."
     },
     {
-      "location": "3. Scope (Builder exclusion) vs 2/6 lint success criteria",
-      "issue": "Lint success criteria are scoped only to themes/sietch in section 6, but goals (G-4) imply repo-wide “ESLint errors = 0” while scope explicitly excludes `src/ui/builder/` from lint.",
-      "why_blocking": "Depending on how the CI Lint check is configured (repo-wide vs package-specific), you may either (a) fail CI because lint still runs on builder, or (b) meet CI but violate the stated goal of “0 errors” because you intentionally excluded a directory. This can cause misalignment and rework late in the cycle.",
-      "fix": "Align the goal/success criteria to the actual lint gate: specify exactly what paths/packages the CI lint job covers after the exclusion, and set the metric accordingly (e.g., “0 ESLint errors in all linted paths; builder excluded by design”)."
+      "location": "4. FR-4 Key decisions: “data.aws_lb for cross-references (not terraform_remote_state)” + dns/honeyjar-xyz-backend.tf",
+      "issue": "Using `data.aws_lb` to reference the ALB for `api.0xhoneyjar.xyz` is brittle/underspecified: it requires stable naming/tags and correct region/account; it also breaks if the ALB doesn’t exist yet (ordering) or if multiple ALBs match.",
+      "why_blocking": "This can block applies or, worse, point production DNS at the wrong load balancer. DNS pointing at the wrong ALB is an outage and hard to detect until cutover.",
+      "fix": "Either (a) use `terraform_remote_state` from compute to DNS (safe if read-only and state is stable) or (b) enforce deterministic lookup via tags + exact name + account/region constraints, and document the dependency ordering (compute must be applied before enabling `enable_production_api`). Add a validation that exactly one ALB matches."
+    },
+    {
+      "location": "5. Technical & NFRs (NFR-3 Security Model Consistency) vs earlier Problem Statement",
+      "issue": "NFR-3 mandates “no CIDR-based rules for service mesh,” but the architecture explicitly keeps Finn public for staging (external health checks) and includes external HTTPS checks for Dixie/Freeside. That requires CIDR-based ingress (0.0.0.0/0) at least on ALB security groups, and possibly on service SGs depending on networking mode.",
+      "why_blocking": "If implemented literally, you can’t have public endpoints or external health checks. If ignored, the NFR is meaningless. Either way, it risks building the wrong security posture and breaking the deploy gating (health checks fail).",
+      "fix": "Clarify scope: “service-to-service traffic uses SG-to-SG; internet ingress is only via ALB SG with CIDR 0.0.0.0/0 on 443; tasks are not directly internet-reachable.” Explicitly separate ALB SG rules from service mesh SG rules."
+    },
+    {
+      "location": "4. FR-3 E2E Wiring Tests (W-4..W-10) + 7. Risks (R-5)",
+      "issue": "ECS Exec prerequisite is incomplete: enabling ECS Exec also requires task role permissions, SSM messages permissions, cluster configuration, and network egress to SSM endpoints (or VPC endpoints). PRD only says “Enable ECS Exec in task definitions.”",
+      "why_blocking": "If ECS Exec can’t actually run, W-4..W-10 cannot be executed, making G-4 and Success Definition (3) unattainable. This blocks acceptance of the consolidation work.",
+      "fix": "Add explicit prerequisites: IAM permissions for exec, cluster exec configuration, KMS permissions if using encrypted logs, and either NAT egress or VPC endpoints for SSM/SSMMessages/EC2Messages/Logs. Include a verification step: `aws ecs execute-command` smoke test per service."
+    },
+    {
+      "location": "4. FR-1 Import list + 7. Dependencies (loa-dixie terraform state)",
+      "issue": "Import scope is incomplete/possibly wrong: PRD lists only a handful of stateful resources to import, but earlier it claims multiple backends and duplicate ECS services/ALBs/SGs. Those are not ‘stateful’ but are still critical to avoid accidental replacement (ALB, listeners, target groups, Cloud Map services/namespaces, IAM roles, log groups).",
+      "why_blocking": "If the new consolidated root creates parallel networking/service-discovery resources instead of importing/adopting existing ones, you’ll get split-brain routing (some tasks registered in one Cloud Map service, others in another), broken internal DNS names, and deploy scripts targeting the wrong services.",
+      "fix": "Add an explicit “adoption matrix” for all shared identity/routing resources: Cloud Map namespace/services, ALBs/listeners/TGs, ECS clusters/services, IAM roles, log groups, SSM parameters. For each: import vs recreate decision, and the required stable names to ensure continuity."
+    },
+    {
+      "location": "8. Manual Steps + 5. NFR-5 DMARC Fix (Immediate)",
+      "issue": "DMARC fix is required “independent of migration timeline” but the PRD also plans to recreate DNS under Route 53 with parity. If DMARC is fixed now in Gandi but not reflected in the Route 53 desired state, parity checks and/or cutover will reintroduce the broken DMARC.",
+      "why_blocking": "Email deliverability is a hard requirement (G-7). A mismatch between ‘fix now’ and ‘IaC desired state’ can cause regression at cutover.",
+      "fix": "Make DMARC value part of the Route 53 Terraform desired state immediately, and update the pre-migration parity script to treat the corrected DMARC as the source of truth (or explicitly require updating Gandi first, then copying into TF before any parity validation)."
     }
   ],
   "question": "",

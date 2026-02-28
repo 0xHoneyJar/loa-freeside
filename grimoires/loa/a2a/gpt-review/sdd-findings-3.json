@@ -1,38 +1,46 @@
 {
-  "verdict": "APPROVED",
-  "summary": "All previously raised blockers are now addressed, and the remaining plan is coherent, correctly ordered, and should unblock all five CI gates without relying on brittle workarounds.",
-  "previous_issues_status": [
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Most Flatline integrations are coherent, but Redis auth externalization is not actually implemented in the shown HCL and the DNSSEC KMS key policy is overly permissive, creating truly blocking security/operability risk.",
+  "issues": [
     {
-      "original_issue": "Lockfile regeneration / monorepo install topology mismatch could leave CI installing old hounfour SHA",
-      "status": "fixed",
-      "notes": "SDD clearly states CI is per-package `npm ci` with per-package lockfiles, and the hounfour re-pin + lockfile regeneration is explicitly performed in each consuming package directory. Verification steps (resolved package + dist file existence) remain appropriate."
+      "severity": "critical",
+      "file": "infrastructure/terraform/elasticache-finn.tf",
+      "line": 1,
+      "description": "SKP-003 claims Redis auth is externalized, but the replication group still references random_password.finn_redis_auth (dangling/undefined) and would also store the auth token in Terraform state if implemented that way.",
+      "current_code": "resource \"aws_elasticache_replication_group\" \"finn_dedicated\" {\n  ...\n  auth_token                 = random_password.finn_redis_auth.result\n  ...\n}\n\n# SKP-003: Redis auth token provisioned externally (not in TF state).\nresource \"aws_secretsmanager_secret\" \"finn_redis\" {\n  ...\n}\n",
+      "fixed_code": "resource \"aws_elasticache_replication_group\" \"finn_dedicated\" {\n  replication_group_id = \"${local.name_prefix}-finn-redis\"\n  description          = \"Dedicated Redis for Finn billing (noeviction + AOF)\"\n\n  node_type            = var.finn_redis_node_type\n  num_cache_clusters   = 1\n  engine_version       = \"7.1\"\n  port                 = 6379\n  parameter_group_name = aws_elasticache_parameter_group.finn_redis.name\n\n  at_rest_encryption_enabled = true\n  transit_encryption_enabled = true\n\n  # SKP-003: Do NOT set auth_token in Terraform to avoid storing it in state.\n  # Auth token is managed out-of-band via aws elasticache modify-replication-group.\n\n  subnet_group_name  = aws_elasticache_subnet_group.main.name\n  security_group_ids = [aws_security_group.finn_redis.id]\n\n  snapshot_retention_limit = 7\n  snapshot_window          = \"02:00-03:00\"\n  maintenance_window       = \"sun:04:00-sun:05:00\"\n\n  apply_immediately = false\n\n  lifecycle {\n    prevent_destroy = true\n    ignore_changes  = [auth_token]\n  }\n\n  tags = merge(local.common_tags, {\n    Service = \"finn\"\n    Purpose = \"billing-ledger\"\n  })\n}\n\nresource \"aws_secretsmanager_secret\" \"finn_redis\" {\n  name       = \"${local.name_prefix}/finn/redis\"\n  kms_key_id = aws_kms_key.secrets.arn\n\n  tags = merge(local.common_tags, {\n    Service = \"finn\"\n    Purpose = \"redis-credentials\"\n  })\n}\n",
+      "explanation": "Removing the Terraform-managed auth_token eliminates the dangling random_password reference and prevents the Redis token from being persisted in Terraform state; managing the token via out-of-band rotation aligns with the stated SKP-003 intent while keeping Terraform from forcing token changes."
     },
     {
-      "original_issue": "Breaking security upgrade mapping was incorrect/unrelated; needed targeted audit-path remediation",
-      "status": "fixed",
-      "notes": "Security section is now driven by concrete `npm audit --json` chains and removes the previously incorrect upgrade claims. Phase 1 uses non-breaking `npm audit fix`, and Phase 2 isolates the only breaking item (`node-vault`) with a clear contingency."
-    },
-    {
-      "original_issue": "Disabling engine checks in CI is brittle and can still fail due to real Node incompatibility; should pin/enforce Node version instead",
-      "status": "fixed",
-      "notes": "The SDD no longer relies on `engine-strict=false`. It instead aligns `packages/adapters` engines to Node 20 (the CI reality) and includes a validation/fallback path (if Node 22 is truly required, then upgrade CI). This resolves the prior truly-blocking risk."
-    },
-    {
-      "original_issue": "TS2835 “add .js extensions” is only correct for certain ESM/NodeNext setups; bulk change could break runtime/tests",
-      "status": "fixed",
-      "notes": "SDD explicitly confirms `type: module` and `module/moduleResolution: NodeNext` for the affected packages and frames `.js` extension changes as correct under that configuration."
-    },
-    {
-      "original_issue": "ESLint builder exclusion might not be honored / could violate lint scope",
-      "status": "fixed",
-      "notes": "SDD ties the exclusion to the exact lint invocation (`eslint src --ext .ts`), confirms no `--no-ignore`, and aligns with the PRD scope (builder excluded). This should behave in CI as intended."
-    },
-    {
-      "original_issue": "Execution order applied breaking security upgrades before test stabilization, making attribution impossible",
-      "status": "fixed",
-      "notes": "Order now stabilizes tests before applying security patches, with `node-vault` (breaking) after a green baseline, which is the correct dependency ordering for attribution and rollback."
+      "severity": "critical",
+      "file": "infrastructure/terraform/dns/security.tf",
+      "line": 1,
+      "description": "DNSSEC KMS key policy grants account root kms:* (Sid AllowRoot), which violates the stated least-privilege direction and is a high-risk escalation path; additionally, the Route53 service principal statement is missing the standard ViaService constraint, making the key usable for Sign by the service without tighter scoping.",
+      "current_code": "policy = jsonencode({\n  Version = \"2012-10-17\"\n  Statement = [\n    {\n      Sid    = \"AllowRoot\"\n      Effect = \"Allow\"\n      Principal = { AWS = \"arn:aws:iam::${data.aws_caller_identity.current.account_id}:root\" }\n      Action   = \"kms:*\"\n      Resource = \"*\"\n    },\n    {\n      Sid    = \"AllowRoute53DNSSEC\"\n      Effect = \"Allow\"\n      Principal = { Service = \"dnssec-route53.amazonaws.com\" }\n      Action = [\"kms:DescribeKey\", \"kms:GetPublicKey\", \"kms:Sign\"]\n      Resource = \"*\"\n      Condition = {\n        StringEquals = { \"aws:SourceAccount\" = data.aws_caller_identity.current.account_id }\n      }\n    }\n  ]\n})",
+      "fixed_code": "policy = jsonencode({\n  Version = \"2012-10-17\",\n  Statement = [\n    {\n      Sid: \"AllowKeyAdministration\",\n      Effect: \"Allow\",\n      Principal: {\n        AWS: [\n          \"arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/github-actions-terraform\",\n          \"arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/admin\"\n        ]\n      },\n      Action: [\n        \"kms:Create*\",\n        \"kms:Describe*\",\n        \"kms:Enable*\",\n        \"kms:List*\",\n        \"kms:Put*\",\n        \"kms:Update*\",\n        \"kms:Revoke*\",\n        \"kms:Disable*\",\n        \"kms:Get*\",\n        \"kms:Delete*\",\n        \"kms:TagResource\",\n        \"kms:UntagResource\",\n        \"kms:ScheduleKeyDeletion\",\n        \"kms:CancelKeyDeletion\"\n      ],\n      Resource: \"*\"\n    },\n    {\n      Sid: \"AllowRoute53DNSSEC\",\n      Effect: \"Allow\",\n      Principal: { Service: \"dnssec-route53.amazonaws.com\" },\n      Action: [\"kms:DescribeKey\", \"kms:GetPublicKey\", \"kms:Sign\"],\n      Resource: \"*\",\n      Condition: {\n        StringEquals: {\n          \"aws:SourceAccount\": \"${data.aws_caller_identity.current.account_id}\",\n          \"kms:ViaService\": \"route53.${var.aws_region}.amazonaws.com\"\n        }\n      }\n    }\n  ]\n})",
+      "explanation": "Replacing root kms:* with explicit admin roles reduces blast radius while still allowing CI/operators to manage the key; adding kms:ViaService scopes Route53 DNSSEC usage to Route53 in the intended region, preventing broader service misuse of the signing capability."
     }
   ],
-  "new_blocking_concerns": [],
-  "iteration": 3
+  "blocking_issues": [
+    {
+      "location": "§3.1 elasticache-finn.tf (SKP-003)",
+      "issue": "Redis auth externalization is contradicted by the HCL: auth_token still references random_password.finn_redis_auth and would either fail to plan/apply (undefined) or leak the token into Terraform state.",
+      "why_blocking": "This will break Terraform execution (undefined reference) and/or violate the security requirement of keeping Redis auth out of state, undermining the Flatline blocker resolution.",
+      "fix": "Remove Terraform-managed auth_token (and add ignore_changes for auth_token) or implement a secure alternative that does not store plaintext in state; ensure no random_password references remain."
+    },
+    {
+      "location": "dns/security.tf (DNSSEC KMS policy)",
+      "issue": "DNSSEC KMS key policy includes account root kms:* and lacks tighter scoping constraints for the Route53 service principal.",
+      "why_blocking": "Overly permissive KMS policies are a production security risk and contradict the document’s least-privilege posture; it also increases the chance of accidental/unauthorized key usage beyond DNSSEC.",
+      "fix": "Adopt the same explicit admin-role pattern used for Finn KMS and add kms:ViaService + SourceAccount conditions for the Route53 DNSSEC service principal."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": [
+      "No invented resource names or APIs were assumed beyond what is shown; issues are based on explicit snippets (random_password reference; KMS policy content)."
+    ]
+  },
+  "iteration": 3,
+  "auto_approved": false
 }

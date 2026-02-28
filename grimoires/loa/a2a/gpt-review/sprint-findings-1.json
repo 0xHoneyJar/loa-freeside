@@ -1,44 +1,55 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "The plan is close, but a few missing/incorrectly-scoped tasks and acceptance criteria gaps will likely prevent CI from going fully green under the repo’s per-package npm ci model.",
+  "summary": "Plan is close, but has a few missing/incorrect dependencies and acceptance criteria that are not currently achievable as written, which could cause sprint execution to fail or stall at cutover time.",
+  "issues": [],
   "blocking_issues": [
     {
-      "location": "Sprint 1 / Task 1.1 (lockfiles + installs)",
-      "issue": "Lockfile regeneration is specified for adapters + sietch, but core is also a CI build target and CI runs per-package `npm ci`.",
-      "why_blocking": "If `packages/core` has its own `package-lock.json` (or needs one) and it’s stale/missing, the Build gate can still fail even if adapters/sietch are fixed. With per-package `npm ci`, root lockfile changes won’t help.",
-      "fix": "Add explicit step/AC to run `npm install --package-lock-only` (or `npm ci` verification) in `packages/core` as well (or explicitly state core has no lockfile and CI does not run npm ci there, with evidence). Include AC: `npm ci` succeeds in each package directory that CI installs."
+      "location": "Sprint 1 / Task 1.1 vs Task 1.3 (Stateful imports)",
+      "issue": "Task 1.1 acceptance criteria says `terraform plan` shows \"will be created\" for all new resources, but Task 1.3 requires importing those same resources and ending with a 0-change plan; without explicitly requiring matching identifiers/names to the existing resources (and capturing them up front), import will frequently lead to forced replacement or drift that blocks the 0-change requirement.",
+      "why_blocking": "Stateful imports commonly fail (or produce non-zero plans) when HCL names/attributes don’t exactly match existing AWS resources (e.g., ElastiCache replication group ID, DynamoDB table names, S3 bucket names, KMS key alias names, parameter group name). If you only validate \"will be created\" pre-import, you can still end up with replacements post-import and be unable to proceed to Sprint 2 safely.",
+      "fix": "Add an explicit prerequisite subtask in Sprint 1 before 1.1/1.3: \"Inventory existing Finn resources from loa-finn state/AWS and record canonical IDs/names/ARNs\" with acceptance criteria listing each required identifier (replication_group_id, parameter_group_name, table names, bucket names, kms alias, log group name, SSM parameter paths). Update 1.1 acceptance criteria to require those identifiers are used in HCL (so pre-import plan may show creates but with exact names), and update 1.3 to include a step: \"run `terraform plan` and resolve diffs by adjusting HCL to match existing before proceeding to next batch\"."
     },
     {
-      "location": "Sprint 1 / Task 1.2 (TypeScript/build validation)",
-      "issue": "Acceptance criteria mix `tsc --noEmit` for sietch with `npm run build` for adapters/core, but PRD requires `npm run build` for sietch too.",
-      "why_blocking": "You can satisfy Task 1.2 while still failing the Build gate if sietch’s actual build script (vite/tsc/rollup/etc.) fails even though `tsc --noEmit` passes. CI Build check typically runs the package build script, not only noEmit.",
-      "fix": "Add AC to Task 1.2 (or Task 1.5) that `npm run build` succeeds in `themes/sietch` as well, matching PRD success criteria #1. Keep `npx tsc --noEmit` as an additional check, not a substitute."
+      "location": "Sprint 1 / Task 1.2 (Bootstrap Redis Auth Script) dependency and feasibility",
+      "issue": "Task 1.2 depends on 1.1 (\"ElastiCache resource must exist\"), but Sprint 1 is explicitly an import/migration of existing stateful resources; if the replication group already exists, the script should not depend on creating it, and if it does not exist, rotating auth token is not applicable. Also, idempotency is underspecified given Secrets Manager secret creation vs put-secret-value behavior.",
+      "why_blocking": "This can stall Sprint 1 because the engineer won’t know whether to run the script before/after import, and the script may fail if the secret doesn’t exist or if the replication group is not yet in the expected state. Since W-8 in 1.3 depends on Redis connectivity, ambiguity here can block the post-import validation gate.",
+      "fix": "Change dependency to: \"Requires replication group exists in AWS (pre-existing) and is imported (1.3) OR explicitly created in this root.\" Add acceptance criteria: (1) script creates the secret if missing (`create-secret`), otherwise updates value; (2) script reads current replication group auth-token status and no-ops if already rotated to the stored token; (3) document exact required inputs (replication group id, secret id/name, region)."
     },
     {
-      "location": "Sprint 1 / Task 1.3 (ESLint fixes)",
-      "issue": "Plan assumes `.eslintignore` will be honored, but also states CI lint invocation is `eslint src --ext .ts`—in that mode, ignore behavior can differ depending on working directory and config; additionally, only sietch lint is covered while CI has 5 required checks across the repo.",
-      "why_blocking": "If CI runs lint in more than one package (common in monorepos) or runs from a different cwd, sietch-only lint fixes won’t make the Lint gate green. Also, if ignore isn’t applied due to invocation/cwd, builder files will still break lint.",
-      "fix": "Add explicit task/AC to mirror the exact CI lint command(s) per package and verify locally: run the same lint command in the same working directory CI uses. If CI lints adapters/core too, add corresponding lint-fix tasks or explicitly document that CI Lint gate only targets sietch."
+      "location": "Sprint 2 / Task 2.2 (deploy-ring.sh) dependency on 2.1 alarms",
+      "issue": "deploy-ring.sh health gates are specified as sliding-window p99 latency and 5xx counting, but the plan does not include a task to ensure those metrics exist and are queryable in a way the script can consume (e.g., CloudWatch metric names/dimensions, log metric filters, or ALB metrics). Creating alarms alone doesn’t guarantee the script can compute p99 over a window.",
+      "why_blocking": "Implementation can fail when writing the script because there may be no reliable metric source for \"p99 latency\" at the service level (especially if it’s derived from logs/EMF). Without a defined metric contract, the health gate can’t be implemented/tested, blocking Sprint 5 validation (5.4) and undermining FR-2/FR-3.",
+      "fix": "Add a Sprint 2 task (or expand 2.1) to define and validate the metric contract used by deploy-ring.sh: exact CloudWatch metric namespace, metric name, statistic (p99), dimensions (service/ring), and how it’s produced (ALB TargetResponseTime p99 vs log-derived metric). Acceptance criteria: `aws cloudwatch get-metric-statistics` (or `get-metric-data`) returns non-empty datapoints for staging for each gate metric."
     },
     {
-      "location": "Sprint 2 / Task 2.1 (Security patches)",
-      "issue": "Security remediation is scoped to running `npm audit fix` only in `themes/sietch`, but CI uses per-package installs and the Security Scan gate likely evaluates more than one package.",
-      "why_blocking": "If adapters/core have high/critical vulnerabilities in their own dependency trees/lockfiles, the Security Scan check will still fail even if sietch is clean. Per-package lockfiles mean each package must be remediated independently.",
-      "fix": "Add explicit audit/remediation steps for every package that the security gate scans (at minimum: `packages/core`, `packages/adapters`, `themes/sietch`). Acceptance criteria should be per-package: `npm audit --audit-level=high` exit 0 in each scanned package directory."
+      "location": "Sprint 3 / Task 3.4 acceptance criteria (dig wildcard query)",
+      "issue": "Acceptance criterion `dig @<r53-ns> *.agents.0xhoneyjar.xyz CNAME` is not a valid/meaningful DNS validation because wildcard labels are not queried literally; resolvers query a concrete name (e.g., `foo.agents...`) and wildcard expansion happens in authoritative response logic.",
+      "why_blocking": "This makes the task \"not completable\" as written (or leads to false negatives), which can block sprint completion and downstream dependencies (Sprint 4 validation assumes Sprint 3 is done).",
+      "fix": "Replace with: `dig @<r53-ns> test.agents.0xhoneyjar.xyz CNAME` (and optionally `dig @<r53-ns> agents.0xhoneyjar.xyz A`). Keep a second check for `_acme-challenge.agents.0xhoneyjar.xyz NS` if needed."
     },
     {
-      "location": "Sprint 2 / Task 2.2 (node-vault contingency)",
-      "issue": "Contingency proposes pinning `node-vault@0.10.9` with `overrides` for transitive deps, but PRD requires zero critical/high vulnerabilities.",
-      "why_blocking": "If the vulnerable chain cannot be fully eliminated via overrides while staying on 0.10.9, the Security Scan gate will remain red and PRD success criteria #4 will be unmet. The contingency as written can conflict with the sprint’s required outcome.",
-      "fix": "Tighten contingency to remain compliant: only allow fallback if `npm audit --audit-level=high` still exits 0 (i.e., overrides fully eliminate high/critical). Otherwise, require completing the major upgrade (or replacing node-vault) within Sprint 2, and explicitly track any noncompliant fallback as out-of-scope (but that would violate PRD, so it can’t be the sprint exit)."
+      "location": "Sprint 4 / Task 4.1 and Sprint 5 / Task 5.3 dependency on registrar access (Gandi)",
+      "issue": "Cutover and DNSSEC steps require interacting with Gandi (NS change, DS upload), but the plan never includes an explicit prerequisite task to confirm registrar access, API availability (if used), and current authoritative nameservers/records export method.",
+      "why_blocking": "If registrar access is missing or constrained (no credentials, MFA, permissions), the project can complete Terraform work but fail at the actual migration/cutover execution, which is the core deliverable of Issue #106 (FR-5/FR-6). This is a common real-world blocker that can stop the entire effort late in the cycle.",
+      "fix": "Add an early task (Sprint 3 or Sprint 4) \"Confirm Gandi registrar access and record export method\" with acceptance criteria: (1) can view and edit NS for domain; (2) can retrieve current zone records (UI export or API) used by dns-pre-migration.sh; (3) can add/remove DS record (for DNSSEC) in a test/dry-run manner (where possible)."
     },
     {
-      "location": "Sprint 2 / Task 2.4 (Docker build verification)",
-      "issue": "Docker task is gated on security completion and only mentions “minimal adjustments,” but doesn’t include a prerequisite to align Docker build context with the repo’s per-package lockfiles (common failure: Dockerfile copies wrong lockfile or runs npm ci in wrong directory).",
-      "why_blocking": "Docker Build can fail even when security is green due to missing lockfiles in image build context, wrong WORKDIR, or using Node 22 vs lowered engine 20. Without an explicit check of Dockerfile’s install strategy against per-package `npm ci`, this can easily slip and block Sprint 2 completion.",
-      "fix": "Add explicit AC to Task 2.4: Docker build uses the same Node major as CI/runtime expectation (>=20) and runs `npm ci` in the correct package directory with the correct `package-lock.json` copied. If the Docker build is multi-package, specify which package is containerized and ensure its lockfile is included."
+      "location": "Traceability / Flatline findings coverage (SKP/IMP list)",
+      "issue": "Review focus requires SKP-001..004 and IMP-001..010 to be traceable in tasks, but the sprint plan only explicitly references a subset (SKP-001..004, IMP-002, IMP-004, IMP-007, IMP-008, IMP-009). There is no task mapping for IMP-003, IMP-005, IMP-006, IMP-010 (and any others in the stated range) so the plan cannot be verified against the stated requirement.",
+      "why_blocking": "This is a plan-level completeness failure against your own acceptance criteria for the sprint plan review: you cannot claim coverage of all Flatline findings if several are not represented. In execution, this often manifests as missing required hardening/controls that later block approval or cause rework.",
+      "fix": "Add a traceability appendix/table mapping each SKP/IMP finding to at least one task (or explicitly mark as \"out of scope for cycle-046\" with justification). If IMP-003/005/006/010 are in-scope per SDD, add minimal tasks in the appropriate sprint with measurable acceptance criteria."
+    },
+    {
+      "location": "Risk Assessment table / SDD section references",
+      "issue": "Risk mitigation references are inconsistent: e.g., \"Per-batch verification, pre-import backups (§4.4)\" but earlier Sprint 1 cites SDD §4.1-§4.4 for import workflow; without the actual SDD text, the plan may be pointing at the wrong subsection (and the risk table uses §4.4 specifically).",
+      "why_blocking": "If the mitigation points to the wrong section, the engineer may follow an incomplete or incorrect procedure during a high-risk import, increasing the chance of state corruption or downtime—this is exactly the kind of failure mode the plan is trying to prevent.",
+      "fix": "Normalize all import-workflow references to the exact SDD section(s) that contain the backup/rollback steps (e.g., \"SDD §4.2 Backup\" / \"§4.3 Import\" / \"§4.4 Rollback\"), and ensure Sprint 1 task 1.3 acceptance criteria explicitly includes the rollback step(s) referenced in the risk table."
     }
   ],
-  "question": "",
-  "iteration": 1
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1,
+  "auto_approved": false
 }

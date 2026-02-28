@@ -1,20 +1,178 @@
 {
+  "consensus_summary": {
+    "high_consensus_count": 0,
+    "disputed_count": 10,
+    "low_value_count": 0,
+    "blocker_count": 4,
+    "model_agreement_percent": 0,
+    "models": 2,
+    "tertiary_items": 0,
+    "confidence": "single_model"
+  },
+  "high_consensus": [],
+  "disputed": [
+    {
+      "id": "IMP-001",
+      "description": "Pre-defined, executable rollback plans with clear triggers and ownership for the import workflow",
+      "gpt_score": 0,
+      "opus_score": 950,
+      "delta": 950,
+      "average_score": 950,
+      "source": "opus_scored",
+      "would_integrate": true,
+      "agreement": "DISPUTED"
+    },
+    {
+      "id": "IMP-002",
+      "description": "Enforce exact provider version pinning (~> 5.x.y) for deterministic, reproducible TF plans",
+      "gpt_score": 0,
+      "opus_score": 920,
+      "delta": 920,
+      "average_score": 920,
+      "source": "opus_scored",
+      "would_integrate": true,
+      "agreement": "DISPUTED"
+    },
+    {
+      "id": "IMP-003",
+      "description": "Procedural safeguards for terraform import: pre-import backups, mandatory diff reviews, post-import validation",
+      "gpt_score": 0,
+      "opus_score": 960,
+      "delta": 960,
+      "average_score": 960,
+      "source": "opus_scored",
+      "would_integrate": true,
+      "agreement": "DISPUTED"
+    },
+    {
+      "id": "IMP-004",
+      "description": "DNSSEC activation playbook: registrar-aware operational sequence with monitoring and rollback",
+      "gpt_score": 0,
+      "opus_score": 940,
+      "delta": 940,
+      "average_score": 940,
+      "source": "opus_scored",
+      "would_integrate": true,
+      "agreement": "DISPUTED"
+    },
+    {
+      "id": "IMP-005",
+      "description": "Define RPO/RTO targets for new stateful components (ElastiCache, DynamoDB, S3)",
+      "gpt_score": 0,
+      "opus_score": 780,
+      "delta": 780,
+      "average_score": 780,
+      "source": "opus_scored",
+      "would_integrate": true,
+      "agreement": "DISPUTED"
+    },
+    {
+      "id": "IMP-006",
+      "description": "Align health check with statistical measures (real p99 over window, not single-probe)",
+      "gpt_score": 0,
+      "opus_score": 750,
+      "delta": 750,
+      "average_score": 750,
+      "source": "opus_scored",
+      "would_integrate": true,
+      "agreement": "DISPUTED"
+    },
+    {
+      "id": "IMP-007",
+      "description": "Define ECS Exec network prerequisites (VPC endpoints for ssmmessages) explicitly",
+      "gpt_score": 0,
+      "opus_score": 680,
+      "delta": 680,
+      "average_score": 680,
+      "source": "opus_scored",
+      "would_integrate": true,
+      "agreement": "DISPUTED"
+    },
+    {
+      "id": "IMP-008",
+      "description": "Feature flag safety guardrails: environment-specific defaults, CI linting for production flags",
+      "gpt_score": 0,
+      "opus_score": 720,
+      "delta": 720,
+      "average_score": 720,
+      "source": "opus_scored",
+      "would_integrate": true,
+      "agreement": "DISPUTED"
+    },
+    {
+      "id": "IMP-009",
+      "description": "CI gate inspecting plan for replacement actions on prevent_destroy resources",
+      "gpt_score": 0,
+      "opus_score": 790,
+      "delta": 790,
+      "average_score": 790,
+      "source": "opus_scored",
+      "would_integrate": true,
+      "agreement": "DISPUTED"
+    },
+    {
+      "id": "IMP-010",
+      "description": "Documentation consistency fix: file manifest sprint numbers vs deployment phases",
+      "gpt_score": 0,
+      "opus_score": 450,
+      "delta": 450,
+      "average_score": 450,
+      "source": "opus_scored",
+      "would_integrate": true,
+      "agreement": "DISPUTED"
+    }
+  ],
+  "low_value": [],
+  "blockers": [
+    {
+      "id": "SKP-001",
+      "concern": "DNS cutover lacks dual-provider overlap strategy, staged NS rehearsal, and rollback TTL/negative-cache handling",
+      "severity": "CRITICAL",
+      "severity_score": 910,
+      "why_matters": "Failed NS migration can cause partial domain outage for hours due to resolver caching behavior",
+      "location": "§1, §10, §8.2",
+      "recommendation": "Add formal cutover playbook with 72h TTL reduction, negative TTL check, multi-geo overlap validation, registrar rollback SLA, rehearsed rollback runbook",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-002",
+      "concern": "KMS key policy grants root principal kms:* violating least privilege",
+      "severity": "HIGH",
+      "severity_score": 760,
+      "why_matters": "Overly permissive KMS policies allow unauthorized decryption, tampering, or key disablement",
+      "location": "§3.4 kms-finn.tf",
+      "recommendation": "Restrict key policy to explicit admin/service roles, remove blanket root kms:*, scope actions by principal tags",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-003",
+      "concern": "Sensitive secret material (Redis auth token) generated and stored in Terraform state",
+      "severity": "HIGH",
+      "severity_score": 740,
+      "why_matters": "State leakage compromises Redis credentials enabling data exfiltration",
+      "location": "§3.1 elasticache-finn.tf",
+      "recommendation": "Use external secret provisioning (bootstrap script or rotation Lambda) so plaintext secrets never in state",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-004",
+      "concern": "Health gate claims p99 SLO enforcement but only checks per-request latency, not real sliding-window p99",
+      "severity": "HIGH",
+      "severity_score": 710,
+      "why_matters": "False-positive deployment success can promote unhealthy builds to production",
+      "location": "§5.1, §5.2",
+      "recommendation": "Implement sliding-window p99 tracking, count 5xx over gate duration, or query CloudWatch ALB metrics",
+      "source": "tertiary_skeptic"
+    }
+  ],
+  "degraded": false,
+  "confidence": "single_model",
   "phase": "sdd",
   "document": "grimoires/loa/sdd.md",
-  "timestamp": "2026-02-25T12:48:43Z",
-  "consensus_summary": {
-    "high_consensus_count": 5,
-    "disputed_count": 2,
-    "low_value_count": 0,
-    "blocker_count": 6,
-    "model_agreement_percent": 80,
-    "confidence": "full"
-  },
-  "high_consensus": ["IMP-001", "IMP-002", "IMP-003", "IMP-004", "IMP-005"],
-  "disputed": ["IMP-006", "IMP-010"],
-  "blockers": ["SKP-001", "SKP-002", "SKP-003", "SKP-004", "SKP-005", "SKP-006"],
-  "execution": {
-    "mode": "hitl",
-    "simstim_id": "simstim-20260225-governance-substrate"
+  "timestamp": "2026-02-28T00:42:51Z",
+  "metrics": {
+    "total_latency_ms": 73000,
+    "cost_cents": 0,
+    "cost_usd": 0
   }
 }
