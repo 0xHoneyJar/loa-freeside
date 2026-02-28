@@ -23,6 +23,12 @@ HEALTH_CONSECUTIVE_CHECKS="${HEALTH_CONSECUTIVE_CHECKS:-10}" # 10 consecutive
 HEALTH_P99_THRESHOLD_MS="${HEALTH_P99_THRESHOLD_MS:-2000}"  # p99 < 2s
 HEALTH_5XX_LIMIT="${HEALTH_5XX_LIMIT:-3}"                   # < 3 5xx errors
 
+# Health Check Profiles:
+#   HEALTH_PROFILE=technical  (default) — HTTP, latency, error rate
+#   HEALTH_PROFILE=economic   (future)  — budget invariants, in-flight settlements, reconciliation
+#   HEALTH_PROFILE=full       (future)  — technical + economic
+HEALTH_PROFILE="${HEALTH_PROFILE:-technical}"
+
 # --- Arguments ---
 RING="${1:?Usage: deploy-ring.sh <ring> [--services all|dixie,finn,freeside]}"
 shift
@@ -85,8 +91,22 @@ rollback_service() {
   aws ecs wait services-stable --cluster "$CLUSTER" --services "${CLUSTER}-${service}" || true
 }
 
+# --- Billing Awareness (Sprint 7, Task 7.3) ---
+check_billing_status() {
+  if [[ "${FEATURE_BILLING_ENABLED:-false}" == "true" ]]; then
+    log "WARNING: BILLING IS LIVE -- deploy will affect economic commitments"
+    log "  Economic health profile: ${HEALTH_PROFILE}"
+    if [[ "$HEALTH_PROFILE" != "economic" && "$HEALTH_PROFILE" != "full" ]]; then
+      log "INFO: Consider setting HEALTH_PROFILE=economic for billing-aware deploys"
+    fi
+  fi
+}
+
 # --- Health Gate (SDD §5.2) ---
-health_gate() {
+
+# Technical health checks: HTTP reachability, p99 latency, 5xx error rate.
+# This is the original health gate logic, extracted for pluggable profile support.
+check_technical_health() {
   local service="$1"
   local url="$2"
   local start_time
@@ -97,7 +117,7 @@ health_gate() {
   local fivexx_count=0
   local -a latency_window=()
 
-  log "Health gate: checking $service at $url"
+  log "Technical health check: $service at $url"
 
   while true; do
     local elapsed=$(( $(date +%s) - start_time ))
@@ -139,7 +159,7 @@ health_gate() {
 
       if (( consecutive >= HEALTH_CONSECUTIVE_CHECKS )) && (( p99_latency < HEALTH_P99_THRESHOLD_MS )); then
         local avg_latency=$((latency_sum / total_checks))
-        log "Health gate PASSED for $service: ${consecutive} consecutive OK, p99=${p99_latency}ms, avg=${avg_latency}ms"
+        log "Technical health PASSED for $service: ${consecutive} consecutive OK, p99=${p99_latency}ms, avg=${avg_latency}ms"
         return 0
       elif (( p99_latency >= HEALTH_P99_THRESHOLD_MS )); then
         log "Health gate: p99 ${p99_latency}ms exceeds ${HEALTH_P99_THRESHOLD_MS}ms — waiting..."
@@ -149,6 +169,45 @@ health_gate() {
 
     sleep "$HEALTH_INTERVAL"
   done
+}
+
+# Economic health checks (stub — Sprint 7, Task 7.1).
+# Future checks when HEALTH_PROFILE=economic or HEALTH_PROFILE=full:
+#   1. Budget invariant balance: committed + reserved + available = limit (I-1)
+#   2. In-flight x402 settlement count: block deploy if > 0
+#   3. Reconciliation currency: Redis ≈ Postgres within threshold (I-3)
+check_economic_health() {
+  local service="$1"
+  log "Economic health checks not yet implemented for $service (stub)"
+  return 0
+}
+
+# Pluggable health gate wrapper.
+# Dispatches to check functions based on HEALTH_PROFILE.
+health_gate() {
+  local service="$1"
+  local url="$2"
+
+  log "Health gate: checking $service (profile=$HEALTH_PROFILE)"
+
+  case "$HEALTH_PROFILE" in
+    technical)
+      check_technical_health "$service" "$url" || return 1
+      ;;
+    economic)
+      check_economic_health "$service" || return 1
+      ;;
+    full)
+      check_technical_health "$service" "$url" || return 1
+      check_economic_health "$service" || return 1
+      ;;
+    *)
+      error "Invalid HEALTH_PROFILE='$HEALTH_PROFILE' (expected: technical|economic|full)"
+      return 1
+      ;;
+  esac
+
+  return 0
 }
 
 deploy_service() {
@@ -202,6 +261,8 @@ fi
 log "════════════════════════════════════════"
 log "Deploy Ring: $RING (services: $SERVICES)"
 log "════════════════════════════════════════"
+
+check_billing_status
 
 # Phase 1: Capture previous task definitions for rollback
 log "Phase 0: Capturing previous task definitions..."
