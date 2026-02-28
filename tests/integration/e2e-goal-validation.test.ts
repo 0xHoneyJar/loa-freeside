@@ -196,20 +196,21 @@ describe('G-5: Import discipline — ADR-001 Layer 3', () => {
 // ─── G-6: Safe Rollout ──────────────────────────────────────────────────────
 
 describe('G-6: Safe rollout — dual-accept window', () => {
-  it('arrakis-compat.ts supports dual-accept window (7.11.0 + 8.2.0)', () => {
+  it('arrakis-compat.ts supports tri-accept window (7.11.0 + 8.2.0 + 8.3.0)', () => {
     const src = readFileSync(
       resolve(ROOT, 'themes/sietch/src/packages/core/protocol/arrakis-compat.ts'),
       'utf8',
     );
+    expect(src).toContain("'8.3.0'");
     expect(src).toContain("'8.2.0'");
     expect(src).toContain("'7.11.0'");
   });
 
-  it('CONTRACT_VERSION is 8.2.0', async () => {
+  it('CONTRACT_VERSION is 8.3.0', async () => {
     const barrel = await import(
       '../../themes/sietch/src/packages/core/protocol/index.js'
     );
-    expect(barrel.CONTRACT_VERSION).toBe('8.2.0');
+    expect(barrel.CONTRACT_VERSION).toBe('8.3.0');
   });
 });
 
@@ -217,7 +218,7 @@ describe('G-6: Safe rollout — dual-accept window', () => {
 
 describe('G-7: Contract coverage — P0 vectors exist', () => {
   it('P0 conformance vector file exists', () => {
-    expect(existsSync(resolve(ROOT, 'spec/conformance/test-commons-p0.ts'))).toBe(true);
+    expect(existsSync(resolve(ROOT, 'themes/sietch/tests/conformance/commons-p0.test.ts'))).toBe(true);
   });
 
   it('default dynamic contract file exists', () => {

@@ -2,14 +2,15 @@
  * Arrakis Compatibility & Boundary Normalization Module
  *
  * Handles protocol version negotiation and boundary normalization:
- * - Version negotiation (advertise v8.2.0 preferred, dual-accept v7.11.0)
+ * - Version negotiation (advertise v8.3.0 preferred, dual-accept v7.11.0 + v8.2.0)
  * - Inbound claim normalization (trust_level → trust_scopes mapping)
  * - Coordination message normalization (reject missing version discriminator)
  * - Feature flag for quick disable without code rollback
  *
  * Phase A (Cycle 043): Dual-accept v7.11.0 and v8.2.0 (both supported)
- * Phase B: loa-finn upgrades to v8.2.0 (tracked via GitHub issue)
- * Phase C: Tighten to >=8.2.0 only when ALL transition criteria met:
+ * Phase A.1 (Cycle 044): Add v8.3.0 preferred, tri-accept v7.11.0 + v8.2.0 + v8.3.0
+ * Phase B: loa-finn upgrades to v8.3.0 (tracked via GitHub issue)
+ * Phase C: Tighten to >=8.3.0 only when ALL transition criteria met:
  *   1. Telemetry confirms 0 v7.11.0 consumers for 7 consecutive days
  *   2. loa-finn upgraded to v8.2.0 (prerequisite: loa-dixie emits ModelPerformanceEvent)
  *   3. All internal services confirmed v8.2.0 compatible
@@ -40,13 +41,13 @@ export interface VersionNegotiation {
 
 /**
  * Advertise supported protocol versions.
- * Phase A (cycle-043): Prefer v8.2.0, dual-accept v7.11.0.
+ * Phase A.1 (cycle-044): Prefer v8.3.0, tri-accept v7.11.0 + v8.2.0 + v8.3.0.
  * validateCompatibility() delegates entirely to hounfour — no local range logic.
  */
 export function negotiateVersion(): VersionNegotiation {
   return {
-    preferred: '8.2.0',
-    supported: ['7.11.0', '8.2.0'] as const,
+    preferred: '8.3.0',
+    supported: ['7.11.0', '8.2.0', '8.3.0'] as const,
   };
 }
 

@@ -12,11 +12,21 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Static } from '@sinclair/typebox';
+import { FormatRegistry } from '@sinclair/typebox';
 import {
   DynamicContractSchema,
   verifyMonotonicExpansion,
 } from '@0xhoneyjar/loa-hounfour/commons';
 import { Value } from '@sinclair/typebox/value';
+
+// Register TypeBox format validators required by hounfour v8.3.1 DynamicContractSchema.
+// contract_id uses uuid format, created_at uses date-time format.
+if (!FormatRegistry.Has('uuid')) {
+  FormatRegistry.Set('uuid', (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v));
+}
+if (!FormatRegistry.Has('date-time')) {
+  FormatRegistry.Set('date-time', (v) => !isNaN(Date.parse(v)));
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

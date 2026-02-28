@@ -46,7 +46,7 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "@0xhoneyjar/loa-hounfour": "github:0xHoneyJar/loa-hounfour#b6e0027aea2f6e9c26726e29b44edbc1f3e3e290",
+    "@0xhoneyjar/loa-hounfour": "github:0xHoneyJar/loa-hounfour#aed755f7fea8d2739cf9c755b45aaa580b6af6a9",
     "@arrakis/core": "file:../../packages/core",
     "@arrakis/adapters": "file:../../packages/adapters",
     "@asteasolutions/zod-to-openapi": "^7.3.4",

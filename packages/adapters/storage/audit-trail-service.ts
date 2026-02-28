@@ -14,12 +14,13 @@ import type { Logger } from 'pino';
 import {
   buildDomainTag,
   computeAuditEntryHash,
+  computeAdvisoryLockKey,
   verifyAuditTrailIntegrity,
   createCheckpoint,
   AUDIT_TRAIL_GENESIS_HASH,
 } from '@0xhoneyjar/loa-hounfour/commons';
 import type { AuditTrailPort } from '../../adapters/agent/reputation-event-router.js';
-import { advisoryLockKey, sleep } from './audit-helpers.js';
+import { sleep } from './audit-helpers.js';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -142,7 +143,7 @@ export class AuditTrailService implements AuditTrailPort {
         await client.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
 
         // Advisory lock scoped by domain_tag hash (FNV-1a via shared helper)
-        const lockKey = advisoryLockKey(domainTag);
+        const lockKey = computeAdvisoryLockKey(domainTag);
         await client.query('SELECT pg_advisory_xact_lock($1)', [lockKey]);
 
         // Read chain head

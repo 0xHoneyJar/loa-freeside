@@ -73,7 +73,7 @@ describe('AuditTrailService', () => {
     service = new AuditTrailService({
       pool,
       logger,
-      contractVersion: '8.2.0',
+      contractVersion: '8.3.0',
     });
   });
 
@@ -148,7 +148,7 @@ describe('AuditTrailService', () => {
     const failService = new AuditTrailService({
       pool: failPool,
       logger,
-      contractVersion: '8.2.0',
+      contractVersion: '8.3.0',
       maxRetries: 1,
     });
 
@@ -173,7 +173,7 @@ describe('AuditTrailService — circuit breaker', () => {
     const service = new AuditTrailService({
       pool: makeMockPool(),
       logger: makeLogger(),
-      contractVersion: '8.2.0',
+      contractVersion: '8.3.0',
     });
 
     const state = service.getCircuitBreakerState();
@@ -186,7 +186,7 @@ describe('AuditTrailService — circuit breaker', () => {
     const service = new AuditTrailService({
       pool,
       logger: makeLogger(),
-      contractVersion: '8.2.0',
+      contractVersion: '8.3.0',
     });
 
     // Manually open circuit (simulating 3 verification failures)
@@ -210,7 +210,7 @@ describe('AuditTrailService — circuit breaker', () => {
     const service = new AuditTrailService({
       pool,
       logger: makeLogger(),
-      contractVersion: '8.2.0',
+      contractVersion: '8.3.0',
     });
 
     (service as unknown as { circuitBreaker: { state: string; affectedDomainTags: Set<string> } }).circuitBreaker.state = 'open';
@@ -231,7 +231,7 @@ describe('AuditTrailService — circuit breaker', () => {
     const service = new AuditTrailService({
       pool: makeMockPool(),
       logger: makeLogger(),
-      contractVersion: '8.2.0',
+      contractVersion: '8.3.0',
     });
 
     // Open circuit
@@ -278,11 +278,11 @@ describe('GovernedMutationService', () => {
     logger = makeLogger();
     const client = makeMockClient();
     // Override for governed mutation flow:
-    // BEGIN, mutate result, advisory lock, head SELECT, INSERT audit, chain_links, UPSERT head, COMMIT
+    // BEGIN, advisory lock, head SELECT, INSERT audit, chain_links, UPSERT head, COMMIT
+    // Note: mutate() is called directly (not via client.query) so no mock needed for it
     client.query.mockReset();
     client.query
       .mockResolvedValueOnce(undefined) // BEGIN
-      .mockResolvedValueOnce({ rows: [{ id: 42 }] }) // mutate() result
       .mockResolvedValueOnce(undefined) // advisory lock
       .mockResolvedValueOnce({ rows: [] }) // head SELECT (genesis)
       .mockResolvedValueOnce({ rows: [{ id: 1 }] }) // INSERT audit_trail
@@ -294,7 +294,7 @@ describe('GovernedMutationService', () => {
     service = new GovernedMutationService({
       pool,
       logger,
-      contractVersion: '8.2.0',
+      contractVersion: '8.3.0',
     });
   });
 
@@ -345,7 +345,7 @@ describe('GovernedMutationService', () => {
     const failService = new GovernedMutationService({
       pool: failPool,
       logger,
-      contractVersion: '8.2.0',
+      contractVersion: '8.3.0',
       maxRetries: 1,
     });
 

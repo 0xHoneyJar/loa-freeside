@@ -55,24 +55,30 @@ describe('CONTRACT_VERSION', () => {
     expect(CONTRACT_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
-  it('is 8.2.0 (contract version, tracks protocol version)', () => {
-    expect(CONTRACT_VERSION).toBe('8.2.0');
+  it('is 8.3.0 (contract version, tracks protocol version)', () => {
+    expect(CONTRACT_VERSION).toBe('8.3.0');
   });
 
   it('validateCompatibility accepts matching version', () => {
-    const result = validateCompatibility('8.2.0', '8.2.0');
+    const result = validateCompatibility('8.3.0');
     expect(result.compatible).toBe(true);
   });
 
-  // Phase A dual-accept: v8.2.0 ↔ v7.11.0 PASS
-  it('validateCompatibility accepts v7.11.0 within dual-accept window (Phase A)', () => {
-    const result = validateCompatibility('8.2.0', '7.11.0');
+  // Phase A dual-accept: v8.3.0 ↔ v7.11.0 PASS
+  it('validateCompatibility accepts v7.11.0 within support window (Phase A)', () => {
+    const result = validateCompatibility('7.11.0');
     expect(result.compatible).toBe(true);
   });
 
-  // Phase A: v8.2.0 ↔ v6.0.0 FAIL (too old)
-  it('validateCompatibility rejects v6.0.0 (outside dual-accept window)', () => {
-    const result = validateCompatibility('8.2.0', '6.0.0');
+  // v6.0.0 is MIN_SUPPORTED_VERSION in hounfour v8.3.1 — now accepted
+  it('validateCompatibility accepts v6.0.0 (MIN_SUPPORTED_VERSION boundary)', () => {
+    const result = validateCompatibility('6.0.0');
+    expect(result.compatible).toBe(true);
+  });
+
+  // v5.0.0 is below MIN_SUPPORTED_VERSION — rejected
+  it('validateCompatibility rejects v5.0.0 (below MIN_SUPPORTED_VERSION)', () => {
+    const result = validateCompatibility('5.0.0');
     expect(result.compatible).toBe(false);
   });
 });
@@ -497,7 +503,7 @@ describe('ADR-001: /commons symbol accessibility guard', () => {
     expect(barrel.isValidTransition).toBeTypeOf('function');
   });
 
-  it('Layer 3: v8.2.0 governance extensions in barrel', async () => {
+  it('Layer 3: v8.3.0 governance extensions in barrel', async () => {
     const barrel = await import(
       '../../themes/sietch/src/packages/core/protocol/index.js'
     );
@@ -508,37 +514,38 @@ describe('ADR-001: /commons symbol accessibility guard', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 12. v8.2.0 Version Negotiation (cycle-043)
+// 12. v8.3.0 Version Negotiation (cycle-043 → cycle-044)
 // ---------------------------------------------------------------------------
 
-describe('v8.2.0 version negotiation', () => {
-  it('negotiateVersion returns preferred 8.2.0', async () => {
+describe('v8.3.0 version negotiation', () => {
+  it('negotiateVersion returns preferred 8.3.0', async () => {
     const barrel = await import(
       '../../themes/sietch/src/packages/core/protocol/index.js'
     );
     const negotiation = barrel.negotiateVersion();
-    expect(negotiation.preferred).toBe('8.2.0');
+    expect(negotiation.preferred).toBe('8.3.0');
   });
 
-  it('negotiateVersion supports dual-accept [7.11.0, 8.2.0]', async () => {
+  it('negotiateVersion supports tri-accept [7.11.0, 8.2.0, 8.3.0]', async () => {
     const barrel = await import(
       '../../themes/sietch/src/packages/core/protocol/index.js'
     );
     const negotiation = barrel.negotiateVersion();
     expect(negotiation.supported).toContain('7.11.0');
     expect(negotiation.supported).toContain('8.2.0');
+    expect(negotiation.supported).toContain('8.3.0');
   });
 
-  it('CONTRACT_VERSION matches v8.2.0', async () => {
+  it('CONTRACT_VERSION matches v8.3.0', async () => {
     const barrel = await import(
       '../../themes/sietch/src/packages/core/protocol/index.js'
     );
-    expect(barrel.CONTRACT_VERSION).toBe('8.2.0');
+    expect(barrel.CONTRACT_VERSION).toBe('8.3.0');
   });
 });
 
 // ---------------------------------------------------------------------------
-// 13. ModelPerformanceEvent & QualityObservation (v8.2.0, cycle-043)
+// 13. ModelPerformanceEvent & QualityObservation (v8.2.0+, cycle-043)
 // ---------------------------------------------------------------------------
 
 describe('ModelPerformanceEvent v8.2.0', () => {

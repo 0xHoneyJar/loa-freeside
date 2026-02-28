@@ -13,9 +13,10 @@ import type { Logger } from 'pino';
 import {
   buildDomainTag,
   computeAuditEntryHash,
+  computeAdvisoryLockKey,
   AUDIT_TRAIL_GENESIS_HASH,
 } from '@0xhoneyjar/loa-hounfour/commons';
-import { advisoryLockKey, sleep } from './audit-helpers.js';
+import { sleep } from './audit-helpers.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -86,7 +87,7 @@ export class GovernedMutationService {
         const result = await params.mutate(client);
 
         // 2. Advisory lock for chain linearization (FNV-1a via shared helper)
-        const lockKey = advisoryLockKey(domainTag);
+        const lockKey = computeAdvisoryLockKey(domainTag);
         await client.query('SELECT pg_advisory_xact_lock($1)', [lockKey]);
 
         // 3. Read chain head

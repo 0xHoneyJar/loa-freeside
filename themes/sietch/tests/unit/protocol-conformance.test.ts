@@ -107,6 +107,14 @@ import {
   ScoringPathLogSchema as GovScoringPathLogSchema,
 } from '@0xhoneyjar/loa-hounfour/governance';
 
+import {
+  ConsumerContractSchema,
+} from '@0xhoneyjar/loa-hounfour/integrity';
+
+import {
+  TransitionResultSchema,
+} from '@0xhoneyjar/loa-hounfour/commons';
+
 // ---------------------------------------------------------------------------
 // JSON Schema Validator (ajv)
 // ---------------------------------------------------------------------------
@@ -227,6 +235,8 @@ const NO_SCHEMA_CATEGORIES = new Set([
   'pricing-calculation', // Complex multi-step — validated structurally
   'reputation-event',    // ReputationEventSchema has unresolvable internal $ref: "TaskType" in ajv
   'tool-call-roundtrip', // Complex multi-step — validated structurally
+  'consumer-contract',   // Validated via ConsumerContractSchema but complex entrypoint structure
+  'governed-resource-runtime', // Validated via TransitionResultSchema but wrapper structure differs
 ]);
 
 /**
@@ -304,6 +314,7 @@ const CATEGORY_SCHEMA_MAP: Record<string, SchemaEntry> = {
   'community-engagement': CommunityEngagementSignalSchema as Record<string, unknown>,
   'conservation-properties': ConservationPropertyRegistrySchema as Record<string, unknown>,
   'constraint-lifecycle': ConstraintLifecycleEventSchema as Record<string, unknown>,
+  'consumer-contract': undefined,
   'delegation-chain': DelegationChainSchema as Record<string, unknown>,
   'delegation-outcome': DelegationOutcomeSchema as Record<string, unknown>,
   'delegation-quality': DelegationQualityEventSchema as Record<string, unknown>,
@@ -318,6 +329,7 @@ const CATEGORY_SCHEMA_MAP: Record<string, SchemaEntry> = {
   'governed-freshness': GovernedFreshnessSchema as Record<string, unknown>,
   'governed-reputation': GovernedReputationSchema as Record<string, unknown>,
   'governed-resource': GovernedCreditsSchema as Record<string, unknown>,  // Representative schema; governed-resource neg vectors test governance fields
+  'governed-resource-runtime': undefined,
   'inter-agent-transaction': InterAgentTransactionAuditSchema as Record<string, unknown>,
   'jwt-boundary': JwtBoundarySpecSchema as Record<string, unknown>,
   'liveness-properties': LivenessPropertySchema as Record<string, unknown>,
@@ -366,8 +378,8 @@ describe('Protocol Conformance Suite (v7.11.0)', () => {
   // ─── AC-2.4.4: CONTRACT_VERSION ──────────────────────────────────────────
 
   describe('CONTRACT_VERSION', () => {
-    it('should match the actual v8.2.0 protocol version', () => {
-      expect(CONTRACT_VERSION).toBe('8.2.0');
+    it('should match the actual v8.3.0 protocol version', () => {
+      expect(CONTRACT_VERSION).toBe('8.3.0');
     });
 
     it('should be a valid semver string', () => {
@@ -378,12 +390,12 @@ describe('Protocol Conformance Suite (v7.11.0)', () => {
   // ─── AC-2.4.1 & AC-2.4.2: Vector loading ─────────────────────────────────
 
   describe('Vector Loading', () => {
-    it('should load all 262 vectors from nested directory structure', () => {
-      expect(allVectors.length).toBe(262);
+    it('should load all 276 vectors from nested directory structure', () => {
+      expect(allVectors.length).toBe(276);
     });
 
-    it('should load 219 conformance vectors', () => {
-      expect(conformanceVectors.length).toBe(219);
+    it('should load 233 conformance vectors', () => {
+      expect(conformanceVectors.length).toBe(233);
     });
 
     it('should cover all 16 top-level categories with JSON files', () => {

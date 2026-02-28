@@ -41,8 +41,8 @@ describe('loadDynamicContract', () => {
   it('loads and validates a valid contract from disk', () => {
     const contract = loadDynamicContract(VALID_CONTRACT_PATH, { logger: mockLogger });
     expect(contract).toBeDefined();
-    expect(contract.contract_id).toBe('arrakis-default-v8.2.0');
-    expect(contract.contract_version).toBe('8.2.0');
+    expect(contract.contract_id).toBe('a77a4150-0830-4f00-b000-000000000001');
+    expect(contract.contract_version).toBe('8.3.0');
     expect(mockLogger.fatal).not.toHaveBeenCalled();
   });
 
@@ -85,7 +85,7 @@ describe('loadDynamicContract', () => {
     vi.stubEnv('DYNAMIC_CONTRACT_OVERRIDE', validJson);
 
     const contract = loadDynamicContract(undefined, { logger: mockLogger });
-    expect(contract.contract_id).toBe('arrakis-default-v8.2.0');
+    expect(contract.contract_id).toBe('a77a4150-0830-4f00-b000-000000000001');
   });
 
   // Failure mode 3: JSON_PARSE_ERROR
@@ -145,7 +145,7 @@ describe('loadDynamicContract', () => {
     vi.stubEnv('DYNAMIC_CONTRACT_OVERRIDE', validJson);
 
     const contract = loadDynamicContract(undefined, { logger: mockLogger });
-    expect(contract.contract_id).toBe('arrakis-default-v8.2.0');
+    expect(contract.contract_id).toBe('a77a4150-0830-4f00-b000-000000000001');
   });
 });
 

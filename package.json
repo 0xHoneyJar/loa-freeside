@@ -8,7 +8,7 @@
     "postinstall": "scripts/rebuild-hounfour-dist.sh"
   },
   "devDependencies": {
-    "@0xhoneyjar/loa-hounfour": "github:0xHoneyJar/loa-hounfour#addb0bfadd1a60359b70b481e0c8155b6cc7028c",
+    "@0xhoneyjar/loa-hounfour": "github:0xHoneyJar/loa-hounfour#aed755f7fea8d2739cf9c755b45aaa580b6af6a9",
     "@types/express": "^5.0.6",
     "@types/supertest": "^6.0.3",
     "ajv": "^8.18.0",

@@ -97,6 +97,8 @@ export {
 
 // =============================================================================
 // Audit Helpers (cycle-043, bridge iteration 2 — shared advisory lock hashing)
+// Advisory lock key now from @0xhoneyjar/loa-hounfour/commons (v8.3.1)
 // =============================================================================
 
-export { advisoryLockKey, sleep } from './audit-helpers.js';
+export { computeAdvisoryLockKey } from '@0xhoneyjar/loa-hounfour/commons';
+export { sleep } from './audit-helpers.js';
