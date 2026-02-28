@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "bridge_id": "bridge-20260228-049956",
-  "state": "ITERATING",
+  "bridge_id": "bridge-20260228-034743",
+  "state": "JACKED_OUT",
   "config": {
     "depth": 3,
     "mode": "full",
@@ -11,40 +11,39 @@
     "repo": "0xHoneyJar/loa-freeside"
   },
   "timestamps": {
-    "started": "2026-03-01T00:35:00Z",
-    "last_activity": "2026-03-01T01:15:00Z"
+    "started": "2026-02-28T03:47:43Z",
+    "last_activity": "2026-02-28T04:40:00Z"
   },
   "iterations": [
     {
-      "iteration": 1,
-      "score": 0.75,
+      "number": 1,
+      "sprints_executed": 3,
+      "files_changed": 13,
       "findings": {
-        "high": 3,
-        "medium": 4,
-        "low": 1,
+        "total": 3,
         "praise": 3,
-        "speculation": 1,
-        "self_corrected": 1
+        "actionable": 0,
+        "speculation": 0
       },
-      "review_path": ".run/bridge-reviews/bridge-20260228-049956-iter1-full.md",
-      "findings_path": ".run/bridge-reviews/bridge-20260228-049956-iter1-findings.json",
-      "pr_comment": "https://github.com/0xHoneyJar/loa-freeside/pull/109#issuecomment-3976182539"
+      "score": 0.0
     }
   ],
   "flatline": {
-    "initial_score": 0.75,
-    "last_score": 0.75,
-    "consecutive_below_threshold": 0
+    "initial_score": 0.0,
+    "last_score": 0.0,
+    "consecutive_below_threshold": 1,
+    "terminated_reason": "flatline_immediate"
   },
   "metrics": {
-    "total_sprints_executed": 0,
-    "total_files_changed": 0,
-    "total_findings_addressed": 0,
+    "total_sprints_executed": 3,
+    "total_files_changed": 13,
+    "total_findings_addressed": 4,
     "total_visions_captured": 0
   },
   "finalization": {
-    "ground_truth_updated": false,
+    "ground_truth_updated": true,
     "rtfm_passed": false,
+    "rtfm_skipped": true,
     "pr_url": "https://github.com/0xHoneyJar/loa-freeside/pull/109",
     "butterfreezone_generated": false
   }
