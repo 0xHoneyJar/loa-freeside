@@ -1,38 +1,65 @@
 {
-  "verdict": "APPROVED",
-  "summary": "All previously blocking contradictions and feasibility gaps were addressed with explicit alignment to the actual required CI gates, a consistent security bar, a concrete Node-engine mitigation, and clear quarantine/rollback boundaries—without introducing new blocking risks.",
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Most of the previously blocking items are fixed (safety invariant, import workflow, measurable success criteria, DNS functional equivalence, wildcard/delegation clarity, SG scope, ECS Exec prerequisites, DMARC source-of-truth), but one truly blocking gap remains: the consolidation plan still recreates Finn’s ECS service/ALB routing without an explicit cutover/disable sequence, which can produce duplicate public endpoints and split-brain traffic during apply.",
   "previous_issues_status": [
     {
-      "original_issue": "Security target inconsistent (G-2 vs Success Criteria) and Security Scan tool unspecified",
+      "original_issue": "Contradiction about teardown vs never recreating stateful resources; unsafe suggestion to destroy old resources",
       "status": "fixed",
-      "notes": "G-2 and Success Criteria now consistently target `npm audit --audit-level=high` == 0 (allowing moderates), and the PRD explicitly states the Security Scan check is `npm audit --audit-level=high` confirmed from the workflow. This removes the merge-gate ambiguity."
+      "notes": "Now explicitly states system can rebuild non-stateful pieces but stateful resources must NEVER be destroyed/recreated; adds global safety invariant and forbids terraform destroy on legacy stacks until imports verified; adds prevent_destroy."
     },
     {
-      "original_issue": "Node 20 in CI vs adapters engine >=22 mismatch relied on implicit ignore-engines behavior",
+      "original_issue": "Incorrect Terraform guidance implying imports can be dry-run with -target",
       "status": "fixed",
-      "notes": "The PRD now makes an explicit, implementable decision: set `engine-strict=false` in CI npm config for the adapters install step and document it. This is concrete and aligns with the success criteria (i.e., installs won’t unexpectedly hard-fail due to engines)."
+      "notes": "Replaced with a correct import workflow (code + prevent_destroy, plan, import, plan-to-zero, then apply) and explicitly forbids -target for imports."
     },
     {
-      "original_issue": "Single-cycle feasibility risk from committing to multiple breaking upgrades plus full lint/TS/test cleanup with no fallback",
+      "original_issue": "Success metric '0 drift/no unexpected changes' not measurable and conflicts with expected creates",
       "status": "fixed",
-      "notes": "A contingency plan is now explicitly in-scope: timebox-based rollback via resolution overrides/pinning if a breaking upgrade destabilizes beyond a threshold, while still meeting the required Security Scan bar. Delivery strategy also allows staged PRs (MVP first, security second), preserving mergeability within the cycle."
+      "notes": "Now defines category-based acceptance: imported stateful = 0 changes; new resources = creates only; existing ECS/ALB/SG = only SG-rule additions; no replaces."
     },
     {
-      "original_issue": "Docker Build required check omitted from success criteria and potentially out-of-scope fixes",
+      "original_issue": "DNS '100% parity' not meaningful; Vercel apex record assumptions risky",
       "status": "fixed",
-      "notes": "Docker Build is now included in Goals (G-1), constraints, and Success Criteria (all 5 checks green). Scope explicitly allows minimal Dockerfile changes if needed, removing the prior 'can’t merge even if everything else is green' failure mode."
+      "notes": "Moves to functional equivalence with explicit allowlist for SOA/NS/TTL differences; specifies Vercel apex A=76.76.21.21 per docs (still needs domain-specific confirmation, but the PRD no longer demands literal parity)."
     },
     {
-      "original_issue": "Contradictory test scope: 'no new tests' vs test infra fixes; skipping tests loophole vs goal of 0 failing files",
+      "original_issue": "Wildcard/delegation confusion for agents subdomain and ACME challenge",
       "status": "fixed",
-      "notes": "The PRD now clearly allows minimal test helpers/fixtures for existing tests, and defines quarantining as an explicit, tracked mechanism with expiry. G-3 and Success Criteria are aligned around 'non-quarantined' tests, closing the loophole while keeping feasibility."
+      "notes": "Chooses a single model (no delegated agents zone; wildcard CNAME in apex zone) and calls out need for explicit bare agents record + ACME delegation behavior; references RFC 4592 precedence."
     },
     {
-      "original_issue": "Lint scope mismatch: repo-wide '0 errors' implied while builder excluded; risk CI lint still covers builder",
+      "original_issue": "Brittle ALB reference via data.aws_lb without deterministic constraints",
       "status": "fixed",
-      "notes": "G-4 and Success Criteria now explicitly define the lint target as 'linted paths' with `src/ui/builder/` excluded via `.eslintignore`. This aligns the metric with the intended gate behavior."
+      "notes": "Adds deterministic lookup constraints (exact name tag, region/account) plus a postcondition that exactly one ALB matches; documents ordering and feature-flag gating; allows remote_state as alternative."
+    },
+    {
+      "original_issue": "NFR forbidding CIDR rules conflicts with need for public endpoints/health checks",
+      "status": "fixed",
+      "notes": "Clarifies scope: SG-to-SG for mesh; CIDR only on ALB SG for 443; tasks not internet-reachable; staging Finn public via ALB SG not task SG."
+    },
+    {
+      "original_issue": "ECS Exec prerequisites incomplete, blocking wiring tests",
+      "status": "fixed",
+      "notes": "Now includes cluster config, IAM permissions, KMS considerations, network egress/endpoints, and an explicit execute-command smoke test prerequisite."
+    },
+    {
+      "original_issue": "Import/adoption scope incomplete for shared routing/identity resources (ALB/TG/Cloud Map/IAM/log groups/SSM)",
+      "status": "fixed",
+      "notes": "Adds an adoption matrix and explicitly calls out log group + SSM parameter imports; Cloud Map namespace/services declared as already owned by freeside."
+    },
+    {
+      "original_issue": "DMARC fix 'now' could regress at cutover if not in TF desired state",
+      "status": "fixed",
+      "notes": "NFR-5 makes corrected DMARC the Route 53 source of truth from day one and requires parity validation to expect the corrected value."
     }
   ],
-  "new_blocking_concerns": [],
+  "new_blocking_concerns": [
+    {
+      "location": "FR-1 Adoption matrix (Finn ECS service/ALB listener/TG = Recreate) + FR-2 deploy-ring.sh step ordering + Risks R-3",
+      "description": "The PRD says Finn ECS service and Finn ALB listener/TG will be recreated, but it does not define an explicit cutover/disable sequence to prevent duplicate Finn services/listeners from simultaneously serving traffic (or registering in different target groups) during consolidation applies.",
+      "why_blocking": "Even in pre-prod, this can break the core goal of reliable health-gated deploys and wiring tests: you can end up with two Finn services (old repo + new canonical) behind different listeners/TGs, or both attached to the shared ALB, causing nondeterministic routing, failing health gates, and confusing Cloud Map/service discovery. It also increases the chance an operator later destroys the 'wrong' stack to resolve duplication, risking accidental deletion of shared resources despite the stated invariant.",
+      "fix": "Add a mandatory, step-by-step cutover procedure for Finn non-stateful resources: (1) freeze legacy finn TF applies; (2) in legacy stack, scale Finn service desired_count=0 (or detach from ALB / disable listener rules) while keeping stateful resources intact; (3) apply canonical freeside stack to create/enable the single intended Finn service + ALB routing; (4) verify health gates + wiring tests; (5) only then remove/retire legacy Finn ECS/ALB resources from legacy code/state without running terraform destroy on shared/stateful components. Document which stack is authoritative for the shared ALB and ensure only one set of listener rules/target groups is active at a time."
+    }
+  ],
   "iteration": 2
 }

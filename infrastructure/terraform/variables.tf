@@ -353,6 +353,44 @@ variable "dixie_image_tag" {
   default     = "latest"
 }
 
+# =============================================================================
+# Finn Dedicated Redis (Cycle 046)
+# =============================================================================
+
+variable "finn_redis_node_type" {
+  description = "Finn dedicated Redis node type"
+  type        = string
+  default     = "cache.t3.micro"
+}
+
+# =============================================================================
+# Dixie Auto-Scaling (Cycle 046)
+# =============================================================================
+
+variable "dixie_max_count" {
+  description = "Maximum Dixie task count for auto-scaling"
+  type        = number
+  default     = 4
+}
+
+variable "autoscaling_cpu_target" {
+  description = "Target CPU utilization percentage for auto-scaling"
+  type        = number
+  default     = 70
+}
+
+variable "autoscaling_scale_in_cooldown" {
+  description = "Scale-in cooldown period in seconds"
+  type        = number
+  default     = 300
+}
+
+variable "autoscaling_scale_out_cooldown" {
+  description = "Scale-out cooldown period in seconds"
+  type        = number
+  default     = 60
+}
+
 # SNS Alarm Topic
 variable "sns_alarm_topic_arn" {
   description = "SNS topic ARN for CloudWatch alarm notifications (empty = no notifications)"
@@ -371,4 +409,42 @@ variable "log_level" {
   description = "Application log level"
   type        = string
   default     = "info"
+}
+
+# --- Agent Gateway Alarm Thresholds ---
+
+variable "agent_alarm_error_rate_pct" {
+  description = "Agent Gateway error rate alarm threshold (%)"
+  type        = number
+  default     = 5
+}
+
+variable "agent_alarm_latency_p99_ms" {
+  description = "Agent Gateway p99 latency alarm threshold (ms)"
+  type        = number
+  default     = 5000
+}
+
+variable "agent_alarm_budget_delta_pct" {
+  description = "Agent Gateway budget delta alarm threshold (%)"
+  type        = number
+  default     = 80
+}
+
+variable "agent_alarm_stale_reservation_ms" {
+  description = "Agent Gateway stale reservation age alarm threshold (ms)"
+  type        = number
+  default     = 300000
+}
+
+variable "agent_alarm_token_drift_pct" {
+  description = "Agent Gateway token estimate drift alarm threshold (%)"
+  type        = number
+  default     = 100
+}
+
+variable "economic_alarm_budget_drift_micro" {
+  description = "Economic budget drift alarm threshold (micro-USD)"
+  type        = number
+  default     = 500000
 }

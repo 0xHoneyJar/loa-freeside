@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
   "next_sprint_number": 366,
-  "active_cycle": null,
+  "active_cycle": "cycle-046",
   "cycles": [
     {
       "id": "cycle-001",
@@ -1714,7 +1714,7 @@
     {
       "id": "cycle-045",
       "label": "Clean Slate — Zero-Error CI Pipeline",
-      "status": "active",
+      "status": "archived",
       "created": "2026-02-27T07:00:00Z",
       "prd": "grimoires/loa/prd.md",
       "sdd": "grimoires/loa/sdd.md",
@@ -1723,14 +1723,52 @@
         {
           "global_id": 378,
           "local_label": "sprint-1",
-          "status": "pending",
+          "status": "completed",
           "title": "Build + Lint + Test Gates (MVP)"
         },
         {
           "global_id": 379,
           "local_label": "sprint-2",
-          "status": "pending",
+          "status": "completed",
           "title": "Security + Docker Gates"
+        }
+      ],
+      "archived": "2026-02-28T00:00:00Z",
+      "archive_path": "grimoires/loa/archive/cycle-045-ci-pipeline-rehab"
+    },
+    {
+      "id": "cycle-046",
+      "label": "Armitage Platform — Terraform Consolidation & DNS Authority",
+      "status": "active",
+      "created": "2026-02-28T00:00:00Z",
+      "prd": "grimoires/loa/prd.md",
+      "sdd": "grimoires/loa/sdd.md",
+      "sprint_plan": "grimoires/loa/sprint.md",
+      "sprints": [
+        {
+          "local_label": "sprint-1",
+          "global_id": 380,
+          "title": "Stateful Resource Consolidation"
+        },
+        {
+          "local_label": "sprint-2",
+          "global_id": 381,
+          "title": "Deploy Pipeline & Observability"
+        },
+        {
+          "local_label": "sprint-3",
+          "global_id": 382,
+          "title": "DNS Module"
+        },
+        {
+          "local_label": "sprint-4",
+          "global_id": 383,
+          "title": "Migration Validation & Cutover Prep"
+        },
+        {
+          "local_label": "sprint-5",
+          "global_id": 384,
+          "title": "Hardening & Drift Detection"
         }
       ]
     }

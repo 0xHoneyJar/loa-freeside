@@ -1,10 +1,44 @@
 {
-  "verdict": "APPROVED",
-  "summary": "No bugs, security issues, or logic errors found in the provided barrel exports.",
-  "issues": [],
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "The refactor introduced a behavioral regression where HEALTH_PROFILE=economic still runs technical checks, and billing awareness logging is implemented but never invoked.",
+  "issues": [
+    {
+      "severity": "major",
+      "file": "deploy-ring.sh",
+      "line": 221,
+      "description": "health_gate() always executes check_technical_health(), which contradicts the documented profile behavior where HEALTH_PROFILE=economic should run economic checks (future) rather than technical-only checks.",
+      "current_code": "health_gate() {\n  local service=\"$1\"\n  local url=\"$2\"\n\n  log \"Health gate: checking $service (profile=$HEALTH_PROFILE)\"\n\n  check_technical_health \"$service\" \"$url\" || return 1\n\n  if [[ \"$HEALTH_PROFILE\" == \"economic\" || \"$HEALTH_PROFILE\" == \"full\" ]]; then\n    check_economic_health \"$service\" || return 1\n  fi\n\n  return 0\n}",
+      "fixed_code": "health_gate() {\n  local service=\"$1\"\n  local url=\"$2\"\n\n  log \"Health gate: checking $service (profile=$HEALTH_PROFILE)\"\n\n  case \"$HEALTH_PROFILE\" in\n    technical)\n      check_technical_health \"$service\" \"$url\" || return 1\n      ;;\n    economic)\n      check_economic_health \"$service\" || return 1\n      ;;\n    full)\n      check_technical_health \"$service\" \"$url\" || return 1\n      check_economic_health \"$service\" || return 1\n      ;;\n    *)\n      error \"Invalid HEALTH_PROFILE='$HEALTH_PROFILE' (expected: technical|economic|full)\"\n      return 1\n      ;;\n  esac\n\n  return 0\n}",
+      "explanation": "This aligns runtime behavior with the documented profile contract, preserves default technical-only behavior, and adds explicit validation to avoid silent misconfiguration."
+    },
+    {
+      "severity": "major",
+      "file": "deploy-ring.sh",
+      "line": 83,
+      "description": "check_billing_status() is defined but never called, so billing-awareness warnings are never emitted.",
+      "current_code": "check_billing_status() {\n  if [[ \"${FEATURE_BILLING_ENABLED:-false}\" == \"true\" ]]; then\n    log \"WARNING: BILLING IS LIVE -- deploy will affect economic commitments\"\n    log \"  Economic health profile: ${HEALTH_PROFILE}\"\n    if [[ \"$HEALTH_PROFILE\" != \"economic\" && \"$HEALTH_PROFILE\" != \"full\" ]]; then\n      log \"INFO: Consider setting HEALTH_PROFILE=economic for billing-aware deploys\"\n    fi\n  fi\n}",
+      "fixed_code": "# --- Execution ---\nlog \"════════════════════════════════════════\"\nlog \"Deploy Ring: $RING (services: $SERVICES)\"\nlog \"════════════════════════════════════════\"\ncheck_billing_status",
+      "explanation": "Invoking the function at execution start makes billing awareness operational while remaining advisory-only (no blocking paths added)."
+    }
+  ],
+  "blocking_issues": [
+    {
+      "location": "health_gate profile dispatch",
+      "issue": "HEALTH_PROFILE=economic currently still performs technical checks first.",
+      "why_blocking": "Profile semantics are incorrect and can cause unexpected deploy gating behavior versus documented contract.",
+      "fix": "Implement explicit case-based dispatch so technical/economic/full each run only their intended checks, with invalid profile rejection."
+    },
+    {
+      "location": "execution flow after startup logs",
+      "issue": "Billing awareness function is never invoked.",
+      "why_blocking": "Feature requirement for informational billing warnings is not actually delivered at runtime.",
+      "fix": "Call check_billing_status once near start of execution before deployment phases."
+    }
+  ],
   "fabrication_check": {
     "passed": true,
     "concerns": []
   },
-  "iteration": 1
+  "iteration": 1,
+  "auto_approved": false
 }

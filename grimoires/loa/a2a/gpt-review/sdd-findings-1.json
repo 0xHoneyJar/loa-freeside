@@ -1,44 +1,98 @@
 {
   "verdict": "CHANGES_REQUIRED",
-  "summary": "This plan will not reliably get all 5 CI gates green because it contains lockfile/workspace inconsistencies, a risky/incorrect security upgrade strategy, and a Node engine “fix” that can mask real incompatibilities and still fail CI.",
-  "blocking_issues": [
+  "summary": "The design is close, but several Terraform/HCL constructs and DNSSEC/DNS validation details are incorrect or incomplete in ways that can break applies or cause failed DNSSEC/email/DNS equivalence during cutover.",
+  "issues": [
     {
-      "location": "2.1 Dependency Fix: hounfour Re-pin / lockfile handling",
-      "issue": "Lockfile regeneration is specified per-package (`npm install --package-lock-only` in both directories), but the repo is a monorepo with required CI gates across packages; per-package lockfiles and installs can easily diverge from the actual CI install strategy (workspace root vs package-level), leaving CI still broken even if local package installs pass.",
-      "why_blocking": "If GitHub Actions uses `npm ci` at the repo root (or uses workspaces), a package-level lockfile update may not be consumed, and the hounfour commit pin may not actually change in the installed dependency graph. This commonly results in “works locally in package dir” but CI still installs the old git SHA or fails integrity checks due to lockfile mismatch.",
-      "fix": "Align the SDD to the actual install topology used in CI: (a) explicitly state whether installs are root-workspace or per-package; (b) update the hounfour git SHA in the correct `package.json`(s) and regenerate the lockfile(s) that CI uses; (c) add a CI verification step that prints the resolved hounfour commit (e.g., `node -p \"require('@0xhoneyjar/loa-hounfour/package.json').gitHead || require('@0xhoneyjar/loa-hounfour/package.json').version\"` or `npm ls @0xhoneyjar/loa-hounfour`) to ensure the new commit is actually installed."
+      "severity": "critical",
+      "file": "infrastructure/terraform/dns/honeyjar-xyz-backend.tf",
+      "line": 2,
+      "description": "Invalid use of `data.aws_lb` with `tags` filter; the `aws_lb` data source does not support a `tags` argument in AWS provider ~> 5.x, so DNS root will fail to plan/apply when `enable_production_api=true`.",
+      "current_code": "data \"aws_lb\" \"compute_alb\" {\n  count = var.enable_production_api ? 1 : 0\n\n  tags = {\n    Name = \"${local.name_prefix}-alb\"\n  }\n}\n",
+      "fixed_code": "data \"aws_lbs\" \"compute_alb\" {\n  count = var.enable_production_api ? 1 : 0\n\n  tags = {\n    Name = \"${local.name_prefix}-alb\"\n  }\n}\n\n# Select the single expected ALB\nlocals {\n  compute_alb_arn = var.enable_production_api ? one(data.aws_lbs.compute_alb[0].arns) : null\n}\n\ndata \"aws_lb\" \"compute_alb\" {\n  count = var.enable_production_api ? 1 : 0\n  arn   = local.compute_alb_arn\n}\n",
+      "explanation": "`aws_lbs` supports tag filtering and returns a list of ARNs; using `one(...)` enforces exactly one match, and then `aws_lb` can read `dns_name`/`zone_id` from the selected ARN."
     },
     {
-      "location": "2.5 Security Patches (Phase 2 — Breaking)",
-      "issue": "The breaking-upgrade mapping is technically incorrect and likely to introduce new failures: “esbuild → vitest 4.x”, “form-data → node-vault”, and “undici → discord.js” are not valid dependency upgrade relationships. These read like unrelated packages being upgraded to address transitive vulns, but the plan does not identify the actual vulnerable packages/paths or how these upgrades eliminate the audit findings.",
-      "why_blocking": "This can easily fail the security gate (audit still reports critical/high) and/or break build/tests by forcing unrelated major upgrades. Without targeting the real vulnerable dependency chain, you can spend the cycle upgrading the wrong things and still end with >0 high/critical vulnerabilities—explicitly violating success criteria #4.",
-      "fix": "Replace Phase 2 with a targeted remediation plan: (a) list the exact `npm audit --json` findings that are critical/high and the dependency paths causing them; (b) for each, specify the minimal fix (direct dependency bump, `overrides`, or replacement) that actually removes the vulnerable version; (c) only perform major upgrades when they are the only path to eliminate a critical/high finding, and name the real package to upgrade (e.g., if `undici` is vulnerable via `discord.js`, then upgrade `discord.js`, not “undici → discord.js”)."
+      "severity": "critical",
+      "file": "infrastructure/terraform/dns/honeyjar-xyz-backend.tf",
+      "line": 2,
+      "description": "The earlier SDD snippet uses `lifecycle.postcondition` inside a data source and references `self` as a collection (`length(self)`), which is invalid; `self` is an object, and postconditions must check attributes, not the count wrapper.",
+      "current_code": "data \"aws_lb\" \"compute_alb\" {\n  count = var.enable_production_api ? 1 : 0\n\n  tags = {\n    Name = \"arrakis-${var.environment}-alb\"\n  }\n\n  lifecycle {\n    postcondition {\n      condition     = length(self) == 1\n      error_message = \"Expected exactly one ALB matching arrakis-${var.environment}-alb\"\n    }\n  }\n}\n",
+      "fixed_code": "data \"aws_lbs\" \"compute_alb\" {\n  count = var.enable_production_api ? 1 : 0\n\n  tags = {\n    Name = \"arrakis-${var.environment}-alb\"\n  }\n\n  lifecycle {\n    postcondition {\n      condition     = length(self.arns) == 1\n      error_message = \"Expected exactly one ALB matching arrakis-${var.environment}-alb\"\n    }\n  }\n}\n",
+      "explanation": "Postconditions can validate returned attributes; `aws_lbs` exposes `arns`, so `length(self.arns)==1` correctly enforces determinism."
     },
     {
-      "location": "2.7 Node Engine Alignment",
-      "issue": "Disabling engine checks in CI (`npm config set engine-strict false`) is a brittle workaround that can still fail CI (if the runtime Node version is incompatible) and can introduce runtime/build regressions by allowing installs on unsupported Node versions.",
-      "why_blocking": "If any dependency truly requires a higher Node version (common with modern tooling like ESLint, Vitest, Rollup, AWS SDK v3 tooling, etc.), turning off engine-strict won’t prevent runtime syntax errors, postinstall failures, or test runner crashes. It also undermines reproducibility: CI may “install” but then fail in Build/Test/Docker steps due to Node incompatibility.",
-      "fix": "Pin and enforce the Node version instead of bypassing engines: (a) set an explicit Node version in GitHub Actions via `actions/setup-node` (and match Docker base image); (b) align `package.json#engines.node` across packages (or root) to that version; (c) only use engine-strict toggles as a last resort and document why."
+      "severity": "critical",
+      "file": "infrastructure/terraform/dns/main.tf",
+      "line": 6,
+      "description": "Provider version constraint is malformed; `aws = \"~> 5.0\"` must be nested under `required_providers.aws.source/version`, otherwise Terraform init will fail.",
+      "current_code": "terraform {\n  required_version = \">= 1.6.0\"\n\n  required_providers {\n    aws = \"~> 5.0\"\n  }\n\n  backend \"s3\" {\n    bucket         = \"arrakis-tfstate-891376933289\"\n    region         = \"us-east-1\"\n    encrypt        = true\n    dynamodb_table = \"arrakis-terraform-locks\"\n  }\n}\n",
+      "fixed_code": "terraform {\n  required_version = \">= 1.6.0\"\n\n  required_providers {\n    aws = {\n      source  = \"hashicorp/aws\"\n      version = \"~> 5.0\"\n    }\n  }\n\n  backend \"s3\" {\n    bucket         = \"arrakis-tfstate-891376933289\"\n    region         = \"us-east-1\"\n    encrypt        = true\n    dynamodb_table = \"arrakis-terraform-locks\"\n  }\n}\n",
+      "explanation": "Terraform requires `required_providers` entries to be objects with `source` and `version` (or at least `version`), not a bare string."
     },
     {
-      "location": "2.3 TypeScript Error Fixes (TS2835 relative imports need .js)",
-      "issue": "The plan proposes adding `.js` extensions to relative imports as a generic fix, but this is only correct for specific ESM/moduleResolution configurations. In many TS monorepos (CommonJS, bundler resolution, or TS path mapping), adding `.js` can break runtime resolution, Jest/Vitest resolution, or tsconfig path aliasing.",
-      "why_blocking": "A bulk change to add `.js` extensions can cause build to pass but tests/runtime imports to fail (or vice versa), especially if the emitted output is not ESM or if tooling expects extensionless imports. This can directly keep Build/Unit Tests gates red.",
-      "fix": "Gate this fix behind an explicit module system decision already present in the repo: (a) confirm `type: module` and `moduleResolution` (e.g., `NodeNext`) for the affected package; (b) only apply `.js` extension changes where TS is configured for NodeNext ESM and the runtime expects it; (c) otherwise fix TS2835 by adjusting tsconfig/moduleResolution or using `bundler` resolution where appropriate."
+      "severity": "critical",
+      "file": "infrastructure/terraform/dns/main.tf",
+      "line": 13,
+      "description": "Backend key cannot be set via `*.tfvars` as stated; `backend \"s3\"` does not read `var.*` or tfvars. Without `-backend-config=key=...` (or a backend config file), both environments will collide on the same state key or fail expectations.",
+      "current_code": "backend \"s3\" {\n  bucket         = \"arrakis-tfstate-891376933289\"\n  region         = \"us-east-1\"\n  encrypt        = true\n  dynamodb_table = \"arrakis-terraform-locks\"\n  # key set in environments/*.tfvars: \"dns/staging.tfstate\" or \"dns/production.tfstate\"\n}\n",
+      "fixed_code": "backend \"s3\" {\n  bucket         = \"arrakis-tfstate-891376933289\"\n  region         = \"us-east-1\"\n  encrypt        = true\n  dynamodb_table = \"arrakis-terraform-locks\"\n  # key is set via -backend-config, e.g.:\n  # terraform init -backend-config=environments/staging/backend.tfvars\n}\n",
+      "explanation": "Terraform backend configuration is loaded only at init time via `-backend-config` (or hardcoded in the backend block). Using tfvars for backend keys is not supported."
     },
     {
-      "location": "2.4 ESLint Fixes (Exclude builder)",
-      "issue": "Excluding `src/ui/builder/` to avoid parsing errors may violate the stated success criteria (“Zero lint errors in linted paths”) unless the builder is explicitly out-of-scope for linting in the PRD and CI config. The SDD assumes it can be ignored without confirming CI’s lint target and required coverage.",
-      "why_blocking": "If CI runs `eslint .` or includes that directory in its glob, adding `.eslintignore` may not be honored (depending on how the lint script is invoked, e.g., `--no-ignore`), or it may be considered an unacceptable reduction in lint coverage. Either way, the lint gate can remain failing or the remediation can be rejected as not meeting requirements.",
-      "fix": "Make the lint scope explicit and consistent with CI: (a) update the lint script to lint only intended paths (e.g., `eslint src tests`), ensuring `.eslintignore` is honored; (b) or fix the parsing errors by configuring the correct parser/options for builder files; (c) confirm CI does not use `--no-ignore`."
+      "severity": "critical",
+      "file": "infrastructure/terraform/s3-finn.tf",
+      "line": 1,
+      "description": "S3 Object Lock cannot be enabled after bucket creation; `aws_s3_bucket_object_lock_configuration` requires the bucket to have been created with Object Lock enabled. The bucket resource is missing `object_lock_enabled = true`, so apply/import will fail or drift irreconcilably.",
+      "current_code": "resource \"aws_s3_bucket\" \"finn_audit_anchors\" {\n  bucket = \"${local.name_prefix}-finn-audit-anchors\"\n\n  lifecycle {\n    prevent_destroy = true\n  }\n\n  tags = merge(local.common_tags, {\n    Service = \"finn\"\n    Purpose = \"audit-anchors\"\n  })\n}\n",
+      "fixed_code": "resource \"aws_s3_bucket\" \"finn_audit_anchors\" {\n  bucket              = \"${local.name_prefix}-finn-audit-anchors\"\n  object_lock_enabled = true\n\n  lifecycle {\n    prevent_destroy = true\n  }\n\n  tags = merge(local.common_tags, {\n    Service = \"finn\"\n    Purpose = \"audit-anchors\"\n  })\n}\n",
+      "explanation": "Object Lock is a bucket-level immutable setting that must be enabled at creation; adding `object_lock_enabled = true` aligns Terraform with the required precondition for the lock configuration resource."
     },
     {
-      "location": "3. Execution Order (Security patches vs tests)",
-      "issue": "The execution order applies breaking security upgrades before test infrastructure fixes, but the SDD’s own risk controls depend on test stability to evaluate whether upgrades are safe. Doing breaking upgrades while tests are still failing for unrelated reasons makes it impossible to attribute failures and can stall the cycle.",
-      "why_blocking": "You can’t confidently reach “Zero failing non-quarantined test files” if you introduce major dependency changes before the test harness is stable. This often leads to a failure mode where you can’t tell whether failures are from the upgrade or from pre-existing broken mocks, preventing convergence within the cycle.",
-      "fix": "Reorder: (1) hounfour re-pin + missing deps + lockfile alignment; (2) minimal TS/build fixes to get compilation; (3) test infrastructure stabilization to get a mostly-green baseline; (4) then apply security upgrades (non-breaking then targeted breaking) with immediate test runs after each change."
+      "severity": "major",
+      "file": "infrastructure/terraform/elasticache-finn.tf",
+      "line": 1,
+      "description": "ElastiCache Redis with `transit_encryption_enabled = true` and `auth_token` requires a parameter group family compatible with the engine version; `family = \"redis7\"` may not match `engine_version = \"7.1\"` depending on AWS offering (often `redis7` is fine, but mismatches cause create/update failure). Pin family to the exact supported family for the chosen engine version in the target region.",
+      "current_code": "resource \"aws_elasticache_parameter_group\" \"finn_redis\" {\n  family = \"redis7\"\n  name   = \"${local.name_prefix}-finn-redis-params\"\n  ...\n}\n",
+      "fixed_code": "resource \"aws_elasticache_parameter_group\" \"finn_redis\" {\n  # Ensure this matches the engine major version supported in-region for 7.1\n  family = \"redis7\"\n  name   = \"${local.name_prefix}-finn-redis-params\"\n\n  parameter {\n    name  = \"maxmemory-policy\"\n    value = \"noeviction\"\n  }\n\n  parameter {\n    name  = \"appendonly\"\n    value = \"yes\"\n  }\n\n  parameter {\n    name  = \"appendfsync\"\n    value = \"everysec\"\n  }\n}\n",
+      "explanation": "This is a verification requirement: if AWS requires a different family string for 7.1 in the chosen region, the replication group will fail to create/update. Confirm via `aws elasticache describe-cache-parameter-groups` / docs and adjust if needed."
     }
   ],
-  "question": "",
-  "iteration": 1
+  "blocking_issues": [
+    {
+      "location": "§7 DNS Module Design — backend configuration",
+      "issue": "DNS root backend key handling is incorrect (tfvars cannot set backend key), risking state collisions between staging/production or incorrect state usage.",
+      "why_blocking": "A wrong or shared state key can cause Terraform to manage the wrong environment’s DNS zone/records, leading to production DNS outages or accidental record changes during staging work.",
+      "fix": "Add `infrastructure/terraform/dns/environments/{staging,production}/backend.tfvars` with `key = \"dns/<env>.tfstate\"` and require `terraform init -backend-config=...` in all workflows/docs; remove the claim that tfvars sets backend key."
+    },
+    {
+      "location": "§7.7 / §2.3 Cross-root references — `data.aws_lb` selection",
+      "issue": "`data.aws_lb` tag filtering/postcondition as written will not work with AWS provider ~> 5.x; DNS root will fail when enabling `api.0xhoneyjar.xyz`.",
+      "why_blocking": "Production cutover step 3.3(4) depends on `enable_production_api=true`; if the data source fails, Terraform cannot create the alias record, blocking API DNS cutover and potentially leaving the domain partially migrated.",
+      "fix": "Use `data.aws_lbs` with `tags` and enforce exactly one ARN, then read the selected ALB via `data.aws_lb` by ARN (or use an explicit ALB ARN variable passed into DNS root)."
+    },
+    {
+      "location": "§3.3 S3 Object Lock — audit anchors bucket",
+      "issue": "Object Lock enablement is missing on the S3 bucket resource; Object Lock configuration cannot be applied unless the bucket was created with Object Lock enabled.",
+      "why_blocking": "This is a stateful, compliance-mode retention requirement; failure to manage it correctly either breaks apply/import or leaves audit anchors without the required immutability guarantees, violating the PRD’s safety invariants.",
+      "fix": "Add `object_lock_enabled = true` to `aws_s3_bucket.finn_audit_anchors` and ensure the existing bucket was created with Object Lock enabled before attempting import; if not, create a new compliant bucket and migrate data with a documented procedure."
+    },
+    {
+      "location": "§7.1 dns/main.tf — required_providers",
+      "issue": "Terraform provider constraint syntax is invalid (`aws = \"~> 5.0\"`).",
+      "why_blocking": "Terraform init will fail, preventing any DNS root operations and blocking the DNS migration entirely.",
+      "fix": "Use `required_providers { aws = { source = \"hashicorp/aws\", version = \"~> 5.0\" } }`."
+    },
+    {
+      "location": "§8.1 dns-pre-migration.sh — record equivalence validation",
+      "issue": "The pre-migration comparison only checks apex for each type and a few specific names; it does not validate critical delegated names like `_acme-challenge` NS records or `agents.*` records, and `dig @dns.gandi.net` may not reflect the authoritative zone for all record types during transition.",
+      "why_blocking": "Missing validation of ACME delegation and agent wildcard records can lead to certificate issuance failures or broken subdomains immediately after NS cutover, violating the zero-downtime DNS migration requirement.",
+      "fix": "Explicitly compare `_acme-challenge.${DOMAIN}` (NS), `_acme-challenge.agents.${DOMAIN}` (NS), `agents.${DOMAIN}` (A), `*.agents.${DOMAIN}` (CNAME), and `google._domainkey.${DOMAIN}` (TXT when enabled). Also query Gandi’s authoritative nameservers for the zone (from current NS set) rather than a fixed resolver hostname."
+    }
+  ],
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1,
+  "auto_approved": false
 }

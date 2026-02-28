@@ -1,0 +1,72 @@
+# =============================================================================
+# DNS Drift Check — Nightly Terraform Plan
+# Cycle 046: Armitage Platform — Sprint 5, Task 5.1
+# SDD §8.3: dns-drift-check.yml
+# =============================================================================
+#
+# Runs terraform plan on the DNS root to detect configuration drift.
+# Exit code 2 (changes detected) produces a GitHub warning annotation.
+
+name: DNS Drift Check
+
+on:
+  schedule:
+    - cron: '0 6 * * *' # Daily at 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  drift-check:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: terraform-dns-drift
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.TERRAFORM_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Terraform Init
+        working-directory: infrastructure/terraform/dns
+        run: terraform init -backend-config=environments/production/backend.tfvars
+
+      - name: Terraform Plan (drift detection)
+        working-directory: infrastructure/terraform/dns
+        shell: bash
+        run: |
+          set +e
+          terraform plan -var-file=environments/production/terraform.tfvars \
+            -detailed-exitcode -out=drift.tfplan 2>&1 | tee plan-output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "No drift detected — DNS configuration matches state"
+          elif [ $EXIT_CODE -eq 2 ]; then
+            echo "::warning::DNS drift detected — review plan output"
+            echo "## DNS Drift Detected" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Terraform plan detected changes in the DNS configuration." >> "$GITHUB_STEP_SUMMARY"
+            echo "Review the plan output and determine if changes are expected." >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "### Drift details" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Resource addresses with changes:" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            terraform show -no-color drift.tfplan | sed -n 's/^  # /- /p' | head -50 >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Review full plan output in the workflow run logs." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::Terraform plan failed with exit code $EXIT_CODE"
+            exit $EXIT_CODE
+          fi

@@ -1,36 +1,61 @@
 {
   "verdict": "APPROVED",
-  "summary": "The v1.2.0 PRD keeps the original P0 launch blockers intact while correctly integrating the Flatline additions (determinism, JWKS security, network isolation, RTFM protocol, invariants) in a way that remains achievable in-repo with specific, testable acceptance criteria and no new blocking contradictions.",
+  "summary": "All previously identified blocking issues—especially the Finn ECS/ALB duplicate-endpoint split-brain risk—are now addressed with an explicit cutover/disable sequence, and no new truly blocking problems were introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "E2E success criteria incorrectly relied on `docker compose up` rather than a deterministic test runner with teardown and exit code",
+      "original_issue": "Contradiction about teardown vs never recreating stateful resources; unsafe suggestion to destroy old resources",
       "status": "fixed",
-      "notes": "FR-1 still anchors on `tests/e2e/e2e-entrypoint.sh` with explicit timeouts (AC-1.8), trap-based teardown (AC-1.7), and exit-code semantics; this remains deterministic and measurable."
+      "notes": "Safety invariant is explicit, stateful resources are import-only, prevent_destroy is required, and legacy stacks are protected from destroy until verification."
     },
     {
-      "original_issue": "CI/E2E topology ambiguously depended on external loa-finn repo via LOA_FINN_DIR, risking non-reproducible CI and fork failures",
+      "original_issue": "Incorrect Terraform guidance implying imports can be dry-run with -target",
       "status": "fixed",
-      "notes": "FR-1/FR-7 continue to state stub-by-default and stub-in-CI with LOA_FINN_DIR as local-dev-only; no cross-repo dependency is assumed for success."
+      "notes": "Import workflow is now correct (define + prevent_destroy, plan, import, plan-to-zero, then apply) and explicitly forbids -target for imports."
     },
     {
-      "original_issue": "Redis isolation allowed skipping/mocking without defining which tests must still run, risking meaningless green CI or persistent red CI",
+      "original_issue": "Success metric '0 drift/no unexpected changes' not measurable and conflicts with expected creates",
       "status": "fixed",
-      "notes": "FR-2’s taxonomy + default `pnpm test` → unit-only (AC-2.4) and separate CI jobs for integration with Redis (AC-2.3) keeps NFR-4 achievable and prevents “green but meaningless” outcomes."
+      "notes": "Acceptance criteria are now category-based (imported stateful = 0 changes; new = creates only; existing ECS/ALB/SG = only SG-rule additions; no replaces)."
     },
     {
-      "original_issue": "Economic loop E2E referenced payment flows without specifying how external providers are avoided, risking flaky/impossible CI",
+      "original_issue": "DNS '100% parity' not meaningful; Vercel apex record assumptions risky",
       "status": "fixed",
-      "notes": "FR-6’s external dependency policy + explicit zero-egress requirement (AC-6.1/6.5/6.6) keeps the loop test feasible and deterministic using only in-repo stubs/simulation."
+      "notes": "PRD now uses functional equivalence with an explicit allowlist for expected differences; Vercel apex handling is documented as per Vercel docs and no longer framed as literal parity."
     },
     {
-      "original_issue": "JWKS bootstrap and S2S JWT flow direction was underspecified and could be inverted vs reality",
+      "original_issue": "Wildcard/delegation confusion for agents subdomain and ACME challenge",
       "status": "fixed",
-      "notes": "FR-1 clearly defines issuer/audience direction and shared-volume JWKS bootstrap, and v1.2.0 strengthens it with public-only, ephemeral keys, atomic write, and a negative JWKS test (AC-1.9)."
+      "notes": "A single model is chosen (no delegated agents zone; wildcard CNAME in apex zone) and the bare agents record + ACME delegation behavior are explicitly called out; RFC 4592 precedence is referenced."
     },
     {
-      "original_issue": "Staging checklist required enumerating secrets but lacked an authoritative inventory source and measurable deployable verification",
+      "original_issue": "Brittle ALB reference via data.aws_lb without deterministic constraints",
       "status": "fixed",
-      "notes": "FR-5 still ties inventory to Terraform variables + `.env.example` and includes measurable gates (`terraform plan` + `/health` 200) in AC-5.5."
+      "notes": "Deterministic lookup constraints plus a postcondition that exactly one ALB matches are included; ordering/feature-flag gating is documented; remote_state is allowed as an alternative."
+    },
+    {
+      "original_issue": "NFR forbidding CIDR rules conflicts with need for public endpoints/health checks",
+      "status": "fixed",
+      "notes": "NFR-3 cleanly scopes CIDR ingress to the ALB SG only (443) while keeping mesh traffic SG-to-SG; tasks remain non-internet-reachable; Finn public staging is via ALB, not task SG CIDRs."
+    },
+    {
+      "original_issue": "ECS Exec prerequisites incomplete, blocking wiring tests",
+      "status": "fixed",
+      "notes": "Exec prerequisites now include cluster config, IAM permissions, KMS considerations, network egress/endpoints, and an explicit execute-command smoke test prerequisite."
+    },
+    {
+      "original_issue": "Import/adoption scope incomplete for shared routing/identity resources (ALB/TG/Cloud Map/IAM/log groups/SSM)",
+      "status": "fixed",
+      "notes": "Adoption matrix now covers log group + SSM parameter imports and clarifies Cloud Map namespace/services ownership in freeside."
+    },
+    {
+      "original_issue": "DMARC fix 'now' could regress at cutover if not in TF desired state",
+      "status": "fixed",
+      "notes": "NFR-5 makes the corrected DMARC value the Route 53 Terraform source of truth from day one and requires pre-migration validation to expect the corrected value."
+    },
+    {
+      "original_issue": "Blocking gap: Finn ECS service/ALB routing recreation lacked explicit cutover/disable sequence, risking duplicate public endpoints and split-brain traffic during apply",
+      "status": "fixed",
+      "notes": "FR-1 now includes a concrete Finn non-stateful cutover procedure: freeze legacy applies, scale desired_count=0 and detach/disable listener rules, apply canonical freeside, verify wiring/health gates, then retire legacy via code removal + state rm (without destroy). Also states the invariant that only one set of Finn listener rules/TGs may be active and that freeside’s ALB is authoritative."
     }
   ],
   "new_blocking_concerns": [],

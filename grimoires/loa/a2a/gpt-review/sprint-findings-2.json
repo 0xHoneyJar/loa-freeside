@@ -1,36 +1,41 @@
 {
   "verdict": "APPROVED",
-  "summary": "All previously-blocking gaps (per-package lockfiles including core, sietch build parity, lint/scope verification, security scope + node-vault contingency compliance, and Dockerfile install/lockfile alignment) are addressed with concrete acceptance criteria and no new blocking issues introduced.",
+  "summary": "All previously blocking dependency/feasibility and traceability gaps appear to be addressed with concrete tasks and measurable acceptance criteria, and no new blocking issues were introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "Core lockfile/install path missing despite per-package `npm ci`",
+      "original_issue": "Missing explicit inventory of canonical identifiers prior to stateful imports, risking forced replacement/drift and blocking 0-change plan",
       "status": "fixed",
-      "notes": "Task 1.1 now explicitly regenerates `packages/core` lockfile and verifies `npm ci` succeeds in core/adapters/sietch."
+      "notes": "Task 1.0 now inventories all key identifiers and explicitly requires 1.1 HCL to use exact values, aligning pre-import and post-import expectations."
     },
     {
-      "original_issue": "Sietch build not required (only `tsc --noEmit`), risking Build gate failure",
+      "original_issue": "Bootstrap Redis auth script dependency unclear and idempotency underspecified (create vs update secret; when to run relative to import)",
       "status": "fixed",
-      "notes": "Task 1.2 now requires `npm run build` for `themes/sietch` and keeps `tsc --noEmit` as an additional check, matching PRD criteria."
+      "notes": "Task 1.2 now depends on replication group existing and being imported, specifies required inputs, create-or-update behavior, and explicit idempotency/no-op logic."
     },
     {
-      "original_issue": "ESLint plan assumed ignore behavior and didn’t mirror CI invocation / repo scope",
+      "original_issue": "Health gates lacked a defined metric contract; alarms alone don’t guarantee deploy-ring.sh can compute/validate p99 and 5xx",
       "status": "fixed",
-      "notes": "Task 1.3 explicitly states CI lint runs only in sietch with `working-directory: ./themes/sietch`, mirrors the exact command (`npm run lint` -> `eslint src --ext .ts`), and includes AC to confirm scope and `.eslintignore` behavior."
+      "notes": "Task 2.2 defines metric sources and requires non-empty CloudWatch datapoints, plus documents the contract; deploy-ring.sh is correctly dependent on 2.2."
     },
     {
-      "original_issue": "Security remediation scoped only to sietch without acknowledging per-package gates",
-      "status": "rejected_with_valid_reason",
-      "notes": "The revised plan explicitly asserts (and makes an AC) that CI Security Scan is sietch-only via workflow `working-directory`. Given that constraint, limiting remediation to sietch is acceptable for getting required checks green and meeting PRD success criteria as written."
+      "original_issue": "Invalid DNS validation using literal wildcard dig query",
+      "status": "fixed",
+      "notes": "Task 3.4 now queries a concrete name (test.agents...) and includes additional authoritative checks for agents and ACME delegation."
     },
     {
-      "original_issue": "node-vault contingency could violate zero high/critical requirement",
+      "original_issue": "Registrar (Gandi) access not confirmed early, risking late-stage cutover/DNSSEC blockage",
       "status": "fixed",
-      "notes": "Task 2.2 contingency is now explicitly conditional on `npm audit --audit-level=high` exiting 0; otherwise the major upgrade must be completed within Sprint 2."
+      "notes": "Task 4.0 explicitly verifies NS edit capability, record export, DS management, and documents SLA and access/MFA confirmation."
     },
     {
-      "original_issue": "Docker build task lacked explicit alignment with per-package lockfiles and Node version",
+      "original_issue": "Flatline findings SKP/IMP coverage not fully traceable (missing mappings for several IMP items)",
       "status": "fixed",
-      "notes": "Task 2.4 now requires verifying base image `node:20-alpine` and that Docker runs per-package `npm ci` with correct lockfiles in build context, covering the common failure mode."
+      "notes": "Traceability table now maps SKP-001..004 and IMP-001..010, including IMP-003/005/006/010, and states none are out of scope."
+    },
+    {
+      "original_issue": "Risk mitigations referenced inconsistent/possibly incorrect SDD sections for import workflow and rollback",
+      "status": "fixed",
+      "notes": "Risk table now includes an explicit SDD Reference column with normalized §4.2/§4.3/§4.4 references and aligns with Sprint 1 import AC."
     }
   ],
   "new_blocking_concerns": [],
