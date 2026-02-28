@@ -652,3 +652,25 @@ This sprint plan is complete when:
 - **File**: `infrastructure/terraform/monitoring-finn.tf`, `infrastructure/terraform/monitoring-dixie.tf`, `infrastructure/terraform/variables.tf`
 - **Action**: Extract CPU threshold, memory threshold, 5xx threshold, p99 latency threshold into Terraform variables with current values as defaults
 - **AC**: All alarm thresholds are parameterized; existing behavior unchanged
+
+---
+
+## Bridge Sprint B2: Bridgebuilder Iteration 2 Findings
+
+> **Source**: bridge-20260228-049956, Iteration 2
+> **Findings**: 0 HIGH, 1 MEDIUM, 1 LOW (2 actionable)
+> **Delivery**: 1 sprint (polish pass)
+
+### Sprint B2: Address Bridgebuilder Iteration 2 Findings
+
+**Goal**: Fix remaining polish-level findings from Bridgebuilder iteration 2.
+
+#### Task B2.1: Combine double curl in dry-run preflight (MEDIUM — medium-1)
+- **File**: `infrastructure/terraform/scripts/deploy-ring.sh`
+- **Action**: In `dry_run_preflight()`, combine the two `curl` calls per service into one using multiple `-w` format specifiers: `curl -sI -o /dev/null -w '%{http_code}\n%{url_effective}' --max-time 10 "$url"` and split the two-line output
+- **AC**: Single curl call per service in dry-run; output still shows HTTP code and effective URL
+
+#### Task B2.2: Simplify alarm description interpolation (LOW — low-1)
+- **File**: `infrastructure/terraform/agent-monitoring.tf`
+- **Action**: Replace inline `${var.agent_alarm_stale_reservation_ms / 1000}` division in alarm description with a `locals` block computing `agent_alarm_stale_reservation_s = var.agent_alarm_stale_reservation_ms / 1000`
+- **AC**: Alarm description uses `local.agent_alarm_stale_reservation_s`; `terraform plan` shows no effective change

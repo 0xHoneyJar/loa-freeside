@@ -173,9 +173,10 @@ dry_run_preflight() {
     if ! should_deploy "$svc"; then continue; fi
     local url="${HEALTH_URLS[$svc]}"
     log "  Checking $svc → $url"
-    local http_code effective_url
-    http_code=$(curl -sI -o /dev/null -w '%{http_code}' --max-time 10 "$url" 2>/dev/null) || http_code="000"
-    effective_url=$(curl -sI -o /dev/null -w '%{url_effective}' --max-time 10 "$url" 2>/dev/null) || effective_url=""
+    local curl_output http_code effective_url
+    curl_output=$(curl -sI -o /dev/null -w '%{http_code}\n%{url_effective}' --max-time 10 "$url" 2>/dev/null) || curl_output="000"
+    http_code=$(echo "$curl_output" | head -1)
+    effective_url=$(echo "$curl_output" | tail -1)
     log "    HTTP $http_code | Effective URL: ${effective_url:-N/A}"
     if [[ "$http_code" =~ ^[23] ]]; then
       log "    OK"

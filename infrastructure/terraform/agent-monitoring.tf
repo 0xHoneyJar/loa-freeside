@@ -6,6 +6,10 @@
 # using the namespace "Arrakis/AgentGateway".
 # =============================================================================
 
+locals {
+  agent_alarm_stale_reservation_s = var.agent_alarm_stale_reservation_ms / 1000
+}
+
 # -----------------------------------------------------------------------------
 # CloudWatch Dashboard
 # -----------------------------------------------------------------------------
@@ -756,7 +760,7 @@ resource "aws_cloudwatch_metric_alarm" "agent_stale_reservations" {
   period              = 300
   statistic           = "Maximum"
   threshold           = var.agent_alarm_stale_reservation_ms
-  alarm_description   = "Agent Gateway reservation age > ${var.agent_alarm_stale_reservation_ms / 1000}s — reaper may be failing or streams are stuck"
+  alarm_description   = "Agent Gateway reservation age > ${local.agent_alarm_stale_reservation_s}s — reaper may be failing or streams are stuck"
   treat_missing_data  = "notBreaching"
 
   alarm_actions = [aws_sns_topic.alerts.arn]
