@@ -289,3 +289,124 @@ Blocks replace/destroy on: ElastiCache, DynamoDB, S3, KMS, Route 53 zones.
 | `dixie-memory-high` | Platform | Check task memory config | Increase `dixie_memory` |
 | `dixie-5xx` | Platform + Backend | Check application logs | Rollback via `deploy-ring.sh` |
 | `dixie-task-count` | Platform | Check ECS events | Verify auto-scaling target |
+
+## DNS Cutover Playbook (Sprint 4 — SKP-001)
+
+> **SDD Reference**: §10 Phase 3
+> **Owner**: Infrastructure engineer + domain owner
+> **Prerequisite**: Sprint 3 DNS module applied, `dns-pre-migration.sh` passes
+
+### Pre-Migration Validation
+
+```bash
+# Validate Route 53 records match Gandi before NS cutover
+./scripts/dns-pre-migration.sh 0xhoneyjar.xyz
+
+# Expected: PRE-MIGRATION CHECK PASSED (all MATCH or EXPECTED_DIFF)
+# Required: Zero MISMATCH results before proceeding
+```
+
+### T-72h: TTL Reduction
+
+| Step | Command | Owner | Verification |
+|------|---------|-------|-------------|
+| 1 | Lower ALL record TTLs at Gandi to 300s (A, MX, TXT, CNAME, CAA) | Domain owner | Manual via Gandi dashboard |
+| 2 | Verify TTL propagated | Infra engineer | `dig +noall +answer 0xhoneyjar.xyz @8.8.8.8` — TTL should show ≤300 |
+| 3 | Confirm SOA MINIMUM | Infra engineer | `dig SOA 0xhoneyjar.xyz` — MINIMUM field ≤300s |
+| 4 | Document registrar NS update SLA | Infra engineer | Gandi: typically <15 min |
+
+### T-0: NS Cutover
+
+| Step | Action | Owner |
+|------|--------|-------|
+| 1 | Pre-flight: `./scripts/dns-pre-migration.sh` → must PASS | Infra engineer |
+| 2 | Update NS records at Gandi → Route 53 nameservers | Domain owner |
+| 3 | Start propagation monitor: `./scripts/dns-post-migration-check.sh` | Infra engineer |
+| 4 | Multi-geo validation: monitor 8 resolver agreement | Automated |
+| 5 | Send test email within 30 min of cutover | Domain owner |
+| 6 | Monitor CloudWatch DNS query logs | Infra engineer |
+
+Route 53 nameservers (from `terraform output nameservers`):
+```
+# Replace with actual values after terraform apply:
+ns-XXXX.awsdns-XX.org
+ns-XXXX.awsdns-XX.co.uk
+ns-XXX.awsdns-XX.com
+ns-XXX.awsdns-XX.net
+```
+
+### T+1h: Verification Gate
+
+All criteria must be met before proceeding:
+
+- [ ] ≥95% resolver agreement on A records
+- [ ] ≥95% resolver agreement on MX records
+- [ ] Test email sent AND received successfully
+- [ ] HTTPS cert still valid on all subdomains (`agents.*`, `www.*`)
+- [ ] No elevated error rates in CloudWatch
+
+### T+24h: Enable API Record
+
+```bash
+# 1. Set enable_production_api=true in production tfvars
+cd infrastructure/terraform/dns
+vim environments/production/terraform.tfvars
+# Change: enable_production_api = true
+
+# 2. Plan — verify only api.0xhoneyjar.xyz alias record created
+terraform plan -var-file=environments/production/terraform.tfvars
+
+# 3. Apply
+terraform apply -var-file=environments/production/terraform.tfvars
+
+# 4. Verify
+curl -sf https://api.0xhoneyjar.xyz/health
+# Expected: HTTP 200
+```
+
+### DNS Cutover Rollback
+
+**Trigger**: ≥2 of: MX propagation <80%, A record propagation <80%, cert issuance failure
+
+| Step | Action | Time |
+|------|--------|------|
+| 1 | Revert NS records at Gandi registrar | <5 min |
+| 2 | Gandi re-asserts authority within TTL window | ≤300s |
+| 3 | Verify: `dig NS 0xhoneyjar.xyz @8.8.8.8` | Immediate |
+| 4 | Wait SOA MINIMUM (300s) for negative cache flush | 5 min |
+| 5 | Send test email to confirm MX recovery | 5 min |
+| 6 | Post-mortem: document what failed, fix in Route 53 | After recovery |
+
+**Recovery time**: <30 min (dominated by registrar NS update propagation)
+
+### DNSSEC Activation (Sprint 5 — Separate from NS Cutover)
+
+**Prerequisites**: NS cutover confirmed stable ≥48h, `dns-drift-check.yml` running clean ≥2 days.
+
+```bash
+# 1. Enable DNSSEC
+cd infrastructure/terraform/dns
+# Edit environments/production/terraform.tfvars: enable_dnssec = true
+
+# 2. Plan and apply
+terraform plan -var-file=environments/production/terraform.tfvars
+terraform apply -var-file=environments/production/terraform.tfvars
+
+# 3. Extract DS record
+terraform output ds_record
+
+# 4. Upload DS record to Gandi registrar (establishes chain of trust)
+
+# 5. Verify
+dig +dnssec 0xhoneyjar.xyz  # Should show RRSIG records
+# Validate chain: https://dnsviz.net/d/0xhoneyjar.xyz/dnssec/
+
+# 6. Monitor 24h: no elevated SERVFAIL rates
+```
+
+**DNSSEC Rollback**: If SERVFAIL rate >1% or dnsviz shows broken chain:
+1. Remove DS record at Gandi registrar
+2. Set `enable_dnssec=false` in production tfvars
+3. `terraform apply` — removes KSK and zone signing
+4. Verify: `dig 0xhoneyjar.xyz` returns unsigned responses
+5. Wait 24h before re-attempting
