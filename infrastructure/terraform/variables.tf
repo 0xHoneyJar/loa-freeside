@@ -410,3 +410,41 @@ variable "log_level" {
   type        = string
   default     = "info"
 }
+
+# --- Agent Gateway Alarm Thresholds ---
+
+variable "agent_alarm_error_rate_pct" {
+  description = "Agent Gateway error rate alarm threshold (%)"
+  type        = number
+  default     = 5
+}
+
+variable "agent_alarm_latency_p99_ms" {
+  description = "Agent Gateway p99 latency alarm threshold (ms)"
+  type        = number
+  default     = 5000
+}
+
+variable "agent_alarm_budget_delta_pct" {
+  description = "Agent Gateway budget delta alarm threshold (%)"
+  type        = number
+  default     = 80
+}
+
+variable "agent_alarm_stale_reservation_ms" {
+  description = "Agent Gateway stale reservation age alarm threshold (ms)"
+  type        = number
+  default     = 300000
+}
+
+variable "agent_alarm_token_drift_pct" {
+  description = "Agent Gateway token estimate drift alarm threshold (%)"
+  type        = number
+  default     = 100
+}
+
+variable "economic_alarm_budget_drift_micro" {
+  description = "Economic budget drift alarm threshold (micro-USD)"
+  type        = number
+  default     = 500000
+}

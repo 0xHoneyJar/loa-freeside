@@ -27,15 +27,26 @@ HEALTH_5XX_LIMIT="${HEALTH_5XX_LIMIT:-3}"                   # < 3 5xx errors
 RING="${1:?Usage: deploy-ring.sh <ring> [--services all|dixie,finn,freeside]}"
 shift
 SERVICES="all"
+
+DRY_RUN=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --services) SERVICES="$2"; shift 2 ;;
+    --dry-run) DRY_RUN=true; shift ;;
     *) echo "Unknown option: $1"; exit 2 ;;
   esac
 done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLUSTER="arrakis-${RING}"
+
+# --- Centralized Health URLs (single source of truth) ---
+# All services use HTTPS — no redirects expected.
+declare -A HEALTH_URLS=(
+  [dixie]="https://dixie.${RING}.arrakis.community/api/health"
+  [finn]="https://finn.${RING}.arrakis.community/health"
+  [freeside]="https://${RING}.api.arrakis.community/health"
+)
 
 # Prerequisites
 command -v aws >/dev/null 2>&1 || { echo "ERROR: aws CLI required"; exit 1; }
@@ -48,7 +59,6 @@ error() { log "ERROR: $*" >&2; }
 
 # --- Rollback tracking ---
 declare -A PREVIOUS_TD
-ROLLED_BACK=()
 
 capture_previous_td() {
   local service="$1"
@@ -71,7 +81,6 @@ rollback_service() {
   log "ROLLBACK: Reverting $service to $prev_td"
   aws ecs update-service --cluster "$CLUSTER" --service "${CLUSTER}-${service}" \
     --task-definition "$prev_td" --force-new-deployment >/dev/null
-  ROLLED_BACK+=("$service")
   log "ROLLBACK: $service reverted — waiting for stability..."
   aws ecs wait services-stable --cluster "$CLUSTER" --services "${CLUSTER}-${service}" || true
 }
@@ -156,6 +165,38 @@ should_deploy() {
   [[ "$SERVICES" == "all" ]] || echo "$SERVICES" | tr ',' '\n' | grep -qx "$service"
 }
 
+# --- Dry-run preflight (B1.3: validate URLs before deploy) ---
+dry_run_preflight() {
+  log "DRY-RUN: Validating health URLs..."
+  local failures=0
+  for svc in dixie finn freeside; do
+    if ! should_deploy "$svc"; then continue; fi
+    local url="${HEALTH_URLS[$svc]}"
+    log "  Checking $svc → $url"
+    local http_code effective_url
+    http_code=$(curl -sI -o /dev/null -w '%{http_code}' --max-time 10 "$url" 2>/dev/null) || http_code="000"
+    effective_url=$(curl -sI -o /dev/null -w '%{url_effective}' --max-time 10 "$url" 2>/dev/null) || effective_url=""
+    log "    HTTP $http_code | Effective URL: ${effective_url:-N/A}"
+    if [[ "$http_code" =~ ^[23] ]]; then
+      log "    OK"
+    else
+      error "    FAIL: $svc health URL returned HTTP $http_code"
+      failures=$((failures + 1))
+    fi
+  done
+  if (( failures > 0 )); then
+    error "DRY-RUN FAILED: $failures health URL(s) unreachable"
+    exit 1
+  fi
+  log "DRY-RUN: All health URLs reachable"
+}
+
+if $DRY_RUN; then
+  dry_run_preflight
+  log "DRY-RUN complete — exiting without deploying"
+  exit 0
+fi
+
 # --- Execution ---
 log "════════════════════════════════════════"
 log "Deploy Ring: $RING (services: $SERVICES)"
@@ -182,7 +223,7 @@ cd ../..
 if should_deploy "dixie"; then
   log "Phase 3: Deploying Dixie..."
   deploy_service "dixie"
-  health_gate "dixie" "http://dixie.${RING}.arrakis.community/api/health" || {
+  health_gate "dixie" "${HEALTH_URLS[dixie]}" || {
     error "Phase 3 failed: Dixie health gate"
     exit 1
   }
@@ -192,7 +233,7 @@ fi
 if should_deploy "finn"; then
   log "Phase 4: Deploying Finn..."
   deploy_service "finn"
-  health_gate "finn" "http://finn.${RING}.arrakis.community/health" || {
+  health_gate "finn" "${HEALTH_URLS[finn]}" || {
     error "Phase 4 failed: Finn health gate"
     exit 1
   }
@@ -202,7 +243,7 @@ fi
 if should_deploy "freeside"; then
   log "Phase 5: Deploying Freeside..."
   deploy_service "freeside"
-  health_gate "freeside" "https://${RING}.api.arrakis.community/health" || {
+  health_gate "freeside" "${HEALTH_URLS[freeside]}" || {
     error "Phase 5 failed: Freeside health gate"
     exit 1
   }
@@ -215,9 +256,3 @@ log "Phase 6: Wiring tests..."
 log "════════════════════════════════════════"
 log "Deploy complete. All services healthy, wiring verified."
 log "════════════════════════════════════════"
-
-# Summary
-if (( ${#ROLLED_BACK[@]} > 0 )); then
-  error "WARNING: Services rolled back during deploy: ${ROLLED_BACK[*]}"
-  exit 1
-fi

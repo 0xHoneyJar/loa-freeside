@@ -636,8 +636,8 @@ resource "aws_cloudwatch_metric_alarm" "agent_error_rate_high" {
   alarm_name          = "${local.name_prefix}-agent-error-rate-high"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 5
-  threshold           = 5
-  alarm_description   = "Agent Gateway error rate > 5% for 5 minutes — investigate 5xx spike"
+  threshold           = var.agent_alarm_error_rate_pct
+  alarm_description   = "Agent Gateway error rate > ${var.agent_alarm_error_rate_pct}% for 5 minutes — investigate 5xx spike"
   treat_missing_data  = "notBreaching"
 
   metric_query {
@@ -689,8 +689,8 @@ resource "aws_cloudwatch_metric_alarm" "agent_latency_high" {
   namespace           = "Arrakis/AgentGateway"
   period              = 60
   extended_statistic  = "p99"
-  threshold           = 5000
-  alarm_description   = "Agent Gateway p99 latency > 5s for 5 minutes — LLM provider or downstream degraded"
+  threshold           = var.agent_alarm_latency_p99_ms
+  alarm_description   = "Agent Gateway p99 latency > ${var.agent_alarm_latency_p99_ms}ms for 5 minutes — LLM provider or downstream degraded"
   treat_missing_data  = "notBreaching"
 
   alarm_actions = [aws_sns_topic.alerts.arn]
@@ -733,8 +733,8 @@ resource "aws_cloudwatch_metric_alarm" "agent_budget_threshold" {
   namespace           = "Arrakis/AgentGateway"
   period              = 300
   statistic           = "Maximum"
-  threshold           = 80
-  alarm_description   = "Agent Gateway budget delta > 80% threshold — committed spend diverging from reported, possible accounting drift"
+  threshold           = var.agent_alarm_budget_delta_pct
+  alarm_description   = "Agent Gateway budget delta > ${var.agent_alarm_budget_delta_pct}% threshold — committed spend diverging from reported, possible accounting drift"
   treat_missing_data  = "notBreaching"
 
   alarm_actions = [aws_sns_topic.alerts.arn]
@@ -755,8 +755,8 @@ resource "aws_cloudwatch_metric_alarm" "agent_stale_reservations" {
   namespace           = "Arrakis/AgentGateway"
   period              = 300
   statistic           = "Maximum"
-  threshold           = 300000
-  alarm_description   = "Agent Gateway reservation age > 300s — reaper may be failing or streams are stuck"
+  threshold           = var.agent_alarm_stale_reservation_ms
+  alarm_description   = "Agent Gateway reservation age > ${var.agent_alarm_stale_reservation_ms / 1000}s — reaper may be failing or streams are stuck"
   treat_missing_data  = "notBreaching"
 
   alarm_actions = [aws_sns_topic.alerts.arn]
@@ -799,8 +799,8 @@ resource "aws_cloudwatch_metric_alarm" "agent_token_estimate_drift" {
   namespace           = "Arrakis/AgentGateway"
   period              = 60
   statistic           = "Average"
-  threshold           = 100
-  alarm_description   = "Agent Gateway token estimate drift > 100% for 15 minutes — TokenEstimator chars-per-token ratio needs recalibration"
+  threshold           = var.agent_alarm_token_drift_pct
+  alarm_description   = "Agent Gateway token estimate drift > ${var.agent_alarm_token_drift_pct}% for 15 minutes — TokenEstimator chars-per-token ratio needs recalibration"
   treat_missing_data  = "notBreaching"
 
   alarm_actions = [aws_sns_topic.alerts.arn]
@@ -872,8 +872,8 @@ resource "aws_cloudwatch_metric_alarm" "economic_budget_drift" {
   namespace           = "Arrakis/Economic"
   period              = 60
   statistic           = "Maximum"
-  threshold           = 500000
-  alarm_description   = "Economic budget drift > 500,000 micro-USD ($0.50) — Redis and Postgres diverging. Conservation circuit breaker may trip at 5% of budget limit."
+  threshold           = var.economic_alarm_budget_drift_micro
+  alarm_description   = "Economic budget drift > ${var.economic_alarm_budget_drift_micro} micro-USD — Redis and Postgres diverging. Conservation circuit breaker may trip at 5% of budget limit."
   treat_missing_data  = "notBreaching"
 
   alarm_actions = [aws_sns_topic.alerts.arn]

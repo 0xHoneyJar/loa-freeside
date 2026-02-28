@@ -41,6 +41,7 @@ jobs:
 
       - name: Terraform Plan (drift detection)
         working-directory: infrastructure/terraform/dns
+        shell: bash
         run: |
           set +e
           terraform plan -var-file=environments/production/terraform.tfvars \

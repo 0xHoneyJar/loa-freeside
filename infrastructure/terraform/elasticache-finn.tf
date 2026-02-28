@@ -78,12 +78,9 @@ resource "aws_security_group" "finn_redis" {
     description     = "Redis from Finn service only"
   }
 
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  # No egress rules: ElastiCache is a managed service that does not initiate
+  # outbound connections. DNS/NTP are handled by AWS VPC infrastructure.
+  # Response traffic to Finn is handled by connection tracking (stateful SG).
 
   tags = merge(local.common_tags, { Name = "${local.name_prefix}-finn-redis" })
 }

@@ -65,15 +65,53 @@ fi
 echo "Gandi NS: $GANDI_NS"
 echo ""
 
+# Canonicalize DNS record values for cross-source comparison.
+# AWS CLI --output text uses tabs between values; dig uses newlines.
+# Normalizations: tab→newline, strip trailing dots, strip outer TXT quotes,
+# collapse whitespace, sort.
+canonicalize_dns_value() {
+  local type="$1" raw="$2"
+  local canonical
+
+  # Tab → newline (AWS CLI --output text separates with tabs)
+  canonical=$(printf '%s' "$raw" | tr '\t' '\n')
+
+  # Per-type canonicalization
+  case "$type" in
+    MX)
+      # Normalize "priority target." → "priority target" (strip trailing dot on target)
+      canonical=$(printf '%s\n' "$canonical" | sed 's/\.$//')
+      ;;
+    TXT)
+      # Strip only outermost surrounding quotes per line
+      canonical=$(printf '%s\n' "$canonical" | sed 's/^"//; s/"$//')
+      ;;
+    CNAME|NS)
+      # Strip trailing dots
+      canonical=$(printf '%s\n' "$canonical" | sed 's/\.$//')
+      ;;
+    CAA)
+      # Strip trailing dots on domain values; quotes stay
+      canonical=$(printf '%s\n' "$canonical" | sed 's/\.$//')
+      ;;
+  esac
+
+  # Collapse whitespace within each line, strip blank lines, sort
+  printf '%s\n' "$canonical" | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//' | grep -v '^$' | sort
+}
+
 compare_record() {
   local type="$1" name="$2" ns="${3:-$GANDI_NS}"
-  local r53_value gandi_value
+  local r53_raw gandi_raw r53_value gandi_value
 
-  r53_value=$(aws route53 list-resource-record-sets --hosted-zone-id "$ZONE_ID" \
+  r53_raw=$(aws route53 list-resource-record-sets --hosted-zone-id "$ZONE_ID" \
     --query "ResourceRecordSets[?Name=='${name}.' && Type=='${type}'].ResourceRecords[].Value" \
-    --output text 2>/dev/null | sort) || r53_value=""
+    --output text 2>/dev/null) || r53_raw=""
 
-  gandi_value=$(dig +short "$name" "$type" "@${ns}" 2>/dev/null | sort) || gandi_value=""
+  gandi_raw=$(dig +short "$name" "$type" "@${ns}" 2>/dev/null) || gandi_raw=""
+
+  r53_value=$(canonicalize_dns_value "$type" "$r53_raw")
+  gandi_value=$(canonicalize_dns_value "$type" "$gandi_raw")
 
   if [[ "$r53_value" == "$gandi_value" ]]; then
     echo "  MATCH: $type $name"

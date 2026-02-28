@@ -87,9 +87,9 @@ test_internal "W-5 Freeside→Dixie" "${CLUSTER}-api" "api" \
 test_internal "W-6 Finn→Dixie" "${CLUSTER}-finn" "finn" \
   "curl -sf http://dixie.${CLUSTER}.local:3001/api/health"
 
-# W-7: Finn → Freeside (JWKS)
+# W-7: Finn → Freeside (JWKS) — Cloud Map service name is "api" (matches ECS service suffix)
 test_internal "W-7 Finn→Freeside" "${CLUSTER}-finn" "finn" \
-  "curl -sf http://freeside.${CLUSTER}.local:3000/.well-known/jwks.json"
+  "curl -sf http://api.${CLUSTER}.local:3000/.well-known/jwks.json"
 
 # W-8: Finn → Redis (dedicated ElastiCache)
 test_internal "W-8 Finn→Redis" "${CLUSTER}-finn" "finn" \

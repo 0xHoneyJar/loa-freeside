@@ -1,150 +1,51 @@
 {
   "schema_version": 1,
-  "bridge_id": "bridge-20260224-dc8dcc",
-  "state": "JACKED_OUT",
+  "bridge_id": "bridge-20260228-049956",
+  "state": "ITERATING",
   "config": {
     "depth": 3,
     "mode": "full",
     "flatline_threshold": 0.05,
     "per_sprint": false,
-    "branch": "feature/launch-readiness",
-    "repo": ""
+    "branch": "feature/cycle-046-armitage-platform",
+    "repo": "0xHoneyJar/loa-freeside"
   },
   "timestamps": {
-    "started": "2026-02-25T00:40:00Z",
-    "last_activity": "2026-02-25T01:30:00Z"
+    "started": "2026-03-01T00:35:00Z",
+    "last_activity": "2026-03-01T01:15:00Z"
   },
   "iterations": [
     {
       "iteration": 1,
-      "state": "completed",
-      "sprint_plan_source": "existing",
-      "sprints_executed": 2,
-      "bridgebuilder": {
-        "total_findings": 9,
-        "by_severity": {
-          "critical": 0,
-          "high": 1,
-          "medium": 1,
-          "low": 3,
-          "vision": 0,
-          "praise": 3,
-          "speculation": 1
-        },
-        "severity_weighted_score": 0.163,
-        "pr_comment_url": "https://github.com/0xHoneyJar/loa-freeside/pull/96#issuecomment-3951564762"
+      "score": 0.75,
+      "findings": {
+        "high": 3,
+        "medium": 4,
+        "low": 1,
+        "praise": 3,
+        "speculation": 1,
+        "self_corrected": 1
       },
-      "enrichment": {
-        "persona_loaded": true,
-        "persona_validation": "passed",
-        "findings_format": "structured",
-        "field_fill_rates": {
-          "faang_parallel": 0.22,
-          "metaphor": 0,
-          "teachable_moment": 0.44,
-          "connection": 0.11
-        },
-        "praise_count": 3,
-        "insights_size_bytes": 8455,
-        "redactions_applied": 0
-      },
-      "visions_captured": 0,
-      "started_at": "2026-02-25T00:40:00Z",
-      "updated_at": "2026-02-25T00:53:00Z"
-    },
-    {
-      "iteration": 2,
-      "state": "completed",
-      "sprint_plan_source": "findings",
-      "sprints_executed": 0,
-      "bridgebuilder": {
-        "total_findings": 5,
-        "by_severity": {
-          "critical": 0,
-          "high": 0,
-          "medium": 0,
-          "low": 1,
-          "vision": 0,
-          "praise": 3,
-          "speculation": 1
-        },
-        "severity_weighted_score": 0.010,
-        "pr_comment_url": "https://github.com/0xHoneyJar/loa-freeside/pull/96#issuecomment-3951707182"
-      },
-      "enrichment": {
-        "persona_loaded": true,
-        "persona_validation": "passed",
-        "findings_format": "structured",
-        "field_fill_rates": {
-          "faang_parallel": 0,
-          "metaphor": 0,
-          "teachable_moment": 0.20,
-          "connection": 0
-        },
-        "praise_count": 3,
-        "insights_size_bytes": 4200,
-        "redactions_applied": 0
-      },
-      "visions_captured": 0,
-      "started_at": "2026-02-25T00:53:00Z",
-      "updated_at": "2026-02-25T01:10:00Z"
-    },
-    {
-      "iteration": 3,
-      "state": "completed",
-      "sprint_plan_source": "findings",
-      "sprints_executed": 0,
-      "bridgebuilder": {
-        "total_findings": 4,
-        "by_severity": {
-          "critical": 0,
-          "high": 0,
-          "medium": 0,
-          "low": 1,
-          "vision": 0,
-          "praise": 3,
-          "speculation": 0
-        },
-        "severity_weighted_score": 0.005,
-        "pr_comment_url": "https://github.com/0xHoneyJar/loa-freeside/pull/96#issuecomment-3951831138"
-      },
-      "enrichment": {
-        "persona_loaded": true,
-        "persona_validation": "passed",
-        "findings_format": "structured",
-        "field_fill_rates": {
-          "faang_parallel": 0,
-          "metaphor": 0,
-          "teachable_moment": 0.25,
-          "connection": 0
-        },
-        "praise_count": 3,
-        "insights_size_bytes": 3800,
-        "redactions_applied": 0
-      },
-      "visions_captured": 0,
-      "started_at": "2026-02-25T01:10:00Z",
-      "updated_at": "2026-02-25T01:25:00Z"
+      "review_path": ".run/bridge-reviews/bridge-20260228-049956-iter1-full.md",
+      "findings_path": ".run/bridge-reviews/bridge-20260228-049956-iter1-findings.json",
+      "pr_comment": "https://github.com/0xHoneyJar/loa-freeside/pull/109#issuecomment-3976182539"
     }
   ],
   "flatline": {
-    "initial_score": 0.163,
-    "last_score": 0.005,
-    "consecutive_below_threshold": 2,
-    "flatline_reached": true
+    "initial_score": 0.75,
+    "last_score": 0.75,
+    "consecutive_below_threshold": 0
   },
   "metrics": {
-    "total_sprints_executed": 3,
-    "total_files_changed": 34,
-    "total_findings_addressed": 6,
+    "total_sprints_executed": 0,
+    "total_files_changed": 0,
+    "total_findings_addressed": 0,
     "total_visions_captured": 0
   },
   "finalization": {
-    "ground_truth_updated": true,
+    "ground_truth_updated": false,
     "rtfm_passed": false,
-    "rtfm_verdict": "PARTIAL",
-    "rtfm_note": "1 blocking doc gap (contract enumeration), 4 degraded, 2 minor. Warning logged, not blocking.",
-    "pr_url": "https://github.com/0xHoneyJar/loa-freeside/pull/96",
-    "butterfreezone_generated": true
+    "pr_url": "https://github.com/0xHoneyJar/loa-freeside/pull/109",
+    "butterfreezone_generated": false
   }
 }

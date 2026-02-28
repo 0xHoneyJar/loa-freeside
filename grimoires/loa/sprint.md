@@ -583,3 +583,72 @@ This sprint plan is complete when:
 6. Pre-migration validation script confirms record equivalence
 7. Cutover and DNSSEC playbooks documented
 8. Drift detection workflow active
+
+---
+
+## Bridge Sprint B1: Bridgebuilder Iteration 1 Findings
+
+> **Source**: bridge-20260228-049956, Iteration 1
+> **Findings**: 3 HIGH, 4 MEDIUM, 1 LOW (7 actionable)
+> **Delivery**: 1 sprint (single pass through all findings)
+
+### Sprint B1: Address Bridgebuilder Findings
+
+**Goal**: Fix all actionable findings from Bridgebuilder iteration 1 review.
+
+#### Task B1.1: Add S3 public access blocks (HIGH — high-3)
+- **File**: `infrastructure/terraform/s3-finn.tf`
+- **Action**: Add `aws_s3_bucket_public_access_block` for both `finn_audit_anchors` and `finn_calibration` with all four flags set to `true`
+- **AC**: Both buckets have explicit public access block resources; `terraform plan` shows 2 new resources, 0 changes to existing
+
+#### Task B1.2: Normalize pre-migration record comparison (HIGH — high-4)
+- **File**: `infrastructure/terraform/scripts/dns-pre-migration.sh`
+- **Action**: In `compare_record()`, apply canonicalization pipeline to both data sources:
+  1. AWS CLI: `--output text` → `tr '\t' '\n'` → one-value-per-line
+  2. dig: already newline-separated
+  3. Both: strip trailing dots (`sed 's/\.$//'`), strip surrounding TXT quotes (`sed 's/^"//;s/"$//'`), collapse whitespace, `sed '/^$/d' | sort`
+  4. Create a `canonicalize_dns_value()` function that encapsulates all normalization steps
+- **AC**: (a) Canonical normalization in a named function applied to both sources; (b) MX records with 5 priority-value pairs compare correctly; (c) TXT records with quoted strings (SPF `v=spf1...`, DKIM long key, DMARC `v=DMARC1...`) compare correctly after quote stripping; (d) CNAME/NS trailing dots handled consistently; (e) Add inline test: run `compare_record "MX" "$DOMAIN"` against live DNS and verify MATCH (not MISMATCH) for known-good records
+
+#### Task B1.3: Fix deploy-ring.sh health check URL scheme (HIGH — high-2)
+- **File**: `infrastructure/terraform/scripts/deploy-ring.sh`
+- **Action**: Define a single source of truth for health check URLs per service:
+  1. Create a `HEALTH_URLS` associative array at top of script mapping service→full URL (scheme+host+path)
+  2. Derive scheme from actual service routing configuration: check existing Terraform ALB listener rules and target groups to determine whether each service endpoint terminates TLS externally or not. Freeside is behind public ALB (HTTPS), Finn/Dixie are staging-only or internal (HTTP)
+  3. Add `-L` flag to curl to handle unexpected redirects gracefully without masking failures
+  4. After constructing each URL, validate reachability: add a `--dry-run` mode that curls each health URL once and reports scheme/status/redirect chain before proceeding with deploy
+- **AC**: (a) Health URLs centralized in `HEALTH_URLS` array; (b) URLs verified against actual Terraform ALB/listener config; (c) `curl -sfL` used in health gate; (d) `--dry-run` mode prints each URL + HTTP status + redirect chain; (e) Script header documents URL scheme contract per service
+
+#### Task B1.4: Add explicit `shell: bash` to drift-check workflow (MEDIUM — medium-3)
+- **File**: `.github/workflows/dns-drift-check.yml`
+- **Action**: Add `shell: bash` to the Terraform Plan step that uses `PIPESTATUS`
+- **AC**: Step includes explicit `shell: bash` declaration
+
+#### Task B1.5: Restrict ElastiCache egress to VPC CIDR (MEDIUM — medium-4)
+- **File**: `infrastructure/terraform/elasticache-finn.tf`
+- **Action**: Remove unrestricted egress and apply least-privilege network policy:
+  1. ElastiCache Redis is a single-node group (`num_cache_clusters = 1`) — no inter-node replication traffic
+  2. Redis only responds to inbound client connections; it does not initiate outbound connections
+  3. DNS resolution uses VPC DNS resolver (within VPC CIDR); NTP uses Amazon Time Sync (169.254.169.123 link-local, not routed via SG)
+  4. Replace `0.0.0.0/0` egress with VPC CIDR (`module.vpc.vpc_cidr_block`) to allow only intra-VPC responses
+  5. `bootstrap-redis-auth.sh` calls AWS API from the operator's machine, not from the Redis node — unaffected by SG changes
+- **AC**: (a) Egress rule changed to VPC CIDR only; (b) `terraform plan` shows 1 changed resource (SG rule), 0 destroyed; (c) W-8 wiring test (Finn→Redis) passes after apply; (d) No connectivity regressions in other wiring tests
+
+#### Task B1.6: Remove dead ROLLED_BACK tracking from deploy-ring.sh (MEDIUM — medium-1)
+- **File**: `infrastructure/terraform/scripts/deploy-ring.sh`
+- **Action**: Remove `ROLLED_BACK` array tracking since script exits on first health gate failure. Keep rollback_service function (it's used). Remove final summary block that checks ROLLED_BACK.
+- **AC**: No dead code; script behavior unchanged (exit on first failure)
+
+#### Task B1.7: Fix wiring test W-7 Cloud Map service name (MEDIUM — medium-2)
+- **File**: `infrastructure/terraform/scripts/staging-wiring-test.sh`
+- **Action**: Determine correct Cloud Map service discovery hostname deterministically:
+  1. Search Terraform HCL for `aws_service_discovery_service` resources: `grep -r 'aws_service_discovery_service' infrastructure/terraform/*.tf` to find the `name` attribute for each service
+  2. Cross-reference: the `name` attribute of each `aws_service_discovery_service` resource defines the DNS hostname in the private namespace (`<name>.<namespace>`)
+  3. If Terraform shows Freeside registered as `api` (matching ECS service `${CLUSTER}-api`), update W-7 from `freeside.${CLUSTER}.local` to `api.${CLUSTER}.local`
+  4. Also audit W-4 through W-10 to ensure all Cloud Map hostnames match their `aws_service_discovery_service.name` attributes
+- **AC**: (a) Each wiring test hostname traced to a specific `aws_service_discovery_service` resource name in Terraform; (b) W-7 URL updated to match; (c) `terraform plan` unchanged (no infra changes); (d) Comment in script header documents hostname→Terraform resource mapping for each service
+
+#### Task B1.8: Extract alarm thresholds to variables (LOW — low-1)
+- **File**: `infrastructure/terraform/monitoring-finn.tf`, `infrastructure/terraform/monitoring-dixie.tf`, `infrastructure/terraform/variables.tf`
+- **Action**: Extract CPU threshold, memory threshold, 5xx threshold, p99 latency threshold into Terraform variables with current values as defaults
+- **AC**: All alarm thresholds are parameterized; existing behavior unchanged

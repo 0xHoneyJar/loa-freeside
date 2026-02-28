@@ -57,6 +57,14 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "finn_audit_anchor
   }
 }
 
+resource "aws_s3_bucket_public_access_block" "finn_audit_anchors" {
+  bucket                  = aws_s3_bucket.finn_audit_anchors.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
 # -----------------------------------------------------------------------------
 # Calibration Bucket (Versioned)
 # -----------------------------------------------------------------------------
@@ -91,4 +99,12 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "finn_calibration"
     }
     bucket_key_enabled = true
   }
+}
+
+resource "aws_s3_bucket_public_access_block" "finn_calibration" {
+  bucket                  = aws_s3_bucket.finn_calibration.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
 }
