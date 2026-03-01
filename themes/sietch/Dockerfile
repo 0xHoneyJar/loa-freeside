@@ -138,6 +138,10 @@ COPY --from=builder --chown=nodejs:nodejs /repo/themes/sietch/drizzle.config.ts 
 COPY --from=builder --chown=nodejs:nodejs /repo/packages/core /packages/core
 COPY --from=builder --chown=nodejs:nodejs /repo/packages/adapters /packages/adapters
 
+# Copy TypeScript declaration stubs used by route files.
+# Route imports resolve ../../../../packages/services/ from dist/api/routes/ to /packages/services/.
+COPY --from=builder --chown=nodejs:nodejs /repo/themes/packages/services /packages/services
+
 # Security: Remove unnecessary files from node_modules
 # Note: Be careful not to remove package directories named "test" (e.g., viem/_esm/actions/test)
 RUN find node_modules -name "*.md" -delete 2>/dev/null || true && \
