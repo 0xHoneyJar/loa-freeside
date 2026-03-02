@@ -216,7 +216,7 @@ jobs:
       # 11. Upload eval ledger as artifact
       - name: Upload eval ledger
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: eval-ledger
           path: pr/evals/results/eval-ledger.jsonl
@@ -226,7 +226,7 @@ jobs:
       # 12. Upload run results
       - name: Upload run results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: eval-results-${{ github.event.pull_request.number }}
           path: pr/evals/results/run-*
