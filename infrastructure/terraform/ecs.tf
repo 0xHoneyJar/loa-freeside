@@ -185,7 +185,9 @@ resource "aws_iam_role_policy" "ecs_execution_worker_secrets" {
           data.aws_secretsmanager_secret.vault_token.arn,
           data.aws_secretsmanager_secret.app_config.arn,
           aws_secretsmanager_secret.db_credentials.arn,
-          aws_secretsmanager_secret.redis_credentials.arn
+          aws_secretsmanager_secret.redis_credentials.arn,
+          aws_secretsmanager_secret.siwe_session_secret.arn,
+          aws_secretsmanager_secret.freeside_es256_private_key.arn
         ]
       }
     ]
@@ -463,7 +465,7 @@ resource "aws_ecs_task_definition" "api" {
   container_definitions = jsonencode([
     {
       name  = "api"
-      image = "${aws_ecr_repository.api.repository_url}:staging"
+      image = "${aws_ecr_repository.api.repository_url}:${var.environment}"
 
       portMappings = [{
         containerPort = 3000
@@ -669,7 +671,7 @@ resource "aws_ecs_task_definition" "worker" {
   container_definitions = jsonencode([
     {
       name  = "worker"
-      image = "${aws_ecr_repository.api.repository_url}:staging"
+      image = "${aws_ecr_repository.api.repository_url}:${var.environment}"
 
       command = ["node", "dist/jobs/worker.js"]
 
@@ -701,7 +703,18 @@ resource "aws_ecs_task_definition" "worker" {
         { name = "DISCORD_ROLE_FEDAYKIN", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:DISCORD_ROLE_FEDAYKIN::" },
         { name = "ADMIN_API_KEYS", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:ADMIN_API_KEYS::" },
         { name = "DATABASE_URL", valueFrom = "${aws_secretsmanager_secret.db_credentials.arn}:url::" },
-        { name = "REDIS_URL", valueFrom = "${aws_secretsmanager_secret.redis_credentials.arn}:url::" }
+        { name = "REDIS_URL", valueFrom = "${aws_secretsmanager_secret.redis_credentials.arn}:url::" },
+        # Sprint 175: Internal API key for Trigger.dev -> ECS communication
+        { name = "INTERNAL_API_KEY", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:INTERNAL_API_KEY::" },
+        # Sprint 17: Dune Sim integration and CORS configuration
+        { name = "DUNE_SIM_API_KEY", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:DUNE_SIM_API_KEY::" },
+        { name = "CHAIN_PROVIDER", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:CHAIN_PROVIDER::" },
+        { name = "CHAIN_PROVIDER_FALLBACK_ENABLED", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:CHAIN_PROVIDER_FALLBACK_ENABLED::" },
+        { name = "CORS_ALLOWED_ORIGINS", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:CORS_ALLOWED_ORIGINS::" },
+        # Sprint 6 (319), Task 6.7: SIWE session token signing
+        { name = "SIWE_SESSION_SECRET", valueFrom = aws_secretsmanager_secret.siwe_session_secret.arn },
+        # Cycle 044: ES256 key for S2S JWT signing
+        { name = "ES256_PRIVATE_KEY", valueFrom = aws_secretsmanager_secret.freeside_es256_private_key.arn }
       ]
 
       logConfiguration = {
@@ -1265,7 +1278,7 @@ resource "aws_ecs_task_definition" "gp_worker" {
       secrets = [
         {
           name      = "RABBITMQ_URL"
-          valueFrom = aws_secretsmanager_secret.rabbitmq_credentials.arn
+          valueFrom = "${aws_secretsmanager_secret.rabbitmq_credentials.arn}:url::"
         },
         {
           name      = "REDIS_URL"
