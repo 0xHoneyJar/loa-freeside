@@ -2,7 +2,7 @@
 # Updated by: bridge vision elevation, retrospective analysis, manual curation
 # Queried by: bridge lore loading (SKILL.md Phase 3.1 step 3), memory-query.sh
 
-version: 2
+version: 3
 categories:
   - id: patterns
     source: patterns.yaml
@@ -12,12 +12,31 @@ categories:
         status: Active
       - id: deliberative-council
         status: Active
+      - id: ostrom-commons-governance
+        status: Active
+
+  - id: failures
+    source: failures.yaml
+    description: Captured failure stories — postmortems as reusable lore
+    entries:
+      - id: failure-001
+        status: Active
+      - id: failure-002
+        status: Active
+      - id: failure-003
+        status: Active
 
   # Future categories (populated by bridge vision elevation):
   # - id: visions
   #   source: visions.yaml
   #   description: Elevated visions from the Vision Registry
   #   entries: []
+
+# Cross-references (cycle-047, Sprint 387)
+cross_references:
+  - source: ecosystem-synthesis.md
+    description: Cross-ecosystem synthesis document — structural parallels across substrates
+    tags: [cross-ecosystem, ostrom, web4, erc-6551, conway, governance]
 
 # Lifecycle States (T2.4, cycle-047 — RFC-style model)
 #

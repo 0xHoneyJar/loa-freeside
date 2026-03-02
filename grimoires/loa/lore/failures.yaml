@@ -1,0 +1,133 @@
+# Failure Lore — Captured failure stories from deployment and development
+# Format: YAML entries loadable by bridge lore queries and memory-query.sh
+# Source: Postmortem analysis, bridge reviews, deployment incidents
+#
+# Schema:
+#   - id: failure-NNN (unique identifier)
+#     title: Descriptive title
+#     category: compile-runtime-gap | governance-drift | integration-boundary | config-drift | dependency-chain
+#     root_cause: What actually went wrong (technical root cause)
+#     surface_symptom: How it manifested to operators/users
+#     lesson: What we learned (actionable takeaway)
+#     recurrence_pattern: When this could happen again (trigger conditions)
+#     source: PR/issue/commit where discovered
+#     faang_parallel: Industry precedent demonstrating this is a known class of failure
+#     tags: [searchable, categorization, terms]
+#     status: Active | Superseded
+#
+# Lifecycle:
+#   Active → Superseded (root cause eliminated by architectural change)
+#
+# Queried by: bridge lore loading, memory-query.sh, ecosystem-synthesis.md
+
+entries:
+  - id: failure-001
+    title: "Lua scripts missing from dist/ — __dirname resolution divergence"
+    category: compile-runtime-gap
+    root_cause: >-
+      agent-rate-limiter.ts and budget-manager.ts use readFileSync(join(__dirname, 'lua', ...))
+      to load Lua scripts at runtime. TypeScript compilation copies .ts → .js but does not
+      copy non-TS assets (Lua files). In development, __dirname resolves to src/agent/lua/
+      where the originals live. In the Docker container, __dirname resolves to dist/agent/lua/
+      which was empty — the Lua files were never copied to the build output.
+    surface_symptom: >-
+      ECS task starts, health check passes, but agent rate limiting silently fails.
+      Redis EVALSHA returns NOSCRIPT errors. Budget manager cannot execute atomic
+      operations. No crash — the service degrades silently because readFileSync errors
+      are caught and logged but not surfaced to health checks.
+    lesson: >-
+      Non-code assets referenced via __dirname must be explicitly copied in the build
+      pipeline. TypeScript's compiler only processes .ts/.js files. The fix was adding
+      'cp -r src/packages/adapters/agent/lua dist/packages/adapters/agent/lua' to the
+      Dockerfile build stage. Broader lesson: any readFileSync(__dirname) call is a
+      deployment landmine unless the build pipeline knows about the referenced files.
+    recurrence_pattern: >-
+      Any time a TypeScript file references a non-TS asset via __dirname or relative
+      path — Lua scripts, SQL files, HTML templates, JSON schemas, WASM binaries.
+      Triggered by: new file types added to packages, Dockerfile rebuild, migration
+      to a different bundler.
+    source: "PR #115, commit ecee1371"
+    faang_parallel: >-
+      Google's Blaze/Bazel build system solved this with explicit 'data' dependencies
+      in BUILD files — any non-source file needed at runtime must be declared as a data
+      dependency. The TypeScript ecosystem lacks this formalism, making it a recurring
+      class of deployment failure across Node.js services.
+    tags: [lua, docker, runtime, assets, __dirname, readFileSync, silent-failure]
+    status: Active
+
+  - id: failure-002
+    title: "ESM .js extension gap — TypeScript compiles but Node.js rejects"
+    category: compile-runtime-gap
+    root_cause: >-
+      TypeScript with "module": "NodeNext" compiles successfully with bare relative
+      imports like './protocol/timestamps' because tsc resolves .ts files during
+      compilation. But Node.js ESM requires explicit .js extensions in import
+      specifiers — the runtime does not perform extension resolution. 10 billing
+      adapter files had bare imports that passed tsc but crashed at runtime with
+      ERR_MODULE_NOT_FOUND.
+    surface_symptom: >-
+      Docker container crashes immediately on startup with:
+      Error [ERR_MODULE_NOT_FOUND]: Cannot find module './protocol/timestamps'
+      imported from /app/dist/packages/adapters/billing/BonusProcessor.js
+      The service never reaches health check. ECS task enters crash loop with
+      exit code 1.
+    lesson: >-
+      TypeScript's type-checking and Node.js ESM's module resolution are fundamentally
+      different systems with different rules. A successful tsc build does NOT guarantee
+      runtime module resolution will succeed. The fix was adding .js extensions to all
+      10 bare relative imports. Broader lesson: ESM migration must include a runtime
+      import verification step, not just a compile step.
+    recurrence_pattern: >-
+      Any time new TypeScript files are added with relative imports in an ESM project.
+      Especially common when: (1) copying patterns from CJS code, (2) IDE auto-imports
+      without extensions, (3) refactoring moves files to new paths. The gap is invisible
+      until Docker deployment because most dev environments use ts-node or tsx which
+      paper over extension requirements.
+    source: "PR #115, commit ecee1371"
+    faang_parallel: >-
+      Google's Closure Compiler → TypeScript migration at scale hit the same compile-time
+      vs runtime module resolution divergence. Their fix was a custom Bazel rule
+      (ts_library) that enforces import path correctness at build time. Facebook's
+      Metro bundler for React Native similarly required explicit resolution rules
+      because development (Metro) and production (Hermes) had different module semantics.
+    tags: [esm, typescript, node, imports, extensions, crash-loop, docker]
+    status: Active
+
+  - id: failure-003
+    title: ".d.ts stubs satisfy tsc but not runtime — esbuild as escape hatch"
+    category: compile-runtime-gap
+    root_cause: >-
+      packages/services/ contained .d.ts type declaration stubs that satisfied TypeScript's
+      type checker — route files could import velocity-service, cache-warmer, etc. and tsc
+      would find the type information. But .d.ts files are NOT JavaScript — Node.js cannot
+      execute them. At runtime, the import resolves to nothing because no .js file exists.
+      The packages had TypeScript source but no compilation step was configured.
+    surface_symptom: >-
+      Docker container crashes on startup with ERR_MODULE_NOT_FOUND for service imports.
+      Identical presentation to failure-002 but different root cause — not missing
+      extensions, but missing compiled JavaScript entirely. The .d.ts files created a
+      false sense of completeness.
+    lesson: >-
+      .d.ts stubs are a type-checking convenience, not a runtime contract. They can mask
+      missing implementations indefinitely because tsc treats them as authoritative.
+      The fix was compiling packages/services/ with esbuild (type-check-free transpilation)
+      and copying the output to the Docker production stage. Broader lesson: if a package
+      has .d.ts files but no .js files, it is a compile-time fiction — the type system
+      says it exists, but the runtime disagrees.
+    recurrence_pattern: >-
+      Any time .d.ts stubs are used as a development convenience for packages that
+      will eventually need real implementations. Triggered by: new service packages,
+      monorepo reorganization, packages that start as interfaces-only. The danger
+      period is when the stub is created and the real implementation is deferred —
+      the gap is invisible to CI until a runtime test is added.
+    source: "PR #115, commit ecee1371"
+    faang_parallel: >-
+      Microsoft's own TypeScript team encountered this during the VS Code extension
+      host migration — extension API .d.ts files described interfaces that the extension
+      host implemented, but when the host was refactored, the .d.ts files continued
+      to compile while runtime behavior diverged. Their solution was generated .d.ts
+      files from source (single source of truth). Netflix's Node.js platform team
+      documented a similar pattern where mock service stubs passed integration tests
+      but real services had different module resolution semantics.
+    tags: [dts, stubs, typescript, esbuild, docker, type-fiction, compile-runtime]
+    status: Active

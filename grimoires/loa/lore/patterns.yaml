@@ -81,3 +81,70 @@
   superseded_by: null
   related:
     - governance-isomorphism
+    - ostrom-commons-governance
+
+- id: ostrom-commons-governance
+  term: Ostrom Commons Governance
+  short: >-
+    Elinor Ostrom's 8 design principles for long-enduring commons institutions
+    map 1:1 to review infrastructure governance: boundaries (gate profiles),
+    proportional costs (token budgets), collective choice (capability manifests),
+    monitoring (self-review), graduated sanctions (severity escalation), conflict
+    resolution (Flatline consensus), recognized rights (MAY constraints), and
+    nested enterprises (cross-repo compliance).
+  context: >-
+    Ostrom studied irrigation systems, fisheries, and forests — not software.
+    Yet her 8 principles describe exactly how the Loa review infrastructure
+    governs its own evolution. The mapping is structural, not metaphorical:
+
+    1. Clearly defined boundaries: Compliance gate profiles in
+       .claude/data/pipeline-sdd-map.json define which SDDs govern which files.
+       This is the boundary between "governed by this rule" and "outside scope."
+    2. Proportional equivalence between costs and benefits: Capability token
+       budgets (min/optimal/max) ensure review effort scales with review value.
+       Capabilities that produce more findings earn larger budgets.
+    3. Collective-choice arrangements: Self-declared capability manifests
+       (.claude/capabilities/*.yaml) let capabilities define their own triggers
+       and dependencies. The governed participate in making the rules.
+    4. Monitoring: Pipeline self-review (cycle-046) and constitutional change
+       detection ensure the review system reviews itself. Monitors are
+       accountable to the community they monitor.
+    5. Graduated sanctions: Severity escalation (INFO → MEDIUM → HIGH → BLOCKER)
+       with proportional responses — autonomous integration for HIGH consensus,
+       human escalation for BLOCKER, advisory logging for INFO.
+    6. Conflict resolution: Multi-model consensus via Flatline Protocol provides
+       rapid, low-cost dispute resolution. Cross-scoring identifies disagreements
+       and resolves them through structured deliberation.
+    7. Recognized rights to organize: MAY constraints (Permission Amendment,
+       cycle-047) give agents explicit permission to question frames, propose
+       alternatives, and allocate exploration time. The right to self-govern.
+    8. Nested enterprises: Cross-repo compliance checking scales governance
+       from single-file to single-repo to multi-repo without changing the
+       governance primitives.
+
+    The key Ostrom insight for software systems: monitoring (Principle 4) and
+    self-organization rights (Principle 7) are as fundamental as the rules
+    themselves. Systems that implement rules without these two principles
+    become brittle — they cannot adapt to changing conditions. The Permission
+    Amendment is not a nice-to-have; it is Principle 7, without which the
+    commons degrades into either anarchy (no rules) or autocracy (rigid rules).
+  source:
+    bridge_iteration: "Field Report #52, PR #115 review"
+    cycle: "cycle-047"
+    date: "2026-03-02"
+  tags:
+    - ostrom
+    - governance
+    - commons
+    - cross-ecosystem
+    - principles
+    - self-organization
+    - permission
+    - web4
+  status: Active
+  challenges: []
+  lineage: null
+  superseded_by: null
+  related:
+    - governance-isomorphism
+    - deliberative-council
