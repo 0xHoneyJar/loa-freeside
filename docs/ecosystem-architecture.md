@@ -47,7 +47,7 @@ graph TB
     style DIXIE fill:#e74c3c,stroke:#c0392b,color:#fff
 ```
 
-## The 5-Layer Stack
+## The 5-Layer Stack (+Layer 0)
 
 | Layer | Repo | Role | Status |
 |-------|------|------|--------|
@@ -56,8 +56,79 @@ graph TB
 | 3 — Runtime | `loa-finn` | Persistent sessions, tool sandbox, memory | Designed |
 | 2 — Protocol | `loa-hounfour` | Schemas, state machines, model routing contracts | **Shipping** (v8.3.1) |
 | 1 — Framework | `loa` | Agent dev framework, skills, Bridgebuilder | **Shipping** |
+| 0 — Metacognition | `loa` (internal) | Self-review, capability registry, economic feedback, health metrics | **Shipping** |
 
 Each layer depends only on layers below it. Protocol contracts flow upward: lower layers define contracts, upper layers consume them.
+
+### Layer 0: Metacognition — The System Reviewing Itself
+
+Layer 0 sits beneath the framework layer as an emergent capability: the infrastructure's ability to observe, evaluate, and improve its own review processes. This is not a separate repo — it lives inside `loa` as internal infrastructure that all other layers benefit from.
+
+```mermaid
+graph TB
+    subgraph "Layer 0: Metacognition"
+        CAP["Capability Registry<br/>.claude/capabilities/*.yaml"]
+        ECON["Economic Feedback<br/>economic-lib.sh"]
+        HEALTH["Autopoietic Health<br/>autopoietic-health.sh"]
+        PSR["Pipeline Self-Review<br/>pipeline-self-review.sh"]
+        LORE["Failure Lore<br/>grimoires/loa/lore/"]
+        VISION["Vision Registry<br/>grimoires/loa/visions/"]
+    end
+
+    subgraph "Layer 1: Framework"
+        BRIDGE["Bridge Orchestrator"]
+        FLAT["Flatline Protocol"]
+        SKILLS["Skills & Workflows"]
+    end
+
+    CAP -->|"discovers + orders"| BRIDGE
+    ECON -->|"DIMINISHING_RETURNS<br/>signal"| BRIDGE
+    PSR -->|"reviews changes to<br/>.claude/ itself"| BRIDGE
+    LORE -->|"enriches reviews<br/>with failure context"| BRIDGE
+    VISION -->|"captures speculative<br/>insights"| BRIDGE
+    HEALTH -->|"measures flourishing<br/>conditions"| BRIDGE
+
+    BRIDGE --> FLAT
+    BRIDGE --> SKILLS
+
+    style CAP fill:#1abc9c,stroke:#16a085,color:#fff
+    style ECON fill:#1abc9c,stroke:#16a085,color:#fff
+    style HEALTH fill:#1abc9c,stroke:#16a085,color:#fff
+    style PSR fill:#1abc9c,stroke:#16a085,color:#fff
+    style LORE fill:#1abc9c,stroke:#16a085,color:#fff
+    style VISION fill:#1abc9c,stroke:#16a085,color:#fff
+    style BRIDGE fill:#4a9eff,stroke:#2d7cd4,color:#fff
+    style FLAT fill:#4a9eff,stroke:#2d7cd4,color:#fff
+    style SKILLS fill:#4a9eff,stroke:#2d7cd4,color:#fff
+```
+
+#### What Layer 0 Contains
+
+| Component | File | Purpose | FAANG Parallel |
+|-----------|------|---------|---------------|
+| **Capability Registry** | `.claude/capabilities/*.yaml` | Declarative review capability manifests with triggers, budgets, dependency ordering | K8s ValidatingWebhookConfiguration, Google Tricorder |
+| **Pipeline Self-Review** | `.claude/scripts/pipeline-self-review.sh` | The review infrastructure examines changes to itself | Chromium's OWNERS + presubmit checks |
+| **Economic Feedback** | `.claude/scripts/lib/economic-lib.sh` | Marginal value computation → DIMINISHING_RETURNS signal for cost-aware termination | AWS Cost Anomaly Detection |
+| **Autopoietic Health** | `.claude/scripts/autopoietic-health.sh` | Measures 6 conditions for flourishing: permission, memory, diversity, stakes, exploration, surprise | Google's Four Golden Signals (adapted for metacognition) |
+| **Failure Lore** | `grimoires/loa/lore/failures.yaml` | Postmortem-style failure stories as reusable knowledge artifacts | Google SRE Postmortem culture (Ch. 15) |
+| **Vision Registry** | `grimoires/loa/visions/` | Captured speculative insights with exploration mechanism and lore elevation | 20% time / innovation accounting |
+
+#### The Ostrom Connection
+
+The governance structure of Layer 0 maps to Elinor Ostrom's 8 principles for managing commons (Nobel 2009):
+
+| Ostrom Principle | Layer 0 Manifestation |
+|-----------------|----------------------|
+| Clear boundaries | Capability trigger patterns define what each review covers |
+| Proportional costs/benefits | Budget allocation with min/max constraints |
+| Collective-choice arrangements | `.loa.config.yaml` — all participants can modify governance |
+| Monitoring | Autopoietic health check measures system state continuously |
+| Graduated sanctions | Flatline protocol: DISPUTED items logged but not blocked |
+| Conflict resolution | Bridgebuilder review with PRAISE for good decisions |
+| Self-governance recognition | Pipeline self-review — the system's right to examine itself |
+| Nested enterprises | Capability dependencies form nested review chains |
+
+This is not metaphorical — the structural isomorphism is exact. AI review infrastructure faces the same coordination challenges as any commons: multiple agents sharing finite resources (token budgets), needing rules that prevent both tragedy-of-the-commons (unbounded review) and underinvestment (skipping reviews). Ostrom's principles describe the minimum viable governance for sustainable shared resource management.
 
 ---
 

@@ -10,6 +10,7 @@
 #
 # Registered evals:
 #   - capability-discovery.sh (Sprint 388, Task 3.4)
+#   - autopoietic-integration.sh (Sprint 390, Task 5.3)
 #   - flatline-3model.sh (existing)
 # =============================================================================
 

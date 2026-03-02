@@ -339,6 +339,69 @@ bridge_main() {
     fi
     update_iteration "$iteration" "in_progress" "$source"
 
+    # 2-pre: Capability Discovery (cycle-047, Sprint 390)
+    # Config-gated: capabilities.discovery.enabled (default: false)
+    local cap_discovery_enabled
+    cap_discovery_enabled=$(yq '.capabilities.discovery.enabled // false' "$CONFIG_FILE" 2>/dev/null || echo "false")
+    if [[ "$cap_discovery_enabled" == "true" ]]; then
+      if [[ -f "$SCRIPT_DIR/lib/capability-lib.sh" ]]; then
+        source "$SCRIPT_DIR/lib/capability-lib.sh"
+
+        # Discover all registered capabilities
+        local all_caps
+        all_caps=$(discover_capabilities 2>/dev/null) || all_caps="[]"
+        local cap_count
+        cap_count=$(echo "$all_caps" | jq 'length' 2>/dev/null) || cap_count=0
+
+        if [[ "$cap_count" -gt 0 ]]; then
+          # Match capabilities against changed files
+          local changed_files
+          changed_files=$(git diff --name-only "main...HEAD" 2>/dev/null || echo "")
+
+          if [[ -n "$changed_files" ]]; then
+            local matched_caps
+            matched_caps=$(echo "$changed_files" | xargs -I{} echo "{}" | match_capabilities 2>/dev/null) || matched_caps="[]"
+            local matched_count
+            matched_count=$(echo "$matched_caps" | jq 'length' 2>/dev/null) || matched_count=0
+
+            if [[ "$matched_count" -gt 0 ]]; then
+              # Resolve execution ordering
+              local matched_ids
+              matched_ids=$(echo "$matched_caps" | jq -r '.[].id' 2>/dev/null)
+              local ordered_chain
+              ordered_chain=$(echo "$matched_ids" | xargs resolve_ordering 2>/dev/null) || ordered_chain="[]"
+
+              # Allocate budgets
+              local total_budget
+              total_budget=$(yq '.capabilities.discovery.total_budget // 200000' "$CONFIG_FILE" 2>/dev/null || echo "200000")
+              local budget_alloc
+              budget_alloc=$(echo "$matched_ids" | xargs allocate_budgets "$total_budget" 2>/dev/null) || budget_alloc="[]"
+
+              echo "[CAPABILITY] Discovered $matched_count capabilities: $(echo "$matched_caps" | jq -r '[.[].id] | join(", ")' 2>/dev/null)"
+              echo "[CAPABILITY] Execution order: $(echo "$ordered_chain" | jq -r 'join(" → ")' 2>/dev/null)"
+
+              # Log to bridge state (discovery only — no dynamic execution yet)
+              if command -v jq &>/dev/null && [[ -f "$BRIDGE_STATE_FILE" ]]; then
+                jq --argjson iter "$iteration" \
+                   --argjson chain "$ordered_chain" \
+                   --argjson budgets "$budget_alloc" \
+                  '.iterations = [(.iterations // [])[] |
+                    if .iteration == ($iter | tonumber) then
+                      . + {capability_chain: $chain, capability_budgets: $budgets}
+                    else . end]' \
+                  "$BRIDGE_STATE_FILE" > "$BRIDGE_STATE_FILE.tmp" 2>/dev/null && \
+                  mv "$BRIDGE_STATE_FILE.tmp" "$BRIDGE_STATE_FILE"
+              fi
+            else
+              echo "[CAPABILITY] No capabilities matched changed files"
+            fi
+          fi
+        else
+          echo "[CAPABILITY] No capability manifests found"
+        fi
+      fi
+    fi
+
     # 2a: Sprint Plan
     if [[ $iteration -eq 1 ]] && [[ -z "$FROM_PHASE" || "$FROM_PHASE" == "sprint-plan" ]]; then
       echo "[PLAN] Using existing sprint plan"

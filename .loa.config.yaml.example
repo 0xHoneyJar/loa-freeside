@@ -1714,6 +1714,20 @@ run_bridge:
   #   #   prompt_template: "economic-invariant"
 
 # =============================================================================
+# Capability Registry (cycle-047, Sprint 390)
+# =============================================================================
+# Declarative review capability manifests discovered from .claude/capabilities/*.yaml.
+# When discovery is enabled, the bridge orchestrator discovers, matches, orders,
+# and logs capability chains per iteration (Phase 1: discovery only, no dynamic execution).
+# FAANG Parallel: Kubernetes ValidatingWebhookConfiguration, Google Tricorder (ISSTA 2018).
+capabilities:
+  discovery:
+    # Enable capability discovery in bridge orchestrator
+    enabled: false
+    # Total token budget allocated across all matched capabilities
+    total_budget: 200000
+
+# =============================================================================
 # Agent Teams Compatibility (v1.39.0)
 # =============================================================================
 # Experimental: Requires CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
