@@ -48,7 +48,7 @@ function getNextRetryDelay(retryCount: number): number {
   return BACKOFF_DELAYS[Math.min(retryCount, BACKOFF_DELAYS.length - 1)];
 }
 
-import { sqliteTimestamp, sqliteFutureTimestamp } from '../packages/adapters/billing/protocol/timestamps';
+import { sqliteTimestamp, sqliteFutureTimestamp } from '../packages/adapters/billing/protocol/timestamps.js';
 
 const sqliteNow = sqliteTimestamp;
 const sqliteFuture = (offsetSeconds: number) => sqliteFutureTimestamp(offsetSeconds);

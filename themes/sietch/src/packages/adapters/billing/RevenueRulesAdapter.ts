@@ -109,7 +109,7 @@ function rowToAudit(row: AuditRow): RuleAuditEntry {
   };
 }
 
-import { sqliteTimestamp } from './protocol/timestamps';
+import { sqliteTimestamp } from './protocol/timestamps.js';
 
 const sqliteNow = sqliteTimestamp;
 

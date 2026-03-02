@@ -48,7 +48,7 @@ export interface DailyReconciliationResult {
 // Helpers
 // =============================================================================
 
-import { sqliteTimestamp } from '../packages/adapters/billing/protocol/timestamps';
+import { sqliteTimestamp } from '../packages/adapters/billing/protocol/timestamps.js';
 
 const sqliteNow = sqliteTimestamp;
 

@@ -94,7 +94,7 @@ function generateCode(): string {
   return code;
 }
 
-import { sqliteTimestamp } from './protocol/timestamps';
+import { sqliteTimestamp } from './protocol/timestamps.js';
 
 const sqliteNow = sqliteTimestamp;
 

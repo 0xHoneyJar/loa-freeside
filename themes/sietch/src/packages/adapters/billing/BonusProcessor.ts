@@ -17,7 +17,7 @@ import { randomUUID } from 'crypto';
 import type Database from 'better-sqlite3';
 import type { FraudCheckService } from './FraudCheckService.js';
 import { logger } from '../../../utils/logger.js';
-import { sqliteTimestamp } from './protocol/timestamps';
+import { sqliteTimestamp } from './protocol/timestamps.js';
 
 // =============================================================================
 // Types

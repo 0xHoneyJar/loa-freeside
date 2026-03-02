@@ -64,7 +64,7 @@ interface CampaignRow {
 // Helpers
 // =============================================================================
 
-import { sqliteTimestamp } from './protocol/timestamps';
+import { sqliteTimestamp } from './protocol/timestamps.js';
 
 const sqliteNow = sqliteTimestamp;
 

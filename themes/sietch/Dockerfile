@@ -58,6 +58,10 @@ COPY packages/adapters/security ./security
 COPY packages/adapters/coexistence ./coexistence
 COPY packages/adapters/agent ./agent
 RUN npm run build
+# Copy non-TS assets (Lua scripts) to dist — TypeScript doesn't copy these.
+# agent-rate-limiter.ts and budget-manager.ts use readFileSync(join(__dirname, 'lua', ...))
+# where __dirname resolves to dist/agent/ at runtime.
+RUN cp -r /repo/packages/adapters/agent/lua /repo/packages/adapters/dist/agent/lua
 
 # -----------------------------------------------------------------------------
 # Now build Sietch with the built workspace dependencies
@@ -89,13 +93,26 @@ COPY themes/sietch/drizzle.config.ts ./
 
 # Copy TypeScript declaration stubs for packages/services/ relative imports.
 # Route files use ../../../../packages/services/ which resolves to themes/packages/services/.
+# These .d.ts stubs let TypeScript compile; the actual .js is built below.
 COPY themes/packages/services /repo/themes/packages/services
 
-# Build TypeScript
+# Build TypeScript (Sietch app)
 RUN npm run build
 
 # Copy static files to dist (not compiled by TypeScript)
 RUN cp -r src/static dist/static 2>/dev/null || true
+
+# Build packages/services/ — route files import at runtime via
+# ../../../../packages/services/*.js which resolves to /packages/services/.
+# The .d.ts stubs are compile-time only; we need actual .js for runtime.
+COPY packages/services /repo/packages/services
+RUN npx esbuild \
+      /repo/packages/services/velocity-service.ts \
+      /repo/packages/services/feature-flags.ts \
+      /repo/packages/services/purpose-service.ts \
+      /repo/packages/services/community-scope.ts \
+      --outdir=/repo/packages/services-dist \
+      --format=esm --platform=node --target=node20
 
 # Prune dev dependencies for smaller production image
 RUN npm prune --production
@@ -138,9 +155,9 @@ COPY --from=builder --chown=nodejs:nodejs /repo/themes/sietch/drizzle.config.ts 
 COPY --from=builder --chown=nodejs:nodejs /repo/packages/core /packages/core
 COPY --from=builder --chown=nodejs:nodejs /repo/packages/adapters /packages/adapters
 
-# Copy TypeScript declaration stubs used by route files.
-# Route imports resolve ../../../../packages/services/ from dist/api/routes/ to /packages/services/.
-COPY --from=builder --chown=nodejs:nodejs /repo/themes/packages/services /packages/services
+# Copy compiled packages/services/ — route files import at runtime via
+# ../../../../packages/services/*.js from dist/api/routes/, resolving to /packages/services/.
+COPY --from=builder --chown=nodejs:nodejs /repo/packages/services-dist /packages/services
 
 # Security: Remove unnecessary files from node_modules
 # Note: Be careful not to remove package directories named "test" (e.g., viem/_esm/actions/test)

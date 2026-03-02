@@ -57,7 +57,7 @@ const REDIS_COMMAND_TIMEOUT_MS = 200;
 /** Redis key prefix for balance cache */
 const REDIS_BALANCE_PREFIX = 'billing:balance:';
 
-import { sqliteTimestamp, sqliteFutureTimestamp } from './protocol/timestamps';
+import { sqliteTimestamp, sqliteFutureTimestamp } from './protocol/timestamps.js';
 
 /** @deprecated Use sqliteTimestamp() from protocol/timestamps.ts */
 const sqliteNow = sqliteTimestamp;

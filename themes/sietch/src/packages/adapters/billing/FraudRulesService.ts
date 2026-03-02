@@ -20,7 +20,7 @@ import type { RuleStatus } from '../../core/ports/IRevenueRulesService.js';
 import { ALLOWED_TRANSITIONS } from '../../core/ports/IRevenueRulesService.js';
 import { InvalidStateError, FourEyesViolationError } from './CreditLedgerAdapter.js';
 import { logger } from '../../../utils/logger.js';
-import { sqliteTimestamp } from './protocol/timestamps';
+import { sqliteTimestamp } from './protocol/timestamps.js';
 import type { IConstitutionalGovernanceService } from '../../core/ports/IConstitutionalGovernanceService.js';
 import { CONFIG_FALLBACKS } from '../../core/protocol/config-schema.js';
 

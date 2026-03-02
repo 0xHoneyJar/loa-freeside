@@ -16,7 +16,7 @@
 import { randomUUID } from 'crypto';
 import type Database from 'better-sqlite3';
 import { logger } from '../../../utils/logger.js';
-import { sqliteTimestamp } from './protocol/timestamps';
+import { sqliteTimestamp } from './protocol/timestamps.js';
 import type { IConstitutionalGovernanceService } from '../../core/ports/IConstitutionalGovernanceService.js';
 import type { EntityType } from '../../core/protocol/billing-types.js';
 import type { MicroUSD } from '../../core/protocol/arrakis-arithmetic.js';
