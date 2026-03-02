@@ -264,6 +264,13 @@ class TestGoogleModelScopes(unittest.TestCase):
             with self.subTest(dimension=dim):
                 self.assertEqual(scopes.get(dim), "none")
 
+    def test_gemini_31_pro_all_none(self):
+        entry = self.models.get("google:gemini-3.1-pro-preview", {})
+        scopes = entry.get("trust_scopes", {})
+        for dim in VALID_DIMENSIONS:
+            with self.subTest(dimension=dim):
+                self.assertEqual(scopes.get(dim), "none")
+
     def test_deep_research_delegation_limited(self):
         """Deep Research has delegation: limited (autonomous web search)."""
         entry = self.models.get("google:deep-research-pro", {})

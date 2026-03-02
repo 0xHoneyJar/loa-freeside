@@ -1,5 +1,10 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { GitProviderError } from "../ports/git-provider.js";
 import { LLMProviderError } from "../ports/llm-provider.js";
+import { FindingsBlockSchema } from "./schemas.js";
+import { Pass1Cache, computeCacheKey } from "./cache.js";
+import { extractEcosystemPatterns, updateEcosystemContext } from "./ecosystem.js";
 import { truncateFiles, progressiveTruncate, getTokenBudget, } from "./truncation.js";
 const CRITICAL_PATTERN = /\b(critical|security vulnerability|sql injection|xss|secret leak|must fix)\b/i;
 const REFUSAL_PATTERN = /\b(I cannot|I'm unable|I can't|as an AI|I apologize)\b/i;
@@ -49,7 +54,11 @@ export class ReviewPipeline {
     persona;
     config;
     now;
-    constructor(template, context, git, poster, llm, sanitizer, logger, persona, config, now = Date.now) {
+    personaMetadata;
+    ecosystemContext;
+    pass1Cache;
+    hasher;
+    constructor(template, context, git, poster, llm, sanitizer, logger, persona, config, now = Date.now, hasher) {
         this.template = template;
         this.context = context;
         this.git = git;
@@ -60,6 +69,85 @@ export class ReviewPipeline {
         this.persona = persona;
         this.config = config;
         this.now = now;
+        this.personaMetadata = ReviewPipeline.parsePersonaMetadata(persona);
+        // Initialize Pass 1 cache when config enables it (AC-8: opt-in, default false)
+        if (config.pass1Cache?.enabled && hasher) {
+            this.pass1Cache = new Pass1Cache(".run/bridge-cache");
+            this.hasher = hasher;
+        }
+        else {
+            this.pass1Cache = null;
+            this.hasher = null;
+        }
+    }
+    /**
+     * Load ecosystem context from the configured JSON file path.
+     * Validates structure; silently ignores missing/malformed files.
+     */
+    static loadEcosystemContext(filePath, logger) {
+        if (!filePath)
+            return undefined;
+        try {
+            const raw = readFileSync(filePath, "utf-8");
+            const parsed = JSON.parse(raw);
+            if (!parsed.patterns ||
+                !Array.isArray(parsed.patterns) ||
+                typeof parsed.lastUpdated !== "string") {
+                logger.warn("Ecosystem context file has invalid structure", { filePath });
+                return undefined;
+            }
+            // Validate each pattern entry has required fields
+            const validPatterns = parsed.patterns.filter((p) => p != null &&
+                typeof p === "object" &&
+                typeof p.repo === "string" &&
+                typeof p.pattern === "string" &&
+                typeof p.connection === "string");
+            if (validPatterns.length === 0) {
+                logger.warn("Ecosystem context file has no valid patterns", { filePath });
+                return undefined;
+            }
+            logger.info("Loaded ecosystem context", {
+                filePath,
+                patternCount: validPatterns.length,
+                lastUpdated: parsed.lastUpdated,
+            });
+            return { patterns: validPatterns, lastUpdated: parsed.lastUpdated };
+        }
+        catch {
+            // File missing or unreadable — not an error, just no context
+            return undefined;
+        }
+    }
+    /**
+     * Parse persona frontmatter to extract identity metadata.
+     * Expected format: <!-- persona-version: X | agent: Y -->
+     * Fallback: { id: "unknown", version: "0.0.0", hash: sha256(content) }
+     */
+    static parsePersonaMetadata(content) {
+        const hash = createHash("sha256").update(content.trim()).digest("hex");
+        const match = content.match(/<!--\s*persona-version:\s*([^\s|]+)\s*\|\s*agent:\s*([^\s>]+)/);
+        if (match) {
+            return { id: match[2], version: match[1], hash };
+        }
+        return { id: "unknown", version: "0.0.0", hash };
+    }
+    /**
+     * Post-bridge hook: extract high-quality patterns from findings and update ecosystem context (AC-7).
+     * Orchestrates extractEcosystemPatterns() + updateEcosystemContext().
+     * Called by run-bridge finalization after each bridge iteration.
+     */
+    static async updateEcosystemFromFindings(findings, repo, pr, contextPath, logger) {
+        const patterns = extractEcosystemPatterns(findings, repo, pr);
+        if (patterns.length === 0) {
+            logger.info("No ecosystem-worthy patterns found in findings", { repo, pr });
+            return;
+        }
+        logger.info("Extracted ecosystem patterns from findings", {
+            repo,
+            pr,
+            patternCount: patterns.length,
+        });
+        await updateEcosystemContext(contextPath, patterns, logger);
     }
     async run(runId) {
         const startTime = new Date().toISOString();
@@ -92,6 +180,8 @@ export class ReviewPipeline {
         }
         // Load persisted context
         await this.context.load();
+        // Load ecosystem context for enrichment (Pass 0 prototype — Task 6.4)
+        this.ecosystemContext = ReviewPipeline.loadEcosystemContext(this.config.ecosystemContextPath, this.logger);
         // Resolve review items
         const items = await this.template.resolveItems();
         // Process each item sequentially
@@ -309,85 +399,11 @@ export class ReviewPipeline {
             if (!isValidResponse(response.content)) {
                 return this.skipResult(item, "invalid_llm_response");
             }
-            // Step 8: Sanitize output
-            const sanitized = this.sanitizer.sanitize(response.content);
-            if (!sanitized.safe && this.config.sanitizerMode === "strict") {
-                this.logger.error("Sanitizer blocked review in strict mode", {
-                    owner,
-                    repo,
-                    pr: pr.number,
-                    redactions: sanitized.redactedPatterns?.length ?? 0,
-                });
-                return this.errorResult(item, makeError("E_SANITIZER_BLOCKED", "Review blocked by sanitizer in strict mode", "sanitizer", "permanent", false));
-            }
-            if (!sanitized.safe) {
-                this.logger.warn("Sanitizer redacted content", {
-                    owner,
-                    repo,
-                    pr: pr.number,
-                    redactions: sanitized.redactedPatterns?.length ?? 0,
-                });
-            }
-            // Marker is appended by the poster adapter — do not duplicate here
-            const body = sanitized.sanitizedContent;
-            const event = classifyEvent(sanitized.sanitizedContent);
-            // Step 9a: Re-check guard (race condition mitigation) with retry
-            let recheck = false;
-            try {
-                recheck = await this.poster.hasExistingReview(owner, repo, pr.number, pr.headSha);
-            }
-            catch {
-                // Retry once — this is the last gate before posting
-                try {
-                    recheck = await this.poster.hasExistingReview(owner, repo, pr.number, pr.headSha);
-                }
-                catch {
-                    // Both attempts failed — conservative: skip to avoid duplicate
-                    return this.skipResult(item, "recheck_failed");
-                }
-            }
-            if (recheck) {
-                return this.skipResult(item, "already_reviewed_recheck");
-            }
-            // Step 9b: Post review (or dry-run)
-            if (this.config.dryRun) {
-                this.logger.info("Dry run — review not posted", {
-                    owner,
-                    repo,
-                    pr: pr.number,
-                    event,
-                    bodyLength: body.length,
-                });
-            }
-            else {
-                await this.poster.postReview({
-                    owner,
-                    repo,
-                    prNumber: pr.number,
-                    headSha: pr.headSha,
-                    body,
-                    event,
-                });
-            }
-            // Finalize context
-            const result = {
-                item,
-                posted: !this.config.dryRun,
-                skipped: false,
-                inputTokens: response.inputTokens,
-                outputTokens: response.outputTokens,
-            };
-            await this.context.finalizeReview(item, result);
-            this.logger.info("Review complete", {
-                owner,
-                repo,
-                pr: pr.number,
-                event,
-                posted: result.posted,
+            // Steps 8-9: Shared post-processing (sanitize → recheck → post → finalize)
+            return this.postAndFinalize(item, response.content, {
                 inputTokens: response.inputTokens,
                 outputTokens: response.outputTokens,
             });
-            return result;
         }
         catch (err) {
             const message = err instanceof Error ? err.message : String(err);
@@ -436,8 +452,66 @@ export class ReviewPipeline {
         return { item, posted: false, skipped: false, error };
     }
     /**
+     * Shared post-processing: sanitize → recheck guard (with retry) → dry-run gate → post → finalize.
+     * All review completion paths delegate here to avoid duplication (medium-1).
+     *
+     * resultFields may include pass1Output, pass1Tokens, and pass2Tokens — these are
+     * populated by two-pass callers only. Single-pass callers pass inputTokens/outputTokens only.
+     */
+    async postAndFinalize(item, body, resultFields) {
+        const { owner, repo, pr } = item;
+        const sanitized = this.sanitizer.sanitize(body);
+        if (!sanitized.safe && this.config.sanitizerMode === "strict") {
+            return this.errorResult(item, makeError("E_SANITIZER_BLOCKED", "Review blocked by sanitizer in strict mode", "sanitizer", "permanent", false));
+        }
+        if (!sanitized.safe) {
+            this.logger.warn("Sanitizer redacted content", {
+                owner, repo, pr: pr.number,
+                redactions: sanitized.redactedPatterns?.length ?? 0,
+            });
+        }
+        const sanitizedBody = sanitized.sanitizedContent;
+        const event = classifyEvent(sanitizedBody);
+        // Re-check guard (race condition mitigation) with retry
+        let recheck = false;
+        try {
+            recheck = await this.poster.hasExistingReview(owner, repo, pr.number, pr.headSha);
+        }
+        catch {
+            try {
+                recheck = await this.poster.hasExistingReview(owner, repo, pr.number, pr.headSha);
+            }
+            catch {
+                return this.skipResult(item, "recheck_failed");
+            }
+        }
+        if (recheck) {
+            return this.skipResult(item, "already_reviewed_recheck");
+        }
+        if (this.config.dryRun) {
+            this.logger.info("Dry run — review not posted", {
+                owner, repo, pr: pr.number, event, bodyLength: sanitizedBody.length,
+            });
+        }
+        else {
+            await this.poster.postReview({
+                owner, repo, prNumber: pr.number, headSha: pr.headSha,
+                body: sanitizedBody, event,
+            });
+        }
+        const result = {
+            item,
+            posted: !this.config.dryRun,
+            skipped: false,
+            ...resultFields,
+        };
+        await this.context.finalizeReview(item, result);
+        return result;
+    }
+    /**
      * Extract findings JSON from content enclosed in bridge-findings markers (SDD 3.5).
-     * Returns the raw JSON string or null if markers/JSON are missing or malformed.
+     * Uses zod FindingsBlockSchema for runtime validation (Sprint 69 — schema-first).
+     * Returns { raw, parsed } or null if markers/JSON are missing or malformed.
      */
     extractFindingsJSON(content) {
         const startMarker = "<!-- bridge-findings-start -->";
@@ -451,11 +525,30 @@ export class ReviewPipeline {
         // Strip markdown code fences if present
         const jsonStr = block.replace(/^```json?\s*\n?/, "").replace(/\n?```\s*$/, "");
         try {
-            const parsed = JSON.parse(jsonStr);
-            if (!parsed.findings || !Array.isArray(parsed.findings)) {
+            const raw = JSON.parse(jsonStr);
+            // Zod validation: validates schema_version, findings array, and each finding's
+            // required fields (id, severity, category) + optional confidence [0,1].
+            // .passthrough() preserves enrichment fields (faang_parallel, metaphor, etc.)
+            const result = FindingsBlockSchema.safeParse(raw);
+            if (!result.success) {
                 return null;
             }
-            return jsonStr;
+            const validated = result.data.findings;
+            if (validated.length === 0) {
+                return null;
+            }
+            // Strip confidence from findings where zod validation passed but confidence
+            // was not provided (undefined) — preserve the existing behavior of stripping
+            // invalid confidence values that fall outside [0,1] bounds.
+            // Zod already handles min/max validation, so we only need to handle the case
+            // where confidence was present in raw but stripped by zod's optional() handling.
+            const findings = validated.map((f) => {
+                // If the raw finding had a confidence field that zod dropped (outside bounds),
+                // the validated finding won't have it — this is correct behavior.
+                // Passthrough fields are preserved as-is.
+                return f;
+            });
+            return { raw: jsonStr, parsed: { ...result.data, findings } };
         }
         catch {
             return null;
@@ -463,26 +556,26 @@ export class ReviewPipeline {
     }
     /**
      * Validate that Pass 2 preserved all findings from Pass 1 (SDD 3.6, FR-2.4).
-     * Checks: same count, same IDs, same severities.
+     * Checks: same count, same IDs, same severities, same categories.
      */
-    validateFindingPreservation(pass1JSON, pass2JSON) {
+    validateFindingPreservation(pass1Findings, pass2Findings) {
         try {
-            const pass1 = JSON.parse(pass1JSON);
-            const pass2 = JSON.parse(pass2JSON);
-            if (pass1.findings.length !== pass2.findings.length) {
+            if (pass1Findings.findings.length !== pass2Findings.findings.length) {
                 return false;
             }
-            const pass1Ids = new Set(pass1.findings.map((f) => f.id));
-            const pass2Ids = new Set(pass2.findings.map((f) => f.id));
+            const pass1Ids = new Set(pass1Findings.findings.map((f) => f.id));
+            const pass2Ids = new Set(pass2Findings.findings.map((f) => f.id));
             if (pass1Ids.size !== pass2Ids.size)
                 return false;
             for (const id of pass1Ids) {
                 if (!pass2Ids.has(id))
                     return false;
             }
-            for (const f1 of pass1.findings) {
-                const f2 = pass2.findings.find((f) => f.id === f1.id);
+            for (const f1 of pass1Findings.findings) {
+                const f2 = pass2Findings.findings.find((f) => f.id === f1.id);
                 if (!f2 || f2.severity !== f1.severity)
+                    return false;
+                if (f2.category !== f1.category)
                     return false;
             }
             return true;
@@ -495,7 +588,7 @@ export class ReviewPipeline {
      * Fallback: wrap Pass 1 findings in minimal valid review format (SDD 3.7, FR-2.7).
      * Used when Pass 2 fails or modifies findings.
      */
-    async finishWithUnenrichedOutput(item, pass1InputTokens, pass1OutputTokens, pass1Duration, findingsJSON, pass1Content) {
+    async finishWithUnenrichedOutput(item, pass1InputTokens, pass1OutputTokens, pass1Duration, findingsJSON, pass1Content, pass1CacheHit) {
         const { owner, repo, pr } = item;
         const body = [
             "## Summary",
@@ -514,49 +607,13 @@ export class ReviewPipeline {
             "",
             "_Enrichment unavailable for this review._",
         ].join("\n");
-        const sanitized = this.sanitizer.sanitize(body);
-        const event = classifyEvent(sanitized.sanitizedContent);
-        if (!sanitized.safe && this.config.sanitizerMode === "strict") {
-            return this.errorResult(item, makeError("E_SANITIZER_BLOCKED", "Review blocked by sanitizer in strict mode", "sanitizer", "permanent", false));
-        }
-        // Re-check guard
-        let recheck = false;
-        try {
-            recheck = await this.poster.hasExistingReview(owner, repo, pr.number, pr.headSha);
-        }
-        catch {
-            try {
-                recheck = await this.poster.hasExistingReview(owner, repo, pr.number, pr.headSha);
-            }
-            catch {
-                return this.skipResult(item, "recheck_failed");
-            }
-        }
-        if (recheck) {
-            return this.skipResult(item, "already_reviewed_recheck");
-        }
-        if (this.config.dryRun) {
-            this.logger.info("Dry run — unenriched review not posted", {
-                owner, repo, pr: pr.number, event, bodyLength: body.length,
-            });
-        }
-        else {
-            await this.poster.postReview({
-                owner, repo, prNumber: pr.number, headSha: pr.headSha,
-                body: sanitized.sanitizedContent, event,
-            });
-        }
-        const result = {
-            item,
-            posted: !this.config.dryRun,
-            skipped: false,
+        return this.postAndFinalize(item, body, {
             inputTokens: pass1InputTokens,
             outputTokens: pass1OutputTokens,
             pass1Output: pass1Content,
             pass1Tokens: { input: pass1InputTokens, output: pass1OutputTokens, duration: pass1Duration },
-        };
-        await this.context.finalizeReview(item, result);
-        return result;
+            ...(pass1CacheHit != null ? { pass1CacheHit } : {}),
+        });
     }
     /**
      * Two-pass review flow: convergence (analytical) then enrichment (persona) (SDD 3.4).
@@ -602,6 +659,7 @@ export class ReviewPipeline {
         });
         let finalConvergenceSystem = convergenceSystem;
         let finalConvergenceUser = convergenceUser;
+        let truncationContext;
         if (estimatedTokens > this.config.maxInputTokens) {
             this.logger.info("Pass 1: Token budget exceeded, attempting progressive truncation", {
                 owner, repo, pr: pr.number, estimatedTokens, budget: this.config.maxInputTokens,
@@ -610,60 +668,148 @@ export class ReviewPipeline {
             if (!truncResult.success) {
                 return this.skipResult(item, "prompt_too_large_after_truncation");
             }
+            truncationContext = {
+                filesExcluded: truncResult.excluded.length,
+                totalFiles: effectiveItem.files.length,
+            };
             finalConvergenceUser = this.template.buildConvergenceUserPromptFromTruncation(effectiveItem, truncResult, truncated.loaBanner);
         }
-        // LLM Call 1: Convergence
-        this.logger.info("Pass 1: Convergence review", { owner, repo, pr: pr.number });
-        let pass1Response;
-        try {
-            pass1Response = await this.llm.generateReview({
-                systemPrompt: finalConvergenceSystem,
-                userPrompt: finalConvergenceUser,
-                maxOutputTokens: this.config.maxOutputTokens,
-            });
+        // ═══════════════════════════════════════════════
+        // Pass 1 Cache Check (Sprint 70 — AC-4)
+        // ═══════════════════════════════════════════════
+        const truncationLevel = truncationContext
+            ? 1 // simplified: truncation occurred
+            : 0; // no truncation
+        let pass1CacheHit = false;
+        let findingsJSON;
+        let pass1Parsed;
+        let pass1InputTokens = 0;
+        let pass1OutputTokens = 0;
+        let pass1Content = "";
+        if (this.pass1Cache && this.hasher) {
+            const convergencePromptHash = await this.hasher.sha256(finalConvergenceSystem);
+            const cacheKey = await computeCacheKey(this.hasher, pr.headSha, truncationLevel, convergencePromptHash);
+            const cached = await this.pass1Cache.get(cacheKey);
+            if (cached) {
+                this.logger.info("Pass 1: Cache HIT — skipping LLM call", {
+                    owner, repo, pr: pr.number, cacheKey,
+                    hitCount: cached.hitCount,
+                });
+                pass1CacheHit = true;
+                findingsJSON = cached.findings.raw;
+                pass1Parsed = cached.findings.parsed;
+                pass1InputTokens = cached.tokens.input;
+                pass1OutputTokens = cached.tokens.output;
+                // Synthesize pass1Content from cached findings for fallback path
+                pass1Content = [
+                    "<!-- bridge-findings-start -->",
+                    "```json",
+                    cached.findings.raw,
+                    "```",
+                    "<!-- bridge-findings-end -->",
+                ].join("\n");
+            }
         }
-        catch (llmErr) {
-            if (isTokenRejection(llmErr)) {
-                const retryBudget = Math.floor(this.config.maxInputTokens * 0.85);
-                const retryResult = progressiveTruncate(effectiveItem.files, retryBudget, this.config.model, finalConvergenceSystem.length, 2000);
-                if (!retryResult.success) {
-                    return this.skipResult(item, "prompt_too_large_after_truncation");
-                }
-                const retryUser = this.template.buildConvergenceUserPromptFromTruncation(effectiveItem, retryResult, truncated.loaBanner);
+        // LLM Call 1: Convergence (skipped on cache hit)
+        if (!pass1CacheHit) {
+            this.logger.info("Pass 1: Convergence review", { owner, repo, pr: pr.number });
+            let pass1Response;
+            try {
                 pass1Response = await this.llm.generateReview({
                     systemPrompt: finalConvergenceSystem,
-                    userPrompt: retryUser,
+                    userPrompt: finalConvergenceUser,
                     maxOutputTokens: this.config.maxOutputTokens,
                 });
             }
-            else {
-                throw llmErr;
+            catch (llmErr) {
+                if (isTokenRejection(llmErr)) {
+                    const retryBudget = Math.floor(this.config.maxInputTokens * 0.85);
+                    const retryResult = progressiveTruncate(effectiveItem.files, retryBudget, this.config.model, finalConvergenceSystem.length, 2000);
+                    if (!retryResult.success) {
+                        return this.skipResult(item, "prompt_too_large_after_truncation");
+                    }
+                    truncationContext = {
+                        filesExcluded: retryResult.excluded.length,
+                        totalFiles: effectiveItem.files.length,
+                    };
+                    const retryUser = this.template.buildConvergenceUserPromptFromTruncation(effectiveItem, retryResult, truncated.loaBanner);
+                    pass1Response = await this.llm.generateReview({
+                        systemPrompt: finalConvergenceSystem,
+                        userPrompt: retryUser,
+                        maxOutputTokens: this.config.maxOutputTokens,
+                    });
+                }
+                else {
+                    throw llmErr;
+                }
+            }
+            pass1InputTokens = pass1Response.inputTokens;
+            pass1OutputTokens = pass1Response.outputTokens;
+            pass1Content = pass1Response.content;
+            // Extract findings JSON from Pass 1
+            const pass1Extracted = this.extractFindingsJSON(pass1Response.content);
+            if (!pass1Extracted) {
+                this.logger.warn("Pass 1 produced no parseable findings, falling back to single-pass validation", {
+                    owner, repo, pr: pr.number,
+                });
+                // If Pass 1 content is still a valid review format, use it directly
+                if (isValidResponse(pass1Response.content)) {
+                    return this.finishWithPass1AsReview(item, pass1Response, this.now() - pass1Start);
+                }
+                return this.skipResult(item, "invalid_llm_response");
+            }
+            findingsJSON = pass1Extracted.raw;
+            pass1Parsed = pass1Extracted.parsed;
+            // Store in cache on miss (AC-5)
+            if (this.pass1Cache && this.hasher) {
+                const convergencePromptHash = await this.hasher.sha256(finalConvergenceSystem);
+                const cacheKey = await computeCacheKey(this.hasher, pr.headSha, truncationLevel, convergencePromptHash);
+                await this.pass1Cache.set(cacheKey, {
+                    findings: { raw: findingsJSON, parsed: pass1Parsed },
+                    tokens: { input: pass1InputTokens, output: pass1OutputTokens, duration: 0 },
+                    timestamp: new Date().toISOString(),
+                    hitCount: 0,
+                });
             }
         }
         const pass1Duration = this.now() - pass1Start;
-        // Extract findings JSON from Pass 1
-        const findingsJSON = this.extractFindingsJSON(pass1Response.content);
-        if (!findingsJSON) {
-            this.logger.warn("Pass 1 produced no parseable findings, falling back to single-pass validation", {
-                owner, repo, pr: pr.number,
-            });
-            // If Pass 1 content is still a valid review format, use it directly
-            if (isValidResponse(pass1Response.content)) {
-                return this.finishWithPass1AsReview(item, pass1Response, pass1Duration);
-            }
+        // At this point findingsJSON and pass1Parsed are guaranteed set (cache hit or LLM extraction)
+        if (!findingsJSON || !pass1Parsed) {
             return this.skipResult(item, "invalid_llm_response");
         }
+        // Compute confidence statistics from Pass 1 findings (Task 4.4)
+        const confidenceValues = pass1Parsed.findings
+            .filter((f) => typeof f.confidence === "number")
+            .map((f) => f.confidence);
+        const pass1ConfidenceStats = confidenceValues.length > 0
+            ? {
+                min: Math.min(...confidenceValues),
+                max: Math.max(...confidenceValues),
+                mean: +(confidenceValues.reduce((a, b) => a + b, 0) / confidenceValues.length).toFixed(3),
+                count: confidenceValues.length,
+            }
+            : undefined;
         this.logger.info("Pass 1 complete", {
             owner, repo, pr: pr.number,
             duration: pass1Duration,
-            inputTokens: pass1Response.inputTokens,
-            outputTokens: pass1Response.outputTokens,
+            inputTokens: pass1InputTokens,
+            outputTokens: pass1OutputTokens,
+            confidenceStats: pass1ConfidenceStats ?? null,
+            cacheHit: pass1CacheHit,
         });
         // ═══════════════════════════════════════════════
         // PASS 2: Enrichment (persona loaded, no full diff)
         // ═══════════════════════════════════════════════
         const pass2Start = this.now();
-        const { systemPrompt: enrichmentSystem, userPrompt: enrichmentUser } = this.template.buildEnrichmentPrompt(findingsJSON, item, this.persona);
+        const enrichmentOptions = {
+            findingsJSON,
+            item,
+            persona: this.persona,
+            truncationContext,
+            personaMetadata: this.personaMetadata,
+            ecosystemContext: this.ecosystemContext,
+        };
+        const { systemPrompt: enrichmentSystem, userPrompt: enrichmentUser } = this.template.buildEnrichmentPrompt(enrichmentOptions);
         this.logger.info("Pass 2: Enrichment review", {
             owner, repo, pr: pr.number,
             enrichmentInputChars: enrichmentUser.length,
@@ -681,26 +827,33 @@ export class ReviewPipeline {
                 owner, repo, pr: pr.number,
                 error: enrichErr instanceof Error ? enrichErr.message : String(enrichErr),
             });
-            return this.finishWithUnenrichedOutput(item, pass1Response.inputTokens, pass1Response.outputTokens, pass1Duration, findingsJSON, pass1Response.content);
+            return this.finishWithUnenrichedOutput(item, pass1InputTokens, pass1OutputTokens, pass1Duration, findingsJSON, pass1Content, pass1CacheHit);
         }
         const pass2Duration = this.now() - pass2Start;
         // FR-2.4: Validate finding preservation
-        const pass2FindingsJSON = this.extractFindingsJSON(pass2Response.content);
-        if (pass2FindingsJSON) {
-            const preserved = this.validateFindingPreservation(findingsJSON, pass2FindingsJSON);
+        const pass2Extracted = this.extractFindingsJSON(pass2Response.content);
+        if (pass2Extracted) {
+            const preserved = this.validateFindingPreservation(pass1Parsed, pass2Extracted.parsed);
             if (!preserved) {
                 this.logger.warn("Pass 2 modified findings, using Pass 1 output", {
                     owner, repo, pr: pr.number,
                 });
-                return this.finishWithUnenrichedOutput(item, pass1Response.inputTokens, pass1Response.outputTokens, pass1Duration, findingsJSON, pass1Response.content);
+                return this.finishWithUnenrichedOutput(item, pass1InputTokens, pass1OutputTokens, pass1Duration, findingsJSON, pass1Content, pass1CacheHit);
             }
+        }
+        else {
+            // Pass 2 lost the structured findings markers — fall back to preserve them
+            this.logger.warn("Pass 2 missing findings markers, using Pass 1 output", {
+                owner, repo, pr: pr.number,
+            });
+            return this.finishWithUnenrichedOutput(item, pass1InputTokens, pass1OutputTokens, pass1Duration, findingsJSON, pass1Content, pass1CacheHit);
         }
         // Validate combined output
         if (!isValidResponse(pass2Response.content)) {
             this.logger.warn("Pass 2 invalid response, using Pass 1 output", {
                 owner, repo, pr: pr.number,
             });
-            return this.finishWithUnenrichedOutput(item, pass1Response.inputTokens, pass1Response.outputTokens, pass1Duration, findingsJSON, pass1Response.content);
+            return this.finishWithUnenrichedOutput(item, pass1InputTokens, pass1OutputTokens, pass1Duration, findingsJSON, pass1Content, pass1CacheHit);
         }
         this.logger.info("Pass 2 complete", {
             owner, repo, pr: pr.number,
@@ -709,112 +862,30 @@ export class ReviewPipeline {
             outputTokens: pass2Response.outputTokens,
             totalDuration: pass1Duration + pass2Duration,
         });
-        // Steps 7-9: Standard post-processing using Pass 2 enriched output
-        const sanitized = this.sanitizer.sanitize(pass2Response.content);
-        if (!sanitized.safe && this.config.sanitizerMode === "strict") {
-            return this.errorResult(item, makeError("E_SANITIZER_BLOCKED", "Review blocked by sanitizer in strict mode", "sanitizer", "permanent", false));
-        }
-        if (!sanitized.safe) {
-            this.logger.warn("Sanitizer redacted content", {
-                owner, repo, pr: pr.number,
-                redactions: sanitized.redactedPatterns?.length ?? 0,
-            });
-        }
-        const body = sanitized.sanitizedContent;
-        const event = classifyEvent(sanitized.sanitizedContent);
-        // Re-check guard
-        let recheck = false;
-        try {
-            recheck = await this.poster.hasExistingReview(owner, repo, pr.number, pr.headSha);
-        }
-        catch {
-            try {
-                recheck = await this.poster.hasExistingReview(owner, repo, pr.number, pr.headSha);
-            }
-            catch {
-                return this.skipResult(item, "recheck_failed");
-            }
-        }
-        if (recheck) {
-            return this.skipResult(item, "already_reviewed_recheck");
-        }
-        if (this.config.dryRun) {
-            this.logger.info("Dry run — two-pass review not posted", {
-                owner, repo, pr: pr.number, event, bodyLength: body.length,
-            });
-        }
-        else {
-            await this.poster.postReview({
-                owner, repo, prNumber: pr.number, headSha: pr.headSha, body, event,
-            });
-        }
-        const result = {
-            item,
-            posted: !this.config.dryRun,
-            skipped: false,
-            inputTokens: pass1Response.inputTokens + pass2Response.inputTokens,
-            outputTokens: pass1Response.outputTokens + pass2Response.outputTokens,
-            pass1Output: pass1Response.content,
-            pass1Tokens: { input: pass1Response.inputTokens, output: pass1Response.outputTokens, duration: pass1Duration },
+        // Steps 7-9: Shared post-processing (sanitize → recheck → post → finalize)
+        return this.postAndFinalize(item, pass2Response.content, {
+            inputTokens: pass1InputTokens + pass2Response.inputTokens,
+            outputTokens: pass1OutputTokens + pass2Response.outputTokens,
+            pass1Output: pass1Content,
+            pass1Tokens: { input: pass1InputTokens, output: pass1OutputTokens, duration: pass1Duration },
             pass2Tokens: { input: pass2Response.inputTokens, output: pass2Response.outputTokens, duration: pass2Duration },
-        };
-        await this.context.finalizeReview(item, result);
-        this.logger.info("Two-pass review complete", {
-            owner, repo, pr: pr.number, event,
-            posted: result.posted,
-            pass1Tokens: result.pass1Tokens,
-            pass2Tokens: result.pass2Tokens,
+            pass1ConfidenceStats,
+            pass1CacheHit,
+            personaId: this.personaMetadata.id,
+            personaHash: this.personaMetadata.hash,
         });
-        return result;
     }
     /**
      * Handle case where Pass 1 content is a valid review (has Summary+Findings)
      * but findings couldn't be extracted as JSON. Use it directly as the review.
      */
     async finishWithPass1AsReview(item, pass1Response, pass1Duration) {
-        const { owner, repo, pr } = item;
-        const sanitized = this.sanitizer.sanitize(pass1Response.content);
-        if (!sanitized.safe && this.config.sanitizerMode === "strict") {
-            return this.errorResult(item, makeError("E_SANITIZER_BLOCKED", "Review blocked by sanitizer in strict mode", "sanitizer", "permanent", false));
-        }
-        const body = sanitized.sanitizedContent;
-        const event = classifyEvent(body);
-        let recheck = false;
-        try {
-            recheck = await this.poster.hasExistingReview(owner, repo, pr.number, pr.headSha);
-        }
-        catch {
-            try {
-                recheck = await this.poster.hasExistingReview(owner, repo, pr.number, pr.headSha);
-            }
-            catch {
-                return this.skipResult(item, "recheck_failed");
-            }
-        }
-        if (recheck) {
-            return this.skipResult(item, "already_reviewed_recheck");
-        }
-        if (this.config.dryRun) {
-            this.logger.info("Dry run — pass1-as-review not posted", {
-                owner, repo, pr: pr.number, event, bodyLength: body.length,
-            });
-        }
-        else {
-            await this.poster.postReview({
-                owner, repo, prNumber: pr.number, headSha: pr.headSha, body, event,
-            });
-        }
-        const result = {
-            item,
-            posted: !this.config.dryRun,
-            skipped: false,
+        return this.postAndFinalize(item, pass1Response.content, {
             inputTokens: pass1Response.inputTokens,
             outputTokens: pass1Response.outputTokens,
             pass1Output: pass1Response.content,
             pass1Tokens: { input: pass1Response.inputTokens, output: pass1Response.outputTokens, duration: pass1Duration },
-        };
-        await this.context.finalizeReview(item, result);
-        return result;
+        });
     }
     buildSummary(runId, startTime, results) {
         return {

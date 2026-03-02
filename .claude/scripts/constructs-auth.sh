@@ -32,6 +32,11 @@ else
     exit 1
 fi
 
+# Source security library (for write_curl_auth_config)
+if [[ -f "$SCRIPT_DIR/lib-security.sh" ]]; then
+    source "$SCRIPT_DIR/lib-security.sh"
+fi
+
 # =============================================================================
 # Configuration
 # =============================================================================
@@ -154,9 +159,10 @@ cmd_validate() {
     
     # SHELL-002: Use curl config file to avoid exposing API key in process list
     local curl_config
-    curl_config=$(mktemp)
-    chmod 600 "$curl_config"
-    echo "header = \"Authorization: Bearer ${api_key}\"" > "$curl_config"
+    curl_config=$(write_curl_auth_config "Authorization" "Bearer ${api_key}") || {
+        echo "ERROR: Failed to create secure curl config" >&2
+        return 3
+    }
 
     http_code=$(curl -s -o /dev/null -w "%{http_code}" \
         --config "$curl_config" \

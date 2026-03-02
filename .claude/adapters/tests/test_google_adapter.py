@@ -58,6 +58,12 @@ def _make_google_config(**overrides):
                 context_window=2097152,
                 extra={"thinking_level": "medium"},
             ),
+            "gemini-3.1-pro-preview": ModelConfig(
+                capabilities=["chat", "thinking_traces"],
+                context_window=1048576,
+                pricing={"input_per_mtok": 2000000, "output_per_mtok": 12000000},
+                extra={"thinking_level": "high"},
+            ),
         },
     )
     defaults.update(overrides)
@@ -166,6 +172,11 @@ class TestBuildThinkingConfig:
     def test_gemini3_default_level(self):
         config = _default_model_config(extra={})
         result = _build_thinking_config("gemini-3-flash", config)
+        assert result == {"thinkingConfig": {"thinkingLevel": "high"}}
+
+    def test_gemini31_thinking_level(self):
+        config = _default_model_config(extra={"thinking_level": "high"})
+        result = _build_thinking_config("gemini-3.1-pro-preview", config)
         assert result == {"thinkingConfig": {"thinkingLevel": "high"}}
 
     def test_gemini25_thinking_budget(self):

@@ -713,6 +713,56 @@ preflight() {
         exit 1
     fi
 
+    # =========================================================================
+    # Flatline readiness check (FR-3, cycle-048)
+    # Non-blocking: DEGRADED warns, DISABLED/NO_API_KEYS logs recommendation.
+    # =========================================================================
+    local flatline_script="$SCRIPT_DIR/flatline-readiness.sh"
+    if [[ -x "$flatline_script" ]]; then
+        local flatline_result flatline_exit
+        set +e
+        flatline_result=$("$flatline_script" --json 2>/dev/null)
+        flatline_exit=$?
+        set -e
+
+        local flatline_status="UNKNOWN"
+        if [[ -n "$flatline_result" ]]; then
+            flatline_status=$(echo "$flatline_result" | jq -r '.status // "UNKNOWN"' 2>/dev/null) || flatline_status="UNKNOWN"
+        fi
+
+        # Log to trajectory
+        log_trajectory "flatline_readiness" "$(jq -n \
+            --arg status "$flatline_status" \
+            --argjson exit_code "$flatline_exit" \
+            '{status: $status, exit_code: $exit_code}')"
+
+        case "$flatline_exit" in
+            0)
+                log "Flatline Protocol: READY"
+                ;;
+            1)
+                warn "Flatline Protocol: DISABLED — multi-model reviews will be skipped"
+                warn "Enable with: flatline_protocol.enabled: true in .loa.config.yaml"
+                ;;
+            2)
+                warn "Flatline Protocol: NO_API_KEYS — multi-model reviews will be skipped"
+                warn "Set ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY for full coverage"
+                ;;
+            3)
+                warn "Flatline Protocol: DEGRADED — some providers unavailable"
+                if [[ -n "$flatline_result" ]]; then
+                    local recs
+                    recs=$(echo "$flatline_result" | jq -r '.recommendations[]' 2>/dev/null) || true
+                    if [[ -n "$recs" ]]; then
+                        while IFS= read -r rec; do
+                            warn "  $rec"
+                        done <<< "$recs"
+                    fi
+                fi
+                ;;
+        esac
+    fi
+
     # Run workspace cleanup (before lock, skip on resume)
     if [[ "$resume" != "true" && "$no_clean" != "true" ]]; then
         run_workspace_cleanup "$dry_run" "$yes_flag"

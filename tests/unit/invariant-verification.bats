@@ -80,7 +80,7 @@ teardown() {
     # Create invariants file with a reference to a non-existent function
     cat > "${TMPDIR_BATS}/bad-symbol.yaml" <<'YAML'
 schema_version: 1
-protocol: loa-hounfour@7.0.0
+protocol: loa-hounfour@8.3.1
 invariants:
   - id: INV-099
     description: "Test invariant with missing symbol reference"
@@ -101,7 +101,7 @@ YAML
 @test "missing function reports as FAIL in JSON" {
     cat > "${TMPDIR_BATS}/bad-symbol.yaml" <<'YAML'
 schema_version: 1
-protocol: loa-hounfour@7.0.0
+protocol: loa-hounfour@8.3.1
 invariants:
   - id: INV-099
     description: "Test invariant with missing symbol reference"
@@ -128,7 +128,7 @@ YAML
 @test "detects missing file" {
     cat > "${TMPDIR_BATS}/bad-file.yaml" <<'YAML'
 schema_version: 1
-protocol: loa-hounfour@7.0.0
+protocol: loa-hounfour@8.3.1
 invariants:
   - id: INV-098
     description: "Test invariant with missing file reference"
@@ -149,7 +149,7 @@ YAML
 @test "missing file reports as FAIL in JSON" {
     cat > "${TMPDIR_BATS}/bad-file.yaml" <<'YAML'
 schema_version: 1
-protocol: loa-hounfour@7.0.0
+protocol: loa-hounfour@8.3.1
 invariants:
   - id: INV-098
     description: "Test invariant with missing file reference"
@@ -176,7 +176,7 @@ YAML
 @test "handles empty invariants gracefully" {
     cat > "${TMPDIR_BATS}/empty.yaml" <<'YAML'
 schema_version: 1
-protocol: loa-hounfour@7.0.0
+protocol: loa-hounfour@8.3.1
 invariants: []
 YAML
 
@@ -187,7 +187,7 @@ YAML
 @test "empty invariants JSON output" {
     cat > "${TMPDIR_BATS}/empty.yaml" <<'YAML'
 schema_version: 1
-protocol: loa-hounfour@7.0.0
+protocol: loa-hounfour@8.3.1
 invariants: []
 YAML
 
@@ -203,7 +203,7 @@ YAML
 @test "cross-repo references are SKIPped not FAILed" {
     cat > "${TMPDIR_BATS}/cross-repo.yaml" <<'YAML'
 schema_version: 1
-protocol: loa-hounfour@7.0.0
+protocol: loa-hounfour@8.3.1
 invariants:
   - id: INV-097
     description: "Test invariant with cross-repo reference"
@@ -229,7 +229,7 @@ YAML
 @test "cross-repo skip includes repo name in detail" {
     cat > "${TMPDIR_BATS}/cross-repo.yaml" <<'YAML'
 schema_version: 1
-protocol: loa-hounfour@7.0.0
+protocol: loa-hounfour@8.3.1
 invariants:
   - id: INV-097
     description: "Test invariant with cross-repo reference"
@@ -260,7 +260,7 @@ YAML
 @test "exit 1 for any-fail" {
     cat > "${TMPDIR_BATS}/failing.yaml" <<'YAML'
 schema_version: 1
-protocol: loa-hounfour@7.0.0
+protocol: loa-hounfour@8.3.1
 invariants:
   - id: INV-096
     description: "Test invariant that will fail"
@@ -290,7 +290,7 @@ YAML
 @test "mixed pass and fail reports correct counts" {
     cat > "${TMPDIR_BATS}/mixed.yaml" <<'YAML'
 schema_version: 1
-protocol: loa-hounfour@7.0.0
+protocol: loa-hounfour@8.3.1
 invariants:
   - id: INV-095
     description: "Mixed test invariant — one pass one fail"

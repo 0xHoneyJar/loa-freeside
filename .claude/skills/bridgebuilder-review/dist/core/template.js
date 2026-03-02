@@ -17,6 +17,11 @@ DO NOT include:
 Output ONLY a structured findings JSON block inside <!-- bridge-findings-start --> and <!-- bridge-findings-end --> markers.
 
 Each finding must include: id, title, severity, category, file, description, suggestion.
+Optionally include: confidence (number 0.0-1.0) — your calibrated confidence that this is a real issue.
+  - 1.0 = certain this is a real issue
+  - 0.5 = moderate confidence
+  - 0.1 = uncertain but worth flagging
+  - Omit if you have no strong signal either way.
 DO NOT include: faang_parallel, metaphor, teachable_moment, connection fields.`;
 export class PRReviewTemplate {
     git;
@@ -153,11 +158,59 @@ export class PRReviewTemplate {
         return INJECTION_HARDENING + CONVERGENCE_INSTRUCTIONS;
     }
     /**
+     * Render PR metadata header lines (shared between convergence prompt variants).
+     */
+    renderPRMetadata(item) {
+        const { owner, repo, pr } = item;
+        const lines = [];
+        lines.push(`## Pull Request: ${owner}/${repo}#${pr.number}`);
+        lines.push(`**Title**: ${pr.title}`);
+        lines.push(`**Author**: ${pr.author}`);
+        lines.push(`**Base**: ${pr.baseBranch}`);
+        lines.push(`**Head SHA**: ${pr.headSha}`);
+        if (pr.labels.length > 0) {
+            lines.push(`**Labels**: ${pr.labels.join(", ")}`);
+        }
+        lines.push("");
+        return lines;
+    }
+    /**
+     * Render excluded files with stats (shared between prompt variants).
+     */
+    renderExcludedFiles(excluded) {
+        const lines = [];
+        for (const entry of excluded) {
+            lines.push(`### ${entry.filename} [TRUNCATED]`);
+            lines.push(entry.stats);
+            lines.push("");
+        }
+        return lines;
+    }
+    /**
+     * Render convergence-specific "Expected Response Format" section.
+     */
+    renderConvergenceFormat() {
+        return [
+            "## Expected Response Format",
+            "",
+            "Output ONLY the following structure:",
+            "",
+            "<!-- bridge-findings-start -->",
+            "```json",
+            '{ "schema_version": 1, "findings": [...] }',
+            "```",
+            "<!-- bridge-findings-end -->",
+            "",
+            "Each finding: { id, title, severity, category, file, description, suggestion, confidence? }",
+            "Severity values: CRITICAL, HIGH, MEDIUM, LOW, PRAISE, SPECULATION, REFRAME",
+            "Optional: confidence (0.0-1.0) — your calibrated confidence in each finding",
+        ];
+    }
+    /**
      * Build convergence user prompt: PR metadata + diffs + findings-only format instructions.
      * Reuses the existing PR metadata/diff rendering but replaces the output format section (SDD 3.2).
      */
     buildConvergenceUserPrompt(item, truncated) {
-        const { owner, repo, pr } = item;
         const lines = [];
         if (truncated.loaBanner) {
             lines.push(truncated.loaBanner);
@@ -167,45 +220,21 @@ export class PRReviewTemplate {
             lines.push(truncated.truncationDisclaimer);
             lines.push("");
         }
-        lines.push(`## Pull Request: ${owner}/${repo}#${pr.number}`);
-        lines.push(`**Title**: ${pr.title}`);
-        lines.push(`**Author**: ${pr.author}`);
-        lines.push(`**Base**: ${pr.baseBranch}`);
-        lines.push(`**Head SHA**: ${pr.headSha}`);
-        if (pr.labels.length > 0) {
-            lines.push(`**Labels**: ${pr.labels.join(", ")}`);
-        }
-        lines.push("");
+        lines.push(...this.renderPRMetadata(item));
         const totalFiles = truncated.included.length + truncated.excluded.length;
         lines.push(`## Files Changed (${totalFiles} files)`);
         lines.push("");
         for (const file of truncated.included) {
             lines.push(this.formatIncludedFile(file));
         }
-        for (const entry of truncated.excluded) {
-            lines.push(`### ${entry.filename} [TRUNCATED]`);
-            lines.push(entry.stats);
-            lines.push("");
-        }
-        lines.push("## Expected Response Format");
-        lines.push("");
-        lines.push("Output ONLY the following structure:");
-        lines.push("");
-        lines.push("<!-- bridge-findings-start -->");
-        lines.push("```json");
-        lines.push('{ "schema_version": 1, "findings": [...] }');
-        lines.push("```");
-        lines.push("<!-- bridge-findings-end -->");
-        lines.push("");
-        lines.push("Each finding: { id, title, severity, category, file, description, suggestion }");
-        lines.push("Severity values: CRITICAL, HIGH, MEDIUM, LOW, PRAISE, SPECULATION, REFRAME");
+        lines.push(...this.renderExcludedFiles(truncated.excluded));
+        lines.push(...this.renderConvergenceFormat());
         return lines.join("\n");
     }
     /**
      * Build convergence user prompt from progressive truncation result (SDD 3.2 + 3.7 binding).
      */
     buildConvergenceUserPromptFromTruncation(item, truncResult, loaBanner) {
-        const { owner, repo, pr } = item;
         const lines = [];
         if (loaBanner) {
             lines.push(loaBanner);
@@ -215,45 +244,37 @@ export class PRReviewTemplate {
             lines.push(truncResult.disclaimer);
             lines.push("");
         }
-        lines.push(`## Pull Request: ${owner}/${repo}#${pr.number}`);
-        lines.push(`**Title**: ${pr.title}`);
-        lines.push(`**Author**: ${pr.author}`);
-        lines.push(`**Base**: ${pr.baseBranch}`);
-        lines.push(`**Head SHA**: ${pr.headSha}`);
-        if (pr.labels.length > 0) {
-            lines.push(`**Labels**: ${pr.labels.join(", ")}`);
-        }
-        lines.push("");
+        lines.push(...this.renderPRMetadata(item));
         const totalFiles = truncResult.files.length + truncResult.excluded.length;
         lines.push(`## Files Changed (${totalFiles} files)`);
         lines.push("");
         for (const file of truncResult.files) {
             lines.push(this.formatIncludedFile(file));
         }
-        for (const entry of truncResult.excluded) {
-            lines.push(`### ${entry.filename} [TRUNCATED]`);
-            lines.push(entry.stats);
-            lines.push("");
-        }
-        lines.push("## Expected Response Format");
-        lines.push("");
-        lines.push("Output ONLY the following structure:");
-        lines.push("");
-        lines.push("<!-- bridge-findings-start -->");
-        lines.push("```json");
-        lines.push('{ "schema_version": 1, "findings": [...] }');
-        lines.push("```");
-        lines.push("<!-- bridge-findings-end -->");
-        lines.push("");
-        lines.push("Each finding: { id, title, severity, category, file, description, suggestion }");
-        lines.push("Severity values: CRITICAL, HIGH, MEDIUM, LOW, PRAISE, SPECULATION, REFRAME");
+        lines.push(...this.renderExcludedFiles(truncResult.excluded));
+        lines.push(...this.renderConvergenceFormat());
         return lines.join("\n");
     }
-    /**
-     * Build enrichment prompt: persona + condensed PR metadata + Pass 1 findings (SDD 3.3).
-     * No full diff — Pass 2 enriches findings with educational depth.
-     */
-    buildEnrichmentPrompt(findingsJSON, item, persona) {
+    buildEnrichmentPrompt(optionsOrFindings, item, persona, truncationContext, personaMetadata, ecosystemContext) {
+        // Resolve overload: options object vs positional params
+        let opts;
+        if (typeof optionsOrFindings === "string") {
+            opts = {
+                findingsJSON: optionsOrFindings,
+                item: item,
+                persona: persona,
+                truncationContext,
+                personaMetadata,
+                ecosystemContext,
+            };
+        }
+        else {
+            opts = optionsOrFindings;
+        }
+        return this.buildEnrichmentPromptFromOptions(opts);
+    }
+    buildEnrichmentPromptFromOptions(opts) {
+        const { findingsJSON, item, persona, truncationContext, personaMetadata, ecosystemContext } = opts;
         const systemPrompt = this.buildSystemPrompt(persona);
         const lines = [];
         lines.push("## Pull Request Context");
@@ -267,10 +288,39 @@ export class PRReviewTemplate {
         for (const f of item.files) {
             lines.push(`- ${f.filename} (${f.status}, +${f.additions} -${f.deletions})`);
         }
+        if (truncationContext && truncationContext.filesExcluded > 0) {
+            lines.push("");
+            lines.push(`> **Note**: ${truncationContext.filesExcluded} of ${truncationContext.totalFiles} files were reviewed by stats only due to token budget constraints in Pass 1.`);
+        }
         lines.push("");
         lines.push("## Convergence Findings (from analytical pass)");
         lines.push("");
         lines.push(findingsJSON);
+        // Confidence-aware depth guidance (Task 4.3): only render when findings have confidence
+        if (this.findingsHaveConfidence(findingsJSON)) {
+            lines.push("");
+            lines.push("## Confidence-Aware Enrichment Depth");
+            lines.push("");
+            lines.push("Findings include confidence scores from the analytical pass. Allocate enrichment depth proportionally:");
+            lines.push("- **Confidence > 0.8**: Focus on deep teaching — FAANG parallels, metaphors, architecture connections");
+            lines.push("- **Confidence 0.4–0.8**: Balance teaching with verification — confirm the analysis before elaborating");
+            lines.push("- **Confidence < 0.4**: Focus on verification — investigate whether this is a real issue before teaching");
+            lines.push("- **No confidence**: Treat as moderate confidence (0.5)");
+        }
+        // Ecosystem context hints (Pass 0 prototype — Task 6.2)
+        if (ecosystemContext && ecosystemContext.patterns.length > 0) {
+            lines.push("");
+            lines.push("## Ecosystem Context (Cross-Repository Patterns)");
+            lines.push("");
+            lines.push("The following patterns from related repositories may inform your enrichment:");
+            lines.push("");
+            for (const p of ecosystemContext.patterns) {
+                const prRef = p.pr != null ? `#${p.pr}` : "";
+                lines.push(`- **${p.repo}${prRef}**: ${p.pattern} — _${p.connection}_`);
+            }
+            lines.push("");
+            lines.push("> Use these as context for connections and teachable moments. Do not fabricate cross-repo links.");
+        }
         lines.push("");
         lines.push("## Your Task");
         lines.push("");
@@ -297,7 +347,25 @@ export class PRReviewTemplate {
         lines.push("   - Rich prose with FAANG parallels and architectural insights");
         lines.push("   - `## Findings` containing the enriched JSON inside <!-- bridge-findings-start/end --> markers");
         lines.push("   - `## Callouts` (positive observations)");
+        if (personaMetadata) {
+            lines.push("");
+            lines.push(`5. **Attribution**: Include this line at the very end of the review: \`*Reviewed with: ${personaMetadata.id} v${personaMetadata.version}*\``);
+        }
         return { systemPrompt, userPrompt: lines.join("\n") };
+    }
+    /**
+     * Check if findings JSON contains at least one finding with a confidence value.
+     */
+    findingsHaveConfidence(findingsJSON) {
+        try {
+            const parsed = JSON.parse(findingsJSON);
+            if (!parsed.findings || !Array.isArray(parsed.findings))
+                return false;
+            return parsed.findings.some((f) => typeof f.confidence === "number");
+        }
+        catch {
+            return false;
+        }
     }
     buildUserPrompt(item, truncated) {
         const { owner, repo, pr } = item;

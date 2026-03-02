@@ -199,11 +199,15 @@ git merge loa/main --no-commit
 > operates on staged deletions (`--diff-filter=D`) which are present even during a
 > conflicted merge state — conflicted files show as "both modified", not as deletions.
 
-### Phase 5.3: Collateral Deletion Safeguard (v1.3.0)
+### Phase 5.3: Collateral Safeguard (v1.3.0, extended v1.40.0)
 
-After the merge is staged but before committing, scan for files being deleted that are **outside** the Loa framework zone. These deletions are collateral damage from upstream cleanup and must not propagate to downstream projects.
+After the merge is staged but before committing, scan for two categories of collateral damage:
+
+1. **Deletions** (`--diff-filter=D`): Files deleted by upstream cleanup that should not propagate
+2. **Content replacements** (`--diff-filter=M`): Project identity files whose content was overwritten by upstream's version during merge conflict resolution
 
 ```bash
+# --- Part 1: Collateral deletion protection (v1.3.0) ---
 # Identify files staged for deletion by the merge
 deleted_files=$(git diff --cached --diff-filter=D --name-only)
 restored_count=0
@@ -221,7 +225,7 @@ if [[ -n "$deleted_files" ]]; then
       .loa.config.yaml.example) ;;
       # Everything else — non-framework file, restore from pre-merge state
       *)
-        git checkout HEAD -- "$file" 2>/dev/null && ((restored_count++)) || true
+        git checkout HEAD -- "$file" 2>/dev/null && restored_count=$((restored_count + 1)) || true
         ;;
     esac
   done <<< "$deleted_files"
@@ -230,16 +234,45 @@ if [[ -n "$deleted_files" ]]; then
     echo "Safeguard: restored $restored_count non-framework files that would have been deleted by upstream merge"
   fi
 fi
+
+# --- Part 2: Identity file content-replacement protection (v1.40.0) ---
+# Project identity files describe YOUR project, not the framework.
+# Merge conflict resolution (especially --theirs) can silently replace
+# downstream content with upstream's version. This is invisible to
+# --diff-filter=D because the file is modified, not deleted.
+#
+# Fixes: #439 — BUTTERFREEZONE.md overwritten during /update-loa
+identity_files="README.md CHANGELOG.md BUTTERFREEZONE.md"
+identity_restored=0
+
+for identity_file in $identity_files; do
+  # Only check if the file existed before the merge AND was modified by it
+  if git show "HEAD:$identity_file" >/dev/null 2>&1 && \
+     git diff --cached --diff-filter=M --name-only | grep -qxF "$identity_file"; then
+    git checkout HEAD -- "$identity_file" 2>/dev/null && identity_restored=$((identity_restored + 1)) || true
+  fi
+done
+
+if [[ $identity_restored -gt 0 ]]; then
+  echo "Safeguard: restored $identity_restored project identity files that would have been overwritten by upstream merge"
+fi
 ```
 
-> **Why?** When upstream performs cleanup (removing template/example files), `git merge`
+> **Why deletions?** When upstream performs cleanup (removing template/example files), `git merge`
 > propagates those deletions to downstream projects that share git history. This safeguard
 > uses an allowlist of framework-managed paths — only deletions within the framework zone
 > are permitted. All other files are restored from HEAD (pre-merge state), preserving
 > downstream application code, configurations, and documentation.
 >
+> **Why content replacements?** Project identity files (README.md, CHANGELOG.md, BUTTERFREEZONE.md)
+> are generated per-project and describe YOUR project. When merge conflicts on these files are
+> resolved with `--theirs`, the downstream project's identity is silently replaced with upstream's.
+> The `--diff-filter=D` check cannot catch this because the file is modified, not deleted.
+> `.gitattributes merge=ours` is the primary defense; this check is defense-in-depth.
+>
 > **Fixes**: [#331](https://github.com/0xHoneyJar/loa/issues/331) — cycle-014 merge
 > deleting 933 downstream project files.
+> [#439](https://github.com/0xHoneyJar/loa/issues/439) — BUTTERFREEZONE.md content overwrite.
 
 ### Phase 5.5: Revert Protected Paths
 

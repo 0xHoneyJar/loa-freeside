@@ -142,7 +142,7 @@ teardown() {
   run inject_verification_skipped "$json"
   [ "$status" -eq 0 ]
   echo "$output" | jq -e '.verification == "skipped"'
-  echo "$output" | jq -e '.verdict == "CHANGES_REQUIRED"'
+  echo "$output" | jq -e '(.verdict // .overall_verdict) == "CHANGES_REQUIRED"'
 }
 
 # =============================================================================
@@ -194,7 +194,7 @@ _setup_multipass_responses() {
   [ -f "$of" ]
   # Output should have verdict
   local result; result=$(cat "$of")
-  echo "$result" | jq -e '.verdict' >/dev/null
+  echo "$result" | jq -e '.verdict // .overall_verdict' >/dev/null
   # Should have pass_metadata with 3 passes
   echo "$result" | jq -e '.pass_metadata.passes_completed == 3'
   echo "$result" | jq -e '.verification == "passed"'
@@ -220,7 +220,7 @@ _setup_multipass_responses() {
   [ "$status" -eq 0 ]
   [ -f "$of" ]
   local result; result=$(cat "$of")
-  echo "$result" | jq -e '.verdict' >/dev/null
+  echo "$result" | jq -e '.verdict // .overall_verdict' >/dev/null
   echo "$result" | jq -e '.pass_metadata.mode == "single-pass-fallback"'
   echo "$result" | jq -e '.pass_metadata.passes_completed == 1'
 }

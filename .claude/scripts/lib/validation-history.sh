@@ -21,8 +21,8 @@
 set -euo pipefail
 
 # Configuration
-SCRIPT_DIR="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
-PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
+_VALIDATION_HISTORY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$_VALIDATION_HISTORY_DIR/../../.." && pwd)}"
 COMPOUND_DIR="${PROJECT_ROOT}/grimoires/loa/a2a/compound"
 HISTORY_FILE="${COMPOUND_DIR}/.validation-history"
 TIMESTAMPS_FILE="${COMPOUND_DIR}/.validation-timestamps"

@@ -45,6 +45,18 @@ fi
 _LIB_ROUTE_TABLE_LOADED="true"
 
 # =============================================================================
+# Dependencies
+# =============================================================================
+
+# Ensure normalize-json.sh is loaded (for extract_verdict)
+if ! declare -f extract_verdict &>/dev/null; then
+  _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # shellcheck source=lib/normalize-json.sh
+  source "$_lib_dir/lib/normalize-json.sh"
+  unset _lib_dir
+fi
+
+# =============================================================================
 # Constants
 # =============================================================================
 
@@ -199,7 +211,7 @@ _backend_codex() {
     run_multipass "$sys" "$usr" "$model" "$ws" "$timeout" "$of" "$rtype" "$ta" || me=$?
     if [[ $me -eq 0 && -s "$of" ]]; then
       local result; result=$(cat "$of")
-      if echo "$result" | jq -e '.verdict' &>/dev/null; then
+      if extract_verdict "$result" &>/dev/null; then
         cleanup_workspace "$ws"
         echo "$result"; return 0
       fi
@@ -576,10 +588,9 @@ validate_review_result() {
     return 1
   fi
 
-  # Required field: verdict
+  # Required field: verdict (supports .verdict and .overall_verdict fallback)
   local verdict
-  verdict=$(echo "$result" | jq -r '.verdict // empty' 2>/dev/null)
-  if [[ -z "$verdict" ]]; then
+  if ! verdict=$(extract_verdict "$result"); then
     log "WARNING: validate_review_result: missing 'verdict' field"
     return 1
   fi

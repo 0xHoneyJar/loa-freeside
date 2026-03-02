@@ -21,6 +21,7 @@ set -euo pipefail
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/bootstrap.sh"
+source "$SCRIPT_DIR/compat-lib.sh"
 readonly STATE_SCRIPT="${SCRIPT_DIR}/post-pr-state.sh"
 
 # Default commands (detected from package.json or config)
@@ -96,18 +97,19 @@ validate_command() {
   return 1
 }
 
-# Run command with timeout
+# Run command with timeout and security validation
 # Note: Commands may be multi-word strings (e.g., "npm run build") requiring shell expansion.
 # This is safe because: (1) commands are auto-detected from project config or (2) user-provided
-# via CLI (same privilege level). Use eval for explicit shell expansion intent.
-run_with_timeout() {
+# via CLI (same privilege level). Uses bash -c for explicit shell expansion intent.
+# Timeout logic delegated to canonical run_with_timeout() from compat-lib.sh.
+run_validated_with_timeout() {
   local timeout_val="$1"
   shift
   local cmd="$*"
 
   # Validate command is not empty
   if [[ -z "$cmd" ]]; then
-    log_error "Empty command provided to run_with_timeout"
+    log_error "Empty command provided to run_validated_with_timeout"
     return 1
   fi
 
@@ -117,28 +119,8 @@ run_with_timeout() {
     return 1
   fi
 
-  if command -v timeout &>/dev/null; then
-    timeout "$timeout_val" bash -c "$cmd"
-  else
-    # Fallback for systems without timeout (macOS)
-    local pid
-    bash -c "$cmd" &
-    pid=$!
-
-    local count=0
-    while kill -0 "$pid" 2>/dev/null; do
-      sleep 1
-      ((++count))
-      if (( count >= timeout_val )); then
-        kill -TERM "$pid" 2>/dev/null || true
-        sleep 2
-        kill -KILL "$pid" 2>/dev/null || true
-        return 124  # timeout exit code
-      fi
-    done
-
-    wait "$pid"
-  fi
+  # Delegate to canonical timeout helper with bash -c for shell expansion
+  run_with_timeout "$timeout_val" bash -c "$cmd"
 }
 
 # ============================================================================
@@ -317,7 +299,7 @@ run_build() {
   log_info "Running build: $build_cmd"
 
   local result=0
-  if run_with_timeout "$BUILD_TIMEOUT" "$build_cmd" > "$output_file" 2>&1; then
+  if run_validated_with_timeout "$BUILD_TIMEOUT" "$build_cmd" > "$output_file" 2>&1; then
     log_info "Build succeeded"
     return 0
   else
@@ -343,7 +325,7 @@ run_tests() {
   log_info "Running tests: $test_cmd"
 
   local result=0
-  if run_with_timeout "$TEST_TIMEOUT" "$test_cmd" > "$output_file" 2>&1; then
+  if run_validated_with_timeout "$TEST_TIMEOUT" "$test_cmd" > "$output_file" 2>&1; then
     log_info "Tests passed"
     return 0
   else

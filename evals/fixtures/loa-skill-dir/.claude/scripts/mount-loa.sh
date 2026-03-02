@@ -3,6 +3,9 @@
 # The Loa mounts your repository and rides alongside your project
 set -euo pipefail
 
+# Source cross-platform compatibility utilities (run_with_timeout, etc.)
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/compat-lib.sh"
+
 # === Colors ===
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -1703,7 +1706,7 @@ Then re-run:
   # Check 2.5.3: Network reachability — can we fetch the submodule?
   if [[ "$dry_run" == "true" ]]; then
     local remote_url="${LOA_REMOTE_URL:-https://github.com/0xHoneyJar/loa.git}"
-    if timeout 5 git ls-remote "$remote_url" HEAD &>/dev/null 2>&1; then
+    if run_with_timeout 5 git ls-remote "$remote_url" HEAD &>/dev/null 2>&1; then
       log "  [PASS] Remote reachable: $remote_url"
     else
       feasibility_pass=false

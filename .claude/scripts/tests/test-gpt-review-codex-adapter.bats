@@ -111,7 +111,7 @@ teardown() {
   local input='{"verdict":"APPROVED","summary":"OK"}'
   local result
   result=$(parse_codex_output "$input")
-  [ "$(echo "$result" | jq -r '.verdict')" = "APPROVED" ]
+  [ "$(echo "$result" | jq -r '.verdict // .overall_verdict')" = "APPROVED" ]
 }
 
 @test "parse_codex_output: extracts JSON from markdown fences" {
@@ -124,14 +124,14 @@ teardown() {
 That is all.'
   local result
   result=$(parse_codex_output "$input")
-  [ "$(echo "$result" | jq -r '.verdict')" = "CHANGES_REQUIRED" ]
+  [ "$(echo "$result" | jq -r '.verdict // .overall_verdict')" = "CHANGES_REQUIRED" ]
 }
 
 @test "parse_codex_output: extracts greedy JSON from prose" {
   local input='My review says {"verdict":"APPROVED","summary":"Good"} and thats it'
   local result
   result=$(parse_codex_output "$input")
-  [ "$(echo "$result" | jq -r '.verdict')" = "APPROVED" ]
+  [ "$(echo "$result" | jq -r '.verdict // .overall_verdict')" = "APPROVED" ]
 }
 
 @test "parse_codex_output: returns error 5 for non-JSON" {

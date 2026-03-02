@@ -14,7 +14,7 @@
     "protocol": {
       "type": "string",
       "pattern": "^loa-hounfour@[0-9]+\\.[0-9]+\\.[0-9]+$",
-      "description": "Ecosystem protocol version for traceability (e.g., loa-hounfour@7.0.0)"
+      "description": "Ecosystem protocol version for traceability (e.g., loa-hounfour@8.3.1)"
     },
     "invariants": {
       "type": "array",

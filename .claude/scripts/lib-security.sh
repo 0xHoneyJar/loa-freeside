@@ -15,6 +15,7 @@
 #   redact_secrets <content> [format] → redacted content (format: json|text)
 #   redact_log_output <input>     → filtered stderr content
 #   is_sensitive_file <filepath>  → 0 if file matches deny list
+#   write_curl_auth_config <name> <value> → secure curl config file path
 #
 # Design decisions:
 #   - Env-only auth: Never reads .env files or calls `codex login` (SDD SKP-003)
@@ -229,6 +230,80 @@ _redact_text() {
 redact_log_output() {
   local input="$1"
   _redact_text "$input" "${CONFIG_FILE:-.loa.config.yaml}"
+}
+
+# =============================================================================
+# Curl Config File Security (SHELL-002)
+# =============================================================================
+
+# Write a secure curl auth config file for API calls.
+# Prevents header injection via CR/LF/null/backslash in API keys.
+# Escapes double quotes within the key value.
+#
+# Args:
+#   header_name  — Header name (e.g., "Authorization", "x-api-key")
+#   header_value — Full header value (e.g., "Bearer sk-...")
+#
+# Outputs: path to temp config file on stdout
+# Returns: 0 on success, 1 on invalid key (with error on stderr)
+#
+# Usage:
+#   local cfg
+#   cfg=$(write_curl_auth_config "Authorization" "Bearer ${OPENAI_API_KEY}")
+#   curl --config "$cfg" ...
+#   rm -f "$cfg"
+write_curl_auth_config() {
+  local header_name="$1"
+  local header_value="$2"
+
+  # Validate header_name: must start with a letter, followed by alphanumeric or hyphen.
+  # Rejects whitespace, newlines, colons, and other special characters that could
+  # enable header injection via the name field.
+  if [[ ! "$header_name" =~ ^[A-Za-z][A-Za-z0-9-]*$ ]]; then
+    echo "[lib-security] ERROR: Invalid header name '$header_name' — must match [A-Za-z][A-Za-z0-9-]*" >&2
+    return 1
+  fi
+
+  # Reject keys containing CR (\r), LF (\n), null (\0), or backslash (\)
+  # These characters enable header injection attacks
+  if [[ "$header_value" == *$'\r'* ]]; then
+    echo "[lib-security] ERROR: API key contains carriage return (CR) — possible header injection" >&2
+    return 1
+  fi
+  if [[ "$header_value" == *$'\n'* ]]; then
+    echo "[lib-security] ERROR: API key contains line feed (LF) — possible header injection" >&2
+    return 1
+  fi
+  # Null byte detection: compare byte length (wc -c) with character length (${#var}).
+  # A mismatch indicates null byte truncation by bash.
+  # Note: multi-byte UTF-8 keys will also trigger this check as a conservative guard.
+  local _byte_len
+  _byte_len=$(printf '%s' "$header_value" | wc -c | tr -d ' ')
+  if [[ "$_byte_len" -ne "${#header_value}" ]]; then
+    echo "[lib-security] ERROR: API key contains null byte — possible header injection" >&2
+    return 1
+  fi
+  if [[ "$header_value" == *'\'* ]]; then
+    echo "[lib-security] ERROR: API key contains backslash — possible escape injection" >&2
+    return 1
+  fi
+
+  # Escape double quotes within the header value
+  local escaped_value="${header_value//\"/\\\"}"
+
+  # Create secure temp file
+  local config_file
+  config_file=$(mktemp) || {
+    echo "[lib-security] ERROR: Failed to create temp file for curl config" >&2
+    return 1
+  }
+  chmod 600 "$config_file"
+
+  # Write header using printf (not echo) for portability
+  printf 'header = "%s: %s"\n' "$header_name" "$escaped_value" > "$config_file"
+
+  # Return path on stdout
+  printf '%s' "$config_file"
 }
 
 # =============================================================================

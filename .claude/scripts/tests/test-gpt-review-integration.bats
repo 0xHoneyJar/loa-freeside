@@ -82,28 +82,28 @@ _run_review() {
   run _run_review code
   [ "$status" -eq 0 ]
   [ -f "$TEST_DIR/output.json" ]
-  jq -e '.verdict' "$TEST_DIR/output.json"
+  jq -e '.verdict // .overall_verdict' "$TEST_DIR/output.json"
 }
 
 @test "integration: prd review through codex path" {
   run _run_review prd
   [ "$status" -eq 0 ]
   [ -f "$TEST_DIR/output.json" ]
-  jq -e '.verdict' "$TEST_DIR/output.json"
+  jq -e '.verdict // .overall_verdict' "$TEST_DIR/output.json"
 }
 
 @test "integration: sdd review through codex path" {
   run _run_review sdd
   [ "$status" -eq 0 ]
   [ -f "$TEST_DIR/output.json" ]
-  jq -e '.verdict' "$TEST_DIR/output.json"
+  jq -e '.verdict // .overall_verdict' "$TEST_DIR/output.json"
 }
 
 @test "integration: sprint review through codex path" {
   run _run_review sprint
   [ "$status" -eq 0 ]
   [ -f "$TEST_DIR/output.json" ]
-  jq -e '.verdict' "$TEST_DIR/output.json"
+  jq -e '.verdict // .overall_verdict' "$TEST_DIR/output.json"
 }
 
 # =============================================================================
@@ -200,21 +200,21 @@ YAML
   run _run_review code --fast
   [ "$status" -eq 0 ]
   [ -f "$TEST_DIR/output.json" ]
-  jq -e '.verdict' "$TEST_DIR/output.json"
+  jq -e '.verdict // .overall_verdict' "$TEST_DIR/output.json"
 }
 
 @test "integration: --tool-access flag produces valid output" {
   run _run_review code --tool-access
   [ "$status" -eq 0 ]
   [ -f "$TEST_DIR/output.json" ]
-  jq -e '.verdict' "$TEST_DIR/output.json"
+  jq -e '.verdict // .overall_verdict' "$TEST_DIR/output.json"
 }
 
 @test "integration: --fast + --tool-access combined" {
   run _run_review code --fast --tool-access
   [ "$status" -eq 0 ]
   [ -f "$TEST_DIR/output.json" ]
-  jq -e '.verdict' "$TEST_DIR/output.json"
+  jq -e '.verdict // .overall_verdict' "$TEST_DIR/output.json"
 }
 
 # =============================================================================
@@ -256,7 +256,7 @@ YAML
   run _run_review code
   [ "$status" -eq 0 ]
   local verdict
-  verdict=$(jq -r '.verdict' "$TEST_DIR/output.json")
+  verdict=$(jq -r '.verdict // .overall_verdict' "$TEST_DIR/output.json")
   [[ "$verdict" == "APPROVED" || "$verdict" == "CHANGES_REQUIRED" || "$verdict" == "DECISION_NEEDED" ]]
 }
 
@@ -294,14 +294,14 @@ YAML
 @test "compat: output schema has verdict field (required)" {
   run _run_review code
   [ "$status" -eq 0 ]
-  jq -e 'has("verdict")' "$TEST_DIR/output.json"
+  jq -e 'has("verdict") or has("overall_verdict")' "$TEST_DIR/output.json"
 }
 
 @test "compat: verdict enum matches spec" {
   run _run_review code
   [ "$status" -eq 0 ]
   local verdict
-  verdict=$(jq -r '.verdict' "$TEST_DIR/output.json")
+  verdict=$(jq -r '.verdict // .overall_verdict' "$TEST_DIR/output.json")
   [[ "$verdict" =~ ^(APPROVED|CHANGES_REQUIRED|DECISION_NEEDED|SKIPPED)$ ]]
 }
 
@@ -313,14 +313,14 @@ gpt_review:
 YAML
   run _run_review code
   [ "$status" -eq 0 ]
-  jq -e '.verdict' "$TEST_DIR/output.json"
+  jq -e '.verdict // .overall_verdict' "$TEST_DIR/output.json"
 }
 
 @test "compat: all existing flags work unchanged" {
   # --expertise, --context, --iteration, --output, --fast, --tool-access
   run _run_review code --fast --tool-access --iteration 1
   [ "$status" -eq 0 ]
-  jq -e '.verdict' "$TEST_DIR/output.json"
+  jq -e '.verdict // .overall_verdict' "$TEST_DIR/output.json"
   jq -e '.iteration == 1' "$TEST_DIR/output.json"
 }
 
@@ -502,7 +502,7 @@ YAML
   for rt in code prd sdd sprint; do
     run _run_review "$rt"
     [ "$status" -eq 0 ]
-    jq -e '.verdict' "$TEST_DIR/output.json"
+    jq -e '.verdict // .overall_verdict' "$TEST_DIR/output.json"
   done
 }
 
@@ -514,11 +514,11 @@ YAML
   run _run_review code
   [ "$status" -eq 0 ]
   # Required: verdict, iteration
-  jq -e '.verdict' "$TEST_DIR/output.json"
+  jq -e '.verdict // .overall_verdict' "$TEST_DIR/output.json"
   jq -e '.iteration' "$TEST_DIR/output.json"
   # Verdict must be valid enum
   local verdict
-  verdict=$(jq -r '.verdict' "$TEST_DIR/output.json")
+  verdict=$(jq -r '.verdict // .overall_verdict' "$TEST_DIR/output.json")
   [[ "$verdict" =~ ^(APPROVED|CHANGES_REQUIRED|DECISION_NEEDED)$ ]]
 }
 
@@ -533,7 +533,7 @@ gpt_review:
 YAML
   run _run_review code
   [ "$status" -eq 0 ]
-  jq -e '.verdict' "$TEST_DIR/output.json"
+  jq -e '.verdict // .overall_verdict' "$TEST_DIR/output.json"
 }
 
 # =============================================================================
@@ -601,7 +601,7 @@ YAML
   run _run_review code
   # Should still succeed via codex fallback
   [ "$status" -eq 0 ]
-  jq -e '.verdict' "$TEST_DIR/output.json"
+  jq -e '.verdict // .overall_verdict' "$TEST_DIR/output.json"
 }
 
 # =============================================================================

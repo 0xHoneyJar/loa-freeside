@@ -33,6 +33,7 @@ set -euo pipefail
 # ============================================================================
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/compat-lib.sh"
 readonly STATE_SCRIPT="${SCRIPT_DIR}/post-pr-state.sh"
 readonly AUDIT_SCRIPT="${SCRIPT_DIR}/post-pr-audit.sh"
 readonly CONTEXT_SCRIPT="${SCRIPT_DIR}/post-pr-context-clear.sh"
@@ -101,36 +102,7 @@ should_skip_phase() {
   return 1
 }
 
-# Run command with timeout (H-1 fix: array-based execution, no bash -c)
-run_with_timeout() {
-  local timeout_val="$1"
-  shift
-  # Execute command array directly, not via bash -c string interpolation
-  local -a cmd_array=("$@")
-
-  if command -v timeout &>/dev/null; then
-    timeout "$timeout_val" "${cmd_array[@]}"
-  else
-    # Fallback for systems without timeout (macOS)
-    local pid
-    "${cmd_array[@]}" &
-    pid=$!
-
-    local count=0
-    while kill -0 "$pid" 2>/dev/null; do
-      sleep 1
-      ((++count))
-      if (( count >= timeout_val )); then
-        kill -TERM "$pid" 2>/dev/null || true
-        sleep 2
-        kill -KILL "$pid" 2>/dev/null || true
-        return 124  # timeout exit code
-      fi
-    done
-
-    wait "$pid"
-  fi
-}
+# run_with_timeout() — provided by compat-lib.sh (portable timeout execution)
 
 # ============================================================================
 # Signal Handling

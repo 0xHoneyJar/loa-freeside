@@ -135,11 +135,11 @@ function parseRepoString(s) {
  * Uses a simple key:value parser — no YAML library dependency.
  * Supports scalar values and YAML list syntax (- item).
  */
-async function loadYamlConfig() {
+export async function loadYamlConfig() {
     try {
         const content = await readFile(".loa.config.yaml", "utf-8");
         // Find bridgebuilder section
-        const match = content.match(/^bridgebuilder:\s*\n((?:\s+.+\n?)*)/m);
+        const match = content.match(/^bridgebuilder:\s*\n((?:[ \t]+.+\n?)*)/m);
         if (!match)
             return {};
         const section = match[1];
@@ -223,6 +223,12 @@ async function loadYamlConfig() {
                         config.review_mode = value;
                     }
                     break;
+                case "ecosystem_context_path":
+                    config.ecosystem_context_path = value;
+                    break;
+                case "pass1_cache_enabled":
+                    config.pass1_cache_enabled = value === "true";
+                    break;
             }
         }
         return config;
@@ -254,6 +260,19 @@ export function resolveRepoRoot(cli, env) {
     catch {
         return undefined;
     }
+}
+/**
+ * Resolve pass1Cache.enabled: env > yaml > default (false).
+ * Returns boolean or null if no explicit config.
+ */
+function resolvePass1Cache(_cliArgs, env, yaml) {
+    if (env.BRIDGEBUILDER_PASS1_CACHE === "true")
+        return true;
+    if (env.BRIDGEBUILDER_PASS1_CACHE === "false")
+        return false;
+    if (yaml.pass1_cache_enabled != null)
+        return yaml.pass1_cache_enabled;
+    return null;
 }
 /**
  * Resolve config using 5-level precedence: CLI > env > yaml > auto-detect > defaults.
@@ -366,6 +385,12 @@ export async function resolveConfig(cliArgs, env, yamlConfig) {
             ? { personaFilePath: yaml.persona_path }
             : {}),
         ...(cliArgs.forceFullReview ? { forceFullReview: true } : {}),
+        ...(yaml.ecosystem_context_path != null
+            ? { ecosystemContextPath: yaml.ecosystem_context_path }
+            : {}),
+        ...(resolvePass1Cache(cliArgs, env, yaml) != null
+            ? { pass1Cache: { enabled: resolvePass1Cache(cliArgs, env, yaml) } }
+            : {}),
         reviewMode: cliArgs.reviewMode ??
             (env.LOA_BRIDGE_REVIEW_MODE === "two-pass" || env.LOA_BRIDGE_REVIEW_MODE === "single-pass"
                 ? env.LOA_BRIDGE_REVIEW_MODE

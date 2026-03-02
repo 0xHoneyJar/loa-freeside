@@ -38,6 +38,11 @@ else
     exit 6
 fi
 
+# Source security library (for write_curl_auth_config)
+if [[ -f "$SCRIPT_DIR/lib-security.sh" ]]; then
+    source "$SCRIPT_DIR/lib-security.sh"
+fi
+
 # =============================================================================
 # Exit Codes
 # =============================================================================
@@ -114,10 +119,10 @@ fetch_packs() {
     local curl_args=(-s -f)
     local curl_config=""
     if [[ -n "$api_key" ]]; then
-        curl_config=$(mktemp)
-        chmod 600 "$curl_config"
-        echo "header = \"Authorization: Bearer ${api_key}\"" > "$curl_config"
-        curl_args+=(--config "$curl_config")
+        curl_config=$(write_curl_auth_config "Authorization" "Bearer ${api_key}") || true
+        if [[ -n "$curl_config" ]]; then
+            curl_args+=(--config "$curl_config")
+        fi
     fi
 
     local response http_code
@@ -176,10 +181,10 @@ fetch_pack_info() {
     local curl_args=(-s -f)
     local curl_config=""
     if [[ -n "$api_key" ]]; then
-        curl_config=$(mktemp)
-        chmod 600 "$curl_config"
-        echo "header = \"Authorization: Bearer ${api_key}\"" > "$curl_config"
-        curl_args+=(--config "$curl_config")
+        curl_config=$(write_curl_auth_config "Authorization" "Bearer ${api_key}") || true
+        if [[ -n "$curl_config" ]]; then
+            curl_args+=(--config "$curl_config")
+        fi
     fi
 
     local response http_code

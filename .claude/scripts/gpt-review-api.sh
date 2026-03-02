@@ -113,7 +113,7 @@ _route_review_legacy() {
         local me=0; run_multipass "$sys" "$usr" "$model" "$ws" "$timeout" "$of" "$rtype" "$ta" || me=$?
         if [[ $me -eq 0 && -s "$of" ]]; then
           local result; result=$(cat "$of"); cleanup_workspace "$ws"
-          if echo "$result" | jq -e '.verdict' &>/dev/null; then
+          if extract_verdict "$result" &>/dev/null; then
             echo "$result"; return 0
           fi; log "WARNING: multipass output invalid, falling back to single-pass"
         else
@@ -128,7 +128,7 @@ _route_review_legacy() {
       if [[ $ee -eq 0 && -s "$of" ]]; then
         local raw; raw=$(cat "$of"); cleanup_workspace "$ws"
         local pr; pr=$(parse_codex_output "$raw" 2>/dev/null) || pr=""
-        if [[ -n "$pr" ]] && echo "$pr" | jq -e '.verdict' &>/dev/null; then
+        if [[ -n "$pr" ]] && extract_verdict "$pr" &>/dev/null; then
           echo "$pr"; return 0
         fi; log "WARNING: codex response invalid, falling back to curl"
       else

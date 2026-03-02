@@ -17,6 +17,9 @@ setup() {
     if [[ -f "$PROJECT_ROOT/.claude/scripts/path-lib.sh" ]]; then
         cp "$PROJECT_ROOT/.claude/scripts/path-lib.sh" "$TEST_TMPDIR/.claude/scripts/"
     fi
+    if [[ -f "$PROJECT_ROOT/.claude/scripts/compat-lib.sh" ]]; then
+        cp "$PROJECT_ROOT/.claude/scripts/compat-lib.sh" "$TEST_TMPDIR/.claude/scripts/"
+    fi
 
     # Initialize git repo for bootstrap
     cd "$TEST_TMPDIR"

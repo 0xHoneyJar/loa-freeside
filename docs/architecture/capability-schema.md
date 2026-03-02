@@ -158,7 +158,7 @@ trust_gradient:
 
 ### Trust Scopes (Hounfour v6+)
 
-The `trust_scopes` field provides 6-dimensional trust classification per loa-hounfour v6.0.0 `CapabilityScopedTrust`. Each dimension independently controls a class of operations:
+The `trust_scopes` field provides 6-dimensional trust classification per loa-hounfour v6.0.0+ `CapabilityScopedTrust` (extended in v8.x with `GovernedResource<T>` governance primitives). Each dimension independently controls a class of operations:
 
 | Dimension | Controls | Example |
 |-----------|----------|---------|
@@ -220,17 +220,20 @@ This schema follows the same forward-compatibility contract as the mesh schema:
 - **Consumers MUST ignore unknown fields** (forward compatibility)
 - Planned additions for v1.1: `model` capability scopes for fine-grained pool selection, `billing_tier` per-skill aggregation
 
-## Hounfour v7 Type Mapping
+## Hounfour v7–v8 Type Mapping
 
-Loa doesn't instantiate hounfour protocol types directly — it implements equivalent patterns that correspond to v7.0.0 types. This table documents the structural correspondence:
+Loa doesn't instantiate hounfour protocol types directly — it implements equivalent patterns that correspond to v7.0.0–v8.3.1 types. This table documents the structural correspondence:
 
-| Hounfour v7 Type | Loa Pattern | Loa File | Notes |
-|------------------|-------------|----------|-------|
-| `BridgeTransferSaga` | Retry chains with fallback/downgrade | `.claude/adapters/loa_cheval/routing/chains.py` | Garcia-Molina saga pattern: provider failure → fallback → compensating action |
-| `DelegationOutcome` | Flatline consensus scoring | `.claude/scripts/flatline-orchestrator.sh` | Multi-model cross-scoring → HIGH_CONSENSUS / DISPUTED / BLOCKER |
-| `MonetaryPolicy` | `RemainderAccumulator` + `BudgetEnforcer` | `.claude/adapters/loa_cheval/metering/budget.py` | Conservation invariant: total_in == total_distributed + remainder |
-| `PermissionBoundary` | MAY/MUST/NEVER constraint grants | `.claude/data/constraints.json` | Permission scape rendered into CLAUDE.loa.md |
-| `GovernanceProposal` | Flatline scoring with BLOCKER threshold | `.claude/scripts/flatline-orchestrator.sh` | BLOCKER (>700 skeptic score) halts autonomous workflows |
+| Hounfour Type | Version | Loa Pattern | Loa File | Notes |
+|---------------|---------|-------------|----------|-------|
+| `BridgeTransferSaga` | v7+ | Retry chains with fallback/downgrade | `.claude/adapters/loa_cheval/routing/chains.py` | Garcia-Molina saga pattern: provider failure → fallback → compensating action |
+| `DelegationOutcome` | v7+ | Flatline consensus scoring | `.claude/scripts/flatline-orchestrator.sh` | Multi-model cross-scoring → HIGH_CONSENSUS / DISPUTED / BLOCKER |
+| `MonetaryPolicy` | v7+ | `RemainderAccumulator` + `BudgetEnforcer` | `.claude/adapters/loa_cheval/metering/budget.py` | Conservation invariant: total_in == total_distributed + remainder |
+| `PermissionBoundary` | v7+ | MAY/MUST/NEVER constraint grants | `.claude/data/constraints.json` | Permission scape rendered into CLAUDE.loa.md |
+| `GovernanceProposal` | v7+ | Flatline scoring with BLOCKER threshold | `.claude/scripts/flatline-orchestrator.sh` | BLOCKER (>700 skeptic score) halts autonomous workflows |
+| `GovernedResource<T>` | v8.0+ | Three-Zone Model governance | `.claude/loa/CLAUDE.loa.md` | System/State/App zones as governed resource boundaries |
+| `ConsumerContract` | v8.3+ | Structural correspondence (this table) | `docs/architecture/capability-schema.md` | Loa declares which hounfour types it structurally implements |
+| `computeDampenedScore()` | v8.3+ | — | — | Not yet consumed; candidate for bridge flatline detection |
 
 ### Conservation Invariant
 
@@ -251,6 +254,9 @@ This is not coincidental — it's the same pattern (double-entry accounting / co
 | v5.0.0 | Multi-Model | Provider registry, adapter pattern, thinking config | loa-finn runtime integration |
 | v6.0.0 | Capability-Scoped Trust | `trust_scopes` (6-dimensional), `CapabilityScopedTrust` | model-permissions.yaml migration |
 | v7.0.0 | Composition-Aware Economic Protocol | `BridgeTransferSaga`, `DelegationOutcome`, `MonetaryPolicy`, `PermissionBoundary`, `GovernanceProposal`, 8 new evaluator builtins (23→31) | Type mapping documented above |
+| v8.0.0 | Commons Protocol | `GovernedResource<T>`, 21 governance substrate schemas, `ConservationLaw`, `AuditTrail`, `StateMachine` | Three-Zone Model as governance boundaries |
+| v8.2.0 | Commons + ModelPerformance | `ModelPerformanceEvent`, `QualityObservation`, Governance Enforcement SDK, `evaluateGovernanceMutation()` | Flatline cross-scoring as quality observation |
+| v8.3.x | Pre-Launch Hardening | `ConsumerContract`, `computeDampenedScore()`, `GovernedResourceBase`, x402 payment schemas, `computeChainBoundHash()`, `validateDomainTag()` | Consumer contract pattern; dampened scoring candidate for flatline |
 
 ## Related Documents
 

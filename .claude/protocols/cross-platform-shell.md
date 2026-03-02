@@ -163,6 +163,54 @@ grep -E '[0-9]+' file
 
 No library wrapper needed — just use `-E` instead of `-P`.
 
+### Timeout Execution
+
+**Library**: `compat-lib.sh` → `run_with_timeout()`
+
+```bash
+# WRONG — macOS doesn't ship GNU timeout
+timeout 30 grep -rn "pattern" ./src
+
+# RIGHT — 4-tier fallback: timeout → gtimeout → perl → warn
+source "${SCRIPT_DIR}/compat-lib.sh"
+run_with_timeout 30 grep -rn "pattern" ./src
+```
+
+**Why it's subtle**: macOS doesn't include GNU coreutils `timeout`. Homebrew provides it as `gtimeout` (via the `coreutils` package), but not all environments have Homebrew. The `run_with_timeout()` function detects available backends at call time (not source time) and falls back through: GNU `timeout` → `gtimeout` → perl's `alarm()/fork()/waitpid()` → warn and run without timeout.
+
+Exit code 124 indicates a timeout (matching the GNU convention). The perl fallback uses fork+waitpid rather than bare exec to preserve the `$SIG{ALRM}` handler — bare exec would replace the process image and produce exit 137 (SIGKILL) instead of 124.
+
+**Migration pattern**: Replace every `timeout N command...` with `run_with_timeout N command...` after sourcing `compat-lib.sh`.
+
+### Curl Auth Config Files (SHELL-002)
+
+**Library**: `lib-security.sh` → `write_curl_auth_config()`
+
+```bash
+# WRONG — API key visible in process listings (ps aux)
+curl -H "Authorization: Bearer ${API_KEY}" https://api.example.com
+
+# WRONG — header value can contain injection characters
+printf 'header = "Authorization: Bearer %s"\n' "$API_KEY" > /tmp/curl.cfg
+
+# RIGHT — validated, 0600 permissions, injection-safe
+source "${SCRIPT_DIR}/lib-security.sh"
+cfg=$(write_curl_auth_config "Authorization" "Bearer ${API_KEY}")
+curl --config "$cfg" https://api.example.com
+rm -f "$cfg"
+```
+
+**Why it's subtle**: Passing API keys via `-H` exposes them in process listings (`ps aux`). The `write_curl_auth_config()` function creates a temporary file with `chmod 600` permissions and validates that the header value contains no CR (`\r`), LF (`\n`), null bytes (`\0`), or backslashes (`\`) — all of which can be used for header injection attacks. Double quotes within the value are escaped automatically.
+
+**Validation rules**:
+- Rejects carriage return (CR) — header injection
+- Rejects line feed (LF) — header injection
+- Detects null byte truncation — binary injection
+- Rejects backslash — escape injection
+- Escapes double quotes — safe quoting in curl config format
+
+**Reference**: SHELL-002 security control. See also `tests/unit/curl-config-guard.bats` for comprehensive test coverage.
+
 ## Patterns That Are Already Portable
 
 These are safe to use without library wrappers:
@@ -209,6 +257,8 @@ The `shell-compat-lint.yml` workflow catches platform-specific patterns at PR ti
 | `mktemp --suffix` | warning | Breaks macOS |
 | `sort -V` (without compat-lib) | warning | Breaks older macOS |
 | `date +%.*N` | warning | Handled by time-lib.sh |
+| `timeout [0-9]` (bare) | error | Not available on macOS; use `run_with_timeout()` |
+| `Authorization.*Bearer` (raw) | error | Exposes keys in process list; use `write_curl_auth_config()` |
 
 ## Adding a New Portable Function
 

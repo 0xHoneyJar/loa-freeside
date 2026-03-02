@@ -24,6 +24,7 @@ set -euo pipefail
 # Source bootstrap for PROJECT_ROOT and path-lib
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/bootstrap.sh"
+source "${SCRIPT_DIR}/compat-lib.sh"
 
 # Resolve paths using path-lib getters
 _GP_GRIMOIRE_DIR=$(get_grimoire_dir)
@@ -399,8 +400,8 @@ golden_trajectory() {
         *) flag="" ;;
     esac
 
-    # Time-bounded: 2-second timeout
-    timeout 2 "$script" $flag 2>/dev/null || return 0
+    # Time-bounded: 2-second timeout (portable via compat-lib.sh)
+    run_with_timeout 2 "$script" $flag 2>/dev/null || return 0
 }
 
 # ─────────────────────────────────────────────────────────────

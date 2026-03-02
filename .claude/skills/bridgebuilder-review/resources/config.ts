@@ -182,11 +182,11 @@ function parseRepoString(s: string): { owner: string; repo: string } {
  * Uses a simple key:value parser — no YAML library dependency.
  * Supports scalar values and YAML list syntax (- item).
  */
-async function loadYamlConfig(): Promise<YamlConfig> {
+export async function loadYamlConfig(): Promise<YamlConfig> {
   try {
     const content = await readFile(".loa.config.yaml", "utf-8");
     // Find bridgebuilder section
-    const match = content.match(/^bridgebuilder:\s*\n((?:\s+.+\n?)*)/m);
+    const match = content.match(/^bridgebuilder:\s*\n((?:[ \t]+.+\n?)*)/m);
     if (!match) return {};
 
     const section = match[1];

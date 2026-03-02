@@ -117,6 +117,33 @@ sys.exit(1)
 }
 
 # =============================================================================
+# extract_verdict
+# =============================================================================
+#
+# Extract verdict from a JSON response, supporting both .verdict (primary)
+# and .overall_verdict (fallback) field names.
+#
+# Usage:
+#   extract_verdict "$json"
+#   echo "$json" | extract_verdict
+#
+# Returns: verdict string on stdout, exit 0 on success, exit 1 if neither field present.
+
+extract_verdict() {
+  local json="${1:-$(cat)}"
+  local verdict
+  verdict=$(echo "$json" | jq -r '
+    (.verdict | select(. != null and . != "")) //
+    (.overall_verdict | select(. != null and . != "")) //
+    empty
+  ' 2>/dev/null)
+  if [[ -z "$verdict" ]]; then
+    return 1
+  fi
+  echo "$verdict"
+}
+
+# =============================================================================
 # validate_json_field
 # =============================================================================
 #
@@ -244,17 +271,20 @@ validate_agent_response() {
       ;;
 
     gpt-reviewer)
-      validate_json_field "$json" "verdict" "string" || errors=$((errors + 1))
-      # Validate verdict enum
+      # Validate verdict field — supports .verdict and .overall_verdict fallback
       local verdict
-      verdict=$(echo "$json" | jq -r '.verdict // ""' 2>/dev/null)
-      case "$verdict" in
-        APPROVED|CHANGES_REQUIRED|DECISION_NEEDED|SKIPPED) ;;
-        *)
-          echo "ERROR: invalid verdict value: '$verdict' (expected APPROVED|CHANGES_REQUIRED|DECISION_NEEDED|SKIPPED)" >&2
-          errors=$((errors + 1))
-          ;;
-      esac
+      if verdict=$(extract_verdict "$json"); then
+        case "$verdict" in
+          APPROVED|CHANGES_REQUIRED|DECISION_NEEDED|SKIPPED) ;;
+          *)
+            echo "ERROR: invalid verdict value: '$verdict' (expected APPROVED|CHANGES_REQUIRED|DECISION_NEEDED|SKIPPED)" >&2
+            errors=$((errors + 1))
+            ;;
+        esac
+      else
+        echo "ERROR: validate_json_field: field '.verdict' missing or null" >&2
+        errors=$((errors + 1))
+      fi
       ;;
 
     *)

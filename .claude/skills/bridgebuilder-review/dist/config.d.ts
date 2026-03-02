@@ -32,6 +32,8 @@ export interface YamlConfig {
     loa_aware?: boolean;
     persona?: string;
     review_mode?: "two-pass" | "single-pass";
+    ecosystem_context_path?: string;
+    pass1_cache_enabled?: boolean;
 }
 export interface EnvVars {
     BRIDGEBUILDER_REPOS?: string;
@@ -39,11 +41,18 @@ export interface EnvVars {
     BRIDGEBUILDER_DRY_RUN?: string;
     BRIDGEBUILDER_REPO_ROOT?: string;
     LOA_BRIDGE_REVIEW_MODE?: string;
+    BRIDGEBUILDER_PASS1_CACHE?: string;
 }
 /**
  * Parse CLI arguments from process.argv.
  */
 export declare function parseCLIArgs(argv: string[]): CLIArgs;
+/**
+ * Load YAML config from .loa.config.yaml if it exists.
+ * Uses a simple key:value parser — no YAML library dependency.
+ * Supports scalar values and YAML list syntax (- item).
+ */
+export declare function loadYamlConfig(): Promise<YamlConfig>;
 /**
  * Resolve repoRoot: CLI > env > git auto-detect > undefined.
  * Called once per resolveConfig() invocation (Bug 3 fix — issue #309).

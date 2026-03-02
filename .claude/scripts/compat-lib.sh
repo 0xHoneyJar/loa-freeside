@@ -344,6 +344,67 @@ find_sorted_by_time() {
 }
 
 # =============================================================================
+# run_with_timeout - Portable timeout execution
+# =============================================================================
+#
+# GNU coreutils provides `timeout` on Linux. macOS doesn't include it —
+# Homebrew installs it as `gtimeout` (via coreutils package). As a last
+# resort, perl's alarm()/fork()/waitpid() emulates the same semantics.
+#
+# Unlike other compat-lib functions, detection is at *call time* (not source
+# time). This is intentional: tests need to manipulate PATH between calls
+# to exercise each fallback tier.
+#
+# Exit code 124 is the GNU timeout convention for "command timed out".
+# The perl fallback uses fork+waitpid (not bare exec) to preserve the
+# $SIG{ALRM} handler — bare exec replaces the process image, losing the
+# signal handler and producing exit 137 (SIGKILL) instead of 124.
+#
+# Arguments:
+#   $1 - Timeout in seconds
+#   $@ - Command and arguments to execute
+#
+# Exit codes:
+#   Command's exit code on normal completion
+#   124 on timeout (matches GNU timeout convention)
+#
+# Usage:
+#   run_with_timeout 30 grep -rn "pattern" ./src
+#   run_with_timeout 5 git ls-remote "$url" HEAD
+#
+run_with_timeout() {
+  local timeout_val="$1"
+  shift
+
+  # Runtime detection (not cached) to support test PATH manipulation
+  if command -v timeout &>/dev/null; then
+    timeout "$timeout_val" "$@"
+  elif command -v gtimeout &>/dev/null; then
+    gtimeout "$timeout_val" "$@"
+  elif command -v perl &>/dev/null; then
+    # fork+exec pattern preserves $SIG{ALRM} handler in the parent.
+    # bare exec would replace the process image, losing the handler.
+    # IMPORTANT: Extract timeout and fork BEFORE setting alarm —
+    # if alarm fires before fork returns, $pid is undef and
+    # kill(9, undef) sends SIGKILL to process group 0.
+    perl -e '
+      my $timeout = shift @ARGV;
+      my $pid = fork();
+      die "fork failed: $!" unless defined $pid;
+      if ($pid == 0) { exec @ARGV; die "exec failed: $!" }
+      $SIG{ALRM} = sub { kill 9, $pid; exit 124 };
+      alarm($timeout);
+      waitpid($pid, 0);
+      alarm(0);
+      exit($? >> 8);
+    ' "$timeout_val" "$@"
+  else
+    echo "WARNING: No timeout mechanism available, running without timeout" >&2
+    "$@"
+  fi
+}
+
+# =============================================================================
 # Version
 # =============================================================================
 

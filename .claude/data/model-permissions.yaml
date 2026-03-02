@@ -1,14 +1,14 @@
 # =============================================================================
-# Per-Model Capability Constraints (Hounfour v7+ CapabilityScopedTrust vocabulary)
+# Per-Model Capability Constraints (Hounfour v8+ CapabilityScopedTrust vocabulary)
 # =============================================================================
-# trust_scopes: 7-dimensional trust model per loa-hounfour v7.0.0+
+# trust_scopes: 7-dimensional trust model per loa-hounfour v8.3.1+
 # trust_level: retained as backward-compatible summary field
 #
 # Dimensions: data_access, financial, delegation, model_selection,
 #             governance, external_communication, context_access
 # Values: high | medium | none (+ limited for delegation)
 #
-# context_access (epistemic dimension, v7.0.0):
+# context_access (epistemic dimension, v7.0.0+):
 #   Sub-fields: architecture, business_logic, security, lore
 #   Values: full | summary | redacted | none
 #   Controls what knowledge a model receives in its context window.
@@ -226,6 +226,34 @@ model_permissions:
     notes: >
       Next-gen Gemini model with thinkingLevel config format. Architecture-aware
       reasoning with redacted business logic. All operational trust_scopes none.
+
+  # -------------------------------------------------------------------------
+  # Google Gemini 3.1 Pro Preview — Remote model, advanced reasoning
+  # -------------------------------------------------------------------------
+  google:gemini-3.1-pro-preview:
+    trust_level: standard
+    trust_scopes:
+      data_access: none
+      financial: none
+      delegation: none
+      model_selection: none
+      governance: none
+      external_communication: none
+      context_access:
+        architecture: full
+        business_logic: redacted
+        security: none
+        lore: full
+    execution_mode: remote_model
+    capabilities:
+      file_read: false
+      file_write: false
+      command_execution: false
+      network_access: false
+    notes: >
+      Gemini 3.1 Pro with 2x reasoning improvement over 3 Pro. Uses
+      thinkingLevel config format. Architecture-aware reasoning with
+      redacted business logic. All operational trust_scopes none.
 
   # -------------------------------------------------------------------------
   # Google Gemini 3 Flash — Remote model, fast generation

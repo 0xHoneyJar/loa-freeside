@@ -26,11 +26,11 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_EVENT_REGISTRY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source event bus
-if [[ -f "${SCRIPT_DIR}/event-bus.sh" ]]; then
-    source "${SCRIPT_DIR}/event-bus.sh"
+if [[ -f "${_EVENT_REGISTRY_DIR}/event-bus.sh" ]]; then
+    source "${_EVENT_REGISTRY_DIR}/event-bus.sh"
 fi
 
 # =============================================================================

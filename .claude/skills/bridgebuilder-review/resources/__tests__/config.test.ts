@@ -6,8 +6,12 @@ import {
   resolveRepos,
   formatEffectiveConfig,
   resolveRepoRoot,
+  loadYamlConfig,
 } from "../config.js";
 import type { CLIArgs, EnvVars, YamlConfig } from "../config.js";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 // Helper: resolve config with explicit yaml (skips file I/O)
 async function resolve(
@@ -651,5 +655,178 @@ describe("resolveConfig reviewMode precedence", () => {
     );
     assert.equal(config.reviewMode, "two-pass");
     assert.equal(provenance.reviewMode, "default");
+  });
+});
+
+// --- loadYamlConfig direct tests (cycle-048: YAML regex fix FR-2) ---
+
+describe("loadYamlConfig section parsing", () => {
+  let originalCwd: string;
+  let tempDir: string;
+
+  // Save CWD before each test and create a temp dir
+  function setupTempDir(yamlContent: string): void {
+    originalCwd = process.cwd();
+    tempDir = mkdtempSync(join(tmpdir(), "config-test-"));
+    writeFileSync(join(tempDir, ".loa.config.yaml"), yamlContent, "utf-8");
+    process.chdir(tempDir);
+  }
+
+  // Restore CWD and clean up after each test
+  function teardown(): void {
+    process.chdir(originalCwd);
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+
+  it("bridgebuilder before red_team: bridgebuilder enabled is preserved", async () => {
+    setupTempDir([
+      "bridgebuilder:",
+      "  enabled: true",
+      "  model: claude-opus-4-6",
+      "",
+      "red_team:",
+      "  enabled: false",
+      "",
+    ].join("\n"));
+    try {
+      const config = await loadYamlConfig();
+      assert.equal(config.enabled, true, "bridgebuilder enabled should be true");
+      assert.equal(config.model, "claude-opus-4-6", "model should be parsed");
+    } finally {
+      teardown();
+    }
+  });
+
+  it("bridgebuilder after red_team: bridgebuilder enabled is preserved", async () => {
+    setupTempDir([
+      "red_team:",
+      "  enabled: false",
+      "",
+      "bridgebuilder:",
+      "  enabled: true",
+      "  model: claude-opus-4-6",
+      "",
+    ].join("\n"));
+    try {
+      const config = await loadYamlConfig();
+      assert.equal(config.enabled, true, "bridgebuilder enabled should be true");
+      assert.equal(config.model, "claude-opus-4-6", "model should be parsed");
+    } finally {
+      teardown();
+    }
+  });
+
+  it("red_team with enabled: false before bridgebuilder does not disable bridgebuilder", async () => {
+    setupTempDir([
+      "red_team:",
+      "  enabled: false",
+      "  model: gpt-5",
+      "",
+      "bridgebuilder:",
+      "  enabled: true",
+      "  max_prs: 5",
+      "",
+    ].join("\n"));
+    try {
+      const config = await loadYamlConfig();
+      assert.equal(config.enabled, true, "bridgebuilder should still be enabled");
+      assert.equal(config.max_prs, 5, "max_prs should be parsed from bridgebuilder section");
+    } finally {
+      teardown();
+    }
+  });
+
+  it("bridgebuilder_design_review: is NOT captured by bridgebuilder: regex", async () => {
+    setupTempDir([
+      "bridgebuilder_design_review:",
+      "  enabled: false",
+      "  model: gpt-5",
+      "",
+      "bridgebuilder:",
+      "  enabled: true",
+      "  model: claude-opus-4-6",
+      "",
+    ].join("\n"));
+    try {
+      const config = await loadYamlConfig();
+      // The bridgebuilder: section should be parsed, not bridgebuilder_design_review:
+      assert.equal(config.enabled, true, "should parse bridgebuilder: not bridgebuilder_design_review:");
+      assert.equal(config.model, "claude-opus-4-6", "model should come from bridgebuilder: section");
+    } finally {
+      teardown();
+    }
+  });
+
+  it("bridgebuilder_design_review: after bridgebuilder: does not bleed into bridgebuilder section", async () => {
+    setupTempDir([
+      "bridgebuilder:",
+      "  enabled: true",
+      "  model: claude-opus-4-6",
+      "",
+      "bridgebuilder_design_review:",
+      "  enabled: false",
+      "  model: gpt-5",
+      "",
+    ].join("\n"));
+    try {
+      const config = await loadYamlConfig();
+      assert.equal(config.enabled, true, "bridgebuilder enabled should be true");
+      assert.equal(config.model, "claude-opus-4-6", "model should be from bridgebuilder: section only");
+    } finally {
+      teardown();
+    }
+  });
+
+  it("section ordering independence: bridgebuilder values consistent regardless of position", async () => {
+    // Config with bridgebuilder first
+    setupTempDir([
+      "bridgebuilder:",
+      "  enabled: true",
+      "  model: claude-opus-4-6",
+      "  max_prs: 20",
+      "",
+      "red_team:",
+      "  enabled: true",
+      "",
+    ].join("\n"));
+    let configFirst: Awaited<ReturnType<typeof loadYamlConfig>>;
+    try {
+      configFirst = await loadYamlConfig();
+    } finally {
+      teardown();
+    }
+
+    // Config with bridgebuilder last
+    setupTempDir([
+      "red_team:",
+      "  enabled: true",
+      "",
+      "bridgebuilder:",
+      "  enabled: true",
+      "  model: claude-opus-4-6",
+      "  max_prs: 20",
+      "",
+    ].join("\n"));
+    let configLast: Awaited<ReturnType<typeof loadYamlConfig>>;
+    try {
+      configLast = await loadYamlConfig();
+    } finally {
+      teardown();
+    }
+
+    assert.deepEqual(configFirst, configLast, "bridgebuilder config should be identical regardless of section position");
+  });
+
+  it("returns empty config when .loa.config.yaml does not exist", async () => {
+    originalCwd = process.cwd();
+    tempDir = mkdtempSync(join(tmpdir(), "config-test-"));
+    // No .loa.config.yaml written
+    process.chdir(tempDir);
+    try {
+      const config = await loadYamlConfig();
+      assert.deepEqual(config, {}, "should return empty object when file missing");
+    } finally {
+      teardown();
+    }
   });
 });

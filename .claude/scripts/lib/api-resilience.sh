@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_API_RESILIENCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Configuration (can be overridden via environment or .loa.config.yaml)
 API_MAX_RETRIES="${LOA_API_MAX_RETRIES:-3}"
@@ -25,8 +25,8 @@ BUDGET_STATE_FILE="${LOA_BUDGET_STATE_FILE:-grimoires/loa/a2a/compound/.budget-s
 DEAD_LETTER_FILE="${LOA_DEAD_LETTER_FILE:-grimoires/loa/a2a/compound/dead-letter.jsonl}"
 
 # Source common utilities if available
-if [[ -f "${SCRIPT_DIR}/common.sh" ]]; then
-    source "${SCRIPT_DIR}/common.sh"
+if [[ -f "${_API_RESILIENCE_DIR}/common.sh" ]]; then
+    source "${_API_RESILIENCE_DIR}/common.sh"
 fi
 
 # Logging functions

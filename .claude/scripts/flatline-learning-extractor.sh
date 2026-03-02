@@ -41,6 +41,11 @@ if [[ -f "$LIB_DIR/schema-validator.sh" ]]; then
     source "$LIB_DIR/schema-validator.sh"
 fi
 
+# Source security library (for write_curl_auth_config)
+if [[ -f "$SCRIPT_DIR/lib-security.sh" ]]; then
+    source "$SCRIPT_DIR/lib-security.sh"
+fi
+
 # =============================================================================
 # Configuration
 # =============================================================================
@@ -304,8 +309,11 @@ EOF
     else
         # SEC-AUDIT SEC-HIGH-01: Use curl config to avoid exposing API key in process list
         local _curl_cfg
-        _curl_cfg=$(mktemp) && chmod 600 "$_curl_cfg"
-        printf 'header = "Content-Type: application/json"\nheader = "Authorization: Bearer %s"\n' "${OPENAI_API_KEY:-}" > "$_curl_cfg"
+        _curl_cfg=$(write_curl_auth_config "Authorization" "Bearer ${OPENAI_API_KEY:-}") || {
+            log_error "Failed to create secure curl config"
+            return 4
+        }
+        printf 'header = "Content-Type: application/json"\n' >> "$_curl_cfg"
         response=$(curl -s --max-time 30 \
             -X POST "${OPENAI_API_BASE:-https://api.openai.com}/v1/chat/completions" \
             --config "$_curl_cfg" \

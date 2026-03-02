@@ -43,6 +43,14 @@ if [[ "${_LIB_SECURITY_LOADED:-}" != "true" ]]; then
   unset _lib_dir
 fi
 
+# Ensure normalize-json.sh is loaded (for extract_verdict)
+if ! declare -f extract_verdict &>/dev/null; then
+  _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # shellcheck source=lib/normalize-json.sh
+  source "$_lib_dir/lib/normalize-json.sh"
+  unset _lib_dir
+fi
+
 # =============================================================================
 # Constants
 # =============================================================================
@@ -209,10 +217,11 @@ call_api() {
 
     # Security: Use curl config file to avoid exposing API key in process list (SHELL-001)
     local curl_config
-    curl_config=$(mktemp)
-    chmod 600 "$curl_config"
-    printf 'header = "Content-Type: application/json"\n' > "$curl_config"
-    printf 'header = "Authorization: Bearer %s"\n' "${OPENAI_API_KEY}" >> "$curl_config"
+    curl_config=$(write_curl_auth_config "Authorization" "Bearer ${OPENAI_API_KEY}") || {
+      echo "ERROR: Failed to create secure curl config" >&2
+      return 4
+    }
+    printf 'header = "Content-Type: application/json"\n' >> "$curl_config"
 
     # Write payload to temp file to avoid bash argument size limits (SHELL-002)
     local payload_file
@@ -253,7 +262,16 @@ call_api() {
         break
         ;;
       401)
-        echo "ERROR: Authentication failed - check OPENAI_API_KEY" >&2
+        # Surface specific API error message if available (FR-4)
+        local _api_err_msg=""
+        _api_err_msg=$(echo "$response" | jq -r '.error.message // empty' 2>/dev/null) || true
+        if [[ -n "$_api_err_msg" ]]; then
+          local _redacted_msg
+          _redacted_msg=$(redact_log_output "$_api_err_msg")
+          echo "ERROR: Authentication failed — $_redacted_msg" >&2
+        else
+          echo "ERROR: Authentication failed - check OPENAI_API_KEY" >&2
+        fi
         return 4
         ;;
       429)
@@ -313,10 +331,9 @@ call_api() {
     return 5
   fi
 
-  # Validate verdict field
+  # Validate verdict field (supports .verdict and .overall_verdict fallback)
   local verdict
-  verdict=$(echo "$content_response" | jq -r '.verdict // empty')
-  if [[ -z "$verdict" ]]; then
+  if ! verdict=$(extract_verdict "$content_response"); then
     echo "ERROR: Response missing 'verdict' field" >&2
     echo "[gpt-review-api] Response content: $content_response" >&2
     return 5

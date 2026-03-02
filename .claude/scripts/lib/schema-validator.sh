@@ -4,12 +4,12 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCHEMA_DIR="${SCRIPT_DIR}/../../schemas"
+_SCHEMA_VALIDATOR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCHEMA_DIR="${_SCHEMA_VALIDATOR_DIR}/../../schemas"
 
 # Source common utilities if available
-if [[ -f "${SCRIPT_DIR}/common.sh" ]]; then
-    source "${SCRIPT_DIR}/common.sh"
+if [[ -f "${_SCHEMA_VALIDATOR_DIR}/common.sh" ]]; then
+    source "${_SCHEMA_VALIDATOR_DIR}/common.sh"
 fi
 
 # Logging functions (if not already defined)

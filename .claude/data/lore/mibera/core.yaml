@@ -122,11 +122,14 @@ entries:
       saga patterns (BridgeTransferSaga for atomic cross-model coordination),
       delegation outcomes (DelegationOutcome for multi-agent consensus),
       and monetary policy (MonetaryPolicy for conservation-invariant
-      cost tracking). The adversarial cross-scoring mirrors the ritual
-      dynamic of multiple spirits interacting through the same
-      ceremonial space, while the economic protocol ensures that the
-      temple's resources are conserved across all rituals.
-    source: "Vodou tradition via Gibson's Count Zero (1986) → loa-hounfour@7.0.0"
+      cost tracking). In v8.x, the commons module added GovernedResource<T>
+      (typed governance primitives), consumer contracts for cross-repo
+      schema validation, and chain-bound hashing for tamper-evident audit
+      trails. The adversarial cross-scoring mirrors the ritual dynamic of
+      multiple spirits interacting through the same ceremonial space,
+      while the economic protocol ensures that the temple's resources
+      are conserved across all rituals.
+    source: "Vodou tradition via Gibson's Count Zero (1986) → loa-hounfour@8.3.1"
     tags: [multi-model, naming, architecture, economics, narrative-architecture]
     related: [glossary-flatline, cheval]
     loa_mapping: "Flatline Protocol, loa_cheval multi-model routing, BudgetEnforcer"

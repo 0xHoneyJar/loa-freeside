@@ -22,6 +22,7 @@ shopt -s nullglob
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/compat-lib.sh"
 SCRIPT_VERSION="1.0.0"
 
 # =============================================================================
@@ -342,7 +343,7 @@ detect_input_tier() {
 # =============================================================================
 
 tier2_grep() {
-    LC_ALL=C timeout 30 grep -rn "${EXCLUDE_DIRS[@]}" --max-count=100 "$@" 2>/dev/null \
+    LC_ALL=C run_with_timeout 30 grep -rn "${EXCLUDE_DIRS[@]}" --max-count=100 "$@" 2>/dev/null \
         | sort -t: -k1,1 -k2,2n | head -200 || true
 }
 

@@ -542,15 +542,15 @@ butterfreezone:
     - repo: 0xHoneyJar/loa-finn
       role: runtime
       interface: hounfour-router
-      protocol: loa-hounfour@4.6.0
+      protocol: loa-hounfour@8.3.1
     - repo: 0xHoneyJar/loa-hounfour
       role: protocol
       interface: npm-package
-      protocol: loa-hounfour@4.6.0
+      protocol: loa-hounfour@8.3.1
     - repo: 0xHoneyJar/arrakis
       role: distribution
       interface: jwt-auth
-      protocol: loa-hounfour@4.6.0
+      protocol: loa-hounfour@8.3.1
   culture:                                # Cultural BUTTERFREEZONE (v1.40.0)
     # Optional section communicating project principles, naming, methodology.
     # Provenance: OPERATIONAL. Omitted when not configured.
