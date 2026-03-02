@@ -47,6 +47,11 @@ resource "aws_security_group" "pgbouncer" {
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-pgbouncer-sg"
   })
+
+  lifecycle {
+    create_before_destroy = true
+    ignore_changes        = [ingress, egress]
+  }
 }
 
 # Update RDS security group to allow PgBouncer
@@ -73,7 +78,7 @@ resource "aws_ecs_task_definition" "pgbouncer" {
   container_definitions = jsonencode([
     {
       name      = "pgbouncer"
-      image     = "edoburu/pgbouncer:1.21.0"
+      image     = "edoburu/pgbouncer:latest"
       essential = true
 
       portMappings = [
@@ -128,14 +133,18 @@ resource "aws_ecs_task_definition" "pgbouncer" {
         {
           name  = "AUTH_TYPE"
           value = "md5"
+        },
+        {
+          name  = "DB_NAME"
+          value = "arrakis"
+        },
+        {
+          name  = "LISTEN_PORT"
+          value = "6432"
         }
       ]
 
       secrets = [
-        {
-          name      = "DATABASE_URL"
-          valueFrom = "${aws_secretsmanager_secret.db_credentials.arn}:url::"
-        },
         {
           name      = "DB_HOST"
           valueFrom = "${aws_secretsmanager_secret.db_credentials.arn}:host::"
@@ -222,6 +231,39 @@ resource "aws_service_discovery_service" "pgbouncer" {
   health_check_custom_config {
     failure_threshold = 1
   }
+}
+
+# PgBouncer execution role needs access to database secrets
+resource "aws_iam_role_policy" "ecs_execution_pgbouncer_secrets" {
+  name = "${local.name_prefix}-ecs-execution-pgbouncer-secrets"
+  role = aws_iam_role.ecs_execution.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "PgBouncerSecrets"
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = [
+          aws_secretsmanager_secret.db_credentials.arn
+        ]
+      },
+      {
+        Sid    = "PgBouncerKmsDecrypt"
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt",
+          "kms:DescribeKey"
+        ]
+        Resource = [
+          aws_kms_key.secrets.arn
+        ]
+      }
+    ]
+  })
 }
 
 # Store PgBouncer connection info in Secrets Manager

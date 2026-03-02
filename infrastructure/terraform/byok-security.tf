@@ -63,7 +63,7 @@ resource "aws_networkfirewall_rule_group" "byok_domain_allowlist" {
     }
 
     stateful_rule_options {
-      capacity = 100
+      rule_order = "STRICT_ORDER"
     }
   }
 
@@ -83,6 +83,7 @@ resource "aws_networkfirewall_firewall_policy" "byok" {
 
     stateful_rule_group_reference {
       resource_arn = aws_networkfirewall_rule_group.byok_domain_allowlist[0].arn
+      priority     = 1
     }
 
     # Default action for stateful rules: drop and alert on non-allowlisted domains
@@ -158,9 +159,10 @@ resource "aws_route_table" "byok_proxy" {
   vpc_id = module.vpc.vpc_id
 
   # Route internet-bound traffic through Network Firewall
+  # Use the first AZ's firewall endpoint (firewall spans multiple AZs)
   route {
     cidr_block      = "0.0.0.0/0"
-    vpc_endpoint_id = one([for ep in aws_networkfirewall_firewall.byok[0].firewall_status[0].sync_states : ep.attachment[0].endpoint_id])
+    vpc_endpoint_id = [for ep in aws_networkfirewall_firewall.byok[0].firewall_status[0].sync_states : ep.attachment[0].endpoint_id][0]
   }
 
   tags = merge(local.common_tags, {

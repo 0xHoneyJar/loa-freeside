@@ -44,8 +44,7 @@ data "aws_iam_policy_document" "finn_kms_policy" {
     principals {
       type = "AWS"
       identifiers = [
-        "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/github-actions-terraform",
-        "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/admin"
+        "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
       ]
     }
     actions = [
@@ -84,6 +83,26 @@ data "aws_iam_policy_document" "finn_kms_policy" {
     resources = ["*"]
   }
 
+  # Allow key usage (encrypt/decrypt) via IAM delegation
+  statement {
+    sid    = "AllowKeyUsage"
+    effect = "Allow"
+    principals {
+      type = "AWS"
+      identifiers = [
+        "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+      ]
+    }
+    actions = [
+      "kms:Encrypt",
+      "kms:Decrypt",
+      "kms:ReEncrypt*",
+      "kms:GenerateDataKey*",
+      "kms:DescribeKey"
+    ]
+    resources = ["*"]
+  }
+
   # Allow key grant creation for AWS services (explicit roles, no root — SKP-002)
   statement {
     sid    = "AllowGrantsForAWSServices"
@@ -91,8 +110,7 @@ data "aws_iam_policy_document" "finn_kms_policy" {
     principals {
       type = "AWS"
       identifiers = [
-        "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/github-actions-terraform",
-        "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/admin"
+        "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
       ]
     }
     actions   = ["kms:CreateGrant"]

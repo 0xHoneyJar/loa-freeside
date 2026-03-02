@@ -130,6 +130,28 @@ resource "aws_iam_role_policy" "ecs_execution_dixie_secrets" {
           aws_secretsmanager_secret.dixie_db_url.arn,
           aws_secretsmanager_secret.redis_credentials.arn
         ]
+      },
+      {
+        Sid    = "DixieKmsDecrypt"
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt",
+          "kms:DescribeKey"
+        ]
+        Resource = [
+          aws_kms_key.secrets.arn
+        ]
+      },
+      {
+        Sid    = "DixieLegacySSMParams"
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameters",
+          "ssm:GetParameter"
+        ]
+        Resource = [
+          "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/dixie/armitage/*"
+        ]
       }
     ]
   })
@@ -211,7 +233,7 @@ resource "aws_secretsmanager_secret" "dixie_db_url" {
 resource "aws_security_group" "dixie" {
   name_prefix = "${local.name_prefix}-dixie-"
   vpc_id      = module.vpc.vpc_id
-  description = "Security group for loa-dixie — inbound from ALB and finn"
+  description = "Security group for loa-dixie - inbound from ALB and finn"
 
   # Ingress from ALB on port 3001 (public traffic)
   ingress {
@@ -238,6 +260,15 @@ resource "aws_security_group" "dixie" {
     to_port         = 6432
     protocol        = "tcp"
     security_groups = [aws_security_group.pgbouncer.id]
+  }
+
+  # Egress to RDS directly (dixie uses its own DB user, not PgBouncer)
+  egress {
+    description     = "PostgreSQL direct to RDS"
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+    security_groups = [aws_security_group.rds.id]
   }
 
   # Egress to Redis (ElastiCache)
@@ -278,6 +309,17 @@ resource "aws_security_group_rule" "pgbouncer_from_dixie" {
   security_group_id        = aws_security_group.pgbouncer.id
   source_security_group_id = aws_security_group.dixie.id
   description              = "PgBouncer ingress from loa-dixie"
+}
+
+# Allow RDS to accept inbound from dixie (direct connection)
+resource "aws_security_group_rule" "rds_from_dixie" {
+  type                     = "ingress"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.rds.id
+  source_security_group_id = aws_security_group.dixie.id
+  description              = "PostgreSQL from loa-dixie (direct)"
 }
 
 # Allow Redis to accept inbound from dixie
@@ -334,7 +376,12 @@ resource "aws_ecs_task_definition" "dixie" {
         { name = "DATABASE_URL", valueFrom = aws_secretsmanager_secret.dixie_db_url.arn },
         { name = "REDIS_URL", valueFrom = "${aws_secretsmanager_secret.redis_credentials.arn}:url::" },
         { name = "ES256_PRIVATE_KEY", valueFrom = aws_secretsmanager_secret.dixie_es256_private_key.arn },
-        { name = "ADMIN_KEY", valueFrom = aws_secretsmanager_secret.dixie_admin_key.arn }
+        { name = "DIXIE_ADMIN_KEY", valueFrom = aws_secretsmanager_secret.dixie_admin_key.arn },
+        # Legacy SSM parameters (migrated from dixie-armitage)
+        { name = "FINN_URL", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/dixie/armitage/FINN_URL" },
+        { name = "FINN_WS_URL", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/dixie/armitage/FINN_WS_URL" },
+        { name = "DIXIE_CORS_ORIGINS", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/dixie/armitage/DIXIE_CORS_ORIGINS" },
+        { name = "DIXIE_JWT_PRIVATE_KEY", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/dixie/armitage/DIXIE_JWT_PRIVATE_KEY" }
       ]
 
       logConfiguration = {

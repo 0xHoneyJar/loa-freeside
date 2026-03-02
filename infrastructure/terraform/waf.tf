@@ -19,7 +19,7 @@
 
 resource "aws_wafv2_web_acl" "main" {
   name        = "${local.name_prefix}-waf"
-  description = "WAF for ${local.name_prefix} ALB — webhook DoS protection"
+  description = "WAF for ${local.name_prefix} ALB - webhook DoS protection"
   scope       = "REGIONAL"
 
   default_action {

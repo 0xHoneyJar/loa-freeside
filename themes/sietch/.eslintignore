@@ -1,0 +1,11 @@
+dist
+node_modules
+*.cjs
+vitest.config.ts
+vitest.workspace.ts
+src/ui/**
+src/test-utils/**
+src/**/__tests__/**
+src/**/*.test.ts
+src/**/*.spec.ts
+trigger/**

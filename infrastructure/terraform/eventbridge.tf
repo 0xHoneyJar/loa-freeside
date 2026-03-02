@@ -150,8 +150,8 @@ resource "aws_cloudwatch_event_target" "conservation_sweep" {
     launch_type         = "FARGATE"
 
     network_configuration {
-      subnets          = var.private_subnet_ids
-      security_groups  = [aws_security_group.ecs.id]
+      subnets          = module.vpc.private_subnets
+      security_groups  = [aws_security_group.ecs_tasks.id]
       assign_public_ip = false
     }
   }
@@ -228,8 +228,8 @@ resource "aws_cloudwatch_event_target" "lot_expiry_sweep" {
     launch_type         = "FARGATE"
 
     network_configuration {
-      subnets          = var.private_subnet_ids
-      security_groups  = [aws_security_group.ecs.id]
+      subnets          = module.vpc.private_subnets
+      security_groups  = [aws_security_group.ecs_tasks.id]
       assign_public_ip = false
     }
   }
@@ -269,7 +269,7 @@ resource "aws_ecs_task_definition" "nowpayments_reconciliation" {
       secrets = [
         { name = "DATABASE_URL", valueFrom = "${aws_secretsmanager_secret.db_credentials.arn}:url::" },
         { name = "REDIS_URL", valueFrom = "${aws_secretsmanager_secret.redis_credentials.arn}:url::" },
-        { name = "NOWPAYMENTS_API_KEY", valueFrom = "${aws_secretsmanager_secret.nowpayments_credentials.arn}:api_key::" }
+        { name = "NOWPAYMENTS_API_KEY", valueFrom = aws_secretsmanager_secret.finn_nowpayments_api_key.arn }
       ]
 
       logConfiguration = {
@@ -311,8 +311,8 @@ resource "aws_cloudwatch_event_target" "nowpayments_reconciliation" {
     launch_type         = "FARGATE"
 
     network_configuration {
-      subnets          = var.private_subnet_ids
-      security_groups  = [aws_security_group.ecs.id]
+      subnets          = module.vpc.private_subnets
+      security_groups  = [aws_security_group.ecs_tasks.id]
       assign_public_ip = false
     }
   }

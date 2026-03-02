@@ -373,23 +373,8 @@ variable "dixie_max_count" {
   default     = 4
 }
 
-variable "autoscaling_cpu_target" {
-  description = "Target CPU utilization percentage for auto-scaling"
-  type        = number
-  default     = 70
-}
-
-variable "autoscaling_scale_in_cooldown" {
-  description = "Scale-in cooldown period in seconds"
-  type        = number
-  default     = 300
-}
-
-variable "autoscaling_scale_out_cooldown" {
-  description = "Scale-out cooldown period in seconds"
-  type        = number
-  default     = 60
-}
+# autoscaling_cpu_target, autoscaling_scale_in_cooldown, and autoscaling_scale_out_cooldown
+# are declared in autoscaling.tf (canonical location)
 
 # SNS Alarm Topic
 variable "sns_alarm_topic_arn" {

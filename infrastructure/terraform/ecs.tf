@@ -791,6 +791,11 @@ resource "aws_security_group" "ecs_tasks" {
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-ecs-tasks-sg"
   })
+
+  lifecycle {
+    create_before_destroy = true
+    ignore_changes        = [ingress, egress]
+  }
 }
 
 # ECR Repository

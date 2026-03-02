@@ -127,6 +127,28 @@ resource "aws_iam_role_policy" "ecs_execution_finn_secrets" {
           aws_secretsmanager_secret.finn_nowpayments_api_key.arn,
           aws_secretsmanager_secret.finn_nowpayments_ipn_secret.arn
         ]
+      },
+      {
+        Sid    = "FinnKmsDecrypt"
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt",
+          "kms:DescribeKey"
+        ]
+        Resource = [
+          aws_kms_key.secrets.arn
+        ]
+      },
+      {
+        Sid    = "FinnLegacySSMParams"
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameters",
+          "ssm:GetParameter"
+        ]
+        Resource = [
+          "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/loa-finn/armitage/*"
+        ]
       }
     ]
   })
@@ -207,7 +229,7 @@ resource "aws_secretsmanager_secret" "finn_nowpayments_ipn_secret" {
 resource "aws_security_group" "finn" {
   name_prefix = "${local.name_prefix}-finn-"
   vpc_id      = module.vpc.vpc_id
-  description = "Security group for loa-finn — inbound only from loa-freeside"
+  description = "Security group for loa-finn - inbound only from loa-freeside"
 
   # Inbound from loa-freeside ECS tasks on port 3000
   ingress {
@@ -264,6 +286,7 @@ resource "aws_security_group" "finn" {
 
   lifecycle {
     create_before_destroy = true
+    ignore_changes        = [ingress, egress]
   }
 }
 
@@ -380,7 +403,18 @@ resource "aws_ecs_task_definition" "finn" {
         { name = "REDIS_URL", valueFrom = "${aws_secretsmanager_secret.redis_credentials.arn}:url::" },
         { name = "S2S_ES256_PRIVATE_KEY", valueFrom = aws_secretsmanager_secret.finn_s2s_es256_private_key.arn },
         { name = "NOWPAYMENTS_API_KEY", valueFrom = aws_secretsmanager_secret.finn_nowpayments_api_key.arn },
-        { name = "NOWPAYMENTS_IPN_SECRET", valueFrom = aws_secretsmanager_secret.finn_nowpayments_ipn_secret.arn }
+        { name = "NOWPAYMENTS_IPN_SECRET", valueFrom = aws_secretsmanager_secret.finn_nowpayments_ipn_secret.arn },
+        # Legacy SSM parameters (migrated from loa-finn-armitage)
+        { name = "ANTHROPIC_API_KEY", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/loa-finn/armitage/ANTHROPIC_API_KEY" },
+        { name = "FINN_S2S_SECRET", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/loa-finn/armitage/FINN_S2S_SECRET" },
+        { name = "BASE_RPC_URL", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/loa-finn/armitage/BASE_RPC_URL" },
+        { name = "TREASURY_ADDRESS", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/loa-finn/armitage/TREASURY_ADDRESS" },
+        { name = "R2_BUCKET", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/loa-finn/armitage/R2_BUCKET" },
+        { name = "JWT_KMS_KEY_ID", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/loa-finn/armitage/JWT_KMS_KEY_ID" },
+        { name = "CHEVAL_HMAC_SECRET", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/loa-finn/armitage/CHEVAL_HMAC_SECRET" },
+        { name = "FINN_CALIBRATION_BUCKET_NAME", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/loa-finn/armitage/FINN_CALIBRATION_BUCKET_NAME" },
+        { name = "FINN_CALIBRATION_HMAC_KEY", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/loa-finn/armitage/FINN_CALIBRATION_HMAC_KEY" },
+        { name = "FINN_METRICS_BEARER_TOKEN", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/loa-finn/armitage/FINN_METRICS_BEARER_TOKEN" }
       ]
 
       logConfiguration = {

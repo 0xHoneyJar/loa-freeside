@@ -11,6 +11,33 @@
 # Alarms
 # -----------------------------------------------------------------------------
 
+# Health check failure — no healthy targets behind ALB (migrated from alerting.tf)
+resource "aws_cloudwatch_metric_alarm" "dixie_health_check_failure" {
+  alarm_name          = "${local.name_prefix}-dixie-health-check-failure"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "HealthyHostCount"
+  namespace           = "AWS/ApplicationELB"
+  period              = 60
+  statistic           = "Minimum"
+  threshold           = 1
+  alarm_description   = "Dixie service has no healthy targets — service is DOWN."
+  treat_missing_data  = "breaching"
+
+  dimensions = {
+    TargetGroup  = aws_lb_target_group.dixie.arn_suffix
+    LoadBalancer = aws_lb.main.arn_suffix
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+
+  tags = merge(local.common_tags, {
+    Service  = "dixie"
+    Severity = "critical"
+  })
+}
+
 resource "aws_cloudwatch_metric_alarm" "dixie_cpu_high" {
   alarm_name          = "${local.name_prefix}-dixie-cpu-high"
   comparison_operator = "GreaterThanThreshold"

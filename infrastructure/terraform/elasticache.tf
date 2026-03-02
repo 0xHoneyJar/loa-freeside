@@ -18,6 +18,11 @@ resource "aws_security_group" "redis" {
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-redis-sg"
   })
+
+  lifecycle {
+    create_before_destroy = true
+    ignore_changes        = [ingress, egress]
+  }
 }
 
 resource "aws_elasticache_replication_group" "main" {

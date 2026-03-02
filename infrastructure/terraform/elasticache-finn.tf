@@ -60,15 +60,8 @@ resource "aws_elasticache_parameter_group" "finn_redis" {
     value = "noeviction"
   }
 
-  parameter {
-    name  = "appendonly"
-    value = "yes"
-  }
-
-  parameter {
-    name  = "appendfsync"
-    value = "everysec"
-  }
+  # appendfsync is not modifiable on ElastiCache replication groups
+  # (managed by AWS based on cluster config)
 }
 
 resource "aws_security_group" "finn_redis" {

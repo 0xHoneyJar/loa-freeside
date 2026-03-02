@@ -1,41 +1,31 @@
 {
   "verdict": "APPROVED",
-  "summary": "All previously blocking dependency/feasibility and traceability gaps appear to be addressed with concrete tasks and measurable acceptance criteria, and no new blocking issues were introduced.",
+  "summary": "All five previously blocking Sprint 6 issues are addressed with concrete verification steps and acceptable scope/compatibility rationale, and no new truly blocking problems were introduced.",
   "previous_issues_status": [
     {
-      "original_issue": "Missing explicit inventory of canonical identifiers prior to stateful imports, risking forced replacement/drift and blocking 0-change plan",
-      "status": "fixed",
-      "notes": "Task 1.0 now inventories all key identifiers and explicitly requires 1.1 HCL to use exact values, aligning pre-import and post-import expectations."
+      "original_issue": "Redeploy scope omitted Dixie (risk of mixed protocol behavior across services)",
+      "status": "rejected_with_valid_reason",
+      "notes": "Sprint 6 now explicitly states Dixie is a separate repo/image with its own dependency tree and is out-of-scope for this monorepo pin; the plan also notes verification via ECR. Given that constraint, limiting rebuild/redeploy to Freeside API + Finn is reasonable and no longer a blocker for this sprint plan."
     },
     {
-      "original_issue": "Bootstrap Redis auth script dependency unclear and idempotency underspecified (create vs update secret; when to run relative to import)",
+      "original_issue": "Assumed deep import path for canonical advisory lock helper could fail due to exports map/dist layout",
       "status": "fixed",
-      "notes": "Task 1.2 now depends on replication group existing and being imported, specifies required inputs, create-or-update behavior, and explicit idempotency/no-op logic."
+      "notes": "Task 6.2 now requires a pre-check of the installed package’s `exports` map and `dist/` layout and explicitly allows falling back to a supported barrel/top-level export path before changing code. AC includes `tsc -b` passing, which closes the original build-break risk."
     },
     {
-      "original_issue": "Health gates lacked a defined metric contract; alarms alone don’t guarantee deploy-ring.sh can compute/validate p99 and 5xx",
-      "status": "fixed",
-      "notes": "Task 2.2 defines metric sources and requires non-empty CloudWatch datapoints, plus documents the contract; deploy-ring.sh is correctly dependent on 2.2."
+      "original_issue": "No staging backward-compat verification for domain-tag sanitization hash change (risk to audit chain integrity)",
+      "status": "rejected_with_valid_reason",
+      "notes": "The plan documents staging is freshly deployed with no pre-existing audit trail data, so there is nothing historical to verify in staging. It also asserts epoch-boundary backward compatibility is covered via conformance vectors. Given the stated environment condition (fresh staging), the original staging-data verification requirement is not applicable for this sprint’s staging deploy."
     },
     {
-      "original_issue": "Invalid DNS validation using literal wildcard dig query",
+      "original_issue": "GitHub tag pinning without lockfile/commit verification could be non-reproducible",
       "status": "fixed",
-      "notes": "Task 3.4 now queries a concrete name (test.agents...) and includes additional authoritative checks for agents and ACME delegation."
+      "notes": "Task 6.1 now requires committing the updated lockfile, verifying the resolved SHA in the lockfile matches the v8.3.1 tag commit, and validating `npm ci` from a clean workspace. That addresses reproducibility and drift concerns for GitHub dependencies."
     },
     {
-      "original_issue": "Registrar (Gandi) access not confirmed early, risking late-stage cutover/DNSSEC blockage",
+      "original_issue": "ECS redeploy verification only checked health/running count; could still run old image if task definition not updated",
       "status": "fixed",
-      "notes": "Task 4.0 explicitly verifies NS edit capability, record export, DS management, and documents SLA and access/MFA confirmation."
-    },
-    {
-      "original_issue": "Flatline findings SKP/IMP coverage not fully traceable (missing mappings for several IMP items)",
-      "status": "fixed",
-      "notes": "Traceability table now maps SKP-001..004 and IMP-001..010, including IMP-003/005/006/010, and states none are out of scope."
-    },
-    {
-      "original_issue": "Risk mitigations referenced inconsistent/possibly incorrect SDD sections for import workflow and rollback",
-      "status": "fixed",
-      "notes": "Risk table now includes an explicit SDD Reference column with normalized §4.2/§4.3/§4.4 references and aligns with Sprint 1 import AC."
+      "notes": "Tasks 6.6/6.7 now include immutable SHA tagging, registering new task definition revisions pointing at the new digest/tag, updating services to the new revision, and verifying the running task’s image digest via `describe-tasks` (plus startup log confirmation). This resolves the ‘healthy but old image’ failure mode."
     }
   ],
   "new_blocking_concerns": [],

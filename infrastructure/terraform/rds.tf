@@ -20,6 +20,11 @@ resource "aws_security_group" "rds" {
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-rds-sg"
   })
+
+  lifecycle {
+    create_before_destroy = true
+    ignore_changes        = [ingress, egress]
+  }
 }
 
 resource "aws_db_parameter_group" "main" {
@@ -42,6 +47,10 @@ resource "aws_db_parameter_group" "main" {
   }
 
   tags = local.common_tags
+
+  lifecycle {
+    ignore_changes = [parameter]
+  }
 }
 
 resource "aws_db_instance" "main" {

@@ -3,8 +3,9 @@
 > **Cycle**: cycle-046
 > **PRD**: `grimoires/loa/prd.md` (GPT-APPROVED, 4 iter; Flatline: 1 HIGH + 2 BLOCKER + 7 DISPUTED)
 > **SDD**: `grimoires/loa/sdd.md` (GPT-APPROVED, 4 iter; Flatline: 4 BLOCKER + 10 DISPUTED)
-> **Delivery**: 5 sprints (global IDs: 380-384)
-> **Team**: 1 platform engineer (solo)
+> **Sprint Plan**: GPT-APPROVED (3 iter, sprints 1-5; 2 iter, sprint 6); Flatline: 4 HIGH + 6 BLOCKER (3-model: Opus 4.6 + GPT-5.3-Codex + Gemini 2.5 Pro)
+> **Delivery**: 6 sprints (global IDs: 380-385)
+> **Team**: 1 platform engineer (solo; named approvers pre-assigned per Change Approval Protocol — SKP-001)
 > **Sprint Duration**: ~1 day each (infrastructure sprints, not application code)
 > **Critical Path** (IMP-003): Sprint 1 (import) → Sprint 2 (pipeline) → Sprint 3 (DNS) → Sprint 4 (validation) → Sprint 5 (hardening). Sprint 1 is the longest (import verification is serial). If Sprint 1 exceeds 1 day, subsequent sprints shift — build 0.5-day buffer after Sprint 1 and Sprint 4 (highest-risk sprints).
 
@@ -19,6 +20,7 @@
 | 3 | 382 | DNS Module | FR-4 | 13-file DNS root, zone + records |
 | 4 | 383 | Migration Validation & Cutover Prep | FR-5, SKP-001 | Validation scripts, cutover playbook |
 | 5 | 384 | Hardening & Drift Detection | FR-6, IMP-004 | DNSSEC, drift check, DMARC ramp |
+| 6 | 385 | Hounfour v8.3.1 Upgrade + Docker Redeploy | Issues #108, #110 | Pin update, conformance fix, ECR push, ECS redeploy |
 
 ---
 
@@ -26,7 +28,7 @@
 
 Before sprint execution begins, verify these prerequisites (IMP-005):
 
-- [ ] **IAM permissions**: Confirm the executing role has `terraform:*`, `elasticache:*`, `dynamodb:*`, `s3:*`, `kms:*`, `route53:*`, `ecs:*`, `ssm:*`, `cloudwatch:*`, `logs:*`, `secretsmanager:*`, `ec2:CreateVpcEndpoint` — run `aws sts get-caller-identity` and validate role ARN
+- [ ] **IAM permissions**: Confirm the executing role has `terraform:*`, `elasticache:*`, `dynamodb:*`, `s3:*`, `kms:*`, `route53:*`, `ecs:*`, `ssm:*`, `cloudwatch:*`, `logs:*`, `secretsmanager:*`, `ec2:CreateVpcEndpoint` — run `aws sts get-caller-identity` and validate role ARN. **SKP-004**: Use time-limited session credentials; prefer task-scoped role assumptions where feasible
 - [ ] **State backend access**: `terraform init` succeeds for both compute and DNS roots
 - [ ] **Registrar access**: Gandi login confirmed (covered in Task 4.0 but verify credentials exist early)
 - [ ] **Secret handling protocol** (IMP-008): `.gitignore` includes `*.tfstate`, `backup-*.tfstate`, `*.tfplan`; no credential values in commit messages or PR descriptions; backup files stored in encrypted S3 bucket (not local)
@@ -674,3 +676,79 @@ This sprint plan is complete when:
 - **File**: `infrastructure/terraform/agent-monitoring.tf`
 - **Action**: Replace inline `${var.agent_alarm_stale_reservation_ms / 1000}` division in alarm description with a `locals` block computing `agent_alarm_stale_reservation_s = var.agent_alarm_stale_reservation_ms / 1000`
 - **AC**: Alarm description uses `local.agent_alarm_stale_reservation_s`; `terraform plan` shows no effective change
+
+---
+
+## Sprint 6: Hounfour v8.3.1 Upgrade + Docker Redeploy (Global: 385)
+
+> **Issues**: #103 (partial), #108, #110
+> **Focus**: Update `@0xhoneyjar/loa-hounfour` from v8.2.0 (commit `addb0bf`) to v8.3.1 (tag), fix conformance tests for domain tag sanitization, replace local `advisoryLockKey()` with canonical export, rebuild Docker images, push to ECR, redeploy staging ECS services.
+> **Duration**: ~0.5 day (dependency upgrade + mechanical fixes + deploy)
+> **Risk**: LOW — patch release, backward compatible. Domain tag format change (dots→hyphens in version segment) affects hash values but epoch boundary design preserves existing entries.
+> **Deployment scope**: Freeside API + Finn only. Dixie is a separate repo/image (`arrakis-staging-loa-dixie`) with its own dependency tree — not affected by this monorepo's hounfour pin.
+> **Staging data note**: Staging was freshly deployed (cycle-046); no pre-existing audit trail data. Epoch boundary backward compatibility is verified by conformance vectors, not runtime data migration.
+
+### Task 6.1: Update hounfour pin in all package.json files
+
+- **Files**: `package.json`, `packages/adapters/package.json`, `themes/sietch/package.json`
+- **Action**: Update all three pins from current commits to `github:0xHoneyJar/loa-hounfour#v8.3.1`
+- **Then**: `npm install` (postinstall script `rebuild-hounfour-dist.sh` handles dist/ rebuild)
+- **Lockfile**: Commit updated `package-lock.json`; verify resolved SHA in lockfile matches v8.3.1 tag commit
+- **AC**: `node_modules/@0xhoneyjar/loa-hounfour/package.json` shows `"version": "8.3.1"`; `npm ls @0xhoneyjar/loa-hounfour` resolves cleanly; `npm ci` from clean workspace succeeds
+
+### Task 6.2: Verify advisory lock export path, then replace local implementation
+
+- **Pre-check**: After `npm install`, verify `computeAdvisoryLockKey` is exported — check `node_modules/@0xhoneyjar/loa-hounfour/package.json` `exports` map and `dist/` file layout for the actual importable path. If deep import `@0xhoneyjar/loa-hounfour/commons/advisory-lock-key` is not supported, use the barrel export from `@0xhoneyjar/loa-hounfour/commons` or top-level
+- **File**: `packages/adapters/storage/audit-helpers.ts` (lines 17-25)
+- **Action**: Replace local FNV-1a `advisoryLockKey()` with `computeAdvisoryLockKey()` from the verified import path
+- **Update imports** in `audit-trail-service.ts` (line 22) and `governed-mutation-service.ts` (line 18)
+- **AC**: Local `advisoryLockKey` function deleted; both services import from hounfour; `tsc -b` compiles cleanly; lock key values match (both use FNV-1a 32-bit)
+
+### Task 6.3: Update conformance test V-A02 for domain tag sanitization
+
+- **File**: `spec/conformance/test-commons-p0.ts`
+- **Action**: Update expected value for `buildDomainTag('GovernedCreditsSchema', '8.2.0')` — output changes from `loa-commons:audit:governedcreditsschema:8.2.0` to `loa-commons:audit:governedcreditsschema:8-2-0` (dots→hyphens)
+- **Also check**: v8.3.1 includes new legacy conformance vector `vectors/conformance/commons/audit-trail/hash-reference-vector-v8.3.0-legacy.json` — consider adding to test suite for backward compat coverage
+- **AC**: V-A02 conformance test passes with new expected value
+
+### Task 6.4: Verify governed-mutation-service and audit-trail-service
+
+- **Files**: `packages/adapters/storage/governed-mutation-service.ts`, `packages/adapters/storage/audit-trail-service.ts`
+- **Action**: Verify no hardcoded domain tag expected values. Both call `buildDomainTag()` dynamically — confirm no snapshot tests or string comparisons break
+- **AC**: `npm test` passes for unit tests touching these services
+
+### Task 6.5: Run full test + conformance suite
+
+- **Action**: Run `npm test`, `spec/conformance/test-commons-p0.ts`, `tests/unit/protocol-conformance.test.ts`, `tests/integration/e2e-goal-validation.test.ts`
+- **AC**: All tests pass; no regressions from domain tag format change
+
+### Task 6.6: Build and push Docker images to ECR
+
+- **Action**: Build Docker images for `finn` and `freeside-api`, tag with both `staging` and immutable git SHA tag, push to ECR repos (`arrakis-staging-loa-finn`, `arrakis-staging-api`)
+- **AC**: Both images present in ECR with `staging` tag; `aws ecr describe-images` confirms new digest differs from pre-upgrade digest
+
+### Task 6.7: Redeploy staging ECS services and verify image
+
+- **Action**: Register new task definition revisions pointing to the new image digest (SHA tag, not just `staging`). Update `arrakis-staging-finn` and `arrakis-staging-api` services to use new task definition revisions
+- **Verify**: Both services reach `running=1`; `aws ecs describe-tasks` confirms running containers reference the new image digest; finn logs show hounfour 8.3.1 in startup output; health checks pass
+- **AC**: `aws ecs describe-services` shows desired=1, running=1 for both; running task image digest matches ECR push digest
+
+---
+
+## Flatline Review Summary (3-model: Opus 4.6 + GPT-5.3-Codex + Gemini 2.5 Pro)
+
+**HIGH_CONSENSUS (auto-integrated):**
+- IMP-001: Route53 partial-apply rollback steps documented in Sprint 3/4 cutover playbook
+- IMP-002: Numeric RPO/RTO recovery objectives — Sprint 1 exit gate references backup verification
+- IMP-004: Import sequencing with explicit dependency order — Sprint 1 task 1.0/1.1 batching
+- IMP-009: DMARC policy progression gates — Sprint 5 task 5.1 ramp schedule
+
+**BLOCKERS (overridden — Sprints 1-5 already completed successfully):**
+- SKP-001 (910): Solo engineer vs approval requirements — executed with async approvals, no blockers hit
+- SKP-002 (885): Schedule underestimation — all 5 sprints delivered within planned windows
+- SKP-003 (860): State import corruption risk — imports completed safely with backup verification
+- SKP-004 (770): IAM over-privilege — mitigated with session time limits (note added to pre-flight)
+
+**BLOCKERS (accepted, operational notes added):**
+- SKP-005 (730): `ignore_changes` drift on SSM params — runtime drift audit recommended post-cycle
+- SKP-006 (705): Health gate false signals — minimum sample size and warm-up period noted for future deploy automation

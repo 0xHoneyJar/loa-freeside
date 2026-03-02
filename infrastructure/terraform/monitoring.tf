@@ -101,7 +101,7 @@ resource "aws_cloudwatch_metric_alarm" "agent_redis_cpu_high" {
   alarm_description   = "Agent Redis CPU > 70% — budget enforcement at risk"
 
   dimensions = {
-    CacheClusterId = aws_elasticache_cluster.redis.id
+    ReplicationGroupId = aws_elasticache_replication_group.main.id
   }
 
   alarm_actions = [aws_sns_topic.alerts.arn]
@@ -122,7 +122,7 @@ resource "aws_cloudwatch_metric_alarm" "agent_redis_connections_high" {
   alarm_description   = "Agent Redis connections > 500 — connection pool exhaustion risk"
 
   dimensions = {
-    CacheClusterId = aws_elasticache_cluster.redis.id
+    ReplicationGroupId = aws_elasticache_replication_group.main.id
   }
 
   alarm_actions = [aws_sns_topic.alerts.arn]
@@ -232,7 +232,7 @@ resource "aws_cloudwatch_metric_alarm" "agent_redis_evictions" {
   alarm_description   = "Agent Redis evictions detected — budget keys may be lost"
 
   dimensions = {
-    CacheClusterId = aws_elasticache_cluster.redis.id
+    ReplicationGroupId = aws_elasticache_replication_group.main.id
   }
 
   alarm_actions = [aws_sns_topic.alerts.arn]
@@ -1395,9 +1395,6 @@ resource "aws_cloudwatch_dashboard" "service_health" {
     ]
   })
 
-  tags = merge(local.common_tags, {
-    Sprint = "320-Task-7.1"
-  })
 }
 
 # =============================================================================
@@ -1588,9 +1585,6 @@ resource "aws_cloudwatch_dashboard" "economic_health" {
     ]
   })
 
-  tags = merge(local.common_tags, {
-    Sprint = "375-Task-2.1"
-  })
 }
 
 # =============================================================================

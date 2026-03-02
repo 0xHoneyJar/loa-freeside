@@ -1,19 +1,19 @@
 # =============================================================================
-# Internal ALB — Service-to-Service TLS (Cycle 037, Sprint 0A, Task 0A.3b)
+# Internal ALB — Service-to-Service Communication (Cycle 037, Sprint 0A)
 # =============================================================================
 #
 # Internal Application Load Balancer for S2S communication between
-# loa-freeside and loa-finn. Provides TLS termination for the JWKS endpoint
-# and other internal API routes.
+# loa-freeside and loa-finn. Routes internal API traffic including the
+# JWKS endpoint.
 #
 # Architecture:
-#   finn → https://freeside.{env}.internal:443 → ALB → freeside ECS:3000
+#   finn → http://freeside.{env}.internal:80 → ALB → freeside ECS:3000
 #
-# Why internal ALB instead of direct Cloud Map:
-#   - TLS termination: ACM certificates require ALB/NLB/CloudFront
-#   - Cloud Map A records point to task IPs (no TLS)
-#   - Internal ALB + ACM provides proper certificate validation
-#   - finn does NOT skip certificate verification (Flatline SKP-004)
+# Why HTTP not HTTPS:
+#   - ACM DNS validation cannot work with private hosted zones (.internal)
+#   - Traffic is VPC-internal only (private subnets, no internet exposure)
+#   - SG rules restrict to finn/freeside ECS tasks only
+#   - Upgrade to TLS via AWS Private CA if needed for compliance
 #
 # @see SDD §4.3 S2S JWT Contract
 # @see Sprint 0A, Task 0A.3b
@@ -21,7 +21,6 @@
 
 # -----------------------------------------------------------------------------
 # Route53 Private Hosted Zone for internal service discovery
-# Used for ACM DNS validation and internal DNS resolution
 # -----------------------------------------------------------------------------
 
 resource "aws_route53_zone" "internal" {
@@ -40,57 +39,6 @@ resource "aws_route53_zone" "internal" {
 }
 
 # -----------------------------------------------------------------------------
-# ACM Certificate for internal domain
-# DNS-validated via the private hosted zone
-# -----------------------------------------------------------------------------
-
-resource "aws_acm_certificate" "internal" {
-  domain_name       = "freeside.${var.environment}.internal"
-  validation_method = "DNS"
-
-  subject_alternative_names = [
-    "finn.${var.environment}.internal",
-  ]
-
-  lifecycle {
-    create_before_destroy = true
-  }
-
-  tags = merge(local.common_tags, {
-    Name    = "${local.name_prefix}-internal-cert"
-    Purpose = "s2s-tls"
-    Sprint  = "C37-0A"
-  })
-}
-
-# DNS validation records in the private hosted zone
-resource "aws_route53_record" "internal_acm_validation" {
-  for_each = {
-    for dvo in aws_acm_certificate.internal.domain_validation_options : dvo.domain_name => {
-      name   = dvo.resource_record_name
-      record = dvo.resource_record_value
-      type   = dvo.resource_record_type
-    }
-  }
-
-  allow_overwrite = true
-  name            = each.value.name
-  records         = [each.value.record]
-  ttl             = 60
-  type            = each.value.type
-  zone_id         = aws_route53_zone.internal.zone_id
-}
-
-resource "aws_acm_certificate_validation" "internal" {
-  certificate_arn         = aws_acm_certificate.internal.arn
-  validation_record_fqdns = [for record in aws_route53_record.internal_acm_validation : record.fqdn]
-
-  timeouts {
-    create = "30m"
-  }
-}
-
-# -----------------------------------------------------------------------------
 # Internal ALB Security Group
 # Only allows inbound from ECS tasks (finn → ALB → freeside)
 # -----------------------------------------------------------------------------
@@ -98,22 +46,22 @@ resource "aws_acm_certificate_validation" "internal" {
 resource "aws_security_group" "alb_internal" {
   name_prefix = "${local.name_prefix}-alb-int-"
   vpc_id      = module.vpc.vpc_id
-  description = "Security group for internal ALB — S2S TLS termination"
+  description = "Security group for internal ALB - S2S TLS termination"
 
-  # Inbound HTTPS from finn ECS tasks
+  # Inbound HTTP from finn ECS tasks
   ingress {
-    description     = "HTTPS from finn"
-    from_port       = 443
-    to_port         = 443
+    description     = "HTTP from finn"
+    from_port       = 80
+    to_port         = 80
     protocol        = "tcp"
     security_groups = [aws_security_group.finn.id]
   }
 
-  # Inbound HTTPS from freeside ECS tasks (self-referential for health checks)
+  # Inbound HTTP from freeside ECS tasks (self-referential for health checks)
   ingress {
-    description     = "HTTPS from freeside ECS tasks"
-    from_port       = 443
-    to_port         = 443
+    description     = "HTTP from freeside ECS tasks"
+    from_port       = 80
+    to_port         = 80
     protocol        = "tcp"
     security_groups = [aws_security_group.ecs_tasks.id]
   }
@@ -149,15 +97,15 @@ resource "aws_security_group_rule" "freeside_from_internal_alb" {
   description              = "Internal ALB to freeside ECS tasks"
 }
 
-# Update finn egress: route to internal ALB (port 443) instead of direct task (port 3000)
+# Finn egress: route to internal ALB (port 80)
 resource "aws_security_group_rule" "finn_to_internal_alb" {
   type                     = "egress"
-  from_port                = 443
-  to_port                  = 443
+  from_port                = 80
+  to_port                  = 80
   protocol                 = "tcp"
   security_group_id        = aws_security_group.finn.id
   source_security_group_id = aws_security_group.alb_internal.id
-  description              = "loa-finn to internal ALB for JWKS (TLS)"
+  description              = "loa-finn to internal ALB for JWKS"
 }
 
 # -----------------------------------------------------------------------------
@@ -211,22 +159,18 @@ resource "aws_lb_target_group" "freeside_internal" {
 }
 
 # -----------------------------------------------------------------------------
-# HTTPS Listener — TLS termination with ACM certificate
+# HTTP Listener — VPC-internal traffic only
 # -----------------------------------------------------------------------------
 
-resource "aws_lb_listener" "internal_https" {
+resource "aws_lb_listener" "internal_http" {
   load_balancer_arn = aws_lb.internal.arn
-  port              = "443"
-  protocol          = "HTTPS"
-  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
-  certificate_arn   = aws_acm_certificate.internal.arn
+  port              = "80"
+  protocol          = "HTTP"
 
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.freeside_internal.arn
   }
-
-  depends_on = [aws_acm_certificate_validation.internal]
 }
 
 # -----------------------------------------------------------------------------
@@ -256,8 +200,8 @@ output "internal_alb_dns" {
 }
 
 output "freeside_internal_url" {
-  description = "Internal HTTPS URL for loa-freeside (finn → freeside S2S)"
-  value       = "https://freeside.${var.environment}.internal"
+  description = "Internal HTTP URL for loa-freeside (finn → freeside S2S)"
+  value       = "http://freeside.${var.environment}.internal"
 }
 
 output "internal_zone_id" {

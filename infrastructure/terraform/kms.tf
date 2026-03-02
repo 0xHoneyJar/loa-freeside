@@ -87,7 +87,10 @@ resource "aws_kms_key" "secrets" {
             aws_iam_role.ecs_execution_worker.arn,
             aws_iam_role.ecs_execution_ingestor.arn,
             aws_iam_role.ecs_execution_gateway.arn,
-            aws_iam_role.ecs_execution_gp_worker.arn
+            aws_iam_role.ecs_execution_gp_worker.arn,
+            aws_iam_role.ecs_execution_finn.arn,
+            aws_iam_role.ecs_execution_dixie.arn,
+            aws_iam_role.ecs_execution.arn
           ]
         }
         Action = [

@@ -96,15 +96,15 @@ resource "aws_cloudwatch_dashboard" "agent_gateway" {
           period = 60
           view   = "timeSeries"
           metrics = [
-            [{ id = "errors", stat = "Sum", visible = false, expression = "" }, "Arrakis/AgentGateway", "Error5xxCount", "feature", "baseline"],
-            [{ id = "errors_ensemble", stat = "Sum", visible = false, expression = "" }, ".", ".", ".", "ensemble"],
-            [{ id = "errors_byok", stat = "Sum", visible = false, expression = "" }, ".", ".", ".", "byok"],
-            [{ id = "total", stat = "Sum", visible = false, expression = "" }, ".", "RequestCount", ".", "baseline"],
-            [{ id = "total_ensemble", stat = "Sum", visible = false, expression = "" }, ".", ".", ".", "ensemble"],
-            [{ id = "total_byok", stat = "Sum", visible = false, expression = "" }, ".", ".", ".", "byok"],
-            [{ id = "e1", expression = "IF(total > 0, errors / total * 100, 0)", label = "baseline %", stat = "Average" }],
-            [{ id = "e2", expression = "IF(total_ensemble > 0, errors_ensemble / total_ensemble * 100, 0)", label = "ensemble %", stat = "Average" }],
-            [{ id = "e3", expression = "IF(total_byok > 0, errors_byok / total_byok * 100, 0)", label = "byok %", stat = "Average" }]
+            ["Arrakis/AgentGateway", "Error5xxCount", "feature", "baseline", { id = "errors", stat = "Sum", visible = false }],
+            [".", ".", ".", "ensemble", { id = "errors_ensemble", stat = "Sum", visible = false }],
+            [".", ".", ".", "byok", { id = "errors_byok", stat = "Sum", visible = false }],
+            [".", "RequestCount", ".", "baseline", { id = "total", stat = "Sum", visible = false }],
+            [".", ".", ".", "ensemble", { id = "total_ensemble", stat = "Sum", visible = false }],
+            [".", ".", ".", "byok", { id = "total_byok", stat = "Sum", visible = false }],
+            [{ id = "e1", expression = "IF(total > 0, errors / total * 100, 0)", label = "baseline %" }],
+            [{ id = "e2", expression = "IF(total_ensemble > 0, errors_ensemble / total_ensemble * 100, 0)", label = "ensemble %" }],
+            [{ id = "e3", expression = "IF(total_byok > 0, errors_byok / total_byok * 100, 0)", label = "byok %" }]
           ]
           annotations = {
             horizontal = [
