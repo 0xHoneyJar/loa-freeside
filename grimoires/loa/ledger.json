@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "next_sprint_number": 391,
+  "next_sprint_number": 396,
   "active_cycle": "cycle-047",
   "cycles": [
     {
@@ -423,7 +423,7 @@
     },
     {
       "id": "cycle-012",
-      "label": "Hounfour Integration \u2014 Arrakis x loa-finn Cross-System Bridge",
+      "label": "Hounfour Integration — Arrakis x loa-finn Cross-System Bridge",
       "status": "archived",
       "archived": "2026-02-11T18:00:00Z",
       "created": "2026-02-10T22:00:00Z",
@@ -455,7 +455,7 @@
     },
     {
       "id": "cycle-013",
-      "label": "Bridgebuilder Hardening \u2014 PR #51 Review Feedback",
+      "label": "Bridgebuilder Hardening — PR #51 Review Feedback",
       "status": "archived",
       "archived": "2026-02-11T18:00:00Z",
       "created": "2026-02-11T04:00:00Z",
@@ -477,7 +477,7 @@
     },
     {
       "id": "cycle-014",
-      "label": "Bridgebuilder Round 2 \u2014 Protocol Versioning & Capability Architecture",
+      "label": "Bridgebuilder Round 2 — Protocol Versioning & Capability Architecture",
       "status": "archived",
       "archived": "2026-02-11T18:00:00Z",
       "created": "2026-02-11T09:00:00Z",
@@ -499,7 +499,7 @@
     },
     {
       "id": "cycle-015",
-      "label": "The Last Spice \u2014 Hounfour Endgame (RFC #31 Final 20%)",
+      "label": "The Last Spice — Hounfour Endgame (RFC #31 Final 20%)",
       "status": "archived",
       "archived": "2026-02-11T18:00:00Z",
       "created": "2026-02-11T11:42:00Z",
@@ -531,7 +531,7 @@
     },
     {
       "id": "cycle-016",
-      "label": "Bridgebuilder Round 3 \u2014 PR #52 Review Findings",
+      "label": "Bridgebuilder Round 3 — PR #52 Review Findings",
       "status": "archived",
       "archived": "2026-02-11T18:00:00Z",
       "created": "2026-02-11T14:30:00Z",
@@ -553,7 +553,7 @@
     },
     {
       "id": "cycle-017",
-      "label": "The Water of Life \u2014 Hounfour Finish Line (E2E + Deployment)",
+      "label": "The Water of Life — Hounfour Finish Line (E2E + Deployment)",
       "status": "archived",
       "archived": "2026-02-11T22:00:00Z",
       "created": "2026-02-11T18:00:00Z",
@@ -575,7 +575,7 @@
     },
     {
       "id": "cycle-018",
-      "label": "Bridgebuilder Round 4 \u2014 PR #53 Review Findings",
+      "label": "Bridgebuilder Round 4 — PR #53 Review Findings",
       "status": "archived",
       "archived": "2026-02-11T22:00:00Z",
       "created": "2026-02-11T21:30:00Z",
@@ -597,7 +597,7 @@
     },
     {
       "id": "cycle-019",
-      "label": "The Capability Mesh \u2014 Per-Model Accounting & Protocol Architecture (BB6)",
+      "label": "The Capability Mesh — Per-Model Accounting & Protocol Architecture (BB6)",
       "status": "archived",
       "created": "2026-02-12T12:00:00Z",
       "archived": "2026-02-12T23:30:00Z",
@@ -629,7 +629,7 @@
     },
     {
       "id": "cycle-020",
-      "label": "Bridgebuilder Round 7 \u2014 Protocol Refinement (BB7)",
+      "label": "Bridgebuilder Round 7 — Protocol Refinement (BB7)",
       "status": "archived",
       "created": "2026-02-12T23:45:00Z",
       "archived": "2026-02-13T00:30:00Z",
@@ -646,7 +646,7 @@
     },
     {
       "id": "cycle-021",
-      "label": "Bridgebuilder Round 9 \u2014 E2E Infrastructure Hardening (BB9)",
+      "label": "Bridgebuilder Round 9 — E2E Infrastructure Hardening (BB9)",
       "status": "archived",
       "created": "2026-02-13T00:30:00Z",
       "archived": "2026-02-13T12:00:00Z",
@@ -669,7 +669,7 @@
     },
     {
       "id": "cycle-022",
-      "label": "The Litany \u2014 Documentation Overhaul (AGENTREADME + README + CHANGELOG)",
+      "label": "The Litany — Documentation Overhaul (AGENTREADME + README + CHANGELOG)",
       "status": "archived",
       "created": "2026-02-13T12:15:00Z",
       "prd": "grimoires/loa/prd-docs-overhaul.md",
@@ -702,7 +702,7 @@
     },
     {
       "id": "cycle-023",
-      "label": "The Spice Must Flow \u2014 Production Readiness & Protocol Unification",
+      "label": "The Spice Must Flow — Production Readiness & Protocol Unification",
       "status": "archived",
       "created": "2026-02-13T14:30:00Z",
       "archived": "2026-02-13T10:30:00Z",
@@ -750,7 +750,7 @@
     },
     {
       "id": "cycle-024",
-      "label": "The Golden Path \u2014 E2E Vector Migration & Launch Validation",
+      "label": "The Golden Path — E2E Vector Migration & Launch Validation",
       "status": "archived",
       "created": "2026-02-13T18:00:00Z",
       "prd": "grimoires/loa/prd.md",
@@ -778,7 +778,7 @@
     },
     {
       "id": "cycle-025",
-      "label": "Billing & Payments \u2014 Path to Revenue",
+      "label": "Billing & Payments — Path to Revenue",
       "status": "archived",
       "created": "2026-02-14T07:32:03Z",
       "archived": "2026-02-15T12:00:00Z",
@@ -836,7 +836,7 @@
     },
     {
       "id": "cycle-026",
-      "label": "The Stillsuit \u2014 Cross-System Integration & Revenue Rules",
+      "label": "The Stillsuit — Cross-System Integration & Revenue Rules",
       "status": "archived",
       "created": "2026-02-15T12:00:00Z",
       "prd": "grimoires/loa/prd.md",
@@ -879,7 +879,7 @@
     },
     {
       "id": "cycle-027",
-      "label": "Shai-Hulud \u2014 The Eternal Maker",
+      "label": "Shai-Hulud — The Eternal Maker",
       "status": "archived",
       "created": "2026-02-15T18:00:00Z",
       "archived": "2026-02-15T20:00:00Z",
@@ -927,7 +927,7 @@
     },
     {
       "id": "cycle-028",
-      "label": "The Forward Path \u2014 Strategic Excellence & Cross-System Hardening",
+      "label": "The Forward Path — Strategic Excellence & Cross-System Hardening",
       "status": "archived",
       "created": "2026-02-15T20:00:00Z",
       "archived": "2026-02-15T11:42:00Z",
@@ -965,7 +965,7 @@
     },
     {
       "id": "cycle-029",
-      "label": "Creator Economy \u2014 Referrals, Leaderboards & Score-Weighted Rewards",
+      "label": "Creator Economy — Referrals, Leaderboards & Score-Weighted Rewards",
       "status": "archived",
       "created": "2026-02-15T22:00:00Z",
       "archived": "2026-02-16T12:00:00Z",
@@ -1068,7 +1068,7 @@
     },
     {
       "id": "cycle-030",
-      "label": "The Kwisatz Haderach \u2014 Agent Economic Citizenship & Constitutional Governance",
+      "label": "The Kwisatz Haderach — Agent Economic Citizenship & Constitutional Governance",
       "status": "archived",
       "created": "2026-02-16T12:00:00Z",
       "archived": "2026-02-16T14:00:00Z",
@@ -1126,7 +1126,7 @@
     },
     {
       "id": "cycle-031",
-      "label": "The Spacing Guild \u2014 Agent Economic Sovereignty & Peer Commerce",
+      "label": "The Spacing Guild — Agent Economic Sovereignty & Peer Commerce",
       "status": "archived",
       "created": "2026-02-16T14:00:00Z",
       "prd": "grimoires/loa/prd.md",
@@ -1179,7 +1179,7 @@
     },
     {
       "id": "cycle-032",
-      "label": "Pre-Merge Excellence \u2014 Bug Fixes & Merge Readiness",
+      "label": "Pre-Merge Excellence — Bug Fixes & Merge Readiness",
       "status": "archived",
       "created": "2026-02-16T22:00:00Z",
       "archived": "2026-02-17T00:00:00Z",
@@ -1207,7 +1207,7 @@
     },
     {
       "id": "cycle-033",
-      "label": "The Weirding Way \u2014 Protocol Convergence & Economic Formalization",
+      "label": "The Weirding Way — Protocol Convergence & Economic Formalization",
       "status": "archived",
       "created": "2026-02-17T00:00:00Z",
       "archived": "2026-02-17T12:30:00Z",
@@ -1245,7 +1245,7 @@
     },
     {
       "id": "cycle-034",
-      "label": "The Voice from the Outer World \u2014 Canonical Protocol Adoption (v7.0.0)",
+      "label": "The Voice from the Outer World — Canonical Protocol Adoption (v7.0.0)",
       "status": "archived",
       "created": "2026-02-17T12:30:00Z",
       "archived": "2026-02-19T20:45:00Z",
@@ -1276,7 +1276,7 @@
     },
     {
       "id": "cycle-035",
-      "label": "The Neuromancer Codex \u2014 Documentation as Product Surface",
+      "label": "The Neuromancer Codex — Documentation as Product Surface",
       "status": "archived",
       "created": "2026-02-19T20:45:00Z",
       "archived": "2026-02-20T23:00:00Z",
@@ -1339,7 +1339,7 @@
     },
     {
       "id": "cycle-036",
-      "label": "Launch Readiness \u2014 Production Stack, Payments & Agent Surfaces",
+      "label": "Launch Readiness — Production Stack, Payments & Agent Surfaces",
       "status": "archived",
       "created": "2026-02-20T23:00:00Z",
       "archived": "2026-02-23T12:00:00Z",
@@ -1442,7 +1442,7 @@
     },
     {
       "id": "cycle-037",
-      "label": "Proof of Economic Life \u2014 Foundation Hardening, Economic Loop & Protocol Publication",
+      "label": "Proof of Economic Life — Foundation Hardening, Economic Loop & Protocol Publication",
       "status": "archived",
       "created": "2026-02-23T12:00:00Z",
       "archived": "2026-02-24T06:30:00Z",
@@ -1475,7 +1475,7 @@
     },
     {
       "id": "cycle-038",
-      "label": "The Ostrom Protocol \u2014 Economic Memory, Velocity, Event Sourcing & Governance",
+      "label": "The Ostrom Protocol — Economic Memory, Velocity, Event Sourcing & Governance",
       "status": "archived",
       "created": "2026-02-24T06:30:00Z",
       "archived": "2026-02-23T23:59:00Z",
@@ -1523,7 +1523,7 @@
     },
     {
       "id": "cycle-039",
-      "label": "Hounfour v7.9.2 Full Adoption \u2014 Protocol Convergence",
+      "label": "Hounfour v7.9.2 Full Adoption — Protocol Convergence",
       "status": "archived",
       "created": "2026-02-23T23:59:00Z",
       "archived": "2026-02-24T14:45:00Z",
@@ -1566,7 +1566,7 @@
     },
     {
       "id": "cycle-040",
-      "label": "The Naming \u2014 Engineering Excellence & Protocol Identity",
+      "label": "The Naming — Engineering Excellence & Protocol Identity",
       "status": "archived",
       "created": "2026-02-24T15:00:00Z",
       "archived": "2026-02-24T21:00:00Z",
@@ -1599,7 +1599,7 @@
     },
     {
       "id": "cycle-041",
-      "label": "Launch Readiness \u2014 loa-hounfour v7.11.0 Full Adoption",
+      "label": "Launch Readiness — loa-hounfour v7.11.0 Full Adoption",
       "status": "archived",
       "created": "2026-02-24T21:00:00Z",
       "archived": "2026-02-25T01:35:00Z",
@@ -1622,7 +1622,7 @@
     },
     {
       "id": "cycle-042",
-      "label": "The Sietch Opening \u2014 E2E Validation & Test Community Launch",
+      "label": "The Sietch Opening — E2E Validation & Test Community Launch",
       "status": "archived",
       "created": "2026-02-25T02:00:00Z",
       "archived": "2026-02-25T02:30:00Z",
@@ -1652,7 +1652,7 @@
     },
     {
       "id": "cycle-043",
-      "label": "The Governance Substrate \u2014 loa-hounfour v8.2.0 Full Adoption",
+      "label": "The Governance Substrate — loa-hounfour v8.2.0 Full Adoption",
       "status": "archived",
       "created": "2026-02-25T22:00:00Z",
       "archived": "2026-02-26T13:00:00Z",
@@ -1713,7 +1713,7 @@
     },
     {
       "id": "cycle-045",
-      "label": "Clean Slate \u2014 Zero-Error CI Pipeline",
+      "label": "Clean Slate — Zero-Error CI Pipeline",
       "status": "archived",
       "created": "2026-02-27T07:00:00Z",
       "prd": "grimoires/loa/prd.md",
@@ -1738,7 +1738,7 @@
     },
     {
       "id": "cycle-046",
-      "label": "Armitage Platform \u2014 Terraform Consolidation & DNS Authority",
+      "label": "Armitage Platform — Terraform Consolidation & DNS Authority",
       "status": "active",
       "created": "2026-02-28T00:00:00Z",
       "prd": "grimoires/loa/prd.md",
@@ -1775,12 +1775,42 @@
           "global_id": 385,
           "title": "Hounfour v8.3.1 Upgrade + Docker Redeploy",
           "status": "pending"
+        },
+        {
+          "local_label": "sprint-7",
+          "global_id": 391,
+          "title": "CI Unblock — OIDC Role + Finn Deploy Verification",
+          "status": "pending"
+        },
+        {
+          "local_label": "sprint-8",
+          "global_id": 392,
+          "title": "Terraform Import Runbook Execution",
+          "status": "pending"
+        },
+        {
+          "local_label": "sprint-9",
+          "global_id": 393,
+          "title": "Apply New Resources + Service Verification",
+          "status": "pending"
+        },
+        {
+          "local_label": "sprint-10",
+          "global_id": 394,
+          "title": "Legacy AWS Resource Cleanup",
+          "status": "pending"
+        },
+        {
+          "local_label": "sprint-11",
+          "global_id": 395,
+          "title": "DNS Module Apply + Migration Prep",
+          "status": "pending"
         }
       ]
     },
     {
       "id": "cycle-047",
-      "label": "Autopoietic Infrastructure \u2014 From Hardening to Self-Examination",
+      "label": "Autopoietic Infrastructure — From Hardening to Self-Examination",
       "status": "active",
       "created": "2026-03-02T02:21:44Z",
       "prd": "grimoires/loa/prd.md",
@@ -1795,13 +1825,13 @@
         {
           "global_id": 387,
           "local_label": "sprint-2",
-          "title": "Knowledge Architecture \u2014 Failure Lore & Ecosystem Synthesis",
+          "title": "Knowledge Architecture — Failure Lore & Ecosystem Synthesis",
           "status": "planned"
         },
         {
           "global_id": 388,
           "local_label": "sprint-3",
-          "title": "Capability Manifest v0.1 \u2014 Review as Economic Protocol",
+          "title": "Capability Manifest v0.1 — Review as Economic Protocol",
           "status": "planned"
         },
         {

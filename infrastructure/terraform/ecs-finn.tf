@@ -629,6 +629,8 @@ resource "aws_ecs_service" "finn" {
     rollback = true
   }
 
+  enable_execute_command = true
+
   depends_on = [
     aws_iam_role_policy.ecs_execution_finn_secrets,
     aws_iam_role_policy.ecs_execution_finn_servicediscovery
@@ -636,7 +638,7 @@ resource "aws_ecs_service" "finn" {
 
   tags = merge(local.common_tags, {
     Service = "Finn"
-    Sprint  = "C36-1"
+    Sprint  = "C46-3"
   })
 }
 

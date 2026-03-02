@@ -742,6 +742,8 @@ resource "aws_ecs_service" "api" {
     rollback = true
   }
 
+  enable_execute_command = true
+
   depends_on = [aws_lb_listener.https]
 
   tags = local.common_tags

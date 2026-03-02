@@ -587,6 +587,8 @@ resource "aws_ecs_service" "dixie" {
     rollback = true
   }
 
+  enable_execute_command = true
+
   depends_on = [
     aws_iam_role_policy.ecs_execution_dixie_secrets,
     aws_iam_role_policy.ecs_execution_dixie_servicediscovery,
@@ -595,7 +597,7 @@ resource "aws_ecs_service" "dixie" {
 
   tags = merge(local.common_tags, {
     Service = "Dixie"
-    Sprint  = "C44-1"
+    Sprint  = "C46-3"
   })
 }
 
