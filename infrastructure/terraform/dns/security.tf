@@ -14,6 +14,7 @@ resource "aws_route53_record" "caa" {
     "0 issue \"letsencrypt.org\"",
     "0 issue \"amazon.com\"",
     "0 issuewild \"letsencrypt.org\"",
+    "0 issuewild \"amazon.com\"",
     "0 iodef \"mailto:security@0xhoneyjar.xyz\""
   ]
 }
