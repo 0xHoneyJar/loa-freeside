@@ -57,6 +57,17 @@ resource "aws_security_group_rule" "tempo_otlp_http" {
   description       = "OTLP HTTP from VPC"
 }
 
+# Allow NFS from Tempo tasks to EFS mount targets (same SG on both)
+resource "aws_security_group_rule" "tempo_nfs_self" {
+  type              = "ingress"
+  from_port         = 2049
+  to_port           = 2049
+  protocol          = "tcp"
+  self              = true
+  security_group_id = aws_security_group.tempo.id
+  description       = "NFS from Tempo tasks to EFS mount targets"
+}
+
 # Allow all outbound
 resource "aws_security_group_rule" "tempo_egress" {
   type              = "egress"

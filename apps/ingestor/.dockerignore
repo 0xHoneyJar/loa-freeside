@@ -9,6 +9,5 @@ coverage
 tests
 *.test.ts
 *.spec.ts
-tsconfig.json
 .eslintrc*
 .prettierrc*

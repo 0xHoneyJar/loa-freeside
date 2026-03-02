@@ -33,7 +33,7 @@ domain_name = "staging.api.arrakis.community"
 # Gateway Proxy - Ingestor (Sprint GW-2)
 ingestor_cpu           = 256
 ingestor_memory        = 512
-ingestor_desired_count = 1  # Enable for Gateway Proxy testing
+ingestor_desired_count = 0  # Disabled: source has pre-existing TS build errors, never deployed
 
 # Gateway Proxy - Worker (Sprint GW-3)
 gp_worker_cpu           = 512
@@ -56,7 +56,7 @@ nats_desired_count = 1  # Single node for staging (3 for production)
 # Rust Twilight Gateway (Sprint S-5) - Replaces Node.js Discord client
 gateway_cpu           = 256
 gateway_memory        = 512
-gateway_desired_count = 1
+gateway_desired_count = 0  # Disabled: source never built/pushed to ECR, Rust build not validated
 
 # PgBouncer Connection Pooling (Sprint S-1)
 # Connection budget math (Flatline BLOCKER SKP-003):
