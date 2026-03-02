@@ -128,6 +128,7 @@ resource "aws_iam_role_policy" "ecs_execution_dixie_secrets" {
           aws_secretsmanager_secret.dixie_es256_private_key.arn,
           aws_secretsmanager_secret.dixie_admin_key.arn,
           aws_secretsmanager_secret.dixie_db_url.arn,
+          aws_secretsmanager_secret.dixie_jwt_private_key.arn,
           aws_secretsmanager_secret.redis_credentials.arn
         ]
       },
@@ -140,17 +141,6 @@ resource "aws_iam_role_policy" "ecs_execution_dixie_secrets" {
         ]
         Resource = [
           aws_kms_key.secrets.arn
-        ]
-      },
-      {
-        Sid    = "DixieLegacySSMParams"
-        Effect = "Allow"
-        Action = [
-          "ssm:GetParameters",
-          "ssm:GetParameter"
-        ]
-        Resource = [
-          "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/dixie/armitage/*"
         ]
       }
     ]
@@ -226,6 +216,19 @@ resource "aws_secretsmanager_secret" "dixie_db_url" {
   })
 }
 
+resource "aws_secretsmanager_secret" "dixie_jwt_private_key" {
+  name                    = "${local.name_prefix}/dixie/jwt-private-key"
+  description             = "HS256 symmetric JWT signing secret for loa-dixie"
+  recovery_window_in_days = 7
+  kms_key_id              = aws_kms_key.secrets.arn
+
+  tags = merge(local.common_tags, {
+    Service  = "Dixie"
+    Sprint   = "C44-1"
+    Rotation = "on-compromise"
+  })
+}
+
 # -----------------------------------------------------------------------------
 # Security Group — SDD §3.2 Network Matrix
 # -----------------------------------------------------------------------------
@@ -280,6 +283,15 @@ resource "aws_security_group" "dixie" {
     security_groups = [aws_security_group.redis.id]
   }
 
+  # Egress to loa-finn for health/API checks (SDD §3.2)
+  egress {
+    description     = "loa-dixie egress to loa-finn for health and API"
+    from_port       = 3000
+    to_port         = 3000
+    protocol        = "tcp"
+    security_groups = [aws_security_group.finn.id]
+  }
+
   # Egress HTTPS for external APIs and Secrets Manager
   egress {
     description = "HTTPS for external APIs and Secrets Manager"
@@ -298,17 +310,6 @@ resource "aws_security_group" "dixie" {
   lifecycle {
     create_before_destroy = true
   }
-}
-
-# Allow dixie to reach loa-finn for health/API checks (SDD §3.2)
-resource "aws_security_group_rule" "dixie_to_finn" {
-  type                     = "egress"
-  from_port                = 3000
-  to_port                  = 3000
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.dixie.id
-  source_security_group_id = aws_security_group.finn.id
-  description              = "loa-dixie egress to loa-finn for health and API"
 }
 
 # Allow loa-finn to accept inbound from dixie
@@ -391,7 +392,11 @@ resource "aws_ecs_task_definition" "dixie" {
         { name = "LOA_FINN_BASE_URL", value = "http://finn.${local.name_prefix}.local:3000" },
         { name = "LOA_FINN_JWKS_URL", value = "http://finn.${local.name_prefix}.local:3000/.well-known/jwks.json" },
         # Graceful degradation: dixie operates without NATS (IMP-009)
-        { name = "NATS_OPTIONAL", value = "true" }
+        { name = "NATS_OPTIONAL", value = "true" },
+        # Finn connectivity (migrated from SSM /dixie/armitage/*)
+        { name = "FINN_URL", value = "http://finn.${local.name_prefix}.local:3000" },
+        { name = "FINN_WS_URL", value = "ws://finn.${local.name_prefix}.local:3000" },
+        { name = "DIXIE_CORS_ORIGINS", value = "https://dixie.${var.environment}.${var.root_domain},https://${var.domain_name}" }
       ]
 
       secrets = [
@@ -399,11 +404,7 @@ resource "aws_ecs_task_definition" "dixie" {
         { name = "REDIS_URL", valueFrom = "${aws_secretsmanager_secret.redis_credentials.arn}:url::" },
         { name = "ES256_PRIVATE_KEY", valueFrom = aws_secretsmanager_secret.dixie_es256_private_key.arn },
         { name = "DIXIE_ADMIN_KEY", valueFrom = aws_secretsmanager_secret.dixie_admin_key.arn },
-        # Legacy SSM parameters (migrated from dixie-armitage)
-        { name = "FINN_URL", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/dixie/armitage/FINN_URL" },
-        { name = "FINN_WS_URL", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/dixie/armitage/FINN_WS_URL" },
-        { name = "DIXIE_CORS_ORIGINS", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/dixie/armitage/DIXIE_CORS_ORIGINS" },
-        { name = "DIXIE_JWT_PRIVATE_KEY", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/dixie/armitage/DIXIE_JWT_PRIVATE_KEY" }
+        { name = "DIXIE_JWT_PRIVATE_KEY", valueFrom = aws_secretsmanager_secret.dixie_jwt_private_key.arn }
       ]
 
       logConfiguration = {
@@ -418,7 +419,7 @@ resource "aws_ecs_task_definition" "dixie" {
       healthCheck = {
         command     = ["CMD-SHELL", "curl -f http://localhost:3001/api/health || exit 1"]
         interval    = 30
-        timeout     = 5
+        timeout     = 10
         retries     = 3
         startPeriod = 60
       }
@@ -619,6 +620,9 @@ resource "aws_ecs_service" "dixie" {
     enable   = true
     rollback = true
   }
+
+  # Grace period: allow app circuit breaker to close before ECS counts health failures
+  health_check_grace_period_seconds = 120
 
   enable_execute_command = true
 

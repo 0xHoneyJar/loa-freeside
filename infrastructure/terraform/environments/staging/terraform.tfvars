@@ -57,6 +57,7 @@ nats_desired_count = 1  # Single node for staging (3 for production)
 gateway_cpu           = 256
 gateway_memory        = 512
 gateway_desired_count = 0  # Disabled: source never built/pushed to ECR, Rust build not validated
+gateway_min_count     = 0  # Prevent autoscaling from restoring disabled service
 
 # PgBouncer Connection Pooling (Sprint S-1)
 # Connection budget math (Flatline BLOCKER SKP-003):
