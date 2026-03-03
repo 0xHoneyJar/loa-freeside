@@ -124,10 +124,10 @@ export async function createAgentGateway(
 function createKeyLoader(secretId: string | undefined, logger: Logger): KeyLoader {
   return {
     async load(): Promise<string> {
-      // 1. Direct env var (local dev / CI)
-      const envKey = process.env.AGENT_JWT_PRIVATE_KEY;
+      // 1. Direct env var (local dev / CI / ECS secret injection)
+      const envKey = process.env.AGENT_JWT_PRIVATE_KEY || process.env.AGENT_JWT_SIGNING_KEY;
       if (envKey) {
-        logger.info('KeyLoader: using AGENT_JWT_PRIVATE_KEY env var');
+        logger.info('KeyLoader: using JWT private key from env var');
         return envKey;
       }
 

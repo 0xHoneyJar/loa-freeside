@@ -13,8 +13,8 @@ import { adminRouter as billingAdminRouter } from './admin.routes.js';
 import { docsRouter } from './docs/swagger.js';
 import { createVerifyIntegration } from './routes/verify.integration.js';
 import { createAuthRouter, addApiKeyVerifyRoute } from './routes/auth.routes.js';
-// Hounfour Integration (cycle-012): S2S loa-finn → arrakis usage report ingestion
-import { createInternalAgentRoutes } from './routes/agents.routes.js';
+// Hounfour Integration (cycle-012): S2S loa-finn → arrakis usage report ingestion + JWKS
+import { createInternalAgentRoutes, createAgentRoutes } from './routes/agents.routes.js';
 // Sprint 5 (318): Admin Agent Dashboard
 import { adminAgentRouter } from './routes/admin-agent.routes.js';
 // Sprint 6 (319): Developer API Key Management
@@ -36,6 +36,7 @@ import { S2SJwtValidator } from '@arrakis/adapters/agent/s2s-jwt-validator';
 import { UsageReceiver } from '@arrakis/adapters/agent/usage-receiver';
 import { createS2SAuthMiddleware } from '@arrakis/adapters/agent/s2s-auth-middleware';
 import { buildS2SJwtValidatorConfig, loadAgentGatewayConfig } from '@arrakis/adapters/agent/config';
+import { JwtService } from '@arrakis/adapters/agent';
 import { createRequire as createRequireHounfour } from 'module';
 const requireHounfour = createRequireHounfour(import.meta.url);
 const IoRedis = requireHounfour('ioredis');
@@ -86,6 +87,13 @@ let verifyPostgresClient: ReturnType<typeof postgres> | null = null;
  * Redis client for SIWE nonce store (Sprint 6, Task 6.7)
  */
 let siweRedisClient: any | null = null;
+
+/**
+ * JWKS provider — set during async startServer() initialization.
+ * The JWKS route is registered synchronously in createApp() with a deferred getter.
+ * By the time listen() is called, this will be populated.
+ */
+let jwksProvider: (() => { keys: import('jose').JWK[] }) | null = null;
 
 /**
  * Create and configure the Express application
@@ -613,6 +621,22 @@ function createApp(): Application {
     logger.info('loa-finn integration not configured (LOA_FINN_BASE_URL unset) — internal agent routes disabled');
   }
 
+  // ==========================================================================
+  // JWKS Endpoint (public, no auth) — serves ES256 public keys for JWT verification
+  // ==========================================================================
+  // Mounted independently of the full agent gateway. The JwtService is initialized
+  // asynchronously in startServer() before listen(), so jwksProvider will be set
+  // by the time any request arrives.
+  const jwksRoutes = createAgentRoutes({
+    getJwks: () => {
+      if (!jwksProvider) {
+        return { keys: [] };
+      }
+      return jwksProvider();
+    },
+  });
+  expressApp.use(jwksRoutes);
+
   // 404 handler
   expressApp.use(notFoundHandler);
 
@@ -789,6 +813,29 @@ export async function startServer(): Promise<void> {
       'AUTH_BYPASS enabled — all API requests will bypass authentication. ' +
         'This is only safe in development/test environments.'
     );
+  }
+
+  // ==========================================================================
+  // JWKS Initialization — load ES256 signing key for JWT verification endpoint
+  // ==========================================================================
+  try {
+    const jwtKey = process.env.AGENT_JWT_PRIVATE_KEY || process.env.AGENT_JWT_SIGNING_KEY;
+    if (jwtKey) {
+      const jwtService = new JwtService(
+        {
+          keyId: process.env.AGENT_JWT_KEY_ID || 'arrakis-key-1',
+          expirySec: 300,
+        },
+        { load: async () => jwtKey },
+      );
+      await jwtService.initialize();
+      jwksProvider = () => jwtService.getJwks();
+      logger.info('JWKS endpoint initialized at /.well-known/jwks.json');
+    } else {
+      logger.info('JWKS endpoint disabled — no AGENT_JWT_PRIVATE_KEY or AGENT_JWT_SIGNING_KEY configured');
+    }
+  } catch (err) {
+    logger.warn({ err }, 'JWKS initialization failed — endpoint will return empty keyset');
   }
 
   // Start listening
