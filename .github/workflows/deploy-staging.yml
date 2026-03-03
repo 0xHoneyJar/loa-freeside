@@ -114,6 +114,7 @@ jobs:
           # Build from repo root to include @arrakis/adapters dependency
           context: .
           file: ./themes/sietch/Dockerfile
+          target: production
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
