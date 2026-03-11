@@ -534,7 +534,9 @@ resource "aws_ecs_task_definition" "api" {
         # Sprint 6 (319), Task 6.7: SIWE session token signing
         { name = "SIWE_SESSION_SECRET", valueFrom = aws_secretsmanager_secret.siwe_session_secret.arn },
         # Cycle 044: ES256 key for S2S JWT signing (freeside → finn, freeside → dixie)
-        { name = "ES256_PRIVATE_KEY", valueFrom = aws_secretsmanager_secret.freeside_es256_private_key.arn }
+        { name = "ES256_PRIVATE_KEY", valueFrom = aws_secretsmanager_secret.freeside_es256_private_key.arn },
+        # Chat WebSocket: S2S secret for freeside → finn inference proxy
+        { name = "DEVELOPER_API_S2S_SECRET", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:DEVELOPER_API_S2S_SECRET::" }
       ]
 
       logConfiguration = {
