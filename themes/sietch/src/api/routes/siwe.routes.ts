@@ -117,9 +117,10 @@ const ALLOWED_CHAIN_IDS = new Set([80084, 80085, 80094, 1, 11155111]);
 
 const ALLOWED_DOMAINS = new Set([
   'api.arrakis.community',
+  'staging.api.arrakis.community',
   'arrakis.community',
   'freeside.honeyjar.xyz',
-  ...(process.env.NODE_ENV !== 'production' ? ['localhost', 'staging.api.arrakis.community'] : []),
+  ...(process.env.NODE_ENV !== 'production' ? ['localhost'] : []),
 ]);
 
 // ─── SIWE message builder (EIP-4361) ─────────────────────────────────────────
