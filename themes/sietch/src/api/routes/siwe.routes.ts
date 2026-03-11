@@ -119,7 +119,7 @@ const ALLOWED_DOMAINS = new Set([
   'api.arrakis.community',
   'arrakis.community',
   'freeside.honeyjar.xyz',
-  ...(process.env.NODE_ENV !== 'production' ? ['localhost'] : []),
+  ...(process.env.NODE_ENV !== 'production' ? ['localhost', 'staging.api.arrakis.community'] : []),
 ]);
 
 // ─── SIWE message builder (EIP-4361) ─────────────────────────────────────────
