@@ -240,7 +240,7 @@ function getChatPage(tokenId: string): string {
     };
   }
 
-  function sendMessage() {
+  window.sendMessage = function() {
     if (!ws || ws.readyState !== 1 || !authenticated) return;
     var text = msgInput.value.trim();
     if (!text) return;
