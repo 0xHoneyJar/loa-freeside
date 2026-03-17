@@ -42,17 +42,41 @@ pub struct NatsPublisher {
 }
 
 impl NatsPublisher {
-    /// Connect to NATS server
+    /// Connect to NATS server.
+    /// SEC-4.4: When the URL uses `tls://`, configures TLS with the CA
+    /// certificate from `NATS_TLS_CA` for self-signed cert verification.
     pub async fn connect(servers: &str) -> Result<Arc<Self>, GatewayError> {
         info!(servers, "Connecting to NATS");
 
-        let client = async_nats::connect(servers)
-            .await
-            .map_err(|e| GatewayError::NatsConnectionFailed(Box::new(e)))?;
+        let needs_tls = servers.contains("tls://");
+
+        let client = if needs_tls {
+            let mut opts = async_nats::ConnectOptions::new().require_tls(true);
+
+            // SEC-4.4: Write CA cert to disk for async-nats TLS verification.
+            // Mirrors the NATS server entrypoint pattern (nats.tf).
+            if let Ok(ca_pem) = std::env::var("NATS_TLS_CA") {
+                let ca_path = std::path::PathBuf::from("/tmp/nats-ca.crt");
+                std::fs::write(&ca_path, ca_pem.as_bytes())
+                    .map_err(|e| GatewayError::Config(format!("Failed to write NATS CA cert to {}: {e}", ca_path.display())))?;
+                opts = opts.add_root_certificates(ca_path);
+                info!("NATS TLS configured with custom CA certificate");
+            } else {
+                warn!("NATS TLS URL but NATS_TLS_CA not set — using system root certs");
+            }
+
+            opts.connect(servers)
+                .await
+                .map_err(|e| GatewayError::NatsConnectionFailed(Box::new(e)))?
+        } else {
+            async_nats::connect(servers)
+                .await
+                .map_err(|e| GatewayError::NatsConnectionFailed(Box::new(e)))?
+        };
 
         let jetstream = jetstream::new(client.clone());
 
-        info!("Connected to NATS JetStream");
+        info!(tls = needs_tls, "Connected to NATS JetStream");
 
         Ok(Arc::new(Self {
             client,

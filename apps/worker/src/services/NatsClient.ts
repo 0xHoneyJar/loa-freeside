@@ -211,12 +211,18 @@ export class NatsClient {
       'Connecting to NATS'
     );
 
+    // SEC-4.4: Pass CA cert for TLS verification when NATS_TLS_CA is set
+    const tlsOpts = process.env['NATS_TLS_CA']
+      ? { tls: { ca: process.env['NATS_TLS_CA'] } }
+      : {};
+
     this.connection = await connect({
       servers: this.config.servers,
       name: this.config.name || `arrakis-worker-${podName}`,
       reconnect: true,
       maxReconnectAttempts: this.config.maxReconnectAttempts ?? -1,
       reconnectTimeWait: this.config.reconnectTimeWait ?? 1000,
+      ...tlsOpts,
     });
 
     // Handle connection events

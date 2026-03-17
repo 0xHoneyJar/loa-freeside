@@ -39,7 +39,7 @@ ingestor_desired_count = 0  # Disabled: source has pre-existing TS build errors,
 # Gateway Proxy - Worker (Sprint GW-3)
 gp_worker_cpu           = 512
 gp_worker_memory        = 1024
-gp_worker_desired_count = 0  # Disabled: NATS TLS required in production (SEC-4.4), not yet configured
+gp_worker_desired_count = 1  # SEC-4.4: NATS TLS now configured, re-enabled
 
 # RabbitMQ (Sprint GW-1) - Legacy, will be replaced by NATS
 rabbitmq_instance_type = "mq.t3.micro"
