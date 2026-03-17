@@ -45,10 +45,14 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Save orchestrator's own script dir before sourcing libs that may override SCRIPT_DIR
+_ORCH_DIR="$SCRIPT_DIR"
 source "$SCRIPT_DIR/bootstrap.sh"
-source "$SCRIPT_DIR/lib/normalize-json.sh"
-source "$SCRIPT_DIR/lib/invoke-diagnostics.sh"
-source "$SCRIPT_DIR/lib/context-isolation-lib.sh"
+source "$_ORCH_DIR/lib/normalize-json.sh"
+source "$_ORCH_DIR/lib/invoke-diagnostics.sh"
+source "$_ORCH_DIR/lib/context-isolation-lib.sh"
+# Restore after lib sourcing (context-isolation-lib.sh overrides SCRIPT_DIR)
+SCRIPT_DIR="$_ORCH_DIR"
 
 # Note: bootstrap.sh already handles PROJECT_ROOT canonicalization via realpath
 TRAJECTORY_DIR=$(get_trajectory_dir)
