@@ -51,8 +51,13 @@ function toDiscordEventPayload(payload: GatewayEventPayload): DiscordEventPayloa
     guildId: payload.guild_id ?? undefined,
     channelId: payload.channel_id ?? undefined,
     userId: payload.user_id ?? undefined,
-    data: payload.data,
+    data: payload.data as Record<string, unknown> | undefined,
   };
+}
+
+/** Narrow the opaque `data` field (z.unknown()) to a record for property access */
+function eventData(payload: GatewayEventPayload): Record<string, unknown> {
+  return (payload.data ?? {}) as Record<string, unknown>;
 }
 
 // --------------------------------------------------------------------------
@@ -168,7 +173,8 @@ async function handleGuildJoin(
   payload: GatewayEventPayload,
   log: Logger
 ): Promise<void> {
-  const { guild_id, data } = payload;
+  const { guild_id } = payload;
+  const data = eventData(payload);
   const guildName = data['name'] as string | undefined;
   const memberCount = data['member_count'] as number | undefined;
 
@@ -188,7 +194,8 @@ async function handleGuildLeave(
   payload: GatewayEventPayload,
   log: Logger
 ): Promise<void> {
-  const { guild_id, data } = payload;
+  const { guild_id } = payload;
+  const data = eventData(payload);
   const unavailable = data['unavailable'] as boolean | undefined;
 
   if (unavailable) {
@@ -208,7 +215,8 @@ async function handleMemberJoin(
   payload: GatewayEventPayload,
   log: Logger
 ): Promise<void> {
-  const { guild_id, user_id, data } = payload;
+  const { guild_id, user_id } = payload;
+  const data = eventData(payload);
   const username = data['username'] as string | undefined;
 
   log.debug(
@@ -241,7 +249,8 @@ async function handleMemberUpdate(
   payload: GatewayEventPayload,
   log: Logger
 ): Promise<void> {
-  const { guild_id, user_id, data } = payload;
+  const { guild_id, user_id } = payload;
+  const data = eventData(payload);
   const roles = data['roles'] as string[] | undefined;
   const nick = data['nick'] as string | undefined;
 
