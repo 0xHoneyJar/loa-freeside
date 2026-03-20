@@ -1,13 +1,38 @@
 {
-  "verdict": "APPROVED",
-  "summary": "Previous feedback was addressed by asserting the exact expected genesis hash value, and no new blocking issues were introduced.",
-  "previous_issues_status": [
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "CORS configuration is insecure/invalid for credentialed requests, proxy integration URI will break root route, and API mapping references the wrong stage field.",
+  "issues": [
     {
-      "original_issue": "Tests only validated format of SCORING_PATH_GENESIS_HASH and not the exact expected value",
-      "status": "fixed",
-      "notes": "Added an exact match assertion for the SHA-256 of the empty string."
+      "severity": "critical",
+      "file": "infrastructure/terraform/auth-proxy.tf",
+      "line": 25,
+      "description": "CORS allow_origins includes wildcard patterns and untrusted domains while allow_credentials=true. HTTP API CORS does not support wildcard subdomains, and credentialed CORS with broad origins creates a cookie-leak risk.",
+      "current_code": "```hcl\n  cors_configuration {\n    allow_origins     = [\n      \"https://*.0xhoneyjar.xyz\",\n      \"https://0xhoneyjar.xyz\",\n      \"https://*.vercel.app\",\n    ]\n    allow_methods     = [\"GET\", \"POST\", \"PUT\", \"DELETE\", \"OPTIONS\", \"PATCH\"]\n    allow_headers     = [\"*\"]\n    expose_headers    = [\"*\"]\n    allow_credentials = true\n    max_age           = 86400\n  }\n```",
+      "fixed_code": "```hcl\nlocals {\n  # Explicit allowlist required for credentialed CORS (no wildcards).\n  auth_proxy_allowed_origins = [\n    \"https://0xhoneyjar.xyz\",\n    \"https://app.0xhoneyjar.xyz\",\n    \"https://dashboard.0xhoneyjar.xyz\",\n    \"https://community.0xhoneyjar.xyz\",\n  ]\n}\n\n  cors_configuration {\n    allow_origins     = local.auth_proxy_allowed_origins\n    allow_methods     = [\"GET\", \"POST\", \"PUT\", \"DELETE\", \"OPTIONS\", \"PATCH\"]\n    allow_headers     = [\"Authorization\", \"Content-Type\", \"X-Requested-With\", \"Accept\", \"Origin\"]\n    expose_headers    = [\"Content-Length\", \"Content-Type\"]\n    allow_credentials = true\n    max_age           = 86400\n  }\n```",
+      "explanation": "HTTP API CORS does not accept wildcard subdomains and browsers disallow credentialed CORS with wildcard origins. An explicit allowlist prevents credential leakage to arbitrary origins and ensures CORS config applies reliably."
+    },
+    {
+      "severity": "major",
+      "file": "infrastructure/terraform/auth-proxy.tf",
+      "line": 60,
+      "description": "integration_uri uses a {proxy} path parameter that does not exist on the root route (ANY /), causing failures or forwarding to a literal {proxy} path. HTTP API proxy integrations automatically append the request path.",
+      "current_code": "```hcl\nresource \"aws_apigatewayv2_integration\" \"dynamic_proxy\" {\n  api_id             = aws_apigatewayv2_api.auth_proxy.id\n  integration_type   = \"HTTP_PROXY\"\n  integration_method = \"ANY\"\n  integration_uri    = \"https://app.dynamic.xyz/{proxy}\"\n\n  # Forward all headers including cookies for SSO\n  request_parameters = {\n    \"overwrite:header.host\" = \"app.dynamic.xyz\"\n  }\n}\n```",
+      "fixed_code": "```hcl\nresource \"aws_apigatewayv2_integration\" \"dynamic_proxy\" {\n  api_id             = aws_apigatewayv2_api.auth_proxy.id\n  integration_type   = \"HTTP_PROXY\"\n  integration_method = \"ANY\"\n  # HTTP API appends the incoming path/query automatically.\n  integration_uri    = \"https://app.dynamic.xyz\"\n\n  # Forward all headers including cookies for SSO\n  request_parameters = {\n    \"overwrite:header.host\" = \"app.dynamic.xyz\"\n  }\n}\n```",
+      "explanation": "Using {proxy} in the integration URI breaks the root route because there is no path parameter to substitute. For HTTP API proxy integrations, the request path and query string are automatically forwarded when the base URI is provided."
+    },
+    {
+      "severity": "major",
+      "file": "infrastructure/terraform/auth-proxy.tf",
+      "line": 140,
+      "description": "API mapping stage uses the stage ID instead of the stage name. The API mapping expects the stage name and can fail or map incorrectly.",
+      "current_code": "```hcl\nresource \"aws_apigatewayv2_api_mapping\" \"auth\" {\n  api_id      = aws_apigatewayv2_api.auth_proxy.id\n  domain_name = aws_apigatewayv2_domain_name.auth.id\n  stage       = aws_apigatewayv2_stage.default.id\n}\n```",
+      "fixed_code": "```hcl\nresource \"aws_apigatewayv2_api_mapping\" \"auth\" {\n  api_id      = aws_apigatewayv2_api.auth_proxy.id\n  domain_name = aws_apigatewayv2_domain_name.auth.id\n  stage       = aws_apigatewayv2_stage.default.name\n}\n```",
+      "explanation": "The API mapping requires the stage name (e.g., \"$default\"), not the stage ID. Using the name ensures correct custom domain mapping."
     }
   ],
-  "new_blocking_concerns": [],
-  "iteration": 2
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
 }

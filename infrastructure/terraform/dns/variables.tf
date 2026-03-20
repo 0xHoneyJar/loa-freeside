@@ -73,3 +73,28 @@ variable "dmarc_email" {
   type    = string
   default = "dmarc@0xhoneyjar.xyz"
 }
+
+# =============================================================================
+# Auth Proxy (cross-root reference from compute root)
+# =============================================================================
+# These values come from `terraform output` in the compute root after
+# auth-proxy.tf is applied. Pass via -var or terraform.tfvars.
+# Default "" preserves the legacy Dynamic ACME challenge record.
+
+variable "auth_proxy_domain_target" {
+  description = "API Gateway custom domain target for auth.0xhoneyjar.xyz (from compute root output)"
+  type        = string
+  default     = ""
+}
+
+variable "auth_proxy_acm_validation_name" {
+  description = "ACM certificate DNS validation record name (from compute root output)"
+  type        = string
+  default     = ""
+}
+
+variable "auth_proxy_acm_validation_value" {
+  description = "ACM certificate DNS validation record value (from compute root output)"
+  type        = string
+  default     = ""
+}

@@ -1,29 +1,23 @@
 {
-  "verdict": "CHANGES_REQUIRED",
-  "summary": "Two blocking issues found: unreliable vector path resolution in monorepos/workspaces and missing assertions for invalid JWT vectors allowing false positives.",
-  "issues": [
+  "verdict": "APPROVED",
+  "summary": "All previously identified issues have been addressed correctly with no new blocking problems introduced.",
+  "previous_issues_status": [
     {
-      "severity": "major",
-      "file": "tests/protocol-conformance.test.ts",
-      "line": 39,
-      "description": "resolveVectorsDir hardcodes a node_modules path that fails in workspaces/hoisted installs, causing tests to break when the package is not physically located at that path.",
-      "current_code": "```typescript\nfunction resolveVectorsDir(): string {\n  // Walk up from this test file to find node_modules (vitest doesn't support import.meta.resolve)\n  const __dirname = dirname(fileURLToPath(import.meta.url));\n  const root = resolve(__dirname, '..', '..');\n  return resolve(root, 'node_modules', '@0xhoneyjar', 'loa-hounfour', 'vectors');\n}\n```",
-      "fixed_code": "```typescript\nfunction resolveVectorsDir(): string {\n  // Resolve package root reliably in monorepos/hoisted installs\n  const require = createRequire(import.meta.url);\n  const pkgJsonPath = require.resolve('@0xhoneyjar/loa-hounfour/package.json');\n  return resolve(dirname(pkgJsonPath), 'vectors');\n}\n```",
-      "explanation": "Using Node's module resolution ensures the vectors directory is found regardless of hoisting or workspace layout, preventing path resolution failures."
+      "original_issue": "CORS allow_origins included wildcards/untrusted domains while allow_credentials=true",
+      "status": "fixed",
+      "notes": "Now uses an explicit allowlist with specific origins and tightened headers, which is valid for credentialed CORS."
     },
     {
-      "severity": "major",
-      "file": "tests/protocol-conformance.test.ts",
-      "line": 160,
-      "description": "Invalid JWT vectors are never asserted; the test allows schema-valid claims to pass even when vectors are marked invalid, masking regressions.",
-      "current_code": "```typescript\n    it(`[${vector.id}] ${vector.description}`, () => {\n      const result = validate(JwtClaimsSchema, vector.claims);\n      if (vector.expected === 'valid') {\n        // Some vectors test JWT-level concerns (expiry, audience) that schema\n        // validation alone doesn't cover. Schema only validates shape/types.\n        // For \"valid\" vectors, the claims shape should at minimum parse.\n        if (!result.valid) {\n          // If schema rejects a \"valid\" vector, it's likely a JWT-level test\n          // (e.g., expired token) where claims are structurally valid but\n          // logically expired. This is expected — schema validates structure only.\n          // Check if the only failures are non-structural (key rotation, expiry)\n          const structuralErrors = (result.errors || []).filter(\n            (e) => !e.includes('exp') && !e.includes('iat') && !e.includes('kid'),\n          );\n          if (structuralErrors.length > 0) {\n            expect(result.valid, `Expected valid but got errors: ${result.errors?.join(', ')}`).toBe(true);\n          }\n        }\n      }\n      // For \"invalid\" vectors, we just verify the schema catches them or they have\n      // JWT-level errors that our runtime would catch\n    });\n```",
-      "fixed_code": "```typescript\n    it(`[${vector.id}] ${vector.description}`, () => {\n      const result = validate(JwtClaimsSchema, vector.claims);\n      if (vector.expected === 'valid') {\n        // Some vectors test JWT-level concerns (expiry, audience) that schema\n        // validation alone doesn't cover. Schema only validates shape/types.\n        // For \"valid\" vectors, the claims shape should at minimum parse.\n        if (!result.valid) {\n          // If schema rejects a \"valid\" vector, it's likely a JWT-level test\n          // (e.g., expired token) where claims are structurally valid but\n          // logically expired. This is expected — schema validates structure only.\n          // Check if the only failures are non-structural (key rotation, expiry)\n          const structuralErrors = (result.errors || []).filter(\n            (e) => !e.includes('exp') && !e.includes('iat') && !e.includes('kid'),\n          );\n          if (structuralErrors.length > 0) {\n            expect(result.valid, `Expected valid but got errors: ${result.errors?.join(', ')}`).toBe(true);\n          }\n        }\n      } else {\n        // For \"invalid\" vectors, schema should reject them unless they are\n        // explicitly JWT-level invalidations (e.g., exp/iat/nbf/aud/iss/signature).\n        if (result.valid) {\n          const err = (vector.error ?? '').toLowerCase();\n          const jwtOnly = /exp|iat|nbf|aud|iss|kid|signature|alg|token|issuer|audience/.test(err);\n          if (!jwtOnly) {\n            expect(\n              result.valid,\n              `Expected invalid but schema accepted claims; error=${vector.error ?? 'none'}`,\n            ).toBe(false);\n          }\n        } else {\n          expect(result.valid).toBe(false);\n        }\n      }\n    });\n```",
-      "explanation": "This enforces invalid vectors, while still allowing JWT-level invalidations that schema validation does not cover."
+      "original_issue": "integration_uri used {proxy} placeholder causing root route failures",
+      "status": "fixed",
+      "notes": "integration_uri is now the base host, relying on HTTP API path forwarding."
+    },
+    {
+      "original_issue": "API mapping stage referenced stage ID instead of stage name",
+      "status": "fixed",
+      "notes": "Stage now uses aws_apigatewayv2_stage.default.name."
     }
   ],
-  "fabrication_check": {
-    "passed": true,
-    "concerns": []
-  },
-  "iteration": 1
+  "new_blocking_concerns": [],
+  "iteration": 2
 }
