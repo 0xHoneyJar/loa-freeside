@@ -115,3 +115,9 @@ dixie_image_tag     = "latest"  # Override with git SHA in CI/CD
 # =============================================================================
 
 finn_redis_node_type = "cache.t3.micro"  # Staging: minimal instance
+
+# =============================================================================
+# Feature Flags
+# =============================================================================
+
+feature_web_chat_enabled = "true"  # Enable /chat page for Dixie testing
