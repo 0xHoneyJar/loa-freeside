@@ -158,7 +158,7 @@ jobs:
             --cluster ${{ env.ECS_CLUSTER }} \
             --task-definition arrakis-staging-freeside-migration \
             --launch-type FARGATE \
-            --network-configuration "awsvpcConfiguration={subnets=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_API }} --query 'services[0].networkConfiguration.awsvpcConfiguration.subnets' --output text | tr '\t' ','),securityGroups=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_API }} --query 'services[0].networkConfiguration.awsvpcConfiguration.securityGroups' --output text | tr '\t' ','),assignPublicIp=DISABLED}" \
+            --network-configuration "awsvpcConfiguration={subnets=[$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_API }} --query 'services[0].networkConfiguration.awsvpcConfiguration.subnets' --output text | tr '\t' ',')],securityGroups=[$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_API }} --query 'services[0].networkConfiguration.awsvpcConfiguration.securityGroups' --output text | tr '\t' ',')],assignPublicIp=DISABLED}" \
             --query 'tasks[0].taskArn' \
             --output text)
 
@@ -189,7 +189,7 @@ jobs:
             --cluster ${{ env.ECS_CLUSTER }} \
             --task-definition arrakis-staging-dixie-migration \
             --launch-type FARGATE \
-            --network-configuration "awsvpcConfiguration={subnets=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_DIXIE }} --query 'services[0].networkConfiguration.awsvpcConfiguration.subnets' --output text | tr '\t' ','),securityGroups=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_DIXIE }} --query 'services[0].networkConfiguration.awsvpcConfiguration.securityGroups' --output text | tr '\t' ','),assignPublicIp=DISABLED}" \
+            --network-configuration "awsvpcConfiguration={subnets=[$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_DIXIE }} --query 'services[0].networkConfiguration.awsvpcConfiguration.subnets' --output text | tr '\t' ',')],securityGroups=[$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_DIXIE }} --query 'services[0].networkConfiguration.awsvpcConfiguration.securityGroups' --output text | tr '\t' ',')],assignPublicIp=DISABLED}" \
             --query 'tasks[0].taskArn' \
             --output text)
 
