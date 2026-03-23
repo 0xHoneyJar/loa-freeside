@@ -1909,3 +1909,29 @@ qmd_context:
     gate0:
       budget: 1000
       scope: notes
+
+# -----------------------------------------------------------------------------
+# Operator OS — Personal workflow modes (cycle-051)
+# -----------------------------------------------------------------------------
+# Define named modes that bundle constructs with merged gates and a single
+# entry point command. Activate with: archetype-resolver.sh activate <mode>
+#
+# operator_os:
+#   modes:
+#     feel:
+#       constructs: [artisan, observer]
+#       entry_point: /feel
+#     dig:
+#       constructs: [k-hole]
+#       entry_point: /dig
+
+# -----------------------------------------------------------------------------
+# Construct ambient settings (cycle-051)
+# -----------------------------------------------------------------------------
+# Controls session-start greeting, thread lifecycle, and local source paths.
+#
+# constructs:
+#   ambient_greeting: false   # Show greeting on session start (opt-in)
+#   thread_archive_days: 30   # Auto-archive open threads after N days
+#   local_source_paths:       # Local clone search paths for /constructs install
+#     - ~/Documents/GitHub/construct-{slug}
