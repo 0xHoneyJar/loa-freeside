@@ -109,3 +109,10 @@ dixie_image_tag     = "latest"  # Override with git SHA in CI/CD
 # =============================================================================
 
 finn_redis_node_type = "cache.t3.micro"  # May upgrade to t3.small for production load
+
+# =============================================================================
+# Feature Flags
+# =============================================================================
+
+feature_web_chat_enabled = "true"
+chat_allowed_addresses   = "0x40495A781095932e2FC8dccA69F5e358711Fdd41"
