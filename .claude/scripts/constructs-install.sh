@@ -735,6 +735,11 @@ PYEOF
         done
     fi
 
+    # Regenerate construct index after install
+    if [[ -x "$SCRIPT_DIR/construct-index-gen.sh" ]]; then
+        "$SCRIPT_DIR/construct-index-gen.sh" --quiet 2>/dev/null || true
+    fi
+
     return $EXIT_SUCCESS
 }
 
@@ -1131,6 +1136,11 @@ do_uninstall_pack() {
 
     echo ""
     print_success "Pack '$pack_slug' uninstalled successfully!"
+
+    # Regenerate construct index after uninstall
+    if [[ -x "$SCRIPT_DIR/construct-index-gen.sh" ]]; then
+        "$SCRIPT_DIR/construct-index-gen.sh" --quiet 2>/dev/null || true
+    fi
 
     return $EXIT_SUCCESS
 }
