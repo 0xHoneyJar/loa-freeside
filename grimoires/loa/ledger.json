@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "active_cycle": "cycle-051",
+  "active_cycle": "cycle-048",
   "cycles": [
     {
       "id": "cycle-036",
@@ -455,34 +455,7 @@
           "status": "planned"
         }
       ]
-    },
-    {
-      "id": "cycle-bug-20260323-i449-54ec04",
-      "label": "Bug Fix — constructs-install.sh should prefer local source over stale downloaded pack",
-      "type": "bugfix",
-      "status": "active",
-      "source_issue": "https://github.com/0xHoneyJar/loa/issues/449",
-      "created_at": "2026-03-23T00:00:00Z",
-      "sprints": [
-        "sprint-bug-102"
-      ],
-      "triage": "grimoires/loa/a2a/bug-20260323-i449-54ec04/triage.md",
-      "sprint_plan": "grimoires/loa/a2a/bug-20260323-i449-54ec04/sprint.md"
-    },
-    {
-      "id": "cycle-051",
-      "label": "First-Class Construct Support",
-      "status": "active",
-      "created": "2026-03-23T00:00:00Z",
-      "prd": "grimoires/loa/prd.md",
-      "sdd": "grimoires/loa/sdd.md",
-      "sprints": [
-        {"local_id": 1, "global_id": 103, "label": "Index Generation + Capability Aggregation", "status": "planned"},
-        {"local_id": 2, "global_id": 104, "label": "Name Resolution + Composition", "status": "planned"},
-        {"local_id": 3, "global_id": 105, "label": "Operator OS + Ambient Greeting", "status": "planned"},
-        {"local_id": 4, "global_id": 106, "label": "Integration + E2E Validation", "status": "planned"}
-      ]
     }
   ],
-  "global_sprint_counter": 106
+  "global_sprint_counter": 101
 }
