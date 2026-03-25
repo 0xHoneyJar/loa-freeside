@@ -5,6 +5,22 @@ All notable changes to Loa will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.67.0] - 2026-03-25
+
+### Added
+
+- **cycle-052**: DX Hardening — User-Facing Release Communication (#460)
+  - `classify-commit-zone.sh`: Three-Zone commit classification for release pipeline (system-only, state-only, app, mixed-internal)
+  - `generate-release-summary.sh`: Emoji-prefixed "What's New" summaries from CHANGELOG/git log — max 5 lines, filters internal changes
+  - `/update-loa` now shows friendly summary after successful update (configurable via `update_loa.friendly_summary`)
+  - `semver-bump.sh --downstream`: Excludes System/State-only commits from downstream version bumps
+  - `post-merge-orchestrator.sh --downstream`: Zone-aware changelog and release note filtering with auto-detection
+  - 36 new tests (16 classify + 14 summary + 6 downstream bump)
+
+### Fixed
+
+- Release notes on downstream projects no longer include Loa framework cycles and System Zone changes (#394)
+
 ## [1.66.1] - 2026-03-25
 
 ### Fixed
