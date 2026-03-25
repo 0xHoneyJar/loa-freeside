@@ -104,3 +104,47 @@ See `.claude/hooks/settings.hooks.json` for the complete hook configuration.
 | PostToolUse | Write | `audit/write-mutation-logger.sh` | Log Write tool file modifications |
 | PostToolUse | Edit | `audit/write-mutation-logger.sh` | Log Edit tool file modifications |
 | Stop | (all) | `safety/run-mode-stop-guard.sh` | Guard against premature exit |
+| PreToolUse | Write/Edit | `compliance/implement-gate.sh` | ADVISORY: App Zone write outside /implement |
+
+## Compliance Hooks — Agent Hook Pattern (v1.40.0)
+
+### When to Use Agent vs Shell Hooks
+
+| Criterion | Shell Hook | Compliance Hook |
+|-----------|-----------|----------------|
+| Detection | Pattern matching (regex) | State file reading + integrity checks |
+| Failure mode | Fail-open (allow) | Fail-ask (prompt user) |
+| Performance | <10ms | <100ms (file I/O) |
+| Scope | Syntax-level (command text) | Semantic-level (active skill context) |
+
+### implement-gate.sh (FR-7 Prototype)
+
+**Type**: Command hook (ADVISORY)
+**Trigger**: PreToolUse on Write/Edit
+**Detection**: Reads `.run/sprint-plan-state.json`, `.run/simstim-state.json`, `.run/state.json`
+
+**Decision matrix**:
+
+| File Zone | State Found | State Valid | Decision |
+|-----------|------------|-------------|----------|
+| Non-App | Any | Any | `allow` |
+| App | RUNNING | Fresh + has plan_id | `allow` |
+| App | RUNNING | Stale (>24h) | `ask` |
+| App | RUNNING | Missing plan_id | `ask` |
+| App | JACKED_OUT/HALTED | — | `ask` |
+| App | Missing/corrupt | — | `ask` |
+
+**Installation**: Merge into `~/.claude/settings.json` PreToolUse hooks:
+```json
+{
+  "matcher": "Write|Edit",
+  "hooks": [{"type": "command", "command": ".claude/hooks/compliance/implement-gate.sh"}]
+}
+```
+
+**Known limitations**:
+- Cannot detect direct `/implement` without `/run` (no state file)
+- Heuristic only — not authoritative skill context (platform doesn't expose this)
+- Labeled ADVISORY in all output messages
+
+**Tests**: `tests/unit/compliance-hook.bats` (7 tests)

@@ -1,4 +1,17 @@
 ---
+name: run-bridge
+description: "Run Bridge — Autonomous Excellence Loop"
+capabilities:
+  schema_version: 1
+  read_files: true
+  search_code: true
+  write_files: true
+  execute_commands: true
+  web_access: true
+  user_interaction: true
+  agent_spawn: true
+  task_management: true
+cost-profile: unbounded
 parallel_threshold: 2000
 timeout_minutes: 480
 zones:

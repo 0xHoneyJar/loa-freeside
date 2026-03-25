@@ -1,3 +1,19 @@
+---
+name: mount
+description: "Install Loa framework onto an existing repository"
+capabilities:
+  schema_version: 1
+  read_files: true
+  search_code: true
+  write_files: true
+  execute_commands: true
+  web_access: false
+  user_interaction: true
+  agent_spawn: false
+  task_management: false
+cost-profile: heavy
+---
+
 # Mounting the Loa Framework
 
 You are installing the Loa framework onto a repository. This is the first step before the Loa can ride through the codebase.

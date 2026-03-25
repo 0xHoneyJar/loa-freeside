@@ -1,4 +1,19 @@
 ---
+name: sprint-plan
+description: Create comprehensive sprint plan based on PRD and SDD
+capabilities:
+  schema_version: 1
+  read_files: true
+  search_code: true
+  write_files: true
+  execute_commands: false
+  web_access: false
+  user_interaction: true
+  agent_spawn: false
+  task_management: false
+cost-profile: moderate
+context: fork
+agent: Plan
 parallel_threshold: null
 timeout_minutes: 60
 zones:

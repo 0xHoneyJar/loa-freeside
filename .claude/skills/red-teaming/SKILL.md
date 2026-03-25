@@ -1,3 +1,19 @@
+---
+name: red-team
+description: "Red Team — Generative Adversarial Security Design"
+capabilities:
+  schema_version: 1
+  read_files: true
+  search_code: true
+  write_files: true
+  execute_commands: false
+  web_access: true
+  user_interaction: false
+  agent_spawn: false
+  task_management: false
+cost-profile: heavy
+---
+
 # Red Team — Generative Adversarial Security Design
 
 ## Purpose

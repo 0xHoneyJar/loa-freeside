@@ -1,4 +1,24 @@
 ---
+name: plan-and-analyze
+description: Launch PRD discovery with codebase grounding and context ingestion
+allowed-tools: Read, Grep, Glob, AskUserQuestion, WebFetch, Write, Bash(git log *), Bash(wc *)
+capabilities:
+  schema_version: 1
+  read_files: true
+  search_code: true
+  write_files: true
+  execute_commands:
+    allowed:
+      - command: "git"
+        args: ["log", "*"]
+      - command: "wc"
+        args: ["*"]
+    deny_raw_shell: true
+  web_access: true
+  user_interaction: true
+  agent_spawn: false
+  task_management: false
+cost-profile: moderate
 parallel_threshold: 2000
 timeout_minutes: 90
 zones:

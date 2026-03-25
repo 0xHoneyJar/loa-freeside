@@ -489,3 +489,147 @@ EOF
     linked=$(symlink_pack_skills "no-skills-pack")
     [ "$linked" -eq 0 ]
 }
+
+# =============================================================================
+# Pack Staleness & Local Source Tests (Issue #449)
+# =============================================================================
+
+@test "staleness warning emitted for old packs" {
+    skip_if_not_implemented
+
+    # Source the library
+    source "$PROJECT_ROOT/.claude/scripts/constructs-lib.sh"
+
+    # Create meta file with old installed_at timestamp
+    local meta_path
+    meta_path=$(get_registry_meta_path)
+    mkdir -p "$(dirname "$meta_path")"
+    cat > "$meta_path" << 'EOF'
+{
+  "schema_version": 1,
+  "installed_skills": {},
+  "installed_packs": {
+    "stale-pack": {
+      "version": "1.0.0",
+      "installed_at": "2026-01-01T00:00:00Z",
+      "registry": "default"
+    }
+  },
+  "last_update_check": null
+}
+EOF
+
+    run check_pack_staleness "stale-pack" 7
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"WARN"* ]]
+    [[ "$output" == *"days ago"* ]]
+}
+
+@test "fresh pack does not trigger staleness warning" {
+    skip_if_not_implemented
+
+    # Source the library
+    source "$PROJECT_ROOT/.claude/scripts/constructs-lib.sh"
+
+    # Create meta file with current installed_at timestamp
+    local now_ts
+    now_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    local meta_path
+    meta_path=$(get_registry_meta_path)
+    mkdir -p "$(dirname "$meta_path")"
+    cat > "$meta_path" << EOF
+{
+  "schema_version": 1,
+  "installed_skills": {},
+  "installed_packs": {
+    "fresh-pack": {
+      "version": "1.0.0",
+      "installed_at": "$now_ts",
+      "registry": "default"
+    }
+  },
+  "last_update_check": null
+}
+EOF
+
+    run check_pack_staleness "fresh-pack" 7
+    [ "$status" -eq 1 ]  # Fresh = not stale
+}
+
+@test "no local source falls through to registry" {
+    skip_if_not_implemented
+
+    source "$PROJECT_ROOT/.claude/scripts/constructs-lib.sh"
+    run find_local_source "nonexistent-construct"
+    [ "$status" -eq 1 ]
+}
+
+@test "find_local_source returns path when construct.yaml exists" {
+    skip_if_not_implemented
+
+    # Create mock local source
+    local local_dir="$BATS_TMPDIR/local-construct-test-$$"
+    mkdir -p "$local_dir"
+    echo 'name: test-pack' > "$local_dir/construct.yaml"
+
+    # Override HOME so default search paths include our mock
+    local orig_home="$HOME"
+    export HOME="$BATS_TMPDIR"
+    mkdir -p "$BATS_TMPDIR/Documents/GitHub"
+    ln -sf "$local_dir" "$BATS_TMPDIR/Documents/GitHub/construct-local-test"
+
+    source "$PROJECT_ROOT/.claude/scripts/constructs-lib.sh"
+    run find_local_source "local-test"
+
+    # Restore HOME
+    export HOME="$orig_home"
+    rm -rf "$local_dir" "$BATS_TMPDIR/Documents/GitHub/construct-local-test"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"construct-local-test"* ]]
+}
+
+@test "find_local_source finds pack with manifest.json (no construct.yaml)" {
+    skip_if_not_implemented
+
+    # Create mock local source with only manifest.json (like gtm-collective)
+    local local_dir="$BATS_TMPDIR/manifest-only-$$"
+    mkdir -p "$local_dir"
+    echo '{"name":"Test","slug":"manifest-test"}' > "$local_dir/manifest.json"
+
+    local orig_home="$HOME"
+    export HOME="$BATS_TMPDIR"
+    mkdir -p "$BATS_TMPDIR/Documents/GitHub"
+    ln -sf "$local_dir" "$BATS_TMPDIR/Documents/GitHub/construct-manifest-test"
+
+    source "$PROJECT_ROOT/.claude/scripts/constructs-lib.sh"
+    run find_local_source "manifest-test"
+
+    export HOME="$orig_home"
+    rm -rf "$local_dir" "$BATS_TMPDIR/Documents/GitHub/construct-manifest-test"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"manifest-test"* ]]
+}
+
+@test "check_pack_staleness returns 1 when pack not in meta" {
+    skip_if_not_implemented
+
+    source "$PROJECT_ROOT/.claude/scripts/constructs-lib.sh"
+
+    # Create meta file without the queried pack
+    local meta_path
+    meta_path=$(get_registry_meta_path)
+    mkdir -p "$(dirname "$meta_path")"
+    cat > "$meta_path" << 'EOF'
+{
+  "schema_version": 1,
+  "installed_skills": {},
+  "installed_packs": {},
+  "last_update_check": null
+}
+EOF
+
+    run check_pack_staleness "missing-pack" 7
+    [ "$status" -eq 1 ]
+}

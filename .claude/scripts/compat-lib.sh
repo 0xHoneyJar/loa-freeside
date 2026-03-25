@@ -40,7 +40,7 @@ if [[ "${_COMPAT_LIB_LOADED:-}" == "true" ]]; then
 fi
 _COMPAT_LIB_LOADED=true
 
-_COMPAT_LIB_VERSION="1.0.0"
+_COMPAT_LIB_VERSION="1.1.0"
 
 # =============================================================================
 # Platform Detection (run once at source time)
@@ -405,8 +405,66 @@ run_with_timeout() {
 }
 
 # =============================================================================
+# _date_to_epoch - Portable ISO 8601 to epoch conversion
+# =============================================================================
+#
+# Converts ISO 8601 timestamps (e.g., "2026-03-19T15:45:00Z") to Unix epoch
+# seconds. Three-tier fallback: GNU date -d, macOS date -jf, perl.
+#
+# This function was added as part of cycle-050 (Multi-Model Permission
+# Architecture) to support portable staleness checks in implement-gate.sh.
+# Addresses Flatline finding BB-049-001.
+#
+# Arguments:
+#   $1 - ISO 8601 timestamp string (e.g., "2026-03-19T15:45:00Z")
+#
+# Returns:
+#   Epoch seconds on stdout, or empty string on failure
+#
+# Usage:
+#   epoch=$(_date_to_epoch "2026-03-19T15:45:00Z")
+#
+_date_to_epoch() {
+  local timestamp="$1"
+
+  # Input validation: empty/missing timestamp must fail, not return "now"
+  if [[ -z "$timestamp" ]]; then
+    echo ""
+    return 1
+  fi
+
+  # Tier 1: GNU date -d (Linux)
+  if [[ "$_COMPAT_OS" == "linux" ]]; then
+    date -d "$timestamp" +%s 2>/dev/null && return 0
+  fi
+
+  # Tier 2: macOS date -jf
+  if [[ "$_COMPAT_OS" == "darwin" ]]; then
+    # Try with 'Z' suffix format first, then without
+    date -jf '%Y-%m-%dT%H:%M:%SZ' "$timestamp" +%s 2>/dev/null && return 0
+    date -jf '%Y-%m-%dT%H:%M:%S' "$timestamp" +%s 2>/dev/null && return 0
+  fi
+
+  # Tier 3: perl fallback (always available on macOS and most Linux)
+  if command -v perl &>/dev/null; then
+    perl -MTime::Piece -e '
+      my $ts = shift;
+      $ts =~ s/Z$//;
+      my $t = Time::Piece->strptime($ts, "%Y-%m-%dT%H:%M:%S");
+      print $t->epoch;
+    ' "$timestamp" 2>/dev/null && return 0
+  fi
+
+  # All tiers failed
+  echo ""
+  return 1
+}
+
+# =============================================================================
 # Version
 # =============================================================================
+
+_COMPAT_LIB_VERSION="1.1.0"
 
 get_compat_lib_version() {
   echo "$_COMPAT_LIB_VERSION"

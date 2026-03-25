@@ -1,3 +1,19 @@
+---
+name: simstim
+description: "Simstim - HITL Accelerated Development Workflow"
+capabilities:
+  schema_version: 1
+  read_files: true
+  search_code: true
+  write_files: true
+  execute_commands: true
+  web_access: true
+  user_interaction: true
+  agent_spawn: true
+  task_management: true
+cost-profile: unbounded
+---
+
 # Simstim - HITL Accelerated Development Workflow
 
 <objective>

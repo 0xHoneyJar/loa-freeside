@@ -4,6 +4,17 @@ description: Analyze codebase to extract reality into Loa artifacts
 context: fork
 agent: Explore
 allowed-tools: Read, Grep, Glob, Write, Bash(git *)
+capabilities:
+  schema_version: 1
+  read_files: true
+  search_code: true
+  write_files: true
+  execute_commands: true
+  web_access: false
+  user_interaction: false
+  agent_spawn: false
+  task_management: false
+cost-profile: heavy
 ---
 
 # Riding Through the Codebase

@@ -425,6 +425,75 @@ do_install_pack() {
     # Ensure constructs directory is gitignored
     ensure_constructs_gitignored
 
+    # Check for local source clone (prefer over stale registry download) — Issue #449
+    local local_source
+    if local_source=$(find_local_source "$pack_slug"); then
+        local meta_file
+        meta_file=$(get_registry_meta_path)
+        local should_use_local=false
+
+        if [[ ! -d "$packs_dir/$pack_slug" ]]; then
+            # Not installed yet — use local if available
+            should_use_local=true
+            echo "  Local source found at: $local_source (not yet installed)"
+        elif [[ -f "$meta_file" ]]; then
+            # Already installed — check if local is newer
+            local installed_at
+            installed_at=$(jq -r --arg s "$pack_slug" '.installed_packs[$s].installed_at // empty' "$meta_file" 2>/dev/null) || installed_at=""
+            if [[ -n "$installed_at" ]]; then
+                # Check if ANY file in local source is newer than install time
+                # (not just construct.yaml — the P0 bug was in dig-search.ts)
+                local installed_epoch
+                if type _date_to_epoch &>/dev/null; then
+                    installed_epoch=$(_date_to_epoch "$installed_at" 2>/dev/null) || installed_epoch=0
+                else
+                    installed_epoch=$(date -d "$installed_at" +%s 2>/dev/null) || installed_epoch=0
+                fi
+
+                if [[ $installed_epoch -gt 0 ]]; then
+                    # Find any file newer than install time
+                    local newer_file
+                    newer_file=$(find "$local_source" -type f -newer "$packs_dir/$pack_slug" -print -quit 2>/dev/null) || newer_file=""
+                    if [[ -n "$newer_file" ]]; then
+                        should_use_local=true
+                        echo "  Local source at $local_source has changes since last install"
+                    fi
+                fi
+            fi
+        fi
+
+        if [[ "$should_use_local" == "true" ]]; then
+            echo "  Installing from local source: $local_source"
+            # Copy from local source instead of downloading
+            mkdir -p "$packs_dir/$pack_slug"
+            cp -r "$local_source/." "$packs_dir/$pack_slug/"
+            # Update metadata
+            local now_ts
+            now_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            init_registry_meta
+            local meta_tmp="${meta_file}.tmp.$$"
+            jq --arg slug "$pack_slug" --arg ts "$now_ts" --arg src "$local_source" \
+                '.installed_packs[$slug].installed_at = $ts | .installed_packs[$slug].source = "local" | .installed_packs[$slug].local_source = $src' \
+                "$meta_file" > "$meta_tmp" && mv "$meta_tmp" "$meta_file"
+
+            # Symlink commands
+            echo "  Linking commands..."
+            local commands_linked
+            commands_linked=$(symlink_pack_commands "$pack_slug")
+            echo "  Created $commands_linked command symlinks"
+
+            # Symlink skills
+            echo "  Linking skills..."
+            local skills_linked
+            skills_linked=$(symlink_pack_skills "$pack_slug")
+            echo "  Created $skills_linked skill symlinks"
+
+            echo ""
+            print_success "Pack '$pack_slug' installed from local source"
+            return $EXIT_SUCCESS
+        fi
+    fi
+
     echo "  Downloading from $registry_url/packs/$pack_slug/download..."
 
     # Download pack
@@ -664,6 +733,11 @@ PYEOF
             cmd_name=$(basename "$cmd" .md)
             echo "  /$cmd_name"
         done
+    fi
+
+    # Regenerate construct index after install
+    if [[ -x "$SCRIPT_DIR/construct-index-gen.sh" ]]; then
+        "$SCRIPT_DIR/construct-index-gen.sh" --quiet 2>/dev/null || true
     fi
 
     return $EXIT_SUCCESS
@@ -1062,6 +1136,11 @@ do_uninstall_pack() {
 
     echo ""
     print_success "Pack '$pack_slug' uninstalled successfully!"
+
+    # Regenerate construct index after uninstall
+    if [[ -x "$SCRIPT_DIR/construct-index-gen.sh" ]]; then
+        "$SCRIPT_DIR/construct-index-gen.sh" --quiet 2>/dev/null || true
+    fi
 
     return $EXIT_SUCCESS
 }

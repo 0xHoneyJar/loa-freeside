@@ -1,3 +1,19 @@
+---
+name: deploy-production
+description: "Design and deploy production infrastructure"
+capabilities:
+  schema_version: 1
+  read_files: true
+  search_code: true
+  write_files: true
+  execute_commands: true
+  web_access: true
+  user_interaction: true
+  agent_spawn: false
+  task_management: false
+cost-profile: heavy
+---
+
 <input_guardrails>
 ## Pre-Execution Validation
 

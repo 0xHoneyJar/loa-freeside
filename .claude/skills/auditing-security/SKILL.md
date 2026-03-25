@@ -1,4 +1,20 @@
 ---
+name: audit
+description: Security and quality audit of application codebase
+allowed-tools: Read, Grep, Glob, WebFetch, WebSearch
+capabilities:
+  schema_version: 1
+  read_files: true
+  search_code: true
+  write_files: false
+  execute_commands: false
+  web_access: true
+  user_interaction: false
+  agent_spawn: false
+  task_management: false
+cost-profile: heavy
+context: fork
+agent: Explore
 parallel_threshold: 2000
 audit_categories: 5
 timeout_minutes: 60

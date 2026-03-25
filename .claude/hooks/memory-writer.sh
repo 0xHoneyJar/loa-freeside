@@ -124,8 +124,39 @@ LEARNING_PATTERNS=(
     "for future reference"
 )
 
+# =============================================================================
+# Auto-Memory Scope Skip List (v1.40.0)
+# =============================================================================
+# Observations matching these patterns belong to Claude Code's auto-memory
+# system, not to Loa's observations.jsonl. Skip to avoid duplication.
+# See: .claude/loa/reference/memory-reference.md §Ownership Boundary
+SKIP_PATTERNS=(
+    "user prefer"
+    "project structure"
+    "working style"
+    "tool configuration"
+    "IDE setting"
+    "editor preference"
+    "coding style preference"
+)
+
+should_skip_auto_memory_scope() {
+    local output="$1"
+    for pattern in "${SKIP_PATTERNS[@]}"; do
+        if echo "$output" | grep -qiF "$pattern"; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 has_learning_signal() {
     local output="$1"
+
+    # Skip observations that belong to auto-memory scope
+    if should_skip_auto_memory_scope "$output"; then
+        return 1
+    fi
 
     for pattern in "${LEARNING_PATTERNS[@]}"; do
         if echo "$output" | grep -qiE "$pattern"; then

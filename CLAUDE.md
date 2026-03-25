@@ -181,3 +181,12 @@ Structured audit events emitted for every capability exercise:
 - `.claude/loa/CLAUDE.loa.md` - Framework-managed instructions (auto-updated)
 - `.loa.config.yaml` - User configuration file
 - `PROCESS.md` - Detailed workflow documentation
+
+## Construct Support
+
+When `.run/construct-index.yaml` exists, constructs are installed and available:
+- When a user mentions a construct name, check the index to resolve it
+- Load the construct's persona file if available
+- Scope to the construct's skill set and grimoire paths
+- Use `construct-resolve.sh resolve <name>` for programmatic resolution
+- Use `construct-resolve.sh compose <source> <target>` to check composition paths

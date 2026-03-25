@@ -117,16 +117,29 @@ check_and_block \
 
 # ---------------------------------------------------------------------------
 # C-TEAM-004: Block git commit and push
-# Matches: git commit, git push
+# Matches: git commit, git push (including env/sudo wrappers)
 # Does NOT match: git status, git diff, git log (read-only operations)
 # ---------------------------------------------------------------------------
 check_and_block \
-  '(^|;|&&|\|)\s*(sudo\s+)?git\s+commit' \
+  '(^|;|&&|\|)\s*(sudo\s+|env\s+[^;]*\s+)?git\s+commit' \
   "Git commit is lead-only in Agent Teams mode (C-TEAM-004). Report completed work to the lead via SendMessage."
 
 check_and_block \
-  '(^|;|&&|\|)\s*(sudo\s+)?git\s+push' \
+  '(^|;|&&|\|)\s*(sudo\s+|env\s+[^;]*\s+)?git\s+push' \
   "Git push is lead-only in Agent Teams mode (C-TEAM-004). Report completed work to the lead via SendMessage."
+
+# ---------------------------------------------------------------------------
+# ATK-011: Block LOA_TEAM_MEMBER unset attempts
+# Matches: unset LOA_TEAM_MEMBER, env -u LOA_TEAM_MEMBER
+# Prevents teammate from removing their own role identity to bypass guards.
+# ---------------------------------------------------------------------------
+check_and_block \
+  'unset\s+LOA_TEAM_MEMBER' \
+  "Cannot unset LOA_TEAM_MEMBER in Agent Teams mode (ATK-011). Team role identity is immutable."
+
+check_and_block \
+  'env\s+(-[a-zA-Z]*u[a-zA-Z]*\s+LOA_TEAM_MEMBER|-u\s+LOA_TEAM_MEMBER)' \
+  "Cannot remove LOA_TEAM_MEMBER via env wrapper in Agent Teams mode (ATK-011). Team role identity is immutable."
 
 # All checks passed — allow execution
 exit 0

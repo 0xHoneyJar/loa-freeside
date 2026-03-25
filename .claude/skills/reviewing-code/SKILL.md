@@ -1,4 +1,24 @@
 ---
+name: review-sprint
+description: Validate sprint implementation against acceptance criteria
+allowed-tools: Read, Grep, Glob, WebFetch, Bash(git diff *), Bash(git log *)
+capabilities:
+  schema_version: 1
+  read_files: true
+  search_code: true
+  write_files: false
+  execute_commands:
+    allowed:
+      - command: "git"
+        args: ["diff", "*"]
+      - command: "git"
+        args: ["log", "*"]
+    deny_raw_shell: true
+  web_access: true
+  user_interaction: false
+  agent_spawn: false
+  task_management: false
+cost-profile: moderate
 parallel_threshold: 3000
 timeout_minutes: 60
 zones:

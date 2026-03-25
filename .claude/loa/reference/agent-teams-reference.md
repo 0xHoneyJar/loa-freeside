@@ -358,3 +358,26 @@ If `.run/` state files become inconsistent:
 1. Check the audit trail for recent state file writes: `grep 'simstim-state' .run/audit.jsonl | tail -5`
 2. Restore from the lead's last known good state
 3. Have teammates re-report their status via SendMessage
+
+## Hook Compatibility Matrix (v1.40.0)
+
+Validated via `tests/unit/agent-teams-hooks.bats` (cycle-049, FR-6).
+
+| Hook Event | Safety Hook | Result | Test |
+|-----------|------------|--------|------|
+| TeammateIdle | N/A (separate event type) | No interference | T1 |
+| TaskCompleted | N/A (separate event type) | No interference | T1 |
+| PreToolUse:Bash | block-destructive-bash | Blocks rm -rf, force-push, reset --hard | Existing |
+| PreToolUse:Bash | team-role-guard | Blocks teammate br, git commit/push, .run/ writes | T2-T3 |
+| PreToolUse:Write | team-role-guard-write | Blocks teammate System Zone writes | T5 |
+| PreToolUse:Edit | team-role-guard-write | Blocks teammate System Zone edits | T5 |
+| PreToolUse:Skill | team-skill-guard | Blocks teammate planning skills | T4 |
+
+### ATK-011 Mitigation (v1.40.0)
+
+The `team-role-guard.sh` blocks attempts to unset `LOA_TEAM_MEMBER`:
+- `unset LOA_TEAM_MEMBER` → blocked
+- `env -u LOA_TEAM_MEMBER <command>` → blocked
+- `env` wrapper around git commit/push → blocked (pattern includes `env\s+` prefix)
+
+Tests: T7, T8 in `agent-teams-hooks.bats`.

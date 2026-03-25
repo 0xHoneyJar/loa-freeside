@@ -1,4 +1,17 @@
 ---
+name: bridgebuilder-review
+description: "Bridgebuilder — Autonomous PR Review"
+capabilities:
+  schema_version: 1
+  read_files: true
+  search_code: true
+  write_files: true
+  execute_commands: true
+  web_access: true
+  user_interaction: false
+  agent_spawn: true
+  task_management: false
+cost-profile: heavy
 zones:
   system:
     path: .claude

@@ -507,6 +507,91 @@ get_registry_meta() {
     jq -r "$json_path // \"null\"" "$meta_path" 2>/dev/null || echo "null"
 }
 
+# =============================================================================
+# Pack Staleness & Local Source Detection (Issue #449)
+# =============================================================================
+
+# Check if installed pack is stale (>N days old)
+# Args: $1 = pack slug, $2 = threshold_days (default: 7)
+# Returns: 0 if stale, 1 if fresh
+# Outputs: staleness info to stderr as warning
+check_pack_staleness() {
+    local slug="$1"
+    local threshold_days="${2:-7}"
+    local meta_path
+    meta_path=$(get_registry_meta_path)
+
+    if [[ ! -f "$meta_path" ]]; then
+        return 1  # No meta = can't check
+    fi
+
+    local installed_at
+    installed_at=$(jq -r --arg s "$slug" '.installed_packs[$s].installed_at // empty' "$meta_path" 2>/dev/null) || return 1
+
+    if [[ -z "$installed_at" ]]; then
+        return 1
+    fi
+
+    # Use _date_to_epoch if available, else fallback
+    local installed_epoch now age_seconds age_days
+    now=$(date +%s 2>/dev/null) || return 1
+
+    if type _date_to_epoch &>/dev/null; then
+        installed_epoch=$(_date_to_epoch "$installed_at" 2>/dev/null) || return 1
+    else
+        installed_epoch=$(date -d "$installed_at" +%s 2>/dev/null ||
+                         date -jf '%Y-%m-%dT%H:%M:%SZ' "$installed_at" +%s 2>/dev/null) || return 1
+    fi
+
+    age_seconds=$((now - installed_epoch))
+    age_days=$((age_seconds / 86400))
+
+    if [[ $age_days -ge $threshold_days ]]; then
+        echo "[WARN] Pack '$slug' installed ${age_days} days ago (threshold: ${threshold_days} days). Consider reinstalling." >&2
+        return 0  # Stale
+    fi
+
+    return 1  # Fresh
+}
+
+# Find local source clone for a construct pack
+# Args: $1 = pack slug
+# Returns: 0 if found, 1 if not
+# Outputs: local source path to stdout
+find_local_source() {
+    local slug="$1"
+
+    # Read configured paths from .loa.config.yaml, fallback to common patterns
+    local search_paths=()
+    local config_paths
+    config_paths=$(yq eval '.constructs.local_source_paths[]' ".loa.config.yaml" 2>/dev/null) || true
+
+    if [[ -n "$config_paths" ]]; then
+        while IFS= read -r p; do
+            # Expand ~ to HOME
+            p="${p/#\~/$HOME}"
+            search_paths+=("$p")
+        done <<< "$config_paths"
+    else
+        # Default search paths
+        search_paths=(
+            "$HOME/Documents/GitHub/construct-$slug"
+            "$HOME/Documents/GitHub/$slug"
+            "$HOME/src/construct-$slug"
+            "$HOME/src/$slug"
+        )
+    fi
+
+    for path in "${search_paths[@]}"; do
+        if [[ -d "$path" && ( -f "$path/construct.yaml" || -f "$path/manifest.json" ) ]]; then
+            echo "$path"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
 # Update registry meta file
 # SECURITY (MED-007): Includes backup before jq modification
 # Args:

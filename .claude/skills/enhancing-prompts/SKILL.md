@@ -1,3 +1,20 @@
+---
+name: enhance
+description: Enhance a prompt for better outputs with analysis and optimization
+allowed-tools: Read, Grep, Glob
+capabilities:
+  schema_version: 1
+  read_files: true
+  search_code: true
+  write_files: false
+  execute_commands: false
+  web_access: false
+  user_interaction: false
+  agent_spawn: false
+  task_management: false
+cost-profile: lightweight
+---
+
 # Enhancing Prompts
 
 <objective>

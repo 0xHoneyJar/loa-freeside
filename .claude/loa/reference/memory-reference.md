@@ -33,6 +33,25 @@ Automatically captured: discovered, learned, fixed, resolved, pattern, insight
 .claude/scripts/memory-query.sh "authentication pattern"
 ```
 
+## Ownership Boundary (v1.40.0)
+
+Loa has two memory systems with distinct ownership. Neither should duplicate the other's scope.
+
+| Scope | System | Storage | Owner |
+|-------|--------|---------|-------|
+| User preferences | Auto-memory | `~/.claude/projects/.../memory/` | Claude Code |
+| Working style | Auto-memory | `~/.claude/projects/.../memory/` | Claude Code |
+| Project structure | Auto-memory | `~/.claude/projects/.../memory/` | Claude Code |
+| Tooling preferences | Auto-memory | `~/.claude/projects/.../memory/` | Claude Code |
+| Framework patterns | observations.jsonl | `grimoires/loa/memory/` | Loa hooks |
+| Anti-patterns | observations.jsonl | `grimoires/loa/memory/` | Loa hooks |
+| Debugging discoveries | observations.jsonl | `grimoires/loa/memory/` | Loa hooks |
+| Cross-session technical context | observations.jsonl | `grimoires/loa/memory/` | Loa hooks |
+
+**Decision rule**: If the observation is about *how the user works* → auto-memory. If it's about *how the framework/code works* → observations.jsonl.
+
+The `memory-writer.sh` hook has a skip-list (`SKIP_PATTERNS`) to avoid writing observations that belong to auto-memory scope.
+
 ## Configuration
 
 ```yaml

@@ -1,4 +1,22 @@
 ---
+name: loa-credentials
+description: Credential management and audit for API keys and secrets
+allowed-tools: Read, Grep, Glob, Bash(printenv LOA_*)
+capabilities:
+  schema_version: 1
+  read_files: true
+  search_code: true
+  write_files: false
+  execute_commands:
+    allowed:
+      - command: "printenv"
+        args: ["LOA_*"]
+    deny_raw_shell: true
+  web_access: false
+  user_interaction: false
+  agent_spawn: false
+  task_management: false
+cost-profile: lightweight
 parallel_threshold: 1000
 timeout_minutes: 10
 zones:

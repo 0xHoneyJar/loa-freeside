@@ -1,4 +1,17 @@
 ---
+name: implement
+description: "Execute sprint tasks with production-quality code and tests"
+capabilities:
+  schema_version: 1
+  read_files: true
+  search_code: true
+  write_files: true
+  execute_commands: true
+  web_access: true
+  user_interaction: true
+  agent_spawn: true
+  task_management: true
+cost-profile: heavy
 parallel_threshold: 3000
 timeout_minutes: 120
 zones:

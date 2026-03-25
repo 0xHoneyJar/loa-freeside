@@ -1,4 +1,23 @@
 ---
+name: butterfreezone
+description: "BUTTERFREEZONE Generation Skill"
+capabilities:
+  schema_version: 1
+  read_files: true
+  search_code: true
+  write_files: false
+  execute_commands:
+    allowed:
+      - command: ".claude/scripts/butterfreezone-gen.sh"
+        args: ["*"]
+      - command: ".claude/scripts/butterfreezone-validate.sh"
+        args: ["*"]
+    deny_raw_shell: true
+  web_access: false
+  user_interaction: false
+  agent_spawn: false
+  task_management: false
+cost-profile: lightweight
 parallel_threshold: 3000
 timeout_minutes: 5
 zones:
