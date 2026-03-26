@@ -28,6 +28,9 @@ import cookieParser from 'cookie-parser';
 import { chatPageRouter } from './routes/chat-page.routes.js';
 // Sprint 324, Task 3.1: Protocol Discovery Endpoint
 import { discoveryRouter } from './routes/discovery.routes.js';
+// Dixie Phase 3: Settlement + Pricing APIs (freeside#147)
+import { settlementRouter, setSettlementLedger } from './routes/settlement.routes.js';
+import { pricingRouter } from './routes/pricing.routes.js';
 // Sprint 6 (319), Task 6.6: Web Chat Widget + WebSocket
 import { createChatWebSocket, drainChatWebSocket } from './websocket/chat-ws.js';
 import path from 'path';
@@ -279,6 +282,10 @@ function createApp(): Application {
 
   // Billing routes (v4.0 - Sprint 23)
   expressApp.use('/api/billing', billingRouter);
+
+  // Dixie Phase 3: Settlement + Pricing APIs (freeside#147)
+  expressApp.use('/api/settlement', settlementRouter);
+  expressApp.use('/api/pricing', pricingRouter);
 
   // Crypto Billing routes (Sprint 158: NOWPayments Integration)
   expressApp.use('/api/crypto', cryptoBillingRouter);
