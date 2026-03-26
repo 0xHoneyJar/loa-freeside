@@ -127,7 +127,9 @@ resource "aws_lb_listener" "http_redirect" {
 # Cycle 044: Added dixie subdomain as SAN for host-based routing
 resource "aws_acm_certificate" "main" {
   domain_name               = var.domain_name
-  subject_alternative_names = ["dixie.${var.environment}.${var.root_domain}"]
+  # Dixie uses Cloud Map internal DNS — no public cert needed.
+  # Re-add SAN when dixie.production.0xhoneyjar.xyz DNS is delegated.
+  subject_alternative_names = []
   validation_method         = "DNS"
 
   lifecycle {

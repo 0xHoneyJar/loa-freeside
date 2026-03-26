@@ -126,7 +126,8 @@ resource "aws_iam_role_policy" "ecs_execution_finn_secrets" {
           aws_secretsmanager_secret.finn_s2s_es256_private_key.arn,
           aws_secretsmanager_secret.finn_nowpayments_api_key.arn,
           aws_secretsmanager_secret.finn_nowpayments_ipn_secret.arn,
-          aws_secretsmanager_secret.nats_tls_ca.arn
+          aws_secretsmanager_secret.nats_tls_ca.arn,
+          data.aws_secretsmanager_secret.app_config.arn,
         ]
       },
       {
@@ -396,7 +397,10 @@ resource "aws_ecs_task_definition" "finn" {
         { name = "NATS_URL", value = "tls://nats.${local.name_prefix}.local:4222" },
         # Feature flags
         { name = "FEATURE_PAYMENTS_ENABLED", value = "false" },
-        { name = "FEATURE_INFERENCE_ENABLED", value = "true" }
+        { name = "FEATURE_INFERENCE_ENABLED", value = "true" },
+        { name = "FEATURE_REDIS_ENABLED", value = "false" },
+        # Security: Finn requires explicit CORS origins in production
+        { name = "CORS_ALLOWED_ORIGINS", value = "https://api.0xhoneyjar.xyz,https://staging.api.arrakis.community,https://0xhoneyjar.xyz" },
       ]
 
       secrets = [
@@ -417,7 +421,30 @@ resource "aws_ecs_task_definition" "finn" {
         { name = "FINN_CALIBRATION_HMAC_KEY", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/loa-finn/armitage/FINN_CALIBRATION_HMAC_KEY" },
         { name = "FINN_METRICS_BEARER_TOKEN", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/loa-finn/armitage/FINN_METRICS_BEARER_TOKEN" },
         # SEC-4.4: NATS TLS CA certificate for client verification
-        { name = "NATS_TLS_CA", valueFrom = aws_secretsmanager_secret.nats_tls_ca.arn }
+        { name = "NATS_TLS_CA", valueFrom = aws_secretsmanager_secret.nats_tls_ca.arn },
+        # Finn config requires these at boot (Zod validation).
+        # Sourced from app-config secret via JSON key extraction.
+        { name = "BGT_ADDRESS", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:BGT_ADDRESS::" },
+        { name = "DISCORD_BOT_TOKEN", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:DISCORD_BOT_TOKEN::" },
+        { name = "DISCORD_GUILD_ID", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:DISCORD_GUILD_ID::" },
+        { name = "DISCORD_APPLICATION_ID", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:DISCORD_APPLICATION_ID::" },
+        { name = "DISCORD_CHANNEL_THE_DOOR", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:DISCORD_CHANNEL_THE_DOOR::" },
+        { name = "DISCORD_CHANNEL_CENSUS", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:DISCORD_CHANNEL_CENSUS::" },
+        { name = "DISCORD_CHANNEL_ANNOUNCEMENTS", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:DISCORD_CHANNEL_ANNOUNCEMENTS::" },
+        { name = "DISCORD_CHANNEL_CAVE_ENTRANCE", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:DISCORD_CHANNEL_CAVE_ENTRANCE::" },
+        { name = "DISCORD_CHANNEL_OASIS", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:DISCORD_CHANNEL_OASIS::" },
+        { name = "DISCORD_CHANNEL_DEEP_DESERT", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:DISCORD_CHANNEL_DEEP_DESERT::" },
+        { name = "DISCORD_CHANNEL_STILLSUIT_LOUNGE", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:DISCORD_CHANNEL_STILLSUIT_LOUNGE::" },
+        { name = "DISCORD_CHANNEL_NAIB_COUNCIL", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:DISCORD_CHANNEL_NAIB_COUNCIL::" },
+        { name = "DISCORD_CHANNEL_INTRODUCTIONS", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:DISCORD_CHANNEL_INTRODUCTIONS::" },
+        { name = "DISCORD_ROLE_NAIB", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:DISCORD_ROLE_NAIB::" },
+        { name = "DISCORD_ROLE_FEDAYKIN", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:DISCORD_ROLE_FEDAYKIN::" },
+        { name = "TRIGGER_PROJECT_ID", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:TRIGGER_PROJECT_ID::" },
+        { name = "TRIGGER_SECRET_KEY", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:TRIGGER_SECRET_KEY::" },
+        { name = "DEVELOPER_API_S2S_SECRET", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:DEVELOPER_API_S2S_SECRET::" },
+        { name = "API_KEY_PEPPER", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:API_KEY_PEPPER::" },
+        { name = "RATE_LIMIT_SALT", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:RATE_LIMIT_SALT::" },
+        { name = "INTERNAL_API_KEY", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:INTERNAL_API_KEY::" },
       ]
 
       logConfiguration = {
