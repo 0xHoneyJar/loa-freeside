@@ -7,4 +7,4 @@ mod pool;
 mod state;
 
 pub use pool::ShardPool;
-pub use state::{ShardHealth, ShardState};
+pub use state::ShardState;

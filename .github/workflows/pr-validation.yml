@@ -91,8 +91,20 @@ jobs:
       run:
         working-directory: ${{ env.WORKING_DIR }}
 
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     env:
       SKIP_INTEGRATION_TESTS: 'true'
+      REDIS_URL: redis://localhost:6379
       API_KEY_PEPPER: 'test-pepper-32-char-minimum-value'
       RATE_LIMIT_SALT: 'test-salt-value'
       WEBHOOK_SECRET: 'test-webhook-secret'

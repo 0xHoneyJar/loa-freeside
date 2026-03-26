@@ -129,7 +129,7 @@ jobs:
         uses: hadolint/hadolint-action@v3.3.0
         with:
           dockerfile: apps/worker/Dockerfile
-          failure-threshold: warning
+          failure-threshold: error
           format: sarif
           output-file: hadolint-results.sarif
 

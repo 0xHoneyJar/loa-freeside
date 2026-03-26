@@ -7,13 +7,13 @@
  * - v4.6.0 inbound JWT accepted (trust_level mapped to trust_scopes)
  * - v7.0.0 inbound JWT accepted (trust_scopes used directly)
  * - v7.11.0 coordination message accepted (transition window)
- * - v8.2.0 coordination message accepted (preferred)
+ * - v8.3.0 coordination message accepted (preferred)
  * - Malformed messages rejected with correct error codes
  * - Feature flag: PROTOCOL_V7_NORMALIZATION=false reverts to v4.6 behavior
  * - Cross-boundary: combined JWT + coordination scenarios
  *
  * NOTE: The canonical validateCompatibility() from @0xhoneyjar/loa-hounfour
- * is mocked to accept both 7.11.0 and 8.2.0 (the current transition window).
+ * is mocked to accept 7.11.0, 8.2.0, and 8.3.0 (the current tri-accept window).
  *
  * SDD refs: §3.6, §3.7, §8.3
  * Sprint refs: Task 302.5
@@ -21,11 +21,11 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// Mock the canonical library for the current transition window (7.11.0 + 8.2.0)
+// Mock the canonical library for the current tri-accept window (7.11.0 + 8.2.0 + 8.3.0)
 vi.mock('@0xhoneyjar/loa-hounfour', () => ({
-  CONTRACT_VERSION: '8.2.0',
+  CONTRACT_VERSION: '8.3.0',
   validateCompatibility: (version: string) => {
-    if (version === '8.2.0' || version === '7.11.0') {
+    if (version === '8.3.0' || version === '8.2.0' || version === '7.11.0') {
       return { compatible: true };
     }
     return { compatible: false, error: `Version ${version} is not supported` };

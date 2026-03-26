@@ -3,8 +3,8 @@
  *
  * Verifies:
  * - negotiateVersion() returns correct preferred + supported versions
- * - CONTRACT_VERSION is 8.2.0 (canonical from @0xhoneyjar/loa-hounfour)
- * - normalizeCoordinationMessage() accepts v8.2.0 and v7.11.0 messages
+ * - CONTRACT_VERSION is 8.3.0 (canonical from @0xhoneyjar/loa-hounfour)
+ * - normalizeCoordinationMessage() accepts v8.3.0, v8.2.0 and v7.11.0 messages
  * - normalizeCoordinationMessage() rejects missing version discriminator
  * - normalizeCoordinationMessage() rejects unknown versions
  * - Feature flag behavior (PROTOCOL_V7_NORMALIZATION)
@@ -25,10 +25,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // during the transition period. The local negotiateVersion() advertises
 // v7.11.0 support; the mock makes the canonical validator agree.
 vi.mock('@0xhoneyjar/loa-hounfour', () => ({
-  CONTRACT_VERSION: '8.2.0',
+  CONTRACT_VERSION: '8.3.0',
   validateCompatibility: (version: string) => {
-    // Accept 7.11.0 and 8.2.0 (the transition support window)
-    if (version === '8.2.0' || version === '7.11.0') {
+    // Accept 7.11.0, 8.2.0, and 8.3.0 (the tri-accept transition window)
+    if (version === '8.3.0' || version === '8.2.0' || version === '7.11.0') {
       return { compatible: true };
     }
     return { compatible: false, error: `Version ${version} is not supported` };
@@ -51,26 +51,28 @@ describe('Coordination Schema & Version Negotiation (Task 302.4)', () => {
   // =========================================================================
 
   describe('negotiateVersion()', () => {
-    it('returns preferred 8.2.0', () => {
+    it('returns preferred 8.3.0', () => {
       const result = negotiateVersion();
-      expect(result.preferred).toBe('8.2.0');
+      expect(result.preferred).toBe('8.3.0');
     });
 
-    it('supports both 7.11.0 and 8.2.0', () => {
+    it('supports 7.11.0, 8.2.0, and 8.3.0', () => {
       const result = negotiateVersion();
       expect(result.supported).toContain('7.11.0');
       expect(result.supported).toContain('8.2.0');
+      expect(result.supported).toContain('8.3.0');
     });
 
-    it('returns exactly two supported versions', () => {
+    it('returns exactly three supported versions', () => {
       const result = negotiateVersion();
-      expect(result.supported).toHaveLength(2);
+      expect(result.supported).toHaveLength(3);
     });
 
     it('lists supported versions in ascending order', () => {
       const result = negotiateVersion();
       expect(result.supported[0]).toBe('7.11.0');
       expect(result.supported[1]).toBe('8.2.0');
+      expect(result.supported[2]).toBe('8.3.0');
     });
   });
 
@@ -79,8 +81,8 @@ describe('Coordination Schema & Version Negotiation (Task 302.4)', () => {
   // =========================================================================
 
   describe('CONTRACT_VERSION', () => {
-    it('is 8.2.0', () => {
-      expect(CONTRACT_VERSION).toBe('8.2.0');
+    it('is 8.3.0', () => {
+      expect(CONTRACT_VERSION).toBe('8.3.0');
     });
 
     it('matches negotiateVersion().preferred', () => {

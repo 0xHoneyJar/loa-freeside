@@ -64,7 +64,7 @@ async fn health_handler(State(state): State<AppState>) -> impl IntoResponse {
 async fn ready_handler(State(state): State<AppState>) -> impl IntoResponse {
     let shards_ready = state.shard_state.ready_shards();
     let shards_total = state.shard_state.shard_count();
-    let nats_connected = state.nats.as_ref().map_or(true, |n| n.is_connected());
+    let nats_connected = state.nats.as_ref().is_none_or(|n| n.is_connected());
 
     let is_ready = shards_ready > 0 && nats_connected;
 

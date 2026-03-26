@@ -1,6 +1,7 @@
 //! NATS event publisher
 //!
 //! Sprint S-4: Publishes serialized events to NATS JetStream
+#![allow(dead_code)] // Scaffolded for NATS event publishing
 
 use crate::error::GatewayError;
 use crate::events::serialize::GatewayEvent;

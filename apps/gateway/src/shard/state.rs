@@ -1,6 +1,7 @@
 //! Shard state tracking
 //!
 //! Sprint S-4: Tracks health and status of individual shards
+#![allow(dead_code)] // Scaffolded for shard health monitoring
 
 use dashmap::DashMap;
 use std::sync::atomic::{AtomicU64, Ordering};

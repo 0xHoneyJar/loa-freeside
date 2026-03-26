@@ -4,4 +4,3 @@
 
 pub mod serialize;
 
-pub use serialize::{GatewayEvent, InteractionEvent, serialize_event};

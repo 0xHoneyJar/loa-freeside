@@ -22,7 +22,7 @@ import { CONTRACT_VERSION } from '../../../src/packages/core/protocol/arrakis-co
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const EXPECTED_SHA = 'b6e0027aea2f6e9c26726e29b44edbc1f3e3e290';
+const EXPECTED_SHA = 'aed755f7fea8d2739cf9c755b45aaa580b6af6a9';
 
 /**
  * Find an installed package's package.json by walking up the directory tree
@@ -48,8 +48,8 @@ describe('Three-Layer Drift Detection (Task 303.1)', () => {
   // ===========================================================================
 
   describe('Layer 1: CONTRACT_VERSION', () => {
-    it('CONTRACT_VERSION is 8.2.0', () => {
-      expect(CONTRACT_VERSION).toBe('8.2.0');
+    it('CONTRACT_VERSION is 8.3.0', () => {
+      expect(CONTRACT_VERSION).toBe('8.3.0');
     });
   });
 

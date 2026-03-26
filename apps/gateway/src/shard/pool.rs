@@ -2,6 +2,7 @@
 //!
 //! Sprint S-4: Twilight Gateway Core
 //! Manages multiple Discord shards per process per SDD §5.1.3
+#![allow(dead_code)] // Scaffolded for multi-shard gateway
 
 use crate::error::GatewayError;
 use crate::events::serialize::serialize_event;

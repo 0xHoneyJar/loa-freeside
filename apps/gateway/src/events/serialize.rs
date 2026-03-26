@@ -1,6 +1,7 @@
 //! Event serialization for message broker
 //!
 //! Converts Twilight events to JSON payloads for NATS publishing.
+#![allow(dead_code)] // Scaffolded for future event routing
 
 use serde::{Deserialize, Serialize};
 use tracing::warn;

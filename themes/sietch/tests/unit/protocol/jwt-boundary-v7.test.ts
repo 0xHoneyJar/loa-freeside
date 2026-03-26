@@ -395,15 +395,16 @@ describe('JWT Claim Schema Migration -- trust_scopes (Task 302.3)', () => {
   // ---------------------------------------------------------------------------
 
   describe('Version negotiation', () => {
-    it('prefers v8.2.0', () => {
+    it('prefers v8.3.0', () => {
       const negotiation = negotiateVersion();
-      expect(negotiation.preferred).toBe('8.2.0');
+      expect(negotiation.preferred).toBe('8.3.0');
     });
 
-    it('supports both v7.11.0 and v8.2.0', () => {
+    it('supports v7.11.0, v8.2.0, and v8.3.0', () => {
       const negotiation = negotiateVersion();
       expect(negotiation.supported).toContain('7.11.0');
       expect(negotiation.supported).toContain('8.2.0');
+      expect(negotiation.supported).toContain('8.3.0');
     });
   });
 
