@@ -16,7 +16,7 @@
 
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
-import { createHmac, timingSafeEqual, randomUUID, sign } from 'crypto';
+import { createHmac, timingSafeEqual, randomUUID } from 'crypto';
 import { logger } from '../../utils/logger.js';
 import type { ICreditLedgerService } from '../../packages/core/ports/ICreditLedgerService.js';
 
@@ -101,12 +101,12 @@ function verifyS2SToken(req: Request): { sub: string; iss: string } | null {
       .update(headerPayload)
       .digest('base64url');
 
-    const provided = parts[2];
+    const provided = parts[2] ?? '';
     if (signature.length !== provided.length) return null;
-    if (!timingSafeEqual(Buffer.from(signature), Buffer.from(provided))) return null;
+    if (!timingSafeEqual(Buffer.from(signature, 'utf8'), Buffer.from(provided, 'utf8'))) return null;
 
     const payload = JSON.parse(
-      Buffer.from(parts[1], 'base64url').toString('utf-8'),
+      Buffer.from(parts[1] ?? '', 'base64url').toString('utf-8'),
     ) as { sub: string; iss: string; aud: string; exp: number; iat: number };
 
     if (payload.aud !== 'arrakis-internal') return null;
@@ -145,8 +145,8 @@ const quoteRequestSchema = z.object({
 const settleRequestSchema = z.object({
   quoteId: z.string().uuid(),
   idempotencyKey: z.string().min(1).max(128),
-  actualInputTokens: z.number().int().nonneg(),
-  actualOutputTokens: z.number().int().nonneg(),
+  actualInputTokens: z.number().int().min(0),
+  actualOutputTokens: z.number().int().min(0),
 });
 
 // =============================================================================
@@ -223,8 +223,9 @@ settlementRouter.post('/quote', requireS2S, async (req: Request, res: Response) 
     try {
       const reservation = await ledger.reserve(walletAddress, null, amountMicroUsd);
       reservationId = reservation.reservationId;
-    } catch (err: any) {
-      if (err.message?.includes('insufficient') || err.code === 'INSUFFICIENT_FUNDS') {
+    } catch (err: unknown) {
+      const e = err as { message?: string; code?: string };
+      if (e.message?.includes('insufficient') || e.code === 'INSUFFICIENT_FUNDS') {
         res.status(402).json({ error: 'Insufficient funds', message: 'Not enough credits to cover estimated cost' });
         return;
       }
@@ -344,15 +345,16 @@ settlementRouter.post('/settle', requireS2S, async (req: Request, res: Response)
       amountMicroUsd: Number(actualCostMicroUsd),
       settledAt: quote.settledAt.toISOString(),
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     quote.state = 'FAILED';
-    logger.error({ event: 'settlement.failed', quoteId, err: err.message }, 'Settlement failed');
-    res.status(503).json({ error: 'Settlement failed', message: err.message });
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    logger.error({ event: 'settlement.failed', quoteId, err: message }, 'Settlement failed');
+    res.status(503).json({ error: 'Settlement failed', message });
   }
 });
 
 // GET /api/settlement/quote/:id (Bridgebuilder finding 1)
-settlementRouter.get('/quote/:id', requireS2S, (req: Request, res: Response) => {
+settlementRouter.get('/quote/:id', requireS2S, (req: Request<{ id: string }>, res: Response) => {
   const quote = quotes.get(req.params.id);
   if (!quote) {
     res.status(404).json({ error: 'Quote not found' });
