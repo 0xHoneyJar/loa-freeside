@@ -398,7 +398,12 @@ resource "aws_ecs_task_definition" "finn" {
         # Feature flags
         { name = "FEATURE_PAYMENTS_ENABLED", value = "false" },
         { name = "FEATURE_INFERENCE_ENABLED", value = "true" },
-        { name = "FEATURE_REDIS_ENABLED", value = "false" },
+        { name = "FEATURE_REDIS_ENABLED", value = "true" },
+        { name = "FINN_POSTGRES_ENABLED", value = "true" },
+        # Per-NFT Personality Pipeline (loa-finn PR #135)
+        { name = "FINN_PERSONALITY_PIPELINE", value = "true" },
+        { name = "BERACHAIN_RPC_URL", value = "https://rpc.berachain.com" },
+        { name = "CHAT_ALLOWED_ADDRESSES", value = var.chat_allowed_addresses },
         # Security: Finn requires explicit CORS origins in production
         { name = "CORS_ALLOWED_ORIGINS", value = "https://api.0xhoneyjar.xyz,https://staging.api.arrakis.community,https://0xhoneyjar.xyz" },
       ]
@@ -422,6 +427,8 @@ resource "aws_ecs_task_definition" "finn" {
         { name = "FINN_METRICS_BEARER_TOKEN", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/loa-finn/armitage/FINN_METRICS_BEARER_TOKEN" },
         # SEC-4.4: NATS TLS CA certificate for client verification
         { name = "NATS_TLS_CA", valueFrom = aws_secretsmanager_secret.nats_tls_ca.arn },
+        # Per-NFT Personality Pipeline (loa-finn PR #135)
+        { name = "FINN_COLLECTION_SALT", valueFrom = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/loa-finn/armitage/FINN_COLLECTION_SALT" },
         # Finn config requires these at boot (Zod validation).
         # Sourced from app-config secret via JSON key extraction.
         { name = "BGT_ADDRESS", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:BGT_ADDRESS::" },
