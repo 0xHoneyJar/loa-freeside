@@ -121,4 +121,4 @@ finn_redis_node_type = "cache.t3.micro"  # Staging: minimal instance
 # =============================================================================
 
 feature_web_chat_enabled = "true"  # Enable /chat page for Dixie testing
-chat_allowed_addresses   = "0x40495A781095932e2FC8dccA69F5e358711Fdd41"
+chat_allowed_addresses   = "0x40495A781095932e2FC8dccA69F5e358711Fdd41,0xE822ECAC55a3A20BB4b24cDd83401eAa73dD3Bb4"
