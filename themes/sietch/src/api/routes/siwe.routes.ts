@@ -120,6 +120,7 @@ const ALLOWED_DOMAINS = new Set([
   'staging.api.arrakis.community',
   'arrakis.community',
   'freeside.honeyjar.xyz',
+  'api.0xhoneyjar.xyz',
   ...(process.env.NODE_ENV !== 'production' ? ['localhost'] : []),
 ]);
 
