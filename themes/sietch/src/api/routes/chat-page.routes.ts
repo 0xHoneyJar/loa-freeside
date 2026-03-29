@@ -107,6 +107,7 @@ function getChatPage(tokenId: string): string {
   <header>
     <h1 id="agent-name">Agent Chat</h1>
     <div class="status">
+      <button id="logout-btn" style="display:none;background:transparent;border:1px solid var(--bg3);color:var(--fg2);padding:.25rem .75rem;border-radius:var(--radius);cursor:pointer;font-size:.75rem;margin-right:.5rem" onclick="logout()">Switch Wallet</button>
       <span class="dot disconnected" id="status-dot"></span>
       <span id="status-text">Disconnected</span>
     </div>
@@ -146,6 +147,19 @@ function getChatPage(tokenId: string): string {
   var statusDot = document.getElementById('status-dot');
   var statusText = document.getElementById('status-text');
   var siweBtn = document.getElementById('siwe-btn');
+  var logoutBtn = document.getElementById('logout-btn');
+
+  window.logout = function() {
+    document.cookie = 'freeside_session=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/';
+    authenticated = false;
+    logoutBtn.style.display = 'none';
+    inputArea.style.display = 'none';
+    authBar.style.display = 'block';
+    addMessage('Signed out. Connect a different wallet to continue.', 'system');
+    if (ws) ws.close();
+    reconnectAttempts = 0;
+    setTimeout(connect, 500);
+  };
 
   function setStatus(state) {
     statusDot.className = 'dot ' + state;
@@ -182,11 +196,17 @@ function getChatPage(tokenId: string): string {
             authenticated = data.payload.authenticated;
             if (authenticated) {
               authBar.style.display = 'none';
-              inputArea.style.display = 'flex';
-              addMessage('You are signed in. Type a message to chat.', 'system');
+              inputArea.style.display = data.payload.readOnly ? 'none' : 'flex';
+              logoutBtn.style.display = 'inline-block';
+              if (data.payload.readOnly) {
+                addMessage('Signed in but your wallet is not on the allowlist. Read-only access.', 'system');
+              } else {
+                addMessage('You are signed in. Type a message to chat.', 'system');
+              }
             } else {
               authBar.style.display = 'block';
               inputArea.style.display = 'none';
+              logoutBtn.style.display = 'none';
               addMessage('Read-only mode. Sign in with your wallet to send messages.', 'system');
             }
             break;
