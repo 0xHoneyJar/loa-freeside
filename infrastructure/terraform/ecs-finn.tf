@@ -399,7 +399,7 @@ resource "aws_ecs_task_definition" "finn" {
         { name = "FEATURE_PAYMENTS_ENABLED", value = "false" },
         { name = "FEATURE_INFERENCE_ENABLED", value = "true" },
         { name = "FEATURE_REDIS_ENABLED", value = "true" },
-        { name = "FINN_POSTGRES_ENABLED", value = "true" },
+        { name = "FINN_POSTGRES_ENABLED", value = "false" },
         # Per-NFT Personality Pipeline (loa-finn PR #135)
         { name = "FINN_PERSONALITY_PIPELINE", value = "true" },
         { name = "BERACHAIN_RPC_URL", value = "https://rpc.berachain.com" },
