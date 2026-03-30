@@ -409,7 +409,9 @@ resource "aws_ecs_task_definition" "finn" {
       ]
 
       secrets = [
-        { name = "DATABASE_URL", valueFrom = "${aws_secretsmanager_secret.finn_db_credentials.arn}:url::" },
+        # DATABASE_URL removed — Finn's postgres.js v3.4.8 sends unsupported startup parameter.
+        # Re-enable when FINN_POSTGRES_ENABLED is true and postgres.js is compatible with RDS.
+        # { name = "DATABASE_URL", valueFrom = "${aws_secretsmanager_secret.finn_db_credentials.arn}:url::" },
         { name = "REDIS_URL", valueFrom = "${aws_secretsmanager_secret.redis_credentials.arn}:url::" },
         { name = "S2S_ES256_PRIVATE_KEY", valueFrom = aws_secretsmanager_secret.finn_s2s_es256_private_key.arn },
         { name = "NOWPAYMENTS_API_KEY", valueFrom = aws_secretsmanager_secret.finn_nowpayments_api_key.arn },
