@@ -455,6 +455,7 @@ async function handleChatMessage(ws: WebSocket, client: ChatClient, message: Cha
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
+        body: JSON.stringify({ token_id: client.tokenId || undefined }),
       });
 
       if (!createRes.ok) {
@@ -468,7 +469,7 @@ async function handleChatMessage(ws: WebSocket, client: ChatClient, message: Cha
         return;
       }
 
-      const sessionData = await createRes.json() as { sessionId?: string };
+      const sessionData = await createRes.json() as { sessionId?: string; personality?: { agent_name?: string; archetype?: string } };
       if (!sessionData.sessionId) {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({
