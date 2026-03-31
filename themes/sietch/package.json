@@ -58,7 +58,7 @@
     "@types/ioredis": "^5.0.0",
     "@types/ws": "^8.18.1",
     "argon2": "^0.44.0",
-    "axios": "^1.7.9",
+    "axios": "1.7.9",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^11.6.0",
     "bullmq": "^5.66.4",
