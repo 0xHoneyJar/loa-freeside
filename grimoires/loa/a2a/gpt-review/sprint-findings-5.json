@@ -1,28 +1,56 @@
 {
-  "verdict": "APPROVED",
-  "summary": "The previously blocking test-location inconsistency is now resolved by converging on a single `themes/sietch/tests/unit/**` convention across Sprints 1–4, and the other prior MEDIUM fixes remain correctly addressed with no new blocking issues introduced.",
-  "previous_issues_status": [
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "As written, the plan is likely to stall on missing/undefined shared inputs (ALB/listener/VPC/ECS cluster/EFS mount wiring) and a couple of AWS constraints (listener rule priority, Fargate Spot strategy), preventing a successful end-to-end deploy in 2–3 days.",
+  "blocking_issues": [
     {
-      "original_issue": "Inconsistent/likely incorrect test file locations between Sprints 1/2 and Sprint 4",
-      "status": "fixed",
-      "notes": "Sprint 1 Task 1.3 and Sprint 2 Task 2.3 now place tests in `themes/sietch/tests/unit/...`, matching Sprint 4 and Sprint 3 Task 3.4. This removes the CI/test discovery risk and the false-green risk for Sprint 4’s closure tests."
+      "location": "Sprint 1 (Module + Shared Resources), Tasks 1.3–1.5, 1.7–1.8",
+      "issue": "Module assumes existing shared infrastructure (VPC/subnets, ECS cluster, ALB listener ARN, Route53 zone, ECS Exec prerequisites, EFS mount targets/SG) but required inputs/outputs and wiring are not specified; several resources are referenced implicitly without tasks to locate/define them.",
+      "why_blocking": "Terraform cannot be applied successfully without concrete IDs/ARNs for cluster, subnets, security groups, ALB listener, hosted zone, etc. Even if they exist, missing module inputs/locals/data sources will block implementation and cause apply-time failures or miswiring (e.g., service not attached to correct target group, tasks not in correct subnets, EFS not reachable).",
+      "fix": "Add an explicit task before 1.3 to inventory and codify required shared inputs (cluster ARN/name, VPC ID, private subnets, ALB ARN + HTTPS listener ARN, hosted zone ID, existing ECS execution/task role patterns, KMS key if needed). Update Task 1.1 AC to include: module compiles with a minimal example using real staging IDs via variables/data sources, and `terraform plan` succeeds for staging."
     },
     {
-      "original_issue": "MEDIUM-2 deferral needed an explicit deliverable (recorded with justification + follow-up pointer)",
-      "status": "fixed",
-      "notes": "Sprint 4 Task 4.3 includes an explicit “MEDIUM-2 deferral record” item with justification and a follow-up pointer requirement in acceptance criteria, satisfying the requirement that MEDIUM items are either addressed or explicitly deferred."
+      "location": "Sprint 1, Task 1.4 (ALB listener rule priority)",
+      "issue": "Listener rule priority derived from md5(name) into a small range (300–499) can collide across worlds or existing rules; AWS requires unique priority per listener.",
+      "why_blocking": "A single collision will cause `aws_lb_listener_rule` creation to fail, blocking apply and preventing any deployment. This is especially likely if the listener already has rules in that range or more worlds are added later.",
+      "fix": "Implement deterministic-but-unique priority allocation: either (a) make priority an explicit required variable per world, (b) compute from a larger range and also check/avoid reserved ranges, or (c) use a separate listener per environment/worlds. Update AC: adding 3 worlds produces a plan with no priority conflicts."
     },
     {
-      "original_issue": "Mode consistency testability gap due to module-level caching of resolveParseMode()",
-      "status": "fixed",
-      "notes": "Sprint 4 Task 4.2 specifies exporting and using `resetParseModeCache()` to make the mode-matrix test deterministic without relying on module reload/worker isolation, which is consistent with the cold-restart caching constraint."
+      "location": "Sprint 1, Task 1.3 (ECS capacity provider strategy)",
+      "issue": "Fargate Spot (weight 100) + FARGATE fallback (weight 1) is not sufficient to guarantee availability; Spot interruptions can take the service down, and without a base capacity on FARGATE you can end up with all tasks on Spot.",
+      "why_blocking": "Given the business goal (replace Railway) and SQLite persistence verification, intermittent downtime or repeated task replacement can make acceptance tests fail and undermine production readiness within the sprint timeframe.",
+      "fix": "Set `base` on FARGATE (e.g., base=1, weight=1) and Spot weight higher, or run non-Spot in production. Add explicit AC: service maintains 1 running task during Spot interruption simulation/forced redeploy."
     },
     {
-      "original_issue": "Clock-skew warning task was too line/implementation-specific rather than behavior-based",
-      "status": "fixed",
-      "notes": "Sprint 4 Task 4.1 acceptance criteria are behavior-based (when `now < deployTimestamp`, treat elapsed as 0 and emit a warning via return type), preserving purity and testability without prescribing a specific clamp implementation."
+      "location": "Sprint 1, Task 1.3 + Task 1.5 + Task 1.8 (EFS mount wiring)",
+      "issue": "EFS integration details are incomplete: task definition needs `efs_volume_configuration` (file system ID, access point ID, transit encryption), service/task SG must allow NFS to mount targets, and mount targets must exist in the same subnets as tasks. The plan mentions EFS volume and access point but not the full wiring/constraints.",
+      "why_blocking": "If any of these are missing/mismatched, tasks will fail to start (mount errors) and the service will never become stable; this blocks both staging verification and SQLite persistence goals.",
+      "fix": "Add explicit subtask/AC: task starts successfully and can read/write `/data` on first deploy; include required Terraform fields for EFS volume config and ensure mount targets exist in each private subnet used by the service. Also confirm SG rules: task SG egress 2049 to EFS SG and EFS SG ingress 2049 from task SG."
+    },
+    {
+      "location": "Sprint 1, Task 1.8 (ACM wildcard + ALB attachment) and Task 1.10 (DNS validation)",
+      "issue": "ACM certificate region and validation flow are not specified; ALB requires the cert in the same region as the ALB, and DNS validation requires the correct hosted zone and record creation ordering.",
+      "why_blocking": "If the cert is created in the wrong region or validation records are applied to the wrong zone/account, HTTPS will not come up and the Sprint 1 goal/AC will fail.",
+      "fix": "Add explicit task/AC: confirm ALB region and create ACM cert in that region; create validation records in the correct Route53 zone; gate listener certificate attachment on `aws_acm_certificate_validation` completion. Ensure Task 1.10 depends on 1.8 and includes hosted zone ID as an explicit input."
+    },
+    {
+      "location": "Sprint 2, Tasks 2.1–2.2 (CI deploy) + Task 1.6 (CI role)",
+      "issue": "CI workflow references “set secret” but the plan also says OIDC; required GitHub environment/repo settings and AWS role-to-assume ARN are not defined, and ECS update-service alone may not deploy a new image unless the task definition is updated or image tag strategy forces new digest.",
+      "why_blocking": "CI can appear to succeed but not actually roll out new code (no new task definition revision / same image tag), failing the “git push → live <10 minutes” metric.",
+      "fix": "Define the deploy mechanism explicitly: either (a) register a new task definition revision each build (render JSON with new image digest) then update service, or (b) use unique immutable tags per commit and update task definition accordingly. Add AC: commit changes container response, pipeline updates running task to new image digest, and `aws ecs describe-services` shows new deployment completed."
+    },
+    {
+      "location": "Sprint 2, Task 2.4 (AI gateway + per-world JWT tokens)",
+      "issue": "Secrets Manager integration is underspecified: how secrets are injected (task definition secrets), KMS permissions, secret naming/versioning, and rotation/updates are not planned; also “per-world JWT tokens” implies app changes or config expectations not accounted for.",
+      "why_blocking": "Without a defined secret injection path and matching app env var expectations, tasks may fail at runtime or calls to the gateway will fail, blocking Sprint 2 acceptance.",
+      "fix": "Add a concrete contract: secret names/ARNs, env var names, and Terraform `secrets` blocks in the container definition; ensure execution role has `secretsmanager:GetSecretValue` and KMS decrypt for the specific key. Add AC: world can successfully call gateway in staging with a real token sourced from Secrets Manager."
+    },
+    {
+      "location": "Overall estimate (2–3 days) vs scope across two sprints",
+      "issue": "Critical-path work includes new Terraform module + shared EFS + ACM + ALB routing + DNS + CI OIDC + multi-env (staging+prod) + persistence verification; several of these have high failure/iteration risk and are not front-loaded with discovery/inventory tasks.",
+      "why_blocking": "Given the missing dependency tasks above, the team will spend significant time unblocking environment-specific details, making 2–3 days for both sprints unlikely and risking incomplete production cutover (Railway cancellation).",
+      "fix": "Re-sequence to de-risk: (1) inventory shared infra + confirm ALB listener/zone/cluster/subnets, (2) get one world running over HTTP internally, (3) add EFS persistence, (4) add HTTPS + DNS, (5) then CI, then replicate worlds, then prod. If time is fixed, explicitly cut/defers: AI gateway wiring or per-world cost verification to post-cutover."
     }
   ],
-  "new_blocking_concerns": [],
-  "iteration": 3
+  "question": "",
+  "iteration": 1
 }

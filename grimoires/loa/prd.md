@@ -1,340 +1,340 @@
-# PRD: Armitage Platform — Terraform Consolidation & DNS Authority
+# PRD: World Container Hosting — Sovereign Stack Platform
 
-> **Cycle**: cycle-046
-> **Codename**: Armitage Platform
+> **Cycle**: cycle-048
+> **Codename**: World Hosting
 > **Status**: DRAFT
-> **Created**: 2026-02-28
-> **Author**: Plan & Analyze (HITL)
-> **Issues**: #105, #106 (issue #103 resolved in cycle-045)
+> **Created**: 2026-04-01
+> **Issue**: [#153](https://github.com/0xHoneyJar/loa-freeside/issues/153)
 
 ## 1. Problem Statement
 
-The Arrakis agent economy stack (Freeside, Finn, Dixie) has three competing Terraform configurations across three repos, and DNS for the production domain (`0xhoneyjar.xyz`) is manually managed at Gandi with no IaC. This creates:
+The org pays $5/mo per product world on Railway ($15/mo for 3, growing to $50/mo for 10+). Meanwhile, Freeside's ECS cluster has 4000 vCPU of capacity, an ALB, NAT, DNS, and EFS — all already paid for. Each additional world on Railway is pure waste when the shared infrastructure exists.
 
-1. **Deployment fragility**: Finn exists in both freeside's `ecs-finn.tf` (internal-only, Cloud Map) AND finn's own `loa-finn-ecs.tf` (public ALB). Applying both creates duplicate ECS services. Different state backends (`arrakis-tfstate-*` vs `honeyjar-terraform-state`), different secret managers (Secrets Manager vs SSM Parameter Store), different security models (SG-to-SG vs CIDR-based).
+Additionally, each world manages its own AI API keys with no centralized billing, no budget enforcement, and no model routing. A bug in any world could burn through an entire API key with no circuit breaker.
 
-2. **Missing infrastructure**: Freeside's terraform is missing finn's dedicated ElastiCache (noeviction + AOF), DynamoDB tables (audit + settlements), S3 Object Lock buckets, KMS audit signing key, 13 SSM parameters, 6 CloudWatch alarms. Dixie is missing auto-scaling and 4 alarms.
+**Why now?** The org is running out of funds. Every dollar saved on infrastructure extends runway. Moving 3 worlds off Railway saves $15/mo immediately and establishes the pattern for 10+ worlds at ~$10/mo total vs $50/mo on Railway.
 
-3. **DNS blind spot**: `0xhoneyjar.xyz` DNS is at Gandi with a broken DMARC record (placeholder `admin@yourdomain.com`). The agent economy needs `api.0xhoneyjar.xyz` for production ALB routing and `*.agents.0xhoneyjar.xyz` for 100K+ dNFT agent websites. Neither can happen without Route 53 IaC.
-
-**Why now?** The system is not live, so ECS service definitions and non-stateful networking can be rebuilt without user impact. However, stateful resources (S3 Object Lock, KMS keys, DynamoDB tables) must NEVER be destroyed/recreated — they must be imported into the canonical state. Fixing competing terraform states and establishing DNS authority under IaC now prevents production-blocking issues after launch.
-
-**Safety invariant**: No `terraform destroy` on legacy stacks until all stateful and shared resources are imported and verified in the canonical root. Stateful resources get `lifecycle { prevent_destroy = true }` in the new code.
-
-> Sources: GitHub Issues #105, #106; infrastructure/terraform/ codebase audit; Bridgebuilder reviews (PRs #97, #99, #100); loa-finn Issue #66 (Launch Readiness RFC)
+> Sources: issue-153 body, Phase 1 interview (urgency confirmation)
 
 ## 2. Goals & Success Metrics
 
 | ID | Goal | Metric | Target |
 |----|------|--------|--------|
-| G-1 | Single terraform root manages all three services | `terraform plan`: imported stateful resources show 0 changes; new resources show creates only (no destroys/replaces) | Per-category drift targets below |
-| G-2 | All missing finn/dixie infrastructure in freeside | Resource count: ElastiCache, DynamoDB, S3, KMS, SSM, alarms | All present in tf state |
-| G-3 | Sequential deploy with health gates | `deploy-ring.sh` deploys Dixie → Finn → Freeside with health checks | 3/3 services healthy |
-| G-4 | Cross-service wiring validated | `staging-wiring-test.sh` passes all 10 connectivity paths | 10/10 pass |
-| G-5 | DNS authority for 0xhoneyjar.xyz under IaC | Route 53 zone with functional equivalence to Gandi (SOA/NS will differ; see diff allowlist in FR-5) | Functional parity confirmed |
-| G-6 | Agent economy subdomain architecture | `*.agents.0xhoneyjar.xyz` wildcard resolves via CNAME in apex zone | DNS lookup returns Vercel CNAME |
-| G-7 | Zero email delivery regression | MX, SPF, DKIM, DMARC records functional post-migration | Google Workspace email flowing |
+| G-1 | Eliminate Railway spend | Railway bill | $0/mo (all worlds on Freeside) |
+| G-2 | Near-zero marginal cost per world | AWS cost per additional world | <$3/mo (Fargate Spot 256 CPU) |
+| G-3 | Centralized AI billing | Worlds using Finn gateway | 3/3 first-wave worlds |
+| G-4 | Deploy in minutes, not hours | Time from git push to live | <10 minutes |
+| G-5 | One-command world provisioning | Steps to add a new world | 1 Terraform file + 1 CI workflow |
+| G-6 | SQLite persistence across deploys | Data survives redeployment | 100% (EFS-backed) |
+| G-7 | Subdomain routing | World reachable at {name}.0xhoneyjar.xyz | Automatic via ALB rule |
 
-**G-1 acceptance criteria detail:**
-- Imported stateful resources (S3 Object Lock, KMS, DynamoDB): `terraform plan` shows 0 changes
-- New resources (ElastiCache, alarms, SSM params, autoscaling): plan shows creates only, no destroys/replaces
-- Existing ECS services/ALB/SGs: updates permitted only for security group rule additions; no replaces
+> Sources: issue-153 body (cost model), Phase 1 interview (urgency)
 
 ## 3. Users & Stakeholders
 
-### Primary Users
-
 | Persona | Context | Needs |
 |---------|---------|-------|
-| **Platform Engineer** | Deploys and operates the Armitage ring | Single `terraform apply`, reliable deploy pipeline, clear wiring tests |
-| **Service Developer** (Finn/Dixie) | Ships application code, not infrastructure | `DEPLOYMENT.md` pointing to freeside, no terraform in their repo |
-| **Agent Economy Operator** | Manages dNFT agent websites | Wildcard DNS `*.agents.0xhoneyjar.xyz` working with Vercel |
+| **Internal Developer** | Builds worlds for THJ products (rektdrop, mibera) | Push code, see it live. No infra ops. |
+| **External Builder** | Partners like El Capitan (aphive) | Deploy their world on THJ infra with minimal friction |
+| **Platform Engineer** | Manages Freeside infrastructure | Add worlds without manual ECS/ALB/DNS plumbing |
+| **Finance** | Org treasury management | Predictable, low infrastructure costs with per-world visibility |
 
-### Stakeholders
-
-- **0xHoneyJar team**: Production DNS must not disrupt email (Google Workspace MX records) or existing Vercel deployments
-- **Security**: DNSSEC, CAA, and DMARC hardening required post-migration
+> Sources: issue-153 body (personas described inline)
 
 ## 4. Functional Requirements
 
-### FR-1: Terraform Consolidation (Issue #105, Phase 1)
+### FR-1: World Hosting (Fargate + EFS)
 
-**Safe Import Workflow for stateful resources:**
+Each world runs as a Fargate task on the existing ECS cluster:
 
-1. Add resource definitions to freeside terraform code with `lifecycle { prevent_destroy = true }` for KMS, S3 Object Lock, and DynamoDB
-2. Run `terraform plan` — expect "will be created" for each (expected before import)
-3. Run `terraform import` for each resource using IDs exported from finn's state
-4. Run `terraform plan` again — must show 0 changes for all imported resources
-5. Only then proceed with `terraform apply` for non-stateful additions
-6. Never run `terraform destroy` on legacy finn/dixie stacks until imports are verified
+| Property | Value | Rationale |
+|----------|-------|-----------|
+| CPU | 256 units (0.25 vCPU) | SvelteKit apps are lightweight |
+| Memory | 512 MB | Sufficient for Node.js + SQLite |
+| Launch type | Fargate Spot | Up to 70% cheaper than on-demand |
+| Port | 3000 | SvelteKit default |
+| Storage | EFS access point per world | Persistent SQLite, survives redeployment |
+| Health check | HTTP GET / on port 3000 | Standard SvelteKit health |
+| Desired count | 1 | Single instance per world (stateful SQLite) |
+| Deployment min healthy % | 0 | Stop-then-start for singleton (no concurrent tasks sharing SQLite) |
+| Deployment max % | 100 | Only one task runs at a time |
+| Health check grace period | 60s | Allow time for SvelteKit cold start |
 
-**Rollback/run-forward procedure for failed applies:**
+**EFS Configuration**:
+- One EFS access point per world (path: `/worlds/{name}/`)
+- EFS IAM authorization enabled (`iam = ENABLED`) — access point enforced
+- Each task role scoped to only its own access point (resource-level IAM)
+- Mounted at `/data` in the container
+- SQLite database at `/data/{name}.db`
+- World template reads `DATABASE_PATH` env var
 
-- Before every `terraform apply`: capture state snapshot (`terraform state pull > backup-$(date +%s).tfstate`)
-- Apply in scoped phases: (1) networking/IAM first, (2) compute/services second — never atomic-apply everything
-- If apply fails mid-way: assess damage with `terraform plan`, identify drifted resources, apply targeted fixes to reach consistent state (run-forward preferred over rollback to avoid state divergence)
-- Recovery commands documented per resource type in `DEPLOYMENT.md`
-- Mandatory: `terraform plan` output must be reviewed and saved as artifact before `apply` in CI
+**SQLite Safety on EFS**:
+- Required PRAGMA: `journal_mode=WAL`, `synchronous=NORMAL`, `busy_timeout=5000`
+- Single writer process enforced by ECS deployment config (min healthy 0%, max 100%)
+- No concurrent task overlap during deployments — stop-then-start pattern
+- [FUTURE] AWS Backup for EFS snapshots (corruption recovery)
+- **Known limitation**: EFS adds ~1-5ms latency per fsync vs local disk. Acceptable for <100 req/day SvelteKit apps. Load test before onboarding high-traffic worlds.
+- **Performance gate**: world template must pass a basic SQLite read/write benchmark on EFS before production onboarding
 
-**State locking and serialized execution:**
+**Acceptance Criteria**:
+- [ ] World container starts and serves HTTP on port 3000
+- [ ] SQLite file at `/data/{name}.db` persists across task restarts
+- [ ] Fargate Spot used (with on-demand fallback via capacity provider)
+- [ ] Container logs visible in CloudWatch at `/ecs/arrakis-{env}/worlds/{name}`
 
-- All CI Terraform jobs must acquire DynamoDB lock before apply (already configured via backend)
-- During migration period: only one operator/pipeline may run `terraform apply` at a time — enforce via CI job serialization (GitHub Actions `concurrency` group)
-- Prohibition of local `terraform apply` during active migration (document in `DEPLOYMENT.md`)
+> Sources: issue-153 body (world definition), Phase 1 Q2 (EFS recommendation)
 
-**Stateful resources to import (cannot be recreated):**
-- S3 Object Lock bucket (`audit_anchors`) — Object Lock buckets are immutable
-- S3 calibration bucket — has versioned data
-- KMS audit signing key — destruction = permanent data loss
-- DynamoDB scoring path log — has audit data
-- DynamoDB x402 settlements — has settlement data
+### FR-2: Subdomain Routing (ALB + DNS)
 
-**Adoption matrix for shared identity/routing resources:**
+Each world gets a subdomain routed via the existing ALB:
 
-| Resource | Action | Rationale |
-|----------|--------|-----------|
-| S3 Object Lock bucket | Import | Immutable, cannot recreate |
-| S3 calibration bucket | Import | Has versioned data |
-| KMS audit signing key | Import | Destruction = data loss |
-| DynamoDB tables (2) | Import | Has audit/settlement data |
-| Finn ECS service | Recreate | Freeside already defines `ecs-finn.tf`; see Finn cutover procedure below |
-| Finn ALB listener/TG | Recreate | Freeside owns ALB; see Finn cutover procedure below |
-| Finn IAM roles | Recreate | Freeside already defines execution/task roles |
+- DNS: `{name}.0xhoneyjar.xyz` → CNAME to ALB (wildcard or per-world)
+- ALB: Host-based listener rule → world's target group
+- TLS: Wildcard ACM cert for `*.0xhoneyjar.xyz` — one cert for all worlds
 
-**Finn non-stateful cutover procedure (prevents duplicate services):**
+**Priority allocation**: Each world module computes its ALB rule priority deterministically from the world name (e.g., `300 + crc32(name) % 200`). The module validates no collision with existing rules at plan time. Range 300-499 reserved for worlds; existing services use <300.
 
-1. **Freeze**: Stop all `terraform apply` in loa-finn repo (communicate to team)
-2. **Disable legacy**: In finn's legacy stack, scale `desired_count=0` for the ECS service and disable/detach ALB listener rules — keep stateful resources (S3, KMS, DDB, SSM) intact in finn's state
-3. **Apply canonical**: Run `terraform apply` in freeside to create the single intended Finn service + ALB routing via `ecs-finn.tf`
-4. **Verify**: Run health gates + wiring tests (W-2, W-4, W-7, W-8) to confirm canonical Finn is healthy
-5. **Retire legacy**: Remove Finn ECS/ALB/IAM resource definitions from finn's terraform code (without `terraform destroy` — resources are already scaled to 0 / detached). Run `terraform state rm` for these resources in finn's state.
-6. **Invariant**: Only one set of Finn listener rules/target groups may be active at any time. Freeside's ALB is authoritative.
-| Finn CloudWatch log group | Import | Preserves log history |
-| Finn SSM parameters | Import | Already has values set |
-| Cloud Map namespace | Exists in freeside | No action needed |
-| Cloud Map services | Exists in freeside | No action needed |
-| Dixie ECS service | Exists in freeside | No action needed |
-| Dixie ALB listener/TG | Exists in freeside | No action needed |
+**Implementation pattern** (follows existing Dixie pattern):
+```hcl
+resource "aws_lb_listener_rule" "world_{name}" {
+  listener_arn = aws_lb_listener.https.arn
+  priority     = local.world_priority  # Deterministic from name hash
+  condition { host_header { values = ["{name}.0xhoneyjar.xyz"] } }
+  action { type = "forward"; target_group_arn = aws_lb_target_group.world_{name}.arn }
+}
+```
 
-**Dixie stateful resource inventory (explicit):** Dixie has **no dedicated stateful resources** (no ElastiCache, DynamoDB, S3, KMS, or SSM parameters in the dixie repo). Dixie's entire infrastructure — ECS service, ALB routing, Cloud Map service, task definition — already lives in freeside's `ecs-dixie.tf`. The only Dixie gaps are observability (alarms, metric filters) and autoscaling, both of which are new resources (creates, not imports). This means Dixie consolidation has no import/migration risk — only additive resource creation.
+**ACM**: Request a wildcard cert for `*.0xhoneyjar.xyz` — eliminates per-world cert management.
 
-**Add missing resources to freeside terraform:**
+**Acceptance Criteria**:
+- [ ] `{name}.0xhoneyjar.xyz` resolves and routes to the correct world
+- [ ] HTTPS works with valid certificate
+- [ ] Adding a new subdomain requires only Terraform, not manual DNS
 
-| File | Resources | Service |
-|------|-----------|---------|
-| `elasticache-finn.tf` | Dedicated ElastiCache (Redis 7.1, noeviction, TLS, AOF) | Finn |
-| `dynamodb-finn.tf` | 2 DynamoDB tables + GSI | Finn |
-| `s3-finn.tf` | 2 S3 buckets (Object Lock + calibration) | Finn |
-| `kms-finn.tf` | KMS key + alias for audit signing | Finn |
-| `env-finn.tf` | 13 SSM parameters (SecureString with KMS) | Finn |
-| `monitoring-finn.tf` | 6 CloudWatch alarms + metric filters | Finn |
-| `monitoring-dixie.tf` | 4 CloudWatch alarms + 2 metric filters | Dixie |
-| `autoscaling-dixie.tf` | AppAutoScaling target + CPU policy | Dixie |
+> Sources: issue-153 body (routing requirement), existing ALB config (Dixie pattern)
 
-**Detailed resource inventory requirement:** The SDD must include a per-resource Terraform mapping table listing: resource type, logical name, physical ID (from finn's state), import command, and expected plan diff (0 changes vs. expected creates). This is the authoritative source for the import workflow — the PRD adoption matrix above provides categories, the SDD provides the exhaustive line-item inventory.
+### FR-3: AI Gateway via Finn
 
-**Architecture decisions (from Issue #105):**
-- Keep SSM Parameter Store for Finn (already has 13 params in staging; both SSM and Secrets Manager coexist)
-- Keep Finn public for staging/Armitage ring (direct health checks from outside VPC)
-- Keep Finn's dedicated ElastiCache (noeviction policy for billing data, AOF persistence)
+Worlds call Finn for AI instead of direct Anthropic/OpenAI:
 
-### FR-2: Canonical Deploy Pipeline (Issue #105, Phase 2)
+```
+POST http://finn.arrakis-{env}.local:3000/api/v1/invoke
+Authorization: Bearer <jwt-from-freeside>
+{ "agent": "oracle", "prompt": "..." }
+```
 
-Create `scripts/deploy-ring.sh` — sequential orchestrator with health gates:
+**Configuration per world**:
+```
+AI_GATEWAY_URL=http://finn.arrakis-{env}.local:3000
+```
 
-1. Build all Docker images → Push to ECR
-2. Terraform apply (infrastructure changes)
-3. Deploy Dixie (no upstream dependencies) → health gate
-4. Deploy Finn (needs DIXIE_BASE_URL) → health gate
-5. Deploy Freeside (needs both) → health gate
-6. Integration tests (smoke + wiring)
-7. Report
+Finn provides: model routing (5 pools), budget enforcement (micro-USD), session management, BYOK support. Worlds get this for free by changing one URL.
 
-**Health gate pattern**: SLO-aligned checks, not just reachability. Each health gate must verify:
-- HTTP 200 from health endpoint (basic reachability)
-- Response latency < 2s p99 over 10 consecutive checks (service responsiveness)
-- 0 5xx errors during health check window (stability)
-- Timeout: 5 minutes, poll interval: 5 seconds
+**S2S Auth**:
+- Token type: long-lived per-world token stored in Secrets Manager (rotated quarterly)
+- Required JWT claims: `world_id` (world name), `env` (staging/production), `aud: "finn-internal"`, `exp` (90 days)
+- Finn validates via JWKS at Freeside's `/.well-known/jwks.json` endpoint
+- Per-world budget enforcement: Finn tracks spend by `world_id` claim
+- Intra-VPC traffic: HTTP (no TLS) — accepted risk for internal Cloud Map DNS. [FUTURE] mTLS when external builders onboard.
 
-**Staging → Production promotion policy:**
-- Staging must pass: all wiring tests (W-1..W-10), health gates for all 3 services, `terraform plan` shows no unexpected changes
-- Production promotion requires: staging green for ≥1 hour, DEPLOYMENT.md checklist sign-off, manual approval gate in CI
-- No direct-to-production applies — all changes must be validated in staging first
+**Acceptance Criteria**:
+- [ ] World can call Finn via Cloud Map DNS (zero internet egress)
+- [ ] JWT auth works with `world_id` claim (Freeside signs, Finn validates)
+- [ ] Model routing returns responses from configured pool
+- [ ] Budget enforcement prevents runaway spend (per-world limit)
 
-**Enhancement of existing**: `staging-deploy-all.sh` and `deploy-staging.yml` already exist. The deploy-ring.sh adds the health-gated sequential pattern and wiring verification that's currently missing.
+> Sources: issue-153 body (AI gateway requirement), issue-153 comment (readiness assessment)
 
-### FR-3: E2E Wiring Tests (Issue #105, Phase 3)
+### FR-4: Deploy Pipeline (GitHub Actions → ECR → ECS)
 
-Create `scripts/staging-wiring-test.sh` — validates all service-to-service connectivity:
+Each world repo gets a deploy workflow following the Finn/Dixie CI pattern:
 
-| Test | From | To | Method |
-|------|------|----|--------|
-| W-1 | External | Freeside | HTTPS health check |
-| W-2 | External | Finn | HTTPS health check (staging only) |
-| W-3 | External | Dixie | HTTPS health check |
-| W-4 | Freeside → Finn | Cloud Map DNS | Internal health |
-| W-5 | Freeside → Dixie | Cloud Map DNS | Internal health |
-| W-6 | Finn → Dixie | Cloud Map DNS | Reputation query |
-| W-7 | Finn → Freeside | Cloud Map DNS | JWKS endpoint |
-| W-8 | Finn → Redis | Dedicated ElastiCache | PONG |
-| W-9 | Freeside → PostgreSQL | PgBouncer | Connection |
-| W-10 | Dixie → PostgreSQL | PgBouncer | Connection |
+```yaml
+# .github/workflows/deploy.yml
+name: Deploy World
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
 
-Internal tests (W-4 through W-10) require ECS Exec to run commands from inside containers.
+jobs:
+  deploy:
+    - Checkout
+    - Configure AWS (OIDC role)
+    - Build Docker image
+    - Push to ECR
+    - Force new ECS deployment
+    - Wait for stability
+```
 
-**Wiring test operational plan:**
-- **Ownership**: Platform team (freeside repo maintainers) own wiring test maintenance
-- **Execution**: Run automatically in CI via `deploy-staging.yml` after every deploy-ring.sh invocation
-- **Frequency**: On every staging deploy + nightly scheduled run (catch infrastructure drift)
-- **Failure policy**: Any wiring test failure blocks the deploy pipeline (no manual override without documented rationale in PR)
+**Per-world resources** (created during provisioning):
+- ECR repository: `arrakis-{env}-world-{name}`
+- OIDC IAM role: `arrakis-{env}-world-{name}-ci-deploy`
+  - Trust policy: OIDC-only (no static AWS keys)
+  - Subject condition: `repo:0xHoneyJar/{repo}:ref:refs/heads/main` (exact repo + branch)
+  - Audience: `sts.amazonaws.com`
+  - Least-privilege: ECR push + ECS update-service only for this world's resources
+- GitHub secret: `AWS_DEPLOY_ROLE_ARN` (non-sensitive — the OIDC trust policy is the security boundary, not the ARN)
 
-**ECS Exec prerequisites (must be in place before wiring tests):**
-- ECS cluster `executeCommandConfiguration` enabled (with optional KMS encryption for audit logs)
-- Task role IAM permissions: `ssmmessages:CreateControlChannel`, `ssmmessages:CreateDataChannel`, `ssmmessages:OpenControlChannel`, `ssmmessages:OpenDataChannel`
-- Task role KMS permissions if using encrypted exec logs
-- Network egress to SSM endpoints (via existing NAT Gateway or VPC endpoints for `ssmmessages`, `ec2messages`, `logs`)
-- Verification: `aws ecs execute-command --cluster <cluster> --task <task> --container <container> --command "/bin/sh -c 'echo ok'" --interactive` must succeed for each service before running W-4..W-10
+**Acceptance Criteria**:
+- [ ] `git push` to main triggers build + deploy
+- [ ] Manual `workflow_dispatch` also works
+- [ ] New image visible in ECR within 5 minutes
+- [ ] ECS service updates within 10 minutes of push
 
-### FR-4: DNS Authority Migration (Issue #106)
+> Sources: issue-153 body (deploy pipeline), existing CI patterns (Finn deploy-staging.yml, Dixie deploy-staging.yml)
 
-**Create `infrastructure/terraform/dns/` as a separate root module** (separate state from compute):
+### FR-5: World Provisioning (Terraform Module)
 
-| File | Purpose |
-|------|---------|
-| `dns/main.tf` | Backend config, providers, locals |
-| `dns/variables.tf` | Environment, feature flags, DKIM key |
-| `dns/honeyjar-xyz.tf` | Zone + apex A records (76.76.21.21 Vercel anycast IP, per Vercel docs for custom domains) |
-| `dns/honeyjar-xyz-email.tf` | MX (Google Workspace), SPF/TXT, DKIM, DMARC (fixed) |
-| `dns/honeyjar-xyz-vercel.tf` | Wildcard CNAME, `_acme-challenge` NS delegation |
-| `dns/honeyjar-xyz-agents.tf` | `*.agents.0xhoneyjar.xyz` wildcard + ACME delegation |
-| `dns/honeyjar-xyz-backend.tf` | `api.0xhoneyjar.xyz` alias to ALB (feature-flagged) |
-| `dns/security.tf` | CAA records, DNSSEC resources (gated) |
-| `dns/outputs.tf` | Zone ID, nameservers |
-| `dns/environments/` | staging.tfvars + production.tfvars |
+Adding a new world = one Terraform file:
 
-**Key decisions:**
-- Separate Terraform state (`dns/staging/terraform.tfstate`) — DNS changes shouldn't risk compute resources
-- ALB cross-reference: use `data.aws_lb` with deterministic filter (exact name tag `arrakis-{env}-alb` + region/account constraint) to prevent wrong-ALB resolution. Add `postcondition` validation that exactly one ALB matches. Compute must be applied before `enable_production_api` is toggled on. (Alternative: `terraform_remote_state` from compute state is acceptable if read-only access is configured.)
-- Feature flags: `enable_production_api` and `enable_dnssec`
-- Agent economy subdomain model: `*.agents.0xhoneyjar.xyz` is a wildcard CNAME record in the apex zone (NOT a delegated sub-zone). The `agents.0xhoneyjar.xyz` bare record also needs an explicit A/CNAME to prevent lookup failures. `_acme-challenge.agents.0xhoneyjar.xyz` NS record delegates certificate validation to Vercel. DNS wildcard precedence: `*.agents.0xhoneyjar.xyz` is a more specific match than `*.0xhoneyjar.xyz` — no conflict per RFC 4592.
+```hcl
+# infrastructure/terraform/worlds/aphive.tf
+module "world_aphive" {
+  source = "../modules/world"
 
-### FR-5: Pre/Post Migration Validation (Issue #106, Sprint 2)
+  name        = "aphive"
+  repo        = "0xHoneyJar/aphive"
+  cpu         = 256
+  memory      = 512
+  environment = var.environment
 
-- `scripts/dns-pre-migration.sh` — validates Route 53 records match Gandi before cutover (functional equivalence with explicit diff allowlist)
-- `scripts/dns-post-migration-check.sh` — monitors propagation after NS change with quantified checks:
-  - Query 8+ public resolvers (Google 8.8.8.8, Cloudflare 1.1.1.1, OpenDNS, Quad9, regional resolvers) for all record types
-  - Success threshold: ≥95% resolver agreement within 30 minutes of NS update
-  - MX record verification: send test email within 1 hour of cutover
-  - Health endpoint latency check: API response time < 500ms from 3 geographic regions
-  - Automated retry with backoff until thresholds met or 4-hour timeout triggers rollback alert
-- Migration runbook in `dns/README.md`
+  # Secrets (from SSM or Secrets Manager)
+  secrets = {
+    DATABASE_PATH = "/data/aphive.db"
+    AI_GATEWAY_URL = "http://finn.${local.name_prefix}.local:3000"
+  }
 
-### FR-6: Post-Migration Hardening (Issue #106, Sprint 3)
+  env_vars = {
+    PUBLIC_CHAIN_ID = "80094"
+    PUBLIC_RPC_URL  = "https://rpc.berachain.com"
+  }
+}
+```
 
-- Nightly DNS drift check workflow (`.github/workflows/dns-drift-check.yml`)
-- DNSSEC enablement (gated by feature flag)
-- SPF pruning (remove Gandi after cutover)
-- DMARC ramp to `p=reject` (4 weeks post-cutover)
+**The `world` module creates**:
+- ECS task definition
+- ECS service (Fargate Spot)
+- ECR repository
+- Target group + ALB listener rule
+- EFS access point
+- CloudWatch log group
+- OIDC IAM role for CI
+- Route53 CNAME record (if not using wildcard)
+
+**Acceptance Criteria**:
+- [ ] Adding `worlds/{name}.tf` and running `terraform apply` creates all resources
+- [ ] Removing the file and applying destroys all resources cleanly
+- [ ] Module is reusable across staging and production
+
+> Sources: issue-153 body (provisioning requirement), Phase 1 Q4 (Terraform module recommendation)
 
 ## 5. Technical & Non-Functional Requirements
 
-### NFR-1: Zero-Downtime DNS Migration
-- DNS cutover must not interrupt email delivery (MX records), Vercel deployments (wildcard CNAME), or API access
-- TTL reduction to 300s required 48h before cutover
-- Pre-migration validation must confirm 100% record parity
+### NFR-1: Cost Efficiency
 
-### NFR-2: Terraform State Safety
-- Stateful resources (S3 Object Lock, KMS, DynamoDB) must be imported, never recreated
-- `terraform plan` must show 0 unexpected destroys before any apply
-- DNS module uses separate state backend from compute module
-- **State backend hardening (both compute and DNS roots):**
-  - S3 bucket: versioning enabled, SSE-KMS encryption, bucket policy denying unencrypted uploads
-  - DynamoDB lock table: point-in-time recovery enabled, IAM least-privilege access
-  - IAM: only CI service role and designated operators may read/write state; no wildcard permissions on state bucket/prefix
-  - Prohibition of local state files in CI — all runs must use remote backend
-  - State bucket access logging enabled for audit trail
+**Fargate pricing (us-east-1)**: $0.04048/vCPU-hr + $0.004445/GB-hr.
+730 hours/month. Spot discount: 50-70% (variable, not guaranteed).
 
-### NFR-3: Security Model Consistency
-- **Service-to-service traffic**: SG-to-SG references only (no CIDR-based rules within the mesh)
-- **Internet ingress**: Only via ALB security group with CIDR `0.0.0.0/0` on port 443; ECS tasks are never directly internet-reachable
-- Finn's service SG: inbound from freeside SG only; egress to PgBouncer, Redis, NATS, Dixie, Freeside SGs
-- Dixie's service SG: inbound from ALB SG + Finn SG; egress to PgBouncer, Redis SGs
-- Finn's public ALB listener (staging only) goes through the shared ALB SG, not a CIDR rule on Finn's service SG
+| Resource | On-demand | Fargate Spot (est 60% discount) | Notes |
+|----------|-----------|----------------------------------|-------|
+| Compute (0.25 vCPU) | $7.39/mo | ~$2.96/mo | 730h × $0.04048 × 0.25 = $7.39 |
+| Memory (512 MB) | $1.62/mo | ~$0.65/mo | 730h × $0.004445 × 0.5 = $1.62 |
+| EFS storage | $0.10/mo | $0.10/mo | 100MB SQLite |
+| ECR storage | $0.10/mo | $0.10/mo | Image layers shared |
+| ALB rule | $0 | $0 | Included in existing ALB |
+| DNS | $0 | $0 | Included in existing Route53 zone |
+| Logs | $0.50/mo | $0.50/mo | CloudWatch ingestion |
+| **Total per world** | **$9.71/mo** | **~$4.31/mo** | **vs $5/mo on Railway** |
+
+**Note**: Spot savings are estimates — actual discount varies. With Spot, worlds cost slightly less than Railway. The real savings come from shared infrastructure (ALB, NAT, DNS already paid). At 10+ worlds, the per-world overhead is amortized further.
+
+**Validation**: After migrating 3 worlds, verify actual costs via AWS Cost Explorer with per-world tags (tag: `World={name}`). Adjust Spot strategy if savings are insufficient.
+
+### NFR-2: Security
+
+- Container-level isolation (same VPC, separate task definitions)
+- Per-world secrets (env vars from Secrets Manager, not shared)
+- **EFS isolation** (primary boundary): EFS IAM authorization enabled + access point enforcement. Each world's task role has resource-level permissions scoped to only its own access point ARN. POSIX UID/GID is defense-in-depth only, not the primary isolation mechanism.
+- Finn JWT auth with `world_id` claim prevents unauthorized AI usage and cross-world budget spend
+- **External builder gate**: Per-world security groups REQUIRED before onboarding external builders. MVP is internal-only (THJ repos). External onboarding blocked until SG isolation is implemented and verified.
+
+### NFR-3: Availability
+
+- Fargate Spot with on-demand capacity provider fallback
+- ECS circuit breaker with rollback on failed deployments
+- Health check: 30s interval, 3 failures before replacement
+- SQLite on EFS: data survives task replacement
 
 ### NFR-4: Observability
-- All services must have CloudWatch alarms for CPU, memory, 5xx errors
-- Health gate failures must produce actionable error messages with service name and timeout
 
-### NFR-5: DMARC Fix (Immediate)
-- Current DMARC record has placeholder `admin@yourdomain.com` — must be fixed to `dmarc@0xhoneyjar.xyz` independent of the migration timeline
-- The corrected DMARC value (`v=DMARC1; p=quarantine; rua=mailto:dmarc@0xhoneyjar.xyz; ruf=mailto:dmarc@0xhoneyjar.xyz; fo=1`) must be the source of truth in the Route 53 Terraform module from day one
-- Pre-migration parity validation (FR-5) must treat the corrected DMARC as expected, not the broken Gandi value
+- CloudWatch logs per world: `/ecs/arrakis-{env}/worlds/{name}`
+- ECS service metrics (CPU, memory, task count)
+- [FUTURE] Per-world cost tagging for AWS Cost Explorer
 
-### NFR-6: Governance & Compliance (Fast-Follow)
-- Post-migration: define resource tagging policy (Environment, Service, ManagedBy, CostCenter) for all Terraform-managed resources
-- Establish drift detection schedule (weekly `terraform plan` in CI, alert on non-zero diff)
-- Document access control matrix: who can apply to which Terraform root (compute vs. DNS) and under what conditions
-- **Note**: This is a maturity uplift — not blocking for the migration itself, but should be addressed within 2 weeks of successful cutover
+> Sources: issue-153 body (cost model, security questions), Phase 1 answers
 
 ## 6. Scope & Prioritization
 
-### In Scope (MVP)
+### MVP (This Cycle)
 
-| Priority | Item | Issue |
-|----------|------|-------|
-| P0 | Terraform consolidation — add missing finn/dixie resources | #105 Phase 1 |
-| P0 | Deploy pipeline with health gates | #105 Phase 2 |
-| P0 | E2E wiring tests | #105 Phase 3 |
-| P0 | DNS Terraform module for 0xhoneyjar.xyz | #106 Sprint 1 |
-| P1 | Pre/post migration validation scripts | #106 Sprint 2 |
-| P1 | DNS drift check workflow | #106 Sprint 3 |
-| P1 | DNSSEC enablement (feature-flagged) | #106 Sprint 3 |
+| # | Deliverable | Effort |
+|---|-------------|--------|
+| 1 | Terraform `world` module | 1 day |
+| 2 | First world deployed (rektdrop) | 2 hours |
+| 3 | Wildcard ACM cert for `*.0xhoneyjar.xyz` | 30 min |
+| 4 | Deploy pipeline template | 2 hours |
+| 5 | Second + third worlds (mibera, aphive) | 1 hour each |
+| 6 | Finn AI gateway wiring | 2 hours |
+
+**Estimated**: 2-3 days of focused work.
+
+### Post-MVP
+
+- Scale-to-zero with Lambda or App Runner (when cost justifies complexity)
+- Per-world budget dashboards
+- External builder self-service provisioning API
+- Automated world health monitoring
+- Per-world security groups for external isolation
 
 ### Out of Scope
 
-- Actual DNS cutover at Gandi registrar (manual step, documented in runbook)
-- Chiba (pre-production) and Production ring deployment (future cycles)
-- Migrating finn/dixie from SSM to Secrets Manager (decision: keep SSM)
-- Removing terraform from loa-finn and loa-dixie repos (Phase 4 of #105 — separate PR after verification)
-- DKIM key retrieval from Google Admin Console (manual step)
+- Custom domains per world (all use `*.0xhoneyjar.xyz` for now)
+- Multi-region deployment
+- Dedicated databases per world (SQLite on EFS is sufficient)
+- Auto-scaling (single instance per world is sufficient at current traffic)
+
+> Sources: issue-153 body (scope), Phase 1 interview (urgency = MVP focus)
 
 ## 7. Risks & Dependencies
 
-| ID | Risk | Impact | Mitigation |
-|----|------|--------|------------|
-| R-1 | Terraform import fails for stateful resources | Data loss if recreated instead of imported | Use safe import workflow (FR-1): add code with `prevent_destroy`, plan, import, plan-again-until-0-changes, then apply. Never use `-target` for imports. |
-| R-2 | DNS migration causes email outage | Google Workspace email down | Pre-migration functional-equivalence validation (not literal parity — SOA/NS/TTL differences expected), low TTL, rollback plan (revert NS at registrar) |
-| R-3 | Conflicting SG rules between finn's old and new terraform | Service unreachable | Freeze finn's TF applies first; import shared resources into freeside; deprecate old stacks without destroying shared components |
-| R-4 | Agent wildcard conflicts with existing wildcard | Vercel routing broken | `*.agents.0xhoneyjar.xyz` is more specific than `*.0xhoneyjar.xyz` per RFC 4592 — no conflict. Both are CNAME records in the same zone. |
-| R-5 | ECS Exec not enabled on existing tasks | Can't run internal wiring tests | Enable ECS Exec in task definitions + cluster config + IAM permissions + SSM endpoint access (see FR-3 prerequisites) |
-| R-6 | `data.aws_lb` resolves wrong ALB in DNS module | Production DNS points at wrong load balancer | Deterministic lookup with exact name tag + postcondition validation (see FR-4 key decisions) |
+| Risk | Likelihood | Impact | Mitigation |
+|------|-----------|--------|------------|
+| Fargate Spot interruption | Medium | Low | On-demand fallback via capacity provider strategy |
+| EFS latency for SQLite | Low | Medium | SQLite WAL mode + EFS throughput mode |
+| Wildcard cert CAA issues | Low | Medium | CAA records already allow amazon.com |
+| World container crash loop | Low | Medium | ECS circuit breaker + rollback |
+| Railway migration downtime | Low | High | Deploy on Freeside first, verify, then update DNS |
 
-### Dependencies
+**Dependencies**:
+- vCPU quota: 4000 (approved — no blocker)
+- EFS: already provisioned on both clusters
+- ALB: already running with host-based routing
+- DNS: Route53 zone active with 19 records
+- Finn: running on both staging and production
 
-- **loa-finn terraform state**: Need access to export resource IDs for import
-- **loa-dixie terraform state**: Need resource IDs for dixie's stateful resources
-- **Google Admin Console**: DKIM public key needed before DNS Sprint 1 apply
-- **Gandi registrar**: Nameserver update is manual (Sprint 2 cutover)
-- **AWS Route 53**: Must be in same account as compute resources (or use cross-account delegation)
+> Sources: infrastructure audit (this session), issue-153 body (risks section)
 
-## 8. Manual Steps (Cannot Be Automated)
+## 8. Migration Plan
 
-| Step | System | When | Owner |
-|------|--------|------|-------|
-| Fix DMARC placeholder | Gandi DNS | **NOW** (pre-migration) | Admin |
-| Retrieve DKIM key | Google Admin Console | Before DNS Sprint 1 | Admin |
-| Lower TTLs to 300s | Gandi DNS | 48h before cutover | Admin |
-| Update nameservers | Gandi registrar | Sprint 2 cutover | Admin |
-| Upload DS record | Gandi registrar | Sprint 3 DNSSEC | Admin |
-| Resolve apiologydao dual-assignment | Vercel dashboard | Before cutover | Admin |
+```
+1. Deploy world module + rektdrop on staging    → verify
+2. Deploy on production                         → verify at rektdrop.0xhoneyjar.xyz
+3. Update rektdrop DNS from Railway to Freeside → live cutover
+4. Repeat for mibera, aphive
+5. Cancel Railway
+```
 
-## 9. Success Definition
+Each world cutover is independently reversible — just point DNS back to Railway.
 
-This cycle is complete when:
-
-1. `terraform plan` on freeside: imported stateful resources show 0 changes; new resources show creates only (no destroys/replaces); existing ECS/ALB/SG show only permitted SG-rule additions
-2. `deploy-ring.sh --ring armitage --services all` succeeds with health gates (3/3 services healthy)
-3. `staging-wiring-test.sh` passes all 10 connectivity paths (including ECS Exec smoke test prerequisite)
-4. `terraform apply` in `dns/` creates a Route 53 zone for `0xhoneyjar.xyz` with functional equivalence to Gandi (SOA/NS differences expected; DMARC uses corrected value as source of truth)
-5. `dns-pre-migration.sh` confirms readiness for cutover (functional-equivalence diff with documented allowlist)
-6. `dns-drift-check.yml` workflow runs nightly and catches unmanaged changes
+> Sources: issue-153 body (migration), Phase 1 interview (urgency)
