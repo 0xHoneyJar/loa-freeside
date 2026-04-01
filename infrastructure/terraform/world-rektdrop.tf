@@ -6,7 +6,7 @@
 # =============================================================================
 
 module "world_rektdrop" {
-  source = "../modules/world"
+  source = "./modules/world"
 
   name        = "rektdrop"
   repo        = "0xHoneyJar/rektdrop"

@@ -1,13 +1,29 @@
 {
-  "verdict": "APPROVED",
-  "summary": "The previous issue was addressed by adding the MAX_INPUT_LENGTH check in legacy mode, bringing parity with the boundary parser.",
-  "previous_issues_status": [
+  "verdict": "CHANGES_REQUIRED",
+  "summary": "Found overly broad IAM permissions and an OIDC trust policy that is not scoped to the exact repo+branch.",
+  "issues": [
     {
-      "original_issue": "Legacy mode omitted MAX_INPUT_LENGTH, allowing oversized inputs that boundary parser would reject.",
-      "status": "fixed",
-      "notes": "Legacy mode now includes the same max length constraint as parseBoundaryMicroUsd."
+      "severity": "critical",
+      "file": "world-module.tf",
+      "line": 67,
+      "description": "EFS IAM authorization is overly broad because Resource is \"*\"; this allows mounting any EFS in the account if the AccessPointArn condition is bypassed or misconfigured. It must be scoped to this world's file system ARN.",
+      "current_code": "```hcl\n      {\n        Sid    = \"EFSMount\"\n        Effect = \"Allow\"\n        Action = [\n          \"elasticfilesystem:ClientMount\",\n          \"elasticfilesystem:ClientWrite\"\n        ]\n        Resource = \"*\"\n        Condition = {\n          StringEquals = {\n            \"elasticfilesystem:AccessPointArn\" = aws_efs_access_point.world.arn\n          }\n        }\n      },\n```",
+      "fixed_code": "```hcl\n      {\n        Sid    = \"EFSMount\"\n        Effect = \"Allow\"\n        Action = [\n          \"elasticfilesystem:ClientMount\",\n          \"elasticfilesystem:ClientWrite\"\n        ]\n        Resource = aws_efs_file_system.world.arn\n        Condition = {\n          StringEquals = {\n            \"elasticfilesystem:AccessPointArn\" = aws_efs_access_point.world.arn\n          }\n        }\n      },\n```",
+      "explanation": "EFS IAM authorization evaluates against the file system ARN. Scoping Resource to the specific file system plus the AccessPointArn condition ensures the task can mount only this world's access point on this world's file system."
+    },
+    {
+      "severity": "critical",
+      "file": "world-module.tf",
+      "line": 112,
+      "description": "OIDC trust policy is not scoped to the exact repo+branch. The StringLike condition allows an environment-based subject and pattern matching, violating the requirement to scope to a specific branch.",
+      "current_code": "```hcl\n      Condition = {\n        StringEquals = {\n          \"token.actions.githubusercontent.com:aud\" = \"sts.amazonaws.com\"\n        }\n        StringLike = {\n          \"token.actions.githubusercontent.com:sub\" = [\n            \"repo:${var.repo}:ref:refs/heads/main\",\n            \"repo:${var.repo}:environment:staging\"\n          ]\n        }\n      }\n```",
+      "fixed_code": "```hcl\n      Condition = {\n        StringEquals = {\n          \"token.actions.githubusercontent.com:aud\" = \"sts.amazonaws.com\"\n          \"token.actions.githubusercontent.com:sub\" = \"repo:${var.repo}:ref:refs/heads/main\"\n        }\n      }\n```",
+      "explanation": "Using StringEquals with the exact `sub` value strictly limits role assumption to the specified repository and branch, as required. Removing the environment-based subject prevents unintended access from environments not tied to the branch."
     }
   ],
-  "new_blocking_concerns": [],
-  "iteration": 2
+  "fabrication_check": {
+    "passed": true,
+    "concerns": []
+  },
+  "iteration": 1
 }
