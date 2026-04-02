@@ -244,16 +244,17 @@ export function createChatWebSocket(httpServer: HttpServer): WebSocketServer {
       }
     }
 
-    // Extract tokenId from query params
+    // Extract tokenId and optional pre-created sessionId from query params
     const tokenId = url.searchParams.get('tokenId') || undefined;
+    const preSessionId = url.searchParams.get('sessionId') || undefined;
 
     wss!.handleUpgrade(req, socket, head, (ws) => {
-      wss!.emit('connection', ws, req, { userId, authenticated, ip, tokenId });
+      wss!.emit('connection', ws, req, { userId, authenticated, ip, tokenId, preSessionId });
     });
   });
 
   // Handle new connections
-  wss.on('connection', (ws: WebSocket, _req: IncomingMessage, meta: { userId: string; authenticated: boolean; ip: string; tokenId?: string }) => {
+  wss.on('connection', (ws: WebSocket, _req: IncomingMessage, meta: { userId: string; authenticated: boolean; ip: string; tokenId?: string; preSessionId?: string }) => {
     const client: ChatClient = {
       ws,
       userId: meta.userId,
@@ -261,6 +262,7 @@ export function createChatWebSocket(httpServer: HttpServer): WebSocketServer {
       lastActivity: Date.now(),
       isAlive: true,
       tokenId: meta.tokenId,
+      finnSessionId: meta.preSessionId || undefined, // Reuse pre-created session with personality
     };
 
     clients.set(ws, client);
