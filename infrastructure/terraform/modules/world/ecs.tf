@@ -63,7 +63,7 @@ resource "aws_ecs_task_definition" "world" {
       }
 
       healthCheck = {
-        command     = ["CMD-SHELL", "wget -qO- http://localhost:${var.port}${var.health_check_path} || exit 1"]
+        command     = ["CMD-SHELL", "node -e \"require('http').get('http://localhost:${var.port}${var.health_check_path}',r=>{process.exit(r.statusCode<400?0:1)}).on('error',()=>process.exit(1))\""]
         interval    = 30
         timeout     = 5
         retries     = 3
