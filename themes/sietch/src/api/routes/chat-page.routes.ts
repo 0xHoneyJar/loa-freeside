@@ -82,12 +82,31 @@ chatPageRouter.post('/session', async (req: Request, res: Response) => {
 });
 
 /**
- * GET /chat/:tokenId — Standalone agent chat page
+ * GET /chat/:collection/:tokenId — Standalone agent chat page
+ * Collection-aware: supports /chat/mibera/6426, /chat/othercollection/123
+ * Also supports legacy /chat/:tokenId (defaults to "mibera" collection)
  */
-chatPageRouter.get('/:tokenId', (req: Request, res: Response) => {
-  const { tokenId } = req.params;
+chatPageRouter.get('/:collectionOrTokenId/:tokenId?', (req: Request, res: Response) => {
+  let collection: string;
+  let tokenId: string;
 
-  // Basic tokenId validation — alphanumeric, hyphens, underscores, 1-64 chars
+  if (req.params.tokenId) {
+    // /chat/mibera/6426 format
+    collection = req.params.collectionOrTokenId as string;
+    tokenId = req.params.tokenId as string;
+  } else {
+    // /chat/6426 legacy format — default to mibera
+    collection = 'mibera';
+    tokenId = req.params.collectionOrTokenId as string;
+  }
+
+  // Validate collection — lowercase alpha, 1-20 chars
+  if (!/^[a-z]{1,20}$/.test(collection)) {
+    res.status(400).send('Invalid collection name');
+    return;
+  }
+
+  // Validate tokenId — alphanumeric, hyphens, underscores, 1-64 chars
   if (!tokenId || !/^[a-zA-Z0-9_-]{1,64}$/.test(tokenId)) {
     res.status(400).send('Invalid token ID');
     return;
@@ -110,12 +129,13 @@ chatPageRouter.get('/:tokenId', (req: Request, res: Response) => {
     "base-uri 'none'",
   ].join('; '));
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.send(getChatPage(tokenId));
+  res.send(getChatPage(collection, tokenId));
 });
 
 // ─── HTML Template ────────────────────────────────────────────────────────────
 
-function getChatPage(tokenId: string): string {
+function getChatPage(collection: string, tokenId: string): string {
+  const safeCollection = collection.replace(/[^a-z]/g, '');
   // Escape tokenId for safe embedding in HTML/JS (Sprint 321, medium-5)
   const safeTokenId = tokenId
     .replace(/&/g, '&amp;')
@@ -191,7 +211,8 @@ function getChatPage(tokenId: string): string {
   'use strict';
 
   var TOKEN_ID = '${safeTokenId}';
-  var COLLECTION_TOKEN_ID = 'mibera:' + TOKEN_ID;
+  var COLLECTION = '${safeCollection}';
+  var COLLECTION_TOKEN_ID = COLLECTION + ':' + TOKEN_ID;
   var ws = null;
   var authenticated = false;
   var reconnectAttempts = 0;
