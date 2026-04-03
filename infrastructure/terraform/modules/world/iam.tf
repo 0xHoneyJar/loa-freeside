@@ -32,14 +32,24 @@ resource "aws_iam_role_policy" "execution_secrets" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Sid      = "KmsDecrypt"
-        Effect   = "Allow"
-        Action   = ["kms:Decrypt", "kms:DescribeKey"]
-        Resource = [var.kms_key_arn]
-      }
-    ]
+    Statement = concat(
+      [
+        {
+          Sid      = "KmsDecrypt"
+          Effect   = "Allow"
+          Action   = ["kms:Decrypt", "kms:DescribeKey"]
+          Resource = [var.kms_key_arn]
+        }
+      ],
+      length(var.secret_arns) > 0 ? [
+        {
+          Sid      = "SecretsManagerRead"
+          Effect   = "Allow"
+          Action   = ["secretsmanager:GetSecretValue"]
+          Resource = var.secret_arns
+        }
+      ] : []
+    )
   })
 }
 

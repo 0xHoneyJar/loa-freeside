@@ -53,6 +53,8 @@ resource "aws_ecs_task_definition" "world" {
 
       environment = [for k, v in local.all_env : { name = k, value = tostring(v) }]
 
+      secrets = length(var.secrets) > 0 ? [for k, v in var.secrets : { name = k, valueFrom = v }] : []
+
       logConfiguration = {
         logDriver = "awslogs"
         options = {

@@ -157,6 +157,18 @@ variable "image_tag" {
   default     = "latest"
 }
 
+variable "secrets" {
+  description = "Container secrets from Secrets Manager (env var name → valueFrom ARN, supports ::key:: suffix for JSON extraction)"
+  type        = map(string)
+  default     = {}
+}
+
+variable "secret_arns" {
+  description = "Base Secrets Manager ARNs for IAM policy (without ::key:: suffix)"
+  type        = list(string)
+  default     = []
+}
+
 variable "log_retention_days" {
   description = "CloudWatch log retention in days"
   type        = number
