@@ -21,7 +21,7 @@ resource "aws_secretsmanager_secret" "score_api_db_url" {
 
 resource "aws_secretsmanager_secret_version" "score_api_db_url" {
   secret_id     = aws_secretsmanager_secret.score_api_db_url.id
-  secret_string = "postgresql://${aws_db_instance.main.username}:${random_password.db_password.result}@${aws_db_instance.main.address}:${aws_db_instance.main.port}/score_api?sslmode=require"
+  secret_string = "postgresql://${aws_db_instance.main.username}:${random_password.db_password.result}@${aws_db_instance.main.address}:${aws_db_instance.main.port}/score_api?sslmode=no-verify"
 }
 
 # -----------------------------------------------------------------------------
@@ -54,7 +54,7 @@ module "world_score_api" {
   cpu    = 256
   memory = 512
 
-  health_check_path = "/health"
+  health_check_path = "/v1/health"
 
   secrets = {
     DATABASE_URL = aws_secretsmanager_secret.score_api_db_url.arn
