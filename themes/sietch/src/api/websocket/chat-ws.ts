@@ -457,7 +457,7 @@ async function handleChatMessage(ws: WebSocket, client: ChatClient, message: Cha
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
-        body: JSON.stringify({ token_id: client.tokenId || undefined }),
+        body: JSON.stringify({ token_id: client.tokenId && !client.tokenId.includes(':') ? `mibera:${client.tokenId}` : client.tokenId || undefined }),
       });
 
       if (!createRes.ok) {

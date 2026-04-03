@@ -261,7 +261,7 @@ function getChatPage(collection: string, tokenId: string): string {
   async function createFinnSession() {
     try {
       addMessage('Loading personality for token ' + TOKEN_ID + '...', 'system');
-      var res = await fetch('/api/chat/session', {
+      var res = await fetch('/chat/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token_id: COLLECTION_TOKEN_ID }),
@@ -290,9 +290,9 @@ function getChatPage(collection: string, tokenId: string): string {
     // If we have a Finn session, connect to its WS URL; otherwise fall back to direct
     var url;
     if (finnSessionId) {
-      url = proto + '//' + location.host + '/ws/chat?tokenId=' + encodeURIComponent(TOKEN_ID) + '&sessionId=' + encodeURIComponent(finnSessionId);
+      url = proto + '//' + location.host + '/ws/chat?tokenId=' + encodeURIComponent(COLLECTION_TOKEN_ID) + '&sessionId=' + encodeURIComponent(finnSessionId);
     } else {
-      url = proto + '//' + location.host + '/ws/chat?tokenId=' + encodeURIComponent(TOKEN_ID);
+      url = proto + '//' + location.host + '/ws/chat?tokenId=' + encodeURIComponent(COLLECTION_TOKEN_ID);
     }
     ws = new WebSocket(url);
 
