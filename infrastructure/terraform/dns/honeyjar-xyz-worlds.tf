@@ -11,9 +11,11 @@
 # (gated behind enable_production_api which is already set for production)
 
 locals {
-  # All worlds hosted on the compute ALB
+  # All worlds hosted on the compute ALB.
+  # 2026-04-16: "mibera" temporarily removed to restore Honey Road (Vercel) at
+  # mibera.0xhoneyjar.xyz while we migrate Honey Road onto Freeside. Re-add once
+  # Honey Road is an ECS-hosted world.
   world_subdomains = var.enable_production_api ? toset([
-    "mibera",
     "apdao",
     "rektdrop",
     "score-api",
