@@ -81,14 +81,14 @@ for entry in "${MAP[@]}"; do
   if [[ -z "$raw" ]]; then
     echo "FAIL empty:       $vercel_var"
     failures+=("$vercel_var (empty)")
-    ((fail++))
+    fail=$((fail+1))
     continue
   fi
 
   if [[ "$raw" =~ ^(your_|REDACTED|xxx|\<) ]]; then
     echo "FAIL placeholder: $vercel_var -> ${raw:0:20}..."
     failures+=("$vercel_var (placeholder)")
-    ((fail++))
+    fail=$((fail+1))
     continue
   fi
 
@@ -97,11 +97,11 @@ for entry in "${MAP[@]}"; do
       --secret-id "${SECRET_PREFIX}/${aws_key}" \
       --secret-string "$raw" >/dev/null 2>&1; then
     echo "OK:               $vercel_var -> $aws_key"
-    ((pass++))
+    pass=$((pass+1))
   else
     echo "FAIL put:         $vercel_var -> $aws_key"
     failures+=("$vercel_var (put-secret-value failed)")
-    ((fail++))
+    fail=$((fail+1))
   fi
 done
 
