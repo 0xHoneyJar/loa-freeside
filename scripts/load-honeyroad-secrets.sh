@@ -92,10 +92,13 @@ for entry in "${MAP[@]}"; do
     continue
   fi
 
-  if aws secretsmanager put-secret-value \
+  # Pipe secret via stdin instead of --secret-string "$raw" — the CLI arg form
+  # is visible in /proc/*/cmdline, ps aux, and shell history (bridgebuilder
+  # CRIT-001). file:///dev/stdin reads from stdin without touching disk.
+  if printf '%s' "$raw" | aws secretsmanager put-secret-value \
       --profile "$AWS_PROFILE" --region "$AWS_REGION" \
       --secret-id "${SECRET_PREFIX}/${aws_key}" \
-      --secret-string "$raw" >/dev/null 2>&1; then
+      --secret-string file:///dev/stdin >/dev/null 2>&1; then
     echo "OK:               $vercel_var -> $aws_key"
     pass=$((pass+1))
   else
