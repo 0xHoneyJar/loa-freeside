@@ -39,9 +39,11 @@ module "world_mibera" {
   cpu    = 512
   memory = 1024
 
-  # Honey Road responds 200 at / (Next.js default). Module health check uses
-  # `node -e "require('http').get(...)"` which is portable on node:22-alpine.
-  health_check_path = "/"
+  # Use dedicated /api/health endpoint — "/" renders the marketplace homepage
+  # via DB queries, which exceeds the 5s container health-check timeout on
+  # cold cache, failing health checks and killing tasks. /api/health returns
+  # a static 200 with no IO. See mibera-honeyroad/app/api/health/route.ts.
+  health_check_path = "/api/health"
 
   # Non-secret runtime env. NEXT_PUBLIC_* vars are baked into the client bundle
   # at build time via --build-arg in CI (see mibera-honeyroad/.github/workflows/
