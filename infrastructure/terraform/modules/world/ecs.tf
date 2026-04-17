@@ -64,8 +64,16 @@ resource "aws_ecs_task_definition" "world" {
         }
       }
 
+      # Container health check via Node. Use 127.0.0.1 (IPv4 explicit) rather
+      # than `localhost` to sidestep Alpine/musl's IPv6-first resolver behavior
+      # — when Next.js binds only IPv4 (HOSTNAME=0.0.0.0), a localhost request
+      # that resolves to ::1 first gets ECONNREFUSED and the probe fails even
+      # though the server is up on 127.0.0.1. Observed on Honey Road
+      # (mibera-honeyroad Next.js world, 2026-04-17) where ALB health checks
+      # at /api/health returned 200 but the container health check killed the
+      # task 3x in a row with "failed container health checks".
       healthCheck = {
-        command     = ["CMD-SHELL", "node -e \"require('http').get('http://localhost:${var.port}${var.health_check_path}',r=>{process.exit(r.statusCode<400?0:1)}).on('error',()=>process.exit(1))\""]
+        command     = ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:${var.port}${var.health_check_path}',r=>{process.exit(r.statusCode<400?0:1)}).on('error',()=>process.exit(1))\""]
         interval    = 30
         timeout     = 5
         retries     = 3
