@@ -63,7 +63,6 @@ module "world_mibera" {
   #                           running container — prd.md:299, flatline SKP-001)
   secrets = {
     DATABASE_URL                = aws_secretsmanager_secret.honeyroad["database_url"].arn
-    SUPABASE_SERVICE_ROLE_KEY   = aws_secretsmanager_secret.honeyroad["supabase_service_role"].arn
     DYNAMIC_AUTH_TOKEN          = aws_secretsmanager_secret.honeyroad["dynamic_auth_token"].arn
     DYNAMIC_SERVER_API_KEY      = aws_secretsmanager_secret.honeyroad["dynamic_server_api_key"].arn
     OPENAI_API_KEY              = aws_secretsmanager_secret.honeyroad["openai_api_key"].arn

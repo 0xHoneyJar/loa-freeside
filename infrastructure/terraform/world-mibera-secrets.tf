@@ -20,9 +20,8 @@
 
 locals {
   honeyroad_secrets = toset([
-    # Database
+    # Database (Drizzle + Railway Postgres, post-Supabase migration)
     "database_url",
-    "supabase_service_role",
 
     # Auth (Dynamic Labs + iron-session)
     "dynamic_auth_token",
