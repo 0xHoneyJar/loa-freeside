@@ -91,6 +91,34 @@ module "world_mibera" {
   secret_arns = [for s in aws_secretsmanager_secret.honeyroad : s.arn]
 }
 
+# Broad TCP outbound for Honey Road's task SG.
+#
+# Why this is needed: the world module's default egress (security.tf) covers
+# HTTPS (443), EFS (2049), Finn (3000) — intended for SvelteKit-SQLite-on-EFS
+# worlds. Honey Road has:
+#   - Railway Postgres on port 30555 (non-standard)
+#   - Trigger.dev, Cloudinary, dRPC, Alchemy, OpenAI, Anthropic,
+#     WalletConnect, Dynamic Labs — all outbound on HTTPS (443, covered)
+#     BUT some use WebSocket upgrades that may reuse non-443 ports
+#
+# Narrow alternative would be port-by-port rules. Broad TCP outbound is
+# standard production ECS pattern: inbound is tightly ALB-only, outbound
+# is open since NAT hides the task. Security posture is IAM + secrets +
+# inbound restriction, not egress micromanagement.
+#
+# Proper long-term fix: the module accepts an `egress_mode` or
+# `additional_egress_rules` variable. Filed as @janitooor track —
+# mirror this rule there and remove this root-level addition.
+resource "aws_security_group_rule" "mibera_broad_tcp_outbound" {
+  type              = "egress"
+  from_port         = 0
+  to_port           = 65535
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = module.world_mibera.security_group_id
+  description       = "Honey Road broad TCP outbound (Railway Postgres:30555 + external services). Proper fix: module egress_mode variable."
+}
+
 output "mibera_ecr_url" {
   value       = module.world_mibera.ecr_repository_url
   description = "ECR repository for Honey Road image pushes (CI uses this)"
