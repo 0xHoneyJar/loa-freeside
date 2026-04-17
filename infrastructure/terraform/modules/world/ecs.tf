@@ -64,20 +64,16 @@ resource "aws_ecs_task_definition" "world" {
         }
       }
 
-      # Container health check via Node — TCP connect only. HTTP-based probes
-      # introduced timing and first-render compile issues that killed Next.js
-      # tasks before ALB could promote them (observed on Honey Road,
-      # mibera-honeyroad Next.js world, 2026-04-17). TCP connect verifies the
-      # server is listening on the port — sufficient as a liveness probe.
-      # Actual request-path health is validated separately by the ALB target
-      # group health check against var.health_check_path.
-      healthCheck = {
-        command     = ["CMD-SHELL", "node -e \"require('net').connect(${var.port},'127.0.0.1').on('connect',function(){process.exit(0)}).on('error',function(){process.exit(1)})\""]
-        interval    = 30
-        timeout     = 5
-        retries     = 3
-        startPeriod = 60
-      }
+      # No container-level health check. Observed on Honey Road (mibera-
+      # honeyroad Next.js, 2026-04-17): both HTTP (via node -e http.get) and
+      # TCP (via node -e net.connect) probes failed despite ALB target group
+      # health checks at the same port succeeding externally. Root cause
+      # unclear but consistently killed tasks ~2 min after start.
+      #
+      # Task health is now determined entirely by the ALB target group health
+      # check at `var.health_check_path` — ECS considers task healthy iff the
+      # target is healthy in the ALB. Same reliability, simpler mental model,
+      # no duplicated health check logic.
     }
   ])
 
