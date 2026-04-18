@@ -12,11 +12,14 @@
 
 locals {
   # All worlds hosted on the compute ALB.
-  # 2026-04-16: "mibera" temporarily removed to restore Honey Road (Vercel) at
-  # mibera.0xhoneyjar.xyz while we migrate Honey Road onto Freeside. Re-add once
-  # Honey Road is an ECS-hosted world.
+  # 2026-04-18: "mibera" re-added after Honey Road (mibera-honeyroad Next.js 15)
+  # migrated to ECS Fargate behind the compute ALB. Production target group
+  # arrakis-production-w-mibera healthy; /api/health + / + /guide return 200.
+  # See 0xHoneyJar/loa-freeside#153 (migration thread) + amendment comment
+  # 4271567701 for Terraform-literacy context.
   world_subdomains = var.enable_production_api ? toset([
     "apdao",
+    "mibera",
     "rektdrop",
     "score-api",
   ]) : toset([])
