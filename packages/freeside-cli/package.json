@@ -1,0 +1,31 @@
+{
+  "name": "@freeside/cli",
+  "version": "0.0.0-placeholder-cycle-010",
+  "description": "Freeside world-hosting CLI — placeholder scaffold; working bash at sprawl-world/scripts/freeside. See README.md for migration path.",
+  "type": "module",
+  "bin": {
+    "freeside": "./dist/bin/freeside.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "private": true,
+  "scripts": {
+    "build": "echo 'not-implemented — see README.md; working CLI lives at sprawl-world/scripts/freeside' && exit 1",
+    "typecheck": "echo 'not-implemented' && exit 0"
+  },
+  "keywords": [
+    "freeside",
+    "world-hosting",
+    "ecs",
+    "iac",
+    "placeholder"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/0xHoneyJar/loa-freeside.git",
+    "directory": "packages/freeside-cli"
+  },
+  "license": "AGPL-3.0"
+}
