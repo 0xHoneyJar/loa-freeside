@@ -28,14 +28,14 @@ output "alias_fqdn" {
 }
 
 output "acm_certificate_arn" {
-  description = "ARN of the ACM cert in us-east-1"
-  value       = aws_acm_certificate.alias.arn
+  description = "ARN of the ACM cert in us-east-1 (the one this module is using — either provisioned or reused)"
+  value       = local.acm_certificate_arn
 }
 
 output "acm_validation_records" {
-  description = "DNS validation records to create MANUALLY in Route53. Each entry: { name, type, value }. Operator creates these in the console; cert moves to ISSUED."
-  value = [
-    for o in aws_acm_certificate.alias.domain_validation_options : {
+  description = "DNS validation records to create MANUALLY in Route53. Empty when reusing an existing cert. Each entry: { name, type, value }. Operator creates these in the console; cert moves to ISSUED."
+  value = var.existing_acm_certificate_arn != null ? [] : [
+    for o in aws_acm_certificate.alias[0].domain_validation_options : {
       name  = o.resource_record_name
       type  = o.resource_record_type
       value = o.resource_record_value

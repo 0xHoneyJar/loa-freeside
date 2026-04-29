@@ -34,6 +34,11 @@ locals {
   origin_id_s3   = "${var.name_prefix}-s3-${var.backing_bucket_name}"
   s3_origin_host = "${var.backing_bucket_name}.s3.${var.backing_bucket_region}.amazonaws.com"
 
+  # Either reuse an existing cert (e.g. *.0xhoneyjar.xyz wildcard) or use the
+  # one this module provisions. The conditional resource below honors both
+  # paths.
+  acm_certificate_arn = var.existing_acm_certificate_arn != null ? var.existing_acm_certificate_arn : try(aws_acm_certificate.alias[0].arn, "")
+
   tags = merge(var.common_tags, {
     Module = var.name_prefix
   })
@@ -54,6 +59,7 @@ data "aws_s3_bucket" "backing" {
 # -----------------------------------------------------------------------------
 
 resource "aws_acm_certificate" "alias" {
+  count    = var.existing_acm_certificate_arn != null ? 0 : 1
   provider = aws.us_east_1
 
   domain_name       = var.alias_fqdn
@@ -158,7 +164,7 @@ resource "aws_cloudfront_distribution" "main" {
   }
 
   viewer_certificate {
-    acm_certificate_arn      = aws_acm_certificate.alias.arn
+    acm_certificate_arn      = local.acm_certificate_arn
     ssl_support_method       = "sni-only"
     minimum_protocol_version = "TLSv1.2_2021"
   }

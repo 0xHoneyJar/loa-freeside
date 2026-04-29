@@ -32,6 +32,12 @@ variable "alias_fqdn" {
   default     = "assets.0xhoneyjar.xyz"
 }
 
+variable "existing_acm_certificate_arn" {
+  description = "Optional ARN of an existing ACM certificate (us-east-1) that covers `alias_fqdn`. If supplied, the module reuses this cert instead of provisioning a new one. Useful when a wildcard cert already exists for the parent zone (e.g. `*.0xhoneyjar.xyz`) — and avoids CAA-cache issues on freshly-issued certs."
+  type        = string
+  default     = null
+}
+
 variable "hosted_zone_name" {
   description = "Route53 hosted zone where the alias record lives. Used in route53.tf — currently commented out per project memory `freeside-dns-state-untracked`; manual record creation is documented in decisions/cloudfront-dns-2026-04-29.md."
   type        = string
