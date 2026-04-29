@@ -1,0 +1,202 @@
+# =============================================================================
+# freeside-storage — Main (locals + computed values)
+# =============================================================================
+#
+# Per SDD §0.1 Amendment 3 (2026-04-29) the original framing of "new bucket +
+# bulk sync + dual-write" is descoped. The reality:
+#
+#   - thj-assets (us-west-2) is the existing sovereign asset store
+#   - The legacy distribution `d163aeqznbc6js` is an image-OPTIMIZER chain
+#     with a *.webp direct-S3 fast path
+#   - Phase 0 publishes a STABLE URL CONTRACT surface for external builders
+#     by adding a parallel distribution against the SAME backing bucket
+#   - Apps using direct *.webp paths get the URL contract immediately
+#   - Apps using optimizer paths (`/images/{proxy+}`, `/_next/image*`) keep
+#     using d163aeqznbc6js (optimizer migration deferred per ADR-006)
+#
+# This module ships:
+#   - 1 data source for the existing thj-assets bucket
+#   - 1 ACM certificate in us-east-1 for assets.0xhoneyjar.xyz
+#   - 1 CloudFront Origin Access Control (OAC) for the new distribution
+#   - 1 CloudFront distribution with alias + 2 cache behaviors
+#   - 1 S3 bucket policy statement attached as an OAC grant (additive, in
+#     bucket-policy.tf — bucket policy is an OUT-OF-MODULE concern; see README)
+#
+# What this module does NOT ship:
+#   - A new bucket (descoped per Amendment 3)
+#   - IAM roles (cross-account assumed-role pattern is no longer needed; see
+#     iam.tf for placeholder)
+#   - Route53 record (manual per project-memory `freeside-dns-state-untracked`;
+#     see route53.tf)
+# =============================================================================
+
+locals {
+  origin_id_s3   = "${var.name_prefix}-s3-${var.backing_bucket_name}"
+  s3_origin_host = "${var.backing_bucket_name}.s3.${var.backing_bucket_region}.amazonaws.com"
+
+  tags = merge(var.common_tags, {
+    Module = var.name_prefix
+  })
+}
+
+# -----------------------------------------------------------------------------
+# Existing bucket — read-only data source
+# -----------------------------------------------------------------------------
+# We do NOT manage thj-assets in this module. It pre-dates this cycle and is
+# managed elsewhere. We only reference it as a CloudFront origin.
+
+data "aws_s3_bucket" "backing" {
+  bucket = var.backing_bucket_name
+}
+
+# -----------------------------------------------------------------------------
+# ACM certificate for the alias FQDN (us-east-1 — CloudFront requirement)
+# -----------------------------------------------------------------------------
+
+resource "aws_acm_certificate" "alias" {
+  provider = aws.us_east_1
+
+  domain_name       = var.alias_fqdn
+  validation_method = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tags = merge(local.tags, {
+    Name = "${var.name_prefix}-${var.alias_fqdn}"
+  })
+}
+
+# DNS validation records are CREATED MANUALLY in Route53 per project-memory
+# `freeside-dns-state-untracked` (production DNS untracked by terraform).
+# The operator runs:
+#   terraform output acm_validation_records
+# then creates each CNAME in the Route53 console. After creation, the cert
+# moves from PENDING_VALIDATION to ISSUED.
+#
+# A future cycle SHOULD import the validation records into terraform and
+# replace this manual step with `aws_acm_certificate_validation`.
+
+# -----------------------------------------------------------------------------
+# CloudFront Origin Access Control (modern; replaces OAI)
+# -----------------------------------------------------------------------------
+
+resource "aws_cloudfront_origin_access_control" "s3_oac" {
+  name                              = "${var.name_prefix}-s3-oac"
+  description                       = "OAC for ${var.alias_fqdn} → ${var.backing_bucket_name}"
+  origin_access_control_origin_type = "s3"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
+
+# -----------------------------------------------------------------------------
+# CloudFront distribution
+# -----------------------------------------------------------------------------
+# Two cache behaviors:
+#   1. *.webp → S3 origin (direct; mirrors legacy d163aeqznbc6js fast path)
+#   2. default → S3 origin (direct; NO optimizer chain — see ADR-006)
+
+resource "aws_cloudfront_distribution" "main" {
+  enabled             = true
+  is_ipv6_enabled     = true
+  comment             = "freeside-storage — sovereign asset surface (${var.alias_fqdn})"
+  default_root_object = ""
+  price_class         = var.price_class
+  http_version        = "http2and3"
+
+  aliases = [var.alias_fqdn]
+
+  origin {
+    origin_id                = local.origin_id_s3
+    domain_name              = local.s3_origin_host
+    origin_access_control_id = aws_cloudfront_origin_access_control.s3_oac.id
+    # OAC requires no S3OriginConfig block (modern). OAC handles auth via SigV4.
+  }
+
+  # ---- Cache behavior #1: *.webp → S3 direct (fast path mirror) ----
+  ordered_cache_behavior {
+    path_pattern           = "*.webp"
+    target_origin_id       = local.origin_id_s3
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+
+    min_ttl     = var.min_ttl
+    default_ttl = var.default_ttl
+    max_ttl     = var.max_ttl
+
+    forwarded_values {
+      query_string = false
+      headers      = []
+      cookies {
+        forward = "none"
+      }
+    }
+  }
+
+  # ---- Default cache behavior: S3 direct (no optimizer; explicit by design) ----
+  default_cache_behavior {
+    target_origin_id       = local.origin_id_s3
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+
+    min_ttl     = var.min_ttl
+    default_ttl = var.default_ttl
+    max_ttl     = var.max_ttl
+
+    forwarded_values {
+      query_string = false
+      headers      = []
+      cookies {
+        forward = "none"
+      }
+    }
+  }
+
+  viewer_certificate {
+    acm_certificate_arn      = aws_acm_certificate.alias.arn
+    ssl_support_method       = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2021"
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  tags = merge(local.tags, {
+    Name = "${var.name_prefix}-${var.alias_fqdn}"
+  })
+
+  # ACM cert must be ISSUED before the distribution can attach it.
+  # Since we DNS-validate manually (see comment above), the operator must
+  # confirm cert status before applying this resource. Use `-target` for
+  # phased apply if needed:
+  #   terraform apply -target=aws_acm_certificate.alias
+  #   # ...manually create CNAME, wait for ISSUED...
+  #   terraform apply
+}
+
+# -----------------------------------------------------------------------------
+# Bucket policy grant for OAC
+# -----------------------------------------------------------------------------
+# The new distribution's OAC must be ALLOWED in the bucket policy. The bucket
+# is shared (legacy distribution + new distribution both read from it), so the
+# policy is ADDITIVE — we do NOT overwrite the existing bucket policy.
+#
+# This is intentionally OUT OF SCOPE for this module skeleton. The bucket
+# policy update is a manual step documented in T11's runbook:
+#
+#   1. terraform apply (creates OAC + distribution)
+#   2. terraform output cloudfront_distribution_arn
+#   3. operator updates bucket policy in AWS console (additive Statement)
+#   4. terraform output is the source of truth for the ARN to grant
+#
+# Future cycle SHOULD codify the bucket policy in this module via
+# `aws_s3_bucket_policy` with a data source for the existing policy and a
+# merge step. Risky (overwrites) without careful testing — deferred.
