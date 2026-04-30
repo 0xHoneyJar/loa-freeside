@@ -55,7 +55,7 @@ The most-consumed world. v1 routes:
 | Canonical route | Backing TODAY (post-sprint-1) | Backing AFTER named cycle | Phase |
 |---|---|---|---|
 | `/Mibera/generated/{tokenId}.webp` | S3 `thj-assets` (direct via `assets.0xhoneyjar.xyz`) | (unchanged) | — |
-| `/Mibera/final/{tokenId}.png` | Irys `gateway.irys.xyz/7rpvw…/{hash}.png` | S3 `thj-assets` (canonical route) | **mibera-2** |
+| `/Mibera/final/{tokenId}.png` | S3 `thj-assets` at legacy `reveal_phase8/images/{hash}.png` (Irys still serves the same hash but bytes may differ) | S3 `thj-assets` at canonical tokenId-keyed route | **mibera-2** _(optional polish)_ |
 | `/Mibera/reveal/phase{N}/{hash}.png` | CloudFront `d163aeqznbc6js/images/...` (legacy URL preserved during sprint-1) | Same key shape, eventually re-keyed canonical | **mibera-rekey** |
 | `/Mibera/parcels/{id}.png` | `thj-assets.s3…/parcels/parcelsImages/{id}.png` (S3-direct, not via this CDN today) | S3 `thj-assets` at canonical route | **mibera-3** |
 | `/Mibera/miladies/{id}.png` | `thj-assets.s3…/fractures/miladies/images/{id}.png` (S3-direct) | S3 `thj-assets` at canonical route | **mibera-3** |
@@ -65,6 +65,22 @@ The most-consumed world. v1 routes:
 
 Allowed Mibera categories (v1): `final`, `reveal`, `parcels`, `miladies`,
 `traits`, `og`, `generated`, `expressions`, `layers`, `archetypes`.
+
+> 🪞 **Mibera primary renders — important correction (2026-04-29)**: the original framing
+> of this cycle assumed the 10k Mibera-primary PNGs only lived on Irys (and would need a
+> future Mibera-2 cycle to re-host). That was wrong. The same hash-keyed PNGs already
+> live on `thj-assets` at `reveal_phase{1..8}/images/{hash}.png` (8 phases of reveal
+> renderings; phase 8 is the canonical/latest per Gumi 2026-04-29). Codex consumers
+> wanting to flip from `gateway.irys.xyz/...` to the new CDN can do so today via:
+>
+> ```
+> gateway.irys.xyz/7rpvw…/{hash}.png
+>   → assets.0xhoneyjar.xyz/reveal_phase8/images/{hash}.png
+> ```
+>
+> The `mibera-2` cycle is now **optional polish** that rekeys the legacy depth-2
+> hash-keyed shape to canonical depth-3 tokenId-keyed shape. The codex flip is not
+> blocked on it. See [`construct-mibera-codex` issue #54](https://github.com/0xHoneyJar/construct-mibera-codex/issues/54).
 
 ---
 
