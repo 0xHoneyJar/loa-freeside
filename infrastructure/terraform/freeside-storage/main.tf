@@ -125,7 +125,7 @@ resource "aws_cloudfront_distribution" "main" {
   price_class         = var.price_class
   http_version        = "http2and3"
 
-  aliases = [var.alias_fqdn]
+  aliases = concat([var.alias_fqdn], var.additional_aliases)
 
   origin {
     origin_id                = local.origin_id_s3
@@ -188,6 +188,19 @@ resource "aws_cloudfront_distribution" "main" {
     # consumers). Same policy applies; canvas-painting consumers need it.
     response_headers_policy_id = local.cors_response_headers_policy_id
 
+    # Cutover B (Amendment A2) — manifest resolver. Conditional via
+    # var.metadata_resolver_enabled. The function rewrites
+    #   /{collection}/{tokenId}  →  /{collection}/metadata/v/{ver}/{tokenId}.json
+    # for requests that match. Non-matching paths pass through unmodified,
+    # so existing assets.* traffic is untouched.
+    dynamic "function_association" {
+      for_each = var.metadata_resolver_enabled ? [1] : []
+      content {
+        event_type   = "viewer-request"
+        function_arn = aws_cloudfront_function.metadata_resolver[0].arn
+      }
+    }
+
     forwarded_values {
       query_string = false
       headers      = []
@@ -240,3 +253,54 @@ resource "aws_cloudfront_distribution" "main" {
 # Future cycle SHOULD codify the bucket policy in this module via
 # `aws_s3_bucket_policy` with a data source for the existing policy and a
 # merge step. Risky (overwrites) without careful testing — deferred.
+
+# =============================================================================
+# Cutover B (Amendment A2) — Manifest-Pattern Metadata Resolver
+# =============================================================================
+# Provisions:
+#   - 1 CloudFront KeyValueStore                  (collection→version pointers)
+#   - 1 CloudFront Function (cloudfront-js-2.0)   (rewrites stable URLs)
+#   - N initial KV entries from `metadata_resolver_initial_pointers`
+#   - Function attached to the distribution's default cache behavior above
+#
+# The function code lives at ./metadata-resolver.js. It runs on
+# viewer-request, reads the KV pointer for the requested collection, and
+# rewrites /{collection}/{tokenId} → /{collection}/metadata/v/{ver}/{id}.json.
+#
+# Routing semantics: the same distribution serves both assets.0xhoneyjar.xyz
+# and metadata.0xhoneyjar.xyz. The function's path regex is the implicit
+# selector — assets.* requests rarely match /^/[a-z][a-z0-9-]*\/\d+$/, while
+# metadata.* requests by-design hit that shape. Non-matching requests pass
+# through unchanged.
+# =============================================================================
+
+resource "aws_cloudfront_key_value_store" "metadata_pointers" {
+  count    = var.metadata_resolver_enabled ? 1 : 0
+  provider = aws.us_east_1
+
+  name    = "${var.name_prefix}-metadata-pointers"
+  comment = "Collection→version pointer store consumed by the metadata-resolver CloudFront Function (Cutover B)"
+}
+
+resource "aws_cloudfrontkeyvaluestore_key" "initial_pointers" {
+  for_each = var.metadata_resolver_enabled ? var.metadata_resolver_initial_pointers : {}
+  provider = aws.us_east_1
+
+  key_value_store_arn = aws_cloudfront_key_value_store.metadata_pointers[0].arn
+  key                 = each.key
+  value               = each.value
+}
+
+resource "aws_cloudfront_function" "metadata_resolver" {
+  count    = var.metadata_resolver_enabled ? 1 : 0
+  provider = aws.us_east_1
+
+  name    = "${var.name_prefix}-metadata-resolver"
+  runtime = "cloudfront-js-2.0"
+  comment = "Resolve /{collection}/{tokenId} to versioned metadata path via KeyValueStore (Cutover B, Amendment A2)"
+  publish = true
+
+  key_value_store_associations = [aws_cloudfront_key_value_store.metadata_pointers[0].arn]
+
+  code = file("${path.module}/metadata-resolver.js")
+}

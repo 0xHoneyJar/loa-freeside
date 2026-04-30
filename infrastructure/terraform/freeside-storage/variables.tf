@@ -85,3 +85,37 @@ variable "common_tags" {
     Cycle     = "mature-freeside-operator-and-cutover"
   }
 }
+
+# -----------------------------------------------------------------------------
+# Cutover B (2026-04-30, Amendment A2) — manifest-pattern metadata resolver
+# -----------------------------------------------------------------------------
+# When `metadata_resolver_enabled = true`, the module:
+#   - adds `additional_aliases` to the distribution (e.g. metadata.0xhoneyjar.xyz)
+#   - provisions a CloudFront KeyValueStore for collection→version pointers
+#   - provisions a CloudFront Function (viewer-request) that rewrites
+#     /{collection}/{tokenId} → /{collection}/metadata/v/{version}/{tokenId}.json
+#   - attaches the function to the default cache behavior
+#
+# When false (default), the distribution is unchanged from Cutover A.
+# Reversibility: flip the bool, terraform apply, and the distribution returns
+# to single-alias / no-function state. KV store survives (data preserved) so
+# re-enable is a NOOP on stored pointers.
+# -----------------------------------------------------------------------------
+
+variable "metadata_resolver_enabled" {
+  description = "When true, provision the manifest-pattern metadata resolver (CF Function + KeyValueStore + alias extension). See migrate-mibera-sovereignty-2026-04-30.plan.yaml Amendment A2."
+  type        = bool
+  default     = false
+}
+
+variable "additional_aliases" {
+  description = "Additional FQDNs to attach as CloudFront aliases (e.g. ['metadata.0xhoneyjar.xyz']). Each must be covered by the cert at `existing_acm_certificate_arn`. Empty list = single alias mode (Cutover A behavior)."
+  type        = list(string)
+  default     = []
+}
+
+variable "metadata_resolver_initial_pointers" {
+  description = "Initial entries to seed the KeyValueStore at creation time. Map of `{collection}:current_version` → version string. Example: { \"mibera:current_version\" = \"2026-04-30\" }. After bootstrap, ops updates pointers via `aws cloudfront-keyvaluestore put-key`."
+  type        = map(string)
+  default     = {}
+}

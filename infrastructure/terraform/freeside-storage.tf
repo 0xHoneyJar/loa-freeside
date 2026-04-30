@@ -87,6 +87,22 @@ module "freeside_storage" {
   # Resolved via data source; survives cert rotation without code change.
   existing_acm_certificate_arn = data.aws_acm_certificate.wildcard_0xhoneyjar.arn
 
+  # ---------------------------------------------------------------------------
+  # Cutover B (Amendment A2) — manifest-pattern metadata resolver
+  # ---------------------------------------------------------------------------
+  # Adds metadata.0xhoneyjar.xyz as a second alias on this distribution +
+  # provisions the CloudFront Function + KeyValueStore that resolve
+  # /{collection}/{tokenId} → /{collection}/metadata/v/{ver}/{tokenId}.json.
+  #
+  # Bootstrap pointer: Mibera v1 metadata published 2026-04-30 at
+  # s3://thj-assets/mibera/metadata/v/2026-04-30/{tokenId}.json (10000 files).
+  # ---------------------------------------------------------------------------
+  metadata_resolver_enabled = true
+  additional_aliases        = ["metadata.0xhoneyjar.xyz"]
+  metadata_resolver_initial_pointers = {
+    "mibera:current_version" = "2026-04-30"
+  }
+
   common_tags = {
     Service   = "freeside-storage"
     ManagedBy = "terraform"
@@ -134,4 +150,28 @@ output "freeside_storage_oac_grant" {
     oac_id           = module.freeside_storage.oac_id
     bucket_arn       = module.freeside_storage.backing_bucket_arn
   }
+}
+
+# -----------------------------------------------------------------------------
+# Cutover B — manifest resolver (only populated when enabled in module)
+# -----------------------------------------------------------------------------
+
+output "freeside_storage_metadata_kvs_arn" {
+  description = "CloudFront KeyValueStore ARN — pass to `aws cloudfront-keyvaluestore put-key` to update collection version pointers"
+  value       = module.freeside_storage.metadata_resolver_kvs_arn
+}
+
+output "freeside_storage_metadata_kvs_id" {
+  description = "CloudFront KeyValueStore ID (UUID) — companion to ARN"
+  value       = module.freeside_storage.metadata_resolver_kvs_id
+}
+
+output "freeside_storage_metadata_function_arn" {
+  description = "CloudFront Function ARN — the manifest resolver attached to this distribution"
+  value       = module.freeside_storage.metadata_resolver_function_arn
+}
+
+output "freeside_storage_metadata_aliases" {
+  description = "Additional FQDNs (e.g. metadata.0xhoneyjar.xyz). Each needs a Route53 record manually created per project memory `freeside-dns-state-untracked`."
+  value       = module.freeside_storage.metadata_resolver_aliases
 }
