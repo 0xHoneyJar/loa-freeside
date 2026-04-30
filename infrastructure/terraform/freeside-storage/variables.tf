@@ -85,3 +85,62 @@ variable "common_tags" {
     Cycle     = "mature-freeside-operator-and-cutover"
   }
 }
+
+# -----------------------------------------------------------------------------
+# Cutover B (2026-04-30, Amendment A2) — manifest-pattern metadata resolver
+# -----------------------------------------------------------------------------
+# When `metadata_resolver_enabled = true`, the module:
+#   - adds `additional_aliases` to the distribution (e.g. metadata.0xhoneyjar.xyz)
+#   - provisions a CloudFront KeyValueStore for collection→version pointers
+#   - provisions a CloudFront Function (viewer-request) that rewrites
+#     /{collection}/{tokenId} → /{collection}/metadata/v/{version}/{tokenId}.json
+#   - attaches the function to the default cache behavior
+#
+# When false (default), the distribution is unchanged from Cutover A.
+#
+# Reversibility (corrected per Bridgebuilder F4):
+#   - Setting enabled=false plans to DESTROY the KV store and pointer keys
+#     (count/for_each are gated on this flag).
+#   - KV pointer values are NOT preserved across a disable→enable round-trip.
+#   - For non-destructive disable in production: set `additional_aliases = []`
+#     and remove the function_association externally. That detaches
+#     metadata.{org} traffic without destroying KV state.
+#   - True KV-state preservation across toggle requires decoupling the KV
+#     store resource from this flag (always provision KV, gate only the
+#     function_association + aliases). Deferred to follow-on cycle.
+# -----------------------------------------------------------------------------
+
+variable "metadata_resolver_enabled" {
+  description = "When true, provision the manifest-pattern metadata resolver (CF Function + KeyValueStore + alias extension). See migrate-mibera-sovereignty-2026-04-30.plan.yaml Amendment A2."
+  type        = bool
+  default     = false
+}
+
+variable "additional_aliases" {
+  description = <<-EOT
+    Additional FQDNs to attach as CloudFront aliases (e.g.
+    ['metadata.0xhoneyjar.xyz']). Empty list = single alias mode (Cutover A).
+
+    Prerequisites per alias (Bridgebuilder F5 — operator must verify before apply):
+      1. Cert coverage — `existing_acm_certificate_arn` must cover the FQDN.
+         A `*.0xhoneyjar.xyz` wildcard cert covers depth-2 (e.g. `metadata.*`)
+         but NOT depth-3 (`a.b.0xhoneyjar.xyz` would need a separate cert).
+      2. Route53 record — manual A/AAAA ALIAS pointing at the distribution
+         domain (per project memory `freeside-dns-state-untracked`; Route53
+         is currently outside terraform). Pull target via:
+            terraform output cloudfront_distribution_domain
+         Then create the alias record in the Route53 console.
+      3. CloudFront rejects aliases not covered by the cert AT APPLY TIME, so
+         a missed cert match fails fast. Route53 omission = NXDOMAIN at the
+         FQDN, distribution itself is unaffected (alias is registered, just
+         unreachable).
+  EOT
+  type        = list(string)
+  default     = []
+}
+
+variable "metadata_resolver_initial_pointers" {
+  description = "Initial entries to seed the KeyValueStore at creation time. Map of `{collection}:current_version` → version string. Example: { \"mibera:current_version\" = \"2026-04-30\" }. After bootstrap, ops updates pointers via `aws cloudfront-keyvaluestore put-key`."
+  type        = map(string)
+  default     = {}
+}

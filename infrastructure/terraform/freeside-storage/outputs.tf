@@ -57,3 +57,27 @@ output "oac_id" {
   description = "Origin Access Control ID. Required when authoring the bucket policy OAC grant."
   value       = aws_cloudfront_origin_access_control.s3_oac.id
 }
+
+# -----------------------------------------------------------------------------
+# Cutover B — manifest resolver outputs (only populated when enabled)
+# -----------------------------------------------------------------------------
+
+output "metadata_resolver_kvs_arn" {
+  description = "ARN of the CloudFront KeyValueStore for collection version pointers. Use this with `aws cloudfront-keyvaluestore put-key` to update pointers post-bootstrap. Empty when metadata_resolver_enabled = false."
+  value       = var.metadata_resolver_enabled ? aws_cloudfront_key_value_store.metadata_pointers[0].arn : ""
+}
+
+output "metadata_resolver_kvs_id" {
+  description = "ID of the CloudFront KeyValueStore (UUID-ish). Companion to the ARN."
+  value       = var.metadata_resolver_enabled ? aws_cloudfront_key_value_store.metadata_pointers[0].id : ""
+}
+
+output "metadata_resolver_function_arn" {
+  description = "ARN of the CloudFront Function that resolves manifest pointers to versioned bytes."
+  value       = var.metadata_resolver_enabled ? aws_cloudfront_function.metadata_resolver[0].arn : ""
+}
+
+output "metadata_resolver_aliases" {
+  description = "FQDNs that the manifest resolver serves (in addition to the canonical alias_fqdn). For Route53 record provisioning."
+  value       = var.additional_aliases
+}
