@@ -77,7 +77,30 @@ terraform output cloudfront_distribution_domain
 terraform output oac_id
 terraform output cloudfront_distribution_arn
 # operator updates bucket policy in AWS console — see runbook
+
+# Step 6 (NEW — load-bearing gate per 2026-04-30 hotfix): smoke + parity
+bash ../../scripts/cdn-cors-smoke.sh   # CORS headers present on all behaviors
+bash ../../scripts/cdn-parity.sh       # bytes-identical with legacy d163
 ```
+
+## ⚠ Pre-flip checklist (do NOT skip)
+
+Per the 2026-04-30 production hotfix (CORS missing on the new distribution
+because the response headers policy wasn't attached), do not promote any
+consumer cutover until BOTH of these pass:
+
+```bash
+# Terraform-side: cors_response_headers_policy_id MUST be set on every
+# cache behavior (already enforced by main.tf locals; verify with):
+grep -n "response_headers_policy_id" infrastructure/terraform/freeside-storage/main.tf
+
+# Live-distribution-side: CORS smoke + bytes parity
+bash scripts/cdn-cors-smoke.sh    # exit 0 if all behaviors return ACAO
+bash scripts/cdn-parity.sh        # exit 0 if etag + content-length match legacy
+```
+
+Both scripts run in <10 seconds, no AWS auth required (public CDN probes).
+Wire as a CI gate on any PR that flips a consumer to `assets.0xhoneyjar.xyz`.
 
 ## Outputs
 
