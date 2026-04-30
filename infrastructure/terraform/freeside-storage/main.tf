@@ -39,6 +39,15 @@ locals {
   # paths.
   acm_certificate_arn = var.existing_acm_certificate_arn != null ? var.existing_acm_certificate_arn : try(aws_acm_certificate.alias[0].arn, "")
 
+  # AWS-managed `Managed-CORS-With-Preflight` response headers policy.
+  # Adds `Access-Control-Allow-Origin: *` (and friends) to all responses
+  # so browser canvas consumers (img crossOrigin="anonymous" + drawImage)
+  # don't taint the canvas. Same policy that the legacy d163 distribution
+  # attaches to its *.webp cache behavior. Global ID, valid in every AWS
+  # account; documented at:
+  # https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-managed-response-headers-policies.html#managed-response-headers-policies-cors
+  cors_response_headers_policy_id = "5cc3b908-e619-4b99-88e5-2cf7f45965bd"
+
   tags = merge(var.common_tags, {
     Module = var.name_prefix
   })
@@ -133,6 +142,13 @@ resource "aws_cloudfront_distribution" "main" {
     default_ttl = var.default_ttl
     max_ttl     = var.max_ttl
 
+    # CORS — required because consumer apps (mibera-honeyroad/dimensions
+    # `useTraitCanvas` hook) load images with `crossOrigin="anonymous"` to
+    # paint onto a `<canvas>` via `drawImage`. Without `Access-Control-Allow-
+    # Origin` headers the canvas is tainted and drawImage throws. Mirrors
+    # the legacy d163 distribution's *.webp behavior config.
+    response_headers_policy_id = local.cors_response_headers_policy_id
+
     forwarded_values {
       query_string = false
       headers      = []
@@ -153,6 +169,11 @@ resource "aws_cloudfront_distribution" "main" {
     min_ttl     = var.min_ttl
     default_ttl = var.default_ttl
     max_ttl     = var.max_ttl
+
+    # CORS — see comment on the *.webp cache behavior. Default behavior
+    # serves PNGs (e.g. `/reveal_phase8/images/{hash}.png` for codex
+    # consumers). Same policy applies; canvas-painting consumers need it.
+    response_headers_policy_id = local.cors_response_headers_policy_id
 
     forwarded_values {
       query_string = false
