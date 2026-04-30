@@ -97,9 +97,17 @@ variable "common_tags" {
 #   - attaches the function to the default cache behavior
 #
 # When false (default), the distribution is unchanged from Cutover A.
-# Reversibility: flip the bool, terraform apply, and the distribution returns
-# to single-alias / no-function state. KV store survives (data preserved) so
-# re-enable is a NOOP on stored pointers.
+#
+# Reversibility (corrected per Bridgebuilder F4):
+#   - Setting enabled=false plans to DESTROY the KV store and pointer keys
+#     (count/for_each are gated on this flag).
+#   - KV pointer values are NOT preserved across a disable→enable round-trip.
+#   - For non-destructive disable in production: set `additional_aliases = []`
+#     and remove the function_association externally. That detaches
+#     metadata.{org} traffic without destroying KV state.
+#   - True KV-state preservation across toggle requires decoupling the KV
+#     store resource from this flag (always provision KV, gate only the
+#     function_association + aliases). Deferred to follow-on cycle.
 # -----------------------------------------------------------------------------
 
 variable "metadata_resolver_enabled" {
@@ -109,7 +117,24 @@ variable "metadata_resolver_enabled" {
 }
 
 variable "additional_aliases" {
-  description = "Additional FQDNs to attach as CloudFront aliases (e.g. ['metadata.0xhoneyjar.xyz']). Each must be covered by the cert at `existing_acm_certificate_arn`. Empty list = single alias mode (Cutover A behavior)."
+  description = <<-EOT
+    Additional FQDNs to attach as CloudFront aliases (e.g.
+    ['metadata.0xhoneyjar.xyz']). Empty list = single alias mode (Cutover A).
+
+    Prerequisites per alias (Bridgebuilder F5 — operator must verify before apply):
+      1. Cert coverage — `existing_acm_certificate_arn` must cover the FQDN.
+         A `*.0xhoneyjar.xyz` wildcard cert covers depth-2 (e.g. `metadata.*`)
+         but NOT depth-3 (`a.b.0xhoneyjar.xyz` would need a separate cert).
+      2. Route53 record — manual A/AAAA ALIAS pointing at the distribution
+         domain (per project memory `freeside-dns-state-untracked`; Route53
+         is currently outside terraform). Pull target via:
+            terraform output cloudfront_distribution_domain
+         Then create the alias record in the Route53 console.
+      3. CloudFront rejects aliases not covered by the cert AT APPLY TIME, so
+         a missed cert match fails fast. Route53 omission = NXDOMAIN at the
+         FQDN, distribution itself is unaffected (alias is registered, just
+         unreachable).
+  EOT
   type        = list(string)
   default     = []
 }

@@ -35,6 +35,13 @@ import cf from 'cloudfront';
 // KV handle is bound at function-association time (Function-Association.KeyValueStoreAssociations).
 const kvs = cf.kvs();
 
+// Bridgebuilder F2: version-string allowlist. KV value MUST match this shape
+// before being interpolated into a URI. Guards against:
+//   - empty / undefined values (defensive even if kvs.get's contract is to throw)
+//   - malformed pointers containing `/`, `..`, whitespace, control chars
+//   - any value that could escape the path or produce an invalid S3 key
+const VERSION_PATTERN = /^[A-Za-z0-9._-]+$/;
+
 async function handler(event) {
   const request = event.request;
 
@@ -55,17 +62,37 @@ async function handler(event) {
   } catch (e) {
     // Pointer missing for this collection — return 404 rather than serve a
     // stale or unrelated path.
-    return {
-      statusCode: 404,
-      statusDescription: 'Not Found',
-      headers: {
-        'content-type': { value: 'text/plain' },
-      },
-      body: `No current_version pointer for collection: ${collection}`,
-    };
+    return notFound();
+  }
+
+  // Bridgebuilder F2: explicit validation. Even if kvs.get resolves successfully,
+  // the value must match VERSION_PATTERN before being used in the URI rewrite.
+  // A malformed pointer would produce a broken or unsafe path; defensive 404
+  // is the safe failure mode.
+  if (!version || !VERSION_PATTERN.test(version)) {
+    return notFound();
   }
 
   // Rewrite to immutable versioned bytes path on S3 origin.
+  // Note: CloudFront Functions on viewer-request rewrite the URI BEFORE the
+  // cache lookup, so the cache key uses the rewritten path. This means the
+  // same versioned bytes URL caches identically whether reached through the
+  // manifest pointer or directly via the versioned URL — intentional.
   request.uri = `/${collection}/metadata/v/${version}/${tokenId}.json`;
   return request;
 }
+
+function notFound() {
+  // Bridgebuilder F7: status-only response (no body) — the most reliable
+  // shape for cloudfront-js-2.0 viewer-request generated responses.
+  return {
+    statusCode: 404,
+    statusDescription: 'Not Found',
+  };
+}
+
+// Bridgebuilder F1: explicit export for cloudfront-js-2.0 ES Module runtime.
+// While AWS examples sometimes omit it (the runtime auto-discovers a top-level
+// `handler` function), the explicit export removes ambiguity and is harmless
+// if redundant.
+export { handler };

@@ -1,0 +1,95 @@
+{
+  "_comment": "CloudFront Function test event fixtures for metadata-resolver.js. Use with `aws cloudfront test-function` after publish. Bridgebuilder F10.",
+  "_invocation_template": "aws cloudfront test-function --name freeside-storage-metadata-resolver --if-match <ETag> --event-object fileb://metadata-resolver.test-fixtures.json --stage DEVELOPMENT",
+  "_cases": [
+    {
+      "name": "matching path with valid pointer",
+      "expected_outcome": "URI rewritten to /mibera/metadata/v/2026-04-30/5000.json",
+      "expected_kv_lookup": "mibera:current_version",
+      "request": {
+        "method": "GET",
+        "uri": "/mibera/5000",
+        "querystring": {},
+        "headers": { "host": { "value": "metadata.0xhoneyjar.xyz" } },
+        "cookies": {}
+      }
+    },
+    {
+      "name": "matching path with missing pointer (unknown collection)",
+      "expected_outcome": "404 Not Found (kvs.get throws)",
+      "request": {
+        "method": "GET",
+        "uri": "/unknowncollection/5000",
+        "querystring": {},
+        "headers": { "host": { "value": "metadata.0xhoneyjar.xyz" } },
+        "cookies": {}
+      }
+    },
+    {
+      "name": "non-matching path — versioned URL passthrough",
+      "expected_outcome": "Pass through unchanged (no rewrite)",
+      "request": {
+        "method": "GET",
+        "uri": "/mibera/metadata/v/2026-04-30/5000.json",
+        "querystring": {},
+        "headers": { "host": { "value": "metadata.0xhoneyjar.xyz" } },
+        "cookies": {}
+      }
+    },
+    {
+      "name": "non-matching path — assets path passthrough",
+      "expected_outcome": "Pass through unchanged",
+      "request": {
+        "method": "GET",
+        "uri": "/Mibera/generated/5000.webp",
+        "querystring": {},
+        "headers": { "host": { "value": "assets.0xhoneyjar.xyz" } },
+        "cookies": {}
+      }
+    },
+    {
+      "name": "non-matching path — uppercase collection (regex strict on lowercase)",
+      "expected_outcome": "Pass through unchanged",
+      "request": {
+        "method": "GET",
+        "uri": "/Mibera/5000",
+        "querystring": {},
+        "headers": { "host": { "value": "metadata.0xhoneyjar.xyz" } },
+        "cookies": {}
+      }
+    },
+    {
+      "name": "non-matching path — trailing slash",
+      "expected_outcome": "Pass through unchanged",
+      "request": {
+        "method": "GET",
+        "uri": "/mibera/5000/",
+        "querystring": {},
+        "headers": { "host": { "value": "metadata.0xhoneyjar.xyz" } },
+        "cookies": {}
+      }
+    },
+    {
+      "name": "non-matching path — non-numeric tokenId",
+      "expected_outcome": "Pass through unchanged",
+      "request": {
+        "method": "GET",
+        "uri": "/mibera/abc",
+        "querystring": {},
+        "headers": { "host": { "value": "metadata.0xhoneyjar.xyz" } },
+        "cookies": {}
+      }
+    },
+    {
+      "name": "edge — manifest.json (root file passthrough)",
+      "expected_outcome": "Pass through unchanged",
+      "request": {
+        "method": "GET",
+        "uri": "/manifest.json",
+        "querystring": {},
+        "headers": { "host": { "value": "metadata.0xhoneyjar.xyz" } },
+        "cookies": {}
+      }
+    }
+  ]
+}
