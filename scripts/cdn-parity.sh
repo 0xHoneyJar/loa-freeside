@@ -36,6 +36,16 @@ done
 # Sample paths — webp-direct fast path on both distributions.
 # Optimizer paths (/images/{proxy+}, /_next/image*) are NOT compared
 # because they intentionally diverge per ADR-006.
+#
+# ETag caveat (Bridgebuilder F010): for non-multipart S3 objects, ETag is
+# the MD5 of the object — both distributions reading the same object should
+# return identical ETags. For multipart-uploaded objects the ETag is
+# `<md5-of-md5s>-<part-count>`, also stable across distributions reading
+# the same object. ETag DRIFT here means the distributions are reading
+# DIFFERENT bytes (different bucket, different version, transformation in
+# the path), not encoding noise. CloudFront does not currently rewrite
+# ETags between distributions when both proxy the same S3 origin.
+# Content-Length is checked alongside as a secondary signal.
 PATHS=(
   "Mibera/generated/0.webp"
   "Mibera/generated/1.webp"

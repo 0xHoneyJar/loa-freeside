@@ -74,6 +74,11 @@ resource "aws_acm_certificate" "alias" {
   domain_name       = var.alias_fqdn
   validation_method = "DNS"
 
+  # Note: `create_before_destroy` is moot in the production callsite (which
+  # always supplies `existing_acm_certificate_arn`, setting count=0 here).
+  # It applies only to the standalone-cert path (no existing cert), which
+  # is currently unused in production. Kept for module reusability.
+  # (Bridgebuilder F017)
   lifecycle {
     create_before_destroy = true
   }
@@ -130,6 +135,14 @@ resource "aws_cloudfront_distribution" "main" {
   }
 
   # ---- Cache behavior #1: *.webp → S3 direct (fast path mirror) ----
+  # NOTE (Bridgebuilder F012): The `forwarded_values` block below is the
+  # legacy CloudFront cache-key API. AWS recommends migrating to managed
+  # cache policies (e.g. `cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6"`
+  # for Managed-CachingOptimized). Migration deferred to a future cycle —
+  # the change is mutually exclusive with `forwarded_values` + `min_ttl`/
+  # `default_ttl`/`max_ttl` blocks, so it's a coordinated swap, not a
+  # one-line tweak. Current behavior matches Managed-CachingOptimized
+  # semantics (no query in cache key, no cookies forwarded).
   ordered_cache_behavior {
     path_pattern           = "*.webp"
     target_origin_id       = local.origin_id_s3

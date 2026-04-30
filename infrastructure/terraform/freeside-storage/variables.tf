@@ -39,16 +39,18 @@ variable "existing_acm_certificate_arn" {
 }
 
 variable "hosted_zone_name" {
-  description = "Route53 hosted zone where the alias record lives. Used in route53.tf — currently commented out per project memory `freeside-dns-state-untracked`; manual record creation is documented in decisions/cloudfront-dns-2026-04-29.md."
+  description = "Route53 hosted zone where the alias record lives. RESERVED for the future DNS-import cycle that takes ownership of `route53.tf` (currently commented out per project memory `freeside-dns-state-untracked`). Not consumed by any active code today; kept so the future cycle can wire it without re-introducing the variable. (Bridgebuilder F019)"
   type        = string
   default     = "0xhoneyjar.xyz"
 }
 
-variable "tenant_prefixes" {
-  description = "S3 key prefixes that map to tenants. Documented for reference; not enforced at the CloudFront layer (path-based tenancy is a doc/contract concern, not a CDN concern)."
-  type        = list(string)
-  default     = ["Mibera", "Purupuru", "sprawl"]
-}
+# `tenant_prefixes` removed per Bridgebuilder F018 — the prior version of this
+# variable was documented as "reference only, not enforced at the CloudFront
+# layer", which created confusion. Tenant-prefix taxonomy lives in the URL
+# contract schema (`freeside-storage/packages/protocol/url-contract.schema.json`)
+# and the public doc at `loa-freeside/docs/asset-url-contract.md`. If a future
+# cycle wires CloudFront-layer tenant enforcement (path patterns, distinct
+# behaviors), the variable comes back with a real consumer.
 
 variable "price_class" {
   description = "CloudFront price class. PriceClass_100 = US/CA/EU (lowest cost; sufficient for sovereign asset surface)."

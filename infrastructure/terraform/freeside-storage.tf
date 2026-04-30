@@ -48,12 +48,31 @@ provider "aws" {
   }
 }
 
+# Wildcard cert in us-east-1 — looked up dynamically so a future cert
+# rotation doesn't silently break this stack. Filtered by domain +
+# ISSUED state; most_recent picks the live one if multiple match.
+# (Bridgebuilder F002 — replaces hardcoded c96a10f5-… ARN.)
+data "aws_acm_certificate" "wildcard_0xhoneyjar" {
+  provider    = aws # production root default; already us-east-1 per var.aws_region
+  domain      = "*.0xhoneyjar.xyz"
+  statuses    = ["ISSUED"]
+  most_recent = true
+}
+
 module "freeside_storage" {
   source = "./freeside-storage"
 
+  # Provider mapping rationale:
+  #   - module's default `aws`     → us-west-2  (where thj-assets lives;
+  #                                  drives the `data.aws_s3_bucket.backing` lookup)
+  #   - module's `aws.us_east_1`   → us-east-1  (CloudFront + ACM requirement)
+  # The production root's default provider IS us-east-1 (per
+  # variables.tf `aws_region` default), so passing `aws` (the root default)
+  # to the module's `aws.us_east_1` alias is correct. Made explicit here
+  # to address bridgebuilder F001's concern about implicit assumptions.
   providers = {
-    aws           = aws.us_west_2 # default → bucket region (us-west-2)
-    aws.us_east_1 = aws           # us_east_1 alias → production root default (already us-east-1)
+    aws           = aws.us_west_2
+    aws.us_east_1 = aws
   }
 
   alias_fqdn            = "assets.0xhoneyjar.xyz"
@@ -65,7 +84,8 @@ module "freeside_storage" {
   # Avoids the CAA-cache issue we hit during T11 — the wildcard cert was issued
   # before the *.0xhoneyjar.xyz → vercel-dns.com wildcard CNAME was added, so
   # ACM has no stale CAA failure for it.
-  existing_acm_certificate_arn = "arn:aws:acm:us-east-1:891376933289:certificate/c96a10f5-ec24-4fed-9779-0a858eeff522"
+  # Resolved via data source; survives cert rotation without code change.
+  existing_acm_certificate_arn = data.aws_acm_certificate.wildcard_0xhoneyjar.arn
 
   common_tags = {
     Service   = "freeside-storage"

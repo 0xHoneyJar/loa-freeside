@@ -54,20 +54,45 @@ failures=()
 echo "🌐 cdn-cors-smoke · host=$HOST · origin=$ORIGIN"
 echo ""
 
+# Helper — assert ACAO is "*" or the requested origin (not just non-empty;
+# Bridgebuilder F011: a misconfig like `null` or `false` would otherwise pass).
+acao_acceptable() {
+  local v="$1"
+  local origin="$2"
+  [[ "$v" == "*" || "$v" == "$origin" ]]
+}
+
 for path in "${PATHS[@]}"; do
   url="https://$HOST/$path"
-  headers=$(curl -sI --max-time 8 -H "Origin: $ORIGIN" "$url" 2>/dev/null | tr -d '\r')
 
+  # GET probe — what the browser sends for canvas img loads (simple CORS request).
+  headers=$(curl -sI --max-time 8 -H "Origin: $ORIGIN" "$url" 2>/dev/null | tr -d '\r')
   status=$(echo "$headers" | head -n1 | awk '{print $2}')
   acao=$(echo "$headers" | grep -i '^access-control-allow-origin:' | head -n1 | awk -F': ' '{print $2}')
   cache=$(echo "$headers" | grep -i '^x-cache:' | head -n1 | awk -F': ' '{print $2}')
 
-  if [[ "$status" == "200" && -n "$acao" ]]; then
-    printf "  ✅ %s · %s · %s\n" "$status" "${acao:-<missing>}" "/$path"
+  # OPTIONS preflight probe — would catch regressions for non-simple
+  # cross-origin requests (custom headers, POST with content-type etc.).
+  # Canvas consumers don't trigger preflight today, but this guards against
+  # future regressions. (Bridgebuilder F011)
+  pre_headers=$(curl -sI -X OPTIONS --max-time 8 \
+    -H "Origin: $ORIGIN" \
+    -H "Access-Control-Request-Method: GET" \
+    "$url" 2>/dev/null | tr -d '\r')
+  pre_acao=$(echo "$pre_headers" | grep -i '^access-control-allow-origin:' | head -n1 | awk -F': ' '{print $2}')
+  pre_methods=$(echo "$pre_headers" | grep -i '^access-control-allow-methods:' | head -n1 | awk -F': ' '{print $2}')
+
+  if [[ "$status" == "200" ]] \
+     && acao_acceptable "$acao" "$ORIGIN" \
+     && acao_acceptable "$pre_acao" "$ORIGIN"; then
+    printf "  ✅ %s · GET ACAO=%s · OPTIONS ACAO=%s methods=%s · /%s\n" \
+      "$status" "${acao}" "${pre_acao}" "${pre_methods:-<missing>}" "$path"
     pass=$((pass + 1))
   else
-    printf "  ❌ %s · ACAO=%s · cache=%s · /%s\n" "${status:-<no-response>}" "${acao:-<missing>}" "${cache:-<n/a>}" "$path"
-    failures+=("/$path  status=${status:-none}  acao=${acao:-missing}")
+    printf "  ❌ %s · GET ACAO=%s · OPTIONS ACAO=%s · cache=%s · /%s\n" \
+      "${status:-<no-response>}" "${acao:-<missing>}" "${pre_acao:-<missing>}" \
+      "${cache:-<n/a>}" "$path"
+    failures+=("/$path  status=${status:-none}  get-acao=${acao:-missing}  options-acao=${pre_acao:-missing}")
     fail=$((fail + 1))
   fi
 done
