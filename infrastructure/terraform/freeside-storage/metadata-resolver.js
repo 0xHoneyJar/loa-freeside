@@ -91,8 +91,9 @@ function notFound() {
   };
 }
 
-// Bridgebuilder F1: explicit export for cloudfront-js-2.0 ES Module runtime.
-// While AWS examples sometimes omit it (the runtime auto-discovers a top-level
-// `handler` function), the explicit export removes ambiguity and is harmless
-// if redundant.
-export { handler };
+// Note: cloudfront-js-2.0 auto-discovers a top-level `handler` function by
+// name. An explicit `export { handler };` was tried (Bridgebuilder F1) but
+// causes the runtime to error with "The CloudFront function associated with
+// the CloudFront distribution is invalid or could not run." Confirmed via
+// 2026-05-01 production smoke (503 on metadata.* requests). Convention: no
+// export statement; the runtime discovers `handler` automatically.
