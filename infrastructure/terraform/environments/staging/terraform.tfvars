@@ -20,6 +20,11 @@ api_cpu           = 256
 api_memory        = 512
 api_desired_count = 1
 
+# Container Insights — disabled on staging to save ~$100/mo (production keeps it on
+# for incident drill-down). The 5 dependent task-count alarms are conditioned on
+# var.enable_container_insights and will not be created when this is false.
+enable_container_insights = false
+
 # RDS - Minimal sizing for staging (gp3 requires minimum 20GB)
 db_instance_class    = "db.t3.micro"
 db_allocated_storage = 20

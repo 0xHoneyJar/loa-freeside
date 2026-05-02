@@ -10,6 +10,12 @@ variable "environment" {
   default     = "production"
 }
 
+variable "enable_container_insights" {
+  description = "Enable ECS Container Insights on the cluster. Disabling drops the ECS/ContainerInsights metrics namespace and saves ~$100/mo/cluster on a fleet of ~13 services. Production keeps this on for incident drill-down; staging disables to cut waste."
+  type        = bool
+  default     = true
+}
+
 variable "vault_addr" {
   description = "HashiCorp Vault address"
   type        = string

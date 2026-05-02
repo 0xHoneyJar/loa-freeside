@@ -69,7 +69,9 @@ resource "aws_cloudwatch_metric_alarm" "finn_5xx" {
   tags = merge(local.common_tags, { Service = "finn" })
 }
 
+# Depends on ECS/ContainerInsights metric — only created when Container Insights is enabled.
 resource "aws_cloudwatch_metric_alarm" "finn_task_count" {
+  count               = var.enable_container_insights ? 1 : 0
   alarm_name          = "${local.name_prefix}-finn-task-count"
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = 1
