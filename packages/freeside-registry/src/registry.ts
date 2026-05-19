@@ -1,12 +1,13 @@
 /**
  * @freeside/freeside-registry · L1 registry loader + manifest aggregator
  *
- * Reads packages/freeside-registry/registry.yaml and produces the compact
- * federation manifest shape per ADR-007 §D-5.
+ * Reads packages/freeside-registry/registry.yaml and aggregates the
+ * freeside federation manifest (per ADR-007 §D-5, ADR-008 §D-3 belts).
  *
- * The full HTTP server (with D-8 auth/visibility model) is a follow-up
- * cycle deliverable. This skeleton ships the data shape + loader so the
- * CLI verbs in @freeside/freeside-cli can query the registry locally.
+ * `buildFreesideManifest` is library-only — it takes an injected beacon
+ * loader and returns the manifest. The HTTP surface that serves it lives
+ * in apps/mcp-gateway (per cycle-049 SDD AD-1: the registry opens no
+ * HTTP listener).
  *
  * Reference: decisions/007-loa-freeside-absorption.md §D-5
  */
@@ -16,6 +17,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 import { Schema } from "effect";
+import type { BeaconLoader, BeaconLoadResult } from "./beacon-loader.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Registry schema (L1)
@@ -26,6 +28,10 @@ const VisibilityLevel = Schema.Literal("public", "unlisted", "internal");
 const ModuleEntry = Schema.Struct({
   git_url: Schema.String,
   beacon_url: Schema.String,
+  // Optional (cycle-049 FR-2/AD-4): when present, the beacon-loader reads this
+  // registry-package-relative path instead of fetching beacon_url. Used for
+  // in-repo fixture beacons (FR-5). The existing remote entries omit it.
+  beacon_fixture: Schema.optional(Schema.String),
   visibility: VisibilityLevel,
   owner: Schema.String,
   added: Schema.String, // ISO-8601 date
@@ -54,56 +60,98 @@ export const loadRegistry = (path: string = DEFAULT_REGISTRY_PATH): Registry => 
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Compact federation manifest shape (per ADR-007 §D-5)
+// Freeside federation manifest (FR-2, SDD §3.5)
 //
-// The full beacon detail lives behind freeside.inspectModule(<slug>) MCP tool;
-// this compact shape is what /federation.json returns.
+// The compact discovery index of freeside-* buildings with their belts +
+// capabilities. `produces` omits the JSON-schema path and `consumes` omits
+// tag/why — the manifest is an index; `freeside-cli inspect` is the detail
+// view that surfaces the full beacon.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export interface CompactModuleEntry {
+export interface FreesideModuleEntry {
   slug: string;
   one_liner: string;
   is_not: ReadonlyArray<string>;
+  produces: ReadonlyArray<{ belt: string; description: string }>;
+  consumes: ReadonlyArray<{ from: string; belt: string }>;
+  capabilities: { tools: ReadonlyArray<string> };
   visibility: VisibilityLevel;
 }
 
-export interface FederationManifest {
-  version: number;
-  generated_at: string;
-  modules: ReadonlyArray<CompactModuleEntry>;
+export interface FreesideManifest {
+  version: number; // 2 — shape changed from the skeleton's version: 1
+  generated_at: string; // ISO-8601
+  scope: "internal"; // names the NFR-3 scope on the wire
+  modules: ReadonlyArray<FreesideModuleEntry>;
 }
 
 /**
- * Build a compact federation manifest from a registry + beacon fetches.
+ * Aggregate the freeside federation manifest from a registry + an injected
+ * beacon loader.
  *
- * This signature is the contract for the HTTP server (follow-up cycle):
- *   server.ts will pass in (registry, beaconFetcher, visibilityFilter)
- *   and return the manifest with proper auth/redaction per D-8.
+ * Resilience contract (SDD §6.1): a module whose beacon fails to decode, or
+ * a V2-legacy beacon, is SKIPPED with a `console.warn` — never coerced into
+ * a partial entry, never crashes the build. A builder-level failure
+ * (registry unparseable) surfaces upstream from `loadRegistry`, not here.
  *
- * STUB: current implementation returns the structure but expects beacon
- * data to be passed in (no actual fetching). The HTTP server cycle will
- * wire in beacon-resolver.ts from apps/mcp-gateway/.
+ * `beaconLoader` is injected (not imported) so the gateway, the CLI, and the
+ * tests can each supply their own resolution strategy.
  */
-export const buildCompactManifest = (
+export const buildFreesideManifest = (
   registry: Registry,
-  beacons: ReadonlyMap<string, { one_liner: string; is_not: ReadonlyArray<string> }>,
-  visibilityFilter: ReadonlyArray<VisibilityLevel> = ["public"],
-): FederationManifest => {
-  const compact: CompactModuleEntry[] = [];
+  beaconLoader: BeaconLoader,
+  visibilityFilter: ReadonlyArray<VisibilityLevel> = [
+    "public",
+    "unlisted",
+    "internal",
+  ],
+): FreesideManifest => {
+  const modules: FreesideModuleEntry[] = [];
   for (const [slug, entry] of Object.entries(registry.modules)) {
     if (!visibilityFilter.includes(entry.visibility)) continue;
-    const beacon = beacons.get(slug);
-    if (!beacon) continue; // module registered but beacon unavailable — skip
-    compact.push({
+
+    let result: BeaconLoadResult;
+    try {
+      result = beaconLoader(entry);
+    } catch (err) {
+      console.warn(
+        `[freeside-registry] ${slug}: beacon loader threw — skipped (${String(err)})`,
+      );
+      continue;
+    }
+
+    if (result.kind === "error") {
+      console.warn(
+        `[freeside-registry] ${slug}: beacon unavailable — skipped (${result.error})`,
+      );
+      continue;
+    }
+    if (result.kind === "legacy") {
+      console.warn(
+        `[freeside-registry] ${slug}: BeaconV2 (legacy) detected — skipped from the V3 manifest`,
+      );
+      continue;
+    }
+
+    const b = result.beacon;
+    modules.push({
       slug,
-      one_liner: beacon.one_liner,
-      is_not: beacon.is_not,
+      one_liner: b.is.one_liner,
+      is_not: b.is_not,
+      produces: b.produces.map((p) => ({
+        belt: p.belt,
+        description: p.description,
+      })),
+      consumes: b.consumes.map((c) => ({ from: c.from, belt: c.belt })),
+      capabilities: { tools: b.mcp.tools },
       visibility: entry.visibility,
     });
   }
+
   return {
-    version: 1,
+    version: 2,
     generated_at: new Date().toISOString(),
-    modules: compact,
+    scope: "internal",
+    modules,
   };
 };

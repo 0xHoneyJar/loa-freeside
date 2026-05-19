@@ -1,0 +1,81 @@
+# freeside-score — fixture BeaconV3 beacon (cycle-049 discovery-loop test target).
+#
+# Shape follows PRD Appendix A (prd.md:154-193), adjusted to satisfy the
+# BeaconV2 base struct too (SDD §3.4 — the full V2 ∪ V3 struct must decode):
+# the PRD draft's flat auth/capabilities/pricing are nested into the `mcp`
+# block, and schema_version is "2" (BeaconV3Schema extends BeaconV2Schema,
+# which pins schema_version: "2" — V3-ness is the V3 fields, not the version).
+#
+# The real freeside-score beacon lives in its own repo (PRD §6 out of scope).
+
+schema_version: "2"  # V2 base shape; V3 is a structural superset
+
+mcp:
+  shape: data
+  paths:
+    - remote-http
+  remote:
+    transport: streamable-http
+    endpoint: ${MCP_REMOTE_ENDPOINT}
+  auth:
+    kind: api-key
+    header: X-MCP-Key
+    credentials_ref:
+      type: railway-secret
+      key: MCP_SCORE_UPSTREAM_KEY
+  capabilities:
+    - tools
+  tools:
+    - get_wallet_scorecard
+    - get_zone_digest
+    - list_factors
+    - lookup_factor
+    - get_top_movers
+    - search_score_entities
+  source_of_truth:
+    type: database
+  pricing:
+    model: free
+    description: First-party tenant — free during initial rollout
+  publisher: "0xHoneyJar"
+
+# ─── V3 boundary-declaration fields (per ADR-007 §D-4 + ADR-008 §D-3) ───
+
+is:
+  one_liner: "Wallet + community scoring — activity events become rank/factor signals"
+  scope:
+    - "Compute conviction + behavioral scores from on-chain activity"
+    - "Maintain rank changes + factor metadata per wallet, per community"
+    - "Answer scoring queries via MCP tools + REST"
+
+is_not:
+  - "Does NOT index chains — consumes freeside-sonar's event belt"
+  - "Does NOT store NFT metadata — that is freeside-storage"
+  - "Will NOT render UI — products built on score do that"
+
+produces:
+  - belt: wallet-scores
+    schema: packages/schema/wallet-score.schema.json
+    description: "per-wallet conviction + behavioral score, updated on activity"
+  - belt: rank-changes
+    schema: packages/schema/rank-change.schema.json
+    description: "rank-delta events emitted when a wallet's standing shifts"
+  - belt: factor-metadata
+    schema: packages/schema/factor.schema.json
+    description: "the factor definitions that decompose a score"
+
+consumes:
+  - from: freeside-sonar
+    belt: chain-events
+    tag: "SonarPort@2.1.0+a3f2c891d4e8b7c2"
+    why: "raw transfer/holding events scoring is computed from"
+
+acvp_invariants:
+  - id: event_completeness
+    scope: "every consumed sonar event produces exactly one score recompute"
+    proof_artifact: "tests/acvp/event-completeness.test.ts"
+
+cycle_state:
+  status: active
+  since: "2026-05-03"
+  next_review: "2026-08-03"

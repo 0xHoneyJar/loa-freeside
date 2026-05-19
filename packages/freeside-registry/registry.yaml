@@ -9,6 +9,8 @@
 #     <module-slug>:
 #       git_url: string          # canonical source repo
 #       beacon_url: string       # where to fetch the module's beacon.json
+#       beacon_fixture: string   # OPTIONAL — registry-relative path to an in-repo
+#                                #   fixture beacon; preferred over beacon_url when set
 #       visibility: enum         # public | unlisted | internal (per ADR-007 §D-8)
 #       owner: string            # GitHub handle or org
 #       added: ISO-8601 date
@@ -62,3 +64,14 @@ modules:
     visibility: public
     owner: 0xHoneyJar
     added: "2026-05-18"
+
+  # ─── freeside-score (cycle-049 discovery-loop test target) ───────────────
+  # beacon_fixture points at an in-repo BeaconV3 fixture — the real
+  # freeside-score beacon lives in its own repo (PRD §6 out of scope).
+  freeside-score:
+    git_url: https://github.com/0xHoneyJar/freeside-score.git
+    beacon_url: https://score.0xhoneyjar.xyz/.well-known/beacon.json
+    beacon_fixture: tests/fixtures/freeside-score.beacon.yaml
+    visibility: internal
+    owner: 0xHoneyJar
+    added: "2026-05-19"

@@ -5,7 +5,8 @@
 **Run**: autonomous `/run sprint-plan`, all 4 sprints, consolidated PR. Branch `feature/sprint-plan-20260519-230932`.
 
 ### Session Continuity
-- **Sprint 1**: implementation complete — 25/25 schema tests + 3/3 CLI tests green. Awaiting `/review-sprint` + `/audit-sprint`.
+- **Sprint 1**: COMPLETED — review approved, audit approved (commits `1cb5c7af`, `80db6b68`).
+- **Sprint 2**: implementation complete — `freeside-registry` builds clean (`tsc -b`); 11/11 tests green. Awaiting `/review-sprint` + `/audit-sprint`.
 
 ### Decision Log
 
@@ -16,6 +17,17 @@ The Sprint-1-owned half — the R-1 import reconciliation — is complete and ve
 
 A full gateway `tsc` could not be run — the gateway is in a pre-existing, Sprint-1-independent broken build state: `apps/mcp-gateway/node_modules` absent; lockfile is `lockfileVersion: '6.0'` against installed pnpm 9.15.9; the gateway lockfile/`pnpm-workspace.yaml` expect `apps/mcp-gateway/packages/beacon-schema/` which does not exist (the gateway is Docker-built with the repo root as context — `Dockerfile` `COPY packages ./packages` pulls the repo-root `packages/` in — and cannot `pnpm install` standalone). This predates cycle-049. The sprint plan sequences gateway wiring + build to **Sprint 3** (Task 3.1); the R-1 risk note anticipates it ("If left unresolved, Sprint 3's build fails").
 **Carry-forward for Sprint 3**: reproduce the gateway build environment (Docker context or local `packages/` link) and confirm `tsc` clean before Task 3.1. R-1 rename is a satisfied precondition.
+
+**D-S2-1 — beacon-loader discriminates V2/V3 by decode-attempt, NOT by `schema_version` (deviation from SDD §3.2 / sprint Task 2.3).**
+
+SDD §3.2 and sprint Task 2.3 specify the beacon-loader "Discriminate on in-YAML `schema_version`: `"3"` → `decodeBeaconV3`; absent/`"2"` → tag `legacy`." That specification is **impossible against the shipped schema** and is a spec error:
+
+- `BeaconV3Schema = Schema.extend(BeaconV2Schema, …)` and `BeaconV2Schema.schema_version` is `Schema.Literal("2")`. A V3 beacon therefore MUST carry `schema_version: "2"` — `decodeBeaconV3` rejects `"3"`. The pre-existing `freeside-inventory-v3.yaml` fixture (a V3 beacon) uses `schema_version: "2"` and decodes clean — empirical proof.
+- Following the spec literally: a `"3"` beacon routes to `decodeBeaconV3` which then *rejects* it (wrong version) → never decodes; a `"2"` V3 beacon gets mis-tagged `legacy`. Either path makes AC-3 ("fixture decodes clean against BeaconV3Schema") unsatisfiable.
+
+**Resolution**: `schema_version` is always `"2"`; V3-ness is signalled by the V3 *fields* (`is`/`is_not`/`cycle_state`/belts), not the version string. `beacon-loader.ts` discriminates by **decode-attempt** — try `BeaconV3Schema` (clean decode ⇒ v3); else try `BeaconV2Schema` (clean decode ⇒ legacy); else `error`. This satisfies every Sprint 2 AC (AC-3 fixture decodes; "V2 detected → legacy"; malformed → error) and matches the existing fixture. The `freeside-score.beacon.yaml` fixture uses `schema_version: "2"`.
+
+This was flagged in Sprint 1 (review Concern 3, NOTES Known Limitation #4). The root fix — making `schema_version` accept `"2"|"3"` — would require editing `beacon-v2.ts`, which is out of scope for this cycle (S1 SDD §3.1: "BeaconV2Schema base struct unchanged"). Surfaced for `/review-sprint` + `/audit-sprint` scrutiny.
 
 ### Observations
 - Stale `@0xhoneyjar/beacon-schema` package-name comments remain in `packages/beacon-schema/src/index.ts:1` and `tests/schema.test.ts:2` (header comments only — not imports, outside Sprint 1's named scope). TEND-sweep candidate.
