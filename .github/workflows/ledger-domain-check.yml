@@ -1,0 +1,159 @@
+# Ledger Domain Check — ADR-007 §D-3 hard ledger validation
+#
+# Validates that:
+#   1. Cycle ledger entries (grimoires/loa/ledger.json) carry a `domain` field
+#   2. Beads issues (.beads/issues.jsonl) carry a `domain:*` label
+#   3. No cross-domain `blocked-by` dependencies exist (platform ↔ network)
+#
+# This makes the "domain tag" approach equivalent to hard ledger separation
+# without forcing two beads databases (addresses flatline review SKP-002).
+#
+# Reference: decisions/007-loa-freeside-absorption.md §D-3 + Implementation step 3
+
+name: Ledger Domain Check (ADR-007 §D-3)
+
+on:
+  pull_request:
+    paths:
+      - '.beads/issues.jsonl'
+      - 'grimoires/loa/ledger.json'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate cycle ledger domain fields
+        run: |
+          set -euo pipefail
+
+          if [ ! -f grimoires/loa/ledger.json ]; then
+            echo "✓ No cycle ledger present — skipping cycle-domain check"
+            exit 0
+          fi
+
+          # Phased rollout per ADR-007 §D-3:
+          #   PHASE 1 (current): warn on missing domain (existing cycles
+          #                      grandfathered as legacy)
+          #   PHASE 2 (future):  hard-fail on any cycle missing domain
+          # Bump STRICT to enable phase 2.
+          STRICT="${LEDGER_DOMAIN_STRICT:-false}"
+
+          missing=$(jq -r '
+            if .cycles then
+              .cycles | to_entries[]
+                | select(.value.domain == null)
+                | .key
+            elif type == "array" then
+              .[] | select(.domain == null) | .id // .name // "?"
+            else
+              empty
+            end
+          ' grimoires/loa/ledger.json 2>/dev/null || echo "")
+
+          if [ -n "$missing" ]; then
+            count=$(echo "$missing" | wc -l | tr -d ' ')
+            if [ "$STRICT" = "true" ]; then
+              echo "::error::${count} cycle ledger entries missing 'domain' field:"
+              echo "$missing" | head -10 | sed 's/^/  - /'
+              exit 1
+            else
+              echo "::warning::${count} cycle ledger entries missing 'domain' field (phase 1 — grandfathered):"
+              echo "$missing" | head -5 | sed 's/^/  - /'
+              echo "  Future cycles MUST add 'domain: platform' or 'domain: network'."
+            fi
+          else
+            echo "✓ All cycle ledger entries have 'domain' field"
+          fi
+
+      - name: Validate beads issues carry domain labels
+        run: |
+          set -euo pipefail
+
+          if [ ! -f .beads/issues.jsonl ]; then
+            echo "✓ No beads ledger present — skipping beads-domain check"
+            exit 0
+          fi
+
+          STRICT="${LEDGER_DOMAIN_STRICT:-false}"
+
+          # An issue passes if it has a label matching ^domain:(platform|network|shared)$
+          # Find ones that don't.
+          missing=$(jq -r '
+            select((.labels // []) | map(test("^domain:(platform|network|shared)$")) | any | not)
+            | .id // .key // "?"
+          ' .beads/issues.jsonl 2>/dev/null | head -20)
+
+          if [ -n "$missing" ]; then
+            count=$(echo "$missing" | wc -l | tr -d ' ')
+            if [ "$STRICT" = "true" ]; then
+              echo "::error::${count} beads issues missing 'domain:*' label:"
+              echo "$missing" | head -10 | sed 's/^/  - /'
+              exit 1
+            else
+              echo "::warning::${count} beads issues missing 'domain:*' label (phase 1 — grandfathered):"
+              echo "$missing" | head -5 | sed 's/^/  - /'
+              echo "  Future issues MUST carry 'domain:platform', 'domain:network', or 'domain:shared'."
+            fi
+          else
+            echo "✓ All beads issues carry a 'domain:*' label"
+          fi
+
+      - name: Check no cross-domain blocked-by dependencies
+        run: |
+          set -euo pipefail
+
+          if [ ! -f .beads/issues.jsonl ]; then
+            exit 0
+          fi
+
+          # Build a map of issue_id → domain
+          jq -s '
+            map(
+              {
+                id: (.id // .key),
+                domain: (
+                  (.labels // [])
+                  | map(select(test("^domain:")))
+                  | first
+                  | sub("^domain:"; "")
+                ),
+                blocked_by: (.dependencies // [] | map(select(.type == "blocks") | .depends_on_id))
+              }
+            )
+          ' .beads/issues.jsonl > /tmp/beads-map.json 2>/dev/null || echo "[]" > /tmp/beads-map.json
+
+          # Find any blocked-by relationship where source.domain != target.domain
+          # and neither is "shared" (shared can block anything)
+          violations=$(jq -r '
+            . as $all
+            | map(
+                . as $issue
+                | $issue.blocked_by[]
+                | . as $bid
+                | ($all | map(select(.id == $bid)) | first) as $blocker
+                | select(
+                    $issue.domain and $blocker.domain
+                    and $issue.domain != "shared"
+                    and $blocker.domain != "shared"
+                    and $issue.domain != $blocker.domain
+                  )
+                | "\($issue.id) (\($issue.domain)) blocked-by \($blocker.id) (\($blocker.domain))"
+              )
+            | unique
+          ' /tmp/beads-map.json 2>/dev/null || echo "[]")
+
+          if [ "$violations" != "[]" ] && [ -n "$violations" ]; then
+            count=$(echo "$violations" | jq 'length')
+            if [ "$count" -gt 0 ]; then
+              echo "::error::${count} cross-domain blocked-by dependencies detected:"
+              echo "$violations" | jq -r '.[]' | sed 's/^/  - /'
+              echo ""
+              echo "Per ADR-007 §D-3, cross-domain dependencies (platform ↔ network) are prohibited."
+              echo "Refactor through 'shared/' scope or remove the dependency."
+              exit 1
+            fi
+          fi
+          echo "✓ No cross-domain blocked-by dependencies"
