@@ -5,8 +5,19 @@
 **Run**: autonomous `/run sprint-plan`, all 4 sprints, consolidated PR. Branch `feature/sprint-plan-20260519-230932`.
 
 ### Session Continuity
-- **Sprint 1**: COMPLETED — review approved, audit approved (commits `1cb5c7af`, `80db6b68`).
-- **Sprint 2**: implementation complete — `freeside-registry` builds clean (`tsc -b`); 11/11 tests green. Awaiting `/review-sprint` + `/audit-sprint`.
+- **Sprint 1**: COMPLETED — review + audit approved (commits `1cb5c7af`, `80db6b68`).
+- **Sprint 2**: COMPLETED — review + audit approved (commits `cf31c4ab`, `b5ee0585`).
+- **Sprint 3**: HALTED at grounding — gateway build environment is a confirmed hard blocker (see ⛔ below).
+
+### ⛔ BLOCKER — gateway build environment (halts S3 + S4)
+
+`/run sprint-plan` HALTED before Sprint 3 implementation. Confirmed empirically — `pnpm -C apps/mcp-gateway install` fails:
+
+> `ERR_PNPM_WORKSPACE_PKG_NOT_FOUND` — `"@freeside/beacon-schema@workspace:*"` is in the dependencies but no package named `"@freeside/beacon-schema"` is present in the workspace. Packages found in the workspace: *(none)*
+
+`apps/mcp-gateway` declares `workspace:*` deps and carries a nested `pnpm-workspace.yaml` globbing `packages/*`, but `apps/mcp-gateway/packages/` does not exist — the workspace has zero members, the deps cannot resolve. The gateway has no `node_modules` and cannot `pnpm install` / `tsc` / run tests as committed. (`freeside-cli` and `freeside-registry` use `file:../X` deps instead and build clean — verified.)
+
+This blocks **Sprint 3** (gateway federation route, `freeside-cli inspect` which fetches through that route) and **Sprint 4** (the FR-6 E2E test imports the Hono `app` in-process). The cycle's binding acceptance bar — FR-6 E2E green — is unmeetable until the gateway environment is fixed. The fix necessarily touches the gateway `Dockerfile` (deploy config); SDD §1.7 states "No deployment changes this cycle" — so it is **operator-bound**. Awaiting operator decision.
 
 ### Decision Log
 
