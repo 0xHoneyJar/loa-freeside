@@ -16,13 +16,22 @@ export {
 } from "./beacon-v2.js";
 
 export {
+  BeaconV3Schema,
+  decodeBeaconV3,
+  encodeBeaconV3,
+  type BeaconV3,
+} from "./beacon-v3.js";
+
+export {
   Auth,
   AuthKind,
   CredentialsRef,
   CredentialsRefType,
 } from "./auth.js";
 
-// JSON Schema export for tooling (mirrors gateway's JSONSchema.make pattern at app.ts:208-210)
+// JSON Schema exports for tooling (mirrors gateway's JSONSchema.make pattern at app.ts:208-210)
 import { JSONSchema } from "effect";
 import { BeaconV2Schema as _BeaconV2 } from "./beacon-v2.js";
+import { BeaconV3Schema as _BeaconV3 } from "./beacon-v3.js";
 export const BeaconV2JsonSchema = JSONSchema.make(_BeaconV2);
+export const BeaconV3JsonSchema = JSONSchema.make(_BeaconV3);
