@@ -78,7 +78,8 @@ The two concerns share a repo but discipline prevents conceptual leak:
 | Grimoire separation | `grimoires/freeside-platform/` and `grimoires/freeside-network/` are sibling dirs. Cycle artifacts (PRD, SDD, sprint, etc.) land under exactly one. |
 | Versioning independence | Each workspace package versions independently. Platform packages (`@freeside/{cli,core,adapters,sandbox,worker,ingestor,nats-schemas}`) and network packages (`@freeside/{freeside-cli,freeside-registry,beacon-schema}`) ship without entangling release cycles. |
 | Commit-message convention | Conventional-commit scope must be either `platform/<x>`, `network/<x>`, or `shared/<x>`. No bare commits crossing the boundary. |
-| Cross-domain commits prohibited | A single PR/commit MUST NOT modify both `grimoires/freeside-platform/` and `grimoires/freeside-network/`. Same for cross-domain `packages/`. Enforced via CODEOWNERS + PR-check script (deliverable in a follow-up cycle). |
+| Cross-domain commits prohibited | A single PR/commit MUST NOT modify both `grimoires/freeside-platform/` and `grimoires/freeside-network/`. Same for cross-domain `packages/`. **Enforcement lands in the same PR that creates the new workspace dirs (PR-workspace, step 3 of sequencing)** — CODEOWNERS rules + a CI path-domain check + commit-scope validation MUST exist before any code lands under the new structure. See Implementation Sequencing step 3 for the concrete deliverables. |
+| Hard validation of ledger separation | The "domain tag" approach in beads/ledger is enforced, not advisory: CI rejects any beads issue without a `domain:` label, rejects any cross-domain dependency (`blocked-by` crossing platform↔network), and rejects any cycle-ledger entry missing the `domain` field. This makes tag discipline equivalent to ledger separation without forcing two beads databases (addresses flatline SKP-002). |
 
 ### D-4. BeaconV3 schema
 
@@ -161,6 +162,41 @@ Per Loa #452 L5 doctrine ("protocols ambient by default, not on mention"):
 
 **Scope**: Operator-private experiment for 2-4 weeks. Promote to org-wide opt-in via repo `CLAUDE.md` flag ONLY after token-cost + boundary-clarity confirmed in real session usage. Do not promote until empirical tail captures: did context bloat? did module misrouting drop? did the `is_not` field actually prevent specific incidents?
 
+### D-8. Federation manifest authorization + visibility (addresses flatline SKP-005)
+
+`/federation.json` is intentionally agent-readable but MUST NOT leak internal modules, tenant names, infrastructure topology, or non-public pricing. The visibility model:
+
+| `beacon.visibility` | Appears in `/federation.json` (public, unauthenticated) | Appears in authenticated `/federation/{tenant}.json` | Appears in `freeside.inspectModule(<slug>)` MCP tool |
+|---------------------|---|---|---|
+| `public` | YES | YES | YES |
+| `unlisted` | NO | YES (if tenant has access) | YES (if tenant has access) |
+| `internal` | NO | NO | YES (if caller has tenant scope claim) |
+
+**Authentication model**:
+
+- Public `/federation.json`: no auth. Returns ONLY `visibility: public` modules. Compact shape (`slug + one_liner + is_not`). Cache-friendly, CDN-eligible.
+- Authenticated `/federation/{tenant}.json`: requires bearer token with `freeside:federation:read` scope AND tenant claim matching `{tenant}`. Returns `public + unlisted` modules.
+- MCP tool `freeside.inspectModule(<slug>)`: requires bearer token with `freeside:beacon:inspect` scope. Tenant scope claim gates `internal` modules. Returns full beacon detail (NOT just compact).
+
+**Redaction rules** (applied per-call, before serialization):
+
+- `owner.email`, `owner.slack` → redacted in `/federation.json`, preserved in authenticated paths
+- `pricing.contact_for_quote` URLs → redacted in `/federation.json`
+- `upstream` URLs containing internal hostnames (e.g., `*.internal.thj`) → never appear in `/federation.json`; replaced with `null` in `unlisted` authenticated responses
+- `acvp_invariants` with `private: true` → omitted from compact responses, preserved in `inspectModule`
+
+**Cache partitioning**:
+
+- Public manifest: shared cache, 5-minute TTL
+- Authenticated manifests: per-tenant cache key, 5-minute TTL, NEVER shared
+- The cache layer MUST refuse to serve an authenticated response from the public cache, even if the response content would happen to match
+
+**Threat model**:
+
+- A misconfigured `beacon.visibility: public` on an internal module leaks scope + anti-scope to anyone. Mitigation: `loa freeside doctor` warns on any beacon transitioning from `internal` → `public` in a single commit.
+- A compromised bearer token leaks all `unlisted + internal` modules for a tenant. Mitigation: tokens scope-bounded, short-lived (1 hour default), audit log per `inspectModule` call.
+- Aggregation attacks (calling `inspectModule` repeatedly to discover modules without authorization): rate-limited per token + per tenant.
+
 ## Rationale
 
 ### Why absorb (not split)
@@ -240,7 +276,13 @@ This ADR locks the structure. The implementation lands across multiple PRs in th
 
 1. **PR-rename (open)**: `@arrakis/* → @freeside/*` namespace rename across the 7 existing packages. Pure mechanical. Precondition for all subsequent work.
 2. **PR-adr (this PR)**: `decisions/007-loa-freeside-absorption.md` lands. Documents the structure before any new dirs.
-3. **PR-workspace**: Create `apps/mcp-gateway/`, `packages/{freeside-cli,freeside-registry,beacon-schema}/`, `grimoires/freeside-{platform,network}/`. Each new dir gets a `README.md` describing its concern. No code yet.
+3. **PR-workspace + firewall enforcement** (the boundary-protection PR): Create `apps/mcp-gateway/`, `packages/{freeside-cli,freeside-registry,beacon-schema}/`, `grimoires/freeside-{platform,network}/`. Each new dir gets a `README.md` describing its concern. **In the SAME PR**, land the workspace-firewall enforcement (addresses flatline SKP-001 CRITICAL):
+   - `CODEOWNERS` rules mapping each new path to its concern's owner set (no cross-concern review approval allowed)
+   - `.github/workflows/path-domain-check.yml` — CI job that fails PRs touching both `grimoires/freeside-platform/` AND `grimoires/freeside-network/`, OR touching cross-concern `packages/` (platform-only ↔ network-only) in a single commit
+   - `.github/workflows/commit-scope-check.yml` — CI job that fails commits without scope `platform/<x>`, `network/<x>`, or `shared/<x>` in the conventional-commit message
+   - `.github/workflows/ledger-domain-check.yml` — CI job that fails PRs introducing cycle-ledger entries without a `domain` field OR beads issues without a `domain:` label (addresses flatline SKP-002 enforcement gap)
+   - `tools/check-beacon-domain.sh` (or similar) — pre-commit hook stub for local validation
+   - No application code lands in this PR; only the structural dirs + enforcement scaffolding. This guarantees the highest-risk phase (workspace creation) cannot itself establish the cross-domain coupling the absorption is designed to prevent.
 4. **PR-absorb-gateway**: `git mv` `freeside-mcp-gateway/src/*` → `apps/mcp-gateway/src/*`, `freeside-mcp-gateway/packages/beacon-schema/*` → `packages/beacon-schema/*`. Preserves commit history.
 5. **PR-construct-freeside-paths**: Update `construct-freeside` skill paths to reference new CLI locations.
 6. **PR-beacon-v3**: Bump `packages/beacon-schema/` to V3 sealed schema. Add `is`, `is_not`, `composes_with`, `acvp_invariants`, `sealed_schemas`, `cycle_state` fields. Validators added.
@@ -280,3 +322,108 @@ Steps 3-8 can land in parallel branches once step 1-2 are merged. Step 9 is oper
 ### Analog pattern
 
 - `loa-constructs` — registry + Hono API + CLI installer (the thin-parent analog this doctrine mirrors)
+
+## Appendix A: BeaconV3 Normative Schema (addresses flatline SKP-003, SKP-004, IMP-011)
+
+The flatline review correctly identified that D-4 makes a type-checkability CLAIM without supplying the schema rigor needed to substantiate it. This appendix is the normative spec.
+
+### A.1 Field semantics
+
+**`is`** (required object)
+```yaml
+is:
+  one_liner: string             # ≤120 chars, single sentence
+  scope:                        # 2-7 bullet points
+    - string                    # each ≤100 chars
+```
+
+**`is_not`** (required array, min 2 entries)
+```yaml
+is_not:
+  - string                      # each MUST start with "Does NOT", "Will NOT", or "Refuses to"
+```
+Validator rejects: empty array, single entry, entries that describe what the module DOES (negation of `is.scope` is the discipline-forcing test).
+
+**`composes_with`** (optional object, may be empty)
+```yaml
+composes_with:
+  <sibling-module-slug>:        # MUST resolve to a registered module in freeside-registry
+    role: string                # ≤200 chars; what role this module plays in the composition
+    tag: string                 # MUST be a fully-qualified Tag reference (see A.2)
+    required: boolean           # default true; if false, composition is optional
+```
+
+**`acvp_invariants`** (required array, may be empty for layer-0 modules)
+```yaml
+acvp_invariants:
+  - id: string                  # MUST match a known ACVP invariant ID (hash_chain, event_completeness, schema_enforcement, state_machine_totality, idempotency, monotonicity, audit_replay)
+    scope: string               # what part of the module this invariant binds
+    proof_artifact: string      # path (relative to module root) to test/proof binding the invariant
+    private: boolean            # default false; if true, invariant omitted from public federation manifest
+```
+
+**`sealed_schemas`** (required array, may be empty)
+```yaml
+sealed_schemas:
+  - path: string                # relative path to schema file in module's packages/protocol/
+    hash: string                # sha256 of canonical-JSON of the schema; recomputed by validator on every install
+    consumers:                  # which other modules/clients depend on this schema's stability
+      - string
+```
+
+**`cycle_state`** (required object)
+```yaml
+cycle_state:
+  status: enum                  # one of: candidate, active, mature, sunset, legacy
+  since: ISO-8601 date          # when status entered current value
+  next_review: ISO-8601 date    # when this status MUST be re-confirmed (max +180 days from `since`)
+```
+
+### A.2 Tag references (the Honeycomb-as-port-ABI lock made concrete)
+
+Flatline SKP-004 correctly noted that name-equality is insufficient. V3 requires:
+
+```
+<TagName>@<version>+<schema_hash>
+```
+
+- `TagName`: the canonical Tag name from `construct-honeycomb-substrate/lib/ports/<TagName>.ts`
+- `version`: semver of the Tag definition at the time of the composes_with declaration
+- `schema_hash`: sha256 of the Tag's port-interface signature (encoded as canonical TypeScript AST hash)
+
+**Example**:
+```yaml
+composes_with:
+  freeside-sonar:
+    role: "inventory aggregator for ERC1155 candies + badges"
+    tag: SonarPort@2.1.0+a3f2c891d4
+```
+
+`loa freeside doctor` validates by:
+1. Fetching the referenced module's beacon
+2. Confirming the referenced module declares `SonarPort@2.1.0+a3f2c891d4` as a capability
+3. Recomputing the schema_hash from the current `construct-honeycomb-substrate` Tag definition
+4. **Failing if any of (name, version, schema_hash) mismatches**, including the case where the Tag exists with a different schema_hash (signals upstream Tag evolution that requires migration)
+
+This eliminates the false-positive composition flagged by SKP-004.
+
+### A.3 Validation lifecycle
+
+| Trigger | Action | Failure mode |
+|---------|--------|--------------|
+| `loa freeside doctor` | Full schema + Tag resolution + composition check across all registered modules | Exit code 1; emits per-module finding list |
+| PR-time CI in any `freeside-*` module repo | Validate the module's own `/.well-known/beacon.json` against the BeaconV3 JSON Schema | PR blocked until valid |
+| `freeside-registry` boot | Reject module registration if beacon fails schema validation | Module not added to registry; alert |
+| Module upgrade (any `composes_with` reference changes) | Schema_hash recomputed for affected Tags; mismatch escalates to maintainer | Doctor lists `composition_drift` finding |
+
+### A.4 Backward compatibility (V2 → V3 migration window)
+
+Per D-4, the 2 known V2 broadcasters (`score-mibera`, `construct-mibera-codex`) ship V3-compliant beacons in their NEXT regular cycle. During the migration window:
+
+- V3 validator accepts V2 broadcasts ONLY if `cycle_state.status: legacy` is implicit (registry auto-injects)
+- V2 broadcasts surface a warning in `loa freeside doctor`: `<slug>: BeaconV2 detected, migrate to V3 by <next_review>`
+- Once a module ships V3, downgrading to V2 is forbidden (cycle_state.status field is one-way after upgrade)
+
+### A.5 Full JSON Schema reference
+
+The canonical JSON Schema lands in `packages/beacon-schema/schema/beacon-v3.json` per Implementation Sequencing step 6 (PR-beacon-v3). The schema in this appendix is the human-readable spec; the JSON Schema file is the machine-enforceable artifact. Both MUST stay in sync; CI in `packages/beacon-schema/` validates the spec ↔ schema correspondence.
