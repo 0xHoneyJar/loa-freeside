@@ -1,0 +1,64 @@
+# Freeside Module Registry — L1 canonical source-of-truth
+#
+# Mirrors loa-constructs/registry.yaml shape. Each entry registers a
+# freeside-* module for the federation manifest at /federation.json.
+#
+# Schema:
+#   version: integer
+#   modules:
+#     <module-slug>:
+#       git_url: string          # canonical source repo
+#       beacon_url: string       # where to fetch the module's beacon.json
+#       visibility: enum         # public | unlisted | internal (per ADR-007 §D-8)
+#       owner: string            # GitHub handle or org
+#       added: ISO-8601 date
+#
+# Reference: decisions/007-loa-freeside-absorption.md §D-1 (L1 Module Registry)
+
+version: 1
+
+modules:
+  # ─── Production substrate modules ────────────────────────────────────────
+  freeside-sonar:
+    git_url: https://github.com/0xHoneyJar/freeside-sonar.git
+    beacon_url: https://sonar.0xhoneyjar.xyz/.well-known/beacon.json
+    visibility: public
+    owner: 0xHoneyJar
+    added: "2026-05-18"
+
+  freeside-storage:
+    git_url: https://github.com/0xHoneyJar/freeside-storage.git
+    beacon_url: https://storage.0xhoneyjar.xyz/.well-known/beacon.json
+    visibility: public
+    owner: 0xHoneyJar
+    added: "2026-05-18"
+
+  freeside-mint:
+    git_url: https://github.com/0xHoneyJar/freeside-mint.git
+    beacon_url: https://mint.0xhoneyjar.xyz/.well-known/beacon.json
+    visibility: public
+    owner: 0xHoneyJar
+    added: "2026-05-18"
+
+  freeside-activities:
+    git_url: https://github.com/0xHoneyJar/freeside-activities.git
+    beacon_url: https://activities.0xhoneyjar.xyz/.well-known/beacon.json
+    visibility: public
+    owner: 0xHoneyJar
+    added: "2026-05-18"
+
+  # ─── Candidate / in-flight modules ───────────────────────────────────────
+  freeside-inventory:
+    git_url: https://github.com/0xHoneyJar/freeside-inventory.git
+    beacon_url: https://inventory.0xhoneyjar.xyz/.well-known/beacon.json
+    visibility: public
+    owner: 0xHoneyJar
+    added: "2026-05-18"
+
+  # ─── Score (registered but lives in score-mibera repo) ───────────────────
+  score-mibera:
+    git_url: https://github.com/0xHoneyJar/score-mibera.git
+    beacon_url: https://score.0xhoneyjar.xyz/.well-known/beacon.json
+    visibility: public
+    owner: 0xHoneyJar
+    added: "2026-05-18"

@@ -1,0 +1,32 @@
+{
+  "name": "@freeside/freeside-registry",
+  "version": "0.1.0",
+  "description": "Beacon aggregator + federation manifest server for the freeside-* module network (per ADR-007 §D-5 + §D-8).",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "src",
+    "registry.yaml",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "test": "tsx --test tests/*.test.ts"
+  },
+  "dependencies": {
+    "@freeside/beacon-schema": "file:../beacon-schema",
+    "effect": "^3.21.0",
+    "yaml": "^2.6.0"
+  },
+  "devDependencies": {
+    "effect": "^3.21.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.4.0",
+    "@types/node": "^22.0.0"
+  }
+}
