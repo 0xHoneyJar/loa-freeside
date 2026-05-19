@@ -3,7 +3,7 @@
  *
  * Sprint 87: Discord Server Sandboxes - Cleanup & Polish
  * Sprint 90: CLI Rename (bd → gaib)
- * Sprint 148: Type alignment with @arrakis/sandbox SandboxHealthStatus
+ * Sprint 148: Type alignment with @freeside/sandbox SandboxHealthStatus
  *
  * Displays detailed status and health information for a sandbox.
  *
@@ -14,7 +14,7 @@
 import chalk from 'chalk';
 import ora from 'ora';
 import Table from 'cli-table3';
-import type { SandboxHealthStatus, HealthLevel, Sandbox } from '@arrakis/sandbox';
+import type { SandboxHealthStatus, HealthLevel, Sandbox } from '@freeside/sandbox';
 import {
   getSandboxManager,
   formatDate,

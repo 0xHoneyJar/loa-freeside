@@ -1,5 +1,5 @@
 {
-  "name": "@arrakis/core",
+  "name": "@freeside/core",
   "version": "0.1.0",
   "description": "Core domain ports and interfaces for Arrakis",
   "type": "module",

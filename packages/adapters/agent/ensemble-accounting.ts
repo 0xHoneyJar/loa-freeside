@@ -9,7 +9,7 @@
  * @see SDD §3.3.2 IMP-008: Partial Failure Reconciliation
  */
 
-// Re-define locally to avoid circular dependency with @arrakis/core/ports during TS resolution
+// Re-define locally to avoid circular dependency with @freeside/core/ports during TS resolution
 type EnsembleStrategy = 'best_of_n' | 'consensus' | 'fallback';
 
 // --------------------------------------------------------------------------

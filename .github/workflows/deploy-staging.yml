@@ -111,7 +111,7 @@ jobs:
         id: build
         uses: docker/build-push-action@v5
         with:
-          # Build from repo root to include @arrakis/adapters dependency
+          # Build from repo root to include @freeside/adapters dependency
           context: .
           file: ./themes/sietch/Dockerfile
           target: production

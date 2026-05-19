@@ -27,12 +27,12 @@ import type {
   CreateRolePayload,
   CreateChannelPayload,
   SynthesisPayload,
-} from '@arrakis/core/ports';
+} from '@freeside/core/ports';
 import {
   SYNTHESIS_QUEUE_CONFIG,
   IDEMPOTENCY_CONFIG,
-} from '@arrakis/core/ports';
-import type { CommunityManifest } from '@arrakis/core/domain';
+} from '@freeside/core/ports';
+import type { CommunityManifest } from '@freeside/core/domain';
 import type { SynthesisMetrics } from './metrics.js';
 import { JobMetrics, trackDiscord429Error } from './metrics.js';
 

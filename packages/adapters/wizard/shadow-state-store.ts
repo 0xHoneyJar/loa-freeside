@@ -13,7 +13,7 @@
  */
 
 import type { Logger } from 'pino';
-import type { CommunityManifest } from '@arrakis/core/domain';
+import type { CommunityManifest } from '@freeside/core/domain';
 
 // =============================================================================
 // Types

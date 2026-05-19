@@ -15,10 +15,10 @@ When code needs to be shared between multiple themes or sites, it should be extr
 ## Future Packages
 
 Potential packages to be created as needed:
-- `@arrakis/core` - Shared types and utilities
-- `@arrakis/discord` - Discord.js abstractions
-- `@arrakis/chain` - Blockchain interaction utilities
-- `@arrakis/ui` - Shared React components (for sites)
+- `@freeside/core` - Shared types and utilities
+- `@freeside/discord` - Discord.js abstractions
+- `@freeside/chain` - Blockchain interaction utilities
+- `@freeside/ui` - Shared React components (for sites)
 
 ## Package Guidelines
 

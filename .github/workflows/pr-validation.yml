@@ -58,11 +58,11 @@ jobs:
 
       - name: Build workspace dependencies
         run: |
-          # Build @arrakis/core first (required by adapters)
+          # Build @freeside/core first (required by adapters)
           cd ../../packages/core
           npm ci
           npm run build
-          # Build @arrakis/adapters (required by sietch)
+          # Build @freeside/adapters (required by sietch)
           cd ../adapters
           npm ci
           npm run build
@@ -125,7 +125,7 @@ jobs:
 
       - name: Install workspace package dependencies
         run: |
-          # Vitest aliases resolve @arrakis/* to source in packages/.
+          # Vitest aliases resolve @freeside/* to source in packages/.
           # Bare imports (e.g. opossum) from those sources need their
           # own node_modules to be present.
           cd ../../packages/core && npm ci

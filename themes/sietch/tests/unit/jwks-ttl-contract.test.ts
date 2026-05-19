@@ -23,7 +23,7 @@ vi.mock('node:fs', async () => {
   };
 });
 
-import { JwtService, type Clock } from '@arrakis/adapters/agent';
+import { JwtService, type Clock } from '@freeside/adapters/agent';
 import type { JWK, KeyLike } from 'jose';
 import { generateKeyPairSync, createPublicKey } from 'node:crypto';
 import { exportJWK } from 'jose';

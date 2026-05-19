@@ -26,7 +26,7 @@ import {
   type GatewayEvent,
   type GatewayEventPayload,
   NATS_ROUTING,
-} from '@arrakis/nats-schemas';
+} from '@freeside/nats-schemas';
 
 export type { GatewayEventPayload };
 

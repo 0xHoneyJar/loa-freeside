@@ -1,5 +1,5 @@
 {
-  "name": "@arrakis/adapters",
+  "name": "@freeside/adapters",
   "version": "0.1.0",
   "description": "Adapter implementations for Arrakis core ports",
   "type": "module",
@@ -92,7 +92,7 @@
   },
   "dependencies": {
     "@0xhoneyjar/loa-hounfour": "github:0xHoneyJar/loa-hounfour#aed755f7fea8d2739cf9c755b45aaa580b6af6a9",
-    "@arrakis/core": "file:../core",
+    "@freeside/core": "file:../core",
     "drizzle-orm": "^0.33.0",
     "ioredis": "^5.9.2",
     "jose": "^5.10.0",

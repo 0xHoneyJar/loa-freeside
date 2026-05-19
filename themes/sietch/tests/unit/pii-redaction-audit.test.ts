@@ -25,7 +25,7 @@ import {
   AGENT_REDACTION_PATHS,
   hashWallet,
   createAgentLogger,
-} from '@arrakis/adapters/agent';
+} from '@freeside/adapters/agent';
 
 // --------------------------------------------------------------------------
 // Tests

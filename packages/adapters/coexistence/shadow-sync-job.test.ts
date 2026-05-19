@@ -19,8 +19,8 @@ import {
   type GuildMemberData,
   type EligibilityRule,
 } from './shadow-sync-job.js';
-import type { IShadowLedger } from '@arrakis/core/ports';
-import type { VerificationTier, ArrakisEligibilityResult } from '@arrakis/core/domain';
+import type { IShadowLedger } from '@freeside/core/ports';
+import type { VerificationTier, ArrakisEligibilityResult } from '@freeside/core/domain';
 
 // =============================================================================
 // Mock Helpers

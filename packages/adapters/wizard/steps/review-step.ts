@@ -10,9 +10,9 @@
  */
 
 import type { Logger } from 'pino';
-import type { StepContext, StepInput, StepResult } from '@arrakis/core/ports';
-import type { WizardSession, CommunityManifest } from '@arrakis/core/domain';
-import { WizardState } from '@arrakis/core/domain';
+import type { StepContext, StepInput, StepResult } from '@freeside/core/ports';
+import type { WizardSession, CommunityManifest } from '@freeside/core/domain';
+import { WizardState } from '@freeside/core/domain';
 import {
   BaseStepHandler,
   createButton,

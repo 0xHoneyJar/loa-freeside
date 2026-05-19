@@ -16,7 +16,7 @@
 import type { JsMsg } from 'nats';
 import type { Logger } from 'pino';
 import { BaseNatsConsumer, type BaseConsumerConfig, type ProcessResult } from './BaseNatsConsumer.js';
-import { UsageFinalizedSchema, NATS_ROUTING, type UsageFinalizedEvent } from '@arrakis/nats-schemas';
+import { UsageFinalizedSchema, NATS_ROUTING, type UsageFinalizedEvent } from '@freeside/nats-schemas';
 import type { BudgetManager } from '../../../../packages/adapters/agent/budget-manager.js';
 
 // --------------------------------------------------------------------------

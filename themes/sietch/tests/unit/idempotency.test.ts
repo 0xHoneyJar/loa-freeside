@@ -14,7 +14,7 @@ import {
   isValidTransition,
   isTerminal,
   deriveIdempotencyKey,
-} from '@arrakis/adapters/agent/idempotency-state';
+} from '@freeside/adapters/agent/idempotency-state';
 
 // --------------------------------------------------------------------------
 // State Transition Table

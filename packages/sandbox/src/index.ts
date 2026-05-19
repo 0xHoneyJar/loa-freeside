@@ -9,7 +9,7 @@
  * Each sandbox gets its own PostgreSQL schema, Redis key prefix, and NATS subjects.
  *
  * @see SDD §5.0 Detailed Design
- * @module @arrakis/sandbox
+ * @module @freeside/sandbox
  */
 
 // =============================================================================

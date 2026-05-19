@@ -19,7 +19,7 @@ const sharedResolve = {
       replacement: path.resolve(__dirname, '../../packages/core/$1'),
     },
     {
-      find: '@arrakis/core',
+      find: '@freeside/core',
       replacement: path.resolve(__dirname, '../../packages/core'),
     },
     {
@@ -27,7 +27,7 @@ const sharedResolve = {
       replacement: path.resolve(__dirname, '../../packages/adapters/$1'),
     },
     {
-      find: '@arrakis/adapters',
+      find: '@freeside/adapters',
       replacement: path.resolve(__dirname, '../../packages/adapters'),
     },
   ],

@@ -16,7 +16,7 @@ import type {
   LeaderboardQueryOptions,
   ProfileDirectoryQueryOptions,
   BadgeShowcaseQueryOptions,
-} from '@arrakis/core/ports';
+} from '@freeside/core/ports';
 import type {
   GlimpseModeConfig,
   GlimpseModeStatus,
@@ -33,13 +33,13 @@ import type {
   MigrationReadinessCheck,
   VerificationTier,
   Feature,
-} from '@arrakis/core/domain';
+} from '@freeside/core/domain';
 import {
   DEFAULT_GLIMPSE_MODE_CONFIG,
   DEFAULT_UNLOCK_MESSAGES,
   DEFAULT_MIGRATION_READINESS_REQUIREMENTS,
   getFeaturesForTier,
-} from '@arrakis/core/domain';
+} from '@freeside/core/domain';
 
 // =============================================================================
 // Input Validation Constants

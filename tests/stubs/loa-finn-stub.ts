@@ -10,7 +10,7 @@
 
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
-import type { AgentStreamEvent, UsageInfo } from '@arrakis/core/ports';
+import type { AgentStreamEvent, UsageInfo } from '@freeside/core/ports';
 
 // --------------------------------------------------------------------------
 // Types

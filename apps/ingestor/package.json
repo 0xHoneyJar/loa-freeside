@@ -1,5 +1,5 @@
 {
-  "name": "@arrakis/ingestor",
+  "name": "@freeside/ingestor",
   "version": "1.0.0",
   "description": "Lightweight Discord Gateway listener for Gateway Proxy pattern",
   "main": "dist/index.js",

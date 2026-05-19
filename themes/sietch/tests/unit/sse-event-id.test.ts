@@ -22,7 +22,7 @@ import {
   CompositeEventIdGenerator,
   parseLastEventId,
   createEventIdGenerator,
-} from '@arrakis/adapters/agent';
+} from '@freeside/adapters/agent';
 
 describe('SSE Event ID', () => {
   // --------------------------------------------------------------------------

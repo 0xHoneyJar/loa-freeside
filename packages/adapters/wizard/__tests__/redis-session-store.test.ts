@@ -14,8 +14,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { RedisWizardSessionStore } from '../redis-session-store.js';
 import type { RedisClient } from '../redis-session-store.js';
-import { WizardState } from '@arrakis/core/domain';
-import type { NewWizardSession } from '@arrakis/core/domain';
+import { WizardState } from '@freeside/core/domain';
+import type { NewWizardSession } from '@freeside/core/domain';
 
 // =============================================================================
 // Mock Redis Client
@@ -314,7 +314,7 @@ describe('RedisWizardSessionStore', () => {
         guildId: 'new-guild',
         communityId: 'new-community',
         createdAt: new Date(0),
-      } as Partial<import('@arrakis/core/domain').WizardSession>);
+      } as Partial<import('@freeside/core/domain').WizardSession>);
 
       expect(updated!.id).toBe(created.id);
       expect(updated!.guildId).toBe(created.guildId);

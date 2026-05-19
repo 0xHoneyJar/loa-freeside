@@ -19,8 +19,8 @@ import type { Logger } from 'pino';
 import type {
   IGlobalTokenBucket,
   TokenBucketStatus,
-} from '@arrakis/core/ports';
-import { TOKEN_BUCKET_CONFIG } from '@arrakis/core/ports';
+} from '@freeside/core/ports';
+import { TOKEN_BUCKET_CONFIG } from '@freeside/core/ports';
 
 // =============================================================================
 // Types

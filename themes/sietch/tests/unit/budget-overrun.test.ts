@@ -20,8 +20,8 @@ vi.mock('node:fs', async () => {
   };
 });
 
-import { AgentGateway, type AgentGatewayDeps } from '@arrakis/adapters/agent';
-import type { AgentInvokeRequest } from '@arrakis/core/ports';
+import { AgentGateway, type AgentGatewayDeps } from '@freeside/adapters/agent';
+import type { AgentInvokeRequest } from '@freeside/core/ports';
 
 // --------------------------------------------------------------------------
 // Mocks

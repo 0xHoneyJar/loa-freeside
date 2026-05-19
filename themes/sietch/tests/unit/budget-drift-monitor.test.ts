@@ -33,7 +33,7 @@ import {
   type DriftActiveCommunityProvider,
   type BudgetUsageQueryProvider,
   type CommunityDrift,
-} from '@arrakis/adapters/agent';
+} from '@freeside/adapters/agent';
 
 // --------------------------------------------------------------------------
 // Mocks

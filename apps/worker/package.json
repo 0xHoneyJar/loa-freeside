@@ -1,5 +1,5 @@
 {
-  "name": "@arrakis/worker",
+  "name": "@freeside/worker",
   "version": "1.0.0",
   "description": "Queue consumer service for Gateway Proxy pattern - processes Discord events from RabbitMQ",
   "main": "dist/index.js",
@@ -27,8 +27,8 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "@arrakis/nats-schemas": "file:../../packages/shared/nats-schemas",
-    "@arrakis/sandbox": "file:../../packages/sandbox",
+    "@freeside/nats-schemas": "file:../../packages/shared/nats-schemas",
+    "@freeside/sandbox": "file:../../packages/sandbox",
     "@discordjs/rest": "^2.6.0",
     "amqplib": "^0.10.4",
     "cassandra-driver": "^4.7.2",
