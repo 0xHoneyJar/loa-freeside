@@ -1,11 +1,37 @@
 <!-- AGENT-CONTEXT
 name: loa-freeside
-type: framework
-purpose: Multi-model agent economy infrastructure platform.
-key_files: [CLAUDE.md, .claude/loa/CLAUDE.loa.md, .loa.config.yaml, .claude/scripts/, .claude/skills/, package.json]
+type: factory
+purpose: |
+  A factory. Each capability is a BUILDING (one repo = schema + runtime
+  + docs). Buildings compose into PRODUCTS via belts (consume/publish).
+  Customers order from a MARKETPLACE. The factory runs on the PLATFORM
+  substrate. Factory-game-shaped model (Factorio buildings + belts).
+identity_model: factory_buildings_products_marketplace
+parts:
+  platform_substrate: apps/{gateway,worker,ingestor}/, infrastructure/terraform/, packages/{core,adapters,sandbox}/, themes/sietch/ (substrate-only after planned extraction)
+  buildings_external_repos: freeside-{sonar,storage,mint,activities,inventory,score,mediums} (one repo per capability — schema + runtime + docs together)
+  buildings_in_monolith_for_extraction: freeside-{billing,ledger} (still in themes/sietch + packages/services)
+  network: apps/mcp-gateway/, packages/{beacon-schema,freeside-registry,freeside-cli}/, grimoires/freeside-network/
+composition_rule: |
+  Belts run one direction — raw → derived → integrated → presented.
+  freeside-inventory consumes freeside-sonar + freeside-storage; never
+  the reverse. Bottleneck debugging = walk upstream on the belts.
+honest_current_state: |
+  loa-freeside is a thick monolith. freeside-score + freeside-mediums
+  repos EXIST but logic still lives in the monolith — extraction is
+  real pending work. Building model is direction, not present.
+firewall:
+  ci_check: .github/workflows/path-domain-check.yml
+  local_hook: tools/check-beacon-domain.sh
+  cross_domain_prs: blocked
+doctrine:
+  absorption: decisions/007-loa-freeside-absorption.md (Status: Accepted)
+  factory_model: decisions/008-freeside-as-factory.md (Status: Proposed)
+key_files: [CLAUDE.md, .claude/loa/CLAUDE.loa.md, .loa.config.yaml, decisions/007-loa-freeside-absorption.md, decisions/008-freeside-as-factory.md, .claude/scripts/, .claude/skills/, package.json]
 interfaces:
   core: [/auditing-security, /autonomous-agent, /bridgebuilder-review, /browsing-constructs, /bug-triaging]
   project: [/cost-budget-enforcer, /cross-repo-status-reader, /flatline-attacker, /graduated-trust, /hitl-jury-panel]
+  network: [freeside-cli list, freeside-cli inspect <slug>, freeside-cli doctor]
 dependencies: [git, jq, yq, node]
 capability_requirements:
   - filesystem: read
@@ -21,8 +47,18 @@ trust_level: L3-hardened
 
 # loa-freeside
 
+<!-- provenance: DERIVED; decisions/007 (Accepted) + decisions/008 (Proposed) -->
+
+**A factory.** Each capability is a **building** — one repo holding schema + runtime + docs together.
+
+- **Platform** — the substrate (ECS/AWS/gateway/worker/HTTP/DB/queues) that hosts building runtimes multi-tenant
+- **Buildings** (`freeside-X`) — capabilities with belts (consume/publish). One repo each. Compose via what they produce/consume.
+- **Network** — discovery + deploy layer (BeaconV3 declaration, registry, MCP federation gateway, deployment CLI)
+- **Products** — buildings (or building-groups) presented for sale in a marketplace
+
+Belts run one direction (raw → derived → integrated → presented). Factory-game-shaped model. The absorption doctrine is [decisions/007-loa-freeside-absorption.md](decisions/007-loa-freeside-absorption.md) (Status: Accepted); the factory model is [decisions/008-freeside-as-factory.md](decisions/008-freeside-as-factory.md) (**Status: Proposed** — building-extraction sequencing pending an operator-clarity session).
+
 <!-- provenance: CODE-FACTUAL -->
-Multi-model agent economy infrastructure platform.
 
 The framework provides 40 specialized skills, built with TypeScript/JavaScript, Python, Shell.
 
