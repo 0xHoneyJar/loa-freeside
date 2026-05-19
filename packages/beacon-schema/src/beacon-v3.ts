@@ -1,17 +1,22 @@
 /**
  * @freeside/beacon-schema · V3 — boundary-declaration discipline
  *
- * Extends BeaconV2 with the four boundary fields documented in
+ * Extends BeaconV2 with the boundary fields documented in
  * decisions/007-loa-freeside-absorption.md §D-4 and Appendix A:
  *
  *   - is              (definitive scope statement)
  *   - is_not          (anti-scope; min 2 entries; discipline-forcing)
- *   - composes_with   (sibling module references with Honeycomb Tag@version+hash)
+ *   - produces        (output belts the building emits — ADR-008 §D-3)
+ *   - consumes        (input belts read from sibling buildings — ADR-008 §D-3)
  *   - acvp_invariants (verifiability discipline per ACVP doctrine)
  *
  * Plus:
  *   - sealed_schemas  (hash-verified schema references)
  *   - cycle_state     (honest maturity signal)
+ *
+ * `produces`/`consumes` hard-replace the former `composes_with` field —
+ * belts are directed (raw publishes, meaning consumes; ADR-008 §D-3),
+ * where composes_with was an undirected sibling record.
  *
  * V2 → V3 migration window: V3 validator accepts V2 broadcasts as
  * cycle_state.status: legacy during the migration window. Once migrated
@@ -77,7 +82,12 @@ const IsNotField = Schema.Array(IsNotEntry).pipe(
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// `composes_with` — sibling references with fully-qualified Tag ABI
+// `produces` / `consumes` — directed belts (ADR-008 §D-3)
+//
+// Belts hard-replace the former undirected `composes_with` record. A belt
+// runs ONE direction — a building `produces` output belts and `consumes`
+// input belts from sibling buildings. `consumes` reuses the fully-qualified
+// Tag reference below as its port-ABI lock.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -94,33 +104,35 @@ const TagReference = Schema.String.pipe(
     /^[A-Z][A-Za-z0-9]*@\d+\.\d+\.\d+\+[a-f0-9]{8,16}$/,
     {
       message: () =>
-        "composes_with.<sibling>.tag must be fully qualified: TagName@semver+hash (e.g., SonarPort@2.1.0+a3f2c891d4)",
+        "consumes.tag must be fully qualified: TagName@semver+hash (e.g., SonarPort@2.1.0+a3f2c891d4)",
     },
   ),
 ).annotations({
   description: "Honeycomb Tag reference with version + schema_hash (Appendix A.2)",
 });
 
-const ComposesWithEntry = Schema.Struct({
-  role: Schema.String.pipe(Schema.maxLength(200)).annotations({
-    description: "What role this sibling plays in the composition (≤200 chars)",
+// ─── produces — output belts a building emits ───
+const ProducesBelt = Schema.Struct({
+  belt: Schema.String.pipe(Schema.pattern(/^[a-z][a-z0-9-]*$/, {
+    message: () => "produces.belt must be lowercase-kebab (e.g., wallet-scores)",
+  })),
+  schema: Schema.String.pipe(Schema.maxLength(500)).annotations({
+    description: "Relative path (from building root) to the belt's JSON-schema",
   }),
-  tag: TagReference,
-  required: Schema.optionalWith(Schema.Boolean, { default: () => true }),
-});
+  description: Schema.String.pipe(Schema.maxLength(200)),
+}).annotations({ identifier: "ProducesBelt" });
 
-const ComposesWith = Schema.Record({
-  key: Schema.String.pipe(
-    Schema.pattern(/^[a-z][a-z0-9-]*$/, {
-      message: () =>
-        "composes_with keys must be lowercase-kebab module slugs (e.g., freeside-sonar)",
-    }),
-  ),
-  value: ComposesWithEntry,
-}).annotations({
-  identifier: "ComposesWith",
-  description: "Sibling module composition declarations (per ADR-007 §D-4)",
-});
+// ─── consumes — input belts a building reads from a sibling ───
+const ConsumesBelt = Schema.Struct({
+  from: Schema.String.pipe(Schema.pattern(/^[a-z][a-z0-9-]*$/, {
+    message: () => "consumes.from must be a lowercase-kebab sibling building slug",
+  })),
+  belt: Schema.String.pipe(Schema.pattern(/^[a-z][a-z0-9-]*$/, {
+    message: () => "consumes.belt must be lowercase-kebab",
+  })),
+  tag: TagReference,   // reused — TagName@semver+hash, per ADR-007 Appendix A.2
+  why: Schema.String.pipe(Schema.maxLength(200)),
+}).annotations({ identifier: "ConsumesBelt" });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // `acvp_invariants` — verifiability discipline (per ACVP doctrine)
@@ -219,11 +231,11 @@ const CycleState = Schema.Struct({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BeaconV3 — V2 ∪ {is, is_not, composes_with, acvp_invariants, sealed_schemas, cycle_state}
+// BeaconV3 — V2 ∪ {is, is_not, produces, consumes, acvp_invariants, sealed_schemas, cycle_state}
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * BeaconV3 — extends BeaconV2 with the six boundary-declaration fields.
+ * BeaconV3 — extends BeaconV2 with the seven boundary-declaration fields.
  *
  * Effect.Schema composition: structurally extends BeaconV2 by intersecting
  * its struct with a V3-specific struct carrying the new required fields.
@@ -237,7 +249,9 @@ export const BeaconV3Schema = Schema.extend(
   Schema.Struct({
     is: IsField,
     is_not: IsNotField,
-    composes_with: Schema.optionalWith(ComposesWith, { default: () => ({}) }),
+    // composes_with REMOVED — superseded by produces/consumes per ADR-008 §D-3
+    produces: Schema.optionalWith(Schema.Array(ProducesBelt), { default: () => [] }),
+    consumes: Schema.optionalWith(Schema.Array(ConsumesBelt), { default: () => [] }),
     acvp_invariants: Schema.optionalWith(AcvpInvariants, { default: () => [] }),
     sealed_schemas: Schema.optionalWith(SealedSchemas, { default: () => [] }),
     cycle_state: CycleState,
@@ -245,7 +259,7 @@ export const BeaconV3Schema = Schema.extend(
 ).annotations({
   identifier: "BeaconV3",
   description:
-    "BeaconV3 — V2 base + 6 boundary-declaration fields (ADR-007 §D-4, Appendix A.1)",
+    "BeaconV3 — V2 base + 7 boundary-declaration fields (ADR-007 §D-4, Appendix A.1)",
 });
 
 export type BeaconV3 = Schema.Schema.Type<typeof BeaconV3Schema>;

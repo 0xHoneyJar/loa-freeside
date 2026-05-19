@@ -1,5 +1,28 @@
 # Notes
 
+## cycle-049 `discovery-loop` — `/run sprint-plan` (domain: network)
+
+**Run**: autonomous `/run sprint-plan`, all 4 sprints, consolidated PR. Branch `feature/sprint-plan-20260519-230932`.
+
+### Session Continuity
+- **Sprint 1**: implementation complete — 25/25 schema tests + 3/3 CLI tests green. Awaiting `/review-sprint` + `/audit-sprint`.
+
+### Decision Log
+
+**D-S1-1 — Sprint 1 AC #2 (gateway `tsc`) accepted-deferred to Sprint 3.**
+AC #2 (sprint.md:78): *"`pnpm build` / `tsc -b` on `apps/mcp-gateway` succeeds with the reconciled import (no two-name collision)."* Status: **⚠ Partial / [ACCEPTED-DEFERRED]**.
+
+The Sprint-1-owned half — the R-1 import reconciliation — is complete and verified: zero `@0xhoneyjar/beacon-schema` refs remain in `apps/mcp-gateway/` (grep across `src/`, `package.json`, `Dockerfile`, `tests/`, lockfile); the imported symbols (`BeaconV2JsonSchema`, `BeaconV2Schema`, `BeaconV2`) are all exported from `@freeside/beacon-schema` (`packages/beacon-schema/src/index.ts:11-37`); only one package name now exists in the gateway graph, so a "two-name collision" is structurally impossible.
+
+A full gateway `tsc` could not be run — the gateway is in a pre-existing, Sprint-1-independent broken build state: `apps/mcp-gateway/node_modules` absent; lockfile is `lockfileVersion: '6.0'` against installed pnpm 9.15.9; the gateway lockfile/`pnpm-workspace.yaml` expect `apps/mcp-gateway/packages/beacon-schema/` which does not exist (the gateway is Docker-built with the repo root as context — `Dockerfile` `COPY packages ./packages` pulls the repo-root `packages/` in — and cannot `pnpm install` standalone). This predates cycle-049. The sprint plan sequences gateway wiring + build to **Sprint 3** (Task 3.1); the R-1 risk note anticipates it ("If left unresolved, Sprint 3's build fails").
+**Carry-forward for Sprint 3**: reproduce the gateway build environment (Docker context or local `packages/` link) and confirm `tsc` clean before Task 3.1. R-1 rename is a satisfied precondition.
+
+### Observations
+- Stale `@0xhoneyjar/beacon-schema` package-name comments remain in `packages/beacon-schema/src/index.ts:1` and `tests/schema.test.ts:2` (header comments only — not imports, outside Sprint 1's named scope). TEND-sweep candidate.
+- ADR-007 body outside Appendix A still narrates `composes_with` (~lines 107/124/205/288) — decision-record history; Task 1.5 was scoped to the normative spec (Appendix A) per the sprint plan AC.
+
+---
+
 ## Ride Session 2026-05-18 — Codebase Re-Ride
 
 The Loa rode through. Replaced 3-month-stale reality artifacts. Highlights:

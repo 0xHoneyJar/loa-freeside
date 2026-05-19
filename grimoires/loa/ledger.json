@@ -1,8 +1,44 @@
 {
   "version": "1.0.0",
-  "next_sprint_number": 396,
-  "active_cycle": null,
+  "next_sprint_number": 400,
+  "active_cycle": "cycle-049",
   "cycles": [
+    {
+      "id": "cycle-049",
+      "label": "discovery-loop",
+      "domain": "network",
+      "status": "active",
+      "created": "2026-05-19T22:45:00Z",
+      "prd": "grimoires/loa/prd.md",
+      "sdd": "grimoires/loa/sdd.md",
+      "sprint_plan": "grimoires/loa/sprint.md",
+      "sprints": [
+        {
+          "global_id": 396,
+          "local_label": "sprint-1",
+          "title": "Import Reconciliation + BeaconV3 Belt Fields",
+          "status": "pending"
+        },
+        {
+          "global_id": 397,
+          "local_label": "sprint-2",
+          "title": "Registry Manifest-Builder + Fixture Beacon",
+          "status": "pending"
+        },
+        {
+          "global_id": 398,
+          "local_label": "sprint-3",
+          "title": "Gateway Federation Route + CLI Verbs",
+          "status": "pending"
+        },
+        {
+          "global_id": 399,
+          "local_label": "sprint-4",
+          "title": "E2E Discovery Loop + CI Green",
+          "status": "pending"
+        }
+      ]
+    },
     {
       "id": "cycle-001",
       "label": "Arrakis Genesis v2.0",
