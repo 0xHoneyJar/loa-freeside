@@ -67,3 +67,27 @@ tools/sprint-kind-classify.py                       @janitooor
 tools/advisor-benchmark*.sh                         @janitooor
 tools/advisor-benchmark-stats.py                    @janitooor
 tools/modelinv-coverage-audit.py                    @janitooor
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RFC #207 — loa-freeside as dual-concern ecosystem parent
+# ADR-007 §D-3 — workspace firewall enforcement
+# ─────────────────────────────────────────────────────────────────────────────
+# Network domain (ecosystem-parent surface) — both owners review
+# Per ADR-007 §D-3, CODEOWNERS is convention; CI enforces the hard rule.
+# At current 2-person scale, loose co-ownership keeps review friction low.
+apps/mcp-gateway/                                   @janitooor @zksoju
+packages/freeside-cli/                              @janitooor @zksoju
+packages/freeside-registry/                         @janitooor @zksoju
+packages/beacon-schema/                             @janitooor @zksoju
+grimoires/freeside-network/                         @janitooor @zksoju
+
+# Platform domain (vertical-SaaS substrate) — Jani primary, inherits root
+# Listed explicitly so an auditor can confirm the firewall split is intentional.
+grimoires/freeside-platform/                        @janitooor
+
+# Workspace firewall enforcement (don't bypass without ADR amendment)
+.github/workflows/path-domain-check.yml             @janitooor
+.github/workflows/commit-scope-check.yml            @janitooor
+.github/workflows/ledger-domain-check.yml           @janitooor
+tools/check-beacon-domain.sh                        @janitooor
+decisions/007-loa-freeside-absorption.md            @janitooor @zksoju
