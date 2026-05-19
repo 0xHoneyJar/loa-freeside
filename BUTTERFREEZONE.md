@@ -1,11 +1,27 @@
 <!-- AGENT-CONTEXT
 name: loa-freeside
-type: framework
-purpose: Multi-model agent economy infrastructure platform.
-key_files: [CLAUDE.md, .claude/loa/CLAUDE.loa.md, .loa.config.yaml, .claude/scripts/, .claude/skills/, package.json]
+type: dual-concern-monorepo
+purpose: |
+  Vertical SaaS platform (multi-model agent economy infrastructure) AND
+  ecosystem parent for the freeside-* installable module network. The
+  platform hosts the modules' runtimes; the network registry/protocol
+  makes them discoverable + composable.
+identity_model: layered_station_3_plane
+concerns:
+  platform: apps/{gateway,worker,ingestor}/, themes/sietch/, packages/{cli,core,adapters,sandbox,services,routes,shared}/, infrastructure/terraform/, grimoires/freeside-platform/
+  network: apps/mcp-gateway/, packages/{beacon-schema,freeside-registry,freeside-cli}/, grimoires/freeside-network/
+firewall:
+  ci_check: .github/workflows/path-domain-check.yml
+  local_hook: tools/check-beacon-domain.sh
+  cross_domain_prs: blocked
+doctrine:
+  absorption: decisions/007-loa-freeside-absorption.md
+  layered_identity: decisions/008-freeside-as-layered-station.md
+key_files: [CLAUDE.md, .claude/loa/CLAUDE.loa.md, .loa.config.yaml, decisions/007-loa-freeside-absorption.md, decisions/008-freeside-as-layered-station.md, .claude/scripts/, .claude/skills/, package.json]
 interfaces:
   core: [/auditing-security, /autonomous-agent, /bridgebuilder-review, /browsing-constructs, /bug-triaging]
   project: [/cost-budget-enforcer, /cross-repo-status-reader, /flatline-attacker, /graduated-trust, /hitl-jury-panel]
+  network: [freeside-cli list, freeside-cli inspect <slug>, freeside-cli doctor]
 dependencies: [git, jq, yq, node]
 capability_requirements:
   - filesystem: read
@@ -14,15 +30,23 @@ capability_requirements:
   - git: read_write
   - shell: execute
   - github_api: read_write (scope: external)
-version: v7.12.6
+version: v7.17.0
 installation_mode: unknown
 trust_level: L3-hardened
 -->
 
 # loa-freeside
 
+<!-- provenance: DERIVED; ratified by decisions/007 + decisions/008 -->
+
+**Dual-concern monorepo.** Vertical SaaS platform (L4 of the Loa stack) AND the ecosystem parent for the `freeside-*` installable module network.
+
+- **Platform** — multi-tenant infrastructure that hosts AI agent capabilities (Discord/Telegram surfaces, Score, ledger, conviction scoring, billing, terraform, gaib IaC CLI). Hosts the deployed `freeside-*` modules.
+- **Network** — registry + BeaconV3 sealed schema + MCP federation gateway + ecosystem CLI that makes the deployed modules discoverable and composable.
+
+The two concerns share a repository but not a release cycle, a beads ledger, or a grimoire. CI enforces the workspace firewall. See [decisions/007-loa-freeside-absorption.md](decisions/007-loa-freeside-absorption.md) for the absorption doctrine and [decisions/008-freeside-as-layered-station.md](decisions/008-freeside-as-layered-station.md) for the layered identity + 3-plane mental model.
+
 <!-- provenance: CODE-FACTUAL -->
-Multi-model agent economy infrastructure platform.
 
 The framework provides 40 specialized skills, built with TypeScript/JavaScript, Python, Shell.
 
@@ -66,6 +90,7 @@ Directory structure:
 ./apps
 ./apps/gateway
 ./apps/ingestor
+./apps/mcp-gateway
 ./apps/worker
 ./config
 ./decisions
@@ -92,7 +117,6 @@ Directory structure:
 ./evals/tasks
 ./evals/tests
 ./grimoires
-./grimoires/loa
 ```
 
 ## Interfaces
@@ -100,17 +124,20 @@ Directory structure:
 ### HTTP Routes
 
 - **DELETE** `/sandbox/:sandboxId/reset` (`./themes/sietch/src/api/middleware/auth.ts:417`)
+- **GET** `/.well-known/beacon-schema/v2.json` (`./apps/mcp-gateway/src/app.ts:242`)
+- **GET** `/.well-known/federation.json` (`./apps/mcp-gateway/src/app.ts:211`)
+- **GET** `/` (`./apps/mcp-gateway/src/app.ts:287`)
 - **GET** `/admin/stats` (`./themes/sietch/src/api/middleware.ts:397`)
 - **GET** `/config` (`./themes/sietch/src/api/middleware/dashboardAuth.ts:125`)
+- **GET** `/healthz` (`./apps/mcp-gateway/src/app.ts:206`)
+- **GET** `/internal/federation.json` (`./apps/mcp-gateway/src/app.ts:221`)
 - **GET** `/protected` (`./themes/sietch/src/api/middleware/auth.ts:176`)
 - **GET** `/quote` (`./packages/routes/x402.routes.ts:92`)
+- **GET** `/schema/federation.json` (`./apps/mcp-gateway/src/app.ts:236`)
+- **GET** `/schema/tenant.json` (`./apps/mcp-gateway/src/app.ts:234`)
+- **GET** `/schema/tenants.json` (`./apps/mcp-gateway/src/app.ts:235`)
+- **GET** `/status.json` (`./apps/mcp-gateway/src/app.ts:244`)
 - **PATCH** `/:userId/thresholds` (`./themes/sietch/src/api/middleware/auth.ts:382`)
-- **POST** `/agents/:agentId/chat` (`./packages/routes/x402.routes.ts:140`)
-- **POST** `/config` (`./themes/sietch/src/api/middleware/dashboardAuth.ts:217`)
-- **POST** `/endpoint` (`./themes/sietch/src/api/middleware/rate-limit.ts:367`)
-- **POST** `/inference` (`./themes/sietch/src/api/middleware/developer-key-auth.ts:156`)
-- **POST** `/nowpayments` (`./packages/routes/webhooks.routes.ts:92`)
-- **POST** `/register` (`./themes/sietch/src/api/routes/agent-identity.routes.ts:37`)
 
 ### CLI Commands
 
@@ -176,29 +203,29 @@ Directory structure:
 <!-- provenance: CODE-FACTUAL -->
 | Module | Files | Purpose | Documentation |
 |--------|-------|---------|---------------|
-| `apps/` | 198 | Uapps | \u2014 |
+| `apps/` | 220 | Uapps | \u2014 |
 | `config/` | 1 | Configuration files | \u2014 |
-| `decisions/` | 6 | Documentation | \u2014 |
-| `docs/` | 52 | Documentation | \u2014 |
+| `decisions/` | 8 | Documentation | \u2014 |
+| `docs/` | 51 | Documentation | \u2014 |
 | `drizzle/` | 1 | Udrizzle | \u2014 |
 | `evals/` | 122 | Benchmarking and regression framework for the Loa agent development system. Ensures framework changes don't degrade agent behavior through | [evals/README.md](evals/README.md) |
-| `grimoires/` | 966 | Home to all grimoire directories for the Loa | [grimoires/README.md](grimoires/README.md) |
+| `grimoires/` | 973 | Home to all grimoire directories for the Loa | [grimoires/README.md](grimoires/README.md) |
 | `infrastructure/` | 260 | This directory contains the Infrastructure as Code (IaC) for Freeside, using Terraform to provision AWS | [docs/infrastructure.md](docs/infrastructure.md) |
 | `lib/` | 1 | Source code | \u2014 |
-| `packages/` | 49533 | Shared libraries and utilities for the Freeside | [packages/README.md](packages/README.md) |
+| `packages/` | 62589 | Shared libraries and utilities for the Freeside | [packages/README.md](packages/README.md) |
 | `scripts/` | 34 | Utility scripts | \u2014 |
 | `sites/` | 21 | Web properties for the Freeside | [sites/README.md](sites/README.md) |
 | `skills/` | 0 | Specialized agent skills | \u2014 |
 | `spec/` | 10 | Test suites | \u2014 |
 | `tests/` | 660 | Test suites | \u2014 |
 | `themes/` | 48297 | Theme-specific backend services for Freeside | [themes/README.md](themes/README.md) |
-| `tools/` | 23 | Shell scripts and utilities | \u2014 |
+| `tools/` | 25 | Shell scripts and utilities | \u2014 |
 
 ## Verification
 <!-- provenance: CODE-FACTUAL -->
 - Trust Level: **L3 — Property-Based**
 - 670 test files across 2 suites
-- CI/CD: GitHub Actions (26 workflows)
+- CI/CD: GitHub Actions (29 workflows)
 - Security: SECURITY.md present
 
 ## Agents
@@ -230,16 +257,16 @@ Available commands:
 - `npm run build:hounfour` — scripts/rebuild-hounfour-dist.sh
 - `npm run postinstall` — scripts/rebuild-hounfour-dist.sh
 <!-- ground-truth-meta
-head_sha: 985479f7aca65e813373000a1bd5f3cb727f0ea0
-generated_at: 2026-05-19T01:04:57Z
+head_sha: 4c97f8e10cca25237fcdcd8d97e09269873a9bc5
+generated_at: 2026-05-19T03:03:44Z
 generator: butterfreezone-gen v1.0.0
 sections:
-  agent_context: 63141591ecb2bb665825d4c33f967d53406666bfbffe46fa3cb7327beec8de54
+  agent_context: 8649138fb11d0ec7c3702194819d09a4aff405c4edefd26d81ffa618641f2820
   capabilities: 08a161a6712c3c6585cba69ccfc18111d790cf0d30601fe8be7808a727375bbd
-  architecture: f779908e22dadfe17e7b08900294ec0c52cd21133bed2fdc89c1578f93356a5d
-  interfaces: ad7a87d52eb5408d6f4d2d206fe25c804ec9a41a3503ccc66529549fd5f7523a
-  module_map: bf8cebe5f335b74ca84e6da7908b89d1e6290ac7f3ac916042bfad7dedead592
-  verification: be4d0731611d9bbceb87c07e62dde181c28db252ee4dbb692ae7763d8003474d
+  architecture: b1d16cab87498ebd1b420262959d426b9dabf7f0b76a77517d562b0150d4d1b3
+  interfaces: d22d49c81788319a102fe8d1677b6f3b87bbfedf09abb566131ec909b64abcb8
+  module_map: 5eff5becfb4d31f35209e68c012a9cb1e00b3f8af33c1101dadb9f29baf1d1be
+  verification: 8615deb131dbbcb91605f1083126016dde23638454f1db4db82afc8df78ed02d
   agents: ca263d1e05fd123434a21ef574fc8d76b559d22060719640a1f060527ef6a0b6
   ecosystem: 41df6a594f66dfdccfc9516499e4826c04118fae1a2850465624443977bfd207
   quick_start: f0f00b450676e8357d71bf0d73d9040bda778c7dd172e9a463067ca34b35fe59

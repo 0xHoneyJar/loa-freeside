@@ -5,6 +5,55 @@
 > This file contains project-specific customizations that take precedence over the framework instructions.
 > The framework instructions are loaded via the `@` import above.
 
+## Repo Topology (READ FIRST)
+
+`loa-freeside` is a **dual-concern repository** per [ADR-007](decisions/007-loa-freeside-absorption.md) and [ADR-008](decisions/008-freeside-as-layered-station.md). Any agent working in this repo MUST internalize this before touching code.
+
+### The two concerns
+
+| Concern | What | Lives in |
+|---------|------|----------|
+| **Platform** (vertical-SaaS substrate) | Multi-tenant infrastructure that hosts AI agent capabilities — Discord/Telegram surfaces, Score, ledger, conviction scoring, billing, terraform, gaib IaC CLI. Hosts BOTH first-party features AND deployed `freeside-*` modules. | `apps/{gateway,worker,ingestor}/`, `themes/sietch/`, `packages/{cli,core,adapters,sandbox,services,routes,shared,…}`, `infrastructure/terraform/`, `grimoires/freeside-platform/` |
+| **Network** (ecosystem-parent for freeside-* modules) | Registry + BeaconV3 sealed schema + MCP federation gateway + ecosystem CLI. Makes the deployed modules discoverable and composable. | `apps/mcp-gateway/`, `packages/{beacon-schema,freeside-registry,freeside-cli}/`, `grimoires/freeside-network/` |
+
+### Hard rules (enforced by CI)
+
+1. **No cross-domain PRs.** A single PR/commit MUST NOT modify both platform and network paths. `.github/workflows/path-domain-check.yml` blocks them.
+2. **Commit scopes** use `platform/<x>`, `network/<x>`, or `shared/<x>`. Phase 1 enforcement is warn-only on missing scope, fail on cross-domain mismatch.
+3. **Beads issues** must carry a `domain:platform`, `domain:network`, or `domain:shared` label.
+4. **Cycle ledger entries** must include a `domain` field.
+5. **No cross-domain `blocked-by` dependencies** in beads. Refactor through `shared/` scope or remove the dependency.
+6. **Bootstrap bypass** (`adr-007-bootstrap` label) is SINGLE-USE for the original workspace-creation PR. Any subsequent use requires an ADR amendment + `decisions/EXCEPTIONS.md` entry.
+
+### Local pre-commit hook
+
+```bash
+ln -s ../../tools/check-beacon-domain.sh .git/hooks/pre-commit
+```
+
+Mirrors the CI check; catches violations before push.
+
+### Three orthogonal planes (mental model)
+
+When working on a change, identify which **plane** it belongs to:
+
+- **Contract** — schemas, BeaconV3, NATS protocols, port interfaces (modules talk to schemas, never to the platform directly)
+- **Construct** — pure logic, state machines, intent generators (brains in vats; no I/O concerns)
+- **Execution** — runtime, gateways, HTTP, RPC, infrastructure (the cyberdeck that catches Intents and fires real-world calls)
+
+Bug source classification by plane is the daily diagnostic. See [ADR-008 §D-1](decisions/008-freeside-as-layered-station.md) for the full framing.
+
+### Module prefix-as-type-signature
+
+| Prefix | Means |
+|--------|-------|
+| `loa-X` | Stack member (e.g., `loa-freeside` IS the L4 platform) |
+| `freeside-X` | Installable module that deploys onto the freeside platform |
+| `construct-X` | Agent-expertise pack (lives in Plane 2) |
+| `world-X` | A community-specific deployed module bundle |
+
+The namespace already encodes the layering. No new prefixes.
+
 ## CRITICAL: Tool Enforcement Rules
 
 **These rules are MANDATORY. Violations will result in incorrect behavior.**
