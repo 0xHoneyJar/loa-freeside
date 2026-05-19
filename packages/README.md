@@ -1,17 +1,19 @@
 # Packages
 
-Workspace packages for the loa-freeside monorepo. Domain assignment per [ADR-007 §D-1](../decisions/007-loa-freeside-absorption.md) and the layered identity in [ADR-008](../decisions/008-freeside-as-layered-station.md). CI enforces the platform/network firewall on cross-domain commits.
+Workspace packages for the loa-freeside monorepo. Domain assignment per [ADR-007 §D-1](../decisions/007-loa-freeside-absorption.md) and the layered identity in [ADR-008](../decisions/008-freeside-as-factory.md). CI enforces the platform/network firewall on cross-domain commits.
 
 ## Platform domain (vertical-SaaS substrate)
 
-| Package | Description |
-|---------|-------------|
+> **Notation**: entries with a `@freeside/<name>` scope are published/importable npm packages. Entries shown as a bare directory (`routes/`, `services/`, …) are **internal organizational directories** consumed in-repo, not standalone published packages. Verify against the directory's `package.json` before importing.
+
+| Package / directory | Description |
+|---------------------|-------------|
 | `@freeside/cli` (`cli/`) | gaib IaC orchestrator — `gaib login\|sandbox\|server` |
 | `@freeside/core` (`core/`) | Port interfaces + domain types (IChainProvider, IStorageProvider, IAgentGateway) |
 | `@freeside/adapters` (`adapters/`) | 8 adapter modules — agent, chain, storage, synthesis, wizard, themes, security, coexistence |
 | `@freeside/sandbox` (`sandbox/`) | Schema provisioning, event routing |
 | `@freeside/nats-schemas` (`shared/nats-schemas/`) | Cross-language wire format (Zod + JSON) |
-| `routes/` | Express route handlers (consumed by `themes/sietch/`) |
+| `routes/` *(internal dir)* | Express route handlers (consumed by `themes/sietch/`) |
 | `services/` | Service-layer business logic |
 | `contracts/` | Smart contract bindings + ABI exports |
 | `governance/` | Tier resolution, conviction scoring helpers |
@@ -40,7 +42,7 @@ Workspace packages for the loa-freeside monorepo. Domain assignment per [ADR-007
 - **Platform packages** = the substrate; hosts both first-party features (Score, ledger, conviction, billing) and deployed `freeside-*` modules
 - **Network packages** = the protocol; makes deployed modules discoverable + composable via BeaconV3 + federation manifest
 
-See [ADR-008 §D-3](../decisions/008-freeside-as-layered-station.md) for the full platform-vs-network framing.
+See [ADR-008 §D-3](../decisions/008-freeside-as-factory.md) for the full platform-vs-network framing.
 
 ## Package guidelines
 

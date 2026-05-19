@@ -195,6 +195,8 @@ The enterprise products **produce** the consumer products — Freeside builds fo
 
 Per the operator's framing, `@freeside/cli` (gaib IaC) and `@freeside/freeside-cli` (ecosystem CLI) **merge into one CLI** whose job is *"deploy what people want onto the platform, just like Vercel."* The unified CLI: lists the marketplace, resolves a product's building DAG, deploys the buildings, tenants the customer onto shared instances. **Not done in this ADR** — captured as intent; the merge has coordination cost (Jani co-owns gaib; PR #178 stakes the namespace).
 
+> **Tracking**: this is a cross-owner coordination item with no owner until the operator-clarity session assigns one. A GitHub issue or beads task MUST be opened for the gaib/freeside-cli merge before that session closes — an untracked open item with explicit cross-owner dependency does not survive between sessions. Until then, this D-9 paragraph + the Pending Follow-up entry are the only record.
+
 ### D-10. Tenancy + trust boundaries (still open — addresses flatline SKP-004)
 
 The "platform hosts buildings multi-tenant" framing implies a trust model not yet specified. Explicitly named as **open**, to be resolved by future ADRs:

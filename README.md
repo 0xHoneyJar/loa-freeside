@@ -11,20 +11,20 @@ Multi-model agent economy infrastructure platform. Token-gated AI capabilities, 
 
 ## What is Freeside?
 
-Freeside is **two things in one repository**: a vertical SaaS platform AND the ecosystem parent for the `freeside-*` module network.
+Freeside is a **factory** for AI agent economies — a deployment platform that hosts `freeside-*` capability **buildings**, which compose into **products** that communities run.
 
-**As a platform**, Freeside is the L4 substrate of the [Loa protocol](https://github.com/0xHoneyJar/loa): multi-tenant infrastructure for AI agent economies on-chain. The platform implements the **Commons Protocol** — a community-governed economic protocol for AI inference with conservation invariants, conviction-gated access, and transparent disagreement resolution. Communities configure conviction-based tiers, each tier unlocks access to different model pools, and all inference runs through budget-atomic accounting with per-model cost attribution.
+**The platform** is the L4 substrate of the [Loa protocol](https://github.com/0xHoneyJar/loa): multi-tenant infrastructure for AI agent economies on-chain. It implements the **Commons Protocol** — a community-governed economic protocol for AI inference with conservation invariants, conviction-gated access, and transparent disagreement resolution. Communities configure conviction-based tiers, each tier unlocks access to different model pools, and all inference runs through budget-atomic accounting with per-model cost attribution.
 
 <!-- cite: loa-freeside:packages/core/ports/ -->
 
-**As an ecosystem parent**, Freeside hosts the registry + beacon protocol + MCP federation gateway + ecosystem CLI for the `freeside-*` module network — installable modules that **deploy onto the platform's infrastructure** and declare themselves via the BeaconV3 sealed schema for cross-repo discovery and composition.
+**The network** is the discovery + deployment layer for the `freeside-*` building ecosystem — the BeaconV3 sealed schema each building declares itself with, the registry that aggregates them, the MCP federation gateway that routes between them, and the ecosystem CLI operators use to inspect and deploy them.
 
 <!-- cite: loa-freeside:packages/beacon-schema/ -->
 <!-- cite: loa-freeside:packages/freeside-registry/ -->
 <!-- cite: loa-freeside:packages/freeside-cli/ -->
 <!-- cite: loa-freeside:apps/mcp-gateway/ -->
 
-The two concerns share a repository but not a release cycle, a beads ledger, or a grimoire. The split is enforced by CI ([ADR-007 §D-3](decisions/007-loa-freeside-absorption.md)) and explained in [ADR-008](decisions/008-freeside-as-layered-station.md). For the relationship between the platform, the network, and the modules — see [§Mental Model](#mental-model) below.
+Platform and network share a repository but not a release cycle, a beads ledger, or a grimoire. The split is enforced by CI ([ADR-007 §D-3](decisions/007-loa-freeside-absorption.md), Status: Accepted). The factory model — buildings, products, marketplace — is documented in [ADR-008](decisions/008-freeside-as-factory.md) (Status: **Proposed** — orientation, not yet ratified). See [§Mental Model](#mental-model) below.
 
 This repo serves four audiences:
 
@@ -132,7 +132,7 @@ The network concern is the meta-registry for the `freeside-*` module ecosystem:
 
 ## Mental Model
 
-> *This section adopts the doctrine documented in [ADR-008](decisions/008-freeside-as-layered-station.md) — the building/factory model. ADR-008 is currently **Status: Proposed** pending a follow-up operator-clarity session that sequences building extractions + repo consolidation.*
+> *This section adopts the doctrine documented in [ADR-008](decisions/008-freeside-as-factory.md) — the building/factory model. ADR-008 is currently **Status: Proposed** pending a follow-up operator-clarity session that sequences building extractions + repo consolidation.*
 
 ### Freeside is a factory
 
@@ -209,11 +209,11 @@ Independent of the factory model, every change is *also* classified by which **p
 | **Construct** | Pure logic, state machines, intent generators. Brains in vats — no I/O. | the building's state-machine modules |
 | **Execution** | Runtime, side-effects, RPC, gateways, AWS ECS. The cyberdeck that catches Intents and fires real-world calls. | `src/api/`, `src/consumers/`, `src/publishers/` |
 
-**Daily diagnostic**: when something breaks, ask "is this a contract mismatch, a construct logic error, or an execution-layer flake?" Don't try to map plane → building or plane → domain; classify along each axis independently. See [ADR-008 §D-1, §D-8](decisions/008-freeside-as-layered-station.md).
+**Daily diagnostic**: when something breaks, ask "is this a contract mismatch, a construct logic error, or an execution-layer flake?" Don't try to map plane → building or plane → domain; classify along each axis independently. See [ADR-008 §D-1, §D-8](decisions/008-freeside-as-factory.md).
 
 ### Prefix-as-type-signature
 
-Per `loa-org-naming-conventions` vault canon, adopted into [ADR-008 §D-8](decisions/008-freeside-as-layered-station.md):
+Per `loa-org-naming-conventions` vault canon, adopted into [ADR-008 §D-8](decisions/008-freeside-as-factory.md):
 
 - **`loa-X`** — a member of the Loa stack itself. `loa-freeside` IS the L4 platform.
 - **`freeside-X`** — a **building** (a capability that deploys onto the freeside platform).
@@ -251,9 +251,9 @@ See [docs/ECOSYSTEM.md](docs/ECOSYSTEM.md) for the full ecosystem map with stati
 ## Architecture
 
 ```
-loa-freeside/                  ⟶ Dual-concern monorepo (per ADR-007 + ADR-008)
+loa-freeside/                  ⟶ Factory monorepo (per ADR-007 + ADR-008)
 │
-├── packages/                  # PLATFORM (vertical-SaaS substrate)
+├── packages/  ── PLATFORM ──  (vertical-SaaS substrate)
 │   ├── core/                  # Port interfaces + domain types
 │   │   └── ports/             # IChainProvider, IStorageProvider, IAgentGateway
 │   ├── adapters/              # 8 adapter modules
@@ -269,10 +269,12 @@ loa-freeside/                  ⟶ Dual-concern monorepo (per ADR-007 + ADR-008)
 │   ├── sandbox/               # Schema provisioning, event routing
 │   └── shared/nats-schemas/   # Cross-language wire format (Zod + JSON)
 │
-│                              # NETWORK (ecosystem-parent surface)
+├── packages/  ── NETWORK ──   (discovery + deployment layer)
 │   ├── beacon-schema/         # @freeside/beacon-schema — V2 + BeaconV3 sealed schema
 │   ├── freeside-registry/     # @freeside/freeside-registry — L1 registry + manifest builder
 │   └── freeside-cli/          # @freeside/freeside-cli — `freeside-cli list|inspect|doctor`
+│   (note: same packages/ dir on disk — PLATFORM vs NETWORK is the domain split,
+│    not a separate folder. CI enforces no cross-domain PRs.)
 │
 ├── themes/sietch/             # PLATFORM — Main Discord/Telegram service (v6.0.0)
 │   ├── src/api/               # Express REST API (80+ routes)
@@ -296,7 +298,7 @@ loa-freeside/                  ⟶ Dual-concern monorepo (per ADR-007 + ADR-008)
 │
 ├── decisions/                 # ADRs — repo-canonical architectural decisions
 │   ├── 007-loa-freeside-absorption.md       # Dual-concern workspace + BeaconV3 + firewall
-│   └── 008-freeside-as-layered-station.md   # Platform-as-substrate + 3-plane identity
+│   └── 008-freeside-as-factory.md   # Platform-as-substrate + 3-plane identity
 │
 ├── evals/                     # Evaluation framework + test suites
 └── docs/                      # Developer documentation
@@ -386,7 +388,7 @@ Feature flags control optional subsystems:
 |----------|----------|-------------|
 | [BUTTERFREEZONE.md](BUTTERFREEZONE.md) | AI agents | Machine-readable project overview with source citations |
 | [decisions/007-loa-freeside-absorption.md](decisions/007-loa-freeside-absorption.md) | Architects | Dual-concern absorption doctrine + BeaconV3 normative schema (Appendix A) |
-| [decisions/008-freeside-as-layered-station.md](decisions/008-freeside-as-layered-station.md) | Architects | Platform-as-substrate identity + 3-plane mental model |
+| [decisions/008-freeside-as-factory.md](decisions/008-freeside-as-factory.md) | Architects | Platform-as-substrate identity + 3-plane mental model |
 | [INSTALLATION.md](INSTALLATION.md) | Operators | Setup, deployment, and configuration guide |
 | [docs/ECOSYSTEM.md](docs/ECOSYSTEM.md) | Everyone | 5-repo Loa ecosystem map with layer diagram |
 | [docs/API-QUICKSTART.md](docs/API-QUICKSTART.md) | Developers | First agent call in 5 minutes |

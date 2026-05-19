@@ -7,7 +7,12 @@
 
 ## Repo Topology (READ FIRST)
 
-`loa-freeside` is a **factory** per [ADR-007](decisions/007-loa-freeside-absorption.md) and [ADR-008](decisions/008-freeside-as-layered-station.md). Any agent working in this repo MUST internalize this before touching code.
+`loa-freeside` is a **factory**. Two authority levels — do not conflate them:
+
+- **BINDING (CI-enforced today)** — [ADR-007](decisions/007-loa-freeside-absorption.md), Status: **Accepted**. The platform/network firewall, commit scopes, beads domain labels. The "Hard rules" below are these. An agent MUST comply; CI blocks violations.
+- **ORIENTATION (intent-bearing, not yet ratified)** — [ADR-008](decisions/008-freeside-as-factory.md), Status: **Proposed**. The factory model, building/belt vocabulary, marketplace framing, composition-direction DAG. An agent SHOULD apply this as the mental model, but it is not a CI-enforced constraint and may change before ratification (a follow-up operator-clarity session sequences building extractions).
+
+The factory model below is ORIENTATION. The "Hard rules (enforced by CI)" subsection is BINDING.
 
 ### The factory model
 
@@ -19,19 +24,19 @@ Each capability is a **building**. **One building = one repository** — schema 
 | **Buildings** (capabilities — `freeside-X` repos) | Each is one repo: schema + runtime + docs. Has belts (consumes/publishes). **External repos**: `freeside-{sonar,storage,mint,activities,inventory,score,mediums}`. **Still in-monolith, intended for extraction**: `freeside-{billing,ledger}`. | External `freeside-*` repos OR currently in `themes/sietch/src/{discord,telegram,services}/`, `packages/services/` until extracted |
 | **Network** (discovery + deploy layer) | BeaconV3 declaration contract, registry, MCP federation gateway, deployment CLI. | `apps/mcp-gateway/`, `packages/{beacon-schema,freeside-registry,freeside-cli}/`, `grimoires/freeside-network/` |
 
-> **Honest current state**: `loa-freeside` is a thick monolith. `freeside-score` and `freeside-mediums` already exist as external repos but logic still lives in the monolith — extraction is real pending work. `freeside-billing` and `freeside-ledger` are not extracted at all. The building model is the **direction**. See [ADR-008 §Current State vs Intended State](decisions/008-freeside-as-layered-station.md).
+> **Honest current state**: `loa-freeside` is a thick monolith. `freeside-score` and `freeside-mediums` already exist as external repos but logic still lives in the monolith — extraction is real pending work. `freeside-billing` and `freeside-ledger` are not extracted at all. The building model is the **direction**. See [ADR-008 §Current State vs Intended State](decisions/008-freeside-as-factory.md).
 
 ### Composition direction (the DAG)
 
-Buildings connect via **belts** running ONE direction — determined by data semantic depth (raw → derived → integrated → presented), not by choice. `freeside-inventory` consumes `freeside-sonar` + `freeside-storage`; the reverse is impossible. When unsure which way an arrow points: closer-to-raw publishes, closer-to-meaning consumes. Bottleneck debugging = walk upstream on the belts. See [ADR-008 §D-3](decisions/008-freeside-as-layered-station.md).
+Buildings connect via **belts** running ONE direction — determined by data semantic depth (raw → derived → integrated → presented), not by choice. `freeside-inventory` consumes `freeside-sonar` + `freeside-storage`; the reverse is impossible. When unsure which way an arrow points: closer-to-raw publishes, closer-to-meaning consumes. Bottleneck debugging = walk upstream on the belts. See [ADR-008 §D-3](decisions/008-freeside-as-factory.md).
 
 ### Marketplace vs factory
 
-A **product** is a building (or building-group) presented for sale. Single-building products (`score API`), compound products (`community-management` = mediums + score + inventory). Customers order products; the platform resolves the building DAG. See [ADR-008 §D-5](decisions/008-freeside-as-layered-station.md).
+A **product** is a building (or building-group) presented for sale. Single-building products (`score API`), compound products (`community-management` = mediums + score + inventory). Customers order products; the platform resolves the building DAG. See [ADR-008 §D-5](decisions/008-freeside-as-factory.md).
 
 ### Plane ≠ Domain (orthogonal)
 
-Per [ADR-008 §D-8](decisions/008-freeside-as-layered-station.md), the platform/network split (organizational firewall, CI-enforced) and the Contract/Construct/Execution planes (cognitive diagnostic, operator-applied) are **orthogonal axes**. A building spans all three planes inside its one repo. A change is classified along both axes — don't map plane→domain or plane→building, you'll get stuck.
+Per [ADR-008 §D-8](decisions/008-freeside-as-factory.md), the platform/network split (organizational firewall, CI-enforced) and the Contract/Construct/Execution planes (cognitive diagnostic, operator-applied) are **orthogonal axes**. A building spans all three planes inside its one repo. A change is classified along both axes — don't map plane→domain or plane→building, you'll get stuck.
 
 ### Hard rules (enforced by CI)
 
@@ -58,7 +63,7 @@ When working on a change, identify which **plane** it belongs to. A building spa
 - **Construct** — pure logic, state machines, intent generators (brains in vats; no I/O concerns)
 - **Execution** — runtime, gateways, HTTP, RPC, infrastructure (the cyberdeck that catches Intents and fires real-world calls)
 
-Bug source classification by plane is the daily diagnostic. See [ADR-008 §D-1](decisions/008-freeside-as-layered-station.md) for the full framing.
+Bug source classification by plane is the daily diagnostic. See [ADR-008 §D-1](decisions/008-freeside-as-factory.md) for the full framing.
 
 ### Prefix-as-type-signature
 
