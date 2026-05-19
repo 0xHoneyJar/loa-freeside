@@ -217,3 +217,69 @@ test("encodeBeacon roundtrip preserves codex fixture", () => {
   const encoded = Effect.runSyncExit(Schema.encode(BeaconV2Schema)(decoded.value));
   assert.equal(encoded._tag, "Success");
 });
+
+// ─── V3 schema tests (ADR-007 §D-4 + Appendix A) ──────────────────────────
+
+import {
+  BeaconV3Schema,
+  decodeBeaconV3,
+  BeaconV3JsonSchema,
+} from "../src/index.js";
+
+test("V3 inventory fixture decodes successfully (canonical reference module)", () => {
+  const result = Effect.runSyncExit(
+    decodeBeaconV3(fix("freeside-inventory-v3.yaml")),
+  );
+  if (result._tag === "Failure") {
+    assert.fail(`expected success, got: ${JSON.stringify(result.cause)}`);
+  }
+  assert.equal(result.value.is.one_liner.startsWith("Read-side inventory"), true);
+  assert.equal(result.value.is_not.length, 3);
+  assert.equal(result.value.cycle_state.status, "candidate");
+});
+
+test("V3 is_not entry without 'Does NOT'/'Will NOT'/'Refuses to' prefix fails", () => {
+  const beacon = fix("freeside-inventory-v3.yaml");
+  beacon.is_not = ["Manages everything"]; // no prefix → should fail
+  const result = Effect.runSyncExit(decodeBeaconV3(beacon));
+  assert.equal(result._tag, "Failure", "expected validation failure");
+});
+
+test("V3 is_not with fewer than 2 entries fails", () => {
+  const beacon = fix("freeside-inventory-v3.yaml");
+  beacon.is_not = ["Does NOT do one thing"]; // only 1 entry → should fail
+  const result = Effect.runSyncExit(decodeBeaconV3(beacon));
+  assert.equal(result._tag, "Failure", "expected validation failure");
+});
+
+test("V3 composes_with.tag without version+hash format fails", () => {
+  const beacon = fix("freeside-inventory-v3.yaml");
+  beacon.composes_with["freeside-sonar"].tag = "SonarPort"; // no version+hash
+  const result = Effect.runSyncExit(decodeBeaconV3(beacon));
+  assert.equal(
+    result._tag,
+    "Failure",
+    "expected Tag@version+hash format enforcement",
+  );
+});
+
+test("V3 cycle_state.status enum rejects unknown values", () => {
+  const beacon = fix("freeside-inventory-v3.yaml");
+  beacon.cycle_state.status = "stable"; // not in enum
+  const result = Effect.runSyncExit(decodeBeaconV3(beacon));
+  assert.equal(result._tag, "Failure", "expected enum rejection");
+});
+
+test("V3 sealed_schemas.hash rejects non-sha256 values", () => {
+  const beacon = fix("freeside-inventory-v3.yaml");
+  beacon.sealed_schemas[0].hash = "deadbeef"; // too short
+  const result = Effect.runSyncExit(decodeBeaconV3(beacon));
+  assert.equal(result._tag, "Failure", "expected sha256 enforcement");
+});
+
+test("V3 JSON Schema can be exported (for downstream tooling)", () => {
+  const json = JSON.stringify(BeaconV3JsonSchema);
+  assert.equal(json.length > 1000, true, "JSON Schema should be non-trivial");
+  assert.ok(json.includes('"is_not"'), "is_not field should appear in schema");
+  assert.ok(json.includes('"cycle_state"'), "cycle_state field should appear");
+});
