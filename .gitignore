@@ -16,6 +16,14 @@ build/
 dist/
 out/
 
+# Bridgebuilder ships its compiled dist to submodule consumers
+# (#607: multi-model-pipeline.js and other newer modules were getting
+# silently ignored by the `dist/` pattern above, causing ERR_MODULE_NOT_FOUND
+# when the skill runs from a submodule consumer). The skill's dist/ IS
+# shipping infrastructure — un-ignore it explicitly.
+!.claude/skills/bridgebuilder-review/dist/
+!.claude/skills/bridgebuilder-review/dist/**
+
 # Environment variables
 .env
 .env.local
@@ -136,7 +144,17 @@ grimoires/loa/decisions.yaml
 # Sprint Ledger (project-specific cycle/sprint history)
 # Created by /plan-and-analyze, tracks development cycles per-project
 grimoires/loa/ledger.json
-grimoires/loa/ledger.json.bak
+# Planning-artifact backups (ledger/sprint/prd/sdd, any depth, any -bak variant).
+# Use git tags / cycle archive directories for rollback; never commit .bak files.
+# See cycle-098 NOTES decision-trail for the convention rationale.
+grimoires/loa/**/ledger.json*.bak
+grimoires/loa/**/ledger.json.*-bak
+grimoires/loa/**/sprint*.md*.bak
+grimoires/loa/**/sprint*.md.*-bak
+grimoires/loa/**/prd*.md*.bak
+grimoires/loa/**/prd*.md.*-bak
+grimoires/loa/**/sdd*.md*.bak
+grimoires/loa/**/sdd*.md.*-bak
 
 # Archived development cycles (project-specific history)
 grimoires/loa/archive/
@@ -154,6 +172,11 @@ grimoires/loa/a2a/compound/*.json
 grimoires/loa/a2a/compound/review-markers/*
 !grimoires/loa/a2a/compound/.gitkeep
 !grimoires/loa/a2a/compound/review-markers/.gitkeep
+# Subagent reports (runtime outputs; directory is committed as an empty
+# placeholder so subagent write targets exist at framework mount time)
+!grimoires/loa/a2a/subagent-reports/
+grimoires/loa/a2a/subagent-reports/*.md
+!grimoires/loa/a2a/subagent-reports/.gitkeep
 
 # Deployment artifacts (project-specific)
 grimoires/loa/deployment/*
@@ -332,3 +355,24 @@ packages/core/ports/*.d.ts.map
 # Vercel local state
 **/.vercel/
 .finn-ssm-backup.json
+
+# =============================================================================
+# FRAMEWORK TEMPLATE HYGIENE (cycle-106 sprint-1 T1.6, from loa upstream)
+# =============================================================================
+# Operator zone boundaries — these directories are project-local state and
+# must not be tracked into the framework template. Declared as project-zone
+# in grimoires/loa/zones.yaml.
+grimoires/loa/cycles/
+grimoires/loa/handoffs/
+grimoires/loa/memory/
+grimoires/loa/legacy/
+grimoires/loa/context/
+grimoires/loa/ledger.json.bak*
+# NOTE: Existing tracked files at these paths remain tracked despite these patterns
+# (gitignore only affects untracked files). To untrack them deliberately, run
+# `git rm --cached <path>` in a separate operator-driven cleanup pass.
+# NOT gitignored (still tracked):
+#   grimoires/loa/zones.yaml          (project-authored, version-controlled)
+#   grimoires/loa/runbooks/           (framework-shipped runbooks)
+#   grimoires/loa/known-failures.md   (shared zone)
+#   grimoires/loa/ledger.json         (project sprint ledger)

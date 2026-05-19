@@ -37,46 +37,52 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CONFIG_FILE="$PROJECT_ROOT/.loa.config.yaml"
-LEGACY_ADAPTER="$SCRIPT_DIR/model-adapter.sh.legacy"
+# cycle-109 Sprint 3 T3.7 (C109.OP-S3): LEGACY_ADAPTER and the
+# delegate_to_legacy() function were removed alongside the deletion of
+# .claude/scripts/model-adapter.sh.legacy. cheval (model-invoke) is the
+# sole substrate dispatch path. See grimoires/loa/runbooks/cycle-109-rollback.md
+# for the git-revert rollback model.
 MODEL_INVOKE="$SCRIPT_DIR/model-invoke"
 
-# =============================================================================
-# Feature Flag Check
-# =============================================================================
+# cycle-099 sprint-1B (T1.8): bring the canonical model registry into scope
+# (MODEL_PROVIDERS / MODEL_IDS / COST_INPUT / COST_OUTPUT). The local
+# MODEL_TO_ALIAS map below is preserved for the test contract in
+# tests/unit/model-adapter-aliases.bats (T8 greps the file for keys),
+# but lookups now prefer resolve_provider_id at the call site (line ~470)
+# so retired aliases fail loudly at the codegen layer instead of silent-
+# routing through a stale local entry.
+# shellcheck source=lib/model-resolver.sh
+source "$SCRIPT_DIR/lib/model-resolver.sh"
 
-is_flatline_routing_enabled() {
-    # Check environment override first
-    if [[ "${HOUNFOUR_FLATLINE_ROUTING:-}" == "true" ]]; then
-        return 0
-    fi
-    if [[ "${HOUNFOUR_FLATLINE_ROUTING:-}" == "false" ]]; then
-        return 1
-    fi
+# cycle-099 sprint-2C (T2.5): source the operator-extras-aware overlay
+# helper. Sourcing this file only declares functions and resolves the
+# (readonly) merged/lockfile/python3 paths — it does NOT touch the
+# filesystem or invoke the hook. The actual init (`loa_overlay_init`)
+# happens INSIDE `main()` only when v2.0 routing is enabled, so the
+# default legacy path stays bit-identical to pre-cycle-099 behavior
+# (per GP-F2 / CYP-F11 dual-review fix).
+# shellcheck source=lib/overlay-source-helper.sh
+source "$SCRIPT_DIR/lib/overlay-source-helper.sh"
 
-    # Check config file
-    if [[ -f "$CONFIG_FILE" ]] && command -v yq &> /dev/null; then
-        local value
-        value=$(yq -r '.hounfour.flatline_routing // false' "$CONFIG_FILE" 2>/dev/null)
-        if [[ "$value" == "true" ]]; then
-            return 0
-        fi
-    fi
-
-    # Default: disabled
-    return 1
-}
+# cycle-109 Sprint 3 T3.8 (commit E): is_flatline_routing_enabled()
+# definition removed from this file. After T3.7 deleted the legacy
+# adapter, this helper had no internal consumer in model-adapter.sh.
+# Other files (gpt-review-api.sh, lib-route-table.sh, lib-curl-fallback.sh,
+# red-team-model-adapter.sh) define + consume their own copies of the
+# helper; cleanup of those is tracked as a follow-up since they still
+# branch on the value for their own historical reasons.
 
 # =============================================================================
 # Legacy Delegation
 # =============================================================================
 
-delegate_to_legacy() {
-    if [[ ! -x "$LEGACY_ADAPTER" ]]; then
-        echo "ERROR: Legacy adapter not found: $LEGACY_ADAPTER" >&2
-        exit 2
-    fi
-    exec "$LEGACY_ADAPTER" "$@"
-}
+# cycle-109 Sprint 3 T3.7 (C109.OP-S3): delegate_to_legacy() removed.
+# The legacy adapter file was deleted; cheval is the sole substrate
+# dispatch path. Callers that previously invoked this function have been
+# migrated:
+#   - main() feature-flag guard (T3.6 commit C): removed
+#   - mock-mode delegation (T3.7 this commit): migrated to cheval
+#     --mock-fixture-dir at tests/fixtures/cycle-109/mock-mode/<mode>/
 
 # =============================================================================
 # Mode → Agent Mapping
@@ -100,20 +106,23 @@ declare -A MODEL_TO_ALIAS=(
     ["gpt-5.2"]="openai:gpt-5.2"
     ["gpt-5.3-codex"]="openai:gpt-5.3-codex"
     ["gpt-5.2-codex"]="openai:gpt-5.3-codex"    # Backward compat alias
-    ["opus"]="anthropic:claude-opus-4-6"
-    ["claude-opus-4.6"]="anthropic:claude-opus-4-6"
-    ["claude-opus-4.5"]="anthropic:claude-opus-4-6"
-    ["claude-opus-4-5"]="anthropic:claude-opus-4-6"    # Hyphenated → current
-    ["claude-opus-4.1"]="anthropic:claude-opus-4-6"    # Legacy → current
-    ["claude-opus-4-1"]="anthropic:claude-opus-4-6"    # Legacy hyphenated → current
-    ["claude-opus-4.0"]="anthropic:claude-opus-4-6"    # Legacy → current
-    ["claude-opus-4-0"]="anthropic:claude-opus-4-6"    # Legacy hyphenated → current
+    ["opus"]="anthropic:claude-opus-4-7"
+    ["claude-opus-4.7"]="anthropic:claude-opus-4-7"
+    ["claude-opus-4-7"]="anthropic:claude-opus-4-7"    # Current canonical (cycle-082)
+    ["claude-opus-4.6"]="anthropic:claude-opus-4-7"    # Retargeted to current (bash path); YAML preserves 4.6 for pinning
+    ["claude-opus-4-6"]="anthropic:claude-opus-4-7"    # Retargeted to current (bash path); YAML preserves 4.6 for pinning
+    ["claude-opus-4.5"]="anthropic:claude-opus-4-7"
+    ["claude-opus-4-5"]="anthropic:claude-opus-4-7"    # Hyphenated → current
+    ["claude-opus-4.1"]="anthropic:claude-opus-4-7"    # Legacy → current
+    ["claude-opus-4-1"]="anthropic:claude-opus-4-7"    # Legacy hyphenated → current
+    ["claude-opus-4.0"]="anthropic:claude-opus-4-7"    # Legacy → current
+    ["claude-opus-4-0"]="anthropic:claude-opus-4-7"    # Legacy hyphenated → current
     ["gemini-2.0"]="google:gemini-2.0-flash"
     ["gemini-2.5-flash"]="google:gemini-2.5-flash"
     ["gemini-2.5-pro"]="google:gemini-2.5-pro"
-    ["gemini-3-flash"]="google:gemini-3-flash"
-    ["gemini-3-pro"]="google:gemini-3-pro"
-    ["gemini-3.1-pro"]="google:gemini-3.1-pro-preview"
+    # gemini-3-flash, gemini-3-pro, gemini-3.1-pro removed per #574 —
+    # they passed allowlist but Google v1beta returned NOT_FOUND. Re-add
+    # when vendor confirms availability (smoke test via live API first).
 )
 
 # =============================================================================
@@ -126,6 +135,142 @@ log() {
 
 error() {
     echo "ERROR: $*" >&2
+}
+
+# =============================================================================
+# Probe-cache integration (Sprint 3B Task 3B.7 — SDD §5.1 row 4-5, §6.2)
+# =============================================================================
+
+PROBE_CACHE_PATH="${LOA_CACHE_DIR:-.run}/model-health-cache.json"
+PROBE_SCRIPT="${LOA_PROBE_SCRIPT:-$(dirname "${BASH_SOURCE[0]}")/model-health-probe.sh}"
+
+# Honor LOA_PROBE_BYPASS in the adapter as well — the probe script handles the
+# audit + TTL on bypass set; the adapter only reads the env var to decide
+# whether to consult the cache at all. The probe-side `_check_bypass` already
+# refused-with-audit when no reason is given.
+_adapter_bypass_active() {
+    [[ "${LOA_PROBE_BYPASS:-0}" == "1" ]] && [[ -n "${LOA_PROBE_BYPASS_REASON:-}" ]]
+}
+
+# Lock-free cache read with one parse-retry (SDD §3.6 Pattern 2).
+# Stdout: full cache JSON, or empty shell on read/parse failure.
+_adapter_cache_read() {
+    local attempt=0 cache
+    [[ -f "$PROBE_CACHE_PATH" ]] || { echo '{"schema_version":"1.0","entries":{}}'; return 0; }
+    while [[ $attempt -lt 2 ]]; do
+        cache="$(cat "$PROBE_CACHE_PATH" 2>/dev/null)" || { attempt=$((attempt+1)); sleep 0.05; continue; }
+        if echo "$cache" | jq empty 2>/dev/null; then
+            echo "$cache"
+            return 0
+        fi
+        attempt=$((attempt+1))
+        sleep 0.05
+    done
+    # Two failed attempts -> treat as cold-start; never block adapter on read.
+    # Surface to stderr (review iter-2 S-2 — observability gap fix).
+    error "model-health-cache.json corrupt or torn after retry; treating as cold-start. Run \`.claude/scripts/model-health-probe.sh --invalidate\` to regenerate."
+    echo '{"schema_version":"1.0","entries":{}}'
+}
+
+# Spawn a background re-probe if no probe is already running for the provider.
+# Uses the same PID sentinel as model-health-probe.sh's _spawn_bg_probe_if_none_running,
+# including the `set -C` atomic-claim race fix (review iter-2 B-2).
+_adapter_spawn_bg_probe() {
+    local provider="$1"
+    local sentinel="${LOA_CACHE_DIR:-.run}/model-health-probe.${provider}.pid"
+    [[ -x "$PROBE_SCRIPT" ]] || return 0  # probe missing -> no-op
+
+    # Stale-sentinel cleanup: PID dead OR file >10min old (defensive).
+    if [[ -f "$sentinel" ]]; then
+        local pid age_s
+        pid="$(cat "$sentinel" 2>/dev/null || echo "")"
+        age_s=$(( $(date +%s) - $(stat -c %Y "$sentinel" 2>/dev/null || stat -f %m "$sentinel" 2>/dev/null || echo 0) ))
+        if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null && (( age_s < 600 )); then
+            return 0   # already running
+        fi
+        rm -f "$sentinel"
+    fi
+
+    # Atomic claim — `set -C` (noclobber) makes `>` fail if the file exists,
+    # closing the TOCTOU race when multiple adapter calls reach this point
+    # simultaneously. First caller wins; the rest dedup silently.
+    if ! ( set -C; echo "$$" > "$sentinel" ) 2>/dev/null; then
+        return 0
+    fi
+
+    (
+        # Replace the parent's PID with the subshell's so kill -0 reflects probe liveness.
+        echo "$$" > "$sentinel"
+        trap 'rm -f "$sentinel"' EXIT
+        "$PROBE_SCRIPT" --provider "$provider" --once --quiet >/dev/null 2>&1 || true
+    ) &
+    disown 2>/dev/null || true
+}
+
+# Pre-flight cache consult — SDD §5.1 row 4-5, §6.2.
+# Returns 0 if model is OK to use; returns 1 with actionable stderr otherwise.
+# Best-effort: cache absent / jq missing / parse failure -> fail-open.
+_probe_cache_check() {
+    local provider_model_id="$1"
+    [[ -z "$provider_model_id" || "$provider_model_id" != *":"* ]] && return 0
+
+    if _adapter_bypass_active; then
+        log "LOA_PROBE_BYPASS=1 with reason; skipping cache check"
+        return 0
+    fi
+
+    command -v jq >/dev/null 2>&1 || return 0  # jq missing -> fail-open
+    [[ -f "$PROBE_CACHE_PATH" ]] || return 0   # cold-start -> fail-open
+
+    local cache state reason probed_at
+    cache="$(_adapter_cache_read)"
+    state="$(echo "$cache" | jq -r --arg k "$provider_model_id" '.entries[$k].state // empty')"
+    reason="$(echo "$cache" | jq -r --arg k "$provider_model_id" '.entries[$k].reason // empty')"
+    probed_at="$(echo "$cache" | jq -r --arg k "$provider_model_id" '.entries[$k].probed_at // empty')"
+
+    # Async re-probe if entry exists and is stale-ish (>= positive_ttl).
+    if [[ -n "$state" ]]; then
+        local provider="${provider_model_id%%:*}"
+        local probed_epoch now age_h
+        probed_epoch="$(date -u -d "$probed_at" +%s 2>/dev/null || date -ju -f "%Y-%m-%dT%H:%M:%SZ" "$probed_at" +%s 2>/dev/null || echo 0)"
+        if [[ "$probed_epoch" -gt 0 ]]; then
+            now="$(date +%s)"
+            age_h=$(( (now - probed_epoch) / 3600 ))
+            # Spawn bg re-probe if entry is older than ~24h (positive_ttl boundary).
+            if (( age_h >= 24 )); then
+                _adapter_spawn_bg_probe "$provider"
+            fi
+        fi
+    fi
+
+    case "$state" in
+        AVAILABLE|"")
+            return 0
+            ;;
+        UNAVAILABLE)
+            error "Model '$provider_model_id' marked UNAVAILABLE by probe on ${probed_at}: ${reason}"
+            error "  Run: .claude/scripts/model-health-probe.sh --invalidate ${provider_model_id##*:}"
+            error "  Or:  set LOA_PROBE_BYPASS=1 with LOA_PROBE_BYPASS_REASON to override (24h TTL, audit-logged)"
+            return 1
+            ;;
+        UNKNOWN)
+            local degraded_ok="true"
+            if command -v yq >/dev/null 2>&1 && [[ -f "${LOA_CONFIG:-.loa.config.yaml}" ]]; then
+                local v
+                v="$(yq eval '.model_health_probe.degraded_ok' "${LOA_CONFIG:-.loa.config.yaml}" 2>/dev/null)"
+                [[ "$v" == "false" ]] && degraded_ok="false"
+            fi
+            if [[ "$degraded_ok" == "true" ]]; then
+                log "Model '$provider_model_id' state UNKNOWN; proceeding (degraded_ok=true; reason: ${reason})"
+                return 0
+            else
+                error "Model '$provider_model_id' state UNKNOWN and degraded_ok=false: ${reason}"
+                error "  Run: .claude/scripts/model-health-probe.sh --invalidate ${provider_model_id##*:}"
+                return 1
+            fi
+            ;;
+    esac
+    return 0
 }
 
 # =============================================================================
@@ -171,7 +316,7 @@ hounfour.flatline_routing is enabled, otherwise uses legacy adapter.
 Models:
   gpt-5.2                    OpenAI GPT-5.2
   gpt-5.3-codex              OpenAI GPT-5.3 Codex
-  opus, claude-opus-4.6      Claude Opus 4.6
+  opus, claude-opus-4.7      Claude Opus 4.7 (current; 4.6 alias retargeted to 4.7 in bash layer)
   (Full model list depends on routing path)
 
 Modes:
@@ -206,13 +351,20 @@ EOF
 }
 
 main() {
-    # If feature flag is disabled, delegate entirely to legacy
-    if ! is_flatline_routing_enabled; then
-        delegate_to_legacy "$@"
-        # exec above means we never reach here
-    fi
+    # cycle-109 Sprint 3 T3.6 (commit C in SDD §5.3.1 sequence): the
+    # pre-fix feature-flag early-exit to delegate_to_legacy was removed.
+    # cheval is now the unconditional default for operator-facing dispatch.
+    # The flag-helper function is retained for other callers (gpt-review-
+    # api, lib-route-table, lib-curl-fallback, red-team-model-adapter);
+    # T3.8 cleans those up after T3.7 destructive legacy deletion under
+    # C109.OP-S3 operator-approval marker.
+    log "Using model-invoke (cheval) dispatch (cycle-109 T3.6 unconditional)"
 
-    log "Flatline routing enabled — using model-invoke"
+    # cycle-099 sprint-2C (T2.5): initialize the operator-extras-aware
+    # overlay. Best-effort — if the merged file is unavailable and the
+    # hook regen also fails, the framework-only model-resolver.sh resolver
+    # below remains the resolution path.
+    loa_overlay_init || true
 
     # Parse arguments (same interface as legacy)
     local model=""
@@ -314,23 +466,41 @@ main() {
         exit 2
     fi
 
-    # Translate legacy model name to model-invoke provider:model-id format
-    local model_override="${MODEL_TO_ALIAS[$model]:-}"
-    if [[ -z "$model_override" ]]; then
-        # Unknown model — try passing as-is (may be already in provider:model format)
+    # cycle-099 sprint-2C (T2.5) + sprint-1B (T1.8): resolution chain in
+    # precedence order:
+    #   (a) overlay-source-helper.sh::loa_overlay_resolve_provider_id —
+    #       operator-extras-aware (.run/merged-model-aliases.sh, when present);
+    #       includes both framework defaults AND `model_aliases_extra` entries.
+    #   (b) model-resolver.sh::resolve_provider_id — framework-only canonical
+    #       map; hits when overlay is unavailable.
+    #   (c) local MODEL_TO_ALIAS — backward-compat retargets (4.0-4.5 → 4.7).
+    #   (d) pass-through — last resort; may already be `provider:model_id`.
+    #
+    # Defense: refresh-if-stale picks up cross-process regen between adapter
+    # invocations (NFR-Compat-X loader contract per SDD §6.3.4). Cheap header
+    # read; no-op when overlay is unavailable.
+    loa_overlay_refresh_if_stale 2>/dev/null || true
+
+    local model_override
+    if model_override="$(loa_overlay_resolve_provider_id "$model" 2>/dev/null)"; then
+        : # operator-extras-aware overlay resolved
+    elif model_override="$(resolve_provider_id "$model" 2>/dev/null)"; then
+        : # framework canonical alias resolved
+    elif [[ -n "${MODEL_TO_ALIAS[$model]:-}" ]]; then
+        model_override="${MODEL_TO_ALIAS[$model]}"
+    else
         model_override="$model"
     fi
 
     log "Mode '$mode' → Agent '$agent'"
     log "Model: $model → $model_override, Phase: $phase"
 
-    # Mock mode — delegate to legacy which has mock fixtures
-    if [[ "${FLATLINE_MOCK_MODE:-}" == "true" ]]; then
-        log "Mock mode — delegating to legacy adapter"
-        delegate_to_legacy --model "$model" --mode "$mode" --input "$input_file" \
-            --phase "$phase" ${context_file:+--context "$context_file"} \
-            ${prompt_file:+--prompt "$prompt_file"} --timeout "$timeout"
-        # exec above means we never reach here
+    # Probe-cache pre-flight (Sprint 3B Task 3B.7) — short-circuit on
+    # UNAVAILABLE before spending an API call. Skipped in mock and dry-run.
+    if [[ "${FLATLINE_MOCK_MODE:-}" != "true" ]] && [[ "$dry_run" != "true" ]]; then
+        if ! _probe_cache_check "$model_override"; then
+            exit 4   # Same code as missing-key family — model not usable
+        fi
     fi
 
     # Build model-invoke arguments
@@ -342,6 +512,38 @@ main() {
         --json-errors
         --timeout "$timeout"
     )
+
+    # cycle-109 Sprint 3 T3.7 — mock mode routes through cheval's
+    # --mock-fixture-dir instead of the (now-deleted) legacy adapter's
+    # get_mock_response synthetic-content generator.
+    #
+    # Lookup precedence:
+    #   1. $FLATLINE_MOCK_DIR/$mode/response.json     (test override + per-mode)
+    #   2. $FLATLINE_MOCK_DIR/response.json           (test override, flat)
+    #   3. tests/fixtures/cycle-109/mock-mode/$mode/  (default canonical)
+    #
+    # Backward-compat: tests that set FLATLINE_MOCK_DIR but place files
+    # there with names cheval doesn't recognize (e.g., legacy's pre-T3.7
+    # convention `<model>-<mode>-response.json`) fall through to the
+    # default canonical per-mode fixture. This preserves behavior for
+    # tests that previously hit the legacy synthetic-content fallback.
+    if [[ "${FLATLINE_MOCK_MODE:-}" == "true" ]]; then
+        local default_mock_root="$PROJECT_ROOT/tests/fixtures/cycle-109/mock-mode"
+        local mock_subdir=""
+        if [[ -n "${FLATLINE_MOCK_DIR:-}" ]]; then
+            if [[ -f "$FLATLINE_MOCK_DIR/$mode/response.json" ]]; then
+                mock_subdir="$FLATLINE_MOCK_DIR/$mode"
+            elif [[ -f "$FLATLINE_MOCK_DIR/response.json" ]]; then
+                mock_subdir="$FLATLINE_MOCK_DIR"
+            fi
+        fi
+        if [[ -z "$mock_subdir" ]]; then
+            # Default canonical per-mode fixture
+            mock_subdir="$default_mock_root/$mode"
+        fi
+        log "Mock mode — routing via cheval --mock-fixture-dir=$mock_subdir"
+        invoke_args+=(--mock-fixture-dir "$mock_subdir")
+    fi
 
     # Map --context to --system (context file becomes system prompt for model-invoke)
     if [[ -n "$context_file" && -f "$context_file" ]]; then

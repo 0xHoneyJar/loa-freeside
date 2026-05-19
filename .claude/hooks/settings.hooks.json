@@ -45,6 +45,14 @@
           {
             "type": "command",
             "command": ".claude/hooks/safety/team-role-guard-write.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/safety/spiral-dispatch-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/safety/adversarial-review-gate.sh"
           }
         ]
       },
@@ -54,6 +62,10 @@
           {
             "type": "command",
             "command": ".claude/hooks/safety/team-role-guard-write.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/safety/spiral-dispatch-guard.sh"
           }
         ]
       },
@@ -63,6 +75,10 @@
           {
             "type": "command",
             "command": ".claude/hooks/safety/team-skill-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/safety/spiral-skill-sentinel.sh"
           }
         ]
       }

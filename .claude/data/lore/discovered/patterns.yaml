@@ -100,3 +100,192 @@ entries:
       seen_in: ["bridge-20260228-cycle047"]
       repos: ["loa"]
       significance: one-off
+
+  - id: agent-network-envelope
+    term: "Agent-Network Audit Envelope"
+    short: "Versioned, hash-chained, Ed25519-signed JSONL envelope shared across all 7 L1-L7 primitives"
+    context: |
+      cycle-098 Sprint 1A landed a single canonical-JSON envelope shape used
+      by every primitive's append-only audit log. The envelope binds primitive_id,
+      event_type, ts_utc, prev_hash, payload, signature, and signing_key_id.
+      Sprint 1B added Ed25519 signing; sprint-1 review remediation (F1) closed
+      the signature-stripping downgrade attack by enforcing strict-sign post-
+      trust-cutoff. Canonicalization via RFC 8785 JCS (NEVER `jq -S -c`).
+      Pattern: shared envelope > per-primitive bespoke schemas. Cross-primitive
+      tooling (verify, recover, snapshot) becomes a single implementation.
+    source: "cycle-098 Sprint 1A/1B + review remediation F1"
+    source_model: "implementation"
+    tags: [discovered, security, schema, audit, cycle-098]
+    loa_mapping: ".claude/data/trajectory-schemas/agent-network-envelope.schema.json + .claude/scripts/audit-envelope.sh"
+    lifecycle:
+      references: 1
+      last_seen: "2026-05-03"
+      seen_in: ["cycle-098-sprint-1"]
+      repos: ["loa"]
+      significance: foundational
+
+  - id: hitl-jury-panel
+    term: "HITL Jury Panel"
+    short: "N-panelist adjudicator (N>=3) with deterministic seed selection + minority-dissent persistence"
+    context: |
+      L1 primitive from cycle-098. For non-protected autonomous decisions,
+      the panel convenes >=3 panelist personas in parallel; each emits a view;
+      a deterministic seed (sha256(decision_id || context_hash)) selects the
+      binding view. Minority dissent is preserved in the audit envelope —
+      not discarded. FR-L1-2 invariant: panelist views logged BEFORE selection
+      (panel.solicit envelope precedes panel.bind), so a crash during selection
+      leaves an auditable trail. Protected-class taxonomy (10 default classes
+      per PRD Appendix D) short-circuits to QUEUED_PROTECTED — no panelists
+      invoked, decision queued for operator review.
+    source: "cycle-098 Sprint 1D RFC #653"
+    source_model: "implementation"
+    tags: [discovered, governance, audit, cycle-098, l1]
+    loa_mapping: ".claude/skills/hitl-jury-panel + .claude/scripts/lib/hitl-jury-panel-lib.sh"
+    lifecycle:
+      references: 1
+      last_seen: "2026-05-03"
+      seen_in: ["cycle-098-sprint-1"]
+      repos: ["loa"]
+      significance: foundational
+
+  - id: protected-class-router
+    term: "Protected-Class Router"
+    short: "Pre-flight taxonomy gate that short-circuits autonomous routing for irreversible / high-stakes decision classes"
+    context: |
+      Decisions tagged with a class in the protected-class taxonomy
+      (credential.rotate, production.deploy, destructive.irreversible,
+      schema.migration, etc.) are routed to QUEUED_PROTECTED instead of being
+      adjudicated by the panel. Pattern: defense-in-depth — even a panel that
+      reaches consensus shouldn't be the gate for these classes; the operator
+      is the gate. Operators can extend the taxonomy via
+      `.loa.config.yaml::protected_classes_extra`. Time-bounded overrides are
+      logged to L4 trust-ledger (audit-emit), not silently allowed.
+    source: "cycle-098 Sprint 1B PRD Appendix D"
+    source_model: "implementation"
+    tags: [discovered, security, governance, cycle-098]
+    loa_mapping: ".claude/scripts/lib/protected-class-router.sh + .claude/data/protected-classes.yaml"
+    lifecycle:
+      references: 1
+      last_seen: "2026-05-03"
+      seen_in: ["cycle-098-sprint-1"]
+      repos: ["loa"]
+      significance: foundational
+
+  - id: trust-store-root-of-trust
+    term: "Trust-Store Root of Trust"
+    short: "Per-repo trust anchor with maintainer-signed key list, distributed via release-signed git tag (not mutable repo state)"
+    context: |
+      The trust-store at grimoires/loa/trust-store.yaml lists writer pubkeys
+      that may sign audit envelopes. Its root_signature is signed offline by
+      the cycle-098 maintainer key (fingerprint
+      e7:6e:ec:46:0b:34:eb:61:0f:6d:b1:27:2d:7e:f3:64:b9:94:d5:1e:49:f1:3a:d0:88:6f:a8:b9:e8:54:c4:d1).
+      The pinned root pubkey at .claude/data/maintainer-root-pubkey.txt is
+      cross-checked at install via 3 channels (PR description, NOTES.md, Sprint 1
+      release notes). Mismatch → [ROOT-PUBKEY-DIVERGENCE] BLOCKER. Pattern:
+      decouple trust anchor from mutable repo state — git tag + GPG-signed
+      commits anchor it, not files an attacker with write access could modify.
+    source: "cycle-098 Sprint 1B SDD §1.9.3.1"
+    source_model: "implementation"
+    tags: [discovered, security, cryptography, cycle-098]
+    loa_mapping: "grimoires/loa/trust-store.yaml + .claude/data/maintainer-root-pubkey.txt"
+    lifecycle:
+      references: 1
+      last_seen: "2026-05-03"
+      seen_in: ["cycle-098-sprint-1"]
+      repos: ["loa"]
+      significance: foundational
+
+  - id: sanitize-for-session-start
+    term: "Sanitize for Session Start"
+    short: "5-layer prompt-injection defense pipeline applied at session boundaries (untrusted-content wrapping)"
+    context: |
+      cycle-098 Sprint 1C primitive. Untrusted text entering a session
+      (handoff bodies, SOUL surface fragments, cross-repo data) flows through:
+      L1 regex pattern detection (function_calls, role-switch, tool-call
+      exfiltration) with redacted markers; L2 structural <untrusted-content>
+      wrapping with explicit "descriptive context only" framing; L3 per-source
+      policy (currently L6/L7); L4 adversarial corpus hook; L5 provenance="
+      untrusted-session-start" tagging. Pattern: never trust input from outside
+      the session's controlled origin; wrapping makes the LLM aware of the
+      context's origin so it doesn't follow embedded instructions.
+    source: "cycle-098 Sprint 1C SDD §1.4.1, §3.4"
+    source_model: "implementation"
+    tags: [discovered, security, prompt-injection, cycle-098]
+    loa_mapping: ".claude/scripts/lib/context-isolation-lib.sh::sanitize_for_session_start"
+    lifecycle:
+      references: 1
+      last_seen: "2026-05-03"
+      seen_in: ["cycle-098-sprint-1"]
+      repos: ["loa"]
+      significance: foundational
+
+  - id: structured-handoff
+    term: "Structured Handoff"
+    short: "Schema-validated, content-addressable, single-machine handoff documents — INDEX.md atomic writes + SessionStart surfacing under prompt-injection sanitization"
+    context: |
+      cycle-098 Sprint 6 (FR-L6). The L6 primitive provides a typed channel
+      for operator-to-operator (or session-to-session) context handoff.
+      Each handoff is a markdown file with YAML frontmatter; an INDEX.md
+      table tracks (handoff_id, file, from, to, topic, ts_utc, read_by) for
+      atomic state. handoff_id is content-addressable (SHA-256 of canonical
+      JSON via lib/jcs.sh, RFC 8785) so byte-identical content is
+      idempotent across writers. Atomic writes: one flock guards
+      collision-resolve (numeric suffix on filename), body write, and
+      INDEX.md update — no race window where two writers can publish to
+      the same path.
+
+      Three trust boundaries:
+        1. Schema-strict frontmatter (slug regex on from/to/topic prevents
+           filesystem traversal). additionalProperties:false rejects
+           unknown frontmatter keys.
+        2. Operator verification via OPERATORS.md (verify_operators=true
+           default; strict-mode rejects unknown/offboarded; warn-mode
+           accepts but tags audit payload with the verification state).
+        3. Body is UNTRUSTED. Sanitization happens at SURFACING time
+           (SessionStart hook -> sanitize_for_session_start("L6", body)),
+           never at write time. The banner explicitly frames the content
+           as descriptive, not instructional.
+
+      Same-machine-only (SDD §1.7.1): cross-host writes are refused with
+      [CROSS-HOST-REFUSED] BLOCKER + audit log. The .run/machine-fingerprint
+      file pins identity to (hostname, machine-id); migration requires an
+      explicit operator override (audit-logged with reason).
+    source: "cycle-098 Sprint 6 SDD §1.4.2, §5.8, §1.7.1"
+    source_model: "implementation"
+    tags: [discovered, security, governance, audit, cycle-098, l6]
+    loa_mapping: ".claude/scripts/lib/structured-handoff-lib.sh::handoff_write"
+    lifecycle:
+      references: 1
+      last_seen: "2026-05-07"
+      seen_in: ["cycle-098-sprint-6"]
+      repos: ["loa"]
+      significance: foundational
+
+  - id: machine-fingerprint-guardrail
+    term: "Machine-Fingerprint Guardrail"
+    short: "Hard runtime check that pins L1/L2/L4/L6 audit-log writes to the machine that originated the chain"
+    context: |
+      cycle-098 SDD §1.7.1 SKP-005 pass #2. Documenting "single-machine
+      only" in OOS is insufficient — operators will violate it. The
+      guardrail computes a fingerprint of (hostname, /etc/machine-id) on
+      first run, stores it in .run/machine-fingerprint, and re-checks on
+      every audit-log write of L1/L2/L4/L6. Mismatch -> the lib refuses
+      the write, emits a [CROSS-HOST-REFUSED] BLOCKER to a temp staging
+      log (not the canonical chain — preserves chain integrity on the
+      origin host), and surfaces a promotion path to the operator
+      ('/loa machine-fingerprint regenerate'). Migration is allowed but
+      audit-logged with operator identity + reason; old fingerprints
+      preserved in .run/machine-fingerprint.history.jsonl.
+
+      L3 (cycles, content-addressed cycle_id), L5 (read-only), L7 (no
+      hash-chained state) are exempt — chain integrity isn't at risk.
+    source: "cycle-098 SDD §1.7.1 (SKP-005 pass #2 HIGH 720)"
+    source_model: "design"
+    tags: [discovered, security, audit, cycle-098, multi-host]
+    loa_mapping: ".claude/scripts/lib/structured-handoff-lib.sh::_handoff_assert_same_machine"
+    lifecycle:
+      references: 1
+      last_seen: "2026-05-07"
+      seen_in: ["cycle-098-sprint-6"]
+      repos: ["loa"]
+      significance: foundational

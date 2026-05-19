@@ -21,6 +21,22 @@ export interface BridgebuilderConfig {
     targetPr?: number;
     /** Explicit Loa-aware mode override. true=force on, false=force off, undefined=auto-detect. */
     loaAware?: boolean;
+    /**
+     * Per-PR self-review opt-in. When true, the Loa-aware filter (Step 0 of
+     * truncateFiles) is skipped — framework files under `.claude/`, `grimoires/`,
+     * `.beads/`, etc. are admitted into the review payload.
+     *
+     * Set per-call by reviewer.ts when the PR carries the `bridgebuilder:self-review`
+     * label. This is the per-PR opt-in vision-013 names — reviews of bridgebuilder
+     * itself, of cycle-planning artifacts, or of other framework changes need to
+     * see the substrate, not be blinded by the filter that protects code-PR review
+     * from grimoire noise. Closes #796.
+     *
+     * NOTE: this is intentionally a per-call override, not a config-wide knob.
+     * `loaAware: false` already exists for global disable; `selfReview: true` is
+     * the per-PR signal that flows from PR labels to the truncate call.
+     */
+    selfReview?: boolean;
     /** Git repo root for path resolution (defaults to cwd). */
     repoRoot?: string;
     /** Persona pack name (e.g. "security", "dx"). */
@@ -37,6 +53,63 @@ export interface BridgebuilderConfig {
     pass1Cache?: {
         enabled: boolean;
     };
+    /** Multi-model review configuration. When enabled, multiple models review in parallel. */
+    multiModel?: MultiModelConfig;
+}
+/** Multi-model provider configuration entry. */
+export interface MultiModelProviderEntry {
+    provider: string;
+    model_id: string;
+    role: "primary" | "reviewer";
+}
+/** Multi-model Bridgebuilder configuration. */
+export interface MultiModelConfig {
+    enabled: boolean;
+    models: MultiModelProviderEntry[];
+    iteration_strategy: "every" | "final" | number[];
+    api_key_mode: "graceful" | "strict";
+    consensus: {
+        enabled: boolean;
+        scoring_thresholds: {
+            high_consensus: number;
+            disputed_delta: number;
+            low_value: number;
+            blocker: number;
+        };
+    };
+    token_budget: {
+        per_model: number | null;
+        total: number | null;
+    };
+    depth: {
+        structural_checklist: boolean;
+        checklist_min_elements: number;
+        permission_to_question: boolean;
+        lore_active_weaving: boolean;
+        /**
+         * Path to the lore patterns YAML file. Used only when
+         * `lore_active_weaving === true`. Defaults to
+         * `grimoires/loa/lore/patterns.yaml` (DEFAULT_LORE_PATH in lore-loader.ts).
+         */
+        lore_path?: string;
+    };
+    cross_repo: {
+        auto_detect: boolean;
+        manual_refs: string[];
+    };
+    rating: {
+        enabled: boolean;
+        timeout_seconds: number;
+        retrospective_command: boolean;
+    };
+    progress: {
+        verbose: boolean;
+    };
+    max_concurrency?: number;
+    cost_rates?: Record<string, {
+        input: number;
+        output: number;
+    }>;
 }
 export interface ReviewItem {
     owner: string;
@@ -112,6 +185,30 @@ export interface TruncationResult {
         filesExcluded: number;
         bytesSaved: number;
     };
+    /**
+     * True when the self-review opt-in (#796 / vision-013) was active AND
+     * succeeded for this truncation pass — framework files were admitted.
+     *
+     * BB-797-001 (iter-3): typed; never substring-match the banner prose.
+     * BB-797-004-typing (iter-4): required, not optional.
+     *
+     * BB-797-002 (iter-5): kept as a convenience mirror of `selfReviewState ===
+     * "active"`. Downstream consumers needing to distinguish "rejected" from
+     * "inactive" (cache keys, audit) MUST read `selfReviewState` instead — the
+     * boolean lossy-encodes the tri-state and produces cache collisions.
+     */
+    selfReviewActive: boolean;
+    /**
+     * Tri-state self-review outcome (#797 iter-5 BB-797-002):
+     *   - "inactive": no self-review label on PR (default-filter path ran)
+     *   - "active":   label present + .reviewignore readable + framework files admitted
+     *   - "rejected": label present BUT .reviewignore unreadable → fail-closed
+     *                 to default filter (BB-797-001-security iter-4)
+     *
+     * Cache keys MUST dimension on this field, not the boolean: "inactive" and
+     * "rejected" both yield selfReviewActive=false but produce different prompts.
+     */
+    selfReviewState: "inactive" | "active" | "rejected";
     /** Truncation level applied (undefined = no progressive truncation). */
     truncationLevel?: 1 | 2 | 3;
     /** Disclaimer text for the current truncation level. */
@@ -176,6 +273,29 @@ export interface EnrichmentOptions {
     truncationContext?: TruncationContext;
     personaMetadata?: PersonaMetadata;
     ecosystemContext?: EcosystemContext;
+    /**
+     * Lore entries passed through to `buildEnrichedSystemPrompt`. Only emitted
+     * in the prompt when `multiModelConfig.depth.lore_active_weaving === true`.
+     * Closes #464 A5 — multi-model enrichment now actually weaves lore.
+     */
+    loreEntries?: LoreEntryRef[];
+    /**
+     * Multi-model config. Required to read the `depth.lore_active_weaving`
+     * flag that gates lore inclusion. Optional for backwards compatibility.
+     */
+    multiModelConfig?: MultiModelConfig;
+}
+/**
+ * Local minimal LoreEntry shape (mirrors `LoreEntry` exported by template.ts).
+ * Avoids a circular type import — types.ts is imported by template.ts.
+ */
+export interface LoreEntryRef {
+    id: string;
+    term: string;
+    short: string;
+    context: string;
+    source?: string;
+    tags?: string[];
 }
 /** Token estimate broken down by component for calibration logging. */
 export interface TokenEstimateBreakdown {

@@ -17,17 +17,22 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from loa_cheval.providers.base import (
     ProviderAdapter,
+    _streaming_disabled,
     enforce_context_window,
     http_post,
+    http_post_stream,
 )
+from loa_cheval.providers.google_streaming import parse_google_stream
 from loa_cheval.types import (
     CompletionRequest,
     CompletionResult,
     ConfigError,
     InvalidInputError,
+    ProviderStreamError,
     ProviderUnavailableError,
     RateLimitError,
     Usage,
+    dispatch_provider_stream_error,
 )
 
 logger = logging.getLogger("loa_cheval.providers.google")
@@ -48,18 +53,48 @@ class GoogleAdapter(ProviderAdapter):
     Supports:
     - Standard generateContent (Gemini 2.5/3)
     - Deep Research via Interactions API (Sprint 2 stub)
+    - cycle-095 Sprint 2 (Task 2.5 / SDD §3.5, §5.8): probe-driven
+      fallback_chain demotion with cooldown hysteresis.
     """
+
+    # cycle-095 Sprint 2: per-instance state for fallback hysteresis.
+    # in-process only by default; persist_state opt-in deferred.
 
     def __init__(self, config):
         # type: (Any) -> None
         super().__init__(config)
         # API version pinned, configurable via model extra (Flatline SKP-003)
         self._api_version = "v1beta"
+        # cycle-095 Sprint 2: fallback hysteresis state.
+        # _demoted_state: model_id -> first-unavailable timestamp (monotonic)
+        # _last_fallback_used: primary model_id -> the fallback chosen
+        # _demotion_warned: (primary, fallback) pairs already WARN'd this process
+        # _recovery_logged: model_ids already INFO'd for recovery this process
+        self._demoted_state = {}        # type: Dict[str, float]
+        self._last_fallback_used = {}   # type: Dict[str, str]
+        self._demotion_warned = set()   # type: set
+        self._recovery_logged = set()   # type: set
+        # Cooldown default 300s (SDD §3.5); operator override via fallback config
+        self._cooldown_seconds = 300.0
 
     def complete(self, request):
         # type: (CompletionRequest) -> CompletionResult
         """Route to standard or Deep Research based on api_mode."""
         model_config = self._get_model_config(request.model)
+
+        # cycle-095 Sprint 2: substitute the active model_id based on probe state.
+        # If primary is UNAVAILABLE and fallback_chain is set, demote to first
+        # AVAILABLE entry. The resolved model_id is what gets called.
+        active_model = self._resolve_active_model(request, model_config)
+        if active_model != request.model:
+            # Re-fetch the model_config for the resolved model so token_param,
+            # context_window, pricing, etc. all reflect the active target.
+            model_config = self._get_model_config(active_model)
+            # Mutate the request's model field so downstream URL build + ledger
+            # entries use the resolved model. CompletionRequest is a dataclass
+            # but not frozen — direct attribute set is the documented mutation
+            # path (matches existing #641 anthropic params handling).
+            request.model = active_model
 
         # Check api_mode: "interactions" routes to Deep Research (Sprint 2)
         api_mode = model_config.api_mode or "standard"
@@ -67,6 +102,142 @@ class GoogleAdapter(ProviderAdapter):
             return self._complete_deep_research(request, model_config)
 
         return self._complete_standard(request, model_config)
+
+    # --- cycle-095 Sprint 2: probe-driven fallback chain (SDD §3.5, §5.8) ---
+
+    def _resolve_active_model(self, request, primary_config):
+        # type: (CompletionRequest, Any) -> str
+        """Return the model_id to actually call after fallback consideration.
+
+        Walks the primary's fallback_chain on UNAVAILABLE; promotes back to
+        primary after cooldown_seconds when probe recovers (hysteresis).
+        Raises ProviderUnavailableError if all chain entries are UNAVAILABLE.
+
+        See SDD §5.8 for the algorithm; SDD §3.5 for the trust boundary.
+        """
+        primary = request.model
+        chain = getattr(primary_config, "fallback_chain", None) or []
+        if not chain:
+            return primary
+
+        primary_available = self._is_available(self.provider, primary)
+        now = time.monotonic()
+
+        if primary_available:
+            # Primary AVAILABLE — consider promoting back from fallback (hysteresis).
+            if primary in self._demoted_state:
+                unavailable_since = self._demoted_state[primary]
+                if (now - unavailable_since) >= self._cooldown_seconds:
+                    if primary not in self._recovery_logged:
+                        logger.info(
+                            "Probe recovered for %s; promoting back from fallback",
+                            primary,
+                        )
+                        self._recovery_logged.add(primary)
+                    self._demoted_state.pop(primary, None)
+                    self._last_fallback_used.pop(primary, None)
+                    return primary
+                # Still in cooldown — stay on the most-recently-chosen fallback.
+                return self._last_fallback_used.get(primary, primary)
+            return primary
+
+        # Primary UNAVAILABLE — record demotion start time and walk chain.
+        self._demoted_state.setdefault(primary, now)
+        # Recovery logging is now stale — clear so next recovery re-logs.
+        self._recovery_logged.discard(primary)
+
+        for entry in chain:
+            if not isinstance(entry, str):
+                continue
+            if ":" in entry:
+                _provider, candidate = entry.split(":", 1)
+            else:
+                candidate = entry
+            if self._is_available(self.provider, candidate):
+                pair = (primary, candidate)
+                if pair not in self._demotion_warned:
+                    logger.warning(
+                        "Demoting %s -> %s (probe state UNAVAILABLE for primary)",
+                        primary,
+                        candidate,
+                    )
+                    self._demotion_warned.add(pair)
+                self._last_fallback_used[primary] = candidate
+                return candidate
+
+        raise ProviderUnavailableError(
+            self.provider,
+            "all fallback chain UNAVAILABLE: primary=%s, chain=%s" % (primary, chain),
+        )
+
+    def _is_available(self, provider, model_id):
+        # type: (str, str) -> bool
+        """Read probe state from the cache file with trust-boundary check.
+
+        Returns True if the cache says AVAILABLE; False if UNAVAILABLE OR
+        if the cache is missing OR if the cache fails the trust check
+        (defense against attacker-written cache files manipulating routing —
+        SDD §3.5 SKP-003 HIGH 770).
+
+        Cache schema: {"models": {"google:gemini-3-flash-preview": "AVAILABLE"|"UNAVAILABLE", ...}}
+        Missing entry → treated as UNKNOWN; we conservatively return True
+        (i.e., assume primary is reachable until proven otherwise) so the
+        fallback chain only fires on actively-confirmed UNAVAILABLE state.
+        """
+        cache_path = ".run/model-health-cache.json"
+        try:
+            if not os.path.exists(cache_path):
+                return True  # No probe state = no demotion signal
+            if not self._probe_cache_trust_check(cache_path):
+                # Trust check failed — log ERROR and treat as UNKNOWN.
+                # No fallback fires (UNKNOWN ≠ UNAVAILABLE), and the operator
+                # gets a noisy ERROR log to investigate.
+                return True
+            with open(cache_path) as f:
+                cache = _json.load(f)
+            models = cache.get("models", {})
+            key = "%s:%s" % (provider, model_id)
+            state = models.get(key)
+            if state == "UNAVAILABLE":
+                return False
+            return True
+        except Exception as exc:
+            # Any read/parse error → fail safe to AVAILABLE (no spurious demotion).
+            logger.warning("probe cache read failed (%s); treating %s as AVAILABLE", exc, model_id)
+            return True
+
+    def _probe_cache_trust_check(self, cache_path):
+        # type: (str) -> bool
+        """Verify file owner UID matches process UID and mode is 0600 or stricter.
+
+        Defends against an attacker-writable cache file manipulating routing
+        decisions. On Windows / non-POSIX systems, skip the check
+        (file ownership semantics differ; UNKNOWN behavior is the safe path).
+        """
+        try:
+            stat = os.stat(cache_path)
+            # Only enforce on POSIX systems where ownership/mode are meaningful.
+            if not hasattr(os, "geteuid"):
+                return True
+            if stat.st_uid != os.geteuid():
+                logger.error(
+                    "probe cache %s owned by uid=%d (expected %d); "
+                    "treating as UNKNOWN. Investigate possible tampering.",
+                    cache_path, stat.st_uid, os.geteuid(),
+                )
+                return False
+            mode_other_world = stat.st_mode & 0o077  # any g/o permission bits
+            if mode_other_world != 0:
+                logger.error(
+                    "probe cache %s has loose mode %#o (expected 0600 or stricter); "
+                    "treating as UNKNOWN.",
+                    cache_path, stat.st_mode & 0o777,
+                )
+                return False
+            return True
+        except OSError:
+            # stat failed — treat as missing/unreadable, not malicious.
+            return False
 
     def validate_config(self):
         # type: () -> List[str]
@@ -151,33 +322,106 @@ class GoogleAdapter(ProviderAdapter):
             "Content-Type": "application/json",
             "x-goog-api-key": auth,
         }
-        url = self._build_url(
-            "models/%s:generateContent" % request.model
-        )
 
-        # Call with retry + concurrency control (Flatline IMP-001, Task 2.4)
-        with FLockSemaphore("google-standard", max_concurrent=5):
-            start = time.monotonic()
-            status, resp = _call_with_retry(
-                url, headers, body,
-                connect_timeout=self.config.connect_timeout,
-                read_timeout=self.config.read_timeout,
-            )
-            latency_ms = int((time.monotonic() - start) * 1000)
+        # Sprint 4A (cycle-102, AC-4.5e + DISS-001 closure): streaming default
+        # + operator kill switch. Detection centralized in
+        # `base._streaming_disabled()` so adapter routing and the MODELINV
+        # `streaming` audit field share identical semantics.
+        streaming_disabled = _streaming_disabled()
 
-        # Error mapping (Task 1.5)
-        if status >= 400:
-            _raise_for_status(status, resp, self.provider)
-
-        # Parse response (Task 1.4)
         # Pass input text length for token estimation when usageMetadata is absent
         input_text_len = sum(
             len(m.get("content", "")) for m in request.messages
             if isinstance(m.get("content"), str)
         )
-        return _parse_response(
-            resp, request.model, latency_ms, self.provider, model_config,
-            input_text_length=input_text_len,
+
+        if streaming_disabled:
+            url = self._build_url("models/%s:generateContent" % request.model)
+            with FLockSemaphore("google-standard", max_concurrent=5):
+                start = time.monotonic()
+                status, resp = _call_with_retry(
+                    url, headers, body,
+                    connect_timeout=self.config.connect_timeout,
+                    read_timeout=self.config.read_timeout,
+                )
+                latency_ms = int((time.monotonic() - start) * 1000)
+
+            if status >= 400:
+                _raise_for_status(status, resp, self.provider)
+
+            return _parse_response(
+                resp, request.model, latency_ms, self.provider, model_config,
+                input_text_length=input_text_len,
+            )
+
+        # Streaming path: Gemini's :streamGenerateContent + ?alt=sse.
+        url = self._build_url(
+            "models/%s:streamGenerateContent?alt=sse" % request.model
+        )
+
+        with FLockSemaphore("google-standard", max_concurrent=5):
+            start = time.monotonic()
+            try:
+                with http_post_stream(
+                    url=url,
+                    headers=headers,
+                    body=body,
+                    connect_timeout=self.config.connect_timeout,
+                    read_timeout=self.config.read_timeout,
+                ) as resp_stream:
+                    status = resp_stream.status_code
+
+                    if status >= 400:
+                        err_bytes = b"".join(resp_stream.iter_bytes())
+                        try:
+                            err_json = _json.loads(
+                                err_bytes.decode("utf-8", errors="replace")
+                            )
+                        except Exception:
+                            err_json = {
+                                "error": {
+                                    "message": err_bytes.decode(
+                                        "utf-8", errors="replace"
+                                    )[:500]
+                                }
+                            }
+                        _raise_for_status(status, err_json, self.provider)
+
+                    try:
+                        result = parse_google_stream(
+                            resp_stream.iter_bytes(),
+                            model_id=request.model,
+                            provider=self.provider,
+                            input_text_length=input_text_len,
+                        )
+                    except ProviderStreamError as stream_err:
+                        # T3.5 / AC-3.5: dispatch SSE buffer + accumulator
+                        # cap exhaustion through T3.1's table → typed.
+                        raise dispatch_provider_stream_error(
+                            stream_err, provider=self.provider
+                        ) from stream_err
+                    except ValueError as ve:
+                        # Safety / Recitation / failure events surface here.
+                        # T3.3 / AC-3.3: sanitize upstream-derived message.
+                        from loa_cheval.redaction import sanitize_provider_error_message
+                        raise InvalidInputError(
+                            sanitize_provider_error_message(str(ve))
+                        )
+            finally:
+                latency_ms = int((time.monotonic() - start) * 1000)
+
+        # cycle-103 T3.2 / AC-3.2: streaming path → metadata['streaming']=True.
+        _meta = dict(result.metadata or {})
+        _meta["streaming"] = True
+        return CompletionResult(
+            content=result.content,
+            tool_calls=result.tool_calls,
+            thinking=result.thinking,
+            usage=result.usage,
+            model=result.model,
+            latency_ms=latency_ms,
+            provider=result.provider,
+            metadata=_meta,
         )
 
     def _complete_deep_research(self, request, model_config):
@@ -232,6 +476,9 @@ class GoogleAdapter(ProviderAdapter):
                 source="actual" if usage_meta else "estimated",
             )
 
+            # cycle-103 T3.2 / AC-3.2: Deep Research is polling-completion,
+            # not streaming. Set streaming=False so the audit envelope
+            # records the actual transport, not the env-derived default.
             return CompletionResult(
                 content=content,
                 tool_calls=None,
@@ -241,6 +488,7 @@ class GoogleAdapter(ProviderAdapter):
                 latency_ms=latency_ms,
                 provider=self.provider,
                 interaction_id=interaction_id,
+                metadata={"streaming": False},
             )
 
     def create_interaction(self, request, model_config, store=False):
@@ -598,6 +846,8 @@ def _parse_response(resp, model_id, latency_ms, provider, model_config,
         usage.output_tokens,
     )
 
+    # cycle-103 T3.2 / AC-3.2: _parse_response is only called from the
+    # non-streaming standard path → streaming=False.
     return CompletionResult(
         content=content,
         tool_calls=None,  # Tool calls not supported in standard path yet
@@ -606,6 +856,7 @@ def _parse_response(resp, model_id, latency_ms, provider, model_config,
         model=model_id,
         latency_ms=latency_ms,
         provider=provider,
+        metadata={"streaming": False},
     )
 
 
@@ -636,13 +887,22 @@ def _raise_for_status(status, resp, provider):
 
 def _extract_error_message(resp):
     # type: (Dict[str, Any]) -> str
-    """Extract error message from Google API error response."""
+    """Extract error message from Google API error response.
+
+    cycle-103 T3.3 / AC-3.3: return value is sanitized via
+    `sanitize_provider_error_message` (secret-shape redaction).
+    """
+    from loa_cheval.redaction import sanitize_provider_error_message
+
     if isinstance(resp, dict):
         error = resp.get("error", {})
         if isinstance(error, dict):
-            return error.get("message", str(resp))
-        return str(error)
-    return str(resp)
+            raw = error.get("message", str(resp))
+        else:
+            raw = str(error)
+    else:
+        raw = str(resp)
+    return sanitize_provider_error_message(raw)
 
 
 # --- Retry Logic (Flatline IMP-001) ---

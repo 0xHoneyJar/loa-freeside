@@ -29,6 +29,7 @@ import {
   progressiveTruncate,
   estimateTokens,
   getTokenBudget,
+  deriveCallConfig,
 } from "./truncation.js";
 
 const CRITICAL_PATTERN =
@@ -801,7 +802,8 @@ export class ReviewPipeline {
     const pass1Start = this.now();
 
     const convergenceSystem = this.template.buildConvergenceSystemPrompt();
-    const truncated = truncateFiles(effectiveItem.files, this.config);
+    // #796 / vision-013 + BB-004: deriveCallConfig is the single chokepoint.
+    const truncated = truncateFiles(effectiveItem.files, deriveCallConfig(this.config, pr));
 
     // Handle all-files-excluded by Loa filtering
     if (truncated.allExcluded) {
@@ -888,6 +890,7 @@ export class ReviewPipeline {
       const convergencePromptHash = await this.hasher.sha256(finalConvergenceSystem);
       const cacheKey = await computeCacheKey(
         this.hasher, pr.headSha, truncationLevel, convergencePromptHash,
+        truncated.selfReviewState,
       );
 
       const cached = await this.pass1Cache.get(cacheKey);
@@ -979,6 +982,7 @@ export class ReviewPipeline {
         const convergencePromptHash = await this.hasher.sha256(finalConvergenceSystem);
         const cacheKey = await computeCacheKey(
           this.hasher, pr.headSha, truncationLevel, convergencePromptHash,
+          truncated.selfReviewState,
         );
         await this.pass1Cache.set(cacheKey, {
           findings: { raw: findingsJSON, parsed: pass1Parsed },

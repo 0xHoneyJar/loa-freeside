@@ -8,14 +8,32 @@ from loa_cheval.providers.base import ProviderAdapter
 from loa_cheval.providers.openai_adapter import OpenAIAdapter
 from loa_cheval.providers.anthropic_adapter import AnthropicAdapter
 from loa_cheval.providers.google_adapter import GoogleAdapter
+from loa_cheval.providers.bedrock_adapter import BedrockAdapter
+from loa_cheval.providers.codex_headless_adapter import CodexHeadlessAdapter
+from loa_cheval.providers.gemini_headless_adapter import GeminiHeadlessAdapter
+from loa_cheval.providers.claude_headless_adapter import ClaudeHeadlessAdapter
 from loa_cheval.types import ConfigError, ProviderConfig
 
-# Provider type → adapter class mapping
+# Provider type → adapter class mapping.
+# - cycle-096 Sprint 1 added 'bedrock'.
+# - codex-headless: routes through `codex exec` for ChatGPT subscription auth
+#   (no OPENAI_API_KEY consumed). See codex_headless_adapter.py.
+# - gemini-headless: routes through `gemini -p` for Google AI subscription
+#   auth (no GOOGLE_API_KEY consumed). See gemini_headless_adapter.py.
+# - claude-headless: routes through `claude -p` (Claude Code CLI) for Claude
+#   Max/Pro subscription auth (no ANTHROPIC_API_KEY consumed). Different
+#   from `claude-code:session` (NATIVE_PROVIDER) — that's the in-process
+#   native runtime; this is a subprocess CLI invocation. See
+#   claude_headless_adapter.py.
 _ADAPTER_REGISTRY: Dict[str, Type[ProviderAdapter]] = {
     "openai": OpenAIAdapter,
     "anthropic": AnthropicAdapter,
     "openai_compat": OpenAIAdapter,  # OpenAI-compatible uses the same adapter
     "google": GoogleAdapter,
+    "bedrock": BedrockAdapter,
+    "codex-headless": CodexHeadlessAdapter,
+    "gemini-headless": GeminiHeadlessAdapter,
+    "claude-headless": ClaudeHeadlessAdapter,
 }
 
 
@@ -27,4 +45,14 @@ def get_adapter(config: ProviderConfig) -> ProviderAdapter:
     return adapter_cls(config)
 
 
-__all__ = ["ProviderAdapter", "OpenAIAdapter", "AnthropicAdapter", "GoogleAdapter", "get_adapter"]
+__all__ = [
+    "ProviderAdapter",
+    "OpenAIAdapter",
+    "AnthropicAdapter",
+    "GoogleAdapter",
+    "BedrockAdapter",
+    "CodexHeadlessAdapter",
+    "GeminiHeadlessAdapter",
+    "ClaudeHeadlessAdapter",
+    "get_adapter",
+]

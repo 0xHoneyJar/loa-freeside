@@ -29,6 +29,27 @@ if [[ -z "${BASH_SOURCE[0]:-}" ]] && [[ -z "${_LOA_MOUNT_REEXEC:-}" ]]; then
   # Replaced by the script's normal traps after exec.
   trap 'rm -rf "$_loa_tmpdir" 2>/dev/null' EXIT INT TERM HUP
 
+  # [ENDPOINT-VALIDATOR-EXEMPT] cycle-099 sprint-1E.c.3.b: this is the
+  # bootstrap path — the endpoint validator + its allowlist files don't
+  # exist on disk YET (we're downloading them right now). Hardening in
+  # place: (1) validate _loa_ref against an alphanumeric+dotted pattern
+  # AND reject any `..` segment (GitHub raw.githubusercontent.com normalizes
+  # `..` per RFC 3986 §5.2.4, so `_loa_ref="../attacker/repo/refs/heads/main"`
+  # would otherwise resolve to a different repo); (2) hardcode the host
+  # (raw.githubusercontent.com) as a literal string so the URL composition
+  # is visible in source — not operator-overridable; (3) curl with
+  # --proto =https / --proto-redir =https / --max-redirs 10 hardened defaults
+  # that mirror the wrapper's defaults.
+  if [[ ! "$_loa_ref" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+    printf '\033[0;31m[loa]\033[0m ERROR: invalid ref '\''%s'\'' (must match [A-Za-z0-9._/-]+)\n' "$_loa_ref" >&2
+    rm -rf "$_loa_tmpdir"
+    exit 1
+  fi
+  if [[ "$_loa_ref" == *..* ]]; then
+    printf '\033[0;31m[loa]\033[0m ERROR: ref '\''%s'\'' contains `..` — repo-pivot via path traversal blocked\n' "$_loa_ref" >&2
+    rm -rf "$_loa_tmpdir"
+    exit 1
+  fi
   _loa_base="https://raw.githubusercontent.com/0xHoneyJar/loa/${_loa_ref}/.claude/scripts"
 
   # B1/S1: Use printf '%s' to avoid ANSI escape injection from _loa_ref
@@ -39,7 +60,8 @@ if [[ -z "${BASH_SOURCE[0]:-}" ]] && [[ -z "${_LOA_MOUNT_REEXEC:-}" ]]; then
   mkdir -p "$_loa_tmpdir/lib"
   _loa_ok=true
   for _f in mount-loa.sh mount-submodule.sh compat-lib.sh; do
-    if ! curl -fsSL -- "$_loa_base/$_f" -o "$_loa_tmpdir/$_f"; then
+    if ! curl --proto =https --proto-redir =https --max-redirs 10 \
+              -fsSL -o "$_loa_tmpdir/$_f" -- "$_loa_base/$_f"; then
       _loa_ok=false
     fi
   done
@@ -55,7 +77,8 @@ if [[ -z "${BASH_SOURCE[0]:-}" ]] && [[ -z "${_LOA_MOUNT_REEXEC:-}" ]]; then
 
   # Download auxiliary scripts (non-fatal if missing in older versions)
   for _f in bootstrap.sh bash-version-guard.sh lib/symlink-manifest.sh; do
-    curl -fsSL -- "$_loa_base/$_f" -o "$_loa_tmpdir/$_f" 2>/dev/null || true
+    curl --proto =https --proto-redir =https --max-redirs 10 \
+         -fsSL -o "$_loa_tmpdir/$_f" -- "$_loa_base/$_f" 2>/dev/null || true
   done
   chmod +x "$_loa_tmpdir"/*.sh "$_loa_tmpdir/lib"/*.sh 2>/dev/null || true
 
@@ -251,6 +274,10 @@ NO_AUTO_INSTALL=false
 SUBMODULE_MODE=true
 MIGRATE_TO_SUBMODULE=false
 MIGRATE_APPLY=false
+# Construct-network bundle (cycle-005 L5) — opt-in by default to avoid
+# surprising operators; flips on when --with-constructs is passed.
+WITH_CONSTRUCTS=false
+CONSTRUCTS_PACK="construct-network-tools"
 
 # === Argument Parsing ===
 while [[ $# -gt 0 ]]; do
@@ -306,6 +333,21 @@ while [[ $# -gt 0 ]]; do
       SUBMODULE_REF="$2"
       shift 2
       ;;
+    --with-constructs)
+      # cycle-005 L5 — opt-in bundle install after mount
+      WITH_CONSTRUCTS=true
+      shift
+      ;;
+    --no-constructs)
+      # Explicit opt-out (future-proof when default flips)
+      WITH_CONSTRUCTS=false
+      shift
+      ;;
+    --constructs-pack)
+      # Override default bundle slug
+      CONSTRUCTS_PACK="$2"
+      shift 2
+      ;;
     -h|--help)
       echo "Usage: mount-loa.sh [OPTIONS]"
       echo ""
@@ -327,6 +369,11 @@ while [[ $# -gt 0 ]]; do
       echo "  --skip-beads      Don't install/initialize Beads CLI"
       echo "  --no-auto-install Don't auto-install missing dependencies (jq, yq)"
       echo "  --no-commit       Skip creating git commit after mount"
+      echo ""
+      echo "Construct Network (optional):"
+      echo "  --with-constructs          Install the construct-network bundle after mount"
+      echo "  --no-constructs            Explicit opt-out (future-proof if default flips)"
+      echo "  --constructs-pack <slug>   Override bundle slug (default: construct-network-tools)"
       echo ""
       echo "Migration:"
       echo "  --migrate-to-submodule  Migrate vendored install to submodule mode"
@@ -497,7 +544,16 @@ auto_install_deps() {
           *) warn "Unknown arch for yq download"; return 0 ;;
         esac
         local yq_url="https://github.com/mikefarah/yq/releases/download/${yq_version}/yq_linux_${yq_arch}"
-        if sudo curl -fsSL "$yq_url" -o /usr/local/bin/yq && sudo chmod +x /usr/local/bin/yq; then
+        # [ENDPOINT-VALIDATOR-EXEMPT] cycle-099 sprint-1E.c.3.b: yq install
+        # is a bootstrap-internal dependency that must run BEFORE the rest
+        # of the framework can use yq-driven config. The validator itself
+        # depends on Python+idna which may not be available yet at this
+        # stage of mount-loa. URL is composed from a hardcoded host
+        # (github.com), pinned version, and an allowlisted arch — no
+        # operator input flows into the URL. Hardening defaults below
+        # mirror what the wrapper would have applied.
+        if sudo curl --proto =https --proto-redir =https --max-redirs 10 \
+                     -fsSL "$yq_url" -o /usr/local/bin/yq && sudo chmod +x /usr/local/bin/yq; then
           log "yq installed ✓ (${yq_version})"
         else
           warn "yq auto-install failed ✗. Manual: https://github.com/mikefarah/yq#install"
@@ -592,6 +648,10 @@ sync_zones() {
   # Create .reviewignore template for review scope filtering (FR-4, #303)
   create_reviewignore
 
+  # Scaffold post-merge automation workflow (#669). Idempotent: preserves a
+  # user-customized .github/workflows/post-merge.yml on re-mount.
+  scaffold_post_merge_workflow ""
+
   mkdir -p .beads
   touch .beads/.gitkeep
 
@@ -640,11 +700,18 @@ clean_grimoire_state() {
     find "${grimoire_dir}/archive" -mindepth 1 -exec rm -rf {} + 2>/dev/null || true
   fi
 
-  # Preserve directory structure
+  # Preserve directory structure. cycle-106 sprint-2 T2.3: scaffold the
+  # full project-zone tree declared in grimoires/loa/zones.yaml so fresh
+  # installs have ready-to-use dirs for cycles, handoffs, visions, etc.
+  # (Upstream's gitignore from cycle-106 sprint-1 keeps these untracked.)
   mkdir -p "${grimoire_dir}/a2a/trajectory"
   mkdir -p "${grimoire_dir}/archive"
   mkdir -p "${grimoire_dir}/context"
   mkdir -p "${grimoire_dir}/memory"
+  mkdir -p "${grimoire_dir}/cycles"
+  mkdir -p "${grimoire_dir}/handoffs"
+  mkdir -p "${grimoire_dir}/visions/entries"
+  mkdir -p "${grimoire_dir}/legacy"
 
   # Initialize clean ledger
   cat > "${grimoire_dir}/ledger.json" << 'LEDGER_EOF'
@@ -854,6 +921,12 @@ sync_optional_file() {
     warn "No $file in upstream, skipping..."
   }
 }
+
+# Issue #669 / Bridgebuilder F6 (PR #671): scaffold helper extracted to
+# .claude/scripts/lib/scaffold-post-merge-workflow.sh as single source of
+# truth (sourced by both installers AND the bats test).
+# shellcheck source=lib/scaffold-post-merge-workflow.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/scaffold-post-merge-workflow.sh"
 
 # Orchestrate root file synchronization
 sync_root_files() {
@@ -2151,8 +2224,54 @@ EOF
   fi
   log "Loa mounted successfully."
   echo ""
+
+  # === Optional construct-network bundle install (cycle-005 L5) ===
+  post_mount_constructs_install
+
   log "  Next: Start Claude Code and type /plan"
   echo ""
+}
+
+# Install the construct-network bundle when --with-constructs was passed.
+# Opt-in by default. When WITH_CONSTRUCTS=false we stay quiet by default —
+# a hint only fires for the small subset of mounts where it's actually
+# actionable (no constructs already installed AND no .loa.config.yaml hint
+# suppression). This keeps every-mount UX byte-clean for users who don't
+# work with constructs.
+# Failure here MUST NOT fail the mount — construct-network is optional.
+post_mount_constructs_install() {
+  if [[ "$WITH_CONSTRUCTS" != "true" ]]; then
+    # Suppress the hint when constructs are already in use (the user has
+    # discovered the system) or when explicitly silenced via config.
+    local hint_silent="${LOA_MOUNT_CONSTRUCTS_HINT:-auto}"
+    if [[ "$hint_silent" == "off" ]]; then
+      return 0
+    fi
+    if [[ -f ".run/construct-index.yaml" ]] && [[ "$hint_silent" != "always" ]]; then
+      return 0
+    fi
+    log "  Constructs available — see mount-loa.sh --with-constructs or /loa-setup."
+    return 0
+  fi
+
+  local installer=".claude/scripts/constructs-install.sh"
+  if [[ ! -x "$installer" ]]; then
+    warn "Construct network: installer not available ($installer missing)."
+    warn "                   Skipping bundle install. Re-mount on a Loa"
+    warn "                   version with constructs-install.sh bundled."
+    return 0
+  fi
+
+  step "Installing construct-network bundle: $CONSTRUCTS_PACK"
+  if "$installer" pack "$CONSTRUCTS_PACK"; then
+    log "  Construct network: $CONSTRUCTS_PACK installed."
+  else
+    local rc=$?
+    warn "Construct network: $CONSTRUCTS_PACK install returned $rc."
+    warn "                   This does not invalidate your Loa mount."
+    warn "                   Re-run: constructs install $CONSTRUCTS_PACK"
+    warn "                   or pick a different bundle via --constructs-pack."
+  fi
 }
 
 main "$@"

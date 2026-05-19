@@ -12,14 +12,17 @@
 # Options:
 #   --depth N          Maximum iterations (default: 3)
 #   --per-sprint       Review after each sprint instead of full plan
-#   --resume           Resume from interrupted bridge
-#   --from PHASE       Start from phase (sprint-plan)
-#   --help             Show help
+#   --resume                 Resume from interrupted bridge
+#   --from PHASE             Start from phase (sprint-plan)
+#   --single-iteration       Process one iteration then exit (Issue #473)
+#   --no-silent-noop-detect  Disable post-loop no-findings check (Issue #473)
+#   --help                   Show help
 #
 # Exit Codes:
-#   0 - Complete (JACKED_OUT)
+#   0 - Complete (JACKED_OUT) or single-iteration step complete
 #   1 - Halted (circuit breaker or error)
 #   2 - Config error
+#   3 - Silent no-op detected (no findings produced)
 
 set -euo pipefail
 
@@ -40,11 +43,68 @@ CONSECUTIVE_FLATLINE=2
 PER_ITERATION_TIMEOUT=14400   # 4 hours in seconds
 TOTAL_TIMEOUT=86400            # 24 hours in seconds
 
+# Issue #473: re-entrant single-iteration mode. When true, the script
+# processes exactly one iteration body and exits, leaving state at
+# "waiting for resume". The calling skill can then act on the SIGNAL:*
+# lines this iteration emitted and re-invoke with --resume when done.
+# Default false preserves the one-shot contract for existing callers.
+SINGLE_ITERATION=false
+
+# Issue #473: fail-loud detection. When the full-depth run completes
+# with no findings files in .run/bridge-reviews/, exit non-zero with a
+# clear error explaining that the skill layer did not act on the
+# SIGNAL:* lines. Prevents silent JACKED_OUT with 0 findings.
+DETECT_SILENT_NOOP=true
+
 # CLI-explicit tracking (for CLI > config precedence)
 CLI_DEPTH=""
 CLI_PER_SPRINT=""
 CLI_FLATLINE_THRESHOLD=""
 BRIDGE_REPO=""
+
+# =============================================================================
+# Multi-Model Routing (Sprint 3 — T3.6)
+# =============================================================================
+
+# Check if this iteration should use multi-model review based on iteration_strategy.
+# Reads from .loa.config.yaml via yq. Falls back to false if yq unavailable.
+#
+# Strategies:
+#   "every"  — every iteration uses multi-model
+#   "final"  — only the last iteration uses multi-model
+#   [1,3,5]  — specific iteration numbers use multi-model
+is_multi_model_iteration() {
+  local iteration="$1"
+
+  # Check if multi_model is enabled
+  local enabled
+  enabled=$(yq eval '.run_bridge.bridgebuilder.multi_model.enabled // false' .loa.config.yaml 2>/dev/null) || enabled="false"
+  if [[ "$enabled" != "true" ]]; then
+    return 1
+  fi
+
+  local strategy
+  strategy=$(yq eval '.run_bridge.bridgebuilder.multi_model.iteration_strategy // "final"' .loa.config.yaml 2>/dev/null) || strategy="final"
+
+  case "$strategy" in
+    "every")
+      return 0
+      ;;
+    "final")
+      if [[ "$iteration" -ge "$DEPTH" ]]; then
+        return 0
+      fi
+      return 1
+      ;;
+    *)
+      # Array of iteration numbers (e.g., "[1, 3, 5]")
+      if echo "$strategy" | jq -e --argjson iter "$iteration" 'index($iter) != null' >/dev/null 2>&1; then
+        return 0
+      fi
+      return 1
+      ;;
+  esac
+}
 
 # =============================================================================
 # Usage
@@ -55,17 +115,22 @@ usage() {
 Usage: bridge-orchestrator.sh [OPTIONS]
 
 Options:
-  --depth N          Maximum iterations (default: 3)
-  --per-sprint       Review after each sprint instead of full plan
-  --resume           Resume from interrupted bridge
-  --from PHASE       Start from phase (sprint-plan)
-  --repo OWNER/REPO  Target repository for gh commands
-  --help             Show help
+  --depth N                  Maximum iterations (default: 3)
+  --per-sprint               Review after each sprint instead of full plan
+  --resume                   Resume from interrupted bridge
+  --from PHASE               Start from phase (sprint-plan)
+  --repo OWNER/REPO          Target repository for gh commands
+  --single-iteration         Process one iteration then exit (Issue #473);
+                             pair with --resume to advance step by step
+  --no-silent-noop-detect    Disable post-loop check that fails when the run
+                             produced zero findings (Issue #473; for tests/CI)
+  --help                     Show help
 
 Exit Codes:
-  0  Complete (JACKED_OUT)
+  0  Complete (JACKED_OUT) or single-iteration step complete
   1  Halted (circuit breaker or error)
   2  Config error
+  3  Silent no-op detected (no findings produced; see --no-silent-noop-detect)
 USAGE
   exit "${1:-0}"
 }
@@ -92,6 +157,16 @@ while [[ $# -gt 0 ]]; do
       ;;
     --resume)
       RESUME=true
+      shift
+      ;;
+    --single-iteration)
+      # Issue #473: process one iteration then exit, awaiting --resume
+      SINGLE_ITERATION=true
+      shift
+      ;;
+    --no-silent-noop-detect)
+      # Issue #473: opt out of the post-run no-findings check (for tests, CI)
+      DETECT_SILENT_NOOP=false
       shift
       ;;
     --from)
@@ -550,8 +625,15 @@ bridge_main() {
     if [[ -n "$BRIDGE_CONTEXT" ]]; then
       echo "[CONTEXT] QMD context loaded (${#BRIDGE_CONTEXT} bytes)"
     fi
-    echo "[REVIEW] Invoking Bridgebuilder review..."
-    echo "SIGNAL:BRIDGEBUILDER_REVIEW:$iteration"
+
+    # Multi-model iteration strategy routing (Sprint 3 — T3.6)
+    if is_multi_model_iteration "$iteration"; then
+      echo "[REVIEW] Invoking multi-model Bridgebuilder review..."
+      echo "SIGNAL:BRIDGEBUILDER_REVIEW_MULTI:$iteration"
+    else
+      echo "[REVIEW] Invoking Bridgebuilder review..."
+      echo "SIGNAL:BRIDGEBUILDER_REVIEW:$iteration"
+    fi
 
     # 2f: Lore Reference Scan (FR-5)
     echo "[LORE REFS] Scanning review for lore references..."
@@ -716,6 +798,15 @@ bridge_main() {
     fi
 
     iteration=$((iteration + 1))
+
+    # Issue #473: single-iteration mode exits here after one iteration body.
+    # State is preserved so `--resume` picks up at the next iteration.
+    if [[ "$SINGLE_ITERATION" == "true" ]]; then
+      echo ""
+      echo "[SINGLE-ITERATION] Iteration $((iteration - 1)) complete. State preserved."
+      echo "[SINGLE-ITERATION] Resume with: bridge-orchestrator.sh --resume --single-iteration"
+      exit 0
+    fi
   done
 
   # Research Mode (FR-2 — Divergent Exploration Iteration)
@@ -1012,6 +1103,37 @@ bridge_main() {
   if command -v jq &>/dev/null && [[ -f "$BRIDGE_STATE_FILE" ]]; then
     jq '.finalization.rtfm_passed = true' "$BRIDGE_STATE_FILE" > "$BRIDGE_STATE_FILE.tmp"
     mv "$BRIDGE_STATE_FILE.tmp" "$BRIDGE_STATE_FILE"
+  fi
+
+  # Issue #473: silent-no-op detection. If the full-depth run completed but
+  # .run/bridge-reviews/ contains no findings files, the SIGNAL:* lines fired
+  # but no skill acted on them. Fail loud instead of claiming JACKED_OUT
+  # with 0 findings — silent success is the worst kind of failure.
+  if [[ "$DETECT_SILENT_NOOP" == "true" ]]; then
+    local findings_dir="$PROJECT_ROOT/.run/bridge-reviews"
+    local findings_count=0
+    if [[ -d "$findings_dir" ]]; then
+      findings_count=$(find "$findings_dir" -name '*.json' -type f 2>/dev/null | wc -l | tr -d ' ')
+    fi
+    if [[ "$findings_count" -eq 0 ]]; then
+      echo "" >&2
+      echo "ERROR: Bridge completed $DEPTH iterations but produced no findings files." >&2
+      echo "" >&2
+      echo "This usually means the calling skill did not act on the SIGNAL:*" >&2
+      echo "lines emitted by the orchestrator. The orchestrator emits signals" >&2
+      echo "on stdout expecting the skill to intercept them and perform the" >&2
+      echo "work (read diff, write review, post to GitHub). If the script ran" >&2
+      echo "without a skill on the other end, signals just printed and the" >&2
+      echo "actual review never happened." >&2
+      echo "" >&2
+      echo "Options:" >&2
+      echo "  1. Invoke via the /run-bridge skill (not bare shell pipe)" >&2
+      echo "  2. Use --single-iteration to drive one iteration at a time" >&2
+      echo "  3. Pass --no-silent-noop-detect if this is intentional (tests)" >&2
+      echo "" >&2
+      update_bridge_state "HALTED"
+      exit 3
+    fi
   fi
 
   update_bridge_state "JACKED_OUT"

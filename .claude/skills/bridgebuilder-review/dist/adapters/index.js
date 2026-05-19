@@ -1,35 +1,60 @@
 import { GitHubCLIAdapter } from "./github-cli.js";
-import { AnthropicAdapter } from "./anthropic.js";
+import { ChevalDelegateAdapter } from "./cheval-delegate.js";
 import { PatternSanitizer } from "./sanitizer.js";
 import { NodeHasher } from "./node-hasher.js";
 import { ConsoleLogger } from "./console-logger.js";
 import { NoOpContextStore } from "./noop-context.js";
+import { deriveTimeoutMs } from "../core/multi-model-pipeline.js";
+// cycle-109 followup #880 Defect 1: the precondition skips when the
+// operator-selected model is a kind:cli headless alias. Those models
+// route through claude-headless / codex-headless / gemini-headless
+// CLIs which use their own OAuth subscription paths (no API key
+// required at the BB layer). The `*-headless` suffix is the framework
+// convention for kind:cli aliases.
+function isHeadlessModel(model) {
+    return typeof model === "string" && model.endsWith("-headless");
+}
 export function createLocalAdapters(config, anthropicApiKey) {
-    if (!anthropicApiKey) {
-        throw new Error("ANTHROPIC_API_KEY required. Set it in your environment: export ANTHROPIC_API_KEY=sk-ant-...");
+    // cycle-103 T1.4 + cycle-109 followup #880 Defect 1: pre-flight check
+    // that ANTHROPIC_API_KEY is set in the parent environment. Skipped
+    // when the operator routes BB through a kind:cli headless alias —
+    // ChevalDelegateAdapter handles its own auth routing internally (and
+    // PR #892 ensures the subprocess env is stripped of ANTHROPIC_API_KEY
+    // so claude -p reaches OAuth subscription).
+    if (!anthropicApiKey && !isHeadlessModel(config.model)) {
+        throw new Error("ANTHROPIC_API_KEY required. Set it in your environment: export ANTHROPIC_API_KEY=sk-ant-... " +
+            "(or set BRIDGEBUILDER_MODEL=<provider>-headless to route through an OAuth CLI subscription).");
     }
     const ghAdapter = new GitHubCLIAdapter({
         reviewMarker: config.reviewMarker,
     });
-    // Tiered timeout: 120s default, 180s for medium prompts, 300s for large.
-    // Anthropic API p95 latency scales with prompt size; fixed thresholds
-    // avoid under-serving the 50K-128K range.
-    const timeoutMs = config.maxInputTokens > 100_000 ? 300_000 :
-        config.maxInputTokens > 50_000 ? 180_000 :
-            120_000;
+    // Shared deriveTimeoutMs helper. Sprint-bug-143 #789a granted OpenAI
+    // `gpt-*-pro` the 30-min reasoning-class budget; cycle-111 sprint-bug-165
+    // (#921, KF-010) extended the predicate to Anthropic Opus + Google
+    // Gemini-Pro. The single-model Anthropic path here therefore now picks
+    // up the 30-min budget when `config.model` is an Opus variant
+    // (e.g. claude-opus-4-7) — intentional, same KF-010 root cause applies.
+    // Non-Opus Anthropic models (claude-sonnet-*, claude-haiku-*) remain on
+    // the tier-based ladder.
+    const timeoutMs = deriveTimeoutMs("anthropic", config.model, config);
     return {
         git: ghAdapter,
         poster: ghAdapter,
-        llm: new AnthropicAdapter(anthropicApiKey, config.model, timeoutMs),
+        llm: new ChevalDelegateAdapter({
+            model: config.model,
+            timeoutMs,
+        }),
         sanitizer: new PatternSanitizer(),
         hasher: new NodeHasher(),
         logger: new ConsoleLogger(),
         contextStore: new NoOpContextStore(),
     };
 }
-// Re-export individual adapters for testing
+// Re-export individual adapters for testing.
+// cycle-103 T1.4: AnthropicAdapter / OpenAIAdapter / GoogleAdapter retired —
+// see git history for the legacy per-provider implementations.
 export { GitHubCLIAdapter } from "./github-cli.js";
-export { AnthropicAdapter } from "./anthropic.js";
+export { ChevalDelegateAdapter } from "./cheval-delegate.js";
 export { PatternSanitizer } from "./sanitizer.js";
 export { NodeHasher } from "./node-hasher.js";
 export { ConsoleLogger } from "./console-logger.js";

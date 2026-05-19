@@ -1,6 +1,7 @@
 ---
 name: bridgebuilder-review
 description: "Bridgebuilder — Autonomous PR Review"
+role: review
 capabilities:
   schema_version: 1
   read_files: true
@@ -61,7 +62,7 @@ Set in `.loa.config.yaml` under `bridgebuilder:` section, or via environment var
 | Setting | Env Var | Default |
 |---------|---------|---------|
 | repos | `BRIDGEBUILDER_REPOS` | Auto-detected from git remote |
-| model | `BRIDGEBUILDER_MODEL` | `claude-opus-4-6` |
+| model | `BRIDGEBUILDER_MODEL` | `claude-opus-4-7` |
 | dry_run | `BRIDGEBUILDER_DRY_RUN` | `false` |
 | max_prs | — | `10` |
 | max_files_per_pr | — | `50` |
@@ -69,6 +70,29 @@ Set in `.loa.config.yaml` under `bridgebuilder:` section, or via environment var
 | max_input_tokens | — | `8000` |
 | max_output_tokens | — | `4000` |
 | persona_path | — | `grimoires/bridgebuilder/BEAUVOIR.md` |
+
+## Self-Review Opt-In (#796 / vision-013)
+
+When BB reviews a PR that modifies BB itself — or any other framework file under `.claude/`, `grimoires/`, `.beads/`, etc. — the Loa-aware filter normally strips those files from the review payload before the multi-model pass. This is correct for code-PR reviews (no review noise from grimoire side-effects) but inverts on self-modifying PRs (the framework files ARE the substance).
+
+To opt a single PR into self-review (framework files visible to all reviewer models), apply the label:
+
+```
+bridgebuilder:self-review
+```
+
+When detected, BB:
+
+- Skips the LOA framework exclusion for that PR's review pass — `.claude/`, `grimoires/`, `.beads/` files become reviewable
+- **Continues to honor `.reviewignore` operator-curated patterns** (BR-003 / BB-001-security): `secrets/`, `vendor/`, private-doc patterns in your repo's `.reviewignore` still exclude their matches under self-review. The label is an Allow on framework files, NOT a global Deny suppressor.
+- Surfaces a banner in the review output:
+  - With `.reviewignore` user patterns: `[Loa-aware: self-review opt-in active — framework files included; .reviewignore (N user patterns) still honored (vision-013 / #796)]`
+  - Without: `[Loa-aware: self-review opt-in active — framework files included (vision-013 / #796)]`
+- Sets `truncated.selfReviewActive: true` on the typed `TruncationResult` (downstream consumers — cache key, audit logs, future analyzers — read this field; never substring-match the banner prose, BB-797-001)
+- Leaves the global config (`loaAware`) untouched — the opt-in is per-PR, not workspace-wide
+- The Pass 1 cache key includes `selfReview` as a distinct dimension, so toggling the label on a PR with unchanged `headSha` produces a fresh review (BB-003-cache)
+
+Use this for: bridgebuilder TS adapter changes, cycle-planning PRs (PRD/SDD/sprint), construct manifest changes, anything where the framework artifacts ARE the diff. The label is a single source of truth (constant `SELF_REVIEW_LABEL` in `core/truncation.ts`); substring matches like `bridgebuilder:self-review-extra` do NOT trigger.
 
 ## Persona
 

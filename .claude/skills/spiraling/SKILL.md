@@ -1,0 +1,208 @@
+---
+name: spiraling
+description: "Spiraling — /spiral Autopoietic Meta-Orchestrator (multi-role: covers planning + review + implementation; advisor-wins per cycle-108 §4.3)"
+role: review
+primary_role: review
+cost-profile: heavy
+capabilities:
+  schema_version: 1
+  read_files: true
+  write_files: true
+allowed-tools:
+  - Read
+  - Write
+  - Edit
+  - Bash
+  - Task
+---
+
+# Spiraling — /spiral Autopoietic Meta-Orchestrator
+
+## DISPATCH GUARD — READ THIS FIRST
+
+**When this skill is invoked with a task, you MUST dispatch through the harness pipeline. You MUST NOT implement code directly in conversation.**
+
+**MECHANICAL ENFORCEMENT**: Two PreToolUse hooks enforce dispatch automatically:
+1. `spiral-skill-sentinel.sh` — creates `.run/spiral-dispatch-active` when this skill is invoked (automatic, no agent action needed)
+2. `spiral-dispatch-guard.sh` — blocks Write/Edit to code files until `spiral-harness.sh` has been dispatched
+
+The agent cannot bypass this because the hooks fire at the platform level before tools execute. Write/Edit to code files will be BLOCKED until the harness creates `.run/spiral-harness-dispatched`.
+
+**To deactivate** (for research-only invocations where no implementation is needed):
+```bash
+rm -f .run/spiral-dispatch-active
+```
+
+Route to ONE of:
+1. `/simstim` — for full HITL cycle: plan→build→review→audit (recommended)
+2. `/run sprint-plan` — if a sprint plan already exists
+3. Direct harness invocation for autonomous execution:
+
+```bash
+.claude/scripts/spiral-harness.sh \
+  --task "TASK_DESCRIPTION" \
+  --cycle-dir .run/cycles/cycle-NNN \
+  --cycle-id cycle-NNN \
+  --branch feat/spiral-xxx-cycle-NNN \
+  --budget 15 \
+  --profile standard
+```
+
+**Why**: This skill loads as context, not as an orchestrator. If you implement directly, you bypass Flatline, independent Review, independent Audit, and Bridgebuilder — all quality gates become self-certification. This is the fox-guarding-the-henhouse antipattern (cycle-070 E2E Lesson #1).
+
+Research and design exploration (reading code, web search, writing proposals) is fine in conversation. Writing or modifying application/framework code is not.
+
+## Status
+
+## Cost
+
+**Estimated per invocation**: $10–$15/cycle (standard profile) or $20–$35/cycle (full profile) (see [Cost Matrix](../../../docs/CONFIG_REFERENCE.md#cost-matrix))
+**External providers called**: Sonnet 4.6 (executor), Opus 4.7 (advisor/judge); full profile also calls GPT-5.3-codex and Gemini 2.5 Pro
+**To cap spend**: Set `spiral.budget_cents` and `hounfour.metering.budget.daily_micro_usd` in `.loa.config.yaml`. Safety floors are hardcoded: max $100/run, 24h wall clock.
+**If cost is a concern**: Run `/loa setup` — the wizard will guide you to a budget-appropriate configuration.
+
+_Pricing verified: 2026-04-15. Prices change — recheck before large commitments._
+
+**Production (v1.1.0)**. Full autonomous multi-cycle dispatch with evidence-gated harness.
+
+## Reference
+
+- RFC-060 design doc: `grimoires/loa/proposals/rfc-060-spiral.md`
+- Harness architecture: `grimoires/loa/proposals/spiral-harness-architecture.md`
+- Cost optimization: `grimoires/loa/proposals/spiral-cost-optimization.md`
+- Benchmark report: `grimoires/loa/reports/spiral-harness-benchmark-report.md`
+- Benchmark comparison: `grimoires/loa/reports/spiral-benchmark-comparison.md`
+- Umbrella issue: #483
+- Scripts: `spiral-orchestrator.sh`, `spiral-harness.sh`, `spiral-scheduler.sh`, `spiral-benchmark.sh`
+
+## Usage
+
+```bash
+/spiral --start                                        # Start with config defaults
+/spiral --start --max-cycles 5 --budget-cents 3000     # Explicit overrides
+/spiral --start --dry-run                              # Validate config only
+/spiral --status                                       # Human-readable status
+/spiral --status --json                                # Full JSON state
+/spiral --halt --reason "operator check"               # Graceful halt
+/spiral --resume                                       # Resume a HALTED spiral
+/spiral --check-stop                                   # Evaluate stopping conditions only
+```
+
+## State Machine
+
+```
+(no state) --[--start]--> RUNNING --[stop condition]--> COMPLETED
+                             |
+                             +--[--halt]--> HALTED --[--resume]--> RUNNING
+                             |
+                             +--[quality gate fail]--> FAILED
+```
+
+## Phase Sequence (per cycle)
+
+```
+SEED → SIMSTIM → HARVEST → EVALUATE → (next cycle OR terminate)
+```
+
+- **SEED**: pull prior cycle outputs (visions, lore) into this cycle's discovery
+- **SIMSTIM**: delegate to `/simstim` for the full plan→code→PR flow
+- **HARVEST**: trigger post-merge pipeline to route bridge findings/lore/bugs
+- **EVALUATE**: check stopping conditions, decide continue or terminate
+
+## Stopping Conditions
+
+A spiral terminates when ANY of the conditions below fire. Stopping conditions come in two kinds — **chronos-coded** (wall-clock caps set in advance: max cycles, budget ceiling, runtime limit) and **kaironic** (the loop observes its own output rate and decides to terminate when signal exhausts).
+
+**Kaironic termination is rare in agentic pipelines** — most only have chronos caps ("retry until budget runs out"). Second-order cybernetic convergence, where the loop is measuring its own findings-rate and opting to halt when the rate plateaus, is architecturally distinctive:
+
+> Cycle N produces 8 findings. Cycle N+1 produces 2. Cycle N+2 produces 1.
+> The spiral does not continue to cycle N+3 even if budget remains — the work itself has said "we have reached a plateau."
+
+`flatline_convergence` in the table below is the kaironic condition. The rest are chronos backstops that prevent runaway.
+
+| Condition | Kind | Default | Floor | Status | Rationale |
+|-----------|------|---------|-------|--------|-----------|
+| `flatline_convergence` | **kaironic** | 2 consecutive cycles < 3 findings | — | ✅ implemented | Loop observes its own output-rate and halts when signal exhausts |
+| `cycle_budget_exhausted` | chronos | 3 cycles | 50 | ✅ implemented | Primary runaway backstop |
+| `cost_budget_exhausted` | chronos | $20 | $100 | ✅ implemented | Credit exhaustion guard |
+| `wall_clock_exhausted` | chronos | 8h | 24h | ✅ implemented | Second backstop for plateau-at-N |
+| `hitl_halt` | operator | sentinel file | — | ✅ implemented | Operator escape hatch |
+| `quality_gate_failure` | chronos | review AND audit fail | — | ⏳ deferred to cycle-067 | Prevent error compounding (requires embedded `/simstim` dispatch to observe review+audit outcomes) |
+
+**Safety floor note**: the chronos floors (50 cycles / $100 / 24h) are hardcoded. Operators can relax values within those floors but cannot disable stopping conditions entirely. The kaironic condition has no floor — if the system observes convergence, it trusts that signal.
+
+## Configuration
+
+```yaml
+spiral:
+  enabled: false             # Master switch (default off)
+  default_max_cycles: 3
+  flatline:
+    min_new_findings_per_cycle: 3
+    consecutive_low_cycles: 2
+  budget_cents: 2000         # $20 per spiral (floor: $100)
+  wall_clock_seconds: 28800  # 8h (floor: 24h)
+  seed:
+    enabled: false           # Vision registry must be active (#486) first
+    include_visions: true
+    include_lore: true
+    include_deferred_findings: true
+    max_seed_tokens: 2000
+  halt_sentinel: ".run/spiral-halt"
+```
+
+## HITL Halt
+
+Create the sentinel file at any time to halt gracefully at the next phase boundary:
+
+```bash
+echo "reason text" > .run/spiral-halt
+```
+
+Or use the CLI:
+
+```bash
+/spiral --halt --reason "need to review approach"
+```
+
+State persists. `--resume` picks up where the spiral stopped.
+
+## Trajectory Logging
+
+All spiral events log to `grimoires/loa/a2a/trajectory/spiral-{date}.jsonl`:
+
+- `spiral_started`
+- `spiral_cycle_started`
+- `spiral_phase_completed`
+- `spiral_stopped` (with condition)
+- `spiral_halted`
+- `spiral_resumed`
+
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | Validation error |
+| 2 | Feature disabled in config |
+| 3 | State conflict |
+| 4 | Stopping condition triggered (not an error — a natural outcome) |
+| 5 | HITL halt requested |
+
+## Relationship to Other Skills
+
+| Skill | Role | Lifecycle |
+|-------|------|-----------|
+| `/simstim` | Single-cycle workflow | Invoked BY `/spiral` each cycle |
+| `/run sprint-plan` | Autonomous implementation of one sprint plan | Invoked BY `/simstim` Phase 7 |
+| `/bug` | Bug triage + implement | Alternative single-cycle entry point (not spiral-driven) |
+| `/run-bridge` | Iterative sprint-level improvement | Orthogonal — runs inside `/simstim` or standalone |
+
+`/spiral` is the meta-layer that composes these. It does NOT reimplement any of them.
+
+## Known Limitations (v0.1.0)
+
+- Embedded `/simstim` dispatch is stubbed — `--start` initializes state only
+- SEED phase context-loading not yet wired (blocked on vision registry graduation #486)
+- No auto-retry on embedded cycle failure (operator resolves, then `--resume`)
+- Single-operator, single-repo only

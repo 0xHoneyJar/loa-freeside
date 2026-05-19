@@ -1,6 +1,7 @@
 ---
 name: red-team
 description: "Red Team — Generative Adversarial Security Design"
+role: review
 capabilities:
   schema_version: 1
   read_files: true
@@ -19,6 +20,15 @@ cost-profile: heavy
 ## Purpose
 
 Use the Flatline Protocol's red team mode to generate creative attack scenarios against design documents. Produces structured attack scenarios with consensus classification and architectural counter-designs.
+
+## Cost
+
+**Estimated per invocation**: $5–$15/standard run or $15–$30/deep run (see [Cost Matrix](../../../docs/CONFIG_REFERENCE.md#cost-matrix))
+**External providers called**: Claude Opus 4.7 (primary attacker), GPT-5.3-codex (cross-review dissent)
+**To cap spend**: Set `red_team.budgets.standard_max_tokens` and `hounfour.metering.budget.daily_micro_usd` in `.loa.config.yaml`. Budget enforcement is active when `hounfour.metering.enabled: true`.
+**If cost is a concern**: Run `/loa setup` — the wizard will guide you to a budget-appropriate configuration.
+
+_Pricing verified: 2026-04-15. Prices change — recheck before large commitments._
 
 ## Invocation
 

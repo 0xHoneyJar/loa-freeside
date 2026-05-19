@@ -20,7 +20,29 @@ Show current workflow state, health, progress, and suggest the next command. The
 /loa --json       # JSON output for scripting
 /loa --version    # Only show version info (quick check)
 /loa doctor       # Run full health check (delegates to loa-doctor.sh)
+/loa status --economy           # 30-day model-economy roll-up (cycle-112 FR-2)
+/loa status --economy --window 7d
+/loa status --economy --skill /review-sprint
+/loa status --economy --json    # JSON for scripting
 ```
+
+### `/loa status --economy`
+
+View 30-day model-economy roll-up. Shows `(skill, model)` cost-per-clean-output,
+p95 latency, verdict-quality health, and degradation markers (⚠ when DEGRADED +
+FAILED ≥ 2 for the cell). Default window is 30 days; override with
+`--window <h|d|m>`. Filter with `--skill <substr>` and/or `--model <substr>`.
+Use `--cost-snapshot <git-ref>` to price against historical model-config.yaml.
+
+Delegates to `tools/model-economy-roll-up.sh` — single source of truth for
+aggregation. See `grimoires/loa/runbooks/model-economy.md` for column
+interpretations and operating principles.
+
+Phase A coverage caveats (surfaced in the output's coverage line):
+- skill attribution is 0% today (D-6 Phase A.1 follow-up wires it)
+- cost is input-side only (D-7 Phase A.1 follow-up wires output tokens)
+- verdict_quality coverage ~48% (gradually rising as more dispatch sites
+  set the envelope)
 
 ## Workflow
 
@@ -473,6 +495,53 @@ The `/loa` command integrates with:
   Next: /ship
   Deploy to production and archive the cycle.
 ```
+
+
+## Cost Awareness
+
+When `/loa` is invoked, surface cost information if expensive features are enabled. This keeps users informed about ongoing spend without requiring them to check a separate tool.
+
+### Step: Check feature flags
+
+Read `.loa.config.yaml` via Read tool if it exists. If the file does not exist, skip cost awareness silently — do not show an error.
+
+Check these five expensive feature flags:
+
+1. `flatline_protocol.enabled`
+2. `spiral.enabled`
+3. `run_bridge.enabled`
+4. `post_pr_validation.phases.bridgebuilder_review.enabled`
+5. `red_team.enabled`
+
+For each flag that is `true`, prepare one cost-awareness line using the estimated per-cycle cost from the Cost Matrix in `docs/CONFIG_REFERENCE.md`:
+
+| Feature | Estimated cost |
+|---------|---------------|
+| Flatline Protocol | ~$15–25/planning cycle |
+| Spiral | ~$10–15/cycle (standard) or ~$20–35/cycle (full) |
+| Run Bridge | ~$10–20/depth-5 run |
+| Post-PR Validation (Bridgebuilder) | ~$10–20/PR |
+| Red Team | ~$5–15/invocation (standard) |
+
+### Step: Check metering ledger
+
+If `hounfour.metering.enabled: true` and `hounfour.metering.ledger_path` is set:
+
+1. Read today's entries from the ledger file (format: JSONL at the configured path)
+2. Sum the `cost_micro_usd` fields where `timestamp` date matches today
+3. Read `hounfour.metering.budget.daily_micro_usd` for the daily cap
+4. If today has entries, prepare: `Budget cap: $X/day, spent: $Y today`
+5. If the ledger file is missing or today has no entries, skip this line gracefully — do not show an error
+
+### Output format
+
+When at least one expensive feature is enabled, output one line immediately before the journey bar:
+
+```
+Active expensive features: Flatline (~$25/planning cycle), Spiral (~$12/cycle) | Budget cap: $500/day | Run /loa setup to adjust
+```
+
+**When all five expensive feature flags are disabled**: output nothing for cost awareness. Do not show a "no active features" line — silence is the correct output.
 
 ## Configuration
 

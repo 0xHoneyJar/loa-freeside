@@ -4,16 +4,19 @@
 
 setup() {
     BATS_TEST_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
-    PROJECT_ROOT="$(cd "$BATS_TEST_DIR/../.." && pwd)"
-    SCRIPT_DIR="$PROJECT_ROOT/.claude/scripts"
-    FIXTURES="$PROJECT_ROOT/tests/fixtures/vision-registry"
+    local real_repo_root
+    real_repo_root="$(cd "$BATS_TEST_DIR/../.." && pwd)"
+    SCRIPT_DIR="$real_repo_root/.claude/scripts"
+    FIXTURES="$real_repo_root/tests/fixtures/vision-registry"
 
     export BATS_TMPDIR="${BATS_TMPDIR:-/tmp}"
     export TEST_TMPDIR="$BATS_TMPDIR/vision-lib-test-$$"
     mkdir -p "$TEST_TMPDIR"
     mkdir -p "$TEST_TMPDIR/entries"
+    mkdir -p "$TEST_TMPDIR/.claude"
+    ln -sf "$real_repo_root/.claude/scripts" "$TEST_TMPDIR/.claude/scripts"
 
-    export PROJECT_ROOT
+    export PROJECT_ROOT="$TEST_TMPDIR"
 }
 
 teardown() {
@@ -553,12 +556,13 @@ LORE_EOF
     run grep -c '| vision-' "$index_file"
     [ "$output" -eq 9 ]
 
-    # Verify statistics
+    # Verify statistics — counts reflect actual entry file statuses
+    # (index rebuilt from entries in cycle-069, may differ from legacy hardcoded counts)
     run grep 'Total captured:' "$index_file"
-    [[ "$output" == *"6"* ]]
+    [[ "$output" == *"7"* ]]
 
     run grep 'Total exploring:' "$index_file"
-    [[ "$output" == *"2"* ]]
+    [[ "$output" == *"1"* ]]
 
     run grep 'Total implemented:' "$index_file"
     [[ "$output" == *"1"* ]]

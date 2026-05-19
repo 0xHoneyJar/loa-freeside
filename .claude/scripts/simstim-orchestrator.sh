@@ -15,6 +15,7 @@
 #   simstim-orchestrator.sh --complete [--pr-url <url>]
 #   simstim-orchestrator.sh --set-expected-plan-id      # Store plan_id before /run sprint-plan
 #   simstim-orchestrator.sh --sync-run-mode             # Sync run-mode completion state
+#   simstim-orchestrator.sh --archive-completed         # Archive terminal state (cycle-063)
 #   simstim-orchestrator.sh --force-phase <phase> --yes # Force phase transition (escape hatch)
 #
 # Exit codes:
@@ -428,6 +429,205 @@ set_expected_plan_id() {
         '{expected_plan_id: $plan_id, implementation_started_at: $ts}'
 }
 
+# =============================================================================
+# Git-aware completion inference (Issue #474)
+# =============================================================================
+# Returns 0 (true) when git history shows enough sprint commits to consider
+# the run-mode state stale. Returns non-zero otherwise (run is genuinely
+# in-flight, or git evidence is insufficient to override the state file).
+#
+# Sets globals when returning true (caller reads them):
+#   GIT_INFERRED_COMMITS_FOUND     — number of matching commits seen
+#   GIT_INFERRED_COMMITS_EXPECTED  — number expected from sprint plan total
+#   GIT_INFERRED_BASE_BRANCH       — branch we diff'd against
+#
+# The check is a safe fallback, not a default change: it only fires when
+# the state field already says RUNNING. When state and git agree (e.g.,
+# a genuine in-flight run with no commits yet), the existing behavior is
+# preserved.
+git_inferred_completion_check() {
+    GIT_INFERRED_COMMITS_FOUND=0
+    GIT_INFERRED_COMMITS_EXPECTED=0
+    GIT_INFERRED_BASE_BRANCH=""
+
+    # Need both files to do meaningful inference
+    [[ -f "$RUN_MODE_STATE" ]] || return 1
+
+    # Resolve sprint count from run-mode state (sprints.total or sprints.list length)
+    local expected
+    expected=$(jq -r '.sprints.total // (.sprints.list | length) // 0' "$RUN_MODE_STATE" 2>/dev/null || echo 0)
+    [[ "$expected" -gt 0 ]] || return 1
+
+    # Resolve base branch (default to "main" if not configurable)
+    local base_branch
+    base_branch=$(yq '.run_mode.git.base_branch // "main"' "$PROJECT_ROOT/.loa.config.yaml" 2>/dev/null || echo "main")
+    [[ -z "$base_branch" || "$base_branch" == "null" ]] && base_branch="main"
+    GIT_INFERRED_BASE_BRANCH="$base_branch"
+
+    # Resolve grep pattern (configurable; default matches conventional sprint commits)
+    local grep_pattern
+    # Default pattern uses escaped parens for grep -E (ERE) compatibility.
+    # Users can override via .loa.config.yaml run_mode.git.sprint_commit_pattern.
+    grep_pattern=$(yq '.run_mode.git.sprint_commit_pattern // "^feat\\(sprint-"' "$PROJECT_ROOT/.loa.config.yaml" 2>/dev/null || echo '^feat\(sprint-')
+    [[ -z "$grep_pattern" || "$grep_pattern" == "null" ]] && grep_pattern='^feat\(sprint-'
+
+    # Count matching commits between base_branch and HEAD.
+    # `grep -c` exits 1 when zero matches — `|| true` swallows that so the
+    # subsequent arithmetic compare sees a clean integer. (Using `|| echo 0`
+    # here would double-print when grep ALSO printed its own "0".)
+    local found
+    found=$(git log --pretty=format:'%s' "${base_branch}..HEAD" 2>/dev/null | grep -cE "$grep_pattern" || true)
+    # Safety net: if `found` is empty for any reason, treat as zero.
+    [[ -z "$found" ]] && found=0
+    GIT_INFERRED_COMMITS_FOUND=$found
+    GIT_INFERRED_COMMITS_EXPECTED=$expected
+
+    # Inference passes when git evidence meets or exceeds expected sprint count
+    [[ "$found" -ge "$expected" ]]
+}
+
+# =============================================================================
+# Terminal-state coalescer (cycle-063, RFC-060 Friction 1+2)
+# =============================================================================
+# When the state machine transitions to a terminal condition (COMPLETED,
+# AWAITING_HITL, or HALTED), enforce invariants so the state file is
+# internally consistent:
+#
+#   - .state       = target_state
+#   - .phase       = "complete" for COMPLETED/AWAITING_HITL (HALTED preserves
+#                    current phase so operators can resume)
+#   - .completed_at = terminal timestamp (set regardless of state variant)
+#
+# Without this, sync_run_mode could set .state = "COMPLETED" while leaving
+# .phase = "implementation" and .completed_at unset — a silent inconsistency
+# that confuses the next operator reading the state file.
+#
+# Arguments:
+#   $1           - target_state (COMPLETED | AWAITING_HITL | HALTED)
+#   $2           - extra_jq_filter (optional jq filter fragment)
+#   $3, $4, ...  - additional --arg NAME VALUE pairs forwarded to jq so the
+#                  caller can reference variables (e.g., $impl_status) in its
+#                  extra_filter using jq's safe parameter binding. This avoids
+#                  bash string interpolation into the filter, matching the
+#                  project convention: "NEVER interpolate user input into jq
+#                  filter strings — use --arg parameter binding" (MEMORY.md).
+#
+# Example:
+#   coalesce_terminal_state "COMPLETED" '.pr_url = $pr_url' \
+#       --arg pr_url "$pr_url_value"
+# =============================================================================
+coalesce_terminal_state() {
+    local target_state="$1"
+    local extra_filter="${2:-}"
+    shift
+    if [[ $# -gt 0 ]]; then
+        shift
+    fi
+    local -a extra_args=("$@")
+
+    local target_phase
+    case "$target_state" in
+        COMPLETED|AWAITING_HITL)
+            target_phase="complete"
+            ;;
+        HALTED)
+            # HALTED preserves current phase so operators can resume.
+            # Use a jq self-reference to keep .phase unchanged.
+            target_phase=""
+            ;;
+        *)
+            error "coalesce_terminal_state: unknown target_state '$target_state'"
+            exit 1
+            ;;
+    esac
+
+    local timestamp
+    timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+    local phase_filter=""
+    if [[ -n "$target_phase" ]]; then
+        phase_filter='| .phase = $target_phase'
+    fi
+
+    local composed_filter=".state = \$target_state $phase_filter | .completed_at = \$ts"
+    if [[ -n "$extra_filter" ]]; then
+        composed_filter+=" | $extra_filter"
+    fi
+
+    atomic_jq_update "$STATE_FILE" \
+        --arg target_state "$target_state" \
+        --arg target_phase "$target_phase" \
+        --arg ts "$timestamp" \
+        ${extra_args[@]+"${extra_args[@]}"} \
+        "$composed_filter"
+
+    echo "$timestamp"
+}
+
+# =============================================================================
+# Archive terminal state file (cycle-063, RFC-060 Friction 1)
+# =============================================================================
+# Moves a terminal-state simstim-state.json to .run/archive/simstim-{id}-{ts}.json
+# so a fresh /simstim invocation can start without state collision.
+#
+# Refuses (exit 1) when state is not terminal — prevents accidental loss of
+# in-flight work. Idempotent: a second call after archive-already-done
+# returns {"archived": false, "reason": "no_state_file"}.
+# =============================================================================
+archive_completed() {
+    if [[ ! -f "$STATE_FILE" ]]; then
+        echo '{"archived": false, "reason": "no_state_file"}'
+        return 0
+    fi
+
+    # Validate JSON first — a corrupt file shouldn't be silently archived.
+    if ! jq empty "$STATE_FILE" 2>/dev/null; then
+        error "State file exists but is not valid JSON: $STATE_FILE"
+        exit 1
+    fi
+
+    local current_state
+    current_state=$(jq -r '.state // "unknown"' "$STATE_FILE")
+
+    case "$current_state" in
+        COMPLETED|AWAITING_HITL|HALTED)
+            ;; # fall through to archive
+        *)
+            jq -n --arg state "$current_state" \
+                '{archived: false, reason: "state_not_terminal", state: $state}'
+            return 1
+            ;;
+    esac
+
+    local simstim_id
+    simstim_id=$(jq -r '.simstim_id // "unknown"' "$STATE_FILE")
+
+    # Sanitize simstim_id for filesystem safety — strip any character outside
+    # [A-Za-z0-9_-]. Defends against a crafted state file with path-traversal
+    # characters (e.g., simstim_id = "../../etc/passwd") causing the mv to
+    # write outside .run/archive/. An empty result falls back to "unknown".
+    simstim_id="${simstim_id//[^A-Za-z0-9_-]/}"
+    simstim_id="${simstim_id:-unknown}"
+
+    local archive_dir="$PROJECT_ROOT/.run/archive"
+    mkdir -p "$archive_dir"
+
+    local timestamp
+    timestamp=$(date -u +%Y%m%dT%H%M%SZ)
+
+    local archive_path="$archive_dir/simstim-${simstim_id}-${timestamp}.json"
+    mv "$STATE_FILE" "$archive_path"
+
+    # Best-effort: remove the backup too, if it exists.
+    [[ -f "$STATE_BACKUP" ]] && rm -f "$STATE_BACKUP"
+
+    jq -n \
+        --arg path "$archive_path" \
+        --arg state "$current_state" \
+        --arg id "$simstim_id" \
+        '{archived: true, archive_path: $path, state: $state, simstim_id: $id}'
+}
+
 sync_run_mode() {
     # Check simstim state file exists
     if [[ ! -f "$STATE_FILE" ]]; then
@@ -452,8 +652,38 @@ sync_run_mode() {
     local run_mode_state
     run_mode_state=$(jq -r '.state // "unknown"' "$RUN_MODE_STATE")
 
-    # Don't sync if still running
+    # Don't sync if still running — but cross-check git history first.
+    # Issue #474: when a session loses context mid-implementation, the run-mode
+    # state file can show RUNNING even though git history shows all sprint
+    # commits already landed. Trusting only the state file forces operators
+    # into --force-phase as a last resort. Cross-referencing git as a
+    # secondary source of truth resolves this automatically.
     if [[ "$run_mode_state" == "RUNNING" ]]; then
+        if git_inferred_completion_check; then
+            local commits_found commits_expected base_branch
+            commits_found="$GIT_INFERRED_COMMITS_FOUND"
+            commits_expected="$GIT_INFERRED_COMMITS_EXPECTED"
+            base_branch="$GIT_INFERRED_BASE_BRANCH"
+
+            # Update run-mode state to reflect git reality
+            jq --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+                '.state = "JACKED_OUT" | .git_inferred = true | .git_inferred_at = $ts' \
+                "$RUN_MODE_STATE" > "${RUN_MODE_STATE}.tmp" && \
+                mv "${RUN_MODE_STATE}.tmp" "$RUN_MODE_STATE"
+
+            jq -n \
+                --argjson found "$commits_found" \
+                --argjson expected "$commits_expected" \
+                --arg base "$base_branch" \
+                '{
+                    synced: true,
+                    reason: "git_inferred_completion",
+                    commits_found: $found,
+                    commits_expected: $expected,
+                    base_branch: $base
+                }'
+            return 0
+        fi
         echo '{"synced": false, "reason": "still_running"}'
         return 0
     fi
@@ -534,19 +764,23 @@ sync_run_mode() {
 
     backup_state
 
-    local timestamp
-    timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    # cycle-063: delegate to coalescer so .state, .phase, and .completed_at
+    # move together. Extra filter handles simstim-specific fields
+    # (implementation status, pr_url, sync_attempts counter reset).
+    #
+    # All dynamic values flow through jq --arg parameter binding — matches
+    # the project convention from MEMORY.md ("NEVER interpolate user input
+    # into jq filter strings"). $ts is reused from the coalescer's own --arg.
+    local extra_filter
+    extra_filter='.phases.implementation.status = $impl_status'
+    extra_filter+=' | .phases.implementation.synced_at = $ts'
+    extra_filter+=' | .pr_url = (if $pr_url == "" then null else $pr_url end)'
+    extra_filter+=' | .sync_attempts = 0'
 
-    atomic_jq_update "$STATE_FILE" \
-        --arg state "$simstim_state" \
+    local timestamp
+    timestamp=$(coalesce_terminal_state "$simstim_state" "$extra_filter" \
         --arg impl_status "$impl_status" \
-        --arg pr_url "$pr_url" \
-        --arg ts "$timestamp" \
-        '.state = $state |
-         .phases.implementation.status = $impl_status |
-         .phases.implementation.synced_at = $ts |
-         .pr_url = (if $pr_url == "" then null else $pr_url end) |
-         .sync_attempts = 0'
+        --arg pr_url "$pr_url")
 
     log_trajectory "run_mode_synced" "$(jq -n \
         --arg run_mode_state "$run_mode_state" \
@@ -682,6 +916,8 @@ preflight() {
     local dry_run=false
     local no_clean=false
     local yes_flag=false
+    local seed_context_path=""
+    local autonomous=false
 
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -692,9 +928,22 @@ preflight() {
             --dry-run) dry_run=true; shift ;;
             --no-clean) no_clean=true; shift ;;
             --yes) yes_flag=true; shift ;;
+            --seed-context) seed_context_path="$2"; shift 2 ;;
+            --autonomous) autonomous=true; shift ;;
             *) shift ;;
         esac
     done
+
+    # Store seed context path for Phase 1 consumption (cycle-068 FR-2)
+    if [[ -n "$seed_context_path" ]] && [[ -f "$seed_context_path" ]]; then
+        export _SIMSTIM_SEED_CONTEXT_PATH="$seed_context_path"
+    fi
+
+    # Autonomous mode (cycle-070 FR-2): export env var for simstim skill to detect
+    if [[ "$autonomous" == "true" ]]; then
+        export SIMSTIM_AUTONOMOUS=1
+        log "Autonomous mode: ENABLED (Flatline blockers will use arbiter)"
+    fi
 
     # Handle abort first
     if [[ "$abort" == "true" ]]; then
@@ -951,6 +1200,12 @@ preflight() {
     # Create initial state
     local simstim_id
     simstim_id=$(create_initial_state "$from_phase")
+
+    # Record autonomous mode in state (cycle-070 FR-2)
+    if [[ "$autonomous" == "true" ]]; then
+        jq '.mode = "autonomous"' "$STATE_FILE" > "${STATE_FILE}.tmp" \
+            && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+    fi
 
     jq -n --arg id "$simstim_id" --arg phase "${PHASES[0]}" \
         '{action: "start", simstim_id: $id, starting_phase: $phase}'
@@ -1253,6 +1508,11 @@ main() {
             ;;
         --sync-run-mode)
             sync_run_mode
+            ;;
+        --archive-completed)
+            # cycle-063 (RFC-060 Friction 1): archive a terminal-state
+            # simstim-state.json so a fresh /simstim can start cleanly.
+            archive_completed
             ;;
         --force-phase)
             if [[ $# -lt 1 ]]; then

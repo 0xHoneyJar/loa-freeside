@@ -253,6 +253,20 @@ relocate_memory_stack() {
   log "Memory Stack relocated: .loa/ -> .loa-state/ ($source_count files)"
 }
 
+# Issue #669 / Bridgebuilder F6 (PR #671): scaffold helper sourced from the
+# canonical lib. Submodule mode passes the in-tree submodule path as
+# default source. Submodule installs copy (not symlink) the workflow file
+# into the consumer's .github/workflows/ — GH Actions ignores symlinked
+# workflow files, and consumer-side customization should be possible.
+# shellcheck source=lib/scaffold-post-merge-workflow.sh
+SCRIPT_DIR_FOR_SCAFFOLD="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR_FOR_SCAFFOLD}/lib/scaffold-post-merge-workflow.sh"
+
+# Submodule mode wrapper — defaults source path to the in-tree submodule copy
+scaffold_post_merge_workflow_submodule() {
+    scaffold_post_merge_workflow "${1:-$SUBMODULE_PATH/.github/workflows/post-merge.yml}"
+}
+
 # === Auto-Init Submodule (post-clone recovery) ===
 auto_init_submodule() {
   if [[ -f ".gitmodules" ]] && grep -q "$SUBMODULE_PATH" .gitmodules 2>/dev/null; then
@@ -409,6 +423,10 @@ safe_symlink() {
 # To add a new symlink target, change ONLY the library file — all consumers inherit.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/symlink-manifest.sh"
+# Issue #660: GNU/BSD portable realpath. macOS/BSD lacks `realpath -m` and
+# the previous inline call silently produced empty strings on every macOS
+# operator's first reconcile, falsely declaring `0 fixed` for missing links.
+source "${SCRIPT_DIR}/lib/portable-realpath.sh"
 
 # === Create Symlinks ===
 # Consumes get_symlink_manifest() — single source of truth for symlink topology.
@@ -846,9 +864,10 @@ verify_and_reconcile_symlinks() {
         local parent_dir
         parent_dir=$(dirname "$full_link")
         mkdir -p "$parent_dir"
-        # Only create if target exists in submodule
+        # Issue #660: portable resolver — works on both GNU and BSD/macOS.
+        # Previously: `realpath -m` silently failed on BSD with empty output.
         local resolved_target
-        resolved_target=$(cd "$(dirname "$full_link")" 2>/dev/null && realpath -m "$target" 2>/dev/null || echo "")
+        resolved_target=$(cd "$(dirname "$full_link")" 2>/dev/null && resolve_path_portable "$target" || echo "")
         if [[ -n "$resolved_target" && -e "$resolved_target" ]]; then
           ln -sf "$target" "$full_link"
           fixed=$((fixed + 1))
@@ -862,7 +881,15 @@ verify_and_reconcile_symlinks() {
   echo ""
   log "Symlink health: ${ok} ok, ${dangling} dangling, ${stale} missing, ${fixed} fixed"
 
-  if [[ $((dangling + stale)) -gt 0 && "$reconcile" != "true" ]]; then
+  # Issue #660 part 2: reconcile partial-success must surface as non-zero.
+  # Previously, when reconcile=true but `fixed < (dangling + stale)`, the
+  # function silently returned 0 — CI / downstream automation had no way
+  # to detect that some symlinks remained broken.
+  if [[ "$reconcile" != "true" && $((dangling + stale)) -gt 0 ]]; then
+    return 1
+  fi
+  if [[ "$reconcile" == "true" && $fixed -lt $((dangling + stale)) ]]; then
+    warn "Reconcile partial failure: ${fixed} fixed but ${dangling} dangling + ${stale} missing remained"
     return 1
   fi
   return 0
@@ -918,6 +945,7 @@ main() {
   create_config
   create_manifest
   init_state_zone
+  scaffold_post_merge_workflow_submodule
   create_commit
 
   echo ""
