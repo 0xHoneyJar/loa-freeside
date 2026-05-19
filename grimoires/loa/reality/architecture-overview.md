@@ -1,0 +1,129 @@
+# Architecture Overview
+
+> Generated: 2026-05-18 by /ride
+
+## High-Level Diagram
+
+```
+                    ┌─────────────┐
+                    │ End users   │
+                    │ (Discord,   │
+                    │  Telegram,  │
+                    │  Web/REST)  │
+                    └──────┬──────┘
+                           │
+        ┌──────────────────┼──────────────────────┐
+        │                  │                      │
+        ▼                  ▼                      ▼
+┌──────────────┐   ┌──────────────┐      ┌──────────────────┐
+│ apps/gateway │   │ themes/sietch│      │ Product worlds   │
+│ (Rust,       │   │ (sietch-     │      │ (rektdrop,       │
+│  Twilight)   │   │  service     │      │  mibera, apdao,  │
+└──────┬───────┘   │  v6.0.0)     │      │  score-api)      │
+       │ NATS      │              │      │ — Fargate + EFS  │
+       │           └──────┬───────┘      └────────┬─────────┘
+       ▼                  │                       │
+┌──────────────┐          │                       │
+│ apps/worker  │◄─────────┤                       │
+│ (RabbitMQ +  │          │                       │
+│  NATS)       │          │                       │
+└──────┬───────┘          │                       │
+       │                  │                       │
+       └──────────┬───────┴───────────────────────┘
+                  ▼
+          ┌──────────────────┐
+          │ packages/services│   ← business logic (governance, billing, x402, …)
+          └──────────┬───────┘
+                     ▼
+          ┌──────────────────┐
+          │ packages/adapters│   ← external integrations (chain, agent, storage,
+          └──────────┬───────┘      security, synthesis, telemetry, themes, wizard)
+                     ▼
+          ┌──────────────────┐
+          │ packages/core    │   ← ports + domain (DDD hexagonal)
+          └──────────────────┘
+                     │
+        ┌────────────┼────────────────────┐
+        ▼            ▼                    ▼
+┌──────────────┐ ┌──────────┐    ┌──────────────────┐
+│ PostgreSQL   │ │ Redis    │    │ External         │
+│ (RDS) + RLS  │ │ (Lua     │    │ - Dune Sim       │
+│ + Drizzle    │ │  atomic) │    │ - EVM RPC (viem) │
+└──────────────┘ └──────────┘    │ - NowPayments    │
+                                 │ - AI providers   │
+                                 │ - Trigger.dev    │
+                                 │ - AWS services   │
+                                 └──────────────────┘
+```
+
+## Data Flows
+
+### Discord event ingest
+
+1. Discord gateway WS → `apps/gateway` (Rust, Twilight)
+2. Rust gateway serializes event → publishes to NATS subject
+3. `apps/worker` (main-nats.ts) consumes → routes to handler under `src/handlers/`
+4. Handler may call `packages/services/*` for business logic
+5. Services use `packages/adapters/*` ports for storage / chain / agent / etc.
+
+### Token-gated verification (sietch direct path)
+
+1. User runs `/verify` slash command in Discord (themes/sietch/src/discord/commands/verify.ts)
+2. sietch generates verification link → user signs message
+3. Wallet signature validated (packages/adapters/security)
+4. eligibility checked (themes/sietch/src/services/eligibility.ts queries chain via @arrakis/adapters/chain)
+5. Role assigned via discord.js
+6. `wallet_mappings` + `current_eligibility` + `audit_log` updated
+
+### Agent invocation
+
+1. Internal client (or `/api/agents/invoke`) sends request with capability JWT
+2. `s2s-jwt-validator.ts` validates ES256
+3. `agent-auth-middleware.ts` enforces capabilities
+4. `agent-gateway.ts` selects pool via `POOL_PROVIDER_HINTS` and ensemble strategy
+5. `budget-manager.ts` atomically reserves budget via Redis Lua (ADR-001)
+6. If BYOK, `byok-proxy-handler.ts` egresses with user key; otherwise platform key via `factory.ts`
+7. On completion: `budget-finalize-pg.ts` durably records, `ensemble-accounting.ts` decomposes cost
+8. `capability-audit.ts` emits structured audit event
+
+### Crypto payment ingress
+
+1. NowPayments webhook → `themes/sietch/src/api/crypto-billing.routes.ts`
+2. Signature verified
+3. `packages/services/nowpayments-handler.ts` processes
+4. `credit-lot-service.ts` issues credit lot
+5. `audit_log` + `crypto_payments` schema updated
+
+## Tech Stack at a Glance
+
+- TypeScript (strict, ES modules) + Rust 2021
+- Node.js >=22 (root, sietch), >=20 (worker)
+- Express 5, Twilight 0.17, Drizzle ORM, jose 6, Zod, Ajv 8
+- PostgreSQL + Redis + (NATS | RabbitMQ) + Cassandra (worker)
+- AWS (ECS Fargate + RDS + ElastiCache + ALB + EFS + S3 + DynamoDB + CloudWatch)
+- Terraform for IaC; pnpm 9.15.4 workspaces
+
+## Entry Points (links)
+
+See `entry-points.md` for the full list. Headlines:
+- sietch: `themes/sietch/src/index.ts`
+- worker (NATS): `apps/worker/src/main-nats.ts`
+- Rust gateway: `apps/gateway/src/main.rs`
+- gaib CLI: `packages/cli/src/bin/gaib.ts`
+
+## Authn Posture
+
+ES256 JWT throughout (ADR-002). JWKS at `/.well-known/jwks.json`. Service-to-service via `s2s-jwt-validator.ts`. End-user via Discord OAuth + wallet signature.
+
+## Observability Posture
+
+- Prometheus exporters (TS prom-client + Rust crate metrics)
+- Pino structured logs
+- AWS embedded metrics + CloudWatch dashboards (per `infrastructure/terraform/monitoring*.tf`)
+- Per-product dashboards: `monitoring-finn.tf`, `monitoring-dixie.tf`, `agent-monitoring.tf`
+
+## What This Is NOT
+
+- A single-tenant Discord bot (it's a multi-community platform with RLS)
+- A pure AI service (it's a token-gated community service that ALSO has an agent gateway)
+- A monorepo with one canonical name (3 active: loa-freeside / @arrakis / sietch)

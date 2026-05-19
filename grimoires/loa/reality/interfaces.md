@@ -1,0 +1,61 @@
+# External Interfaces
+
+> Generated: 2026-05-18 by /ride
+
+## External Services
+
+| Service | Direction | Files / Pattern |
+|---------|-----------|-----------------|
+| **Discord API** | egress + ingress (gateway) | apps/gateway (Rust, Twilight), themes/sietch (discord.js), packages/cli + apps/worker (@discordjs/rest) |
+| **Telegram (Bot API)** | egress | themes/sietch/src/telegram/ (Grammy) |
+| **EVM RPC (Berachain etc.)** | egress | packages/adapters/chain/ (viem) |
+| **Dune Sim API** | egress | packages/adapters/chain/dune-sim-client.ts |
+| **NowPayments** | webhook ingress | packages/services/nowpayments-handler.ts |
+| **AI providers (OpenAI / Anthropic etc.)** | egress | packages/adapters/agent/byok-proxy-handler.ts + factory.ts (provider-agnostic) |
+| **Trigger.dev** | scheduled callback | themes/sietch/src/trigger/ |
+| **AWS (ECS, RDS, ElastiCache, ALB, EFS, S3, DynamoDB, KMS, CloudWatch)** | egress | packages/cli (AWS SDK), terraform |
+| **Collab.Land events** | (ingress, per schema.ts comment) | wallet_mappings table populated by Collab.Land |
+| **`@0xhoneyjar/loa-hounfour`** | local dep | Pinned to git SHA via postinstall; integration via adapters/agent + x402 |
+
+## Webhook Endpoints (Ingress)
+
+| Endpoint | Source | Handler |
+|----------|--------|---------|
+| NowPayments callback | NowPayments | `packages/services/nowpayments-handler.ts` (mounted via crypto-billing routes) |
+| Discord OAuth callback | Discord | `themes/sietch/src/api/` → `GET /callback` |
+| GitHub Actions (deploy CI) | GitHub | `infrastructure/terraform/ci-templates/world-deploy.yml` |
+
+## Inter-Service Buses
+
+| Bus | Producers | Consumers | Schema |
+|-----|-----------|-----------|--------|
+| NATS | apps/gateway (Rust) | apps/worker (`main-nats.ts`), other subscribers | `packages/shared/nats-schemas/` |
+| RabbitMQ | (legacy producers) | apps/worker (`main.ts`) | (legacy schemas) |
+| Postgres outbox | services that mutate state | `governance-outbox-worker.ts` consumer | event_data JSON column |
+
+## Storage Backends
+
+| Backend | Used by |
+|---------|---------|
+| PostgreSQL (RDS) | sietch, worker, services (via Drizzle ORM + RLS) |
+| SQLite | sietch eligibility local store; per-world (EFS-backed) for product worlds |
+| Redis (ElastiCache) | budget atomicity (Lua), rate limiting, caches |
+| Cassandra | apps/worker (cassandra-driver dep — verify usage scope) |
+| EFS | per-world persistent storage |
+| S3 | (via packages/cli `@aws-sdk/client-s3` and AWS deps) |
+| DynamoDB | (via packages/cli `@aws-sdk/client-dynamodb`) |
+
+## Authn Surfaces
+
+| Surface | Mechanism |
+|---------|-----------|
+| End-user → REST API | Discord OAuth (session cookie / JWT) |
+| End-user → Discord bot | Discord native |
+| End-user → Telegram bot | Telegram native |
+| End-user → wallet verification | EIP-191/EIP-712 signature via packages/adapters/security |
+| Service → Service (S2S) | ES256 JWT (per ADR-002), `s2s-jwt-validator.ts` |
+| Agent → Gateway | ES256 JWT with capability claims, `agent-auth-middleware.ts` |
+| Operator → CLI | AWS credentials (chain via aws-sdk credential providers) |
+| Admin → Admin API | `ADMIN_API_KEYS` env-configured keys + role check |
+| Billing internal/admin | JWT secrets `BILLING_INTERNAL_JWT_SECRET`, `BILLING_ADMIN_JWT_SECRET` |
+| HMAC signed audit | `AUDIT_HMAC_KEY` |

@@ -1,3 +1,29 @@
+# Notes
+
+## Ride Session 2026-05-18 — Codebase Re-Ride
+
+The Loa rode through. Replaced 3-month-stale reality artifacts. Highlights:
+
+- **Drift score 7.3/10** — code is well-documented; main drift is planning artifacts lagging shipped reality
+- **Cycle-048 (World Hosting) is shipped, not DRAFT**: 4 worlds live (rektdrop, mibera, apdao, score-api) per `infrastructure/terraform/world-*.tf`. Old PRD preserved at `prd.md.cycle-048-bak`
+- **2 GAPS**: `packages/contracts/` referenced in CLAUDE.md does not exist; needs decision (implement or remove ref)
+- **9 hygiene flags**: 2 CLIs (`packages/cli` vs `packages/gaib-cli`), in-tree adapter duplication in `themes/sietch/src/packages/`, brand surface drift (loa-freeside/arrakis/sietch/freeside), multiple PRDs without archive discipline
+- **All 11 expected ride artifacts persisted** (11/11)
+- **Consistency 6.5/10**: three naming conventions coexist in `themes/sietch/src/services/` (kebab-case ~24, PascalCase ~7, lowercase ~16) — recommend convention in CONTRIBUTING.md; no mass rename
+- **Trajectory log**: 12 entries in `grimoires/loa/a2a/trajectory/riding-20260518.jsonl`
+- **PRD/SDD grounding**: 89%/88% [GROUNDED]
+- **5 INFERRED items** to validate next pass: dual-bus cutover state, Trigger.dev task count, Tempo tracing live/planned, packages/core/domain enumeration, postinstall CI timing
+- **Phase 8 (legacy deprecation) intentionally skipped**: 339 doc files include many active per-package READMEs; mass prepend would generate noise without operator triage
+
+Next steps recommended:
+1. Reclassify cycle-048 PRD as IMPLEMENTED with evidence pointer
+2. Establish `grimoires/loa/archive/{cycle-NNN}/` discipline
+3. Decide canonical CLI between `packages/cli` and `packages/gaib-cli`
+4. Either implement or remove `packages/contracts/` reference from CLAUDE.md
+5. Document the 4-name surface (loa-freeside / @arrakis / sietch / freeside) in README
+
+---
+
 # cycle-044 Notes — Staging Integration Launch Readiness
 
 ## Launch Readiness Report (Task 5.6)

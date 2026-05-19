@@ -1,0 +1,114 @@
+# Types
+
+> Generated: 2026-05-18 by /ride
+
+## Domain Entities (sietch SQLite/Postgres)
+
+Per `themes/sietch/src/db/schema.ts` (verbatim):
+
+```sql
+-- eligibility_snapshots
+{ id: int PK, created_at: text, data: text(JSON) }
+
+-- current_eligibility
+{ address: text PK COLLATE NOCASE,
+  rank: int,
+  bgt_held: text(bigint-as-string),
+  role: 'naib' | 'fedaykin' | 'none',
+  updated_at: text }
+
+-- admin_overrides
+{ id: int PK, address: text COLLATE NOCASE,
+  action: 'add' | 'remove',
+  reason: text, created_by: text,
+  created_at: text, expires_at: text|null,
+  active: int(bool) }
+
+-- audit_log
+{ id: int PK, event_type: text, event_data: text(JSON), created_at: text }
+
+-- health_status (singleton, id=1)
+{ id: 1, last_successful_query: text|null, last_query_attempt: text|null,
+  consecutive_failures: int, in_grace_period: int(bool),
+  last_synced_block: text|null, updated_at: text }
+
+-- wallet_mappings
+{ discord_user_id: text PK, wallet_address: text COLLATE NOCASE, verified_at: text }
+
+-- cached_claim_events
+{ id: int PK, tx_hash: text, log_index: int,
+  block_number: text, address: text COLLATE NOCASE,
+  amount: text(bigint-as-string),
+  vault_address: text COLLATE NOCASE,
+  created_at: text,
+  UNIQUE(tx_hash, log_index) }
+
+-- cached_burn_events
+{ id: int PK, tx_hash: text, log_index: int,
+  block_number: text, from_address: text COLLATE NOCASE,
+  amount: text(bigint-as-string), created_at: text,
+  UNIQUE(tx_hash, log_index) }
+```
+
+Plus re-exported feature schemas (themes/sietch/src/db/schema.ts:149-199):
+- SOCIAL_LAYER_SCHEMA_SQL (v2.0)
+- NAIB_THRESHOLD_SCHEMA_SQL (v2.1)
+- WATER_SHARER_SCHEMA_SQL (v3.0, Sprint 17)
+- USUL_ASCENDED_SCHEMA_SQL (v3.0, Sprint 18)
+- BILLING_SCHEMA_SQL (v4.0, Sprint 23)
+- BADGES_SCHEMA_SQL (v4.0, Sprint 27)
+- BOOSTS_SCHEMA_SQL (v4.0, Sprint 28)
+- TELEGRAM_IDENTITY_SCHEMA_SQL (v4.1, Sprint 30)
+- DASHBOARD_CONFIG_SCHEMA_SQL (cycle-004, Sprint 117)
+- GOM_JABBAR_USERS_SCHEMA_SQL (cycle-004, Sprint 139)
+- CRYPTO_PAYMENTS_SCHEMA_SQL (cycle-005, Sprint 155)
+- CREDIT_LEDGER_SCHEMA_SQL (cycle-025, Sprint 230)
+
+## Postgres Schemas
+
+Concentrated in `themes/sietch/drizzle/migrations/` (30+ SQL files) and `packages/adapters/storage/migrations/`. Entity discovery happens via Drizzle ORM at runtime — TS types under `themes/sietch/src/db/` are the source.
+
+## Port Interfaces (packages/core/ports/)
+
+13+ ports. Verified examples:
+
+```typescript
+// IChainProvider — chain provider abstraction
+interface IChainProvider {
+  getBalance(chainId, address, token): Promise<bigint>
+  ownsNFT(chainId, address, collection): Promise<boolean>
+  // optional extensions on Dune Sim provider
+  getBalanceWithUSD?(chainId, address, token): Promise<{ balance, priceUsd, valueUsd }>
+  getActivity?(address, opts): Promise<{ activities: Activity[] }>
+}
+```
+
+(Full enumeration: `find packages/core/ports -name "*.ts" -not -path "*/dist/*" -not -path "*/__tests__/*"`)
+
+## Domain Types (packages/core/domain/)
+
+Per prior SDD: wizard, coexistence, tiers, migration. Current count not enumerated this pass — see `find packages/core/domain` for current state.
+
+## Agent Gateway Types (packages/adapters/agent/)
+
+Per CLAUDE.md (informational, verify via TS exports):
+
+```typescript
+// ensemble accounting result
+{
+  model_breakdown: Array<{ model, cost_micro, tokens_in, tokens_out, … }>,
+  platform_cost_micro: number,
+  byok_cost_micro: number,
+  savings_micro: number
+}
+
+// capability audit event types
+'pool_access' | 'byok_usage' | 'ensemble_invocation'
+
+// request lifecycle states
+'RECEIVED' | 'AUTHORIZED' | 'INVOKED' | 'FINALIZED'  // probable; verify in request-lifecycle.ts
+```
+
+## NATS Event Schemas
+
+`packages/shared/nats-schemas/src/schemas/` — versioned JSON Schemas for inter-service events. Fixtures under `fixtures/`. Validated by Ajv.
