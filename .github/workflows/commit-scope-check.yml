@@ -59,17 +59,17 @@ jobs:
             if echo "$subject" | grep -qE '^[a-z]+\([a-z0-9-]+(/[a-z0-9-]+)?\)(!)?: '; then
               echo "::warning::Commit $(echo "$sha" | cut -c1-8) uses non-ADR scope: $subject"
               echo "  Suggestion: use platform/<x>, network/<x>, or shared/<x> per ADR-007 §D-3"
-              ((warnings++)) || true
+              warnings=$((warnings + 1))
               continue
             fi
 
             # Bare commit (no scope at all)
             if [ "$STRICT" = "true" ]; then
               echo "::error::Commit $(echo "$sha" | cut -c1-8) missing scope: $subject"
-              ((errors++)) || true
+              errors=$((errors + 1))
             else
               echo "::warning::Commit $(echo "$sha" | cut -c1-8) missing scope: $subject"
-              ((warnings++)) || true
+              warnings=$((warnings + 1))
             fi
           done < <(git rev-list "${BASE_SHA}..${HEAD_SHA}")
 

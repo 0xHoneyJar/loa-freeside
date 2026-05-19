@@ -1,19 +1,30 @@
 # Path Domain Check — ADR-007 §D-3 workspace firewall enforcement
 #
 # Fails PRs that mix the two concerns ("freeside the platform" and
-# "freeside the network") in the same commit. This is the load-bearing
+# "freeside the network") in the same merge unit. This is the load-bearing
 # CI guard that prevents the cross-domain coupling the absorption was
 # designed to prevent.
 #
+# This check operates on the PR-level diff (base..head merge-base scope),
+# NOT per-commit, so split-commit attempts cannot bypass the gate.
+# (Addresses flatline SKP-002.)
+#
+# Bypass: PRs with the `adr-007-bootstrap` label are exempt. This label
+# is a SINGLE-USE artifact for the original workspace-creation PR; any
+# subsequent use requires an explicit ADR amendment + audit-trail entry
+# in decisions/007 or decisions/EXCEPTIONS.md. (Addresses flatline SKP-001:
+# "admin bypass normalizes circumvention" — the label-based bypass makes
+# the exception in-repo, traceable, and PR-specific instead of relying on
+# admin-merge precedent.)
+#
 # Reference: decisions/007-loa-freeside-absorption.md §D-3 + Implementation step 3
-# Addresses: flatline review SKP-001 CRITICAL (workspace firewall enforcement
-#            cannot be deferred — must land with workspace creation)
+# Addresses: flatline SKP-001 CRITICAL, SKP-001/SKP-002 from PR-210 review
 
 name: Path Domain Check (ADR-007 §D-3)
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
 
 jobs:
   check:
@@ -24,54 +35,35 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Detect cross-domain commits
+      - name: Check for bootstrap-bypass label
+        id: bootstrap
+        env:
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          if echo ",${LABELS}," | grep -q ',adr-007-bootstrap,'; then
+            echo "::warning::PR carries 'adr-007-bootstrap' label — path-domain-check bypassed."
+            echo "::warning::This label is SINGLE-USE for the original workspace-creation PR (ADR-007 §Implementation step 3)."
+            echo "::warning::Any subsequent bypass requires an ADR amendment + decisions/EXCEPTIONS.md entry."
+            echo "is_bootstrap=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_bootstrap=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Detect cross-domain changes
+        if: steps.bootstrap.outputs.is_bootstrap != 'true'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-
+          # PR-level diff (base..head), not per-commit — split-commit cannot bypass
           touched=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
-
-          platform_touched=false
-          network_touched=false
-          platform_files=()
-          network_files=()
-
-          while IFS= read -r f; do
-            [ -z "$f" ] && continue
-            case "$f" in
-              # NETWORK domain (per ADR-007 §D-1)
-              grimoires/freeside-network/*) network_touched=true; network_files+=("$f") ;;
-              apps/mcp-gateway/*)           network_touched=true; network_files+=("$f") ;;
-              packages/freeside-cli/*)      network_touched=true; network_files+=("$f") ;;
-              packages/freeside-registry/*) network_touched=true; network_files+=("$f") ;;
-              packages/beacon-schema/*)     network_touched=true; network_files+=("$f") ;;
-
-              # PLATFORM domain (per ADR-007 §D-1)
-              grimoires/freeside-platform/*) platform_touched=true; platform_files+=("$f") ;;
-              apps/gateway/*)                platform_touched=true; platform_files+=("$f") ;;
-              apps/ingestor/*)               platform_touched=true; platform_files+=("$f") ;;
-              apps/worker/*)                 platform_touched=true; platform_files+=("$f") ;;
-              packages/cli/*)                platform_touched=true; platform_files+=("$f") ;;
-              packages/core/*)               platform_touched=true; platform_files+=("$f") ;;
-              packages/adapters/*)           platform_touched=true; platform_files+=("$f") ;;
-              packages/sandbox/*)            platform_touched=true; platform_files+=("$f") ;;
-              packages/routes/*)             platform_touched=true; platform_files+=("$f") ;;
-              packages/services/*)           platform_touched=true; platform_files+=("$f") ;;
-              themes/sietch/*)               platform_touched=true; platform_files+=("$f") ;;
-              infrastructure/terraform/*)    platform_touched=true; platform_files+=("$f") ;;
-
-              # SHARED (no domain restriction; explicit allowlist)
-              # Anything else (decisions/, docs/, README.md, CLAUDE.md, .github/,
-              # .claude/, grimoires/loa/, packages/shared/, etc.) is shared/
-              # cross-domain by default — does not trigger this check.
-              *) ;;
-            esac
-          done <<< "$touched"
+          # shellcheck source=../../tools/lib/domain-classify.sh
+          source tools/lib/domain-classify.sh
+          classify_changes "$touched"
 
           if $platform_touched && $network_touched; then
-            echo "::error::Cross-domain commit detected — PR touches BOTH platform and network paths."
+            echo "::error::Cross-domain PR detected — touches BOTH platform and network paths."
             echo "::error::Per ADR-007 §D-3, a single PR MUST NOT modify both concerns."
             echo ""
             echo "Platform paths touched:"
@@ -87,9 +79,17 @@ jobs:
           fi
 
           if $platform_touched; then
-            echo "✓ Domain: platform ($(printf '%s ' "${platform_files[@]}" | wc -w) files)"
+            count=${#platform_files[@]}
+            echo "✓ Domain: platform (${count} files)"
           elif $network_touched; then
-            echo "✓ Domain: network ($(printf '%s ' "${network_files[@]}" | wc -w) files)"
+            count=${#network_files[@]}
+            echo "✓ Domain: network (${count} files)"
           else
             echo "✓ Domain: shared/cross-domain (no platform or network paths touched)"
           fi
+
+      - name: Bootstrap bypass acknowledged
+        if: steps.bootstrap.outputs.is_bootstrap == 'true'
+        run: |
+          echo "Bootstrap PR — path-domain-check intentionally skipped."
+          echo "See workflow header for bypass policy."

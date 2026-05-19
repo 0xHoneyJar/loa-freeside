@@ -2,8 +2,9 @@
 # tools/check-beacon-domain.sh — local pre-commit hook stub for ADR-007 §D-3
 #
 # Validates that staged changes don't cross the platform/network domain
-# boundary. Mirrors .github/workflows/path-domain-check.yml but runs locally
-# before push, catching violations earlier in the loop.
+# boundary. Mirrors .github/workflows/path-domain-check.yml — both source
+# the same classification logic from tools/lib/domain-classify.sh to
+# prevent drift.
 #
 # Install as a pre-commit hook:
 #   ln -s ../../tools/check-beacon-domain.sh .git/hooks/pre-commit
@@ -15,6 +16,10 @@
 # Reference: decisions/007-loa-freeside-absorption.md §D-3
 
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/domain-classify.sh
+source "${SCRIPT_DIR}/lib/domain-classify.sh"
 
 MODE="staged"
 SINCE_REF=""
@@ -52,39 +57,7 @@ if [ -z "$touched" ]; then
   exit 0
 fi
 
-platform_touched=false
-network_touched=false
-platform_files=()
-network_files=()
-
-while IFS= read -r f; do
-  [ -z "$f" ] && continue
-  case "$f" in
-    # NETWORK domain (per ADR-007 §D-1)
-    grimoires/freeside-network/*) network_touched=true; network_files+=("$f") ;;
-    apps/mcp-gateway/*)           network_touched=true; network_files+=("$f") ;;
-    packages/freeside-cli/*)      network_touched=true; network_files+=("$f") ;;
-    packages/freeside-registry/*) network_touched=true; network_files+=("$f") ;;
-    packages/beacon-schema/*)     network_touched=true; network_files+=("$f") ;;
-
-    # PLATFORM domain (per ADR-007 §D-1)
-    grimoires/freeside-platform/*) platform_touched=true; platform_files+=("$f") ;;
-    apps/gateway/*)                platform_touched=true; platform_files+=("$f") ;;
-    apps/ingestor/*)               platform_touched=true; platform_files+=("$f") ;;
-    apps/worker/*)                 platform_touched=true; platform_files+=("$f") ;;
-    packages/cli/*)                platform_touched=true; platform_files+=("$f") ;;
-    packages/core/*)               platform_touched=true; platform_files+=("$f") ;;
-    packages/adapters/*)           platform_touched=true; platform_files+=("$f") ;;
-    packages/sandbox/*)            platform_touched=true; platform_files+=("$f") ;;
-    packages/routes/*)             platform_touched=true; platform_files+=("$f") ;;
-    packages/services/*)           platform_touched=true; platform_files+=("$f") ;;
-    themes/sietch/*)               platform_touched=true; platform_files+=("$f") ;;
-    infrastructure/terraform/*)    platform_touched=true; platform_files+=("$f") ;;
-
-    # SHARED / cross-domain by default
-    *) ;;
-  esac
-done <<< "$touched"
+classify_changes "$touched"
 
 if $platform_touched && $network_touched; then
   echo "ERROR: Cross-domain changes detected (ADR-007 §D-3 violation)" >&2
@@ -100,9 +73,11 @@ if $platform_touched && $network_touched; then
 fi
 
 if $platform_touched; then
-  echo "✓ Domain: platform ($(printf '%s ' "${platform_files[@]}" | wc -w | tr -d ' ') files)"
+  count=${#platform_files[@]}
+  echo "✓ Domain: platform (${count} files)"
 elif $network_touched; then
-  echo "✓ Domain: network ($(printf '%s ' "${network_files[@]}" | wc -w | tr -d ' ') files)"
+  count=${#network_files[@]}
+  echo "✓ Domain: network (${count} files)"
 else
   echo "✓ Domain: shared/cross-domain"
 fi

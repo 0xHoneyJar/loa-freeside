@@ -47,7 +47,9 @@ jobs:
                 | select(.value.domain == null)
                 | .key
             elif type == "array" then
-              .[] | select(.domain == null) | .id // .name // "?"
+              to_entries[]
+                | select(.value.domain == null)
+                | (.value.id // .value.name // ("index-" + (.key | tostring)))
             else
               empty
             end
@@ -106,32 +108,38 @@ jobs:
           set -euo pipefail
 
           if [ ! -f .beads/issues.jsonl ]; then
+            echo "✓ No beads ledger — skipping cross-domain dependency check"
             exit 0
           fi
 
-          # Build a map of issue_id → domain
+          # Build a map of issue_id → domain into a single JSON array.
+          # Empty/malformed file → empty array (graceful).
           jq -s '
             map(
               {
-                id: (.id // .key),
+                id: (.id // .key // "?"),
                 domain: (
                   (.labels // [])
-                  | map(select(test("^domain:")))
+                  | map(select(test("^domain:(platform|network|shared)$")))
                   | first
-                  | sub("^domain:"; "")
+                  | (if . then sub("^domain:"; "") else null end)
                 ),
-                blocked_by: (.dependencies // [] | map(select(.type == "blocks") | .depends_on_id))
+                blocked_by: (
+                  (.dependencies // [])
+                  | map(select(.type == "blocks") | .depends_on_id)
+                )
               }
             )
           ' .beads/issues.jsonl > /tmp/beads-map.json 2>/dev/null || echo "[]" > /tmp/beads-map.json
 
-          # Find any blocked-by relationship where source.domain != target.domain
-          # and neither is "shared" (shared can block anything)
-          violations=$(jq -r '
+          # Emit one text line per violation (NOT a JSON array — keep simple).
+          # Cross-domain = source.domain != target.domain AND neither is "shared".
+          # Output is empty string when no violations.
+          jq -r '
             . as $all
             | map(
                 . as $issue
-                | $issue.blocked_by[]
+                | ($issue.blocked_by // [])[]
                 | . as $bid
                 | ($all | map(select(.id == $bid)) | first) as $blocker
                 | select(
@@ -143,17 +151,16 @@ jobs:
                 | "\($issue.id) (\($issue.domain)) blocked-by \($blocker.id) (\($blocker.domain))"
               )
             | unique
-          ' /tmp/beads-map.json 2>/dev/null || echo "[]")
+            | .[]
+          ' /tmp/beads-map.json > /tmp/violations.txt 2>/dev/null || true
 
-          if [ "$violations" != "[]" ] && [ -n "$violations" ]; then
-            count=$(echo "$violations" | jq 'length')
-            if [ "$count" -gt 0 ]; then
-              echo "::error::${count} cross-domain blocked-by dependencies detected:"
-              echo "$violations" | jq -r '.[]' | sed 's/^/  - /'
-              echo ""
-              echo "Per ADR-007 §D-3, cross-domain dependencies (platform ↔ network) are prohibited."
-              echo "Refactor through 'shared/' scope or remove the dependency."
-              exit 1
-            fi
+          if [ -s /tmp/violations.txt ]; then
+            count=$(wc -l < /tmp/violations.txt | tr -d ' ')
+            echo "::error::${count} cross-domain blocked-by dependencies detected:"
+            sed 's/^/  - /' /tmp/violations.txt
+            echo ""
+            echo "Per ADR-007 §D-3, cross-domain dependencies (platform ↔ network) are prohibited."
+            echo "Refactor through 'shared/' scope or remove the dependency."
+            exit 1
           fi
           echo "✓ No cross-domain blocked-by dependencies"
