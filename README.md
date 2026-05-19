@@ -132,64 +132,92 @@ The network concern is the meta-registry for the `freeside-*` module ecosystem:
 
 ## Mental Model
 
-> *This section adopts the doctrine documented in [ADR-008](decisions/008-freeside-as-layered-station.md) — the layered identity for `loa-freeside` post-absorption.*
+> *This section adopts the doctrine documented in [ADR-008](decisions/008-freeside-as-layered-station.md) — Vercel-analogy three-part identity. ADR-008 is currently **Status: Proposed** pending a follow-up operator-clarity session that resolves specific module-extraction sequencing.*
 
-### The platform RUNS the modules
+### The Vercel analogy
 
-`loa-freeside` is the L4 platform of the Loa stack. Modules in the `freeside-*` namespace are **deployed onto** the platform's infrastructure (AWS ECS, the gateway services, the database, the queues). The platform doesn't just sit alongside the modules — it hosts their runtimes.
+Freeside is a **deployment platform for modules**, not a feature monolith:
 
-The network concern (registry + beacon + federation gateway + ecosystem CLI) is the protocol layer that makes the deployed modules **discoverable** and **composable** to agents. Without the network, modules are isolated. Without the platform, modules have nothing to run on.
+- **Vercel** is to **a Next.js app** as **Freeside platform** is to **a `freeside-*` module**
+- **Vercel CLI** is to **`vercel deploy`** as **`freeside-cli`** is to **`freeside-cli deploy <module>`** (intended unified form per ADR-008 §D-4)
+
+The platform doesn't know what a module *does* — it just hosts the runtime. The network tells operators what modules *exist* and what they *expose*. Modules are responsible for their own logic.
+
+### The three-part identity
 
 ```
    ┌────────────────────────────────────────────────────────────────┐
-   │  MODULES (each in its own freeside-* repo)                     │
-   │  freeside-sonar · freeside-storage · freeside-mint ·           │
-   │  freeside-activities · freeside-inventory · score-mibera ·     │
-   │  …each broadcasts BeaconV3 at /.well-known/beacon.json         │
+   │  MODULES (the catalog — what operators ORDER)                  │
+   │                                                                │
+   │  External freeside-* repos (already-extracted):                │
+   │   • freeside-storage  · freeside-mint     · freeside-activities│
+   │   • freeside-sonar    · freeside-inventory                     │
+   │                                                                │
+   │  In-repo, intended for future extraction:                      │
+   │   • freeside-score    (score + conviction)                     │
+   │   • freeside-mediums  (Discord + Telegram + conviction edge)   │
+   │   • freeside-billing  (Paddle + NOWPayments)                   │
+   │   • freeside-ledger                                            │
    └────────────────────────────────┬───────────────────────────────┘
                                     │ deployed onto / federated through
                                     ▼
    ┌────────────────────────────────────────────────────────────────┐
-   │  NETWORK (loa-freeside's ecosystem-parent surface)             │
-   │  • packages/beacon-schema/     — validates module declarations  │
-   │  • packages/freeside-registry/ — aggregates module beacons      │
-   │  • apps/mcp-gateway/           — routes between modules         │
-   │  • packages/freeside-cli/      — operator inspection + audit    │
+   │  NETWORK (loa-freeside's discovery + composition layer)        │
+   │  • packages/beacon-schema/     — module-declaration contract    │
+   │  • packages/freeside-registry/ — registry + federation manifest │
+   │  • apps/mcp-gateway/           — MCP federation router          │
+   │  • packages/freeside-cli/      — deploy + inspect (Vercel-like) │
    └────────────────────────────────┬───────────────────────────────┘
                                     │ runs on / hosted by
                                     ▼
    ┌────────────────────────────────────────────────────────────────┐
-   │  PLATFORM (loa-freeside's vertical substrate)                  │
-   │  • apps/gateway/, apps/worker/, apps/ingestor/                 │
-   │  • themes/sietch/              — HTTP, Discord, Telegram       │
-   │  • packages/{core,adapters,services,sandbox,…}                 │
-   │  • infrastructure/terraform/   — AWS ECS substrate             │
-   │  • packages/cli/ (gaib)        — IaC orchestrator              │
+   │  PLATFORM (the thin substrate — the "Vercel" layer)            │
+   │  • apps/gateway/          — Rust gateway proxy (multi-shard)    │
+   │  • apps/worker/           — NATS / RabbitMQ worker              │
+   │  • apps/ingestor/         — event ingestion                     │
+   │  • themes/sietch/         — HTTP / API server (substrate only)  │
+   │  • packages/core/         — port interfaces + domain types      │
+   │  • packages/adapters/     — storage/chain/security primitives   │
+   │  • packages/sandbox/      — schema provisioning, event routing  │
+   │  • infrastructure/terraform/ — AWS ECS + RDS + ElastiCache      │
    └────────────────────────────────────────────────────────────────┘
 ```
 
-### Three orthogonal planes
+> **Honesty note**: The current codebase is a "thick monolith" — much of what *should be* modules (score, mediums, billing, ledger) still lives inside the platform paths. The Vercel-style separation is the **direction**, not the present. See [ADR-008 §D-3](decisions/008-freeside-as-layered-station.md) for the current-vs-intended state table.
 
-When working in the repo, you are always operating on **one of three planes**. Naming the plane prevents bug-source confusion and channels attention to the right surface:
+### The Subway lens (composable menu)
+
+Per the `freeside-as-subway` vault doctrine adopted into [ADR-008 §D-5](decisions/008-freeside-as-layered-station.md): Freeside is a **catalog**, not a feature set. An operator deploying a community **orders** modules from the menu — NFT verification, Discord integration, credit ledger, shadow-mode A/B against incumbents, etc. Each is a discrete capability. The Dashboard IS the menu; `freeside-cli` is the counter where operators place orders.
+
+The strategic frame (per Subway doctrine §"21-products SaaS vision"): build 21 small-market SaaS products on the Loa stack, each a `freeside-*` module that subscribers can order. Two-digit monthly prices. Small markets but must-have services.
+
+### Three orthogonal planes (the cognitive diagnostic)
+
+When working in the repo, you are always operating on **one of three planes**. The plane classification is **orthogonal** to the platform/network/modules domain split — see [ADR-008 §D-7](decisions/008-freeside-as-layered-station.md):
+
+- **Platform/Network/Modules** = the *organizational firewall* (what code touches what; CI-enforced)
+- **Contract/Construct/Execution** = the *cognitive diagnostic* (what you're reasoning about; operator-applied)
+
+A single change is classified along **both** axes. Extracting score into `freeside-score` is *domain*: PLATFORM → MODULES, and *planes*: spans CONTRACT (BeaconV3) + CONSTRUCT (score logic) + EXECUTION (deployment plumbing).
 
 | Plane | What it holds | Lives in |
 |-------|---------------|----------|
 | **Contract** | Sealed schemas, BeaconV3, NATS protocols, Zod definitions, integration boundaries. The only plane where the system touches itself — modules talk to *schemas*, never to the platform directly. | `packages/beacon-schema/`, `packages/shared/nats-schemas/`, `packages/core/ports/` |
-| **Construct** | Pure logic, state machines, persona definitions, intent generators. Brains in vats — no concept of Discord, Berachain, AWS, or Bun. | `themes/sietch/src/services/`, `packages/core/`, agent-expertise lives in external `construct-*` packs |
-| **Execution** | The interpreter, the runtime, side-effects, I/O, blockchain RPC, gateways, AWS ECS, HTTP servers. The cyberdeck that catches Intents and fires HTTP/RPC/PG calls. | `apps/*`, `themes/sietch/src/api/`, `packages/adapters/agent/`, `infrastructure/terraform/`, `packages/cli/` (gaib) |
+| **Construct** | Pure logic, state machines, persona definitions, intent generators. Brains in vats — no concept of Discord, Berachain, AWS, or Bun. | `themes/sietch/src/services/` (during the monolithic phase), `packages/core/`, external `construct-*` packs |
+| **Execution** | The interpreter, the runtime, side-effects, I/O, blockchain RPC, gateways, AWS ECS, HTTP servers. The cyberdeck that catches Intents and fires HTTP/RPC/PG calls. | `apps/*`, `themes/sietch/src/api/`, `packages/adapters/agent/`, `infrastructure/terraform/` |
 
 **Daily diagnostic**: when something breaks, ask "is this a contract mismatch, a construct logic error, or an execution-layer flake?" The plane classification narrows the surface to inspect.
 
 ### Prefix-as-type-signature
 
-The repo prefix encodes layer membership (canon per `loa-org-naming-conventions` vault doctrine):
+The repo prefix encodes layer membership (canon per `loa-org-naming-conventions` vault doctrine, adopted into [ADR-008 §D-8](decisions/008-freeside-as-layered-station.md)):
 
 - **`loa-X`** — a member of the Loa stack itself. `loa-freeside` IS the L4 platform.
-- **`freeside-X`** — an **installable module** that deploys onto the freeside platform (e.g., `freeside-sonar`, `freeside-storage`, `freeside-mint`).
+- **`freeside-X`** — an **installable Subway module** that deploys onto the freeside platform.
 - **`construct-X`** — an agent-expertise pack about X. Plane 2 (Construct) by convention.
-- **`world-X`** — a world-substrate deployment (a specific community's deployed module bundle).
+- **`world-X`** — a community-specific deployed module bundle (Workspace-shaped).
 
-No new prefixes are introduced by this absorption — the namespace already encoded the layering correctly. [ADR-008 §D-4](decisions/008-freeside-as-layered-station.md) adopts this as repo-canonical.
+No new prefixes introduced.
 
 ## Ecosystem
 

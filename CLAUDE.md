@@ -7,14 +7,29 @@
 
 ## Repo Topology (READ FIRST)
 
-`loa-freeside` is a **dual-concern repository** per [ADR-007](decisions/007-loa-freeside-absorption.md) and [ADR-008](decisions/008-freeside-as-layered-station.md). Any agent working in this repo MUST internalize this before touching code.
+`loa-freeside` is a **three-part composable substrate** per [ADR-007](decisions/007-loa-freeside-absorption.md) and [ADR-008](decisions/008-freeside-as-layered-station.md). Any agent working in this repo MUST internalize this before touching code.
 
-### The two concerns
+### The Vercel analogy
 
-| Concern | What | Lives in |
-|---------|------|----------|
-| **Platform** (vertical-SaaS substrate) | Multi-tenant infrastructure that hosts AI agent capabilities — Discord/Telegram surfaces, Score, ledger, conviction scoring, billing, terraform, gaib IaC CLI. Hosts BOTH first-party features AND deployed `freeside-*` modules. | `apps/{gateway,worker,ingestor}/`, `themes/sietch/`, `packages/{cli,core,adapters,sandbox,services,routes,shared,…}`, `infrastructure/terraform/`, `grimoires/freeside-platform/` |
-| **Network** (ecosystem-parent for freeside-* modules) | Registry + BeaconV3 sealed schema + MCP federation gateway + ecosystem CLI. Makes the deployed modules discoverable and composable. | `apps/mcp-gateway/`, `packages/{beacon-schema,freeside-registry,freeside-cli}/`, `grimoires/freeside-network/` |
+Freeside is a **deployment platform for modules**, not a feature monolith. Vercel hosts Next.js apps; Freeside hosts `freeside-*` modules. The platform doesn't know what a module *does* — it just runs the runtime. The network tells operators what modules *exist*. The CLI is how operators deploy.
+
+### The three parts
+
+| Part | What | Lives in |
+|------|------|----------|
+| **Platform** (thin substrate — the "Vercel" layer) | ECS/AWS substrate + HTTP/DB/queues. Hosts module runtimes. Does NOT contain feature logic — that's modules. | `apps/{gateway,worker,ingestor}/`, `themes/sietch/` (substrate-only after planned route extraction), `packages/{core,adapters,sandbox}/`, `infrastructure/terraform/` |
+| **Modules** (the catalog — what operators ORDER) | Discrete capabilities operators compose. **External**: `freeside-{storage,mint,activities,sonar,inventory}`. **In-repo, intended for future extraction**: `freeside-{score,mediums,billing,ledger}` per operator's 2026-05-19 reframe. | External repos OR currently in `themes/sietch/src/{discord,telegram,services}/`, `packages/services/`, `packages/adapters/` until extracted |
+| **Network** (discovery + composition layer) | Module-declaration contract (BeaconV3), registry, MCP federation gateway, deployment CLI. Vercel-CLI-like. | `apps/mcp-gateway/`, `packages/{beacon-schema,freeside-registry,freeside-cli}/`, `grimoires/freeside-network/` |
+
+> **Honest current state**: Many things that *should be* `freeside-*` modules (score, mediums, billing, ledger) still live inside platform paths. The Vercel-style separation is the **direction**, not the present. See [ADR-008 §D-3](decisions/008-freeside-as-layered-station.md). A follow-up operator-clarity session resolves specific extraction sequencing.
+
+### Subway lens
+
+Per [ADR-008 §D-5](decisions/008-freeside-as-layered-station.md), `freeside-*` modules are **Components** in an ECS-style architecture. An operator deploying a community **orders** modules from the catalog. The federation manifest IS the menu. The strategic frame is the 21-products SaaS vision (per Subway doctrine).
+
+### Plane ≠ Domain (orthogonal)
+
+Per [ADR-008 §D-7](decisions/008-freeside-as-layered-station.md), the platform/modules/network split (organizational firewall, CI-enforced) and the Contract/Construct/Execution split (cognitive diagnostic, operator-applied) are **orthogonal axes**. A change is classified along both. Don't try to map plane→domain — you'll get stuck.
 
 ### Hard rules (enforced by CI)
 

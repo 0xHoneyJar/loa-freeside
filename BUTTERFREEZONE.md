@@ -1,15 +1,21 @@
 <!-- AGENT-CONTEXT
 name: loa-freeside
-type: dual-concern-monorepo
+type: three-part-composable-substrate
 purpose: |
-  Vertical SaaS platform (multi-model agent economy infrastructure) AND
-  ecosystem parent for the freeside-* installable module network. The
-  platform hosts the modules' runtimes; the network registry/protocol
-  makes them discoverable + composable.
-identity_model: layered_station_3_plane
-concerns:
-  platform: apps/{gateway,worker,ingestor}/, themes/sietch/, packages/{cli,core,adapters,sandbox,services,routes,shared}/, infrastructure/terraform/, grimoires/freeside-platform/
+  Vercel-shaped deployment platform for freeside-* modules + the
+  discovery/composition network that makes them discoverable. The
+  platform is the thin substrate; modules are the catalog operators
+  ORDER; the network registry/CLI is how operators discover + deploy.
+identity_model: vercel_analogy_3_part
+parts:
+  platform_substrate: apps/{gateway,worker,ingestor}/, themes/sietch/ (substrate-only after planned route extraction), packages/{core,adapters,sandbox}/, infrastructure/terraform/, grimoires/freeside-platform/
+  modules_external: freeside-{storage,mint,activities,sonar,inventory} (separate repos)
+  modules_in_repo_for_extraction: freeside-{score,mediums,billing,ledger} (currently in themes/sietch/src/{discord,telegram,services}, packages/services, packages/adapters)
   network: apps/mcp-gateway/, packages/{beacon-schema,freeside-registry,freeside-cli}/, grimoires/freeside-network/
+honest_current_state: |
+  Much of what should be freeside-* modules (score, mediums, billing, ledger)
+  still lives inside platform paths. Vercel-style separation is direction,
+  not present state. See ADR-008 §D-3.
 firewall:
   ci_check: .github/workflows/path-domain-check.yml
   local_hook: tools/check-beacon-domain.sh
@@ -17,6 +23,7 @@ firewall:
 doctrine:
   absorption: decisions/007-loa-freeside-absorption.md
   layered_identity: decisions/008-freeside-as-layered-station.md
+  status_adr_008: Proposed (operator-clarity session needed for specific extraction sequencing)
 key_files: [CLAUDE.md, .claude/loa/CLAUDE.loa.md, .loa.config.yaml, decisions/007-loa-freeside-absorption.md, decisions/008-freeside-as-layered-station.md, .claude/scripts/, .claude/skills/, package.json]
 interfaces:
   core: [/auditing-security, /autonomous-agent, /bridgebuilder-review, /browsing-constructs, /bug-triaging]
@@ -39,12 +46,17 @@ trust_level: L3-hardened
 
 <!-- provenance: DERIVED; ratified by decisions/007 + decisions/008 -->
 
-**Dual-concern monorepo.** Vertical SaaS platform (L4 of the Loa stack) AND the ecosystem parent for the `freeside-*` installable module network.
+**Three-part composable substrate** (Vercel analogy):
 
-- **Platform** — multi-tenant infrastructure that hosts AI agent capabilities (Discord/Telegram surfaces, Score, ledger, conviction scoring, billing, terraform, gaib IaC CLI). Hosts the deployed `freeside-*` modules.
-- **Network** — registry + BeaconV3 sealed schema + MCP federation gateway + ecosystem CLI that makes the deployed modules discoverable and composable.
+- **Platform** — thin substrate (ECS/AWS/gateway/worker/HTTP/DB/queues) that hosts module runtimes
+- **Modules** — the catalog operators ORDER (external `freeside-*` repos + in-repo concerns intended for future extraction)
+- **Network** — discovery + composition layer (BeaconV3 schema, registry, MCP federation gateway, Vercel-like deployment CLI)
 
-The two concerns share a repository but not a release cycle, a beads ledger, or a grimoire. CI enforces the workspace firewall. See [decisions/007-loa-freeside-absorption.md](decisions/007-loa-freeside-absorption.md) for the absorption doctrine and [decisions/008-freeside-as-layered-station.md](decisions/008-freeside-as-layered-station.md) for the layered identity + 3-plane mental model.
+The platform doesn't know what a module *does* — it just hosts the runtime. The network tells operators what modules *exist*. The CLI is how operators deploy.
+
+**Honest current state**: Much of what *should be* freeside-* modules (score, mediums, billing, ledger) still lives inside platform paths. Vercel-style separation is the **direction**, not the present. See [decisions/008-freeside-as-layered-station.md §D-3](decisions/008-freeside-as-layered-station.md) for the current-vs-intended state table. ADR-008 is **Status: Proposed** pending a follow-up operator-clarity session that resolves specific extraction sequencing.
+
+CI enforces the workspace firewall (platform/network organizational split). See [decisions/007-loa-freeside-absorption.md](decisions/007-loa-freeside-absorption.md) for the absorption doctrine and [decisions/008-freeside-as-layered-station.md](decisions/008-freeside-as-layered-station.md) for the layered identity + Subway lens + 3-plane mental model.
 
 <!-- provenance: CODE-FACTUAL -->
 
