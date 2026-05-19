@@ -376,3 +376,38 @@ grimoires/loa/ledger.json.bak*
 #   grimoires/loa/runbooks/           (framework-shipped runbooks)
 #   grimoires/loa/known-failures.md   (shared zone)
 #   grimoires/loa/ledger.json         (project sprint ledger)
+
+# =============================================================================
+# LOCAL AGENT STATE & SECRETS (loa-freeside hygiene)
+# =============================================================================
+# Dotenvx encryption keys — NEVER commit (decrypt .env.vault)
+.env.keys
+**/.env.keys
+.env.keys.*
+**/.env.keys.*
+
+# Codex CLI per-project state (hooks + config)
+.codex/
+
+# Local agent skill installations (per-developer)
+.agents/
+
+# TypeScript incremental compile artifacts
+**/tsconfig.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# TypeScript compilation output in adapter source dirs
+packages/adapters/storage/*.js
+packages/adapters/storage/*.js.map
+packages/adapters/storage/*.d.ts
+packages/adapters/storage/*.d.ts.map
+packages/adapters/telemetry/*.js
+packages/adapters/telemetry/*.js.map
+packages/adapters/telemetry/*.d.ts
+packages/adapters/telemetry/*.d.ts.map
+
+# TypeScript compilation output in themes services
+themes/packages/services/*.js
+themes/packages/services/*.js.map
+themes/packages/services/*.d.ts
+themes/packages/services/*.d.ts.map
