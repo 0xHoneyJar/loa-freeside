@@ -16,8 +16,8 @@ import type {
   MemberFetchOptions,
   MemberFetchResult,
   ShadowDigest,
-} from '@arrakis/core/ports';
-import type { IShadowLedger } from '@arrakis/core/ports';
+} from '@freeside/core/ports';
+import type { IShadowLedger } from '@freeside/core/ports';
 import type {
   ShadowSyncResult,
   ShadowMemberState,
@@ -28,13 +28,13 @@ import type {
   DEFAULT_SHADOW_SYNC_INTERVAL_HOURS,
   DEFAULT_MIN_ACCURACY_FOR_PARALLEL,
   DEFAULT_MIN_SHADOW_DAYS_FOR_PARALLEL,
-} from '@arrakis/core/domain';
+} from '@freeside/core/domain';
 import type {
   VerificationTier,
   CommunityVerificationStatus,
   TierUpgradeRequirements,
   DEFAULT_TIER_UPGRADE_REQUIREMENTS,
-} from '@arrakis/core/domain';
+} from '@freeside/core/domain';
 
 // =============================================================================
 // Dependency Interfaces

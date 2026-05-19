@@ -17,7 +17,7 @@ import type {
   FeatureOverride,
   FeatureGateMiddleware,
   FeatureAccessDeniedError,
-} from '@arrakis/core/ports';
+} from '@freeside/core/ports';
 import {
   type Feature,
   type VerificationTier,
@@ -27,7 +27,7 @@ import {
   isFeatureAvailable,
   getMinimumTierForFeature,
   compareTiers,
-} from '@arrakis/core/domain';
+} from '@freeside/core/domain';
 
 // =============================================================================
 // Dependency Interfaces

@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import type { Redis } from 'ioredis';
 import type { Logger } from 'pino';
-import type { AccessLevel } from '@arrakis/core/ports';
+import type { AccessLevel } from '@freeside/core/ports';
 
 // --------------------------------------------------------------------------
 // Types

@@ -12,8 +12,8 @@ import type {
   IParallelModeConfigStore,
   IParallelModeMetrics,
 } from './namespaced-role-manager.js';
-import type { DiscordRole, NamespacedRoleConfig, MemberEligibility } from '@arrakis/core/domain';
-import { DEFAULT_NAMESPACED_ROLE_CONFIG } from '@arrakis/core/domain';
+import type { DiscordRole, NamespacedRoleConfig, MemberEligibility } from '@freeside/core/domain';
+import { DEFAULT_NAMESPACED_ROLE_CONFIG } from '@freeside/core/domain';
 import type { Logger } from 'pino';
 
 // =============================================================================

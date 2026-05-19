@@ -10,7 +10,7 @@
  */
 
 import type { DuneSimConfig } from './dune-sim-types.js';
-import type { ChainProviderOptions } from '@arrakis/core/ports';
+import type { ChainProviderOptions } from '@freeside/core/ports';
 
 // --------------------------------------------------------------------------
 // Types

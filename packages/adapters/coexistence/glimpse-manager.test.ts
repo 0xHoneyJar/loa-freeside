@@ -19,12 +19,12 @@ import {
   type IGlimpseConfigStore,
   type IGlimpseMetrics,
 } from './glimpse-manager.js';
-import type { GlimpseContext } from '@arrakis/core/ports';
+import type { GlimpseContext } from '@freeside/core/ports';
 import type {
   GlimpseModeConfig,
   MigrationReadinessRequirements,
   PreviewProfile,
-} from '@arrakis/core/domain';
+} from '@freeside/core/domain';
 
 // =============================================================================
 // Mock Helpers

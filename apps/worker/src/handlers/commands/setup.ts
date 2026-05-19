@@ -14,7 +14,7 @@
 import type { Logger } from 'pino';
 import type { DiscordEventPayload, ConsumeResult } from '../../types.js';
 import type { DiscordRestService } from '../../services/DiscordRest.js';
-import type { IWizardEngine } from '@arrakis/core/ports';
+import type { IWizardEngine } from '@freeside/core/ports';
 import { requireAdministrator } from '../../utils/authorization.js';
 import { getCommunityByGuildId } from '../../data/index.js';
 import { createErrorEmbed } from '../../embeds/index.js';

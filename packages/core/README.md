@@ -1,4 +1,4 @@
-# @arrakis/core
+# @freeside/core
 
 Shared core library for Arrakis themes and services.
 
@@ -30,7 +30,7 @@ packages/core/
 When this package is implemented, themes can import shared code:
 
 ```typescript
-import { CommunityConfig, validateManifest } from '@arrakis/core';
+import { CommunityConfig, validateManifest } from '@freeside/core';
 ```
 
 ## Status

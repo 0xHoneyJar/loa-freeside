@@ -18,24 +18,24 @@ import type {
   StepResult,
   WizardFunnelStats,
   StepAnalytics,
-} from '@arrakis/core/ports';
+} from '@freeside/core/ports';
 import type {
   IWizardSessionStore,
-} from '@arrakis/core/ports';
-import type { ISynthesisEngine } from '@arrakis/core/ports';
+} from '@freeside/core/ports';
+import type { ISynthesisEngine } from '@freeside/core/ports';
 import type {
   WizardSession,
   WizardState,
   CommunityManifest,
   DeploymentStatus,
-} from '@arrakis/core/domain';
+} from '@freeside/core/domain';
 import {
   WizardState as WizardStateEnum,
   getNextState,
   getPreviousState,
   getStepNumber,
-} from '@arrakis/core/domain';
-import { WIZARD_ANALYTICS_EVENTS } from '@arrakis/core/ports';
+} from '@freeside/core/domain';
+import { WIZARD_ANALYTICS_EVENTS } from '@freeside/core/ports';
 import type { WizardMetrics } from './metrics.js';
 
 // =============================================================================

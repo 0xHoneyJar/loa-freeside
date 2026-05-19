@@ -77,7 +77,7 @@ describe('lot_entries INSERT guard (AC-1.2.7)', () => {
         'Violations:',
         ...violations.map((v) => `  ${v}`),
         '',
-        'Fix: Replace raw INSERT with insertLotEntry() from @arrakis/adapters/storage.',
+        'Fix: Replace raw INSERT with insertLotEntry() from @freeside/adapters/storage.',
       ].join('\n');
 
       expect.fail(message);

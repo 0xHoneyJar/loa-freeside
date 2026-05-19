@@ -9,7 +9,7 @@
  * @see PRD FR-3 Ensemble Orchestration
  */
 
-import type { AccessLevel } from '@arrakis/core/ports';
+import type { AccessLevel } from '@freeside/core/ports';
 import type { ModelInvocationResult } from './ensemble-accounting.js';
 
 // --------------------------------------------------------------------------

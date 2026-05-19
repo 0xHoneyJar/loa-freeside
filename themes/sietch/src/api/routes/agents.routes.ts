@@ -16,13 +16,13 @@ import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import type { JWK } from 'jose';
-import type { IAgentGateway } from '@arrakis/core/ports';
-import type { AgentAuthenticatedRequest } from '@arrakis/adapters/agent/agent-auth-middleware';
-import { agentInvokeRequestSchema, AGENT_BODY_LIMIT, AGENT_MAX_IDEMPOTENCY_KEY_LENGTH } from '@arrakis/adapters/agent/config';
-import { createEventIdGenerator, parseLastEventId } from '@arrakis/adapters/agent';
-import type { UsageReceiver } from '@arrakis/adapters/agent/usage-receiver';
-import { UsageReceiverError } from '@arrakis/adapters/agent/usage-receiver';
-import type { S2SAuthenticatedRequest } from '@arrakis/adapters/agent/s2s-auth-middleware';
+import type { IAgentGateway } from '@freeside/core/ports';
+import type { AgentAuthenticatedRequest } from '@freeside/adapters/agent/agent-auth-middleware';
+import { agentInvokeRequestSchema, AGENT_BODY_LIMIT, AGENT_MAX_IDEMPOTENCY_KEY_LENGTH } from '@freeside/adapters/agent/config';
+import { createEventIdGenerator, parseLastEventId } from '@freeside/adapters/agent';
+import type { UsageReceiver } from '@freeside/adapters/agent/usage-receiver';
+import { UsageReceiverError } from '@freeside/adapters/agent/usage-receiver';
+import type { S2SAuthenticatedRequest } from '@freeside/adapters/agent/s2s-auth-middleware';
 import express from 'express';
 
 // --------------------------------------------------------------------------
@@ -231,7 +231,7 @@ export function createAgentRoutes(deps: AgentRoutesDeps): Router {
       const response = await gateway.invoke({
         context: agentReq.agentContext,
         ...parsed.data,
-      } as import('@arrakis/core/ports').AgentInvokeRequest);
+      } as import('@freeside/core/ports').AgentInvokeRequest);
 
       res.json(response);
     } catch (err: unknown) {

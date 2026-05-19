@@ -10,7 +10,7 @@
  */
 
 import type { Logger } from 'pino';
-import type { IChannelStrategyManager } from '@arrakis/core/ports';
+import type { IChannelStrategyManager } from '@freeside/core/ports';
 import type {
   ChannelStrategyConfig,
   ChannelStrategy,
@@ -19,11 +19,11 @@ import type {
   CustomChannelConfig,
   MemberEligibility,
   DiscordChannel,
-} from '@arrakis/core/domain';
+} from '@freeside/core/domain';
 import {
   DEFAULT_CHANNEL_STRATEGY_CONFIG,
   DEFAULT_ADDITIVE_CHANNELS,
-} from '@arrakis/core/domain';
+} from '@freeside/core/domain';
 
 // =============================================================================
 // Dependency Interfaces

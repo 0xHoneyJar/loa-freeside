@@ -14,8 +14,8 @@ import type {
   IWalletVerification,
   IVaultClient,
   WalletChallenge,
-} from '@arrakis/core/ports';
-import { VAULT_KEY_NAMES } from '@arrakis/core/ports';
+} from '@freeside/core/ports';
+import { VAULT_KEY_NAMES } from '@freeside/core/ports';
 import type { VaultMetrics } from './metrics.js';
 import { VaultMetricsHelper } from './metrics.js';
 

@@ -22,10 +22,10 @@ import pino from 'pino';
 import postgres from 'postgres';
 import Redis from 'ioredis';
 
-import { CleanupProvider } from '@arrakis/sandbox';
-import { SchemaProvisioner } from '@arrakis/sandbox';
-import { RouteProvider } from '@arrakis/sandbox';
-import type { MinimalRedis } from '@arrakis/sandbox';
+import { CleanupProvider } from '@freeside/sandbox';
+import { SchemaProvisioner } from '@freeside/sandbox';
+import { RouteProvider } from '@freeside/sandbox';
+import type { MinimalRedis } from '@freeside/sandbox';
 
 // =============================================================================
 // Configuration

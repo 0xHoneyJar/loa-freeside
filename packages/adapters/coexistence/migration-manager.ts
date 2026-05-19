@@ -20,7 +20,7 @@ import type {
   IMigrationStateStore,
   ISnapshotStore,
   IMigrationStrategyExecutor,
-} from '@arrakis/core/ports';
+} from '@freeside/core/ports';
 import type {
   MigrationStrategy,
   MigrationConfig,
@@ -39,7 +39,7 @@ import type {
   MigrationAuditEvent,
   MigrationAuditEventType,
   AuditQueryOptions,
-} from '@arrakis/core/domain';
+} from '@freeside/core/domain';
 import {
   DEFAULT_ROLLBACK_THRESHOLDS,
   DEFAULT_INCUMBENT_HEALTH_THRESHOLDS,
@@ -48,7 +48,7 @@ import {
   MIN_SHADOW_DAYS_FOR_MIGRATION,
   MIN_ACCURACY_FOR_MIGRATION,
   MAX_DIVERGENCE_RATE_FOR_MIGRATION,
-} from '@arrakis/core/domain';
+} from '@freeside/core/domain';
 
 // =============================================================================
 // Input Validation Constants

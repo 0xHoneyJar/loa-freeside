@@ -17,17 +17,17 @@ import type {
   ParallelModeReadiness,
   ParallelModeSyncResult,
   TierRoleConfig,
-} from '@arrakis/core/ports';
+} from '@freeside/core/ports';
 import type {
   ParallelModeConfig,
   ParallelModeStatus,
   MemberEligibility,
   RoleSyncResult,
-} from '@arrakis/core/domain';
+} from '@freeside/core/domain';
 import {
   DEFAULT_NAMESPACED_ROLE_CONFIG,
   DEFAULT_CHANNEL_STRATEGY_CONFIG,
-} from '@arrakis/core/domain';
+} from '@freeside/core/domain';
 
 // =============================================================================
 // Dependency Interfaces

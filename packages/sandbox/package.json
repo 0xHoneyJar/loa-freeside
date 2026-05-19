@@ -1,5 +1,5 @@
 {
-  "name": "@arrakis/sandbox",
+  "name": "@freeside/sandbox",
   "version": "0.1.0",
   "description": "Discord Server Sandboxes - Isolated testing environments for Arrakis",
   "type": "module",
@@ -31,7 +31,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@arrakis/core": "file:../core",
+    "@freeside/core": "file:../core",
     "drizzle-orm": "^0.33.0",
     "nanoid": "^5.0.0",
     "postgres": "^3.4.0"

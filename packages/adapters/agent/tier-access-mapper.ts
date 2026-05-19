@@ -12,7 +12,7 @@
  * @see PRD FR-2.2 Per-community tier overrides
  */
 
-import type { AccessLevel, ModelAlias } from '@arrakis/core/ports';
+import type { AccessLevel, ModelAlias } from '@freeside/core/ports';
 import type { Redis } from 'ioredis';
 import type { Logger } from 'pino';
 

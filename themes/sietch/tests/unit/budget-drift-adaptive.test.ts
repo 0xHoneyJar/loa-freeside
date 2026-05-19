@@ -28,7 +28,7 @@ import {
   DRIFT_MAX_THRESHOLD_MICRO_CENTS,
   type DriftActiveCommunityProvider,
   type BudgetUsageQueryProvider,
-} from '@arrakis/adapters/agent';
+} from '@freeside/adapters/agent';
 
 // --------------------------------------------------------------------------
 // Test Helpers

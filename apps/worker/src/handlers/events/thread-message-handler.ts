@@ -13,8 +13,8 @@
 
 import type { Logger } from 'pino';
 import type { Redis } from 'ioredis';
-import type { IAgentGateway, AgentRequestContext, AccessLevel, ModelAlias } from '@arrakis/core/ports';
-import type { GatewayEventPayload } from '@arrakis/nats-schemas';
+import type { IAgentGateway, AgentRequestContext, AccessLevel, ModelAlias } from '@freeside/core/ports';
+import type { GatewayEventPayload } from '@freeside/nats-schemas';
 import type { DiscordRestService } from '../../services/DiscordRest.js';
 import type { NatsEventHandler } from '../../consumers/EventNatsConsumer.js';
 import {
@@ -145,7 +145,7 @@ async function verifyOwnership(
  */
 async function streamToDiscord(
   gateway: IAgentGateway,
-  request: import('@arrakis/core/ports').AgentInvokeRequest,
+  request: import('@freeside/core/ports').AgentInvokeRequest,
   discord: DiscordRestService,
   threadId: string,
   log: Logger,

@@ -15,7 +15,7 @@ import type {
   IShadowLedger,
   DivergenceQueryOptions,
   PredictionQueryOptions,
-} from '@arrakis/core/ports';
+} from '@freeside/core/ports';
 import type {
   ShadowMemberState,
   ShadowDivergence,
@@ -24,7 +24,7 @@ import type {
   PredictionType,
   IncumbentState,
   ArrakisEligibilityResult,
-} from '@arrakis/core/domain';
+} from '@freeside/core/domain';
 
 // =============================================================================
 // ScyllaDB Client Interface

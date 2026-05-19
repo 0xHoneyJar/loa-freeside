@@ -8,7 +8,7 @@ importers:
 
   .:
     dependencies:
-      '@arrakis/sandbox':
+      '@freeside/sandbox':
         specifier: file:../sandbox
         version: file:../sandbox(pino@9.14.0)
       '@aws-sdk/client-dynamodb':
@@ -78,11 +78,11 @@ importers:
 
 packages:
 
-  '@arrakis/core@file:../core':
+  '@freeside/core@file:../core':
     resolution: {directory: ../core, type: directory}
     engines: {node: '>=20.0.0'}
 
-  '@arrakis/sandbox@file:../sandbox':
+  '@freeside/sandbox@file:../sandbox':
     resolution: {directory: ../sandbox, type: directory}
     engines: {node: '>=20.0.0'}
     peerDependencies:
@@ -1594,11 +1594,11 @@ packages:
 
 snapshots:
 
-  '@arrakis/core@file:../core': {}
+  '@freeside/core@file:../core': {}
 
-  '@arrakis/sandbox@file:../sandbox(pino@9.14.0)':
+  '@freeside/sandbox@file:../sandbox(pino@9.14.0)':
     dependencies:
-      '@arrakis/core': file:../core
+      '@freeside/core': file:../core
       drizzle-orm: 0.33.0(postgres@3.4.8)
       nanoid: 5.1.6
       pino: 9.14.0

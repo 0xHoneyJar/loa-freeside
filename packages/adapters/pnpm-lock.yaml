@@ -11,7 +11,7 @@ importers:
       '@0xhoneyjar/loa-hounfour':
         specifier: github:0xHoneyJar/loa-hounfour#d091a3c0d4802402825fc7765bcc888f2477742f
         version: https://codeload.github.com/0xHoneyJar/loa-hounfour/tar.gz/d091a3c0d4802402825fc7765bcc888f2477742f
-      '@arrakis/core':
+      '@freeside/core':
         specifier: file:../core
         version: file:../core
       drizzle-orm:
@@ -74,7 +74,7 @@ packages:
   '@adraffy/ens-normalize@1.11.1':
     resolution: {integrity: sha512-nhCBV3quEgesuf7c7KYfperqSS14T8bYuvJ8PcLJp6znkZpFc0AuW4qBtr8eKVyPPe/8RSr7sglCWPU5eaxwKQ==}
 
-  '@arrakis/core@file:../core':
+  '@freeside/core@file:../core':
     resolution: {directory: ../core, type: directory}
     engines: {node: '>=20.0.0'}
 
@@ -990,7 +990,7 @@ snapshots:
 
   '@adraffy/ens-normalize@1.11.1': {}
 
-  '@arrakis/core@file:../core': {}
+  '@freeside/core@file:../core': {}
 
   '@esbuild/aix-ppc64@0.21.5':
     optional: true
