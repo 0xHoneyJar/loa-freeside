@@ -1,29 +1,39 @@
 <!-- AGENT-CONTEXT
 name: loa-freeside
-type: three-part-composable-substrate
+type: factory
 purpose: |
-  Vercel-shaped deployment platform for freeside-* modules + the
-  discovery/composition network that makes them discoverable. The
-  platform is the thin substrate; modules are the catalog operators
-  ORDER; the network registry/CLI is how operators discover + deploy.
-identity_model: vercel_analogy_3_part
+  A factory. Each capability is a BUILDING (one repo = schema + runtime
+  + docs). Buildings compose into PRODUCTS via belts (consume/publish).
+  Customers order from a MARKETPLACE. The factory runs on the PLATFORM
+  substrate. Factory-game-shaped model (Factorio buildings + belts).
+identity_model: factory_buildings_products_marketplace
 parts:
-  platform_substrate: apps/{gateway,worker,ingestor}/, themes/sietch/ (substrate-only after planned route extraction), packages/{core,adapters,sandbox}/, infrastructure/terraform/, grimoires/freeside-platform/
-  modules_external: freeside-{storage,mint,activities,sonar,inventory} (separate repos)
-  modules_in_repo_for_extraction: freeside-{score,mediums,billing,ledger} (currently in themes/sietch/src/{discord,telegram,services}, packages/services, packages/adapters)
+  platform_substrate: apps/{gateway,worker,ingestor}/, infrastructure/terraform/, packages/{core,adapters,sandbox}/, themes/sietch/ (substrate-only after planned extraction)
+  buildings_external_repos: freeside-{sonar,storage,mint,activities,inventory,score,mediums} (one repo per capability — schema + runtime + docs together)
+  buildings_in_monolith_for_extraction: freeside-{billing,ledger} (still in themes/sietch + packages/services)
   network: apps/mcp-gateway/, packages/{beacon-schema,freeside-registry,freeside-cli}/, grimoires/freeside-network/
+composition_rule: |
+  Belts run one direction — raw → derived → integrated → presented.
+  freeside-inventory consumes freeside-sonar + freeside-storage; never
+  the reverse. Bottleneck debugging = walk upstream on the belts.
+products: |
+  A product = a building (or building-group) presented for sale.
+  Single-building (score API) or compound (community-management =
+  mediums + score + inventory). Customers order; platform resolves
+  the building dependency DAG. No product prefix.
 honest_current_state: |
-  Much of what should be freeside-* modules (score, mediums, billing, ledger)
-  still lives inside platform paths. Vercel-style separation is direction,
-  not present state. See ADR-008 §D-3.
+  loa-freeside is a thick monolith. freeside-score + freeside-mediums
+  repos EXIST but logic still lives in the monolith — extraction is
+  real pending work. freeside-billing + freeside-ledger not extracted.
+  Building model is direction, not present. See ADR-008.
 firewall:
   ci_check: .github/workflows/path-domain-check.yml
   local_hook: tools/check-beacon-domain.sh
   cross_domain_prs: blocked
 doctrine:
   absorption: decisions/007-loa-freeside-absorption.md
-  layered_identity: decisions/008-freeside-as-layered-station.md
-  status_adr_008: Proposed (operator-clarity session needed for specific extraction sequencing)
+  factory_model: decisions/008-freeside-as-layered-station.md
+  status_adr_008: Proposed (operator-clarity session needed for building extraction sequencing)
 key_files: [CLAUDE.md, .claude/loa/CLAUDE.loa.md, .loa.config.yaml, decisions/007-loa-freeside-absorption.md, decisions/008-freeside-as-layered-station.md, .claude/scripts/, .claude/skills/, package.json]
 interfaces:
   core: [/auditing-security, /autonomous-agent, /bridgebuilder-review, /browsing-constructs, /bug-triaging]
@@ -46,13 +56,14 @@ trust_level: L3-hardened
 
 <!-- provenance: DERIVED; ratified by decisions/007 + decisions/008 -->
 
-**Three-part composable substrate** (Vercel analogy):
+**A factory.** Each capability is a **building** — one repo holding schema + runtime + docs together.
 
-- **Platform** — thin substrate (ECS/AWS/gateway/worker/HTTP/DB/queues) that hosts module runtimes
-- **Modules** — the catalog operators ORDER (external `freeside-*` repos + in-repo concerns intended for future extraction)
-- **Network** — discovery + composition layer (BeaconV3 schema, registry, MCP federation gateway, Vercel-like deployment CLI)
+- **Platform** — the substrate (ECS/AWS/gateway/worker/HTTP/DB/queues) that hosts building runtimes multi-tenant
+- **Buildings** (`freeside-X`) — capabilities with belts (consume/publish). One repo each. Compose via what they produce/consume.
+- **Network** — discovery + deploy layer (BeaconV3 declaration, registry, MCP federation gateway, deployment CLI)
+- **Products** — buildings (or building-groups) presented for sale in a marketplace
 
-The platform doesn't know what a module *does* — it just hosts the runtime. The network tells operators what modules *exist*. The CLI is how operators deploy.
+Belts run one direction (raw → derived → integrated → presented). The platform doesn't know what a building *does* — it hosts the runtime. Factory-game-shaped model (Factorio buildings + belts; Roblox engine/experiences/players; Steam mods/modpacks). See [decisions/008-freeside-as-layered-station.md](decisions/008-freeside-as-layered-station.md).
 
 **Honest current state**: Much of what *should be* freeside-* modules (score, mediums, billing, ledger) still lives inside platform paths. Vercel-style separation is the **direction**, not the present. See [decisions/008-freeside-as-layered-station.md §D-3](decisions/008-freeside-as-layered-station.md) for the current-vs-intended state table. ADR-008 is **Status: Proposed** pending a follow-up operator-clarity session that resolves specific extraction sequencing.
 

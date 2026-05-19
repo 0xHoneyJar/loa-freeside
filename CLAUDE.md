@@ -7,29 +7,31 @@
 
 ## Repo Topology (READ FIRST)
 
-`loa-freeside` is a **three-part composable substrate** per [ADR-007](decisions/007-loa-freeside-absorption.md) and [ADR-008](decisions/008-freeside-as-layered-station.md). Any agent working in this repo MUST internalize this before touching code.
+`loa-freeside` is a **factory** per [ADR-007](decisions/007-loa-freeside-absorption.md) and [ADR-008](decisions/008-freeside-as-layered-station.md). Any agent working in this repo MUST internalize this before touching code.
 
-### The Vercel analogy
+### The factory model
 
-Freeside is a **deployment platform for modules**, not a feature monolith. Vercel hosts Next.js apps; Freeside hosts `freeside-*` modules. The platform doesn't know what a module *does* — it just runs the runtime. The network tells operators what modules *exist*. The CLI is how operators deploy.
-
-### The three parts
+Each capability is a **building**. **One building = one repository** — schema + runtime + docs live together (no separate "schema repo" / "runtime repo" split). Buildings compose into **products**. Customers order from a **marketplace**. The factory runs on the **platform substrate**.
 
 | Part | What | Lives in |
 |------|------|----------|
-| **Platform** (thin substrate — the "Vercel" layer) | ECS/AWS substrate + HTTP/DB/queues. Hosts module runtimes. Does NOT contain feature logic — that's modules. | `apps/{gateway,worker,ingestor}/`, `themes/sietch/` (substrate-only after planned route extraction), `packages/{core,adapters,sandbox}/`, `infrastructure/terraform/` |
-| **Modules** (the catalog — what operators ORDER) | Discrete capabilities operators compose. **External**: `freeside-{storage,mint,activities,sonar,inventory}`. **In-repo, intended for future extraction**: `freeside-{score,mediums,billing,ledger}` per operator's 2026-05-19 reframe. | External repos OR currently in `themes/sietch/src/{discord,telegram,services}/`, `packages/services/`, `packages/adapters/` until extracted |
-| **Network** (discovery + composition layer) | Module-declaration contract (BeaconV3), registry, MCP federation gateway, deployment CLI. Vercel-CLI-like. | `apps/mcp-gateway/`, `packages/{beacon-schema,freeside-registry,freeside-cli}/`, `grimoires/freeside-network/` |
+| **Platform** (the substrate) | ECS/AWS substrate + HTTP/DB/queues. Hosts building runtimes multi-tenant. Contains NO feature logic. | `apps/{gateway,worker,ingestor}/`, `infrastructure/terraform/`, `packages/{core,adapters,sandbox}/`, `themes/sietch/` (substrate-only after planned extraction) |
+| **Buildings** (capabilities — `freeside-X` repos) | Each is one repo: schema + runtime + docs. Has belts (consumes/publishes). **External repos**: `freeside-{sonar,storage,mint,activities,inventory,score,mediums}`. **Still in-monolith, intended for extraction**: `freeside-{billing,ledger}`. | External `freeside-*` repos OR currently in `themes/sietch/src/{discord,telegram,services}/`, `packages/services/` until extracted |
+| **Network** (discovery + deploy layer) | BeaconV3 declaration contract, registry, MCP federation gateway, deployment CLI. | `apps/mcp-gateway/`, `packages/{beacon-schema,freeside-registry,freeside-cli}/`, `grimoires/freeside-network/` |
 
-> **Honest current state**: Many things that *should be* `freeside-*` modules (score, mediums, billing, ledger) still live inside platform paths. The Vercel-style separation is the **direction**, not the present. See [ADR-008 §D-3](decisions/008-freeside-as-layered-station.md). A follow-up operator-clarity session resolves specific extraction sequencing.
+> **Honest current state**: `loa-freeside` is a thick monolith. `freeside-score` and `freeside-mediums` already exist as external repos but logic still lives in the monolith — extraction is real pending work. `freeside-billing` and `freeside-ledger` are not extracted at all. The building model is the **direction**. See [ADR-008 §Current State vs Intended State](decisions/008-freeside-as-layered-station.md).
 
-### Subway lens
+### Composition direction (the DAG)
 
-Per [ADR-008 §D-5](decisions/008-freeside-as-layered-station.md), `freeside-*` modules are **Components** in an ECS-style architecture. An operator deploying a community **orders** modules from the catalog. The federation manifest IS the menu. The strategic frame is the 21-products SaaS vision (per Subway doctrine).
+Buildings connect via **belts** running ONE direction — determined by data semantic depth (raw → derived → integrated → presented), not by choice. `freeside-inventory` consumes `freeside-sonar` + `freeside-storage`; the reverse is impossible. When unsure which way an arrow points: closer-to-raw publishes, closer-to-meaning consumes. Bottleneck debugging = walk upstream on the belts. See [ADR-008 §D-3](decisions/008-freeside-as-layered-station.md).
+
+### Marketplace vs factory
+
+A **product** is a building (or building-group) presented for sale. Single-building products (`score API`), compound products (`community-management` = mediums + score + inventory). Customers order products; the platform resolves the building DAG. See [ADR-008 §D-5](decisions/008-freeside-as-layered-station.md).
 
 ### Plane ≠ Domain (orthogonal)
 
-Per [ADR-008 §D-7](decisions/008-freeside-as-layered-station.md), the platform/modules/network split (organizational firewall, CI-enforced) and the Contract/Construct/Execution split (cognitive diagnostic, operator-applied) are **orthogonal axes**. A change is classified along both. Don't try to map plane→domain — you'll get stuck.
+Per [ADR-008 §D-8](decisions/008-freeside-as-layered-station.md), the platform/network split (organizational firewall, CI-enforced) and the Contract/Construct/Execution planes (cognitive diagnostic, operator-applied) are **orthogonal axes**. A building spans all three planes inside its one repo. A change is classified along both axes — don't map plane→domain or plane→building, you'll get stuck.
 
 ### Hard rules (enforced by CI)
 
@@ -50,24 +52,24 @@ Mirrors the CI check; catches violations before push.
 
 ### Three orthogonal planes (mental model)
 
-When working on a change, identify which **plane** it belongs to:
+When working on a change, identify which **plane** it belongs to. A building spans all three inside its one repo:
 
-- **Contract** — schemas, BeaconV3, NATS protocols, port interfaces (modules talk to schemas, never to the platform directly)
+- **Contract** — schemas, BeaconV3, NATS protocols, port interfaces (a building talks to a schema, never to another building directly)
 - **Construct** — pure logic, state machines, intent generators (brains in vats; no I/O concerns)
 - **Execution** — runtime, gateways, HTTP, RPC, infrastructure (the cyberdeck that catches Intents and fires real-world calls)
 
 Bug source classification by plane is the daily diagnostic. See [ADR-008 §D-1](decisions/008-freeside-as-layered-station.md) for the full framing.
 
-### Module prefix-as-type-signature
+### Prefix-as-type-signature
 
 | Prefix | Means |
 |--------|-------|
 | `loa-X` | Stack member (e.g., `loa-freeside` IS the L4 platform) |
-| `freeside-X` | Installable module that deploys onto the freeside platform |
+| `freeside-X` | A **building** — a capability that deploys onto the freeside platform |
 | `construct-X` | Agent-expertise pack (lives in Plane 2) |
-| `world-X` | A community-specific deployed module bundle |
+| `world-X` | A community-specific deployed factory (a Workspace's building set) |
 
-The namespace already encodes the layering. No new prefixes.
+Products do not get a prefix — a product is a marketplace presentation of one or more `freeside-X` buildings. The namespace already encodes the layering. No new prefixes.
 
 ## CRITICAL: Tool Enforcement Rules
 

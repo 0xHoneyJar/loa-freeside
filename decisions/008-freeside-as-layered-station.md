@@ -1,300 +1,311 @@
-# ADR-008: Freeside as Composable Substrate — Platform / Modules / Network (Vercel Analogy)
+# ADR-008: Freeside as a Factory — Buildings, Products, and the Marketplace
 
-**Status**: Proposed (intent-bearing; specific module extractions deferred to a future operator-clarity session)
-**Date**: 2026-05-19 (revised mid-session 2026-05-19 PM per operator reframe + Subway doctrine integration)
-**Context**: Post-ADR-007 identity refresh · operator-corrected mental model 2026-05-19 PM · adopts both `freeside-as-layered-station` and `freeside-as-subway` vault doctrines into repo-local doctrine
+**Status**: Proposed (intent-bearing; building extractions + repo consolidation deferred to a future operator-clarity session)
+**Date**: 2026-05-19 (third framing iteration — see Framing History below)
+**Context**: Post-ADR-007 identity refresh · operator-derived "building/factory" model 2026-05-19 PM · adopts `freeside-as-layered-station` + `freeside-as-subway` vault doctrines as upstream context
+
+## Framing History (honesty note)
+
+This ADR's framing iterated three times in ~24h as the operator's mental model sharpened. Recording the path so future readers understand why the model looks the way it does:
+
+1. **"Dual-concern"** (early 2026-05-19) — platform + network. Too flat; didn't name the relationship.
+2. **"Vercel analogy / primitive vs product"** (mid 2026-05-19) — added the modules layer, but split each capability into a *primitive* repo (schemas) + a *product* repo (runtime). Operator flagged: this doubles the repo count, and "the Score API is starting to become the product" — schema and runtime want to live together.
+3. **"Building / Factory"** (this version, 2026-05-19 PM) — each capability is ONE building = ONE repo containing schema + runtime + docs. Buildings compose via what they produce/consume. Products are buildings (or building-groups) presented for sale. This is where the model stabilized.
+
+The naturalistic metaphors tried along the way (coral reef, cellular biology, compiler stack, musical layering) did not land for the operator. **Factory-game terminology did.** This ADR uses it as canonical because a model you can hold in your head beats a model that's theoretically elegant.
 
 ## Context
 
-[ADR-007](007-loa-freeside-absorption.md) ratified the dual-concern absorption: `loa-freeside` became both the vertical platform AND the ecosystem parent for the `freeside-*` module network. It documented WHAT the two concerns are and HOW they're firewalled.
+[ADR-007](007-loa-freeside-absorption.md) ratified the dual-concern absorption. ADR-008 (this doc) names **how the pieces relate** — and the operator's working concern that drove iteration 3 was concrete:
 
-It did not document **how they RELATE** — and crucially, the first draft of this ADR (early 2026-05-19) over-extended the term "platform" to include code paths that are actually module-shaped concerns. The operator corrected this mid-session:
+> "The biggest difficulty is, from the repo sense, that we're creating so many repos, and we want to reduce the number of repos. The Score API itself is starting to become the product. Any of the APIs ends up becoming a potential product … this is developer tooling / agent tooling which serves MCPs and other agent tools for builders." — operator, 2026-05-19 PM
 
-> "What stays as a platform is the ECS, AWS, gateway, worker, and sietch HTTP / DB / queues. Basically, what the freeside-cli will deploy into. We have to think about the freeside-cli just like Vercel.
->
-> There's a score module, freeside-score, as well as freeside-mediums, which covers basically the Discord and Telegram surfaces and the conviction scoring. I think the billing and, I believe, ledger as well will be part of the modules side. Honestly, the gaib IaC CLI should merge with the freeside-cli, because it simply should just allow people to deploy what they want onto the platform, just like Vercel. At the backend would be the Terraform AWS, basically how Vercel looks." — operator, 2026-05-19 PM
+And the model the operator landed on:
 
-This is a more disciplined framing than "two concerns share a repo." It names a **Vercel-shaped architecture**: a thin platform substrate + a catalog of installable modules + a deployment CLI that puts modules on the substrate + a discovery/composition layer.
+> "They are buildings that have capabilities and responsibilities, and composability is based off their responsibilities and what they produce and consume … composing the APIs and the entire essence into a single building per capability. Then the capabilities can be composed together into products." — operator, 2026-05-19 PM
 
-This ADR ratifies that framing by adopting **two** vault doctrines into repo-local doctrine: `freeside-as-layered-station` (the layered identity + 3-plane diagnostic) and `freeside-as-subway` (the composable-menu model). It is **descriptive of intent**, not prescriptive of an immediate refactor — the current codebase still mixes platform substrate with module-shaped concerns. The operator explicitly noted: *"we should definitely have a session where we're getting clarity on that"* — a follow-up cycle will resolve the specific module-extraction sequencing.
-
-### Doctrine Activation Receipts (per Operator OS v3.1 §Doctrine Activation Protocol)
-
-This ADR cites multiple vault doctrines; each gets an explicit activation receipt to satisfy the discipline boundary that vault material is not authority by default. The flatline SKP-001 finding (PR #214 review) flagged that the first draft activated only one doctrine while citing several — this is the correction.
+### Doctrine Activation Receipts (per Operator OS v3.1)
 
 ```
 Activated doctrine: ~/vault/wiki/concepts/freeside-as-layered-station.md
-Operation: ADR-008 (repo-local architectural doctrine)
-Use: usable (adopts the 3-plane diagnostic + L1-L5 layer mapping as repo-canonical)
-Boundaries: cannot override Loa workflow gates, cannot dictate framework-level changes,
-            applies only to loa-freeside's repo-local identity model
-Expiry: until superseded by future ADR or until the operator-clarity session amends it
+Use: usable (3-plane cognitive diagnostic adopted as repo-canonical — see D-1)
+Boundaries: cannot override Loa workflow gates; applies to loa-freeside identity model only
+Expiry: until superseded by future ADR
 
 Activated doctrine: ~/vault/wiki/concepts/freeside-as-subway.md
-Operation: ADR-008 (repo-local architectural doctrine — module-composition framing)
-Use: usable (adopts the composable-menu model + Vercel analogy as repo-canonical)
-Boundaries: cannot override actual module extraction sequencing, cannot bind specific
-            module-pricing or commercial decisions, applies only to architectural framing
-Expiry: until superseded; specific module extractions need their own ADRs
+Use: usable (composable-menu / marketplace model adopted — see D-6)
+Boundaries: cannot bind module pricing or commercial decisions
+Expiry: until superseded
 
 Activated doctrine: ~/vault/wiki/concepts/loa-org-naming-conventions.md
-Operation: ADR-008 §D-8 (prefix-as-type-signature)
-Use: usable (adopts the loa-X / freeside-X / construct-X / world-X canon)
-Boundaries: descriptive of existing naming canon; does not introduce new prefixes
-Expiry: stable canon, no expected expiry
-
-Activated doctrine: ~/vault/wiki/concepts/freeside-vision.md
-Operation: ADR-008 (background context for L1-L5 stack reference)
-Use: background_only (cited for L1-L5 anchoring; does not drive decisions in this ADR)
-Boundaries: parent doctrine; this ADR maps to its layers without redefining them
-Expiry: stable parent doctrine
+Use: usable (prefix-as-type-signature canon — see D-7)
+Boundaries: descriptive of existing canon; introduces no new prefixes
+Expiry: stable canon
 ```
+
+The "building / factory" terminology is **operator-derived in-session**, not vault doctrine. It is repo-local doctrine ratified by this ADR. The vault pages above are its upstream context, not its source.
 
 ## Decision
 
-`loa-freeside` adopts the **Vercel-analogy three-part identity**: Platform (substrate) + Modules (deployed-onto) + Network (discovery/composition layer). The repo currently houses **all three** but the long-term direction is extraction of module-shaped concerns into separate `freeside-*` repos.
+`loa-freeside` is a **factory**. Each capability is a **building**. Buildings compose into **products**. Customers order from a **marketplace**. The factory runs on the **platform substrate**.
 
-This ADR locks the **framing**. It does not lock specific extractions; those need a follow-up operator-clarity session per the operator's own note.
+### D-1. Three orthogonal planes (the cognitive diagnostic — unchanged, adopted from vault §2)
 
-### D-1. Three orthogonal planes (the cognitive diagnostic — adopted as-is from vault §2)
+Independent of the factory model, every change is *also* classified by which plane it touches. This is the daily debugging diagnostic:
 
 | Plane | What it holds | How to think when in it |
 |-------|---------------|--------------------------|
-| **Contract** | Sealed schemas, BeaconV3, NATS protocols, Zod definitions, integration boundaries | The only plane where the system actually touches itself. A module never talks to the platform directly — it talks to a schema. The platform reads a schema. You steer the whole stack by governing schema evolution. |
-| **Construct** | Pure logic, state machines, persona definitions, intent generators | Brains in vats. No concept of Discord, Berachain, AWS, or Bun. Drop all outside-world context. Only concern: given State A + Context B, does the state machine deterministically compute State C? |
-| **Execution** | The interpreter, the runtime, side-effects, I/O, blockchain RPC, gateways, AWS ECS, HTTP servers | The cyberdeck. The brute-force engine that catches Intents thrown by Constructs and fires the actual HTTP/RPC/PG calls. |
+| **Contract** | Sealed schemas, BeaconV3, NATS protocols, port interfaces | The only plane where the system touches itself. A building talks to a schema, never to another building directly. |
+| **Construct** | Pure logic, state machines, intent generators | Brains in vats. No I/O. Given State A + Context B → does it deterministically compute State C? |
+| **Execution** | Runtime, side-effects, RPC, gateways, AWS ECS | The cyberdeck. Catches Intents, fires real-world calls. |
 
-Daily diagnostic: bug-source classification by plane prevents wasted investigation surface.
+Plane is orthogonal to the factory model — see D-8.
 
-### D-2. The three-part identity (platform / modules / network) — the Vercel-shaped architecture
+### D-2. The building model — one building per capability, one repo per building
+
+A **building** is a capability with a defined responsibility — a thing that produces certain outputs and consumes certain inputs. Examples: `freeside-sonar` (produces chain events), `freeside-storage` (produces asset metadata), `freeside-score` (produces rankings), `freeside-inventory` (produces holder inventory).
+
+**Each building is exactly ONE repository.** That repository contains everything the capability is:
 
 ```
-   ┌────────────────────────────────────────────────────────────────────┐
-   │  MODULES (the catalog — what operators ORDER)                      │
-   │                                                                    │
-   │  External freeside-* repos (already-extracted):                    │
-   │   • freeside-storage  · freeside-mint     · freeside-activities    │
-   │   • freeside-sonar    · freeside-inventory                         │
-   │                                                                    │
-   │  In-repo, intended-for-extraction (current monolithic state):      │
-   │   • freeside-score    (currently: packages/services/, themes/      │
-   │                        sietch/src/services/)                       │
-   │   • freeside-mediums  (Discord + Telegram + conviction;            │
-   │                        currently: themes/sietch/src/{discord,      │
-   │                        telegram}/ + conviction logic)              │
-   │   • freeside-billing  (Paddle + NOWPayments; currently:            │
-   │                        themes/sietch/src/api/routes/ +             │
-   │                        packages/adapters/)                         │
-   │   • freeside-ledger   (currently: packages/services/ledger)        │
-   │                                                                    │
-   │  Each module: declares BeaconV3 contract · ships its own runtime · │
-   │               deploys onto the platform via freeside-cli           │
-   └────────────────────────────────┬───────────────────────────────────┘
-                                    │ deployed onto / federated through
-                                    ▼
-   ┌────────────────────────────────────────────────────────────────────┐
-   │  NETWORK (the discovery / composition layer)                       │
-   │  • packages/beacon-schema/     — module-declaration contract        │
-   │  • packages/freeside-registry/ — registry + federation manifest     │
-   │  • apps/mcp-gateway/           — MCP federation router              │
-   │  • packages/freeside-cli/      — deploy + inspect (Vercel-like)     │
-   │                                  (gaib IaC CLI merges in — see D-4) │
-   └────────────────────────────────┬───────────────────────────────────┘
-                                    │ runs on / hosted by
-                                    ▼
-   ┌────────────────────────────────────────────────────────────────────┐
-   │  PLATFORM (the thin substrate — the "Vercel" layer)                │
-   │  • apps/gateway/          — Rust gateway proxy (multi-shard)        │
-   │  • apps/worker/           — NATS / RabbitMQ worker                  │
-   │  • apps/ingestor/         — event ingestion                         │
-   │  • themes/sietch/         — HTTP / API server (substrate only;      │
-   │                             route handlers are MODULE-defined)      │
-   │  • packages/core/         — port interfaces + domain types          │
-   │  • packages/adapters/     — storage/chain/security primitives       │
-   │  • packages/sandbox/      — schema provisioning, event routing      │
-   │  • infrastructure/terraform/ — AWS ECS + RDS + ElastiCache + ALB    │
-   └────────────────────────────────────────────────────────────────────┘
+   freeside-<capability>/
+   ├── README.md                  ← the building's "wiki page"
+   ├── package.json               ← exports @freeside/<capability> (the schema package)
+   ├── packages/schema/           ← Contract plane: sealed schemas + state machines
+   │                                 (builders import THIS to consume the capability)
+   ├── src/
+   │   ├── api/                   ← Execution plane: REST + MCP endpoints (the runtime)
+   │   ├── consumers/             ← what this building subscribes to (its inputs)
+   │   └── publishers/            ← what this building emits (its outputs)
+   ├── .well-known/beacon.json    ← the building's broadcast (what it is / consumes / produces)
+   └── tests/
 ```
 
-**The Vercel analogy made explicit**:
+This **collapses the primitive/product split at the repo level** (the iteration-2 mistake). There is no separate "schema repo" and "runtime repo." The schema is an exported sub-package of the building. The building IS the capability IS — when customer-facing — the product.
 
-- **Vercel** is the deployment platform · a Next.js app is a module deployed onto Vercel · the Vercel CLI is how you deploy
-- **Freeside platform** is ECS + AWS substrate · a `freeside-*` module is what's deployed onto it · `freeside-cli` is how you deploy
-- The platform doesn't know what a module *does* — it just hosts the runtime. The network tells operators what modules *exist* and what they *expose*. Modules are responsible for their own logic.
+**Repo-count consequence**: 9 capabilities = 9 repos, not 18. The operator's stated concern ("we're creating so many repos") is resolved by *not* doubling. Each building holds its whole self.
 
-### D-3. Current state vs intended state (the honest split)
+### D-3. Composition direction follows data semantic depth (the DAG)
 
-**The hard truth**: the current `loa-freeside` codebase is a "thick monolith" — the platform substrate IS comingled with what will be modules. The Subway-style separation is the **direction**, not the present.
+The operator's hardest mental-model strain was "composability in any direction." Resolution: **composition has natural direction because data has semantic depth.**
 
-| Concern | Current state (what's true today) | Intended state (per operator + Subway doctrine) |
-|---------|------------------------------------|--------------------------------------------------|
-| Score logic | Lives in `packages/services/` + `themes/sietch/src/services/` | `freeside-score` external repo (per vault §3 mapping) |
-| Discord/Telegram + conviction scoring | Lives in `themes/sietch/src/discord/` + `telegram/` + service layer | `freeside-mediums` external repo |
-| Billing (Paddle + NOWPayments) | Lives in `themes/sietch/src/api/routes/` + `packages/adapters/` | `freeside-billing` external repo |
-| Ledger | Lives in `packages/services/` (per operator: "I believe") | `freeside-ledger` external repo |
-| gaib IaC CLI | Lives in `packages/cli/` as `@freeside/cli` | **Merges into `@freeside/freeside-cli`** (D-4) |
-| Pure platform substrate | Mixed with everything above in same repo | `apps/{gateway,worker,ingestor}/`, `apps/mcp-gateway/`, `themes/sietch/` (substrate-only after route extraction), `packages/{core,adapters,sandbox}/`, `infrastructure/terraform/` |
+```
+   RAW              →    DERIVED          →    INTEGRATED        →    PRESENTED
+   (events)              (state)               (meaning)              (UX)
+   ──────────            ──────────            ──────────             ─────────
+   freeside-sonar        freeside-inventory    freeside-score-mibera  discord embeds
+   freeside-storage      (holdings from        (uses inventory +      score-mibera UI
+   (chain events,         sonar + storage)      score → "tier 3")
+    metadata blobs)
+```
 
-**No code moves in this ADR.** Extractions sequence in future cycles. The follow-up operator-clarity session will:
+A building consumes only buildings **upstream** of it (closer to raw). `freeside-inventory` consumes `freeside-sonar` + `freeside-storage`; the reverse is structurally impossible because raw events have no concept of "current holdings." **When you can't decide which way an arrow points, the answer is: the building closer to raw publishes; the building closer to meaning consumes.** The factory belts only run one way.
 
-1. Identify what's actually module-shaped vs substrate-shaped per directory
-2. Decide extraction order (probably: billing/ledger first since they're shared infrastructure; mediums and score later)
-3. Decide whether the existing PR #178 `packages/freeside-cli/` slot becomes the unified CLI (per D-4) or whether gaib stays at `packages/cli/` and adds the deploy verbs
+This is also the **bottleneck diagnostic**: when something is slow or wrong, walk upstream on the belts. The DAG is the dependency chain.
 
-### D-4. The unified `freeside-cli` (gaib + freeside-cli merge intent)
+Buildings communicate via **belts** — event streams (NATS topics) for async, API contracts (REST/MCP) for sync. A building declares its belts in its `beacon.json`: `consumes` (input belts) + `publishes` (output belts).
 
-Per the operator's 2026-05-19 framing, `@freeside/cli` (gaib IaC) and `@freeside/freeside-cli` (ecosystem CLI) **should merge into one CLI** whose unified job is *"deploy what people want onto the platform, just like Vercel."*
+### D-4. Buildings scale independently; failures isolate
 
-Today: gaib does IaC orchestration (auth/sandbox/server provisioning). freeside-cli does ecosystem inspection (list/inspect/doctor of registered modules). The Vercel-analogy unification would add a `deploy <module-slug>` verb (or equivalent) that uses gaib's IaC backbone to actually instantiate a module onto the platform.
+Because each building is its own deploy unit:
 
-This merge has its own coordination cost (Jani co-owns gaib; PR #178 stakes the `@freeside/cli` namespace differently). **Not done in this ADR.** Captured as intent so future work can cite the canonical direction.
+- **Scale**: add instances of the bottleneck building without touching others
+- **Failure isolation**: `freeside-inventory` degrading does not take down `freeside-sonar`; `inventory` should fail-soft when an upstream belt stalls (serve stale, surface a degraded flag)
+- **Debug**: bottleneck identification = "which belt is backing up" = the upstream building is the source
 
-### D-5. Modules as Subway items (composable-menu doctrine)
+This is the operator's stated reason for the building split: *"we'll need to scale each of these individually, and then maybe there will be points where we're certain that there are bottlenecks in individual APIs, and then that will make it pretty easy for us to actually debug and find the actual source."*
 
-Per `freeside-as-subway` vault doctrine — adopted into repo-local doctrine via activation receipt above — `freeside-*` modules are **Components** in an ECS-style architecture:
+### D-5. Factory view vs Marketplace view (products)
 
-- An operator deploying a community (a Workspace, in vault `workspace-project-model` terms) **orders** modules from the catalog
-- The platform is the **System** that iterates over Workspaces with that Component attached and executes
-- The freeside-cli is the **counter** at which operators place orders
-- The federation manifest (`/federation.json`) is the **menu** they read
+The same factory has **two views**:
 
-The mental shift: *Freeside is not a feature set. It is a feature catalog.* What loa-freeside ships is the substrate to RUN the catalog, the protocol to DECLARE catalog items, and the CLI to ORDER them. Each catalog item (module) ships its own logic + runtime + pricing in its own repo.
+```
+   FACTORY VIEW                          MARKETPLACE VIEW
+   (what's deployed — buildings)         (what's sold — products)
+   ─────────────────────────────        ──────────────────────────────
+   freeside-sonar       (building)       "sonar API"     — product (single building,
+   freeside-storage     (building)                          sold rarely solo)
+   freeside-score       (building)       "score API"     — product (single building)
+   freeside-mediums     (building)       "mediums API"   — product (single building)
+   freeside-inventory   (building)  ───→ "inventory API" — product (single building)
+   freeside-mint        (building)       "community-mgmt"— product (COMPOUND:
+   freeside-activities  (building)                          mediums + score + inventory)
+   …                                     "world hosting" — product (COMPOUND:
+                                                             storage + worlds + observ.)
+```
 
-The 21-products SaaS vision (per Subway doctrine §"The 21-products SaaS vision") is downstream of this: each of the 21 envisioned SaaS products is a freeside-* module subscribed-to by operators who want that specific capability.
+A **product** is a building (or set of buildings) **presented for sale**. Three shapes:
 
-### D-6. Tenancy + trust + isolation boundaries (addresses flatline SKP-004 from PR #214)
+- **Single-building product** — one building is useful as-is (`inventory API`, `score API`)
+- **Compound product** — an experience that needs several buildings to feel complete (`community-management` = mediums + score + inventory)
+- **Infrastructure building** — rarely sold solo; consumed implicitly when a customer buys a downstream product (`sonar` — most customers get it because they bought `inventory`, which needs it)
 
-The PR #214 flatline review correctly flagged that the platform-runs-modules framing implies a trust/isolation model that the doctrine doesn't specify. Future ADRs will resolve these boundaries; **this ADR explicitly names them as open**:
+The customer picks from the marketplace. They do **not** need to know whether they bought one building or five. The platform resolves the building dependency DAG and deploys the subtree. This is the Steam Workshop pattern: a player installs a "modpack" (compound product) or a single "mod" (single-building product) from one marketplace, never needing to know which.
 
-| Boundary | Current state | Status |
-|----------|---------------|--------|
-| **Hosted vs federated** | Modules in this repo are co-deployed via shared platform. External `freeside-*` modules are federated via the MCP gateway. | Mixed — to be clarified by the operator-clarity session |
-| **First-party vs third-party trust** | All currently-registered modules (per `packages/freeside-registry/registry.yaml`) are first-party (0xHoneyJar-owned). | Third-party module trust model is **undefined**. Future ADR required before accepting non-first-party modules. |
-| **Per-module tenancy** | Per-module isolation handled at the platform substrate level (Postgres RLS, per-tenant credentials in `apps/mcp-gateway/src/tenants.ts`). | Adequate for first-party; third-party would need additional sandboxing model. |
-| **Module-level billing** | Tied to the global Freeside billing surface today. | Per-module pricing (Subway doctrine §"Economic framing") is intended; not yet implemented. |
-| **Module observability** | Logs go to global CloudWatch; no per-module budgeted observability. | Future ADR needed (per Subway §"Observability" — TBD per ES). |
-| **Module deployment authorization** | gaib IaC requires authenticated session against the THJ AWS account. | Third-party operator deploying a third-party module onto the platform is **out of scope until a future ADR** defines the trust path. |
+Per the `freeside-as-subway` vault doctrine: the marketplace IS the Subway menu. The factory IS the kitchen. Customers order menu items; the kitchen stocks ingredients (buildings) shared across orders.
 
-This is a non-goals section in spirit: ADR-008 says "platform RUNS modules" without defining the trust model under which that happens. Sufficient for first-party reasoning today; insufficient for third-party hosting tomorrow.
+### D-6. Bundles + shared buildings (the Workspace layer)
 
-### D-7. Plane (cognitive diagnostic) and Domain (organizational firewall) are ORTHOGONAL (addresses BB REFRAME from PR #214)
+When a customer (a **Workspace**, per vault `workspace-project-model`) orders multiple products, the products **share building instances**:
 
-The PR #214 BB review surfaced that contributors may try to map plane→domain and get stuck. They are **orthogonal axes**:
+- Customer A orders `score API` → platform provisions a `freeside-sonar` tenant (sonar is multi-tenant)
+- Customer A then adds `inventory API` → near-zero added infra: sonar is already running for them; inventory just tenants onto the same sonar instance
+- Data coherence is free: score and inventory read the SAME sonar belt — no double-indexing, no drift
 
-- **Platform/Network/Modules** is the **organizational firewall** — what code touches what. CI-enforced (per ADR-007 §D-3 + .github/workflows/path-domain-check.yml).
-- **Contract/Construct/Execution** is the **cognitive diagnostic** — what you're reasoning about. Operator-applied (no CI enforcement).
+This is **AWS-shaped, not Vercel-shaped**: shared multi-tenant building instances within a customer account, not per-app dedicated deploys. The Vercel analogy holds only for "how one building deploys" (push code, platform handles infra); the multi-tenant sharing within a bundle is the AWS pattern.
 
-A single change is classified along **both** axes. Example: extracting the score logic into `freeside-score` is:
-- **Domain axis**: starts in PLATFORM (where score lives today), ends in MODULES (where it should live)
-- **Plane axis**: spans CONTRACT (BeaconV3 declaration for the new module) + CONSTRUCT (score logic itself) + EXECUTION (how the module gets deployed onto the platform)
+Default: shared multi-tenant buildings (low friction, low cost, fast checkout — tenant provisioning is milliseconds). Opt-in: **sovereignty mode** — a customer can request dedicated single-tenant building instances on their own infrastructure, trading the bundle-synergy savings for ownership. Pricing tier above default.
 
-The two decompositions don't substitute for each other. Both are required for full classification of a change.
+### D-7. The B2B2C fit (the Oregon strategy)
 
-### D-8. Prefix-as-type-signature (adopted from vault canon)
+```
+   B2B (enterprise customers)    →  Building designers / factory builders.
+                                    "My community needs inventory + score +
+                                     mediums buildings." Picks from the catalog.
+                                     This is the developer / agent tooling layer —
+                                     buildings serve MCPs + agent tools for builders.
 
-| Prefix | Means | Examples |
-|--------|-------|----------|
-| `loa-X` | A member of the Loa stack itself; each is a known L1-L5 layer member | `loa-freeside` (L4 platform substrate + module-network host), `loa-constructs` (L1 expertise distribution), `loa-finn` (L3 AI runtime) |
-| `freeside-X` | An installable Subway module that deploys onto the freeside platform | `freeside-storage`, `freeside-mint`, `freeside-activities`, `freeside-sonar`, `freeside-inventory`, plus intended-extractions: `freeside-score`, `freeside-mediums`, `freeside-billing`, `freeside-ledger` |
-| `construct-X` | An agent-expertise pack about X; Plane 2 (Construct) by convention | `construct-freeside`, `construct-noether`, `construct-protocol` |
-| `world-X` | A community-specific deployed module bundle (Workspace-shaped) | `world-mibera`, `world-apdao`, `world-rektdrop`, `world-score-api` |
+   FREESIDE PLATFORM             →  The game engine (Roblox Studio / Steam / the
+                                    Factorio engine). Hosts buildings multi-tenant.
+                                    Ships the building catalog. Serves both audiences.
 
-**The namespace already encodes the layering.** No new prefixes introduced.
+   B2C (community members)       →  Players in the world. Never see buildings.
+                                    Experience the OUTPUTS (Discord roles, scores,
+                                    inventory UIs). Consumer products are the visible
+                                    UX; white-glove enterprise builds the factory
+                                    that powers them.
+```
+
+The enterprise products **produce** the consumer products — Freeside builds for communities, so enterprise tooling (buildings) is what consumer community experiences run on. This is the Roblox model exactly: developers build experiences (B2B) using engine primitives; players consume experiences (B2C); the platform serves both.
+
+### D-8. Prefix-as-type-signature + plane orthogonality
+
+| Prefix | Means |
+|--------|-------|
+| `loa-X` | A member of the Loa stack itself (`loa-freeside` IS the L4 platform) |
+| `freeside-X` | A **building** — a capability that deploys onto the freeside platform |
+| `construct-X` | An agent-expertise pack about X (Plane 2 by convention) |
+| `world-X` | A community-specific deployed factory (a Workspace's building set) |
+
+`freeside-X` = building. No new prefixes. Products do not get their own prefix — a product is a *marketplace presentation* of one or more `freeside-X` buildings, named by what it offers (`inventory API`, `community-management`), not by a repo prefix.
+
+**Plane ≠ factory-role (orthogonal).** The platform/network domain split (ADR-007 §D-3, CI-enforced) and the Contract/Construct/Execution planes (D-1, operator-applied diagnostic) are orthogonal axes. A building spans all three planes inside its single repo (schema = Contract, state machines = Construct, runtime = Execution). Do not try to map plane → domain or plane → building; you will get stuck. Classify along each axis independently.
+
+### D-9. The unified `freeside-cli` (gaib merges in)
+
+Per the operator's framing, `@freeside/cli` (gaib IaC) and `@freeside/freeside-cli` (ecosystem CLI) **merge into one CLI** whose job is *"deploy what people want onto the platform, just like Vercel."* The unified CLI: lists the marketplace, resolves a product's building DAG, deploys the buildings, tenants the customer onto shared instances. **Not done in this ADR** — captured as intent; the merge has coordination cost (Jani co-owns gaib; PR #178 stakes the namespace).
+
+### D-10. Tenancy + trust boundaries (still open — addresses flatline SKP-004)
+
+The "platform hosts buildings multi-tenant" framing implies a trust model not yet specified. Explicitly named as **open**, to be resolved by future ADRs:
+
+| Boundary | Status |
+|----------|--------|
+| First-party vs third-party building trust | First-party only today. Third-party building trust model **undefined** — future ADR required before non-first-party buildings deploy. |
+| Per-building tenancy isolation | Postgres RLS + per-tenant credentials adequate for first-party; third-party needs additional sandboxing. |
+| Per-building / per-product billing | Tied to global billing today; per-product pricing intended, not implemented. |
+| Building deployment authorization | gaib requires authenticated THJ-AWS session. Third-party operator deploying onto the shared platform is **out of scope** until a future ADR defines the path. |
+
+## Current State vs Intended State
+
+**The hard truth**: today, `loa-freeside` is a thick monolith. Many buildings are NOT yet their own repos — their code lives inside platform paths. The building model is the **direction**.
+
+| Capability | Today | Intended |
+|-----------|-------|----------|
+| `freeside-sonar` | external repo (exists) | building repo ✓ |
+| `freeside-storage` | external repo (exists) | building repo ✓ |
+| `freeside-score` | **external repo exists** (`0xHoneyJar/freeside-score`) | building repo ✓ — extract any score logic still in this monolith into it |
+| `freeside-mediums` | **external repo exists** (`0xHoneyJar/freeside-mediums`) | building repo ✓ — extract Discord/Telegram/conviction-edge logic into it |
+| `freeside-mint` | external repo (exists) | building repo ✓ |
+| `freeside-activities` | external repo (exists) | building repo ✓ |
+| `freeside-inventory` | external repo (exists) | building repo ✓ — consumes sonar + storage |
+| `freeside-billing` | inside `themes/sietch/` + `packages/adapters/` | extract to building repo (future) |
+| `freeside-ledger` | inside `packages/services/` | extract to building repo (future) |
+| gaib IaC CLI | `packages/cli/` (`@freeside/cli`) | merge into unified `freeside-cli` (D-9) |
+| Platform substrate | mixed with everything above | thin: `apps/{gateway,worker,ingestor,mcp-gateway}/`, `infrastructure/terraform/`, `packages/{core,adapters,sandbox}/` |
+
+The follow-up operator-clarity session sequences the extractions. **No code moves in this ADR.**
 
 ## Rationale
 
-### Why adopt the Subway doctrine alongside the layered-station doctrine
+### Why "one building = one repo" (the iteration-3 correction)
 
-The two doctrines are complementary, not redundant:
+Iteration 2 split each capability into a primitive repo + a product repo — doubling repo count. The operator flagged this directly. A building holding schema + runtime + docs together: (a) halves the repo count, (b) lets schema and runtime evolve atomically (a schema change and its runtime adoption land in one PR), (c) matches reality — "the Score API is becoming the product." A Factorio mod ships one package, not "fire-recipe.txt" separate from "fire-machine.dll." Capabilities should too.
 
-- **Layered station** (vault page 2026-05-02) names the 3 planes + L1-L5 layers. It's the *steering* tool for individual contributors.
-- **Subway** (vault page 2026-04-16, ES's 2026-04-13 framing) names the composable-menu model. It's the *strategic* tool for understanding what Freeside IS at the product layer.
+### Why factory terminology (not the naturalistic metaphors)
 
-Without Subway: ADR-008 captures the structural identity but misses the *why*. Why does the platform/modules split matter? Because Freeside isn't a feature set — it's a feature catalog. That framing came from ES; it lives in the Subway vault page; it now lives in repo-local doctrine.
+The operator explicitly rejected coral-reef / cellular-biology / compiler / musical framings: *"none of the actual framings make any sense to me. Maybe we need to use game terminology."* Factory-game terminology (Factorio buildings + belts, Roblox engine/experiences/players, Steam mods/modpacks) landed because it is **active and builder-coded** — it matches the operator's actual working world. A model held in the head beats a model that is elegant on paper.
 
-### Why "intent-bearing, specific extractions deferred"
+### Why composition direction is not a free choice
 
-The operator explicitly said *"we should definitely have a session where we're getting clarity on that."* That's a clear signal: don't codify extractions in THIS ADR. Capture the **direction** (Vercel-shape, modules-not-features, gaib-merges-into-freeside-cli). Defer the **specifics** (which extraction first, exact dependency chain, refactor strategy) to a future operator-clarity session that produces ADR-009 or successor.
-
-This is the disciplined move: writing down what's clear, marking what's not. The flatline SKP-001 finding on PR #214 reviewed an earlier draft that over-extended into specifics without operator confirmation; this revision pulls back.
-
-### Why mark "Status: Proposed" instead of "Accepted"
-
-Earlier ADRs (001-007) have used Accepted on landing. This ADR is Proposed because it depends on a follow-up operator-clarity session to ratify the specific extraction sequencing. The framing is locked; the timeline is not. Status will move to Accepted when (a) the operator-clarity session produces an updated decision and (b) the first module extraction PR cites this ADR cleanly.
-
-### Why ratify NOW even though extraction work isn't ready
-
-Future contributors otherwise inherit only ADR-007 — which framed loa-freeside as "two concerns shared in a repo" without naming the deeper architectural intent. Without ADR-008, "platform" remains an ambiguous term (does it include themes/sietch's Discord routes? services/score? billing?). The Vercel analogy + Subway doctrine resolve that ambiguity even before extractions happen.
+The operator's "compose in any direction" anxiety dissolves once composition direction is recognized as a *consequence* of data semantics, not a *decision*. Raw → derived → integrated → presented is a total order on data depth. The DAG falls out of it. This is not a constraint the architecture imposes; it is a property the data already has.
 
 ## Consequences
 
 ### Positive
 
-- Future contributors have a doctrinal anchor for "is this platform substrate or module logic?"
-- The README + CLAUDE.md + BUTTERFREEZONE can teach the Vercel analogy as the canonical mental model
-- The 21-products SaaS vision (per Subway doctrine) has a repo-local home it can be cited from
-- The gaib + freeside-cli merge intent is captured before either CLI ossifies further
-- Plane-vs-domain orthogonality is explicit (closes the BB REFRAME on PR #214)
-- Tenancy/trust boundaries are explicitly named as open (closes flatline SKP-004 by not pretending they're solved)
+- Repo count does not double (operator's stated concern resolved)
+- Schema + runtime evolve atomically within a building
+- Composition direction is unambiguous (data depth → DAG)
+- Buildings scale + fail-isolate independently; bottleneck debugging is "walk upstream"
+- Marketplace/factory dual-view lets customers order without understanding internals
+- B2B2C strategy has a clean architectural home
 
 ### Negative
 
-- "Status: Proposed" creates load-bearing documentation that isn't yet fully accepted — a contributor citing it might be citing intent that hasn't been ratified by the operator-clarity session
-- The current/intended state distinction adds reading friction (contributors may misread intent as current state)
-- Multiple vault doctrine activations (per SKP-001 correction) mean this ADR is heavier on receipts than the absorption ADR — readers must accept the activation discipline
+- "Status: Proposed" — the model is load-bearing doc not yet ratified by the operator-clarity session
+- Third framing iteration in 24h — readers must accept the model stabilized at iteration 3, not earlier
+- Current/intended-state gap is wide (the monolith is real); contributors may misread intent as present
 
 ### Migration risks
 
-None directly. Risks attach to the follow-up extraction PRs — which is correct: this ADR's job is framing, not migration.
+None directly. Risks attach to the follow-up extraction PRs, which is correct — this ADR is framing, not migration.
 
 ## Alternatives Considered
 
-### A1. Don't adopt the Subway doctrine — keep just the layered station
+### A1. Keep the primitive/product repo split (iteration-2 model)
 
-Rejected. The operator explicitly cited Subway in their 2026-05-19 reframe. Adopting only half the relevant doctrine while citing both would replicate the SKP-001 problem (citing vault sources without proper activation).
+Rejected. Doubles repo count; the operator flagged this as the central pain. Schema and runtime want to co-evolve.
 
-### A2. Codify the specific module extractions in this ADR
+### A2. One monorepo for all buildings
 
-Rejected. The operator explicitly said *"we should definitely have a session where we're getting clarity on that."* Pre-empting that session would force decisions the operator hasn't made yet.
+Rejected. Buildings must scale + deploy + version independently (D-4). A monorepo couples their release cycles.
 
-### A3. Use a different analogy than Vercel
+### A3. Naturalistic metaphor (coral reef / cellular / compiler / musical)
 
-Rejected. The operator named Vercel as the analog. Substituting another (Netlify, Railway, Heroku) would lose the specific shape the operator is signaling: thin substrate + CLI-driven deployment + catalog of installable modules.
+Rejected. Operator explicitly said these did not land. The metaphor is a thinking tool; a tool the operator can't hold is not a tool.
 
-### A4. Make this an ADR-007 amendment rather than ADR-008
+### A4. Codify specific building extractions in this ADR
 
-Rejected. ADR-007 is the absorption-fact decision; ADR-008 is the layered-identity framing. They serve different purposes. Adding an amendment to ADR-007 would blur the line between "what was absorbed" and "how to think about the result."
+Rejected. Operator said *"we should definitely have a session where we're getting clarity on that."* This ADR captures the model; the extraction sequence is the follow-up session's job.
 
-### A5. Wait for the operator-clarity session before drafting any ADR
+### A5. Drop the Vercel analogy entirely
 
-Rejected. The framing IS clear enough today (Vercel-shape, Subway catalog, platform/modules/network three-part identity). What's NOT clear is the extraction sequencing. ADR-008 captures the former; the future session resolves the latter.
+Partially adopted. Vercel is retained only for "how one building deploys" (push code, platform handles infra). The composition + multi-tenant-sharing model is AWS-shaped (D-6). Using Vercel for everything would mislead — Vercel does not share infrastructure across deployments; the factory does.
 
 ## References
 
-### Adopted vault doctrine (with activation receipts above)
+### Adopted vault doctrine (activation receipts above)
 
-- `~/vault/wiki/concepts/freeside-as-layered-station.md` — 3-plane diagnostic + L1-L5 layer mapping (operator-authored 2026-05-02, confidence 0.85, load-bearing)
-- `~/vault/wiki/concepts/freeside-as-subway.md` — composable-menu model + Vercel analogy (ES's 2026-04-13 framing, vault page 2026-04-16)
-- `~/vault/wiki/concepts/loa-org-naming-conventions.md` — prefix-as-type-signature canon (operator-confirmed 2026-04-28)
-- `~/vault/wiki/concepts/freeside-vision.md` — L1-L5 stack reference (background)
-
-### Adjacent doctrine (referenced, not adopted)
-
-- `~/vault/wiki/concepts/ecs-architecture-freeside.md` — ECS formalization (Components / Systems / Entities); the Subway menu IS the Component catalog
-- `~/vault/wiki/concepts/freeside-modules-as-installables.md` — sealed schemas + typed ports
-- `~/vault/wiki/concepts/freeside-as-site-operator.md` — KRANZ runbook discipline
-- `~/vault/wiki/concepts/workspace-project-model.md` — Workspace-scoped module ordering (referenced by D-5)
-- `~/vault/wiki/concepts/no-handoffs-without-observability.md` — beacon manifests as observable surface
+- `~/vault/wiki/concepts/freeside-as-layered-station.md` — 3-plane diagnostic (D-1)
+- `~/vault/wiki/concepts/freeside-as-subway.md` — composable-menu / marketplace model (D-5)
+- `~/vault/wiki/concepts/loa-org-naming-conventions.md` — prefix canon (D-8)
+- `~/vault/wiki/concepts/workspace-project-model.md` — Workspace-scoped ordering (D-6)
 
 ### Repo-local references
 
-- [ADR-007](007-loa-freeside-absorption.md) — the absorption that created the dual-concern (precondition for this ADR)
-- [ADR-007 §D-1](007-loa-freeside-absorption.md) — workspace structure this ADR layers an interpretation onto
-- [ADR-007 Appendix A](007-loa-freeside-absorption.md) — BeaconV3 schema (lives in Plane 1: Contract)
+- [ADR-007](007-loa-freeside-absorption.md) — the absorption that created the dual-concern (precondition)
+- [ADR-007 Appendix A](007-loa-freeside-absorption.md) — BeaconV3 schema (a building's `beacon.json` declares its belts)
 - [RFC #207](https://github.com/0xHoneyJar/loa-freeside/issues/207) — the original absorption proposal
-- PR #214 BB + flatline review findings (this revision addresses BB REFRAME + flatline SKP-001 + SKP-004)
+- PR #214 BB + flatline review — this ADR addresses BB REFRAME (D-8 orthogonality) + flatline SKP-001 (activation receipts) + SKP-004 (D-10 tenancy)
+
+### Existing building repos (confirmed 2026-05-19)
+
+- `0xHoneyJar/freeside-score` — "Scoring substrate for freeside worlds"
+- `0xHoneyJar/freeside-mediums` — "Medium capability registry — Discord, Telegram, CLI"
+- `0xHoneyJar/freeside-sonar`, `freeside-storage`, `freeside-mint`, `freeside-activities`, `freeside-inventory`
 
 ### Pending follow-up
 
-- **Operator-clarity session** (per operator note 2026-05-19) — produces ADR-009 or successor with specific extraction sequencing for `freeside-score`, `freeside-mediums`, `freeside-billing`, `freeside-ledger` + the gaib/freeside-cli merge plan
-- PR #178 reconciliation — currently stakes `packages/freeside-cli/` with `@freeside/cli` namespace; needs alignment with the unified-CLI intent (D-4)
+- **Operator-clarity session** — sequences building extractions (`freeside-billing`, `freeside-ledger`) + repo consolidation + the gaib/freeside-cli merge (D-9)
+- **freeside-inventory build** — first consumer is `mibera-honeyroad`; inventory building consumes `freeside-sonar` + `freeside-storage` belts; schema evolves through mibera's production usage
