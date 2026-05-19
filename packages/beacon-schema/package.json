@@ -1,0 +1,47 @@
+{
+  "name": "@0xhoneyjar/beacon-schema",
+  "version": "0.1.0",
+  "description": "Sealed Effect Schema for the Freeside MCP federation beacon contract. Cycle C base · Cycle D extends with docs.* additively.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    }
+  },
+  "bin": {
+    "build-beacon-json": "./dist/bin/build-beacon-json.js"
+  },
+  "files": [
+    "dist",
+    "src",
+    "bin",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -b && chmod +x dist/bin/build-beacon-json.js",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "test:unit": "tsx --test tests/schema.test.ts",
+    "test:cli": "tsx --test tests/cli.test.ts",
+    "test": "pnpm build && pnpm test:unit && pnpm test:cli"
+  },
+  "peerDependencies": {
+    "effect": "^3.21.0"
+  },
+  "dependencies": {
+    "yaml": "^2.6.0"
+  },
+  "devDependencies": {
+    "effect": "^3.21.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.4.0",
+    "@types/node": "^22.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
