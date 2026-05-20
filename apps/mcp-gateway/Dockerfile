@@ -46,6 +46,12 @@ COPY packages/beacon-schema/package.json ./packages/beacon-schema/
 COPY packages/freeside-registry/package.json ./packages/freeside-registry/
 COPY --from=builder /repo/packages/beacon-schema/dist ./packages/beacon-schema/dist
 COPY --from=builder /repo/packages/freeside-registry/dist ./packages/freeside-registry/dist
+# registry.yaml + the in-repo fixture beacons are RUNTIME data, not test-only:
+# loadRegistry() reads registry.yaml; loadBeacon() resolves beacon_fixture paths
+# under tests/fixtures/. Without these the gateway serves an empty manifest.
+# (Bridgebuilder PR #217 F-02.)
+COPY packages/freeside-registry/registry.yaml ./packages/freeside-registry/
+COPY packages/freeside-registry/tests/fixtures ./packages/freeside-registry/tests/fixtures
 COPY apps/mcp-gateway/package.json apps/mcp-gateway/pnpm-lock.yaml ./apps/mcp-gateway/
 RUN pnpm --dir apps/mcp-gateway install --prod --no-frozen-lockfile
 COPY --from=builder /repo/apps/mcp-gateway/dist ./apps/mcp-gateway/dist
