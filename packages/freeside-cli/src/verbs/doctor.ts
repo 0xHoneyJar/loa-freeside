@@ -1,18 +1,23 @@
 /**
- * `loa freeside doctor` — audit all freeside-* modules against BeaconV3 schema.
+ * `loa freeside doctor` — audit registered freeside-* buildings (cycle-049 FR-4).
  *
- * For each registered module:
- *   1. Fetch its beacon_url
- *   2. Validate against BeaconV3 (or V2 legacy with warning)
- *   3. Resolve composes_with Tag references (TagName@version+hash)
- *   4. Check cycle_state.next_review against current date
- *   5. Emit compliance report
+ * Per registry module (SDD §4.2 severity matrix):
+ *   beacon_decode         loadBeacon → v3 = ok · legacy = warn · error = …
+ *   belt_tag_resolve      each `consumes.from` sibling is in the registry
+ *   cycle_state_freshness `next_review` vs today
+ *
+ * `bin/freeside-cli.ts` maps `summary.error > 0` → exit 1. The fixture set
+ * (freeside-score, V3, fresh `cycle_state`) is all-ok → exit 0; remote / V2
+ * modules surface as `warn` and never fail the gate.
  *
  * Reference: decisions/007-loa-freeside-absorption.md §D-6 + Appendix A.3
- * STUB: full network + validation pipeline deferred to follow-up cycle.
  */
 
-import { loadRegistry } from "@freeside/freeside-registry";
+import {
+  loadRegistry,
+  loadBeacon,
+  type Registry,
+} from "@freeside/freeside-registry";
 
 export type Severity = "ok" | "warn" | "error";
 
@@ -30,19 +35,90 @@ export interface DoctorReport {
   readonly summary: { ok: number; warn: number; error: number };
 }
 
-export const doctor = (): DoctorReport => {
-  const registry = loadRegistry();
+export interface DoctorOptions {
+  /** Override the registry (testing). Default: `loadRegistry()`. */
+  readonly registry?: Registry;
+}
+
+/** `next_review` within this many days of today is a `warn`. */
+const WARN_WINDOW_DAYS = 14;
+const MS_PER_DAY = 86_400_000;
+
+export const doctor = (opts: DoctorOptions = {}): DoctorReport => {
+  const registry = opts.registry ?? loadRegistry();
   const findings: DoctorFinding[] = [];
+  const now = Date.now();
 
   for (const [slug, entry] of Object.entries(registry.modules)) {
-    // STUB: emit a "deferred" finding per module so the verb produces
-    // visible output. Real network fetch + V3 validation lands in follow-up.
-    findings.push({
-      slug,
-      check: "beacon_fetch",
-      severity: "warn",
-      message: `Beacon validation deferred (would fetch ${entry.beacon_url}); see ADR-007 §Implementation step 7 for follow-up cycle that wires this in.`,
-    });
+    const result = loadBeacon(entry);
+
+    // ── beacon_decode ──────────────────────────────────────────────────
+    if (result.kind === "v3") {
+      findings.push({
+        slug,
+        check: "beacon_decode",
+        severity: "ok",
+        message: "BeaconV3 decodes clean",
+      });
+    } else if (result.kind === "legacy") {
+      findings.push({
+        slug,
+        check: "beacon_decode",
+        severity: "warn",
+        message: `${slug}: BeaconV2 detected — migrate to V3`,
+      });
+    } else {
+      // loadBeacon error. Distinguish a malformed in-repo fixture (a beacon
+      // that SHOULD decode → error) from a remote beacon_url that is simply
+      // not fetched this cycle (out of scope → warn).
+      const isFixture = entry.beacon_fixture !== undefined;
+      findings.push({
+        slug,
+        check: "beacon_decode",
+        severity: isFixture ? "error" : "warn",
+        message: isFixture
+          ? `${slug}: beacon_fixture failed to decode — ${result.error}`
+          : `${slug}: remote beacon not fetched this cycle — ${result.error}`,
+      });
+    }
+
+    if (result.kind !== "v3") continue;
+    const beacon = result.beacon;
+
+    // ── belt_tag_resolve ── each consumes.from sibling must be registered ─
+    for (const belt of beacon.consumes) {
+      const siblingKnown = registry.modules[belt.from] !== undefined;
+      findings.push({
+        slug,
+        check: "belt_tag_resolve",
+        severity: siblingKnown ? "ok" : "warn",
+        message: siblingKnown
+          ? `consumes ${belt.from}/${belt.belt} — sibling registered (tag ${belt.tag})`
+          : `consumes ${belt.from}/${belt.belt} — sibling '${belt.from}' is not in the registry`,
+      });
+    }
+
+    // ── cycle_state_freshness ──────────────────────────────────────────
+    const nextReview = Date.parse(beacon.cycle_state.next_review);
+    let severity: Severity;
+    let message: string;
+    if (Number.isNaN(nextReview)) {
+      severity = "error";
+      message = `cycle_state.next_review unparseable: ${beacon.cycle_state.next_review}`;
+    } else {
+      const daysLeft = (nextReview - now) / MS_PER_DAY;
+      if (daysLeft < 0) {
+        severity = "error";
+        message = `cycle_state.next_review ${beacon.cycle_state.next_review} is in the past`;
+      } else if (daysLeft <= WARN_WINDOW_DAYS) {
+        severity = "warn";
+        message = `cycle_state.next_review ${beacon.cycle_state.next_review} is within ${WARN_WINDOW_DAYS} days`;
+      } else {
+        severity = "ok";
+        message = `cycle_state.next_review ${beacon.cycle_state.next_review} is in the future`;
+      }
+    }
+    findings.push({ slug, check: "cycle_state_freshness", severity, message });
   }
 
   return {

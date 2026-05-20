@@ -10,7 +10,8 @@
     "dist",
     "src",
     "registry.yaml",
-    "README.md"
+    "README.md",
+    "tests/fixtures"
   ],
   "scripts": {
     "build": "tsc -b",

@@ -27,6 +27,7 @@ import { checkAccess, isAuthorizedOperator } from "./auth.js";
 import { refreshAllBeacons, startBeaconRefresh } from "./beacon-cache.js";
 import { resolveTenant } from "./beacon-resolver.js";
 import { resolveUpstreamCredential } from "./credentials-resolver.js";
+import { buildFreesideJson } from "./freeside-manifest.js";
 
 const app = new Hono();
 
@@ -224,6 +225,36 @@ app.get("/internal/federation.json", (c) => {
   }
   const visible = TENANTS.filter((t) => t.visibility !== "unlisted");
   return c.json(manifestForTenants(visible));
+});
+
+// Freeside BUILDING manifest (cycle-049 FR-3) — the registry-driven index of
+// freeside-* buildings with their belts + capabilities. Distinct registry,
+// distinct schema, distinct path from /internal/federation.json above (which
+// is the MCP-tenant manifest — SDD §3.6 naming discipline). Internal-only
+// (NFR-3): operator-gated, no public tier this cycle.
+app.get("/internal/freeside.json", (c) => {
+  if (!isAuthorizedOperator(c)) {
+    return c.json({ error: "unauthorized" }, 401);
+  }
+  try {
+    return c.json(buildFreesideJson());
+  } catch (err) {
+    // Builder-level failure (e.g. registry.yaml unparseable). A single
+    // building's bad beacon never reaches here — buildFreesideManifest
+    // skips it (SDD §6.1). Flat { error } shape per the gateway convention.
+    console.warn(
+      `[mcp-gateway] /internal/freeside.json build failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    return c.json(
+      {
+        error: "manifest_build_failed",
+        detail: err instanceof Error ? err.message : String(err),
+      },
+      500,
+    );
+  }
 });
 
 // ────── Schema export endpoints ──────

@@ -7,17 +7,26 @@
 ### Session Continuity
 - **Sprint 1**: COMPLETED — review + audit approved (commits `1cb5c7af`, `80db6b68`).
 - **Sprint 2**: COMPLETED — review + audit approved (commits `cf31c4ab`, `b5ee0585`).
-- **Sprint 3**: HALTED at grounding — gateway build environment is a confirmed hard blocker (see ⛔ below).
+- **Sprint 3**: implementation complete — gateway 25/25 tests, freeside-cli 6/6 tests, both `tsc` clean. Awaiting `/review-sprint` + `/audit-sprint`. (D-S3-1 + D-S3-2 below.)
 
-### ⛔ BLOCKER — gateway build environment (halts S3 + S4)
+### D-S3-1 — gateway build environment fixed (operator-authorized)
 
-`/run sprint-plan` HALTED before Sprint 3 implementation. Confirmed empirically — `pnpm -C apps/mcp-gateway install` fails:
+The Sprint 3 blocker — `apps/mcp-gateway` could not `pnpm install` (`ERR_PNPM_WORKSPACE_PKG_NOT_FOUND`: `workspace:*` deps + a nested `pnpm-workspace.yaml` globbing a non-existent `packages/*`) — was surfaced to the operator, who **authorized the fix**. Applied:
 
-> `ERR_PNPM_WORKSPACE_PKG_NOT_FOUND` — `"@freeside/beacon-schema@workspace:*"` is in the dependencies but no package named `"@freeside/beacon-schema"` is present in the workspace. Packages found in the workspace: *(none)*
+- `apps/mcp-gateway/package.json` — deps converted `workspace:*` → `file:../../packages/{beacon-schema,freeside-registry}` (matching the working `freeside-cli`/`freeside-registry` pattern); `packageManager` `pnpm@8.15.9 → 9.15.9`; `test` script → `tests/*.test.ts` glob.
+- `apps/mcp-gateway/pnpm-workspace.yaml` — removed (no longer a workspace).
+- `apps/mcp-gateway/pnpm-lock.yaml` — regenerated as lockfile v9.
+- `apps/mcp-gateway/Dockerfile` — reworked for a repo-root build context (the `file:` packages live outside `apps/mcp-gateway/`).
 
-`apps/mcp-gateway` declares `workspace:*` deps and carries a nested `pnpm-workspace.yaml` globbing `packages/*`, but `apps/mcp-gateway/packages/` does not exist — the workspace has zero members, the deps cannot resolve. The gateway has no `node_modules` and cannot `pnpm install` / `tsc` / run tests as committed. (`freeside-cli` and `freeside-registry` use `file:../X` deps instead and build clean — verified.)
+**Verified**: `pnpm -C apps/mcp-gateway install` succeeds; `tsc` builds clean; 21/21 existing gateway tests pass. This also **retroactively satisfies Sprint 1 AC #2** (gateway `tsc` succeeds with the reconciled import, no two-name collision) — the D-S1-1 deferral is now closed.
 
-This blocks **Sprint 3** (gateway federation route, `freeside-cli inspect` which fetches through that route) and **Sprint 4** (the FR-6 E2E test imports the Hono `app` in-process). The cycle's binding acceptance bar — FR-6 E2E green — is unmeetable until the gateway environment is fixed. The fix necessarily touches the gateway `Dockerfile` (deploy config); SDD §1.7 states "No deployment changes this cycle" — so it is **operator-bound**. Awaiting operator decision.
+**Deploy caveat**: the Docker/Railway path is reworked but NOT verified (no Docker in this environment; CI runs package `tsc`/test, not a Docker build). Before the next production deploy: set the Railway service Root Directory to the repo root and run a deploy smoke-test. Tracked for a follow-up.
+
+### D-S3-2 — `freeside-registry` ships `tests/fixtures` (file:-dep packaging fix)
+
+The `freeside-score.beacon.yaml` fixture is **runtime data**, not only test data — `registry.yaml` declares `beacon_fixture: tests/fixtures/freeside-score.beacon.yaml`, and every consumer of `@freeside/freeside-registry` resolves it via `loadBeacon`. pnpm `file:` directory deps are *packed* per the `files` array; `tests/` was excluded, so the gateway's and cli's copied `@freeside/freeside-registry` lacked the fixture → `loadBeacon` ENOENT'd → `freeside-score` silently skipped from the manifest. Fix: `tests/fixtures` added to `packages/freeside-registry/package.json` `files`; gateway + cli re-installed. (The fixture's dual-use — test data AND shipped registry data — is inherent to the cycle's deliberate fixture-driven design; PRD §7.)
+
+Also: the `apps/mcp-gateway` test script gained `--test-force-exit` — `app.ts` boot fires a fire-and-forget `refreshAllBeacons()` network call (`app.ts:106`) whose in-flight fetches otherwise keep the `node:test` process alive ~20s+. `--test-force-exit` is the canonical fix for fire-and-forget boot work; the 21 existing gateway tests are unaffected.
 
 ### Decision Log
 
