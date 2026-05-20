@@ -252,14 +252,77 @@ test("V3 is_not with fewer than 2 entries fails", () => {
   assert.equal(result._tag, "Failure", "expected validation failure");
 });
 
-test("V3 composes_with.tag without version+hash format fails", () => {
+// ─── V3 belt fields: produces / consumes (cycle-049 S1, ADR-008 §D-3) ─────
+
+test("V3 produces/consumes belts on the inventory fixture decode and populate", () => {
+  const result = Effect.runSyncExit(
+    decodeBeaconV3(fix("freeside-inventory-v3.yaml")),
+  );
+  if (result._tag === "Failure") {
+    assert.fail(`expected success, got: ${JSON.stringify(result.cause)}`);
+  }
+  assert.equal(result.value.produces.length, 1);
+  assert.equal(result.value.produces[0].belt, "holder-inventory");
+  assert.equal(result.value.consumes.length, 2);
+  assert.equal(result.value.consumes[0].from, "freeside-sonar");
+  assert.equal(result.value.consumes[0].belt, "chain-events");
+});
+
+test("V3 beacon omitting produces + consumes decodes (both default to [])", () => {
   const beacon = fix("freeside-inventory-v3.yaml");
-  beacon.composes_with["freeside-sonar"].tag = "SonarPort"; // no version+hash
+  delete beacon.produces;
+  delete beacon.consumes;
+  const result = Effect.runSyncExit(decodeBeaconV3(beacon));
+  if (result._tag === "Failure") {
+    assert.fail(`expected success, got: ${JSON.stringify(result.cause)}`);
+  }
+  assert.deepEqual(result.value.produces, []);
+  assert.deepEqual(result.value.consumes, []);
+});
+
+test("V3 produces.belt rejects a non-kebab belt name with the SDD message", () => {
+  const beacon = fix("freeside-inventory-v3.yaml");
+  beacon.produces[0].belt = "HolderInventory"; // PascalCase → must fail
+  const result = Effect.runSyncExit(decodeBeaconV3(beacon));
+  assert.equal(result._tag, "Failure", "expected lowercase-kebab belt enforcement");
+  if (result._tag === "Failure") {
+    const message = JSON.stringify(result.cause);
+    assert.ok(
+      message.includes("produces.belt must be lowercase-kebab"),
+      `expected the SDD §3.1 belt message, got: ${message}`,
+    );
+  }
+});
+
+test("V3 consumes.tag without version+hash format fails", () => {
+  const beacon = fix("freeside-inventory-v3.yaml");
+  beacon.consumes[0].tag = "SonarPort"; // no version+hash
   const result = Effect.runSyncExit(decodeBeaconV3(beacon));
   assert.equal(
     result._tag,
     "Failure",
-    "expected Tag@version+hash format enforcement",
+    "expected Tag@version+hash format enforcement on consumes.tag",
+  );
+});
+
+test("V3 consumes.from rejects a non-kebab sibling building slug", () => {
+  const beacon = fix("freeside-inventory-v3.yaml");
+  beacon.consumes[0].from = "Freeside_Sonar"; // caps + underscore → must fail
+  const result = Effect.runSyncExit(decodeBeaconV3(beacon));
+  assert.equal(result._tag, "Failure", "expected lowercase-kebab slug enforcement");
+});
+
+test("V3 regression: composes_with removed — schema neither requires nor validates it", () => {
+  // composes_with was hard-replaced by produces/consumes in cycle-049 S1
+  // (ADR-008 §D-3 belt migration). A beacon omitting it decodes clean; a
+  // stale composes_with block is an ignored excess property, never validated.
+  const beacon = fix("freeside-inventory-v3.yaml");
+  beacon.composes_with = { "freeside-sonar": { tag: "garbage", role: "x" } };
+  const result = Effect.runSyncExit(decodeBeaconV3(beacon));
+  assert.equal(
+    result._tag,
+    "Success",
+    "stale composes_with must be ignored, not validated or required",
   );
 });
 
@@ -282,4 +345,11 @@ test("V3 JSON Schema can be exported (for downstream tooling)", () => {
   assert.equal(json.length > 1000, true, "JSON Schema should be non-trivial");
   assert.ok(json.includes('"is_not"'), "is_not field should appear in schema");
   assert.ok(json.includes('"cycle_state"'), "cycle_state field should appear");
+  // cycle-049 S1: the regenerated schema carries belt fields, not composes_with
+  assert.ok(json.includes('"produces"'), "produces field should appear in schema");
+  assert.ok(json.includes('"consumes"'), "consumes field should appear in schema");
+  assert.ok(
+    !json.includes('"composes_with"'),
+    "composes_with must be absent from the regenerated schema",
+  );
 });

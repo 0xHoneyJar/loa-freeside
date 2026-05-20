@@ -1,7 +1,7 @@
 {
   "name": "@freeside/beacon-schema",
-  "version": "0.2.0",
-  "description": "Sealed Effect Schema for the Freeside MCP federation beacon contract. V2 base + V3 boundary-declaration discipline (is/is_not/composes_with/acvp_invariants/sealed_schemas/cycle_state) per ADR-007 Appendix A.",
+  "version": "0.3.0",
+  "description": "Sealed Effect Schema for the Freeside MCP federation beacon contract. V2 base + V3 boundary-declaration discipline (is/is_not/produces/consumes/acvp_invariants/sealed_schemas/cycle_state) per ADR-007 Appendix A.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/src/index.js",

@@ -4,10 +4,16 @@
 
 export {
   loadRegistry,
-  buildCompactManifest,
+  buildFreesideManifest,
   type Registry,
   type ModuleEntry,
   type VisibilityLevel,
-  type CompactModuleEntry,
-  type FederationManifest,
+  type FreesideModuleEntry,
+  type FreesideManifest,
 } from "./registry.js";
+
+export {
+  loadBeacon,
+  type BeaconLoadResult,
+  type BeaconLoader,
+} from "./beacon-loader.js";

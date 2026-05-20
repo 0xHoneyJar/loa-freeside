@@ -24,7 +24,7 @@ Usage:
 Reference: decisions/007-loa-freeside-absorption.md §D-6
 `;
 
-const main = (): number => {
+const main = async (): Promise<number> => {
   const args = process.argv.slice(2);
   const verb = args[0];
 
@@ -42,7 +42,7 @@ const main = (): number => {
         return 2;
       }
       try {
-        const output = inspectModule(slug);
+        const output = await inspectModule(slug);
         console.log(JSON.stringify(output, null, 2));
         return 0;
       } catch (err) {
@@ -70,4 +70,4 @@ const main = (): number => {
   }
 };
 
-process.exit(main());
+process.exit(await main());

@@ -1,0 +1,49 @@
+# DELIBERATELY MALFORMED beacon (cycle-049 negative fixture, SDD §7.4).
+#
+# The defect: `mcp.shape: lookup` is not a valid McpShape (valid values are
+# data | tool | proxy). This breaks the BeaconV2 *base* struct, so the beacon
+# decodes as neither BeaconV3 nor BeaconV2 — the beacon-loader classifies it
+# `error` (truly malformed), not `legacy`. Proves:
+#   - buildFreesideManifest skips it with a console.warn (skip-not-crash)
+#   - freeside-cli doctor's `error` exit path
+# Breaking a V2-base field (not just a V3 field) is the deliberate choice — a
+# V3-only break would still decode as a V2 `legacy` beacon, not `error`.
+
+schema_version: "2"
+
+mcp:
+  shape: lookup            # ← INVALID: not data | tool | proxy
+  paths:
+    - remote-http
+  remote:
+    transport: streamable-http
+    endpoint: ${MCP_REMOTE_ENDPOINT}
+  auth:
+    kind: api-key
+    header: X-MCP-Key
+    credentials_ref:
+      type: railway-secret
+      key: MCP_SCORE_UPSTREAM_KEY
+  capabilities:
+    - tools
+  tools:
+    - get_wallet_scorecard
+  pricing:
+    model: free
+    description: First-party tenant
+  publisher: "0xHoneyJar"
+
+is:
+  one_liner: "Malformed fixture — should never reach the manifest"
+  scope:
+    - "Exists only to exercise the skip-not-crash path"
+    - "Exists only to exercise doctor's error exit code"
+
+is_not:
+  - "Does NOT decode cleanly — that is the point"
+  - "Will NOT appear in any built manifest"
+
+cycle_state:
+  status: active
+  since: "2026-05-03"
+  next_review: "2026-08-03"

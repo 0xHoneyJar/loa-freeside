@@ -344,14 +344,24 @@ is_not:
 ```
 Validator rejects: empty array, single entry, entries that describe what the module DOES (negation of `is.scope` is the discipline-forcing test).
 
-**`composes_with`** (optional object, may be empty)
+**`produces`** (optional array, defaults to empty — ADR-008 §D-3)
 ```yaml
-composes_with:
-  <sibling-module-slug>:        # MUST resolve to a registered module in freeside-registry
-    role: string                # ≤200 chars; what role this module plays in the composition
-    tag: string                 # MUST be a fully-qualified Tag reference (see A.2)
-    required: boolean           # default true; if false, composition is optional
+produces:
+  - belt: string                # lowercase-kebab belt name (e.g., wallet-scores)
+    schema: string              # ≤500 chars; relative path (from building root) to the belt's JSON-schema
+    description: string         # ≤200 chars; what the belt carries
 ```
+The output belts a building emits. Capability-addressable discovery keys off these (e.g., "who produces `wallet-scores`?").
+
+**`consumes`** (optional array, defaults to empty — ADR-008 §D-3)
+```yaml
+consumes:
+  - from: string                # lowercase-kebab sibling building slug
+    belt: string                # lowercase-kebab belt name read from that sibling
+    tag: string                 # MUST be a fully-qualified Tag reference (see A.2)
+    why: string                 # ≤200 chars; why this building reads the belt
+```
+The input belts a building reads from a sibling. Each `consumes` edge is directed (ADR-008 §D-3 — raw publishes, meaning consumes) and `tag`-locked to the sibling's port ABI. `produces`/`consumes` hard-replace the former undirected `composes_with` record.
 
 **`acvp_invariants`** (required array, may be empty for layer-0 modules)
 ```yaml
@@ -388,15 +398,16 @@ Flatline SKP-004 correctly noted that name-equality is insufficient. V3 requires
 ```
 
 - `TagName`: the canonical Tag name from `construct-honeycomb-substrate/lib/ports/<TagName>.ts`
-- `version`: semver of the Tag definition at the time of the composes_with declaration
+- `version`: semver of the Tag definition at the time of the `consumes` declaration
 - `schema_hash`: sha256 of the Tag's port-interface signature (encoded as canonical TypeScript AST hash)
 
 **Example**:
 ```yaml
-composes_with:
-  freeside-sonar:
-    role: "inventory aggregator for ERC1155 candies + badges"
+consumes:
+  - from: freeside-sonar
+    belt: chain-events
     tag: SonarPort@2.1.0+a3f2c891d4
+    why: "raw transfer/holding events the aggregator reads"
 ```
 
 `loa freeside doctor` validates by:
@@ -414,7 +425,7 @@ This eliminates the false-positive composition flagged by SKP-004.
 | `loa freeside doctor` | Full schema + Tag resolution + composition check across all registered modules | Exit code 1; emits per-module finding list |
 | PR-time CI in any `freeside-*` module repo | Validate the module's own `/.well-known/beacon.json` against the BeaconV3 JSON Schema | PR blocked until valid |
 | `freeside-registry` boot | Reject module registration if beacon fails schema validation | Module not added to registry; alert |
-| Module upgrade (any `composes_with` reference changes) | Schema_hash recomputed for affected Tags; mismatch escalates to maintainer | Doctor lists `composition_drift` finding |
+| Module upgrade (any `consumes` reference changes) | Schema_hash recomputed for affected Tags; mismatch escalates to maintainer | Doctor lists `composition_drift` finding |
 
 ### A.4 Backward compatibility (V2 → V3 migration window)
 

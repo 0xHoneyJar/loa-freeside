@@ -1,0 +1,21 @@
+# A valid BeaconV2 beacon — NO V3 boundary fields (no is/is_not/cycle_state).
+# Decodes cleanly as BeaconV2 but fails BeaconV3 → the loader classifies it
+# `legacy` (NFR-1: V2 beacons are detected + surfaced, never silently coerced
+# or crashed). Used by beacon-loader.test.ts.
+
+schema_version: "2"
+
+mcp:
+  shape: data
+  paths:
+    - stdio
+  auth:
+    kind: none
+  capabilities:
+    - tools
+  tools:
+    - legacy_lookup
+  pricing:
+    model: free
+    description: Legacy V2 beacon fixture
+  publisher: "0xHoneyJar"
