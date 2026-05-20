@@ -24,6 +24,9 @@ importers:
         specifier: ^4.7.0
         version: 4.12.21
     devDependencies:
+      '@freeside/freeside-cli':
+        specifier: file:../../packages/freeside-cli
+        version: file:../../packages/freeside-cli(effect@3.21.2)
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.19
@@ -198,6 +201,10 @@ packages:
     peerDependencies:
       effect: ^3.21.0
 
+  '@freeside/freeside-cli@file:../../packages/freeside-cli':
+    resolution: {directory: ../../packages/freeside-cli, type: directory}
+    hasBin: true
+
   '@freeside/freeside-registry@file:../../packages/freeside-registry':
     resolution: {directory: ../../packages/freeside-registry, type: directory}
 
@@ -339,6 +346,13 @@ snapshots:
     dependencies:
       effect: 3.21.2
       yaml: 2.9.0
+
+  '@freeside/freeside-cli@file:../../packages/freeside-cli(effect@3.21.2)':
+    dependencies:
+      '@freeside/beacon-schema': file:../../packages/beacon-schema(effect@3.21.2)
+      '@freeside/freeside-registry': file:../../packages/freeside-registry
+    transitivePeerDependencies:
+      - effect
 
   '@freeside/freeside-registry@file:../../packages/freeside-registry':
     dependencies:

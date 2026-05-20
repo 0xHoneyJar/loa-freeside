@@ -7,7 +7,12 @@
 ### Session Continuity
 - **Sprint 1**: COMPLETED — review + audit approved (commits `1cb5c7af`, `80db6b68`).
 - **Sprint 2**: COMPLETED — review + audit approved (commits `cf31c4ab`, `b5ee0585`).
-- **Sprint 3**: implementation complete — gateway 25/25 tests, freeside-cli 6/6 tests, both `tsc` clean. Awaiting `/review-sprint` + `/audit-sprint`. (D-S3-1 + D-S3-2 below.)
+- **Sprint 3**: COMPLETED — review + audit approved (commits `183ac677`, `bb4be3a0`). (D-S3-1 + D-S3-2 below.)
+- **Sprint 4**: implementation complete — FR-6 E2E test passes; full sweep green (beacon-schema 25+3, freeside-registry 11, freeside-cli 6, gateway 26). Awaiting `/review-sprint` + `/audit-sprint`. (D-S4-1 below.)
+
+### D-S4-1 — `freeside-cli` `package.json` `main`/`types` corrected (pre-existing skeleton bug)
+
+`freeside-cli/package.json` declared `main: ./dist/index.js` / `types: ./dist/index.d.ts`, but `freeside-cli`'s `tsconfig.json` has `rootDir: "."` + `include: ["src/**/*", "bin/**/*"]` — so `tsc` emits `dist/src/index.js` (preserving `src/`), not `dist/index.js`. `@freeside/freeside-cli` was therefore unimportable as a package (`ERR_MODULE_NOT_FOUND`). Latent until cycle-049 S4 — `freeside-cli`'s own tests + `bin` use relative imports and never exercised `main`; the FR-6 E2E test is the first package-level `import "@freeside/freeside-cli"`. Fix: `main`/`types` → `./dist/src/index.js` / `./dist/src/index.d.ts` (matching `@freeside/beacon-schema`'s correct pattern). This also completes S3's "functional CLI" — a CLI whose package `main` doesn't resolve isn't importable by the `loa freeside` framework binding.
 
 ### D-S3-1 — gateway build environment fixed (operator-authorized)
 

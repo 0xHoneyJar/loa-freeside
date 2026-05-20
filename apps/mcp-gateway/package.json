@@ -27,6 +27,7 @@
     "hono": "^4.7.0"
   },
   "devDependencies": {
+    "@freeside/freeside-cli": "file:../../packages/freeside-cli",
     "@types/node": "^22.0.0",
     "tsx": "^4.20.0",
     "typescript": "^5.7.0"

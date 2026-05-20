@@ -4,8 +4,8 @@
   "description": "Ecosystem CLI for the freeside-* module network. `loa freeside doctor|list|inspect` verbs per ADR-007 §D-6.",
   "license": "MIT",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
   "bin": {
     "freeside-cli": "./dist/bin/freeside-cli.js"
   },
