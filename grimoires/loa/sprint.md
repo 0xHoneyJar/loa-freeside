@@ -282,9 +282,9 @@ Complete implementation and prove all PRD goals are achieved end-to-end — the 
 
 ### Technical Tasks
 
-- [ ] **Task 4.1 (FR-6, AD-4): Author the E2E harness.** Write `apps/mcp-gateway/tests/discovery-loop.e2e.test.ts` per SDD §7.2 — import the Hono `app`, set `OPERATOR_API_KEY` in test env, `app.request("/internal/freeside.json", { headers: { Authorization: "Bearer test-key" } })`, assert `200` + `freeside-score` present with its belts, invoke `inspectModule("freeside-score")` pointed at the in-process app, assert `decodeBeaconV3` accepts the result. Call `stopBeaconRefresh()` in teardown. → **[G-1, G-2, G-3, G-4]**
-- [ ] **Task 4.2: CI green sweep.** Confirm `path-domain-check` is network-only across all cycle diffs (no platform paths). Run `pnpm build` / `tsc -b` on all four packages and every `tsx --test` suite; resolve any breakage. → **[G-1, G-2, G-3, G-4]**
-- [ ] **Task 4.E2E: End-to-End Goal Validation.** See dedicated section below. → **[G-1, G-2, G-3, G-4]**
+- [x] **Task 4.1 (FR-6, AD-4): Author the E2E harness.** Write `apps/mcp-gateway/tests/discovery-loop.e2e.test.ts` per SDD §7.2 — import the Hono `app`, set `OPERATOR_API_KEY` in test env, `app.request("/internal/freeside.json", { headers: { Authorization: "Bearer test-key" } })`, assert `200` + `freeside-score` present with its belts, invoke `inspectModule("freeside-score")` pointed at the in-process app, assert `decodeBeaconV3` accepts the result. Call `stopBeaconRefresh()` in teardown. → **[G-1, G-2, G-3, G-4]**
+- [x] **Task 4.2: CI green sweep.** Confirm `path-domain-check` is network-only across all cycle diffs (no platform paths). Run `pnpm build` / `tsc -b` on all four packages and every `tsx --test` suite; resolve any breakage. → **[G-1, G-2, G-3, G-4]**
+- [x] **Task 4.E2E: End-to-End Goal Validation.** See dedicated section below. → **[G-1, G-2, G-3, G-4]**
 
 ### Task 4.E2E: End-to-End Goal Validation
 
