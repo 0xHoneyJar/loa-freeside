@@ -11,3 +11,10 @@ export {
   type CompactModuleEntry,
   type FederationManifest,
 } from "./registry.js";
+
+export {
+  buildCatalog,
+  type BuildingBeaconSummary,
+  type CatalogBuilding,
+  type BuildingCatalog,
+} from "./catalog.js";

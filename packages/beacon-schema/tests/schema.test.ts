@@ -223,6 +223,8 @@ test("encodeBeacon roundtrip preserves codex fixture", () => {
 import {
   BeaconV3Schema,
   decodeBeaconV3,
+  encodeBeaconV3,
+  validateBeaconV3,
   BeaconV3JsonSchema,
 } from "../src/index.js";
 
@@ -236,6 +238,55 @@ test("V3 inventory fixture decodes successfully (canonical reference module)", (
   assert.equal(result.value.is.one_liner.startsWith("Read-side inventory"), true);
   assert.equal(result.value.is_not.length, 3);
   assert.equal(result.value.cycle_state.status, "candidate");
+});
+
+test("V3 beacon decodes WITHOUT an mcp block (transport is optional, ADR-008 §D-11.1)", () => {
+  const beacon = fix("freeside-inventory-v3.yaml");
+  delete beacon.mcp;
+  const result = Effect.runSyncExit(decodeBeaconV3(beacon));
+  if (result._tag === "Failure") {
+    assert.fail(
+      `expected success without mcp, got: ${JSON.stringify(result.cause)}`,
+    );
+  }
+  assert.equal(result.value.mcp, undefined, "mcp should be absent");
+  assert.equal(result.value.slug, "inventory-api");
+});
+
+test("V3 beacon requires a slug (building identity)", () => {
+  const beacon = fix("freeside-inventory-v3.yaml");
+  delete beacon.slug;
+  const result = Effect.runSyncExit(decodeBeaconV3(beacon));
+  assert.equal(result._tag, "Failure", "expected slug to be required");
+});
+
+test("V3 slug not ending in -api fails (uniform *-api, ADR-008 §D-11)", () => {
+  const beacon = fix("freeside-inventory-v3.yaml");
+  beacon.slug = "inventory"; // lowercase-kebab but no -api suffix
+  const result = Effect.runSyncExit(decodeBeaconV3(beacon));
+  assert.equal(result._tag, "Failure", "expected -api suffix enforcement");
+});
+
+test("V3 encode round-trips the inventory fixture (mcp present)", () => {
+  const decoded = Effect.runSyncExit(
+    decodeBeaconV3(fix("freeside-inventory-v3.yaml")),
+  );
+  if (decoded._tag === "Failure") {
+    assert.fail(`decode failed: ${JSON.stringify(decoded.cause)}`);
+  }
+  const encoded = Effect.runSyncExit(encodeBeaconV3(decoded.value));
+  assert.equal(encoded._tag, "Success", "expected encode success with mcp");
+});
+
+test("V3 encode round-trips without mcp (optional transport)", () => {
+  const beacon = fix("freeside-inventory-v3.yaml");
+  delete beacon.mcp;
+  const decoded = Effect.runSyncExit(decodeBeaconV3(beacon));
+  if (decoded._tag === "Failure") {
+    assert.fail(`decode failed: ${JSON.stringify(decoded.cause)}`);
+  }
+  const encoded = Effect.runSyncExit(encodeBeaconV3(decoded.value));
+  assert.equal(encoded._tag, "Success", "expected encode success without mcp");
 });
 
 test("V3 is_not entry without 'Does NOT'/'Will NOT'/'Refuses to' prefix fails", () => {
@@ -254,7 +305,7 @@ test("V3 is_not with fewer than 2 entries fails", () => {
 
 test("V3 composes_with.tag without version+hash format fails", () => {
   const beacon = fix("freeside-inventory-v3.yaml");
-  beacon.composes_with["freeside-sonar"].tag = "SonarPort"; // no version+hash
+  beacon.composes_with["sonar-api"].tag = "SonarPort"; // no version+hash
   const result = Effect.runSyncExit(decodeBeaconV3(beacon));
   assert.equal(
     result._tag,
@@ -282,4 +333,18 @@ test("V3 JSON Schema can be exported (for downstream tooling)", () => {
   assert.equal(json.length > 1000, true, "JSON Schema should be non-trivial");
   assert.ok(json.includes('"is_not"'), "is_not field should appear in schema");
   assert.ok(json.includes('"cycle_state"'), "cycle_state field should appear");
+});
+
+test("validateBeaconV3: dependency-free result — valid → {ok,beacon}, malformed → {ok:false, string error}", () => {
+  const good = validateBeaconV3(fix("freeside-inventory-v3.yaml"));
+  assert.equal(good.ok, true);
+  assert.equal(good.beacon?.slug, "inventory-api");
+  assert.equal(good.error, undefined);
+
+  for (const bad of [{ not: "a beacon" }, null, undefined, 42, []]) {
+    const r = validateBeaconV3(bad);
+    assert.equal(r.ok, false, `expected ${JSON.stringify(bad)} to be invalid`);
+    assert.equal(typeof r.error, "string", "error must be a plain string (no Effect type leak)");
+    assert.equal(r.beacon, undefined);
+  }
 });

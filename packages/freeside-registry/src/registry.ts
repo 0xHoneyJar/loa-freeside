@@ -29,6 +29,11 @@ const ModuleEntry = Schema.Struct({
   visibility: VisibilityLevel,
   owner: Schema.String,
   added: Schema.String, // ISO-8601 date
+  // GitHub repo-rename status for the `*-api` migration (ADR-008 §D-11.3).
+  // Optional: the slug already carries the canonical `*-api` identity; this
+  // records whether the underlying GitHub repo has caught up. `list`/`doctor`
+  // surface it so operators can see which renames are still pending.
+  rename: Schema.optional(Schema.Literal("done", "pending")),
 });
 
 const Registry = Schema.Struct({

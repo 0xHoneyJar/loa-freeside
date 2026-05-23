@@ -1,64 +1,92 @@
 # Freeside Module Registry — L1 canonical source-of-truth
 #
 # Mirrors loa-constructs/registry.yaml shape. Each entry registers a
-# freeside-* module for the federation manifest at /federation.json.
+# building (a `*-api`) for the federation manifest at /federation.json.
+#
+# Naming: every building is `*-api` (ADR-008 §D-11, operator-ratified
+# 2026-05-23). The slug is the building's canonical identity and LEADS the
+# GitHub repo rename — so a slug may be `storage-api` while `git_url` still
+# points at the not-yet-renamed `freeside-storage.git` (rename pending).
 #
 # Schema:
 #   version: integer
 #   modules:
-#     <module-slug>:
-#       git_url: string          # canonical source repo
+#     <module-slug>:            # the building's `*-api` identity
+#       git_url: string          # canonical source repo (REAL/fetchable today)
 #       beacon_url: string       # where to fetch the module's beacon.json
 #       visibility: enum         # public | unlisted | internal (per ADR-007 §D-8)
 #       owner: string            # GitHub handle or org
 #       added: ISO-8601 date
+#       rename: enum             # done | pending  (GitHub repo rename status)
 #
 # Reference: decisions/007-loa-freeside-absorption.md §D-1 (L1 Module Registry)
+#            decisions/008-freeside-as-factory.md §D-11 (`*-api` convention)
+#
+# VALIDATION (status 2026-05-23): `freeside-cli doctor` is a stub — nothing yet
+# fetches/validates these beacons, recomputes composes_with tag hashes, or
+# reconciles `rename: done` against actual GitHub repo existence (it should also
+# assert git_url basename == slug when rename is done). That wiring is T2a.
 
 version: 1
 
 modules:
-  # ─── Production substrate modules ────────────────────────────────────────
-  freeside-sonar:
-    git_url: https://github.com/0xHoneyJar/freeside-sonar.git
+  # ─── Production substrate buildings ──────────────────────────────────────
+  sonar-api:
+    git_url: https://github.com/0xHoneyJar/sonar-api.git
     beacon_url: https://sonar.0xhoneyjar.xyz/.well-known/beacon.json
     visibility: public
     owner: 0xHoneyJar
     added: "2026-05-18"
+    rename: done
 
-  freeside-storage:
-    git_url: https://github.com/0xHoneyJar/freeside-storage.git
+  storage-api:
+    git_url: https://github.com/0xHoneyJar/freeside-storage.git  # rename to storage-api.git pending
     beacon_url: https://storage.0xhoneyjar.xyz/.well-known/beacon.json
     visibility: public
     owner: 0xHoneyJar
     added: "2026-05-18"
+    rename: pending
 
-  freeside-mint:
-    git_url: https://github.com/0xHoneyJar/freeside-mint.git
+  mint-api:
+    git_url: https://github.com/0xHoneyJar/freeside-mint.git  # rename to mint-api.git pending
     beacon_url: https://mint.0xhoneyjar.xyz/.well-known/beacon.json
     visibility: public
     owner: 0xHoneyJar
     added: "2026-05-18"
+    rename: pending
 
-  freeside-activities:
-    git_url: https://github.com/0xHoneyJar/freeside-activities.git
+  activities-api:
+    git_url: https://github.com/0xHoneyJar/activities-api.git
     beacon_url: https://activities.0xhoneyjar.xyz/.well-known/beacon.json
     visibility: public
     owner: 0xHoneyJar
     added: "2026-05-18"
+    rename: done
 
-  # ─── Candidate / in-flight modules ───────────────────────────────────────
-  freeside-inventory:
-    git_url: https://github.com/0xHoneyJar/freeside-inventory.git
-    beacon_url: https://inventory.0xhoneyjar.xyz/.well-known/beacon.json
+  mediums-api:
+    git_url: https://github.com/0xHoneyJar/freeside-mediums.git  # rename to mediums-api.git pending
+    beacon_url: https://mediums.0xhoneyjar.xyz/.well-known/beacon.json
     visibility: public
     owner: 0xHoneyJar
-    added: "2026-05-18"
+    added: "2026-05-23"  # newly registered — was missing from the registry
+    rename: pending
 
-  # ─── Score (registered but lives in score-mibera repo) ───────────────────
-  score-mibera:
-    git_url: https://github.com/0xHoneyJar/score-mibera.git
+  # ─── Score: runtime repo renamed score-mibera → score-api (rename: done). ──
+  #     The standalone freeside-score schema repo is absorbed per ADR-008 ──────
+  #     §D-11.2 as a SEPARATE pending migration (not reflected by `rename`). ───
+  score-api:
+    git_url: https://github.com/0xHoneyJar/score-api.git
     beacon_url: https://score.0xhoneyjar.xyz/.well-known/beacon.json
     visibility: public
     owner: 0xHoneyJar
     added: "2026-05-18"
+    rename: done
+
+  # ─── Candidate / in-flight buildings ─────────────────────────────────────
+  inventory-api:
+    git_url: https://github.com/0xHoneyJar/inventory-api.git
+    beacon_url: https://inventory.0xhoneyjar.xyz/.well-known/beacon.json
+    visibility: public
+    owner: 0xHoneyJar
+    added: "2026-05-18"
+    rename: done

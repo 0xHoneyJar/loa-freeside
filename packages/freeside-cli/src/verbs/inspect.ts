@@ -1,36 +1,61 @@
 /**
- * `loa freeside inspect <slug>` — show full beacon for a module.
+ * `loa freeside inspect <slug>` — fetch, validate, and show a building's beacon.
  *
- * Fetches the module's beacon from its registered beacon_url and pretty-prints
- * the BeaconV3 (or V2 legacy) content. Auth gating for `unlisted`/`internal`
- * visibility per ADR-007 §D-8 ships in a follow-up cycle (currently
- * public-only).
+ * Resolves the slug in the L1 registry, fetches its beacon_url, validates the
+ * payload against BeaconV3, and returns the parsed beacon (or an explicit
+ * unreachable/invalid status with the registry entry). Auth gating for
+ * `unlisted`/`internal` visibility (ADR-007 §D-8) is a follow-up; public-only.
  *
  * Reference: decisions/007-loa-freeside-absorption.md §D-6
- * STUB: network fetch + full V3 validation deferred to follow-up cycle.
+ *            decisions/008-freeside-as-factory.md §D-11
  */
 
-import { loadRegistry } from "@freeside/freeside-registry";
+import { loadRegistry, type Registry } from "@freeside/freeside-registry";
+import { validateBeaconV3, type BeaconV3 } from "@freeside/beacon-schema";
+import { makeHttpFetcher, type BeaconFetcher } from "./doctor.js";
 
 export interface InspectOutput {
   readonly slug: string;
   readonly beacon_url: string;
   readonly visibility: string;
-  readonly note: string;
+  readonly status: "valid" | "invalid" | "unreachable";
+  readonly beacon?: BeaconV3;
+  readonly error?: string;
 }
 
-export const inspectModule = (slug: string): InspectOutput => {
-  const registry = loadRegistry();
+export interface InspectDeps {
+  readonly registry?: Registry;
+  readonly fetchBeacon?: BeaconFetcher;
+  readonly timeoutMs?: number;
+}
+
+export const inspectModule = async (
+  slug: string,
+  deps: InspectDeps = {},
+): Promise<InspectOutput> => {
+  const registry = deps.registry ?? loadRegistry();
   const entry = registry.modules[slug];
   if (!entry) {
     throw new Error(
-      `Module '${slug}' not found in registry. Run 'freeside-cli list' to see registered modules.`,
+      `Building '${slug}' not found in registry. Run 'freeside-cli list' to see registered buildings.`,
     );
   }
-  return {
+
+  const fetchBeacon = deps.fetchBeacon ?? makeHttpFetcher(deps.timeoutMs ?? 5000);
+  const base = {
     slug,
     beacon_url: entry.beacon_url,
     visibility: entry.visibility,
-    note: "STUB: beacon fetch + BeaconV3 validation deferred to follow-up cycle (per ADR-007 §Implementation step 7).",
   };
+
+  const raw = await fetchBeacon(entry.beacon_url);
+  if (raw === null || raw === undefined) {
+    return { ...base, status: "unreachable" };
+  }
+
+  const result = validateBeaconV3(raw);
+  if (!result.ok || !result.beacon) {
+    return { ...base, status: "invalid", error: result.error };
+  }
+  return { ...base, status: "valid", beacon: result.beacon };
 };

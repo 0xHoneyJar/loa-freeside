@@ -1,7 +1,65 @@
-# Reference V3-compliant beacon — fixture for ADR-007 §D-4 + Appendix A tests.
-# Models freeside-inventory as the first born-V3-compliant module.
+# Reference V3-compliant beacon — fixture for ADR-008 §D-11 (building-identity).
+# Models inventory-api as the canonical born-V3-compliant building. The mcp
+# block is PRESENT here to exercise the optional-transport-present path; a
+# sibling test deletes it to exercise the transport-absent path.
 
-schema_version: "2"  # V2 base shape preserved (V3 is structural superset)
+schema_version: "3"
+slug: "inventory-api"
+publisher: "0xHoneyJar"
+
+# ─── Identity + boundaries (per ADR-008 §D-11) ───────────────────────────
+
+is:
+  one_liner: "Read-side inventory aggregator for ERC721 + ERC1155 holdings across registered chains"
+  scope:
+    - "Resolve holder inventory for a given wallet across multiple chains"
+    - "Aggregate ERC721 + ERC1155 balances with collection metadata"
+    - "Surface candy/drug/badge balances via stable view contracts"
+
+is_not:
+  - "Does NOT manage minting, burning, or transfer initiation"
+  - "Does NOT cache pricing data (those live in mint-api/storage-api)"
+  - "Will NOT proxy chain RPC calls — uses sonar-api for indexed reads"
+
+# NOTE: the `tag` hashes below + the sealed_schemas hash are PLACEHOLDERS — they
+# satisfy the format regex but are NOT grounded against a real port schema. Do
+# not copy them into a real building beacon; `doctor` (T2a) must recompute them.
+composes_with:
+  sonar-api:
+    role: "Indexed read source for ERC1155 holder balances + 721 ownership"
+    tag: "SonarPort@2.1.0+a3f2c891d4e8b7c2"
+    required: true
+  storage-api:
+    role: "Collection metadata resolution (image URLs, traits, descriptions)"
+    tag: "StoragePort@1.3.0+b8e4f7d2c1a9f3e5"
+    required: false
+
+acvp_invariants:
+  - id: hash_chain
+    scope: "All inventory snapshots emit a hash-linked event chain per holder"
+    proof_artifact: "tests/acvp/hash_chain.test.ts"
+  - id: idempotency
+    scope: "Inventory queries with identical inputs return byte-identical responses within a block boundary"
+    proof_artifact: "tests/acvp/idempotency.test.ts"
+
+sealed_schemas:
+  - path: "packages/protocol/inventory-snapshot.schema.json"
+    hash: "a3f2c891d4e8b7c2f1d5e9b8c7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e2d1c0b9a8"
+    consumers:
+      - "mint-api"
+      - "mibera-honeyroad"
+
+capabilities:
+  - list_holder_inventory
+  - get_token_balance
+  - resolve_collection_metadata
+
+cycle_state:
+  status: candidate
+  since: "2026-05-18"
+  next_review: "2026-08-18"
+
+# ─── Optional transport (present — exercises the mcp-present path) ────────
 
 mcp:
   shape: data
@@ -28,47 +86,3 @@ mcp:
     model: free
     description: First-party tenant — free during initial rollout
   publisher: "0xHoneyJar"
-
-# ─── V3 boundary-declaration fields (per ADR-007 §D-4 + Appendix A.1) ───
-
-is:
-  one_liner: "Read-side inventory aggregator for ERC721 + ERC1155 holdings across registered chains"
-  scope:
-    - "Resolve holder inventory for a given wallet across multiple chains"
-    - "Aggregate ERC721 + ERC1155 balances with collection metadata"
-    - "Surface candy/drug/badge balances via stable view contracts"
-
-is_not:
-  - "Does NOT manage minting, burning, or transfer initiation"
-  - "Does NOT cache pricing data (those live in freeside-mint/freeside-storage)"
-  - "Will NOT proxy chain RPC calls — uses freeside-sonar for indexed reads"
-
-composes_with:
-  freeside-sonar:
-    role: "Indexed read source for ERC1155 holder balances + 721 ownership"
-    tag: "SonarPort@2.1.0+a3f2c891d4e8b7c2"
-    required: true
-  freeside-storage:
-    role: "Collection metadata resolution (image URLs, traits, descriptions)"
-    tag: "StoragePort@1.3.0+b8e4f7d2c1a9f3e5"
-    required: false
-
-acvp_invariants:
-  - id: hash_chain
-    scope: "All inventory snapshots emit a hash-linked event chain per holder"
-    proof_artifact: "tests/acvp/hash_chain.test.ts"
-  - id: idempotency
-    scope: "Inventory queries with identical inputs return byte-identical responses within a block boundary"
-    proof_artifact: "tests/acvp/idempotency.test.ts"
-
-sealed_schemas:
-  - path: "packages/protocol/inventory-snapshot.schema.json"
-    hash: "a3f2c891d4e8b7c2f1d5e9b8c7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e2d1c0b9a8"
-    consumers:
-      - "freeside-mint"
-      - "mibera-honeyroad"
-
-cycle_state:
-  status: candidate
-  since: "2026-05-18"
-  next_review: "2026-08-18"

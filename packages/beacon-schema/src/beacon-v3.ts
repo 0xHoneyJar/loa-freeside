@@ -1,25 +1,41 @@
 /**
- * @freeside/beacon-schema · V3 — boundary-declaration discipline
+ * @freeside/beacon-schema · V3 — the building-identity beacon
  *
- * Extends BeaconV2 with the four boundary fields documented in
- * decisions/007-loa-freeside-absorption.md §D-4 and Appendix A:
+ * A V3 beacon declares what a BUILDING is (ADR-008 §D-11), not how to reach
+ * an MCP tenant. Identity + boundaries + composition lead; transport is
+ * OPTIONAL. This is the "identity-first" shape (operator-ratified 2026-05-23):
  *
+ *   IDENTITY (top-level)
+ *   - slug            (the building's canonical `*-api` identity)
+ *   - publisher       (org/author)
  *   - is              (definitive scope statement)
  *   - is_not          (anti-scope; min 2 entries; discipline-forcing)
- *   - composes_with   (sibling module references with Honeycomb Tag@version+hash)
+ *   - composes_with   (sibling references with Honeycomb Tag@version+hash)
  *   - acvp_invariants (verifiability discipline per ACVP doctrine)
- *
- * Plus:
  *   - sealed_schemas  (hash-verified schema references)
+ *   - capabilities    (high-level method/capability names)
  *   - cycle_state     (honest maturity signal)
  *
- * V2 → V3 migration window: V3 validator accepts V2 broadcasts as
- * cycle_state.status: legacy during the migration window. Once migrated
- * to V3, downgrade is forbidden (status field is one-way).
+ *   TRANSPORT (optional — present once the building deploys a callable surface)
+ *   - mcp             (the BeaconV2 McpBlock — "MCP counts as api", §D-11.1)
+ *   - cli             (a building MAY ship a CLI)
+ *
+ * V3 is NOT a structural superset of V2: V2 (schema_version "2") is the
+ * MCP-tenant self-declaration consumed by the gateway; V3 (schema_version
+ * "3") is the building-identity beacon consumed by the registry/doctor. They
+ * are distinct contracts that share the McpBlock for the transport sub-shape.
+ *
+ * VALIDATION PATH (honest status, 2026-05-23): V3 has NO build-pipeline
+ * validator yet — `bin/build-beacon-json.ts` validates V2 only. The V3
+ * building beacon is exercised by these unit tests and, once it lands, by
+ * `freeside-cli doctor` (T2a). Until T2a, V3 beacons are authored-but-not-
+ * pipeline-enforced; `doctor` is the intended enforcement point (it must also
+ * recompute composes_with tag hashes + reconcile registry `rename: done`
+ * against actual repo existence — see registry.yaml + tests/fixtures notes).
  */
 
-import { Schema } from "effect";
-import { BeaconV2Schema } from "./beacon-v2.js";
+import { Schema, Effect, Cause } from "effect";
+import { McpBlock, CliBlock } from "./beacon-v2.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // `is` — definitive scope statement
@@ -31,7 +47,7 @@ const IsField = Schema.Struct({
       message: () => "is.one_liner must be ≤120 chars (single sentence)",
     }),
   ).annotations({
-    description: "Single-sentence module identity statement (≤120 chars)",
+    description: "Single-sentence building identity statement (≤120 chars)",
   }),
   scope: Schema.Array(
     Schema.String.pipe(Schema.maxLength(100)),
@@ -43,7 +59,7 @@ const IsField = Schema.Struct({
       message: () => "is.scope capped at 7 entries (forces module to pick the load-bearing ones)",
     }),
   ).annotations({
-    description: "Scope bullets — what the module DOES (2-7 entries, each ≤100 chars)",
+    description: "Scope bullets — what the building DOES (2-7 entries, each ≤100 chars)",
   }),
 }).annotations({
   identifier: "Is",
@@ -113,13 +129,13 @@ const ComposesWith = Schema.Record({
   key: Schema.String.pipe(
     Schema.pattern(/^[a-z][a-z0-9-]*$/, {
       message: () =>
-        "composes_with keys must be lowercase-kebab module slugs (e.g., freeside-sonar)",
+        "composes_with keys must be lowercase-kebab building slugs (e.g., sonar-api)",
     }),
   ),
   value: ComposesWithEntry,
 }).annotations({
   identifier: "ComposesWith",
-  description: "Sibling module composition declarations (per ADR-007 §D-4)",
+  description: "Sibling building composition declarations (per ADR-007 §D-4)",
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -141,7 +157,7 @@ const AcvpInvariantId = Schema.Literal(
 const AcvpInvariant = Schema.Struct({
   id: AcvpInvariantId,
   scope: Schema.String.pipe(Schema.maxLength(200)).annotations({
-    description: "What part of the module this invariant binds",
+    description: "What part of the building this invariant binds",
   }),
   proof_artifact: Schema.String.pipe(Schema.maxLength(500)).annotations({
     description:
@@ -174,7 +190,7 @@ const SealedSchema = Schema.Struct({
     description: "sha256 of canonical-JSON of the schema (recomputed by validator)",
   }),
   consumers: Schema.Array(Schema.String.pipe(Schema.maxLength(100))).annotations({
-    description: "Modules/clients that depend on this schema's stability",
+    description: "Buildings/clients that depend on this schema's stability",
   }),
 });
 
@@ -219,36 +235,92 @@ const CycleState = Schema.Struct({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BeaconV3 — V2 ∪ {is, is_not, composes_with, acvp_invariants, sealed_schemas, cycle_state}
+// Building identity (top-level) — `slug`, `publisher`, `capabilities`
+// ─────────────────────────────────────────────────────────────────────────────
+
+const Slug = Schema.String.pipe(
+  Schema.pattern(/^[a-z][a-z0-9-]*-api$/, {
+    message: () =>
+      "slug must be a lowercase-kebab `*-api` identity ending in `-api` (e.g., sonar-api) — ADR-008 §D-11",
+  }),
+).annotations({
+  description: "Building's canonical `*-api` slug — MUST end in `-api` (ADR-008 §D-11)",
+});
+
+const Capabilities = Schema.Array(
+  Schema.String.pipe(Schema.maxLength(100)),
+)
+  .pipe(Schema.maxItems(100))
+  .annotations({
+    description: "High-level capability / method names the building exposes",
+  });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BeaconV3 — building identity + boundaries + composition, optional transport
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * BeaconV3 — extends BeaconV2 with the six boundary-declaration fields.
+ * BeaconV3Schema — the canonical building-identity beacon (ADR-008 §D-11).
  *
- * Effect.Schema composition: structurally extends BeaconV2 by intersecting
- * its struct with a V3-specific struct carrying the new required fields.
+ * Required: identity (slug, publisher, is, is_not, cycle_state). Optional with
+ * sensible defaults: composes_with, acvp_invariants, sealed_schemas,
+ * capabilities. Optional transport: mcp (the BeaconV2 McpBlock), cli.
  *
- * For YAML broadcasts that explicitly declare `schema_version: "3"`, this
- * is the canonical validator. V2 broadcasts (no V3 fields) MUST be tagged
- * by the registry as `cycle_state.status: legacy` for the migration window.
+ * `mcp` being optional is load-bearing: a building is declarable from the
+ * moment it has an identity, before it deploys a callable endpoint. When it
+ * does deploy MCP, it adds the block — "MCP counts as api" (§D-11.1).
+ *
+ * V3 intentionally DROPS V2-only keys (`payment`, `docs`): those are
+ * MCP-tenant / marketplace concerns, not building identity. A V2 beacon
+ * copied to V3 will silently lose them on decode — migrate deliberately.
  */
-export const BeaconV3Schema = Schema.extend(
-  BeaconV2Schema,
-  Schema.Struct({
-    is: IsField,
-    is_not: IsNotField,
-    composes_with: Schema.optionalWith(ComposesWith, { default: () => ({}) }),
-    acvp_invariants: Schema.optionalWith(AcvpInvariants, { default: () => [] }),
-    sealed_schemas: Schema.optionalWith(SealedSchemas, { default: () => [] }),
-    cycle_state: CycleState,
+export const BeaconV3Schema = Schema.Struct({
+  schema_version: Schema.Literal("3").annotations({
+    description:
+      "Beacon schema version — '3' is the building-identity beacon (ADR-008 §D-11)",
   }),
-).annotations({
+  slug: Slug,
+  publisher: Schema.String.pipe(Schema.maxLength(80)).annotations({
+    description: "Org/author publishing this building",
+  }),
+  is: IsField,
+  is_not: IsNotField,
+  composes_with: Schema.optionalWith(ComposesWith, { default: () => ({}) }),
+  acvp_invariants: Schema.optionalWith(AcvpInvariants, { default: () => [] }),
+  sealed_schemas: Schema.optionalWith(SealedSchemas, { default: () => [] }),
+  capabilities: Schema.optionalWith(Capabilities, { default: () => [] }),
+  cycle_state: CycleState,
+  // ── transport (optional) ──────────────────────────────────────────────
+  mcp: Schema.optional(McpBlock).annotations({
+    description:
+      "Optional MCP transport — present once the building deploys a callable endpoint (§D-11.1)",
+  }),
+  cli: CliBlock,
+}).annotations({
   identifier: "BeaconV3",
   description:
-    "BeaconV3 — V2 base + 6 boundary-declaration fields (ADR-007 §D-4, Appendix A.1)",
+    "BeaconV3 — building-identity beacon: identity + boundaries + composition, optional transport (ADR-008 §D-11)",
 });
 
 export type BeaconV3 = Schema.Schema.Type<typeof BeaconV3Schema>;
 
 export const decodeBeaconV3 = Schema.decode(BeaconV3Schema);
 export const encodeBeaconV3 = Schema.encode(BeaconV3Schema);
+
+/**
+ * Validate an UNKNOWN value (e.g., fetched beacon JSON) against BeaconV3.
+ * Returns a plain result object so consumers (freeside-cli) get validation
+ * without taking their own `effect` dependency. Mirrors the
+ * `Effect.runSyncExit(Schema.decodeUnknown(...))` pattern used in the tests.
+ */
+export interface BeaconV3ValidationResult {
+  readonly ok: boolean;
+  readonly beacon?: BeaconV3;
+  readonly error?: string;
+}
+
+export const validateBeaconV3 = (raw: unknown): BeaconV3ValidationResult => {
+  const exit = Effect.runSyncExit(Schema.decodeUnknown(BeaconV3Schema)(raw));
+  if (exit._tag === "Success") return { ok: true, beacon: exit.value };
+  return { ok: false, error: Cause.pretty(exit.cause) };
+};
