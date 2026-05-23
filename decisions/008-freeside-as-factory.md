@@ -14,6 +14,8 @@ This ADR's framing iterated three times in ~24h as the operator's mental model s
 
 The naturalistic metaphors tried along the way (coral reef, cellular biology, compiler stack, musical layering) did not land for the operator. **Factory-game terminology did.** This ADR uses it as canonical because a model you can hold in your head beats a model that's theoretically elegant.
 
+> **Amendment 1 (2026-05-23) — the building tier is `*-api`.** The building name changes `freeside-X` → `*-api`, uniformly (see D-11). The factory model (D-1–D-10) is unchanged; only the building *name* changes, and the "schema library" tier collapses into the building per D-2. This amendment's naming decision is **operator-ratified**; the broader ADR remains **Proposed** pending the extraction-sequencing session.
+
 ## Context
 
 [ADR-007](007-loa-freeside-absorption.md) ratified the dual-concern absorption. ADR-008 (this doc) names **how the pieces relate** — and the operator's working concern that drove iteration 3 was concrete:
@@ -189,6 +191,8 @@ The enterprise products **produce** the consumer products — Freeside builds fo
 
 `freeside-X` = building. No new prefixes. Products do not get their own prefix — a product is a *marketplace presentation* of one or more `freeside-X` buildings, named by what it offers (`inventory API`, `community-management`), not by a repo prefix.
 
+> **Amended by D-11 (2026-05-23):** the building tier is now `*-api`, not `freeside-X`. The table row above is retained for history; `*-api` is the live convention. `loa-X`, `construct-X`, and `world-X` are unchanged.
+
 **Plane ≠ factory-role (orthogonal).** The platform/network domain split (ADR-007 §D-3, CI-enforced) and the Contract/Construct/Execution planes (D-1, operator-applied diagnostic) are orthogonal axes. A building spans all three planes inside its single repo (schema = Contract, state machines = Construct, runtime = Execution). Do not try to map plane → domain or plane → building; you will get stuck. Classify along each axis independently.
 
 ### D-9. The unified `freeside-cli` (gaib merges in)
@@ -208,21 +212,47 @@ The "platform hosts buildings multi-tenant" framing implies a trust model not ye
 | Per-building / per-product billing | Tied to global billing today; per-product pricing intended, not implemented. |
 | Building deployment authorization | gaib requires authenticated THJ-AWS session. Third-party operator deploying onto the shared platform is **out of scope** until a future ADR defines the path. |
 
+### D-11. The `*-api` naming convention — uniform across all buildings (amends D-2, D-5, D-8)
+
+**Amendment 1 · operator-ratified 2026-05-23.** D-8 named buildings `freeside-X`. The operator revised this: **every building is named `*-api`, uniformly.** The `freeside-` prefix historically meant "the repo that holds the schemas"; once schema and runtime live in one building (D-2), `freeside-` under-describes it. `*-api` names what the building *is* — a composable capability surface.
+
+> "The substrate libraries would be renamed to api. We just want to keep it simple … the api kind of represents what it is more so than `freeside-`, because before we had `freeside-`, which only held the schemas." — operator, 2026-05-23
+>
+> "Uniform `-api` for all." — operator, 2026-05-23
+
+**D-11.1 — "API" is composability, not a transport.** An `-api` is not "a building that speaks HTTP." It is any building that can communicate with, and be composed by, other modules — over **any** transport. MCP counts. GraphQL counts. An imported npm contract counts.
+
+> "MCP does count as an API. API is simply the ability for this envelope and freeside module to communicate with other modules and for them to be composed together." — operator, 2026-05-23
+
+This dissolves the "schema-library exception" floated during the naming session: there is no library tier that escapes `-api`. A sealed-schema package is the **Contract-plane (D-1) face** of a building that also has a runtime — and they ship in one repo (D-2). It inherits the building's `-api` name.
+
+**D-11.2 — Substrate folds INTO the runtime (reinforces D-2).** The schema/substrate is not a sibling repo; it is the Contract plane **inside** the `*-api` building — the `packages/schema/` ↔ `src/api/` seam of D-2. Agents working a building MUST respect this internal seam (substrate vs runtime) even though it lives in one repo.
+
+> "The substrate should live inside of the runtime, because otherwise we just get too many repos. They should honor this substrate and runtime split within the repos, and agents should be aware of this." — operator, 2026-05-23
+
+Consequence: `freeside-score` (the standalone schema repo) folds into `score-api` (the runtime, formerly `score-mibera`) as a **managed migration** — not in this amendment; sequenced with the other repo renames.
+
+**D-11.3 — The canonical building set (7).** `sonar-api` · `storage-api` · `mint-api` · `activities-api` · `mediums-api` · `score-api` · `inventory-api`. **Identity leads the rename** — the registry slug + beacon adopt `*-api` first; the GitHub repo rename follows as managed migration. As of 2026-05-23: `sonar-api`, `activities-api`, `score-api`, `inventory-api` are renamed on GitHub; `storage`, `mint`, `mediums` are pending. A stale *local folder* name (`~/bonfire/freeside-storage`) means the rename hasn't reached that checkout — not that the building keeps the old name.
+
+**D-11.4 — Products still get no prefix (unchanged from D-8).** A product is a marketplace presentation of one or more `*-api` buildings. The namespace encodes the building tier; products are named by what they offer.
+
 ## Current State vs Intended State
 
 **The hard truth**: today, `loa-freeside` is a thick monolith. Many buildings are NOT yet their own repos — their code lives inside platform paths. The building model is the **direction**.
 
-| Capability | Today | Intended |
-|-----------|-------|----------|
-| `freeside-sonar` | external repo (exists) | building repo ✓ |
-| `freeside-storage` | external repo (exists) | building repo ✓ |
-| `freeside-score` | **external repo exists** (`0xHoneyJar/freeside-score`) | building repo ✓ — extract any score logic still in this monolith into it |
-| `freeside-mediums` | **external repo exists** (`0xHoneyJar/freeside-mediums`) | building repo ✓ — extract Discord/Telegram/conviction-edge logic into it |
-| `freeside-mint` | external repo (exists) | building repo ✓ |
-| `freeside-activities` | external repo (exists) | building repo ✓ |
-| `freeside-inventory` | external repo (exists) | building repo ✓ — consumes sonar + storage |
-| `freeside-billing` | inside `themes/sietch/` + `packages/adapters/` | extract to building repo (future) |
-| `freeside-ledger` | inside `packages/services/` | extract to building repo (future) |
+Building names below follow D-11 (`*-api`). The **Repo rename** column is the grounded GitHub state as of 2026-05-23.
+
+| Capability (`*-api`) | Today | Repo rename | Intended |
+|-----------|-------|-------------|----------|
+| `sonar-api` (was freeside-sonar) | external repo (exists) | ✓ renamed | building repo ✓ |
+| `storage-api` (was freeside-storage) | external repo (exists) | ⏳ pending | building repo ✓ |
+| `score-api` (was score-mibera) | external repo (exists) | ✓ renamed | building repo ✓ — absorbs the `freeside-score` schema repo per D-11.2 (managed migration) |
+| `mediums-api` (was freeside-mediums) | external repo (exists) | ⏳ pending | building repo ✓ — extract Discord/Telegram/conviction-edge logic into it |
+| `mint-api` (was freeside-mint) | external repo (exists) | ⏳ pending | building repo ✓ |
+| `activities-api` (was freeside-activities) | external repo (exists) | ✓ renamed | building repo ✓ |
+| `inventory-api` (was freeside-inventory) | external repo (exists) | ✓ renamed | building repo ✓ — consumes sonar + storage |
+| `billing-api` (was freeside-billing) | inside `themes/sietch/` + `packages/adapters/` | — not extracted | extract to building repo (future) |
+| `ledger-api` (was freeside-ledger) | inside `packages/services/` | — not extracted | extract to building repo (future) |
 | gaib IaC CLI | `packages/cli/` (`@freeside/cli`) | merge into unified `freeside-cli` (D-9) |
 | Platform substrate | mixed with everything above | thin: `apps/{gateway,worker,ingestor,mcp-gateway}/`, `infrastructure/terraform/`, `packages/{core,adapters,sandbox}/` |
 
