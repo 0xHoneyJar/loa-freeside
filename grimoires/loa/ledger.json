@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "next_sprint_number": 396,
-  "active_cycle": null,
+  "next_sprint_number": 400,
+  "active_cycle": "cycle-046",
   "cycles": [
     {
       "id": "cycle-001",
@@ -1812,6 +1812,34 @@
           "global_id": 395,
           "title": "DNS Module Apply + Migration Prep",
           "status": "completed"
+        },
+        {
+          "global_id": 396,
+          "local_label": "sprint-1-spine-auth",
+          "status": "planned",
+          "created": "2026-05-24T21:53:47Z",
+          "completed": null
+        },
+        {
+          "global_id": 397,
+          "local_label": "sprint-2-serve",
+          "status": "planned",
+          "created": "2026-05-24T21:53:49Z",
+          "completed": null
+        },
+        {
+          "global_id": 398,
+          "local_label": "sprint-3-mibera",
+          "status": "planned",
+          "created": "2026-05-24T21:53:50Z",
+          "completed": null
+        },
+        {
+          "global_id": 399,
+          "local_label": "sprint-4-cycle-c-redirect",
+          "status": "planned",
+          "created": "2026-05-24T21:53:51Z",
+          "completed": null
         }
       ]
     },
@@ -1855,6 +1883,47 @@
           "status": "completed"
         }
       ]
+    },
+    {
+      "id": "cycle-046",
+      "label": "identity-api — central identity organ for the freeside ecosystem",
+      "status": "active",
+      "created": "2026-05-24T21:53:46Z",
+      "archived": null,
+      "archive_path": null,
+      "prd": "/Users/zksoju/Documents/GitHub/loa-freeside/grimoires/loa/prd.md",
+      "sdd": null,
+      "sprints": [
+        {
+          "global_id": 396,
+          "local_label": "sprint-1-spine-auth",
+          "status": "planned",
+          "created": "2026-05-24T21:53:47Z",
+          "completed": null
+        },
+        {
+          "global_id": 397,
+          "local_label": "sprint-2-serve",
+          "status": "planned",
+          "created": "2026-05-24T21:53:49Z",
+          "completed": null
+        },
+        {
+          "global_id": 398,
+          "local_label": "sprint-3-mibera",
+          "status": "planned",
+          "created": "2026-05-24T21:53:50Z",
+          "completed": null
+        },
+        {
+          "global_id": 399,
+          "local_label": "sprint-4-cycle-c-redirect",
+          "status": "planned",
+          "created": "2026-05-24T21:53:51Z",
+          "completed": null
+        }
+      ]
     }
-  ]
+  ],
+  "last_updated": "2026-05-24T21:53:51Z"
 }
