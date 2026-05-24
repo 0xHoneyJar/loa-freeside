@@ -1,5 +1,5 @@
 {
-  "name": "@freeside/freeside-cli",
+  "name": "@0xhoneyjar/freeside-cli",
   "version": "0.1.0",
   "description": "Ecosystem CLI for the freeside building network. `loa freeside list|inspect|doctor|catalog` verbs per ADR-007 §D-6 + ADR-008 §D-11.",
   "license": "MIT",
@@ -22,8 +22,8 @@
     "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
-    "@freeside/freeside-registry": "file:../freeside-registry",
-    "@freeside/beacon-schema": "file:../beacon-schema",
+    "@0xhoneyjar/freeside-registry": "file:../freeside-registry",
+    "@0xhoneyjar/beacon-schema": "file:../beacon-schema",
     "effect": "^3.21.0"
   },
   "devDependencies": {

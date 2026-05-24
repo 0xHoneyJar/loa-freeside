@@ -10,8 +10,8 @@
  *            decisions/008-freeside-as-factory.md §D-11
  */
 
-import { loadRegistry, type Registry } from "@freeside/freeside-registry";
-import { validateBeaconV3, type BeaconV3 } from "@freeside/beacon-schema";
+import { loadRegistry, type Registry } from "@0xhoneyjar/freeside-registry";
+import { validateBeaconV3, type BeaconV3 } from "@0xhoneyjar/beacon-schema";
 import { makeHttpFetcher, type BeaconFetcher } from "./doctor.js";
 
 export interface InspectOutput {

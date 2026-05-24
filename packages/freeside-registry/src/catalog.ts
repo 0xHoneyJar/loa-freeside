@@ -1,5 +1,5 @@
 /**
- * @freeside/freeside-registry · the building-AWARENESS catalog
+ * @0xhoneyjar/freeside-registry · the building-AWARENESS catalog
  *
  * The freeside federation's primary purpose is discoverability: any Loa agent
  * (or the operator), in any project, points at this catalog to learn what
@@ -9,7 +9,7 @@
  *
  * `buildCatalog` joins the registry (what's registered) with resolved beacons
  * (what each building declares) into one awareness shape. It is decoupled from
- * @freeside/beacon-schema: callers pass a plain `BuildingBeaconSummary` map
+ * @0xhoneyjar/beacon-schema: callers pass a plain `BuildingBeaconSummary` map
  * (the cli extracts it from validated BeaconV3 docs), so the registry stays a
  * leaf with no schema dependency — mirrors `buildCompactManifest`.
  *

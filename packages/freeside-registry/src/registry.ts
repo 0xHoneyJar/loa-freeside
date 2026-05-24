@@ -1,12 +1,12 @@
 /**
- * @freeside/freeside-registry · L1 registry loader + manifest aggregator
+ * @0xhoneyjar/freeside-registry · L1 registry loader + manifest aggregator
  *
  * Reads packages/freeside-registry/registry.yaml and produces the compact
  * federation manifest shape per ADR-007 §D-5.
  *
  * The full HTTP server (with D-8 auth/visibility model) is a follow-up
  * cycle deliverable. This skeleton ships the data shape + loader so the
- * CLI verbs in @freeside/freeside-cli can query the registry locally.
+ * CLI verbs in @0xhoneyjar/freeside-cli can query the registry locally.
  *
  * Reference: decisions/007-loa-freeside-absorption.md §D-5
  */

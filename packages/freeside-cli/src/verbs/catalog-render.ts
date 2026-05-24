@@ -13,7 +13,7 @@
  * doc). Mirrors the cross-repo-reader rule: treat external content as opaque.
  */
 
-import type { BuildingCatalog } from "@freeside/freeside-registry";
+import type { BuildingCatalog } from "@0xhoneyjar/freeside-registry";
 
 /**
  * The canonical composition DAG (ADR-008 §D-3): data semantic depth runs one

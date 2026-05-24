@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { doctor } from "../src/verbs/doctor.js";
 import { inspectModule } from "../src/verbs/inspect.js";
 import { listModules } from "../src/verbs/list.js";
-import type { Registry } from "@freeside/freeside-registry";
+import type { Registry } from "@0xhoneyjar/freeside-registry";
 
 // ── stub builders ──────────────────────────────────────────────────────────
 

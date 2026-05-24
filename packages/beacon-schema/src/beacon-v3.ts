@@ -1,5 +1,5 @@
 /**
- * @freeside/beacon-schema · V3 — the building-identity beacon
+ * @0xhoneyjar/beacon-schema · V3 — the building-identity beacon
  *
  * A V3 beacon declares what a BUILDING is (ADR-008 §D-11), not how to reach
  * an MCP tenant. Identity + boundaries + composition lead; transport is

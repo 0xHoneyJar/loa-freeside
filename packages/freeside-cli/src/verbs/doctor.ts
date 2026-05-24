@@ -20,8 +20,8 @@
  *            decisions/008-freeside-as-factory.md §D-11
  */
 
-import { loadRegistry, type Registry } from "@freeside/freeside-registry";
-import { validateBeaconV3 } from "@freeside/beacon-schema";
+import { loadRegistry, type Registry } from "@0xhoneyjar/freeside-registry";
+import { validateBeaconV3 } from "@0xhoneyjar/beacon-schema";
 
 export type Severity = "ok" | "warn" | "error";
 

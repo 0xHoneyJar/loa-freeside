@@ -10,7 +10,7 @@
  *            decisions/008-freeside-as-factory.md §D-11
  */
 
-import { loadRegistry, type Registry } from "@freeside/freeside-registry";
+import { loadRegistry, type Registry } from "@0xhoneyjar/freeside-registry";
 
 export interface ListOutput {
   readonly modules: ReadonlyArray<{

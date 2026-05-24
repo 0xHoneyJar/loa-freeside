@@ -7,7 +7,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { renderCatalogMarkdown, renderCatalogJson } from "../src/verbs/catalog-render.js";
-import type { BuildingCatalog } from "@freeside/freeside-registry";
+import type { BuildingCatalog } from "@0xhoneyjar/freeside-registry";
 
 const cat: BuildingCatalog = {
   version: 1,

@@ -1,5 +1,5 @@
 /**
- * @freeside/freeside-cli · public API
+ * @0xhoneyjar/freeside-cli · public API
  *
  * Exports the verb implementations so they can be invoked programmatically
  * (e.g., from the `loa freeside` framework binding) in addition to via the

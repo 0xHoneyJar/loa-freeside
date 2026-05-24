@@ -1,5 +1,5 @@
 /**
- * @freeside/freeside-registry · public API
+ * @0xhoneyjar/freeside-registry · public API
  */
 
 export {

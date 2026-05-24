@@ -23,8 +23,8 @@ import {
   type BuildingBeaconSummary,
   type BuildingCatalog,
   type VisibilityLevel,
-} from "@freeside/freeside-registry";
-import { validateBeaconV3 } from "@freeside/beacon-schema";
+} from "@0xhoneyjar/freeside-registry";
+import { validateBeaconV3 } from "@0xhoneyjar/beacon-schema";
 import { makeHttpFetcher, type BeaconFetcher } from "./doctor.js";
 
 export { renderCatalogMarkdown, renderCatalogJson } from "./catalog-render.js";

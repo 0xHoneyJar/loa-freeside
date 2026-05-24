@@ -1,5 +1,5 @@
 {
-  "name": "@freeside/freeside-registry",
+  "name": "@0xhoneyjar/freeside-registry",
   "version": "0.1.0",
   "description": "Beacon aggregator + federation manifest server for the freeside-* module network (per ADR-007 §D-5 + §D-8).",
   "license": "MIT",
@@ -19,7 +19,7 @@
     "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
-    "@freeside/beacon-schema": "file:../beacon-schema",
+    "@0xhoneyjar/beacon-schema": "file:../beacon-schema",
     "effect": "^3.21.0",
     "yaml": "^2.6.0"
   },
