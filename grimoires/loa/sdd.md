@@ -27,7 +27,23 @@ honored_decisions:
 **Status:** Draft
 **PRD Reference:** `grimoires/loa/cycles/cycle-566603cf31/prd.md`
 
-> **Decision discipline.** The eight operator decisions D1–D8 (PRD §3) are **locked**. This SDD designs *within* them — it does not re-open them. The five PRD §9 open questions are carried forward as **§13 Decisions-to-Confirm** with swappable design seams so they do not block delivery.
+> ⚠️ **RECONCILIATION AMENDMENT (2026-05-24) — READ FIRST. Supersedes the greenfield premise in this body.**
+>
+> This SDD body was written against a **greenfield** premise (new repo; `@freeside-auth` as an external dependency). After activating the canonical doctrine (`freeside-as-identity-spine`, `score-vs-identity-boundary`) and reading the existing `freeside-identity` repo, the plan was **reconciled**. **`grimoires/loa/prd.md` (PRD v2.0) is canonical** — where this body conflicts, PRD v2.0 wins. Key supersessions:
+>
+> | This SDD body (greenfield) | Reconciled reality (PRD v2.0) |
+> |---|---|
+> | New `identity-api` repo, scaffolded | **Rename existing `freeside-identity` → `identity-api`**; it already houses the `@freeside-auth` building (engine/adapters/protocol/ports/mcp-tools, cycle-B PR #1). **Extend, don't scaffold.** |
+> | `@freeside-auth` = external dependency | The repo **IS** `@freeside-auth`. Reuse `engine/{resolve-tier, jwt-verify, mint-jwt-orchestrator}`, `adapters`, `protocol`, `ports`, `mcp-tools`. |
+> | D3 "full Dynamic removal" | **Credential swap**: Dynamic→SIWE at the *credential* layer (pluggable); identity layer unchanged; `dynamic_user_id` → backfill credential. |
+> | Build the 5-table spine from scratch | The 4-tier `resolve-tier` + `protocol/user.schema` **exist** (read-side). **Graduate to write (SoR, Q1)** + re-tier wallet-first; midi → backfill → reads from identity-api. |
+> | Hyper issues JWT directly | **JWT via the `JWTSigner` port (Q2)**: `mint-jwt-orchestrator` constructs claims, never signs. v1 = local ES256 signer + own JWKS; seam preserved to delegate to the platform Rust gateway later. |
+> | Compose may store downstream data | **Q3 read-time compose, NO embed** — JOIN via wallet[]; store nothing (score-vs-identity boundary). |
+> | JWKS/signing lives in identity-api | Signing is **platform substrate**, reached via the port. loa-freeside = platform; identity-api is a building atop it. |
+>
+> The §-level engineering below (schema DDL, route shapes, fan-out compose, backfill) stays valid — **apply it on top of the existing building**, not greenfield. loa-freeside harvest (learn-not-copy): ES256 + JWKS overlap rotation, tiered JWKS cache (1h/72h/60s, single-flight), server-side session extraction. Leave: Vault Transit, conviction-tier, OAuth encryption.
+
+> **Decision discipline.** Operator decisions are **reconciled** in PRD v2.0 §3 (D1 writer-graduation, D2 hybrid, D3-reframed credential-swap, D4 build-on-existing, D5 composes, D6 isolation, D7 JWTSigner-port, D8 no-embed, D9 conflict-policy). This SDD designs *within* them. The five PRD §9 open questions are carried forward as **§13 Decisions-to-Confirm** with swappable seams.
 
 > **Grounding posture.** Every concrete file/symbol/contract reference is grounded in a source read during authoring (PRD §Sources block). The wallet-link migration `046_wallet_links.ts` was read and found to be **SQLite** (`better-sqlite3`); the identity-api spine is **Postgres** (D4) — so what is reused is the *nonce-challenge shape and lifecycle*, translated to Postgres, NOT the SQLite DDL verbatim. The `midi_profiles` table and the inventory/codex/score typed SDKs are **cross-repo** (external `mibera-honeyroad` / `inventory-api` repos) — they are designed against their PRD-cited surfaces, not against in-monolith source. Vault world-model is orientation only (`background_only`), never cited as authority.
 

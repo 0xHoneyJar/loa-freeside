@@ -20,6 +20,16 @@ repos:
 
 # Sprint Plan — identity-api
 
+> ⚠️ **RECONCILIATION AMENDMENT (2026-05-24). Supersedes the greenfield premise. `grimoires/loa/prd.md` (PRD v2.0) is canonical.**
+>
+> Generated against a **greenfield** premise. Reconciled: **rename the existing `freeside-identity` repo → `identity-api` and EXTEND its `@freeside-auth` packages** (engine/adapters/protocol/ports/mcp-tools), not scaffold a new repo. Task-level deltas:
+> - **Phase 1** shifts **scaffold → rename + extend**: rename repo; refactor the existing 4-tier `resolve-tier` to *write* (SoR) + wallet-first; finish `credential-bridge-siwe` (SIWE primary, Dynamic→backfill); add a **local ES256 `JWTSigner` adapter** (not "Hyper issues directly"); rewrite the building's `INTENT.md` + beacon `is_not` from read-side → SoR.
+> - **JWT issuance** = the `JWTSigner` **port** (v1 local signer; gateway-delegation seam preserved), not a from-scratch signer.
+> - **Phase 2** compose carries a hard **no-embed invariant** (score-vs-identity boundary).
+> - **OQ-4 (repo placement) is RESOLVED** → the building is the existing external `freeside-identity` repo. The "new repo / in-monolith-vs-external" question is closed.
+> - **New task:** migrate npm scope `@freeside-auth/*` → `@0xhoneyjar/identity` (staged, alias period; coordinate with cycle-c imports).
+> - **Beads:** the 29 `arrakis-*` tasks need titles/descriptions updated for scaffold→extend (tracked via `br`).
+
 ## Executive Summary
 
 This plan delivers **identity-api v1** — the single central organ that knows *who a human is* across every freeside world, and serves a composed per-world profile. Scope is **full v1**, delivered in the **locked 4-phase sequence** (PRD §7, SDD §11). The eight operator decisions **D1–D8 are locked** (PRD §3); this plan executes *within* them. The five open questions (PRD §9 / SDD §13) are carried as **named one-file swappable seams**, never as blockers.
