@@ -2,7 +2,8 @@
 title: PRD — identity-api (the central identity organ for the freeside ecosystem)
 cycle: identity-api-2026-05-24
 building_slug: identity-api
-status: v2.0 draft (reconciled — supersedes v1 greenfield baseline @ ddf1a11d)
+status: v3.0 draft (third-pass reconciliation — merges the building's 2026-04-30 plan + operator scale-corrections; supersedes v1 @ ddf1a11d) — see §11
+building_existing_plan: ~/Documents/GitHub/freeside-auth/grimoires/{prd,sdd,sprint}.md (2026-04-30, ready-for-architect, 40 beads, ADR-039) — reconciled in §11
 date: 2026-05-24
 mode: ARCH
 authoring: /plan-and-analyze → forks resolved → doctrine reconciled (freeside-as-identity-spine + score-vs-identity-boundary, operator-activated) → re-planned build-on-existing
@@ -297,6 +298,36 @@ graph TD
 | Sietch verification substrate | reused verify + call-site | production-grade |
 | mcp-gateway | discovery/federation | live |
 | midi_profiles (mibera-honeyroad) | backfill source (via `pg-midi-profiles`) | schema exists |
+
+---
+
+## §11 Third-Pass Reconciliation — merge with the building's 2026-04-30 plan + operator corrections
+
+identity-api = the existing `freeside-identity`/`@freeside-auth` building, which has its **own mature plan** (`~/Documents/GitHub/freeside-auth/grimoires/`, 2026-04-30, ready-for-architect: canonical user spine, 3-layer split, per-world heterogeneity, ADR-039 superseding ADR-003/038, 40 beads). This section merges that plan + this PRD + the operator's scale-corrections into one authoritative direction.
+
+### Operator corrections (2026-05-24)
+- **Scale: ~<100 users matter** (NOT the building plan's 98,320). Dynamic auth data is **already in Railway DBs**; per-app profiles exist; **mibera-db holds the profiles** (the `midi_profiles` table: `discord_id`/`wallet_address`/`dynamic_user_id`). → migration collapses to a **trivial one-time backfill** — the building's 98k migration tooling (its FR-5 / M3 / GOAL-5) is **de-scoped**.
+- **Centralize identity** for the ecosystem; **ease of operation is a goal**. Users span apps/worlds; **worlds can contain multiple apps** (apps nest in worlds — the `world_identity` is per-world, shared by a world's apps).
+
+### Adopted FROM the building's 2026-04-30 plan
+- Canonical user spine: **ULID `user_id`**, `credentials[]` graph, relink mutates the array not the `sub` (building FR-1) — refine §4.2.
+- **Per-world heterogeneity (building FR-4) — KEPT as architecture**; v1 ships the **wallet/SIWE adapter only**; a `world-manifest` declares accepted credential adapters (minimal mechanism in v1).
+- Credential adapters: **SIWE primary**; **Dynamic = a per-world opt-in credential, NOT the spine** (building FR-2.6, refined 2026-05-01: "refuse Dynamic as the SPINE, not as a credential adapter"); passkey / Better Auth / Discord-bot-attestation deferred.
+- JWKS **claims shape** mirror: `sub`·`wallets[]`·`credentials[]`·`tenant_id`(world slug)·`tier`·`exp`·`iss`·`aud`·`iat`·`jti` (building FR-3.1).
+- **ADR-039** (supersedes ADR-003 + ADR-038) — file as part of this work.
+- MCP tools: `resolve_wallet`, `link_credential`, `issue_jwt_for_world` (building FR-7).
+
+### Superseded BY this session (operator-ratified)
+- **Writer:** building = "midi is writer, freeside-auth reads." → **SoR**: identity-api writes the spine; mibera-db → trivial backfill → then reads from identity-api. Justified by <100 users (the migration risk that drove the read-side caution is gone).
+- **First consumer:** building's slice = Sprawl Dashboard cutover → **Mibera honey-road dimensions survey (G-6)**; Sprawl Dashboard becomes a later slice.
+- **Credential default:** building leaned Better Auth POC → **wallet/SIWE-first**; Better Auth deferred to a per-world adapter.
+- **JWT issuance:** building = JWKS stays in the Rust gateway → **`JWTSigner` port, local ES256 signer v1**; the gateway is the preserved delegation seam (Q2).
+
+### Net v1 (reconciled, authoritative)
+Rename `freeside-identity` → `identity-api`; **extend** its packages. Central **SoR** spine (ULID users / wallets / credentials[] / linked_accounts / worlds / world_identity), **backfilled from mibera-db** (~<100 users); apps nest in worlds. **Wallet/SIWE** credential (Dynamic → backfill + per-world opt-in); JWT via **port** (local signer). **Read-time compose**; **Mibera dimensions on the honey road = the v1 slice**. **Per-world heterogeneity present as architecture** (world-manifest), wallet-only adapter in v1. **ADR-039** filed. **Ease of operation** is a first-class goal (one canonical, easy-to-run identity store).
+
+### Beads reconciliation (deferred to the repo-move)
+loa-freeside cycle-046 has **29 `arrakis-*` beads** (this session); the building has **40 `bd-*` beads** (2026-04-30). When the plan ports into the identity-api repo: keep building beads that survive (canonical spine, credential adapters, JWKS validator, MCP), **retire** the 98k-migration + Sprawl-Dashboard-slice beads, **add** the Mibera-slice + SoR-write + compose beads.
 
 ---
 
