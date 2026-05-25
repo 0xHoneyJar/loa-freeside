@@ -421,13 +421,15 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_sync_primary_wallet
-    AFTER INSERT OR UPDATE OF is_primary ON wallet_links
+    BEFORE INSERT OR UPDATE OF is_primary ON wallet_links
     FOR EACH ROW EXECUTE FUNCTION sync_primary_wallet();
 
 COMMIT;
 ```
 
 > **Note:** the `uq_wallet_links_one_primary_per_user` partial index is the hard guarantee (FR-R5 "exactly one primary"); the trigger is the convenience that makes "setting a new primary clears the prior" atomic and keeps `users.primary_wallet` mirrored. Both ship together. Rollback files (`*.down.sql`) drop trigger → indexes → tables in reverse FK order.
+>
+> **Amendment (2026-05-24, T1.3 review gate):** trigger timing was originally `AFTER INSERT OR UPDATE OF is_primary` in this section. Empirical verification during T1.3 build (10 tests against postgres:18.1; see `identity-api/grimoires/loa/notes/t1.3-trigger-notes.md`) showed `AFTER` could NOT deliver the "atomic" claim above — the partial-unique fires on the new tuple BEFORE the AFTER trigger gets to demote the prior primary, raising `duplicate key value violates unique constraint`. Operator chose to flip to `BEFORE` (single-statement promote then works atomically as the prose has always claimed; the partial-unique remains the structural hard guarantee against concurrent races). SQL above reflects the corrected timing.
 
 ### 3.3 Entity Relationships
 
