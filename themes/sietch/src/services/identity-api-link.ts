@@ -117,72 +117,118 @@ export class IdentityApiClient {
 
   /**
    * POST /v1/link/verified-wallet. Throws typed errors per the SDD §8.2
-   * envelope: 401/503 → config, 409 → cross_user_collision, 5xx/network
-   * → transient.
+   * envelope: 401 → config, 503 (`service_unconfigured`) → config, 503
+   * (infra) → transient, 409 → cross_user_collision, 5xx → transient.
+   *
+   * BB review F-001: the timeout MUST cover the body read, not just the
+   * headers. The previous version cleared the timer in `finally` as soon
+   * as headers arrived — `res.json()` then ran with no timeout and could
+   * hang indefinitely. Fix: read the body INSIDE the try block before
+   * clearing the timer. Same Go-net/http-1.7 lesson — phase-2 reads need
+   * the same deadline as phase-1.
+   *
+   * BB review F-004: 503 is emitted by load balancers, k8s readiness
+   * probes, Railway gateway during deploys — NOT just identity-api's
+   * `service_unconfigured`. Discriminate on the body's `code` field
+   * instead of the status alone. AWS SDK v3 / ALB-503 lesson.
    */
   async linkVerifiedWallet(input: VerifiedWalletLinkInput): Promise<VerifiedWalletLinkResult> {
     const url = `${this.baseUrl}/v1/link/verified-wallet`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
-    let res: Response;
     try {
-      res = await this.fetchImpl(url, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-service-token': this.serviceToken,
-        },
-        body: JSON.stringify(input),
-        signal: controller.signal,
-      });
-    } catch (err) {
-      // Network errors + AbortError both surface as transient.
-      throw new IdentityApiTransientError(`network: ${String(err)}`);
-    } finally {
-      clearTimeout(timer);
-    }
+      let res: Response;
+      try {
+        res = await this.fetchImpl(url, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-service-token': this.serviceToken,
+          },
+          body: JSON.stringify(input),
+          signal: controller.signal,
+        });
+      } catch (err) {
+        // Network errors + AbortError both surface as transient.
+        throw new IdentityApiTransientError(`network: ${String(err)}`);
+      }
 
-    if (res.status === 200) {
-      // identity-api returns snake_case wire shape per protocol/api/link.ts
-      // LinkVerifiedWalletRespSchema. Map to camelCase result type so callers
-      // can read result.userId etc. without surprises. FAGAN iter-1 fix:
-      // the previous `as VerifiedWalletLinkResult` cast left callers reading
-      // `undefined` for every camelCase field.
-      const wireBody = (await res.json()) as {
-        ok: true;
-        user_id: string;
-        wallet_address: string;
-        idempotent: boolean;
-        conflict_resolved: 'wallet_rebound' | 'discord_rebound' | null;
-      };
-      return {
-        ok: true,
-        userId: wireBody.user_id,
-        walletAddress: wireBody.wallet_address,
-        idempotent: wireBody.idempotent,
-        conflictResolved: wireBody.conflict_resolved,
-      };
-    }
-    if (res.status === 401 || res.status === 503) {
+      // ALL body reads happen INSIDE the timeout's lifetime (F-001).
+      if (res.status === 200) {
+        // identity-api returns snake_case wire shape per protocol/api/link.ts
+        // LinkVerifiedWalletRespSchema. Map to camelCase result type so
+        // callers can read result.userId etc. without surprises. FAGAN
+        // iter-1 fix on the original commit.
+        const wireBody = (await res.json()) as {
+          ok: true;
+          user_id: string;
+          wallet_address: string;
+          idempotent: boolean;
+          conflict_resolved: 'wallet_rebound' | 'discord_rebound' | null;
+        };
+        return {
+          ok: true,
+          userId: wireBody.user_id,
+          walletAddress: wireBody.wallet_address,
+          idempotent: wireBody.idempotent,
+          conflictResolved: wireBody.conflict_resolved,
+        };
+      }
+      if (res.status === 401) {
+        const body = await safeJson(res);
+        throw new IdentityApiConfigError(
+          `identity-api 401: ${(body as { message?: string })?.message ?? 'unauthorized'}`,
+        );
+      }
+      if (res.status === 503) {
+        // F-004: discriminate identity-api's typed 503 from infrastructure
+        // 503. If body has code === 'service_unconfigured', this is a
+        // permanent config issue. Otherwise (bare 503 from LB / gateway /
+        // probe) it's transient.
+        const body = await safeJson(res);
+        const code = (body as { code?: string })?.code;
+        if (code === 'service_unconfigured') {
+          throw new IdentityApiConfigError(
+            `identity-api 503: ${(body as { message?: string })?.message ?? 'service unconfigured'}`,
+          );
+        }
+        throw new IdentityApiTransientError(
+          `identity-api 503 (infrastructure): ${(body as { message?: string })?.message ?? 'transient unavailable'}`,
+          503,
+        );
+      }
+      if (res.status === 409) {
+        const body = await safeJson(res);
+        throw new IdentityApiCrossUserCollisionError(
+          (body as { message?: string })?.message ?? 'cross_user_collision',
+        );
+      }
+      if (res.status >= 500) {
+        throw new IdentityApiTransientError(`identity-api ${res.status}`, res.status);
+      }
+      // 4xx other than 401/409 → bad input. Treat as config (do not retry).
       const body = await safeJson(res);
       throw new IdentityApiConfigError(
-        `identity-api ${res.status}: ${(body as { message?: string })?.message ?? 'auth/config error'}`,
+        `identity-api ${res.status}: ${(body as { message?: string })?.message ?? 'bad request'}`,
       );
+    } catch (err) {
+      // FAGAN-on-BB-F-001: a body-read abort (from the timer firing during
+      // `res.json()`) would escape as an untyped error and bypass the
+      // caller's typed-error handling. Preserve already-classified errors;
+      // wrap anything else as IdentityApiTransientError so the verify
+      // callback's classification still works.
+      if (
+        err instanceof IdentityApiConfigError ||
+        err instanceof IdentityApiCrossUserCollisionError ||
+        err instanceof IdentityApiTransientError
+      ) {
+        throw err;
+      }
+      throw new IdentityApiTransientError(`network/body: ${String(err)}`);
+    } finally {
+      // Cleared only after EVERY body read returns — F-001.
+      clearTimeout(timer);
     }
-    if (res.status === 409) {
-      const body = await safeJson(res);
-      throw new IdentityApiCrossUserCollisionError(
-        (body as { message?: string })?.message ?? 'cross_user_collision',
-      );
-    }
-    if (res.status >= 500) {
-      throw new IdentityApiTransientError(`identity-api ${res.status}`, res.status);
-    }
-    // 4xx other than 401/409 → bad input. Treat as config (do not retry).
-    const body = await safeJson(res);
-    throw new IdentityApiConfigError(
-      `identity-api ${res.status}: ${(body as { message?: string })?.message ?? 'bad request'}`,
-    );
   }
 }
 
@@ -273,4 +319,29 @@ export function buildIdentityApiIdentityLinkFromEnv(): IdentityApiIdentityLink |
     ...(timeoutMs !== undefined && Number.isFinite(timeoutMs) ? { timeoutMs } : {}),
   });
   return new IdentityApiIdentityLink(client);
+}
+
+// ─── lazy singleton (BB F-003 fix) ────────────────────────────────────────
+
+/**
+ * BB review F-003: `buildIdentityApiIdentityLinkFromEnv` was previously
+ * called inside the verify callback closure — a new `IdentityApiClient`
+ * was constructed on every verify event. No connection pooling, log spam,
+ * and the docstring "lazy" was a lie. This cache makes it true-singleton:
+ * built once on first call, reused for the life of the process.
+ *
+ * `__resetForTest` lets tests change env mid-process and force a rebuild.
+ */
+let _identityApiLinkCache: IdentityApiIdentityLink | null | undefined = undefined;
+
+export function getIdentityApiIdentityLink(): IdentityApiIdentityLink | null {
+  if (_identityApiLinkCache === undefined) {
+    _identityApiLinkCache = buildIdentityApiIdentityLinkFromEnv();
+  }
+  return _identityApiLinkCache;
+}
+
+/** Test-only — reset the singleton so the next get-call rebuilds from env. */
+export function __resetIdentityApiIdentityLinkForTest(): void {
+  _identityApiLinkCache = undefined;
 }

@@ -67,14 +67,13 @@ import {
   WalletAlreadyLinkedError,
 } from '../services/user-registry/index.js';
 // T4.3 (arrakis-vjjz): identity-api parallel-write — the cycle-c redirect target.
-// Lazy-built from env on first wallet-verify event so server boot doesn't
-// require identity-api at hand. Failure-isolated per cycle-c NFR-3.
+// True lazy-singleton (BB F-003): built once on first verify event, reused
+// thereafter. Failure-isolated per cycle-c NFR-3.
 import {
-  buildIdentityApiIdentityLinkFromEnv,
+  getIdentityApiIdentityLink,
   IdentityApiConfigError,
   IdentityApiCrossUserCollisionError,
   IdentityApiTransientError,
-  type IdentityApiIdentityLink,
 } from '../services/identity-api-link.js';
 import { discordService } from '../services/discord.js';
 import { onboardingService } from '../services/onboarding.js';
@@ -428,33 +427,48 @@ function createApp(): Application {
           // and the orchestrator's idempotent path catches the rerun);
           // 4xx/auth is logged as config (ops surface).
           //
-          // worldSlug: hardcoded 'mibera' for v1 — the only world
-          // identity-api ships against today. Multi-world mapping
-          // (communityId → worldSlug) is a follow-up.
+          // BB F-002: worldSlug MUST come from env (`IDENTITY_API_WORLD_
+          // SLUG`), not be hardcoded. A hardcoded 'mibera' would silently
+          // corrupt identity-api's spine the moment this build runs against
+          // a non-mibera community. If the env var is unset, SKIP the
+          // parallel-write entirely + warn — the operator must explicitly
+          // declare the world this deployment binds to.
+          //
+          // BB F-003: identity-api link is a TRUE lazy-singleton — built
+          // once on first call, reused thereafter (connection pool + no
+          // per-call construction cost).
           try {
-            const identityApiLink: IdentityApiIdentityLink | null =
-              buildIdentityApiIdentityLinkFromEnv();
-            if (identityApiLink) {
-              const result = await identityApiLink.recordVerifiedWalletLink({
-                worldSlug: 'mibera',
-                discordId: discordUserId,
-                walletAddress,
-              });
-              logger.info(
-                {
-                  communityId,
-                  discordUserId,
-                  walletAddress,
-                  identityApiUserId: result.userId,
-                  idempotent: result.idempotent,
-                  conflictResolved: result.conflictResolved,
-                },
-                'identity-api: linkage recorded (parallel-write)'
+            const worldSlug = process.env.IDENTITY_API_WORLD_SLUG;
+            if (!worldSlug) {
+              logger.warn(
+                { communityId, discordUserId, walletAddress },
+                'identity-api: parallel-write SKIPPED — IDENTITY_API_WORLD_SLUG env unset (operator must declare the world this deployment binds to; previously hardcoded "mibera" caused silent multi-tenant corruption risk per BB F-002)'
               );
             } else {
-              logger.debug(
-                'identity-api: parallel-write skipped (IDENTITY_API_URL or IDENTITY_API_SERVICE_TOKEN unset)'
-              );
+              const identityApiLink = getIdentityApiIdentityLink();
+              if (identityApiLink) {
+                const result = await identityApiLink.recordVerifiedWalletLink({
+                  worldSlug,
+                  discordId: discordUserId,
+                  walletAddress,
+                });
+                logger.info(
+                  {
+                    communityId,
+                    worldSlug,
+                    discordUserId,
+                    walletAddress,
+                    identityApiUserId: result.userId,
+                    idempotent: result.idempotent,
+                    conflictResolved: result.conflictResolved,
+                  },
+                  'identity-api: linkage recorded (parallel-write)'
+                );
+              } else {
+                logger.debug(
+                  'identity-api: parallel-write skipped (IDENTITY_API_URL or IDENTITY_API_SERVICE_TOKEN unset)'
+                );
+              }
             }
           } catch (identityApiError) {
             if (identityApiError instanceof IdentityApiCrossUserCollisionError) {
