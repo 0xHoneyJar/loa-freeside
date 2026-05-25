@@ -90,3 +90,17 @@ modules:
     owner: 0xHoneyJar
     added: "2026-05-18"
     rename: done
+
+  # identity-api — central identity SoR (FR-B3 + PRD v3.0 §4.1 + SDD §4.2).
+  # Repo renamed `freeside-auth` → `identity-api` at GitHub (confirmed via
+  # `git remote -v` on the working copy: origin →
+  # https://github.com/0xHoneyJar/identity-api.git). Beacon endpoint is the
+  # post-deploy URL; `doctor` will warn-on-unreachable until deployment
+  # lands (expected, not a blocker).
+  identity-api:
+    git_url: https://github.com/0xHoneyJar/identity-api.git
+    beacon_url: https://identity.0xhoneyjar.xyz/.well-known/beacon.json
+    visibility: public
+    owner: 0xHoneyJar
+    added: "2026-05-24"
+    rename: done

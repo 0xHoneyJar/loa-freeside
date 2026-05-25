@@ -210,6 +210,35 @@ const RAW_TENANTS: ReadonlyArray<unknown> = [
     pricing: { model: "free", description: "free for known callers" },
     owner: { handle: "0xHoneyJar", contact: "https://github.com/0xHoneyJar" },
   },
+  {
+    // identity-api — central identity SoR (FR-B5 + PRD v3.0 §4.1 + SDD §4.4).
+    // Tenant slug `identity` (per SDD §3.2 — reachable via
+    // mcp.0xhoneyjar.xyz/identity/mcp); the building's slug is `identity-api`
+    // (registry.yaml). Internal/api-key like `score` because identity surfaces
+    // session-bearing reads; the gateway transcribes the building's MCP-block
+    // auth declaration (X-MCP-Key) into the federation manifest and forwards
+    // the header — it never holds identity-api's secrets. Caller supplies its
+    // own MCP_IDENTITY_UPSTREAM_KEY (credentials_ref.key in beacon.yaml).
+    //
+    // Upstream URL is the projected Railway deploy endpoint. TODO: confirm at
+    // deploy time — Railway may emit a different production hostname; the
+    // building's deploy step will finalize this.
+    slug: "identity",
+    name: "Identity API",
+    description:
+      "Central identity SoR — resolve one human across wallets/accounts/worlds, wallet-first auth, composed per-world profiles + Mibera dimensions.",
+    publisher: "0xHoneyJar",
+    upstream: "https://identity-api-production.up.railway.app",
+    auth: "api-key",
+    authHeader: "X-MCP-Key",
+    documentation: "https://identity.0xhoneyjar.xyz",
+    status: "live",
+    visibility: "internal",
+    access: "api-key",
+    capabilities: ["tools"],
+    pricing: { model: "free", description: "first-party tenant — free during rollout" },
+    owner: { handle: "0xHoneyJar", contact: "https://github.com/0xHoneyJar" },
+  },
 ];
 
 /**
