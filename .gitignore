@@ -411,3 +411,5 @@ themes/packages/services/*.js
 themes/packages/services/*.js.map
 themes/packages/services/*.d.ts
 themes/packages/services/*.d.ts.map
+# br doctor per-run artifacts
+.doctor/
