@@ -67,9 +67,12 @@ jobs:
       - name: Parse cell roster from registry
         id: roster
         run: |
-          # Extract cell slug + repo URL pairs from registry.yaml
-          # Output: JSON array to roster.json for downstream jobs
-          yq -r '.cells[] | "\(.slug):\(.repo // "0xHoneyJar/" + .slug)"' \
+          # Extract cell slug + repo URL pairs from registry.yaml.
+          # Registry shape: top-level `modules:` is a MAP keyed by slug (e.g. freeside-sonar).
+          # Each value has `git_url:` (https://github.com/<owner>/<repo>.git).
+          # Output: lines of "slug:owner/repo" to cell-list.txt for downstream loop.
+          yq -r '.modules | to_entries | .[] |
+            "\(.key):\(.value.git_url | capture("github.com/(?P<r>[^.]+)").r)"' \
             packages/freeside-registry/registry.yaml > cell-list.txt
           echo "Cells found:"
           cat cell-list.txt
