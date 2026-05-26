@@ -70,5 +70,7 @@ export type DashState = {
   probes: CellProbe[];
   identityPhases: IdentityApiPhase[];
   sojuLens: SojuLens;
+  /** Cluster events-trace snapshot (cluster-events-pillar-v1 Sprint 3). */
+  eventsTrace: import("./events-trace-types.js").EventsTraceSnapshot;
   warnings: string[];
 };

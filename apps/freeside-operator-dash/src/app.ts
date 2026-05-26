@@ -27,6 +27,19 @@ import { loadRegistry } from "./registry.js";
 import { probeAll } from "./probe.js";
 import { collectSojuLens } from "./soju-lens.js";
 import { renderHTML } from "./render.js";
+import {
+  getEventsTraceSnapshot,
+  getPerClassRing,
+  startEventsTraceSubscriber,
+} from "./events-trace.js";
+
+// Boot the events-trace subscriber as a module-load side-effect.
+// Best-effort: returns even when NATS_URL is absent (lifecycle state object
+// inside events-trace.ts reflects the outcome; the dash panel surfaces
+// "subscriber disabled" or "NATS connect failed" messages explicitly).
+startEventsTraceSubscriber().catch((err) => {
+  console.error("[events-trace] startEventsTraceSubscriber threw:", err);
+});
 
 const app = new Hono();
 
@@ -120,6 +133,7 @@ async function buildDashState(walletOverride?: string | null): Promise<DashState
   const cells = loadRegistry();
   const [probes, sojuLens] = await Promise.all([probeAll(cells), collectSojuLens(wallet)]);
   const identityPhases = buildIdentityPhases(probes);
+  const eventsTrace = getEventsTraceSnapshot();
 
   const warnings: string[] = [];
   if (!wallet) warnings.push("OPERATOR_WALLET not set — Soju-lens disabled");
@@ -137,6 +151,17 @@ async function buildDashState(walletOverride?: string | null): Promise<DashState
       `identity-api: only T4.E2E (arrakis-hito, P0) remains — substrate Phases 1-4 deployed. If Honey Road still shows BERA fallback, the issue is config/deploy-side (HONEYROAD_PROFILE_SOURCE env, Vercel deploy SHA, or degraded-fallback to alchemy for operator's wallet). Soju-lens above proves which.`,
     );
   }
+  if (!eventsTrace.subscriberEnabled) {
+    warnings.push(
+      "events-trace: subscriber disabled (NATS_URL env not set). Cluster events panel will show no envelopes.",
+    );
+  } else if (!eventsTrace.natsConnected && eventsTrace.lastLifecycleError) {
+    warnings.push(`events-trace: ${eventsTrace.lastLifecycleError}`);
+  } else if (eventsTrace.totalObserved > 0 && eventsTrace.totalFailures / eventsTrace.totalObserved > 0.1) {
+    warnings.push(
+      `events-trace: ${eventsTrace.totalFailures}/${eventsTrace.totalObserved} envelopes failed verification (>10%). Check publisher key material + JWKS endpoint.`,
+    );
+  }
 
   return {
     generatedAt: new Date().toISOString(),
@@ -145,6 +170,7 @@ async function buildDashState(walletOverride?: string | null): Promise<DashState
     probes,
     identityPhases,
     sojuLens,
+    eventsTrace,
     warnings,
   };
 }
@@ -189,6 +215,50 @@ app.get("/api/state", async (c) => {
   const walletOverride = parseWalletParam(c.req.query("wallet"));
   const { state } = await getCached(walletOverride);
   return c.json(state);
+});
+
+/**
+ * GET /api/events?class=<event-class>&limit=<n>
+ *
+ * Returns the events-trace ring buffer for a given event class (or the
+ * cross-class recent feed when class is omitted). Per build doc §6, this
+ * is the raw forensics surface the operator drills into after spotting
+ * something in the HTML panel.
+ *
+ *   class — optional. e.g. "nft.mint.detected.mibera-shadow". Returns
+ *           that class's per-class ring (cap 200). Omitted = recent
+ *           cross-class feed (cap 100).
+ *   limit — optional. Caps the response size; defaults to ring size.
+ */
+app.get("/api/events", (c) => {
+  const eventClass = c.req.query("class");
+  const limitRaw = c.req.query("limit");
+  const limit = limitRaw && /^\d+$/.test(limitRaw) ? parseInt(limitRaw, 10) : undefined;
+
+  const snapshot = getEventsTraceSnapshot();
+  if (!eventClass) {
+    const envelopes = limit ? snapshot.recentEnvelopes.slice(0, limit) : snapshot.recentEnvelopes;
+    return c.json({
+      scope: "recent",
+      subscriberEnabled: snapshot.subscriberEnabled,
+      natsConnected: snapshot.natsConnected,
+      subscribedSubjects: snapshot.subscribedSubjects,
+      totalObserved: snapshot.totalObserved,
+      totalFailures: snapshot.totalFailures,
+      lastLifecycleError: snapshot.lastLifecycleError,
+      envelopes,
+    });
+  }
+  const ring = getPerClassRing(eventClass);
+  const envelopes = limit ? ring.slice(-limit) : ring;
+  return c.json({
+    scope: "per-class",
+    eventClass,
+    subscriberEnabled: snapshot.subscriberEnabled,
+    natsConnected: snapshot.natsConnected,
+    count: envelopes.length,
+    envelopes,
+  });
 });
 
 export default app;
