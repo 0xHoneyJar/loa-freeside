@@ -1,7 +1,21 @@
 import { randomUUID } from "node:crypto";
-import { EventEnvelopeSchema, GENESIS_PREV_HASH, SCHEMA_VERSION, envelopeSigningBytes, type EventEnvelope } from "./envelope.js";
+import { Schema as S } from "@effect/schema";
+import {
+  EventEnvelopeSchema,
+  GENESIS_PREV_HASH,
+  SCHEMA_VERSION,
+  envelopeSigningBytes,
+  type EventEnvelope,
+} from "./envelope.js";
 import { jcsCanonicalize, sha256Hex } from "./jcs.js";
 import type { Signer } from "./signer.js";
+
+// `onExcessProperty: "error"` mirrors Zod's `.strict()` — extra fields are
+// REJECTED at decode time. Critical for the envelope contract: an extra
+// field in a hashed envelope changes the hash and would silently break
+// chain continuity for any subscriber that recomputes.
+const decodeEnvelope = (input: unknown) =>
+  S.decodeUnknownSync(EventEnvelopeSchema)(input, { onExcessProperty: "error" });
 
 /**
  * Per-publisher hash-chain store.
@@ -71,14 +85,17 @@ export interface PublishResult {
 /**
  * Wrap a payload in an ACVP envelope, sign it, and publish on NATS.
  *
- * Flow:
+ * Flow (acvp-l1-v2):
  *   1. canonicalize payload via JCS → payload_hash = sha256(canonical)
  *   2. prev_hash = store.get(publisherKey) ?? GENESIS_PREV_HASH
- *   3. signature = sign(UTF-8(prev_hash || payload_hash))
- *   4. assemble envelope; validate via Zod (defense in depth)
- *   5. canonicalize envelope → envelopeHash = sha256(canonical)
- *   6. nats.publish(subject, canonical-envelope-bytes)
- *   7. store.set(publisherKey, envelopeHash)
+ *   3. assemble unsigned envelope (signature: "" placeholder)
+ *   4. signing bytes = UTF-8(sha256-hex(JCS(envelope-with-empty-sig))) —
+ *      this binds ALL non-signature fields to the signature (EVT-001 closed)
+ *   5. signature = sign(signing bytes)
+ *   6. attach real signature; validate via Effect.Schema (defense in depth)
+ *   7. canonicalize signed envelope → envelopeHash = sha256(canonical)
+ *   8. nats.publish(subject, canonical-envelope-bytes)
+ *   9. store.set(publisherKey, envelopeHash)
  *
  * Throws if envelope validation fails (defensive — should never happen if
  * inputs are well-formed). NATS publish errors propagate to the caller; the
@@ -118,10 +135,10 @@ export async function publishEnvelope<P>(opts: PublishOptions<P>): Promise<Publi
   const payloadHash = sha256Hex(canonicalPayload);
 
   const prevHash = (await opts.prevHashStore.get(publisherKey)) ?? GENESIS_PREV_HASH;
-  const sigBytes = envelopeSigningBytes(prevHash, payloadHash);
-  const signature = await opts.signer.sign(sigBytes);
 
-  const envelope: EventEnvelope = {
+  // EVT-001 closed: signing bytes derived from the FULL envelope (with
+  // signature placeholder), so any tamper to any field invalidates the sig.
+  const unsignedEnvelope: Omit<EventEnvelope, "signature"> = {
     event_id: newEventId(),
     event_type: opts.subject,
     schema_version: SCHEMA_VERSION,
@@ -130,20 +147,24 @@ export async function publishEnvelope<P>(opts: PublishOptions<P>): Promise<Publi
     prev_hash: prevHash,
     payload_hash: payloadHash,
     signing_key_id: opts.signer.keyId,
-    signature,
     payload: opts.payload,
   };
+
+  const sigBytes = envelopeSigningBytes(unsignedEnvelope);
+  const signature = await opts.signer.sign(sigBytes);
+
+  const envelope: EventEnvelope = { ...unsignedEnvelope, signature };
 
   // Defense in depth: ensure the envelope conforms to its own contract
   // before we hash + publish it. If any field is malformed, fail loud HERE
   // rather than propagating an invalid envelope into the chain.
-  EventEnvelopeSchema.parse(envelope);
+  const validated = decodeEnvelope(envelope);
 
-  const canonicalEnvelope = jcsCanonicalize(envelope);
+  const canonicalEnvelope = jcsCanonicalize(validated);
   const envelopeHash = sha256Hex(canonicalEnvelope);
 
   await opts.nats.publish(opts.subject, new TextEncoder().encode(canonicalEnvelope));
   await opts.prevHashStore.set(publisherKey, envelopeHash);
 
-  return { envelope, envelopeHash, subject: opts.subject };
+  return { envelope: validated, envelopeHash, subject: opts.subject };
 }

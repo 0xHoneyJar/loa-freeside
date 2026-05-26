@@ -4,6 +4,10 @@
 
 The first instance of cycle-098 L1 envelope discipline applied to the service-plane: every cluster cell that publishes an event wraps it in a hash-chained + Ed25519-signed envelope; every consumer verifies before routing. **One built, N inherited** — future cell-to-cell integrations are subscribe-to-subject + decode-envelope, no per-pair contract.
 
+**Schema: Effect.Schema** (`@effect/schema`, NOT zod) — per cluster memory `freeside-effect-transition`, new protocol-layer types use Effect.Schema; legacy zod stays in identity-api's user-JWT and other established packages. Sibling pattern: `freeside-auth/packages/protocol/src/svc-jwt-claims.ts` (W2.5 T-2.1, the first Effect.Schema artifact in the cluster).
+
+**Wire-format version: `acvp-l1-v2`** — signature covers the JCS-canonical form of the full envelope (with `signature: ""` placeholder), so every semantically load-bearing field (event_type, emitted_by, schema_version, event_id, emitted_at, prev_hash, payload_hash, signing_key_id, payload) is cryptographically bound. v1 (PR #227 first commit) was never deployed — superseded in-PR after BB review found the routing-metadata forgery vector.
+
 Lives in the [Events Pillar v1](../../grimoires/loa/specs/enhance-events-pillar-v1-nft-mints.md) cycle. Sibling to the [auth substitution roadmap](../../grimoires/loa/proposals/identity-api-sovereign-aggregator-substitution.md) — same shape (vendor-pattern → substrate → adoption), different plane (events vs identity).
 
 ## Install
@@ -103,6 +107,16 @@ await subscribeEnvelope({
 | `StaticPubkeyVerifier` | Tests; bootstrap-time pinned keys; internal services with a small known publisher set. Fully in-memory; no network. |
 | `JwksVerifier` | Production subscribers consuming from the cluster's JWKS endpoint (per ADR-009 §D-5: `apps/gateway`). Fetches + caches; bounded by `timeoutMs` (default 5s) and refreshed on TTL expiry. Empty-but-200 responses preserve the existing cache rather than self-DoS. |
 
+## Bootstrap-time replay defense (EVT-002 BB#227)
+
+When `chainStore` is provided, the subscriber's behavior for the FIRST envelope from each publisher is controlled by `initialPrevHashPolicy`:
+
+| Value | Behavior |
+|---|---|
+| `'any'` (default) | Accept any `prev_hash` on first envelope. Appropriate for subscribers that intentionally late-join a publisher's chain. Backward-compatible. |
+| `'genesis'` | Require `prev_hash === GENESIS_PREV_HASH`. Replay of a mid-chain envelope as "first" is surfaced as `initial-anchor-policy-violation`. Choose this for subscribers that start at the beginning of a publisher's chain. |
+| `<hex-string>` | Pinned anchor — first envelope MUST have `prev_hash === <hex>`. Use when an out-of-band sync has established a known anchor (e.g. operator pinned the publisher's chain tip at restart time). |
+
 ## Sprint 1 known limitations
 
 The substrate is correct-by-construction in the happy path; these gaps are bounded and explicitly named for downstream consumers.
@@ -110,6 +124,7 @@ The substrate is correct-by-construction in the happy path; these gaps are bound
 - **Publish/store atomicity (F-003)** — `publishEnvelope` does `nats.publish` then `prevHashStore.set` as two non-atomic steps. A crash between them forks the publisher's chain. Single-instance publishers in healthy processes don't hit this in practice; the failure mode is bounded to crash/restart windows. Sprint 2+ mitigation: back `prevHashStore` with Redis using a CAS pipeline conditioned on JetStream's `PubAck.seq`, OR accept at-least-once + add subscriber-side chain reset (see below).
 - **Subscriber chain recovery (F-005)** — Once a chain gap is detected, every subsequent envelope from the same publisher will continue to fail the check (their `prev_hash` references the missed envelope). Recovery requires operator action — the `onVerificationFailure("prev-hash-broken-chain", ...)` callback can update the local chain store to admit the gap (see `subscriber.ts` for the exact reset pattern). Sprint 2+ adds a first-class `onChainGap` option.
 - **Multi-instance publishers** — `InMemoryPrevHashStore` is single-process only. Multi-instance publishers MUST provide a shared store (Redis, etc.) or all their chains will fork on every load-balancer round-trip.
+- **Deprecated transport package** — both `@effect/schema@0.75` (merged into main `effect` package post-publish) and `nats@2.x` (moved to `@nats-io/transport-node`) carry deprecation warnings on install. Tracked as follow-up beads in the coordinator. Not blocking; migration is a separate Sprint coordinated with downstream consumers.
 
 ## Provenance
 

@@ -1,6 +1,8 @@
 export {
   EventEnvelopeSchema,
+  GENESIS_PREV_HASH,
   SCHEMA_VERSION,
+  envelopeSigningBytes,
   type EventEnvelope,
   type EventEnvelopePayload,
 } from "./envelope.js";
@@ -20,6 +22,7 @@ export {
 export {
   nftMintDetectedTopic,
   NFT_MINT_DETECTED_WILDCARD,
+  buildTopic,
   type TopicSegments,
 } from "./topics.js";
 
@@ -35,7 +38,9 @@ export {
   subscribeEnvelope,
   type SubscribeOptions,
   type EnvelopeHandler,
+  type EnvelopeHandlerContext,
   type VerificationFailureReason,
+  type InitialPrevHashPolicy,
 } from "./subscriber.js";
 
 export {

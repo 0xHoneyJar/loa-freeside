@@ -1,13 +1,14 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { z } from "zod";
+import { Schema as S } from "@effect/schema";
 
 import { publishEnvelope, InMemoryPrevHashStore } from "../src/publisher.js";
 import { subscribeEnvelope, type VerificationFailureReason } from "../src/subscriber.js";
 import { LocalEd25519Signer, StaticPubkeyVerifier } from "../src/signer.js";
 import { nftMintDetectedTopic } from "../src/topics.js";
-import { NftMintDetectedSchema } from "../src/schemas/nft-mint-detected.js";
+import { NftMintDetectedSchema, type NftMintDetected } from "../src/schemas/nft-mint-detected.js";
 import { GENESIS_PREV_HASH, type EventEnvelope } from "../src/envelope.js";
+import { jcsCanonicalize, sha256Hex } from "../src/jcs.js";
 
 // --- minimal in-memory fake NATS for roundtrip tests -------------------------
 
@@ -17,11 +18,8 @@ interface FakeMessage {
 }
 
 class FakeNats {
-  // subject → queue of messages
   #queues = new Map<string, FakeMessage[]>();
-  // subject → pending-resolvers waiting for a message
   #waiters = new Map<string, Array<(msg: FakeMessage) => void>>();
-  // subject → "subscribed" flag (so we know to flush a queue into an iterator)
   #subscriptions = new Set<string>();
 
   publish(subject: string, data: Uint8Array): void {
@@ -43,18 +41,16 @@ class FakeNats {
   subscribe(subject: string): AsyncIterable<FakeMessage> & { unsubscribe: () => void } {
     this.#subscriptions.add(subject);
     let cancelled = false;
-    const iter = {
+    return {
       [Symbol.asyncIterator]: () => ({
         next: async () => {
           if (cancelled) return { value: undefined, done: true as const };
-          // drain queue first
           const q = this.#queues.get(subject) ?? [];
           if (q.length > 0) {
             const msg = q.shift()!;
             this.#queues.set(subject, q);
             return { value: msg, done: false as const };
           }
-          // wait
           return new Promise<{ value: FakeMessage; done: false }>((resolve) => {
             const waiters = this.#waiters.get(subject) ?? [];
             waiters.push((m) => resolve({ value: m, done: false as const }));
@@ -67,31 +63,24 @@ class FakeNats {
         this.#subscriptions.delete(subject);
       },
     };
-    return iter;
   }
 }
 
 function matchingSubscriptions(subs: Set<string>, subject: string): string[] {
   const out: string[] = [];
-  for (const sub of subs) {
-    if (subjectMatches(sub, subject)) out.push(sub);
-  }
+  for (const sub of subs) if (subjectMatches(sub, subject)) out.push(sub);
   return out;
 }
 
-/** Minimal NATS subject matcher — supports `>` (multi-token catch-all). */
 function subjectMatches(pattern: string, subject: string): boolean {
   if (pattern === subject) return true;
-  if (pattern.endsWith(">")) {
-    const prefix = pattern.slice(0, -1); // includes trailing dot
-    return subject.startsWith(prefix);
-  }
+  if (pattern.endsWith(">")) return subject.startsWith(pattern.slice(0, -1));
   return false;
 }
 
 // --- valid synthetic payload -------------------------------------------------
 
-const VALID_PAYLOAD = {
+const VALID_PAYLOAD: NftMintDetected = {
   chain_id: 80094,
   contract: "0x048327a187b944ddac61c6e202bfccd20d17c008",
   token_id: "234",
@@ -107,16 +96,22 @@ async function buildSigner() {
   return { signer, verifier };
 }
 
+// --- helpers for waiting (deterministic — TODO follow-up bead wdd) -----------
+
+async function tick(ms = 10): Promise<void> {
+  await new Promise((r) => setTimeout(r, ms));
+}
+
 // --- the actual roundtrip + failure-mode tests ------------------------------
 
-describe("publish → subscribe roundtrip", () => {
+describe("publish → subscribe roundtrip (acvp-l1-v2)", () => {
   it("delivers a valid envelope through verify + schema and into the handler", async () => {
     const nats = new FakeNats();
     const { signer, verifier } = await buildSigner();
     const prevHashStore = new InMemoryPrevHashStore();
     const subject = nftMintDetectedTopic({ collectionSlug: "mibera-shadow" });
 
-    const received: Array<{ payload: typeof VALID_PAYLOAD; envelope: EventEnvelope }> = [];
+    const received: Array<{ payload: NftMintDetected; envelope: EventEnvelope }> = [];
     const sub = await subscribeEnvelope({
       nats,
       subject,
@@ -136,14 +131,13 @@ describe("publish → subscribe roundtrip", () => {
       prevHashStore,
     });
 
-    // give the async loop a tick
-    await new Promise((r) => setTimeout(r, 10));
+    await tick();
 
     assert.equal(received.length, 1);
     assert.equal(received[0]!.payload.token_id, "234");
     assert.equal(received[0]!.envelope.prev_hash, GENESIS_PREV_HASH);
-
-    sub.unsubscribe(); // best-effort cleanup; we don't await done
+    assert.equal(received[0]!.envelope.schema_version, "acvp-l1-v2");
+    sub.unsubscribe();
   });
 
   it("delivers via wildcard subscription", async () => {
@@ -172,10 +166,9 @@ describe("publish → subscribe roundtrip", () => {
       prevHashStore,
     });
 
-    await new Promise((r) => setTimeout(r, 10));
+    await tick();
     assert.equal(received.length, 1);
     assert.equal(received[0]!.event_type, subject);
-
     sub.unsubscribe();
   });
 
@@ -213,13 +206,12 @@ describe("publish → subscribe roundtrip", () => {
       prevHashStore,
     });
 
-    await new Promise((r) => setTimeout(r, 10));
+    await tick();
 
     assert.equal(received.length, 2);
     assert.equal(received[0]!.prev_hash, GENESIS_PREV_HASH);
     assert.equal(received[1]!.prev_hash, a.envelopeHash);
     assert.equal(b.envelope.prev_hash, a.envelopeHash);
-
     sub.unsubscribe();
   });
 
@@ -227,7 +219,6 @@ describe("publish → subscribe roundtrip", () => {
     const nats = new FakeNats();
     const goodSigner = await LocalEd25519Signer.fromSeedHex("0".repeat(64), "sonar-api-1");
     const wrongSigner = await LocalEd25519Signer.fromSeedHex("1".repeat(64), "sonar-api-1");
-    // Verifier knows the GOOD key under sonar-api-1
     const verifier = new StaticPubkeyVerifier().add("sonar-api-1", goodSigner.publicKeyBytes());
 
     const subject = nftMintDetectedTopic({ collectionSlug: "mibera-shadow" });
@@ -251,11 +242,69 @@ describe("publish → subscribe roundtrip", () => {
       subject,
       payload: VALID_PAYLOAD,
       emittedBy: "sonar-api",
-      signer: wrongSigner, // signs with a key the verifier doesn't have
+      signer: wrongSigner,
       prevHashStore: new InMemoryPrevHashStore(),
     });
 
-    await new Promise((r) => setTimeout(r, 10));
+    await tick();
+    assert.deepEqual(failures, ["signature-invalid"]);
+    sub.unsubscribe();
+  });
+
+  it("EVT-001: surfaces signature-invalid when event_type is tampered in transit", async () => {
+    // Simulate an attacker who captures a valid envelope and modifies the
+    // event_type before re-publishing on the new subject. Under acvp-l1-v1
+    // this was an undetectable forgery; under acvp-l1-v2 the sig binds the
+    // full envelope so signature verification MUST fail.
+    const nats = new FakeNats();
+    const { signer, verifier } = await buildSigner();
+    const originalSubject = nftMintDetectedTopic({ collectionSlug: "mibera-shadow" });
+    const tamperedSubject = nftMintDetectedTopic({ collectionSlug: "other-collection" });
+
+    // Publish into a discard nats to get a valid envelope, then replay-with-tamper
+    const discardNats = new FakeNats();
+    await publishEnvelope({
+      nats: discardNats,
+      subject: originalSubject,
+      payload: VALID_PAYLOAD,
+      emittedBy: "sonar-api",
+      signer,
+      prevHashStore: new InMemoryPrevHashStore(),
+    });
+
+    // Manually publish a tampered version of the same envelope on a different
+    // subject (signature stays the same but event_type is swapped)
+    const failures: VerificationFailureReason[] = [];
+    const sub = await subscribeEnvelope({
+      nats,
+      subject: tamperedSubject,
+      schema: NftMintDetectedSchema,
+      verifier,
+      handler: async () => {
+        throw new Error("handler should not be called for forged event_type");
+      },
+      onVerificationFailure: (reason) => {
+        failures.push(reason);
+      },
+    });
+
+    // Manually craft the tampered envelope (event_type swapped, signature kept)
+    const signedEnvelope = (
+      await publishEnvelope({
+        nats: discardNats,
+        subject: originalSubject,
+        payload: VALID_PAYLOAD,
+        emittedBy: "sonar-api",
+        signer,
+        prevHashStore: new InMemoryPrevHashStore(),
+      })
+    ).envelope;
+
+    const tamperedEnvelope = { ...signedEnvelope, event_type: tamperedSubject };
+    const tamperedBytes = new TextEncoder().encode(jcsCanonicalize(tamperedEnvelope));
+    nats.publish(tamperedSubject, tamperedBytes);
+
+    await tick();
     assert.deepEqual(failures, ["signature-invalid"]);
     sub.unsubscribe();
   });
@@ -279,8 +328,7 @@ describe("publish → subscribe roundtrip", () => {
       },
     });
 
-    // Publish with a missing required field (token_id)
-    const bad = { ...VALID_PAYLOAD, token_id: undefined } as unknown as typeof VALID_PAYLOAD;
+    const bad = { ...VALID_PAYLOAD, token_id: undefined } as unknown as NftMintDetected;
     await publishEnvelope({
       nats,
       subject,
@@ -290,7 +338,7 @@ describe("publish → subscribe roundtrip", () => {
       prevHashStore: new InMemoryPrevHashStore(),
     });
 
-    await new Promise((r) => setTimeout(r, 10));
+    await tick();
     assert.deepEqual(failures, ["payload-schema-invalid"]);
     sub.unsubscribe();
   });
@@ -324,8 +372,6 @@ describe("publish → subscribe roundtrip", () => {
       signer,
       prevHashStore: new InMemoryPrevHashStore(),
     });
-
-    // publish a second time to confirm the subscriber stays alive after a handler throw
     await publishEnvelope({
       nats,
       subject,
@@ -335,7 +381,7 @@ describe("publish → subscribe roundtrip", () => {
       prevHashStore: new InMemoryPrevHashStore(),
     });
 
-    await new Promise((r) => setTimeout(r, 20));
+    await tick(20);
     assert.equal(handlerInvocations, 2, "subscriber stays alive across handler throws");
     assert.deepEqual(failures, ["handler-error", "handler-error"]);
     sub.unsubscribe();
@@ -374,15 +420,11 @@ describe("publish → subscribe roundtrip", () => {
       prevHashStore: publisherStore,
     });
 
-    // Simulate publisher OR subscriber missing message #2:
-    // publisher emits a 2nd envelope (advances publisher store) but we DROP it
-    // before it reaches NATS. We do this by directly advancing the publisher
-    // store without publishing.
-    const ghostPublisherStore = new InMemoryPrevHashStore();
-    // copy current hash forward, then publish a "ghost" envelope to advance the chain in our local store
+    // Simulate a missing envelope by advancing the publisher's chain
+    // without actually delivering the envelope to `nats`.
+    const ghostStore = new InMemoryPrevHashStore();
     const currentHash = await publisherStore.get("sonar-api:sonar-api-1");
-    if (currentHash) await ghostPublisherStore.set("sonar-api:sonar-api-1", currentHash);
-    // emit ghost to discard (different nats instance — never sees it)
+    if (currentHash) await ghostStore.set("sonar-api:sonar-api-1", currentHash);
     const discardNats = new FakeNats();
     await publishEnvelope({
       nats: discardNats,
@@ -390,16 +432,12 @@ describe("publish → subscribe roundtrip", () => {
       payload: { ...VALID_PAYLOAD, token_id: "235" },
       emittedBy: "sonar-api",
       signer,
-      prevHashStore: ghostPublisherStore,
+      prevHashStore: ghostStore,
     });
-
-    // Now the publisher's CHAIN view has advanced (ghostPublisherStore knows the
-    // ghost envelope's hash). Sync that forward to the real publisher store.
-    const advancedHash = await ghostPublisherStore.get("sonar-api:sonar-api-1");
+    const advancedHash = await ghostStore.get("sonar-api:sonar-api-1");
     if (advancedHash) await publisherStore.set("sonar-api:sonar-api-1", advancedHash);
 
-    // 2nd visible publish — prev_hash now references the ghost envelope the
-    // subscriber NEVER SAW. Subscriber's chain check must surface the gap.
+    // 2nd visible publish — prev_hash points at the ghost envelope subscriber never saw
     await publishEnvelope({
       nats,
       subject,
@@ -409,9 +447,151 @@ describe("publish → subscribe roundtrip", () => {
       prevHashStore: publisherStore,
     });
 
-    await new Promise((r) => setTimeout(r, 10));
+    await tick();
     assert.equal(handledCount, 1, "only the first envelope reaches the handler");
     assert.deepEqual(failures, ["prev-hash-broken-chain"]);
+    sub.unsubscribe();
+  });
+
+  it("EVT-002: initialPrevHashPolicy 'genesis' rejects mid-chain replay as first envelope", async () => {
+    // Attacker captures envelope from publisher who has been running a while
+    // (so its prev_hash is some non-genesis value) and replays it as the
+    // FIRST envelope a fresh subscriber sees. With initialPrevHashPolicy='any'
+    // (default) this is accepted (legacy behavior); with 'genesis' it's
+    // rejected with `initial-anchor-policy-violation`.
+    const nats = new FakeNats();
+    const { signer, verifier } = await buildSigner();
+    const subject = nftMintDetectedTopic({ collectionSlug: "mibera-shadow" });
+
+    const failures: VerificationFailureReason[] = [];
+    let handled = 0;
+    const sub = await subscribeEnvelope({
+      nats,
+      subject,
+      schema: NftMintDetectedSchema,
+      verifier,
+      chainStore: new InMemoryPrevHashStore(),
+      initialPrevHashPolicy: "genesis",
+      handler: async () => {
+        handled++;
+      },
+      onVerificationFailure: (reason) => {
+        failures.push(reason);
+      },
+    });
+
+    // Advance the publisher's chain past genesis (3 publishes into a discard nats)
+    const publisherStore = new InMemoryPrevHashStore();
+    const discardNats = new FakeNats();
+    for (let i = 0; i < 3; i++) {
+      await publishEnvelope({
+        nats: discardNats,
+        subject,
+        payload: { ...VALID_PAYLOAD, token_id: String(100 + i) },
+        emittedBy: "sonar-api",
+        signer,
+        prevHashStore: publisherStore,
+      });
+    }
+    // Now publish the "replay" to the live subscriber — first time seeing this
+    // publisher, but prev_hash is NOT genesis.
+    await publishEnvelope({
+      nats,
+      subject,
+      payload: { ...VALID_PAYLOAD, token_id: "999" },
+      emittedBy: "sonar-api",
+      signer,
+      prevHashStore: publisherStore,
+    });
+
+    await tick();
+    assert.equal(handled, 0);
+    assert.deepEqual(failures, ["initial-anchor-policy-violation"]);
+    sub.unsubscribe();
+  });
+
+  it("EVT-002: initialPrevHashPolicy 'genesis' accepts a genesis-anchored first envelope", async () => {
+    const nats = new FakeNats();
+    const { signer, verifier } = await buildSigner();
+    const subject = nftMintDetectedTopic({ collectionSlug: "mibera-shadow" });
+
+    const received: EventEnvelope[] = [];
+    const sub = await subscribeEnvelope({
+      nats,
+      subject,
+      schema: NftMintDetectedSchema,
+      verifier,
+      chainStore: new InMemoryPrevHashStore(),
+      initialPrevHashPolicy: "genesis",
+      handler: async ({ envelope }) => {
+        received.push(envelope);
+      },
+    });
+
+    await publishEnvelope({
+      nats,
+      subject,
+      payload: VALID_PAYLOAD,
+      emittedBy: "sonar-api",
+      signer,
+      prevHashStore: new InMemoryPrevHashStore(),
+    });
+
+    await tick();
+    assert.equal(received.length, 1);
+    assert.equal(received[0]!.prev_hash, GENESIS_PREV_HASH);
+    sub.unsubscribe();
+  });
+
+  it("EVT-002: initialPrevHashPolicy <hex-string> accepts pinned anchor only", async () => {
+    const nats = new FakeNats();
+    const { signer, verifier } = await buildSigner();
+    const subject = nftMintDetectedTopic({ collectionSlug: "mibera-shadow" });
+
+    // Advance publisher chain by 1 to get a known non-genesis anchor
+    const publisherStore = new InMemoryPrevHashStore();
+    const discardNats = new FakeNats();
+    const first = await publishEnvelope({
+      nats: discardNats,
+      subject,
+      payload: VALID_PAYLOAD,
+      emittedBy: "sonar-api",
+      signer,
+      prevHashStore: publisherStore,
+    });
+    const anchor = first.envelopeHash; // this is what publisher's NEXT prev_hash will be
+
+    // Subscriber pins this anchor as the expected first prev_hash
+    const failures: VerificationFailureReason[] = [];
+    let handled = 0;
+    const sub = await subscribeEnvelope({
+      nats,
+      subject,
+      schema: NftMintDetectedSchema,
+      verifier,
+      chainStore: new InMemoryPrevHashStore(),
+      initialPrevHashPolicy: anchor,
+      handler: async () => {
+        handled++;
+      },
+      onVerificationFailure: (reason) => {
+        failures.push(reason);
+      },
+    });
+
+    // Publish the next envelope (whose prev_hash WILL be `anchor`)
+    await publishEnvelope({
+      nats,
+      subject,
+      payload: { ...VALID_PAYLOAD, token_id: "777" },
+      emittedBy: "sonar-api",
+      signer,
+      prevHashStore: publisherStore,
+    });
+
+    await tick();
+    assert.equal(handled, 1);
+    assert.equal(failures.length, 0);
     sub.unsubscribe();
   });
 });

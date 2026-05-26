@@ -1,5 +1,10 @@
-import { z } from "zod";
-import { EventEnvelopeSchema, envelopeSigningBytes, type EventEnvelope } from "./envelope.js";
+import { Schema as S } from "@effect/schema";
+import {
+  EventEnvelopeSchema,
+  GENESIS_PREV_HASH,
+  envelopeSigningBytes,
+  type EventEnvelope,
+} from "./envelope.js";
 import { jcsCanonicalize, sha256Hex } from "./jcs.js";
 import type { Verifier } from "./signer.js";
 import type { PrevHashStore } from "./publisher.js";
@@ -10,6 +15,7 @@ export type VerificationFailureReason =
   | "payload-hash-mismatch"
   | "signature-invalid"
   | "prev-hash-broken-chain"
+  | "initial-anchor-policy-violation"
   | "json-parse-error"
   /** Application handler threw an exception; subscriber stayed alive (F-002 BB#227). */
   | "handler-error"
@@ -23,6 +29,29 @@ export interface EnvelopeHandlerContext<T> {
 }
 
 export type EnvelopeHandler<T> = (ctx: EnvelopeHandlerContext<T>) => void | Promise<void>;
+
+/**
+ * Bootstrap-time replay defense for first-message-from-unknown-publisher
+ * (EVT-002 BB#227).
+ *
+ *   - `'any'` — DEFAULT, backward-compatible. The subscriber accepts any
+ *     `prev_hash` on the first envelope it sees from a publisher (the chain
+ *     check is skipped because there is no prior hash to compare against).
+ *     This is the historical behavior and is appropriate for subscribers
+ *     that intentionally late-join a publisher's chain.
+ *
+ *   - `'genesis'` — STRICT. The first envelope from a publisher MUST have
+ *     `prev_hash === GENESIS_PREV_HASH`. Replay of a mid-chain envelope is
+ *     surfaced as `initial-anchor-policy-violation`. Choose this for
+ *     subscribers that start at the beginning of a publisher's chain.
+ *
+ *   - `<hex-string>` — PINNED ANCHOR. The first envelope from a publisher
+ *     MUST have `prev_hash === <hex-string>`. Use this when an
+ *     out-of-band sync has established a known anchor (e.g. operator
+ *     pinned the publisher's chain tip at restart time). String must
+ *     match the 64-lowercase-hex format of `prev_hash`.
+ */
+export type InitialPrevHashPolicy = "any" | "genesis" | string;
 
 // --- minimal NATS subscriber interface (avoid hard nats.js dep) --------------
 
@@ -46,10 +75,10 @@ export interface SubscribeOptions<T> {
   nats: NatsLike;
   subject: string;
   /**
-   * Zod schema the payload must conform to AFTER envelope verification.
-   * The schema is validated against the parsed `payload` field of the envelope.
+   * Effect.Schema the payload must conform to AFTER envelope verification.
+   * Validated against the parsed `payload` field of the envelope.
    */
-  schema: z.ZodType<T>;
+  schema: S.Schema<T>;
   verifier: Verifier;
   handler: EnvelopeHandler<T>;
 
@@ -64,6 +93,15 @@ export interface SubscribeOptions<T> {
    * publisher's default `publisherKey`.
    */
   chainStore?: PrevHashStore;
+
+  /**
+   * Bootstrap policy for the FIRST envelope from each publisher (EVT-002
+   * BB#227). Defaults to `'any'` (backward-compatible — current behavior).
+   * Set to `'genesis'` to require the first envelope to carry
+   * `prev_hash === GENESIS_PREV_HASH`, closing the mid-chain-replay vector.
+   * Only relevant when `chainStore` is also provided.
+   */
+  initialPrevHashPolicy?: InitialPrevHashPolicy;
 
   /**
    * Called for every verification failure. NEVER throws and is best-effort
@@ -88,11 +126,22 @@ export interface SubscribeHandle {
   done: Promise<void>;
 }
 
+// --- prebuilt decoders -------------------------------------------------------
+
+// `onExcessProperty: "error"` — extra fields in the envelope are REJECTED
+// (mirrors zod's `.strict()`). Critical because the envelope is hashed:
+// an extra field would change the canonical form and silently break
+// chain continuity.
+const decodeEnvelopeEither = (input: unknown) =>
+  S.decodeUnknownEither(EventEnvelopeSchema)(input, { onExcessProperty: "error" });
+
 /**
  * Subscribe to a NATS subject, verifying every envelope before invoking the
- * handler. Verification covers: envelope schema, signature, payload-hash
- * recompute, per-event Zod schema, and (when `chainStore` is provided)
- * per-publisher prev_hash continuity.
+ * handler. Verification covers: envelope schema (Effect.Schema), full-envelope
+ * signature recompute (acvp-l1-v2 — closes EVT-001), payload-hash recompute,
+ * per-event Zod/Effect schema, optional per-publisher prev_hash continuity,
+ * and optional initial-anchor policy (EVT-002 closes mid-chain replay
+ * during bootstrap).
  *
  * The handler is awaited per-message in order; long-running handlers should
  * either return quickly or use queue groups (`natsSubscribeOpts.queue`) for
@@ -102,6 +151,8 @@ export interface SubscribeHandle {
  */
 export async function subscribeEnvelope<T>(opts: SubscribeOptions<T>): Promise<SubscribeHandle> {
   const sub = opts.nats.subscribe(opts.subject, opts.natsSubscribeOpts);
+  const initialPolicy: InitialPrevHashPolicy = opts.initialPrevHashPolicy ?? "any";
+  const decodePayloadEither = S.decodeUnknownEither(opts.schema);
 
   const reportFailure = async (
     reason: VerificationFailureReason,
@@ -129,16 +180,16 @@ export async function subscribeEnvelope<T>(opts: SubscribeOptions<T>): Promise<S
         }
 
         // 2. validate envelope shape
-        const envelopeResult = EventEnvelopeSchema.safeParse(parsed);
-        if (!envelopeResult.success) {
+        const envelopeResult = decodeEnvelopeEither(parsed);
+        if (envelopeResult._tag === "Left") {
           await reportFailure("envelope-schema-invalid", {
             subject: msg.subject,
             rawBytes: msg.data,
-            error: envelopeResult.error,
+            error: envelopeResult.left,
           });
           continue;
         }
-        envelope = envelopeResult.data;
+        envelope = envelopeResult.right;
 
         // 3. recompute payload hash and check against envelope's claim
         const canonicalPayload = jcsCanonicalize(envelope.payload);
@@ -152,19 +203,39 @@ export async function subscribeEnvelope<T>(opts: SubscribeOptions<T>): Promise<S
           continue;
         }
 
-        // 4. verify signature
-        const sigBytes = envelopeSigningBytes(envelope.prev_hash, envelope.payload_hash);
-        const sigOk = await opts.verifier.verify(envelope.signing_key_id, sigBytes, envelope.signature);
+        // 4. verify signature (acvp-l1-v2: full-envelope binding)
+        // Reconstruct the unsigned envelope shape, derive signing bytes,
+        // verify against the envelope's claimed signature + signing_key_id.
+        const { signature, ...unsigned } = envelope;
+        const sigBytes = envelopeSigningBytes(unsigned);
+        const sigOk = await opts.verifier.verify(envelope.signing_key_id, sigBytes, signature);
         if (!sigOk) {
           await reportFailure("signature-invalid", { subject: msg.subject, rawBytes: msg.data, envelope });
           continue;
         }
 
-        // 5. (optional) per-publisher chain continuity
+        // 5. (optional) per-publisher chain continuity + EVT-002 bootstrap anchor
         if (opts.chainStore) {
           const publisherKey = `${envelope.emitted_by}:${envelope.signing_key_id}`;
           const expectedPrev = await opts.chainStore.get(publisherKey);
-          if (expectedPrev !== null && expectedPrev !== envelope.prev_hash) {
+          if (expectedPrev === null) {
+            // First time we see this publisher — apply initialPrevHashPolicy
+            // (EVT-002 BB#227): default 'any' = accept; 'genesis' = require
+            // GENESIS_PREV_HASH; <hex> = require pinned anchor.
+            const requiredAnchor = initialPolicy === "any"
+              ? null
+              : initialPolicy === "genesis"
+                ? GENESIS_PREV_HASH
+                : initialPolicy;
+            if (requiredAnchor !== null && envelope.prev_hash !== requiredAnchor) {
+              await reportFailure("initial-anchor-policy-violation", {
+                subject: msg.subject,
+                rawBytes: msg.data,
+                envelope,
+              });
+              continue;
+            }
+          } else if (expectedPrev !== envelope.prev_hash) {
             await reportFailure("prev-hash-broken-chain", {
               subject: msg.subject,
               rawBytes: msg.data,
@@ -192,19 +263,20 @@ export async function subscribeEnvelope<T>(opts: SubscribeOptions<T>): Promise<S
             // returns `'skip' | 'reset'` for this exact recovery surface.
             continue;
           }
-          // Advance our local view of the publisher's chain.
+          // Advance our local view of the publisher's chain (first valid msg
+          // OR continuous-chain successor — both update).
           const envelopeHash = sha256Hex(jcsCanonicalize(envelope));
           await opts.chainStore.set(publisherKey, envelopeHash);
         }
 
         // 6. per-event payload schema
-        const payloadResult = opts.schema.safeParse(envelope.payload);
-        if (!payloadResult.success) {
+        const payloadResult = decodePayloadEither(envelope.payload);
+        if (payloadResult._tag === "Left") {
           await reportFailure("payload-schema-invalid", {
             subject: msg.subject,
             rawBytes: msg.data,
             envelope,
-            error: payloadResult.error,
+            error: payloadResult.left,
           });
           continue;
         }
@@ -214,7 +286,7 @@ export async function subscribeEnvelope<T>(opts: SubscribeOptions<T>): Promise<S
         // on failure reason can distinguish a buggy handler from a bad
         // envelope.
         try {
-          await opts.handler({ payload: payloadResult.data, envelope, subject: msg.subject });
+          await opts.handler({ payload: payloadResult.right, envelope, subject: msg.subject });
         } catch (error) {
           await reportFailure("handler-error", {
             subject: msg.subject,

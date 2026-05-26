@@ -155,6 +155,13 @@ export interface JwksVerifierOptions {
 export class JwksVerifier implements Verifier {
   #cache: Map<SigningKeyId, Uint8Array> = new Map();
   #lastFetchMs = 0;
+  /**
+   * In-flight refresh dedup (EVT-003 BB#227). When a refresh is already
+   * mid-flight, subsequent callers await the same promise instead of
+   * launching parallel fetches; this prevents thundering herd on first
+   * verify after TTL expiry AND closes the last-write-wins rotation race.
+   */
+  #refreshInFlight: Promise<void> | null = null;
   readonly #ttlMs: number;
   readonly #timeoutMs: number;
   readonly #fetchImpl: typeof fetch;
@@ -170,10 +177,33 @@ export class JwksVerifier implements Verifier {
   static async fromUrl(jwksUrl: string, opts: JwksVerifierOptions = {}): Promise<JwksVerifier> {
     const v = new JwksVerifier(jwksUrl, opts);
     await v.refresh();
+    // EVT-004 (BB#227): empty-on-boot is almost always a misconfiguration
+    // (wrong URL, wrong key type, partial deploy). Fail loud at construction
+    // so operators get an immediately actionable deployment error rather
+    // than a silent stream of `signature-invalid` failures later.
+    if (v.#cache.size === 0) {
+      throw new Error(
+        `JwksVerifier.fromUrl: ${jwksUrl} returned zero OKP/Ed25519 keys — refusing to construct an empty-on-boot verifier (likely misconfiguration; pass an empty-tolerant verifier explicitly if intentional)`,
+      );
+    }
     return v;
   }
 
   async refresh(): Promise<void> {
+    // EVT-003 BB#227: coalesce concurrent callers onto the same in-flight
+    // promise. Without this, a burst of messages from a just-rotated key
+    // triggers O(burst-size) parallel fetches AND a last-write-wins race
+    // where a stale CDN-cached response can revert a just-loaded new key.
+    if (this.#refreshInFlight) {
+      return this.#refreshInFlight;
+    }
+    this.#refreshInFlight = this.#doRefresh().finally(() => {
+      this.#refreshInFlight = null;
+    });
+    return this.#refreshInFlight;
+  }
+
+  async #doRefresh(): Promise<void> {
     // F-001 (BB#227): bound the fetch — a hung JWKS endpoint must not stall
     // the subscriber's consume loop. AbortController + timer; clearTimeout
     // on completion in either branch.
@@ -201,14 +231,20 @@ export class JwksVerifier implements Verifier {
       }
     }
 
-    // F-004 (BB#227): non-empty guard. An empty-but-200 JWKS response (mid-
-    // rotation, partial deploy) must NOT wipe the cache — that would self-DoS
-    // verification until the next non-empty refresh lands. Keep the stale
-    // cache; notify the operator via onEmptyJwks; still advance lastFetchMs
-    // so we don't hot-loop the refresh on every verify() call.
-    if (next.size === 0 && this.#cache.size > 0) {
+    // EVT-004 (BB#227): fire onEmptyJwks WHENEVER the fetch returns zero
+    // keys, regardless of prior cache state. The earlier F-004 fix only
+    // fired this on subsequent-refresh empties — the initial-load empty
+    // was silent. Now operators always get the signal.
+    if (next.size === 0) {
       this.#onEmptyJwks(this.jwksUrl);
-    } else {
+    }
+
+    // Non-empty guard (F-004): only replace the cache when next has keys.
+    // An empty-but-200 response (mid-rotation, partial deploy) must NOT
+    // wipe the cache — that would self-DoS verification until the next
+    // non-empty refresh. Still advance lastFetchMs so we don't hot-loop
+    // refresh on every verify() call.
+    if (next.size > 0) {
       this.#cache = next;
     }
     this.#lastFetchMs = Date.now();
