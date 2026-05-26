@@ -1,0 +1,82 @@
+{
+  "name": "@0xhoneyjar/events",
+  "version": "0.1.0",
+  "description": "ACVP-enveloped cross-cell event substrate for the freeside cluster. RFC 8785 JCS + Ed25519 sign/verify + Hounfour 3-segment topic helpers + per-event Effect.Schema schemas. Published on NATS JetStream; consumers subscribe and verify before routing payloads. cycle-098 L1 envelope shape, adapted for service-plane events.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./envelope": {
+      "types": "./dist/src/envelope.d.ts",
+      "import": "./dist/src/envelope.js"
+    },
+    "./jcs": {
+      "types": "./dist/src/jcs.d.ts",
+      "import": "./dist/src/jcs.js"
+    },
+    "./signer": {
+      "types": "./dist/src/signer.d.ts",
+      "import": "./dist/src/signer.js"
+    },
+    "./topics": {
+      "types": "./dist/src/topics.d.ts",
+      "import": "./dist/src/topics.js"
+    },
+    "./publisher": {
+      "types": "./dist/src/publisher.d.ts",
+      "import": "./dist/src/publisher.js"
+    },
+    "./subscriber": {
+      "types": "./dist/src/subscriber.d.ts",
+      "import": "./dist/src/subscriber.js"
+    },
+    "./schemas/nft-mint-detected": {
+      "types": "./dist/src/schemas/nft-mint-detected.d.ts",
+      "import": "./dist/src/schemas/nft-mint-detected.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "test:unit": "tsx --test tests/*.test.ts",
+    "test": "pnpm build && pnpm test:unit"
+  },
+  "peerDependencies": {
+    "nats": ">=2.28.0 <3.0.0"
+  },
+  "peerDependenciesMeta": {
+    "nats": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "@effect/schema": "^0.75.0",
+    "@noble/curves": "^1.7.0",
+    "@noble/hashes": "^1.6.0",
+    "canonicalize": "^2.0.0",
+    "effect": "^3.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "nats": "^2.28.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.4.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
