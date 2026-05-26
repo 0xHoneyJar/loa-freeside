@@ -17,6 +17,15 @@ export type VerificationFailureReason =
   | "prev-hash-broken-chain"
   | "initial-anchor-policy-violation"
   | "json-parse-error"
+  /**
+   * Delivery subject doesn't match the envelope's claimed `event_type` (rd-3
+   * F-001 BB#227). A valid envelope republished onto a different NATS
+   * subject is rejected here — closes the cross-subject replay vector that
+   * EVT-001's metadata binding alone doesn't catch (sig still verifies
+   * because envelope contents are unchanged; only the NATS delivery channel
+   * differs).
+   */
+  | "subject-mismatch"
   /** Application handler threw an exception; subscriber stayed alive (F-002 BB#227). */
   | "handler-error"
   /** Uncaught exception inside the subscriber's verify-and-route loop body itself (F-002 BB#227). */
@@ -191,7 +200,25 @@ export async function subscribeEnvelope<T>(opts: SubscribeOptions<T>): Promise<S
         }
         envelope = envelopeResult.right;
 
-        // 3. recompute payload hash and check against envelope's claim
+        // 3. delivery-subject binding (rd-3 F-001 BB#227)
+        // Reject when the NATS subject the message arrived on does not
+        // match the envelope's claimed `event_type`. EVT-001 binds metadata
+        // INSIDE the envelope to the signature, but an attacker who keeps
+        // the envelope intact and republishes on a DIFFERENT subject would
+        // still produce a sig-valid message — the cross-subject replay
+        // vector. The subject-binding check closes it: a wildcard
+        // subscriber that catches the replay surfaces `subject-mismatch`
+        // BEFORE the handler runs.
+        if (msg.subject !== envelope.event_type) {
+          await reportFailure("subject-mismatch", {
+            subject: msg.subject,
+            rawBytes: msg.data,
+            envelope,
+          });
+          continue;
+        }
+
+        // 4. recompute payload hash and check against envelope's claim
         const canonicalPayload = jcsCanonicalize(envelope.payload);
         const recomputedPayloadHash = sha256Hex(canonicalPayload);
         if (recomputedPayloadHash !== envelope.payload_hash) {
@@ -203,7 +230,7 @@ export async function subscribeEnvelope<T>(opts: SubscribeOptions<T>): Promise<S
           continue;
         }
 
-        // 4. verify signature (acvp-l1-v2: full-envelope binding)
+        // 5. verify signature (acvp-l1-v2: full-envelope binding)
         // Reconstruct the unsigned envelope shape, derive signing bytes,
         // verify against the envelope's claimed signature + signing_key_id.
         const { signature, ...unsigned } = envelope;
@@ -214,14 +241,17 @@ export async function subscribeEnvelope<T>(opts: SubscribeOptions<T>): Promise<S
           continue;
         }
 
-        // 5. (optional) per-publisher chain continuity + EVT-002 bootstrap anchor
+        // 6. (optional) per-publisher chain continuity check + EVT-002
+        // bootstrap anchor. The chain TIP UPDATE is deferred to step 8 —
+        // after per-event payload schema validates — so the chain tracks
+        // APPLICATION-ACCEPTED envelopes, not merely cryptographically
+        // well-formed ones (rd-3 F-002 BB#227). A signed-but-payload-invalid
+        // envelope therefore does NOT advance the chain; the next valid
+        // envelope's prev_hash still references the last accepted entry.
         if (opts.chainStore) {
           const publisherKey = `${envelope.emitted_by}:${envelope.signing_key_id}`;
           const expectedPrev = await opts.chainStore.get(publisherKey);
           if (expectedPrev === null) {
-            // First time we see this publisher — apply initialPrevHashPolicy
-            // (EVT-002 BB#227): default 'any' = accept; 'genesis' = require
-            // GENESIS_PREV_HASH; <hex> = require pinned anchor.
             const requiredAnchor = initialPolicy === "any"
               ? null
               : initialPolicy === "genesis"
@@ -263,13 +293,9 @@ export async function subscribeEnvelope<T>(opts: SubscribeOptions<T>): Promise<S
             // returns `'skip' | 'reset'` for this exact recovery surface.
             continue;
           }
-          // Advance our local view of the publisher's chain (first valid msg
-          // OR continuous-chain successor — both update).
-          const envelopeHash = sha256Hex(jcsCanonicalize(envelope));
-          await opts.chainStore.set(publisherKey, envelopeHash);
         }
 
-        // 6. per-event payload schema
+        // 7. per-event payload schema (BEFORE chain advance per rd-3 F-002)
         const payloadResult = decodePayloadEither(envelope.payload);
         if (payloadResult._tag === "Left") {
           await reportFailure("payload-schema-invalid", {
@@ -281,7 +307,21 @@ export async function subscribeEnvelope<T>(opts: SubscribeOptions<T>): Promise<S
           continue;
         }
 
-        // 7. hand off to the application handler. Application errors are
+        // 8. advance the chain tip — only after EVERY check has passed
+        // (rd-3 F-002 BB#227). The chain tracks accepted envelopes, so
+        // semantic invariants like payload-schema-validity ARE part of
+        // "accepted". A future application-side acceptance signal could
+        // defer this further (e.g. only advance after handler returns),
+        // but Sprint 1 keeps the boundary at "library-accepted" — the
+        // application-level "processed" boundary is the consumer's
+        // responsibility (and trivially encodeable in the handler).
+        if (opts.chainStore) {
+          const publisherKey = `${envelope.emitted_by}:${envelope.signing_key_id}`;
+          const envelopeHash = sha256Hex(jcsCanonicalize(envelope));
+          await opts.chainStore.set(publisherKey, envelopeHash);
+        }
+
+        // 9. hand off to the application handler. Application errors are
         // routed via `handler-error` (F-002 BB#227) so consumers branching
         // on failure reason can distinguish a buggy handler from a bad
         // envelope.

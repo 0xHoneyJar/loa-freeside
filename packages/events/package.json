@@ -1,9 +1,12 @@
 {
   "name": "@0xhoneyjar/events",
   "version": "0.1.0",
-  "description": "ACVP-enveloped cross-cell event substrate for the freeside cluster. RFC 8785 JCS + Ed25519 sign/verify + Hounfour 3-segment topic helpers + per-event Zod schemas. Published on NATS JetStream; consumers subscribe and verify before routing payloads. cycle-098 L1 envelope shape, adapted for service-plane events.",
+  "description": "ACVP-enveloped cross-cell event substrate for the freeside cluster. RFC 8785 JCS + Ed25519 sign/verify + Hounfour 3-segment topic helpers + per-event Effect.Schema schemas. Published on NATS JetStream; consumers subscribe and verify before routing payloads. cycle-098 L1 envelope shape, adapted for service-plane events.",
   "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
   "exports": {

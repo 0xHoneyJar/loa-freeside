@@ -16,26 +16,23 @@ export interface Verifier {
 
 // --- base64url helpers -------------------------------------------------------
 
-const PAD_RX = /=+$/;
-const STD_RX = /[+/]/g;
-const URL_RX = /[-_]/g;
+// rd-3 F-003 BB#227: use Node's Buffer instead of browser globals btoa/atob.
+// The package is Node-targeted (NodeNext + nats.js peer dep); declaring a
+// dependency on browser globals would leak into edge runtimes that lack them
+// (e.g. Cloudflare Workers' older compat dates). Buffer's `'base64url'`
+// encoding is the idiomatic + portable Node choice (added in 16.0.0; the
+// package.json `engines` field caps at >=20 to be safe).
 
 function bytesToBase64Url(bytes: Uint8Array): string {
-  let bin = "";
-  for (const b of bytes) bin += String.fromCharCode(b);
-  const std = btoa(bin);
-  return std.replace(STD_RX, (c) => (c === "+" ? "-" : "_")).replace(PAD_RX, "");
+  return Buffer.from(bytes).toString("base64url");
 }
 
 function base64UrlToBytes(b64u: string): Uint8Array {
-  const std = b64u.replace(URL_RX, (c) => (c === "-" ? "+" : "/"));
-  // restore padding
-  const padLen = (4 - (std.length % 4)) % 4;
-  const padded = std + "=".repeat(padLen);
-  const bin = atob(padded);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
+  // `Buffer.from(str, 'base64url')` returns a Buffer that's also a Uint8Array
+  // (Buffer extends Uint8Array). We slice to a fresh Uint8Array so callers
+  // don't accidentally pin a larger underlying ArrayBuffer.
+  const buf = Buffer.from(b64u, "base64url");
+  return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
 }
 
 // --- LocalEd25519Signer ------------------------------------------------------

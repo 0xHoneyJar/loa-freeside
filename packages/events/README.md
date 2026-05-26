@@ -63,17 +63,19 @@ import {
 const nats = await connect({ servers: process.env.NATS_URL });
 const verifier = await JwksVerifier.fromUrl(process.env.JWKS_URL!);
 
+import type { NftMintDetected } from "@0xhoneyjar/events";
+
 await subscribeEnvelope({
   nats,
   subject: "nft.mint.detected.>",  // wildcard catch-all
   schema: NftMintDetectedSchema,
   verifier,
   handler: async ({ payload, envelope }) => {
-    // payload is typed as z.infer<typeof NftMintDetectedSchema>
+    // payload is typed as NftMintDetected (= S.Schema.Type<typeof NftMintDetectedSchema>)
     console.log(`mint of token ${payload.token_id} on ${payload.contract}`);
   },
   onVerificationFailure: (reason, raw) => {
-    // surfaces broken-sig, broken-chain, schema-violation
+    // surfaces subject-mismatch, broken-sig, broken-chain, schema-violation
     // never throws — subscriber stays alive
   },
 });
@@ -83,13 +85,13 @@ await subscribeEnvelope({
 
 | Layer | What | File |
 |-------|------|------|
-| Envelope | Zod schema for the wire-shape (event_id, type, hashes, sig, payload) | `src/envelope.ts` |
+| Envelope | Effect.Schema for the wire-shape (event_id, type, hashes, sig, payload) | `src/envelope.ts` |
 | JCS | RFC 8785 canonicalization (byte-deterministic JSON) | `src/jcs.ts` |
 | Signer | Ed25519 sign/verify via @noble/curves; JWKS lookup | `src/signer.ts` |
 | Topics | Hounfour 3-segment topic builders (`{aggregate}.{noun}.{verb}.v{N}`) | `src/topics.ts` |
 | Publisher | publishEnvelope: canonicalize → hash → sign → publish → store prev_hash | `src/publisher.ts` |
-| Subscriber | subscribeEnvelope: receive → verify sig + chain + schema → route payload | `src/subscriber.ts` |
-| Schemas | Per-event Zod schemas (start: NftMintDetected) | `src/schemas/` |
+| Subscriber | subscribeEnvelope: parse → schema → subject-bind → hash → sig → chain → payload-schema → advance → handler | `src/subscriber.ts` |
+| Schemas | Per-event Effect.Schema definitions (start: NftMintDetected) | `src/schemas/` |
 
 ## Design invariants
 

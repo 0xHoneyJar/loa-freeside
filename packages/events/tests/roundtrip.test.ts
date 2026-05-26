@@ -251,6 +251,120 @@ describe("publish → subscribe roundtrip (acvp-l1-v2)", () => {
     sub.unsubscribe();
   });
 
+  it("rd-3 F-001: surfaces subject-mismatch when envelope replayed onto a different NATS subject", async () => {
+    // Attacker captures a valid envelope for subject-A and republishes on
+    // subject-B. The envelope is byte-identical (sig still verifies) but
+    // the delivery channel differs. A wildcard subscriber that catches the
+    // replay must surface subject-mismatch BEFORE running the handler.
+    const nats = new FakeNats();
+    const { signer, verifier } = await buildSigner();
+    const originalSubject = nftMintDetectedTopic({ collectionSlug: "mibera-shadow" });
+    const otherSubject = nftMintDetectedTopic({ collectionSlug: "purupuru-apiculture" });
+
+    // Produce a valid envelope on the original subject (via discard nats)
+    const discardNats = new FakeNats();
+    const issued = await publishEnvelope({
+      nats: discardNats,
+      subject: originalSubject,
+      payload: VALID_PAYLOAD,
+      emittedBy: "sonar-api",
+      signer,
+      prevHashStore: new InMemoryPrevHashStore(),
+    });
+
+    const failures: VerificationFailureReason[] = [];
+    let handlerCalled = 0;
+    const sub = await subscribeEnvelope({
+      nats,
+      // wildcard so the subscriber receives the replay regardless of subject
+      subject: "nft.mint.detected.>",
+      schema: NftMintDetectedSchema,
+      verifier,
+      handler: async () => {
+        handlerCalled++;
+      },
+      onVerificationFailure: (reason) => {
+        failures.push(reason);
+      },
+    });
+
+    // Replay the byte-identical envelope onto the WRONG subject
+    const replayBytes = new TextEncoder().encode(jcsCanonicalize(issued.envelope));
+    nats.publish(otherSubject, replayBytes);
+
+    await tick();
+    assert.equal(handlerCalled, 0, "handler must not be invoked for subject-mismatched replay");
+    assert.deepEqual(failures, ["subject-mismatch"]);
+    sub.unsubscribe();
+  });
+
+  it("rd-3 F-002: chain tip does NOT advance when payload schema validation fails", async () => {
+    // A signed-but-payload-invalid envelope should be rejected by per-event
+    // schema check AND must NOT advance the subscriber's chain — otherwise
+    // the next valid envelope appears continuous after an event the
+    // application never accepted.
+    const nats = new FakeNats();
+    const { signer, verifier } = await buildSigner();
+    const subscriberChain = new InMemoryPrevHashStore();
+    const subject = nftMintDetectedTopic({ collectionSlug: "mibera-shadow" });
+    const publisherKey = "sonar-api:sonar-api-1";
+
+    let handled = 0;
+    const failures: VerificationFailureReason[] = [];
+    const sub = await subscribeEnvelope({
+      nats,
+      subject,
+      schema: NftMintDetectedSchema,
+      verifier,
+      chainStore: subscriberChain,
+      handler: async () => {
+        handled++;
+      },
+      onVerificationFailure: (reason) => {
+        failures.push(reason);
+      },
+    });
+
+    // 1. publish a VALID envelope — chain advances to envHash1
+    const publisherStore = new InMemoryPrevHashStore();
+    const valid1 = await publishEnvelope({
+      nats,
+      subject,
+      payload: VALID_PAYLOAD,
+      emittedBy: "sonar-api",
+      signer,
+      prevHashStore: publisherStore,
+    });
+
+    await tick();
+    assert.equal(handled, 1);
+    assert.equal(await subscriberChain.get(publisherKey), valid1.envelopeHash);
+
+    // 2. publish a SIGNED but SCHEMA-INVALID envelope (chain MUST NOT advance)
+    const bad = { ...VALID_PAYLOAD, token_id: undefined } as unknown as NftMintDetected;
+    await publishEnvelope({
+      nats,
+      subject,
+      payload: bad,
+      emittedBy: "sonar-api",
+      signer,
+      prevHashStore: publisherStore,
+    });
+
+    await tick();
+    // payload-schema-invalid was surfaced; handler still at 1
+    assert.equal(handled, 1);
+    assert.deepEqual(failures, ["payload-schema-invalid"]);
+    // critical: chain tip is STILL valid1 — not advanced past the bad envelope
+    assert.equal(
+      await subscriberChain.get(publisherKey),
+      valid1.envelopeHash,
+      "chain must not advance on payload-schema-invalid",
+    );
+
+    sub.unsubscribe();
+  });
+
   it("EVT-001: surfaces signature-invalid when event_type is tampered in transit", async () => {
     // Simulate an attacker who captures a valid envelope and modifies the
     // event_type before re-publishing on the new subject. Under acvp-l1-v1
