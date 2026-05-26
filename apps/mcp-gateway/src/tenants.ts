@@ -194,6 +194,14 @@ const RAW_TENANTS: ReadonlyArray<unknown> = [
     owner: { handle: "0xHoneyJar", contact: "https://github.com/0xHoneyJar" },
   },
   {
+    // NOTE 2026-05-25: probeTenant() in app.ts calls `${upstream}/healthz` which
+    // 404s for this tenant — score-api serves health at `/` instead, returning
+    // full status JSON: {status:"ok", db:"connected", scoring_version:"v0.7", ...}.
+    // The service IS live; the gateway probe is mis-pathed and will mark this
+    // tenant "down" despite operational state. Per-tenant `health_path` field
+    // would fix it — deferred (tracked in
+    // grimoires/loa/proposals/freeside-operator-dash-kickoff.md as the
+    // gateway-probe-mismatch follow-up).
     slug: "score",
     name: "Score Mibera",
     description:
@@ -202,7 +210,7 @@ const RAW_TENANTS: ReadonlyArray<unknown> = [
     upstream: "https://score-api-production.up.railway.app",
     auth: "api-key",
     authHeader: "X-MCP-Key",
-    documentation: "https://github.com/0xHoneyJar/score-mibera",
+    documentation: "https://github.com/0xHoneyJar/score-api",
     status: "live",
     visibility: "internal",
     access: "api-key",
