@@ -49,9 +49,13 @@ The TEND audit (`cluster-2026-05-26-mint-announcement-tend/audit.md`) ground-tru
 |---|---|---|
 | **NATS bus state** | Target NATS JetStream (verified `ecs-finn.tf`/`ecs-dixie.tf` NATS_URL); no RabbitMQ legacy buildout | Publisher + subscriber both write JetStream-native |
 | **ACVP envelope shape** | Full cycle-098 L1-L7 envelope from v1 — `prev_hash` + Ed25519 sig + JCS canonicalization | Substrate-clean from day one; future cells inherit verifiability free |
-| **Scope** | NFT mints (multi-collection, not just MST) — enriched via inventory-api `getNftMetadata` + identity-api per-world nym | Pattern earned across sonar's existing NFT handlers, not narrow-scoped |
+| **Publishing scope (SUBSTRATE)** | **ALL sonar handlers publish** — NFT mints + non-NFT events (vault, staking, score) — event handling supports events across ALL APIs | Substrate pattern earned at maximum breadth; future cells get every cell's events for free |
+| **Display/announcement scope (CONSUMPTION)** | **MST-only for v1 enriched announcement** in characters — other collections subscribe-but-no-display until v2 | Substrate is universal; consumption is scoped — clean separation |
+| **Mad-agent extension** | **Operator-dash event panel — IN SCOPE** for this cycle (sibling to Soju-lens shape) | Observability is foundational; dash extension lands with the substrate |
 | **Stash sequencing** | Events pillar FIRST, Stash AFTER | inventory-api stays npm-only this cycle; subscribes to NATS later for cache invalidation |
 | **Token-entity gap (NEW finding)** | Does NOT block this cycle — `getNftMetadata(contract, tokenId)` is per-token lookup, not wallet enumeration; sonar mint event provides both args | Mint announcement enrichment works today |
+| **Doc granularity** | Single build doc this kickoff; **coord-init authors PRD/SDD/sprint** if a 9-sprint cluster-cycle pattern is needed once dispatched | Don't pre-author the master plan; let coord init via /sprint-plan when fresh-session opens |
+| **Dispatch timing** | **NOT in this session — fresh session for /coord** | Clipboard pointer prepared for handoff |
 
 ## Operator clarifications captured
 
@@ -119,7 +123,7 @@ await publishEnvelope({
 });
 ```
 
-**File-by-file**:
+**File-by-file** (NFT handlers — Sprint 2 primary scope):
 - `src/handlers/mints.ts` — add publish on `handleGeneralMintTransfer`
 - `src/handlers/vm-minted.ts` — add publish on `handleVmMinted` (override subject for MST-specific topic)
 - `src/handlers/tracked-erc721/*` — add publish across the NFT-shaped TrackedErc721 instances
@@ -128,7 +132,19 @@ await publishEnvelope({
 - `config.yaml` — add `NATS_URL` + `NATS_TLS_CA` env wiring (matches `ecs-finn.tf` pattern)
 - Tests: golden-replay fixture asserting publish was called with envelope-shaped payload (DON'T assert on real NATS — mock)
 
-**Out of scope here**: NON-NFT handler publish (vault, staking, score) — those wait until a downstream consumer specifically asks. Build the pattern on NFTs first.
+**Operator scope correction (2026-05-26)**: **substrate publishing is universal across ALL sonar handlers**, not just NFT. Sprint 2 ships NFT handlers; **Sprint 3 ALSO extends publish to non-NFT handlers** (vault deposits, staking events, score updates, etc.). Substrate pattern is earned at maximum breadth — every cell that subscribes later gets ALL events for free. Consumption stays scoped (characters only displays MST in v1 per operator decision).
+
+**File-by-file for substrate-universal coverage** (Sprint 3 extension):
+- `src/handlers/aquabera-vault-direct.ts`, `aquabera-wall.ts`, `sf-vaults.ts` — vault deposits
+- `src/handlers/mibera-staking.ts` (if exists), `bgt.ts` — staking events
+- `src/handlers/honeyjar*.ts` — main HJ NFT family
+- `src/handlers/crayons.ts`, `crayons-collections.ts` — crayon events
+- `src/handlers/badges1155.ts` — badge events
+- `src/handlers/mibera-liquid-backing.ts`, `mibera-sets.ts`, `mibera-zora.ts` — Mibera adjacent
+- `src/handlers/friendtech.ts`, `milady-collection.ts`, `seaport.ts` — marketplace events
+- `src/handlers/fat-bera-*.ts`, `paddle-fi.ts`, `general-mints.ts` — DeFi events
+
+Pattern: every `context.<Entity>.set(...)` gets a sibling `await publishEnvelope(...)` line. Topic taxonomy per event class: `nft.mint.detected.{slug}.v1`, `vault.deposit.{vault-slug}.v1`, `staking.stake.{token-slug}.v1`, etc.
 
 ### 3. NEW: freeside-characters NATS subscriber (`packages/persona-engine/src/events/`)
 
@@ -198,17 +214,30 @@ async function announceMint({ payload, discordClient, channelId }) {
 
 **Components V2** rendering style matches the enriched digest renderer from cycle-008 (#87) — `buildEnrichedDigestComponentsV2` is the prior-art; this new path mirrors its shape for mint events.
 
-### 6. (Optional mad-agent extension) extend operator-dash with NATS event-trace panel
+### 6. **IN SCOPE** (operator-confirmed 2026-05-26): extend operator-dash with NATS event-trace panel
 
-This is the **loop closure**. The freeside-operator-dash (loa-freeside PR #223 merged) already shows per-cell health. Add a panel that:
-- Subscribes to NATS via a debug-fanout subject (`nft.mint.detected.*.v1` etc.)
-- Renders the live event stream (last N events, with envelope verification status)
-- Per-publisher prev_hash chain visualization (broken chain = tamper / outage)
-- Per-cell publish-rate sparkline
+This is the **loop closure** — the observability counterpart to the substrate. Operator: *"Yes I do want to see an event panel very similar to how we have it here in the Soju-lens Operator dashboard. That one has been pretty helpful. Observability is something that we want to include here."*
 
-**Why this matters** (the mad-agent positioning): every future cluster-meta cycle reaches for the operator-dash first to ground. Extending it with the events trace means **the dash becomes the cluster's empirical-truth-substrate** — a primitive for substrate sovereignty itself. This is the same shape as the cross-world Soju-lens proposal in the sovereign-aggregator-substitution roadmap.
+The freeside-operator-dash (loa-freeside PR #223 merged) already shows per-cell health + Soju-lens cross-surface identity reconciliation. Add a NEW panel:
 
-Operator MAY scope this to a sibling cycle if it bloats v1. But it's the right loop closure.
+**Panel: Cluster Events Trace**
+
+- Subscribes to NATS via a debug-fanout subject (`>` catch-all OR per-class wildcards: `nft.mint.detected.>`, `vault.deposit.>`, etc.)
+- Renders the live event stream — last N envelopes per class, with verification status (sig valid? prev_hash chain unbroken? schema valid?)
+- Per-publisher prev_hash chain visualization (broken chain = tamper or outage — same shape as the Soju-lens discrepancy detection)
+- Per-cell publish-rate sparkline + last-event timestamp
+- Click an envelope → expand to see raw payload + envelope metadata (for operator debug)
+- Filter by event class + cell-of-origin
+
+**Implementation pattern** (per the existing operator-dash architecture):
+- New file: `apps/freeside-operator-dash/src/events-trace.ts` — server-side NATS subscriber + in-memory ring buffer (last 200 envelopes)
+- New route: `GET /api/events` returns the buffer as JSON
+- New panel in `apps/freeside-operator-dash/src/render.ts` — table + per-class filter + verification badges
+- Reuses existing operator-dash Hono shape; same `apps/freeside-operator-dash/` workspace; same Vercel/Railway deploy slot
+
+**Mad-agent positioning** (the bigger frame): every future cluster-meta cycle reaches for the operator-dash first to ground. Extending it with the events trace means **the dash becomes the cluster's empirical-truth-substrate** — a primitive for substrate sovereignty itself. Same architectural significance as the cross-world Soju-lens extension proposed in the sovereign-aggregator-substitution roadmap.
+
+**Sprint placement**: Sprint 4 (after substrate publish + characters subscriber + canary land in Sprints 1-3). The dash extension consumes the same NATS infrastructure but doesn't gate the substrate work.
 
 ## Design rules (Alexander craft lens)
 
@@ -262,11 +291,13 @@ curl http://localhost:3030/api/events/recent  # JSON stream of last N envelopes
 - `0xHoneyJar/sonar-api` (or `freeside-sonar` legacy name) — `[coord] events-pillar-v1 — sonar publish` — owns NFT mint publish step
 - `0xHoneyJar/freeside-characters` — `[coord] events-pillar-v1 — characters subscribe` — owns subscriber + kansei router + announcement template
 
-### Dispatch order
-1. **Sprint 1 — library first**: `@0xhoneyjar/events` published. Both consumers blocked behind this.
-2. **Sprint 2 — sonar publish + characters subscribe** in parallel (different repos, no cross-cell shared code)
-3. **Sprint 3 — integration test + canary**: small Discord channel (test-mode); operator validates announcement quality; flip to production channel
-4. **Sprint 4 (optional) — operator-dash NATS event panel**: the loop closure
+### Dispatch order (operator-confirmed scope baked in)
+
+1. **Sprint 1 — `@0xhoneyjar/events` library** published. ACVP envelope + Hounfour topics + signer/verifier + Zod schemas. Both consumers blocked behind this.
+2. **Sprint 2 — sonar NFT-handler publish** + **characters MST-only subscriber + announcement** in parallel (different repos, no cross-cell shared code).
+3. **Sprint 3 — sonar publish extension to ALL non-NFT handlers** (vault, staking, score, marketplace, DeFi) — substrate pattern earned at maximum breadth. Characters still only subscribes to MST mints; other classes are dormant subscribers.
+4. **Sprint 4 — operator-dash event-trace panel** (operator-confirmed in scope). Subscribes to all classes; renders live envelope stream + verification status. Becomes the canonical operator-awareness surface for the cluster.
+5. **Sprint 5 (canary)** — small Discord test channel; operator validates announcement quality + dash trace correctness; flip MST announcements to production channel.
 
 ### Cross-repo audit gate
 - Each cell repo passes its own `/audit-sprint` before coord merges its PR
@@ -306,10 +337,10 @@ curl http://localhost:3030/api/events/recent  # JSON stream of last N envelopes
 
 5. **The TEND audit IS the artifact the operator asked for as "Loa awareness substrate."** Future Loa sessions ground in `cluster-2026-05-26-mint-announcement-tend/audit.md` + the 5 memories. Continuity is now a substrate primitive in this cluster — not metadata, but a real artifact that survives sessions. Straylight-shaped.
 
-## Reviewer ask (operator)
+## Operator decisions resolved 2026-05-26 (was reviewer ask)
 
-1. Confirm the build doc is the right granularity (single doc) vs PRD/SDD/sprint authored separately for the cluster-events-pillar coordinator
-2. Confirm scope: NFT mints across all sonar NFT handlers (broad) — or want to narrow to MST-only for v1 + extend in v2?
-3. Mad-agent extension (operator-dash event panel) — include in this cycle, sibling cycle, or scrap?
-4. Library home: `@0xhoneyjar/events` lives in loa-freeside `packages/events/`? Or its own repo?
-5. /coord dispatch — start now? Or one more iteration on this build doc first?
+1. ✅ **Doc granularity**: single build doc this kickoff; **coord-init will author PRD/SDD/sprint** when fresh-session opens (per /coord skill init pattern)
+2. ✅ **NATS publishing**: universal substrate (all sonar handlers); **characters announcement display: MST-only for v1**, other classes subscribe-but-no-display until v2
+3. ✅ **Mad-agent extension**: operator-dash event-trace panel IN SCOPE (Sprint 4)
+4. ✅ **Library home**: `loa-freeside/packages/events/` (workspace npm, mirrors `packages/beacon-schema/` pattern)
+5. ✅ **Dispatch timing**: NOT this session — fresh session via `/coord` per clipboard pointer prepared at session close
