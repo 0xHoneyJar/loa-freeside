@@ -111,8 +111,12 @@ function buildIdentityPhases(probes: ReturnType<typeof probeAll> extends Promise
   ];
 }
 
-async function buildDashState(): Promise<DashState> {
-  const wallet = getOperatorWallet();
+async function buildDashState(walletOverride?: string | null): Promise<DashState> {
+  // Wallet precedence: explicit per-request query/form param > OPERATOR_WALLET env.
+  // walletOverride === null means "explicitly cleared via UI"; undefined means
+  // "no override, use env default."
+  const wallet =
+    walletOverride === undefined ? getOperatorWallet() : (walletOverride && walletOverride.length > 0 ? walletOverride : null);
   const cells = loadRegistry();
   const [probes, sojuLens] = await Promise.all([probeAll(cells), collectSojuLens(wallet)]);
   const identityPhases = buildIdentityPhases(probes);
@@ -145,7 +149,14 @@ async function buildDashState(): Promise<DashState> {
   };
 }
 
-async function getCached(): Promise<{ state: DashState; html: string }> {
+async function getCached(walletOverride?: string | null): Promise<{ state: DashState; html: string }> {
+  // Only cache the default (env-wallet) view. Per-request wallet overrides
+  // are computed fresh to avoid cross-wallet contamination + cache poisoning.
+  if (walletOverride !== undefined) {
+    const state = await buildDashState(walletOverride);
+    const html = renderHTML(state);
+    return { state, html };
+  }
   const now = Date.now();
   if (cached && now - cached.at < CACHE_TTL_MS) return cached;
   const state = await buildDashState();
@@ -154,8 +165,19 @@ async function getCached(): Promise<{ state: DashState; html: string }> {
   return cached;
 }
 
+function parseWalletParam(raw: string | undefined): string | null | undefined {
+  if (raw === undefined) return undefined;
+  const trimmed = raw.trim();
+  if (trimmed === "") return null; // explicit clear
+  // Loose hex address shape — reject obvious garbage but don't hard-validate
+  // (identity-api will reject + the Soju-lens row will show the error).
+  if (!/^0x[a-fA-F0-9]{4,}$/.test(trimmed)) return null;
+  return trimmed.toLowerCase();
+}
+
 app.get("/", async (c) => {
-  const { html } = await getCached();
+  const walletOverride = parseWalletParam(c.req.query("wallet"));
+  const { html } = await getCached(walletOverride);
   return c.html(html);
 });
 
@@ -164,7 +186,8 @@ app.get("/healthz", (c) => {
 });
 
 app.get("/api/state", async (c) => {
-  const { state } = await getCached();
+  const walletOverride = parseWalletParam(c.req.query("wallet"));
+  const { state } = await getCached(walletOverride);
   return c.json(state);
 });
 

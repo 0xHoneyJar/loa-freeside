@@ -108,12 +108,32 @@ export function renderHTML(state: DashState): string {
   pre.body { background: var(--bg); padding: 8px; border-radius: 4px; font-size: 11px; overflow-x: auto; margin: 4px 0 0; color: var(--text-dim); }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
+  form.wallet { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+  form.wallet input {
+    background: var(--panel-hi); color: var(--text); border: 1px solid var(--line);
+    border-radius: 4px; padding: 6px 10px; font-family: var(--mono); font-size: 12px;
+    min-width: 320px;
+  }
+  form.wallet input:focus { outline: none; border-color: var(--accent); }
+  form.wallet button {
+    background: var(--soju); color: white; border: 0; border-radius: 4px;
+    padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer;
+    font-family: inherit;
+  }
+  form.wallet button:hover { opacity: 0.9; }
+  form.wallet a.clear { color: var(--text-dim); font-size: 11px; text-decoration: none; padding: 0 4px; }
+  form.wallet a.clear:hover { color: var(--soju); }
 </style>
 </head>
 <body>
 <header>
   <h1>🦎 freeside operator-dash</h1>
   <span class="meta">v${esc(state.generatorVersion)} · ${esc(state.generatedAt)} · inward-facing · ADR-009 §D-5</span>
+  <form class="wallet" method="GET" action="/">
+    <input type="text" name="wallet" placeholder="0xYourWalletAddress (Soju-lens)" value="${esc(state.sojuLens.wallet ?? "")}" pattern="0x[a-fA-F0-9]{4,}" autocomplete="off" />
+    <button type="submit">🌸 lens</button>
+    ${state.sojuLens.wallet ? `<a class="clear" href="/" title="clear wallet">clear</a>` : ""}
+  </form>
 </header>
 
 ${state.warnings.map((w) => `<div class="warning">⚠ ${esc(w)}</div>`).join("")}
