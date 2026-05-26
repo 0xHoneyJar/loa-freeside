@@ -42,7 +42,10 @@ describe("buildTopic", () => {
 });
 
 describe("nftMintDetectedTopic", () => {
-  it("defaults to catch-all v1 when no slug given", () => {
+  it("returns the base versioned subject (NOT a wildcard) when no slug given", () => {
+    // F-007 BB#227: the no-slug return is a SPECIFIC subject for publishing
+    // events with no collection discriminator — it is NOT a NATS wildcard.
+    // To subscribe to all collections, use NFT_MINT_DETECTED_WILDCARD.
     assert.equal(nftMintDetectedTopic(), "nft.mint.detected.v1");
   });
 

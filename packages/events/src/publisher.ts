@@ -84,6 +84,30 @@ export interface PublishResult {
  * inputs are well-formed). NATS publish errors propagate to the caller; the
  * caller is responsible for fail-soft behavior (log + continue without
  * breaking the upstream domain write).
+ *
+ * **Known limitation — publish/store atomicity (F-003 BB#227)**
+ *
+ * `nats.publish` and `prevHashStore.set` are two separate async steps with
+ * no rollback. A crash (or store-write failure) between them leaves the
+ * publisher's chain tip stale; the next publish reuses a `prev_hash` that
+ * was already consumed, forking the chain. Subscribers with `chainStore`
+ * enabled will surface `prev-hash-broken-chain` on the second envelope.
+ *
+ * Single-instance publishers running in healthy processes do not hit this
+ * gap in practice; the failure mode is bounded to crash/restart windows.
+ *
+ * The recommended Sprint-2+ mitigation:
+ *
+ *   1. Back `prevHashStore` with Redis using a CAS pipeline that conditions
+ *      the `SET publisherKey newHash` on the NATS publish acknowledgement
+ *      (e.g. via JetStream's PubAck.seq as the conditional token), OR
+ *   2. Accept at-least-once semantics and add subscriber-side chain reset
+ *      logic — wire `onVerificationFailure("prev-hash-broken-chain", ...)`
+ *      to a recovery callback that updates the subscriber's chain store to
+ *      the current envelope's hash and emits an audit event.
+ *
+ * Multi-instance publishers MUST use a shared store (Redis, etc.); the
+ * default `InMemoryPrevHashStore` is single-process only.
  */
 export async function publishEnvelope<P>(opts: PublishOptions<P>): Promise<PublishResult> {
   const publisherKey = opts.publisherKey ?? `${opts.emittedBy}:${opts.signer.keyId}`;

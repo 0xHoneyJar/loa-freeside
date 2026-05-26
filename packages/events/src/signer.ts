@@ -136,31 +136,60 @@ interface Jwks {
  * Consumers pass that URL at construction time. The JWKS is cached in-memory
  * with a configurable TTL; cache misses re-fetch.
  */
+export interface JwksVerifierOptions {
+  /** Refresh TTL in milliseconds; default 5 minutes. */
+  ttlMs?: number;
+  /**
+   * Per-fetch timeout in milliseconds; default 5s. A hung JWKS endpoint
+   * would otherwise stall every subscriber's `consume()` loop indefinitely
+   * (verification is awaited per-message). Bound the blast radius here.
+   * Pass `0` to disable (NOT recommended in production).
+   */
+  timeoutMs?: number;
+  /** Injectable fetch — useful for tests. */
+  fetchImpl?: typeof fetch;
+  /** Optional warn-logger fired when a refresh returns zero keys; default no-op. */
+  onEmptyJwks?: (jwksUrl: string) => void;
+}
+
 export class JwksVerifier implements Verifier {
   #cache: Map<SigningKeyId, Uint8Array> = new Map();
   #lastFetchMs = 0;
   readonly #ttlMs: number;
+  readonly #timeoutMs: number;
   readonly #fetchImpl: typeof fetch;
+  readonly #onEmptyJwks: (jwksUrl: string) => void;
 
-  private constructor(
-    readonly jwksUrl: string,
-    opts: { ttlMs?: number; fetchImpl?: typeof fetch } = {},
-  ) {
-    this.#ttlMs = opts.ttlMs ?? 5 * 60 * 1000; // 5 min default
+  private constructor(readonly jwksUrl: string, opts: JwksVerifierOptions = {}) {
+    this.#ttlMs = opts.ttlMs ?? 5 * 60 * 1000;
+    this.#timeoutMs = opts.timeoutMs ?? 5_000;
     this.#fetchImpl = opts.fetchImpl ?? fetch;
+    this.#onEmptyJwks = opts.onEmptyJwks ?? (() => undefined);
   }
 
-  static async fromUrl(
-    jwksUrl: string,
-    opts: { ttlMs?: number; fetchImpl?: typeof fetch } = {},
-  ): Promise<JwksVerifier> {
+  static async fromUrl(jwksUrl: string, opts: JwksVerifierOptions = {}): Promise<JwksVerifier> {
     const v = new JwksVerifier(jwksUrl, opts);
     await v.refresh();
     return v;
   }
 
   async refresh(): Promise<void> {
-    const res = await this.#fetchImpl(this.jwksUrl, { headers: { accept: "application/json" } });
+    // F-001 (BB#227): bound the fetch — a hung JWKS endpoint must not stall
+    // the subscriber's consume loop. AbortController + timer; clearTimeout
+    // on completion in either branch.
+    const controller = this.#timeoutMs > 0 ? new AbortController() : null;
+    const timer = controller
+      ? setTimeout(() => controller.abort(), this.#timeoutMs)
+      : null;
+    let res: Response;
+    try {
+      res = await this.#fetchImpl(this.jwksUrl, {
+        headers: { accept: "application/json" },
+        ...(controller ? { signal: controller.signal } : {}),
+      });
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
     if (!res.ok) {
       throw new Error(`JwksVerifier.refresh: ${this.jwksUrl} returned ${res.status}`);
     }
@@ -171,7 +200,17 @@ export class JwksVerifier implements Verifier {
         next.set(k.kid, base64UrlToBytes(k.x));
       }
     }
-    this.#cache = next;
+
+    // F-004 (BB#227): non-empty guard. An empty-but-200 JWKS response (mid-
+    // rotation, partial deploy) must NOT wipe the cache — that would self-DoS
+    // verification until the next non-empty refresh lands. Keep the stale
+    // cache; notify the operator via onEmptyJwks; still advance lastFetchMs
+    // so we don't hot-loop the refresh on every verify() call.
+    if (next.size === 0 && this.#cache.size > 0) {
+      this.#onEmptyJwks(this.jwksUrl);
+    } else {
+      this.#cache = next;
+    }
     this.#lastFetchMs = Date.now();
   }
 

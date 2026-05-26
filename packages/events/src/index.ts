@@ -10,9 +10,11 @@ export { jcsCanonicalize, sha256Hex } from "./jcs.js";
 export {
   LocalEd25519Signer,
   JwksVerifier,
+  StaticPubkeyVerifier,
   type Signer,
   type Verifier,
   type SigningKeyId,
+  type JwksVerifierOptions,
 } from "./signer.js";
 
 export {

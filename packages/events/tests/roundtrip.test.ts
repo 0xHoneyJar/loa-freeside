@@ -295,6 +295,52 @@ describe("publish → subscribe roundtrip", () => {
     sub.unsubscribe();
   });
 
+  it("surfaces handler-error when the application handler throws (F-002)", async () => {
+    const nats = new FakeNats();
+    const { signer, verifier } = await buildSigner();
+    const subject = nftMintDetectedTopic({ collectionSlug: "mibera-shadow" });
+
+    const failures: VerificationFailureReason[] = [];
+    let handlerInvocations = 0;
+    const sub = await subscribeEnvelope({
+      nats,
+      subject,
+      schema: NftMintDetectedSchema,
+      verifier,
+      handler: async () => {
+        handlerInvocations++;
+        throw new Error("application code is buggy");
+      },
+      onVerificationFailure: (reason) => {
+        failures.push(reason);
+      },
+    });
+
+    await publishEnvelope({
+      nats,
+      subject,
+      payload: VALID_PAYLOAD,
+      emittedBy: "sonar-api",
+      signer,
+      prevHashStore: new InMemoryPrevHashStore(),
+    });
+
+    // publish a second time to confirm the subscriber stays alive after a handler throw
+    await publishEnvelope({
+      nats,
+      subject,
+      payload: { ...VALID_PAYLOAD, token_id: "235" },
+      emittedBy: "sonar-api",
+      signer,
+      prevHashStore: new InMemoryPrevHashStore(),
+    });
+
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(handlerInvocations, 2, "subscriber stays alive across handler throws");
+    assert.deepEqual(failures, ["handler-error", "handler-error"]);
+    sub.unsubscribe();
+  });
+
   it("surfaces prev-hash-broken-chain when chainStore detects a gap", async () => {
     const nats = new FakeNats();
     const { signer, verifier } = await buildSigner();

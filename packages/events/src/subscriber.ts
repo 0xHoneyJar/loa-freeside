@@ -10,7 +10,11 @@ export type VerificationFailureReason =
   | "payload-hash-mismatch"
   | "signature-invalid"
   | "prev-hash-broken-chain"
-  | "json-parse-error";
+  | "json-parse-error"
+  /** Application handler threw an exception; subscriber stayed alive (F-002 BB#227). */
+  | "handler-error"
+  /** Uncaught exception inside the subscriber's verify-and-route loop body itself (F-002 BB#227). */
+  | "internal-error";
 
 export interface EnvelopeHandlerContext<T> {
   payload: T;
@@ -166,9 +170,26 @@ export async function subscribeEnvelope<T>(opts: SubscribeOptions<T>): Promise<S
               rawBytes: msg.data,
               envelope,
             });
-            // Do NOT update the store on broken chain — wait for the publisher
-            // to recover; the next valid envelope with a matching prev_hash
-            // will heal the local view.
+            // Do NOT auto-advance the store on broken chain.
+            //
+            // Known limitation (F-005 BB#227): once a gap is detected, every
+            // subsequent envelope from the same publisher will continue to
+            // fail this check (its prev_hash references the missed envelope's
+            // hash, which the subscriber never recorded). Recovery requires
+            // operator action — the recommended pattern is:
+            //
+            //   onVerificationFailure: async (reason, detail) => {
+            //     if (reason !== "prev-hash-broken-chain" || !detail.envelope) return;
+            //     // emit an audit / alert here for forensic forensics
+            //     // then unconditionally advance the local chain to admit the gap:
+            //     await chainStore.set(
+            //       `${detail.envelope.emitted_by}:${detail.envelope.signing_key_id}`,
+            //       sha256Hex(jcsCanonicalize(detail.envelope)),
+            //     );
+            //   };
+            //
+            // Sprint 2+ will add a first-class `onChainGap` option that
+            // returns `'skip' | 'reset'` for this exact recovery surface.
             continue;
           }
           // Advance our local view of the publisher's chain.
@@ -189,15 +210,13 @@ export async function subscribeEnvelope<T>(opts: SubscribeOptions<T>): Promise<S
         }
 
         // 7. hand off to the application handler. Application errors are
-        // swallowed (logged via the failure callback if provided) so a buggy
-        // handler does not take down the subscriber.
+        // routed via `handler-error` (F-002 BB#227) so consumers branching
+        // on failure reason can distinguish a buggy handler from a bad
+        // envelope.
         try {
           await opts.handler({ payload: payloadResult.data, envelope, subject: msg.subject });
         } catch (error) {
-          await reportFailure("envelope-schema-invalid", {
-            // re-using "envelope-schema-invalid" for handler errors would be
-            // misleading; instead emit raw + envelope with an `error` field
-            // — consumers can distinguish in the callback by inspecting it.
+          await reportFailure("handler-error", {
             subject: msg.subject,
             rawBytes: msg.data,
             envelope,
@@ -205,8 +224,10 @@ export async function subscribeEnvelope<T>(opts: SubscribeOptions<T>): Promise<S
           });
         }
       } catch (error) {
-        // any uncaught error in the loop body — keep the subscription alive
-        await reportFailure("envelope-schema-invalid", {
+        // any uncaught error in the verify-and-route loop body itself — keep
+        // the subscription alive (F-002 BB#227: distinct from handler-error,
+        // which is application-layer; internal-error is a library bug).
+        await reportFailure("internal-error", {
           subject: msg.subject,
           rawBytes: msg.data,
           envelope,

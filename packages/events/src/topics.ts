@@ -43,15 +43,34 @@ export function buildTopic(segments: TopicSegments): string {
 
 // --- pre-built topic helpers (NFT mint detection — v1 scope) -----------------
 
-/** Catch-all wildcard for any NFT mint event across all collections. */
+/**
+ * Wildcard subject for subscribing to all NFT mint events across all
+ * collections AND across all topic versions (`nft.mint.detected.>`).
+ *
+ * This is a NATS subject pattern — only use it with `subscribe`, never with
+ * `publish`. To get the actual subject for publishing a specific event, use
+ * {@link nftMintDetectedTopic}.
+ */
 export const NFT_MINT_DETECTED_WILDCARD = "nft.mint.detected.>";
 
 /**
- * Per-collection NFT-mint-detected subject.
+ * Build the publish subject for an NFT-mint-detected event.
+ *
+ * Returns a concrete subject string for use with `publish` — NOT a wildcard.
+ * To subscribe to all collections under this event family, use
+ * {@link NFT_MINT_DETECTED_WILDCARD} instead.
  *
  * Examples:
  *   nftMintDetectedTopic({collectionSlug: "mibera-shadow"}) → "nft.mint.detected.mibera-shadow.v1"
- *   nftMintDetectedTopic() (no slug) → "nft.mint.detected.v1" (catch-all per-version)
+ *   nftMintDetectedTopic()                                  → "nft.mint.detected.v1"
+ *     (the base versioned subject with no collection discriminator — for
+ *     events whose collection cannot be discriminated at publish time. A
+ *     subscriber to this exact string will NOT receive collection-specific
+ *     publishes; use NFT_MINT_DETECTED_WILDCARD for that.)
+ *   nftMintDetectedTopic({collectionSlug: "mibera-shadow", version: 2}) → "nft.mint.detected.mibera-shadow.v2"
+ *
+ * Per the build doc, schema evolution requires a new versioned subject + a
+ * ≥30d v1/v2 coexistence window.
  */
 export function nftMintDetectedTopic(
   opts: { collectionSlug?: string; version?: number } = {},
