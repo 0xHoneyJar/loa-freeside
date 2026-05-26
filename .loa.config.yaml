@@ -833,11 +833,15 @@ gpt_review:
   # Maximum review iterations before auto-approve
   max_iterations: 3
   # Model selection
+  # Operator decision 2026-05-25 PM: use gpt-5.5 for BOTH document + code reviews.
+  # Was gpt-5.2 / gpt-5.2-codex (both unregistered); per operator, gpt-5.5 is strong
+  # enough for code now (the general + code lineages merged), so no codex variant
+  # needed at this layer.
   models:
     # Model for document reviews (PRD, SDD, Sprint)
-    documents: "gpt-5.2"
+    documents: "gpt-5.5"
     # Model for code reviews (uses Responses API)
-    code: "gpt-5.2-codex"
+    code: "gpt-5.5"
   # Per-phase toggles (only used when enabled: true)
   phases:
     prd: true
@@ -1540,13 +1544,21 @@ flatline_protocol:
   auto_trigger: true
 
   # Models for adversarial review
+  #
+  # Operator decision 2026-05-25 PM: use *-headless aliases for ALL THREE providers.
+  # Headless variants invoke each provider's CLI (claude, codex, gemini) using the
+  # operator's CLI session credentials — bypasses the need for ANTHROPIC_API_KEY /
+  # OPENAI_API_KEY / GOOGLE_API_KEY env vars while still firing real multi-model
+  # adversarial review. Operator framing: "we use headless for all of them."
+  #
+  # Note: codex-headless wraps gpt-5.5 (NOT gpt-5.5-pro — pro isn't available via
+  # the headless route per operator). Per operator: gpt-5.5 is also strong for code
+  # now (they merged the general + code lineages), so no codex-specialized variant
+  # needed in the alias chain.
   models:
-    # Primary model (default: Claude Opus 4.5)
-    primary: "opus"
-    # Secondary model (default: GPT-5.2)
-    secondary: "gpt-5.2"
-    # Tertiary model (future, optional)
-    # tertiary: "gemini-2.0"
+    primary: "claude-headless"
+    secondary: "codex-headless"
+    tertiary: "gemini-headless"
 
   # Consensus thresholds (0-1000 scale)
   thresholds:
@@ -1629,6 +1641,48 @@ run_bridge:
     categories:
       - mibera
       - neuromancer
+
+# =============================================================================
+# Spiral — autopoietic multi-cycle meta-orchestrator (RFC-060)
+# =============================================================================
+# Set up 2026-05-23 for the Mibera-inventory-sovereignty convergence work.
+# Values chosen to fix the three flakiness modes diagnosed pre-flight:
+#   flake #1: spiral.enabled defaulted false → instant exit-2 "feature disabled"
+#   flake #2: $10/cycle starved AUDIT phase → per-cycle ceiling raised to $20
+#   flake #3: hardcoded 300s planning timeout too tight → generous timeouts set
+# NOTE: real execution requires env SPIRAL_REAL_DISPATCH=1 — without it the
+#       orchestrator runs in STUB mode (mock APPROVED verdicts). This is the
+#       likely cause of "flaky last time": a stub run looks successful but does
+#       nothing. Safety clamps (50 cycles / $100 / 24h) are hardcoded and cannot
+#       be exceeded by these values.
+spiral:
+  enabled: true
+  default_max_cycles: 3            # safety clamp: 50
+  budget_cents: 6000               # $60 total ceiling (safety clamp: $100)
+  wall_clock_seconds: 28800        # 8h (safety clamp: 24h)
+  max_budget_per_cycle_usd: 20     # ≥ phase-budget sum + bridgebuilder headroom
+  max_total_budget_usd: 60
+  flatline:                        # kaironic convergence — halt when findings-rate plateaus
+    min_new_findings_per_cycle: 3
+    consecutive_low_cycles: 2
+  seed:
+    mode: degraded                 # prior-cycle sidecar; vision-registry full-seed optional
+  harness:
+    executor_model: sonnet         # planning + implementation
+    advisor_model: opus            # review + audit judgment
+    max_phase_retries: 3
+    planning_budget_usd: 2
+    implement_budget_usd: 8        # real work needs headroom (default 5 was tight)
+    review_budget_usd: 3
+    audit_budget_usd: 3            # reserved — never starved by earlier phases
+    bb_fix_budget_usd: 3
+    bb_max_iterations: 3
+    discovery_timeout_sec: 1200
+    architecture_timeout_sec: 1200
+    planning_timeout_sec: 900
+    pipeline_profile: standard     # "full" adds gpt-5.3-codex + gemini (more cost)
+  step_timeouts:
+    simstim_sec: 7200              # 2h per embedded cycle
 
 # =============================================================================
 # Agent Teams (v1.39.0)

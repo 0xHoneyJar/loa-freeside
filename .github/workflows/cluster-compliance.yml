@@ -1,0 +1,226 @@
+# Cluster Compliance Workflow — ADR-009 D-13 CI Gate
+#
+# Validates that every registered cell in loa-freeside/packages/freeside-registry/registry.yaml
+# conforms to:
+#   - D-13 compliance predicate (auditing-cluster-cells skill checks: substantive mount,
+#     default branch=main, CLAUDE.md present, grimoires/loa/NOTES.md present, .beads/,
+#     .loa-version.json with framework_version, BeaconV3 manifest at .well-known/beacon.json)
+#   - D-9a per-cell capability boundaries (auditing-cell-capabilities skill checks:
+#     no secrets, framework-baseline hooks present, no shadowed skills, script-boundary
+#     respect, agent-permissions inherits baseline)
+#
+# Triggers:
+#   - PR touching registry.yaml (validates new cells before they land)
+#   - PR touching this workflow file (validates the workflow itself)
+#   - Nightly cron (catches drift between PRs)
+#   - workflow_dispatch (manual operator invocation)
+#
+# Failure modes:
+#   - PR-time: fail check; block merge until cell brought into compliance
+#   - Nightly: open an issue on loa-freeside with cluster-status report; tag drifted cells
+#   - Manual: surface status; no auto-issue
+#
+# Authored 2026-05-25 PM per ADR-009 v0.3 D-13 to close flatline finding "CI gate is
+# vaporware" (SKP-001 CRIT 850). Companion skills live in construct-freeside.
+
+name: Cluster Compliance
+
+on:
+  pull_request:
+    paths:
+      - 'packages/freeside-registry/registry.yaml'
+      - '.github/workflows/cluster-compliance.yml'
+  schedule:
+    - cron: '0 12 * * *'  # daily at 12:00 UTC
+  workflow_dispatch:
+    inputs:
+      open_issue_on_failure:
+        description: 'Open a tracking issue if any cell fails compliance'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pull-requests: write  # to comment on PR with audit results
+  issues: write         # to open tracking issue on nightly failure
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout loa-freeside
+        uses: actions/checkout@v4
+
+      # Note: previously checked out construct-freeside for audit scripts,
+      # but construct-freeside is PRIVATE so default GITHUB_TOKEN can't access
+      # it from this repo. Scripts are now VENDORED into .github/scripts/ from
+      # construct-freeside/skills/{auditing-cluster-cells,auditing-cell-capabilities}/resources/
+      # (canonical homes; refresh via cluster-meta cycle when scripts evolve).
+
+      - name: Setup yq + jq + gh
+        run: |
+          # Standard runner already has gh + jq; yq via apt
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq yq || pip install yq
+
+      - name: Parse cell roster from registry
+        id: roster
+        run: |
+          # Extract cell slug + repo URL pairs from registry.yaml.
+          # Registry shape: top-level `modules:` is a MAP keyed by slug (e.g. freeside-sonar).
+          # Pipeline: Go-yq converts YAML→JSON, jq processes JSON with full filter language
+          # (Go-yq's own query language doesn't support jq-style sub()/capture()/to_entries).
+          yq -o=json packages/freeside-registry/registry.yaml | \
+            jq -r '.modules | to_entries | .[] |
+              "\(.key):\(.value.git_url | sub("https://github.com/"; "") | sub("\\.git$"; ""))"' \
+            > cell-list.txt
+          echo "Cells found:"
+          cat cell-list.txt
+          echo "count=$(wc -l < cell-list.txt | tr -d ' ')" >> $GITHUB_OUTPUT
+
+      - name: Audit each cell
+        id: audit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p audit-results
+          FAILED_CELLS=()
+          WARN_CELLS=()
+          PASSED_CELLS=()
+
+          while IFS=: read -r slug repo; do
+            [ -z "$slug" ] && continue
+            echo ""
+            echo "═══ Auditing $slug ($repo) ═══"
+
+            # Shallow-clone the cell into a working dir
+            CELL_DIR="cell-$slug"
+            gh repo clone "$repo" "$CELL_DIR" -- --depth=1 --quiet 2>&1 || {
+              echo "  ⚠ Could not clone $repo — skipping"
+              echo "{ \"slug\": \"$slug\", \"status\": \"UNREACHABLE\", \"reason\": \"clone failed\" }" \
+                > "audit-results/$slug.json"
+              WARN_CELLS+=("$slug")
+              continue
+            }
+
+            # Run existence + topology audit (vendored from construct-freeside auditing-cluster-cells skill)
+            EXISTENCE_JSON=$(GITHUB_DIR="$(pwd)" bash .github/scripts/audit-cluster-cells.sh \
+              --json --cell "$slug" 2>&1 || echo "{}")
+
+            # Run per-cell capability audit (vendored from construct-freeside auditing-cell-capabilities skill)
+            CAPABILITIES_JSON=$(bash .github/scripts/check-cell-capabilities.sh \
+              --cell "$CELL_DIR" --json --ci 2>&1 || echo "{}")
+            CAP_EXIT=$?
+
+            # Combine results
+            jq -n \
+              --arg slug "$slug" \
+              --argjson existence "$EXISTENCE_JSON" \
+              --argjson capabilities "$CAPABILITIES_JSON" \
+              '{slug: $slug, existence: $existence, capabilities: $capabilities}' \
+              > "audit-results/$slug.json"
+
+            # Classify
+            CAP_OVERALL=$(jq -r '.overall // "UNKNOWN"' <<< "$CAPABILITIES_JSON")
+            EXISTENCE_DRIFT=$(jq -r '.cells[0].drift_findings // ""' <<< "$EXISTENCE_JSON")
+
+            if [ "$CAP_OVERALL" = "FAIL" ] || [ "$EXISTENCE_DRIFT" != "clean" ]; then
+              FAILED_CELLS+=("$slug")
+              echo "  ✗ FAIL — capabilities: $CAP_OVERALL, existence-drift: $EXISTENCE_DRIFT"
+            else
+              PASSED_CELLS+=("$slug")
+              echo "  ✓ PASS"
+            fi
+
+            # Cleanup clone (free disk)
+            rm -rf "$CELL_DIR"
+          done < cell-list.txt
+
+          # Summary outputs
+          echo "failed_count=${#FAILED_CELLS[@]}" >> $GITHUB_OUTPUT
+          echo "passed_count=${#PASSED_CELLS[@]}" >> $GITHUB_OUTPUT
+          echo "warn_count=${#WARN_CELLS[@]}" >> $GITHUB_OUTPUT
+          echo "failed_cells=${FAILED_CELLS[*]}" >> $GITHUB_OUTPUT
+
+          # Aggregate JSON report
+          jq -s '{
+            audit_ts: now | strftime("%Y-%m-%dT%H:%M:%SZ"),
+            total: length,
+            failed: [.[] | select(.capabilities.overall == "FAIL" or .existence.cells[0].drift_findings != "clean") | .slug],
+            passed: [.[] | select(.capabilities.overall == "PASS" and .existence.cells[0].drift_findings == "clean") | .slug],
+            cells: .
+          }' audit-results/*.json > cluster-audit-report.json
+
+          echo ""
+          echo "═══ AGGREGATE ═══"
+          jq -r '"  total: \(.total) | passed: \(.passed | length) | failed: \(.failed | length)"' cluster-audit-report.json
+          jq -r '.failed[] // empty | "  ✗ FAILED: \(.)"' cluster-audit-report.json
+
+      - name: Upload audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: cluster-audit-report
+          path: cluster-audit-report.json
+          retention-days: 30
+
+      - name: Render GitHub Summary
+        if: always()
+        run: |
+          {
+            echo "## Cluster Compliance — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo ""
+            echo "| Metric | Count |"
+            echo "|--------|-------|"
+            echo "| Total cells | ${{ steps.audit.outputs.passed_count }} pass + ${{ steps.audit.outputs.failed_count }} fail + ${{ steps.audit.outputs.warn_count }} unreachable |"
+            echo ""
+            if [ "${{ steps.audit.outputs.failed_count }}" -gt 0 ]; then
+              echo "### ✗ Failed cells"
+              echo "${{ steps.audit.outputs.failed_cells }}" | tr ' ' '\n' | while read cell; do
+                [ -n "$cell" ] && echo "- $cell"
+              done
+            fi
+            echo ""
+            echo "Full report: see \`cluster-audit-report\` artifact (30-day retention)."
+          } >> $GITHUB_STEP_SUMMARY
+
+      - name: Open issue on nightly failure
+        if: |
+          (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.open_issue_on_failure)) &&
+          steps.audit.outputs.failed_count != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "Cluster compliance drift detected — $(date -u +%Y-%m-%d)" \
+            --label "cluster-compliance,drift" \
+            --body "$(cat <<EOF
+          ## Drift detected by nightly cluster-compliance workflow
+
+          **Failed cells**: ${{ steps.audit.outputs.failed_cells }}
+
+          See the workflow run [here](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) for full details + the \`cluster-audit-report\` artifact.
+
+          Per [ADR-009 D-13](https://github.com/0xHoneyJar/loa-freeside/blob/main/decisions/009-freeside-hexagonal-federation.md), cells that fail compliance get a **30-day remediation window** from when the failure is first reported. After 30 days, cluster-meta dispatch scripts refuse to dispatch agents into the cell.
+
+          To investigate locally (using construct-freeside canonical sources):
+          \`\`\`
+          bash ~/Documents/GitHub/construct-freeside/skills/auditing-cluster-cells/resources/audit-cells.sh
+          bash ~/Documents/GitHub/construct-freeside/skills/auditing-cell-capabilities/resources/check-capabilities.sh --cell <cell-path>
+          \`\`\`
+          OR (using vendored workflow copies in this repo):
+          \`\`\`
+          bash .github/scripts/audit-cluster-cells.sh
+          bash .github/scripts/check-cell-capabilities.sh --cell <cell-path>
+          \`\`\`
+
+          🤖 Auto-opened by \`.github/workflows/cluster-compliance.yml\`
+          EOF
+          )"
+
+      - name: Fail step on PR-time compliance failure
+        if: github.event_name == 'pull_request' && steps.audit.outputs.failed_count != '0'
+        run: |
+          echo "::error::Cluster compliance failed for: ${{ steps.audit.outputs.failed_cells }}"
+          echo "::error::See workflow summary for details."
+          exit 1
