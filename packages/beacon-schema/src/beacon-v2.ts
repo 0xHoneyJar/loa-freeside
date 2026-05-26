@@ -105,7 +105,7 @@ const McpBlockBase = Schema.Struct({
 // Mirrors the Auth filter pattern (auth.ts §80-92). Without this, a beacon
 // declaring remote-http transport but omitting the remote block would pass
 // schema validation and only fail at gateway boot with a less-clear error.
-const McpBlock = McpBlockBase.pipe(
+export const McpBlock = McpBlockBase.pipe(
   Schema.filter((mcp) => {
     if (mcp.paths.includes("remote-http") && mcp.remote === undefined) {
       return "mcp.remote required when paths includes remote-http";
@@ -114,7 +114,7 @@ const McpBlock = McpBlockBase.pipe(
   }),
 );
 
-const CliBlock = Schema.optional(
+export const CliBlock = Schema.optional(
   Schema.Struct({
     binary: Schema.String,
     entry: Schema.optional(Schema.String),

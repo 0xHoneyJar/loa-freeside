@@ -19,6 +19,7 @@ export {
   BeaconV3Schema,
   decodeBeaconV3,
   encodeBeaconV3,
+  validateBeaconV3,
   type BeaconV3,
 } from "./beacon-v3.js";
 
