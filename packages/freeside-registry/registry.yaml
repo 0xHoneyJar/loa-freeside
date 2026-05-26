@@ -1,64 +1,165 @@
 # Freeside Module Registry — L1 canonical source-of-truth
 #
-# Mirrors loa-constructs/registry.yaml shape. Each entry registers a
-# freeside-* module for the federation manifest at /federation.json.
+# 8 canonical cells per ADR-009 §D-2 (decisions/009-freeside-hexagonal-federation.md):
+# sonar-api, storage-api, mint-api, activities-api, inventory-api, score-api,
+# identity-api, mediums-api. Naming convention *-api ratified 2026-05-23 in
+# grimoires/loa/specs/enhance-freeside-api-surface.md.
 #
 # Schema:
 #   version: integer
 #   modules:
 #     <module-slug>:
-#       git_url: string          # canonical source repo
-#       beacon_url: string       # where to fetch the module's beacon.json
-#       visibility: enum         # public | unlisted | internal (per ADR-007 §D-8)
-#       owner: string            # GitHub handle or org
+#       git_url: string             # canonical source repo
+#       beacon_url: string          # planned beacon serving endpoint (may 404 today)
+#       deployment_url: string|~    # actual current runtime URL (Railway etc.) — null if not deployed
+#       visibility: enum            # public | unlisted | internal (per ADR-007 §D-8)
+#       owner: string               # GitHub handle or org
 #       added: ISO-8601 date
+#       runtime_state: enum         # deployed | scaffolded | not-built
+#       notes: string               # free-form (deploy quirks, health-path mismatches, etc.)
 #
 # Reference: decisions/007-loa-freeside-absorption.md §D-1 (L1 Module Registry)
+#            decisions/009-freeside-hexagonal-federation.md §D-2 (cells canonical list)
+#
+# Live-probe state (2026-05-25):
+#   DEPLOYED at Railway: sonar-api, score-api, storage-api, inventory-api (auth-gated MCP), identity-api
+#   NOT-BUILT runtime:   mint-api, activities-api, mediums-api (npm libraries only, no HTTP runtime)
+#
+# Subdomain *.0xhoneyjar.xyz beacon endpoints currently 404 for ALL cells — DNS not yet
+# pointed at deployed Railway URLs, and beacon-serving routes not yet implemented in cells.
+# This is the federation-discovery gap (the awareness surface from
+# grimoires/loa/specs/enhance-freeside-api-surface.md T1/T2 follow-up).
 
 version: 1
 
 modules:
-  # ─── Production substrate modules ────────────────────────────────────────
-  freeside-sonar:
-    git_url: https://github.com/0xHoneyJar/freeside-sonar.git
-    beacon_url: https://sonar.0xhoneyjar.xyz/.well-known/beacon.json
-    visibility: public
-    owner: 0xHoneyJar
-    added: "2026-05-18"
+  # ─── Alphabetical by canonical *-api slug ────────────────────────────────
 
-  freeside-storage:
-    git_url: https://github.com/0xHoneyJar/freeside-storage.git
-    beacon_url: https://storage.0xhoneyjar.xyz/.well-known/beacon.json
-    visibility: public
-    owner: 0xHoneyJar
-    added: "2026-05-18"
-
-  freeside-mint:
-    git_url: https://github.com/0xHoneyJar/freeside-mint.git
-    beacon_url: https://mint.0xhoneyjar.xyz/.well-known/beacon.json
-    visibility: public
-    owner: 0xHoneyJar
-    added: "2026-05-18"
-
-  freeside-activities:
-    git_url: https://github.com/0xHoneyJar/freeside-activities.git
+  activities-api:
+    git_url: https://github.com/0xHoneyJar/activities-api.git
     beacon_url: https://activities.0xhoneyjar.xyz/.well-known/beacon.json
+    deployment_url: ~
     visibility: public
     owner: 0xHoneyJar
     added: "2026-05-18"
+    runtime_state: not-built
+    notes: |
+      Unified Activity supertype substrate (quest/mission/badge/raffle).
+      Shipped as npm library (648 tests per kickoff spec); no HTTP runtime
+      deployed. activities-{api,mcp,}-production.up.railway.app all 404 as
+      of 2026-05-25.
 
-  # ─── Candidate / in-flight modules ───────────────────────────────────────
-  freeside-inventory:
-    git_url: https://github.com/0xHoneyJar/freeside-inventory.git
+  identity-api:
+    git_url: https://github.com/0xHoneyJar/identity-api.git
+    beacon_url: https://identity.0xhoneyjar.xyz/.well-known/beacon.json
+    deployment_url: https://identity-api-production-317b.up.railway.app
+    visibility: public
+    owner: 0xHoneyJar
+    added: "2026-05-25"
+    runtime_state: deployed
+    notes: |
+      Central identity SoR (Phase 1 BUILT + DEPLOYED 2026-05-25 to Railway).
+      Custom domain identity.0xhoneyjar.xyz queued behind DNS — beacon_url
+      anticipates that. Spine empty until Phase 4 T4.4 backfill (arrakis-494b).
+      Phase 2 (compose, /v1/profile) + Phase 3 (mibera dims,
+      /v1/mibera/dimensions) endpoints scaffolded but NOT built — both return
+      400 today. /health is the canonical liveness path.
+      NOTE: a separate identity-production.up.railway.app exists serving a Login
+      page (Bootstrap HTML); that is NOT this service — likely an older
+      freeside-identity / Sietch surface. Canonical URL is the 317b one above.
+      Beads coordinator: ~/bonfire/identity-api-coordinator/
+
+  inventory-api:
+    git_url: https://github.com/0xHoneyJar/inventory-api.git
     beacon_url: https://inventory.0xhoneyjar.xyz/.well-known/beacon.json
-    visibility: public
+    deployment_url: https://inventory-mcp-production.up.railway.app
+    visibility: internal
     owner: 0xHoneyJar
     added: "2026-05-18"
+    runtime_state: deployed
+    notes: |
+      sonar⨝codex inventory/collections read API + ACVP completeness.
+      Deployed as MCP server at inventory-mcp-production.up.railway.app (returns
+      401 — auth-gated, requires API key). Per memory the inventory-api npm
+      library has live read counts; the MCP server is the federation-facing
+      shape. visibility: internal because of the auth gate.
 
-  # ─── Score (registered but lives in score-mibera repo) ───────────────────
-  score-mibera:
-    git_url: https://github.com/0xHoneyJar/score-mibera.git
-    beacon_url: https://score.0xhoneyjar.xyz/.well-known/beacon.json
+  mediums-api:
+    # NOTE: GH repo still at freeside-mediums (only mediums of the 8 cells not yet
+    # renamed at GH level). git_url tracks current canonical name; slug is *-api
+    # per ADR-009 D-2. Repo rename is a separate follow-up.
+    git_url: https://github.com/0xHoneyJar/freeside-mediums.git
+    beacon_url: https://mediums.0xhoneyjar.xyz/.well-known/beacon.json
+    deployment_url: ~
+    visibility: public
+    owner: 0xHoneyJar
+    added: "2026-05-25"
+    runtime_state: not-built
+    notes: |
+      Chat-medium presentation capability registry (L2 boundary). v0.2 live
+      on npm (@0xhoneyjar/medium-registry) but no HTTP runtime deployed.
+      mediums-{api,mcp,}-production.up.railway.app all 404 as of 2026-05-25.
+      GH repo rename freeside-mediums → mediums-api pending.
+
+  mint-api:
+    git_url: https://github.com/0xHoneyJar/mint-api.git
+    beacon_url: https://mint.0xhoneyjar.xyz/.well-known/beacon.json
+    deployment_url: ~
     visibility: public
     owner: 0xHoneyJar
     added: "2026-05-18"
+    runtime_state: not-built
+    notes: |
+      Identity-bound token issuance protocol (ACVP-shaped). npm package
+      shipped + MCP substrate per kickoff spec, but no HTTP runtime deployed.
+      mint-{api,mcp,}-production.up.railway.app all 404 as of 2026-05-25.
+
+  score-api:
+    # The runtime building (was 'score-mibera' in pre-2026-05-23 registry). GH repo
+    # renamed score-mibera → score-api. The SCHEMA package @freeside/freeside-score
+    # is a separate npm-only library, NOT registered as a cell.
+    git_url: https://github.com/0xHoneyJar/score-api.git
+    beacon_url: https://score.0xhoneyjar.xyz/.well-known/beacon.json
+    deployment_url: https://score-api-production.up.railway.app
+    visibility: public
+    owner: 0xHoneyJar
+    added: "2026-05-18"
+    runtime_state: deployed
+    notes: |
+      Hono runtime — factor metadata + behavioral signals. LIVE at Railway
+      with full health response at `/` (NOT `/healthz`):
+        {status:"ok", service:"score-api", db:"connected", scoring_version:"v0.7",
+         last_run_id:5903, last_run_at:"2026-05-26 03:35:21+00"}
+      mcp-gateway's probeTenant() calls `/healthz` which 404s — the gateway will
+      show this tenant as "down" even though the service is operational. Fix
+      candidate: per-tenant `health_path` field in tenants.ts (deferred —
+      tracked as gateway-probe-mismatch in operator-dash kickoff).
+
+  sonar-api:
+    git_url: https://github.com/0xHoneyJar/sonar-api.git
+    beacon_url: https://sonar.0xhoneyjar.xyz/.well-known/beacon.json
+    deployment_url: https://sonar-api-production.up.railway.app
+    visibility: public
+    owner: 0xHoneyJar
+    added: "2026-05-18"
+    runtime_state: deployed
+    notes: |
+      EVM event indexer across 6 chains (Berachain primary). LIVE at Railway
+      with `{"message":"Sonar API"}` at `/`. eRPC belt-gateway also on
+      Railway (separate service). GraphQL endpoint shape per kickoff spec —
+      probe `/graphql` for richer health.
+
+  storage-api:
+    git_url: https://github.com/0xHoneyJar/storage-api.git
+    beacon_url: https://storage.0xhoneyjar.xyz/.well-known/beacon.json
+    deployment_url: https://storage-api-production.up.railway.app
+    visibility: public
+    owner: 0xHoneyJar
+    added: "2026-05-18"
+    runtime_state: deployed
+    notes: |
+      Static-asset CDN + NFT metadata serving (StorageAdapter abstraction).
+      LIVE at Railway — serves GraphQL Playground HTML at `/`, suggesting
+      GraphQL API at `/graphql`. Per memory, storage was named the
+      "real blocker" for the Mibera inventory sovereignty arc — that
+      framing predates the current deployment; verify status with operator.

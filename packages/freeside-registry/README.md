@@ -2,7 +2,7 @@
 
 **Package**: `@freeside/freeside-registry` · **Domain**: network · **Status**: scaffold
 
-Beacon aggregator + federation manifest server for the `freeside-*` module network. Maintains `registry.yaml` (the L1 source-of-truth list of registered modules) and exposes `/federation.json` (the L5 ambient-discovery endpoint).
+Beacon aggregator + federation manifest server for the `*-api` cell network (per [ADR-009 §D-2](../../decisions/009-freeside-hexagonal-federation.md)). Maintains `registry.yaml` (the L1 source-of-truth list of registered cells) and (planned) exposes `/.well-known/federation.json` (the L5 ambient-discovery endpoint). Today the federation-manifest serving lives in `apps/mcp-gateway/src/app.ts`; the planned shape below relocates it here per ADR-007 §D-5.
 
 ## Planned shape
 
@@ -10,10 +10,10 @@ Per [ADR-007 §D-5 + D-8](../../decisions/007-loa-freeside-absorption.md):
 
 ```
 packages/freeside-registry/
-├── registry.yaml                # canonical module list (parallels loa-constructs/registry.yaml)
+├── registry.yaml                # canonical cell list (parallels loa-constructs/registry.yaml)
 ├── src/
-│   ├── server.ts                # HTTP server exposing /federation.json + /federation/{tenant}.json
-│   ├── aggregator.ts            # fetches each module's /.well-known/beacon.json (5min refresh)
+│   ├── server.ts                # HTTP server exposing /.well-known/federation.json + per-tenant authenticated manifest routes
+│   ├── aggregator.ts            # fetches each cell's /.well-known/beacon.json (5min refresh)
 │   ├── visibility.ts            # public / unlisted / internal filtering per D-8
 │   ├── redaction.ts             # redaction rules per D-8 (owner.email, pricing URLs, internal hostnames)
 │   └── cache.ts                 # per-tenant cache partitioning per D-8
@@ -24,7 +24,7 @@ packages/freeside-registry/
 
 ## Visibility model (D-8)
 
-| `beacon.visibility` | Public `/federation.json` | Authenticated `/federation/{tenant}.json` | MCP `inspectModule(<slug>)` |
+| `beacon.visibility` | Public `/.well-known/federation.json` | Authenticated per-tenant manifest | MCP `inspectModule(<slug>)` |
 |---------------------|---|---|---|
 | `public` | YES | YES | YES |
 | `unlisted` | NO | YES (if tenant has access) | YES (if tenant has access) |
@@ -34,21 +34,27 @@ Authentication required for non-public paths. See ADR-007 §D-8 for full threat 
 
 ## Registry schema
 
-`registry.yaml` mirrors `loa-constructs/registry.yaml` shape:
+`registry.yaml` mirrors `loa-constructs/registry.yaml` shape, with the `*-api` slug convention per [ADR-009 §D-2](../../decisions/009-freeside-hexagonal-federation.md) and additional fields `deployment_url` + `runtime_state` for operator-truth marking:
 
 ```yaml
 version: 1
 modules:
-  freeside-storage:
-    git_url: https://github.com/0xHoneyJar/freeside-storage.git
-    beacon_url: https://storage.freeside.0xhoneyjar.xyz/.well-known/beacon.json
+  storage-api:
+    git_url: https://github.com/0xHoneyJar/storage-api.git
+    beacon_url: https://storage.0xhoneyjar.xyz/.well-known/beacon.json
+    deployment_url: https://storage-api-production.up.railway.app
     visibility: public
+    owner: 0xHoneyJar
+    added: "2026-05-18"
+    runtime_state: deployed
+    notes: |
+      Free-form: deploy quirks, rename-pending, health-path mismatches, etc.
   # ...
 ```
 
 ## What lives here
 
-Currently: this README. Module scaffolding lands in subsequent ADR-007 §Implementation steps (workspace creation is step 3; this README is part of step 3; functional code is steps 6-7).
+Currently: this README + the `registry.yaml` cell index. Module scaffolding (`src/server.ts`, `src/aggregator.ts`, etc.) lands in subsequent ADR-007 §Implementation steps. The federation-manifest serving today lives in `apps/mcp-gateway/src/app.ts` — relocation to `packages/freeside-registry/src/server.ts` is the planned ADR-007 §D-5 shape.
 
 ## Domain boundary
 
