@@ -51,14 +51,12 @@ jobs:
     steps:
       - name: Checkout loa-freeside
         uses: actions/checkout@v4
-        with:
-          path: loa-freeside
 
-      - name: Checkout construct-freeside (audit skills)
-        uses: actions/checkout@v4
-        with:
-          repository: 0xHoneyJar/construct-freeside
-          path: construct-freeside
+      # Note: previously checked out construct-freeside for audit scripts,
+      # but construct-freeside is PRIVATE so default GITHUB_TOKEN can't access
+      # it from this repo. Scripts are now VENDORED into .github/scripts/ from
+      # construct-freeside/skills/{auditing-cluster-cells,auditing-cell-capabilities}/resources/
+      # (canonical homes; refresh via cluster-meta cycle when scripts evolve).
 
       - name: Setup yq + jq + gh
         run: |
@@ -68,15 +66,14 @@ jobs:
 
       - name: Parse cell roster from registry
         id: roster
-        working-directory: loa-freeside
         run: |
           # Extract cell slug + repo URL pairs from registry.yaml
           # Output: JSON array to roster.json for downstream jobs
           yq -r '.cells[] | "\(.slug):\(.repo // "0xHoneyJar/" + .slug)"' \
-            packages/freeside-registry/registry.yaml > ../cell-list.txt
+            packages/freeside-registry/registry.yaml > cell-list.txt
           echo "Cells found:"
-          cat ../cell-list.txt
-          echo "count=$(wc -l < ../cell-list.txt | tr -d ' ')" >> $GITHUB_OUTPUT
+          cat cell-list.txt
+          echo "count=$(wc -l < cell-list.txt | tr -d ' ')" >> $GITHUB_OUTPUT
 
       - name: Audit each cell
         id: audit
@@ -103,12 +100,12 @@ jobs:
               continue
             }
 
-            # Run existence + topology audit (auditing-cluster-cells)
-            EXISTENCE_JSON=$(GITHUB_DIR="$(pwd)" bash construct-freeside/skills/auditing-cluster-cells/resources/audit-cells.sh \
+            # Run existence + topology audit (vendored from construct-freeside auditing-cluster-cells skill)
+            EXISTENCE_JSON=$(GITHUB_DIR="$(pwd)" bash .github/scripts/audit-cluster-cells.sh \
               --json --cell "$slug" 2>&1 || echo "{}")
 
-            # Run per-cell capability audit (auditing-cell-capabilities)
-            CAPABILITIES_JSON=$(bash construct-freeside/skills/auditing-cell-capabilities/resources/check-capabilities.sh \
+            # Run per-cell capability audit (vendored from construct-freeside auditing-cell-capabilities skill)
+            CAPABILITIES_JSON=$(bash .github/scripts/check-cell-capabilities.sh \
               --cell "$CELL_DIR" --json --ci 2>&1 || echo "{}")
             CAP_EXIT=$?
 
@@ -202,10 +199,15 @@ jobs:
 
           Per [ADR-009 D-13](https://github.com/0xHoneyJar/loa-freeside/blob/main/decisions/009-freeside-hexagonal-federation.md), cells that fail compliance get a **30-day remediation window** from when the failure is first reported. After 30 days, cluster-meta dispatch scripts refuse to dispatch agents into the cell.
 
-          To investigate locally:
+          To investigate locally (using construct-freeside canonical sources):
           \`\`\`
           bash ~/Documents/GitHub/construct-freeside/skills/auditing-cluster-cells/resources/audit-cells.sh
           bash ~/Documents/GitHub/construct-freeside/skills/auditing-cell-capabilities/resources/check-capabilities.sh --cell <cell-path>
+          \`\`\`
+          OR (using vendored workflow copies in this repo):
+          \`\`\`
+          bash .github/scripts/audit-cluster-cells.sh
+          bash .github/scripts/check-cell-capabilities.sh --cell <cell-path>
           \`\`\`
 
           🤖 Auto-opened by \`.github/workflows/cluster-compliance.yml\`
