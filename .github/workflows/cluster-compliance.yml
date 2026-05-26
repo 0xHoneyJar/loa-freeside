@@ -71,8 +71,9 @@ jobs:
           # Registry shape: top-level `modules:` is a MAP keyed by slug (e.g. freeside-sonar).
           # Each value has `git_url:` (https://github.com/<owner>/<repo>.git).
           # Output: lines of "slug:owner/repo" to cell-list.txt for downstream loop.
+          # Uses `sub()` (works on both Go yq + python-yq) instead of regex capture (incompat).
           yq -r '.modules | to_entries | .[] |
-            "\(.key):\(.value.git_url | capture("github.com/(?P<r>[^.]+)").r)"' \
+            "\(.key):\(.value.git_url | sub("https://github.com/"; "") | sub("\\.git$"; ""))"' \
             packages/freeside-registry/registry.yaml > cell-list.txt
           echo "Cells found:"
           cat cell-list.txt
