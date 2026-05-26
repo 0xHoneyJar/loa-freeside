@@ -1,7 +1,14 @@
 # Reference V3-compliant beacon — fixture for ADR-007 §D-4 + Appendix A tests.
-# Models freeside-inventory as the first born-V3-compliant module.
+# Models inventory-api as a born-V3-compliant building.
+#
+# NOTE: V3 is its OWN shape, NOT a structural superset of V2 (ADR-008 §D-11).
+# schema_version: "3" is the building-identity beacon; "2" is the MCP-tenant
+# self-declaration. V3 omits V2's `payment`/`docs` fields and requires
+# top-level `slug` + `publisher` + identity (is/is_not/cycle_state).
 
-schema_version: "2"  # V2 base shape preserved (V3 is structural superset)
+schema_version: "3"
+slug: "inventory-api"
+publisher: "0xHoneyJar"
 
 mcp:
   shape: data
