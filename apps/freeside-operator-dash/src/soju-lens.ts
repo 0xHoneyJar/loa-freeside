@@ -18,9 +18,12 @@
 
 import type { SojuLens, SojuLensRow } from "./types.js";
 
-const FETCH_TIMEOUT_MS = 6000;
+const FETCH_TIMEOUT_MS = 8000;
 const IDENTITY_API = "https://identity-api-production-317b.up.railway.app";
-const HONEY_ROAD = "https://mibera.honeyjar.xyz";
+// Canonical (NOT mibera.honeyjar.xyz which sits behind Datadome bot protection +
+// returns HTML for server-side curl). The canonical mibera.0xhoneyjar.xyz is the
+// raw Next.js app with no bot-protection layer — works for server-side probes.
+const HONEY_ROAD = "https://mibera.0xhoneyjar.xyz";
 const WORLD_SLUG = "mibera"; // THJ world slug per identity-api PRD; tested in routes.test.ts:166
 
 type FetchResult = { observed: string | null; error: string | null };
@@ -123,20 +126,75 @@ export async function collectSojuLens(wallet: string | null): Promise<SojuLens> 
       error: r.error,
     })),
 
-    safeFetchJSON(
-      `${HONEY_ROAD}/api/profile?wallet=${wallet}`,
-      (b) => fieldOf(b, "name") ?? fieldOf(b, "displayName") ?? fieldOf(b, "username"),
-      "honey-road (Alchemy):",
-    ).then<SojuLensRow>((r) => ({
-      surface: "honey-road (reads Alchemy)",
-      field: "displayName",
-      observed: r.observed,
-      source: "honey-road /api/profile",
-      error: r.error,
-    })),
+    // honey-road's actual API route (verified via mibera-honeyroad/app/api/mibera/
+    // dimensions/route.ts). Returns shape:
+    //   { source: "identity-api" | "alchemy", degraded: boolean,
+    //     degradedReasons: string[], tokens: [...], userId?: string,
+    //     primaryWallet: string }
+    // We emit 3 rows: source (the discrepancy signal — which backend honey-road
+    // actually used), userId (cross-check with identity-api spine row),
+    // degraded (boolean flag indicating why fallback may have kicked in).
+    fetch(`${HONEY_ROAD}/api/mibera/dimensions?wallet=${wallet}`, {
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          let body = "";
+          try { body = (await res.text()).slice(0, 100); } catch { /* noop */ }
+          return { source: null as string | null, userId: null as string | null, degraded: null as string | null, error: `HTTP ${res.status}${body ? ` — ${body}` : ""}` };
+        }
+        const ct = res.headers.get("content-type") ?? "";
+        if (!ct.includes("application/json")) {
+          return { source: null, userId: null, degraded: null, error: `non-JSON (${ct}) — bot protection? try canonical URL` };
+        }
+        const body = (await res.json().catch(() => null)) as unknown;
+        if (body === null) return { source: null, userId: null, degraded: null, error: "body unparseable" };
+        return {
+          source: fieldOf(body, "source"),
+          userId: fieldOf(body, "userId"),
+          degraded: typeof (body as { degraded?: unknown }).degraded === "boolean"
+            ? String((body as { degraded: boolean }).degraded)
+            : null,
+          error: null,
+        };
+      })
+      .catch((e) => ({
+        source: null as string | null, userId: null as string | null, degraded: null as string | null,
+        error: e instanceof Error ? e.message : String(e),
+      }))
+      .then((r) => [
+        {
+          surface: "honey-road (consumer)",
+          field: "honeyRoadSource" as const,
+          observed: r.source,
+          source: "honey-road /api/mibera/dimensions — `source` field",
+          error: r.error,
+        },
+        {
+          surface: "honey-road (consumer)",
+          field: "userId" as const,
+          observed: r.userId,
+          source: "honey-road /api/mibera/dimensions — `userId` field",
+          error: r.userId === null && !r.error ? "(undefined when source=alchemy or wallet unresolved)" : r.error,
+        },
+        {
+          surface: "honey-road (consumer)",
+          field: "degraded" as const,
+          observed: r.degraded,
+          source: "honey-road /api/mibera/dimensions — `degraded` field",
+          error: r.error,
+        },
+      ] as SojuLensRow[]),
   ];
 
-  const rows = await Promise.all(promises);
+  const resolved = await Promise.all(promises);
+  // Flatten — the honey-road probe returns an array of 3 rows; everything else
+  // returns a single row.
+  const rows: SojuLensRow[] = [];
+  for (const r of resolved) {
+    if (Array.isArray(r)) rows.push(...r);
+    else rows.push(r);
+  }
 
   // discrepancy detection: per field, surface conflicting values
   const discrepancies: string[] = [];

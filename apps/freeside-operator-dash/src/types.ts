@@ -51,7 +51,7 @@ export type IdentityApiPhase = {
 
 export type SojuLensRow = {
   surface: string;
-  field: "displayName" | "primaryWallet" | "miberaDimensions" | "userId";
+  field: "displayName" | "primaryWallet" | "miberaDimensions" | "userId" | "honeyRoadSource" | "degraded";
   observed: string | null;
   source: string;
   error: string | null;
