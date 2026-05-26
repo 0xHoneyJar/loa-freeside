@@ -10,12 +10,13 @@ import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 import type { RegistryCell, RuntimeState } from "./types.js";
 
+// dirname(import.meta.url) = .../apps/freeside-operator-dash/src
+// 3 levels up gets us to the repo root.
 const REPO_ROOT = join(
   dirname(fileURLToPath(import.meta.url)),
-  "..", // src
-  "..", // apps/freeside-operator-dash
-  "..", // apps
-  "..", // repo root
+  "..", // src/ → apps/freeside-operator-dash/
+  "..", // apps/freeside-operator-dash/ → apps/
+  "..", // apps/ → repo root
 );
 
 const REGISTRY_PATH = join(REPO_ROOT, "packages", "freeside-registry", "registry.yaml");

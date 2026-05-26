@@ -16,7 +16,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@0xhoneyjar/beacon-schema": "workspace:*",
     "@hono/node-server": "^1.14.1",
     "effect": "^3.21.2",
     "hono": "^4.7.0",
