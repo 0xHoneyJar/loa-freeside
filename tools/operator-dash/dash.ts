@@ -183,7 +183,8 @@ function interpret(
 const IDENTITY_API = "https://identity-api-production-317b.up.railway.app";
 const MCP_GATEWAY = "https://mcp.0xhoneyjar.xyz";
 const HONEY_ROAD = "https://mibera.0xhoneyjar.xyz";
-const HONEY_ROAD_FAST = "https://mibera.honeyjar.xyz";
+// (NOTE: mibera.honeyjar.xyz appeared in earlier probe data but honeyjar.xyz
+// is NOT a 0xHoneyJar property — do not reference.)
 
 async function collectProbes(): Promise<EndpointProbe[]> {
   const targets: Array<{
@@ -206,7 +207,7 @@ async function collectProbes(): Promise<EndpointProbe[]> {
     { surface: "mcp-gateway", endpoint: "/healthz", url: `${MCP_GATEWAY}/healthz`, method: "GET", expected: { kind: "ok" } },
     // honey road — consumer surfaces (the operator's window)
     { surface: "mibera-honeyroad", endpoint: "/ (canonical)", url: `${HONEY_ROAD}/`, method: "GET", expected: { kind: "ok" } },
-    { surface: "mibera-honeyroad", endpoint: "/ (fast cname)", url: `${HONEY_ROAD_FAST}/`, method: "GET", expected: { kind: "ok" } },
+    { surface: "mibera-honeyroad", endpoint: "/ (fast cname)", url: `${HONEY_ROAD}/`, method: "GET", expected: { kind: "ok" } },
   ];
   return await Promise.all(targets.map((t) => probe(t.surface, t.endpoint, t.url, t.method, t.expected)));
 }
@@ -446,7 +447,7 @@ async function collectSojuLens(wallet: string | null): Promise<{ rows: SojuLensR
 
   // honey road API (the consumer — currently reads Alchemy)
   try {
-    const url = `${HONEY_ROAD_FAST}/api/profile?wallet=${wallet}`;
+    const url = `${HONEY_ROAD}/api/profile?wallet=${wallet}`;
     const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
     let observed: string | null = null;
     let err: string | null = null;

@@ -20,9 +20,9 @@ import type { SojuLens, SojuLensRow } from "./types.js";
 
 const FETCH_TIMEOUT_MS = 8000;
 const IDENTITY_API = "https://identity-api-production-317b.up.railway.app";
-// Canonical (NOT mibera.honeyjar.xyz which sits behind Datadome bot protection +
-// returns HTML for server-side curl). The canonical mibera.0xhoneyjar.xyz is the
-// raw Next.js app with no bot-protection layer — works for server-side probes.
+// Canonical mibera.0xhoneyjar.xyz — the raw Next.js app. Server-side probe-safe.
+// (NOTE: an unrelated honeyjar.xyz domain that previously appeared in cached
+// data is NOT a 0xHoneyJar property — do NOT probe or reference.)
 const HONEY_ROAD = "https://mibera.0xhoneyjar.xyz";
 const WORLD_SLUG = "mibera"; // THJ world slug per identity-api PRD; tested in routes.test.ts:166
 
