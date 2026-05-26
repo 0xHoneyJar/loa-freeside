@@ -21,6 +21,10 @@ Sibling to the auth-substitution roadmap (loa-freeside PR #225 merged). Where th
 
 The TEND audit (`cluster-2026-05-26-mint-announcement-tend/audit.md`) ground-truthed: every cell exists, every cell is healthy in isolation, NATS infrastructure is deployed — but the substrate that joins them across cells isn't wired. Adding the events pillar lights up the whole cluster.
 
+**Operator framing of v1 (2026-05-26)**: prove NATS works fluidly across **a focused subset (Mibera handlers + PuruPuru only)** before scaling substrate-universal. *"What we're trying to do is prove that the NATS system is something that we can get comfortable with and works fluidly for our systems. It helps me as an operator be able to see events across them and operate these clusters with good uptime + debuggability."*
+
+This reframes the primary deliverable: **the operator-dash event-trace panel (Sprint 3) IS the success criterion**, not the Discord announcements. Discord announcements (MST-only) are the visible canary that proves the substrate flows correctly to a real consumer; the dash is the operator's daily awareness surface.
+
 ## Run via — `coordinating-cross-repo` (REQUIRED · KRANZ act 1)
 
 @~/bonfire/construct-freeside/skills/coordinating-cross-repo/SKILL.md
@@ -49,8 +53,9 @@ The TEND audit (`cluster-2026-05-26-mint-announcement-tend/audit.md`) ground-tru
 |---|---|---|
 | **NATS bus state** | Target NATS JetStream (verified `ecs-finn.tf`/`ecs-dixie.tf` NATS_URL); no RabbitMQ legacy buildout | Publisher + subscriber both write JetStream-native |
 | **ACVP envelope shape** | Full cycle-098 L1-L7 envelope from v1 — `prev_hash` + Ed25519 sig + JCS canonicalization | Substrate-clean from day one; future cells inherit verifiability free |
-| **Publishing scope (SUBSTRATE)** | **ALL sonar handlers publish** — NFT mints + non-NFT events (vault, staking, score) — event handling supports events across ALL APIs | Substrate pattern earned at maximum breadth; future cells get every cell's events for free |
-| **Display/announcement scope (CONSUMPTION)** | **MST-only for v1 enriched announcement** in characters — other collections subscribe-but-no-display until v2 | Substrate is universal; consumption is scoped — clean separation |
+| **Publishing scope (SUBSTRATE)** | **Mibera handlers + PuruPuru only for v1** — prove NATS works fluidly for "our systems" before scaling breadth. Operator framing 2026-05-26: *"keep its scope to simply the Mibera handlers within that Sonar API. I think you can include Mibera as well as PuruPuru, and the other ones we can keep for later."* | Focused proof-of-concept; v2 extends substrate to other handlers when a consumer demands it |
+| **Display/announcement scope (CONSUMPTION)** | **MST-only for v1 enriched announcement** in characters | Even narrower than publish scope — Mibera/PuruPuru events flow on NATS, but only MST surfaces in Discord v1 |
+| **Operator's v1 success criterion** (operator framing) | *"prove that the NATS system is something that we can get comfortable with and works fluidly for our systems. Helps me as an operator see events across them and operate clusters with good uptime + debuggability."* | The DASH (Sprint 3) is the primary deliverable, not Discord announcements — observability earns the right to scale substrate later |
 | **Mad-agent extension** | **Operator-dash event panel — IN SCOPE** for this cycle (sibling to Soju-lens shape) | Observability is foundational; dash extension lands with the substrate |
 | **Stash sequencing** | Events pillar FIRST, Stash AFTER | inventory-api stays npm-only this cycle; subscribes to NATS later for cache invalidation |
 | **Token-entity gap (NEW finding)** | Does NOT block this cycle — `getNftMetadata(contract, tokenId)` is per-token lookup, not wallet enumeration; sonar mint event provides both args | Mint announcement enrichment works today |
@@ -123,28 +128,45 @@ await publishEnvelope({
 });
 ```
 
-**File-by-file** (NFT handlers — Sprint 2 primary scope):
-- `src/handlers/mints.ts` — add publish on `handleGeneralMintTransfer`
-- `src/handlers/vm-minted.ts` — add publish on `handleVmMinted` (override subject for MST-specific topic)
-- `src/handlers/tracked-erc721/*` — add publish across the NFT-shaped TrackedErc721 instances
-- `src/EventHandlers.ts` — wire NATS connection + per-publisher signer at handler-context construction
+**File-by-file** (Sprint 2 v1 scope — **Mibera family + PuruPuru only**):
+- `src/handlers/vm-minted.ts` — MST handler publish (subject: `mibera.shadow.minted.v1`)
+- `src/handlers/mints.ts` — `handleGeneralMintTransfer` publish for Mibera-family contracts only (gate by collection slug allowlist)
+- `src/handlers/mibera-sets.ts` (if exists) — Mibera Sets publish
+- `src/handlers/mibera-zora.ts` (if exists) — Mibera Zora 1155 publish
+- `src/handlers/mibera-liquid-backing.ts` (if exists) — Mibera Liquid Backing publish
+- `src/handlers/mibera-collection.ts` (if exists) — main Mibera collection publish
+- `src/handlers/purupuru-apiculture-1155.ts` (or similar — PuruApiculture1155 per config.yaml) — PuruPuru publish
+
+Per-handler change is the SAME line ⤵
+```typescript
+// after context.<Entity>.set(...)
+await publishEnvelope({
+  nats: ctx.nats,
+  subject: <derive-from-collection>,    // e.g. "mibera.shadow.minted.v1"
+  payload: { /* event-shaped */ },
+  signer: ctx.signer,
+  prevHashStore: ctx.prevHashStore,
+});
+```
+
+**Universal substrate wiring (per-handler-context, applies to all handlers)**:
+- `src/EventHandlers.ts` — wire NATS connection + per-publisher signer at handler-context construction (universal; not per-handler)
 - `package.json` — add `@0xhoneyjar/events` workspace dep
 - `config.yaml` — add `NATS_URL` + `NATS_TLS_CA` env wiring (matches `ecs-finn.tf` pattern)
-- Tests: golden-replay fixture asserting publish was called with envelope-shaped payload (DON'T assert on real NATS — mock)
+- Tests: golden-replay fixture per handler asserting publish was called with envelope-shaped payload (DON'T assert on real NATS — mock)
 
-**Operator scope correction (2026-05-26)**: **substrate publishing is universal across ALL sonar handlers**, not just NFT. Sprint 2 ships NFT handlers; **Sprint 3 ALSO extends publish to non-NFT handlers** (vault deposits, staking events, score updates, etc.). Substrate pattern is earned at maximum breadth — every cell that subscribes later gets ALL events for free. Consumption stays scoped (characters only displays MST in v1 per operator decision).
+**Operator scope correction (2026-05-26 update)**: this cycle ships **Mibera handlers + PuruPuru only** to **prove NATS works fluidly for "our systems"**. Other handlers (vault, staking, marketplace, DeFi, HoneyJar, crayons, badges, fat-bera, etc.) **wait for v2** when an actual consumer demands them. Operator's success criterion is "operator-dash event panel shows Mibera/Puru events flowing, gives me debuggable cluster awareness" — not "every cell publishes everything."
 
-**File-by-file for substrate-universal coverage** (Sprint 3 extension):
-- `src/handlers/aquabera-vault-direct.ts`, `aquabera-wall.ts`, `sf-vaults.ts` — vault deposits
-- `src/handlers/mibera-staking.ts` (if exists), `bgt.ts` — staking events
-- `src/handlers/honeyjar*.ts` — main HJ NFT family
-- `src/handlers/crayons.ts`, `crayons-collections.ts` — crayon events
-- `src/handlers/badges1155.ts` — badge events
-- `src/handlers/mibera-liquid-backing.ts`, `mibera-sets.ts`, `mibera-zora.ts` — Mibera adjacent
-- `src/handlers/friendtech.ts`, `milady-collection.ts`, `seaport.ts` — marketplace events
-- `src/handlers/fat-bera-*.ts`, `paddle-fi.ts`, `general-mints.ts` — DeFi events
+**Explicit out-of-scope handlers for v1** (do NOT add publish to these):
+- HoneyJar (HJ1-5Eth, Honeycomb, MoneycombVault) — community-NFT but not Mibera/Puru
+- Vaults (Aquabera, SF-vaults) — DeFi class
+- Staking (MiberaStaking is borderline — operator can include or exclude; default: include since name-prefixed Mibera)
+- Marketplace (Crayons, Seaport, MiladyCollection, FriendtechShares, CandiesMarket1155) — non-Mibera-family
+- DeFi (FatBera, PaddleFi, validator/BGT)
+- Badges (CubBadges1155) — non-Mibera-family
+- TrackedErc721 — leave as-is
 
-Pattern: every `context.<Entity>.set(...)` gets a sibling `await publishEnvelope(...)` line. Topic taxonomy per event class: `nft.mint.detected.{slug}.v1`, `vault.deposit.{vault-slug}.v1`, `staking.stake.{token-slug}.v1`, etc.
+**Operator decision needed at coord-init**: MiberaStaking publish — in (Mibera-family prefix) or out (different event class)? Default include.
 
 ### 3. NEW: freeside-characters NATS subscriber (`packages/persona-engine/src/events/`)
 
@@ -291,13 +313,17 @@ curl http://localhost:3030/api/events/recent  # JSON stream of last N envelopes
 - `0xHoneyJar/sonar-api` (or `freeside-sonar` legacy name) — `[coord] events-pillar-v1 — sonar publish` — owns NFT mint publish step
 - `0xHoneyJar/freeside-characters` — `[coord] events-pillar-v1 — characters subscribe` — owns subscriber + kansei router + announcement template
 
-### Dispatch order (operator-confirmed scope baked in)
+### Dispatch order (operator-confirmed scope 2026-05-26 v2)
 
 1. **Sprint 1 — `@0xhoneyjar/events` library** published. ACVP envelope + Hounfour topics + signer/verifier + Zod schemas. Both consumers blocked behind this.
-2. **Sprint 2 — sonar NFT-handler publish** + **characters MST-only subscriber + announcement** in parallel (different repos, no cross-cell shared code).
-3. **Sprint 3 — sonar publish extension to ALL non-NFT handlers** (vault, staking, score, marketplace, DeFi) — substrate pattern earned at maximum breadth. Characters still only subscribes to MST mints; other classes are dormant subscribers.
-4. **Sprint 4 — operator-dash event-trace panel** (operator-confirmed in scope). Subscribes to all classes; renders live envelope stream + verification status. Becomes the canonical operator-awareness surface for the cluster.
-5. **Sprint 5 (canary)** — small Discord test channel; operator validates announcement quality + dash trace correctness; flip MST announcements to production channel.
+2. **Sprint 2 — sonar Mibera + PuruPuru handler publish** + **characters MST-only subscriber + announcement** in parallel (different repos, no cross-cell shared code).
+3. **Sprint 3 — operator-dash event-trace panel** (the operator's primary success criterion). Subscribes to all Mibera + PuruPuru subjects; renders live envelope stream + verification status + prev_hash chain visualization. Becomes the canonical operator-awareness surface for the cluster.
+4. **Sprint 4 (canary + close)** — small Discord test channel; operator validates announcement quality + dash trace correctness; flip MST announcements to production channel. Cycle close + distill.
+
+**v2 (separate cycle, after operator gets comfortable with NATS through v1)**:
+- Extend sonar publish to other handler families (vault, staking, marketplace, DeFi, HoneyJar, etc.) — substrate-universal earned with consumer-demand
+- Extend characters display to more collections (non-MST Mibera + Puru announcements)
+- Other worlds (honey-road, score-dashboard) subscribe via the established pattern
 
 ### Cross-repo audit gate
 - Each cell repo passes its own `/audit-sprint` before coord merges its PR
