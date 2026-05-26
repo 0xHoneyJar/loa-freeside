@@ -21,6 +21,7 @@ import type { SojuLens, SojuLensRow } from "./types.js";
 const FETCH_TIMEOUT_MS = 6000;
 const IDENTITY_API = "https://identity-api-production-317b.up.railway.app";
 const HONEY_ROAD = "https://mibera.honeyjar.xyz";
+const WORLD_SLUG = "mibera"; // THJ world slug per identity-api PRD; tested in routes.test.ts:166
 
 type FetchResult = { observed: string | null; error: string | null };
 
@@ -93,14 +94,16 @@ export async function collectSojuLens(wallet: string | null): Promise<SojuLens> 
     })),
 
     safeFetchJSON(
-      `${IDENTITY_API}/v1/profile?wallet=${wallet}`,
+      // /v1/profile requires world + (wallet XOR userId) — schema is
+      // ProfileQuery in freeside-auth/src/api/routes/profile.ts:77.
+      `${IDENTITY_API}/v1/profile?world=${WORLD_SLUG}&wallet=${wallet}`,
       (b) => fieldOf(b, "displayName") ?? fieldOf(b, "name"),
       "Phase 2 compose:",
     ).then<SojuLensRow>((r) => ({
       surface: "identity-api compose",
       field: "displayName",
       observed: r.observed,
-      source: "/v1/profile (G-5)",
+      source: `/v1/profile?world=${WORLD_SLUG} (G-5)`,
       error: r.error,
     })),
 

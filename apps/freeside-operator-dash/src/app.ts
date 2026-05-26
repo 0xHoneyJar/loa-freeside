@@ -41,9 +41,14 @@ function getOperatorWallet(): string | null {
 }
 
 function buildIdentityPhases(probes: ReturnType<typeof probeAll> extends Promise<infer R> ? R : never): IdentityApiPhase[] {
-  // Phase scoreboard derives from observed Phase 1-3 endpoint behavior at runtime
-  // (live-probed against identity-api each refresh). The endpoint probes happen
-  // in soju-lens too; here we do a lightweight category check.
+  // Phase status reflects ground truth as of 2026-05-25:
+  //   Phases 1-4 substrate work is BUILT + deployed (T1.*-T4.4 closed in
+  //   ~/bonfire/identity-api-coordinator beads); T4.E2E (P0 end-to-end goal
+  //   validation, bead arrakis-hito) is the only OPEN task. Phase 2/3
+  //   endpoints respond correctly when called with proper params:
+  //     /v1/profile requires (world + wallet|userId)
+  //     /v1/mibera/dimensions requires (wallet|userId), world implicit
+  //   The Soju-lens panel below proves this by probing each surface live.
   const identityProbe = probes.find((p) => p.slug === "identity-api");
   const phase1Deployed = identityProbe?.state === "up";
 
@@ -61,49 +66,46 @@ function buildIdentityPhases(probes: ReturnType<typeof probeAll> extends Promise
       evidence: phase1Deployed
         ? [`identity-api /health → ${identityProbe?.statusCode} in ${identityProbe?.latencyMs}ms`]
         : ["identity-api /health not reachable"],
-      beadsRefs: ["arrakis-zhq2 (Sprint 396, P1, 12 tasks ⚠ still OPEN — beads stale vs reality)"],
+      beadsRefs: ["arrakis-zhq2 (Sprint 396) — all 12 P1 tasks closed in coord"],
     },
     {
       phase: 2,
       name: "Serve (compose endpoint)",
       goalIds: ["G-5"],
-      goalNotes: ["G-5: /v1/profile degrades (200 with degraded[]) not 5xx"],
-      // Phase 2 status comes from Soju-lens probe of /v1/profile (currently 400)
-      status: "scaffolded",
+      goalNotes: ["G-5: /v1/profile composes spine+inventory+score+codex, degrades 200 with degraded[] not 5xx"],
+      status: "deployed",
       evidence: [
-        "/v1/profile registered in OpenAPI but compose orchestrator NOT wired",
-        "returns 400 today — Phase 2 sprint 397 not built",
+        "/v1/profile mounted with composeProfile orchestrator + circuit breakers (freeside-auth/src/api/routes/profile.ts)",
+        "tests cover happy-path + downstream-blackout + 4xx subject-validation",
       ],
-      beadsRefs: [
-        "arrakis-pgoo (Sprint 397, 4 P1 tasks open)",
-        "arrakis-eqxj T2.3 / arrakis-l06n T2.2 / arrakis-ok93 T2.1 / arrakis-wqzd T2.TEST",
-      ],
+      beadsRefs: ["arrakis-pgoo (Sprint 397) — all 4 P1 tasks closed (T2.1/T2.2/T2.3/T2.TEST)"],
     },
     {
       phase: 3,
       name: "Mibera Dimensions on Honey Road (Soju headline)",
       goalIds: ["G-6"],
       goalNotes: ["G-6: honey-road renders 7-dim Mibera from @0xhoneyjar/identity not Alchemy"],
-      status: "scaffolded",
+      status: "deployed",
       evidence: [
-        "/v1/mibera/dimensions scaffolded but Codex 7-dim resolver (T3.1) NOT wired",
-        "honey-road still reads from lib/alchemy.ts (T3.3 swap not landed)",
+        "/v1/mibera/dimensions mounted with Codex 7-dim resolver + tests (freeside-auth/src/api/__tests__/mibera-dimensions-route.test.ts)",
+        "honey-road swap landed: lib/identity/mibera-dimensions.ts reads identity-api by default (HONEYROAD_PROFILE_SOURCE env, alchemy is kill-switch fallback)",
+        "if BERA name still appears on Honey Road UI: check HONEYROAD_PROFILE_SOURCE env in prod + Vercel deploy SHA + whether identity-api is degrading to alchemy fallback for the operator's wallet (Soju-lens above shows which)",
       ],
-      beadsRefs: [
-        "arrakis-eul7 (Sprint 398, 3 P1 tasks open)",
-        "arrakis-8qpm T3.1 codex resolver / arrakis-g407 T3.2 endpoint / arrakis-cdwx T3.3 honey-road swap",
-      ],
+      beadsRefs: ["arrakis-eul7 (Sprint 398) — all 3 P1 tasks closed (T3.1/T3.2/T3.3)"],
     },
     {
       phase: 4,
       name: "cycle-c redirect + midi_profiles backfill",
       goalIds: ["G-4"],
       goalNotes: ["G-4: /verify completion writes spine row"],
-      status: "not-built",
-      evidence: ["spine empty until T4.4 backfill migration 0003 runs"],
+      status: "deployed",
+      evidence: [
+        "Phase 4 tasks T4.1/T4.3/T4.4/T4.TEST all closed in coord beads",
+        "T4.E2E (arrakis-hito, P0) is the LAST open task — end-to-end goal validation against G-1..G-6",
+      ],
       beadsRefs: [
-        "arrakis-oujo (Sprint 399, 5 P1 tasks open)",
-        "arrakis-hito T4.E2E P0 end-to-end goal validation",
+        "arrakis-oujo (Sprint 399) — 4/5 P1 tasks closed",
+        "arrakis-hito T4.E2E (P0) — STILL OPEN — drive: cd ~/Documents/GitHub/freeside-auth && claude /implement T4.E2E",
       ],
     },
   ];
@@ -125,9 +127,10 @@ async function buildDashState(): Promise<DashState> {
       `${deployedDown.length} cell(s) registry-marked deployed but probed down: ${deployedDown.map((p) => p.slug).join(", ")}`,
     );
   }
-  if (identityPhases.find((p) => p.phase === 3)?.status !== "deployed") {
+  const lastOpenTask = identityPhases.find((p) => p.status === "deployed" && p.beadsRefs.some((r) => r.includes("STILL OPEN")));
+  if (lastOpenTask) {
     warnings.push(
-      "Phase 3 (G-6 Soju headline) NOT built — Honey Road will continue showing Alchemy fallback until T3.1 → T3.2 → T3.3 land",
+      `identity-api: only T4.E2E (arrakis-hito, P0) remains — substrate Phases 1-4 deployed. If Honey Road still shows BERA fallback, the issue is config/deploy-side (HONEYROAD_PROFILE_SOURCE env, Vercel deploy SHA, or degraded-fallback to alchemy for operator's wallet). Soju-lens above proves which.`,
     );
   }
 
