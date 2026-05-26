@@ -1,0 +1,30 @@
+{
+  "name": "@0xhoneyjar/freeside-operator-dash",
+  "version": "0.1.0",
+  "description": "Inward-facing operator visibility for the freeside *-api cell network. Sibling to apps/mcp-gateway/. Sources from packages/freeside-registry/registry.yaml.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@8.15.9",
+  "scripts": {
+    "dev": "tsx watch bin/http.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/bin/http.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@0xhoneyjar/beacon-schema": "workspace:*",
+    "@hono/node-server": "^1.14.1",
+    "effect": "^3.21.2",
+    "hono": "^4.7.0",
+    "yaml": "^2.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.7.0"
+  }
+}
