@@ -25,10 +25,12 @@ estimated_operator_time: 30-60 minutes (excluding async waits)
 
 ### Step 1 — Synadia NGS account + creds (~5 min)
 
-1. Go to <https://app.ngs.global/> · sign up with the operator email
-2. Free tier: create an account → an `account-creds.creds` file gets generated; download it
-3. Note the NATS server URL (typically `tls://connect.ngs.global:4222` or similar — Synadia displays it in the dashboard)
-4. **Output**: `NATS_URL` value + the `.creds` file contents (this is BOTH the auth + the implicit CA)
+1. Sign up at Synadia Cloud (their managed-NATS product — search "Synadia Cloud" or "Synadia NGS" for the current portal URL; the cloud landing page evolves and I haven't verified a specific URL today)
+2. Free tier: create an account → generate an `account-creds.creds` file from the dashboard
+3. **Read the NATS server URL from Synadia's dashboard** (will look like `tls://<region-host>:4222` — exact host depends on the region/account; I do not have a verified current value to insert here)
+4. **Output**: `NATS_URL` value (from the dashboard) + the `.creds` file contents (this is BOTH the auth credential AND the broker trusts Let's Encrypt so no separate CA is needed)
+
+> **Alternative if Synadia signup is friction**: any managed-NATS host works (NATS.io has a list of providers). Or self-host with `nats-server` on Fly.io / Hetzner / a Railway "NATS template" if one exists — see Option AD-2 below. The substrate-library cares only that the URL is reachable + the creds work; broker provenance is operator's choice.
 
 Synadia's `.creds` file is JWT-based auth — nats.js v2.28+ has built-in support via the `creds` config option. No separate CA needed (Synadia's broker uses Let's Encrypt; nats.js trusts system roots).
 
