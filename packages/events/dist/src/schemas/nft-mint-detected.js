@@ -1,0 +1,50 @@
+import { Schema as S } from "@effect/schema";
+/**
+ * Payload schema for `nft.mint.detected.*.v1` events.
+ *
+ * Emitted by `sonar-api` when an EVM Transfer-from-0x0 (or other mint-shaped
+ * event per the indexer's per-contract handler) is detected. The publisher's
+ * handler decides which collection slug to route to.
+ *
+ * v2 evolution (future): if the payload shape needs to change in a
+ * non-additive way, publish under `nft.mint.detected.*.v2` alongside v1
+ * during a ≥30d overlap window; subscribers may consume both via separate
+ * `subscribeEnvelope` calls.
+ *
+ * Effect.Schema chosen here (vs zod) per cluster memory
+ * `freeside-effect-transition`: new protocol-layer types use @effect/schema;
+ * legacy zod stays for now. This payload schema travels across cells
+ * (cross-cell wire contract = protocol layer), so it falls on the
+ * Effect.Schema side of the line.
+ */
+export const NftMintDetectedSchema = S.Struct({
+    /** EVM chain id (e.g. 80094 = Berachain mainnet). */
+    chain_id: S.Number.pipe(S.int(), S.positive()),
+    /** Contract address — lowercase 0x-prefixed 40 hex chars. */
+    contract: S.String.pipe(S.pattern(/^0x[0-9a-f]{40}$/, {
+        message: () => "must be lowercase 0x-prefixed 40 hex chars",
+    })),
+    /** Token id — string-encoded (uint256 doesn't fit in a JS number). */
+    token_id: S.String.pipe(S.pattern(/^\d+$/, { message: () => "must be a non-negative decimal integer string" })),
+    /** Minter (recipient of the from-0x0 transfer) — lowercase 0x-prefixed. */
+    minter: S.String.pipe(S.pattern(/^0x[0-9a-f]{40}$/, {
+        message: () => "must be lowercase 0x-prefixed 40 hex chars",
+    })),
+    /** Block number the mint landed in. */
+    block_number: S.Number.pipe(S.int(), S.nonNegative()),
+    /** Transaction hash — lowercase 0x-prefixed 64 hex chars. */
+    transaction_hash: S.String.pipe(S.pattern(/^0x[0-9a-f]{64}$/, {
+        message: () => "must be lowercase 0x-prefixed 64 hex chars",
+    })),
+    /** Block timestamp as ISO-8601 UTC. */
+    timestamp: S.String.pipe(S.pattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/, {
+        message: () => "must be ISO-8601 UTC with trailing Z",
+    })),
+    /**
+     * MST-specific enrichment — present when the handler is `vm-minted.ts`
+     * (Mibera Shadows). Opaque hex string; downstream decoder lives in the
+     * Mibera codex.
+     */
+    encoded_traits: S.optional(S.String.pipe(S.pattern(/^0x[0-9a-f]+$/, { message: () => "must be 0x-prefixed hex" }))),
+});
+//# sourceMappingURL=nft-mint-detected.js.map
