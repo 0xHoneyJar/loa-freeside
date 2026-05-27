@@ -4,6 +4,7 @@
  */
 
 import type { DashState, CellProbe, ProbeStateKind, RegistryCell, IdentityApiPhase } from "./types.js";
+import type { TraceOutcome, EventsTraceSnapshot } from "./events-trace-types.js";
 
 function esc(s: string | null | undefined): string {
   if (s == null) return "";
@@ -34,6 +35,162 @@ function phaseColor(p: IdentityApiPhase): string {
   if (p.status === "deployed") return "#1f8a3f";
   if (p.status === "scaffolded") return "#e3a008";
   return "#dc2626";
+}
+
+function traceOutcomeColor(o: TraceOutcome): string {
+  if (o === "ok") return "#1f8a3f";
+  // hash-mismatch / sig-invalid / chain-broken / initial-anchor = soft red
+  if (
+    o === "signature-invalid" ||
+    o === "payload-hash-mismatch" ||
+    o === "prev-hash-broken-chain" ||
+    o === "initial-anchor-policy-violation" ||
+    o === "subject-mismatch"
+  ) {
+    return "#dc2626";
+  }
+  // schema-invalid / parse-error / handler-error / internal-error = amber
+  return "#e3a008";
+}
+
+function ageLabel(observedAtMs: number, nowMs = Date.now()): string {
+  const delta = nowMs - observedAtMs;
+  if (delta < 1_000) return `${delta}ms`;
+  if (delta < 60_000) return `${Math.floor(delta / 1_000)}s`;
+  if (delta < 3_600_000) return `${Math.floor(delta / 60_000)}m`;
+  if (delta < 86_400_000) return `${Math.floor(delta / 3_600_000)}h`;
+  return `${Math.floor(delta / 86_400_000)}d`;
+}
+
+function shortHash(h: string | undefined | null): string {
+  if (!h) return "—";
+  if (h === "0000000000000000000000000000000000000000000000000000000000000000") return "genesis";
+  return `${h.slice(0, 6)}…${h.slice(-4)}`;
+}
+
+function renderEventsTracePanel(trace: EventsTraceSnapshot): string {
+  // Empty-state messaging when subscriber isn't wired or no envelopes yet.
+  if (!trace.subscriberEnabled) {
+    return `
+<div class="panel" style="margin-top:16px">
+  <h2>⚡ cluster events trace <span class="badge">cluster-events-pillar-v1 · sprint 3</span></h2>
+  <div style="color:var(--text-dim);font-size:13px">
+    Subscriber <strong style="color:#71717a">DISABLED</strong> — NATS_URL env var is not set.
+    Set <code style="background:var(--bg);padding:1px 6px;border-radius:3px">NATS_URL=tls://&lt;broker&gt;</code>
+    (and <code style="background:var(--bg);padding:1px 6px;border-radius:3px">NATS_TLS_CA=/path/to/ca.pem</code>
+    for cluster TLS) to enable. Default subscribed subjects:
+    <code style="background:var(--bg);padding:1px 6px;border-radius:3px">${esc(trace.subscribedSubjects.join(", "))}</code>.
+    Override via <code style="background:var(--bg);padding:1px 6px;border-radius:3px">EVENTS_TRACE_SUBJECTS</code>.
+  </div>
+</div>`;
+  }
+  if (!trace.natsConnected) {
+    return `
+<div class="panel" style="margin-top:16px">
+  <h2>⚡ cluster events trace <span class="badge">cluster-events-pillar-v1 · sprint 3</span></h2>
+  <div class="warning">
+    NATS <strong>DISCONNECTED</strong>: ${esc(trace.lastLifecycleError ?? "unknown reason")}
+  </div>
+  <div style="color:var(--text-dim);font-size:12px">
+    Subscribed subjects: <code>${esc(trace.subscribedSubjects.join(", "))}</code>
+  </div>
+</div>`;
+  }
+  if (trace.totalObserved === 0) {
+    return `
+<div class="panel" style="margin-top:16px">
+  <h2>⚡ cluster events trace <span class="badge">cluster-events-pillar-v1 · sprint 3</span></h2>
+  <div style="color:var(--text-dim);font-size:13px">
+    Subscriber <strong style="color:#1f8a3f">UP</strong> · NATS connected · 0 envelopes observed yet.
+    Listening on: <code>${esc(trace.subscribedSubjects.join(", "))}</code>.
+    When publishers start emitting on these subjects, envelopes appear here with verification status.
+  </div>
+</div>`;
+  }
+
+  const failPct = trace.totalObserved > 0
+    ? Math.round((trace.totalFailures / trace.totalObserved) * 100)
+    : 0;
+
+  const perClassRows = trace.perClass.map((c) => {
+    const lastSeen = c.lastSeenMs ? ageLabel(c.lastSeenMs) : "—";
+    const lastOutcomeColor = c.lastOutcome ? traceOutcomeColor(c.lastOutcome) : "#71717a";
+    const failPctClass = c.totalObserved > 0 ? Math.round((c.failureCount / c.totalObserved) * 100) : 0;
+    return `
+      <tr>
+        <td class="mono">${esc(c.eventClass)}</td>
+        <td class="mono" style="text-align:right">${c.totalObserved}</td>
+        <td class="mono" style="text-align:right;color:#1f8a3f">${c.okCount}</td>
+        <td class="mono" style="text-align:right;color:${c.failureCount > 0 ? "#dc2626" : "var(--text-dim)"}">${c.failureCount}${c.failureCount > 0 ? ` (${failPctClass}%)` : ""}</td>
+        <td class="mono" style="text-align:right">${c.distinctPublishers}</td>
+        <td class="mono" style="color:${lastOutcomeColor}">${esc(c.lastOutcome ?? "—")}</td>
+        <td class="mono" style="color:var(--text-dim);text-align:right">${lastSeen}</td>
+      </tr>`;
+  }).join("");
+
+  const recentRows = trace.recentEnvelopes.slice(0, 25).map((e) => {
+    const color = traceOutcomeColor(e.outcome);
+    const env = e.envelope;
+    const publisher = env ? `${env.emitted_by}` : "—";
+    const kid = env ? env.signing_key_id : "—";
+    const prevHash = env ? shortHash(env.prev_hash) : "—";
+    const errExcerpt = e.errorExcerpt ? esc(e.errorExcerpt).slice(0, 80) : "";
+    return `
+      <tr>
+        <td class="mono" style="color:var(--text-dim);font-size:11px">${ageLabel(e.observedAtMs)}</td>
+        <td class="mono" style="color:${color};font-size:11px;font-weight:600">${esc(e.outcome)}</td>
+        <td class="mono" style="font-size:11px">${esc(e.subject)}</td>
+        <td class="mono" style="font-size:11px">${esc(publisher)}</td>
+        <td class="mono" style="color:var(--text-dim);font-size:11px">${esc(kid)}</td>
+        <td class="mono" style="color:var(--text-dim);font-size:11px">${esc(prevHash)}</td>
+        <td class="mono" style="color:var(--soju);font-size:11px">${errExcerpt}</td>
+      </tr>`;
+  }).join("");
+
+  return `
+<div class="panel" style="margin-top:16px">
+  <h2>⚡ cluster events trace
+    <span class="badge">cluster-events-pillar-v1 · sprint 3</span>
+    <span style="float:right;color:var(--text-dim);font-weight:400;font-size:11px">
+      ${trace.totalObserved} observed · ${trace.totalFailures} failures (${failPct}%) ·
+      <code>GET /api/events</code> for raw
+    </span>
+  </h2>
+
+  ${trace.lastLifecycleError ? `<div class="warning">${esc(trace.lastLifecycleError)}</div>` : ""}
+
+  <div style="margin-bottom:12px;color:var(--text-dim);font-size:12px">
+    Subscribed: <code>${esc(trace.subscribedSubjects.join(", "))}</code>
+  </div>
+
+  <h3 style="font-size:12px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em;margin:16px 0 8px 0">per-event-class rollup</h3>
+  <table>
+    <thead><tr>
+      <th>event class</th>
+      <th style="text-align:right">total</th>
+      <th style="text-align:right">ok</th>
+      <th style="text-align:right">fail</th>
+      <th style="text-align:right">publishers</th>
+      <th>last outcome</th>
+      <th style="text-align:right">last seen</th>
+    </tr></thead>
+    <tbody>${perClassRows}</tbody>
+  </table>
+
+  <h3 style="font-size:12px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em;margin:16px 0 8px 0">recent envelopes (last 25)</h3>
+  <table>
+    <thead><tr>
+      <th style="text-align:right">age</th>
+      <th>outcome</th>
+      <th>subject</th>
+      <th>publisher</th>
+      <th>kid</th>
+      <th>prev_hash</th>
+      <th>error</th>
+    </tr></thead>
+    <tbody>${recentRows}</tbody>
+  </table>
+</div>`;
 }
 
 export function renderHTML(state: DashState): string {
@@ -180,6 +337,8 @@ ${state.sojuLens.discrepancies.map((d) => `<div class="discrepancy">🌸 ${esc(d
   </div>
 
 </div>
+
+${renderEventsTracePanel(state.eventsTrace)}
 
 <div class="panel" style="margin-top:16px">
   <h2>federation tiles · ${state.cells.length} cells <span class="badge">registry.yaml · *-api per ADR-009 §D-2</span></h2>
