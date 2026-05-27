@@ -31,3 +31,26 @@ resource "aws_route53_record" "identity_api" {
   ttl     = 300
   records = ["identity-api-production-317b.up.railway.app"]
 }
+
+# cluster-nats — self-hosted nats-server for cluster-events-pillar-v1 (Path ε,
+# 2026-05-26). Hosts: sonar-api publisher + characters-bot subscriber +
+# operator-dash subscriber. mTLS via cluster-owned CA.
+#
+# Railway side: nats:2.10-alpine in `cluster-nats` Railway project, TCP proxy
+# enabled on internal port 4222. Railway assigns proxy host+port (TCP unlike
+# HTTP doesn't get a Railway-side custom-domain record — DNS CNAME below is
+# the only operator-side step needed beyond enabling TCP proxy).
+#
+# Clients connect via: tls://nats.0xhoneyjar.xyz:48352
+# (port 48352 stays — only the hostname is replaced by this CNAME per Railway
+# TCP proxy contract: https://docs.railway.com/networking/tcp-proxy)
+#
+# Server cert SAN includes both `nats.0xhoneyjar.xyz` and `zephyr.proxy.rlwy.net`
+# so TLS hostname validation passes via either path during DNS propagation.
+resource "aws_route53_record" "cluster_nats" {
+  zone_id = aws_route53_zone.honeyjar.zone_id
+  name    = "nats.${var.domain}"
+  type    = "CNAME"
+  ttl     = 300
+  records = ["zephyr.proxy.rlwy.net"]
+}
