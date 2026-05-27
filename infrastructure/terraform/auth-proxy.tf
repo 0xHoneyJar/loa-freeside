@@ -93,16 +93,35 @@ resource "aws_apigatewayv2_integration" "dynamic_proxy_root" {
 # -----------------------------------------------------------------------------
 # Routes
 # -----------------------------------------------------------------------------
+# Method-specific (NOT `ANY`) so OPTIONS preflight requests are handled by
+# API Gateway's native CORS layer instead of being forwarded to the upstream.
+#
+# Why this matters: `ANY /{proxy+}` matches OPTIONS, which causes APIGW to
+# forward preflight requests to app.dynamicauth.com (CF-fronted). If
+# Cloudflare rate-limits the proxy's outbound traffic, OPTIONS returns 429
+# with CORS headers — but CORS spec requires 2xx for preflight to succeed,
+# so the browser fails with "No 'Access-Control-Allow-Origin' header is
+# present" even though the header is actually there.
+#
+# Solution: don't catch OPTIONS in any route. APIGW auto-handles OPTIONS
+# preflight via the `cors_configuration` on the API resource when no route
+# matches. This terminates preflights locally with a clean 204, never
+# contacting the upstream, immune to upstream rate limits.
+locals {
+  proxy_route_methods = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD"]
+}
 
 resource "aws_apigatewayv2_route" "proxy_route" {
+  for_each  = toset(local.proxy_route_methods)
   api_id    = aws_apigatewayv2_api.auth_proxy.id
-  route_key = "ANY /{proxy+}"
+  route_key = "${each.value} /{proxy+}"
   target    = "integrations/${aws_apigatewayv2_integration.dynamic_proxy.id}"
 }
 
 resource "aws_apigatewayv2_route" "root_route" {
+  for_each  = toset(local.proxy_route_methods)
   api_id    = aws_apigatewayv2_api.auth_proxy.id
-  route_key = "ANY /"
+  route_key = "${each.value} /"
   target    = "integrations/${aws_apigatewayv2_integration.dynamic_proxy_root.id}"
 }
 
