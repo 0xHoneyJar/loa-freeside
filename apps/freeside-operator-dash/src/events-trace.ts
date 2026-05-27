@@ -255,10 +255,41 @@ async function runStartup(): Promise<void> {
   try {
     const { connect } = await import("nats");
     const connectOpts: Parameters<typeof connect>[0] = { servers: natsUrl };
-    // If NATS_TLS_CA is set, load it (matches the cluster's ECS TLS pattern).
-    if (process.env.NATS_TLS_CA) {
-      const fs = await import("node:fs/promises");
-      connectOpts.tls = { caFile: process.env.NATS_TLS_CA };
+    // TLS option assembly — Path-ε convention (PEM bodies via env vars).
+    //
+    // `NATS_TLS_CA`, `NATS_TLS_CLIENT_CERT`, `NATS_TLS_CLIENT_KEY` all hold
+    // PEM **bodies**, not file paths. Railway service-variable injection
+    // wires PEM content directly; no filesystem touch required. This is
+    // intentionally aligned with the sonar publisher + characters subscriber
+    // so all three cluster consumers share one TLS-config convention.
+    //
+    // Breaking change vs Sprint-3 caFile path: any prior deployment that set
+    // NATS_TLS_CA to a file PATH must switch to setting it to PEM content
+    // (e.g. `NATS_TLS_CA=$(cat /path/to/ca.pem)`). Documented in the Path-ε
+    // runbook §Step 3c.
+    //
+    // .trim() on env reads guards against trailing-newline noise from
+    // copy-paste and Railway service-variable CRLF normalization.
+    //
+    // mTLS client cert (NATS_TLS_CLIENT_CERT + NATS_TLS_CLIENT_KEY) is
+    // OPTIONAL — set both for the Path-ε `--tlsverify` broker, leave both
+    // unset for anonymous TLS. Partial config (one set without the other)
+    // is a deployment misconfiguration: cert-without-key would fail TLS
+    // handshake; key-without-cert would silently fall back to anonymous,
+    // masking the error. Fail-closed at boot.
+    const caPem = process.env.NATS_TLS_CA?.trim();
+    const clientCert = process.env.NATS_TLS_CLIENT_CERT?.trim();
+    const clientKey = process.env.NATS_TLS_CLIENT_KEY?.trim();
+    if (Boolean(clientCert) !== Boolean(clientKey)) {
+      throw new Error(
+        "NATS_TLS_CLIENT_CERT and NATS_TLS_CLIENT_KEY must both be set or both unset (Path-ε mTLS)",
+      );
+    }
+    if (caPem || clientCert) {
+      connectOpts.tls = {
+        ...(caPem ? { ca: caPem } : {}),
+        ...(clientCert ? { cert: clientCert, key: clientKey } : {}),
+      };
     }
     nc = await connect(connectOpts);
     lifecycle.connected = true;
