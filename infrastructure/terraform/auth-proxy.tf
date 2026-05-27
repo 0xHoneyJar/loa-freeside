@@ -47,9 +47,21 @@ resource "aws_apigatewayv2_api" "auth_proxy" {
       "https://setandforgetti.0xhoneyjar.xyz",
     ]
     allow_methods     = ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"]
-    # x-dyn-* headers are required by Dynamic Labs ClientSDK (sdkVersion >= alpha.28).
-    # Without them, preflight rejects with no ACAO when the SDK sends version headers.
-    allow_headers     = ["Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin", "X-Dyn-Version", "X-Dyn-Api-Version", "X-Dyn-Client-Platform"]
+    # x-dyn-* headers are sent by Dynamic Labs ClientSDK (alpha.28 verified;
+    # other versions may send subsets). When the SDK sends a header NOT in
+    # this allowlist, APIGW's preflight returns 204 but STRIPS ALL CORS
+    # headers — browser then reports "No ACAO" even though the underlying
+    # config allows the origin. Each new SDK header must be added here.
+    #
+    # Dynamic's upstream API permissively reflects whatever headers the SDK
+    # requests in Access-Control-Request-Headers; APIGW HTTP API can't do
+    # that with strict allowlist + credentials=true (CORS spec forbids `*`).
+    allow_headers     = [
+      "Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin",
+      "X-Dyn-Version", "X-Dyn-Api-Version", "X-Dyn-Client-Platform",
+      "X-Dyn-Environment-Id", "X-Dyn-Csrf-Token",
+      "X-Dyn-Client-Platform-Version", "X-Dyn-Request-Id",
+    ]
     expose_headers    = ["Content-Length", "Content-Type"]
     allow_credentials = true
     max_age           = 86400
