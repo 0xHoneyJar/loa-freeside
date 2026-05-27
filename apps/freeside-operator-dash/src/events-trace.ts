@@ -163,10 +163,17 @@ class EventsTraceStore {
 
 // --- module-singleton + subscriber lifecycle --------------------------------
 
-const store = new EventsTraceStore();
+// `let` (not `const`) so `_testHooks.reset()` can replace the instance for
+// test isolation (BB#229 F-002 — the previous `(store as any).constructor.call(store)`
+// pattern can't reinitialize ES private fields).
+let store = new EventsTraceStore();
 
 interface SubscriberLifecycle {
+  /** Whether the subscriber was wired (NATS_URL was present at boot). */
   enabled: boolean;
+  /** Tracks startup attempt to make startEventsTraceSubscriber idempotent (BB#229 F-004). */
+  started: boolean;
+  /** Live NATS connection status — updated by the nc.closed() watcher (BB#229 F-001). */
   connected: boolean;
   subjects: string[];
   lastError: string | null;
@@ -176,6 +183,7 @@ interface SubscriberLifecycle {
 
 const lifecycle: SubscriberLifecycle = {
   enabled: false,
+  started: false,
   connected: false,
   subjects: [],
   lastError: null,
@@ -189,6 +197,14 @@ const lifecycle: SubscriberLifecycle = {
  * NATS_URL)" or "subscriber up · 200 envelopes seen" messages.
  */
 export async function startEventsTraceSubscriber(): Promise<void> {
+  // BB#229 F-004: idempotent — return early if already started. Process
+  // lifetime might re-enter startup paths (hot reload, test imports, future
+  // explicit calls). Duplicate subscriptions would multi-record each event.
+  if (lifecycle.started) {
+    return;
+  }
+  lifecycle.started = true;
+
   const natsUrl = process.env.NATS_URL;
   const subjects = resolveSubjects();
   lifecycle.subjects = subjects;
@@ -213,6 +229,19 @@ export async function startEventsTraceSubscriber(): Promise<void> {
     }
     nc = await connect(connectOpts);
     lifecycle.connected = true;
+
+    // BB#229 F-001: watch the NATS connection lifecycle. Without this,
+    // `lifecycle.connected` stays `true` forever even after the broker
+    // drops — the panel would falsely report a healthy pipeline while
+    // events stop arriving. The .closed() promise resolves when the
+    // connection terminates (clean or unclean); flip the flag + capture
+    // the error so the dashboard reflects reality.
+    void nc.closed().then((closeErr) => {
+      lifecycle.connected = false;
+      lifecycle.lastError = closeErr
+        ? `NATS connection closed: ${closeErr.message || String(closeErr)}`
+        : "NATS connection closed (clean teardown)";
+    });
   } catch (err) {
     lifecycle.connected = false;
     lifecycle.lastError = `NATS connect failed: ${err instanceof Error ? err.message : String(err)}`;
@@ -335,9 +364,11 @@ export const _testHooks = {
     });
   },
   reset(): void {
-    // Replace the store with a fresh one for test isolation.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (store as any).constructor.call(store);
+    // BB#229 F-002: replace the store instance for test isolation.
+    // (Previous `(store as any).constructor.call(store)` couldn't reinit
+    // ES private fields — calls on instances of classes with `#` fields
+    // throw rather than reinitialize state.)
+    store = new EventsTraceStore();
   },
   GENESIS_PREV_HASH,
   VerificationFailureReason: undefined as unknown as VerificationFailureReason,

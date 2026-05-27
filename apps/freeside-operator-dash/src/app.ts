@@ -218,7 +218,7 @@ app.get("/api/state", async (c) => {
 });
 
 /**
- * GET /api/events?class=<event-class>&limit=<n>
+ * GET /api/events?class=<event-class>&limit=<n>&raw=1
  *
  * Returns the events-trace ring buffer for a given event class (or the
  * cross-class recent feed when class is omitted). Per build doc §6, this
@@ -229,11 +229,31 @@ app.get("/api/state", async (c) => {
  *           that class's per-class ring (cap 200). Omitted = recent
  *           cross-class feed (cap 100).
  *   limit — optional. Caps the response size; defaults to ring size.
+ *   raw   — optional. Only honored when EVENTS_TRACE_RAW_ACCESS=1 env is
+ *           set. When set + raw=1 query passed, response includes the
+ *           parsed `payload` field + the `rawBytesB64` failure-forensics
+ *           excerpt. Default response REDACTS both (BB#229 F-003 —
+ *           defense in depth on top of the deployment's existing access
+ *           boundary, since envelopes can carry user wallet addresses,
+ *           token IDs, and other signed material).
+ *
+ * The dash's overall access boundary is Tailscale / OPERATOR_TOKEN per
+ * the v0.1 caveats in this file; this endpoint inherits that. The
+ * raw-redaction default is belt-and-braces: even an operator who
+ * accidentally exposes the dash through a misconfigured proxy doesn't
+ * leak payload contents by default.
  */
 app.get("/api/events", (c) => {
   const eventClass = c.req.query("class");
   const limitRaw = c.req.query("limit");
   const limit = limitRaw && /^\d+$/.test(limitRaw) ? parseInt(limitRaw, 10) : undefined;
+
+  // BB#229 F-003: raw payloads opt-in, gated by BOTH (a) the operator
+  // setting EVENTS_TRACE_RAW_ACCESS=1 in the deployment env (deliberate
+  // opt-in) AND (b) the request carrying ?raw=1. Default is metadata-only.
+  const rawAllowed = process.env.EVENTS_TRACE_RAW_ACCESS === "1";
+  const rawRequested = c.req.query("raw") === "1";
+  const includeRaw = rawAllowed && rawRequested;
 
   const snapshot = getEventsTraceSnapshot();
   if (!eventClass) {
@@ -246,7 +266,8 @@ app.get("/api/events", (c) => {
       totalObserved: snapshot.totalObserved,
       totalFailures: snapshot.totalFailures,
       lastLifecycleError: snapshot.lastLifecycleError,
-      envelopes,
+      redacted: !includeRaw,
+      envelopes: envelopes.map((e) => redactTraced(e, includeRaw)),
     });
   }
   const ring = getPerClassRing(eventClass);
@@ -257,8 +278,33 @@ app.get("/api/events", (c) => {
     subscriberEnabled: snapshot.subscriberEnabled,
     natsConnected: snapshot.natsConnected,
     count: envelopes.length,
-    envelopes,
+    redacted: !includeRaw,
+    envelopes: envelopes.map((e) => redactTraced(e, includeRaw)),
   });
 });
+
+/**
+ * Strip `payload` + `rawBytesB64` from a TracedEnvelope when raw access
+ * is not authorized. The envelope's metadata (event_type, emitted_by,
+ * signing_key_id, prev_hash, payload_hash, signature, timestamps) stays —
+ * those carry no PII beyond what's already in the subjects + publisher
+ * identity, and they're what operators need to triage failures.
+ *
+ * BB#229 F-003: defense-in-depth redaction.
+ */
+function redactTraced(e: import("./events-trace-types.js").TracedEnvelope, includeRaw: boolean) {
+  if (includeRaw) return e;
+  const envelope = e.envelope
+    ? { ...e.envelope, payload: "[redacted — pass ?raw=1 with EVENTS_TRACE_RAW_ACCESS=1 to view]" }
+    : undefined;
+  return {
+    observedAtMs: e.observedAtMs,
+    subject: e.subject,
+    outcome: e.outcome,
+    envelope,
+    rawBytesB64: null,
+    errorExcerpt: e.errorExcerpt,
+  };
+}
 
 export default app;
