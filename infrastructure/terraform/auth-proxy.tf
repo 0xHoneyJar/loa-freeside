@@ -58,9 +58,13 @@ resource "aws_apigatewayv2_api" "auth_proxy" {
     # that with strict allowlist + credentials=true (CORS spec forbids `*`).
     allow_headers     = [
       "Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin",
-      "X-Dyn-Version", "X-Dyn-Api-Version", "X-Dyn-Client-Platform",
+      # SDK alpha.28 + WalletKit/4.42.0 verified header set (DevTools 2026-05-27)
+      "X-Dyn-Version", "X-Dyn-Api-Version", "X-Dyn-Request-Id",
+      "X-Dyn-Device-Fingerprint", "X-Dyn-Is-Global-Wallet-Popup",
+      "X-Dyn-Session-Public-Key",
+      # Speculative — observed in older SDK probes, kept for safety
+      "X-Dyn-Client-Platform", "X-Dyn-Client-Platform-Version",
       "X-Dyn-Environment-Id", "X-Dyn-Csrf-Token",
-      "X-Dyn-Client-Platform-Version", "X-Dyn-Request-Id",
     ]
     expose_headers    = ["Content-Length", "Content-Type"]
     allow_credentials = true
