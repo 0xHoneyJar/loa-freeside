@@ -18,6 +18,7 @@ RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 # The dash declares its own pnpm-workspace.yaml; the events package
 # must be reachable via the file:../../packages/events link.
 COPY packages/events ./packages/events
+COPY packages/freeside-registry ./packages/freeside-registry
 COPY apps/freeside-operator-dash ./apps/freeside-operator-dash
 
 # Build events package first (dash's tsc resolves it from packages/events/dist).
@@ -37,6 +38,11 @@ RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 COPY --from=builder /app/packages/events/package.json ./packages/events/package.json
 COPY --from=builder /app/packages/events/dist ./packages/events/dist
 COPY --from=builder /app/packages/events/node_modules ./packages/events/node_modules
+
+# freeside-registry is read at runtime (registry.yaml). Bring the whole
+# package so the dash's path-resolved load (REPO_ROOT/packages/freeside-registry/
+# registry.yaml) succeeds in the runtime image.
+COPY --from=builder /app/packages/freeside-registry ./packages/freeside-registry
 
 COPY --from=builder /app/apps/freeside-operator-dash/package.json ./apps/freeside-operator-dash/package.json
 COPY --from=builder /app/apps/freeside-operator-dash/dist ./apps/freeside-operator-dash/dist

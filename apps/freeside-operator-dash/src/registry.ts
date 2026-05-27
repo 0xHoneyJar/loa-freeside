@@ -10,14 +10,14 @@ import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 import type { RegistryCell, RuntimeState } from "./types.js";
 
-// dirname(import.meta.url) = .../apps/freeside-operator-dash/src
-// 3 levels up gets us to the repo root.
-const REPO_ROOT = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "..", // src/ → apps/freeside-operator-dash/
-  "..", // apps/freeside-operator-dash/ → apps/
-  "..", // apps/ → repo root
-);
+// dirname(import.meta.url) at runtime:
+//   - dev (tsx, source):     .../apps/freeside-operator-dash/src
+//   - prod (compiled):       .../apps/freeside-operator-dash/dist/src
+// Handle both layouts so registry.yaml resolves correctly in either context.
+const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = MODULE_DIR.includes(`${"dist"}/src`) || MODULE_DIR.endsWith("dist/src")
+  ? join(MODULE_DIR, "..", "..", "..", "..") // dist/src → dist → app → apps → repo root
+  : join(MODULE_DIR, "..", "..", ".."); // src → app → apps → repo root
 
 const REGISTRY_PATH = join(REPO_ROOT, "packages", "freeside-registry", "registry.yaml");
 
