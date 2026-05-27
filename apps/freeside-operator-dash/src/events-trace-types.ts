@@ -70,6 +70,13 @@ export interface EventsTraceSnapshot {
   subscriberEnabled: boolean;
   /** Whether the NATS connection is currently up. */
   natsConnected: boolean;
+  /**
+   * Number of subscriptions that successfully attached. When `natsConnected`
+   * is true but `subscribedCount === 0`, the broker socket is alive but the
+   * subscriber is listening on no subjects — dashboard must surface this as
+   * unhealthy. BB#229 rd-2 F-002 closure.
+   */
+  subscribedCount: number;
   /** The subjects/wildcards the subscriber is listening to. */
   subscribedSubjects: string[];
   /** Per-class rollup. Empty array if no envelopes observed yet. */

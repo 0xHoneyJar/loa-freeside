@@ -101,7 +101,7 @@ class EventsTraceStore {
     if (this.#crossFeed.length > CROSS_CLASS_FEED_SIZE) this.#crossFeed.shift();
   }
 
-  snapshot(opts: { subscriberEnabled: boolean; natsConnected: boolean; subscribedSubjects: string[]; lastLifecycleError: string | null }): EventsTraceSnapshot {
+  snapshot(opts: { subscriberEnabled: boolean; natsConnected: boolean; subscribedCount: number; subscribedSubjects: string[]; lastLifecycleError: string | null }): EventsTraceSnapshot {
     const perClass: PerClassSummary[] = [];
     for (const [eventClass, ring] of this.#perClass.entries()) {
       const last = ring.length > 0 ? ring[ring.length - 1] : null;
@@ -130,6 +130,7 @@ class EventsTraceStore {
     return {
       subscriberEnabled: opts.subscriberEnabled,
       natsConnected: opts.natsConnected,
+      subscribedCount: opts.subscribedCount,
       subscribedSubjects: opts.subscribedSubjects,
       perClass,
       totalObserved: this.#totalObserved,
@@ -171,10 +172,30 @@ let store = new EventsTraceStore();
 interface SubscriberLifecycle {
   /** Whether the subscriber was wired (NATS_URL was present at boot). */
   enabled: boolean;
-  /** Tracks startup attempt to make startEventsTraceSubscriber idempotent (BB#229 F-004). */
-  started: boolean;
+  /**
+   * Set to Date.now() AT THE END of a successful startup (NATS connected
+   * + at least one subscribe succeeded). Used as the idempotency check —
+   * re-entry returns early only after startup ACTUALLY completed (BB#229
+   * rd-2 F-001 — previously the flag was set before any work, blocking
+   * retry forever after a first-call NATS_URL-absent or connect-failed).
+   */
+  startedAt: number | null;
+  /**
+   * Set when a startup attempt is in-flight, to prevent two concurrent
+   * callers from launching parallel subscribe loops. Distinct from
+   * startedAt (which marks SUCCESSFUL completion).
+   */
+  startupInFlight: boolean;
   /** Live NATS connection status — updated by the nc.closed() watcher (BB#229 F-001). */
   connected: boolean;
+  /**
+   * Count of subscriptions that successfully attached (one per resolved
+   * subject). When every subject's subscribe call throws, this stays 0
+   * AND `connected` may still be true — operators need both signals to
+   * tell "connected but listening to nothing" from "fully healthy".
+   * (BB#229 rd-2 F-002 closure.)
+   */
+  subscribedCount: number;
   subjects: string[];
   lastError: string | null;
   /** SubscribeHandles (one per subject), held for teardown if ever needed. */
@@ -183,8 +204,10 @@ interface SubscriberLifecycle {
 
 const lifecycle: SubscriberLifecycle = {
   enabled: false,
-  started: false,
+  startedAt: null,
+  startupInFlight: false,
   connected: false,
+  subscribedCount: 0,
   subjects: [],
   lastError: null,
   handles: [],
@@ -197,14 +220,24 @@ const lifecycle: SubscriberLifecycle = {
  * NATS_URL)" or "subscriber up · 200 envelopes seen" messages.
  */
 export async function startEventsTraceSubscriber(): Promise<void> {
-  // BB#229 F-004: idempotent — return early if already started. Process
-  // lifetime might re-enter startup paths (hot reload, test imports, future
-  // explicit calls). Duplicate subscriptions would multi-record each event.
-  if (lifecycle.started) {
-    return;
+  // Idempotent — returns early only after startup ACTUALLY completed (BB#229
+  // F-004 idempotency goal, refined by BB#229 rd-2 F-001 — the previous
+  // `started=true-before-work` pattern blocked retry forever after a first
+  // failed boot). Two guards: `startedAt` (success marker, set at the END
+  // of a successful startup) + `startupInFlight` (concurrent-startup race
+  // guard). NATS_URL absent or connect failure → leave startedAt null so
+  // a future explicit retry can attempt again.
+  if (lifecycle.startedAt !== null) return;
+  if (lifecycle.startupInFlight) return;
+  lifecycle.startupInFlight = true;
+  try {
+    await runStartup();
+  } finally {
+    lifecycle.startupInFlight = false;
   }
-  lifecycle.started = true;
+}
 
+async function runStartup(): Promise<void> {
   const natsUrl = process.env.NATS_URL;
   const subjects = resolveSubjects();
   lifecycle.subjects = subjects;
@@ -310,9 +343,23 @@ export async function startEventsTraceSubscriber(): Promise<void> {
         },
       });
       lifecycle.handles.push(handle);
+      lifecycle.subscribedCount += 1;
     } catch (err) {
       lifecycle.lastError = `subscribe(${subject}) failed: ${err instanceof Error ? err.message : String(err)}`;
     }
+  }
+
+  // BB#229 rd-2 F-001: mark startup-completed ONLY when at least one
+  // subscription attached. If every subscribe threw, leave startedAt=null
+  // so a future explicit retry (e.g. when JWKS comes back, when the
+  // broker recovers) can attempt again.
+  //
+  // BB#229 rd-2 F-002: if subscribedCount===0 we already wrote lastError
+  // above (per-subject); the snapshot reads subscribedCount to surface
+  // "connected but listening to nothing" → dashboard distinguishes
+  // healthy from no-actual-observation.
+  if (lifecycle.subscribedCount > 0) {
+    lifecycle.startedAt = Date.now();
   }
 }
 
@@ -341,6 +388,7 @@ export function getEventsTraceSnapshot(): EventsTraceSnapshot {
   return store.snapshot({
     subscriberEnabled: lifecycle.enabled,
     natsConnected: lifecycle.connected,
+    subscribedCount: lifecycle.subscribedCount,
     subscribedSubjects: lifecycle.subjects,
     lastLifecycleError: lifecycle.lastError,
   });
