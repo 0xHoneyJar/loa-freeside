@@ -179,19 +179,6 @@ Per ADR-007 §D-4 + Appendix A.4:
 - `loa freeside doctor` warns on legacy beacons with `next_review` date
 - Once migrated to V3, downgrade is forbidden (status field one-way)
 
-## Development
-
-`src/` is the source of truth. `dist/` is generated output (`tsc -b`) and is gitignored — **never commit files under `dist/`**. The `beacon-schema-dist-fresh` CI job enforces this (refs [#233](https://github.com/0xHoneyJar/loa-freeside/issues/233)) after a stale `src/dist` divergence triggered the 2026-05-26 V3 sweep.
-
-```bash
-cd packages/beacon-schema
-pnpm install --frozen-lockfile
-pnpm build      # regenerates dist/ — output is gitignored
-pnpm test       # runs schema + CLI tests
-```
-
-If the CI job fails with "files committed under dist/", run `git rm --cached -r packages/beacon-schema/dist/` and recommit.
-
 ## Source
 
 `freeside-mcp-gateway/packages/beacon-schema/` (V2) gets git-mv'd here in [ADR-007 §Implementation step 4](../../decisions/007-loa-freeside-absorption.md), then V3 schema lands in step 6.
