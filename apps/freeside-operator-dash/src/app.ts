@@ -212,9 +212,26 @@ app.get("/healthz", (c) => {
 });
 
 app.get("/api/state", async (c) => {
+  // BB#229 rd-3 F-001: the cached DashState includes `eventsTrace.recentEnvelopes`
+  // with full payload + rawBytesB64. The earlier rd-1 fix gated /api/events only;
+  // /api/state was a parallel leak surface. Apply the same EVENTS_TRACE_RAW_ACCESS=1
+  // + ?raw=1 gate (both must hold), default to metadata-only.
   const walletOverride = parseWalletParam(c.req.query("wallet"));
   const { state } = await getCached(walletOverride);
-  return c.json(state);
+  const rawAllowed = process.env.EVENTS_TRACE_RAW_ACCESS === "1";
+  const rawRequested = c.req.query("raw") === "1";
+  const includeRaw = rawAllowed && rawRequested;
+  if (includeRaw) {
+    return c.json(state);
+  }
+  return c.json({
+    ...state,
+    eventsTrace: {
+      ...state.eventsTrace,
+      recentEnvelopes: state.eventsTrace.recentEnvelopes.map((e) => redactTraced(e, false)),
+    },
+    eventsTraceRedacted: true,
+  });
 });
 
 /**
