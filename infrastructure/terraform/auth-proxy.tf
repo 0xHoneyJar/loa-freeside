@@ -44,6 +44,7 @@ resource "aws_apigatewayv2_api" "auth_proxy" {
       "https://auction.0xhoneyjar.xyz",
       "https://app.0xhoneyjar.xyz",
       "https://staging.0xhoneyjar.xyz",
+      "https://setandforgetti.0xhoneyjar.xyz",
     ]
     allow_methods     = ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"]
     allow_headers     = ["Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin"]
