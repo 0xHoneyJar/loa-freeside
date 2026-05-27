@@ -161,9 +161,19 @@ nats --server tls://nats.0xhoneyjar.xyz:<port> \
 
 If `nats` CLI not installed: `brew install nats-io/nats-tools/nats`. Skip if you trust the substrate-side test will validate.
 
-### Step 3 — Substrate code change (~30min — 1 small PR per consumer)
+### Step 3 — Merge the substrate code PRs (companion work, already coded)
 
-The substrate's current `tls: { ca }` connection options need to accept optional `cert` + `key`. Change shape per consumer:
+The substrate's current `tls: { ca }` connection options needed to accept optional `cert` + `key`. **This work is done — three small PRs are open, all green, ready for review/merge**:
+
+| Repo | PR | What it does |
+|---|---|---|
+| `0xHoneyJar/sonar-api` | [#25](https://github.com/0xHoneyJar/sonar-api/pull/25) | Publisher: NATS_TLS_CLIENT_CERT/KEY support + NATS_TLS_CA → PEM body |
+| `0xHoneyJar/freeside-characters` | [#107](https://github.com/0xHoneyJar/freeside-characters/pull/107) | Bot subscriber: same shape; pure-helper extraction for testability |
+| `0xHoneyJar/loa-freeside` | [#242](https://github.com/0xHoneyJar/loa-freeside/pull/242) | Operator-dash: same shape + standardize `caFile` (path) → `ca` (PEM body) |
+
+**Merge order recommendation**: this substrate-setup PR first (so the runbook is on main), then the three consumer PRs in any order (they're independent of each other; each repo's `main` doesn't share state). After all four merge, Railway services that auto-deploy from `main` (the characters bot per `project_freeside-characters-deploy`) will pick up the new code on their next deploy. Manually trigger redeploy on Railway dashboard if needed.
+
+**Diffs as reference** (kept for replication on future clusters — these are the canonical change patterns the three PRs landed):
 
 #### 3a. freeside-sonar (`src/lib/events-publisher.ts`)
 
@@ -240,28 +250,108 @@ Current code uses `caFile` (path). Switch to `ca` (PEM body) so Railway can inje
 
 Each PR is small (~20 lines + tests). Suggest landing all three in parallel before Step 5.
 
-### Step 4 — Host JWKS file publicly (~10min, same as Path D)
+### Step 4 — Host JWKS file publicly (~10min)
 
-Unchanged from Path D §Step 2. Pick Vercel (recommended) or gist. Output: `EVENTS_JWKS_URL` value.
+The JWKS document is at `~/.loa-secrets/cluster-events-pillar-v1/jwks.json` (single OKP/Ed25519 entry, `kid=sonar-api-1`). Pick a host — the substrate doesn't require any specific URL shape, just public HTTPS reachability:
+
+**Option 4a — GitHub gist via `gh` CLI** (simplest, ~30s):
+
+```sh
+gh gist create ~/.loa-secrets/cluster-events-pillar-v1/jwks.json --public \
+  --desc "cluster-events-pillar-v1 JWKS (Ed25519 / sonar-api-1)"
+```
+
+Take the gist URL, transform to raw form: `https://gist.githubusercontent.com/<user>/<gist-id>/raw/jwks.json`. Verify: `curl -s <raw-url> | jq '.keys[0].kid'` should return `"sonar-api-1"`.
+
+**Option 4b — Vercel** (cleaner `/.well-known/jwks.json` URL):
+
+```sh
+mkdir /tmp/jwks-publish && cd /tmp/jwks-publish
+cp ~/.loa-secrets/cluster-events-pillar-v1/jwks.json ./
+cat > vercel.json <<'EOF'
+{ "rewrites": [{ "source": "/.well-known/jwks.json", "destination": "/jwks.json" }] }
+EOF
+vercel deploy --prod
+```
+
+URL: `https://<slug>.vercel.app/.well-known/jwks.json`.
+
+**Option 4c — Cloudflare Pages**: similar to Vercel, slightly more setup.
+
+Output: a publicly-resolvable URL serving the JWKS doc. Capture as `EVENTS_JWKS_URL` for Step 5.
 
 ### Step 5 — Wire each consumer's env (~15min total)
 
-For each Railway service (dash + characters bot) AND for the Envio sonar dashboard, set:
+For each consumer (Envio sonar · Railway characters bot · Railway dash), set the full env matrix. The Railway services can be wired via CLI (`railway variable set --service <name> "KEY=$(cat /path/to/file)"`), Envio sonar via its dashboard.
+
+**Common across all three consumers:**
 
 | Var | Value | Source |
 |---|---|---|
-| `NATS_URL` | `tls://nats.0xhoneyjar.xyz:<port>` | Step 2e/2f |
+| `NATS_URL` | `tls://nats.0xhoneyjar.xyz:<port>` | Step 2e (Railway TCP proxy assigns the port) / Step 2f (custom domain) |
 | `NATS_TLS_CA` | (PEM body of `ca.crt`) | `cat ~/.loa-secrets/cluster-events-pillar-v1/nats-tls/ca.crt` |
 | `NATS_TLS_CLIENT_CERT` | (PEM body of `<service>.crt`) | sonar→`sonar-api.crt`, characters→`characters-bot.crt`, dash→`operator-dash.crt` |
 | `NATS_TLS_CLIENT_KEY` | (PEM body of `<service>.key`) | matching service key |
-| `EVENTS_JWKS_URL` | (from Step 4) | Same across all 3 |
-| `JWKS_URL` | (same as EVENTS_JWKS_URL — characters bot uses this name) | Same |
-| Plus the sonar-specific `SONAR_SIGNING_SEED_HEX` | Path D Step 4 still applies | `cat ~/.loa-secrets/cluster-events-pillar-v1/sonar-api-1.seed.hex` |
-| Plus the characters-specific `MST_CANARY_*` vars | Path D Step 5 still applies | unchanged |
+| `EVENTS_JWKS_URL` (dash) / `JWKS_URL` (bot) | (from Step 4) | Same gist or Vercel URL |
 
-### Step 6-8 — Observe → flip → promote (same as Path D §Step 6-7)
+**Sonar-specific (Envio dashboard or wherever sonar's Envio service env lives):**
 
-Unchanged from the Path-D runbook. Watch dash → confirm envelopes flow → flip `MST_CANARY_ENABLED=1` → wait for first organic mint → promote channel.
+| Var | Value | Source |
+|---|---|---|
+| `SONAR_SIGNING_SEED_HEX` | (32-byte hex Ed25519 signing seed) | `cat ~/.loa-secrets/cluster-events-pillar-v1/sonar-api-1.seed.hex` |
+
+This seed produces the publisher's identity (`emitted_by=sonar-api`, `signing_key_id=sonar-api-1`). The matching pubkey is published in the JWKS document.
+
+**Characters-bot-specific (Railway → `freeside characters` service):**
+
+| Var | Value |
+|---|---|
+| `MST_CANARY_CHANNEL_ID` | Your test Discord channel snowflake (right-click channel → Copy ID; Developer Mode enabled) |
+| `MST_CANARY_ENABLED` | `0` initially — flip to `1` only after Step 6 observation looks correct |
+| `IDENTITY_API_URL` | `https://identity.0xhoneyjar.xyz` (default; leave unset if you want default behavior) |
+| `MINT_EVENT_INITIAL_ANCHOR_POLICY` | `any` (default; leave unset for default) |
+
+After all envs land, redeploy each service. Bot boot log should show:
+
+```
+events: NATS subscriber wired · subject=nft.mint.detected.> · jwks=configured ·
+        kansei-router=mst (canary=OFF, channel=set, dispatch=OFF)
+```
+
+If `JWKS_URL` is set but unreachable, the bot will `process.exit(1)` per BB#105 rd-3 F-001 (refuse to boot with broken JWKS config — intentional).
+
+Sonar's Envio service boot log should include: `[events-publisher] connected to <nats-url> (TLS=...)`.
+
+### Step 6 — Observe before flip (~5-N min depending on chain activity)
+
+With dash + bot + sonar all wired, the substrate is RUNNING. No Discord posts yet (canary OFF).
+
+- Visit the deployed dash. Watch the `⚡ cluster events trace` panel populate as Mibera-family mints happen on chain.
+- Touch `/api/events` periodically. Confirm the envelopes look correct: `event_type=nft.mint.detected`, `emitted_by=sonar-api`, signature valid (`outcome: ok`).
+- Validate envelope shape against your expectations: chain id, contract address, traits, image URLs.
+
+**Expected first state**: every envelope shows `outcome: ok` IF the JWKS doc is correctly published with sonar's pubkey. If you see `outcome: signature-invalid`, the JWKS URL is wrong or the pubkey doesn't match — revisit Step 4.
+
+**Pause here for as long as you want**. The dash is observing in real-time; the bot is silently routing; sonar is publishing. Zero Discord noise yet.
+
+### Step 7 — The canary flip (~30s)
+
+When the dash data looks right + you've confirmed at least one organic Mibera Shadow mint has flowed through:
+
+1. In characters bot's Railway env, set `MST_CANARY_ENABLED=1`
+2. Trigger redeploy (Railway usually auto-deploys on env-var changes; verify in dashboard)
+3. Confirm the new boot log shows: `kansei-router=mst (canary=ON, channel=set, dispatch=wired)`
+4. **Wait for / trigger the next Mibera Shadows mint**. Expected outcome: an enriched Discord post in your test channel within ~30 seconds.
+
+### Step 8 — Promote (after operator-defined confidence window)
+
+After 24-48h of clean canary posts in the test channel (or N successful posts per operator taste):
+
+1. Flip `MST_CANARY_CHANNEL_ID` to the production channel id
+2. Redeploy
+3. You're live.
+
+If posts have issues at any point: validate against the test channel; iterate `mint-announcement-render.ts` in a follow-up PR. Set `MST_CANARY_ENABLED=0` to halt posts without taking down the substrate.
 
 ## Cert generation helper script (commit to repo)
 
@@ -311,6 +401,22 @@ echo "Generated: $OUT (CA + server + 3 client certs)"
 ```
 
 Cert renewal: every ~360 days, regenerate clients/server with same CA. CA itself rotates every ~9 years.
+
+## CA key hygiene (operator responsibility)
+
+`~/.loa-secrets/cluster-events-pillar-v1/nats-tls/ca.key` is **the load-bearing root of trust for the entire cluster-events-pillar substrate**. Anyone with this key can mint a client cert that the broker will accept as any service identity — and anyone with this key + access to the broker can forge envelope signatures by issuing themselves the sonar identity, OR pretend to be the broker by issuing themselves the server cert.
+
+Required posture:
+
+| | What | Why |
+|---|---|---|
+| **Storage** | Stays on operator's machine only, mode 0600, never committed | Filesystem permission is the only enforcement layer; git commit of this file = compromise |
+| **Backup** | At least one offline copy (encrypted USB, paper-wallet-style printout, password manager attachment) | Loss = cannot issue new client certs OR rotate server cert. The entire CA must be regenerated (also forces re-issuing every client cert + redeploying every consumer). |
+| **Sharing** | NEVER share via Slack/Discord/email/chat tools. NEVER commit to a repo. NEVER paste into a model context outside this trusted operator session. | All of those channels are logged, cached, or eventually indexable. CA private key compromise = full substrate identity compromise. |
+| **Cluster handoff** | If another operator needs to issue certs (e.g. adding a new consumer), share the CA via encrypted channel — Signal/PGP/SSH-based transfer — NOT via env-var injection or shared paste. | Encrypted channel preserves blast radius to two endpoints. |
+| **Loss recovery** | If `ca.key` is lost: regenerate the CA via `scripts/cluster-events-pillar/generate-nats-certs.sh`, update `NATS_CA_CERT` on the Railway broker service, redistribute new client certs to all consumers (sonar + characters + dash), restart all services. ~30min full-cluster operation. No data is lost; only identity continuity breaks for a moment. | Documents the runbook for the failure-mode that's most likely if a laptop dies. |
+
+The CA cert (public, `ca.crt`) is NOT sensitive — it's distributed to consumers as `NATS_TLS_CA` env var and broker as `NATS_CA_CERT`. Public-key infrastructure design: anyone can verify, only the private-key-holder can issue.
 
 ## Sovereignty + substrate notes
 
