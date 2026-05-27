@@ -47,7 +47,9 @@ resource "aws_apigatewayv2_api" "auth_proxy" {
       "https://setandforgetti.0xhoneyjar.xyz",
     ]
     allow_methods     = ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"]
-    allow_headers     = ["Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin"]
+    # x-dyn-* headers are required by Dynamic Labs ClientSDK (sdkVersion >= alpha.28).
+    # Without them, preflight rejects with no ACAO when the SDK sends version headers.
+    allow_headers     = ["Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin", "X-Dyn-Version", "X-Dyn-Api-Version", "X-Dyn-Client-Platform"]
     expose_headers    = ["Content-Length", "Content-Type"]
     allow_credentials = true
     max_age           = 86400
