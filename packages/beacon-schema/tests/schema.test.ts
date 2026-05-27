@@ -283,3 +283,60 @@ test("V3 JSON Schema can be exported (for downstream tooling)", () => {
   assert.ok(json.includes('"is_not"'), "is_not field should appear in schema");
   assert.ok(json.includes('"cycle_state"'), "cycle_state field should appear");
 });
+
+// ─── ComposesWith key regex — outer: namespace (refs #234, #235) ──────────
+// The regex admits two shapes:
+//   1. ^[a-z][a-z0-9-]*$          — building slugs (the eventual *-api cells)
+//   2. ^outer:[a-z][a-z0-9-]+$    — outer-dep prefix (constructs, upstream
+//                                   data substrates) until their API surface
+//                                   ships (#235 mibera-codex transition).
+// Both branches valid through the transition. #234 sub-step B tightens
+// branch 1 to ^[a-z][a-z0-9-]*-api$; branch 2 stays.
+
+test("V3 composes_with accepts outer:mibera-codex key", () => {
+  const beacon = fix("freeside-inventory-v3.yaml");
+  const sonarEntry = beacon.composes_with["freeside-sonar"];
+  beacon.composes_with = { "outer:mibera-codex": sonarEntry };
+  const result = Effect.runSyncExit(decodeBeaconV3(beacon));
+  if (result._tag === "Failure") {
+    assert.fail(
+      `expected outer:mibera-codex to validate, got: ${JSON.stringify(result.cause)}`,
+    );
+  }
+});
+
+test("V3 composes_with rejects bare outer: with empty suffix", () => {
+  const beacon = fix("freeside-inventory-v3.yaml");
+  const sonarEntry = beacon.composes_with["freeside-sonar"];
+  beacon.composes_with = { "outer:": sonarEntry };
+  const result = Effect.runSyncExit(decodeBeaconV3(beacon));
+  assert.equal(
+    result._tag,
+    "Failure",
+    "expected outer: with no suffix to be rejected",
+  );
+});
+
+test("V3 composes_with rejects unknown prefix:foo (only outer: is admitted)", () => {
+  const beacon = fix("freeside-inventory-v3.yaml");
+  const sonarEntry = beacon.composes_with["freeside-sonar"];
+  beacon.composes_with = { "inner:mibera-codex": sonarEntry };
+  const result = Effect.runSyncExit(decodeBeaconV3(beacon));
+  assert.equal(
+    result._tag,
+    "Failure",
+    "expected non-outer prefix to be rejected (colon disallowed in branch 1)",
+  );
+});
+
+test("V3 composes_with still accepts canonical -api slug (sonar-api)", () => {
+  const beacon = fix("freeside-inventory-v3.yaml");
+  const sonarEntry = beacon.composes_with["freeside-sonar"];
+  beacon.composes_with = { "sonar-api": sonarEntry };
+  const result = Effect.runSyncExit(decodeBeaconV3(beacon));
+  if (result._tag === "Failure") {
+    assert.fail(
+      `expected sonar-api to validate, got: ${JSON.stringify(result.cause)}`,
+    );
+  }
+});
