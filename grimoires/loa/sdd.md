@@ -150,11 +150,18 @@ export default createConfig({
   database: {
     kind: "postgres",
     connectionString: process.env.DATABASE_URL,
-    schema: "ponder",  // ← isolation namespace per FR-X-6
+    // schema is NOT a ponder.config.ts key — control via DATABASE_SCHEMA env var
+    // or --schema CLI flag (ponder/dist/esm/build/index.js:235-241). The
+    // belt-indexer container MUST set DATABASE_SCHEMA=ponder.
   },
   // ... chains, contracts, blocks (see §3.2)
 });
 ```
+<!-- A-0 verified — see grimoires/loa/spikes/ponder-api-verification/COOKBOOK.md §C-1 -->
+
+The `ponder` schema namespace per FR-X-6 is set via environment / CLI, not the
+config object. Production deployment (`belt-ponder` container) sets
+`DATABASE_SCHEMA=ponder` in its Railway env matrix (see §7.2).
 
 ### 3.2 Schema port pattern (envio → Ponder) — uint256-safe (BLOCKER SKP-003 HIGH)
 
@@ -197,14 +204,29 @@ Apply the same rule to ALL token-ID columns across 89 entity ports.
 
 ### 3.3 NATS outbox table (NFR-7 + BLOCKER SKP-005 HIGH — IMP-002 HIGH_CONSENSUS)
 
-Add a `pending_emits` table to handle reorg-safe + idempotent NATS publishing:
+Add a `pending_emits` table to handle reorg-safe + idempotent NATS publishing.
+
+**R-1 schema update** (A-0 spike): the ID-component fields are stored AS
+first-class columns ALONGSIDE the hashed `id`, and the fourth canonical input
+is the **`envelopeType` discriminant** (an enum string like `"transfer"` /
+`"mint"`) NOT the `envelope_payload_hash`. Two reasons:
+- **Debuggability**: production triage needs "which envelopes for txHash X are still pending?" — opaque hash isn't queryable.
+- **Schema-evolution stability**: `envelope_payload_hash` ties the id to payload encoding; any envelope-shape change resets every id and re-emits historical envelopes. `envelopeType` is small + stable + human-readable.
 
 ```typescript
 export const pendingEmits = onchainTable(
   "pending_emits",
   (t) => ({
-    id: t.text().primaryKey(),               // deterministic hash: chainId|txHash|logIndex|envelope_payload_hash
+    // Deterministic id = keccak256(chainId | "|" | txHash | "|" | logIndex | "|" | envelopeType)
+    // (canonical inputs verified at T-A0.9; 5x duplicate insert → 1 row, reorg/replay-safe)
+    id: t.text().primaryKey(),
+
+    // ID components stored AS first-class columns for production triage queries (R-1).
     chainId: t.integer().notNull(),
+    txHash: t.hex().notNull(),
+    logIndex: t.integer().notNull(),
+    envelopeType: t.text().notNull(),  // discriminant: "transfer" | "mint" | "burn" | ...
+
     eventBlock: t.bigint().notNull(),
     targetBlock: t.bigint().notNull(),       // eventBlock + reorg_depth
     envelopeJson: t.text().notNull(),
@@ -215,16 +237,20 @@ export const pendingEmits = onchainTable(
   (table) => ({
     chainTargetIdx: index().on(table.chainId, table.targetBlock),
     pendingIdx: index().on(table.publishedAt),  // sparse-style index on null
+    // Triage index: "which envelopes for this tx are still pending?"
+    txHashIdx: index().on(table.txHash, table.envelopeType),
   }),
 );
 ```
+<!-- A-0 verified — see grimoires/loa/spikes/ponder-api-verification/COOKBOOK.md §T-A0.9 (deterministic ID schema + idempotency PASS) and §R-1 (component-fields recommendation) -->
 
 Outbox pattern semantics:
-- Handler writes row with `publishedAt=null` + deterministic ID
+- Handler writes row with `publishedAt=null` + deterministic ID (components also stored)
 - Block-tick handler reads ready rows (`targetBlock <= currentBlock AND publishedAt IS NULL`)
 - For each: attempt JetStream publish → on ack, set `publishedAt = now()` + commit
 - On publish failure: increment `attemptCount`, set `lastError`, leave `publishedAt` null (retry next tick)
 - Deterministic ID = consumer-side dedup key (idempotent on duplicate)
+- `envelopeType` enables typed routing on the consumer side without parsing `envelopeJson`
 
 ### 3.4 Historical data continuity (PRD §Historical Data Continuity)
 
@@ -246,40 +272,70 @@ Zero read-side gap from consumer perspective.
 
 **Endpoint**: `https://belt-hasura.up.railway.app/v1/graphql` — UNCHANGED.
 
-**Contract**: identical query syntax + response shape pre/post migration. AC-3 validates with EXPANDED test coverage (per BLOCKER SKP-003 HIGH):
+**Contract**: identical query syntax + response shape pre/post migration — **CONDITIONAL on per-table root-field customization being applied at cutover**. Hasura **prefixes non-`public` schemas** in GraphQL root fields by default: `ponder.token` exposes as `ponder_token`, breaking every consumer query that targets `token`. The cutover script (§4.3) MUST add `pg_set_table_customization` for each tracked table to remap `ponder_token` → `token`, `ponder_token_by_pk` → `token_by_pk`, etc. With customization applied, `{ token { ... } }` resolves identically to the envio-tracked `public.token`.
+
+AC-3 validates with EXPANDED test coverage (per BLOCKER SKP-003 HIGH):
 - Top-5 production query shape responses (15 tests = 5 × 3 consumers)
 - Hasura relationship traversal tests (`token.holder`, etc.)
 - Permission/role tests for each consumer's intended role
 - Aggregate query tests (`token_aggregate`)
 - Ordering + nullability assertions
 - Subscription smoke tests (live data flow from cutover moment forward)
+- **NEW per C-6**: post-cutover root-field name assertion (`__schema { queryType { fields { name } } }` MUST include unprefixed `token`, NOT `ponder_token`)
+<!-- A-0 verified — see grimoires/loa/spikes/ponder-api-verification/COOKBOOK.md §C-6 -->
 
 ### 4.2 NATS+ACVP envelope side channel
 
 **Subject + envelope shape**: UNCHANGED from path-ε. AC-A-7 enforces byte-parity.
 
-**HISTORICAL SYNC GATE (BLOCKER SKP-001 CRITICAL 950)**: handlers MUST NOT emit envelopes during cold sync. Implementation: handler checks `event.block.timestamp` against `Date.now() - LIVE_THRESHOLD_MS` (default 1 hour). Older events get processed (write to DB) but emit is silenced.
+**HISTORICAL SYNC GATE (BLOCKER SKP-001 CRITICAL 950)**: handlers MUST NOT emit envelopes during cold sync. Implementation uses **two composed signals** — block-distance to head AND Ponder sync state — NOT wall-clock alone (which is fragile per IMP-005 and pre-A-0 spike):
 
 ```typescript
 // src/lib/sync-status.ts
-const LIVE_THRESHOLD_MS = 60 * 60 * 1000;  // 1 hour
+// Per-chain confirmation depths (matches REORG_DEPTH_BY_CHAIN in §5.3).
+const CONFIRMATIONS_BY_CHAIN: Record<number, bigint> = {
+  1:  12n,   // Ethereum
+  10: 0n,    // Optimism (L2 instant)
+  8453: 0n,  // Base
+  42161: 0n, // Arbitrum
+  7777777: 0n, // Zora
+  80094: 200n, // Berachain
+};
 
-export function isLiveEvent(event: { block: { timestamp: bigint } }): boolean {
-  const eventMs = Number(event.block.timestamp) * 1000;
-  return Date.now() - eventMs < LIVE_THRESHOLD_MS;
+// CAVEAT: ponder's ReadonlyClient does NOT expose getBlockNumber().
+// dist/types/indexing/client.d.ts allowlists viem actions; getBlockNumber
+// is not in any of block-dependent / block-required / non-block-dependent.
+// Use getBlock({ blockTag: "latest" }) to read the head block number.
+export async function isLiveEvent(
+  event: { block: { number: bigint } },
+  context: { client: any; chain: { id: number } },
+): Promise<boolean> {
+  const head = await context.client.getBlock({ blockTag: "latest" });
+  const confirmations = CONFIRMATIONS_BY_CHAIN[context.chain.id] ?? 12n;
+  return head.number - event.block.number < confirmations;
 }
 ```
+
+**Sync-state composition (two-gate)** — Ponder 0.16.6 does not expose
+`sync_status === 'realtime'` directly inside handler context, so the SDD
+invariant is enforced via composed gates:
+
+1. **In-handler block-distance**: `(head - event.block.number) < CONFIRMATIONS` (above).
+2. **In-process sync state**: NATS publisher (`publishEnvelope`) must only START accepting after Ponder's `/ready` endpoint returns 200 (server-level gate, see §10.3). Pre-`/ready`, the outbox table buffers; post-`/ready`, the block-tick handler drains it.
 
 Used in every NATS-emitting handler:
 ```typescript
 ponder.on("MiberaShadows:Transfer", async ({ event, context }) => {
   await context.db.insert(token).values({ /* ... */ });
-  if (isLiveEvent(event)) {
-    await reorgSafeEmit(context, mintEnvelope(event), event.block.number, event.chainId);
+  if (await isLiveEvent(event, context)) {
+    await reorgSafeEmit(context, mintEnvelope(event), event.block.number, context.chain.id);
   }
   // historical events: written to DB but NOT emitted to NATS — no DDOS during backfill
 });
 ```
+
+**Performance follow-up (A-2 task)**: `getBlock({ blockTag: "latest" })` costs ONE RPC per event (~25 RPC/s at 100 events/min/chain). eRPC absorbs this, but the cleaner pattern is a head-block cache populated by the block-tick handler. Promoted to A-2 scope: "A2.X: head-block cache via block-tick handler; isLive reads cache."
+<!-- A-0 verified — see grimoires/loa/spikes/ponder-api-verification/COOKBOOK.md §C-5 (incl. ReadonlyClient action allowlist + performance follow-up) -->
 
 ### 4.3 Hasura metadata cutover — atomic `replace_metadata` (BLOCKER SKP-001/002 CRITICAL — IMP-001 HIGH_CONSENSUS)
 
@@ -305,35 +361,74 @@ curl -fSs -X POST "${HASURA_URL}/v1/metadata" \
 
 echo "[cutover] metadata snapshot: ${SNAPSHOT_PATH}"
 
-# 2. Transform: replace schema "public" → "ponder" (or reverse)
+# 2. Transform: replace schema "public" → "ponder" (or reverse) AND bake in
+# per-table custom_root_fields so consumer queries against unprefixed names
+# (`token`, NOT `ponder_token`) keep resolving post-cutover. (C-6)
+# The portable jq form below tolerates objects without a "schema" key (jq 1.6+).
 if [[ "${DIRECTION}" == "cutover" ]]; then
-  jq '(.. | objects | select(.schema == "public")) |= .schema = "ponder"' \
-    "${SNAPSHOT_PATH}" > "/tmp/hasura-metadata-${TIMESTAMP}-transformed.json"
+  jq '
+    (.. | objects | select((.schema // null) == "public")) |= (.schema = "ponder")
+    | (.. | objects | select(.table? | (.schema // null) == "ponder" and (.name // null) != null))
+      |= (
+        .configuration = (
+          (.configuration // {}) + {
+            custom_root_fields: (
+              ((.configuration // {}).custom_root_fields // {}) + {
+                select: .table.name,
+                select_by_pk: ((.table.name) + "_by_pk"),
+                select_aggregate: ((.table.name) + "_aggregate"),
+                insert: (("insert_") + (.table.name)),
+                insert_one: (("insert_") + (.table.name) + "_one"),
+                update: (("update_") + (.table.name)),
+                update_by_pk: (("update_") + (.table.name) + "_by_pk"),
+                delete: (("delete_") + (.table.name)),
+                delete_by_pk: (("delete_") + (.table.name) + "_by_pk")
+              }
+            ),
+            custom_name: .table.name
+          }
+        )
+      )
+  ' "${SNAPSHOT_PATH}" > "/tmp/hasura-metadata-${TIMESTAMP}-transformed.json"
 elif [[ "${DIRECTION}" == "rollback" ]]; then
-  jq '(.. | objects | select(.schema == "ponder")) |= .schema = "public"' \
-    "${SNAPSHOT_PATH}" > "/tmp/hasura-metadata-${TIMESTAMP}-transformed.json"
+  # Rollback: schema back to public + strip the customization we added on cutover.
+  jq '
+    (.. | objects | select((.schema // null) == "ponder")) |= (.schema = "public")
+    | (.. | objects | select(.table? | (.schema // null) == "public" and (.name // null) != null))
+      |= (
+        if (.configuration // {}) | has("custom_root_fields")
+        then .configuration |= (del(.custom_root_fields) | del(.custom_name))
+        else .
+        end
+      )
+  ' "${SNAPSHOT_PATH}" > "/tmp/hasura-metadata-${TIMESTAMP}-transformed.json"
 else
   echo "[cutover] unknown DIRECTION=${DIRECTION}" >&2
   exit 1
 fi
 
-# 3. Atomic apply via replace_metadata (single Hasura transaction)
+# 3. Atomic apply via replace_metadata (single Hasura transaction).
+# Atomically applies BOTH the schema swap AND the root-field remap — no window
+# where consumers see prefixed `ponder_token` names (per C-6 atomicity preference).
 curl -fSs -X POST "${HASURA_URL}/v1/metadata" \
   -H "x-hasura-admin-secret: ${HASURA_ADMIN_SECRET}" \
   -d "$(jq -c '{"type": "replace_metadata", "args": .}' \
     "/tmp/hasura-metadata-${TIMESTAMP}-transformed.json")"
 
 # 4. Post-swap validation — verify all 89 tables resolve to expected schema
+#    AND that root field names are unprefixed (no `ponder_*` leakage).
 EXPECTED_SCHEMA="ponder"
 [[ "${DIRECTION}" == "rollback" ]] && EXPECTED_SCHEMA="public"
 INTROSPECTION=$(curl -fSs -X POST "${HASURA_URL}/v1/graphql" \
   -H "x-hasura-admin-secret: ${HASURA_ADMIN_SECRET}" \
-  -d '{"query": "{ __schema { types { name } } }"}')
-# Diff against expected table list — fail loudly if mismatch
+  -d '{"query": "{ __schema { queryType { fields { name } } } }"}')
+# Assert: queryType.fields[].name MUST include `token` (NOT `ponder_token`).
 # (full assertion script in scripts/verify-hasura-tracking.sh)
 
 echo "[cutover] DONE — direction=${DIRECTION} schema=${EXPECTED_SCHEMA}"
 ```
+
+<!-- A-0 verified — see grimoires/loa/spikes/ponder-api-verification/COOKBOOK.md §C-6 (jq portable form + `pg_set_table_customization` baked into the replace_metadata payload for atomic remap) -->
 
 Rollback: invoke with `DIRECTION=rollback` + Postgres snapshot restore (see §6).
 
@@ -416,17 +511,29 @@ export default createConfig({
     base: { id: 8453, rpc: process.env.PONDER_RPC_URL_8453 },
     berachain: { id: 80094, rpc: process.env.PONDER_RPC_URL_80094 },
   },
-  database: { kind: "postgres", connectionString: process.env.DATABASE_URL, schema: "ponder" },
+  database: { kind: "postgres", connectionString: process.env.DATABASE_URL },
+  // Schema namespace controlled via DATABASE_SCHEMA env var or --schema CLI flag (§3.1 / C-1).
   contracts: { /* ... */ },
   blocks: {
-    OutboxFlushEth:  { network: "ethereum",  interval: 1 },
-    OutboxFlushBase: { network: "base",      interval: 1 },
-    OutboxFlushBera: { network: "berachain", interval: 1 },
+    // Property is `chain:` (not `network:`) per Ponder 0.16.6 type signature
+    // dist/types/config/index.d.ts:135-138. `startBlock` is REQUIRED — without
+    // it the block-tick handler fires from chain genesis (D-1 cold-sync footgun).
+    // In production, set startBlock to match the corresponding contract's
+    // deploy block (or later — block-ticks don't need historical sweep for
+    // outbox-flush purposes; they're real-time).
+    OutboxFlushEth:  { chain: "ethereum",  interval: 1, startBlock: <CONTRACT_START> },
+    OutboxFlushBase: { chain: "base",      interval: 1, startBlock: <CONTRACT_START> },
+    OutboxFlushBera: { chain: "berachain", interval: 1, startBlock: <CONTRACT_START> },
   },
 });
 ```
+<!-- A-0 verified — see grimoires/loa/spikes/ponder-api-verification/COOKBOOK.md §C-2, D-1 -->
 
-**Handler with correct Ponder 0.16.x API** (FIXED per BLOCKER SKP-004 HIGH — was `context.db.find` with where-clause, must be Drizzle `select().from().where()`):
+**Handler with correct Ponder 0.16.x API** — three corrections vs prior draft:
+
+1. **C-3**: Block events are keyed by the **block-filter name** declared in `ponder.config.ts → blocks` (e.g. `"OutboxFlushEth:block"`), NOT by chain. The closure-over-`networkName` pattern was wrong — type signature at `dist/types/types/virtual.d.ts:13-21` shows `{ [name in keyof blocks]: \`${name & string}:block\` }`.
+2. **C-4**: `context.db` is **Ponder's own type** (not raw Drizzle). Methods: `find(table, key)` / `insert(table)` / `update(table, key)` / `delete(table, key)` / `sql` (escape hatch to `ReadonlyDrizzle`). Multi-row `select().from().where()` lives on `context.db.sql`, NOT `context.db`. Single-row by-primary-key reads use `db.find(table, key)`. See `dist/types/types/db.d.ts:15-100`.
+3. **C-4 cont.**: `update` is `db.update(table, key).set(...)` keyed by primary key — not a where-clause builder.
 
 ```typescript
 // src/handlers/outbox-flush.ts
@@ -443,70 +550,99 @@ const REORG_DEPTH_BY_CHAIN: Record<number, bigint> = {
   80094n: 200n, // Berachain
 };
 
-async function flushBlock(networkName: string, chainId: bigint) {
-  ponder.on(`${networkName}:block`, async ({ event, context }) => {
-    // CORRECT API: Drizzle select pattern, NOT context.db.find(...)
-    const ready = await context.db
-      .select()
-      .from(pendingEmits)
-      .where(
-        and(
-          eq(pendingEmits.chainId, Number(chainId)),
-          isNull(pendingEmits.publishedAt),
-          lte(pendingEmits.targetBlock, event.block.number),
-        ),
-      );
+// One handler per block-filter name declared in ponder.config.ts → blocks.
+// Chain identity comes from context.chain.id (NOT from a closure).
+ponder.on("OutboxFlushEth:block", async ({ event, context }) => {
+  await flushReadyEmits(event, context);
+});
+ponder.on("OutboxFlushBase:block", async ({ event, context }) => {
+  await flushReadyEmits(event, context);
+});
+ponder.on("OutboxFlushBera:block", async ({ event, context }) => {
+  await flushReadyEmits(event, context);
+});
 
-    for (const entry of ready) {
-      try {
-        await publishEnvelope(JSON.parse(entry.envelopeJson));
-        await context.db
-          .update(pendingEmits)
-          .set({ publishedAt: BigInt(Date.now()) })
-          .where(eq(pendingEmits.id, entry.id));
-      } catch (err) {
-        await context.db
-          .update(pendingEmits)
-          .set({
-            attemptCount: entry.attemptCount + 1,
-            lastError: String(err).slice(0, 1000),
-          })
-          .where(eq(pendingEmits.id, entry.id));
-        // do NOT throw — let next tick retry
-      }
+async function flushReadyEmits(event: any, context: any) {
+  const chainId = context.chain.id;  // chain identity from context, not closure
+
+  // Multi-row read uses the drizzle escape hatch on db.sql, NOT db.select.
+  // (context.db exposes find/insert/update/delete/sql; select() lives on sql.)
+  const ready = await context.db.sql
+    .select()
+    .from(pendingEmits)
+    .where(
+      and(
+        eq(pendingEmits.chainId, chainId),
+        isNull(pendingEmits.publishedAt),
+        lte(pendingEmits.targetBlock, event.block.number),
+      ),
+    );
+
+  for (const entry of ready) {
+    try {
+      await publishEnvelope(JSON.parse(entry.envelopeJson));
+      // db.update(table, key).set(...) — keyed by primary key (Ponder API).
+      await context.db
+        .update(pendingEmits, { id: entry.id })
+        .set({ publishedAt: BigInt(Date.now()) });
+    } catch (err) {
+      await context.db
+        .update(pendingEmits, { id: entry.id })
+        .set({
+          attemptCount: entry.attemptCount + 1,
+          lastError: String(err).slice(0, 1000),
+        });
+      // do NOT throw — let next tick retry
     }
-  });
+  }
 }
-
-flushBlock("ethereum",  1n);
-flushBlock("base",      8453n);
-flushBlock("berachain", 80094n);
 ```
+<!-- A-0 verified — see grimoires/loa/spikes/ponder-api-verification/COOKBOOK.md §C-3, §C-4 -->
 
-**reorgSafeEmit** (handler-side):
+**reorgSafeEmit** (handler-side) — deterministic ID per R-1 (canonical inputs: `chainId | txHash | logIndex | envelopeType`):
+
 ```typescript
 // src/lib/reorg-safe-emit.ts
 import { pendingEmits } from "../ponder.schema";
 import { keccak256, toBytes } from "viem";
 
+// Canonical deterministic id construction (T-A0.9 verified).
+function deterministicEmitId(
+  chainId: number,
+  txHash: `0x${string}`,
+  logIndex: number,
+  envelopeType: string,
+): string {
+  const canonical = `${chainId}|${txHash.toLowerCase()}|${logIndex}|${envelopeType}`;
+  return keccak256(toBytes(canonical));
+}
+
 export async function reorgSafeEmit(
   context: any,
-  envelope: any,
-  eventBlock: bigint,
+  envelope: { type: string; [k: string]: any },
+  event: { log: { transactionHash: `0x${string}`; logIndex: number }; block: { number: bigint } },
   chainId: number,
 ) {
   const depth = REORG_DEPTH_BY_CHAIN[BigInt(chainId)] ?? 12n;
   if (depth === 0n) {
     return publishEnvelope(envelope);
   }
-  const deterministicId = keccak256(toBytes(JSON.stringify({ chainId, envelope })));
+  const id = deterministicEmitId(
+    chainId,
+    event.log.transactionHash,
+    event.log.logIndex,
+    envelope.type,
+  );
   await context.db
     .insert(pendingEmits)
     .values({
-      id: deterministicId,
+      id,
       chainId,
-      eventBlock,
-      targetBlock: eventBlock + depth,
+      txHash: event.log.transactionHash,
+      logIndex: event.log.logIndex,
+      envelopeType: envelope.type,
+      eventBlock: event.block.number,
+      targetBlock: event.block.number + depth,
       envelopeJson: JSON.stringify(envelope),
       publishedAt: null,
       attemptCount: 0,
@@ -514,6 +650,7 @@ export async function reorgSafeEmit(
     .onConflictDoNothing();  // idempotent — duplicate handler invocations safe
 }
 ```
+<!-- A-0 verified — see grimoires/loa/spikes/ponder-api-verification/COOKBOOK.md §T-A0.9 (5x duplicate insert → 1 row) and §R-1 (envelopeType discriminant) -->
 
 ### 5.4 Loader / preload removal
 
@@ -633,6 +770,18 @@ Pre-Phase-B exercise that PROVES the rollback procedure works:
 
 ### 7.1 Per-belt Dockerfile
 
+**Required project files** (D-2 — Ponder 0.16.6 will not start without these; absence is a build-time error):
+
+| Path | Purpose | Notes |
+|------|---------|-------|
+| `ponder.config.{belt}.ts` | per-belt chain + contract + blocks config | C-1/C-2/D-1 corrections applied (§3.1, §5.3) |
+| `ponder.schema.ts` | onchainTable definitions | uint256 columns via `t.numeric({ precision: 78, scale: 0, mode: "bigint" })` (§3.2 spike pattern) |
+| `src/index.ts` | indexing handlers (`ponder.on(...)` registrations) | C-3/C-4 corrections (§5.3) |
+| `src/api/index.ts` | **REQUIRED Hono app export** — Ponder 0.16.6 fails at build time if missing | wires `/live` + `/ready` probes (§7.3) |
+| `abis/*.ts` | viem-typed ABIs for contracts referenced in config | |
+
+<!-- A-0 verified — see grimoires/loa/spikes/ponder-api-verification/COOKBOOK.md §D-2 -->
+
 ```dockerfile
 # Dockerfile.belt-ponder
 FROM node:22-bookworm-slim
@@ -660,6 +809,7 @@ CMD ["sh", "-c", "exec pnpm ponder start --config \"$BELT_CONFIG\""]
 |----------|------|-------|
 | `BELT_CONFIG` | `ponder.config.mibera.ts` | `ponder.config.ts` |
 | `DATABASE_URL` | composed: `postgres://postgres:...@postgres-3vic.railway.internal:5432/railway` | composed: postgres-vrr1 |
+| `DATABASE_SCHEMA` (C-1) | `ponder` | `ponder` |
 | `PONDER_RPC_URL_1` | `http://erpc.railway.internal:4000/main/evm/1` | same |
 | `PONDER_RPC_URL_8453` | `http://erpc.railway.internal:4000/main/evm/8453` | same |
 | `PONDER_RPC_URL_80094` | `http://erpc.railway.internal:4000/main/evm/80094` | same |
