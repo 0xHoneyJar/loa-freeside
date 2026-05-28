@@ -11,6 +11,7 @@ grimoires/freeside/
   cultivations/       — per-cutover runbooks; one file per Move; KRANZ 5-act discipline
   atlases/            — cluster maps; territorial intelligence; living documents (versioned)
   doctrines/          — codified patterns; reusable across cutovers
+  briefs/             — exploratory thinking; pre-runbook surveys; operator-decision input
 ```
 
 ### `cultivations/` — Runbooks
