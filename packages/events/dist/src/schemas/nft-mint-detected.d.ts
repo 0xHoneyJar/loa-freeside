@@ -33,9 +33,17 @@ export declare const NftMintDetectedSchema: S.Struct<{
     /** Block timestamp as ISO-8601 UTC. */
     timestamp: S.filter<S.Schema<string, string, never>>;
     /**
-     * MST-specific enrichment — present when the handler is `vm-minted.ts`
-     * (Mibera Shadows). Opaque hex string; downstream decoder lives in the
-     * Mibera codex.
+     * Optional producer-defined enrichment — present when the handler emits it
+     * (e.g. GeneralMints `Minted` for Mibera Shadows). OPAQUE, collection-specific
+     * string: the on-chain `traits` encoding varies per collection (Mibera Shadow
+     * emits decimal-semicolon trait indices, e.g. "25;10;78;...", NOT 0x-hex).
+     * Consumers decode per-collection (Mibera codex) or ignore it entirely (the
+     * freeside-characters bot reads NFT metadata for traits, not this field).
+     *
+     * Was `^0x[0-9a-f]+$` — relaxed 2026-05-29 after the first live GeneralMints
+     * emit was rejected `payload-schema-invalid`: the hex assumption never matched
+     * the real on-chain string, and the byte-parity test used a fake `0x…` fixture
+     * that masked it. Treated as an opaque string; length-bounded for DoS safety.
      */
     encoded_traits: S.optional<S.filter<S.Schema<string, string, never>>>;
 }>;
