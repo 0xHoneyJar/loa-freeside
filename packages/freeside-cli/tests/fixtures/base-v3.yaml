@@ -1,0 +1,81 @@
+# Reference V3-compliant beacon — fixture for ADR-007 §D-4 + Appendix A tests.
+# Models inventory-api as a born-V3-compliant building.
+#
+# NOTE: V3 is its OWN shape, NOT a structural superset of V2 (ADR-008 §D-11).
+# schema_version: "3" is the building-identity beacon; "2" is the MCP-tenant
+# self-declaration. V3 omits V2's `payment`/`docs` fields and requires
+# top-level `slug` + `publisher` + identity (is/is_not/cycle_state).
+
+schema_version: "3"
+slug: "inventory-api"
+publisher: "0xHoneyJar"
+
+mcp:
+  shape: data
+  paths:
+    - remote-http
+  remote:
+    transport: streamable-http
+    endpoint: ${MCP_REMOTE_ENDPOINT}
+  auth:
+    kind: api-key
+    header: X-MCP-Key
+    credentials_ref:
+      type: railway-secret
+      key: MCP_INVENTORY_UPSTREAM_KEY
+  capabilities:
+    - tools
+  tools:
+    - list_holder_inventory
+    - get_token_balance
+    - resolve_collection_metadata
+  source_of_truth:
+    type: database
+  pricing:
+    model: free
+    description: First-party tenant — free during initial rollout
+  publisher: "0xHoneyJar"
+
+# ─── V3 boundary-declaration fields (per ADR-007 §D-4 + Appendix A.1) ───
+
+is:
+  one_liner: "Read-side inventory aggregator for ERC721 + ERC1155 holdings across registered chains"
+  scope:
+    - "Resolve holder inventory for a given wallet across multiple chains"
+    - "Aggregate ERC721 + ERC1155 balances with collection metadata"
+    - "Surface candy/drug/badge balances via stable view contracts"
+
+is_not:
+  - "Does NOT manage minting, burning, or transfer initiation"
+  - "Does NOT cache pricing data (those live in freeside-mint/freeside-storage)"
+  - "Will NOT proxy chain RPC calls — uses freeside-sonar for indexed reads"
+
+composes_with:
+  freeside-sonar:
+    role: "Indexed read source for ERC1155 holder balances + 721 ownership"
+    tag: "SonarPort@2.1.0+a3f2c891d4e8b7c2"
+    required: true
+  freeside-storage:
+    role: "Collection metadata resolution (image URLs, traits, descriptions)"
+    tag: "StoragePort@1.3.0+b8e4f7d2c1a9f3e5"
+    required: false
+
+acvp_invariants:
+  - id: hash_chain
+    scope: "All inventory snapshots emit a hash-linked event chain per holder"
+    proof_artifact: "tests/acvp/hash_chain.test.ts"
+  - id: idempotency
+    scope: "Inventory queries with identical inputs return byte-identical responses within a block boundary"
+    proof_artifact: "tests/acvp/idempotency.test.ts"
+
+sealed_schemas:
+  - path: "packages/protocol/inventory-snapshot.schema.json"
+    hash: "a3f2c891d4e8b7c2f1d5e9b8c7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e2d1c0b9a8"
+    consumers:
+      - "freeside-mint"
+      - "mibera-honeyroad"
+
+cycle_state:
+  status: candidate
+  since: "2026-05-18"
+  next_review: "2026-08-18"

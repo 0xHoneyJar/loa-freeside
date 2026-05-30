@@ -19,12 +19,18 @@ const usage = `freeside-cli — ecosystem CLI for freeside-* module network
 Usage:
   freeside-cli list                  Show registered modules with one-liners
   freeside-cli inspect <slug>        Show beacon for a specific module
-  freeside-cli doctor                Audit all modules against BeaconV3 schema
+  freeside-cli doctor [--remote] [--acvp] [--baseline <reg>] [--registry <reg>]
+                                     Audit all modules against BeaconV3 + ACVP bindings
 
 Reference: decisions/007-loa-freeside-absorption.md §D-6
 `;
 
-const main = (): number => {
+const flagValue = (flags: string[], name: string): string | undefined => {
+  const i = flags.indexOf(name);
+  return i >= 0 ? flags[i + 1] : undefined;
+};
+
+const main = async (): Promise<number> => {
   const args = process.argv.slice(2);
   const verb = args[0];
 
@@ -51,7 +57,12 @@ const main = (): number => {
       }
     }
     case "doctor": {
-      const report = doctor();
+      const flags = args.slice(1);
+      const report = await doctor({
+        remote: flags.includes("--remote"),
+        baselineRegistryPath: flagValue(flags, "--baseline"),
+        registryPath: flagValue(flags, "--registry"),
+      });
       console.log(JSON.stringify(report, null, 2));
       // Exit non-zero if any errors found
       return report.summary.error > 0 ? 1 : 0;
@@ -70,4 +81,4 @@ const main = (): number => {
   }
 };
 
-process.exit(main());
+process.exit(await main());
