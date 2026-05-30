@@ -23,7 +23,9 @@
   },
   "dependencies": {
     "@freeside/freeside-registry": "file:../freeside-registry",
-    "@freeside/beacon-schema": "file:../beacon-schema"
+    "@freeside/beacon-schema": "file:../beacon-schema",
+    "@noble/hashes": "^1.6.0",
+    "canonicalize": "^2.0.0"
   },
   "devDependencies": {
     "tsx": "^4.20.0",
