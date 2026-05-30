@@ -340,3 +340,66 @@ test("V3 composes_with still accepts canonical -api slug (sonar-api)", () => {
     );
   }
 });
+
+// ─── AcvpInvariant.status + runtime_class (ACVP-OD · sprint-400 T1) ─────────
+// SDD §6: status gates the aspirational-allowlist escape hatch; runtime_class
+// disambiguates audit_replay (envelope vs storage). Both additive + optional.
+
+test("V3 acvp_invariant.status defaults to 'active' when omitted (additive bump)", () => {
+  const result = Effect.runSyncExit(
+    decodeBeaconV3(fix("freeside-inventory-v3.yaml")),
+  );
+  if (result._tag === "Failure") {
+    assert.fail(`expected success, got: ${JSON.stringify(result.cause)}`);
+  }
+  const invs = result.value.acvp_invariants ?? [];
+  assert.ok(invs.length >= 1, "fixture should declare acvp_invariants");
+  for (const inv of invs) {
+    assert.equal(inv.status, "active", "missing status must default to 'active'");
+  }
+});
+
+test("V3 acvp_invariant.status accepts 'aspirational'", () => {
+  const beacon = fix("freeside-inventory-v3.yaml");
+  beacon.acvp_invariants[0].status = "aspirational";
+  const result = Effect.runSyncExit(decodeBeaconV3(beacon));
+  if (result._tag === "Failure") {
+    assert.fail(
+      `expected aspirational to decode, got: ${JSON.stringify(result.cause)}`,
+    );
+  }
+  assert.equal(result.value.acvp_invariants?.[0].status, "aspirational");
+});
+
+test("V3 acvp_invariant.status rejects unknown literal", () => {
+  const beacon = fix("freeside-inventory-v3.yaml");
+  beacon.acvp_invariants[0].status = "provisional"; // not in {active, aspirational}
+  const result = Effect.runSyncExit(decodeBeaconV3(beacon));
+  assert.equal(result._tag, "Failure", "expected status enum rejection");
+});
+
+test("V3 acvp_invariant.runtime_class is optional and accepts the 3 literals", () => {
+  for (const rc of ["envelope", "storage", "construct-local"]) {
+    const beacon = fix("freeside-inventory-v3.yaml");
+    beacon.acvp_invariants[0].runtime_class = rc;
+    const result = Effect.runSyncExit(decodeBeaconV3(beacon));
+    if (result._tag === "Failure") {
+      assert.fail(
+        `expected runtime_class=${rc} to decode, got: ${JSON.stringify(result.cause)}`,
+      );
+    }
+    assert.equal(result.value.acvp_invariants?.[0].runtime_class, rc);
+  }
+  // omitted → still decodes (runtime_class undefined)
+  const omitted = Effect.runSyncExit(
+    decodeBeaconV3(fix("freeside-inventory-v3.yaml")),
+  );
+  assert.equal(omitted._tag, "Success");
+});
+
+test("V3 acvp_invariant.runtime_class rejects unknown literal", () => {
+  const beacon = fix("freeside-inventory-v3.yaml");
+  beacon.acvp_invariants[0].runtime_class = "db"; // not in enum
+  const result = Effect.runSyncExit(decodeBeaconV3(beacon));
+  assert.equal(result._tag, "Failure", "expected runtime_class enum rejection");
+});

@@ -193,6 +193,18 @@ const AcvpInvariant = Schema.Struct({
   private: Schema.optionalWith(Schema.Boolean, { default: () => false }).annotations({
     description: "If true, invariant omitted from public federation manifest (per D-8)",
   }),
+  status: Schema.optionalWith(Schema.Literal("active", "aspirational"), {
+    default: () => "active",
+  }).annotations({
+    description:
+      "active = backed by a passing proof + correct runtime binding; aspirational = declared-but-not-yet-backed (MUST appear dated in .freeside/acvp-aspirational-allowlist.yaml — the binding validator warns w/ countdown, errors at expiry). Default 'active' is load-bearing: a missing status means 'claims to be backed' (default-FAIL on a missing proof), never an aspirational free pass.",
+  }),
+  runtime_class: Schema.optional(
+    Schema.Literal("envelope", "storage", "construct-local"),
+  ).annotations({
+    description:
+      "Disambiguates the audit_replay binding (ACVP-OD): 'storage' = Postgres append-only (auth/identity); 'envelope' = events re-chain (sonar); 'construct-local' = no I/O. Optional; the binding validator's ID->class table is the default.",
+  }),
 });
 
 const AcvpInvariants = Schema.Array(AcvpInvariant).annotations({
