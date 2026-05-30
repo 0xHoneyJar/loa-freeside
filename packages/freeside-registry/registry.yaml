@@ -38,16 +38,25 @@ modules:
   activities-api:
     git_url: https://github.com/0xHoneyJar/activities-api.git
     beacon_url: https://activities.0xhoneyjar.xyz/.well-known/beacon.json
-    deployment_url: ~
+    deployment_url: https://activities-api-production.up.railway.app
     visibility: public
     owner: 0xHoneyJar
     added: "2026-05-18"
-    runtime_state: not-built
+    runtime_state: deployed
     notes: |
       Unified Activity supertype substrate (quest/mission/badge/raffle).
-      Shipped as npm library (648 tests per kickoff spec); no HTTP runtime
-      deployed. activities-{api,mcp,}-production.up.railway.app all 404 as
-      of 2026-05-25.
+      DEPLOYED 2026-05-30 (Lane A, cubquests-activities-extraction cycle):
+      Hyper read-plane runtime live at activities-api-production.up.railway.app
+      (/health 200, beacon serves 5 capabilities, read routes auth-gated via
+      identity-api HS256 Bearer — no-token + alg-confusion → 401, verified in
+      prod). Reads event_store/progress/reward tables in cubquest-db (migration
+      applied 2026-05-30, currently EMPTY — write path not wired). Custom domain
+      activities.0xhoneyjar.xyz queued behind DNS (beacon_url anticipates it,
+      mirrors identity-api). Beacon sealed_schemas still 64-zero placeholders
+      pending freeside-cli doctor (T-A6). WRITE PATH deferred behind G-4 parity
+      + GATE-SEC-1 + foundation-review write-path gates (beads cq.16/cq.19).
+      PRs: activities-api #21 (adapters) / #22 (atomicity) / #23 (runtime) +
+      feat/lane-a-readplane-secure (auth).
 
   identity-api:
     git_url: https://github.com/0xHoneyJar/identity-api.git
