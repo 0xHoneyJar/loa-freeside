@@ -11,3 +11,10 @@ export {
   type CompactModuleEntry,
   type FederationManifest,
 } from "./registry.js";
+
+export {
+  loadBeacon,
+  resolveFixturePath,
+  classifyBeacon,
+  type BeaconResolution,
+} from "./beacon-loader.js";
