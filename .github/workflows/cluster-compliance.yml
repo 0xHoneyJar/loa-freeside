@@ -288,6 +288,13 @@ jobs:
           node packages/freeside-cli/dist/bin/freeside-cli.js doctor --acvp > acvp-report.json 2> acvp.err
           doctor_exit=$?
           echo "doctor_exit=$doctor_exit" >> "$GITHUB_OUTPUT"
+          # FAGAN iter-2: guarantee a VALID JSON artifact even if doctor crashed —
+          # the report-only job stays green AND the crash is surfaced (not silent).
+          if ! jq -e . acvp-report.json >/dev/null 2>&1; then
+            jq -n --arg err "$(tail -c 2000 acvp.err 2>/dev/null)" --argjson ex "${doctor_exit:-1}" \
+              '{doctor_crashed: true, doctor_exit: $ex, summary: {ok:0, warn:0, error:1}, findings: [], stderr: $err}' \
+              > acvp-report.json
+          fi
           errors=$(jq '[.findings[] | select(.severity=="error")] | length' acvp-report.json 2>/dev/null || echo "?")
           warns=$(jq '[.findings[] | select(.severity=="warn")] | length' acvp-report.json 2>/dev/null || echo "?")
           echo "errors=$errors" >> "$GITHUB_OUTPUT"

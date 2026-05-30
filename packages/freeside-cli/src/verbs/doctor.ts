@@ -30,7 +30,6 @@ import {
   validateAcvpBindings,
   type BeaconV3,
   type AcvpAllowlistEntry,
-  type AcvpProofReceipt,
 } from "@freeside/beacon-schema";
 import { jcsCanonicalize, sha256Hex } from "../lib/jcs.js";
 
@@ -296,14 +295,6 @@ export function readAllowlist(allowlistPath: string): ReadonlyArray<AcvpAllowlis
   }
 }
 
-function readJsonIfPresent<T>(p: string): T | null {
-  try {
-    return existsSync(p) ? (JSON.parse(readFileSync(p, "utf-8")) as T) : null;
-  } catch {
-    return null;
-  }
-}
-
 export const doctor = async (opts: DoctorOptions = {}): Promise<DoctorReport> => {
   const now = opts.now ?? new Date();
   const registryPath = opts.registryPath;
@@ -318,15 +309,20 @@ export const doctor = async (opts: DoctorOptions = {}): Promise<DoctorReport> =>
   const push = (f: DoctorFinding) => findings.push(f);
 
   for (const [slug, entry] of Object.entries(registry.modules)) {
-    // 1. Resolve beacon (fixture-first; --remote out of scope this build, SC-6)
+    // 1. Resolve beacon. FAGAN iter-2 (gpt): --remote must NOT silently fall back
+    // to a fixture — a caller asking for live remote evidence gets beacon_unreachable
+    // (real fetch is SC-6, a follow-up), never fixture-substituted data.
+    if (opts.remote) {
+      push({
+        slug, check: "beacon_unreachable", severity: "warn",
+        message: `--remote fetch of ${entry.beacon_url} not implemented this build (SC-6); fixture substitution refused — omit --remote to audit the in-repo fixture`,
+      });
+      continue;
+    }
     if (!entry.beacon_fixture) {
       push({
-        slug,
-        check: opts.remote ? "beacon_unreachable" : "beacon_deferred",
-        severity: "warn",
-        message: opts.remote
-          ? `--remote fetch of ${entry.beacon_url} not implemented this build (SC-6); add a beacon_fixture to audit`
-          : `no beacon_fixture for '${slug}' — beacon audit deferred (add beacon_fixture, or --remote when fetch lands)`,
+        slug, check: "beacon_deferred", severity: "warn",
+        message: `no beacon_fixture for '${slug}' — beacon audit deferred (add beacon_fixture, or --remote when fetch lands)`,
       });
       continue;
     }
@@ -373,14 +369,19 @@ export const doctor = async (opts: DoctorOptions = {}): Promise<DoctorReport> =>
       for (const f of checkSealedSchemas(slug, beacon, resolveSchemaText)) push(f);
     }
 
-    // 6. ACVP binding sub-check (folds AcvpBindingFinding → DoctorFinding)
+    // 6. ACVP binding sub-check (folds AcvpBindingFinding → DoctorFinding).
+    // FAGAN iter-2 (critical): per-cell ACVP inputs (cluster.eventsPin, proof
+    // receipts) live in EACH building's OWN repo, which is NOT checked out
+    // cluster-side this build — we hold the registry + fixtures, not the cells.
+    // Reading them from the shared registry root would (a) read the REGISTRY
+    // package's own package.json as if it were a building's and (b) let one shared
+    // receipt file vouch for every slug. So they are null here: every declared
+    // binding is therefore un-backed (default-FAIL) or aspirational-allowlisted —
+    // the correct cluster-side posture. Per-cell resolution lands with the Tier-A
+    // receipts (T5a/T5b) once the cells are locally present.
     const moduleRoot = registryRoot ?? repoRoot;
-    const eventsPin = readJsonIfPresent<{ cluster?: { eventsPin?: { package: string; sha: string } } }>(
-      join(moduleRoot, "package.json"),
-    )?.cluster?.eventsPin ?? null;
-    const proofReceipts = readJsonIfPresent<AcvpProofReceipt[]>(
-      join(moduleRoot, "app", ".well-known", "acvp-proof-receipt.json"),
-    );
+    const eventsPin = null;
+    const proofReceipts = null;
     const acvp = validateAcvpBindings({
       slug, beacon, moduleRoot,
       fileExists: (rel) => safeResolve(moduleRoot, rel) !== null,

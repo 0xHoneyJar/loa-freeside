@@ -135,22 +135,23 @@ function rawProofFinding(inv: AcvpInvariantT, input: ValidateAcvpBindingsInput):
   if (receipt) {
     const head = input.buildingHeadSha;
     // FL-B0: head unknown → fresh-enough, do NOT downgrade
-    if (head == null) {
-      return {
-        severity: "ok",
-        message: `proof receipt present (${receipt.test_runner}); freshness unconfirmed (building HEAD unknown)`,
-      };
-    }
-    if (receipt.commit_sha === head) {
+    if (head != null && receipt.commit_sha === head) {
       return {
         severity: "ok",
         message: `proof receipt fresh (commit ${short(receipt.commit_sha)} == building HEAD)`,
       };
     }
-    // mismatch cannot be positively confirmed as a proof change cluster-side → no downgrade (FL-B0)
+    // FAGAN iter-2 (opus): a receipt that is NOT commit-bound to current code
+    // cannot be reported `ok`/bound — it degrades to `warn` (aspirational). This
+    // closes the gap FL-B0's no-downgrade rule left open: buildingHeadSha is null
+    // cluster-side, so every receipt would otherwise auto-pass UNVERIFIED — the
+    // exact silent aspiration this validator exists to forbid.
     return {
-      severity: "ok",
-      message: `proof receipt present; freshness unconfirmed (receipt ${short(receipt.commit_sha)} != HEAD ${short(head)})`,
+      severity: "warn",
+      message:
+        head == null
+          ? `proof receipt present (${receipt.test_runner}) but freshness UNCONFIRMABLE (building HEAD unknown) — not commit-bound, aspirational`
+          : `proof receipt present but NOT commit-bound (receipt ${short(receipt.commit_sha)} != HEAD ${short(head)}) — aspirational`,
     };
   }
   // FL-HC6: cluster-side cannot fileExists an external repo → rely on receipt;
@@ -215,8 +216,10 @@ function short(sha: string): string {
 // aspirational pass via a lexicographic comparison that silently never trips.
 function isExpired(expires: string, now: Date): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(expires)) return true;
-  const t = Date.parse(expires + "T00:00:00Z");
-  if (!Number.isFinite(t)) return true; // regex-shaped but not a real date (2026-99-99)
+  // Round-trip through UTC (FAGAN iter-2 gpt): reject impossible dates instead of
+  // letting JS normalize them into a later valid date (2026-13-01 → 2027-01-01).
+  const d = new Date(expires + "T00:00:00Z");
+  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== expires) return true;
   return now.toISOString().slice(0, 10) > expires;
 }
 
@@ -252,13 +255,14 @@ export const validateAcvpBindings = (input: ValidateAcvpBindingsInput): AcvpBind
         });
         continue;
       }
-      // pre-expiry: would-be errors become warn (countdown); ok stays ok
+      // pre-expiry: an explicitly-aspirational invariant is NEVER `bound` (FAGAN
+      // iter-2 gpt) — every finding surfaces as `warn` w/ countdown (contract
+      // → aspirational), signaling "promote status:active once truly backed".
       for (const r of raw) {
-        const sev: AcvpSeverity = r.severity === "error" ? "warn" : r.severity;
         findings.push({
           slug: input.slug, invariant_id: inv.id, binding: r.binding,
-          severity: sev, check: `acvp_${r.binding}:${inv.id}`,
-          message: r.severity === "error" ? `[aspirational until ${entry.expires}] ${r.message}` : r.message,
+          severity: "warn", check: `acvp_${r.binding}:${inv.id}`,
+          message: `[aspirational until ${entry.expires}] ${r.message}`,
           aspirational_until: entry.expires,
         });
       }

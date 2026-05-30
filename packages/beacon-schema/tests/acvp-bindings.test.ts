@@ -192,7 +192,7 @@ test("audit_replay, no pin, no runtime_class → runtime error (OD default), bro
   assert.ok(r.findings.some((f) => f.binding === "runtime" && f.severity === "error"));
 });
 
-test("proof receipt present, head unknown → ok (freshness unconfirmed), bound (FL-B0)", () => {
+test("proof receipt present, head UNKNOWN → warn (aspirational), NOT bound (FAGAN iter-2)", () => {
   const r = validateAcvpBindings(
     mkInput({
       invariants: [inv({ id: "monotonicity" })],
@@ -201,8 +201,11 @@ test("proof receipt present, head unknown → ok (freshness unconfirmed), bound 
       buildingHeadSha: null,
     }),
   );
-  assert.equal(r.contract_status, "bound");
-  assert.ok(r.findings.some((f) => /freshness unconfirmed/.test(f.message)));
+  // an un-commit-bound (unverifiable) receipt cannot yield `bound` — no silent aspiration
+  assert.equal(r.contract_status, "aspirational");
+  assert.ok(
+    r.findings.some((f) => f.severity === "warn" && /not commit-bound|UNCONFIRMABLE/.test(f.message)),
+  );
 });
 
 test("proof receipt present, head == commit_sha → fresh, ok", () => {

@@ -182,6 +182,14 @@ test("doctor() · --acvp (acvpOnly) skips cycle/compose/sealed; beacon-resolve +
   assert.ok(report.findings.some((f) => f.check === "beacon_valid"));
 });
 
+test("doctor() · --remote refuses fixture substitution → beacon_unreachable only (FAGAN iter-2)", async () => {
+  const report = await doctor({ registryPath: join(FIXTURES, "registry-fixture.yaml"), remote: true, now: NOW });
+  assert.ok(report.findings.length >= 1);
+  assert.ok(report.findings.every((f) => f.check === "beacon_unreachable"));
+  // the fixture was NOT read under --remote
+  assert.ok(!report.findings.some((f) => f.check === "beacon_valid" || f.check === "sealed_schema_hash_drift"));
+});
+
 test("doctor() · BeaconV2 module → beacon_legacy_v2 warn, NOT error (G-4)", async () => {
   const report = await doctor({ registryPath: join(FIXTURES, "registry-legacy-fixture.yaml"), now: NOW });
   assert.equal(report.modules_checked, 1);
