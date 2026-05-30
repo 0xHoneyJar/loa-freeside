@@ -58,11 +58,16 @@ jobs:
       # construct-freeside/skills/{auditing-cluster-cells,auditing-cell-capabilities}/resources/
       # (canonical homes; refresh via cluster-meta cycle when scripts evolve).
 
-      - name: Setup yq + jq + gh
+      - name: Setup yq (Go/mikefarah) + jq + gh
         run: |
-          # Standard runner already has gh + jq; yq via apt
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq yq || pip install yq
+          # The roster parse uses `yq -o=json` (mikefarah Go-yq syntax). apt's `yq`
+          # is unreliable and the old `|| pip install yq` fallback installs PYTHON-yq,
+          # which does NOT accept -o=json — the RED-CI bug (FL T7). Pin the mikefarah
+          # Go-yq binary explicitly so the JSON conversion is deterministic.
+          YQ_VERSION=v4.44.3
+          sudo wget -qO /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          sudo chmod +x /usr/local/bin/yq
+          yq --version
 
       - name: Parse cell roster from registry
         id: roster
@@ -143,14 +148,26 @@ jobs:
           echo "warn_count=${#WARN_CELLS[@]}" >> $GITHUB_OUTPUT
           echo "failed_cells=${FAILED_CELLS[*]}" >> $GITHUB_OUTPUT
 
-          # Aggregate JSON report
-          jq -s '{
-            audit_ts: now | strftime("%Y-%m-%dT%H:%M:%SZ"),
-            total: length,
-            failed: [.[] | select(.capabilities.overall == "FAIL" or .existence.cells[0].drift_findings != "clean") | .slug],
-            passed: [.[] | select(.capabilities.overall == "PASS" and .existence.cells[0].drift_findings == "clean") | .slug],
-            cells: .
-          }' audit-results/*.json > cluster-audit-report.json
+          # Aggregate JSON report. Guard the glob: an empty audit-results/ would
+          # otherwise pass the literal string `audit-results/*.json` to jq and crash
+          # the job (the RED-CI bug, FL T7). nullglob → an empty array, handled below.
+          shopt -s nullglob
+          audit_files=(audit-results/*.json)
+          if [ ${#audit_files[@]} -eq 0 ]; then
+            echo "::warning::no per-cell audit JSON produced — emitting empty aggregate"
+            jq -n '{
+              audit_ts: (now | strftime("%Y-%m-%dT%H:%M:%SZ")),
+              total: 0, failed: [], passed: [], cells: []
+            }' > cluster-audit-report.json
+          else
+            jq -s '{
+              audit_ts: now | strftime("%Y-%m-%dT%H:%M:%SZ"),
+              total: length,
+              failed: [.[] | select(.capabilities.overall == "FAIL" or .existence.cells[0].drift_findings != "clean") | .slug],
+              passed: [.[] | select(.capabilities.overall == "PASS" and .existence.cells[0].drift_findings == "clean") | .slug],
+              cells: .
+            }' "${audit_files[@]}" > cluster-audit-report.json
+          fi
 
           echo ""
           echo "═══ AGGREGATE ═══"
@@ -223,4 +240,103 @@ jobs:
         run: |
           echo "::error::Cluster compliance failed for: ${{ steps.audit.outputs.failed_cells }}"
           echo "::error::See workflow summary for details."
+
+  # ─── ACVP bindings — REPORT-ONLY (FL-B1 Phase 0) ──────────────────────────
+  # Runs the ACVP-binding validator (freeside-cli doctor) across the registry
+  # and posts findings to the job summary. It NEVER fails the PR at this phase.
+  # The gate flips to fail-block only via the separate named PR
+  # `chore(network): acvp-bindings → fail-block` once Tier-A receipts + the dated
+  # allowlist are in place (SDD §8 / sprint-400 T8). Wired by sprint-400 T7.
+  acvp-bindings:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout loa-freeside
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm + Node
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install + build the CLI chain (standalone packages, no workspace)
+        run: |
+          set -e
+          # packages/* are standalone (file: sibling deps, no root workspace
+          # lockfile). Install + build in dependency order so each file: sibling
+          # is built BEFORE its consumer installs — the consumer's install then
+          # copies the freshly-built sibling dist (beacon-schema → registry → cli).
+          for pkg in beacon-schema freeside-registry freeside-cli; do
+            echo "──────── packages/$pkg ────────"
+            pnpm -C "packages/$pkg" install --no-frozen-lockfile
+            pnpm -C "packages/$pkg" build
+          done
+
+      - name: Run ACVP-binding audit (report-only)
+        id: acvp
+        run: |
+          set +e
+          node packages/freeside-cli/dist/bin/freeside-cli.js doctor --acvp > acvp-report.json 2> acvp.err
+          doctor_exit=$?
+          echo "doctor_exit=$doctor_exit" >> "$GITHUB_OUTPUT"
+          errors=$(jq '[.findings[] | select(.severity=="error")] | length' acvp-report.json 2>/dev/null || echo "?")
+          warns=$(jq '[.findings[] | select(.severity=="warn")] | length' acvp-report.json 2>/dev/null || echo "?")
+          echo "errors=$errors" >> "$GITHUB_OUTPUT"
+          echo "warns=$warns" >> "$GITHUB_OUTPUT"
+          # report-only: this step always succeeds regardless of doctor's exit code
+          exit 0
+
+      - name: Render ACVP summary
+        if: always()
+        run: |
+          {
+            echo "## ACVP bindings — report-only (FL-B1 Phase 0) — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo ""
+            echo "**errors:** ${{ steps.acvp.outputs.errors }} · **warns:** ${{ steps.acvp.outputs.warns }} · doctor exit: ${{ steps.acvp.outputs.doctor_exit }}"
+            echo ""
+            echo "> This job does NOT block the PR. The fail-block flip is a separate named"
+            echo "> PR (\`chore(network): acvp-bindings → fail-block\`) once Tier-A receipts +"
+            echo "> the dated allowlist land (sprint-400 T8)."
+            echo ""
+            if [ -f acvp-report.json ]; then
+              echo '```json'
+              jq '{summary, acvp_and_seal: [.findings[] | select((.check|startswith("acvp_")) or (.check|startswith("sealed_")) or (.check=="compose_unknown_sibling"))]}' acvp-report.json 2>/dev/null | head -200
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload ACVP report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acvp-bindings-report
+          path: acvp-report.json
+          retention-days: 30
+
+      - name: Open issue on nightly ACVP drift
+        if: github.event_name == 'schedule' && steps.acvp.outputs.errors != '0' && steps.acvp.outputs.errors != '?'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "ACVP binding drift — $(date -u +%Y-%m-%d)" \
+            --label "cluster-compliance,acvp,drift" \
+            --body "$(cat <<EOF
+          ## ACVP binding drift detected by nightly cluster-compliance
+
+          **error findings**: ${{ steps.acvp.outputs.errors }} · **warn findings**: ${{ steps.acvp.outputs.warns }}
+
+          Run \`freeside-cli doctor --acvp\` locally, or see the \`acvp-bindings-report\`
+          artifact on the workflow run [here](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}).
+
+          Un-backed \`acvp_invariant\`s must be backed by a proof receipt OR land a dated entry
+          in \`.freeside/acvp-aspirational-allowlist.yaml\` (default-FAIL, SDD §6).
+
+          🤖 Auto-opened by \`.github/workflows/cluster-compliance.yml\` (acvp-bindings job, report-only)
+          EOF
+          )"
           exit 1
