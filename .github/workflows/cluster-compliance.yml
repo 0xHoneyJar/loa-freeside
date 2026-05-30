@@ -67,7 +67,11 @@ jobs:
           YQ_VERSION=v4.44.3
           sudo wget -qO /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
           sudo chmod +x /usr/local/bin/yq
-          yq --version
+          # Assert the pinned mikefarah Go-yq is what actually landed — catches a
+          # wrong/corrupted binary (FAGAN). FOLLOW-UP for full supply-chain hardening:
+          # pin the published SHA256 of yq_linux_amd64 ${YQ_VERSION} and verify it here.
+          yq --version | grep -q "mikefarah" || { echo "::error::yq is not the mikefarah Go build"; exit 1; }
+          yq --version | grep -q "${YQ_VERSION#v}" || { echo "::error::yq version mismatch (expected ${YQ_VERSION})"; exit 1; }
 
       - name: Parse cell roster from registry
         id: roster
@@ -240,6 +244,7 @@ jobs:
         run: |
           echo "::error::Cluster compliance failed for: ${{ steps.audit.outputs.failed_cells }}"
           echo "::error::See workflow summary for details."
+          exit 1
 
   # ─── ACVP bindings — REPORT-ONLY (FL-B1 Phase 0) ──────────────────────────
   # Runs the ACVP-binding validator (freeside-cli doctor) across the registry
@@ -322,6 +327,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Ensure labels exist (idempotent) so issue creation never fails on
+          # missing repo metadata unrelated to ACVP findings (FAGAN).
+          for L in cluster-compliance acvp drift; do gh label create "$L" --force >/dev/null 2>&1 || true; done
           gh issue create \
             --title "ACVP binding drift — $(date -u +%Y-%m-%d)" \
             --label "cluster-compliance,acvp,drift" \
@@ -339,4 +347,3 @@ jobs:
           🤖 Auto-opened by \`.github/workflows/cluster-compliance.yml\` (acvp-bindings job, report-only)
           EOF
           )"
-          exit 1

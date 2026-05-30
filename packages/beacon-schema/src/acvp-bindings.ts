@@ -122,8 +122,15 @@ function rawProofFinding(inv: AcvpInvariantT, input: ValidateAcvpBindingsInput):
       message: `proof_artifact '${inv.proof_artifact}' is unsafe (absolute path or '..' traversal)`,
     };
   }
+  // Receipt MUST be slug-scoped (FAGAN gpt+opus): invariant ids are a fixed enum
+  // and proof_artifact paths follow tests/acvp/<id>.test.ts, so building A and B
+  // routinely share both — a receipt is only valid for the building it was issued
+  // for, else a cross-slug receipt turns an un-backed (default-FAIL) invariant green.
   const receipt = (input.proofReceipts ?? []).find(
-    (r) => r.invariant_id === inv.id && r.proof_artifact === inv.proof_artifact,
+    (r) =>
+      r.slug === input.slug &&
+      r.invariant_id === inv.id &&
+      r.proof_artifact === inv.proof_artifact,
   );
   if (receipt) {
     const head = input.buildingHeadSha;
@@ -202,8 +209,14 @@ function short(sha: string): string {
   return sha.length > 8 ? sha.slice(0, 8) : sha;
 }
 
-// entry.expires is YYYY-MM-DD; valid through that day inclusive (UTC date compare)
+// entry.expires is YYYY-MM-DD; valid through that day inclusive (UTC date compare).
+// FAIL CLOSED (FAGAN gpt+composer): a malformed/empty `expires` is treated as
+// EXPIRED so an allowlist typo (e.g. "2026-99-99") can never grant a permanent
+// aspirational pass via a lexicographic comparison that silently never trips.
 function isExpired(expires: string, now: Date): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(expires)) return true;
+  const t = Date.parse(expires + "T00:00:00Z");
+  if (!Number.isFinite(t)) return true; // regex-shaped but not a real date (2026-99-99)
   return now.toISOString().slice(0, 10) > expires;
 }
 

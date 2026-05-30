@@ -60,6 +60,7 @@ const main = async (): Promise<number> => {
       const flags = args.slice(1);
       const report = await doctor({
         remote: flags.includes("--remote"),
+        acvpOnly: flags.includes("--acvp"),
         baselineRegistryPath: flagValue(flags, "--baseline"),
         registryPath: flagValue(flags, "--registry"),
       });

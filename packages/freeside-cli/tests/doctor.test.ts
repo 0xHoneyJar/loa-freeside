@@ -172,6 +172,16 @@ test("doctor() · deterministic modulo checked_at (G-7)", async () => {
   assert.deepEqual(strip(a), strip(b));
 });
 
+test("doctor() · --acvp (acvpOnly) skips cycle/compose/sealed; beacon-resolve + ACVP only (FAGAN)", async () => {
+  const report = await doctor({ registryPath: join(FIXTURES, "registry-fixture.yaml"), acvpOnly: true, now: NOW });
+  // non-ACVP checks must be skipped — bad-api's sealed_schema_hash_drift in particular
+  assert.ok(!report.findings.some((f) => f.check === "sealed_schema_hash_drift"));
+  assert.ok(!report.findings.some((f) => f.check === "tag_hash_unverified"));
+  assert.ok(!report.findings.some((f) => f.check.startsWith("cycle_")));
+  // beacon resolution still happens (ACVP needs a decoded beacon)
+  assert.ok(report.findings.some((f) => f.check === "beacon_valid"));
+});
+
 test("doctor() · BeaconV2 module → beacon_legacy_v2 warn, NOT error (G-4)", async () => {
   const report = await doctor({ registryPath: join(FIXTURES, "registry-legacy-fixture.yaml"), now: NOW });
   assert.equal(report.modules_checked, 1);

@@ -82,6 +82,9 @@ export interface DoctorOptions {
   readonly allowlistPath?: string;
   /** injected for determinism (FL-D0 / G-7) */
   readonly now?: Date;
+  /** --acvp: run ONLY beacon-resolve + the ACVP binding sub-check; skip
+   *  cycle/compose/sealed so the report-only ACVP CI reflects binding scope (FAGAN). */
+  readonly acvpOnly?: boolean;
 }
 
 const ALL_ZEROS_64 = "0".repeat(64);
@@ -91,6 +94,25 @@ const SHA256_RE = /^[a-f0-9]{64}$/;
 function relPathSafe(p: string): boolean {
   if (!p || p.startsWith("/")) return false;
   return !p.split(/[\\/]/).some((seg) => seg === "..");
+}
+
+/**
+ * Resolve a root-relative path with symlink-escape defense (FAGAN gpt+opus):
+ * reject `..`/absolute, then realpath BOTH root and candidate and require
+ * containment — so a symlink inside the module cannot make an OUTSIDE file
+ * count as a valid proof/schema artifact. Returns the realpath, or null when
+ * the path is unsafe, escapes the root, or does not exist.
+ */
+function safeResolve(root: string, rel: string): string | null {
+  if (!relPathSafe(rel)) return null;
+  try {
+    const realRoot = realpathSync(root);
+    const real = realpathSync(join(realRoot, rel));
+    if (real !== realRoot && !real.startsWith(realRoot + sep)) return null;
+    return real;
+  } catch {
+    return null; // unresolvable / does not exist
+  }
 }
 
 // ── pure helper: cycle_state freshness (SDD §3.3) ───────────────────────────
@@ -337,15 +359,19 @@ export const doctor = async (opts: DoctorOptions = {}): Promise<DoctorReport> =>
     const beacon = v.beacon;
     push({ slug, check: "beacon_valid", severity: "ok", message: "beacon validates against BeaconV3" });
 
-    // 3-5. cycle_state, composes_with, sealed_schemas (pure helpers)
-    for (const f of checkCycleState(slug, beacon, now)) push(f);
-    for (const f of checkComposesWith(slug, beacon, registry)) push(f);
-    const resolveSchemaText = (relPath: string): string | null => {
-      if (!registryRoot || !relPathSafe(relPath)) return null;
-      const p = join(registryRoot, relPath);
-      return existsSync(p) ? readFileSync(p, "utf-8") : null;
-    };
-    for (const f of checkSealedSchemas(slug, beacon, resolveSchemaText)) push(f);
+    // 3-5. cycle_state, composes_with, sealed_schemas (pure helpers).
+    // Skipped under --acvp (acvpOnly) so the report-only ACVP CI surfaces
+    // binding findings only, not unrelated cycle/compose/sealed errors (FAGAN).
+    if (!opts.acvpOnly) {
+      for (const f of checkCycleState(slug, beacon, now)) push(f);
+      for (const f of checkComposesWith(slug, beacon, registry)) push(f);
+      const resolveSchemaText = (relPath: string): string | null => {
+        if (!registryRoot) return null;
+        const p = safeResolve(registryRoot, relPath);
+        return p ? readFileSync(p, "utf-8") : null;
+      };
+      for (const f of checkSealedSchemas(slug, beacon, resolveSchemaText)) push(f);
+    }
 
     // 6. ACVP binding sub-check (folds AcvpBindingFinding → DoctorFinding)
     const moduleRoot = registryRoot ?? repoRoot;
@@ -357,7 +383,7 @@ export const doctor = async (opts: DoctorOptions = {}): Promise<DoctorReport> =>
     );
     const acvp = validateAcvpBindings({
       slug, beacon, moduleRoot,
-      fileExists: (rel) => relPathSafe(rel) && existsSync(join(moduleRoot, rel)),
+      fileExists: (rel) => safeResolve(moduleRoot, rel) !== null,
       eventsPin,
       resolvePinSchemaVersion,
       proofReceipts,

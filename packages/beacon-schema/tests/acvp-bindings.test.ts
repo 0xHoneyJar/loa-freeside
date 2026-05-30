@@ -250,3 +250,31 @@ test("no acvp_invariants → empty findings, bound (vacuously)", () => {
   assert.equal(r.contract_status, "bound");
   assert.equal(r.findings.length, 0);
 });
+
+// ─── FAGAN fixes ────────────────────────────────────────────────────────────
+
+test("proof receipt for a DIFFERENT slug does NOT satisfy this building (no confused-deputy)", () => {
+  const r = validateAcvpBindings(
+    mkInput({
+      invariants: [inv({ id: "monotonicity" })],
+      fileExists: () => false,
+      // receipt issued for OTHER-api — same invariant id + proof path, wrong slug
+      proofReceipts: [receipt({ invariant_id: "monotonicity", slug: "OTHER-api" })],
+      buildingHeadSha: null,
+    }),
+  );
+  assert.equal(r.contract_status, "broken");
+  assert.ok(r.findings.some((f) => f.binding === "proof" && f.severity === "error"));
+});
+
+test("aspirational + allowlisted with MALFORMED expires → fail-closed (error, treated as expired)", () => {
+  const r = validateAcvpBindings(
+    mkInput({
+      invariants: [inv({ id: "event_completeness", status: "aspirational" })],
+      fileExists: () => false,
+      aspirationalAllowlist: [{ slug: "test-api", id: "event_completeness", expires: "2026-99-99" }],
+    }),
+  );
+  assert.equal(r.contract_status, "broken");
+  assert.ok(r.findings.some((f) => /EXPIRED/.test(f.message)));
+});
