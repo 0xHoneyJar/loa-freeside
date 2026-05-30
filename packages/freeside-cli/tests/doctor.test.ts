@@ -172,6 +172,17 @@ test("doctor() · deterministic modulo checked_at (G-7)", async () => {
   assert.deepEqual(strip(a), strip(b));
 });
 
+test("doctor() · BeaconV2 module → beacon_legacy_v2 warn, NOT error (G-4)", async () => {
+  const report = await doctor({ registryPath: join(FIXTURES, "registry-legacy-fixture.yaml"), now: NOW });
+  assert.equal(report.modules_checked, 1);
+  assert.ok(
+    report.findings.some((f) => f.slug === "legacy-api" && f.check === "beacon_legacy_v2" && f.severity === "warn"),
+    "expected a beacon_legacy_v2 warn for the V2 module",
+  );
+  // V2 detection is a migration warn (ADR-007 A.4), never a hard error
+  assert.ok(!report.findings.some((f) => f.slug === "legacy-api" && f.severity === "error"));
+});
+
 // ─── built CLI smoke (G-6 exit code) ────────────────────────────────────────
 
 test("CLI · doctor --registry <bad> → exit 1 (sealed_schema_hash_drift)", () => {
