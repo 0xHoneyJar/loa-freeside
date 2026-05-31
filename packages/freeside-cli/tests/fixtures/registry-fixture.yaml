@@ -1,0 +1,19 @@
+# Test registry — doctor() integration (sprint-400 T4). Modules point at in-repo
+# beacon fixtures via beacon_fixture (OD-1 fixture-first). good-api is clean;
+# bad-api carries an all-zeros sealed hash → sealed_schema_hash_drift (exit 1).
+version: 1
+modules:
+  good-api:
+    git_url: https://github.com/0xHoneyJar/good-api.git
+    beacon_url: https://good.0xhoneyjar.xyz/.well-known/beacon.json
+    beacon_fixture: beacon-good.yaml
+    visibility: public
+    owner: 0xHoneyJar
+    added: "2026-05-30"
+  bad-api:
+    git_url: https://github.com/0xHoneyJar/bad-api.git
+    beacon_url: https://bad.0xhoneyjar.xyz/.well-known/beacon.json
+    beacon_fixture: beacon-bad-hash.yaml
+    visibility: public
+    owner: 0xHoneyJar
+    added: "2026-05-30"

@@ -29,6 +29,24 @@ const ModuleEntry = Schema.Struct({
   visibility: VisibilityLevel,
   owner: Schema.String,
   added: Schema.String, // ISO-8601 date
+  // ── OD-1 (sprint-400 T3): fixture-first beacon resolution + operational metadata ──
+  // beacon_fixture re-adds the field the shipped dist/beacon-loader.js already
+  // reads (entry.beacon_fixture) but the src schema had dropped. The other three
+  // are carried by registry.yaml today and were silently stripped on decode.
+  beacon_fixture: Schema.optional(Schema.String).annotations({
+    description:
+      "OD-1: in-repo fixture path (registry-root-relative) resolved by beacon-loader; preferred over remote beacon_url (which 404s for un-deployed cells)",
+  }),
+  deployment_url: Schema.optional(Schema.NullOr(Schema.String)).annotations({
+    description: "Live Railway URL when deployed; null (~) when not-built",
+  }),
+  runtime_state: Schema.optional(
+    Schema.Literal("deployed", "not-built", "scaffolded"),
+  ).annotations({
+    description:
+      "Honest runtime maturity: deployed (HTTP live) | not-built (npm lib only) | scaffolded",
+  }),
+  notes: Schema.optional(Schema.String),
 });
 
 const Registry = Schema.Struct({

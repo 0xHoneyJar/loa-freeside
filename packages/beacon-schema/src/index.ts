@@ -30,6 +30,18 @@ export {
   CredentialsRefType,
 } from "./auth.js";
 
+export {
+  validateAcvpBindings,
+  ACVP_L1_SCHEMA_VERSION,
+  type AcvpBindingType,
+  type AcvpSeverity,
+  type AcvpProofReceipt,
+  type AcvpAllowlistEntry,
+  type AcvpBindingFinding,
+  type AcvpBindingReport,
+  type ValidateAcvpBindingsInput,
+} from "./acvp-bindings.js";
+
 // JSON Schema exports for tooling (mirrors gateway's JSONSchema.make pattern at app.ts:208-210)
 import { JSONSchema } from "effect";
 import { BeaconV2Schema as _BeaconV2 } from "./beacon-v2.js";
