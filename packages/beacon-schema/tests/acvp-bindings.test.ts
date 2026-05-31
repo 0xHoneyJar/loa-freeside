@@ -222,6 +222,117 @@ test("proof receipt present, head == commit_sha → fresh, ok", () => {
   assert.ok(r.findings.some((f) => /fresh/.test(f.message)));
 });
 
+// ─── FL-B0 restored: checkReceiptFreshness resolver (sprint-400 step 3) ──────
+
+test("receipt + checkReceiptFreshness 'fresh' (proof unchanged since receipt commit) → ok, bound — committed receipt resolves green (FL-B0)", () => {
+  const r = validateAcvpBindings(
+    mkInput({
+      invariants: [inv({ id: "monotonicity" })],
+      fileExists: () => false,
+      // committed receipt: HEAD has advanced PAST the recorded commit_sha
+      proofReceipts: [receipt({ invariant_id: "monotonicity", commit_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" })],
+      buildingHeadSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      checkReceiptFreshness: () => "fresh", // CLI git-diff: proof_artifact unchanged since receipt commit
+    }),
+  );
+  assert.equal(r.contract_status, "bound");
+  assert.equal(r.summary.error, 0);
+  assert.equal(r.summary.warn, 0);
+  assert.ok(r.findings.some((f) => f.severity === "ok" && /commit-bound/.test(f.message)));
+});
+
+test("receipt + checkReceiptFreshness 'stale' (proof changed since receipt commit) → warn, aspirational", () => {
+  const r = validateAcvpBindings(
+    mkInput({
+      invariants: [inv({ id: "monotonicity" })],
+      fileExists: () => false,
+      proofReceipts: [receipt({ invariant_id: "monotonicity", commit_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" })],
+      buildingHeadSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      checkReceiptFreshness: () => "stale",
+    }),
+  );
+  assert.equal(r.contract_status, "aspirational");
+  assert.equal(r.summary.error, 0);
+  assert.ok(r.findings.some((f) => f.severity === "warn" && /STALE/.test(f.message)));
+});
+
+test("checkReceiptFreshness 'fresh' is IGNORED when buildingHeadSha is null → warn, NOT bound (no pin, no auto-pass — FAGAN composer)", () => {
+  let consulted = false;
+  const r = validateAcvpBindings(
+    mkInput({
+      invariants: [inv({ id: "monotonicity" })],
+      fileExists: () => false,
+      proofReceipts: [receipt({ invariant_id: "monotonicity" })],
+      buildingHeadSha: null, // no audited pin → resolver must not be honored
+      checkReceiptFreshness: () => {
+        consulted = true;
+        return "fresh";
+      },
+    }),
+  );
+  assert.equal(r.contract_status, "aspirational"); // NOT bound
+  assert.equal(consulted, false); // resolver never consulted without a pin
+  assert.ok(r.findings.some((f) => f.severity === "warn" && /UNCONFIRMABLE|not commit-bound/.test(f.message)));
+});
+
+test("receipt + checkReceiptFreshness 'unknown' WITH a non-null head → resolver consulted, falls through to FAGAN guard (warn) [BR-1]", () => {
+  // BR-1 (bridgebuilder): the null-head test below exercises the head==null
+  // guard, NOT the unknown-verdict fall-through. This covers the real path —
+  // non-null head (≠ receipt commit) + resolver returns "unknown" → the
+  // resolver IS consulted, then falls through to the FAGAN not-commit-bound warn.
+  let consulted = false;
+  const r = validateAcvpBindings(
+    mkInput({
+      invariants: [inv({ id: "monotonicity" })],
+      fileExists: () => false,
+      proofReceipts: [receipt({ invariant_id: "monotonicity", commit_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" })],
+      buildingHeadSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", // non-null, ≠ commit_sha
+      checkReceiptFreshness: () => {
+        consulted = true;
+        return "unknown";
+      },
+    }),
+  );
+  assert.equal(consulted, true); // resolver consulted (non-null head)
+  assert.equal(r.contract_status, "aspirational");
+  assert.equal(r.summary.error, 0);
+  assert.ok(r.findings.some((f) => f.severity === "warn" && /not commit-bound|UNCONFIRMABLE/i.test(f.message)));
+});
+
+test("receipt + checkReceiptFreshness 'unknown' → falls back to FAGAN head guard (warn, NOT auto-pass)", () => {
+  const r = validateAcvpBindings(
+    mkInput({
+      invariants: [inv({ id: "monotonicity" })],
+      fileExists: () => false,
+      proofReceipts: [receipt({ invariant_id: "monotonicity" })],
+      buildingHeadSha: null, // unknown → FAGAN guard
+      checkReceiptFreshness: () => "unknown",
+    }),
+  );
+  assert.equal(r.contract_status, "aspirational");
+  assert.equal(r.summary.error, 0);
+  assert.ok(r.findings.some((f) => f.severity === "warn" && /UNCONFIRMABLE|not commit-bound/.test(f.message)));
+});
+
+test("exact-HEAD match short-circuits BEFORE the freshness resolver (resolver not consulted)", () => {
+  const sha = "cafebabecafebabecafebabecafebabecafebabe";
+  let consulted = false;
+  const r = validateAcvpBindings(
+    mkInput({
+      invariants: [inv({ id: "monotonicity" })],
+      fileExists: () => false,
+      proofReceipts: [receipt({ invariant_id: "monotonicity", commit_sha: sha })],
+      buildingHeadSha: sha,
+      checkReceiptFreshness: () => {
+        consulted = true;
+        return "stale";
+      },
+    }),
+  );
+  assert.equal(r.contract_status, "bound"); // exact match wins
+  assert.equal(consulted, false); // resolver never called — fast path
+});
+
 test("hash_chain + eventsPin present but resolver → null → runtime warn (runtime_pin_unresolved), aspirational (FL-HC1)", () => {
   const r = validateAcvpBindings(
     mkInput({

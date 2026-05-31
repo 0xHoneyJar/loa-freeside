@@ -78,6 +78,26 @@ export const classifyBeacon = (parsed: unknown): BeaconResolution => {
 };
 
 /**
+ * Classify a beacon from its raw YAML/JSON TEXT — for committed-only audits where
+ * the caller has already fetched the authoritative bytes (e.g.
+ * `git show <sha>:packages/protocol/beacon.yaml`, so a working-tree mutation of
+ * the beacon cannot influence the verdict). Never throws: a parse failure is
+ * `{ kind: "error" }`. Reuses the same try-V3-then-V2 `classifyBeacon`.
+ */
+export const loadBeaconFromText = (text: string): BeaconResolution => {
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(text);
+  } catch (err) {
+    return {
+      kind: "error",
+      error: `beacon parse failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+  return classifyBeacon(parsed);
+};
+
+/**
  * Resolve one module's beacon. Prefers `beacon_fixture` (in-repo) over
  * `beacon_url` (remote, not fetched — SC-6). Never throws — every failure is a
  * `{ kind: "error" }` so callers (doctor / manifest builder) skip-not-crash.

@@ -79,6 +79,23 @@ export interface ValidateAcvpBindingsInput {
   readonly proofReceipts?: ReadonlyArray<AcvpProofReceipt> | null;
   /** null = unknown → freshness unconfirmed, do NOT downgrade (FL-B0) */
   readonly buildingHeadSha?: string | null;
+  /**
+   * injected (FL-B0 restored, sprint-400 step 3): for a MATCHED receipt whose
+   * commit_sha is not exactly buildingHeadSha, decide whether the receipt still
+   * attests the code at the audited HEAD:
+   *   "fresh"   = the attested state still holds at HEAD          → ok (bound)
+   *   "stale"   = the cell advanced/changed since the receipt     → warn (aspirational)
+   *   "unknown" = undeterminable (shallow clone / missing history) → fall back to
+   *               the strict head-equality guard (never auto-pass)
+   * Consulted ONLY when buildingHeadSha is non-null (an audited pin exists). A
+   * COMMITTED in-repo receipt advances HEAD past the commit_sha it recorded, so
+   * exact-HEAD match alone can never accept one — this resolver is what lets a
+   * real receipt resolve to `bound`. Absent the resolver the validator keeps the
+   * exact-HEAD behaviour, so all prior call-sites and tests are unchanged. HOW
+   * freshness is determined is the caller's concern (the CLI compares the cell
+   * tree at the receipt commit vs HEAD); the core only consumes the verdict.
+   */
+  readonly checkReceiptFreshness?: (receipt: AcvpProofReceipt) => "fresh" | "stale" | "unknown";
   readonly aspirationalAllowlist: ReadonlyArray<AcvpAllowlistEntry>;
   /** injected for deterministic expiry checks (FL-D0); defaults to new Date() */
   readonly now?: Date;
@@ -140,6 +157,28 @@ function rawProofFinding(inv: AcvpInvariantT, input: ValidateAcvpBindingsInput):
         severity: "ok",
         message: `proof receipt fresh (commit ${short(receipt.commit_sha)} == building HEAD)`,
       };
+    }
+    // FL-B0 (restored): consult the injected freshness resolver — but ONLY with
+    // an audited HEAD pin (FAGAN composer: a "fresh" verdict under a null head
+    // would yield `bound` with no commit binding, re-opening the null-head hole).
+    // The resolver's contract lives on ValidateAcvpBindingsInput.checkReceiptFreshness;
+    // "unknown" falls through to the strict guard below — only a positive "fresh"
+    // under a real pin yields ok.
+    if (head != null && input.checkReceiptFreshness) {
+      const verdict = input.checkReceiptFreshness(receipt);
+      if (verdict === "fresh") {
+        return {
+          severity: "ok",
+          message: `proof receipt commit-bound: '${inv.proof_artifact}' unchanged since receipt commit ${short(receipt.commit_sha)} (${receipt.test_runner})`,
+        };
+      }
+      if (verdict === "stale") {
+        return {
+          severity: "warn",
+          message: `proof receipt STALE: '${inv.proof_artifact}' changed since receipt commit ${short(receipt.commit_sha)} — re-run the proof (promote) or it stays aspirational`,
+        };
+      }
+      // "unknown" → undeterminable; fall through to the FAGAN head guard below.
     }
     // FAGAN iter-2 (opus): a receipt that is NOT commit-bound to current code
     // cannot be reported `ok`/bound — it degrades to `warn` (aspirational). This
