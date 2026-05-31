@@ -54,9 +54,10 @@ modules:
       activities.0xhoneyjar.xyz queued behind DNS (beacon_url anticipates it,
       mirrors identity-api). Beacon sealed_schemas still 64-zero placeholders
       pending freeside-cli doctor (T-A6). WRITE PATH deferred behind G-4 parity
-      + GATE-SEC-1 + foundation-review write-path gates (beads cq.16/cq.19).
-      PRs: activities-api #21 (adapters) / #22 (atomicity) / #23 (runtime) +
-      feat/lane-a-readplane-secure (auth).
+      + GATE-SEC-1 + foundation-review write-path gates (beads b54u.19
+      GATE-WRITE-FLIP + b54u.23 GATE-SEC-1).
+      PR: activities-api #25 (Lane A read-plane LIVE + write path built behind
+      GATE-SEC-1, merged 269ede35; PRs #21/#22/#23 superseded by the squash).
 
   identity-api:
     git_url: https://github.com/0xHoneyJar/identity-api.git
