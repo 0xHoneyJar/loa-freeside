@@ -23,6 +23,7 @@ import { execFileSync } from "node:child_process";
 import {
   loadRegistry,
   loadBeacon,
+  loadBeaconFromText,
   type Registry,
 } from "@freeside/freeside-registry";
 import {
@@ -30,6 +31,7 @@ import {
   validateAcvpBindings,
   type BeaconV3,
   type AcvpAllowlistEntry,
+  type AcvpProofReceipt,
 } from "@freeside/beacon-schema";
 import { jcsCanonicalize, sha256Hex } from "../lib/jcs.js";
 
@@ -84,6 +86,14 @@ export interface DoctorOptions {
   /** --acvp: run ONLY beacon-resolve + the ACVP binding sub-check; skip
    *  cycle/compose/sealed so the report-only ACVP CI reflects binding scope (FAGAN). */
   readonly acvpOnly?: boolean;
+  /**
+   * --cells-dir: directory holding per-cell git clones as `<cellsDir>/cell-<slug>/`
+   * (the cluster-compliance clone convention). When set, doctor resolves each
+   * module's beacon + ACVP inputs (eventsPin · proof receipts · HEAD · proof
+   * freshness) FROM the clone — the per-cell resolution bridge (sprint-400
+   * step 3) that makes receipts actually consumed and backed buildings report
+   * `bound`. Unset (or a clone absent) → unchanged fixture/null posture. */
+  readonly cellsDir?: string;
 }
 
 const ALL_ZEROS_64 = "0".repeat(64);
@@ -241,6 +251,12 @@ export function checkSealedSchemas(
 }
 
 // ── impure resolver: events SCHEMA_VERSION for a pin SHA (G-4: no events import) ──
+// NB (FAGAN composer B3): the cell's `cluster.eventsPin` points at THIS repo
+// (`0xHoneyJar/loa-freeside`, subdir packages/events) — the pin sha is a
+// loa-freeside commit, NOT a commit in the cell's own tree. So it is correctly
+// resolved against `repoRoot` (the loa-freeside checkout doctor runs in), never
+// the cell clone. A shallow loa-freeside checkout that lacks the pinned events
+// commit → null → FL-HC1 `runtime_pin_unresolved` warn (documented, SDD R-5).
 function makeResolvePinSchemaVersion(repoRoot: string): (sha: string) => string | null {
   return (sha: string): string | null => {
     try {
@@ -255,6 +271,170 @@ function makeResolvePinSchemaVersion(repoRoot: string): (sha: string) => string 
       return null; // shallow clone / unknown sha → FL-HC1 warn at the validator
     }
   };
+}
+
+// ── per-cell resolution (sprint-400 step 3) ─────────────────────────────────
+// Cells are cloned as `<cellsDir>/cell-<slug>/` (cluster-compliance convention).
+// Both shipped cells declare their beacon at packages/protocol/beacon.yaml.
+const CELL_BEACON_REL = "packages/protocol/beacon.yaml";
+/** Receipt path within a cell — repo-relative, git's forward slashes. */
+const CELL_RECEIPT_REL = "app/.well-known/acvp-proof-receipt.json";
+/** Bound git over an untrusted clone — a pathological repo must not HANG the
+ *  single-threaded audit (FAGAN composer: the try/catch catches throws, not hangs). */
+const CELL_GIT_TIMEOUT_MS = 15_000;
+
+/**
+ * Resolve a cell clone to its realpath via `safeResolve` (which does realpath +
+ * cellsDir-containment, so a symlinked `cell-<slug>` cannot escape the cells
+ * dir), or null when the clone is absent / escapes containment (→ the caller
+ * surfaces it as unreachable; doctor never substitutes a fixture cluster-side).
+ */
+function resolveCellRoot(cellsDir: string, slug: string): string | null {
+  return safeResolve(cellsDir, `cell-${slug}`);
+}
+
+/** Soft read: fn()'s value, or `fallback` if it throws — keeps the "never throw
+ *  into the audit loop" contract in one place (FAGAN composer cleanup). */
+function softRead<T>(fn: () => T, fallback: T): T {
+  try {
+    return fn();
+  } catch {
+    return fallback;
+  }
+}
+
+// Read-only git over an UNTRUSTED cell clone, hardened + time-bounded:
+//   -c core.fsmonitor=false → ignore the clone's local fsmonitor hook (FAGAN opus)
+//   GIT_LITERAL_PATHSPECS=1 → a crafted path is never read as a pathspec glob
+//   timeout                 → a pathological commit graph can't hang the audit (FAGAN)
+// Returns stdout on exit 0, or null on ANY failure (non-zero exit, timeout, spawn).
+function cellGit(cellRoot: string, args: ReadonlyArray<string>): string | null {
+  try {
+    return execFileSync("git", ["-c", "core.fsmonitor=false", ...args], {
+      cwd: cellRoot,
+      env: { ...process.env, GIT_LITERAL_PATHSPECS: "1" },
+      encoding: "utf-8",
+      timeout: CELL_GIT_TIMEOUT_MS,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** The clone's committed HEAD (full 40-hex) or null. ALL cell evidence (beacon,
+ *  receipt, eventsPin, sealed schemas, freshness diff) is read AT this commit, so
+ *  a working-tree mutation cannot influence the verdict (FAGAN opus: committed-only). */
+function resolveCellHead(cellRoot: string): string | null {
+  const head = (cellGit(cellRoot, ["rev-parse", "HEAD"]) ?? "").trim();
+  return /^[0-9a-fA-F]{40}$/.test(head) ? head : null;
+}
+
+/** A repo-relative path's content AT the audited commit (committed evidence). */
+function cellShow(cellRoot: string, head: string, rel: string): string | null {
+  return cellGit(cellRoot, ["show", `${head}:${rel}`]);
+}
+
+/** Per-cell ACVP inputs for validateAcvpBindings (sprint-400 step 3). */
+type CellAcvpInputs = {
+  eventsPin: { package: string; sha: string } | null;
+  proofReceipts: ReadonlyArray<AcvpProofReceipt> | null;
+  buildingHeadSha: string | null;
+  checkReceiptFreshness?: (receipt: AcvpProofReceipt) => "fresh" | "stale" | "unknown";
+};
+
+/** The safe null posture: no per-cell evidence → every binding un-backed
+ *  (default-FAIL) or aspirational-allowlisted (extracted — FAGAN composer). */
+const NULL_CELL_INPUTS: CellAcvpInputs = {
+  eventsPin: null,
+  proofReceipts: null,
+  buildingHeadSha: null,
+};
+
+/**
+ * Shape-guard a proof receipt parsed from an UNTRUSTED cell clone (FAGAN opus):
+ * every required field MUST be a string before it may reach validateAcvpBindings
+ * (which formats/compares them) — a malformed element must never throw mid-audit
+ * or mis-bind on a wrong-typed field. `pipeline_id` is optional.
+ */
+function isProofReceipt(x: unknown): x is AcvpProofReceipt {
+  if (typeof x !== "object" || x === null) return false;
+  const r = x as Record<string, unknown>;
+  return (
+    typeof r.slug === "string" &&
+    typeof r.invariant_id === "string" &&
+    typeof r.proof_artifact === "string" &&
+    typeof r.test_runner === "string" &&
+    typeof r.passed_at === "string" &&
+    typeof r.commit_sha === "string"
+  );
+}
+
+/**
+ * Read a cell clone's ACVP inputs for validateAcvpBindings, ALL from the AUDITED
+ * COMMITTED HEAD `head` (never the working tree — FAGAN gpt/opus: an uncommitted
+ * OR working-tree-mutated receipt/eventsPin must not be able to fabricate `bound`;
+ * the beacon + sealed schemas are read committed-only at the call site too): the
+ * events pin (committed package.json `cluster.eventsPin`), the per-invariant proof
+ * receipts (committed receipt ARRAY, each element shape-validated at this trust
+ * boundary — FAGAN opus), and a git freshness resolver. Freshness (FL-B0, FAGAN
+ * opus): "fresh" iff NOTHING changed between the receipt commit and `head` except
+ * the receipt file itself — checking only the proof FILE is fail-open (the code
+ * under test can change while the test stays byte-identical). Fails soft to the
+ * un-backed default (null / "unknown").
+ *
+ * KNOWN LIMITATION (FAGAN composer B1, tracked follow-up): the receipt is an
+ * UNSIGNED self-assertion whose commit_sha the cell controls — a first-party cell
+ * CAN commit a forged receipt (clean tree + a receipt claiming bound). This check
+ * binds the verdict to the COMMITTED state (forgery requires an attributable,
+ * reviewable commit), which fits the first-party drift-detection threat model;
+ * full non-repudiation requires SIGNED receipts (Ed25519, as the ACVP runtime
+ * envelope already does). Out of scope for this verb.
+ */
+function resolveCellAcvpInputs(cellRoot: string, head: string): CellAcvpInputs {
+  // eventsPin ← committed package.json cluster.eventsPin (sovereign pin)
+  const eventsPin = softRead<{ package: string; sha: string } | null>(() => {
+    const txt = cellShow(cellRoot, head, "package.json");
+    if (txt == null) return null;
+    const pkg = JSON.parse(txt) as { cluster?: { eventsPin?: { package?: unknown; sha?: unknown } } };
+    const ep = pkg.cluster?.eventsPin;
+    return ep && typeof ep.package === "string" && typeof ep.sha === "string"
+      ? { package: ep.package, sha: ep.sha }
+      : null;
+  }, null);
+
+  // proofReceipts ← committed receipt ARRAY (FL-HC0); each element shape-validated
+  const proofReceipts = softRead<ReadonlyArray<AcvpProofReceipt> | null>(() => {
+    const txt = cellShow(cellRoot, head, CELL_RECEIPT_REL);
+    if (txt == null) return null;
+    const parsed = JSON.parse(txt);
+    if (!Array.isArray(parsed)) return null;
+    const valid = parsed.filter(isProofReceipt);
+    return valid.length > 0 ? valid : null;
+  }, null);
+
+  // freshness ← did the cell drift since the receipt? "fresh" iff the ONLY change
+  // between the receipt commit and the audited `head` is the receipt file itself
+  // (the off-by-one that publishing it adds); ANY other changed path → "stale".
+  // Full-40-hex sha; receipt commit must be reachable from head (ancestor/==).
+  const checkReceiptFreshness = (receipt: AcvpProofReceipt): "fresh" | "stale" | "unknown" => {
+    const sha = receipt.commit_sha;
+    if (!/^[0-9a-fA-F]{40}$/.test(sha)) return "unknown";
+    // merge-base --is-ancestor signals via exit code: cellGit → "" on exit 0
+    // (ancestor), null on exit 1 (not) / error. shallow clone / force-push → null.
+    if (cellGit(cellRoot, ["merge-base", "--is-ancestor", sha, head]) == null) return "unknown";
+    const names = cellGit(cellRoot, [
+      "diff", "--name-only", "--no-ext-diff", "--no-textconv", "--no-renames", sha, head,
+    ]);
+    if (names == null) return "unknown";
+    const drifted = names
+      .split("\n")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0 && s !== CELL_RECEIPT_REL);
+    return drifted.length === 0 ? "fresh" : "stale";
+  };
+
+  return { eventsPin, proofReceipts, buildingHeadSha: head, checkReceiptFreshness };
 }
 
 /**
@@ -309,33 +489,84 @@ export const doctor = async (opts: DoctorOptions = {}): Promise<DoctorReport> =>
   const push = (f: DoctorFinding) => findings.push(f);
 
   for (const [slug, entry] of Object.entries(registry.modules)) {
-    // 1. Resolve beacon. FAGAN iter-2 (gpt): --remote must NOT silently fall back
-    // to a fixture — a caller asking for live remote evidence gets beacon_unreachable
-    // (real fetch is SC-6, a follow-up), never fixture-substituted data.
-    if (opts.remote) {
+    const cellRoot = opts.cellsDir ? resolveCellRoot(opts.cellsDir, slug) : null;
+    // committed HEAD of the cell clone — ALL cell evidence (beacon, receipt,
+    // eventsPin, sealed schemas, freshness diff) is read AT this sha, so a
+    // working-tree mutation cannot influence the verdict (FAGAN opus, committed-only).
+    const cellHead = cellRoot ? resolveCellHead(cellRoot) : null;
+
+    // cellsDir requested but THIS cell's clone is absent/unresolvable: refuse to
+    // fall through to the in-repo fixture path (FAGAN composer). Cluster-side
+    // evidence MUST be the cell's own committed state — a substituted fixture
+    // would produce findings that look like a cell audit but are not. Surface it
+    // as unreachable (the per-cell clone step must run first), never silent.
+    if (opts.cellsDir && !cellRoot) {
+      push({
+        slug, check: "beacon_unreachable", severity: "warn",
+        message: `--cells-dir set but no clone at cell-${slug}/ — cell evidence unavailable; refusing fixture substitution (run the per-cell clone step first)`,
+      });
+      continue;
+    }
+
+    // 1. Resolve beacon. cellsDir (a per-cell clone) is the authoritative
+    // cluster-side source and takes precedence (sprint-400 step 3) — the beacon is
+    // read from the COMMITTED HEAD (git show), NOT the working tree, so a mutated
+    // working-tree beacon.yaml cannot add/relax invariants under doctor (FAGAN opus).
+    // Else FAGAN iter-2 (gpt): --remote must NOT silently fall back to a fixture — a
+    // caller asking for live remote evidence gets beacon_unreachable (SC-6), never
+    // fixture-substituted data; no fixture → deferred.
+    let resolved: ReturnType<typeof loadBeacon>;
+    let moduleRoot: string; // root for sealed-schema / per-cell reads
+    if (cellRoot) {
+      moduleRoot = cellRoot;
+      if (cellHead == null) {
+        push({
+          slug, check: "beacon_invalid", severity: "error",
+          message: `cell clone ${slug}: cannot resolve a committed HEAD (not a git checkout / shallow) — cannot audit committed state`,
+        });
+        continue;
+      }
+      const beaconText = cellShow(cellRoot, cellHead, CELL_BEACON_REL);
+      if (beaconText == null) {
+        push({
+          slug, check: "beacon_deferred", severity: "warn",
+          message: `cell clone ${slug}: no committed ${CELL_BEACON_REL} at HEAD — beacon audit deferred`,
+        });
+        continue;
+      }
+      resolved = loadBeaconFromText(beaconText);
+      if (resolved.kind === "error") {
+        push({
+          slug, check: "beacon_invalid", severity: "error",
+          message: `cell clone ${slug} (${CELL_BEACON_REL}@HEAD): ${resolved.error}`,
+        });
+        continue;
+      }
+    } else if (opts.remote) {
       push({
         slug, check: "beacon_unreachable", severity: "warn",
         message: `--remote fetch of ${entry.beacon_url} not implemented this build (SC-6); fixture substitution refused — omit --remote to audit the in-repo fixture`,
       });
       continue;
-    }
-    if (!entry.beacon_fixture) {
+    } else if (!entry.beacon_fixture) {
       push({
         slug, check: "beacon_deferred", severity: "warn",
-        message: `no beacon_fixture for '${slug}' — beacon audit deferred (add beacon_fixture, or --remote when fetch lands)`,
+        message: `no beacon_fixture for '${slug}' — beacon audit deferred (add beacon_fixture, --cells-dir, or --remote when fetch lands)`,
       });
       continue;
-    }
-    if (entry.visibility === "internal") {
-      push({
-        slug, check: "beacon_auth_required", severity: "warn",
-        message: `'${slug}' is internal — auth-gated fetch not implemented (SC-2); fixture audited if present`,
-      });
-    }
-    const resolved = loadBeacon(entry, registryRoot);
-    if (resolved.kind === "error") {
-      push({ slug, check: "beacon_invalid", severity: "error", message: resolved.error });
-      continue;
+    } else {
+      if (entry.visibility === "internal") {
+        push({
+          slug, check: "beacon_auth_required", severity: "warn",
+          message: `'${slug}' is internal — auth-gated fetch not implemented (SC-2); fixture audited if present`,
+        });
+      }
+      moduleRoot = registryRoot ?? repoRoot;
+      resolved = loadBeacon(entry, registryRoot);
+      if (resolved.kind === "error") {
+        push({ slug, check: "beacon_invalid", severity: "error", message: resolved.error });
+        continue;
+      }
     }
     if (resolved.kind === "legacy") {
       const nextReview = (resolved.beacon as { cycle_state?: { next_review?: string } }).cycle_state?.next_review;
@@ -361,41 +592,58 @@ export const doctor = async (opts: DoctorOptions = {}): Promise<DoctorReport> =>
     if (!opts.acvpOnly) {
       for (const f of checkCycleState(slug, beacon, now)) push(f);
       for (const f of checkComposesWith(slug, beacon, registry)) push(f);
+      // sealed-schema files: from the COMMITTED HEAD in cellsDir mode (committed-
+      // only, FAGAN opus — git rejects out-of-tree `..` paths), else the local
+      // working tree (in-repo fixture / same-repo self-audit).
       const resolveSchemaText = (relPath: string): string | null => {
-        if (!registryRoot) return null;
-        const p = safeResolve(registryRoot, relPath);
+        if (cellRoot && cellHead) return cellShow(cellRoot, cellHead, relPath);
+        const p = safeResolve(moduleRoot, relPath);
         return p ? readFileSync(p, "utf-8") : null;
       };
       for (const f of checkSealedSchemas(slug, beacon, resolveSchemaText)) push(f);
     }
 
     // 6. ACVP binding sub-check (folds AcvpBindingFinding → DoctorFinding).
-    // FAGAN iter-2 (critical): per-cell ACVP inputs (cluster.eventsPin, proof
-    // receipts) live in EACH building's OWN repo, which is NOT checked out
-    // cluster-side this build — we hold the registry + fixtures, not the cells.
-    // Reading them from the shared registry root would (a) read the REGISTRY
-    // package's own package.json as if it were a building's and (b) let one shared
-    // receipt file vouch for every slug. So they are null here: every declared
-    // binding is therefore un-backed (default-FAIL) or aspirational-allowlisted —
-    // the correct cluster-side posture. Per-cell resolution lands with the Tier-A
-    // receipts (T5a/T5b) once the cells are locally present.
-    const moduleRoot = registryRoot ?? repoRoot;
-    const eventsPin = null;
-    const proofReceipts = null;
-    const acvp = validateAcvpBindings({
-      slug, beacon, moduleRoot,
-      fileExists: (rel) => safeResolve(moduleRoot, rel) !== null,
-      eventsPin,
-      resolvePinSchemaVersion,
-      proofReceipts,
-      buildingHeadSha: null, // unknown cluster-side this build (SC)
-      aspirationalAllowlist: allowlist,
-      now,
-    });
-    for (const af of acvp.findings) {
+    // Per-cell inputs come from the cell clone when --cells-dir resolved one
+    // (sprint-400 step 3). Otherwise they stay null — the safe cluster-side
+    // posture FAGAN iter-2 established: reading cluster.eventsPin / proof
+    // receipts from the shared registry root would (a) read the REGISTRY
+    // package's own package.json as a building's and (b) let one shared receipt
+    // vouch for every slug. Null → every binding un-backed (default-FAIL) or
+    // aspirational-allowlisted. A resolved cell supplies a real checkout, so the
+    // receipt is consumed + git-freshness-checked (a committed receipt → bound).
+    try {
+      const cellInputs = cellRoot && cellHead ? resolveCellAcvpInputs(cellRoot, cellHead) : NULL_CELL_INPUTS;
+      const acvp = validateAcvpBindings({
+        slug, beacon, moduleRoot,
+        // Cluster-side (cellsDir): evidence is the COMMITTED, freshness-checked
+        // receipt — NOT mere file-presence in the clone working tree. Letting a
+        // present-but-unattested proof file vouch would re-introduce the weak
+        // file-presence signal (the α path the operator rejected; FAGAN opus's
+        // fail-open concern). So fileExists is false here: a cell is bound only
+        // via a fresh receipt. The local-file path stays for same-repo / Tier-A
+        // self-audit (no cellsDir), where the building IS the source.
+        fileExists: cellRoot ? () => false : (rel) => safeResolve(moduleRoot, rel) !== null,
+        eventsPin: cellInputs.eventsPin,
+        resolvePinSchemaVersion,
+        proofReceipts: cellInputs.proofReceipts,
+        buildingHeadSha: cellInputs.buildingHeadSha,
+        checkReceiptFreshness: cellInputs.checkReceiptFreshness,
+        aspirationalAllowlist: allowlist,
+        now,
+      });
+      for (const af of acvp.findings) {
+        push({
+          slug, check: af.check as DoctorCheck, severity: af.severity,
+          message: `[acvp:${af.invariant_id}] ${af.message}`,
+        });
+      }
+    } catch (err) {
+      // defense-in-depth (FAGAN opus): a single cell's unexpected throw must
+      // never abort the whole audit (DoS) — surface it as that slug's error.
       push({
-        slug, check: af.check as DoctorCheck, severity: af.severity,
-        message: `[acvp:${af.invariant_id}] ${af.message}`,
+        slug, check: "beacon_invalid", severity: "error",
+        message: `ACVP sub-check aborted for ${slug}: ${err instanceof Error ? err.message : String(err)}`,
       });
     }
   }

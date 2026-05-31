@@ -8,7 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -214,4 +214,260 @@ test("CLI · doctor --registry <bad> → exit 1 (sealed_schema_hash_drift)", () 
     exitCode = (e as { status?: number }).status ?? -1;
   }
   assert.equal(exitCode, 1, "expected exit 1 when a module has an error finding");
+});
+
+// ─── --cells-dir per-cell resolution + FL-B0 git-freshness (sprint-400 step 3) ──
+// Builds a real git cell clone at <tmp>/cell-test-api: commit the proof+beacon
+// (c1), publish a receipt recording c1, then COMMIT the receipt (c2 — HEAD now
+// past c1). Exact-HEAD match cannot accept this, but the git-freshness resolver
+// (proof unchanged between c1 and HEAD) marks it fresh → bound. The mutate
+// variant changes the proof after the receipt → stale → warn.
+
+const CELL_BEACON_YAML = [
+  'schema_version: "3"',
+  'slug: "test-api"',
+  'publisher: "0xHoneyJar"',
+  "is:",
+  '  one_liner: "Test cell for per-cell resolution"',
+  "  scope:",
+  '    - "decode round-trips"',
+  '    - "totality holds"',
+  "is_not:",
+  '  - "Does NOT do real work"',
+  '  - "Will NOT ship breaking changes"',
+  "acvp_invariants:",
+  "  - id: schema_enforcement",
+  '    scope: "decode round-trips identically"',
+  '    proof_artifact: "tests/proof.test.ts"',
+  "cycle_state:",
+  "  status: candidate",
+  '  since: "2026-05-18"',
+  '  next_review: "2026-08-18"',
+  "",
+].join("\n");
+
+function initCellRepo(
+  opts: { mutateProofAfterReceipt?: boolean; uncommittedReceipt?: boolean; mutateWorkingTreeBeacon?: boolean } = {},
+): {
+  cellsDir: string;
+  cleanup: () => void;
+} {
+  const cellsDir = mkdtempSync(join(tmpdir(), "doctor-cells-"));
+  const cell = join(cellsDir, "cell-test-api");
+  const w = (rel: string, body: string) => {
+    const p = join(cell, rel);
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, body);
+  };
+  const git = (...a: string[]) => execFileSync("git", ["-C", cell, ...a], { stdio: "ignore" });
+
+  w("packages/protocol/beacon.yaml", CELL_BEACON_YAML);
+  w("package.json", JSON.stringify({ name: "test-api", version: "0.0.0" }) + "\n");
+  w("tests/proof.test.ts", "// proof v1\n");
+  execFileSync("git", ["init", "-q", cell], { stdio: "ignore" });
+  git("config", "user.email", "t@example.com");
+  git("config", "user.name", "t");
+  git("config", "commit.gpgsign", "false");
+  git("add", "-A");
+  git("commit", "-q", "-m", "c1: cell + proof");
+  const c1 = execFileSync("git", ["-C", cell, "rev-parse", "HEAD"], { encoding: "utf-8" }).trim();
+
+  // publish the receipt recording c1, then COMMIT it → HEAD advances past c1
+  w(
+    "app/.well-known/acvp-proof-receipt.json",
+    JSON.stringify(
+      [
+        {
+          slug: "test-api",
+          invariant_id: "schema_enforcement",
+          proof_artifact: "tests/proof.test.ts",
+          test_runner: "bun",
+          passed_at: "2026-05-30T00:00:00Z",
+          commit_sha: c1,
+        },
+      ],
+      null,
+      2,
+    ) + "\n",
+  );
+  if (opts.uncommittedReceipt) {
+    // leave the receipt in the WORKING TREE only — never committed. doctor reads
+    // evidence from the audited commit (git show HEAD:…), so this must NOT count.
+  } else {
+    git("add", "-A");
+    git("commit", "-q", "-m", "c2: receipt");
+
+    if (opts.mutateProofAfterReceipt) {
+      w("tests/proof.test.ts", "// proof v2 — CHANGED after the receipt was issued\n");
+      git("add", "-A");
+      git("commit", "-q", "-m", "c3: proof changed");
+    }
+  }
+
+  if (opts.mutateWorkingTreeBeacon) {
+    // overwrite beacon.yaml in the WORKING TREE only (NOT committed) — inject an
+    // envelope-bound invariant that would surface a runtime error if doctor read
+    // the working tree instead of the committed HEAD.
+    w(
+      "packages/protocol/beacon.yaml",
+      CELL_BEACON_YAML.replace(
+        "acvp_invariants:\n",
+        [
+          "acvp_invariants:",
+          "  - id: hash_chain",
+          '    scope: "injected via the working tree — must be invisible to doctor"',
+          '    proof_artifact: "tests/hash_chain.test.ts"',
+          "",
+        ].join("\n"),
+      ),
+    );
+  }
+
+  // registry points test-api at the clone (beacon resolved FROM the clone, no fixture)
+  writeFileSync(
+    join(cellsDir, "registry.yaml"),
+    [
+      "version: 1",
+      "modules:",
+      "  test-api:",
+      "    git_url: https://example.com/test-api.git",
+      '    beacon_url: ""',
+      "    visibility: public",
+      "    owner: o",
+      '    added: "2026-05-30"',
+      "",
+    ].join("\n"),
+  );
+
+  return { cellsDir, cleanup: () => rmSync(cellsDir, { recursive: true, force: true }) };
+}
+
+test("doctor() · --cells-dir → resolves beacon+receipt from clone; committed receipt fresh → acvp_proof ok, no error (FL-B0 bridge)", async () => {
+  const { cellsDir, cleanup } = initCellRepo();
+  try {
+    const report = await doctor({
+      registryPath: join(cellsDir, "registry.yaml"),
+      cellsDir,
+      acvpOnly: true,
+      now: NOW,
+    });
+    assert.ok(
+      report.findings.some(
+        (f) => f.slug === "test-api" && f.check === "acvp_proof:schema_enforcement" && f.severity === "ok",
+      ),
+      "committed receipt with unchanged proof must resolve fresh → acvp_proof ok",
+    );
+    assert.ok(
+      !report.findings.some((f) => f.slug === "test-api" && f.severity === "error"),
+      "a receipt-backed cell must produce no error",
+    );
+  } finally {
+    cleanup();
+  }
+});
+
+test("doctor() · --cells-dir → UNCOMMITTED receipt does NOT fabricate bound (committed-evidence only; no file-presence fallback — FAGAN gpt/opus)", async () => {
+  const { cellsDir, cleanup } = initCellRepo({ uncommittedReceipt: true });
+  try {
+    const report = await doctor({
+      registryPath: join(cellsDir, "registry.yaml"),
+      cellsDir,
+      acvpOnly: true,
+      now: NOW,
+    });
+    // receipt is in the working tree but NOT in the audited commit, and cellsDir
+    // mode does not trust file-presence → un-backed → error (default-FAIL)
+    assert.ok(
+      report.findings.some(
+        (f) => f.slug === "test-api" && f.check === "acvp_proof:schema_enforcement" && f.severity === "error",
+      ),
+      "uncommitted receipt + present proof file must NOT yield ok — un-backed error",
+    );
+    assert.ok(
+      !report.findings.some(
+        (f) => f.slug === "test-api" && f.check === "acvp_proof:schema_enforcement" && f.severity === "ok",
+      ),
+    );
+  } finally {
+    cleanup();
+  }
+});
+
+test("doctor() · --cells-dir set but cell clone ABSENT → beacon_unreachable warn, NO fixture substitution (FAGAN composer)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "doctor-nocell-"));
+  try {
+    // registry references test-api AND gives it a beacon_fixture — but there is
+    // no cell-test-api/ clone. cells-dir mode must refuse to audit the fixture.
+    writeFileSync(
+      join(dir, "registry.yaml"),
+      [
+        "version: 1",
+        "modules:",
+        "  test-api:",
+        "    git_url: https://example.com/test-api.git",
+        '    beacon_url: ""',
+        "    beacon_fixture: some-fixture.yaml",
+        "    visibility: public",
+        "    owner: o",
+        '    added: "2026-05-30"',
+        "",
+      ].join("\n"),
+    );
+    const report = await doctor({ registryPath: join(dir, "registry.yaml"), cellsDir: dir, acvpOnly: true, now: NOW });
+    assert.ok(
+      report.findings.some((f) => f.slug === "test-api" && f.check === "beacon_unreachable" && f.severity === "warn"),
+      "missing clone in cells-dir mode must surface as beacon_unreachable",
+    );
+    // and it must NOT have substituted/audited the in-repo fixture
+    assert.ok(!report.findings.some((f) => f.slug === "test-api" && f.check === "beacon_valid"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("doctor() · --cells-dir → WORKING-TREE beacon mutation is INVISIBLE (committed beacon audited — FAGAN opus)", async () => {
+  const { cellsDir, cleanup } = initCellRepo({ mutateWorkingTreeBeacon: true });
+  try {
+    const report = await doctor({
+      registryPath: join(cellsDir, "registry.yaml"),
+      cellsDir,
+      acvpOnly: true,
+      now: NOW,
+    });
+    // the injected hash_chain invariant exists ONLY in the working tree → it must
+    // NOT appear in any finding (doctor read the committed beacon at HEAD)
+    assert.ok(
+      !report.findings.some((f) => f.slug === "test-api" && /hash_chain/.test(f.check)),
+      "working-tree-injected invariant must be invisible — committed beacon is the audited authority",
+    );
+    // committed schema_enforcement + fresh committed receipt → still ok
+    assert.ok(
+      report.findings.some(
+        (f) => f.slug === "test-api" && f.check === "acvp_proof:schema_enforcement" && f.severity === "ok",
+      ),
+    );
+  } finally {
+    cleanup();
+  }
+});
+
+test("doctor() · --cells-dir → proof CHANGED after the receipt → stale warn, no error", async () => {
+  const { cellsDir, cleanup } = initCellRepo({ mutateProofAfterReceipt: true });
+  try {
+    const report = await doctor({
+      registryPath: join(cellsDir, "registry.yaml"),
+      cellsDir,
+      acvpOnly: true,
+      now: NOW,
+    });
+    assert.ok(
+      report.findings.some(
+        (f) => f.slug === "test-api" && f.check === "acvp_proof:schema_enforcement" && f.severity === "warn",
+      ),
+      "proof changed since the receipt → stale → acvp_proof warn",
+    );
+    assert.ok(!report.findings.some((f) => f.slug === "test-api" && f.severity === "error"));
+  } finally {
+    cleanup();
+  }
 });

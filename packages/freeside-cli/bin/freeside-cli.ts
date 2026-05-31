@@ -19,8 +19,12 @@ const usage = `freeside-cli — ecosystem CLI for freeside-* module network
 Usage:
   freeside-cli list                  Show registered modules with one-liners
   freeside-cli inspect <slug>        Show beacon for a specific module
-  freeside-cli doctor [--remote] [--acvp] [--baseline <reg>] [--registry <reg>]
-                                     Audit all modules against BeaconV3 + ACVP bindings
+  freeside-cli doctor [--remote] [--acvp] [--baseline <reg>] [--registry <reg>] [--cells-dir <dir>]
+                                     Audit all modules against BeaconV3 + ACVP bindings.
+                                     --cells-dir <dir>: resolve each cell's beacon + ACVP
+                                       inputs from a per-cell clone at <dir>/cell-<slug>/
+                                       (the per-cell resolution bridge — backed buildings
+                                       report contract_status: bound).
 
 Reference: decisions/007-loa-freeside-absorption.md §D-6
 `;
@@ -63,6 +67,7 @@ const main = async (): Promise<number> => {
         acvpOnly: flags.includes("--acvp"),
         baselineRegistryPath: flagValue(flags, "--baseline"),
         registryPath: flagValue(flags, "--registry"),
+        cellsDir: flagValue(flags, "--cells-dir"),
       });
       console.log(JSON.stringify(report, null, 2));
       // Exit non-zero if any errors found

@@ -14,6 +14,7 @@ export {
 
 export {
   loadBeacon,
+  loadBeaconFromText,
   resolveFixturePath,
   classifyBeacon,
   type BeaconResolution,
