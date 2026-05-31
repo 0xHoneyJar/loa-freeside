@@ -26,8 +26,8 @@ test("loadRegistry decodes registry.yaml and KEEPS the OD-1 metadata fields", ()
   const slugs = Object.keys(reg.modules);
   assert.ok(slugs.length >= 8, `expected >=8 modules, got ${slugs.length}`);
   const activities = reg.modules["activities-api"];
-  assert.equal(activities.runtime_state, "not-built");
-  assert.equal(activities.deployment_url, null); // YAML `~`
+  assert.equal(activities.runtime_state, "deployed");
+  assert.equal(activities.deployment_url, "https://activities-api-production.up.railway.app");
   assert.ok(typeof activities.notes === "string" && activities.notes.length > 0);
   const sonar = reg.modules["sonar-api"];
   assert.equal(sonar.runtime_state, "deployed");
