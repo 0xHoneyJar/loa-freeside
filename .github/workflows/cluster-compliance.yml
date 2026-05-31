@@ -260,9 +260,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup pnpm + Node
+        # No `version:` — pnpm/action-setup reads it from the root package.json
+        # `packageManager: pnpm@9.15.4` (specifying both is an ERR_PNPM_BAD_PM_VERSION
+        # conflict — the acvp-bindings job's first-run failure).
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: 22
