@@ -275,6 +275,30 @@ test("checkReceiptFreshness 'fresh' is IGNORED when buildingHeadSha is null → 
   assert.ok(r.findings.some((f) => f.severity === "warn" && /UNCONFIRMABLE|not commit-bound/.test(f.message)));
 });
 
+test("receipt + checkReceiptFreshness 'unknown' WITH a non-null head → resolver consulted, falls through to FAGAN guard (warn) [BR-1]", () => {
+  // BR-1 (bridgebuilder): the null-head test below exercises the head==null
+  // guard, NOT the unknown-verdict fall-through. This covers the real path —
+  // non-null head (≠ receipt commit) + resolver returns "unknown" → the
+  // resolver IS consulted, then falls through to the FAGAN not-commit-bound warn.
+  let consulted = false;
+  const r = validateAcvpBindings(
+    mkInput({
+      invariants: [inv({ id: "monotonicity" })],
+      fileExists: () => false,
+      proofReceipts: [receipt({ invariant_id: "monotonicity", commit_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" })],
+      buildingHeadSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", // non-null, ≠ commit_sha
+      checkReceiptFreshness: () => {
+        consulted = true;
+        return "unknown";
+      },
+    }),
+  );
+  assert.equal(consulted, true); // resolver consulted (non-null head)
+  assert.equal(r.contract_status, "aspirational");
+  assert.equal(r.summary.error, 0);
+  assert.ok(r.findings.some((f) => f.severity === "warn" && /not commit-bound|UNCONFIRMABLE/i.test(f.message)));
+});
+
 test("receipt + checkReceiptFreshness 'unknown' → falls back to FAGAN head guard (warn, NOT auto-pass)", () => {
   const r = validateAcvpBindings(
     mkInput({

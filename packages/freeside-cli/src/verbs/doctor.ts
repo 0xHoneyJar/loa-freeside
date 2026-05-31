@@ -294,7 +294,10 @@ function resolveCellRoot(cellsDir: string, slug: string): string | null {
 }
 
 /** Soft read: fn()'s value, or `fallback` if it throws — keeps the "never throw
- *  into the audit loop" contract in one place (FAGAN composer cleanup). */
+ *  into the audit loop" contract in one place (FAGAN composer cleanup). SCOPE
+ *  (BR-3 bridgebuilder): use ONLY for I/O + parse over UNTRUSTED bytes (git /
+ *  JSON from a cell clone) — the broad catch deliberately also swallows
+ *  programmer errors (TypeError &c.), so never wrap general application logic. */
 function softRead<T>(fn: () => T, fallback: T): T {
   try {
     return fn();

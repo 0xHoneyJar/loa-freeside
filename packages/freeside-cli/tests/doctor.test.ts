@@ -425,6 +425,40 @@ test("doctor() · --cells-dir set but cell clone ABSENT → beacon_unreachable w
   }
 });
 
+test("doctor() · --cells-dir → cell clone with NO committed HEAD (git init, no commit) → beacon_invalid, no fixture [BR-2]", async () => {
+  const cellsDir = mkdtempSync(join(tmpdir(), "doctor-nohead-"));
+  try {
+    const cell = join(cellsDir, "cell-test-api");
+    mkdirSync(cell, { recursive: true });
+    execFileSync("git", ["init", "-q", cell], { stdio: "ignore" }); // repo with no commits → HEAD unresolvable
+    writeFileSync(
+      join(cellsDir, "registry.yaml"),
+      [
+        "version: 1",
+        "modules:",
+        "  test-api:",
+        "    git_url: https://example.com/test-api.git",
+        '    beacon_url: ""',
+        "    visibility: public",
+        "    owner: o",
+        '    added: "2026-05-30"',
+        "",
+      ].join("\n"),
+    );
+    const report = await doctor({ registryPath: join(cellsDir, "registry.yaml"), cellsDir, acvpOnly: true, now: NOW });
+    assert.ok(
+      report.findings.some(
+        (f) =>
+          f.slug === "test-api" && f.check === "beacon_invalid" && f.severity === "error" && /committed HEAD/.test(f.message),
+      ),
+      "no committed HEAD → beacon_invalid (cannot audit committed state)",
+    );
+    assert.ok(!report.findings.some((f) => f.slug === "test-api" && f.check === "beacon_valid"));
+  } finally {
+    rmSync(cellsDir, { recursive: true, force: true });
+  }
+});
+
 test("doctor() · --cells-dir → WORKING-TREE beacon mutation is INVISIBLE (committed beacon audited — FAGAN opus)", async () => {
   const { cellsDir, cleanup } = initCellRepo({ mutateWorkingTreeBeacon: true });
   try {
