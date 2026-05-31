@@ -1,0 +1,44 @@
+# .freeside/acvp-aspirational-allowlist.yaml
+# ──────────────────────────────────────────────────────────────────────────
+# Operator-owned promotion gate for ACVP invariants declared `status: aspirational`.
+# (SDD: grimoires/loa/cycles/doctor-acvp-network-plane/sdd.md §6.1)
+#
+# DEFAULT = FAIL. A declared acvp_invariant whose proof_artifact is dangling (or
+# whose runtime binding is unmet) is an ERROR — UNLESS its beacon marks it
+# `status: aspirational` AND it appears here with a future `expires` date.
+#   • allowlisted + before `expires`  → warn (countdown), contract_status aspirational
+#   • after `expires`, OR not listed  → error (no silent third option)
+#
+# Each entry: slug (registry slug) · id (acvp invariant id) · expires (YYYY-MM-DD,
+# valid through that day inclusive) · reason. `expires` dates below are INITIAL
+# operator-set deadlines — adjust per the real porting timeline.
+#
+# To clear an entry: land the proof test in the building (Tier-A acvp:verify
+# emits a receipt), flip the beacon's `status` to `active`, and delete the row.
+version: 1
+allowlist:
+  # ── sonar-api (KF-012): packages/protocol/beacon.yaml declares these →
+  #    tests/acvp/*.test.ts, but tests/acvp/ does not exist in sonar yet. ──
+  - slug: sonar-api
+    id: event_completeness
+    expires: "2026-08-30"
+    reason: "KF-012 — tests/acvp/event_completeness.test.ts not yet ported (envelope-bound; eventsPin 271310a0 → acvp-l1-v2 verified)"
+  - slug: sonar-api
+    id: monotonicity
+    expires: "2026-08-30"
+    reason: "KF-012 — tests/acvp/monotonicity.test.ts not yet ported (construct-local; proof binding only)"
+  - slug: sonar-api
+    id: audit_replay
+    expires: "2026-08-30"
+    reason: "KF-012 — bound by green-vs-blue reconciliation, not a unit test yet (envelope-bound)"
+
+  # ── identity-api (= freeside-auth): packages/protocol/beacon.yaml declares
+  #    these → tests/acvp/*.test.ts, absent (tests live in src/api/__tests__/). ──
+  - slug: identity-api
+    id: idempotency
+    expires: "2026-08-30"
+    reason: "freeside-auth dangling — tests/acvp/idempotency.test.ts absent (construct-local; proof binding only)"
+  - slug: identity-api
+    id: audit_replay
+    expires: "2026-08-30"
+    reason: "freeside-auth — Postgres append-only; mark invariant runtime_class:storage on the beacon, then land tests/acvp/audit_replay.test.ts"
