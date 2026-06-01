@@ -59,6 +59,24 @@ modules:
       PR: activities-api #25 (Lane A read-plane LIVE + write path built behind
       GATE-SEC-1, merged 269ede35; PRs #21/#22/#23 superseded by the squash).
 
+  events-api:
+    # In-repo LIBRARY building (@0xhoneyjar/events) — the ACVP event protocol
+    # definer. The FIRST in-repo beacon (cycle-112 S5, closes arrakis-vl8f).
+    # No served beacon_url / deployment (a library); beacon at packages/events/beacon.yaml.
+    git_url: https://github.com/0xHoneyJar/loa-freeside.git
+    beacon_url: ~
+    deployment_url: ~
+    visibility: internal
+    owner: 0xHoneyJar
+    added: "2026-05-31"
+    runtime_state: not-built
+    notes: |
+      The acvp-l1-v2 event protocol library (envelope + event_type->schema registry
+      + emit() facade). Declares the schema_enforcement acvp_invariant (the protocol-
+      definer finally declaring an invariant for the protocol it defines). Beacon is
+      in-repo (packages/events/beacon.yaml), not served — `slug: events-api` satisfies
+      the *-api registry naming law (ADR-008 §D-11) for an otherwise-library building.
+
   identity-api:
     git_url: https://github.com/0xHoneyJar/identity-api.git
     beacon_url: https://identity.0xhoneyjar.xyz/.well-known/beacon.json

@@ -17,28 +17,41 @@
 # emits a receipt), flip the beacon's `status` to `active`, and delete the row.
 version: 1
 allowlist:
+  # cycle-112 T5.6 (FR-ADOPT-8): dates RESTAGGERED off the single 2026-08-30 stack
+  # so they do not all fail-block CI on the same day. Each is now a distinct deadline.
+
   # ── sonar-api (KF-012): packages/protocol/beacon.yaml declares these →
   #    tests/acvp/*.test.ts, but tests/acvp/ does not exist in sonar yet. ──
   - slug: sonar-api
     id: event_completeness
-    expires: "2026-08-30"
+    expires: "2026-07-15"
     reason: "KF-012 — tests/acvp/event_completeness.test.ts not yet ported (envelope-bound; eventsPin 271310a0 → acvp-l1-v2 verified)"
   - slug: sonar-api
     id: monotonicity
-    expires: "2026-08-30"
+    expires: "2026-07-31"
     reason: "KF-012 — tests/acvp/monotonicity.test.ts not yet ported (construct-local; proof binding only)"
   - slug: sonar-api
     id: audit_replay
-    expires: "2026-08-30"
+    expires: "2026-08-14"
     reason: "KF-012 — bound by green-vs-blue reconciliation, not a unit test yet (envelope-bound)"
 
   # ── identity-api (= freeside-auth): packages/protocol/beacon.yaml declares
   #    these → tests/acvp/*.test.ts, absent (tests live in src/api/__tests__/). ──
   - slug: identity-api
     id: idempotency
-    expires: "2026-08-30"
+    expires: "2026-08-28"
     reason: "freeside-auth dangling — tests/acvp/idempotency.test.ts absent (construct-local; proof binding only)"
   - slug: identity-api
     id: audit_replay
-    expires: "2026-08-30"
+    expires: "2026-09-11"
     reason: "freeside-auth — Postgres append-only; mark invariant runtime_class:storage on the beacon, then land tests/acvp/audit_replay.test.ts"
+
+  # ── events-api (cycle-112 S5): the first in-repo beacon. schema_enforcement is
+  #    DECLARED + backed by a real proof test (packages/events/tests/acvp/
+  #    schema_enforcement.test.ts, green), but `contract_status: bound` needs the
+  #    acvp:verify receipt pipeline to emit a commit-bound receipt. Honest interim:
+  #    aspirational until the receipt lands (then flip beacon status active + delete). ──
+  - slug: events-api
+    id: schema_enforcement
+    expires: "2026-09-25"
+    reason: "cycle-112 — proof test green (tests/acvp/schema_enforcement.test.ts, runtime_class:envelope); bound pending acvp:verify commit-bound receipt"

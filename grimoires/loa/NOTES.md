@@ -194,3 +194,11 @@ In-repo sprint-1 (cycle doctor-acvp-network-plane, branch feat/doctor-acvp-netwo
   end-to-end in packages/events/tests/pilot.test.ts (the test-harness consumer = SDD design),
   pattern in migration-runbook.md. Tracked: arrakis-we22. Allowlist stays at 11 (honest —
   raw .publish still present) until the production line lands.
+
+## Decision Log — cycle-112 S5 (2026-05-31)
+- [ACCEPTED-DEFERRED] T5.4 contract_status:bound for events-api/schema_enforcement.
+  The invariant is DECLARED (first in-repo beacon, closes arrakis-vl8f) + backed by a
+  green proof test, but `bound` needs the acvp:verify commit-bound receipt pipeline.
+  Honest interim: aspirational + dated (2026-09-25) in .freeside/acvp-aspirational-allowlist.yaml,
+  NOT a faked green. Tracked: arrakis-5ryf. events-api slug is an `-api`-naming-law concession
+  for a library (mcp omitted, no served URL).

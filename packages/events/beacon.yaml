@@ -1,0 +1,40 @@
+# events-api — the first IN-REPO BeaconV3 (cycle-112 S5, closes arrakis-vl8f).
+#
+# @0xhoneyjar/events is the building that DEFINES the ACVP NATS event protocol
+# (the acvp-l1-v2 envelope + the event_type->schema registry). The meta-gap
+# (arrakis-vl8f) was that the protocol-definer declared no invariants for the
+# protocol it defines. This beacon closes it: events-api declares
+# `schema_enforcement`, backed by a real proof artifact.
+#
+# It is a LIBRARY building — no MCP transport (the `mcp` block is optional in
+# BeaconV3; a building is declarable from its identity without a callable
+# surface). slug ends in `-api` per ADR-008 §D-11 (the registry naming law);
+# `events-api` = "the ACVP-events protocol building".
+
+schema_version: "3"
+slug: "events-api"
+publisher: "0xHoneyJar"
+
+is:
+  one_liner: "The ACVP cross-cell event protocol: acvp-l1-v2 signed envelope + the event_type->schema registry + the emit() facade"
+  scope:
+    - "Define the acvp-l1-v2 EventEnvelope (JCS + Ed25519 hash-chain) shape"
+    - "Hold the central event_type->payload-schema registry"
+    - "Provide emit()/emitRaw() — the sanctioned, schema-validating NATS emission path"
+
+is_not:
+  - "Does NOT run a NATS broker or own transport infrastructure"
+  - "Does NOT define per-building business event schemas (those live with each building)"
+  - "Will NOT expose the raw publish capability outside the package"
+
+cycle_state:
+  status: candidate
+  since: "2026-05-31"
+  next_review: "2026-08-29"
+
+acvp_invariants:
+  - id: schema_enforcement
+    scope: "Every NATS event emitted via emit() is payload-validated against its registry schema before signing; raw .publish is unreachable outside packages/events"
+    proof_artifact: "tests/acvp/schema_enforcement.test.ts"
+    runtime_class: envelope
+    status: active
