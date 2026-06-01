@@ -111,11 +111,18 @@ const entry = `  {
     buildSubject: (specifier?: string) => ${TopicFn}({ specifier }),
   },
 ${REG_MARKER}`;
+// BB F3: inject TopicFn into the existing topics.js import via a tolerant regex
+// (NOT a literal single-import match, which stops matching after the first
+// generation once the import line gains a second name → silent no-op → broken
+// registry.ts on run N>1). This appends before the closing `}` regardless of how
+// many names the import already carries; idempotent across runs.
+const topicsImportRx = /(import\s*\{[^}]*?)\s*\}\s*from\s*["']\.\/topics\.js["'];/;
+if (!topicsImportRx.test(reg)) {
+  console.error('[new-schema] registry.ts import from "./topics.js" not found — insert manually.');
+  process.exit(1);
+}
 reg = reg
-  .replace(
-    `import { nftMintDetectedTopic } from "./topics.js";`,
-    `import { nftMintDetectedTopic, ${TopicFn} } from "./topics.js";`,
-  )
+  .replace(topicsImportRx, (_m, names) => `${names.trimEnd()}, ${TopicFn} } from "./topics.js";`)
   .replace(
     `import { NftMintDetectedSchema } from "./schemas/nft-mint-detected.js";`,
     `import { NftMintDetectedSchema } from "./schemas/nft-mint-detected.js";\nimport { ${SchemaSym} } from "./schemas/${family}.js";`,

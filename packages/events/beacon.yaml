@@ -37,4 +37,9 @@ acvp_invariants:
     scope: "Every NATS event emitted via emit() is payload-validated against its registry schema before signing; raw .publish is unreachable outside packages/events"
     proof_artifact: "tests/acvp/schema_enforcement.test.ts"
     runtime_class: envelope
-    status: active
+    # aspirational (NOT active) until acvp:verify emits a commit-bound receipt
+    # (tracked: arrakis-5ryf). The proof test is green, but `contract_status:
+    # bound` needs the receipt; .freeside/acvp-aspirational-allowlist.yaml carries
+    # events-api/schema_enforcement (expires 2026-09-25) to match. When the
+    # receipt lands: flip to `active` + delete the allowlist row. (BB F6.)
+    status: aspirational

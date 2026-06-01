@@ -28,20 +28,41 @@ describe("Mutex (T1.4, SKP-001/SKP-002)", () => {
     assert.deepEqual(order, [1, 2, 3, 4]);
   });
 
-  it("SKP-002: a stalled operation times out, releases the lock, and the queue drains", async () => {
+  it("SKP-002: the CALLER is unblocked at timeout, even while the op is still in flight", async () => {
     const m = new Mutex();
-    let secondRan = false;
-
-    // First op never resolves; bounded by a short timeout.
-    const first = m.withLock(() => new Promise<void>(() => {}), { timeoutMs: 30 });
-    // Second op is queued behind the stalled first.
-    const second = m.withLock(async () => {
-      secondRan = true;
-    });
-
+    let resolveOp!: () => void;
+    const opGate = new Promise<void>((r) => (resolveOp = r));
+    // The op does not settle until we let it; the CALLER must still get a
+    // TimeoutError at timeoutMs rather than hang.
+    const first = m.withLock(() => opGate, { timeoutMs: 20 });
     await assert.rejects(first, (err: unknown) => err instanceof TimeoutError);
-    await second; // must NOT hang — the lock was released on timeout
-    assert.equal(secondRan, true, "queue drained after the stalled op timed out");
+    resolveOp(); // settle the op so the lock releases (cleanup)
+  });
+
+  it("SKP-001/F2: a timed-out op HOLDS the chain until it settles — next op waits, no fork", async () => {
+    const m = new Mutex();
+    const order: string[] = [];
+    let resolveA!: () => void;
+    const aGate = new Promise<void>((r) => (resolveA = r));
+
+    const a = m.withLock(
+      async () => {
+        await aGate;
+        order.push("A");
+      },
+      { timeoutMs: 20 },
+    );
+    const b = m.withLock(async () => void order.push("B"), { timeoutMs: 1000 });
+
+    await assert.rejects(a, (err: unknown) => err instanceof TimeoutError); // A's caller unblocked
+    await tick(30);
+    // The fork-prevention guarantee: B must NOT have run while A's op is still
+    // in flight (the lock is held until A settles, NOT freed on timeout).
+    assert.deepEqual(order, [], "B must not proceed while the timed-out op is still in flight");
+
+    resolveA();
+    await b;
+    assert.deepEqual(order, ["A", "B"], "B runs only after A settles → no chain fork");
   });
 
   it("releases the lock when the operation throws", async () => {

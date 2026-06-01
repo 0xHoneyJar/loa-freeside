@@ -80,6 +80,7 @@ export {
   UnknownSchemaIdError,
   TransportEmitError,
   SubjectFamilyError,
+  SubjectBuildError,
   MissingSignerError,
   type Emitter,
   type EmitterDeps,

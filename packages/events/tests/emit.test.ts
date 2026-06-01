@@ -7,6 +7,7 @@ import {
   SchemaEmitError,
   UnknownSchemaIdError,
   SubjectFamilyError,
+  SubjectBuildError,
   MissingSignerError,
 } from "../src/emit.js";
 import { NftMintDetectedId, schemaId } from "../src/registry.js";
@@ -118,6 +119,17 @@ describe("emit (T1.6, FR-3/3a/4/5)", () => {
         }),
       (err: unknown) => err instanceof MissingSignerError,
     );
+  });
+
+  it("BB F5: a bad specifier → Left(SubjectBuildError), NEVER a throw", async () => {
+    const rec = recordingNats();
+    const emitter = await mkEmitter(rec);
+    // buildTopic rejects non-kebab segments; emit() must funnel that throw into
+    // the typed Left (FR-3a: never throw), symmetric with emitRaw.
+    const r = await emitter.emit(NftMintDetectedId, VALID_MINT, "BAD SLUG!");
+    assert.ok(Either.isLeft(r), "a bad specifier is a Left, not a throw");
+    assert.ok((r as Either.Left<SubjectBuildError, never>).left instanceof SubjectBuildError);
+    assert.equal(rec.envelopes.length, 0, "nothing published when the subject can't be built");
   });
 });
 

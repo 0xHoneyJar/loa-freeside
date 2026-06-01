@@ -72,19 +72,40 @@ function walk(dir, out = []) {
 
 // Allowlisted site-ids carry a file path fragment before "::". A finding in a
 // file whose path ends with that fragment is treated as known (informational).
-function loadAllowlistFragments(path) {
+// BB F4: parse allowlist ids at SITE granularity (`<file-fragment>::<marker>`)
+// rather than collapsing to the file. A new raw .publish with a DIFFERENT subject
+// added to an already-allowlisted file must NOT be silently blessed.
+function loadAllowlist(path) {
   if (!existsSync(path)) return [];
   const text = readFileSync(path, "utf8");
-  const frags = [];
+  const entries = [];
   for (const line of text.split("\n")) {
-    const m = line.match(/^\s*-\s+id:\s*"?([^":]+)::/);
-    if (m) frags.push(m[1].trim());
+    const m = line.match(/^\s*-\s+id:\s*"?([^"]+?)"?\s*$/);
+    if (!m) continue;
+    const id = m[1].trim();
+    const idx = id.indexOf("::");
+    if (idx < 0) continue;
+    entries.push({ fileFrag: id.slice(0, idx), marker: id.slice(idx + 2) });
   }
-  return frags;
+  return entries;
 }
 
-const allowFragments = loadAllowlistFragments(ALLOWLIST_PATH);
-const isAllowlisted = (relPath) => allowFragments.some((f) => relPath.replace(/\\/g, "/").endsWith(f));
+const allowEntries = loadAllowlist(ALLOWLIST_PATH);
+
+// site-granular: a finding is KNOWN only if BOTH the file AND the subject match an
+// allowlist entry. `subject === null` means a computed/dynamic subject (no literal),
+// which matches `computed*` markers. Disambiguated entries (`<subject>::<tag>` for
+// a file emitting the same subject twice) match via the `<subject>::` prefix.
+function isAllowlisted(relPath, subject) {
+  const p = relPath.replace(/\\/g, "/");
+  return allowEntries.some((e) => {
+    if (!p.endsWith(e.fileFrag)) return false;
+    if (subject === null) return e.marker.startsWith("computed");
+    return e.marker === subject || e.marker.startsWith(`${subject}::`);
+  });
+}
+
+const SUBJECT_LITERAL = /\.(?:nats|jetstream)\.publish\s*\(\s*["']([^"']+)["']/;
 
 // Discriminate NATS from Redis/Rabbit/notifier by RECEIVER NAME, not imports:
 // every NATS emit in this codebase publishes via `.nats.publish(` or
@@ -118,7 +139,16 @@ for (const file of walk(ROOT)) {
       findings.push({ file: rel, line: i + 1, kind: "internalPublish-import", allowlisted: false, text: trimmed });
     }
     if (NATS_PUBLISH.test(line)) {
-      findings.push({ file: rel, line: i + 1, kind: "raw-nats-publish", allowlisted: isAllowlisted(rel), text: trimmed });
+      const sm = line.match(SUBJECT_LITERAL);
+      const subject = sm ? sm[1] : null; // null = computed/dynamic subject
+      findings.push({
+        file: rel,
+        line: i + 1,
+        kind: "raw-nats-publish",
+        allowlisted: isAllowlisted(rel, subject),
+        subject,
+        text: trimmed,
+      });
     }
     // unhandled Either: a statement-position emit()/emitRaw() not obviously consumed.
     if (EMIT_CALL.test(line) && !CONSUMED.test(line) && !/function|interface|type\s|=>/.test(line)) {

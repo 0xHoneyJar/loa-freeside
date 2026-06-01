@@ -91,10 +91,26 @@ export class MissingSignerError extends Error {
   }
 }
 
+/** emit() only: the topic builder rejected the specifier (e.g. an invalid kebab
+ *  segment makes buildTopic throw). Keeps emit()'s "typed Left, never throw"
+ *  contract (FR-3a) symmetric with emitRaw's SubjectFamilyError. (BB F5.) */
+export class SubjectBuildError extends Error {
+  readonly _tag = "SubjectBuildError";
+  constructor(
+    readonly schemaId: string,
+    readonly specifier: string | undefined,
+    readonly cause: unknown,
+  ) {
+    super(`[events] could not build subject for "${schemaId}" (specifier=${JSON.stringify(specifier)})`);
+    this.name = "SubjectBuildError";
+  }
+}
+
 export type EmitError =
   | SchemaEmitError
   | UnknownSchemaIdError
   | TransportEmitError
+  | SubjectBuildError
   | TimeoutError;
 
 /** Producer-visible acceptance receipt (FR-ADOPT-7): the producer sees its own
@@ -248,7 +264,15 @@ export function makeEmitter(deps: EmitterDeps): Emitter {
         return Either.left(new SchemaEmitError(id as string, valid.left));
       }
 
-      return doPublish(entry.buildSubject(specifier), payload);
+      // BB F5: buildSubject (buildTopic) THROWS on an invalid specifier segment.
+      // Funnel that into the typed Left — emit() must never throw (FR-3a).
+      let subject: string;
+      try {
+        subject = entry.buildSubject(specifier);
+      } catch (cause) {
+        return Either.left(new SubjectBuildError(id as string, specifier, cause));
+      }
+      return doPublish(subject, payload);
     },
 
     async emitRaw(id, subject, payload) {

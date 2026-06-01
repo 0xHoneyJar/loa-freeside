@@ -38,3 +38,13 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.ref || 'main' }}
         run: bash tools/check-nats-allowlist-shrinks.sh --enforce
+      # BB F1: prove the shrink-gate actually goes RED on a violation (not green-by-default).
+      - name: shrink-gate smoke test (prove red-on-violation)
+        run: bash tools/check-nats-allowlist-shrinks.test.sh
+      # BB F3: prove events:new-schema is idempotent across multiple invocations.
+      - name: events:new-schema idempotency
+        working-directory: packages/events
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile --ignore-scripts || pnpm install --ignore-scripts
+          bash scripts/new-schema.test.sh

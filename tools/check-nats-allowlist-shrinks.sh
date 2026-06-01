@@ -43,7 +43,7 @@
 # =============================================================================
 set -uo pipefail
 
-ALLOWLIST="packages/events/raw-nats-allowlist.yaml"
+ALLOWLIST="${ALLOWLIST:-packages/events/raw-nats-allowlist.yaml}"  # env-overridable for the smoke test
 BASE="${BASE:-main}"
 ENFORCE=0
 [ "${1:-}" = "--enforce" ] && ENFORCE=1
@@ -62,10 +62,37 @@ fi
 
 head_ids="$(extract_ids < "$ALLOWLIST")"
 
-# Base version. If the file does not exist on the base ref, this is the
+# BB F1: resolve a USABLE base ref. actions/checkout@v4 checks the PR out in
+# DETACHED HEAD and does NOT create a local `refs/heads/main`, so a bare `main`
+# (the workflow's BASE default) does not resolve and `git show main:…` silently
+# fell through to the "introduction commit" branch — making the gate a no-op that
+# passed unconditionally in PR CI. Resolve origin/<base>, then local <base>, then
+# a shallow fetch; if NONE resolve, that is a CI fault, not an introduction:
+# error under --enforce rather than pass an unverifiable gate.
+base_ref=""
+for cand in "origin/${BASE}" "${BASE}"; do
+  if git rev-parse --verify --quiet "${cand}^{commit}" >/dev/null 2>&1; then
+    base_ref="$cand"; break
+  fi
+done
+if [ -z "$base_ref" ] && git fetch --quiet --depth=1 origin "${BASE}" 2>/dev/null; then
+  base_ref="FETCH_HEAD"
+fi
+
+if [ -z "$base_ref" ]; then
+  msg="[nats-allowlist] cannot resolve base ref '${BASE}' (no origin/${BASE}, no local ${BASE}, fetch failed)"
+  if [ "$ENFORCE" = "1" ]; then
+    echo "::error::${msg} — refusing to pass an UNVERIFIABLE shrink-gate (a gate that can never fail is worse than none, BB F1)."
+    exit 1
+  fi
+  echo "::warning::${msg} — report-only, skipping."
+  exit 0
+fi
+
+# Base resolved. If the file is absent ON THE BASE, this is the genuine
 # introduction commit — establish the baseline, do not gate.
-if ! base_blob="$(git show "${BASE}:${ALLOWLIST}" 2>/dev/null)"; then
-  echo "::notice::[nats-allowlist] $ALLOWLIST not present on ${BASE} — introduction commit, baseline established."
+if ! base_blob="$(git show "${base_ref}:${ALLOWLIST}" 2>/dev/null)"; then
+  echo "::notice::[nats-allowlist] $ALLOWLIST not present on ${base_ref} — introduction commit, baseline established."
   exit 0
 fi
 base_ids="$(printf '%s\n' "$base_blob" | extract_ids)"
