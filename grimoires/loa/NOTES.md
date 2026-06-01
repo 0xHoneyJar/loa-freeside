@@ -175,3 +175,30 @@ In-repo sprint-1 (cycle doctor-acvp-network-plane, branch feat/doctor-acvp-netwo
 - **FAGAN gate**: iter-1 (18 findings) caught a CRITICAL fail-open regression (displaced `exit 1` — audit gate stopped blocking PRs) + 4 majors → fixed. iter-2 (12, critical gone) closed silent-aspiration (unverifiable receipt→aspirational), --remote fixture-substitution, cross-slug receipt confused-deputy, fail-closed expiry, symlink-safe resolution → fixed. Converged. Verdict artifacts: grimoires/loa/a2a/fagan/doctor-acvp-fagan{,-v2}.json.
 - **OPERATOR-BOUND to land** (in order): (1) merge bug/sprint-bug-332 → main (required Unit Tests context); (2) push feat/doctor-acvp-network-plane + open the PR (I'm --local, no PR opened); note packages/* are standalone (per-package install, no root workspace lockfile) — the acvp-bindings CI job installs+builds per-package.
 - **FOLLOW-UPS (beads, cycle doctor-acvp-network-plane)**: T5a/.7 (mediums Tier-A build:beacon+acvp:verify), T5b/.8 (sonar), T8/.9 (flip acvp-bindings → fail-block after receipts), + FAGAN-accepts (yq SHA-pin / local-file strictness / shared helper). All cross-repo T5a/T5b via /coord.
+
+## Decision Log — cycle-112 S3 (2026-05-31)
+- [ACCEPTED-DEFERRED] T3.1/T3.2 codemod tool + T3.3 bulk migration of the 10 non-pilot
+  raw-NATS sites. Rationale: PRD NG-4 ("only the pilot migrates this cycle; the rest
+  allowlisted + tracked") + ts-morph/jscodeshift not in repo (no autonomous dep install).
+  Pattern documented in cycles/cycle-112-schema-emission-floor/migration-runbook.md;
+  demonstrated by the S4 pilot. Tracked: arrakis-yc49. Allowlist trajectory corrected
+  (after S4 pilot: entries 10; bulk follow-up: entries 0, emitRaw 3).
+- T3.0 RESOLVED: internal.killswitch gets a real KillSwitchSignal schema (sign the
+  control signal — forged kill-switch = DoS vector); migration deferred with the rest.
+
+## Decision Log — cycle-112 S4 (2026-05-31)
+- [ACCEPTED-DEFERRED] T4.2 production wiring of parallel-mode-orchestrator.ts onto emit().
+  Rationale: crosses into packages/adapters/coexistence (vitest framework, constructor-sig
+  change + factory + new @0xhoneyjar/events workspace dep) — cannot validate that suite in
+  this environment; modifying blind is unsafe. The pilot LOOP + recovery are PROVEN
+  end-to-end in packages/events/tests/pilot.test.ts (the test-harness consumer = SDD design),
+  pattern in migration-runbook.md. Tracked: arrakis-we22. Allowlist stays at 11 (honest —
+  raw .publish still present) until the production line lands.
+
+## Decision Log — cycle-112 S5 (2026-05-31)
+- [ACCEPTED-DEFERRED] T5.4 contract_status:bound for events-api/schema_enforcement.
+  The invariant is DECLARED (first in-repo beacon, closes arrakis-vl8f) + backed by a
+  green proof test, but `bound` needs the acvp:verify commit-bound receipt pipeline.
+  Honest interim: aspirational + dated (2026-09-25) in .freeside/acvp-aspirational-allowlist.yaml,
+  NOT a faked green. Tracked: arrakis-5ryf. events-api slug is an `-api`-naming-law concession
+  for a library (mcp omitted, no served URL).
