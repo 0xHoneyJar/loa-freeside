@@ -185,3 +185,12 @@ In-repo sprint-1 (cycle doctor-acvp-network-plane, branch feat/doctor-acvp-netwo
   (after S4 pilot: entries 10; bulk follow-up: entries 0, emitRaw 3).
 - T3.0 RESOLVED: internal.killswitch gets a real KillSwitchSignal schema (sign the
   control signal — forged kill-switch = DoS vector); migration deferred with the rest.
+
+## Decision Log — cycle-112 S4 (2026-05-31)
+- [ACCEPTED-DEFERRED] T4.2 production wiring of parallel-mode-orchestrator.ts onto emit().
+  Rationale: crosses into packages/adapters/coexistence (vitest framework, constructor-sig
+  change + factory + new @0xhoneyjar/events workspace dep) — cannot validate that suite in
+  this environment; modifying blind is unsafe. The pilot LOOP + recovery are PROVEN
+  end-to-end in packages/events/tests/pilot.test.ts (the test-harness consumer = SDD design),
+  pattern in migration-runbook.md. Tracked: arrakis-we22. Allowlist stays at 11 (honest —
+  raw .publish still present) until the production line lands.

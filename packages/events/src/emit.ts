@@ -120,6 +120,35 @@ export interface EmitterDeps {
   /** Max time a single publish may hold the chain lock before it is abandoned
    *  with a TimeoutError (mutex). Default 5000ms. */
   readonly publishTimeoutMs?: number;
+  /** Scoped recovery for TRANSPORT failures (cycle-112 T4.5). Off by default
+   *  (S1 behaviour preserved). Validation failures NEVER use this — a bad
+   *  payload is deterministic, so retrying it is futile; it drops immediately.
+   *  This is NOT the transactional outbox (durable state<->event atomicity stays
+   *  cycle-2 / C2-0); it is the minimum so a transient NATS blip does not become
+   *  a silent drop the moment the lint fail-blocks emit() as the only path. */
+  readonly recovery?: RecoveryConfig;
+}
+
+export interface DeadLetterInfo {
+  readonly subject: string;
+  readonly error: TransportEmitError | TimeoutError;
+  readonly attempts: number;
+}
+
+export interface RecoveryConfig {
+  /** Retries for a TRANSPORT failure (TransportEmitError / TimeoutError).
+   *  Default 0 (no retry). Validation failures are never retried. */
+  readonly maxRetries?: number;
+  /** Base backoff between retries (exponential: base * 2^attempt). Default 100ms. */
+  readonly backoffMs?: number;
+  /** Called once when retries are exhausted — the event could not be delivered.
+   *  The caller persists this (a dead-letter row / log) for later reconciliation
+   *  (cycle-2). Observable, never silent. */
+  readonly deadLetter?: (info: DeadLetterInfo) => void;
+  /** Called alongside deadLetter — fire an alert (named owner / threshold). */
+  readonly onAlert?: (info: DeadLetterInfo) => void;
+  /** Test seam: override the inter-retry delay (so tests do not wait real ms). */
+  readonly sleep?: (ms: number) => Promise<void>;
 }
 
 /** `nft.mint.detected.v1` -> `nft.mint.detected` (family stem, sans version). */
@@ -156,7 +185,11 @@ export function makeEmitter(deps: EmitterDeps): Emitter {
   // SKP-001 (race): one mutex per emitter serializes THIS cell's chain advances.
   const chainLock = new Mutex();
 
-  const doPublish = async (
+  const maxRetries = deps.recovery?.maxRetries ?? 0;
+  const backoffMs = deps.recovery?.backoffMs ?? 100;
+  const sleep = deps.recovery?.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+
+  const attemptOnce = async (
     subject: string,
     payload: unknown,
   ): Promise<Either.Either<EmitReceipt, TransportEmitError | TimeoutError>> => {
@@ -183,6 +216,25 @@ export function makeEmitter(deps: EmitterDeps): Emitter {
       if (cause instanceof TimeoutError) return Either.left(cause);
       return Either.left(new TransportEmitError(subject, cause));
     }
+  };
+
+  // T4.5: bounded transient-retry for TRANSPORT failures, then dead-letter +
+  // alert (observable, never silent). Validation never reaches here.
+  const doPublish = async (
+    subject: string,
+    payload: unknown,
+  ): Promise<Either.Either<EmitReceipt, TransportEmitError | TimeoutError>> => {
+    let last: TransportEmitError | TimeoutError | undefined;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const r = await attemptOnce(subject, payload);
+      if (Either.isRight(r)) return r;
+      last = r.left;
+      if (attempt < maxRetries) await sleep(backoffMs * 2 ** attempt);
+    }
+    const info: DeadLetterInfo = { subject, error: last!, attempts: maxRetries + 1 };
+    deps.recovery?.deadLetter?.(info);
+    deps.recovery?.onAlert?.(info);
+    return Either.left(last!);
   };
 
   return {

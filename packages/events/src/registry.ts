@@ -1,6 +1,7 @@
 import { Schema as S } from "@effect/schema";
 import { NftMintDetectedSchema } from "./schemas/nft-mint-detected.js";
-import { nftMintDetectedTopic } from "./topics.js";
+import { ParallelModeEnabledSchema } from "./schemas/parallel-mode-enabled.js";
+import { nftMintDetectedTopic, parallelModeEnabledTopic } from "./topics.js";
 
 /**
  * The `event_type -> payload-schema` registry — the keystone of the
@@ -84,6 +85,11 @@ export interface RegistryEntry<P> {
 /** SchemaId for the one pre-existing payload schema, now registered. Named
  *  `...Id` to avoid colliding with the `NftMintDetected` payload *type* that
  *  `schemas/nft-mint-detected.ts` already exports. */
+export const ParallelModeEnabledId: SchemaId<S.Schema.Type<typeof ParallelModeEnabledSchema>> = schemaId(
+  "parallel.mode.enabled.v1",
+  ParallelModeEnabledSchema,
+);
+
 export const NftMintDetectedId: SchemaId<S.Schema.Type<typeof NftMintDetectedSchema>> = schemaId(
   "nft.mint.detected.v1",
   NftMintDetectedSchema,
@@ -97,6 +103,11 @@ const ENTRIES = [
     id: NftMintDetectedId,
     schema: NftMintDetectedSchema,
     buildSubject: (specifier?: string) => nftMintDetectedTopic({ collectionSlug: specifier }),
+  },
+  {
+    id: ParallelModeEnabledId,
+    schema: ParallelModeEnabledSchema,
+    buildSubject: (specifier?: string) => parallelModeEnabledTopic({ specifier }),
   },
   // pilot + migrated entries appended here (cycle-112 S3/S4)
 ] as const satisfies ReadonlyArray<RegistryEntry<any>>;

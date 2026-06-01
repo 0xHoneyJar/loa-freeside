@@ -56,6 +56,7 @@ export {
   schemaId,
   lookupSchema,
   NftMintDetectedId,
+  ParallelModeEnabledId,
   REGISTRY_ENTRIES,
   REVIEWED_TRANSFORMS,
   type SchemaId,
@@ -84,7 +85,16 @@ export {
   type EmitterDeps,
   type EmitReceipt,
   type EmitError,
+  type RecoveryConfig,
+  type DeadLetterInfo,
 } from "./emit.js";
+
+// The pilot event (cycle-112 S4) + its config-hash helper.
+export {
+  ParallelModeEnabledSchema,
+  configHash,
+  type ParallelModeEnabled,
+} from "./schemas/parallel-mode-enabled.js";
 
 // The per-cell chain mutex + its timeout error.
 export { Mutex, TimeoutError, DEFAULT_LOCK_TIMEOUT_MS } from "./mutex.js";
