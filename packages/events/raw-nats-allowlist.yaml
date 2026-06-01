@@ -18,9 +18,11 @@
 # emits the same subject twice or uses a computed subject) so ordinary edits do
 # not look like set churn to the gate.
 #
-# EXPECTED FINAL CARDINALITY (after cycle-112 S3 codemod + S4 pilot):
-#   entries: 0           (all 11 migrated onto emit()/emitRaw)
-#   emitRaw_allowlist: 3 (the computed-subject sites: event-router x2, NatsClient x1)
+# CARDINALITY TRAJECTORY (corrected for PRD NG-4 — only the PILOT migrates this cycle):
+#   after cycle-112 S4 (pilot):  entries 10 (parallel.mode.enabled removed); emitRaw 0
+#   after bulk migration (follow-up cycles, see migration-runbook.md):
+#                                entries 0; emitRaw 3 (event-router x2, NatsClient x1)
+# The shrink-gate enforces the monotonic direction throughout; S5 flips it to fail-block.
 # The 11 are enumerated in grimoires/loa/cycles/cycle-112-schema-emission-floor/grounding-notes.md §1.
 
 version: 1
