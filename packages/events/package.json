@@ -59,13 +59,19 @@
   "files": [
     "dist",
     "src",
+    "bin",
+    "raw-nats-allowlist.yaml",
     "README.md"
   ],
+  "bin": {
+    "events-lint": "./bin/events-lint.mjs"
+  },
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc --noEmit",
     "typecheck:test": "tsc -p tsconfig.test.json",
     "clean": "rm -rf dist",
+    "events-lint": "node bin/events-lint.mjs --root ../..",
     "test:unit": "tsx --test tests/*.test.ts",
     "test": "pnpm build && pnpm typecheck:test && pnpm test:unit"
   },

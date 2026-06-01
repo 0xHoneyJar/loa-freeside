@@ -1,0 +1,45 @@
+# packages/events/raw-nats-allowlist.yaml
+# ──────────────────────────────────────────────────────────────────────────
+# cycle-112 schema-emission floor — the grandfathered raw-NATS emit ledger.
+#
+# `entries` lists every site that currently reaches NATS via a raw `.publish`
+# instead of the sanctioned `emit()` / `emitRaw()` facade. This SET can ONLY
+# SHRINK: `tools/check-nats-allowlist-shrinks.sh` compares the id SET against
+# the base branch and FAILS on any addition — appending a new raw emit, OR a
+# count-preserving swap (remove a migrated id + add a new one), is rejected
+# (FR-9a / Flatline IMP-003). The only way to land a new NATS event is `emit()`.
+#
+# `emitRaw_allowlist` lists sites that legitimately use the `emitRaw` escape
+# hatch (genuinely dynamic/computed subjects). emitRaw is sanctioned but BOUNDED
+# and VISIBLE — its set is gated the same shrink-only way, so it cannot become
+# an unbounded bypass (SKP-002/008).
+#
+# Ids are line-INDEPENDENT (subject + file, with a disambiguator where a file
+# emits the same subject twice or uses a computed subject) so ordinary edits do
+# not look like set churn to the gate.
+#
+# EXPECTED FINAL CARDINALITY (after cycle-112 S3 codemod + S4 pilot):
+#   entries: 0           (all 11 migrated onto emit()/emitRaw)
+#   emitRaw_allowlist: 3 (the computed-subject sites: event-router x2, NatsClient x1)
+# The 11 are enumerated in grimoires/loa/cycles/cycle-112-schema-emission-floor/grounding-notes.md §1.
+
+version: 1
+
+entries:
+  # ── coexistence (INatsPublisher; static subjects) — S3/S4 migrate to emit() ──
+  - id: "adapters/coexistence/parallel-mode-orchestrator.ts::parallel.mode.enabled"
+  - id: "adapters/coexistence/parallel-mode-orchestrator.ts::parallel.mode.disabled"
+  - id: "adapters/coexistence/parallel-mode-orchestrator.ts::parallel.mode.sync.completed"
+  - id: "adapters/coexistence/shadow-sync-job.ts::coexist.shadow.sync.complete"
+  - id: "adapters/coexistence/shadow-sync-job.ts::coexist.tier.upgraded"
+  - id: "adapters/coexistence/shadow-sync-job.ts::coexist.shadow.digest.send"
+  # ── kill-switch (nats.publish; same subject twice) — S3 gives it a real schema (T3.0) ──
+  - id: "adapters/security/kill-switch.ts::internal.killswitch::activate"
+  - id: "adapters/security/kill-switch.ts::internal.killswitch::deactivate"
+  # ── computed-subject sites (jetstream.publish; targetSubject) — S3 converts to emitRaw ──
+  - id: "sandbox/src/services/event-router.ts::computed::route-346"
+  - id: "sandbox/src/services/event-router.ts::computed::route-397"
+  - id: "worker/src/services/NatsClient.ts::computed::jetstream-379"
+
+# Populated by S3 when the computed-subject sites convert from raw to emitRaw.
+emitRaw_allowlist: []

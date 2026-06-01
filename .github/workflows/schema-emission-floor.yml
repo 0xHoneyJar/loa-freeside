@@ -1,0 +1,41 @@
+# cycle-112 schema-emission floor — CI gate (REPORT-ONLY in S2 per FR-ADOPT-8).
+#
+# Two checks, neither fail-blocks yet (the ramp: facade + codemod land BEFORE the
+# fence; S5/T5.5 flips both to --enforce):
+#   1. events-lint   — detects raw NATS .publish / internalPublish leaks /
+#                      unhandled emit() Eithers, suppressing the allowlisted 11.
+#   2. allowlist-gate — the raw-NATS allowlist may only SHRINK (set-subset vs base).
+#
+# Flip to fail-block in S5: change `|| true` removal + add `--enforce`.
+name: schema-emission-floor
+
+on:
+  pull_request:
+    paths:
+      - "packages/events/**"
+      - "packages/adapters/**"
+      - "packages/sandbox/**"
+      - "apps/worker/**"
+      - "tools/check-nats-allowlist-shrinks.sh"
+      - ".github/workflows/schema-emission-floor.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  floor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the shrink-gate diffs against the base branch
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: events-lint (report-only)
+        run: node packages/events/bin/events-lint.mjs --root .
+      - name: raw-NATS allowlist shrink-gate (report-only)
+        env:
+          BASE: ${{ github.event.pull_request.base.ref || 'main' }}
+        run: bash tools/check-nats-allowlist-shrinks.sh
