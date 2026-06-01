@@ -41,8 +41,21 @@
     "./schemas/nft-mint-detected": {
       "types": "./dist/src/schemas/nft-mint-detected.d.ts",
       "import": "./dist/src/schemas/nft-mint-detected.js"
+    },
+    "./registry": {
+      "types": "./dist/src/registry.d.ts",
+      "import": "./dist/src/registry.js"
+    },
+    "./emit": {
+      "types": "./dist/src/emit.d.ts",
+      "import": "./dist/src/emit.js"
+    },
+    "./mutex": {
+      "types": "./dist/src/mutex.d.ts",
+      "import": "./dist/src/mutex.js"
     }
   },
+  "//exports-note": "cycle-112: ./transport is DELIBERATELY omitted. The internalPublish capability (raw NATS publish) must be unreachable from outside the package; emit.ts/publisher.ts import ./transport.js via relative path. The exports map gates all subpaths, so neither @0xhoneyjar/events/transport nor /dist/src/transport.js resolves for a consumer (FR-7, SKP-002).",
   "files": [
     "dist",
     "src",
@@ -51,9 +64,10 @@
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc --noEmit",
+    "typecheck:test": "tsc -p tsconfig.test.json",
     "clean": "rm -rf dist",
     "test:unit": "tsx --test tests/*.test.ts",
-    "test": "pnpm build && pnpm test:unit"
+    "test": "pnpm build && pnpm typecheck:test && pnpm test:unit"
   },
   "peerDependencies": {
     "nats": ">=2.28.0 <3.0.0"

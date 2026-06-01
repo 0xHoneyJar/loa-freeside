@@ -47,3 +47,44 @@ export {
   NftMintDetectedSchema,
   type NftMintDetected,
 } from "./schemas/nft-mint-detected.js";
+
+// --- cycle-112 schema-emission floor -----------------------------------------
+
+// The event_type -> payload-schema registry (the keystone). Cells reference
+// entries; they never mutate the registry.
+export {
+  schemaId,
+  lookupSchema,
+  NftMintDetectedId,
+  REGISTRY_ENTRIES,
+  REVIEWED_TRANSFORMS,
+  type SchemaId,
+  type PayloadOf,
+  type RegistryEntry,
+} from "./registry.js";
+
+// The transport capability. `createNatsTransport` is the ONLY way a cell obtains
+// a transport; `internalPublish` is deliberately NOT exported (FR-7, SKP-002) —
+// emit.ts/publisher.ts import it directly from "./transport.js".
+export {
+  createNatsTransport,
+  type NatsTransport,
+  type RawNats,
+} from "./transport.js";
+
+// The emit facade — the sanctioned NATS emission path.
+export {
+  makeEmitter,
+  SchemaEmitError,
+  UnknownSchemaIdError,
+  TransportEmitError,
+  SubjectFamilyError,
+  MissingSignerError,
+  type Emitter,
+  type EmitterDeps,
+  type EmitReceipt,
+  type EmitError,
+} from "./emit.js";
+
+// The per-cell chain mutex + its timeout error.
+export { Mutex, TimeoutError, DEFAULT_LOCK_TIMEOUT_MS } from "./mutex.js";
