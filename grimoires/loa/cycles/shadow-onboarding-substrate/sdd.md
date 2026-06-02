@@ -1,9 +1,9 @@
 # Software Design Document — Shadow-Mode Onboarding Substrate + Before/After Comparison
 
-**Version:** 1.1 (flatline-hardened)
+**Version:** 1.2 (sprint-flatline-refined)
 **Date:** 2026-06-01
 **Author:** Architecture Designer Agent (ARCH: the-arcade + protocol, craft lens)
-**Status:** Draft (3-model flatline integrated — see §13)
+**Status:** Draft (3-model SDD flatline + 3-model sprint flatline integrated — see §13)
 **Cycle:** `shadow-onboarding-substrate` (domain: `shared`)
 **PRD Reference:** `grimoires/loa/cycles/shadow-onboarding-substrate/prd.md`
 **ARCH brief:** `grimoires/loa/context/2026-06-01-shadow-onboarding-substrate-brief.md`
@@ -107,6 +107,7 @@ graph TD
 - **Responsibilities:** typed lifecycle state machine (`transition`); guards (`go_live` HARD hash-match guard, `rollback` always-allowed); PURE `computeProposed(roleMapConfig, roster)` + `diff(current, proposed, latentCounts) → Discrepancy`; EFFECTFUL `loadCurrentRoster` / `loadLatentCounts` / `resolveAuthz` (the I/O seam, §4.2); the **gate-checked `RoleWriter`** wrapper (apply_mode read at invocation, `WriteCapability`-bound, audit-before-write) that rejects writes when `apply_mode == SHADOW` and emits an ACVP write-intent/result event.
 - **Interfaces (exported symbols — the FR-8 stub symbol table, §4.6):** PURE — `transition`, `computeProposed`, `diff`, `roleMapVersionHash`; EFFECTFUL — `loadCurrentRoster`, `loadLatentCounts`, `resolveAuthz`, `GateCheckedRoleWriter`; ports — `RosterSource` / `RoleWriter` / `ScoreSource` (Tags); the `WriteCapability` branded type + `WriteIntentBatch`/`GoLiveJobState`/`AuthzContext`, the error ADT, and the state/event schemas.
 - **Dependencies:** `@freeside-worlds/config-protocol` (the surface schemas), `@0xhoneyjar/events` (envelope construction), `effect` + `@effect/schema`. **No** HTTP/DB/discord.js dependency — that is the invariant that makes shadow provable.
+- **Import-direction / circular-dep guard (sprint-flatline D1):** `BoundedString` is **owned by `config-protocol`** (`surface-config.ts`); `shadow-substrate` imports it one-way (`shadow-substrate → config-protocol`). The S0 substrate authors the config-surface *payload* schemas in-package, but the S2 wiring adds those surfaces to `config-protocol` by **re-exporting the substrate's payload schemas into `config-protocol`** — `config-protocol` must NOT import back from `shadow-substrate` for `BoundedString` (it already owns it), or a day-one circular dependency forms. The dependency arrow is single-direction `shadow-substrate → config-protocol`; verify in Phase 1/2 (Task 403.1) that no reverse import exists.
 - **Distribution:** git-source SHA-pinned; `private: true` workspace package, consumed by lenses via bun git-tarball install pinned in the consumer lockfile (PRD NFR-1).
 
 #### C2 · `config-protocol` surface extensions (worlds-api, existing package)
@@ -169,10 +170,13 @@ lens fires go_live(report_hash) with CM session token + authz context (§6.2)
 ```
 The lens fires `go_live`, receives a `job_id`, and **polls** `onboarding-lifecycle.go_live_job` for `{status, progress, roles_created[]}` until terminal (`done | partial_failure | failed`). See §4.4 for the batch model, idempotency, and reconciliation.
 
-**Rollback (instant, always allowed):**
+**Rollback (instant, always allowed) — non-destructive for ASSIGNED roles, GC for UNASSIGNED (sprint-flatline B2):**
 ```
 lens fires rollback ─▶ apply_mode LIVE→SHADOW (no guard)
-  ─▶ halt further assignments; KEEP created roles (non-destructive, FR-9/R-6); warn
+  ─▶ halt further assignments
+  ─▶ created roles WITH ≥1 assignment  → KEEP (non-destructive, FR-9/R-6 — never strip users); warn
+  ─▶ created-but-UNASSIGNED Freeside-namespaced roles → GARBAGE-COLLECT (delete) so repeated
+        go_live/rollback cycles cannot accumulate orphan empty roles toward Discord's 250 ceiling (B2/SKP-001)
   ─▶ Collab.Land role set untouched (namespaced coexistence, FR-9)
 ```
 
@@ -190,10 +194,21 @@ lens fires rollback ─▶ apply_mode LIVE→SHADOW (no guard)
 ### 1.7 Deployment Architecture
 
 - **Substrate package:** no runtime deployment — it is a *library*, distributed via git-source and consumed by the lenses' build. Versioned by git SHA in each consumer's lockfile.
-- **config-service:** existing Railway service (`freeside-worlds`); FR-10 write-auth ships as a code change to the running service. `CONFIG_SERVICE_URL` cutover (the verify-message #59 move) is the hard dep for *apply* — shadow-preview runs on mock until then.
+- **config-service:** existing Railway service (`freeside-worlds`); FR-10 write-auth ships as a code change to the running service. `CONFIG_SERVICE_URL` cutover (the verify-message #59 move) is the hard dep for *apply* — shadow-preview runs on mock until then. **Deployed-config-service smoke test (sprint-flatline D4):** before the cutover, a smoke test hits the *deployed* config-service (new surfaces GET/PUT + FR-10 token-format + routing) to catch routing/schema/token-format issues against the live environment, not just the in-memory `ConfigStore` integration tests — so a deploy-time mismatch surfaces before apply, not during it.
 - **freeside-characters / freeside-dashboard:** existing Railway/Vercel deployments; consume the new substrate SHA, supply Layers.
 - **Private git-tarball build credential (REFINEMENT A, HC6/IMP-006) — Phase-3 deploy note:** `@freeside-worlds/shadow-substrate` is a **private** git-source, SHA-pinned dependency. Railway authenticates its builds, but **Vercel does not fetch private git repos without credentials** — so the **dashboard's Vercel build will fail to resolve the private tarball unless a `GITHUB_TOKEN` (or deploy-key) is configured** for the build (a repo-scoped token with read access to `freeside-worlds`, set as a Vercel build env var / `.npmrc`/bun git auth). This matches the cluster's authed-private-distribution decision already taken for score-api. The dashboard (freeside-dashboard) MUST have this credential provisioned before Phase 3 deploy; characters (Railway) inherits Railway's authed-build path. Mitigation cost is low (one build secret) but it is a hard build blocker if omitted.
 - **Purupuru world:** **precondition work** — a `purupuru.yaml` world manifest must be created in `packages/registry/worlds/` (none exists today; only apdao/mibera/midi/rektdrop). Discord guild id + NFT contract addresses + member/holder set are documented preconditions (PRD §7, FL-disputed2), not assumed.
+
+#### 1.7.1 Cross-repo substrate version contract (sprint-flatline B7)
+
+The substrate is the security boundary, and it is consumed git-source/SHA-pinned by THREE repos. If `freeside-dashboard` and `freeside-characters` pin **different** SHAs, the web lens, the `AuthzContext`, and the live writer could disagree on schemas, the `roleMapVersionHash` algorithm, or the `WriteCapability` shape — a silent, dangerous skew on the boundary that enforces "SHADOW ⇒ zero writes." The MVP therefore ships a **single-SHA version contract**:
+
+| Element | Decision |
+|---------|----------|
+| **Canonical SHA** | One pinned `@freeside-worlds/shadow-substrate` git SHA recorded in the **cycle artifact** (`grimoires/loa/cycles/shadow-onboarding-substrate/substrate-sha.lock`) — the single source of truth all consumers pin to. |
+| **CI compatibility check** | Each consumer repo (`freeside-worlds`, `freeside-characters`, `freeside-dashboard`) runs a CI job asserting its lockfile-pinned substrate SHA **equals** the cycle's canonical SHA (fail the build on mismatch). |
+| **Schema/hash compatibility tests** | A shared conformance fixture (the `roleMapVersionHash` of a canonical input + a frozen `Discrepancy`/`AuthzContext`/`WriteCapability` shape) is asserted identical across all three consumers, so a SHA bump that changes the hash algorithm or a schema shape fails loud before deploy. |
+| **Rollback procedure** | A substrate-SHA bump is rolled out by: (1) update `substrate-sha.lock`; (2) bump all three consumers in lockstep + re-run the conformance fixture; (3) deploy. **Rollback** = revert `substrate-sha.lock` to the prior SHA, revert the three consumer lockfile pins, redeploy — never leave consumers on mixed SHAs. |
 
 ### 1.8 Scalability Strategy
 
@@ -203,8 +218,9 @@ Out of scope for MVP (Purupuru is a single test world). The architecture scales 
 
 - **Two-gate side-effect authorization (NFR-3, the core invariant):** a Discord role write is authorized **IFF** `apply_mode == LIVE` **AND** the CM is authorized for the world. Gate 1 (state) lives in the pure substrate; Gate 2 (actor, FR-10) lives in config-service write-auth. Both must pass.
 - **FR-10 authz floor (NEW per flatline — the one scope change):** writes to a real Discord server require an *actor* guard, not just the state gate. config-service replaces "any bearer" with CM-identity-scoped authorization (admin allowlist + identity-scoped write token). Mandatory for MVP because go-live writes to a real server.
-  - **Allowlist storage + lifecycle (CLUSTER 6, IMP-003/SKP-003/SKP-007 — resolved, was OQ):** the admin allowlist is a **world-manifest field** `admin_principals: [identity_id, ...]` committed alongside `purupuru.yaml` (deploy-bound, like `guild_ids`). Read at `resolveWriter`/`resolveAuthz` time from the manifest. **Bootstrap authority:** the operator who creates/commits the world manifest (the same authority that provisions the world). **Revocation:** remove the principal from `admin_principals` and redeploy the manifest; a short cache TTL (default 60s) bounds revocation latency. **Audit:** every authz decision (grant/deny) emits an ACVP audit event (`shadow.authz.decided.v1`). **Circularity guard:** config-service MUST NOT authorize writes to the allowlist itself — the allowlist lives in the manifest, not in a config surface, so the write-auth path can never grant itself authority.
+  - **Allowlist storage + lifecycle (CLUSTER 6, IMP-003/SKP-003/SKP-007 — resolved, was OQ):** the admin allowlist is a **world-manifest field** `admin_principals: [identity_id, ...]` committed alongside `purupuru.yaml` (deploy-bound, like `guild_ids`). Read at `resolveWriter`/`resolveAuthz` time from the manifest. **Bootstrap authority:** the operator who creates/commits the world manifest (the same authority that provisions the world). **Revocation:** remove the principal from `admin_principals` and redeploy the manifest; a short cache TTL (**≤10s**, sprint-flatline B6 DESIGN CALL — reduced from 60s) bounds revocation latency for BOTH read and write (B4); the `go_live` confirm re-checks authz freshly bypassing the cache (B6). **Audit:** every authz decision (grant/deny) emits an ACVP audit event (`shadow.authz.decided.v1`) carrying an `authz_decision_id`, which is bound into the `WriteCapability` + `AuthzContext` (B3). **Single authoritative flow:** one `resolveAuthz` decision function backs both `resolveWriter` and `resolveReader` (§6.2). **Circularity guard:** config-service MUST NOT authorize writes to the allowlist itself — the allowlist lives in the manifest, not in a config surface, so the write-auth path can never grant itself authority.
   - **Write-batch authz binding (CLUSTER 6, B14/SKP-002 confused-deputy):** every LIVE write batch carries an `AuthzContext { actor, world, report_hash, token-verification metadata, transition_version }`. `GateCheckedRoleWriter` validates the batch is bound to a **valid, current** authz decision AND a matching `report_hash` before any write — a consumer cannot set `apply_mode := LIVE` via one authorized config write and then fire unrelated/unbound Discord writes later. The batch's authz + `report_hash` MUST match the authorized `go_live` transition (§4.4.3/§4.4.4).
+- **Where the security boundary actually lives (sprint-flatline B9 — DESIGN CALL):** the enforced side-effect boundary is the substrate-side `GateCheckedRoleWriter` (invocation-time `apply_mode` read + server-enforced `AuthzContext`/`admin_principals` check + write-after-audit) — NOT the `WriteCapability` branded type. The capability is a **compile-time** accident-prevention constraint (it stops an honest dev from forgetting the gate); it is not an unforgeable runtime secret. See §4.4.4 for the full reframe. This matters for implementors: under-protecting the gate while over-trusting the token would produce a false sense of structural safety.
 - **ACVP audit (provable):** every write-intent and write-result (incl. **shadow-mode rejections**) is emitted as a signed, hash-chained ACVP envelope event. The "SHADOW ⇒ zero writes" property is provable from the audit trail AND from the test suite (§8.4).
 - **Write-side input hardening:** the config surfaces inherit the existing `BoundedString` defense (length-capped, control-byte/zero-width-rejecting) — render-side per-medium escaping stays the lens's job (the existing RENDER-CONTRACT split).
 - **Collab.Land coexistence (FR-9):** Freeside manages only a **namespaced role set** (Freeside-prefixed role ids) OR requires explicit per-role handoff before LIVE — never silently contends for a role another bot owns.
@@ -366,7 +382,7 @@ The roster (member ids, role ids, counts, fetch time) is **NOT in the hash**. It
 
 A `Discrepancy` report carries `role_map_hash = roleMapVersionHash(map it was computed against)`. `go_live` HARD guard: `report.role_map_hash == roleMapVersionHash(current_map)` — a stale report against a *changed map* → `GuardFailed("stale_report")`. **What invalidates a report:** a change to the role rules, the scaffolding config, or the relevant world-config fields — i.e., a change to the **rules**, not to the membership. **The 2-week soak is a SOFT advisory** (a surfaced recommendation), **never** a `GuardFailed` (FR-7, FL-B9).
 
-**Optional roster fingerprint (NOT a version-hash field).** If the lens wants to surface "the roster moved since you previewed" as an *advisory*, it MAY compute a separate, **non-timestamped, coarse** identifier — e.g. `rosterFingerprint = sha256(JCS(sorted(member_ids ⊕ role_ids)))` — and compare it advisory-only. It is never part of `roleMapVersionHash` and never produces a `GuardFailed`. (Recommended-only; out of MVP unless the FEEL pass wants it.)
+**Roster fingerprint (NOT a version-hash field — now load-bearing for the B1 go_live re-eval).** A separate, **non-timestamped, coarse** identifier `rosterFingerprint = sha256(JCS(sorted(member_ids ⊕ role_ids)))` is computed at report-generation time and carried in `AuthzContext.roster_version` (§6.2). At `go_live`, the substrate recomputes it against the freshly-loaded roster: an unchanged fingerprint means no drift; a changed fingerprint triggers the **roster-freshness re-evaluation** which `GuardFailed("roster_drift")`s when newly-qualifying members exceed `ROSTER_DRIFT_THRESHOLD` (default `0`, §6.2/§4.1, sprint-flatline B1). This fingerprint is **never** part of `roleMapVersionHash` (it would flap the rules-hash guard) and only ever surfaces as the dedicated roster-drift guard — the rules-hash guard and the roster-freshness guard are two independent checks at `go_live`.
 
 ### 3.4 Identity key (FR-2) & failure states (FL-HC6)
 
@@ -409,7 +425,7 @@ stateDiagram-v2
 |---|---|---|
 | `install` | record install · `apply_mode=SHADOW` | valid guild · CM authorized (FR-10) |
 | `bind_map` | (no state change) validate + stage role-map config | valid role-map schema |
-| `go_live` | `SHADOW → LIVE` | **HARD:** `report_hash == roleMapVersionHash(current)` where the hash covers ONLY {role_rules, scaffolding_config, world_config} — roster excluded so the guard does not flap (§3.3, IMP-001/SKP-001) · CM authorized (FR-10) · explicit operator act |
+| `go_live` | `SHADOW → LIVE` | **HARD:** `report_hash == roleMapVersionHash(current)` where the hash covers ONLY {role_rules, scaffolding_config, world_config} — roster excluded so the guard does not flap (§3.3, IMP-001/SKP-001) · **roster-freshness re-eval** (B1): recompute the roster fingerprint and `GuardFailed("roster_drift")` if newly-qualifying members exceed `ROSTER_DRIFT_THRESHOLD` (§6.2) · CM authorized (FR-10) · explicit operator act |
 | `rollback` | `LIVE → SHADOW` (instant) | **always allowed** · Collab.Land untouched |
 | `uninstall` | teardown (non-destructive: keeps created roles, R-6) | — |
 
@@ -469,6 +485,8 @@ The gate is **not** in the consumer. `GateCheckedRoleWriter` is a substrate-prov
 
 `GateCheckedRoleWriter` MUST resolve `apply_mode` **at invocation time**, not at Layer-provision time — either from a mutable `Ref<ApplyMode>` updated on transition, or by re-reading the `apply-mode` surface from the config seam at the start of each `applyBatch`. It MUST NOT close over a value captured when the Layer was built. (§4.5 documents the chosen mechanism: a `Ref` seeded from the config seam and updated by the `mode.transitioned` path.)
 
+**Mode-race during an active batch (sprint-flatline B5 — the inverse race).** Reading the `Ref` at invocation closes the *Layer-build* capture bug (R-10), but it does NOT by itself close the TOCTOU window between the mode-read and the Discord write completing: a concurrent `rollback` (LIVE→SHADOW) that lands *after* the `Ref` is read but *before* the op's Discord call returns would let the write proceed under a mode that has already flipped to SHADOW — the audit trail would show `shadow.role.intent.v1` under LIVE while the write executed during a SHADOW window. **Fix: acquire a read-lock on the mode `Ref` for the duration of the write batch** — the `GateCheckedRoleWriter` holds a mode read-lock across `applyBatch` so a concurrent mode-transition (rollback) **cannot interleave** mid-batch; the transition either runs before the batch starts or after it terminates. (A `rollback` is therefore observed at a batch boundary, halting *further* batches/ops, never mid-op.) The §8.4 property suite adds the inverse-race counterexample: flip the `Ref` to SHADOW after a write is dispatched and assert the write is either not committed under the new mode or the mode-transition is serialized to wait out the in-flight batch.
+
 #### 4.4.1 Write-intent BATCH model (CLUSTER 2, IMP-004/IMP-009, SKP-002/SKP-004)
 
 LIVE writes go through a `WriteIntentBatch`, not one-op-at-a-time fire-and-forget:
@@ -498,10 +516,11 @@ export interface GoLiveJobState {
 ```
 
 Rules:
-- **Idempotent create (check-then-create):** `createRole` first `GET`s the guild roles and creates **only if a role with the namespaced key is absent**; a found role reuses its id. Every created role is appended to the `roles_created` ledger persisted on the lifecycle surface, so a crashed/retried job never double-creates.
+- **Idempotent create (check-then-create), serialized per world (sprint-flatline B10 — TOCTOU fix):** `createRole` first `GET`s the guild roles and creates **only if a role with the namespaced key is absent**; a found role reuses its id. **The check-then-create sequence is NOT atomic from Discord's perspective**, so two concurrent batches targeting the same world could both observe a role as absent and both create it (duplicate snowflakes, or a second-attempt error that reconciliation misclassifies as transient). The `idempotency_key` only dedupes *within* a single batch, never *across* concurrent ones. Therefore role-creation is **serialized per world via a world-scoped advisory lock** (Postgres advisory lock keyed on `world_slug`, with a Redis `SETNX` fallback or a per-world job queue) that wraps the entire check-then-create span; only one batch may be in its create phase for a given world at a time. `max_concurrent` is an **intra-batch** in-flight cap (it does NOT prevent same-world cross-batch concurrency — that is the lock's job). Every created role is appended to the `roles_created` ledger persisted on the lifecycle surface, so a crashed/retried job never double-creates. A concurrency test (§8.4) fires two simultaneous batches at the same guild and asserts exactly one role is created.
 - **Idempotent assign:** `assignRole` is a PUT-member-role (Discord assign is naturally idempotent); re-assigning a held role is a no-op.
 - **Rate-limit handling:** on HTTP 429, **exponential backoff with jitter**, bounded retries; 429s are classified as transient `WriteError("rate_limited")`, **never** mistaken for a hard failure that triggers rollback. `max_concurrent` caps in-flight calls (default 4) to stay under the ~5 assigns/s/guild ceiling.
-- **Partial success / partial failure:** each op carries an independent status. A batch that completes some ops and fails others ends `status: partial_failure` with per-op detail; the job does **not** abort the whole batch on a single op failure. **Reconciliation:** a retry re-runs only `pending`/`failed` ops (matched by `idempotency_key` against the `roles_created` ledger + `op_status`); already-`ok` ops are skipped. `apply_mode` stays `LIVE` across a partial failure; rollback (§1.5) keeps created roles (FR-9/R-6) and the `roles_created` ledger identifies which roles Freeside created vs pre-existing.
+- **Partial success / partial failure:** each op carries an independent status. A batch that completes some ops and fails others ends `status: partial_failure` with per-op detail; the job does **not** abort the whole batch on a single op failure. **Reconciliation:** a retry re-runs only `pending`/`failed` ops (matched by `idempotency_key` against the `roles_created` ledger + `op_status`); already-`ok` ops are skipped. `apply_mode` stays `LIVE` across a partial failure.
+- **Rollback GC (sprint-flatline B2) + role-count quota check (sprint-flatline D3/SKP-001):** rollback (§1.5) is **non-destructive for created roles that have ≥1 assignment** (never strip users, FR-9/R-6), but **garbage-collects created-but-UNASSIGNED Freeside-namespaced roles** so repeated go_live/rollback/partial-failure cycles cannot accumulate orphan empty roles toward Discord's **250-role-per-guild** hard ceiling. The `roles_created` ledger distinguishes Freeside-created from pre-existing roles (only Freeside-namespaced, zero-assignment roles are GC-eligible). Complementarily, **before a go_live batch starts, a role-count quota check** verifies that `(existing guild roles + roles this batch would create) ≤ 250`; if it would exceed, the batch is refused with a clear "this would exceed Discord's 250-role limit" error and the overage is surfaced predictively in the before/after comparison (§5.1/§6.4, D3).
 - **Async job:** `applyBatch` runs as a job (`job_id`); progress is written to `onboarding-lifecycle.go_live_job` and polled by the lens. Job-internal locking uses a job-scoped key (never the cycle/config lock).
 
 #### 4.4.2 Audit BEFORE write — strong consistency (CLUSTER 4 — DECIDED, SKP-005)
@@ -539,13 +558,18 @@ export const GateCheckedRoleWriter = (
 
 > A package export test (§8.4) proves *the substrate* exposes no raw live-writer path, but it cannot stop a consumer in `freeside-characters` from calling `discord.js` directly. The invariant must survive the repo boundary.
 
-A successful substrate transition to LIVE — with a valid authz context AND a `report_hash` matching the current map — issues an **unforgeable branded `WriteCapability` token** (an opaque branded type whose constructor is NOT exported; only `transition`'s LIVE path can mint it). The LIVE `RoleWriter` adapter **REQUIRES** a `WriteCapability` as an argument to every write; a raw `discord.js` call has no token and is structurally incapable of obtaining one:
+> **HONESTY REFRAME (sprint-flatline B9 — DESIGN CALL, DECIDED).** `WriteCapability` is a **type-level, compile-time accident-prevention constraint** — it stops an honest developer from forgetting the gate (the LIVE writer's signature will not type-check without a capability). It is **NOT a runtime security primitive.** The branded type is a module-boundary convention, not an unforgeable runtime secret: any code in the same process can in principle bypass it (prototype manipulation, bundler aliasing, dynamic import, a hand-rolled object cast). **The REAL security boundary is the substrate-side `GateCheckedRoleWriter`** — its invocation-time `Ref<ApplyMode>` read + the `AuthzContext` validation (server-enforced authz against `admin_principals`) + the **write-after-audit** sequence. The capability *prevents accidents*; the gate + server-side authz + the confirmed audit trail *enforce* the invariant. Implementors MUST treat the gate (not token possession) as the security model: the §8.4 property test exercises the **gate path** directly under adversarial input; the reachability/export test (proof 1) is accident-prevention coverage, **not** a substitute for testing the gate. Code comments on the `WriteCapability` type and the `GateCheckedRoleWriter` wrapper MUST state this explicitly.
+
+A successful substrate transition to LIVE — with a valid authz context AND a `report_hash` matching the current map — issues a **branded `WriteCapability` token** (an opaque branded type whose constructor is NOT exported; only `transition`'s LIVE path mints it — a *compile-time* seam, see the honesty reframe above). The LIVE `RoleWriter` adapter **REQUIRES** a `WriteCapability` as an argument to every write, so a raw `discord.js` call written by mistake will not type-check; the *enforced* boundary remains the gate + server-side authz + audit, not the token's runtime forgeability:
 
 ```typescript
 declare const __brand: unique symbol;
-export type WriteCapability = { readonly [__brand]: "shadow/WriteCapability"; readonly report_hash: Hex64; readonly transition_version: number };
-// minted ONLY inside the substrate's go_live LIVE path; constructor not exported.
-// LIVE RoleWriter signature requires it:
+// COMPILE-TIME accident-prevention seam — NOT a runtime security secret (B9 honesty reframe, §4.4.4).
+// The enforced boundary is GateCheckedRoleWriter (Ref<ApplyMode> read + AuthzContext check + write-after-audit).
+// This branded type only stops an honest dev from forgetting the gate; it is not unforgeable at runtime.
+export type WriteCapability = { readonly [__brand]: "shadow/WriteCapability"; readonly report_hash: Hex64; readonly transition_version: number; readonly authz_decision_id: string /* B3: bound to the resolveAuthz decision */ };
+// minted ONLY inside the substrate's go_live LIVE path; constructor not exported (a module convention, not a runtime invariant).
+// LIVE RoleWriter signature requires it (compile-time gate):
 //   createRole(cap: WriteCapability, i: CreateRoleIntent): Effect<RoleId, WriteError | ShadowGateRejected>
 ```
 
@@ -553,7 +577,7 @@ Enforced three ways: (1) the token type — no token, no write; (2) **static lin
 
 #### 4.4.5 The invariant (NFR-3), provable
 
-A concrete live writer is reachable **only** through `GateCheckedRoleWriter`, only when `apply_mode == LIVE` (read at invocation), only with a valid `WriteCapability` minted by an authorized transition, and only after the ACVP intent event is confirmed. §8.4 proves it: type-level (no exported raw-live-writer path, no exported token constructor), property test (zero `inner` invocations under SHADOW across all event sequences), and cross-repo import-boundary tests (CLUSTER 7).
+A concrete live writer is reachable **only** through `GateCheckedRoleWriter` — the *enforced* boundary: `apply_mode == LIVE` (read at invocation via `Ref`), server-side `AuthzContext` validation (actor in `admin_principals`, fresh per §6.2), `report_hash` match, and a confirmed ACVP intent event before the write. The `WriteCapability` adds a *compile-time* accident-prevention layer on top (the LIVE signature will not type-check without it — B9, §4.4.4), but it is not the runtime security primitive. §8.4 proves the invariant by exercising the **gate path** directly under adversarial input (zero `inner` invocations under SHADOW across all event sequences, audit-before-write under NATS failure), plus cross-repo import-boundary tests (CLUSTER 7); the type-level reachability/export test is accident-prevention coverage, not a substitute for the gate proof.
 
 ### 4.5 Mock ↔ live switch (FR-8 — one mechanism, two Layers)
 
@@ -563,7 +587,7 @@ The actor chooses the Layer; that choice **is** the shadow/apply switch:
 
 Shadow-preview always runs on the mock writer (or live roster + gate-rejected writer); apply requires the live writer AND `apply_mode == LIVE` (read at invocation) AND CM authorization AND a valid `WriteCapability`.
 
-**apply_mode read-timing mechanism (CLUSTER 3, SKP-002/B3).** The gate-checked writer does **not** capture `apply_mode` when the Layer is provisioned. The chosen mechanism: a `Ref<ApplyMode>` seeded at provision from the `apply-mode` config surface and updated whenever the `mode.transitioned` path fires (so `go_live` SHADOW→LIVE and `rollback` LIVE→SHADOW both propagate to the live writer). `GateCheckedRoleWriter` calls `Ref.get(modeRef)` at the start of each `applyBatch` (§4.4.0/§4.4.3). A long-running async go-live job re-reads the mode per batch, so a concurrent `rollback` halts further assignments mid-job. (An equivalent valid mechanism is a fresh re-read of the `apply-mode` surface per `applyBatch`; the `Ref` is chosen to avoid a config-seam round-trip per op.)
+**apply_mode read-timing mechanism (CLUSTER 3, SKP-002/B3).** The gate-checked writer does **not** capture `apply_mode` when the Layer is provisioned. The chosen mechanism: a `Ref<ApplyMode>` seeded at provision from the `apply-mode` config surface and updated whenever the `mode.transitioned` path fires (so `go_live` SHADOW→LIVE and `rollback` LIVE→SHADOW both propagate to the live writer). `GateCheckedRoleWriter` calls `Ref.get(modeRef)` at the start of each `applyBatch` (§4.4.0/§4.4.3) **and holds a read-lock on the mode `Ref` for the batch duration (B5)** so a concurrent `rollback` cannot interleave mid-batch — it is serialized to a batch boundary, halting further batches/ops without ever executing a write during a SHADOW window. (An equivalent valid mechanism is a fresh re-read of the `apply-mode` surface per `applyBatch` under the same read-lock; the `Ref` is chosen to avoid a config-seam round-trip per op.)
 
 ### 4.6 Exported-symbol stub table (FR-8, FL-HC5)
 
@@ -576,7 +600,8 @@ The package ships an explicit `index.ts` exported-symbol table so the seam is un
 | `roleMapVersionHash` | fn | PURE | compute/verify the FR-7 guard hash (rules only, §3.3) |
 | `loadCurrentRoster` | fn | EFFECTFUL (req. `RosterSource`) | resolve the BEFORE roster (live/mock) |
 | `loadLatentCounts` | fn | EFFECTFUL (req. `ScoreSource`) | resolve latent-member counts (MOCKED) |
-| `resolveAuthz` | fn | EFFECTFUL (FR-10 service preflight, HC5) | resolve admin-allowlist authz BEFORE transition |
+| `resolveAuthz` | fn | EFFECTFUL (FR-10 service preflight, HC5) | the ONE authoritative authz decision flow (B3/B4); returns `AuthzDecision` w/ `authz_decision_id` |
+| `resolveReader` | fn | EFFECTFUL (B4) | read-path authz — wraps `resolveAuthz` so revoked admins lose READ too |
 | `RosterSource`, `RoleWriter`, `ScoreSource` | Tag | (port) | the ports the actor supplies |
 | `GateCheckedRoleWriter` | Layer factory | EFFECTFUL (audit emit inside) | the ONLY writer path (gate + capability check + audit-before-write inside) |
 | `WriteCapability` | branded type | (capability) | required by every LIVE write; constructor NOT exported (CLUSTER 7) |
@@ -594,6 +619,10 @@ The substrate deliberately does **NOT** export a raw live-writer constructor nor
 ### 5.1 The before/after comparison component (FR-5 — the proof-of-value surface)
 
 **BEFORE** = current roles (consumed live, or mock) → **AFTER** = proposed roles for current members **+ latent qualified members (numbers, MOCKED)**, with **motion** so the improvement is *perceived*, not explained (FEEL/KANSEI territory — anchored in the ARCH brief §2).
+
+**Managed vs pre-existing distinction (sprint-flatline D2 — load-bearing for CM trust + MVP acceptance).** The comparison MUST **visually distinguish Freeside-MANAGED roles (the namespaced set this substrate creates/assigns) from pre-existing / Collab.Land roles** the server already has. Pre-existing roles are shown as **untouched context** and MUST NEVER appear as "would change" / "would be created" — only Freeside-namespaced roles carry the `created`/`added`/`removed` change affordances. Showing a CM's existing Collab.Land roles as if Freeside would alter them would make the safe shadow look destructive and break MVP acceptance. The `Discrepancy` read-model carries the `managed` flag per role (§6.4) so the lens renders the two classes distinctly (e.g. managed = active diff styling; pre-existing = dimmed/locked context).
+
+**Predictive 250-role-limit surfacing (sprint-flatline D3).** When the proposed set would push the guild over Discord's **250-role ceiling**, the comparison surfaces the projected total + overage predictively (before go_live), so the CM sees the block *in the preview* rather than as a go_live partial-failure (the substrate's pre-go_live quota check, §4.4.1, is the hard guard).
 
 **MVP primary render target: web DOM (dashboard).** Discord CV2 is the second target, same `Discrepancy` contract.
 
@@ -646,17 +675,23 @@ PUT  /v1/config/:world/onboarding-lifecycle?cm=:cm_identity_id → 200 | 409 | 4
 Routes already exist (`config-service/src/app.ts`); this cycle adds the surfaces to `KNOWN_SURFACES` and the FR-10 write-auth (C3). `apply-mode` PUT to `LIVE` is the persisted go-live; the substrate's gate is what authorizes it.
 
 > **Lifecycle keying (B1/SKP-006).** `role-map` and `apply-mode` are keyed `(world, surface)`. The `onboarding-lifecycle` surface is keyed `(world, surface, cm_identity_id)` — the `cm` query parameter (the authenticated CM's identity-api `user_id`) selects the per-CM record so concurrent CMs never overwrite one another. The config-engine store key is extended to the composite for this surface; the head-pointer + immutable-history machinery is otherwise unchanged. A CM may only read/write their OWN lifecycle record (the `cm` MUST match the authenticated `claims.sub`).
+>
+> **Read-path authority (sprint-flatline B4).** The `cm == claims.sub` check is per-CM *isolation*, not *authority*. Every config **GET** also calls `resolveReader` (the unified `resolveAuthz` flow, §6.2) so a revoked admin loses READ access to lifecycle/role-map/proposed-role config within the ≤10s TTL — not only WRITE access. Identity-verified-but-deauthorized reads are denied (403).
 
 ### 6.2 FR-10 write-auth contract (C3 — closing R-3)
 
 ```
 PUT requires Authorization: Bearer <identity-api session token>
-resolveWriter(req, world):
+# ONE authoritative decision flow (B3/B4); resolveWriter AND resolveReader both call it.
+resolveAuthz(actor, world, { bypassCache? }):       # bypassCache=true at go_live confirm (B6)
   1. verify token (identity-api jwks-validator pattern)
-  2. load world.admin_principals from the WORLD MANIFEST (purupuru.yaml), TTL-cached (default 60s)
-  3. assert claims.sub ∈ admin_principals  (CM-identity-scoped, NOT "any bearer")
-  4. emit shadow.authz.decided.v1 (ACVP: {actor, world, decision})
-  5. → { actor: claims.sub }  | null → 403
+  2. load world.admin_principals from the WORLD MANIFEST (purupuru.yaml), TTL-cached (≤10s, B6) unless bypassCache
+  3. decision := (claims.sub ∈ admin_principals) ? "grant" : "deny"   (CM-identity-scoped, NOT "any bearer")
+  4. emit shadow.authz.decided.v1 (ACVP: {actor, world, decision, authz_decision_id})
+  5. → AuthzDecision { decision, authz_decision_id, actor, world, evaluated_at, reason }
+
+resolveWriter(req, world):  → resolveAuthz(claims.sub, world); grant ⇒ { actor } | deny ⇒ 403
+resolveReader(req, world):  → resolveAuthz(claims.sub, world); deny ⇒ 403  # B4: revoked admin loses READ too
 ```
 
 > From `auth.ts` (current stub): "C-1 accepts ANY non-empty Bearer and uses it verbatim as the actor string." This SDD's C3 is precisely the C-2 replacement the stub's seam comment anticipates.
@@ -665,12 +700,20 @@ resolveWriter(req, world):
 
 | Concern | Decision |
 |---------|----------|
+| Concern | Decision |
+|---------|----------|
 | **Storage** | `admin_principals: [identity_id, ...]` — a **world-manifest field** in `purupuru.yaml` (deploy-bound, like `guild_ids` / NFT contracts). NOT a config surface. |
-| **Read path** | `resolveWriter` / `resolveAuthz` reads the manifest field, TTL-cached (default 60s). |
+| **Read path** | `resolveAuthz` (the single authoritative decision flow below) reads the manifest field, TTL-cached (**≤10s**, sprint-flatline B6 DESIGN CALL — reduced from 60s). Both `resolveWriter` and `resolveReader` consume `resolveAuthz`. |
 | **Bootstrap authority** | the operator who commits the world manifest (same authority that provisions the world). No empty-allowlist deadlock — the manifest ships with at least one principal. |
-| **Revocation** | remove the principal + redeploy the manifest; the ≤60s cache TTL bounds revocation latency. (Emergency revocation = TTL=0 / cache flush.) |
-| **Audit** | every authz decision emits `shadow.authz.decided.v1` (grant AND deny). |
+| **Revocation** | remove the principal + redeploy the manifest; the **≤10s** cache TTL bounds revocation latency (B6). Revocation applies to **both read and write** (B4 — `resolveReader` shares the decision flow), so a revoked admin loses read access within the same window. Emergency revocation = TTL=0 / cache flush. |
+| **Audit** | every authz decision emits `shadow.authz.decided.v1` (grant AND deny), carrying a stable `authz_decision_id`. |
 | **Circularity guard** | config-service MUST NOT authorize writes to the allowlist itself — it lives in the manifest, never in a config surface; the write-auth path cannot self-grant (SKP-007). |
+
+**Unified authorization decision flow (sprint-flatline B3/B4 — ONE authoritative `resolveAuthz`).** The earlier draft split authority ambiguously across the S1 substrate preflight, the S2 config-service token verification, and the manifest allowlist, with no single decision point. There is now **one authoritative `resolveAuthz(actor, world)` decision flow** producing a typed `AuthzDecision { decision: "grant"|"deny", authz_decision_id, actor, world, evaluated_at, reason }`. **Both** the write path (`resolveWriter`, config PUT) **and** the read path (`resolveReader`, config GET) call `resolveAuthz` — two consumers of one decision function, not two independent checks. This closes B4: a revoked admin loses **read** access immediately (within the ≤10s TTL), not just write access. The old read check (`cm == claims.sub` alone) is necessary for per-CM isolation but NOT sufficient for ongoing authority — `resolveReader` now re-evaluates `admin_principals` exactly as `resolveWriter` does.
+
+**Binding the decision into the capability/context (sprint-flatline B3).** The `authz_decision_id` produced by `resolveAuthz` at the authorizing `go_live` is bound into BOTH the minted `WriteCapability` and the `AuthzContext` (§4.4.4/§6.2). `GateCheckedRoleWriter` asserts the batch's `authz.authz_decision_id` matches the capability's — so a batch cannot be replayed against a *different* (later-revoked or re-issued) authorization. Revocation **during an in-progress onboarding flow** is an explicit test target (§8.4): revoke the actor mid-flow, assert subsequent reads AND writes are denied within the TTL window.
+
+**TTL + go_live freshness (sprint-flatline B6 — DESIGN CALL, DECIDED).** The cache TTL is reduced to **≤10s** (from 60s) to bound the stale-grant window — in a role-assignment system a 60s window is long enough to push roles to an entire guild after a revocation. **Additionally, the `go_live` confirmation step (the highest-risk write) does NOT rely on the cached grant: it re-checks authz freshly** (a live `resolveAuthz` evaluation bypassing the cache) immediately before the apply batch is authorized, so the actual apply is gated on a fresh allowlist read, not a cached decision. The ≤10s TTL covers the lower-risk read/preview paths; the load-bearing apply is always fresh.
 
 **Write-batch authz binding (CLUSTER 6, B14/SKP-002 — confused-deputy guard):** the FR-10 check at config-write time is necessary but not sufficient; the LIVE Discord write must ALSO be bound to the authorized transition. Every `WriteIntentBatch` (§4.4.1) carries:
 ```typescript
@@ -680,9 +723,24 @@ export interface AuthzContext {
   readonly report_hash: Hex64;        // MUST match the go_live transition + current map hash
   readonly token_metadata: { kid: string; verified_at: string; exp: string };
   readonly transition_version: number; // ties the batch to one authorized SHADOW→LIVE transition
+  readonly authz_decision_id: string;  // B3: the exact resolveAuthz decision this batch is bound to; must match the WriteCapability's
+  // ROSTER-FRESHNESS (sprint-flatline B1) — the rules-only report_hash does NOT catch roster drift.
+  readonly roster_version: {
+    readonly fingerprint: Hex64;       // sha256(JCS(sorted(member_ids ⊕ role_ids))) at report-gen time (NON-timestamped, §3.3)
+    readonly fetched_at: string;       // ISO timestamp the base roster was loaded (for staleness display only)
+    readonly member_count: number;     // base-roster size at report-gen (for delta computation)
+  };
 }
 ```
 `GateCheckedRoleWriter` validates `batch.authz` is current (token not expired, actor still allowlisted) AND `batch.authz.report_hash == roleMapVersionHash(current_map)` BEFORE invoking the inner writer (§4.4.3). This prevents a consumer from flipping `apply_mode := LIVE` once and then firing unbound writes later.
+
+**Roster-freshness re-evaluation (sprint-flatline B1 — separate from the rules-hash guard).** The `roleMapVersionHash` correctly excludes the roster to stop the FR-7 guard from flapping (§3.3) — but that means the `go_live` report-hash guard does **not** catch *roster drift*: members joining/leaving between report-generation and `go_live` (e.g. a CM previews, waits hours, then clicks go-live). A blind apply against a severely-drifted roster could execute unintended mass assignments. So `go_live` performs a **separate roster-freshness re-evaluation**, distinct from the rules-hash guard:
+
+1. At `go_live`, re-load the current roster and recompute `rosterFingerprint = sha256(JCS(sorted(member_ids ⊕ role_ids)))`.
+2. If the fingerprint matches `authz.roster_version.fingerprint` → no drift, proceed.
+3. If it differs, compute the roster delta and apply the **drift threshold**: **fail the guard (`GuardFailed("roster_drift")`) if the number of newly-qualifying members (members not in the base roster who now match a `RoleRule`) is `> ROSTER_DRIFT_THRESHOLD`** (default `0` for the MVP — i.e. *any* new qualifying member forces a re-preview; a higher threshold is operator-tunable per world). The lens surfaces "the roster moved since you previewed — re-preview before going live."
+
+This is a `go_live`-time re-eval, NOT a version-hash field: it never flaps a stored hash and never blocks `bind_map`/preview. The MVP threshold is deliberately conservative (`0`) so the CM always re-previews against a roster that changed in a role-relevant way.
 
 ### 6.3 ACVP audit events (register in `packages/events` registry)
 
@@ -706,12 +764,18 @@ These make "SHADOW ⇒ zero writes" *provable from the trace* (NFR-3) — every 
 {
   "world": "purupuru",
   "role_map_hash": "<sha256 hex>",
-  "before": { "roles": [{ "role_key": "...", "members": 12 }] },
-  "after":  { "roles": [{ "role_key": "...", "members": 18, "created": true }] },
+  "before": { "roles": [{ "role_key": "...", "members": 12, "managed": true }] },
+  "after":  { "roles": [{ "role_key": "...", "members": 18, "created": true, "managed": true }] },
+  "preexisting": { "roles": [{ "role_key": "collabland:holder", "members": 30, "managed": false }] },
   "latent_qualified": [{ "role_key": "...", "count": 47, "source": "MOCK" }],
+  "role_count": { "existing": 31, "to_create": 4, "projected_total": 35, "limit": 250, "exceeds": false },
   "generated_at": "2026-06-01T..Z"
 }
 ```
+
+> **Managed flag (sprint-flatline D2):** every role entry carries `managed` — `true` for the Freeside-namespaced set this substrate owns, `false` for pre-existing/Collab.Land roles. Only `managed: true` roles ever carry `created`/added/removed change affordances; the lens renders `managed: false` roles as untouched context and NEVER as "would change." `preexisting.roles` are surfaced explicitly so the comparison shows them as locked context.
+>
+> **Role-count projection (sprint-flatline D3):** `role_count` carries `{existing, to_create, projected_total, limit: 250, exceeds}` so the lens surfaces a 250-limit overage predictively; `exceeds: true` mirrors the substrate's pre-go_live quota refusal (§4.4.1).
 
 ---
 
@@ -722,6 +786,7 @@ These make "SHADOW ⇒ zero writes" *provable from the trace* (NFR-3) — every 
 | Error | Meaning | Surfaced as |
 |-------|---------|-------------|
 | `GuardFailed("stale_report")` | go_live report hash ≠ current map hash (FR-7) | "re-preview before going live" |
+| `GuardFailed("roster_drift")` | go_live roster-freshness re-eval: newly-qualifying members > `ROSTER_DRIFT_THRESHOLD` since report-gen (B1, §6.2) | "the roster moved since you previewed — re-preview before going live" |
 | `GuardFailed("not_authorized")` | CM not in world admin allowlist (FR-10) | "you are not an admin for this world" |
 | `ShadowGateRejected` | write attempted under SHADOW (FR-3) | (should never reach a user; logged + audited) |
 | `WriteError("rate_limited")` | Discord 429 in LIVE | **transient** — exponential backoff w/ jitter, bounded retries; **NOT** treated as a hard failure / does not trigger rollback (CLUSTER 2/SKP-002) |
@@ -773,10 +838,10 @@ Each port has a contract test both Layers satisfy (the existing `llm-gateway.con
 
 Four complementary proofs that "SHADOW ⇒ zero Discord writes" and that the LIVE path is gated, capability-bound, and audited:
 
-1. **Type-level / reachability:** the exported symbol table (§4.6) exposes *no* path to a raw live writer and *no* `WriteCapability` constructor — the only `RoleWriter` a consumer can obtain is through `GateCheckedRoleWriter`, and a LIVE write structurally requires a `WriteCapability` minted only by an authorized transition (CLUSTER 7). A test asserts the package exports contain no un-gated live-writer symbol and no token constructor.
+1. **Type-level / reachability (accident-prevention coverage — B9):** the exported symbol table (§4.6) exposes *no* path to a raw live writer and *no* `WriteCapability` constructor — the only `RoleWriter` a consumer can obtain is through `GateCheckedRoleWriter`, and a LIVE write **at the type level** requires a `WriteCapability` minted only by an authorized transition (CLUSTER 7). A test asserts the package exports contain no un-gated live-writer symbol and no token constructor. **This proves the export surface, NOT the runtime enforcement** — per the B9 reframe (§4.4.4) the enforced boundary is the gate (proof 2/3), and this reachability test is accident-prevention coverage, not a substitute for the gate proof.
 2. **Property test (concrete tooling — REFINEMENT B / IMP-010):** framework = **`@effect/vitest` + `fast-check`** (property-based). The generator produces random `apply_mode`/event/write-op sequences. **Bounds:** sequence length 0–32 events; 1–50 write ops per batch; `numRuns` ≥ 1000 (CI), ≥ 200 (pre-commit). **Invariant under test:** for every sequence that does NOT contain a successful `go_live` (valid hash-match + authorized + capability minted), assert (a) the actor's `inner` writer is invoked **zero** times, and (b) a confirmed `shadow.role.rejected.v1` event is emitted for each attempted write. **Invalid-path examples that MUST be rejected (counterexamples the suite asserts cannot write):** `go_live` with a stale `report_hash`; `go_live` by a non-allowlisted actor; a write attempted with a forged/absent `WriteCapability`; a write whose batch `authz.report_hash` ≠ the minting transition's `report_hash`; a write after a `rollback` re-flipped `apply_mode` to SHADOW mid-job (CLUSTER 3). **This property test is the acceptance gate for G-3.**
 3. **Audit-before-write under NATS failure (CLUSTER 4 / SKP-005):** a test injects an `AcvpEmitter` that fails the intent emit and asserts the inner writer is invoked **zero** times and the result is `WriteError("audit_unavailable")` — proving the provable invariant holds even when NATS is down (no un-audited LIVE write).
-4. **Cross-repo import-boundary proof (CLUSTER 7 / HC5/SKP-005):** static lint/import-boundary checks in `freeside-characters` (e.g. an ESLint `no-restricted-imports`/`no-restricted-syntax` rule forbidding `discord.js` role-mutation calls outside the single gated adapter module) PLUS integration tests in `freeside-characters` proving there is no un-gated live-writer path — a raw `guild.roles.create`/role-assign outside the gated adapter is a CI failure. The substrate-export test (proof 1) cannot reach across the repo boundary; this proof closes that gap.
+4. **Cross-repo import-boundary proof (CLUSTER 7 / HC5/SKP-005):** static lint/import-boundary checks in `freeside-characters` (e.g. an ESLint `no-restricted-imports`/`no-restricted-syntax` rule forbidding `discord.js` role-mutation calls outside the single gated adapter module) PLUS integration tests in `freeside-characters` proving there is no un-gated live-writer path — a raw `guild.roles.create`/role-assign outside the gated adapter is a CI failure. The substrate-export test (proof 1) cannot reach across the repo boundary; this proof closes that gap. **Known limits (sprint-flatline D5, ties to B9):** the static lint is **accident-prevention, not airtight** — it catches the syntactic/direct-import shapes but does NOT catch dynamic imports (`await import(...)`), indirect/aliased references to the discord.js client, or reflection. These limits MUST be documented alongside the rule so reviewers do not over-trust it as a hard security boundary; the *enforced* boundary remains the runtime gate (`GateCheckedRoleWriter`), exactly as in the B9 reframe (§4.4.4). The integration tests (not the lint) are the stronger of the two checks for the un-gated-path invariant.
 
 ### 8.5 Mocked-data acceptance split (G-2 / FL-HC1)
 
@@ -832,7 +897,8 @@ Phase order honors PRD R-1 ("build the keystone first") and the critical path in
 | R-3 | config-seam accepts any bearer | High | **High** | **FR-10 floor (C3) is mandatory MVP** — admin allowlist + identity-scoped token |
 | R-4 | Roles-vs-announcements maturity gap | Low | Low | Roles-first MVP; announcements = next instance, same substrate |
 | R-5 | Bot drops Purupuru events (router hardcoded MST) | Med | Low | Out of MVP scope (announcements); flag for next |
-| R-6 | Scaffolded-role rollback strips user roles if destructive | Med | High | **Non-destructive default** (FR-9): halt assignments, KEEP roles, warn; destructive teardown is explicit + separate; `roles_created` ledger identifies Freeside-created roles (CLUSTER 2) |
+| R-6 | Scaffolded-role rollback strips user roles if destructive | Med | High | **Non-destructive for ASSIGNED roles** (FR-9): halt assignments, KEEP roles that have users, warn; `roles_created` ledger identifies Freeside-created roles (CLUSTER 2). **GC created-but-UNASSIGNED Freeside roles on rollback** (B2) so empty orphans don't accumulate |
+| R-16 | Discord 250-role-per-guild ceiling exhausted by orphan/scaffolded roles | Med | High | **Rollback GC of unassigned Freeside roles** (B2) + **pre-go_live role-count quota check** `(existing + to-create) ≤ 250` with a clear refusal + predictive surfacing in the comparison (D3/SKP-001) |
 | R-7 | Purupuru world not provisioned (no manifest) | High | Med | Phase-4 precondition; documented assumptions (§1.7, PRD §7), not assumed; manifest carries `admin_principals` (CLUSTER 6) |
 | R-8 | Motion is a net-new dashboard dep | Low | Low | Single dependency, **pinned `^12`** (REFINEMENT C); scoped to the comparison component |
 | R-9 | LIVE Discord apply is rate-limited + partial-failure-prone | High | High | **Async-job batch model** (CLUSTER 2/IMP-004/IMP-009): stable op-ids + idempotency keys, check-then-create, `roles_created` ledger, 429 backoff+jitter, max_concurrent, partial-failure reconciliation, job-progress polling |
@@ -852,7 +918,7 @@ Phase order honors PRD R-1 ("build the keystone first") and the critical path in
 | Which render target ships first (web DOM vs Discord CV2)? | **RESOLVED: web DOM (dashboard) is MVP primary** (§2.3); CV2 second, same contract | Resolved |
 | Lifecycle state shape + role-map version hash definition | **RESOLVED:** per-CM `onboarding-lifecycle` record keyed `(world, surface, cm_identity_id)` (§3.2, CLUSTER 5) + rules-only 3-field JCS hash `{role_rules, scaffolding_config, world_config}` (§3.3, CLUSTER 1) | Resolved |
 | How does a not-yet-created role appear in before/after? | **Proposed:** AFTER marks `created: true` on the role entry; BEFORE omits it (§6.4). Confirm in Phase-3 FEEL pass | Open (UI detail) |
-| Exact world admin-allowlist storage (manifest field vs config surface)? | **RESOLVED (CLUSTER 6, IMP-003/SKP-003/SKP-007):** world-manifest field `admin_principals: [identity_id,...]` in `purupuru.yaml`, read TTL-cached at `resolveWriter` time; bootstrap = manifest committer; revocation = manifest edit + redeploy (≤60s TTL); authz decisions audited (`shadow.authz.decided.v1`); config-service may NOT authorize writes to the allowlist itself (§6.2) | Resolved |
+| Exact world admin-allowlist storage (manifest field vs config surface)? | **RESOLVED (CLUSTER 6, IMP-003/SKP-003/SKP-007; refined by sprint-flatline B3/B4/B6):** world-manifest field `admin_principals: [identity_id,...]` in `purupuru.yaml`, read TTL-cached (**≤10s**, B6) via ONE authoritative `resolveAuthz` backing both `resolveWriter` and `resolveReader` (B4); bootstrap = manifest committer; revocation = manifest edit + redeploy (≤10s TTL, read+write); `go_live` re-checks authz freshly bypassing cache (B6); decisions audited w/ `authz_decision_id` (`shadow.authz.decided.v1`); config-service may NOT authorize writes to the allowlist itself (§6.2) | Resolved |
 | Purupuru guild id / NFT contracts / member set | Operator precondition (PRD §7); blocks Phase-4 live | Open (precondition) |
 
 ---
@@ -869,7 +935,7 @@ Phase order honors PRD R-1 ("build the keystone first") and the critical path in
 | Lens | A medium-specific entry surface that fires events + renders diffs; holds no onboarding logic |
 | Discrepancy | The pure read-model produced by `diff` — the before/after the lens renders |
 | Gate-checked RoleWriter | The substrate wrapper that rejects writes under SHADOW + emits ACVP audit BEFORE writing; reads apply_mode at invocation; requires a `WriteCapability`; the ONLY writer path |
-| WriteCapability | An unforgeable branded token minted ONLY by an authorized SHADOW→LIVE transition (valid authz + matching report_hash); REQUIRED by every LIVE write — a raw discord.js call cannot obtain one (CLUSTER 7) |
+| WriteCapability | A **compile-time accident-prevention** branded token minted ONLY by an authorized SHADOW→LIVE transition (valid authz + matching report_hash + `authz_decision_id`); REQUIRED on every LIVE write signature so a forgotten gate fails to type-check. **NOT a runtime security secret** (B9 reframe, §4.4.4) — the enforced boundary is `GateCheckedRoleWriter` + server-side authz + write-after-audit |
 | WriteIntentBatch / go-live job | The async, idempotent batch model for applying role creates+assigns to Discord (stable op-ids, idempotency keys, `roles_created` ledger, 429 backoff, partial-failure reconciliation); progress polled on the per-CM lifecycle record (CLUSTER 2) |
 | Latent member | A wallet that qualifies for a role but has not joined the Discord (growth intelligence; MOCKED in MVP) |
 | ACVP | Agentic Cryptographically-Verifiable Protocol — schema-verified, events-traced, hash-proven substrate |
@@ -893,6 +959,7 @@ Phase order honors PRD R-1 ("build the keystone first") and the critical path in
 |---------|------|---------|--------|
 | 1.0 | 2026-06-01 | Initial SDD — cross-repo substrate design, all 11 converged decisions + 9 flatline blockers honored | Architecture Designer |
 | 1.1 | 2026-06-01 | **Flatline-hardened (3-model, 8 HC + 15 blockers + 1 disputed, 90% agreement).** Integrated 7 clusters + 3 refinements: rules-only version hash (§3.3); async write-batch model (§1.5/§4.4/§7.1); apply_mode read-at-invocation (§4.4/§4.5); write-after-audit strong consistency (§4.4/§6.3/§8.4); per-CM lifecycle key (§3.1/§3.2/§3.4/§6.1); authz allowlist lifecycle + batch binding (§1.9/§6.2/§11); branded WriteCapability + cross-repo enforcement + pure/effectful split (§1.1/§4.2/§4.4/§4.6/§8.4); Vercel private-tarball cred (§1.7); concrete property-test tooling (§8.4); pinned motion `^12` (§2.3). 2 design decisions recorded (§13). | Architecture Designer (flatline integration) |
+| 1.2 | 2026-06-01 | **Sprint-flatline-refined (3-model, 5 HC + 10 blockers + 5 disputed, 58% agreement).** Design-level refinements fed back from the sprint flatline: **B9 DESIGN CALL** — WriteCapability reframed as a compile-time accident-prevention seam, NOT a runtime security primitive; the enforced boundary is `GateCheckedRoleWriter` + server-side authz + write-after-audit (§1.9/§4.4.4/§4.4.5, code comments). **B1** — roster-freshness re-eval at go_live (`AuthzContext.roster_version` + `GuardFailed("roster_drift")`, threshold default 0) separate from the rules-hash guard (§3.3/§4.1/§6.2/§7.1). **B10** — per-world advisory lock serializing check-then-create (TOCTOU) (§4.4.1). **B5** — mode-Ref read-lock for the batch duration (inverse mode race) (§4.4.0/§4.5). **B3/B4/B6 DESIGN CALL** — ONE authoritative `resolveAuthz` backing both `resolveWriter` and new `resolveReader` (revoked admins lose READ too); `authz_decision_id` bound into WriteCapability/AuthzContext; **TTL ≤10s + go_live re-checks authz freshly** (§1.9/§6.1/§6.2/§4.6). **B7** — cross-repo single-SHA version contract + CI compat + conformance fixture + rollback (§1.7.1). **B2/D2/D3** — rollback GC of unassigned roles + pre-go_live 250-role quota check; comparison distinguishes managed vs pre-existing/Collab.Land roles + predictive limit surfacing (`managed` flag + `role_count` in Discrepancy) (§1.5/§4.4.1/§5.1/§6.4/R-6/R-16). **D1/D4/D5** — BoundedString one-way import guard (§1.4); deployed config-service smoke test pre-cutover (§1.7); import-boundary lint known-limits documented (§8.4 proof 4). 2 new DESIGN CALLS recorded (§13.2.3/§13.2.4). | Architecture Designer (sprint-flatline integration) |
 
 ---
 
@@ -903,6 +970,8 @@ A 3-model adversarial Flatline review (GPT + Opus + gemini-headless tertiary, in
 **Counts:** **8 HIGH-CONSENSUS** · **15 blockers** · **1 disputed** · **0 low-value** · **90% model agreement** · confidence `full`.
 
 All HC + blocker findings were assessed **correct** and integrated (no relitigation). The disputed item (IMP-011, low-cost dep hygiene) was also integrated as a minor note. Two findings required a **design choice** rather than a mechanical fix; both are recorded explicitly below for operator review.
+
+> **v1.2 addendum — sprint-flatline design refinements (2026-06-01).** A subsequent **3-model sprint flatline** (5 HC · 10 blockers · 5 disputed · 58% agreement) surfaced findings that fed back into this SDD (not just the sprint plan). They are integrated in-place across §1.4/§1.7/§1.7.1/§1.9/§3.3/§4.1/§4.4.0/§4.4.1/§4.4.4/§4.4.5/§4.5/§4.6/§5.1/§6.1/§6.2/§6.4/§7.1/§8.4 and the risk register (R-6/R-16). **Two new DESIGN CALLS** (§13.2.3 WriteCapability honesty reframe · §13.2.4 ≤10s TTL + go_live fresh authz re-check) are recorded for operator review. The full finding→section map lives in the sprint plan's *Flatline Disposition (sprint…)* section.
 
 ### 13.1 Cluster → integration map
 
@@ -926,6 +995,14 @@ Two findings could not be closed by a mechanical fix — they required choosing 
 1. **Audit↔write ordering = write-after-audit (strong consistency).** *(C4, SKP-005.)* The ACVP audit event is emitted and **confirmed before** the side-effecting Discord write; if the audit emit fails (NATS down), the write is **blocked** (`WriteError("audit_unavailable")`) rather than proceeding un-audited. **Tradeoff:** LIVE go-live is now coupled to NATS availability — a NATS partition blocks go-live. We accept this to preserve the provable-shadow invariant (NFR-3) even under failure. **Documented FUTURE alternative (NOT MVP):** durable WAL-to-config-seam transactional outbox + async NATS relay, which would let writes proceed under a partition while preserving auditability.
 
 2. **Authz resolution = service preflight, not in the pure transition.** *(C7, HC5/IMP-005.)* `resolveAuthz` (identity-api / allowlist I/O) runs as a separate Effect program BEFORE `transition`; its boolean result is passed into the pure `transition` as a guard input. The pure core (`computeProposed`, `diff`, `roleMapVersionHash`, `transition`) does no I/O, keeping "SHADOW is compile-and-test-provable" intact. **Alternative considered & rejected:** resolving authz inside `transition` — rejected because it would make the central correctness function effectful and undermine the property-test proof.
+
+### 13.2.3 WriteCapability = compile-time accident-prevention seam, NOT a runtime security primitive *(sprint-flatline B9 — DESIGN CALL, DECIDED)*
+
+The sprint flatline (B9, CRITICAL) flagged that the SDD v1.1 security narrative over-claimed: "`WriteCapability` makes the LIVE path structurally unreachable." In JS/TS an unexported constructor is a module convention, not an unforgeable runtime invariant — same-process code can bypass it (prototype manipulation, bundler aliasing, dynamic import). **DECIDED:** reframe `WriteCapability` explicitly as a **type-level / compile-time accident-prevention constraint** (it stops an honest dev from forgetting the gate) and state that the **real security boundary is the substrate-side `GateCheckedRoleWriter`** — invocation-time `Ref<ApplyMode>` read + server-enforced `AuthzContext`/`admin_principals` check + write-after-audit. SDD §1.9, §4.4.4, §4.4.5 and the code comments now say this; the §8.4 property test exercises the gate path directly under adversarial input (the export/reachability test is accident-prevention coverage, not a substitute). **Why this matters:** if implementors trust the token as the primitive, they under-protect the gate and over-trust the token — a false sense of structural safety. **Operator-reviewable:** this is a *framing* correction (no mechanism is weakened — the gate was always the enforcer), but it changes what acceptance binds to (the gate proof, not token possession).
+
+### 13.2.4 Authz cache TTL ≤10s + go_live re-checks authz freshly *(sprint-flatline B6 — DESIGN CALL, DECIDED)*
+
+The sprint flatline (B6, HIGH) flagged the 60s `admin_principals` cache TTL as a stale-grant window: 60s is long enough to push roles to an entire guild after a revocation, with no emergency revocation path. **DECIDED (per the integration brief):** (a) **reduce the cache TTL to ≤10s** (bounding the read/preview stale-grant window for BOTH read and write, since `resolveReader` shares the flow per B4); AND (b) **the `go_live` confirmation step re-checks authz freshly** — a live `resolveAuthz` evaluation that bypasses the cache, so the highest-risk write (the actual apply) is never gated on a cached grant. SDD §1.9, §6.2, §6.1. **Alternatives considered:** a super-admin cache-bust endpoint (more surface area, deferred) or documenting the 60s window as accepted risk (rejected — the role-assignment blast radius is too high). **Operator-reviewable:** ≤10s is a chosen ceiling; tune per deployment if revocation-latency requirements differ.
 
 ---
 
