@@ -29,6 +29,24 @@
 # pointed at deployed Railway URLs, and beacon-serving routes not yet implemented in cells.
 # This is the federation-discovery gap (the awareness surface from
 # grimoires/loa/specs/enhance-freeside-api-surface.md T1/T2 follow-up).
+#
+# ─── Cluster auth model (de-quirked 2026-06-03 via the cubquests dogfood) ──────────
+# There is NO single cluster token. identity-api is the credential ROOT, but each cell
+# gates differently — 3 real mechanisms + 1 ghost. A consumer needs TWO credentials
+# (HS256 user-JWT for activities, static key for score); there is no uniform header.
+#   A. activities-api ← HS256 Bearer minted by identity-api, verified OFFLINE by
+#      recomputing HMAC with IDENTITY_API_JWT_SECRET — which MUST byte-equal identity's
+#      JWT_SECRET (parity verified green 2026-06-03 via hash compare). Secret drift →
+#      every activities request 401s `bad_signature`, silently, cluster-wide. Worth a CI
+#      canary (identity mints → activities verifies → alarm on mismatch).
+#   B. score-api ← STATIC API key (X-API-Key / Bearer: MIDI_API_KEY/HUB_API_KEY/API_KEY/
+#      ADMIN_API_KEY). Service-to-service, no identity, no expiry — a leak is permanent.
+#   C. sonar (belt-gateway) ← NONE (open GraphQL reads).
+#   GHOST: identity /v1/auth/service-jwt mints ES256 svc-JWTs that NOTHING can verify
+#      (/.well-known/jwks.json 404s; no ES256 verifier in any cell). Orphaned — build the
+#      JWKS (one-function swap at activities jwt-verify.ts:22-27) or DELETE it. Do NOT
+#      route service auth through it. (TODO: promote to a structured per-cell `auth:`
+#      field — needs a ModuleEntry schema bump in src/registry.ts + tests.)
 
 version: 1
 
