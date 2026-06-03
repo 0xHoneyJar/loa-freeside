@@ -1,0 +1,37 @@
+# substrate-sha.lock — Cross-repo substrate version contract (SDD §1.7.1 · B7)
+#
+# The SINGLE canonical git SHA of @freeside-worlds/shadow-substrate that ALL
+# consumers pin. A consumer pinning a DIFFERENT SHA is a dangerous skew on the
+# "SHADOW ⇒ zero writes" security boundary (it could disagree on the
+# roleMapVersionHash algorithm, a schema shape, or the WriteCapability shape).
+# Each consumer repo's CI asserts its lockfile pin == canonical_substrate_sha
+# and runs conformance/check.ts (the shared frozen fixture).
+
+canonical_substrate_sha: 26d11b78e6f0c2ce81cbd1fc24088157cea74e53
+repo: 0xHoneyJar/freeside-worlds
+branch: cycle/shadow-onboarding-substrate
+package: "@freeside-worlds/shadow-substrate"
+pinned_at: 2026-06-02
+
+# The substrate's ONLY external dependency (transitively pinned, origin/main-reachable):
+events_pin: "github:0xHoneyJar/loa-freeside#68f5a89cb02c6b3ddf5ab14a1d65753bc02bd9fe"
+
+# The frozen conformance anchor (freeside-worlds packages/shadow-substrate/conformance/fixture.ts).
+# All three consumers MUST reproduce this byte-for-byte (roleMapVersionHash of the
+# canonical input) + assert the frozen Discrepancy / AuthzContext / WriteCapability shapes.
+canonical_version_hash: eda5e02d3a5a90befbfd3ab156a7e2614a2c1484a0700117a4f7f1108dd77415
+
+# Consumers — each pins canonical_substrate_sha (bun git-tarball, SHA-pinned) and
+# runs conformance/check.ts in CI:
+consumers:
+  - repo: 0xHoneyJar/freeside-worlds      # self — owns the substrate (S0/S1/S2)
+    state: pushed                         # cycle branch (worlds default branch is `master`, NOT main); NOT yet on master — do NOT delete the cycle branch (consumers pin 26d11b78, reachable only via it)
+  - repo: 0xHoneyJar/freeside-dashboard   # S3 — web before/after lens (also needs a Vercel GITHUB_TOKEN build cred for the private tarball)
+    state: merged                         # PR #64 → main @ ed06f9563e27 (2026-06-02); BB=COMMENT clean
+  - repo: 0xHoneyJar/freeside-characters  # S4 — Discord live RosterSource/RoleWriter Layers
+    state: merged                         # PR #161 → main @ 54061ca87a88 (2026-06-02); BB REQUEST_CHANGES driven+fixed (a1ef744: events unified to one build / read-roster-once / GC fail-closed)
+
+# SHA-bump / rollback procedure (full runbook: freeside-worlds packages/shadow-substrate/conformance/ROLLBACK.md):
+#   bump : (1) update canonical_substrate_sha here → (2) bump ALL consumer lockfile pins in lockstep
+#          + re-run conformance/check.ts on each → (3) deploy.
+#   back : revert canonical_substrate_sha + the consumer pins together. NEVER leave consumers on mixed SHAs.
