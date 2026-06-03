@@ -88,10 +88,14 @@ modules:
     notes: |
       Central identity SoR (Phase 1 BUILT + DEPLOYED 2026-05-25 to Railway).
       Custom domain identity.0xhoneyjar.xyz queued behind DNS — beacon_url
-      anticipates that. Spine empty until Phase 4 T4.4 backfill (arrakis-494b).
-      Phase 2 (compose, /v1/profile) + Phase 3 (mibera dims,
-      /v1/mibera/dimensions) endpoints scaffolded but NOT built — both return
-      400 today. /health is the canonical liveness path.
+      anticipates that. ⚠ The beacon 404s today (no /.well-known/beacon.json
+      route shipped on the canonical host) → identity is federation-invisible
+      until that lands. Spine empty until Phase 4 T4.4 backfill (arrakis-494b).
+      /v1/profile IS built — returns a precise 404 wallet_not_resolved on a
+      well-formed (world,wallet) query, NOT the 400 this note previously
+      claimed (de-quirked 2026-06-03 via dogfood probes). Phase 3 mibera dims
+      (/v1/mibera/dimensions) still scaffolded. /health is the canonical
+      liveness path.
       NOTE: a separate identity-production.up.railway.app exists serving a Login
       page (Bootstrap HTML); that is NOT this service — likely an older
       freeside-identity / Sietch surface. Canonical URL is the 317b one above.
@@ -140,7 +144,11 @@ modules:
     notes: |
       Identity-bound token issuance protocol (ACVP-shaped). npm package
       shipped + MCP substrate per kickoff spec, but no HTTP runtime deployed.
-      mint-{api,mcp,}-production.up.railway.app all 404 as of 2026-05-25.
+      mint-api-production.up.railway.app is now a booted-but-ROUTELESS Express
+      shell (returns Express's own `Cannot GET /health`, x-powered-by: Express —
+      a process is up but no business routes are mounted; distinct from the
+      Railway edge 404 it showed 2026-05-25). Still correctly library-only.
+      (de-quirked 2026-06-03 via cubquests dogfood probes.)
 
   score-api:
     # The runtime building (was 'score-mibera' in pre-2026-05-23 registry). GH repo
@@ -173,9 +181,17 @@ modules:
     runtime_state: deployed
     notes: |
       EVM event indexer across 6 chains (Berachain primary). LIVE at Railway
-      with `{"message":"Sonar API"}` at `/`. eRPC belt-gateway also on
-      Railway (separate service). GraphQL endpoint shape per kickoff spec —
-      probe `/graphql` for richer health.
+      with `{"message":"Sonar API"}` at `/`.
+      ⚠ READ PLANE: the GraphQL endpoint consumers actually query is the eRPC
+      belt-gateway — a SEPARATE Railway service —
+        https://belt-gateway-production.up.railway.app/v1/graphql  (live 200, no auth).
+      NOT sonar-api-production.up.railway.app/v1/graphql, which 404s; the prior
+      `probe /graphql` guidance pointed at the wrong host. Every building whose
+      beacon declares `consumes: sonar` must point its GraphQL reads at
+      belt-gateway. Verified 2026-06-03 by the cubquests badge-leaderboard
+      shadow: BadgeHolder/BadgeBalance entities live + populated, byte-consistent
+      with the monolith leaderboard. Frozen Envio index
+      indexer.hyperindex.xyz/914708e is dead (500). (de-quirked via dogfood.)
 
   storage-api:
     git_url: https://github.com/0xHoneyJar/storage-api.git
