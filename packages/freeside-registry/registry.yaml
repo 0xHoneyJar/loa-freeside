@@ -29,6 +29,28 @@
 # pointed at deployed Railway URLs, and beacon-serving routes not yet implemented in cells.
 # This is the federation-discovery gap (the awareness surface from
 # grimoires/loa/specs/enhance-freeside-api-surface.md T1/T2 follow-up).
+#
+# ─── Cluster auth model (de-quirked 2026-06-03 via the cubquests dogfood) ──────────
+# There is NO single cluster token. identity-api is the credential ROOT, but each cell
+# gates differently — 3 real mechanisms + 1 ghost. A consumer needs TWO credentials
+# (HS256 user-JWT for activities, static key for score); there is no uniform header.
+#   A. activities-api ← HS256 Bearer minted by identity-api, verified OFFLINE by
+#      recomputing HMAC with IDENTITY_API_JWT_SECRET — which MUST byte-equal identity's
+#      JWT_SECRET (parity verified green 2026-06-03 via hash compare). Secret drift →
+#      every activities request 401s `bad_signature`, silently, cluster-wide. Worth a CI
+#      canary (identity mints → activities verifies → alarm on mismatch).
+#   B. score-api ← STATIC API key (X-API-Key / Bearer: MIDI_API_KEY/HUB_API_KEY/API_KEY/
+#      ADMIN_API_KEY). Service-to-service, no identity, no expiry — a leak is permanent.
+#   C. sonar (belt-gateway) ← NONE (open GraphQL reads).
+#   GHOST: identity /v1/auth/service-jwt mints ES256 svc-JWTs that NOTHING can verify
+#      (/.well-known/jwks.json 404s; no ES256 verifier in any cell). Orphaned — build the
+#      JWKS (one-function swap at activities jwt-verify.ts:22-27) or DELETE it. Do NOT
+#      route service auth through it.
+# Tracked (loa-freeside .beads · dogfood-followup) — these gaps are structured beads with
+# closure conditions, not just this comment: arrakis-dogfood-{auth-secret-parity-canary,
+# es256-svcjwt-ghost, registry-auth-field (the per-cell `auth:` schema bump),
+# score-api-key-sprawl, identity-beacon-404, sonar-leaderboard-endpoint,
+# freeside-ledger-missing}.
 
 version: 1
 
@@ -88,10 +110,14 @@ modules:
     notes: |
       Central identity SoR (Phase 1 BUILT + DEPLOYED 2026-05-25 to Railway).
       Custom domain identity.0xhoneyjar.xyz queued behind DNS — beacon_url
-      anticipates that. Spine empty until Phase 4 T4.4 backfill (arrakis-494b).
-      Phase 2 (compose, /v1/profile) + Phase 3 (mibera dims,
-      /v1/mibera/dimensions) endpoints scaffolded but NOT built — both return
-      400 today. /health is the canonical liveness path.
+      anticipates that. ⚠ The beacon 404s today (no /.well-known/beacon.json
+      route shipped on the canonical host) → identity is federation-invisible
+      until that lands. Spine empty until Phase 4 T4.4 backfill (arrakis-494b).
+      /v1/profile IS built — returns a precise 404 wallet_not_resolved on a
+      well-formed (world,wallet) query, NOT the 400 this note previously
+      claimed (de-quirked 2026-06-03 via dogfood probes). Phase 3 mibera dims
+      (/v1/mibera/dimensions) still scaffolded. /health is the canonical
+      liveness path.
       NOTE: a separate identity-production.up.railway.app exists serving a Login
       page (Bootstrap HTML); that is NOT this service — likely an older
       freeside-identity / Sietch surface. Canonical URL is the 317b one above.
@@ -132,15 +158,23 @@ modules:
   mint-api:
     git_url: https://github.com/0xHoneyJar/mint-api.git
     beacon_url: https://mint.0xhoneyjar.xyz/.well-known/beacon.json
-    deployment_url: ~
+    deployment_url: https://mint-api-production.up.railway.app
     visibility: public
     owner: 0xHoneyJar
     added: "2026-05-18"
-    runtime_state: not-built
+    runtime_state: scaffolded
     notes: |
       Identity-bound token issuance protocol (ACVP-shaped). npm package
-      shipped + MCP substrate per kickoff spec, but no HTTP runtime deployed.
-      mint-{api,mcp,}-production.up.railway.app all 404 as of 2026-05-25.
+      shipped + MCP substrate per kickoff spec, but no business HTTP routes yet.
+      mint-api-production.up.railway.app is a booted-but-ROUTELESS Express shell
+      (returns Express's own `Cannot GET /health`, x-powered-by: Express — a
+      process is up but no routes are mounted; distinct from the Railway edge 404
+      it showed 2026-05-25). runtime_state=scaffolded + deployment_url set (not ~)
+      so the operator-dash prober actually probes + classifies the 404 as scaffold,
+      instead of probeOne() short-circuiting to `down` on a null url (BB/Codex
+      review of #263). ⚠ Railway health-check likely measures process liveness
+      only → false-healthy; a /health 404 should read as unhealthy.
+      (de-quirked 2026-06-03 via cubquests dogfood probes.)
 
   score-api:
     # The runtime building (was 'score-mibera' in pre-2026-05-23 registry). GH repo
@@ -173,9 +207,17 @@ modules:
     runtime_state: deployed
     notes: |
       EVM event indexer across 6 chains (Berachain primary). LIVE at Railway
-      with `{"message":"Sonar API"}` at `/`. eRPC belt-gateway also on
-      Railway (separate service). GraphQL endpoint shape per kickoff spec —
-      probe `/graphql` for richer health.
+      with `{"message":"Sonar API"}` at `/`.
+      ⚠ READ PLANE: the GraphQL endpoint consumers actually query is the eRPC
+      belt-gateway — a SEPARATE Railway service —
+        https://belt-gateway-production.up.railway.app/v1/graphql  (live 200, no auth).
+      NOT sonar-api-production.up.railway.app/v1/graphql, which 404s; the prior
+      `probe /graphql` guidance pointed at the wrong host. Every building whose
+      beacon declares `consumes: sonar` must point its GraphQL reads at
+      belt-gateway. Verified 2026-06-03 by the cubquests badge-leaderboard
+      shadow: BadgeHolder/BadgeBalance entities live + populated, byte-consistent
+      with the monolith leaderboard. Frozen Envio index
+      indexer.hyperindex.xyz/914708e is dead (500). (de-quirked via dogfood.)
 
   storage-api:
     git_url: https://github.com/0xHoneyJar/storage-api.git
