@@ -45,8 +45,12 @@
 #   GHOST: identity /v1/auth/service-jwt mints ES256 svc-JWTs that NOTHING can verify
 #      (/.well-known/jwks.json 404s; no ES256 verifier in any cell). Orphaned — build the
 #      JWKS (one-function swap at activities jwt-verify.ts:22-27) or DELETE it. Do NOT
-#      route service auth through it. (TODO: promote to a structured per-cell `auth:`
-#      field — needs a ModuleEntry schema bump in src/registry.ts + tests.)
+#      route service auth through it.
+# Tracked (loa-freeside .beads · dogfood-followup) — these gaps are structured beads with
+# closure conditions, not just this comment: arrakis-dogfood-{auth-secret-parity-canary,
+# es256-svcjwt-ghost, registry-auth-field (the per-cell `auth:` schema bump),
+# score-api-key-sprawl, identity-beacon-404, sonar-leaderboard-endpoint,
+# freeside-ledger-missing}.
 
 version: 1
 
@@ -154,18 +158,22 @@ modules:
   mint-api:
     git_url: https://github.com/0xHoneyJar/mint-api.git
     beacon_url: https://mint.0xhoneyjar.xyz/.well-known/beacon.json
-    deployment_url: ~
+    deployment_url: https://mint-api-production.up.railway.app
     visibility: public
     owner: 0xHoneyJar
     added: "2026-05-18"
-    runtime_state: not-built
+    runtime_state: scaffolded
     notes: |
       Identity-bound token issuance protocol (ACVP-shaped). npm package
-      shipped + MCP substrate per kickoff spec, but no HTTP runtime deployed.
-      mint-api-production.up.railway.app is now a booted-but-ROUTELESS Express
-      shell (returns Express's own `Cannot GET /health`, x-powered-by: Express —
-      a process is up but no business routes are mounted; distinct from the
-      Railway edge 404 it showed 2026-05-25). Still correctly library-only.
+      shipped + MCP substrate per kickoff spec, but no business HTTP routes yet.
+      mint-api-production.up.railway.app is a booted-but-ROUTELESS Express shell
+      (returns Express's own `Cannot GET /health`, x-powered-by: Express — a
+      process is up but no routes are mounted; distinct from the Railway edge 404
+      it showed 2026-05-25). runtime_state=scaffolded + deployment_url set (not ~)
+      so the operator-dash prober actually probes + classifies the 404 as scaffold,
+      instead of probeOne() short-circuiting to `down` on a null url (BB/Codex
+      review of #263). ⚠ Railway health-check likely measures process liveness
+      only → false-healthy; a /health 404 should read as unhealthy.
       (de-quirked 2026-06-03 via cubquests dogfood probes.)
 
   score-api:
