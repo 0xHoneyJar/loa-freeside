@@ -48,6 +48,7 @@ dashmap = "6"
 
 [dev-dependencies]
 tokio-test = "0.4"
+metrics-util = { version = "0.20", features = ["debugging"] }
 
 [profile.release]
 lto = true
