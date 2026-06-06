@@ -13,7 +13,7 @@ Source: [`grimoires/loa/proposals/freeside-operator-dash-kickoff.md`](../../grim
 
 ## What it does
 
-Reads [`packages/freeside-registry/registry.yaml`](../../packages/freeside-registry/registry.yaml) — the L1 canonical source-of-truth of the 8 `*-api` cells — and renders:
+Reads [`packages/freeside-registry/registry.yaml`](../../packages/freeside-registry/registry.yaml) — the L1 canonical source-of-truth of the `*-api` cells — and renders:
 
 1. **Federation tile grid** — one tile per cell, colored by live probe state (`up` · `auth-gated` · `degraded` · `scaffold` · `down` · `unreachable`). Tiles show actual deployment URL + probed health path + latency.
 
@@ -74,7 +74,7 @@ apps/freeside-operator-dash/
 ## Scope & out-of-scope
 
 In:
-- Cluster health visualization for the 8 `*-api` cells
+- Cluster health visualization for the `*-api` cells
 - Soju-lens cross-surface identity reconciliation
 - identity-api phase scoreboard (G-1..G-6)
 
