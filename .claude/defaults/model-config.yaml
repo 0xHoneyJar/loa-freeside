@@ -487,6 +487,40 @@ providers:
           cli_model: sonnet
 
   # ===========================================================================
+  # Cursor — expert-SWE review voice via the `cursor-agent` CLI
+  # ===========================================================================
+  # A third independent cross-model review voice alongside Claude (anthropic)
+  # and GPT/codex (openai). Cursor fronts an OpenAI-class model line, but the
+  # corpus + agent harness are Cursor's, so it earns a DEDICATED top-level
+  # provider (resolved as `cursor:cursor-headless`) rather than sitting under
+  # `openai`. CLI auth via `cursor-agent login` (~/.cursor/cli-config.json);
+  # no API key consumed. Adapter: cursor_headless_adapter.py (provider
+  # type `cursor-headless`). Single-model provider: there is no HTTP entry —
+  # cursor is CLI-only here.
+  cursor:
+    type: cursor-headless
+    # endpoint and auth are ignored; CLI login is file-based.
+    connect_timeout: 10.0
+    read_timeout: 600.0
+    models:
+      cursor-headless:
+        auth_type: headless
+        dispatch_group: cursor-agent
+        kind: cli                       # CLI transport, not HTTP
+        capabilities: [chat, code]      # No tools, no structured_json
+        # cursor-agent serves Cursor's OWN model line; composer-2.5 (Composer
+        # 2.5) is Cursor's proprietary SWE model — a genuinely distinct corpus
+        # from codex/GPT, which is the point of slotting it into the council.
+        # CLI-verified id (`cursor-agent --list-models`); ~200k window.
+        # Operator-overridable via extra.cli_model (e.g. composer-2.5-fast).
+        context_window: 200000
+        # No pricing entry — CLI uses operator's Cursor subscription.
+        # cli_model is the literal model passed to `cursor-agent --model
+        # <name>` (the CLI doesn't recognize the Loa alias).
+        extra:
+          cli_model: composer-2.5
+
+  # ===========================================================================
   # AWS Bedrock — cycle-096 (issue #652)
   # ===========================================================================
   # Provider plugin contract: SDD §1.4 + §3.1 + §5.1.
@@ -626,10 +660,14 @@ aliases:
 
   # cycle-104 Sprint 2 T2.4: headless aliases (kind: cli). Each terminates
   # its company's fallback_chain. Operator must install the underlying CLI
-  # binary (`claude`, `codex`, `gemini`) per the headless-mode runbook.
+  # binary (`claude`, `codex`, `gemini`, `cursor-agent`) per the headless-mode
+  # runbook.
   claude-headless: "anthropic:claude-headless"
   codex-headless: "openai:codex-headless"
   gemini-headless: "google:gemini-headless"
+  # cursor-headless is a standalone review voice (no within-company chain — it
+  # is its own provider). Bare-name convenience alias for `cursor:cursor-headless`.
+  cursor-headless: "cursor:cursor-headless"
 
 # Backward-compat aliases (legacy model IDs → canonical provider:model-id)
 # Used by gen-adapter-maps.sh to reproduce the hand-maintained bash map
@@ -771,6 +809,15 @@ agents:
     temperature: 0.5
     requires:
       thinking_traces: preferred
+  # Third FAGAN council voice — Cursor's expert-SWE corpus, distinct from
+  # Claude and GPT/codex. Bound DIRECTLY to cursor:cursor-headless (not a
+  # shared alias) so it always resolves to the cursor provider. Replaces the
+  # kimi voice for operators who have `cursor-agent` but not Kimi. The
+  # code-review system prompt is supplied by the council caller at invocation
+  # (parity with jam-reviewer-gpt, which carries no persona field here).
+  jam-reviewer-cursor:
+    model: cursor:cursor-headless
+    temperature: 0.3
   jam-synthesizer:
     model: cheap
     temperature: 0.3
