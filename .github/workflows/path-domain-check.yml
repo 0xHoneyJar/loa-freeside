@@ -93,3 +93,20 @@ jobs:
         run: |
           echo "Bootstrap PR — path-domain-check intentionally skipped."
           echo "See workflow header for bypass policy."
+
+  # Platform↔world membrane guard (C1 / FR-7 / SKP-004, freeside-decomposition cycle).
+  # Codifies the one-directional membrane the decomposition relies on:
+  #   A) platform (apps/{gateway,worker,ingestor}, packages/{core,adapters,sandbox})
+  #      must NOT value-import themes/sietch (the world).
+  #   B) themes/sietch/src must NOT add NEW value-imports of @freeside/adapters/agent
+  #      (the C2 ports-only contract; existing reach-ins are baseline-allowlisted in the script).
+  # NOT bootstrap-bypassable: a membrane breach is a correctness regression regardless of the
+  # cross-domain exception. Runs an in-repo regex guard (madge unavailable in CI/workspace, NG-3;
+  # documented bypass classes live in the script header — transitive + alias reach-ins out of scope v1).
+  membrane:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Platform↔world membrane guard
+        run: bash tools/check-platform-membrane.sh
