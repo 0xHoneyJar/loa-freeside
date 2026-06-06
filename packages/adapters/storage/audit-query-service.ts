@@ -11,7 +11,7 @@
 
 import type { Pool } from 'pg';
 import type { Logger } from 'pino';
-import type { InteractionHistoryProvider, InteractionRecord } from '../../../themes/sietch/src/packages/core/protocol/capability-mesh.js';
+import type { InteractionHistoryProvider, InteractionRecord } from '@freeside/core/ports';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
