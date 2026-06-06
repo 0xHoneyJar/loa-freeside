@@ -12,6 +12,7 @@ from loa_cheval.providers.bedrock_adapter import BedrockAdapter
 from loa_cheval.providers.codex_headless_adapter import CodexHeadlessAdapter
 from loa_cheval.providers.gemini_headless_adapter import GeminiHeadlessAdapter
 from loa_cheval.providers.claude_headless_adapter import ClaudeHeadlessAdapter
+from loa_cheval.providers.cursor_headless_adapter import CursorHeadlessAdapter
 from loa_cheval.types import ConfigError, ProviderConfig
 
 # Provider type → adapter class mapping.
@@ -25,6 +26,10 @@ from loa_cheval.types import ConfigError, ProviderConfig
 #   from `claude-code:session` (NATIVE_PROVIDER) — that's the in-process
 #   native runtime; this is a subprocess CLI invocation. See
 #   claude_headless_adapter.py.
+# - cursor-headless: routes through `cursor-agent --print` (Cursor Agent CLI)
+#   for Cursor subscription auth (no API key consumed). A distinct expert-SWE
+#   review voice — its own corpus/harness, so a dedicated `cursor` provider
+#   rather than sitting under `openai`. See cursor_headless_adapter.py.
 _ADAPTER_REGISTRY: Dict[str, Type[ProviderAdapter]] = {
     "openai": OpenAIAdapter,
     "anthropic": AnthropicAdapter,
@@ -34,6 +39,7 @@ _ADAPTER_REGISTRY: Dict[str, Type[ProviderAdapter]] = {
     "codex-headless": CodexHeadlessAdapter,
     "gemini-headless": GeminiHeadlessAdapter,
     "claude-headless": ClaudeHeadlessAdapter,
+    "cursor-headless": CursorHeadlessAdapter,
 }
 
 
@@ -54,5 +60,6 @@ __all__ = [
     "CodexHeadlessAdapter",
     "GeminiHeadlessAdapter",
     "ClaudeHeadlessAdapter",
+    "CursorHeadlessAdapter",
     "get_adapter",
 ]

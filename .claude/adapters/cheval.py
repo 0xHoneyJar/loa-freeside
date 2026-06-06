@@ -205,6 +205,11 @@ _CLI_ADAPTER_BY_PROVIDER: Dict[str, str] = {
     "anthropic": "claude-headless",
     "openai": "codex-headless",
     "google": "gemini-headless",
+    # cursor is a standalone CLI-only provider: its provider `type` is already
+    # `cursor-headless`, so get_adapter() resolves the CLI adapter directly.
+    # This row keeps the kind:cli dispatch path (_get_adapter_for_entry) from
+    # raising on the `cursor` provider when a chain entry carries kind: cli.
+    "cursor": "cursor-headless",
 }
 
 
