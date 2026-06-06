@@ -6,6 +6,13 @@ constructs: gecko + freeside/KRANZ + the-arcade/OSTROM + k-hole/STAMETS
 domain: network
 plannable: true
 title: CubQuests → activities-api extraction baseline
+trust_tier: ai-derived
+read_state: skimmed
+confidence: 0.6
+decay_class: working
+last_confirmed: 2026-06-01
+operator_signed: self_attested
+use_label: use_as_background_only
 ---
 
 # CubQuests → activities-api Extraction Baseline

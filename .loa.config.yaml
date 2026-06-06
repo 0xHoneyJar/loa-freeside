@@ -1543,6 +1543,20 @@ flatline_protocol:
   # Auto-trigger after planning commands (plan-and-analyze, architect, sprint-plan)
   auto_trigger: true
 
+  # Adversarial cross-model dissent (adversarial-review.sh) — the cheval review RAIL.
+  # ENABLED 2026-06-05: it was built but disabled (sub-keys absent -> always exited "disabled"),
+  # so agents fell back to raw Opus fan-outs (the consumption-gradient slip). Uses the *-headless
+  # route (CLI creds, not env keys); budget-gated in CENTS. See
+  # grimoires/loa/proposals/orchestration-model-routing-rail.md
+  code_review:
+    enabled: true
+    model: codex-headless
+    budget_cents: 150
+  security_audit:
+    enabled: true
+    model: codex-headless
+    budget_cents: 150
+
   # Models for adversarial review
   #
   # Operator decision 2026-05-25 PM: use *-headless aliases for ALL THREE providers.
@@ -1701,3 +1715,27 @@ preferences:
   auto_bead_on_review: true
   require_security_audit: true
   confirm_app_writes: true
+
+# =============================================================================
+# Hounfour (cheval) model overlay — cycle-112 bridgebuilder headless review
+# =============================================================================
+# Adds a reasoning-class headless alias so bridgebuilder's deriveTimeoutMs()
+# grants the 30-min budget (isReasoningClass matches /opus/) WHILE routing
+# through the `claude` CLI (auth_type: headless — no API key). Mirrors
+# claude-headless but dispatches `claude --model opus`. Purely ADDITIVE
+# (deep-merge): existing models/aliases are untouched. Safe to delete after
+# the review posts.
+hounfour:
+  providers:
+    anthropic:
+      models:
+        claude-opus-headless:
+          auth_type: headless
+          dispatch_group: anthropic-claude
+          kind: cli
+          capabilities: [chat]
+          context_window: 200000
+          extra:
+            cli_model: opus
+  aliases:
+    claude-opus-headless: "anthropic:claude-opus-headless"

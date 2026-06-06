@@ -1,0 +1,119 @@
+"""
+The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
+"""
+scalar JSON
+
+scalar BigInt
+
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+type ViewPageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+}
+
+type Meta {
+  status: JSON
+}
+
+type Query {
+  validatorEvent(id: String!): validatorEvent
+  validatorEvents(where: validatorEventFilter, orderBy: String, orderDirection: String, before: String, after: String, limit: Int, offset: Int): validatorEventPage!
+  _meta: Meta
+}
+
+type validatorEvent {
+  id: String!
+  eventName: String!
+  blockNumber: BigInt!
+  validatorPubkey: String
+  rawArgsJson: String!
+}
+
+type validatorEventPage {
+  items: [validatorEvent!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+input validatorEventFilter {
+  AND: [validatorEventFilter]
+  OR: [validatorEventFilter]
+  id: String
+  id_not: String
+  id_in: [String]
+  id_not_in: [String]
+  id_contains: String
+  id_not_contains: String
+  id_starts_with: String
+  id_ends_with: String
+  id_not_starts_with: String
+  id_not_ends_with: String
+  id_contains_nocase: String
+  id_not_contains_nocase: String
+  id_starts_with_nocase: String
+  id_ends_with_nocase: String
+  id_not_starts_with_nocase: String
+  id_not_ends_with_nocase: String
+  eventName: String
+  eventName_not: String
+  eventName_in: [String]
+  eventName_not_in: [String]
+  eventName_contains: String
+  eventName_not_contains: String
+  eventName_starts_with: String
+  eventName_ends_with: String
+  eventName_not_starts_with: String
+  eventName_not_ends_with: String
+  eventName_contains_nocase: String
+  eventName_not_contains_nocase: String
+  eventName_starts_with_nocase: String
+  eventName_ends_with_nocase: String
+  eventName_not_starts_with_nocase: String
+  eventName_not_ends_with_nocase: String
+  blockNumber: BigInt
+  blockNumber_not: BigInt
+  blockNumber_in: [BigInt]
+  blockNumber_not_in: [BigInt]
+  blockNumber_gt: BigInt
+  blockNumber_lt: BigInt
+  blockNumber_gte: BigInt
+  blockNumber_lte: BigInt
+  validatorPubkey: String
+  validatorPubkey_not: String
+  validatorPubkey_in: [String]
+  validatorPubkey_not_in: [String]
+  validatorPubkey_contains: String
+  validatorPubkey_not_contains: String
+  validatorPubkey_starts_with: String
+  validatorPubkey_ends_with: String
+  validatorPubkey_not_starts_with: String
+  validatorPubkey_not_ends_with: String
+  validatorPubkey_contains_nocase: String
+  validatorPubkey_not_contains_nocase: String
+  validatorPubkey_starts_with_nocase: String
+  validatorPubkey_ends_with_nocase: String
+  validatorPubkey_not_starts_with_nocase: String
+  validatorPubkey_not_ends_with_nocase: String
+  rawArgsJson: String
+  rawArgsJson_not: String
+  rawArgsJson_in: [String]
+  rawArgsJson_not_in: [String]
+  rawArgsJson_contains: String
+  rawArgsJson_not_contains: String
+  rawArgsJson_starts_with: String
+  rawArgsJson_ends_with: String
+  rawArgsJson_not_starts_with: String
+  rawArgsJson_not_ends_with: String
+  rawArgsJson_contains_nocase: String
+  rawArgsJson_not_contains_nocase: String
+  rawArgsJson_starts_with_nocase: String
+  rawArgsJson_ends_with_nocase: String
+  rawArgsJson_not_starts_with_nocase: String
+  rawArgsJson_not_ends_with_nocase: String
+}

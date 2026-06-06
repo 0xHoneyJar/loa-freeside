@@ -1,3 +1,13 @@
+---
+title: "ADR-008: Freeside as a Factory — Buildings, Products, and the Marketplace"
+trust_tier: operator-authored
+read_state: unread
+confidence: 0.5
+decay_class: reference
+last_confirmed: 2026-06-03
+operator_signed: self_attested
+---
+
 # ADR-008: Freeside as a Factory — Buildings, Products, and the Marketplace
 
 **Status**: Proposed (intent-bearing; building extractions + repo consolidation deferred to a future operator-clarity session)

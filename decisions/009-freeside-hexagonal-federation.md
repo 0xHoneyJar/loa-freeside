@@ -1,3 +1,13 @@
+---
+title: "ADR-009: Freeside Hexagonal Federation — Cluster Composition + Per-Cell Harness + Operating Posture"
+trust_tier: operator-authored
+read_state: unread
+confidence: 0.5
+decay_class: reference
+last_confirmed: 2026-06-03
+operator_signed: self_attested
+---
+
 # ADR-009: Freeside Hexagonal Federation — Cluster Composition + Per-Cell Harness + Operating Posture
 
 **Status**: Proposed (lands in parallel with ADR-008 ratification per operator decision 2026-05-25)

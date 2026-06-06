@@ -1,3 +1,13 @@
+---
+title: "ADR-002: ES256 (ECDSA P-256) for JWT Signing"
+trust_tier: operator-authored
+read_state: unread
+confidence: 0.5
+decay_class: reference
+last_confirmed: 2026-06-03
+operator_signed: self_attested
+---
+
 # ADR-002: ES256 (ECDSA P-256) for JWT Signing
 
 **Status**: Accepted

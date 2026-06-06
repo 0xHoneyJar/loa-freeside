@@ -19,6 +19,12 @@ grounded_against:
   - freeside-characters persona-engine (Effect .live Layers) + mst-kansei-router (hardcoded MST)
   - bonfire/score-api #221 (Purupuru scoping — NOT ours, flag-only)
   - KEEPER + WEAVER consult (workflow wf_dd546e01-e57)
+trust_tier: ai-derived
+read_state: skimmed
+confidence: 0.6
+decay_class: working
+last_confirmed: 2026-06-01
+operator_signed: self_attested
 ---
 
 # Shadow-as-Universal-Preview + Medium-Agnostic Onboarding Substrate

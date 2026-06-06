@@ -1,8 +1,51 @@
+---
+title: "ADR-007: loa-freeside as Dual-Concern Ecosystem Parent (RFC #207 Absorption)"
+trust_tier: operator-authored
+read_state: read
+confidence: 0.9
+decay_class: reference
+last_confirmed: 2026-06-04
+operator_signed: ratified
+---
+
 # ADR-007: loa-freeside as Dual-Concern Ecosystem Parent (RFC #207 Absorption)
 
-**Status**: Proposed
+**Status**: Accepted (ratified by operator 2026-06-04; see Amendment 1)
 **Date**: 2026-05-18
 **Context**: RFC #207, vault doctrine `loa-freeside-as-ecosystem-parent`, Loa #452 L1-L5 pattern, cycle 2026-05-18 design session
+
+## Amendment 1 — Ratification + naming evolution (2026-06-04)
+
+**Ratified.** Status flipped Proposed → Accepted by operator sign-off 2026-06-04.
+The core decision is built and operational: the absorption happened, the
+platform/network path-domain firewall + cross-domain blocked-by check hard-fail
+CI (verified by the 2026-06-04 coherence ride), BeaconV3 ships, the registry
+ships. Ratification formalizes shipped reality — it does NOT cover the unbuilt
+implementation-sequencing tail: D-5 `/federation.json` and D-7
+`~/.claude/hooks/session-start/loa-freeside-ambient.sh` are flagged unresolved by
+ground-check and are NOT ratified-as-shipped.
+
+**Enforcement honesty.** Of the D-3 firewall rules, only the path-domain check +
+the cross-domain blocked-by check are CI-blocking today. Commit-scope and
+beads-domain-label checks are warn-only (STRICT defaults false). Promoting them
+to fail-block is a deliberate Phase-2 step gated on the domain-label backfill —
+NOT implied by this ratification.
+
+**Naming evolution — concern 2 is "the `*-api` ecosystem", not "the network".**
+Modules/buildings are now named `*-api` (the building APIs) for clarity; the
+"freeside-network" / "freeside the network" framing is retired as the ecosystem
+name. Concern 2 of this dual-concern repo is the **`*-api` ecosystem**: the
+registry + BeaconV3 + MCP federation gateway + deployment CLI that declare and
+coordinate the `*-api` buildings. `events` lives here (`packages/events`);
+`coherence` belongs to this concern. (Note: the CI *domain label* stays `network`
+— renaming the firewall domain is a separate, careful change. Open/uncommitted:
+"projects" may take a `freeside-` prefix; the codex may graduate to a `codex-api`
+building that grounds the SoT.)
+
+**Construct rename.** `construct-freeside` (persona KRANZ) is being renamed to
+`construct-kranz` to disambiguate from this repo and the `*-api` ecosystem, and
+to align the construct's name with its self. Coordinated into the construct's own
+cell, not reached into from here.
 
 ## Context
 

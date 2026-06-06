@@ -202,3 +202,17 @@ In-repo sprint-1 (cycle doctor-acvp-network-plane, branch feat/doctor-acvp-netwo
   Honest interim: aspirational + dated (2026-09-25) in .freeside/acvp-aspirational-allowlist.yaml,
   NOT a faked green. Tracked: arrakis-5ryf. events-api slug is an `-api`-naming-law concession
   for a library (mcp omitted, no served URL).
+
+---
+
+# cycle shadow-onboarding-substrate — /architect session 2026-06-01
+
+SDD authored at `grimoires/loa/cycles/shadow-onboarding-substrate/sdd.md` (NOT top-level sdd.md). Grounded against 4 repos + events pkg:
+
+- **worlds-api** (`~/Documents/GitHub/freeside-worlds`, pkg name `freeside-worlds`): config seam LIVE at `packages/config-service/src/app.ts` (`GET/PUT /v1/config/:world/:surface`, optimistic-lock 409, validation 422). Auth seam is a STUB (`auth.ts`): `resolveWriter` accepts ANY non-empty Bearer = the R-3 hole FR-10 must close. Persistence machinery = `config-engine` `ConfigStore` port (head-pointer + immutable history, version-guarded UPDATE). Surface protocol = `config-protocol/surface-config.ts` (@effect/schema ^0.75, effect ^3.10; only `verify-message` surface today; `SurfaceSchema`/`SurfaceConfigMap`/`KNOWN_SURFACES` are the extension points). Packages are `private:true` workspace pkgs distributed git-source (sovereign distribution confirmed). NO `purupuru.yaml` manifest yet (§7 precondition is real work).
+- **freeside-characters** (`~/Documents/GitHub/freeside-characters`): Effect port idiom = `Context.Tag` port (`ambient/ports/*.port.ts`) + `Layer.succeed` mock (`mock/*.mock.ts`, w/ `seed*`/`setMockFailure`/`reset*` fixtures) + `Layer.effect` live (`live/*.live.ts`, `Effect.gen`). This IS the FR-8 RosterSource/RoleWriter shape. Bot apps under `apps/bot` (src/index.ts, world-resolver.ts, auth-bridge.ts). persona-engine = `packages/persona-engine`.
+- **identity-api** (`~/Documents/GitHub/freeside-auth`): `/v1/auth/verify` → `{user_id (uuid), primary_wallet, session:{token, expires_at(unix sec)}}`. svc-JWT (`packages/protocol/src/svc-jwt-claims.ts`, Effect.Schema, ES256, kid `svc-` prefix, per-cell `operator_grants` allowlist) = the FR-10 authz substrate. user-JWT stays zod.
+- **dashboard** (`~/Documents/GitHub/freeside-dashboard`): Next 16.1.4 / React 19.2.3 / effect ^3.10 / NO framer-motion yet (motion lib is a net-new dep for FR-5 web render). Already has worlds-api config-client test + score-api client.
+- **events pkg** (in-repo `packages/events`): ACVP envelope `acvp-l1-v2` (`envelope.ts`), 3-segment topics `{aggregate}.{noun}.{verb}.v{N}` (`topics.ts`), central schema registry `registry.ts` (typed `SchemaId<P>`). FR-3 audit events register here.
+
+Render-target decision: **web DOM (dashboard) is MVP primary** (effect already present, motion = one dep; Discord CV2 is the second target, same substrate). score-api NOT ours (#164/#221) → latent data MOCKED.

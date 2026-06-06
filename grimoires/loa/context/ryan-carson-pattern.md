@@ -1,3 +1,14 @@
+---
+title: "Ryan Carson's Auto-Compound Pattern (Concrete Implementation)"
+trust_tier: ai-derived
+read_state: skimmed
+confidence: 0.6
+decay_class: working
+last_confirmed: 2026-06-01
+operator_signed: self_attested
+use_label: use_as_background_only
+---
+
 # Ryan Carson's Auto-Compound Pattern (Concrete Implementation)
 
 ## The Two-Job Architecture

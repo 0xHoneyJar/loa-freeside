@@ -1,3 +1,13 @@
+---
+title: "ADR-006: Architect Pool Unreachability by Direct Alias"
+trust_tier: operator-authored
+read_state: unread
+confidence: 0.5
+decay_class: reference
+last_confirmed: 2026-06-03
+operator_signed: self_attested
+---
+
 # ADR-006: Architect Pool Unreachability by Direct Alias
 
 **Status**: Accepted

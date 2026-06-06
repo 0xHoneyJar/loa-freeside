@@ -1,3 +1,13 @@
+---
+title: "ADR-010: Sonar-Ponder Migration — RPO/RTO Sign-Off + A-4 Production Cutover Authorization"
+trust_tier: operator-authored
+read_state: unread
+confidence: 0.5
+decay_class: reference
+last_confirmed: 2026-06-03
+operator_signed: self_attested
+---
+
 # ADR-010: Sonar-Ponder Migration — RPO/RTO Sign-Off + A-4 Production Cutover Authorization
 
 **Status**: Accepted (operator-signed 2026-05-27)

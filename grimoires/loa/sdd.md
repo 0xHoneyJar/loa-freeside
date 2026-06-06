@@ -1,1085 +1,476 @@
----
-title: Software Design Document — Ponder Substrate Migration
-cycle: sonar-ponder-migration-v1
-date: 2026-05-27
-status: draft (simstim phase 4 / 8 — Flatline-integrated v2)
-operator: zksoju
-simstim_id: simstim-20260527-01a189b5
-prd: grimoires/loa/prd.md (Phase 2 Flatline-integrated, sha256:fd25da37)
-flatline_review: grimoires/loa/a2a/flatline/sdd-review.json (3-model, 100% agreement, 8 HIGH_CONSENSUS + 13 BLOCKERS integrated)
-predecessor: sdd.md.ride-snapshot-2026-05-18-bak (archived /ride loa-freeside platform SDD)
-hivemind_labels:
-  product_area: "Cluster Indexer Substrate"
-  workstream: delivery
-  source: team-internal
+# SDD: Cluster-Coherence Foundation — P0 Seam Cadence Counter + Absent-Series Alert
+
+> **Status**: DRAFT
+> **Cycle**: cycle/coherence-foundation
+> **Date**: 2026-06-03
+> **PRD**: `grimoires/loa/prd.md`
+> **Scope**: P0 only — additive, reversible, single-repo `loa-freeside`
+
 ---
 
-# Software Design Document — Ponder Substrate Migration (v2 · Flatline-integrated)
+## 1. Problem Recap
 
-## 1. System Architecture
+Prometheus alert rules in `infrastructure/observability/prometheus/alerts.yml` use threshold
+comparisons (`== 0`, `rate(...) > N`). Kubernetes pod-based target discovery via
+`kubernetes_sd_configs role:pod` removes series entirely when a pod is deleted or stops
+scraping — the series goes **absent**, it does not emit `0`. A `== 0` expression cannot fire
+on an absent series. Only `absent_over_time()` can.
 
-### 1.1 High-level component view
+Consequence: a dead publisher is observationally indistinguishable from a healthy-but-quiet
+publisher. This is INV-3 (free-energy / absence correctness defect) per
+`grimoires/loa/context/2026-06-03-building-membrane-baseline.md`.
+
+This SDD specifies the two P0 changes that close INV-3 for the `nft.mint.detected.v1` seam:
+(1) a per-subject published-cadence counter at the NATS publish motor edge, and (2) an
+`absent_over_time()` alert on that counter.
+
+---
+
+## 2. System Context
 
 ```
-                          ┌──────────────────────────────────────┐
-                          │           ON-CHAIN SOURCES           │
-                          │  Ethereum · Optimism · Arbitrum ·    │
-                          │  Zora · Base · Berachain             │
-                          └──────────────┬───────────────────────┘
-                                         │ JSON-RPC
-                                         ▼
-              ┌──────────────────────────────────────────────────┐
-              │     eRPC SUBSTRATE (Railway: erpc.railway.       │
-              │     internal:4000) — multi-upstream fallback +   │
-              │     hedging + Postgres-cached evmJsonRpcCache.   │
-              │     UNCHANGED from path-ε work.                  │
-              └──────────────────────────────────────────────────┘
-                                         │
-              ┌──────────────────────────┴──────────────────────┐
-              ▼                                                  ▼
-   ┌─────────────────────────┐                      ┌─────────────────────────┐
-   │  BLUE BELT (Mibera)     │                      │  GREEN BELT (Full)      │
-   │  Ponder 0.16.6 + Node22 │                      │  Ponder 0.16.6 + Node22 │
-   │  chains: 1, 8453, 80094 │                      │  chains: 1, 10, 42161,  │
-   │                         │                      │          7777777, 8453, │
-   │                         │                      │          80094          │
-   └────────────┬────────────┘                      └────────────┬────────────┘
-                │                                                │
-                ▼                                                ▼
-   ┌─────────────────────────┐                      ┌─────────────────────────┐
-   │  POSTGRES (postgres-    │                      │  POSTGRES (postgres-    │
-   │  3vic.railway.internal) │                      │  vrr1.railway.internal) │
-   │  public.*  (envio)      │                      │  public.*  (envio)      │
-   │  ponder.*  (NEW)        │                      │  ponder.*  (NEW)        │
-   └────────────┬────────────┘                      └────────────┬────────────┘
-                │                                                │
-                ▼                                                ▼
-   ┌─────────────────────────┐                      ┌─────────────────────────┐
-   │  HASURA                 │                      │  HASURA                 │
-   │  metadata: tracks       │                      │  metadata: tracks       │
-   │  public.* pre-cutover   │                      │  public.* pre-cutover   │
-   │  ponder.* post-cutover  │                      │  ponder.* post-cutover  │
-   └────────────┬────────────┘                      └────────────┬────────────┘
-                │                                                │
-                └────────────────────┬───────────────────────────┘
-                                     │ GraphQL (UNCHANGED API SHAPE, G-8)
-                                     ▼
-                          ┌──────────────────────────────────────┐
-                          │       DOWNSTREAM CONSUMERS           │
-                          │  mediums · sietch-discord ·          │
-                          │  freeside-score                      │
-                          └──────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│  loa-freeside (this repo)                                            │
+│                                                                      │
+│  ┌──────────────────────────┐              ┌────────────────────┐   │
+│  │  apps/gateway (Rust)     │──JetStream──▶│  NATS JetStream    │   │
+│  │  - Discord event router  │              │  COMMANDS / EVENTS │   │
+│  │  - metrics/mod.rs        │              └────────────────────┘   │
+│  │  - nats/publisher.rs     │                                        │
+│  └───────────┬──────────────┘                                        │
+│              │ GET /metrics                                           │
+│  ┌───────────▼──────────────┐  scrape   ┌────────────────────────┐  │
+│  │  Prometheus              │──────────▶│  alerts.yml             │  │
+│  │                          │           │  + arrakis-seam-cadence │  │
+│  └───────────────────────────┘           └───────────┬────────────┘  │
+└──────────────────────────────────────────────────────┼──────────────┘
+                                                       │ HTTP API
+                                                       │ /api/v1/alerts
+┌──────────────────────────────────────────────────────▼──────────────┐
+│  freeside-coherence (external repo — NOT in loa-freeside)           │
+│  Queries Prometheus alert state; must not read fixtures for R-4     │
+└─────────────────────────────────────────────────────────────────────┘
 
-                              ┌─── SIDE CHANNEL ───┐
-                              ▼                    ▼
-                   ┌──────────────────┐ ┌──────────────────┐
-                   │  Reorg-safe NATS │ │  Reorg-safe NATS │
-                   │  (NFR-7 outbox)  │ │  (NFR-7 outbox)  │
-                   │  COLD-SYNC GATE  │ │  COLD-SYNC GATE  │
-                   │  silences emit   │ │  silences emit   │
-                   │  during backfill │ │  during backfill │
-                   └────────┬─────────┘ └────────┬─────────┘
-                            │                    │
-                            └──────────┬─────────┘
-                                       │
-                                       ▼
-                          ┌──────────────────────────────────────┐
-                          │  NATS BROKER + freeside-characters   │
-                          │  UNCHANGED                           │
-                          └──────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│  freeside-sonar (external repo)                                      │
+│  Actual publisher of nft.mint.detected.v1 via JetStream             │
+│  P1: must adopt gateway_events_published_total counter here         │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-### 1.2 What's preserved (do not modify)
+**Boundary note — A-1 resolution**: The `apps/gateway` Rust publisher routes Discord-sourced
+events only: `commands.*`, `events.guild.*`, `events.member.*` (see `publisher.rs:159–176`).
+It does NOT publish `nft.mint.detected.v1`. That subject is owned by `freeside-sonar`
+(external). The counter added here covers the gateway's own subjects. The
+`nft.mint.detected.v1` alert will fire continuously (series permanently absent) until sonar
+adopts the same counter pattern — a P1 prerequisite, tracked separately. The kill/prove test
+in §8 uses `commands.interaction`, which the gateway does publish.
 
-- **eRPC**: substrate, config, upstream policies. UNCHANGED.
-- **Postgres instances**: same DB hosts; `ponder.*` schema ADDED alongside `public.*` (envio); envio schemas stay during transition.
-- **Hasura**: same service; metadata swap (atomic `replace_metadata`) at cutover.
-- **NATS broker + JetStream**: UNCHANGED.
-- **@0xhoneyjar/events publisher**: library + Dockerfile materialization. UNCHANGED.
-- **Downstream consumers**: zero application changes (G-8 lock).
-- **GraphQL API shape**: queries return identical responses (validated by AC-3 expanded).
+---
 
-### 1.3 What's replaced
+## 3. Component Design
 
-| Surface | Before (envio) | After (Ponder) |
-|---------|----------------|----------------|
-| Indexer runtime | envio v3.0.0-alpha.17 | Ponder 0.16.6 (EXACT pin) |
-| Config | `config.yaml` / `config.mibera.yaml` (YAML) | `ponder.config.ts` (TypeScript) |
-| Schema | `schema.graphql` (envio codegen) | `ponder.schema.ts` (Drizzle ORM) |
-| Handlers | `Contract.Event.handler(fn, opts)` | `ponder.on("Contract:Event", fn)` |
-| Filter mechanism | `eventFilters: [...]` in handler opts | `filter:` in config (indexed) OR in-handler early-return (non-indexed) |
-| Postgres schema | `public.*` | `ponder.*` |
-| Codegen step | `pnpm envio codegen` | none |
-| Generated dir | `generated/` | `ponder-env.d.ts` |
+### 3.1 Counter Addition — `apps/gateway/src/metrics/mod.rs`
 
-## 2. Tech Stack
+**New `describe_counter!` call** — added inside `register_metrics()` after the existing
+block ending at line 54:
 
-### 2.1 Runtime dependencies
-
-| Package | Version | Why |
-|---------|---------|-----|
-| `ponder` | **EXACT `0.16.6`** | Indexer runtime (IMP-006 HIGH_CONSENSUS — no caret) |
-| `viem` | per Ponder peer-dep | RPC client |
-| `drizzle-orm` | per Ponder peer-dep | Schema DSL |
-| `node` | `>=22` | Ponder requirement; cluster already meets |
-| `pnpm` | `10.x` | Existing cluster standard |
-| `@0xhoneyjar/events` | `file:packages/events` (SHA-pinned) | NATS envelope publisher |
-
-### 2.2 Existing services retained
-
-Postgres 17 · Hasura · eRPC · Railway · NATS broker
-
-### 2.3 Removed
-
-`envio` + `rescript-schema` + `rescript-envsafe` + `@rescript/react` + `generated/` directory
-
-## 3. Data Models
-
-### 3.1 Schema namespace strategy (FR-X-6)
-
-Ponder writes to dedicated `ponder` schema; envio's `public.*` stays intact. Enables:
-- Snapshot-only rollback without data loss
-- Zero schema collision risk
-- Hasura source-database swap as atomic cutover mechanism
-
-```typescript
-// ponder.config.ts (excerpt)
-import { createConfig } from "ponder";
-
-export default createConfig({
-  database: {
-    kind: "postgres",
-    connectionString: process.env.DATABASE_URL,
-    // schema is NOT a ponder.config.ts key — control via DATABASE_SCHEMA env var
-    // or --schema CLI flag (ponder/dist/esm/build/index.js:235-241). The
-    // belt-indexer container MUST set DATABASE_SCHEMA=ponder.
-  },
-  // ... chains, contracts, blocks (see §3.2)
-});
-```
-<!-- A-0 verified — see grimoires/loa/spikes/ponder-api-verification/COOKBOOK.md §C-1 -->
-
-The `ponder` schema namespace per FR-X-6 is set via environment / CLI, not the
-config object. Production deployment (`belt-ponder` container) sets
-`DATABASE_SCHEMA=ponder` in its Railway env matrix (see §7.2).
-
-### 3.2 Schema port pattern (envio → Ponder) — uint256-safe (BLOCKER SKP-003 HIGH)
-
-**CRITICAL: token IDs must use `t.numeric(78, 0)` not `t.bigint()`**. Drizzle's `bigint` maps to Postgres int64 which overflows for uint256 token IDs above 2^63. NFTs commonly emit token IDs above this range.
-
-**envio** (`schema.graphql`):
-```graphql
-type Token @entity {
-  id: ID!
-  collection: String!
-  tokenId: BigInt!
-  owner: String!
-  blockNumber: BigInt!
-  timestamp: BigInt!
-}
-```
-
-**Ponder** (`ponder.schema.ts`):
-```typescript
-import { onchainTable, index } from "ponder";
-
-export const token = onchainTable(
-  "token",
-  (t) => ({
-    id: t.text().primaryKey(),
-    collection: t.hex().notNull(),
-    tokenId: t.numeric(78, 0).notNull(),  // ← uint256-safe per SKP-003
-    owner: t.hex().notNull(),
-    blockNumber: t.bigint().notNull(),    // block numbers safe in int64
-    timestamp: t.bigint().notNull(),
-  }),
-  (table) => ({
-    collectionIdx: index().on(table.collection),
-    ownerIdx: index().on(table.owner),
-  }),
+```rust
+describe_counter!(
+    "gateway_events_published_total",
+    Unit::Count,
+    "Total events published to JetStream by NATS subject"
 );
 ```
 
-Apply the same rule to ALL token-ID columns across 89 entity ports.
+**New method on `GatewayMetrics`**:
 
-### 3.3 NATS outbox table (NFR-7 + BLOCKER SKP-005 HIGH — IMP-002 HIGH_CONSENSUS)
-
-Add a `pending_emits` table to handle reorg-safe + idempotent NATS publishing.
-
-**R-1 schema update** (A-0 spike): the ID-component fields are stored AS
-first-class columns ALONGSIDE the hashed `id`, and the fourth canonical input
-is the **`envelopeType` discriminant** (an enum string like `"transfer"` /
-`"mint"`) NOT the `envelope_payload_hash`. Two reasons:
-- **Debuggability**: production triage needs "which envelopes for txHash X are still pending?" — opaque hash isn't queryable.
-- **Schema-evolution stability**: `envelope_payload_hash` ties the id to payload encoding; any envelope-shape change resets every id and re-emits historical envelopes. `envelopeType` is small + stable + human-readable.
-
-```typescript
-export const pendingEmits = onchainTable(
-  "pending_emits",
-  (t) => ({
-    // Deterministic id = keccak256(chainId | "|" | txHash | "|" | logIndex | "|" | envelopeType)
-    // (canonical inputs verified at T-A0.9; 5x duplicate insert → 1 row, reorg/replay-safe)
-    id: t.text().primaryKey(),
-
-    // ID components stored AS first-class columns for production triage queries (R-1).
-    chainId: t.integer().notNull(),
-    txHash: t.hex().notNull(),
-    logIndex: t.integer().notNull(),
-    envelopeType: t.text().notNull(),  // discriminant: "transfer" | "mint" | "burn" | ...
-
-    eventBlock: t.bigint().notNull(),
-    targetBlock: t.bigint().notNull(),       // eventBlock + reorg_depth
-    envelopeJson: t.text().notNull(),
-    publishedAt: t.bigint(),                 // null = pending; non-null = published timestamp
-    attemptCount: t.integer().notNull().default(0),
-    lastError: t.text(),
-  }),
-  (table) => ({
-    chainTargetIdx: index().on(table.chainId, table.targetBlock),
-    pendingIdx: index().on(table.publishedAt),  // sparse-style index on null
-    // Triage index: "which envelopes for this tx are still pending?"
-    txHashIdx: index().on(table.txHash, table.envelopeType),
-  }),
-);
-```
-<!-- A-0 verified — see grimoires/loa/spikes/ponder-api-verification/COOKBOOK.md §T-A0.9 (deterministic ID schema + idempotency PASS) and §R-1 (component-fields recommendation) -->
-
-Outbox pattern semantics:
-- Handler writes row with `publishedAt=null` + deterministic ID (components also stored)
-- Block-tick handler reads ready rows (`targetBlock <= currentBlock AND publishedAt IS NULL`)
-- For each: attempt JetStream publish → on ack, set `publishedAt = now()` + commit
-- On publish failure: increment `attemptCount`, set `lastError`, leave `publishedAt` null (retry next tick)
-- Deterministic ID = consumer-side dedup key (idempotent on duplicate)
-- `envelopeType` enables typed routing on the consumer side without parsing `envelopeJson`
-
-### 3.4 Historical data continuity (PRD §Historical Data Continuity)
-
-```
-T=0    deploy Ponder · writes to ponder.* starts
-       Hasura STILL tracks public.* (envio stale tables)
-       Consumers see stale-but-present data — no breaking changes
-T=24h  Ponder cold sync complete · all entities present in ponder.*
-T=24h+ Operator-paired Hasura metadata atomic swap (§4.3)
-       Consumers atomically see fresh Ponder data
-T=7d   Stable Ponder operation; envio schemas may be archived (separate cycle)
-```
-
-Zero read-side gap from consumer perspective.
-
-## 4. API Contracts
-
-### 4.1 GraphQL surface (G-8 LOCKED, consumer-facing)
-
-**Endpoint**: `https://belt-hasura.up.railway.app/v1/graphql` — UNCHANGED.
-
-**Contract**: identical query syntax + response shape pre/post migration — **CONDITIONAL on per-table root-field customization being applied at cutover**. Hasura **prefixes non-`public` schemas** in GraphQL root fields by default: `ponder.token` exposes as `ponder_token`, breaking every consumer query that targets `token`. The cutover script (§4.3) MUST add `pg_set_table_customization` for each tracked table to remap `ponder_token` → `token`, `ponder_token_by_pk` → `token_by_pk`, etc. With customization applied, `{ token { ... } }` resolves identically to the envio-tracked `public.token`.
-
-AC-3 validates with EXPANDED test coverage (per BLOCKER SKP-003 HIGH):
-- Top-5 production query shape responses (15 tests = 5 × 3 consumers)
-- Hasura relationship traversal tests (`token.holder`, etc.)
-- Permission/role tests for each consumer's intended role
-- Aggregate query tests (`token_aggregate`)
-- Ordering + nullability assertions
-- Subscription smoke tests (live data flow from cutover moment forward)
-- **NEW per C-6**: post-cutover root-field name assertion (`__schema { queryType { fields { name } } }` MUST include unprefixed `token`, NOT `ponder_token`)
-<!-- A-0 verified — see grimoires/loa/spikes/ponder-api-verification/COOKBOOK.md §C-6 -->
-
-### 4.2 NATS+ACVP envelope side channel
-
-**Subject + envelope shape**: UNCHANGED from path-ε. AC-A-7 enforces byte-parity.
-
-**HISTORICAL SYNC GATE (BLOCKER SKP-001 CRITICAL 950)**: handlers MUST NOT emit envelopes during cold sync. Implementation uses **two composed signals** — block-distance to head AND Ponder sync state — NOT wall-clock alone (which is fragile per IMP-005 and pre-A-0 spike):
-
-```typescript
-// src/lib/sync-status.ts
-// Per-chain confirmation depths (matches REORG_DEPTH_BY_CHAIN in §5.3).
-const CONFIRMATIONS_BY_CHAIN: Record<number, bigint> = {
-  1:  12n,   // Ethereum
-  10: 0n,    // Optimism (L2 instant)
-  8453: 0n,  // Base
-  42161: 0n, // Arbitrum
-  7777777: 0n, // Zora
-  80094: 200n, // Berachain
-};
-
-// CAVEAT: ponder's ReadonlyClient does NOT expose getBlockNumber().
-// dist/types/indexing/client.d.ts allowlists viem actions; getBlockNumber
-// is not in any of block-dependent / block-required / non-block-dependent.
-// Use getBlock({ blockTag: "latest" }) to read the head block number.
-export async function isLiveEvent(
-  event: { block: { number: bigint } },
-  context: { client: any; chain: { id: number } },
-): Promise<boolean> {
-  const head = await context.client.getBlock({ blockTag: "latest" });
-  const confirmations = CONFIRMATIONS_BY_CHAIN[context.chain.id] ?? 12n;
-  return head.number - event.block.number < confirmations;
+```rust
+/// Record a successful JetStream publish, labeled by NATS subject.
+pub fn record_publish_success(&self, subject: &str) {
+    counter!(
+        "gateway_events_published_total",
+        "subject" => subject.to_string()
+    )
+    .increment(1);
 }
 ```
 
-**Sync-state composition (two-gate)** — Ponder 0.16.6 does not expose
-`sync_status === 'realtime'` directly inside handler context, so the SDD
-invariant is enforced via composed gates:
+This is the single increment surface. It fires after a confirmed JetStream ACK.
 
-1. **In-handler block-distance**: `(head - event.block.number) < CONFIRMATIONS` (above).
-2. **In-process sync state**: NATS publisher (`publishEnvelope`) must only START accepting after Ponder's `/ready` endpoint returns 200 (server-level gate, see §10.3). Pre-`/ready`, the outbox table buffers; post-`/ready`, the block-tick handler drains it.
+The existing `record_route_success(&self, shard_id: u64, duration: Duration)` at
+`metrics/mod.rs:106` is NOT modified. It carries a `shard_id` dimension and operates at
+shard granularity; it is a distinct instrument at a different conceptual boundary. The
+PRD requirement (R-1) is explicit: `record_route_success` "MUST NOT be repurposed."
 
-Used in every NATS-emitting handler:
-```typescript
-ponder.on("MiberaShadows:Transfer", async ({ event, context }) => {
-  await context.db.insert(token).values({ /* ... */ });
-  if (await isLiveEvent(event, context)) {
-    await reorgSafeEmit(context, mintEnvelope(event), event.block.number, context.chain.id);
-  }
-  // historical events: written to DB but NOT emitted to NATS — no DDOS during backfill
-});
+**Cardinality bound — A-2**: The `subject` label has fixed cardinality driven by the
+`route_event` match arms in `publisher.rs:159–176`. Current subjects the gateway produces:
+`commands.interaction`, `events.guild.join`, `events.guild.leave`, `events.guild.update`,
+`events.member.join`, `events.member.leave`, `events.member.update`, and a catch-all
+`events.<type>` for unrecognized event types. Upper bound ≈ 15 distinct values.
+`metrics_exporter_prometheus` has no cardinality cap by default; no `PrometheusBuilder`
+configuration change is required. A-2 risk is not realized.
+
+### 3.2 Publisher Integration — `apps/gateway/src/nats/publisher.rs`
+
+The `metrics` crate uses a **process-global recorder** installed by
+`PrometheusBuilder::new().install_recorder()` at gateway startup (`metrics/mod.rs:20–22`).
+The `counter!()` macro resolves against this global recorder at call time. No struct field
+or dependency injection is needed on `NatsPublisher`.
+
+**Increment site**: Inside `publish_event`, at the JetStream ACK success path
+(currently lines 127–135), immediately after
+`self.messages_published.fetch_add(1, Ordering::Relaxed)`:
+
+```rust
+// Existing — preserved unchanged per PRD R-1:
+self.messages_published.fetch_add(1, Ordering::Relaxed);
+
+// New — Prometheus counter at motor edge, subject-labeled:
+counter!(
+    "gateway_events_published_total",
+    "subject" => subject.clone()
+)
+.increment(1);
 ```
 
-**Performance follow-up (A-2 task)**: `getBlock({ blockTag: "latest" })` costs ONE RPC per event (~25 RPC/s at 100 events/min/chain). eRPC absorbs this, but the cleaner pattern is a head-block cache populated by the block-tick handler. Promoted to A-2 scope: "A2.X: head-block cache via block-tick handler; isLive reads cache."
-<!-- A-0 verified — see grimoires/loa/spikes/ponder-api-verification/COOKBOOK.md §C-5 (incl. ReadonlyClient action allowlist + performance follow-up) -->
+The `subject` variable is already in scope at this site — it is computed by
+`route_event(event)` at line 108 and bound as `let subject = self.route_event(event)`.
+No new parameter threading is required.
 
-### 4.3 Hasura metadata cutover — atomic `replace_metadata` (BLOCKER SKP-001/002 CRITICAL — IMP-001 HIGH_CONSENSUS)
+The `metrics` import (`use metrics::{counter, ...}`) must be confirmed present or added
+to `publisher.rs`. The module already uses the crate indirectly via `GatewayMetrics`; a
+direct `use metrics::counter;` import in `publisher.rs` may be needed.
 
-**DO NOT use sequential untrack/track API calls** — they're non-transactional + drop relationships + permissions. Use atomic `replace_metadata`:
+**Failure paths** (lines 137–154): The counter is NOT incremented on publish failure.
+It is a success counter. Failures are already tracked by `self.publish_failures` and
+surface via `gateway_route_failures_total`.
 
-```bash
-#!/bin/bash
-# scripts/cutover-hasura-tracking.sh — atomic Hasura metadata swap
-set -euo pipefail
+### 3.3 Alert Addition — `infrastructure/observability/prometheus/alerts.yml`
 
-HASURA_URL="${HASURA_URL:?Set HASURA_URL}"
-HASURA_ADMIN_SECRET="${HASURA_ADMIN_SECRET:?Set HASURA_ADMIN_SECRET}"
-DIRECTION="${1:?cutover or rollback}"
+A new group is **appended** to the existing file. Zero existing groups or rules are touched.
 
-# 1. Export current metadata as snapshot (rollback artifact)
-TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)
-SNAPSHOT_PATH="/tmp/hasura-metadata-${TIMESTAMP}.json"
-
-curl -fSs -X POST "${HASURA_URL}/v1/metadata" \
-  -H "x-hasura-admin-secret: ${HASURA_ADMIN_SECRET}" \
-  -d '{"type": "export_metadata", "args": {}}' \
-  > "${SNAPSHOT_PATH}"
-
-echo "[cutover] metadata snapshot: ${SNAPSHOT_PATH}"
-
-# 2. Transform: replace schema "public" → "ponder" (or reverse) AND bake in
-# per-table custom_root_fields so consumer queries against unprefixed names
-# (`token`, NOT `ponder_token`) keep resolving post-cutover. (C-6)
-# The portable jq form below tolerates objects without a "schema" key (jq 1.6+).
-if [[ "${DIRECTION}" == "cutover" ]]; then
-  jq '
-    (.. | objects | select((.schema // null) == "public")) |= (.schema = "ponder")
-    | (.. | objects | select(.table? | (.schema // null) == "ponder" and (.name // null) != null))
-      |= (
-        .configuration = (
-          (.configuration // {}) + {
-            custom_root_fields: (
-              ((.configuration // {}).custom_root_fields // {}) + {
-                select: .table.name,
-                select_by_pk: ((.table.name) + "_by_pk"),
-                select_aggregate: ((.table.name) + "_aggregate"),
-                insert: (("insert_") + (.table.name)),
-                insert_one: (("insert_") + (.table.name) + "_one"),
-                update: (("update_") + (.table.name)),
-                update_by_pk: (("update_") + (.table.name) + "_by_pk"),
-                delete: (("delete_") + (.table.name)),
-                delete_by_pk: (("delete_") + (.table.name) + "_by_pk")
-              }
-            ),
-            custom_name: .table.name
-          }
-        )
-      )
-  ' "${SNAPSHOT_PATH}" > "/tmp/hasura-metadata-${TIMESTAMP}-transformed.json"
-elif [[ "${DIRECTION}" == "rollback" ]]; then
-  # Rollback: schema back to public + strip the customization we added on cutover.
-  jq '
-    (.. | objects | select((.schema // null) == "ponder")) |= (.schema = "public")
-    | (.. | objects | select(.table? | (.schema // null) == "public" and (.name // null) != null))
-      |= (
-        if (.configuration // {}) | has("custom_root_fields")
-        then .configuration |= (del(.custom_root_fields) | del(.custom_name))
-        else .
-        end
-      )
-  ' "${SNAPSHOT_PATH}" > "/tmp/hasura-metadata-${TIMESTAMP}-transformed.json"
-else
-  echo "[cutover] unknown DIRECTION=${DIRECTION}" >&2
-  exit 1
-fi
-
-# 3. Atomic apply via replace_metadata (single Hasura transaction).
-# Atomically applies BOTH the schema swap AND the root-field remap — no window
-# where consumers see prefixed `ponder_token` names (per C-6 atomicity preference).
-curl -fSs -X POST "${HASURA_URL}/v1/metadata" \
-  -H "x-hasura-admin-secret: ${HASURA_ADMIN_SECRET}" \
-  -d "$(jq -c '{"type": "replace_metadata", "args": .}' \
-    "/tmp/hasura-metadata-${TIMESTAMP}-transformed.json")"
-
-# 4. Post-swap validation — verify all 89 tables resolve to expected schema
-#    AND that root field names are unprefixed (no `ponder_*` leakage).
-EXPECTED_SCHEMA="ponder"
-[[ "${DIRECTION}" == "rollback" ]] && EXPECTED_SCHEMA="public"
-INTROSPECTION=$(curl -fSs -X POST "${HASURA_URL}/v1/graphql" \
-  -H "x-hasura-admin-secret: ${HASURA_ADMIN_SECRET}" \
-  -d '{"query": "{ __schema { queryType { fields { name } } } }"}')
-# Assert: queryType.fields[].name MUST include `token` (NOT `ponder_token`).
-# (full assertion script in scripts/verify-hasura-tracking.sh)
-
-echo "[cutover] DONE — direction=${DIRECTION} schema=${EXPECTED_SCHEMA}"
+```yaml
+# =============================================================================
+# Seam Cadence Alerts — INV-3 closure (absent_over_time pattern)
+# cycle/coherence-foundation · 2026-06-03
+# =============================================================================
+- name: arrakis-seam-cadence
+  rules:
+    - alert: SeamNftMintDetectedSilent
+      # absent_over_time fires when the series has no data points in the window.
+      # kill/prove: for:0m fires immediately on first absent evaluation.
+      # PRODUCTION: change to for:5m before deploying — filters transient pod restarts.
+      expr: absent_over_time(gateway_events_published_total{subject="nft.mint.detected.v1"}[30m])
+      for: 0m
+      labels:
+        severity: warning
+        component: seam
+        seam: nft.mint.detected.v1
+      annotations:
+        summary: "nft.mint.detected.v1 seam has produced no events for 30 minutes"
+        description: >
+          The nft.mint.detected.v1 cadence seam has been silent for ≥30m. Either
+          freeside-sonar stopped indexing, the gateway series is absent (pod
+          deleted/crashed), or sonar has not yet adopted the gateway_events_published_total
+          counter (P1 prerequisite — see cycle/coherence-foundation PRD A-1).
+          absent_over_time fires; == 0 rules cannot. This is the INV-3 correctness
+          distinction.
+        runbook_url: "https://wiki.internal/runbooks/seam-silence"
 ```
 
-<!-- A-0 verified — see grimoires/loa/spikes/ponder-api-verification/COOKBOOK.md §C-6 (jq portable form + `pg_set_table_customization` baked into the replace_metadata payload for atomic remap) -->
+**Window rationale — A-3**: 30 minutes is conservative relative to Berachain NFT mint
+activity on active networks. During genuine low-volume periods (new-collection dry spells,
+off-chain windows), this window may produce false positives. Monitor the signal-to-noise
+ratio over the first two weeks in production; adjust to `[60m]` if false-positive rate
+degrades operator trust.
 
-Rollback: invoke with `DIRECTION=rollback` + Postgres snapshot restore (see §6).
+**Production `for` value — A-5 resolution**: The YAML above carries `for: 0m` for the
+kill/prove test configuration. Before production deployment, this MUST be changed to
+`for: 5m`. The 5-minute pending window suppresses transient absent windows during rolling
+pod restarts (typical gateway pod restart + readiness probe cycle < 2 minutes). Leaving
+`for: 0m` in production fires an alert on every deploy. The comment in the YAML makes this
+obligation visible to the implementer.
 
-## 5. Handler Architecture
+**`seam:` label**: A new label dimension not present on any existing alert. Its value is the
+canonical NATS subject string. The coherence explorer filters on this label to surface
+seam-specific alert state.
 
-### 5.1 API translation pattern
+**Validation gate**: `promtool check rules alerts.yml` must exit 0 before the sprint closes.
 
-**envio**:
-```typescript
-HoneyJar.Transfer.handler(async ({ event, context }) => {
-  const tokenId = event.params.tokenId.toString();
-  // ...
-});
-```
+### 3.4 Coherence Surface Wire — R-4
 
-**Ponder**:
-```typescript
-import { ponder } from "ponder:registry";
-import { token } from "../ponder.schema";
+`freeside-coherence` is an external Next.js application absent from `loa-freeside`. Its
+current state: live, but reads fixtures
+(`grimoires/loa/context/2026-06-03-building-membrane-baseline.md:39`).
 
-ponder.on("HoneyJar:Transfer", async ({ event, context }) => {
-  await context.db
-    .insert(token)
-    .values({
-      id: `${event.log.address}-${event.args.tokenId}`,
-      collection: event.log.address,
-      tokenId: event.args.tokenId,
-      owner: event.args.to,
-      blockNumber: event.block.number,
-      timestamp: event.block.timestamp,
-    })
-    .onConflictDoUpdate({ owner: event.args.to });
+**R-4 minimum bar**: `SeamNftMintDetectedSilent`'s firing state must be readable from the
+explorer without the operator navigating to Prometheus.
 
-  if (isLiveEvent(event)) {
-    await reorgSafeEmit(context, mintEnvelope(event), event.block.number, event.chainId);
-  }
-});
-```
-
-### 5.2 Filter port (fatbera handlers) — corrected for Ponder 0.16.x
-
-**Indexed-arg filter** (in config, RPC-level efficient):
-```typescript
-// ponder.config.ts (excerpt)
-contracts: {
-  BlockRewardController: {
-    network: "berachain",
-    address: "0xBAE...",
-    abi: BlockRewardControllerAbi,
-    startBlock: 8221,
-    filter: {
-      event: "BlockRewardProcessed",
-      args: { validatorPubkey: TRACKED_VALIDATORS.map(v => v.pubkey) },
-    },
-  },
-},
-```
-
-**Non-indexed-arg filter** (in handler early-return, RPC-level not possible):
-```typescript
-ponder.on("BeaconDeposit:Deposit", async ({ event, context }) => {
-  if (!TRACKED_VALIDATORS_BY_PUBKEY.has(event.args.pubkey)) {
-    return;  // early-return on non-indexed filter
-  }
-  // ...
-});
-```
-
-### 5.3 Reorg-safe NATS emission via outbox + network-block handler (FIXED per BLOCKER SKP-003 CRITICAL)
-
-**ponder.config.ts** MUST declare `blocks:` for the block-tick handler to fire (IMP-005 HIGH_CONSENSUS):
-
-```typescript
-// ponder.config.ts
-import { createConfig } from "ponder";
-
-export default createConfig({
-  chains: {
-    ethereum: { id: 1, rpc: process.env.PONDER_RPC_URL_1 },
-    base: { id: 8453, rpc: process.env.PONDER_RPC_URL_8453 },
-    berachain: { id: 80094, rpc: process.env.PONDER_RPC_URL_80094 },
-  },
-  database: { kind: "postgres", connectionString: process.env.DATABASE_URL },
-  // Schema namespace controlled via DATABASE_SCHEMA env var or --schema CLI flag (§3.1 / C-1).
-  contracts: { /* ... */ },
-  blocks: {
-    // Property is `chain:` (not `network:`) per Ponder 0.16.6 type signature
-    // dist/types/config/index.d.ts:135-138. `startBlock` is REQUIRED — without
-    // it the block-tick handler fires from chain genesis (D-1 cold-sync footgun).
-    // In production, set startBlock to match the corresponding contract's
-    // deploy block (or later — block-ticks don't need historical sweep for
-    // outbox-flush purposes; they're real-time).
-    OutboxFlushEth:  { chain: "ethereum",  interval: 1, startBlock: <CONTRACT_START> },
-    OutboxFlushBase: { chain: "base",      interval: 1, startBlock: <CONTRACT_START> },
-    OutboxFlushBera: { chain: "berachain", interval: 1, startBlock: <CONTRACT_START> },
-  },
-});
-```
-<!-- A-0 verified — see grimoires/loa/spikes/ponder-api-verification/COOKBOOK.md §C-2, D-1 -->
-
-**Handler with correct Ponder 0.16.x API** — three corrections vs prior draft:
-
-1. **C-3**: Block events are keyed by the **block-filter name** declared in `ponder.config.ts → blocks` (e.g. `"OutboxFlushEth:block"`), NOT by chain. The closure-over-`networkName` pattern was wrong — type signature at `dist/types/types/virtual.d.ts:13-21` shows `{ [name in keyof blocks]: \`${name & string}:block\` }`.
-2. **C-4**: `context.db` is **Ponder's own type** (not raw Drizzle). Methods: `find(table, key)` / `insert(table)` / `update(table, key)` / `delete(table, key)` / `sql` (escape hatch to `ReadonlyDrizzle`). Multi-row `select().from().where()` lives on `context.db.sql`, NOT `context.db`. Single-row by-primary-key reads use `db.find(table, key)`. See `dist/types/types/db.d.ts:15-100`.
-3. **C-4 cont.**: `update` is `db.update(table, key).set(...)` keyed by primary key — not a where-clause builder.
-
-```typescript
-// src/handlers/outbox-flush.ts
-import { ponder } from "ponder:registry";
-import { pendingEmits } from "../ponder.schema";
-import { and, eq, lte, isNull } from "ponder";
-
-const REORG_DEPTH_BY_CHAIN: Record<number, bigint> = {
-  1n:  12n,   // Ethereum
-  10n: 0n,    // Optimism (L2 instant)
-  8453n: 0n,  // Base
-  42161n: 0n, // Arbitrum
-  7777777n: 0n, // Zora
-  80094n: 200n, // Berachain
-};
-
-// One handler per block-filter name declared in ponder.config.ts → blocks.
-// Chain identity comes from context.chain.id (NOT from a closure).
-ponder.on("OutboxFlushEth:block", async ({ event, context }) => {
-  await flushReadyEmits(event, context);
-});
-ponder.on("OutboxFlushBase:block", async ({ event, context }) => {
-  await flushReadyEmits(event, context);
-});
-ponder.on("OutboxFlushBera:block", async ({ event, context }) => {
-  await flushReadyEmits(event, context);
-});
-
-async function flushReadyEmits(event: any, context: any) {
-  const chainId = context.chain.id;  // chain identity from context, not closure
-
-  // Multi-row read uses the drizzle escape hatch on db.sql, NOT db.select.
-  // (context.db exposes find/insert/update/delete/sql; select() lives on sql.)
-  const ready = await context.db.sql
-    .select()
-    .from(pendingEmits)
-    .where(
-      and(
-        eq(pendingEmits.chainId, chainId),
-        isNull(pendingEmits.publishedAt),
-        lte(pendingEmits.targetBlock, event.block.number),
-      ),
-    );
-
-  for (const entry of ready) {
-    try {
-      await publishEnvelope(JSON.parse(entry.envelopeJson));
-      // db.update(table, key).set(...) — keyed by primary key (Ponder API).
-      await context.db
-        .update(pendingEmits, { id: entry.id })
-        .set({ publishedAt: BigInt(Date.now()) });
-    } catch (err) {
-      await context.db
-        .update(pendingEmits, { id: entry.id })
-        .set({
-          attemptCount: entry.attemptCount + 1,
-          lastError: String(err).slice(0, 1000),
-        });
-      // do NOT throw — let next tick retry
-    }
-  }
-}
-```
-<!-- A-0 verified — see grimoires/loa/spikes/ponder-api-verification/COOKBOOK.md §C-3, §C-4 -->
-
-**reorgSafeEmit** (handler-side) — deterministic ID per R-1 (canonical inputs: `chainId | txHash | logIndex | envelopeType`):
-
-```typescript
-// src/lib/reorg-safe-emit.ts
-import { pendingEmits } from "../ponder.schema";
-import { keccak256, toBytes } from "viem";
-
-// Canonical deterministic id construction (T-A0.9 verified).
-function deterministicEmitId(
-  chainId: number,
-  txHash: `0x${string}`,
-  logIndex: number,
-  envelopeType: string,
-): string {
-  const canonical = `${chainId}|${txHash.toLowerCase()}|${logIndex}|${envelopeType}`;
-  return keccak256(toBytes(canonical));
-}
-
-export async function reorgSafeEmit(
-  context: any,
-  envelope: { type: string; [k: string]: any },
-  event: { log: { transactionHash: `0x${string}`; logIndex: number }; block: { number: bigint } },
-  chainId: number,
-) {
-  const depth = REORG_DEPTH_BY_CHAIN[BigInt(chainId)] ?? 12n;
-  if (depth === 0n) {
-    return publishEnvelope(envelope);
-  }
-  const id = deterministicEmitId(
-    chainId,
-    event.log.transactionHash,
-    event.log.logIndex,
-    envelope.type,
-  );
-  await context.db
-    .insert(pendingEmits)
-    .values({
-      id,
-      chainId,
-      txHash: event.log.transactionHash,
-      logIndex: event.log.logIndex,
-      envelopeType: envelope.type,
-      eventBlock: event.block.number,
-      targetBlock: event.block.number + depth,
-      envelopeJson: JSON.stringify(envelope),
-      publishedAt: null,
-      attemptCount: 0,
-    })
-    .onConflictDoNothing();  // idempotent — duplicate handler invocations safe
-}
-```
-<!-- A-0 verified — see grimoires/loa/spikes/ponder-api-verification/COOKBOOK.md §T-A0.9 (5x duplicate insert → 1 row) and §R-1 (envelopeType discriminant) -->
-
-### 5.4 Loader / preload removal
-
-envio's `handlerWithLoader` + `isPreload` pattern is REPLACED by Ponder's automatic profiling-based prefetch. REMOVES ~500 LOC.
-
-## 6. Snapshot-Only Rollback (operator-locked 2026-05-27)
-
-### 6.1 Framing — snapshot-only, NOT service recovery
-
-**Rollback's value**: data hygiene — restore clean Postgres state for the next migration attempt. **NOT service recovery** — the cluster is already broken on envio (gate error); rollback restores that same broken state. The ONLY path to working service is forward (Ponder migration succeeds).
-
-ADR-010 explicit acknowledgment required: "rollback is data hygiene only; service recovery requires the next forward attempt."
-
-### 6.2 Pre-cutover snapshot procedure (FR-X-5)
-
-```bash
-#!/bin/bash
-# scripts/snapshot-pre-cutover.sh
-set -euo pipefail
-
-TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)
-BELT="${1:?Usage: $0 blue|green}"
-
-case "${BELT}" in
-  blue)  PG_HOST="postgres-3vic.railway.internal" ;;
-  green) PG_HOST="postgres-vrr1.railway.internal" ;;
-  *)     echo "Unknown belt: ${BELT}" >&2; exit 1 ;;
-esac
-
-OUTPUT="/tmp/sonar-${BELT}-${TIMESTAMP}.pgdump"
-
-# Run pg_dump from within Railway's network context
-# (eRPC container has psql installed — use as proxy)
-railway run --service belt-indexer-${BELT/blue/} -- \
-  pg_dump --host="${PG_HOST}" --username=postgres \
-    --schema=public --schema=ponder \
-    --format=custom --no-owner --no-acl \
-    --file="${OUTPUT}"
-
-echo "[snapshot] WRITTEN ${OUTPUT}"
-
-# Copy to durable storage
-S3_PATH="s3://sonar-snapshots/sonar-${BELT}-${TIMESTAMP}.pgdump"
-# (operator's S3 credential mechanism here)
-# OR use Railway volume for in-network durability
-
-# Also snapshot Hasura metadata (paired artifact)
-HASURA_URL_VAR="HASURA_URL_${BELT^^}"
-curl -fSs -X POST "${!HASURA_URL_VAR}/v1/metadata" \
-  -H "x-hasura-admin-secret: ${HASURA_ADMIN_SECRET}" \
-  -d '{"type": "export_metadata", "args": {}}' \
-  > "/tmp/hasura-metadata-${BELT}-${TIMESTAMP}.json"
-
-echo "[snapshot] Hasura metadata: /tmp/hasura-metadata-${BELT}-${TIMESTAMP}.json"
-```
-
-### 6.3 Rollback procedure (snapshot-restore)
-
-```bash
-#!/bin/bash
-# scripts/rollback-belt.sh — snapshot-only rollback
-# Restores pre-cutover Postgres + Hasura state.
-# Does NOT restore service (envio still crashes on gate).
-set -euo pipefail
-
-BELT="${1:?Usage: $0 <belt:blue|green> <pg_snapshot> <hasura_snapshot>}"
-PG_SNAPSHOT="${2:?Missing pg_dump path}"
-HASURA_SNAPSHOT="${3:?Missing hasura metadata json path}"
-
-# 1. Stop current Ponder deploy
-railway service stop --service "belt-indexer${BELT:+-${BELT/blue/}}"
-
-# 2. Restore Postgres state
-railway run --service "belt-indexer${BELT:+-${BELT/blue/}}" -- \
-  pg_restore --host="${PG_HOST}" --username=postgres \
-    --clean --if-exists --no-owner \
-    "${PG_SNAPSHOT}"
-
-# 3. Restore Hasura metadata (atomic replace_metadata)
-curl -fSs -X POST "${HASURA_URL}/v1/metadata" \
-  -H "x-hasura-admin-secret: ${HASURA_ADMIN_SECRET}" \
-  -d "$(jq -c '{"type": "replace_metadata", "args": .}' "${HASURA_SNAPSHOT}")"
-
-# 4. Redeploy prior envio image (operator-supplied SHA)
-railway redeploy --service "belt-indexer${BELT:+-${BELT/blue/}}" \
-  --image "${PRIOR_ENVIO_IMAGE:?Set PRIOR_ENVIO_IMAGE to envio image SHA}"
-
-# 5. Verify rollback state (envio expected to crash — that's the same as pre-rollback)
-sleep 30
-LOGS=$(railway logs --service "belt-indexer${BELT:+-${BELT/blue/}}" 2>&1 | tail -10)
-if echo "${LOGS}" | grep -q "single wildcard event"; then
-  echo "[rollback] OK — envio re-crashed with expected gate error"
-  echo "[rollback] Cluster state restored to PRE-CUTOVER (still degraded; expected per snapshot-only contract)"
-else
-  echo "[rollback] WARNING — envio did NOT crash as expected; verify state manually" >&2
-fi
-```
-
-### 6.4 Rollback drill (AC-6)
-
-Pre-Phase-B exercise that PROVES the rollback procedure works:
+**Design — Prometheus HTTP API query**:
 
 ```
-1. Take green snapshot (pg_dump + hasura metadata) → sonar-green-DRILL-*.pgdump
-2. Deploy Ponder to green
-3. Wait ~10 min for partial cold sync progress
-4. Execute scripts/rollback-belt.sh green sonar-green-DRILL-*.pgdump
-5. Verify:
-   • envio image redeployed
-   • Postgres state matches pre-cutover snapshot (entity counts unchanged)
-   • Hasura metadata identical to snapshot (export + diff)
-   • envio crashes with gate error (the expected degraded state per §6.1)
-6. AC-6 PASSES if all 5 verifications succeed
+GET /api/v1/alerts
 ```
 
-## 7. Deployment Architecture
+Returns all currently-firing alerts with labels and annotations. The explorer filters for
+entries where `labels.seam == "nft.mint.detected.v1"` to surface the cadence seam state.
 
-### 7.1 Per-belt Dockerfile
+Alternatively, a single-alert query:
 
-**Required project files** (D-2 — Ponder 0.16.6 will not start without these; absence is a build-time error):
-
-| Path | Purpose | Notes |
-|------|---------|-------|
-| `ponder.config.{belt}.ts` | per-belt chain + contract + blocks config | C-1/C-2/D-1 corrections applied (§3.1, §5.3) |
-| `ponder.schema.ts` | onchainTable definitions | uint256 columns via `t.numeric({ precision: 78, scale: 0, mode: "bigint" })` (§3.2 spike pattern) |
-| `src/index.ts` | indexing handlers (`ponder.on(...)` registrations) | C-3/C-4 corrections (§5.3) |
-| `src/api/index.ts` | **REQUIRED Hono app export** — Ponder 0.16.6 fails at build time if missing | wires `/live` + `/ready` probes (§7.3) |
-| `abis/*.ts` | viem-typed ABIs for contracts referenced in config | |
-
-<!-- A-0 verified — see grimoires/loa/spikes/ponder-api-verification/COOKBOOK.md §D-2 -->
-
-```dockerfile
-# Dockerfile.belt-ponder
-FROM node:22-bookworm-slim
-
-ARG CACHE_BUST=ponder-migration-2026-05-27
-RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
-  && rm -rf /var/lib/apt/lists/* \
-  && corepack enable && corepack prepare pnpm@10.11.0 --activate
-
-WORKDIR /app
-COPY . .
-
-ARG BELT_CONFIG=ponder.config.mibera.ts
-ENV BELT_CONFIG=${BELT_CONFIG}
-
-RUN pnpm install --frozen-lockfile && bash scripts/rebuild-events-dist.sh
-
-ENV PONDER_TUI=false
-CMD ["sh", "-c", "exec pnpm ponder start --config \"$BELT_CONFIG\""]
+```
+GET /api/v1/query?query=ALERTS{alertname="SeamNftMintDetectedSilent",alertstate="firing"}
 ```
 
-### 7.2 Railway env var matrix
+Returns a non-empty vector when firing, empty vector when inactive. The explorer converts
+this to a binary signal: green (inactive) or red (firing).
 
-| Variable | Blue | Green |
-|----------|------|-------|
-| `BELT_CONFIG` | `ponder.config.mibera.ts` | `ponder.config.ts` |
-| `DATABASE_URL` | composed: `postgres://postgres:...@postgres-3vic.railway.internal:5432/railway` | composed: postgres-vrr1 |
-| `DATABASE_SCHEMA` (C-1) | `ponder` | `ponder` |
-| `PONDER_RPC_URL_1` | `http://erpc.railway.internal:4000/main/evm/1` | same |
-| `PONDER_RPC_URL_8453` | `http://erpc.railway.internal:4000/main/evm/8453` | same |
-| `PONDER_RPC_URL_80094` | `http://erpc.railway.internal:4000/main/evm/80094` | same |
-| `PONDER_RPC_URL_10` | (unset; blue doesn't use) | erpc 10 |
-| `PONDER_RPC_URL_42161` | (unset) | erpc 42161 |
-| `PONDER_RPC_URL_7777777` | (unset) | erpc 7777777 |
-| `NATS_URL` | `tls://nats.0xhoneyjar.xyz:48352` | same |
-| `NATS_AUTH_TOKEN` | per-belt mTLS cert | per-belt mTLS cert |
-| `LIVE_THRESHOLD_MS` | `3600000` (1h) | `3600000` |
+**Implementation boundary**: The API call lives in a Next.js server component or API route
+inside `freeside-coherence`. `PROMETHEUS_URL` is a build-time env var. No changes to
+`loa-freeside` are required for the wire. The change owner is the `freeside-coherence`
+maintainer.
 
-### 7.3 Liveness vs readiness probes (BLOCKER SKP-002 CRITICAL — Railway 24h cold sync restart trap)
+**BLOCKER gate — A-4 resolution**: If `freeside-coherence` does not have a live Prometheus
+data path wired before the P0 sprint is ready to close, a BLOCKER bead must be filed
+against the coherence explorer with a named owner. The sprint cannot be marked done while a
+firing alert is only discoverable via Prometheus directly. If the wire is blocked by a
+prerequisite out of P0 scope, the prerequisite must be named explicitly in the BLOCKER.
 
-**Problem**: a single `/health` endpoint that returns 503 during cold sync triggers Railway's restart policy — Ponder is killed + restarted, resetting cold sync indefinitely.
+---
 
-**Fix**: separate probes:
+## 4. Data Model
 
-```typescript
-// src/lib/health-endpoints.ts
-import { Hono } from "hono";
+### 4.1 Metric Schema
 
-export function makeHealthApp() {
-  const app = new Hono();
+| Field | Value |
+|-------|-------|
+| Name | `gateway_events_published_total` |
+| Type | Counter (monotonically increasing; resets on process restart) |
+| Label key | `subject` |
+| Label value example | `commands.interaction`, `events.guild.join` |
+| Increment condition | After `ack_future.await` returns `Ok(ack)` — JetStream ACK confirmed |
+| Cardinality upper bound | ≈ 15 distinct values (bounded by `route_event` match arms) |
+| Exposed at | `GET /metrics` via `GatewayMetrics::render()` (`metrics/mod.rs:178`) |
 
-  // Liveness: Ponder process is running + making progress
-  // Used by Railway for restart decisions. Returns 200 unless truly stuck.
-  app.get("/live", async (c) => {
-    const lastTickMs = await getLastBlockTickTimestamp();
-    const stuck = Date.now() - lastTickMs > 5 * 60 * 1000;  // 5 min no progress = stuck
-    return c.json({ live: !stuck, lastTickMs }, stuck ? 503 : 200);
-  });
+### 4.2 Alert Schema
 
-  // Readiness: Ponder is caught up to head + serving fresh data
-  // Used by Railway for TRAFFIC ROUTING decisions (not restart).
-  app.get("/ready", async (c) => {
-    const lag = await getMaxChainLagBlocks();
-    const ready = lag < 100;  // within 100 blocks of head per chain
-    return c.json({ ready, maxLagBlocks: lag }, ready ? 200 : 503);
-  });
+| Field | Kill/Prove Value | Production Value |
+|-------|----------------|-----------------|
+| Alert name | `SeamNftMintDetectedSilent` | same |
+| Expression | `absent_over_time(gateway_events_published_total{subject="nft.mint.detected.v1"}[30m])` | same |
+| `for` | `0m` | `5m` |
+| Severity | `warning` | `warning` |
+| Labels added | `component: seam`, `seam: nft.mint.detected.v1` | same |
 
-  return app;
-}
+### 4.3 Subject Key Resolution — A-6
+
+`nftMintDetectedTopic()` in `packages/events/src/topics.ts:75` produces:
+- Base form (no collection specifier): `nft.mint.detected.v1`
+- Collection-specific: `nft.mint.detected.<slug>.v1` (e.g., `nft.mint.detected.mibera-shadow.v1`)
+
+A Prometheus selector `subject="nft.mint.detected.v1"` does NOT match
+`nft.mint.detected.mibera-shadow.v1` — these are distinct label values.
+
+**Decision**: The P0 alert uses the base form. If sonar publishes only collection-specific
+subjects and never the base form, this alert fires permanently (base form never populated).
+Verification of which form sonar publishes is a P1 concern at sonar instrumentation time.
+If sonar publishes only collection-specific subjects, the production alert expression must
+use the aggregation form:
+
+```promql
+absent_over_time(sum(gateway_events_published_total{subject=~"nft\\.mint\\.detected\\..*"})[30m])
 ```
 
-**Railway config**:
-- Health check path: `/live` (NOT `/ready`)
-- Restart timeout: 10 min (not the default 60s — accommodate cold sync)
-- During the 24h Phase A cold sync, `/ready` returns 503 but `/live` stays 200 — no restart
+This is a P1 amendment. The P0 alert is additive and does not break anything.
 
-### 7.4 Cache-bust pattern (existing)
+---
 
-`ARG CACHE_BUST` in Dockerfile.belt-ponder forces Railway BuildKit rebuild on content change (memory `arrakis-75ro`).
+## 5. Security Design
 
-## 8. Testing Strategy
+### 5.1 Label Injection
 
-### 8.1 Unit tests (handler logic)
+The `subject` label value is computed by `route_event` from `event.event_type`, which is
+derived from a Twilight `Event` enum match (structured internal data). It is not
+user-supplied input. No injection surface exists.
 
-Per-handler test via Ponder's test framework (verify exact API in Sprint A-0). One test per handler covering:
-- Happy path (event → entity write)
-- NATS emit gating (`isLiveEvent` enforcement)
-- Filter early-return (non-indexed filter handlers like BeaconDeposit)
+### 5.2 Metrics Endpoint Exposure
 
-### 8.2 Schema parity tests
+`GET /metrics` is already served by the gateway. No new attack surface is introduced.
+Access must remain restricted to the internal Prometheus scrape subnet (existing policy,
+unchanged).
 
-After Ponder cold sync of a defined block range, compare entity tables to envio's tables (from pre-strip snapshot):
-```bash
-# Sample: HoneyJar Transfer events on chain 1, blocks 17000000-17001000
-psql -c "SELECT * FROM public.token WHERE collection = '0xa20cf9b0...' AND block_number BETWEEN 17000000 AND 17001000 ORDER BY id" > /tmp/envio.csv
-psql -c "SELECT * FROM ponder.token WHERE collection = '0xa20cf9b0...' AND block_number BETWEEN 17000000 AND 17001000 ORDER BY id" > /tmp/ponder.csv
-diff /tmp/envio.csv /tmp/ponder.csv
+### 5.3 Alert Expression Safety
+
+`absent_over_time()` is a read-only PromQL function. Alert rules execute in the Prometheus
+evaluation engine in the infrastructure subnet. No state mutation is possible.
+
+### 5.4 Coherence Surface API Access
+
+The Prometheus HTTP API query from `freeside-coherence` requires only read access to
+`/api/v1/alerts`. If Prometheus is configured with authentication, the `PROMETHEUS_URL`
+token must be read-only. This is a `freeside-coherence`-side responsibility, noted here for
+the R-4 integration owner.
+
+---
+
+## 6. Error Handling
+
+### 6.1 Counter Registration Failure
+
+`install_recorder()` panics on failure (existing behavior, `metrics/mod.rs:22`). The new
+`describe_counter!` call follows existing convention. No additional error handling needed.
+
+### 6.2 Counter Increment on Absent Recorder
+
+`counter!()` silently no-ops if no recorder is installed. In practice, the recorder is
+installed during gateway startup before any publish path executes — this case is unreachable
+in normal operation.
+
+### 6.3 Alert Fires Permanently on Absent Series
+
+If `gateway_events_published_total{subject="nft.mint.detected.v1"}` is never populated
+(because sonar is the publisher and has not adopted the counter), `absent_over_time`
+evaluates to `1` continuously. This is correct behavior — the series is genuinely absent.
+The alert description annotation explains the sonar P1 prerequisite. Operators must not
+treat a continuously-firing alert as a P0 defect; it signals a documented open gap.
+
+### 6.4 `promtool` Validation Failure
+
+`promtool check rules alerts.yml` must pass before merge. A non-zero exit blocks the sprint.
+
+### 6.5 Coherence Explorer Data Path Failure
+
+If the Prometheus API call returns an error or non-200, the explorer must render an
+explicit "data unavailable" state — not silently show "no alerts firing" (that state is
+indistinguishable from a true green). This is a `freeside-coherence`-side requirement for
+the R-4 integration owner.
+
+---
+
+## 7. Assumptions Closed
+
+| # | Assumption | Resolution |
+|---|------------|-----------|
+| A-1 | Gateway does not publish `nft.mint.detected.v1` | Confirmed. Kill/prove uses `commands.interaction`. `nft.mint.detected.v1` alert requires sonar instrumentation (P1). §2, §8. |
+| A-2 | `subject` label fits within cardinality limits | Cardinality ≈ 15, no exporter cap configured. Risk not realized. §3.1. |
+| A-3 | 30-minute window conservative for cadence | Appropriate. Monitor and adjust to 60m if false-positive rate increases. §3.3. |
+| A-4 | Coherence explorer can consume Prometheus API | Design uses `/api/v1/alerts`. BLOCKER bead required if not wired before sprint closes. §3.4. |
+| A-5 | `for: 0m` for kill/prove; `for: 5m` for production | Both values specified in §3.3 alert table. Comment in YAML makes the production obligation visible. |
+| A-6 | Base form vs collection-specific subject | Alert uses base form. Wildcard amendment deferred to P1 sonar instrumentation. §4.3. |
+
+---
+
+## 8. Kill/Prove Protocol
+
+The kill/prove is a required acceptance gate per PRD §R-3 — not optional.
+
+### 8.1 Test Subject
+
+Because the gateway does not publish `nft.mint.detected.v1`, the kill/prove test uses
+`commands.interaction` — a subject the gateway publishes on every Discord slash command
+interaction.
+
+For the kill/prove run, temporarily adjust the alert expression:
+
+```yaml
+expr: absent_over_time(gateway_events_published_total{subject="commands.interaction"}[5m])
+for: 0m
 ```
 
-### 8.3 NATS envelope byte-parity test (AC-A-7)
+A 5-minute window reduces iteration time. After acceptance, the production alert reverts to
+`nft.mint.detected.v1`, window `[30m]`, `for: 5m`.
 
-Per §4.2 / PRD AC-A-7. 10+ canonical event types from spike snapshot. Run in CI gate before any production deploy.
+### 8.2 Prove Procedure
 
-### 8.4 Hasura GraphQL contract tests (AC-3 EXPANDED per BLOCKER SKP-003)
+1. **Baseline confirmation**: Verify Discord interactions are flowing (or inject test
+   publishes via `nats pub`). Confirm `gateway_events_published_total{subject="commands.interaction"}`
+   is present in `/metrics`. Confirm `SeamNftMintDetectedSilent` is NOT firing.
 
-15 baseline tests (5 query shapes × 3 consumers) PLUS expanded coverage:
-- Hasura metadata diff (export pre/post; expect zero diff after `replace_metadata`)
-- Permission/role tests for each consumer role (mediums-role, sietch-discord-role, score-role)
-- Relationship traversal tests (e.g., `token { collection_obj { ... } }`)
-- Aggregate query tests (`token_aggregate { count }`)
-- Ordering + nullability assertions
-- Subscription smoke tests (1 query × 3 consumers = 3 subscription tests)
+2. **Kill**: Stop the gateway pod or block its JetStream connection.
+   `gateway_events_published_total{subject="commands.interaction"}` ceases to be updated.
 
-Total: 15 baseline + ~20 expanded = ~35 tests.
+3. **Wait**: After the `absent_over_time` window (5m for kill/prove),
+   `SeamNftMintDetectedSilent` fires. Verify:
+   ```
+   GET /api/v1/query?query=ALERTS{alertname="SeamNftMintDetectedSilent",alertstate="firing"}
+   ```
+   Returns a non-empty result.
 
-### 8.5 Reorg drill (NFR-7) with executable reset
+4. **Verify threshold rules silent**: During the same window, confirm ALL of the following
+   do NOT fire:
+   - `GatewayShardDown` (`gateway_shards_ready == 0`): series goes absent on pod stop —
+     `== 0` cannot fire on an absent series.
+   - `GatewayNATSPublishFailures` (`rate(gateway_nats_publish_failures_total[5m]) > 0.01`):
+     rate over an absent series is undefined — rule does not fire.
+   - This simultaneous state — `absent_over_time` fires, threshold rules silent — is the
+     INV-3 correctness proof.
 
-```bash
-# scripts/reorg-drill.sh
-set -euo pipefail
+5. **Document**: Record the kill/prove result (timestamps, screenshots, or Prometheus query
+   output) in the sprint notes or a beads task before closing the sprint.
 
-# 1. Note current chain head
-HEAD_BLOCK=$(curl -fSs -X POST "${PONDER_RPC_URL_1}" \
-  -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","method":"eth_blockNumber","id":1}' | jq -r '.result')
+### 8.3 `nft.mint.detected.v1` Operational Note
 
-# 2. Stop Ponder
-railway service stop --service belt-indexer
+The kill/prove confirms the mechanism on a gateway-native subject. The `nft.mint.detected.v1`
+alert in production fires continuously until sonar emits the counter. This is an open P1 gap
+documented in the alert's description annotation. It is not a P0 defect. Sprint notes must
+record this so the observer does not confuse a continuously-firing alert with a kill/prove
+failure.
 
-# 3. Manually rewind Ponder's tracking checkpoint (deep enough to exceed reorg depth)
-REWIND_BLOCK=$(($HEAD_BLOCK - 100))
-psql -c "UPDATE ponder._meta SET checkpoint = '${REWIND_BLOCK}' WHERE chain_id = 1;"
+---
 
-# 4. Note pending_emits state (should have N entries with targetBlock near head)
-PRE_PENDING=$(psql -t -c "SELECT count(*) FROM ponder.pending_emits WHERE published_at IS NULL AND chain_id = 1;")
+## 9. Reversibility
 
-# 5. Restart Ponder; it re-syncs blocks REWIND_BLOCK to HEAD
-railway redeploy --service belt-indexer
+All changes are additive:
 
-# 6. Wait for cold-resync to complete (poll /ready endpoint)
-while ! curl -fSs https://belt-indexer.up.railway.app/ready > /dev/null; do sleep 10; done
+| File | Change | Revert |
+|------|--------|--------|
+| `apps/gateway/src/metrics/mod.rs` | +1 `describe_counter!` call, +1 method | Remove both |
+| `apps/gateway/src/nats/publisher.rs` | +1 `counter!()` increment call in ACK success path | Remove the call |
+| `infrastructure/observability/prometheus/alerts.yml` | +1 new group appended at end | Remove the group |
 
-# 7. Verify pending_emits — no duplicate envelopes published
-POST_PUBLISHED=$(psql -t -c "SELECT count(*) FROM ponder.pending_emits WHERE published_at IS NOT NULL AND chain_id = 1;")
-echo "[reorg drill] pre-pending: ${PRE_PENDING}; post-published: ${POST_PUBLISHED}"
-# Manual check: pending_emits.id is deterministic, so re-emitted rows have same id; onConflictDoNothing means no duplicates
-```
+Zero existing metrics, alerts, routing logic, or tests are modified. A single `git revert`
+of the P0 commit(s) restores full prior state.
 
-### 8.6 Rollback drill (AC-6)
+---
 
-Per §6.4. Run BEFORE Phase B production deploy.
+## 10. Deferred to P1
 
-### 8.7 Dual-publication overlap mitigation (IMP-004 HIGH_CONSENSUS)
+- `gateway_events_published_total` counter in `freeside-sonar` — prerequisite for
+  `nft.mint.detected.v1` alert to be operationally meaningful
+- BeaconV3 `membrane` field schema addition (`packages/beacon-schema/src/beacon-v3.ts`)
+- `ts-morph` AST membrane extractor
+- `freeside-cli graph dump` and `doctor.ts checkMembrane` sub-check
+- Cross-field race fixture for sealed-schema / `cluster.eventsPin` invariant
+- Fan-out to `parallel.mode.enabled.v1` and future seams
+- Fail-block teeth (severity escalation, automated circuit-break)
+- Alert Manager channel routing
 
-During cutover window there's risk of envio (crashed) AND Ponder both running briefly. Mitigation: cutover sequencing ensures envio service is stopped BEFORE Ponder starts producing live envelopes. Plus the outbox's deterministic IDs + `onConflictDoNothing` prevent duplicate envelopes even if overlap occurs.
+---
 
-## 9. Security Design
+## 11. Flatline Pre-Check
 
-No new secrets. DATABASE_URL composed from existing env vars. eRPC endpoint internal-only. NATS_AUTH_TOKEN existing per-belt mTLS cert. Hasura admin secret existing.
+No Flatline findings exist prior to this SDD (first write). The following design decisions
+carry the highest risk for findings on first Flatline pass:
 
-`ponder.*` schema permissions: postgres role full DDL+DML; hasura_user role SELECT (granted via migration).
+| Risk surface | Design response |
+|-------------|----------------|
+| `nft.mint.detected.v1` alert permanently fires (A-1 gap) | Documented in alert annotation; kill/prove scoped to gateway subject. Alert is informational, not a circuit-breaker. |
+| `for: 0m` in production | Comment in YAML specifies `for: 5m` production value. Must be changed before deploy. |
+| Coherence surface BLOCKER | BLOCKER gate explicit in §3.4. Sprint cannot close without live data path or named owner. |
+| Base-form vs collection-specific alert expression (A-6) | Defer wildcard to P1; base form alert is additive and does not break existing state. |
 
-## 10. Observability
+When Flatline produces findings, each finding must be addressed before the sprint plan is
+approved. This SDD will be updated with a findings table at that point.
 
-### 10.1 Metrics (Prometheus)
+---
 
-Ponder exposes `/metrics`. Wire to existing Grafana.
+## References
 
-Key metrics:
-- `ponder_indexer_handler_latency_seconds` (NFR-2)
-- `ponder_database_writes_per_second` (NFR-3)
-- `ponder_indexer_blocks_processed_total`
-- `ponder_indexer_cold_sync_progress_ratio`
-- `ponder_outbox_pending_count{chain_id}` — pending_emits gauge
-- `ponder_outbox_published_total{chain_id}` — published counter
-
-### 10.2 Logs
-
-Ponder logs to stdout. `PONDER_LOG_LEVEL=info` default; `debug` during cold-sync diagnostics.
-
-### 10.3 Health probes
-
-See §7.3. `/live` for restart decisions, `/ready` for traffic.
-
-## 11. Migration Implementation Sequencing
-
-### 11.1 Sprint A-0: Ponder API Verification Spike (NEW — per BLOCKER SKP-004 + IMP-005 + IMP-008)
-
-**Goal**: produce a verified Ponder 0.16.6 cookbook before locking Phase A handler estimates. The SDD examples are illustrative; the spike verifies actual API behavior.
-
-**Outputs**:
-- `grimoires/loa/spikes/ponder-api-verification/COOKBOOK.md` covering:
-  - Exact `ponder.config.ts` `blocks:` declaration syntax + block-handler firing behavior
-  - `context.db.select().from().where()` pattern (vs `context.db.find`)
-  - `onConflictDoNothing` + `onConflictDoUpdate` semantics
-  - `ponder.on("network:block", fn)` exact event name format
-  - Hasura subscription continuity through `replace_metadata` reload (per OQ-3 promoted)
-  - Schema namespace tracking by Hasura (Postgres → Hasura plumbing)
-
-**Cost estimate**: 1 day (Sprint A-0). GATE for Phase A — sprint A-1 cannot start until A-0's cookbook validates the SDD's API assumptions.
-
-### 11.2 Phase A sprint breakdown
-
-| Sprint | Days | Output | Gate |
-|--------|------|--------|------|
-| A-0 | 1 | Ponder API cookbook (§11.1) | All A-* sprints gated on this |
-| A-1 | 2-3 | `ponder.config.mibera.ts` + `ponder.schema.ts` (Mibera entities, uint256-safe per §3.2) + Dockerfile + Hasura `replace_metadata` cutover script | Schema parity local test passes |
-| A-2 | 4-5 | Handler port (Mibera-scope) + NATS outbox + sync-status gate + reorg-safe emit (correct Ponder API per A-0) | Unit tests pass; envelope byte-parity (AC-A-7) |
-| A-3 | 6 | Hasura contract test suite (~35 tests per §8.4) + dry-run on STAGING Postgres | All 35 tests pass |
-| A-4 | 7-8 | Production deploy blue + cutover + AC-1/2/4/5 validation + rollback DRILL on green (AC-6) | All AC pass; rollback drill verified |
-
-### 11.3 Phase B sprint breakdown
-
-| Sprint | Days | Output | Gate |
-|--------|------|--------|------|
-| B-1 | 9-10 | Extend `ponder.config.ts` to 6 chains + port HoneyJar/Crayons/Apiculture/Aquabera handlers | Local cold sync test on green's chains |
-| B-2 | 11 | fatbera handlers (3 indexed + 1 non-indexed) + sietch-discord maintainer ack | Filter behavior verified against Berachain |
-| B-3 | 12-13 | Hasura contract tests with full green data + reorg drill (NFR-7) | AC-3 expanded passes + reorg drill verified |
-| B-4 | 14-15 | Production deploy green + cluster-wide validation + ADR-010 signed + AC-7 | All AC pass |
-
-## 12. Architectural Decisions
-
-### 12.1 Ponder schema namespace (DECIDED)
-Separate `ponder` schema per Postgres instance (one per belt). Rollback isolation via schema preservation.
-
-### 12.2 Reorg-finality strategy (DECIDED)
-Block-count delay (per-chain `maxReorgDepth`) via outbox table. Outbox = idempotent + crash-safe + transparent to consumers.
-
-### 12.3 Hasura tracking source-swap (DECIDED — UPDATED)
-Atomic `replace_metadata` via metadata export + transform + apply. NOT sequential untrack/track (preserves relationships + permissions).
-
-### 12.4 Cold-sync execution mode (DECIDED)
-Backfill-only-then-cutover. Sync-status gate silences NATS emit during backfill (no historical DDOS).
-
-### 12.5 Rollback semantics (DECIDED — operator 2026-05-27)
-**Snapshot-only**. Data hygiene; NOT service recovery. ADR-010 explicit ack required.
-
-### 12.6 Liveness vs readiness (DECIDED — Flatline-integrated)
-Separate `/live` (restart probe) from `/ready` (traffic probe). Cold sync window: `/live=200`, `/ready=503` for 24h.
-
-## 13. Open Questions (PROMOTED TO Sprint A-0 spike)
-
-- **OQ-1 (deferred)**: Should `pending_emits` table be in `ponder` schema or separate `ops`? Implication for backup vs rollback. → resolved in Sprint A-1.
-- **OQ-2 (promoted to A-0)**: Ponder's `network:block` handler exact event-name format + firing reliability for outbox flush. → CRITICAL gate for §5.3.
-- **OQ-3 (promoted to A-0)**: Hasura subscription continuity through `replace_metadata` reload — consumer subscriptions stay alive? → CRITICAL gate for cutover (IMP-008).
-- **OQ-4 (deferred)**: Cold-sync end-to-end time on chain 1 via eRPC — actual measurement. → resolved in Sprint A-4 production deploy.
-
-## 14. Flatline Integration Log
-
-Per `grimoires/loa/a2a/flatline/sdd-review.json` (3-model, 2026-05-27T17:39Z, 100% agreement):
-
-### HIGH_CONSENSUS (all 8 auto-integrated)
-
-| ID | Avg Score | Integration |
-|----|-----------|-------------|
-| IMP-001 | 930 | §4.3 Hasura cutover REWRITTEN: atomic `replace_metadata` |
-| IMP-002 | 907 | §3.3 `pending_emits` schema ADDED with deterministic IDs |
-| IMP-003 | 887 | §6.2/6.3 Rollback scripts use `set -euo pipefail` + `${VAR:?}` defaults |
-| IMP-004 | 867 | §8.7 Dual-publication overlap mitigation documented |
-| IMP-005 | 875 | §5.3 `ponder.config.ts` `blocks:` declaration added explicitly |
-| IMP-006 | 822 | §8.4 AC-3 expanded test list (relationships, permissions, subscriptions, aggregates, ordering, nullability) |
-| IMP-007 | 772 | §8.5 Reorg drill with executable reset mechanics |
-| IMP-008 | 782 | §13 OQ-3 promoted to Sprint A-0 spike (Hasura subscription continuity) |
-
-### BLOCKERS (all 13 auto-integrated, 1 operator-decided)
-
-| ID | Severity | Disposition |
-|----|----------|-------------|
-| SKP-001 (NATS DDOS) | CRITICAL (950) | §4.2 Historical sync gate via `isLiveEvent()` |
-| SKP-002 (Hasura cutover dropping relationships) | CRITICAL (900) | §4.3 atomic `replace_metadata` |
-| SKP-001 (Hasura non-transactional) | CRITICAL (880) | Same as above — single integration |
-| SKP-001 (Rollback degraded) | CRITICAL (900) | OPERATOR-DECIDED 2026-05-27: snapshot-only rollback (§6.1, §12.5) |
-| SKP-002 (Railway 24h cold-sync restart) | CRITICAL (860) | §7.3 separate `/live` and `/ready` |
-| SKP-003 (BlockTick:block invalid syntax) | CRITICAL (830) | §5.3 corrected to `ponder.on("ethereum:block", fn)` + `blocks:` config |
-| SKP-002 (Hasura cutover atomicity) | HIGH (760) | Same as #2 — single integration |
-| SKP-004 (context.db.find invalid API) | HIGH (760) | §5.3 corrected to `context.db.select().from().where()` |
-| SKP-003 (uint256 bigint overflow) | HIGH (750) | §3.2 `t.numeric(78, 0)` for token IDs |
-| SKP-005 (Outbox publish/delete not transactional) | HIGH (745) | §5.3 outbox pattern with deterministic IDs + retry semantics |
-| SKP-005 (Rollback false confidence) | HIGH (730) | §6.1 explicit ack; ADR-010 commitment |
-| SKP-003 (GraphQL parity narrow) | HIGH (730) | §8.4 expanded test list |
-| SKP-004 (Ponder API assumptions) | HIGH (705) | §11.1 Sprint A-0 verification spike — GATE for Phase A |
-
-## 15. References
-
-| Topic | Path |
-|-------|------|
-| PRD | `grimoires/loa/prd.md` |
-| Flatline PRD review | `grimoires/loa/a2a/flatline/prd-review.json` |
-| Flatline SDD review | `grimoires/loa/a2a/flatline/sdd-review.json` |
-| Ponder spike (PERSISTED) | `grimoires/loa/spikes/ponder-2026-05-27/{spike-a,spike-b}` |
-| Session-6 derisk synthesis | `grimoires/loa/specs/cluster-events-pillar-v1/session-6-empirical-derisk.md` |
-| Ponder docs | https://ponder.sh |
-| Ponder API reference | https://ponder.sh/docs/api-reference/ponder/config |
-| envio gate (the limit we're escaping) | `freeside-sonar/node_modules/envio/src/sources/RpcSource.res:326-376` |
-| Path-ε runbook | `grimoires/loa/specs/cluster-events-pillar-v1/go-live-path-epsilon-railway-nats.md` |
-| Memory: cluster-substrate vision | `project_erpc-postgres-becomes-hypersync` |
-| Memory: sovereign-aggregator pattern | `project_sovereign-aggregator-substitution` |
-
-## Status
-
-Phase 4 (FLATLINE SDD REVIEW) — DRAFT COMPLETE with full Flatline v2 integration (8 HIGH_CONSENSUS + 13 BLOCKERS resolved). Ready for Phase 4.5 (RED TEAM SDD, config-gated off) or Phase 5 (PLANNING).
+| Source | Path | Use |
+|--------|------|-----|
+| Gateway metrics module | `apps/gateway/src/metrics/mod.rs` | Counter declaration site |
+| Gateway NATS publisher | `apps/gateway/src/nats/publisher.rs:107–155` | ACK success increment site |
+| Event topics | `packages/events/src/topics.ts:75–85` | Canonical subject form |
+| Prometheus alerts | `infrastructure/observability/prometheus/alerts.yml` | Alert addition target |
+| PRD | `grimoires/loa/prd.md` | Requirements this SDD implements |
+| Building membrane baseline | `grimoires/loa/context/2026-06-03-building-membrane-baseline.md` | INV-3 classification, coherence surface state |

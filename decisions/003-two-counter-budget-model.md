@@ -1,3 +1,13 @@
+---
+title: "ADR-003: Two-Counter Budget Model (Reserved + Committed)"
+trust_tier: operator-authored
+read_state: unread
+confidence: 0.5
+decay_class: reference
+last_confirmed: 2026-06-03
+operator_signed: self_attested
+---
+
 # ADR-003: Two-Counter Budget Model (Reserved + Committed)
 
 **Status**: Accepted
