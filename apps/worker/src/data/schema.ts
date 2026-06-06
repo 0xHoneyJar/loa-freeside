@@ -1,11 +1,14 @@
 /**
- * Database Schema Re-export
+ * Database Schema — DUPLICATED table definitions (NOT a re-export).
  *
- * Re-exports the shared Drizzle schema from sietch-service.
- * This ensures Worker uses the exact same schema definitions.
+ * These Drizzle tables are hand-copied from
+ * themes/sietch/src/packages/adapters/storage/schema.ts (and themes/sietch/src/db/*).
+ * They are NOT imported from a shared source, so they can SILENTLY DRIFT from the
+ * canonical sietch definitions: a column change in sietch will not propagate here and
+ * nothing in the build catches it.
  *
- * Note: In a monorepo setup, this would be a shared package.
- * For now, we duplicate the essential table definitions.
+ * Until a shared schema package is extracted (the themes/sietch -> worlds-api work,
+ * ADR-008), these MUST be kept in sync with the sietch source by hand.
  */
 
 import {

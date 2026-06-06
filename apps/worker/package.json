@@ -1,7 +1,7 @@
 {
   "name": "@freeside/worker",
   "version": "1.0.0",
-  "description": "Queue consumer service for Gateway Proxy pattern - processes Discord events from RabbitMQ",
+  "description": "Queue consumer service for Gateway Proxy pattern - processes Discord events from NATS",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
@@ -17,7 +17,7 @@
   "keywords": [
     "discord",
     "worker",
-    "rabbitmq",
+    "nats",
     "consumer",
     "gateway-proxy"
   ],
