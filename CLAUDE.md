@@ -9,7 +9,7 @@
 
 `loa-freeside` is a **factory**. Two authority levels — do not conflate them:
 
-- **BINDING (CI-enforced today)** — [ADR-007](decisions/007-loa-freeside-absorption.md), Status: **Accepted**. The platform/network firewall, commit scopes, beads domain labels. The "Hard rules" below are these. An agent MUST comply; CI blocks violations.
+- **BINDING (CI-enforced)** — [ADR-007](decisions/007-loa-freeside-absorption.md), Status: **Accepted** (ratified 2026-06-04). The platform/network firewall (the `path-domain-check` + the cross-domain `blocked-by` check) hard-fails CI today. Commit-scopes + beads-domain-labels are **warn-only (Phase 1)**, not yet teeth (`STRICT` defaults false). The "Hard rules" below detail which is which. An agent MUST comply with the firewall.
 - **ORIENTATION (intent-bearing, not yet ratified)** — [ADR-008](decisions/008-freeside-as-factory.md), Status: **Proposed**. The factory model, building/belt vocabulary, marketplace framing, composition-direction DAG. An agent SHOULD apply this as the mental model, but it is not a CI-enforced constraint and may change before ratification (a follow-up operator-clarity session sequences building extractions).
 
 The factory model below is ORIENTATION. The "Hard rules (enforced by CI)" subsection is BINDING.
@@ -20,15 +20,15 @@ Each capability is a **building**. **One building = one repository** — schema 
 
 | Part | What | Lives in |
 |------|------|----------|
-| **Platform** (the substrate) | ECS/AWS substrate + HTTP/DB/queues. Hosts building runtimes multi-tenant. Contains NO feature logic. | `apps/{gateway,worker,ingestor}/`, `infrastructure/terraform/`, `packages/{core,adapters,sandbox}/`, `themes/sietch/` (substrate-only after planned extraction) |
-| **Buildings** (capabilities — `freeside-X` repos) | Each is one repo: schema + runtime + docs. Has belts (consumes/publishes). **External repos**: `freeside-{sonar,storage,mint,activities,inventory,score,mediums}`. **Still in-monolith, intended for extraction**: `freeside-{billing,ledger}`. | External `freeside-*` repos OR currently in `themes/sietch/src/{discord,telegram,services}/`, `packages/services/` until extracted |
-| **Network** (discovery + deploy layer) | BeaconV3 declaration contract, registry, MCP federation gateway, deployment CLI. | `apps/mcp-gateway/`, `packages/{beacon-schema,freeside-registry,freeside-cli}/`, `grimoires/freeside-network/` |
+| **Platform** (the substrate) | ECS/AWS substrate + HTTP/DB/queues. Hosts building runtimes multi-tenant. **Intended** to contain no feature logic, but TODAY still hosts building logic pending extraction (~907 TS files tracked in `themes/sietch` — 618 under `src/` — plus ~10 in `packages/services`, as of 2026-06-05). | `apps/{gateway,worker,ingestor}/`, `infrastructure/terraform/`, `packages/{core,adapters,sandbox}/`, `themes/sietch/` (still hosts building logic; extraction to `worlds-api` pending) |
+| **Buildings** (capabilities — `*-api` repos) | Each is one repo: schema + runtime + docs. Has belts (consumes/publishes). **Clean current naming is `X-api`** (the older `freeside-X` building name is deprecated; `freeside-*` now means platform tooling, see prefix table). **Registered buildings** (canonical, per `packages/freeside-registry/registry.yaml` — 9 slugs): `{activities,events,identity,inventory,mediums,mint,score,sonar,storage}-api`. **Repos exist but NOT yet registered / logic still in-monolith**: `ledger-api` (logic in `packages/services`), `worlds-api` (intended `themes/sietch` target, zero code refs yet). **Archived**: `quests-api`, `thj-api`, `universal-api`. (Corrected 2026-06-04: a same-session edit over-claimed ledger/worlds as active registered buildings; the registry is the canonical truth.) **Still in-monolith, intended for extraction**: `billing` (no repo yet) · `themes/sietch` → `worlds-api`. | External `*-api` repos OR currently in `themes/sietch/src/{discord,telegram,services}/`, `packages/services/` until extracted |
+| **Network** — the `*-api` ecosystem (ADR-007 concern 2; "freeside-network" retired as the ecosystem name, but `network` stays the CI **domain label**) | BeaconV3 declaration contract, registry, MCP federation gateway, deployment CLI for the `*-api` buildings. `events` lives here; `coherence` belongs to this concern. | `apps/mcp-gateway/`, `packages/{beacon-schema,freeside-registry,freeside-cli,events}/`, `grimoires/freeside-network/` |
 
-> **Honest current state**: `loa-freeside` is a thick monolith. `freeside-score` and `freeside-mediums` already exist as external repos but logic still lives in the monolith — extraction is real pending work. `freeside-billing` and `freeside-ledger` are not extracted at all. The building model is the **direction**. See [ADR-008 §Current State vs Intended State](decisions/008-freeside-as-factory.md).
+> **Honest current state** (naming corrected 2026-06-04 to match the territory): `loa-freeside` is a thick monolith. `score-api`, `mediums-api`, and `ledger-api` exist as external repos but some logic still lives in the monolith — extraction is real pending work (the score residue here should move to `score-api`; `themes/` → `worlds-api`). `billing` is not extracted at all (no repo). A legacy `freeside-score` repo also exists and appears superseded by `score-api` (flagged for the repo census). The **world** (`themes/sietch`, ~907 tracked TS files) is the LEAST-extracted mass: it re-implements badge/boost/billing/eligibility capabilities locally and consumes ZERO extracted siblings (no import or HTTP belt to `sonar`/`activities`/`storage`/`inventory`/`score`/`mediums`/`mint`-api) — `worlds-api` is unbuilt (not in the registry). So when reading the composition DAG, do NOT assume the world composes its siblings by reference; today it copies. The building model is the **direction**. See [ADR-008 §Current State vs Intended State](decisions/008-freeside-as-factory.md).
 
 ### Composition direction (the DAG)
 
-Buildings connect via **belts** running ONE direction — determined by data semantic depth (raw → derived → integrated → presented), not by choice. `freeside-inventory` consumes `freeside-sonar` + `freeside-storage`; the reverse is impossible. When unsure which way an arrow points: closer-to-raw publishes, closer-to-meaning consumes. Bottleneck debugging = walk upstream on the belts. See [ADR-008 §D-3](decisions/008-freeside-as-factory.md).
+Buildings connect via **belts** running ONE direction — determined by data semantic depth (raw → derived → integrated → presented), not by choice. `inventory-api` consumes `sonar-api` + `storage-api`; the reverse is impossible. When unsure which way an arrow points: closer-to-raw publishes, closer-to-meaning consumes. Bottleneck debugging = walk upstream on the belts. See [ADR-008 §D-3](decisions/008-freeside-as-factory.md).
 
 ### Marketplace vs factory
 
@@ -70,11 +70,13 @@ Bug source classification by plane is the daily diagnostic. See [ADR-008 §D-1](
 | Prefix | Means |
 |--------|-------|
 | `loa-X` | Stack member (e.g., `loa-freeside` IS the L4 platform) |
-| `freeside-X` | A **building** — a capability that deploys onto the freeside platform |
+| `*-api` (e.g. `sonar-api`) | A **building** — a capability service that deploys onto the platform. **This is the clean current building name.** |
+| `freeside-X` | **Platform tooling / surface** (`freeside-dashboard`, `freeside-coherence`, `freeside-characters`). NOTE: `freeside-X` was the OLD building name; buildings are now `*-api`. ⚠ The standalone `0xHoneyJar/freeside-cli` and `0xHoneyJar/freeside-mcp-gateway` repos are **ARCHIVED (dead)** — the live implementations are in-monolith: `packages/freeside-cli` and `apps/mcp-gateway`. Don't reach for the dead repos. |
+| `*-interface` | A **frontend / surface** (e.g. `hub-interface`, `moneycomb-interface`, `honey-interface`) |
 | `construct-X` | Agent-expertise pack (lives in Plane 2) |
-| `world-X` | A community-specific deployed factory (a Workspace's building set) |
+| `world-X` | A community-specific deployed factory / world (e.g. `world-sprawl`, `world-mibera`, `world-apdao`) |
 
-Products do not get a prefix — a product is a marketplace presentation of one or more `freeside-X` buildings. The namespace already encodes the layering. No new prefixes.
+Products do not get a prefix — a product is a marketplace presentation of one or more `*-api` buildings. The namespace already encodes the layering (`loa-` stack · `*-api` building · `world-` world · `*-interface` surface · `construct-` expertise).
 
 ## CRITICAL: Tool Enforcement Rules
 
@@ -123,122 +125,12 @@ Every goal in the PRD must have a `G-N` identifier for traceability.
 
 ---
 
-## Chain Provider Architecture (Sprint 14-16)
+## Subsystem reference (load on demand)
 
-The chain provider system supports multiple modes for blockchain data queries:
+Detailed subsystem references demoted from the always-loaded prefix (2026-06-04 cache-tax trim — content preserved verbatim). Read the file when working in that subsystem:
 
-### Provider Modes
-
-| Mode | Description | Use Case |
-|------|-------------|----------|
-| `rpc` | Direct RPC calls via viem | Default, no API key needed |
-| `dune_sim` | Dune Sim API exclusively | Best performance, requires API key |
-| `hybrid` | Dune Sim with RPC fallback | Production recommended |
-
-### Environment Variables
-
-```bash
-# Required for dune_sim/hybrid modes
-DUNE_SIM_API_KEY=your_api_key
-
-# Provider mode selection
-CHAIN_PROVIDER=hybrid  # Options: rpc, dune_sim, hybrid
-
-# Enable fallback to RPC (hybrid mode only)
-CHAIN_PROVIDER_FALLBACK_ENABLED=true
-
-# Chains that should always use RPC
-CHAIN_PROVIDER_RPC_ONLY_CHAINS=80094  # If Dune Sim doesn't support Berachain
-```
-
-### Key Files
-
-| File | Purpose |
-|------|---------|
-| `packages/adapters/chain/dune-sim-client.ts` | Dune Sim API client |
-| `packages/adapters/chain/hybrid-provider.ts` | Hybrid provider with fallback |
-| `packages/adapters/chain/provider-factory.ts` | Factory for provider creation |
-| `packages/adapters/chain/config.ts` | Configuration loader |
-| `packages/core/ports/chain-provider.ts` | IChainProvider interface |
-
-### Usage
-
-```typescript
-import { createChainProvider } from '@freeside/adapters/chain';
-
-const { provider, mode } = createChainProvider(logger);
-
-// Standard IChainProvider methods
-const balance = await provider.getBalance(chainId, address, token);
-const owns = await provider.ownsNFT(chainId, address, collection);
-
-// Dune Sim exclusive methods (optional)
-if (provider.getBalanceWithUSD) {
-  const { balance, priceUsd, valueUsd } = await provider.getBalanceWithUSD(chainId, address, token);
-}
-if (provider.getActivity) {
-  const { activities } = await provider.getActivity(address, { limit: 10 });
-}
-```
-
-### Migration Runbook
-
-See `grimoires/loa/deployment/dune-sim-runbook.md` for:
-- Pre-migration checklist
-- Rollout procedure (staging -> production)
-- Verification steps
-- Rollback procedure
-- Troubleshooting guide
-
-## Agent Gateway — Capability Mesh (Cycle 019)
-
-Per-model ensemble accounting, contract protocol negotiation, and fleet-wide observability.
-
-### Per-Model Accounting
-
-Ensemble requests produce a `model_breakdown` array with per-model cost attribution:
-
-```typescript
-import { computeEnsembleAccounting } from '@freeside/adapters/agent';
-
-const result = computeEnsembleAccounting(strategy, invocationResults);
-// result.model_breakdown — per-model costs
-// result.platform_cost_micro — platform budget only
-// result.byok_cost_micro — BYOK (no budget charge)
-// result.savings_micro — unused reservation capacity
-```
-
-### Provider Policy Configuration
-
-Pool-to-provider routing is configurable via environment variable:
-
-```bash
-# Override default pool→provider mapping (JSON)
-POOL_PROVIDER_HINTS='{"cheap":"openai","reasoning":"anthropic","architect":"anthropic"}'
-```
-
-### Capability Audit Events
-
-Structured audit events emitted for every capability exercise:
-
-| Event Type | When | Key Fields |
-|-----------|------|------------|
-| `pool_access` | Standard request | pool_id, access_level |
-| `byok_usage` | BYOK key used | byok_provider |
-| `ensemble_invocation` | Ensemble request | model_breakdown, ensemble_strategy |
-
-### Key Files (Agent Gateway)
-
-| File | Purpose |
-|------|---------|
-| `packages/adapters/agent/ensemble-accounting.ts` | Per-model cost decomposition |
-| `packages/adapters/agent/request-lifecycle.ts` | State machine (RECEIVED→FINALIZED) |
-| `packages/adapters/agent/redis-circuit-breaker.ts` | Fleet-wide Redis circuit breaker |
-| `packages/adapters/agent/token-estimator.ts` | Calibrated token estimation |
-| `packages/adapters/agent/capability-audit.ts` | Structured audit event emitter |
-| `packages/adapters/agent/byok-proxy-handler.ts` | BYOK egress with key isolation |
-| `packages/contracts/src/compatibility.ts` | Contract version negotiation |
-| `infrastructure/terraform/agent-monitoring.tf` | CloudWatch dashboard + alarms |
+- **Chain Provider Architecture** — rpc / dune_sim / hybrid modes, env vars, key files, usage (`packages/adapters/chain`) → `grimoires/loa/reference/chain-provider-architecture.md`
+- **Agent Gateway — Capability Mesh** — per-model ensemble accounting, pool→provider routing, capability audit events, key files (`packages/adapters/agent`) → `grimoires/loa/reference/agent-gateway-capability-mesh.md`
 
 ## How This Works
 
@@ -252,6 +144,35 @@ Structured audit events emitted for every capability exercise:
 - `.claude/loa/CLAUDE.loa.md` - Framework-managed instructions (auto-updated)
 - `.loa.config.yaml` - User configuration file
 - `PROCESS.md` - Detailed workflow documentation
+
+## Spawn-from-inside + adaptable coordination (2026-06-04)
+
+Per the ratified mounted-agent posture: **spawn agents from INSIDE the cell they
+act on**, so they have situational awareness from creation. An agent born inside
+a cell reads that cell's own `CLAUDE.md` / `SOUL` / context first — it inherits
+the cell's self before it acts. An agent spawned from outside and pointed at a
+cell is allopoietic (no cell-context) and reaches across the blanket. Default:
+**write-own**; to act on another cell, dispatch an agent that lives in it.
+
+**The path is right-sized to the task** (the consumption gradient applied to
+coordination — pick the LIGHTEST path that fits; never force a steep path on a
+small task):
+
+| Path | Weight | For | Ceremony |
+|------|--------|-----|----------|
+| direct (write-own) | L0 | a task entirely inside one cell | none |
+| spawn-in-cell (`Agent`, cwd = the cell) | L1 | a small bounded cross-cell task | situational-awareness read; no cockpit/PR |
+| `/coord` | L2 | substantial cross-repo work needing review | coordinator + branch + review-gated PR |
+| `/compose` | L3 | multi-construct, multi-stage work | Form C + seam protocol |
+
+**The regenerative path must be the path of least resistance.** If the correct
+(cell-respecting) path is steeper than reaching-in, agents reach in — the
+consumption-gradient slip. **GECKO doctors path-friction**: a cross-cell pattern
+done manually or at the wrong weight is a *desire-path forming*.
+**Done-twice-becomes-a-path** — a recurring manual cross-cell act auto-proposes a
+lightweight composable RAIL (floor-raise, not a bespoke per-task script). The
+system paves the desire-paths agents actually walk so the operator does not pave
+them by hand. Reference: consumption-gradient doctrine (paving vs tilting).
 
 ## Construct Support
 
