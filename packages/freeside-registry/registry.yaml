@@ -1,8 +1,8 @@
 # Freeside Module Registry — L1 canonical source-of-truth
 #
-# 8 canonical cells per ADR-009 §D-2 (decisions/009-freeside-hexagonal-federation.md):
+# 9 canonical cells per ADR-009 §D-2 (decisions/009-freeside-hexagonal-federation.md):
 # sonar-api, storage-api, mint-api, activities-api, inventory-api, score-api,
-# identity-api, mediums-api. Naming convention *-api ratified 2026-05-23 in
+# identity-api, mediums-api, events-api. Naming convention *-api ratified 2026-05-23 in
 # grimoires/loa/specs/enhance-freeside-api-surface.md.
 #
 # Schema:
@@ -21,9 +21,10 @@
 # Reference: decisions/007-loa-freeside-absorption.md §D-1 (L1 Module Registry)
 #            decisions/009-freeside-hexagonal-federation.md §D-2 (cells canonical list)
 #
-# Live-probe state (2026-05-25):
-#   DEPLOYED at Railway: sonar-api, score-api, storage-api, inventory-api (auth-gated MCP), identity-api
-#   NOT-BUILT runtime:   mint-api, activities-api, mediums-api (npm libraries only, no HTTP runtime)
+# Runtime state is authoritative PER-MODULE below (each module's `runtime_state:` field).
+# Do NOT maintain a duplicate snapshot here — the prior inline 2026-05-25 summary drifted
+# silently (it kept reading "activities-api NOT-BUILT" after activities-api flipped to
+# deployed on 2026-05-30). Read the per-module field; it is the single source of truth.
 #
 # Subdomain *.0xhoneyjar.xyz beacon endpoints currently 404 for ALL cells — DNS not yet
 # pointed at deployed Railway URLs, and beacon-serving routes not yet implemented in cells.
