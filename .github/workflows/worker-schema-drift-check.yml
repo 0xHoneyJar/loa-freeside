@@ -1,0 +1,42 @@
+# =============================================================================
+# Worker Schema Drift Check
+# Coherence finding F5 / arrakis-pcpc — make worker↔sietch Drizzle drift LOUD.
+# =============================================================================
+#
+# apps/worker/src/data/schema.ts holds verbatim COPIES of three Drizzle tables
+# (communities, profiles, badges) canonically defined in
+# themes/sietch/src/packages/adapters/storage/schema.ts. The copy is intentional
+# (worker runs its own drizzle instance) but silent divergence was an unguarded
+# risk. This gate FAILS when the shared table definitions drift apart.
+#
+# Fail-block (teeth): a drift is a red check, not a warning — the worker copy must
+# mirror the sietch canonical until the shared schema package is extracted
+# (deferred to the worlds-api cycle; see tools/check-worker-schema-drift.sh).
+
+name: Worker Schema Drift Check
+
+on:
+  pull_request:
+    paths:
+      - 'apps/worker/src/data/schema.ts'
+      - 'themes/sietch/src/packages/adapters/storage/schema.ts'
+      - 'tools/check-worker-schema-drift.sh'
+      - '.github/workflows/worker-schema-drift-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/worker/src/data/schema.ts'
+      - 'themes/sietch/src/packages/adapters/storage/schema.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  schema-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check worker↔sietch Drizzle schema drift
+        shell: bash
+        run: bash tools/check-worker-schema-drift.sh
