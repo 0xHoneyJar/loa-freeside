@@ -818,6 +818,16 @@ agents:
   jam-reviewer-cursor:
     model: cursor:cursor-headless
     temperature: 0.3
+  # FAGAN council Claude voice via the HEADLESS terminal (anthropic:claude-headless),
+  # NOT the native runtime. jam-reviewer-claude (above) is model:native +
+  # native_runtime:true, so the resolver refuses to dispatch it to a remote/headless
+  # model (NATIVE_RUNTIME_REQUIRED) and it cannot serve as a council voice. This
+  # additive sibling binds DIRECTLY to anthropic:claude-headless (subscription CLI
+  # auth, no API key) so the council gets a real Claude corpus as its 4th distinct
+  # family. The native voice (jam-reviewer-claude) stays intact for native jam geometry.
+  jam-reviewer-claude-headless:
+    model: anthropic:claude-headless
+    temperature: 0.3
   jam-synthesizer:
     model: cheap
     temperature: 0.3
