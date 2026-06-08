@@ -1,0 +1,17 @@
+id: rail-hardness-aligned
+schema_version: 1
+skill: test-skill
+category: framework
+fixture: loa-skill-dir
+description: "Environment-design gradient-health: alignment >= ratchet floor (up-only), over-hardened 0, every hook_backed claim resolves to a real file. Makes the rail-hardness scoreboard a CI regression gate (bd-uze Track B)."
+trials: 1
+timeout:
+  per_trial: 120
+  per_grader: 60
+graders:
+  - type: code
+    script: rail-hardness-grader.sh
+    args: ["environment-design"]
+    weight: 1.0
+difficulty: basic
+tags: ["framework", "environment-design", "gradient-health", "bd-uze", "arrakis-jnjj"]
