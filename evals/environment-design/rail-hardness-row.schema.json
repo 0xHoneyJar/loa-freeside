@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "rail-hardness-row",
+  "description": "RLAIHF joint row for environment-design gradient-health. One row per RAIL (a decision-fork an agent faces). Objective axes (formation/observability/payoff/hook_backed) are AI/GECKO-captured; operator_stamp is the subjective lane (does the governed path FEEL like the path of least resistance). The join is the substrate. See grimoires/loa/context/2026-06-07-environment-design-game-theory-synthesis.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "rail": { "type": "string", "description": "the decision-fork / game (e.g. 'composition-invocation', 'clew-capture')" },
+    "where": { "type": "string", "description": "file/skill/surface where the fork lives" },
+    "formation": { "type": "integer", "enum": [0, 1], "description": "objective: can the game FORM? players registered/present/connected (1) or not (0)" },
+    "observability": { "type": "integer", "enum": [0, 1], "description": "objective: is the cooperative move VISIBLE via an un-fakeable artifact (1) or not (0)" },
+    "payoff_regime": { "type": "string", "enum": ["soft", "cant-form", "dominant-defect", "stick-deterred", "positive-sum-3-3"], "description": "objective: the ACTUAL equilibrium today (soft = intentionally unenforced / judgment)" },
+    "intended_regime": { "type": "string", "enum": ["soft", "stick-deterred", "positive-sum-3-3"], "description": "the TARGET regime this rail SHOULD be in. soft = judgment-seam (must stay soft); stick = safety/integrity gate; 3-3 = compounding rail. Alignment = actual achieves intended. 100% = 100% ALIGNED, never 100% hardened." },
+    "hook_backed": { "type": "boolean", "description": "objective: is hardness a PreToolUse hook / un-fakeable artifact (true) or SKILL.md prose (false)? = the roleplay-vulnerability test" },
+    "hook_path": { "type": "string", "description": "for hook_backed rails: the path to the hook/artifact. The scanner VERIFIES it exists — hook_backed is a claim that must resolve to a real file (un-fakeable)." },
+    "operator_stamp": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "description": "subjective lane (RLAIHF): the operator's felt read — sticky, optional",
+      "properties": {
+        "feels_default": { "type": "boolean", "description": "does the GOVERNED path feel like the path of least resistance here?" },
+        "rating": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "note": { "type": "string" }
+      }
+    },
+    "source": { "type": "string", "description": "who scored it (e.g. 'council:gygax', 'gecko:sensing-runtime-fit', 'operator')" },
+    "ts": { "type": "string" },
+    "commit": { "type": "string" }
+  },
+  "required": ["rail", "where", "formation", "observability", "payoff_regime", "intended_regime", "hook_backed", "source", "ts"]
+}
