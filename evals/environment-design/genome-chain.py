@@ -179,6 +179,16 @@ def _verify(construct_yaml: Path, learnings: Path, as_json: bool) -> int:
     parent = GENESIS
     penult = GENESIS  # the parent of the most recent link (the penultimate head)
     for i, entry in enumerate(distilled):
+        # genome_seq is REQUIRED and must be CONTIGUOUS 1..N (it IS the chain index). A
+        # missing, duplicate, or gapped seq is rejected — a missing one would let a
+        # distilled entry skip the ordering invariant (cross-model iter-3, codex MED;
+        # the genome feature is new, so there are no legacy distilled entries to grandfather).
+        seq = entry.get("genome_seq")
+        if not isinstance(seq, int) or seq != i + 1:
+            problems.append(
+                f"link {i + 1} ({entry.get('id')}): genome_seq {seq!r} != expected {i + 1} "
+                f"(missing / non-contiguous / duplicate chain index)"
+            )
         link = compute_link(parent, entry)
         stored = entry.get("genome_hash")
         if stored != link:
@@ -197,7 +207,7 @@ def _verify(construct_yaml: Path, learnings: Path, as_json: bool) -> int:
     # (cross-model review: codex MED / gemini HIGH).
     expected_parent = None if (not distilled or penult == GENESIS) else penult
 
-    # genesis (no distilled clews): both head + depth must be absent/0.
+    # genesis (no distilled clews): head + depth + parent must ALL be absent/0.
     if not distilled:
         if claimed_head is not None:
             problems.append(
@@ -208,6 +218,13 @@ def _verify(construct_yaml: Path, learnings: Path, as_json: bool) -> int:
             problems.append(
                 f"no distilled clews but genome_depth={claimed_depth} (should be "
                 f"absent or 0)"
+            )
+        if claimed_parent is not None:
+            # A stale parent_genome_hash at depth 0 is unanchored provenance
+            # (cross-model iter-2, codex LOW).
+            problems.append(
+                f"no distilled clews but construct.yaml carries parent_genome_hash "
+                f"{claimed_parent} (should be absent at depth 0)"
             )
     else:
         if claimed_head != recomputed_head:

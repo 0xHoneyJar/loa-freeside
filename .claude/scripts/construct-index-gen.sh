@@ -275,32 +275,38 @@ process_pack() {
     pack_slug=$(basename "$pack_dir")
 
     local manifest="$pack_dir/manifest.json"
-    if [[ ! -f "$manifest" ]]; then
+
+    # A pack needs at least one manifest source: legacy manifest.json OR the
+    # modern construct.yaml (schema_version: 3). Requiring manifest.json alone
+    # silently drops every construct.yaml-native pack.
+    if [[ ! -f "$manifest" && ! -f "$pack_dir/construct.yaml" ]]; then
         return 1
     fi
 
-    # Validate manifest is valid JSON
-    if ! jq empty "$manifest" 2>/dev/null; then
-        warn "Malformed manifest.json in pack '$pack_slug' — skipping"
-        return 1
+    # Base fields — from manifest.json when present, else left empty for the
+    # construct.yaml overlay below to fill.
+    local name="" version="" description=""
+    local tags_json="[]" skills_json="[]" commands_json="[]" events_json="{}"
+    local emits_json="[]" consumes_json="[]"
+
+    if [[ -f "$manifest" ]]; then
+        # Validate manifest is valid JSON
+        if ! jq empty "$manifest" 2>/dev/null; then
+            warn "Malformed manifest.json in pack '$pack_slug' — skipping"
+            return 1
+        fi
+        name=$(jq -r '.name // ""' "$manifest")
+        version=$(jq -r '.version // ""' "$manifest")
+        description=$(jq -r '.description // ""' "$manifest")
+        tags_json=$(jq -c '.tags // []' "$manifest")
+        skills_json=$(jq -c '.skills // []' "$manifest")
+        commands_json=$(jq -c '.commands // []' "$manifest")
+        events_json=$(jq -c '.events // {}' "$manifest")
+        emits_json=$(jq -c '.events.emits // [] | [.[].name // empty]' "$manifest" 2>/dev/null || echo "[]")
+        consumes_json=$(jq -c '.events.consumes // [] | [.[].event // empty]' "$manifest" 2>/dev/null || echo "[]")
     fi
 
     log "  Processing pack: $pack_slug"
-
-    # Extract base fields from manifest.json
-    local name version description tags_json skills_json commands_json events_json
-    name=$(jq -r '.name // ""' "$manifest")
-    version=$(jq -r '.version // ""' "$manifest")
-    description=$(jq -r '.description // ""' "$manifest")
-    tags_json=$(jq -c '.tags // []' "$manifest")
-    skills_json=$(jq -c '.skills // []' "$manifest")
-    commands_json=$(jq -c '.commands // []' "$manifest")
-    events_json=$(jq -c '.events // {}' "$manifest")
-
-    # Extract events into emits/consumes arrays
-    local emits_json consumes_json
-    emits_json=$(jq -c '.events.emits // [] | [.[].name // empty]' "$manifest" 2>/dev/null || echo "[]")
-    consumes_json=$(jq -c '.events.consumes // [] | [.[].event // empty]' "$manifest" 2>/dev/null || echo "[]")
 
     # Initialize overlay fields
     local writes_json="[]"
@@ -332,6 +338,19 @@ process_pack() {
         cy_tags=$(yq eval -o=json '.tags // null' "$construct_yaml" 2>/dev/null || echo "null")
         if [[ "$cy_tags" != "null" ]]; then
             tags_json="$cy_tags"
+        fi
+
+        # Skills + commands from construct.yaml — the source of truth for
+        # construct.yaml-native packs that ship no manifest.json. Only fill when
+        # the manifest didn't already provide them (manifest stays authoritative).
+        local cy_skills cy_commands
+        cy_skills=$(yq eval -o=json '.skills // []' "$construct_yaml" 2>/dev/null || echo "[]")
+        cy_commands=$(yq eval -o=json '.commands // []' "$construct_yaml" 2>/dev/null || echo "[]")
+        if [[ "$cy_skills" != "null" && "$cy_skills" != "[]" && "$skills_json" == "[]" ]]; then
+            skills_json="$cy_skills"
+        fi
+        if [[ "$cy_commands" != "null" && "$cy_commands" != "[]" && "$commands_json" == "[]" ]]; then
+            commands_json="$cy_commands"
         fi
     fi
 
@@ -443,7 +462,12 @@ main() {
     local pack_dirs=()
     for pack_path in "$PACKS_DIR"/*/; do
         [[ -d "$pack_path" ]] || continue
-        if [[ -f "$pack_path/manifest.json" ]]; then
+        # Skip *.frozen.bak / *.bak backup twins — they shadow the live pack.
+        case "$pack_path" in *.frozen.bak/|*.bak/) continue ;; esac
+        # Discover packs with EITHER manifest source: legacy manifest.json OR the
+        # modern construct.yaml (schema_version: 3). Gating on manifest.json alone
+        # silently dropped every construct.yaml-native pack (fagan, gygax, …).
+        if [[ -f "$pack_path/manifest.json" || -f "$pack_path/construct.yaml" ]]; then
             pack_dirs+=("$pack_path")
         fi
     done

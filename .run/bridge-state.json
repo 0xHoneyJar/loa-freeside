@@ -1,50 +1,73 @@
 {
   "schema_version": 1,
-  "bridge_id": "bridge-20260228-034743",
+  "bridge_id": "bridge-20260606-9c73e4",
   "state": "JACKED_OUT",
   "config": {
     "depth": 3,
     "mode": "full",
     "flatline_threshold": 0.05,
     "per_sprint": false,
-    "branch": "feature/cycle-046-armitage-platform",
-    "repo": "0xHoneyJar/loa-freeside"
+    "branch": "cycle/billing-api-extraction",
+    "repo": ""
   },
   "timestamps": {
-    "started": "2026-02-28T03:47:43Z",
-    "last_activity": "2026-02-28T04:40:00Z"
+    "started": "2026-06-06T21:16:35Z",
+    "last_activity": "2026-06-06T21:16:36Z"
   },
   "iterations": [
     {
-      "number": 1,
-      "sprints_executed": 3,
-      "files_changed": 13,
-      "findings": {
-        "total": 3,
-        "praise": 3,
-        "actionable": 0,
-        "speculation": 0
+      "iteration": 1,
+      "state": "completed",
+      "sprint_plan_source": "existing",
+      "sprints_executed": 0,
+      "bridgebuilder": {
+        "total_findings": 0,
+        "by_severity": {
+          "critical": 0,
+          "high": 0,
+          "medium": 0,
+          "low": 0,
+          "vision": 0,
+          "praise": 0
+        },
+        "severity_weighted_score": 0,
+        "pr_comment_url": null
       },
-      "score": 0.0
+      "enrichment": {
+        "persona_loaded": false,
+        "persona_validation": "pending",
+        "findings_format": "unknown",
+        "field_fill_rates": {
+          "faang_parallel": 0,
+          "metaphor": 0,
+          "teachable_moment": 0,
+          "connection": 0
+        },
+        "praise_count": 0,
+        "insights_size_bytes": 0,
+        "redactions_applied": 0
+      },
+      "visions_captured": 0,
+      "started_at": "2026-06-06T21:16:35Z",
+      "updated_at": "2026-06-06T21:16:36Z"
     }
   ],
   "flatline": {
-    "initial_score": 0.0,
-    "last_score": 0.0,
-    "consecutive_below_threshold": 1,
-    "terminated_reason": "flatline_immediate"
+    "initial_score": 0,
+    "last_score": 0,
+    "consecutive_below_threshold": 0
   },
   "metrics": {
-    "total_sprints_executed": 3,
-    "total_files_changed": 13,
-    "total_findings_addressed": 4,
+    "total_sprints_executed": 0,
+    "total_files_changed": 0,
+    "total_findings_addressed": 0,
     "total_visions_captured": 0
   },
   "finalization": {
-    "ground_truth_updated": true,
+    "ground_truth_updated": false,
     "rtfm_passed": false,
-    "rtfm_skipped": true,
-    "pr_url": "https://github.com/0xHoneyJar/loa-freeside/pull/109",
-    "butterfreezone_generated": false
-  }
+    "pr_url": null
+  },
+  "halt_reason": "sprint-discovery-misfire: cycle not registered (no ## Sprint N: headers, active_cycle=shadow-onboarding-substrate stale) + br ready globally polluted (158 cross-cycle beads; implement would grab bd-1icg Finn-infra). Needs scoped drive or registration+hygiene.",
+  "outcome": "scoped-drive: C1+C3 landed (committed b0374048,e043ed39); C2.2-2.4 deferred (sietch @freeside/* tsc unverifiable). PR blocked: local clone diverged from 0xHoneyJar/loa-freeside (remote main 0085eabd not in local history)."
 }

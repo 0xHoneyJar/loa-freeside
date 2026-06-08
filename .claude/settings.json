@@ -463,6 +463,12 @@
             "command": ".claude/hooks/session-start/loa-l7-surface-soul.sh",
             "async": true,
             "once": true
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/session-start/gecko-construct-console.sh",
+            "async": true,
+            "once": true
           }
         ]
       }

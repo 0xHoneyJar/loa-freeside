@@ -48,4 +48,13 @@ export declare function nftMintDetectedTopic(opts?: {
     collectionSlug?: string;
     version?: number;
 }): string;
+export declare function parallelModeEnabledTopic(opts?: {
+    specifier?: string;
+}): string;
+export declare function bbF3OneTopic(opts?: {
+    specifier?: string;
+}): string;
+export declare function bbF3TwoTopic(opts?: {
+    specifier?: string;
+}): string;
 //# sourceMappingURL=topics.d.ts.map
