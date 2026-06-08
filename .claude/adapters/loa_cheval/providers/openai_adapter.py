@@ -27,6 +27,7 @@ from loa_cheval.providers.openai_streaming import (
     parse_openai_chat_stream,
     parse_openai_responses_stream,
 )
+from loa_cheval.streaming import StreamingRecoveryAbort
 from loa_cheval.types import (
     CompletionRequest,
     CompletionResult,
@@ -188,12 +189,35 @@ class OpenAIAdapter(ProviderAdapter):
             try:
                 if family == "responses":
                     result = parse_openai_responses_stream(
-                        resp.iter_bytes(), provider=self.provider
+                        resp.iter_bytes(),
+                        provider=self.provider,
+                        # cycle-113 T2.4: kwargs forward to recovery
+                        # integration. Sprint-170 plumbs the real per-model
+                        # streaming_recovery + reasoning_class from
+                        # model-config.yaml.
+                        model_data={},
+                        reasoning_class=False,
                     )
                 else:
                     result = parse_openai_chat_stream(
-                        resp.iter_bytes(), provider=self.provider
+                        resp.iter_bytes(),
+                        provider=self.provider,
+                        model_data={},
+                        reasoning_class=False,
                     )
+            except StreamingRecoveryAbort as recovery_err:
+                # cycle-113 T2.4 — typed-abort translation per SDD §3.5
+                # (with cycle-113 corrigendum: all three reasons route via
+                # retryable ProviderUnavailableError so cycle-099 chain-
+                # walks. Mirrors anthropic_adapter T1.7 arm.)
+                from loa_cheval.redaction import sanitize_provider_error_message
+                raise ProviderUnavailableError(
+                    self.provider,
+                    sanitize_provider_error_message(
+                        f"streaming recovery aborted: reason={recovery_err.reason} "
+                        f"tokens_before_abort={recovery_err.tokens_before_abort}"
+                    ),
+                ) from recovery_err
             except ProviderStreamError as stream_err:
                 # T3.5 / AC-3.5: dispatch SSE buffer + accumulator cap
                 # exhaustion through T3.1's table → typed exception.

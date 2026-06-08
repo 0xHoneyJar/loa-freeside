@@ -1,0 +1,42 @@
+data: {"candidates":[{"content":{"parts":[{"text":"## Findings\n"}],"role":"model"},"finishReason":null,"index":0}],"modelVersion":"gemini-1.5-pro-002"}
+
+data: {"candidates":[{"content":{"parts":[{"text":"Token 2"}],"role":"model"},"finishReason":null,"index":0}],"modelVersion":"gemini-1.5-pro-002"}
+
+data: {"candidates":[{"content":{"parts":[{"text":"Token 3"}],"role":"model"},"finishReason":null,"index":0}],"modelVersion":"gemini-1.5-pro-002"}
+
+data: {"candidates":[{"content":{"parts":[{"text":"Token 4"}],"role":"model"},"finishReason":null,"index":0}],"modelVersion":"gemini-1.5-pro-002"}
+
+data: {"candidates":[{"content":{"parts":[{"text":"Token 5"}],"role":"model"},"finishReason":null,"index":0}],"modelVersion":"gemini-1.5-pro-002"}
+
+data: {"candidates":[{"content":{"parts":[{"text":"Token 6"}],"role":"model"},"finishReason":null,"index":0}],"modelVersion":"gemini-1.5-pro-002"}
+
+data: {"candidates":[{"content":{"parts":[{"text":"Token 7"}],"role":"model"},"finishReason":null,"index":0}],"modelVersion":"gemini-1.5-pro-002"}
+
+data: {"candidates":[{"content":{"parts":[{"text":"Token 8"}],"role":"model"},"finishReason":null,"index":0}],"modelVersion":"gemini-1.5-pro-002"}
+
+data: {"candidates":[{"content":{"parts":[{"text":"Token 9"}],"role":"model"},"finishReason":null,"index":0}],"modelVersion":"gemini-1.5-pro-002"}
+
+data: {"candidates":[{"content":{"parts":[{"text":"Token 10"}],"role":"model"},"finishReason":null,"index":0}],"modelVersion":"gemini-1.5-pro-002"}
+
+data: {"candidates":[{"content":{"parts":[{"text":"Token 11"}],"role":"model"},"finishReason":null,"index":0}],"modelVersion":"gemini-1.5-pro-002"}
+
+data: {"candidates":[{"content":{"parts":[{"text":"Token 12"}],"role":"model"},"finishReason":null,"index":0}],"modelVersion":"gemini-1.5-pro-002"}
+
+data: {"candidates":[{"content":{"parts":[{"text":"Token 13"}],"role":"model"},"finishReason":null,"index":0}],"modelVersion":"gemini-1.5-pro-002"}
+
+data: {"candidates":[{"content":{"parts":[{"text":"Token 14"}],"role":"model"},"finishReason":null,"index":0}],"modelVersion":"gemini-1.5-pro-002"}
+
+data: {"candidates":[{"content":{"parts":[{"text":"Token 15"}],"role":"model"},"finishReason":null,"index":0}],"modelVersion":"gemini-1.5-pro-002"}
+
+data: {"candidates":[{"content":{"parts":[{"text":"Token 16"}],"role":"model"},"finishReason":null,"index":0}],"modelVersion":"gemini-1.5-pro-002"}
+
+data: {"candidates":[{"content":{"parts":[{"text":"Token 17"}],"role":"model"},"finishReason":null,"index":0}],"modelVersion":"gemini-1.5-pro-002"}
+
+data: {"candidates":[{"content":{"parts":[{"text":"Token 18"}],"role":"model"},"finishReason":null,"index":0}],"modelVersion":"gemini-1.5-pro-002"}
+
+data: {"candidates":[{"content":{"parts":[{"text":"Token 19"}],"role":"model"},"finishReason":null,"index":0}],"modelVersion":"gemini-1.5-pro-002"}
+
+data: {"candidates":[{"content":{"parts":[{"text":"Token 20"}],"role":"model"},"finishReason":null,"index":0}],"modelVersion":"gemini-1.5-pro-002"}
+
+data: {"candidates":[{"content":{"parts":[],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-1.5-pro-002","usageMetadata":{"candidatesTokenCount":0,"promptTokenCount":0,"totalTokenCount":0}}
+

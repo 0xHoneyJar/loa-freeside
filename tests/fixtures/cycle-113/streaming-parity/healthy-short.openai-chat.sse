@@ -1,0 +1,42 @@
+data: {"choices":[{"delta":{"content":"## Findings\n"},"index":0}]}
+
+data: {"choices":[{"delta":{"content":"Token 2"},"index":0}]}
+
+data: {"choices":[{"delta":{"content":"Token 3"},"index":0}]}
+
+data: {"choices":[{"delta":{"content":"Token 4"},"index":0}]}
+
+data: {"choices":[{"delta":{"content":"Token 5"},"index":0}]}
+
+data: {"choices":[{"delta":{"content":"Token 6"},"index":0}]}
+
+data: {"choices":[{"delta":{"content":"Token 7"},"index":0}]}
+
+data: {"choices":[{"delta":{"content":"Token 8"},"index":0}]}
+
+data: {"choices":[{"delta":{"content":"Token 9"},"index":0}]}
+
+data: {"choices":[{"delta":{"content":"Token 10"},"index":0}]}
+
+data: {"choices":[{"delta":{"content":"Token 11"},"index":0}]}
+
+data: {"choices":[{"delta":{"content":"Token 12"},"index":0}]}
+
+data: {"choices":[{"delta":{"content":"Token 13"},"index":0}]}
+
+data: {"choices":[{"delta":{"content":"Token 14"},"index":0}]}
+
+data: {"choices":[{"delta":{"content":"Token 15"},"index":0}]}
+
+data: {"choices":[{"delta":{"content":"Token 16"},"index":0}]}
+
+data: {"choices":[{"delta":{"content":"Token 17"},"index":0}]}
+
+data: {"choices":[{"delta":{"content":"Token 18"},"index":0}]}
+
+data: {"choices":[{"delta":{"content":"Token 19"},"index":0}]}
+
+data: {"choices":[{"delta":{"content":"Token 20"},"index":0}]}
+
+data: [DONE]
+

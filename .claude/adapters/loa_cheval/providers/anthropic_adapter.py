@@ -24,6 +24,7 @@ from loa_cheval.providers.base import (
     http_post,
     http_post_stream,
 )
+from loa_cheval.streaming import StreamingRecoveryAbort
 from loa_cheval.types import (
     CompletionRequest,
     CompletionResult,
@@ -36,6 +37,11 @@ from loa_cheval.types import (
 )
 
 logger = logging.getLogger("loa_cheval.providers.anthropic")
+
+# cycle-114 FR-2: valid values for the Anthropic `output_config.effort` control
+# (Opus 4.5+/Sonnet 4.6). Effort governs reasoning depth WITHOUT manual
+# thinking budgets — Opus 4.7/4.8 reject `thinking.budget_tokens` with HTTP 400.
+_VALID_EFFORT = frozenset({"low", "medium", "high", "xhigh", "max"})
 
 
 # cycle-109 followup #883 Bug 3 — billing-class error classification.
@@ -121,6 +127,22 @@ class AnthropicAdapter(ProviderAdapter):
         if request.tool_choice:
             body["tool_choice"] = _transform_tool_choice(request.tool_choice)
 
+        # cycle-114 FR-2: reasoning-depth control via output_config.effort.
+        # Precedence: explicit request.effort > metadata["effort"]. When unset,
+        # the body is byte-identical to the pre-cycle-114 shape (model default
+        # effort = "high"). NEVER emit thinking.budget_tokens — adaptive-thinking
+        # Opus 4.7/4.8 reject it with HTTP 400; effort is the supported control.
+        effort = request.effort or (
+            (request.metadata or {}).get("effort") if request.metadata else None
+        )
+        if effort is not None:
+            if effort not in _VALID_EFFORT:
+                raise InvalidInputError(
+                    f"invalid effort {effort!r}; expected one of "
+                    f"{sorted(_VALID_EFFORT)}"
+                )
+            body.setdefault("output_config", {})["effort"] = effort
+
         # Build headers — Anthropic uses x-api-key, not Bearer token
         auth = self._get_auth_header()
         headers = {
@@ -202,7 +224,34 @@ class AnthropicAdapter(ProviderAdapter):
                 result = parse_anthropic_stream(
                     resp.iter_bytes(),
                     provider=self.provider,
+                    # cycle-113 T1.7: kwargs forward to the streaming
+                    # recovery integration. Defaults pass library
+                    # thresholds through unchanged. Sprint-170 will plumb
+                    # the actual per-model streaming_recovery block from
+                    # model-config.yaml + the reasoning_class flag via
+                    # _get_model_config(body["model"]).
+                    model_data={},
+                    reasoning_class=False,
                 )
+            except StreamingRecoveryAbort as recovery_err:
+                # cycle-113 T1.7 — typed-abort translation per SDD §3.5.
+                # All three abort reasons route via ProviderUnavailableError
+                # (retryable=True) so the cycle-099 within-company chain
+                # walks to the next model. SDD §3.5 originally split the
+                # mapping with InvalidInputError for empty-content + CoT-
+                # exhausted, but that's TERMINAL (retryable=False) — it
+                # would defeat KF-002's chain-walk goal. Corrigendum to
+                # SDD §3.5 tracked alongside the §5.4 corrigendum in
+                # sprint-169 (operator pre-authorized via C113.OP-AUTH-1
+                # `lib-wins` decision class).
+                from loa_cheval.redaction import sanitize_provider_error_message
+                raise ProviderUnavailableError(
+                    self.provider,
+                    sanitize_provider_error_message(
+                        f"streaming recovery aborted: reason={recovery_err.reason} "
+                        f"tokens_before_abort={recovery_err.tokens_before_abort}"
+                    ),
+                ) from recovery_err
             except ProviderStreamError as stream_err:
                 # T3.5 / AC-3.5: SSE buffer + per-event accumulator caps
                 # raise ProviderStreamError; dispatch through T3.1's table

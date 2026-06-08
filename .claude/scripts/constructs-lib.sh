@@ -22,6 +22,10 @@ set -euo pipefail
 #   $1 - Config key under registry section (e.g., "enabled", "default_url")
 #   $2 - Default value if key not found
 # Returns: Config value or default
+
+# sprint-bug-172 / bug-911: sha256_portable from compat-lib
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/compat-lib.sh"
+
 get_registry_config() {
     local key="$1"
     local default="${2:-}"
@@ -900,14 +904,10 @@ verify_content_hash() {
         return 1
     fi
 
-    # Calculate SHA256 (portable: works on Linux and macOS)
+    # sprint-bug-172: sha256_portable handles GNU/BSD/fail-loud dispatch.
     local actual_hash
-    if command -v sha256sum &>/dev/null; then
-        # Linux
-        actual_hash=$(sha256sum "$file" | cut -d' ' -f1)
-    elif command -v shasum &>/dev/null; then
-        # macOS
-        actual_hash=$(shasum -a 256 "$file" | cut -d' ' -f1)
+    if [[ -n "${_COMPAT_SHA256_CMD:-}" ]]; then
+        actual_hash=$(sha256_portable "$file" | cut -d' ' -f1)
     else
         print_warning "  No SHA256 tool available, skipping verification"
         return 0
@@ -936,10 +936,9 @@ calculate_file_hash() {
         return 1
     fi
 
-    if command -v sha256sum &>/dev/null; then
-        sha256sum "$file" | cut -d' ' -f1
-    elif command -v shasum &>/dev/null; then
-        shasum -a 256 "$file" | cut -d' ' -f1
+    # sprint-bug-172: sha256_portable handles GNU/BSD/fail-loud dispatch.
+    if [[ -n "${_COMPAT_SHA256_CMD:-}" ]]; then
+        sha256_portable "$file" | cut -d' ' -f1
     else
         echo ""
         return 1

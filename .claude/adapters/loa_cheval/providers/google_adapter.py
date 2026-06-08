@@ -23,6 +23,7 @@ from loa_cheval.providers.base import (
     http_post_stream,
 )
 from loa_cheval.providers.google_streaming import parse_google_stream
+from loa_cheval.streaming import StreamingRecoveryAbort
 from loa_cheval.types import (
     CompletionRequest,
     CompletionResult,
@@ -393,7 +394,26 @@ class GoogleAdapter(ProviderAdapter):
                             model_id=request.model,
                             provider=self.provider,
                             input_text_length=input_text_len,
+                            # cycle-113 T2.6: kwargs forward to recovery
+                            # integration. Sprint-170 plumbs real per-model
+                            # streaming_recovery + reasoning_class.
+                            model_data={},
+                            reasoning_class=False,
                         )
+                    except StreamingRecoveryAbort as recovery_err:
+                        # cycle-113 T2.6 — typed-abort translation per
+                        # SDD §3.5 corrigendum. All three abort reasons
+                        # route via retryable ProviderUnavailableError so
+                        # cycle-099 within-company chain walks (mirrors
+                        # anthropic_adapter T1.7 + openai_adapter T2.4).
+                        from loa_cheval.redaction import sanitize_provider_error_message
+                        raise ProviderUnavailableError(
+                            self.provider,
+                            sanitize_provider_error_message(
+                                f"streaming recovery aborted: reason={recovery_err.reason} "
+                                f"tokens_before_abort={recovery_err.tokens_before_abort}"
+                            ),
+                        ) from recovery_err
                     except ProviderStreamError as stream_err:
                         # T3.5 / AC-3.5: dispatch SSE buffer + accumulator
                         # cap exhaustion through T3.1's table → typed.
