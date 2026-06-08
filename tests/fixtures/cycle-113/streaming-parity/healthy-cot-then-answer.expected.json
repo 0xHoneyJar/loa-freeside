@@ -1,0 +1,11 @@
+{
+  "description": "100 CoT tokens (`thinking about this...`), then `</thinking>` close + `## Finding 1:` structured-answer marker.",
+  "expected": {
+    "reason": null,
+    "tokens_before_abort": null,
+    "triggered": false
+  },
+  "name": "healthy-cot-then-answer",
+  "notes": "",
+  "reasoning_class": true
+}

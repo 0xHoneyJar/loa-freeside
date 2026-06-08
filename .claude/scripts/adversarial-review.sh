@@ -35,9 +35,20 @@
 
 set -euo pipefail
 
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CONFIG_FILE="${CONFIG_FILE:-$PROJECT_ROOT/.loa.config.yaml}"
+
+# sprint-bug-172 / bug-911: sha256_portable from compat-lib.
+# Defensive source pattern (`|| true`) mirrors the lib-content.sh import
+# below: under eval-based test sourcing, BASH_SOURCE[0] resolves to a bats
+# temp file, so the absolute SCRIPT_DIR-rooted path is the safe form, and
+# the soft-failure allows tests to pre-source compat-lib.sh in setup().
+# See: Bridgebuilder Review Finding #1 (PR #235), KF-011 debug regression.
+_COMPAT_LIB_PATH="$SCRIPT_DIR/compat-lib.sh"
+# shellcheck source=compat-lib.sh
+source "$_COMPAT_LIB_PATH" 2>/dev/null || true
 
 # Source shared content processing functions (file_priority, prepare_content, estimate_tokens)
 # These were extracted from gpt-review-api.sh into lib-content.sh to avoid the
@@ -595,6 +606,19 @@ invoke_dissenter() {
   # so the verdict_quality envelope lands in this file. Backward-compat:
   # callers that don't pass the arg get the legacy non-sidecar behavior.
   local vq_sidecar="${5:-}"
+  # Cycle-112 D-6 (#931) — attribution type so MODELINV envelopes record
+  # which phase of adversarial review (review/audit/design) issued the
+  # call. Defaults empty for backward-compat with any pre-D-6 caller.
+  local type="${6:-}"
+
+  # Build the skill string for /loa status --economy attribution.
+  # adversarial-review:review / adversarial-review:audit / etc. Empty
+  # when type wasn't supplied — model-adapter.sh treats absent --skill
+  # as no-op.
+  local -a skill_args=()
+  if [[ -n "$type" ]]; then
+    skill_args=(--skill "adversarial-review:$type")
+  fi
 
   if [[ -n "$vq_sidecar" ]]; then
     LOA_VERDICT_QUALITY_SIDECAR="$vq_sidecar" \
@@ -603,14 +627,16 @@ invoke_dissenter() {
       --mode dissent \
       --input "$user_prompt_file" \
       --context "$system_prompt_file" \
-      --timeout "$timeout"
+      --timeout "$timeout" \
+      ${skill_args[@]+"${skill_args[@]}"}
   else
     "$SCRIPT_DIR/model-adapter.sh" \
       --model "$model" \
       --mode dissent \
       --input "$user_prompt_file" \
       --context "$system_prompt_file" \
-      --timeout "$timeout"
+      --timeout "$timeout" \
+      ${skill_args[@]+"${skill_args[@]}"}
   fi
 }
 
@@ -1011,9 +1037,9 @@ compute_finding_id() {
 
   if [[ "$anchor" == "no_anchor" ]]; then
     # No-anchor findings are always unique — include index to prevent collision
-    printf 'noanch:%s:%s' "$category" "$index" | sha256sum | cut -c1-8
+    printf 'noanch:%s:%s' "$category" "$index" | sha256_portable | cut -c1-8
   else
-    printf '%s:%s' "$anchor" "$category" | sha256sum | cut -c1-8
+    printf '%s:%s' "$anchor" "$category" | sha256_portable | cut -c1-8
   fi
 }
 
@@ -1370,7 +1396,7 @@ main() {
     # parallel adversarial-review invocations don't collide.
     local vq_sidecar
     vq_sidecar="$_vq_tmpdir/vq-${type}-${try_model//[^A-Za-z0-9_-]/_}-$$-$RANDOM.json"
-    raw_response=$(invoke_dissenter "$_ADVERSARIAL_WORKDIR/system-prompt.txt" "$_ADVERSARIAL_WORKDIR/user-prompt.txt" "$try_model" "$timeout" "$vq_sidecar") || api_exit=$?
+    raw_response=$(invoke_dissenter "$_ADVERSARIAL_WORKDIR/system-prompt.txt" "$_ADVERSARIAL_WORKDIR/user-prompt.txt" "$try_model" "$timeout" "$vq_sidecar" "$type") || api_exit=$?
     # Collect the per-attempt envelope (if cheval wrote one).
     if [[ -s "$vq_sidecar" ]]; then
       vq_attempt_files+=("$vq_sidecar")

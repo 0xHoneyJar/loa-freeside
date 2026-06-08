@@ -340,6 +340,36 @@ providers:
     endpoint: "https://api.anthropic.com/v1"
     auth: "{env:ANTHROPIC_API_KEY}"
     models:
+      claude-opus-4-8:
+        # cycle-114 (harness-modernization-opus-4.8): newest Opus class.
+        # Released 2026-05-28 (Claude Code 2.1.154). Pricing == 4.7
+        # ($5/$25 per Mtok; fast-mode $10/$50). Adaptive-thinking model:
+        # effort is controlled via output_config.effort (low|medium|high|
+        # xhigh|max); manual thinking.budget_tokens is REJECTED with HTTP
+        # 400 — see anthropic_adapter.py (cycle-114 FR-2).
+        auth_type: http_api
+        dispatch_group: anthropic-claude
+        capabilities: [chat, tools, function_calling, thinking_traces]
+        context_window: 200000
+        token_param: max_tokens
+        # cycle-114: within-company chain → 4.7 → sonnet-4.6 → headless.
+        fallback_chain:
+          - anthropic:claude-opus-4-7
+          - anthropic:claude-sonnet-4-6
+          - anthropic:claude-headless
+        # Opus-class token envelope mirrors 4.7 (streaming default-on;
+        # see claude-opus-4-7 below for the full KF-002 derivation).
+        max_output_tokens: 32000
+        max_input_tokens: 180000          # backward-compat fallback
+        streaming_max_input_tokens: 180000
+        legacy_max_input_tokens: 36000    # pre-Sprint-4A KF-002 wall
+        # Anthropic deprecated `temperature` for Opus 4 (#641); omit it.
+        params:
+          temperature_supported: false
+        pricing:
+          # Unit: micro-USD per million tokens.
+          input_per_mtok: 5000000    # $5.00 per million tokens (== 4.7)
+          output_per_mtok: 25000000  # $25.00 per million tokens (== 4.7)
       claude-opus-4-7:
         # cycle-110 sprint-2a T2.3 (SDD §3.2): auth_type + dispatch_group migration.
         auth_type: http_api
@@ -543,6 +573,24 @@ providers:
     read_timeout: 120                                # Vision-capable; matches base default
     models:
       # Day-1 inference profile IDs (from Sprint 0 G-S0-2 probe #1 ListInferenceProfiles)
+      "us.anthropic.claude-opus-4-8":                # cycle-114: newest Opus on Bedrock
+        auth_type: aws_iam
+        dispatch_group: bedrock-anthropic
+        capabilities: [chat, tools, function_calling, thinking_traces]
+        context_window: 200000
+        token_param: max_tokens
+        api_format:
+          chat: converse
+          tools: converse
+          thinking_traces: converse                  # Bedrock requires `thinking.type: adaptive`
+          function_calling: converse
+        params:
+          temperature_supported: false               # Mirrors direct Anthropic Opus 4 (#641)
+        pricing:
+          input_per_mtok: 5000000                    # $5.00/Mtok (matches direct Anthropic on-demand)
+          output_per_mtok: 25000000                  # $25.00/Mtok
+        fallback_to: "anthropic:claude-opus-4-8"
+        fallback_mapping_version: 1
       "us.anthropic.claude-opus-4-7":                # Newest convention: no -v1:0 suffix
         # cycle-110 sprint-2a T2.3 (SDD §3.2): auth_type + dispatch_group migration.
         auth_type: aws_iam
@@ -609,7 +657,7 @@ aliases:
   reviewer: "openai:gpt-5.5"
   reasoning: "openai:gpt-5.5"
   cheap: "anthropic:claude-sonnet-4-6"  # Budget-conscious model
-  opus: "anthropic:claude-opus-4-7"     # High-quality model (retargeted from 4-6 to 4-7, cycle-082)
+  opus: "anthropic:claude-opus-4-8"     # High-quality model (retargeted 4-6→4-7 cycle-082; 4-7→4-8 cycle-114)
   # cycle-095 Sprint 2 (Task 2.3): tiny tier alias points at Haiku 4.5.
   tiny: "anthropic:claude-haiku-4-5-20251001"
   # Gemini 3.1 Pro Preview re-added cycle-093 sprint-4 (T2.1 — closes G4)
@@ -693,6 +741,11 @@ backward_compat_aliases:
   # without a provider prefix — cheval's resolver expects an alias entry,
   # so the bare dash form must self-map. Without this, BB review fails
   # with "Unknown alias: 'claude-opus-4-7'" across all 3 substrate models.
+  # cycle-114: 4-8 self-maps (dash + dot). The BB tool config.generated.js
+  # passes the bare dash form to cheval without a provider prefix, so both
+  # forms must self-map (parity with the 4-7 entries below).
+  "claude-opus-4-8": "anthropic:claude-opus-4-8"
+  "claude-opus-4.8": "anthropic:claude-opus-4-8"
   "claude-opus-4-7": "anthropic:claude-opus-4-7"
   "claude-opus-4.7": "anthropic:claude-opus-4-7"
   "claude-opus-4.6": "anthropic:claude-opus-4-7"
@@ -849,9 +902,19 @@ agents:
 #   `providers.<provider>.models`. Live probe (with API keys) is the
 #   operator's responsibility on opt-in.
 tier_groups:
+  # cycle-114 FR-8: informational-only effort hints per tier. NOT consumed by
+  # the FR-3.9 resolver or any dispatch path this cycle — purely advisory for
+  # operators and the Empirical Model Economy roll-up (which reports cost by
+  # effort). A future cycle may wire binding behavior; until then these values
+  # MUST NOT change model resolution. Pinned by tests/unit/cycle-114-tier-effort-hints.bats.
+  effort_hints:
+    max: xhigh
+    mid: medium
+    cheap: low
+    tiny: low
   mappings:
     max:
-      anthropic: opus              # → claude-opus-4-7
+      anthropic: opus              # → claude-opus-4-8 (cycle-114 retarget)
       openai: gpt-5.5-pro          # top-of-OpenAI per probe-confirmation
       google: gemini-3.1-pro       # → gemini-3.1-pro-preview
     cheap:
@@ -906,3 +969,28 @@ defaults:
   connect_timeout: 10             # seconds
   read_timeout: 120               # seconds
   write_timeout: 30               # seconds
+
+  # cycle-113 sprint-170 T3.4 (FR-C-2; SDD §5.4) — streaming-recovery thresholds.
+  # Library applies these defaults when per-model `streaming_recovery` blocks
+  # are absent (the cycle-113 default-safe state). Operators can override
+  # per-model under `providers.<p>.models.<m>.streaming_recovery: {...}`.
+  #
+  # Field names match the shipped loa_cheval.streaming.recovery library API
+  # per operator-approved lib-wins naming (C113.OP-AUTH-1):
+  #   - first_token_deadline_s: time-window before abort if no token arrives
+  #     (default 30.0 for non-reasoning; 60.0 for reasoning_class=True)
+  #   - empty_content_window_tokens: abort if first N tokens are all
+  #     empty/whitespace (KF-002 class detection)
+  #   - cot_budget_tokens: abort reasoning-class models that runaway-CoT
+  #     beyond N tokens without visible content (gated on reasoning_class)
+  #
+  # The reasoning_class flag itself is derived per-model from
+  # `providers.<p>.models.<m>.reasoning_class` (additive field; sprint-170
+  # ships this layer documented; per-model population is operator carry
+  # for cycle-114). Until per-model reasoning_class is populated, the
+  # library defaults to reasoning_class=False, which is safe (non-reasoning
+  # thresholds apply, CoT-budget enforcement skipped).
+  streaming_recovery:
+    first_token_deadline_s: 30.0
+    empty_content_window_tokens: 200
+    cot_budget_tokens: 500

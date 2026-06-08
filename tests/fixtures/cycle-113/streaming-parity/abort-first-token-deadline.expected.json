@@ -1,0 +1,11 @@
+{
+  "description": "NO tokens; only keepalives until injected t>=31s past start. Test harness must advance `time.monotonic()` past first_token_deadline_s (30.0 default for non-reasoning).",
+  "expected": {
+    "reason": "first_token_deadline",
+    "tokens_before_abort": 0,
+    "triggered": true
+  },
+  "name": "abort-first-token-deadline",
+  "notes": "Test harness MUST inject now_s >= start_time_s + 30.0 between calls to check_deadline() to reproduce the abort. The fixture bytes alone do not encode time progression.",
+  "reasoning_class": false
+}

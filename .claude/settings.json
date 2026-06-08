@@ -1,7 +1,14 @@
 {
   "spinnerVerbs": {
     "mode": "append",
-    "verbs": ["Channeling", "Invoking", "Conjuring", "Manifesting", "Divining", "Summoning"]
+    "verbs": [
+      "Channeling",
+      "Invoking",
+      "Conjuring",
+      "Manifesting",
+      "Divining",
+      "Summoning"
+    ]
   },
   "permissions": {
     "allow": [
@@ -463,6 +470,12 @@
             "command": ".claude/hooks/session-start/loa-l7-surface-soul.sh",
             "async": true,
             "once": true
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/session-start/loa-run-mode-session-title.sh",
+            "async": true,
+            "once": true
           }
         ]
       }
@@ -577,6 +590,15 @@
           {
             "type": "command",
             "command": ".claude/hooks/audit/write-mutation-logger.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/quality/karpathy-surgical-diff-check.sh"
           }
         ]
       }

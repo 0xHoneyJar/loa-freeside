@@ -75,8 +75,16 @@ if [[ -z "${BASH_SOURCE[0]:-}" ]] && [[ -z "${_LOA_MOUNT_REEXEC:-}" ]]; then
     exit 1
   fi
 
-  # Download auxiliary scripts (non-fatal if missing in older versions)
-  for _f in bootstrap.sh bash-version-guard.sh lib/symlink-manifest.sh; do
+  # Download auxiliary scripts (non-fatal if missing in older versions).
+  # #865: mount-loa.sh + mount-submodule.sh source lib/scaffold-post-merge-workflow.sh
+  # and lib/portable-realpath.sh respectively. Without these in the pipe-mode
+  # download set, the curl|bash install path errors with "No such file or
+  # directory" on the first mount. The clone-then-run path is unaffected
+  # because those files exist on disk from the clone.
+  for _f in bootstrap.sh bash-version-guard.sh \
+            lib/symlink-manifest.sh \
+            lib/scaffold-post-merge-workflow.sh \
+            lib/portable-realpath.sh; do
     curl --proto =https --proto-redir =https --max-redirs 10 \
          -fsSL -o "$_loa_tmpdir/$_f" -- "$_loa_base/$_f" 2>/dev/null || true
   done
@@ -1042,7 +1050,7 @@ generate_checksums() {
 
   local first=true
   while IFS= read -r -d '' file; do
-    local hash=$(sha256sum "$file" | cut -d' ' -f1)
+    local hash=$(sha256_portable "$file" | cut -d' ' -f1)
     local relpath="${file#./}"
     if [[ "$first" == "true" ]]; then
       first=false
@@ -1905,7 +1913,7 @@ Then re-run:
       local expected_hash actual_hash
       expected_hash=$(jq -r --arg f "$relpath" '.files[$f] // ""' "$CHECKSUMS_FILE" 2>/dev/null)
       if [[ -n "$expected_hash" && "$expected_hash" != "null" ]]; then
-        actual_hash=$(sha256sum "$file" | cut -d' ' -f1)
+        actual_hash=$(sha256_portable "$file" | cut -d' ' -f1)
         if [[ "$expected_hash" == "$actual_hash" ]]; then
           framework_files+=("$relpath")
         else
