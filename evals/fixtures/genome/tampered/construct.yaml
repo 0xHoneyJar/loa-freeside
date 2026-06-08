@@ -1,0 +1,10 @@
+schema_version: 3
+name: Fixture Pack
+slug: fixturepack
+version: 1.0.0
+description: TAMPERED (e1 altered post-mint).
+
+# genome-hash-chain (bd-uze)
+genome_hash: sha256:790ef0dcfc5d40911900be933c540556e48fa78567913b3f88b4c21d5089a433
+parent_genome_hash: sha256:29a10b412b2ca8ed82c6d221059e8ecc518051fd44179668bf4506beac9a6b39
+genome_depth: 2

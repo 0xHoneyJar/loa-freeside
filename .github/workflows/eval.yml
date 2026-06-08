@@ -10,6 +10,8 @@ on:
       - '.claude/skills/**'
       - '.claude/protocols/**'
       - '.claude/data/**'
+      - '.claude/hooks/**'        # rail-hardness board verifies hook_path claims —
+                                  # a PR deleting/moving a rail's hook must trigger the scan (bd-uze)
       - '.loa.config.yaml'
       - 'evals/**'
 

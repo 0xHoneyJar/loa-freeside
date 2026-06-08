@@ -1,0 +1,8 @@
+{
+  "_doc": "Rail-hardness RATCHET baseline (bd-uze Track B / arrakis-jnjj). The rail-hardness eval FAILS if alignment_pct < alignment_floor_pct OR over_hardened > over_hardened_max OR the hook-claim scan finds an unresolved (roleplayed) hook. This baseline RATCHETS UP ONLY: landing a real rail-move raises alignment_floor_pct; a PR that drops alignment below the floor goes RED. Bumping the floor is OPERATOR-ONLY (fork #2), done on a confirmed real rail-move — never auto, never down. over_hardened_max stays 0: the eval must FAIL if a soft judgment seam gets a hook (the anti-over-hardening guardrail).",
+  "alignment_floor_pct": 53,
+  "over_hardened_max": 0,
+  "recorded_at": "2026-06-07",
+  "recorded_from": "rail-hardness-read.mjs --json (9/17 aligned, over-hardened 0)",
+  "ratchet_policy": "operator-only, up-only, on confirmed real rail-move"
+}
