@@ -1710,10 +1710,12 @@ preferences:
 # =============================================================================
 # CRITICAL-PR doctrine: substantive PRs (runtime routing, emitters, auth,
 # schemas, cross-repo merges) get MORE EYES — the FAGAN cross-model council
-# (+ jam-reviewer-fable voice when stakes demand) for code defects, AND
-# Bridgebuilder for operational readiness / educational depth. BB runs on the
-# TOP intelligence tier via the operator's subscription (no API key):
-# fable-headless → claude CLI --model fable (hounfour SoT, loa#1003).
+# for code defects, AND Bridgebuilder for operational readiness / educational
+# depth. INTENT: BB on the top intelligence tier (fable) via the operator's
+# subscription — pending the operator-gated canonical routing design
+# (fable through cheval's claude-fable-5 + a model-aware headless adapter;
+# the forked claude-fable-headless entry was reverted, loa#1005). Until then
+# BB stays on claude-headless.
 bridgebuilder:
   enabled: true
-  model: "fable-headless"
+  model: "claude-headless"
