@@ -1601,9 +1601,12 @@ flatline_protocol:
     # Requires Python 3.10+, Patchright, and one-time Google authentication
     # Setup: python3 .claude/skills/flatline-knowledge/resources/notebooklm-query.py --setup-auth
     notebooklm:
+      # Re-enable to TRUE once notebooklm-query.py is patched (modal-dismiss +
+      # domcontentloaded + refreshed response selectors). Broken script = 90s
+      # penalty per flatline before local fallback. notebook_id is ready.
       enabled: false
       # NotebookLM notebook ID to query (from URL)
-      notebook_id: ""
+      notebook_id: "ac1d0292-5165-4495-ad0e-2df58e73bf57"
       # Query timeout in milliseconds
       timeout_ms: 30000
       # Run browser in headless mode (set false for debugging)
