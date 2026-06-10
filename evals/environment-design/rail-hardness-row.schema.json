@@ -25,7 +25,12 @@
     },
     "source": { "type": "string", "description": "who scored it (e.g. 'council:gygax', 'gecko:sensing-runtime-fit', 'operator')" },
     "ts": { "type": "string" },
-    "commit": { "type": "string" }
+    "commit": { "type": "string" },
+    "altitude": { "type": "integer", "enum": [1, 2, 3, 4, 5], "description": "optional: which layer of the stack the fork lives at — 1 operator (~/.claude) · 2 hooks/settings · 3 loa-harness (skills/protocols) · 4 repo (CLAUDE.md/workflows walls) · 5 CI+evals (the measurement layer)" },
+    "rail_or_seam": { "type": "string", "enum": ["rail", "seam"], "description": "optional: rail = deterministic transport (hardenable); seam = judgment fork (must stay soft — hardening it is the OVER-WALLED failure)" },
+    "gap_class": { "type": "string", "enum": ["NONE", "PROSE-WALL", "GHOST-HOOK", "OVER-WALLED"], "description": "optional: the roleplay-vulnerability class — PROSE-WALL = stick intent enforced only by prose; GHOST-HOOK = hook exists but does not fire (unwired/blind/fails-open); OVER-WALLED = a judgment seam wrongly gated; NONE = healthy" },
+    "severity": { "type": "string", "enum": ["CONFLICT", "SMELL"], "description": "optional: CONFLICT = the map claims teeth the territory lacks (load-bearing wall); SMELL = misalignment worth tracking, map roughly honest" },
+    "evidence": { "type": "string", "description": "optional: grounded file:line evidence for the scoring — what was actually read/verified, not inferred" }
   },
   "required": ["rail", "where", "formation", "observability", "payoff_regime", "intended_regime", "hook_backed", "source", "ts"]
 }
