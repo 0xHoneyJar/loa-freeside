@@ -1704,3 +1704,16 @@ preferences:
   auto_bead_on_review: true
   require_security_audit: true
   confirm_app_writes: true
+
+# =============================================================================
+# Bridgebuilder — operational-readiness PR review (2026-06-11 operator directive)
+# =============================================================================
+# CRITICAL-PR doctrine: substantive PRs (runtime routing, emitters, auth,
+# schemas, cross-repo merges) get MORE EYES — the FAGAN cross-model council
+# (+ jam-reviewer-fable voice when stakes demand) for code defects, AND
+# Bridgebuilder for operational readiness / educational depth. BB runs on the
+# TOP intelligence tier via the operator's subscription (no API key):
+# fable-headless → claude CLI --model fable (hounfour SoT, loa#1003).
+bridgebuilder:
+  enabled: true
+  model: "fable-headless"
