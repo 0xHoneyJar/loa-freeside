@@ -1,0 +1,377 @@
+# Composition · audit-membrane-integrity
+# ================================================================
+# The epistemic immune system: how content crosses the Markov blanket.
+# GECKO grounds the two flows, WORLDLINE traces where labels get laundered,
+# GYGAX designs the cost-flip, the OPERATOR stamps, the SYNTHESIZER expels +
+# wires + proves.
+#
+# Sibling of audit-geometry-fidelity (which audits decision-fork RAILS). THIS
+# one audits the MEMBRANE — the two content flows across the boundary, each a
+# distinct hallucination vector:
+#   AFFERENT (inward)  — external content (pasted convos/images, others' words,
+#     vault, recalled memory) must be STAMPED with provenance at entry
+#     (attested-by-X, NOT truth). Unstamped, it is indistinguishable from
+#     `observed` and gets AMPLIFIED every downstream read. Antigen-tagging.
+#   EFFERENT (outward) — dead referents (codex-review, codex-rescue, observer,
+#     loom, archivist) must be EXPELLED early. Lingering, an agent recalls them
+#     as live and confabulates infrastructure that does not exist. Apoptosis.
+# Both are one disease: the boundary lying about what's real. The cure is
+# PHYSICS at the membrane (stamp-on-ingest + expel-on-staleness), wired EARLY —
+# because repair-after-amplification is prose repair, which amplifies the
+# hallucination (the deterministic-strip-not-prose-repair lesson).
+#
+# Authored 2026-06-10 from the operator's provenance/staleness session: "labeling
+# may be the most important thing to prevent hallucination — once unlabeled
+# content makes it in, it is amplified if we don't use deterministic physics.
+# Stale things (codex-review/rescue) should be propelled outward, flagged very
+# early, by the physics of the organism." Self-referential: an audit of how the
+# boundary stays honest must itself run the governed path (valid_run), never be
+# inline-asserted.
+# ================================================================
+
+schema_version: "1.0"
+kind: workflow
+name: audit-membrane-integrity
+description: >
+  Audit the epistemic immune system — the two content flows across the Markov
+  blanket. GECKO grounds the afferent (provenance-stamp) and efferent
+  (staleness-expulsion) machinery: exists? WIRED? coverage? + censuses lingering
+  dead referents and unstamped-ingest paths. WORLDLINE (the truth governor)
+  traces the LAUNDERING PATHS where attested/external content gets promoted to
+  observed. GYGAX (game systems) designs the cost-flip so label-on-ingest +
+  expel-on-staleness become the path of least resistance. The operator stamps
+  the expulsion list; the synthesizer expels the dead refs, wires the existing
+  gates, builds the missing afferent stamp, and proves it.
+
+intent: >
+  "Labeling provenance may be the single most important hallucination-preventer:
+   once unlabeled external content makes it into the system it is AMPLIFIED, and
+   stale referents (codex-review, codex-rescue) that no longer exist must be
+   propelled OUTWARD by the physics of the organism, flagged very early. Audit
+   the membrane along the Markov-blanket dynamic: where does the boundary fail
+   to stamp what crosses in, and fail to expel what has died? Build the
+   deterministic physics that fixes it, wired early — never prose repair."
+
+backend: headless-tmux
+
+hivemind_labels:
+  product_area: "Engineering — epistemic immune system / provenance + staleness membrane"
+  workstream: discovery
+  priority: high
+  jtbd:
+    category: personal
+    description: "Keep the boundary honest — stamp foreign content on entry, expel
+      dead referents on staleness, by physics not discipline, so hallucination
+      cannot compound"
+  source: team-internal
+
+depends_on:
+  constructs:
+  - gecko               # stage 1 ground — the two-flow membrane sensor
+  - worldline           # stage 2 truth-governor — the laundering-path tracer
+  - gygax               # stage 3 game systems — the cost-flip designer
+  scripts:
+  - construct-compositions/scripts/check-ghost-refs.py   # the efferent denylist + rename rules (built)
+  - construct-worldline/scripts/claim-grade.mjs          # the afferent claim-stamp (built today)
+  reference:
+  - "evals/environment-design/rail-hardness-ledger.jsonl"   # the sibling geometry topology
+  upstream_compositions:
+  - compositions/discovery/audit-geometry-fidelity.yaml     # the rail sibling (same unwired-gate disease)
+
+inputs:
+- type: Intent
+  name: scope
+  description: >
+    which membrane flows to audit (default BOTH: afferent provenance-stamp +
+    efferent staleness-expulsion). Seeded with the operator's deterministic
+    grounding (census + wiring findings) — VERIFY and extend, do not re-derive.
+  required: false
+- type: Artifact
+  name: grounding
+  description: >
+    The operator's deterministic census (stale referents in live surfaces +
+    membrane-machinery wiring state). Re-verify each claim against the files.
+  required: false
+
+# Linear (no auto-iterate): the operator seam is the convergence control.
+chain:
+- stage: 1
+  name: ground-the-membrane
+  construct: gecko
+  skill: diagnose
+  persona: GECKO
+  mode: fresh
+  reads: [Intent, Artifact]
+  writes: [Artifact, Signal]
+  role: primary
+  thinking_effort: high
+  intelligence_tier: deep
+  notes: >
+    You are GECKO. The membrane eye: how content crosses the Markov blanket, in
+    both directions. Ground BOTH flows, every claim file:line / path-exists /
+    wired-check actually run (never inferred):
+
+    EFFERENT (staleness-expulsion — does the organism slough dead cells?):
+      - the machines: check-ghost-refs.py (construct-compositions/scripts/ — has
+        a denylist {codex-rescue->general-purpose, codex-review->fagan} + the R3
+        rename-annotation rule) and ghost-refs-sweep.sh (straylight-estate/).
+        For EACH: exists? WIRED (run by CI / a hook / a cron / another script)?
+        what dead referents does its denylist KNOW vs miss?
+      - the dead cells: census stale referents across LIVE surfaces
+        (~/.claude/CLAUDE.md kernel, ~/.claude/skills, ~/.claude/memory,
+        repo .claude, grimoires). Known-dead: codex-review->fagan,
+        codex-rescue->general-purpose, observer->keeper, loom (retired),
+        archivist (retired), beehive, bd->br. CRITICAL DISTINCTION: a LIVE-REF
+        (used as if real) is a defect; a DEPRECATION-NOTICE (carries
+        [DEPRECATED->x] or sits under a "retired — do not resurrect" header,
+        like loom in compose/SKILL.md) is CORRECT — do not flag it.
+
+    AFFERENT (provenance-stamp — is foreign content tagged at entry?):
+      - the machines: claim-grade.mjs (stamps the AGENT's own claims), the
+        <reference source="vault" use="background_only"> wrapper + the
+        <untrusted-content source="clew"> wrapper (stamp vault/clews at
+        surfacing), the observed/attested/claimed/gap truth-tags. For EACH:
+        exists? wired? does it fire at the BOUNDARY or rely on discipline?
+      - THE GAP TO PROVE: when the operator pastes EXTERNAL content (a convo,
+        an image, "X said Y") tagged from outside, is there ANY physics that
+        stamps it attested-by-X at ingestion — or does it enter as plain text an
+        agent may read as truth (manual discipline only)?
+
+    For EACH finding emit a row: {flow: afferent|efferent, mechanism, where
+    (file:line), exists, wired, physics_or_prose, gap_class, severity, evidence}.
+    gap_class one of: NONE (a wired gate stamps/expels it), UNSTAMPED-INGEST
+    (afferent: external content enters with no provenance physics -> amplification
+    risk), LINGERING-DEAD (efferent: a dead referent still reads as live, not
+    expelled), PROSE-DISCIPLINE (the label exists but is manual, not a gate -
+    defectable), UNWIRED-MACHINE (the gate exists but fires nowhere). Mark SMELL
+    vs CONFLICT. You sense; you do not decide. INGEST the grounding artifact;
+    re-verify each claim.
+  output_schema:
+    type: object
+    required: [rows, coverage_note]
+    additionalProperties: false
+    properties:
+      rows:
+        type: array
+        items:
+          type: object
+          required: [flow, mechanism, where, exists, wired, gap_class, severity, evidence]
+          additionalProperties: true
+          properties:
+            flow: {type: string, enum: [afferent, efferent]}
+            mechanism: {type: string}
+            where: {type: string}
+            exists: {type: boolean}
+            wired: {type: boolean}
+            physics_or_prose: {type: string, enum: [physics, prose]}
+            gap_class: {type: string, enum: [NONE, UNSTAMPED-INGEST, LINGERING-DEAD, PROSE-DISCIPLINE, UNWIRED-MACHINE]}
+            severity: {type: string, enum: [CONFLICT, SMELL]}
+            evidence: {type: string}
+      coverage_note: {type: string}
+- stage: 2
+  name: trace-laundering
+  construct: worldline
+  persona: WORLDLINE
+  mode: fresh
+  reads: [Artifact]
+  writes: [Verdict, Signal]
+  role: primary
+  thinking_effort: high
+  intelligence_tier: deep
+  notes: >
+    You are WORLDLINE, the truth/provenance governor. Verify GECKO's membrane
+    map and trace the deepest failure: the LAUNDERING PATHS — every place where
+    content at one provenance label gets promoted to a stronger one across a
+    boundary, WITHOUT a measured feeder. The canonical launder is
+    attested/claimed/external -> observed/truth (the amplification the operator
+    named). For EACH gecko row: is the gap real? does the stale ref actually
+    recall as live (not just appear in a deprecation notice)? Then enumerate the
+    laundering paths: {from_label, to_label, where (the boundary: a handoff, a
+    recall surface, a memory promotion, a paste-into-prompt), mechanism, is it
+    gated}. Tag every claim observed/attested/claimed. A lone real launder HOLDS
+    the verdict. Reject any row whose evidence you cannot reproduce.
+  output_schema:
+    type: object
+    required: [verdict, blocker, laundering_paths, confirmed, corrections]
+    additionalProperties: false
+    properties:
+      verdict: {type: string, enum: [APPROVED, CHANGES_REQUIRED]}
+      blocker: {type: boolean}
+      laundering_paths:
+        type: array
+        items:
+          type: object
+          required: [from_label, to_label, where, gated]
+          additionalProperties: false
+          properties:
+            from_label: {type: string}
+            to_label: {type: string}
+            where: {type: string}
+            mechanism: {type: string}
+            gated: {type: boolean}
+      confirmed: {type: array, items: {type: string}}
+      corrections:
+        type: array
+        items:
+          type: object
+          required: [row, gecko_said, actual, evidence]
+          additionalProperties: false
+          properties:
+            row: {type: string}
+            gecko_said: {type: string}
+            actual: {type: string}
+            evidence: {type: string}
+- stage: 3
+  name: design-the-physics
+  construct: gygax
+  persona: GYGAX
+  mode: fresh
+  reads: [Artifact, Verdict]
+  writes: [Artifact, Signal]
+  role: primary
+  thinking_effort: high
+  intelligence_tier: deep
+  notes: >
+    You are GYGAX, the game-systems designer. The membrane gaps persist because
+    the gradient rewards them: lingering a dead ref is free, expelling it costs
+    a sweep; pasting unstamped content is frictionless, stamping it costs a
+    keystroke. Diagnose the DYNAMICS (why each gap is the path of least
+    resistance today), then design the PHYSICS that flips the cost so
+    label-on-ingest and expel-on-staleness become the cheapest path — adding no
+    friction the operator must remember. For EACH confirmed gap, a
+    physics_proposal: {flow, gap_class, the_gate (the deterministic
+    script/hook/CI that does it), how_it_flips_the_cost, wired_where (the EARLY
+    point — ingestion / pre-commit / SessionStart / recall surface), cost:
+    observability-only|light|medium|heavy}. LEAD with the cheapest highest-
+    leverage move the grounding already proved: WIRE the built-but-unwired
+    efferent machines (check-ghost-refs.py / ghost-refs-sweep.sh) — the same
+    wire-the-existing-gate cure as the geometry audit. Then the afferent gap:
+    the missing ingestion-stamp for pasted external content (design it — a
+    convention + a gate, not discipline). Keep seams soft: the operator's
+    JUDGMENT about whether attested content is trustworthy stays a seam; only
+    the STAMP (that it IS attested) is physics.
+  output_schema:
+    type: object
+    required: [dynamics_diagnosis, physics_proposals, cheapest_first]
+    additionalProperties: false
+    properties:
+      dynamics_diagnosis: {type: string}
+      physics_proposals:
+        type: array
+        items:
+          type: object
+          required: [flow, gap_class, the_gate, how_it_flips_the_cost, wired_where, cost]
+          additionalProperties: false
+          properties:
+            flow: {type: string}
+            gap_class: {type: string}
+            the_gate: {type: string}
+            how_it_flips_the_cost: {type: string}
+            wired_where: {type: string}
+            cost: {type: string, enum: [observability-only, light, medium, heavy]}
+      cheapest_first: {type: array, items: {type: string}}
+- stage: 4
+  name: operator-stamp
+  construct: general-purpose
+  persona: OPERATOR
+  mode: persistent
+  reads: [Verdict, Artifact]
+  writes: [Artifact]
+  role: gate
+  hitl_by_nature: true
+  notes: >
+    OPERATOR SEAM (soju in the seams). Surface, grouped by flow, gap_class
+    loudest: the lingering dead referents (the expulsion list), the unstamped-
+    ingest gap, and GYGAX's ranked physics proposals. The operator decides:
+    which dead refs to expel NOW, whether to wire the efferent sweep, whether to
+    build the afferent ingestion-stamp, and the order. Capture any >>clew. No
+    files change until this seam clears.
+- stage: 5
+  name: expel-wire-prove
+  construct: general-purpose
+  persona: SYNTHESIZER
+  mode: persistent
+  reads: [Verdict, Artifact]
+  writes: [Artifact, Signal]
+  role: primary
+  thinking_effort: high
+  intelligence_tier: deep
+  notes: >
+    Apply the SURVIVING findings + the operator's picks. Then, per the picks:
+      1. EXPEL — run check-ghost-refs.py over the lingering-dead surfaces (or
+         strip/annotate the specific dead refs the operator approved). Verify
+         each was a LIVE-ref, not a deprecation-notice, before touching it.
+         Deterministic; never LLM prose-rewrite (the strip-not-repair rule).
+      2. WIRE — if approved, wire the efferent sweep (ghost-refs-sweep.sh /
+         check-ghost-refs.py) into the estate (estate-coherence.sh probe, like
+         the hook-wiring-doctor) and/or CI, EARLY. If the target is System Zone,
+         prep the exact change + file the issue instead of editing.
+      3. AFFERENT STAMP — if approved, build the ingestion-stamp convention +
+         gate for pasted external content (a <attested by="X" at="..."> wrapper
+         the operator/agent applies, + a lint that flags external quotes/images
+         lacking it). Minimal; physics not discipline.
+      4. WRITE the synthesis to grimoires/loa/context/<date>-membrane-integrity.md:
+         the two-flow framing, the membrane gap register, the laundering paths,
+         and the ranked physics backlog (cheapest-first).
+    Cite file:line. A path that "should exist" is a claim to verify. Re-run any
+    gate you wire to PROVE it fires.
+  output_schema:
+    type: object
+    required: [expelled, wired, built, synthesis_path, backlog]
+    additionalProperties: false
+    properties:
+      expelled: {type: array, items: {type: string}}
+      wired: {type: array, items: {type: string}}
+      built: {type: array, items: {type: string}}
+      synthesis_path: {type: string}
+      backlog:
+        type: array
+        items:
+          type: object
+          required: [item, flow, cost]
+          additionalProperties: false
+          properties:
+            item: {type: string}
+            flow: {type: string}
+            cost: {type: string}
+
+outputs:
+- type: Artifact
+  destination: "grimoires/loa/context/<date>-membrane-integrity.md"
+  description: the two-flow membrane audit + laundering paths + physics backlog
+  hivemind_labels:
+    artifact_type: product-spec
+    learning_status: strongly-validated
+- type: Verdict
+  destination: .run/compose/<run_id>/membrane-council.jsonl
+- type: Signal
+  destination: .run/compose/<run_id>/orchestrator.jsonl
+
+surface_class:
+  default: defi-strict
+  enum: [culturetech-loose, defi-strict, mixed, unspecified]
+  inferred_when_unspecified: defi-strict
+
+when_to_use: >
+  - You pasted external content / others' words and want to be sure it cannot be
+    laundered into truth.
+  - You referenced something stale (codex-review, a renamed construct) and want
+    the organism to expel dead referents by physics, early.
+  - After any rename/deprecation — verify the dead cell is propelled out, not
+    lingering in the memory estate.
+  - NOT for decision-fork rail hardness (use audit-geometry-fidelity).
+
+operator_note: |
+  Authored 2026-06-10. The operator named provenance-labeling + staleness-
+  expulsion as possibly THE most important hallucination-preventers, framed via
+  the Markov blanket. Three principles:
+    1. STAMP AT THE BOUNDARY, NOT AFTER. Amplification happens on the first
+       unstamped read; repair-after is prose repair (amplifies). Physics at
+       ingestion / at staleness, early.
+    2. EXPEL BY PHYSICS, NOT DISCIPLINE. A dead referent must be propelled out
+       by a wired gate (check-ghost-refs), not by someone remembering to grep.
+    3. THE STAMP IS PHYSICS, THE TRUST IS A SEAM. That content IS attested-by-X
+       is mechanical; whether to believe X stays the operator's judgment.
+
+version: "1.0.0"
+authored_at: "2026-06-10"
