@@ -155,7 +155,7 @@ chain:
         type: array
         items:
           type: object
-          required: [flow, mechanism, where, exists, wired, gap_class, severity, evidence]
+          required: [flow, mechanism, where, exists, wired, physics_or_prose, gap_class, severity, evidence]
           additionalProperties: true
           properties:
             flow: {type: string, enum: [afferent, efferent]}
