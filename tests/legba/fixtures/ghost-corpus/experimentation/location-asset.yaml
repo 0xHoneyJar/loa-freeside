@@ -1,0 +1,218 @@
+# Composition · location-asset
+# ================================================================
+# Refine a generated 3D model (MeshyAI .glb) into a scene-ready
+# location asset, then hand it across the Blender → Three.js
+# boundary. The back-and-forth tool-loop behind compass's
+# per-location world build.
+#
+# Deliberately LIGHT (operator note 2026-05-19: "spend more time
+# building than setting up the tools to build"). Names the team
+# and the hand-offs; the richness comes from running it, not from
+# the spec.
+#
+# Execution substrate: the compass Blender adapter
+# (tools/blender-addon/ — run_python_code op). Stages 2-3 DRIVE
+# Blender through it; the adapter is the tool, not a construct.
+#
+# Construct-domain honesty (CLAUDE.md Construct Domain Boundaries):
+#   - the-mint   → asset + shader/material spec   (its real domain)
+#   - the-arcade → FEEL of the asset in-scene     (crafting-feel)
+#   - rosenzu    → WEB placement: which room/route the asset slots
+#                  into + that room's atmosphere. NOT 3D geometry —
+#                  Rosenzu is web-route-spatial, not scene-spatial.
+#
+# Authored: 2026-05-19
+# ================================================================
+
+schema_version: "1.0"
+kind: workflow
+name: location-asset
+description: >
+  Take a generated 3D model (MeshyAI .glb) for one world location,
+  refine it in Blender to scene-quality, give it a shader/material
+  spec, FEEL-check it in-scene, and place it into its web room —
+  ready to translate into the Three.js surface.
+
+intent: >
+  "Given a location and a generated .glb, produce a scene-ready
+   asset (clean retopo, shaded, feels right) AND the placement spec
+   for the web room it slots into — the unit of work behind building
+   the world one location at a time."
+
+backend: headless-tmux
+
+inputs:
+  - type: Artifact
+    name: source_model
+    description: The generated 3D model — a MeshyAI .glb (one per location)
+    required: true
+  - type: Intent
+    name: location_brief
+    description: >
+      Which world location this is, its role in the scene, target
+      poly budget, mood / lighting, the web room/route it lands in.
+    required: true
+  - type: Artifact
+    name: shader_refs
+    description: >
+      Web shader references the asset should echo (the look gumi is
+      bridging into Three.js — flow maps, card animation surfaces).
+    required: false
+  - type: Operator-Model
+    name: operator_context
+    required: false
+
+# The loop the operator named — refine ↔ feel-check, back and forth.
+iterate:
+  - [3, 4]
+
+max_iterations: 3
+terminate_when: >
+  The craft gate (stage 4) reports the refined asset sits right in the scene —
+  weight, silhouette, distance-read, and shader all carry — with no further
+  Blender retopo/material re-tune requested.
+
+chain:
+  # ----------------------------------------------------------------
+  - stage: 1
+    construct: the-mint
+    skill: environment
+    persona: MINT
+    mode: fresh
+    reads: [Intent, Artifact]
+    writes: [Artifact]
+    role: primary
+    notes: >
+      Declare the location's spatial environment spec — dimensions,
+      depth, light, material families, parallax-shader intent. This
+      is the target the raw .glb gets refined toward, grounded in
+      the location_brief + shader_refs.
+
+  # ----------------------------------------------------------------
+  - stage: 2
+    construct: the-mint
+    skill: texture
+    persona: MINT
+    mode: persistent
+    reads: [Artifact]
+    writes: [Artifact]
+    role: primary
+    notes: >
+      Shader / material spec for the asset — the Blender-side
+      materials that will translate into Three.js. This is the
+      gumi bridge: the web shader look expressed as Blender
+      materials so it survives the glTF hand-off. (WebGPU later
+      removes the translation; for now Three.js is the constraint.)
+
+  # ----------------------------------------------------------------
+  - stage: 3
+    construct: blender-adapter   # tool, not a construct — the execution substrate
+    skill: run_python_code
+    mode: persistent
+    reads: [Artifact]
+    writes: [Artifact]
+    role: primary
+    iterates_with: 4
+    notes: >
+      Drive Blender through tools/blender-addon/ — import the .glb as a
+      LOCKED high-poly REFERENCE (never the deliverable). Retopo clean
+      modular geometry traced over it: a separate object per surface,
+      clean 0–1 UVs, a cel-preview material; bake the gen's detail
+      (normal + AO) onto the clean mesh later. Do NOT decimate the gen
+      or optimize poly count before the look is locked — process-taste.md
+      (2026-05-20): the gen is a reference, optimization is a ship-stage
+      concern, and blind decimation shatters the mesh. This is where the
+      model becomes scene-ready.
+
+  # ----------------------------------------------------------------
+  - stage: 4
+    construct: the-arcade
+    skill: crafting-feel
+    persona: BARTH
+    mode: fresh
+    reads: [Artifact]
+    writes: [Verdict]
+    role: craft-gate
+    iterates_with: 3
+    notes: >
+      craft gate — does the refined asset sit right in the scene?
+      Weight, silhouette, how it reads at distance, whether the
+      shader carries. Loops back to stage 3 to re-tune. Operator
+      leans FEEL here over systems thinking (designing-systems is
+      deferred — this is a feel surface).
+
+  # ----------------------------------------------------------------
+  - stage: 5
+    construct: rosenzu
+    skill: furnishing-rooms
+    persona: ROSENZU
+    mode: fresh
+    reads: [Artifact, Verdict]
+    writes: [Artifact]
+    role: primary
+    notes: >
+      Place the finished asset into its WEB room — which route it
+      lives on, the room's atmosphere (KANSEI target → material
+      tokens). Rosenzu's real domain: web-route topology, NOT 3D
+      geometry. Output is the placement spec the Three.js surface
+      consumes to slot the asset into /play or /honeycomb.
+
+outputs:
+  - type: Artifact
+    destination: .run/compose/<run_id>/asset/
+    description: >
+      Scene-ready asset — the clean retopo'd, UV'd, shaded mesh
+      (exported .glb) plus its material/shader spec, ready for the
+      Three.js hand-off. Poly-optimization, if any, is a ship-stage
+      step here — never on the gen before the look is locked.
+  - type: Artifact
+    destination: .run/compose/<run_id>/placement.md
+    description: Which web room/route the asset slots into + its atmosphere.
+  - type: Verdict
+    destination: .run/compose/<run_id>/feel.jsonl
+    description: Per-iteration FEEL-gate trail (the refine ↔ feel loop).
+
+compose_with:
+  - the-mint
+  - the-arcade
+  - rosenzu
+
+invocation_examples:
+  - operator_utterance: "refine the Verdant Sky Tower and slot it into the scene"
+    resolves_to: full 5-stage pipeline for one location
+  - operator_utterance: "just refine this glb to the poly budget"
+    resolves_to: stages 1-3 — spec + Blender refinement, no placement
+  - operator_utterance: "feel-check the tower in-scene"
+    resolves_to: stage 4 only — craft gate on the current refined asset
+
+when_to_use: >
+  - A MeshyAI model exists for a location and needs to become
+    scene-quality (poly budget, shaders, feel) before it ships
+  - Building the world one location at a time — this is the
+    per-location unit of work
+  - Iterating the Blender → Three.js shader bridge with gumi
+
+known_limitations:
+  - "LIGHT by design — names the team + hand-offs, not a rich spec. Tune it as the loop teaches what's missing."
+  - "Stage 3 (blender-adapter) is a tool, not a construct skill — run_python_code drives Blender directly. The composition references it; it does not load as a construct."
+  - "Rosenzu (stage 5) is web-route-spatial, not 3D-scene-spatial. It places the asset into a web room; it does not reason about mesh geometry. Do not ask it to."
+  - "Three.js is the current shader constraint — stage 2 specs translate web shaders to Blender materials. A WebGPU migration would remove that translation step."
+
+references:
+  - blender_adapter: compass/tools/blender-addon/README.md
+  - dcc_research: compass/grimoires/k-hole/research-output/dig-dcc-primitives-2026-05-18.md
+  - boundary_doctrine: memory project_blender-web-boundary-and-shared-vocabulary
+  - process_taste: construct-the-eye/resources/taste/process-taste.md  # stage-3 retopo doctrine
+  - skill_environment: construct-the-mint/skills/environment/SKILL.md
+  - skill_texture: construct-the-mint/skills/texture/SKILL.md
+  - skill_crafting_feel: construct-the-arcade/skills/crafting-feel/SKILL.md
+  - skill_furnishing_rooms: construct-rosenzu/skills/furnishing-rooms/SKILL.md
+
+version: "0.2.0"
+authored_at: "2026-05-19"
+changelog:
+  - >
+    2026-05-20 v0.2.0 — stage 3 reframed retopo-not-decimate, aligned with
+    process-taste.md (the gen is a reference; never optimize poly before
+    the look is locked). Proven on the Verdant Sky Tower rebuild.
+authored_by: opus-4-7-1m · compass blender-adapter session · operator-directed

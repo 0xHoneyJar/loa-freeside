@@ -1,0 +1,413 @@
+# Composition · game-feel-loop
+# ================================================================
+# The iterative GAME-FEEL refinement loop — distilled from building compass's
+# small opinionated game engine over multiple full sessions (the second a deep
+# Blender material-kit cycle). Promoted from compass draft r3
+# (grimoires/loa/compositions/game-feel-loop.yaml) per operator s29 (2026-05-22).
+#
+# Sibling to feel-iterate-signal-feedback (component iteration). game-feel-loop is
+# wider: it covers the WHOLE feel→engine increment — ground the WHY (drill), guard
+# the approach (predict), build, diagnose live + web-verify, distil + commit,
+# periodic FAGAN cleanup. The two starred rails (drill ★r2, predict ★r3) unblocked
+# nearly every hard turn; predict is the anti-BLIND-ITERATION rail (the material-kit
+# session burned 4 procedural passes + 5 bakes on dead-ends that were PREDICTABLE
+# at the approach stage).
+#
+# Typed-stream note (the feel-iterate fork lesson): the chain below is built so
+# every stage's reads have an upstream producer — construct-compose's linear
+# type-checker has no iteration awareness, so reads must resolve on the forward walk.
+# ================================================================
+
+schema_version: "1.0"
+kind: workflow
+name: game-feel-loop
+description: >
+  Interactive, kaironic game-feel refinement toward a playable state. The operator
+  reacts (usually a screenshot); the agent grounds in the WHY + practitioner
+  technique (drill), guards the approach BEFORE blind-iterating (predict), builds an
+  increment, renders a live diagnostic + web-verifies per increment, distils the
+  learning + commits, and periodically runs FAGAN cleanup. The loop is the work;
+  the operator's eye is the reward signal. Inputs: feel target, current state/canon,
+  optional refs. Outputs: validated increment, distilled learning, cleaner substrate.
+
+intent: >
+  "FEEL-mode iteration toward game-feel that lands in the operator's eye, not the
+   agent's best guess. Ground the WHY, predict what breaks before building, go LIVE
+   for material/shader/lighting, web-verify per increment, distil + commit at
+   milestones. Run the loop hot when iterating; the screenshot is the source of truth."
+
+backend: headless-tmux
+
+# Hivemind Lab labels.
+hivemind_labels:
+  product_area: "Game-feel iteration toward a playable state (visual + engine increments)"
+  workstream: delivery
+  priority: high
+  jtbd:
+    category: personal
+    description: "Make It Feel Right — the increment lands in the operator's eye, grounded in the WHY, not in agent-best-guess"
+  source: team-internal
+
+depends_on:
+  constructs:
+    - the-eye           # conducts the visual/feel build + distils
+    - k-hole            # drill (dig for the WHY + practitioner technique)
+    - fagan             # predict (approach-stage adversarial) + cleanup
+    - the-mint          # asset generation in the build
+    - the-arcade        # scene / gameplay in the build
+    - kansei            # VFX / motion / depth in the build
+    - artisan           # palette / craft cohesion in the build
+    - mibera-codex      # ground world CONTENT before authoring it
+  tools:
+    - feel-env-instrument  # compass press-G capture surface — see stage 1 capture_method
+    - agent-browser     # the agent's per-shot screenshot path (NEVER hand-roll Playwright)
+    - blender-cli       # drive Blender live (the adapter) for material/shader/lighting
+    - gpt-review        # FAGAN via codex CLI (subscription auth) — the cleanup surface
+  upstream_compositions:
+    - compositions/delivery/feel-iterate-signal-feedback.yaml   # the narrower component-iteration sibling
+    - compositions/discovery/audit-feel.yaml                    # may surface the reaction that seeds a loop
+
+inputs:
+  - type: Intent
+    name: feel_target
+    description: >
+      What's being refined toward game-feel — a scene, a material/asset, a camera/juice
+      moment, a render-path. Determines the build constructs + the diagnostic surface.
+    required: true
+  - type: Artifact
+    name: current_state
+    description: >
+      The current state / canon to react against — the live route, a render, the
+      look-bible, the substrate. The operator reacts to THIS; the loop converges it.
+    required: true
+  - type: Artifact
+    name: refs
+    description: Optional named references (Octopath, Rabbit Hall, a key-art concept) to drill.
+    required: false
+  - type: Operator-Model
+    name: operator_context
+    required: false
+
+# Iteration loop — the operator-react (1) ↔ live-diagnose (5) cycle is the work.
+# drill (2) + predict (3) are conditional pre-build steps (drill when a reference is
+# named; predict before any novel/procedural approach). distil (6) + cleanup (7) are
+# milestone/periodic, outside the tight loop.
+iterate:
+  - [1, 5]
+
+# Loop cap + termination predicate (S0-T6 / FR-7.2). The react↔live-diagnose
+# loop is kaironic — the operator's eye is the reward signal. The cap is
+# advisory on culturetech-loose (operator halts dictate progress); the runner
+# still needs a bound so an off-session loop cannot run unbounded.
+max_iterations: 3
+terminate_when: >
+  the operator reacts to the live-diagnosed increment (stage 5) and judges the
+  game-feel target landed — the FeelEnvelope feel-deltas read neutral / no
+  further reaction is raised — OR the iteration cap is reached.
+
+# ================================================================
+# Stages
+# ================================================================
+
+chain:
+  - stage: 1
+    name: react
+    construct: the-eye           # operator-facing; the-eye holds the taste signal (operator is the director)
+    skill: feel
+    persona: THE-EYE
+    mode: persistent
+    reads: [Intent, Artifact]
+    writes: [Signal]
+    role: primary
+    iterates_with: 5
+    thinking_effort: medium
+    capture_method:                 # the react/diagnose signal surface (compass-native; off-compass → screenshot)
+      preferred:
+        tool: feel-env-instrument   # press-G on /play (gated; default scene byte-identical when off)
+        loop: |
+          Mark the area (gizmo = click an object → bakes; annotate = drag a box → pure feedback),
+          position it on the feeling radar, Lock-in → a ratified FeelEnvelope whose feel-deltas tell
+          BUILD which way to tune. Captures the WITNESS (desired feeling), never a command.
+        steering_axes:              # bipolar [-1,1]; henlo.md/wuxing.yaml — only Wood↔Earth + Fire↔Water bipolar-oppose
+          - vitality   # Empty(Earth) ↔ Hopeful(Wood) — aliveness
+          - temper     # Restless(Fire) ↔ Measured(Water) — the ke opposition
+          - warmth     # Cold ↔ Warm — golden-hour north-star
+          - repose     # Agitated ↔ Tranquil — stillness/sway
+          - density    # Sparse ↔ Layered — three-plane depth
+        artifact: FeelEnvelope (hash-stamped) → `pnpm feel-env bake` / agent-read
+        contract: lib/feel/schema/* · PentagonRadar.tsx · feel/store/
+      fallback:
+        tool: agent-browser screenshot + operator prose
+        when: off-compass, or a structural "that's broken" call (faster than the radar)
+    notes: >
+      The taste signal — the operator's eye is the source of truth. Blunt: a screenshot + a
+      specific reaction ("blob", "pothole", "disconnected"). Structured (compass): the feel-env
+      radar → measurable feel-deltas (see capture_method). The-eye holds the reaction; the operator
+      directs. Prefer the radar when the direction is a FEELING; the screenshot is faster for
+      "that's broken".
+
+  - stage: 2
+    name: drill
+    construct: k-hole
+    skill: dig
+    persona: STAMETS
+    mode: fresh
+    reads: [Signal]
+    writes: [Artifact]
+    role: primary
+    thinking_effort: high       # reference-drill + practitioner-technique synthesis is multi-step
+    notes: >
+      ★ r2. DIG FOR THE WHY, not the what. When a reference is named (Rabbit Hall,
+      Octopath, Hearthstone), drill it: what applies · WHY · register-fit
+      (reference-drill protocol). Then /dig for PRACTITIONER technique — HOW masters
+      achieve it (the unlock every hard turn: Rabbit Hall → Cult-of-the-Lamb shadow-cube
+      + Peter-Panning + Octopath tilt-shift; the realistic shadows came from the dig, not
+      guessing). Ground world CONTENT in the purupuru codex (mibera-codex) BEFORE
+      authoring it — tangential refs mislead. CONDITIONAL: run when a reference is named
+      or the WHY is unclear; skip when the move is already grounded.
+
+  - stage: 3
+    name: predict
+    construct: fagan
+    skill: fagan
+    persona: FAGAN
+    mode: fresh
+    reads: [Artifact]
+    writes: [Verdict]
+    role: craft-gate
+    thinking_effort: high       # cheap to run, but the adversarial reasoning is the point
+    notes: >
+      ★ r3 — the anti-BLIND-ITERATION rail (the material-kit session's hardest lesson).
+      BEFORE blind-iterating a technical/procedural approach, a CHEAP feasibility +
+      adversarial check (30 seconds, not 4 build passes): (a) CAN this approach even
+      produce the target? — Voronoi gives squares, NOT crisp hexagons (knowable up front,
+      cost 2 dead-end passes). (b) WHAT breaks it on the WEB? — a bright baked colour
+      EXCEEDS the bloom threshold → blob (predictable, cost 5 bakes). Pull FAGAN /
+      adversarial EARLY (approach-stage), not only at the commit gate. If novel/uncertain
+      → a tiny isolated SPIKE first (one concrete artifact, calibration-spike doctrine),
+      never the full build. CONDITIONAL: run before any novel/procedural/bake approach.
+
+  - stage: 4
+    name: build
+    construct: the-eye          # conducts; the-mint / the-arcade / kansei / artisan compose in
+    skill: feel
+    persona: THE-EYE
+    mode: persistent
+    reads: [Verdict, Artifact]
+    writes: [Artifact]
+    role: primary
+    thinking_effort: high       # the increment — multi-step synthesis, gated by predict
+    notes: >
+      The increment. the-eye conducts; the-mint (assets), the-arcade (scene/gameplay),
+      kansei (VFX/motion/depth), artisan (palette/cohesion) compose in per the work.
+      Substrate/engine work hands off to fagan/codex (the seam — see
+      composes_symmetrically_with). Build only what predict cleared. Read the FeelEnvelope
+      feel-deltas (capture_method) to know WHICH WAY to tune, not just that something's off.
+
+  - stage: 5
+    name: diagnose
+    construct: the-eye
+    skill: capture
+    persona: THE-EYE
+    mode: persistent
+    reads: [Artifact]
+    writes: [Signal]
+    role: primary
+    iterates_with: 1
+    thinking_effort: medium
+    notes: >
+      ★ r2. The micro-diagnostic, then the operator judges. Agent renders deterministically →
+      captures via the /agent-browser skill for its OWN compile-sanity (does it render, did it
+      break). The operator then reacts on the DETAIL — that's the real signal (loops to stage 1);
+      on compass that reaction can flow back as structured feel-deltas (capture_method). NEVER
+      hand-roll Playwright; /agent-browser is the agent's screenshot path. Two hard rails (r3):
+      (a) GO LIVE for material/shader/lighting — drive Blender via blender-cli so the operator
+      reacts to the REAL viewport (blind headless previews mislead; lab-EEVEE ≠ the game surface).
+      (b) WEB-VERIFY per increment — bake → r3f each material/asset IN CONTEXT as you go, NOT at the
+      end (the bloom-blob surfaced only after all 5 baked; per-increment web-verify catches it first).
+
+  - stage: 6
+    name: distil
+    construct: the-eye
+    skill: distil
+    persona: THE-EYE
+    mode: fresh
+    reads: [Artifact, Signal]
+    writes: [Artifact]
+    role: primary
+    thinking_effort: high       # separating substrate / application / taste is synthesis
+    notes: >
+      Write the learning back — brief (grimoires/loa/context), codex, memory — separating
+      substrate / application / taste. COMMIT at milestones (each validated increment is a
+      checkpoint). The micro-tools accrete into the small opinionated game engine
+      (compass → graduate to honeycomb → freeside-installable).
+
+  - stage: 7
+    name: cleanup
+    construct: fagan
+    skill: gpt-review
+    persona: FAGAN
+    mode: fresh
+    reads: [Artifact]
+    writes: [Verdict]
+    role: craft-gate
+    thinking_effort: medium
+    notes: >
+      ★ r2 — periodic (after a burst of fast iteration), not every cycle. Run FAGAN over
+      the new code against the substrate. FAGAN reviews BOTH: critical/major BUGS (blocking)
+      AND non-blocking CLEANUP (duplication, dead code, drift, repeated patterns to extract)
+      — so fast iteration's mess gets paid down and the code is left better than it started.
+      Apply the high-value consolidations; re-verify visuals unchanged.
+
+# ================================================================
+
+outputs:
+  - type: Artifact
+    destination: <repo>/<the validated increment>
+    description: A feel/engine increment the operator reacted to and validated
+    hivemind_labels:
+      artifact_type: product-spec
+      learning_status: strongly-validated
+  - type: Artifact
+    destination: grimoires/loa/context/<distilled-brief>.md
+    description: One distilled learning (substrate / application / taste separated)
+    hivemind_labels:
+      artifact_type: atomic-learning
+      learning_status: directionally-correct
+  - type: Verdict
+    destination: .run/fagan-checkpoint/last-verdict.json
+    description: Periodic FAGAN review (blocking bugs + non-blocking cleanup tier)
+
+compose_with:
+  - the-eye
+  - k-hole
+  - fagan
+  - the-mint
+  - the-arcade
+  - kansei
+  - artisan
+  - mibera-codex
+  - agent-browser       # tool — the per-shot screenshot path
+  - blender-cli         # tool — the live Blender adapter
+  - gpt-review          # tool — FAGAN via codex CLI
+
+composes_symmetrically_with:
+  - the-eye ↔ fagan/codex   # the visual↔substrate seam (anti-corruption layer): a feel
+                            # increment that needs a schema/port/runtime change hands off
+                            # to fagan/codex with the validated visual intent + file:line
+                            # touch-points; a ready substrate primitive hands back to the-eye to be felt/tuned
+  - operator ↔ the-eye      # the director ↔ the taste-holder (the operator's screenshot is the signal)
+  - operator ↔ feel-env-radar  # the director SCULPTS feeling on the codex-grounded axes (the radar is
+                               # the instrument; the FeelEnvelope is the witness it captures — constraint,
+                               # never command, per the feedback-instrument vision)
+
+# ================================================================
+# Surface Class (stub — canonical def in outage-triage.yaml)
+# ================================================================
+surface_class:
+  default: culturetech-loose   # game-feel is a FEEL surface — operator halts dictate progress
+  enum: [culturetech-loose, defi-strict, mixed, unspecified]
+  canonical_definition: compositions/sorry-for-ur-loss/outage-triage.yaml#surface_class
+  affects_in_this_composition:
+    - stages 1↔5 iteration cap — advisory on culturetech-loose (the screenshot/operator dictates progress)
+    - stage 3 predict strictness — feasibility check on culturetech-loose; + explicit safety review on defi-strict
+    - stage 5 diagnose default — live Blender / web-verify on culturetech-loose; deterministic captures on defi-strict
+
+# ================================================================
+# Thinking Effort (stub — canonical spec in feel-iterate-signal-feedback.yaml)
+# ================================================================
+thinking_effort:
+  default: high       # this loop's deep upfront work (drill, predict, build, distil) earns it
+  enum: [low, medium, high, xhigh, max]
+  canonical_definition: compositions/delivery/feel-iterate-signal-feedback.yaml#thinking_effort
+  affects_in_this_composition:
+    - stage 2 drill — high (reference-drill + practitioner-technique synthesis)
+    - stage 3 predict — high (the adversarial reasoning is the point, even though it's cheap to run)
+    - stage 4 build — high (the increment is multi-step synthesis)
+    - stage 6 distil — high (separating substrate/application/taste)
+    - stages 1 react, 5 diagnose, 7 cleanup — medium (signal-holding / capture / rubric review)
+
+# ================================================================
+
+invocation_examples:
+  - operator_utterance: "this looks like a blob — fix the honeycomb glow"
+    resolves_to: full loop from stage 1 react, drill the WHY, predict the approach, build, diagnose live, distil
+  - operator_utterance: "predict what breaks this bake before we run it"
+    resolves_to: stage 3 predict only, against an operator-supplied approach Artifact
+  - operator_utterance: "web-verify the recon on /play"
+    resolves_to: stage 5 diagnose only (capture + the two live/web-verify rails)
+  - operator_utterance: "run a FAGAN cleanup over today's iteration"
+    resolves_to: stage 7 cleanup only over the recent diff
+
+# ================================================================
+
+when_to_use: >
+  - Iterating game-FEEL toward a playable state — a scene, material, camera/juice moment,
+    render-path — where the operator's eye is the signal.
+  - Any visual/engine increment that risks BLIND ITERATION (procedural approaches, bakes,
+    shader/material work) — the predict rail earns its keep here.
+  - Blender→web translation work (live-Blender + web-verify-per-increment rails).
+  - NOT for component iteration against a fixed canon (use feel-iterate-signal-feedback —
+    narrower, PixelMark-driven).
+  - NOT for canon authoring (use ground-and-craft), codex/lore work, or pure code delivery
+    (use code-implement-and-review).
+
+# ================================================================
+
+known_limitations:
+  - "Kaironic / operator-time-bound — the loop's reward signal is the operator's screenshot-judgment (stages 1/5). Off-session, iteration drops to compile-sanity captures only. Plan invocations around operator availability."
+  - "drill (2) + predict (3) are CONDITIONAL — the linear runner will walk them every pass; in practice skip drill when the WHY is grounded and predict when the approach is proven. The conditionality lives in operator/agent judgment, not the chain."
+  - "The visual↔substrate seam (composes_symmetrically_with) is where engine work leaves the FEEL loop. When an increment needs a schema/port/runtime change, hand off to fagan/codex (the seam) rather than authoring substrate inside a FEEL stage."
+  - "Quality is bounded by the diagnostic's fidelity — lab-EEVEE ≠ the game surface; if the live/web-verify rails are skipped, the operator reacts to a misleading preview ('reads cheap' confusion). The rails are load-bearing, not optional."
+  - "predict is a 30-second check, not a guarantee. It catches the PREDICTABLE dead-ends (Voronoi≠hex, baked-color>bloom-threshold); genuinely novel approaches still need a spike."
+
+# ================================================================
+
+references:
+  - skill_dig: construct-k-hole/skills/dig/SKILL.md
+  - skill_fagan: construct-fagan/skills/fagan/SKILL.md
+  - skill_capture_agent_browser: ~/.claude/skills/agent-browser/SKILL.md
+  - tool_blender_adapter: tools/blender-addon/scripts/blender-cli.mjs   # (compass) the live Blender adapter
+  - companion_component_iterate: compositions/delivery/feel-iterate-signal-feedback.yaml
+  - companion_canon_producer: compositions/delivery/ground-and-craft.yaml
+  - operator_feel_mode: .claude/constructs/packs/the-eye/identity   # the-eye conducts the loop
+  - source_draft: compass grimoires/loa/compositions/game-feel-loop.yaml (r3)
+
+# ================================================================
+
+operator_note: |
+  Promoted from compass draft r3 (operator s29, 2026-05-22). Authored across two full
+  compass sessions building a small opinionated game engine — the second a deep Blender
+  material-kit + translation-contract cycle.
+
+  Three principles worth carrying forward:
+
+  1. THE LOOP IS THE WORK, THE OPERATOR'S EYE IS THE SIGNAL. Stages 1↔5 (react ↔ live
+     diagnose) are where taste materializes. The operator's screenshot is the source of
+     truth, not the agent's capture. Run the loop hot when iterating; walk away for fresh
+     eyes; come back and the obvious thing is suddenly visible (creative metabolism).
+
+  2. PREDICT BEFORE YOU BLIND-ITERATE (r3). The material-kit session burned 4 procedural
+     passes (Voronoi→3-cosine→distance→hex-SDF) + 5 bakes (fighting a bloom-blob) on
+     dead-ends that were PREDICTABLE at the approach stage. A 30-second feasibility +
+     adversarial check (FAGAN early, not only at commit) beats a burst of build→react→fail.
+     This is the highest-leverage rail; it's why predict is its own stage.
+
+  3. GO LIVE + WEB-VERIFY PER INCREMENT (r2/r3). Blind headless previews mislead (lab-EEVEE
+     ≠ the game surface — no cel-ink/bloom/tilt-shift → "reads cheap" confusion). Drive
+     Blender live for material/light; bake → web-verify EACH increment in context, not at
+     the end (the bloom-blob only surfaced after all 5 materials baked).
+
+  game-feel-loop sits in compositions/delivery/ alongside feel-iterate-signal-feedback
+  (its narrower component-iteration sibling) and ground-and-craft (canon producer). The
+  micro-tools it accretes (capture rig, CelEdge, elevation pipeline, recipe-IR translation)
+  graduate compass → honeycomb → freeside-installable.
+
+# ================================================================
+
+version: "1.1.0"
+authored_at: "2026-05-22"
+authored_by: compass s29 (promoted from draft r3 via operator request)
+changelog:
+  - "1.1.0 (2026-05-24): Teach the loop what it became — compass S37 produced a NATIVE structured signal organ (press-G feel-env instrument: in-engine gizmo + screen-region annotate + the codex-grounded PentagonRadar feeling-axes → a ratified FeelEnvelope), built THROUGH this very loop and now serving as its react/diagnose surface. Carried as a STAGE-LEVEL `capture_method` on stage 1 (schema-valid per #/$defs/Stage; mirrors the sibling feel-iterate-signal-feedback) — NOT a top-level `signal_surface` key (which fails strict validation: the composition schema is additionalProperties:false). capture_method holds the bipolar steering vocabulary (vitality·temper·warmth·repose·density), the FeelEnvelope artifact + contract paths, and the witness-not-command principle. Also: stage 1 notes name the two reaction registers (blunt screenshot · structured radar); stage 4 build reads the feel-deltas; stage 5 diagnose notes the structured loop-back; feel-env-instrument added to tools; operator ↔ feel-env-radar symmetry. No stage/chain/iterate change — the typed walk is untouched. Blunt screenshot stays valid (faster for structural calls); the radar is preferred when the direction is a FEELING. (Supersedes the initial 1.1.0 draft that used a top-level signal_surface block — schema drift, replaced before merge.)"
+  - "1.0.0 (2026-05-22): First registry spec, promoted from compass draft r3. Translates the 7-step game-feel loop (react · drill · predict · build · diagnose · distil · cleanup) into schema 1.0 typed-stream chain (reads resolve on the forward walk, per the feel-iterate fork lesson). iterate [[1,5]] = the react↔live-diagnose feedback cycle. drill (★r2) + predict (★r3) are the load-bearing rails; predict is the anti-blind-iteration check that earns the most. thinking_effort + surface_class carry stubs pointing to the canonical specs (feel-iterate-signal-feedback, outage-triage)."

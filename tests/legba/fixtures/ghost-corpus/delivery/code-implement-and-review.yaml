@@ -1,0 +1,295 @@
+# Composition · code-implement-and-review
+# ================================================================
+# Implementer ↔ reviewer loop. general-purpose ships a diff, fagan
+# (FAGAN) audits it, returns line-anchored findings with executable
+# fixes, implementer applies fixes, reviewer re-reads, converges.
+# Operator gets reviewed code, not raw output.
+#
+# Authored 2026-04-26 from the henlo-monorepo perf pass aftermath.
+# FAGAN is a lean construct on a clean responsibility seam below
+# Flatline (which owns PRD/SDD/Sprint review).
+# DEPRECATED(codex-rescue→general-purpose; codex-review→fagan, bd-ii1m) —
+# history lives in changelog, nowhere else.
+# See also: grimoires/loa/specs/arch-codex-review.md (pre-rename filename)
+# ================================================================
+
+schema_version: "1.0"
+kind: workflow
+name: code-implement-and-review
+description: >
+  Implement code changes, then run adversarial code review against the
+  diff. Iterate until reviewer approves or max 3 iterations reached.
+
+intent: >
+  "Operator delegates a coding task. Implementer ships a diff. Reviewer
+   runs FAGAN over it, returns line-anchored findings with executable
+   fixes. Implementer applies fixes. Reviewer re-reads, converges.
+   Operator gets reviewed code, not raw output."
+
+backend: headless-tmux
+
+hivemind_labels:
+  product_area: "Engineering — composable code review for delivery compositions"
+  workstream: delivery
+  priority: high
+  jtbd:
+    category: personal
+    description: "Reassure Me This Is Safe — implementer output gets a strict gate before reaching prod"
+  source: team-internal
+
+depends_on:
+  constructs:
+    - fagan        # FAGAN — the lean reviewer (this composition's reason for existing).
+                   # renamed from: codex-review (bd-ii1m); see changelog.
+  tools:
+    - codex               # `codex` CLI (subscription auth) — the review voices' chain-walk
+                          # backend (codex-headless) + documented ALTERNATIVE implementer.
+                          # NOT what Form C runs today (see known_limitations).
+  scripts:
+    - construct-fagan/scripts/cheval-council.sh   # the cheval-routed review runner (stage 2, high-stakes)
+  upstream_compositions:
+    - compositions/discovery/audit-feel.yaml   # MAY produce findings that motivate a code-implement-and-review pass
+  registry_entries:
+    - fagan: https://github.com/0xHoneyJar/loa-constructs/blob/main/registry.yaml
+
+inputs:
+  - type: Intent
+    name: task
+    description: What the operator wants implemented
+    required: true
+  - type: Artifact
+    name: scope
+    description: Files / modules to limit changes to (avoid scope creep)
+    required: false
+  - type: Operator-Model
+    name: operator_context
+    required: false
+
+# Implement ↔ review loop. Stage 1 emits Diff; stage 2 reads Diff and
+# emits Verdict; if Verdict is CHANGES_REQUIRED and iteration < cap,
+# loop back to stage 1 with the Verdict as input.
+iterate:
+  - [1, 2]
+
+# Loop cap + termination predicate (S0-T6 / FR-7.2). The implement↔review
+# loop converges when FAGAN's Verdict clears; auto-approval past the cap is a
+# SIGNAL the orchestrator must surface, not a clean pass.
+max_iterations: 3
+terminate_when: >
+  reviewer (fagan/FAGAN) emits Verdict APPROVED with no open
+  BLOCKER/CRITICAL findings, OR the iteration cap is reached (Verdict carries
+  auto_approved: true — surface to operator, do not treat as clean approval).
+
+# ================================================================
+# Stages
+# ================================================================
+
+chain:
+  - stage: 1
+    name: implement
+    construct: general-purpose     # replaced codex-rescue (retired Anthropic codex MCP, bd-ii1m): plain Claude implementer
+                                   # via the emitter's built-in passthrough. Engine reality +
+                                   # codex-CLI alternative: see known_limitations + rooms-substrate#30.
+    skill: implement
+    mode: persistent
+    reads: [Intent, Artifact, Verdict]   # Verdict from previous review iteration
+    writes: [Artifact, Signal]           # Diff + trajectory
+    role: primary
+    iterates_with: 2
+    thinking_effort: high   # production code authoring is multi-step synthesis
+    notes: >
+      First iteration: implement against the operator's task within scope.
+      Subsequent iterations: read the previous review Verdict, apply
+      every finding's fixed_code, re-emit Diff. Don't introduce new
+      changes outside of fix scope unless the fix requires them.
+
+      On iteration 2+, the implementer MAY reject a finding with an
+      explanation. The convergence prompt in stage 2 instructs FAGAN
+      to accept reasonable explanations — operator context is fuller
+      than the reviewer's diff-scoped view.
+
+  - stage: 2
+    name: review
+    construct: fagan             # renamed from: codex-review (bd-ii1m)
+    skill: reviewing-diffs
+    persona: FAGAN
+    mode: fresh                          # fresh context per iteration — no memory of previous reviews
+    reads: [Artifact]                    # the diff
+    writes: [Verdict, Signal]
+    role: craft-gate
+    iterates_with: 1
+    thinking_effort: high   # bug-finding + fix-authoring is multi-step synthesis
+    notes: >
+      Stage 1 emits Diff; this stage runs construct-fagan's
+      fagan-review.sh against it (council mode default →
+      cheval-council.sh; single-pass fallback → codex-review-api.sh).
+      Returns structured JSON Verdict (APPROVED |
+      CHANGES_REQUIRED + findings[]). On APPROVED, composition completes.
+      On CHANGES_REQUIRED, loop back to stage 1 with findings as context.
+
+      Iteration cap: 3 total reviews (CODEX_REVIEW_MAX_ITERATIONS).
+      Past the cap, the reviewer's API auto-approves at the wrapper
+      level — Verdict carries `auto_approved: true` and
+      `note: "iteration-cap-reached"`. Surface this back to the
+      operator on completion; do not silently treat as a clean approval.
+
+# ================================================================
+
+outputs:
+  - type: Artifact
+    destination: <repo>/<changed-files>
+    description: The implemented + reviewed code changes
+    hivemind_labels:
+      artifact_type: product-spec
+      learning_status: strongly-validated
+  - type: Verdict
+    destination: .run/compose/<run_id>/fagan-trail.jsonl
+    description: Per-iteration review verdicts + findings
+    schema: https://raw.githubusercontent.com/0xHoneyJar/construct-fagan/main/schemas/codex-review-finding.schema.json
+  - type: Signal
+    destination: .run/compose/<run_id>/orchestrator.jsonl
+    description: Orchestrator trajectory (stage transitions, iteration counts)
+
+compose_with:
+  - general-purpose
+  - fagan
+
+composes_symmetrically_with:
+  - general-purpose ↔ fagan   # implement ↔ review — the load-bearing pair
+
+# ================================================================
+# Surface Class (canonical def in outage-triage.yaml; stub here)
+# ================================================================
+
+surface_class:
+  default: unspecified
+  enum: [culturetech-loose, defi-strict, financial, data-validity, auth-contract, mixed, unspecified]
+  canonical_definition: compositions/sorry-for-ur-loss/outage-triage.yaml#surface_class
+  affects_in_this_composition:
+    - iteration cap — advisory on culturetech-loose (operator halts dictate progress); enforced (default 3) on defi-strict
+    - severity threshold — major-only review on culturetech-loose; both major and critical surfaced on defi-strict
+    - auto-approval handling — surfaced as warning to operator on culturetech-loose; surfaced as halt-for-confirmation on defi-strict
+    - review routing — MANDATORY cheval-routed multimodal council on financial/data-validity/auth-contract/defi-strict (see review_routing); single-model review forbidden there
+  inferred_when_unspecified: defi-strict (safety default)
+
+# ================================================================
+# Review Routing — intelligence-router coherence (2026-06-03)
+# ================================================================
+# Stage 2 (review) routes through the cheval-routed MULTIMODAL COUNCIL on
+# high-stakes surfaces — NOT a single-Claude agent and NOT a CLI-direct panel.
+# Rationale (proven this cycle): single-model review shares one corpus's blind
+# spots; cheval adds MODELINV audit + chain-walk fallback + verdict-quality.
+# Full RFC: <repo>/grimoires/loa/context/2026-06-03-intelligence-router-coherence.md
+# KNOWN GAP (rooms-substrate#30): the Form C emitter does not yet read this
+# block — high-stakes runs currently get a single-model gate. Tracked there;
+# this declaration is the contract the emitter must honor or refuse.
+review_routing:
+  mandatory_when: [defi-strict, financial, data-validity, auth-contract]
+  router: cheval
+  runner: construct-fagan/scripts/cheval-council.sh   # cheval-routed sibling of fagan-panel.sh
+  voices:                                             # bound to cheval HEADLESS adapters (sub auth)
+    - gpt-reviewer        # → openai:codex-headless (chain-walks from HTTP if quota-dead)
+    - reviewing-code      # → a claude reviewer
+    - deep-thinker        # → google:gemini-headless (distinct corpus)
+  min_surviving_voices: 2          # fail-closed below this (honest headcount; a lone critical holds)
+  audit: modelinv-required         # reject "unknown" model_ran on high-stakes
+  optional_when: [culturetech-loose, mixed, unspecified]   # single-model FAGAN (mode fast) OK here
+
+# ================================================================
+# Thinking Effort (canonical def in feel-iterate.yaml; stub here)
+# ================================================================
+
+thinking_effort:
+  default: high
+  canonical_definition: compositions/delivery/feel-iterate.yaml#thinking_effort
+  rationale: |
+    Both stages are multi-step synthesis — stage 1 authors production
+    code, stage 2 finds bugs AND writes the fixes. Lean default.
+  affects_in_this_composition:
+    - stage 1 implement — high (production code authoring); steers down to medium when applying explicit findings on iteration 2+
+    - stage 2 review — high (bug-finding + fix-authoring); steers down to medium on iteration 2+ where the convergence prompt narrows scope to verification
+
+# ================================================================
+
+invocation_examples:
+  - operator_utterance: "implement the perf pass and review it"
+    resolves_to: full chain stages 1-2 with iteration loop
+  - operator_utterance: "review this diff"
+    resolves_to: stage 2 only with operator-supplied Diff Artifact
+  - operator_utterance: "skip review, just implement"
+    resolves_to: stage 1 only (operator opts out of gate — surface as warning)
+  - operator_utterance: "FAGAN this PR before I merge"
+    resolves_to: stage 2 only with diff resolved from current PR via gh pr diff
+
+# ================================================================
+
+when_to_use: >
+  - Implementer just shipped code (perf pass, refactor, feature)
+  - Pre-merge gate on a PR diff
+  - Any composition where "implement then verify" is the shape
+  - NOT for PRD/SDD/Sprint review (use Flatline Protocol)
+  - NOT for UI feel iteration (use feel-iterate)
+  - NOT for architecture audits (use audit-feel or other audit-pair compositions)
+
+# ================================================================
+
+known_limitations:
+  - "Iteration cap of 3 is advisory on culturetech-loose surfaces (operator halts dictate progress); enforced on defi-strict per surface_class. The reviewer's API auto-approves past the cap — Verdict carries `auto_approved: true` and the orchestrator MUST surface this rather than treating as clean approval."
+  - "Reviewer has no memory of previous reviews (mode: fresh per iteration). Convergence relies on the re-review prompt's discipline. If the reviewer keeps finding NEW issues post-iteration-1, that's a prompt drift bug — file against construct-fagan."
+  - "Stage 1's declared alternative engine (`codex` CLI) is NOT what Form C runs today — the runtime dispatches a plain Claude general-purpose agent (compositions#20). Treat `tools.codex` as the review-voice chain-walk backend plus a documented alternative; restoring a codex-CLI implementer stage requires emitter support. The composition is structured so the implementer is replaceable; the reviewer is not."
+  - "Out of scope for this composition: lint, type-check, test execution. The implementer is expected to run those itself before emitting Diff. The reviewer reads Diff content; it does not orchestrate the test runner."
+  - "Diff size is bounded by CODEX_REVIEW_MAX_TOKENS (default 30000). For very large diffs, the reviewer's `prepare_content` truncates with priority sort (P0 security/.claude/ first, P3 docs/tests last). Operator should be aware that large diffs may not be reviewed in full."
+
+# ================================================================
+
+references:
+  - skill_implement: built-in `general-purpose` agent passthrough (bd-ii1m) — no SKILL.md; the legacy construct-codex-rescue repo is retired
+  - skill_reviewing_diffs: construct-fagan/skills/reviewing-diffs/SKILL.md
+  - skill_reviewing_files: construct-fagan/skills/reviewing-files/SKILL.md
+  - schema_review_finding: https://raw.githubusercontent.com/0xHoneyJar/construct-fagan/main/schemas/codex-review-finding.schema.json   # schema file keeps its pre-rename name
+  - construct_fagan_repo: https://github.com/0xHoneyJar/construct-fagan   # renamed from: construct-codex-review [DEPRECATED→fagan]
+  - arch_spec: loa-constructs/grimoires/loa/specs/arch-codex-review.md   # pre-rename filename — spec not renamed
+  - companion_implementer_alternative: codex CLI direct (no MCP plugin) — V2 work, see arch spec build sequence
+
+# ================================================================
+
+operator_note: |
+  Authored 2026-04-26. Why this composition exists: the prior day's
+  henlo-monorepo perf pass via codex-rescue [DEPRECATED→general-purpose] had no adversarial review
+  gate. The diff went straight from implementer to operator. This is
+  the gap-shaped composition that fills it.
+
+  Three principles worth carrying forward:
+
+  1. THE LOOP IS THE WORK. Stages 1↔2 are where bugs get caught and
+     fixed. Don't pad with type-check / lint / test-run stages — those
+     are the implementer's job before emitting Diff. The reviewer's job
+     is bugs the implementer missed AND security holes the implementer
+     wouldn't think to look for. Auto-approval past iteration cap is a
+     SIGNAL not a SUCCESS — surface it.
+
+  2. CLEAR BOUNDARY FROM FLATLINE. Flatline reviews planning artifacts
+     (PRD/SDD/Sprint) with multi-persona scored arbitration. This
+     composition reviews CODE with single-persona structured findings.
+     Different surface, different cadence, different output shape. Do
+     not muddle.
+
+  3. SCHEMA IS THE BRIDGE. The reviewer emits JSON conforming to a
+     published schema (see references). The implementer reads that JSON
+     to apply fixes. The operator can read the trail file and verify
+     what was caught. The schema is the contract — when in doubt,
+     look at the schema, not the prose.
+
+  This composition lives in compositions/delivery/ alongside
+  ground-and-craft, feel-iterate, and direct-render. The
+  implement-and-review pair is the codework analogue of feel-iterate's
+  feelwork pair (artisan ↔ the-mint).
+
+# ================================================================
+
+version: "1.1.0"
+authored_at: "2026-04-26"
+authored_by: kickoff session 2 — codex-review build (construct since renamed fagan)
+changelog:
+  - "1.1.0 (2026-06-10): Finish the codex-rescue→general-purpose / codex-review→fagan rename honestly (compositions#20). Phantom persona CODEX-RESCUE dropped from stage 1 (zero identity files estate-wide; emitted prompts carried the name with no content). Live slugs/references updated (depends_on, registry, schema URL host, stage-2 runner = fagan-review.sh); TRUE lineage preserved in comments, operator_note, and this changelog (historical names are records, not live references). Declared engine aligned with Form C runtime: stage 1 = Claude general-purpose passthrough; codex CLI = documented alternative pending emitter support. Emitter review_routing gap cross-referenced to rooms-substrate#30."
+  - "1.0.0 (2026-04-26): Initial canonical spec. Pairs codex-rescue (Anthropic codex MCP implementer) with codex-review (FAGAN reviewer) in an iterate [[1,2]] loop. Inherits convergence discipline from the reviewer's re-review prompt; iteration cap default 3, surfaced auto-approval past cap. Surface_class + thinking_effort use stub-pointing pattern (canonical defs live in outage-triage.yaml and feel-iterate.yaml respectively)."

@@ -1,0 +1,246 @@
+schema_version: "1.0"
+kind: workflow
+name: pin-and-deploy
+description: >
+  The dual-pin + deploy composition. For each token in a collection, dual-pin
+  metadata + image to Freeside (primary) and IPFS (fallback), verify both
+  resolve, hand the URI manifest to protocol for setTokenURI batch, verify
+  the mutations landed on-chain, and broadcast via herald + social-oracle.
+
+  The-orchard's reference composition. Demonstrates the dual-pin policy in
+  motion — what tending-storage does for an existing collection, pin-and-deploy
+  does for a fresh one (or a recovery one).
+
+intent: >
+  "Make the collection live, redundantly. Substrate first. Pin twice. Verify
+   resolution. Hand to protocol. Verify on-chain. Then announce."
+   — operator framing for the-orchard's authoring 2026-04-27
+
+depends_on:
+  constructs:
+    - the-orchard    # LUTHER BURBANK tends + pins + verifies
+    - protocol       # commits setTokenURI on-chain
+    - the-mint       # generates assets if a graft-flavored deploy needs new images
+    - herald         # composes the announcement
+    - social-oracle  # broadcasts (Discord, Twitter)
+    - observer       # KEEPER consumes deploy-cycle as listening signal
+  upstream_compositions:
+    - compositions/discovery/listen-and-weave.yaml   # operator landed here from a flow
+  downstream_compositions:
+    - compositions/delivery/feel-iterate.yaml        # ALEXANDER tunes post-deploy surfaces
+
+chain:
+  - stage: 1
+    name: tend-substrate
+    construct: the-orchard
+    skill: tending-storage
+    persona: LUTHER_BURBANK
+    mode: persistent
+    reads: [Intent, Operator-Model]
+    writes: [Artifact, Signal]
+    role: primary
+    notes: >
+      Pre-flight substrate check. For a fresh deploy the manifest is empty —
+      tending-storage scaffolds it from the protocol.deploy.completed event
+      payload (contract address, token range, asset directory). For a recovery
+      deploy, tending-storage walks the existing pin manifest.
+
+  - stage: 2
+    name: pin-primary
+    construct: the-orchard
+    skill: pinning-to-freeside
+    persona: LUTHER_BURBANK
+    mode: persistent
+    reads: [Artifact]   # tokens to pin (from stage 1's manifest)
+    writes: [Artifact]  # freeside_url per token
+    role: primary
+    notes: >
+      Primary pin. Image first (so metadata can reference it), then metadata.
+      Hash verification on every upload — trust hashes, not status codes.
+
+  - stage: 3
+    name: pin-fallback
+    construct: the-orchard
+    skill: pinning-to-ipfs
+    persona: LUTHER_BURBANK
+    mode: persistent
+    reads: [Artifact]   # same tokens; metadata may already reference freeside URL
+    writes: [Artifact]  # ipfs_cid per token
+    role: primary
+    notes: >
+      Fallback pin via the configured IPFS pinner (Pinata, nft.storage,
+      web3.storage, lighthouse, self-hosted). Multi-gateway verification
+      ensures the CID is reachable on at least 2 gateways before recording.
+
+  - stage: 4
+    name: verify-pins
+    construct: the-orchard
+    skill: verifying-pin
+    persona: LUTHER_BURBANK
+    mode: fresh
+    reads: [Artifact]
+    writes: [Verdict, Artifact]
+    role: gate
+    notes: >
+      Probe both pins per token. Hash-compare. Emit Verdict per token (info /
+      medium / high). The dual-pin policy enforcement: if either pin missing,
+      severity medium; if both missing, severity high (pipeline halts).
+
+  - stage: 5
+    name: hand-to-protocol
+    construct: protocol
+    skill: ceremony           # protocol's deploy-ceremony skill (composes setTokenURI batch)
+    persona: (protocol-internal)
+    mode: persistent
+    reads: [Artifact]   # the freeside_url per token from stage 2 (or ipfs_cid for IPFS-canonical collections)
+    writes: [Artifact, Verdict]
+    role: gate
+    notes: >
+      Protocol consumes the URI manifest and emits the setTokenURI batch call.
+      Operator confirms before broadcast. Protocol owns the contract layer; the-orchard
+      hands the manifest, never writes contracts.
+
+  - stage: 6
+    name: verify-mutation
+    construct: the-orchard
+    skill: verifying-mutation
+    persona: LUTHER_BURBANK
+    mode: fresh
+    reads: [Artifact]   # mutation log entries from grafting-traits or initial-deploy
+    writes: [Verdict]
+    role: gate
+    notes: >
+      Read on-chain tokenURI for each token. Compare to manifest. Resolve URI;
+      hash content; compare to recorded hash. Emit Verdict per token. If
+      mismatch — surface to operator + protocol; do not auto-rollback.
+
+  - stage: 7
+    name: compose-announcement
+    construct: herald
+    skill: announcing            # herald's composition skill
+    persona: (herald-internal)
+    mode: fresh
+    reads: [Artifact, Verdict]
+    writes: [Artifact]
+    role: cross-reference
+    notes: >
+      Announcement copy composed from the cycle's success signals + verified
+      mutation count. The-orchard hands the cultivation moment; herald shapes
+      the announcement.
+
+  - stage: 8
+    name: broadcast
+    construct: social-oracle
+    skill: broadcasting          # social-oracle's distribution skill
+    persona: (social-oracle-internal)
+    mode: fresh
+    reads: [Artifact]
+    writes: [Signal]
+    role: cross-reference
+    notes: >
+      Discord + Twitter posts. Emits a Signal of "drop landed" that the-orchard
+      logs in the cycle's drop spec.
+
+  - stage: 9
+    name: log-to-cycle
+    construct: the-orchard
+    skill: cultivating-cycle
+    persona: LUTHER_BURBANK
+    mode: persistent
+    reads: [Signal, Verdict]
+    writes: [Artifact]
+    role: primary
+    notes: >
+      Append the deploy event to grimoires/{product}/cultivations/{collection}/
+      cycle-{n}.log.yaml. Cycle composts the event into next-cycle's input.
+
+  - stage: 10
+    name: emit-listening-signal
+    construct: observer
+    skill: observing-users
+    persona: KEEPER
+    mode: persistent
+    reads: [Signal, Artifact]
+    writes: [Signal]
+    role: cross-reference
+    notes: >
+      KEEPER consumes the deploy-event as listening signal. Sentiment in the
+      hours after a drop is high-signal data; KEEPER captures it in the
+      product's feedback canvas for next cycle's plan.
+
+outputs:
+  - type: Artifact
+    destination: grimoires/{product}/pins/{collection}.yaml
+    description: Dual-pin manifest with freeside_url + ipfs_cid per token
+
+  - type: Artifact
+    destination: grimoires/{product}/cultivations/{collection}/cycle-{n}.log.yaml
+    description: Deploy event logged into the active cycle
+
+  - type: Verdict
+    destination: .run/the-orchard/verify-pin-{collection}-{passId}.jsonl
+    description: Per-token pin resolution verdicts (audit trail)
+
+  - type: Verdict
+    destination: .run/the-orchard/verify-mutation-{collection}-{passId}.jsonl
+    description: Per-token on-chain match verdicts (audit trail)
+
+  - type: Signal
+    destination: .run/the-orchard/dual-pin-events.jsonl
+    description: pin.dual_landed / pin.single_landed / pin.failed events
+
+compose_with:
+  - the-orchard
+  - protocol
+  - the-mint
+  - herald
+  - social-oracle
+  - observer
+
+composes_symmetrically_with:
+  - the-orchard ↔ protocol      # manifest → setTokenURI; setTokenURI receipt → mutation log
+  - the-orchard ↔ observer       # cycle retros → listening; listening → next cycle plan
+  - herald ↔ social-oracle       # composition → broadcast → engagement signal back
+  - the-orchard → the-mint       # one-direction (graft asset regeneration if needed)
+  - the-orchard → herald         # one-direction (cultivation moment → announcement)
+
+invocation_examples:
+  - operator_utterance: "Pin and deploy mibera season-2"
+    resolves_to: |
+      run pin-and-deploy with product=mibera, collection=season-2,
+      starting at stage 1 (tend-substrate) — assumes the protocol.deploy.completed
+      event has fired or operator has manually scaffolded the manifest
+
+  - operator_utterance: "Re-pin and verify the mibera collection after migration"
+    resolves_to: |
+      run pin-and-deploy starting at stage 4 (verify-pins) — the migrate-from-defunct-pinner
+      script has already run and produced new freeside_url + ipfs_cid; this composition
+      verifies and hands to protocol
+
+  - operator_utterance: "Run the dual-pin policy on this fresh deploy"
+    resolves_to: |
+      run pin-and-deploy from stage 1 with the contract address + token range
+      passed as Intent
+
+when_to_use: |
+  - A new collection has just deployed (consumes protocol.deploy.completed)
+  - A migration produced new URIs and they need verification + hand-off to protocol
+  - A graft drop is committing a batch of mutations and needs verified-then-broadcast
+  - The dual-pin policy is being applied to a legacy collection for the first time
+
+known_limitations: |
+  - Stage 5 (hand-to-protocol) is operator-confirmed, not auto-committed. Contract
+    calls have real cost + irreversibility; the composition pauses for operator
+    approval before broadcasting setTokenURI batch.
+  - Stage 7 (compose-announcement) and stage 8 (broadcast) are optional. A quiet
+    deploy can skip them; the operator opts in.
+  - This composition assumes the protocol.ceremony skill exists. If protocol
+    hasn't shipped that skill yet, stage 5 falls back to manual operator-driven
+    setTokenURI calls — surface as a Verdict with severity medium.
+  - The-mint composition (stage hidden in dependency, only invoked for grafts
+    that require image regeneration) is implicit. A pure metadata-only deploy
+    skips the-mint entirely.
+
+version: "0.1.0"
+authored_at: "2026-04-27"
+authored_by: CURATOR (via /create-construct apprenticeship for the-orchard)

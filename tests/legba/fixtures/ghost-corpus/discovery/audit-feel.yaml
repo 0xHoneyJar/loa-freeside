@@ -1,0 +1,137 @@
+# Composition · feel-audit
+# ================================================================
+# First workflow-kind composition authored per doctrine v4 §15.2.
+# Surfaces material-quality issues during FEEL sessions using
+# observer's audit depth on top of artisan's feel lens.
+#
+# Shipped: cycle-004 L5 · 2026-04-21
+# Supersedes: cycle-001 .claude/constructs/compositions/feel-audit.yaml
+#             (folklore-only, gitignored, prose-shape). This v2 is
+#             checkable + doctrine-conformant + runner-ready.
+# ================================================================
+
+schema_version: "1.0"
+kind: workflow                        # doctrine v4 §15.2 (vs. frame-kind)
+name: audit-feel
+description: >
+  Surface material-quality issues during FEEL sessions using
+  observer critique for audit depth.
+
+intent: >
+  "Audit a UI component, interaction pattern, or artifact for craft-feel
+  compliance — produce an evidence-grounded Verdict that combines
+  artisan's material decomposition with observer's cross-surface friction map."
+
+# Hivemind Lab labels (Dec 2025 canon). Audit work is discovery —
+# understanding what's broken before any solution is proposed.
+hivemind_labels:
+  product_area: "Design System"
+  workstream: discovery
+  jtbd:
+    category: personal
+    description: "Help Me Feel Smart — operator wants their craft validated against the canon"
+  source: team-internal
+
+inputs:
+  - type: Artifact
+    name: target
+    description: Path to component/file/interaction surface to audit
+    required: true
+  - type: Operator-Model
+    name: operator_context
+    description: Current operator's expertise + mode + attention register
+    required: false
+    source: hivemind (personal + org) via /hivemind skill
+
+chain:
+  - stage: 1
+    construct: artisan
+    skill: decomposing-feel
+    reads: [Artifact, Operator-Model]
+    writes: [Signal]
+    role: primary
+    notes: >
+      ALEXANDER decomposes the target into material / motion / rhythm /
+      spacing components. Emits observation-stream (Signal) of component
+      factors for downstream analysis.
+
+  - stage: 2
+    construct: artisan
+    skill: scoring-experience
+    reads: [Signal]
+    writes: [Verdict]
+    role: primary
+    notes: >
+      ALEXANDER scores each factor against craft-standard. Emits a
+      tentative Verdict — feel-audit findings, severity-tagged, pre-cross-reference.
+
+  - stage: 3
+    construct: observer
+    skill: analyzing-gaps
+    reads: [Verdict, Signal]
+    writes: [Verdict]
+    role: cross-reference
+    notes: >
+      KEEPER compares the scored findings against observer's active
+      friction-map. Merges with patterns seen elsewhere. Emits enriched
+      Verdict with cross-surface context.
+    # Note: KEEPER persona has dual-slug collision between observer and
+    # beehive packs (cycle-001 PT-1). Resolve to observer for this cycle;
+    # beehive re-consolidation is cycle-005+ candidate.
+
+outputs:
+  - type: Verdict
+    destination: .run/feedback-v3.jsonl
+    schema: .claude/schemas/feedback-v3.schema.json
+    description: Final feel-audit verdict with evidence chain
+    hivemind_labels:
+      artifact_type: atomic-learning
+      learning_status: directionally-correct
+  - type: Signal
+    destination: .run/construct-trajectory.jsonl
+    description: Invocation trail for all three stages
+  - type: Artifact
+    destination: optional — taste token file if inscribe stage added
+    description: Inscribed-taste token, derived (cycle-005 L5-extension candidate)
+    hivemind_labels:
+      artifact_type: product-spec
+      learning_status: directionally-correct
+
+compose_with:
+  - artisan
+  - observer
+composes_symmetrically_with:
+  - artisan ↔ observer   # per GECKO §2 — this is a confirmed symmetric pair
+
+invocation_examples:
+  - operator_utterance: "audit this component for feel"
+    resolves_to: artisan → observer chain via feel-audit
+  - operator_utterance: "/feel then /keeper"
+    resolves_to: same as above (shorthand for manual composition)
+  - operator_utterance: "@ALEXANDER audit → @KEEPER check"
+    resolves_to: same (persona-form)
+
+when_to_use: >
+  - FEEL session surfaces a craft concern worth cross-referencing
+  - Multi-surface feel consistency check (dashboard page × settings page × modal)
+  - Pre-merge craft gate on a UI-heavy PR
+  - Quarterly taste-token refresh (artisan feeds inscribe-taste downstream)
+
+known_limitations:
+  - Workflow-runner (construct-compose.sh) is cycle-005 L5; this cycle
+    ships the spec but not the runner. Manual chaining via three
+    `Skill()` invocations is the current execution path.
+  - KEEPER persona collision (beehive↔observer) surfaces warnings during
+    persona-tier resolution. Resolved to observer here; operator may
+    override via explicit slug.
+  - Output-reproducibility not guaranteed (LLM variance per flatline
+    SKP-002/004). Dispatch is deterministic; verdicts vary run-to-run.
+
+references:
+  - doctrine: grimoires/loa-constructs-seed-2026-04-21/bonfire-construct-pipe-doctrine.md §4, §15.2
+  - contract: grimoires/loa-constructs-seed-2026-04-21/cycle-004-L2-invocation-contract.md
+  - predecessor: loa-constructs-cycle-001 .claude/constructs/compositions/feel-audit.yaml (folklore)
+
+version: "2.1.0"
+authored_at: "2026-04-21"
+authored_by: cycle-004 L5 (agent-walk)

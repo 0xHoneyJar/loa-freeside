@@ -1,0 +1,258 @@
+schema_version: "1.0"
+kind: workflow
+name: dogfood-cycle
+
+description: >
+  Post-deploy dogfood loop. WITNESS scaffolds QA surfaces; operator runs
+  scenarios in the deployed environment (Discord, Cursor, CLI); KEEPER reads
+  the captures with Mom Test discipline; folds back as issue comments; the-weaver
+  surfaces doctrine candidates when patterns cross 2+ scenarios; scope-next
+  kickoff brief drafts itself from accumulated signal. Each dogfood batch is
+  another weft thread woven through the same warp; the GitHub issue accumulates
+  the fabric over weeks.
+
+intent: >
+  "Bridge the gap between 'merged' and 'true in the world.' Scaffolds the
+   surfaces operators GO DO; reads what users actually do; folds back as
+   durable record; surfaces patterns; drafts the next cycle from the
+   accumulated signal."
+   — operator framing 2026-05-02 PM (post micodex-09a + V0.7-A.3 dogfood)
+   crystallized after 4-comment thread on freeside-characters#20 revealed
+   environment-aware-composition + voice-truth-measurement doctrine candidates
+   that the verification-only checklist hadn't anticipated.
+
+depends_on:
+  constructs:
+    - witness        # WITNESS scaffolds + folds back
+    - observer       # KEEPER reads captures
+    - the-weaver     # BEAUVOIR detects patterns + drafts scope-next
+  upstream_compositions:
+    - compositions/delivery/code-implement-and-review.yaml   # produces the PR this cycle dogfoods
+  downstream_compositions:
+    # Doctrine candidates emerging here may upstream into:
+    #   - feel-iterate (delivery/) when felt-quality drift surfaces
+    #   - new compositions when patterns recur in sibling cycles
+    - compositions/delivery/feel-iterate.yaml
+
+chain:
+  - stage: 1
+    name: scaffold-qa
+    construct: witness
+    skill: generating-qa-checklist
+    persona: WITNESS
+    mode: persistent
+    reads: [Artifact, Operator-Model]
+    writes: [Artifact]
+    role: primary
+    notes: >
+      WITNESS reads PR diff + sprint plan + bridgebuilder findings + NOTES.md
+      decision log. Generates QA checklist at
+      grimoires/loa/qa/qa-cycle-{name}-{date}.md with TWO REGISTERS
+      (post-09a addition):
+
+      - verification (S0-S7 · ≤7 surfaces · pass/fail gates · capture artifacts ·
+        triage by layer)
+      - showcase (SC1-SC3 · narrative walkthroughs · felt-outcome triage ·
+        captures the FEEL-shape the verification scenarios merely verify)
+
+      Capability-landscape preamble articulates before/after delta + what
+      UNLOCKS for users not just devs. Triggered when cycle unlocks
+      user-facing capability (operator critique "very basic" for
+      verification-only checklists).
+
+  - stage: 2
+    name: distribute
+    construct: witness
+    skill: generating-qa-checklist
+    persona: WITNESS
+    mode: persistent
+    reads: [Artifact]
+    writes: [Artifact]
+    role: cross-reference
+    notes: >
+      Distribution surfaces folded INTO the QA checklist as the "three
+      shareable paths" header section. Per [[mcp-wraps-cli-pattern]] +
+      [[environment-aware-composition]]: gen Cursor + VSCode MCP install
+      deeplinks (base64/url-encoded), CLI install incantation with peer
+      deps + index-build steps, Discord guild + slash-command access pointer.
+      NOT a separate construct — surface within the QA checklist so
+      operator can copy-paste for distribution. Gap: no dedicated construct
+      owns "shareable-path-generation" today; folded into WITNESS until
+      authored.
+
+  - stage: 3
+    name: anchor-issue
+    construct: witness
+    skill: generating-qa-checklist
+    persona: WITNESS
+    mode: persistent
+    reads: [Artifact]
+    writes: [Artifact]
+    role: cross-reference
+    notes: >
+      The QA checklist anchors a GitHub issue in the target repo (e.g.
+      0xHoneyJar/freeside-characters#20). Future capture batches comment
+      on this issue; the issue itself becomes the durable thread record.
+      Per WITNESS §3 KEEPER-collaboration discipline. Operator opens the
+      issue manually OR via gh-cli script after WITNESS emits the body —
+      issue creation isn't a construct invocation, it's an operator action
+      with WITNESS-generated content. Gap: no dedicated construct owns
+      "issue-anchor-from-checklist" today.
+
+  - stage: 4
+    name: listen
+    construct: observer
+    skill: observing-users
+    persona: KEEPER
+    mode: persistent
+    reads: [Artifact, Signal]
+    writes: [Artifact, Signal]
+    role: primary
+    notes: >
+      Operator runs QA scenarios in deployed environment (Discord dev guild,
+      Cursor MCP install, CLI). Captures = screenshots + log lines + reply
+      text + timing. KEEPER reads Mom Test discipline: voice quotes verbatim;
+      distinguish substrate-working / substrate-ignored / substrate-invented /
+      environment-mutated. NOT a researcher conducting a study — a keeper
+      tending a hive. Output: User Truth Canvas variant (the dogfood capture)
+      saved at grimoires/{product}/feedback/keeper/{session-id}.json plus
+      kansei signals.
+
+  - stage: 5
+    name: fold-back
+    construct: witness
+    skill: proposing-triage
+    persona: WITNESS
+    mode: persistent
+    reads: [Artifact, Signal]
+    writes: [Artifact]
+    role: primary
+    notes: >
+      Folds KEEPER captures back as durable issue comments on the issue
+      anchored at stage 3. Each batch = one comment with verbatim quotes +
+      diagnosis + substrate-vs-voice attribution (substrate-working /
+      ignored / invented / env-mutated) + doctrine-candidate flag if
+      pattern crosses 2+ scenarios. Future-claude reading the issue gets
+      the full dance. Per WITNESS §4 felt-outcome triage discipline.
+
+  - stage: 6
+    name: pattern-detection
+    construct: the-weaver
+    skill: composing-paths
+    persona: BEAUVOIR
+    mode: persistent
+    reads: [Artifact]
+    writes: [Artifact, Signal]
+    role: cross-reference
+    notes: >
+      OPTIONAL stage — fires when accumulated captures show pattern crossing
+      2+ scenarios OR breaking existing doctrine claim. the-weaver's
+      composing-paths surfaces the candidate as a memory entry
+      (type: project · status: doctrine-candidate) with promotion path to
+      ~/vault/wiki/concepts/{name}.md once pattern recurs in sibling cycle.
+
+      First-instance (micodex-09a, 2026-05-02): TWO doctrine candidates
+      surfaced via this stage:
+      - environment-aware composition (Discord automod blocked CDN URL →
+        bytes-attachment via webhook bypasses; third mutability layer beyond
+        [[metadata-as-integration-contract]])
+      - voice-truth measurement (separate axis from substrate-truth; ruggy
+        hallucinated "tarot tier" despite Scorpio canonical substrate match)
+
+  - stage: 7
+    name: scope-next
+    construct: the-weaver
+    skill: composing-paths
+    persona: BEAUVOIR
+    mode: persistent
+    reads: [Artifact, Signal]
+    writes: [Artifact]
+    role: primary
+    notes: >
+      Drafts the next-session kickoff brief from accumulated dogfood signal +
+      doctrine candidates + open scope items. Output:
+      ~/bonfire/grimoires/{org}/specs/{repo}-{topic}-kickoff.md. Brief
+      includes: personas to embody (with canonical identity paths) ·
+      invariants · what NOT to build · success criteria · pre-flight gates ·
+      doctrine candidate to validate. The brief is the handoff artifact
+      for the V+1 cycle.
+
+compose_with:
+  - witness         # PRIMARY scaffold + fold-back
+  - observer        # PRIMARY KEEPER reads captures
+  - the-weaver      # CROSS-REF pattern detection + scope-next drafting
+  - bridgebuilder-review  # UPSTREAM (act 1 pre-flight if PR needs review first)
+
+composes_symmetrically_with:
+  - witness ↔ observer       # WITNESS scaffolds the surfaces; KEEPER reads what users do across them
+  - observer ↔ the-weaver    # KEEPER captures = signal; the-weaver articulates patterns into doctrine candidates
+  - witness ↔ the-weaver     # WITNESS QA checklist + KEEPER fold-back inform the-weaver's scope-next brief
+  - witness → bridgebuilder-review  # WITNESS gates AFTER bridgebuilder reviews the diff (mostly one-direction)
+
+invocation_examples:
+  - operator_utterance: "Dogfood the codex MCP cycle in dev guild"
+    resolves_to: |
+      run dogfood-cycle with cycle-name=micodex-09a, target-repo=construct-mibera-codex,
+      issue-target=freeside-characters#20 (existing issue continuing capture thread).
+      Stage 1 emits checklist; operator runs S5/SC1-SC3; stage 4 KEEPER captures
+      Discord screenshots; stage 5 folds back as comments; stage 6 surfaces
+      doctrine candidates; stage 7 drafts V0.7-A.3 kickoff brief.
+
+  - operator_utterance: "What's the cycle pattern for testing environment-aware shipments?"
+    resolves_to: |
+      inspect dogfood-cycle composition (loom inspect dogfood-cycle) — the chain
+      shows the WITNESS-scaffold → operator-dogfood → KEEPER-listen → fold-back →
+      scope-next pattern with environment-mutability captured in stage 4 KEEPER
+      attribution categories.
+
+  - operator_utterance: "Continue the dogfood cycle for issue #20 with new captures"
+    resolves_to: |
+      run dogfood-cycle starting at stage 4 (listen) — operator already has
+      QA checklist + issue anchor; just need KEEPER fold-back + pattern-detection +
+      scope-next on the new capture batch.
+
+when_to_use: |
+  - A PR has shipped substrate that's now LIVE in prod and operator wants
+    systematic dogfood (not ad-hoc)
+  - Operator drops Discord screenshots / log lines from running scenarios —
+    fold them back as issue comments + surface patterns
+  - Pattern across 2+ scenarios suggests a doctrine candidate worth
+    crystallizing
+  - Session-window-close — gen the next-session kickoff brief + clipboard
+    handoff from accumulated dogfood signal
+  - Cycle has user-facing capability delta (not just internal correctness) —
+    the showcase register justifies its own scope
+
+known_limitations: |
+  - Stages 2 (distribute) + 3 (anchor-issue) are folded into WITNESS as
+    cross-reference responsibilities because no dedicated constructs own
+    "shareable-path-generation" or "issue-anchor-from-checklist" today.
+    Future composition iteration could surface these as proper stages once
+    constructs author them.
+  - Stage 6 (pattern-detection) is OPTIONAL — fires only when patterns cross
+    2+ scenarios. Single-cycle runs may skip directly from stage 5 to stage 7.
+  - Operator-action gaps (running scenarios, clipboarding handoff) are
+    NOT construct invocations — they're operator-paced surfaces between
+    construct stages. The composition assumes operator availability.
+  - Doctrine-candidate promotion to vault is currently a separate operator
+    action (write the wiki page) — could become a stage 8 if a construct
+    authors "promoting-doctrine-candidates" skill. Gap surfaced.
+  - the-weaver stage 7 (scope-next) assumes captures have accumulated;
+    an empty-capture run would produce an empty brief. Use
+    dogfood-cycle CONTINUE mode rather than fresh-fire when the cycle is
+    just starting.
+
+version: "0.1.0"
+authored_at: "2026-05-02"
+authored_by: the-weaver/composing-paths (apprenticeship — first instance via /loom + WITNESS pattern)
+operator_note: >
+  Crystallized 2026-05-02 PM after micodex-09a + V0.7-A.3 handoff — operator
+  named the pattern after a 4-comment KEEPER capture thread on
+  freeside-characters#20 surfaced env-aware-composition + voice-truth doctrine
+  candidates the verification-only QA checklist hadn't anticipated.
+
+references:
+  - first_instance_pr_corpus: "0xHoneyJar/construct-mibera-codex#68 — corpus + WITNESS QA"
+  - first_instance_pr_deploy: "0xHoneyJar/construct-mibera-codex#69/#70/#71 — deploy unblock arc"
+  - first_instance_issue: "0xHoneyJar/freeside-characters#20 — 4 KEEPER capture comments (env-aware-composition + voice-truth candidates)"
+  - first_instance_kickoff: "~/bonfire/grimoires/bonfire/specs/freeside-characters-env-aware-image-composition-v07a3-kickoff.md"

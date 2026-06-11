@@ -202,3 +202,33 @@ In-repo sprint-1 (cycle doctor-acvp-network-plane, branch feat/doctor-acvp-netwo
   Honest interim: aspirational + dated (2026-09-25) in .freeside/acvp-aspirational-allowlist.yaml,
   NOT a faked green. Tracked: arrakis-5ryf. events-api slug is an `-api`-naming-law concession
   for a library (mcp omitted, no served URL).
+
+---
+
+## Legba cycle-1 — dispatch record (simstim-20260611-7a68ab09)
+
+Three L6 handoff artifacts authored, validated (frontmatter + ts + canonical-id),
+content-addressed via the lib's own derivation (`_handoff_canonical_for_id` → JCS → sha256):
+
+| handoff | target repo | content-address | brief |
+|---|---|---|---|
+| hounfour schemas | loa-hounfour | `sha256:510fece7afd8897d9a67292ee9667d6c29229079a4320308033550857978cb74` | `grimoires/loa/handoffs/2026-06-11-legba-cycle1-hounfour-schemas.md` |
+| ghost-door lint | construct-compositions | `sha256:41ad5be54b86b2ffde90dd59d94d7c1d3ef29e4aa09c1afcc708f73e299115f4` | `grimoires/loa/handoffs/2026-06-11-legba-cycle1-ghost-door-lint.md` |
+| named-defect patches | construct-rooms-substrate | `sha256:8688ccb02e97ae39886e62af47a18500a3e5b48988ae9b16bec92c907c4d6659` | `grimoires/loa/handoffs/2026-06-11-legba-cycle1-named-defect-patches` (patches/ dir) |
+
+### Decision Log — L6 atomic-publish gated on operator registry (NOT bypassed)
+`handoff_write`'s strict operator-verification (`structured_handoff.verify_operators`
+defaults true) rejects the emit: `from=loa-freeside-legba-cycle1` and the target
+repos are not in `grimoires/loa/operators.md` (which holds one stub entry,
+`deep-name`). Flipping the gate to warn-mode OR registering operators is a
+**governance act** — out of autonomous scope (auth/persistence/Loa-gate, no
+creative latitude). The artifacts + content-addresses stand; the atomic publish
+is one operator action away (register the dispatching identity, or set
+`structured_handoff.verify_operators: false` if the stub registry is leftover).
+
+### Bug surfaced (deployment seam, real): `structured-handoff-lib.sh` repo-root resolution
+Under zsh `source`, `_LOA_HANDOFF_REPO_ROOT` resolved to `$HOME` (read a stale
+global `~/.run/machine-fingerprint` with an empty `fingerprint` value → exit 6).
+Under `bash` it resolves correctly to the repo. Same class as the playtest's
+base-dir-dependent verdict finding — a path resolution that assumes a shell/root
+that isn't guaranteed. Worth a System-Zone follow-up bead.

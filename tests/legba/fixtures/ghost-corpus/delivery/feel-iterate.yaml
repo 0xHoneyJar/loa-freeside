@@ -1,0 +1,430 @@
+# Composition · feel-iterate
+# ================================================================
+# Single-responsibility iteration loop. Artisan generates component
+# variations against a canon, the operator marks regions via
+# PixelMark (or agent-browser fallback), the-mint curates against
+# canon + annotation trail, artisan distills the chosen variation
+# into a productionized component.
+#
+# Extracted from ground-and-craft v1.0.0 stages 7–9 (and from the
+# capture_method scaffolding previously embedded in triage-pause
+# stage 6) per cycle-002 followup feedback: "creating tasteful
+# components is the work of the artisan but the artisan/kansei
+# needs a dedicated annotation-like workflow that pieces in." Small
+# composable composition over monolithic; multiple parent
+# compositions invoke this primitive rather than each carrying their
+# own iteration scaffolding.
+#
+# Authored 2026-04-25 from the henlo-monorepo cycle-002 followup
+# convergence — same operator session that produced ground-and-craft
+# v1.0.0 surfaced that ground-and-craft was overbloated; this
+# composition is the architectural fix.
+# ================================================================
+
+schema_version: "1.0"
+kind: workflow
+name: feel-iterate
+description: >
+  Component-iteration primitive. Artisan ↔ the-mint loop with
+  PixelMark closing the HITL feedback gap. Inputs: target surface,
+  approved canon, optional refs. Outputs: distilled component,
+  pixelmark trail, curation log. Three stages with a 1↔2 iteration
+  cycle; capped iteration is advisory (operator halts dictate
+  progress on culturetech-loose surfaces; enforced cap on
+  defi-strict).
+
+intent: >
+  "FEEL-mode iteration on a component, grounded in approved canon
+   and steered by region-annotated operator feedback. Eye proposes
+   variations, hand renders, operator marks, eye reads marks and
+   converges. The loop is the work; everything upstream (grounding)
+   and downstream (productionization) belongs in other compositions."
+
+backend: headless-tmux
+
+# Hivemind Lab labels (Dec 2025 canon).
+hivemind_labels:
+  product_area: "Component iteration with HITL annotation (any visual surface)"
+  workstream: delivery
+  priority: high
+  jtbd:
+    category: personal
+    description: "Reassure Me This Is Safe — the component lands in canon, not in agent-best-guess"
+  source: team-internal
+
+depends_on:
+  constructs:
+    - artisan           # iterating-visuals + distilling-components
+    - the-mint          # curate
+  tools:
+    - pixelmark         # preferred capture surface; sprawl-ui Svelte component (port required for non-Svelte targets)
+    - agent-browser     # documented fallback when PixelMark is not installed on target
+  upstream_compositions:
+    - compositions/delivery/ground-and-craft.yaml             # produces the canon this composition consumes
+    - compositions/sorry-for-ur-loss/triage-pause.yaml        # invokes for per-cabinet iteration
+    - compositions/sorry-for-ur-loss/hibernate-product.yaml   # invokes downstream of stage 5 dispatch
+    - compositions/delivery/direct-render.yaml                # MAY invoke for component-shaped art (vs site-art)
+
+inputs:
+  - type: Intent
+    name: target_surface
+    description: >
+      What's being iterated — single component (DisabledCabinet),
+      a feature surface (lock/vault EARN row), a fragment of a
+      larger composition. Determines iteration depth + capture
+      method specifics.
+    required: true
+  - type: Artifact
+    name: canon
+    description: >
+      Approved canon — taste.md, voice.md, room-cards, tokens.css.
+      Output of ground-and-craft stages 1–6 OR an existing
+      construct-native canon. The composition cannot autonomous
+      without canon; operator-approval gesture is required (chat
+      sign-off, commit-to-codebase, or explicit-defer).
+    required: true
+  - type: Artifact
+    name: refs
+    description: Optional reference art / mood boards / mascot variants
+    required: false
+  - type: Artifact
+    name: pixelmark_target
+    description: >
+      Optional — path to PixelMark installation in the target
+      codebase. If absent, capture defaults to agent-browser
+      screenshot fallback.
+    required: false
+  - type: Operator-Model
+    name: operator_context
+    required: false
+
+# Iteration loop — stages 1 ↔ 2 cycle until a candidate clears
+# curate's selection test. Cap is advisory on culturetech-loose
+# (operator halts dictate progress); enforced (default 5) on
+# defi-strict per surface_class.
+iterate:
+  - [1, 2]
+
+# S0-T6 / FR-7.2 — bounded iteration. The artisan↔curate loop runs until a
+# variation clears curate's selection test. Cap matches the defi-strict
+# safety default (5) the surface_class block enforces; on culturetech-loose
+# the cap is advisory and the pixelmark trail dictates progress.
+max_iterations: 5
+terminate_when: >
+  a component variation clears the-mint's curate selection test — it
+  addresses every PixelMark annotation in the trail, conforms to the canon
+  tokens (no design-system drift), and passes the 4-axis taste rubric — OR
+  max_iterations reached, at which point stage 3 distills the best-scoring
+  variation. On culturetech-loose surfaces the operator's halt also terminates.
+
+# ================================================================
+# Stages
+# ================================================================
+
+chain:
+  - stage: 1
+    name: iterate-with-pixelmark
+    construct: artisan
+    skill: iterating-visuals
+    persona: ALEXANDER
+    mode: persistent
+    reads: [Intent, Artifact, Verdict]
+    writes: [Artifact, Signal]
+    role: primary
+    iterates_with: 2
+    thinking_effort: high   # variation generation + canon-grounding is multi-step synthesis
+    capture_method:
+      preferred:
+        tool: pixelmark
+        canonical_source: ~/bonfire/sprawl/apps/sprawl-ui/src/lib/components/PixelMark.svelte
+        canonical_documentation: ~/bonfire/sprawl/apps/sprawl-ui/src/routes/tooling/pixelmark/+page.svelte
+        loop: |
+          Operator holds Shift, drags over any element on the
+          rendered page. PixelMark captures the rectangle, computed
+          styles, and component-source location, plus an
+          operator-authored note. ALEXANDER reads the marks at the
+          next iteration and converges on the annotated design.
+        installation_pattern: |
+          PixelMark is native to sprawl-ui (Svelte/SvelteKit). For
+          Next.js / React / Vue / other targets, port required —
+          install-by-copy from Sprawl, adapt to target framework,
+          USE TARGET'S DESIGN-SYSTEM TOKENS (no custom colors;
+          reference the existing taste palette per ARTISAN +
+          ROSENZU spatial awareness directives). Eventual operator
+          plan: ship as npm package; install-by-copy supersedes
+          when that lands.
+        port_acceptance:
+          - core mechanics intact: shift-drag region detection, note input, batch-submit-on-Shift+Enter, escape-to-clear
+          - colors source from target's design system tokens (NOT inventing hex values)
+          - dev-mode component-source detection adapted to target framework's instrumentation (React fiber for React; etc.)
+          - mounted globally on every page in the target so operators don't need per-page wiring
+      fallback:
+        tool: agent-browser
+        when: target codebase has no PixelMark installation and porting is out-of-scope
+        loop: capture initial frame, halt for operator's text feedback, iterate
+        limitations: |
+          Agent-browser screenshots inherit the rAF / virtual-time
+          limitation documented in triage-pause v1.4.0 capture_method.
+          Animation cycles >2s require operator live-browser
+          verification; first-frame structure-only captures.
+    notes: >
+      ALEXANDER produces 3–5 variations of the target component, each
+      grounded in the canon. PixelMark-driven iteration is the default
+      loop: render variations live, operator annotates regions,
+      ALEXANDER reads marks and converges. Iteration cap is advisory
+      on culturetech-loose surfaces (let pixelmark trail dictate
+      progress); enforced (default 5) on defi-strict per surface_class.
+
+      ARTISAN directive: design-system-first. Every color, spacing,
+      shadow, and motion timing references existing tokens from the
+      canon. Custom values (cold hex literals, ad-hoc gradients,
+      bespoke timings) are design drift; surface the gap to the
+      operator instead of patching with a new value. ROSENZU
+      spatial awareness — read what surrounding components are doing
+      in the room before placing a new element.
+
+  - stage: 2
+    name: curate
+    construct: the-mint
+    skill: curate
+    persona: MINT
+    mode: fresh
+    reads: [Artifact, Verdict]
+    writes: [Verdict, Signal]
+    role: craft-gate
+    iterates_with: 1
+    # thinking_effort: medium (composition default — selection against rubric is mostly comparison; no override needed)
+    notes: >
+      Selection pass against the canon + pixelmark trail. 4-axis
+      taste rubric. Loops back to stage 1 if no candidate clears;
+      advances on first clean pass.
+
+      The pixelmark trail is part of the rubric — a candidate that
+      addresses every annotation passes; one that ignores annotations
+      does not, regardless of standalone quality. On agent-browser
+      fallback, operator's text feedback substitutes for the
+      annotation trail.
+
+  - stage: 3
+    name: distill-component
+    construct: artisan
+    skill: distilling-components
+    persona: ALEXANDER
+    mode: fresh
+    reads: [Verdict, Artifact]
+    writes: [Artifact]
+    role: primary
+    thinking_effort: high   # productionization = prop API + primitive reuse + naming choices
+    notes: >
+      ALEXANDER abstracts the chosen variation into a productionized
+      component. Compound component shape where applicable; props
+      API documented inline; reuses existing primitives surfaced in
+      stage 1's canon scan. The distilled component is the terminal
+      output — ready for the parent composition's hardening /
+      dispatch / publish step.
+
+# ================================================================
+
+outputs:
+  - type: Artifact
+    destination: <codebase>/components/<distilled-path>
+    description: The distilled component, productionized and grounded in canon
+    hivemind_labels:
+      artifact_type: product-spec
+      learning_status: strongly-validated
+  - type: Artifact
+    destination: .run/compose/<run_id>/pixelmark-trail.jsonl
+    description: Per-iteration annotation log (rectangle + computed styles + operator note + agent response)
+    hivemind_labels:
+      artifact_type: atomic-learning
+      learning_status: directionally-correct
+    emit_when: PixelMark was the capture surface (not the agent-browser fallback)
+  - type: Verdict
+    destination: .run/compose/<run_id>/curation.jsonl
+    description: Per-iteration kept/killed log against the canon
+
+compose_with:
+  - artisan
+  - the-mint
+  - pixelmark            # tool, not a construct — see stage 1 capture_method
+  - agent-browser        # tool, not a construct (fallback only)
+
+composes_symmetrically_with:
+  - artisan ↔ the-mint   # eye ↔ hand — same canonical pair as direct-render
+  - alexander ↔ pixelmark   # craft loop ↔ region-annotation HITL surface
+
+# ================================================================
+# Surface Class (cycle-002 followup — stub; canonical def in outage-triage.yaml)
+# ================================================================
+
+surface_class:
+  default: unspecified
+  enum: [culturetech-loose, defi-strict, mixed, unspecified]
+  canonical_definition: compositions/sorry-for-ur-loss/outage-triage.yaml#surface_class
+  affects_in_this_composition:
+    - stages 1–2 iteration cap — advisory on culturetech-loose (let pixelmark trail dictate progress); enforced (default 5) on defi-strict
+    - stage 1 capture_method default — PixelMark preferred on culturetech-loose; agent-browser preferred on defi-strict (deterministic captures for financial display verification)
+    - stage 2 curate strictness — 4-axis taste rubric on culturetech-loose; rubric + explicit token-conformance check on defi-strict (financial UI drift is dangerous)
+    - stage 3 distill output — preserves operator-driven naming on culturetech-loose; enforces existing-pattern-reuse on defi-strict (no novel component shapes for financial primitives)
+  inferred_when_unspecified: defi-strict (safety default)
+
+# ================================================================
+# Thinking Effort (cycle-002 followup — canonical definition for the tower)
+# ================================================================
+# Per-stage hint for adaptive-thinking-capable runtimes. Deep upfront
+# creative work earns higher tiers; iterative passes earn lower.
+# Schema is model-agnostic; runtimes translate to API config.
+# Source: https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking
+# This is the canonical thinking_effort spec for the composition tower.
+# Other compositions carry summary stubs that point here.
+
+thinking_effort:
+  default: medium     # this composition's typical work tier (iteration loop)
+  enum: [low, medium, high, xhigh, max]
+  guide:
+    low: file inventory / gate probes / mechanical transforms / status checks
+    medium: surveying / curating against established rubric / structured comparisons (default for this composition)
+    high: brief authoring / diagnosis / dispatch decisions / harden passes / multi-step synthesis
+    xhigh: canon synthesis / first-pass component design / naming-rooms metaphor work / consequential structural calls
+    max: new composition authoring / cross-cycle kickoff docs / restructuring canon (use sparingly)
+  rationale: |
+    Default thinking effort of `high` everywhere is wasteful — most
+    iteration loops, mechanical surveys, and gate probes don't need
+    deep reasoning, and high+max can exhaust max_tokens budgets
+    unnecessarily. Conversely, deep upfront creative work (canon
+    synthesis, first-pass design, kickoff doc authoring) BENEFITS
+    from xhigh/max because the thinking builds context that pays off
+    across the whole session. Per-stage tiers let composition authors
+    hint at where reasoning matters and where it doesn't. The schema
+    is model-agnostic; runtimes translate.
+  runtime_translation:
+    adaptive_capable_models:
+      models: [claude-opus-4-7, claude-opus-4-6, claude-sonnet-4-6, claude-mythos-preview]
+      mapping: |
+        thinking: { type: "adaptive" }
+        output_config: { effort: <tier> }
+      note: Opus 4.7 ONLY supports adaptive mode (manual budget_tokens rejected with 400)
+    manual_budget_models:
+      models: [claude-sonnet-4-5, claude-opus-4-5, older]
+      mapping: |
+        thinking: { type: "enabled", budget_tokens: <approx> }
+        Approximate tier → budget_tokens:
+          low ≈ 4000, medium ≈ 8000, high ≈ 16000,
+          xhigh ≈ 32000, max ≈ 64000+ (clamped by max_tokens)
+    no_thinking_models:
+      mapping: ignored — composition runs with default model behavior
+  promptable_steering: |
+    Adaptive thinking is steerable via prose. Stage notes saying
+    "respond directly," "think briefly," or "no extended reasoning
+    needed" reduce thinking depth even at high effort. Notes saying
+    "think carefully," "consider tradeoffs," or "explore alternatives"
+    increase depth even at low. Stage authors should ALIGN prose with
+    declared thinking_effort so the signal is consistent. Mismatched
+    prose+tier produces the worst of both worlds (slow + shallow, or
+    fast + over-deliberate).
+  affects_in_this_composition:
+    - stage 1 iterate-with-pixelmark — high (variation generation + canon-grounding); steers down to medium when iterating known patterns under operator-supplied refs
+    - stage 2 curate — medium (selection against rubric is mostly comparison; deep thinking doesn't materially improve a rubric pass)
+    - stage 3 distill-component — high (productionizing a component is multi-step synthesis: prop API design, primitive reuse, naming choices)
+
+# ================================================================
+
+invocation_examples:
+  - operator_utterance: "iterate the wall cabinet against the henlo canon"
+    resolves_to: full chain stages 1-3 with target_surface=wall cabinet, canon=henlo taste.md
+  - operator_utterance: "I have variations, just curate"
+    resolves_to: stage 2 only with operator-supplied Artifact set
+  - operator_utterance: "PixelMark isn't installed yet, fall back to screenshots"
+    resolves_to: full chain with capture_method.fallback active
+  - operator_utterance: "distill the chosen variation"
+    resolves_to: stage 3 only with operator-supplied Verdict naming the chosen variation
+
+# ================================================================
+
+when_to_use: >
+  - Iterating a single visual component or feature surface against
+    an approved canon
+  - Per-cabinet iteration during a hibernation pass (invoked by
+    triage-pause / hibernate-product after dispatch)
+  - Refining a component after canon has been refreshed (invoked
+    by ground-and-craft after stage 6 canon approval)
+  - NOT for canon authoring (use ground-and-craft for that)
+  - NOT for site-art / banner / scene-stack production (use
+    direct-render — different output shape)
+  - NOT for codex-shaped knowledge graph work (lore, identity
+    schemas, rarity tables)
+
+# ================================================================
+
+known_limitations:
+  - "Stage 1 quality is bounded by canon quality. The composition does NOT validate canon at invocation; it trusts the upstream composition (ground-and-craft, or operator-supplied) to have produced approved canon. Garbage canon in → garbage iteration out. Pair with ground-and-craft when canon is brownfield-light."
+  - "PixelMark requires installation in the target codebase. The composition does NOT handle the port; it treats it as a precondition. If the target has no PixelMark and no port budget, agent-browser fallback applies and stage 1 iteration quality drops accordingly. Operator should know which surface they're getting before invocation."
+  - "PixelMark capture is operator-time-bound — the loop halts during stage 1 when waiting for marks. If operator is async / off-session, iteration count drops to ~1/day. Plan invocations around operator availability."
+  - "Stage 3 (distill) assumes a clean target component pattern (compound component, hooks-based / props-based, props-API documented). For codebases with idiosyncratic component patterns, distillation may produce out-of-style output — surface to operator at stage 3 and either adapt or hand off to a refactor pass."
+  - "feel-iterate is a primitive, not a self-contained workflow. It assumes a parent composition (or operator) supplies the target_surface + canon and consumes the distilled output. Don't invoke standalone unless those preconditions are met."
+
+# ================================================================
+
+references:
+  - skill_iterating_visuals: construct-artisan/skills/iterating-visuals/SKILL.md
+  - skill_curate: construct-the-mint/skills/curate/SKILL.md
+  - skill_distilling_components: construct-artisan/skills/distilling-components/SKILL.md
+  - skill_feel: construct-artisan/skills/feel/SKILL.md
+  - tool_pixelmark_canonical: ~/bonfire/sprawl/apps/sprawl-ui/src/lib/components/PixelMark.svelte
+  - tool_pixelmark_documentation: ~/bonfire/sprawl/apps/sprawl-ui/src/routes/tooling/pixelmark/+page.svelte
+  - companion_canon_producer: compositions/delivery/ground-and-craft.yaml
+  - companion_disable_consumer: compositions/sorry-for-ur-loss/triage-pause.yaml
+  - companion_hibernation_consumer: compositions/sorry-for-ur-loss/hibernate-product.yaml
+  - companion_art_producer: compositions/delivery/direct-render.yaml
+  - operator_feel_mode: .claude/constructs/packs/artisan/identity/ALEXANDER.md
+
+# ================================================================
+
+operator_note: |
+  Authored 2026-04-25 from the henlo-monorepo cycle-002 followup
+  convergence. Same operator session that produced ground-and-craft
+  v1.0.0 surfaced that ground-and-craft was overbloated — stages 1–6
+  are grounding (canon synthesis), stages 7–9 are crafting (artisan ↔
+  pixelmark ↔ curate ↔ distill). The crafting half is reusable across
+  multiple parent compositions and deserves its own home. This
+  composition IS that home.
+
+  Three principles worth carrying forward:
+
+  1. THE LOOP IS THE WORK. Stages 1↔2 are where taste materializes —
+     pixelmark annotations + curate gating + iteration. Everything
+     upstream (grounding) and downstream (productionization) is
+     scaffolding. Don't pad the loop with anything that doesn't
+     directly contribute to converging on the annotated design.
+
+  2. DESIGN-SYSTEM-FIRST. Stage 1 notes carry the ARTISAN +
+     ROSENZU directive: reference existing tokens, surrounding
+     components, spatial canon. Custom colors / ad-hoc gradients /
+     bespoke timings are design drift, even when they "look fine in
+     isolation." The pixelmark trail surfaces drift specifically —
+     operator's region-annotation often points at a token mismatch.
+     Look for a canon-token that fits before patching with a custom
+     value.
+
+  3. PORT THE TOOL, DON'T DUPLICATE THE WORK. PixelMark is native to
+     sprawl-ui (Svelte). For each target framework (Next.js / React,
+     Vue, etc.) one port lands; every feel-iterate invocation in that
+     codebase reuses it. Operator's eventual plan is an npm package
+     that supersedes install-by-copy; until then, port-once-per-target
+     is the canonical pattern.
+
+  feel-iterate sits in compositions/delivery/ alongside ground-and-craft
+  and direct-render. ground-and-craft produces canon → feel-iterate
+  consumes canon and produces components. direct-render produces
+  canon-aware art (different output shape). All three are siblings;
+  they invoke each other rather than each carrying duplicated
+  scaffolding.
+
+# ================================================================
+
+version: "1.1.0"
+authored_at: "2026-04-25"
+authored_by: cycle-002 followup (canonical thinking_effort spec for the tower)
+changelog:
+  - "1.1.0 (2026-04-25): Add canonical thinking_effort spec for the composition tower. Enum: low | medium | high | xhigh | max. Per-stage hint for adaptive-thinking-capable runtimes (Opus 4.7, Opus 4.6, Sonnet 4.6); model-agnostic — runtimes translate via documented mapping (adaptive: effort param; manual: ~budget_tokens; no-thinking: ignored). Composition default = medium (iteration loop). Stage 1 (iterate-with-pixelmark) overrides to high for variation generation; stage 2 (curate) inherits medium; stage 3 (distill-component) overrides to high for productionization synthesis. Other compositions in the tower (ground-and-craft, triage-pause, hibernate-product, outage-triage) carry summary stubs pointing here. Per parallel cycle-002 followup pattern: canonical-in-one-place + stub-in-others."
+  - "1.0.0 (2026-04-25): First canonical spec. Extracts the artisan ↔ pixelmark ↔ curate ↔ distill loop from ground-and-craft v1.0.0 stages 7–9. Becomes the single-source iteration primitive that ground-and-craft v1.1.0, triage-pause v1.7.0, and (eventually) direct-render invoke rather than each duplicating capture_method scaffolding. Wires PixelMark with explicit port-acceptance criteria and design-system-first language baked into stage 1 notes."

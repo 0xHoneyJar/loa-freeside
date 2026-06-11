@@ -1,0 +1,70 @@
+schema_version: "1.0"
+kind: workflow
+name: find-and-play
+
+description: >
+  Two-stage discovery composition: CURATOR explores the network to find a
+  matching composition for an operator intent, then DEALER plays it via
+  the-loom. Demonstrates loom in use as a downstream stage.
+
+intent: >
+  "I have an intent ('audit a feel'). Find me a composition that does that
+   and run it. Don't make me browse — just dispatch the right play."
+   — operator framing 2026-04-28 (the-loom apprenticeship reference composition)
+
+depends_on:
+  constructs:
+    - construct-creator    # CURATOR explores the network
+    - the-loom             # DEALER plays the matched composition
+  upstream_compositions: []
+  downstream_compositions: []
+
+inputs:
+  - name: operator_intent
+    type: Operator-Model
+    description: "What the operator is trying to do, in their own words"
+    required: true
+
+backend: headless-tmux
+
+chain:
+  - stage: 1
+    construct: construct-creator
+    skill: exploring-network
+    persona: CURATOR
+    role: primary
+    mode: persistent
+    reads: [Operator-Model]
+    writes: [Verdict, Signal]
+    notes: >
+      CURATOR scans construct-compositions/compositions/ for compositions whose
+      intent / description matches operator_intent. Returns the best match
+      as a Verdict with composition slug as the recommendation, plus
+      Signal entries for runner-up matches.
+
+  - stage: 2
+    construct: the-loom
+    skill: playing-compositions
+    persona: DEALER
+    role: primary
+    mode: fresh
+    reads: [Verdict, Artifact]
+    writes: [Verdict, Signal, Artifact]
+    notes: >
+      DEALER plays the composition CURATOR recommended. Live ribbon ticks
+      stage-by-stage via .run/compose/<run_id>/orchestrator.jsonl.
+      Final Verdict carries the played composition's exit code; Artifact
+      carries the trajectory for any downstream consumer.
+
+outputs:
+  - type: Verdict
+    destination: .run/compose/<run_id>/find-and-play-verdict.json
+    description: "Final play result — pass/fail of the dispatched composition"
+  - type: Artifact
+    destination: .run/compose/<run_id>/orchestrator.jsonl
+    description: "Stage-by-stage trajectory of the dispatched composition"
+
+# Why this composition exists (CURATOR stage 10)
+# - Demonstrates the-loom in use as a stage in another composition (not just as a CLI)
+# - Shows the substrate-loom-curator triangle: substrate dispatches, loom surfaces, curator routes
+# - Reference for future operator: "compose me a chain that finds + plays" — this is the shape

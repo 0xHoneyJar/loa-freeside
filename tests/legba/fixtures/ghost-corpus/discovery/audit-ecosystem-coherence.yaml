@@ -1,0 +1,460 @@
+# Composition · audit-ecosystem-coherence
+# ================================================================
+# GECKO senses the SEAMS, the council reviews, FREESIDE plots the cutover.
+#
+# Sibling of audit-setup-coherence (which audits intelligence-router
+# coherence). THIS one audits the DEPLOYMENT-SEAM class: the gaps between
+# where the Loa FRAMEWORK puts things (~/.loa, source repos) and where the
+# Claude Code HARNESS expects them (~/.claude, installed runtime). The
+# recurring fire — manifest-numbness, scattered symlinks, ghost constructs,
+# source↔installed drift — is one organ failing repeatedly: a consumer
+# expecting an artifact at a path/contract the producer put elsewhere, with
+# NO coherence sensor catching the gap until dispatch breaks.
+#
+# Authored 2026-06-08 from the bd-ii1m / manifest-numbness session: the
+# operator named the pattern ("numbness and scattered symlinks and design
+# that does NOT align with the Loa ecosystem") and asked to stop patching
+# symptoms — diagnose the class, build GECKO a sensor, plot a path. The
+# agent that ran that session is the MOST biased reviewer (it authored the
+# symlink patch), so the diagnosis MUST route through an adversarial council
+# and be PROVEN (compose-verify-run → valid_run), never self-asserted.
+# ================================================================
+
+schema_version: "1.0"
+kind: workflow
+name: audit-ecosystem-coherence
+description: >
+  Audit the Loa framework (.loa/source) <-> Claude Code harness (.claude/
+  installed) DEPLOYMENT SEAMS for coherence. GECKO grounds the declared-vs-
+  actual map (where consumers look vs where producers put things, file:line),
+  routes it through the cheval-routed adversarial council to counter author
+  bias, and synthesizes the seam-coherence contract + a GECKO deployment-seam
+  sensor design + a cutover path.
+
+intent: >
+  "We keep re-discovering the same incoherence (manifest-numbness, scattered
+   symlinks, ghost constructs) and patching the symptom. Diagnose the CLASS:
+   every deployment seam where a harness consumer expects an artifact the
+   framework producer placed elsewhere. Ground it file:line, route the
+   verdict + the recent symlink 'fix' through the adversarial council (is it
+   a contract or a band-aid?), and plot the path: a single source-of-truth
+   seam contract + a GECKO sensor that catches the class. Self-referential by
+   design — the audit dogfoods the /compose belt it just healed."
+
+backend: headless-tmux
+
+hivemind_labels:
+  product_area: "Engineering — Loa framework<->harness deployment-seam coherence"
+  workstream: discovery
+  priority: high
+  jtbd:
+    category: personal
+    description: "Stop The Bleeding At The Source — name the recurring coherence-drift
+      class once, sense it forever, instead of patching each instance"
+  source: team-internal
+
+depends_on:
+  constructs:
+  - gecko               # stage 1 ground — harness-literacy + the declared-vs-actual eye
+  - fagan               # stage 2 council-review — cheval-routed adversarial gate
+  scripts:
+  - construct-fagan/scripts/cheval-council.sh     # the cheval-routed council runner
+  tools:
+  - cheval              # the intelligence router (multi-model, MODELINV envelope)
+  reference:
+  - "construct-gecko/identity/environment.md"     # GECKO's harness literacy (the three existing eyes)
+  upstream_compositions:
+  - compositions/discovery/audit-setup-coherence.yaml     # the sibling that audits intelligence-router coherence
+
+inputs:
+- type: Intent
+  name: scope
+  description: >
+    which deployment seams to audit (default ALL: packs->adapters,
+    source-repo->installed-pack, template-location, composition->runtime,
+    runtime-symlink->branch, .loa<->.claude bridges + cruft).
+  required: false
+- type: Artifact
+  name: prior_grounding
+  description: >
+    Optional. A grounding the operator/agent already produced (e.g. this
+    session's provisional deployment-seam diagnosis) for the council to
+    adversarially review rather than re-derive from scratch.
+  required: false
+
+# Ground -> council-review -> synthesize. Loop review<->synthesize until the
+# council clears (or the cap is hit — surface, never auto-pass).
+iterate:
+- [2, 3]
+max_iterations: 2
+terminate_when: >
+  the cheval-routed council (stage 2) returns APPROVED with no open coherence
+  BLOCKER, OR the iteration cap is reached (Verdict carries auto_approved: true
+  — surface to the operator, do NOT treat as a clean pass).
+
+# ================================================================
+# Stages
+# ================================================================
+
+chain:
+- stage: 1
+  name: ground-the-seams
+  construct: gecko
+  skill: diagnose
+  persona: GECKO
+  mode: fresh
+  reads: [Intent, Artifact]        # scope + optional prior_grounding
+  writes: [Artifact, Signal]       # the deployment-seam coherence map
+  role: primary
+  thinking_effort: high
+  notes: >
+    You are GECKO. Your three existing eyes (identity-reality, composition-
+    authority, runtime-fit) all look INSIDE a construct. This audit needs a
+    NEW eye: the SEAM BETWEEN the framework (~/.loa, source repos) and the
+    harness (~/.claude, installed runtime).
+
+    Ground the DEPLOYMENT SEAMS, every claim file:line / path-exists checked,
+    never inferred:
+      - packs -> adapters: ~/.loa/constructs/packs (the 46 producer packs)
+        vs what adapter-generator.py / construct-ensure.sh / index-gen LOOK
+        for (their hardcoded PROJECT_ROOT/.claude/... paths). Where does each
+        consumer look, and does the producer put it there?
+      - source-repo -> installed-pack: construct-<slug> source repos vs the
+        installed ~/.loa pack (e.g. construct-gecko has sensing-runtime-fit;
+        the installed pack does NOT). Which skills/identity drift?
+      - template-location: where adapter-generator expects the template vs
+        where it lives (~/.claude/templates vs ~/.claude/scripts/templates).
+      - composition -> runtime: a composition naming a construct vs whether
+        an installed adapter resolves it (the codex-rescue [DEPRECATED→general-purpose] ghost class).
+      - runtime-symlink -> branch: ~/.loa/runtime/construct-rooms-substrate ->
+        the crs working dir on whatever branch is checked out (a fix can be
+        de-activated by a branch switch).
+      - the BRIDGES + the CRUFT: every symlink reconciling .loa<->.claude
+        (INCLUDING ~/.claude/constructs -> ~/.loa/constructs, authored THIS
+        session as a patch — flag it skeptically: contract or band-aid?),
+        and accumulating junk (.frozen.bak packs, agents.bak-*.tar.gz,
+        skills-disabled/).
+
+    Emit a DECLARED-vs-ACTUAL seam map: for each seam, [consumer | expects-at
+    | producer | provides-at | drifts? | how it fails (silent/loud) | current
+    patch]. Then a CANDIDATE ROOT CAUSE (is there one organ — e.g. "no SoT
+    for where constructs live + how they deploy" — or several independent
+    breaks?) and a CANDIDATE FIX SHAPE. Mark every judgment as SMELL (soft,
+    taxonomy-dependent) vs CONFLICT (hard, provable from the files). You sense;
+    you do not decide. If prior_grounding is supplied, INGEST it but re-verify
+    each claim against the filesystem — do not trust it.
+
+  intelligence_tier: deep
+  output_schema:
+    type: object
+    required:
+    - seams
+    - root_cause_candidate
+    - fix_shape_candidate
+    - symlink_self_critique
+    additionalProperties: false
+    properties:
+      seams:
+        type: array
+        items:
+          type: object
+          required:
+          - name
+          - consumer
+          - expects_at
+          - producer
+          - provides_at
+          - drifts
+          - severity
+          - failure_mode
+          - evidence
+          additionalProperties: false
+          properties:
+            name:
+              type: string
+            consumer:
+              type: string
+              description: who looks (tool/script/runtime)
+            expects_at:
+              type: string
+              description: the path/contract it expects
+            producer:
+              type: string
+            provides_at:
+              type: string
+              description: where the producer actually put it
+            drifts:
+              type: boolean
+            severity:
+              type: string
+              enum:
+              - CONFLICT
+              - SMELL
+            failure_mode:
+              type: string
+              enum:
+              - silent
+              - loud
+            current_patch:
+              type: string
+            evidence:
+              type: string
+              description: file:line or a path-exists check actually run
+      root_cause_candidate:
+        type: string
+      fix_shape_candidate:
+        type: string
+      symlink_self_critique:
+        type: string
+        description: is the session ~/.claude/constructs->~/.loa/constructs 
+          symlink a CONTRACT or a BAND-AID? argue honestly.
+- stage: 2
+  name: council-review
+  construct: fagan
+  persona: FAGAN
+  mode: fresh
+    # Multi-model routing is declared top-level (review_routing, schema v1.4).
+    # If the Form C runtime does not auto-route, INVOKE cheval-council.sh on the
+    # grounding map yourself and record which voices actually answered (MODELINV).
+  reads: [Artifact]                # the seam map
+  writes: [Verdict, Signal]
+  role: primary                    # runs as an AGENT (autonomous adversarial review), not a manual seam
+  iterates_with: 3
+  thinking_effort: high
+  notes: >
+    Adversarially review GECKO's seam map. The author of the grounding (and
+    of the recent symlink patch) is BIASED toward believing its own fix is
+    sound — your job is to break that. Judge:
+      - Are the seams REAL (declared-vs-actual provable from the files), or
+        did the grounder over-generalize a few bugs into a false "class"?
+      - Is the ~/.claude/constructs -> ~/.loa/constructs symlink the right
+        CONTRACT, or a band-aid that ADDS to the scatter the operator named?
+        What would the SoT-level fix be (config-driven paths? a canonical
+        install layout? the generator reading a manifest)?
+      - Any MISSED seam (a drift the grounder didn't sense)? Any FALSE seam?
+      - Does the proposed fix shape actually PREVENT recurrence, or just move
+        the patch? Would a GECKO deployment-seam sensor + a seam contract
+        catch the NEXT instance before it breaks?
+    A lone critical from any voice HOLDS the gate. Per-voice MODELINV proves
+    which model answered (reject "unknown" model_ran on this high-stakes
+    audit — no silent single-model downgrade masquerading as a council).
+
+  intelligence_tier: deep
+  output_schema:
+    type: object
+    required:
+    - verdict
+    - blocker
+    - confirmed_seams
+    - corrections
+    - symlink_verdict
+    - root_cause_assessment
+    additionalProperties: false
+    properties:
+      verdict:
+        type: string
+        enum:
+        - APPROVED
+        - CHANGES_REQUIRED
+      blocker:
+        type: boolean
+      confirmed_seams:
+        type: array
+        items:
+          type: string
+      rejected_seams:
+        type: array
+        items:
+          type: object
+          required:
+          - name
+          - why
+          additionalProperties: false
+          properties:
+            name:
+              type: string
+            why:
+              type: string
+      missed_seams:
+        type: array
+        items:
+          type: string
+      corrections:
+        type: array
+        items:
+          type: object
+          required:
+          - claim
+          - gecko_said
+          - actual
+          - evidence
+          additionalProperties: false
+          properties:
+            claim:
+              type: string
+            gecko_said:
+              type: string
+            actual:
+              type: string
+            evidence:
+              type: string
+      symlink_verdict:
+        type: object
+        required:
+        - ruling
+        - reasoning
+        additionalProperties: false
+        properties:
+          ruling:
+            type: string
+            enum:
+            - contract
+            - band-aid
+          reasoning:
+            type: string
+      root_cause_assessment:
+        type: string
+- stage: 3
+  name: synthesize-path
+  construct: general-purpose
+  persona: SYNTHESIZER
+  mode: persistent
+  reads: [Verdict, Artifact]
+  writes: [Artifact, Signal]       # the reviewed diagnosis + path + sensor design
+  role: primary
+  iterates_with: 2
+  thinking_effort: high
+  notes: >
+    Apply the SURVIVING council findings (not the rejected ones) and produce:
+      1. The REVIEWED diagnosis — the deployment-seam class, with the council's
+         corrections folded in (kill any over-generalization it flagged).
+      2. The SEAM-COHERENCE CONTRACT — the single source-of-truth fix the
+         council endorsed (e.g. config-driven pack/template/agents paths; a
+         canonical install layout; the generator + index-gen + compose runtime
+         all reading ONE declaration of where constructs live). This is the
+         "stop patching" target, distinct from the session's symlink band-aid.
+      3. The GECKO DEPLOYMENT-SEAM SENSOR design — the 4th eye: a skill
+         (sensing-deployment-seams) that reads each seam's consumer-expects vs
+         producer-provides and emits CONFLICT (hard, path-missing) vs SMELL
+         (soft). Sense-only, same firewall as the other eyes. Note it must
+         ITSELF be installable (don't repeat the sensing-runtime-fit drift —
+         the sensor that isn't installed).
+      4. The CUTOVER PATH (FREESIDE/KRANZ) — ordered, reversibility-first:
+         land the contract, regen adapters once, retire the symlinks + cruft,
+         wire the sensor into patrol/estate-coherence. Each step gated.
+    Re-emit for the council to re-verify. Cite file:line for every concrete
+    claim; a path that "should exist" is a claim to verify, not assert.
+
+  intelligence_tier: deep
+  output_schema:
+    type: object
+    required:
+    - reviewed_diagnosis
+    - seam_contract
+    - sensor_design
+    - cutover_path
+    additionalProperties: false
+    properties:
+      reviewed_diagnosis:
+        type: string
+      seam_contract:
+        type: string
+        description: the single source-of-truth fix the council endorsed, 
+          DISTINCT from the symlink band-aid
+      sensor_design:
+        type: object
+        required:
+        - skill_name
+        - what_it_senses
+        - conflict_vs_smell
+        - install_note
+        additionalProperties: false
+        properties:
+          skill_name:
+            type: string
+          what_it_senses:
+            type: string
+          conflict_vs_smell:
+            type: string
+          install_note:
+            type: string
+            description: how it avoids the sensing-runtime-fit-not-installed 
+              drift
+      cutover_path:
+        type: array
+        items:
+          type: object
+          required:
+          - step
+          - gate
+          - reversible
+          additionalProperties: false
+          properties:
+            step:
+              type: string
+            gate:
+              type: string
+            reversible:
+              type: boolean
+outputs:
+- type: Artifact
+  destination: "grimoires/loa/context/<date>-ecosystem-seam-coherence.md"
+  description: the reviewed seam map + coherence contract + sensor design + 
+    cutover path
+  hivemind_labels:
+    artifact_type: product-spec
+    learning_status: strongly-validated
+- type: Verdict
+  destination: .run/compose/<run_id>/seam-coherence-council.jsonl
+  description: per-iteration cheval-routed council verdicts + MODELINV envelopes
+- type: Signal
+  destination: .run/compose/<run_id>/orchestrator.jsonl
+
+# ================================================================
+# Surface Class — framework<->harness coherence is high-stakes infra
+# ================================================================
+surface_class:
+  default: defi-strict           # high-stakes infra (gates every build); strictest schema-valid tier
+  enum: [culturetech-loose, defi-strict, mixed, unspecified]
+  inferred_when_unspecified: defi-strict
+
+# Top-level cheval-routed multimodal-council mandate (schema v1.4 review_routing).
+review_routing:
+  mandatory_when: [defi-strict]
+  router: cheval
+  runner: construct-fagan/scripts/cheval-council.sh
+  voices: [gpt-reviewer, reviewing-code, deep-thinker]   # cheval HEADLESS adapters
+  min_surviving_voices: 2
+  audit: modelinv-required
+  optional_when: [culturetech-loose, mixed, unspecified]
+
+when_to_use: >
+  - The same incoherence keeps recurring (manifest-numbness, scattered symlinks,
+    ghost constructs, source<->installed drift) and you're about to patch another
+    instance — run THIS instead to fix the class.
+  - Before/after a framework or harness layout change (where packs/adapters/
+    templates/runtime live).
+  - Quarterly deployment-seam sweep — do the harness consumers and framework
+    producers still agree on WHERE things are?
+  - NOT for intelligence-router coherence (use audit-setup-coherence), code
+    review (code-implement-and-review), or planning review (Flatline).
+
+operator_note: |
+  Authored 2026-06-08. Why this exists: the operator named the recurring pain —
+  "numbness and scattered symlinks and design that does NOT align with the Loa
+  ecosystem" — and asked to diagnose the CLASS, not patch the instance. Three
+  principles carried from audit-setup-coherence, sharpened here:
+    1. THE BIASED AUTHOR DOESN'T GET TO ASSERT. The agent that just patched the
+       seam is the worst judge of whether the patch is the contract. Stage 2
+       routes through the multi-model council precisely to break the author's
+       confidence in its own symlink.
+    2. PROOF-OF-RUN OR IT DIDN'T HAPPEN. This audit's verdict is only real with
+       a compose-verify-run valid_run for its run_id. Inline-asserting the
+       diagnosis is the role-play the /compose surface forbids.
+    3. THE SENSOR MUST OUTLIVE THE SESSION. The deliverable isn't a one-off
+       diagnosis — it's a GECKO eye that senses the class forever, wired into
+       patrol. And it must be INSTALLED (the sensing-runtime-fit-not-installed
+       drift is the cautionary tale).
+
+version: "1.0.0"
+authored_at: "2026-06-08"

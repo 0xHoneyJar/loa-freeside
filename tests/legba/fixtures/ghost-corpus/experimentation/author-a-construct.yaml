@@ -1,0 +1,152 @@
+# Composition · author-a-construct
+# ================================================================
+# The recursive dogfood: a composition that AUTHORS constructs.
+# Drives CURATOR's creating-constructs apprenticeship through the
+# compose runtime, then VALIDATES the result against the manifest SoT,
+# then CRAFT-REVIEWS the authored skills/persona cross-model. The
+# operator seams between stages are the apprenticeship's taste gates.
+#
+# Authored 2026-06-08 — operator directive: "dogfood via compose; use
+# the curator construct (this is how you create constructs)." The
+# creating-constructs SKILL.md sketches this wrapper (§Composition
+# surface); this is its first concrete instance.
+#
+# First input: the `worldline` construct (temporal-coherence spine).
+# ================================================================
+
+schema_version: "1.0"
+kind: workflow
+name: author-a-construct
+description: >
+  Author a new construct end-to-end via CURATOR's creating-constructs
+  apprenticeship, run through the compose runtime: author → validate →
+  craft-review, looping until the manifest validator is green and the
+  persona voice clears the craft gate. The operator taste-gates the
+  voice at the seam between author and validate.
+
+intent: >
+  "Operator wants a new construct. CURATOR drives the staged
+   apprenticeship (intent → naming → scaffold → streams → composition →
+   skills → persona → validate → READMEs → reference-composition),
+   compose drives the runtime + the human seams, the validator proves
+   the manifest is SoT-conformant, and a cross-model craft pass checks
+   the skills/persona read as voice, not wiki. The operator gets a
+   publish-ready construct, not a draft."
+
+backend: headless-tmux
+
+depends_on:
+  constructs:
+    - construct-creator       # CURATOR — the authoring apprenticeship (creating register)
+  scripts:
+    - construct-creator/scripts/construct-validate.sh   # the manifest/SoT validator
+    - construct-fagan/scripts/fagan-review.sh           # cross-model craft gate (skills/persona)
+  registry_entries:
+    - construct-creator: https://github.com/0xHoneyJar/construct-creator
+
+inputs:
+  - type: Intent
+    name: target
+    description: What construct to author (slug + one-breath intent)
+    required: true
+  - type: Artifact
+    name: design_brief
+    description: The design source (e.g. a candidate brief) + any partial scaffold already authored
+    required: false
+  - type: Operator-Model
+    name: operator_context
+    required: false
+
+# author ↔ validate is the core loop (a failing validator loops back to author).
+# craft-review (stage 3) runs once after convergence as a final cross-model gate;
+# a generic-voice verdict surfaces at the seam for the operator to loop manually.
+iterate:
+  - [1, 2]
+
+max_iterations: 3
+terminate_when: >
+  construct-validate.sh reports all-green (no MEDIUM+ findings) AND the
+  craft-review Verdict is APPROVED (persona reads as a distinct voice,
+  skills have all four sections). Past the cap, surface the open findings
+  to the operator — do not treat an unresolved validator as published.
+
+# ================================================================
+# Stages
+# ================================================================
+
+chain:
+  - stage: 1
+    name: author
+    construct: construct-creator
+    skill: creating-constructs
+    persona: CURATOR
+    mode: persistent          # CURATOR remembers earlier draft decisions across stages
+    reads: [Intent, Artifact, Operator-Model]
+    writes: [Artifact, Verdict, Signal]
+    role: primary
+    iterates_with: 2
+    thinking_effort: high     # naming + persona voice + skill authoring is multi-step synthesis
+    notes: >
+      Drive the apprenticeship stages CURATOR refuses to rubber-stamp:
+      persona voice (Stage 7 — must read as voice, not a wiki article),
+      skill SKILL.md authoring (Stage 6 — all four sections: when-to-use,
+      when-NOT, output shape, anti-patterns), the sealed entry schema,
+      READMEs (Stage 9 — org convention), reference composition (Stage 10).
+      The OPERATOR SEAM after this stage is the voice taste-gate.
+
+  - stage: 2
+    name: validate
+    construct: construct-creator
+    skill: validating-construct-manifest
+    mode: fresh
+    reads: [Artifact]
+    writes: [Verdict]
+    role: gate
+    iterates_with: 1
+    notes: >
+      Run construct-validate.sh against the authored construct.yaml + skills.
+      Any MEDIUM+ finding loops back to stage 1. This is the SoT-conformance
+      gate (construct-manifest-v4) — mechanical, not taste.
+
+  - stage: 3
+    name: craft-review
+    construct: fagan
+    skill: reviewing-files
+    persona: FAGAN
+    mode: fresh                # cross-model — a different corpus checks the voice/skills
+    reads: [Artifact]
+    writes: [Verdict, Signal]
+    role: craft-gate
+    iterates_with: 1
+    notes: >
+      Cross-model craft pass over the authored skills + persona: do the
+      skills read as defensible (anti-patterns real, not filler)? Does the
+      persona have a distinct voice? A generic-voice verdict loops to stage 1.
+      Single-model FAGAN (mode fast) is the reliable fallback when the
+      cheval council headless voices are degraded.
+
+# ================================================================
+
+outputs:
+  - type: Artifact
+    destination: <construct-repo>/   # the authored construct (manifest, skills, persona, READMEs)
+    description: A publish-ready construct (CURATOR Stages 1-10 complete; Stage 11 publish is operator-gated)
+  - type: Verdict
+    destination: .run/compose/<run_id>/author-trail.jsonl
+    description: Per-stage CURATOR critiques + validator + craft verdicts
+
+compose_with:
+  - construct-creator
+  - fagan
+
+when_to_use: >
+  - Authoring a NEW construct (the curator creating register, run through compose)
+  - NOT for installing an existing construct (/constructs install)
+  - NOT for wayfinding to find the right existing construct (/explore-network)
+  - NOT for editing an already-published construct's skills (edit directly + /fagan)
+
+# ================================================================
+
+version: "1.0.0"
+authored_at: "2026-06-08"
+authored_by: worldline-authoring session (recursive dogfood — first construct authored through compose)

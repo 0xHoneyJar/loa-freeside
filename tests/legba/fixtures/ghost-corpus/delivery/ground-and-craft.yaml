@@ -1,0 +1,481 @@
+# Composition · ground-and-craft
+# ================================================================
+# Brownfield-aware sibling of direct-render. Pairs grounding
+# (synthesizing canon from existing code, reference art, and operator
+# voice) with crafting (artisan ↔ the-mint iteration loop, with
+# PixelMark closing the HITL feedback loop on visual components).
+#
+# direct-render assumes canon EXISTS and produces art FROM it.
+# ground-and-craft does the grounding step FIRST, then crafts —
+# the canonical entry point when working on codebases that predate
+# the construct framework. Per cycle-002 retrospective: brownfield
+# is the rule, not the exception, for projects the constructs
+# operate on. Building taste-tokens / TDRs / voice from what already
+# exists is a precondition for tasteful component work, not a polish
+# step at the end.
+#
+# Authored 2026-04-25 from the henlo-monorepo cycle-002 hibernation
+# follow-up — same operator session that produced hibernate-product
+# v1.0.0 surfaced two adjacent gaps: (1) artisan invocations on
+# brownfield need explicit grounding scaffolding, (2) the visual
+# iteration loop lacks a high-quality HITL surface (PixelMark closes
+# this — sprawl-ui shift-drag region capture with computed styles
+# + component-source location).
+# ================================================================
+
+schema_version: "1.0"
+kind: workflow
+name: ground-and-craft
+description: >
+  Brownfield-aware grounding-and-crafting workflow. Surveys existing
+  code for canon fragments (palette, motion, typographic ladder,
+  voice, room metaphors), synthesizes a consolidated canon
+  (taste.md / voice.md / room-cards), gates on operator approval of
+  the canon, then iterates components against it via the
+  artisan ↔ the-mint loop. Capture defaults to PixelMark when the
+  target supports it; agent-browser screenshot is the fallback.
+
+intent: >
+  "Most projects the constructs operate on were built before the
+   constructs existed. taste.md doesn't exist; tokens.css is partial;
+   the persona lives in the operator's head. Authoring a new component
+   against that state produces uncanny output — because there's no
+   canon to land in. ground-and-craft is the explicit grounding pass
+   that turns brownfield-canon-light into a working canon, then
+   produces the component against it. Eye + hand, with grounding
+   first."
+
+backend: headless-tmux
+
+# Hivemind Lab labels (Dec 2025 canon).
+# JTBD: brownfield-grounding work serves the OPERATOR's ability to
+# produce tasteful work consistently — a personal JTBD ("Reassure Me
+# This Is Safe — the canon is real, the work will land in it") that
+# transitively serves end-users via downstream craft quality.
+hivemind_labels:
+  product_area: "Brownfield grounding + component craft (any codebase predating construct framework)"
+  workstream: delivery
+  priority: high
+  jtbd:
+    category: personal
+    description: "Reassure Me This Is Safe — there is a working canon to land in, not just operator-memory and scattered fragments"
+  source: team-internal
+
+depends_on:
+  constructs:
+    - gecko             # observe (file inventory at stage 1)
+    - artisan           # surveying-patterns + synthesizing-taste + synthesizing-vocabulary + naming-rooms + recording-taste
+  tools: []             # v1.1.0 dropped pixelmark/agent-browser deps — they're feel-iterate's concern now
+  upstream_compositions: []   # ground-and-craft is the upstream entry for brownfield grounding
+  downstream_compositions:
+    - compositions/delivery/feel-iterate.yaml                     # iteration loop after canon is approved (stages 7–9 of v1.0.0 lived here, now extracted)
+    - compositions/delivery/direct-render.yaml                    # consumed for canon-aware art production
+    - compositions/sorry-for-ur-loss/triage-pause.yaml            # consumed for per-room disabled-state cabinets
+    - compositions/sorry-for-ur-loss/hibernate-product.yaml       # consumed at hibernate-product stage 1.5 (ground-canon)
+
+inputs:
+  - type: Artifact
+    name: codebase
+    description: Path to the brownfield codebase (canonical, symlinks resolved).
+    required: true
+  - type: Intent
+    name: target_surface
+    description: >
+      What's being grounded + crafted? A single component, a feature,
+      a multi-room hibernation pass, a fresh banner-set. Determines
+      whether stage 4 (name-rooms) runs and how deeply stage 7 iterates.
+    required: true
+  - type: Artifact
+    name: existing_canon_paths
+    description: >
+      Optional — operator-supplied paths to known canon fragments
+      (e.g., grimoires/loa/context/taste-tokens-extracted.md,
+      space-direction-brief.md, taste.md drafts in other branches).
+      Seeds stage 1 instead of cold-scanning.
+    required: false
+  - type: Artifact
+    name: reference_art
+    description: >
+      Optional — image refs the operator wants the canon to honor
+      (mascot variants, scene-stack source, mood boards). Threaded
+      into stages 2 + 7.
+    required: false
+  - type: Operator-Model
+    name: operator_context
+    required: false
+
+# No iterate block — ground-and-craft v1.1.0 terminates at canon approval
+# (stage 6). Component-iteration loop lives in feel-iterate.yaml; chain
+# ground-and-craft → feel-iterate when component crafting is needed.
+
+# ================================================================
+# Stages
+# ================================================================
+
+chain:
+  - stage: 1
+    name: survey-existing
+    construct: gecko
+    skill: observe
+    persona: GECKO
+    mode: fresh
+    reads: [Artifact, Intent]
+    writes: [Verdict, Signal]
+    role: gate
+    notes: >
+      Canonical-path resolution (symlinks!) and scan for canon fragments.
+      Map every file that contributes to visual / verbal / spatial
+      identity: tokens.css, tailwind theme block, taste.md drafts,
+      grimoires/loa/context/taste-tokens-extracted.md, persona docs,
+      lore-bible.md, voice.md, scene-stack source, reference art
+      directories. Output: a Signal listing each fragment with path,
+      last-touched age, and a one-line summary of what it carries.
+
+      The operator's existing_canon_paths input (if supplied) seeds
+      this scan; the stage still does a cold pass to find fragments
+      the operator forgot to name. Brownfield projects routinely
+      accumulate canon-fragments across multiple parallel sessions
+      without consolidation — surfacing them all is the precondition
+      for stage 2.
+
+  - stage: 2
+    name: extract-canon-from-code
+    construct: artisan
+    skill: synthesizing-taste
+    persona: ALEXANDER
+    mode: persistent
+    reads: [Artifact, Signal, Verdict]
+    writes: [Artifact, Signal]
+    role: primary
+    notes: >
+      ALEXANDER reads the existing UI source — components/, pages/,
+      any styled-component files, tailwind theme, CSS custom properties,
+      motion constants — and extracts taste tokens from what is
+      already shipping. This is brownfield mining, not authoring.
+      Outputs: palette table (OKLCH + hex), motion timings (named
+      constants if present, raw values otherwise), typographic ladder,
+      material patterns (shadow stacks, border treatments, bezel
+      gradients), spacing rhythm.
+
+      The mining process gives the operator a draft taste.md grounded
+      in what the code is ALREADY DOING — a much higher trust artifact
+      than a cold authoring pass. The operator's voice in the existing
+      code (even if accidental) is the most reliable source; the
+      operator's stated preferences in chat are second; the agent's
+      best-guess is third.
+
+  - stage: 3
+    name: extract-vocabulary
+    construct: artisan
+    skill: synthesizing-vocabulary
+    persona: ALEXANDER
+    mode: persistent
+    reads: [Artifact, Signal]
+    writes: [Artifact]
+    role: primary
+    notes: >
+      Pull voice from existing copy: marketing pages, tooltips, button
+      text, error messages, microcopy in modals, marquee/ticker phrases,
+      lore embedded in component names. Tier into Eileen Dec 2025
+      taxonomy — canonical / named / cold-on-brand / cold-off-brand.
+      Output: voice.md draft + register notes.
+
+      Cycle-002 example: "1 HENLO = 1 MOONDUST" was canonical and
+      already shipping in marquee + after-hours copy; "compound till
+      moon" was canonical and shipping in vault subtitle; "OUT OF
+      ORDER · ACCEPTING HENLO DONATIONS" was named-and-shipping. The
+      vocabulary already existed across the codebase — the gap was
+      a consolidated voice.md the agent could read.
+
+  - stage: 4
+    name: name-rooms
+    construct: artisan
+    skill: naming-rooms
+    persona: ALEXANDER
+    mode: persistent
+    reads: [Artifact, Intent, Signal]
+    writes: [Artifact]
+    role: primary
+    when: >
+      target_surface spans multiple rooms (multi-surface hibernation,
+      multi-feature refresh, scene-stack with N panels). Skip on
+      single-component invocations.
+    notes: >
+      Map each surface to a room with a metaphor. Per cycle-002 and
+      space-direction-brief.md: vault → bank, lock → reservoir,
+      wall → construction site, presence → after-hours arcade,
+      gallery → pictures-coming-down. The room IS the design
+      subject for stage 7 craft work.
+
+      Bespoke-per-room is the production form. Even when stages 2–3
+      produce a single project-level canon, stage 7 should iterate
+      EACH room as its own design problem grounded in what the room
+      is, not as a templated pattern. Generic banner / cabinet
+      patterns are first-cut scaffolding (cycle-002 retro:
+      "generic banners are the laziest move; the tasteful way to
+      degrade is to do things custom by understanding our
+      environment").
+
+  - stage: 5
+    name: compose-canon-doc
+    construct: artisan
+    skill: recording-taste
+    persona: ALEXANDER
+    mode: persistent
+    reads: [Artifact, Signal, Verdict]
+    writes: [Artifact]
+    role: primary
+    notes: >
+      ALEXANDER consolidates the extracted taste tokens (stage 2) +
+      vocabulary (stage 3) + room metaphors (stage 4 if invoked) into
+      a coherent canon doc set: taste.md, voice.md, optional
+      room-cards.md or per-room briefs in grimoires/loa/context/.
+      Operator-paired writing — ALEXANDER drafts, operator edits,
+      ALEXANDER refines. Persistent mode so the doc set evolves
+      across the iteration with stage 6.
+
+      The output is durable — these files survive the composition
+      and ground every future invocation against this codebase.
+      Treat them with the same care as the code being grounded.
+
+  - stage: 6
+    name: hitl-canon-approval
+    construct: operator
+    persona: HUMAN
+    mode: blocking
+    role: hard-stop
+    notes: >
+      HARD STOP. Operator reviews, edits, and approves the canon doc
+      set. The composition cannot autonomous past this — the canon
+      becomes durable infrastructure for every downstream artisan
+      invocation, so it must reflect operator's actual taste, not
+      ALEXANDER's best guess.
+
+      Approval gestures: operator signs off in-conversation, OR
+      commits the canon doc set to the codebase (durability gesture
+      — preferred), OR explicitly defers approval ("ship as draft,
+      I'll refine over the next cycle"). Each gesture has different
+      durability semantics — track which one in the Verdict so
+      downstream invocations know whether they're reading approved
+      vs draft canon.
+
+  # Stages 7–9 (iterate-with-pixelmark, curate, distill-component) were
+  # extracted to compositions/delivery/feel-iterate.yaml v1.0.0 in this
+  # version (v1.1.0). ground-and-craft now terminates at canon approval
+  # (stage 6 hard-stop). Operators chain ground-and-craft → feel-iterate
+  # explicitly when both grounding and component crafting are needed.
+  # The split keeps each composition single-responsibility and makes
+  # feel-iterate reusable across triage-pause, hibernate-product, and
+  # direct-render without each duplicating capture_method scaffolding.
+
+# ================================================================
+
+outputs:
+  - type: Artifact
+    destination: <codebase>/taste.md (or grimoires/loa/context/taste.md)
+    description: Consolidated taste canon — palette, motion, typography, materiality, spacing
+    hivemind_labels:
+      artifact_type: product-spec
+      learning_status: strongly-validated
+  - type: Artifact
+    destination: <codebase>/voice.md (or grimoires/loa/context/voice.md)
+    description: Voice canon — register tiers, canonical phrases, on-brand vs cold copy
+    hivemind_labels:
+      artifact_type: product-spec
+      learning_status: strongly-validated
+  - type: Artifact
+    destination: grimoires/loa/context/room-cards.md
+    description: Per-room metaphor mapping (when stage 4 invoked)
+    hivemind_labels:
+      artifact_type: experiment-design
+      learning_status: directionally-correct
+    emit_when: target_surface spans multiple rooms (stage 4 ran)
+  - type: Verdict
+    destination: .run/compose/<run_id>/canon-approval.jsonl
+    description: Stage 6 approval gesture (chat sign-off / commit-to-codebase / explicit-defer) with durability semantics
+    hivemind_labels:
+      artifact_type: atomic-learning
+      learning_status: directionally-correct
+  - type: Artifact
+    destination: grimoires/loa/tracks/session-{N+1}-kickoff.md
+    description: "End-of-cycle kickoff doc when scope crosses one cycle. Grounds the next session in: canon recap, observed gotchas, what feel-iterate invocations are queued."
+    hivemind_labels:
+      artifact_type: experiment-design
+      learning_status: directionally-correct
+    emit_when: scope expands beyond one cycle OR operator explicitly says /kickoff
+
+compose_with:
+  - gecko
+  - artisan
+
+composes_symmetrically_with:
+  - artisan ↔ operator   # canon authoring ↔ operator approval
+  - ground-and-craft → feel-iterate   # grounding produces canon → feel-iterate consumes canon and iterates components (sequential, not symmetric)
+  - ground-and-craft ↔ direct-render   # grounding produces canon ↔ canon-aware art production
+
+# ================================================================
+# Surface Class (cycle-002 followup — stub; canonical def in outage-triage.yaml)
+# ================================================================
+
+surface_class:
+  default: unspecified
+  enum: [culturetech-loose, defi-strict, mixed, unspecified]
+  canonical_definition: compositions/sorry-for-ur-loss/outage-triage.yaml#surface_class
+  affects_in_this_composition:
+    - stage 6 hitl-canon-approval gesture — operator chat-sign-off acceptable on culturetech-loose; commit-to-codebase required on defi-strict (durability)
+    - stage 4 name-rooms invocation — encouraged on culturetech-loose for any multi-surface work; reserved on defi-strict for clearly metaphor-friendly rooms (financial primitives often resist metaphor without distorting meaning)
+    - downstream chain to feel-iterate — defi-strict tightens feel-iterate's iteration_cap and curate strictness via the same surface_class flag (see feel-iterate surface_class affects)
+  inferred_when_unspecified: defi-strict (safety default — canon-light grounding can produce uncanny financial UIs more dangerously than uncanny aesthetic UIs)
+
+# ================================================================
+# Thinking Effort (cycle-002 followup — stub; canonical def in feel-iterate.yaml)
+# ================================================================
+
+thinking_effort:
+  default: high     # grounding work is multi-step synthesis across the codebase
+  enum: [low, medium, high, xhigh, max]
+  canonical_definition: compositions/delivery/feel-iterate.yaml#thinking_effort
+  affects_in_this_composition:
+    - stage 1 survey-existing — medium (file inventory + scan; mechanical with light reasoning)
+    - stage 2 extract-canon-from-code — xhigh (deep extraction across components; the load-bearing synthesis)
+    - stage 3 extract-vocabulary — high (voice tiering + canonical-phrase identification)
+    - stage 4 name-rooms — xhigh (metaphor work; consequential cross-cycle naming)
+    - stage 5 compose-canon-doc — xhigh (consolidation of stages 2–4 into durable canon; multi-pass synthesis with operator pairing)
+    - stage 6 hitl-canon-approval — n/a (operator stage)
+
+# ground-and-craft is the upstream entry for brownfield artisan work.
+# Once stages 1–6 complete and canon is approved+durable, downstream
+# compositions (direct-render, triage-pause, hibernate-product) all
+# benefit. hibernate-product stage 1.5 (ground-canon) explicitly
+# routes to ground-and-craft when canon is absent.
+
+# ================================================================
+
+invocation_examples:
+  - operator_utterance: "we need to ground henlo before we can do tasteful disabled states across the row"
+    resolves_to: full chain stages 1-6 with stage 4 (name-rooms) invoked; downstream caller chains feel-iterate per cabinet
+  - operator_utterance: "extract a taste.md from this codebase"
+    resolves_to: stages 1-6 — produce + approve canon, terminate
+  - operator_utterance: "I have taste.md, just craft the wall cabinet"
+    resolves_to: invoke feel-iterate.yaml directly with operator-supplied canon Artifact (this composition no longer crafts)
+  - operator_utterance: "ground the codebase but don't touch components yet, I'll iterate later"
+    resolves_to: stages 1-6 with explicit halt-and-park at stage 6 (canonical shape)
+  - operator_utterance: "build the Henlo TV refresh tasteful"
+    resolves_to: ground-and-craft (this composition; stage 4 invoked) → feel-iterate (downstream chain) — operator may invoke as a chained pair
+
+# ================================================================
+
+when_to_use: >
+  - Brownfield codebase (built before the construct framework existed)
+    and a downstream composition needs canon to operate against
+  - First-time visual-language authoring on a project with scattered
+    canon fragments
+  - Taste / voice canon refresh after the codebase has evolved
+    significantly since the last grounding
+  - Per-room canon authoring before a multi-surface hibernation /
+    feature-set / scene-stack
+  - Upstream of feel-iterate when the operator needs both canon AND
+    components — invoke as a chained pair: ground-and-craft → feel-iterate
+  - NOT for component iteration when canon already exists (use feel-iterate
+    directly with operator-supplied canon)
+  - NOT for first-pass invocations where canon already exists and is
+    fresh (use direct-render or feel-iterate directly)
+  - NOT for codex-shaped knowledge graph work (lore, identity schemas,
+    rarity tables) — that's a different surface; see direct-render
+    operator_note re: gumi's gen-art-collection-preview-tool
+  - NOT a substitute for /synthesizing-taste / /synthesizing-vocabulary
+    standalone when the operator wants just one slice — use those
+    skills directly
+
+# ================================================================
+
+known_limitations:
+  - "Stages 2–3 (extracting taste + vocabulary from code) produce a draft canon, not a final one. Quality is bounded by what's already shipping in the codebase. If the codebase has had multiple parallel sessions with diverging taste, ALEXANDER's extraction will reflect that divergence — the operator must resolve it at stage 5–6, not assume the draft is coherent."
+  - "Stage 4 (name-rooms) is optional but produces durable per-room artifacts that downstream feel-iterate invocations rely on. Skipping it on multi-room work pushes the room-naming burden into the iteration loop; if any doubt, run stage 4."
+  - "Stage 6 hard-stop on canon approval is non-negotiable. Canon is durable infrastructure — silent advance produces a canon the operator never approved, which then grounds every future invocation against operator-unfit material. The composition cannot autonomous past it."
+  - "v1.1.0 dropped the iteration loop (stages 7–9) — moved to feel-iterate.yaml as the single-source primitive. Operators expecting end-to-end grounding-and-crafting now chain ground-and-craft → feel-iterate explicitly. Less monolithic, more composable; same outcome."
+  - "ground-and-craft does not handle brand-mark generation. Brand marks composite locally per direct-render's composite-vs-generate rule; never ask Images 2.0 to render brand assets."
+  - "The composition assumes operator literacy with FEEL mode and the artisan persona. New operators benefit from reading .claude/constructs/packs/artisan/identity/ALEXANDER.md before invoking — sets expectations on how the canon authoring conversation feels."
+
+# ================================================================
+
+references:
+  - skill_observe: construct-gecko/skills/observe/SKILL.md
+  - skill_synthesizing_taste: construct-artisan/skills/synthesizing-taste/SKILL.md
+  - skill_synthesizing_vocabulary: construct-artisan/skills/synthesizing-vocabulary/SKILL.md
+  - skill_naming_rooms: construct-artisan/skills/naming-rooms/SKILL.md
+  - skill_recording_taste: construct-artisan/skills/recording-taste/SKILL.md
+  - downstream_iteration_loop: compositions/delivery/feel-iterate.yaml
+  - companion_canon_consumer: compositions/delivery/direct-render.yaml
+  - companion_disable_consumer: compositions/sorry-for-ur-loss/triage-pause.yaml
+  - companion_hibernation_consumer: compositions/sorry-for-ur-loss/hibernate-product.yaml
+  - canonical_evidence_session_1: henlo-monorepo:grimoires/loa/tracks/session-1-tetris-tasteful-disable-retrospective.md
+  - canonical_evidence_session_2: henlo-monorepo:grimoires/loa/tracks/session-2-henlo-hibernation-kickoff.md
+  - canonical_extracted_taste: henlo-monorepo:grimoires/loa/context/taste-tokens-extracted.md
+  - canonical_space_direction: henlo-monorepo:grimoires/loa/context/space-direction-brief.md
+  - canonical_space_lexicon: henlo-monorepo:grimoires/loa/context/space-lexicon.md
+  - operator_feel_mode: .claude/constructs/packs/artisan/identity/ALEXANDER.md
+
+# ================================================================
+
+operator_note: |
+  Authored 2026-04-25 from the henlo-monorepo cycle-002 hibernation
+  follow-up. Same operator session that produced hibernate-product
+  v1.0.0 surfaced two adjacent gaps that this composition fixes:
+
+  1. Brownfield is the rule, not the exception. The constructs were
+     authored months ago; the projects they operate on were built a
+     year+ before that. There's no taste.md in henlo-monorepo
+     because henlo-monorepo predates the construct framework. Every
+     artisan invocation on that codebase has had to do grounding-on-the-fly,
+     producing partial canon scattered across grimoires/loa/context/
+     without ever consolidating it. ground-and-craft is the explicit
+     grounding-then-craft chain that fixes the precondition.
+
+  2. The visual iteration loop lacked a high-quality HITL surface.
+     Headless screenshots are first-frame-only and don't carry the
+     operator's region-specific taste signal. PixelMark — sprawl-ui's
+     shift-drag annotation overlay — closes this gap. The operator
+     marks regions, captures rectangle + computed styles + component
+     source, leaves a note. ALEXANDER reads marks and converges. The
+     composition wires PixelMark as the preferred capture surface
+     and treats agent-browser as the documented fallback.
+
+  Three principles worth carrying forward:
+
+  1. EXTRACT BEFORE AUTHOR. Stage 2 (synthesizing-taste from code) is
+     the load-bearing stage. The operator's voice in existing code is
+     the highest-trust source for canon — even when accidental. Don't
+     skip extraction in favor of cold authoring; the cold canon won't
+     match what's shipping and downstream components will land
+     uncanny.
+
+  2. BESPOKE PER ROOM. When stage 4 runs, treat each room as its own
+     design subject in stage 7. Cycle-002 retro: "generic banners are
+     the laziest move; the tasteful way to degrade is to do things
+     custom by understanding our environment." Templated treatments
+     across N surfaces are first-cut scaffolding, not delivery shape.
+
+  3. PIXELMARK CHANGES THE LOOP. Region-annotated feedback is
+     qualitatively different from text-only feedback. The operator's
+     ability to point at a specific 200x80 rectangle and say "this
+     spacing is wrong, this hue is too cold" is the difference
+     between iterating-toward-tasteful and iterating-randomly.
+     Wherever feasible, port PixelMark to the target framework and
+     use it as the default capture surface.
+
+  ground-and-craft sits in compositions/delivery/ alongside
+  direct-render — they are siblings. direct-render assumes canon
+  exists and produces art from it; ground-and-craft produces the
+  canon, then the art. Use ground-and-craft as the entry point on
+  brownfield; use direct-render once canon is durable.
+
+# ================================================================
+
+version: "1.2.0"
+authored_at: "2026-04-25"
+authored_by: cycle-002 followup (thinking_effort stub from adaptive-thinking docs)
+changelog:
+  - "1.2.0 (2026-04-25): Add thinking_effort field (stub; canonical def in feel-iterate.yaml). Composition default = high (grounding work is multi-step synthesis across the codebase). Per-stage overrides: stage 1 survey = medium; stage 2 extract-canon-from-code = xhigh (load-bearing synthesis); stages 3–4 = high/xhigh; stage 5 compose-canon-doc = xhigh (consolidation across stages 2–4 with operator pairing). Stage 6 (HITL) is operator-stage. Adaptive-thinking-aware runtimes translate per the canonical mapping table."
+  - "1.1.0 (2026-04-25): Slim ground-and-craft to grounding-only — stages 1–6 (survey, extract-taste, extract-vocabulary, name-rooms, compose-canon-doc, HITL canon approval). Removed stages 7–9 (iterate-with-pixelmark, curate, distill-component) — extracted to compositions/delivery/feel-iterate.yaml v1.0.0 as the single-source iteration primitive. Removed iterate block, pixelmark/agent-browser tool deps, capture_method scaffolding, component output, pixelmark-trail output. Operators chain ground-and-craft → feel-iterate explicitly when both grounding and component crafting are needed. Per cycle-002 followup feedback: 'creating tasteful components is the work of the artisan but the artisan/kansei needs a dedicated annotation-like workflow that pieces in.' Smaller, single-responsibility, more composable."
+  - "1.0.0 (2026-04-25): First canonical spec. Pairs grounding (synthesizing-taste / synthesizing-vocabulary / naming-rooms / recording-taste) with crafting (artisan ↔ the-mint iterating-visuals + curate + distilling-components). Wires PixelMark (sprawl-ui Svelte component, sprawl-ui canonical at ~/bonfire/sprawl/apps/sprawl-ui/src/lib/components/PixelMark.svelte) as preferred capture_method with agent-browser as fallback. Sibling of direct-render in compositions/delivery/. Authored from henlo-monorepo cycle-002 hibernation follow-up."

@@ -1,0 +1,687 @@
+# composition: architecture-migration
+#
+#   what        substrate cutover orchestrator (DB / auth / indexer / contract)
+#   when        outage-triage routed `migrate`, or vendor-deprecation forcing function
+#   upstream    outage-triage (sorry-for-ur-loss/) — at its dispatch stage
+#   downstream  code-implement-and-review (delivery/) — invoked ONCE PER PHASE
+#   fagan       reviews migration PLAN at stage 5 (invariants? recoverable phases? stranded consumers?)
+#
+# ────────────────────────────────────────────────────────────────────
+# Downstream of outage-triage's `migrate` disposition. Takes a single
+# surface (or a substrate the surface depends on) marked for cutover
+# and orchestrates the full plan → review → phase-dispatch → cutover →
+# decommission pipeline. Composes UP with outage-triage and DOWN with
+# code-implement-and-review (invoked once per cutover phase).
+#
+# Coordinates with codex-review [DEPRECATED→fagan] (FAGAN) on the MIGRATION PLAN — does
+# this plan preserve invariants during cutover? what breaks at the
+# transition? — distinct from fix-sprint's FAGAN-on-armor-specs and
+# code-implement-and-review's FAGAN-on-diff. Three FAGAN seams now:
+# armor (fix-sprint), plan (this), diff (code-implement-and-review).
+#
+# Authored 2026-04-27 from the henlo-monorepo Dynamic-CORS aftermath.
+# The composition's reference instance is the in-flight Supabase
+# `gcdudoqizygzkmiiktwt` → `freeside` cutover (operator-owned), where
+# the Dynamic V2-EOL Aug-1 wallet migration is a parallel forcing
+# function. fix-sprint handles in-place patching; this composition
+# handles substrate replacement. Sibling: fix-sprint (same upstream
+# router, different disposition).
+#
+# Sibling: fix-sprint (sorry-for-ur-loss/) — fix-disposition target.
+# Upstream: outage-triage (sorry-for-ur-loss/) — invokes us at its
+# stage 6 dispatch when a surface's disposition column reads `migrate`.
+# Downstream: code-implement-and-review (delivery/) — invoked ONCE
+# PER CUTOVER PHASE (dual-write, backfill, cutover, decommission).
+# ================================================================
+
+schema_version: "1.0"
+kind: workflow
+name: architecture-migration
+description: >
+  Plan + execute a substrate cutover with FAGAN reviewing the
+  migration plan, phase-by-phase implementation via embedded
+  code-implement-and-review invocations, and a hard cutover gate
+  before decommission. Designed as the `migrate` dispatch target
+  from outage-triage; can also be invoked standalone for any
+  substrate-replacement work where rollback is the load-bearing
+  constraint.
+
+intent: >
+  "Outage-triage routed this surface to `migrate` — the surface is
+   broken because the SUBSTRATE underneath it is being replaced. Don't
+   patch the surface; design the cutover. FAGAN's job is to argue why
+   the plan loses data, breaks invariants, or strands consumers
+   mid-cutover. The operator's job is to walk the plan, gate the
+   cutover, and confirm decommission. Phase work dispatches to
+   code-implement-and-review per phase — dual-write, backfill, cutover,
+   decommission are separate diffs with separate FAGAN reviews."
+
+backend: headless-tmux
+
+hivemind_labels:
+  product_area: "Per-substrate cutover orchestrator (DB, auth, infra, indexer, contract)"
+  workstream: sorry-for-ur-loss
+  priority: high
+  jtbd:
+    category: personal
+    description: "Don't Lose State During The Move — cutover plan is reviewed, phased, gated, and reversible until decommission"
+  source: team-internal
+
+depends_on:
+  constructs:
+    - scar              # postmortem (the migration's WHY) + correlating (multi-surface impact)
+    - fagan      # FAGAN on the migration plan (stage 4)
+    - general-purpose      # implementer (via embedded code-implement-and-review per phase)
+    - bug-triaging      # Loa eligibility check (stage 1, skipped when upstream-provided)
+    - the-mint          # curate dispatch list for phase-by-phase implementation
+  tools:
+    - codex             # codex CLI; both FAGAN passes depend on it
+    - gh                # for surfacing cutover-window PR + decommission PR for review-by-team
+  upstream_compositions:
+    - compositions/sorry-for-ur-loss/outage-triage.yaml   # migrate-disposition dispatch target
+  downstream_compositions:
+    - compositions/delivery/code-implement-and-review.yaml   # invoked ONCE PER PHASE at stages 7-10
+
+inputs:
+  - type: Intent
+    name: substrate_to_migrate
+    description: >
+      The substrate being replaced. Either named explicitly (Supabase
+      project X → freeside, Dynamic V2 wallet → THJ-built sign-in,
+      Envio deployment 914708e → f31df80) or inferred from the
+      upstream surface-disposition.md row marked `migrate`.
+    required: true
+  - type: Artifact
+    name: codebase
+    description: Path to the affected app/repo (canonical, symlinks resolved)
+    required: true
+  - type: Artifact
+    name: upstream_audit
+    description: >
+      Optional. When invoked from outage-triage, the codex-audit.md and
+      surface-disposition.md from the parent run. Provides the
+      consumer-of-old-substrate inventory; skips re-audit at stage 3.
+    required: false
+  - type: Artifact
+    name: target_substrate_spec
+    description: >
+      Optional but recommended. Spec for the NEW substrate (schema,
+      API surface, capacity profile, security posture). When omitted,
+      stage 4 (plan-design) authors a draft and FAGAN argues against
+      it. When provided, stage 4 grounds against the spec and FAGAN
+      argues about the cutover path, not the destination.
+    required: false
+  - type: Operator-Model
+    name: operator_context
+    required: false
+
+# Iteration loops:
+#   [[4, 5]] — plan-design ↔ plan-review (analogous to fix-sprint's
+#              armor [[3,4]] and code-implement-and-review's [[1,2]];
+#              FAGAN against the migration plan, not against code)
+#   [[7..10 each]] — each phase invocation handles its own diff loop
+#              via the embedded composition; no double-iteration here.
+iterate:
+  - [4, 5]
+max_iterations: 3
+terminate_when: >
+  FAGAN returns APPROVED on the cutover plan with no open
+  CHANGES_REQUIRED findings — every claimed invariant defended, every
+  phase carrying a defined rollback path, and no stranded consumer in
+  the dependency map (or the iteration cap is reached and the wrapper
+  auto-approves, surfaced to the operator at the stage 6 hard-stop).
+  Only then does phase dispatch (stages 7-10) begin.
+
+# ================================================================
+# Stages
+# ================================================================
+
+chain:
+  - stage: 1
+    name: eligibility-or-skip
+    construct: bug-triaging
+    skill: bug
+    persona: BUG-TRIAGE
+    mode: fresh
+    reads: [Intent, Artifact]
+    writes: [Verdict]
+    role: gate
+    when: |
+      Invoked standalone (no upstream surface-disposition.md row from
+      outage-triage). Run Loa's full Phase 0-1 eligibility check. When
+      invoked from outage-triage, that upstream `migrate` row already
+      counts as the eligibility decision and this stage is a no-op
+      pass-through.
+    notes: >
+      When invoked standalone, runs the full Loa eligibility check.
+      Halts if classified as feature work (use /plan instead) or as
+      a fix that doesn't actually require substrate replacement (use
+      fix-sprint instead). Halts if rollback path isn't articulable
+      from operator inputs — substrate cutovers without a rollback
+      plan are not eligible for this composition.
+
+  - stage: 2
+    name: confirm-substrate-scope
+    construct: scar
+    skill: triage
+    persona: SCAR-SENTINEL
+    mode: fresh
+    reads: [Intent, Artifact, Verdict]
+    writes: [Verdict, Signal]
+    role: primary
+    when: |
+      The upstream surface-disposition.md row does NOT already name the
+      substrate (e.g., "Supabase paused — migrate to freeside") and its
+      broken-surfaces list — run substrate-scope confirmation. When the
+      upstream row already supplies both, pass through to stage 3.
+    notes: >
+      Confirm what the substrate is, what's broken because of it, and
+      what the boundary of the migration is. Distinct from fix-sprint
+      stage 2 — here the question isn't "where is the bug?" but
+      "what's the EDGE of the substrate, and what crosses it?". The
+      Verdict's blast-radius hint is per-substrate, not per-bug.
+
+  - stage: 3
+    name: dependency-map
+    construct: scar
+    skill: correlating
+    persona: SCAR-SENTINEL
+    mode: persistent
+    reads: [Intent, Artifact, Verdict, Signal]
+    writes: [Artifact, Signal]
+    role: primary
+    thinking_effort: high
+    notes: >
+      Map every consumer of the substrate. For DB substrates: every
+      table read, every type that mirrors a table, every migration
+      script. For auth substrates: every JWT verification, every
+      session-cookie read, every embedded SDK config. For API/indexer
+      substrates: every fetch URL, every type that mirrors a response
+      shape. The output is grimoires/scar/migration/<slug>/dependency-map.md
+      — load-bearing for stage 4's plan and stage 8's cutover gate.
+
+      MAY delegate the broad scan to codex-mcp via codex_mode:
+      delegation (one-shot brief, ≤300 words, ≤6-bullet report). The
+      brief structure mirrors outage-triage stage 3: scope (substrate
+      + adjacent files) → confirmed_consumer_count → dev_log_evidence
+      → output_target → output_structure → report_cap.
+
+      v1.0.0 expects this to be the load-bearing artifact stage 4
+      consumes. Sloppy dependency map → bad cutover plan → FAGAN
+      catches it at stage 5 → stage 4 re-runs → cycles waste. Invest
+      here.
+
+  - stage: 4
+    name: cutover-plan-design
+    construct: scar
+    skill: harden                  # repurposed: hardens against cutover risk, not just bug class
+    persona: SCAR-SENTINEL
+    mode: persistent
+    reads: [Artifact, Verdict, Signal]
+    writes: [Artifact, Signal]
+    role: primary
+    iterates_with: 5
+    thinking_effort: xhigh        # the load-bearing stage; plan quality determines everything downstream
+    notes: >
+      Author the migration plan at
+      grimoires/scar/migration/<slug>/cutover-plan.md. Canonical
+      sections (the FAGAN-readable shape):
+
+      1. Substrate boundary (from stage 2 + 3) — what's migrating,
+         what crosses the edge
+      2. Target substrate spec (from input or authored here)
+      3. Invariants — what MUST NOT break during the cutover (data
+         integrity, auth state preservation, API shape stability,
+         price-feed continuity, etc.)
+      4. Phase plan — ordered list, each phase is a discrete dispatch:
+         a. Dual-write window (write to both substrates)
+         b. Backfill (replay history into new substrate)
+         c. Read-cutover gate (verify parity, then flip reads)
+         d. Decommission window (deprecate old substrate gradually)
+         Each phase has: scope, success criteria, rollback signal,
+         estimated duration, blocking-dependencies.
+      5. Rollback path — at each phase boundary, what's the exit?
+      6. Communication — who needs to know at each gate (team, users,
+         partners)?
+      7. Decommission criteria — when is the old substrate safe to
+         remove?
+
+      Iteration 2+: read FAGAN's Verdict from stage 5 and revise. If
+      FAGAN flagged an invariant that the plan didn't preserve, adjust
+      the affected phase. If FAGAN flagged an unrecoverable phase
+      (no rollback), redesign with explicit rollback. Don't add
+      phases unless FAGAN's reasoning explicitly requires them.
+
+  - stage: 5
+    name: plan-review
+    construct: fagan             # was codex-review (retired); real reviewer construct (bd-ii1m)
+    skill: reviewing-migration-plan
+    persona: FAGAN
+    mode: fresh                   # fresh per iteration — no memory of prior reviews
+    reads: [Artifact]              # cutover-plan.md + dependency-map.md
+    writes: [Verdict, Signal]
+    role: craft-gate
+    iterates_with: 4
+    thinking_effort: xhigh
+    notes: >
+      FAGAN reads the plan + dependency map and returns line-anchored
+      findings on the PLAN — not on code, not on specs. The skill is
+      reviewing-migration-plan (sibling of reviewing-armor-specs and
+      reviewing-diffs). Pattern of finding: "Phase 3c (read-cutover)
+      assumes parity but the dependency map shows N consumers that
+      read computed fields not present in the new substrate's schema
+      — parity check needs a per-consumer column reconciliation,
+      not just a row-count match."
+
+      Three high-value FAGAN argumentation modes:
+
+      1. INVARIANT VIOLATION — find an invariant the plan claims to
+         preserve and argue why a phase actually breaks it
+      2. UNRECOVERABLE PHASE — find a phase with no defined rollback
+         path and argue why the operator will be stuck if it fails
+      3. STRANDED CONSUMER — find a consumer in the dependency map
+         that the plan doesn't address (often: a quest verifier, a
+         monitoring probe, a migration script that itself depends
+         on the old substrate)
+
+      Returns structured Verdict (APPROVED | CHANGES_REQUIRED +
+      findings[]) using the same finding schema as reviewing-diffs.
+      Iteration cap: 3 total reviews. Past the cap, the wrapper
+      auto-approves with `auto_approved: true`. Surface this on
+      defi-strict as a halt-for-confirmation; on culturetech-loose
+      as a warning. Migration plans that hit auto-approve are
+      MORE concerning than diffs that do — surface accordingly.
+
+      If reviewing-migration-plan is not yet implemented in
+      construct-fagan, this stage MAY fall back to
+      reviewing-files against the cutover-plan.md content. Surface
+      the fallback explicitly. See known_limitations.
+
+  - stage: 6
+    name: hitl-plan-confirm
+    construct: operator
+    persona: HUMAN
+    mode: blocking
+    role: hard-stop
+    when: |
+      Always — universal across surface_class, including
+      culturetech-loose. The operator MUST confirm the migration plan
+      before phase dispatch begins. Cutovers affect state; state changes
+      need explicit gating regardless of surface_class. This stage is
+      never skipped.
+    notes: >
+      HARD STOP — universal across surface_class. Operator walks the
+      reviewed plan and confirms before phase dispatch begins. Three
+      signals to look for:
+
+      - any FAGAN finding marked `auto_approved: true`
+      - any phase where the rollback path reads as theoretical (not
+        actually tested in a sandbox)
+      - any consumer in the dependency map the plan dispatches to
+        without a per-consumer migration entry
+
+      Operator can edit the plan before stage 7 receives it. The
+      plan is also the team-facing communication artifact —
+      consider posting to relevant channels at this gate, not after
+      the cutover.
+
+  - stage: 7
+    name: phase-1-dual-write
+    construct: composition
+    skill: invoke-composition
+    persona: ORCHESTRATOR
+    mode: fresh
+    reads: [Artifact, Verdict]
+    writes: [Artifact, Verdict, Signal]
+    role: primary
+    invokes: compositions/delivery/code-implement-and-review.yaml
+    when: |
+      The migration plan declares a dual-write phase as applicable. The
+      embedded composition implements Phase 1 (dual-write window): add
+      write paths to the new substrate alongside existing writes to the
+      old (reads still go to old) so every write that lands in the old
+      substrate ALSO lands in the new and future reads can cut over
+      without data loss — scoped to the dependency-map's write paths to
+      the old substrate. Skipped when the plan marks dual-write
+      not-applicable (e.g., append-only substrates where backfill alone
+      suffices); the composition runtime reads the phase plan to decide
+      which of stages 7-10 are applicable.
+    notes: >
+      Each phase is a separate invocation of code-implement-and-review.
+      The embedded composition handles its own implement ↔ FAGAN diff
+      review loop (cap 3). Phase success criteria from the plan are
+      the convergence target.
+
+      Phase 1 emits a Verdict + Diff. architecture-migration
+      orchestrator reads the Verdict; halt-for-confirmation if the
+      embedded composition exited via auto-approve-past-cap.
+
+  - stage: 8
+    name: phase-2-backfill
+    construct: composition
+    skill: invoke-composition
+    persona: ORCHESTRATOR
+    mode: fresh
+    reads: [Artifact, Verdict]
+    writes: [Artifact, Verdict, Signal]
+    role: primary
+    invokes: compositions/delivery/code-implement-and-review.yaml
+    when: |
+      The migration plan declares a backfill phase as applicable. The
+      embedded composition implements Phase 2 (backfill): replay
+      historical data from the old substrate into the new so the new
+      substrate contains everything the old one does up to a cutover
+      point — scoped per the plan's phase-2 entry. Skipped when the plan
+      marks backfill not-applicable (e.g., green-field substrates with
+      no historical state, or substrates where dual-write naturally
+      backfills).
+    notes: >
+      Backfill diffs are typically: a migration script + a checkpoint
+      file + a parity check script. FAGAN's diff review will look at
+      all three; the parity check is the critical artifact (it's what
+      stage 9's gate consumes).
+
+  - stage: 9
+    name: phase-3-cutover-gate
+    construct: composition
+    skill: invoke-composition
+    persona: ORCHESTRATOR
+    mode: fresh
+    reads: [Artifact, Verdict, Signal]
+    writes: [Artifact, Verdict, Signal]
+    role: hard-stop                # THE cutover gate
+    invokes: compositions/delivery/code-implement-and-review.yaml
+    notes: >
+      Intended brief for the embedded composition (received via stream
+      propagation, not declared args): implement Phase 3 (read-cutover)
+      from the migration plan — flip reads from old substrate to new;
+      pre-cutover, run the Phase 2 parity check and verify against the
+      plan's invariant list; goal is reads now resolve from the new
+      substrate with zero observable change to consumers, scoped per the
+      plan's phase-3 entry.
+
+      Stage 9 is the LOAD-BEARING gate. Before the diff lands, the
+      composition halts for explicit operator confirmation:
+
+      - Has the parity check been run AND green?
+      - Has the rollback path been tested in a sandbox?
+      - Are all consumers from the dependency map either updated or
+        explicitly grandfathered?
+
+      Cutover diffs look small (often one config flag or one URL
+      constant) but the consequence is high. FAGAN reviews the diff
+      against the dependency map specifically — does this flag flip
+      every consumer at once, or are some still pinned to the old
+      substrate?
+
+  - stage: 10
+    name: phase-4-decommission
+    construct: composition
+    skill: invoke-composition
+    persona: ORCHESTRATOR
+    mode: fresh
+    reads: [Artifact, Verdict, Signal]
+    writes: [Artifact, Verdict, Signal]
+    role: primary
+    invokes: compositions/delivery/code-implement-and-review.yaml
+    when: |
+      The migration plan declares an immediate (non-deferred)
+      decommission window. The embedded composition implements Phase 4
+      (decommission): remove writes to the old substrate, tear down
+      credentials, unsubscribe from old vendor billing, archive
+      historical snapshots, and verify monitoring shows zero traffic to
+      the old substrate before final removal — scoped per the plan's
+      phase-4 entry. When the plan declares the decommission window as
+      gradual (e.g., the old substrate must stay readable for compliance
+      for N months), this stage instead emits a `decommission-deferred`
+      Signal with the deferral window and exits — no diff yet; the
+      composition runtime tracks the deferral and prompts the operator
+      at the deferred date.
+    notes: >
+      Decommission is intentionally separate from cutover. The window
+      between Phase 3 and Phase 4 is the rollback window — keep it
+      open as long as the plan specifies. Don't accelerate
+      decommission to "save time"; the cost of premature
+      decommission is unrecoverable.
+
+  - stage: 11
+    name: parent-link
+    construct: scar
+    skill: correlating
+    persona: SCAR-SENTINEL
+    mode: fresh
+    reads: [Artifact]
+    writes: [Signal]
+    role: primary
+    when: invoked from outage-triage (not standalone — there are upstream surface rows to link)
+    notes: >
+      When invoked from outage-triage, write parent-link records back
+      to every surface-disposition.md row that consumes this substrate
+      (often N rows, one per affected surface). Outage-triage's stage
+      7 retrospective reads these to build the substrate-to-surfaces
+      graph and detect when a single migration explains many
+      previously-disconnected outages.
+
+  - stage: 12
+    name: retrospective-handoff
+    construct: scar
+    skill: postmortem
+    persona: SCAR-SENTINEL
+    mode: fresh
+    reads: [Artifact, Verdict, Signal]
+    writes: [Artifact]
+    role: primary
+    notes: >
+      Author migration retrospective at
+      grimoires/scar/migration/<slug>/retrospective.md. Canonical
+      sections:
+
+      - What invariants the plan claimed to preserve
+      - Which ones FAGAN argued were at risk
+      - Which ones the operator overrode and why
+      - Which phases hit iteration cap (and what the auto-approve
+        flagged)
+      - What the cutover gate actually surfaced (parity-check results)
+      - What the rollback window looked like (was it used? close call?)
+      - Generalizable patterns — patterns of "third-party substrate
+        deprecation" or "vendor freeze risk" that recur across
+        migrations
+
+      When invoked from outage-triage, this stage's output also feeds
+      back into outage-triage's stage 7 retrospective. Patterns
+      across multiple architecture-migrations in one outage become
+      candidate composition deltas.
+
+# ================================================================
+
+outputs:
+  - type: Artifact
+    destination: grimoires/scar/migration/<slug>/dependency-map.md
+    description: Every consumer of the old substrate, classified
+    hivemind_labels:
+      artifact_type: experiment-design
+      learning_status: directionally-correct
+  - type: Artifact
+    destination: grimoires/scar/migration/<slug>/cutover-plan.md
+    description: Reviewed migration plan with phases, invariants, rollback paths, decommission criteria
+    hivemind_labels:
+      artifact_type: product-spec
+      learning_status: strongly-validated
+  - type: Artifact
+    destination: <repo>/<changed-files-per-phase>
+    description: Per-phase reviewed code changes (from N embedded code-implement-and-review invocations)
+  - type: Verdict
+    destination: .run/compose/<run_id>/fagan-trail.jsonl
+    description: Per-iteration FAGAN verdicts on the migration plan (stage 5) AND on each phase diff (stages 7-10)
+    schema: https://raw.githubusercontent.com/0xHoneyJar/construct-fagan/main/schemas/codex-review-finding.schema.json
+  - type: Artifact
+    destination: grimoires/scar/migration/<slug>/retrospective.md
+    description: Migration retrospective with invariant analysis + composition delta candidates
+    hivemind_labels:
+      artifact_type: atomic-learning
+      learning_status: directionally-correct
+  - type: Signal
+    destination: .run/compose/<run_id>/orchestrator.jsonl
+    description: Orchestrator trajectory (stage transitions, phase dispatches, cutover-gate decisions)
+
+compose_with:
+  - scar
+  - fagan
+  - general-purpose          # via embedded code-implement-and-review per phase
+  - bug-triaging
+  - the-mint              # phase dispatch curation
+
+composes_symmetrically_with:
+  - outage-triage ↔ architecture-migration   # router ↔ executor (the migrate-disposition pair)
+  - fix-sprint ↔ architecture-migration       # in-place patch ↔ substrate replacement (siblings under outage-triage)
+  - scar ↔ fagan                        # designer ↔ adversary (FAGAN against the plan)
+  - architecture-migration → code-implement-and-review   # invoked once per phase
+
+# ================================================================
+# Surface Class (canonical def in outage-triage.yaml; stub here)
+# ================================================================
+
+surface_class:
+  default: unspecified
+  enum: [culturetech-loose, defi-strict, mixed, unspecified]
+  canonical_definition: compositions/sorry-for-ur-loss/outage-triage.yaml#surface_class
+  affects_in_this_composition:
+    - parent inheritance — when invoked from outage-triage, surface_class is INHERITED from the parent run; this composition MAY refine but CANNOT relax it (load-bearing for defi-strict safety). Stage 6 + stage 9 ignore surface_class entirely (universal hard-stops).
+    - stage 6 hitl-plan-confirm — UNIVERSAL (cannot be skipped on culturetech-loose; cutovers affect state regardless of cosmetic surface)
+    - stage 5 iteration cap — advisory on culturetech-loose; enforced on defi-strict
+    - stage 9 cutover-gate halt — UNIVERSAL (load-bearing gate, never skipped)
+    - stage 10 decommission timing — culturetech-loose may collapse the rollback window; defi-strict requires the full window from the plan
+    - inline-fix permission — none (all phase work routes through embedded code-implement-and-review; no inline migration edits)
+  inferred_when_unspecified: defi-strict (safety default — migrations are state-affecting, default toward safety)
+
+# ================================================================
+# Thinking Effort (canonical def in feel-iterate.yaml; stub here)
+# ================================================================
+
+thinking_effort:
+  default: xhigh
+  canonical_definition: compositions/delivery/feel-iterate.yaml#thinking_effort
+  rationale: |
+    Migration planning + adversarial plan review are multi-step,
+    multi-invariant synthesis. Default high; load-bearing stages
+    (3 dependency-map, 4 plan-design, 5 plan-review) are xhigh.
+  affects_in_this_composition:
+    - stage 1 eligibility — low (mechanical) when standalone; n/a (skipped) from outage-triage
+    - stage 2 substrate-scope — medium (boundary identification)
+    - stage 3 dependency-map — high → xhigh (load-bearing artifact for stages 4-5)
+    - stage 4 cutover-plan-design — xhigh (load-bearing; plan quality determines everything downstream)
+    - stage 5 plan-review — xhigh (FAGAN against multi-invariant plan)
+    - stage 6 hitl-plan-confirm — n/a (operator stage)
+    - stages 7-10 phase-implementations — delegated (each embedded composition manages its own)
+    - stage 11 parent-link — low (record-keeping)
+    - stage 12 retrospective-handoff — high (multi-phase pattern extraction)
+
+# ================================================================
+
+invocation_examples:
+  - operator_utterance: "outage-triage marked all the supabase surfaces as migrate — run it"
+    resolves_to: full chain stages 1-12 with upstream context (skip stages 1-2)
+  - operator_utterance: "plan the freeside cutover and FAGAN it"
+    resolves_to: stages 1-6 standalone (plan only; halt at HITL confirm before phase dispatch)
+  - operator_utterance: "I have the plan — start phase 1"
+    resolves_to: stage 7 only with operator-supplied plan Artifact
+  - operator_utterance: "we're at the cutover gate, what does FAGAN say"
+    resolves_to: stage 9 only against operator-supplied parity-check + dependency-map
+  - operator_utterance: "decommission the old supabase project"
+    resolves_to: stage 10 only — assumes phases 1-3 already landed
+
+# ================================================================
+
+when_to_use: >
+  - outage-triage routed surfaces to `migrate` and the substrate cutover
+    needs a planned phase rollout (not just a one-line URL change)
+  - Standalone substrate replacement (DB project migration, auth
+    provider swap, indexer cutover, contract upgrade with frontend
+    follow-up)
+  - Pre-cutover gate when a plan is being authored but not yet reviewed
+  - Vendor-deprecation forcing functions (Supabase pause, Dynamic V2
+    EOL Aug-1, Envio deployment ID drift) where the operator has
+    weeks-not-days to respond
+  - NOT for in-place patches (use fix-sprint for surfaces fixable
+    without replacing substrate)
+  - NOT for one-line URL bumps (that's a fix-sprint micro-fix or an
+    inline edit per MAY-LATITUDE-1)
+  - NOT for full product sunsetting (escalate to hibernate-product —
+    architecture-migration assumes the surfaces survive the cutover)
+
+# ================================================================
+
+known_limitations:
+  - "Stage 5 depends on construct-fagan having a `reviewing-migration-plan` skill. If it doesn't exist yet, the stage falls back to `reviewing-files` against cutover-plan.md content. Fallback works but loses the invariant-check + phase-rollback-check heuristics. File against construct-fagan to author reviewing-migration-plan as a first-class skill (sibling to reviewing-armor-specs)."
+  - "Stages 7-10 each invoke code-implement-and-review fresh. The embedded composition has no memory of prior phase invocations within the same migration — each phase reads the plan + the previous Diff but doesn't carry FAGAN's prior findings. This is intentional (fresh review per phase) but means a class-level finding from Phase 1's review may need to be re-discovered in Phase 2."
+  - "Stage 10 decommission has a soft skip mode (`decommission-deferred` Signal) for plans with extended rollback windows. The composition runtime is responsible for prompting the operator at the deferred date — there's no built-in scheduler. Operator should /schedule a follow-up agent if the deferral exceeds the operator's working memory."
+  - "Iteration cap on [[4, 5]] is 3 (CODEX_REVIEW_MAX_ITERATIONS, same as fix-sprint and code-implement-and-review). Past cap auto-approves; on migration plans this is HIGHER risk than on diffs because plan flaws cascade across N phases. Surface auto-approve on defi-strict as a hard halt; consider lowering the cap to 2 for migration-plan reviews specifically."
+  - "Standalone invocation (no upstream outage-triage) loses the substrate-to-surfaces graph. Stage 11 parent-link is a no-op. Plan + per-phase diffs still land but cross-substrate correlation requires manual `correlating` skill invocation."
+  - "Composition runtime needs to support conditional stage execution (`when` run-predicates on stages 7, 8, 10). v1.0.0 of compose-run.sh handles binary skip; phase-by-phase plans with mid-execution skips need plan-aware orchestration. For complex migrations, consider running phases as separate composition invocations chained manually."
+
+# ================================================================
+
+references:
+  - skill_postmortem: construct-scar/skills/postmortem/SKILL.md
+  - skill_harden: construct-scar/skills/harden/SKILL.md
+  - skill_correlating: construct-scar/skills/correlating/SKILL.md
+  - skill_triage_scar: construct-scar/skills/triage/SKILL.md
+  - skill_curate: construct-the-mint/skills/curate/SKILL.md
+  - skill_bug_triaging: claude-code/.claude/skills/bug-triaging/SKILL.md
+  - skill_reviewing_diffs: construct-fagan/skills/reviewing-diffs/SKILL.md
+  - skill_reviewing_files_fallback: construct-fagan/skills/reviewing-files/SKILL.md   # stage 5 fallback target
+  - schema_codex_review_finding: https://raw.githubusercontent.com/0xHoneyJar/construct-fagan/main/schemas/codex-review-finding.schema.json
+  - upstream_router: compositions/sorry-for-ur-loss/outage-triage.yaml
+  - sibling_for_fix_disposition: compositions/sorry-for-ur-loss/fix-sprint.yaml
+  - sibling_for_full_sunset: compositions/sorry-for-ur-loss/hibernate-product.yaml
+  - downstream_implement: compositions/delivery/code-implement-and-review.yaml
+  - reference_instance_supabase: grimoires/loa/a2a/bug-001/surface-disposition.md   # the freeside Supabase migration in flight
+  - reference_instance_dynamic: grimoires/scar/pmr/PMR-2026-04-27-001-dynamic-cors.md   # Dynamic V2 EOL Aug-1 forcing function (companion migration)
+  - construct_scar_repo: https://github.com/0xHoneyJar/construct-scar
+
+# ================================================================
+
+operator_note: |
+  Authored 2026-04-27 alongside fix-sprint. These are the migrate-vs-fix
+  siblings under outage-triage. The composition's reference instance
+  is the in-flight Supabase `gcdudoqizygzkmiiktwt` → `freeside`
+  cutover, with the Dynamic V2-EOL Aug-1 wallet migration as a parallel
+  forcing function.
+
+  Three principles worth carrying forward:
+
+  1. THE PLAN IS THE WORK — the diffs follow. fix-sprint's load-bearing
+     stage is armor authoring; this composition's load-bearing stage
+     is the cutover plan. A sloppy plan produces N sloppy phases that
+     each need re-review. Invest in stage 4. FAGAN's job at stage 5
+     is not "is the plan clear?" — it's "argue why this plan loses
+     state, breaks invariants, or strands consumers mid-cutover."
+
+  2. THE CUTOVER GATE IS UNIVERSAL. Stage 9 halts regardless of
+     surface_class. Migrations affect state; state changes need
+     explicit gating. CultureTech latitude does NOT extend to
+     "skip the cutover gate because this is just a cosmetic
+     project." A cosmetic project can have non-cosmetic state
+     (Discord IDs, brand assets, user-uploaded gallery items).
+
+  3. DECOMMISSION IS A SEPARATE WINDOW. The interval between cutover
+     (stage 9) and decommission (stage 10) is the rollback window.
+     Keep it open. Operators consistently underestimate how often
+     they need to roll back; the cost of premature decommission is
+     unrecoverable.
+
+  This composition lives in compositions/sorry-for-ur-loss/ alongside
+  fix-sprint (in-place patch), triage-pause (disable), and
+  hibernate-product (full sunset). It is the migrate-disposition
+  target. With this composition's authoring, all four exits from
+  outage-triage's stage 4 disposition rubric have downstream
+  compositions: disable → triage-pause; fix → fix-sprint; migrate →
+  architecture-migration; remove → inline (no composition needed).
+
+# ================================================================
+
+version: "1.0.0"
+authored_at: "2026-04-27"
+authored_by: kickoff session — closing outage-triage's not-yet-authored siblings
+changelog:
+  - "1.0.0 (2026-04-27): Initial canonical spec. Pairs scar (postmortem + correlating + harden-as-cutover-design) with codex-review (FAGAN against the migration plan at stage 5) in an iterate [[4, 5]] loop, then invokes code-implement-and-review ONCE PER PHASE for stages 7-10 (dual-write, backfill, cutover-gate, decommission). Surface_class + thinking_effort use stub-pointing pattern. Closes the second not-yet-authored gap flagged in outage-triage v1.0.0; sibling to fix-sprint authored same date."

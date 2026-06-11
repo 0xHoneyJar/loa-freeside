@@ -1,0 +1,296 @@
+# Composition · collection-with-codex
+# ================================================================
+# Six-stage workflow that produces a generative art collection
+# AND the publishable codex-shape construct that ships alongside
+# it. Composes artisan + the-mint to handle taste extraction,
+# trait distillation, batch generation, curation, rule-locking,
+# and codex materialization.
+#
+# Authored as a worked example for operators building tools that
+# scaffold publishable construct repos as users iterate (e.g.
+# gen-art collection preview tools — gumi's case, 2026-04-25).
+#
+# What the workflow provides:
+#
+#   For the operator (running it):
+#     - A coherent collection (single-stamp + shelf test holds)
+#     - A trait taxonomy with declared signal hierarchy
+#       (load-bearing / textural / modifiers — mibera-codex shape)
+#     - TDRs locking forbidden / signature combinations + swag
+#       scoring formula
+#     - An exportable codex shell ready to publish as a construct
+#
+#   For the end user (collection holder, community):
+#     - A collection that's visually + lore-wise coherent
+#     - A queryable codex (per-trait lore, cross-reference, swag
+#       scoring) — not just images
+#
+# Authored: 2026-04-25
+# ================================================================
+
+schema_version: "1.0"
+kind: workflow
+name: mint-codex
+description: >
+  Generative art collection production with codex-shape construct
+  export. Synthesizes taste from references, decomposes traits with
+  signal hierarchy, batch-generates, curates against discipline,
+  locks rules as TDRs, materializes the result as a publishable
+  construct repo.
+
+intent: >
+  "Given a moodboard, a layer brief, and (optionally) an existing
+   visual canon, produce a coherent collection AND a publishable
+   codex-shape construct that exposes per-trait lore, taxonomy,
+   and swag scoring as queryable read-only skills."
+
+backend: headless-tmux
+
+# Hivemind Lab labels (Dec 2025 canon). Construct-emitter pattern —
+# generative collection + queryable codex. Serves end users (collection
+# holders, community) whose JTBD is identity expression through traits
+# + insider belonging through lore.
+hivemind_labels:
+  product_area: "NFT Minting Flow / Collection + Codex"
+  workstream: experimentation
+  jtbd:
+    category: social
+    description: "Let Me Express My Identity — traits, lore, and provenance let holders signal who they are in this world"
+  source: team-internal
+
+inputs:
+  - type: Artifact
+    name: references
+    description: Moodboard / reference art / existing brand assets
+    required: true
+  - type: Intent
+    name: layer_brief
+    description: >
+      Trait dimensions (visual + non-visual), lore axes, target
+      rarity distribution, signal-hierarchy intent (which traits
+      are load-bearing vs textural vs modifiers).
+    required: true
+  - type: Artifact
+    name: canon
+    description: Existing taste.md / TDRs / persona docs (optional)
+    required: false
+  - type: Operator-Model
+    name: operator_context
+    required: false
+
+# Two iteration loops:
+#   [3, 4] — generate ↔ curate (the live preview loop in the tool)
+#   [2, 5] — taxonomy ↔ TDRs (rules sharpen as taxonomy refines)
+iterate:
+  - [3, 4]
+  - [2, 5]
+
+# S0-T6 / FR-7.2 — bounded iteration. Two convergence loops:
+# generate↔curate sharpens the trait set against taste; taxonomy↔TDRs
+# reconciles the signal hierarchy with the locked rules.
+max_iterations: 3
+terminate_when: >
+  the curated trait set clears the-mint's selection test (single-stamp +
+  shelf-test family resemblance hold) AND the taxonomy and TDRs no longer
+  contradict (no signature/forbidden combo violates the signal hierarchy),
+  OR max_iterations reached — at which point stage 6 materializes the codex
+  from the current best state.
+
+chain:
+  # ------------------------------------------------------------------
+  - stage: 1
+    construct: artisan
+    skill: synthesizing-taste
+    persona: ALEXANDER
+    mode: fresh
+    reads: [Artifact]
+    writes: [Artifact]
+    role: primary
+    notes: >
+      Extract the visual canon from references — palette tokens
+      (OKLCH), motion language, named treatments, anti-patterns.
+      Outputs taste.md that grounds every downstream stage. If the
+      operator passed an existing canon, this stage refines rather
+      than replaces.
+
+  # ------------------------------------------------------------------
+  - stage: 2
+    construct: artisan
+    skill: distilling-components
+    persona: ALEXANDER
+    mode: persistent
+    reads: [Intent, Artifact]
+    writes: [Artifact]
+    role: primary
+    iterates_with: 5
+    notes: >
+      Turn the brief into a trait taxonomy with signal hierarchy —
+      load-bearing (worldview-defining) / textural (color
+      expression) / modifiers (presence, charisma). Same hierarchy
+      shape as mibera-codex. Persistent so taxonomy refines as TDRs
+      land in stage 5.
+
+  # ------------------------------------------------------------------
+  - stage: 3
+    construct: the-mint
+    skill: mint
+    persona: MINT
+    mode: persistent
+    reads: [Artifact]
+    writes: [Artifact]
+    role: primary
+    iterates_with: 4
+    notes: >
+      Batch generate per-trait reference renders. This is the
+      live-preview loop in the operator's tool — each iteration
+      regenerates the candidate trait set against the current
+      taste + taxonomy. Use LOA_STAGE_MOCK=1 for dev iteration
+      before paying for real generation.
+
+  # ------------------------------------------------------------------
+  - stage: 4
+    construct: the-mint
+    skill: curate
+    persona: MINT
+    mode: fresh
+    reads: [Artifact]
+    writes: [Verdict, Signal]
+    role: craft-gate
+    iterates_with: 3
+    notes: >
+      Selection test against rarity discipline, single-stamp, and
+      shelf-test family resemblance. Kills traits that don't
+      survive; loops back to stage 3 if too many fail. The
+      Verdict carries kept/killed evidence per trait.
+
+  # ------------------------------------------------------------------
+  - stage: 5
+    construct: artisan
+    skill: recording-taste
+    persona: ALEXANDER
+    mode: fresh
+    reads: [Verdict, Artifact]
+    writes: [Artifact]
+    role: primary
+    iterates_with: 2
+    notes: >
+      Lock the rules as TDRs — forbidden combinations, signature
+      combos, swag scoring formula. These become first-class
+      entries in the exported codex's lore layer. Loops back to
+      stage 2 when a TDR contradicts the current taxonomy.
+
+  # ------------------------------------------------------------------
+  - stage: 6
+    construct: the-mint
+    skill: materialize
+    persona: MINT
+    mode: fresh
+    reads: [Artifact, Verdict]
+    writes: [Artifact]
+    role: primary
+    notes: >
+      Produce the exportable codex shell. Per-trait final assets
+      composited, manifest.json written, knowledge-graph
+      nodes/edges generated, identity/persona.yaml stubbed. Output
+      is a mibera-codex-shaped construct repo — read-only skills
+      (browse / query / cross-reference) over the manifest. This
+      is what the operator's tool ships as "export construct."
+
+outputs:
+  - type: Artifact
+    destination: .run/compose/<run_id>/collection/
+    description: >
+      Full asset bundle — per-trait renders, manifest.json,
+      knowledge-graph nodes/edges, identity stubs, ready to ship
+      as a construct repo.
+    hivemind_labels:
+      artifact_type: product-spec
+      learning_status: directionally-correct
+  - type: Artifact
+    destination: .run/compose/<run_id>/taste.md
+    description: Synthesized canon (the visual constitution)
+    hivemind_labels:
+      artifact_type: product-spec
+      learning_status: strongly-validated
+  - type: Artifact
+    destination: .run/compose/<run_id>/tdrs/
+    description: Locked rules as TDRs (forbidden / signature / swag)
+    hivemind_labels:
+      artifact_type: atomic-learning
+      learning_status: directionally-correct
+  - type: Verdict
+    destination: .run/compose/<run_id>/curation.jsonl
+    description: Per-iteration selection trail
+    hivemind_labels:
+      artifact_type: atomic-learning
+      learning_status: directionally-correct
+  - type: Signal
+    destination: .run/compose/<run_id>/orchestrator.jsonl
+
+compose_with:
+  - artisan
+  - the-mint
+
+composes_symmetrically_with:
+  - artisan ↔ the-mint
+  - the-mint/mint ↔ the-mint/curate
+
+invocation_examples:
+  - operator_utterance: "ship a 1k generative collection from this moodboard"
+    resolves_to: full 6-stage pipeline end-to-end
+  - operator_utterance: "preview my layer set at 50 candidates"
+    resolves_to: stages 3-4 in mock mode, 50 renders per iteration
+  - operator_utterance: "export the codex from current state"
+    resolves_to: stage 6 only — emit manifest + skills + identity stubs
+  - operator_utterance: "lock the rules I just settled on"
+    resolves_to: stage 5 — TDR pass, no regeneration
+
+when_to_use: >
+  - Operator has references + layer brief and wants both a
+    coherent collection AND a queryable codex layer
+  - Building tools that scaffold publishable constructs as the
+    operator iterates (gen-art collection preview tools, lore
+    authoring surfaces, character pipelines)
+  - Iterating a collection in public — clients see live previews
+    via stages 3-4 in mock mode, real generation only on commit
+
+known_limitations:
+  - "Stage 6 emits a CODEX-SHAPED construct (mibera-codex pattern). For other construct shapes (skill-pack, agent, tool), this composition is the wrong starting point — see SHAPES.md."
+  - "Rarity discipline (stage 4) is rule-based; can't catch a distribution that satisfies named rules but feels wrong. Operator-in-the-loop closes the gap."
+  - "Image generation cost is real. Stage 3 default is 50 candidates per pass; --max-iterations caps the loop. Use mock mode for dev, real generation only on ship."
+  - "Stage 1 quality is bounded by reference quality. Garbage moodboard → garbage taste → underspecified everything downstream."
+
+references:
+  - exemplar_eye_hand: grimoires/compositions/feel-image.yaml
+  - exemplar_codex_shape: https://github.com/0xHoneyJar/construct-mibera-codex
+  - skill_synthesizing_taste: construct-artisan/skills/synthesizing-taste/SKILL.md
+  - skill_distilling_components: construct-artisan/skills/distilling-components/SKILL.md
+  - skill_recording_taste: construct-artisan/skills/recording-taste/SKILL.md
+  - skill_mint: construct-the-mint/skills/mint/SKILL.md
+  - skill_curate: construct-the-mint/skills/curate/SKILL.md
+  - skill_materialize: construct-the-mint/skills/materialize/SKILL.md
+
+operator_note: |
+  For gumi · 2026-04-25.
+
+  Your tool's surfaces map to composition stages directly:
+    - preview surface       = stages 3 ↔ 4 running live, mock mode
+    - "save" action         = advance to stage 5 (TDRs lock)
+    - "export construct"    = stage 6 emits a mibera-codex-shaped pack
+
+  Your work overlaps with the artisan + the-mint skillsets around
+  design / art / craft, which means you don't have to reinvent the
+  feedback mechanisms (single-stamp discipline, shelf test, eye/hand
+  split, selection-test loop) — they're already authored as skills.
+  What you're building is the WEB GUI on top of this pipeline plus
+  the codex-export packaging; the philosophical rails come for free
+  by composing existing constructs.
+
+  The "lore alongside the art" idea you mentioned is what stages
+  2 + 5 + 6 cover: signal hierarchy declared (stage 2), rules locked
+  as TDRs (stage 5), knowledge graph materialized (stage 6 — same
+  shape as mibera-codex's _codex/data/graph.json).
+
+version: "1.1.0"
+authored_at: "2026-04-25"
+authored_by: gumi composition (collection + codex export)

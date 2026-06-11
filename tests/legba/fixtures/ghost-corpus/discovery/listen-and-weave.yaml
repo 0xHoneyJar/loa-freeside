@@ -1,0 +1,238 @@
+schema_version: "1.0"
+kind: workflow
+name: listen-and-weave
+description: >
+  KEEPER listens (observer), the-weaver articulates the listening into named user
+  flows + intent vocabulary + presets, and downstream constructs (artisan,
+  the-arcade, rosenzu, crucible) consume the flows as direction. Drafts are
+  worksheets — the listening session validates them; this composition is the
+  scaffolding around that loop.
+
+intent: >
+  "Turn user truth into informed user flows that compose other constructs.
+   Not constrained by workflows — informed by workflows. Save time as workflows
+   evolve or more workflows need to be supported."
+   — operator framing 2026-04-27 (micodex-studio kickoff)
+
+depends_on:
+  constructs:
+    - observer       # KEEPER listens
+    - the-weaver     # BEAUVOIR articulates
+    - artisan        # ALEXANDER feels each surface
+    - the-arcade     # BARTH/OSTROM ships/structures
+    - rosenzu        # LYNCH stages spatial topology
+    - crucible       # validates the flow as Playwright tests
+  upstream_compositions: []
+  downstream_compositions:
+    # When the-pinner / culture-cultivation constructs author, they should compose
+    # downstream of listen-and-weave to consume the flow's gap callouts as proposals.
+    - compositions/delivery/feel-iterate.yaml   # ALEXANDER iterates surfaces post-flow
+
+chain:
+  - stage: 1
+    name: listen
+    construct: observer
+    skill: observing-users
+    persona: KEEPER
+    mode: persistent
+    reads: [Intent, Operator-Model]
+    writes: [Artifact, Signal]
+    role: primary
+    notes: >
+      KEEPER runs the listening session (Mom Test discipline). Output: User Truth
+      Canvases at grimoires/{product}/feedback/keeper/{session-id}.json plus
+      kansei signals.
+
+  - stage: 2
+    name: name-intents
+    construct: the-weaver
+    skill: naming-intents
+    persona: BEAUVOIR
+    mode: persistent
+    reads: [Artifact]   # KEEPER's canvases
+    writes: [Artifact]  # grimoires/{product}/intents.yaml
+    role: primary
+    notes: >
+      Extract the named intent vocabulary. Refuses to advance if fewer than 2-3
+      canvases echo the same shape — premature naming is rejected.
+
+  - stage: 3
+    name: compose-paths
+    construct: the-weaver
+    skill: composing-paths
+    persona: BEAUVOIR
+    mode: persistent
+    reads: [Artifact, Operator-Model]   # intents.yaml + construct manifest
+    writes: [Artifact, Signal]           # flow specs + gap signals
+    role: primary
+    notes: >
+      For each named intent, decompose into construct moves with handoffs.
+      Surfaces gaps loudly when a needed construct doesn't exist. Gap signals
+      route to downstream proposal authoring or construct-creator.
+
+  - stage: 4
+    name: render
+    construct: the-weaver
+    skill: rendering-mermaid
+    persona: BEAUVOIR
+    mode: fresh
+    reads: [Artifact]
+    writes: [Artifact]
+    role: primary
+    notes: >
+      Emit the gumi-readable mermaid markdown alongside each flow spec. Files
+      land at grimoires/{product}/flows/{intent-id}.md and are importable to
+      Excalidraw via mermaid live for sharing.
+
+  - stage: 5
+    name: prefill
+    construct: the-weaver
+    skill: prefilling-presets
+    persona: BEAUVOIR
+    mode: fresh
+    reads: [Artifact]
+    writes: [Artifact]
+    role: cross-reference
+    notes: >
+      Generate intent-based-button bundles. Operationalizes gumi's "intent-based
+      buttons" framing from issue #8. Optional stage — only runs if the operator
+      wants UI presets generated alongside flow worksheets.
+
+  - stage: 6
+    name: feel-each-surface
+    construct: artisan
+    skill: synthesizing-taste
+    persona: ALEXANDER
+    mode: persistent
+    reads: [Artifact]
+    writes: [Artifact, Signal]
+    role: cross-reference
+    notes: >
+      ALEXANDER reads each flow and gives material/feel direction for every
+      surface the flow visits. Output: addenda to taste.md and per-surface
+      feel notes.
+
+  - stage: 7
+    name: stage-topology
+    construct: rosenzu
+    skill: mapping-topology
+    persona: LYNCH
+    mode: persistent
+    reads: [Artifact]
+    writes: [Artifact, Signal]
+    role: cross-reference
+    notes: >
+      LYNCH maps the flow onto the product's spatial topology — districts, depth
+      tiers, thresholds. User-pathing × spatial-pathing.
+
+  - stage: 8
+    name: name-win-state
+    construct: the-arcade
+    skill: playtesting-loops
+    persona: BARTH
+    mode: persistent
+    reads: [Artifact]
+    writes: [Verdict]
+    role: gate
+    notes: >
+      BARTH names the win-state for each flow's success_signal. If no win-state
+      can be named, the flow is too vague to ship — refuses with severity
+      medium until intents.yaml's success_signal field is sharpened.
+
+  - stage: 9
+    name: walk-with-keeper
+    construct: observer
+    skill: walking-through
+    persona: KEEPER
+    mode: persistent
+    reads: [Artifact]
+    writes: [Artifact, Signal]
+    role: gate
+    notes: >
+      KEEPER walks the rendered flow markdown WITH THE USER (real listening
+      session). Each Q: annotation gets answered. Status flips draft → listening.
+      When user says "yes, that's how it goes" — flips to validated.
+
+  - stage: 10
+    name: validate-as-tests
+    construct: crucible
+    skill: validating-journeys
+    persona: (unset — crucible is process-oriented)
+    mode: fresh
+    reads: [Artifact]
+    writes: [Artifact, Verdict]
+    role: gate
+    notes: >
+      Validated flows hand off to crucible for Playwright test generation. The
+      flow becomes executable verification. Optional final stage — only runs
+      when status: validated.
+
+outputs:
+  - type: Artifact
+    destination: grimoires/{product}/intents.yaml
+    description: The named intent vocabulary for this product
+
+  - type: Artifact
+    destination: grimoires/{product}/flows/{intent-id}.{yaml,md}
+    description: Per-intent flow spec (yaml, machine-readable) + worksheet (md, gumi-readable)
+
+  - type: Artifact
+    destination: grimoires/{product}/presets/{intent-id}.yaml
+    description: Per-intent preset bundle (intent-based buttons)
+
+  - type: Signal
+    destination: .run/the-weaver/gaps.jsonl
+    description: Loud gap callouts when a flow references a missing construct
+
+  - type: Verdict
+    destination: grimoires/{product}/flows/{intent-id}.walkthrough.md
+    description: KEEPER's walkthrough notes after walking the flow with the user
+
+compose_with:
+  - observer
+  - the-weaver
+  - artisan
+  - the-arcade
+  - rosenzu
+  - crucible
+
+composes_symmetrically_with:
+  - observer ↔ the-weaver       # canvases → flows; gap signals → next listening session
+  - the-weaver ↔ artisan        # flows → feel; feel feedback → flow refinement
+  - the-weaver ↔ rosenzu        # user-pathing × spatial-pathing
+  - the-weaver → the-arcade     # flows → win-states (mostly one-direction)
+  - the-weaver → crucible       # flows → validation tests
+
+invocation_examples:
+  - operator_utterance: "Turn gumi's listening into named flows for micodex-studio"
+    resolves_to: |
+      run listen-and-weave with product=micodex-studio,
+      starting from existing grimoires/loa/feedback/keeper/* (if any)
+      or pre-listening drafts at grimoires/loa/flows/*.md
+
+  - operator_utterance: "What's the post-export composition graph for this product?"
+    resolves_to: |
+      run listen-and-weave starting at stage 3 (compose-paths) with the
+      'whats-next-after-export' intent — emits the mermaid composition graph
+
+when_to_use: |
+  - A product has user truth (KEEPER canvases) but no named user flows yet
+  - The post-X composition graph is implicit and needs articulation
+  - Onboarding feels generic and the operator wants intent-based affordances
+  - Existing flows are stale (UI evolved past the named intents); needs re-walking
+  - A construct gap is suspected but not yet named; gap-surfacing pass desired
+
+known_limitations: |
+  - Pre-listening drafts can be authored without stage 1 (KEEPER), but they're
+    explicitly worksheets — never specs. The composition refuses to flip a flow
+    to status: validated until stage 9 (walk-with-keeper) actually runs.
+  - Stage 10 (validate-as-tests) is optional and depends on the product having
+    Playwright wired; many cycle-1 products skip it.
+  - shaping-journeys and diagramming-states currently live in observer/crucible
+    (duplicated). Until the migration sprint runs, this composition relies on
+    those skills via the existing pack paths, not the-weaver's. Re-wire when
+    migration lands.
+
+version: "0.1.0"
+authored_at: "2026-04-27"
+authored_by: CURATOR (via /create-construct apprenticeship for the-weaver)
