@@ -2,7 +2,9 @@
 // dune-meter — cost-aware Dune adapter. The EXP-002 scar, made into a guard.
 //
 // Three subcommands, all cost-defensive:
-//   estimate <sql|query_id>            — the probe-based "dry-run" verdict (no full run)
+//   estimate <sql|query_id>            — the probe-based "dry-run" verdict (NEVER a full run;
+//                                        SQL → cheap COUNT/LIMIT-1; query_id → non-executing
+//                                        read of the latest cached result metadata)
 //   run <sql|query_id> --cap <credits> — execute WITH a Dune cost-cap, emit a CostAtom
 //   budget                             — show spent/remaining/ceiling + recent atoms
 //
@@ -110,16 +112,26 @@ async function cmdRun(args, { client } = {}) {
   const dune = client ?? new DuneClient();
   const isQueryId = looksLikeQueryId(target);
 
-  // 1) PRE-RUN estimate — refuse if it would overspend, unless --force.
-  let est;
+  // 1) PRE-RUN estimate — refuse if it would overspend, unless --force. The probe
+  //    NEVER executes the target (SQL → cheap COUNT/LIMIT-1; query_id → a
+  //    non-executing read of cached result metadata). An un-estimatable target
+  //    (e.g. a never-run query_id with no cached metadata) needs --force to
+  //    proceed on the cost-cap alone — we never execute it just to estimate.
+  let est = null;
   try {
     const probe = await dune.probe(target, { isQueryId });
     est = buildEstimate({ rows: probe.rows, cols: probe.cols, remainingCredits: rem });
   } catch (e) {
-    if (e instanceof DuneClientError) return err(EXIT.CALLER, e.message);
-    return err(EXIT.CALLER, `pre-run estimate failed: ${e.message}`);
+    if (e instanceof DuneClientError) {
+      if (!flags.force) {
+        return err(EXIT.CALLER, `${e.message} (or re-run with --force to proceed on the cost-cap alone)`);
+      }
+      // --force: proceed un-estimated; the per-query cost-cap is the backstop.
+    } else {
+      return err(EXIT.CALLER, `pre-run estimate failed: ${e.message}`);
+    }
   }
-  if (est.verdict === 'REFUSE' && !flags.force) {
+  if (est && est.verdict === 'REFUSE' && !flags.force) {
     return ok({ refused: true, reason: 'estimate exceeds remaining budget', estimate: est }, EXIT.BUDGET_REFUSE);
   }
 
@@ -180,6 +192,7 @@ async function cmdRun(args, { client } = {}) {
     credits_consumed: credits,
     credits_derived,
     wall_ms: wallMs,
+    pre_run_estimate: est,
     atom_id: atom.atom_id,
     atom_checksum: envelope.checksum,
     budget: { spent_credits: newLedger.spent_credits, remaining_credits: remaining(newLedger), ceiling: newLedger.ceiling_credits },

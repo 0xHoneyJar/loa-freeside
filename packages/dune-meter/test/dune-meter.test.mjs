@@ -22,6 +22,7 @@ import {
 import {
   makeDuneAtom, makeEnvelope, appendAtom, readAtoms, tailHash, GENESIS_PREV_HASH, atomChecksum,
 } from '../src/cost-atom.mjs';
+import { DuneClient, DuneClientError } from '../src/dune-client.mjs';
 import { cmdEstimate, cmdRun, cmdBudget } from '../bin/dune-meter.mjs';
 
 // ── test harness ──────────────────────────────────────────────────────────────
@@ -240,6 +241,54 @@ test('makeDuneAtom rejects non-integer cost fields', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// DuneClient.probe — the estimate input MUST NOT full-execute a saved query
+// (the design-doc constraint "No full execution"). Fetch is mocked; no network.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// A mock fetch recording every call. Each route returns a canned JSON response.
+function mockFetch(routes) {
+  const calls = [];
+  const fetchImpl = async (url, opts = {}) => {
+    calls.push({ url, method: opts.method ?? 'GET' });
+    for (const [match, make] of routes) {
+      if (url.includes(match)) {
+        const { status = 200, json = {} } = make(url, opts);
+        return { ok: status >= 200 && status < 300, status, async json() { return json; }, async text() { return JSON.stringify(json); } };
+      }
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  };
+  return { fetchImpl, calls };
+}
+
+test('probe(query_id) reads cached metadata via results endpoint — NEVER executes', async () => {
+  const { fetchImpl, calls } = mockFetch([
+    ['/results', () => ({ json: { is_execution_finished: true, result: { metadata: { total_row_count: 500, column_names: ['a', 'b', 'c'] } } } })],
+  ]);
+  const client = new DuneClient({ apiKey: 'k', fetchImpl, sleepImpl: async () => {} });
+  const { rows, cols } = await client.probe('12345', { isQueryId: true });
+  assert.equal(rows, 500);
+  assert.equal(cols, 3);
+  // The whole point: no POST /execute, no /status poll — estimate must not run it.
+  assert.equal(calls.some((c) => c.url.includes('/execute')), false, 'estimate must NOT execute a saved query');
+  assert.equal(calls.some((c) => c.url.includes('/status')), false, 'estimate must NOT poll an execution');
+  assert.ok(calls.every((c) => c.method === 'GET'), 'estimate reads (GET) only — no mutating POST');
+  assert.ok(calls.some((c) => c.url.includes('/query/12345/results')), 'reads the cached-results endpoint');
+});
+
+test('probe(query_id) raises caller-error (never executes) when no cached result exists', async () => {
+  const { fetchImpl, calls } = mockFetch([
+    ['/results', () => ({ json: { is_execution_finished: false } })],
+  ]);
+  const client = new DuneClient({ apiKey: 'k', fetchImpl, sleepImpl: async () => {} });
+  await assert.rejects(
+    () => client.probe('12345', { isQueryId: true }),
+    (e) => e instanceof DuneClientError && /no completed cached result|no cached result/.test(e.message),
+  );
+  assert.equal(calls.some((c) => c.url.includes('/execute')), false, 'must not execute to fill a missing cache');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // exit-code mapping through the CLI command handlers (mocked client)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -291,6 +340,33 @@ test('run exit 3 when pre-run estimate refuses (no --force)', async () => {
     // budget ledger untouched — nothing spent on a refused run
     const led = readLedger(e.ledgerPath);
     assert.equal(led.spent_credits, 0);
+  } finally { e.cleanup(); }
+});
+
+test('run requires --force when the target cannot be estimated (never-run query_id)', async () => {
+  const e = tmpEnv();
+  try {
+    const client = mockClient({ rows: 1000, cols: 4, datapoints: 4000, credits: 4 });
+    client.probe = async () => { throw new DuneClientError('estimate: query 9 has no completed cached result'); };
+    const r = await runHandler(() => cmdRun(['9', '--cap', '100'], { client }));
+    assert.equal(r.exit, 2);
+    assert.match(r.err, /--force/);
+    // nothing executed → ledger untouched
+    assert.equal(readLedger(e.ledgerPath).spent_credits, 0);
+  } finally { e.cleanup(); }
+});
+
+test('run --force proceeds past an un-estimatable target (cost-cap is the backstop)', async () => {
+  const e = tmpEnv();
+  try {
+    const client = mockClient({ rows: 1000, cols: 4, datapoints: 4000, credits: 4 });
+    client.probe = async () => { throw new DuneClientError('estimate: query 9 has no completed cached result'); };
+    const r = await runHandler(() => cmdRun(['9', '--cap', '100', '--force'], { client }));
+    assert.equal(r.exit, 0);
+    const j = JSON.parse(r.out);
+    assert.equal(j.executed, true);
+    assert.equal(j.pre_run_estimate, null); // un-estimated; proceeded on the cap alone
+    assert.equal(j.credits_consumed, 4);
   } finally { e.cleanup(); }
 });
 

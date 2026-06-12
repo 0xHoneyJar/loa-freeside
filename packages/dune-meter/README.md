@@ -19,9 +19,16 @@ Dune has **no native dry-run / EXPLAIN.** Billing is dynamic (compute time + dat
 scanned) and is not previewable. So cost-awareness here is **DEFENSIVE, not
 predictive**:
 
-- `estimate` is a **probe-based heuristic** — a cheap `COUNT(*)` / `LIMIT 1` probe
-  on the SMALL engine to gauge rows × cols. It is labeled `heuristic: true`. It is
-  **not** a true cost preview, and never claims to be.
+- `estimate` is a **probe-based heuristic** — labeled `heuristic: true`, **not** a
+  true cost preview, and it never executes the target:
+  - **SQL** → a cheap `COUNT(*)` / `LIMIT 1` probe on the SMALL engine to gauge
+    rows × cols (design-sanctioned).
+  - **query_id** → a **non-executing** read of the query's latest **cached** result
+    metadata (the results endpoint, zero rows fetched). A saved query is **never
+    executed just to estimate it** — that would reintroduce the exact EXP-002
+    failure (an unbounded scan run with nothing metering it). If the query has no
+    completed cached result, `estimate` errors (exit 2) and tells you to pass SQL
+    or `run` it once (cost-capped) first — it will not execute to fill the gap.
 - The **real teeth** are (1) Dune's per-query **Query Cost Cap** (a hard-abort that
   kills a runaway scan at the source) and (2) the **budget-refuse** gate (this tool
   refuses to launch a run whose estimate exceeds the remaining budget). Those two
@@ -34,17 +41,21 @@ credits (the default ceiling).
 
 ```
 dune-meter estimate <sql|query_id>
-  → probe-based verdict. Runs a cheap COUNT(*)/LIMIT-1 probe on the small engine,
-    computes estimated_datapoints (rows×cols) and estimated_credits
+  → probe-based verdict, NEVER a full execution. SQL → cheap COUNT(*)/LIMIT-1 probe
+    on the small engine; query_id → non-executing read of the latest cached result
+    metadata (exit 2 if none cached — pass SQL or run it once first).
+    Computes estimated_datapoints (rows×cols) and estimated_credits
     (ceil(datapoints/1000)), reads the budget ledger, prints:
     { estimated_datapoints, estimated_credits, remaining_budget, verdict, heuristic, note }
     verdict: OK | WARN (est > 25% of remaining) | REFUSE (est > remaining → exit 3)
-    NEVER does a full execution.
 
 dune-meter run <sql|query_id> --cap <credits> [--force] [--engine small|medium|large]
   → executes WITH a Dune cost-cap (small engine by default). Runs the pre-run
-    estimate first and REFUSES (exit 3) if it exceeds the remaining budget, unless
-    --force. Polls to completion, reads credits/datapoints consumed from the result
+    estimate first (non-executing for a query_id) and REFUSES (exit 3) if it
+    exceeds the remaining budget, unless --force. An un-estimatable target (e.g. a
+    never-run query_id with no cached metadata) needs --force to proceed on the
+    cost-cap alone (exit 2 otherwise) — it is never executed just to estimate.
+    Polls to completion, reads credits/datapoints consumed from the result
     metadata, EMITS a CostAtom (hash-chained JSONL), and decrements the budget
     ledger. Exit 4 if Dune aborts on the cap (or reported spend > --cap).
 
@@ -80,21 +91,31 @@ dune-meter budget
 
 ## The CostAtom bridge
 
-dune-meter emits a `dune` call-class CostAtom per execution, **compatible with
-loa-finn `src/cost/cost-atom.ts`**: the same 3-ledger record
-(inference/infra/orchestration), integer units, canonical-JSON sha256 checksum,
-append-only JSONL. Two honest deltas:
+dune-meter emits a `dune` call-class CostAtom per execution, **shape-compatible
+with loa-finn `src/cost/cost-atom.ts`** (same 3-ledger record —
+inference/infra/orchestration — integer units, canonical-JSON sha256, append-only
+JSONL). It is **shape-compatible, not wire-compatible**: the two ledgers are
+independently verifiable but NOT cross-validatable by finn's reader. Three honest
+deltas:
 
 1. **`dune` call class** — the finn original has `A_relay | B_enrich`; a dune atom
    zeroes the model ledgers (no token spend) and books the credit cost on
    dune-native fields (`query_id`, `datapoints_scanned`, `credits_consumed`,
    `engine`) plus the orchestration gate record.
-2. **A hash-chain** — the finn envelope self-checksums each atom; dune-meter adds a
-   `prev_hash` link (the previous envelope's checksum), so the ledger is a
-   tamper-evident chain. The genesis atom links to `GENESIS_PREV_HASH`.
+2. **Numbers, not decimal-strings** — finn serializes its `*_micro` fields
+   (`cost_micro`/`total_micro`/`x402_quote_micro`) as **bigint → decimal STRINGS**;
+   dune-meter stores them as plain integer **numbers** (free-tier credit
+   magnitudes are safe integers, no bigint branch). The encodings differ.
+3. **A hash-chain over a wider envelope** — finn's envelope self-checksums the
+   **atom only**; dune-meter's envelope adds a `prev_hash` link and checksums over
+   `{schema_version, prev_hash, atom}`, so the ledger is a tamper-evident chain.
+   The genesis atom links to `GENESIS_PREV_HASH`. Consequence: finn's
+   `parseEnvelopeLine` would throw `checksum mismatch` on a dune envelope (and vice
+   versa) — the shapes match, the wire bytes do not.
 
-One meter, two sources: harness tokens (finn) + Dune credits (here). The
-experiment-economics learning-yield denominator becomes real.
+One meter, two sources: harness tokens (finn) + Dune credits (here) — readable by
+one readout that understands both encodings; not byte-cross-validated by either
+reader alone.
 
 ## How it composes
 
@@ -108,11 +129,30 @@ experiment-economics learning-yield denominator becomes real.
 ## Testing
 
 ```
-node --test packages/dune-meter/test/
+npm test          # → node --test test/*.test.mjs  (run from packages/dune-meter/)
 ```
 
+> The directory form `node --test packages/dune-meter/test/` is avoided: on the
+> Node 23 test-runner a trailing-slash path is treated as a single (failing) module
+> target. The `test/*.test.mjs` glob (what `npm test` wires) runs the whole suite.
+
 **No live Dune call ever runs in tests or build** — the whole point is cost-safety;
-don't spend credits to test the cost guard. The Dune client is mocked; tests run
-offline and deterministic. Coverage: estimate verdict thresholds (OK/WARN/REFUSE),
-budget-ledger atomic read/write, CostAtom hash-chain continuity + tamper detection,
-exit-code mapping.
+don't spend credits to test the cost guard. The Dune client (and, for the probe
+tests, `fetch`) is mocked; tests run offline and deterministic. Coverage: estimate
+verdict thresholds (OK/WARN/REFUSE), the **non-executing** query_id probe (asserts
+no `/execute` call), budget-ledger atomic read/write, CostAtom hash-chain continuity
++ tamper detection, exit-code mapping (including `--force` past an un-estimatable
+target).
+
+## Asson ladder status (honest)
+
+This CLI claims **L2** in its veve (`ladder.level: 2`) — the level the
+[`asson.doctor`](../asson/src/asson.mjs) **earns** it from evidence (veve + 2
+evidence_runs + passing golden vectors + honest `attestable` determinism +
+liveness). It is **Asson-graduatable to L3**, not yet L3: L3 requires a
+**verifiable build attestation** (tree-hash + ed25519 signature whose key resolves
+in the asson keyring), produced by the CI key ceremony — a step that lives outside
+this package (`packages/asson/keyring/`). The doctor therefore still reports an
+`AS-1` "attestation absent" finding; that is the honest unattested state, not a
+misclassification. Claiming L3 before that ceremony would be exactly the
+declaration lie this construct exists to prevent (`claimed > earned` DRIFT).

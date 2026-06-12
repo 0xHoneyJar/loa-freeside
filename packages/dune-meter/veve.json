@@ -31,15 +31,22 @@
   },
   "vectors": [
     {
-      "name": "budget-fresh-ledger-testimony (precondition: absent DUNE_BUDGET_LEDGER + DUNE_COST_ATOMS; attestable — recorded testimony, not byte-replay)",
-      "argv": ["budget"],
+      "name": "help-usage (ambient-free: static usage text; no network/clock/env/ledger touched — replays byte-stable on any host)",
+      "argv": ["--help"],
       "stdin": null,
-      "expect_output_hash": "sha256:72e1fd718d482c59cd834e8674816725abd4de86403a83e9f593f7ab79d10986",
+      "expect_output_hash": "sha256:1de550dd2ceccd9398c9fb3e3c292e2f54b155108ba162b9592f1985cdf6f4e7",
       "expect_exit": 0
+    },
+    {
+      "name": "run-requires-cap (ambient-free: the cost-cap mandate — `run` errors exit 2 before any ledger/network I/O; empty stdout, deterministic)",
+      "argv": ["run", "12345"],
+      "stdin": null,
+      "expect_output_hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "expect_exit": 2
     }
   ],
   "ladder": {
-    "level": 3,
+    "level": 2,
     "promoted_from": "grimoires/loa/context/dune-meter-cost-aware-adapter.md",
     "evidence_runs": [
       "run:exp-002-budget-blowout:postmortem",

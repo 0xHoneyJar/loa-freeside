@@ -167,23 +167,58 @@ export class DuneClient {
   }
 
   /**
-   * The estimate PROBE: run a cheap COUNT(*) / LIMIT-1 form on the small engine
-   * to gauge rows × cols WITHOUT a full scan. Returns {rows, cols}. For a saved
-   * query id we cannot rewrite the SQL, so we LIMIT-1 the execution and read the
-   * column count + the reported total row estimate from metadata.
+   * NON-EXECUTING read of a saved query's LATEST CACHED result metadata, via the
+   * results endpoint with limit=0 (zero rows fetched — metadata only, no scan, no
+   * new execution). This is how `estimate <query_id>` stays honest to the design
+   * doc's hard constraint ("No full execution"): we NEVER run a saved query just
+   * to estimate it. Returns {rows, cols} from the cached result's metadata.
    *
-   * This is the heuristic input — labeled honestly upstream (estimate.mjs).
+   * If the query has never completed an execution there is no cached metadata to
+   * read — we DO NOT execute to fill the gap; we raise a caller error (exit 2)
+   * telling the caller to pass SQL (the COUNT/LIMIT-1 probe path) or to run it
+   * once through `run` (cost-capped) before estimating.
+   */
+  async latestResultMetadata(queryId) {
+    let res;
+    try {
+      res = await this._request(`/query/${queryId}/results?limit=0`);
+    } catch (e) {
+      const why = e instanceof Error ? e.message : String(e);
+      throw new DuneClientError(
+        `estimate: no cached result for query ${queryId} (${why}) — estimate never executes a saved query; pass the SQL, or run it once (cost-capped) then estimate`,
+      );
+    }
+    const md = res.result?.metadata ?? res.execution_result?.metadata ?? res.metadata ?? {};
+    const finished = res.is_execution_finished === true
+      || res.state === 'QUERY_STATE_COMPLETED'
+      || md.total_row_count != null
+      || md.datapoint_count != null;
+    const rows = Number.isInteger(md.total_row_count)
+      ? md.total_row_count
+      : (Number.isInteger(md.row_count) ? md.row_count : 0);
+    const cols = Array.isArray(md.column_names) ? md.column_names.length : 0;
+    if (!finished || (rows === 0 && cols === 0)) {
+      throw new DuneClientError(
+        `estimate: query ${queryId} has no completed cached result — estimate never executes a saved query; pass the SQL, or run it once (cost-capped) then estimate`,
+      );
+    }
+    return { rows, cols };
+  }
+
+  /**
+   * The estimate PROBE → {rows, cols}, the heuristic input (labeled honestly
+   * upstream in estimate.mjs). NEVER does a full execution of the target:
+   *   • SQL      — a cheap COUNT(*) (rows) + LIMIT-1 (cols) probe on the small
+   *                engine (design-sanctioned: "a cheap COUNT(*) / LIMIT 1 probe").
+   *   • query_id — a NON-EXECUTING read of the latest cached result metadata
+   *                (latestResultMetadata). A saved query is never executed just
+   *                to estimate it (design doc: "No full execution" — the EXP-002
+   *                scar was an unbounded scan run with nothing metering it; the
+   *                estimate path must not reintroduce that).
    */
   async probe(target, { isQueryId }) {
     if (isQueryId) {
-      const exec = await this.executeQuery(target, { performance: ENGINES.small });
-      const status = await this.pollStatus(exec.execution_id);
-      const md = await this.resultMetadata(exec.execution_id);
-      const cols = status.result?.metadata?.column_names?.length
-        ?? md.raw.column_names?.length
-        ?? 1;
-      const rows = md.datapoints && cols ? Math.ceil(md.datapoints / cols) : (md.raw.total_row_count ?? 0);
-      return { rows, cols, execution_id: exec.execution_id };
+      return this.latestResultMetadata(target);
     }
     // Raw SQL probe: wrap in COUNT(*) to get rows cheaply, and a LIMIT 1 to read
     // the column shape. We send the COUNT form (cheapest signal).
