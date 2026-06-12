@@ -5,10 +5,13 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>THE OBSERVATORY — the envelope's run</title>
 <!--
-  THE OBSERVATORY (game v4 · panel waves 1+2 applied — run obs-panel-20260611).
-  Each room is INHABITED by its resident construct-agent. The ENVELOPE is the
-  Strong Center: C0-continuous, carried with mass (rational carry curve + damped
-  lean), forged in quanta during work, custody-colored in the trail. GATEKEEPERS
+  THE OBSERVATORY (game v5 · wave 3 + the agent-spine — run obs-panel-20260611).
+  THE AGENT IS THE FOCUS: each room's resident construct-agent (labelled ◆ name)
+  PRODUCES the envelope (forge quanta), CARRIES it to its own door, and the
+  receiving agent comes to ITS door to collect and escort it in. The room is the
+  TASK (uppercase plate on the chamber wall). The ENVELOPE remains the Strong
+  Center between rooms: C0-continuous, carried with mass (rational carry curve +
+  damped lean), custody-colored in the trail. GATEKEEPERS
   validate on one beat clock (snap, never fade); gates can SAY NO (verdict enum +
   refusal beat). The handoff TRANSFORMS the receiver (flash→badge punch→one ripple).
   Time is a pure fold: every verb (play/pause/⏮/⏭/seek/reset) routes through
@@ -20,34 +23,42 @@
   Diagnostics: ?auto=1 skips the title · ?phase=N seeks (deterministic) · ?reveal=1.
 -->
 <style>
+  @font-face{font-family:'VT323';font-style:normal;font-weight:400;
+    src:url(data:font/woff2;base64,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) format('woff2');}
   :root{ --bg:#06070d; --ink:#e6dcc8; --dim:#8a7f66; --gold:#ffce6b; --ok:#7fd98a;
     --warn:#f08c3a; --rage:#ff5a4d; --torch:#ffb347; --stone:#1c2030; --floor:#11131f;
     --steel:#9fb8d8; --floor2:#161a28; --stonetop:#252b40; --grit:#1b2030; --plate:#0a0c14; }
   *{box-sizing:border-box} html,body{margin:0;height:100%;background:#000;overflow:hidden;
-    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;color:var(--ink)}
+    font-family:'VT323',ui-monospace,"SF Mono",Menlo,Consolas,monospace;color:var(--ink)}
   canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;image-rendering:pixelated}
   #hud{position:fixed;left:0;right:0;bottom:0;z-index:5;pointer-events:none}
-  #status{display:flex;align-items:center;gap:18px;padding:8px 18px;font-size:12px;
+  #status{display:flex;align-items:baseline;gap:16px;padding:8px 18px;font-size:17px;
     background:linear-gradient(0deg,rgba(6,7,13,.96),rgba(6,7,13,.0));}
-  #status .nm{color:var(--gold);font-size:13px;letter-spacing:.04em}
-  #status .seg{color:var(--dim)} #status b{color:var(--ink);font-weight:600}
+  #status .nm{color:var(--gold);font-size:21px;letter-spacing:.02em}
+  #status .seg{color:var(--dim)} #status b{color:var(--ink);font-weight:400}
+  #status .task{text-transform:uppercase;letter-spacing:.08em;font-size:14px;color:var(--dim)}
+  #status .chip{border:1px solid #2a3147;border-radius:3px;padding:0 8px;background:rgba(18,22,38,.55)}
   .clock{display:inline-block;position:relative;width:64px;height:7px;border:1px solid #2a2f44;border-radius:4px;overflow:hidden;vertical-align:middle}
   .clock > i{display:block;height:100%}
   .clock::after{content:'';position:absolute;left:60%;top:0;bottom:0;width:1px;background:rgba(240,140,58,.55)}
-  #log{padding:2px 18px 12px;font-size:11px;line-height:1.7;max-height:26vh;overflow:hidden;
+  #log{padding:2px 18px 12px;font-size:15px;line-height:1.5;max-height:26vh;overflow:hidden;
     -webkit-mask-image:linear-gradient(0deg,#000 70%,transparent);mask-image:linear-gradient(0deg,#000 70%,transparent)}
   #log .l{color:var(--dim)} #log .l b{color:var(--ink)} #log .l.gold b{color:var(--gold)}
   #log .l.ok b{color:var(--ok)} #log .l.rage b{color:var(--rage)} #log .l i{color:#6f6650}
   #log .l.steel b{color:var(--steel)}
   #ctl{position:fixed;top:12px;right:14px;z-index:6;display:flex;gap:6px}
   button{pointer-events:auto;background:rgba(18,22,38,.85);color:var(--ink);border:1px solid #2a3147;
-    border-radius:4px;padding:6px 11px;font:inherit;font-size:11px;cursor:pointer;backdrop-filter:blur(3px)}
+    border-radius:4px;padding:4px 11px;font:inherit;font-size:15px;cursor:pointer;backdrop-filter:blur(3px)}
   button:hover{border-color:var(--gold);color:#fff}
   #title{position:fixed;inset:0;z-index:9;background:radial-gradient(circle at 50% 42%,rgba(20,16,8,.5),rgba(3,3,7,.97));
     display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer}
-  #title h1{font-size:38px;letter-spacing:.34em;color:var(--gold);margin:0;text-shadow:0 0 30px rgba(255,179,71,.45)}
-  #title p{color:var(--dim);font-size:12px;letter-spacing:.18em;margin:16px 0 0}
-  #title .b{margin-top:40px;color:var(--ink);font-size:12px;letter-spacing:.1em;animation:bl 1.1s steps(2) infinite}
+  #title h1{font-size:56px;letter-spacing:.34em;color:var(--gold);margin:14px 0 0;text-shadow:0 0 30px rgba(255,179,71,.45)}
+  #title p{color:var(--dim);font-size:18px;letter-spacing:.12em;margin:12px 0 0}
+  #title #legend{color:var(--dim);font-size:16px;margin-top:26px;line-height:1.9;text-align:center}
+  #title #legend b{color:var(--ink)}
+  #title #shelf{color:var(--dim);font-size:15px;margin-top:16px;opacity:.7;line-height:1.7;text-align:center}
+  #title .b{margin-top:32px;color:var(--ink);font-size:17px;letter-spacing:.1em;animation:bl 1.1s steps(2) infinite}
+  #tcv{image-rendering:pixelated;width:72px;height:72px;position:static}
   @keyframes bl{50%{opacity:.15}}
   .scan{position:fixed;inset:0;pointer-events:none;z-index:7;opacity:.5;
     background:repeating-linear-gradient(0deg,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.22) 2px 3px)}
@@ -56,12 +67,14 @@
 <body>
 <canvas id="c"></canvas>
 <div class="scan"></div>
-<div id="ctl"><button id="pp">▶</button><button id="spd">1×</button><button id="bck">⏮</button><button id="stp">⏭</button><button id="rst">⟲</button></div>
+<div id="ctl"><button id="pp">▶</button><button id="spd">1×</button><button id="bck">⏮</button><button id="stp">⏭</button><button id="rst">⟲</button><button id="snd">🔊</button></div>
 <div id="hud">
   <div id="status"></div>
   <div id="log"></div>
 </div>
-<div id="title"><h1>OBSERVATORY</h1><p id="subtitle">level 1 — the envelope's run · not a hero, a handoff</p><span class="b">▸ follow the envelope</span></div>
+<div id="title"><canvas id="tcv" width="24" height="24"></canvas><h1>OBSERVATORY</h1><p id="subtitle">level 1 — the envelope's run · not a hero, a handoff</p>
+<div id="legend"><b>⟐</b> the envelope — the handoff in motion&nbsp;&nbsp;·&nbsp;&nbsp;<b>⚷</b> the gate — a decision, snapped&nbsp;&nbsp;·&nbsp;&nbsp;<b>◔</b> the clock — time being spent</div>
+<div id="shelf"></div><span class="b">▸ follow the envelope</span></div>
 <script>
 // ───────────────── pixel sprites (8×8) — role temperature (W2-7): keepers are the
 // ONLY cold-steel monochrome; vocab indigo; proto amber (protocol-as-seal) ─────────
@@ -200,7 +213,7 @@ const roomById=id=>LEVEL.rooms.find(r=>r.id===id);
 // work dur = min(3.6, .9+2.6·live) (W2-1) · loiter/reap emitted ONLY when the clock
 // attests live≥1 (W1-3) · REJECTED/DENIED hops compile a refusal beat, no transform
 // (W1-6) · arrive carries its approach direction for the seated lean (W1-7).
-let phases=[], reapIdx=-1;
+let phases=[], reapIdx=-1, loiterGateIdx=-1, loiterArriveIdx=-1, cpGateIdx=-1;
 const workDur=r=>Math.min(3.6,.9+2.6*r.live);
 function compile(){
   const H=LEVEL.envelopes;
@@ -211,11 +224,18 @@ function compile(){
   const waveNamed=new Set();
   for(let hi=0;hi<H.length;hi++){ const h=H[hi];
     const path=hopPath(h.from,h.to), di=doorIndex(path,h.to);
-    const tp={k:'travel',h,path:path.slice(0,di),dur:Math.max(.8,di*.10),
-      line:`the envelope departs <b>${roomById(h.from).name}</b> — carrying <i>${h.payload}</i>`,cls:'gold'};
+    // the agent's threshold: the last tile still inside its own chamber
+    const cF=roomTile[h.from], RF=RAD(roomById(h.from));
+    let ei=0; for(let i2=0;i2<di;i2++){
+      if(Math.max(Math.abs(path[i2][0]-cF.tx),Math.abs(path[i2][1]-cF.ty))<=RF) ei=i2; else break; }
+    // THE SPINE (operator): the agent PRODUCES the envelope, then CARRIES it to the door
+    const cp={k:'carry',h,path:path.slice(0,ei+1),dur:Math.max(.6,(ei+1)*.13),
+      line:`<b>${roomById(h.from).construct}</b> carries the envelope to the door — bound for <b>${roomById(h.to).name}</b> · <i>${h.payload}</i>`,cls:'gold'};
     if((waves[h.wave]||1)>1&&!waveNamed.has(h.wave)){waveNamed.add(h.wave);
-      tp.line2=`<i>wave ${h.wave} — the party splits: ${waves[h.wave]} envelopes in flight (shown in turn)</i>`;}
-    phases.push(tp);
+      cp.line2=`<i>wave ${h.wave} — the party splits: ${waves[h.wave]} envelopes in flight (shown in turn)</i>`;}
+    phases.push(cp);
+    // the seam: the envelope crosses alone; the agent turns home
+    phases.push({k:'travel',h,path:path.slice(ei,di),dur:Math.max(.8,(di-ei)*.10)});
     phases.push({k:'gate',h,tile:path[di],prev:path[Math.max(0,di-1)],dur:.95*h.keepers,
       line:h.gateline,cls:'steel'});
     if(h.verdict==='REJECTED'||h.verdict==='DENIED'){
@@ -238,9 +258,15 @@ function compile(){
     } else phases.push({k:'work',room:h.to,dur:workDur(dest),nh:H[hi+1]??null});
   }
   const last=H[H.length-1];
-  phases.push({k:'end',room:last.to,dur:1e9,
+  if(LEVEL.partial){ phases.push({k:'wait',room:last.to,dur:1e9,
+    line:`<i>the run is live — <b>${roomById(last.to).construct}</b> works, the clock breathes real time…</i>`,cls:'gold'}); }
+  else phases.push({k:'end',room:last.to,dur:1e9,
     line:`<i>the lock schedule is not the river's to set.</i> — level clear`,cls:'gold'});
   reapIdx=phases.findIndex(q=>q.k==='reap');
+  loiterGateIdx=-1;loiterArriveIdx=-1;cpGateIdx=-1;
+  phases.forEach((q,i)=>{ if(q.k==='gate'&&q.h.loiter)loiterGateIdx=i;
+    if(q.k==='arrive'&&q.h.loiter)loiterArriveIdx=i;
+    if(q.k==='gate'&&q.h.pale)cpGateIdx=i; });
 }
 
 // ───────────────── canvas + token cache (W1-2: one palette, read once) ────────────
@@ -260,6 +286,33 @@ const VS={APPROVED:{c:'--ok',bar:.85,key:1},CHECKPOINT:{c:'--steel',bar:.85,key:
   EMITTED:{c:'--dim',bar:.45,key:.6},REJECTED:{c:'--rage',bar:.85,key:1},DENIED:{c:'--rage',bar:.85,key:1}};
 const CUST={opus:'#ffce6b',fable:'#ffce6b',sonnet:'#9fb8d8',haiku:'#7fd98a'};
 
+// ───────────────── the snap speaks (W3-1, E-13 table) — one voice per state change,
+// fired at the beat instant, never looped. DOM gesture arms the context. ─────────────
+let AC=null, muted=matchMedia('(prefers-reduced-motion: reduce)').matches||localStorage.getItem('obs.mute')==='1';
+function initAudio(){ if(!AC){ try{AC=new (window.AudioContext||window.webkitAudioContext)();}catch(e){} }
+  if(AC&&AC.state==='suspended')AC.resume(); }
+function bleep(type,f0,f1,ms,g){ if(muted||!AC)return; const t=AC.currentTime;
+  const o=AC.createOscillator(),ga=AC.createGain(); o.type=type;
+  o.frequency.setValueAtTime(f0,t);
+  if(f1)o.frequency.exponentialRampToValueAtTime(Math.max(1,f1),t+ms/1000);
+  ga.gain.setValueAtTime(g,t); ga.gain.exponentialRampToValueAtTime(.0001,t+ms/1000);
+  o.connect(ga); ga.connect(AC.destination); o.start(t); o.stop(t+ms/1000+.02); }
+function nburst(ms,g){ if(muted||!AC)return; const n=AC.sampleRate*ms/1000|0;
+  const b=AC.createBuffer(1,n,AC.sampleRate),d=b.getChannelData(0);
+  for(let i=0;i<n;i++)d[i]=(Math.random()*2-1)*(1-i/n);
+  const s=AC.createBufferSource(),ga=AC.createGain(); ga.gain.value=g; s.buffer=b;
+  s.connect(ga); ga.connect(AC.destination); s.start(); }
+const VOICE={
+  key:    ()=>bleep('square',880,1320,45,.09),                       // the snap (45ms)
+  transform:()=>{bleep('triangle',1320,null,90,.07);bleep('triangle',660,null,90,.07);
+                 bleep('sine',90,55,80,.12);},                       // the change + the seat
+  depart: ()=>nburst(120,.04),                                       // the carry lifts
+  enrage: ()=>{bleep('square',220,180,120,.09);},                    // ×3 pulses via caller
+  reap:   ()=>{bleep('sine',55,40,300,.18);nburst(80,.10);},         // the strike
+  clear:  ()=>bleep('triangle',520,780,200,.07),                     // the morgue presents
+};
+let lastTurn={}, enrageFired=false, enragePulse=0;
+
 // ───────────────── world state — displayed state is a pure fold of (phases,pi,pt) ──
 let pi=0, pt=0, simT=0, playing=false, speed=1, frame=0, last=0, curH=null;
 let cam={x:0,y:0}, trail=[], ripples=[], flash={room:-1,until:0};
@@ -274,6 +327,7 @@ function resetWorld(){
   pi=0;pt=0;simT=0;curH=null;trail=[];ripples=[];flash={room:-1,until:0};
   ck={};badges={};LEVEL.rooms.forEach(r=>{ck[r.id]=0;badges[r.id]=[];});
   keys={};reaped=false;struck=false;strikeT=-9;tele=false;
+  lastTurn={};enrageFired=false;enragePulse=0;
   taught=new Set();drainNoted=new Set();endT=-1;fovCur=.46;shelfDone=false;
   visited=new Set([phases[0]?.room??0]);revealAll=Q.get('reveal')==='1';
   LOG.length=0;document.getElementById('log').innerHTML='';
@@ -297,12 +351,13 @@ function enterPhase(i){ pi=i; pt=0; const p=phases[pi]; if(!p)return;
   if(p.line) log(p.line,p.cls);
   if(p.line2) log(p.line2,p.cls);
   if(p.k==='gate'){ keys[pi]=0; gateTeach(p.h); }
+  if(p.k==='carry'){ VOICE.depart(); }
   if(p.k==='arrive'){ flash={room:p.room,until:simT+.16};
     const c=roomTile[p.room]; ripples.push({x:c.tx*T+T/2,y:c.ty*T+T/2,t0:simT});
     const v=p.h.verdict; badges[p.room].push({g:p.h.transform.badge,
       c:v==='CHECKPOINT'?TK['--steel']:TK['--gold'],t0:simT});
-    visited.add(p.room); }
-  if(p.k==='end'){ revealAll=true; endT=simT; shelfWrite(); }
+    visited.add(p.room); VOICE.transform(); }
+  if(p.k==='end'){ revealAll=true; endT=simT; shelfWrite(); VOICE.clear(); }
 }
 // terminal effects of a COMPLETED phase — seek's replay (W1-1, the pure fold)
 function applyTerminal(i,p){
@@ -316,7 +371,7 @@ function applyTerminal(i,p){
         badges[p.room].push({g:p.h.transform.badge,c:v==='CHECKPOINT'?TK['--steel']:TK['--gold'],t0:-9});
         visited.add(p.room); } break; }
     case 'gate': keys[i]=p.h.keepers; gateTeach(p.h); break;
-    case 'loiter': ck[p.room]=1; tele=true; teachClock(p.room); break;
+    case 'loiter': ck[p.room]=1; tele=true; enrageFired=true; teachClock(p.room); break;
     case 'reap': reaped=true; struck=true; strikeT=-9; break;
     case 'end': revealAll=true; break;
   }
@@ -336,7 +391,7 @@ function seek(n){ n=Math.max(0,Math.min(phases.length-1,n));
 function advance(dt){ if(!playing)return;
   simT+=dt*speed; pt+=dt*speed;
   // the remainder is carried (K-3): boundaries land ON the beat, phases can chain
-  while(phases[pi] && pt>=phases[pi].dur && phases[pi].k!=='end'){
+  while(phases[pi] && pt>=phases[pi].dur && phases[pi].k!=='end' && phases[pi].k!=='wait'){
     const rem=pt-phases[pi].dur; enterPhase(pi+1); pt=Math.max(0,rem); }
   if(phases[pi].k==='end'&&playing&&pt>5){ playing=false; document.getElementById('pp').textContent='✓'; }
 }
@@ -344,12 +399,12 @@ function advance(dt){ if(!playing)return;
 // ───────────────── envelope position — C0-continuous, docked clear of the resident ──
 const dock=id=>{const c=roomTile[id];return{x:c.tx*T+T/2+26,y:c.ty*T+T/2+8};};
 function envPos(){ const p=phases[pi]; if(!p)return null;
-  if(p.k==='work'||p.k==='loiter'||p.k==='reap'||p.k==='end') return dock(p.room);
+  if(p.k==='work'||p.k==='loiter'||p.k==='reap'||p.k==='end'||p.k==='wait') return dock(p.room);
   if(p.k==='arrive'){ const d=dock(p.room);
     const s=lean(pt); return{x:d.x+p.ax*s,y:d.y+p.ay*s}; }       // the bowl seats (K-2b)
-  if(p.k==='travel'||p.k==='enter'||p.k==='refuse'){
+  if(p.k==='carry'||p.k==='travel'||p.k==='enter'||p.k==='refuse'){
     const wp=p.path.map(([x,y])=>[x*T+T/2,y*T+T/2]);
-    if(p.k==='travel'){const d=dock(p.h.from); wp[0]=[d.x,d.y];}
+    if(p.k==='carry'){const d=dock(p.h.from); wp[0]=[d.x,d.y];}
     if(p.k==='enter'){const d=dock(p.h.to); wp.push([d.x,d.y]);}
     if(p.k==='refuse'){const d=dock(p.h.from); wp.push([d.x,d.y]);}
     const n=wp.length-1; if(n<1)return{x:wp[0][0],y:wp[0][1]};
@@ -360,11 +415,30 @@ function envPos(){ const p=phases[pi]; if(!p)return null;
     const s=lean(pt); return{x:px+vx*s,y:py+vy*s}; }              // strain toward the door
   return null; }
 function camTarget(){ const p=phases[pi];
-  if(p.k==='travel'||p.k==='enter'||p.k==='gate'||p.k==='refuse'){const e=envPos();return e;}
+  if(p.k==='carry'||p.k==='travel'||p.k==='enter'||p.k==='gate'||p.k==='refuse'){const e=envPos();return e;}
   const c=roomTile[p.room??0]; return{x:c.tx*T+T/2,y:c.ty*T+T/2}; }
 function activeRoom(){ const p=phases[pi];
-  if(p.k==='work'||p.k==='arrive'||p.k==='loiter'||p.k==='reap'||p.k==='end')return p.room;
+  if(p.k==='work'||p.k==='arrive'||p.k==='loiter'||p.k==='reap'||p.k==='end'||p.k==='wait')return p.room;
   return p.h?p.h.from:0; }
+// THE AGENT IS THE FOCUS (operator spine): it produces, carries to the door, and the
+// receiver comes to its door to collect — residents move, but never leave their room.
+function residentXY(r){ const c=roomTile[r.id]; const cx=c.tx*T+T/2, cy=c.ty*T+T/2;
+  const p=phases[pi];
+  if(p&&p.h){
+    if(p.k==='carry'&&p.h.from===r.id){ const e=envPos(); return{x:e.x-14,y:e.y-10}; }
+    if(p.k==='travel'&&p.h.from===r.id){ const x0=p.path[0][0]*T+T/2, y0=p.path[0][1]*T+T/2;
+      const t=Math.min(1,pt/Math.min(1.2,p.dur));                  // turns home
+      return{x:x0+(cx-x0)*t-14, y:y0+(cy-y0)*t-10}; }
+    if(p.k==='gate'&&p.h.to===r.id){ const ix=p.tile[0]*T+T/2, iy=p.tile[1]*T+T/2;
+      const mx=cx+(ix-cx)*.55, my=cy+(iy-cy)*.55;                  // comes to the door
+      const t=Math.min(1,pt/.6); return{x:cx+(mx-cx)*t,y:cy+(my-cy)*t}; }
+    if(p.k==='enter'&&p.h.to===r.id){ const dp=p.path[0];
+      const x0=cx+((dp[0]*T+T/2)-cx)*.55, y0=cy+((dp[1]*T+T/2)-cy)*.55;
+      const t=carry(Math.min(1,pt/p.dur));                         // escorts it in
+      return{x:x0+(cx-x0)*t,y:y0+(cy-y0)*t}; }
+  }
+  return{x:cx,y:cy};
+}
 const isVisited=id=>revealAll||visited.has(id);
 
 // ───────────────── draw ─────────────────
@@ -375,11 +449,14 @@ function draw(ts){
     if(p.k==='work'||p.k==='arrive'){ const r=roomById(p.room);
       ck[r.id]=Math.min(r.live, ck[r.id]+sdt*(r.live/(p.dur*1.4))); teachClock(r.id); }
     if(p.k==='loiter'){ ck[p.room]=Math.min(1, ck[p.room]+sdt*1.4/p.dur); teachClock(p.room);
-      if(ck[p.room]>=.85&&!tele){ tele=true; log(`<i>something stirs above the chamber…</i>`,'rage'); } }
+      if(ck[p.room]>=.85&&!tele){ tele=true; log(`<i>something stirs above the chamber…</i>`,'rage'); }
+      if(ck[p.room]>=1&&!enrageFired){ enrageFired=true; enragePulse=3; } }
+    if(p.k==='wait'){ ck[p.room]=Math.min(1, ck[p.room]+dt/(LEVEL.meta?.enrage_s??300)); } // live: real time IS the datum
   }
+  if(enragePulse>0&&simT%.32<.02){ VOICE.enrage(); enragePulse--; }      // 3 pulses, then SILENCE (E-13)
   if(p.k==='reap'&&pt>=p.dur*.55&&struck&&!taught.has('quiet')){ taught.add('quiet');
     log(`<i>checkpoint seized — the chamber goes quiet.</i>`,''); }
-  if(p.k==='reap'&&pt>=1.18&&!struck){ struck=true; strikeT=simT; }
+  if(p.k==='reap'&&pt>=1.18&&!struck){ struck=true; strikeT=simT; VOICE.reap(); }
   // fog memory (W2-6): the envelope's torch reveals — snap, once
   { const e=envPos(); if(e){ const et={x:Math.round((e.x-T/2)/T),y:Math.round((e.y-T/2)/T)};
     for(const r of LEVEL.rooms){ if(visited.has(r.id))continue; const c=roomTile[r.id];
@@ -425,6 +502,7 @@ function draw(ts){
     const vstyle=VS[g.h.verdict]||VS.EMITTED;
     const B=g.dur/g.h.keepers;
     const turned=done?g.h.keepers:(here?Math.min(g.h.keepers,Math.floor(pt/B+.5)):0);
+    if(here&&turned>(lastTurn[i]||0)){ for(let z=lastTurn[i]||0;z<turned;z++)VOICE.key(); lastTurn[i]=turned; }
     const vx=Math.sign(g.tile[0]-g.prev[0]), vy=Math.sign(g.tile[1]-g.prev[1]);
     const nx=-vy, ny=vx;
     for(let kI=0;kI<g.h.keepers;kI++){
@@ -441,17 +519,21 @@ function draw(ts){
       ctx.fillStyle=kc; ctx.font='13px ui-monospace'; ctx.textAlign='center';
       ctx.fillText('⚷', kx+12, kyy-6); ctx.textAlign='left'; ctx.globalAlpha=1;
     }
-    if(done||here){ let a=vstyle.bar;
+    if(done||here){ let a=vstyle.bar, bc=TK[vstyle.c];
       if(i===drainGate){ a=.55+.30*(.5+.5*Math.sin(simT*5.027)); }         // the drain pulls (W2-12)
-      ctx.fillStyle=TK[vstyle.c]; ctx.globalAlpha=a;
+      // grace (W3-4): the loiter door closes softly — stone until the checkpoint presents
+      if(i===loiterGateIdx&&pi>loiterArriveIdx&&cpGateIdx>=0&&pi<=cpGateIdx) bc=TK['--stone'];
+      ctx.fillStyle=bc; ctx.globalAlpha=a;
       ctx.fillRect(dx+6,dy+T-4,T-12,4); ctx.globalAlpha=1; }
     else if(i===drainGate){ ctx.fillStyle=TK[(VS[g.h.verdict]||VS.EMITTED).c];
       ctx.globalAlpha=.55+.30*(.5+.5*Math.sin(simT*5.027));
       ctx.fillRect(dx+6,dy+T-4,T-12,4); ctx.globalAlpha=1; }
   }
-  // rooms: residents (inhabited), clock-rings + notch, badges, name plates
+  // rooms: the AGENT is the focus (labelled ◆ construct, moves within its room);
+  // the ROOM is the task (uppercase plate on the chamber's top wall)
   for(const r of LEVEL.rooms){ if(!isVisited(r.id))continue;
     const c=roomTile[r.id]; const sx=c.tx*T-camx, sy=c.ty*T-camy;
+    const ap=residentXY(r); const asx=ap.x-camx, asy=ap.y-camy;
     const isActive=r.id===aRoom;
     const loiterNow=p.k==='loiter'&&p.room===r.id;
     const wounded=reaped&&reapIdx>=0&&phases[reapIdx].room===r.id&&(pi>reapIdx||(pi===reapIdx&&struck));
@@ -464,33 +546,41 @@ function draw(ts){
     let fl=false, fa;
     if(flash.room===r.id&&simT<flash.until){ const ft=simT-(flash.until-.16);
       if(ft<.05){fl=true;fa=undefined;} else {fl=true;fa=Math.exp(-(ft-.05)/.07);} }
-    sprite(ctx,r.spr, sx+T/2-16+jx, sy+T/2-18+jy, 4, glow, false, wounded?.55:undefined);
-    if(fl) sprite(ctx,r.spr, sx+T/2-16+jx, sy+T/2-18+jy, 4, null, true, fa);
-    // clock-ring + the notch where the arc closes (A-3)
-    const cx=sx+T/2, cy=sy-6, u=ck[r.id];
+    sprite(ctx,r.spr, asx-16+jx, asy-18+jy, 4, glow, false, wounded?.55:undefined);
+    if(fl) sprite(ctx,r.spr, asx-16+jx, asy-18+jy, 4, null, true, fa);
+    // clock-ring rides ABOVE THE AGENT (the clock is the agent's time) + the notch (A-3)
+    const cx=asx+jx, cy=asy-28+jy, u=ck[r.id];
     ctx.strokeStyle='#23283c';ctx.lineWidth=3;ctx.beginPath();ctx.arc(cx,cy,7,0,6.283);ctx.stroke();
     if(u>0){ ctx.strokeStyle=TK['--rage'];ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(cx,cy-11);ctx.lineTo(cx,cy-5);ctx.stroke();
       ctx.strokeStyle=liveCol(u);ctx.lineWidth=3;ctx.beginPath();
       ctx.arc(cx,cy,7,-1.57,-1.57+6.283*Math.min(1,u)+(loiterNow?Math.sin(simT*12)*.2:0));ctx.stroke(); }
-    // badges: per-glyph color + punch-in 22→12px over 240ms (E-9/E-3)
+    // the AGENT'S NAME — the focus label, under the agent, follows it
+    const an='◆ '+r.construct, any=asy+24+jy;
+    ctx.font='15px VT323, ui-monospace'; ctx.textAlign='center';
+    ctx.globalAlpha=isActive?1:.6;
+    ctx.fillStyle='#000'; ctx.fillText(an,asx+1+jx,any+1);
+    ctx.fillStyle=isActive?(loiterNow||wounded?TK['--rage']:TK['--gold']):TK['--dim'];
+    ctx.fillText(an,asx+jx,any);
+    ctx.globalAlpha=1;
+    // the ROOM = the task — uppercase plate on the chamber's top wall (anchored, never moves)
+    const plate=r.name.toUpperCase(), py2=(c.ty-RAD(r))*T-camy-6;
+    ctx.font='14px VT323, ui-monospace';
+    ctx.globalAlpha=isActive?.95:.5;
+    ctx.fillStyle='#000'; ctx.fillText(plate,sx+T/2+1,py2+1);
+    ctx.fillStyle=isActive?TK['--torch']:TK['--dim'];
+    ctx.fillText(plate,sx+T/2,py2);
+    ctx.globalAlpha=1; ctx.textAlign='left';
+    // badges stay with the CHAMBER (the room's accrued record)
     if(badges[r.id].length){ ctx.textAlign='center'; let bx=sx+T/2-(badges[r.id].length-1)*8;
       for(const b of badges[r.id]){ const q=Math.min(1,Math.max(0,(simT-b.t0)/.24));
         const size=Math.round(22-10*(1-(1-q)*(1-q)));
         ctx.fillStyle=b.c; ctx.font=`${size}px ui-monospace`;
-        ctx.fillText(b.g, bx, sy+T/2+36); bx+=16; }
+        ctx.fillText(b.g, bx, sy+T/2+44); bx+=16; }
       ctx.textAlign='left'; }
-    // name plates: active gold/rage 1.0 · visited-idle dim .55 — double-painted (E-6)
-    const nm=r.name, ny2=sy+T/2+24;
-    ctx.font='12px ui-monospace'; ctx.textAlign='center';
-    ctx.globalAlpha=isActive?1:.55;
-    ctx.fillStyle='#000'; ctx.fillText(nm,sx+T/2+1,ny2+1);
-    ctx.fillStyle=isActive?(loiterNow||wounded?TK['--rage']:TK['--gold']):TK['--dim'];
-    ctx.fillText(nm,sx+T/2,ny2);
-    ctx.globalAlpha=1; ctx.textAlign='left';
-    // spend bar (S-9): comparative width, honest absence
+    // spend bar (S-9): comparative width, honest absence — under the task plate
     if(r.spend_micro){ const mx=Math.max(...LEVEL.rooms.map(q=>q.spend_micro||0),1);
       ctx.fillStyle=TK['--torch'];
-      ctx.fillRect(sx+T/2-14, ny2+4, Math.max(2,Math.min(1,r.spend_micro/mx)*28), 2); }
+      ctx.fillRect(sx+T/2-14, py2+5, Math.max(2,Math.min(1,r.spend_micro/mx)*28), 2); }
   }
   // the reaper (W2-3): dread (unseen) → gravity strike → silence → the wound stays
   if(reapIdx>=0&&pi>=reapIdx){ const rc=roomTile[phases[reapIdx].room];
@@ -561,9 +651,9 @@ function drawMorgue(){
   const w=420, h=92+18*rows.length, x=(W-w)/2, y=(H-h)/2-30;
   ctx.fillStyle='rgba(6,7,13,.92)'; ctx.fillRect(x,y,w,h);
   ctx.strokeStyle='#2a3147'; ctx.lineWidth=1; ctx.strokeRect(x+.5,y+.5,w-1,h-1);
-  ctx.textAlign='center'; ctx.fillStyle=TK['--gold']; ctx.font='13px ui-monospace';
+  ctx.textAlign='center'; ctx.fillStyle=TK['--gold']; ctx.font='18px VT323, ui-monospace';
   ctx.fillText(`THE MORGUE — the envelope's run presents`, x+w/2, y+24);
-  ctx.textAlign='left'; ctx.font='12px ui-monospace';
+  ctx.textAlign='left'; ctx.font='15px VT323, ui-monospace';
   rows.forEach((r,i)=>{ const yy=y+48+i*18;
     ctx.fillStyle=TK['--dim']; ctx.fillText(r[0], x+28, yy);
     ctx.fillStyle=r[2]; ctx.fillText(r[1], x+170, yy); });
@@ -572,7 +662,7 @@ function drawMorgue(){
   ctx.font='13px ui-monospace';
   for(const g of gates) for(let i=0;i<g.h.keepers;i++){
     ctx.fillStyle=TK[(VS[g.h.verdict]||VS.EMITTED).c]; ctx.fillText('⚷',kx,ky); kx+=13; }
-  ctx.font='10px ui-monospace'; ctx.fillStyle=TK['--dim']; ctx.textAlign='center';
+  ctx.font='13px VT323, ui-monospace'; ctx.fillStyle=TK['--dim']; ctx.textAlign='center';
   ctx.fillText(`run ${LEVEL.meta?.run_id??LEVEL.id} · ${LEVEL.meta?.generated_at??''}`, x+w/2, y+h-12);
   ctx.textAlign='left';
 }
@@ -584,7 +674,9 @@ function status(){ const p=phases[pi]; if(!p)return;
   const hopN=LEVEL.envelopes.indexOf(h)+1;
   let carrySeg;
   if(p.k==='end') carrySeg=`⟐ <b>level clear</b>`;
+  else if(p.k==='wait') carrySeg=`⟐ <b>live — the run breathes</b>`;
   else if(p.k==='work') carrySeg=`⟐ forging · <b>${p.nh?p.nh.payload:'at rest'}</b>`;
+  else if(p.k==='carry') carrySeg=`⟐ carries <b>${h.payload}</b> to the door`;
   else carrySeg=`⟐ <b>${h?h.payload:''}</b>`;
   // badge recall (G-10a): cycle this room's badge history during its work phase
   let recall='';
@@ -597,8 +689,8 @@ function status(){ const p=phases[pi]; if(!p)return;
   const spend=r.spend_micro?`<span class="seg">· $${(r.spend_micro/1e6).toFixed(2)}</span>`:'';
   document.getElementById('status').innerHTML =
     `<span class="nm">◆ ${r.construct}</span>`+
-    `<span class="seg">${r.name}</span>`+
-    `<span class="seg">${carrySeg}</span>`+cust+spend+
+    `<span class="task">${r.name}</span>`+
+    `<span class="seg chip">${carrySeg}</span>`+cust+spend+
     `<span class="seg">clock <span class="clock"><i style="width:${Math.round(u*100)}%;background:${liveCol(u)}"></i></span>${u>=1?' <b style="color:var(--rage)">ENRAGE</b>':''}</span>`+
     recall+
     `<span class="seg" style="margin-left:auto">${h?`hop ${hopN}/${LEVEL.envelopes.length}`:''} · ${p.k}</span>`;
@@ -606,7 +698,11 @@ function status(){ const p=phases[pi]; if(!p)return;
 
 // ───────────────── spectate verbs — ALL of them route through the fold (W2-8) ──────
 const SPEEDS=[1,2,4,.5];
-document.getElementById('pp').onclick=function(){playing=!playing;this.textContent=playing?'⏸':'▶';};
+document.getElementById('pp').onclick=function(){ if(phases[pi]&&phases[pi].k==='end')return; // grace: ✓ stays ✓
+  initAudio(); playing=!playing;this.textContent=playing?'⏸':'▶';};
+document.getElementById('snd').onclick=function(){ initAudio(); muted=!muted;
+  try{localStorage.setItem('obs.mute',muted?'1':'0');}catch(e){}
+  this.textContent=muted?'🔇':'🔊'; };
 document.getElementById('spd').onclick=function(){
   speed=SPEEDS[(SPEEDS.indexOf(speed)+1)%SPEEDS.length];
   this.textContent=(speed===.5?'½':speed)+'×';};
@@ -630,16 +726,44 @@ function boot(L){
   document.getElementById('subtitle').textContent=`${L.id} — ${L.name} · not a hero, a handoff`;
   return true;
 }
+// the bookend (W3-2): the Strong Center introduced before play — DOM chrome,
+// wall-clock legal (outside the world frame)
+function titleEnvelope(){ const t=document.getElementById('tcv'); if(!t)return;
+  const x=t.getContext('2d'); x.clearRect(0,0,24,24);
+  x.save(); x.translate(12,13); x.rotate(Math.PI/4);
+  x.fillStyle='#ffce6b'; x.fillRect(-7,-7,14,14);
+  x.fillStyle='#06070d'; x.fillRect(-3,-3,7,7);
+  if(Date.now()%1000<533){ x.fillStyle='#fff3d0'; x.fillRect(-1,-1,2,2); }
+  x.restore(); }
+setInterval(titleEnvelope,160);
+function renderShelf(){ try{ const sh=JSON.parse(localStorage.getItem('obs.shelf')||'[]');
+  document.getElementById('shelf').innerHTML=sh.slice(0,5).map(e=>
+    `▸ ${e.name} · ${e.hops} hops · ${e.reaped?'<span style="color:var(--rage)">REAPED</span>':'clear'} · ${new Date(e.ts).toLocaleDateString()}`
+  ).join('<br>'); }catch(e){} }
+// live mode (W3-3): the map reveals itself as the substrate writes — prefix-stable splice
+const liveUrl=Q.get('live');
+async function pollLive(){ try{
+    const r=await fetch(liveUrl,{cache:'no-store'}); const L=await r.json();
+    if(!validateLevel(L).ok)return; defaultLevel(L);
+    if(LEVEL&&L.envelopes.length===LEVEL.envelopes.length&&L.partial===LEVEL.partial)return;
+    const kPi=pi,kPt=pt,kPlay=playing;
+    LEVEL=L; genDungeon(); compile();
+    seek(Math.min(kPi,phases.length-1)); pt=kPt; playing=kPlay;
+    log(`<i>the map grows — ${L.envelopes.length} envelopes now in the run</i>`,'gold');
+  }catch(e){} }
 async function start(){
-  resize();
+  resize(); renderShelf();
+  document.getElementById('snd').textContent=muted?'🔇':'🔊';
   let loaded=false;
   try{
-    if(Q.get('level')){ const r=await fetch(Q.get('level')); loaded=boot(await r.json()); }
+    if(liveUrl){ const r=await fetch(liveUrl,{cache:'no-store'}); loaded=boot(await r.json()); }
+    else if(Q.get('level')){ const r=await fetch(Q.get('level')); loaded=boot(await r.json()); }
     else if(location.hash.startsWith('#level=')) loaded=boot(JSON.parse(
       new TextDecoder().decode(Uint8Array.from(atob(location.hash.slice(7)),c=>c.charCodeAt(0)))));
     else if(window.OBS_LEVEL) loaded=boot(window.OBS_LEVEL);
   }catch(err){ console.warn('level load error:',err); log(`level load failed — <b>${err.message}</b>`,'rage'); }
   if(!loaded) boot(BAKED);
+  if(liveUrl) setInterval(pollLive,2000);
   if(Q.get('auto')){ document.getElementById('title').style.display='none';
     seek(parseInt(Q.get('phase')||'0',10)||0); playing=true;
     document.getElementById('pp').textContent='⏸'; }
@@ -647,6 +771,7 @@ async function start(){
   requestAnimationFrame(draw);
 }
 document.getElementById('title').onclick=function(){this.style.display='none';
+  initAudio();
   if(pi===0&&pt===0) seek(0);
   playing=true; document.getElementById('pp').textContent='⏸';};
 cv.addEventListener('dragover',ev=>ev.preventDefault());

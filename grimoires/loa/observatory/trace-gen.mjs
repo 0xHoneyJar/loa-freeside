@@ -142,9 +142,15 @@ for (let i = 0; i < Math.max(packets.length, stationNames.length - 1); i++) {
   });
 }
 
+// live mode (W3-3): a run with no terminal event is PARTIAL — the renderer holds a
+// wait phase instead of the morgue, and the live poller splices growth in.
+const lastEvt = String(events[events.length - 1]?.event ?? "");
+const partial = flag("live") || (events.length > 0 && !/handoff|completed|jacked|final/i.test(lastEvt));
+if (partial) console.error(`note: run is PARTIAL (last event '${lastEvt}') — emitting live level`);
+
 const level = defaultLevel({
-  schema: SCHEMA, id: runId, name: topic,
-  meta: { run_id: runId, generated_at: new Date().toISOString(), contract_rev: CONTRACT_REV, sources: { runDir, audit: opt("audit") ?? null, invoke: opt("invoke") ?? null } },
+  schema: SCHEMA, id: runId, name: topic, partial,
+  meta: { run_id: runId, generated_at: new Date().toISOString(), contract_rev: CONTRACT_REV, enrage_s: ENRAGE_S, sources: { runDir, audit: opt("audit") ?? null, invoke: opt("invoke") ?? null } },
   rooms, seams, envelopes,
 });
 
