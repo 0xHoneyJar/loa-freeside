@@ -1,0 +1,49 @@
+{
+  "veve_version": "0.2.0",
+  "name": "dune-meter",
+  "version": "0.1.0",
+  "summary": "Cost-aware Dune adapter: estimate (probe heuristic) / run (cost-capped + CostAtom) / budget. The EXP-002 budget-blowout made structurally impossible.",
+  "binary": {
+    "entry": "bin/dune-meter.mjs",
+    "runtime": "node",
+    "subcommands": ["estimate", "run", "budget"]
+  },
+  "determinism": {
+    "class": "attestable",
+    "declared_by": "author",
+    "ambient": ["network", "clock", "randomness"]
+  },
+  "rel_required": "casual",
+  "liveness": {
+    "timeout_s": 300,
+    "expected_p95_s": 30,
+    "mode": "oneshot"
+  },
+  "io": {
+    "input": "argv",
+    "output": "stdout_json",
+    "exit_codes": {
+      "0": "ok",
+      "2": "caller error (bad args, missing key, malformed target)",
+      "3": "budget refuse (estimate exceeds remaining budget)",
+      "4": "cap aborted (Dune cost-cap hard-abort, or reported spend over --cap)"
+    }
+  },
+  "vectors": [
+    {
+      "name": "budget-fresh-ledger-testimony (precondition: absent DUNE_BUDGET_LEDGER + DUNE_COST_ATOMS; attestable — recorded testimony, not byte-replay)",
+      "argv": ["budget"],
+      "stdin": null,
+      "expect_output_hash": "sha256:72e1fd718d482c59cd834e8674816725abd4de86403a83e9f593f7ab79d10986",
+      "expect_exit": 0
+    }
+  ],
+  "ladder": {
+    "level": 3,
+    "promoted_from": "grimoires/loa/context/dune-meter-cost-aware-adapter.md",
+    "evidence_runs": [
+      "run:exp-002-budget-blowout:postmortem",
+      "run:dune-meter-0612a:build"
+    ]
+  }
+}
