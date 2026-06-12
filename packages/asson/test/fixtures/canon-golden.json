@@ -1,0 +1,97 @@
+{
+  "generated_from": "legba-core.mjs @ 959c782dd243e8487c63dd644b471bca19425e79",
+  "cases": [
+    {
+      "input": "hello",
+      "expected_jcs": "\"hello\"",
+      "expected_sha256": "sha256:5aa762ae383fbb727af3c7a36d4940a5b8c40a989452d2304fc958ff3f354e7a"
+    },
+    {
+      "input": 42,
+      "expected_jcs": "42",
+      "expected_sha256": "sha256:73475cb40a568e8da8a045ced110137e159f890ac4da883b6b17dc651b3a8049"
+    },
+    {
+      "input": true,
+      "expected_jcs": "true",
+      "expected_sha256": "sha256:b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b"
+    },
+    {
+      "input": null,
+      "expected_jcs": "null",
+      "expected_sha256": "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+    },
+    {
+      "input": {
+        "b": 1,
+        "a": 2
+      },
+      "expected_jcs": "{\"a\":2,\"b\":1}",
+      "expected_sha256": "sha256:d3626ac30a87e6f7a6428233b3c68299976865fa5508e4267c5415c76af7a772"
+    },
+    {
+      "input": {
+        "z": [
+          3,
+          2,
+          1
+        ],
+        "a": {
+          "nested": "x"
+        }
+      },
+      "expected_jcs": "{\"a\":{\"nested\":\"x\"},\"z\":[3,2,1]}",
+      "expected_sha256": "sha256:4d29624ee5699fa4e2a0ce23c5a1b9d8a8c8a672aca9b62f389eaf7474e1175e"
+    },
+    {
+      "input": {},
+      "expected_jcs": "{}",
+      "expected_sha256": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    },
+    {
+      "input": [],
+      "expected_jcs": "[]",
+      "expected_sha256": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "input": {
+        "unicode": "café ☕ é"
+      },
+      "expected_jcs": "{\"unicode\":\"café ☕ é\"}",
+      "expected_sha256": "sha256:bbc8f698918e854a48c86e062fbe1c7acfb11043006b5020d9e9f5379f6e4769"
+    },
+    {
+      "input": {
+        "deep": {
+          "deep": {
+            "deep": {
+              "deep": 1
+            }
+          }
+        }
+      },
+      "expected_jcs": "{\"deep\":{\"deep\":{\"deep\":{\"deep\":1}}}}",
+      "expected_sha256": "sha256:0df50d166b0bad3c889079a33d3291be77d3dfae6cd807e7ae26640d9d9ff56f"
+    },
+    {
+      "input": [
+        {
+          "a": 1
+        },
+        {
+          "b": 2
+        }
+      ],
+      "expected_jcs": "[{\"a\":1},{\"b\":2}]",
+      "expected_sha256": "sha256:b1bc76dc908891d8a6435e1c16a1025287627fcf71c224cf207b2edc79b08226"
+    },
+    {
+      "input": {
+        "key with space": "v",
+        "": "empty-key"
+      },
+      "expected_jcs": "{\"\":\"empty-key\",\"key with space\":\"v\"}",
+      "expected_sha256": "sha256:f08f2119807e9de09eb9097346b2ceccda0b37453fe6474213ea760dfdaf8c8d"
+    }
+  ]
+}

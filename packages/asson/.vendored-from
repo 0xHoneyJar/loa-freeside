@@ -1,0 +1,29 @@
+{
+  "source": "/Users/zksoju/Downloads/asson-cli-extracted/packages/asson",
+  "drop_version": "asson-cli-layer-v0.2",
+  "vendored_at": "2026-06-11",
+  "local_edits": [
+    "src/asson.mjs: re-point canon to src/vendor/canon.mjs",
+    "src/vendor/canon.mjs: vendored from legba-core @ 959c782"
+  ],
+  "file_count": 17,
+  "files": {
+    "CHANGELOG.md": "sha256:52b6006304a0ad3a2b9eccb0505f16c9f0fb96e5b33a928dc01944f1c7946ca3",
+    "PROMPT.md": "sha256:434cf8acdf71b4464cc8de3e063c7a190028530bd866871382e5eb2baa0c1b57",
+    "README.md": "sha256:fae99b3073ce16ff5b024de00c6b1581b85cc73a48ac1e5a41d3c19bf70ebe74",
+    "doctrine/harness-as-watershed.md": "sha256:7992c564d3d503822a4e4f6b692352a480431bc10e0ea434000a61283c086db4",
+    "doctrine/words-with-teeth.md": "sha256:4a51bf07806605a335605429c1451c73b8c55d34d9dc35898ef52f3cd5427068",
+    "examples/lexicon-lint/bin/lexicon-lint.mjs": "sha256:5feb0ebe5471807edff2d648b43f47665a7c3bab2520fa88d249d36e05f0f0b8",
+    "examples/lexicon-lint/data/lexicon.json": "sha256:18119d2a3178ca9b3d9e40aae56957d086489f9873c90067868554929422087d",
+    "examples/lexicon-lint/veve.json": "sha256:281493cb162ad0f2562d22db3f49ca3f3345e9be05a24d4262551a0fdfc88496",
+    "examples/wordcount/bin/wordcount.mjs": "sha256:c7e529516d129c364628a75bad8c6dca7f60410e770e8384310cbf59aca272c8",
+    "examples/wordcount/effect-pattern.ts": "sha256:98c027386e8229bbe58978bae975d3ab09fae37d61eff9bdad6cb8706de77271",
+    "examples/wordcount/veve.json": "sha256:f735854e10a143be85b575d44a4252e0c61606214e5dbd06156b167b9ff58539",
+    "package.json": "sha256:ccdf83fc4e984426e55e0e3e6389ec01f61676aa2aa14950af27eb541fb09329",
+    "schemas/veve.schema.json": "sha256:5e5bd03c53fda1342b872367d51aa5731a2279c7cc5cb9b41ab3ab9ce6b9dd01",
+    "src/asson.mjs": "sha256:5505ea912a538cd650aa22a93604d3ce3789385b112c766c0bfd52d98f47b6c6",
+    "src/demo.mjs": "sha256:8e04da6ba43f817bd78cfbe04b182bac8dfd2909fc4d266e0111d674a28bef53",
+    "src/liveness.mjs": "sha256:3c15ac0afefa4ffa6cc5ef471a184c3858a1332242c509f40f1349ee983e0694",
+    "src/vendor/canon.mjs": "sha256:5687e3514f8503d6b359c80fb9ebb756d059cc6d44abf6bf772242407dca4765"
+  }
+}

@@ -232,3 +232,22 @@ global `~/.run/machine-fingerprint` with an empty `fingerprint` value → exit 6
 Under `bash` it resolves correctly to the repo. Same class as the playtest's
 base-dir-dependent verdict finding — a path resolution that assumes a shell/root
 that isn't guaranteed. Worth a System-Zone follow-up bead.
+
+---
+
+## Asson cycle-1 — dispatch record (simstim-20260611-0d76ae77)
+
+L6 handoff authored + validated (frontmatter+ts+canonical-id), content-addressed via the lib's own `_handoff_canonical_for_id`:
+
+| handoff | target | content-address | brief |
+|---|---|---|---|
+| veve schema | loa-hounfour | `sha256:7ee71b35a5056093f5816565f3786367b8d56ca2ad1c1d44d62a3ff5fbbcddd9` | `grimoires/loa/handoffs/2026-06-11-asson-veve-schema.md` |
+
+### Decision Log — L6 atomic-publish gated on machine-fingerprint (NOT bypassed)
+`handoff_write` refused with `[CROSS-HOST-REFUSED]`: the stored machine-fingerprint
+(af5c02…, Jun 7) ≠ current (5c40…) — a network/hostname drift on the SAME operator
+machine, not a different host. Resetting the fingerprint is a guardrail change,
+out of autonomous scope (same posture as the Legba operator-registry gate). The
+artifact + content-address stand; the atomic publish is one operator act away
+(`.run/machine-fingerprint` refresh if this is genuinely the same machine, or the
+documented L6 cross-host recovery).

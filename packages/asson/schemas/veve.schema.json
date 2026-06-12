@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://0xhoneyjar.dev/loa/schemas/asson/veve.schema.json",
+  "title": "Veve — CLI self-declaration manifest",
+  "description": "Every graduated CLI ships a veve.json beside its bin. The veve is the symbol that summons the tool: it declares the contract (interface), the determinism class (LG-5 — load-bearing), the vectors that pin behavior, and the policy fields finn's sandbox allowlist is derived from. asson-doctor refuses graduation (L3+) without a valid veve. Production home for this schema: loa-hounfour as TypeBox with a constraint file (e.g. determinism=re_executable => network=false; vectors.length >= 1 for L3) and test vectors.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["veve_version", "name", "version", "summary", "binary", "determinism", "io", "ladder"],
+  "allOf": [
+    { "if": { "properties": { "veve_version": { "const": "0.2.0" } } },
+      "then": { "required": ["liveness"] },
+      "$comment": "Fork discipline (the EIP lesson): validators support the window {0.1.0, 0.2.0}. 0.2.0 makes liveness REQUIRED — safety says nothing bad happens, liveness says something good eventually does, and a CLI without a clock is a loiter incentive. 0.1.0 veves remain valid (old-rules artifacts are old-rules artifacts; no fabricating chains against formats that lack them) but earn a doctor warning until upgraded." }
+  ],
+  "properties": {
+    "veve_version": { "enum": ["0.1.0", "0.2.0"],
+      "description": "Validators dispatch on this and support a {N, N+1} window with a published deprecation policy. Bump in named fork-trains, never silently." },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+      "maxLength": 64,
+      "description": "Verb-first slug (house slug pattern: no trailing/double hyphens)."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semver. Immutable once attested: bump, never republish."
+    },
+    "summary": { "type": "string", "minLength": 10, "maxLength": 200 },
+    "binary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entry", "runtime"],
+      "properties": {
+        "entry": { "type": "string", "description": "Path to executable, relative to the veve" },
+        "runtime": { "enum": ["node", "bash", "python", "bun", "binary"] },
+        "subcommands": { "type": "array", "items": { "type": "string" }, "uniqueItems": true,
+          "description": "Feeds finn CommandPolicy.subcommands. Empty array = single-verb CLI." }
+      }
+    },
+    "determinism": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class", "declared_by"],
+      "properties": {
+        "class": { "enum": ["re_executable", "attestable"],
+          "description": "re_executable: same input closure → same bytes, forever, fraud-provable by replay. attestable: touches network/clock/randomness — recorded as testimony, never replayed. Misclassification is the substrate's main integrity lie." },
+        "declared_by": { "enum": ["author", "effect_type", "trace_audit"],
+          "description": "effect_type = derived from an Effect signature with requirements `never` (machine-checked, strongest). author = honor system (weakest — doctor warns). trace_audit = inferred from N clean sandbox runs with network denied." },
+        "ambient": { "type": "array", "items": { "enum": ["network", "clock", "randomness", "filesystem_outside_cwd", "env"] }, "uniqueItems": true,
+          "description": "Required iff class=attestable: name the entropy sources. An attestable CLI with empty ambient is a contradiction the doctor flags." }
+      }
+    },
+    "rel_required": {
+      "enum": ["casual", "competitive"],
+      "description": "Rules Enforcement Level the tool DEMANDS of its invoking context (declared by the tool, enforced by the room). competitive = recorder on, gates armed, controlled vocabulary in force — required for tools that emit outbound comms, move funds, or touch the legal register. Undeclared = casual. A competitive-REL tool invoked in a casual room is a doctor finding and (once finn honors x_rel_required) a sandbox refusal."
+    },
+    "liveness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["timeout_s"],
+      "properties": {
+        "timeout_s": { "type": "integer", "minimum": 1,
+          "description": "Hard wall for one invocation — the enrage timer. Having a clock is soundness (model-free, never optional at 0.2.0); the MAGNITUDE is ergonomics (tune per tool and model tier)." },
+        "expected_p95_s": { "type": "integer", "minimum": 1,
+          "description": "Pace split for gecko: invocations past p95 are visibly off-pace before any wall hits. Absent = pace-blind (doctor warns)." },
+        "mode": { "enum": ["oneshot", "daemon"], "default": "oneshot",
+          "description": "L3 CLIs are skeleton: they MUST terminate (oneshot — a process with an EOF). daemon = long-running infrastructure, governed elsewhere; a daemon claiming L3 is a category error the doctor fails." }
+      },
+      "description": "Forward-progress declaration (0.2.0+). Complements safety: a tool that can hang is a span that can loiter."
+    },
+    "io": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input", "output"],
+      "properties": {
+        "input": { "enum": ["argv", "stdin_json", "argv+stdin_json", "file_refs"] },
+        "output": { "enum": ["stdout_json", "stdout_text", "file_refs"] },
+        "output_schema": { "type": "string", "description": "Optional path/URL to a JSON Schema for stdout_json output — the typed half of the ABI." },
+        "exit_codes": { "type": "object", "additionalProperties": { "type": "string" },
+          "description": "Map of code→meaning beyond 0/1. Exit codes are the smallest gate; document them." }
+      }
+    },
+    "vectors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "argv", "stdin", "expect_output_hash"],
+        "properties": {
+          "name": { "type": "string" },
+          "argv": { "type": "array", "items": { "type": "string" } },
+          "stdin": { "type": ["string", "null"] },
+          "expect_output_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$",
+            "description": "sha256 of canonical stdout (JCS for JSON output, raw bytes for text). Harvested from the live runs that triggered graduation — the runs that proved the need become the tests that pin the behavior." },
+          "expect_exit": { "type": "integer", "default": 0 }
+        }
+      },
+      "description": "Golden vectors. L3 graduation requires ≥1 for re_executable CLIs. Attestable CLIs may pin vectors under injected test layers (TestClock, seeded Random) — note it in the name."
+    },
+    "ladder": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level"],
+      "properties": {
+        "level": { "type": "integer", "minimum": 1, "maximum": 5,
+          "description": "L1 committed script · L2 promotion proposed · L3 CLI (veve+vectors+attestation) · L4 legal (finn allowlist + construct manifest) · L5 network (freeside registry/beacon). asson-doctor computes the EARNED level from evidence; this field is the CLAIMED level; divergence is a finding." },
+        "promoted_from": { "type": "string", "description": "Original script path, for archaeology." },
+        "evidence_runs": { "type": "array", "items": { "type": "string" }, "description": "Run IDs whose recorded invocations justified promotion (done-twice-becomes-a-path, sensed not requested)." }
+      }
+    },
+    "attestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tree_hash", "git_commit", "signed_by_key_id", "signature", "ts"],
+      "properties": {
+        "tree_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "Hash of the CLI's file tree (sorted path:contenthash lines) — the codehash." },
+        "git_commit": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+        "signed_by_key_id": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "sha256(signer_id ':' key_version) — the same Legba gatekeeper key ceremony. One ceremony, two attestation kinds: build (this) and run (gate tokens)." },
+        "signature_type": { "enum": ["attestation", "authorization", "commitment", "dev_signature"], "default": "attestation", "description": "Trust tier of the signature (hounfour keyring enum). dev_signature = a local developer key (cycle 1) → doctor reports attested-dev (warn). attestation = the CI key ceremony (cycle 3) → passes clean." },
+        "signature": { "type": "string", "description": "base64 ed25519 over JCS of the veve WITHOUT this attestation block." },
+        "ts": { "type": "string", "format": "date-time" }
+      },
+      "description": "Build attestation. Replaces npm --provenance with the house key ceremony: this exact tree, from this exact commit, blessed by this key. Absent = unattested = cannot pass L3."
+    }
+  }
+}
