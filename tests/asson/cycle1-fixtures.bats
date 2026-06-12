@@ -40,11 +40,7 @@ HANDOFF="$ROOT/grimoires/loa/handoffs"
   [ "$output" -ge 6 ]
 }
 
-# (d) SCOPE GUARD — concrete denylist (B4): NO cycle-2-5 artifacts exist
-@test "scope guard (d): no cycle-2 freeside-cli asson verb files" {
-  run bash -c "ls $ROOT/packages/freeside-cli/**/asson*.{ts,mjs} 2>/dev/null | wc -l | tr -d ' '"
-  [ "$output" = "0" ]
-}
+# (d) SCOPE GUARD — concrete denylist (B4): NO cycle-3-5 artifacts exist
 @test "scope guard (d): no cycle-3 CI-key-ceremony script" {
   run bash -c "ls $PKG/scripts/ci-key*.{sh,mjs} 2>/dev/null | wc -l | tr -d ' '"
   [ "$output" = "0" ]

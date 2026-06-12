@@ -8,12 +8,21 @@ importers:
 
   .:
     dependencies:
+      '@freeside/asson':
+        specifier: file:../asson
+        version: file:../asson
       '@freeside/beacon-schema':
         specifier: file:../beacon-schema
         version: file:../beacon-schema(effect@3.21.2)
       '@freeside/freeside-registry':
         specifier: file:../freeside-registry
         version: file:../freeside-registry
+      '@noble/hashes':
+        specifier: ^1.6.0
+        version: 1.8.0
+      canonicalize:
+        specifier: ^2.0.0
+        version: 2.1.0
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
@@ -183,6 +192,10 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@freeside/asson@file:../asson':
+    resolution: {directory: ../asson, type: directory}
+    engines: {node: '>=22'}
+
   '@freeside/beacon-schema@file:../beacon-schema':
     resolution: {directory: ../beacon-schema, type: directory}
     hasBin: true
@@ -192,11 +205,19 @@ packages:
   '@freeside/freeside-registry@file:../freeside-registry':
     resolution: {directory: ../freeside-registry, type: directory}
 
+  '@noble/hashes@1.8.0':
+    resolution: {integrity: sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==}
+    engines: {node: ^14.21.3 || >=16}
+
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
   '@types/node@22.19.19':
     resolution: {integrity: sha512-dyh/xO2Fh5bYrfWaaqGrRQQGkNdmYw6AmaAUvYeUMNTWQtvb796ikLdmTchRmOlOiIJ1TDXfWgVx1QkUlQ6Hew==}
+
+  canonicalize@2.1.0:
+    resolution: {integrity: sha512-F705O3xrsUtgt98j7leetNhTWPe+5S72rlL5O4jA1pKqBVQ/dT1O1D6PFxmSXvc0SUOinWS57DKx0I3CHrXJHQ==}
+    hasBin: true
 
   effect@3.21.2:
     resolution: {integrity: sha512-rXd2FGDM8KdjSIrc+mqEELo7ScW7xTVxEf1iInmPSpIde9/nyGuFM710cjTo7/EreGXiUX2MOonPpprbz2XHCg==}
@@ -316,6 +337,8 @@ snapshots:
   '@esbuild/win32-x64@0.28.0':
     optional: true
 
+  '@freeside/asson@file:../asson': {}
+
   '@freeside/beacon-schema@file:../beacon-schema(effect@3.21.2)':
     dependencies:
       effect: 3.21.2
@@ -327,11 +350,15 @@ snapshots:
       effect: 3.21.2
       yaml: 2.9.0
 
+  '@noble/hashes@1.8.0': {}
+
   '@standard-schema/spec@1.1.0': {}
 
   '@types/node@22.19.19':
     dependencies:
       undici-types: 6.21.0
+
+  canonicalize@2.1.0: {}
 
   effect@3.21.2:
     dependencies:

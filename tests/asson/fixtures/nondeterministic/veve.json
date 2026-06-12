@@ -1,0 +1,11 @@
+{
+  "veve_version": "0.2.0",
+  "name": "rand",
+  "version": "0.0.1",
+  "summary": "non-deterministic fixture (B7 harvest-refusal test)",
+  "binary": { "entry": "bin/rand.mjs", "runtime": "node" },
+  "determinism": { "class": "re_executable", "declared_by": "author" },
+  "liveness": { "timeout_s": 5 },
+  "io": { "input": "argv", "output": "stdout_text" },
+  "ladder": { "level": 1 }
+}

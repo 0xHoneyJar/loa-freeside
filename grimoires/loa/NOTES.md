@@ -263,3 +263,20 @@ publicKey)` and assert `keyId(signerId, keyVersion) === signed_by_key_id`, or bi
 `key_id` to key material. Two LOW notes: treeHash follows symlinks (use lstatSync
 when attestation hardens); dev_signature keys are ephemeral/non-persisted (document
 in README). Full audit: `a2a/sprint-1/auditor-sprint-feedback.md`.
+
+### Asson cycle-2 — implementation grounding (pre-flatline)
+- **freeside-cli already declares `"@freeside/asson": "workspace:*"` but it's BROKEN**: no pnpm-workspace.yaml exists (empty), and the other siblings use `file:../` (`@freeside/freeside-registry: file:../freeside-registry`, `@freeside/beacon-schema: file:../beacon-schema`, linked into node_modules via pnpm). Cycle-2 fix (task 2.1/2.2): switch asson's dep to `file:../asson` to match the working pattern. Micro [[deployed-but-unconsumed-pattern]] — dep declared, never made resolvable.
+- **asson is `.mjs`, no build/dist**: the `file:../asson` link points at the package dir; `exports."."` → `./src/asson.mjs` (runtime), `types` → `./src/asson.d.ts`. asson stays zero-runtime-dep (CL-1).
+- **asson public API for the `.d.ts`** (asson.mjs): `ASSON_VERSION`, `jcs`, `sha256`, `hashObj`, `hashOutput`, `treeHash`, `createSigner`, `attestBuild`, `verifyAttestation`, `invoke`, `runVectors`, `harvestVector`, `toCommandPolicy`, `doctor`. (liveness.mjs): `DEFAULT_POLICY`, `budgetStatus`, `detectStall`, `detectSpin`, `paceCheck`, `checkpointPacket`, `livenessVerdict`.
+- **freeside-cli verb pattern**: TS NodeNext+strict; verbs `src/verbs/*.ts` (return code/report), exported from `src/index.ts`, dispatched by `switch(verb)` in `bin/freeside-cli.ts`; existing `doctor` verb = the BeaconV3/registry doctor (asson MUST namespace as `asson <sub>`).
+
+### Decision Log — asson cycle-2 CL-5↔SDD harvest reconciliation
+Sprint-2 invariant CL-5 said "attest --write is the ONLY file-mutating path." But SDD
+§4.5 (higher authority, Flatline-reviewed) says `asson harvest <dir> -- <argv>` "appends
+a pinned vector to the veve" — i.e. harvest legitimately mutates. Reconciled in favor of
+the SDD: `attest` is the only ATTESTATION-writing path (guarded by --write + pre-persist
+verify); `harvest` appends vectors and is guarded instead by the B7 double-run determinism
+guard (refuses to pin a non-deterministic tool). AC #3 marked ⚠ Partial-reconciled, not a
+gap. Also pinned for cycle-3: ASSON_VERSION (0.1.0) ≠ package.json (0.2.0) — cosmetic, left
+surgical; and L3-attested-dev needs --public-key <pem> at the CLI until the cycle-3 keyring
+resolves the key from signed_by_key_id (the same pinned audit MEDIUM).

@@ -13,6 +13,7 @@
 import { listModules, printList } from "../src/verbs/list.js";
 import { inspectModule } from "../src/verbs/inspect.js";
 import { doctor } from "../src/verbs/doctor.js";
+import { assonVerb } from "../src/verbs/asson.js";
 
 const usage = `freeside-cli — ecosystem CLI for freeside-* module network
 
@@ -25,6 +26,8 @@ Usage:
                                        inputs from a per-cell clone at <dir>/cell-<slug>/
                                        (the per-cell resolution bridge — backed buildings
                                        report contract_status: bound).
+  freeside-cli asson <cmd>           Instrument of invocation for the agent economy
+                                     (subcommands: doctor, harvest, attest, policy)
 
 Reference: decisions/007-loa-freeside-absorption.md §D-6
 `;
@@ -39,6 +42,9 @@ const main = async (): Promise<number> => {
   const verb = args[0];
 
   switch (verb) {
+    case "asson": {
+      return await assonVerb(args.slice(1));
+    }
     case "list": {
       const output = listModules();
       console.log(printList(output));
