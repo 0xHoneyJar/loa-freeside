@@ -280,3 +280,6 @@ guard (refuses to pin a non-deterministic tool). AC #3 marked ⚠ Partial-reconc
 gap. Also pinned for cycle-3: ASSON_VERSION (0.1.0) ≠ package.json (0.2.0) — cosmetic, left
 surgical; and L3-attested-dev needs --public-key <pem> at the CLI until the cycle-3 keyring
 resolves the key from signed_by_key_id (the same pinned audit MEDIUM).
+
+### Decision Log — asson cycle-3: the pinned MEDIUM is CLOSED
+The cycle-1 audit MEDIUM (doctor verifies against a caller-supplied key with no key_id↔publicKey binding) is RESOLVED. `doctor(veve, dir, {keyring})` resolves `signed_by_key_id → public_key_pem` via `resolveSigner` (active-only) and verifies against THAT — forged id unresolvable (AS-KR), wrong-key fails signature. The CI ceremony (`ci-key-ceremony.mjs`) mints attestation-tier sigs; private keys live 0600 under gitignored `packages/asson/.run/asson-keys/` (verified via git check-ignore). `keyring/signers.json` ships `{}` (public keys only). Two LOW carried: --public-key fallback is explicit-trust (keyring is the trusted path); no rotation/expiry (revoke only). Gotcha logged: pnpm store COPIES asson → `pnpm install` after editing the package to propagate .d.ts to freeside-cli.

@@ -61,10 +61,21 @@ export async function assonVerb(args: string[]): Promise<number> {
         }
         publicKey = fs.readFileSync(keyPath, "utf8");
       }
+      // --keyring <path>: resolve the verifying key BY signed_by_key_id (cycle-3 binding).
+      const krIndex = args.indexOf("--keyring");
+      const krPath = krIndex >= 0 ? args[krIndex + 1] : null;
+      let keyring = null;
+      if (krPath) {
+        if (!fs.existsSync(krPath)) {
+          console.error(`Error: --keyring file not found: ${krPath}`);
+          return 2;
+        }
+        keyring = JSON.parse(fs.readFileSync(krPath, "utf8"));
+      }
 
       let report;
       try {
-        report = doctor(veve, dir, { publicKey });
+        report = doctor(veve, dir, { publicKey, keyring });
       } catch (err) {
         console.error(`Error: doctor failed (${err instanceof Error ? err.message : String(err)}) — is --public-key a valid PEM?`);
         return 1;

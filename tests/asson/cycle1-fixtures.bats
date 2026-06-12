@@ -41,9 +41,10 @@ HANDOFF="$ROOT/grimoires/loa/handoffs"
 }
 
 # (d) SCOPE GUARD — concrete denylist (B4): NO cycle-3-5 artifacts exist
-@test "scope guard (d): no cycle-3 CI-key-ceremony script" {
-  run bash -c "ls $PKG/scripts/ci-key*.{sh,mjs} 2>/dev/null | wc -l | tr -d ' '"
-  [ "$output" = "0" ]
+@test "scope guard (d): cycle-3 fence advanced — the key ceremony now exists (was: absent)" {
+  # RETIRED: cycle-3 legitimately created scripts/ci-key-ceremony.mjs; the fence moved
+  # forward to tests/asson/cycle3-fixtures.bats (which denylists cycles 4-5).
+  [ -f "$PKG/scripts/ci-key-ceremony.mjs" ]
 }
 @test "scope guard (d): no cycle-4 watchdog wired into a live settings.json" {
   run bash -c "grep -rl 'livenessVerdict' $ROOT/.claude/settings.json $ROOT/.claude/hooks 2>/dev/null | wc -l | tr -d ' '"

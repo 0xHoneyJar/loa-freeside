@@ -132,6 +132,19 @@ export function toCommandPolicy(veve, cliDir) {
   };
 }
 
+// ── keyring: resolve a signer's public key BY its claimed key_id (cycle-3 binding) ──
+/**
+ * resolveSigner — the structural binding that closes the cycle-1 audit MEDIUM.
+ * The key is fetched BY the attestation's claimed `signed_by_key_id`, so a forged
+ * id is unresolvable and a wrong-key signature fails the keyring's pem. Only
+ * `status: active` resolves (revocation = flip to revoked). Pure JSON read.
+ * @param {{[key_id:string]: {public_key_pem:string, status:string}}} keyring
+ */
+export function resolveSigner(keyring, keyId) {
+  const e = keyring?.[keyId];
+  return e && e.status === 'active' ? e.public_key_pem : null;
+}
+
 // ── the doctor: earned ladder level from evidence, never from claims ─────────
 /**
  * Earned ladder level ⊥ attestation tier — two orthogonal axes (IMP-001).
@@ -141,7 +154,7 @@ export function toCommandPolicy(veve, cliDir) {
  * Findings are structured `{severity: fail|warn, as_id, message}` (IMP-015); exit code is
  * 0 (clean), 1 (a fail-closed finding), 3 (warn-only) (IMP-007). 2 = usage, at the CLI.
  */
-export function doctor(veve, cliDir, { publicKey = null } = {}) {
+export function doctor(veve, cliDir, { publicKey = null, keyring = null } = {}) {
   const findings = [];
   const fail = (as_id, message) => findings.push({ severity: 'fail', as_id, message });
   const warn = (as_id, message) => findings.push({ severity: 'warn', as_id, message });
@@ -155,7 +168,16 @@ export function doctor(veve, cliDir, { publicKey = null } = {}) {
   // L3 needs: contract + vectors passing + attestation verifying + honest determinism
   const vecs = runVectors(veve, cliDir);
   const vecsOk = vecs.length >= 1 && vecs.every(v => v.pass);
-  const att = publicKey ? verifyAttestation(veve, cliDir, publicKey) : { ok: false, reason: 'no public key supplied' };
+  // resolve the verifying key: a keyring resolves it BY signed_by_key_id (the binding,
+  // cycle-3 D-8); an explicit publicKey is the cycle-2 fallback. Unknown/revoked id → AS-KR fail.
+  let resolvedKey = publicKey;
+  let kr_unresolved = null;
+  if (keyring && veve.attestation?.signed_by_key_id) {
+    resolvedKey = resolveSigner(keyring, veve.attestation.signed_by_key_id);
+    if (!resolvedKey) kr_unresolved = veve.attestation.signed_by_key_id;
+  }
+  const att = resolvedKey ? verifyAttestation(veve, cliDir, resolvedKey) : { ok: false, reason: kr_unresolved ? 'signer not in keyring or revoked' : 'no public key supplied' };
+  if (kr_unresolved) fail('AS-KR', `L3: signer not in keyring or revoked (signed_by_key_id=${String(kr_unresolved).slice(0, 12)}…)`);
   // attestation tier (B1): dev-signed warns, attestation passes clean, absent fails.
   const sigType = veve.attestation?.signature_type ?? (veve.attestation ? 'attestation' : null);
   const attestation_tier = !att.ok ? 'unattested' : (sigType === 'dev_signature' ? 'attested-dev' : 'attestation');

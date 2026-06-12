@@ -99,8 +99,20 @@ export interface DoctorReport {
   exit: number;
 }
 
+export interface KeyringEntry {
+  signer_id: string;
+  key_version: number;
+  public_key_pem: string;
+  status: "active" | "revoked";
+  added_ts?: string;
+}
+export type Keyring = { [key_id: string]: KeyringEntry };
+
+/** Resolve a signer's public key BY its claimed key_id (cycle-3 binding). active-only. */
+export function resolveSigner(keyring: Keyring | null, keyId: string): string | null;
+
 export function doctor(
   veve: any,
   cliDir: string,
-  opts?: { publicKey?: string | null }
+  opts?: { publicKey?: string | null; keyring?: Keyring | null }
 ): DoctorReport;

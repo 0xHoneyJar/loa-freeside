@@ -87,9 +87,10 @@ PKG="$ROOT/packages/asson"
 }
 
 # (d) SCOPE GUARD — concrete denylist (B4): NO cycle-3-5 artifacts exist
-@test "scope guard (d): no cycle-3 CI-key-ceremony script" {
-  run bash -c "ls $PKG/scripts/ci-key*.{sh,mjs} 2>/dev/null | wc -l | tr -d ' '"
-  [ "$output" = "0" ]
+@test "scope guard (d): cycle-3 fence advanced — the key ceremony now exists (was: absent)" {
+  # RETIRED: cycle-3 legitimately created scripts/ci-key-ceremony.mjs; the fence moved
+  # forward to tests/asson/cycle3-fixtures.bats (which denylists cycles 4-5).
+  [ -f "$PKG/scripts/ci-key-ceremony.mjs" ]
 }
 @test "scope guard (d): no cycle-4 watchdog wired into a live settings.json" {
   run bash -c "grep -rl 'livenessVerdict' $ROOT/.claude/settings.json $ROOT/.claude/hooks 2>/dev/null | wc -l | tr -d ' '"
@@ -99,12 +100,12 @@ PKG="$ROOT/packages/asson"
   run bash -c "grep -rl 'lexicon-lint' $ROOT/.claude/settings.json $ROOT/.claude/hooks 2>/dev/null | wc -l | tr -d ' '"
   [ "$output" = "0" ]
 }
-@test "scope guard (d): cycle-3 keyring gate UNBUILT — doctor does not bind key_id↔signed_by_key_id" {
-  # attestBuild legitimately SETS signed_by_key_id; the pinned cycle-3 gate is the
-  # doctor asserting keyId(...) === signed_by_key_id. That binding comparison must
-  # NOT exist yet (the audit MEDIUM stays open until the CI key ceremony).
-  run bash -c "grep -E 'signed_by_key_id' '$PKG/src/asson.mjs' | grep -cE '==='"
-  [ "$output" = "0" ]
+@test "scope guard (d): cycle-3 fence advanced — keyring binding now BUILT (closes the audit MEDIUM)" {
+  # RETIRED: cycle-3 built the binding (resolveSigner + doctor keyring param). The
+  # cycle-1/2 audit MEDIUM is closed; the binding's correctness is gated by
+  # packages/asson/test/keyring-binding.test.mjs + cycle3-fixtures.bats.
+  run bash -c "grep -c 'resolveSigner' '$PKG/src/asson.mjs'"
+  [ "$output" -ge 1 ]
 }
 
 # C-1: malformed input → clean Error + exit 1 (no raw node stack trace leaking paths)
