@@ -251,3 +251,15 @@ out of autonomous scope (same posture as the Legba operator-registry gate). The
 artifact + content-address stand; the atomic publish is one operator act away
 (`.run/machine-fingerprint` refresh if this is genuinely the same machine, or the
 documented L6 cross-host recovery).
+
+### Decision Log — asson cycle-3 keyring binding (audit MEDIUM, pinned)
+Cycle-1 security audit (Paranoid Cypherpunk) APPROVED with one MEDIUM pinned as a
+**cycle-3 precondition**: `doctor()` verifies the attestation signature against a
+caller-supplied `publicKey` but does NOT assert that key's identity equals the
+attestation's `signed_by_key_id` (`asson.mjs:158,161`). Harmless in cycle 1 (no
+keyring → fail-closed `unattested`), but before cycle-3's CI key ceremony lets the
+`attestation` tier mean "trusted", the doctor MUST either take `(signerId,
+publicKey)` and assert `keyId(signerId, keyVersion) === signed_by_key_id`, or bind
+`key_id` to key material. Two LOW notes: treeHash follows symlinks (use lstatSync
+when attestation hardens); dev_signature keys are ephemeral/non-persisted (document
+in README). Full audit: `a2a/sprint-1/auditor-sprint-feedback.md`.
