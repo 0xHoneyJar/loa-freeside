@@ -1,0 +1,61 @@
+{
+  "veve_version": "0.2.0",
+  "name": "obs",
+  "version": "0.1.0",
+  "summary": "Observatory CLI: sim (seeded gradient forward-model, golden-vectored), fold (real compose run -> obs-level/1), serve (live tail). Classed by worst case; vectors pin the deterministic subset.",
+  "binary": {
+    "entry": "obs.mjs",
+    "runtime": "node",
+    "subcommands": ["sim", "fold", "serve", "selftest"]
+  },
+  "determinism": {
+    "class": "attestable",
+    "declared_by": "author",
+    "ambient": ["filesystem_outside_cwd", "clock", "network"]
+  },
+  "io": {
+    "input": "argv",
+    "output": "stdout_json",
+    "exit_codes": {
+      "0": "ok",
+      "1": "tool failure",
+      "2": "contract violation or unknown verb (caller error)"
+    }
+  },
+  "vectors": [
+    {
+      "name": "sim-greedy-reaps",
+      "argv": ["sim", "--seed", "7", "--greed", ".9", "--discipline", ".1", "--rooms", "6"],
+      "stdin": "",
+      "expect_output_hash": "sha256:f502fc9b17748b87066e76ef5ce77970db7ff74c3e6f2c50e59a75aeca8bc0c5",
+      "expect_exit": 0
+    },
+    {
+      "name": "sim-disciplined-ships",
+      "argv": ["sim", "--seed", "7", "--greed", ".2", "--discipline", ".9", "--rooms", "6"],
+      "stdin": "",
+      "expect_output_hash": "sha256:467151bbf804e2b88d3bd8de171c6dc84eb665593bd55541e93a7038928af1b4",
+      "expect_exit": 0
+    },
+    {
+      "name": "sim-default-seed-42",
+      "argv": ["sim", "--seed", "42"],
+      "stdin": "",
+      "expect_output_hash": "sha256:821e715b5e97ef4be704d705cf8c78db0d3c11cdecfce316280245330d6f8b38",
+      "expect_exit": 0
+    }
+  ],
+  "ladder": {
+    "level": 1,
+    "promoted_from": "grimoires/loa/observatory/{sim-gen,trace-gen,serve}.mjs (session scripts)",
+    "evidence_runs": [
+      "run:obs-panel-20260611:valid_run",
+      "run:sim-seed-7:gradient-divergence-proof"
+    ]
+  },
+  "liveness": {
+    "timeout_s": 30,
+    "expected_p95_s": 2,
+    "mode": "oneshot"
+  }
+}
