@@ -1,0 +1,2 @@
+{"record":{"ts":"2026-06-11T11:59:50.000Z","kind":"tool_call","tool":"a","input_hash":"p1"},"record_hash":"sha256:00000047"}
+{"record":{"ts":"2026-06-11T11:59:59.000Z","kind":"tool_call","tool":"b","input_hash":"p2"},"record_hash":"sha256:00000008"}

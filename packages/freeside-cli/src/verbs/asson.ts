@@ -8,15 +8,67 @@ import {
   verifyAttestation,
   toCommandPolicy,
 } from "@freeside/asson";
+import { livenessVerdict, DEFAULT_POLICY } from "@freeside/asson/liveness";
 
 const usage = `freeside-cli asson — instrument of invocation
 
 Usage:
-  freeside-cli asson doctor <dir> [--public-key <key>]
+  freeside-cli asson doctor <dir> [--public-key <pem-file>] [--keyring <path>]
   freeside-cli asson harvest <dir> --name <name> -- <argv...>
   freeside-cli asson attest <dir> [--write]
   freeside-cli asson policy <dir>
+  freeside-cli asson watchdog <span-log.jsonl> [--now <ms>] [--p95 <s>] [--json]
 `;
+
+/**
+ * watchdog <span-log.jsonl> — the liveness verdict over a Legba span log (cycle 4).
+ * Reads the recorded span moves and runs @freeside/asson/liveness#livenessVerdict;
+ * the action (reap/checkpoint/compact/warn/pace_alert/continue) is what a SubagentStop
+ * hook would act on. Exit: 0 continue/ok · 3 warn|pace_alert · 1 intervention required.
+ * SENSOR only — reads Legba's output, never modifies Legba (the seam is one-way).
+ */
+function assonWatchdog(args: string[]): number {
+  const logPath = args[0];
+  if (!logPath || logPath.startsWith("--")) {
+    console.error("Error: 'asson watchdog' requires a <span-log.jsonl>.");
+    return 2;
+  }
+  if (!fs.existsSync(logPath)) {
+    console.error(`Error: span log not found: ${logPath}`);
+    return 2;
+  }
+  const flagN = (n: string): string | undefined => {
+    const i = args.indexOf(n);
+    return i >= 0 ? args[i + 1] : undefined;
+  };
+  let log: unknown[];
+  try {
+    log = fs
+      .readFileSync(logPath, "utf8")
+      .split("\n")
+      .filter((l) => l.trim())
+      .map((l) => JSON.parse(l));
+  } catch (err) {
+    console.error(`Error: ${logPath} is not valid JSONL (${err instanceof Error ? err.message : String(err)})`);
+    return 1;
+  }
+  const p95 = flagN("--p95");
+  const policy = p95 ? { ...DEFAULT_POLICY, pace: { p95_s: Number(p95) } } : DEFAULT_POLICY;
+  const now = flagN("--now");
+  const opts = now ? { nowMs: Number(now) } : {};
+  const v = livenessVerdict(log as never[], policy, opts);
+  if (args.includes("--json")) {
+    console.log(JSON.stringify(v, null, 2));
+  } else {
+    console.log(`action: ${v.action}`);
+    if (v.stall?.stalled) console.log(`  stall: silent ${v.stall.silent_s}s`);
+    if (v.spin?.spinning) console.log(`  spin: ${v.spin.max_repeats}× ${v.spin.repeated.join(", ")}`);
+    if (v.budget) console.log(`  budget: ${v.budget.calls} calls, ${v.budget.wall_s}s, phase ${v.budget.phase}`);
+    if (v.pace?.tracked && v.pace.off_pace) console.log(`  pace: ${v.pace.wall_s}s > p95 ${v.pace.p95_s}s`);
+  }
+  const intervene = ["reap", "checkpoint_and_present", "compact_then_present", "compact"];
+  return intervene.includes(v.action) ? 1 : v.action === "warn" || v.action === "pace_alert" ? 3 : 0;
+}
 
 export async function assonVerb(args: string[]): Promise<number> {
   const sub = args[0];
@@ -24,6 +76,8 @@ export async function assonVerb(args: string[]): Promise<number> {
     console.log(usage);
     return sub ? 0 : 2;
   }
+
+  if (sub === "watchdog") return assonWatchdog(args.slice(1));
 
   const dir = args[1];
   if (!dir || dir.startsWith("--")) {
