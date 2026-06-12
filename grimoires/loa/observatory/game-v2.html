@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>THE OBSERVATORY — roguelike lens on the room substrate</title>
+<!--
+  THE OBSERVATORY (game v2 · ALEXANDER pass) — spectate the party clear the dungeon of
+  a composition run. A real tiled dungeon: walls + floor everywhere, the @ locked to
+  screen-center (Strong Center), torch FOV (the Void made structural), info encoded in
+  the map not in labels (Density-as-Clarity). Level 1 = this session, ending in the
+  loiter chamber where a compose agent eddied, the clock went red, and the reaper came.
+  Data contract: TRACE ← (real) .run/audit.jsonl moves · .run/compose/<run>/ seeds ·
+  .run/model-invoke.jsonl custody · @freeside/asson/liveness verdicts. Swap for a poll → live.
+-->
+<style>
+  :root{ --bg:#06070d; --ink:#e6dcc8; --dim:#8a7f66; --gold:#ffce6b; --ok:#7fd98a;
+    --warn:#e8c45f; --rage:#ff5a4d; --torch:#ffb347; --stone:#1c2030; --floor:#11131f; }
+  *{box-sizing:border-box} html,body{margin:0;height:100%;background:#000;overflow:hidden;
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;color:var(--ink)}
+  canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;image-rendering:pixelated}
+  /* HUD — one slim status line + a message scroll, anchored low. No side panel. */
+  #hud{position:fixed;left:0;right:0;bottom:0;z-index:5;pointer-events:none}
+  #status{display:flex;align-items:center;gap:18px;padding:8px 18px;font-size:12px;
+    background:linear-gradient(0deg,rgba(6,7,13,.96),rgba(6,7,13,.0));}
+  #status .nm{color:var(--gold);font-size:13px;letter-spacing:.04em}
+  #status .seg{color:var(--dim)} #status b{color:var(--ink);font-weight:600}
+  .clock{display:inline-block;width:64px;height:7px;border:1px solid #2a2f44;border-radius:4px;overflow:hidden;vertical-align:middle}
+  .clock > i{display:block;height:100%}
+  #log{padding:2px 18px 12px;font-size:11px;line-height:1.7;max-height:26vh;overflow:hidden;
+    -webkit-mask-image:linear-gradient(0deg,#000 70%,transparent);mask-image:linear-gradient(0deg,#000 70%,transparent)}
+  #log .l{color:var(--dim)} #log .l b{color:var(--ink)} #log .l.gold b{color:var(--gold)}
+  #log .l.ok b{color:var(--ok)} #log .l.rage b{color:var(--rage)} #log .l i{color:#6f6650}
+  #ctl{position:fixed;top:12px;right:14px;z-index:6;display:flex;gap:6px}
+  button{pointer-events:auto;background:rgba(18,22,38,.85);color:var(--ink);border:1px solid #2a3147;
+    border-radius:4px;padding:6px 11px;font:inherit;font-size:11px;cursor:pointer;backdrop-filter:blur(3px)}
+  button:hover{border-color:var(--gold);color:#fff}
+  #title{position:fixed;inset:0;z-index:9;background:radial-gradient(circle at 50% 42%,rgba(20,16,8,.5),rgba(3,3,7,.97));
+    display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer}
+  #title h1{font-size:38px;letter-spacing:.34em;color:var(--gold);margin:0;text-shadow:0 0 30px rgba(255,179,71,.45)}
+  #title p{color:var(--dim);font-size:12px;letter-spacing:.18em;margin:16px 0 0}
+  #title .b{margin-top:40px;color:var(--ink);font-size:12px;letter-spacing:.1em;animation:bl 1.1s steps(2) infinite}
+  @keyframes bl{50%{opacity:.15}}
+  .scan{position:fixed;inset:0;pointer-events:none;z-index:7;opacity:.5;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.22) 2px 3px)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="scan"></div>
+<div id="ctl"><button id="pp">▶</button><button id="spd">1×</button><button id="rst">⟲</button></div>
+<div id="hud">
+  <div id="status"></div>
+  <div id="log"></div>
+</div>
+<div id="title"><h1>OBSERVATORY</h1><p>level 1 — the session that made the game</p><span class="b">▸ enter the dungeon</span></div>
+<script>
+// ───────────────── pixel sprites (8×8) ─────────────────
+const PAL={'.':null,k:'#0b0e1c',w:'#2a3350',g:'#ffd070',G:'#b8902f',o:'#7fd98a',r:'#ff5a4d',
+  b:'#6fa8ff',p:'#a96fe8',a:'#e8b45f',e:'#2f6f4f',m:'#7a4fa0',f:'#ff9a4f',s:'#cfd8e6'};
+const SPR={
+  hero:["..gg....","..gg....",".sgggs..","sGggggS.",".sggs...","..gg....","..g.g...",".g...g.."],
+  arcade:[".bbbbb..",".b...b..",".bbbbb..","..bbb...",".bsssb..","bsbbbsb.","..b.b...",".b...b.."],
+  khole:["..p.p...",".ppppp..","ppmpmpp.","pmmpmmp.",".pmpmp..","..ppp...","...p....","..p.p..."],
+  artisan:["..aaa...",".a...a..",".aaaaa..","..aGa...","..aaa...",".a.a.a..","a..a..a.","...a...."],
+  gecko:["e..ee...",".eeee...","eeoeoe..",".eeeee..","..eee...",".e.e.e..","e..e..e.","........"],
+  noether:["..fff...",".fffff..","ffoofff.","ffffff..",".ffff...","..ff....",".f..f...","f....f.."],
+  guard:["..sss...",".s...s..","s.b.b.s.","s..o..s.",".s...s..","..sss...","..s.s...",".s...s.."],
+  reaper:["..rrr...",".r...r..","r.k.k.r.","r.....r.",".r...r..","..rrr...","..r.r...",".rr.rr.."],
+};
+function sprite(ctx,name,px,py,sc,glow){const s=SPR[name];if(!s)return;
+  if(glow){ctx.shadowColor=glow;ctx.shadowBlur=3*sc;}
+  for(let y=0;y<8;y++)for(let x=0;x<8;x++){const col=PAL[s[y][x]];if(!col)continue;
+    ctx.fillStyle=col;ctx.fillRect(px+x*sc,py+y*sc,sc,sc);} ctx.shadowBlur=0;}
+
+// ───────────────── TRACE: this session, as a dungeon ─────────────────
+const TRACE={ rooms:[
+ {id:0,name:"Legba Substrate",cons:"noether",spr:"noether",rx:0,ry:1,gate:"merged",key:true,live:.5},
+ {id:1,name:"Asson · Land + Doctor",cons:"the-arcade",spr:"arcade",rx:1,ry:1,gate:"APPROVED · 1 MEDIUM pinned",key:true,live:.62},
+ {id:2,name:"freeside-cli verbs",cons:"protocol",spr:"guard",rx:2,ry:1,gate:"APPROVED · C-1 disarmed",key:true,live:.48},
+ {id:3,name:"Keyring Vault",cons:"noether",spr:"noether",rx:2,ry:0,gate:"APPROVED · MEDIUM CLOSED",key:true,live:.71,note:"forged keys turn to dust"},
+ {id:4,name:"Liveness Watchdog",cons:"gecko",spr:"gecko",rx:3,ry:0,gate:"APPROVED · the clock-room",key:true,live:.4,note:"the enrage timer was forged here"},
+ {id:5,name:"Comms Gate · 3 guardians",cons:"vocabulary-bank",spr:"guard",rx:3,ry:1,gate:"APPROVED · LADDER DONE",key:true,live:.55},
+ {id:6,name:"The Observatory",cons:"the-easel",spr:"artisan",rx:3,ry:2,gate:"you are here",key:true,live:.33},
+ {id:7,name:"THE LOITER CHAMBER",cons:"k-hole",spr:"khole",rx:2,ry:2,gate:"REAPED",key:false,live:1,loiter:true,note:"a sonnet agent eddied 14 minutes. the clock went red."},
+], seams:[[0,1],[1,2],[2,3],[3,4],[4,5],[5,6],[6,7]], path:[0,1,2,3,4,5,6,7] };
+
+// ───────────────── dungeon generation (chambers + corridors) ─────────────────
+const T=34, CH=5, GAPX=11, GAPY=9, PAD=4;       // tile px, chamber size, room spacing, border
+const WALL=0,FLOOR=1,DOOR=2;
+let grid=[], GW=0, GH=0, roomTile={}, tilePath=[];
+function ctile(r){ return { tx: PAD + r.rx*GAPX + Math.floor(CH/2), ty: PAD + r.ry*GAPY + Math.floor(CH/2) }; }
+function carveChamber(r){ const c=ctile(r);
+  for(let y=-2;y<=2;y++)for(let x=-2;x<=2;x++){ const tx=c.tx+x,ty=c.ty+y;
+    grid[ty][tx]= (Math.abs(x)===2&&Math.abs(y)===2)?WALL:FLOOR; } }
+function carveCorridor(a,b){ const A=ctile(a),B=ctile(b); let x=A.tx,y=A.ty;
+  const path=[];
+  while(x!==B.tx){ x+=Math.sign(B.tx-x); path.push([x,y]); }
+  while(y!==B.ty){ y+=Math.sign(B.ty-y); path.push([x,y]); }
+  for(const [tx,ty] of path){ if(grid[ty]&&grid[ty][tx]!==undefined && grid[ty][tx]===WALL) grid[ty][tx]=FLOOR; } }
+function genDungeon(){
+  GW = PAD*2 + (Math.max(...TRACE.rooms.map(r=>r.rx))+1)*GAPX;
+  GH = PAD*2 + (Math.max(...TRACE.rooms.map(r=>r.ry))+1)*GAPY;
+  grid=Array.from({length:GH},()=>Array(GW).fill(WALL));
+  TRACE.rooms.forEach(carveChamber);
+  TRACE.seams.forEach(([a,b])=>carveCorridor(TRACE.rooms[a],TRACE.rooms[b]));
+  TRACE.rooms.forEach(r=>{ roomTile[r.id]=ctile(r); });
+  // tile-path the @ walks: chamber→corridor→chamber for each consecutive pair
+  tilePath=[];
+  for(let i=0;i<TRACE.path.length;i++){
+    const r=TRACE.rooms[TRACE.path[i]]; const c=ctile(r);
+    if(i>0){ const p=TRACE.rooms[TRACE.path[i-1]],P=ctile(p); let x=P.tx,y=P.ty;
+      while(x!==c.tx){ x+=Math.sign(c.tx-x); tilePath.push([x,y,TRACE.path[i]]); }
+      while(y!==c.ty){ y+=Math.sign(c.ty-y); tilePath.push([x,y,TRACE.path[i]]); }
+    } else tilePath.push([c.tx,c.ty,r.id]);
+  }
+}
+genDungeon();
+
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+let W,H,DPR; function resize(){DPR=Math.min(2,devicePixelRatio||1);W=innerWidth;H=innerHeight;
+  cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);} addEventListener('resize',resize);
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const roomById=id=>TRACE.rooms.find(r=>r.id===id);
+const liveCol=u=>u>=1?css('--rage'):u>=.6?css('--warn'):css('--ok');
+
+// ── game state: @ walks tilePath; camera locks @ to screen center ──
+let step=0, frac=0, playing=false, speed=1, frame=0, logged=new Set();
+let cam={x:0,y:0};
+const LOG=[]; function log(html,cls){LOG.push({html,cls:cls||''});if(LOG.length>40)LOG.shift();
+  document.getElementById('log').innerHTML=LOG.slice(-6).map(e=>`<div class="l ${e.cls}">${e.html}</div>`).join('');}
+
+function playerXY(){ const a=tilePath[step]||tilePath[0]; const b=tilePath[Math.min(step+1,tilePath.length-1)];
+  const ease=frac<.5?2*frac*frac:1-Math.pow(-2*frac+2,2)/2;
+  return { x:(a[0]+(b[0]-a[0])*ease)*T + T/2, y:(a[1]+(b[1]-a[1])*ease)*T + T/2, room:a[2] }; }
+
+function draw(){
+  frame++;
+  // advance the walk
+  if(playing){ frac+=0.05*speed;
+    if(frac>=1){ frac=0; if(step<tilePath.length-1){ const prev=tilePath[step][2]; step++; const now=tilePath[step][2];
+        if(now!==prev) onEnter(roomById(now)); } else { playing=false; document.getElementById('pp').textContent='✓'; } } }
+  const p=playerXY();
+  cam.x += ((p.x-W/2)-cam.x)*0.1; cam.y += ((p.y-H/2)-cam.y)*0.1;
+  ctx.fillStyle='#04050a'; ctx.fillRect(0,0,W,H);
+  // visible tile window
+  const x0=Math.max(0,Math.floor(cam.x/T)-1), y0=Math.max(0,Math.floor(cam.y/T)-1);
+  const x1=Math.min(GW,x0+Math.ceil(W/T)+3), y1=Math.min(GH,y0+Math.ceil(H/T)+3);
+  for(let ty=y0;ty<y1;ty++)for(let tx=x0;tx<x1;tx++){
+    const sx=tx*T-cam.x, sy=ty*T-cam.y; const cell=grid[ty][tx];
+    if(cell===WALL){
+      // only draw walls adjacent to floor (the dungeon edge), else leave black → structural Void
+      let edge=false; for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,-1],[1,-1],[-1,1]])
+        if(grid[ty+dy]&&grid[ty+dy][tx+dx]===FLOOR){edge=true;break;}
+      if(edge){ ctx.fillStyle=css('--stone'); ctx.fillRect(sx,sy,T,T);
+        ctx.fillStyle='#252b40'; ctx.fillRect(sx,sy,T,3); }       // top-lit stone
+    } else {
+      ctx.fillStyle=css('--floor'); ctx.fillRect(sx,sy,T,T);
+      ctx.fillStyle='#161a28'; ctx.fillRect(sx+1,sy+1,T-2,T-2);   // floor inset
+      if(((tx*7+ty*13)%5)===0){ctx.fillStyle='#1b2030';ctx.fillRect(sx+T/2-1,sy+T/2-1,2,2);} // grit
+    }
+  }
+  // rooms: NPC sprite + door + clock-torch
+  for(const r of TRACE.rooms){ const c=roomTile[r.id]; const sx=c.tx*T-cam.x, sy=c.ty*T-cam.y;
+    const active = (playerXY().room===0?0:step) , isHere = r.id===p.room;
+    // door (gate) on south wall of chamber
+    const dy=(c.ty+2)*T-cam.y, dx=c.tx*T-cam.x;
+    ctx.fillStyle = r.key?css('--ok'):css('--rage'); ctx.globalAlpha=.85;
+    ctx.fillRect(dx+6,dy-2,T-12,5); ctx.globalAlpha=1;
+    // NPC
+    const glow = isHere ? (r.loiter?css('--rage'):css('--gold')) : (r.loiter?'rgba(255,90,77,.5)':null);
+    sprite(ctx,r.spr, sx+T/2-16, sy+T/2-18, 4, glow);
+    // clock-torch: a ring above the npc
+    const cx=sx+T/2, cy=sy-6;
+    ctx.strokeStyle='#23283c';ctx.lineWidth=3;ctx.beginPath();ctx.arc(cx,cy,7,0,6.283);ctx.stroke();
+    ctx.strokeStyle=liveCol(r.live);ctx.lineWidth=3;ctx.beginPath();
+    ctx.arc(cx,cy,7,-1.57,-1.57+6.283*Math.min(1,r.live)+(r.loiter?Math.sin(frame*.2)*.2:0));ctx.stroke();
+    // name only for the room you're in (Density-as-Clarity: the map speaks, labels don't clutter)
+    if(isHere){ ctx.fillStyle=r.loiter?css('--rage'):css('--gold');ctx.font='11px ui-monospace';ctx.textAlign='center';
+      ctx.fillText(r.name, sx+T/2, sy+T/2+24); ctx.textAlign='left'; }
+  }
+  // the player @ (Strong Center)
+  const px=p.x-cam.x, py=p.y-cam.y; const loiter=roomById(p.room)?.loiter;
+  sprite(ctx,'hero', px-16+(loiter?Math.sin(frame*.3)*4:0), py-20, 4, loiter?css('--rage'):css('--torch'));
+  // ── torch FOV: bright at @, black at edges (the Void, structural) ──
+  const fov=ctx.createRadialGradient(px,py-6,40, px,py-6, Math.min(W,H)*0.46);
+  fov.addColorStop(0,'rgba(255,179,71,0.07)'); fov.addColorStop(.45,'rgba(6,7,13,0)');
+  fov.addColorStop(.86,'rgba(4,5,10,.78)'); fov.addColorStop(1,'rgba(2,2,6,.98)');
+  ctx.fillStyle=fov; ctx.fillRect(0,0,W,H);
+  status(roomById(p.room));
+  requestAnimationFrame(draw);
+}
+function status(r){ if(!r)return; const u=r.live;
+  document.getElementById('status').innerHTML =
+    `<span class="nm">${r.name}</span>`+
+    `<span class="seg">◆ <b>${r.cons}</b></span>`+
+    `<span class="seg">clock <span class="clock"><i style="width:${Math.round(u*100)}%;background:${liveCol(u)}"></i></span> ${u>=1?'<b style="color:var(--rage)">ENRAGE</b>':''}</span>`+
+    `<span class="seg">${r.key?'🔑':'🔒'} <b style="color:${r.key?'var(--ok)':'var(--rage)'}">${r.gate}</b></span>`+
+    `<span class="seg" style="margin-left:auto">room ${step? (roomById(playerXY().room).id+1):1}/${TRACE.rooms.length}</span>`;
+}
+function onEnter(r){ if(logged.has(r.id))return; logged.add(r.id);
+  log(`you enter <b>${r.name}</b> — <b class="">◆ ${r.cons}</b> works the room`,'gold');
+  if(r.note) log(`&nbsp;&nbsp;<i>${r.note}</i>`,'');
+  if(r.loiter){ log(`&nbsp;&nbsp;the clock floods red. the agent eddies, finds more to read…`,'rage');
+    setTimeout(()=>log(`&nbsp;&nbsp;<b>ENRAGE.</b> the reaper comes. <b>REAPED.</b>`,'rage'),700);
+    setTimeout(()=>log(`&nbsp;&nbsp;<i>the lock schedule is not the river's to set.</i>`,''),1400);
+  } else log(`&nbsp;&nbsp;gate opens: <b class="ok">${r.gate}</b>`,'ok');
+}
+document.getElementById('pp').onclick=function(){playing=!playing;this.textContent=playing?'⏸':'▶';};
+document.getElementById('spd').onclick=function(){speed=speed>=4?1:speed*2;this.textContent=speed+'×';};
+document.getElementById('rst').onclick=function(){step=0;frac=0;logged.clear();LOG.length=0;
+  document.getElementById('log').innerHTML='';playing=false;document.getElementById('pp').textContent='▶';onEnter(roomById(0));};
+document.getElementById('title').onclick=function(){this.style.display='none';playing=true;
+  document.getElementById('pp').textContent='⏸';onEnter(roomById(0));};
+resize(); draw();
+</script>
+</body>
+</html>

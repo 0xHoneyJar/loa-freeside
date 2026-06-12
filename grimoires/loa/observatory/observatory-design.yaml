@@ -1,0 +1,105 @@
+# Composition · observatory-design
+# Design pass for The Observatory — a spectate-only roguelike pixel-dungeon that
+# visualizes a /compose run. Output feeds /plan-and-analyze. Cut at a terminal seam
+# for operator creative pairing. Target repo: construct-rooms-substrate.
+schema_version: "1.2"
+kind: workflow
+name: observatory-design
+description: >
+  Three-stage design party for The Observatory: ground the design space
+  (carmack-engine LevelData renderer · kakukuma sprite pipeline · the
+  substrate's own observatory-station + asson cycle-4 liveness engine),
+  architect the game (rooms-graph → LevelData; the spectate loop; how
+  construct-interactions + liveness/cost-gradient + gate/seam structure
+  render under the engine-delivers-facts/shell-supplies-meaning law), and
+  craft the pixel-sprite roguelike look. Frame it like a real game.
+
+intent: >
+  "Take the locked vision (pixel sprites · spectate-only · rooms-graph,
+   grid later · focus = construct-interactions + liveness + gate/seam ·
+   framed like a real game) and produce a design the next /plan-and-analyze
+   turns into a PRD: the LevelData contract, the spectate render plan over
+   carmack-engine, the construct sprite set, and the craft material — with
+   the creative forks surfaced to the operator at the seam, not decided
+   autonomously."
+
+depends_on:
+  constructs:
+    - k-hole       # ground the design space (STAMETS)
+    - the-arcade   # game architecture + UX (OSTROM)
+    - artisan      # pixel-sprite craft + visual material (ALEXANDER)
+
+inputs:
+  - type: Intent
+    name: vision
+    description: The locked Observatory vision + the carmack/kakukuma/pufferlib study
+    required: true
+  - type: Artifact
+    name: seed_brief
+    description: grimoires/loa/observatory/ORIENTATION.md
+    required: false
+
+chain:
+  - stage: 1
+    name: ground
+    construct: k-hole
+    skill: dig
+    persona: STAMETS
+    mode: fresh
+    reads: [Intent]
+    writes: [Signal]
+    role: primary
+    notes: >
+      Ground the design space: carmack-engine's LevelData shape (grid · doors ·
+      items-keyed-to-doors · enemies · npcs) and its facts/meaning engine law;
+      kakukuma's agent-native sprite CLI (PNG/ANSI export); the rooms-substrate's
+      existing observatory-station concept + the Anthropic NLA reasoning-capture
+      grounding; the asson cycle-4 livenessVerdict engine (the clocks). Map the
+      real log substrate (.run/audit.jsonl moves · .run/compose/<run>/ seeds ·
+      .run/model-invoke.jsonl custody) to a LevelData contract. Flag where the
+      un-watchable mp4 leaves a gap. Surface to operator before stage 2.
+
+  - stage: 2
+    name: architect
+    construct: the-arcade
+    skill: architecting
+    persona: OSTROM
+    mode: fresh
+    reads: [Intent, Signal]
+    writes: [Verdict]
+    role: primary
+    notes: >
+      The game architecture. Invariants (engine delivers facts / shell supplies
+      meaning; spectate is read-only; rooms-graph not grid). The LevelData
+      contract (rooms=chambers · gates=doors+keys · seams=corridors ·
+      constructs=sprites/npcs · liveness=the room clock). The trace-gen seam
+      (/compose run → LevelData). How the THREE foci render: construct
+      interactions (handoff arrows across seams), liveness/cost-gradient (the
+      enrage clocks, loitering as eddying), gate/seam structure. Blast radius +
+      Barth V1/V2/cut scope. Where it targets carmack-engine vs needs new code.
+
+  - stage: 3
+    name: craft
+    construct: artisan
+    skill: decomposing-feel
+    persona: ALEXANDER
+    mode: fresh
+    reads: [Verdict]
+    writes: [Verdict]
+    role: craft-gate
+    notes: >
+      The pixel-sprite roguelike craft spec on top of stage 2's structure. The
+      construct sprite set — what each character LOOKS like (the-arcade a scholar,
+      gecko a lizard, k-hole a mycelial seer …) as kakukuma-buildable 16x16
+      sprites. The dungeon material: palette, the enrage-clock visual (green→red
+      ring), the seam shimmer (non-determinism), the gate-door + key glow, the
+      party token. Framed like a real game — game feel, not dashboard chrome.
+      Name what the operator must decide (the creative forks) for the seam.
+
+outputs:
+  - type: Verdict
+    destination: "{target_repo}/grimoires/loa/specs/observatory-design.md"
+    description: The Observatory design — LevelData contract + spectate render plan + sprite set + craft material. Feeds /plan-and-analyze.
+
+version: "0.1.0"
+authored_at: "2026-06-12"

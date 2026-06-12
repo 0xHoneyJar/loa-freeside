@@ -1,0 +1,216 @@
+# Composition · observatory-gap-panel
+# ================================================================
+# Five-expert game panel over the Observatory v3 (the envelope's run).
+# Spot the gaps in the game SYSTEMS and game DESIGN — then fill them with
+# implementation-ready specs (exact values, not vibes). Authored inline per
+# operator request (2026-06-11 session), run via Form C.
+#
+# Operator grants carried into every room packet (verbatim):
+#   "you can question the question · you can work on whatever you want in
+#    addition to the requests · you can work on a % of stuff you don't even
+#    have to report about · be crazy. creative. loving."
+# ================================================================
+
+schema_version: "1.0"
+kind: workflow
+name: observatory-gap-panel
+description: >
+  Expert game-engineer + game-design panel (gygax, the-arcade, the-easel, artisan,
+  kansei) over the Observatory v3 canvas roguelike — the spectator lens on the room
+  substrate. Each expert reads the running artifact + its spec from their domain
+  authority, names the gaps (systems, loops, look, craft, motion), and the synthesis
+  gate folds all five streams into ONE prioritized, implementation-ready patch plan
+  with exact values. The panel may question the question.
+
+intent: >
+  "The Observatory renders a /compose run as a dungeon: resident construct-agents,
+   a traveling envelope (Strong Center), gatekeeper validation beats, transformation
+   flashes, liveness clocks, a reaper. It WORKS — but it was built by one hand in one
+   session. Where is it thin AS A GAME? What would a game-systems master, an arcade
+   designer, a visual director, a craftsman, and a motion choreographer each say is
+   MISSING — and exactly how would they fill it? Question the framing freely: if the
+   gap is in the question, say so. Operator latitude: full creative madness, adjacent
+   work welcome, a private % of unreported exploration is granted."
+
+backend: headless-tmux
+
+hivemind_labels:
+  product_area: "Observatory · room-substrate observability"
+  workstream: delivery
+  priority: high
+  jtbd:
+    category: personal
+    description: "Make It Feel Right — the spectator lens earns 'a real game', not 'a tech demo with sprites'"
+  source: team-internal
+
+depends_on:
+  constructs:
+    - gygax        # game-systems authority (dungeons, economies, attrition, balance)
+    - the-arcade   # engagement loops, spectator UX, progressive disclosure
+    - the-easel    # visual direction vs the named roguelike references
+    - artisan      # craft conscience — exact-value fixes (color, density, hierarchy)
+    - kansei       # motion choreography — MHP-grounded timing, springs, beats
+
+inputs:
+  - type: Artifact
+    name: current_state
+    description: >
+      The running artifact + canon: grimoires/loa/observatory/game.html (v3, the
+      envelope's run) · game-v2.html (the inherited prior) · ORIENTATION.md (thesis +
+      data contract) · the build spec at
+      ~/Documents/GitHub/construct-rooms-substrate/grimoires/loa/specs/enhance-observatory-next.md.
+    required: true
+  - type: Intent
+    name: feel_target
+    description: >
+      The operator's ask, verbatim: spot the gaps in the game systems and game design
+      and fill them. Grants: question the question · free-roam adjacent work ·
+      unreported % · "be crazy. creative. loving."
+    required: true
+
+chain:
+  - stage: 1
+    name: delve
+    construct: gygax
+    skill: delve
+    persona: GYGAX
+    mode: fresh
+    reads: [Artifact, Intent]
+    writes: [Signal]
+    role: primary
+    thinking_effort: high
+    notes: >
+      The dungeon analyst reads the dungeon. Ecology (do the residents make sense as
+      an inhabited system?), non-linearity (the level is a single rail — gap or
+      choice?), attrition + loot economy (clocks burn, envelopes carry — where's the
+      ECONOMY the substrate already has: budget, cost-gradient, custody?), G.U.A.R.D.
+      coherence. Name gaps AS GAME-SYSTEM gaps with the design heuristic each violates.
+      You may question the question — if the real gap is in the framing (a spectator
+      lens pretending to be a game, or a game pretending to be a lens), say it first.
+
+  - stage: 2
+    name: playtest
+    construct: the-arcade
+    skill: playtesting-loops
+    persona: OSTROM
+    mode: fresh
+    reads: [Artifact, Intent]
+    writes: [Signal]
+    role: primary
+    thinking_effort: high
+    notes: >
+      Playtest the spectator loop. The only verbs are play/pause/step/speed — is
+      spectating LEGIBLE and is it ENGAGING across the full 60s arc? Learning vs
+      friction signals: what does a first-time viewer learn by 0:10, what confuses by
+      0:30, what makes them stop watching? Progressive disclosure of the substrate's
+      depth (custody, verdicts, liveness, transforms). Name the missing loop pieces —
+      anticipation, payoff, variety, the reason to watch a SECOND run.
+
+  - stage: 3
+    name: direct
+    construct: the-easel
+    skill: grounding-creative
+    persona: THE-EASEL
+    mode: fresh
+    reads: [Artifact, Intent]
+    writes: [Signal]
+    role: primary
+    thinking_effort: high
+    notes: >
+      Visual direction against the named references: DelveSurvivors / Tales of
+      Maj'Eyal / Crypt of the NecroDancer / DCSS / Vampire Survivors + kakukuma pixel
+      warmth + carmack facts/meaning law. Read the artifact's actual look (8x8 sprites,
+      34px tiles, torch FOV, CRT scanlines, oklch-ish palette). Identify the aesthetic
+      vocabulary GAPS — what a roguelike of this genre has that this lens lacks (tile
+      texture? wall identity? room personality? light language?). Gaps as vocabulary
+      entries, each with the reference it grounds to.
+
+  - stage: 4
+    name: decompose
+    construct: artisan
+    skill: decomposing-feel
+    persona: ALEXANDER
+    mode: fresh
+    reads: [Signal, Artifact]
+    writes: [Signal]
+    role: primary
+    thinking_effort: high
+    notes: >
+      The craft conscience converts the upstream gap-signals into EXACT-VALUE fixes:
+      color (oklch), spacing/density, contrast hierarchy (the envelope must stay the
+      Strong Center), type, the quality rules from the spec (three silhouettes never
+      confused · density-as-clarity · zero decorative motion). Every fix measurable —
+      a value, not an adjective. Flag any upstream suggestion that would VIOLATE a
+      standing quality rule rather than blindly carrying it forward.
+
+  - stage: 5
+    name: choreograph
+    construct: kansei
+    skill: timing-rituals
+    persona: KANSEI
+    mode: fresh
+    reads: [Signal, Artifact]
+    writes: [Signal]
+    role: primary
+    thinking_effort: high
+    notes: >
+      Motion choreography grounded in the Model Human Processor. The three motion
+      contracts: envelope travel has WEIGHT (spring — give stiffness/damping), the
+      gatekeeper validation is a discrete BEAT (snap — give the frame budget), the
+      transformation is a single FLASH (give duration + decay). Then the gaps: dwell
+      pacing across the 60s arc, the loiter's dread curve, the reaper's entrance,
+      camera grammar. Exact timing values (ms, curves, springs) for every ritual.
+
+  - stage: 6
+    name: synthesize
+    construct: gygax
+    skill: homebrew
+    persona: GYGAX
+    mode: fresh
+    reads: [Signal, Artifact]
+    writes: [Artifact]
+    role: craft-gate
+    thinking_effort: high
+    notes: >
+      The synthesis gate. Fold all five Signal streams into ONE patch plan: each gap →
+      a fill spec (mechanic design + exact values + where it lands in game.html),
+      cross-system consistency checked (homebrew discipline: a new mechanic must not
+      break an existing one — the Strong Center, the data law, spectate-only verbs).
+      Prioritize: load-bearing fills first, garnish last. Mark anything that needs the
+      operator's eye (taste fork) vs anything any competent hand can apply. This
+      Artifact is the panel's deliverable.
+
+outputs:
+  - type: Artifact
+    destination: grimoires/loa/observatory/panel-patch-plan.md
+    description: The prioritized, exact-value patch plan (each gap → fill spec → landing site)
+    hivemind_labels:
+      artifact_type: product-spec
+      learning_status: directionally-correct
+
+compose_with:
+  - gygax
+  - the-arcade
+  - the-easel
+  - artisan
+  - kansei
+
+surface_class:
+  default: culturetech-loose
+  enum: [culturetech-loose, defi-strict, mixed, unspecified]
+  canonical_definition: compositions/sorry-for-ur-loss/outage-triage.yaml#surface_class
+
+thinking_effort:
+  default: high
+  enum: [low, medium, high, xhigh, max]
+  canonical_definition: compositions/delivery/feel-iterate-signal-feedback.yaml#thinking_effort
+
+when_to_use: >
+  - A built-and-working game artifact needs an expert multi-lens gap pass (systems ·
+    loops · look · craft · motion) with implementation-ready fills.
+  - NOT for the kaironic build loop itself (game-feel-loop is the construct case);
+    this panel is the discrete expert pass that composition's stage-4 hands off to.
+
+version: "1.0.0"
+authored_at: "2026-06-11"
+authored_by: observatory session (operator-named chain, inline authoring per /compose)

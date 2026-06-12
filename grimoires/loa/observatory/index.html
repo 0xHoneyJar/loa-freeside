@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Freeside Observatory · room substrate as RPG map (v0)</title>
+<!--
+  THE OBSERVATORY (v0) — a lens onto the room substrate, not a new substrate.
+  Spans are rooms (where time is allowed to be wild); gates are doors (where time
+  is collected, opened by a key/verdict); seams are the non-deterministic corridors
+  between deterministic rooms; constructs are the characters; the liveness clock
+  (asson cycle-4: enrage timer / chess clock / heartbeat) ticks in every room.
+
+  DATA CONTRACT (this v0 bakes a trace of the asson 5-cycle run; the real-time
+  build reads the same shape from the substrate that already exists):
+    rooms     ← /compose stages + Legba spans         (.run/compose/<run>/, span logs)
+    moves     ← the heartbeat                          (.run/audit.jsonl)
+    custody   ← hash-chained model invocations         (.run/model-invoke.jsonl)
+    gates     ← review/audit verdicts + gate tokens    (a2a/*/COMPLETED, Legba tokens)
+    liveness  ← livenessVerdict over the move log      (@freeside/asson/liveness)
+  Swap TRACE for `await fetch('trace.json')` and poll → real-time. v0 is the pipeline proof;
+  the aesthetic is the iteration (operator's RPG video is the reference).
+-->
+<style>
+  :root{
+    --bg:#0a0b14; --ink:#e8e6df; --dim:#8a8f9e; --room:#161a2b; --room2:#1d2238;
+    --ok:#5fd17a; --warn:#e8c45f; --rage:#e8615f; --gate:#7aa2ff; --key:#5fd17a;
+    --seam:#b06fe8; --char:#ffd98a;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;overflow:hidden}
+  #wrap{display:grid;grid-template-columns:1fr 320px;height:100vh}
+  canvas{display:block;width:100%;height:100%;image-rendering:pixelated}
+  #side{border-left:1px solid #222840;padding:16px 18px;overflow:auto;background:#0c0e1a}
+  h1{font-size:13px;letter-spacing:.12em;margin:0 0 2px;text-transform:uppercase;color:var(--char)}
+  .sub{font-size:11px;color:var(--dim);margin:0 0 14px}
+  .k{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.1em;margin:14px 0 4px}
+  .row{display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px dotted #1e2336}
+  .pill{display:inline-block;padding:1px 7px;border-radius:9px;font-size:10px;letter-spacing:.05em}
+  .ok{background:rgba(95,209,122,.15);color:var(--ok)}
+  .warn{background:rgba(232,196,95,.15);color:var(--warn)}
+  .rage{background:rgba(232,97,95,.15);color:var(--rage)}
+  #legend{position:fixed;left:14px;bottom:12px;font-size:10px;color:var(--dim);line-height:1.7}
+  #legend b{color:var(--ink);font-weight:600}
+  #ctl{position:fixed;left:14px;top:12px;display:flex;gap:8px}
+  button{background:#1a1f33;color:var(--ink);border:1px solid #2a3150;border-radius:6px;
+    padding:6px 12px;font:inherit;font-size:12px;cursor:pointer}
+  button:hover{border-color:var(--gate)}
+  .glyph{font-size:13px}
+  .note{font-size:10px;color:var(--dim);line-height:1.6;margin-top:6px}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="side">
+    <h1>Freeside Observatory</h1>
+    <p class="sub">room substrate · live lens · v0</p>
+    <div class="k">Party (current room)</div>
+    <div id="cur"></div>
+    <div class="k">Liveness clock <span style="color:var(--dim);font-weight:400">(asson c4)</span></div>
+    <div id="live"></div>
+    <div class="k">Gate</div>
+    <div id="gate"></div>
+    <div class="k">Cost gradient</div>
+    <div id="grad"></div>
+    <p class="note">Time runs wild in rooms (budget draws down). The gate is the cheapest
+      place to arrive — even empty-handed. Least-effort-seeking delivers the party to the drain.</p>
+    <div class="k">Run</div>
+    <div id="meta"></div>
+  </div>
+</div>
+<div id="ctl">
+  <button id="play">▶ play</button>
+  <button id="step">⏭ step</button>
+  <button id="reset">⟲ reset</button>
+</div>
+<div id="legend">
+  <b style="color:var(--char)">◆</b> construct (character) &nbsp; <b style="color:var(--gate)">▯</b> gate (door+key)
+  &nbsp; <b style="color:var(--seam)">∿</b> seam (non-deterministic corridor)<br>
+  liveness: <span style="color:var(--ok)">●</span> ok &nbsp; <span style="color:var(--warn)">●</span> warn (0.6)
+  &nbsp; <span style="color:var(--rage)">●</span> enrage (1.0 → chess-clock checkpoint)
+</div>
+
+<script>
+// ── TRACE (data contract) — this run = the asson 5-cycle ladder we just walked ──
+const TRACE = {
+  title: "asson-cli-layer · 5-cycle ladder",
+  moves: 117,
+  rooms: [
+    { id:"c1", name:"Land + Doctor",        construct:"the-arcade", persona:"OSTROM",  x:1, y:1,
+      live:{used:.62,stall:false,spin:false,pace:"ok"},  gate:{kind:"review+audit", verdict:"APPROVED (1 MEDIUM pinned)", key:true} },
+    { id:"c2", name:"freeside-cli verbs",   construct:"protocol",   persona:"—",       x:3, y:1,
+      live:{used:.48,stall:false,spin:false,pace:"ok"},  gate:{kind:"review+audit", verdict:"APPROVED (C-1 fixed)", key:true} },
+    { id:"c3", name:"Keyring binding",      construct:"noether",    persona:"—",       x:3, y:3,
+      live:{used:.71,stall:false,spin:false,pace:"warn"},gate:{kind:"review+audit", verdict:"APPROVED · MEDIUM CLOSED", key:true} },
+    { id:"c4", name:"Liveness watchdog",    construct:"gecko",      persona:"GECKO",   x:1, y:3,
+      live:{used:.40,stall:false,spin:false,pace:"ok"},  gate:{kind:"review+audit", verdict:"APPROVED", key:true} },
+    { id:"c5", name:"Comms gate (3 linters)",construct:"vocabulary-bank",persona:"—",  x:1, y:5,
+      live:{used:.55,stall:false,spin:false,pace:"ok"},  gate:{kind:"review+audit", verdict:"APPROVED · LADDER DONE", key:true} },
+  ],
+  seams: [ ["c1","c2"], ["c2","c3"], ["c3","c4"], ["c4","c5"] ],   // non-deterministic corridors
+  path:  ["c1","c2","c3","c4","c5"],
+};
+
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+let W,H,DPR; function resize(){ DPR=Math.min(2,devicePixelRatio||1);
+  W=cv.clientWidth; H=cv.clientHeight; cv.width=W*DPR; cv.height=H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0); }
+addEventListener('resize',resize);
+
+const css=(v)=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const roomById=(id)=>TRACE.rooms.find(r=>r.id===id);
+// grid → pixel placement
+function cell(r){ const cw=Math.min(190,(W-120)/4), ch=120, ox=70, oy=70;
+  return { x: ox + (r.x-1)*((W-160)/4)*0.62 + r.x*8, y: oy + (r.y-1)*88, w:150, h:78 }; }
+
+let t=0, playing=false, segIdx=0;  // traversal state along path
+
+function liveColor(u){ return u>=1?css('--rage'):u>=0.6?css('--warn'):css('--ok'); }
+function liveState(r){ const u=r.live.used; return u>=1?'enrage':u>=0.6?'warn':'ok'; }
+
+function drawSeam(a,b,wob){ const A=cell(a),B=cell(b);
+  const x1=A.x+A.w/2,y1=A.y+A.h, x2=B.x+B.w/2,y2=B.y;
+  ctx.strokeStyle=css('--seam'); ctx.globalAlpha=.55; ctx.lineWidth=2;
+  ctx.beginPath();
+  const seg=18, dx=(x2-x1)/seg, dy=(y2-y1)/seg;
+  for(let i=0;i<=seg;i++){ const px=x1+dx*i + Math.sin(i*0.9+wob)*6, py=y1+dy*i;
+    i?ctx.lineTo(px,py):ctx.moveTo(px,py); } ctx.stroke(); ctx.globalAlpha=1;
+}
+
+function drawRoom(r, active){
+  const c=cell(r); const st=liveState(r);
+  // chamber
+  ctx.fillStyle = active? css('--room2') : css('--room');
+  ctx.strokeStyle = active? css('--char') : '#2a3150'; ctx.lineWidth = active?2:1;
+  roundRect(c.x,c.y,c.w,c.h,8); ctx.fill(); ctx.stroke();
+  // glow on active
+  if(active){ ctx.shadowColor=css('--char'); ctx.shadowBlur=18; roundRect(c.x,c.y,c.w,c.h,8); ctx.stroke(); ctx.shadowBlur=0; }
+  // name + construct token (character)
+  ctx.fillStyle=css('--ink'); ctx.font='11px ui-monospace'; ctx.textBaseline='top';
+  ctx.fillText(r.name.slice(0,20), c.x+10, c.y+10);
+  ctx.fillStyle=css('--char'); ctx.font='14px ui-monospace';
+  ctx.fillText('◆ '+r.construct, c.x+10, c.y+28);
+  ctx.fillStyle=css('--dim'); ctx.font='10px ui-monospace';
+  ctx.fillText(r.persona!=='—'?r.persona:'', c.x+10, c.y+46);
+  // liveness clock (the enrage ring)
+  const cx=c.x+c.w-22, cy=c.y+22, rad=12;
+  ctx.strokeStyle='#2a3150'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(cx,cy,rad,0,Math.PI*2); ctx.stroke();
+  ctx.strokeStyle=liveColor(r.live.used); ctx.beginPath();
+  ctx.arc(cx,cy,rad,-Math.PI/2,-Math.PI/2 + Math.PI*2*Math.min(1,r.live.used)); ctx.stroke();
+  // gate (door + key) on the room's exit
+  const gx=c.x+c.w/2-9, gy=c.y+c.h-3;
+  ctx.fillStyle=r.gate.key?css('--key'):css('--gate');
+  ctx.globalAlpha=active?1:.7; roundRect(gx,gy,18,6,2); ctx.fill(); ctx.globalAlpha=1;
+}
+
+function roundRect(x,y,w,h,r){ ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+function drawParty(){
+  const path=TRACE.path; const i=Math.min(segIdx,path.length-1);
+  const from=roomById(path[i]); const c=cell(from);
+  const px=c.x+c.w/2, py=c.y+c.h/2;
+  const pulse=6+Math.sin(t*0.12)*2;
+  ctx.fillStyle=css('--char'); ctx.shadowColor=css('--char'); ctx.shadowBlur=16;
+  ctx.beginPath(); ctx.arc(px,py+12,pulse,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
+  ctx.fillStyle=css('--bg'); ctx.font='9px ui-monospace'; ctx.textAlign='center';
+  ctx.fillText('☗',px,py+9); ctx.textAlign='left';
+}
+
+function frame(){
+  ctx.clearRect(0,0,W,H);
+  // title
+  ctx.fillStyle=css('--dim'); ctx.font='11px ui-monospace'; ctx.textBaseline='top';
+  ctx.fillText('▸ '+TRACE.title+'   ·   '+TRACE.moves+' moves (heartbeat)', 18, 16);
+  // seams first (under rooms)
+  TRACE.seams.forEach(([a,b],i)=>drawSeam(roomById(a),roomById(b), t*0.05+i));
+  // rooms
+  const activeId=TRACE.path[Math.min(segIdx,TRACE.path.length-1)];
+  TRACE.rooms.forEach(r=>drawRoom(r, r.id===activeId));
+  drawParty();
+  t++;
+  side(activeId);
+  requestAnimationFrame(frame);
+}
+
+function side(activeId){
+  const r=roomById(activeId); const st=liveState(r);
+  document.getElementById('cur').innerHTML =
+    `<div class="row"><span>${r.name}</span><span class="glyph" style="color:var(--char)">◆ ${r.construct}</span></div>`+
+    (r.persona!=='—'?`<div class="row"><span>persona</span><span>${r.persona}</span></div>`:'');
+  document.getElementById('live').innerHTML =
+    `<div class="row"><span>budget used</span><span class="pill ${st}">${Math.round(r.live.used*100)}%</span></div>`+
+    `<div class="row"><span>stall / spin</span><span>${r.live.stall?'STALL':'—'} / ${r.live.spin?'SPIN':'—'}</span></div>`+
+    `<div class="row"><span>pace</span><span class="pill ${r.live.pace==='warn'?'warn':'ok'}">${r.live.pace}</span></div>`;
+  document.getElementById('gate').innerHTML =
+    `<div class="row"><span>${r.gate.kind}</span><span>${r.gate.key?'🔑 key':'🔒 locked'}</span></div>`+
+    `<div class="row"><span>verdict</span><span class="pill ok">${r.gate.verdict}</span></div>`;
+  document.getElementById('grad').innerHTML =
+    `<div class="row"><span>in-room</span><span style="color:var(--warn)">metered ↓</span></div>`+
+    `<div class="row"><span>at-gate</span><span style="color:var(--ok)">free · re-enterable</span></div>`;
+  document.getElementById('meta').innerHTML =
+    `<div class="row"><span>rooms</span><span>${TRACE.rooms.length}</span></div>`+
+    `<div class="row"><span>seams</span><span>${TRACE.seams.length} (non-det)</span></div>`+
+    `<div class="row"><span>step</span><span>${segIdx+1} / ${TRACE.path.length}</span></div>`;
+}
+
+document.getElementById('step').onclick=()=>{ segIdx=(segIdx+1)%TRACE.path.length; };
+document.getElementById('reset').onclick=()=>{ segIdx=0; playing=false; document.getElementById('play').textContent='▶ play'; };
+document.getElementById('play').onclick=function(){ playing=!playing; this.textContent=playing?'⏸ pause':'▶ play';
+  if(playing){ clearInterval(window._pl); window._pl=setInterval(()=>{ if(playing) segIdx=(segIdx+1)%TRACE.path.length; },1400);} };
+
+resize(); frame();
+</script>
+</body>
+</html>
