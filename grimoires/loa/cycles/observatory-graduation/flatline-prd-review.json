@@ -1,0 +1,198 @@
+{
+  "consensus_summary": {
+    "high_consensus_count": 8,
+    "disputed_count": 2,
+    "low_value_count": 0,
+    "blocker_count": 4,
+    "model_agreement_percent": 83,
+    "models": 3,
+    "tertiary_items": 0,
+    "confidence": "full"
+  },
+  "high_consensus": [
+    {
+      "id": "IMP-001",
+      "description": "Strong improvement: it turns a subjective goal into a falsifiable observable with low implementation cost and directly strengthens the PRD's evidence discipline. The citation requirement is appropriately lightweight and aligns with G-1 rather than adding a separate tracking system.",
+      "gpt_score": 900,
+      "opus_score": 880,
+      "tertiary_score": 920,
+      "delta": 20,
+      "average_score": 890,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-002",
+      "description": "Critical integration item. Gate-hardness honesty cannot be implemented reliably without an authoritative classification mechanism and fallback behavior. The proposed manifest or runtime contract is a small design addition with high leverage against future drift.",
+      "gpt_score": 940,
+      "opus_score": 875,
+      "tertiary_score": 950,
+      "delta": 65,
+      "average_score": 907.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-003",
+      "description": "High value because an undefined watchdog is a load-bearing component in the IMPASSE flow. Clarifying ownership and boundary is necessary before SDD work can be coherent, especially where cross-repo or signing behavior may be involved.",
+      "gpt_score": 910,
+      "opus_score": 845,
+      "tertiary_score": 880,
+      "delta": 65,
+      "average_score": 877.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-004",
+      "description": "Important architectural ambiguity with meaningful security and integration consequences. The PRD should constrain the choice enough for the SDD to proceed, though the exact implementation rationale could be finalized there if the PRD records the decision criteria.",
+      "gpt_score": 830,
+      "opus_score": 815,
+      "tertiary_score": 820,
+      "delta": 15,
+      "average_score": 822.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-005",
+      "description": "Valuable and close to critical because policy divergence is not testable without policy definitions. The cost is low, and formalizing the decision functions would make G-4 reproducible instead of narrative-only.",
+      "gpt_score": 820,
+      "opus_score": 755,
+      "tertiary_score": 750,
+      "delta": 65,
+      "average_score": 787.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-006",
+      "description": "Good risk-control improvement. If A-3 is disproven, FR-B may need re-grounding before completion. The added gate is justified, though it depends on how central the operator-observation evidence is relative to playtest data.",
+      "gpt_score": 760,
+      "opus_score": 775,
+      "tertiary_score": 720,
+      "delta": 15,
+      "average_score": 767.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-007",
+      "description": "Valuable scope clarification. Undefined sprint-1 phrases often become hidden work or acceptance ambiguity. Making the loop concrete or explicitly out of scope is low cost and protects sprint execution.",
+      "gpt_score": 790,
+      "opus_score": 865,
+      "tertiary_score": 890,
+      "delta": 75,
+      "average_score": 827.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-008",
+      "description": "Strong improvement because the action interface is central to agent episode correctness. Even a minimal schema makes conformance testable and reduces dependence on reading engine source. Implementation cost is moderate but justified.",
+      "gpt_score": 850,
+      "opus_score": 740,
+      "tertiary_score": 850,
+      "delta": 110,
+      "average_score": 795,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    }
+  ],
+  "disputed": [
+    {
+      "id": "IMP-011",
+      "description": "Good risk treatment. A-2 can block the graduation path, so adding fallback ownership and a decision trigger improves execution resilience. The value is high if crs governance is uncertain, moderate otherwise.",
+      "gpt_score": 740,
+      "opus_score": 0,
+      "tertiary_score": 760,
+      "delta": 740,
+      "average_score": 740,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "DISPUTED"
+    },
+    {
+      "id": "IMP-012",
+      "description": "Valuable dependency clarification. External construct ownership without a handoff or blocker marker is a common stall point. The fix is mostly planning hygiene with meaningful downstream benefit for FR-G.",
+      "gpt_score": 780,
+      "opus_score": 0,
+      "tertiary_score": 790,
+      "delta": 780,
+      "average_score": 780,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "DISPUTED"
+    }
+  ],
+  "low_value": [],
+  "blockers": [
+    {
+      "id": "SKP-001",
+      "concern": "Gate hardness classification has no runtime mechanism — the SOLID/HOLLOW split requires distinguishing hook-backed gates from prose-backed gates at render time, but no mechanism is specified. Options are: (a) inspect actual hook registration state at runtime (requires integration with Claude Code's hook infrastructure, not described anywhere), (b) read SKILL.md frontmatter declarations (which can be stale or aspirational — the exact failure mode §1 documents as the 'dominant-defect'), or (c) manual operator annotation (no enforcement). If the renderer uses SKILL.md declarations, the Observatory will faithfully render the lie it was built to expose.",
+      "severity": "CRITICAL",
+      "severity_score": 875,
+      "why_matters": "FR-A's gate-hardness honesty IS the instrument's epistemic guarantee. R-1's stated mitigation is 'solid-vs-hollow keeps the map honest' — but if the classification oracle is SKILL.md prose, the mitigation is circular. An operator making gate-design decisions from a HOLLOW-rendered-as-SOLID gate is in a worse epistemic position than before the instrument existed.",
+      "location": "FR-A (gate hardness honesty), R-1 mitigation, §1 hardness law citation",
+      "recommendation": "Before SDD, specify the classification oracle: enumerate the three options, state which is used, and define the failure mode for each. If runtime hook-registry introspection is unavailable, the PRD should downgrade the claim from 'renders SOLID vs HOLLOW' to 'annotates declared-vs-observed enforcement' and make the annotation source explicit.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-001",
+      "concern": "Next.js Shell wrapping a 'file://-runnable' engine breaks cross-origin security and Vercel deployment.",
+      "severity": "HIGH",
+      "severity_score": 780,
+      "why_matters": "Browsers strictly enforce CORS and local file access limits. A Vercel-deployed Next.js app (FR-F) cannot natively interact with or iframe a 'file://' URI without severe security violations or failing entirely, breaking the core operator experience on the web.",
+      "location": "FR-D / Section 5 (Engine sovereignty) / FR-F",
+      "recommendation": "Define a strict IPC (Inter-Process Communication) boundary. When deployed to Vercel, the engine must run via an HTTP relative path or a bundled static asset via a virtualized file system adapter, rather than relying on literal 'file://' protocol execution.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-002",
+      "concern": "Redaction mechanism (--redact) may leak secrets via unmapped custom topic fields.",
+      "severity": "HIGH",
+      "severity_score": 720,
+      "why_matters": "Relying on payload/topic scrubbing (usually a blocklist pattern) is fragile. If the sim game ingests new environment variables or user inputs during play, these unmapped secrets will be uploaded to Vercel, leaking credentials.",
+      "location": "FR-F Vercel + redaction / Section 5 Privacy",
+      "recommendation": "Enforce a deny-by-default (allowlist) schema for trace payloads leaving the local environment. Any field not explicitly mapped to 'safe-to-export' must be automatically dropped or hashed.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-001",
+      "concern": "The MVP depends on cross-repo execution in construct-rooms-substrate, but ownership, branch strategy, artifact handoff, and rollback criteria are not specified.",
+      "severity": "HIGH",
+      "severity_score": 720,
+      "why_matters": "FR-D is first in sequence and blocks the rest of the MVP. Without explicit cross-repo delivery mechanics, the sprint can stall on coordination gaps, partial migrations, or mismatched assumptions between this repo and crs.",
+      "location": "FR-D; Technical & Non-Functional: Cross-repo discipline; Risk R-3",
+      "recommendation": "Define a concrete cross-repo execution contract before sprint start: target repo/branch, responsible actor, tracking system, required handoff artifacts, acceptance checks, rollback path, and how this PRD remains synchronized with crs-side implementation.",
+      "source": "tertiary_skeptic"
+    }
+  ],
+  "degraded": false,
+  "degraded_model": null,
+  "confidence": "full",
+  "phase": "prd",
+  "document": "grimoires/loa/cycles/observatory-graduation/prd.md",
+  "domain": " product requirements document the",
+  "tertiary_model_used": "gemini-headless",
+  "tertiary_status": "active",
+  "execution": {
+    "mode": "interactive",
+    "mode_reason": "Default (no explicit mode specified)",
+    "run_id": null
+  },
+  "timestamp": "2026-06-12T19:27:51Z",
+  "metrics": {
+    "total_latency_ms": 205000,
+    "cost_cents": 0,
+    "cost_usd": 0
+  }
+}

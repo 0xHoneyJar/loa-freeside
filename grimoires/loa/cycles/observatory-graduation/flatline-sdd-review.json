@@ -1,0 +1,179 @@
+{
+  "consensus_summary": {
+    "high_consensus_count": 6,
+    "disputed_count": 0,
+    "low_value_count": 0,
+    "blocker_count": 7,
+    "model_agreement_percent": 100,
+    "models": 3,
+    "tertiary_items": 0,
+    "confidence": "full"
+  },
+  "high_consensus": [
+    {
+      "id": "IMP-001",
+      "description": "High ROI and low implementation cost. A named fallback without trigger criteria can stall sprint execution, and defining conflict classes plus decision ownership is straightforward.",
+      "gpt_score": 860,
+      "opus_score": 855,
+      "tertiary_score": 950,
+      "delta": 5,
+      "average_score": 857.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-002",
+      "description": "Critical contract gap. Without an explicit revision signal and consumer behavior, schema evolution can fail silently across clients, especially around gate parsing. Cost is modest relative to interoperability benefit.",
+      "gpt_score": 930,
+      "opus_score": 875,
+      "tertiary_score": 900,
+      "delta": 55,
+      "average_score": 902.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-003",
+      "description": "The policy extension point needs a typed behavioral contract or tests will validate incidental implementation choices. This is a core conformance issue with clear, bounded documentation and validation work.",
+      "gpt_score": 900,
+      "opus_score": 860,
+      "tertiary_score": 880,
+      "delta": 40,
+      "average_score": 880,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-004",
+      "description": "Digest semantics affect both determinism and the stated security property. Hash algorithm and canonical input must be specified for producer-verifier agreement. Clear benefit and limited cost.",
+      "gpt_score": 920,
+      "opus_score": 710,
+      "tertiary_score": 950,
+      "delta": 210,
+      "average_score": 815,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-006",
+      "description": "Audit-chain hashes require deterministic canonicalization. If the project already depends on JCS invariants, declaring the packet_digest method is necessary and inexpensive.",
+      "gpt_score": 870,
+      "opus_score": 770,
+      "tertiary_score": 920,
+      "delta": 100,
+      "average_score": 820,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-008",
+      "description": "A write-surface security model should be specified before implementation. Authentication, rate limits, quota, and TTL are standard requirements, and omission risks a public ingestion route shipping underspecified.",
+      "gpt_score": 810,
+      "opus_score": 745,
+      "tertiary_score": 890,
+      "delta": 65,
+      "average_score": 777.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    }
+  ],
+  "disputed": [],
+  "low_value": [],
+  "blockers": [
+    {
+      "id": "SKP-001",
+      "concern": "Arbitrary code execution via `--policy <file.mjs>` in `obs play`: the CLI loads ANY module that exports the right function. If the CLI is invoked from CI, shared tooling, or any environment where an adversary controls the file path argument, this is a direct code injection surface with no mention of sandboxing, path validation, or allowlisting.",
+      "severity": "HIGH",
+      "severity_score": 760,
+      "why_matters": "A compromised or user-supplied policy file executes with full Node.js process privileges inside the CI runner or operator environment. The 'one construct-agent playing one episode' MVP bar normalises this pattern before any guard is designed.",
+      "location": "§3.5 Episode schema — `obs play --policy <file.mjs>`",
+      "recommendation": "Restrict `--policy` to paths inside an explicit allowlist or a designated `policies/` directory; add a `--policy-hash <sha256>` flag and verify before eval; document the trust boundary explicitly in VERIFY.md.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-002",
+      "concern": "Client-side redaction trust allows data leakage through allowed schema fields",
+      "severity": "HIGH",
+      "severity_score": 720,
+      "why_matters": "The design states the public ingestion path is gated 'at schema level'. If the server merely validates JSON schema, a malicious or buggy client can bypass --redact and POST sensitive data (secrets, PII) inside allowed string fields. The server cannot guarantee a level is actually redacted just because it matches the schema shape.",
+      "location": "Section 3.6 (Redaction) & Section 2 (app/api/level/route.ts)",
+      "recommendation": "Execute redactLevel() strictly on the server-side within the /api/level POST handler before storage, rather than trusting the client's pre-redacted submission.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-002",
+      "concern": "Pseudonymisation is trivially reversible: `pseudonym(seed=sha256(text))` draws from the 'sim vocabulary' which is EMBEDDED in `game.html` (a sovereign public file). The vocabulary is therefore fully enumerable by anyone with the engine. For a small gate/verdict vocabulary, a complete reverse-map can be constructed offline in seconds, defeating the redaction claim entirely.",
+      "severity": "HIGH",
+      "severity_score": 720,
+      "why_matters": "The security guarantee of §3.6 — that the public ingestion path cannot receive real gate names or payloads — collapses if the pseudonym space is enumerable. Any level stored via the wave-2 share-by-link endpoint could leak operator gate topology to anyone who mirrors the engine file.",
+      "location": "§3.6 Redaction — `pseudonym(seed=sha256(text))`; §6 Security",
+      "recommendation": "Replace vocabulary-draw pseudonymisation with HMAC(key, sha256(text)) where `key` is a server-side secret never embedded in the engine. Alternatively, document that only topology is considered sensitive and explicitly disclaim name-level redaction, then adjust the security claim accordingly.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-001",
+      "concern": "Public /api/sim DoS vulnerability via unbounded simulation complexity",
+      "severity": "HIGH",
+      "severity_score": 750,
+      "why_matters": "Without strict execution bounds (e.g., max ticks, timeouts), an attacker can exhaust serverless function compute limits or incur massive billing by requesting computationally expensive simulations. Relying purely on 'Vercel defaults' for rate limiting does not prevent per-request resource exhaustion.",
+      "location": "Section 2 (app/api/sim/route.ts) & Section 6 (Security)",
+      "recommendation": "Enforce strict hard limits on simulation length (e.g., MAX_TICKS) and execution time within the server-side sim-gen invocation.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-004",
+      "concern": "The design says `/api/level` stores redacted levels for share-by-link but does not specify storage location, authorization, retention, deletion, size limits, or abuse handling.",
+      "severity": "HIGH",
+      "severity_score": 735,
+      "why_matters": "Share-by-link storage becomes a public persistence surface. Without lifecycle and abuse controls, it can accumulate sensitive data, illegal content, oversized payloads, or unbounded storage costs even if schema redaction exists.",
+      "location": "Section 2 Repository layout; Section 3.6 Redaction; Section 5 Shell design; Section 8 Sprint shape S5",
+      "recommendation": "Define the storage backend, maximum payload size, TTL, deletion path, content validation, deduplication, quota/rate limiting, and whether links are public, unlisted, signed, or authenticated.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-001",
+      "concern": "The public `/api/sim` endpoint relies on “Vercel defaults” for rate limiting, but Vercel does not provide application-specific abuse controls by default.",
+      "severity": "HIGH",
+      "severity_score": 720,
+      "why_matters": "A deterministic simulation endpoint can still be abused for CPU exhaustion, cache bypass, large response generation, or cost amplification. Treating platform defaults as rate limiting leaves the deployed surface under-specified and potentially vulnerable to denial-of-service.",
+      "location": "Section 5 Shell design; Section 6 Security; Section 7 Shell verification",
+      "recommendation": "Define explicit limits for `/api/sim`: accepted parameter ranges, max response size, timeout budget, cache policy, per-IP or token-bucket rate limits, and tests for rejected oversized or invalid requests.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-002",
+      "concern": "`obs play --policy <file.mjs>` loads arbitrary modules, but the design does not define a sandbox, permission boundary, or trust model.",
+      "severity": "HIGH",
+      "severity_score": 760,
+      "why_matters": "Loading arbitrary policy modules can execute filesystem, network, environment, or process operations in the CLI runtime. This creates a local execution and supply-chain risk, especially if policies are shared across Loa repositories or used in CI.",
+      "location": "Section 3.5 Episode schema; Section 7 Episode schema testing",
+      "recommendation": "Specify whether policy modules are trusted-only. If untrusted or semi-trusted policies are expected, run them in a constrained worker or subprocess with no secrets, no network, controlled filesystem access, timeout limits, and explicit import restrictions.",
+      "source": "tertiary_skeptic"
+    }
+  ],
+  "degraded": false,
+  "degraded_model": null,
+  "confidence": "full",
+  "phase": "sdd",
+  "document": "grimoires/loa/cycles/observatory-graduation/sdd.md",
+  "domain": " 1 architecture overview app",
+  "tertiary_model_used": "gemini-headless",
+  "tertiary_status": "active",
+  "execution": {
+    "mode": "hitl",
+    "mode_reason": "Simstim workflow active (.run/simstim-state.json state=RUNNING)",
+    "run_id": null
+  },
+  "timestamp": "2026-06-12T19:38:07Z",
+  "metrics": {
+    "total_latency_ms": 199000,
+    "cost_cents": 0,
+    "cost_usd": 0
+  }
+}

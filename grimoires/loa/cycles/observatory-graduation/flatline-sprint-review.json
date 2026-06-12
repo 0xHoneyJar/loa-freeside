@@ -1,0 +1,257 @@
+{
+  "consensus_summary": {
+    "high_consensus_count": 10,
+    "disputed_count": 0,
+    "low_value_count": 0,
+    "blocker_count": 10,
+    "model_agreement_percent": 100,
+    "models": 3,
+    "tertiary_items": 0,
+    "confidence": "full"
+  },
+  "high_consensus": [
+    {
+      "id": "IMP-001",
+      "description": "Critical integration. A decision gate with missing trigger criteria is not executable or reviewable, and the cost to fix is low: inline a checklist or add a resolvable reference. High downstream impact because the fallback changes later sprints.",
+      "gpt_score": 930,
+      "opus_score": 820,
+      "tertiary_score": 950,
+      "delta": 110,
+      "average_score": 875,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-002",
+      "description": "Critical integration. The S1 decision affects S2-S5 scope, so an explicit branch gate is needed to keep the plan coherent. Implementation cost is modest compared with the planning risk it removes.",
+      "gpt_score": 910,
+      "opus_score": 845,
+      "tertiary_score": 920,
+      "delta": 65,
+      "average_score": 877.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-003",
+      "description": "Critical integration. Conflicting numeric acceptance targets create an immediate quality-gate failure mode. This is cheap to fix and directly improves traceability against G-1.",
+      "gpt_score": 880,
+      "opus_score": 805,
+      "tertiary_score": 900,
+      "delta": 75,
+      "average_score": 842.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-004",
+      "description": "Critical but slightly less central than the branch-gate issues. A structured diagnosis format is appropriate because the deliverable gates later work; adding required fields is low cost and prevents ambiguous closure.",
+      "gpt_score": 820,
+      "opus_score": 780,
+      "tertiary_score": 880,
+      "delta": 40,
+      "average_score": 800,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-005",
+      "description": "Critical integration. An undefined remediation path at a closure gate makes the sprint impossible to execute deterministically if the branch fires. The fix should include both scope and timeline impact.",
+      "gpt_score": 900,
+      "opus_score": 855,
+      "tertiary_score": 880,
+      "delta": 45,
+      "average_score": 877.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-006",
+      "description": "Valuable. Task tracker fallback is important for cross-session continuity, especially given the degraded primary-local tracker note. It is slightly less critical than the plan-internal gate defects because it is operational rather than semantic, but the fix is cheap.",
+      "gpt_score": 760,
+      "opus_score": 715,
+      "tertiary_score": 820,
+      "delta": 45,
+      "average_score": 737.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-008",
+      "description": "Valuable. Load-only compatibility checks are weak when the feature has visible rendering semantics. Adding a visual regression or render assertion is justified, with moderate implementation cost depending on the existing test harness.",
+      "gpt_score": 720,
+      "opus_score": 875,
+      "tertiary_score": 920,
+      "delta": 155,
+      "average_score": 797.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-010",
+      "description": "Valuable and near-critical. If registry-only resolution is an architectural requirement, the dispatch path must be specified or the conformance test can pass while bypassing the intended integration. The cost is low if the SDD path is already known.",
+      "gpt_score": 790,
+      "opus_score": 740,
+      "tertiary_score": 850,
+      "delta": 50,
+      "average_score": 765,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-011",
+      "description": "Critical integration. Security-adjacent rejection behavior must be in acceptance criteria, not only task prose. The cost is low and the benefit is high because it prevents a key redactLevel property from being skipped.",
+      "gpt_score": 830,
+      "opus_score": 880,
+      "tertiary_score": 950,
+      "delta": 50,
+      "average_score": 855,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-012",
+      "description": "Valuable. A rollback or abort criterion is important for managing the dual-state window and avoiding drift. It is somewhat broader and may require operator policy input, but the absence is a real lifecycle risk.",
+      "gpt_score": 740,
+      "opus_score": 860,
+      "tertiary_score": 850,
+      "delta": 120,
+      "average_score": 800,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    }
+  ],
+  "disputed": [],
+  "low_value": [],
+  "blockers": [
+    {
+      "id": "SKP-001",
+      "concern": "/api/sim ships publicly (S5.2) while its abuse-prevention spec is explicitly marked 'pending' — six conditions unspecified before the public surface goes live",
+      "severity": "CRITICAL",
+      "severity_score": 880,
+      "why_matters": "A public simulation endpoint without a finalized rate-limit+auth spec is an open compute tap. Token-bucket middleware from S1.2 has no documented parameters, burst ceiling, or key-binding — a motivated caller can exhaust the sim budget before the spec lands.",
+      "location": "Sprint 5 §5.2; Sprint 1 §1.2",
+      "recommendation": "Block S5.2 Vercel deploy on a written, reviewed six-condition spec for /api/sim (max seeds/min, identity binding, burst policy, cost ceiling, abuse response, monitoring). The spec must exist before the endpoint is reachable, not after.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-002",
+      "concern": "?live= query parameter in S5.3 has no documented security model — it gates live-spectate of real /compose runs with no access control specified",
+      "severity": "CRITICAL",
+      "severity_score": 840,
+      "why_matters": "A public URL with ?live= exposing real construct-agent episodes leaks operator decision traces, prompt fragments, and internal gate verdicts to anyone who can guess or enumerate run IDs. No auth boundary is named.",
+      "location": "Sprint 5 §5.3",
+      "recommendation": "Define the access model before implementation: Is ?live= auth-gated (session token, signed URL, allowlist)? Is run-ID guessable or cryptographically opaque? Document the boundary in SDD §3 before S5.3 is coded.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-001",
+      "concern": "Public exposure of /api/sim lacks authentication and robust DoS protection.",
+      "severity": "CRITICAL",
+      "severity_score": 850,
+      "why_matters": "Sprint 1.2 adds a basic 'token-bucket' and Sprint 5.2 deploys this to Vercel for public sharing. Without authentication or strict global rate limits, attackers can easily exhaust serverless compute quotas, leading to denial of service and unexpected billing spikes.",
+      "location": "Sprint 1.2 & Sprint 5.2",
+      "recommendation": "Implement authentication (e.g., cryptographic share tokens with hard expirations) for the public endpoint, or enforce aggressive WAF rules and global budget caps prior to the Vercel deployment.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-003",
+      "concern": "S1.3 A-2 checkpoint requires operator review before S2 starts, but there is no gate blocking autonomous /coord dispatch from opening S2 work orders before the decision is logged",
+      "severity": "HIGH",
+      "severity_score": 750,
+      "why_matters": "In autonomous run mode, /coord can sequence S1 close → S2 open without pausing for the A-2 operator decision. If the 'freeside-observatory fallback' branch should have been taken, S2–S4 work lands in the wrong home and must be re-extracted at cost.",
+      "location": "Sprint 1 §1.3; Cross-cutting /coord dispatch note",
+      "recommendation": "Add an explicit HALT condition to the S1 work order: A-2 decision must appear in decisions.md with status accept|fallback before the /coord S2 work order is emitted. Wire the check as a CI job on the crs branch, not prose.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-004",
+      "concern": "S1.4 loiter diagnosis gates S3.4 (FR-B closure), but S3's task list has no dependency arrow back to S1.4 — S3 can close before the diagnosis is confirmed, satisfying the acceptance criterion with an unchecked citation",
+      "severity": "HIGH",
+      "severity_score": 730,
+      "why_matters": "If S1.4 finds that A-3 is disproven and mechanics need re-grounding (IMP-006), but S3 already closed with 'decisions.md entry with beat citation,' the sprint plan records a pass on a gate whose prerequisite input never arrived. The loiter stays in production.",
+      "location": "Sprint 1 §1.4; Sprint 3 §3.4",
+      "recommendation": "S3.4's acceptance criterion should read: 'decisions.md entry references S1.4 finding by hash/commit; if A-3 disproven, IMP-006 re-ground is a BLOCKER before S3.4 closes.' Make the dependency explicit in the work order.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-002",
+      "concern": "Same-origin iframe implementation for engine risks Cross-Site Scripting (XSS) via untrusted levels.",
+      "severity": "HIGH",
+      "severity_score": 750,
+      "why_matters": "Iframing the engine as 'same-origin' means any malicious payload injected into a level JSON (e.g., via a compromised producer, trace, or untrusted construct episode) could execute within the parent application's context, compromising user sessions and data.",
+      "location": "Sprint 1.2",
+      "recommendation": "Use strict iframe sandboxing (e.g., sandbox='allow-scripts' without 'allow-same-origin') and apply a stringent Content Security Policy (CSP) blocking inline script execution on the engine route.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-005",
+      "concern": "Sprint 5 redaction requires salted HMAC pseudonyms and rejection of unredacted public ingestion, but the plan does not specify secret management, salt lifecycle, allowed fields, topology leakage analysis, or test fixtures for sensitive fields.",
+      "severity": "HIGH",
+      "severity_score": 740,
+      "why_matters": "Redaction can give a false sense of safety while leaking identities through topology, vocabulary, stable identifiers, metadata, or reused salts. This is especially risky for public sharing.",
+      "location": "Sprint 5 Task 5.1",
+      "recommendation": "Define the exact allowlist schema, forbidden fields, HMAC key source, salt generation/storage rules, metadata scrubbing, topology leakage review, and red-team fixtures containing realistic sensitive values.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-005",
+      "concern": "Termination conformance test for policy registry (S4.1) cannot be mechanically proven — 'terminating' is listed as a property but arbitrary decision functions are not decidable",
+      "severity": "HIGH",
+      "severity_score": 720,
+      "why_matters": "A policy that loops or diverges on unusual game states will cause obs play to hang without a timeout guard. If the construct-agent in S4.3 exercises an unterminated policy, the episode JSONL never closes and the level never renders — acceptance criterion silently fails to fire.",
+      "location": "Sprint 4 §4.1",
+      "recommendation": "Replace 'terminating' property test with a bounded-step harness: run each policy against a maxSteps cap (e.g. 1000); PASS = episode closes within cap; FAIL = timeout. Document the cap as a game invariant. True decidability is not achievable; bounded termination is.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-001",
+      "concern": "The execution tracker is explicitly outside loa-freeside and beads in loa-freeside is degraded, but the sprint plan does not define a verifiable handoff/audit mechanism that proves crs beads, /coord work orders, PRs, and loa-freeside review gates remain synchronized.",
+      "severity": "HIGH",
+      "severity_score": 760,
+      "why_matters": "The cycle can appear complete in one repo while the real tracker, artifacts, or gate state diverge elsewhere. That creates a high risk of false graduation, missed blockers, or unauditable acceptance decisions.",
+      "location": "Header; Cross-cutting /coord dispatch; Sprint 1 Task 1.3",
+      "recommendation": "Add a required per-sprint handoff artifact containing crs bead IDs, branch SHA, PR URL, artifact manifest, CI run IDs, reviewer decision, and loa-freeside gate status. Make review fail if any referenced item is missing or stale.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-002",
+      "concern": "The plan relies on byte-matching vectors and visual captures, but does not specify canonical serialization, environment pinning, browser/device baselines, timezone/locale handling, or how nondeterminism is excluded.",
+      "severity": "HIGH",
+      "severity_score": 720,
+      "why_matters": "Golden vectors and screenshots can become flaky or non-reproducible across machines, CI, and branches. That undermines the main verification mechanism for graduation.",
+      "location": "Sprint 1 Task 1.1; Sprint 1 Task 1.2; Sprint 2 Task 2.4; Cross-cutting verification",
+      "recommendation": "Define a deterministic verification contract: pinned Node/package/browser versions, JCS or equivalent serialization for all hashes, fixed timezone/locale, seeded RNG boundaries, viewport matrix, and explicit tolerated screenshot diffs.",
+      "source": "tertiary_skeptic"
+    }
+  ],
+  "degraded": false,
+  "degraded_model": null,
+  "confidence": "full",
+  "phase": "sprint",
+  "document": "grimoires/loa/cycles/observatory-graduation/sprint.md",
+  "domain": " execution home sprints s1",
+  "tertiary_model_used": "gemini-headless",
+  "tertiary_status": "active",
+  "execution": {
+    "mode": "hitl",
+    "mode_reason": "Simstim workflow active (.run/simstim-state.json state=RUNNING)",
+    "run_id": null
+  },
+  "timestamp": "2026-06-12T19:44:44Z",
+  "metrics": {
+    "total_latency_ms": 200000,
+    "cost_cents": 0,
+    "cost_usd": 0
+  }
+}
