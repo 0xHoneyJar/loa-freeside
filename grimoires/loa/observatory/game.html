@@ -78,24 +78,74 @@
 <script>
 // ───────────────── pixel sprites (8×8) — role temperature (W2-7): keepers are the
 // ONLY cold-steel monochrome; vocab indigo; proto amber (protocol-as-seal) ─────────
-const PAL={'.':null,k:'#0b0e1c',w:'#2a3350',g:'#ffd070',G:'#b8902f',o:'#7fd98a',r:'#ff5a4d',
-  b:'#6fa8ff',p:'#a96fe8',a:'#e8b45f',e:'#2f6f4f',m:'#7a4fa0',f:'#ff9a4f',s:'#cfd8e6',t:'#9fb8d8',v:'#8a7fe8'};
+const PAL={
+  'o':'#0b0e1c', // edge outline (darker than floor)
+  'B':'#6fa8ff','b':'#3a5fa8','c':'#b8dcff',           // arcade blues
+  'V':'#a96fe8','v':'#7a4fa0',                          // khole violets
+  'A':'#e8b45f','a':'#b07f35','G':'#ffd070',            // ambers + gold
+  'E':'#7fd98a','g':'#2f6f4f',                          // gecko greens
+  'F':'#ff9a4f','m':'#7a4030',                          // forge flame + warm iron
+  'I':'#8a7fe8','i':'#5a4fa8','P':'#efe8d6',            // vocab indigo + pale pages
+  'S':'#cfd8e6','s':'#9fb8d8','d':'#5f7390',            // keeper cold steel (keeper-only)
+  'R':'#ff5a4d','r':'#a83232','k':'#2a2336',            // reaper rage + void
+  'W':'#ffffff'                                          // eye/spark white
+};
 const SPR={
-  arcade:[".bbbbb..",".b...b..",".bbbbb..","..bbb...",".bsssb..","bsbbbsb.","..b.b...",".b...b.."],
-  khole:["..p.p...",".ppppp..","ppmpmpp.","pmmpmmp.",".pmpmp..","..ppp...","...p....","..p.p..."],
-  artisan:["..aaa...",".a...a..",".aaaaa..","..aGa...","..aaa...",".a.a.a..","a..a..a.","...a...."],
-  gecko:["e..ee...",".eeee...","eeoeoe..",".eeeee..","..eee...",".e.e.e..","e..e..e.","........"],
-  noether:["..fff...",".fffff..","ffoofff.","ffffff..",".ffff...","..ff....",".f..f...","f....f.."],
-  proto:["..aaa...",".a...a..","a.b.b.a.","a..o..a.",".a...a..","..aaa...","..a.a...",".a...a.."],
-  easel:["..aaaa..",".a....a.",".agggga.",".agGGga.",".a....a.","..a..a..",".a....a.","a......a"],
-  vocab:["........",".vvvvvv.","vs.vv.sv","vssvvssv","vssvvssv","vs.vv.sv",".vvvvvv.","........"],
-  keeper:["..tt..s.",".tttt.s.",".t..t.s.","tsssts..","tsssts..","tsssts..",".t..t...",".t..t..."],
-  reaper:["..rrr...",".r...r..","r.k.k.r.","r.....r.",".r...r..","..rrr...","..r.r...",".rr.rr.."],
+arcade:[
+'................','......ocBo......','.......bb.......','..oooooooooooo..',
+'..oBcBBBBBBcBo..','..oBooooooooBo..','..oBobbbbbboBo..','..oBobWbbWboBo..',
+'..oBobbbbbboBo..','..oBobbWWbboBo..','..oBooooooooBo..','..obbGbbbbGbbo..',
+'..oBBBBBBBBBBo..','..oooooooooooo..','...obbo..obbo...','...oooo..oooo...'],
+khole:[
+'................','......oooo......','.....oVVVVo.....','....oVVVVVVo....',
+'...oVvvvvvvVo...','..oVvVVVVVvVo...','..oVvvvvvVvVo...','..oVvvVVvVvVo...',
+'..oVvvWvvVvVo...','..oVvvVVVVvVo...','..oVvvvvvvvVo...','...oVVVVVVVVo...',
+'...oVVoVVoVVo...','...oVo.oVo.oVo..','................','................'],
+artisan:[
+'................','....oooooo......','...oaaaaaao.....','..oAAAAAAAAo....',
+'..oAAoAAoAAo....','..oAAAAAAAAo....','...oooooooo.....','..oAAAAGGAAAAo..',
+'..oAaaGaaGaaAo..','..oAaGaaaaGaAo..','..oAaGaaaaGaAo..','..oAAAAAAAAAAo..',
+'...oooooooooo...','....oaao..oaao..','....oooo..oooo..','................'],
+gecko:[
+'................','................','................','................',
+'..oooo......EE..','.oEoWEo......E..','.oEWWEgggggg.E..','.oEEEEEggggEEE..',
+'..oEEEEEEEEEo...','..oEEEEEEEEEo...','...oEEo..oEEo...','...oEo....oEo...',
+'................','................','................','................'],
+noether:[
+'................','.......oFo......','......oFFo......','.....oFFFFo.....',
+'....oFFGGFFo....','....oFGGGGFo....','...oFFGGGGFFo...','...oFGoGGoGFo...',
+'...oFGGGGGGFo...','....oFFFFFFo....','..oooooooooooo..','.ommmmGFFGmmmmo.',
+'...ommmmmmmmo...','.....ommmmo.....','...ommmmmmmmo...','...oooooooooo...'],
+proto:[
+'................','......oooo......','....ooGGGGoo....','...oGAAAAAAGo...',
+'...oGAoAAoAGo...','...oGAAAAAAGo...','...oGAAAAEAGo...','...oGEAAEAAGo...',
+'...oGAEEAAAGo...','....ooGGGGoo....','......oooo......','.....oaaoaao....',
+'....oaao.oaao...','...oaao...oaao..','..oao.......oao.','................'],
+easel:[
+'................','.......oo.......','......oAAo......','......oAAo......',
+'..oooooooooooo..','..oGGGGGGGGGGo..','..oGGGGGGGAAGo..','..oGGaGGGGAAGo..',
+'..oGaaaGGGGGGo..','..oaaaaaGGGGGo..','..oooooooooooo..','.oAAAAAAAAAAAAo.',
+'....oAAo.oAAo...','...oAAo...oAAo..','..oAAo.....oAAo.','................'],
+vocab:[
+'................','............W...','...........WWW..','............W...',
+'................','................','.oPPoo....ooPPo.','.oPPPPooooPPPPo.',
+'.oPiiPPiiPPiiPo.','.oPPiiPiiPiiPPo.','.oPPPPPiiPPPPPo.','.oIIIIIiiIIIIIo.',
+'..oIIIIooIIIIo..','....oooooooo....','................','................'],
+keeper:[
+'...S............','...S....oo......','...s...oSSSSo...','...s...oSooSo...',
+'...s...osSSso...','...s..oossssoo..','...s.oSSSssSSSo.','...s.oSSSssSSSo.',
+'...s.oSSsddsSSo.','...s.oSSsddsSSo.','...s.oSSSssSSSo.','...s.oSSSssSSSo.',
+'...s..oSSssSSo..','...s...oSssSo...','...s....osso....','...s............'],
+reaper:[
+'................','....oRRRRRRRo...','....oRooooRRro..','............ro..',
+'....rrr.....ro..','...rkkkr....ro..','..rkkkkkr...ro..','..rkoookr...ro..',
+'..rkRoRkr...ro..','..rkkkkkr...ro..','.rkkkkkkkr.Pro..','.rkkkkkkkkr.ro..',
+'.rkkkkkkkkr.ro..','.rkkrkkrkkr.ro..','.rkr.rkr.rkrro..','................']
 };
 function sprite(ctx,name,px,py,sc,glow,white,alpha){const s=SPR[name];if(!s)return;
   if(alpha!==undefined){ctx.globalAlpha=alpha;}
   if(glow){ctx.shadowColor=glow;ctx.shadowBlur=3*sc;}
-  for(let y=0;y<8;y++)for(let x=0;x<8;x++){const col=PAL[s[y][x]];if(!col)continue;
+  for(let y=0;y<16;y++)for(let x=0;x<16;x++){const col=PAL[s[y][x]];if(!col)continue;
     ctx.fillStyle=white?'#ffffff':col;ctx.fillRect(px+x*sc,py+y*sc,sc,sc);}
   ctx.shadowBlur=0; if(alpha!==undefined)ctx.globalAlpha=1;}
 
@@ -507,17 +557,17 @@ function draw(ts){
     const nx=-vy, ny=vx;
     for(let kI=0;kI<g.h.keepers;kI++){
       const o=g.h.keepers===1?16:((kI%2?-1:1)*18*(Math.floor(kI/2)+1));
-      const kx=dx+T/2-12+nx*o, kyy=dy+T/2-14+ny*o;
+      const kx=dx+T/2-16+nx*o, kyy=dy+T/2-16+ny*o;
       const beatAt=B*(kI+.5);
       const beat=here&&pt>=beatAt&&pt<beatAt+.18;
       const jab=(g.h.verdict==='REJECTED'||g.h.verdict==='DENIED')?2:-2;   // refusal jabs DOWN
       ctx.shadowColor=TK['--steel']; ctx.shadowBlur=here?9:3;              // role glow (E-7)
-      sprite(ctx,'keeper',kx,kyy+(beat?jab:0),3,null);
+      sprite(ctx,'keeper',kx,kyy+(beat?jab:0),2,null);
       ctx.shadowBlur=0;
       const kc=turned>kI?TK[vstyle.c]:'#5a648a';
       ctx.globalAlpha=turned>kI?vstyle.key:1;
       ctx.fillStyle=kc; ctx.font='13px ui-monospace'; ctx.textAlign='center';
-      ctx.fillText('⚷', kx+12, kyy-6); ctx.textAlign='left'; ctx.globalAlpha=1;
+      ctx.fillText('⚷', kx+16, kyy-8); ctx.textAlign='left'; ctx.globalAlpha=1;
     }
     if(done||here){ let a=vstyle.bar, bc=TK[vstyle.c];
       if(i===drainGate){ a=.55+.30*(.5+.5*Math.sin(simT*5.027)); }         // the drain pulls (W2-12)
@@ -546,8 +596,8 @@ function draw(ts){
     let fl=false, fa;
     if(flash.room===r.id&&simT<flash.until){ const ft=simT-(flash.until-.16);
       if(ft<.05){fl=true;fa=undefined;} else {fl=true;fa=Math.exp(-(ft-.05)/.07);} }
-    sprite(ctx,r.spr, asx-16+jx, asy-18+jy, 4, glow, false, wounded?.55:undefined);
-    if(fl) sprite(ctx,r.spr, asx-16+jx, asy-18+jy, 4, null, true, fa);
+    sprite(ctx,r.spr, asx-16+jx, asy-18+jy, 2, glow, false, wounded?.55:undefined);
+    if(fl) sprite(ctx,r.spr, asx-16+jx, asy-18+jy, 2, null, true, fa);
     // clock-ring rides ABOVE THE AGENT (the clock is the agent's time) + the notch (A-3)
     const cx=asx+jx, cy=asy-28+jy, u=ck[r.id];
     ctx.strokeStyle='#23283c';ctx.lineWidth=3;ctx.beginPath();ctx.arc(cx,cy,7,0,6.283);ctx.stroke();
@@ -588,7 +638,7 @@ function draw(ts){
     let show=true, ry=rest.y;
     if(pi===reapIdx){ if(pt<.9) show=false;                                  // the air owns this beat
       else if(pt<1.18){ const tD=(pt-.9)/.28; ry=rest.y-150*(1-tD*tD); } }   // falling bodies accelerate
-    if(show) sprite(ctx,'reaper',rest.x,ry,4,TK['--rage']);
+    if(show) sprite(ctx,'reaper',rest.x,ry,2,TK['--rage']);
     if(strikeT>=0&&simT-strikeT<.034){ const R=RAD(roomById(phases[reapIdx].room));
       ctx.globalAlpha=.65; ctx.fillStyle='#fff';
       ctx.fillRect((rc.tx-2)*T-camx,(rc.ty-2)*T-camy,5*T,5*T); ctx.globalAlpha=1; }
