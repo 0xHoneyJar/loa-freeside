@@ -131,9 +131,12 @@ export class DuneClient {
     return this._request(`/query/${queryId}/execute`, { method: 'POST', body: { performance } });
   }
 
-  /** Execute raw SQL (Dune query-execution by SQL). small engine by default. */
+  /** Execute raw SQL via Dune's first-party raw-SQL endpoint (POST
+   *  /api/v1/sql/execute → { execution_id, state }). small engine by default.
+   *  NB: the inline-SQL endpoint is /sql/execute with body { sql } — NOT
+   *  /query/execute (which is not a live Dune route → HTTP 405). */
   async executeSql(sql, { performance = ENGINES.small } = {}) {
-    return this._request('/query/execute', { method: 'POST', body: { query_sql: sql, performance } });
+    return this._request('/sql/execute', { method: 'POST', body: { sql, performance } });
   }
 
   /** Poll an execution's status until it terminates or the poll budget expires. */

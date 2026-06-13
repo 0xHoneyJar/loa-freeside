@@ -11,9 +11,11 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 import { creditsForDatapoints, estimateDatapoints, verdictFor, buildEstimate } from '../src/estimate.mjs';
 import {
@@ -453,4 +455,49 @@ test('budget recent_atoms caps at last 5', async () => {
     assert.equal(j.recent_atoms[0].query_id, '3'); // atoms 3..7
     assert.equal(j.recent_atoms[4].query_id, '7');
   } finally { e.cleanup(); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// bd-qbts / sprint-bug-170 — defect A (raw-SQL execute endpoint → Dune 405) +
+// defect B (bin not executable). FETCH-LEVEL through the real DuneClient — NOT the
+// client-level mockClient above, whose canned `executeSql` masked the dead HTTP
+// path (the coverage gap that let this ship). Offline, deterministic, no Dune spend.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Records url + method + parsed body of every fetch; responds canned to any URL.
+function recordingFetch(responder = () => ({ json: {} })) {
+  const calls = [];
+  const fetchImpl = async (url, opts = {}) => {
+    const body = opts.body ? JSON.parse(opts.body) : undefined;
+    calls.push({ url, method: opts.method ?? 'GET', body });
+    const { status = 200, json = {} } = responder(url, opts) ?? {};
+    return { ok: status >= 200 && status < 300, status, async json() { return json; }, async text() { return JSON.stringify(json); } };
+  };
+  return { fetchImpl, calls };
+}
+
+test('executeSql routes raw SQL to the first-party /sql/execute endpoint with {sql, performance} (defect A — the 405 fix)', async () => {
+  const { fetchImpl, calls } = recordingFetch(() => ({ json: { execution_id: 'exec-sql-1', state: 'QUERY_STATE_PENDING' } }));
+  const client = new DuneClient({ apiKey: 'k', fetchImpl, sleepImpl: async () => {} });
+  const res = await client.executeSql('SELECT 1');
+  const post = calls.find((c) => c.method === 'POST');
+  assert.ok(post, 'executeSql issues a POST');
+  assert.ok(post.url.endsWith('/api/v1/sql/execute'), `POST goes to /api/v1/sql/execute (got ${post.url})`);
+  assert.deepEqual(post.body, { sql: 'SELECT 1', performance: 'small' }, 'body uses {sql} (not the dead {query_sql})');
+  assert.equal(res.execution_id, 'exec-sql-1');
+});
+
+test('executeSql NEVER POSTs the dead /query/execute endpoint (defect A regression — locks out the Dune 405)', async () => {
+  const { fetchImpl, calls } = recordingFetch(() => ({ json: { execution_id: 'exec-sql-2' } }));
+  const client = new DuneClient({ apiKey: 'k', fetchImpl, sleepImpl: async () => {} });
+  await client.executeSql('SELECT 1');
+  assert.equal(calls.some((c) => c.url.includes('/query/execute')), false, 'must not hit /query/execute (Dune: HTTP method not allowed)');
+});
+
+test('bin/dune-meter.mjs is executable and spawns directly (defect B — DUNE_METER_BIN consumers child_process.spawn it)', () => {
+  const bin = fileURLToPath(new URL('../bin/dune-meter.mjs', import.meta.url));
+  assert.notEqual(statSync(bin).mode & 0o111, 0, 'bin must carry an executable bit');
+  const r = spawnSync(bin, ['--help'], { encoding: 'utf8' });
+  assert.equal(r.status, 0, `spawned --help exits 0 (status=${r.status}, stderr=${r.stderr})`);
+  assert.match(r.stdout, /dune-meter/, '--help prints usage');
 });
