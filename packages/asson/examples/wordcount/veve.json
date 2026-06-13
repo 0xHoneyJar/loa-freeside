@@ -59,10 +59,10 @@
   },
   "attestation": {
     "tree_hash": "sha256:40d0f6b007b7924feb511bdc868dd9abd0070fcca9a6e13efc6124ea464f55d8",
-    "git_commit": "4d0116e623ed5815703986635bf70f10ca5be4f6",
+    "git_commit": "76224fdd4af1b2cc54a0d5f24b2901687d175c1a",
     "signed_by_key_id": "6948d2ae56ebd71aff295174170cf1f39b073e8261441a0137f4a8073679511a",
     "signature_type": "dev_signature",
-    "ts": "2026-06-12T01:34:50.040Z",
-    "signature": "HEqVPh4RWvCglSKFwNxqRYuxBC9KUXXcfCBKpQuQFl2qeE0gxNJhD1RLXj51ZlnhlOoyUwv03cnN0Pq5spG/DQ=="
+    "ts": "2026-06-12T03:25:16.090Z",
+    "signature": "FlWlHtEwk5HJXIu4J9IPcp5dLCSRNaF5Zoo7zSdEHTeefQhI+wYvQDd5xoHuACjNmIHq6NRUtiZLBf/51tvnAA=="
   }
 }

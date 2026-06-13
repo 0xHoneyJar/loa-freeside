@@ -1719,6 +1719,11 @@ preferences:
 bridgebuilder:
   enabled: true
   model: "claude-headless"
+  # claude-headless terminates at an Opus-class CLI but multi-model-pipeline's
+  # isReasoningClass() misses the alias (matches /opus/ only) -> 300s SIGTERM
+  # on big diffs (KF-010 class). Until the predicate covers headless aliases,
+  # bound the prompt so pass-1 fits the 300s budget. Filed upstream.
+  max_diff_bytes: 140000
 
 # =============================================================================
 # Simstim — HITL accelerated development workflow (enabled 2026-06-11,
@@ -1726,3 +1731,19 @@ bridgebuilder:
 # =============================================================================
 simstim:
   enabled: true
+
+# =============================================================================
+# Hounfour overrides — subscription-regime routing (2026-06-12, operator
+# session: crs issue #40 singleton-up). The upstream default (mid → cheap ≡
+# sonnet) encodes metered-API economics; on the operator's flat-rate CLI
+# subscription, mid-tier singular work (flatline councils, BB panels,
+# construct stages) runs Opus-class by preference — "opus for flatline/bb/
+# constructs, fable sometimes" (operator, 2026-06-12). Deep-merged over
+# .claude/defaults/model-config.yaml (loader layer 2); sibling provider keys
+# (openai/google mid) are preserved. REVERT = delete this block.
+# =============================================================================
+hounfour:
+  tier_groups:
+    mappings:
+      mid:
+        anthropic: opus   # → claude-opus-4-8 (was: cheap ≡ claude-sonnet-4-6)
