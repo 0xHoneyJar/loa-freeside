@@ -1747,3 +1747,17 @@ hounfour:
     mappings:
       mid:
         anthropic: opus   # → claude-opus-4-8 (was: cheap ≡ claude-sonnet-4-6)
+  # 2026-06-13: claude-headless is the SINGLE source of the headless model for
+  # BB, flatline, and every chain-walk fallback. The System Zone default pins
+  # its cli_model to `fable`, but Claude Fable 5 is unavailable on this
+  # subscription (mythos-access) → `claude --model fable` exits 1 → the
+  # anthropic voice chain-exhausts on every run. Pin to `opus` (= latest Opus
+  # 4.8) — matches the operator preference above ("opus for flatline/bb/
+  # constructs"). `opus` alias, not a literal pin (literals are what staled
+  # fable + claude-opus-4-7). REVERT = delete this providers block.
+  providers:
+    anthropic:
+      models:
+        claude-headless:
+          extra:
+            cli_model: opus
