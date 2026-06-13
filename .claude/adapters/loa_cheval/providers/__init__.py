@@ -26,10 +26,11 @@ from loa_cheval.types import ConfigError, ProviderConfig
 #   from `claude-code:session` (NATIVE_PROVIDER) — that's the in-process
 #   native runtime; this is a subprocess CLI invocation. See
 #   claude_headless_adapter.py.
-# - cursor-headless: routes through `cursor-agent --print` (Cursor Agent CLI)
-#   for Cursor subscription auth (no API key consumed). A distinct expert-SWE
-#   review voice — its own corpus/harness, so a dedicated `cursor` provider
-#   rather than sitting under `openai`. See cursor_headless_adapter.py.
+# - cursor-headless: routes through `cursor-agent -p` (Cursor Agent CLI) for
+#   Cursor subscription auth (no API key consumed). Brings the Composer model
+#   line (Moonshot-Kimi base + agentic RL) in as a distinct-corpus voice for
+#   consensus panels. Read-only + sandboxed (the prompt is untrusted). See
+#   cursor_headless_adapter.py.
 _ADAPTER_REGISTRY: Dict[str, Type[ProviderAdapter]] = {
     "openai": OpenAIAdapter,
     "anthropic": AnthropicAdapter,
@@ -51,6 +52,23 @@ def get_adapter(config: ProviderConfig) -> ProviderAdapter:
     return adapter_cls(config)
 
 
+def cli_adapter_types() -> frozenset:
+    """Adapter types that dispatch via a subscription-CLI subprocess (kind: cli).
+
+    Derived from the registry so a NEW headless adapter is admitted by the
+    kind:cli dispatch path automatically — review #966 closed the gap where
+    cursor-headless was registered here but rejected by cheval's closed
+    escape-hatch list. Keyed on the adapter class's own auth_type contract,
+    not the name convention (BB #966 round-2): the attribute IS the semantic;
+    a rename cannot silently drop an adapter from CLI admission.
+    """
+    return frozenset(
+        t
+        for t, cls in _ADAPTER_REGISTRY.items()
+        if getattr(cls, "auth_type", None) == "headless"
+    )
+
+
 __all__ = [
     "ProviderAdapter",
     "OpenAIAdapter",
@@ -62,4 +80,5 @@ __all__ = [
     "ClaudeHeadlessAdapter",
     "CursorHeadlessAdapter",
     "get_adapter",
+    "cli_adapter_types",
 ]
