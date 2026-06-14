@@ -15,6 +15,7 @@
 // Same seed → byte-identical LevelData (obs-level/1) → asson golden vectors.
 import { writeFileSync } from "node:fs";
 import { validateLevel, defaultLevel, SCHEMA, CONTRACT_REV } from "./level-contract.mjs";
+import { CASTS } from "./casts.mjs";
 
 const args = process.argv.slice(2);
 const opt = (n, d) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : d; };
@@ -32,8 +33,6 @@ const pick = arr => arr[Math.floor(R() * arr.length)];
 
 const TASKS = ["Grounding Pass", "Schema Forge", "Verdict Loom", "Custody Ledger", "Drift Sweep",
   "Seam Audit", "Budget Sluice", "Token Mill", "Handoff Kiln", "Proof Cellar", "Clew Press", "Gate Argument"];
-const CASTS = [["noether", "noether"], ["the-arcade", "arcade"], ["protocol", "proto"], ["gecko", "gecko"],
-  ["vocabulary-bank", "vocab"], ["the-easel", "easel"], ["k-hole", "khole"], ["artisan", "artisan"]];
 const PAYLOADS = ["typed handoff", "sealed contract", "grounded findings", "verdict packet",
   "custody chain", "distilled brief", "attested build", "golden vectors"];
 const BADGES = ["✚", "»", "⚷", "◔", "❡", "◉", "✦", "⟁"];

@@ -97,7 +97,21 @@ The references are the BUILDING BLOCKS, not mood. Locked vision: pixel sprites �
 ```
 The v0 canvas (`index.html`) is RETIRED to a toy; carmack-engine + kakukuma is the real stack. `LevelData` is the new data contract (replaces the v0 TRACE shape).
 
-**Still open / can't-verify**: the `.mp4` (no video capability) — if it shows movement/feel the three repos don't, that's the one gap. GIGIX reference: unresolved (couldn't identify the repo).
+**The `trace-gen` ──▶ LevelData seam is now real (2026-06-13).** `trace-gen.mjs` v3 folds the *actual* `/compose` Form C runtime output — the canonical construct-handoff packet (`.run/compose/<run>/envelopes/NN.<slug>.handoff.json`, schema `construct-handoff.schema.json`) — into `obs-level/1`:
+
+| LevelData | Folded from the compose-handoff envelope |
+|---|---|
+| **room** (a chamber) | a STAGE = `construct_slug` — the construct itself crosses the membrane and becomes a room (the character) |
+| room **order** | `stage_index` (authoritative ordinal), else `stage_enter` sequence |
+| room **liveness** | absolute `clamp(dwell_s / enrage_s, 0, 1)` where `dwell = stage_exit − stage_enter` (the room where time is wild) |
+| **seam** (corridor) | consecutive stages `i → i+1`, de-duped |
+| envelope **verdict** | the verdict OBJECT folded by precedence: a failed `gates_failed` bars the door (REJECTED) > summary text (CHECKPOINT/DENIED) > passed gate or `output_type:Verdict` (APPROVED) > else EMITTED — *not* a raw string guess |
+| envelope **keepers** | count of `gates_passed` (the attestations at the door), clamped 1..5 |
+| **gateline / transform** (the door's voice) | `persona` + `verdict.summary` (the rationale) + `output_refs`/`evidence` (what it carried across) |
+
+The orchestrator log is read in BOTH dialects (compose-dispatch's nested `{event,ts,payload:{stage,construct}}` and the older flat kickoff `{event,timestamp,target}`); a compose-handoff packet is auto-detected by `construct_slug` + a verdict object, and the legacy `{from,to,verdict-string}` kickoff fold is preserved for backward compat. `meta.fold` records which dialect ran. Validated against `level-contract.mjs` (and the renderer's CONTRACT_REV-stamped inline copy) before write — exit 2 on any contract violation. Surface: `obs fold <run-dir>` · red wall: `obs selftest`.
+
+**Still open / can't-verify**: the `.mp4` (no video capability) — if it shows movement/feel the three repos don't, that's the one gap. GIGIX reference: unresolved (couldn't identify the repo). No real *multi-stage* compose run exists on disk in this repo yet (only kickoff handoffs) — the multi-stage fold was proven against a fixture that validates clean against the canonical `construct-handoff.schema.json`; the first live multi-stage `/compose` run will be the in-situ proof.
 
 ---
 
