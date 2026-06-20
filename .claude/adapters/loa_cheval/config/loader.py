@@ -187,6 +187,13 @@ def load_config(
     # env-var backstop with WARN per affected entry.
     _validate_endpoint_family(merged)
 
+    # sprint-bug-197 (#979) — infer auth_type + dispatch_group for the three
+    # *-headless provider types BEFORE strict validation. PR #904 stamped the
+    # fields only onto System-Zone defaults; operator-defined custom headless
+    # providers in .loa.config.yaml (the documented example shape) have no
+    # defaults counterpart to deep-merge from and died at the validator.
+    _infer_model_auth_metadata(merged)
+
     # cycle-110 sprint-2a T2.4 — auth_type + dispatch_group strict validation
     # ([PRD:FR-2.1, FR-2.2], SDD §3.2). Walks providers.*.models and rejects
     # missing/enum-invalid values with EX_CONFIG (78). Closes C14 (dispatch_group
@@ -206,9 +213,18 @@ def load_config(
     # null with bedrock_only / prefer_bedrock / unset based on env-var state.
     # Also enforces the SKP-003 gate: prefer_bedrock requires explicit
     # fallback_to on every model (no heuristic name matching).
+    _warn_misnested_compliance_profile(merged)
     _resolve_bedrock_compliance_profile(merged)
     _reject_unsupported_bedrock_auth_modes(merged)
     _reject_unsupported_bedrock_auth_lifetime(merged)
+
+    # bedrock-forward-routing (this PR): when the resolved Bedrock posture is
+    # bedrock_only / prefer_bedrock, rewrite aliases that target the direct
+    # Anthropic API to their Bedrock equivalent so the INITIAL dispatch goes to
+    # Bedrock — not just the fallback. The equivalence is read from each Bedrock
+    # model's already-required `fallback_to` field (no new mapping, no heuristic
+    # name matching — SKP-003 compatible). See docs/bedrock-routing.md.
+    _apply_bedrock_forward_routing(merged)
 
     # Resolve secret interpolation
     extra_env_patterns = []
@@ -410,6 +426,74 @@ _ALLOWED_AUTH_TYPES = ("headless", "http_api", "aws_iam")
 _DISPATCH_GROUP_PATTERN = re.compile(r"^[a-z][a-z0-9-]{1,63}$")
 
 
+# sprint-bug-197 (#979): auth posture is fully inferable for the
+# headless adapter types — each adapter hard-codes auth_type = "headless"
+# (e.g. claude_headless_adapter.py ClaudeHeadlessAdapter.auth_type), and the
+# System-Zone defaults pin one dispatch_group per provider family. Keys MUST
+# match _ADAPTER_REGISTRY in providers/__init__.py; values MUST satisfy
+# _DISPATCH_GROUP_PATTERN and the family values consumed by chain_resolver.
+# Iter-1 B1 (cross-model): `kind` joins the table — chain_resolver defaults
+# kind to "http", so a field-less custom headless provider loaded fine but
+# resolved as an HTTP entry, breaking the headless-mode ordering/filter
+# transforms. Every type here dispatches through a CLI subprocess: kind is
+# "cli" for the whole table. (Consumer sweep: fallback_chain/capabilities
+# are optional-by-design; auth_type/dispatch_group are loader-validated;
+# kind was the only remaining silent-default misclassification.)
+# Review #966: cursor-headless joins — without an entry the documented
+# custom-provider config shape dies [CONFIG-INVALID] at load.
+# grok-headless joins (2026-06-13): a CLI-only headless provider with NO HTTP
+# sibling (auth is grok's OIDC subscription). type: grok-headless maps directly
+# to GrokHeadlessAdapter; this entry lets a minimal `providers.xai: {type:
+# grok-headless, models: {...}}` shape (no per-model auth_type/dispatch_group/
+# kind) load without [CONFIG-INVALID]. dispatch_group `xai-grok`; the `grok` CLI
+# is itself multi-model, so cheval pins each entry to a served model via cli_model.
+_HEADLESS_TYPE_INFERENCE = {
+    "claude-headless": ("headless", "anthropic-claude"),
+    "codex-headless": ("headless", "openai-gpt"),
+    "gemini-headless": ("headless", "google-gemini"),
+    "cursor-headless": ("headless", "cursor-composer"),
+    "grok-headless": ("headless", "xai-grok"),
+}
+_HEADLESS_INFERRED_KIND = "cli"
+
+# Shared fix-location hint for missing-field diagnostics: the operator's fix
+# lives in their .loa.config.yaml, not deep in model-invoke stderr.
+_AUTH_METADATA_FIX_HINT = (
+    "Fix: add the field under hounfour.providers.{provider_id}.models."
+    "{model_id} in .loa.config.yaml (or .claude/defaults/model-config.yaml "
+    "for System-Zone providers)."
+)
+
+
+def _infer_model_auth_metadata(merged: Dict[str, Any]) -> None:
+    """Stamp inferable auth_type/dispatch_group/kind onto *-headless models.
+
+    Only fills MISSING keys (setdefault) — operator-explicit values are never
+    overwritten. Non-dict providers/models shapes are left untouched so
+    _validate_model_auth_metadata's existing diagnostics fire unchanged.
+    Providers with unknown or absent `type` get no inference.
+    """
+    providers = merged.get("providers")
+    if not isinstance(providers, dict):
+        return
+    for provider in providers.values():
+        if not isinstance(provider, dict):
+            continue
+        inference = _HEADLESS_TYPE_INFERENCE.get(provider.get("type"))
+        if inference is None:
+            continue
+        auth_type, dispatch_group = inference
+        models = provider.get("models")
+        if not isinstance(models, dict):
+            continue
+        for model in models.values():
+            if not isinstance(model, dict):
+                continue
+            model.setdefault("auth_type", auth_type)
+            model.setdefault("dispatch_group", dispatch_group)
+            model.setdefault("kind", _HEADLESS_INFERRED_KIND)
+
+
 def _validate_model_auth_metadata(merged: Dict[str, Any]) -> None:
     """Reject merged configs whose model entries lack `auth_type` or
     `dispatch_group`, or carry enum-invalid values.
@@ -465,7 +549,10 @@ def _validate_model_auth_metadata(merged: Dict[str, Any]) -> None:
                 raise ConfigError(
                     f"[CONFIG-INVALID] providers.{provider_id}.models.{model_id} "
                     f"is missing required 'auth_type' (cycle-110 SDD §3.2). "
-                    f"Allowed values: {', '.join(_ALLOWED_AUTH_TYPES)}."
+                    f"Allowed values: {', '.join(_ALLOWED_AUTH_TYPES)}. "
+                    + _AUTH_METADATA_FIX_HINT.format(
+                        provider_id=provider_id, model_id=model_id
+                    )
                 )
             if auth_type not in _ALLOWED_AUTH_TYPES:
                 raise ConfigError(
@@ -484,7 +571,10 @@ def _validate_model_auth_metadata(merged: Dict[str, Any]) -> None:
                     f"[CONFIG-INVALID] providers.{provider_id}.models.{model_id} "
                     f"is missing required 'dispatch_group' (cycle-110 SDD §3.2 / "
                     f"C14 carry-in). dispatch_group identifies the billing-entity "
-                    f"equivalence class for auto-mode bucket comparison."
+                    f"equivalence class for auto-mode bucket comparison. "
+                    + _AUTH_METADATA_FIX_HINT.format(
+                        provider_id=provider_id, model_id=model_id
+                    )
                 )
             if not isinstance(dispatch_group, str) or not _DISPATCH_GROUP_PATTERN.match(dispatch_group):
                 raise ConfigError(
@@ -697,6 +787,109 @@ def _enforce_prefer_bedrock_fallback_to(bedrock: Dict[str, Any]) -> None:
             f"Missing on: {missing}. "
             "(Flatline BLOCKER SKP-003 — no heuristic name matching; operator "
             "must declare equivalence explicitly.)"
+        )
+
+
+def _warn_misnested_compliance_profile(merged: Dict[str, Any]) -> None:
+    """Warn when ``compliance_profile`` is set at the wrong nesting level.
+
+    The loader reads the field at ``hounfour.providers.bedrock.compliance_profile``
+    (which deep-merges to ``providers.bedrock.compliance_profile`` in ``merged``).
+    A common operator mistake (observed in the field) is to set it one level too
+    high — directly under ``hounfour.compliance_profile`` — where it is silently
+    ignored and the operator's Bedrock posture never takes effect.
+
+    The flattened ``merged`` preserves a stray top-level ``compliance_profile``
+    key when the operator mis-nested it. If that key exists while the real
+    ``providers.bedrock.compliance_profile`` is unset, emit a loud one-shot
+    WARNING pointing at the correct location, converting a silent
+    misconfiguration into an actionable message.
+    """
+    stray = merged.get("compliance_profile")
+    if not (isinstance(stray, str) and stray):
+        return
+    bedrock = (merged.get("providers") or {}).get("bedrock")
+    nested = bedrock.get("compliance_profile") if isinstance(bedrock, dict) else None
+    if nested:
+        return  # Correctly nested value present; the stray key is harmless.
+    sys.stderr.write(
+        "[loader] WARNING: `compliance_profile: %r` is set at the WRONG level "
+        "and is being IGNORED. Move it under `providers.bedrock.compliance_profile` "
+        "(i.e. hounfour.providers.bedrock.compliance_profile in .loa.config.yaml). "
+        "As written, Bedrock routing/fallback posture is NOT applied.\n" % stray
+    )
+
+
+def _build_anthropic_to_bedrock_map(bedrock: Dict[str, Any]) -> Dict[str, str]:
+    """Invert each Bedrock model's ``fallback_to`` into an anthropic->bedrock map.
+
+    Every Bedrock model entry under ``prefer_bedrock`` is already required to
+    declare ``fallback_to: <provider>:<model_id>`` (enforced by
+    ``_enforce_prefer_bedrock_fallback_to`` per SKP-003). That field IS the
+    equivalence the operator has explicitly asserted: "Bedrock model X stands in
+    for direct-API model Y." Inverting it gives the forward-routing table with
+    zero new config and zero heuristic name matching.
+
+    Returns ``{"anthropic:claude-opus-4-8": "bedrock:us.anthropic.claude-opus-4-8", ...}``.
+    """
+    models = bedrock.get("models") or {}
+    table: Dict[str, str] = {}
+    if not isinstance(models, dict):
+        return table
+    for bedrock_model_id, mc in models.items():
+        if not isinstance(mc, dict):
+            continue
+        fallback = mc.get("fallback_to")
+        if isinstance(fallback, str) and ":" in fallback:
+            table[fallback] = f"bedrock:{bedrock_model_id}"
+    return table
+
+
+def _apply_bedrock_forward_routing(merged: Dict[str, Any]) -> None:
+    """Rewrite Anthropic-targeted aliases to their Bedrock equivalent.
+
+    Active only when the resolved ``providers.bedrock.compliance_profile`` is
+    ``bedrock_only`` or ``prefer_bedrock``. Uses the inverted ``fallback_to``
+    map so an alias resolving to ``anthropic:<model>`` is retargeted to the
+    Bedrock model whose ``fallback_to`` points back at it. Under
+    ``prefer_bedrock`` the original ``anthropic:<model>`` remains the fallback
+    (via the model's own ``fallback_to``); under ``bedrock_only`` the adapter
+    fails closed as before.
+
+    This makes the INITIAL dispatch honor the operator's Bedrock posture — the
+    half of ``prefer_bedrock`` that previously only governed fallback. Idempotent:
+    aliases already pointing at ``bedrock:`` are left untouched.
+    """
+    providers = merged.get("providers") or {}
+    bedrock = providers.get("bedrock")
+    if not isinstance(bedrock, dict):
+        return
+    posture = bedrock.get("compliance_profile")
+    if posture not in ("bedrock_only", "prefer_bedrock"):
+        return
+
+    redirect = _build_anthropic_to_bedrock_map(bedrock)
+    if not redirect:
+        return
+
+    aliases = merged.get("aliases")
+    if not isinstance(aliases, dict):
+        return
+
+    rewritten = []
+    for alias_key, target in list(aliases.items()):
+        if not isinstance(target, str):
+            continue
+        new_target = redirect.get(target)
+        if new_target and new_target != target:
+            aliases[alias_key] = new_target
+            rewritten.append(f"{alias_key}: {target} -> {new_target}")
+
+    if rewritten:
+        sys.stderr.write(
+            "[loader] bedrock-forward-routing active (compliance_profile=%s): "
+            "retargeted %d alias(es) to Bedrock: %s\n"
+            % (posture, len(rewritten), "; ".join(rewritten))
         )
 
 
