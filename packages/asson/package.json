@@ -1,0 +1,30 @@
+{
+  "name": "@freeside/asson",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "The instrument of invocation \u2014 CLI graduation, veve manifests, build attestation, golden vectors, and finn CommandPolicy derivation. Zero-dependency reference core; the deterministic skeleton Legba replays.",
+  "types": "./src/asson.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/asson.d.ts",
+      "default": "./src/asson.mjs"
+    },
+    "./liveness": {
+      "types": "./src/liveness.d.ts",
+      "default": "./src/liveness.mjs"
+    }
+  },
+  "scripts": {
+    "demo": "node src/demo.mjs",
+    "test": "node --test test/*.test.mjs",
+    "drift-check": "node scripts/check-legba-drift.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1"
+  }
+}

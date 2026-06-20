@@ -1,0 +1,79 @@
+schema_version: "1.0"
+kind: workflow
+name: tiered-code-review
+description: >
+  Adversarial code review routed across model tiers by stage role — the cheval shape.
+  A reusable review composition AND the proof run for "compose routes models" (each
+  emitted agent() carries an explicit model: haiku|sonnet|opus, vs raw Workflow's
+  all-inherited-Opus fan-out).
+
+intent: >
+  "Review a code file for correctness bugs with right-sized intelligence: a cheap
+  pass maps the surface, a standard pass hunts bugs adversarially, a deep pass gates
+  the findings (verify-real, the strongest reader). Prove the routing is structural,
+  not a kernel rule the agent must remember."
+
+hivemind_labels:
+  product_area: "Loa pipeline"
+  workstream: discovery
+  jtbd:
+    category: personal
+    description: "Reassure Me This Is Safe — code gets a tiered adversarial gate, cheaply"
+  source: team-internal
+
+inputs:
+  - type: Artifact
+    name: target
+    description: Path to the code file to review
+    required: true
+
+chain:
+  - stage: 1
+    construct: k-hole
+    skill: deep-research
+    reads: [Artifact]
+    writes: [Signal]
+    role: primary                   # role enum has no 'explore'; the 'research' skill routes this stage → haiku
+    notes: >
+      Read the target. Emit a Signal: its responsibilities, the risky seams
+      (parsing, shelling out, caching, edge inputs), and where bugs would hide.
+
+  - stage: 2
+    construct: scar
+    skill: red-teaming
+    reads: [Signal, Artifact]
+    writes: [Verdict]
+    role: primary                   # downgrade-aware: heuristic governs unless the construct pins
+    notes: >
+      Adversarially hunt CORRECTNESS bugs (false-pos/neg, bypasses, edge cases,
+      crash paths). Emit a Verdict: findings, each severity-tagged with a concrete
+      trigger input + file:line.
+
+  - stage: 3
+    construct: crucible
+    skill: regression-check
+    reads: [Verdict, Artifact]
+    writes: [Verdict]
+    role: craft-gate                # craft-gate = an AGENT gate (is_gate → opus), not a human-pause seam
+    notes: >
+      For each finding, verify it actually reproduces against the code (not a
+      plausible-but-wrong claim). Emit the gated Verdict — converges on verdict=APPROVED
+      when only real findings remain. Kill the ones that don't hold.
+
+outputs:
+  - type: Verdict
+    destination: .run/tiered-code-review.jsonl
+    description: Gated review verdict — only verified-real findings
+
+compose_with:
+  - k-hole
+  - scar
+  - crucible
+
+when_to_use: >
+  - Any code-file review where you want right-sized model spend (not a blanket-Opus fan-out)
+  - The proof harness for compose-routes-models
+
+version: "1.0.0"
+authored_at: "2026-06-06"
+authored_by: compose-default proof run

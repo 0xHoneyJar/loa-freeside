@@ -1,0 +1,70 @@
+{
+  "veve_version": "0.2.0",
+  "name": "lexicon-lint",
+  "version": "1.0.0",
+  "summary": "Controlled-vocabulary linter for competitive-REL text: banned terms with replacements, untagged-testimony detection. The cheapest gate in the stack.",
+  "binary": {
+    "entry": "bin/lexicon-lint.mjs",
+    "runtime": "node",
+    "subcommands": []
+  },
+  "determinism": {
+    "class": "re_executable",
+    "declared_by": "author",
+    "ambient": []
+  },
+  "rel_required": "competitive",
+  "liveness": {
+    "timeout_s": 10,
+    "expected_p95_s": 1,
+    "mode": "oneshot"
+  },
+  "io": {
+    "input": "stdin_json",
+    "output": "stdout_json",
+    "exit_codes": {
+      "0": "clean (or casual REL warn-tier)",
+      "2": "malformed input",
+      "3": "findings at competitive REL — refusal teaches: every finding carries a replacement"
+    }
+  },
+  "vectors": [
+    {
+      "name": "live-specimen-competitive",
+      "argv": [],
+      "stdin": "{\"text\":\"the offchain funds probably belong to us\",\"rel\":\"competitive\"}",
+      "expect_output_hash": "sha256:848c5ef35e180d0ec534bad48408bd5c52361238eb6ad9b17ff834d99be187b3",
+      "expect_exit": 3
+    },
+    {
+      "name": "tagged-testimony-clean",
+      "argv": [],
+      "stdin": "{\"text\":\"Principal believed THJ-owned probably [testimony: ES, conf=M]\",\"rel\":\"competitive\"}",
+      "expect_output_hash": "sha256:608cf23594fbfec4f4fe695f78de5079097c261bc8d883c93d06de808dae8d78",
+      "expect_exit": 0
+    },
+    {
+      "name": "casual-rel-warn-tier",
+      "argv": [],
+      "stdin": "{\"text\":\"this is probably fine lol\",\"rel\":\"casual\"}",
+      "expect_output_hash": "sha256:f4370a95ad4ed79e153fa56fa26c6f3952e13d6207c8b279f09495e1662cd713",
+      "expect_exit": 0
+    }
+  ],
+  "ladder": {
+    "level": 3,
+    "promoted_from": "doctrine/words-with-teeth.md §2 (doctrine graduated into a tool)",
+    "evidence_runs": [
+      "validator-winddown-comms-review-2026-06-11",
+      "apdao-beekeeper-brief-draft"
+    ]
+  },
+  "attestation": {
+    "tree_hash": "sha256:3a9e10c1918a6c551debd11a7320cdf29b330e810b7b054a5a1f83b1eaf7d902",
+    "git_commit": "4d0116e623ed5815703986635bf70f10ca5be4f6",
+    "signed_by_key_id": "6948d2ae56ebd71aff295174170cf1f39b073e8261441a0137f4a8073679511a",
+    "signature_type": "dev_signature",
+    "ts": "2026-06-12T01:34:50.966Z",
+    "signature": "Eax14WSGo8oo3m0SnN06QFusXGZ4Y3Wo7boLWPJ8ln+NDF9VAOd/KMvIlysB2fE9SNY2cdIvg0fCZy4z/CKTBw=="
+  }
+}

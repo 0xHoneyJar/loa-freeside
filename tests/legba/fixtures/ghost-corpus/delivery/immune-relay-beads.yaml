@@ -1,0 +1,189 @@
+# Composition · immune-relay-beads
+# ================================================================
+# The regeneration loop for the beads estate, named once and run as a
+# composition: SENSE coherence (doctor) → propose the cheapest governed
+# path (aligner) → render the boundary verdict (teeth). The operator gets
+# a surfaced summary, not a silent mutation.
+#
+# DOCTOR-FIRST scope (spiral-regeneration dispatch, doctor-first slice):
+# stage 1 is the REAL automated sense organ (gecko:sense-estate, Wave A).
+# Stages 2/3 are OPERATOR-DRIVEN gate stages — skill OMITTED (no act-skill
+# is bound this dispatch); the bespoke estate script the operator runs by
+# hand is named in `notes`. The act-skill automation (construct-the-immune
+# + align-estate/enforce-estate) is the deferred immediate follow-up; when
+# it lands, these two stages upgrade to bound act-skills.
+#
+# Estate is a STATIC tag — a new estate needs a new per-estate yaml until
+# the Phase-2 runtime --domain feature is designed + built. This is the
+# beads sibling of immune-relay-recall.yaml (same shape, beads read sources).
+#
+# Validates against loa-constructs/.claude/schemas/runtime/composition.schema.json.
+# Every field below is in the closed top-level / $defs.Stage set — no invented fields.
+# ================================================================
+
+schema_version: "1.0"
+kind: workflow
+name: immune-relay-beads
+
+description: >
+  The regeneration loop for the beads estate: sense whether filed ↔ governed
+  still match (doctor), make the gated commons-align cheapest (aligner),
+  render a boundary verdict (teeth). The immune system, named once and run
+  as a composition.
+
+intent: >
+  "Point the immune system at the beads estate. GECKO senses whether
+   filed ↔ governed still match and emits a coherence tile. If it drifted,
+   the operator runs the gated commons-align. The teeth render a boundary
+   verdict. I get a surfaced summary, not a silent mutation."
+
+backend: headless-tmux
+
+# Top-level surface control (the ONLY surface field — there is NO per-stage
+# surface_mode; that belongs to the rooms-substrate pair-relay schema and
+# would be rejected by $defs.Stage additionalProperties:false).
+surface_class:
+  default: culturetech-loose   # estate-health is loose-surface, summarized — not a defi-strict gate
+  rationale: >
+    The immune relay surfaces a coherence summary to the operator. Agreement
+    is silence; only drift saturates. Loose surface drives a summarized run,
+    not a hard blocking gate.
+
+# depends_on (a valid root key) — declares the CONTRACT this composition
+# consumes, not a hardcoded path. The resolved doctor/aligner paths live in
+# the operator's ~/.claude/estates.yaml (operator-local, not committed).
+# The composition depends on "a beads doctor exists and emits the tile
+# contract", resolved at the operator's machine. The act-construct
+# (construct-the-immune) is DEFERRED this dispatch — not listed here.
+depends_on:
+  constructs:
+    - gecko          # the sense-only doctor (stage 1, sense-estate, Wave A)
+  tools:
+    - beads-monitor      # monitor.mjs --json + commons-report.json (the read source + cheap slurp)
+
+inputs:
+  - type: Intent
+    name: estate
+    description: Static estate tag this composition is bound to (beads). Not a runtime --domain (Phase 2).
+    required: true
+    source: "static tag: beads (operator-bound at invocation; free-text hint only)"
+  - type: Operator-Model
+    name: operator_context
+    required: false
+
+chain:
+  # stage 1: DOCTOR (GECKO sense) — the REAL automated sensing organ
+  - stage: 1
+    name: doctor
+    construct: gecko
+    skill: sense-estate            # the new GECKO doctor skill (Wave A) — a REAL dispatched skill
+    persona: GECKO
+    mode: fresh                    # single-pass sense, no memory of prior runs
+    reads: [Intent, Operator-Model]
+    writes: [Signal]               # the STATUS|SIGNAL|MISMATCH tile
+    role: primary
+    # PORTABILITY: the read-command is a PARAMETER carried in probes[] (a valid
+    # Stage key; ground-canon precedent in triage-pause.yaml). The $BEADS_ESTATE
+    # token resolves at the operator's machine from ~/.claude/estates.yaml — NOT
+    # a literal ~/bonfire/... path baked into the artifact.
+    probes:
+      - "node $BEADS_ESTATE/monitor.mjs --json"   # primary read source (estate-resolved; ~20s)
+      - "$BEADS_ESTATE/commons-report.json"       # cheap pre-written read (slurp, not exec)
+    # FAULT TOLERANCE: if BOTH probes fail/absent → STATUS=blind (do not error).
+    on_absent:
+      - "emit STATUS=blind|beads-monitor unavailable|filed ↔ governed — return, do not halt the chain"
+    on_present_and_fresh:
+      - "parse the tile; classify STATUS from drift_params (alignPct<50 || drift>20 || stale>100)"
+    on_present_but_stale:
+      - "regenerated report missing or unparseable → STATUS=blind"
+    notes: >
+      Sense the beads registry/state pair (filed vs governed). Read the
+      estate-resolved sources (probes[] above) — the cheap commons-report.json
+      slurp or the monitor.mjs --json regenerate — and emit the minimal
+      STATUS|SIGNAL|MISMATCH tile (STATUS in {ok|drift|blind}), byte-compatible
+      with estate-coherence.sh --json.
+      DELIMITER SAFETY: the three fields are pipe-delimited; SIGNAL/MISMATCH MUST
+      NOT contain a raw '|' — the doctor escapes any '|' in a field to ' '
+      before emitting, so the consumer's split-on-'|' yields exactly 3 fields.
+      SENSE-ONLY: never mutates beads state; writes only its own GECKO observation trail.
+
+  # stage 2: ALIGNER — OPERATOR-DRIVEN gate (doctor-first: skill OMITTED).
+  # The bespoke aligner script is named in notes; the operator runs it by hand.
+  - stage: 2
+    name: aligner
+    construct: gecko               # resolving slug (sense-only); act-skill is DEFERRED — no skill bound
+    mode: blocking                 # the operator-permit seam (cut to a pure-pause seam by Form C)
+    when: "STATUS != blind"        # BLIND SHORT-CIRCUIT: runner SKIPS this stage if the doctor is blind
+    reads: [Signal]                # reads the doctor tile; align only if STATUS=drift
+    writes: [Artifact]             # the proposal / gated-alignment record (operator-run)
+    role: gate                     # the aligner gate
+    hitl_by_nature: true           # commons-alignment is an operator act (the force chain)
+    # PORTABILITY: the aligner script is resolved from ~/.claude/estates.yaml via the estate slug.
+    capture_method:
+      canonical_source: "node $BEADS_ESTATE/align.mjs"   # dry-run | --apply [--include-proposed] (estate-resolved)
+      installation_pattern: "operator-local ~/.claude/estates.yaml estates.beads.align_command"
+    notes: >
+      OPERATOR-DRIVEN aligner gate (doctor-first slice — NO act-skill bound).
+      When STATUS=drift, the cheapest governed path is the operator running
+      `node $BEADS_ESTATE/align.mjs <project>` dry-run (no --apply) to surface
+      the CONFIDENT-vs-PROPOSED split, then committing the gated alignment with
+      `align.mjs --apply` (confident) or `--apply --include-proposed` (operator
+      accepted the proposed guesses → strips the proposed: prefix and commits as
+      canonical). Alignment stays an operator act — never auto-passed. On
+      STATUS=blind this stage is skipped by the `when` guard above. When the
+      act-construct (construct-the-immune + skill align-estate) lands in the
+      immediate follow-up, this stage upgrades to a bound, automated act-skill.
+
+  # stage 3: TEETH — OPERATOR-DRIVEN gate (doctor-first: skill OMITTED).
+  # Loud-detector tier for beads (no beads enforcer exists yet — teeth is github-only).
+  - stage: 3
+    name: teeth
+    construct: gecko               # resolving slug (sense-only); act-skill is DEFERRED — no skill bound
+    mode: blocking
+    when: "STATUS != blind"        # BLIND SHORT-CIRCUIT: never enforce against an unsensed estate
+    reads: [Signal, Artifact]      # doctor tile + aligner result
+    writes: [Verdict]              # WARN (loud detector) — no hard BLOCK for beads this cycle
+    role: gate                     # the teeth rung IS a gate (why chain[], not pair-relay)
+    hitl_by_nature: true
+    # PORTABILITY: the enforcer pattern is resolved from ~/.claude/estates.yaml via the estate slug.
+    capture_method:
+      canonical_source: "$STRAYLIGHT_ESTATE/hivemind-emit-check.sh"  # tier=gate (github only); beads→detector
+      installation_pattern: "operator-local ~/.claude/estates.yaml estates.<slug>.enforce_command (absent for beads → detector tier)"
+    notes: >
+      OPERATOR-DRIVEN teeth gate (doctor-first slice — NO act-skill bound),
+      tiered invariant > gate > detector. References the fail-block CLASS
+      (`$STRAYLIGHT_ESTATE/hivemind-emit-check.sh`, exit 2 = BLOCK) as the TIER
+      PATTERN only. For beads there is NO dedicated enforcer yet (Phase 2) →
+      this stage runs as a LOUD DETECTOR: render Verdict:WARN surfacing the
+      boundary WITHOUT auto-blocking (teeth-before-path produces friction-revert;
+      the hivemind precedent only escalated to fail-block AFTER the auto-label
+      path existed). On STATUS=blind this stage is skipped by the `when` guard.
+      Surface-not-decide — never mutates beads, never files PRs. When the
+      act-construct (construct-the-immune + skill enforce-estate) lands in the
+      immediate follow-up, this stage upgrades to a bound, automated act-skill.
+
+outputs:
+  - type: Verdict
+    destination: .run/compose/<run_id>/immune-relay-verdict.jsonl
+    description: Per-stage doctor tile + aligner record + teeth verdict
+  - type: Signal
+    destination: .run/compose/<run_id>/orchestrator.jsonl
+    description: Orchestrator trajectory (stage transitions)
+
+compose_with:
+  - gecko
+
+when_to_use: >
+  Point the immune system at the beads estate. NOT for arbitrary estates
+  via a runtime flag (Phase 2). NOT for the five bare estates that lack an
+  aligner/teeth (Phase 2).
+
+known_limitations:
+  - "Estate is a STATIC tag (free-text `source` hint), not a runtime --domain. A new estate needs a new yaml until the Phase-2 runtime feature is DESIGNED + built."
+  - "DOCTOR-FIRST slice: stages 2 (aligner) and 3 (teeth) are OPERATOR-DRIVEN gate stages with `skill` OMITTED. No act-skill is bound this dispatch — the bespoke estate scripts (align.mjs, hivemind-emit-check.sh) are named in notes and run by the operator by hand at the pure-pause seam. The act-skill automation (construct-the-immune + align-estate/enforce-estate) is the deferred immediate follow-up."
+  - "Teeth for beads is a LOUD DETECTOR (Verdict:WARN), not a hard gate — no beads-specific enforcer exists yet (teeth is github-only). The github fail-block (hivemind-emit-check.sh) is the tier PATTERN, not a beads enforcer."
+  - "Estate-script paths are PARAMETERS resolved from operator-local ~/.claude/estates.yaml (NOT committed). The committed yaml carries only the estate slug + the $BEADS_ESTATE token. On a machine without the estate wiring, the doctor resolves to STATUS=blind."
+
+version: "1.0.0"
+authored_at: "2026-06-02"
+authored_by: spiral-regeneration cycle — doctor-first immune-relay (Wave B)

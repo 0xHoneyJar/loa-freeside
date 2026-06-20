@@ -1,0 +1,15 @@
+{
+  "lexicon_version": "0.1.0",
+  "banned": [
+    { "term": "offchain",
+      "replacements": ["unrecorded internal entry", "not yet identified in the ledger", "pending provenance"],
+      "why": "implies absence-of-ledger-record and custody; a legal claim we are not licensed to make" },
+    { "term": "off-chain",
+      "replacements": ["unrecorded internal entry", "not yet identified in the ledger", "pending provenance"],
+      "why": "implies absence-of-ledger-record and custody; a legal claim we are not licensed to make" },
+    { "term": "migration",
+      "replacements": ["proposed transition, ownership under provenance review"],
+      "why": "asserts a completed change of ownership for assets whose provenance is unestablished" }
+  ],
+  "hedges": ["probably", "likely", "i think", "maybe", "should be", "i believe"]
+}

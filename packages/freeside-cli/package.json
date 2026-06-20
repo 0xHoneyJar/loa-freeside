@@ -22,6 +22,7 @@
     "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
+    "@freeside/asson": "file:../asson",
     "@freeside/freeside-registry": "file:../freeside-registry",
     "@freeside/beacon-schema": "file:../beacon-schema",
     "@noble/hashes": "^1.6.0",

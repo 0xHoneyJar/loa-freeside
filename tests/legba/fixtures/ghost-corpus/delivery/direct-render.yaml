@@ -1,0 +1,260 @@
+# Composition · feel-image
+# ================================================================
+# Two-construct image production chain. The eye distills creative
+# direction from a codebase's existing FEEL canon; the hand executes
+# reference-based prompts against Images 2.0 with built-in
+# selection discipline; brand marks composite locally.
+#
+# This is the worked example from the operator's gist:
+#   https://gist.github.com/zkSoju/98d96dcb72320bfc4d43e00a6fdaa245
+# Loa ecosystem banner session (2026-04-22) → distilled here as a
+# runnable composition that anyone authoring image-producing
+# constructs can study + invoke.
+#
+# Reads as the canonical artisan ↔ the-mint pair, in the same shape
+# as feel-audit (artisan ↔ observer) and explore-ecosystem
+# (construct-network-tools ↔ artisan).
+#
+# Authored: 2026-04-25
+# ================================================================
+
+schema_version: "1.0"
+kind: workflow
+name: direct-render
+description: >
+  Eye-and-hand site-art production. Artisan distills creative
+  direction from the codebase's visual canon; The Mint executes
+  reference-based Images 2.0 prompts; brand marks composite
+  locally. Single canonical chain for "make me art that belongs
+  in this world."
+
+intent: >
+  "Given a codebase with an established visual canon (taste tokens,
+   TDRs, persona files, reference art) and a brief for a new piece
+   of site art, produce a render that lands inside the canon — not
+   a generic stock image, not a vibes prompt. Eye first, hand
+   second, composite last."
+
+backend: headless-tmux
+
+# Hivemind Lab labels (Dec 2025 canon). Site-art delivery serves the
+# end user's first impression of brand trust + craft. JTBD: brand
+# signals "this is real, has taste" → personal: Reassure Me This Is Safe.
+hivemind_labels:
+  product_area: "Marketing Site / Brand Surface"
+  workstream: delivery
+  jtbd:
+    category: personal
+    description: "Reassure Me This Is Safe — visual craft signals the brand is real, considered, trustworthy"
+  source: team-internal
+
+inputs:
+  - type: Artifact
+    name: canon
+    description: >
+      Path to the codebase's design canon — taste.md, tokens.css,
+      TDRs, identity/ persona files, existing reference art. The
+      source material ALEXANDER reads to extract material vocabulary.
+    required: true
+  - type: Intent
+    name: brief
+    description: >
+      What's the piece for? Hero banner, scene-stack member, card
+      illustration, README art? Where does it land? What's the
+      single-most-important visual element?
+    required: true
+  - type: Artifact
+    name: refs
+    description: >
+      Reference images for the model — composition anchor, palette
+      anchor, optional edit target. See prompting-images SKILL.md
+      for the role table.
+    required: false
+  - type: Operator-Model
+    name: operator_context
+    description: Operator expertise + mode (from /hivemind)
+    required: false
+
+# Iteration loop — stages 2 ↔ 3 cycle until a render passes the
+# selection test, capped by --max-iterations (default 3). Cost
+# discipline: every generation is billed; sharp brief beats volume.
+iterate:
+  - [2, 3]   # prompt → curate (regenerate on selection-test failure)
+
+# Loop cap + termination predicate (S0-T6 / FR-7.2). The prompt↔curate loop
+# regenerates on selection-test failure; every generation is billed, so the
+# cap is also cost discipline — sharp brief beats volume.
+max_iterations: 3
+terminate_when: >
+  curate (stage 3) emits a Verdict where a candidate clears the selection test
+  against ALEXANDER's brief — single-stamp discipline holds, composition
+  matches anchor, every named treatment visible, all hard negatives satisfied
+  — OR the iteration cap is reached (exit to operator).
+
+chain:
+  # ------------------------------------------------------------------
+  - stage: 1
+    construct: artisan
+    skill: directing-generation
+    persona: ALEXANDER
+    mode: persistent
+    reads: [Artifact, Intent, Operator-Model]
+    writes: [Signal, Artifact]
+    role: primary
+    notes: >
+      ALEXANDER reads the canon (taste.md, TDRs, persona docs,
+      reference art) and produces a creative direction brief —
+      OKLCH palette block, named treatments, single-stamp discipline,
+      sanitization map, scene/architectural mapping. Persistent so
+      the brief refines across iteration passes if stage 2 surfaces
+      a gap. This is the EYE — what the model should make.
+
+  # ------------------------------------------------------------------
+  - stage: 2
+    construct: the-mint
+    skill: prompting-images
+    persona: MINT
+    mode: persistent
+    reads: [Signal, Artifact]
+    writes: [Artifact, Signal]
+    role: primary
+    iterates_with: 3
+    notes: >
+      MINT translates the brief into the Images 2.0 three-block
+      template (IMPORTANT DETAILS / REFERENCE GUIDANCE / USE CASE /
+      CONSTRAINTS), assigns reference roles per image, sanitizes
+      against IP guardrails (the strike-replace table), and runs
+      the prompt. Generates 2-4 candidates per pass. Persistent so
+      seed/reference history accumulates across iteration. This is
+      the HAND — how the prompt is structured and executed.
+
+  # ------------------------------------------------------------------
+  - stage: 3
+    construct: the-mint
+    skill: curate
+    persona: MINT
+    mode: fresh
+    reads: [Artifact, Signal]
+    writes: [Verdict, Signal]
+    role: craft-gate
+    iterates_with: 2
+    notes: >
+      MINT runs the selection test against ALEXANDER's brief —
+      single-stamp discipline holds, composition matches anchor,
+      every named treatment visible, all hard negatives satisfied.
+      Kills near-misses (the accumulation of near-misses degrades
+      a set). Loops back to stage 2 if no candidate passes;
+      advances on the first clean pass.
+
+  # ------------------------------------------------------------------
+  - stage: 4
+    construct: the-mint
+    skill: materialize
+    persona: MINT
+    mode: fresh
+    reads: [Verdict, Artifact]
+    writes: [Artifact]
+    role: primary
+    notes: >
+      MINT composites brand marks (logo, wordmark, partnership
+      lockup) onto the winning render via local rsvg-convert +
+      magick — never asks the model to render brand assets. Output:
+      pixel-perfect, retina-safe, deterministic. The
+      composite-vs-generate rule lives here.
+
+outputs:
+  - type: Artifact
+    destination: .run/compose/<run_id>/final-image.png
+    description: Final composited site-art image with brand lockup
+    hivemind_labels:
+      artifact_type: product-spec
+      learning_status: strongly-validated
+  - type: Artifact
+    destination: .run/compose/<run_id>/direction-brief.md
+    description: ALEXANDER's full creative direction (kept for the team — internal IP context preserved here, sanitized prompt stays in stage 2)
+    hivemind_labels:
+      artifact_type: experiment-design
+      learning_status: directionally-correct
+  - type: Signal
+    destination: .run/compose/<run_id>/orchestrator.jsonl
+    description: Pipe graph + per-stage trajectory
+  - type: Verdict
+    destination: .run/compose/<run_id>/curation.jsonl
+    description: Per-iteration kept/killed log with reasons (selection-test evidence chain)
+    hivemind_labels:
+      artifact_type: atomic-learning
+      learning_status: directionally-correct
+
+compose_with:
+  - artisan
+  - the-mint
+composes_symmetrically_with:
+  - artisan ↔ the-mint   # eye ↔ hand — the canonical pair
+
+invocation_examples:
+  - operator_utterance: "make a hero banner from our taste canon"
+    resolves_to: full 4-stage chain end-to-end
+  - operator_utterance: "just direct it, I'll prompt myself"
+    resolves_to: stage 1 only — emit ALEXANDER's brief, halt
+  - operator_utterance: "I have the brief, just generate"
+    resolves_to: stages 2-4 with operator-supplied direction Signal
+  - operator_utterance: "scene stack for the Loa product layers"
+    resolves_to: stage 1 once (shared brief), then stages 2-4 invoked once per scene with shared constraints + per-scene IMPORTANT DETAILS
+
+when_to_use: >
+  - Producing site art for a codebase with an established visual
+    canon (taste.md, TDRs, identity persona present)
+  - Building a banner set / scene stack — same brief, multiple
+    renders, family-resemblance + distinguishability across the set
+  - Refreshing assets where the canon evolved since the last render
+  - NOT for first-time visual-language authoring (use
+    artisan/synthesizing-taste + recording-taste first to establish
+    the canon)
+  - NOT for brand-mark generation (composite locally, never generate)
+  - NOT for codex-shaped work (lore, identity schemas, knowledge
+    graphs) — that's a different surface; see the operator note
+    in references re: gumi's gen-art-collection-preview-tool
+
+known_limitations:
+  - "Image generation cost is real. Stage 2 emits 2-4 candidates per pass and the iterate loop caps at --max-iterations (default 3). Be deliberate about brief quality before invoking — sharp prompt beats volume."
+  - "Stage 1 quality is bounded by canon quality. If the codebase has no taste.md / TDRs / identity, ALEXANDER produces an underspecified brief and the hand has to invent — uncanny output is the symptom."
+  - "Selection-test (stage 3) is rule-based; it can't catch a render that's technically passing every named test but still wrong-feeling. Operator-in-the-loop is the answer; the composition exits to operator on iteration cap."
+  - "Output reproducibility is not guaranteed (LLM + image-model variance, doctrine v5 §17.1). Dispatch is deterministic; renders are not."
+  - "Images 2.0 has exactly three output sizes (1024² / 1024×1536 / 1536×1024). For wider banners, generate at 1536×1024 and crop post-hoc — see prompting-images SKILL.md §'Size and Aspect Constraints'."
+
+references:
+  - gist: https://gist.github.com/zkSoju/98d96dcb72320bfc4d43e00a6fdaa245
+  - skill_directing_generation: construct-artisan/skills/directing-generation/SKILL.md
+  - skill_prompting_images: construct-the-mint/skills/prompting-images/SKILL.md
+  - skill_curate: construct-the-mint/skills/curate/SKILL.md
+  - skill_materialize: construct-the-mint/skills/materialize/SKILL.md
+  - companion_audit_pair: grimoires/compositions/feel-audit.yaml
+  - companion_full_stack: grimoires/compositions/website-scaffold.yaml
+  - companion_wayfinding_pair: construct-creator/compositions/explore-ecosystem.yaml
+  - doctrine: bonfire-construct-pipe-doctrine v6 §15.2 (workflow-kind composition)
+
+operator_note: |
+  For gumi · 2026-04-25.
+
+  Compositions are runtime expert chains — stitched skill calls from
+  multiple constructs, with declared streams + iteration loops.
+  They're not the gen-art-tool surface; they're what runs *underneath*
+  a tool when the tool wants to invoke "directed image production" as
+  a single capability.
+
+  Gumi's tool is a SURFACE (layer manager + preview + export). The
+  construct it exports could ship its own composition that wraps
+  feel-image — e.g. <collection>-cover.yaml chains
+  <collection>/directing-generation (canon distilled from schema + lore)
+  → the-mint/prompting-images (executes against the layer-set's reference
+  grid) → the-mint/curate (selection against rarity/swag rubric) →
+  the-mint/materialize (locks the cover with collection wordmark).
+
+  The codex pattern (mibera-codex shape — browse / query / cross-reference
+  over a knowledge graph) is the OTHER half of what her tool exports —
+  read-only data skills over the schema. Two halves, one construct, both
+  shippable. See also: collection-with-codex.yaml (the worked example).
+
+version: "1.1.0"
+authored_at: "2026-04-25"
+authored_by: cycle-004 reference composition (feel→image, gumi explainer)

@@ -1719,3 +1719,10 @@ preferences:
 bridgebuilder:
   enabled: true
   model: "claude-headless"
+
+# =============================================================================
+# Simstim — HITL accelerated development workflow (enabled 2026-06-11,
+# legba-substrate seating session: operator invoked /simstim-workflow)
+# =============================================================================
+simstim:
+  enabled: true

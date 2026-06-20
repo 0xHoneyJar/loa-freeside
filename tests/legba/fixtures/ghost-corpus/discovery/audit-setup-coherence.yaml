@@ -1,0 +1,364 @@
+# Composition · audit-setup-coherence
+# ================================================================
+# The gate audits the gate. Reviews whether the Loa composition pipeline
+# (/compose) + the FAGAN/flatline review actually route through cheval (the
+# intelligence router), and whether the multimodal gate is STRUCTURAL for
+# high-stakes work — then routes its OWN verdict through the cheval council.
+#
+# Authored 2026-06-03 from the Session-8 meta-reflection: the build experience
+# felt flaky because the multimodal gate was IMPROVISED (hand-rolled Claude-only
+# reviews + fagan-panel.sh run by hand) instead of harness-provided through
+# cheval. This composition makes the coherence audit a first-class, repeatable,
+# cheval-routed act. Full RFC + the live dogfood proof:
+#   <repo>/grimoires/loa/context/2026-06-03-intelligence-router-coherence.md
+# ================================================================
+
+schema_version: "1.0"
+kind: workflow
+name: audit-setup-coherence
+description: >
+  Audit Loa intelligence-router coherence: does /compose + the FAGAN/flatline
+  review route through cheval, and is the multimodal gate structural for
+  high-stakes work? Grounds the wiring against real files, routes the verdict
+  through the cheval-routed council (dogfooding the coherence it checks), and
+  synthesizes gaps + concrete patches.
+
+intent: >
+  "The setup is itself medium-high-stakes infra — it gates every other build.
+   Review it with the rigor it should enforce: ground the cheval/compose/FAGAN/
+   kickoff wiring against real files, route the verdict through the cheval council
+   (MODELINV + verdict-quality), surface declared-vs-actual routing gaps + minimal
+   fixes. Self-referential by design — the gate audits the gate."
+
+backend: headless-tmux
+
+hivemind_labels:
+  product_area: "Engineering — Loa intelligence-router coherence audit"
+  workstream: discovery
+  priority: high
+  jtbd:
+    category: personal
+    description: "Reassure Me This Is Coherent — declared review routing matches what
+      the runtime actually does"
+  source: team-internal
+
+depends_on:
+  scripts:
+  - construct-fagan/scripts/cheval-council.sh     # the cheval-routed council runner
+  tools:
+  - cheval                 # the intelligence router (.claude/adapters/cheval.py)
+  reference:
+  - "<repo>/grimoires/loa/context/2026-06-03-intelligence-router-coherence.md"
+
+inputs:
+- type: Intent
+  name: scope
+  description: which coherence dimensions to audit (default all — cheval, 
+    /compose, FAGAN, compositions, kickoff)
+  required: false
+
+# Ground → council-review → synthesize. Re-loop review↔synthesize until the
+# council clears (or the cap is hit — surface, do not auto-pass).
+iterate:
+- [2, 3]
+max_iterations: 2
+terminate_when: >
+  the cheval-routed council (stage 2) returns APPROVED with no open coherence
+  BLOCKER, OR the iteration cap is reached (Verdict carries auto_approved: true —
+  surface to operator, do not treat as a clean pass).
+
+chain:
+- stage: 1
+  name: ground
+  construct: gecko               # required Stage field (was missing -> schema-INVALID + emit AttributeError); parity with audit-ecosystem-coherence stage 1
+  skill: riding-codebase
+  persona: GROUNDER
+  mode: fresh
+  reads: [Intent]
+  writes: [Artifact, Signal]     # the coherence map
+  thinking_effort: high
+  notes: >
+    Read the REAL wiring — every claim file:line-grounded:
+      - cheval invocation contract (.claude/adapters/cheval.py — --agent/--model,
+        MODELINV envelope, headless vs HTTP adapters, chain-walk).
+      - how /compose dispatches stages (construct-rooms-substrate Form C runtime):
+        does any REVIEW/craft-gate stage route through cheval, or all single-Claude?
+      - the FAGAN panel's dispatch (construct-fagan/scripts/fagan-panel.sh +
+        lib-*-exec.sh): CLI-direct or cheval-routed?
+      - whether compositions link surface_class → a mandatory multimodal gate.
+      - the kickoff template's stakes-tier + review-cadence + cheval detection.
+    Emit a DECLARED-vs-ACTUAL routing map per layer. Stale refs (e.g. codex-rescue [DEPRECATED→general-purpose]
+    MCP) are findings.
+
+  intelligence_tier: deep
+  output_schema:
+    type: object
+    required:
+    - seams
+    - root_cause_candidate
+    - fix_shape_candidate
+    - symlink_self_critique
+    additionalProperties: false
+    properties:
+      seams:
+        type: array
+        items:
+          type: object
+          required:
+          - name
+          - consumer
+          - expects_at
+          - producer
+          - provides_at
+          - drifts
+          - severity
+          - failure_mode
+          - evidence
+          additionalProperties: false
+          properties:
+            name:
+              type: string
+            consumer:
+              type: string
+              description: who looks (tool/script/runtime)
+            expects_at:
+              type: string
+              description: the path/contract it expects
+            producer:
+              type: string
+            provides_at:
+              type: string
+              description: where the producer actually put it
+            drifts:
+              type: boolean
+            severity:
+              type: string
+              enum:
+              - CONFLICT
+              - SMELL
+            failure_mode:
+              type: string
+              enum:
+              - silent
+              - loud
+            current_patch:
+              type: string
+            evidence:
+              type: string
+              description: file:line or a path-exists check actually run
+      root_cause_candidate:
+        type: string
+      fix_shape_candidate:
+        type: string
+      symlink_self_critique:
+        type: string
+        description: is the session ~/.claude/constructs->~/.loa/constructs 
+          symlink a CONTRACT or a BAND-AID? argue honestly.
+- stage: 2
+  name: council-review
+  construct: fagan               # was codex-review (retired); real reviewer, routes the cheval council below (bd-ii1m)
+  persona: FAGAN
+  mode: fresh
+    # ROUTE THROUGH CHEVAL — not a single-Claude agent, not a CLI-direct panel.
+  reads: [Artifact]
+  writes: [Verdict, Signal]
+  thinking_effort: high
+  notes: >
+    Pipe the coherence map to cheval-council.sh. The council judges: are the gaps
+    REAL (declared-vs-actual)? are the proposed fixes sound + minimal + non-breaking?
+    any missed coherence break (a declared gate the runtime ignores)? A lone critical
+    from any voice HOLDS the gate. Per-voice MODELINV envelopes prove which model
+    actually answered (no silent downgrade on this high-stakes audit).
+
+  intelligence_tier: deep
+  output_schema:
+    type: object
+    required:
+    - verdict
+    - blocker
+    - confirmed_seams
+    - corrections
+    - symlink_verdict
+    - root_cause_assessment
+    additionalProperties: false
+    properties:
+      verdict:
+        type: string
+        enum:
+        - APPROVED
+        - CHANGES_REQUIRED
+      blocker:
+        type: boolean
+      confirmed_seams:
+        type: array
+        items:
+          type: string
+      rejected_seams:
+        type: array
+        items:
+          type: object
+          required:
+          - name
+          - why
+          additionalProperties: false
+          properties:
+            name:
+              type: string
+            why:
+              type: string
+      missed_seams:
+        type: array
+        items:
+          type: string
+      corrections:
+        type: array
+        items:
+          type: object
+          required:
+          - claim
+          - gecko_said
+          - actual
+          - evidence
+          additionalProperties: false
+          properties:
+            claim:
+              type: string
+            gecko_said:
+              type: string
+            actual:
+              type: string
+            evidence:
+              type: string
+      symlink_verdict:
+        type: object
+        required:
+        - ruling
+        - reasoning
+        additionalProperties: false
+        properties:
+          ruling:
+            type: string
+            enum:
+            - contract
+            - band-aid
+          reasoning:
+            type: string
+      root_cause_assessment:
+        type: string
+- stage: 3
+  name: synthesize
+  construct: general-purpose       # was codex-rescue (retired); built-in implementer (bd-ii1m)
+  persona: SYNTHESIZER
+  mode: persistent
+  reads: [Verdict, Artifact]
+  writes: [Artifact, Signal]       # the patch set + RFC update
+  iterates_with: 2
+  thinking_effort: high
+  notes: >
+    Apply surviving council findings: produce the concrete patch set (composition
+    edits, kickoff edits, /compose segment-emitter routing spec, FAGAN-lib → cheval)
+    + update the coherence RFC. Re-emit for the council to re-verify.
+
+  intelligence_tier: deep
+  output_schema:
+    type: object
+    required:
+    - reviewed_diagnosis
+    - seam_contract
+    - sensor_design
+    - cutover_path
+    additionalProperties: false
+    properties:
+      reviewed_diagnosis:
+        type: string
+      seam_contract:
+        type: string
+        description: the single source-of-truth fix the council endorsed, 
+          DISTINCT from the symlink band-aid
+      sensor_design:
+        type: object
+        required:
+        - skill_name
+        - what_it_senses
+        - conflict_vs_smell
+        - install_note
+        additionalProperties: false
+        properties:
+          skill_name:
+            type: string
+          what_it_senses:
+            type: string
+          conflict_vs_smell:
+            type: string
+          install_note:
+            type: string
+            description: how it avoids the sensing-runtime-fit-not-installed 
+              drift
+      cutover_path:
+        type: array
+        items:
+          type: object
+          required:
+          - step
+          - gate
+          - reversible
+          additionalProperties: false
+          properties:
+            step:
+              type: string
+            gate:
+              type: string
+            reversible:
+              type: boolean
+outputs:
+- type: Artifact
+  destination: "<repo>/grimoires/loa/context/<date>-intelligence-router-coherence.md"
+  description: the coherence map + patch set + RFC
+- type: Verdict
+  destination: .run/compose/<run_id>/coherence-council.jsonl
+  description: per-iteration cheval-routed council verdicts + MODELINV envelopes
+- type: Signal
+  destination: .run/compose/<run_id>/orchestrator.jsonl
+
+# ================================================================
+# Surface Class — the setup is high-stakes infra (gates every build)
+# ================================================================
+surface_class:
+  default: defi-strict           # schema-valid SurfaceClass.default (was 'data-validity' — not in the canonical 4-value enum)
+  enum: [data-validity, auth-contract, defi-strict, mixed, unspecified]
+  inferred_when_unspecified: defi-strict
+
+# Top-level cheval-routed multimodal-council mandate (schema v1.4 review_routing).
+# Was nested under surface_class (schema-INVALID: SurfaceClass is additionalProperties:false),
+# and declared a bare `mandatory: true` the runtime can't act on — itself the declared-vs-
+# actual routing gap this composition exists to catch. Lifted + given a real mandatory_when.
+review_routing:
+  mandatory_when: [data-validity, auth-contract, defi-strict]   # this audit MUST route through the cheval council
+  router: cheval
+  runner: construct-fagan/scripts/cheval-council.sh
+  voices: [gpt-reviewer, reviewing-code, deep-thinker]
+  min_surviving_voices: 2
+  audit: modelinv-required
+  optional_when: [mixed, unspecified]
+
+when_to_use: >
+  - After changing cheval / compositions / FAGAN / kickoff / rooms-substrate wiring
+  - Quarterly coherence sweep — does DECLARED review routing match the RUNTIME?
+  - When a session "feels flaky" or diverges from the harness — this names WHY
+  - NOT for code review (use code-implement-and-review) or planning review (use Flatline)
+
+operator_note: |
+  Authored 2026-06-03 from the Session-8 meta-reflection. The build felt flaky because
+  the multimodal gate was improvised, not harness-provided through cheval. The deepest
+  fix is structural: make the audit of the gate ITSELF a cheval-routed, repeatable
+  composition. Three principles:
+    1. THE GATE AUDITS THE GATE. Stage 2 routes through the same cheval council the
+       composition recommends — if the council is broken, this audit surfaces it first.
+    2. DECLARED ≠ ACTUAL. The core finding shape is "the YAML declares FAGAN/craft-gate
+       but the runtime runs single-Claude." Ground every routing claim file:line.
+    3. HEADLESS IS THE BRIDGE. cheval HTTP needs API quota; cheval headless wraps the
+       subscription CLIs + adds the audit envelope. Bind voices to headless adapters.
+
+version: "1.0.0"
+authored_at: "2026-06-03"
+authored_by: Session-8 meta-reflection — intelligence-router coherence

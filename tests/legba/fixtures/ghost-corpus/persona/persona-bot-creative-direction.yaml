@@ -1,0 +1,240 @@
+schema_version: "1.0"
+kind: workflow
+name: persona-bot-creative-direction
+description: >
+  Card-deck creative direction session for spinning up a new persona-bot
+  in the Loa ecosystem (Ruggy / puru-daemon / aphive-beekeeper / siblings).
+  Walks the operator through 5 load-bearing creative direction axes via
+  AskUserQuestion, captures the picks as a creative-direction artifact,
+  and emits a persona scaffold pre-filled with the choices.
+
+  Origin: 2026-04-28 Ruggy session. Operator wanted structured guidance
+  through character-building rather than open-ended prompting; the deck
+  emerged as a reusable shape after Ruggy's picks crystallized.
+
+intent: >
+  "Use small AskUserQuestion to guide me through the process of creative
+   direction for this character building. This can be used in the future
+   if we create a composition that works for us here."
+   — operator framing 2026-04-28
+
+depends_on:
+  constructs:
+    - the-arcade        # BARTH lineage: game-design framing for character
+    - observer          # KEEPER lens for the listening between cards
+    - the-weaver        # BEAUVOIR for cross-axis composition
+    - artisan           # ALEXANDER for voice register craft (later cards)
+    - construct-mibera-codex   # canonical lore the bot lives inside (when target world is mibera)
+  upstream_compositions: []
+  downstream_compositions:
+    # When V0.5 SDK migration runs, the persona scaffold from this
+    # composition becomes the input for the SDK agent definition.
+    - compositions/delivery/persona-bot-sdk-migration.yaml   # not authored yet (V0.5 placeholder)
+
+chain:
+  - stage: 1
+    name: role-card
+    construct: claude-code
+    skill: ask-user-question
+    persona: operator
+    mode: blocking
+    reads: [Operator-Model]
+    writes: [Artifact]   # creative-direction.role
+    role: gate
+    notes: >
+      Card 1 — Persona's role in the world. Foundational; frames every
+      downstream choice. Options should span the role-space:
+        • community elder          (memory, weight, lore-keeper)
+        • quiet observer           (notice-and-surface, low-volume)
+        • cross-zone weaver        (connective, gossipy in a generous way)
+        • festival NPC / stagehand (inhabitant, environment-first)
+      Single-select. Question the question if other roles fit the world.
+
+  - stage: 2
+    name: zone-differentiation-card
+    construct: claude-code
+    skill: ask-user-question
+    persona: operator
+    mode: blocking
+    reads: [Operator-Model, Artifact]   # role from stage 1
+    writes: [Artifact]
+    role: gate
+    notes: >
+      Card 2 — How zones / surfaces / channels differentiate from each
+      other. Options should span the differentiation-space:
+        • codex-archetype inflected   (each zone leans into its lore archetype)
+        • throughline                 (cohesive aesthetic, subtle differences)
+        • state-reflective            (atmosphere = this-week's data)
+        • archetype + state hybrid    (baseline + weekly inflection)
+      Single-select. Pairs with role from stage 1.
+
+  - stage: 3
+    name: location-of-environment
+    construct: claude-code
+    skill: ask-user-question
+    persona: operator
+    mode: blocking
+    reads: [Artifact]
+    writes: [Artifact, Signal]   # decision + signal to upstream owner
+    role: gate
+    notes: >
+      Card 3 — WHERE zone/surface environment descriptions live
+      structurally. This is the architecture-vs-creative seam.
+      Options:
+        • codex side               (lore stewards author canonical descriptions)
+        • data-side (e.g. score-mcp) (atmosphere coupled to data refresh)
+        • persona doc              (bot-side knowledge, tightest coupling)
+        • hybrid                   (codex base + data-side deltas)
+      Question the question if operator's leaning blurs separation of
+      concerns. Default recommendation: codex side.
+
+  - stage: 4
+    name: memory-card
+    construct: claude-code
+    skill: ask-user-question
+    persona: operator
+    mode: blocking
+    reads: [Artifact]
+    writes: [Artifact]
+    role: gate
+    notes: >
+      Card 4 — Memory & continuity arc. The biggest "alive" signal per
+      gemini research is contextual memory continuity. Options:
+        • amnesic                  (each post fresh; no continuity)
+        • short-term recall        (last N digests on disk; read-from-log)
+        • long-term recognition    (KV: actor → recognition history)
+        • lore-stewarding          (bot WRITES to canonical chronicle)
+      Tech impl varies by pick; lore-stewarding requires RFC + write
+      access to canonical lore repo (typically not granted on V1).
+
+  - stage: 5
+    name: rituals-card
+    construct: claude-code
+    skill: ask-user-question
+    persona: operator
+    mode: blocking
+    reads: [Artifact]
+    writes: [Artifact]
+    role: gate
+    notes: >
+      Card 5 — Cadence rituals beyond standard cadences (digest / pop-in
+      / weaver). Options:
+        • codex-anchored rituals   (calendar moments — anniversaries, full-moon)
+        • threshold-triggered      (data crosses meaningful threshold)
+        • minimal                  (no special-form posts beyond standard)
+        • combined                 (calendar + threshold)
+      Pairs with role + memory: stagehand-role + long-term-recall +
+      codex-anchored is the highest-craft combination.
+
+  - stage: 6
+    name: emit-creative-direction
+    construct: the-weaver
+    skill: composing-paths
+    persona: BEAUVOIR
+    mode: fresh
+    reads: [Artifact]   # all 5 picks
+    writes: [Artifact]  # bots/<persona>/creative-direction.md
+    role: primary
+    notes: >
+      The-weaver synthesizes the 5 picks into a creative-direction
+      document. The document is human-readable and machine-readable —
+      both the operator and downstream composition stages consume it.
+      Output structure: role / zones / where-env-lives / memory / rituals
+      with "decided / open / next-action" per axis.
+
+  - stage: 7
+    name: scaffold-persona
+    construct: the-weaver
+    skill: composing-paths
+    persona: BEAUVOIR
+    mode: fresh
+    reads: [Artifact]
+    writes: [Artifact]  # bots/<persona>/persona-scaffold.md
+    role: cross-reference
+    notes: >
+      Optional final stage. Generate a persona.md scaffold pre-filled
+      with the 5-axis picks, ready for the operator to add voice
+      exemplars (ICE) and per-post-type fragments. If the persona doc
+      already exists (this is a re-direction session), emit a diff
+      proposal instead of overwriting.
+
+outputs:
+  - type: Artifact
+    destination: bots/{persona-name}/creative-direction.md
+    description: >
+      Captures the 5-axis picks as canonical creative direction for the
+      persona-bot. Reusable as input for V0.5 SDK migration composition
+      and as documentation for new contributors.
+
+  - type: Artifact
+    destination: bots/{persona-name}/persona-scaffold.md
+    description: >
+      Pre-filled persona doc shell with role / zones / memory choices
+      baked into the system prompt template. Operator drops voice
+      exemplars (ICE) and per-post-type fragments to complete.
+
+  - type: Signal
+    destination: .run/persona-direction/{persona-name}-axes.json
+    description: >
+      Machine-readable record of axis picks. Downstream compositions
+      (e.g., SDK migration) read this rather than re-asking.
+
+compose_with:
+  - the-arcade
+  - the-weaver
+  - observer
+  - artisan
+  - construct-mibera-codex   # when target world is mibera; substitute per world
+
+composes_symmetrically_with:
+  - the-weaver ↔ observer        # creative direction informs listening; listening sharpens direction
+  - the-arcade → the-weaver      # game-design framing → cross-axis composition
+
+invocation_examples:
+  - operator_utterance: "spin up a new persona-bot for puru-daemon"
+    resolves_to: |
+      run persona-bot-creative-direction with persona-name=puru-daemon
+      and target-world=purupuru. Walks the 5-card deck. Emits creative
+      direction at bots/puru-daemon/creative-direction.md.
+
+  - operator_utterance: "kickoff aphive-beekeeper persona"
+    resolves_to: |
+      run persona-bot-creative-direction with persona-name=aphive-beekeeper
+      and target-world=aphive (apdao). Starts from card 1 unless
+      bots/aphive-beekeeper/creative-direction.md already exists.
+
+  - operator_utterance: "redirect ruggy"
+    resolves_to: |
+      run persona-bot-creative-direction with persona-name=ruggy in
+      re-direction mode. Loads existing creative-direction.md, presents
+      the 5 cards with current picks pre-selected, allows operator to
+      shift any axis. Emits diff proposal not overwrite.
+
+when_to_use: |
+  - A new persona-bot is being authored (Ruggy was the first; siblings
+    coming for purupuru, apHive, etc.)
+  - An existing persona-bot needs creative-direction re-grounding
+    (the templated-feel complaint surfaces; voice drifts; new world-
+    building scope is added)
+  - The operator needs structured creative guidance vs open-ended
+    prompting — the deck is the rail
+  - Documenting a persona's creative direction for handoff or
+    contributor onboarding
+
+known_limitations: |
+  - Voice register variants (laid-back / earnest / mischievous /
+    deadpan) are not in the 5-card deck. The operator's OG seed for
+    each persona should already be locked before this session runs.
+    If voice register is unsettled, run a separate /smol session to
+    crystallize it before walking the deck.
+  - Visual identity (avatar / custom emoji set / color register) is
+    deferred to a downstream composition. The deck assumes the
+    Discord application is already registered with a placeholder
+    avatar.
+  - Cross-persona consistency (when multiple bots inhabit overlapping
+    spaces — e.g., honey jar guild) is not modeled in this composition.
+    A multi-persona-coherence composition is downstream work.
+
+version: "0.1.0"
+authored_at: "2026-04-28"
+authored_by: CURATOR (via Ruggy creative direction session 2026-04-28; authored during the freeside-ruggy V0.4.5 → V0.5 transition)

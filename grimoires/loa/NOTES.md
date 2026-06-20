@@ -202,3 +202,90 @@ In-repo sprint-1 (cycle doctor-acvp-network-plane, branch feat/doctor-acvp-netwo
   Honest interim: aspirational + dated (2026-09-25) in .freeside/acvp-aspirational-allowlist.yaml,
   NOT a faked green. Tracked: arrakis-5ryf. events-api slug is an `-api`-naming-law concession
   for a library (mcp omitted, no served URL).
+
+---
+
+## Legba cycle-1 — dispatch record (simstim-20260611-7a68ab09)
+
+Three L6 handoff artifacts authored, validated (frontmatter + ts + canonical-id),
+content-addressed via the lib's own derivation (`_handoff_canonical_for_id` → JCS → sha256):
+
+| handoff | target repo | content-address | brief |
+|---|---|---|---|
+| hounfour schemas | loa-hounfour | `sha256:510fece7afd8897d9a67292ee9667d6c29229079a4320308033550857978cb74` | `grimoires/loa/handoffs/2026-06-11-legba-cycle1-hounfour-schemas.md` |
+| ghost-door lint | construct-compositions | `sha256:41ad5be54b86b2ffde90dd59d94d7c1d3ef29e4aa09c1afcc708f73e299115f4` | `grimoires/loa/handoffs/2026-06-11-legba-cycle1-ghost-door-lint.md` |
+| named-defect patches | construct-rooms-substrate | `sha256:8688ccb02e97ae39886e62af47a18500a3e5b48988ae9b16bec92c907c4d6659` | `grimoires/loa/handoffs/2026-06-11-legba-cycle1-named-defect-patches` (patches/ dir) |
+
+### Decision Log — L6 atomic-publish gated on operator registry (NOT bypassed)
+`handoff_write`'s strict operator-verification (`structured_handoff.verify_operators`
+defaults true) rejects the emit: `from=loa-freeside-legba-cycle1` and the target
+repos are not in `grimoires/loa/operators.md` (which holds one stub entry,
+`deep-name`). Flipping the gate to warn-mode OR registering operators is a
+**governance act** — out of autonomous scope (auth/persistence/Loa-gate, no
+creative latitude). The artifacts + content-addresses stand; the atomic publish
+is one operator action away (register the dispatching identity, or set
+`structured_handoff.verify_operators: false` if the stub registry is leftover).
+
+### Bug surfaced (deployment seam, real): `structured-handoff-lib.sh` repo-root resolution
+Under zsh `source`, `_LOA_HANDOFF_REPO_ROOT` resolved to `$HOME` (read a stale
+global `~/.run/machine-fingerprint` with an empty `fingerprint` value → exit 6).
+Under `bash` it resolves correctly to the repo. Same class as the playtest's
+base-dir-dependent verdict finding — a path resolution that assumes a shell/root
+that isn't guaranteed. Worth a System-Zone follow-up bead.
+
+---
+
+## Asson cycle-1 — dispatch record (simstim-20260611-0d76ae77)
+
+L6 handoff authored + validated (frontmatter+ts+canonical-id), content-addressed via the lib's own `_handoff_canonical_for_id`:
+
+| handoff | target | content-address | brief |
+|---|---|---|---|
+| veve schema | loa-hounfour | `sha256:7ee71b35a5056093f5816565f3786367b8d56ca2ad1c1d44d62a3ff5fbbcddd9` | `grimoires/loa/handoffs/2026-06-11-asson-veve-schema.md` |
+
+### Decision Log — L6 atomic-publish gated on machine-fingerprint (NOT bypassed)
+`handoff_write` refused with `[CROSS-HOST-REFUSED]`: the stored machine-fingerprint
+(af5c02…, Jun 7) ≠ current (5c40…) — a network/hostname drift on the SAME operator
+machine, not a different host. Resetting the fingerprint is a guardrail change,
+out of autonomous scope (same posture as the Legba operator-registry gate). The
+artifact + content-address stand; the atomic publish is one operator act away
+(`.run/machine-fingerprint` refresh if this is genuinely the same machine, or the
+documented L6 cross-host recovery).
+
+### Decision Log — asson cycle-3 keyring binding (audit MEDIUM, pinned)
+Cycle-1 security audit (Paranoid Cypherpunk) APPROVED with one MEDIUM pinned as a
+**cycle-3 precondition**: `doctor()` verifies the attestation signature against a
+caller-supplied `publicKey` but does NOT assert that key's identity equals the
+attestation's `signed_by_key_id` (`asson.mjs:158,161`). Harmless in cycle 1 (no
+keyring → fail-closed `unattested`), but before cycle-3's CI key ceremony lets the
+`attestation` tier mean "trusted", the doctor MUST either take `(signerId,
+publicKey)` and assert `keyId(signerId, keyVersion) === signed_by_key_id`, or bind
+`key_id` to key material. Two LOW notes: treeHash follows symlinks (use lstatSync
+when attestation hardens); dev_signature keys are ephemeral/non-persisted (document
+in README). Full audit: `a2a/sprint-1/auditor-sprint-feedback.md`.
+
+### Asson cycle-2 — implementation grounding (pre-flatline)
+- **freeside-cli already declares `"@freeside/asson": "workspace:*"` but it's BROKEN**: no pnpm-workspace.yaml exists (empty), and the other siblings use `file:../` (`@freeside/freeside-registry: file:../freeside-registry`, `@freeside/beacon-schema: file:../beacon-schema`, linked into node_modules via pnpm). Cycle-2 fix (task 2.1/2.2): switch asson's dep to `file:../asson` to match the working pattern. Micro [[deployed-but-unconsumed-pattern]] — dep declared, never made resolvable.
+- **asson is `.mjs`, no build/dist**: the `file:../asson` link points at the package dir; `exports."."` → `./src/asson.mjs` (runtime), `types` → `./src/asson.d.ts`. asson stays zero-runtime-dep (CL-1).
+- **asson public API for the `.d.ts`** (asson.mjs): `ASSON_VERSION`, `jcs`, `sha256`, `hashObj`, `hashOutput`, `treeHash`, `createSigner`, `attestBuild`, `verifyAttestation`, `invoke`, `runVectors`, `harvestVector`, `toCommandPolicy`, `doctor`. (liveness.mjs): `DEFAULT_POLICY`, `budgetStatus`, `detectStall`, `detectSpin`, `paceCheck`, `checkpointPacket`, `livenessVerdict`.
+- **freeside-cli verb pattern**: TS NodeNext+strict; verbs `src/verbs/*.ts` (return code/report), exported from `src/index.ts`, dispatched by `switch(verb)` in `bin/freeside-cli.ts`; existing `doctor` verb = the BeaconV3/registry doctor (asson MUST namespace as `asson <sub>`).
+
+### Decision Log — asson cycle-2 CL-5↔SDD harvest reconciliation
+Sprint-2 invariant CL-5 said "attest --write is the ONLY file-mutating path." But SDD
+§4.5 (higher authority, Flatline-reviewed) says `asson harvest <dir> -- <argv>` "appends
+a pinned vector to the veve" — i.e. harvest legitimately mutates. Reconciled in favor of
+the SDD: `attest` is the only ATTESTATION-writing path (guarded by --write + pre-persist
+verify); `harvest` appends vectors and is guarded instead by the B7 double-run determinism
+guard (refuses to pin a non-deterministic tool). AC #3 marked ⚠ Partial-reconciled, not a
+gap. Also pinned for cycle-3: ASSON_VERSION (0.1.0) ≠ package.json (0.2.0) — cosmetic, left
+surgical; and L3-attested-dev needs --public-key <pem> at the CLI until the cycle-3 keyring
+resolves the key from signed_by_key_id (the same pinned audit MEDIUM).
+
+### Decision Log — asson cycle-3: the pinned MEDIUM is CLOSED
+The cycle-1 audit MEDIUM (doctor verifies against a caller-supplied key with no key_id↔publicKey binding) is RESOLVED. `doctor(veve, dir, {keyring})` resolves `signed_by_key_id → public_key_pem` via `resolveSigner` (active-only) and verifies against THAT — forged id unresolvable (AS-KR), wrong-key fails signature. The CI ceremony (`ci-key-ceremony.mjs`) mints attestation-tier sigs; private keys live 0600 under gitignored `packages/asson/.run/asson-keys/` (verified via git check-ignore). `keyring/signers.json` ships `{}` (public keys only). Two LOW carried: --public-key fallback is explicit-trust (keyring is the trusted path); no rotation/expiry (revoke only). Gotcha logged: pnpm store COPIES asson → `pnpm install` after editing the package to propagate .d.ts to freeside-cli.
+
+### Decision Log — asson cycle-4: liveness watchdog (read-only sensor)
+`freeside-cli asson watchdog <span-log.jsonl>` runs liveness.mjs#livenessVerdict over a Legba span log → 4 reproducible verdicts (stall→reap, spin→compact_then_present, budget→checkpoint_and_present, pace→pace_alert), exit 1 intervention / 3 warn / 0 continue. The seam is ONE-WAY: asson reads Legba's output, never modifies Legba. The SubagentStop hook wiring is System Zone (operator-gated) → NOT wired here (scope guard keeps `.claude/` clean). KEY INTEGRATION CHECK before wiring: verify the span-log shape `{record:{ts,kind,tool,input_hash},record_hash}` against a real Legba flight-recorder.jsonl. Cycle-4 driven from SDD §7 row 4 directly (no separate sprint doc — leave-local efficiency).
+
+### Decision Log — asson cycle-5: comms gate (3 INDEPENDENT linters) — LADDER COMPLETE
+`comms-gate.mjs` screens competitive-REL comms through 3 independent linters (AS-9/B5): legal-register (asson lexicon-lint, the ONLY one asson owns) + voice (ai-stench) + product-vocab (vocabulary-bank). Each a separate process with its own exit; the gate ORs them — NO orchestration, NO shared lexicon. Proven independent (legal-only/voice-only/vocab-only each fire alone). Absent linter → skipped+reported, never silent pass. The .claude/ hook registration is operator-gated (handoff); the finn spawn-time CommandPolicy PROPOSAL is a loa-finn handoff. bats stubs the 2 external linters for CI-portability (real ai-stench verified manually). **The 5-cycle asson ladder is COMPLETE, gated, leave-local.**

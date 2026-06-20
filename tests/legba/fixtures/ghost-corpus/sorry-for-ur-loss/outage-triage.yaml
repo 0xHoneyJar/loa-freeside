@@ -1,0 +1,506 @@
+# Composition · outage-triage
+# ================================================================
+# Meta-composition for outages that fan out. One bug report routinely
+# turns into N broken surfaces — server errors propagate through any
+# unguarded read path, infrastructure events (paused projects, DNS
+# rotation, deployment ID drift) hit every consumer at once.
+#
+# outage-triage is the upstream router that sits ABOVE triage-pause
+# and any future fix-sprint / architecture-migration compositions.
+# Per-surface disposition (fix / disable / migrate / remove) is
+# operator-driven; the composition's job is to produce the inventory,
+# the audit evidence, and the dispatch graph.
+#
+# Authored 2026-04-25 from the henlo-monorepo session that started
+# with "the tetris is 500ing" and ended with 8 affected surfaces, a
+# Supabase migration acknowledgment, and 3 Codex MCP delegations.
+# ================================================================
+
+schema_version: "1.0"
+kind: workflow
+name: outage-triage
+description: >
+  Triage a multi-surface outage. One report fans into N affected
+  surfaces; this composition produces the inventory, an audit
+  (typically via codex-mcp), a per-surface disposition decision
+  (fix / disable / migrate / remove), and dispatches each surface
+  to the correct downstream composition (triage-pause for disables,
+  fix-sprint for in-scope code fixes, architecture-migration for
+  cutover work).
+
+intent: >
+  "When a 500 surfaces, the question is rarely 'fix this one route' —
+   it's 'how many surfaces are affected, which ones do we fix vs
+   disable vs migrate, and how do we dispatch each path?'. This
+   composition produces the table the operator walks and routes
+   each row to the right downstream composition."
+
+backend: headless-tmux
+
+# Hivemind Lab labels: anti-spiral tether to user truth.
+hivemind_labels:
+  product_area: "Multi-surface outage triage (any product)"
+  workstream: sorry-for-ur-loss
+  priority: high
+  jtbd:
+    category: personal
+    description: "Give Me Peace of Mind — system status is visible across surfaces, with a clear disposition for each broken thing"
+  source: discord-support-or-feedback
+
+depends_on:
+  constructs:
+    - gecko             # observe + diagnose
+    - the-mint          # curate + dispatch
+    - artisan           # for any disposition that routes to design
+  tools:
+    - codex-mcp         # required for the broader audit stage; surfaces would otherwise need manual scan
+  downstream_compositions:
+    - compositions/sorry-for-ur-loss/triage-pause.yaml         # for disable dispositions
+    - compositions/sorry-for-ur-loss/fix-sprint.yaml           # for in-scope code fixes (authored 2026-04-27, FAGAN reviews armor specs)
+    - compositions/sorry-for-ur-loss/architecture-migration.yaml  # for substrate cutovers (authored 2026-04-27, FAGAN reviews migration plan)
+
+inputs:
+  - type: Intent
+    name: bug_report
+    description: >
+      The triggering report — Discord message, console screenshot,
+      monitoring alert, single 500 someone observed. Single concrete
+      symptom; the composition fans out from there.
+    required: true
+  - type: Artifact
+    name: codebase
+    description: Path to the affected app/repo (canonical, symlinks resolved per triage-pause stage 1)
+    required: true
+  - type: Artifact
+    name: env_context
+    description: >
+      Environment evidence — dev log, production console, monitoring
+      output. Often the most load-bearing input; root causes are
+      often visible in one console paste (e.g. "ENOTFOUND
+      project-xyz.supabase.co" + a CORS error reveals two distinct
+      infrastructure events at once).
+    required: false
+  - type: Operator-Model
+    name: operator_context
+    required: false
+
+# ================================================================
+# Stages
+# ================================================================
+
+chain:
+  - stage: 1
+    name: verify-source-of-truth
+    construct: gecko
+    skill: observe
+    persona: GECKO
+    mode: fresh
+    reads: [Intent, Artifact]
+    writes: [Verdict]
+    role: gate
+    verify_identifiers: |
+      Before propagating any operator-supplied config value (URL,
+      deployment ID, commit hash, env var name) into code, probe it.
+      Patterns:
+      - URL → `curl` with the smallest valid request; expect 200 (or
+        method-specific status).
+      - Deployment ID vs commit hash → commit hashes are 7–40 hex
+        chars and recognizable in git context; deployment IDs are
+        vendor-specific. If it appears in the operator's git context,
+        treat as a hash until verified.
+      - Env var → grep for actual usage; verify spelling against
+        existing env files.
+
+      Cycle-002 trap: operator pasted `f31df80` from a production
+      console. It was assumed to be a deployment ID and propagated
+      through ~6 turns before direct upstream curl revealed it was a
+      commit hash. Verify-first kills this in turn 1.
+    notes: >
+      Same as triage-pause stage 1. Resolve canonical repo path
+      (symlinks!), verify Loa mount, confirm BFZ matches the actual
+      project. Halt-on-fail. The downstream invocations all share
+      this verified context.
+
+      v1.1.0 adds the explicit verify-identifiers sub-step (see field
+      above). Any operator-supplied config value gets probed before it
+      propagates into code; the cycle-002 f31df80 incident is the
+      reference trap.
+
+  - stage: 2
+    name: confirm-symptom
+    construct: gecko
+    skill: diagnose
+    persona: GECKO
+    mode: fresh
+    reads: [Intent, Artifact, Verdict]
+    writes: [Verdict, Signal]
+    role: primary
+    notes: >
+      Local read of the reported symptom. Find the failing component,
+      identify the immediate data path. Cheap and fast (single file
+      read + grep). Output: a Signal with the suspect file paths and
+      a short hypothesis. This is the "I think it's the stats card"
+      moment — the precondition for the broader audit.
+
+  - stage: 3
+    name: broader-audit
+    construct: the-mint
+    skill: codex:rescue
+    persona: codex
+    mode: fresh
+    reads: [Verdict, Signal, Artifact]
+    writes: [Artifact]
+    role: engineering-handoff
+    transport_preference:
+      - mcp__codex__codex          # preferred — stable thread, codex-reply continuation
+      - "/codex:rescue"            # fallback — works when MCP server is unavailable
+    codex_mode:
+      delegation: |
+        One-shot brief, get a report. ≤300-word brief; agent runs
+        autonomous; returns ≤6 bullets. Default for fan-out audits —
+        the agent scans broadly, you read the artifact. No back-and-forth.
+      pair-program: |
+        Interactive back-and-forth via mcp__codex__codex-reply. Smaller
+        diffs, immediate feedback. Use when scope is structural cleanup,
+        schema design, or refactor — anywhere the next step depends on
+        the previous output. Higher coordination cost; use deliberately.
+      default: delegation
+    brief_structure:
+      - scope                      # what to scan: read paths, write paths, env config, recent commits
+      - confirmed_symptom          # operator's quote + suspect file
+      - dev_log_evidence           # paste relevant lines from /tmp/<dev>.log if available
+      - output_target              # grimoires/loa/a2a/<bug-id>/codex-audit.md
+      - output_structure           # Confirmed broken / At-risk / Root hypotheses / Fix shape / Recently changed
+      - report_cap                 # ≤6 bullets summary, full doc as artifact
+    notes: >
+      Codex MCP fans out from one symptom to all related broken/at-risk
+      surfaces. The composition relies on this stage to surface
+      surfaces the local read missed (e.g., other unguarded routes that
+      share the broken backend). Without this stage, the operator
+      makes per-surface calls blind. Briefs are ≤300 words; Codex
+      writes the audit to a file artifact, not chat output.
+
+      v1.1.0 adds explicit codex_mode (delegation | pair-program). For
+      a broader audit the default is delegation — one-shot brief,
+      autonomous fan-out, artifact-as-output. Switch to pair-program
+      when the audit surfaces structural cleanup or schema design that
+      benefits from interactive iteration via codex-reply.
+
+  - stage: 4
+    name: surface-inventory
+    construct: artisan
+    skill: directing-generation
+    persona: ALEXANDER
+    mode: persistent
+    reads: [Artifact, Verdict, Signal]
+    writes: [Artifact]
+    role: primary
+    notes: >
+      Synthesize Codex's audit + local diagnosis into a single
+      surface-disposition table. Each row: surface URL/component,
+      current state (500/silent-zero/404/CORS), suspected cause,
+      recommended disposition with reasoning. The table is the
+      operator's visual triage tool. Live destination:
+      grimoires/loa/a2a/<bug-id>/surface-disposition.md.
+
+      Disposition rubric (the four exits):
+      - disable          → route to triage-pause.yaml
+      - fix              → route to fix-sprint.yaml (or inline if trivial)
+      - migrate          → log + park; surfaces stay broken until upstream cutover
+      - remove           → delete + smoke check + redeploy
+
+  - stage: 5
+    name: hitl-disposition
+    construct: operator
+    persona: HUMAN
+    mode: blocking
+    role: hard-stop
+    notes: >
+      HARD STOP. Operator walks the surface-disposition table, fills in
+      the "Call" column. The composition cannot proceed without this.
+      The operator's lens is product-strategic (what do users need
+      most), not technical — they may decide a "fix" is wrong even if
+      the fix is small, or that a "migrate" surface needs a temporary
+      disable. Their call, not the composition's.
+
+  - stage: 6
+    name: dispatch
+    construct: the-mint
+    skill: curate
+    persona: MINT
+    mode: fresh
+    reads: [Artifact, Verdict]
+    writes: [Signal, Artifact]
+    role: dispatcher
+    notes: >
+      Read the operator's call column and dispatch each surface to
+      its downstream composition:
+
+      - disposition: disable    → invoke triage-pause.yaml with surface as input
+      - disposition: fix        → invoke fix-sprint.yaml (or inline edit if 1-2 lines)
+      - disposition: migrate    → log to grimoires/loa/context/migration-queue.md, no immediate work
+      - disposition: remove     → delete files + smoke check + redeploy hint
+
+      Multiple surfaces can dispatch in parallel. The composition
+      maintains a parent-bug ID linking all dispatched runs back to
+      the original report.
+
+  - stage: 7
+    name: retrospective
+    construct: artisan
+    skill: distilling-components
+    persona: ALEXANDER
+    mode: fresh
+    reads: [Artifact, Verdict, Signal]
+    writes: [Artifact]
+    role: primary
+    notes: >
+      After dispatch, write a retrospective at
+      grimoires/loa/tracks/<session>-outage-retrospective.md capturing:
+      - what symptom triggered the audit
+      - what root causes the audit revealed (often more than one)
+      - per-surface disposition + outcome
+      - friction points worth surfacing as composition deltas
+      - parent → child relationships (one bug → N surfaces)
+
+      This stage is the input to the next outage's confidence — patterns
+      across retrospectives become candidate composition updates.
+
+# ================================================================
+
+outputs:
+  - type: Artifact
+    destination: grimoires/loa/a2a/<bug-id>/codex-audit.md
+    description: Codex's broader audit — confirmed broken / at-risk / root hypotheses
+    hivemind_labels:
+      artifact_type: experiment-design
+      learning_status: directionally-correct
+  - type: Artifact
+    destination: grimoires/loa/a2a/<bug-id>/surface-disposition.md
+    description: Operator-walkable per-surface disposition table
+    hivemind_labels:
+      artifact_type: product-spec
+      learning_status: strongly-validated
+  - type: Artifact
+    destination: grimoires/loa/a2a/<bug-id>/triage.md
+    description: Top-level triage doc linking audit + disposition + dispatched runs
+  - type: Artifact
+    destination: grimoires/loa/tracks/<session>-outage-retrospective.md
+    description: Friction history + composition delta candidates
+    hivemind_labels:
+      artifact_type: atomic-learning
+      learning_status: directionally-correct
+  - type: Artifact
+    destination: grimoires/loa/tracks/session-{N+1}-kickoff.md
+    description: "End-of-session kickoff doc when scope crosses one cycle. Grounds the next session in: strategic frame, surface inventory, scope tracks, compositions to invoke, observed gotchas. Codifies the handoff pattern."
+    hivemind_labels:
+      artifact_type: experiment-design
+      learning_status: directionally-correct
+    emit_when: scope expands beyond one cycle OR operator explicitly says /kickoff
+  - type: Signal
+    destination: .run/compose/<run_id>/dispatch.jsonl
+    description: Per-surface dispatch log (which disposition routed where)
+
+compose_with:
+  - gecko
+  - the-mint
+  - artisan
+  - codex                # tool, not a construct
+
+composes_symmetrically_with:
+  - gecko ↔ codex        # local diagnosis ↔ broader audit
+  - artisan ↔ operator   # inventory ↔ disposition call
+  - the-mint ↔ triage-pause   # dispatcher ↔ downstream worker
+  - outage-triage ↔ hibernate-product   # per-bug router ↔ per-product meta
+
+# ================================================================
+# Surface Class (cycle-002 followup — canonical definition for the tower)
+# ================================================================
+# This is the canonical surface_class spec for the sorry-for-ur-loss
+# tower (triage-pause, hibernate-product) and adjacent compositions
+# (ground-and-craft). The other compositions carry summary stubs that
+# point here. Drives gating intensity, codex_mode default, HITL halt
+# latitude, and inline-fix permission. Cycle-002 retro: "with culture
+# tech hibernation versus more fintech, which is more defi heavy,
+# we've been able to move a little bit looser and fix things quicker
+# in a tasteful way" — uniform gating across both was wrong.
+
+surface_class:
+  default: unspecified
+  enum: [culturetech-loose, defi-strict, mixed, unspecified]
+  inference:
+    culturetech-loose:
+      signals:
+        - arcade chrome / cabinet UI / mascot characters
+        - marquee + ticker copy / scene-stack art
+        - hibernation cabinets / lobby chrome / disabled-state surfaces
+        - taste tokens / canon-driven visual work
+      blast_radius: low — cosmetic / copy / animation; reversible in one edit
+    defi-strict:
+      signals:
+        - contracts/ directory presence with .sol files
+        - vault math / swap routing / treasury reads
+        - FDV / APR / TVL / supply-locked display surfaces
+        - any direct mutation of onchain state
+      blast_radius: high — funds-locked / contract-state damage / financial misrepresentation
+    mixed:
+      signals:
+        - surface contains both classes (visual chrome over a financial primitive)
+        - examples: incinerator (burn UI is aesthetic; underlying burn() write is defi); wall (visual is cosmetic; AquaBera deposit is contract); lock (UI is cabinet; FDV ladder is financial)
+      classification: per-row at disposition time
+    unspecified:
+      meaning: operator did not classify
+      default_behavior: composition runs defi-strict-by-default until operator explicitly declares otherwise
+  affects:
+    gating_intensity:
+      culturetech-loose: relaxed — fewer mandatory halts; inline micro-fixes allowed per MAY-LATITUDE-1; operator latitude on iteration count
+      defi-strict: strict — explicit operator confirmation per disposition row; no inline contract-touching changes; iteration cap enforced
+      mixed: per-row — apply culturetech rules to aesthetic rows, defi rules to financial rows
+      unspecified: defaults to defi-strict
+    codex_mode_default:
+      culturetech-loose: pair-program (taste-loop tightening; smaller diffs reviewed live)
+      defi-strict: delegation (clear acceptance criteria; no taste interpretation; one-shot brief)
+      mixed: delegation by default; pair-program on operator override per row
+      unspecified: defaults to delegation
+    iteration_cap_enforcement:
+      culturetech-loose: advisory — do not enforce; let operator halts dictate progress
+      defi-strict: enforced — halt at cap awaiting operator confirmation
+      mixed: per-row
+      unspecified: enforced
+    inline_fix_permission:
+      culturetech-loose: allowed for cosmetic / copy / scrim work per MAY-LATITUDE-1
+      defi-strict: not allowed; all fixes route through explicit dispatch (track 6 of bug-001 sprint pattern)
+      mixed: per-row
+      unspecified: not allowed
+  invocation:
+    operator_supplied: |
+      Preferred. Operator names the class at invocation:
+      "/outage-triage --surface-class culturetech-loose" or in chat.
+    composition_inferred: |
+      Fallback. Composition reads the codebase signals at stage 1
+      (verify-source-of-truth) and proposes a class, halting for
+      operator confirmation before stage 2. The proposal is a
+      Verdict, not a default — operator MUST confirm to proceed
+      under any class other than unspecified.
+  rationale: |
+    CultureTech projects (henlo, mibera, butterfreezone, the-arcade
+    surfaces) tolerate looser-and-tasteful triage because the blast
+    radius is cosmetic and reversibility is high. DeFi / fintech
+    projects (any contract-touching code) need stricter discipline
+    because mistakes can be funds-locked or contract-state damage.
+    Aesthetic outcomes weight more in the former; financial
+    correctness weights more in the latter. Same composition,
+    different gating intensity per class.
+
+# ================================================================
+# Thinking Effort (cycle-002 followup — stub; canonical def in feel-iterate.yaml)
+# ================================================================
+
+thinking_effort:
+  default: high     # per-bug router; dispositions are consequential calls
+  enum: [low, medium, high, xhigh, max]
+  canonical_definition: compositions/delivery/feel-iterate.yaml#thinking_effort
+  affects_in_this_composition:
+    - stage 1 verify-source-of-truth — low (path resolution + identifier verify; mechanical with curl probe)
+    - stage 2 confirm-symptom — high (suspect file identification + hypothesis)
+    - stage 3 broader-audit — n/a (delegated to codex; codex_mode controls thinking on the codex side, not on the dispatcher)
+    - stage 4 surface-inventory — xhigh (audit synthesis into operator-walkable disposition table; load-bearing)
+    - stage 5 hitl-disposition — n/a (operator stage)
+    - stage 6 dispatch — high (per-surface routing with parallelism + parent-id linkage)
+    - stage 7 retrospective — high (friction-pattern extraction + composition delta candidates)
+
+# ================================================================
+
+invocation_examples:
+  - operator_utterance: "the tetris is 500ing — also stats sidebar is showing zeros"
+    resolves_to: full chain stages 1-7
+  - operator_utterance: "can you do a broader scan around this 500?"
+    resolves_to: stages 2-4 only — local diagnose + codex audit + inventory; halt at 5
+  - operator_utterance: "I have the audit, walk me through the surfaces"
+    resolves_to: stage 4 only — synthesize existing audit into the disposition table
+  - operator_utterance: "everything's on fire, help me reorient"
+    resolves_to: full chain with extra weight on stage 7 retrospective; output a "where do we go next" brief
+
+# ================================================================
+
+when_to_use: >
+  - A reported bug is suspected of fanning out (multiple surfaces
+    affected by one root cause)
+  - Infrastructure events (paused project, DNS rotation, deployment
+    ID drift, CORS) where the blast radius is wide
+  - Operator wants a structured fix-vs-disable decision per surface
+    rather than a single binary call
+  - A "while we're in there" sweep when one bug fix surfaces obvious
+    related issues
+  - NOT for single-surface bugs with a single fix (use bug-triaging
+    skill or fix-sprint directly)
+  - NOT for design polish work (use triage-pause or directing-generation
+    standalone)
+
+# ================================================================
+
+known_limitations:
+  - "Stage 3 (codex audit) is the load-bearing stage. A weak brief produces a weak audit; the composition's quality scales with brief quality. Pre-write the brief skeleton at session start; fill it when the symptom surfaces."
+  - "Stages 1-4 produce ~5 markdown artifacts. The operator needs to actually walk them, not skim. Stage 5 halt is real — composition cannot autonomous past it."
+  - "fix-sprint and architecture-migration both authored 2026-04-27 (closing the not-yet-authored siblings flagged in v1.0.0). All four disposition exits now have downstream compositions: disable → triage-pause; fix → fix-sprint (FAGAN on armor specs); migrate → architecture-migration (FAGAN on migration plan); remove → inline (no composition needed). The triage-pause / fix-sprint / architecture-migration trio is the cycle-closure for sorry-for-ur-loss."
+  - "Disposition can change after dispatch. A 'migrate' surface might become a 'disable' if migration slips; outage-triage doesn't currently re-dispatch — operator re-invokes per surface as needed."
+  - "Stage 7 retrospective produces composition delta candidates, not commits. Apply them to the upstream compositions deliberately, not automatically — patterns need 2-3 retrospectives' worth of evidence before an upstream PR."
+
+# ================================================================
+
+references:
+  - skill_observe: construct-gecko/skills/observe/SKILL.md
+  - skill_diagnose: construct-gecko/skills/diagnose/SKILL.md
+  - skill_directing_generation: construct-artisan/skills/directing-generation/SKILL.md
+  - skill_curate: construct-the-mint/skills/curate/SKILL.md
+  - skill_distilling_components: construct-artisan/skills/distilling-components/SKILL.md
+  - tool_codex_mcp: https://github.com/openai/codex
+  - downstream_disable: compositions/sorry-for-ur-loss/triage-pause.yaml
+  - upstream_when_full_product_sunsetting: compositions/sorry-for-ur-loss/hibernate-product.yaml
+  - companion_session_pattern: bug-triaging skill (.claude/skills/bug-triaging/SKILL.md)
+
+# ================================================================
+
+operator_note: |
+  Authored from the henlo-monorepo session (2026-04-25). The session
+  ran outage-triage by hand: tetris 500 → broader codex audit → 8
+  affected surfaces → operator walked surface-disposition table →
+  per-surface dispatch (some fix, some disable, some migrate-to-freeside).
+
+  Two principles worth carrying forward:
+
+  1. ONE BUG → N SURFACES IS THE RULE, NOT THE EXCEPTION. Especially
+     for infrastructure events (Supabase paused, deployment ID drifted,
+     CORS rotated). The composition's first move is to widen the
+     question from "fix this 500" to "what else is broken because
+     of the same root cause."
+
+  2. DISPOSITION IS PRODUCT, NOT TECH. The operator decides fix vs
+     disable vs migrate vs remove based on what users need most,
+     not what's easiest to change. Codex can produce the audit and
+     the inventory; only the operator can fill the call column.
+
+  The retrospective output is what makes this composition learn.
+  After 3-5 outages, look for repeated friction points — they
+  become candidate compositions of their own (e.g. fix-sprint.yaml
+  and architecture-migration.yaml are flagged here as not-yet-authored
+  because the henlo session showed they'd both be valuable).
+
+  When ALL surfaces of a project are dispositioned (the project is
+  sunsetting, not just temporarily broken), escalate from outage-triage
+  to hibernate-product.yaml. outage-triage routes per-bug;
+  hibernate-product routes per-product. The two compose symmetrically
+  — an outage discovered mid-hibernation routes back through outage-triage,
+  and an outage that surfaces "actually we should disposition the whole
+  product" escalates upward.
+
+# ================================================================
+
+version: "1.3.0"
+authored_at: "2026-04-25"
+authored_by: cycle-002 followup (thinking_effort stub from adaptive-thinking docs)
+changelog:
+  - "1.3.0 (2026-04-25): Add thinking_effort field (stub; canonical def in feel-iterate.yaml). Composition default = high (per-bug router; dispositions are consequential calls). Per-stage overrides: stage 1 verify = low; stage 4 surface-inventory = xhigh (load-bearing audit synthesis into walkable disposition table). Stages 3 + 5 are delegate / operator stages. Adaptive-thinking-aware runtimes translate per the canonical mapping."
+  - "1.2.0 (2026-04-25): Add canonical surface_class spec for the sorry-for-ur-loss tower. Enum: culturetech-loose | defi-strict | mixed | unspecified. Drives gating intensity, codex_mode default, iteration_cap enforcement, and inline_fix permission across triage-pause, hibernate-product, and ground-and-craft (which carry summary stubs pointing here). Inferred at stage 1 from codebase signals; operator confirmation required for any non-unspecified class. Defaults to defi-strict on unspecified for safety."
+  - "1.1.0 (2026-04-25): Add stage 1 verify-identifiers sub-step (URL/deployment-ID/commit-hash/env-var probe-before-propagate, with cycle-002 f31df80 trap citation). Add stage 3 codex_mode enum (delegation | pair-program; default delegation). Add session-{N+1}-kickoff.md to outputs[] with emit_when predicate. Add hibernate-product cross-reference (upstream when full-product sunsetting). Add outage-triage ↔ hibernate-product symmetric composition note. Authored from henlo-monorepo cycle-002 hibernation."
+  - "1.0.0 (2026-04-25): First canonical spec. Captures the meta-workflow operator ran by hand for the henlo bug-001 (tetris 500 → 8 affected surfaces). Routes to triage-pause for disables; flags fix-sprint and architecture-migration as future downstream compositions."

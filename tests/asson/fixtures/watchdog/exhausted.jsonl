@@ -1,0 +1,3 @@
+{"record":{"ts":"2026-06-11T11:57:50.000Z","kind":"span_open"},"record_hash":"sha256:0000038e"}
+{"record":{"ts":"2026-06-11T11:59:00.000Z","kind":"tool_call","tool":"a","input_hash":"x"},"record_hash":"sha256:000001a5"}
+{"record":{"ts":"2026-06-11T11:59:59.000Z","kind":"tool_call","tool":"b","input_hash":"y"},"record_hash":"sha256:00000008"}

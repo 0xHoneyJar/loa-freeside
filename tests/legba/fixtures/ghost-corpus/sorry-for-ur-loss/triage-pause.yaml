@@ -1,0 +1,535 @@
+# Composition · tasteful-disable
+# ================================================================
+# Bug-triage workflow that doesn't just patch the broken thing —
+# it produces a tasteful, on-brand UI for the disabled state.
+# A bug fix is two halves: backend (kill the 500s) + frontend
+# (show the user something that lands in canon, not a generic
+# error screen). Both halves are the bug.
+#
+# Authored 2026-04-25 from a workflow operator has run by hand
+# for years. Henlo tetris pause is the first concrete invocation.
+# The reusable component output (e.g. <DisabledCabinet />) is the
+# load-bearing artifact — it scales beyond the immediate fix.
+# ================================================================
+
+schema_version: "1.0"
+kind: workflow
+name: triage-pause
+description: >
+  Triage a feature that needs to be disabled (broken backend, ownership
+  gate, maintenance window) and ship a tasteful in-canon UI for the
+  disabled state. Bug fix is both halves — backend cleanup + frontend
+  craft. Output includes a reusable component that scales beyond the
+  immediate fix.
+
+intent: >
+  "When a feature breaks or needs to come down, the user-facing surface
+   is half the fix. Diagnose what's broken, propose disable options,
+   pick one, design the UI in the existing canon (arcade aesthetic,
+   brand register, etc.), implement, verify live. Output is a reusable
+   component, not just a patch."
+
+backend: headless-tmux
+
+# Hivemind Laboratory taxonomy — CultureTech's experimentation framework
+# (Eileen Dec 2025 canon, "Linear Issue Label Taxonomy Guide").
+# Anti-spiral tether: binds this composition's work to user truth.
+# Per-output labels declared in outputs[] below.
+hivemind_labels:
+  product_area: "Disabled-state UX (any product)"
+  workstream: sorry-for-ur-loss
+  priority: high
+  jtbd:
+    category: personal
+    description: "Give Me Peace of Mind — system status is visible, even when broken"
+  source: discord-support-or-feedback
+
+inputs:
+  - type: Intent
+    name: bug_report
+    description: >
+      User-reported failure. Could be a Discord message, a stack trace,
+      a 500 error in monitoring. Whatever surfaced the issue.
+    required: true
+  - type: Artifact
+    name: codebase
+    description: Path to the affected app/repo
+    required: true
+  - type: Artifact
+    name: canon
+    description: >
+      Existing visual canon — taste tokens, established UI patterns,
+      persona files. The disabled UI must land here.
+    required: true
+  - type: Operator-Model
+    name: operator_context
+    required: false
+
+iterate: []   # iteration loop is owned by feel-iterate.yaml (invoked at stage 6); no top-level iterate block in v1.7.0
+
+chain:
+  - stage: 1
+    construct: gecko
+    skill: observe
+    persona: GECKO
+    mode: fresh
+    reads: [Intent]
+    writes: [Verdict]
+    role: primary
+    notes: >
+      VERIFY THE SOURCE OF TRUTH. Before any code touches, GECKO maps
+      the production deployment URL → actual repo + branch + Loa
+      mount status + BFZ freshness. Resolves ambiguity between
+      candidate repos (henlo-interface vs henlo-monorepo, etc.).
+      Outputs the canonical repo path the rest of the chain MUST
+      operate against. Skipping this stage = work done in the wrong
+      repo. Non-negotiable.
+
+      Sub-checks (all must pass before stage 2):
+      a. Production URL → repo mapping verified (vercel.json or live deploy probe)
+      b. Loa mounted on target (.loa.config.yaml + .claude/ + BUTTERFREEZONE.md)
+      c. BFZ describes the actual project (not a stale inherited template)
+      d. If BFZ stale (>30d or wrong project), surface as warning;
+         optionally dispatch headless `claude -p` regen so it doesn't
+         burn the active session's context.
+
+  - stage: 1.5
+    name: ground-canon
+    construct: artisan
+    skill: surveying-patterns
+    persona: ALEXANDER
+    mode: fresh
+    reads: [Artifact, Verdict]
+    writes: [Verdict, Signal]
+    role: gate
+    when: >
+      Brownfield codebases (built before the construct framework
+      existed). On construct-native projects with established
+      taste.md / tokens / TDRs / persona files, this stage runs as a
+      freshness check only and advances quickly.
+    probes:
+      - taste.md OR grimoires/loa/context/taste-tokens-extracted.md OR equivalent canon doc
+      - tokens.css OR design-tokens.{ts,json,css} OR tailwind theme block
+      - TDRs/ OR adr/ OR architectural-decision-records/
+      - identity/ OR persona/ OR character/ files (.md, .yaml, image references)
+      - lore-bible.md OR brand-bible.md OR voice.md
+      - reference art / scene-stack source material codifying visual canon
+    on_present_and_fresh:
+      - emit Verdict naming canon location + recency summary
+      - proceed to stage 2 with canon paths threaded into Artifact input
+    on_present_but_stale:
+      - emit Signal surfacing what is stale (which file, last-touched age, divergence from current code)
+      - halt for operator — three options: (a) refresh canon now, (b) accept staleness with explicit acknowledgement, (c) skip canon-grounding for this invocation
+    on_absent:
+      - emit Verdict acknowledging brownfield-canon-light state
+      - propose grounding pass — synthesizing-taste + synthesizing-vocabulary + naming-rooms (operator-paired, ~30–90 min depending on codebase size)
+      - halt for operator — three options: (a) run grounding now, (b) defer to a separate session, (c) accept canon-light brief (uncanny output is the documented symptom)
+    notes: >
+      Brownfield grounding precedes craft. ALEXANDER's
+      directing-generation and iterating-visuals skills (stages 5–6)
+      are bounded by canon quality (per direct-render v1.1.0
+      known_limitations); this stage surfaces the bound BEFORE
+      downstream stages produce work that can't land in canon because
+      canon doesn't exist.
+
+      The stage is a HALT-IF-MISSING gate, not a silent grounding pass.
+      Grounding is real work — synthesizing-taste alone is a 30–90 minute
+      operator-paired pass that produces a taste.md from existing code,
+      reference art, and operator voice. Doing it inline blows past
+      triage-pause's normal scope. Better to halt and let the operator
+      choose: grounding-now, grounding-later (separate session), or
+      accept-canon-light-and-iterate.
+
+      Bespoke-per-room is the production form. Even when grounding
+      produces a single project-level canon, downstream stages should
+      treat each surface as its own room — pair with naming-rooms
+      upstream so per-surface treatment is grounded in what the room
+      is, not a templated pattern across the row. Generic banner /
+      cabinet patterns are first-cut scaffolding; each surface earns
+      its own iteration cycle (cycle-002 retro: "the tasteful way to
+      degrade is to do things custom by understanding our environment").
+
+      Cycle-002 friction (henlo-monorepo): the project predated the
+      construct framework. Reference art existed scattered across files
+      (poku images, taste-tokens-extracted.md, space-direction-brief.md
+      authored by parallel sessions). The composition needed an explicit
+      probe-and-halt gate to surface this as a precondition rather than
+      letting ALEXANDER produce briefs that referenced canon-fragments
+      without ever consolidating them. v1.6.0 fixes that gap.
+
+  - stage: 2
+    construct: gecko
+    skill: diagnose
+    persona: GECKO
+    mode: fresh
+    reads: [Intent, Artifact, Verdict]
+    writes: [Verdict, Signal]
+    role: primary
+    notes: >
+      GECKO scans the verified repo. Identifies the bug surface
+      (backend touch points, frontend components, feature gating
+      mechanism). Returns a Verdict naming what's broken and a Signal
+      listing the disable surfaces.
+
+  - stage: 3
+    construct: artisan
+    skill: surveying-patterns
+    persona: ALEXANDER
+    mode: fresh
+    reads: [Artifact, Signal]
+    writes: [Signal]
+    role: primary
+    notes: >
+      Before authoring anything new — scan the repo for existing
+      reusable patterns. Demo/autoplayer components, brick assets,
+      character images, animation primitives, mascot poses. The
+      composition should COMPOSE existing pieces first; only fill
+      gaps with new authorship. Outputs a Signal listing reusable
+      pieces with paths.
+
+  - stage: 4
+    construct: gecko
+    skill: report
+    persona: GECKO
+    mode: fresh
+    reads: [Verdict, Signal]
+    writes: [Verdict]
+    role: primary
+    notes: >
+      GECKO surfaces 3-4 disable options — full disable (route off),
+      partial (surface stays, mutations off), precise (custom UI for
+      the broken state). Each option carries a tradeoff note and
+      cites which reusable pieces from stage 3 it leans on. Operator
+      picks here. HITL choice point.
+
+  - stage: 5
+    construct: artisan
+    skill: directing-generation
+    persona: ALEXANDER
+    mode: persistent
+    reads: [Artifact, Verdict, Signal]
+    writes: [Signal, Artifact]
+    role: primary
+    vocabulary_governance:
+      # Generation IS audit surface — added v1.8.0 from cycle-002
+      # parallel-agent feedback ("Hibernation Copy Discipline").
+      # Apply to every chrome line the brief calls for. Cabinet sign
+      # copy carries the strictest tier (anchors a whole route, read
+      # carefully). Status / hint copy is one tier looser. Compose
+      # from approved bank entries when available; author fresh only
+      # if the bank lacks a fitting line.
+      taxonomy:
+        cabinet_sign:        { tier: strict,  max_lines: 2,  anchors_required: 1 }
+        cabinet_status_strip: { tier: strict,  max_lines: 1,  anchors_required: 1 }
+        cabinet_hint_text:   { tier: medium,  max_lines: 2,  anchors_required: 0 }
+      line_types:
+        anchor: |
+          Hard truth. States what is — feature gated, BGT discontinued,
+          withdraws on chain, donations rate. Each chrome region MUST
+          carry ≥ anchors_required per cycle so users see truth even
+          if they catch only one line.
+        flavor: |
+          Sensory tone. Sets the room — lights down, doors unlocked,
+          dust settled, no hours. No promises, no caretaker action,
+          no timeline.
+      no_promises_linter:
+        regex: "/back|return|restore|reopen|coming|soon|renovat|migrat/i"
+        action: reject unless paired with explicit denial ("never," "no plans," "indefinite")
+        rationale: |
+          Forward-promises (return / restoration / reopen / coming-soon
+          / renovation / migration-completes) imply caretaker action
+          the team isn't actually performing. Giving users a false
+          expectation about hibernation is the failure mode this
+          linter prevents.
+      bank_first_authoring:
+        rule: |
+          If a vocabulary bank exists for this surface (or a Herald-construct
+          equivalent), compose by picking from it. Author fresh only
+          when the bank lacks a fitting line. New lines go INTO the bank
+          before they ship — the bank is the durable artifact.
+        eileen_canon_safe_by_default: ["1 HENLO = 1 MOONDUST", "compound till moon"]
+        operator_review_threshold: any line not in the bank halts for explicit operator approval; do NOT generate "options" for the operator to pick from (doubles the audit surface for no gain)
+    notes: >
+      ALEXANDER reads the project's existing canon (taste tokens, TDRs,
+      established UI patterns from stage 3) and writes the brief for
+      the disabled state UI. Brief specifies copy, layout, treatments,
+      and which reusable pieces compose into the new component.
+
+      v1.8.0 adds vocabulary_governance (see field above). All
+      brief-authored chrome copy passes the no_promises_linter; line
+      counts respect the taxonomy tier; anchors are required per cycle;
+      bank-first authoring is the default. Cycle-002 evidence: parallel
+      agent shipped 6 lines on the lobby ticker, operator pulled to 3,
+      retrospective named the discipline as cross-room production
+      pattern. Three approved henlo lobby lines that survived the
+      retrospective:
+        - 🌑 ARCADE DARK · 1 HENLO = 1 MOONDUST
+        - 📉 BGT REWARDS DISCONTINUED · WITHDRAWS REMAIN ON CHAIN
+        - 🌙 NO HOURS · LIGHTS DOWN · DOORS UNLOCKED
+
+  - stage: 6
+    name: invoke-feel-iterate
+    construct: composition
+    invokes: compositions/delivery/feel-iterate.yaml
+    persona: ALEXANDER
+    mode: persistent
+    reads: [Signal, Artifact, Verdict]
+    writes: [Artifact, Verdict]
+    role: primary
+    notes: >
+      Component iteration loop is owned by feel-iterate.yaml v1.0.0.
+      Invoke with target_surface = the disabled-state cabinet for this
+      bug, canon = the project's approved canon (from stage 1.5
+      ground-canon Verdict, or from a prior ground-and-craft
+      invocation), refs = any existing reusable pieces from stage 3
+      (surveying-patterns).
+
+      feel-iterate handles: variation generation (artisan/iterating-visuals),
+      PixelMark-driven HITL feedback, curate selection against canon +
+      annotation trail, and distillation into the productionized
+      cabinet component. Returns a distilled Artifact ready for stage
+      9 hardening.
+
+      This stage replaces v1.6.0's stages 6 + 7 + 8 (which duplicated
+      the iteration loop). v1.7.0 single-sources the loop via
+      feel-iterate, keeping triage-pause focused on the disable-specific
+      flow (verify, ground-canon, diagnose, survey, options, brief,
+      delegate-engineering interrupt, harden) rather than the iteration
+      mechanics.
+
+      capture_method, react_query_cache_invalidation, rAF animation
+      caveats — all live in feel-iterate.yaml stage 1 capture_method
+      now. Operators reading triage-pause v1.7.0 should follow the
+      reference there.
+
+  - stage: 6.5
+    name: delegate-engineering
+    construct: the-mint
+    skill: codex:rescue
+    persona: codex
+    mode: fresh
+    reads: [Signal, Artifact]
+    writes: [Artifact]
+    role: engineering-handoff
+    when: >
+      Iteration surfaces non-trivial code work — simulation engines,
+      gravity/collision/rAF loops, multi-step refactors of large files
+      (>1000 lines), perf-sensitive logic, scripted-scene data
+      structures, physics audits. Tasteful disabled states routinely
+      blow past CSS-and-copy and into engineering proper.
+    transport_preference:
+      - mcp__codex__codex          # preferred — stable thread, codex-reply continuation
+      - "/codex:rescue"            # fallback — works when MCP server is unavailable
+    codex_mode:
+      # Same enum shape as outage-triage v1.1.0 stage 3 — see that
+      # composition for the canonical definition. Default differs:
+      # delegate-engineering biases toward pair-program because the
+      # work is usually scoped to one file/feature and benefits from
+      # iterative refinement (rAF physics audits, scripted-scene
+      # tuning). Outage-triage's broader audit defaults to delegation
+      # because the work is fan-out scanning.
+      delegation: |
+        One-shot brief, get a report. Use when the engineering ask is
+        well-scoped and self-contained (e.g., "rewrite this dome
+        placement algorithm against this acceptance test").
+      pair-program: |
+        Interactive back-and-forth via mcp__codex__codex-reply. Use
+        when iteration shapes the answer — physics audits where each
+        finding informs the next probe, scripted-scene data structures
+        where the operator wants to react to intermediate output.
+        Cycle-005 ran 3 codex calls in pair-program mode for the
+        moon-build cycle; each diff was small enough to review live.
+      default: pair-program
+    brief_structure:
+      - location                   # repo path, file, line numbers
+      - operator_quote             # verbatim feedback being addressed
+      - fix_path                   # concrete coordinates / named constants
+      - constraints                # don't break X, don't restructure Y, preserve enabled paths
+      - acceptance                 # bun typecheck clean, named criteria
+      - report_cap                 # ≤N bullets, no narrative
+    notes: >
+      Codex is LOAD-BEARING when iteration discovers an engineering
+      need. Brief in ≤300 words. Explicit constraints are
+      non-negotiable: don't restructure unrelated code, don't touch
+      the playable/enabled paths, preserve any tempo constants Kansei
+      established. Pair with /kansei upstream to translate vibes-input
+      ("should feel meditative") into 100ms-aligned named constants.
+
+      v1.5.0 adds codex_mode (delegation | pair-program) — same enum
+      as outage-triage v1.1.0 stage 3, different default (pair-program
+      here vs delegation there). The default reflects the typical
+      shape of the work at this stage: scoped, iterative, and
+      benefiting from intermediate review.
+
+  # Stages 7 (curate) and 8 (distilling-components) were inlined into
+  # stage 6 invoke-feel-iterate in v1.7.0 — feel-iterate.yaml v1.0.0
+  # owns the artisan ↔ the-mint loop end-to-end (iterate-with-pixelmark
+  # + curate + distill-component). triage-pause keeps stage 9
+  # (hardening) as the terminal backend cleanup.
+
+  - stage: 9
+    construct: hardening
+    skill: harden
+    persona: HARDENING
+    mode: fresh
+    reads: [Artifact, Verdict]
+    writes: [Artifact]
+    role: primary
+    notes: >
+      Backend cleanup — disable the broken mutations cleanly (early
+      return with maintenance signal, not 500s). Optional regression
+      test so the disabled state survives future deploys.
+
+outputs:
+  - type: Artifact
+    destination: .run/compose/<run_id>/disabled-component/
+    description: Reusable component for the disabled state
+    hivemind_labels:
+      artifact_type: product-spec
+      learning_status: strongly-validated
+  - type: Artifact
+    destination: .run/compose/<run_id>/diff.patch
+    description: The actual code change (frontend + backend)
+    hivemind_labels:
+      artifact_type: product-spec
+      learning_status: strongly-validated
+  - type: Verdict
+    destination: .run/compose/<run_id>/triage.jsonl
+    description: Diagnosis + chosen option + rationale
+    hivemind_labels:
+      artifact_type: atomic-learning
+      learning_status: directionally-correct
+  - type: Artifact
+    destination: grimoires/loa/tracks/session-{N+1}-kickoff.md
+    description: "End-of-session kickoff doc when scope crosses one cycle. Grounds the next session in: strategic frame, surface inventory, scope tracks, compositions to invoke, observed gotchas. Codifies the handoff pattern."
+    hivemind_labels:
+      artifact_type: experiment-design
+      learning_status: directionally-correct
+    emit_when: scope expands beyond one cycle OR operator explicitly says /kickoff
+  - type: Signal
+    destination: .run/compose/<run_id>/orchestrator.jsonl
+
+compose_with:
+  - gecko
+  - artisan
+  - the-mint
+  - hardening
+  - codex                # tool, not a construct — see stage 6.5
+
+# ================================================================
+# Surface Class (cycle-002 followup — stub; canonical def in outage-triage.yaml)
+# ================================================================
+
+surface_class:
+  default: unspecified
+  enum: [culturetech-loose, defi-strict, mixed, unspecified]
+  canonical_definition: compositions/sorry-for-ur-loss/outage-triage.yaml#surface_class
+  affects_in_this_composition:
+    - stage 6.5 codex_mode default — pair-program on culturetech-loose (taste-loop tightening); delegation on defi-strict (clear acceptance criteria)
+    - stages 6–7 iteration cap — advisory on culturetech-loose; enforced on defi-strict
+    - stage 9 hardening — direct mutation-disable acceptable on culturetech-loose; explicit operator gate on defi-strict (any contract-write disable routes through ceremony)
+    - bespoke-per-room language in stage 5 brief — emphasized for culturetech-loose; downgraded to "match existing pattern" for defi-strict (financial UI drift is dangerous)
+  inferred_when_unspecified: defi-strict (safety default)
+
+# ================================================================
+# Thinking Effort (cycle-002 followup — stub; canonical def in feel-iterate.yaml)
+# ================================================================
+
+thinking_effort:
+  default: medium     # most stages are surveys / probes / mechanical disposition
+  enum: [low, medium, high, xhigh, max]
+  canonical_definition: compositions/delivery/feel-iterate.yaml#thinking_effort
+  affects_in_this_composition:
+    - stage 1 verify-source-of-truth — low (path resolution + mount checks; mechanical)
+    - stage 1.5 ground-canon — medium (canon probe + halt routing)
+    - stage 2 diagnose — high (bug surface identification; multi-step)
+    - stage 3 surveying-patterns — medium (pattern scan against existing repo)
+    - stage 4 propose-options — high (3-4 disable options with tradeoffs requires synthesis)
+    - stage 5 directing-generation — xhigh (brief authoring with vocabulary_governance + canon-grounding; load-bearing)
+    - stage 6 invoke-feel-iterate — inherited from feel-iterate.yaml
+    - stage 6.5 delegate-engineering — high (codex brief authoring is precise constraints + acceptance)
+    - stage 9 harden — high (backend cleanup + optional regression test design)
+
+# triage-pause is one of three exits from the broader outage-triage
+# composition (compositions/sorry-for-ur-loss/outage-triage.yaml).
+# When a bug fans out into multiple broken surfaces, outage-triage
+# routes each surface to one of: triage-pause (this), fix-sprint, or
+# architecture-migration (stub). Use triage-pause directly only when
+# the operator already knows they want to disable; route through
+# outage-triage when fix-vs-disable-vs-migrate is undecided.
+upstream_composition: compositions/sorry-for-ur-loss/outage-triage.yaml
+
+invocation_examples:
+  - operator_utterance: "the henlo tetris is broken, can you take a look"
+    resolves_to: full 7-stage chain end-to-end
+  - operator_utterance: "we need to disable X feature for tier reasons"
+    resolves_to: skip stage 1 (no bug, just policy); start at stage 2
+  - operator_utterance: "design the disabled state, I'll wire it up"
+    resolves_to: stages 3-6 only (frontend craft, no backend touch)
+
+when_to_use: >
+  - A user-reported bug needs a tasteful frontend fix alongside the
+    backend repair
+  - Feature is being paused for maintenance, ownership-gating, or
+    policy reasons — the disabled state needs to land on-brand
+  - Building a reusable disabled-state component for a product
+    family (henlo arcade has multiple games; one component for all
+    of them)
+
+known_limitations:
+  - "Stage 1 (GECKO/observe) is non-negotiable. Skipping it = work done in the wrong repo. Cycle-005 friction — built against henlo-interface when production is henlo-monorepo. Don't skip even if you 'think you know' the right repo. Symlinks count: resolve canonical paths before edits, the harness's Read tracker keys on path identity."
+  - "Stage 3 (ALEXANDER/surveying-patterns) is the antidote to reinvention. If the operator names an existing pattern (e.g., 'we had the autoplayer component before'), trust the operator and use it. Building from scratch when an existing pattern fits = drift + wasted craft hours."
+  - "Stage 2 (GECKO/diagnose) is currently scoped to construct ecosystem health. For app-level bugs we apply the same investigation pattern manually. Cycle-008+ candidate — extend gecko/diagnose to take an app-codebase target."
+  - "Stages 6-7 require live HITL. Composition halts on iteration cap awaiting operator. Dev server must be running for visual feedback."
+  - "Stage 9 (HARDENING) assumes a clean disable. For temporary forced-off states (kill switch), bypass to direct mutation-disable."
+  - "Stage 6 capture_method clause is critical for animation-heavy disable states. The composition's standard 'auto-screenshot each variation' assumes static or fast-converging UI; rAF-driven cycles break that assumption. The henlo tetris moon-build cycle (~16-20s) was the canary."
+  - "Stage 6.5 (codex delegation) is OPTIONAL — most invocations stay in CSS+copy territory and never need it. But when it triggers (sim engines, scripted scenes, physics), the composition fails without it. v1.3.1 ran without codex delegation; the henlo session needed 3 codex calls and was load-bearing."
+  - "Parent-bug pattern: one user-reported failure can fan into N broken surfaces (henlo session: tetris 500 → 8 affected surfaces). triage-pause handles ONE surface per invocation; for fan-out, invoke outage-triage upstream and let it dispatch N triage-pause runs in parallel."
+
+references:
+  - skill_diagnose: construct-gecko/skills/diagnose/SKILL.md
+  - skill_directing_generation: construct-artisan/skills/directing-generation/SKILL.md
+  - skill_iterating_visuals: construct-artisan/skills/iterating-visuals/SKILL.md
+  - skill_curate: construct-the-mint/skills/curate/SKILL.md
+  - skill_distilling_components: construct-artisan/skills/distilling-components/SKILL.md
+
+operator_note: |
+  Authored from years of by-hand bug triage. The two-halves insight is
+  load-bearing — a 500 error isn't fully fixed until the user sees
+  something tasteful in its place. Disable UIs are first-class craft
+  surfaces, not afterthoughts.
+
+  Henlo tetris pause (2026-04-25) is the first concrete invocation.
+  Eileen's quote in the marquee: "1 HENLO = 1 MOONDUST". Output
+  should include a reusable <DisabledCabinet /> the arcade can reuse
+  for other games.
+
+  v1.1.0 (2026-04-25 late) — added stages 1 (gecko/observe) and 3
+  (artisan/surveying-patterns) after the cycle-005 friction surfaced
+  two consistent failure modes:
+    1. Building against the wrong repo (henlo-interface when prod
+       is henlo-monorepo) — fixed by mandatory source-of-truth verify
+    2. Reinventing components that already exist (e.g., autoplayer)
+       — fixed by mandatory existing-pattern survey
+  Both stages are non-negotiable. Skipping either = wasted craft hours.
+
+  Polish ideas surfaced but deferred for future invocations:
+    - Moon top surface composed of tetris bricks (the moon as a
+      tetris-board surface, bricks tiled across its top arc)
+    - Hono character (operator may commission)
+    - Poku-with-moon character (operator may commission)
+
+version: "1.9.0"
+authored_at: "2026-04-25"
+authored_by: cycle-002 followup (thinking_effort stub from adaptive-thinking docs)
+changelog:
+  - "1.9.0 (2026-04-25): Add thinking_effort field (stub; canonical def in feel-iterate.yaml). Composition default = medium (most stages are surveys / probes / mechanical disposition). Per-stage overrides surface where reasoning matters: stage 1 verify = low; stage 2 diagnose = high; stage 4 propose-options = high; stage 5 directing-generation = xhigh (load-bearing brief authoring with vocabulary_governance); stages 6.5 + 9 = high. Stage 6 inherits from feel-iterate. Adaptive-thinking-aware runtimes translate per the canonical mapping."
+  - "1.8.0 (2026-04-25): Add vocabulary_governance block to stage 5 directing-generation. Carries the no_promises_linter (regex /back|return|restore|reopen|coming|soon|renovat|migrat/i), anchor-vs-flavor line type distinction, surface taxonomy (cabinet_sign / cabinet_status_strip / cabinet_hint_text — each with max_lines + anchors_required), and bank-first authoring rule (Eileen canon safe-by-default; new lines route to bank before shipping; do NOT generate options for operator to pick from). Per parallel-agent feedback brief 'Hibernation Copy Discipline' shipped during cycle-002 followup: 'Generation IS audit surface. Three lines beats six. Don't make promises the room can't keep.' Same governance shape applies in hibernate-product v1.2.0 stage 6 (chrome-content-swap)."
+  - "1.7.0 (2026-04-25): Replace stages 6 (iterating-visuals) + 7 (curate) + 8 (distilling-components) with a single stage 6 invoke-feel-iterate that delegates the artisan ↔ pixelmark ↔ curate ↔ distill loop to compositions/delivery/feel-iterate.yaml v1.0.0. Removed iterate block, capture_method scaffolding (animated_ui rAF clause + react_query_cache_invalidation sub-key live in feel-iterate now). triage-pause v1.7.0 stays focused on the disable-specific flow (verify-source-of-truth, ground-canon, diagnose, survey-patterns, propose-options, brief, delegate-engineering interrupt, harden). Smaller, single-source iteration primitive. Per cycle-002 followup: 'the artisan/kansei needs a dedicated annotation-like workflow that pieces in.'"
+  - "1.6.0 (2026-04-25): Add stage 1.5 ground-canon — brownfield grounding gate that probes for taste.md / TDRs / persona files / tokens before ALEXANDER iterates. Halts on absent (proposes synthesizing-taste / synthesizing-vocabulary / naming-rooms grounding pass) and on stale (operator chooses refresh / accept / skip). Bakes bespoke-per-room language into the gate notes (cycle-002 retro: 'generic banners are the laziest move'). Add top-level surface_class field (stub; canonical def in outage-triage.yaml) — drives stage 6.5 codex_mode default, stages 6–7 iteration cap enforcement, stage 9 hardening directness, and brief language for bespoke vs templated treatments."
+  - "1.5.0 (2026-04-25): Add stage 6.5 codex_mode enum (delegation | pair-program; default pair-program — same enum shape as outage-triage v1.1.0 stage 3, different default). Add stage 6 capture_method.react_query_cache_invalidation sub-key documenting hard-refresh requirement after hook semantics changes (cycle-002 stats sidebar trap). Add session-{N+1}-kickoff.md to outputs[] with emit_when predicate. Authored from henlo-monorepo cycle-002 hibernation."
+  - "1.4.0 (2026-04-25): Add stage 6.5 delegate-engineering with explicit codex transport (mcp__codex__codex preferred, /codex:rescue fallback) + brief structure spec. Add capture_method clause to stage 6 documenting that headless --virtual-time-budget cannot fast-forward requestAnimationFrame. Add parent-bug pattern note (fan-out routes through outage-triage). Cross-reference outage-triage as the upstream router. Add codex to compose_with (as a tool, not a construct)."
+  - "1.3.1 (2026-04-25): Hivemind Lab labels updated to Dec 2025 canon."
+  - "1.3.0 (2026-04-25): Wear Hivemind Lab labels (first composition)."
+  - "1.2.0 (2026-04-25): Stage 1 sub-checks (Loa mount + BFZ freshness + headless regen)."
+  - "1.1.0 (2026-04-25): Mandatory source-of-truth verify + existing-pattern survey."

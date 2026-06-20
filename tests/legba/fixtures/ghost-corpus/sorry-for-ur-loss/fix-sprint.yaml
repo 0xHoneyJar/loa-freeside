@@ -1,0 +1,545 @@
+# composition: fix-sprint
+#
+#   what        per-surface fix with full forensic + adversarial coverage
+#   when        outage-triage routed `fix`, or single-surface incidents
+#   upstream    outage-triage (sorry-for-ur-loss/) — at its dispatch stage
+#   downstream  code-implement-and-review (delivery/) — per implementation
+#   fagan       reviews armor SPECS at stage 4 (does it defend the class?)
+#
+# ────────────────────────────────────────────────────────────────────
+# Downstream of outage-triage's `fix` disposition. Takes a single
+# surface marked for in-scope code repair, runs the full forensic +
+# defensive + adversarial pipeline against it, and emits reviewed code
+# + a PMR + regression bindings. Composes UP with outage-triage (the
+# per-bug router) and DOWN with code-implement-and-review (the
+# implement ↔ FAGAN review loop).
+#
+# Coordinates with codex-review [DEPRECATED→fagan] (FAGAN) twice:
+#   1. Adversarial review of armor SPECS (do these defenses actually
+#      defend the bug class, or just the bug instance?)
+#   2. Adversarial review of the implemented DIFF (via the embedded
+#      code-implement-and-review invocation)
+#
+# Authored 2026-04-27 from the henlo-monorepo Dynamic-CORS session
+# (PMR-2026-04-27-001). That session ran fix-sprint by hand: scar
+# postmortem → armor specs → manual self-review (no FAGAN) → operator
+# Vercel env-var change → bundle-cache caveat surfaced mid-fix → probe
+# authored. The hand-run worked, but a FAGAN gate on the armor specs
+# would have caught the bundle-cache caveat in step 4 instead of after
+# the operator-driven retest.
+#
+# Sibling: code-implement-and-review (delivery/) — invoked at stage 6.
+# Upstream: outage-triage (sorry-for-ur-loss/) — invokes us at its
+# stage 6 dispatch when a surface's disposition column reads `fix`.
+# ================================================================
+
+schema_version: "1.0"
+kind: workflow
+name: fix-sprint
+description: >
+  Execute a per-surface fix with full forensic + adversarial coverage.
+  Generates a PMR, runs FAGAN over the armor specs, invokes
+  code-implement-and-review for the actual diff, binds regression
+  checks to the PMR, and optionally emits a synthetic probe. Designed
+  as the `fix` dispatch target from outage-triage; can also be invoked
+  standalone for any single-surface incident.
+
+intent: >
+  "Outage-triage routed this surface to `fix`. Don't just patch the
+   instance — capture WHY it broke (PMR), specify WHAT defenses
+   prevent the class (armor), have FAGAN argue why the defenses are
+   insufficient (adversarial), then implement under FAGAN's diff
+   review. The operator gets fix + lesson + monitoring, not just fix."
+
+backend: headless-tmux
+
+hivemind_labels:
+  product_area: "Per-surface fix executor with forensic + adversarial coverage"
+  workstream: sorry-for-ur-loss
+  priority: high
+  jtbd:
+    category: personal
+    description: "Reassure Me This Won't Happen Again — fix lands with PMR, reviewed armor, regression binding, and (optionally) a synthetic probe"
+  source: team-internal
+
+depends_on:
+  constructs:
+    - scar              # postmortem + harden + regression-check (the forensic + defensive backbone)
+    - fagan      # FAGAN — adversarial review of armor specs (stage 4) AND of the implemented diff (stage 6 via embedded composition)
+    - general-purpose      # implementer (via stage 6 embedded composition)
+    - bug-triaging      # Loa eligibility check (stage 1, skipped when upstream-provided)
+  tools:
+    - codex             # codex CLI; both FAGAN passes depend on it
+    - gh                # for surfacing the upstream-issue id back to the PMR if --from-issue is passed
+  upstream_compositions:
+    - compositions/sorry-for-ur-loss/outage-triage.yaml   # fix-disposition dispatch target
+  downstream_compositions:
+    - compositions/delivery/code-implement-and-review.yaml   # invoked at stage 6 for the implement ↔ review loop
+
+inputs:
+  - type: Intent
+    name: surface_to_fix
+    description: >
+      The single surface to fix. Either passed by outage-triage's stage 6
+      dispatch (preferred — surface URL/component + suspected cause +
+      recommended fix shape come prefilled) or supplied directly by the
+      operator for a single-surface incident.
+    required: true
+  - type: Artifact
+    name: codebase
+    description: Path to the affected app/repo (canonical, symlinks resolved)
+    required: true
+  - type: Artifact
+    name: upstream_audit
+    description: >
+      Optional. When invoked from outage-triage, the codex-audit.md and
+      surface-disposition.md from the parent run. Skips re-audit at
+      stage 2; jumps directly to PMR authorship at stage 3.
+    required: false
+  - type: Artifact
+    name: env_context
+    description: Environment evidence (dev log, prod console, monitoring)
+    required: false
+  - type: Operator-Model
+    name: operator_context
+    required: false
+
+# Stage pairs that iterate:
+#   [[3, 4]] — armor-design ↔ armor-review (analogous to
+#              code-implement-and-review's [[1, 2]]; FAGAN against specs
+#              instead of against diff)
+#   [[6 internal]] — code-implement-and-review handles its own
+#              implement ↔ review loop; we don't double-iterate
+iterate:
+  - [3, 4]
+max_iterations: 3
+terminate_when: >
+  FAGAN returns APPROVED on the armor specs with no open CHANGES_REQUIRED
+  findings (or the iteration cap is reached and the wrapper auto-approves),
+  AND the downstream code-implement-and-review diff loop converges with the
+  bug's failing test passing and review/audit gates clear of open BLOCKERs.
+
+# ================================================================
+# Stages
+# ================================================================
+
+chain:
+  - stage: 1
+    name: eligibility-or-skip
+    construct: bug-triaging
+    skill: bug
+    persona: BUG-TRIAGE
+    mode: fresh
+    reads: [Intent, Artifact]
+    writes: [Verdict]
+    role: gate
+    when: |
+      Invoked standalone (no upstream surface-disposition.md row from
+      outage-triage). Run Loa's full Phase 0-1 eligibility check. When
+      invoked from outage-triage, that upstream `fix` row already counts
+      as the eligibility decision, so this stage is a no-op pass-through
+      that records the upstream Verdict.
+    notes: >
+      When invoked standalone (no upstream_audit), runs the full Loa
+      bug-triaging eligibility check (Phase 0 dependency check + Phase 1
+      eligibility scoring). Halts on disqualifier (this is a feature
+      request, not a bug) or low score.
+
+      When invoked from outage-triage, this stage is a no-op
+      pass-through that records the upstream eligibility decision in
+      the run trajectory.
+
+  - stage: 2
+    name: confirm-or-narrow-scope
+    construct: scar
+    skill: triage
+    persona: SCAR-SENTINEL
+    mode: fresh
+    reads: [Intent, Artifact, Verdict]
+    writes: [Verdict, Signal]
+    role: primary
+    when: |
+      The upstream surface-disposition.md row does NOT already include a
+      narrow scope (suspect file paths + suspected cause) — run scope
+      confirmation. When the upstream row already carries a narrow scope,
+      pass it straight to stage 3 (this stage may still re-run in
+      mode: refine to tighten a multi-file surface).
+    notes: >
+      Connect the report to code: file paths, line numbers, severity,
+      blast radius hint. This is scar's /triage skill — the same
+      severity assessment that feeds /postmortem. Output: scoped
+      Verdict that bounds what the PMR can reach.
+
+      Even when upstream-supplied, this stage can be invoked with
+      mode: refine to tighten the scope further if the surface
+      involves multiple suspect files.
+
+  - stage: 3
+    name: postmortem-and-armor
+    construct: scar
+    skill: postmortem
+    persona: SCAR-SENTINEL
+    mode: persistent
+    reads: [Intent, Artifact, Verdict, Signal]
+    writes: [Artifact, Signal]
+    role: primary
+    iterates_with: 4
+    thinking_effort: high   # PMR + armor authoring is multi-step synthesis (timeline, blast radius, signal gaps, armor specs)
+    notes: >
+      Author the PMR (grimoires/scar/pmr/PMR-<date>-<seq>-<slug>.md):
+      timeline, root cause classification, blast radius, signal gaps,
+      and the armor-actions table (what defenses to build, lifecycle
+      tracked). Composes scar's /postmortem + /harden into a single
+      authoring stage — the PMR + armor specs ship together because
+      armor specs read meaningfully only against the PMR's blast
+      radius and signal-gap analysis.
+
+      Iteration 2+: read the FAGAN Verdict from stage 4 and revise
+      armor specs. Specifically: if FAGAN's finding was
+      "instance-specific, not class-level," widen the armor scope. If
+      "untestable," add a test spec. Don't expand beyond armor scope
+      unless FAGAN's reasoning explicitly requires it.
+
+  - stage: 4
+    name: armor-review
+    construct: fagan             # was codex-review (retired); real reviewer construct (bd-ii1m)
+    skill: reviewing-armor-specs
+    persona: FAGAN
+    mode: fresh                   # fresh per iteration — no memory of prior reviews
+    reads: [Artifact]              # the PMR + armor specs from stage 3
+    writes: [Verdict, Signal]
+    role: craft-gate
+    iterates_with: 3
+    thinking_effort: high
+    notes: >
+      FAGAN reads the PMR + armor specs and returns line-anchored
+      findings on the SPECS — not on code. The skill is
+      reviewing-armor-specs (sibling of reviewing-diffs, sibling of
+      reviewing-files). Pattern: "spec H1 says 'add a test for X' but
+      the bug class is 'format-sensitive parsing of external IDs' —
+      H1 should specify a parameterized test across the format
+      variants, not just the one instance."
+
+      Returns structured Verdict (APPROVED | CHANGES_REQUIRED +
+      findings[]) using the same finding schema as reviewing-diffs.
+      Iteration cap: 3 total reviews (CODEX_REVIEW_MAX_ITERATIONS).
+      Past the cap, the wrapper auto-approves with `auto_approved: true`
+      — surface this to the operator as a halt-for-confirmation on
+      defi-strict surface_class; as a warning on culturetech-loose.
+
+      If reviewing-armor-specs is not yet implemented in
+      construct-fagan, this stage MAY fall back to the existing
+      reviewing-files skill against the armor table content (treats
+      armor specs as "spec-as-text-artifact"). Surface the fallback
+      explicitly in the Verdict so future runs note the construct-side
+      gap. See known_limitations for the migration path.
+
+  - stage: 5
+    name: hitl-armor-confirm
+    construct: operator
+    persona: HUMAN
+    mode: blocking
+    role: hard-stop
+    when: |
+      surface_class is defi-strict or unspecified, OR FAGAN raised an
+      auto_approved flag — the operator MUST confirm the reviewed armor
+      table before implementation. (On culturetech-loose where FAGAN
+      approved cleanly without the auto_approved flag, operator latitude
+      per MAY-LATITUDE-1 allows auto-proceed; the dispatch log still
+      records "auto-proceed" for audit.)
+    notes: >
+      HARD STOP for defi-strict and unspecified surface_class. Operator
+      walks the reviewed armor table and confirms before implementation
+      begins. Three signals to look for:
+
+      - any FAGAN finding marked `auto_approved: true`
+      - any armor spec where the operator's product context overrides
+        FAGAN's class-level argument
+      - any armor spec the operator reads as scope-creep relative to
+        the original bug
+
+      Operator can edit the armor table before stage 6 receives it.
+
+  - stage: 6
+    name: implement-and-review
+    construct: composition
+    skill: invoke-composition
+    persona: ORCHESTRATOR
+    mode: fresh
+    reads: [Artifact, Verdict]
+    writes: [Artifact, Verdict, Signal]
+    role: primary
+    invokes: compositions/delivery/code-implement-and-review.yaml
+    thinking_effort: high   # delegated; the embedded composition manages its own per-stage effort
+    notes: >
+      This stage is structural: it invokes code-implement-and-review.
+      The embedded composition receives its task + scope via stream
+      propagation, not declared args — it reads the reviewed PMR
+      (Artifact) and FAGAN Verdict from upstream stages. Intended brief:
+      implement the armor specs one spec at a time (each spec maps to a
+      focused diff, no mega-diff), scoped to the files/modules in the
+      PMR's blast-radius table; do not expand outside that scope unless
+      an armor spec explicitly requires it (and FAGAN approved the
+      expansion in stage 4). The embedded composition handles its own
+      implement ↔ FAGAN diff review loop (iterate [[1, 2]], cap 3).
+      fix-sprint does NOT double-iterate around stage 6 — the embedded
+      composition's iteration is sufficient for code-level convergence.
+
+      When the embedded composition emits Diff + Verdict, fix-sprint
+      reads them at stage 7. If the embedded composition exited via
+      auto-approve-past-cap, surface that flag in the parent's
+      retrospective, not silently.
+
+  - stage: 7
+    name: regression-bind
+    construct: scar
+    skill: regression-check
+    persona: SCAR-SENTINEL
+    mode: fresh
+    reads: [Artifact, Verdict, Signal]
+    writes: [Artifact, Signal]
+    role: primary
+    notes: >
+      Bind regression-check entries to each implemented armor spec.
+      The PMR's regression table now points at concrete tests, types,
+      probes, or monitoring entries that landed in stage 6's diff.
+      An armor spec without a regression binding is a half-done armor
+      — surface it as a finding for the retrospective.
+
+      Optional sub-step: emit a synthetic probe under
+      grimoires/scar/probes/ when the armor class is "third-party
+      drift" (the failure mode where in-repo code is fine but an
+      external dependency's behavior changed). The Dynamic CORS PMR
+      is the canonical example.
+
+  - stage: 8
+    name: parent-link
+    construct: scar
+    skill: correlating
+    persona: SCAR-SENTINEL
+    mode: fresh
+    reads: [Artifact]
+    writes: [Signal]
+    role: primary
+    when: invoked from outage-triage (not standalone — there is an upstream parent to link)
+    notes: >
+      When invoked from outage-triage, write a parent-link record
+      back to the upstream surface-disposition.md row: this fix-sprint
+      run id, the PMR id, the diff destination, the regression
+      bindings. Outage-triage's stage 7 retrospective reads these
+      links to build the parent-bug → N-surfaces graph.
+
+      Standalone invocations skip — there's no upstream parent to
+      link.
+
+  - stage: 9
+    name: retrospective-handoff
+    construct: scar
+    skill: postmortem
+    persona: SCAR-SENTINEL
+    mode: fresh
+    reads: [Artifact, Verdict, Signal]
+    writes: [Artifact]
+    role: primary
+    notes: >
+      Append a retrospective section to the PMR (or a sibling track
+      file at grimoires/loa/tracks/<session>-fix-sprint-<slug>.md):
+      what FAGAN caught that the operator missed, what the operator
+      caught that FAGAN missed, where the iteration converged or hit
+      the cap, what generalizable patterns emerged.
+
+      When invoked from outage-triage, this stage's output also feeds
+      back into outage-triage's stage 7 retrospective — patterns
+      across multiple fix-sprints in one outage become candidate
+      composition deltas.
+
+# ================================================================
+
+outputs:
+  - type: Artifact
+    destination: grimoires/scar/pmr/PMR-<date>-<seq>-<slug>.md
+    description: PMR with reviewed armor specs + regression bindings
+    hivemind_labels:
+      artifact_type: product-spec
+      learning_status: strongly-validated
+  - type: Artifact
+    destination: <repo>/<changed-files>
+    description: Reviewed code changes (from embedded code-implement-and-review)
+    hivemind_labels:
+      artifact_type: product-spec
+      learning_status: strongly-validated
+  - type: Verdict
+    destination: .run/compose/<run_id>/fagan-trail.jsonl
+    description: Per-iteration FAGAN verdicts on armor specs (stage 4) AND on diff (stage 6)
+    schema: https://raw.githubusercontent.com/0xHoneyJar/construct-fagan/main/schemas/codex-review-finding.schema.json
+  - type: Artifact
+    destination: grimoires/scar/probes/<probe-name>.sh
+    description: Optional synthetic probe (when armor class is third-party-drift)
+    emit_when: armor_class == "third-party-drift"
+  - type: Artifact
+    destination: grimoires/loa/tracks/<session>-fix-sprint-<slug>.md
+    description: Retrospective handoff (when scope crosses one session)
+    emit_when: scope expands beyond one session OR operator explicitly says /retrospective
+  - type: Signal
+    destination: .run/compose/<run_id>/orchestrator.jsonl
+    description: Orchestrator trajectory (stage transitions, iteration counts, parent-link record if any)
+
+compose_with:
+  - scar
+  - fagan
+  - general-purpose          # via embedded code-implement-and-review
+  - bug-triaging
+
+composes_symmetrically_with:
+  - outage-triage ↔ fix-sprint              # router ↔ executor
+  - scar ↔ fagan                      # defender ↔ adversary (the load-bearing pair for armor specs)
+  - fix-sprint → code-implement-and-review    # invoked downstream — provides the implement ↔ FAGAN diff review loop
+
+# ================================================================
+# Surface Class (canonical def in outage-triage.yaml; stub here)
+# ================================================================
+
+surface_class:
+  default: unspecified
+  enum: [culturetech-loose, defi-strict, mixed, unspecified]
+  canonical_definition: compositions/sorry-for-ur-loss/outage-triage.yaml#surface_class
+  affects_in_this_composition:
+    - parent inheritance — when invoked from outage-triage, surface_class is INHERITED from the parent run; this composition MAY refine but CANNOT relax it (load-bearing for defi-strict safety).
+    - stage 5 hitl-armor-confirm — skipped on culturetech-loose (when FAGAN approved without auto_approved); enforced on defi-strict
+    - stage 4 iteration cap — advisory on culturetech-loose (operator halts dictate); enforced (default 3) on defi-strict
+    - stage 6 invocation — passes surface_class through to embedded code-implement-and-review (cascades to its own gating)
+    - inline-fix permission at stage 7 — culturetech-loose allows MAY-LATITUDE-1 micro-fixes for probe authoring; defi-strict requires explicit dispatch
+  inferred_when_unspecified: defi-strict (safety default)
+
+# ================================================================
+# Thinking Effort (canonical def in feel-iterate.yaml; stub here)
+# ================================================================
+
+thinking_effort:
+  default: high
+  canonical_definition: compositions/delivery/feel-iterate.yaml#thinking_effort
+  rationale: |
+    PMR authoring + armor design + adversarial review are multi-step
+    synthesis. Stage 6 delegates to the embedded composition, which
+    has its own per-stage effort.
+  affects_in_this_composition:
+    - stage 1 eligibility — low (mechanical check) when standalone; n/a (skipped) from outage-triage
+    - stage 2 scope — medium (file localization)
+    - stage 3 postmortem-and-armor — high → xhigh (load-bearing PMR + armor authoring)
+    - stage 4 armor-review — high (FAGAN against specs)
+    - stage 5 hitl-armor-confirm — n/a (operator stage)
+    - stage 6 implement-and-review — delegated (embedded composition manages its own)
+    - stage 7 regression-bind — medium (concrete bindings to existing diff)
+    - stage 8 parent-link — low (record-keeping)
+    - stage 9 retrospective-handoff — high (pattern extraction across the run)
+
+# ================================================================
+
+invocation_examples:
+  - operator_utterance: "outage-triage marked the dynamic-auth surface as fix — run it"
+    resolves_to: full chain stages 1-9 with upstream context (skip stages 1-2)
+  - operator_utterance: "fix the cors bug, scar it, and FAGAN the armor"
+    resolves_to: full chain stages 1-9 standalone (no upstream context; stage 1 runs full eligibility)
+  - operator_utterance: "I have the PMR — just FAGAN the armor specs"
+    resolves_to: stage 4 only with operator-supplied PMR Artifact
+  - operator_utterance: "skip review, just patch and PMR it"
+    resolves_to: stages 1-3 + 7-9, skipping FAGAN gates entirely (surface as warning; surface_class==defi-strict halts here)
+
+# ================================================================
+
+when_to_use: >
+  - outage-triage routed a surface to `fix` and you want the full
+    forensic + adversarial pipeline (not just an inline patch)
+  - Standalone single-surface incident where the bug class matters more
+    than the bug instance (third-party drift, format-sensitive parsing,
+    silent regressions)
+  - Pre-merge gate when an armor spec is being authored but not yet
+    reviewed
+  - NOT for inline micro-fixes (typos, copy edits, CSS tokens — see
+    MAY-LATITUDE-1 in the operator OS)
+  - NOT for feature work (use /plan + planning-sprints)
+  - NOT for architecture migrations (use architecture-migration.yaml
+    when authored)
+  - NOT for full product sunsetting (escalate to hibernate-product.yaml)
+
+# ================================================================
+
+known_limitations:
+  - "Stage 4 depends on construct-fagan having a `reviewing-armor-specs` skill. If it doesn't exist yet, the stage falls back to `reviewing-files` against the armor table content. The fallback works but loses spec-vs-instance heuristics — file an issue against construct-fagan to author reviewing-armor-specs as a first-class skill."
+  - "Stage 6's embedded composition (code-implement-and-review) runs a plain Claude general-purpose implementer (the codex CLI is its documented alternative — see that composition's known_limitations)."
+  - "Iteration on stages [[3, 4]] is capped at 3 by CODEX_REVIEW_MAX_ITERATIONS — same as code-implement-and-review's diff loop. Past the cap, the wrapper auto-approves; surface this to the operator on defi-strict (halt-for-confirmation) or as a warning on culturetech-loose."
+  - "Stage 7 regression-bind requires that stage 6's implementation actually wrote tests/types/probes that map to armor specs. If the implementer skipped testable bindings, stage 7 will surface armor-without-regression findings — those are NOT failures of fix-sprint; they're signals that the implementer needs a different brief on next iteration."
+  - "Standalone invocation (no upstream outage-triage) loses the parent-bug → N-surfaces graph. fix-sprint's stage 8 is a no-op in that mode. The PMR still lands and the retrospective still emits — just without cross-surface correlation. Pattern detection across multiple standalone fix-sprints requires `correlating` skill invocation against the PMR corpus."
+  - "Probe emission at stage 7 (when armor_class == third-party-drift) is opinionated: probe goes to grimoires/scar/probes/ as a bash + GH Actions YAML pair. Other probe shapes (Datadog synthetic, Sentry alert, Grafana panel) are operator-driven follow-ups, not part of this composition."
+
+# ================================================================
+
+references:
+  - skill_postmortem: construct-scar/skills/postmortem/SKILL.md
+  - skill_harden: construct-scar/skills/harden/SKILL.md
+  - skill_regression_check: construct-scar/skills/regression-check/SKILL.md
+  - skill_correlating: construct-scar/skills/correlating/SKILL.md
+  - skill_triage_scar: construct-scar/skills/triage/SKILL.md
+  - skill_bug_triaging: claude-code/.claude/skills/bug-triaging/SKILL.md
+  - skill_reviewing_diffs: construct-fagan/skills/reviewing-diffs/SKILL.md
+  - skill_reviewing_files_fallback: construct-fagan/skills/reviewing-files/SKILL.md   # stage 4 fallback target
+  - schema_codex_review_finding: https://raw.githubusercontent.com/0xHoneyJar/construct-fagan/main/schemas/codex-review-finding.schema.json
+  - upstream_router: compositions/sorry-for-ur-loss/outage-triage.yaml
+  - downstream_implement: compositions/delivery/code-implement-and-review.yaml
+  - sibling_for_disable_disposition: compositions/sorry-for-ur-loss/triage-pause.yaml
+  - sibling_for_full_sunset: compositions/sorry-for-ur-loss/hibernate-product.yaml
+  - canonical_pmr: grimoires/scar/pmr/PMR-2026-04-27-001-dynamic-cors.md   # the hand-rolled session that motivated this composition
+  - construct_scar_repo: https://github.com/0xHoneyJar/construct-scar   # was construct-hardening pre-2026-04-27
+
+# ================================================================
+
+operator_note: |
+  Authored 2026-04-27 from the henlo-monorepo Dynamic-CORS session.
+  Why this composition exists: outage-triage v1.0.0 explicitly flagged
+  fix-sprint as not-yet-authored, and the session that triggered the
+  flag (bug-001 / 8 affected surfaces) ran fix-sprint by hand. The
+  Dynamic-CORS session a few days later ran an even more compressed
+  hand-rolled version — single surface, no FAGAN gate on the armor
+  specs, operator manually surfaced the build-cache caveat after the
+  initial fix didn't take. Composition closes the gap.
+
+  Three principles worth carrying forward:
+
+  1. THE ADVERSARIAL GATE IS WHERE BUG CLASS GETS DEFINED. FAGAN's
+     job at stage 4 is not "review the spec for clarity" — it's
+     "argue why this spec defends only the instance, not the class."
+     The operator + scar's persona will instinctively author
+     instance-specific armor; FAGAN's structured-finding output is
+     what forces the spec to widen. Skipping stage 4 is the same
+     mistake as skipping FAGAN on a code diff: it works most of the
+     time and fails catastrophically on the cases that actually
+     matter.
+
+  2. ITERATION CAP IS A SIGNAL, NOT A FAILURE. Stages [[3, 4]] cap at
+     3 — same as code-implement-and-review. Past the cap, the wrapper
+     auto-approves and surfaces the flag. The operator's job at
+     stage 5 is to read the flag and decide: was the spec actually
+     fine and FAGAN was nitpicking, or did we converge in the wrong
+     direction? Don't treat auto-approval as success.
+
+  3. THE PMR IS THE THROUGH-LINE. Stage 3 writes it, stage 4 reviews
+     it, stage 6 implements against it, stage 7 binds regression
+     checks back to it, stage 8 links it to the parent outage, stage
+     9 closes it with a retrospective. Every other artifact this
+     composition emits points at the PMR. If the PMR is sloppy, the
+     whole composition's outputs degrade — invest in stage 3.
+
+  This composition lives in compositions/sorry-for-ur-loss/ alongside
+  triage-pause (disable disposition) and hibernate-product (full
+  sunset). It is the fix-disposition target. architecture-migration
+  remains the not-yet-authored sibling for the migrate-disposition
+  target — pattern is similar but the FAGAN gate moves to schema
+  review instead of armor review.
+
+# ================================================================
+
+version: "1.0.0"
+authored_at: "2026-04-27"
+authored_by: kickoff session — henlo-monorepo Dynamic-CORS aftermath
+changelog:
+  - "1.0.0 (2026-04-27): Initial canonical spec. Pairs scar (postmortem + harden + regression-check) with codex-review (FAGAN against armor specs at stage 4) in an iterate [[3, 4]] loop, then invokes code-implement-and-review for the implementation diff. Surface_class + thinking_effort use stub-pointing pattern (canonical defs in outage-triage.yaml and feel-iterate.yaml). Closes the not-yet-authored gap flagged in outage-triage v1.0.0."

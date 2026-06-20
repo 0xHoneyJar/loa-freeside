@@ -1,0 +1,107 @@
+# Composition · explore-ecosystem
+# ================================================================
+# Reference composition shipped inside construct-network-tools.
+# A fresh author reading the pack sees what "authoring a composition"
+# looks like in practice — two stages, one fresh + one persistent,
+# using CURATOR as primary + artisan as validator.
+#
+# Cycle-006 L-meta-pack.
+# ================================================================
+
+schema_version: "1.0"
+kind: workflow
+name: find-construct
+description: >
+  Two-stage ecosystem exploration. CURATOR surveys the network for
+  the operator's intent; artisan validates the recommendation through
+  the craft lens before emission. Short, opinionated, three-read-mode.
+
+intent: >
+  "Given an operator query about what-to-use / where-to-look in the
+   construct ecosystem, produce a CURATOR-filtered recommendation
+   validated by artisan's taste standards."
+
+backend: headless-tmux
+
+# Hivemind Lab labels (Dec 2025 canon). Wayfinding work is discovery —
+# helping operators find the right construct before authoring or
+# composing. Treats the operator-as-builder as the user.
+hivemind_labels:
+  product_area: "Constructs Network (meta-product)"
+  workstream: discovery
+  jtbd:
+    category: functional
+    description: "Find Information — locate the right construct for the task without re-deriving the network"
+  source: team-internal
+
+inputs:
+  - type: Intent
+    name: query
+    description: Operator utterance about ecosystem wayfinding
+    required: true
+  - type: Operator-Model
+    name: operator_context
+    description: What does the operator already know? (tunes recommendation depth)
+    required: false
+
+chain:
+  - stage: 1
+    construct: construct-network-tools
+    skill: exploring-network
+    persona: CURATOR
+    mode: fresh
+    reads: [Intent, Operator-Model]
+    writes: [Verdict, Signal]
+    role: primary
+    notes: >
+      CURATOR applies the four-lens selection rule. Emits a Verdict
+      with per-lens reasoning + optional alternatives. Signal rows
+      carry related threads surfaced during exploration.
+
+  - stage: 2
+    construct: artisan
+    skill: scoring-experience
+    persona: ALEXANDER
+    mode: fresh
+    reads: [Verdict]
+    writes: [Verdict]
+    role: craft-gate
+    notes: >
+      ALEXANDER validates the recommendation against craft standards.
+      If the recommended construct doesn't meet ALEXANDER's bar for
+      the operator's declared quality level, emit a refined Verdict
+      with caveats. This is the "would I accept this?" gate.
+
+outputs:
+  - type: Verdict
+    destination: .run/compose/<run_id>/ecosystem-recommendation.json
+    description: Final CURATOR-plus-artisan-gated recommendation
+    hivemind_labels:
+      artifact_type: atomic-learning
+      learning_status: directionally-correct
+  - type: Signal
+    destination: .run/compose/<run_id>/orchestrator.jsonl
+    description: Pipe graph trajectory
+
+compose_with:
+  - construct-network-tools
+  - artisan
+
+invocation_examples:
+  - operator_utterance: "what should I use to audit a component for feel?"
+    resolves_to: CURATOR recommends artisan/decomposing-feel → ALEXANDER validates → Verdict
+  - operator_utterance: "I'm authoring a new pack — where do I start?"
+    resolves_to: CURATOR recommends construct-base + construct-network-tools exemplar → ALEXANDER checks the recommendation tracks taste standards
+
+when_to_use: >
+  - Operator is new to the ecosystem and needs wayfinding
+  - Operator knows what they want but wants a craft-validated recommendation
+  - Teaching context — walking a new author through "how to find the right construct"
+
+known_limitations:
+  - "CURATOR's synthesis register accepts context dilution — not appropriate for building work. Use website-scaffold.yaml (or similar multi-stage compositions with persistent teammates) for production-grade output."
+  - "Artisan gate in stage 2 is craft-only; doesn't validate composition feasibility. For that, add a stage 3 with the-arcade as structure-gate (cycle-007+)."
+
+version: "1.1.0"
+authored_at: "2026-04-23"
+authored_by: cycle-006 L-meta-pack (v1.1 — Hivemind Lab labels added 2026-04-25)

@@ -1,0 +1,352 @@
+# Composition · kickoff-build-session
+# ================================================================
+# Cross-repo build session handoff. Mirrors the current /kickoff
+# skill's 5-phase pipeline as YAML so the shape is inspectable to
+# loom + observable to the rooms substrate when it lands.
+#
+# Phase A of the /kickoff substrate migration (spec authored 2026-05-11).
+# DOES NOT YET drive runtime behavior — current /kickoff still
+# executes via SKILL.md prose. This YAML is the documentation
+# anchor + the future dispatch target.
+#
+# When Phase B (substrate detection) + Phase C (final-stage handoff
+# packet emission) land in ~/.claude/skills/kickoff/SKILL.md, the
+# .run/compose/<run_id>/envelopes/ trail this composition declares
+# becomes observable to the cycle-rooms-observatory station.
+# ================================================================
+
+schema_version: "1.2"
+kind: workflow
+name: kickoff-build-session
+description: >
+  Cross-repo build session handoff. Five stages — DIG → PREPLAN →
+  ARCH+craft → ENHANCE → CLIPBOARD — that turn a topic into a
+  ready-to-paste build session prompt plus persistent grimoire
+  artifacts in the target repo.
+
+intent: >
+  "Take a topic plus target repo and produce three artifacts the
+   next session can build from immediately: a self-contained build
+   doc in the target's grimoire, a session track for project
+   continuity, and a short clipboard pointer the operator pastes
+   to start the next session at full speed without holding ten
+   sessions of context in working memory."
+
+# Hivemind Lab labels. Kickoff is discovery work — understanding
+# the problem space well enough that a fresh session can start
+# building without re-deriving context.
+hivemind_labels:
+  product_area: "Loa Workflow"
+  workstream: discovery
+  jtbd:
+    category: personal
+    description: "Help Me Hand Off — operator wants the next session to start at full speed without re-loading the prior session's mental model"
+  source: team-internal
+
+depends_on:
+  constructs:
+    - k-hole          # Stage 1 DIG (STAMETS-shape research)
+    - the-arcade      # Stage 3 ARCH (OSTROM-shape structure)
+    - artisan         # Stage 3.5 craft (ALEXANDER-shape specification)
+  tools:
+    - dig-search      # k-hole/scripts/dig-search.ts when present
+    - pbcopy          # macOS clipboard for Stage 5 pointer
+  compositions:
+    - compositions/discovery/find-construct.yaml   # Phase 0 wayfinding fallback when no construct active in target
+
+inputs:
+  - type: Intent
+    name: topic
+    description: What to research, plan, and prepare for building
+    required: true
+  - type: Artifact
+    name: target_repo
+    description: Repo where build session will run and artifacts will land
+    required: false
+    source: "operator argument or current working directory"
+  - type: Artifact
+    name: grimoire_path
+    description: Override for default grimoires/<construct-or-project>/ persistence
+    required: false
+  - type: Operator-Model
+    name: operator_context
+    description: Current operator's mode (FEEL/ARCH/DIG/SHIP/FRAME/TEND), expertise, attention register
+    required: false
+    source: "hivemind (personal + org) via /hivemind skill"
+
+chain:
+  - stage: 1
+    name: dig
+    construct: k-hole
+    skill: dig
+    persona: STAMETS
+    mode: fresh
+    reads: [Intent, Operator-Model]
+    writes: [Signal]
+    role: primary
+    notes: >
+      Parallel research — codebase Explore agent + landscape WebSearch.
+      Synthesize into structured sections: what exists / what's possible /
+      what matters / pull threads. Present findings to operator before
+      Stage 2. Skip if --skip-dig flag set. Use dig-search.ts when
+      present; fall back to Agent + WebSearch otherwise.
+
+  - stage: 2
+    name: preplan
+    construct: the-arcade
+    skill: architecting
+    persona: OSTROM
+    mode: blocking
+    reads: [Signal]
+    writes: [Artifact]
+    role: cross-reference
+    notes: >
+      Bridge research → design. Identify invariants (what must NOT
+      change). List structural decisions with options + recommendation +
+      reversibility. Map blast radius (NEW / MODIFIED / DELETED files).
+      Identify data architecture (sources, flow, proxy/cache/transform).
+      Output is structured notes, not formal doc — feeds Stage 3.
+      Operator pair-point: confirm decisions before Stage 3 commits.
+
+  - stage: 3
+    name: arch
+    construct: the-arcade
+    skill: architecting
+    persona: OSTROM
+    mode: fresh
+    reads: [Signal, Artifact]
+    writes: [Verdict]
+    role: primary
+    notes: >
+      OSTROM's three questions — what's the invariant, what's the blast
+      radius, what breaks if I'm wrong. Author the architecture document
+      at {target_repo}/grimoires/loa/specs/arch-{topic-slug}.md with
+      sections: Invariants · Feature/System · Blast Radius table ·
+      Data Architecture · Component Specifications · Shipping Scope
+      (Barth V1 / V2 / Cut from V1).
+
+  - stage: 3.5
+    name: craft
+    construct: artisan
+    skill: decomposing-feel
+    persona: ALEXANDER
+    mode: fresh
+    reads: [Verdict]
+    writes: [Verdict]
+    role: craft-gate
+    notes: >
+      Per-component craft specification on top of Stage 3's structure.
+      For every UI element: material (oklch + spacing + typography),
+      rhythm (spacing between related vs unrelated), weight (visual
+      hierarchy), motion (mass/force/friction if animated),
+      color-as-information (semantic encoding). Folds into the arch
+      doc Stage 3 wrote. Future-cycle (Phase E of substrate migration):
+      promote to pair-relay (OSTROM declare → ALEXANDER inscribe →
+      OSTROM confirm) so structure/craft conflicts surface explicitly.
+
+  - stage: 4
+    name: enhance
+    construct: k-hole
+    skill: dig
+    persona: STAMETS
+    mode: fresh
+    reads: [Verdict]
+    writes: [Artifact]
+    role: cross-reference
+    notes: >
+      Compose the self-contained build document at
+      {target_repo}/grimoires/loa/specs/enhance-{topic-slug}.md.
+      Sections: Context · Load Order · Persona · What to Build (in
+      dependency order) · Design Rules · What NOT to Build · Verify ·
+      Key References. The next session reads this first; everything
+      it needs to start building must be inline.
+
+      Construct/skill placeholder: actual work invokes the /enhance
+      Loa skill, which is not yet packaged as a construct skill.
+      Phase G of the substrate migration replaces this stage with a
+      proper /enhance dispatch when the skill is repackaged. Today
+      SKILL.md does this work inline.
+
+  - stage: 5
+    name: handoff
+    construct: k-hole
+    skill: dig
+    mode: blocking
+    reads: [Artifact]
+    writes: [Artifact]
+    role: hard-stop
+    notes: >
+      Three deliverables. (1) Session track at
+      {target_repo}/grimoires/loa/tracks/session-{N}-{topic-slug}-kickoff.md
+      with frontmatter (session/date/type/status). (2) Clipboard
+      pointer (10-20 lines) copied via pbcopy — short navigation aid
+      pointing back to the build doc, NOT a duplicate. (3) Confirm
+      table (artifact / path / purpose). Operator pastes pointer into
+      next session. Skip pbcopy if --skip-clipboard set.
+
+      Construct/skill placeholder: this stage is mechanical (file
+      writes + clipboard copy), not a true construct invocation.
+      Schema requires construct per stage; honest registration of
+      the gap. No persona — operator-paced.
+
+outputs:
+  - type: Artifact
+    destination: "{target_repo}/grimoires/loa/specs/enhance-{topic-slug}.md"
+    description: Core build document — source of truth for next session
+    hivemind_labels:
+      artifact_type: product-spec
+      learning_status: directionally-correct
+  - type: Artifact
+    destination: "{target_repo}/grimoires/loa/specs/arch-{topic-slug}.md"
+    description: Architecture document — structural decisions + blast radius. May merge into enhance doc when scope overlaps.
+    emit_when: "stage 3 produces standalone arch verdict (not folded into enhance doc)"
+  - type: Artifact
+    destination: "{target_repo}/grimoires/loa/tracks/session-{N}-{topic-slug}-kickoff.md"
+    description: Session track — project continuity record
+  - type: Verdict
+    destination: ".run/compose/<run_id>/envelopes/final.kickoff.handoff.json"
+    description: Final kickoff handoff packet (Phase C of substrate migration emits when substrate detected)
+    emit_when: "construct-rooms-substrate installed in operator or project env"
+    schema: ".claude/data/trajectory-schemas/construct-handoff.schema.json"
+
+compose_with:
+  - k-hole
+  - the-arcade
+  - artisan
+
+composes_symmetrically_with:
+  - the-arcade ↔ artisan
+  - k-hole → the-arcade
+  - k-hole → artisan
+
+invocation_examples:
+  - operator_utterance: "/kickoff Build Sonar dashboard --target-repo project-purupuru"
+    resolves_to: >
+      Full chain. Stage 1 runs DIG against Sonar codebase + landscape;
+      Stage 2 invariants named (proxy layer, cache shape) and decisions
+      ratified by operator; Stage 3 arch doc; Stage 3.5 craft specs;
+      Stage 4 enhance doc; Stage 5 clipboard.
+
+  - operator_utterance: "/kickoff dimensions PFP migration --skip-dig"
+    resolves_to: >
+      Stage 1 skipped (research already in session). Pipeline jumps to
+      Stage 2 with conversation context as PREPLAN inputs.
+
+  - operator_utterance: "/kickoff freeside-storage stickers V0.7 --deep"
+    resolves_to: >
+      Stage 1 runs at maximum depth (more queries, wider exploration)
+      before proceeding through normal Stages 2 through 5.
+
+when_to_use: |
+  - End of build session, before clipboard handoff to next session
+  - Cross-repo bridge work (current session in repo A, next in repo B)
+  - Multi-day project where context is lossy without explicit artifacts
+  - After a /plan-and-analyze cycle when the next session needs an
+    operator-paste prompt rather than a Loa workflow gate
+
+  WHEN NOT TO USE:
+  - Single-session build where context is already in conversation
+  - Bug fixes (use /bug instead)
+  - Architecture-only work (use /architect alone — kickoff bundles
+    architect with research + handoff machinery)
+
+known_limitations: |
+  - Stages 4 and 5 carry placeholder construct slug (k-hole) because
+    the work is operator-paced or inline-skill-driven, not a true
+    construct invocation. Schema requires a construct slug per stage;
+    this is honest registration of the gap. Phase G of the substrate
+    migration replaces stage 4 with a proper /enhance dispatch when
+    /enhance is repackaged as a construct skill.
+
+  - Stage 0 (context-gathering — resolve target repo, verify Loa
+    mounted, check BFZ freshness, identify project context, search
+    for prior work) is OMITTED from the chain because it is pre-stage
+    setup, not a construct invocation. SKILL.md Phase 0 owns it.
+    Phase B of the substrate migration adds substrate detection to
+    that phase.
+
+  - Stage 3 + 3.5 are currently embodied simultaneously per SKILL.md
+    ("Embody both — Ostrom + Alexander"). Phase D of the substrate
+    migration promotes them to discrete native-subagent dispatches.
+    Phase E promotes further to pair-relay convergence so
+    structure/craft conflicts surface explicitly.
+
+  - The composition runner (compose-dispatch.sh, shipped in
+    construct-rooms-substrate) is not yet installed into operator/
+    project envs. Today /kickoff still executes via SKILL.md prose;
+    this YAML is documentation, not behavior. Phase B of the
+    substrate migration adds substrate detection to SKILL.md Phase 0;
+    Phase C emits the final handoff packet via surface-envelope.sh.
+
+  - Mode-pluggability not yet wired. Per Phase F of the substrate
+    migration, SKILL.md will dispatch to mode-specific compositions
+    (kickoff-feel.yaml, kickoff-ship.yaml, kickoff-tend.yaml,
+    kickoff-frame.yaml) based on resolved OperatorOS mode. Today
+    only this default ARCH-shape exists.
+
+  - No observability of the kickoff chain itself today. Once Phases
+    B+C land, .run/compose/<run_id>/envelopes/ accumulates per-stage
+    packets that the cycle-rooms-observatory station can render —
+    letting operators trace WHY a kickoff produced the build doc it
+    did, surfacing rationale-vs-behavior divergence per the Anthropic
+    NLA paper grounding.
+
+  - Stage 4/5 placeholder construct slug (k-hole) creates a real
+    dispatch risk when runtime lands: compose-dispatch.sh has no way
+    today to distinguish placeholder from intended dispatch and will
+    route these stages to k-hole/dig instead of the intended
+    enhance/handoff behavior. Substrate-side coordination needed —
+    reserve a sentinel slug (e.g. 'inline' or 'operator-paced') the
+    dispatcher honors as no-op, OR add a placeholder discriminator to
+    the Stage schema. Surfaced by Bridgebuilder F2 on PR #14.
+
+  - The {N} placeholder in Stage 5 destination paths
+    (session-{N}-{topic-slug}-kickoff.md) is auto-incremented by
+    SKILL.md from existing tracks under
+    <target_repo>/grimoires/loa/tracks/ — not declared as a
+    composition input because resolution depends on filesystem state
+    at runtime, not on operator-supplied data. Surfaced by
+    Bridgebuilder F4 on PR #14.
+
+  - emit_when predicates use English prose (e.g.
+    'construct-rooms-substrate installed in operator or project env').
+    For Phase A this is documentation only — when runtime dispatch
+    lands, predicates will need a deterministic evaluable vocabulary
+    (e.g. emit_when with structured key/value pairs like
+    substrate_detected: true). Surfaced by Bridgebuilder F7 on PR #14.
+
+references:
+  - skill: ~/.claude/skills/kickoff/SKILL.md
+  - migration_spec: grimoires/bonfire/specs/kickoff-substrate-migration-2026-05-11.md
+  - rooms_substrate: ~/Documents/GitHub/construct-rooms-substrate/
+  - composition_doctrine: grimoires/loa-constructs-seed-2026-04-21/bonfire-construct-pipe-doctrine.md
+  - exemplar_dogfood: compositions/discovery/dogfood-cycle.yaml
+  - exemplar_audit: compositions/discovery/audit-feel.yaml
+
+operator_note: |
+  This composition is documentation-as-code. It captures the CURRENT
+  shape of /kickoff so:
+
+    1. The shape is inspectable to loom (composition browser)
+    2. Other compositions can compose_with kickoff (e.g. dogfood-cycle
+       could invoke kickoff as its scope-next stage)
+    3. The substrate migration has a concrete target to evolve toward
+
+  When the substrate migration completes (Phases B-G), this YAML will
+  drive runtime behavior via compose-dispatch.sh; SKILL.md becomes a
+  thin orchestrator that loads + dispatches this composition.
+
+  Until then: read the SKILL.md for actual behavior; read this YAML
+  for intent + future direction.
+
+  Naming: filename is kickoff-build-session.yaml because schema
+  requires 2-5 hyphenated parts (single-word "kickoff" fails the
+  pattern). Slash command remains /kickoff — skill name and
+  composition name occupy different namespaces.
+
+version: "0.1.0"
+authored_at: "2026-05-11"
+authored_by: kickoff-substrate-migration phase A
+
+changelog:
+  - "0.1.0 (2026-05-11): Initial documentation-as-code shim. Mirrors current SKILL.md 5-phase pipeline with stages 1-5 (stage 0 lives in SKILL.md as pre-stage setup). No runtime behavior."

@@ -1,0 +1,68 @@
+{
+  "veve_version": "0.2.0",
+  "name": "wordcount",
+  "version": "1.0.0",
+  "summary": "Counts words in JSON text input; emits stats. Reference L3 CLI for the asson toolkit.",
+  "binary": {
+    "entry": "bin/wordcount.mjs",
+    "runtime": "node",
+    "subcommands": []
+  },
+  "determinism": {
+    "class": "re_executable",
+    "declared_by": "author",
+    "ambient": []
+  },
+  "io": {
+    "input": "stdin_json",
+    "output": "stdout_json",
+    "exit_codes": {
+      "0": "ok",
+      "2": "malformed input (caller error, not tool failure)"
+    }
+  },
+  "vectors": [
+    {
+      "name": "basic",
+      "argv": [],
+      "stdin": "{\"text\":\"the loa pass the gate the loa sign\"}",
+      "expect_output_hash": "sha256:1e4b3ecc03669d0057e301518e883cf318a1a646b7da725a668406d9f6418fb1",
+      "expect_exit": 0
+    },
+    {
+      "name": "empty",
+      "argv": [],
+      "stdin": "{\"text\":\"\"}",
+      "expect_output_hash": "sha256:90209e4054c936830240cf1c0054b0021701a013aa9e7c3c85af50eb5bd623e8",
+      "expect_exit": 0
+    },
+    {
+      "name": "malformed-input-exits-2",
+      "argv": [],
+      "stdin": "not json",
+      "expect_output_hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "expect_exit": 2
+    }
+  ],
+  "ladder": {
+    "level": 3,
+    "promoted_from": "scripts/count-words.sh",
+    "evidence_runs": [
+      "run:gygax-balance-pass:001",
+      "run:k-hole-digest:014"
+    ]
+  },
+  "liveness": {
+    "timeout_s": 10,
+    "expected_p95_s": 1,
+    "mode": "oneshot"
+  },
+  "attestation": {
+    "tree_hash": "sha256:40d0f6b007b7924feb511bdc868dd9abd0070fcca9a6e13efc6124ea464f55d8",
+    "git_commit": "4d0116e623ed5815703986635bf70f10ca5be4f6",
+    "signed_by_key_id": "6948d2ae56ebd71aff295174170cf1f39b073e8261441a0137f4a8073679511a",
+    "signature_type": "dev_signature",
+    "ts": "2026-06-12T01:34:50.040Z",
+    "signature": "HEqVPh4RWvCglSKFwNxqRYuxBC9KUXXcfCBKpQuQFl2qeE0gxNJhD1RLXj51ZlnhlOoyUwv03cnN0Pq5spG/DQ=="
+  }
+}

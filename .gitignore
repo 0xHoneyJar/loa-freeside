@@ -435,3 +435,7 @@ themes/packages/services/*.js
 themes/packages/services/*.js.map
 themes/packages/services/*.d.ts
 themes/packages/services/*.d.ts.map
+
+# asson cycle-3: private signing keys NEVER committed
+.run/asson-keys/
+packages/asson/.run/

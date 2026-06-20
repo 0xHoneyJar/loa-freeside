@@ -1,125 +1,48 @@
-# Sprint Plan: World Container Hosting
+# Sprint Plan — Asson Cycle 3: keyring binding + key ceremony + graduations
 
-> **Cycle**: cycle-048
-> **PRD**: `grimoires/loa/prd.md` (World Container Hosting)
-> **SDD**: Terraform module design (architect output)
-> **Sprints**: 2 (sprint-1: Foundation + First World, sprint-2: CI + Remaining Worlds)
-> **Estimated**: 2-3 days total
+> **Cycle**: asson-cli-layer cycle 3 of 5 (PRD §3 ladder; SDD §7 rung 3 + D-8) · epic `arrakis-gfgv`
+> **Branch**: `asson-cli-layer/cycle-1` (stacks on cycles 1-2; leave-local) · `simstim-20260611-asson-c3`
 
----
+> **Scope** (SDD D-8 + §7 row 3): the keyring binding that **closes the cycle-1 audit MEDIUM** (the `attestation` tier finally means "trusted", not "verifies against the key you handed me") → a persistent-key CI ceremony (dev→attestation upgrade) → ≥2 honest L3-attestation graduations. NOTHING from cycles 4-5: no liveness-watchdog wiring, no finn PROPOSAL consumption, no lexicon comms-gate hook.
 
-## Sprint 1: Foundation + First World (rektdrop)
+> **Domain**: network. Commit scope `network/asson/<task>`; `domain:network` beads; paths `packages/{asson,freeside-cli}/` + `tests/asson/` only.
 
-**Goal**: Terraform `world` module exists and rektdrop is live at `rektdrop.0xhoneyjar.xyz` on staging.
+## Tasks
 
-### Task 1.1: Create World Module Structure
+### 3.1 — Keyring data model + resolver (D-8)
+`packages/asson/keyring/signers.json`: a map `key_id → {signer_id, key_version, public_key_pem, status: active|revoked, added_ts}`. Add `resolveSigner(keyring, key_id)` to `asson.mjs` (or a small `keyring.mjs` re-exported): returns the `active` entry's `public_key_pem` or null (revoked/absent → null). `key_id` is the existing bare-hex `keyId(signer_id, key_version)`.
+- **Invariants**: CL-1 (resolver is pure, zero-dep — JSON read only); only `status: active` resolves.
+- **Acceptance**: `resolveSigner` returns the pem for an active id; null for revoked/unknown.
+- **Verification**: `node:test` covering active/revoked/unknown.
 
-**Files**: `infrastructure/terraform/modules/world/{main,variables,outputs}.tf`
+### 3.2 — Doctor keyring binding (closes the audit MEDIUM)
+`doctor(veve, cliDir, { publicKey = null, keyring = null })`: when `keyring` is given, RESOLVE `veve.attestation.signed_by_key_id → public_key_pem` and verify against THAT (ignoring an explicit publicKey). Unknown/revoked id → `unattested` + an `AS-KR` finding ("signer not in keyring / revoked"). A resolved+verified `signature_type: attestation` → `attestation` tier CLEAN (no AS-2 warn). `dev_signature` still → attested-dev warn. The binding is structural: the key is fetched BY the claimed id.
+- **Invariants**: CL-4 (exit codes unchanged), the binding must make a forged `signed_by_key_id` unresolvable AND a wrong-key signature fail.
+- **Acceptance**: attestation signed by a keyring key + doctor-with-keyring → `earned L3 (attestation)`; a veve whose `signed_by_key_id` is tampered → `unattested` + AS-KR; a veve signed by key A but claiming key B's id → signature fails → unattested.
+- **Verification**: `node:test` with the three cases (honest, forged-id, wrong-key).
 
-Module directory with all inputs/outputs defined. First Terraform module in the project.
+### 3.3 — CI key ceremony (dev→attestation upgrade)
+`packages/asson/scripts/ci-key-ceremony.mjs`: mint a PERSISTENT ed25519 keypair, write the private key to a gitignored path (`.run/asson-keys/<key_id>.pem`, 0600), write the public key + metadata to `keyring/signers.json` (status active), and expose `attestWith(veve, cliDir, key_id)` signing `signature_type: attestation`. Add `keyring/` + `.run/asson-keys/` to `.gitignore` (private keys NEVER committed).
+- **Invariants**: CL-6-adjacent — private key never committed/logged; the ceremony is the ONLY producer of `attestation`-tier signatures.
+- **Acceptance**: running the ceremony adds an active keyring entry + a 0600 private key file (gitignored); a veve attested via the ceremony key has `signature_type: attestation`.
+- **Verification**: a bats case asserts the private key path is gitignored + 0600, the keyring entry is active.
 
-**AC**: Valid variable and output definitions, `terraform validate` passes.
+### 3.4 — Graduations (≥2 honest L3-attestation CLIs)
+Attest the `wordcount` + `lexicon-lint` examples via the ceremony key → `asson doctor <ex> --keyring keyring/signers.json` → `earned L3 (attestation)` clean. These are the "≥2 honest L3 CLIs, evidence-linked" (SDD §7 row 3). (Attest COPIES in a temp dir in tests so the committed examples stay dev_signature.)
+- **Acceptance**: both examples reach `L3 (attestation)` under the keyring; the doctor cites the resolved signer.
+- **Verification**: bats — 2 examples × (ceremony-attest → doctor-with-keyring → L3 attestation, exit 3-or-0).
 
-### Task 1.2: Module — ECR Repository
+### 3.5 — Verb `--keyring` + scope fence forward + harness + emit
+`freeside-cli asson doctor <dir> [--keyring <path>]` → read the keyring JSON, pass to `doctor`. Retire the cycle-2 `no ci-key*` scope-guard assertion (the fence advances). `tests/asson/cycle3-fixtures.bats`: (a) keyring resolver active/revoked/unknown; (b) doctor binding 3 cases (honest L3-attestation, forged-id→unattested, wrong-key→unattested); (c) ceremony private key gitignored+0600; (d) **scope guard** — NONE of cycles 4-5: no `livenessVerdict`/asson-watchdog in `.claude/settings.json|hooks` (cycle-4), no `lexicon-lint` comms-gate hook (cycle-5). 5 child beads (3.1-3.5, `domain:network`); `br sync`.
+- **Acceptance**: cycle-3 bats green; cycles 1-2 bats still green; epic + 5 beads `domain:network`.
+- **Verification**: `bats tests/asson/cycle3-fixtures.bats` exit 0; cycles 1+2 bats exit 0.
 
-**File**: `modules/world/ecr.tf`
+## Sprint Verification Criteria (gate for cycle 4)
 
-Repository `${var.name_prefix}-world-${var.name}` with lifecycle policy (keep last 5 images). Pattern: `ecs-finn.tf:28-78`.
-
-### Task 1.3: Module — ECS Task Definition + Service
-
-**File**: `modules/world/ecs.tf`
-
-Task def: 256 CPU/512 MB, EFS volume at `/data`, env vars (`DATABASE_PATH`, `AI_GATEWAY_URL`, `PORT`), container port 3000.
-
-Service: Fargate Spot (weight 100) with FARGATE fallback (weight 1). `min_healthy=0`, `max=100` (stop-then-start). Circuit breaker with rollback. Health check grace 60s.
-
-### Task 1.4: Module — ALB Target Group + Listener Rule
-
-**File**: `modules/world/alb.tf`
-
-Target group port 3000. Listener rule: host `${name}.0xhoneyjar.xyz`, priority from `md5(name)` hash (range 300-499). Pattern: `ecs-dixie.tf:539-585`.
-
-### Task 1.5: Module — EFS Access Point
-
-**File**: `modules/world/efs.tf`
-
-Access point path `/worlds/${name}/`, POSIX UID/GID 1000, permissions 755. Pattern: `nats.tf:253-273`.
-
-### Task 1.6: Module — IAM Roles (execution + task + CI)
-
-**File**: `modules/world/iam.tf`
-
-Execution role: ECS + Secrets Manager + KMS. Task role: EFS mount (scoped to access point ARN) + CloudWatch + ECS Exec. CI role: OIDC trust for exact repo+branch, ECR push + ECS update-service only.
-
-### Task 1.7: Module — Security Group + Logs
-
-**Files**: `modules/world/security.tf`, `modules/world/logs.tf`
-
-SG: ingress 3000 from ALB, egress 443/3000/2049. Log group: `/ecs/${prefix}/worlds/${name}`, 30 day retention.
-
-### Task 1.8: Shared Resources — World EFS + ACM Wildcard
-
-**Files**: `efs-worlds.tf`, `acm-worlds.tf`
-
-New EFS file system (encrypted, elastic throughput) with mount targets + SG. Wildcard ACM cert `*.0xhoneyjar.xyz` attached to ALB via `aws_lb_listener_certificate`.
-
-### Task 1.9: Deploy First World — rektdrop
-
-**File**: `worlds/rektdrop.tf`
-
-Module invocation. `terraform apply` on staging. Push test image. Verify ALB routing works.
-
-### Task 1.10: DNS — World Records
-
-**File**: `dns/honeyjar-xyz-worlds.tf`
-
-A-alias records for `rektdrop.0xhoneyjar.xyz` → ALB. ACM validation CNAME. Apply dns root.
-
-**AC**: `dig rektdrop.0xhoneyjar.xyz` returns ALB. HTTPS with wildcard cert works.
-
----
-
-## Sprint 2: CI + Remaining Worlds + Production
-
-**Goal**: All 3 worlds on production with automated deploys. Railway cancelled.
-
-### Task 2.1: Deploy Workflow Template
-
-**File**: `ci-templates/world-deploy.yml`
-
-GitHub Actions: OIDC → ECR build+push → ECS force-deploy → wait stability.
-
-### Task 2.2: Wire rektdrop CI
-
-Copy workflow, set secret, verify push→deploy works.
-
-### Task 2.3: Add mibera + aphive Worlds
-
-`worlds/mibera.tf`, `worlds/aphive.tf`. Same pattern. DNS records.
-
-### Task 2.4: Wire Finn AI Gateway
-
-`AI_GATEWAY_URL` env var + per-world JWT tokens in Secrets Manager. Verify inference call.
-
-### Task 2.5: SQLite Persistence Verification
-
-Write data → redeploy → verify data survives. Confirm single-task during deploy.
-
-### Task 2.6: Production Deployment
-
-Apply all terraform to production. Push images. Verify all 3 worlds at `*.0xhoneyjar.xyz`.
-
-### Task 2.7: Cancel Railway
-
-Cancel subscriptions. Update docs. $15/mo saved.
-
----
-
-## Success Metrics
-
-- [ ] 3 worlds running on Freeside (staging + production)
-- [ ] `git push` → live in <10 minutes
-- [ ] SQLite persists across deployments
-- [ ] Railway cancelled ($15/mo saved)
-- [ ] Per-world cost <$5/mo (verified via Cost Explorer)
+1. The keyring binding closes the MEDIUM: doctor-with-keyring resolves `signed_by_key_id`, a forged id → unattested, a wrong-key signature → fails. (The cycle-2 keyring-gate-UNBUILT assertion is now SATISFIED — fence advances.)
+2. ≥2 examples reach `L3 (attestation)` (clean tier, not attested-dev) under the ceremony key.
+3. The ceremony's private key is gitignored + 0600 — NEVER committed.
+4. `asson doctor --keyring` works end-to-end.
+5. cycle-3 bats green; cycles 1+2 bats green.
+6. NO cycle-4-5 territory (scope guard green).
+7. Commit scope `network/asson/*`; `domain:network` beads.

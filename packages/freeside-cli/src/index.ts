@@ -9,3 +9,4 @@
 export { listModules } from "./verbs/list.js";
 export { inspectModule } from "./verbs/inspect.js";
 export { doctor } from "./verbs/doctor.js";
+export { assonVerb as asson } from "./verbs/asson.js";

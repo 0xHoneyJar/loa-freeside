@@ -1,0 +1,260 @@
+# Composition · website-scaffold
+# ================================================================
+# Cycle-006 first concrete composition. The operator's actual
+# world-class-design-studio workflow, shipped as a composable pipeline.
+#
+# Authored per cycle-006 SEED §3 AC-composition.1-7 + the 7-stage
+# table in [[agent-teams-as-pipes]] §"The concrete use-case".
+#
+# The website-scaffold composition is a TASTE STATEMENT, not a
+# universal template. Other operators author their own (operator
+# self-caveat 2026-04-23 late). The substrate honors both shapes.
+#
+# Cycle-006 L-backend delivers the runner (compose-run.sh +
+# stage-executor-tmux.sh). Cycle-006 L-e2e runs this composition
+# end-to-end against a real target.
+#
+# Runner invocation:
+#   compose-run website-scaffold --target ./sites/my-site --orient
+#
+# Mock-mode (for bats + cheap iteration):
+#   LOA_STAGE_MOCK=1 compose-run website-scaffold --target ./x --no-interactive
+# ================================================================
+
+schema_version: "1.0"
+kind: workflow                          # doctrine v4 §15.2
+name: research-scaffold
+description: >
+  Author-grade website scaffolding — from research to product
+  structure. Seven stages, two iteration loops, one opinionated
+  taste statement.
+
+intent: >
+  "Design and scaffold a web property with full-stack taste:
+   research-grounded context, mood-locked assets, component-deep
+   design system, product-level structure. Runs as a composition of
+   seven focused teammates; iteration loops where refinement matters
+   (mood 2↔4, system 5↔6); no teammate mixes registers."
+
+# Cycle-006 backend field (doctrine v6 §18.4). Operator can override
+# via `--backend teamcreate` once cycle-007 ships that executor.
+backend: headless-tmux
+
+# Hivemind Lab labels (Dec 2025 canon). Full-stack site authoring
+# delivers production work for end users who arrive cold to a site.
+# JTBD: visitors landing for the first time need to find the why
+# (functional: Find Information) AND feel the brand is real
+# (personal: Reassure Me This Is Safe — could be either).
+hivemind_labels:
+  product_area: "New Site Build / Marketing Surface"
+  workstream: delivery
+  jtbd:
+    category: functional
+    description: "Find Information — visitor wants to learn what this is, why it matters, in under 10 seconds"
+  source: team-internal
+
+inputs:
+  - type: Artifact
+    name: target
+    description: Path to the project scaffold / brief / existing site dir
+    required: true
+  - type: Operator-Model
+    name: operator_context
+    description: Operator expertise + mode + attention register (from /hivemind)
+    required: false
+
+# Iteration loops — the pairs of stages that iterate until operator
+# ACKs (or --max-iterations cap reached). Declared as [stage_a, stage_b]
+# where stage_a and stage_b are the `stage:` field values below.
+#
+# Operator behavior 2026-04-23 late: "Stages 2 ↔ 4, 5 ↔ 6 are the
+# iteration loops the operator always uses."
+iterate:
+  - [2, 4]   # mood-board exploration ↔ mood refinement
+  - [5, 6]   # design UI system ↔ component refinement
+
+# S0-T6 / FR-7.2 — bounded iteration. Each loop pair iterates until the
+# operator ACKs that pass's output. Default is 3 passes per pair (matches
+# the known_limitations note); --max-iterations overrides, --no-interactive
+# caps for CI.
+max_iterations: 3
+terminate_when: >
+  the operator ACKs each iteration pair — the mood direction locks (tension
+  resolved, taste converged) for the 2↔4 loop, and the design system +
+  component primitives stabilize (tokens and state variants settle) for the
+  5↔6 loop — OR max_iterations (3 passes per pair) is reached.
+
+chain:
+  # ------------------------------------------------------------------
+  - stage: 1
+    construct: k-hole
+    skill: dig
+    persona: STAMETS
+    mode: fresh
+    reads: [Artifact, Operator-Model]
+    writes: [Signal]
+    role: primary
+    notes: >
+      STAMETS pulls context, references, prior art, constraints.
+      Fresh-per-stage by design — no prior-iteration bias on
+      research. Grounded in observable reality, not plausible
+      extrapolation. Output: Signal rows of findings + threads.
+
+  # ------------------------------------------------------------------
+  - stage: 2
+    construct: the-easel
+    skill: exploring-visuals
+    persona: OPERATOR
+    mode: persistent
+    reads: [Signal]
+    writes: [Signal]
+    role: primary
+    iterates_with: 4
+    notes: >
+      the-easel explores mood candidates from research. Persistent
+      teammate — register depth accumulates across iteration passes
+      with stage 4. Emits mood Signal rows (tension-resolution
+      candidates, visual concepts, reference pulls).
+      Cycle-006 MVP: history accumulates per-stage-label;
+      shared-teammate-across-stages is cycle-007.
+
+  # ------------------------------------------------------------------
+  - stage: 3
+    construct: mint
+    skill: mint
+    persona: MINT
+    mode: fresh
+    reads: [Signal]
+    writes: [Artifact]
+    role: primary
+    notes: >
+      mint locks mood-board assets — generative asset production
+      from the operator-acked mood candidates. Fresh-per-stage;
+      each asset generation is a clean subprocess. Output: Artifact
+      rows (visuals, textures, reference images at paths).
+
+  # ------------------------------------------------------------------
+  - stage: 4
+    construct: the-easel
+    skill: iterating-visuals
+    persona: OPERATOR
+    mode: persistent
+    reads: [Artifact, Signal]
+    writes: [Signal]
+    role: primary
+    iterates_with: 2
+    notes: >
+      the-easel refines mood against locked assets. Persistent
+      teammate — keyed separately from stage 2 in cycle-006 MVP
+      (see backend note). Emits refined mood Signal — direction
+      lock, tension resolution, taste convergence.
+
+  # ------------------------------------------------------------------
+  - stage: 5
+    construct: artisan
+    skill: designing-systems
+    persona: ALEXANDER
+    mode: persistent
+    reads: [Signal, Artifact]
+    writes: [Artifact]
+    role: primary
+    iterates_with: 6
+    notes: >
+      ALEXANDER scaffolds the design UI system — taste tokens (oklch),
+      type scale, spring constants, spacing rhythm, motion specs.
+      Persistent teammate; depth accumulates across the 5↔6 loop.
+      Output: Artifact rows (taste-tokens.json, motion-tokens.json).
+
+  # ------------------------------------------------------------------
+  - stage: 6
+    construct: artisan
+    skill: distilling-components
+    persona: ALEXANDER
+    mode: persistent
+    reads: [Artifact]
+    writes: [Artifact]
+    role: primary
+    iterates_with: 5
+    notes: >
+      ALEXANDER distills component primitives, state variants, feel
+      calibration. Continues from stage 5 with the same register
+      loaded. In cycle-007, kansei composes here for perceptual
+      engineering — deferred per SEED scope-lock (one teammate per
+      stage, MVP).
+
+  # ------------------------------------------------------------------
+  - stage: 7
+    construct: the-arcade
+    skill: mapping-topology
+    persona: BARTH
+    mode: fresh
+    reads: [Artifact]
+    writes: [Artifact]
+    role: primary
+    notes: >
+      BARTH structures the actual product — pages, navigation, user
+      journey, progressive disclosure. Fresh-per-stage — no
+      persistent context from design work; structure emerges from
+      the-arcade's architectural lens cleanly. Output: product
+      structure Artifact.
+      Copy (vocabulary-bank + herald) weaves at stages 5-7 but is
+      not a separate stage per operator direction 2026-04-23.
+
+outputs:
+  - type: Artifact
+    destination: .run/compose/<run_id>/final-product-structure.json
+    description: Structured product specification — pages, nav, journey
+    hivemind_labels:
+      artifact_type: product-spec
+      learning_status: directionally-correct
+  - type: Signal
+    destination: .run/compose/<run_id>/orchestrator.jsonl
+    description: Orchestrator trajectory (pipe graph + stream activity)
+    notes: >
+      For L-frontend tailing. Separate from construct-trajectory.jsonl
+      which carries entry/exit rows per doctrine §16.4.
+
+compose_with:
+  - k-hole
+  - the-easel
+  - mint
+  - artisan
+  - the-arcade
+composes_symmetrically_with:
+  - the-easel ↔ mint       # mood candidates ↔ locked assets
+  - artisan ↔ the-arcade   # design system ↔ product structure
+
+invocation_examples:
+  - operator_utterance: "scaffold a new site from research to structure"
+    resolves_to: full 7-stage composition end-to-end
+  - operator_utterance: "just the mood phase"
+    resolves_to: stages 1-4 (halt at product structuring) — cycle-007 target
+  - operator_utterance: "start from the design system"
+    resolves_to: stages 5-7 with pre-supplied mood — cycle-007 target
+
+when_to_use: >
+  - Greenfield website authoring where taste lineage matters
+  - Re-platforming an existing site where design system is
+    being rebuilt from the ground up
+  - Teaching exercise — operator walks another operator through
+    the 7-stage pipeline as a taste transmission
+  - NOT a product catalog / crud tool / typical webapp scaffold —
+    use the-arcade primary for those (no mood/design-system phase)
+
+known_limitations:
+  - "MVP cycle-006 — persistent-teammate context is file-accumulated per stage label, not shared across stages (shared cross-stage teammate is cycle-007 target)"
+  - "Real LLM invocation requires anthropic creds in env (ANTHROPIC_API_KEY or whatever claude CLI uses). Mock mode (LOA_STAGE_MOCK=1) skips LLM for bats + dev iteration"
+  - "Output-reproducibility not guaranteed (LLM variance — doctrine v5 §17.1). Dispatch is deterministic; content varies run-to-run"
+  - "Iteration cap default is 3 passes per pair; operator may override via --max-iterations N or --no-interactive for CI"
+  - "Stage 3 (mint) and stage 7 (the-arcade) persona resolution falls back to uppercase slug when construct-resolve lookup finds no explicit persona declaration"
+
+references:
+  - doctrine: grimoires/loa-constructs-seed-2026-04-21/bonfire-construct-pipe-doctrine.md (v5 + §18 at cycle-006 close)
+  - seed: grimoires/loa-constructs-seed-2026-04-21/cycle-006-SEED-agentic-fullstack-runtime.md
+  - concept: ~/hivemind/wiki/concepts/agent-teams-as-pipes.md §"The concrete use-case"
+  - runner: .claude/scripts/compose-run.sh (cycle-006 L-backend)
+  - executor: .claude/scripts/stage-executor-tmux.sh (cycle-006 L-backend)
+
+version: "1.1.0"
+authored_at: "2026-04-23"
+authored_by: cycle-006 L-composition (operator + agent)

@@ -1,0 +1,2 @@
+{"record":{"ts":"2026-06-11T11:55:00.000Z","kind":"span_open"},"record_hash":"sha256:00000834"}
+{"record":{"ts":"2026-06-11T11:56:20.000Z","kind":"tool_call","tool":"grep","input_hash":"aaa"},"record_hash":"sha256:00000608"}

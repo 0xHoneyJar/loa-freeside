@@ -1,0 +1,264 @@
+# Composition · billboard-rlhf
+# ================================================================
+# Discord-medium fork of feel-iterate-signal-feedback. SAME semantic
+# loop — generate N candidates → operator annotates via a HITL capture
+# surface → curate against the rubric + annotation trail → iterate —
+# but the capture surface is `rlhf-preview` (Discord-fidelity card
+# voting) instead of PixelMark (region annotation on a web page), and
+# the medium is a persona-bot's Discord output instead of a UI
+# component.
+#
+# Origin: 2026-05-23 freeside-characters cycle-008 S9 session. Operator:
+# "the interactive surface IS how I give you the RLHF feedback … tighten
+# the feedback loop in terms of designing for the medium and the
+# community … not random tweaks with the prompts." The rlhf-preview
+# surface (apps/bot/src/cli/rlhf-preview.ts + packages/persona-engine/
+# src/preview/) emerged as the Discord-medium analog of PixelMark.
+#
+# THE FIDELITY LAW (dig 2026-05-23 · grimoires/k-hole/research-output/
+# dig-session-2026-05-23.md): a browser mock CANNOT be pixel-perfect —
+# gg sans is a legal moat (Colophon Foundry · Discord-only license) and
+# Discord renders via different engines per client (Blink desktop vs
+# Meta Yoga mobile · the "Fidelity Paradox"). So this composition has a
+# TWO-TIER capture: the mock (Inter-simulated · ~95% · velocity) narrows
+# the field; the REAL test Discord (the actual client · 100%) makes the
+# final RLHF judgment. Reward measured off the mock trains the wrong
+# rendering.
+#
+# Authored: 2026-05-23
+# ================================================================
+
+schema_version: "1.0"
+kind: workflow
+name: billboard-rlhf
+description: >
+  Discord-medium RLHF iteration for a persona-bot's data output (the
+  ruggy two-beat billboard). Generate N candidate presentations of a
+  FIXED snapshot, the operator rates each 1-5 + why at Discord fidelity
+  (mock for velocity, real test server for the 100% final pick), winners
+  promote to the eval set, the accumulated preference corpus calibrates
+  a cycle-009 LLM-judge. The loop is the work; prompt edits land THROUGH
+  it with side-by-side evidence, not via blind tweaks.
+
+intent: >
+  "Tighten the feedback loop for designing FOR the medium (Discord) and
+   the community — fine-tune output through quick visual iterations in
+   the actual medium context, not random prompt tweaks. Rate each
+   candidate, see what changed (the diff), let the agent breed the next
+   generation from the preference signal."
+   — operator framing 2026-05-23
+
+backend: headless-tmux
+
+hivemind_labels:
+  product_area: "Persona-bot output · Discord medium (data billboard)"
+  workstream: delivery
+  priority: high
+  jtbd:
+    category: personal
+    description: "Reassure Me This Is Safe — community-facing data reads legible + in-canon, not raw-from-score"
+  source: team-internal
+
+depends_on:
+  constructs:
+    - artisan          # ALEXANDER — craft taste over the billboard format
+    - the-mint         # MINT — curate / breed the next generation against the rubric
+    - observer         # KEEPER — listen for what the community actually reads (taste source)
+  tools:
+    - rlhf-preview     # the Discord-fidelity capture surface (this repo · the PixelMark analog)
+  upstream_compositions:
+    - compositions/persona/persona-bot-creative-direction.yaml  # produces the persona canon this consumes
+  sibling_compositions:
+    - compositions/delivery/feel-iterate-signal-feedback.yaml    # the visual-component analog (PixelMark capture)
+
+inputs:
+  - type: Intent
+    name: target_surface
+    description: >
+      Which persona output is being iterated — the scheduled billboard
+      (digest), the event pop-in, a specific zone+state snapshot. Per
+      the three-surface doctrine, each is judged on its own register.
+    required: true
+  - type: Artifact
+    name: canon
+    description: >
+      The persona canon — persona.md voice anchors, the governance-vs-
+      voice doctrine (stats-out-of-voice), Discord-as-Material rules
+      (underscore-escape, message.content always populated). The
+      composition trusts upstream (persona-bot-creative-direction or
+      operator-supplied) to have produced approved canon.
+    required: true
+  - type: Artifact
+    name: snapshot
+    description: >
+      The FIXED data case the variants vary over (e.g. owsley-lab
+      all-quiet 352/30d/15, or the -13% active case). Holding data
+      constant isolates the PRESENTATION variable — the operator
+      judges format, not noise.
+    required: true
+  - type: Operator-Model
+    name: operator_context
+    required: false
+
+# Iteration loop — stages 1 ↔ 2 cycle until a candidate clears the
+# rubric. Cap advisory on culturetech-loose (operator halts dictate
+# progress); the preference corpus accumulates across iterations.
+iterate:
+  - [1, 2]
+
+# S0-T6 / FR-7.2 — bounded iteration. The generate↔curate-and-breed loop
+# runs until a billboard candidate clears the rubric on the REAL test
+# Discord tier (the mock only narrows the field). Cap is advisory on
+# culturetech-loose; the preference corpus accumulates across passes.
+max_iterations: 3
+terminate_when: >
+  a billboard candidate clears the 5-axis rubric (in-medium legibility on
+  the real test Discord, stats-out-of-voice, non-alarmist data, surface
+  fit, canon fidelity) AND honors the operator's why-annotations from the
+  preference log, OR max_iterations reached / the operator halts — the
+  highest-rated candidate promotes to evals/snapshots/.
+
+chain:
+  - stage: 1
+    name: generate-n-billboard
+    construct: artisan
+    skill: feel
+    persona: ALEXANDER
+    mode: persistent
+    reads: [Intent, Artifact]
+    writes: [Artifact, Signal]
+    role: primary
+    iterates_with: 2
+    thinking_effort: high
+    capture_method:
+      preferred:
+        tool: rlhf-preview
+        canonical_source: ~/Documents/GitHub/freeside-characters/apps/bot/src/cli/rlhf-preview.ts
+        canonical_documentation: ~/Documents/GitHub/freeside-characters/grimoires/loa/a2a/sprint-30/reviewer.md
+        loop: |
+          `rlhf-preview serve` fans out N billboard candidates of the
+          fixed snapshot at Discord fidelity. The operator rates EACH
+          1-5 + a free-text why (the rubric questions), with a
+          "what changed vs baseline" diff panel making every rating
+          attributable to a concrete format/surface change. Picks +
+          ratings persist to preference-log.jsonl (the trail) and an
+          inbox the agent reads to breed the next generation. The
+          --await-pick mode is the blocking handoff (background launch
+          re-invokes the agent on the operator's vote · roughdraft
+          pattern).
+        ground_truth_tier:
+          tool: rlhf-preview discord
+          why: |
+            THE FIDELITY LAW. The mock is ~95% (Inter-simulated gg sans
+            + Discord 16px/1.375 metrics) — good for narrowing the field
+            fast. But a single mock can't be pixel-perfect (gg sans
+            legal moat + Blink/Yoga per-client divergence), so the FINAL
+            RLHF pick is made on the REAL test Discord: `rlhf-preview
+            discord --webhook <test-url>` posts candidates with the
+            ruggy Pattern-B identity; the operator judges in the actual
+            client their community uses. Reward off the mock trains the
+            wrong rendering.
+      fallback:
+        tool: terminal-summary
+        when: no browser available
+        loop: rlhf-preview preview prints the billboard lines to stdout; lower fidelity, narrows only.
+    notes: >
+      ALEXANDER generates N billboard format variants (code variants +
+      bred declarative templates) grounded in the canon. DESIGN-CANON-
+      FIRST: stats-out-of-voice (beat 1 zero numbers), governance-vs-
+      voice separation (data ≠ narrative), community-legible labels (the
+      operator's "too raw from score" complaint is the standing rubric
+      anchor). Variants are SEED material — the operator picks/rates/
+      extends; the agent breeds the next generation from the ratings,
+      never prescribes top-down.
+
+  - stage: 2
+    name: curate-and-breed
+    construct: the-mint
+    skill: curate
+    persona: MINT
+    mode: fresh
+    reads: [Artifact, Signal]
+    writes: [Verdict, Signal]
+    role: craft-gate
+    iterates_with: 1
+    notes: >
+      Selection + breeding pass against the canon + the preference-log
+      trail. The rubric axes (the 1-5 questions): (1) in-medium
+      legibility — reads clean in the ACTUAL Discord client; (2) stats-
+      out-of-voice — beat 1 carries no numbers; (3) non-alarmist data —
+      change framing doesn't read as an alert; (4) surface fit — the
+      Discord primitive (bold-text / code-block / ansi) suits the
+      content; (5) canon fidelity — lands in the persona's register.
+      A candidate that ignores the operator's why-annotations does not
+      advance regardless of standalone quality. Strong picks promote to
+      evals/snapshots/ (the regression substrate); the next generation
+      of templates is bred toward the high-rated direction.
+
+outputs:
+  - type: Artifact
+    destination: grimoires/loa/cycles/cycle-008-persona-substrate/preference-log.jsonl
+    description: Per-iteration preference records (rlhf-preference-v1 · ratings + whys + chosen) — the RLHF corpus
+    hivemind_labels:
+      artifact_type: atomic-learning
+      learning_status: directionally-correct
+  - type: Artifact
+    destination: evals/snapshots/
+    description: Promoted winners as byte-snapshot goldens (regression substrate + cycle-009 judge calibration set)
+    hivemind_labels:
+      artifact_type: product-spec
+      learning_status: strongly-validated
+  - type: Verdict
+    destination: .run/rlhf-preview/inbox.jsonl
+    description: The vote handed back to the agent (drives the next breeding generation)
+
+compose_with:
+  - artisan
+  - the-mint
+  - observer
+  - rlhf-preview       # tool, not a construct — see stage 1 capture_method
+
+composes_symmetrically_with:
+  - artisan ↔ the-mint        # eye ↔ hand — same canonical pair as feel-iterate + direct-render
+  - alexander ↔ rlhf-preview  # craft loop ↔ Discord-medium vote surface (the PixelMark analog)
+
+when_to_use: >
+  - Iterating a persona-bot's Discord output (billboard / pop-in) against approved canon
+  - Tightening voice/format on the actual medium with attributable, rated feedback
+  - Building the preference corpus that calibrates a downstream LLM-judge (RLAIF)
+  - NOT for persona canon authoring (use persona-bot-creative-direction)
+  - NOT for visual UI components (use feel-iterate-signal-feedback — PixelMark capture)
+
+known_limitations:
+  - "Mock fidelity is ~95% (gg sans is a legal moat; Blink/Yoga diverge per client). The FINAL pick MUST be made on the real test Discord tier or the reward trains the wrong rendering. The mock narrows; the client decides."
+  - "Single-annotator preference corpus — for a single-operator product voice this is the goal (it IS the taste), but case diversity (zones, states) matters so a downstream judge generalizes beyond one snapshot."
+  - "Voice-beat (LLM beat-1) fan-out is a follow-on; the current loop varies the deterministic data billboard. Prompt-layer diffs apply once the voice tier lands."
+  - "rlhf-preview lives in freeside-characters (reuses its prod render path); this composition references it as a tool, not a portable construct. Other repos need their own medium-fidelity capture surface."
+
+references:
+  - surface_canonical: ~/Documents/GitHub/freeside-characters/apps/bot/src/cli/rlhf-preview.ts
+  - surface_package: ~/Documents/GitHub/freeside-characters/packages/persona-engine/src/preview/
+  - dig_fidelity_law: ~/Documents/GitHub/freeside-characters/grimoires/k-hole/research-output/dig-session-2026-05-23.md
+  - sibling_visual: compositions/delivery/feel-iterate-signal-feedback.yaml
+  - canon_producer: compositions/persona/persona-bot-creative-direction.yaml
+
+operator_note: |
+  Authored 2026-05-23 from the freeside-characters cycle-008 S9 session.
+  Three principles carried from feel-iterate-signal-feedback, adapted to
+  the Discord medium:
+
+  1. THE LOOP IS THE WORK. Generate → rate → breed → iterate is where the
+     taste materializes. Everything else (canon, promotion) is scaffolding.
+
+  2. MEASURE IN THE MEDIUM. PixelMark annotates a rendered web page; this
+     annotates Discord output at Discord fidelity. The dig proved a mock
+     can't be 100% — so the rubric's in-medium-legibility axis is judged
+     on the REAL client, not the mock.
+
+  3. ATTRIBUTABLE SIGNAL. The diff panel ("what changed vs baseline")
+     turns "I like B" into "I like B's specific change" — the difference
+     between vibes and a reward signal a model can learn from.
+
+version: "1.0.0"
+authored_at: "2026-05-23"
+authored_by: cycle-008-s9 (freeside-characters · rlhf-preview surface)

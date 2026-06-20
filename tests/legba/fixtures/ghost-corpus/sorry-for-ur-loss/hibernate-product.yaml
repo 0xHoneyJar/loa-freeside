@@ -1,0 +1,669 @@
+# Composition · hibernate-product
+# ================================================================
+# Whole-product graceful sunset workflow. Sits ABOVE outage-triage
+# as the meta-meta-composition for projects entering hibernation —
+# distinct from a single-feature disable (triage-pause) or a
+# multi-surface outage with an active fix path (outage-triage).
+#
+# Hibernation is the case where the project itself is sunsetting
+# (or detaching from a parent program, or holding pattern through
+# an indefinite migration window). The whole product needs a
+# coherent disposition pass: keep the operational doors labeled,
+# disable the dark surfaces tastefully, remove the dead code,
+# park the migrations, and leave behind a kickoff doc so the
+# next session lands cleanly.
+#
+# Authored 2026-04-25 from the henlo-monorepo cycle-002
+# hibernation workflow (sessions 1+2). What started as a single
+# tetris 500 ended with the operator detaching Henlo from
+# CubQuests, dispositioning 8+ surfaces into keep / disable /
+# degrade / remove / migrate-then-park, and arming an M+1 audit
+# for state drift detection.
+# ================================================================
+
+schema_version: "1.0"
+kind: workflow
+name: hibernate-product
+description: >
+  Graceful sunset workflow for whole-product hibernation. Inventories
+  what stays operational, dispositions every feature into a six-value
+  decision space (keep / disable-with-sign / degrade / remove /
+  migrate-then-park / wait-for-decision), dispatches per-row to the
+  right downstream worker (triage-pause for cabinets, inline patches
+  for degrades, deletes for removes, parking log for migrations),
+  swaps lobby chrome content so the room stays full while the games
+  go dark, and closes the cycle with a kickoff doc + armed M+1 audit.
+
+intent: >
+  "When a project is sunsetting — partially, indefinitely, or fully —
+   the question stops being 'fix this 500' and becomes 'how do we
+   gracefully wind this down so users see we tended to it, not
+   abandoned it?'. Outage-triage routes per-bug; hibernate-product
+   routes per-product. Output is a disposition table the operator
+   walks once, a dispatch graph that fans out to N downstream
+   compositions, a chrome-content swap so the lobby reads as
+   'after-hours', and a kickoff doc that arms the next session."
+
+backend: headless-tmux
+
+# Hivemind Lab labels: anti-spiral tether to user truth.
+# Hibernation craft is not a tech problem — it's a trust signal.
+# A graceful sunset says "the team tended to it" instead of "they
+# abandoned it." That distinction is the load-bearing JTBD.
+hivemind_labels:
+  product_area: "Whole-product hibernation (any sunsetting project)"
+  workstream: sorry-for-ur-loss
+  priority: high
+  jtbd:
+    category: personal
+    description: "Reassure Me This Is Safe — graceful sunset signals the team tended to it, not abandoned it."
+  source: team-internal
+
+depends_on:
+  constructs:
+    - gecko             # observe + diagnose (recent-commit grounding)
+    - artisan           # surface inventory authoring + chrome-content brief
+    - the-mint          # disposition curation + dispatch
+    - hardening         # remove-track smoke + redeploy hints
+  tools:
+    - codex-mcp         # required when degrade-track patches need engineering
+    - gh-cli            # required for /schedule M+1 audit handoff
+  downstream_compositions:
+    - compositions/sorry-for-ur-loss/triage-pause.yaml         # for disable-with-sign rows
+    - compositions/sorry-for-ur-loss/outage-triage.yaml        # for active multi-surface outages discovered mid-hibernation
+  upstream_compositions: []   # hibernate-product is the top of the sorry-for-ur-loss tower
+
+inputs:
+  - type: Intent
+    name: hibernation_directive
+    description: >
+      Operator's stated reason for hibernating — detachment from a
+      parent program, indefinite migration window, end-of-life decision,
+      cycle-end park. The directive frames every disposition: a
+      detachment hides differently than an EOL.
+    required: true
+  - type: Artifact
+    name: codebase
+    description: Path to the affected app/repo (canonical, symlinks resolved)
+    required: true
+  - type: Artifact
+    name: canon
+    description: >
+      Existing visual canon — taste tokens, established UI patterns,
+      persona files. Hibernation chrome must land in canon, not generic
+      "feature unavailable" pages.
+    required: true
+  - type: Artifact
+    name: feature_flags_manifest
+    description: >
+      Path to packages/feature-flags/src/manifest.ts (or equivalent).
+      The flag manifest IS the disposition contract — every row in the
+      hibernation table corresponds to a flag with a `userImpact` value
+      that drives downstream dispatch.
+    required: false
+  - type: Operator-Model
+    name: operator_context
+    required: false
+
+# ================================================================
+# Stages
+# ================================================================
+
+chain:
+  - stage: 1
+    name: ground-in-recent-commits
+    construct: gecko
+    skill: observe
+    persona: GECKO
+    mode: fresh
+    reads: [Intent, Artifact]
+    writes: [Verdict, Signal]
+    role: gate
+    notes: >
+      Run `git log --since="60 days ago" --oneline` against the canonical
+      repo path (symlinks resolved per outage-triage stage 1 rules).
+      Surface infrastructure events the operator hasn't named yet —
+      reward-program discontinuations, deployment-target changes,
+      dependency removals, paused upstreams. Hibernation directives
+      arrive incomplete; the recent-commit window often holds the rest
+      of the story (cycle-002 surfaced BGT discontinuation, Convex
+      eviction, and the Supabase pause as three distinct infra events
+      the operator named in different sessions).
+
+      Output: a Verdict naming the explicit directive + a Signal listing
+      implicit infra events found in the commit log. Both feed stage 2.
+
+      Sub-checks (all must pass before stage 2):
+      a. Canonical repo path resolved (symlinks!)
+      b. `git log` output captured (not just summarized — verbatim feeds
+         stage 2 as evidence)
+      c. Operator's stated directive cross-checked against commit
+         messages — if a major infra event is in the log but not in the
+         directive, surface as "did you mean to include X?" before
+         proceeding.
+
+  - stage: 1.5
+    name: ground-canon
+    construct: artisan
+    skill: surveying-patterns
+    persona: ALEXANDER
+    mode: fresh
+    reads: [Artifact, Verdict]
+    writes: [Verdict, Signal]
+    role: gate
+    when: >
+      Brownfield product (built before the construct framework existed).
+      On construct-native products with mature taste.md / tokens / TDRs /
+      persona files, this stage runs as a freshness check only and
+      advances quickly. Hibernation amplifies the brownfield problem —
+      the project is sunsetting, so any canon-light gap WILL produce
+      generic degraded states across N surfaces unless the operator
+      grounds first.
+    probes:
+      - taste.md OR grimoires/loa/context/taste-tokens-extracted.md OR equivalent
+      - tokens.css OR design-tokens.{ts,json,css} OR tailwind theme block
+      - TDRs/ OR adr/ OR architectural-decision-records/
+      - identity/ OR persona/ OR character/ files (.md, .yaml, image references)
+      - lore-bible.md OR brand-bible.md OR voice.md
+      - per-room canon — naming-rooms artifacts, scene-stack source material, reference art
+    on_present_and_fresh:
+      - emit Verdict naming canon location + recency summary
+      - proceed to stage 2 with canon paths threaded into Artifact input
+    on_present_but_stale:
+      - emit Signal surfacing staleness (which canon file, age, divergence from current code)
+      - halt for operator — three options: (a) refresh canon now, (b) accept staleness with explicit acknowledgement that downstream cabinets will reuse aging tokens, (c) skip canon-grounding for this hibernation
+    on_absent:
+      - emit Verdict acknowledging brownfield-canon-light state
+      - propose grounding pass — synthesizing-taste + synthesizing-vocabulary + naming-rooms (operator-paired; budget 30–90 min for project-level canon, additional 15–30 min per room for room-level canon if the hibernation has >3 disable-with-sign rows)
+      - halt for operator — three options: (a) run grounding now (recommended for first hibernation pass), (b) defer to a separate session and parking the hibernation, (c) accept canon-light hibernation (banner-everywhere shape; explicitly documented as scaffolding, not the production form)
+    notes: >
+      Hibernation is the worst place to skip grounding. Per-surface
+      bespoke treatments are the production form (cycle-002 retro:
+      "generic banners are the laziest move; the tasteful way to
+      degrade is to do things custom by understanding our environment").
+      Without grounding, stage 5 dispatch produces N triage-pause
+      invocations that each face the same brownfield-canon-light gate
+      individually — wasted operator halts and degraded craft output.
+      Catch the gap once, here.
+
+      The grounding pass at this layer is project-level (taste.md,
+      tokens.css, voice.md, lore-bible.md). Per-room grounding
+      (naming-rooms artifacts that codify what each surface IS as a
+      room — vault as bank, lock as reservoir, wall as construction
+      site) is downstream — invoked at stage 5 for each
+      disable-with-sign row before triage-pause runs. Track per-room
+      grounding completion in the disposition artifact at stage 3.
+
+      Cycle-002 evidence: henlo-monorepo had partial canon
+      (taste-tokens-extracted.md, space-direction-brief.md,
+      space-lexicon.md authored mid-cycle by parallel sessions) but no
+      consolidated taste.md, no per-room treatments, no formal
+      TDRs. The parallel agent pulled banner pattern across N surfaces
+      then walked it back when surfaces felt generic. Grounding-first
+      would have surfaced the gap before banner-everywhere shipped.
+
+  - stage: 2
+    name: operational-baseline
+    construct: gecko
+    skill: diagnose
+    persona: GECKO
+    mode: fresh
+    reads: [Intent, Verdict, Signal, Artifact]
+    writes: [Artifact, Signal]
+    role: primary
+    notes: >
+      Inventory the codebase into a three-column table:
+
+      | KEEP (operational) | BROKEN (dark) | REMOVE (dead code) |
+      |--------------------|---------------|---------------------|
+      | Onchain reads      | Supabase reads| Convex env vars     |
+      | Standalone surfaces| Auth flows    | Commented imports   |
+      | Unaffected backends| Quest verifiers| Detached integrations |
+
+      The KEEP column is the operator's promise to users — these doors
+      still work. The BROKEN column feeds the disposition table at
+      stage 3. The REMOVE column dispatches directly at stage 5 (no
+      operator pick needed for dead code).
+
+      Cycle-002 baseline produced 6 KEEP / 8 BROKEN / 4 REMOVE rows —
+      use as a reasonable sizing reference. If the table is asymmetric
+      (e.g., 1 KEEP / 20 BROKEN), that's a signal that hibernation may
+      be the wrong frame and the project is closer to EOL than sunset;
+      surface that observation in the operator_note for stage 3 review.
+
+      Live destination: grimoires/loa/context/hibernation-baseline.md.
+
+  - stage: 3
+    name: hibernation-disposition-table
+    construct: artisan
+    skill: directing-generation
+    persona: ALEXANDER
+    mode: persistent
+    reads: [Artifact, Signal, Verdict]
+    writes: [Artifact]
+    role: primary
+    notes: >
+      Synthesize stage 1 (recent commits) + stage 2 (operational baseline)
+      into the hibernation disposition table. Per-feature row with
+      six-value disposition column:
+
+      Disposition rubric (the six exits):
+      - keep                   → no action; feature stays operational
+      - disable-with-sign      → route to triage-pause.yaml (per-feature
+                                 cabinet, character, sign copy)
+      - degrade                → small inline UI patch (render "—" on
+                                 isError, suppress alarming counters,
+                                 hide secondary metrics)
+      - remove                 → delete files + smoke check + redeploy
+      - migrate-then-park      → log to grimoires/loa/context/migration-queue.md;
+                                 surface stays as-is or with brief notice
+                                 until upstream cutover lands
+      - wait-for-decision      → operator hasn't decided; flag for
+                                 follow-up. Default for ambiguous rows.
+
+      Each row carries: feature name, current state evidence (URL +
+      symptom), suggested disposition + reasoning, downstream invocation
+      target. The table is the operator's visual triage tool. Live
+      destination: grimoires/loa/a2a/<hibernation-id>/disposition.md.
+
+      ALEXANDER's job here is to make the table READABLE — not just a
+      mechanical translation of stage 2's inventory. Each row's
+      reasoning should reference (a) the user-facing impact, (b) the
+      reversibility of the call, (c) any cross-feature dependencies
+      (e.g., `lock + vault` should disposition together because users
+      read EARN as one row). The reasoning is what the operator walks.
+
+  - stage: 4
+    name: hitl-disposition
+    construct: operator
+    persona: HUMAN
+    mode: blocking
+    role: hard-stop
+    notes: >
+      HARD STOP. The operator walks the disposition table from stage 3
+      and fills in the "Call" column for every row. Wait-for-decision
+      rows can stay unfilled but must be logged as such — the
+      composition cannot autonomous past ambiguity.
+
+      The operator's lens is product-strategic (what do users need
+      most, what's reversible, what signals "tended to" vs "abandoned").
+      Stage 3's reasoning is input, not constraint. The operator may
+      override any suggested disposition.
+
+      Cycle-002 lesson: this halt routinely takes 30+ minutes of operator
+      thought across multiple sessions. Don't treat it as a quick
+      check-the-boxes pass. Some rows depend on decisions the operator
+      hasn't made yet (e.g., "are we relaunching gallery on freeside
+      or sunsetting it permanently?") — those become wait-for-decision
+      and re-enter the table next cycle.
+
+  - stage: 5
+    name: dispatch
+    construct: the-mint
+    skill: curate
+    persona: MINT
+    mode: fresh
+    reads: [Artifact, Verdict]
+    writes: [Signal, Artifact]
+    role: dispatcher
+    notes: >
+      Read the operator's call column and dispatch each row to its
+      downstream composition or inline action:
+
+      - disposition: keep                → no-op; log "kept operational"
+      - disposition: disable-with-sign   → invoke triage-pause.yaml
+                                           (parallel where possible — N
+                                           cabinets can author concurrently
+                                           if they share canon)
+      - disposition: degrade             → inline UI patch via the-mint
+                                           or codex (silent-zero → "—",
+                                           hide secondary metrics, soft
+                                           "stale" indicator)
+      - disposition: remove              → delete files + smoke check +
+                                           redeploy hint emitted to
+                                           operator
+      - disposition: migrate-then-park   → append entry to
+                                           grimoires/loa/context/migration-queue.md
+                                           with restoreWhen condition
+      - disposition: wait-for-decision   → no-op; flag for next cycle's
+                                           disposition table
+
+      Multiple rows can dispatch in parallel. The composition maintains
+      a parent-hibernation-id linking all dispatched runs back to the
+      original directive — same parent-bug pattern as outage-triage.
+
+      Cycle-002 dispatched 4 disable-with-sign (boost, lock, vault,
+      wall), 2 degrade (stats sidebar burned/holders, supply locked),
+      2 migrate-then-park (profile, gallery), 1 remove (Convex env
+      vars + commented imports), 0 wait-for-decision. The asymmetry
+      reflects mature operator framing — most rows had been thought
+      about across prior sessions.
+
+  - stage: 6
+    name: chrome-content-swap
+    construct: artisan
+    skill: iterating-visuals
+    persona: ALEXANDER
+    mode: persistent
+    reads: [Artifact, Signal]
+    writes: [Artifact]
+    role: primary
+    capture_method:
+      static_ui: agent-browser screenshot
+      animated_ui: |
+        Same headless --virtual-time-budget limitation as triage-pause
+        stage 6 — rAF cycles >2s require operator live-browser
+        verification. Cabinet variants captured at first frame for
+        structure; cycle completion verified by hand.
+      react_query_cache_invalidation: |
+        After dispatching degrade rows that change hook error semantics
+        (silent-zero → throw, or vice versa), the browser's React Query
+        cache holds the previous isError state across the fix. Visiting
+        the URL is not enough — verification requires hard-refresh
+        (Cmd+Shift+R) on the affected page. Surface in halt messages
+        so the operator knows the verification gesture. Cycle-002 stats
+        sidebar bit us here.
+    vocabulary_governance:
+      # Generation IS audit surface — added v1.2.0 from cycle-002
+      # parallel-agent feedback ("Hibernation Copy Discipline").
+      # Project-level chrome (lobby ticker, marquee, after-hours
+      # copy) carries the strictest tier — these surfaces touch
+      # every user, every visit, across every dispositioned route.
+      taxonomy:
+        lobby_ticker:        { tier: medium,  max_lines: 3,  anchors_required: 1, rotation: forgiving }
+        lobby_marquee:       { tier: strict,  max_lines: 1,  anchors_required: 1, rotation: anchored }
+        navbar_disabled_badge: { tier: strict,  max_lines: 1,  anchors_required: 0, rotation: static }
+        per_route_banner:    { tier: strict,  max_lines: 2,  anchors_required: 1, rotation: static }
+      line_types:
+        anchor: |
+          Hard truth. States what is — feature gated, BGT discontinued,
+          withdraws on chain, donations rate. Each chrome region MUST
+          carry ≥ anchors_required per cycle so users see truth even
+          if they catch only one line.
+        flavor: |
+          Sensory tone. Sets the room — lights down, doors unlocked,
+          dust settled, no hours. No promises, no caretaker action,
+          no timeline.
+      no_promises_linter:
+        regex: "/back|return|restore|reopen|coming|soon|renovat|migrat/i"
+        action: reject unless paired with explicit denial ("never," "no plans," "indefinite")
+        rationale: |
+          Forward-promises imply caretaker action the team isn't
+          actually performing. Hibernation that promises return is
+          worse than hibernation that owns its state.
+      bank_first_authoring:
+        rule: |
+          If a vocabulary bank exists for this product (or a
+          Herald-construct equivalent), compose by picking from it.
+          Author fresh only when the bank lacks a fitting line. New
+          lines go INTO the bank before they ship.
+        eileen_canon_safe_by_default: ["1 HENLO = 1 MOONDUST", "compound till moon"]
+        operator_review_threshold: any line not in the bank halts for explicit operator approval; do NOT generate "options" for the operator to pick from (doubles audit surface)
+      reference_brief: henlo-monorepo:grimoires/loa/context/hibernation-copy-discipline.md (parallel-agent shipped during cycle-002 followup)
+    notes: >
+      The room stays full; the games go dark. Author or extend
+      DisabledTickerSource (or equivalent) so the marquee + ticker
+      content swaps to after-hours copy when ≥1 disable-with-sign row
+      is dispatched. Annotate navbar items with disabled badges where
+      applicable. CRT/atmospheric overlays stay (the world is on,
+      individual surfaces are off). Music player stays.
+
+      Reference treatment from cycle-002 (henlo-monorepo lobby; v1.2.0
+      retrospective version after parallel agent shipped 6 lines, got
+      pushback, distilled to 3):
+        🌑 ARCADE DARK · 1 HENLO = 1 MOONDUST              (anchor-fused)
+        📉 BGT REWARDS DISCONTINUED · WITHDRAWS REMAIN ON CHAIN  (anchor)
+        🌙 NO HOURS · LIGHTS DOWN · DOORS UNLOCKED          (flavor)
+      rotating. Three lines, two anchor-flavor types, one anchor per
+      cycle minimum. Surface-class: lobby_ticker (tier: medium,
+      rotation: forgiving). Eileen canon load-bearing as the safe-by-default
+      vocabulary. The exact phrasing lives in canon (taste.md /
+      voice.md / lore-bible.md / persona files); the composition's job
+      is to wire it up against vocabulary_governance, not author it
+      from scratch.
+
+      Decision rule for chrome density (from cycle-002 broken-state-audit):
+      - reduce-chrome → reads as "parking lot, lights off"; loses the
+        in-world energy that makes per-cabinet disables work
+      - stay-full → chrome announces freshness while cabinets are dark
+        (dishonest)
+      - hybrid (RECOMMENDED) → all chrome present, content routes through
+        DisabledTickerSource. The arcade conceit holds when the room
+        stays the room.
+
+  - stage: 7
+    name: close-cycle
+    construct: artisan
+    skill: distilling-components
+    persona: ALEXANDER
+    mode: fresh
+    reads: [Artifact, Verdict, Signal]
+    writes: [Artifact]
+    role: primary
+    notes: >
+      Produce two artifacts that make the next session land cleanly:
+
+      1. grimoires/loa/tracks/session-{N+1}-kickoff.md — strategic frame
+         of the hibernation, surface inventory (KEEP / BROKEN / REMOVE
+         from stage 2), scope tracks (what got dispatched where),
+         compositions to invoke at stage N+1, observed gotchas. The
+         next operator (or the same operator after a context gap) lands
+         oriented instead of re-grounding from the codebase.
+
+      2. M+1 audit armed via `/schedule` — a routine that fires ~1 month
+         out, probes production for state drift (have any "kept" surfaces
+         broken? have any "wait-for-decision" rows resolved upstream?
+         have any "migrate-then-park" upstreams shipped?), proposes
+         flag manifest deltas, and opens a cleanup PR. Cycle-002
+         armed routine trig_0149DMELqBQksfK29Y7Bdigd as the reference
+         shape.
+
+      The kickoff doc is the load-bearing artifact. M+1 audit is
+      maintenance scaffolding. Both are required outputs — don't ship
+      a hibernation without them or the work loses continuity.
+
+# ================================================================
+
+outputs:
+  - type: Artifact
+    destination: grimoires/loa/context/hibernation-baseline.md
+    description: Three-column KEEP/BROKEN/REMOVE inventory from stage 2
+    hivemind_labels:
+      artifact_type: experiment-design
+      learning_status: directionally-correct
+  - type: Artifact
+    destination: grimoires/loa/a2a/<hibernation-id>/disposition.md
+    description: Operator-walkable per-feature disposition table (six-value rubric)
+    hivemind_labels:
+      artifact_type: product-spec
+      learning_status: strongly-validated
+  - type: Artifact
+    destination: grimoires/loa/context/migration-queue.md
+    description: Parking log for migrate-then-park rows; restoreWhen conditions per entry
+    hivemind_labels:
+      artifact_type: experiment-design
+      learning_status: directionally-correct
+  - type: Artifact
+    destination: grimoires/loa/tracks/session-{N+1}-kickoff.md
+    description: "End-of-cycle kickoff doc grounding the next session in: strategic frame, surface inventory, scope tracks, compositions to invoke, observed gotchas. Codifies the handoff pattern."
+    hivemind_labels:
+      artifact_type: experiment-design
+      learning_status: directionally-correct
+    emit_when: always (close-cycle stage is non-optional)
+  - type: Signal
+    destination: .run/compose/<run_id>/dispatch.jsonl
+    description: Per-row dispatch log (which disposition routed where, parent-hibernation-id linkage)
+  - type: Verdict
+    destination: .run/compose/<run_id>/disposition.jsonl
+    description: Operator's call column + reasoning per row
+    hivemind_labels:
+      artifact_type: atomic-learning
+      learning_status: directionally-correct
+
+compose_with:
+  - gecko
+  - the-mint
+  - artisan
+  - hardening
+  - codex                # tool, not a construct — see stage 5 degrade-track
+
+composes_symmetrically_with:
+  - outage-triage ↔ hibernate-product   # router (per-bug) ↔ project-level meta (per-product)
+  - artisan ↔ operator                  # disposition table ↔ operator call column
+  - the-mint ↔ triage-pause             # dispatcher ↔ downstream cabinet worker
+
+# ================================================================
+# Surface Class (cycle-002 followup — stub; canonical def in outage-triage.yaml)
+# ================================================================
+
+surface_class:
+  default: unspecified
+  enum: [culturetech-loose, defi-strict, mixed, unspecified]
+  canonical_definition: compositions/sorry-for-ur-loss/outage-triage.yaml#surface_class
+  affects_in_this_composition:
+    - stage 1.5 ground-canon halt — culturetech-loose can accept canon-light-and-iterate as a valid third option; defi-strict requires grounding-now or full halt-and-defer (no canon-light-shipped)
+    - stage 4 hitl-disposition halt count — relaxed on culturetech-loose (operator can batch-approve aesthetic rows); strict on defi-strict (per-row explicit confirmation)
+    - stage 5 dispatch parallelism — wide on culturetech-loose (parallel triage-pause invocations across rooms); narrow on defi-strict (serialize by financial dependency to catch coupling)
+    - stage 6 chrome-content-swap — bespoke-per-room production form on culturetech-loose; templated honest "feature unavailable" notice on defi-strict (no creative reframing of broken financial surfaces)
+    - stage 7 close-cycle M+1 audit cadence — 1-month on culturetech-loose; 1-week on defi-strict (financial drift detection happens fast)
+  inferred_when_unspecified: defi-strict (safety default — hibernation amplifies blast radius across N surfaces)
+
+# ================================================================
+# Thinking Effort (cycle-002 followup — stub; canonical def in feel-iterate.yaml)
+# ================================================================
+
+thinking_effort:
+  default: high     # project-level decisions across N surfaces; multi-step synthesis throughout
+  enum: [low, medium, high, xhigh, max]
+  canonical_definition: compositions/delivery/feel-iterate.yaml#thinking_effort
+  affects_in_this_composition:
+    - stage 1 ground-in-recent-commits — medium (git log scan + cross-check against directive)
+    - stage 1.5 ground-canon — medium (canon probe + halt routing)
+    - stage 2 operational-baseline — high (KEEP/BROKEN/REMOVE three-column inventory; structural)
+    - stage 3 hibernation-disposition-table — xhigh (per-feature row authoring with reasoning + cross-feature dependency analysis; the load-bearing synthesis stage)
+    - stage 4 hitl-disposition — n/a (operator stage)
+    - stage 5 dispatch — high (per-row dispatch with parallelism rules + parent-id linkage)
+    - stage 6 chrome-content-swap — xhigh (vocabulary_governance + bespoke-per-room synthesis; cross-route copy coherence)
+    - stage 7 close-cycle — max (kickoff doc anchors multiple downstream cycles; M+1 audit shape decision; consequential cross-cycle authoring)
+
+# ================================================================
+
+invocation_examples:
+  - operator_utterance: "we're hibernating henlo, detaching from cubquests"
+    resolves_to: full chain stages 1-7 (the canonical cycle-002 shape)
+  - operator_utterance: "give me the disposition table for this codebase"
+    resolves_to: stages 1-3 only — emit the table, halt at 4 (no dispatch)
+  - operator_utterance: "I have the table; dispatch the disable rows"
+    resolves_to: stage 5 only with operator-supplied disposition Artifact
+  - operator_utterance: "we're sunsetting X feature, hibernate it gracefully"
+    resolves_to: scoped invocation against single feature — stages 2 (just that surface) → 3 → 4 → 5 (one disable-with-sign dispatch) → 6 → 7
+  - operator_utterance: "what's the M+1 audit going to find?"
+    resolves_to: stage 7 only — re-arm the audit and dry-run it against current production state
+
+# ================================================================
+
+when_to_use: >
+  - A whole product (or major sub-product) is sunsetting, detaching from
+    a parent program, or entering an indefinite migration window
+  - One bug-triage session has fanned into "actually we should disposition
+    the whole product" — the frame has shifted from outage to hibernation
+  - Operator wants a coherent disposition pass across all features rather
+    than per-bug routing
+  - End-of-cycle handoff where the next session needs a kickoff doc and
+    an armed audit
+  - NOT for single-feature disable (use triage-pause directly)
+  - NOT for active multi-surface outages with a clear fix path (use
+    outage-triage — it routes per-bug, not per-product)
+  - NOT for projects that are fully EOL with no operational surfaces
+    remaining (those are removes, not hibernations — write a sunset
+    blog post and delete the repo)
+
+# ================================================================
+
+known_limitations:
+  - "Stage 1 (gecko/observe with 60-day commit window) can miss infra events older than the window. For long-running products with infra changes >60 days back, extend the window manually or pair with a /chronicling-changes pass upstream. Cycle-002 used 60 days because the henlo hibernation directive landed within that window; a 6-month-stale codebase needs a wider lens."
+  - "Stage 2's three-column inventory is a forcing function — every file gets one of KEEP / BROKEN / REMOVE. Files that legitimately span columns (e.g., a route with both keep-able onchain reads and broken Supabase writes) need to be split into multiple rows. The composition does not split automatically; ALEXANDER at stage 3 catches these via the cross-feature dependencies clause, but it's a manual review step."
+  - "Stage 3 disposition rubric (six values) is the schema's load-bearing field but maps imperfectly to the feature-flags manifest's userImpact taxonomy (four values: invisible / degraded / disabled-with-sign / removed). The mapping table: keep → no flag; disable-with-sign → disabled-with-sign; degrade → degraded; remove → removed; migrate-then-park → degraded (with notice); wait-for-decision → no flag yet (operator decides next cycle). Surface this mapping in the dispatch stage so flag manifest entries land coherent."
+  - "Stage 4 hard-stop is non-negotiable. Hibernation involves product calls (not tech calls); the composition cannot autonomous past disposition. Cycle-002 stage 4 took ~45 minutes across two sessions; budget accordingly."
+  - "Stage 5 dispatch parallelism assumes downstream compositions are independent. In practice triage-pause invocations sharing the same canon (e.g., lock + vault as the EARN row) should serialize so design choices land coherent across the row. Operator surfaces these dependencies at stage 4; dispatcher honors them at stage 5."
+  - "Stage 6 chrome-content-swap is bounded by the existing canon's flexibility. If the codebase has no DisabledTickerSource (or equivalent) and no canon-derived after-hours copy, this stage produces a brief instead of a wired implementation — the chrome work becomes a follow-up cycle. Cycle-002 had partial scaffolding (TETRIS_DISABLED inline) and authored DisabledTickerSource as part of the hibernation; treat that as the typical case, not the easy case."
+  - "Stage 7 M+1 audit relies on /schedule infrastructure. If the operator's environment has no scheduling integration, this collapses to 'leave a TODO comment.' Future cycle: standardize the audit shape so it ports across scheduling backends."
+  - "Hibernation is not reversal. A product that's hibernated and then revived needs a separate /unhibernate composition (NOT YET AUTHORED) — flipping all flags to false isn't sufficient because the chrome content swap, the parked migrations, and the removed code each need explicit restoration paths. Flag this as a future composition when the first revive happens."
+
+# ================================================================
+
+references:
+  - skill_observe: construct-gecko/skills/observe/SKILL.md
+  - skill_diagnose: construct-gecko/skills/diagnose/SKILL.md
+  - skill_directing_generation: construct-artisan/skills/directing-generation/SKILL.md
+  - skill_iterating_visuals: construct-artisan/skills/iterating-visuals/SKILL.md
+  - skill_curate: construct-the-mint/skills/curate/SKILL.md
+  - skill_distilling_components: construct-artisan/skills/distilling-components/SKILL.md
+  - downstream_disable: compositions/sorry-for-ur-loss/triage-pause.yaml
+  - upstream_router_for_active_outages: compositions/sorry-for-ur-loss/outage-triage.yaml
+  - companion_pattern: bug-triaging skill (.claude/skills/bug-triaging/SKILL.md)
+  - canonical_evidence_session_1: henlo-monorepo:grimoires/loa/tracks/session-1-tetris-tasteful-disable-retrospective.md
+  - canonical_evidence_session_2: henlo-monorepo:grimoires/loa/tracks/session-2-henlo-hibernation-kickoff.md
+  - canonical_disposition_artifact: henlo-monorepo:grimoires/loa/a2a/bug-001/surface-disposition.md
+  - canonical_baseline_brief: henlo-monorepo:grimoires/loa/context/space-direction-brief.md
+  - canonical_flags_schema: henlo-monorepo:grimoires/loa/context/feature-flags-schema.md
+
+# ================================================================
+
+operator_note: |
+  Authored from the henlo-monorepo cycle-002 hibernation workflow
+  (sessions 1+2, 2026-04-25). Cycle-002 is the canonical evidence —
+  what started as "the tetris is 500ing" ended with the operator
+  detaching Henlo from CubQuests, dispositioning 8+ surfaces across
+  the six-value rubric, swapping lobby chrome to after-hours copy,
+  and arming an M+1 audit (trig_0149DMELqBQksfK29Y7Bdigd) for state
+  drift detection.
+
+  Three principles worth carrying forward:
+
+  1. HIBERNATION IS A TRUST SIGNAL, NOT A TECH PROBLEM. The operator's
+     framing was load-bearing: "people see this place is gracefully
+     closed. The lights are still on. Someone is here, the bricks are
+     at rest, the moondust is settling, and the doors that still work
+     are clearly labeled." That sentence is the entire intent of this
+     composition. Every disposition decision should serve it.
+
+  2. THE SIX-VALUE DISPOSITION RUBRIC IS LOAD-BEARING. The four-value
+     userImpact taxonomy from feature-flags-schema covers operational
+     state, but hibernation needs two more values: migrate-then-park
+     (the upstream is in flight, don't burn design effort) and
+     wait-for-decision (the operator hasn't decided, don't force a
+     premature call). Four values undercounts; eight overcounts. Six
+     is what the cycle-002 disposition table converged on after a
+     full operator walkthrough.
+
+  3. CHROME STAYS FULL OR THE ROOM STOPS BEING THE ROOM. The reflexive
+     move when N surfaces disable is "hide more chrome to make it look
+     less broken." That's wrong — an arcade with the lights off isn't
+     an arcade, it's a parking lot. Hybrid chrome (full structure,
+     swapped content) preserves the world's volume while letting every
+     surface speak the same after-hours language.
+
+  hibernate-product is the meta-meta-composition. outage-triage routes
+  per-bug; hibernate-product routes per-product. The two compose
+  symmetrically: an outage discovered mid-hibernation routes back
+  through outage-triage; a hibernation discovered mid-outage (the
+  cycle-002 case) escalates from outage-triage to hibernate-product.
+  Both compositions live in sorry-for-ur-loss because both are
+  bedside-manner work — they make the user-facing surface honest about
+  what's broken without scaring the user.
+
+  The closing intent line, distilled from the operator's session-2
+  kickoff: the lights are still on; the doors that still work are
+  clearly labeled.
+
+# ================================================================
+
+version: "1.3.0"
+authored_at: "2026-04-25"
+authored_by: cycle-002 followup (thinking_effort stub from adaptive-thinking docs)
+changelog:
+  - "1.3.0 (2026-04-25): Add thinking_effort field (stub; canonical def in feel-iterate.yaml). Composition default = high (project-level decisions across N surfaces). Per-stage overrides: stage 3 disposition-table = xhigh (load-bearing synthesis with cross-feature dependency analysis); stage 6 chrome-content-swap = xhigh (vocabulary_governance + bespoke-per-room cross-route coherence); stage 7 close-cycle = max (kickoff doc anchors multiple downstream cycles). Stages 1 / 1.5 = medium (probes); stage 2 / 5 = high. Stage 4 (HITL) is operator-stage."
+  - "1.2.0 (2026-04-25): Add vocabulary_governance block to stage 6 chrome-content-swap. Carries the no_promises_linter, anchor-vs-flavor line type distinction, surface taxonomy specific to project-level chrome (lobby_ticker / lobby_marquee / navbar_disabled_badge / per_route_banner — each with tier + max_lines + anchors_required + rotation), and bank-first authoring rule. Update reference treatment block with the three approved henlo lobby ticker lines that survived parallel-agent retrospective: 🌑 ARCADE DARK · 1 HENLO = 1 MOONDUST / 📉 BGT REWARDS DISCONTINUED · WITHDRAWS REMAIN ON CHAIN / 🌙 NO HOURS · LIGHTS DOWN · DOORS UNLOCKED. Per parallel-agent brief 'Hibernation Copy Discipline': 'Generation IS audit surface; three lines beats six.' Same governance shape applies in triage-pause v1.8.0 stage 5 (directing-generation)."
+  - "1.1.0 (2026-04-25): Add stage 1.5 ground-canon — brownfield grounding gate that probes for project-level canon (taste.md, tokens, TDRs, persona, lore-bible, voice.md, per-room artifacts) before stage 2 baseline inventory. Halts on absent or stale; proposes ground-and-craft.yaml as the upstream grounding workflow. Bakes bespoke-per-room language into stage 6 chrome-content-swap notes (each room earns its own treatment, not a templated banner across N surfaces). Add top-level surface_class field (stub; canonical def in outage-triage.yaml) — drives stage 1.5 grounding halt acceptance, stage 4 disposition halt count, stage 5 dispatch parallelism, stage 6 chrome-content production form, and stage 7 M+1 audit cadence."
+  - "1.0.0 (2026-04-25): First canonical spec. Captures the meta-meta-workflow operator ran by hand for the henlo-monorepo cycle-002 hibernation (tetris 500 → CubQuests detachment → 8+ surface dispositions → chrome content swap → M+1 audit armed). Routes to triage-pause for disable-with-sign rows; composes symmetrically with outage-triage as project-level meta vs per-bug router."
