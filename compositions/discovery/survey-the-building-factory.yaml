@@ -1,0 +1,220 @@
+# Composition · survey-the-building-factory
+# ================================================================
+# Five lenses walk the freeside building factory — loa-cli (the living
+# census/discovery layer), loa-freeside (the platform substrate), and the
+# freeside-* `-api` buildings — and each construct contributes its domain
+# view, enriching a shared picture as it passes down the pipeline:
+#
+#   BEACON   — does each building DECLARE itself? (BeaconV3 / discoverable API)
+#   GECKO    — is it COHERENT? (declared ↔ deployed ↔ alive; drift)
+#   EULER    — what's the SHAPE? (the building dependency/belt DAG; bottlenecks)
+#   KRANZ    — what's the OPS STATE? (extracted vs in-monolith; deploy/telemetry)
+#   BEAUVOIR — how does it COMPOSE? (buildings → products; user-pathing; seams)
+#   → SYNTHESIZER folds the five lenses into one coherence map + improvement flags.
+#
+# Authored 2026-06-20 — operator directive: "compose a composition pointed at
+# loa-cli + loa-freeside + the freeside buildings; GECKO, BEACON, BEAUVOIR,
+# KRANZ, EULER should help." Models its shape on the repo's own
+# discovery/audit-membrane-integrity.yaml (linear lens-stages → synthesizer) and
+# discovery/audit-ecosystem-coherence.yaml (re-verify, don't trust; surface,
+# never decide). This is the realized scan-loop of the construct-deployment
+# immune-loop brief (2026-06-20-construct-deployment-immune-loop.md).
+# ================================================================
+
+schema_version: "1.0"
+kind: workflow
+name: survey-the-building-factory
+description: >
+  Five-lens survey of the freeside building factory — loa-cli (census), loa-freeside
+  (platform), and the freeside-* -api buildings. BEACON scans declaration/discoverability,
+  GECKO senses coherence (declared↔deployed↔alive), EULER maps the building dependency
+  DAG and its bottlenecks, KRANZ reads the ops/extraction state, BEAUVOIR maps how the
+  buildings compose into products — then SYNTHESIZER folds all five into one
+  building-ecosystem coherence map with per-building, per-lens improvement flags. Each
+  flag routes to an owner; nothing is decided (surface-never-decide).
+
+intent: >
+  "The estate is a building factory whose current state is honest-messy (a thick
+   monolith mid-extraction; registry frozen at 8 while ~11 -api repos live; loa-cli is
+   the intended live census but few cells registered). Point five domain lenses at it at
+   once — declaration, coherence, graph-shape, ops, composition — and produce the one
+   thing nobody has: a single map of where each building actually stands across all five
+   axes, with the improvement areas flagged and routed. Re-verify against the registry +
+   the live repos; do not trust prior prose."
+
+backend: headless-tmux
+
+depends_on:
+  constructs:
+    - beacon          # declaration / discoverability lens
+    - gecko           # coherence / drift lens
+    - euler           # graph-shape lens (installed 2026-06-20)
+    - kranz           # ops / cross-repo / extraction-state lens
+    - the-weaver      # composition / user-pathing lens (persona BEAUVOIR)
+  reference:
+    - "packages/freeside-registry/registry.yaml"     # the building SoT (nodes + consumes/publishes)
+    - "decisions/008-freeside-as-factory.md"         # the factory model + belt DAG (ADR-008)
+
+inputs:
+  - type: Intent
+    name: scope
+    description: >
+      Which buildings to survey (default ALL in the registry + loa-cli + loa-freeside).
+    required: false
+  - type: Artifact
+    name: targets
+    description: >
+      The target set + local-vs-remote map (baked into args.task).
+    required: false
+
+# Linear pipeline: each lens reads the prior lens's output and adds its own, so EULER
+# sees BEACON+GECKO, KRANZ sees the graph, BEAUVOIR sees ops, SYNTHESIZER sees all.
+# No auto-iterate; the operator reviews the synthesized map at the terminal seam.
+
+chain:
+  - stage: 1
+    name: declare-scan
+    construct: beacon
+    skill: discovering-endpoints
+    persona: BEACON
+    mode: fresh
+    reads: [Intent, Artifact]
+    writes: [Artifact, Signal]
+    role: primary
+    thinking_effort: high
+    notes: >
+      You are BEACON. For each building (loa-cli, loa-freeside, and every freeside-* -api
+      in packages/freeside-registry/registry.yaml), assess DECLARATION + DISCOVERABILITY:
+      does it carry a BeaconV3 declaration? a discoverable API surface (OpenAPI / GraphQL /
+      MCP)? is its content AI-readable? Ground against the registry + the LOCAL repos
+      (~/Documents/GitHub/{loa-cli,activities-api,inventory-api,score-api,sonar-api,ledger-api})
+      and the registry's consumes/publishes for the remote ones. Emit a per-building row:
+      [building | declared? (beacon.yaml / registry entry) | discoverable API? | AI-readable? |
+      gap]. Mark SMELL vs CONFLICT. Surface; do not decide.
+
+  - stage: 2
+    name: sense-coherence
+    construct: gecko
+    skill: sense-estate
+    persona: GECKO
+    mode: fresh
+    reads: [Artifact, Signal]
+    writes: [Artifact, Signal]
+    role: primary
+    thinking_effort: high
+    notes: >
+      You are GECKO. Read BEACON's declaration map. For each building assess COHERENCE:
+      declared ↔ deployed ↔ alive. Is the registry entry truthful (frozen@8 while ~11 -api
+      live — flag the undeclared ones: billing/ledger/worlds)? Is the building extracted or
+      still a stale corpse in the monolith (loa-freeside holds extracted *-api shells —
+      ground member/identity/score/storage on the DEPLOYED cell, not monolith code)? Re-verify
+      every claim against the registry + live repos; do NOT trust BEACON's or prior prose.
+      Emit per-building: [building | registry-declared? | deployed/live? | drift (declared≠real) |
+      severity]. CONFLICT vs SMELL. Surface, never decide.
+
+  - stage: 3
+    name: map-the-shape
+    construct: euler
+    skill: map-the-graph
+    persona: EULER
+    mode: fresh
+    reads: [Artifact, Signal]
+    writes: [Artifact, Signal]
+    role: primary
+    thinking_effort: high
+    notes: >
+      You are EULER. Graph before claim. Build the BUILDING DEPENDENCY/BELT DAG from the
+      registry's consumes/publishes (packages/freeside-registry/registry.yaml) + ADR-008 §D-3
+      (decisions/008-freeside-as-factory.md). Nodes = buildings; directed edges = belts
+      (consumer → producer, raw→derived→integrated→presented). Then: is it acyclic (a belt
+      cycle = a contract bug — check it)? Which building is most load-bearing (betweenness /
+      in-degree)? What's the longest belt chain (deepest build)? Which building is a cut vertex
+      (its failure fragments the factory)? Emit the edgelist + the structural verdict. Null
+      before surprise — do not call concentration "real" without the right baseline; with ~9-13
+      nodes say honestly when the sample is too small. Route findings (a bottleneck → the-arcade
+      /KRANZ); surface, never decide.
+
+  - stage: 4
+    name: read-the-ops
+    construct: kranz
+    skill: auditing-cluster-cells
+    persona: KRANZ
+    mode: fresh
+    reads: [Artifact, Signal]
+    writes: [Artifact, Signal]
+    role: primary
+    thinking_effort: high
+    notes: >
+      You are KRANZ. Read the graph + coherence map. For each building assess OPS/EXTRACTION
+      STATE: extracted to its own repo vs still in-monolith (ADR-008 honest-state: score/mediums
+      exist external but logic still in monolith; billing/ledger not extracted)? deployed where
+      (Vercel/Railway/ECS)? telemetry/health signal? cross-repo blockers? Use the registry +
+      reading-registry/coordinating-cross-repo judgment. Emit per-building: [building | extraction
+      state (external/in-monolith/partial) | deploy target | live signal | ops risk]. Surface,
+      never decide.
+
+  - stage: 5
+    name: trace-composition
+    construct: the-weaver
+    persona: BEAUVOIR
+    mode: fresh
+    reads: [Artifact, Signal]
+    writes: [Artifact, Signal]
+    role: primary
+    thinking_effort: high
+    notes: >
+      You are BEAUVOIR. You read the dance the buildings make together. Given the graph + ops
+      map, trace COMPOSITION: how do buildings compose into PRODUCTS (single-building products
+      like score-api; compound products like community-management = mediums + score + inventory,
+      per ADR-008 §D-5)? Where are the composition seams clean, and where are the dead-ends (a
+      building nothing consumes; a product whose building DAG can't resolve)? Where does
+      user-pathing cross building boundaries and lose fidelity? Emit the product/composition map +
+      the seams worth healing. This is engineering composition, not poetry — name the seam, cite
+      the buildings. Surface, never decide.
+
+  - stage: 6
+    name: synthesize-map
+    construct: general-purpose
+    persona: SYNTHESIZER
+    mode: persistent
+    reads: [Artifact, Signal]
+    writes: [Artifact, Signal]
+    role: primary
+    thinking_effort: high
+    notes: >
+      Fold the five lenses into ONE building-ecosystem coherence map. Produce:
+        1. The MATRIX — rows = buildings (loa-cli, loa-freeside, each -api); columns =
+           declared (BEACON) | coherent (GECKO) | graph-role (EULER) | ops-state (KRANZ) |
+           composes-into (BEAUVOIR). One honest cell each.
+        2. The FLAGGED IMPROVEMENTS — the top cross-lens gaps (a building that's undeclared AND
+           in-monolith AND a graph cut-vertex is a 3-lens alarm), ranked by leverage, each routed
+           to an owner construct (surface, never decide).
+        3. The SINGLE highest-leverage move for the factory this week, with why.
+        4. What's NOT worth attention yet (be explicit).
+      Cite the registry / file:line / repo for every concrete claim; a path that "should" exist is
+      a claim to verify. Carry forward each lens's pushback; do not smooth over disagreement.
+
+outputs:
+  - type: Artifact
+    destination: "grimoires/loa/context/2026-06-20-building-factory-survey.md"
+    description: the five-lens building-ecosystem coherence map + flagged, routed improvements
+  - type: Signal
+    destination: .run/compose/<run_id>/orchestrator.jsonl
+
+compose_with:
+  - beacon
+  - gecko
+  - euler
+  - kranz
+  - the-weaver
+
+when_to_use: >
+  - Periodic factory health sweep — where does each building actually stand across
+    declaration, coherence, graph-shape, ops, and composition?
+  - Before a marketplace/product push — which buildings are ready, which are phantom?
+  - NOT for a single building's code review (use code-implement-and-review), nor for
+    deployment-seam coherence (audit-ecosystem-coherence).
+
+version: "1.0.0"
+authored_at: "2026-06-20"
+authored_by: euler-arc session (the construct-deployment scan-loop, realized)
