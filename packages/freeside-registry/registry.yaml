@@ -21,13 +21,16 @@
 # Reference: decisions/007-loa-freeside-absorption.md §D-1 (L1 Module Registry)
 #            decisions/009-freeside-hexagonal-federation.md §D-2 (cells canonical list)
 #
-# Live-probe state (2026-05-25):
-#   DEPLOYED at Railway: sonar-api, score-api, storage-api, inventory-api (auth-gated MCP), identity-api
-#   NOT-BUILT runtime:   mint-api, activities-api, mediums-api (npm libraries only, no HTTP runtime)
+# Live-probe state (2026-06-19, via `freeside-cli doctor` + direct /health probes):
+#   DEPLOYED (HTTP live): sonar-api (+ belt-gateway 200), score-api (302, live),
+#                         storage-api, identity-api, inventory-api (401, auth-gated MCP),
+#                         activities-api
+#   SCAFFOLDED (404):     mint-api (routeless Express shell), ledger-api (not yet deployed)
+#   NOT-BUILT runtime:    mediums-api (npm lib only), events-api (in-repo library)
 #
-# Subdomain *.0xhoneyjar.xyz beacon endpoints currently 404 for ALL cells — DNS not yet
-# pointed at deployed Railway URLs, and beacon-serving routes not yet implemented in cells.
-# This is the federation-discovery gap (the awareness surface from
+# Subdomain *.0xhoneyjar.xyz beacon endpoints STILL 404 for ALL cells (re-verified
+# 2026-06-19) — DNS not yet pointed at Railway URLs, and beacon-serving routes not yet
+# implemented in cells. This is the federation-discovery gap (the awareness surface from
 # grimoires/loa/specs/enhance-freeside-api-surface.md T1/T2 follow-up).
 #
 # ─── Cluster auth model (de-quirked 2026-06-03 via the cubquests dogfood) ──────────
@@ -137,6 +140,29 @@ modules:
       401 — auth-gated, requires API key). Per memory the inventory-api npm
       library has live read counts; the MCP server is the federation-facing
       shape. visibility: internal because of the auth gate.
+
+  ledger-api:
+    git_url: https://github.com/0xHoneyJar/ledger-api.git
+    beacon_url: ~
+    deployment_url: ~
+    visibility: internal
+    owner: 0xHoneyJar
+    added: "2026-06-19"
+    runtime_state: scaffolded
+    notes: |
+      Event-sourced resource ledger — the most-upstream building on the belt DAG.
+      EXTRACTED from the monolith 2026-06-03 (repo github.com/0xHoneyJar/ledger-api,
+      PRIVATE; last commit 2026-06-03 "alias workspace package to src so the
+      conformance suite runs without a build"). Scaffolded: conformance suite runs,
+      write-path DEFERRED (NG-1 gate — activities-api does not own balances this
+      cycle). NOT deployed — ledger-api-production.up.railway.app/health → 404
+      (probed 2026-06-19). beacon_url ~ (internal cell, no public subdomain planned;
+      exercises the NullOr beacon_url schema fix). Credit-lot logic ALSO still lives
+      in the monolith (packages/services/credit-lot-service.ts) — dual-home until
+      cutover; do NOT assume ledger-api is the live balance authority yet. Registered
+      2026-06-19 to close the registry-vs-territory drift the 2026-06-04 gecko census
+      flagged (DRIFT-2: "freeside-ledger IS extracted; doctrine said it wasn't").
+      billing remains genuinely un-extracted (no repo).
 
   mediums-api:
     # NOTE: GH repo still at freeside-mediums (only mediums of the 8 cells not yet

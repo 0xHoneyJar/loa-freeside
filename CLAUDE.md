@@ -5,6 +5,19 @@
 > This file contains project-specific customizations that take precedence over the framework instructions.
 > The framework instructions are loaded via the `@` import above.
 
+<!-- straylight-governance (tools/governance-doctor.sh)
+use_label: usable
+read_state: validated
+source_type: operator-authored
+as_of: 2026-06-19
+live_state_sot: >-
+  Cell list + deployment_url + runtime_state are LIVE in
+  packages/freeside-registry/registry.yaml (probe: `freeside-cli doctor --registry
+  packages/freeside-registry/registry.yaml` — the bare command reads a stale bundled
+  copy, see contract-and-sot-topology.md HAZARD-1). The topology prose below is
+  ORIENTATION and drifts — for "is X deployed / extracted?" read the registry, never this file.
+-->
+
 ## Repo Topology (READ FIRST)
 
 `loa-freeside` is a **factory**. Two authority levels — do not conflate them:
@@ -20,11 +33,11 @@ Each capability is a **building**. **One building = one repository** — schema 
 
 | Part | What | Lives in |
 |------|------|----------|
-| **Platform** (the substrate) | ECS/AWS substrate + HTTP/DB/queues. Hosts building runtimes multi-tenant. Contains NO feature logic. | `apps/{gateway,worker,ingestor}/`, `infrastructure/terraform/`, `packages/{core,adapters,sandbox}/`, `themes/sietch/` (substrate-only after planned extraction) |
-| **Buildings** (capabilities — `freeside-X` repos) | Each is one repo: schema + runtime + docs. Has belts (consumes/publishes). **External repos**: `freeside-{sonar,storage,mint,activities,inventory,score,mediums}`. **Still in-monolith, intended for extraction**: `freeside-{billing,ledger}`. | External `freeside-*` repos OR currently in `themes/sietch/src/{discord,telegram,services}/`, `packages/services/` until extracted |
+| **Platform** (the substrate) | ECS/AWS substrate + HTTP/DB/queues. Hosts building runtimes multi-tenant. Contains NO feature logic. | `apps/{gateway,worker,ingestor}/`, `infrastructure/terraform/`, `packages/{core,adapters,sandbox}/`, `themes/sietch/` (NOT yet substrate-only — still holds Discord/Telegram/world building logic; `worlds-api` extraction pending) |
+| **Buildings** (capabilities — `freeside-X` repos) | Each is one repo: schema + runtime + docs. Has belts (consumes/publishes). **External repos**: `freeside-{sonar,storage,mint,activities,inventory,score,mediums}`. **Still in-monolith**: `billing` (no repo yet), `worlds` (`themes/sietch`). NOTE: `ledger-api` IS extracted (repo exists, scaffolded 2026-06-03, not yet deployed) — live state is in the registry. | External `*-api` repos OR currently in `themes/sietch/src/{discord,telegram,services}/`, `packages/services/` until extracted |
 | **Network** (discovery + deploy layer) | BeaconV3 declaration contract, registry, MCP federation gateway, deployment CLI. | `apps/mcp-gateway/`, `packages/{beacon-schema,freeside-registry,freeside-cli}/`, `grimoires/freeside-network/` |
 
-> **Honest current state**: `loa-freeside` is a thick monolith. `freeside-score` and `freeside-mediums` already exist as external repos but logic still lives in the monolith — extraction is real pending work. `freeside-billing` and `freeside-ledger` are not extracted at all. The building model is the **direction**. See [ADR-008 §Current State vs Intended State](decisions/008-freeside-as-factory.md).
+> **Honest current state** (live cell/deploy truth = `packages/freeside-registry/registry.yaml`, not this prose): `loa-freeside` is a thick monolith. The `*-api` cells exist as external repos but some logic still lives in the monolith — extraction is real pending work. **`ledger-api` is extracted** (scaffolded 2026-06-03, not yet deployed). **`billing` is genuinely not extracted** (logic in `themes/sietch/src/services/billing` + `packages/{core,adapters}/billing`); **`worlds-api` not extracted** (`themes/sietch`). The building model is the **direction**. See [ADR-008 §Current State vs Intended State](decisions/008-freeside-as-factory.md).
 
 ### Composition direction (the DAG)
 

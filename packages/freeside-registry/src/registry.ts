@@ -25,7 +25,11 @@ const VisibilityLevel = Schema.Literal("public", "unlisted", "internal");
 
 const ModuleEntry = Schema.Struct({
   git_url: Schema.String,
-  beacon_url: Schema.String,
+  // NullOr: in-repo LIBRARY buildings (e.g. events-api) have an in-repo beacon
+  // (packages/events/beacon.yaml) and no served URL — beacon_url is `~` (null).
+  // Mirrors deployment_url's nullability. Before this, a null beacon_url threw a
+  // decode ParseError that broke `freeside-cli doctor` (the live-probe instrument).
+  beacon_url: Schema.NullOr(Schema.String),
   visibility: VisibilityLevel,
   owner: Schema.String,
   added: Schema.String, // ISO-8601 date
