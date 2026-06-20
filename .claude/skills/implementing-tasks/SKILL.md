@@ -199,7 +199,7 @@ Agents SHOULD proactively run CLI tools from the approved allowlist without aski
 |------|-----------------|-------|
 | `git` | `status`, `log`, `diff`, `branch`, `show` | Local only, no network |
 | `gh` | `issue list`, `issue view`, `pr list`, `pr view`, `pr checks` | Use `--json` + field filtering to avoid leaking secrets from PR bodies |
-| `npm`/`bun` | `test`, `run lint`, `run typecheck` | Build/check commands |
+| `npm`/`bun` | `test`, `run lint`, `run typecheck`, `run format` | Build/check + format-check commands (#1086) |
 | `cargo` | `check`, `test`, `clippy` | Build/check commands |
 
 ### Require Confirmation
@@ -346,7 +346,7 @@ Implement sprint tasks from `grimoires/loa/sprint.md` with production-grade code
 - **Desired state**: Working, tested implementation + comprehensive report
 
 ## Constraints (E - Explicit)
-<!-- @constraint-generated: start implementing_tasks_constraints | hash:14f0ec969f05599d -->
+<!-- @constraint-generated: start implementing_tasks_constraints | hash:5b15ea042277c84d -->
 <!-- DO NOT EDIT — generated from .claude/data/constraints.json -->
 1. DO NOT start new work without checking for audit feedback FIRST (highest priority)
 2. DO NOT start new work without checking for engineer feedback SECOND
@@ -358,6 +358,7 @@ Implement sprint tasks from `grimoires/loa/sprint.md` with production-grade code
 8. DO update relevant documentation if specified in integration context
 9. DO format commits per org standards if defined
 10. DO follow SemVer for version updates
+11. DO walk the YAGNI ladder before writing code — stop at the first rung that holds (need it? → stdlib → native → installed dependency → one line → minimum code); reinventing stdlib/native features is a dominant over-engineering class
 <!-- @constraint-generated: end implementing_tasks_constraints -->
 
 ## Verification (E - Easy to Verify)
@@ -407,6 +408,23 @@ See `resources/templates/implementation-report.md` for the structured
 - Document specific file paths and line numbers: NOT "updated auth" → "src/auth/middleware.ts:42-67"
 - Include exact commands to reproduce: NOT "run tests" → "npm test -- --coverage --watch=false"
 - Reference specific commits or branches when relevant
+
+## Pre-Handoff Verification Gate — match CI's fast gate (#1086)
+
+Before marking a task done, run the SAME fast checks CI will run — not just a
+linter + tests. When the project configures them (detect from `pyproject.toml`,
+`package.json` scripts, `.golangci.yml`, `Cargo.toml`, or the `.github/workflows`
+files), ALSO run, in addition to the linter and tests:
+
+- the **formatter in check mode** — `ruff format --check`, `prettier --check`,
+  `gofmt -l`, `cargo fmt --check`, … (a formatter that would *rewrite* files is
+  a red CI waiting to happen), and
+- the **type checker** — `mypy`, `tsc --noEmit`, `pyright`, `go vet`, ….
+
+Treat a format-check or type-check failure exactly like a lint/test failure: fix
+it before handoff. Goal: **the agent's self-check == CI's fast gate**, so work
+marked done doesn't bounce on formatting/types after it's otherwise approved.
+Tool-agnostic — the above are examples; run whatever the project configures.
 </kernel_framework>
 
 <uncertainty_protocol>

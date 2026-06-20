@@ -13,6 +13,7 @@ from loa_cheval.providers.codex_headless_adapter import CodexHeadlessAdapter
 from loa_cheval.providers.gemini_headless_adapter import GeminiHeadlessAdapter
 from loa_cheval.providers.claude_headless_adapter import ClaudeHeadlessAdapter
 from loa_cheval.providers.cursor_headless_adapter import CursorHeadlessAdapter
+from loa_cheval.providers.grok_headless_adapter import GrokHeadlessAdapter
 from loa_cheval.types import ConfigError, ProviderConfig
 
 # Provider type → adapter class mapping.
@@ -30,6 +31,15 @@ from loa_cheval.types import ConfigError, ProviderConfig
 #   for Cursor subscription auth (no API key consumed). A distinct expert-SWE
 #   review voice — its own corpus/harness, so a dedicated `cursor` provider
 #   rather than sitting under `openai`. See cursor_headless_adapter.py.
+# - grok-headless: routes through `grok --prompt-file ... --output-format json`
+#   (xAI Grok Build CLI) for xAI subscription auth (OIDC; no API key consumed).
+#   A headless CLI is a multi-model client (`grok models` → grok-build +
+#   grok-composer-2.5-fast; `cursor-agent models` spans Claude/GPT/Gemini/Grok/
+#   Kimi/Composer — CLIs cross-serve). Cheval pins this `xai` entry to grok's
+#   served models via cli_model; it adds direct-subscription access to grok-build
+#   (an xAI agentic model not pinned elsewhere). Pure inference, isolated cwd,
+#   prompt-via-file (the prompt is untrusted). See
+#   grok_headless_adapter.py.
 _ADAPTER_REGISTRY: Dict[str, Type[ProviderAdapter]] = {
     "openai": OpenAIAdapter,
     "anthropic": AnthropicAdapter,
@@ -40,6 +50,7 @@ _ADAPTER_REGISTRY: Dict[str, Type[ProviderAdapter]] = {
     "gemini-headless": GeminiHeadlessAdapter,
     "claude-headless": ClaudeHeadlessAdapter,
     "cursor-headless": CursorHeadlessAdapter,
+    "grok-headless": GrokHeadlessAdapter,
 }
 
 
@@ -49,6 +60,23 @@ def get_adapter(config: ProviderConfig) -> ProviderAdapter:
     if adapter_cls is None:
         raise ConfigError(f"Unknown provider type: '{config.type}'. Supported: {list(_ADAPTER_REGISTRY.keys())}")
     return adapter_cls(config)
+
+
+def cli_adapter_types() -> frozenset:
+    """Adapter types that dispatch via a subscription-CLI subprocess (kind: cli).
+
+    Derived from the registry so a NEW headless adapter is admitted by the
+    kind:cli dispatch path automatically — review #966 closed the gap where
+    cursor-headless was registered here but rejected by cheval's closed
+    escape-hatch list. Keyed on the adapter class's own auth_type contract,
+    not the name convention (BB #966 round-2): the attribute IS the semantic;
+    a rename cannot silently drop an adapter from CLI admission.
+    """
+    return frozenset(
+        t
+        for t, cls in _ADAPTER_REGISTRY.items()
+        if getattr(cls, "auth_type", None) == "headless"
+    )
 
 
 __all__ = [
@@ -61,5 +89,7 @@ __all__ = [
     "GeminiHeadlessAdapter",
     "ClaudeHeadlessAdapter",
     "CursorHeadlessAdapter",
+    "GrokHeadlessAdapter",
     "get_adapter",
+    "cli_adapter_types",
 ]
