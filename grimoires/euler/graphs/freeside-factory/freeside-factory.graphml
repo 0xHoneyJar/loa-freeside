@@ -1,0 +1,88 @@
+<?xml version='1.0' encoding='utf-8'?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd"><key id="d3" for="edge" attr.name="weight" attr.type="double"/>
+<key id="d2" for="edge" attr.name="state" attr.type="string"/>
+<key id="d1" for="edge" attr.name="kind" attr.type="string"/>
+<key id="d0" for="node" attr.name="runtime_state" attr.type="string"/>
+<graph edgedefault="directed"><node id="sonar-api">
+  <data key="d0">deployed</data>
+</node>
+<node id="storage-api">
+  <data key="d0">deployed</data>
+</node>
+<node id="identity-api">
+  <data key="d0">deployed</data>
+</node>
+<node id="inventory-api">
+  <data key="d0">deployed</data>
+</node>
+<node id="score-api">
+  <data key="d0">deployed</data>
+</node>
+<node id="activities-api">
+  <data key="d0">deployed</data>
+</node>
+<node id="mint-api">
+  <data key="d0">scaffolded</data>
+</node>
+<node id="mediums-api">
+  <data key="d0">not-built</data>
+</node>
+<node id="ledger-api">
+  <data key="d0">candidate(unregistered)</data>
+</node>
+<edge source="sonar-api" target="inventory-api">
+  <data key="d1">data</data>
+  <data key="d2">live</data>
+  <data key="d3">1.0</data>
+</edge>
+<edge source="sonar-api" target="score-api">
+  <data key="d1">data</data>
+  <data key="d2">claimed</data>
+  <data key="d3">0.7</data>
+</edge>
+<edge source="sonar-api" target="identity-api">
+  <data key="d1">control</data>
+  <data key="d2">claimed</data>
+  <data key="d3">0.7</data>
+</edge>
+<edge source="storage-api" target="activities-api">
+  <data key="d1">data</data>
+  <data key="d2">stub</data>
+  <data key="d3">0.3</data>
+</edge>
+<edge source="storage-api" target="inventory-api">
+  <data key="d1">data</data>
+  <data key="d2">future</data>
+  <data key="d3">0.1</data>
+</edge>
+<edge source="identity-api" target="activities-api">
+  <data key="d1">auth</data>
+  <data key="d2">live</data>
+  <data key="d3">1.0</data>
+</edge>
+<edge source="identity-api" target="ledger-api">
+  <data key="d1">auth</data>
+  <data key="d2">aspirational</data>
+  <data key="d3">0.3</data>
+</edge>
+<edge source="inventory-api" target="score-api">
+  <data key="d1">data</data>
+  <data key="d2">declared</data>
+  <data key="d3">0.6</data>
+</edge>
+<edge source="activities-api" target="sonar-api">
+  <data key="d1">data</data>
+  <data key="d2">live</data>
+  <data key="d3">1.0</data>
+</edge>
+<edge source="activities-api" target="score-api">
+  <data key="d1">data</data>
+  <data key="d2">claimed</data>
+  <data key="d3">0.7</data>
+</edge>
+<edge source="ledger-api" target="activities-api">
+  <data key="d1">data</data>
+  <data key="d2">aspirational</data>
+  <data key="d3">0.3</data>
+</edge>
+</graph></graphml>

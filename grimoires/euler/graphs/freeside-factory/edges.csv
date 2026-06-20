@@ -1,0 +1,12 @@
+source,target,kind,state,weight,asserted_by
+activities-api,sonar-api,data,live,1.0,activities-api/packages/protocol/beacon.yaml:70-71 (sonar CONSUMES activities BadgeIssued — beacon flags "arrow points the wrong way")
+sonar-api,inventory-api,data,live,1.0,inventory-api beacon:76 composes_with freeside-sonar required:true + sonar-api beacon:85 consumed_by freeside-inventory
+sonar-api,score-api,data,claimed,0.7,sonar-api/packages/protocol/beacon.yaml:86 consumed_by score-api (snapshot capture + scoring inputs)
+activities-api,score-api,data,claimed,0.7,activities-api/packages/protocol/beacon.yaml:72 (score CONSUMES activities completion events)
+inventory-api,score-api,data,declared,0.6,decisions/008-freeside-as-factory.md:96-99 (score INTEGRATED layer above inventory)
+ledger-api,activities-api,data,aspirational,0.3,ledger-api/packages/protocol/beacon.yaml:58 consumed_by activities-api (RewardPort->ledger); ledger candidate/not-deployed
+storage-api,activities-api,data,stub,0.3,activities-api/packages/protocol/beacon.yaml:62 storage-api OPTIONAL currently STUB
+storage-api,inventory-api,data,future,0.1,inventory-api beacon:17 composes_with freeside-storage REMOVED (sovereign-target successor; not a current edge)
+identity-api,activities-api,auth,live,1.0,activities-api beacon:77 composes_with identity-api required + registry.yaml:35-40 auth model A (HS256)
+identity-api,ledger-api,auth,aspirational,0.3,ledger-api/packages/protocol/beacon.yaml:32 composes_with identity-api required once HTTP runtime ships
+sonar-api,identity-api,control,claimed,0.7,sonar-api/packages/protocol/beacon.yaml:89 consumed_by freeside-identity-api (cycle-c verify redirect per identity PRD)
