@@ -5,6 +5,17 @@
 
 Multi-model agent economy infrastructure platform. Token-gated AI capabilities, budget-atomic inference, and cross-chain community management delivered as Discord, Telegram, and REST APIs.
 
+<!-- straylight-governance (tools/governance-doctor.sh)
+use_label: usable
+read_state: validated
+source_type: operator-authored
+as_of: 2026-06-19
+live_state_sot: >-
+  Which cells exist + are deployed = packages/freeside-registry/registry.yaml
+  (probe: `freeside-cli doctor`). This README is orientation; for live runtime
+  state read the registry, not this file.
+-->
+
 <!-- cite: loa-freeside:themes/sietch/src/api/routes/agents.routes.ts -->
 <!-- cite: loa-freeside:packages/adapters/agent/ensemble-accounting.ts -->
 <!-- cite: loa-freeside:packages/adapters/agent/budget-manager.ts -->
