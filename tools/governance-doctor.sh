@@ -72,6 +72,9 @@ HAND_GOVERN=( "README.md" "CLAUDE.md" "BUTTERFREEZONE.md" )
 # -----------------------------------------------------------------------------
 has_governance() {
   local f="$1" head; head="$(head -25 "$f" 2>/dev/null || true)"
+  # Require a frontmatter/comment fence in the header (--- or <!--), so bare prose
+  # that merely MENTIONS Straylight keys is not misread as governed (F7).
+  grep -qE '^(---|<!--)' <<<"$head" || return 1
   grep -qE '^[[:space:]]*use_label:'   <<<"$head" && \
   grep -qE '^[[:space:]]*read_state:'  <<<"$head" && \
   grep -qE '^[[:space:]]*source_type:' <<<"$head"
@@ -90,7 +93,10 @@ age_days() {     # as_of -> filename date -> git commit -> mtime -> 9999
   [[ -z "$d" ]] && d="$(basename "$f" | grep -oE '^[0-9]{4}-[0-9]{2}-[0-9]{2}' | head -1 || true)"
   [[ -z "$d" ]] && d="$(git log -1 --format=%cs -- "$f" 2>/dev/null || true)"
   if [[ -z "$d" ]]; then
-    d="$(date -r "$f" "+%Y-%m-%d" 2>/dev/null || true)"   # mtime (untracked files)
+    # portable mtime fallback (untracked files): BSD `stat -f %m` / GNU `stat -c %Y`
+    # → epoch → date. `date -r FILE` is NOT portable (BSD reads epoch, not a path). (F5)
+    local mt; mt="$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || true)"
+    [[ -n "$mt" ]] && d="$(date -r "$mt" "+%Y-%m-%d" 2>/dev/null || date -d "@$mt" "+%Y-%m-%d" 2>/dev/null || true)"
   fi
   [[ -z "$d" ]] && { echo 9999; return; }
   to_days "$d"
@@ -135,7 +141,7 @@ stamp_corpse() { # Prepend a quarantine block (corpses only). Skips files that
 }
 
 shopt -s nullglob
-resolve() { local out=(); for g in "$@"; do for m in $g; do [[ -f "$m" ]] && out+=("$m"); done; done; printf '%s\n' "${out[@]}"; }
+resolve() { local out=(); for g in "$@"; do for m in $g; do [[ -f "$m" ]] && out+=("$m"); done; done; (( ${#out[@]} )) && printf '%s\n' "${out[@]}"; }  # guard empty array (set -u / phantom blank row) (F4)
 mapfile -t Q_FILES < <(resolve "${QUARANTINE_GLOBS[@]}")
 mapfile -t W_FILES < <(resolve "${WATCH_GLOBS[@]}")
 mapfile -t H_FILES < <(resolve "${HAND_GOVERN[@]}")
@@ -153,7 +159,7 @@ if [[ "$MODE" == "json" ]]; then
 fi
 
 gate_fail=0
-section() { # $1 title; remaining = files; $LAST flag handled by caller
+section() { # $1: section title
   echo "── $1 ──────────────────────────────────────────────────────"
 }
 echo "═══════════════════════════════════════════════════════════════════════"

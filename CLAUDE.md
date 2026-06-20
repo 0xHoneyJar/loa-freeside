@@ -12,9 +12,10 @@ source_type: operator-authored
 as_of: 2026-06-19
 live_state_sot: >-
   Cell list + deployment_url + runtime_state are LIVE in
-  packages/freeside-registry/registry.yaml (probe: `freeside-cli doctor`).
-  The topology prose below is ORIENTATION and drifts — for "is X deployed / extracted?"
-  read the registry, never this file.
+  packages/freeside-registry/registry.yaml (probe: `freeside-cli doctor --registry
+  packages/freeside-registry/registry.yaml` — the bare command reads a stale bundled
+  copy, see contract-and-sot-topology.md HAZARD-1). The topology prose below is
+  ORIENTATION and drifts — for "is X deployed / extracted?" read the registry, never this file.
 -->
 
 ## Repo Topology (READ FIRST)

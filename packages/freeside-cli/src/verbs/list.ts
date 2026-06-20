@@ -15,7 +15,7 @@ export interface ListOutput {
     readonly slug: string;
     readonly visibility: string;
     readonly owner: string;
-    readonly beacon_url: string;
+    readonly beacon_url: string | null;
   }>;
 }
 

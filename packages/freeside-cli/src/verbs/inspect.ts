@@ -14,7 +14,8 @@ import { loadRegistry } from "@freeside/freeside-registry";
 
 export interface InspectOutput {
   readonly slug: string;
-  readonly beacon_url: string;
+  // null for in-repo library cells (e.g. events-api) — see registry.ts beacon_url NullOr.
+  readonly beacon_url: string | null;
   readonly visibility: string;
   readonly note: string;
 }

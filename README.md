@@ -12,8 +12,9 @@ source_type: operator-authored
 as_of: 2026-06-19
 live_state_sot: >-
   Which cells exist + are deployed = packages/freeside-registry/registry.yaml
-  (probe: `freeside-cli doctor`). This README is orientation; for live runtime
-  state read the registry, not this file.
+  (probe: `freeside-cli doctor --registry packages/freeside-registry/registry.yaml`
+  — the bare command reads a stale bundled copy, see contract-and-sot-topology.md
+  HAZARD-1). This README is orientation; for live runtime state read the registry.
 -->
 
 <!-- cite: loa-freeside:themes/sietch/src/api/routes/agents.routes.ts -->
