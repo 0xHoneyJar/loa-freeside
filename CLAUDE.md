@@ -138,10 +138,10 @@ Every goal in the PRD must have a `G-N` identifier for traceability.
 
 ```bash
 # CORRECT - reach for loa first when you need to know what is live or reachable
-loa doctor              # health + discovery probe across registered buildings
-loa caps                # capabilities reachable under the current grant (discovery == permission)
-loa where <dest>        # cheapest invocation to reach a destination (the `cd` of the ecosystem)
-loa census --graph      # the living building graph (nodes/edges + pinned topology_digest)
+loa doctor              # live · health + discovery probe across registered buildings
+loa caps                # live · capabilities reachable under the current grant (discovery == permission)
+loa where <dest>        # live · cheapest invocation to reach a destination (the `cd` of the ecosystem)
+loa census --graph      # live · the living building graph — set LOA_WORKSPACE=<cluster-root> first
 
 # WRONG - do not hand-probe what loa already covers
 grep -r "deployment_url" packages/freeside-registry/registry.yaml  # stale hand-authored field
@@ -154,10 +154,10 @@ building liveness, reachable capabilities, or the belt-DAG — instead of greppi
 hand-reading `registry.yaml`. This is the consumption-gradient floor ADR-011 §D-5 mandates:
 the verified path must be the path of least resistance.
 
-> `loa doctor` / `loa caps` are live today with no setup. `loa census --graph` reads the live
-> cluster (4 registries → buildings + constructs + worlds + zones) once `loa-cli#6` lands, and
-> needs `LOA_WORKSPACE=<cluster-root>` set — `loa` reads only approved veve roots, never an
-> arbitrary cwd: `LOA_WORKSPACE=~/Documents/GitHub loa census --graph`.
+> All four are live today (`census --graph` since loa-cli#6 merged). `census --graph` needs
+> `LOA_WORKSPACE=<cluster-root>` set first — `loa` reads only approved veve roots, never an
+> arbitrary cwd: `LOA_WORKSPACE=~/Documents/GitHub loa census --graph` (reads 4 registries →
+> buildings + constructs + worlds + zones). `ADR-011 §D-5` is the cited floor.
 
 ---
 
