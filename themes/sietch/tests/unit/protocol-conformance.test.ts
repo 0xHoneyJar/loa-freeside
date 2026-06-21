@@ -125,6 +125,35 @@ import {
 // Each compile call gets a fresh ajv instance to avoid $id collision errors.
 const validatorCache = new Map<string, ReturnType<InstanceType<typeof Ajv>['compile']>>();
 
+// RFC3339 date-time (the only format the contract fixtures rely on for rejection,
+// e.g. reputation-score rep-invalid-003: identity_anchor.verified_at "not-a-date").
+const DATE_TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+
+/**
+ * loa-hounfour 8.3.x ships TypeBox-bundled schemas that INLINE a reused sub-schema
+ * (e.g. ReputationState) multiple times, each carrying the same `$id`. ajv 8 then
+ * throws "reference X resolves to more than one schema" at compile. These bundles
+ * contain NO `$ref`, so the nested `$id`s are redundant labels — stripping them
+ * removes the collision while preserving every structural rule (properties/required/
+ * types). If a schema DOES use `$ref` (id-based resolution), leave it untouched.
+ */
+function dedupeNestedIds(schema: Record<string, unknown>): Record<string, unknown> {
+  if (JSON.stringify(schema).includes('"$ref"')) return schema;
+  const strip = (node: unknown, isRoot: boolean): unknown => {
+    if (Array.isArray(node)) return node.map((n) => strip(n, false));
+    if (node && typeof node === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+        if (k === '$id' && !isRoot) continue; // drop redundant nested $id (no $ref depends on it)
+        out[k] = strip(v, false);
+      }
+      return out;
+    }
+    return node;
+  };
+  return strip(schema, true) as Record<string, unknown>;
+}
+
 /** Validate data against a JSON Schema object. Returns { valid, errors }. */
 function validateSchema(
   schema: Record<string, unknown>,
@@ -133,16 +162,16 @@ function validateSchema(
   const schemaId = (schema.$id as string) || JSON.stringify(schema).slice(0, 100);
   let validate = validatorCache.get(schemaId);
   if (!validate) {
-    // Fresh ajv instance per schema to avoid $id collision
-    // validateFormats: false skips format validation (e.g., "date-time")
-    // that v7.10+ governance schemas introduce
-    // strict:false — v7.11+ contract schemas carry vendor-extension annotations
+    // strict:false — v7.11+/8.3+ contract schemas carry vendor-extension annotations
     // (x-cross-field-validated, x-enforcement-note, x-references, …). ajv 8 strict
     // mode rejects unknown keywords and throws at compile; these x-* are annotations
-    // (cross-field rules tracked as semantic violations below, not by ajv), so
-    // ignoring them keeps full DATA validation intact — not masking a protocol break.
-    const localAjv = new Ajv({ allErrors: true, validateFormats: false, strict: false });
-    validate = localAjv.compile(schema);
+    // (cross-field rules tracked as semantic violations below, not by ajv). Under
+    // strict:false, unregistered formats are also ignored (no cascade) — we register
+    // ONLY date-time below, which the fixtures actually rely on for rejection. (No
+    // ajv-formats dep: it isn't in this workspace's lockfile.)
+    const localAjv = new Ajv({ allErrors: true, strict: false });
+    localAjv.addFormat('date-time', DATE_TIME_RE);
+    validate = localAjv.compile(dedupeNestedIds(schema));
     validatorCache.set(schemaId, validate);
   }
   const valid = validate(data) as boolean;
