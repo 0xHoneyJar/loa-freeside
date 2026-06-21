@@ -329,3 +329,18 @@ The cycle-1 audit MEDIUM (doctor verifies against a caller-supplied key with no 
 - Out of T5 slice (broader remediation): other unit failures (theme.routes ETIMEDOUT = flaky) + the ~87 integration
   failures (billing/mediums = STRANDED→quarantine or FLAKY→stabilize per manifest clusters).
 - ⏸ T6 (ledger parity proof) not started — needs ledger-api repo + golden-dataset replay (read-only, HALT-on-mismatch).
+
+### T5 drive-to-ground (operator-directed) — 3 of 4 FIX-PLATFORM clusters GREEN
+Root cause across the unit slice: loa-hounfour bumped 7.11 → **8.3.1** (verified: all 3 installed copies),
+the conformance/semantic tests were authored for 7.11 → contract-drift, NOT platform regressions.
+- ✅ protocol-conformance + semantic-invariants (16fcfcd0 + 8b84f118): strict:false (x-* vendor annotations)
+  + dedupeNestedId (8.3.1 TypeBox inlines duplicate $id; 0 $ref so stripping is safe) + register date-time
+  format (no ajv-formats dep — not in lock). 59/59 green, no cascade. bead arrakis-3zda CLOSED.
+- ✅ cross-system-conservation (c694aff5): probe proved the CLAIMS_SCHEMA rejection = the platform's
+  MAX_SAFE_MICRO_USD cap ($1B=1e15, **< 2^53**) correctly rejecting a stale $9B test value before OVERSPEND.
+  Platform CORRECT; test stale. Now asserts the cap guard (non-masking). 17/17 green.
+- ⏸ NaibSecurityGuard.integration (9 MFA failures): valid TOTP rejected AND invalid accepted + no audit
+  logs. mfaService.verify dispatch is correct → stale generateTOTPCodeForSecret helper / Redis test-isolation
+  in the UNCONSUMED guard. Folded into arrakis-kjbf (make-production-ready) + arrakis-fvx4. Not fixed (murky
+  security debugging; unconsumed → no prod impact).
+- Harness: env-shadowing (export config vars; dotenv won't override) + docker Redis. No operator secrets touched.

@@ -67,13 +67,13 @@ clusters:
     classification: BUG
     disposition: FIX-PLATFORM
     evidence: "assert the ACVP port/contract invariants the federation depends on — conformance failures are real, stay required"
-    t5: "PARTIAL (16fcfcd0): ajv strict:false for v7.11 x-* vendor annotations fixed 5/9 (was a compile crash, not a violated invariant). Residual 4 → bead arrakis-3zda (3 ajv $ref-collision harness + 1 rep-invalid-003 data assertion needing intended-schema confirm)."
+    t5: "FIXED (16fcfcd0 strict:false + 8b84f118 dedupeNestedId + date-time format). Both files 59/59 green. Root cause = loa-hounfour 8.3.1 contract drift (x-* vendor annotations + duplicate-$id TypeBox bundling + a date-time fixture), NOT a platform regression. Non-masking. bead arrakis-3zda CLOSED."
   - cluster: cross-system-conservation
     capability: contract-layer
     classification: BUG
     disposition: FIX-PLATFORM
     evidence: "'CLAIMS_SCHEMA' vs 'OVERSPEND' — a conservation/overspend assertion → BUG-first, never STRANDED"
-    t5: "OPEN → bead arrakis-fvx4 (+ NaibSecurityGuard MFA-gate). Reproduced: claims fail SCHEMA before reaching the OVERSPEND check (stale claims fixture vs v7.11 contract OR claims-build regression). Operator-gated: confirm intended claims schema before touching — do NOT mask a conservation/auth break."
+    t5: "FIXED (c694aff5). Ground truth (probe): the CLAIMS_SCHEMA rejection is the platform's MAX_SAFE_MICRO_USD cap ($1B=1e15, < 2^53) correctly rejecting a stale $9B test value before OVERSPEND — platform CORRECT, test stale. Test now asserts the cap guard fires (non-masking). cross-system-conservation 17/17 green. (NaibSecurityGuard MFA-verification still open → arrakis-fvx4/arrakis-kjbf, unconsumed guard.)"
   # NEEDS per-test BUG-check (run 3× + conservation/auth check) before disposition — T1 follow-up
   - cluster: billing-referral-api;billing-referrals;billing-revenue-referrer;billing-event-stream;billing-wallet-score;tier
     capability: billing
