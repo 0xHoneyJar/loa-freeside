@@ -134,6 +134,29 @@ rg "pattern" src/       # DEPRECATED - use ck instead
 
 Every goal in the PRD must have a `G-N` identifier for traceability.
 
+### 4. Ecosystem Navigation: Use `loa` (NOT raw grep / registry.yaml reads)
+
+```bash
+# CORRECT - reach for loa first when you need to know what is live or reachable
+loa doctor              # health + discovery probe across registered buildings
+loa caps                # capabilities reachable under the current grant (discovery == permission)
+loa where <dest>        # cheapest invocation to reach a destination (the `cd` of the ecosystem)
+loa census --graph      # the living building graph (nodes/edges + pinned topology_digest)
+
+# WRONG - do not hand-probe what loa already covers
+grep -r "deployment_url" packages/freeside-registry/registry.yaml  # stale hand-authored field
+gh api repos/.../contents/registry.yaml                            # reconstructing the map by hand
+```
+
+`loa` is the ecosystem launcher (npm-linked globally → `loa-cli/bin/loa.mjs`): grant-gated,
+metacharacter-safe (Finn-sandbox safe), proof-of-run. Reach for it FIRST when navigating
+building liveness, reachable capabilities, or the belt-DAG — instead of grepping packages or
+hand-reading `registry.yaml`. This is the consumption-gradient floor ADR-011 §D-5 mandates:
+the verified path must be the path of least resistance.
+
+> `loa census --graph` reads the live cluster (4 registries → buildings + constructs + worlds +
+> zones) once `loa-cli#6` lands; `loa doctor` / `loa caps` are live today.
+
 ---
 
 ## Chain Provider Architecture (Sprint 14-16)
