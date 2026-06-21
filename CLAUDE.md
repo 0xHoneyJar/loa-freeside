@@ -154,8 +154,10 @@ building liveness, reachable capabilities, or the belt-DAG — instead of greppi
 hand-reading `registry.yaml`. This is the consumption-gradient floor ADR-011 §D-5 mandates:
 the verified path must be the path of least resistance.
 
-> `loa census --graph` reads the live cluster (4 registries → buildings + constructs + worlds +
-> zones) once `loa-cli#6` lands; `loa doctor` / `loa caps` are live today.
+> `loa doctor` / `loa caps` are live today with no setup. `loa census --graph` reads the live
+> cluster (4 registries → buildings + constructs + worlds + zones) once `loa-cli#6` lands, and
+> needs `LOA_WORKSPACE=<cluster-root>` set — `loa` reads only approved veve roots, never an
+> arbitrary cwd: `LOA_WORKSPACE=~/Documents/GitHub loa census --graph`.
 
 ---
 
