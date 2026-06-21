@@ -48,7 +48,9 @@ Adopt a **single declared health contract**, read by a **single probe**.
    declared contract instead of baking it.
 3. **Derive, don't type:** `runtime_state` becomes a *derived* output of `classifyLifecycle(probe
    × corpse)` (ADR companion: the move-3 contract flip), not a maintained input. The dated
-   comment is retired.
+   comment is retired. The derivation covers **every** cell, including the un-probeable: no
+   `service.deployment_url` (library / npm-only) → derived `not-built`; a `deployment_url` whose
+   probe never returns healthy → derived `scaffold`. No hand-typed `runtime_state` survives.
 4. **Delete** the duplicates: the `HEALTH_PATH_OVERRIDES` table, the hardcoded `/healthz`, the
    doctor `--remote` stub, and the thrice-deferred per-tenant `health_path` TODO.
 
@@ -58,7 +60,8 @@ declared contract, never re-decided per consumer.
 ## Consequences
 
 **Positive** — deletes 3 hand-rolled probes + a stub + an override table + a thrice-deferred
-TODO; removes the SSRF gap (the hand-rolled probes lack the guard `loa probe.mjs` has); fixes the
+TODO; **closes the SSRF gap at Phase 3** (when the guarded `loa probe.mjs` becomes the single
+reader — the hand-rolled probes lack the inet_aton/CIDR/redirect guard); fixes the
 `score-api` "shows down" bug as a side effect; makes liveness a *derived, verifiable* fact, not a
 hand-typed claim that drifts within a month.
 
@@ -71,7 +74,11 @@ already worries about (`registry.yaml:175`) but cannot enforce today.
 drift); or a new central health *service* (over-built — `loa probe.mjs` already exists and is
 grant-gated/finn-safe).
 
-## Migration (phased — each phase ships independently)
+## Migration (phased — each phase is its own PR, in strict order)
+
+> "Own PR" satisfies the ADR-007 cross-domain firewall (one domain per merge unit); it does **not**
+> mean order-independent. Phases 1–3 each require Phase 0's schema + populated contract — running
+> Phase 1 before Phase 0 hits null `health_path` fields. Order is load-bearing.
 
 - **Phase 0 — declare** (`domain:platform`): add the `service` health contract to the
   `freeside-registry` schema (Effect Schema in `registry.ts`) + populate all 9 cells (appendix).
@@ -83,6 +90,14 @@ grant-gated/finn-safe).
 - **Phase 3 — unify reader** (`domain:shared`): `freeside-cli doctor --remote` + `loa census`
   probe via `loa probe.mjs` as the single reader; land the move-3 `runtime_state` derivation;
   retire the dated comment.
+
+> **Interim SSRF (transition window).** Phases 1–2 feed a *registry-declared* `deployment_url` /
+> `health_path` to probes that still lack the `inet_aton`/CIDR/redirect guard (only `loa probe.mjs`
+> carries it, landing in Phase 3). Moving a probe target from a compile-time constant to declared
+> config **widens** the input surface (cf. the 2019 Capital One SSRF). Mitigation: until Phase 3,
+> the hand-rolled probes MUST validate the declared target host against the registry's own
+> `deployment_url` allowlist — OR land Phase 3 first. The "closes the SSRF gap" benefit is a
+> Phase-3 property, not a Phase-1 one.
 
 Tracking: `arrakis-0jq7` (this), `arrakis-ybqz` (move-3 derive). Each phase is a normal
 implement→review→audit cycle.
@@ -96,10 +111,12 @@ identity-api:   { health_path: /health, expected_status: 200, auth_class: none, 
 inventory-api:  { health_path: /,        expected_status: 401, auth_class: static-key } # MCP, auth-gated → gated-live
 sonar-api:      { health_path: /,        expected_status: 200, auth_class: none,       expected_body_marker: '"message":"Sonar API"' }
 storage-api:    { health_path: /,        expected_status: 200, auth_class: none }       # GraphQL Playground HTML
-score-api:      { health_path: /,        expected_status: 302, auth_class: none }       # ⚠ / now 302 (was health JSON) — verify the real liveness path before landing
-mint-api:       { runtime_state: scaffolded }   # /health 404 (Railway edge) — no stable health route; classify scaffold
-events-api:     { runtime_state: not-built }     # library, no deployment_url
-mediums-api:    { runtime_state: not-built }     # npm-only, no HTTP runtime
+score-api:      { TODO: resolve-real-health-path }  # ⚠ DO NOT TRANSCRIBE — / returns 302 (redirect), NOT the documented health JSON. Resolve the real liveness path (redirect target or /health) before declaring; encoding 302 re-creates the exact drift this ADR kills.
+# The cells below get NO `service` health block — their lifecycle is DERIVED from the absence (§3:
+# derive, don't type), shown here as the EXPECTED derived output, never as a hand-typed input:
+#   mint-api    → scaffold  (deployment_url present but /health 404 Railway-edge → no stable route)
+#   events-api  → not-built (no deployment_url; in-repo library)
+#   mediums-api → not-built (no deployment_url; npm-only)
 ```
 
 > `score-api` is flagged: `/` returning 302 means the documented liveness path moved. Phase 1
