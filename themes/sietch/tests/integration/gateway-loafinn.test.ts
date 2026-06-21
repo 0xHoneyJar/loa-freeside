@@ -170,7 +170,7 @@ describe('Full pipeline integration — S2S JWT → JWS → validate → store',
     expect(VALID_POOL_IDS.has(freeTier.poolId)).toBe(true)
 
     const enterpriseTier = resolvePoolId('native', 'enterprise')
-    expect(enterpriseTier.poolId).toBe('architect')
+    expect(enterpriseTier.poolId).toBe('reviewer') // hounfour canonical default (was 'architect' pre-ADR-006)
     expect(VALID_POOL_IDS.has(enterpriseTier.poolId)).toBe(true)
 
     // All allowed pools must be valid
@@ -423,9 +423,9 @@ describe('Pool routing integration', () => {
   })
 
   it('resolvePoolId + JWT signing produces valid pool claims', () => {
-    // Enterprise with native → architect
+    // Enterprise with native → reviewer (hounfour canonical default; architect is access-allowed, not the default — ADR-006)
     const result = resolvePoolId('native', 'enterprise')
-    expect(result.poolId).toBe('architect')
+    expect(result.poolId).toBe('reviewer')
     expect(result.allowedPools).toContain('architect')
     expect(result.allowedPools).toContain('cheap')
   })
