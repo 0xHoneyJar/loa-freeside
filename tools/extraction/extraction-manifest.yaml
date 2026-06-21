@@ -1,0 +1,94 @@
+# Extraction Manifest — the executable SoT (PRD FR-0/§2.3a, SDD §2.3a)
+# Read by: FR-0 disposition logic, FR-6 caller-inventory gate, the quarantine gate (FR-1).
+# NOT a human-prose table — automation consumes this file.
+# Disposition rubric (FR-0, BUG-FIRST): a conservation/auth/balance assertion is BUG by definition →
+# FIX-PLATFORM, NEVER quarantined. STRANDED = a port↔live mid-flight artifact (the .live moved/moving).
+# version: 1 · generated: 2026-06-21 (sprint-1 T1) · cycle: extraction-migration
+schema_version: 1
+
+# ── capabilities → their port (stays in platform core) + live (moves to the *-api building) ──
+capabilities:
+  - name: billing
+    port: packages/core/ports/IBillingProvider.ts
+    live_paths: [themes/sietch/src/packages/adapters/billing, themes/sietch/src/services/billing, themes/sietch/src/packages/core/billing]
+    destination: billing-api          # needs creating (ADR-007 building path)
+    phase: 2                           # after ledger
+    port_routed: false                 # FR-6 inventory pending
+    consumer_verified: false
+    status: in-monolith
+  - name: ledger
+    port: packages/core/ports/ILedger.ts   # define/keep
+    live_paths: [packages/services]
+    destination: ledger-api            # repo EXISTS — mid-extraction (audit/reconcile, T6)
+    phase: 1                           # dependency root (billing depends on it)
+    port_routed: false
+    consumer_verified: false
+    status: mid-extraction
+  - name: mediums-residual           # synthesis/Discord/telegram/digest/story presentation
+    port: packages/core/ports/IMedium.port.ts   # introduce
+    live_paths: [themes/sietch/src/packages/synthesis, packages/adapters/synthesis, themes/sietch/src/telegram]
+    destination: mediums-api           # repo exists as freeside-mediums (mid-rename)
+    phase: 3
+    port_routed: false
+    consumer_verified: false
+    status: residual-in-monolith
+  - name: security                    # NaibSecurityGuard / MFA
+    port: packages/core/ports          # platform's own auth (default) — T2 decision-gate (vs identity-api)
+    live_paths: [packages/adapters/security, themes/sietch/src/packages/security]
+    destination: STAYS-PLATFORM        # pending T2 threat-model + caller-inventory
+    phase: 0
+    port_routed: n/a
+    status: platform-stays
+  - name: contract-layer              # protocol-conformance, semantic-invariants
+    port: packages/core
+    live_paths: [packages/core]
+    destination: STAYS-PLATFORM        # the ports/contract the federation depends on
+    phase: 0
+    status: platform-stays
+
+# ── failing-test clusters → FR-0 classification (BUG-first) → disposition ──
+# disposition: FIX-PLATFORM | QUARANTINE-STRANDED | STABILIZE-FLAKY | FIXED (already addressed)
+clusters:
+  # already-fixed stale-data (this session #290/#291) — recorded for completeness
+  - cluster: billing-e2e-launch;billing-creator-payout;billing-payout-reconciliation;gateway-loafinn
+    capability: billing
+    classification: STRANDED
+    disposition: FIXED            # EIP-55 address + routing stale data, merged #290/#291
+    evidence: "non-hex payout addresses + enterprise routing architect→reviewer (ADR-006); verified 58+38 green"
+  # FIX-PLATFORM (BUG / conservation / auth — NEVER quarantine)
+  - cluster: NaibSecurityGuard.integration
+    capability: security
+    classification: BUG
+    disposition: FIX-PLATFORM
+    evidence: "MFAService returns undefined where 'TOTP'/'BACKUP_CODES' expected — real auth-behavior, not DUO env; auth invariant → BUG-first"
+  - cluster: protocol-conformance;semantic-invariants
+    capability: contract-layer
+    classification: BUG
+    disposition: FIX-PLATFORM
+    evidence: "assert the ACVP port/contract invariants the federation depends on — conformance failures are real, stay required"
+  - cluster: cross-system-conservation
+    capability: contract-layer
+    classification: BUG
+    disposition: FIX-PLATFORM
+    evidence: "'CLAIMS_SCHEMA' vs 'OVERSPEND' — a conservation/overspend assertion → BUG-first, never STRANDED"
+  # NEEDS per-test BUG-check (run 3× + conservation/auth check) before disposition — T1 follow-up
+  - cluster: billing-referral-api;billing-referrals;billing-revenue-referrer;billing-event-stream;billing-wallet-score;tier
+    capability: billing
+    classification: NEEDS-BUG-CHECK
+    disposition: PENDING          # ReferralError-type / count / 'true to be false' — run FR-0 procedure per test
+    evidence: "error-type + count + boolean assertions; a balance/conservation one is BUG; run 3× before STRANDED"
+  - cluster: GlobalRateLimitedSynthesisWorker.integration;GlobalDiscordTokenBucket.integration
+    capability: mediums-residual
+    classification: MIXED
+    disposition: PENDING          # guildId-snowflake=STRANDED (partial fix); rate-limit assertions=BUG-or-FLAKY; 'Connection is closed'=FLAKY
+    evidence: "snowflake stale (fixed ~3); rate-limit/queue assertions need BUG-check; Connection-closed = flaky Redis/timing"
+  - cluster: telegram/commands
+    capability: mediums-residual
+    classification: STRANDED       # config constructed in-test (bgtAddress+secretKey) — presentation-layer, leaving for mediums-api
+    disposition: QUARANTINE-STRANDED
+    evidence: "Configuration validation failed in-test despite env; telegram presentation → mediums-api"
+  - cluster: digest;story-fragments
+    capability: mediums-residual
+    classification: MIXED
+    disposition: PENDING          # .rejects-on-non-Promise = test-bug (fix); null-derefs = BUG-check
+    evidence: "'.rejects not a Promise' = wrong test usage; 'Cannot read null/undefined' = needs BUG-check"
