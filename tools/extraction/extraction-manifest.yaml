@@ -32,13 +32,14 @@ capabilities:
     port_routed: false
     consumer_verified: false
     status: residual-in-monolith
-  - name: security                    # NaibSecurityGuard / MFA
-    port: packages/core/ports          # platform's own auth (default) — T2 decision-gate (vs identity-api)
+  - name: security                    # NaibSecurityGuard / MFA / ApiKeyManager / KillSwitch / SecureSession
+    port: packages/core/ports          # platform's own auth (operational/admin), NOT end-user identity
     live_paths: [packages/adapters/security, themes/sietch/src/packages/security]
-    destination: STAYS-PLATFORM        # pending T2 threat-model + caller-inventory
+    destination: STAYS-PLATFORM        # DECIDED (T2) — see decisions[security-mfa-disposition]
     phase: 0
     port_routed: n/a
     status: platform-stays
+    decision: security-mfa-disposition  # resolved 2026-06-21 (T2); rationale in decisions: below
   - name: contract-layer              # protocol-conformance, semantic-invariants
     port: packages/core
     live_paths: [packages/core]
@@ -92,3 +93,59 @@ clusters:
     classification: MIXED
     disposition: PENDING          # .rejects-on-non-Promise = test-bug (fix); null-derefs = BUG-check
     evidence: "'.rejects not a Promise' = wrong test usage; 'Cannot read null/undefined' = needs BUG-check"
+
+# ── Phase-0 decision-gate outcomes (FR-0 §2.3a · the disposition record) ──
+# A decision is the DURABLE answer to "stays-platform vs → a *-api building" for a
+# capability whose home is ambiguous. Caller-inventory AND a threat-model/compliance
+# review together (Flatline SKP-006 — inventory alone can miss a security obligation).
+decisions:
+  - id: security-mfa-disposition
+    task: T2
+    capability: security
+    decided: 2026-06-21
+    outcome: STAYS-PLATFORM        # NOT → identity-api
+    blocks: [sprint-completion, T6]   # gate cleared
+    consumer_inventory:
+      # who imports/instantiates the security package outside its own dir + tests
+      external_consumers: 0
+      evidence: >-
+        grep over themes/sietch/src + packages (excl dist/node_modules, excl
+        packages/security/** and its tests): NaibSecurityGuard / MFAService /
+        KillSwitchProtocol are never imported, `new`-ed, or `.protect()`-invoked
+        outside their own package. The only up-tree "security" re-export is the
+        unrelated api/middleware/securityHeaders.js (HTTP headers, not the MFA guard).
+    threat_model:
+      classification: platform-own-auth   # operational/admin, NOT end-user identity
+      what_it_protects: >-
+        Destructive PLATFORM operations (DELETE_COMMUNITY, KILL_SWITCH,
+        VAULT_KEY_ROTATION, PURGE_DATA, ADMIN_OVERRIDE) via MFA middleware
+        (NaibSecurityGuard) + admin TOTP/backup-codes (MFAService, RFC 6238) +
+        tenant-scoped gateway API-key rotation (ApiKeyManager) + emergency
+        credential revocation (KillSwitchProtocol) + admin session hardening
+        (SecureSessionStore: IP-bind, device-fingerprint, brute-force lockout).
+      not_identity_runtime: >-
+        identity-api owns END-USER identity — wallet linking, Discord/Telegram nym
+        resolution, the /verify signature flow. The security package owns whether a
+        privileged actor MAY perform a destructive op on the substrate. Different
+        bounded context; the obligation binds to the runtime that EXECUTES the
+        destructive op (the platform: gateway/worker), so relocating to identity-api
+        would orphan the guard from the operations it protects.
+      rationale: >-
+        STAYS-PLATFORM. It is the platform's own administrative/operational auth, not
+        an identity-runtime concern. Caller-inventory (0 external consumers) + the
+        threat-model agree.
+    # SKP-006 in reverse: the inventory found 0 callers, but the threat-model says the
+    # obligation is real and currently UNMET in the live path. Recorded as a finding,
+    # filed as a platform-security bead. NOT an extraction-disposition question.
+    finding_unconsumed_guard:
+      severity: high                # destructive-op MFA gate wired into nothing live
+      summary: >-
+        NaibSecurityGuard.protect() is never called by the gateway/routes — the MFA
+        gate on DELETE_COMMUNITY / KILL_SWITCH / VAULT_KEY_ROTATION / PURGE_DATA is
+        deployed-but-unconsumed. Destructive ops may be UNGUARDED in the live path.
+      disposition: FIX-PLATFORM     # platform security gap; backlog bead (NOT this sprint's test slice)
+      bead: arrakis-kjbf            # domain:platform · filed by T2
+    tests_routed:
+      # NaibSecurityGuard.integration was already BUG/FIX-PLATFORM in clusters: above
+      # (auth invariant → BUG-first). T2 CONFIRMS: stays required, fixed under T5.
+      NaibSecurityGuard.integration: FIX-PLATFORM   # T5; stays in required Unit/Integration

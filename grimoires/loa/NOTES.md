@@ -289,3 +289,19 @@ The cycle-1 audit MEDIUM (doctor verifies against a caller-supplied key with no 
 
 ### Decision Log — asson cycle-5: comms gate (3 INDEPENDENT linters) — LADDER COMPLETE
 `comms-gate.mjs` screens competitive-REL comms through 3 independent linters (AS-9/B5): legal-register (asson lexicon-lint, the ONLY one asson owns) + voice (ai-stench) + product-vocab (vocabulary-bank). Each a separate process with its own exit; the gate ORs them — NO orchestration, NO shared lexicon. Proven independent (legal-only/voice-only/vocab-only each fire alone). Absent linter → skipped+reported, never silent pass. The .claude/ hook registration is operator-gated (handoff); the finn spawn-time CommandPolicy PROPOSAL is a loa-finn handoff. bats stubs the 2 external linters for CI-portability (real ai-stench verified manually). **The 5-cycle asson ladder is COMPLETE, gated, leave-local.**
+
+## 2026-06-21 — Sprint-1 extraction-migration (resumed via /run-resume)
+
+- **T3 · dependency-rule lint (FR-7, G-5)** ✅ committed `72885c2a` (`domain:platform`).
+  `tools/lint/dep-rule.sh` (authoritative, segment-anchored, allowlist-ratchet, `--self-test`),
+  `packages/core/.eslintrc.cjs` (editor mirror), wired required `Dependency Rule (G-5)` job in
+  `pr-validation.yml`. Verified: clean core / detects planted import / no false positives / shellcheck clean.
+- **T2 · security/MFA disposition** ✅ DECIDED `STAYS-PLATFORM` (NOT → identity-api). Recorded in
+  `extraction-manifest.yaml` `decisions[security-mfa-disposition]` with caller-inventory (0 external
+  consumers) + threat-model (platform's own admin/operational auth, not end-user identity). Clears the
+  Phase-0 gate that blocked sprint-completion + T6. NaibSecurityGuard.integration stays required → FIX-PLATFORM (T5).
+  - **Threat-model finding (SKP-006 in reverse):** the destructive-op MFA guard is deployed-but-unconsumed
+    in the monolith live path → filed **`arrakis-kjbf`** (`domain:platform`, bug). Verify vs deployed
+    gateway before acting (dont-ground-on-extracted-monolith).
+- Remaining autonomous: T4 (quarantine-with-teeth + manifest validator), T5 (platform-stays BUG fixes —
+  needs docker Redis + seeded env), T6 (ledger parity proof, read-only HALT-on-mismatch). T7/T8 operator-gated.
