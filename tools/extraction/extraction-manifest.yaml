@@ -8,22 +8,27 @@ schema_version: 1
 
 # ── capabilities → their port (stays in platform core) + live (moves to the *-api building) ──
 capabilities:
-  - name: billing
-    port: packages/core/ports/IBillingProvider.ts
-    live_paths: [themes/sietch/src/packages/adapters/billing, themes/sietch/src/services/billing, themes/sietch/src/packages/core/billing]
-    destination: billing-api          # needs creating (ADR-007 building path)
-    phase: 2                           # after ledger
-    port_routed: false                 # FR-6 inventory pending
-    consumer_verified: false
-    status: in-monolith
-  - name: ledger
-    port: packages/core/ports/ILedger.ts   # define/keep
-    live_paths: [packages/services]
-    destination: ledger-api            # repo EXISTS — mid-extraction (audit/reconcile, T6)
-    phase: 1                           # dependency root (billing depends on it)
+  # ── CORRECTED 2026-06-21 (grounded in the real repos): "ledger" was TWO distinct
+  #    ledgers conflated. billing-api = the CREDIT ledger (money, double-entry lot
+  #    ledger lifted from packages/services). ledger-api = a DISTINCT RESOURCE ledger
+  #    (event-sourced (identity, resource_kind) balances) — a SCAFFOLD, not built,
+  #    and NOT sourced from packages/services. See grimoires/loa/NOTES.md (ledger split).
+  - name: credit-ledger              # was "billing" + "ledger" (packages/services credit lot ledger)
+    port: ICreditLedgerService          # sealed, lives in billing-api (was IBillingProvider/ILedger sketch)
+    live_paths: [packages/services, themes/sietch/src/packages/adapters/billing, themes/sietch/src/services/billing, themes/sietch/src/packages/core/billing]
+    destination: billing-api           # repo EXISTS + LIFTED the credit_lots/lot_entries/lot_balances ledger
+    phase: 1                           # dependency root
+    port_routed: false                 # monolith still owns its copy; cutover = loa-finn finalize
+    consumer_verified: false           # loa-finn S2S finalize — thin-v1, ONE live finalize NOT yet proven
+    status: extracted-thin-v1          # billing-api feat/thin-v1-ledger-finalize (unmerged); domain network
+  - name: resource-ledger            # the OTHER ledger — distinct domain (resources, NOT credits)
+    port: ResourceLedgerPort            # sealed Effect.Schema in ledger-api: getBalance/applyMutation/queryMutations
+    live_paths: [cubquests apply_resource_mutation proc, activities-api RewardPort, monolith resource-balance reads]
+    destination: ledger-api            # repo EXISTS but SCAFFOLD (in-memory stub; nothing deployed; no consumer)
+    phase: 4                           # reserved slot — activate when a consumer needs it (operator: keep reserved)
     port_routed: false
     consumer_verified: false
-    status: mid-extraction
+    status: scaffold-reserved          # NOT mid-extraction; NOT sourced from packages/services
   - name: mediums-residual           # synthesis/Discord/telegram/digest/story presentation
     port: packages/core/ports/IMedium.port.ts   # introduce
     live_paths: [themes/sietch/src/packages/synthesis, packages/adapters/synthesis, themes/sietch/src/telegram]
@@ -52,7 +57,7 @@ capabilities:
 clusters:
   # already-fixed stale-data (this session #290/#291) — recorded for completeness
   - cluster: billing-e2e-launch;billing-creator-payout;billing-payout-reconciliation;gateway-loafinn
-    capability: billing
+    capability: credit-ledger
     classification: STRANDED
     disposition: FIXED            # EIP-55 address + routing stale data, merged #290/#291
     evidence: "non-hex payout addresses + enterprise routing architect→reviewer (ADR-006); verified 58+38 green"
@@ -76,7 +81,7 @@ clusters:
     t5: "FIXED (c694aff5). Ground truth (probe): the CLAIMS_SCHEMA rejection is the platform's MAX_SAFE_MICRO_USD cap ($1B=1e15, < 2^53) correctly rejecting a stale $9B test value before OVERSPEND — platform CORRECT, test stale. Test now asserts the cap guard fires (non-masking). cross-system-conservation 17/17 green. (NaibSecurityGuard MFA-verification still open → arrakis-fvx4/arrakis-kjbf, unconsumed guard.)"
   # NEEDS per-test BUG-check (run 3× + conservation/auth check) before disposition — T1 follow-up
   - cluster: billing-referral-api;billing-referrals;billing-revenue-referrer;billing-event-stream;billing-wallet-score;tier
-    capability: billing
+    capability: credit-ledger
     classification: NEEDS-BUG-CHECK
     disposition: PENDING          # ReferralError-type / count / 'true to be false' — run FR-0 procedure per test
     evidence: "error-type + count + boolean assertions; a balance/conservation one is BUG; run 3× before STRANDED"

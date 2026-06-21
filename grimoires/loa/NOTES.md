@@ -344,3 +344,19 @@ the conformance/semantic tests were authored for 7.11 → contract-drift, NOT pl
   in the UNCONSUMED guard. Folded into arrakis-kjbf (make-production-ready) + arrakis-fvx4. Not fixed (murky
   security debugging; unconsumed → no prod impact).
 - Harness: env-shadowing (export config vars; dotenv won't override) + docker Redis. No operator secrets touched.
+
+### 2026-06-21 — ledger-track re-framing (grounded in the real repos; operator-directed)
+Looked at the actual org repos (cloned: ledger-api ~/Documents/GitHub, billing-api ~/bonfire). The
+extraction-manifest's "ledger" capability conflated TWO distinct ledgers:
+- **billing-api = the CREDIT ledger** (money). Double-entry lot ledger (credit_lots/lot_entries/lot_balances)
+  LIFTED from the monolith packages/services. Deployable (Railway, Hono-on-bun, hexagonal), S2S finalize/health,
+  "the finn cure." thin-v1 on feat/thin-v1-ledger-finalize (UNMERGED; adversarial blockers just closed; ONE live
+  finalize NOT yet proven). domain: network. → manifest capability renamed `billing`→`credit-ledger`.
+- **ledger-api = a RESOURCE ledger** (event-sourced (identity, resource_kind) balances) — DISTINCT domain, NOT
+  credits, NOT sourced from packages/services. SCAFFOLD only (in-memory stub, nothing deployed, no consumer).
+  Consolidates cubquests apply_resource_mutation proc + activities RewardPort + monolith reads. → new capability
+  `resource-ledger`, status scaffold-reserved, phase 4. Operator decision: KEEP as reserved slot (no action).
+- **Sprint impact**: T6/T7 were aimed at ledger-api for the monolith credit ledger — WRONG target. The credit-ledger
+  extraction is billing-api's job (already lifted it). Operator decision: LAND billing-api (review+merge PR #1 +
+  prove ONE live finalize), not a loa-freeside-side T6 parity build.
+- Manifest corrected + re-validated. T6/T7 in loa-freeside S1 are superseded by the billing-api track.
