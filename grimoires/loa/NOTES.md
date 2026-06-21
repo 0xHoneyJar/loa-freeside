@@ -313,3 +313,19 @@ The cycle-1 audit MEDIUM (doctor verifies against a caller-supplied key with no 
 - `tools/quarantine/sync-vitest.mjs` → `themes/sietch/tests/quarantine.generated.json` (manifest-derived exclude list; `--check` sync-gate). vitest.workspace.ts: required unit/integration EXCLUDE the list; new non-required `quarantine` project (passWithNoTests).
 - CI: `manifest-gate` job REQUIRED in pr-validation (validate + sidecar-sync + gate.sh, +pyyaml); `quarantine-report.yml` NON-required (runs quarantine project + PR-comment digest via tools/quarantine/digest.py).
 - ⚠ Live quarantine-project RUN deferred to T5: local vitest blocked by encrypted-.env config-validation (the seeded-env harness is T5's). Config load + JSON import + sidecar + glob semantics verified.
+
+### T5 · fix platform-stays BUG slice — PARTIAL (harness runnable; conservation/auth gated)
+- Harness: docker Redis + env-shadowing works LOCALLY. dotenv (config.ts) does NOT override exported vars,
+  so exporting the config env shadows .env.local's encrypted values — NO need to touch operator secrets.
+  Unit project: `SKIP_INTEGRATION_TESTS=true REDIS_URL=… API_KEY_PEPPER=… RATE_LIMIT_SALT=… WEBHOOK_SECRET=…`.
+  Integration: add `NODE_ENV=test VITEST=true CHAIN_PROVIDER=rpc PADDLE_ENVIRONMENT=sandbox PORT=3000` + real Redis.
+- ✅ FIXED (16fcfcd0): protocol-conformance + semantic-invariants ajv strict:false (v7.11 contract x-* vendor
+  annotations crashed strict-mode compile → assertion never ran). 9→4 in those files. Non-masking (data validation intact).
+- OPEN (filed, repro in bead bodies) — all FIX-PLATFORM, operator-gated real-vs-stale (verifier's dilemma):
+  - `arrakis-3zda` — residual 4 in protocol/semantic: 3× ajv $ref-collision (ReputationState/TrustLevel; harness
+    or loa-hounfour bundling) + 1× rep-invalid-003 (fixture validates under v7.11; stale-vs-schema-gap).
+  - `arrakis-fvx4` — cross-system-conservation (CLAIMS_SCHEMA vs OVERSPEND: claims fail schema before the overspend
+    conservation check) + NaibSecurityGuard (guardInteraction DELETE_CHANNEL allowed=true; MFA gate). Related: arrakis-kjbf.
+- Out of T5 slice (broader remediation): other unit failures (theme.routes ETIMEDOUT = flaky) + the ~87 integration
+  failures (billing/mediums = STRANDED→quarantine or FLAKY→stabilize per manifest clusters).
+- ⏸ T6 (ledger parity proof) not started — needs ledger-api repo + golden-dataset replay (read-only, HALT-on-mismatch).

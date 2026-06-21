@@ -67,11 +67,13 @@ clusters:
     classification: BUG
     disposition: FIX-PLATFORM
     evidence: "assert the ACVP port/contract invariants the federation depends on — conformance failures are real, stay required"
+    t5: "PARTIAL (16fcfcd0): ajv strict:false for v7.11 x-* vendor annotations fixed 5/9 (was a compile crash, not a violated invariant). Residual 4 → bead arrakis-3zda (3 ajv $ref-collision harness + 1 rep-invalid-003 data assertion needing intended-schema confirm)."
   - cluster: cross-system-conservation
     capability: contract-layer
     classification: BUG
     disposition: FIX-PLATFORM
     evidence: "'CLAIMS_SCHEMA' vs 'OVERSPEND' — a conservation/overspend assertion → BUG-first, never STRANDED"
+    t5: "OPEN → bead arrakis-fvx4 (+ NaibSecurityGuard MFA-gate). Reproduced: claims fail SCHEMA before reaching the OVERSPEND check (stale claims fixture vs v7.11 contract OR claims-build regression). Operator-gated: confirm intended claims schema before touching — do NOT mask a conservation/auth break."
   # NEEDS per-test BUG-check (run 3× + conservation/auth check) before disposition — T1 follow-up
   - cluster: billing-referral-api;billing-referrals;billing-revenue-referrer;billing-event-stream;billing-wallet-score;tier
     capability: billing
