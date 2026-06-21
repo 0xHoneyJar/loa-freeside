@@ -71,7 +71,13 @@ function validateSchema(
   const schemaId = (schema.$id as string) || JSON.stringify(schema).slice(0, 100);
   let validate = validatorCache.get(schemaId);
   if (!validate) {
-    const localAjv = new Ajv({ allErrors: true, nullable: true });
+    // strict:false — the loa-hounfour contract schemas carry vendor-extension
+    // annotations (x-cross-field-validated, x-enforcement-note, x-references,
+    // x-runtime-enforcement-required, x-experimental). ajv 8 strict mode rejects
+    // unknown keywords and throws at compile, so the data assertion never runs.
+    // These x-* are annotations (cross-field rules enforced separately, not by ajv);
+    // ignoring them keeps full DATA validation (required/type) intact — not masking.
+    const localAjv = new Ajv({ allErrors: true, nullable: true, strict: false });
     validate = localAjv.compile(schema);
     validatorCache.set(schemaId, validate);
   }

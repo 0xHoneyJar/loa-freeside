@@ -136,7 +136,12 @@ function validateSchema(
     // Fresh ajv instance per schema to avoid $id collision
     // validateFormats: false skips format validation (e.g., "date-time")
     // that v7.10+ governance schemas introduce
-    const localAjv = new Ajv({ allErrors: true, validateFormats: false });
+    // strict:false — v7.11+ contract schemas carry vendor-extension annotations
+    // (x-cross-field-validated, x-enforcement-note, x-references, …). ajv 8 strict
+    // mode rejects unknown keywords and throws at compile; these x-* are annotations
+    // (cross-field rules tracked as semantic violations below, not by ajv), so
+    // ignoring them keeps full DATA validation intact — not masking a protocol break.
+    const localAjv = new Ajv({ allErrors: true, validateFormats: false, strict: false });
     validate = localAjv.compile(schema);
     validatorCache.set(schemaId, validate);
   }
