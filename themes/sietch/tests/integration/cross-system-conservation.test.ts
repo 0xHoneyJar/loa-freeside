@@ -561,8 +561,13 @@ describe('Cross-System E2E — Negative Scenarios (Task 4.5)', () => {
   // BigInt precision guard: JWT with actual_cost_micro > 2^53
   // ---------------------------------------------------------------------------
 
-  it('BigInt precision: actual_cost_micro > 2^53 round-trips without precision loss', async () => {
-    const largeCost = ((2n ** 53n) + 1n).toString(); // "9007199254740993"
+  it('BigInt precision: actual_cost_micro > 2^53 is rejected by the MAX_SAFE_MICRO_USD cap', async () => {
+    // The MAX_SAFE_MICRO_USD cap ($1B = 1e15 micro-USD, parse-boundary-micro-usd.ts)
+    // sits BELOW 2^53 (≈9.0e15), so any cost above 2^53 is rejected at claims
+    // validation (CLAIMS_SCHEMA) by the cap guard BEFORE the OVERSPEND check — the cap
+    // is a conservation/overflow bound. (OVERSPEND with a valid, within-cap cost is
+    // covered by the sibling tests above.) Updated for the cap guard (T5).
+    const largeCost = ((2n ** 53n) + 1n).toString(); // "9007199254740993" — exceeds 1e15 cap
 
     const claims = makeInboundClaims({
       reservation_id: reservationId,
@@ -570,14 +575,13 @@ describe('Cross-System E2E — Negative Scenarios (Task 4.5)', () => {
     });
     const token = await signInbound(claims, keypairs.loaFinn.privateKey);
 
-    // The JWT will fail OVERSPEND (exceeds 500,000 reserved), but claims
-    // are parsed before that check. We verify the parsing preserves precision.
     const err = await verifyUsageJWT(token, keypairs.loaFinn.publicKey, idempotency, reservations)
       .catch(e => e);
 
-    // Should fail at OVERSPEND (step 6), meaning claims parsed correctly through steps 1-5
+    // The cap guard fires at claims validation (a conservation bound), not OVERSPEND.
     expect(err).toBeInstanceOf(JwtBoundaryError);
-    expect(err.code).toBe('OVERSPEND');
+    expect(err.code).toBe('CLAIMS_SCHEMA');
+    expect(err.message).toContain('MAX_SAFE_MICRO_USD');
 
     // Verify the BigInt conversion preserves precision
     const parsed = BigInt(largeCost);
