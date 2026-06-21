@@ -1,0 +1,89 @@
+name: bridgebuilder-pr
+
+# Always-on Bridgebuilder review on PRs — the GitHub-Action version of `/bridgebuilder`.
+#
+# Trust regime: this is the `claude-code-action` raw-`ANTHROPIC_API_KEY` path (the existing
+# post-merge.yml CI-AI precedent), NOT the local multi-model cheval council. cheval headless
+# cannot run in GHA (no OAuth session on ephemeral runners; it strips ANTHROPIC_API_KEY), so the
+# CI gate is a single strong model; the deeper cross-model council stays local (`/bridgebuilder`).
+# It posts a review COMMENT (informational — never blocks the merge); the operator addresses + merges.
+#
+# Self-review: framework/grimoire files are in-scope here by design (the diff IS the substance for
+# doc/ADR/CLAUDE.md PRs). The reviewer is told to honor a repo `.reviewignore` if present.
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+    branches: [main, staging]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: bbpr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Bridgebuilder review
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for ANTHROPIC_API_KEY
+        id: check-key
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [[ -n "$ANTHROPIC_API_KEY" ]]; then
+            echo "has_key=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_key=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::ANTHROPIC_API_KEY not set — skipping bridgebuilder review (configure the repo secret to enable)."
+          fi
+
+      - name: Bridgebuilder review
+        if: steps.check-key.outputs.has_key == 'true'
+        uses: anthropics/claude-code-action@47635634fd56ccbdfc300003e8753607c2c135d3 # v1
+        env:
+          BB_PR_NUMBER: ${{ github.event.pull_request.number }}
+          BB_PR_TITLE: ${{ github.event.pull_request.title }}
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Tunable: the local council uses Fable for critical PRs; the always-on CI gate uses a
+          # cost-conscious single model (the same id post-merge.yml proves works with this action).
+          model: claude-sonnet-4-5-20250929
+          max_turns: "12"
+          allowed_tools: "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Read,Glob,Grep"
+          prompt: |
+            You are BEAUVOIR, the Bridgebuilder — an autonomous, senior, adversarial-but-fair PR reviewer.
+            Review pull request #${BB_PR_NUMBER} ("${BB_PR_TITLE}") in this repository.
+
+            STEP 1 — gather the diff and context:
+              gh pr diff "${BB_PR_NUMBER}"
+              gh pr view "${BB_PR_NUMBER}" --json title,body,files
+            If a persona file exists, adopt its voice (try, in order, and use the first that exists):
+              .claude/skills/bridgebuilder-review/resources/BEAUVOIR.md
+              grimoires/bridgebuilder/BEAUVOIR.md
+            If a `.reviewignore` exists at the repo root, do NOT review files matching its patterns.
+
+            STEP 2 — review across four dimensions, grounding EVERY finding in a `file:line`:
+              - Security      (auth, secrets, injection, SSRF, prototype pollution, trust boundaries)
+              - Quality       (correctness, edge cases, error handling, simplicity, naming)
+              - Test coverage  (are the risky paths tested? did a real file get exercised, not just a fixture?)
+              - Operational    (failure modes, observability, blast radius, reversibility, idempotency)
+            Be honest, not a rubber stamp: if it is clean, say so and name the 2-3 hardest things you checked.
+            Default to skepticism for hand-rolled parsers/auth/persistence. Verify claims against the diff.
+
+            STEP 3 — post ONE review comment. Build the body as markdown with:
+              - a one-paragraph Summary (what the PR does + the single most important thing to check)
+              - a Findings table: severity (BLOCKER/HIGH/MEDIUM/LOW/SPECULATION/PRAISE) · file:line · the issue · a concrete fix
+              - a one-line Verdict (APPROVE / COMMENT / REQUEST_CHANGES — this gate never enforces; REQUEST_CHANGES is advisory)
+            Post it with:
+              gh pr comment "${BB_PR_NUMBER}" --body-file <your-markdown-file>
+            Keep it tight and high-signal. Findings without a file:line do not belong in the table.
