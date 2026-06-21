@@ -305,3 +305,11 @@ The cycle-1 audit MEDIUM (doctor verifies against a caller-supplied key with no 
     gateway before acting (dont-ground-on-extracted-monolith).
 - Remaining autonomous: T4 (quarantine-with-teeth + manifest validator), T5 (platform-stays BUG fixes —
   needs docker Redis + seeded env), T6 (ledger parity proof, read-only HALT-on-mismatch). T7/T8 operator-gated.
+
+### T4 · quarantine-with-teeth + manifest validator ✅ (FR-1 + SKP-001/003)
+- `tools/extraction/validate-manifest.mjs` — schema+behavior (B1: a BUG can NEVER be QUARANTINE-STRANDED; B5 teeth; B6 only-stranded). YAML via python3+pyyaml bridge.
+- `tools/quarantine/gate.sh` — required teeth: past-expiry · missing owner/evidence/bead · assertion-signature DRIFT (sha256 over sorted expect/assert lines). All 3 proven; SKP-003 proven (planted conservation `expect` → drift → fail → restore).
+- Manifest `quarantine[]`: tests/telegram/commands.test.ts (owner soju, expiry 2026-09-19, bead arrakis-0flf, sig recorded).
+- `tools/quarantine/sync-vitest.mjs` → `themes/sietch/tests/quarantine.generated.json` (manifest-derived exclude list; `--check` sync-gate). vitest.workspace.ts: required unit/integration EXCLUDE the list; new non-required `quarantine` project (passWithNoTests).
+- CI: `manifest-gate` job REQUIRED in pr-validation (validate + sidecar-sync + gate.sh, +pyyaml); `quarantine-report.yml` NON-required (runs quarantine project + PR-comment digest via tools/quarantine/digest.py).
+- ⚠ Live quarantine-project RUN deferred to T5: local vitest blocked by encrypted-.env config-validation (the seeded-env harness is T5's). Config load + JSON import + sidecar + glob semantics verified.

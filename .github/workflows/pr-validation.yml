@@ -22,6 +22,8 @@ on:
       - 'packages/core/**'
       - 'packages/adapters/**'
       - 'tools/lint/**'
+      - 'tools/extraction/**'
+      - 'tools/quarantine/**'
       - '.github/workflows/pr-validation.yml'
 
 concurrency:
@@ -205,6 +207,39 @@ jobs:
         run: tools/lint/dep-rule.sh
 
   # ===========================================================================
+  # Extraction Manifest + Quarantine Gate (Sprint-1 T1/T4 · FR-0 + FR-1)
+  # ===========================================================================
+  # The anti-masking teeth: the manifest is schema+behavior valid (a BUG can
+  # never be parked as STRANDED), the vitest exclude sidecar matches the manifest,
+  # and every quarantined file is unexpired + owned + beaded + signature-stable
+  # (a planted conservation/auth/balance regression changes the signature → fail).
+  manifest-gate:
+    name: Manifest + Quarantine Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install pyyaml (YAML bridge for the manifest tools)
+        run: python3 -m pip install --quiet --user pyyaml || pip3 install --quiet pyyaml
+
+      - name: Validate extraction manifest (schema + behavior, SKP-001)
+        run: node tools/extraction/validate-manifest.mjs
+
+      - name: Quarantine sidecar in sync with manifest
+        run: node tools/quarantine/sync-vitest.mjs --check
+
+      - name: Quarantine gate (expiry / owner / signature-drift, SKP-003)
+        run: tools/quarantine/gate.sh
+
+  # ===========================================================================
   # Security Scanning
   # ===========================================================================
   security:
@@ -321,7 +356,7 @@ jobs:
   summary:
     name: PR Summary
     runs-on: ubuntu-latest
-    needs: [build, test, lint, dep-rule, security, docker]
+    needs: [build, test, lint, dep-rule, manifest-gate, security, docker]
     if: always()
 
     steps:
@@ -358,6 +393,13 @@ jobs:
             echo "- :x: **Dependency Rule (G-5)**: Failed" >> $GITHUB_STEP_SUMMARY
           fi
 
+          # Manifest + Quarantine gate status (FR-0/FR-1)
+          if [ "${{ needs.manifest-gate.result }}" == "success" ]; then
+            echo "- :white_check_mark: **Manifest + Quarantine Gate**: Passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- :x: **Manifest + Quarantine Gate**: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
           # Security status
           if [ "${{ needs.security.result }}" == "success" ]; then
             echo "- :white_check_mark: **Security**: Passed" >> $GITHUB_STEP_SUMMARY
@@ -382,6 +424,7 @@ jobs:
           needs.test.result != 'success' ||
           needs.lint.result != 'success' ||
           needs.dep-rule.result != 'success' ||
+          needs.manifest-gate.result != 'success' ||
           needs.security.result != 'success' ||
           needs.docker.result != 'success'
         run: |

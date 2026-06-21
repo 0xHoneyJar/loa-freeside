@@ -149,3 +149,24 @@ decisions:
       # NaibSecurityGuard.integration was already BUG/FIX-PLATFORM in clusters: above
       # (auth invariant → BUG-first). T2 CONFIRMS: stays required, fixed under T5.
       NaibSecurityGuard.integration: FIX-PLATFORM   # T5; stays in required Unit/Integration
+
+# ── quarantine[] — files EXCLUDED from the required suite (FR-1 · the masking risk) ──
+# Each entry is time-boxed + owned + beaded + signed. tools/quarantine/gate.sh
+# enforces: not-expired, owner/reason/bead present, and the test's assertion
+# signature == stranded_signature (a planted conservation/auth/balance regression
+# changes that signature → gate fails → no silent masking, Flatline SKP-003).
+# The required unit/integration vitest projects exclude exactly these files.
+# ONLY proven-STRANDED files belong here (validator B6: cluster_tag must be a
+# QUARANTINE-STRANDED cluster — a BUG can never be parked here).
+quarantine:
+  - file: tests/telegram/commands.test.ts
+    capability: mediums-residual
+    cluster_tag: telegram/commands           # must be a QUARANTINE-STRANDED cluster (B6)
+    reason: >-
+      Presentation-layer config constructed in-test (bgtAddress + secretKey)
+      validates as a platform concern but belongs to the mediums-api building.
+      Stranded mid-extraction, not a platform bug.
+    owner: soju
+    expiry: 2026-09-19                        # 90d from 2026-06-21 (T4)
+    stranded_signature: sha256:5ace90674db553f9fbb09bc64c7bf483cb05a908e31f238e76cfa0065dfdb1da
+    bead: arrakis-0flf                        # domain:platform · de-quarantine task
