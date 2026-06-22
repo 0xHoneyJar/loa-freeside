@@ -25,10 +25,12 @@ capabilities:
     port: ResourceLedgerPort            # sealed Effect.Schema in ledger-api: getBalance/applyMutation/queryMutations
     live_paths: [cubquests apply_resource_mutation proc, activities-api RewardPort, monolith resource-balance reads]
     destination: ledger-api            # repo EXISTS but SCAFFOLD (in-memory stub; nothing deployed; no consumer)
-    phase: 4                           # reserved slot — activate when a consumer needs it (operator: keep reserved)
+    phase: 4                           # do NOT build — gated on the payment-direction decision (brief D3)
     port_routed: false
     consumer_verified: false
-    status: scaffold-reserved          # NOT mid-extraction; NOT sourced from packages/services
+    status: questioned-lean-archive    # operator 2026-06-21: off-chain resource↔crypto split is a disconnect;
+                                        # lean = pure pay-per-use crypto. Archive unless a real off-chain-balance
+                                        # consumer emerges. See 2026-06-21-billing-ledger-edge-design-brief.md (D2/D3).
   - name: mediums-residual           # synthesis/Discord/telegram/digest/story presentation
     port: packages/core/ports/IMedium.port.ts   # introduce
     live_paths: [themes/sietch/src/packages/synthesis, packages/adapters/synthesis, themes/sietch/src/telegram]
