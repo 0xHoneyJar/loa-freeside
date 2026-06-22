@@ -54,3 +54,24 @@ export {
   type Reaction,
   type EventStore,
 } from './event-store.js';
+export {
+  verifyAssociation,
+  canonicalAuthMessage,
+  InMemoryNonceStore,
+  SignedAuthMessageSchema,
+  type SignedAuthMessage,
+  type AuthRequest,
+  type AuthExpectations,
+  type AuthResult,
+  type RecoverSigner,
+  type NonceStore,
+  type CommunityOwnerCheck,
+  type AssociationVerifierDeps,
+} from './association-verifier.js';
+export {
+  FixedWindowRateLimiter,
+  type RateLimiter,
+  type RateLimiterConfig,
+  type RateDecision,
+} from './rate-limiter.js';
+export { createAuditRouter, type AuditRouterDeps } from './http/audit-router.js';

@@ -50,7 +50,7 @@ describe('InMemoryEventStore — append-only', () => {
     const store = new InMemoryEventStore();
     expect(await store.getRun('r1')).toBeUndefined();
     await store.appendRunEvent(runEvent);
-    expect(await store.getRun('r1')).toEqual({ ts: runEvent.ts });
+    expect(await store.getRun('r1')).toEqual({ ts: runEvent.ts, inputs_hash: runEvent.inputs_hash });
     expect(store.counts().runEvents).toBe(1);
   });
 

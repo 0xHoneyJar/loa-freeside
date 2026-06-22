@@ -49,8 +49,9 @@ export interface EventStore {
   appendRunEvent(event: RunEvent): Promise<void>;
   /** Append a consented contact. Rejects if the run_id is unknown. */
   appendContact(record: ContactRecord): Promise<void>;
-  /** Lifecycle check (IMP-007): does this run exist, and when did it land? */
-  getRun(runId: string): Promise<{ ts: string } | undefined>;
+  /** Lifecycle check (IMP-007): does this run exist, when did it land, and its
+   *  fingerprint (so a follow-up reaction event can reuse it)? */
+  getRun(runId: string): Promise<{ ts: string; inputs_hash: string } | undefined>;
 }
 
 /** In-memory append-only store (tests + a reference impl). */
@@ -71,10 +72,10 @@ export class InMemoryEventStore implements EventStore {
     this.contacts.push(parsed);
   }
 
-  async getRun(runId: string): Promise<{ ts: string } | undefined> {
-    // Earliest event for the run defines its landing time.
+  async getRun(runId: string): Promise<{ ts: string; inputs_hash: string } | undefined> {
+    // Earliest event for the run defines its landing time + fingerprint.
     const ev = this.runEvents.find((e) => e.run_id === runId);
-    return ev ? { ts: ev.ts } : undefined;
+    return ev ? { ts: ev.ts, inputs_hash: ev.inputs_hash } : undefined;
   }
 
   /** Test/inspection helper. */

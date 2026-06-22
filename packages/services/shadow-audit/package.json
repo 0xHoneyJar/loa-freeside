@@ -15,7 +15,8 @@
   },
   "license": "AGPL-3.0",
   "dependencies": {
-    "@freeside/shadow-audit-protocol": "file:../../protocol/shadow-audit"
+    "@freeside/shadow-audit-protocol": "file:../../protocol/shadow-audit",
+    "hono": "^4.7.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
