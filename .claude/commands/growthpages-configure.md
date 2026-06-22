@@ -1,0 +1,1 @@
+../constructs/packs/growthpages/commands/growthpages-configure.md

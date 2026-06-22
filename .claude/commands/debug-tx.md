@@ -1,0 +1,1 @@
+../constructs/packs/protocol/commands/debug-tx.md

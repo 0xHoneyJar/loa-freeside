@@ -1,0 +1,1 @@
+../constructs/packs/the-speakers/commands/score-experience.md
