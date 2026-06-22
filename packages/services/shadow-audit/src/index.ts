@@ -42,3 +42,15 @@ export {
   type AuditDeps,
   type AuditServiceResult,
 } from './audit-service.js';
+export {
+  RunEventSchema,
+  ContactRecordSchema,
+  ReactionSchema,
+  CtaInteractionSchema,
+  InMemoryEventStore,
+  isRunWithinWindow,
+  type RunEvent,
+  type ContactRecord,
+  type Reaction,
+  type EventStore,
+} from './event-store.js';
