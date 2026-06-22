@@ -26,3 +26,19 @@ export {
   type ModeContext,
   type ModeResult,
 } from './mode-resolver.js';
+export {
+  DEFAULT_K,
+  kAnonCohort,
+  holderTurnover,
+  staleRiskBand,
+} from './metrics.js';
+export {
+  runAudit,
+  type Balances,
+  type OwnershipSource,
+  type WhaleSource,
+  type RoleSource,
+  type AuditRequest,
+  type AuditDeps,
+  type AuditServiceResult,
+} from './audit-service.js';
