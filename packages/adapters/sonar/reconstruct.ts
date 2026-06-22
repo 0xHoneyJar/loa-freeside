@@ -107,6 +107,12 @@ function fold721(events: readonly TransferEvent[]): HolderBalances {
   for (const e of events) {
     const from = lc(e.from);
     const to = lc(e.to);
+    if (from === ZERO_ADDRESS && to === ZERO_ADDRESS) {
+      throw new ReconstructionError(
+        'inconsistent-721-provenance',
+        `zero-to-zero transfer of tokenId ${e.tokenId} (corrupt stream)`,
+      );
+    }
     if (from === ZERO_ADDRESS) {
       if (owner.has(e.tokenId)) {
         throw new ReconstructionError(

@@ -15,7 +15,7 @@ function message(over: Partial<SignedAuthMessage> = {}): SignedAuthMessage {
   return {
     nonce: 'nonce-12345678',
     issued_at: 1000,
-    expiry: 2000,
+    expiry: 1300,
     domain: 'audit.thj',
     chain_id: 1,
     contract: CONTRACT,
@@ -25,7 +25,16 @@ function message(over: Partial<SignedAuthMessage> = {}): SignedAuthMessage {
   };
 }
 function expected(over: Partial<AuthExpectations> = {}): AuthExpectations {
-  return { domain: 'audit.thj', chainId: 1, contract: CONTRACT, communityId: 'thj', nowUnixSeconds: 1500, ...over };
+  return {
+    domain: 'audit.thj',
+    chainId: 1,
+    contract: CONTRACT,
+    communityId: 'thj',
+    scope: 'named-output',
+    maxValiditySeconds: 600,
+    nowUnixSeconds: 1150,
+    ...over,
+  };
 }
 function deps(over: Partial<AssociationVerifierDeps> = {}): AssociationVerifierDeps {
   return {
@@ -94,5 +103,18 @@ describe('verifyAssociation (AC-4)', () => {
     const r = await verifyAssociation(request(), expected(), deps({ isCommunityOwner: async () => false }));
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toContain('community');
+  });
+
+  it('rejects a scope mismatch (BB-2)', async () => {
+    const r = await verifyAssociation(request(), expected({ scope: 'read-only' }), deps());
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toContain('scope');
+  });
+
+  it('rejects an over-long validity window (SEC-M1)', async () => {
+    const longMsg = message({ issued_at: 1000, expiry: 5000 }); // 4000s > 600 max
+    const r = await verifyAssociation(request({ message: longMsg }), expected({ nowUnixSeconds: 1150 }), deps());
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toContain('validity window');
   });
 });

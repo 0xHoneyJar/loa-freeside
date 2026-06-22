@@ -37,7 +37,7 @@ export type RunEvent = z.infer<typeof RunEventSchema>;
 export const ContactRecordSchema = z
   .object({
     run_id: z.string().min(1),
-    contact: z.string().min(1),
+    contact: z.string().min(1).max(320), // SEC-M3: email-sized cap (storage-abuse guard)
     consent: z.literal(true),
     ts: z.string().datetime(),
   })

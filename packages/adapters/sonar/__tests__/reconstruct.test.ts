@@ -88,6 +88,12 @@ describe('reconstructOwnership — ERC-721 owner-fold', () => {
       ),
     ).toBe('inconsistent-721-provenance');
   });
+
+  it('refuses a zero-to-zero transfer (corrupt stream — BB-7)', () => {
+    expect(
+      failCode(() => reconstructOwnership([ev(100, 0, ZERO_ADDRESS, ZERO_ADDRESS, '1')], opts('erc721'))),
+    ).toBe('inconsistent-721-provenance');
+  });
 });
 
 describe('reconstructOwnership — ERC-1155 balance semantics', () => {

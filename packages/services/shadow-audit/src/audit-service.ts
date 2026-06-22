@@ -12,6 +12,7 @@
 import {
   AuditOutputSchema,
   computeInputsHash,
+  sha256Hex,
   type AccessDecisionRecord,
   type AuditAggregate,
   type AuditOutput,
@@ -29,9 +30,9 @@ export type Balances = Map<string, bigint>;
 
 /** Ownership port — reconstructs holder balances (SonarClient satisfies this). */
 export interface OwnershipSource {
-  resolveSnapshotBlock(snapshotDate: string): Promise<number>;
-  balancesAt(snapshotBlock: number): Promise<Balances>;
-  currentBalances(): Promise<Balances>;
+  resolveSnapshotBlock(args: { chain: string; contract: string; snapshotDate: string }): Promise<number>;
+  balancesAt(args: { chain: string; contract: string; snapshotBlock: number }): Promise<Balances>;
+  currentBalances(args: { chain: string; contract: string }): Promise<Balances>;
 }
 
 /** Whale/concentration port (ScoreProxy-backed). Best-effort. */
@@ -73,6 +74,13 @@ function isoFromUnix(unixSeconds: number): string {
   return new Date(unixSeconds * 1000).toISOString();
 }
 
+/** Clamp a bigint balance into the safe-integer range (MED-2): a huge ERC-1155
+ *  balance must not silently lose precision when narrowed for evidence. */
+function clampToSafe(b: bigint): number {
+  const max = BigInt(Number.MAX_SAFE_INTEGER);
+  return Number(b > max ? max : b);
+}
+
 export async function runAudit(
   req: AuditRequest,
   deps: AuditDeps,
@@ -97,11 +105,15 @@ export async function runAudit(
   let snapshotBlock: number;
   let snapBal: Balances;
   let curBal: Balances;
+  const collection = {
+    chain: req.order.source.chain,
+    contract: req.order.source.contract_address,
+  };
   try {
-    snapshotBlock = await deps.ownership.resolveSnapshotBlock(req.snapshotDate);
+    snapshotBlock = await deps.ownership.resolveSnapshotBlock({ ...collection, snapshotDate: req.snapshotDate });
     [snapBal, curBal] = await Promise.all([
-      deps.ownership.balancesAt(snapshotBlock),
-      deps.ownership.currentBalances(),
+      deps.ownership.balancesAt({ ...collection, snapshotBlock }),
+      deps.ownership.currentBalances(collection),
     ]);
   } catch (e) {
     return {
@@ -134,9 +146,16 @@ export async function runAudit(
   whale = Math.min(1, Math.max(0, whale));
 
   // 5. Aggregate (k-anonymized cohorts + deterministic metrics).
+  const soldLapsedCohort = kAnonCohort(soldLapsed.length, k);
+  let holder_turnover = holderTurnover(soldLapsed.length, qualifiedSnapshot.length);
+  // BB-4: when the cohort is k-anon-suppressed, coarsen the ratio so it can't
+  // back-compute the suppressed numerator from a known denominator.
+  if (soldLapsedCohort.kind === 'bucketed') {
+    holder_turnover = Math.round(holder_turnover * 10) / 10;
+  }
   const aggregate: AuditAggregate = {
-    holder_turnover: holderTurnover(soldLapsed.length, qualifiedSnapshot.length),
-    sold_lapsed: kAnonCohort(soldLapsed.length, k),
+    holder_turnover,
+    sold_lapsed: soldLapsedCohort,
     newly_eligible: kAnonCohort(newlyEligible.length, k),
     stale_access: kAnonCohort(staleAccess.length, k),
     whale_concentration: whale,
@@ -150,7 +169,7 @@ export async function runAudit(
     snapshot_block: snapshotBlock,
     rule: req.order.gating_rule,
   });
-  const run_id = `run_${inputs_hash.slice(0, 24)}`;
+  const run_id = `run_${sha256Hex(`${inputs_hash}:${req.nowUnixSeconds}`).slice(0, 24)}`;
 
   // 7. Per-member records (authed only).
   let records: AccessDecisionRecord[] | undefined;
@@ -163,7 +182,7 @@ export async function runAudit(
       holds_role,
       qualifies: qualifies(curBal, wallet),
       band: classifyBand(holds_role, qualifies(curBal, wallet)),
-      evidence: { balance_at_snapshot: Number(snapBal.get(wallet) ?? 0n) },
+      evidence: { balance_at_snapshot: clampToSafe(snapBal.get(wallet) ?? 0n) },
       provenance: {
         rule_id,
         snapshot_block: snapshotBlock,

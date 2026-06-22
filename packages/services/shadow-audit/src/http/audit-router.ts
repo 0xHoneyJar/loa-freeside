@@ -57,7 +57,10 @@ export interface AuditRouterDeps {
     recover: RecoverSigner;
     nonces: NonceStore;
     isCommunityOwner: CommunityOwnerCheck;
-    expectations: () => AuthExpectations;
+    domain: string;
+    chainId: number;
+    scope: string;
+    maxValiditySeconds: number;
   };
   isOperatedCommunity: (communityId: string) => boolean;
   cta: Cta;
@@ -147,6 +150,21 @@ async function audit(
   );
 }
 
+/** Read a request body as JSON or form-encoded (BLOCK-1: the no-JS HTML form
+ *  posts application/x-www-form-urlencoded). */
+async function readBody(c: Context): Promise<{ body: unknown; isForm: boolean }> {
+  const ct = c.req.header('content-type') ?? '';
+  if (ct.includes('form-urlencoded') || ct.includes('multipart/form-data')) {
+    const form = (await c.req.parseBody()) as Record<string, unknown>;
+    // consent arrives as a string from a form — coerce to a real boolean.
+    if ('consent' in form) {
+      form.consent = form.consent === 'true' || form.consent === 'on' || form.consent === true;
+    }
+    return { body: form, isForm: true };
+  }
+  return { body: await c.req.json().catch(() => null), isForm: false };
+}
+
 export function createAuditRouter(deps: AuditRouterDeps): Hono {
   const app = new Hono();
   const runWindow = deps.runWindowMs ?? DEFAULT_RUN_WINDOW_MS;
@@ -207,16 +225,30 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     const built = buildOrder(parsed.data);
     if (!built.ok) return c.json({ error: 'invalid order params' }, 400);
 
+    // BB-1: bind the signature to THIS request's order (not a static expectation),
+    // and require the signer to be the order's owner_wallet.
+    const expectations: AuthExpectations = {
+      domain: deps.auth.domain,
+      chainId: deps.auth.chainId,
+      contract: built.order.source.contract_address,
+      communityId: built.order.community.name,
+      scope: deps.auth.scope,
+      maxValiditySeconds: deps.auth.maxValiditySeconds,
+      nowUnixSeconds: Math.floor(deps.now() / 1000),
+    };
     const authResult = await verifyAssociation(
       {
         message: parsed.data.auth.message,
         signature: parsed.data.auth.signature,
         ownerWallet: parsed.data.auth.ownerWallet,
       },
-      deps.auth.expectations(),
+      expectations,
       { recover: deps.auth.recover, nonces: deps.auth.nonces, isCommunityOwner: deps.auth.isCommunityOwner },
     );
     if (!authResult.ok) return c.json({ error: 'unauthorized', reason: authResult.reason }, 401);
+    if (authResult.wallet.toLowerCase() !== built.order.community.owner_wallet.toLowerCase()) {
+      return c.json({ error: 'unauthorized', reason: 'signer is not the community owner_wallet' }, 401);
+    }
 
     const result = await audit(deps, built.order, parsed.data.snapshot_date, true);
     if (!result.ok) return c.json({ error: result.refusal }, refusalStatus(result.refusal));
@@ -226,7 +258,8 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
 
   // ---- POST /v1/audit/reaction ------------------------------------------
   app.post('/v1/audit/reaction', async (c) => {
-    const body = await c.req.json().catch(() => null);
+    if (isRateLimited(c)) return c.json({ error: rateLimitRefusal }, refusalStatus(rateLimitRefusal));
+    const { body, isForm } = await readBody(c);
     const parsed = z.object({ run_id: z.string().min(1), reaction: ReactionSchema }).safeParse(body);
     if (!parsed.success) return c.json({ error: 'invalid body' }, 400);
     const run = await deps.eventStore.getRun(parsed.data.run_id);
@@ -242,14 +275,17 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
       reaction: parsed.data.reaction,
       ts: new Date(deps.now()).toISOString(),
     });
+    // BLOCK-1: a no-JS form submit completes via redirect; JSON callers get JSON.
+    if (isForm) return c.redirect('/v1/audit/view', 303);
     return c.json({ ok: true });
   });
 
   // ---- POST /v1/audit/contact (consent required) ------------------------
   app.post('/v1/audit/contact', async (c) => {
-    const body = await c.req.json().catch(() => null);
+    if (isRateLimited(c)) return c.json({ error: rateLimitRefusal }, refusalStatus(rateLimitRefusal));
+    const { body } = await readBody(c);
     const parsed = z
-      .object({ run_id: z.string().min(1), contact: z.string().min(1), consent: z.literal(true) })
+      .object({ run_id: z.string().min(1), contact: z.string().min(1).max(320), consent: z.literal(true) })
       .safeParse(body);
     if (!parsed.success) return c.json({ error: 'invalid body or missing consent' }, 400);
     const run = await deps.eventStore.getRun(parsed.data.run_id);
@@ -267,8 +303,15 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
 
   // ---- GET /v1/audit/view — thin dashboard HTML (T9) ---------------------
   app.get('/v1/audit/view', async (c) => {
+    if (isRateLimited(c)) return c.html('<p>rate limited — try again shortly</p>', 429);
     const q = OrderQuerySchema.safeParse(c.req.query());
     if (!q.success) return c.html('<p>missing/invalid query params</p>', 400);
+    if ((q.data.gating ?? 'nft-balance') !== 'nft-balance') {
+      return c.html(
+        renderRefusalHtml({ code: 'unsupported-gating', reason: `gating "${q.data.gating}" not supported`, retryable: false }),
+        422,
+      );
+    }
     const built = buildOrder(q.data);
     if (!built.ok) return c.html('<p>invalid order params</p>', 400);
     const result = await audit(deps, built.order, q.data.snapshot_date, false);

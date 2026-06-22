@@ -38,6 +38,10 @@ export interface AuthExpectations {
   chainId: number;
   contract: string;
   communityId: string;
+  /** The scope the named-output signature must carry (BB-2). */
+  scope: string;
+  /** Max allowed signature lifetime in seconds — caps a client-set window (SEC-M1). */
+  maxValiditySeconds: number;
   nowUnixSeconds: number;
 }
 
@@ -50,6 +54,12 @@ export interface NonceStore {
   consume(nonce: string): Promise<boolean>;
 }
 
+/**
+ * SINGLE-INSTANCE ONLY. Consumed nonces live in one process Set — under
+ * horizontal scaling a nonce consumed on instance A is still fresh on instance
+ * B, allowing cross-instance replay. Production MUST inject a distributed store
+ * (Redis/postgres). Tracked: arrakis-cfxc.
+ */
 export class InMemoryNonceStore implements NonceStore {
   private readonly used = new Set<string>();
   constructor(private readonly max = 100_000) {}
@@ -109,10 +119,18 @@ export async function verifyAssociation(
     return { ok: false, reason: 'contract mismatch' };
   }
   if (m.community_id !== expected.communityId) return { ok: false, reason: 'community mismatch' };
+  // BB-2: the signed scope must match — a weaker-scope signature can't authorize named output.
+  if (m.scope !== expected.scope) return { ok: false, reason: 'scope mismatch' };
 
-  // 2. Freshness window.
+  // 2. Freshness window — and cap the client-set lifetime (SEC-M1).
   if (!(m.issued_at <= expected.nowUnixSeconds && expected.nowUnixSeconds <= m.expiry)) {
     return { ok: false, reason: 'expired or not-yet-valid' };
+  }
+  if (
+    m.expiry - m.issued_at > expected.maxValiditySeconds ||
+    m.expiry - expected.nowUnixSeconds > expected.maxValiditySeconds
+  ) {
+    return { ok: false, reason: 'validity window too large' };
   }
 
   // 3. Signature recovers to the claimed wallet.

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createAuditRouter, type AuditRouterDeps } from '../http/audit-router.js';
 import { InMemoryEventStore } from '../event-store.js';
-import { InMemoryNonceStore, type AuthExpectations } from '../association-verifier.js';
+import { InMemoryNonceStore } from '../association-verifier.js';
 import { FixedWindowRateLimiter } from '../rate-limiter.js';
 import type { OwnershipSource, RoleSource, WhaleSource } from '../audit-service.js';
 import type { RoleSnapshot } from '../role-snapshot.js';
@@ -49,13 +49,10 @@ function makeDeps(over: Partial<AuditRouterDeps> = {}): AuditRouterDeps {
       recover: async () => OWNER,
       nonces: new InMemoryNonceStore(),
       isCommunityOwner: async () => true,
-      expectations: (): AuthExpectations => ({
-        domain: 'audit.thj',
-        chainId: 1,
-        contract: CONTRACT,
-        communityId: 'thj',
-        nowUnixSeconds: NOW_S,
-      }),
+      domain: 'audit.thj',
+      chainId: 1,
+      scope: 'named-output',
+      maxValiditySeconds: 3600,
     },
     isOperatedCommunity: () => true,
     cta: { product: '/shadow-access', conversation: '/talk' },
@@ -144,6 +141,22 @@ describe('POST /v1/audit (named output, authed)', () => {
     const res = await post(createAuditRouter(deps), '/v1/audit', namedBody());
     expect(res.status).toBe(401);
   });
+
+  it('rejects when the signed contract differs from the request body (BB-1)', async () => {
+    const body = namedBody();
+    body.auth.message.contract = '0x' + 'e'.repeat(40);
+    const res = await post(createAuditRouter(makeDeps()), '/v1/audit', body);
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects when the authed signer is not the order owner_wallet (BB-1)', async () => {
+    const W = '0x' + 'e'.repeat(40);
+    const body = namedBody(); // order owner_wallet = OWNER
+    body.auth.ownerWallet = W;
+    const deps = makeDeps({ auth: { ...makeDeps().auth, recover: async () => W } });
+    const res = await post(createAuditRouter(deps), '/v1/audit', body);
+    expect(res.status).toBe(401);
+  });
 });
 
 describe('POST /v1/audit/{reaction,contact} (run lifecycle + consent)', () => {
@@ -159,6 +172,26 @@ describe('POST /v1/audit/{reaction,contact} (run lifecycle + consent)', () => {
     const { run_id } = (await (await app.request(GET_URL)).json()) as any;
     expect((await post(app, '/v1/audit/contact', { run_id, contact: 'me@x.com' })).status).toBe(400);
     expect((await post(app, '/v1/audit/contact', { run_id, contact: 'me@x.com', consent: true })).status).toBe(200);
+  });
+
+  it('accepts a form-encoded reaction (BLOCK-1)', async () => {
+    const app = createAuditRouter(makeDeps());
+    const { run_id } = (await (await app.request(GET_URL)).json()) as any;
+    const res = await app.request('/v1/audit/reaction', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ run_id, reaction: 'expected' }).toString(),
+    });
+    expect([200, 303]).toContain(res.status);
+  });
+
+  it('rate-limits the reaction endpoint (SEC-M2)', async () => {
+    const app = createAuditRouter(
+      makeDeps({ rateLimiter: new FixedWindowRateLimiter({ limit: 1, windowMs: 60_000, now: () => NOW_MS }) }),
+    );
+    await app.request(GET_URL); // consumes the single token
+    const res = await post(app, '/v1/audit/reaction', { run_id: 'x', reaction: 'expected' });
+    expect(res.status).toBe(429);
   });
 });
 

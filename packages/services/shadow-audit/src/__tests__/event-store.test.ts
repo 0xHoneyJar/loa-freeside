@@ -38,6 +38,10 @@ describe('ContactRecordSchema — consent required', () => {
     expect(ContactRecordSchema.safeParse(contact).success).toBe(true);
   });
 
+  it('rejects an over-long contact (SEC-M3)', () => {
+    expect(ContactRecordSchema.safeParse({ ...contact, contact: 'x'.repeat(400) }).success).toBe(false);
+  });
+
   it('rejects a contact without consent === true', () => {
     expect(ContactRecordSchema.safeParse({ ...contact, consent: false }).success).toBe(false);
     const { consent: _omit, ...noConsent } = contact;

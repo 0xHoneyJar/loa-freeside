@@ -155,4 +155,46 @@ describe('runAudit — determinism (IMP-001)', () => {
       expect(a.output).toEqual(b.output);
     }
   });
+
+  it('keeps inputs_hash stable across time but makes run_id unique per run (BB-3)', async () => {
+    const a = await runAudit(req({ nowUnixSeconds: NOW }), deps());
+    const b = await runAudit(req({ nowUnixSeconds: NOW + 60 }), deps());
+    expect(a.ok && b.ok).toBe(true);
+    if (a.ok && b.ok) {
+      expect(a.output.inputs_hash).toBe(b.output.inputs_hash);
+      expect(a.output.run_id).not.toBe(b.output.run_id);
+    }
+  });
+});
+
+describe('runAudit — hardening fixes', () => {
+  it('clamps a huge ERC-1155 balance in evidence (MED-2)', async () => {
+    const huge: Map<string, bigint> = new Map([[R1, 10n ** 30n]]);
+    const ow: OwnershipSource = {
+      resolveSnapshotBlock: async () => 1000,
+      balancesAt: async () => huge,
+      currentBalances: async () => huge,
+    };
+    const r = await runAudit(req({ includeRecords: true }), deps({ ownership: ow }));
+    if (!r.ok || !r.output.records) throw new Error('expected records');
+    const rec = r.output.records.find((x) => x.wallet === R1);
+    expect(rec?.evidence.balance_at_snapshot).toBe(Number.MAX_SAFE_INTEGER);
+  });
+
+  it('coarsens holder_turnover when sold_lapsed is suppressed (BB-4)', async () => {
+    const w = (h: string) => '0x' + h.repeat(40);
+    const snap: Map<string, bigint> = new Map([[w('1'), 1n], [w('2'), 1n], [w('3'), 1n]]);
+    const cur: Map<string, bigint> = new Map([[w('1'), 1n], [w('2'), 1n]]); // 1 of 3 sold
+    const ow: OwnershipSource = {
+      resolveSnapshotBlock: async () => 1000,
+      balancesAt: async () => snap,
+      currentBalances: async () => cur,
+    };
+    const r = await runAudit(req(), deps({ ownership: ow }));
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.output.aggregate.sold_lapsed.kind).toBe('bucketed');
+      expect(r.output.aggregate.holder_turnover).toBe(0.3); // 1/3 coarsened to the 0.1 grid
+    }
+  });
 });
