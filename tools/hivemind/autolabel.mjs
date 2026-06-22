@@ -15,12 +15,13 @@
  */
 const title = process.env.ISSUE_TITLE || process.argv[2] || '';
 const body  = process.env.ISSUE_BODY  || process.argv[3] || '';
-const hay = `${title}\n${body}`.toLowerCase();
+// strip markdown heading lines (e.g. "## Scope") — section labels, not work-type signal
+const hay = `${title}\n${body}`.replace(/^[ \t]*#{1,6}[ \t].*$/gm, '').toLowerCase();
 const RX = (s) => new RegExp(s, 'i');
 
 // workstream enum: discovery · delivery · experimentation · tech-debt · sorry-for-ur-loss
 const WS = [
-  ['sorry-for-ur-loss', RX('\\b(outage|hotfix|incident|on.?fire|sev[012]|p0|rollback|(is|went|going|service|site|prod|production) down|down for|broke (the )?(build|prod|production))\\b')], // M1: drop bare down/broke (over-matched "scroll down", "broke into subtasks")
+  ['sorry-for-ur-loss', RX('\\b(outage|hotfix|on.?fire|sev[012]|p0|active incident|(is|went|going|service|site|prod|production) down|down for|broke (the )?(build|prod|production))\\b')], // drop bare incident/rollback (fired on background mentions, eval 3/3 false); LLM layer catches real incidents
   ['experimentation',   RX('\\b(experiment|spike|prototype|hypothesis|canary|rlhf|poc|playtest)\\b')],
   ['tech-debt',         RX('\\b(refactor|upgrade|migrat|deprecat|clean.?up|tech.?debt|chore|lint|rename|bump)\\b')],
   ['discovery',         RX('\\b(research|discover|explore|investigat|scope|understand|unknown)\\b')],
@@ -29,7 +30,7 @@ const WS = [
 // artifact_type enum (11) — first match wins, specific → general
 const ART = [
   ['incident-postmortem',        RX('\\b(postmortem|post.?mortem)\\b')],
-  ['bug-report',                 RX('\\b(bug|broken|crash|fails?|regression|doesn.?t work|error)\\b')],
+  ['bug-report',                 RX('(stack ?trace|traceback|\\bexception\\b|\\bthrows?\\b|crashes? (on|when|at|after)|fails? to |does(n.?t| not) work|not working|\\b[45]\\d\\d\\b|reproduc)')], // require a failure SYMPTOM not a bare bug/error mention (eval: 8/8 false on design docs); LLM layer catches the rest
   ['technical-rfc',              RX('\\b(rfc|design doc|architecture|sdd|adr)\\b')],
   ['experiment-design',          RX('\\b(experiment design|hypothesis|a/b test)\\b')],
   ['launch-plan',                RX('\\b(launch|release plan|go.?to.?market|gtm|rollout)\\b')],
