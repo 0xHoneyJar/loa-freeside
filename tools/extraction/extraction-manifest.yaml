@@ -25,12 +25,14 @@ capabilities:
     port: ResourceLedgerPort            # sealed Effect.Schema in ledger-api: getBalance/applyMutation/queryMutations
     live_paths: [cubquests apply_resource_mutation proc, activities-api RewardPort, monolith resource-balance reads]
     destination: ledger-api            # repo EXISTS but SCAFFOLD (in-memory stub; nothing deployed; no consumer)
-    phase: 4                           # do NOT build — gated on the payment-direction decision (brief D3)
+    phase: 4                           # standalone-product track (NOT this credit-ledger sprint)
     port_routed: false
     consumer_verified: false
-    status: questioned-lean-archive    # operator 2026-06-21: off-chain resource↔crypto split is a disconnect;
-                                        # lean = pure pay-per-use crypto. Archive unless a real off-chain-balance
-                                        # consumer emerges. See 2026-06-21-billing-ledger-edge-design-brief.md (D2/D3).
+    status: keep-standalone-no-bridge  # operator 2026-06-21 (refined): the regulatory cure is NO BRIDGE between
+                                        # resources and crypto — NOT killing the resource ledger. ledger-api is a
+                                        # CANDIDATE STANDALONE PRODUCT (worlds/teams wanting off-chain resource
+                                        # accounting, never converting to/from money). Keep; do not archive; do not
+                                        # bridge to credit-ledger. See 2026-06-21-billing-ledger-edge-design-brief.md (D3).
   - name: mediums-residual           # synthesis/Discord/telegram/digest/story presentation
     port: packages/core/ports/IMedium.port.ts   # introduce
     live_paths: [themes/sietch/src/packages/synthesis, packages/adapters/synthesis, themes/sietch/src/telegram]
