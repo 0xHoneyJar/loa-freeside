@@ -1,0 +1,1 @@
+../constructs/packs/the-mint/commands/character.md

@@ -1,125 +1,27 @@
-# Sprint Plan: World Container Hosting
+# Sprint Plan — Shadow Access Audit (dogfood-NFT magnet) · Sprint 1 (MVP)
 
-> **Cycle**: cycle-048
-> **PRD**: `grimoires/loa/prd.md` (World Container Hosting)
-> **SDD**: Terraform module design (architect output)
-> **Sprints**: 2 (sprint-1: Foundation + First World, sprint-2: CI + Remaining Worlds)
-> **Estimated**: 2-3 days total
+> **Cycle**: connecting-surface · traces to `grimoires/loa/sdd.md` + `prd.md` (v2.1).
+> **Branch**: feat/shadow-access-audit (worktree). **Goal**: a runnable dogfood-NFT audit on the 8 sonar collections + our roles, passing PRD §6.5 acceptance criteria. **Out of scope**: external/arbitrary contracts, shadow-mode/D4, products 2-4 (SDD §9).
 
----
+## Sprint 1 tasks (schema-first; each verifies against a PRD acceptance criterion)
 
-## Sprint 1: Foundation + First World (rektdrop)
+| ID | Task | Verification (AC) | Deps |
+|----|------|-------------------|------|
+| **S1-T1** | Sealed Zod schemas: `Order`, `AccessDecisionRecord` (`packages/protocol/shadow-audit/`) | unit: parse/reject fixtures; `band` enum stale\|missing\|ok; no numeric score field | — |
+| **S1-T2** | `SonarClient` (`packages/adapters/sonar/`): belt-gateway GraphQL; `ownershipAtBlock(collection, block)` via Transfer replay; `holderDiff(snapshot, head)` | **AC-1**: fixture collection @ known block → exact holder set; **AC-2**: date→block deterministic | T1 |
+| **S1-T3** | `ScoreProxy` (`packages/adapters/score/`): server-side proxy to score-api `/v1/wallets/:address`; circuit-breaker + timeout | **AC-6**: static key never in client payload; breaker trips under timeout | T1 |
+| **S1-T4** | `EligibilityResolver`: single-contract NFT balance-threshold band; **refuse** non-NFT/multi/LP/staked gating | **AC-3**: out-of-scope gating → typed refusal, never approximated | T1 |
+| **S1-T5** | `ModeResolver` + `RoleSnapshot`: dogfood-full vs external→refuse; snapshot freshness → uncertainty label | **AC-5**: mode deterministic; stale snapshot labels findings uncertain | T1 |
+| **S1-T6** | `AuditService`: orchestrate (date→block → ownership@block → diff → stale∩roles → bands → aggregate); pure, no member persistence | composes T2-T5; returns `{aggregate, records?, cta}` | T2,T3,T4,T5 |
+| **S1-T7** | API route (`apps/gateway`): `GET /v1/audit` (anon=aggregate, named=`AssociationVerifier` sig+community-binding); `POST /v1/audit/{reaction,contact}`; per-IP rate-limit | **AC-4**: anon never gets named wallets; named requires sig bound to community; **AC-6**: rate-limit | T6 |
+| **S1-T8** | `EventStore` (`apps/worker` migration): append-only run-events + consented contact; retention window | unit: append; consent required for contact; no member holdings stored | T1 |
+| **S1-T9** | Dashboard route (thin): public audit + reaction capture ("does this match what you expected?") + dual CTA (product + conversation) | renders aggregate; gates named behind sig; fires reaction → EventStore | T7,T8 |
 
-**Goal**: Terraform `world` module exists and rektdrop is live at `rektdrop.0xhoneyjar.xyz` on staging.
+## Sequencing
+T1 (schemas) → [T2, T3, T4, T5, T8] (parallelizable) → T6 (service) → T7 (API) → T9 (UI).
 
-### Task 1.1: Create World Module Structure
+## Definition of done (Sprint 1)
+All §6.5 acceptance criteria (AC-1..6) pass; the dogfood audit runs end-to-end against a real THJ collection (e.g. a HoneyJar) at a chosen snapshot; the static score key is server-side only; draft PR opened on feat/shadow-access-audit. **No** member-data persistence, role writes, numeric score, or external-contract support.
 
-**Files**: `infrastructure/terraform/modules/world/{main,variables,outputs}.tf`
-
-Module directory with all inputs/outputs defined. First Terraform module in the project.
-
-**AC**: Valid variable and output definitions, `terraform validate` passes.
-
-### Task 1.2: Module — ECR Repository
-
-**File**: `modules/world/ecr.tf`
-
-Repository `${var.name_prefix}-world-${var.name}` with lifecycle policy (keep last 5 images). Pattern: `ecs-finn.tf:28-78`.
-
-### Task 1.3: Module — ECS Task Definition + Service
-
-**File**: `modules/world/ecs.tf`
-
-Task def: 256 CPU/512 MB, EFS volume at `/data`, env vars (`DATABASE_PATH`, `AI_GATEWAY_URL`, `PORT`), container port 3000.
-
-Service: Fargate Spot (weight 100) with FARGATE fallback (weight 1). `min_healthy=0`, `max=100` (stop-then-start). Circuit breaker with rollback. Health check grace 60s.
-
-### Task 1.4: Module — ALB Target Group + Listener Rule
-
-**File**: `modules/world/alb.tf`
-
-Target group port 3000. Listener rule: host `${name}.0xhoneyjar.xyz`, priority from `md5(name)` hash (range 300-499). Pattern: `ecs-dixie.tf:539-585`.
-
-### Task 1.5: Module — EFS Access Point
-
-**File**: `modules/world/efs.tf`
-
-Access point path `/worlds/${name}/`, POSIX UID/GID 1000, permissions 755. Pattern: `nats.tf:253-273`.
-
-### Task 1.6: Module — IAM Roles (execution + task + CI)
-
-**File**: `modules/world/iam.tf`
-
-Execution role: ECS + Secrets Manager + KMS. Task role: EFS mount (scoped to access point ARN) + CloudWatch + ECS Exec. CI role: OIDC trust for exact repo+branch, ECR push + ECS update-service only.
-
-### Task 1.7: Module — Security Group + Logs
-
-**Files**: `modules/world/security.tf`, `modules/world/logs.tf`
-
-SG: ingress 3000 from ALB, egress 443/3000/2049. Log group: `/ecs/${prefix}/worlds/${name}`, 30 day retention.
-
-### Task 1.8: Shared Resources — World EFS + ACM Wildcard
-
-**Files**: `efs-worlds.tf`, `acm-worlds.tf`
-
-New EFS file system (encrypted, elastic throughput) with mount targets + SG. Wildcard ACM cert `*.0xhoneyjar.xyz` attached to ALB via `aws_lb_listener_certificate`.
-
-### Task 1.9: Deploy First World — rektdrop
-
-**File**: `worlds/rektdrop.tf`
-
-Module invocation. `terraform apply` on staging. Push test image. Verify ALB routing works.
-
-### Task 1.10: DNS — World Records
-
-**File**: `dns/honeyjar-xyz-worlds.tf`
-
-A-alias records for `rektdrop.0xhoneyjar.xyz` → ALB. ACM validation CNAME. Apply dns root.
-
-**AC**: `dig rektdrop.0xhoneyjar.xyz` returns ALB. HTTPS with wildcard cert works.
-
----
-
-## Sprint 2: CI + Remaining Worlds + Production
-
-**Goal**: All 3 worlds on production with automated deploys. Railway cancelled.
-
-### Task 2.1: Deploy Workflow Template
-
-**File**: `ci-templates/world-deploy.yml`
-
-GitHub Actions: OIDC → ECR build+push → ECS force-deploy → wait stability.
-
-### Task 2.2: Wire rektdrop CI
-
-Copy workflow, set secret, verify push→deploy works.
-
-### Task 2.3: Add mibera + aphive Worlds
-
-`worlds/mibera.tf`, `worlds/aphive.tf`. Same pattern. DNS records.
-
-### Task 2.4: Wire Finn AI Gateway
-
-`AI_GATEWAY_URL` env var + per-world JWT tokens in Secrets Manager. Verify inference call.
-
-### Task 2.5: SQLite Persistence Verification
-
-Write data → redeploy → verify data survives. Confirm single-task during deploy.
-
-### Task 2.6: Production Deployment
-
-Apply all terraform to production. Push images. Verify all 3 worlds at `*.0xhoneyjar.xyz`.
-
-### Task 2.7: Cancel Railway
-
-Cancel subscriptions. Update docs. $15/mo saved.
-
----
-
-## Success Metrics
-
-- [ ] 3 worlds running on Freeside (staging + production)
-- [ ] `git push` → live in <10 minutes
-- [ ] SQLite persists across deployments
-- [ ] Railway cancelled ($15/mo saved)
-- [ ] Per-world cost <$5/mo (verified via Cost Explorer)
+## Risks (from PRD §7, design-mitigated in SDD §10)
+historical-at-block (resolved — reconstructable for the 8 collections) · wrong confront-number (sealed rule + refusal) · DoS/key-leak (proxy + rate-limit) · confirm-by-construction (the interview is the falsifier, out of code scope).
