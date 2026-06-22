@@ -17,7 +17,21 @@ internal endpoint trusts the VPC-internal caller via the existing `requireIntern
 - **Do NOT modify `debitLots`** — it is payment-shared (x402 calls it) and throws on overspend + has a
   conservation-no-op structure (finding `arrakis-m45v`). The finalize path uses a NEW additive function instead.
 
-## Tasks
+## ⚠ SUPERSEDED by build-phase grounding (2026-06-21) — nothing to build
+The monolith ALREADY has the finn S2S finalize endpoint, fully hardened, wired to the
+`ICreditLedgerService` port + `ledger.finalize` + `finalizePg`:
+`themes/sietch/src/api/routes/billing-routes.ts` → `creditBillingRouter` `POST /internal/finalize`
+(= `/api/internal/billing/finalize`), with S2S-JWT auth (iss=loa-finn/aud=arrakis-internal),
+confused-deputy account-ownership check, identity-anchor verify, protocol-version compat.
+**But `creditBillingRouter` is mounted NOWHERE** (built-but-not-wired; its ledger init is never
+called at boot) → the endpoint is unreachable. That is the likely REAL "finn cure."
+- CLE-1.1 (`settleActualCost`) — CLOSED redundant (`arrakis-0825`): `finalizePg`/`ledger.finalize` exist.
+- CLE-1.2 (build the endpoint) — CLOSED redundant (`arrakis-x71h`): the endpoint exists.
+- **Real gap → `arrakis-e20y`:** mount + wire `creditBillingRouter` (small, additive) — NOT rebuild.
+  Activating it makes a money path live → OPERATOR-GATED (may be intentionally parked, mirroring billing-api).
+Original (now-redundant) task text retained below for the record.
+
+## Tasks (SUPERSEDED — see above)
 
 ### CLE-1.1 · `settleActualCost()` — additive ledger finalize (conservation + overspend) `domain:platform`
 Add a new exported function to `packages/services/credit-lot-service.ts` that settles an actual cost against a

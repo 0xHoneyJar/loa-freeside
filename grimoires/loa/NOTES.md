@@ -360,3 +360,17 @@ extraction-manifest's "ledger" capability conflated TWO distinct ledgers:
   extraction is billing-api's job (already lifted it). Operator decision: LAND billing-api (review+merge PR #1 +
   prove ONE live finalize), not a loa-freeside-side T6 parity build.
 - Manifest corrected + re-validated. T6/T7 in loa-freeside S1 are superseded by the billing-api track.
+
+### 2026-06-21 — /build → STOPPED: the finn finalize endpoint already exists (built-but-not-mounted)
+Grounding before building (CLE-1) found the build was redundant — the THIRD reinvention of this surface:
+monolith HAS it → billing-api reinvented it → I nearly reinvented it again. Caught by ground-before-code.
+- `themes/sietch/src/api/routes/billing-routes.ts` `creditBillingRouter` `POST /internal/finalize`
+  (= `/api/internal/billing/finalize`) is COMPLETE + hardened: S2S-JWT (iss=loa-finn/aud=arrakis-internal),
+  confused-deputy account-ownership check, identity-anchor verify, version-compat, ICreditLedgerService port,
+  `ledger.finalize` + `finalizePg` (overspend = BUDGET_EXCEEDED *status*, not a throw; idempotent/fence-aware).
+- BUT `creditBillingRouter` is mounted NOWHERE (only `billingRouter` @ /api/billing is) + its ledger init is
+  never called at boot → UNREACHABLE. The real "finn cure" = MOUNT + wire it (additive), not the billing-api
+  reinvention. Filed `arrakis-e20y`. Activating it = live money path → OPERATOR-GATED (verify why it's unmounted).
+- `debitLots` (payment-shared, x402) throws on overspend + has the #4 conservation-no-op structure → `arrakis-m45v`
+  (do NOT fix — NG-1). finalizePg already wraps it correctly for the finalize path.
+- CLE-1.1/1.2 beads CLOSED redundant (arrakis-0825, arrakis-x71h). sprint.md marked SUPERSEDED.
