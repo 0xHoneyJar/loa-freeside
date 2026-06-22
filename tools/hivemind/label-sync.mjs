@@ -42,7 +42,12 @@ const existing = sh(`gh label list --repo ${ORG}/${repo} --limit 300 --json name
 const norm = (l) => l.replace(/^(workstream|artifact-type|priority):\s+/i, '$1:');
 const existingNorm = new Set(existing.map(norm));
 const spaceVariants = existing.filter(l => /^(workstream|artifact-type|priority):\s+/i.test(l));
-const toCreate = canonical.filter(l => !existingNorm.has(l));
+// M3: create on EXACT absence. Normalizing space→no-space made the canonical no-space
+// label look "present" when only the space-form existed, so it was never created (and the
+// rest of the toolchain then failed to apply the no-space label). existingNorm/spaceVariants
+// stay for listing migration candidates only — never for skipping creation.
+const existingExact = new Set(existing);
+const toCreate = canonical.filter(l => !existingExact.has(l));
 // bracket labels present (the migration source) — [W]/[A]/[PR] prefixed
 const bracket = existing.filter(l => /^\[[AWP]R?\]\s/i.test(l) || /^\[(W|A|PR)\]/i.test(l));
 

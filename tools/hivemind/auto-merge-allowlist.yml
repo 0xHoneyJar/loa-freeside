@@ -45,6 +45,11 @@ allow:
 # never auto-merge dispatch/model-routing; address reviews before merging; System-Zone needs a cycle).
 exclude_paths:
   - ".claude/**"             # System Zone — hooks, skills, schemas, settings, framework
+  - "CLAUDE.md"              # H1: agent governance (root); AGENTS.md symlinks to it
+  - "AGENTS.md"
+  - "**/CLAUDE.md"
+  - "**/AGENTS.md"
+  - "decisions/**"           # H1: ADR firewall — binding ADR-007 hard rules
   - "**/dispatch/**"
   - "**/routing/**"
   - "**/*model-config*"

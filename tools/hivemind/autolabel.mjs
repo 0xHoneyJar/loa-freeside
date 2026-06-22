@@ -20,7 +20,7 @@ const RX = (s) => new RegExp(s, 'i');
 
 // workstream enum: discovery · delivery · experimentation · tech-debt · sorry-for-ur-loss
 const WS = [
-  ['sorry-for-ur-loss', RX('\\b(outage|down|hotfix|incident|on.?fire|sev[012]|p0|broke|rollback)\\b')],
+  ['sorry-for-ur-loss', RX('\\b(outage|hotfix|incident|on.?fire|sev[012]|p0|rollback|(is|went|going|service|site|prod|production) down|down for|broke (the )?(build|prod|production))\\b')], // M1: drop bare down/broke (over-matched "scroll down", "broke into subtasks")
   ['experimentation',   RX('\\b(experiment|spike|prototype|hypothesis|canary|rlhf|poc|playtest)\\b')],
   ['tech-debt',         RX('\\b(refactor|upgrade|migrat|deprecat|clean.?up|tech.?debt|chore|lint|rename|bump)\\b')],
   ['discovery',         RX('\\b(research|discover|explore|investigat|scope|understand|unknown)\\b')],
@@ -47,7 +47,9 @@ const PRI = [
   ['low',    RX('\\b(low.?priority|minor|cosmetic|nice.?to.?have|p3|someday|backlog)\\b')],
   ['medium', RX('.')], // default
 ];
-const pick = (table) => table.find(([, rx]) => rx.test(hay))[0];
+// M4: structural default (last entry) — RX('.') does NOT match a newline, so a
+// whitespace/newline-only hay would otherwise crash on undefined[0].
+const pick = (table) => (table.find(([, rx]) => rx.test(hay)) || table[table.length - 1])[0];
 const dims = { workstream: pick(WS), artifact_type: pick(ART), priority: pick(PRI) };
 if (process.argv.includes('--json')) console.log(JSON.stringify(dims));
 else console.log(`workstream:${dims.workstream} artifact-type:${dims.artifact_type} priority:${dims.priority}`);

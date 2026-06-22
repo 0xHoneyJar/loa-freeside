@@ -52,6 +52,7 @@ allowlist_match() {
     textfrag="$(printf '%s' "$textfrag" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
     reason="$(printf '%s' "$reason" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
     [ -z "$pathfrag" ] && continue
+    [ -z "$textfrag" ] && continue   # L1: require both — an empty fragment must not match-all
     if [[ "$loc" == *"$pathfrag"* && "$text" == *"$textfrag"* ]]; then
       printf '%s' "${reason:-allowlisted}"; return 0
     fi
@@ -79,11 +80,18 @@ while IFS=: read -r file line text; do
   emit HIGH "${file}:${line}" "schema-reasoning-field" "$text"
 done < <(grep -rnE '"(reasoning|thought_process|chain_of_thought|reasoning_steps|cot)"[[:space:]]*:[[:space:]]*\{' "${ROOTS[@]}" --include='*.json' 2>/dev/null || true)
 
+# HIGH (M2): same trigger in YAML output-schemas — a reasoning-class field key.
+while IFS=: read -r file line text; do
+  [ -z "${file:-}" ] && continue
+  emit HIGH "${file}:${line}" "schema-reasoning-field-yaml" "$text"
+done < <(grep -rnE '^[[:space:]]*(reasoning|thought_process|chain_of_thought|reasoning_steps):[[:space:]]*$' "${ROOTS[@]}" --include='*.yaml' --include='*.yml' 2>/dev/null || true)
+
 # HIGH: imperative prose telling the model to surface its reasoning AS output.
+# M2: extended verb set (provide/share/give/document/surface/articulate) + bare "thinking".
 while IFS=: read -r file line text; do
   [ -z "${file:-}" ] && continue
   emit HIGH "${file}:${line}" "prose-echo-reasoning" "$text"
-done < <(grep -rniE '(explain|describe|show|reproduce|transcribe|spell out|write out|output|walk (me |us )?through|include)[^.]{0,40}(your |the )?(reasoning|thought process|chain[- ]of[- ]thought|internal (reasoning|monologue|thinking))' "${ROOTS[@]}" --include='*.md' 2>/dev/null || true)
+done < <(grep -rniE '(explain|describe|show|reproduce|transcribe|spell out|write out|output|provide|share|give|document|surface|articulate|walk (me |us )?through|include)[^.]{0,40}(your |the )?(reasoning|thought process|thinking|chain[- ]of[- ]thought|internal (reasoning|monologue|thinking))' "${ROOTS[@]}" --include='*.md' 2>/dev/null || true)
 
 # MEDIUM (review): rationale/justification output-schema fields (grounds, not raw CoT).
 while IFS=: read -r file line text; do

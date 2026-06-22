@@ -38,7 +38,12 @@ for i in $(seq 0 $((n-1))); do
   title="$(printf '%s' "$issues" | jq -r ".[$i].title")"
   body="$(printf '%s' "$issues" | jq -r ".[$i].body // \"\"")"
   dims="$(ISSUE_TITLE="$title" ISSUE_BODY="$body" node "$SCRIPT_DIR/autolabel.mjs" --json 2>/dev/null)"
-  [ -z "$dims" ] && continue
+  if [ -z "$dims" ]; then
+    # M4: never silently drop — a failed classification still reaches the operator queue
+    # (the "never silently default" brake). Default to discovery/product-spec → route=operator.
+    echo "    ! #$num: classify failed — routing to operator queue" >&2
+    dims='{"workstream":"discovery","artifact_type":"product-spec","priority":"medium"}'
+  fi
   art="$(printf '%s' "$dims" | jq -r '.artifact_type')"
   ws="$(printf '%s' "$dims" | jq -r '.workstream')"
   pri="$(printf '%s' "$dims" | jq -r '.priority')"
