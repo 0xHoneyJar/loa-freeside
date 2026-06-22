@@ -91,7 +91,7 @@ done < <(grep -rnE '^[[:space:]]*(reasoning|thought_process|chain_of_thought|rea
 while IFS=: read -r file line text; do
   [ -z "${file:-}" ] && continue
   emit HIGH "${file}:${line}" "prose-echo-reasoning" "$text"
-done < <(grep -rniE '(explain|describe|show|reproduce|transcribe|spell out|write out|output|provide|share|give|document|surface|articulate|walk (me |us )?through|include)[^.]{0,40}(your |the )?(reasoning|thought process|thinking|chain[- ]of[- ]thought|internal (reasoning|monologue|thinking))' "${ROOTS[@]}" --include='*.md' 2>/dev/null || true)
+done < <(grep -rniE '(explain|describe|show|reproduce|transcribe|spell out|write out|output|provide|share|give|surface|articulate|walk (me |us )?through|include)[^.]{0,40}(your |the )?(reasoning|thought process|thinking|chain[- ]of[- ]thought|internal (reasoning|monologue|thinking))' "${ROOTS[@]}" --include='*.md' 2>/dev/null || true)
 
 # MEDIUM (review): rationale/justification output-schema fields (grounds, not raw CoT).
 while IFS=: read -r file line text; do
