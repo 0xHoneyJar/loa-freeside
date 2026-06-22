@@ -1,35 +1,196 @@
 {
   "consensus_summary": {
-    "high_consensus_count": 0,
+    "high_consensus_count": 10,
     "disputed_count": 0,
     "low_value_count": 0,
-    "blocker_count": 0,
-    "model_agreement_percent": 0,
-    "models": 2,
+    "blocker_count": 4,
+    "model_agreement_percent": 100,
+    "models": 3,
     "tertiary_items": 0,
-    "confidence": "degraded"
+    "confidence": "full"
   },
-  "high_consensus": [],
+  "high_consensus": [
+    {
+      "id": "IMP-001",
+      "description": "Deterministic input hashing is foundational for audit reproducibility, idempotency, cost controls, and event correlation. The implementation cost is modest if defined early as a canonical JSON/schema rule, and the benefit is high across several system surfaces.",
+      "gpt_score": 920,
+      "opus_score": 920,
+      "tertiary_score": 940,
+      "delta": 0,
+      "average_score": 920,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-002",
+      "description": "Transfer replay correctness is core to the product claim. Pagination, deduplication, retry, and finality behavior are not incidental details; without them the acceptance criteria are not reproducible under realistic chain conditions. This should be integrated before build or test design proceeds.",
+      "gpt_score": 950,
+      "opus_score": 910,
+      "tertiary_score": 915,
+      "delta": 40,
+      "average_score": 930,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-003",
+      "description": "ERC-1155 support requires balance semantics, not simple owner folding. If the SDD claims ERC-1155 compatibility without this contract, eligibility can be materially wrong. Clear ROI and a correctness-critical gap.",
+      "gpt_score": 970,
+      "opus_score": 895,
+      "tertiary_score": 980,
+      "delta": 75,
+      "average_score": 932.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-004",
+      "description": "Small-cohort aggregate leakage is a real privacy risk, especially for communities with few members or rare transition states. Suppression or bucketing rules are relatively cheap to specify and important for a privacy-forward audit product.",
+      "gpt_score": 830,
+      "opus_score": 930,
+      "tertiary_score": 865,
+      "delta": 100,
+      "average_score": 880,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-005",
+      "description": "The role snapshot join is central to the stale-access finding. Without an explicit source format, identity mapping, stale representation, and unmatched-holder treatment, the main confront metric is underspecified. High value and necessary for deterministic implementation.",
+      "gpt_score": 940,
+      "opus_score": 875,
+      "tertiary_score": 860,
+      "delta": 65,
+      "average_score": 907.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-006",
+      "description": "Stable refusal schemas and HTTP codes are highly valuable for product integration and dashboard behavior. It is slightly less foundational than ownership reconstruction or identity joins, but still important because refusal paths are part of the system's trust boundary.",
+      "gpt_score": 780,
+      "opus_score": 760,
+      "tertiary_score": 730,
+      "delta": 20,
+      "average_score": 770,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-007",
+      "description": "The reaction/contact endpoints cannot be reliable if the audit response omits run_id or if referenced runs are not lifecycle-validated. This is a clear API contract gap with low implementation cost and direct impact on attribution and consent capture.",
+      "gpt_score": 840,
+      "opus_score": 900,
+      "tertiary_score": 930,
+      "delta": 60,
+      "average_score": 870,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-008",
+      "description": "Named-output authorization depends on trustworthy community binding, so governance and precedence rules are important. Some implementation details may depend on operational policy, but the SDD should still define the registry schema and conflict behavior.",
+      "gpt_score": 810,
+      "opus_score": 790,
+      "tertiary_score": 695,
+      "delta": 20,
+      "average_score": 800,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-009",
+      "description": "Numeric limits for expensive upstream calls are valuable for predictable latency, spend control, and honest degraded outputs. This is close to critical, but exact limits may need empirical tuning, so the immediate integration should define configurable defaults and behavior contracts.",
+      "gpt_score": 790,
+      "opus_score": 865,
+      "tertiary_score": 885,
+      "delta": 75,
+      "average_score": 827.5,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    },
+    {
+      "id": "IMP-010",
+      "description": "Product-facing metrics need deterministic formulas for tests, longitudinal comparison, and user trust. This is high ROI because the formulas become both implementation guidance and acceptance-test fixtures, with moderate specification cost.",
+      "gpt_score": 880,
+      "opus_score": 780,
+      "tertiary_score": 855,
+      "delta": 100,
+      "average_score": 830,
+      "source": "gpt_scored",
+      "would_integrate": true,
+      "agreement": "HIGH"
+    }
+  ],
   "disputed": [],
   "low_value": [],
-  "blockers": [],
-  "degraded": true,
-  "degraded_model": "both",
-  "confidence": "degraded",
-  "degradation_reason": "no_items_to_score",
+  "blockers": [
+    {
+      "id": "SKP-001",
+      "concern": "Anonymous aggregate output may still leak sensitive wallet-level or community-level information for small holder sets.",
+      "severity": "HIGH",
+      "severity_score": 720,
+      "why_matters": "If a collection has very few holders, fields like sold_lapsed_count, newly_eligible_count, stale_access_risk_band, holder_turnover, or whale_concentration can reveal individual behavior without named records. This weakens the anon=aggregate privacy boundary.",
+      "location": "§3.3 Audit output, §5 API Contracts, §6 Privacy",
+      "recommendation": "Define minimum cohort thresholds and suppression rules for aggregate fields, including k-anonymity thresholds, rounding/bucketing, and refusal or coarse output for small collections or small stale intersections.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-001",
+      "concern": "GET-based signed access can leak authentication material and sensitive query context through logs, browser history, proxies, analytics, and referrers.",
+      "severity": "HIGH",
+      "severity_score": 720,
+      "why_matters": "The design allows `owner_wallet` and `sig` on `GET /v1/audit`; signatures may be replayable or exposed in infrastructure logs, weakening the named-output gate and creating privacy risk around audited communities.",
+      "location": "§5 API Contracts; §6 Security Architecture",
+      "recommendation": "Move named-output requests to POST, place signatures in the body or Authorization-style header, and bind signatures to a nonce, expiry, chain, contract, community, requested scope, and domain.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-002",
+      "concern": "Signature replay protection is unspecified.",
+      "severity": "HIGH",
+      "severity_score": 760,
+      "why_matters": "An EIP-191 signature bound only to community ownership can be reused indefinitely by anyone who obtains it, allowing repeated access to named wallet-level audit records without current owner intent.",
+      "location": "§2 AssociationVerifier; §6 Named-output auth",
+      "recommendation": "Define a signed message schema with nonce, issued-at, expiry, domain, chain ID, contract address, community identifier, requested output scope, and server-side nonce consumption or bounded replay cache.",
+      "source": "tertiary_skeptic"
+    },
+    {
+      "id": "SKP-003",
+      "concern": "The Transfer replay reconstruction assumes complete and correct indexed history from sonar, but the design does not define validation for missing logs, chain reorgs, pagination gaps, duplicate events, ERC-1155 batch transfers, mints/burns, or contract-specific transfer quirks.",
+      "severity": "CRITICAL",
+      "severity_score": 820,
+      "why_matters": "Incorrect ownership reconstruction directly produces wrong stale access numbers, which is the product's core claim. A silent data gap would create a confident but false audit.",
+      "location": "§4 ownership@block reconstruction, §8 AC-1",
+      "recommendation": "Add explicit reconstruction invariants and validation: expected block range coverage, pagination completeness checks, event uniqueness keys, ERC-721 vs ERC-1155 handling including TransferBatch, mint/burn semantics, reorg finality rules, and a degraded/refusal state when validation fails.",
+      "source": "tertiary_skeptic"
+    }
+  ],
+  "degraded": false,
+  "degraded_model": null,
+  "confidence": "full",
   "phase": "sdd",
   "document": "grimoires/loa/sdd.md",
   "domain": " fr 6 aggregate public",
-  "tertiary_model_used": "gemini-headless",
+  "tertiary_model_used": "grok-headless",
   "tertiary_status": "active",
   "execution": {
     "mode": "interactive",
     "mode_reason": "Default (no explicit mode specified)",
     "run_id": null
   },
-  "timestamp": "2026-06-22T17:57:37Z",
+  "timestamp": "2026-06-22T18:19:59Z",
   "metrics": {
-    "total_latency_ms": 61000,
+    "total_latency_ms": 274000,
     "cost_cents": 0,
     "cost_usd": 0
   }

@@ -114,3 +114,21 @@ No member-data persistence/new cell · no Discord role writes · no numeric scor
 - Confirm-by-construction (R-1): the API is a build/UX + dogfood instrument; falsification = the interview (out of code scope).
 - Wrong confront-number (R-6): sealed single rule + refusal + freshness label.
 - DoS/key-leak (R-7): §6 abuse controls + server-side proxy.
+
+## 11. Flatline-hardened invariants (SDD-review integrated · gpt-5.2+codex+grok, 100% agreement)
+
+**Reconstruction correctness (SKP-003 CRITICAL, IMP-002/003):** `SonarClient` MUST validate Transfer-replay: expected block-range coverage; pagination completeness (page until cursor exhausted; assert contiguity); event uniqueness key `(txHash, logIndex)` dedup; **ERC-721 = owner-fold** (from→to per tokenId) vs **ERC-1155 = BALANCE semantics** (handle `TransferBatch` + value; mint = from-zero, burn = to-zero); reorg finality (only blocks ≤ HEAD − N confirmations). Any validation failure → **degraded/refusal state**, never a silently-wrong holder set. AC-1 fixtures extend to 1155-batch, mint/burn, reorg-boundary.
+
+**Auth hardening (SKP-001, SKP-002):** named-output moves to **POST** (no signed material in URLs/logs/referrers). Signed message = `{nonce, issued_at, expiry, domain, chain_id, contract, community_id, scope}`; server **consumes the nonce** (bounded replay cache) → replay rejected; the signature binds all fields (community-binding from PRD SKP-001 too).
+
+**Aggregate privacy (SKP-001, IMP-004):** anonymous aggregate applies **k-anonymity** — a cohort (holders / stale / newly-eligible) below k (default 5) is **suppressed or bucketed** (coarse band), never an exact small count; tiny collections → coarse output or refusal.
+
+**Determinism (IMP-001, IMP-010):** `inputs_hash = sha256(JCS({chain, contract, snapshot_block, rule}))` drives idempotency + event correlation + `run_id`. All metric formulas (turnover, sold/lapsed, stale-risk band) are deterministic + documented (testable, longitudinally comparable).
+
+**Role-snapshot contract (IMP-005):** `RoleSnapshot` defines source format, wallet↔role identity mapping, unmatched-wallet handling (role-holder with no resolvable wallet = flagged, not dropped), and stale representation. Ambiguous/unmatched → surfaced, not silently excluded.
+
+**Run lifecycle (IMP-007):** the audit response ALWAYS carries `run_id`; `POST /v1/audit/{reaction,contact}` validate it exists + is within a lifecycle window (reject orphan/expired).
+
+**Refusal schema (IMP-006) + upstream limits (IMP-009):** typed `{code, reason, retryable}` + stable HTTP codes (422 unsupported-gating · 404 unindexed-contract · 429 rate-limited); explicit caps on sonar pagination + score calls per audit → honest degraded output when exceeded.
+
+**New acceptance criteria:** AC-1 extended (1155/mint-burn/reorg); AC-4 (POST + nonce-consumption); **AC-7** (k-anonymity suppression); **AC-8** (reconstruction-validation → refusal on failure).
