@@ -1,0 +1,66 @@
+# auto-merge-allowlist.yml — the ONLY PR classes the AFK routine may merge UNATTENDED.
+#
+# The Cloud Routine runs with no human prompts, so this file is the ENTIRE blast radius
+# of auto-merge. Anything not matching an ENABLED `allow` rule (and satisfying every
+# `require`) STAGES for the operator's one-click. Conservative by design.
+#
+# OPERATOR: this is the one thing to eyeball before the routine runs. The framework-churn
+# class is disabled pending your call on the .claude/loa/ exclusion collision (see below).
+version: 1
+
+# ALL of these must hold for ANY auto-merge, regardless of which allow rule matched:
+require:
+  ci_green: true             # every required check passes
+  reviews_resolved: true     # no unresolved review thread; no CRITICAL or HIGH Bridgebuilder/Fagan finding
+  gates_pass: true           # reasoning-extraction gate + path-domain-check + beads domain label present
+  no_excluded_paths: true    # the diff touches none of `exclude_paths`
+
+# A PR auto-merges only if it matches one ENABLED rule below AND satisfies every `require`.
+allow:
+  - id: dependabot-bumps
+    enabled: true
+    actor: "dependabot[bot]"
+    paths_only: ["package.json", "**/package.json", "pnpm-lock.yaml", "go.mod", "go.sum", "Cargo.toml", "Cargo.lock"]
+    note: dependency version bumps with a clean lockfile + green CI
+
+  - id: docs-typos
+    enabled: true
+    paths_only: ["**/*.md", "docs/**"]
+    max_changed_lines: 40
+    note: docs/typo-only, small, no code
+
+  - id: framework-update-churn
+    enabled: false   # <-- OPERATOR DECISION REQUIRED (see note)
+    title_pattern: '^chore\((platform|shared)/framework\): update Loa framework'
+    paths_glob: [".claude/loa/**", ".loa-version.json", "**/*.checksum"]
+    note: >
+      The #1 time-sink (38 chore:update-Loa per ~100 commits). DISABLED because it touches
+      .claude/loa/** — which `exclude_paths` blocks (System Zone). This is the framework
+      updating its OWN managed subtree via /update-loa, not an agent editing System Zone, so
+      it's arguably safe to auto-merge when CI is green + the checksum regenerated. To enable:
+      flip enabled:true AND carve ".claude/loa/**" out of exclude_paths (only that subtree).
+      Until you decide, framework-churn STAGES for one-click (still saves the prep work).
+
+# NEVER auto-merge if the diff touches ANY of these — always stage (per operator governance:
+# never auto-merge dispatch/model-routing; address reviews before merging; System-Zone needs a cycle).
+exclude_paths:
+  - ".claude/**"             # System Zone — hooks, skills, schemas, settings, framework
+  - "CLAUDE.md"              # H1: agent governance (root); AGENTS.md symlinks to it
+  - "AGENTS.md"
+  - "**/CLAUDE.md"
+  - "**/AGENTS.md"
+  - "decisions/**"           # H1: ADR firewall — binding ADR-007 hard rules
+  - "**/dispatch/**"
+  - "**/routing/**"
+  - "**/*model-config*"
+  - "**/auth/**"
+  - "**/session/**"
+  - "**/wallet/**"
+  - "**/*.schema.json"
+  - "infrastructure/**"
+  - "convex/**"
+  - "**/migrations/**"
+
+# Default posture: with only dependabot-bumps + docs-typos enabled, the routine auto-merges
+# nothing that touches application logic, contracts, auth, infra, or System Zone. Everything
+# else — including every /bug fix PR — STAGES with its review posted, for your one-click.
