@@ -48,8 +48,11 @@ export function requiredTierForDomain(domain) {
   return { posture, tier };
 }
 
-// ── run a claim under the brake (SHADOW) — the testable core ─────────────────────────────────
-export async function runShadow({ claim, bar, instrument, now, trailPath }) {
+// ── run a claim under the brake — the testable core ─────────────────────────────────────────
+// mode: 'shadow' (default — observe + trail, NEVER block) | 'enforce' (the brake BITES: throws
+// BRAKE_BLOCKED on a must-settle abstain). Default stays shadow — flipping the DEFAULT to
+// enforce in production is operator-gated; this only makes the capability exist + tested.
+export async function runShadow({ claim, bar, instrument, now, trailPath, mode = 'shadow' }) {
   const { posture, tier: requiredTier } = requiredTierForDomain(claim.domain);
   const { privateKey, publicKeyBase64 } = generateVerifierKeypair();
   const envelope = { claim, bar, instrument_id: instrument.id ?? 'deploy-commit-truth', instrument_sha: instrument.sha ?? 'deploy-commit-truth@1' };
@@ -59,7 +62,7 @@ export async function runShadow({ claim, bar, instrument, now, trailPath }) {
 
   const row = {
     ts: new Date(now * 1000).toISOString(),
-    mode: 'SHADOW',
+    mode: mode.toUpperCase(),
     claim_id: claim.id,
     domain: claim.domain,
     bar_sha: bar.sha,
@@ -68,14 +71,20 @@ export async function runShadow({ claim, bar, instrument, now, trailPath }) {
     earned_tier: decision.earned_tier,
     required_tier: decision.required_tier,
     would_proceed: decision.proceed,
-    enforced: false,                 // SHADOW: the brake observed; it did not block
+    enforced: mode === 'enforce',    // SHADOW observes; ENFORCE blocks
     reason: decision.reason,
   };
-  if (trailPath) makeTrailWriter(trailPath).write(row);
+  if (trailPath) makeTrailWriter(trailPath).write(row);  // verdict is recorded in BOTH modes
 
-  const mismatch = decision.proceed ? 0 : 1;  // 1 ⇒ in shadow the brake would have HALTed
-  const status = decision.proceed ? 'ok' : 'HALT';
-  const tile = `STATUS=${status}|SIGNAL=settle-shadow|CLAIM=${claim.domain}|TIER=${decision.earned_tier}|MISMATCH=${mismatch}|MODE=SHADOW`;
+  const mismatch = decision.proceed ? 0 : 1;  // 1 ⇒ the brake would (shadow) / did (enforce) HALT
+  const status = decision.proceed ? 'ok' : (mode === 'enforce' ? 'BLOCKED' : 'HALT');
+  const tile = `STATUS=${status}|SIGNAL=settle-shadow|CLAIM=${claim.domain}|TIER=${decision.earned_tier}|MISMATCH=${mismatch}|MODE=${mode.toUpperCase()}`;
+  // ENFORCE: a must-settle abstain BLOCKS (the brake bites). The verdict is already trailed above.
+  if (mode === 'enforce' && !decision.proceed) {
+    const err = new Error(`settle-gate BLOCKED (enforce): ${decision.reason}`);
+    err.code = 'BRAKE_BLOCKED'; err.tile = tile; err.row = row; err.decision = decision;
+    throw err;
+  }
   return { signed, decision, row, tile };
 }
 
@@ -95,21 +104,31 @@ export function gitHeadReader(cwd) {
 }
 
 // ── main: run the real claim against this freeside checkout ──────────────────────────────────
+// SHADOW by default. `--enforce` makes the brake BITE (exit non-zero on abstain) — the
+// operator-gated production flip; here it just lets you exercise the capability by hand.
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  const mode = process.argv.includes('--enforce') ? 'enforce' : 'shadow';
   const repo = join(fileURLToPath(import.meta.url), '..', '..', '..'); // freeside root
   const expected = execFileSync('git', ['rev-parse', 'origin/main'], { cwd: repo, encoding: 'utf8' }).trim();
   const { claim, bar } = deployCommitClaim(expected);
   const now = Math.floor(Date.now() / 1000);
   const instrument = new DeployCommitTruthInstrument('deploy-commit-truth@1', gitHeadReader(repo));
   const trailPath = join(process.env.SETTLE_TRAIL_DIR || tmpdir(), 'deploy-commit-truth.shadow.jsonl');
-  const { signed, decision, row, tile } = await runShadow({ claim, bar, instrument, now, trailPath });
   const { posture, tier } = requiredTierForDomain(claim.domain);
-  console.log('── freeside deploy-commit-truth · SHADOW · under the laplas brake (composes legba) ──');
-  console.log('claim     : freeside HEAD == origin/main', expected.slice(0, 12));
-  console.log('posture   :', posture, '→ requiredTier', tier);
-  console.log('verdict   :', signed.snapshot.verdict, '→ earned_tier', decision.earned_tier, '(' + (row.reason) + ')');
-  console.log('decision  :', decision.proceed ? 'PROCEED (deployed code matches the claim)' : 'ABSTAIN/HALT (shadow: observed, NOT enforced)');
-  console.log('trail row :', JSON.stringify(row));
-  console.log('trail file:', trailPath);
-  console.log(tile);
+  console.log(`── freeside deploy-commit-truth · ${mode.toUpperCase()} · under the laplas brake (composes legba) ──`);
+  console.log('claim     : freeside HEAD == origin/main', expected.slice(0, 12), '→ requiredTier', tier, `(${posture})`);
+  try {
+    const { signed, decision, row, tile } = await runShadow({ claim, bar, instrument, now, trailPath, mode });
+    console.log('verdict   :', signed.snapshot.verdict, '→ earned_tier', decision.earned_tier, '(' + row.reason + ')');
+    console.log('decision  :', decision.proceed ? 'PROCEED (deployed code matches the claim)' : 'ABSTAIN/HALT (shadow: observed, NOT enforced)');
+    console.log('trail row :', JSON.stringify(row));
+    console.log(tile);
+  } catch (e) {
+    if (e.code !== 'BRAKE_BLOCKED') throw e;
+    console.log('verdict   :', e.row.verdict, '→ earned_tier', e.decision.earned_tier);
+    console.log('decision  : BLOCKED by the brake (enforce):', e.decision.reason);
+    console.log('trail row :', JSON.stringify(e.row));
+    console.log(e.tile);
+    process.exit(1); // the brake bit — a real, ungrounded deploy claim was refused
+  }
 }
