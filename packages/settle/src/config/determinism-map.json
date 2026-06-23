@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "description": "Machine twin of the vault grounding ladder: domain glob -> posture. Unmatched -> FAIL_CLOSED (enforced in code, not here).",
+  "rules": [
+    { "glob": "auth/**", "posture": "FAIL_CLOSED" },
+    { "glob": "money/**", "posture": "FAIL_CLOSED" },
+    { "glob": "ops/**", "posture": "FAIL_CLOSED" },
+    { "glob": "deployed/**", "posture": "FAIL_CLOSED" },
+    { "glob": "onchain/**", "posture": "FAIL_CLOSED" },
+    { "glob": "release/**", "posture": "FAIL_CLOSED" },
+    { "glob": "schema/**", "posture": "VERIFY_THEN_PROCEED" },
+    { "glob": "routing/**", "posture": "VERIFY_THEN_PROCEED" },
+    { "glob": "persistence/**", "posture": "VERIFY_THEN_PROCEED" },
+    { "glob": "taste/**", "posture": "FEEDBACK_LOOP" },
+    { "glob": "feel/**", "posture": "FEEDBACK_LOOP" },
+    { "glob": "voice/**", "posture": "FEEDBACK_LOOP" },
+    { "glob": "docs/**", "posture": "FREE" },
+    { "glob": "scratch/**", "posture": "FREE" }
+  ]
+}

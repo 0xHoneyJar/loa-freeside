@@ -1,5 +1,21 @@
 # Notes
 
+## Decision Log — settle-substrate Sprint 1 (2026-06-23)
+
+- **[ACCEPTED-DEFERRED] SQLite-WAL trail → `TrailWriter` port + `AppendOnlyFileTrail`.**
+  Bead T1.5 names a "SQLite-WAL trail" (flatline SKP-001). Node 23.3 has no
+  `node:sqlite`; `better-sqlite3` is a native dep whose install is confirmation-gated
+  and can halt an autonomous run. Decision: ship the SKP-004 mechanism
+  (`O_APPEND|O_WRONLY`, atomic per <4096 B row on local POSIX fs) behind a
+  `TrailWriter` **port** so a `SqliteWalTrail` is a one-class swap without touching
+  the gate (`packages/settle/THREAT-MODEL.md` §6). The blocker text itself sanctions
+  "a dedicated writer process" as an alternative. Single-writer agent-session is the
+  MVP target; cross-process/cross-FS contention is the deferred swap.
+- **Artifact namespace:** settle cycle writes to `a2a/sprint-settle-1/` (not
+  `a2a/sprint-1/`, which is owned by the concurrent `feat/shadow-access-audit` cycle).
+- **Zero runtime deps** chosen deliberately (smaller TCB, threat A-8): JCS twin +
+  ed25519 + trail all on Node built-ins.
+
 ## Ride Session 2026-05-18 — Codebase Re-Ride
 
 The Loa rode through. Replaced 3-month-stale reality artifacts. Highlights:
