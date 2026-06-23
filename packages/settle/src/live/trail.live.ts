@@ -15,7 +15,8 @@ import { openSync, writeSync, closeSync, readFileSync, existsSync } from "node:f
 import type { TrailWriter, TrailEntry } from "../ports/trail.port.js";
 import { jcsCanonicalize } from "../lib/jcs.js";
 
-/** PIPE_BUF floor — the atomic-single-write boundary on local POSIX fs. */
+/** PIPE_BUF floor — a single write STRICTLY BELOW this to an O_APPEND fd is
+ *  atomic on local POSIX fs. Rows are rejected at/above it (the guard uses `>=`). */
 export const MAX_ROW_BYTES = 4096;
 
 export class AppendOnlyFileTrail implements TrailWriter {
@@ -23,7 +24,7 @@ export class AppendOnlyFileTrail implements TrailWriter {
 
   append(entry: TrailEntry): void {
     const bytes = Buffer.from(jcsCanonicalize(entry) + "\n", "utf8");
-    if (bytes.byteLength > MAX_ROW_BYTES) {
+    if (bytes.byteLength >= MAX_ROW_BYTES) {
       throw new RangeError(
         `AppendOnlyFileTrail: row ${bytes.byteLength}B exceeds atomic-append limit ${MAX_ROW_BYTES}B (SKP-004). ` +
           `Shorten the entry or swap to a SqliteWalTrail.`,

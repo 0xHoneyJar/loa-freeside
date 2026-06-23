@@ -45,6 +45,6 @@ export interface SignedSnapshot {
   readonly alg: "ed25519";
   /** base64 signature over the JCS-canonical bytes of `snapshot`. */
   readonly signature: string;
-  /** base64 raw (32-byte) ed25519 public key of the signer. */
+  /** base64 SPKI-DER ed25519 public key of the signer. */
   readonly public_key: string;
 }

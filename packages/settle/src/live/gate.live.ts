@@ -21,7 +21,7 @@ import type { Tier, TierStamp } from "../domain/tier.js";
 import type { PostureLevel } from "../domain/posture.js";
 import type { SignedSnapshot } from "../domain/snapshot.js";
 import { tierGte, makeTetlockForecast } from "../domain/tier.js";
-import { postureToRequiredTier, postureIsFeedbackLoop } from "../domain/posture.js";
+import { postureToRequiredTier } from "../domain/posture.js";
 import { verifySnapshotSignature } from "./snapshot-signer.live.js";
 
 export interface GateConfig {
@@ -59,16 +59,28 @@ export class SyncGate implements Gate {
     const posture = this.cfg.classifier.classify(action.domain);
     const required = postureToRequiredTier(posture);
 
-    // FEEDBACK_LOOP: taste/feel/voice — claimed-ok, never forced to settle.
-    if (postureIsFeedbackLoop(posture)) {
+    // Non-blocking postures (FEEDBACK_LOOP, FREE): claimed-ok, never forced to
+    // settle. A FEEDBACK_LOOP domain with no evidence still proceeds but emits a
+    // WARN — not a silent INFO (SDD SKP-003: missing instrument in a FEEDBACK_LOOP
+    // domain proceeds AND warns). FREE proceeds quietly and requires no snapshot.
+    if (posture === "FEEDBACK_LOOP" || posture === "FREE") {
+      const hasEvidence = this.cfg.store.getSync(action.claim.id) !== null;
+      const warn = posture === "FEEDBACK_LOOP" && !hasEvidence;
+      const reason = warn
+        ? "FEEDBACK_LOOP: missing evidence — proceeding on claimed (WARN, not silent)"
+        : posture === "FEEDBACK_LOOP"
+          ? "FEEDBACK_LOOP posture: claimed-ok, settlement not required"
+          : "FREE posture: proceed (no settlement required)";
       return this.decide({
         action, now, posture, required,
         earned: "claimed", proceed: true,
-        reason: "FEEDBACK_LOOP posture: claimed-ok, settlement not required",
-        level: "INFO", instrumentId: "none", instrumentSha: "none",
+        reason,
+        level: warn ? "WARN" : "INFO",
+        instrumentId: "none", instrumentSha: "none",
       });
     }
 
+    // Blocking postures (FAIL_CLOSED, VERIFY_THEN_PROCEED): require valid, bound evidence.
     const signed = this.cfg.store.getSync(action.claim.id);
     if (!signed) {
       // Missing evidence/instrument → abstained, never settled (fail-closed).
@@ -80,7 +92,7 @@ export class SyncGate implements Gate {
       });
     }
 
-    const policy = this.checkSnapshotPolicy(signed, now);
+    const policy = this.checkSnapshotPolicy(signed, action, now);
     if (!policy.ok) {
       return this.decide({
         action, now, posture, required,
@@ -105,8 +117,22 @@ export class SyncGate implements Gate {
     });
   }
 
-  /** Trusted-key + signature + TTL, all synchronous. */
-  private checkSnapshotPolicy(signed: SignedSnapshot, now: number): { ok: boolean; reason: string } {
+  /** Binding + trusted-key + signature + TTL, all synchronous. */
+  private checkSnapshotPolicy(
+    signed: SignedSnapshot,
+    action: GateAction,
+    now: number,
+  ): { ok: boolean; reason: string } {
+    // The snapshot is cryptographically bound to a claim + domain; enforce both
+    // (the binding fields are inside the signed bytes). Without this, a valid
+    // `settled` snapshot for a low-stakes domain replays as a skeleton key for a
+    // must-settle action sharing the claim id (confused-deputy). threat A-6.
+    if (signed.snapshot.claim_id !== action.claim.id) {
+      return { ok: false, reason: "snapshot claim_id mismatch" };
+    }
+    if (signed.snapshot.domain !== action.domain) {
+      return { ok: false, reason: "snapshot domain mismatch (cross-domain replay)" };
+    }
     if (signed.public_key !== this.cfg.trustedVerifierPublicKey) {
       return { ok: false, reason: "untrusted signer key" }; // threat A-6
     }

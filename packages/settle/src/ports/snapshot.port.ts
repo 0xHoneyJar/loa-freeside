@@ -12,7 +12,7 @@ import type { VerificationSnapshot, SignedSnapshot } from "../domain/snapshot.js
 export interface SnapshotSigner {
   /** Sign a snapshot over its JCS-canonical bytes. */
   sign(snapshot: VerificationSnapshot): SignedSnapshot;
-  /** This signer's public key (base64 raw 32-byte ed25519), for trust config. */
+  /** This signer's public key (base64 SPKI-DER ed25519), for trust config. */
   readonly publicKey: string;
 }
 

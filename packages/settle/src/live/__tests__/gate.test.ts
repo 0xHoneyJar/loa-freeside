@@ -12,6 +12,7 @@ import { Ed25519SnapshotSigner } from "../snapshot-signer.live.js";
 import { MockTrail } from "../../mock/trail.mock.js";
 import type { SignedSnapshot } from "../../domain/snapshot.js";
 import type { Tier } from "../../domain/tier.js";
+import type { Verdict } from "../../domain/claim.js";
 import { makeSnapshot } from "./_fixtures.js";
 
 function build(trustedKeyOverride?: string) {
@@ -30,7 +31,7 @@ function build(trustedKeyOverride?: string) {
     gate,
     trail,
     signer,
-    putSettled(claimId: string, domain: string, earned: Tier, opts?: { prepared_at?: number; ttl?: number; verdict?: "HELD" | "PENDING" }) {
+    putSettled(claimId: string, domain: string, earned: Tier, opts?: { prepared_at?: number; ttl?: number; verdict?: Verdict }) {
       const snap = makeSnapshot({
         claim_id: claimId,
         domain,
@@ -122,6 +123,35 @@ describe("SyncGate", () => {
     expect(h.gate.checkSync({ domain: "schema/migration", claim: { id: "c1" } }).proceed).toBe(false);
     h.putSettled("c2", "schema/migration", "pinned");
     expect(h.gate.checkSync({ domain: "schema/migration", claim: { id: "c2" } }).proceed).toBe(true);
+    // abstained never satisfies a positive required tier
+    h.putSettled("c3", "schema/migration", "abstained", { verdict: "INSUFFICIENT" });
+    expect(h.gate.checkSync({ domain: "schema/migration", claim: { id: "c3" } }).proceed).toBe(false);
+  });
+
+  it("REJECTS a settled snapshot replayed across domains (confused-deputy, threat A-6)", () => {
+    const h = build();
+    // A legitimately verifier-signed `settled` snapshot — but for a low-stakes domain.
+    h.putRaw(h.signSnapshot("c1", "docs/readme", "settled"));
+    // Replayed against a must-settle action sharing the claim id.
+    const d = h.gate.checkSync({ domain: "money/transfer", claim: { id: "c1" } });
+    expect(d.proceed).toBe(false);
+    expect(d.reason).toMatch(/domain mismatch/);
+  });
+
+  it("proceeds in a FREE domain WITHOUT requiring a snapshot", () => {
+    const h = build();
+    const d = h.gate.checkSync({ domain: "docs/readme", claim: { id: "no-snapshot" } });
+    expect(d.proceed).toBe(true);
+    expect(d.reason).toMatch(/FREE/);
+  });
+
+  it("FEEDBACK_LOOP with missing evidence proceeds but WARNs (not silent, SKP-003)", () => {
+    const h = build();
+    const d = h.gate.checkSync({ domain: "taste/vibe", claim: { id: "no-snapshot" } });
+    expect(d.proceed).toBe(true);
+    expect(d.reason).toMatch(/WARN/);
+    const last = h.trail.readAll().at(-1)!;
+    expect(last.level).toBe("WARN");
   });
 
   it("appends every decision to the trail with the right shape", () => {
