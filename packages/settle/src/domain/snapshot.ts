@@ -19,6 +19,11 @@ import type { Verdict } from "./claim.js";
 
 export const SNAPSHOT_SCHEMA = "settle.snapshot.v1" as const;
 
+/** Health of the verification chain that produced this snapshot (G-7 Fable-
+ * readiness). `degraded` = a missing voice, hash mismatch, or partial chain — a
+ * degraded chain cannot yield `settled` even if the verdict says HELD. */
+export type ChainHealth = "ok" | "degraded";
+
 /** The immutable, signable evidence record. `earned_tier` is the INDEPENDENT
  * recompute, never the producer's self-report. */
 export interface VerificationSnapshot {
@@ -32,6 +37,9 @@ export interface VerificationSnapshot {
   readonly verdict: Verdict;
   /** Independently recomputed tier (not the producer's). */
   readonly earned_tier: Tier;
+  /** Health of the chain that produced this evidence (G-7). A `degraded` chain
+   *  cannot be honored as `settled` by the gate, regardless of `earned_tier`. */
+  readonly chain_health: ChainHealth;
   /** Logical prep time (integer ppm/epoch units); injected, no Date.now in pure code. */
   readonly prepared_at: number;
   /** Validity window in the same units; the gate rejects a snapshot read after

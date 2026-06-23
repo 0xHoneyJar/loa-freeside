@@ -104,13 +104,20 @@ export class SyncGate implements Gate {
       });
     }
 
-    const earned = signed.snapshot.earned_tier;
+    // G-7: a degraded verification chain (missing voice / hash mismatch / partial
+    // chain) cannot be honored as `settled` — cap it below settled.
+    const rawEarned = signed.snapshot.earned_tier;
+    const degradedCap = signed.snapshot.chain_health === "degraded" && rawEarned === "settled";
+    const earned = degradedCap ? "pinned" : rawEarned;
     const proceed = tierGte(earned, required);
+    const reason = degradedCap
+      ? `degraded chain capped settled→pinned (G-7); ${proceed ? `pinned >= required ${required}` : `pinned < required ${required} → ABSTAIN/HALT`}`
+      : proceed
+        ? `earned ${earned} >= required ${required}`
+        : `earned ${earned} < required ${required} → ABSTAIN/HALT`;
     return this.decide({
       action, now, posture, required, earned, proceed,
-      reason: proceed
-        ? `earned ${earned} >= required ${required}`
-        : `earned ${earned} < required ${required} → ABSTAIN/HALT`,
+      reason,
       level: proceed ? "INFO" : "WARN",
       instrumentId: signed.snapshot.instrument_id,
       instrumentSha: signed.snapshot.instrument_sha,

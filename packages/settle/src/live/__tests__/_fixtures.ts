@@ -1,5 +1,5 @@
 /** Shared test builders. Not a *.test.ts file, so vitest does not run it. */
-import { SNAPSHOT_SCHEMA, type VerificationSnapshot } from "../../domain/snapshot.js";
+import { SNAPSHOT_SCHEMA, type VerificationSnapshot, type ChainHealth } from "../../domain/snapshot.js";
 import type { Tier } from "../../domain/tier.js";
 import type { Verdict, ClaimInput, Bar, VerdictEnvelope } from "../../domain/claim.js";
 import type { SettleInstrument, InstrumentResult } from "../../ports/settle-instrument.port.js";
@@ -14,6 +14,7 @@ export interface SnapshotOpts {
   instrument_id?: string;
   instrument_sha?: string;
   bar_sha?: string;
+  chain_health?: ChainHealth;
 }
 
 export function makeSnapshot(o: SnapshotOpts): VerificationSnapshot {
@@ -26,6 +27,7 @@ export function makeSnapshot(o: SnapshotOpts): VerificationSnapshot {
     instrument_sha: o.instrument_sha ?? "inst-sha-1",
     verdict: o.verdict ?? "HELD",
     earned_tier: o.earned_tier,
+    chain_health: o.chain_health ?? "ok",
     prepared_at: o.prepared_at ?? 1000,
     ttl: o.ttl ?? 1000,
   };
