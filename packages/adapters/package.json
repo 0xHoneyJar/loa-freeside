@@ -93,6 +93,7 @@
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
+    "test:live": "SONAR_LIVE=1 vitest run sonar/__tests__/sonar-client.live.test.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "clean": "rm -rf dist",
