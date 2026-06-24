@@ -53,24 +53,67 @@ export interface TransferPageArgs {
 export type TransferPageFetcher = (args: TransferPageArgs) => Promise<TransferEvent[]>;
 
 /**
- * Wire row → TransferEvent. The belt-gateway field names below match the
- * [OBSERVED] Transfer entity {blockNumber, collection, from, to, tokenId};
- * `logIndex`, `txHash` and `value` are [ASSUMPTION] pending live-schema
- * confirmation. Row validation makes a schema drift a LOUD failure (the audit
- * refuses) rather than a silent mis-map.
+ * Wire row → TransferEvent, VERIFIED against the live belt-gateway 2026-06-23
+ * (GraphQL introspection + sample rows). The served Transfer type is
+ * { id, blockNumber, chainId, collection, from, timestamp, to, tokenId,
+ *   transactionHash }. Three corrections vs the prior [ASSUMPTION] mapping
+ * (which 400'd against live — `field 'logIndex' not found in type 'Transfer'`):
+ *   - the tx hash is exposed as `transactionHash`, not `txHash`;
+ *   - there is NO `logIndex` column — it is recoverable from the row id, which
+ *     is `<transactionHash>_<logIndex>` (e.g. `0xabc…_80`);
+ *   - there is NO `value` column. ERC-721 needs none; ERC-1155 reconstruction
+ *     refuses loudly on missing value (fold1155), which is correct until sonar
+ *     exposes a per-transfer amount.
+ * Hasura also serializes the `numeric` blockNumber as a STRING. Row validation
+ * makes a schema drift a LOUD failure (the audit refuses) rather than a silent
+ * mis-map.
  */
-const TransferRowSchema = z.object({
-  blockNumber: z.number().int().nonnegative(),
-  logIndex: z.number().int().nonnegative(),
-  txHash: z.string().min(1),
-  from: z.string(),
-  to: z.string(),
-  tokenId: z.union([z.string(), z.number()]).transform(String),
-  value: z
-    .union([z.string(), z.number()])
-    .nullish()
-    .transform((v) => (v == null ? undefined : String(v))),
-});
+const TransferRowSchema = z
+  .object({
+    id: z.string().min(1),
+    blockNumber: z.union([z.string(), z.number()]),
+    transactionHash: z.string().min(1),
+    from: z.string(),
+    to: z.string(),
+    tokenId: z.union([z.string(), z.number()]),
+  })
+  .transform((r, ctx): TransferEvent => {
+    // Validate the RAW decimal string before Number() — Number() silently parses
+    // hex (`0x…` addresses → a huge integer that passes Number.isInteger), empty
+    // (`''`→0), scientific (`1e3`), binary/octal, and whitespace. The live Transfer
+    // table already contains non-`_<decimal>` ids (e.g. crayons writes
+    // `${txHash}_crayons_factory_${address}`), so a lax guard would mis-derive a
+    // garbage logIndex instead of the advertised LOUD refusal.
+    const blockStr = String(r.blockNumber);
+    if (!/^\d+$/.test(blockStr)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `belt-gateway: non-decimal blockNumber '${r.blockNumber}'` });
+      return z.NEVER;
+    }
+    const blockNumber = Number(blockStr);
+    if (!Number.isSafeInteger(blockNumber)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `belt-gateway: blockNumber out of safe-integer range '${r.blockNumber}'` });
+      return z.NEVER;
+    }
+    const logIndexStr = r.id.slice(r.id.lastIndexOf('_') + 1);
+    if (!/^\d+$/.test(logIndexStr)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `belt-gateway: Transfer id '${r.id}' does not end in _<decimal logIndex> — cannot derive logIndex` });
+      return z.NEVER;
+    }
+    const logIndex = Number(logIndexStr);
+    if (!Number.isSafeInteger(logIndex)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `belt-gateway: derived logIndex out of safe-integer range from id '${r.id}'` });
+      return z.NEVER;
+    }
+    return {
+      blockNumber,
+      logIndex,
+      txHash: r.transactionHash,
+      from: r.from,
+      to: r.to,
+      tokenId: String(r.tokenId),
+      // value omitted — belt-gateway Transfer has no per-transfer amount (see header).
+    };
+  });
 
 export const defaultTransferPageFetcher: TransferPageFetcher = async ({
   endpoint,
@@ -80,20 +123,24 @@ export const defaultTransferPageFetcher: TransferPageFetcher = async ({
   offset,
   timeoutMs,
 }) => {
-  const query = `query Transfers($c: String!, $lte: Int!, $limit: Int!, $offset: Int!) {
+  // $lte is `numeric!` (NOT Int!) — blockNumber is a Hasura numeric column and a
+  // numeric `_lte` argument rejects an Int! variable. order_by uses `id` (stable,
+  // exists) rather than the absent `logIndex`; reconstructOwnership re-sorts by
+  // numeric (blockNumber, logIndex, tokenId) internally, so the wire order only
+  // needs to be deterministic for offset pagination.
+  const query = `query Transfers($c: String!, $lte: numeric!, $limit: Int!, $offset: Int!) {
   Transfer(
     where: { collection: { _eq: $c }, blockNumber: { _lte: $lte } }
-    order_by: { blockNumber: asc, logIndex: asc }
+    order_by: { blockNumber: asc, id: asc }
     limit: $limit
     offset: $offset
   ) {
+    id
     blockNumber
-    logIndex
-    txHash
+    transactionHash
     from
     to
     tokenId
-    value
   }
 }`;
   const controller = new AbortController();
@@ -115,7 +162,7 @@ export const defaultTransferPageFetcher: TransferPageFetcher = async ({
   }
   const envelope = z
     .object({
-      data: z.object({ Transfer: z.array(z.unknown()) }).optional(),
+      data: z.object({ Transfer: z.array(z.unknown()) }).nullish(),
       errors: z.array(z.unknown()).optional(),
     })
     .parse(body);
