@@ -414,3 +414,108 @@ class TestEmitEnvelopeWithStatus:
         assert out["rationale"] == "custom rationale text"
         assert out["voices_planned"] == 3
         assert out["consensus_outcome"] == "consensus"
+
+
+# ---------------------------------------------------------------------------
+# Consensus honesty — a degenerate chain cannot have reached "consensus"
+# (arrakis-verdict-consensus-lie-qzo4). The verdict emitter was stamping
+# consensus_outcome="consensus" on 0-voice / exhausted chains, observed live
+# in .run/model-invoke.jsonl: {voices_succeeded:0, chain_health:"exhausted",
+# status:"FAILED", consensus_outcome:"consensus"}. status was honest but the
+# consensus field lied — dangerous for any consumer that keys off consensus
+# (e.g. Flatline HIGH_CONSENSUS auto-integrate) rather than status.
+# ---------------------------------------------------------------------------
+
+
+def _degenerate_envelope(**overrides):
+    """A zero-voice / exhausted single-voice envelope mirroring the live
+    MODELINV failure shape. INV-6: len(voices_dropped) == planned - succeeded."""
+    env = {
+        "consensus_outcome": "consensus",
+        "truncation_waiver_applied": False,
+        "voices_planned": 1,
+        "voices_succeeded": 0,
+        "voices_succeeded_ids": [],
+        "voices_dropped": [
+            _dropped("claude-headless", reason="RetriesExhausted",
+                     exit_code=1, blocker_risk="unknown"),
+        ],
+        "chain_health": "exhausted",
+        "confidence_floor": "low",
+        "rationale": "single-voice cheval invoke; chain exhausted after 1/1",
+    }
+    env.update(overrides)
+    return env
+
+
+class TestConsensusHonesty:
+    def test_zero_voices_is_not_consensus(self):
+        """The live-MODELINV lie: 0 voices succeeded but consensus stamped."""
+        from loa_cheval.verdict.quality import emit_envelope_with_status
+        out = emit_envelope_with_status(_degenerate_envelope())
+        assert out["status"] == "FAILED"
+        assert out["consensus_outcome"] == "impossible", (
+            "a 0-voice/exhausted chain reached no consensus; the honest "
+            "in-vocabulary value is 'impossible' (→ FAILED), not 'consensus'"
+        )
+
+    def test_exhausted_multi_voice_is_not_consensus(self):
+        """All 3 voices dropped → exhausted → consensus is a lie."""
+        from loa_cheval.verdict.quality import emit_envelope_with_status
+        env = _degenerate_envelope(
+            voices_planned=3,
+            voices_dropped=[
+                _dropped("opus", reason="RetriesExhausted"),
+                _dropped("gpt-5.5-pro", reason="RetriesExhausted"),
+                _dropped("gemini-3.1-pro", reason="RetriesExhausted"),
+            ],
+        )
+        out = emit_envelope_with_status(env)
+        assert out["status"] == "FAILED"
+        assert out["consensus_outcome"] == "impossible"
+
+    def test_single_voice_success_stays_consensus(self):
+        """Guard against over-correction: 1/1 success is honest consensus."""
+        from loa_cheval.verdict.quality import emit_envelope_with_status
+        env = {
+            "consensus_outcome": "consensus",
+            "truncation_waiver_applied": False,
+            "voices_planned": 1,
+            "voices_succeeded": 1,
+            "voices_succeeded_ids": ["claude-headless"],
+            "voices_dropped": [],
+            "chain_health": "ok",
+            "confidence_floor": "high",
+            "rationale": "single-voice success",
+        }
+        out = emit_envelope_with_status(env)
+        assert out["status"] == "APPROVED"
+        assert out["consensus_outcome"] == "consensus"
+
+    def test_partial_success_keeps_consensus(self):
+        """2/3 succeeded (degraded but real) keeps consensus semantics."""
+        from loa_cheval.verdict.quality import emit_envelope_with_status
+        env = _baseline_envelope(
+            voices_succeeded=2,
+            voices_succeeded_ids=["opus", "gemini-3.1-pro"],
+            voices_dropped=[_dropped("gpt-5.5-pro")],
+            chain_health="degraded",
+            confidence_floor="med",
+        )
+        out = emit_envelope_with_status(env)
+        assert out["status"] == "DEGRADED"
+        assert out["consensus_outcome"] == "consensus"
+
+
+class TestClassifyConsensusZeroVoices:
+    def test_zero_voices_classifies_impossible(self):
+        """The pure classifier must not call a no-voice chain 'consensus'."""
+        from loa_cheval.verdict.consensus import classify_consensus
+        assert classify_consensus({"voices_succeeded": 0}, []) == "impossible"
+
+    def test_single_voice_classifies_consensus(self):
+        from loa_cheval.verdict.consensus import classify_consensus
+        out = classify_consensus(
+            {"voices_succeeded": 1}, [[{"severity": "HIGH"}]]
+        )
+        assert out == "consensus"

@@ -114,6 +114,14 @@ def classify_consensus(
       location from another voice.
     """
     voices_succeeded = int(envelope.get("voices_succeeded") or 0)
+    # arrakis-verdict-consensus-lie-qzo4: a chain where NO voice succeeded
+    # reached no agreement at all — calling that "consensus" is a lie. The
+    # honest in-vocabulary value is "impossible" (compute_verdict_status maps
+    # it to FAILED, which a 0-voice chain already is). Distinct from the
+    # single-voice case below, which IS honest (degenerate) consensus: one
+    # voice cannot contradict itself.
+    if voices_succeeded == 0:
+        return _OUTCOME_IMPOSSIBLE
     if voices_succeeded < 2:
         return _OUTCOME_CONSENSUS
 

@@ -52,12 +52,19 @@ def _finding(severity: str, file_path: str = "src/app.py",
 # ---------------------------------------------------------------------------
 
 
-def test_zero_succeeded_returns_consensus():
-    """voices_succeeded=0: no findings to compare — trivially 'consensus'."""
+def test_zero_succeeded_returns_impossible():
+    """voices_succeeded=0: NO voice produced a verdict, so there is no
+    agreement to report. arrakis-verdict-consensus-lie-qzo4 — the earlier
+    "no findings to compare → trivially consensus" reading produced a
+    downstream lie (consensus_outcome="consensus" stamped on 0-voice/FAILED
+    chains, observed live in .run/model-invoke.jsonl). The honest
+    in-vocabulary value is "impossible" (→ compute_verdict_status → FAILED,
+    which a 0-voice chain already is). One-voice success below is distinct
+    and remains honest consensus."""
     from loa_cheval.verdict.consensus import classify_consensus
 
     env = _envelope_for(voices_succeeded=0)
-    assert classify_consensus(env, []) == "consensus"
+    assert classify_consensus(env, []) == "impossible"
 
 
 def test_one_succeeded_returns_consensus():
