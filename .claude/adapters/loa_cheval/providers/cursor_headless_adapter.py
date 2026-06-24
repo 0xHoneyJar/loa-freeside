@@ -49,15 +49,19 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
+import tempfile
 import time
 from typing import Any, Dict, List, Optional
 
 from loa_cheval.providers.base import (
     ProviderAdapter,
+    SubprocessOutputCapExceeded,
     build_headless_subprocess_env,
     enforce_context_window,
+    run_subprocess_pgkill,
 )
 from loa_cheval.types import (
     CompletionRequest,
@@ -115,7 +119,7 @@ class CursorHeadlessAdapter(ProviderAdapter):
         enforce_context_window(request, model_config)
 
         prompt = self._build_prompt(request.messages)
-        cmd = self._build_command(request, model_config, prompt)
+        cmd = self._build_command(request, model_config)
         timeout_s = self._compute_timeout()
         # Cycle-110 sprint-2b2b1 BB iter-2 F-001 closure: read per-model
         # headless_concurrency_limit (cycle-110 ModelConfig field). Default 50
@@ -136,35 +140,59 @@ class CursorHeadlessAdapter(ProviderAdapter):
             acquire_slot as _acquire_slot,
         )
 
+        # #966 round-4 (HIGH_CONSENSUS) + #982: run cursor-agent in a FRESH empty
+        # workspace (defense-in-depth — `ask` mode is read-only, but an isolated
+        # cwd mirrors codex's `-C <workspace>` untrusted-prompt posture) and
+        # dispatch through the process-group-killing helper so a timeout reaps the
+        # WHOLE cursor-agent tree instead of orphaning it (the #982 fix codex got
+        # but this adapter missed). The prompt rides STDIN (input=prompt), never
+        # argv — cursor-agent reads stdin (verified), so a 200K-token prompt can't
+        # blow ARG_MAX or leak into the process command line.
+        workspace: Optional[str] = None
         start = time.monotonic()
         try:
+            try:
+                workspace = tempfile.mkdtemp(prefix="loa-cursor-ws-")
+            except OSError as exc:
+                raise ConfigError(
+                    f"cursor-headless: failed to create isolated workspace: {exc}"
+                ) from exc
             with _acquire_slot("cursor-headless", n_slots=n_slots):
                 try:
-                    proc = subprocess.run(
+                    proc = run_subprocess_pgkill(
                         cmd,
-                        capture_output=True,
-                        text=True,
+                        input=prompt,
                         timeout=timeout_s,
-                        check=False,
-                        # cursor-agent's `--print` flag consumes the prompt
-                        # argument directly. Keep stdin closed so the CLI never
-                        # blocks waiting for piped input in some shells.
-                        stdin=subprocess.DEVNULL,
                         # Symmetric with codex / gemini (#879 / #880): strip
                         # API-key auth vars so the CLI uses its own login
                         # session, not an ambient API key.
                         env=build_headless_subprocess_env(),
+                        cwd=workspace,
                     )
                 except subprocess.TimeoutExpired:
                     raise ProviderUnavailableError(
                         self.provider,
                         f"cursor-agent --print timed out after {timeout_s:.0f}s",
                     )
+                except SubprocessOutputCapExceeded as exc:
+                    # Truncated output must never masquerade as success — the cap
+                    # is a provider failure so the chain advances (codex parity).
+                    raise ProviderUnavailableError(
+                        self.provider, f"cursor-agent {exc}",
+                    ) from exc
                 except FileNotFoundError as exc:
                     raise ConfigError(
                         f"cursor-agent CLI not found on PATH (set CURSOR_HEADLESS_BIN "
                         f"to override). Install from https://cursor.com/cli. "
                         f"Original: {exc}"
+                    ) from exc
+                except OSError as exc:
+                    # A spawn-level OSError (permission, exec-format, ENOMEM) is a
+                    # provider availability problem, not a config error — let the
+                    # chain advance. FileNotFoundError (a missing binary, an
+                    # OSError subclass) is handled above as ConfigError.
+                    raise ProviderUnavailableError(
+                        self.provider, f"cursor-agent failed to spawn: {exc}",
                     ) from exc
         except _SemaphoreExhausted as exc:
             raise ProviderUnavailableError(
@@ -173,6 +201,9 @@ class CursorHeadlessAdapter(ProviderAdapter):
                 f"exhausted after {exc.waited_seconds:.1f}s "
                 f"(n_slots={exc.n_slots})",
             ) from exc
+        finally:
+            if workspace is not None:
+                shutil.rmtree(workspace, ignore_errors=True)
 
         latency_ms = int((time.monotonic() - start) * 1000)
 
@@ -183,25 +214,56 @@ class CursorHeadlessAdapter(ProviderAdapter):
         # when there is no parseable JSON result.
         parsed: Optional[Dict[str, Any]] = None
         if proc.stdout and proc.stdout.strip():
-            try:
-                parsed = json.loads(proc.stdout)
-            except json.JSONDecodeError:
-                parsed = None
+            # cursor-agent emits a SINGLE {"type":"result",...} envelope, but may
+            # PREPEND non-result log lines (e.g. {"level":"warn",...} or a node
+            # ExperimentalWarning). Scan for the RESULT line so a log line cannot
+            # shadow it; a stdout carrying ONLY log lines (no result) leaves
+            # parsed=None and is treated as a failure, never an empty success.
+            for line in proc.stdout.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(obj, dict) and obj.get("type") == "result":
+                    parsed = obj
+                    break
 
         if proc.returncode != 0 or (parsed and parsed.get("is_error")):
             self._raise_for_error(
                 returncode=proc.returncode,
                 stderr=proc.stderr or "",
                 parsed=parsed,
+                stdout=proc.stdout or "",
             )
 
         if parsed is None:
-            # Exit 0 but no JSON — the trust/model/auth diagnostics land here.
+            # Exit 0 but no result envelope — trust/model/auth diagnostics AND
+            # transport errors cursor writes to stdout (resource_exhausted) land
+            # here; the raw stdout is the diagnostic.
             self._raise_for_error(
                 returncode=proc.returncode,
                 stderr=proc.stderr or "",
                 parsed=None,
+                stdout=proc.stdout or "",
             )
+
+        # Transport-probe safety (the silencing-attack regression): a rate-limit
+        # / transport error on STDERR means the call was THROTTLED even if cursor
+        # still emitted a result envelope — back the chain off rather than accept
+        # a partial result. The result's own usage/metadata is NOT scanned (a
+        # token count like 4290 must never masquerade as a 429); only a standalone
+        # 429 status / explicit rate-limit phrasing on stderr counts.
+        stderr_l = (proc.stderr or "").lower()
+        if (
+            re.search(r"\b429\b", proc.stderr or "")
+            or "rate limit" in stderr_l
+            or "resource_exhausted" in stderr_l
+            or "too many requests" in stderr_l
+        ):
+            raise RateLimitError(self.provider)
 
         return self._parse_json_output(
             parsed=parsed,
@@ -259,9 +321,10 @@ class CursorHeadlessAdapter(ProviderAdapter):
         self,
         request: CompletionRequest,
         model_config,
-        prompt: str,
     ) -> List[str]:
-        """Build the cursor-agent argv. Headless, read-only ask-mode, trusted."""
+        """Build the cursor-agent argv (flags only — the prompt rides STDIN, not
+        argv, so a 200K-token prompt can't blow ARG_MAX or leak into the process
+        command line). Headless, read-only ask-mode, trusted."""
         # cycle-104 sprint-2 T2.11 amendment (mirrored): honor `extra.cli_model`
         # so a kind:cli alias (`cursor-headless`) translates to the real cursor
         # model id the CLI binary expects (the CLI doesn't recognize the Loa
@@ -273,11 +336,17 @@ class CursorHeadlessAdapter(ProviderAdapter):
             "--output-format",
             "json",
             "--mode",
-            "ask",                     # read-only Q&A; no edits, no shell exec
+            "plan",                    # read-only/planning: analyze + propose, no edits
+            "--sandbox",
+            "enabled",                 # sandboxed even under --trust (defense-in-depth,
+                                       # matching gemini --approval-mode plan / codex
+                                       # --sandbox read-only). Verified: the full flag
+                                       # set dispatches over stdin (2026-06-24).
             "--trust",                 # required: --print refuses untrusted workspaces
             "--model",
             cli_model,
-            prompt,                    # positional prompt (last arg)
+            # No positional prompt: cursor-agent reads it from STDIN (complete()
+            # passes input=prompt to run_subprocess_pgkill).
         ]
 
         # Forward additional cursor-agent flags an operator may need but we
@@ -286,15 +355,13 @@ class CursorHeadlessAdapter(ProviderAdapter):
         extra = (model_config.extra or {})
         extra_flags = extra.get("cursor_extra_flags")
         if isinstance(extra_flags, list):
-            # Insert before the positional prompt so flags stay flag-shaped.
-            insert_at = len(cmd) - 1
-            forwarded: List[str] = []
+            # Append the forwarded flags — there is no positional prompt to keep
+            # them ahead of (the prompt rides STDIN now).
             for entry in extra_flags:
                 if isinstance(entry, str):
-                    forwarded.append(entry)
+                    cmd.append(entry)
                 elif isinstance(entry, list):
-                    forwarded.extend(str(x) for x in entry)
-            cmd[insert_at:insert_at] = forwarded
+                    cmd.extend(str(x) for x in entry)
 
         return cmd
 
@@ -376,19 +443,28 @@ class CursorHeadlessAdapter(ProviderAdapter):
         session_id = parsed.get("session_id")
         content = (parsed.get("result") or "").strip("\n")
 
+        # Coerce usage fields defensively: cursor may emit a non-int (a string
+        # like "oops", or null) on a malformed/partial envelope — int() would
+        # crash, turning a recoverable parse into a hard failure.
+        def _int0(v: Any) -> int:
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return 0
+
         usage_data = parsed.get("usage") or {}
         usage = Usage(
-            input_tokens=int(usage_data.get("inputTokens") or 0),
-            output_tokens=int(usage_data.get("outputTokens") or 0),
+            input_tokens=_int0(usage_data.get("inputTokens")),
+            output_tokens=_int0(usage_data.get("outputTokens")),
             # Cursor does not surface a separate reasoning-token field.
             reasoning_tokens=0,
             source="actual" if usage_data else "estimated",
         )
 
         metadata: Dict[str, Any] = {}
-        cached = usage_data.get("cacheReadTokens")
+        cached = _int0(usage_data.get("cacheReadTokens"))
         if cached:
-            metadata["cached_tokens"] = int(cached)
+            metadata["cached_tokens"] = cached
         request_id = parsed.get("request_id")
         if request_id:
             metadata["request_id"] = request_id
@@ -405,7 +481,7 @@ class CursorHeadlessAdapter(ProviderAdapter):
             tool_calls=None,
             thinking=None,
             usage=usage,
-            model=requested_model,
+            model=parsed.get("model") or requested_model,
             latency_ms=latency_ms,
             provider=self.provider,
             interaction_id=session_id,
@@ -421,10 +497,15 @@ class CursorHeadlessAdapter(ProviderAdapter):
         returncode: int,
         stderr: str,
         parsed: Optional[Dict[str, Any]],
+        stdout: str = "",
     ) -> None:
         """Map cursor failure (subprocess, stderr diagnostic, or is_error JSON) to typed cheval error."""
         # Prefer a structured JSON error message when present; otherwise the
-        # plain-text stderr diagnostic (trust / model / auth all land here).
+        # plain-text diagnostic. cursor-agent surfaces transport errors
+        # (ConnectError / [resource_exhausted]) on STDOUT with a ZERO exit code
+        # and a non-JSON body, so the diagnostic must include stdout — checking
+        # stderr alone misses them and mis-classifies a rate-limit as a generic
+        # failure (the chain then can't react correctly).
         if parsed and parsed.get("is_error"):
             full_diag = str(
                 parsed.get("result")
@@ -433,7 +514,10 @@ class CursorHeadlessAdapter(ProviderAdapter):
                 or "cursor-agent reported is_error"
             )
         else:
-            full_diag = stderr.strip() or f"exit code {returncode}"
+            full_diag = (
+                (stderr.strip() + " " + stdout.strip()).strip()
+                or f"exit code {returncode}"
+            )
 
         diag_lower = full_diag.lower()
 
@@ -448,10 +532,12 @@ class CursorHeadlessAdapter(ProviderAdapter):
                 f"(diagnostic: {full_diag[:300]})"
             )
 
-        # Rate-limit / quota
+        # Rate-limit / quota. Match 429 as a STANDALONE token (HTTP status), not
+        # a substring — "429ms" (a latency) and "4290" (a token count) must not
+        # masquerade as a rate limit (the transport-probe-safety regression).
         if (
             "rate limit" in diag_lower
-            or "429" in full_diag
+            or re.search(r"\b429\b", full_diag)
             or "quota" in diag_lower
             or "too many requests" in diag_lower
             or "resource_exhausted" in diag_lower
@@ -472,7 +558,22 @@ class CursorHeadlessAdapter(ProviderAdapter):
                 f"(Auth file: {_CURSOR_CONFIG_FILE}; diagnostic: {full_diag[:300]})"
             )
 
+        # Final fallback — nothing specific matched, but this is STILL a failure;
+        # the chain must advance, never a silent pass. Name the shape so the
+        # cause is legible (and so transport-probe-safety regressions stay
+        # distinguishable): an is_error envelope vs. no parseable result at all.
         snippet = full_diag[:500] or f"exit code {returncode}, no diagnostic"
+        if parsed is not None and parsed.get("is_error"):
+            raise ProviderUnavailableError(
+                self.provider,
+                f"cursor-agent reported is_error (exit {returncode}): {snippet}",
+            )
+        if parsed is None:
+            raise ProviderUnavailableError(
+                self.provider,
+                f"cursor-agent produced no parseable JSON result "
+                f"(exit {returncode}): {snippet}",
+            )
         raise ProviderUnavailableError(
             self.provider,
             f"cursor-agent --print failed (exit {returncode}): {snippet}",
