@@ -135,4 +135,24 @@ describe('defaultTransferPageFetcher — live belt-gateway wire-mapping (regress
       defaultTransferPageFetcher({ endpoint: 'x', collection: 'c', lteBlock: 1, limit: 1, offset: 0, timeoutMs: 5000 }),
     ).rejects.toBeTruthy();
   });
+
+  // The Number() trap (FAGAN review): an id suffix that is a hex address parses to a
+  // huge integer that passes Number.isInteger — it MUST be refused, not silently
+  // mis-derived. crayons writes `${txHash}_crayons_factory_${address}` ids today.
+  it.each([
+    ['address suffix (crayons_factory)', '0xabc_crayons_factory_0x' + 'd'.repeat(40)],
+    ['empty suffix', '0xabc_'],
+    ['scientific suffix', '0xabc_1e3'],
+  ])('refuses an id with a non-decimal logIndex suffix: %s', async (_label, id) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ data: { Transfer: [{ id, blockNumber: '1', transactionHash: '0xabc', from: A, to: B, tokenId: '1' }] } }),
+      })),
+    );
+    await expect(
+      defaultTransferPageFetcher({ endpoint: 'x', collection: 'c', lteBlock: 1, limit: 1, offset: 0, timeoutMs: 5000 }),
+    ).rejects.toBeTruthy();
+  });
 });

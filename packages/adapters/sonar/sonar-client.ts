@@ -78,14 +78,30 @@ const TransferRowSchema = z
     tokenId: z.union([z.string(), z.number()]),
   })
   .transform((r, ctx): TransferEvent => {
-    const blockNumber = Number(r.blockNumber);
-    if (!Number.isInteger(blockNumber) || blockNumber < 0) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `belt-gateway: non-integer blockNumber '${r.blockNumber}'` });
+    // Validate the RAW decimal string before Number() — Number() silently parses
+    // hex (`0x…` addresses → a huge integer that passes Number.isInteger), empty
+    // (`''`→0), scientific (`1e3`), binary/octal, and whitespace. The live Transfer
+    // table already contains non-`_<decimal>` ids (e.g. crayons writes
+    // `${txHash}_crayons_factory_${address}`), so a lax guard would mis-derive a
+    // garbage logIndex instead of the advertised LOUD refusal.
+    const blockStr = String(r.blockNumber);
+    if (!/^\d+$/.test(blockStr)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `belt-gateway: non-decimal blockNumber '${r.blockNumber}'` });
       return z.NEVER;
     }
-    const logIndex = Number(r.id.slice(r.id.lastIndexOf('_') + 1));
-    if (!Number.isInteger(logIndex) || logIndex < 0) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `belt-gateway: cannot derive logIndex from Transfer id '${r.id}'` });
+    const blockNumber = Number(blockStr);
+    if (!Number.isSafeInteger(blockNumber)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `belt-gateway: blockNumber out of safe-integer range '${r.blockNumber}'` });
+      return z.NEVER;
+    }
+    const logIndexStr = r.id.slice(r.id.lastIndexOf('_') + 1);
+    if (!/^\d+$/.test(logIndexStr)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `belt-gateway: Transfer id '${r.id}' does not end in _<decimal logIndex> — cannot derive logIndex` });
+      return z.NEVER;
+    }
+    const logIndex = Number(logIndexStr);
+    if (!Number.isSafeInteger(logIndex)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `belt-gateway: derived logIndex out of safe-integer range from id '${r.id}'` });
       return z.NEVER;
     }
     return {
@@ -146,7 +162,7 @@ export const defaultTransferPageFetcher: TransferPageFetcher = async ({
   }
   const envelope = z
     .object({
-      data: z.object({ Transfer: z.array(z.unknown()) }).optional(),
+      data: z.object({ Transfer: z.array(z.unknown()) }).nullish(),
       errors: z.array(z.unknown()).optional(),
     })
     .parse(body);
