@@ -1,0 +1,22 @@
+{
+  "name": "@freeside/dune-meter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cost-aware Dune adapter — estimate (probe heuristic) / run (cost-capped + CostAtom) / budget. The EXP-002 budget-blowout, made structurally impossible. Zero-dependency core; Asson-graduatable CLI.",
+  "bin": {
+    "dune-meter": "bin/dune-meter.mjs"
+  },
+  "exports": {
+    "./cost-atom": "./src/cost-atom.mjs",
+    "./budget-ledger": "./src/budget-ledger.mjs",
+    "./estimate": "./src/estimate.mjs",
+    "./dune-client": "./src/dune-client.mjs"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
