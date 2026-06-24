@@ -1,0 +1,48 @@
+{
+  "kind": "shadow-access-audit",
+  "mode": "on-chain-only",
+  "generated_by": "packages/adapters/sonar live reconstruction (real defaultTransferPageFetcher)",
+  "collection": "Honeycomb",
+  "chain_id": 80094,
+  "snapshot_block": 887577,
+  "compare_block": 1000000,
+  "head_block": 2000000,
+  "inputs_hash": "f97ee43a7d92124f4a362c58d2296b4aaec5c123d968c87a5cadf0ace8c55f16",
+  "provenance": {
+    "endpoint": "https://belt-gateway-production.up.railway.app/v1/graphql",
+    "source": "belt-gateway-production (sonar)",
+    "framework_anchor": "ownershipAtBlock(Honeycomb,887577)={0xc8c5406008f4f8168cccfbef513f5238915db9eb:1}",
+    "standard": "erc721",
+    "reconstruction_cross_check": "passed (Σbalances=167 === mints−burns=167)"
+  },
+  "aggregate": {
+    "holders_at_snapshot": 1,
+    "holders_at_compare": 60,
+    "tokens_outstanding_at_compare": 167,
+    "exited_count": 0,
+    "retained_count": 1,
+    "newly_eligible_count": 59,
+    "holder_turnover_pct": 0,
+    "whale_concentration": {
+      "top1_pct": 15.5,
+      "top5_pct": 45.5
+    }
+  },
+  "k_anonymity": {
+    "k": 5,
+    "note": "cohorts below k are suppressed in any ANONYMOUS render (FR-6/AC-7); this internal report keeps exact counts but flags them",
+    "small_cohorts": [
+      "holders_at_snapshot: <5 (suppressed)",
+      "exited: <5 (suppressed)"
+    ]
+  },
+  "stale_access": {
+    "computed": false,
+    "reason": "no fresh Discord role snapshot wired — stale-role intersection NOT fabricated (PRD FR-4)",
+    "next_step": "wire a dogfood role export to compute sold-but-still-roled (the confront number)"
+  },
+  "caveats": [
+    "on-chain turnover only; the \"stale role\" half requires a role snapshot (the magnet's actual pain).",
+    "confirm-by-construction: this dogfood report cannot validate the demand premise — only the §8 interview can."
+  ]
+}
