@@ -56,6 +56,22 @@ check "unchanged stays GREEN" 0 "$(run)"
 printf 'version: 1\nentries:\n  - id: "a::x"\nemitRaw_allowlist:\n  - id: "b::y"\n' > "$AL"
 check "entries->emitRaw move stays GREEN" 0 "$(run)"
 
+# 6) publishEnvelope_allowlist ADDITION — MUST fail (events #255 shrink gate).
+git show HEAD:"$AL" > "$AL"  # reset to base
+printf 'version: 1\nentries:\n  - id: "a::x"\n  - id: "b::y"\nemitRaw_allowlist: []\npublishEnvelope_allowlist:\n  - id: "src/foo.ts::publishEnvelope"\n' > "$AL"
+check "publishEnvelope_allowlist addition goes RED" 1 "$(run)"
+
+# 7) Empty publishEnvelope_allowlist — MUST pass.
+printf 'version: 1\nentries:\n  - id: "a::x"\n  - id: "b::y"\nemitRaw_allowlist: []\npublishEnvelope_allowlist: []\n' > "$AL"
+check "empty publishEnvelope_allowlist stays GREEN" 0 "$(run)"
+
+# 8) Base branch lacks publishEnvelope_allowlist section entirely — MUST pass (// [] fallback).
+# The base commit (HEAD) has no publishEnvelope_allowlist; head adds it empty.
+git show HEAD:"$AL" > "$AL"  # reset to base (has no publishEnvelope_allowlist)
+# Temporarily add the section empty to the working copy (simulates the new section landing):
+printf 'version: 1\nentries:\n  - id: "a::x"\n  - id: "b::y"\nemitRaw_allowlist: []\npublishEnvelope_allowlist: []\n' > "$AL"
+check "base-lacks-section with empty head stays GREEN" 0 "$(run)"
+
 if [ "$fail" = "0" ]; then
   echo "ALL SHRINK-GATE SMOKE TESTS PASS"
   exit 0
