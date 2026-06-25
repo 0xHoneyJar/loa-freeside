@@ -5,11 +5,13 @@ on:
     paths:
       - 'apps/gateway/**'
       - 'packages/shared/nats-schemas/fixtures/**'
+      - 'infrastructure/observability/prometheus/**'
   push:
     branches: [main]
     paths:
       - 'apps/gateway/**'
       - 'packages/shared/nats-schemas/fixtures/**'
+      - 'infrastructure/observability/prometheus/**'
 
 concurrency:
   group: gateway-ci-${{ github.ref }}
@@ -70,3 +72,12 @@ jobs:
 
       - name: Docker build
         run: docker build -f Dockerfile .
+
+      - name: Validate Prometheus alert rules
+        working-directory: .
+        run: |
+          # Install promtool (ships with prometheus binary distribution)
+          PROM_VERSION=2.52.0
+          curl -sL "https://github.com/prometheus/prometheus/releases/download/v${PROM_VERSION}/prometheus-${PROM_VERSION}.linux-amd64.tar.gz" \
+            | tar -xz --strip-components=1 "prometheus-${PROM_VERSION}.linux-amd64/promtool"
+          ./promtool check rules infrastructure/observability/prometheus/alerts.yml

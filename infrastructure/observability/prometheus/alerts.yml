@@ -287,3 +287,54 @@ groups:
         annotations:
           summary: "Redis has over 1000 connected clients"
           description: "Redis has {{ $value }} connected clients."
+
+# =============================================================================
+# Platform liveness — INV-3 closure (absent_over_time catches VANISHED pods)
+# cycle/coherence-foundation · 2026-06-03
+# See grimoires/loa/context/2026-06-03-nested-heartbeat-status-page.md
+#
+# HEARTBEAT = LIVENESS (up), not business-event throughput. The first pass watched
+# `gateway_events_published_total{subject="nft.mint.detected.v1"}` — but (a) the gateway
+# never publishes that subject (sonar does, directly), and (b) a mint is a BUSINESS EVENT,
+# not a heartbeat: absence of mints is normal, not death. Corrected to liveness.
+#
+# The k8s-pod-discovered targets (gateway, worker) VANISH from the TSDB when a pod is
+# deleted/evicted/crashlooped — `== 0` CANNOT fire on an absent series; absent_over_time
+# can. (nats/redis/pg are static targets, so their existing `== 0` rules already suffice.)
+# `gateway_events_published_total` stays as a THROUGHPUT/volume metric — never liveness.
+#
+# Building-tenant heartbeats (sonar/storage/mint/activities/inventory/score/mediums/auth
+# on Railway) are NOT scraped yet — Tier-2 of the nested heartbeat, rolled out in the
+# status-page cycle (each building exposes liveness; Freeside probes + aggregates).
+# =============================================================================
+  - name: freeside-platform-liveness
+    rules:
+      - alert: GatewayLivenessVanished
+        expr: absent_over_time(up{job="gateway"}[10m])
+        for: 5m
+        labels:
+          severity: critical
+          tier: platform
+          component: gateway
+        annotations:
+          summary: "gateway liveness absent ≥10m — scrape target VANISHED (pod deleted/crashed?)"
+          description: >
+            No `up{job=gateway}` data points for ≥10m — the gateway scrape target has
+            DISAPPEARED from discovery, not merely reported down. `== 0` rules cannot fire
+            on an absent series; absent_over_time can. This is the INV-3 silence≠death
+            closure at the platform tier.
+          runbook_url: "https://wiki.internal/runbooks/platform-liveness"
+      - alert: WorkerLivenessVanished
+        expr: absent_over_time(up{job="worker"}[10m])
+        for: 5m
+        labels:
+          severity: critical
+          tier: platform
+          component: worker
+        annotations:
+          summary: "worker liveness absent ≥10m — scrape target VANISHED (pod deleted/crashed?)"
+          description: >
+            No `up{job=worker}` data points for ≥10m — the worker scrape target has
+            DISAPPEARED. absent_over_time closes the vanished-pod blind spot the existing
+            `== 0` rules cannot see.
+          runbook_url: "https://wiki.internal/runbooks/platform-liveness"

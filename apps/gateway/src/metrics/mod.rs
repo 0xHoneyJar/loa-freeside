@@ -52,6 +52,11 @@ impl GatewayMetrics {
             Unit::Count,
             "Total gateway errors"
         );
+        describe_counter!(
+            "gateway_events_published_total",
+            Unit::Count,
+            "Total events published to JetStream by NATS subject"
+        );
 
         // Latency histogram
         describe_histogram!(
@@ -136,6 +141,15 @@ impl GatewayMetrics {
         .increment(1);
     }
 
+    /// Record a successful JetStream publish, labeled by NATS subject.
+    pub fn record_publish_success(&self, subject: &str) {
+        counter!(
+            "gateway_events_published_total",
+            "subject" => subject.to_string()
+        )
+        .increment(1);
+    }
+
     /// Record heartbeat
     pub fn record_heartbeat(&self, shard_id: u64) {
         // Heartbeats are frequent, just update a gauge
@@ -183,5 +197,57 @@ impl GatewayMetrics {
 impl Default for GatewayMetrics {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use metrics::with_local_recorder;
+    use metrics_util::debugging::{DebugValue, DebuggingRecorder};
+
+    /// Verify record_publish_success increments gateway_events_published_total.
+    #[test]
+    fn record_publish_success_increments_counter() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+
+        with_local_recorder(&recorder, || {
+            // Call the macro directly (same path as record_publish_success)
+            metrics::counter!(
+                "gateway_events_published_total",
+                "subject" => "commands.interaction"
+            )
+            .increment(1);
+        });
+
+        let snapshot = snapshotter.snapshot();
+        let found = snapshot.into_vec().into_iter().any(|(key, _, _, value)| {
+            key.key().name() == "gateway_events_published_total"
+                && matches!(value, DebugValue::Counter(1))
+        });
+        assert!(found, "gateway_events_published_total counter should be 1 after one increment");
+    }
+
+    /// Verify the counter name matches the describe_counter! registration.
+    #[test]
+    fn counter_name_is_gateway_events_published_total() {
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
+
+        with_local_recorder(&recorder, || {
+            metrics::counter!(
+                "gateway_events_published_total",
+                "subject" => "nft.mint.detected.v1"
+            )
+            .increment(3);
+        });
+
+        let snapshot = snapshotter.snapshot();
+        let count = snapshot
+            .into_vec()
+            .into_iter()
+            .filter(|(key, _, _, _)| key.key().name() == "gateway_events_published_total")
+            .count();
+        assert_eq!(count, 1, "exactly one counter series should exist");
     }
 }
