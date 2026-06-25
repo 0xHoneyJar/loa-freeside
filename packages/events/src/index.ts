@@ -22,6 +22,8 @@ export {
 export {
   nftMintDetectedTopic,
   NFT_MINT_DETECTED_WILDCARD,
+  nftActivityTopic,
+  NFT_ACTIVITY_WILDCARD,
   buildTopic,
   type TopicSegments,
 } from "./topics.js";
@@ -48,6 +50,16 @@ export {
   type NftMintDetected,
 } from "./schemas/nft-mint-detected.js";
 
+export {
+  NftActivitySchema,
+  EvmActivityMetadataSchema,
+  SvmActivityMetadataSchema,
+  EVM_TX_HASH_RX,
+  type NftActivity,
+  type EvmActivityMetadata,
+  type SvmActivityMetadata,
+} from "./schemas/nft-activity.js";
+
 // --- cycle-112 schema-emission floor -----------------------------------------
 
 // The event_type -> payload-schema registry (the keystone). Cells reference
@@ -56,6 +68,7 @@ export {
   schemaId,
   lookupSchema,
   NftMintDetectedId,
+  NftActivityId,
   ParallelModeEnabledId,
   REGISTRY_ENTRIES,
   REVIEWED_TRANSFORMS,

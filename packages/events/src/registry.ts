@@ -1,7 +1,8 @@
 import { Schema as S } from "@effect/schema";
 import { NftMintDetectedSchema } from "./schemas/nft-mint-detected.js";
+import { NftActivitySchema } from "./schemas/nft-activity.js";
 import { ParallelModeEnabledSchema } from "./schemas/parallel-mode-enabled.js";
-import { nftMintDetectedTopic, parallelModeEnabledTopic } from "./topics.js";
+import { nftMintDetectedTopic, nftActivityTopic, parallelModeEnabledTopic } from "./topics.js";
 
 /**
  * The `event_type -> payload-schema` registry — the keystone of the
@@ -95,6 +96,13 @@ export const NftMintDetectedId: SchemaId<S.Schema.Type<typeof NftMintDetectedSch
   NftMintDetectedSchema,
 );
 
+/** The chain-agnostic NFT-activity family (mint/transfer/sale/burn for EVM+SVM) —
+ *  the canonical contract producers normalize into so consumers never branch on chain. */
+export const NftActivityId: SchemaId<S.Schema.Type<typeof NftActivitySchema>> = schemaId(
+  "nft.activity.recorded.v1",
+  NftActivitySchema,
+);
+
 // Each id is constructed WITH its schema (via `schemaId`), so `SchemaId<P>`'s
 // phantom `P` is pinned to the schema's inferred Type. New entries are appended
 // here (and exported), typically via `freeside events:new-schema` (cycle-112 S3).
@@ -103,6 +111,11 @@ const ENTRIES = [
     id: NftMintDetectedId,
     schema: NftMintDetectedSchema,
     buildSubject: (specifier?: string) => nftMintDetectedTopic({ collectionSlug: specifier }),
+  },
+  {
+    id: NftActivityId,
+    schema: NftActivitySchema,
+    buildSubject: (specifier?: string) => nftActivityTopic({ collectionSlug: specifier }),
   },
   {
     id: ParallelModeEnabledId,
