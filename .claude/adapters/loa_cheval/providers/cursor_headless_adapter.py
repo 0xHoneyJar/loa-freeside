@@ -22,20 +22,24 @@ Design notes:
     role-prefixed sections. Sufficient for the single-pass review modes
     (review / skeptic / scorer / dissenter) that are this adapter's consumers.
   - Tools / tool_choice are NOT forwarded to the cursor agent. The agent runs in
-    read-only `ask` mode (Q&A / explanation, no edits, no shell), so it cannot
-    touch the operator's files — pure inference, matching the gemini-headless
-    `--approval-mode plan` / codex-headless `--sandbox read-only` posture.
+    read-only `plan` mode under `--sandbox enabled` (analyze / propose, no edits,
+    no shell), so it cannot touch the operator's files — pure inference, matching
+    the gemini-headless `--approval-mode plan` / codex-headless `--sandbox
+    read-only` posture. (Both cursor-agent `--mode` choices — plan and ask — are
+    read-only; plan + sandbox is the stronger, codex-aligned posture, verified to
+    dispatch live 2026-06-24.)
   - `--trust` is passed because `--print` (headless) refuses to run in an
     untrusted workspace; without it the CLI emits a "Workspace Trust Required"
-    prompt to stderr and exits before producing output. `ask` mode keeps the
-    grant read-only (no code execution / file writes regardless of trust).
+    prompt to stderr and exits before producing output. `plan` mode + the sandbox
+    keep the grant read-only (no code execution / file writes regardless of trust).
   - `--output-format json` produces a SINGLE JSON object (not a JSONL stream):
       {"type":"result","subtype":"success","is_error":false,"result":"<text>",
        "session_id":"...","request_id":"...",
        "usage":{"inputTokens":..,"outputTokens":..,"cacheReadTokens":..,
                 "cacheWriteTokens":..}}
-    so parsing mirrors gemini-headless (json.loads of the whole stdout), not
-    codex-headless (line-by-line JSONL).
+    Parsing scans stdout LINE-ORIENTED for the {"type":"result",...} envelope
+    (cursor may prepend log lines), with a whole-stdout json.loads fallback for a
+    pretty-printed object — not a blind json.loads of the whole stdout.
   - Token usage maps from cursor's usage shape:
       usage.inputTokens      → Usage.input_tokens
       usage.outputTokens     → Usage.output_tokens
@@ -154,8 +158,15 @@ class CursorHeadlessAdapter(ProviderAdapter):
             try:
                 workspace = tempfile.mkdtemp(prefix="loa-cursor-ws-")
             except OSError as exc:
-                raise ConfigError(
-                    f"cursor-headless: failed to create isolated workspace: {exc}"
+                # A workspace-creation failure (e.g. /tmp exhaustion) is a
+                # TRANSIENT availability problem, not a config error — raise
+                # ProviderUnavailableError so the fallback chain advances instead
+                # of aborting the whole invoke as INVALID_CONFIG (codex/grok
+                # parity, #1008 DISS-002).
+                raise ProviderUnavailableError(
+                    self.provider,
+                    f"cursor-headless: failed to create isolated workspace: "
+                    f"{type(exc).__name__}: {exc}",
                 ) from exc
             with _acquire_slot("cursor-headless", n_slots=n_slots):
                 try:
@@ -231,6 +242,21 @@ class CursorHeadlessAdapter(ProviderAdapter):
                     parsed = obj
                     break
 
+            if parsed is None:
+                # Fallback for a PRETTY-PRINTED (multi-line) result envelope: the
+                # per-line scan only matches a compact single-line result, so a
+                # multi-line JSON object would be misread as no-envelope. cursor's
+                # --output-format json is compact today, but a formatting change
+                # must not turn a real result into a spurious failure. A
+                # log-line-only stdout stays type!=result here, so it remains a
+                # failure (never a silent empty success).
+                try:
+                    whole = json.loads(proc.stdout.strip())
+                except json.JSONDecodeError:
+                    whole = None
+                if isinstance(whole, dict) and whole.get("type") == "result":
+                    parsed = whole
+
         if proc.returncode != 0 or (parsed and parsed.get("is_error")):
             self._raise_for_error(
                 returncode=proc.returncode,
@@ -257,12 +283,21 @@ class CursorHeadlessAdapter(ProviderAdapter):
         # token count like 4290 must never masquerade as a 429); only a standalone
         # 429 status / explicit rate-limit phrasing on stderr counts.
         stderr_l = (proc.stderr or "").lower()
-        if (
+        # Word-boundary tokens (so "429ms" / "4290" / benign substrings do not
+        # match), AND a negated form ("no rate limit", "not resource_exhausted")
+        # must NOT fire — it is the OPPOSITE signal (cross-model review, #309).
+        _signal = (
             re.search(r"\b429\b", proc.stderr or "")
-            or "rate limit" in stderr_l
-            or "resource_exhausted" in stderr_l
-            or "too many requests" in stderr_l
-        ):
+            or re.search(r"\brate[ _-]?limit(?:ed|s|ing)?\b", stderr_l)
+            or re.search(r"\bresource_exhausted\b", stderr_l)
+            or re.search(r"\btoo many requests\b", stderr_l)
+        )
+        _negated = re.search(
+            r"\b(?:no|not|never|without|non)\b[\s:=-]*"
+            r"(?:rate[ _-]?limit|resource_exhausted|429|too many requests)",
+            stderr_l,
+        )
+        if _signal and not _negated:
             raise RateLimitError(self.provider)
 
         return self._parse_json_output(
