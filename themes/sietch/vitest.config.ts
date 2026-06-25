@@ -29,6 +29,20 @@ export default defineConfig({
         moduleDirectories: ['node_modules', path.resolve(__dirname, 'node_modules')],
       },
     },
+    // opossum is CJS with no `main`/`exports` field, so Node defaults to its index.js,
+    // which does `require('./lib/circuit')`. moduleDirectories (above) resolves the bare
+    // `opossum` specifier, but Vite's SSR transform then fails on opossum's INTERNAL
+    // relative require ("Cannot find module './lib/circuit'") — the error that reds every
+    // unit file importing the @freeside/adapters chain. Pre-bundling opossum through
+    // esbuild resolves its internals at bundle time, sidestepping the runtime failure.
+    deps: {
+      optimizer: {
+        ssr: {
+          enabled: true,
+          include: ['opossum'],
+        },
+      },
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'json-summary', 'html', 'lcov'],
