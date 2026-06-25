@@ -18,6 +18,10 @@
 //   3. An ignored `emit()` / `emitRaw()` result — a bare call statement whose
 //      Either is never consumed (fire-and-forget = silent dropped event;
 //      SKP-001 #1 / T2.7).
+//   4. `publishEnvelope` imported as a value from `@0xhoneyjar/events` in any
+//      file outside the events package — the capability that bypasses schema
+//      validation (FR-1 / events #255). Must go through emit() or be explicitly
+//      allowlisted in publishEnvelope_allowlist.
 //
 // Teaching output (FR-ADOPT-6): each finding names the file:line, says whether
 // it is NEW (un-allowlisted → a regression) or allowlisted (informational),
@@ -107,6 +111,11 @@ function isAllowlisted(relPath, subject) {
 
 const SUBJECT_LITERAL = /\.(?:nats|jetstream)\.publish\s*\(\s*["']([^"']+)["']/;
 
+// publishEnvelope-bypass detection (FR-1 / events #255)
+const PE_IMPORT = /\bpublishEnvelope\b/;
+const EVENTS_PKG_FROM = /from\s+["']@0xhoneyjar\/events["']/;
+const TYPE_ONLY_IMPORT = /^\s*import\s+type\b/;
+
 // Discriminate NATS from Redis/Rabbit/notifier by RECEIVER NAME, not imports:
 // every NATS emit in this codebase publishes via `.nats.publish(` or
 // `.jetstream.publish(`, while every carve-out uses `.client.` / `.redis.` /
@@ -154,6 +163,20 @@ for (const file of walk(ROOT)) {
     if (EMIT_CALL.test(line) && !CONSUMED.test(line) && !/function|interface|type\s|=>/.test(line)) {
       findings.push({ file: rel, line: i + 1, kind: "unhandled-emit-either", allowlisted: false, text: trimmed });
     }
+    // publishEnvelope-bypass: direct value import from @0xhoneyjar/events (FR-1 / events #255).
+    if (
+      PE_IMPORT.test(line) &&
+      EVENTS_PKG_FROM.test(line) &&
+      !TYPE_ONLY_IMPORT.test(line)
+    ) {
+      findings.push({
+        file: rel,
+        line: i + 1,
+        kind: "publishEnvelope-bypass",
+        allowlisted: isAllowlisted(rel, "publishEnvelope"),
+        text: trimmed,
+      });
+    }
   }
 }
 
@@ -170,6 +193,10 @@ if (JSON_OUT) {
       "raw NATS .publish bypasses the schema floor. Use emit(SchemaId, payload). New event? `freeside events:new-schema <name>`.",
     "unhandled-emit-either":
       "the emit()/emitRaw() result is a typed Either — handle it (branch on Either.isLeft). An ignored Left is a silent dropped event.",
+    "publishEnvelope-bypass":
+      "publishEnvelope skips schema validation. Use the cell's emit() (makeEmitter) — it " +
+      "validates before signing. If a raw path is genuinely required, add an explicit " +
+      "entry to publishEnvelope_allowlist in raw-nats-allowlist.yaml.",
   };
   if (findings.length === 0) {
     console.log("[events-lint] OK — no raw NATS emits, no capability leaks, no unhandled emit Eithers.");

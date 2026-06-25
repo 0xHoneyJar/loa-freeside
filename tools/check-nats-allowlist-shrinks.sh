@@ -122,4 +122,25 @@ if [ -n "$additions" ]; then
 fi
 
 echo "[nats-allowlist] OK — allowlist did not grow (additions: 0)."
+
+# publishEnvelope_allowlist: same shrink-only gate (OQ-2 / events #255).
+# The `// []` fallback makes this safe when the base branch predates the section.
+comm -13 \
+  <(printf '%s\n' "$base_blob" \
+    | yq -r '(.publishEnvelope_allowlist // []) | .[].id' 2>/dev/null | sort) \
+  <(yq -r '(.publishEnvelope_allowlist // []) | .[].id' \
+    "$ALLOWLIST" 2>/dev/null | sort) \
+  > /tmp/added_pe_ids
+if [ -s /tmp/added_pe_ids ]; then
+  echo "::error::publishEnvelope_allowlist gained id(s) — shrink-only gate:"
+  cat /tmp/added_pe_ids
+  echo "A genuinely-needed bypass must be documented as an operator decision first."
+  if [ "$ENFORCE" = "1" ]; then
+    exit 1
+  fi
+  echo "::notice::[nats-allowlist] REPORT-ONLY — not failing. Pass --enforce to fail-block."
+  exit 0
+fi
+
+echo "[nats-allowlist] OK — publishEnvelope_allowlist did not grow."
 exit 0
