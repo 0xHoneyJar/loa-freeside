@@ -1,0 +1,63 @@
+# =============================================================================
+# tools/immune-instruments.yaml — the ground-truth registry for the estate
+# immune instruments.
+#
+# Campaign: Estate Immune System · M0 / G-IMMUNE ("every verdict/health/goal/
+# sensor re-derives from a ground source; a lint blocks NEW self-reporting
+# instruments"). Bead: arrakis-estate-immune-epic-4xw6.1.
+#
+# WHAT THIS IS — the human-owned half of a two-part contract enforced by
+# tools/check-instrument-ground-truth.sh:
+#
+#   1. REGISTRATION (the teeth): every file under tools/ that LOOKS like an
+#      immune instrument (name matches `*-sensor.*`, `*-doctor.*`, `gate-*.*`,
+#      or carries an opt-in `# immune-instrument` header) MUST appear as a key
+#      below. A NEW unregistered instrument FAILS the lint — that is the
+#      "blocks new self-reporting instruments" mechanism. Registering it forces
+#      a reviewer to name its ground source in the same PR diff.
+#
+#   2. GROUND-SOURCE PRESENCE (the binding): each declared token below must
+#      LITERALLY appear (fixed-string grep) somewhere in the instrument's
+#      source. If an instrument's declared ground-source read is removed or
+#      refactored away, the token vanishes and the lint fails — forcing a
+#      re-confirmation of where the instrument actually gets its truth.
+#
+# WHAT THIS IS NOT — the lint is a STRUCTURAL regression-catcher, NOT a semantic
+# verifier. It cannot decide whether a token is "really" the ground source (that
+# is statically intractable and false-positive-prone). THE HUMAN APPROVING THIS
+# REGISTRY DIFF OWNS THAT JUDGEMENT. A token here is a claim a reviewer signed
+# off on: "this instrument re-derives its verdict from this source, not from a
+# self-reported declaration."
+#
+# SCHEMA (deliberately flat so the lint parses it without a yq dependency — it
+# is still valid YAML for humans and `yq`):
+#
+#   <repo-root-relative path>:
+#     - "<literal ground-source token>"      # one or more; ALL must be present
+#     # rationale comment naming WHY this is the ground source
+#
+# To register a new instrument: add its path key + the literal token(s) it reads
+# its truth from, with a one-line rationale. To intentionally exclude a file the
+# globs catch but that is NOT an instrument, add the reviewer-visible marker
+# `# immune-lint:allow <reason>` inside that file instead of registering it here.
+# =============================================================================
+
+# The merge-gate freeze sensor. Ground truth = the LIVE branch-protection +
+# open-PR backlog read through the `gh` CLI (caller's auth). It never trusts a
+# cached or self-declared gate state — it re-reads the live gate every run.
+tools/gate-freeze-sensor.mjs:
+  - "execFileSync('gh'"
+
+# The meta-immune voice-truth doctor. Ground truth = the MODELINV audit log
+# `.run/model-invoke.jsonl` (the hash-chained record of real successful finals).
+# It re-derives each voice's REAL health from that log instead of trusting the
+# static cheval doctor's self-reported probe table.
+tools/instrument-truth-sensor.mjs:
+  - ".run/model-invoke.jsonl"
+
+# The Straylight stale-artifact doctor. Ground truth = the on-disk truth-surface
+# artifacts it scans (`grimoires/loa/reality/*`) with effective dates derived
+# from `git log` — never a self-declared freshness field it could be lied to by.
+tools/governance-doctor.sh:
+  - "grimoires/loa/reality"
+  - "git log"
