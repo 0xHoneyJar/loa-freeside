@@ -169,9 +169,11 @@ export class ShadowLedger {
     this.store.upsertSubject(identity);
 
     const existing = this.store.findSubjectByAlias(event.community_id, walletAlias(event.payload.wallet));
-    if (existing) this.mergeOrFlagConflict(identity, existing, event, 'wallet');
+    const conflicted = existing ? this.mergeOrFlagConflict(identity, existing, event, 'wallet') : false;
 
-    this.addAlias(identity, walletAlias(event.payload.wallet));
+    // On a contested wallet (another identity already owns it) leave the alias with
+    // the original owner; only claim it when there was no conflict.
+    if (!conflicted) this.addAlias(identity, walletAlias(event.payload.wallet));
     this.addEdge(event, identity.subject_id, 'identity_wallet_linked', {
       wallet: event.payload.wallet,
       proof_ref: event.payload.proof_ref,
@@ -199,8 +201,8 @@ export class ShadowLedger {
         event.community_id,
         discordAlias(event.payload.external_id),
       );
-      if (existing) this.mergeOrFlagConflict(identity, existing, event, 'account');
-      this.addAlias(identity, discordAlias(event.payload.external_id));
+      const conflicted = existing ? this.mergeOrFlagConflict(identity, existing, event, 'account') : false;
+      if (!conflicted) this.addAlias(identity, discordAlias(event.payload.external_id));
       this.store.upsertSubject(identity);
     }
 
@@ -362,21 +364,24 @@ export class ShadowLedger {
    * (account-takeover-shaped, FAGAN HIGH) — it records a conflict edge and
    * leaves both subjects intact for an operator/identity-api to resolve.
    */
+  /** Returns true if a conflict was flagged (no merge happened) — caller then
+   *  leaves the contested alias with the original owner. */
   private mergeOrFlagConflict(
     identity: ShadowSubject,
     existing: ShadowSubject,
     event: ShadowEvent,
     linkKind: 'wallet' | 'account',
-  ): void {
-    if (existing.subject_id === identity.subject_id) return;
+  ): boolean {
+    if (existing.subject_id === identity.subject_id) return false;
     if (existing.kind === 'identity_user') {
       this.addEdge(event, identity.subject_id, `identity_conflict_${linkKind}`, {
         conflicting_subject_id: existing.subject_id,
         conflicting_identity_user_id: existing.identity_user_id,
       });
-      return;
+      return true; // contested: do NOT re-point the alias to this identity
     }
     this.mergeSubjects(identity, existing, event.event_id, linkKind);
+    return false;
   }
 
   private mergeSubjects(

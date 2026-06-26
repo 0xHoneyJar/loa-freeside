@@ -163,6 +163,12 @@ describe('identity-vs-identity conflict is never silently absorbed (FAGAN HIGH)'
     const ids = g.subjects.filter((s) => s.kind === 'identity_user').map((s) => s.identity_user_id).sort();
     expect(ids).toEqual(['usr_alice', 'usr_bob']); // both survive — NOT collapsed
     expect(g.edges.some((e) => e.edge_kind === 'identity_conflict_wallet')).toBe(true);
+    // the contested wallet alias stays with the ORIGINAL owner (alice), not the last writer (bob)
+    const walletKey = 'wallet:berachain:0xwww';
+    const alice = g.subjects.find((s) => s.identity_user_id === 'usr_alice')!;
+    const bob = g.subjects.find((s) => s.identity_user_id === 'usr_bob')!;
+    expect(alice.aliases).toContain(walletKey);
+    expect(bob.aliases).not.toContain(walletKey);
   });
 });
 
