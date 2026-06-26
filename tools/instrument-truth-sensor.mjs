@@ -38,7 +38,7 @@
  *   node tools/instrument-truth-sensor.mjs --log=PATH      # point at a specific audit log
  *   node tools/instrument-truth-sensor.mjs --probe-table=FILE.json   # override the declared probe
  *   node tools/instrument-truth-sensor.mjs --freshness-days=N        # active window (default 3)
- *   node tools/instrument-truth-sensor.mjs --now=ISO                 # freshness anchor (default: newest record)
+ *   node tools/instrument-truth-sensor.mjs --now=ISO                 # freshness anchor (default: WALL-CLOCK)
  *
  * Exit code is the verdict (so it can gate):
  *   0 = TRUTHFUL  (every instrument's declaration matches ground truth)
@@ -51,7 +51,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const DAY_MS = 86_400_000;
 export const DEFAULT_FRESHNESS_MS = 3 * DAY_MS; // a voice is ACTIVE if it produced a final in this window
-const MAX_RECORDS = 20_000; // bounded tail — read the recent window, never unbounded
+// Bounds how many lines are PARSED (the recent tail). The file READ itself is NOT bounded by this:
+// readRecords() reads the whole file via readFileSync, then keeps only the last MAX_RECORDS lines to
+// parse. Fine for the small audit log today; if this is ever pointed at a full audit stream, switch
+// readRecords to an EOF-seeking byte-capped tail so the memory envelope matches this intent.
+const MAX_RECORDS = 20_000;
 
 // provider prefix (left of the first ':') -> canonical cheval voice. anthropic-via-bedrock is claude.
 export const PROVIDER_VOICE = {
@@ -64,19 +68,33 @@ export const PROVIDER_VOICE = {
 };
 
 /**
- * The STATIC cheval doctor's DECLARED report — the *declaration* side this sensor checks against
+ * AS-OF date of STATIC_DOCTOR_PROBE. Surfaced in every render so the declaration's STATIC nature is
+ * first-class: this is a frozen snapshot, NOT a live read of doctor.py. A frozen baseline measures
+ * the age of the baseline as much as the thing — so we make that age visible (and offer
+ * --probe-table=FILE.json to re-ground) rather than letting the constant silently drift.
+ */
+export const STATIC_DOCTOR_PROBE_AS_OF = '2026-06-26';
+
+/**
+ * The STATIC cheval doctor's DECLARED coverage — the *declaration* side this sensor checks against
  * ground truth. This is a CONFIG constant (the probe's known coverage + verdicts as observed
- * 2026-06-26, GECKO-derived in grimoires/loa/context/morning-leverage-ideation-2026-06-26.md), NOT
- * a live probe — invoking doctor.py here would hang. Override with --probe-table=FILE.json to
- * re-ground. `cursor` is deliberately ABSENT: it is invisible to the static probe table (that
- * invisibility is exactly the lie this sensor surfaces).
+ * 2026-06-26, GECKO-derived), NOT a live probe — invoking doctor.py here would hang. Override with
+ * --probe-table=FILE.json to re-ground.
+ *
+ * The keys MIRROR doctor.py's contract-pinned `_PROBE_TABLE` — exactly {claude, codex, gemini}
+ * (test_doctor.py::TestProbeTableContract). The new-company headless adapters (`cursor`, `grok`) are
+ * deliberately ABSENT here BECAUSE they are absent from doctor.py's probe table — each ships its own
+ * adapter-level health_check() instead. That invisibility is exactly the lie this sensor surfaces:
+ * if such a voice produces fresh finals, it reads as INVISIBLE (a live-but-unlisted lie of omission);
+ * if it is silent, it reads as DARK (nothing claimed, nothing done). Declaring `grok: 'up'` here
+ * would instead MANUFACTURE a FALSE_HEALTHY whenever grok is idle — a self-inflicted false positive
+ * about the constant, not a real lying instrument.
  */
 export const STATIC_DOCTOR_PROBE = Object.freeze({
   claude: 'unknown', // probe artifact — reports unknown despite a live workhorse
   codex: 'up',
   gemini: 'down', // genuinely dead — the probe is correct here
-  grok: 'up',
-  // cursor: (absent — invisible to the probe)
+  // cursor, grok: (absent — not in doctor.py's contract-pinned probe table)
 });
 
 const CLAIMS_HEALTHY = new Set(['up', 'healthy', 'ok']);
@@ -212,22 +230,54 @@ export function readRecords(logPath) {
   return out;
 }
 
-function loadProbeTable() {
-  const file = argVal('probe-table') || process.env.LOA_DOCTOR_PROBE_TABLE;
-  if (!file) return STATIC_DOCTOR_PROBE;
-  return JSON.parse(readFileSync(file, 'utf8'));
-}
-
 function die(msg, code = 1) {
   console.error(`instrument-truth: ${msg}`);
   process.exit(code);
 }
 
+/**
+ * Resolve the declared probe table. Same fail-closed discipline as the log read: a missing/malformed
+ * --probe-table (or a parse that succeeds but yields a non-object, e.g. a JSON array — the
+ * `typeof [] === 'object'` footgun) routes through die(... INSUFFICIENT), never a raw stack trace and
+ * never a silently-wrong classification. Returns { probeTable, source, asOf }.
+ */
+function loadProbeTable() {
+  const file = argVal('probe-table') || process.env.LOA_DOCTOR_PROBE_TABLE;
+  if (!file) return { probeTable: STATIC_DOCTOR_PROBE, source: 'static', asOf: STATIC_DOCTOR_PROBE_AS_OF };
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(file, 'utf8'));
+  } catch (e) {
+    die(`cannot read/parse probe table ${file} (${e.code || e.message}) — INSUFFICIENT, refusing to assert "truthful" without evidence`);
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    die(`probe table ${file} is not a JSON object (expected a voice -> status map) — INSUFFICIENT, refusing to assert "truthful" without evidence`);
+  }
+  return { probeTable: parsed, source: file, asOf: null };
+}
+
 function main() {
   const logPath = argVal('log') || process.env.LOA_MODELINV_LOG || defaultLogPath();
-  const freshDays = argVal('freshness-days') ? Number(argVal('freshness-days')) : 3;
+
+  // Validate numeric/date args at the boundary BEFORE any work. NaN comparisons silently return false,
+  // which for a fail-closed sensor flips a typo from "guard" to "all clear" (e.g. --freshness-days=abc
+  // -> every voice stale -> divergences collapse -> a false TRUTHFUL). Fail toward INSUFFICIENT instead.
+  const freshDaysRaw = argVal('freshness-days');
+  const freshDays = freshDaysRaw === undefined ? 3 : Number(freshDaysRaw);
+  if (!Number.isFinite(freshDays) || freshDays < 0) {
+    die(`--freshness-days=${freshDaysRaw} is not a non-negative number — INSUFFICIENT, refusing to assert "truthful" without evidence`);
+  }
   const freshnessMs = freshDays * DAY_MS;
-  const now = argVal('now');
+
+  const nowArg = argVal('now');
+  if (nowArg !== undefined && Number.isNaN(Date.parse(nowArg))) {
+    die(`--now=${nowArg} is not a parseable date — INSUFFICIENT, refusing to assert "truthful" without evidence`);
+  }
+  // Freshness is anchored to WALL-CLOCK by default, NOT the log's own newest record. Anchoring to the
+  // newest record makes a frozen dispatch stream (the ultimate numb instrument) undetectable: the most
+  // recent voice always reads age-0 against a clock that froze with it. Wall-clock is the external,
+  // monotonic reference a watchdog needs. --now overrides it for deterministic tests.
+  const now = nowArg || new Date().toISOString();
 
   let records;
   try {
@@ -239,10 +289,23 @@ function main() {
     die(`no MODELINV records in ${logPath} — INSUFFICIENT, refusing to assert "truthful" without evidence`);
   }
 
-  const probeTable = loadProbeTable();
+  const { probeTable, source: probeSource, asOf: probeAsOf } = loadProbeTable();
   const result = analyzeVoiceTruth({ records, probeTable, now, freshnessMs });
   result.logPath = logPath;
   result.recordCount = records.length;
+  result.probeSource = probeSource;
+  result.probeAsOf = probeAsOf;
+
+  // First-class log-staleness signal: if the whole log's newest record predates the active window
+  // (measured against the same wall-clock anchor), the dispatch stream itself may have stopped. Surface
+  // it; the verdict is still driven by lying instruments (a frozen log surfaces declared-up voices as
+  // FALSE_HEALTHY, which is the actionable, gateable signal).
+  const newest = newestTs(records);
+  const newestMs = newest ? Date.parse(newest) : NaN;
+  const logAgeMs = Number.isFinite(newestMs) ? Date.parse(now) - newestMs : Infinity;
+  result.newestRecordTs = newest;
+  result.logAgeDays = Number.isFinite(logAgeMs) ? Math.round((logAgeMs / DAY_MS) * 10) / 10 : null;
+  result.logStale = Number.isFinite(logAgeMs) ? logAgeMs > freshnessMs : true;
 
   if (MODE === 'json') console.log(JSON.stringify(result, null, 2));
   else if (MODE === 'probe') console.log(renderProbe(result));
@@ -269,18 +332,26 @@ const WHY = {
 
 function renderProbe(r) {
   const tag = r.verdict === 'LYING' ? '⚠ instrument-truth' : '✓ instrument-truth';
+  const stale = r.logStale ? ` · ⚠ log stale (newest ${r.logAgeDays}d old — dispatch may have stopped)` : '';
   if (r.verdict === 'TRUTHFUL') {
-    return `${tag} · ${r.voices.length} voices · all declarations match ground truth (${r.recordCount} records)`;
+    return `${tag} · ${r.voices.length} voices · all declarations match ground truth (${r.recordCount} records)${stale}`;
   }
   const names = r.lyingInstruments.map((v) => `${v.voice}:${v.classification}`).join(', ');
-  return `${tag} · LYING: ${r.lyingInstruments.length}/${r.voices.length} instrument(s) diverge — ${names}`;
+  return `${tag} · LYING: ${r.lyingInstruments.length}/${r.voices.length} instrument(s) diverge — ${names}${stale}`;
 }
 
 function renderBoard(r) {
   const L = [];
   L.push(`  ∴ instrument-truth · cheval voice health · re-derived from ${r.recordCount} MODELINV records`);
   L.push(`    ground-source: ${r.logPath}`);
+  const decl = r.probeSource === 'static'
+    ? `static snapshot as of ${r.probeAsOf} (NOT a live doctor.py read — re-ground with --probe-table)`
+    : r.probeSource;
+  L.push(`    declaration:   ${decl}`);
   L.push(`    reference(now): ${r.reference}   active-window: ${Math.round(r.freshnessMs / DAY_MS)}d`);
+  if (r.logStale) {
+    L.push(`    ⚠ log itself is STALE — newest record is ${r.logAgeDays}d old (> ${Math.round(r.freshnessMs / DAY_MS)}d window); the dispatch stream may have stopped.`);
+  }
   L.push('');
   L.push(`    voice     finals  last-final   age   declared   verdict`);
   for (const v of r.voices) {

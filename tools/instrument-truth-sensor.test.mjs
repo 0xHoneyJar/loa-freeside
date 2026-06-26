@@ -12,6 +12,11 @@
 // Run: node tools/instrument-truth-sensor.test.mjs   (or: node --test tools/instrument-truth-sensor.test.mjs)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   voiceOf,
   analyzeVoiceTruth,
@@ -173,3 +178,100 @@ test('freshnessMs default is 3 days and is honored', () => {
   const narrow = analyzeVoiceTruth({ records, probeTable: { claude: 'unknown', codex: 'up' }, now: NOW });
   assert.equal(narrow.voices.find((v) => v.voice === 'claude').classification, 'CONSISTENT');
 });
+
+// ── I/O shell: exit-code-IS-the-verdict contract (the seam where the tool meets the OS) ──
+// "exit-code-is-the-verdict" means the thin shell IS the contract. These spawn the real script and
+// pin the fail-closed input contract: nothing that fails to parse may EVER produce a clean verdict.
+// All bad-input paths must route through the same die(... INSUFFICIENT)/exit-1 the log path honors.
+const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), 'instrument-truth-sensor.mjs');
+const LINE = (voice, tsUtc) => JSON.stringify(rec(voice, tsUtc));
+const runScript = (args) => spawnSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8' });
+const withFixtures = (fn) => {
+  const dir = mkdtempSync(join(tmpdir(), 'instrument-truth-'));
+  try { return fn(dir); } finally { rmSync(dir, { recursive: true, force: true }); }
+};
+const writeLog = (dir, lines) => {
+  const p = join(dir, 'log.jsonl');
+  writeFileSync(p, lines.join('\n') + '\n');
+  return p;
+};
+const writeProbe = (dir, value) => {
+  const p = join(dir, 'probe.json');
+  writeFileSync(p, typeof value === 'string' ? value : JSON.stringify(value));
+  return p;
+};
+
+test('[shell] a consistent log + probe-table -> exit 0 TRUTHFUL', () => withFixtures((dir) => {
+  const log = writeLog(dir, [LINE('codex', ago(0.5))]);
+  const probe = writeProbe(dir, { codex: 'up' });
+  const r = runScript([`--log=${log}`, `--probe-table=${probe}`, `--now=${NOW}`, '--json']);
+  assert.equal(r.status, 0, r.stderr);
+}));
+
+test('[shell] a divergent log + probe-table -> exit 2 LYING', () => withFixtures((dir) => {
+  const log = writeLog(dir, [LINE('claude', ago(0.5))]);
+  const probe = writeProbe(dir, { claude: 'unknown' }); // declared unknown, but fresh finals -> DIVERGENT
+  const r = runScript([`--log=${log}`, `--probe-table=${probe}`, `--now=${NOW}`, '--probe']);
+  assert.equal(r.status, 2, r.stderr);
+  assert.match(r.stdout, /LYING/);
+}));
+
+test('[shell] missing log file -> exit 1 INSUFFICIENT', () => withFixtures((dir) => {
+  const r = runScript([`--log=${join(dir, 'does-not-exist.jsonl')}`, `--now=${NOW}`]);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /INSUFFICIENT/);
+}));
+
+test('[shell] empty log (no records) -> exit 1 INSUFFICIENT', () => withFixtures((dir) => {
+  const log = join(dir, 'empty.jsonl');
+  writeFileSync(log, '');
+  const r = runScript([`--log=${log}`, `--now=${NOW}`]);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /INSUFFICIENT/);
+}));
+
+test('[shell] malformed --probe-table JSON -> exit 1 INSUFFICIENT (not a raw stack trace)', () => withFixtures((dir) => {
+  const log = writeLog(dir, [LINE('codex', ago(0.5))]);
+  const probe = writeProbe(dir, '{ not valid json');
+  const r = runScript([`--log=${log}`, `--probe-table=${probe}`, `--now=${NOW}`]);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /INSUFFICIENT/);
+}));
+
+test('[shell] --probe-table that parses to a JSON ARRAY -> exit 1 INSUFFICIENT (shape guard)', () => withFixtures((dir) => {
+  const log = writeLog(dir, [LINE('codex', ago(0.5))]);
+  const probe = writeProbe(dir, ['codex', 'up']); // typeof [] === 'object' footgun
+  const r = runScript([`--log=${log}`, `--probe-table=${probe}`, `--now=${NOW}`]);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /INSUFFICIENT/);
+}));
+
+test('[shell] missing --probe-table file -> exit 1 INSUFFICIENT', () => withFixtures((dir) => {
+  const log = writeLog(dir, [LINE('codex', ago(0.5))]);
+  const r = runScript([`--log=${log}`, `--probe-table=${join(dir, 'nope.json')}`, `--now=${NOW}`]);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /INSUFFICIENT/);
+}));
+
+test('[shell] --freshness-days=abc (NaN) -> exit 1 INSUFFICIENT, never a false clean verdict', () => withFixtures((dir) => {
+  const log = writeLog(dir, [LINE('codex', ago(0.5))]);
+  const r = runScript([`--log=${log}`, '--freshness-days=abc', `--now=${NOW}`]);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /INSUFFICIENT/);
+}));
+
+test('[shell] --now=garbage (unparseable date) -> exit 1 INSUFFICIENT', () => withFixtures((dir) => {
+  const log = writeLog(dir, [LINE('codex', ago(0.5))]);
+  const r = runScript([`--log=${log}`, '--now=garbage']);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /INSUFFICIENT/);
+}));
+
+test('[shell] a frozen/stale log surfaces the stale-log warning (wall-clock anchor)', () => withFixtures((dir) => {
+  // newest record is 30d before NOW; anchored to wall-clock (NOW), the whole log is stale.
+  const log = writeLog(dir, [LINE('codex', ago(30))]);
+  const probe = writeProbe(dir, { codex: 'up' }); // declared up but silent for 30d -> FALSE_HEALTHY
+  const r = runScript([`--log=${log}`, `--probe-table=${probe}`, `--now=${NOW}`, '--probe']);
+  assert.equal(r.status, 2, r.stderr); // outage IS detectable now (was the bridge-002 blind spot)
+  assert.match(r.stdout, /log stale/);
+}));
