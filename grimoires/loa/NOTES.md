@@ -202,3 +202,34 @@ In-repo sprint-1 (cycle doctor-acvp-network-plane, branch feat/doctor-acvp-netwo
   Honest interim: aspirational + dated (2026-09-25) in .freeside/acvp-aspirational-allowlist.yaml,
   NOT a faked green. Tracked: arrakis-5ryf. events-api slug is an `-api`-naming-law concession
   for a library (mcp omitted, no served URL).
+
+---
+
+## ◆ SHADOW MODE LEDGER cycle (simstim · 2026-06-25) — continuity block
+
+**Goal:** `/goal` — run /simstim + /run sprint-plan with `shadow-mode-ledger-handoff.zip` as context.
+**simstim_id:** simstim-20260625-68853ea1 · **branch:** feat/shadow-mode-ledger (worktree `/Users/zksoju/Documents/GitHub/loa-freeside-shadow-mode`, off origin/main 5d69285a).
+
+**DECISION (operator-confirmed 2026-06-25): EVOLUTION-AWARE, not greenfield.**
+shadow-mode-api = the MISSING member-graph composition spine. Build as evolution:
+- REUSE `@freeside/shadow-audit-protocol` sealed schemas (AuditOutput/AccessDecisionRecord) for the report.
+- First consumer = the existing shadow-audit Access Audit (#306) — the deployed-but-unconsumed cure.
+- RECONCILE the coexistence `IShadowLedger`/ScyllaDB (incumbent-vs-Arrakis accuracy tracker; ports defined, no impl) — legacy, distinct store; `shadow_divergences` NAME COLLISION resolved by separate Postgres ownership.
+- EXTEND `packages/events` with 8 hounfour topics (all validate the 3-segment convention).
+- Lives in-monolith: `packages/{protocol,services}/shadow-mode`, scope `shared/shadow-mode`.
+
+**Grounding done:** /recall (community-management-hexagonal + deployed-but-unconsumed + identity-api-substrate); Explore mapped existing shadow-audit + coexistence; read existing shadow-ledger port+adapter; resolved branch topology (local main STALE, origin/main current).
+
+**Artifacts:** grimoires/loa/{prd,sdd,sprint}.md (this worktree). Old connecting-surface cycle archived → grimoires/loa/cycles/connecting-surface-shadow-access-audit/.
+
+**Pipeline progress:** PRD ✓ (flatline integrated 4 findings: ingest authN/authZ CRITICAL, per-source authz, read-only dep-boundary, identity unlink → NFR-1..5 + AC-9/10). SDD ✓ (flatline running). NEXT: sprint plan → flatline → beads → /run sprint-plan (impl→review→audit).
+
+**Config:** added `simstim.enabled: true` to worktree .loa.config.yaml (worktree-local, NOT operator's main checkout). Flatline routes via cheval headless (env-key readiness check "lies" — real dispatch works, $0 subscription).
+
+### ✦ SHADOW MODE LEDGER — pipeline complete (2026-06-25)
+- PRD→flatline(4)→SDD→flatline(7)→sprint→flatline(7) = 18 findings integrated across 3 multi-model gates.
+- IMPLEMENT: 2 packages (@freeside/shadow-mode-{protocol,service}), 43 files, +4365 lines. **38 tests green** (AC-1..AC-10).
+- Committed d392295e; pushed feat/shadow-mode-ledger; **DRAFT PR #316**.
+- REVIEW: FAGAN cross-model review dispatched on the diff (adversarial-review.sh config-disabled → used FAGAN). AUDIT: self-audit clean (no secrets/eval/exec; read-only dependency-boundary test passes).
+- Beads: 13 created (cycle:shadow-mode-ledger); dep-graph got inverted (br dep direction) → bookkeeping friction, partial close. NOT load-bearing (work is in the commit/PR).
+- Worktree: /Users/zksoju/Documents/GitHub/loa-freeside-shadow-mode (off origin/main 5d69285a). Operator's main checkout + uncommitted packages/events WIP untouched.
