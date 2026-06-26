@@ -149,8 +149,53 @@ EOF
 printf '# empty registry\n' > "$T9/registry.yaml"
 check "a *-sensor.spec.mjs file is excluded (not a candidate)" 0 "$(run_lint "$T9")"
 
+# ── Case 10 — a *.test.* file is excluded EVEN WITH the opt-in marker in its head ─
+# Regression proof for the tri-state classification: the *.test.*/*.spec. exclusion is
+# a property of the FILE, evaluated BEFORE the opt-in-header check — so a test file that
+# happens to carry `# immune-instrument` near the top (e.g. it documents/exercises the
+# marker) is STILL not an instrument candidate. (Pre-fix, the header path ran over test
+# files and would have falsely registered this one.)
+T10="$(mk_root)"
+cat > "$T10/tools/marker-bearing-sensor.test.mjs" <<'EOF'
+#!/usr/bin/env node
+// immune-instrument
+// ^ this TEST exercises the opt-in marker; the file is a test, not an instrument.
+console.log('PASS');
+EOF
+printf '# empty registry\n' > "$T10/registry.yaml"
+check "a *.test.* file with the opt-in marker in its head is STILL excluded" 0 "$(run_lint "$T10")"
+
+# ── Case 11 — a --root OUTSIDE --repo-root is refused at startup (exit 2) ──────
+# The registry keys are repo-root-relative; a scan root that doesn't resolve under
+# --repo-root could only ever yield absolute keys that never match — so the lint
+# refuses it loudly (arg/IO error, exit 2) instead of emitting a confusing spurious
+# UNREGISTERED with an absolute path.
+T11="$(mk_root)"
+OUTSIDE="$(mktemp -d)"; mkdir -p "$OUTSIDE/tools"   # a directory NOT under T11
+printf '# empty registry\n' > "$T11/registry.yaml"
+rc11="$(bash "$LINT" --quiet --repo-root "$T11" --root "$OUTSIDE/tools" --registry "$T11/registry.yaml" >"$LINT_OUT" 2>&1; echo $?)"
+check "a --root outside --repo-root is refused (exit 2)" 2 "$rc11"
+rm -rf "$OUTSIDE" 2>/dev/null || true
+
+# ── Case 12 — a registered-but-DELETED instrument yields MISSING_FILE (exit 1) ─
+# Pass B binding: the registry names a file no longer on disk. tools/ is empty, so
+# exit 1 here can ONLY be the MISSING_FILE violation — assert the code too (non-quiet),
+# so a future refactor can't silently turn it into a different failure.
+T12="$(mk_root)"
+cat > "$T12/registry.yaml" <<'EOF'
+tools/ghost-sensor.mjs:
+  - ".run/model-invoke.jsonl"
+EOF
+mf_rc="$(bash "$LINT" --repo-root "$T12" --root "$T12/tools" --registry "$T12/registry.yaml" >"$LINT_OUT" 2>&1; echo $?)"
+check "a registered-but-deleted instrument FAILS (exit 1)" 1 "$mf_rc"
+if grep -q "MISSING_FILE" "$LINT_OUT"; then
+    echo "  ✓ the violation is specifically MISSING_FILE"
+else
+    echo "  ✗ expected a MISSING_FILE violation"; sed 's/^/      /' "$LINT_OUT"; fail=1
+fi
+
 # cleanup
-rm -rf "$T1" "$T2" "$T3" "$T4" "$T5" "$T6" "$T7" "$T8" "$T9" 2>/dev/null || true
+rm -rf "$T1" "$T2" "$T3" "$T4" "$T5" "$T6" "$T7" "$T8" "$T9" "$T10" "$T11" "$T12" 2>/dev/null || true
 
 echo ""
 if [[ "$fail" -eq 0 ]]; then echo "PASS: all check-instrument-ground-truth.sh assertions green"; else echo "FAIL: check-instrument-ground-truth.sh"; fi

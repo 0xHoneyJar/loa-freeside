@@ -18,19 +18,21 @@ set -uo pipefail
 
 CHECK="$(cd "$(dirname "$0")" && pwd)/immune-check.sh"
 fail=0
+SMOKE_OUT="$(mktemp)"   # per-run, not a shared /tmp path — safe under parallel runs
+trap 'rm -f "$SMOKE_OUT"' EXIT
 
 # run the script with stubbed probes that emit a tile and exit a chosen code.
 # $1 = gate exit code, $2 = instrument exit code, $3 = lint exit code (default 0=clean).
 # NOTE: the lint's exit convention is 0=clean / 1=violation / 2=arg-error — distinct from the
 # doctors' 0/1/2 severity. immune-check.sh remaps it (1->PROBLEM, 2->INSUFFICIENT). The 3x3
 # matrix below pins the two DOCTORS with the lint held clean (l=0), so the matrix is unchanged.
-# echoes the script's combined exit code; captures the banner to /tmp/immune-check-smoke.out.
+# echoes the script's combined exit code; captures the banner to $SMOKE_OUT (per-run mktemp).
 run() {
   local lrc="${3:-0}"
   IMMUNE_GATE_PROBE_CMD="printf 'STUB gate-tile g=%s\\n' '$1'; exit $1" \
   IMMUNE_INSTRUMENT_PROBE_CMD="printf 'STUB instr-tile i=%s\\n' '$2'; exit $2" \
   IMMUNE_LINT_PROBE_CMD="printf 'STUB lint-tile l=%s\\n' '$lrc'; exit $lrc" \
-    bash "$CHECK" >/tmp/immune-check-smoke.out 2>&1
+    bash "$CHECK" >"$SMOKE_OUT" 2>&1
   echo $?
 }
 
@@ -38,7 +40,7 @@ check() { # name expected-exit actual-exit
   if [[ "$2" == "$3" ]]; then
     echo "  ✓ $1 (exit $3)"
   else
-    echo "  ✗ $1 — expected exit $2, got $3"; sed 's/^/      /' /tmp/immune-check-smoke.out; fail=1
+    echo "  ✗ $1 — expected exit $2, got $3"; sed 's/^/      /' "$SMOKE_OUT"; fail=1
   fi
 }
 
@@ -69,14 +71,14 @@ check "(2,0,lint=0) lint clean doesn't mask a frozen gate -> PROBLEM/2" 2 "$(run
 
 # ── banner surfaces ALL THREE tiles (not just the aggregate) ─────────────────
 run 2 0 1 >/dev/null
-if grep -q "STUB gate-tile g=2" /tmp/immune-check-smoke.out && \
-   grep -q "STUB instr-tile i=0" /tmp/immune-check-smoke.out && \
-   grep -q "STUB lint-tile l=1" /tmp/immune-check-smoke.out; then
+if grep -q "STUB gate-tile g=2" "$SMOKE_OUT" && \
+   grep -q "STUB instr-tile i=0" "$SMOKE_OUT" && \
+   grep -q "STUB lint-tile l=1" "$SMOKE_OUT"; then
   echo "  ✓ banner shows all three check tiles"
 else
-  echo "  ✗ banner is missing a check tile"; sed 's/^/      /' /tmp/immune-check-smoke.out; fail=1
+  echo "  ✗ banner is missing a check tile"; sed 's/^/      /' "$SMOKE_OUT"; fail=1
 fi
-if grep -q "PROBLEM (exit 2)" /tmp/immune-check-smoke.out; then
+if grep -q "PROBLEM (exit 2)" "$SMOKE_OUT"; then
   echo "  ✓ banner footer names the combined verdict"
 else
   echo "  ✗ banner footer missing combined verdict"; fail=1

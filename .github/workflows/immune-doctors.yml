@@ -164,3 +164,85 @@ jobs:
           node tools/gate-freeze-sensor.test.mjs
           node tools/instrument-truth-sensor.test.mjs
           bash tools/immune-check.test.sh
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # The M0 / G-IMMUNE enforcing lint (check-instrument-ground-truth.sh). Unlike
+  # the instrument-truth doctor (needs a local .run/model-invoke.jsonl), this one
+  # IS CI-runnable — it only reads checked-in files. Same SOFT design as gate-freeze:
+  # ALWAYS green, the verdict surfaced LOUD via summary + annotation, never a new
+  # required check (a violation here is rare + actionable, but a new blocking gate
+  # would deepen the very freeze this campaign cures). The teeth are the
+  # reviewer-visible registry diff + the local banner tools/immune-check.sh.
+  # ───────────────────────────────────────────────────────────────────────────
+  ground-truth-lint:
+    name: ground-truth-lint (informational)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint immune instruments against their ground sources (read-only; never blocks)
+        run: |
+          set +e   # the lint exits 1 on a violation — we report it, we do NOT fail on it.
+          out="$(bash tools/check-instrument-ground-truth.sh 2>&1)"; lint_exit=$?
+          printf '%s\n' "$out"
+
+          {
+            echo "## Immune Doctors · ground-truth-lint — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo ""
+            echo "> Informational, non-required. M0 / G-IMMUNE: every verdict/health/sensor instrument"
+            echo "> must register its ground source in \`tools/immune-instruments.yaml\`. This check is"
+            echo "> **always green** by design so it never deepens the freeze it guards against; the"
+            echo "> registry diff + \`tools/immune-check.sh\` are the teeth. (bead arrakis-estate-immune-epic-4xw6.1)"
+            echo ""
+            if [ "$lint_exit" -eq 0 ]; then
+              echo "### ✓ Every immune instrument re-derives from a registered ground source."
+            elif [ "$lint_exit" -eq 1 ]; then
+              echo "### ⚠ An immune instrument is unregistered or its declared ground-source token is missing"
+              echo ""
+              echo "Register the instrument (path + literal ground-source token) in \`tools/immune-instruments.yaml\`,"
+              echo "or mark a non-instrument file with \`# immune-lint:allow <reason>\`."
+            else
+              echo "### · The lint could not run (exit $lint_exit) — a misconfiguration, not a verdict."
+            fi
+            echo ""
+            echo '```'
+            printf '%s\n' "$out"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$lint_exit" -eq 1 ]; then
+            echo "::warning title=Immune instrument ungrounded::a new immune instrument is unregistered or its ground-source token is missing — see job summary. (informational; does not block this PR)"
+          elif [ "$lint_exit" -ne 0 ]; then
+            echo "::warning title=Ground-truth lint misconfigured::the lint exited $lint_exit (argument/IO error) and could not run — see job summary. (informational; does not block this PR)"
+          fi
+
+          # ALWAYS green — informational by design (same rationale as the gate-freeze job).
+          exit 0
+
+      - name: Exercise the M0 acceptance fixture (informational — proves the lint still catches a planted liar)
+        run: |
+          # The lint's M0 acceptance criterion is "a planted self-reporting instrument fails the
+          # lint." Run that fixture here so the proof is exercised on every PR — but SOFT: a fixture
+          # failure means the lint's own logic regressed (rare + actionable), surfaced LOUD via the
+          # summary + a warning, never a red X (this job stays always-green by design).
+          set +e
+          test_out="$(bash tools/check-instrument-ground-truth.test.sh 2>&1)"; test_exit=$?
+          printf '%s\n' "$test_out"
+          {
+            echo "## Immune Doctors · ground-truth-lint · M0 fixture — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo ""
+            if [ "$test_exit" -eq 0 ]; then
+              echo "### ✓ The planted self-reporting instrument still fails the lint (M0 acceptance holds)."
+            else
+              echo "### ⚠ The M0 acceptance fixture FAILED — the lint's own logic may have regressed."
+            fi
+            echo ""
+            echo '```'
+            printf '%s\n' "$test_out"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$test_exit" -ne 0 ]; then
+            echo "::warning title=M0 fixture regressed::tools/check-instrument-ground-truth.test.sh failed — the lint may no longer catch a planted liar. (informational; does not block this PR)"
+          fi
+          exit 0

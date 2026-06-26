@@ -89,11 +89,16 @@ QUIET=0
 PROBE=0
 declare -a SCAN_ROOTS=()
 
-# Name-globs that mark a file as an immune-instrument CANDIDATE. Intentionally
-# narrow — only the three shapes immune instruments are named with.
-_name_is_candidate() {
+# Tri-state classification of a filename (a property of the FILE, evaluated ONCE so
+# it governs BOTH the name path and the opt-in-header path — a *.test.*/*.spec. file
+# carrying an `# immune-instrument` marker in its head is STILL excluded):
+#   0 = name-candidate  (matches an instrument name-glob)
+#   2 = excluded        (a test/spec — never an instrument, regardless of any header)
+#   1 = neither         (not name-matched; the opt-in header may still pull it in)
+# Intentionally narrow — only the three shapes immune instruments are named with.
+_name_candidacy() {
     case "$1" in
-        *.test.*|*.spec.*) return 1 ;;  # tests/specs verify instruments; they are not instruments
+        *.test.*|*.spec.*) return 2 ;;  # tests/specs verify instruments; they are not instruments
         *-sensor.*|*-doctor.*|gate-*.*) return 0 ;;
         *) return 1 ;;
     esac
@@ -145,6 +150,30 @@ if [[ ! -f "$REGISTRY" ]]; then
     printf 'check-instrument-ground-truth.sh: registry not found: %q\n' "$REGISTRY" >&2
     exit 2
 fi
+
+# Validate + canonicalize every scan root up front. Two startup contracts:
+#   (a) each root must EXIST as a directory — a lint that inspects zero files and
+#       exits 0 is the false-green this campaign kills; refuse to scan nothing.
+#   (b) each root must resolve UNDER --repo-root. The registry keys are
+#       repo-root-relative (rel="${f#"$REPO_ROOT/"}"), so a root outside REPO_ROOT
+#       would yield an absolute key that can never match the registry — a confusing
+#       spurious UNREGISTERED. Make the --root/registry-key contract explicit by
+#       failing loud (exit 2) instead. Canonicalizing here also makes the prefix
+#       strip exact for relative/symlinked roots.
+for i in "${!SCAN_ROOTS[@]}"; do
+    root="${SCAN_ROOTS[$i]}"
+    if [[ ! -d "$root" ]]; then
+        printf 'check-instrument-ground-truth.sh: scan root %q is not a directory — refusing to scan nothing\n' "$root" >&2
+        exit 2
+    fi
+    abs_root="$(cd "$root" && pwd)"
+    if [[ "$abs_root" != "$REPO_ROOT" && "$abs_root" != "$REPO_ROOT"/* ]]; then
+        printf 'check-instrument-ground-truth.sh: scan root %q does not resolve under --repo-root %q\n' "$root" "$REPO_ROOT" >&2
+        printf '  (registry keys are repo-root-relative; a root outside it can never match)\n' >&2
+        exit 2
+    fi
+    SCAN_ROOTS[i]="$abs_root"
+done
 
 # --------------------------------------------------------------------------
 # Registry parser (flat YAML map: "<path>:" then "  - \"<token>\"" lines).
@@ -209,25 +238,27 @@ suppressed=0
 _is_suppressed() { grep -qE -- "$SUPPRESS_RE" "$1"; }
 
 for root in "${SCAN_ROOTS[@]}"; do
-    # A missing/unreadable scan root must FAIL LOUD (exit 2), never silently scan
-    # nothing — a lint that inspects zero files and exits 0 is the very false-green
-    # this campaign exists to kill. (find's stderr is left visible for the same reason.)
-    if [[ ! -d "$root" ]]; then
-        printf 'check-instrument-ground-truth.sh: scan root %q is not a directory — refusing to scan nothing\n' "$root" >&2
-        exit 2
-    fi
+    # Roots are validated + canonicalized at startup (exist, under --repo-root).
+    # find's stderr is left visible so an unreadable subtree is never silently skipped.
     while IFS= read -r -d '' f; do
         name="${f##*/}"
+        # Classify the file ONCE (tri-state). `|| class=$?` keeps set -e happy while
+        # capturing a non-zero return; the exclusion (class 2) is evaluated here so a
+        # *.test.*/*.spec. file can never reach the opt-in-header path below.
+        class=0
+        _name_candidacy "$name" || class=$?
         is_cand=0
-        if _name_is_candidate "$name"; then
-            is_cand=1
-        else
-            # opt-in header check. Capture the head into a var and grep a here-string
-            # rather than `head | grep -q`: under pipefail an early grep -q match would
-            # SIGPIPE head and the pipeline would (wrongly) read as no-match.
-            head_txt="$(head -40 -- "$f" 2>/dev/null || true)"
-            if grep -qE -- "$OPTIN_RE" <<< "$head_txt"; then is_cand=1; fi
-        fi
+        case "$class" in
+            0) is_cand=1 ;;   # name-matched instrument candidate
+            2) continue ;;    # excluded test/spec — never a candidate, header or not
+            *)                # 1 = neither: the opt-in header may still pull it in
+                # Capture the head into a var and grep a here-string rather than
+                # `head | grep -q`: under pipefail an early grep -q match would SIGPIPE
+                # head and the pipeline would (wrongly) read as no-match.
+                head_txt="$(head -40 -- "$f" 2>/dev/null || true)"
+                if grep -qE -- "$OPTIN_RE" <<< "$head_txt"; then is_cand=1; fi
+                ;;
+        esac
         [[ $is_cand -eq 1 ]] || continue
 
         rel="${f#"$REPO_ROOT/"}"
