@@ -1581,3 +1581,10 @@ preferences:
 bridgebuilder:
   enabled: true
   model: "claude-headless"
+
+# =============================================================================
+# Simstim — HITL accelerated development workflow (enabled for the
+# shadow-mode-ledger build cycle; worktree-local on feat/shadow-mode-ledger)
+# =============================================================================
+simstim:
+  enabled: true

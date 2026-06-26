@@ -1,0 +1,125 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+import type { ShadowEvent } from '@freeside/shadow-mode-protocol';
+import { ShadowLedger } from '../shadow-ledger.js';
+import { InMemoryLedgerStore } from '../adapters/in-memory-store.js';
+
+const NOW = '2026-06-26T00:00:00.000Z';
+
+function ledger(): ShadowLedger {
+  return new ShadowLedger(new InMemoryLedgerStore());
+}
+
+function ev(partial: Partial<ShadowEvent> & Pick<ShadowEvent, 'event_id' | 'name' | 'source' | 'payload'>): ShadowEvent {
+  return {
+    schema_version: 'shadow.event.v1',
+    community_id: 'demo',
+    truth_status: 'observed',
+    observed_at: NOW,
+    emitted_at: NOW,
+    ...partial,
+  } as ShadowEvent;
+}
+
+describe('AC-1 idempotent ingest', () => {
+  it('replaying the same event_id is a no-op (1 observation, 2nd duplicate)', () => {
+    const l = ledger();
+    const e = ev({ event_id: 'e1', name: 'discord.member.snapshot.v1', source: 'discord',
+      payload: { discord_user_id: '1001', role_ids: ['role-holder'] } });
+    expect(l.ingest(e).status).toBe('ingested');
+    expect(l.ingest(e).status).toBe('duplicate');
+    expect(l.getMemberGraph('demo').summary.total_subjects).toBe(1);
+  });
+});
+
+describe('AC-2 discord-only member stays unresolved until verified', () => {
+  it('a discord snapshot alone is observed_only, not verified', () => {
+    const l = ledger();
+    l.ingest(ev({ event_id: 'e1', name: 'discord.member.snapshot.v1', source: 'discord',
+      payload: { discord_user_id: '1001', role_ids: ['role-holder'] } }));
+    const [subj] = l.getMemberGraph('demo').subjects;
+    expect(subj!.kind).toBe('discord_member');
+    expect(subj!.attribution_quality).not.toBe('verified');
+    expect(l.getUnresolved('demo')).toHaveLength(1);
+  });
+});
+
+describe('AC-3 wallet-only chain actor stays wallet_only until verified', () => {
+  it('a sonar attribution alone is wallet_only, not verified', () => {
+    const l = ledger();
+    l.ingest(ev({ event_id: 'e1', name: 'sonar.wallet.attributed.v1', source: 'sonar',
+      payload: { wallet: { chain: 'berachain', address: '0xBBB' }, contract_address: '0xc', edge_kind: 'minted' } }));
+    const [subj] = l.getMemberGraph('demo').subjects;
+    expect(subj!.kind).toBe('wallet_only');
+    expect(subj!.attribution_quality).not.toBe('verified');
+  });
+});
+
+describe('AC-4 verified link merges conservatively', () => {
+  it('discord_member + identity.account.linked(discord) merge into a verified identity_user', () => {
+    const l = ledger();
+    l.ingest(ev({ event_id: 'd1', name: 'discord.member.snapshot.v1', source: 'discord',
+      payload: { discord_user_id: '1001', display_name: 'alice', role_ids: ['role-holder'] } }));
+    l.ingest(ev({ event_id: 'i1', name: 'identity.account.linked.v1', source: 'identity_api', truth_status: 'attested',
+      payload: { user_id: 'usr_alice', account_kind: 'discord', external_id: '1001' } }));
+    const g = l.getMemberGraph('demo');
+    expect(g.summary.total_subjects).toBe(1); // absorbed
+    const subj = g.subjects[0]!;
+    expect(subj.kind).toBe('identity_user');
+    expect(subj.attribution_quality).toBe('verified');
+    expect(subj.discord_user_id).toBe('1001');
+    expect(subj.current_roles).toContain('role-holder'); // role unioned from absorbed discord subject
+    expect(subj.aliases).toContain('discord:1001');
+  });
+
+  it('wallet_only + identity.wallet.linked merge the wallet alias into the identity_user', () => {
+    const l = ledger();
+    l.ingest(ev({ event_id: 's1', name: 'sonar.wallet.attributed.v1', source: 'sonar',
+      payload: { wallet: { chain: 'berachain', address: '0xAAA' }, contract_address: '0xc', edge_kind: 'minted' } }));
+    l.ingest(ev({ event_id: 'w1', name: 'identity.wallet.linked.v1', source: 'identity_api', truth_status: 'attested',
+      payload: { user_id: 'usr_alice', wallet: { chain: 'berachain', address: '0xAAA' } } }));
+    const g = l.getMemberGraph('demo');
+    expect(g.summary.total_subjects).toBe(1);
+    expect(g.subjects[0]!.attribution_quality).toBe('verified');
+    expect(g.subjects[0]!.aliases).toContain('wallet:berachain:0xaaa');
+  });
+});
+
+describe('AC-5 divergence classification honors role_rank', () => {
+  it('incumbent role-holder vs freeside role-core (higher) => freeside_higher', () => {
+    const l = ledger();
+    l.ingest(ev({ event_id: 'cfg', name: 'community.config.updated.v1', source: 'manual_config', truth_status: 'attested',
+      payload: { role_rank: { 'role-holder': 1, 'role-core': 2 } } }));
+    l.ingest(ev({ event_id: 'inc', name: 'incumbent.role.observed.v1', source: 'incumbent_bot',
+      payload: { discord_user_id: '1001', incumbent: 'collab.land', role_ids: ['role-holder'] } }));
+    l.ingest(ev({ event_id: 'fr', name: 'freeside.role.computed.v1', source: 'freeside', truth_status: 'inferred',
+      payload: { locator: { discord_user_id: '1001' }, role_ids: ['role-core'] } }));
+    const [div] = l.getDivergences('demo');
+    expect(div!.kind).toBe('freeside_higher');
+    expect(div!.reason).toMatch(/higher ranked role/);
+  });
+
+  it('equal role sets => match', () => {
+    const l = ledger();
+    l.ingest(ev({ event_id: 'inc', name: 'incumbent.role.observed.v1', source: 'incumbent_bot',
+      payload: { discord_user_id: '1001', incumbent: 'collab.land', role_ids: ['role-holder'] } }));
+    l.ingest(ev({ event_id: 'fr', name: 'freeside.role.computed.v1', source: 'freeside', truth_status: 'inferred',
+      payload: { locator: { discord_user_id: '1001' }, role_ids: ['role-holder'] } }));
+    expect(l.getDivergences('demo')[0]!.kind).toBe('match');
+  });
+});
+
+describe('AC-10 merge provenance + revoke downgrade', () => {
+  it('a merge records provenance; revoke downgrades verified -> observed_only and flags re-split', () => {
+    const l = ledger();
+    l.ingest(ev({ event_id: 'w1', name: 'identity.wallet.linked.v1', source: 'identity_api', truth_status: 'attested',
+      payload: { user_id: 'usr_alice', wallet: { chain: 'berachain', address: '0xAAA' } } }));
+    let subj = l.getMemberGraph('demo').subjects[0]!;
+    expect(subj.attribution_quality).toBe('verified');
+
+    l.ingest(ev({ event_id: 'r1', name: 'identity.link.revoked.v1', source: 'identity_api', truth_status: 'attested',
+      payload: { user_id: 'usr_alice', link_kind: 'wallet', reason: 'compromised' } }));
+    subj = l.getMemberGraph('demo').subjects[0]!;
+    expect(subj.attribution_quality).toBe('observed_only');
+    expect(subj.pending_resplit).toBe(true);
+  });
+});
