@@ -111,10 +111,111 @@ function isAllowlisted(relPath, subject) {
 
 const SUBJECT_LITERAL = /\.(?:nats|jetstream)\.publish\s*\(\s*["']([^"']+)["']/;
 
-// publishEnvelope-bypass detection (FR-1 / events #255)
-const PE_IMPORT = /\bpublishEnvelope\b/;
-const EVENTS_PKG_FROM = /from\s+["']@0xhoneyjar\/events["']/;
-const TYPE_ONLY_IMPORT = /^\s*import\s+type\b/;
+// =============================================================================
+// publishEnvelope-bypass detection (FR-1 / events #255) — WHOLE-FILE, two-pass.
+//
+// The old detector matched `publishEnvelope` AND `from "@0xhoneyjar/events"` on
+// the SAME line. FAGAN proved that trivially evaded: a multi-line (Prettier)
+// import (F1) and a `import * as events` + `events.publishEnvelope()` member
+// access (F2) both split the two tokens across lines → total miss. Its
+// comment-skip was also insufficient → false positives on mentions inside
+// comments and on type-only forms (F3). This rule alone moves to whole-file
+// matching; the internalPublish / raw-nats-publish / unhandled-emit rules stay
+// line-based below.
+//
+// A file is flagged IFF it imports a runnable `publishEnvelope` VALUE from
+// `@0xhoneyjar/events`: a named value import (NOT `import type`, `export type`,
+// or an inline `{ type publishEnvelope }`), OR a namespace import whose alias is
+// then member-accessed as `.publishEnvelope`. Comments are stripped first so
+// mentions inside `//…` / `/* … */` never match (and string contents are
+// preserved, so a literal containing `//` is not mistaken for a comment).
+// =============================================================================
+
+// Strip line + block comments while PRESERVING byte offsets and newlines, so a
+// char offset into the stripped text maps to the same line as the original.
+// String-aware (single/double/template) so `//` or `/*` inside a string literal
+// is NOT treated as a comment opener.
+function stripComments(src) {
+  let out = "";
+  const n = src.length;
+  let state = "code"; // code | line | block | sq | dq | tpl
+  for (let i = 0; i < n; i++) {
+    const c = src[i];
+    const d = i + 1 < n ? src[i + 1] : "";
+    if (state === "code") {
+      if (c === "/" && d === "/") { state = "line"; out += "  "; i++; continue; }
+      if (c === "/" && d === "*") { state = "block"; out += "  "; i++; continue; }
+      if (c === "'") { state = "sq"; out += c; continue; }
+      if (c === '"') { state = "dq"; out += c; continue; }
+      if (c === "`") { state = "tpl"; out += c; continue; }
+      out += c; continue;
+    }
+    if (state === "line") {
+      if (c === "\n") { state = "code"; out += c; continue; }
+      out += " "; continue;
+    }
+    if (state === "block") {
+      if (c === "*" && d === "/") { state = "code"; out += "  "; i++; continue; }
+      out += c === "\n" ? "\n" : " "; continue;
+    }
+    // string states: copy verbatim, honor escapes, exit on the matching quote
+    if (c === "\\") { out += c + (d || ""); i++; continue; }
+    if ((state === "sq" && c === "'") || (state === "dq" && c === '"') || (state === "tpl" && c === "`")) {
+      state = "code";
+    }
+    out += c;
+  }
+  return out;
+}
+
+const lineAtOffset = (s, off) => {
+  let line = 1;
+  for (let k = 0; k < off && k < s.length; k++) if (s[k] === "\n") line++;
+  return line;
+};
+
+// Matches an `import`/`export … from "@0xhoneyjar/events"` statement. The clause
+// (group 2) is everything between the keyword and `from`; the inner negative
+// lookahead `(?!\bfrom\b)` stops a non-greedy clause from spanning a PRIOR
+// import's `from`, so a `publishEnvelope` binding from a DIFFERENT package can
+// never be mis-attributed to the events import.
+const EVENTS_IMPORT = /\b(import|export)\b((?:(?!\bfrom\b)[\s\S])*?)\bfrom\s*["']@0xhoneyjar\/events["']/g;
+
+// Returns { line } for the first reachable publishEnvelope VALUE, or null.
+function detectPublishEnvelopeBypass(stripped) {
+  EVENTS_IMPORT.lastIndex = 0;
+  let m;
+  while ((m = EVENTS_IMPORT.exec(stripped)) !== null) {
+    const full = m[0];
+    const clause = m[2];
+    // Statement-level type-only (`import type …` / `export type …`): no value.
+    if (/^\s*type\b/.test(clause)) continue;
+
+    // Namespace import: `* as ns` → reachable only if `ns.publishEnvelope` is used.
+    const ns = clause.match(/\*\s+as\s+(\w+)/);
+    if (ns) {
+      const member = new RegExp(`\\b${ns[1]}\\s*\\.\\s*publishEnvelope\\b`);
+      const mm = member.exec(stripped);
+      if (mm) return { line: lineAtOffset(stripped, mm.index) };
+      continue;
+    }
+
+    // Named bindings: `{ a, publishEnvelope, … }`. A `type ` prefix on the
+    // specifier (inline type modifier) means the binding is NOT a runnable value.
+    const brace = clause.match(/\{([\s\S]*)\}/);
+    if (brace) {
+      for (const spec of brace[1].split(",")) {
+        const s = spec.trim();
+        if (!s || /^type\b/.test(s)) continue;
+        if (/^publishEnvelope\b/.test(s)) {
+          const off = m.index + Math.max(0, full.indexOf("publishEnvelope"));
+          return { line: lineAtOffset(stripped, off) };
+        }
+      }
+    }
+  }
+  return null;
+}
 
 // Discriminate NATS from Redis/Rabbit/notifier by RECEIVER NAME, not imports:
 // every NATS emit in this codebase publishes via `.nats.publish(` or
@@ -163,20 +264,20 @@ for (const file of walk(ROOT)) {
     if (EMIT_CALL.test(line) && !CONSUMED.test(line) && !/function|interface|type\s|=>/.test(line)) {
       findings.push({ file: rel, line: i + 1, kind: "unhandled-emit-either", allowlisted: false, text: trimmed });
     }
-    // publishEnvelope-bypass: direct value import from @0xhoneyjar/events (FR-1 / events #255).
-    if (
-      PE_IMPORT.test(line) &&
-      EVENTS_PKG_FROM.test(line) &&
-      !TYPE_ONLY_IMPORT.test(line)
-    ) {
-      findings.push({
-        file: rel,
-        line: i + 1,
-        kind: "publishEnvelope-bypass",
-        allowlisted: isAllowlisted(rel, "publishEnvelope"),
-        text: trimmed,
-      });
-    }
+  }
+
+  // publishEnvelope-bypass (FR-1 / events #255): whole-file, comment-stripped,
+  // two-pass — catches multi-line imports (F1) and namespace member access (F2)
+  // the old line matcher missed, without the comment false-positives (F3).
+  const pe = detectPublishEnvelopeBypass(stripComments(text));
+  if (pe) {
+    findings.push({
+      file: rel,
+      line: pe.line,
+      kind: "publishEnvelope-bypass",
+      allowlisted: isAllowlisted(rel, "publishEnvelope"),
+      text: (lines[pe.line - 1] ?? "").trim(),
+    });
   }
 }
 

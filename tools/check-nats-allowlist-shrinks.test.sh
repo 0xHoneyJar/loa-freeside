@@ -35,6 +35,13 @@ check() { # name expected-rc actual-rc
     echo "FAIL: $1 — expected exit $2, got $3"; sed 's/^/    /' /tmp/nats-gate-smoke.out; fail=1
   fi
 }
+check_msg() { # name substring  (asserts last run's output contains it)
+  if grep -qF "$2" /tmp/nats-gate-smoke.out; then
+    echo "PASS: $1 (output contains '$2')"
+  else
+    echo "FAIL: $1 — expected output to contain '$2'"; sed 's/^/    /' /tmp/nats-gate-smoke.out; fail=1
+  fi
+}
 
 # 1) Count-preserving SWAP (remove b::y, add c::z) — the IMP-003 bypass — MUST fail.
 printf 'version: 1\nentries:\n  - id: "a::x"\n  - id: "c::z"\nemitRaw_allowlist: []\n' > "$AL"
@@ -56,10 +63,19 @@ check "unchanged stays GREEN" 0 "$(run)"
 printf 'version: 1\nentries:\n  - id: "a::x"\nemitRaw_allowlist:\n  - id: "b::y"\n' > "$AL"
 check "entries->emitRaw move stays GREEN" 0 "$(run)"
 
-# 6) publishEnvelope_allowlist ADDITION — MUST fail (events #255 shrink gate).
+# 6) publishEnvelope_allowlist ADDITION — MUST fail, caught by the GENERIC union
+#    path (events #255). extract_ids is section-blind: it unions the PE section's
+#    `- id:` lines too, so the addition trips the generic "GAINED id(s)" check.
+#    There is NO PE-specific gate block anymore (it was dead code — FAGAN F4).
+#    Asserting the message (not just exit 1) makes this a real regression test of
+#    the union covering the PE section — it goes RED if that coverage breaks,
+#    instead of passing whether or not the enforcing code exists.
 git show HEAD:"$AL" > "$AL"  # reset to base
 printf 'version: 1\nentries:\n  - id: "a::x"\n  - id: "b::y"\nemitRaw_allowlist: []\npublishEnvelope_allowlist:\n  - id: "src/foo.ts::publishEnvelope"\n' > "$AL"
-check "publishEnvelope_allowlist addition goes RED" 1 "$(run)"
+rc6="$(run)"
+check "publishEnvelope_allowlist addition goes RED" 1 "$rc6"
+check_msg "publishEnvelope addition is caught by the generic union path" "GAINED id(s)"
+check_msg "the offending PE id is named in the diff" "src/foo.ts::publishEnvelope"
 
 # 7) Empty publishEnvelope_allowlist — MUST pass.
 printf 'version: 1\nentries:\n  - id: "a::x"\n  - id: "b::y"\nemitRaw_allowlist: []\npublishEnvelope_allowlist: []\n' > "$AL"
