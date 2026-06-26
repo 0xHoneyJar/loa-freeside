@@ -127,41 +127,96 @@ const SUBJECT_LITERAL = /\.(?:nats|jetstream)\.publish\s*\(\s*["']([^"']+)["']/;
 // `@0xhoneyjar/events`: a named value import (NOT `import type`, `export type`,
 // or an inline `{ type publishEnvelope }`), OR a namespace import whose alias is
 // then member-accessed as `.publishEnvelope`. Comments are stripped first so
-// mentions inside `//…` / `/* … */` never match (and string contents are
-// preserved, so a literal containing `//` is not mistaken for a comment).
+// mentions inside `//…` / `/* … */` never match (and string + regex literals are
+// preserved, so neither a `//` inside a string nor a quote inside a regex like
+// `/["']/` desyncs the stripper — FAGAN NF2).
+//
+// The match is bounded to a SINGLE import/export STATEMENT (FAGAN NF1): the
+// binding clause between the keyword and `from` is constrained to the import-
+// specifier grammar (identifiers / `{ } , *` / `as` / `type` / whitespace). A
+// `:`, `(`, `=`, or `"` ends the clause, so an `export interface Foo {
+// publishEnvelope: … }` or `export const cfg = { publishEnvelope: true }` sitting
+// next to a real `@0xhoneyjar/events` import is NOT swept into the binding and
+// never false-positives.
+//
+// **Load-bearing control is the STRUCTURAL fence, not this scanner.** events #255
+// is fenced by un-exporting `publishEnvelope` from the package index AND omitting
+// the `./publisher` subpath from package.json `exports` — so the raw capability
+// is unreachable from any consumer regardless of how they spell the import. This
+// scanner is the in-monorepo backstop (catches a relative-path reach inside the
+// repo before it ships); the un-export is the wall. Because of that wall, these
+// detector blind spots are ACCEPTED, not chased (the evasion cannot obtain the
+// capability from the public API anyway):
+//   • destructure-from-namespace: `const { publishEnvelope } = events;` after a
+//     `* as events` import (no `.publishEnvelope` member token).
+//   • fully-computed member access: `events["publish" + "Envelope"](…)`.
+//   • prefix-substring line attribution: a binding whose name merely STARTS with
+//     `publishEnvelope` (e.g. `publishEnvelopeRaw`) is attributed to the literal
+//     token line; cosmetic only.
 // =============================================================================
 
 // Strip line + block comments while PRESERVING byte offsets and newlines, so a
 // char offset into the stripped text maps to the same line as the original.
-// String-aware (single/double/template) so `//` or `/*` inside a string literal
-// is NOT treated as a comment opener.
+// String-AND-regex-aware: `//` or `/*` inside a string ('/"/`) OR inside a regex
+// literal (`/…/`) is NOT treated as a comment opener, and a quote inside a regex
+// does not desync the stripper into string state (FAGAN NF2). `/` is read as a
+// regex literal (not division) when the previous significant token is an
+// expression-start char OR a regex-preceding keyword (`return`, `typeof`, …).
 function stripComments(src) {
   let out = "";
   const n = src.length;
-  let state = "code"; // code | line | block | sq | dq | tpl
+  let state = "code"; // code | line | block | sq | dq | tpl | regex
+  let prevSig = "";   // last significant (non-ws) char emitted in code state
+  let curWord = "";   // current identifier run
+  let lastWord = "";  // most recent completed identifier (keyword-before-regex)
+  let inClass = false; // inside a [...] char class within a regex literal
+  const REGEX_BEFORE = new Set(["", "(", ",", "=", ":", "[", "!", "&", "|", "?", "{", "}", ";", "<", ">", "+", "-", "*", "/", "%", "^", "~", "\n"]);
+  const REGEX_KEYWORDS = new Set(["return", "typeof", "instanceof", "in", "of", "new", "delete", "void", "do", "else", "yield", "await", "case"]);
+  const isWord = (ch) =>
+    (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || (ch >= "0" && ch <= "9") || ch === "_" || ch === "$";
+
   for (let i = 0; i < n; i++) {
     const c = src[i];
     const d = i + 1 < n ? src[i + 1] : "";
     if (state === "code") {
-      if (c === "/" && d === "/") { state = "line"; out += "  "; i++; continue; }
-      if (c === "/" && d === "*") { state = "block"; out += "  "; i++; continue; }
-      if (c === "'") { state = "sq"; out += c; continue; }
-      if (c === '"') { state = "dq"; out += c; continue; }
-      if (c === "`") { state = "tpl"; out += c; continue; }
-      out += c; continue;
+      if (c === "/" && d === "/") { state = "line"; out += "  "; i++; prevSig = ""; curWord = ""; continue; }
+      if (c === "/" && d === "*") { state = "block"; out += "  "; i++; prevSig = ""; curWord = ""; continue; }
+      if (c === "/") {
+        const regexOk = REGEX_BEFORE.has(prevSig) || REGEX_KEYWORDS.has(lastWord);
+        out += c; prevSig = "/"; if (curWord) lastWord = curWord; curWord = "";
+        if (regexOk) { state = "regex"; inClass = false; }
+        continue;
+      }
+      if (c === "'" || c === '"' || c === "`") {
+        state = c === "'" ? "sq" : c === '"' ? "dq" : "tpl";
+        out += c; prevSig = c; if (curWord) lastWord = curWord; curWord = "";
+        continue;
+      }
+      out += c;
+      if (!/\s/.test(c)) prevSig = c;
+      if (isWord(c)) { curWord += c; } else { if (curWord) lastWord = curWord; curWord = ""; }
+      continue;
     }
     if (state === "line") {
-      if (c === "\n") { state = "code"; out += c; continue; }
+      if (c === "\n") { state = "code"; out += c; prevSig = "\n"; continue; }
       out += " "; continue;
     }
     if (state === "block") {
-      if (c === "*" && d === "/") { state = "code"; out += "  "; i++; continue; }
+      if (c === "*" && d === "/") { state = "code"; out += "  "; i++; prevSig = ""; continue; }
       out += c === "\n" ? "\n" : " "; continue;
     }
-    // string states: copy verbatim, honor escapes, exit on the matching quote
+    if (state === "regex") {
+      if (c === "\\") { out += c + (d || ""); i++; continue; }
+      if (c === "\n") { state = "code"; out += c; prevSig = "\n"; continue; } // defensive: regex can't span lines
+      if (c === "[") { inClass = true; out += c; continue; }
+      if (c === "]") { inClass = false; out += c; continue; }
+      if (c === "/" && !inClass) { state = "code"; out += c; prevSig = "/"; continue; }
+      out += c; continue;
+    }
+    // string states (sq/dq/tpl): copy verbatim, honor escapes, exit on matching quote
     if (c === "\\") { out += c + (d || ""); i++; continue; }
     if ((state === "sq" && c === "'") || (state === "dq" && c === '"') || (state === "tpl" && c === "`")) {
-      state = "code";
+      state = "code"; prevSig = c;
     }
     out += c;
   }
@@ -174,12 +229,15 @@ const lineAtOffset = (s, off) => {
   return line;
 };
 
-// Matches an `import`/`export … from "@0xhoneyjar/events"` statement. The clause
-// (group 2) is everything between the keyword and `from`; the inner negative
-// lookahead `(?!\bfrom\b)` stops a non-greedy clause from spanning a PRIOR
-// import's `from`, so a `publishEnvelope` binding from a DIFFERENT package can
-// never be mis-attributed to the events import.
-const EVENTS_IMPORT = /\b(import|export)\b((?:(?!\bfrom\b)[\s\S])*?)\bfrom\s*["']@0xhoneyjar\/events["']/g;
+// Matches a SINGLE `import`/`export … from "@0xhoneyjar/events"` statement. The
+// clause (group 2) is constrained to the import-specifier grammar `[\w\s{},*]` —
+// identifiers, `{ } , *`, and the word-keywords `as`/`type`, plus whitespace.
+// Because a string literal (`"`, `@`, `/`), a `;`, a `:`, a `(`, or an `=` is NOT
+// in that charset, the clause cannot span a prior statement's `from "…"` (so a
+// `publishEnvelope` binding from a DIFFERENT package is never mis-attributed) NOR
+// an adjacent interface/object body whose member happens to be `publishEnvelope`
+// (FAGAN NF1). It is statement-isolation expressed as a charset.
+const EVENTS_IMPORT = /\b(import|export)\b([\w\s{},*]*?)\bfrom\s*["']@0xhoneyjar\/events["']/g;
 
 // Returns { line } for the first reachable publishEnvelope VALUE, or null.
 function detectPublishEnvelopeBypass(stripped) {
@@ -202,7 +260,9 @@ function detectPublishEnvelopeBypass(stripped) {
 
     // Named bindings: `{ a, publishEnvelope, … }`. A `type ` prefix on the
     // specifier (inline type modifier) means the binding is NOT a runnable value.
-    const brace = clause.match(/\{([\s\S]*)\}/);
+    // `[^}]*` is safe because import braces never nest (the NF1 charset already
+    // forbids object/type bodies inside the clause).
+    const brace = clause.match(/\{([^}]*)\}/);
     if (brace) {
       for (const spec of brace[1].split(",")) {
         const s = spec.trim();

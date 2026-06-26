@@ -28,12 +28,17 @@ export {
   type TopicSegments,
 } from "./topics.js";
 
+// `publishEnvelope` (+ its `PublishOptions`/`PublishResult` raw-publish types) is
+// DELIBERATELY NOT re-exported (events #255). It is the raw, schema-validation-
+// bypassing capability; emit.ts imports it internally via the relative
+// "./publisher.js" path. The sanctioned external path is makeEmitter()/emit(),
+// which validates before signing. The package.json exports map also omits the
+// "./publisher" subpath, so the capability is unreachable from any consumer
+// (FR-7, SKP-002). InMemoryPrevHashStore + PrevHashStore stay public — emit()
+// consumers need them.
 export {
-  publishEnvelope,
   InMemoryPrevHashStore,
   type PrevHashStore,
-  type PublishOptions,
-  type PublishResult,
 } from "./publisher.js";
 
 export {

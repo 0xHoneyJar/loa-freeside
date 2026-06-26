@@ -137,4 +137,41 @@ describe("events-lint — publishEnvelope-bypass detection (T-1 TEETH TEST)", ()
       `import type { publishEnvelope } from "@0xhoneyjar/events";\n// type-only import — no capability, no bypass\n`,
     );
   });
+
+  // ── NF1 (statement-isolation): an interface/object member named publishEnvelope
+  //    sitting next to a @events import must NOT be swept into the import clause.
+  it("does NOT flag an interface member `publishEnvelope` next to a @events import (NF1)", () => {
+    assertClean(
+      "iface-member.ts",
+      [
+        `export interface Foo { publishEnvelope: () => void }`,
+        `import { makeEmitter } from "@0xhoneyjar/events";`,
+        `export const e = makeEmitter;`,
+      ].join("\n") + "\n",
+    );
+  });
+
+  it("does NOT flag an object key `publishEnvelope` next to a @events re-export (NF1)", () => {
+    assertClean(
+      "object-key.ts",
+      [
+        `export const cfg = { publishEnvelope: true };`,
+        `export { makeEmitter } from "@0xhoneyjar/events";`,
+      ].join("\n") + "\n",
+    );
+  });
+
+  // ── NF2 (regex-literal state): a quote-bearing regex must not desync the
+  //    comment-stripper and leave a commented-out import un-stripped → flagged.
+  it("does NOT flag a commented-out import after a quote-bearing regex literal (NF2)", () => {
+    assertClean(
+      "regex-then-comment.ts",
+      [
+        // a regex containing both quote chars — exactly the desync trigger
+        "const RX = /[\"']@0xhoneyjar\\/events[\"']/;",
+        '// import { publishEnvelope } from "@0xhoneyjar/events";',
+        "export const y = RX;",
+      ].join("\n") + "\n",
+    );
+  });
 });
