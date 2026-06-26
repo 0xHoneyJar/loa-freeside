@@ -174,4 +174,18 @@ describe("events-lint — publishEnvelope-bypass detection (T-1 TEETH TEST)", ()
       ].join("\n") + "\n",
     );
   });
+
+  // ── NF6 (keyword barrier): a no-semicolon local `export { publishEnvelope }`
+  //    (ASI, no `from`) immediately before a @events import must NOT be swept
+  //    into the import clause on a no-semicolon codebase.
+  it("does NOT flag a no-semicolon local `export { publishEnvelope }` next to a @events import (NF6)", () => {
+    assertClean(
+      "no-semi-local-export.ts",
+      [
+        `export { publishEnvelope }`,
+        `import { makeEmitter } from "@0xhoneyjar/events"`,
+        `export const e = makeEmitter`,
+      ].join("\n") + "\n",
+    );
+  });
 });

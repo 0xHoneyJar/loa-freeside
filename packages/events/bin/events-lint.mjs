@@ -236,8 +236,12 @@ const lineAtOffset = (s, off) => {
 // in that charset, the clause cannot span a prior statement's `from "…"` (so a
 // `publishEnvelope` binding from a DIFFERENT package is never mis-attributed) NOR
 // an adjacent interface/object body whose member happens to be `publishEnvelope`
-// (FAGAN NF1). It is statement-isolation expressed as a charset.
-const EVENTS_IMPORT = /\b(import|export)\b([\w\s{},*]*?)\bfrom\s*["']@0xhoneyjar\/events["']/g;
+// (FAGAN NF1). The inner `(?!\b(?:import|export)\b)` lookahead additionally stops
+// the clause at a SECOND statement keyword, so a local `export { publishEnvelope }`
+// (no `from`, no `;` — ASI) immediately before an `@events` import is not swept in
+// on a no-semicolon codebase (FAGAN NF6). It is statement-isolation expressed as a
+// charset + a keyword barrier.
+const EVENTS_IMPORT = /\b(import|export)\b((?:(?!\b(?:import|export)\b)[\w\s{},*])*?)\bfrom\s*["']@0xhoneyjar\/events["']/g;
 
 // Returns { line } for the first reachable publishEnvelope VALUE, or null.
 function detectPublishEnvelopeBypass(stripped) {
