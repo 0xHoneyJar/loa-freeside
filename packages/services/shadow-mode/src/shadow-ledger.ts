@@ -14,7 +14,6 @@ import {
   identityAlias,
   discordAlias,
   walletAlias,
-  unresolvedAlias,
   type ShadowEvent,
   type ShadowSubject,
   type ShadowEdge,
@@ -170,9 +169,7 @@ export class ShadowLedger {
     this.store.upsertSubject(identity);
 
     const existing = this.store.findSubjectByAlias(event.community_id, walletAlias(event.payload.wallet));
-    if (existing && existing.subject_id !== identity.subject_id) {
-      this.mergeSubjects(identity, existing, event.event_id, 'wallet');
-    }
+    if (existing) this.mergeOrFlagConflict(identity, existing, event, 'wallet');
 
     this.addAlias(identity, walletAlias(event.payload.wallet));
     this.addEdge(event, identity.subject_id, 'identity_wallet_linked', {
@@ -202,9 +199,7 @@ export class ShadowLedger {
         event.community_id,
         discordAlias(event.payload.external_id),
       );
-      if (existing && existing.subject_id !== identity.subject_id) {
-        this.mergeSubjects(identity, existing, event.event_id, 'account');
-      }
+      if (existing) this.mergeOrFlagConflict(identity, existing, event, 'account');
       this.addAlias(identity, discordAlias(event.payload.external_id));
       this.store.upsertSubject(identity);
     }
@@ -282,7 +277,14 @@ export class ShadowLedger {
   ): void {
     const subject =
       this.findSubjectByLocator(event.community_id, event.payload.locator) ??
-      this.getOrCreateSubject(event.community_id, unresolvedAlias(event.event_id), 'unresolved', event.observed_at);
+      this.getOrCreateSubject(
+        event.community_id,
+        // Stable on the locator (NOT event_id) so a re-emitted compute collapses
+        // to the same unresolved subject under at-least-once delivery (FAGAN MEDIUM).
+        unresolvedLocatorAlias(event.payload.locator, event.event_id),
+        'unresolved',
+        event.observed_at,
+      );
     subject.freeside_roles = dedupe(event.payload.role_ids);
     subject.last_seen_at = event.observed_at;
     this.store.upsertSubject(subject);
@@ -353,6 +355,30 @@ export class ShadowLedger {
     return undefined;
   }
 
+  /**
+   * Merge `existing` into `identity` ONLY when `existing` is not itself a
+   * verified identity. An identity-vs-identity conflict (a wallet/account linked
+   * to one identity is now linked to another) is NEVER silently absorbed
+   * (account-takeover-shaped, FAGAN HIGH) — it records a conflict edge and
+   * leaves both subjects intact for an operator/identity-api to resolve.
+   */
+  private mergeOrFlagConflict(
+    identity: ShadowSubject,
+    existing: ShadowSubject,
+    event: ShadowEvent,
+    linkKind: 'wallet' | 'account',
+  ): void {
+    if (existing.subject_id === identity.subject_id) return;
+    if (existing.kind === 'identity_user') {
+      this.addEdge(event, identity.subject_id, `identity_conflict_${linkKind}`, {
+        conflicting_subject_id: existing.subject_id,
+        conflicting_identity_user_id: existing.identity_user_id,
+      });
+      return;
+    }
+    this.mergeSubjects(identity, existing, event.event_id, linkKind);
+  }
+
   private mergeSubjects(
     preferred: ShadowSubject,
     other: ShadowSubject,
@@ -377,6 +403,9 @@ export class ShadowLedger {
       this.store.upsertAlias(preferred.community_id, alias, preferred.subject_id);
     }
     this.store.reassignEdges(other.subject_id, preferred.subject_id);
+    // Drop the absorbed subject's divergence so no row dangles at a deleted
+    // subject (in-memory: double-count; Postgres: FK violation aborts the merge).
+    this.store.deleteDivergence(`${other.community_id}:${other.subject_id}`);
     this.store.deleteSubject(other.subject_id);
     this.store.upsertSubject(preferred);
     this.recomputeDivergence(preferred);
@@ -448,6 +477,17 @@ function divergenceReason(kind: DivergenceKind): string {
     case 'mismatch':
       return 'Role sets differ without a rank-only explanation.';
   }
+}
+
+/** A stable unresolved-subject alias derived from the locator (idempotent on retry). */
+function unresolvedLocatorAlias(
+  locator: { user_id?: string; discord_user_id?: string; wallet?: WalletRef },
+  eventId: string,
+): string {
+  if (locator.user_id) return `unresolved:u:${locator.user_id}`;
+  if (locator.discord_user_id) return `unresolved:d:${locator.discord_user_id}`;
+  if (locator.wallet) return `unresolved:${walletAlias(locator.wallet)}`;
+  return `unresolved:e:${eventId}`;
 }
 
 function dedupe<T>(items: T[]): T[] {

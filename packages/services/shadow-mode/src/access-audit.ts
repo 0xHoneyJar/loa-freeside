@@ -31,6 +31,10 @@ export function buildAccessAuditReport(
   const nonMatch = graph.divergences.filter((d) => d.kind !== 'match');
   const total = graph.summary.total_subjects;
   const divergentRatio = total > 0 ? nonMatch.length / total : 0;
+  // Count verified by attribution_quality, NOT by kind: a revoked link downgrades
+  // attribution_quality to observed_only but leaves kind === 'identity_user'
+  // (FAGAN MEDIUM — a revoked/compromised link must not still read as verified).
+  const verifiedSubjects = graph.subjects.filter((s) => s.attribution_quality === 'verified').length;
 
   return {
     report_id: `report:${communityId}:${generatedAt}`,
@@ -39,7 +43,7 @@ export function buildAccessAuditReport(
     generated_at: generatedAt,
     summary: {
       total_subjects: total,
-      verified_subjects: graph.summary.identity_users,
+      verified_subjects: verifiedSubjects,
       unresolved_subjects: graph.summary.unresolved,
       discord_members: graph.summary.discord_members,
       wallet_only_subjects: graph.summary.wallet_only,

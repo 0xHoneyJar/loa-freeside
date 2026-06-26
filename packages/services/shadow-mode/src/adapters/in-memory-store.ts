@@ -32,9 +32,12 @@ export class InMemoryLedgerStore implements ILedgerStore {
   }
 
   withTransaction<T>(fn: () => T): T {
-    // Single-threaded synchronous: the body runs to completion or throws (no
-    // partial-await window). A throw leaves no partial commit because callers
-    // mutate the in-memory maps only inside fn and we re-throw.
+    // Single-threaded synchronous: no partial-await window (no concurrent
+    // interleaving). loa:shortcut: this does NOT roll back already-applied
+    // mutations if fn throws mid-way — the in-memory adapter has no undo log.
+    // Apply handlers run only on Zod-validated input so no throw path is known,
+    // but the Postgres adapter MUST provide real transactional rollback.
+    // Upgrade trigger: the Postgres adapter, or any apply handler that can throw.
     return fn();
   }
 
@@ -75,6 +78,10 @@ export class InMemoryLedgerStore implements ILedgerStore {
 
   upsertDivergence(divergence: ShadowDivergence): void {
     this.divergencesById.set(divergence.divergence_id, divergence);
+  }
+
+  deleteDivergence(divergenceId: string): void {
+    this.divergencesById.delete(divergenceId);
   }
 
   upsertReport(report: ShadowReport): void {

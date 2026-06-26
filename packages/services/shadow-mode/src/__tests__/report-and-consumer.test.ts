@@ -11,6 +11,31 @@ function ledgerWithDemo(): ShadowLedger {
   return l;
 }
 
+const NOW = '2026-06-26T00:00:00.000Z';
+
+describe('a revoked link is not counted as verified in the report (FAGAN MEDIUM)', () => {
+  it('verified_subjects drops to 0 after a revoke downgrades the only identity', () => {
+    const l = new ShadowLedger(new InMemoryLedgerStore());
+    l.ingest({
+      event_id: 'w', schema_version: 'shadow.event.v1', community_id: 'demo',
+      name: 'identity.wallet.linked.v1', source: 'identity_api', truth_status: 'attested',
+      observed_at: NOW, emitted_at: NOW,
+      payload: { user_id: 'usr_alice', wallet: { chain: 'berachain', address: '0xAAA' } },
+    });
+    let report = buildAccessAuditReport('demo', l.getMemberGraph('demo'));
+    expect((report.summary as Record<string, number>).verified_subjects).toBe(1);
+
+    l.ingest({
+      event_id: 'r', schema_version: 'shadow.event.v1', community_id: 'demo',
+      name: 'identity.link.revoked.v1', source: 'identity_api', truth_status: 'attested',
+      observed_at: NOW, emitted_at: NOW,
+      payload: { user_id: 'usr_alice', link_kind: 'wallet' },
+    });
+    report = buildAccessAuditReport('demo', l.getMemberGraph('demo'));
+    expect((report.summary as Record<string, number>).verified_subjects).toBe(0);
+  });
+});
+
 describe('AC-6 access-audit report', () => {
   it('emits summary counts + mandatory caveats, shaped to the shadow-audit vocab', () => {
     const l = ledgerWithDemo();

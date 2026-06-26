@@ -39,6 +39,8 @@ export interface ILedgerStore {
 
   // --- divergences / reports ---
   upsertDivergence(divergence: ShadowDivergence): void;
+  /** Drop a divergence (used by merge to avoid a row dangling at an absorbed subject). */
+  deleteDivergence(divergenceId: string): void;
   upsertReport(report: ShadowReport): void;
 
   // --- community-scoped projections ---
