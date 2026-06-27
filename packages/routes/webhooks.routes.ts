@@ -169,8 +169,12 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
       }
     } catch (err) {
       logger.error({ paymentId, err }, 'Failed to insert webhook_events');
-      // Return 200 so NOWPayments doesn't retry on our DB errors
-      res.status(200).json({ status: 'error', reason: 'internal' });
+      // The webhook_events INSERT is the FIRST durable capture of this event.
+      // A transient failure here means we have NO record — returning 200 would
+      // ack the event and NOWPayments would never retry, permanently dropping
+      // the payment (a `finished` event would strand credits). Return a
+      // retriable 503 so the provider re-delivers the event.
+      res.status(503).json({ status: 'error', reason: 'internal' });
       return;
     }
 
