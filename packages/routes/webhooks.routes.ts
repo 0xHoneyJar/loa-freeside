@@ -114,7 +114,10 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
 
     // HMAC must use the exact raw body bytes provided to Express raw/text middleware.
     // Reconstructing JSON changes byte order/spacing and can verify a different message.
-    if (typeof req.body !== 'string') {
+    let rawBody: string | Buffer;
+    if (typeof req.body === 'string' || Buffer.isBuffer(req.body)) {
+      rawBody = req.body;
+    } else {
       logger.error(
         { bodyType: typeof req.body, hasBody: req.body !== undefined },
         'NOWPayments webhook raw body missing — refusing reconstructed HMAC',
@@ -123,7 +126,6 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
       return;
     }
 
-    const rawBody = req.body;
     const computedSig = createHmac('sha512', ipnSecret)
       .update(rawBody)
       .digest('hex');
@@ -141,9 +143,10 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
     // -------------------------------------------------------------------
     // Step 2: Parse and validate payload
     // -------------------------------------------------------------------
+    const rawJson = Buffer.isBuffer(rawBody) ? rawBody.toString('utf8') : rawBody;
     let payload: NowpaymentsWebhookPayload;
     try {
-      payload = JSON.parse(rawBody) as NowpaymentsWebhookPayload;
+      payload = JSON.parse(rawJson) as NowpaymentsWebhookPayload;
     } catch (err) {
       logger.warn({ err }, 'Signed NOWPayments webhook body is not valid JSON');
       res.status(400).json({ status: 'rejected', reason: 'invalid_json' });
