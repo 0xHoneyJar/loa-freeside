@@ -23,4 +23,7 @@ command -v loa >/dev/null 2>&1 || {
 # generic launcher banner instead of the signoff usage). Robust to whatever exit status help uses.
 loa signoff --help 2>&1 | grep -q 'loa signoff <pr>' || {
   echo "tools/loa-signoff.sh: this \`loa\` does not provide the 'signoff' verb (predates the hoist, or is broken) — update your loa-cli checkout (pull main + re-\`npm link\`)." >&2; exit 2; }
+# freeside's suite lives in themes/sietch; loa signoff now defaults to '.' (generic), so this repo's
+# shim pins its own dir. Operator override still wins (only set when unset).
+export LOA_SIGNOFF_SUITE_DIR="${LOA_SIGNOFF_SUITE_DIR:-themes/sietch}"
 exec loa signoff "$@"
