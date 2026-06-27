@@ -2,7 +2,9 @@
 # =============================================================================
 # spiral-orchestrator.sh - /spiral meta-orchestrator (cycle-066)
 # =============================================================================
-# Version: 0.1.0 (MVP scaffolding)
+# Version: 1.1.0 (production — matches spiral-harness.sh 1.1.0; supersedes the
+#                 stale "0.1.0 MVP scaffolding" header. G2/G-HONEST: REAL
+#                 dispatch is the default; the stub is fail-loud and non-bankable.)
 # Part of: RFC-060 #483 autopoietic spiral
 # Depends on: cycle-063 state coalescer, cycle-064 per-cycle workspace
 #
@@ -782,18 +784,20 @@ simstim_phase() {
     esac
 }
 
-# _resolve_dispatch_mode — FR-3 truth table (cycle-068)
-# SPIRAL_USE_STUB=1 always wins. SPIRAL_REAL_DISPATCH=1 → REAL. Neither → STUB default.
+# _resolve_dispatch_mode — G2/G-HONEST inverted truth table.
+# REAL dispatch is the DEFAULT. The STUB must be opted into EXPLICITLY
+# (SPIRAL_USE_STUB=1) — it can never be the silent default, because a stub
+# cycle fabricates output and must not be banked as convergence (see
+# _simstim_stub, which now emits null verdicts so a stub cycle fail-closes the
+# quality gate). SPIRAL_REAL_DISPATCH=1 is no longer read explicitly, but
+# existing callers that export it still get REAL (the default), so they keep
+# working unchanged.
 _resolve_dispatch_mode() {
     if [[ "${SPIRAL_USE_STUB:-0}" == "1" ]]; then
+        log "WARNING: Dispatch mode: STUB (SPIRAL_USE_STUB=1 — fabricated output, NOT bankable as convergence)"
         echo "STUB"
-    elif [[ "${SPIRAL_REAL_DISPATCH:-0}" == "1" ]]; then
-        echo "REAL"
     else
-        if [[ -z "${CI:-}" ]]; then
-            log "WARNING: Dispatch mode: STUB (default — set SPIRAL_REAL_DISPATCH=1 for real execution)"
-        fi
-        echo "STUB"
+        echo "REAL"
     fi
 }
 
@@ -808,15 +812,24 @@ _simstim_stub() {
         stub_findings=3
     fi
 
-    log "STUB: simstim dispatch not yet wired"
+    # G2/G-HONEST: a stub did not actually review anything. It MUST NOT emit an
+    # APPROVED verdict that the quality gate can bank as a passed/converged
+    # cycle. Instead it writes a loud NON-BANKABLE marker and a null verdict
+    # (→ check_quality_gate fail-closes and STOPS the spiral). The findings
+    # table is retained only so harvest-parsing plumbing has something to read.
+    log "STUB DISPATCH — FABRICATED output, NOT bankable as convergence (cycle ${cycle_id})"
 
-    # Write mock reviewer.md
+    # Write stub reviewer.md — loud, non-APPROVED verdict
     cat > "${cycle_dir}/reviewer.md" <<REVEOF
-# Stub Review — ${cycle_id}
+# STUB Review — ${cycle_id} (NOT REAL — NOT BANKABLE)
 
 ## Verdict
 
-APPROVED
+STUB_NOT_BANKABLE
+
+> This cycle ran in STUB dispatch mode. No model reviewed anything. These
+> findings are FABRICATED and MUST NOT be banked as convergence. Real dispatch
+> is the default; STUB requires an explicit SPIRAL_USE_STUB=1 opt-in.
 
 ## Findings Summary
 
@@ -828,13 +841,15 @@ APPROVED
 | Low | 0 |
 REVEOF
 
-    # Write mock auditor-sprint-feedback.md
+    # Write stub auditor-sprint-feedback.md — loud, non-APPROVED verdict
     cat > "${cycle_dir}/auditor-sprint-feedback.md" <<AUDEOF
-# Stub Audit — ${cycle_id}
+# STUB Audit — ${cycle_id} (NOT REAL — NOT BANKABLE)
 
 ## Final Verdict
 
-APPROVED
+STUB_NOT_BANKABLE
+
+> FABRICATED stub audit. MUST NOT be banked as convergence.
 
 ## Findings Summary
 
@@ -846,19 +861,31 @@ APPROVED
 | Low | 0 |
 AUDEOF
 
-    # Emit sidecar via adapter
+    # Emit sidecar via adapter with NULL verdicts + a non-success exit_status.
+    # Null verdicts force check_quality_gate to fail-closed (STOP) — a stub
+    # cycle can never be recorded as an APPROVED, converged cycle.
     local findings_json
     findings_json=$(jq -n --argjson h "$stub_findings" \
         '{blocker: 0, high: $h, medium: 0, low: 0}')
 
-    if type -t emit_cycle_outcome_sidecar &>/dev/null; then
-        emit_cycle_outcome_sidecar "$cycle_dir" "APPROVED" "APPROVED" \
-            "$findings_json" "null" "1" "success" >/dev/null
+    # The null-verdict sidecar is MANDATORY: without a tier-1 sidecar, harvest
+    # could fall through to tier-2 and promote a stale JACKED_OUT state to
+    # APPROVED. Fail loud rather than risk banking fabricated convergence —
+    # explicitly (not via `set -e`, which with_step_timeout could mask), so the
+    # orchestrator stub is as fail-closed as the dispatch stub.
+    if ! type -t emit_cycle_outcome_sidecar &>/dev/null; then
+        error "STUB: harvest adapter unavailable — cannot write non-bankable sidecar"
+        return 1
+    fi
+    if ! emit_cycle_outcome_sidecar "$cycle_dir" "null" "null" \
+            "$findings_json" "null" "1" "failed" >/dev/null; then
+        error "STUB: failed to write non-bankable cycle-outcome sidecar"
+        return 1
     fi
 
     log_trajectory "simstim_stub" \
         "$(jq -n --arg c "$cycle_id" --argjson f "$stub_findings" \
-            '{cycle_id: $c, mock_findings: $f}')"
+            '{cycle_id: $c, mock_findings: $f, bankable: false, dispatch_mode: "STUB"}')"
 }
 
 # _simstim_real — real dispatch via external wrapper (cycle-068 FR-1)

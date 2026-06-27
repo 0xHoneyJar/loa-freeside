@@ -41,29 +41,41 @@ error() { echo "ERROR: $*" >&2; }
 # =============================================================================
 
 if [[ "${SPIRAL_USE_STUB:-0}" == "1" ]]; then
-    log "STUB: dispatch mode (SPIRAL_USE_STUB=1)"
+    # G2/G-HONEST: the stub did not review anything — it must NOT emit an
+    # APPROVED verdict that the orchestrator can bank as convergence. Null
+    # verdicts + a non-success exit_status make a stub cycle non-bankable.
+    log "STUB DISPATCH — FABRICATED output, NOT bankable as convergence (SPIRAL_USE_STUB=1)"
 
     mkdir -p "$cycle_dir"
 
-    # Write stub artifacts
+    # Write stub artifacts — loud, non-APPROVED verdict
     cat > "$cycle_dir/reviewer.md" << 'STUB'
-## Review: STUB MODE
-Verdict: APPROVED
-This is a stub review for testing.
+## Review: STUB MODE (NOT REAL — NOT BANKABLE)
+Verdict: STUB_NOT_BANKABLE
+FABRICATED stub review for plumbing tests. MUST NOT be banked as convergence.
 STUB
 
     cat > "$cycle_dir/auditor-sprint-feedback.md" << 'STUB'
-## Audit: STUB MODE
-Verdict: APPROVED
-This is a stub audit for testing.
+## Audit: STUB MODE (NOT REAL — NOT BANKABLE)
+Verdict: STUB_NOT_BANKABLE
+FABRICATED stub audit for plumbing tests. MUST NOT be banked as convergence.
 STUB
 
-    # Emit stub sidecar
+    # Emit stub sidecar with NULL verdicts → orchestrator quality gate fail-closes.
+    # G2/G-HONEST: this sidecar is MANDATORY. Without a tier-1 null-verdict
+    # sidecar, harvest could fall through to tier-2 and promote a stale
+    # JACKED_OUT state to APPROVED — banking fabricated convergence. So fail
+    # LOUD if the adapter is unavailable or the write fails.
     source "$SCRIPT_DIR/bootstrap.sh" 2>/dev/null || true
-    source "$SCRIPT_DIR/spiral-harvest-adapter.sh" 2>/dev/null || true
-    if type -t emit_cycle_outcome_sidecar &>/dev/null; then
-        emit_cycle_outcome_sidecar "$cycle_dir" "APPROVED" "APPROVED" \
-            '{"blocker":0,"high":0,"medium":0,"low":0}' "null" "0" "success" >/dev/null 2>&1 || true
+    if ! source "$SCRIPT_DIR/spiral-harvest-adapter.sh" 2>/dev/null \
+       || ! type -t emit_cycle_outcome_sidecar &>/dev/null; then
+        error "STUB: harvest adapter unavailable — cannot write non-bankable sidecar"
+        exit 1
+    fi
+    if ! emit_cycle_outcome_sidecar "$cycle_dir" "null" "null" \
+            '{"blocker":0,"high":0,"medium":0,"low":0}' "null" "0" "failed" >/dev/null 2>&1; then
+        error "STUB: failed to write non-bankable cycle-outcome sidecar"
+        exit 1
     fi
 
     # Write status artifact for stub mode too
