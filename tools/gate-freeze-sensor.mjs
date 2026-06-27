@@ -41,6 +41,7 @@
  *                                              # Re-run as fixes land; exit 2 = still frozen.
  */
 import { execFileSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 
 const ARGS = process.argv.slice(2);
 const MODE = ARGS.includes('--json') ? 'json' : ARGS.includes('--probe') ? 'probe' : 'board';
@@ -86,6 +87,19 @@ function classify(result) {
 }
 
 /**
+ * parseRequiredContexts(rsc) → string[] — PURE. Extract the required-check context NAMES from a
+ * branch-protection `required_status_checks` object. GitHub returns BOTH `contexts[]` (legacy) and
+ * `checks[].context` (new); prefer whichever is POPULATED. A naive `contexts || checks…` short-
+ * circuits on an EMPTY-but-truthy `contexts: []` and never reaches a populated `checks[]` — the
+ * contexts→checks deprecation time-bomb. Length-test instead of truthiness.
+ */
+export function parseRequiredContexts(rsc = {}) {
+  const ctx = Array.isArray(rsc.contexts) ? rsc.contexts : [];
+  const fromChecks = Array.isArray(rsc.checks) ? rsc.checks.map((c) => c.context).filter(Boolean) : [];
+  return ctx.length ? ctx : fromChecks;
+}
+
+/**
  * fetchRepoData(repo) → { repo, defaultBranch, required, strict, prs } — the I/O half (gh reads).
  * `required` is the branch-protection required-check contexts, or null if unreadable.
  */
@@ -101,8 +115,8 @@ function fetchRepoData(repo) {
     const prot = ghJSON(['api', `repos/${repo}/branches/${defaultBranch}/protection`], true);
     const rsc = prot.required_status_checks || {};
     strict = !!rsc.strict;
-    // GitHub returns either contexts[] (legacy) or checks[].context (new)
-    required = rsc.contexts || (rsc.checks || []).map((c) => c.context) || [];
+    // GitHub returns either contexts[] (legacy) or checks[].context (new) — prefer the populated one.
+    required = parseRequiredContexts(rsc);
   } catch {
     required = null;
   }
@@ -185,10 +199,17 @@ export function analyzeBacklog({ repo, defaultBranch = 'main', required, strict 
     : !hasRequired ? 'UNGATED'         // readable: genuinely no required status checks → CI can't freeze
     : 'FLOWING';
 
+  // Exit code IS the verdict, and it must speak all THREE tiers immune-check.sh reads (0 HEALTHY /
+  // 1 INSUFFICIENT / 2 PROBLEM), not just two. UNGATED? = branch protection unreadable = we could
+  // NOT ground the freeze question → INSUFFICIENT (1), parallel to instrument-truth-sensor's
+  // can't-ground exit. Collapsing it to 0 would let immune-check read a blind gate as HEALTHY — the
+  // exact numb-false-green this suite exists to kill ([[ci-sensors-must-not-be-numb]]).
+  const exitCode = verdict === 'FROZEN' ? 2 : verdict === 'UNGATED?' ? 1 : 0;
+
   return {
     repo, defaultBranch, openPRs: prs.length, truncated,
     requiredChecks: required, strict, behindCount: behind,
-    verdict, root: root ? root.name : null,
+    verdict, exitCode, root: root ? root.name : null,
     frozenChecks: frozen.map((c) => ({ name: c.name, failOn: c.fail, pendingOn: c.pending, missingOn: c.missing, ofPRs: prs.length, freezePct: Math.round(c.freeze * 100) })),
     duplicateRequiredChecks: checks.filter((c) => c.duplicateRuns && hasRequired && c.isRequired).map((c) => ({ name: c.name, runs: c.duplicateRuns })),
     ungatedFailing,
@@ -202,11 +223,20 @@ function analyzeRepo(repo) {
 
 function main() {
   if (ARGS.includes('--estate')) return estateMode();
-  const summary = analyzeRepo(resolveRepo());
+  // Wrap the single-repo read so a `gh` failure (e.g. `gh pr list` unauthenticated) becomes a clean
+  // one-line INSUFFICIENT diagnostic, not a raw Node stack trace bleeding into immune-check's tile.
+  // (estateMode keeps its OWN per-repo try/catch → ERROR, so it stays resilient — die() here would
+  // kill the whole sweep, which is why we catch on the single-repo path only.)
+  let summary;
+  try {
+    summary = analyzeRepo(resolveRepo());
+  } catch (e) {
+    die(`could not read ${REPO_ARG || 'repo'} (${e.code || e.message}) — INSUFFICIENT`);
+  }
   if (MODE === 'json') console.log(JSON.stringify(summary, null, 2));
   else if (MODE === 'probe') console.log(renderProbe(summary));
   else console.log(renderBoard(summary));
-  process.exit(summary.verdict === 'FROZEN' ? 2 : 0);
+  process.exit(summary.exitCode);
 }
 
 // --estate: sweep every repo with open PRs in an org, group freezes by ROOT CAUSE, and rank the
@@ -328,5 +358,6 @@ function renderBoard(s) {
   return L.join('\n');
 }
 
-// run as CLI only (not when imported by the test)
-if (import.meta.url === `file://${process.argv[1]}`) main();
+// run as CLI only (not when imported by the test). Use pathToFileURL (percent-encodes paths with
+// spaces/special chars) instead of a hand-built `file://` string — matches instrument-truth-sensor.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
