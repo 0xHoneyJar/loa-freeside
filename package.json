@@ -5,7 +5,8 @@
   },
   "scripts": {
     "build:hounfour": "scripts/rebuild-hounfour-dist.sh",
-    "postinstall": "scripts/rebuild-hounfour-dist.sh"
+    "postinstall": "scripts/rebuild-hounfour-dist.sh",
+    "check:nowpayments-webhook-policy": "node scripts/check-nowpayments-webhook-policy.mjs"
   },
   "devDependencies": {
     "@0xhoneyjar/loa-hounfour": "github:0xHoneyJar/loa-hounfour#aed755f7fea8d2739cf9c755b45aaa580b6af6a9",
