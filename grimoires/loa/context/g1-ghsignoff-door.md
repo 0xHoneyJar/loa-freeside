@@ -62,6 +62,13 @@ cross-model council review.
 
 ## The two tools (the build — App-zone, this PR)
 
+> **Hoisted into loa-cli (2026-06-27).** The implementation now lives in the `loa` launcher
+> as two operator-only verbs — `loa signoff <pr>` and `loa council <pr>` (pure-node, zero-dep,
+> unit-tested in `loa-cli/test/security/signoff_gate.mjs`), so EVERY repo gets the door through
+> the one binary. `tools/loa-signoff.sh` / `tools/council-signoff.sh` are now thin shims that
+> forward to `loa signoff` / `loa council` — the usage below is unchanged (the shim passes every
+> arg through). loa-cli is the source of truth; the per-repo copy is gone.
+
 ### `tools/loa-signoff.sh` — the local-green attestation
 
 Runs the repo's real suite locally; **on GREEN** posts a `loa-signoff` commit status

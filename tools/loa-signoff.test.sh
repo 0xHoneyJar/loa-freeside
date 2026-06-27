@@ -1,78 +1,39 @@
 #!/usr/bin/env bash
 # =============================================================================
-# tools/loa-signoff.test.sh — fixture-driven tests for loa-signoff.sh
+# tools/loa-signoff.test.sh — the SHIM delegates to `loa signoff`, args + exit intact.
 # =============================================================================
-# No live `gh`, no live suite. Seams:
-#   LOA_GH_BIN          → a fake gh that LOGS every call and returns canned data
-#   LOA_SIGNOFF_SUITE_CMD/DIR → an injected fake suite (exit 0 = green, non-0 = red)
-# Proves the floor: RED suite → no signoff + non-zero · GREEN → signoff posted ·
-#   --dry-run on GREEN → mutates nothing · bad usage → exit 2.
-# Exit: 0 all pass · 1 a test failed.
-# =============================================================================
-# shellcheck disable=SC2015  # `cond && ok || bad` is the assertion idiom here; ok/bad always return 0
+# tools/loa-signoff.sh is now a thin shim; the real signoff LOGIC (suite-run, fail-closed
+# RED-refusal, the commit-status POST, the privilege boundary) is tested in
+# loa-cli/test/security/signoff_gate.mjs (30 assertions). Here we only guard the shim
+# contract: it forwards every arg to `loa signoff` verbatim and propagates loa's exit code,
+# and fails clearly when `loa` is absent. A mock `loa` on PATH keeps this offline.
 set -uo pipefail
-
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-SUT="$HERE/loa-signoff.sh"
-WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
-FAKE_GH_LOG="$WORK/gh.log"
-
-# --- fake gh: logs argv, answers the read calls, succeeds on the POST ---------
-FAKE_GH="$WORK/fake-gh.sh"
-cat >"$FAKE_GH" <<'EOF'
-#!/usr/bin/env bash
-printf '%s\n' "$*" >>"$FAKE_GH_LOG"
-case "$1 $2" in
-  "api user")   echo "test-operator" ;;
-  "repo view")  echo "owner/fake-repo" ;;
-  "pr view")    echo "fakesha0000000000000000000000000000000000" ;;
-  *)            : ;;   # api statuses POST, etc. → succeed silently
-esac
-exit 0
-EOF
-chmod +x "$FAKE_GH"
-
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PASS=0; FAIL=0
-ok()   { printf '  ok   — %s\n' "$1"; PASS=$((PASS+1)); }
-bad()  { printf '  FAIL — %s\n' "$1"; FAIL=$((FAIL+1)); }
+ck(){ if [ "$1" = "$2" ]; then PASS=$((PASS+1)); echo "  ✓ $3"; else FAIL=$((FAIL+1)); echo "  ✗ FAIL $3 (got '$1' want '$2')"; fi }
 
-run_sut() {  # run the SUT with the fakes wired; capture exit code
-  FAKE_GH_LOG="$FAKE_GH_LOG" \
-  LOA_GH_BIN="$FAKE_GH" \
-  LOA_SIGNOFF_REPO="0xHoneyJar/loa-freeside" \
-  LOA_SIGNOFF_SUITE_DIR="$WORK" \
-  bash "$SUT" "$@"
-}
+echo "loa-signoff.test — shim → 'loa signoff' (logic lives in loa-cli/signoff_gate.mjs)"
 
-SHA="abc123def456abc123def456abc123def456abcd"
+# A mock `loa`: the guard probe `signoff --help` exits 0 (new-enough loa); any other
+# invocation records its argv and exits with sentinel 7 so we can prove exit-propagation.
+TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
+REC="$TMP/rec"
+cat > "$TMP/loa" <<EOF
+#!/usr/bin/env bash
+# the shim probes verb-recognition by CONTENT: emit the usage line on 'signoff --help'
+if [ "\$1" = "signoff" ] && [ "\$2" = "--help" ]; then echo "loa signoff <pr> [--sha <SHA>]"; exit 0; fi
+printf '%s\n' "\$*" > "$REC"
+exit 7
+EOF
+chmod +x "$TMP/loa"
 
-echo "== loa-signoff.test =="
+ec=0; PATH="$TMP:$PATH" bash "$HERE/loa-signoff.sh" 323 --repo o/r --dry-run >/dev/null 2>&1 || ec=$?
+ck "$ec" 7 "propagates loa's exit code (sentinel 7)"
+ck "$(cat "$REC" 2>/dev/null)" "signoff 323 --repo o/r --dry-run" "forwards 'signoff 323 --repo o/r --dry-run' verbatim"
 
-# 1. RED suite → refuse, exit 1, post NOTHING ---------------------------------
-: >"$FAKE_GH_LOG"
-ec=0; LOA_SIGNOFF_SUITE_CMD="exit 7" run_sut --sha "$SHA" >/dev/null 2>&1 || ec=$?
-[[ "$ec" -eq 1 ]] && ok "red suite exits 1" || bad "red suite expected exit 1, got $ec"
-if grep -q "statuses/" "$FAKE_GH_LOG"; then bad "red suite MUST NOT post a status"; else ok "red suite posted no status"; fi
+# `loa` absent → clear exit 2 (fail-closed, not a silent no-op)
+ec2=0; PATH="/usr/bin:/bin" bash "$HERE/loa-signoff.sh" 1 >/dev/null 2>&1 || ec2=$?
+ck "$ec2" 2 "no loa on PATH → exit 2 with a clear install message"
 
-# 2. GREEN suite → sign off (status POST), exit 0 -----------------------------
-: >"$FAKE_GH_LOG"
-ec=0; LOA_SIGNOFF_SUITE_CMD="exit 0" run_sut --sha "$SHA" >/dev/null 2>&1 || ec=$?
-[[ "$ec" -eq 0 ]] && ok "green suite exits 0" || bad "green suite expected exit 0, got $ec"
-if grep -q "statuses/$SHA" "$FAKE_GH_LOG" && grep -q "state=success" "$FAKE_GH_LOG" && grep -q "context=loa-signoff" "$FAKE_GH_LOG"; then
-  ok "green suite posted loa-signoff=success to head SHA"
-else
-  bad "green suite did not post the expected status (log: $(tr '\n' '|' <"$FAKE_GH_LOG"))"
-fi
-
-# 3. --dry-run on GREEN → no POST, exit 0 -------------------------------------
-: >"$FAKE_GH_LOG"
-ec=0; LOA_SIGNOFF_SUITE_CMD="exit 0" run_sut --sha "$SHA" --dry-run >/dev/null 2>&1 || ec=$?
-[[ "$ec" -eq 0 ]] && ok "dry-run green exits 0" || bad "dry-run green expected exit 0, got $ec"
-if grep -q "statuses/" "$FAKE_GH_LOG"; then bad "dry-run MUST NOT post a status"; else ok "dry-run posted no status"; fi
-
-# 4. bad usage (no pr / no sha) → exit 2 --------------------------------------
-ec=0; run_sut >/dev/null 2>&1 || ec=$?
-[[ "$ec" -eq 2 ]] && ok "no args exits 2" || bad "no args expected exit 2, got $ec"
-
-echo "== loa-signoff: $PASS passed, $FAIL failed =="
-[[ "$FAIL" -eq 0 ]]
+echo ""
+[ "$FAIL" -eq 0 ] && { echo "loa-signoff.test: PASS ($PASS)"; exit 0; } || { echo "loa-signoff.test: FAIL ($FAIL)"; exit 1; }
