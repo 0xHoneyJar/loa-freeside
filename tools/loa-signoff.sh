@@ -18,7 +18,9 @@
 # =============================================================================
 set -euo pipefail
 command -v loa >/dev/null 2>&1 || {
-  echo "tools/loa-signoff.sh: \`loa\` (loa-cli) is not on PATH — install it: (cd ~/Documents/GitHub/loa-cli && npm link)" >&2; exit 2; }
-loa signoff --help >/dev/null 2>&1 || {
-  echo "tools/loa-signoff.sh: your \`loa\` predates the 'signoff' verb — the impl moved to loa-cli; update it (git -C ~/Documents/GitHub/loa-cli pull origin main)." >&2; exit 2; }
+  echo "tools/loa-signoff.sh: \`loa\` (loa-cli) is not on PATH — install loa-cli and \`npm link\` it globally." >&2; exit 2; }
+# Verb-recognition probe by CONTENT, not --help's exit code (a loa predating the hoist prints the
+# generic launcher banner instead of the signoff usage). Robust to whatever exit status help uses.
+loa signoff --help 2>&1 | grep -q 'loa signoff <pr>' || {
+  echo "tools/loa-signoff.sh: this \`loa\` does not provide the 'signoff' verb (predates the hoist, or is broken) — update your loa-cli checkout (pull main + re-\`npm link\`)." >&2; exit 2; }
 exec loa signoff "$@"

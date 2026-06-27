@@ -17,14 +17,16 @@ TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 REC="$TMP/rec"
 cat > "$TMP/loa" <<EOF
 #!/usr/bin/env bash
-if [ "\$1" = "council" ] && [ "\$2" = "--help" ]; then exit 0; fi
+# the shim probes verb-recognition by CONTENT: emit the usage line on 'council --help'
+if [ "\$1" = "council" ] && [ "\$2" = "--help" ]; then echo "loa council <pr> [--repo owner/name]"; exit 0; fi
 printf '%s\n' "\$*" > "$REC"
-exit 3
+exit 42
 EOF
 chmod +x "$TMP/loa"
 
+# 42 = an arbitrary, unambiguous sentinel (NOT the real fail-closed 3) — proves verbatim propagation
 ec=0; PATH="$TMP:$PATH" bash "$HERE/council-signoff.sh" 7 --repo o/r --comment-only >/dev/null 2>&1 || ec=$?
-ck "$ec" 3 "propagates loa's exit code (sentinel 3 — fail-closed range preserved)"
+ck "$ec" 42 "propagates loa's exit code verbatim (arbitrary sentinel 42, distinct from real codes)"
 ck "$(cat "$REC" 2>/dev/null)" "council 7 --repo o/r --comment-only" "forwards 'council 7 --repo o/r --comment-only' verbatim"
 
 ec2=0; PATH="/usr/bin:/bin" bash "$HERE/council-signoff.sh" 7 >/dev/null 2>&1 || ec2=$?

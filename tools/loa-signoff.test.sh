@@ -20,7 +20,8 @@ TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 REC="$TMP/rec"
 cat > "$TMP/loa" <<EOF
 #!/usr/bin/env bash
-if [ "\$1" = "signoff" ] && [ "\$2" = "--help" ]; then exit 0; fi
+# the shim probes verb-recognition by CONTENT: emit the usage line on 'signoff --help'
+if [ "\$1" = "signoff" ] && [ "\$2" = "--help" ]; then echo "loa signoff <pr> [--sha <SHA>]"; exit 0; fi
 printf '%s\n' "\$*" > "$REC"
 exit 7
 EOF

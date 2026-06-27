@@ -16,7 +16,8 @@
 # =============================================================================
 set -euo pipefail
 command -v loa >/dev/null 2>&1 || {
-  echo "tools/council-signoff.sh: \`loa\` (loa-cli) is not on PATH — install it: (cd ~/Documents/GitHub/loa-cli && npm link)" >&2; exit 2; }
-loa council --help >/dev/null 2>&1 || {
-  echo "tools/council-signoff.sh: your \`loa\` predates the 'council' verb — the impl moved to loa-cli; update it (git -C ~/Documents/GitHub/loa-cli pull origin main)." >&2; exit 2; }
+  echo "tools/council-signoff.sh: \`loa\` (loa-cli) is not on PATH — install loa-cli and \`npm link\` it globally." >&2; exit 2; }
+# Verb-recognition probe by CONTENT, not --help's exit code (robust to whatever exit status help uses).
+loa council --help 2>&1 | grep -q 'loa council <pr>' || {
+  echo "tools/council-signoff.sh: this \`loa\` does not provide the 'council' verb (predates the hoist, or is broken) — update your loa-cli checkout (pull main + re-\`npm link\`)." >&2; exit 2; }
 exec loa council "$@"
