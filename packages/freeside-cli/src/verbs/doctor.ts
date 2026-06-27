@@ -3,7 +3,8 @@
  *
  * The enforcement point for the network's awareness surface (SDD cycle
  * doctor-acvp-network-plane §3). Per registry module:
- *   1. Resolve the beacon (FIXTURE-FIRST, OD-1; --remote → beacon_unreachable, SC-6)
+ *   1. Resolve the beacon (FIXTURE-FIRST, OD-1; --remote → host-pinned live
+ *      probe of the declared beacon_url + host-integrity guard, SC-6 un-deferred)
  *   2. Validate against BeaconV3 (clean V2 decode → beacon_legacy_v2 warn, A.4)
  *   3. cycle_state freshness (next_review vs injected `now`; 180-day window)
  *   4. composes_with: unknown-sibling (error) + tag_hash_unverified (warn, OD-2)
@@ -48,6 +49,11 @@ export type DoctorCheck =
   | "beacon_legacy_v2"
   | "beacon_valid"
   | "beacon_auth_required"
+  // ── --remote host-pinned probe verdicts (SC-6 un-deferred) ──
+  | "beacon_discoverable" // declared beacon_url serves a valid BeaconV3 at the declared host
+  | "beacon_dark" // public+deployed cell whose declared beacon_url 404s / serves non-BeaconV3 (the gate bite)
+  | "beacon_void" // probe redirected off the declared host — discovery unconfirmable; NOT counted as dark
+  | "beacon_exempt" // dark/unprobed but not public+deployed — honest non-deployed, no alarm
   | "cycle_review_overdue"
   | "cycle_review_window_exceeded"
   | "compose_unknown_sibling"
@@ -73,8 +79,14 @@ export interface DoctorReport {
 }
 
 export interface DoctorOptions {
-  /** fetch live beacon_url instead of fixture (SC-6: returns beacon_unreachable this build) */
+  /** --remote: host-pinned live probe of each declared beacon_url + host-integrity
+   *  guard, instead of the in-repo fixture (SC-6 un-deferred). NEVER falls back to a
+   *  fixture — a caller asking for live remote evidence gets a probe verdict
+   *  (beacon_discoverable / beacon_dark / beacon_void / beacon_exempt). */
   readonly remote?: boolean;
+  /** Injected network fetcher for --remote (determinism + no live calls in tests).
+   *  Default = `defaultBeaconFetcher` (global fetch, host-pinned, 12s timeout). */
+  readonly fetchBeacon?: BeaconFetcher;
   /** prior registry for the visibility-transition guard (SC: not wired this build) */
   readonly baselineRegistryPath?: string;
   /** test/CI override: registry file to audit (default = registry package's registry.yaml) */
@@ -98,6 +110,111 @@ export interface DoctorOptions {
 
 const ALL_ZEROS_64 = "0".repeat(64);
 const SHA256_RE = /^[a-f0-9]{64}$/;
+
+// ── --remote: host-pinned beacon probe + host-integrity guard (SC-6) ─────────
+// Ported from the kuang H1 instrument (~/bonfire/kuang/instruments/h1-flight.py):
+// fetch the EXACT declared beacon_url, then GUARD against a wrong-host artifact —
+// a probe that redirects off the declared host can never false-flag a real cell
+// as dark (the error that loop made 3× before the guard existed).
+
+const REMOTE_TIMEOUT_MS = 12_000;
+
+/** A single host-pinned probe of a declared beacon_url (the guard record). */
+export interface BeaconProbe {
+  readonly target: string; // the EXACT declared beacon_url fetched (no rewriting)
+  readonly declaredHost: string; // host parsed from the declared beacon_url
+  readonly finalHost: string; // host after following redirects (= declaredHost if none)
+  readonly redirectedOff: boolean; // finalHost !== declaredHost → guard (b) fails
+  readonly status: number; // HTTP status (0 on transport failure)
+  readonly bodyValid: boolean; // response body decodes as a valid BeaconV3
+  readonly error?: string; // transport/parse detail when present
+}
+
+/** discoverable = serves valid BeaconV3 at the declared host; dark = correctly
+ *  targeted host that 404s / serves non-BeaconV3; void = redirected off-host. */
+export type RemoteVerdict = "discoverable" | "dark" | "void";
+
+/** What the probe needs from the network: status, the post-redirect URL, and the
+ *  body text. Injected (DoctorOptions.fetchBeacon) so tests never hit the network. */
+export interface RemoteFetchResult {
+  readonly status: number; // 0 on transport failure
+  readonly finalUrl: string; // URL after redirects (= request url if none)
+  readonly body: string; // response body text ("" on failure)
+  readonly error?: string; // transport error detail
+}
+export type BeaconFetcher = (url: string) => Promise<RemoteFetchResult>;
+
+/** Parse a URL's host; "" when the string is not a valid URL (guard input). */
+function hostOf(u: string): string {
+  try {
+    return new URL(u).host;
+  } catch {
+    return "";
+  }
+}
+
+/** A response body "serves a valid BeaconV3" iff it is JSON that decodes against
+ *  the BeaconV3 schema. A 404 HTML page / a non-beacon JSON blob → false → dark. */
+function isValidBeaconV3Body(body: string): boolean {
+  if (!body) return false;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return false;
+  }
+  return validateBeaconV3(parsed).ok;
+}
+
+/** PLATT's guard, ported verbatim: redirected-off → VOID before anything else;
+ *  a 2xx at the declared host serving valid BeaconV3 → discoverable; else dark. */
+export function classifyProbe(p: BeaconProbe): RemoteVerdict {
+  if (p.redirectedOff) return "void";
+  if (p.status >= 200 && p.status < 300 && p.bodyValid) return "discoverable";
+  return "dark";
+}
+
+/** Default fetcher: global fetch, host-pinned (no URL rewriting), redirects
+ *  followed so the guard can compare the FINAL host to the declared one. Every
+ *  transport failure becomes a status-0 result — never a throw into the audit. */
+export const defaultBeaconFetcher: BeaconFetcher = async (url) => {
+  try {
+    const res = await fetch(url, {
+      redirect: "follow",
+      signal: AbortSignal.timeout(REMOTE_TIMEOUT_MS),
+    });
+    let body = "";
+    try {
+      body = await res.text();
+    } catch {
+      // body read failure (e.g. abort mid-stream) — status still load-bearing
+    }
+    return { status: res.status, finalUrl: res.url || url, body };
+  } catch (err) {
+    return {
+      status: 0,
+      finalUrl: url,
+      body: "",
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+};
+
+/** Probe the EXACT declared beacon_url and record the full host-integrity guard. */
+export async function probeBeacon(declaredUrl: string, fetcher: BeaconFetcher): Promise<BeaconProbe> {
+  const declaredHost = hostOf(declaredUrl);
+  const r = await fetcher(declaredUrl);
+  const finalHost = hostOf(r.finalUrl) || declaredHost;
+  return {
+    target: declaredUrl,
+    declaredHost,
+    finalHost,
+    redirectedOff: finalHost !== declaredHost,
+    status: r.status,
+    bodyValid: isValidBeaconV3Body(r.body),
+    error: r.error,
+  };
+}
 
 /** reject absolute paths + `..` traversal (path-component discipline). */
 function relPathSafe(p: string): boolean {
@@ -487,6 +604,7 @@ export const doctor = async (opts: DoctorOptions = {}): Promise<DoctorReport> =>
   const allowlistPath = opts.allowlistPath ?? join(repoRoot, ".freeside", "acvp-aspirational-allowlist.yaml");
   const allowlist = readAllowlist(allowlistPath);
   const resolvePinSchemaVersion = makeResolvePinSchemaVersion(repoRoot);
+  const fetchBeacon = opts.fetchBeacon ?? defaultBeaconFetcher;
 
   const findings: DoctorFinding[] = [];
   const push = (f: DoctorFinding) => findings.push(f);
@@ -546,10 +664,64 @@ export const doctor = async (opts: DoctorOptions = {}): Promise<DoctorReport> =>
         continue;
       }
     } else if (opts.remote) {
-      push({
-        slug, check: "beacon_unreachable", severity: "warn",
-        message: `--remote fetch of ${entry.beacon_url} not implemented this build (SC-6); fixture substitution refused — omit --remote to audit the in-repo fixture`,
-      });
+      // SC-6 un-deferred: host-pinned live probe of the declared beacon_url +
+      // host-integrity guard (no fixture substitution). The GATE: a cell that
+      // declares visibility=public AND runtime_state=deployed MUST serve a valid
+      // BeaconV3 — else WARN (the meter that catches a deployed-public cell whose
+      // beacon went dark). scaffolded / not-built / unlisted / internal cells are
+      // EXEMPT — they honestly declare they don't serve yet (no false alarm).
+      const gated = entry.visibility === "public" && entry.runtime_state === "deployed";
+      const declared = entry.beacon_url;
+      if (!declared) {
+        if (gated) {
+          push({
+            slug, check: "beacon_dark", severity: "warn",
+            message: `public+deployed cell declares no beacon_url — undiscoverable (dark)`,
+          });
+        } else {
+          push({
+            slug, check: "beacon_exempt", severity: "ok",
+            message: `no beacon_url + not public-deployed (${entry.visibility}/${entry.runtime_state ?? "unset"}) — remote probe exempt`,
+          });
+        }
+        continue;
+      }
+      const probe = await probeBeacon(declared, fetchBeacon);
+      const verdict = classifyProbe(probe);
+      if (verdict === "discoverable") {
+        push({
+          slug, check: "beacon_discoverable", severity: "ok",
+          message: `beacon_url ${declared} serves a valid BeaconV3 (host-pinned; final_host=${probe.finalHost}, status=${probe.status})`,
+        });
+      } else if (verdict === "void") {
+        // redirected off the declared host → cannot be counted as dark (guard b).
+        // Surface it for gated cells (discovery unconfirmable); exempt otherwise.
+        if (gated) {
+          push({
+            slug, check: "beacon_void", severity: "warn",
+            message: `probe of ${declared} redirected off the declared host (final_host=${probe.finalHost} ≠ ${probe.declaredHost}, status=${probe.status}) — VOID; discovery unconfirmable, not counted as dark`,
+          });
+        } else {
+          push({
+            slug, check: "beacon_exempt", severity: "ok",
+            message: `probe of ${declared} redirected off-host (final_host=${probe.finalHost}) but cell is ${entry.visibility}/${entry.runtime_state ?? "unset"} — exempt`,
+          });
+        }
+      } else {
+        // dark: correctly-targeted declared host that 404s / serves non-BeaconV3.
+        const detail = `status=${probe.status}, final_host=${probe.finalHost}, body_valid=${probe.bodyValid}${probe.error ? `, ${probe.error}` : ""}`;
+        if (gated) {
+          push({
+            slug, check: "beacon_dark", severity: "warn",
+            message: `public+deployed cell's beacon_url ${declared} is DARK (${detail}) — declares deployed-public but serves no valid BeaconV3`,
+          });
+        } else {
+          push({
+            slug, check: "beacon_exempt", severity: "ok",
+            message: `beacon_url ${declared} dark (${detail}) but cell is ${entry.visibility}/${entry.runtime_state ?? "unset"} — exempt (honest non-deployed)`,
+          });
+        }
+      }
       continue;
     } else if (!entry.beacon_fixture) {
       push({
