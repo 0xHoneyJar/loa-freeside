@@ -6,12 +6,12 @@
  * Security:
  *   - HMAC-SHA512 signature verification via x-nowpayments-sig header
  *   - 401 on invalid/missing signature (NOT 200 — per acceptance criteria)
- *   - 200 for all valid signatures (including duplicates)
+ *   - Requires exact raw body; reconstructed JSON is never signed
  *   - Feature flag: FEATURE_BILLING_ENABLED must be true
  *   - Webhook rate limiting: 100 req/min per IP, 1KB max payload
  *
  * Idempotency:
- *   - INSERT INTO webhook_events ON CONFLICT DO NOTHING (dedup)
+ *   - webhook_events records receipt only; duplicates continue through idempotent processing
  *   - INSERT INTO credit_lots ON CONFLICT (payment_id) DO NOTHING
  *   - Redis INCRBY only if credit_lots INSERT returned id
  *
@@ -66,6 +66,8 @@ const STATUS_ORDINAL: Record<string, number> = {
   expired: 5,
 };
 
+const MAX_WEBHOOK_AGE_MS = 24 * 60 * 60 * 1000;
+
 /** Dependencies injected at server init */
 interface WebhookDeps {
   pool: Pool;
@@ -110,11 +112,18 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
       return;
     }
 
-    // Use raw body for HMAC computation (must be configured via middleware)
-    const rawBody = typeof req.body === 'string'
-      ? req.body
-      : JSON.stringify(sortKeys(req.body));
+    // HMAC must use the exact raw body bytes provided to Express raw/text middleware.
+    // Reconstructing JSON changes byte order/spacing and can verify a different message.
+    if (typeof req.body !== 'string') {
+      logger.error(
+        { bodyType: typeof req.body, hasBody: req.body !== undefined },
+        'NOWPayments webhook raw body missing — refusing reconstructed HMAC',
+      );
+      res.status(400).json({ status: 'rejected', reason: 'missing_raw_body' });
+      return;
+    }
 
+    const rawBody = req.body;
     const computedSig = createHmac('sha512', ipnSecret)
       .update(rawBody)
       .digest('hex');
@@ -122,7 +131,7 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
     // Constant-time comparison
     if (!timingSafeCompare(computedSig, signature)) {
       logger.warn(
-        { paymentId: req.body?.payment_id },
+        { rawBodyLength: rawBody.length },
         'Invalid NOWPayments webhook signature',
       );
       res.status(401).json({ status: 'rejected', reason: 'invalid_signature' });
@@ -132,7 +141,15 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
     // -------------------------------------------------------------------
     // Step 2: Parse and validate payload
     // -------------------------------------------------------------------
-    const payload = req.body as NowpaymentsWebhookPayload;
+    let payload: NowpaymentsWebhookPayload;
+    try {
+      payload = JSON.parse(rawBody) as NowpaymentsWebhookPayload;
+    } catch (err) {
+      logger.warn({ err }, 'Signed NOWPayments webhook body is not valid JSON');
+      res.status(400).json({ status: 'rejected', reason: 'invalid_json' });
+      return;
+    }
+
     const paymentId = String(payload.payment_id);
 
     if (!paymentId || !payload.payment_status) {
@@ -140,37 +157,45 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
       return;
     }
 
-    // Log timestamp age as metric only (NOT used for rejection per AC)
     if (payload.updated_at) {
-      const ageMs = Date.now() - new Date(payload.updated_at).getTime();
+      const updatedAtMs = new Date(payload.updated_at).getTime();
+      if (!Number.isFinite(updatedAtMs)) {
+        res.status(400).json({ status: 'rejected', reason: 'invalid_updated_at' });
+        return;
+      }
+      const ageMs = Date.now() - updatedAtMs;
       logger.info(
         { paymentId, ageMs, status: payload.payment_status },
-        'Webhook timestamp age (metric only)',
+        'Webhook timestamp age',
       );
+      if (ageMs > MAX_WEBHOOK_AGE_MS) {
+        logger.warn({ paymentId, ageMs }, 'Stale NOWPayments webhook rejected');
+        res.status(400).json({ status: 'rejected', reason: 'stale_webhook' });
+        return;
+      }
     }
 
     // -------------------------------------------------------------------
-    // Step 3: Idempotent webhook_events INSERT (dedup)
+    // Step 3: Idempotent webhook_events INSERT (receipt dedup only)
     // -------------------------------------------------------------------
     try {
+      const eventId = `${paymentId}:${payload.payment_status}:${payload.updated_at ?? 'no-updated-at'}`;
       const dedupResult = await pool.query<{ id: string }>(
         `INSERT INTO webhook_events (provider, event_id, event_type, payload, processed_at)
          VALUES ('nowpayments', $1, $2, $3, NOW())
          ON CONFLICT (provider, event_id) DO NOTHING
          RETURNING id`,
-        [paymentId, payload.payment_status, JSON.stringify(payload)],
+        [eventId, payload.payment_status, JSON.stringify(payload)],
       );
 
       if (dedupResult.rows.length === 0) {
-        // Duplicate webhook — already processed
-        logger.info({ paymentId }, 'Duplicate webhook (already in webhook_events)');
-        res.status(200).json({ status: 'duplicate' });
-        return;
+        // Duplicate receipt is not a processing terminal. Downstream status and lot
+        // writes are idempotent, so continue to allow provider retry after partial failure.
+        logger.info({ paymentId, eventId }, 'Duplicate webhook receipt; continuing idempotent processing');
       }
     } catch (err) {
       logger.error({ paymentId, err }, 'Failed to insert webhook_events');
-      // Return 200 so NOWPayments doesn't retry on our DB errors
-      res.status(200).json({ status: 'error', reason: 'internal' });
+      res.status(500).json({ status: 'error', reason: 'receipt_insert_failed' });
       return;
     }
 
@@ -201,7 +226,8 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
 
       // Allow failed/refunded/expired from any non-terminal state
       const isTerminalTransition = ['failed', 'refunded', 'expired'].includes(payload.payment_status);
-      const isTerminalCurrent = ['finished', 'failed', 'refunded', 'expired'].includes(statusResult.rows[0].status);
+      const isTerminalCurrent = ['failed', 'refunded', 'expired'].includes(statusResult.rows[0].status);
+      const isDuplicateFinished = statusResult.rows[0].status === 'finished' && payload.payment_status === 'finished';
 
       if (isTerminalCurrent) {
         logger.info({ paymentId, current: statusResult.rows[0].status, incoming: payload.payment_status },
@@ -210,7 +236,14 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
         return;
       }
 
-      if (!isTerminalTransition && currentOrdinal <= existingOrdinal) {
+      if (statusResult.rows[0].status === 'finished' && !isDuplicateFinished) {
+        logger.info({ paymentId, current: statusResult.rows[0].status, incoming: payload.payment_status },
+          'Payment already finished; non-finished transition skipped');
+        res.status(200).json({ status: 'skipped', reason: 'terminal_state' });
+        return;
+      }
+
+      if (!isDuplicateFinished && !isTerminalTransition && currentOrdinal <= existingOrdinal) {
         logger.info(
           { paymentId, current: statusResult.rows[0].status, incoming: payload.payment_status },
           'Backward status transition rejected (monotonicity)',
@@ -229,7 +262,7 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
       `UPDATE crypto_payments
        SET status = $2,
            actually_paid = COALESCE($3, actually_paid),
-           finished_at = CASE WHEN $4 THEN NOW() ELSE finished_at END,
+           finished_at = CASE WHEN $4 THEN COALESCE(finished_at, NOW()) ELSE finished_at END,
            updated_at = NOW()
        WHERE payment_id = $1`,
       [paymentId, payload.payment_status, payload.actually_paid, isFinished],
@@ -255,9 +288,9 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
           amountMicro: lotResult.amountUsdMicro.toString(),
         }, 'NOWPayments webhook: credit lot processing complete');
       } catch (err) {
-        // Lot minting failure should not fail the webhook response.
-        // Reconciliation sweep will catch missed mints.
-        logger.error({ paymentId, err }, 'Credit lot minting failed — will retry via reconciliation');
+        logger.error({ paymentId, err }, 'Credit lot minting failed — returning retryable error');
+        res.status(500).json({ status: 'error', reason: 'credit_lot_mint_failed' });
+        return;
       }
     }
 
@@ -293,21 +326,6 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
 // --------------------------------------------------------------------------
 // Helpers
 // --------------------------------------------------------------------------
-
-/**
- * Sort object keys recursively for canonical HMAC computation.
- * NOWPayments signs over JSON with sorted keys.
- */
-function sortKeys(obj: unknown): unknown {
-  if (obj === null || obj === undefined || typeof obj !== 'object') return obj;
-  if (Array.isArray(obj)) return obj.map(sortKeys);
-
-  const sorted: Record<string, unknown> = {};
-  for (const key of Object.keys(obj as Record<string, unknown>).sort()) {
-    sorted[key] = sortKeys((obj as Record<string, unknown>)[key]);
-  }
-  return sorted;
-}
 
 /**
  * Constant-time string comparison using timingSafeEqual.
