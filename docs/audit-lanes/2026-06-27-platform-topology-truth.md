@@ -28,10 +28,23 @@ Allowed: focused topology, registry, docs, scripts, and CI changes. Not allowed:
 
 Use one topology/truth PR because these issues share one root contract: repo-visible product claims should be generated, checked, or explicitly sourced.
 
+## Postinstall contract
+
+Root `postinstall` must be side-effect-light by default. A normal dependency install must not rebuild Hounfour dist artifacts automatically.
+
+Operators who need a local Hounfour dist refresh have two explicit paths:
+
+1. Run `pnpm run build:hounfour`.
+2. Set `FREESIDE_REBUILD_HOUNFOUR_ON_INSTALL=1` before install to opt into the wrapper calling `scripts/rebuild-hounfour-dist.sh`.
+
+The wrapper must propagate the rebuild script exit status when opt-in is enabled. This keeps install deterministic while preserving the existing rebuild command for operator-controlled use.
+
+Validation hook: `node scripts/check-postinstall-wrapper.mjs` verifies that package scripts and wrapper behavior preserve this contract.
+
 ## Rollback
 
 Rollback is the closing PR revert; implementation commits should keep generated checks and docs updates contained.
 
 ## Non-claims
 
-This lane does not certify all Freeside runtime behavior and does not close issue references until implementation evidence is present.
+This lane does not certify all Freeside runtime behavior and does not close issue references until implementation evidence is present. Current implementation covers the postinstall side-effect slice; registry truth, CLI freshness, workspace topology, and README capability evidence remain separate follow-up work unless additional commits are added.
