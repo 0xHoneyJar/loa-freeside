@@ -1,0 +1,166 @@
+# Immune Doctors — INFORMATIONAL teeth for the estate immune kit (G-DOOR).
+#
+# Runs the read-only gate-freeze-sensor against THIS repo's merge gate on every PR
+# and on a daily schedule, and reports the freeze verdict. This makes G-DOOR's
+# "re-freeze auto-detected" mechanical — the door can no longer silently re-freeze
+# without a loud signal on every PR and every day.
+#
+# DESIGN — informational, NEVER a new required gate (bead arrakis-estate-immune-epic-4xw6.1):
+# the door is ALREADY frozen behind too many required checks ('Unit Tests' red on the whole
+# backlog). Adding a NEW blocking/required check would deepen the freeze — the exact disease
+# this campaign exists to cure. So this job is SOFT by construction:
+#   - it ALWAYS exits 0 (the check is green even when the door is FROZEN),
+#   - the verdict is surfaced LOUD via the job summary + a ::warning:: annotation, not a red X,
+#   - do NOT add this job's check to branch protection's required list.
+# A red-on-every-PR check would be just another numb gate ([[ci-sensors-must-not-be-numb]]);
+# a green-with-a-loud-summary check carries the signal without freezing flow.
+#
+# The OTHER immune doctor (instrument-truth-sensor) reads LOCAL .run/model-invoke.jsonl, which
+# does not exist in CI — it cannot run here. Its teeth are the local banner tools/immune-check.sh.
+#
+# Read-only: `gh` reads only (PR list, status rollups, branch protection). No mutation, no merge.
+
+name: Immune Doctors
+
+on:
+  pull_request:
+  schedule:
+    - cron: '17 13 * * *'   # daily at 13:17 UTC — catches a re-freeze between PRs
+  workflow_dispatch:
+
+# Least privilege, all READ.
+#
+# HONEST LIMITATION: the sensor confirms a freeze by reading branch-protection
+# required_status_checks, which requires ADMIN read. `administration` is NOT a grantable
+# GITHUB_TOKEN permission key (the workflow `permissions:` vocabulary has no such scope), so
+# the default token CANNOT read protection — the sensor then degrades to "UNGATED?" (it never
+# false-asserts FROZEN). To get the full freeze verdict, add a repo/org secret
+# IMMUNE_DOCTOR_GH_TOKEN = a fine-grained PAT with "Administration: read". For security it is
+# exposed ONLY when the checked-out ref is the default branch (refs/heads/main) — see the probe
+# step's GH_TOKEN guard. The daily schedule always runs there; a workflow_dispatch off a feature
+# branch and any PR run execute potentially-modified sensor code and deliberately fall back to the
+# read-only default token. So the DAILY run is the real "re-freeze auto-detected" teeth; PR runs
+# (and off-default dispatches) give a lighter signal.
+# The local teeth (tools/immune-check.sh, run with the operator's admin `gh` auth) get the full
+# verdict regardless.
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+  statuses: read
+
+# Newer pushes to the SAME PR supersede that PR's in-flight run. Every non-PR run (schedule,
+# workflow_dispatch) gets a UNIQUE group (github.run_id) so a manual dispatch and the daily
+# schedule never cancel each other — they resolve to the same ref (refs/heads/main) and would
+# otherwise collide under a ref-keyed group.
+concurrency:
+  group: immune-doctors-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  gate-freeze:
+    name: gate-freeze (informational)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Probe the merge gate (read-only; never blocks)
+        id: probe
+        env:
+          # The admin-read PAT (full freeze verdict) is gated on the REF being executed, not just the
+          # event name: it is exposed ONLY when the checked-out ref is the trusted default branch
+          # (refs/heads/main). schedule always runs there; workflow_dispatch CAN target an arbitrary
+          # ref, and any pull_request checks out and executes PR-AUTHORED code (the sensor itself) —
+          # in both of those cases a modified sensor could exfiltrate the PAT (the "pwn request"
+          # class), so they fall back to the read-only default token (the sensor degrades to UNGATED?,
+          # never false-FROZEN). Trust derives from the ref, so the comment matches the mechanism.
+          GH_TOKEN: ${{ (github.event_name != 'pull_request' && github.ref == 'refs/heads/main') && secrets.IMMUNE_DOCTOR_GH_TOKEN || github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set +e   # the sensor exits 2 when FROZEN — we report it, we do NOT fail on it.
+          node tools/gate-freeze-sensor.mjs "$REPO" --json > gate.json 2> gate.err
+          sensor_exit=$?
+          echo "sensor_exit=$sensor_exit" >> "$GITHUB_OUTPUT"
+
+          # Guarantee a valid-JSON artifact even if the sensor crashed — surface the crash,
+          # never silently bank a green. (cluster-compliance FAGAN iter-2 pattern.)
+          if ! jq -e . gate.json >/dev/null 2>&1; then
+            jq -n --arg err "$(tail -c 2000 gate.err 2>/dev/null)" --argjson ex "${sensor_exit:-1}" \
+              '{verdict:"ERROR", sensor_exit:$ex, stderr:$err, openPRs:0, frozenChecks:[], requiredChecks:null}' \
+              > gate.json
+          fi
+
+          VERDICT=$(jq -r '.verdict // "ERROR"' gate.json)
+          ROOT=$(jq -r '.root // "—"' gate.json)
+          OPEN=$(jq -r '.openPRs // 0' gate.json)
+          echo "verdict=$VERDICT" >> "$GITHUB_OUTPUT"
+          echo "root=$ROOT"       >> "$GITHUB_OUTPUT"
+
+          # Compact one-line tile in the log (mirrors the local banner row), derived from the
+          # SAME gate.json — not a second live `gh` probe, which could race PR-status changes.
+          jq -r '"  ☾ gate-freeze " + .repo + " · " + .verdict
+                 + (if .root then ": " + .root else "" end)
+                 + " · " + (.openPRs|tostring) + " open PRs"' gate.json || true
+
+          {
+            echo "## Immune Doctors · gate-freeze — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo ""
+            echo "**Repo:** \`$REPO\` · **verdict:** \`$VERDICT\` · **open PRs:** $OPEN · **root:** \`$ROOT\`"
+            echo ""
+            echo "> Informational, non-required. This check is **always green** by design — a frozen"
+            echo "> door is surfaced here as a warning, not a red X, so it never deepens the freeze it"
+            echo "> reports. (bead arrakis-estate-immune-epic-4xw6.1 · G-DOOR teeth)"
+            echo ""
+            if [ "$VERDICT" = "FROZEN" ]; then
+              echo "### ⚠ The merge gate is FROZEN"
+              echo ""
+              echo "Root required check freezing the backlog: \`$ROOT\`"
+              echo ""
+              echo "| required check | red | pending | missing | of PRs | not-green % |"
+              echo "|----------------|-----|---------|---------|--------|-------------|"
+              jq -r '.frozenChecks[]? | "| \(.name) | \(.failOn) | \(.pendingOn) | \(.missingOn) | \(.ofPRs) | \(.freezePct)% |"' gate.json
+            elif [ "$VERDICT" = "FLOWING" ]; then
+              echo "### ✓ The door flows — no required check is frozen across the backlog."
+            else
+              echo "### · $VERDICT"
+              echo ""
+              echo "(No frozen required check could be confirmed. \`UNGATED?\` = branch protection"
+              echo "unreadable from CI; \`UNGATED\` = no required checks; \`EMPTY\` = no open PRs.)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # A loud-but-non-failing annotation when frozen (visible in the Checks/Files tabs).
+          if [ "$VERDICT" = "FROZEN" ]; then
+            echo "::warning title=Merge gate FROZEN::root required check '$ROOT' is red across the open-PR backlog — see job summary. (informational; does not block this PR)"
+          fi
+
+          # ALWAYS green — informational by design. (No artifact upload step: the verdict lives
+          # in the job summary + annotation + logs; an upload step is one more way to redden an
+          # invariantly-green job for zero added signal.)
+          exit 0
+
+  # Unlike the informational gate-freeze job above, THIS job is a REAL gate (it can go red): it runs
+  # the doctors' fixture tests so a regression in the pure cores turns this check red without a human
+  # looking — moving the tests from "exists" to "runs" ([[verification-ladder-exists-to-verified]]).
+  # The tests are pure (no live `gh`, no audit log) → CI-safe and deterministic.
+  tests:
+    name: immune doctor unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run the immune doctors' fixture tests (each gates on failure)
+        run: |
+          node tools/gate-freeze-sensor.test.mjs
+          node tools/instrument-truth-sensor.test.mjs
+          bash tools/immune-check.test.sh
