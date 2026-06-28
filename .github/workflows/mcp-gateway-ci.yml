@@ -35,9 +35,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # pnpm version comes from the root package.json `packageManager` field —
+      # do NOT also pin `version:` here, or action-setup errors on the conflict.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - uses: actions/setup-node@v4
         with:
