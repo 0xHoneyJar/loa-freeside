@@ -29,6 +29,8 @@ import { readFileSync, existsSync } from "node:fs";
 
 // ─────────────────────────── types ──────────────────────────────────────────
 
+import { classifyBeacon, type BeaconState } from "./beacon-classify";
+
 type ProbeState = "up" | "down" | "degraded" | "scaffold" | "unreachable" | "auth-gated";
 
 type EndpointProbe = {
@@ -50,7 +52,7 @@ type EndpointProbe = {
 type FederationTile = {
   slug: string;
   registryEntry: { beaconUrl: string; visibility: string; owner: string } | null;
-  beaconState: "live" | "scaffold" | "404" | "unreachable" | "not-registered";
+  beaconState: BeaconState;
   beaconLatencyMs: number | null;
   // building, not yet declared in registry, but we know about it:
   knownLive: boolean;
@@ -229,17 +231,22 @@ function loadRegistry(): Record<string, { beacon_url: string; visibility: string
 }
 
 async function probeBeacon(beaconUrl: string): Promise<{ state: FederationTile["beaconState"]; latency: number | null }> {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 5000);
   const start = Date.now();
   try {
-    const res = await fetch(beaconUrl, { signal: ctrl.signal });
-    clearTimeout(t);
-    if (res.status === 404) return { state: "404", latency: Date.now() - start };
-    if (res.status >= 200 && res.status < 300) return { state: "live", latency: Date.now() - start };
-    return { state: "scaffold", latency: Date.now() - start };
+    // AbortSignal.timeout stays armed through the body read — a manual timer cleared
+    // right after the headers arrive leaves res.text() unbounded, so a stalling body
+    // would hang the whole dash. This bounds the entire probe (headers + body) to 5s.
+    const res = await fetch(beaconUrl, { signal: AbortSignal.timeout(5000) });
+    // Kuang iter-2: classify by SHAPE, not just status — a catch-all 200 (e.g. a GraphQL
+    // playground) is NOT a live beacon. The meter validates the body parses as a BeaconV3.
+    let body = "";
+    try {
+      body = await res.text();
+    } catch {
+      body = "";
+    }
+    return { state: classifyBeacon(res.status, body), latency: Date.now() - start };
   } catch {
-    clearTimeout(t);
     return { state: "unreachable", latency: null };
   }
 }
@@ -546,6 +553,8 @@ function stateLabel(s: ProbeState): string {
 function tileColor(t: FederationTile): string {
   if (t.knownLive && t.hostStatus && t.hostStatus < 400) return "#1f8a3f";
   if (t.beaconState === "live") return "#1f8a3f";
+  if (t.beaconState === "masked") return "#dc2626"; // 200 but NOT a beacon — the deceptive one (red)
+  if (t.beaconState === "auth-gated") return "#e3a008"; // verify intent (ADR-007 D-8)
   if (t.beaconState === "404") return "#f97316";
   if (t.beaconState === "scaffold") return "#e3a008";
   if (t.beaconState === "not-registered") return "#7c6cff";
