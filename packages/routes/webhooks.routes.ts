@@ -154,11 +154,11 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
     // -------------------------------------------------------------------
     try {
       const dedupResult = await pool.query<{ id: string }>(
-        `INSERT INTO webhook_events (provider, event_id, event_type, payload, processed_at)
-         VALUES ('nowpayments', $1, $2, $3, NOW())
+        `INSERT INTO webhook_events (provider, event_id, payload, processed_at)
+         VALUES ('nowpayments', $1, $2, NOW())
          ON CONFLICT (provider, event_id) DO NOTHING
          RETURNING id`,
-        [paymentId, payload.payment_status, JSON.stringify(payload)],
+        [paymentId, JSON.stringify(payload)],
       );
 
       if (dedupResult.rows.length === 0) {

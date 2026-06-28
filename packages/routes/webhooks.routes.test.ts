@@ -82,5 +82,12 @@ describe('POST /webhooks/nowpayments — webhook_events INSERT failure', () => {
     expect(res.body).toEqual({ status: 'error', reason: 'internal' });
     // Only the webhook_events INSERT was attempted — we bailed on its failure.
     expect(pool.query).toHaveBeenCalledTimes(1);
+    // The INSERT must match the LIVE schema — the prior version named a phantom
+    // `event_type` column that does not exist, so real IPNs would have failed on it
+    // (then this PR's 503 would retry-loop forever). The mock can't hit the DB, so we
+    // assert the SQL the handler issues matches the real column set.
+    const insertSql = (pool.query as any).mock.calls[0][0] as string;
+    expect(insertSql).not.toMatch(/event_type/);
+    expect(insertSql).toMatch(/\(provider, event_id, payload, processed_at\)/);
   });
 });
