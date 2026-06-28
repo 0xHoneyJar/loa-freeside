@@ -9,6 +9,10 @@ function require(condition, message) {
   if (!condition) failures.push(message);
 }
 
+function occurrences(pattern) {
+  return source.split(pattern).length - 1;
+}
+
 require(
   source.includes("typeof req.body === 'string'") && source.includes('Buffer.isBuffer(req.body)'),
   'webhook handler must accept exact raw body as string or Buffer',
@@ -25,6 +29,11 @@ require(
 );
 
 require(
+  occurrences("req.headers['x-nowpayments-sig']") === 1,
+  'NOWPayments signature header must only be read once through the normalization helper',
+);
+
+require(
   source.includes('function normalizeSingleHeader(header: string | string[] | undefined)') &&
     source.includes('Array.isArray(header)') &&
     source.includes('return undefined'),
@@ -32,8 +41,22 @@ require(
 );
 
 require(
+  source.includes('const trimmed = header?.trim();') &&
+    source.includes('return trimmed ? trimmed : undefined'),
+  'signature normalization must reject empty or whitespace-only signature headers',
+);
+
+require(
   !source.includes("req.headers['x-nowpayments-sig'] as string"),
   'webhook handler must not cast x-nowpayments-sig directly from Express headers',
+);
+
+require(
+  !source.includes("req.headers['x-nowpayments-sig'].join") &&
+    !source.includes('x-nowpayments-sig'].join') &&
+    !source.includes('Array.isArray(signature)') &&
+    !source.includes('Array.isArray(req.headers'),
+  'webhook handler must not join or select from duplicated signature headers',
 );
 
 require(
