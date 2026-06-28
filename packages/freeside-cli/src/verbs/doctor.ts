@@ -113,9 +113,12 @@ const SHA256_RE = /^[a-f0-9]{64}$/;
 
 // ── --remote: host-pinned beacon probe + host-integrity guard (SC-6) ─────────
 // Ported from the kuang H1 instrument (~/bonfire/kuang/instruments/h1-flight.py):
-// fetch the EXACT declared beacon_url, then GUARD against a wrong-host artifact —
-// a probe that redirects off the declared host can never false-flag a real cell
-// as dark (the error that loop made 3× before the guard existed).
+// fetch the EXACT declared beacon_url, then GUARD on TWO axes — (a) host: an
+// off-host redirect is never followed and its body never read (host-pinned), and
+// (b) identity: the served beacon's slug MUST equal the registry slug being probed
+// (a sibling's beacon at a miswired URL is dark, not discoverable). The guard means
+// a probe can never false-flag a real cell as dark on the wrong host, nor pass a
+// wrong cell as discoverable.
 
 const REMOTE_TIMEOUT_MS = 12_000;
 
@@ -126,12 +129,15 @@ export interface BeaconProbe {
   readonly finalHost: string; // host after following redirects (= declaredHost if none)
   readonly redirectedOff: boolean; // finalHost !== declaredHost → guard (b) fails
   readonly status: number; // HTTP status (0 on transport failure)
-  readonly bodyValid: boolean; // response body decodes as a valid BeaconV3
+  readonly bodyValid: boolean; // response body decodes as a valid BeaconV3 (any slug)
+  readonly expectedSlug: string; // the registry slug being probed (the identity we require)
+  readonly bodySlug: string | null; // slug the served beacon declares (null if not a valid V3)
   readonly error?: string; // transport/parse detail when present
 }
 
-/** discoverable = serves valid BeaconV3 at the declared host; dark = correctly
- *  targeted host that 404s / serves non-BeaconV3; void = redirected off-host. */
+/** discoverable = serves THIS cell's valid BeaconV3 (slug MATCHES) at the declared
+ *  host; dark = correctly targeted host that 404s / serves non-BeaconV3 / serves a
+ *  DIFFERENT cell's beacon (slug mismatch); void = redirected off-host. */
 export type RemoteVerdict = "discoverable" | "dark" | "void";
 
 /** What the probe needs from the network: status, the post-redirect URL, and the
@@ -153,43 +159,80 @@ function hostOf(u: string): string {
   }
 }
 
-/** A response body "serves a valid BeaconV3" iff it is JSON that decodes against
- *  the BeaconV3 schema. A 404 HTML page / a non-beacon JSON blob → false → dark. */
-function isValidBeaconV3Body(body: string): boolean {
-  if (!body) return false;
+/** Decode a served body as BeaconV3 and return the SLUG it declares, or null when
+ *  the body is not JSON / not a valid BeaconV3 (a 404 HTML page / non-beacon blob).
+ *  The slug is load-bearing for discovery: a --remote probe must confirm the host
+ *  serves THIS cell's beacon, not merely *some* valid beacon — a miswired URL that
+ *  serves a sibling's beacon is the declaration≠reality the sensor exists to catch. */
+function beaconSlugOf(body: string): string | null {
+  if (!body) return null;
   let parsed: unknown;
   try {
     parsed = JSON.parse(body);
   } catch {
-    return false;
+    return null;
   }
-  return validateBeaconV3(parsed).ok;
+  const v = validateBeaconV3(parsed);
+  return v.ok ? v.beacon.slug : null;
 }
 
 /** PLATT's guard, ported verbatim: redirected-off → VOID before anything else;
- *  a 2xx at the declared host serving valid BeaconV3 → discoverable; else dark. */
+ *  a 2xx at the declared host serving valid BeaconV3 FOR THIS SLUG → discoverable;
+ *  else dark. The slug-equality clause is the gate's whole purpose: a valid body is
+ *  not enough — a miswired beacon_url that serves a SIBLING's beacon (right shape,
+ *  wrong identity) is exactly the declaration≠reality this sensor catches → dark. */
 export function classifyProbe(p: BeaconProbe): RemoteVerdict {
   if (p.redirectedOff) return "void";
-  if (p.status >= 200 && p.status < 300 && p.bodyValid) return "discoverable";
+  if (p.status >= 200 && p.status < 300 && p.bodyValid && p.bodySlug === p.expectedSlug) {
+    return "discoverable";
+  }
   return "dark";
 }
 
-/** Default fetcher: global fetch, host-pinned (no URL rewriting), redirects
- *  followed so the guard can compare the FINAL host to the declared one. Every
- *  transport failure becomes a status-0 result — never a throw into the audit. */
+/** Max same-host redirect hops to follow before giving up (bounds the loop). */
+const REMOTE_MAX_REDIRECTS = 5;
+
+/** Default fetcher: global fetch, host-pinned. redirect:"manual" — we follow
+ *  redirects OURSELVES and ONLY when they stay on the declared host. An OFF-HOST
+ *  Location is NEVER followed and its body is NEVER read (the host-integrity guard
+ *  must be actually host-pinned: redirect:"follow" let fetch chase an off-host
+ *  redirect and read an off-host body BEFORE the guard ran — arbitrary outbound
+ *  fetch under --remote). The off-host target is surfaced as finalUrl so the probe
+ *  classifies it VOID. Every transport failure becomes a status-0 result, never a
+ *  throw into the audit. */
 export const defaultBeaconFetcher: BeaconFetcher = async (url) => {
   try {
-    const res = await fetch(url, {
-      redirect: "follow",
-      signal: AbortSignal.timeout(REMOTE_TIMEOUT_MS),
-    });
-    let body = "";
-    try {
-      body = await res.text();
-    } catch {
-      // body read failure (e.g. abort mid-stream) — status still load-bearing
+    const declaredHost = hostOf(url);
+    let current = url;
+    for (let hop = 0; hop <= REMOTE_MAX_REDIRECTS; hop++) {
+      const res = await fetch(current, {
+        redirect: "manual",
+        signal: AbortSignal.timeout(REMOTE_TIMEOUT_MS),
+      });
+      if (res.status >= 300 && res.status < 400) {
+        // a redirect: do NOT read the body — resolve the Location and decide.
+        const loc = res.headers.get("location");
+        if (!loc) return { status: res.status, finalUrl: current, body: "" };
+        const next = new URL(loc, current).toString();
+        if (hostOf(next) !== declaredHost) {
+          // off-host hop → STOP. Off-host body never fetched; surface the off-host
+          // finalUrl so the host-integrity guard classifies it void.
+          return { status: res.status, finalUrl: next, body: "" };
+        }
+        current = next; // same-host redirect → follow (still host-pinned)
+        continue;
+      }
+      // terminal response at a host-pinned URL → read the body.
+      let body = "";
+      try {
+        body = await res.text();
+      } catch {
+        // body read failure (e.g. abort mid-stream) — status still load-bearing
+      }
+      return { status: res.status, finalUrl: res.url || current, body };
     }
-    return { status: res.status, finalUrl: res.url || url, body };
+    // same-host redirect chain too long → treat as unreachable, never off-host.
+    return { status: 0, finalUrl: current, body: "", error: "too many redirects" };
   } catch (err) {
     return {
       status: 0,
@@ -200,18 +243,27 @@ export const defaultBeaconFetcher: BeaconFetcher = async (url) => {
   }
 };
 
-/** Probe the EXACT declared beacon_url and record the full host-integrity guard. */
-export async function probeBeacon(declaredUrl: string, fetcher: BeaconFetcher): Promise<BeaconProbe> {
+/** Probe the EXACT declared beacon_url and record the full host-integrity guard.
+ *  `expectedSlug` is the registry slug being probed — carried through so the verdict
+ *  can require the served beacon's identity to MATCH (slug-pinning, FINDING 1). */
+export async function probeBeacon(
+  declaredUrl: string,
+  expectedSlug: string,
+  fetcher: BeaconFetcher,
+): Promise<BeaconProbe> {
   const declaredHost = hostOf(declaredUrl);
   const r = await fetcher(declaredUrl);
   const finalHost = hostOf(r.finalUrl) || declaredHost;
+  const bodySlug = beaconSlugOf(r.body);
   return {
     target: declaredUrl,
     declaredHost,
     finalHost,
     redirectedOff: finalHost !== declaredHost,
     status: r.status,
-    bodyValid: isValidBeaconV3Body(r.body),
+    bodyValid: bodySlug !== null,
+    expectedSlug,
+    bodySlug,
     error: r.error,
   };
 }
@@ -686,7 +738,7 @@ export const doctor = async (opts: DoctorOptions = {}): Promise<DoctorReport> =>
         }
         continue;
       }
-      const probe = await probeBeacon(declared, fetchBeacon);
+      const probe = await probeBeacon(declared, slug, fetchBeacon);
       const verdict = classifyProbe(probe);
       if (verdict === "discoverable") {
         push({
@@ -708,12 +760,13 @@ export const doctor = async (opts: DoctorOptions = {}): Promise<DoctorReport> =>
           });
         }
       } else {
-        // dark: correctly-targeted declared host that 404s / serves non-BeaconV3.
-        const detail = `status=${probe.status}, final_host=${probe.finalHost}, body_valid=${probe.bodyValid}${probe.error ? `, ${probe.error}` : ""}`;
+        // dark: correctly-targeted declared host that 404s / serves non-BeaconV3 /
+        // serves a DIFFERENT cell's beacon (slug mismatch — FINDING 1).
+        const detail = `status=${probe.status}, final_host=${probe.finalHost}, body_valid=${probe.bodyValid}, body_slug=${probe.bodySlug ?? "none"} (expected ${probe.expectedSlug})${probe.error ? `, ${probe.error}` : ""}`;
         if (gated) {
           push({
             slug, check: "beacon_dark", severity: "warn",
-            message: `public+deployed cell's beacon_url ${declared} is DARK (${detail}) — declares deployed-public but serves no valid BeaconV3`,
+            message: `public+deployed cell's beacon_url ${declared} is DARK (${detail}) — declares deployed-public but serves no valid BeaconV3 for this slug`,
           });
         } else {
           push({
