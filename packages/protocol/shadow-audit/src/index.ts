@@ -88,3 +88,14 @@ export {
   type MemberDiscrepancy,
   type DiscrepancyReport,
 } from './discrepancy.js';
+
+// Shadow Mode — the runner (produce + persist a Discrepancy Report, read-only; store is injected).
+export {
+  ShadowSnapshotSchema,
+  toShadowSnapshot,
+  runShadow,
+  makeMemoryStore,
+  type ShadowSnapshot,
+  type ShadowRunInput,
+  type ShadowStore,
+} from './shadow-runner.js';
