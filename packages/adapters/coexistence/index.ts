@@ -56,6 +56,20 @@ export {
   type ShadowSyncJobOptions,
 } from './shadow-sync-job.js';
 
+// Order-counter foundation: the live eligibility seam + the order book that ACTIVATE
+// the S-25 shadow sync job (score-backed, community- and chain-agnostic).
+export {
+  makeScoreEligibilityChecker,
+  defaultProfileFetcher,
+  type ScoreEligibilityConfig,
+  type CommunityProfileFetcher,
+} from './score-eligibility-checker.js';
+export {
+  makeInMemoryOrderRegistry,
+  type CommunityOrder,
+  type OrderRegistry,
+} from './order-registry.js';
+
 // Sprint S-25: Feature Gate
 export {
   FeatureGate,
