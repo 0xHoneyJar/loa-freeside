@@ -101,7 +101,7 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
     // -------------------------------------------------------------------
     // Step 1: HMAC-SHA512 signature verification
     // -------------------------------------------------------------------
-    const signature = req.headers['x-nowpayments-sig'] as string | undefined;
+    const signature = normalizeSingleHeader(req.headers['x-nowpayments-sig']);
 
     if (!signature || !ipnSecret) {
       logger.warn(
@@ -329,6 +329,17 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
 // --------------------------------------------------------------------------
 // Helpers
 // --------------------------------------------------------------------------
+
+/**
+ * Express request headers can be string, string[], or undefined. HMAC input must
+ * be one unambiguous signature string; duplicated signature headers are treated
+ * as missing rather than guessing which value to verify.
+ */
+function normalizeSingleHeader(header: string | string[] | undefined): string | undefined {
+  if (Array.isArray(header)) return undefined;
+  const trimmed = header?.trim();
+  return trimmed ? trimmed : undefined;
+}
 
 /**
  * Constant-time string comparison using timingSafeEqual.
