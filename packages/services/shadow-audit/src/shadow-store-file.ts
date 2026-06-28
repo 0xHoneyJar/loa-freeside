@@ -3,8 +3,10 @@
  *
  * Append-only JSONL: one validated ShadowSnapshot per line, the series IS the history the dashboard
  * reads (and the operator watches converge before going live). Validated on the way in (never persist a
- * malformed snapshot) AND on the way out (never trust a hand-edited line). This is the integration seam
- * the pure runner (protocol) is written against; a cadence fires runShadow(records, makeFileStore(path)).
+ * malformed snapshot). On the way out the read is RESILIENT: a torn line (a crash mid-append) or a
+ * hand-edit is skipped, never thrown — one bad line must not brick the whole (cross-community) history.
+ * This is the integration seam the pure runner (protocol) is written against; a cadence fires
+ * runShadow(records, makeFileStore(path)).
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -16,7 +18,15 @@ export function makeFileStore(path: string): ShadowStore {
     return readFileSync(path, 'utf8')
       .split('\n')
       .filter((l) => l.trim().length > 0)
-      .map((l) => ShadowSnapshotSchema.parse(JSON.parse(l)))
+      // OUT-path resilience: skip a torn line (crash mid-append) or a hand-edit instead of throwing —
+      // one bad line must NOT brick the entire history across every community.
+      .flatMap((l) => {
+        try {
+          return [ShadowSnapshotSchema.parse(JSON.parse(l))];
+        } catch {
+          return [];
+        }
+      })
       .filter((s) => s.community === community);
   };
   return {
@@ -27,6 +37,8 @@ export function makeFileStore(path: string): ShadowStore {
     },
     series,
     async latest(community) {
+      // last-APPENDED row; equals newest-by-computed_at because the cadence always appends
+      // chronologically (computed_at = now). A backfill MUST preserve that ordering.
       const all = await series(community);
       return all.length > 0 ? all[all.length - 1] : undefined;
     },

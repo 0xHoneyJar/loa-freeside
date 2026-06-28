@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { existsSync, rmSync } from 'node:fs';
+import { appendFileSync, existsSync, rmSync } from 'node:fs';
 import { makeFileStore } from '../shadow-store-file.js';
 import { runShadow, type ShadowRunInput } from '@freeside/shadow-audit-protocol';
 import type { AccessDecisionRecord } from '@freeside/shadow-audit-protocol';
@@ -54,5 +54,18 @@ describe('makeFileStore — durable ShadowStore', () => {
 
   it('refuses a malformed snapshot at the boundary (never persists garbage)', async () => {
     await expect(makeFileStore(PATH).append({ community: 'x' } as never)).rejects.toThrow();
+  });
+
+  it('survives a torn/garbage line — one bad line does not brick the whole history (FAGAN HIGH-1)', async () => {
+    const store = makeFileStore(PATH);
+    await runShadow(input({ computed_at: '2026-06-28T00:00:00.000Z' }), store);
+    // simulate a crash mid-append + a hand-edit: a torn JSON fragment and an outright garbage line
+    appendFileSync(PATH, '{"community":"honeycomb","mode":"dogfo'); // torn (invalid JSON, no newline)
+    appendFileSync(PATH, '\nnot json at all\n');
+    await runShadow(input({ computed_at: '2026-06-29T00:00:00.000Z' }), store);
+    // both VALID snapshots still read back; the two bad lines are skipped, never thrown
+    const series = await makeFileStore(PATH).series('honeycomb');
+    expect(series.map((s) => s.computed_at)).toEqual(['2026-06-28T00:00:00.000Z', '2026-06-29T00:00:00.000Z']);
+    expect((await makeFileStore(PATH).latest('honeycomb'))?.computed_at).toBe('2026-06-29T00:00:00.000Z');
   });
 });
