@@ -9,7 +9,7 @@ COPY packages ./packages
 RUN pnpm install --no-frozen-lockfile
 
 # Build the workspace package first (gateway tsc imports its compiled output)
-RUN pnpm --filter @0xhoneyjar/beacon-schema build
+RUN pnpm --filter @freeside/beacon-schema build
 
 # Now build the gateway
 COPY tsconfig.json ./

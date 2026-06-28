@@ -21,7 +21,7 @@
 
 import { Hono } from "hono";
 import { JSONSchema, Schema } from "effect";
-import { BeaconV2JsonSchema } from "@0xhoneyjar/beacon-schema";
+import { BeaconV2JsonSchema } from "@freeside/beacon-schema";
 import { TENANTS, TenantSchema, TenantsSchema, findTenant, type Tenant } from "./tenants.js";
 import { checkAccess, isAuthorizedOperator } from "./auth.js";
 import { refreshAllBeacons, startBeaconRefresh } from "./beacon-cache.js";
@@ -237,7 +237,7 @@ app.get("/schema/federation.json", (c) => c.json(JSONSchema.make(FederationManif
 
 // Beacon v2 schema export (Cycle C v0.3 P3) — partner authors / construct
 // build steps validate their beacon.yaml against this. Sourced from the
-// @0xhoneyjar/beacon-schema package so this stays in lockstep with what
+// @freeside/beacon-schema package so this stays in lockstep with what
 // the gateway actually decodes at refresh time.
 app.get("/.well-known/beacon-schema/v2.json", (c) => c.json(BeaconV2JsonSchema));
 
