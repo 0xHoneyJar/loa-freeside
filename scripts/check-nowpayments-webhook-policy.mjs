@@ -20,6 +20,23 @@ require(
 );
 
 require(
+  source.includes("normalizeSingleHeader(req.headers['x-nowpayments-sig'])"),
+  'NOWPayments signature header must be normalized before HMAC comparison',
+);
+
+require(
+  source.includes('function normalizeSingleHeader(header: string | string[] | undefined)') &&
+    source.includes('Array.isArray(header)') &&
+    source.includes('return undefined'),
+  'signature normalization must reject duplicated/array headers instead of casting them to string',
+);
+
+require(
+  !source.includes("req.headers['x-nowpayments-sig'] as string"),
+  'webhook handler must not cast x-nowpayments-sig directly from Express headers',
+);
+
+require(
   source.includes('receipt_insert_failed') && source.includes('res.status(500)'),
   'webhook receipt insert failure must be retryable',
 );
