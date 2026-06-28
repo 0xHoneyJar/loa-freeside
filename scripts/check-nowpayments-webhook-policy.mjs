@@ -53,7 +53,6 @@ require(
 
 require(
   !source.includes("req.headers['x-nowpayments-sig'].join") &&
-    !source.includes('x-nowpayments-sig'].join') &&
     !source.includes('Array.isArray(signature)') &&
     !source.includes('Array.isArray(req.headers'),
   'webhook handler must not join or select from duplicated signature headers',
