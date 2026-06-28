@@ -20,7 +20,7 @@
     "test": "tsx --test tests/credentials-resolver.test.ts tests/beacon-resolver.test.ts tests/beacon-cache.test.ts"
   },
   "dependencies": {
-    "@0xhoneyjar/beacon-schema": "workspace:*",
+    "@freeside/beacon-schema": "workspace:*",
     "@hono/node-server": "^1.14.1",
     "effect": "^3.21.2",
     "hono": "^4.7.0"
