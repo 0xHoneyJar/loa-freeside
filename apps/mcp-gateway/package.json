@@ -17,7 +17,7 @@
     "smoke:auth": "tsx scripts/smoke-auth.ts",
     "smoke:prod": "tsx scripts/smoke-prod.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/credentials-resolver.test.ts tests/beacon-resolver.test.ts tests/beacon-cache.test.ts tests/registry-membership.test.ts tests/tenant-policy.test.ts"
+    "test": "tsx --test tests/credentials-resolver.test.ts tests/beacon-resolver.test.ts tests/beacon-cache.test.ts tests/registry-membership.test.ts tests/tenant-policy.test.ts tests/tenant-table.test.ts"
   },
   "dependencies": {
     "@freeside/beacon-schema": "workspace:*",
