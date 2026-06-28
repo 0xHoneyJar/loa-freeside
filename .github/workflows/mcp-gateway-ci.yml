@@ -1,0 +1,67 @@
+name: MCP Gateway CI
+
+# The MCP federation gateway (apps/mcp-gateway) had NO build gate — an
+# incomplete @0xhoneyjar→@freeside beacon-schema rename broke its build on main
+# and went uncaught (PR #376). This is the gate that would have failed: it
+# typechecks, builds, and tests the gateway against the live workspace package.
+#
+# NOTE: apps/mcp-gateway/pnpm-workspace.yaml globs `packages/*` relative to the
+# gateway dir; the Dockerfile supplies them via `COPY packages ./packages`. CI
+# mirrors that by staging the one real workspace dep (@freeside/beacon-schema)
+# before install.
+
+on:
+  pull_request:
+    paths:
+      - 'apps/mcp-gateway/**'
+      - 'packages/beacon-schema/**'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/mcp-gateway/**'
+      - 'packages/beacon-schema/**'
+
+concurrency:
+  group: mcp-gateway-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mcp-gateway-ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/mcp-gateway
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Mirror the Dockerfile: the gateway's workspace resolves `workspace:*`
+      # from packages/ staged inside the gateway dir.
+      - name: Stage workspace package (beacon-schema)
+        working-directory: .
+        run: |
+          mkdir -p apps/mcp-gateway/packages
+          cp -r packages/beacon-schema apps/mcp-gateway/packages/beacon-schema
+
+      - name: Install
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build workspace package
+        run: pnpm --filter @freeside/beacon-schema build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test
