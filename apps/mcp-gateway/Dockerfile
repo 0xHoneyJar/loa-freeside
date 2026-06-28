@@ -1,6 +1,6 @@
 FROM node:22-alpine AS builder
 WORKDIR /app
-RUN corepack enable && corepack prepare pnpm@8.15.9 --activate
+RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 
 # Workspace setup — Cycle C P3 added packages/beacon-schema as workspace pkg.
 # pnpm-workspace.yaml + packages/ must be present for `workspace:*` resolution.
@@ -20,7 +20,7 @@ RUN pnpm build
 FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
-RUN corepack enable && corepack prepare pnpm@8.15.9 --activate
+RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 
 # Runtime needs workspace topology for pnpm install to resolve workspace:*
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
