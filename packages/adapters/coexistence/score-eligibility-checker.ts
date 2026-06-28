@@ -28,6 +28,10 @@ export interface ScoreEligibilityConfig {
   apiKey: string;
   /** per-request timeout (default 5s). */
   timeoutMs?: number;
+  /** Observability hook fired on every fail-closed degrade (L-1). Receives the community + a
+   *  reason — NEVER the api key or wallet. A down score-api degrades the whole boundary closed,
+   *  silently stalling graduation; this is the operator's signal. Optional + side-effect-only. */
+  onDegraded?: (info: { community: string; reason: string }) => void;
 }
 
 /**
@@ -66,6 +70,10 @@ export function makeScoreEligibilityChecker(
   fetcher: CommunityProfileFetcher = defaultProfileFetcher,
 ): IEligibilityChecker {
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const degraded = (reason: string): ArrakisEligibilityResult => {
+    config.onDegraded?.({ community: config.community, reason }); // L-1: signal, never the key/wallet
+    return DEGRADED;
+  };
   return {
     async checkEligibility(
       rules: EligibilityRule[],
@@ -75,7 +83,7 @@ export function makeScoreEligibilityChecker(
       // Refuse the whole check (degrade) rather than bank a confident negative for a rule it
       // structurally can't judge — a chain-backed checker owns token_balance. (FAGAN M-1)
       if (rules.some((rule) => rule.ruleType === 'token_balance')) {
-        return DEGRADED;
+        return degraded('token_balance-unevaluable');
       }
       let res: { status: number; body: unknown };
       try {
@@ -87,21 +95,24 @@ export function makeScoreEligibilityChecker(
           timeoutMs,
         });
       } catch {
-        return DEGRADED; // transport failure / timeout → never grant
+        return degraded('transport'); // transport failure / timeout → never grant
       }
 
-      // 404 = a real negative: the wallet is not a scored holder in this community.
+      // 404 = a real negative: the wallet is not a scored holder in this community. NOTE: a 404
+      // from a misprovisioned community slug / wrong route also reads here as "not a holder" (a
+      // confident negative, not a degrade) — wallet-404 is the dominant case, but a whole-community
+      // 404 would silently read everyone ineligible and depress the accuracy metric. (FAGAN L-2)
       if (res.status === 404) {
         return { eligible: false, tier: null, score: null, source: 'score_service' };
       }
       // any other non-2xx (403 out-of-scope key, 429, 5xx, …) → couldn't determine → fail-closed.
       if (res.status < 200 || res.status >= 300) {
-        return DEGRADED;
+        return degraded(`http_${res.status}`);
       }
 
       const parsed = ProfileSchema.safeParse(res.body);
       if (!parsed.success) {
-        return DEGRADED; // contract drift → fail-closed, never silently grant
+        return degraded('contract-drift'); // contract drift → fail-closed, never silently grant
       }
 
       const tier = parsed.data.tier ?? null;

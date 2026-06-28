@@ -7,7 +7,11 @@
  * negative (not a holder), distinct from a degrade.
  */
 import { describe, it, expect } from 'vitest';
-import { makeScoreEligibilityChecker, type CommunityProfileFetcher } from './score-eligibility-checker.js';
+import {
+  makeScoreEligibilityChecker,
+  defaultProfileFetcher,
+  type CommunityProfileFetcher,
+} from './score-eligibility-checker.js';
 import type { EligibilityRule } from './shadow-sync-job.js';
 
 const cfg = { endpoint: 'https://score.test', community: 'pythenians', apiKey: 'k' };
@@ -124,5 +128,69 @@ describe('makeScoreEligibilityChecker (fail-closed, score-backed)', () => {
     };
     await makeScoreEligibilityChecker(cfg, spy).checkEligibility([scoreRule], W);
     expect(seen).toEqual({ apiKey: 'k', community: 'pythenians', address: W });
+  });
+
+  describe('onDegraded observability (FAGAN L-1)', () => {
+    it('fires on every degrade with the community + a reason — and NEVER the api key', async () => {
+      const seen: { community: string; reason: string }[] = [];
+      const o = { ...cfg, apiKey: 'SECRET_KEY_XYZ', onDegraded: (i: { community: string; reason: string }) => seen.push(i) };
+      const tokRule: EligibilityRule = { ruleType: 'token_balance', chainId: '101', contractAddress: 'pyTh', minAmount: 1n };
+      await makeScoreEligibilityChecker(o, returning(503, null)).checkEligibility([scoreRule], W);
+      await makeScoreEligibilityChecker(o, throwing()).checkEligibility([scoreRule], W);
+      await makeScoreEligibilityChecker(o, returning(200, { tier: 123 })).checkEligibility([scoreRule], W);
+      await makeScoreEligibilityChecker(o, returning(200, {})).checkEligibility([tokRule], W);
+      expect(seen.map((s) => s.reason)).toEqual(['http_503', 'transport', 'contract-drift', 'token_balance-unevaluable']);
+      expect(seen.every((s) => s.community === 'pythenians')).toBe(true);
+      expect(JSON.stringify(seen)).not.toContain('SECRET'); // the key never reaches the observability hook
+    });
+
+    it('does NOT fire on a clean answer (200 grant/deny or a 404 negative)', async () => {
+      let fired = false;
+      const o = { ...cfg, onDegraded: () => { fired = true; } };
+      await makeScoreEligibilityChecker(o, returning(200, { tier: 'elder', combined_score: 999 })).checkEligibility([scoreRule], W);
+      await makeScoreEligibilityChecker(o, returning(404, null)).checkEligibility([scoreRule], W);
+      expect(fired).toBe(false);
+    });
+  });
+
+  describe('defaultProfileFetcher — the real I/O path (FAGAN L-4)', () => {
+    const withFetch = async (impl: (url: string, init: { headers?: Record<string, string> }) => unknown, run: () => Promise<void>) => {
+      const orig = globalThis.fetch;
+      globalThis.fetch = ((url: string, init: { headers?: Record<string, string> }) => Promise.resolve(impl(url, init))) as unknown as typeof fetch;
+      try { await run(); } finally { globalThis.fetch = orig; }
+    };
+
+    it('builds the community-scoped URL + x-api-key header, returns {status, body}', async () => {
+      let captured: { url?: string; headers?: Record<string, string> } = {};
+      await withFetch(
+        (url, init) => { captured = { url, headers: init.headers }; return { status: 200, json: async () => ({ tier: 'elder' }) }; },
+        async () => {
+          const r = await defaultProfileFetcher({ endpoint: 'https://score.x/', community: 'pythenians', address: '0xWALLET', apiKey: 'K', timeoutMs: 1000 });
+          expect(r).toEqual({ status: 200, body: { tier: 'elder' } });
+        },
+      );
+      expect(captured.url).toBe('https://score.x/v1/wallets/0xWALLET?community=pythenians'); // trailing slash trimmed
+      expect(captured.headers).toEqual({ 'x-api-key': 'K' }); // key in header only, not the URL
+    });
+
+    it('returns a non-200 status (does not throw) for the checker to map', async () => {
+      await withFetch(
+        () => ({ status: 403, json: async () => ({ error: 'out-of-scope' }) }),
+        async () => {
+          const r = await defaultProfileFetcher({ endpoint: 'https://score.x', community: 'c', address: 'w', apiKey: 'K', timeoutMs: 1000 });
+          expect(r.status).toBe(403);
+        },
+      );
+    });
+
+    it('null body when the response is not JSON (no throw)', async () => {
+      await withFetch(
+        () => ({ status: 200, json: async () => { throw new Error('not json'); } }),
+        async () => {
+          const r = await defaultProfileFetcher({ endpoint: 'https://score.x', community: 'c', address: 'w', apiKey: 'K', timeoutMs: 1000 });
+          expect(r).toEqual({ status: 200, body: null });
+        },
+      );
+    });
   });
 });
