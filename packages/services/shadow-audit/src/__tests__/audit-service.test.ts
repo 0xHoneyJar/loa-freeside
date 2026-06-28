@@ -198,3 +198,26 @@ describe('runAudit — hardening fixes', () => {
     }
   });
 });
+
+describe('runAudit — Shadow Mode discrepancy (authed)', () => {
+  it('carries the per-member discrepancy when records are included, over the same members', async () => {
+    const r = await runAudit(req({ includeRecords: true }), deps());
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.output.records).toBeDefined();
+    expect(r.output.discrepancy).toBeDefined();
+    expect(r.output.discrepancy!.aggregate.total).toBe(r.output.records!.length);
+    expect(r.output.discrepancy!.members.length).toBe(r.output.records!.length);
+    // every band classified into a change (no member dropped)
+    const changed = r.output.discrepancy!.aggregate;
+    expect(changed.promotions + changed.demotions + changed.no_change).toBe(changed.total);
+  });
+
+  it('omits the discrepancy for anonymous callers (no records → no comparison)', async () => {
+    const r = await runAudit(req({ includeRecords: false }), deps());
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.output.records).toBeUndefined();
+    expect(r.output.discrepancy).toBeUndefined();
+  });
+});
