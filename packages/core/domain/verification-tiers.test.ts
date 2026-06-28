@@ -198,8 +198,8 @@ describe('gating-ladder cross-function consistency (the load-bearing invariant)'
   it('a community gains features only by moving UP the ladder, never loses one going up', () => {
     // For each adjacent tier step, the available set only grows.
     for (let i = 1; i < TIERS.length; i++) {
-      const lower = new Set(getFeaturesForTier(TIERS[i - 1]));
-      const higher = new Set(getFeaturesForTier(TIERS[i]));
+      const lower = new Set(getFeaturesForTier(TIERS[i - 1] as VerificationTier));
+      const higher = new Set(getFeaturesForTier(TIERS[i] as VerificationTier));
       for (const f of lower) expect(higher.has(f)).toBe(true);
     }
   });
