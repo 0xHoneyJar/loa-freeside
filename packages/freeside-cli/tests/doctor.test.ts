@@ -21,6 +21,11 @@ import {
   checkSealedSchemas,
   recomputeSealedHash,
   readAllowlist,
+  classifyProbe,
+  probeBeacon,
+  defaultBeaconFetcher,
+  type BeaconFetcher,
+  type BeaconProbe,
 } from "../src/verbs/doctor.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -182,12 +187,332 @@ test("doctor() · --acvp (acvpOnly) skips cycle/compose/sealed; beacon-resolve +
   assert.ok(report.findings.some((f) => f.check === "beacon_valid"));
 });
 
-test("doctor() · --remote refuses fixture substitution → beacon_unreachable only (FAGAN iter-2)", async () => {
-  const report = await doctor({ registryPath: join(FIXTURES, "registry-fixture.yaml"), remote: true, now: NOW });
-  assert.ok(report.findings.length >= 1);
-  assert.ok(report.findings.every((f) => f.check === "beacon_unreachable"));
-  // the fixture was NOT read under --remote
-  assert.ok(!report.findings.some((f) => f.check === "beacon_valid" || f.check === "sealed_schema_hash_drift"));
+// ─── --remote host-pinned probe + host-integrity guard (SC-6 un-deferred) ────
+// The beacon-discovery sensor. A mock fetcher (NO live network) drives the three
+// verdicts; the gate WARNs only on public+deployed cells that go dark, and is
+// silent on honestly-scaffolded ones.
+
+/** A minimal but schema-valid BeaconV3 body declaring `slug` (the "discoverable" body). */
+const validBeaconBody = (slug: string) =>
+  JSON.stringify({
+    schema_version: "3",
+    slug,
+    publisher: "0xHoneyJar",
+    is: {
+      one_liner: "Activity feed aggregator for registered worlds",
+      scope: ["Aggregate per-world activity events", "Surface a unified activity timeline"],
+    },
+    is_not: ["Does NOT mint or burn tokens", "Will NOT proxy chain RPC calls"],
+    cycle_state: { status: "active", since: "2026-05-18", next_review: "2026-08-18" },
+  });
+/** The activities-api body (the existing discoverable fixture — slug activities-api). */
+const VALID_BEACON_BODY = validBeaconBody("activities-api");
+
+/** Route declared URLs → canned fetch results; an unrouted URL is a transport failure. */
+const mockFetcher = (routes: Record<string, { status: number; finalUrl?: string; body?: string }>): BeaconFetcher =>
+  async (url) => {
+    const r = routes[url];
+    if (!r) return { status: 0, finalUrl: url, body: "", error: "no route (mock)" };
+    return { status: r.status, finalUrl: r.finalUrl ?? url, body: r.body ?? "" };
+  };
+
+/** Write a temp registry with the given module YAML block; returns its path + cleanup. */
+function writeRemoteRegistry(moduleYaml: string): { path: string; cleanup: () => void } {
+  const dir = mkdtempSync(join(tmpdir(), "doctor-remote-"));
+  const path = join(dir, "registry.yaml");
+  writeFileSync(path, `version: 1\nmodules:\n${moduleYaml}`);
+  return { path, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+}
+
+const SCORE_URL = "https://score.0xhoneyjar.xyz/.well-known/beacon.json";
+const MINT_URL = "https://mint.0xhoneyjar.xyz/.well-known/beacon.json";
+
+// ── classifyProbe (pure guard) ──────────────────────────────────────────────
+
+test("classifyProbe · redirected off the declared host → void (before anything else)", () => {
+  const p: BeaconProbe = {
+    target: SCORE_URL, declaredHost: "score.0xhoneyjar.xyz", finalHost: "cname.vercel-dns.com",
+    redirectedOff: true, status: 200, bodyValid: true,
+    expectedSlug: "score-api", bodySlug: "score-api",
+  };
+  assert.equal(classifyProbe(p), "void");
+});
+
+test("classifyProbe · 2xx valid body for the RIGHT slug at declared host → discoverable", () => {
+  const p: BeaconProbe = {
+    target: SCORE_URL, declaredHost: "score.0xhoneyjar.xyz", finalHost: "score.0xhoneyjar.xyz",
+    redirectedOff: false, status: 200, bodyValid: true,
+    expectedSlug: "score-api", bodySlug: "score-api",
+  };
+  assert.equal(classifyProbe(p), "discoverable");
+});
+
+test("classifyProbe · 2xx valid body but WRONG slug (a sibling's beacon at a miswired URL) → dark (FINDING 1)", () => {
+  const wrongSlug: BeaconProbe = {
+    target: SCORE_URL, declaredHost: "score.0xhoneyjar.xyz", finalHost: "score.0xhoneyjar.xyz",
+    redirectedOff: false, status: 200, bodyValid: true,
+    expectedSlug: "score-api", bodySlug: "activities-api",
+  };
+  assert.equal(classifyProbe(wrongSlug), "dark");
+});
+
+test("classifyProbe · correctly-targeted host that 404s / serves non-BeaconV3 → dark", () => {
+  const notFound: BeaconProbe = {
+    target: SCORE_URL, declaredHost: "score.0xhoneyjar.xyz", finalHost: "score.0xhoneyjar.xyz",
+    redirectedOff: false, status: 404, bodyValid: false,
+    expectedSlug: "score-api", bodySlug: null,
+  };
+  assert.equal(classifyProbe(notFound), "dark");
+  // 200 but body not a BeaconV3 → still dark
+  assert.equal(classifyProbe({ ...notFound, status: 200, bodyValid: false }), "dark");
+});
+
+// ── probeBeacon (host-integrity guard record) ───────────────────────────────
+
+test("probeBeacon · records the post-redirect host; off-host probe flags redirectedOff", async () => {
+  const fetcher = mockFetcher({
+    [SCORE_URL]: { status: 200, finalUrl: "https://cname.vercel-dns.com/404", body: "<html>nope" },
+  });
+  const p = await probeBeacon(SCORE_URL, "score-api", fetcher);
+  assert.equal(p.declaredHost, "score.0xhoneyjar.xyz");
+  assert.equal(p.finalHost, "cname.vercel-dns.com");
+  assert.equal(p.redirectedOff, true);
+  assert.equal(p.bodyValid, false);
+  assert.equal(classifyProbe(p), "void");
+});
+
+test("probeBeacon · valid BeaconV3 body for the RIGHT slug at the declared host → discoverable", async () => {
+  const fetcher = mockFetcher({ [SCORE_URL]: { status: 200, body: validBeaconBody("score-api") } });
+  const p = await probeBeacon(SCORE_URL, "score-api", fetcher);
+  assert.equal(p.redirectedOff, false);
+  assert.equal(p.bodyValid, true);
+  assert.equal(p.bodySlug, "score-api");
+  assert.equal(classifyProbe(p), "discoverable");
+});
+
+// ── the gate, gated on truth-state ──────────────────────────────────────────
+
+test("doctor() · --remote → public+deployed cell whose beacon 404s → beacon_dark WARN (no fixture, no error)", async () => {
+  const { path, cleanup } = writeRemoteRegistry(
+    [
+      "  score-api:",
+      "    git_url: https://github.com/0xHoneyJar/score-api.git",
+      `    beacon_url: ${SCORE_URL}`,
+      "    visibility: public",
+      "    owner: 0xHoneyJar",
+      '    added: "2026-05-30"',
+      "    runtime_state: deployed",
+      "",
+    ].join("\n"),
+  );
+  try {
+    const report = await doctor({
+      registryPath: path,
+      remote: true,
+      now: NOW,
+      fetchBeacon: mockFetcher({ [SCORE_URL]: { status: 404, body: "Not Found" } }),
+    });
+    assert.ok(
+      report.findings.some((f) => f.slug === "score-api" && f.check === "beacon_dark" && f.severity === "warn"),
+      "public+deployed dark beacon must WARN (beacon_dark)",
+    );
+    assert.equal(report.summary.error, 0, "the gate WARNs now (does not FAIL)");
+    // --remote never substitutes the fixture path
+    assert.ok(!report.findings.some((f) => f.check === "beacon_valid" || f.check === "beacon_unreachable"));
+  } finally {
+    cleanup();
+  }
+});
+
+test("doctor() · --remote → cell serving a valid BeaconV3 → beacon_discoverable (pass)", async () => {
+  const { path, cleanup } = writeRemoteRegistry(
+    [
+      "  activities-api:",
+      "    git_url: https://github.com/0xHoneyJar/activities-api.git",
+      "    beacon_url: https://activities.0xhoneyjar.xyz/.well-known/beacon.json",
+      "    visibility: public",
+      "    owner: 0xHoneyJar",
+      '    added: "2026-05-30"',
+      "    runtime_state: deployed",
+      "",
+    ].join("\n"),
+  );
+  const url = "https://activities.0xhoneyjar.xyz/.well-known/beacon.json";
+  try {
+    const report = await doctor({
+      registryPath: path,
+      remote: true,
+      now: NOW,
+      fetchBeacon: mockFetcher({ [url]: { status: 200, body: VALID_BEACON_BODY } }),
+    });
+    assert.ok(
+      report.findings.some((f) => f.slug === "activities-api" && f.check === "beacon_discoverable" && f.severity === "ok"),
+      "valid BeaconV3 at the declared host → beacon_discoverable ok",
+    );
+    assert.equal(report.summary.warn, 0);
+    assert.equal(report.summary.error, 0);
+  } finally {
+    cleanup();
+  }
+});
+
+test("doctor() · --remote → scaffolded cell whose beacon 404s → beacon_exempt (no alarm)", async () => {
+  const { path, cleanup } = writeRemoteRegistry(
+    [
+      "  mint-api:",
+      "    git_url: https://github.com/0xHoneyJar/mint-api.git",
+      `    beacon_url: ${MINT_URL}`,
+      "    visibility: public",
+      "    owner: 0xHoneyJar",
+      '    added: "2026-05-30"',
+      "    runtime_state: scaffolded",
+      "",
+    ].join("\n"),
+  );
+  try {
+    const report = await doctor({
+      registryPath: path,
+      remote: true,
+      now: NOW,
+      fetchBeacon: mockFetcher({ [MINT_URL]: { status: 404, body: "Not Found" } }),
+    });
+    assert.ok(
+      report.findings.some((f) => f.slug === "mint-api" && f.check === "beacon_exempt" && f.severity === "ok"),
+      "scaffolded cell must be exempt — no false alarm",
+    );
+    assert.ok(
+      !report.findings.some((f) => f.slug === "mint-api" && f.check === "beacon_dark"),
+      "a scaffolded cell must NOT be flagged dark",
+    );
+    assert.equal(report.summary.warn, 0);
+  } finally {
+    cleanup();
+  }
+});
+
+test("doctor() · --remote → public+deployed cell whose probe redirects off-host → beacon_void WARN (not dark)", async () => {
+  const { path, cleanup } = writeRemoteRegistry(
+    [
+      "  score-api:",
+      "    git_url: https://github.com/0xHoneyJar/score-api.git",
+      `    beacon_url: ${SCORE_URL}`,
+      "    visibility: public",
+      "    owner: 0xHoneyJar",
+      '    added: "2026-05-30"',
+      "    runtime_state: deployed",
+      "",
+    ].join("\n"),
+  );
+  try {
+    const report = await doctor({
+      registryPath: path,
+      remote: true,
+      now: NOW,
+      // declared score host redirects off to a Vercel CNAME (the score/sonar DNS class)
+      fetchBeacon: mockFetcher({
+        [SCORE_URL]: { status: 200, finalUrl: "https://cname.vercel-dns.com/404", body: VALID_BEACON_BODY },
+      }),
+    });
+    assert.ok(
+      report.findings.some((f) => f.slug === "score-api" && f.check === "beacon_void" && f.severity === "warn"),
+      "off-host redirect → beacon_void (the host-integrity guard fires)",
+    );
+    assert.ok(
+      !report.findings.some((f) => f.slug === "score-api" && f.check === "beacon_dark"),
+      "a redirected-off probe must NOT be counted as dark",
+    );
+  } finally {
+    cleanup();
+  }
+});
+
+test("doctor() · --remote → public+deployed cell whose URL serves a SIBLING's beacon (wrong slug) → beacon_dark, NOT discoverable (FINDING 1)", async () => {
+  const { path, cleanup } = writeRemoteRegistry(
+    [
+      "  score-api:",
+      "    git_url: https://github.com/0xHoneyJar/score-api.git",
+      `    beacon_url: ${SCORE_URL}`,
+      "    visibility: public",
+      "    owner: 0xHoneyJar",
+      '    added: "2026-05-30"',
+      "    runtime_state: deployed",
+      "",
+    ].join("\n"),
+  );
+  try {
+    const report = await doctor({
+      registryPath: path,
+      remote: true,
+      now: NOW,
+      // the score-api URL serves a VALID BeaconV3 — but it is activities-api's beacon
+      // (the miswired-URL case: right shape, WRONG identity). A slug-blind sensor
+      // would falsely pass this; the slug-pin makes it dark (declaration≠reality).
+      fetchBeacon: mockFetcher({ [SCORE_URL]: { status: 200, body: validBeaconBody("activities-api") } }),
+    });
+    assert.ok(
+      report.findings.some((f) => f.slug === "score-api" && f.check === "beacon_dark" && f.severity === "warn"),
+      "a valid body for the WRONG slug must be dark, not a pass",
+    );
+    assert.ok(
+      !report.findings.some((f) => f.slug === "score-api" && f.check === "beacon_discoverable"),
+      "a sibling's beacon must NOT count as score-api being discoverable",
+    );
+  } finally {
+    cleanup();
+  }
+});
+
+// ── FINDING 2: redirect host-integrity — the REAL fetcher must NOT chase off-host ──
+// These exercise defaultBeaconFetcher directly by mocking globalThis.fetch (no live
+// network), recording every URL fetch is called with. The fix (redirect:"manual",
+// same-host-only follow) means an off-host Location is never requested and its body
+// is never read — so --remote cannot make arbitrary outbound fetches.
+
+test("defaultBeaconFetcher · off-host redirect is NOT followed — off-host body never fetched (FINDING 2)", async () => {
+  const declared = SCORE_URL;
+  const offHost = "https://evil.example.com/.well-known/beacon.json";
+  const calls: string[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: unknown) => {
+    const u = typeof input === "string" ? input : (input as URL).toString();
+    calls.push(u);
+    if (u === declared) return new Response(null, { status: 302, headers: { location: offHost } });
+    // reaching here means the off-host body WAS fetched — the vulnerability
+    return new Response(VALID_BEACON_BODY, { status: 200 });
+  }) as typeof fetch;
+  try {
+    const r = await defaultBeaconFetcher(declared);
+    assert.deepEqual(calls, [declared], "only the declared host was fetched — off-host Location never requested");
+    assert.equal(new URL(r.finalUrl).host, "evil.example.com", "off-host target surfaced as finalUrl (for the void verdict)");
+    assert.equal(r.body, "", "off-host body never read");
+    // end-to-end: the host-integrity guard classifies it void (not dark, not discoverable)
+    const probe = await probeBeacon(declared, "score-api", async () => r);
+    assert.equal(classifyProbe(probe), "void");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("defaultBeaconFetcher · same-host redirect IS followed (only off-host is refused — no over-correction)", async () => {
+  const declared = "https://score.0xhoneyjar.xyz/beacon";
+  const sameHost = "https://score.0xhoneyjar.xyz/.well-known/beacon.json";
+  const body = validBeaconBody("score-api");
+  const calls: string[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: unknown) => {
+    const u = typeof input === "string" ? input : (input as URL).toString();
+    calls.push(u);
+    if (u === declared) return new Response(null, { status: 301, headers: { location: sameHost } });
+    return new Response(body, { status: 200 });
+  }) as typeof fetch;
+  try {
+    const r = await defaultBeaconFetcher(declared);
+    assert.deepEqual(calls, [declared, sameHost], "the same-host redirect was followed");
+    assert.equal(r.status, 200);
+    assert.equal(r.body, body, "the same-host terminal body was read");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });
 
 test("doctor() · BeaconV2 module → beacon_legacy_v2 warn, NOT error (G-4)", async () => {

@@ -21,6 +21,10 @@ Usage:
   freeside-cli inspect <slug>        Show beacon for a specific module
   freeside-cli doctor [--remote] [--acvp] [--baseline <reg>] [--registry <reg>] [--cells-dir <dir>]
                                      Audit all modules against BeaconV3 + ACVP bindings.
+                                     --remote: host-pinned live probe of each declared
+                                       beacon_url + host-integrity guard (SC-6). A
+                                       public+deployed cell whose beacon is dark → warn;
+                                       scaffolded/not-built cells are exempt.
                                      --cells-dir <dir>: resolve each cell's beacon + ACVP
                                        inputs from a per-cell clone at <dir>/cell-<slug>/
                                        (the per-cell resolution bridge — backed buildings
