@@ -231,12 +231,12 @@ function loadRegistry(): Record<string, { beacon_url: string; visibility: string
 }
 
 async function probeBeacon(beaconUrl: string): Promise<{ state: FederationTile["beaconState"]; latency: number | null }> {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 5000);
   const start = Date.now();
   try {
-    const res = await fetch(beaconUrl, { signal: ctrl.signal });
-    clearTimeout(t);
+    // AbortSignal.timeout stays armed through the body read — a manual timer cleared
+    // right after the headers arrive leaves res.text() unbounded, so a stalling body
+    // would hang the whole dash. This bounds the entire probe (headers + body) to 5s.
+    const res = await fetch(beaconUrl, { signal: AbortSignal.timeout(5000) });
     // Kuang iter-2: classify by SHAPE, not just status — a catch-all 200 (e.g. a GraphQL
     // playground) is NOT a live beacon. The meter validates the body parses as a BeaconV3.
     let body = "";
@@ -247,7 +247,6 @@ async function probeBeacon(beaconUrl: string): Promise<{ state: FederationTile["
     }
     return { state: classifyBeacon(res.status, body), latency: Date.now() - start };
   } catch {
-    clearTimeout(t);
     return { state: "unreachable", latency: null };
   }
 }
