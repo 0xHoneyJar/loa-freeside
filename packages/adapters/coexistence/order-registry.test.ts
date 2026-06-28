@@ -73,4 +73,25 @@ describe('makeInMemoryOrderRegistry (the Shadow Mode order book)', () => {
     r.place(order({ communityId: 'a', guildId: 'new' }));
     expect(r.getConfig('a')?.guildId).toBe('new');
   });
+
+  it('a returned config/order is a deep copy — mutating it cannot reach stored state (FAGAN M-2)', () => {
+    const r = makeInMemoryOrderRegistry([order({ communityId: 'a', mode: 'parallel' })]);
+    // try to resurrect a graduated community by flipping the leaked config back to shadow
+    const leaked = r.getConfig('a')!;
+    leaked.mode = 'shadow';
+    expect(r.getConfig('a')?.mode).toBe('parallel'); // store untouched
+    expect(r.getShadowModeCommunities()).toEqual([]); // NOT resurrected into the sweep
+    // and the rules array is not a live reference either
+    const o = r.get('a')!;
+    (o.eligibilityRules as EligibilityRule[]).push(rule);
+    expect(r.getEligibilityRules('a')).toEqual([rule]); // stored single rule, unchanged
+  });
+
+  it('mutating an order AFTER place() does not change stored state (write-path copy)', () => {
+    const r = makeInMemoryOrderRegistry();
+    const o = order({ communityId: 'a', mode: 'shadow' });
+    r.place(o);
+    (o.config as { mode: string }).mode = 'disabled';
+    expect(r.getConfig('a')?.mode).toBe('shadow');
+  });
 });

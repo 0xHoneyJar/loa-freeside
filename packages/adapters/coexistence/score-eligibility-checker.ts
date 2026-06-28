@@ -71,6 +71,12 @@ export function makeScoreEligibilityChecker(
       rules: EligibilityRule[],
       walletAddress: string,
     ): Promise<ArrakisEligibilityResult> {
+      // This checker is score-backed; it cannot soundly evaluate a raw on-chain token_balance.
+      // Refuse the whole check (degrade) rather than bank a confident negative for a rule it
+      // structurally can't judge — a chain-backed checker owns token_balance. (FAGAN M-1)
+      if (rules.some((rule) => rule.ruleType === 'token_balance')) {
+        return DEGRADED;
+      }
       let res: { status: number; body: unknown };
       try {
         res = await fetcher({
@@ -107,6 +113,9 @@ export function makeScoreEligibilityChecker(
   };
 }
 
+// Assumes one community = one gating contract = one score-api profile: rule.contractAddress /
+// rule.chainId are NOT used to scope the lookup (score-api returns a single community-scoped
+// profile). A multi-contract community needs per-contract scoping — tracked follow-up (FAGAN M-3).
 function satisfies(
   rule: EligibilityRule,
   p: { tier: string | null; score: number | null; nftScore: number | null },
@@ -115,13 +124,12 @@ function satisfies(
     case 'score_threshold':
       return rule.minScore != null && p.score != null && p.score >= rule.minScore;
     case 'nft_ownership':
-      // score-api only scores holders → a present tier (or positive nft_score) = holds.
-      return p.tier !== null || (p.nftScore !== null && p.nftScore > 0);
-    case 'token_balance':
-      // raw on-chain balance is not served by the community profile; this score-backed
-      // checker cannot evaluate it — a chain-backed checker owns token_balance.
-      return false;
+      // The wallet HOLDS the gating NFT iff nft_score > 0 — NOT `tier !== null`. tier and
+      // combined_score aggregate non-NFT signals too, so a wallet can carry a tier with
+      // nft_score 0 and hold nothing; tier-presence would fail OPEN. (FAGAN H-1)
+      return p.nftScore !== null && p.nftScore > 0;
     default:
+      // token_balance is refused upstream (degrade); any unknown rule denies.
       return false;
   }
 }

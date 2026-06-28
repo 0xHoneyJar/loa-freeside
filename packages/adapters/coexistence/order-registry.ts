@@ -43,18 +43,26 @@ export function makeInMemoryOrderRegistry(seed: readonly CommunityOrder[] = []):
   const book = new Map<string, CommunityOrder>();
   for (const order of seed) book.set(order.config.communityId, order);
 
+  // Store + return DEEP COPIES. The `readonly` types are compile-time only; this is the runtime
+  // enforcement that a caller cannot reach into stored state through a getter (or by mutating an
+  // order it placed) — e.g. flip a graduated community's mode back to `shadow` and resurrect it
+  // into the sweep, which reads `o.config.mode` live. (FAGAN M-2)
+  const clone = <T>(v: T): T => structuredClone(v);
   return {
     place(order) {
-      book.set(order.config.communityId, order);
+      book.set(order.config.communityId, clone(order));
     },
     get(communityId) {
-      return book.get(communityId);
+      const o = book.get(communityId);
+      return o ? clone(o) : undefined;
     },
     getConfig(communityId) {
-      return book.get(communityId)?.config;
+      const o = book.get(communityId);
+      return o ? clone(o.config) : undefined;
     },
     getEligibilityRules(communityId) {
-      return book.get(communityId)?.eligibilityRules ?? [];
+      const o = book.get(communityId);
+      return o ? clone(o.eligibilityRules) : [];
     },
     getShadowModeCommunities() {
       return [...book.values()].filter((o) => o.config.mode === 'shadow').map((o) => o.config.communityId);

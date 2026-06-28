@@ -41,13 +41,19 @@ describe('makeScoreEligibilityChecker (fail-closed, score-backed)', () => {
     });
   });
 
-  it('nft_ownership: a present tier = holder = eligible', async () => {
-    const c = makeScoreEligibilityChecker(cfg, returning(200, { tier: 'member', combined_score: 10 }));
+  it('nft_ownership: nft_score > 0 = holder = eligible', async () => {
+    const c = makeScoreEligibilityChecker(cfg, returning(200, { tier: 'member', nft_score: 2, combined_score: 10 }));
     expect((await c.checkEligibility([nftRule], W)).eligible).toBe(true);
   });
 
-  it('nft_ownership: null tier + zero nft_score = not a holder = not eligible', async () => {
-    const c = makeScoreEligibilityChecker(cfg, returning(200, { tier: null, combined_score: null, nft_score: 0 }));
+  it('nft_ownership FAILS CLOSED: a present tier with nft_score 0 is NOT a holder (FAGAN H-1)', async () => {
+    // tier/combined_score aggregate non-NFT signals; a scored non-holder must NOT be granted.
+    const c = makeScoreEligibilityChecker(cfg, returning(200, { tier: 'member', combined_score: 10, nft_score: 0 }));
+    expect((await c.checkEligibility([nftRule], W)).eligible).toBe(false);
+  });
+
+  it('nft_ownership: a missing nft_score is NOT a holder (no tier-presence over-grant)', async () => {
+    const c = makeScoreEligibilityChecker(cfg, returning(200, { tier: 'elder', combined_score: 999 }));
     expect((await c.checkEligibility([nftRule], W)).eligible).toBe(false);
   });
 
@@ -86,10 +92,21 @@ describe('makeScoreEligibilityChecker (fail-closed, score-backed)', () => {
     expect((await c.checkEligibility([scoreRule], W)).source).toBe('native_degraded');
   });
 
-  it('token_balance is not evaluable by the score path → not eligible (defer to a chain checker)', async () => {
+  it('token_balance → DEGRADED, not a confident negative (score checker cannot judge it) (FAGAN M-1)', async () => {
     const c = makeScoreEligibilityChecker(cfg, returning(200, { tier: 'elder', combined_score: 999 }));
     const tokRule: EligibilityRule = { ruleType: 'token_balance', chainId: '101', contractAddress: 'pyTh', minAmount: 1n };
-    expect((await c.checkEligibility([tokRule], W)).eligible).toBe(false);
+    expect(await c.checkEligibility([tokRule], W)).toEqual({
+      eligible: false,
+      tier: null,
+      score: null,
+      source: 'native_degraded',
+    });
+  });
+
+  it('a mixed config containing token_balance degrades the whole check (no confident partial answer)', async () => {
+    const c = makeScoreEligibilityChecker(cfg, returning(200, { tier: 'elder', combined_score: 999 }));
+    const tokRule: EligibilityRule = { ruleType: 'token_balance', chainId: '101', contractAddress: 'pyTh', minAmount: 1n };
+    expect((await c.checkEligibility([tokRule, scoreRule], W)).source).toBe('native_degraded');
   });
 
   it('never grants on ANY non-2xx, across the range — even with a juicy body', async () => {
