@@ -154,11 +154,11 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
     // -------------------------------------------------------------------
     try {
       const dedupResult = await pool.query<{ id: string }>(
-        `INSERT INTO webhook_events (provider, event_id, event_type, payload, processed_at)
-         VALUES ('nowpayments', $1, $2, $3, NOW())
+        `INSERT INTO webhook_events (provider, event_id, payload, processed_at)
+         VALUES ('nowpayments', $1, $2, NOW())
          ON CONFLICT (provider, event_id) DO NOTHING
          RETURNING id`,
-        [paymentId, payload.payment_status, JSON.stringify(payload)],
+        [paymentId, JSON.stringify(payload)],
       );
 
       if (dedupResult.rows.length === 0) {
@@ -169,8 +169,12 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
       }
     } catch (err) {
       logger.error({ paymentId, err }, 'Failed to insert webhook_events');
-      // Return 200 so NOWPayments doesn't retry on our DB errors
-      res.status(200).json({ status: 'error', reason: 'internal' });
+      // The webhook_events INSERT is the FIRST durable capture of this event.
+      // A transient failure here means we have NO record — returning 200 would
+      // ack the event and NOWPayments would never retry, permanently dropping
+      // the payment (a `finished` event would strand credits). Return a
+      // retriable 503 so the provider re-delivers the event.
+      res.status(503).json({ status: 'error', reason: 'internal' });
       return;
     }
 
