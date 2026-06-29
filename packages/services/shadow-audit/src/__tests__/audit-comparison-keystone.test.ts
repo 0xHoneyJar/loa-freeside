@@ -4,12 +4,13 @@ import { runAudit, type AuditRequest, type OwnershipSource, type RoleSource, typ
 import type { RoleSnapshot } from '../role-snapshot.js';
 
 /**
- * KEYSTONE GATE (the designed gate, CORROBORATE not self-evidence) — `arrakis-wedge-migration-delta-cbox.1`.
+ * KEYSTONE GATE (the designed gate) — `arrakis-wedge-migration-delta-cbox.1`.
  *
  * The migration-delta Comparison View (`diffShadow`) was built-but-UNCONSUMED; runAudit now consumes it into
  * `output.comparison`. This gate proves the consumption is LOAD-BEARING, not decorative:
- *   1. CORROBORATE — the comparison's demotions/promotions agree with the INDEPENDENTLY-computed aggregate
- *      cohorts (stale_access / newly_eligible). Two paths, one truth.
+ *   1. WIRING CROSS-CHECK — the comparison's demotions/promotions agree with the aggregate cohort filter
+ *      (stale_access / newly_eligible). NOT independent corroboration: both sides share qualifies(curBal), so this
+ *      catches band-MAPPING drift, not a shared-input bug. True ground-truth = settle vs the incumbent's live grants (open).
  *   2. METHODOLOGY — the output carries the rule + snapshot the delta was computed under, so a buyer can settle
  *      it against the incumbent's enforced policy (SAATY's risk: the delta must not be a Freeside-vs-Freeside
  *      methodology artifact).

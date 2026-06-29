@@ -3,12 +3,16 @@
  *
  * The wedge's distribution is "share the audit with the person who owns the server." A screenshot is not
  * verifiable; this serializes the Comparison View (the migration delta) into a SELF-DESCRIBING artifact that
- * carries its own provenance — `run_id`, `inputs_hash`, and the `methodology` (rule + snapshot) — so the
- * recipient can re-run the audit and confirm the number, and can verify the rule matches the incumbent's
- * enforced policy (NOT a Freeside-vs-Freeside artifact). Pure; no I/O.
+ * carries its own provenance — `run_id`, `inputs_hash`, and the `methodology` — so the recipient can verify the
+ * rule matches the incumbent's policy (NOT a Freeside-vs-Freeside artifact) and audit the snapshot basis. Pure; no I/O.
+ *
+ * ⚠ OPEN (FAGAN NEW-1): the promotion/demotion delta settles against the CURRENT on-chain head, which is NOT yet
+ * pinned or folded into `inputs_hash` — so a LATER re-run sees a moved head and the delta may differ. Full
+ * byte-reproducibility needs a `current_block` surfaced by the OwnershipSource + hashed (a determinism-contract
+ * change, IMP-001/007 — operator-deliberate, not patched here).
  *
  * FAIL-CLOSED: the per-member delta exists only for an authed, community-bound audit. Exporting an anon audit
- * (no `comparison`) throws — there is nothing per-member to export, and we never fabricate one.
+ * (no `comparison`/`methodology`) throws — there is nothing per-member to export, and we never fabricate one.
  */
 import type { AuditOutput, Methodology, MemberDiscrepancy, DiscrepancyReport } from '@freeside/shadow-audit-protocol';
 
@@ -29,7 +33,9 @@ export interface ComparisonArtifact {
 }
 
 export function comparisonArtifact(output: AuditOutput): ComparisonArtifact {
-  if (!output.comparison) throw new ComparisonUnavailableError();
+  // methodology is schema-optional (c3d7c90e: authed-only) and travels WITH comparison — but the schema doesn't
+  // enforce their co-presence, so guard BOTH (FAGAN NEW-2): fail-closed if either is missing, and narrow the type.
+  if (!output.comparison || !output.methodology) throw new ComparisonUnavailableError();
   return {
     run_id: output.run_id,
     inputs_hash: output.inputs_hash,
