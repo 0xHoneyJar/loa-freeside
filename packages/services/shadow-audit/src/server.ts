@@ -66,13 +66,21 @@ export function buildAuditApp(ownership: OwnershipSource, config: AuditServerCon
     ownership,
     whale: makeBalanceWhaleSource(),
     roles: makeFileRoleSource(config.roleSnapshotPath),
+    // F4: the event store + rate limiter are IN-MEMORY (per-replica, non-durable). That is correct for the
+    // single-replica MVP — the audit is stateless read-modelling + best-effort anti-abuse, not a ledger.
+    // loa:shortcut: in-memory event/rate state; if this scales past one replica, back both with Redis (the
+    //   rate window + the nonce/event store), else limits + replay-dedup are per-replica.
     eventStore: new InMemoryEventStore(),
     rateLimiter: new FixedWindowRateLimiter({ limit: rl.limit, windowMs: rl.windowMs, now }),
     auth: failClosedAuth(),
     isOperatedCommunity: (id) => config.operatedCommunities.includes(id),
     cta: config.cta,
     now,
-    clientKey: (xff) => (xff?.split(',')[0]?.trim() || 'unknown'),
+    // F5: key the rate limit on the RIGHTMOST X-Forwarded-For hop — the one the trusted edge proxy (Railway)
+    // appends, which a client cannot forge. The leftmost hop is client-claimed and spoofable, so keying on it
+    // lets an attacker evade the limit by rotating a fake first hop. (Assumes ONE trusted proxy in front; add
+    // more from the right if the deploy fronts the service with additional trusted proxies.)
+    clientKey: (xff) => (xff?.split(',').pop()?.trim() || 'unknown'),
     k: config.k,
   };
 

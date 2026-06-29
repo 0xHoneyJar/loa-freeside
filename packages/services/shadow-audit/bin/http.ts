@@ -28,7 +28,10 @@ import { makeSonarOwnershipSource, registryFromMap } from '../src/ownership-sour
 import { makeRpcBlockTimeResolver } from '../src/block-time-resolver.js';
 
 process.on('unhandledRejection', (reason) => {
-  console.error('[shadow-audit-api] unhandledRejection:', reason);
+  // F9: log AND exit non-zero — a swallowed rejection can leave the process wedged (event loop alive, no
+  // longer serving correctly); Railway's healthcheck + restart policy recovers a clean crash, not a zombie.
+  console.error('[shadow-audit-api] unhandledRejection — exiting:', reason);
+  process.exit(1);
 });
 
 // the COLLECTION_REGISTRY values (collection id + token standard) are the most correctness-critical config

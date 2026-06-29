@@ -10,7 +10,7 @@ code change**, only its env pointed here.
 |-----|----------|------|
 | `OPERATED_COMMUNITIES` | ✅ | comma-separated community names this deploy audits (dogfood-full eligible) |
 | `CTA_PRODUCT`, `CTA_CONVERSATION` | ✅ | the product + conversation door URLs surfaced in the audit |
-| `COLLECTION_REGISTRY` | ✅ | JSON: `{ "<chain>/<contract>": { "collection": "<belt-gateway id>", "standard": "erc721"\|"erc1155" } }` — **the 8 THJ collections** (HoneyJar1/3/4/6 + Honeycomb + crayons_factory @ 80094, HoneyJar2 @ 42161, HoneyJar5 @ 8453). Zod-validated at boot. |
+| `COLLECTION_REGISTRY` | ✅ | JSON: `{ "<chain>/<contract>": { "collection": "<belt-gateway id>", "standard": "erc721"\|"erc1155" } }`. Maps each `(chainId, contract-address)` a caller passes → the belt-gateway **collection id**. Zod-validated at boot. The 8 collection ids + their chains are live-grounded below; **the contract addresses are operator-supplied** (see the gate). |
 | `RPC_URL_<chain>` | ✅ (per registry chain) | a JSON-RPC endpoint per chain in the registry (e.g. `RPC_URL_80094`) for block-at-date resolution. Boot fails if any registry chain lacks one. |
 | `SHADOW_AUDIT_API_KEY` | optional | the `X-API-Key` the dashboard sends (when unset the k-anon aggregate is open). Set it + the dashboard's `SHADOW_AUDIT_API_KEY`. |
 | `BELT_GATEWAY_URL` | optional | sonar GraphQL endpoint (defaults to belt-gateway-production) |
@@ -20,6 +20,28 @@ code change**, only its env pointed here.
 | `PORT` | optional | bind port (Railway sets it; default 3040) |
 
 The server **fails loud at boot** on any missing/invalid required value — it never serves a half-wired audit.
+
+### Live-grounded auditable set (belt-gateway `CollectionStat`, queried 2026-06-29)
+
+The belt-gateway reconstructs ownership keyed on `(collection id, chainId)` — it stores **no contract
+address**, so the registry's contract addresses are the operator's to supply (from the deployment records).
+These are the exact `(collection, chain)` pairs that have indexed supply and are therefore auditable:
+
+| collection id | chains (chainId) | standard |
+|---|---|---|
+| `HoneyJar1` | eth (1), bera (80094) | erc721 |
+| `HoneyJar2` | **arb (42161)**, bera (80094), eth (1) | erc721 |
+| `HoneyJar3` | **zora (7777777)**, bera (80094) | erc721 |
+| `HoneyJar4` | **op (10)**, bera (80094), eth (1) | erc721 |
+| `HoneyJar5` | **base (8453)**, bera (80094), eth (1) | erc721 |
+| `HoneyJar6` | eth (1), bera (80094) | erc721 |
+| `Honeycomb` | eth (1), bera (80094) | erc721 |
+| `crayons_factory` | (in Transfer; absent from CollectionStat — confirm chain + standard) | ? |
+
+So a registry entry is `"<chainId>/<contract-address-on-that-chain>": { "collection": "HoneyJar5", "standard": "erc721" }`.
+Each generation has a canonical chain (bolded) **plus** a Berachain bridge; include only the `(chain, contract)`
+pairs the audited communities actually gate on. `crayons_factory` and per-collection token standards still need
+operator confirmation (it indexes Transfers but has no CollectionStat row).
 
 ## Railway
 

@@ -20,14 +20,14 @@
     "@freeside/adapters": "file:../../adapters",
     "@freeside/shadow-audit-protocol": "file:../../protocol/shadow-audit",
     "@hono/node-server": "^1.13.0",
-    "hono": "^4.7.0"
+    "hono": "^4.7.0",
+    "tsx": "^4.19.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "tsx": "^4.19.0",
     "typescript": "^5.7.0",
-    "vitest": "^4.0.17",
-    "zod": "^3.23.8"
+    "vitest": "^4.0.17"
   },
   "peerDependencies": {
     "zod": "^3.23.0"
