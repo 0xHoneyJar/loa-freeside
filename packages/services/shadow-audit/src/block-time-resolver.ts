@@ -46,13 +46,16 @@ export function makeRpcBlockTimeResolver(opts: RpcBlockTimeResolverOpts): BlockT
 
   return {
     headBlock,
-    /** Highest block with timestamp ≤ `unixSeconds`. Binary search over [0, head]; block 0 (genesis) is the
-     *  floor, so a target before genesis resolves to 0. */
+    /** Highest block with timestamp ≤ `unixSeconds`. Binary search over [0, head]. Returns **-1** when NO
+     *  block satisfies it — i.e. even genesis is newer than the target (a snapshot_date before the chain
+     *  existed). The caller MUST treat -1 as "no such block" and REFUSE: silently returning 0 (genesis,
+     *  whose timestamp is > target) would reconstruct an empty snapshot and serve a plausible WRONG audit
+     *  (FAGAN HIGH-1 — the one place the "refuse, never silent-wrong" invariant leaked). */
     async blockAtOrBefore(unixSeconds: number): Promise<number> {
       const head = await headBlock();
       let lo = 0;
       let hi = head;
-      let ans = 0;
+      let ans = -1; // sentinel: no block ≤ target found yet
       while (lo <= hi) {
         const mid = lo + ((hi - lo) >> 1);
         const ts = await timestampOf(mid);

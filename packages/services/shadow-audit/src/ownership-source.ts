@@ -57,6 +57,11 @@ export function makeSonarOwnershipSource(opts: SonarOwnershipOpts): OwnershipSou
     async resolveSnapshotBlock({ chain, contract, snapshotDate }) {
       refOrThrow(chain, contract); // validate the collection is known BEFORE any chain work
       const { snapshotBlock } = await snapshotDateToBlock(snapshotDate, opts.resolverFor(chain), { confirmations });
+      // -1 ⇒ the resolver found NO block at-or-before the date (before chain genesis). REFUSE rather than
+      // reconstruct an empty snapshot at block 0 and serve a wrong audit (FAGAN HIGH-1).
+      if (snapshotBlock < 0) {
+        throw new Error(`shadow-audit: snapshot_date ${snapshotDate} is before chain ${chain} genesis — no block to reconstruct ownership at`);
+      }
       return snapshotBlock;
     },
 
