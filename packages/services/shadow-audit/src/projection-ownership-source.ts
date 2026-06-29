@@ -19,8 +19,10 @@
  * NOT YET CLOSED (operator-design, see the FAGAN report + the brief): (a) this is a balance-COUNT model, not a
  * per-token-ownership model — it cannot detect a double-mint of the same tokenId the way sonar's `fold721`
  * does; (b) the `value`→`amount` semantics depend on sonar-api's unverified cross-repo contract (needs a
- * pinned contract test + a token `standard` on the event); (c) parity is asserted against a clean fixture, NOT
- * the real `reconstructOwnership` — a DIFFERENTIAL test against `@freeside/adapters/sonar` is the real proof;
+ * pinned contract test + a token `standard` on the event); (c) CLOSED — `__tests__/projection-sonar-differential.test.ts`
+ * runs the REAL `reconstructOwnership` over 40 generated valid erc721 streams and asserts parity (mutation-proven
+ * load-bearing); the count-model is a faithful replica of sonar's `fold721` on any VALID erc721 stream — erc1155
+ * batch, where the no-tokenId count-model genuinely diverges, is the remaining differential gap;
  * (d) no backfill — a live subscriber sees events only from deploy-time, so a collection with pre-subscription
  * history needs a genesis replay before its projection is trustworthy (the cutover gate in the runtime).
  */
