@@ -13,8 +13,8 @@ importers:
         version: 4.2.1
     devDependencies:
       '@0xhoneyjar/loa-hounfour':
-        specifier: github:0xHoneyJar/loa-hounfour#addb0bfadd1a60359b70b481e0c8155b6cc7028c
-        version: https://codeload.github.com/0xHoneyJar/loa-hounfour/tar.gz/addb0bfadd1a60359b70b481e0c8155b6cc7028c
+        specifier: github:0xHoneyJar/loa-hounfour#aed755f7fea8d2739cf9c755b45aaa580b6af6a9
+        version: https://codeload.github.com/0xHoneyJar/loa-hounfour/tar.gz/aed755f7fea8d2739cf9c755b45aaa580b6af6a9
       '@types/express':
         specifier: ^5.0.6
         version: 5.0.6
@@ -30,6 +30,9 @@ importers:
       express:
         specifier: ^5.2.1
         version: 5.2.1
+      fast-check:
+        specifier: ^4.5.3
+        version: 4.8.0
       jose:
         specifier: ^6.1.3
         version: 6.1.3
@@ -39,9 +42,9 @@ importers:
 
 packages:
 
-  '@0xhoneyjar/loa-hounfour@https://codeload.github.com/0xHoneyJar/loa-hounfour/tar.gz/addb0bfadd1a60359b70b481e0c8155b6cc7028c':
-    resolution: {tarball: https://codeload.github.com/0xHoneyJar/loa-hounfour/tar.gz/addb0bfadd1a60359b70b481e0c8155b6cc7028c}
-    version: 8.2.0
+  '@0xhoneyjar/loa-hounfour@https://codeload.github.com/0xHoneyJar/loa-hounfour/tar.gz/aed755f7fea8d2739cf9c755b45aaa580b6af6a9':
+    resolution: {tarball: https://codeload.github.com/0xHoneyJar/loa-hounfour/tar.gz/aed755f7fea8d2739cf9c755b45aaa580b6af6a9}
+    version: 8.3.1
     engines: {node: '>=22'}
 
   '@datastructures-js/heap@4.3.7':
@@ -232,6 +235,10 @@ packages:
     resolution: {integrity: sha512-hIS4idWWai69NezIdRt2xFVofaF4j+6INOpJlVOLDO8zXGpUVEVzIYk12UUi2JzjEzWL3IOAxcTubgz9Po0yXw==}
     engines: {node: '>= 18'}
 
+  fast-check@4.8.0:
+    resolution: {integrity: sha512-GOJ158CUMnN6cSahsv4+ExARvIDuzzinFjkp0E9WtiBa5zcVeLozVkWaE4IzFcc+Y48Wp1EDlUZsXRyAztQcSg==}
+    engines: {node: '>=12.17.0'}
+
   fast-deep-equal@3.1.3:
     resolution: {integrity: sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==}
 
@@ -378,6 +385,9 @@ packages:
     resolution: {integrity: sha512-llQsMLSUDUPT44jdrU/O37qlnifitDP+ZwrmmZcoSKyLKvtZxpyV0n2/bD/N4tBAAZ/gJEdZU7KMraoK1+XYAg==}
     engines: {node: '>= 0.10'}
 
+  pure-rand@8.4.1:
+    resolution: {integrity: sha512-c58R2+SPFcSIPXoU834QN/KPDDOSd8sXcSrqf6e83Me6Rrp1EYkxukkjXMVrKvKaADs1SOyNkWdfvLf6zY8qLQ==}
+
   qs@6.14.2:
     resolution: {integrity: sha512-V/yCWTTF7VJ9hIh18Ugr2zhJMP01MY7c5kh4J870L7imm6/DIzBsNLTXzMwUA3yZ5b/KBqLx8Kp3uRvd7xSe3Q==}
     engines: {node: '>=0.6'}
@@ -464,7 +474,7 @@ packages:
 
 snapshots:
 
-  '@0xhoneyjar/loa-hounfour@https://codeload.github.com/0xHoneyJar/loa-hounfour/tar.gz/addb0bfadd1a60359b70b481e0c8155b6cc7028c':
+  '@0xhoneyjar/loa-hounfour@https://codeload.github.com/0xHoneyJar/loa-hounfour/tar.gz/aed755f7fea8d2739cf9c755b45aaa580b6af6a9':
     dependencies:
       '@noble/hashes': 2.0.1
       '@sinclair/typebox': 0.34.48
@@ -683,6 +693,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  fast-check@4.8.0:
+    dependencies:
+      pure-rand: 8.4.1
+
   fast-deep-equal@3.1.3: {}
 
   fast-safe-stringify@2.1.1: {}
@@ -816,6 +830,8 @@ snapshots:
     dependencies:
       forwarded: 0.2.0
       ipaddr.js: 1.9.1
+
+  pure-rand@8.4.1: {}
 
   qs@6.14.2:
     dependencies:
