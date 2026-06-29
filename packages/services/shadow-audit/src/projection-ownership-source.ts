@@ -1,70 +1,96 @@
 /**
  * projection-ownership-source.ts — the L2 SPINE read-model + the audit's OwnershipSource that reads it.
  *
- * The keystone of the NATS event-integration (grimoires/loa/proposals/nats-event-integration-brief.md) and
- * the rung `arrakis-audit-reads-member-graph`. Today the audit reconstructs ownership from RAW sonar on every
- * run (`makeSonarOwnershipSource` → `SonarClient.ownershipAtBlock`, Transfer-replay) — reaching L3→L0 PAST the
- * L2 member-graph spine (the WHO×WHAT ladder's reach-past bug). This module is the cure:
+ * The keystone of the NATS event-integration (grimoires/loa/proposals/nats-event-integration-brief.md) and the
+ * rung `arrakis-audit-reads-member-graph`. The audit reconstructs ownership from RAW sonar on every run
+ * (`makeSonarOwnershipSource` → `SonarClient.ownershipAtBlock`, Transfer-replay) — reaching L3→L0 PAST the L2
+ * member-graph spine. This module is the cure: fold the signed `ownership.changed` stream into a CQRS
+ * read-model the audit queries.
  *
- *   sonar publishes `ownership.changed` (≡ nft.activity.recorded.v1)
- *       → this PROJECTION applies each change into a who-holds-what read-model (CQRS, event-fed, once)
- *       → `makeProjectionOwnershipSource` answers the audit's OwnershipSource port FROM the projection
+ *   sonar publishes `ownership.changed` (≡ nft.activity.recorded.v1)  → this PROJECTION folds it →
+ *   `makeProjectionOwnershipSource` answers the audit's OwnershipSource port FROM the projection.
  *
- * The audit swaps `makeSonarOwnershipSource` for `makeProjectionOwnershipSource(projection)` — a hexagonal
- * adapter swap, no audit-logic change — and now READS the spine instead of reconstructing from raw. Events
- * carry the block + timestamp (ACVP: the signed `ownership.changed` is the trace), so the projection answers
- * `balancesAt(block)` / `currentBalances` / `resolveSnapshotBlock(date)` deterministically by folding the
- * ordered change-set. The projection is the materialized view; the audit is a pure reader of it.
+ * ⚠ STATUS (FAGAN review 2026-06-29, applied): the projection now matches sonar's `Balances` CONTRACT on the
+ * points that broke parity — addresses are lowercased (`reconstruct.ts` `lc()`), the snapshot boundary is
+ * day-INCLUSIVE (sonar's `day-end`), event identity is the true `tx:logIndex` (not the collision-prone
+ * `block:from:to:amount`), and an incomplete stream (negative balance) or a missing snapshot block REFUSES
+ * loudly (the audit's `reconstruction-failed` invariant) rather than serving a silently-wrong cohort.
+ *
+ * NOT YET CLOSED (operator-design, see the FAGAN report + the brief): (a) this is a balance-COUNT model, not a
+ * per-token-ownership model — it cannot detect a double-mint of the same tokenId the way sonar's `fold721`
+ * does; (b) the `value`→`amount` semantics depend on sonar-api's unverified cross-repo contract (needs a
+ * pinned contract test + a token `standard` on the event); (c) parity is asserted against a clean fixture, NOT
+ * the real `reconstructOwnership` — a DIFFERENTIAL test against `@freeside/adapters/sonar` is the real proof;
+ * (d) no backfill — a live subscriber sees events only from deploy-time, so a collection with pre-subscription
+ * history needs a genesis replay before its projection is trustworthy (the cutover gate in the runtime).
  */
 import type { Balances, OwnershipSource } from './audit-service.js';
 
+/** Raised when the event stream is incomplete (a holder went negative) or the snapshot has no at-or-before
+ *  block — the projection's analogue of sonar's loud provenance refusals. The audit turns this into a typed
+ *  `reconstruction-failed` refusal rather than a silently-wrong audit. */
+export class ProjectionIncompleteError extends Error {
+  constructor(reason: string) {
+    super(`projection ownership incomplete: ${reason}`);
+    this.name = 'ProjectionIncompleteError';
+  }
+}
+
 /**
- * One ownership-change fact — the projection's input. Maps from the signed `ownership.changed` /
- * `nft.activity.recorded.v1` event (a Transfer): `from`→`to` of `amount` at `block` (timestamp = block time).
- * A mint has `from === null`; a burn has `to === null`. ERC-721 transfers carry `amount === 1n`.
+ * One ownership-change fact — the projection's input, mapped from a signed `nft.activity.recorded.v1` event.
+ * `tx`+`logIndex` are the event's TRUE unique identity (mirrors the belt-gateway row id `<txHash>_<logIndex>`):
+ * two distinct transfers in the same block with the same from/to/amount (a batch sale, an ERC-1155 multi-send)
+ * are DIFFERENT events and must not be de-duplicated into one. Addresses arrive in any case; the projection
+ * lowercases them to match the `Balances` contract.
  */
 export interface OwnershipChange {
   readonly chain: string;
   readonly contract: string;
   readonly block: number;
-  /** ISO-8601 block time — lets the projection resolve a snapshot DATE to a block without a chain call. */
+  /** ISO-8601 block time. */
   readonly timestamp: string;
+  /** the transaction hash — half of the event's unique identity. */
+  readonly tx: string;
+  /** the log index within the tx — the other half. */
+  readonly logIndex: number;
   readonly from: string | null;
   readonly to: string | null;
   readonly amount: bigint;
 }
 
-/** The event-fed read-model the audit reads: apply ownership changes, answer balance/snapshot queries. */
 export interface OwnershipProjection {
-  /** apply one ownership-change event (idempotent on identical re-delivery — see `apply` note). */
   apply(change: OwnershipChange): void;
-  /** balances as-of a block — the fold of all changes at/before it. */
+  /** balances as-of a block. THROWS ProjectionIncompleteError if the stream drove a holder negative. */
   balancesAt(chain: string, contract: string, block: number): Balances;
-  /** balances at the latest observed block. */
+  /** balances at the latest observed block. THROWS on an incomplete stream. */
   currentBalances(chain: string, contract: string): Balances;
-  /** the highest block whose timestamp is at/before `snapshotDate` (ISO) — 0 if none. */
+  /** the highest block whose timestamp is at/before `snapshotDate` (day-INCLUSIVE). THROWS if none. */
   resolveSnapshotBlock(chain: string, contract: string, snapshotDate: string): number;
 }
 
-const keyOf = (chain: string, contract: string): string => `${chain.toLowerCase()}:${contract.toLowerCase()}`;
-// A change is identified by (block, from, to, amount) — re-delivery of the SAME event is a no-op (at-least-once
-// → idempotent, the brief's keystone law). NATS may deliver an event more than once; the projection must not
-// double-count.
-const changeId = (c: OwnershipChange): string => `${c.block}:${c.from ?? '0x0'}:${c.to ?? '0x0'}:${c.amount}`;
+const lc = (a: string): string => a.toLowerCase();
+const keyOf = (chain: string, contract: string): string => `${lc(chain)}:${lc(contract)}`;
+// event identity = tx:logIndex (re-delivery of the SAME event is a no-op; two DISTINCT transfers never collide).
+const changeId = (c: OwnershipChange): string => `${lc(c.tx)}:${c.logIndex}`;
 
 export function makeOwnershipProjection(): OwnershipProjection {
   const changes = new Map<string, OwnershipChange[]>();
-  const seen = new Map<string, Set<string>>(); // per-collection de-dup of applied change ids (idempotency)
+  const seen = new Map<string, Set<string>>();
 
   const foldUpTo = (chain: string, contract: string, block: number): Balances => {
     const list = changes.get(keyOf(chain, contract)) ?? [];
     const bal: Balances = new Map();
     for (const c of list) {
-      if (c.block > block) break; // list is block-ordered — stop once past the snapshot
-      if (c.from !== null) bal.set(c.from, (bal.get(c.from) ?? 0n) - c.amount);
-      if (c.to !== null) bal.set(c.to, (bal.get(c.to) ?? 0n) + c.amount);
+      if (c.block > block) break; // block-ordered — stop past the snapshot
+      if (c.from !== null) bal.set(lc(c.from), (bal.get(lc(c.from)) ?? 0n) - c.amount);
+      if (c.to !== null) bal.set(lc(c.to), (bal.get(lc(c.to)) ?? 0n) + c.amount);
     }
-    for (const [w, b] of bal) if (b <= 0n) bal.delete(w); // a holder at 0 holds nothing
+    for (const [w, b] of bal) {
+      // a NEGATIVE balance means the stream is incomplete (a transfer-from we never saw the mint/in for) —
+      // sonar's `fold721`/`fold1155` REFUSE here; the projection must too, never serve a wrong cohort.
+      if (b < 0n) throw new ProjectionIncompleteError(`holder ${w} went negative on ${keyOf(chain, contract)} — incomplete stream`);
+      if (b === 0n) bal.delete(w);
+    }
     return bal;
   };
 
@@ -73,12 +99,12 @@ export function makeOwnershipProjection(): OwnershipProjection {
       const k = keyOf(change.chain, change.contract);
       const dedup = seen.get(k) ?? new Set<string>();
       const id = changeId(change);
-      if (dedup.has(id)) return; // at-least-once delivery → idempotent: drop the duplicate
+      if (dedup.has(id)) return; // at-least-once delivery → idempotent on the SAME event
       dedup.add(id);
       seen.set(k, dedup);
       const list = changes.get(k) ?? [];
       list.push(change);
-      list.sort((a, b) => a.block - b.block); // keep block-ordered so foldUpTo can short-circuit
+      list.sort((a, b) => a.block - b.block);
       changes.set(k, list);
     },
     balancesAt(chain, contract, block) {
@@ -92,8 +118,19 @@ export function makeOwnershipProjection(): OwnershipProjection {
     resolveSnapshotBlock(chain, contract, snapshotDate) {
       const list = changes.get(keyOf(chain, contract)) ?? [];
       let block = 0;
+      let found = false;
       for (const c of list) {
-        if (c.timestamp <= snapshotDate && c.block > block) block = c.block;
+        // day-INCLUSIVE: compare the DATE part so an event AT 2026-06-22T10:00 counts for snapshot '2026-06-22'
+        // (sonar resolves the snapshot date to its day-END boundary). A bare-date lexical `<=` of a datetime
+        // would exclude the whole day (the datetime is longer than, hence lexically > , the bare date).
+        if (c.timestamp.slice(0, 10) <= snapshotDate) {
+          found = true;
+          if (c.block > block) block = c.block;
+        }
+      }
+      if (!found) {
+        // no at-or-before block — sonar refuses; do not return 0 (indistinguishable from a genesis snapshot).
+        throw new ProjectionIncompleteError(`no ownership event at/before ${snapshotDate} for ${keyOf(chain, contract)}`);
       }
       return block;
     },
@@ -101,9 +138,9 @@ export function makeOwnershipProjection(): OwnershipProjection {
 }
 
 /**
- * The audit's OwnershipSource, reading the projection instead of raw sonar. Drop-in replacement for
- * `makeSonarOwnershipSource` — same port, no audit-logic change. This is the L3→L2 re-aim: the audit now reads
- * the member-graph spine's materialized ownership, not a per-run raw reconstruction.
+ * The audit's OwnershipSource, reading the projection instead of raw sonar. Drop-in for `makeSonarOwnershipSource`
+ * — same port, no audit-logic change. An incomplete stream / missing snapshot surfaces as a thrown
+ * `ProjectionIncompleteError`, which `runAudit` catches into its typed `reconstruction-failed` refusal.
  */
 export function makeProjectionOwnershipSource(projection: OwnershipProjection): OwnershipSource {
   return {

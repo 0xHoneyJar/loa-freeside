@@ -20,9 +20,10 @@ const fallback: OwnershipSource = {
   balancesAt: async () => new Map([[R1, 1n]]),
   currentBalances: async () => new Map([[R1, 1n]]),
 };
+let mintN = 0;
 const mint = (to: string, contract: string, block: number): OwnershipActivity => ({
-  verb: 'mint', from: null, to, value: '1', timestamp: '2026-06-20T00:00:00Z',
-  metadata: { chain: 'evm', chain_id: 1, contract, block_number: block },
+  verb: 'mint', from: null, to, value: '1', timestamp: '2026-06-20T00:00:00Z', tx: `0xtx${++mintN}`,
+  metadata: { chain: 'evm', chain_id: 1, contract, block_number: block, log_index: 0 },
 });
 const keys = async (src: OwnershipSource, contract: string) =>
   [...(await src.currentBalances({ chain: CHAIN, contract })).keys()];

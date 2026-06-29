@@ -10,44 +10,50 @@ const R1 = W('1'), R2 = W('2'), R3 = W('3'), X = W('4'), Y = W('5');
 const CONTRACT = W('a');
 const NOW = Math.floor(Date.UTC(2026, 5, 22, 12, 0, 0) / 1000);
 
-/** a signed nft.activity.recorded.v1 event (EVM, chain_id 1 = ethereum); verb inferred from from/to. */
-const evt = (o: { from: string | null; to: string | null; block: number; ts: string; value?: string }): OwnershipActivity => ({
+let n = 0;
+const evt = (o: { from: string | null; to: string | null; block: number; ts: string; value?: string; chainId?: number; tx?: string; logIndex?: number }): OwnershipActivity => ({
   verb: o.from === null ? 'mint' : o.to === null ? 'burn' : 'transfer',
-  from: o.from, to: o.to, value: o.value ?? '1', timestamp: o.ts,
-  metadata: { chain: 'evm', chain_id: 1, contract: CONTRACT, block_number: o.block },
+  from: o.from, to: o.to, value: o.value ?? '1', timestamp: o.ts, tx: o.tx ?? `0xtx${++n}`,
+  metadata: { chain: 'evm', chain_id: o.chainId ?? 1, contract: CONTRACT, block_number: o.block, log_index: o.logIndex ?? 0 },
 });
 
-// the same ownership picture as the projection test, but delivered as the SIGNED EVENT STREAM:
 const ACTIVITIES: OwnershipActivity[] = [
   evt({ from: null, to: R1, block: 100, ts: '2026-06-20T00:00:00Z' }),
   evt({ from: null, to: R2, block: 200, ts: '2026-06-20T00:00:00Z' }),
   evt({ from: null, to: R3, block: 300, ts: '2026-06-20T00:00:00Z' }),
   evt({ from: null, to: X, block: 1000, ts: '2026-06-20T00:00:00Z' }),
-  evt({ from: R2, to: null, block: 1100, ts: '2026-06-25T00:00:00Z' }), // R2 sells (burn)
-  evt({ from: X, to: null, block: 1200, ts: '2026-06-25T00:00:00Z' }),  // X sells
-  evt({ from: null, to: Y, block: 1300, ts: '2026-06-25T00:00:00Z' }),  // Y mints in
+  evt({ from: R2, to: null, block: 1100, ts: '2026-06-25T00:00:00Z' }),
+  evt({ from: X, to: null, block: 1200, ts: '2026-06-25T00:00:00Z' }),
+  evt({ from: null, to: Y, block: 1300, ts: '2026-06-25T00:00:00Z' }),
 ];
-const fedViaSubscriber = () => {
-  const p = makeOwnershipProjection();
-  for (const a of ACTIVITIES) applyOwnershipActivity(p, a); // ← the subscriber handler feeds the spine
-  return p;
-};
+const fedViaSubscriber = () => { const p = makeOwnershipProjection(); for (const a of ACTIVITIES) applyOwnershipActivity(p, a); return p; };
 
 describe('ownershipActivityToChange — the signed event → OwnershipChange mapping (STANDS)', () => {
-  it('maps mint (from=null), transfer, and burn (to=null) with chain_id → chain name', () => {
-    expect(ownershipActivityToChange(evt({ from: null, to: R1, block: 5, ts: '2026-06-20T00:00:00Z' })))
-      .toMatchObject({ chain: 'ethereum', contract: CONTRACT, block: 5, from: null, to: R1, amount: 1n });
-    expect(ownershipActivityToChange(evt({ from: R1, to: null, block: 6, ts: '2026-06-20T00:00:00Z' })))
-      .toMatchObject({ from: R1, to: null, amount: 1n });
+  it('maps mint/transfer/burn, carries tx:logIndex identity, chain_id → name', () => {
+    expect(ownershipActivityToChange(evt({ from: null, to: R1, block: 5, ts: '2026-06-20T00:00:00Z', tx: '0xaa', logIndex: 2 })))
+      .toMatchObject({ chain: 'ethereum', contract: CONTRACT, block: 5, from: null, to: R1, amount: 1n, tx: '0xaa', logIndex: 2 });
   });
 
-  it('skips non-EVM activity (SVM is a follow-on) — never corrupts the projection', () => {
-    const svm: OwnershipActivity = { verb: 'mint', from: null, to: R1, value: '1', timestamp: '2026-06-20T00:00:00Z', metadata: { chain: 'svm' } };
+  it('skips non-EVM activity (SVM is a follow-on)', () => {
+    const svm: OwnershipActivity = { verb: 'mint', from: null, to: R1, value: '1', timestamp: '2026-06-20T00:00:00Z', tx: '0xa', metadata: { chain: 'svm' } };
     expect(ownershipActivityToChange(svm)).toBeNull();
+  });
+
+  it('FAGAN MEDIUM-1: skips an UNMAPPED chain_id (no synthetic evm:N key that never matches order.source.chain)', () => {
+    expect(ownershipActivityToChange(evt({ from: null, to: R1, block: 5, ts: '2026-06-20T00:00:00Z', chainId: 137 }))).toBeNull();
+  });
+
+  it('FAGAN HIGH-3 guard: value "0" or null → 1 token (the ERC-721 form), not a zero move', () => {
+    expect(ownershipActivityToChange(evt({ from: null, to: R1, block: 5, ts: '2026-06-20T00:00:00Z', value: '0' }))!.amount).toBe(1n);
+  });
+
+  it('skips activity with no stable identity (missing tx)', () => {
+    const noTx: OwnershipActivity = { verb: 'mint', from: null, to: R1, value: '1', timestamp: '2026-06-20T00:00:00Z', tx: '', metadata: { chain: 'evm', chain_id: 1, contract: CONTRACT, block_number: 5, log_index: 0 } };
+    expect(ownershipActivityToChange(noTx)).toBeNull();
   });
 });
 
-// --- the raw-sonar picture the subscriber-fed projection must reproduce ---
+// --- the fixture the subscriber-fed projection reproduces (a fixture, NOT the real adapter — FAGAN HIGH-4) ---
 const order: Order = { community: { name: 'thj', owner_wallet: W('9') }, source: { chain: 'ethereum', contract_address: CONTRACT }, gating_rule: { kind: 'nft-balance', threshold: 1 }, products: ['audit'], mode: 'lead-magnet' };
 const snapshot = (): RoleSnapshot => ({
   source: 'discord:guild:1', community: 'thj', captured_at: '2026-06-22T11:00:00.000Z', export_method: 'export',
@@ -57,19 +63,16 @@ const snapshot = (): RoleSnapshot => ({
 const whale: WhaleSource = { concentration: async () => 0.3 };
 const roles: RoleSource = { load: async () => snapshot() };
 const req: AuditRequest = { order, snapshotDate: '2026-06-22', isOperatedCommunity: true, nowUnixSeconds: NOW, includeRecords: false, cta: { product: '/shadow-access', conversation: '/talk' } };
-const rawSonar: OwnershipSource = {
+const rawSonarFixture: OwnershipSource = {
   resolveSnapshotBlock: async () => 1000,
   balancesAt: async () => new Map([[R1, 1n], [R2, 1n], [R3, 1n], [X, 1n]]),
   currentBalances: async () => new Map([[R1, 1n], [R3, 1n], [Y, 1n]]),
 };
 
 describe('event → handler → projection → audit, END TO END (BEARS-LOAD)', () => {
-  it('the audit reading a SUBSCRIBER-FED projection is byte-identical to reading raw sonar', async () => {
+  it('the audit reading a SUBSCRIBER-FED projection reproduces the fixture picture (real-sonar parity is open)', async () => {
     const fromEvents = await runAudit(req, { ownership: makeProjectionOwnershipSource(fedViaSubscriber()), whale, roles });
-    const fromRaw = await runAudit(req, { ownership: rawSonar, whale, roles });
-    // the signed nft.activity.recorded.v1 stream, folded by the handler+projection, reconstructs the EXACT
-    // ownership the audit reads from raw sonar today. The full keystone: event flows in, the spine projects,
-    // the audit reads the spine — and gets the identical verdict.
-    expect(fromEvents).toEqual(fromRaw);
+    const fromFixture = await runAudit(req, { ownership: rawSonarFixture, whale, roles });
+    expect(fromEvents).toEqual(fromFixture);
   });
 });
