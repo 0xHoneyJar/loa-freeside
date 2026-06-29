@@ -47,13 +47,25 @@ export function makeOwnershipProjectionRuntime(opts: {
   fallback: OwnershipSource;
   /** is the projection trusted for this collection yet? false = shadow (read sonar); true = cutover (read spine). */
   isCutover: (chain: string, contract: string) => boolean;
+  /**
+   * The token standard for a collection (from the audit registry's `CollectionRef.standard`). The projection is a
+   * per-OWNER balance-count model with no tokenId axis, so it CANNOT faithfully reconstruct erc1155 per-token
+   * ownership: sonar's `fold1155` tracks per-(owner, tokenId) and refuses a per-token negative that the count-model
+   * nets away into a silently-wrong access cohort. So the spine is FAIL-CLOSED — read ONLY for an explicitly-erc721
+   * collection; erc1155 OR unknown stays on sonar's `fold1155` even when `isCutover` is true. The wire supplies this
+   * from the same registry it builds `makeSonarOwnershipSource` with.
+   */
+  standardOf: (chain: string, contract: string) => 'erc721' | 'erc1155' | undefined;
 }): OwnershipProjectionRuntime {
   const projection = makeOwnershipProjection();
   const spine = makeProjectionOwnershipSource(projection);
   let sub: ActivitySubscription | null = null;
 
-  const pick = (chain: string, contract: string): OwnershipSource =>
-    opts.isCutover(chain, contract) ? spine : opts.fallback;
+  const pick = (chain: string, contract: string): OwnershipSource => {
+    if (!opts.isCutover(chain, contract)) return opts.fallback; // shadow → sonar
+    // fail-closed: the spine faithfully models ONLY erc721. erc1155 / unknown → stay on sonar's fold1155.
+    return opts.standardOf(chain, contract) === 'erc721' ? spine : opts.fallback;
+  };
 
   const source: OwnershipSource = {
     resolveSnapshotBlock: (args) => pick(args.chain, args.contract).resolveSnapshotBlock(args),

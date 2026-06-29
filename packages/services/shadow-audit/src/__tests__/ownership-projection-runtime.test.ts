@@ -30,24 +30,38 @@ const keys = async (src: OwnershipSource, contract: string) =>
 
 describe('OwnershipProjectionRuntime — shadow-then-cutover migration (the safe wire)', () => {
   it('SHADOW (not cutover): the audit reads RAW SONAR even though events fed the projection', async () => {
-    const rt = makeOwnershipProjectionRuntime({ subscribe: fakeSubscribe, fallback, isCutover: () => false });
+    const rt = makeOwnershipProjectionRuntime({ subscribe: fakeSubscribe, fallback, isCutover: () => false, standardOf: () => 'erc721' });
     await rt.start();
     feed(mint(R2, A, 100)); // an ownership.changed event arrives → projection holds R2
     expect(await keys(rt.source, A)).toEqual([R1]); // …but the audit still reads sonar's picture (shadow)
   });
 
   it('CUTOVER: the audit reads the event-fed SPINE, not sonar', async () => {
-    const rt = makeOwnershipProjectionRuntime({ subscribe: fakeSubscribe, fallback, isCutover: () => true });
+    const rt = makeOwnershipProjectionRuntime({ subscribe: fakeSubscribe, fallback, isCutover: () => true, standardOf: () => 'erc721' });
     await rt.start();
     feed(mint(R2, A, 100));
     expect(await keys(rt.source, A)).toEqual([R2]); // the spine's picture — the cutover flipped one bit
   });
 
   it('per-collection cutover — A on the spine, B still on sonar (reversible, one collection at a time)', async () => {
-    const rt = makeOwnershipProjectionRuntime({ subscribe: fakeSubscribe, fallback, isCutover: (_c, contract) => contract === A });
+    const rt = makeOwnershipProjectionRuntime({ subscribe: fakeSubscribe, fallback, isCutover: (_c, contract) => contract === A, standardOf: () => 'erc721' });
     await rt.start();
     feed(mint(R2, A, 100));
     expect(await keys(rt.source, A)).toEqual([R2]); // A cutover → spine
     expect(await keys(rt.source, B)).toEqual([R1]); // B shadow → sonar
+  });
+
+  it('FAIL-CLOSED: an erc1155 collection STAYS on sonar even when isCutover=true (the count-model cannot model erc1155)', async () => {
+    const rt = makeOwnershipProjectionRuntime({ subscribe: fakeSubscribe, fallback, isCutover: () => true, standardOf: () => 'erc1155' });
+    await rt.start();
+    feed(mint(R2, A, 100)); // the projection holds R2…
+    expect(await keys(rt.source, A)).toEqual([R1]); // …but an erc1155 collection reads sonar's fold1155, NOT the spine
+  });
+
+  it('FAIL-CLOSED: an UNKNOWN-standard collection STAYS on sonar even when isCutover=true (unknown → refuse the spine)', async () => {
+    const rt = makeOwnershipProjectionRuntime({ subscribe: fakeSubscribe, fallback, isCutover: () => true, standardOf: () => undefined });
+    await rt.start();
+    feed(mint(R2, A, 100));
+    expect(await keys(rt.source, A)).toEqual([R1]); // unknown standard → fail-closed to sonar
   });
 });
