@@ -2,9 +2,19 @@
  * SDD §5/§6 — inbound HTTP adapter (AC-4, AC-6) + the thin dashboard view (T9).
  *
  * A framework-light Hono router built from injected ports, so the full request
- * path is testable in-process (app.request) with fakes — no live chain/DB. The
- * dashboard (apps/freeside-operator-dash, also Hono) mounts this router and
- * injects the real adapters at the composition root.
+ * path is testable in-process (app.request) with fakes — no live chain/DB.
+ *
+ * MOUNTED BY: the `shadow-audit-api` server entry — `../server.ts` (buildAuditApp)
+ * wires the real adapters; `bin/http.ts` constructs the chain OwnershipSource from
+ * env + serves it (Sprint 2). It is its own deployable building, NOT the inward
+ * operator-dash (an earlier docstring named operator-dash; that was aspirational +
+ * the wrong host — operator-dash is inward operator-health, this is an outward
+ * product surface).
+ *
+ * CONSUMED BY: freeside-dashboard's already-built dormant client
+ * (`src/lib/freeside-worlds/access-audit/client.ts`): `GET ${SHADOW_AUDIT_API_URL}/v1/audit`
+ * with an `X-API-Key`. The dashboard needs ZERO code change — point `SHADOW_AUDIT_API_URL`
+ * (+ `SHADOW_AUDIT_API_KEY`) at the deployed audit-api and the seam goes live.
  *
  * Routes:
  *   GET  /v1/audit          → anonymous aggregate (k-anon), rate-limited
