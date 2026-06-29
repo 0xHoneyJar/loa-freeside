@@ -27,6 +27,7 @@ import {
   getDatabase,
 } from '../db/index.js';
 import { ACTIVITY_BADGE_THRESHOLDS } from './activity.js';
+import { badgeBasedPolicy, type MemberIntel } from '../packages/core/ports/access-decision.js';
 import type { Badge, MemberBadge, MemberProfile } from '../types/index.js';
 
 /**
@@ -341,38 +342,21 @@ export function checkRoleUpgrades(memberId: string): string[] {
     return [];
   }
 
-  const badgeCount = getMemberBadgeCount(memberId);
+  // Gather member intel at the I/O boundary, then DECIDE via the pure AccessDecisionRecord port — the
+  // hexagonal core. The policy (engaged/veteran/trusted thresholds) now lives in the port, so the AUDIT
+  // layer can diff "should-be vs actual" and ENFORCE can apply the SAME decision, without a DB.
+  // See themes/sietch/src/packages/core/ports/access-decision.ts (goal-tree arrakis-access-control-plane-v1).
   const activity = getMemberActivity(memberId);
-  const membershipDays = Math.floor(
-    (Date.now() - profile.createdAt.getTime()) / (1000 * 60 * 60 * 24)
-  );
+  const intel: MemberIntel = {
+    identityId: memberId,
+    onboardingComplete: true, // past the guard above
+    badgeCount: getMemberBadgeCount(memberId),
+    activityBalance: activity ? activity.activityBalance : 0,
+    tenureDays: Math.floor((Date.now() - profile.createdAt.getTime()) / (1000 * 60 * 60 * 24)),
+    hasHelperBadge: memberHasBadge(memberId, BADGE_IDS.helper),
+  };
 
-  const roles: string[] = [];
-
-  // Engaged role: 5+ badges OR activity balance > 200
-  const qualifiesForEngaged =
-    badgeCount >= ROLE_THRESHOLDS.engaged.badgeCount ||
-    (activity && activity.activityBalance >= ROLE_THRESHOLDS.engaged.activityBalance);
-
-  if (qualifiesForEngaged) {
-    roles.push('engaged');
-  }
-
-  // Veteran role: 90+ days tenure
-  if (membershipDays >= ROLE_THRESHOLDS.veteran.tenureDays) {
-    roles.push('veteran');
-  }
-
-  // Trusted role: 10+ badges OR has Helper badge
-  const hasHelperBadge = memberHasBadge(memberId, BADGE_IDS.helper);
-  const qualifiesForTrusted =
-    badgeCount >= ROLE_THRESHOLDS.trusted.badgeCount || hasHelperBadge;
-
-  if (qualifiesForTrusted) {
-    roles.push('trusted');
-  }
-
-  return roles;
+  return badgeBasedPolicy.decide(intel).grants.map((grant) => grant.role);
 }
 
 /**

@@ -37,6 +37,8 @@ export {
   AccessDecisionRecordSchema,
   type AccessDecisionRecord,
 } from './schemas/access-decision-record.js';
+// the pluggable POLICY seam — generalizes the audit's hard-coded `qualifies` (one engine, many policies).
+export { type AccessDecisionPort, tokenGatingPolicy } from './access-decision-port.js';
 export {
   CohortCountSchema,
   type CohortCount,

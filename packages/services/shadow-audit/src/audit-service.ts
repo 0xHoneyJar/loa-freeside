@@ -14,6 +14,7 @@ import {
   computeInputsHash,
   sha256Hex,
   type AccessDecisionRecord,
+  tokenGatingPolicy,
   type AuditAggregate,
   type AuditOutput,
   type Cta,
@@ -126,7 +127,11 @@ export async function runAudit(
     };
   }
 
-  const qualifies = (m: Balances, w: string): boolean => (m.get(w) ?? 0n) >= threshold;
+  // The should-be access is decided by a pluggable AccessDecisionPort — the engine no longer hard-codes the
+  // policy. tokenGatingPolicy is the deployed default (balance >= threshold), byte-identical to before; a
+  // badge or score policy is a drop-in swap (the unification: arrakis-access-control-plane-v1).
+  const policy = tokenGatingPolicy(threshold);
+  const qualifies = (m: Balances, w: string): boolean => policy.qualifies(m.get(w) ?? 0n);
 
   // 3. Cohorts.
   const qualifiedSnapshot = [...snapBal.keys()].filter((w) => qualifies(snapBal, w));
