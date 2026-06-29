@@ -203,12 +203,13 @@ export function createAuditRouter(deps: AuditRouterDeps): Hono {
     const result = await audit(deps, built.order, q.data.snapshot_date, false);
     if (!result.ok) return c.json({ error: result.refusal }, refusalStatus(result.refusal));
     await recordRun(deps, result.output);
-    return c.json({
-      run_id: result.output.run_id,
-      aggregate: result.output.aggregate,
-      cta: result.output.cta,
-      uncertain: result.uncertain,
-    });
+    // Return the PROTOCOL `AuditOutput` verbatim (anonymous ⇒ no `records`). freeside-dashboard's client
+    // strict-decodes this against the protocol's AuditOutputSchema (`onExcessProperty: error`), so the
+    // earlier hand-picked subset (missing mode/inputs_hash) + the excess top-level `uncertain` made the
+    // dashboard reject every 200 and show empty — a silently-broken integration. `uncertain` (the stale-
+    // snapshot signal) stays on the HTML /view route; re-adding it to this JSON needs a protocol change
+    // on both sides (verified end-to-end by the contract-parity test).
+    return c.json(result.output);
   });
 
   // ---- POST /v1/audit — named output (authed) ----------------------------
