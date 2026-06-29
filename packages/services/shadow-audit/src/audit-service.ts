@@ -20,6 +20,8 @@ import {
   type Cta,
   type Order,
   type Refusal,
+  diffShadow,
+  type DiscrepancyReport,
 } from '@freeside/shadow-audit-protocol';
 import { classifyBand } from './eligibility-resolver.js';
 import { resolveMode } from './mode-resolver.js';
@@ -176,11 +178,12 @@ export async function runAudit(
   });
   const run_id = `run_${sha256Hex(`${inputs_hash}:${req.nowUnixSeconds}`).slice(0, 24)}`;
 
-  // 7. Per-member records (authed only).
+  // 7. The methodology settle-context (always present) + per-member records (authed only). rule_id is hoisted
+  //    so the rule a buyer audits the delta against is the SAME rule the records were decided under.
+  const rule_id = `${req.order.gating_rule.kind}:${req.order.gating_rule.threshold}`;
   let records: AccessDecisionRecord[] | undefined;
   if (req.includeRecords) {
     const computed_at = isoFromUnix(req.nowUnixSeconds);
-    const rule_id = `${req.order.gating_rule.kind}:${req.order.gating_rule.threshold}`;
     const mk = (wallet: string, holds_role: boolean): AccessDecisionRecord => ({
       wallet,
       community: req.order.community.name,
@@ -201,12 +204,19 @@ export async function runAudit(
     ];
   }
 
+  // The Comparison View — the migration delta (promotion/demotion/no_change), derived from the SAME records.
+  // diffShadow was built-but-unconsumed; this is its first consumer (the buying-event report). Authed-only by
+  // construction (it carries per-member wallets), so it travels with `records`.
+  const comparison: DiscrepancyReport | undefined = records ? diffShadow(records) : undefined;
+
   const output = AuditOutputSchema.parse({
     run_id,
     mode: 'dogfood-full',
     inputs_hash,
     aggregate,
+    methodology: { rule_id, snapshot_block: snapshotBlock, sources: ['sonar', 'role-snapshot'] },
     ...(records ? { records } : {}),
+    ...(comparison ? { comparison } : {}),
     cta: req.cta,
   });
 

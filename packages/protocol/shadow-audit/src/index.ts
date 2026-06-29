@@ -47,9 +47,22 @@ export {
   type AuditAggregate,
   CtaSchema,
   type Cta,
+  MethodologySchema,
+  type Methodology,
   AuditOutputSchema,
   type AuditOutput,
 } from './schemas/audit-output.js';
+// Shadow Mode — the Comparison View + Discrepancy Report (the migration delta: promotion/demotion/no_change).
+export {
+  diffShadow,
+  changeFromBand,
+  ChangeSchema,
+  type Change,
+  MemberDiscrepancySchema,
+  type MemberDiscrepancy,
+  DiscrepancyReportSchema,
+  type DiscrepancyReport,
+} from './discrepancy.js';
 export {
   RefusalCodeSchema,
   type RefusalCode,
