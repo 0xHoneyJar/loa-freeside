@@ -28,6 +28,12 @@ import type {
   DivergenceSummary,
 } from '../../core/ports/ICoexistenceStorage.js';
 import type { MigrationStrategy } from '../storage/schema.js';
+import {
+  validateTakeoverStep as validateTakeoverStepImpl,
+  isTakeoverConfirmationComplete as isTakeoverConfirmationCompleteImpl,
+  type TakeoverStep,
+  type TakeoverConfirmationState,
+} from './takeover-confirmation.js';
 import { createLogger, type ILogger } from '../../infrastructure/logging/index.js';
 
 // =============================================================================
@@ -293,32 +299,9 @@ export interface AutoRollbackCheckResult {
   maxRollbacksReached: boolean;
 }
 
-/**
- * Takeover confirmation step
- */
-export type TakeoverStep = 'community_name' | 'acknowledge_risks' | 'rollback_plan';
-
-/**
- * Takeover confirmation state
- */
-export interface TakeoverConfirmationState {
-  /** Community ID */
-  communityId: string;
-  /** Admin initiating takeover */
-  adminId: string;
-  /** Steps completed */
-  completedSteps: TakeoverStep[];
-  /** Community name confirmation */
-  communityNameConfirmed?: boolean;
-  /** Risk acknowledgment */
-  risksAcknowledged?: boolean;
-  /** Rollback plan acknowledged */
-  rollbackPlanAcknowledged?: boolean;
-  /** When confirmation started */
-  startedAt: Date;
-  /** Confirmation expires after 5 minutes */
-  expiresAt: Date;
-}
+// TakeoverStep + TakeoverConfirmationState moved to ./takeover-confirmation.ts (typed + testable);
+// re-exported here so existing importers (index.ts, admin-takeover.ts) are unchanged.
+export type { TakeoverStep, TakeoverConfirmationState } from './takeover-confirmation.js';
 
 /**
  * Takeover result
@@ -1344,83 +1327,16 @@ export class MigrationEngine {
     input: string,
     expectedValue?: string
   ): { valid: boolean; error?: string; updatedConfirmation: TakeoverConfirmationState } {
-    // Check if expired
-    if (new Date() > confirmation.expiresAt) {
-      return {
-        valid: false,
-        error: 'Confirmation expired - please start again',
-        updatedConfirmation: confirmation,
-      };
-    }
-
-    // Validate based on step
-    switch (step) {
-      case 'community_name':
-        if (expectedValue && input.toLowerCase() !== expectedValue.toLowerCase()) {
-          return {
-            valid: false,
-            error: 'Community name does not match',
-            updatedConfirmation: confirmation,
-          };
-        }
-        return {
-          valid: true,
-          updatedConfirmation: {
-            ...confirmation,
-            completedSteps: [...confirmation.completedSteps, step],
-            communityNameConfirmed: true,
-          },
-        };
-
-      case 'acknowledge_risks':
-        if (input.toLowerCase() !== 'i understand') {
-          return {
-            valid: false,
-            error: 'Please type "I understand" to acknowledge risks',
-            updatedConfirmation: confirmation,
-          };
-        }
-        return {
-          valid: true,
-          updatedConfirmation: {
-            ...confirmation,
-            completedSteps: [...confirmation.completedSteps, step],
-            risksAcknowledged: true,
-          },
-        };
-
-      case 'rollback_plan':
-        if (input.toLowerCase() !== 'confirmed') {
-          return {
-            valid: false,
-            error: 'Please type "confirmed" to acknowledge rollback plan',
-            updatedConfirmation: confirmation,
-          };
-        }
-        return {
-          valid: true,
-          updatedConfirmation: {
-            ...confirmation,
-            completedSteps: [...confirmation.completedSteps, step],
-            rollbackPlanAcknowledged: true,
-          },
-        };
-
-      default:
-        return {
-          valid: false,
-          error: `Unknown confirmation step: ${step}`,
-          updatedConfirmation: confirmation,
-        };
-    }
+    // Delegates to the pure, type-checked gate (takeover-confirmation.ts), which fails CLOSED
+    // on a missing/empty expected name (arrakis-25r6) — the original guard skipped this gate.
+    return validateTakeoverStepImpl(confirmation, step, input, expectedValue);
   }
 
   /**
    * Check if all takeover confirmation steps are complete
    */
   isTakeoverConfirmationComplete(confirmation: TakeoverConfirmationState): boolean {
-    const requiredSteps: TakeoverStep[] = ['community_name', 'acknowledge_risks', 'rollback_plan'];
-    return requiredSteps.every(step => confirmation.completedSteps.includes(step));
+    return isTakeoverConfirmationCompleteImpl(confirmation);
   }
 
   /**
