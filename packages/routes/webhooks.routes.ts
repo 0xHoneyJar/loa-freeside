@@ -184,11 +184,11 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
     try {
       const eventId = `${paymentId}:${payload.payment_status}:${payload.updated_at ?? 'no-updated-at'}`;
       const dedupResult = await pool.query<{ id: string }>(
-        `INSERT INTO webhook_events (provider, event_id, event_type, payload, processed_at)
-         VALUES ('nowpayments', $1, $2, $3, NOW())
+        `INSERT INTO webhook_events (provider, event_id, payload, processed_at)
+         VALUES ('nowpayments', $1, $2, NOW())
          ON CONFLICT (provider, event_id) DO NOTHING
          RETURNING id`,
-        [eventId, payload.payment_status, JSON.stringify(payload)],
+        [eventId, JSON.stringify(payload)],
       );
 
       if (dedupResult.rows.length === 0) {
@@ -198,7 +198,7 @@ export function createWebhookRouter(deps: WebhookDeps): Router {
       }
     } catch (err) {
       logger.error({ paymentId, err }, 'Failed to insert webhook_events');
-      res.status(500).json({ status: 'error', reason: 'receipt_insert_failed' });
+      res.status(503).json({ status: 'error', reason: 'internal' });
       return;
     }
 
