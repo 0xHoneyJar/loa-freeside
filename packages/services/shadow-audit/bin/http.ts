@@ -21,27 +21,42 @@
  * spot-check against the configured RPC before trusting production output.
  */
 import { serve } from '@hono/node-server';
+import { z } from 'zod';
 import { SonarClient, defaultTransferPageFetcher, type BlockTimeResolver } from '@freeside/adapters/sonar';
 import { buildAuditApp, configFromEnv } from '../src/server.js';
-import { makeSonarOwnershipSource, registryFromMap, type CollectionRef } from '../src/ownership-source.js';
+import { makeSonarOwnershipSource, registryFromMap } from '../src/ownership-source.js';
 import { makeRpcBlockTimeResolver } from '../src/block-time-resolver.js';
 
 process.on('unhandledRejection', (reason) => {
   console.error('[shadow-audit-api] unhandledRejection:', reason);
 });
 
-function loadRegistryFromEnv() {
+// the COLLECTION_REGISTRY values (collection id + token standard) are the most correctness-critical config
+// in the deploy — VALIDATE them, the way role-source validates its snapshot (FAGAN MEDIUM-2). A typo'd
+// `collection` would match no Transfers → an empty, silently-wrong audit.
+const RegistrySchema = z.record(
+  z.string(),
+  z.object({ collection: z.string().min(1), standard: z.enum(['erc721', 'erc1155']) }).strict(),
+);
+
+function loadRegistryFromEnv(): { registry: ReturnType<typeof registryFromMap>; chains: Set<string> } {
   const raw = process.env.COLLECTION_REGISTRY;
   if (!raw) {
     throw new Error('COLLECTION_REGISTRY is required (JSON map "<chain>/<contract>" → { collection, standard })');
   }
-  let parsed: Record<string, CollectionRef>;
+  let parsed: unknown;
   try {
-    parsed = JSON.parse(raw) as Record<string, CollectionRef>;
+    parsed = JSON.parse(raw);
   } catch (e) {
     throw new Error(`COLLECTION_REGISTRY is not valid JSON: ${(e as Error).message}`);
   }
-  return registryFromMap(parsed);
+  const map = RegistrySchema.parse(parsed); // throws on a bad collection/standard
+  const chains = new Set<string>();
+  for (const key of Object.keys(map)) {
+    const chain = key.split('/')[0];
+    if (chain) chains.add(chain);
+  }
+  return { registry: registryFromMap(map), chains };
 }
 
 /** Per-chain JSON-RPC resolver (the RPC endpoint differs per chain). */
@@ -53,11 +68,26 @@ function resolverFor(chain: string): BlockTimeResolver {
   return makeRpcBlockTimeResolver({ url });
 }
 
+// ONE confirmations source for BOTH the SonarClient reorg guard AND the ownership-source "current" block,
+// so they can never drift apart (FAGAN MEDIUM-6: split knobs are a latent total-outage landmine).
+const confirmations = process.env.CONFIRMATIONS ? Number(process.env.CONFIRMATIONS) : 12;
+if (!Number.isInteger(confirmations) || confirmations < 0) {
+  throw new Error(`CONFIRMATIONS must be a non-negative integer (got "${process.env.CONFIRMATIONS}")`);
+}
+
+const { registry, chains } = loadRegistryFromEnv();
+// BOOT-validate an RPC URL for every registry chain — never boot /healthz-green with a chain that fails
+// every real audit at request time (FAGAN MEDIUM-3).
+const missingRpc = [...chains].filter((c) => !process.env[`RPC_URL_${c}`]);
+if (missingRpc.length > 0) {
+  throw new Error(`missing JSON-RPC endpoint(s) for registry chain(s): ${missingRpc.map((c) => `RPC_URL_${c}`).join(', ')}`);
+}
+
 const sonar = new SonarClient(
-  process.env.BELT_GATEWAY_URL ? { endpoint: process.env.BELT_GATEWAY_URL } : {},
+  process.env.BELT_GATEWAY_URL ? { endpoint: process.env.BELT_GATEWAY_URL, confirmations } : { confirmations },
   defaultTransferPageFetcher,
 );
-const ownership = makeSonarOwnershipSource({ sonar, resolverFor, registry: loadRegistryFromEnv() });
+const ownership = makeSonarOwnershipSource({ sonar, resolverFor, registry, confirmations });
 const app = buildAuditApp(ownership, configFromEnv());
 
 const port = Number.parseInt(process.env.PORT ?? '3040', 10);

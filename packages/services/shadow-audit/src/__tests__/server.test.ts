@@ -170,6 +170,14 @@ describe('configFromEnv — fail loud on missing required config', () => {
   it('throws without the CTA doors', () => {
     expect(() => configFromEnv({ OPERATED_COMMUNITIES: 'thj' } as NodeJS.ProcessEnv)).toThrow(/CTA_/);
   });
+  it('throws on AUDIT_K < 1 (k-anonymity disabled is a privacy regression — FAGAN MEDIUM-5)', () => {
+    const base = { OPERATED_COMMUNITIES: 'thj', CTA_PRODUCT: 'p', CTA_CONVERSATION: 'c' };
+    expect(() => configFromEnv({ ...base, AUDIT_K: '0' } as NodeJS.ProcessEnv)).toThrow(/AUDIT_K/);
+    expect(() => configFromEnv({ ...base, AUDIT_K: 'abc' } as NodeJS.ProcessEnv)).toThrow(/AUDIT_K/);
+    expect(() => configFromEnv({ ...base, AUDIT_K: '-3' } as NodeJS.ProcessEnv)).toThrow(/AUDIT_K/);
+    expect(configFromEnv({ ...base, AUDIT_K: '5' } as NodeJS.ProcessEnv).k).toBe(5);
+  });
+
   it('builds a valid config from a complete env', () => {
     const cfg = configFromEnv({
       OPERATED_COMMUNITIES: 'thj, other',

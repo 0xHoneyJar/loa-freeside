@@ -19,6 +19,7 @@
  * never half-serve named records.
  */
 
+import { timingSafeEqual } from 'node:crypto';
 import { Hono } from 'hono';
 import type { Cta } from '@freeside/shadow-audit-protocol';
 import { createAuditRouter, type AuditRouterDeps } from './http/audit-router.js';
@@ -79,10 +80,13 @@ export function buildAuditApp(ownership: OwnershipSource, config: AuditServerCon
   // X-API-Key gate (the dashboard's access-audit client sends `X-API-Key`). /healthz stays open for
   // deploy health checks. Defense-in-depth on top of the deploy's own network boundary.
   if (config.apiKey) {
-    const key = config.apiKey;
+    const keyBuf = Buffer.from(config.apiKey);
     app.use('*', async (c, next) => {
       if (c.req.path === '/healthz') return next();
-      if (c.req.header('x-api-key') !== key) return c.json({ error: 'unauthorized' }, 401);
+      const got = Buffer.from(c.req.header('x-api-key') ?? '');
+      // constant-time compare (FAGAN LOW-7: a `!==` on a shared secret is a timing oracle).
+      const ok = got.length === keyBuf.length && timingSafeEqual(got, keyBuf);
+      if (!ok) return c.json({ error: 'unauthorized' }, 401);
       await next();
     });
   }
@@ -106,11 +110,20 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): AuditServer
   if (!product || !conversation) {
     throw new Error('CTA_PRODUCT and CTA_CONVERSATION are required (the product + conversation door URLs)');
   }
+  // k-anonymity threshold — validate it is a POSITIVE INTEGER. `AUDIT_K=0` (or NaN) would silently disable
+  // k-anon and emit EXACT small-cohort counts, deanonymizing the stale/sold set (FAGAN MEDIUM-5).
+  let k: number | undefined;
+  if (env.AUDIT_K !== undefined && env.AUDIT_K !== '') {
+    k = Number(env.AUDIT_K);
+    if (!Number.isInteger(k) || k < 1) {
+      throw new Error(`AUDIT_K must be a positive integer (got "${env.AUDIT_K}") — k < 1 disables k-anonymity`);
+    }
+  }
   return {
     apiKey: env.SHADOW_AUDIT_API_KEY || undefined,
     operatedCommunities: operated,
     cta: { product, conversation },
     roleSnapshotPath: env.ROLE_SNAPSHOT_PATH || undefined,
-    k: env.AUDIT_K ? Number(env.AUDIT_K) : undefined,
+    k,
   };
 }

@@ -30,8 +30,10 @@ describe('makeRpcBlockTimeResolver — block-at-or-before via binary search', ()
     expect(await r.blockAtOrBefore(1_000_000 + 12 * 500)).toBe(500);
     // target between block 500 and 501 → 500 (the highest <=)
     expect(await r.blockAtOrBefore(1_000_000 + 12 * 500 + 5)).toBe(500);
-    // target before genesis ts → block 0 (the floor)
-    expect(await r.blockAtOrBefore(0)).toBe(0);
+    // target before genesis ts → -1 (NO block ≤ target; the caller must refuse, not serve block 0). FAGAN HIGH-1
+    expect(await r.blockAtOrBefore(0)).toBe(-1);
+    // target exactly at genesis ts → block 0
+    expect(await r.blockAtOrBefore(1_000_000)).toBe(0);
     // target after head → head
     expect(await r.blockAtOrBefore(10_000_000)).toBe(1000);
   });
@@ -72,6 +74,12 @@ describe('makeSonarOwnershipSource — assembly', () => {
     const bal = new Map([[W1, 2n]]);
     const own = makeSonarOwnershipSource({ sonar: fakeSonar(bal), resolverFor: () => fakeResolver(900), registry });
     expect(await own.balancesAt({ chain: '80094', contract: C, snapshotBlock: 500 })).toBe(bal);
+  });
+
+  it('REFUSES a before-genesis snapshot date (resolver returns -1), never reconstructs at block 0 (FAGAN HIGH-1)', async () => {
+    const beforeGenesis = { headBlock: async () => 900, blockAtOrBefore: async () => -1 };
+    const own = makeSonarOwnershipSource({ sonar: fakeSonar(new Map()), resolverFor: () => beforeGenesis, registry });
+    await expect(own.resolveSnapshotBlock({ chain: '80094', contract: C, snapshotDate: '2000-01-01' })).rejects.toThrow(/before chain .* genesis/);
   });
 
   it('REFUSES an unregistered collection (never reconstructs an unknown one)', async () => {
