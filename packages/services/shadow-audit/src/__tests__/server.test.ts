@@ -7,6 +7,7 @@ import { describe, it, expect } from 'vitest';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { AuditOutputSchema } from '@freeside/shadow-audit-protocol';
 import { buildAuditApp, configFromEnv, type AuditServerConfig } from '../server.js';
 import { makeBalanceWhaleSource } from '../whale-source.js';
 import { makeFileRoleSource } from '../role-source.js';
@@ -115,10 +116,17 @@ describe('buildAuditApp — the deployment composition root', () => {
       const app = buildAuditApp(ownership, baseConfig({ roleSnapshotPath: path }));
       const res = await app.request(`/v1/audit?${query('thj')}`);
       expect(res.status).toBe(200);
-      const body = (await res.json()) as { aggregate?: unknown; cta?: unknown; run_id?: string };
-      expect(body.run_id).toBeTruthy();
-      expect(body.aggregate).toBeTruthy();
-      expect(body.cta).toEqual(CTA);
+      const body = await res.json();
+      // CONTRACT PARITY (the integration's load-bearing assertion): the GET response must STRICT-parse
+      // against the protocol AuditOutputSchema — that is exactly what freeside-dashboard's client does
+      // (onExcessProperty: error). An earlier subset + excess `uncertain` made the dashboard reject every
+      // 200 and show empty. This pins the seam so the drift can never silently return.
+      expect(() => AuditOutputSchema.parse(body)).not.toThrow();
+      const parsed = AuditOutputSchema.parse(body);
+      expect(parsed.run_id).toBeTruthy();
+      expect(parsed.mode).toBe('dogfood-full');
+      expect(parsed.inputs_hash).toBeTruthy();
+      expect(parsed.cta).toEqual(CTA);
     } finally {
       cleanup();
     }
