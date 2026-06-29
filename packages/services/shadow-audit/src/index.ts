@@ -75,3 +75,10 @@ export {
   type RateDecision,
 } from './rate-limiter.js';
 export { createAuditRouter, type AuditRouterDeps } from './http/audit-router.js';
+export {
+  comparisonArtifact,
+  exportComparisonJson,
+  exportComparisonCsv,
+  ComparisonUnavailableError,
+  type ComparisonArtifact,
+} from './comparison-export.js';
