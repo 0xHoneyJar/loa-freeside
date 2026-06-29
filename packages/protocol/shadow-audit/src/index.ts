@@ -37,8 +37,9 @@ export {
   AccessDecisionRecordSchema,
   type AccessDecisionRecord,
 } from './schemas/access-decision-record.js';
-// the pluggable POLICY seam — generalizes the audit's hard-coded `qualifies` (one engine, many policies).
-export { type AccessDecisionPort, tokenGatingPolicy } from './access-decision-port.js';
+// the pluggable POLICY seam — generalizes the audit's hard-coded `qualifies`. tokenGatingPolicy is the WIRED
+// default (runAudit routes through it); badgePolicy is a verified REFERENCE policy, NOT yet wired (see its doc).
+export { type AccessDecisionPort, tokenGatingPolicy, badgePolicy, type BadgeEvidence, type BadgeThresholds, type BadgeRole } from './access-decision-port.js';
 export {
   CohortCountSchema,
   type CohortCount,

@@ -55,11 +55,18 @@ export interface BadgeThresholds {
 export type BadgeRole = 'engaged' | 'veteran' | 'trusted'
 
 /**
- * The BADGE/engagement policy — a SECOND reference AccessDecisionPort, bound to one role. Interchangeable with
- * tokenGatingPolicy in the audit engine: it decides `qualifies` from engagement evidence instead of a balance,
- * and the engine bands it against `holds_role` the same way. Reproduces sietch badge.ts `checkRoleUpgrades`
- * rules exactly (engaged: 5+ badges OR 200+ activity · veteran: 90+ days · trusted: 10+ badges OR helper). This
- * is the badge policy WIRED into the unified seam (the second river into one engine).
+ * The BADGE/engagement policy — a SECOND reference AccessDecisionPort, bound to one role. It decides
+ * `qualifies` from engagement evidence instead of a balance; an audit engine COULD band it against `holds_role`
+ * the same way token-gating is banded. Reproduces sietch badge.ts `checkRoleUpgrades` rules exactly (engaged:
+ * 5+ badges OR 200+ activity · veteran: 90+ days · trusted: 10+ badges OR helper).
+ *
+ * HONEST STATUS (FAGAN HIGH-1, 2026-06-29): this is a REFERENCE policy — NOT yet wired into the audit engine.
+ * `runAudit` routes through `tokenGatingPolicy` only. The badge policy that IS consumed lives in a separate
+ * package (`themes/sietch/.../access-decision.ts`) behind a DIFFERENT interface (`decide() → grants`), so the
+ * two cannot be plugged into the same engine as-is. Collapsing them into one interface + routing a badge audit
+ * through `runAudit` is the real unification — and it is OFF the critical path (the reforge frontier is
+ * `audit → member-graph`, not this). Kept as a verified reference so that wiring is a small step later, not a
+ * claim that the seam is already unified.
  */
 export const badgePolicy = (thresholds: BadgeThresholds, role: BadgeRole): AccessDecisionPort<BadgeEvidence> => ({
   policyId: `badge:${role}`,
@@ -71,6 +78,11 @@ export const badgePolicy = (thresholds: BadgeThresholds, role: BadgeRole): Acces
         return e.tenureDays >= thresholds.veteran.tenureDays
       case 'trusted':
         return e.badgeCount >= thresholds.trusted.badgeCount || e.hasHelperBadge
+      default: {
+        // exhaustiveness guard (FAGAN LOW-2): a role passed `as any` fails CLOSED, never silently grants.
+        const _never: never = role
+        return false
+      }
     }
   },
 })

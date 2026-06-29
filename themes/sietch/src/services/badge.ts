@@ -63,7 +63,12 @@ export const TENURE_THRESHOLDS = {
 } as const;
 
 /**
- * Role thresholds for automatic role assignment
+ * Role thresholds for automatic role assignment.
+ *
+ * loa:shortcut: DEAD as of the AccessDecisionPort extraction (2026-06-29) — `checkRoleUpgrades` no longer
+ * reads this; the LIVE thresholds are in `../packages/core/ports/access-decision.ts` (ROLE_THRESHOLDS there).
+ * Editing THIS copy is a silent no-op (FAGAN MEDIUM-1). Kept only because `services/index.ts` re-exports it +
+ * its shape differs (`trusted.helperBadge`); single-source it once the consumers are confirmed. Don't trust it.
  */
 export const ROLE_THRESHOLDS = {
   engaged: {
