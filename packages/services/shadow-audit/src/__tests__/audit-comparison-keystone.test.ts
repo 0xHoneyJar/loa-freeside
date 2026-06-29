@@ -97,12 +97,15 @@ describe('KEYSTONE: the audit consumes diffShadow into output.comparison (the mi
     expect(r.output.comparison.aggregate.promotions).toBe(6); // unchanged
   });
 
-  it('the comparison is AUTHED-ONLY — an anon audit (no records) carries no per-member delta', async () => {
+  it('AUTHED-ONLY + CONTRACT-PARITY: an anon audit carries no per-member delta AND a byte-stable response shape', async () => {
     const r = await runAudit({ ...req(), includeRecords: false }, { ownership: makeOwnership(), whale, roles });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.output.records).toBeUndefined();
-    expect(r.output.comparison).toBeUndefined(); // no wallets leak to anon; the aggregate still conveys the counts
-    expect(r.output.methodology).toBeDefined(); // …but the methodology (the rule) is anon-safe and always present
+    expect(r.output.comparison).toBeUndefined(); // no wallets leak to anon
+    expect(r.output.methodology).toBeUndefined(); // the methodology travels WITH the authed delta, not the anon response
+    // CONTRACT-PARITY GUARD: the anon response keys must stay byte-stable — freeside-dashboard strict-decodes
+    // GET /v1/audit with onExcessProperty:error, so any NEW top-level field silently breaks the integration.
+    expect(Object.keys(r.output).sort()).toEqual(['aggregate', 'cta', 'inputs_hash', 'mode', 'run_id']);
   });
 });

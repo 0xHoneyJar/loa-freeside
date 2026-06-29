@@ -208,14 +208,16 @@ export async function runAudit(
   // diffShadow was built-but-unconsumed; this is its first consumer (the buying-event report). Authed-only by
   // construction (it carries per-member wallets), so it travels with `records`.
   const comparison: DiscrepancyReport | undefined = records ? diffShadow(records) : undefined;
+  // The methodology travels with the AUTHED delta only — NOT in the anon aggregate response, which must stay
+  // byte-stable for freeside-dashboard's strict GET decode (onExcessProperty: error).
+  const methodology = { rule_id, snapshot_block: snapshotBlock, sources: ['sonar', 'role-snapshot'] };
 
   const output = AuditOutputSchema.parse({
     run_id,
     mode: 'dogfood-full',
     inputs_hash,
     aggregate,
-    methodology: { rule_id, snapshot_block: snapshotBlock, sources: ['sonar', 'role-snapshot'] },
-    ...(records ? { records } : {}),
+    ...(records ? { records, methodology } : {}),
     ...(comparison ? { comparison } : {}),
     cta: req.cta,
   });

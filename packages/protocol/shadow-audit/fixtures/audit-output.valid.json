@@ -10,10 +10,5 @@
     "whale_concentration": 0.6,
     "stale_access_risk_band": "elevated"
   },
-  "methodology": {
-    "rule_id": "nft-balance:1",
-    "snapshot_block": 18000000,
-    "sources": ["sonar", "role-snapshot"]
-  },
   "cta": { "product": "/shadow-access", "conversation": "/talk-to-us" }
 }

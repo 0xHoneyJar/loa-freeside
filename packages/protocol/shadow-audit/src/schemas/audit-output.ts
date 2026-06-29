@@ -78,9 +78,11 @@ export const AuditOutputSchema = z
       .string()
       .regex(/^[0-9a-f]{64}$/, 'inputs_hash must be 64-char lowercase hex'),
     aggregate: AuditAggregateSchema,
-    /** The settle-context (always present): the rule + snapshot the delta was computed under, so a buyer can
-     *  verify it matches the incumbent's enforced policy. */
-    methodology: MethodologySchema,
+    /** The settle-context — travels with the AUTHED delta (alongside `records`/`comparison`): the rule + snapshot
+     *  the delta was computed under, so a buyer can verify it matches the incumbent's policy. Kept OUT of the anon
+     *  aggregate response so that response stays byte-stable for strict-decoding consumers (freeside-dashboard
+     *  decodes GET /v1/audit with `onExcessProperty: error` — a new anon field silently breaks it). */
+    methodology: MethodologySchema.optional(),
     /** Authed + community-bound callers only (AssociationVerifier). */
     records: z.array(AccessDecisionRecordSchema).optional(),
     /** The Comparison View (Discrepancy Report) — the migration delta: who would be PROMOTED/DEMOTED at cutover.
