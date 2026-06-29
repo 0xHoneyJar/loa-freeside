@@ -44,25 +44,33 @@ export function exportComparisonJson(output: AuditOutput): string {
   return JSON.stringify(comparisonArtifact(output), null, 2);
 }
 
-/** RFC-4180-ish field escape: quote + double-up quotes when the field carries a comma, quote, or newline. */
+/** RFC-4180 field escape: quote + double-up quotes when the field carries a comma, quote, or newline. */
 const esc = (v: string): string => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+/** CSV formula-injection guard (OWASP): a field beginning with = + - @ TAB CR is prefixed with `'` so a
+ *  spreadsheet (the explicit consumer of this shared file) treats it as text, never an executable formula.
+ *  `community` is caller-supplied free text, so it MUST pass through here. */
+const deFormula = (v: string): string => (/^[=+\-@\t\r]/.test(v) ? `'${v}` : v);
+const csvField = (v: string): string => esc(deFormula(v));
 
 /**
- * CSV artifact — a provenance preamble (`#`-prefixed, skippable by parsers) + the per-member table. The preamble
- * makes the shared file self-describing; the table is the human-readable delta the server owner reviews.
+ * CSV artifact — a human-readable provenance preamble + the per-member table, for the server owner to eyeball.
+ * The `#`-prefixed preamble is a CONVENTION, not RFC-4180 (RFC-4180 has no comment syntax) — the canonical,
+ * machine-verifiable provenance form is `exportComparisonJson`. A consumer parsing the CSV table must skip the
+ * `#` lines itself; the JSON sidecar is the form to decode against the schema.
  */
 export function exportComparisonCsv(output: AuditOutput): string {
   const a = comparisonArtifact(output);
   const preamble = [
-    '# shadow-access migration delta',
+    '# shadow-access migration delta (human-readable; verify against the JSON export)',
     `# run_id=${a.run_id}`,
-    `# rule=${a.methodology.rule_id} snapshot_block=${a.methodology.snapshot_block} sources=${a.methodology.sources.join('|')}`,
+    `# rule=${a.methodology.rule_id} role_snapshot_at=${a.methodology.role_snapshot_at} evidence_block=${a.methodology.evidence_block} sources=${a.methodology.sources.join('|')}`,
+    '# basis: the delta settles against CURRENT on-chain balances vs the role snapshot — NOT evidence_block',
     `# inputs_hash=${a.inputs_hash}`,
     `# promotions=${a.delta.promotions} demotions=${a.delta.demotions} no_change=${a.delta.no_change} total=${a.delta.total}`,
   ];
   const header = 'wallet,community,holds_role,qualifies,band,change';
   const rows = a.members.map((m) =>
-    [m.wallet, esc(m.community), String(m.holds_role), String(m.qualifies), m.band, m.change].join(','),
+    [m.wallet, csvField(m.community), String(m.holds_role), String(m.qualifies), m.band, m.change].join(','),
   );
   return [...preamble, header, ...rows].join('\n') + '\n';
 }

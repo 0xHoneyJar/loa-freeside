@@ -209,8 +209,14 @@ export async function runAudit(
   // construction (it carries per-member wallets), so it travels with `records`.
   const comparison: DiscrepancyReport | undefined = records ? diffShadow(records) : undefined;
   // The methodology travels with the AUTHED delta only — NOT in the anon aggregate response, which must stay
-  // byte-stable for freeside-dashboard's strict GET decode (onExcessProperty: error).
-  const methodology = { rule_id, snapshot_block: snapshotBlock, sources: ['sonar', 'role-snapshot'] };
+  // byte-stable for freeside-dashboard's strict GET decode (onExcessProperty: error). It states the delta's TRUE
+  // basis: the incumbent's roles @ snapshot.captured_at × CURRENT on-chain qualification (NOT evidence_block).
+  const methodology = {
+    rule_id,
+    role_snapshot_at: snapshot.captured_at,
+    evidence_block: snapshotBlock,
+    sources: ['sonar', 'role-snapshot'],
+  };
 
   const output = AuditOutputSchema.parse({
     run_id,

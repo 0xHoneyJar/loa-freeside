@@ -52,18 +52,21 @@ export const CtaSchema = z
 export type Cta = z.infer<typeof CtaSchema>;
 
 /**
- * The settle-context of the delta: the rule + snapshot the audit computed `qualifies` under. A "migration
- * delta" is only credible if the buyer can verify it reflects the incumbent's REAL enforced policy and not a
- * Freeside-vs-Freeside methodology artifact (different threshold / snapshot / contract). Surfacing the
- * methodology makes the delta auditable against the incumbent's config — the report settles against the
- * incumbent's enforced state, not against our own output. Anon-safe (the rule, not PII).
+ * The settle-context of the delta — the exact basis a buyer needs to verify the migration delta reflects the
+ * incumbent's REAL enforced policy, not a Freeside-vs-Freeside artifact. The promotion/demotion delta is the
+ * INCUMBENT's current roles (sampled at `role_snapshot_at`) × CURRENT on-chain qualification under `rule_id`.
+ * NOTE the basis honestly: the delta settles against CURRENT on-chain balances, NOT against `evidence_block`
+ * (which anchors the per-member `balance_at_snapshot` evidence + the historical `sold_lapsed` metric). Anon-safe.
  */
 export const MethodologySchema = z
   .object({
-    /** the gating rule used to compute `qualifies`, e.g. "nft-balance:1". */
+    /** the gating rule used to compute on-chain qualification, e.g. "nft-balance:1". */
     rule_id: z.string().min(1),
-    /** the block ownership was reconstructed at (the snapshot the delta is taken at). */
-    snapshot_block: z.number().int().nonnegative(),
+    /** ISO-8601 — when the incumbent's roles (the Discord snapshot) were sampled. The "incumbent side" of the delta. */
+    role_snapshot_at: z.string().min(1),
+    /** the historical block the per-member `balance_at_snapshot` evidence + `sold_lapsed` are anchored at. The
+     *  promotion/demotion DELTA does NOT settle against this block — it settles against CURRENT on-chain balances. */
+    evidence_block: z.number().int().nonnegative(),
     /** the data sources the decision drew on. */
     sources: z.array(z.string().min(1)).min(1),
   })

@@ -55,7 +55,7 @@ const req = (): AuditRequest => ({
 });
 
 describe('KEYSTONE: the audit consumes diffShadow into output.comparison (the migration delta)', () => {
-  it('CORROBORATE: comparison demotions/promotions agree with the independent aggregate cohorts', async () => {
+  it('WIRING CROSS-CHECK: the band→change mapping agrees with the direct cohort filter', async () => {
     const r = await runAudit(req(), { ownership: makeOwnership(), whale, roles });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
@@ -68,23 +68,71 @@ describe('KEYSTONE: the audit consumes diffShadow into output.comparison (the mi
     expect(comparison.aggregate.promotions).toBe(6); // newly eligible
     expect(comparison.aggregate.no_change).toBe(6);
     expect(comparison.aggregate.band_distribution).toEqual({ stale: 6, missing: 6, ok: 6 });
-    // CORROBORATION: the comparison (from records) and the aggregate (from cohorts) are computed by DIFFERENT
-    // paths and must agree — demotions == stale_access, promotions == newly_eligible.
-    expect(aggregate.stale_access).toEqual({ kind: 'exact', value: 6 });
-    expect(aggregate.newly_eligible).toEqual({ kind: 'exact', value: 6 });
-    expect(comparison.aggregate.demotions).toBe((aggregate.stale_access as { value: number }).value);
-    expect(comparison.aggregate.promotions).toBe((aggregate.newly_eligible as { value: number }).value);
+    // NOT independent corroboration (FAGAN HIGH-2): the comparison (band→change) and the aggregate (cohort filter)
+    // both derive from the SAME qualifies(curBal)+roleWallets — a shared-input bug corrupts both equally. What
+    // this DOES catch is band-MAPPING drift (e.g. changeFromBand mapping stale→promotion). Compare exact-vs-exact
+    // ONLY when the aggregate cohort is itself exact (≥ k); below k it buckets (see the k-anon divergence test).
+    if (aggregate.stale_access.kind === 'exact') expect(comparison.aggregate.demotions).toBe(aggregate.stale_access.value);
+    if (aggregate.newly_eligible.kind === 'exact') expect(comparison.aggregate.promotions).toBe(aggregate.newly_eligible.value);
   });
 
-  it('METHODOLOGY: the output carries the rule + snapshot so the delta is settle-able vs the incumbent', async () => {
+  it('METHODOLOGY: the output carries the settle-context — rule + incumbent-snapshot time + evidence anchor', async () => {
     const r = await runAudit(req(), { ownership: makeOwnership(), whale, roles });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.output.methodology).toEqual({
       rule_id: 'nft-balance:1',
-      snapshot_block: SNAP_BLOCK,
+      role_snapshot_at: '2026-06-22T11:00:00.000Z',
+      evidence_block: SNAP_BLOCK,
       sources: ['sonar', 'role-snapshot'],
     });
+  });
+
+  it('HIGH-1: the delta settles against CURRENT balances, not evidence_block (the snapshot)', async () => {
+    const sold = A('d', 1); // qualified AT the snapshot, sold SINCE
+    const kept = A('d', 2); // qualified at both
+    const ownership: OwnershipSource = {
+      resolveSnapshotBlock: async () => SNAP_BLOCK,
+      balancesAt: async () => new Map([[sold, 1n], [kept, 1n]]), // snapshot: BOTH qualify
+      currentBalances: async () => new Map([[kept, 1n]]), //          NOW: `sold` holds 0
+    };
+    const rolesSold: RoleSource = {
+      load: async () => ({
+        source: 'discord:guild:1', community: 'thj', captured_at: '2026-06-22T11:00:00.000Z', export_method: 'export',
+        owner: A('9', 9), freshness_threshold_seconds: 86_400,
+        entries: [{ discord_user_id: 'u1', wallet: sold, role_ids: ['h'] }, { discord_user_id: 'u2', wallet: kept, role_ids: ['h'] }],
+      }),
+    };
+    const r = await runAudit(req(), { ownership, whale, roles: rolesSold });
+    expect(r.ok).toBe(true);
+    if (!r.ok || !r.output.comparison) return;
+    // `sold` is DEMOTED — it no longer qualifies NOW. If the delta settled at evidence_block (where `sold` still
+    // qualified), demotions would be 0. So the delta is current-basis; evidence_block is only the evidence anchor.
+    expect(r.output.comparison.aggregate.demotions).toBe(1);
+    expect(r.output.comparison.aggregate.no_change).toBe(1);
+    expect(r.output.comparison.members.find((m) => m.wallet === sold.toLowerCase())).toMatchObject({ band: 'stale', change: 'demotion' });
+    expect(r.output.methodology!.evidence_block).toBe(SNAP_BLOCK);
+  });
+
+  it('MEDIUM-2: below k-anon the aggregate BUCKETS while the authed comparison stays exact (divergent by design)', async () => {
+    const twoStale = [A('a', 1), A('a', 2)]; // < k=5
+    const ownership: OwnershipSource = {
+      resolveSnapshotBlock: async () => SNAP_BLOCK,
+      balancesAt: async () => new Map(),
+      currentBalances: async () => new Map(), // both hold 0 now → stale/demotion
+    };
+    const rolesSmall: RoleSource = {
+      load: async () => ({
+        source: 'discord:guild:1', community: 'thj', captured_at: '2026-06-22T11:00:00.000Z', export_method: 'export',
+        owner: A('9', 9), freshness_threshold_seconds: 86_400,
+        entries: twoStale.map((wallet, i) => ({ discord_user_id: `u${i}`, wallet, role_ids: ['h'] })),
+      }),
+    };
+    const r = await runAudit(req(), { ownership, whale, roles: rolesSmall });
+    expect(r.ok).toBe(true);
+    if (!r.ok || !r.output.comparison) return;
+    expect(r.output.aggregate.stale_access.kind).toBe('bucketed'); // suppressed (< k)
+    expect(r.output.comparison.aggregate.demotions).toBe(2); // …the authed per-member delta stays exact
   });
 
   it('TEETH: one stale holder re-acquiring MOVES the delta (the comparison tracks real decisions)', async () => {

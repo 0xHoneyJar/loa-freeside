@@ -61,7 +61,7 @@ describe('comparison-export — the shareable, provenance-bearing migration-delt
     const a = comparisonArtifact(output);
     expect(a.run_id).toBe(output.run_id);
     expect(a.inputs_hash).toBe(output.inputs_hash);
-    expect(a.methodology).toEqual({ rule_id: 'nft-balance:1', snapshot_block: 18_000_000, sources: ['sonar', 'role-snapshot'] });
+    expect(a.methodology).toEqual({ rule_id: 'nft-balance:1', role_snapshot_at: '2026-06-22T11:00:00.000Z', evidence_block: 18_000_000, sources: ['sonar', 'role-snapshot'] });
     expect(a.delta).toEqual(output.comparison!.aggregate);
     expect(a.delta.demotions).toBe(3);
     expect(a.delta.promotions).toBe(2);
@@ -69,7 +69,7 @@ describe('comparison-export — the shareable, provenance-bearing migration-delt
 
   it('CSV carries the provenance preamble + the per-member table', async () => {
     const csv = exportComparisonCsv(await authedOutput());
-    expect(csv).toContain('# rule=nft-balance:1 snapshot_block=18000000');
+    expect(csv).toContain('# rule=nft-balance:1 role_snapshot_at=2026-06-22T11:00:00.000Z evidence_block=18000000');
     expect(csv).toMatch(/# promotions=2 demotions=3 no_change=2 total=7/);
     expect(csv).toContain('wallet,community,holds_role,qualifies,band,change');
     const dataRows = csv.trimEnd().split('\n').filter((l) => !l.startsWith('#') && !l.startsWith('wallet,'));
@@ -81,6 +81,12 @@ describe('comparison-export — the shareable, provenance-bearing migration-delt
   it('CSV escapes a field carrying a comma (RFC-4180 quoting — the artifact stays parseable)', async () => {
     const csv = exportComparisonCsv(await authedOutput('thj, the hive'));
     expect(csv).toContain('"thj, the hive"'); // the community field is quoted, not column-split
+  });
+
+  it('MEDIUM-1: neutralizes CSV formula-injection in the attacker-controlled community field', async () => {
+    const csv = exportComparisonCsv(await authedOutput('=1+1'));
+    expect(csv).toContain(",'=1+1,"); // prefixed with ' → a spreadsheet treats it as text, not a formula
+    expect(csv).not.toMatch(/,=1\+1,/); // never a raw =formula at a field boundary
   });
 
   it('FAIL-CLOSED: exporting an ANON audit (no comparison) throws — no fabricated per-member delta', async () => {
