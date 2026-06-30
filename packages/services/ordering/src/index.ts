@@ -75,3 +75,20 @@ export {
   TrustViolationError,
   TrustRootedResolver,
 } from './trust-rooted-resolver.js';
+
+export { type CanonicalOrder, type SignedOrder, signOrder, verifyOrder } from './order-signer.js';
+
+export {
+  type OperatorAuthEnv,
+  type NonceStore,
+  InMemoryNonceStore,
+  type IntakeAuditEntry,
+  type IntakeAuthDeps,
+  requireOperatorAuth,
+} from './intake-auth.js';
+
+export {
+  type PrivateOpsEvent,
+  type PrivateOpsPublisher,
+  RecordingPrivateOps,
+} from './private-ops.js';

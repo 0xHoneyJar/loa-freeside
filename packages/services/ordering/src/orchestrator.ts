@@ -16,6 +16,7 @@ import type { OrderStore, OrderRecord } from './store.js';
 import { type CapabilityResolver, type ResolvedEndpoint, CapabilityUnresolvedError } from './resolver.js';
 import { type AuditPort, type OperatedCommunityRegistry, buildAuditRequest, sanitizeRefusal } from './audit-acl.js';
 import { digestOf } from './digest.js';
+import type { PrivateOpsPublisher } from './private-ops.js';
 
 /**
  * The thin orchestrator (SDD §6) — one consumer, no distributed saga.
@@ -45,6 +46,9 @@ export interface OrchestratorDeps {
   cta: Cta;
   /** Injected clock, unix MILLIseconds (matches BaseNatsConsumer's `now`). */
   now: () => number;
+  /** Optional private ops channel (SDD §13 M-8): on a refusal, the FULL cause is emitted here while
+   *  the public `failed.v1` stays sanitized. Unset → only the sanitized public event is emitted. */
+  opsChannel?: PrivateOpsPublisher;
 }
 
 export class OrderOrchestrator {
@@ -162,18 +166,35 @@ export class OrderOrchestrator {
           error: new Error(`audit refused (retryable): ${result.refusal.code}`),
         };
       }
-      return this.settleFailed(orderId, 'producing', sanitizeRefusal(result.refusal));
+      // M-8: sanitized public failed.v1 + FULL raw cause to the private ops channel.
+      return this.settleFailed(orderId, 'producing', sanitizeRefusal(result.refusal), {
+        code: result.refusal.code,
+        reason: result.refusal.reason,
+        retryable: result.refusal.retryable,
+      });
     }
 
     return { success: true };
   }
 
-  /** Settle to `failed` (CAS from `expectedFrom`) with a sanitized public refusal. Idempotent ack. */
+  /**
+   * Settle to `failed` (CAS from `expectedFrom`) with a SANITIZED public refusal. Idempotent ack.
+   * M-8: when an ops channel is wired, the FULL cause (`fullCause`, else the sanitized refusal) is
+   * emitted privately BEFORE the public event — so diagnosis has the raw cause, the public topic doesn't.
+   */
   private async settleFailed(
     orderId: string,
     expectedFrom: OrderState,
     refusal: OrderRefusal,
+    fullCause?: Record<string, unknown>,
   ): Promise<ProcessResult> {
+    if (this.deps.opsChannel) {
+      await this.deps.opsChannel.emit({
+        order_id: orderId,
+        correlation_id: orderId,
+        cause: fullCause ?? { code: refusal.code, reason: refusal.reason },
+      });
+    }
     const failed: OrderFailed = { order_id: orderId, refusal };
     await this.deps.store.transition(orderId, expectedFrom, 'failed', {
       patch: { refusal },

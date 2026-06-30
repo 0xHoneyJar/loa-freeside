@@ -349,3 +349,18 @@ edgeless-census bug (`arrakis-w3h2`). An autonomous local run does not mutate th
 proposal: `a2a/sprint-3/S3-T1-registry-declaration-proposal.md`; bead `arrakis-acbc` (domain:network) left open.
 The `loa where` live e2e (S3-T2 found:true) is gated on S3-T1 + grants — verified `loa where shadow-mode-api`
 returns `found:false` this run (empty plane, SDD §12.0), so the resolver correctly fails closed live until then.
+
+## Decision Log — Order System Sprint 4 (2026-06-29, autonomous, goal: finish all sprints)
+
+S4 hardening, all platform. **Built + tested:** S4-T1 canonical signed order (H-5, ed25519 over JCS of the
+FULL order — verify fails on any tamper); S4-T2 intake authn/authz + nonce/timestamp replay protection +
+audit log (H-6); S4-T3 private ops channel (M-8, sanitized public failed.v1 + full raw cause private).
+54 tests, tsc clean.
+
+**S4-T4 [ACCEPTED-DEFERRED — BLOCKED]:** authed full migration-delta + shareable export is explicitly gated
+on PR #395 (the wedge's authed delta) + main's frozen Unit Tests gate (arrakis-yp7q / PR #310). Not built;
+bead arrakis-pttv left open. Foundations ready (the H-5 signer binds the authed order; the ACL's
+includeRecords already toggles anon/authed) — delta wiring lands when #395 is in.
+
+Keys/credential-verifier/nonce-store/ops-publisher are injected ports; concrete cluster key-mgmt
+(Legba/gaib), a shared TTL nonce store, and the signed private subject wire at deploy.
