@@ -59,3 +59,5 @@ export { DeclaredLocalAuditAdapter } from './declared-local-audit-adapter.js';
 export { type ProcessResult, type OrchestratorDeps, OrderOrchestrator } from './orchestrator.js';
 
 export { type IntakeDeps, createIntakeApp } from './intake.js';
+
+export { createFrontendApp } from './frontend.js';

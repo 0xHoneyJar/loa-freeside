@@ -26,6 +26,12 @@ export interface IntakeDeps {
   store: OrderStore;
   /** Injected clock, unix MILLIseconds. */
   now: () => number;
+  /**
+   * Optional fire-and-forget nudge invoked after a `placed` order is persisted. Prod leaves
+   * this UNSET — the NATS consumer drives the order off the `placed` event. The local demo
+   * (bin/demo.ts) wires it to drive the orchestrator in-process. Never blocks the 200 response.
+   */
+  onPlaced?: (orderId: string) => void;
 }
 
 const PlaceOrderBodySchema = z
@@ -77,6 +83,7 @@ export function createIntakeApp(deps: IntakeDeps): Hono {
       { subject: ORDER_LIFECYCLE_SUBJECTS.placed, payload: placedEvent },
     );
 
+    deps.onPlaced?.(order_id);
     return c.json({ order_id }, 200);
   });
 
