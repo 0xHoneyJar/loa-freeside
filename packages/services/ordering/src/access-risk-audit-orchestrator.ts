@@ -1,0 +1,174 @@
+import {
+  ORDER_LIFECYCLE_SUBJECTS,
+  resolvePreset,
+  AccessRiskAuditInputs,
+  type OrderRouting,
+  type OrderProducing,
+  type OrderFulfilled,
+  type OrderFailed,
+  type OrderRefusal,
+  type ResolvedBuilding,
+} from '@freeside/ordering-protocol';
+import type { Cta } from '@freeside/shadow-audit-protocol';
+import type { AuditServiceResult } from '@freeside/shadow-audit-service';
+import { isTerminal, type OrderState } from './order-state.js';
+import type { OrderStore, OrderRecord } from './store.js';
+import { type CapabilityResolver, type ResolvedEndpoint, CapabilityUnresolvedError } from './resolver.js';
+import { type AuditPort, type OperatedCommunityRegistry, buildAuditRequest, sanitizeRefusal } from './audit-acl.js';
+import { digestOf } from './digest.js';
+import type { PrivateOpsPublisher } from './private-ops.js';
+import type { ProcessResult } from './orchestrator.js';
+
+export interface AccessRiskAuditOrchestratorDeps {
+  store: OrderStore;
+  resolver: CapabilityResolver;
+  audit: AuditPort;
+  communities: OperatedCommunityRegistry;
+  cta: Cta;
+  now: () => number;
+  opsChannel?: PrivateOpsPublisher;
+}
+
+/** Preset #1 orchestration path — extracted from OrderOrchestrator (SDD §3.2.2). */
+export class AccessRiskAuditOrchestrator {
+  constructor(private readonly deps: AccessRiskAuditOrchestratorDeps) {}
+
+  async process(orderId: string, record: OrderRecord): Promise<ProcessResult> {
+    if (isTerminal(record.state)) return { success: true };
+
+    const preset = resolvePreset(record.product);
+    const parsedInputs = AccessRiskAuditInputs.safeParse(record.inputs);
+    if (!parsedInputs.success) {
+      return this.settleFailed(orderId, record.state, {
+        code: 'invalid-inputs',
+        reason: 'order inputs failed preset validation',
+      });
+    }
+    const inputs = parsedInputs.data;
+
+    if (record.state === 'placed') {
+      let resolved: ResolvedEndpoint[];
+      try {
+        resolved = [];
+        for (const cap of preset.capabilityNeeds) {
+          resolved.push(await this.deps.resolver.resolve(cap));
+        }
+      } catch (e) {
+        const cap = e instanceof CapabilityUnresolvedError ? e.capability : 'unknown';
+        return this.settleFailed(orderId, 'placed', {
+          code: 'capability-unresolved',
+          reason: `a required capability could not be resolved: ${cap}`,
+        });
+      }
+      const resolved_buildings: ResolvedBuilding[] = resolved.map((r) => ({
+        capability: r.capability,
+        building: r.building,
+        endpoint: r.endpoint,
+        source: r.source,
+      }));
+      const routing: OrderRouting = { order_id: orderId, recipe_id: preset.id, resolved_buildings };
+      const claim = await this.deps.store.transition(orderId, 'placed', 'routing', {
+        patch: { recipe_id: preset.id, resolved_buildings },
+        event: { subject: ORDER_LIFECYCLE_SUBJECTS.routing, payload: routing },
+      });
+      record = await this.reread(orderId, claim.ok ? claim.record : undefined);
+      if (isTerminal(record.state)) return { success: true };
+    }
+
+    if (record.state === 'routing') {
+      const claim = await this.deps.store.transition(orderId, 'routing', 'producing');
+      record = await this.reread(orderId, claim.ok ? claim.record : undefined);
+      if (isTerminal(record.state)) return { success: true };
+    }
+
+    if (record.state === 'producing') {
+      const community = this.deps.communities(inputs.contract);
+      if (!community) {
+        return this.settleFailed(orderId, 'producing', {
+          code: 'unknown-community',
+          reason: `no operated community is registered for contract ${inputs.contract}`,
+        });
+      }
+      const acl = buildAuditRequest(inputs, {
+        community,
+        cta: this.deps.cta,
+        nowUnixSeconds: Math.floor(this.deps.now() / 1000),
+        includeRecords: false,
+      });
+      if (!acl.ok) {
+        return this.settleFailed(orderId, 'producing', { code: 'invalid-order', reason: acl.reason });
+      }
+
+      let step = 0;
+      for (const rstep of preset.recipe) {
+        const producing: OrderProducing = { order_id: orderId, step, step_label: rstep.label };
+        await this.deps.store.appendEvent(orderId, {
+          subject: ORDER_LIFECYCLE_SUBJECTS.producing,
+          payload: producing,
+        });
+        step++;
+      }
+
+      let result: AuditServiceResult;
+      try {
+        result = await this.deps.audit.invoke(acl.req);
+      } catch (e) {
+        return { success: false, retryable: true, error: e instanceof Error ? e : new Error(String(e)) };
+      }
+
+      if (result.ok) {
+        const output = result.output;
+        const output_digest = digestOf(output);
+        const fulfilled: OrderFulfilled = { order_id: orderId, result_ref: orderId, output_digest };
+        await this.deps.store.transition(orderId, 'producing', 'fulfilled', {
+          patch: { result_ref: orderId, output, output_digest },
+          event: { subject: ORDER_LIFECYCLE_SUBJECTS.fulfilled, payload: fulfilled },
+        });
+        return { success: true };
+      }
+
+      if (result.refusal.retryable) {
+        return {
+          success: false,
+          retryable: true,
+          error: new Error(`audit refused (retryable): ${result.refusal.code}`),
+        };
+      }
+      return this.settleFailed(orderId, 'producing', sanitizeRefusal(result.refusal), {
+        code: result.refusal.code,
+        reason: result.refusal.reason,
+        retryable: result.refusal.retryable,
+      });
+    }
+
+    return { success: true };
+  }
+
+  private async settleFailed(
+    orderId: string,
+    expectedFrom: OrderState,
+    refusal: OrderRefusal,
+    fullCause?: Record<string, unknown>,
+  ): Promise<ProcessResult> {
+    if (this.deps.opsChannel) {
+      await this.deps.opsChannel.emit({
+        order_id: orderId,
+        correlation_id: orderId,
+        cause: fullCause ?? { code: refusal.code, reason: refusal.reason },
+      });
+    }
+    const failed: OrderFailed = { order_id: orderId, refusal };
+    await this.deps.store.transition(orderId, expectedFrom, 'failed', {
+      patch: { refusal },
+      event: { subject: ORDER_LIFECYCLE_SUBJECTS.failed, payload: failed },
+    });
+    return { success: true };
+  }
+
+  private async reread(orderId: string, won: OrderRecord | undefined): Promise<OrderRecord> {
+    if (won) return won;
+    const current = await this.deps.store.get(orderId);
+    if (!current) throw new Error(`order vanished mid-flight: ${orderId}`);
+    return current;
+  }
+}

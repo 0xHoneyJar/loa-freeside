@@ -14,11 +14,14 @@ import {
   computeInputsHash,
   sha256Hex,
   type AccessDecisionRecord,
+  tokenGatingPolicy,
   type AuditAggregate,
   type AuditOutput,
   type Cta,
   type Order,
   type Refusal,
+  diffShadow,
+  type DiscrepancyReport,
 } from '@freeside/shadow-audit-protocol';
 import { classifyBand } from './eligibility-resolver.js';
 import { resolveMode } from './mode-resolver.js';
@@ -126,7 +129,11 @@ export async function runAudit(
     };
   }
 
-  const qualifies = (m: Balances, w: string): boolean => (m.get(w) ?? 0n) >= threshold;
+  // The should-be access is decided by a pluggable AccessDecisionPort — the engine no longer hard-codes the
+  // policy. tokenGatingPolicy is the deployed default (balance >= threshold), byte-identical to before; a
+  // badge or score policy is a drop-in swap (the unification: arrakis-access-control-plane-v1).
+  const policy = tokenGatingPolicy(threshold);
+  const qualifies = (m: Balances, w: string): boolean => policy.qualifies(m.get(w) ?? 0n);
 
   // 3. Cohorts.
   const qualifiedSnapshot = [...snapBal.keys()].filter((w) => qualifies(snapBal, w));
@@ -171,11 +178,12 @@ export async function runAudit(
   });
   const run_id = `run_${sha256Hex(`${inputs_hash}:${req.nowUnixSeconds}`).slice(0, 24)}`;
 
-  // 7. Per-member records (authed only).
+  // 7. The methodology settle-context (always present) + per-member records (authed only). rule_id is hoisted
+  //    so the rule a buyer audits the delta against is the SAME rule the records were decided under.
+  const rule_id = `${req.order.gating_rule.kind}:${req.order.gating_rule.threshold}`;
   let records: AccessDecisionRecord[] | undefined;
   if (req.includeRecords) {
     const computed_at = isoFromUnix(req.nowUnixSeconds);
-    const rule_id = `${req.order.gating_rule.kind}:${req.order.gating_rule.threshold}`;
     const mk = (wallet: string, holds_role: boolean): AccessDecisionRecord => ({
       wallet,
       community: req.order.community.name,
@@ -196,12 +204,27 @@ export async function runAudit(
     ];
   }
 
+  // The Comparison View — the migration delta (promotion/demotion/no_change), derived from the SAME records.
+  // diffShadow was built-but-unconsumed; this is its first consumer (the buying-event report). Authed-only by
+  // construction (it carries per-member wallets), so it travels with `records`.
+  const comparison: DiscrepancyReport | undefined = records ? diffShadow(records) : undefined;
+  // The methodology travels with the AUTHED delta only — NOT in the anon aggregate response, which must stay
+  // byte-stable for freeside-dashboard's strict GET decode (onExcessProperty: error). It states the delta's TRUE
+  // basis: the incumbent's roles @ snapshot.captured_at × CURRENT on-chain qualification (NOT evidence_block).
+  const methodology = {
+    rule_id,
+    role_snapshot_at: snapshot.captured_at,
+    evidence_block: snapshotBlock,
+    sources: ['sonar', 'role-snapshot'],
+  };
+
   const output = AuditOutputSchema.parse({
     run_id,
     mode: 'dogfood-full',
     inputs_hash,
     aggregate,
-    ...(records ? { records } : {}),
+    ...(records ? { records, methodology } : {}),
+    ...(comparison ? { comparison } : {}),
     cta: req.cta,
   });
 
