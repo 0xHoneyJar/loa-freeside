@@ -61,3 +61,17 @@ export { type ProcessResult, type OrchestratorDeps, OrderOrchestrator } from './
 export { type IntakeDeps, createIntakeApp } from './intake.js';
 
 export { createFrontendApp } from './frontend.js';
+
+export {
+  type LoaWhereResult,
+  type LoaWhereInvoker,
+  LoaWhereCapabilityResolver,
+  makeLoaWhereInvoker,
+} from './loa-where-resolver.js';
+
+export {
+  type SignedDeclaration,
+  type TrustPolicy,
+  TrustViolationError,
+  TrustRootedResolver,
+} from './trust-rooted-resolver.js';

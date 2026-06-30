@@ -335,3 +335,17 @@ Idempotency model (H-3): CAS on `placed→routing` is the claim; redelivery of a
 redelivery of a mid-flight order (prior delivery died past ack_wait) RESUMES — safe because `runAudit`
 is pure. Settle (terminal transition + result persist) is exactly-once via the store CAS. Outbox (H-4):
 terminal events publish from durable stored state, never a NATS+DB dual-write.
+
+## Decision Log — Order System Sprint 3 (2026-06-29, autonomous, goal: finish all sprints)
+
+S3 split by ADR-007 domain. **Platform (built + tested this run):** `LoaWhereCapabilityResolver` (S3-T2,
+graduation from config behind the same PORT, `source:'loa-where'`, fail-closed) + `TrustRootedResolver`
+(S3-T3 / H-7, refuses wrong/unsigned/mismatched-env endpoints). 43 tests, tsc clean.
+
+**S3-T1 [ACCEPTED-DEFERRED — operator-gated, network]:** declaring the audit buildings + belts in
+`registry.yaml` is a live discovery/routing-SoT change under the OperatorOS no-latitude-on-routing
+boundary, AND needs a registry schema bump (`consumes`/`publishes` aren't fields yet) AND a fix to the
+edgeless-census bug (`arrakis-w3h2`). An autonomous local run does not mutate the network SoT. Apply-ready
+proposal: `a2a/sprint-3/S3-T1-registry-declaration-proposal.md`; bead `arrakis-acbc` (domain:network) left open.
+The `loa where` live e2e (S3-T2 found:true) is gated on S3-T1 + grants — verified `loa where shadow-mode-api`
+returns `found:false` this run (empty plane, SDD §12.0), so the resolver correctly fails closed live until then.
