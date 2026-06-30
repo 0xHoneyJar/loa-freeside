@@ -1,139 +1,72 @@
-# Implementation Report — Order System, Sprint 1 (thin order spine)
+# Implementation Report — Sprint 1 (global 403): The Eligibility Seam — The Noun
 
-**Branch**: `cycle/shadow-audit-runtime-ordering` · **Cycle**: shadow-audit-runtime-ordering ·
-traces to `grimoires/loa/sprint.md` (Sprint 1), `grimoires/loa/sdd.md` (§3–§9, §13), `grimoires/loa/prd.md`.
-**Run**: autonomous `/run sprint-1`. **Domain (ADR-007)**: `platform` + `shared` only — no firewall crossing.
+> Supersedes the prior Order-System sprint-1 report (preserved in git at commit `dc1e1c82`).
+> **Branch**: `cycle/shadow-audit-runtime-ordering` · **Cycle**: `cycle-shadow-audit-eligibility-seam`
+> **Run**: autonomous `/run sprint-1`. **Domain (ADR-007)**: `shared` only — no firewall crossing.
 
 ## Executive Summary
 
-Sprint 1 is the M-10 honest thin cut: the smallest thing that fulfills one order end-to-end with the
-two correctness must-haves baked in (idempotency H-3, outbox H-4). S1-T1 (`@freeside/ordering-protocol`,
-shared) shipped previously (commit `267c2122`). This run built **S1-T2..T6** as the new
-`@freeside/ordering-service` (`packages/services/ordering/`, platform): durable order-state store with a
-CAS state machine, transactional outbox, config-backed capability resolver behind a PORT, the audit ACL,
-the thin orchestrator, and the intake HTTP edge (POST + polling GET).
+Authored the new shared protocol package `@freeside/eligibility-protocol`
+(`packages/protocol/eligibility/`) — the FORK-sealed unified `EligibilityRule` noun
+(reconciling three structurally-incompatible legacy shapes) + the `EligibilityVerdict`
+(the decision output, `degraded` first-class). Shared-domain only (no platform paths → no
+ADR-007 straddle). Acceptance meter green: `tsc --noEmit` exit 0, `vitest run` 13/13.
 
-**Gate**: `tsc --noEmit` clean · **30 tests pass** (5 files) · S1-T1 protocol guard still green (11 tests).
+Beads: `arrakis-wpgh.1..4` + epic `arrakis-wpgh` closed.
 
 ## AC Verification
 
-Each acceptance criterion is quoted verbatim from `grimoires/loa/sprint.md`, with status + file:line evidence.
+**G-1 — author the FORK-sealed unified `EligibilityRule`, retiring the 3 incompatible types via inward adapters; round-trip test green**
+- Status: ✓ Met
+- Evidence: `packages/protocol/eligibility/src/eligibility-rule.ts:54` (`EligibilityRuleSchema`, `.strict()`); branded `ChainIdSchema` `:24`; 4-variant `EligibilityRuleType` `:30`; discriminated `EligibilityThreshold` `:43`. Round-trip meter for all 3 legacy shapes: `src/__tests__/eligibility-protocol.test.ts` — coexistence (string chainId + bigint amount), chain (branded + string), worker (numeric chainId + minBalance). Each asserts no loss on `chainId` and `threshold`.
 
-### S1-T2 — durable order-state store + state machine + idempotency (H-3)
-> "test: the same `placed` delivered twice runs the audit **once** (dedupe by `order_id`)"
+**G-1 acceptance — round-trip test green (proposal's meter)**
+- Status: ✓ Met
+- Evidence: `vitest run` → `Tests 13 passed (13)` (`VITEST_EXIT=0`).
 
-**✓ Met.** Idempotency is a compare-and-swap on `placed→routing`
-(`src/store.ts:140-156` `transition` CAS; `src/order-state.ts:21-41` legal transitions). Proven:
-`src/__tests__/orchestrator.test.ts:118-126` ("the same placed delivered twice runs the audit ONCE")
-asserts `audit.calls === 1` after two `process()` calls. CAS-miss path:
-`src/__tests__/store.test.ts:55-67`. State machine: `src/__tests__/order-state.test.ts` (8 cases).
+**G-4 — replay-safe; threshold=string (FORK-2); AccessDecisionRecord stays `.strict()` bands-only**
+- Status: ✓ Met (our half) / ⏸ not-in-scope (AccessDecisionRecord half)
+- Evidence: replay losslessness, smuggled bigint amount rejected, numeric (non-string) amount rejected, FORK-1 non-integer/zero/negative/string chainId rejected — all in `src/__tests__/eligibility-protocol.test.ts` "replay safety (G-4)". The `AccessDecisionRecord` bands-only invariant is owned by shadow-audit's existing suite and was deliberately **untouched** (G-3 boundary).
 
-### S1-T3 — order-intake POST /v1/orders
-> "test: valid order → 200 `{order_id}` + persisted `placed`; invalid input → 400; no event on validation failure"
+**G-5 (foundation) — `degraded` is a first-class verdict outcome**
+- Status: ✓ Met (the noun; the live score-checker degrade behavior is sprint 405)
+- Evidence: `src/eligibility-verdict.ts:42` (`degraded` member of the discriminated union, requires `reason`+`code`). Full G-5 (the live checker emitting `degraded` for `activity_check`/`token_balance`) is sprint 405 per plan.
 
-**✓ Met.** `src/intake.ts:38-86` (`POST /v1/orders`): envelope + preset `inputSchema` validation →
-`store.placeOrder` (persist `placed` + enqueue `placed.v1`). Proven:
-`src/__tests__/intake.test.ts:26-43` (200 + persisted placed + outbox event),
-`:45-54` (unknown product → 400 + no event), `:56-66` (bad inputs → 400 + no event).
-
-### S1-T4 — config-backed capability resolver behind PORT (B-1/B-2)
-> "test: resolver returns the configured endpoints; `routing.v1` truthfully labels config-resolution; PORT interface documented for the `loa where` swap"
-
-**✓ Met.** PORT + impl: `src/resolver.ts:18-58` (`CapabilityResolver` interface; `ConfigCapabilityResolver`
-returns `source:'config'`, fails closed). `loa where` swap documented at `src/resolver.ts:9-16`.
-Proven: `src/__tests__/resolver.test.ts:13-29` (configured endpoints + `source==='config'` + fail-closed).
-`routing.v1` carries the resolved buildings with `source:'config'`:
-`src/orchestrator.ts:80-95`, asserted in the lifecycle-order test `orchestrator.test.ts:62-69`.
-
-### S1-T5 — OrderNatsConsumer thin orchestrator + outbox settle (H-4)
-> "test: `order(access-risk-audit)` → `fulfilled` with `AuditOutput` aggregate; kill-after-persist-before-publish → terminal event still publishes from stored state on restart"
-
-**✓ Met** (orchestrator core) / **⏸ [ACCEPTED-DEFERRED]** (NATS runtime mount).
-Orchestrator: `src/orchestrator.ts:60-191` (`process` resolve→routing→ACL→audit→producing→settle).
-- *fulfilled with AuditOutput*: `orchestrator.test.ts:42-70` (state `fulfilled`, `output` surfaced,
-  `result_ref`, ACL maps a real `AuditRequest` — not theater).
-- *kill-before-publish → restart publishes terminal*: `orchestrator.test.ts:160-178` (H-4): `process()`
-  persists `fulfilled` + enqueues to the durable outbox; a fresh `publishOutbox` drains the terminal event.
-  Outbox semantics: `src/lifecycle-publisher.ts:30-44`, `src/store.ts:158-176`.
-
-The `extends BaseNatsConsumer` runtime shell + worker bootstrap is the **deploy step** (M-10) — see the
-NOTES.md Decision Log. The orchestrator already exposes a `ProcessResult` (`src/orchestrator.ts:34-38`)
-structurally identical to `apps/worker/src/consumers/BaseNatsConsumer.ts:58-62`, so the shell is a
-one-line `processMessage → process()` delegation.
-
-### S1-T6 — polling status GET /v1/orders/:id (M-9)
-> "test: returns order state + `result_ref`/aggregate; 404 on unknown id"
-
-**✓ Met.** `src/intake.ts:88-106` (`GET /v1/orders/:id` → state + `result_ref` + `output`; 404 unknown).
-Proven: `src/__tests__/intake.test.ts:70-83` (known id → state) and `:85-88` (unknown → 404).
-
-### Sprint 1 done-definition
-> "internal POST /v1/orders {product:'access-risk-audit', chain, contract, date} → signed lifecycle events on durable JetStream → GET /v1/orders/:id returns fulfilled + the anon AuditOutput aggregate. Idempotent, outbox-durable, in-process, config-resolved."
-
-**⚠ Partial — by design (M-10).** Place → lifecycle events on the durable outbox → polling GET →
-`fulfilled` + anon aggregate (`includeRecords:false`) all met and tested. *Signing* of lifecycle events
-and the JetStream/worker runtime mount are explicitly sequenced after the first useful order (SDD §13
-M-10); the `LifecyclePublisher` PORT is the swap seam. Tracked in NOTES.md Decision Log — not a gap.
+**G-3 — ordering ACL: never import shadow-audit**
+- Status: ✓ Met (not regressed; this package independently honors the boundary)
+- Evidence: `@freeside/eligibility-protocol` imports only `zod` (`grep -rn "shadow-audit" packages/protocol/eligibility/src` → only doc-comment mentions, 0 imports). This sprint added no consumer, so `ordering-protocol.test.ts:99` is unaffected; the ACL gate is exercised when the gate consumer lands (sprint 4).
 
 ## Tasks Completed
 
-| Task | Files | Approach |
-|------|-------|----------|
-| S1-T2 | `src/order-state.ts`, `src/store.ts`, `src/digest.ts` | Pure state machine; `OrderStore` PORT + `InMemoryOrderStore` (CAS transitions, transactional outbox); deterministic digests |
-| S1-T3 | `src/intake.ts` | Hono `POST /v1/orders` — envelope + preset-input validation → atomic persist + outbox enqueue |
-| S1-T4 | `src/resolver.ts` | `CapabilityResolver` PORT + `ConfigCapabilityResolver` (`source:'config'`, fail-closed) |
-| S1-T5 | `src/orchestrator.ts`, `src/audit-acl.ts`, `src/declared-local-audit-adapter.ts`, `src/lifecycle-publisher.ts` | Thin resumable saga; audit ACL (anti-corruption layer); B-2 declared local adapter; outbox publisher |
-| S1-T6 | `src/intake.ts` | Hono `GET /v1/orders/:id` — state + result aggregate; 404 |
-
-Package scaffold: `package.json`, `tsconfig.json`, `vitest.config.ts`, `src/index.ts` (barrel), `bin/http.ts`
-(intake composition root). 20 git-tracked files (node_modules/dist/tsbuildinfo gitignored).
+| Task | File(s) | Approach |
+|------|---------|----------|
+| 403.1 scaffold | `packages/protocol/eligibility/{package.json,tsconfig.json,src/index.ts}` | Mirrored `@freeside/ordering-protocol` exactly (ESM, `src/index.ts` entry, vitest, AGPL-3.0, zod peer). `pnpm install --prefer-offline` (deps resolved from store, 0 downloaded). |
+| 403.2 rule | `src/eligibility-rule.ts` | Branded `ChainIdSchema` (FORK-1); 4-variant `EligibilityRuleType`; discriminated-union `EligibilityThreshold` with string `minAmount` (FORK-2); outer + member `.strict()`. |
+| 403.3 verdict | `src/eligibility-verdict.ts` | `EligibilitySource` aligned to live `ArrakisEligibilityResult.source` (`native｜score_service｜native_degraded`); `EligibilityVerdict` discriminated on `status`, non-eligible members structurally require `reason`+`code`. |
+| 403.4 tests | `src/__tests__/eligibility-protocol.test.ts` | 13 tests: canonical validate, 3-shape round-trip meter, replay + bigint/numeric/chainId rejection, `.strict()` extra-key rejection, refuse-without-reason rejection. |
 
 ## Technical Highlights
 
-- **Idempotency = CAS, not a dedupe table.** The first `placed→routing` compare-and-swap wins; redelivery of
-  a terminal order acks (H-3), a mid-flight order resumes (`runAudit` is pure → safe re-run). Settle is
-  exactly-once via the store CAS.
-- **Outbox (H-4), no dual-write.** State change + the event it produces are one atomic step
-  (`transition({event})`); terminal events publish from durable stored state. `markPublished` runs only
-  after a successful publish → at-least-once on crash, consumers dedupe by `(order_id, subject)`.
-- **EVANS bounded contexts honored.** `@freeside/ordering-protocol` never imports the audit's `OrderSchema`
-  (S1-T1 guard still green). The generic order meets the sealed audit `Order` in exactly one place —
-  `buildAuditRequest` (`src/audit-acl.ts`) — which validates through the audit's `OrderSchema` (fail-closed)
-  and maps the operated community from config (`OperatedCommunityRegistry`), fabricating nothing.
-- **Single ACL swap point (EULER/SDD §8).** The orchestrator depends only on `AuditPort`; the in-process
-  `DeclaredLocalAuditAdapter` and a future HTTP adapter both satisfy it — module→service is one swap.
-- **Honest routing (B-2).** Routing events label `source:'config'`; nothing claims agent-navigation it
-  didn't perform. The `loa where` backend swaps behind the same resolver PORT (S3-T2).
-- **Refusal handling (M-8).** Non-retryable audit refusals settle `failed.v1` with a SANITIZED reason
-  (audit's raw cause never leaks to the public topic); retryable refusals NAK (no terminal settle).
+- **Reconciliation grounded in the 3 real shapes**: coexistence (`chainId: string`, `minAmount: bigint`), chain (`chainId: ChainId` branded, `parameters` bag, 4 ruleTypes), worker (`chainId: number`, `minBalance: string`, no ruleType) — confirmed at source before mapping.
+- **Separate `EligibilityVerdict` noun** keeps "who may order" distinct from shadow-audit's `AccessDecisionRecord` ("who passes the audit rule") — the PRD §7 false-shared-kernel hedge, realized structurally.
+- **Refuse-not-approximate is structural**: a non-eligible verdict cannot parse without `reason`+`code` (discriminated union), so a refusal can never be emitted without a stated cause (NFR-1).
 
 ## Testing Summary
 
-| File | Cases | Covers |
-|------|-------|--------|
-| `order-state.test.ts` | 7 | transitions, terminal, illegal-pair guard |
-| `store.test.ts` | 8 | placeOrder idempotency, CAS win/miss, atomic outbox, appendEvent, markPublished |
-| `resolver.test.ts` | 3 | configured resolve, `source:'config'`, fail-closed |
-| `intake.test.ts` | 6 | POST 200/400 (+no-event), GET found/404 |
-| `orchestrator.test.ts` | 6 | placed→fulfilled, idempotency, fail-closed, refusal (sanitized + retryable), H-4 durability |
+- File: `packages/protocol/eligibility/src/__tests__/eligibility-protocol.test.ts` (13 tests).
+- Run: `cd packages/protocol/eligibility && pnpm test` and `pnpm typecheck`.
+- Result: `Tests 13 passed (13)`, `TSC_EXIT=0`, `VITEST_EXIT=0`.
 
-Run: `pnpm --dir packages/services/ordering test` (30 pass) · `pnpm --dir packages/services/ordering typecheck` (clean).
+## Known Limitations
 
-## Known Limitations (all tracked in NOTES.md Decision Log)
+- Round-trip adapters in the test are **local fixtures**, not the real `toProtocolRule()` for the 3 sites — those land in sprints 404 (coexistence+worker) / 405 (chain). This sprint proves the unified noun *can* hold all three losslessly; wiring the real sites is downstream by design.
+- Full G-5 (the live score-checker emitting `degraded`) is sprint 405; this sprint delivers only the `degraded` verdict shape.
+- The package is not yet consumed anywhere (the gate is sprint 4) — so the ordering ACL test is unexercised by this change.
 
-- In-memory store backend (Postgres adapter behind the same PORT is the deploy step).
-- Lifecycle-event signing deferred (M-10) — PORT in place.
-- NATS consumer runtime mount + concrete audit `AuditDeps` deferred (deploy/M-10).
-- `order.lifecycle.*` subjects not yet in the `nats-routing.json` SoT (network-scoped fast-follow).
-- `order_id` is `randomUUID` (ULID is a drop-in upgrade).
+## Verification Steps (for reviewer)
 
-## Verification Steps (reviewer)
-
-```bash
-cd packages/services/ordering
-pnpm install            # file: workspace deps (no root pnpm-workspace.yaml)
-pnpm typecheck          # tsc --noEmit — clean
-pnpm test               # vitest — 30 pass
-# regression: S1-T1 guard
-pnpm --dir ../../protocol/ordering test   # 11 pass (EVANS guard intact)
-```
+1. `cd packages/protocol/eligibility && pnpm install --prefer-offline`
+2. `pnpm typecheck` → exit 0
+3. `pnpm test` → 13 passed
+4. `grep -rn "shadow-audit" packages/protocol/eligibility/src` → only doc-comment mentions (no imports)
+5. Confirm all changed paths are under `packages/protocol/eligibility/` (shared domain — no straddle)
