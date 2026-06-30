@@ -32,11 +32,18 @@ export {
 
 export {
   CapabilityNeed,
+  TriageCapabilityNeed,
   RecipeStepSchema,
   type RecipeStep,
   type Preset,
   AccessRiskAuditInputs,
   ACCESS_RISK_AUDIT_PRESET,
+  CommunityOnboardingInputs,
+  IngredientStatus,
+  CommunityOnboardingIngredients,
+  CommunityOnboardingOutput,
+  INITIAL_COMMUNITY_ONBOARDING_INGREDIENTS,
+  COMMUNITY_ONBOARDING_PRESET,
   PRESETS,
   resolvePreset,
 } from './preset.js';

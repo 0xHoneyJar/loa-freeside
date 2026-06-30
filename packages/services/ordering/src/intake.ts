@@ -5,10 +5,13 @@ import {
   ProductId,
   resolvePreset,
   ORDER_LIFECYCLE_SUBJECTS,
+  INITIAL_COMMUNITY_ONBOARDING_INGREDIENTS,
   type OrderPlaced,
 } from '@freeside/ordering-protocol';
 import type { OrderStore } from './store.js';
 import { digestOf } from './digest.js';
+import type { OrderOrchestrator } from './orchestrator.js';
+import { IngredientStatus } from '@freeside/ordering-protocol';
 
 /**
  * order-intake (SDD §5) — the internal HTTP edge.
@@ -32,6 +35,10 @@ export interface IntakeDeps {
    * (bin/demo.ts) wires it to drive the orchestrator in-process. Never blocks the 200 response.
    */
   onPlaced?: (orderId: string) => void;
+  /** When set, enables operator POST /v1/orders/:id/advance-ingredient. */
+  orchestrator?: OrderOrchestrator;
+  /** Bearer token required for advance-ingredient when set. */
+  serviceToken?: string;
 }
 
 const PlaceOrderBodySchema = z
@@ -39,6 +46,14 @@ const PlaceOrderBodySchema = z
     product: ProductId,
     placed_by: z.string().min(1),
     inputs: z.record(z.string(), z.unknown()),
+  })
+  .strict();
+
+const AdvanceIngredientBodySchema = z
+  .object({
+    ingredient: z.enum(['sonar', 'score', 'worlds_manifest', 'discord_observer', 'shadow_preview']),
+    status: IngredientStatus,
+    world_slug: z.string().min(1).optional(),
   })
   .strict();
 
@@ -79,6 +94,10 @@ export function createIntakeApp(deps: IntakeDeps): Hono {
         inputs,
         placed_at_unix,
         inputs_digest,
+        ingredients:
+          body.data.product === 'community-onboarding'
+            ? { ...INITIAL_COMMUNITY_ONBOARDING_INGREDIENTS }
+            : undefined,
       },
       { subject: ORDER_LIFECYCLE_SUBJECTS.placed, payload: placedEvent },
     );
@@ -96,15 +115,64 @@ export function createIntakeApp(deps: IntakeDeps): Hono {
         product: record.product,
         state: record.state,
         placed_at_unix: record.placed_at_unix,
+        updated_at_unix: record.updated_at_unix,
         recipe_id: record.recipe_id,
         resolved_buildings: record.resolved_buildings,
         result_ref: record.result_ref,
         output: record.output,
         refusal: record.refusal,
+        ingredients: record.ingredients,
+        fulfillment: record.fulfillment,
       },
       200,
     );
   });
+
+  if (deps.orchestrator) {
+    app.post('/v1/orders/:id/advance-ingredient', async (c) => {
+      if (deps.serviceToken) {
+        const auth = c.req.header('authorization');
+        if (auth !== `Bearer ${deps.serviceToken}`) {
+          return c.json({ error: 'unauthorized' }, 401);
+        }
+      }
+
+      let raw: unknown;
+      try {
+        raw = await c.req.json();
+      } catch {
+        return c.json({ error: 'request body must be JSON' }, 400);
+      }
+
+      const body = AdvanceIngredientBodySchema.safeParse(raw);
+      if (!body.success) {
+        return c.json({ error: 'invalid advance payload', issues: body.error.issues }, 400);
+      }
+
+      const result = await deps.orchestrator!.communityOnboarding.advanceIngredient(
+        c.req.param('id'),
+        body.data.ingredient,
+        body.data.status,
+        body.data.world_slug,
+      );
+
+      if (!result.ok) {
+        const status = result.error === 'order not found' ? 404 : 400;
+        return c.json({ error: result.error }, status);
+      }
+
+      const record = result.record!;
+      return c.json(
+        {
+          order_id: record.order_id,
+          state: record.state,
+          ingredients: record.ingredients,
+          fulfillment: record.fulfillment,
+        },
+        200,
+      );
+    });
+  }
 
   return app;
 }

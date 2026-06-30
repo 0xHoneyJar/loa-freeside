@@ -11,6 +11,8 @@ import {
   ORDER_LIFECYCLE_SUBJECTS,
   resolvePreset,
   ACCESS_RISK_AUDIT_PRESET,
+  COMMUNITY_ONBOARDING_PRESET,
+  INITIAL_COMMUNITY_ONBOARDING_INGREDIENTS,
 } from '../index.js';
 
 const validOrder = {
@@ -84,6 +86,57 @@ describe('access-risk-audit preset', () => {
   });
   it('reads the member-graph spine + roles (the LADDER), not sonar/score directly', () => {
     expect(ACCESS_RISK_AUDIT_PRESET.recipe.map((s) => s.capability)).toEqual(['member-graph', 'roles']);
+  });
+});
+
+describe('community-onboarding preset', () => {
+  it('resolves preset #2', () => {
+    expect(resolvePreset('community-onboarding')).toBe(COMMUNITY_ONBOARDING_PRESET);
+  });
+
+  it('validates dashboard inputs and rejects bad email', () => {
+    const inputs = COMMUNITY_ONBOARDING_PRESET.inputSchema;
+    expect(
+      inputs.parse({
+        chain_id: '8453',
+        contract_address: '0xabc',
+        contact_email: 'cm@example.com',
+        source: 'dashboard_onboarding',
+      }),
+    ).toBeTruthy();
+    expect(() =>
+      inputs.parse({
+        chain_id: '8453',
+        contract_address: '0xabc',
+        contact_email: 'not-an-email',
+        source: 'dashboard_onboarding',
+      }),
+    ).toThrow();
+  });
+
+  it('declares triage capabilities (L0 ingest ladder, not member-graph)', () => {
+    expect(COMMUNITY_ONBOARDING_PRESET.capabilityNeeds).toEqual([
+      'collection-index',
+      'community-register',
+      'world-manifest',
+    ]);
+    expect(COMMUNITY_ONBOARDING_PRESET.recipe.map((s) => s.capability)).toEqual([
+      'collection-index',
+      'community-register',
+      'world-manifest',
+      'discord-observer',
+      'shadow-preview-gate',
+    ]);
+  });
+
+  it('seeds initial ingredients with shadow_preview blocked', () => {
+    expect(INITIAL_COMMUNITY_ONBOARDING_INGREDIENTS).toEqual({
+      sonar: 'pending',
+      score: 'pending',
+      worlds_manifest: 'pending',
+      discord_observer: 'optional',
+      shadow_preview: 'blocked',
+    });
   });
 });
 

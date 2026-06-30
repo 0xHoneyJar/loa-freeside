@@ -58,6 +58,19 @@ export { DeclaredLocalAuditAdapter } from './declared-local-audit-adapter.js';
 
 export { type ProcessResult, type OrchestratorDeps, OrderOrchestrator } from './orchestrator.js';
 
+export {
+  AccessRiskAuditOrchestrator,
+  type AccessRiskAuditOrchestratorDeps,
+} from './access-risk-audit-orchestrator.js';
+
+export {
+  CommunityOnboardingOrchestrator,
+  type CommunityOnboardingOrchestratorDeps,
+  canFulfillCommunityOnboarding,
+} from './community-onboarding-orchestrator.js';
+
+export { type TriagePorts, StubTriagePorts } from './triage-ports.js';
+
 export { type IntakeDeps, createIntakeApp } from './intake.js';
 
 export { createFrontendApp } from './frontend.js';

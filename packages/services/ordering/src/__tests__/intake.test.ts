@@ -14,6 +14,18 @@ const VALID_BODY = {
   inputs: { chain: 'ethereum', contract: '0xCollection', snapshot_date: '2026-06-01', threshold: 1 },
 };
 
+const VALID_COMMUNITY_BODY = {
+  product: 'community-onboarding',
+  placed_by: 'dashboard_onboarding',
+  inputs: {
+    chain_id: '8453',
+    contract_address: '0x1234567890123456789012345678901234567890',
+    contact_email: 'cm@example.com',
+    community_name: 'Pythenians',
+    source: 'dashboard_onboarding',
+  },
+};
+
 describe('order-intake POST /v1/orders', () => {
   it('accepts a valid order → 200 { order_id } and persists placed + enqueues placed.v1', async () => {
     const { store, app } = harness();
@@ -65,6 +77,40 @@ describe('order-intake POST /v1/orders', () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it('accepts community-onboarding → 200 and seeds initial ingredients', async () => {
+    const { store, app } = harness();
+    const res = await app.request('/v1/orders', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(VALID_COMMUNITY_BODY),
+    });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { order_id: string };
+    const record = await store.get(json.order_id);
+    expect(record?.product).toBe('community-onboarding');
+    expect(record?.ingredients).toEqual({
+      sonar: 'pending',
+      score: 'pending',
+      worlds_manifest: 'pending',
+      discord_observer: 'optional',
+      shadow_preview: 'blocked',
+    });
+  });
+
+  it('rejects community-onboarding with invalid email → 400 and emits NO event', async () => {
+    const { store, app } = harness();
+    const res = await app.request('/v1/orders', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        ...VALID_COMMUNITY_BODY,
+        inputs: { ...VALID_COMMUNITY_BODY.inputs, contact_email: 'bad' },
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(await store.pendingOutbox()).toHaveLength(0);
+  });
 });
 
 describe('order-intake GET /v1/orders/:id', () => {
@@ -89,5 +135,28 @@ describe('order-intake GET /v1/orders/:id', () => {
     const { app } = harness();
     const res = await app.request('/v1/orders/does-not-exist');
     expect(res.status).toBe(404);
+  });
+
+  it('returns ingredients + updated_at_unix for community-onboarding', async () => {
+    const { app } = harness();
+    const placed = await app.request('/v1/orders', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(VALID_COMMUNITY_BODY),
+    });
+    const { order_id } = (await placed.json()) as { order_id: string };
+
+    const res = await app.request(`/v1/orders/${order_id}`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      order_id: string;
+      state: string;
+      product: string;
+      updated_at_unix: number;
+      ingredients: Record<string, string>;
+    };
+    expect(body.product).toBe('community-onboarding');
+    expect(body.updated_at_unix).toBe(1_700_000_000);
+    expect(body.ingredients.shadow_preview).toBe('blocked');
   });
 });

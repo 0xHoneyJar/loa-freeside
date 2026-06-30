@@ -1,4 +1,10 @@
-import type { ProductId, ResolvedBuilding, OrderRefusal } from '@freeside/ordering-protocol';
+import type {
+  ProductId,
+  ResolvedBuilding,
+  OrderRefusal,
+  CommunityOnboardingIngredients,
+  CommunityOnboardingOutput,
+} from '@freeside/ordering-protocol';
 import { assertTransition, type OrderState } from './order-state.js';
 
 /**
@@ -36,6 +42,8 @@ export interface NewOrder {
   inputs: Record<string, unknown>;
   placed_at_unix: number;
   inputs_digest: string;
+  /** Preset #2 only — seeded at placement for poll UX. */
+  ingredients?: CommunityOnboardingIngredients;
 }
 
 export interface OrderRecord {
@@ -54,13 +62,27 @@ export interface OrderRecord {
   output?: unknown;
   output_digest?: string;
   refusal?: OrderRefusal;
+  /** Preset #2 only — ingredient checklist for poll UX. */
+  ingredients?: CommunityOnboardingIngredients;
+  /** Preset #2 terminal output — worlds-api canonical slug. */
+  fulfillment?: CommunityOnboardingOutput;
   created_at_unix: number;
   updated_at_unix: number;
 }
 
 /** Fields a transition may patch onto the record (atomically, with the state change). */
 export type OrderPatch = Partial<
-  Pick<OrderRecord, 'recipe_id' | 'resolved_buildings' | 'result_ref' | 'output' | 'output_digest' | 'refusal'>
+  Pick<
+    OrderRecord,
+    | 'recipe_id'
+    | 'resolved_buildings'
+    | 'result_ref'
+    | 'output'
+    | 'output_digest'
+    | 'refusal'
+    | 'ingredients'
+    | 'fulfillment'
+  >
 >;
 
 export interface TransitionOpts {
@@ -82,6 +104,8 @@ export interface OrderStore {
   ): Promise<{ ok: boolean; record?: OrderRecord }>;
   /** Enqueue an event WITHOUT a state change (e.g. `producing`, emitted 0..n times while in `producing`). */
   appendEvent(orderId: string, event: OutboxEvent): Promise<void>;
+  /** Patch fields without a lifecycle transition (e.g. ingredient updates while `producing`). */
+  patchRecord(orderId: string, patch: OrderPatch): Promise<OrderRecord>;
   pendingOutbox(): Promise<OutboxEntry[]>;
   markPublished(seq: number): Promise<void>;
 }
@@ -129,6 +153,7 @@ export class InMemoryOrderStore implements OrderStore {
       placed_at_unix: order.placed_at_unix,
       state: 'placed',
       inputs_digest: order.inputs_digest,
+      ingredients: order.ingredients,
       created_at_unix: ts,
       updated_at_unix: ts,
     };
@@ -167,6 +192,14 @@ export class InMemoryOrderStore implements OrderStore {
   async appendEvent(orderId: string, event: OutboxEvent): Promise<void> {
     if (!this.orders.has(orderId)) throw new OrderNotFoundError(orderId);
     this.enqueue(orderId, event);
+  }
+
+  async patchRecord(orderId: string, patch: OrderPatch): Promise<OrderRecord> {
+    const record = this.orders.get(orderId);
+    if (!record) throw new OrderNotFoundError(orderId);
+    const next: OrderRecord = { ...record, ...patch, updated_at_unix: this.now() };
+    this.orders.set(orderId, next);
+    return next;
   }
 
   async pendingOutbox(): Promise<OutboxEntry[]> {

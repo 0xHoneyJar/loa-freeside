@@ -10,8 +10,28 @@ import { ProductId } from './order.js';
  */
 
 /** A capability a recipe step reads; the resolver maps it to a building + endpoint at runtime. */
-export const CapabilityNeed = z.enum(['ownership', 'value', 'member-graph', 'roles']);
+export const CapabilityNeed = z.enum([
+  'ownership',
+  'value',
+  'member-graph',
+  'roles',
+  'collection-index',
+  'community-register',
+  'world-manifest',
+  'discord-observer',
+  'shadow-preview-gate',
+]);
 export type CapabilityNeed = z.infer<typeof CapabilityNeed>;
+
+/** Triage capabilities for preset #2 (community-onboarding). */
+export const TriageCapabilityNeed = z.enum([
+  'collection-index',
+  'community-register',
+  'world-manifest',
+  'discord-observer',
+  'shadow-preview-gate',
+]);
+export type TriageCapabilityNeed = z.infer<typeof TriageCapabilityNeed>;
 
 export const RecipeStepSchema = z
   .object({
@@ -42,6 +62,54 @@ export const AccessRiskAuditInputs = z
   .strict();
 export type AccessRiskAuditInputs = z.infer<typeof AccessRiskAuditInputs>;
 
+/** Inputs for the community-onboarding product (dashboard counter-clerk). */
+export const CommunityOnboardingInputs = z
+  .object({
+    chain_id: z.string().min(1),
+    contract_address: z.string().min(1),
+    contact_email: z.string().email(),
+    community_name: z.string().min(1).optional(),
+    source: z.literal('dashboard_onboarding'),
+    callback_url: z.string().url().optional(),
+  })
+  .strict();
+export type CommunityOnboardingInputs = z.infer<typeof CommunityOnboardingInputs>;
+
+/** Ingredient checklist status for preset #2 poll UX. */
+export const IngredientStatus = z.enum(['pending', 'in_progress', 'complete', 'blocked', 'optional']);
+export type IngredientStatus = z.infer<typeof IngredientStatus>;
+
+export const CommunityOnboardingIngredients = z
+  .object({
+    sonar: IngredientStatus,
+    score: IngredientStatus,
+    worlds_manifest: IngredientStatus,
+    discord_observer: IngredientStatus,
+    shadow_preview: IngredientStatus,
+  })
+  .strict();
+export type CommunityOnboardingIngredients = z.infer<typeof CommunityOnboardingIngredients>;
+
+export const CommunityOnboardingOutput = z
+  .object({
+    world_slug: z.string().min(1),
+    contact_email: z.string().email(),
+    chain_id: z.string(),
+    contract_address: z.string(),
+    community_name: z.string().optional(),
+  })
+  .strict();
+export type CommunityOnboardingOutput = z.infer<typeof CommunityOnboardingOutput>;
+
+/** Initial ingredient state for a newly placed community-onboarding order. */
+export const INITIAL_COMMUNITY_ONBOARDING_INGREDIENTS: CommunityOnboardingIngredients = {
+  sonar: 'pending',
+  score: 'pending',
+  worlds_manifest: 'pending',
+  discord_observer: 'optional',
+  shadow_preview: 'blocked',
+};
+
 /**
  * Preset #1 — the LADDER (PRD G-5): the audit reads the member-graph spine (which itself
  * composes ownership + value) plus the world's roles. It does NOT order sonar/score directly.
@@ -56,9 +124,27 @@ export const ACCESS_RISK_AUDIT_PRESET: Preset = {
   ],
 };
 
+/**
+ * Preset #2 — triage ladder for dashboard onboarding: sonar index → score register →
+ * worlds manifest → optional discord → shadow preview gate.
+ */
+export const COMMUNITY_ONBOARDING_PRESET: Preset = {
+  id: 'community-onboarding',
+  inputSchema: CommunityOnboardingInputs,
+  capabilityNeeds: ['collection-index', 'community-register', 'world-manifest'],
+  recipe: [
+    { label: 'index collection on chain', capability: 'collection-index' },
+    { label: 'register score-api community', capability: 'community-register' },
+    { label: 'write worlds manifest + slug', capability: 'world-manifest' },
+    { label: 'optional discord observer', capability: 'discord-observer' },
+    { label: 'enable shadow preview gate', capability: 'shadow-preview-gate' },
+  ],
+};
+
 /** The preset registry — looked up by product id. */
 export const PRESETS: Readonly<Record<ProductId, Preset>> = {
   'access-risk-audit': ACCESS_RISK_AUDIT_PRESET,
+  'community-onboarding': COMMUNITY_ONBOARDING_PRESET,
 };
 
 export function resolvePreset(product: ProductId): Preset {
