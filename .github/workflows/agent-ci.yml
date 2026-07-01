@@ -99,7 +99,7 @@ jobs:
         working-directory: packages/adapters
 
       - name: Unit tests
-        run: npx vitest run tests/unit/
+        run: ./node_modules/.bin/vitest run --config vitest.agent-ci.config.ts
 
       - name: Integration tests
         run: npx vitest run tests/integration/

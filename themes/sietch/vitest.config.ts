@@ -35,7 +35,7 @@ export default defineConfig({
       optimizer: {
         ssr: {
           enabled: true,
-          include: ['opossum'],
+          include: ['opossum', 'aws-embedded-metrics'],
         },
       },
     },

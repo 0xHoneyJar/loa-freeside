@@ -214,6 +214,11 @@ jobs:
         working-directory: themes/sietch
         run: npm ci
 
+      - name: Install workspace package dependencies
+        run: |
+          cd packages/core && npm ci
+          cd ../adapters && npm ci
+
       - name: Static import guard (Redis in unit tests)
         run: bash scripts/check-redis-imports.sh
 
@@ -252,6 +257,11 @@ jobs:
       - name: Install dependencies
         working-directory: themes/sietch
         run: npm ci
+
+      - name: Install workspace package dependencies
+        run: |
+          cd packages/core && npm ci
+          cd ../adapters && npm ci
 
       - name: Run integration tests
         working-directory: themes/sietch

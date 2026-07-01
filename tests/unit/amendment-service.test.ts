@@ -12,21 +12,21 @@ function createMockClient(paramRows: any[] = [], amendmentRows: any[] = [], vote
   return {
     query: vi.fn().mockImplementation((sql: string, params?: any[]) => {
       if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
-        return { rows: [] };
+        return Promise.resolve({ rows: [] });
       }
       if (sql.includes('governance_parameters') && sql.includes('SELECT')) {
-        return { rows: paramRows };
+        return Promise.resolve({ rows: paramRows });
       }
       if (sql.includes('governance_amendments') && sql.includes('SELECT') && sql.includes('FOR UPDATE')) {
-        return { rows: amendmentRows };
+        return Promise.resolve({ rows: amendmentRows });
       }
       if (sql.includes('governance_amendment_votes') && sql.includes('SELECT')) {
-        return { rows: voteRows };
+        return Promise.resolve({ rows: voteRows });
       }
       if (sql.includes('INSERT') || sql.includes('UPDATE')) {
-        return { rows: [], rowCount: 1 };
+        return Promise.resolve({ rows: [], rowCount: 1 });
       }
-      return { rows: [] };
+      return Promise.resolve({ rows: [] });
     }),
     release: vi.fn(),
   };
