@@ -46,6 +46,21 @@ provider "aws" {
   }
 }
 
+# Legacy alias — state still holds module.freeside_storage CloudFront resources
+# created in us-west-2 before the module was removed from config.
+provider "aws" {
+  alias  = "us_west_2"
+  region = "us-west-2"
+
+  default_tags {
+    tags = {
+      Project     = "Arrakis"
+      Environment = var.environment
+      ManagedBy   = "Terraform"
+    }
+  }
+}
+
 # Local values
 locals {
   name_prefix = "arrakis-${var.environment}"
