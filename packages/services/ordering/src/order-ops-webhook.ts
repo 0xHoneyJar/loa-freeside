@@ -1,8 +1,10 @@
 import { CommunityOnboardingInputs } from '@freeside/ordering-protocol';
 
+import type { IngredientJob } from './kitchen-types.js';
+
 /** Sanitized operator notice for a newly placed community-onboarding order. */
 export type CommunityOnboardingOpsNotice = {
-  event: 'community_onboarding.placed';
+  event: 'community_onboarding.placed' | 'community_onboarding.ingredients_enqueued';
   order_id: string;
   placed_by: string;
   contact_email: string;
@@ -12,6 +14,7 @@ export type CommunityOnboardingOpsNotice = {
   placed_at: string;
   /** One-line summary for Slack incoming webhooks (unknown fields are ignored). */
   text: string;
+  ingredient_jobs?: Pick<IngredientJob, 'ingredient' | 'external_ref'>[];
 };
 
 export function opsWebhookUrl(): string | null {
@@ -61,4 +64,30 @@ export function fireCommunityOnboardingOpsWebhook(
       err instanceof Error ? err.message : err,
     );
   });
+}
+
+export function fireCommunityOnboardingIssueLinks(args: {
+  order_id: string;
+  contact_email: string;
+  contract_address: string;
+  chain_id: string;
+  jobs: IngredientJob[];
+  webhookUrl?: string | null;
+}): void {
+  if (args.jobs.length === 0) return;
+  const links = args.jobs.map((j) => `${j.ingredient}: ${j.external_ref}`).join('\n');
+  fireCommunityOnboardingOpsWebhook(
+    {
+      event: 'community_onboarding.ingredients_enqueued',
+      order_id: args.order_id,
+      placed_by: 'ordering-service',
+      contact_email: args.contact_email,
+      contract_address: args.contract_address,
+      chain_id: args.chain_id,
+      placed_at: new Date().toISOString(),
+      text: `Triage issues filed for order ${args.order_id}:\n${links}`,
+      ingredient_jobs: args.jobs.map((j) => ({ ingredient: j.ingredient, external_ref: j.external_ref })),
+    },
+    args.webhookUrl,
+  );
 }

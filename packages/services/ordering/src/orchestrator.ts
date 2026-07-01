@@ -8,6 +8,7 @@ import { AccessRiskAuditOrchestrator } from './access-risk-audit-orchestrator.js
 import { CommunityOnboardingOrchestrator } from './community-onboarding-orchestrator.js';
 import type { TriagePorts } from './triage-ports.js';
 import { StubTriagePorts } from './triage-ports.js';
+import type { IngredientEnqueueService } from './ingredient-enqueue.js';
 
 /**
  * The thin orchestrator (SDD §6) — dispatches by product to preset-specific handlers.
@@ -32,6 +33,8 @@ export interface OrchestratorDeps {
   now: () => number;
   /** Preset #2 ingredient probes — defaults to stub (operator advance MVP). */
   triage?: TriagePorts;
+  /** Kitchen V1 — GitHub issue fan-out per ingredient. */
+  enqueue?: IngredientEnqueueService;
   /** Optional private ops channel (SDD §13 M-8). */
   opsChannel?: PrivateOpsPublisher;
 }
@@ -56,6 +59,7 @@ export class OrderOrchestrator {
     this.communityOnboarding = new CommunityOnboardingOrchestrator({
       ...shared,
       triage: deps.triage ?? new StubTriagePorts(),
+      enqueue: deps.enqueue,
     });
   }
 

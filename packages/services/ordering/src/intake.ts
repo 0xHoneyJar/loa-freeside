@@ -138,6 +138,8 @@ export function createIntakeApp(deps: IntakeDeps): Hono {
         refusal: record.refusal,
         ingredients: record.ingredients,
         fulfillment: record.fulfillment,
+        ingredient_jobs: record.ingredient_jobs,
+        operator_audit: record.operator_audit,
       },
       200,
     );
@@ -183,6 +185,8 @@ export function createIntakeApp(deps: IntakeDeps): Hono {
           state: record.state,
           ingredients: record.ingredients,
           fulfillment: record.fulfillment,
+          ingredient_jobs: record.ingredient_jobs,
+          operator_audit: record.operator_audit,
         },
         200,
       );
