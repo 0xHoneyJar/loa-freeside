@@ -1,15 +1,402 @@
-{
-  "generated_at": "2026-06-30T00:00:00Z",
-  "repo": "0xHoneyJar/loa-freeside",
-  "report": "grimoires/loa/reports/gecko-loa-freeside-triage-2026-06-30.md",
-  "tile": "drift|CI-ROOT-BLOCKED|rotting-pr-stack",
-  "metrics": {
-    "open_prs": 30,
-    "npm_audit_blocked_prs": 27,
-    "duplicate_prs_closed": [391, 392, 394, 381, 310],
-    "fix_prs_open": [404, 406],
-    "bug_issues_addressed": [379, 398, 399, 400, 402]
+[
+  {
+    "number": 405,
+    "title": "[ordering/kitchen] Channel health read gate after discord_bind + bot_installed",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:product-spec",
+      "priority:medium"
+    ],
+    "route": "operator"
   },
-  "kranz_merge_order": [404, 376, 388, 390, 389],
-  "waves_completed": ["wave0-baseline", "wave1-ci-unblock", "wave2-consolidate", "wave3-bug-queue", "wave4-security-merge-staged", "wave5-housekeeping"]
-}
+  {
+    "number": 401,
+    "title": "[ordering/kitchen] Wire shadow_preview ingredient probe for zero-operator fulfill",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:technical-rfc",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 386,
+    "title": "Route PR #366 red validation checks to local CI classification",
+    "labels": [
+      "workstream:discovery",
+      "artifact-type:technical-rfc",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 375,
+    "title": "Reliability: classify shared CI and security-audit failures blocking narrow Freeside PRs",
+    "labels": [
+      "workstream:tech-debt",
+      "artifact-type:product-spec",
+      "priority:high"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 364,
+    "title": "Independent auditor review: require generated evidence for README capability claims",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:product-spec",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 363,
+    "title": "Independent auditor review: require feature-flag evidence for payment integration changes",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:product-spec",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 362,
+    "title": "Independent auditor review: require registry source proof for CLI changes",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:product-spec",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 361,
+    "title": "Independent auditor review: require repo topology proof for root validation changes",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:product-spec",
+      "priority:high"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 360,
+    "title": "Independent auditor review: require webhook lifecycle matrix evidence",
+    "labels": [
+      "workstream:discovery",
+      "artifact-type:product-spec",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 359,
+    "title": "Find weakest parts: install-time Hounfour rebuild couples Freeside to external repo state",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:bug-report",
+      "priority:medium"
+    ],
+    "route": "bug"
+  },
+  {
+    "number": 358,
+    "title": "Find weakest parts: proposed architecture language can steer implementation prematurely",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:technical-rfc",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 357,
+    "title": "Find weakest parts: registry freshness is a fragile operator boundary",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:product-spec",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 356,
+    "title": "Find weakest parts: repo topology needs explicit validation coverage",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:product-spec",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 355,
+    "title": "Find weakest parts: payment lifecycle needs explicit state-machine treatment",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:product-spec",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 354,
+    "title": "Production-readiness review: payment feature flag needs operator runbook",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:bug-report",
+      "priority:medium"
+    ],
+    "route": "bug"
+  },
+  {
+    "number": 353,
+    "title": "Production-readiness review: registry CLI must disclose data source and freshness",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:product-spec",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 352,
+    "title": "Production-readiness review: add one-command full-platform validation",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:product-spec",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 351,
+    "title": "Production-readiness review: root install should not depend on implicit rebuild side effects",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:bug-report",
+      "priority:medium"
+    ],
+    "route": "bug"
+  },
+  {
+    "number": 350,
+    "title": "Production-readiness review: payment webhooks need durable incomplete-work recovery",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:product-spec",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 349,
+    "title": "Spec implementation review: registry file contract must be executable",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:product-spec",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 348,
+    "title": "Spec implementation review: payment feature flag needs end-to-end verification",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:bug-report",
+      "priority:medium"
+    ],
+    "route": "bug"
+  },
+  {
+    "number": 347,
+    "title": "Spec implementation review: BYOK encryption claim needs code-to-doc evidence",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:product-spec",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 346,
+    "title": "Spec implementation review: README surface counts need generated verification",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:product-spec",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 345,
+    "title": "Spec implementation review: webhook route claims rate limiting and payload cap but handler does not enforce them locally",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:product-spec",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 344,
+    "title": "Test coverage review: add README live-state and command examples consistency tests",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:product-spec",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 343,
+    "title": "Test coverage review: add root package topology coverage tests",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:product-spec",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 342,
+    "title": "Test coverage review: add webhook dependency-failure tests",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:product-spec",
+      "priority:urgent"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 341,
+    "title": "Test coverage review: add webhook status progression matrix",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:product-spec",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 340,
+    "title": "Test coverage review: add exact raw-body HMAC webhook fixtures",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:product-spec",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 339,
+    "title": "PR review: require lane classification for platform and registry changes",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:product-spec",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 338,
+    "title": "PR review: require package install side-effect review when postinstall changes",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:product-spec",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 337,
+    "title": "PR review: require live-registry source evidence for CLI doctor changes",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:product-spec",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 336,
+    "title": "PR review: root script changes need package coverage evidence",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:product-spec",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 335,
+    "title": "PR review: require webhook status-progression regression evidence",
+    "labels": [
+      "workstream:discovery",
+      "artifact-type:product-spec",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 334,
+    "title": "Architecture review: root scripts do not reflect the advertised platform surface",
+    "labels": [
+      "workstream:tech-debt",
+      "artifact-type:technical-rfc",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 333,
+    "title": "Architecture review: ADR-008 factory model should not be treated as canonical while still proposed",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:technical-rfc",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 332,
+    "title": "Architecture review: CLI doctor should default to current registry state",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:technical-rfc",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 331,
+    "title": "Architecture review: enforce platform-vs-network split with path ownership checks",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:technical-rfc",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 330,
+    "title": "Architecture review: add an explicit workspace manifest for apps/packages/themes",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:technical-rfc",
+      "priority:medium"
+    ],
+    "route": "operator"
+  },
+  {
+    "number": 329,
+    "title": "Bug/security audit: webhook duplicate handling can hide failed credit lot minting",
+    "labels": [
+      "workstream:delivery",
+      "artifact-type:product-spec",
+      "priority:medium"
+    ],
+    "route": "operator"
+  }
+]

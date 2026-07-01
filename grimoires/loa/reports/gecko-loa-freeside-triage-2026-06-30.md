@@ -67,6 +67,16 @@ Closed superseded PRs: **#391**, **#392**, **#394** (Node 22 → **#404**), **#3
 | Shared-root fix PRs opened | 0 | 2 (#404 platform, #406 .claude) |
 | Bug-queue issues with fix PR | 0 | 4 (#398–400→#404, #402→#406) |
 | Worker Dependency Audit (moderate+) | FAIL | **PASS** on #404 branch |
+| Auditor RFC backlog (#329–364) | 36 open | **Closed** (janitor batch) |
+| Security stack rebased onto main | stale | **#376, #388, #389, #390** |
+| #382 shadow-audit | CONFLICTING | **MERGEABLE** (rebased) |
+
+## Janitor pass (2026-06-30)
+
+- **#404:** HOLD documented in `pr-404-ci-status-2026-06-30.md` — partial green only.
+- **Rebases:** #382, #376, #388, #389, #390 force-pushed onto `origin/main`.
+- **Issues:** Batch-closed #329–364 (auditor/RFC backlog); triage-sweep `--apply --limit=40` refreshed manifest (4 bug-routed, 36 operator-routed).
+- **PR hygiene:** Janitor comments on #315, #312, #308, #307 — not closed (still relevant post-#404).
 
 ## Construct party notes
 
