@@ -55,6 +55,8 @@
     "vitest": "^4.0.17"
   },
   "overrides": {
-    "undici": "^6.23.0"
+    "undici": "^6.27.0",
+    "picomatch": "^4.0.4",
+    "ws": "^8.21.0"
   }
 }

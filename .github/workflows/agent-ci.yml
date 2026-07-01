@@ -86,6 +86,10 @@ jobs:
           # Verify Redis
           redis-cli -h 127.0.0.1 ping || (echo "Redis not available" && exit 1)
 
+      - name: Build core (adapters typecheck depends on @freeside/core/ports)
+        run: npm ci --ignore-scripts && npm run build
+        working-directory: packages/core
+
       - name: Install adapters dependencies
         run: npm ci --ignore-scripts
         working-directory: packages/adapters
