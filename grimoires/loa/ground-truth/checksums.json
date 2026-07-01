@@ -1,16 +1,22 @@
 {
-  "generated_at": "2026-03-02T06:13:18Z",
-  "git_sha": "1ae361b2926b10b267e2e4d2f3498d835ada9912",
+  "generated_at": "2026-07-01T01:24:20Z",
+  "git_sha": "e97314cdee08caecca5691fb9e3aeea9a38d29d5",
   "algorithm": "sha256",
   "files": {
-    "grimoires/loa/reality/services.md": "8fa8a4d46e62639edd75177ee4d30d92b3973f06e927d8416b66d88c835f7465",
-    "grimoires/loa/reality/database.md": "ad8104bde8ec418fbfc12fe24ef24129086e87a5e258ab90037d624d16876411",
-    "grimoires/loa/reality/triggers.md": "ab66ce26031bcfb3536f9952a15414709b97d62ab1ad334f17f9c9c3535c2f78",
-    "grimoires/loa/reality/api.md": "77b2230056eb0f6fa439898927e0c4b5b6aec307378050e23c6b95bfacdbad14",
-    "grimoires/loa/reality/structure.md": "9722c007ec9bf904ea9d8c229089c74955d6466328c25238ffaa5ec0615ff134",
-    "grimoires/loa/reality/index.md": "6f2488a460c0f51879a7d72901836fdc3bc8ff33854ce04195b0e777759f03ce",
-    "grimoires/loa/reality/commands.md": "3aee21c6b4eca22b155d5a9347490c60058a4ceda7b7446d0e717a1da94c39c9",
-    "grimoires/loa/reality/environment.md": "2ac9a025abb0fab709872a0cd466099908f9dfa6a23ddef863c890a05cae4dc7",
-    "grimoires/loa/reality/README.md": "cec7549e6f34591ddd6d0aca39a2879d90b02c459a5c327da3c3cbd1f59c795a"
+    "grimoires/loa/reality/interfaces.md": "3f7f424b329b54cfac3776500ae19b8c7ab1a6486dac2824eb49cd5dacf2ea71",
+    "grimoires/loa/reality/README.md": "9b0ebebea12655bc07cb6e15571090074cde5b18c1930b7e8ed78c976a235cc7",
+    "grimoires/loa/reality/commands.md": "37d0451b293e24314bb99561f9199434e21427e95a5b32f916f9528f606e2f41",
+    "grimoires/loa/reality/entry-points.md": "3dc6589475e50a7d2934096857491e64c5840401f0b124cf04ea5e682d93a047",
+    "grimoires/loa/reality/api-surface.md": "35c6b0ec4b126ba1fd9a09a59c490dd4e6332623a76f638a7474228ca3c0a025",
+    "grimoires/loa/reality/structure.md": "9db685c2ee85a64984a8795b619f4f591b936ccdeff4daf6cee6e8bdb8dfdc66",
+    "grimoires/loa/reality/types.md": "e9205fed9facf0eb3f33c5c03130373cc0ca3bf1e5678de7a7bc419e4ba053d0",
+    "grimoires/loa/reality/api.md": "cd29e031624ab6355b8d1e106c41be513e02d5dbcfd716fc5dcb3557461e2048",
+    "grimoires/loa/reality/hygiene-report.md": "876c20fe8a032936f006a5c92f8ebcf3a0a1dda42a708b13addada8f7742b113",
+    "grimoires/loa/reality/services.md": "ba8e3a997407d264affd025e4bbf25b1a4cdaa2a37728c6ea6825720013423fa",
+    "grimoires/loa/reality/triggers.md": "0bc9758d573e5e441d1dba960e6a02987824e96d0aec01c536fd99828be678c5",
+    "grimoires/loa/reality/architecture-overview.md": "d8e533f25c141b29d1f4f15a5783f91228b08f83e50b328ed29f4e774585e856",
+    "grimoires/loa/reality/database.md": "3ad8ac124c1601ee61e082bd326e1face3fcbbe3875b0870274b21c46846322e",
+    "grimoires/loa/reality/index.md": "19cfeaa2e6847e68b68b6bc4a49345754daf00914f3e78b4e59475f1b355132d",
+    "grimoires/loa/reality/environment.md": "4c2c224fdcc3827074d55e47a2c810141cffec7183b88b2ded6badb9536912f9"
   }
 }
