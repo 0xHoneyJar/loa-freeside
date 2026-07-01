@@ -210,7 +210,12 @@ export function httpBuildingProbesFromEnv(fetchImpl?: typeof fetch): HttpBuildin
   const sonarApiUrl = process.env.SONAR_API_URL?.trim();
   const scoreApiUrl = process.env.SCORE_API_URL?.trim();
   const worldsApiUrl = process.env.WORLDS_API_URL?.trim();
-  if (!serviceToken || !sonarApiUrl || !scoreApiUrl || !worldsApiUrl) return null;
+  if (!serviceToken || !sonarApiUrl || !scoreApiUrl || !worldsApiUrl) {
+    console.warn(
+      '[ordering-service] KITCHEN_PROBE_HTTP_ENABLED=true but missing SERVICE_TOKEN or upstream URLs — HTTP probes disabled',
+    );
+    return null;
+  }
 
   return new HttpBuildingProbes({
     sonarApiUrl,

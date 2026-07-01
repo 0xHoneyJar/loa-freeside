@@ -148,10 +148,14 @@ export class CommunityOnboardingOrchestrator {
         }
 
         const ingredientsChanged = JSON.stringify(merged) !== JSON.stringify(record.ingredients);
-        const fulfillmentChanged = fulfillment !== record.fulfillment;
+        const fulfillmentChanged =
+          fulfillment?.world_slug !== record.fulfillment?.world_slug ||
+          fulfillment?.contact_email !== record.fulfillment?.contact_email;
         if (ingredientsChanged || fulfillmentChanged) {
           record = await this.deps.store.patchRecord(orderId, { ingredients: merged, fulfillment });
         }
+
+        fireEnqueue(orderId, this.deps.enqueue);
       }
 
       const ingredients = record.ingredients ?? INITIAL_COMMUNITY_ONBOARDING_INGREDIENTS;
