@@ -77,8 +77,37 @@ export {
   type CommunityOnboardingOpsNotice,
   buildCommunityOnboardingOpsNotice,
   fireCommunityOnboardingOpsWebhook,
+  fireCommunityOnboardingIssueLinks,
   opsWebhookUrl,
 } from './order-ops-webhook.js';
+
+export {
+  type EnqueueIngredientKey,
+  type IngredientJob,
+  type OperatorAuditEntry,
+  ingredientJobIdempotencyKey,
+} from './kitchen-types.js';
+
+export {
+  type GitHubIssuePort,
+  type GitHubIssueResult,
+  RecordingGitHubIssuePort,
+  FetchGitHubIssuePort,
+  createGitHubIssuePort,
+  repoForIngredient,
+} from './github-issue-port.js';
+
+export {
+  IngredientEnqueueService,
+  kitchenEnqueueEnabled,
+  fireEnqueue,
+} from './ingredient-enqueue.js';
+
+export { PostgresOrderStore } from './store-postgres.js';
+export { createOrderStore } from './store-factory.js';
+export { KitchenTriagePorts, createKitchenTriagePorts } from './kitchen-triage-ports.js';
+export { ReProbeWorker, reprobeIntervalMs } from './reprobe-worker.js';
+export { createOrderingComposition, serviceTokenFromEnv, ctaFromEnv } from './composition.js';
 
 export { createFrontendApp } from './frontend.js';
 

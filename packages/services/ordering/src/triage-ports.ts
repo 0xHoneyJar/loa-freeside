@@ -24,9 +24,9 @@ export interface TriagePorts {
 
 /** MVP default: all probes return pending until operator advance. */
 export class StubTriagePorts implements TriagePorts {
-  sonar = { probe: async () => 'pending' as const };
-  score = { probe: async () => 'pending' as const };
-  worlds = { probe: async () => 'pending' as const };
-  discord = { probe: async () => 'optional' as const };
-  shadow = { probe: async () => 'blocked' as const };
+  sonar = { probe: async (_chainId: string, _contract: string) => 'pending' as const };
+  score = { probe: async (_chainId: string, _contract: string) => 'pending' as const };
+  worlds = { probe: async (_chainId: string, _contract: string) => 'pending' as const };
+  discord = { probe: async (_chainId: string, _contract: string) => 'optional' as const };
+  shadow = { probe: async (_chainId: string, _contract: string) => 'blocked' as const };
 }

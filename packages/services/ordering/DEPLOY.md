@@ -22,9 +22,18 @@ adapter consumes it when `ORDERING_SERVICE_URL` is set.
 | `SCORE_API_URL` | optional | capability resolver hint |
 | `WORLDS_API_URL` | optional | capability resolver hint |
 | `CTA_PRODUCT`, `CTA_CONVERSATION` | optional | CTA URLs in lifecycle metadata (defaults freeside.app) |
-| `ORDER_OPS_WEBHOOK_URL` | optional | Fire-and-forget POST when a `community-onboarding` order is placed. JSON body includes `text` for Slack incoming webhooks plus structured fields (`order_id`, `contact_email`, `contract_address`, `chain_id`, etc.). Failures are logged only; never blocks the 200. |
+| `ORDER_OPS_WEBHOOK_URL` | optional | Fire-and-forget POST when a `community-onboarding` order is placed. Second POST when triage issues are filed (`community_onboarding.ingredients_enqueued`). |
+| `DATABASE_URL` | recommended (kitchen K0) | Postgres store — orders survive restart |
+| `RUN_MIGRATIONS` | optional | Set `true` on deploy to apply `migrations/001_orders.sql` |
+| `GITHUB_TOKEN` | required for kitchen K1 | PAT with `issues:write` on kitchen repos |
+| `KITCHEN_ISSUE_REPO_SONAR` | optional | Default `0xHoneyJar/sonar-api` |
+| `KITCHEN_ISSUE_REPO_SCORE` | optional | Default `0xHoneyJar/score-api` |
+| `KITCHEN_ISSUE_REPO_WORLDS` | optional | Default `0xHoneyJar/worlds-api` |
+| `KITCHEN_ENQUEUE_ENABLED` | optional | Default `true`; set `false` to disable issue fan-out |
+| `ENABLE_REPROBE` | optional | Set `true` on http service to run reprobe loop in-process |
+| `KITCHEN_REPROBE_INTERVAL_SEC` | optional | Default `900` (15 min) |
 
-**Store:** in-memory for internal demo. Restarts drop orders. Postgres `OrderStore` is Sprint 4.
+**Store:** Postgres when `DATABASE_URL` set; otherwise in-memory (local dev only).
 
 ### Operator webhook payload (example)
 

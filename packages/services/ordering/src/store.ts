@@ -6,6 +6,7 @@ import type {
   CommunityOnboardingOutput,
 } from '@freeside/ordering-protocol';
 import { assertTransition, type OrderState } from './order-state.js';
+import type { IngredientJob, OperatorAuditEntry } from './kitchen-types.js';
 
 /**
  * Durable order-state store + transactional outbox (SDD §13 H-3 / H-4).
@@ -66,6 +67,10 @@ export interface OrderRecord {
   ingredients?: CommunityOnboardingIngredients;
   /** Preset #2 terminal output — worlds-api canonical slug. */
   fulfillment?: CommunityOnboardingOutput;
+  /** Kitchen V1 — GitHub triage issues filed per ingredient. */
+  ingredient_jobs?: IngredientJob[];
+  /** Kitchen V2 — operator advance-ingredient audit trail. */
+  operator_audit?: OperatorAuditEntry[];
   created_at_unix: number;
   updated_at_unix: number;
 }
@@ -82,6 +87,8 @@ export type OrderPatch = Partial<
     | 'refusal'
     | 'ingredients'
     | 'fulfillment'
+    | 'ingredient_jobs'
+    | 'operator_audit'
   >
 >;
 
@@ -108,6 +115,8 @@ export interface OrderStore {
   patchRecord(orderId: string, patch: OrderPatch): Promise<OrderRecord>;
   pendingOutbox(): Promise<OutboxEntry[]>;
   markPublished(seq: number): Promise<void>;
+  /** Kitchen worker — orders in a given lifecycle state. */
+  listByState(state: OrderState): Promise<OrderRecord[]>;
 }
 
 export class OrderNotFoundError extends Error {
@@ -154,6 +163,8 @@ export class InMemoryOrderStore implements OrderStore {
       state: 'placed',
       inputs_digest: order.inputs_digest,
       ingredients: order.ingredients,
+      ingredient_jobs: [],
+      operator_audit: [],
       created_at_unix: ts,
       updated_at_unix: ts,
     };
@@ -209,5 +220,9 @@ export class InMemoryOrderStore implements OrderStore {
   async markPublished(seq: number): Promise<void> {
     const entry = this.outbox.find((e) => e.seq === seq);
     if (entry) entry.published = true;
+  }
+
+  async listByState(state: OrderState): Promise<OrderRecord[]> {
+    return [...this.orders.values()].filter((r) => r.state === state);
   }
 }

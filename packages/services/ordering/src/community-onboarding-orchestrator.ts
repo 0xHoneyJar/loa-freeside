@@ -19,6 +19,9 @@ import { type CapabilityResolver, type ResolvedEndpoint, CapabilityUnresolvedErr
 import type { PrivateOpsPublisher } from './private-ops.js';
 import type { ProcessResult } from './orchestrator.js';
 import type { TriagePorts } from './triage-ports.js';
+import type { IngredientEnqueueService } from './ingredient-enqueue.js';
+import { fireEnqueue } from './ingredient-enqueue.js';
+import type { OperatorAuditEntry } from './kitchen-types.js';
 
 export interface CommunityOnboardingOrchestratorDeps {
   store: OrderStore;
@@ -26,6 +29,7 @@ export interface CommunityOnboardingOrchestratorDeps {
   triage: TriagePorts;
   now: () => number;
   opsChannel?: PrivateOpsPublisher;
+  enqueue?: IngredientEnqueueService;
 }
 
 type IngredientKey = keyof CommunityOnboardingIngredients;
@@ -123,6 +127,8 @@ export class CommunityOnboardingOrchestrator {
         });
         step++;
       }
+
+      fireEnqueue(orderId, this.deps.enqueue);
     }
 
     if (record.state === 'producing') {
@@ -177,7 +183,16 @@ export class CommunityOnboardingOrchestrator {
       fulfillment = this.buildFulfillment(parsedInputs.data, ingredients, worldSlug);
     }
 
-    const updated = await this.deps.store.patchRecord(orderId, { ingredients, fulfillment });
+    const auditEntry: OperatorAuditEntry = {
+      event: 'operator.advance',
+      ingredient,
+      status,
+      world_slug: worldSlug,
+      at_unix: Math.floor(this.deps.now() / 1000),
+    };
+    const operator_audit = [...(record.operator_audit ?? []), auditEntry];
+
+    const updated = await this.deps.store.patchRecord(orderId, { ingredients, fulfillment, operator_audit });
 
     if (updated.state === 'placed') {
       await this.process(orderId, updated);
