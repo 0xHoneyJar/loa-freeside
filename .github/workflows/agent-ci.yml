@@ -94,6 +94,10 @@ jobs:
         run: npm ci --ignore-scripts
         working-directory: packages/adapters
 
+      - name: Install sietch dependencies (root tests import themes/sietch protocol)
+        run: npm ci --ignore-scripts
+        working-directory: themes/sietch
+
       - name: Type check
         run: npm run typecheck
         working-directory: packages/adapters
