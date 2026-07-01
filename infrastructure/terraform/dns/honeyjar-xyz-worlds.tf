@@ -17,6 +17,7 @@ locals {
   # Honey Road is an ECS-hosted world.
   world_subdomains = var.enable_production_api ? toset([
     "apdao",
+    "freeside",
     "rektdrop",
     "score-api",
   ]) : toset([])
