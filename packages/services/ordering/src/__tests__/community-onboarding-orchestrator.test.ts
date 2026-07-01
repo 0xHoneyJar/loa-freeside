@@ -4,7 +4,7 @@ import { OrderOrchestrator } from '../orchestrator.js';
 import { InMemoryOrderStore, type NewOrder } from '../store.js';
 import { ConfigCapabilityResolver, type CapabilityConfig } from '../resolver.js';
 import { StubTriagePorts } from '../triage-ports.js';
-import { canFulfillCommunityOnboarding } from '../community-onboarding-orchestrator.js';
+import { canFulfillCommunityOnboarding, mergeProbedIngredients } from '../community-onboarding-orchestrator.js';
 import type { AuditPort } from '../audit-acl.js';
 import type { AuditServiceResult } from '@freeside/shadow-audit-service';
 import type { Cta } from '@freeside/shadow-audit-protocol';
@@ -132,5 +132,13 @@ describe('canFulfillCommunityOnboarding', () => {
       }),
     ).toBe(true);
     expect(canFulfillCommunityOnboarding(ingredients, undefined)).toBe(false);
+  });
+});
+
+describe('mergeProbedIngredients', () => {
+  it('does not downgrade in_progress to pending on reprobe', () => {
+    const existing = { ...INITIAL_COMMUNITY_ONBOARDING_INGREDIENTS, score: 'in_progress' as const };
+    const merged = mergeProbedIngredients(existing, { ...INITIAL_COMMUNITY_ONBOARDING_INGREDIENTS, score: 'pending' });
+    expect(merged.score).toBe('in_progress');
   });
 });

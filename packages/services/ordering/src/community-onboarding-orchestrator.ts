@@ -58,6 +58,7 @@ export function mergeProbedIngredients(
     const prev = base[key];
     if (prev === 'complete' || prev === 'optional') continue;
     if (prev === 'blocked' && next === 'pending') continue;
+    if (prev === 'in_progress' && next === 'pending') continue;
     merged[key] = next;
   }
   return merged;
