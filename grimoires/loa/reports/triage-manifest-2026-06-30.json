@@ -1,0 +1,15 @@
+{
+  "generated_at": "2026-06-30T00:00:00Z",
+  "repo": "0xHoneyJar/loa-freeside",
+  "report": "grimoires/loa/reports/gecko-loa-freeside-triage-2026-06-30.md",
+  "tile": "drift|CI-ROOT-BLOCKED|rotting-pr-stack",
+  "metrics": {
+    "open_prs": 30,
+    "npm_audit_blocked_prs": 27,
+    "duplicate_prs_closed": [391, 392, 394, 381, 310],
+    "fix_prs_open": [404, 406],
+    "bug_issues_addressed": [379, 398, 399, 400, 402]
+  },
+  "kranz_merge_order": [404, 376, 388, 390, 389],
+  "waves_completed": ["wave0-baseline", "wave1-ci-unblock", "wave2-consolidate", "wave3-bug-queue", "wave4-security-merge-staged", "wave5-housekeeping"]
+}
