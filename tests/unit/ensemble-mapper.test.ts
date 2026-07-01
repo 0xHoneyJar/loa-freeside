@@ -206,11 +206,11 @@ describe('budget multiplier', () => {
     expect(result.budgetMultiplier).toBe(3);
   });
 
-  it('sets multiplier = N for fallback (worst-case)', () => {
+  it('sets multiplier = 1 for fallback (incremental reservation)', () => {
     const result = expectValid(
       mapper.validate({ strategy: 'fallback', n: 3 }, 'pro'),
     );
-    expect(result.budgetMultiplier).toBe(3);
+    expect(result.budgetMultiplier).toBe(1);
   });
 
   it('multiplier matches enterprise maxN when clamped', () => {

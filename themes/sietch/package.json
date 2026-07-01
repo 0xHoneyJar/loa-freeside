@@ -65,7 +65,7 @@
     "cookie-parser": "^1.4.7",
     "discord.js": "^14.16.3",
     "dotenv": "^16.4.5",
-    "drizzle-orm": "^0.45.1",
+    "drizzle-orm": "^0.45.2",
     "express": "^4.21.1",
     "express-rate-limit": "^7.4.1",
     "fast-check": "^4.5.3",

@@ -40,7 +40,7 @@ jobs:
         if: steps.check-deps.outputs.has_deps == 'true'
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
 
       # Monorepo audit (apps/ and packages/)
       - name: Audit monorepo packages

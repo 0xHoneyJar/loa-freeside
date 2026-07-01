@@ -52,10 +52,11 @@ describe('AuditTrailService.verify() safety bound', () => {
     const mod = await import(
       '../../packages/adapters/storage/audit-trail-service.js'
     );
-    service = new mod.AuditTrailService(
-      { connect: mockConnect } as any,
-      mockLogger as any,
-    );
+    service = new mod.AuditTrailService({
+      pool: { connect: mockConnect } as any,
+      logger: mockLogger as any,
+      contractVersion: 'test-v1',
+    });
   });
 
   it('should apply DEFAULT_VERIFY_LIMIT when called without domainTag and without limit', async () => {

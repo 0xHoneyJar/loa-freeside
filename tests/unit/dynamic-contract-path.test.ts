@@ -29,14 +29,18 @@ vi.mock('@sinclair/typebox/value', () => ({
 describe('DynamicContract path resolution', () => {
   const originalEnv = process.env;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetModules();
     process.env = { ...originalEnv };
-    // Clear any cached singleton
     delete process.env.DYNAMIC_CONTRACT_OVERRIDE;
     delete process.env.DYNAMIC_CONTRACT_PATH;
     delete process.env.ALLOW_DYNAMIC_CONTRACT_PATH;
     delete process.env.NODE_ENV;
+
+    const mod = await import(
+      '../../themes/sietch/src/packages/core/protocol/arrakis-dynamic-contract.js'
+    );
+    mod.resetDynamicContract();
   });
 
   afterEach(() => {
@@ -79,6 +83,7 @@ describe('DynamicContract path resolution', () => {
     const mod = await import(
       '../../themes/sietch/src/packages/core/protocol/arrakis-dynamic-contract.js'
     );
+    mod.resetDynamicContract();
 
     try {
       mod.loadDynamicContract(undefined, { logger: { fatal: vi.fn() } });
@@ -86,10 +91,9 @@ describe('DynamicContract path resolution', () => {
       // May throw — we're testing path resolution
     }
 
-    if (readSpy.mock.calls.length > 0) {
-      const calledPath = readSpy.mock.calls[0][0] as string;
-      expect(calledPath).toBe('/custom/path/contract.json');
-    }
+    expect(readSpy).toHaveBeenCalled();
+    const calledPath = readSpy.mock.calls.at(-1)?.[0] as string;
+    expect(calledPath).toBe('/custom/path/contract.json');
   });
 
   it('should block DYNAMIC_CONTRACT_PATH in production', async () => {
@@ -138,6 +142,7 @@ describe('DynamicContract path resolution', () => {
     const mod = await import(
       '../../themes/sietch/src/packages/core/protocol/arrakis-dynamic-contract.js'
     );
+    mod.resetDynamicContract();
 
     try {
       mod.loadDynamicContract('/explicit/param/contract.json', { logger: { fatal: vi.fn() } });
@@ -145,10 +150,8 @@ describe('DynamicContract path resolution', () => {
       // May throw
     }
 
-    if (readSpy.mock.calls.length > 0) {
-      const calledPath = readSpy.mock.calls[0][0] as string;
-      // Explicit param should win over env var
-      expect(calledPath).toBe('/explicit/param/contract.json');
-    }
+    expect(readSpy).toHaveBeenCalled();
+    const calledPath = readSpy.mock.calls.at(-1)?.[0] as string;
+    expect(calledPath).toBe('/explicit/param/contract.json');
   });
 });

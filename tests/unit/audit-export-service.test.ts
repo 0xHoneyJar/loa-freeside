@@ -15,22 +15,22 @@ function createMockPool(rows: any[] = []) {
   const mockClient = {
     query: vi.fn().mockImplementation((sql: string, _params?: any[]) => {
       if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
-        return { rows: [] };
+        return Promise.resolve({ rows: [] });
       }
       if (sql.startsWith('DECLARE')) {
-        return { rows: [] };
+        return Promise.resolve({ rows: [] });
       }
       if (sql.startsWith('FETCH')) {
         const start = fetchCount * batchSize;
         const batch = rows.slice(start, start + batchSize);
         fetchCount++;
-        return { rows: batch };
+        return Promise.resolve({ rows: batch });
       }
       if (sql.startsWith('CLOSE')) {
-        return { rows: [] };
+        return Promise.resolve({ rows: [] });
       }
       // exportStats query
-      return {
+      return Promise.resolve({
         rows: [{
           row_count: String(rows.length),
           min_time: new Date('2026-01-01'),
@@ -38,7 +38,7 @@ function createMockPool(rows: any[] = []) {
           unique_models: rows.map((r) => r.payload?.model_id).filter(Boolean),
           unique_task_types: rows.map((r) => r.payload?.request_context?.task_type).filter(Boolean),
         }],
-      };
+      });
     }),
     release: vi.fn(),
   };
@@ -196,7 +196,8 @@ describe('AuditExportService', () => {
       const mockClient = {
         query: vi.fn()
           .mockResolvedValueOnce({ rows: [] }) // BEGIN
-          .mockRejectedValueOnce(new Error('DB connection lost')), // DECLARE fails
+          .mockRejectedValueOnce(new Error('DB connection lost')) // DECLARE fails
+          .mockResolvedValueOnce({ rows: [] }), // ROLLBACK
         release: vi.fn(),
       };
       const mockPool = {

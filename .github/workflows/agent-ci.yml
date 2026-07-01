@@ -67,6 +67,9 @@ jobs:
             -p 4222:4222 -p 8222:8222 \
             nats:2 -js -m 8222
 
+      - name: Install redis-cli
+        run: sudo apt-get update && sudo apt-get install -y redis-tools
+
       - name: Verify service connectivity
         run: |
           # Wait for NATS JetStream
@@ -83,12 +86,41 @@ jobs:
           # Verify Redis
           redis-cli -h 127.0.0.1 ping || (echo "Redis not available" && exit 1)
 
+      - name: Build core (adapters typecheck depends on @freeside/core/ports)
+        run: npm ci --ignore-scripts && npm run build
+        working-directory: packages/core
+
+      - name: Install adapters dependencies
+        run: npm ci --ignore-scripts
+        working-directory: packages/adapters
+
+      - name: Install sietch dependencies (root tests import themes/sietch protocol)
+        run: npm ci --ignore-scripts
+        working-directory: themes/sietch
+
       - name: Type check
-        run: npx tsc --noEmit
+        run: npm run typecheck
         working-directory: packages/adapters
 
       - name: Unit tests
-        run: npx vitest run tests/unit/
+        run: ./node_modules/.bin/vitest run --config vitest.agent-ci.config.ts
 
       - name: Integration tests
         run: npx vitest run tests/integration/
+        env:
+          REDIS_URL: redis://127.0.0.1:6379
+          BERACHAIN_RPC_URLS: https://rpc.test.example.com
+          BGT_ADDRESS: '0x0000000000000000000000000000000000000001'
+          TRIGGER_PROJECT_ID: test-project-id
+          TRIGGER_SECRET_KEY: test-secret-key
+          DISCORD_BOT_TOKEN: test-bot-token
+          DISCORD_GUILD_ID: test-guild-id
+          DISCORD_CHANNEL_THE_DOOR: test-channel-the-door
+          DISCORD_CHANNEL_CENSUS: test-channel-census
+          DISCORD_ROLE_NAIB: test-role-naib
+          DISCORD_ROLE_FEDAYKIN: test-role-fedaykin
+          ADMIN_API_KEYS: 'test-key:test-admin'
+          API_KEY_PEPPER: test-pepper-value-for-unit-tests-32chars!
+          RATE_LIMIT_SALT: test-rate-limit-salt-value
+          NODE_ENV: test
+          LOG_LEVEL: error
