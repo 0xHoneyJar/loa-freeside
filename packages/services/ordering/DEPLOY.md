@@ -18,9 +18,9 @@ adapter consumes it when `ORDERING_SERVICE_URL` is set.
 |-----|----------|------|
 | `PORT` | Railway sets | bind port (default 8090 local) |
 | `SERVICE_TOKEN` or `ORDERING_SERVICE_TOKEN` | recommended | Bearer for `advance-ingredient`; dashboard sends same value as `ORDERING_SERVICE_TOKEN` on POST/GET |
-| `SONAR_API_URL` | optional | kitchen-api base URL when K3 HTTP probes enabled (e.g. `https://kitchen-api-production.up.railway.app` or belt-gateway with `/v1/collections` route) |
-| `SCORE_API_URL` | optional | capability resolver hint |
-| `WORLDS_API_URL` | optional | capability resolver hint |
+| `SONAR_API_URL` | optional | kitchen-api base URL when K3 HTTP probes enabled (e.g. `https://kitchen-api-production-1937.up.railway.app`) |
+| `SCORE_API_URL` | optional | score-api base URL for community lookup/register |
+| `WORLDS_API_URL` | optional | worlds-api base URL for manifest lookup/create |
 | `CTA_PRODUCT`, `CTA_CONVERSATION` | optional | CTA URLs in lifecycle metadata (defaults freeside.app) |
 | `ORDER_OPS_WEBHOOK_URL` | optional | Fire-and-forget POST when a `community-onboarding` order is placed. Second POST when triage issues are filed (`community_onboarding.ingredients_enqueued`). |
 | `DATABASE_URL` | recommended (kitchen K0) | Postgres store — orders survive restart |
@@ -30,6 +30,8 @@ adapter consumes it when `ORDERING_SERVICE_URL` is set.
 | `KITCHEN_ISSUE_REPO_SCORE` | optional | Default `0xHoneyJar/score-api` |
 | `KITCHEN_ISSUE_REPO_WORLDS` | optional | Default `0xHoneyJar/worlds-api` |
 | `KITCHEN_ENQUEUE_ENABLED` | optional | Default `true`; set `false` to disable issue fan-out |
+| `KITCHEN_PROBE_HTTP_ENABLED` | optional | Set `true` to probe sonar/score/worlds via HTTP instead of stub pending |
+| `KITCHEN_HTTP_ENQUEUE_ENABLED` | optional | Default enabled when `KITCHEN_PROBE_HTTP_ENABLED=true`; set `false` to probe-only (no HTTP register/manifest/ingest) |
 | `ENABLE_REPROBE` | optional | Set `true` on http service to run reprobe loop in-process |
 | `KITCHEN_REPROBE_INTERVAL_SEC` | optional | Default `900` (15 min) |
 

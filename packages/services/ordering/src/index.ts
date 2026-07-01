@@ -112,7 +112,6 @@ export {
   httpBuildingProbesFromEnv,
   type HttpBuildingProbesConfig,
   type HttpEnqueuePayload,
-  type WorldsProbeDetail,
 } from './http-building-probes.js';
 export { normalizeContractAddress, normalizeChainId } from './contract-address.js';
 export { ReProbeWorker, reprobeIntervalMs } from './reprobe-worker.js';

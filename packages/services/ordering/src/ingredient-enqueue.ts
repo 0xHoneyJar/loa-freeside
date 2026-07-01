@@ -63,7 +63,7 @@ export class IngredientEnqueueService {
       orderId,
       chainId: inputs.chain_id,
       contractAddress: inputs.contract_address,
-      displayName: inputs.community_name,
+      displayName: inputs.community_name ?? inputs.contract_address,
       contactEmail: inputs.contact_email,
       source: inputs.source,
     };

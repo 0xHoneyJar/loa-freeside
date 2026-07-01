@@ -1,11 +1,9 @@
 import type { IngredientStatus } from '@freeside/ordering-protocol';
 
 import { normalizeChainId, normalizeContractAddress } from './contract-address.js';
+import type { WorldsProbeDetail } from './triage-ports.js';
 
-export interface WorldsProbeDetail {
-  status: IngredientStatus;
-  world_slug?: string;
-}
+export type { WorldsProbeDetail };
 
 export interface HttpBuildingProbesConfig {
   sonarApiUrl: string;
@@ -24,7 +22,7 @@ export interface HttpEnqueuePayload {
   source: string;
 }
 
-function authHeaders(token: string): HeadersInit {
+function authHeaders(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}` };
 }
 
