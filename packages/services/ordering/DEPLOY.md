@@ -18,7 +18,7 @@ adapter consumes it when `ORDERING_SERVICE_URL` is set.
 |-----|----------|------|
 | `PORT` | Railway sets | bind port (default 8090 local) |
 | `SERVICE_TOKEN` or `ORDERING_SERVICE_TOKEN` | recommended | Bearer for `advance-ingredient`; dashboard sends same value as `ORDERING_SERVICE_TOKEN` on POST/GET |
-| `SONAR_API_URL` | optional | capability resolver hint (stub triage ignores live calls in MVP) |
+| `SONAR_API_URL` | optional | kitchen-api base URL when K3 HTTP probes enabled (e.g. `https://kitchen-api-production.up.railway.app` or belt-gateway with `/v1/collections` route) |
 | `SCORE_API_URL` | optional | capability resolver hint |
 | `WORLDS_API_URL` | optional | capability resolver hint |
 | `CTA_PRODUCT`, `CTA_CONVERSATION` | optional | CTA URLs in lifecycle metadata (defaults freeside.app) |

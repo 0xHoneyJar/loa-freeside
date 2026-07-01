@@ -5,10 +5,10 @@ export type EnqueueIngredientKey = z.infer<typeof EnqueueIngredientKey>;
 
 export const IngredientJob = z.object({
   ingredient: EnqueueIngredientKey,
-  kind: z.literal('github_issue'),
-  external_ref: z.string().url(),
-  external_id: z.string(),
-  repo: z.string(),
+  kind: z.enum(['github_issue', 'http_enqueue']),
+  external_ref: z.string(),
+  external_id: z.string().optional(),
+  repo: z.string().optional(),
   idempotency_key: z.string(),
   enqueued_at_unix: z.number().int(),
 });

@@ -1,17 +1,34 @@
 import { StubTriagePorts, type TriagePorts } from './triage-ports.js';
+import { HttpBuildingProbes, httpBuildingProbesFromEnv } from './http-building-probes.js';
 
-/** Delegates to stub probes until KITCHEN_PROBE_HTTP_ENABLED wires building HTTP clients. */
+/** Delegates to HTTP building probes when KITCHEN_PROBE_HTTP_ENABLED; else stub fallback (SDD §3.4). */
 export class KitchenTriagePorts implements TriagePorts {
-  private readonly fallback = new StubTriagePorts();
+  private readonly fallback: TriagePorts;
+  private readonly http: HttpBuildingProbes | null;
+
+  constructor(http: HttpBuildingProbes | null, fallback: TriagePorts = new StubTriagePorts()) {
+    this.http = http;
+    this.fallback = fallback;
+  }
 
   sonar = {
-    probe: (chainId: string, contract: string) => this.fallback.sonar.probe(chainId, contract),
+    probe: (chainId: string, contract: string) =>
+      this.http ? this.http.probeSonar(chainId, contract) : this.fallback.sonar.probe(chainId, contract),
   };
   score = {
-    probe: (chainId: string, contract: string) => this.fallback.score.probe(chainId, contract),
+    probe: (chainId: string, contract: string) =>
+      this.http ? this.http.probeScore(chainId, contract) : this.fallback.score.probe(chainId, contract),
   };
   worlds = {
-    probe: (chainId: string, contract: string) => this.fallback.worlds.probe(chainId, contract),
+    probe: (chainId: string, contract: string) =>
+      this.http
+        ? this.http.probeWorlds(chainId, contract).then((r) => r.status)
+        : this.fallback.worlds.probe(chainId, contract),
+    probeDetail: (chainId: string, contract: string) =>
+      this.http
+        ? this.http.probeWorlds(chainId, contract)
+        : this.fallback.worlds.probeDetail?.(chainId, contract) ??
+          this.fallback.worlds.probe(chainId, contract).then((status) => ({ status })),
   };
   discord = {
     probe: (chainId: string, contract: string) =>
@@ -20,12 +37,13 @@ export class KitchenTriagePorts implements TriagePorts {
   shadow = {
     probe: (chainId: string, contract: string) => this.fallback.shadow.probe(chainId, contract),
   };
+
+  get httpProbes(): HttpBuildingProbes | null {
+    return this.http;
+  }
 }
 
 export function createKitchenTriagePorts(): TriagePorts {
-  if (process.env.KITCHEN_PROBE_HTTP_ENABLED === 'true') {
-    // K3: swap HttpBuildingProbes when upstream APIs ship.
-    return new KitchenTriagePorts();
-  }
-  return new KitchenTriagePorts();
+  const http = httpBuildingProbesFromEnv();
+  return new KitchenTriagePorts(http);
 }
