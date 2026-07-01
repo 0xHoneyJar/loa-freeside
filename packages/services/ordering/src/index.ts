@@ -69,7 +69,7 @@ export {
   canFulfillCommunityOnboarding,
 } from './community-onboarding-orchestrator.js';
 
-export { type TriagePorts, StubTriagePorts } from './triage-ports.js';
+export { type TriagePorts, StubTriagePorts, type WorldsProbeDetail } from './triage-ports.js';
 
 export { type IntakeDeps, createIntakeApp } from './intake.js';
 
@@ -100,12 +100,20 @@ export {
 export {
   IngredientEnqueueService,
   kitchenEnqueueEnabled,
+  kitchenHttpEnqueueEnabled,
   fireEnqueue,
 } from './ingredient-enqueue.js';
 
 export { PostgresOrderStore } from './store-postgres.js';
 export { createOrderStore } from './store-factory.js';
 export { KitchenTriagePorts, createKitchenTriagePorts } from './kitchen-triage-ports.js';
+export {
+  HttpBuildingProbes,
+  httpBuildingProbesFromEnv,
+  type HttpBuildingProbesConfig,
+  type HttpEnqueuePayload,
+} from './http-building-probes.js';
+export { normalizeContractAddress, normalizeChainId } from './contract-address.js';
 export { ReProbeWorker, reprobeIntervalMs } from './reprobe-worker.js';
 export { createOrderingComposition, serviceTokenFromEnv, ctaFromEnv } from './composition.js';
 

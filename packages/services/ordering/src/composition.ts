@@ -10,7 +10,7 @@ import type { AuditPort } from './audit-acl.js';
 import type { OrderStore } from './store.js';
 import { createGitHubIssuePort } from './github-issue-port.js';
 import { IngredientEnqueueService } from './ingredient-enqueue.js';
-import { createKitchenTriagePorts } from './kitchen-triage-ports.js';
+import { createKitchenTriagePorts, KitchenTriagePorts } from './kitchen-triage-ports.js';
 import { createOrderStore } from './store-factory.js';
 
 class NoopAudit implements AuditPort {
@@ -51,8 +51,9 @@ export interface OrderingComposition {
 export async function createOrderingComposition(): Promise<OrderingComposition> {
   const store = await createOrderStore();
   const triage = createKitchenTriagePorts();
+  const httpProbes = triage instanceof KitchenTriagePorts ? triage.httpProbes : null;
   const github = createGitHubIssuePort();
-  const enqueue = github ? new IngredientEnqueueService(store, github) : undefined;
+  const enqueue = github || httpProbes ? new IngredientEnqueueService(store, github, httpProbes) : undefined;
 
   const orchestrator = new OrderOrchestrator({
     store,

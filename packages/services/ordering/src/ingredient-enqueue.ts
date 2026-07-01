@@ -7,6 +7,7 @@ import {
   repoForIngredient,
   type GitHubIssuePort,
 } from './github-issue-port.js';
+import type { HttpBuildingProbes, HttpEnqueuePayload } from './http-building-probes.js';
 import {
   type EnqueueIngredientKey,
   type IngredientJob,
@@ -23,15 +24,23 @@ export function kitchenEnqueueEnabled(): boolean {
   return true;
 }
 
+export function kitchenHttpEnqueueEnabled(): boolean {
+  if (process.env.KITCHEN_PROBE_HTTP_ENABLED !== 'true') return false;
+  const raw = process.env.KITCHEN_HTTP_ENQUEUE_ENABLED?.trim();
+  if (raw === 'false') return false;
+  return true;
+}
+
 export class IngredientEnqueueService {
   constructor(
     private readonly store: OrderStore,
     private readonly github: GitHubIssuePort | null,
+    private readonly httpProbes: HttpBuildingProbes | null = null,
     private readonly now: () => number = () => Math.floor(Date.now() / 1000),
   ) {}
 
   async enqueueMissing(orderId: string): Promise<void> {
-    if (!kitchenEnqueueEnabled() || !this.github) return;
+    if (!kitchenEnqueueEnabled()) return;
 
     const record = await this.store.get(orderId);
     if (!record || record.product !== 'community-onboarding') return;
@@ -46,12 +55,42 @@ export class IngredientEnqueueService {
 
     let jobs = [...existingJobs];
     let dirty = false;
-    const newJobs: IngredientJob[] = [];
+    const newGithubJobs: IngredientJob[] = [];
     const nextIngredients = { ...ingredients };
+    const httpEnabled = kitchenHttpEnqueueEnabled() && this.httpProbes !== null;
+
+    const httpPayload: HttpEnqueuePayload = {
+      orderId,
+      chainId: inputs.chain_id,
+      contractAddress: inputs.contract_address,
+      displayName: inputs.community_name ?? inputs.contract_address,
+      contactEmail: inputs.contact_email,
+      source: inputs.source,
+    };
 
     for (const ingredient of ENQUEUE_INGREDIENTS) {
       if (ingredients[ingredient] !== 'pending') continue;
       if (jobsByIngredient.has(ingredient)) continue;
+
+      if (httpEnabled && this.httpProbes) {
+        const ok = await this.enqueueViaHttp(ingredient, httpPayload);
+        if (ok) {
+          const job: IngredientJob = {
+            ingredient,
+            kind: 'http_enqueue',
+            external_ref: this.httpRefFor(ingredient, httpPayload),
+            idempotency_key: ingredientJobIdempotencyKey(orderId, ingredient),
+            enqueued_at_unix: this.now(),
+          };
+          jobs = [...jobs, job];
+          jobsByIngredient.set(ingredient, job);
+          nextIngredients[ingredient] = 'in_progress';
+          dirty = true;
+          continue;
+        }
+      }
+
+      if (!this.github) continue;
 
       const repo = repoForIngredient(ingredient);
       if (!repo) continue;
@@ -86,7 +125,7 @@ export class IngredientEnqueueService {
           enqueued_at_unix: this.now(),
         };
         jobs = [...jobs, job];
-        newJobs.push(job);
+        newGithubJobs.push(job);
         jobsByIngredient.set(ingredient, job);
         nextIngredients[ingredient] = 'in_progress';
         dirty = true;
@@ -104,13 +143,46 @@ export class IngredientEnqueueService {
         ingredient_jobs: jobs,
         ingredients: nextIngredients,
       });
-      fireCommunityOnboardingIssueLinks({
-        order_id: orderId,
-        contact_email: inputs.contact_email,
-        contract_address: inputs.contract_address,
-        chain_id: inputs.chain_id,
-        jobs: newJobs,
-      });
+      if (newGithubJobs.length > 0) {
+        fireCommunityOnboardingIssueLinks({
+          order_id: orderId,
+          contact_email: inputs.contact_email,
+          contract_address: inputs.contract_address,
+          chain_id: inputs.chain_id,
+          jobs: newGithubJobs,
+        });
+      }
+    }
+  }
+
+  private async enqueueViaHttp(ingredient: EnqueueIngredientKey, payload: HttpEnqueuePayload): Promise<boolean> {
+    if (!this.httpProbes) return false;
+    switch (ingredient) {
+      case 'sonar':
+        return this.httpProbes.enqueueSonar(payload);
+      case 'score':
+        return this.httpProbes.enqueueScore(payload);
+      case 'worlds_manifest':
+        return this.httpProbes.enqueueWorlds(payload);
+      default: {
+        const _exhaustive: never = ingredient;
+        return _exhaustive;
+      }
+    }
+  }
+
+  private httpRefFor(ingredient: EnqueueIngredientKey, payload: HttpEnqueuePayload): string {
+    switch (ingredient) {
+      case 'sonar':
+        return `sonar:ingest:${payload.chainId}:${payload.contractAddress.toLowerCase()}`;
+      case 'score':
+        return `score:register:${payload.chainId}:${payload.contractAddress.toLowerCase()}`;
+      case 'worlds_manifest':
+        return `worlds:manifest:${payload.chainId}:${payload.contractAddress.toLowerCase()}`;
+      default: {
+        const _exhaustive: never = ingredient;
+        return _exhaustive;
+      }
     }
   }
 }

@@ -58,6 +58,7 @@ export function mergeProbedIngredients(
     const prev = base[key];
     if (prev === 'complete' || prev === 'optional') continue;
     if (prev === 'blocked' && next === 'pending') continue;
+    if (prev === 'in_progress' && next === 'pending') continue;
     merged[key] = next;
   }
   return merged;
@@ -96,7 +97,11 @@ export class CommunityOnboardingOrchestrator {
       }
 
       const probed = await this.probeIngredients(inputs.chain_id, inputs.contract_address);
-      const ingredients = mergeProbedIngredients(record.ingredients, probed);
+      const ingredients = mergeProbedIngredients(record.ingredients, probed.ingredients);
+      let fulfillment = record.fulfillment;
+      if (probed.world_slug) {
+        fulfillment = this.buildFulfillment(inputs, ingredients, probed.world_slug);
+      }
 
       const resolved_buildings: ResolvedBuilding[] = resolved.map((r) => ({
         capability: r.capability,
@@ -106,7 +111,7 @@ export class CommunityOnboardingOrchestrator {
       }));
       const routing: OrderRouting = { order_id: orderId, recipe_id: preset.id, resolved_buildings };
       const claim = await this.deps.store.transition(orderId, 'placed', 'routing', {
-        patch: { recipe_id: preset.id, resolved_buildings, ingredients },
+        patch: { recipe_id: preset.id, resolved_buildings, ingredients, ...(fulfillment ? { fulfillment } : {}) },
         event: { subject: ORDER_LIFECYCLE_SUBJECTS.routing, payload: routing },
       });
       record = await this.reread(orderId, claim.ok ? claim.record : undefined);
@@ -132,6 +137,28 @@ export class CommunityOnboardingOrchestrator {
     }
 
     if (record.state === 'producing') {
+      const parsedInputs = CommunityOnboardingInputs.safeParse(record.inputs);
+      if (parsedInputs.success) {
+        const inputs = parsedInputs.data;
+        const probed = await this.probeIngredients(inputs.chain_id, inputs.contract_address);
+        const merged = mergeProbedIngredients(record.ingredients, probed.ingredients);
+
+        let fulfillment = record.fulfillment;
+        if (probed.world_slug) {
+          fulfillment = this.buildFulfillment(inputs, merged, probed.world_slug);
+        }
+
+        const ingredientsChanged = JSON.stringify(merged) !== JSON.stringify(record.ingredients);
+        const fulfillmentChanged =
+          fulfillment?.world_slug !== record.fulfillment?.world_slug ||
+          fulfillment?.contact_email !== record.fulfillment?.contact_email;
+        if (ingredientsChanged || fulfillmentChanged) {
+          record = await this.deps.store.patchRecord(orderId, { ingredients: merged, fulfillment });
+        }
+
+        fireEnqueue(orderId, this.deps.enqueue);
+      }
+
       const ingredients = record.ingredients ?? INITIAL_COMMUNITY_ONBOARDING_INGREDIENTS;
       if (canFulfillCommunityOnboarding(ingredients, record.fulfillment) && record.fulfillment) {
         const fulfilled: OrderFulfilled = {
@@ -221,15 +248,31 @@ export class CommunityOnboardingOrchestrator {
     };
   }
 
-  private async probeIngredients(chainId: string, contract: string): Promise<CommunityOnboardingIngredients> {
-    const [sonar, score, worlds_manifest, discord_observer, shadow_preview] = await Promise.all([
+  private async probeIngredients(
+    chainId: string,
+    contract: string,
+  ): Promise<{ ingredients: CommunityOnboardingIngredients; world_slug?: string }> {
+    const worldsDetail = this.deps.triage.worlds.probeDetail
+      ? await this.deps.triage.worlds.probeDetail(chainId, contract)
+      : { status: await this.deps.triage.worlds.probe(chainId, contract) };
+
+    const [sonar, score, discord_observer, shadow_preview] = await Promise.all([
       this.deps.triage.sonar.probe(chainId, contract),
       this.deps.triage.score.probe(chainId, contract),
-      this.deps.triage.worlds.probe(chainId, contract),
       this.deps.triage.discord?.probe(chainId, contract) ?? Promise.resolve('optional' as const),
       this.deps.triage.shadow.probe(chainId, contract),
     ]);
-    return { sonar, score, worlds_manifest, discord_observer, shadow_preview };
+
+    return {
+      ingredients: {
+        sonar,
+        score,
+        worlds_manifest: worldsDetail.status,
+        discord_observer,
+        shadow_preview,
+      },
+      world_slug: worldsDetail.world_slug,
+    };
   }
 
   private async settleFailed(
