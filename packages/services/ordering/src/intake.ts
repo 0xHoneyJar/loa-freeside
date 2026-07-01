@@ -12,6 +12,10 @@ import type { OrderStore } from './store.js';
 import { digestOf } from './digest.js';
 import type { OrderOrchestrator } from './orchestrator.js';
 import { IngredientStatus } from '@freeside/ordering-protocol';
+import {
+  buildCommunityOnboardingOpsNotice,
+  fireCommunityOnboardingOpsWebhook,
+} from './order-ops-webhook.js';
 
 /**
  * order-intake (SDD §5) — the internal HTTP edge.
@@ -103,6 +107,17 @@ export function createIntakeApp(deps: IntakeDeps): Hono {
     );
 
     deps.onPlaced?.(order_id);
+
+    if (body.data.product === 'community-onboarding') {
+      const notice = buildCommunityOnboardingOpsNotice({
+        order_id,
+        placed_by: body.data.placed_by,
+        inputs,
+        placed_at_unix,
+      });
+      if (notice) fireCommunityOnboardingOpsWebhook(notice);
+    }
+
     return c.json({ order_id }, 200);
   });
 

@@ -22,8 +22,27 @@ adapter consumes it when `ORDERING_SERVICE_URL` is set.
 | `SCORE_API_URL` | optional | capability resolver hint |
 | `WORLDS_API_URL` | optional | capability resolver hint |
 | `CTA_PRODUCT`, `CTA_CONVERSATION` | optional | CTA URLs in lifecycle metadata (defaults freeside.app) |
+| `ORDER_OPS_WEBHOOK_URL` | optional | Fire-and-forget POST when a `community-onboarding` order is placed. JSON body includes `text` for Slack incoming webhooks plus structured fields (`order_id`, `contact_email`, `contract_address`, `chain_id`, etc.). Failures are logged only; never blocks the 200. |
 
 **Store:** in-memory for internal demo. Restarts drop orders. Postgres `OrderStore` is Sprint 4.
+
+### Operator webhook payload (example)
+
+```json
+{
+  "event": "community_onboarding.placed",
+  "order_id": "541da59c-0a31-4830-9dd3-aa9a16f30317",
+  "placed_by": "dashboard_onboarding",
+  "contact_email": "cm@team.example",
+  "contract_address": "0xcccccccccccccccccccccccccccccccccccccccc",
+  "chain_id": "1",
+  "community_name": "Internal Demo",
+  "placed_at": "2026-07-01T00:20:23.000Z",
+  "text": "New community-onboarding order 541da59c-...: cm@team.example (Internal Demo) · 0xcccc... on chain 1"
+}
+```
+
+Set `ORDER_OPS_WEBHOOK_URL` on Railway to a Slack incoming webhook URL or any JSON POST endpoint.
 
 ## Railway
 

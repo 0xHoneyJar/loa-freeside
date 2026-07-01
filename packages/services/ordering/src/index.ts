@@ -73,6 +73,13 @@ export { type TriagePorts, StubTriagePorts } from './triage-ports.js';
 
 export { type IntakeDeps, createIntakeApp } from './intake.js';
 
+export {
+  type CommunityOnboardingOpsNotice,
+  buildCommunityOnboardingOpsNotice,
+  fireCommunityOnboardingOpsWebhook,
+  opsWebhookUrl,
+} from './order-ops-webhook.js';
+
 export { createFrontendApp } from './frontend.js';
 
 export {
