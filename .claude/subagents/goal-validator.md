@@ -1,7 +1,7 @@
 ---
 name: goal-validator
-version: 1.0.0
-description: Verify PRD goals are achieved through implementation
+version: 1.1.0
+description: Verify PRD goals are achieved by re-deriving observable state (never worker self-report)
 context: fork
 agent: Explore
 triggers:
@@ -26,15 +26,27 @@ For final sprint, verify all goals are achieved end-to-end.
 
 1. Load PRD from `grimoires/loa/prd.md`
 2. Extract goals with IDs (G-1, G-2, etc.)
-3. Load sprint plan from `grimoires/loa/sprint.md`
-4. Load current sprint's implementation report
-5. For each goal:
-   a. Find contributing tasks from Appendix C
-   b. Check task completion status
-   c. Verify acceptance criteria met
-   d. Check for integration gaps
-6. Generate validation report
-7. Return verdict
+3. Load sprint plan from `grimoires/loa/sprint.md` — for the goal→criterion MAPPING only,
+   never for completion state (a checked box is a worker claim, not evidence)
+4. For each goal:
+   a. Find contributing tasks + acceptance criteria from Appendix C
+   b. CRITERION-ADEQUACY CHECK: the criteria are WORKER-AUTHORED — verify they jointly
+      entail the PRD goal's own Measurement/Validation column (extracted in step 2).
+      If the sprint's criteria are narrower or reworded relative to the PRD metric,
+      mark the goal AT_RISK with a criterion-drift note; re-deriving a favorably-worded
+      predicate would just reproduce the self-report blind spot one level up
+   c. Re-derive each acceptance criterion from observable state (§Acceptance-Criterion Re-Derivation)
+   d. Trace integration producer→consumer in the actual tree (§Integration Gap Detection — primary evidence)
+5. Generate validation report with per-criterion evidence (command run + exit code, or tree object inspected)
+6. Return verdict
+
+> **The evidence rule (v1.1.0, bead arrakis-goal-validator-self-report-284m):** this
+> validator's verdict rests ONLY on state it re-derived itself, this invocation. It never
+> treats worker-authored status — sprint checkmarks, review reports, NOTES status
+> sections — as achievement evidence. Those are read at most as a fork-check
+> (§Fork Detection). The gate verifies claims; it does not repeat them.
+> Design provenance: `2026-06-24-fable-challenge-goal-truth-amped.md` (L1) + the
+> reference oracle (goal-truth/oracle.mjs, 0% FP/FN over the calibration corpus).
 
 ## Goal Extraction
 
@@ -53,9 +65,9 @@ If PRD uses numbered list format without IDs:
 - Auto-assign G-1, G-2, G-3 based on order
 - Log: `[INFO] Auto-assigned goal IDs: G-1, G-2, G-3`
 
-## Task Completion Check
+## Acceptance-Criterion Re-Derivation
 
-For each goal, find contributing tasks from sprint.md Appendix C:
+For each goal, find contributing tasks + acceptance criteria from sprint.md Appendix C:
 
 ```
 | Goal ID | Goal Description | Contributing Tasks | Validation Task |
@@ -63,18 +75,32 @@ For each goal, find contributing tasks from sprint.md Appendix C:
 | G-1 | ... | Sprint 1: Task 1.1, Task 1.2 | Sprint 3: Task 3.E2E |
 ```
 
-Check completion by:
-1. Reading sprint.md task checkboxes
-2. Reading implementation report (reviewer.md)
-3. Verifying acceptance criteria are checked
+Then RE-DERIVE each criterion's truth from observable state. Pick the decidable check
+that matches the criterion's shape (mirrors the reference oracle's clause kinds):
+
+| Criterion shape | Re-derivation (what YOU run/inspect this invocation) |
+|---|---|
+| code / endpoint / column / file exists | `git cat-file -p HEAD:<path>` or grep the actual tree — never a task checkmark |
+| behavior ("returns 401", "test passes") | run the named test/validator yourself; the EXIT CODE is the evidence |
+| artifact published / deployed | read the forge/registry state directly (server-recorded SHA, registry entry) |
+| integration ("A feeds B") | trace producer→consumer in the tree (§Integration Gap Detection) — this is PRIMARY evidence, not an elevation-only afterthought |
+| non-decidable ("feels right", "is safe") | do NOT rubber-stamp: mark the criterion NON-DECIDABLE and the goal AT_RISK with a note to route it to adversarial review |
+
+Record per criterion: the exact command/object inspected, and what came back. A criterion
+with no re-derivable evidence is UNVERIFIED, not achieved.
+
+> **Agent-type note:** this subagent runs as `agent: Explore` (fresh context — no worker
+> blind-spot; no Write/Edit tools). Evidence commands (`git cat-file`, test runs) execute
+> through its Bash tool. The cache write is OPTIONAL: when the agent cannot write, skip
+> caching entirely — never trade soundness for the cache.
 
 ## Verdict Determination
 
 | Verdict | Criteria |
 |---------|----------|
-| **GOAL_ACHIEVED** | All contributing tasks complete, acceptance criteria met, E2E validated (if applicable) |
-| **GOAL_AT_RISK** | Tasks complete but: validation uncertain, missing E2E task, or integration gaps detected |
-| **GOAL_BLOCKED** | Contributing tasks incomplete OR explicit blocker documented in NOTES.md |
+| **GOAL_ACHIEVED** | EVERY acceptance criterion's re-derived predicate HELD when this validator ran it, this invocation — with recorded evidence per criterion |
+| **GOAL_AT_RISK** | Re-derivation uncertain, criterion NON-DECIDABLE, missing E2E validation, or integration gaps detected in the tree |
+| **GOAL_BLOCKED** | A re-derived predicate FAILED (code/behavior absent from observable state) OR a blocker independently confirmed in the tree |
 
 ### Overall Verdict Logic
 
@@ -148,14 +174,14 @@ Write report to `grimoires/loa/a2a/subagent-reports/goal-validation-{date}.md`:
 #### G-1: {Goal Description}
 
 **Status:** ACHIEVED
-**Contributing Tasks:**
-- [x] Sprint 1 Task 1.1 - Complete
-- [x] Sprint 1 Task 1.2 - Complete
-- [x] Sprint 2 Task 2.1 - Complete
+**Criteria re-derived (evidence per criterion):**
+- crit 1.1 — `git cat-file -p HEAD:src/api/timing.ts` → handler present in tree
+- crit 1.2 — `pnpm vitest run tests/timing.spec.ts` → exit 0 (14 passed), run this invocation
+- crit 2.1 — producer→consumer traced: timing_columns written by ingestor, read by calculate_score()
 
 **E2E Validation:**
-- Verified via acceptance criteria check
-- Integration confirmed: data flows from storage to API
+- E2E test re-run by validator → exit 0
+- Integration confirmed in the tree: data flows from storage to API
 
 ---
 
@@ -187,7 +213,7 @@ Write report to `grimoires/loa/a2a/subagent-reports/goal-validation-{date}.md`:
 
 ---
 
-*Generated by goal-validator v1.0.0*
+*Generated by goal-validator v1.1.0 (re-derivation, not self-report)*
 ```
 
 ## Example Invocations
@@ -251,38 +277,54 @@ fi
 
 ## Semantic Cache Integration
 
-Cache goal validation results to avoid redundant computation across sessions:
+Cache goal validation results to avoid redundant computation across sessions.
 
-### Cache Key Generation
+> **v1.1.0 — the cache key MUST be content-addressed, never mtime/path-keyed.** An
+> mtime-keyed verifier cache is a soundness + DoS surface (touch a file → bust the cache
+> or serve a stale-green verdict). The key binds to WHAT WAS JUDGED: the worktree's tree
+> SHA + the goal definitions + this validator's own content. If any input can't be
+> content-addressed, SKIP the cache for that run — a fast wrong verdict is worse than a
+> slow right one.
+>
+> **Cacheability rule:** ONLY verdicts whose every criterion was re-derived from the
+> git tree itself (tree greps, `git cat-file`) are cacheable. If ANY criterion's
+> evidence came from process execution (test runs) or external state (registry /
+> deploy / forge reads), set `cache_key=""` — the tree SHA does not witness those
+> inputs, so a cached ACHIEVED would survive an external change it never saw.
+
+### Cache Key Generation (content-addressed)
 
 ```bash
-# Generate cache key from validation parameters
-cache_key=$(.claude/scripts/cache-manager.sh generate-key \
-  --paths "grimoires/loa/prd.md,grimoires/loa/sprint.md" \
-  --query "goal-validation" \
-  --operation "goal-validator")
+# Key = tree being judged + goal definitions + the judge itself
+tree_sha=$(git rev-parse "HEAD^{tree}")
+goals_sha=$(git hash-object grimoires/loa/prd.md grimoires/loa/sprint.md | git hash-object --stdin)
+judge_sha=$(git hash-object .claude/subagents/goal-validator.md)
+cache_key="goalv-${tree_sha:0:16}-$(printf '%s%s' "$goals_sha" "$judge_sha" | shasum -a 256 | cut -c1-16)"
+# Dirty worktree? The tree SHA doesn't cover uncommitted changes — skip the cache:
+[[ -n "$(git status --porcelain)" ]] && cache_key=""
 ```
 
 ### Cache Check Before Validation
 
 ```bash
-# Check cache first (mtime-based invalidation handles freshness)
-if cached=$(.claude/scripts/cache-manager.sh get --key "$cache_key"); then
-  # Cache hit - use cached verdict if files unchanged
+if [[ -n "$cache_key" ]] && cached=$(.claude/scripts/cache-manager.sh get --key "$cache_key"); then
+  # Content-addressed hit: identical tree + goals + judge ⇒ identical verdict
   echo "Using cached goal validation: $cached"
 else
-  # Cache miss - perform full validation
+  # Cache miss or uncacheable (dirty tree) - perform full validation
   # ... run validation workflow ...
 
-  # Condense and cache result
-  condensed=$(.claude/scripts/condense.sh condense \
-    --strategy structured_verdict \
-    --input <(echo "$validation_result"))
+  # Condense and cache result (only when content-addressable)
+  if [[ -n "$cache_key" ]]; then
+    condensed=$(.claude/scripts/condense.sh condense \
+      --strategy structured_verdict \
+      --input <(echo "$validation_result"))
 
-  .claude/scripts/cache-manager.sh set \
-    --key "$cache_key" \
-    --condensed "$condensed" \
-    --sources "grimoires/loa/prd.md,grimoires/loa/sprint.md"
+    .claude/scripts/cache-manager.sh set \
+      --key "$cache_key" \
+      --condensed "$condensed" \
+      --sources "grimoires/loa/prd.md,grimoires/loa/sprint.md"
+  fi
 fi
 ```
 
@@ -357,7 +399,13 @@ Goal validation follows the Lossless Ledger truth hierarchy:
 
 ### Fork Detection
 
-If NOTES.md Goal Status conflicts with validation results:
-1. **Validation wins** - Fresh analysis is authoritative
-2. **Flag the fork** - Log discrepancy to trajectory
-3. **Update NOTES.md** - Resync Goal Status section
+The ONLY sanctioned read of worker-authored status (sprint checkmarks, review reports,
+NOTES status sections) is here, and its semantics are fixed:
+
+1. **Compare, never adopt** — set each worker claim beside the re-derived state.
+   Agreement contributes NOTHING to the verdict (the verdict was already settled by
+   re-derivation); divergence is reported as a finding.
+2. **Validation wins** — fresh re-derivation is authoritative in every fork
+3. **Flag the fork** — log the discrepancy to trajectory (a worker claiming more than
+   the tree shows is itself a signal worth surfacing)
+4. **Update NOTES.md** — resync the status section to the re-derived truth
