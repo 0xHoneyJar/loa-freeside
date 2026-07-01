@@ -78,5 +78,5 @@ Closed superseded PRs: **#391**, **#392**, **#394** (Node 22 → **#404**), **#3
 ## Deliverables
 
 - This report: `grimoires/loa/reports/gecko-loa-freeside-triage-2026-06-30.md`
-- Triage manifest: `.run/hivemind/triage-manifest.json`
+- Triage manifest: `grimoires/loa/reports/triage-manifest-2026-06-30.json`
 - Fix PRs: [#404](https://github.com/0xHoneyJar/loa-freeside/pull/404), [#406](https://github.com/0xHoneyJar/loa-freeside/pull/406)
