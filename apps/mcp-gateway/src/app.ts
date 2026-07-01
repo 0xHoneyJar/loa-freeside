@@ -27,6 +27,7 @@ import { checkAccess, isAuthorizedOperator } from "./auth.js";
 import { refreshAllBeacons, startBeaconRefresh } from "./beacon-cache.js";
 import { resolveTenant } from "./beacon-resolver.js";
 import { resolveUpstreamCredential } from "./credentials-resolver.js";
+import { buildUpstreamUrl } from "./upstream-url.js";
 
 const app = new Hono();
 
@@ -320,15 +321,6 @@ function pruneResponseHeaders(input: Headers): Headers {
   return out;
 }
 
-/** Build the upstream URL from the gateway request, stripping the /{slug} prefix. */
-function buildUpstreamUrl(tenant: Tenant, gatewayUrl: URL): string {
-  const prefix = `/${tenant.slug}`;
-  const path = gatewayUrl.pathname.startsWith(prefix)
-    ? gatewayUrl.pathname.slice(prefix.length) || "/"
-    : gatewayUrl.pathname;
-  return new URL(path + gatewayUrl.search, tenant.upstream).toString();
-}
-
 /** Rewrite a tenant's mcp.json discovery card so transports[].url is a gateway-absolute URL. */
 function rewriteDiscoveryCard(
   tenant: Tenant,
@@ -419,7 +411,22 @@ app.all("/:slug/*", async (c) => {
   }
 
   const gatewayUrl = new URL(c.req.url);
-  const upstreamUrl = buildUpstreamUrl(tenant, gatewayUrl);
+  const built = buildUpstreamUrl(tenant, gatewayUrl);
+  if (!built.ok) {
+    // SSRF guard (fail-closed): the request path resolved to an origin other
+    // than the tenant's upstream (e.g. a protocol-relative `//evil.com` path).
+    // Reject — never forward. Diagnostic to logs; caller gets a stable code.
+    console.warn(
+      "[gateway] upstream URL rejected for tenant=%s: %s",
+      slug,
+      built.reason,
+    );
+    return c.json(
+      { error: "bad_request", code: "upstream_origin_mismatch", slug },
+      400,
+    );
+  }
+  const upstreamUrl = built.url;
   const isDiscovery = gatewayUrl.pathname.endsWith("/.well-known/mcp.json");
 
   const headers = pruneRequestHeaders(c.req.raw.headers);
