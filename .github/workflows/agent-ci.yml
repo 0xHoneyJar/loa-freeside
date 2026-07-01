@@ -86,8 +86,12 @@ jobs:
           # Verify Redis
           redis-cli -h 127.0.0.1 ping || (echo "Redis not available" && exit 1)
 
+      - name: Install adapters dependencies
+        run: npm ci --ignore-scripts
+        working-directory: packages/adapters
+
       - name: Type check
-        run: npx tsc --noEmit
+        run: npm run typecheck
         working-directory: packages/adapters
 
       - name: Unit tests

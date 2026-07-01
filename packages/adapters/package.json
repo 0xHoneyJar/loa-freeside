@@ -102,7 +102,7 @@
   "dependencies": {
     "@0xhoneyjar/loa-hounfour": "github:0xHoneyJar/loa-hounfour#aed755f7fea8d2739cf9c755b45aaa580b6af6a9",
     "@freeside/core": "file:../core",
-    "drizzle-orm": "^0.33.0",
+    "drizzle-orm": "^0.45.2",
     "ioredis": "^5.9.2",
     "jose": "^5.10.0",
     "opossum": "^8.1.0",
