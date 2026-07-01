@@ -1,18 +1,77 @@
 /**
- * order-intake composition root (MVP thin slice).
+ * order-intake composition root — deployable HTTP edge for internal demo + dashboard consumer.
  *
- * Serves the intake HTTP edge over an in-memory store — the fastest path to a placeable order
- * + polling status. The OrderNatsConsumer runtime mount (subscribe `placed`, drive the
- * orchestrator, drain the outbox) and the concrete audit `AuditDeps` wiring are the deploy
- * step (SDD §13 M-10 / §8) — see `OrderOrchestrator` + `DeclaredLocalAuditAdapter`.
+ * Wires intake + CommunityOnboardingOrchestrator in-process (NATS consumer is prod hardening).
+ * Dashboard: ORDERING_SERVICE_URL → POST/GET /v1/orders, advance-ingredient for operator triage.
  */
 import { serve } from '@hono/node-server';
-import { createIntakeApp, InMemoryOrderStore } from '../src/index.js';
+import type { Cta } from '@freeside/shadow-audit-protocol';
+import type { AuditServiceResult } from '@freeside/shadow-audit-service';
+import {
+  ConfigCapabilityResolver,
+  createIntakeApp,
+  InMemoryOrderStore,
+  OrderOrchestrator,
+  StubTriagePorts,
+  type AuditPort,
+  type CapabilityConfig,
+} from '../src/index.js';
+
+class NoopAudit implements AuditPort {
+  async invoke(): Promise<AuditServiceResult> {
+    throw new Error('audit port unused for community-onboarding intake');
+  }
+}
+
+function triageCapabilityConfig(): CapabilityConfig {
+  return {
+    'collection-index': {
+      building: 'sonar-api',
+      endpoint: process.env.SONAR_API_URL?.trim() || 'http://sonar.internal',
+    },
+    'community-register': {
+      building: 'score-api',
+      endpoint: process.env.SCORE_API_URL?.trim() || 'http://score.internal',
+    },
+    'world-manifest': {
+      building: 'worlds-api',
+      endpoint: process.env.WORLDS_API_URL?.trim() || 'http://worlds.internal',
+    },
+  };
+}
+
+function ctaFromEnv(): Cta {
+  const product = process.env.CTA_PRODUCT?.trim() || 'https://freeside.app';
+  const conversation = process.env.CTA_CONVERSATION?.trim() || 'https://freeside.app';
+  return { product, conversation };
+}
 
 const store = new InMemoryOrderStore();
-const app = createIntakeApp({ store, now: () => Date.now() });
+const orchestrator = new OrderOrchestrator({
+  store,
+  resolver: new ConfigCapabilityResolver(triageCapabilityConfig()),
+  audit: new NoopAudit(),
+  communities: () => undefined,
+  cta: ctaFromEnv(),
+  now: () => Date.now(),
+  triage: new StubTriagePorts(),
+});
+
+const serviceToken = process.env.SERVICE_TOKEN?.trim() || process.env.ORDERING_SERVICE_TOKEN?.trim();
+
+const app = createIntakeApp({
+  store,
+  now: () => Date.now(),
+  onPlaced: (orderId) => {
+    void orchestrator.process(orderId);
+  },
+  orchestrator,
+  serviceToken: serviceToken || undefined,
+});
+
+app.get('/healthz', (c) => c.json({ ok: true, service: 'ordering-service' }));
 
 const port = Number(process.env.PORT ?? 8090);
 serve({ fetch: app.fetch, port });
 // eslint-disable-next-line no-console
-console.log(`order-intake listening on :${port}`);
+console.log(`ordering-service listening on :${port}`);
