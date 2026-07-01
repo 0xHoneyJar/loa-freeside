@@ -27,6 +27,8 @@ import type {
 const DEFAULT_TIMEOUT_MS = 120_000;
 const SIGKILL_GRACE_MS = 5_000;
 const DEFAULT_AGENT = "reviewing-code";
+/** loa#402 — explicit Opus fallback when Fable tier exhausts cheval chain. */
+const FABLE_FALLBACK_MODEL = "anthropic:claude-opus-4-8";
 
 const CHEVAL_SCRIPT_REL = ".claude/adapters/cheval.py";
 
@@ -113,6 +115,26 @@ export class ChevalDelegateAdapter implements ILLMProvider {
       );
     }
 
+    try {
+      return await this.invokeChevalOnce(request, this.opts.model);
+    } catch (err) {
+      if (
+        err instanceof LLMProviderError
+        && err.code === "PROVIDER_ERROR"
+        && isFableTierModel(this.opts.model)
+        && isFableChainExhaustion(err.message)
+      ) {
+        return this.invokeChevalOnce(request, FABLE_FALLBACK_MODEL);
+      }
+      throw err;
+    }
+  }
+
+  /** Spawn cheval once for the given provider:model binding. */
+  private async invokeChevalOnce(
+    request: ReviewRequest,
+    model: string,
+  ): Promise<ReviewResponse> {
     const scriptPath =
       this.opts.chevalScript ?? join(process.cwd(), CHEVAL_SCRIPT_REL);
 
@@ -144,7 +166,7 @@ export class ChevalDelegateAdapter implements ILLMProvider {
         "--agent",
         this.opts.agent,
         "--model",
-        this.opts.model,
+        model,
         "--system",
         systemPath,
         "--input",
@@ -258,7 +280,7 @@ export class ChevalDelegateAdapter implements ILLMProvider {
         content: parsed.content,
         inputTokens,
         outputTokens,
-        model: parsed.model ?? this.opts.model,
+        model: parsed.model ?? model,
         provider: parsed.provider,
         // Prefer cheval's reported provider-call latency. Fall back to our wall
         // clock (which includes Python startup) when cheval doesn't report.
@@ -274,6 +296,21 @@ export class ChevalDelegateAdapter implements ILLMProvider {
       }
     }
   }
+}
+
+function isFableTierModel(model: string): boolean {
+  const normalized = model.toLowerCase();
+  return normalized.includes("fable") || normalized.endsWith(":fable");
+}
+
+/** True when cheval exhausted the within-company chain on a Fable outage. */
+function isFableChainExhaustion(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("retries_exhausted")
+    || lower.includes("chain_exhausted")
+    || lower.includes("provider_unavailable")
+  ) && (lower.includes("fable") || lower.includes("unavailable"));
 }
 
 /**
