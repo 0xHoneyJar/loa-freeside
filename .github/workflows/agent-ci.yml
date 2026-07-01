@@ -107,3 +107,20 @@ jobs:
 
       - name: Integration tests
         run: npx vitest run tests/integration/
+        env:
+          REDIS_URL: redis://127.0.0.1:6379
+          BERACHAIN_RPC_URLS: https://rpc.test.example.com
+          BGT_ADDRESS: '0x0000000000000000000000000000000000000001'
+          TRIGGER_PROJECT_ID: test-project-id
+          TRIGGER_SECRET_KEY: test-secret-key
+          DISCORD_BOT_TOKEN: test-bot-token
+          DISCORD_GUILD_ID: test-guild-id
+          DISCORD_CHANNEL_THE_DOOR: test-channel-the-door
+          DISCORD_CHANNEL_CENSUS: test-channel-census
+          DISCORD_ROLE_NAIB: test-role-naib
+          DISCORD_ROLE_FEDAYKIN: test-role-fedaykin
+          ADMIN_API_KEYS: 'test-key:test-admin'
+          API_KEY_PEPPER: test-pepper-value-for-unit-tests-32chars!
+          RATE_LIMIT_SALT: test-rate-limit-salt-value
+          NODE_ENV: test
+          LOG_LEVEL: error
