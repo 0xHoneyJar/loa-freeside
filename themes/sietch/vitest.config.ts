@@ -29,6 +29,16 @@ export default defineConfig({
         moduleDirectories: ['node_modules', path.resolve(__dirname, 'node_modules')],
       },
     },
+    // opossum is CJS with no `main`/`exports` field; Vite SSR fails on its internal
+    // `require('./lib/circuit')`. Pre-bundling through esbuild resolves at bundle time.
+    deps: {
+      optimizer: {
+        ssr: {
+          enabled: true,
+          include: ['opossum'],
+        },
+      },
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'json-summary', 'html', 'lcov'],

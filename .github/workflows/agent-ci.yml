@@ -67,6 +67,9 @@ jobs:
             -p 4222:4222 -p 8222:8222 \
             nats:2 -js -m 8222
 
+      - name: Install redis-cli
+        run: sudo apt-get update && sudo apt-get install -y redis-tools
+
       - name: Verify service connectivity
         run: |
           # Wait for NATS JetStream
