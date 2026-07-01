@@ -9,7 +9,7 @@
 
 FROM node:22.12-alpine AS base
 WORKDIR /app
-RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
+RUN npm install -g pnpm@9.15.9
 
 COPY packages/core ./packages/core
 COPY packages/adapters ./packages/adapters
