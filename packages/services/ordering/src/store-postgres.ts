@@ -15,7 +15,7 @@ import {
   type TransitionOpts,
 } from './store.js';
 import { assertTransition } from './order-state.js';
-import type { IngredientJob, OperatorAuditEntry } from './kitchen-types.js';
+import type { IngredientJob, OperatorAuditEntry, OrderProbeMeta } from './kitchen-types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -38,6 +38,7 @@ function rowToRecord(row: pg.QueryResultRow): OrderRecord {
     fulfillment: row.fulfillment ?? undefined,
     ingredient_jobs: (row.ingredient_jobs ?? []) as IngredientJob[],
     operator_audit: (row.operator_audit ?? []) as OperatorAuditEntry[],
+    probe_meta: (row.probe_meta ?? undefined) as OrderProbeMeta | undefined,
     created_at_unix: Number(row.created_at_unix),
     updated_at_unix: Number(row.updated_at_unix),
   };
@@ -67,8 +68,10 @@ export class PostgresOrderStore implements OrderStore {
   }
 
   async runMigrations(): Promise<void> {
-    const sql = readFileSync(join(__dirname, '../migrations/001_orders.sql'), 'utf8');
-    await this.pool.query(sql);
+    for (const file of ['001_orders.sql', '002_probe_meta.sql']) {
+      const sql = readFileSync(join(__dirname, '../migrations', file), 'utf8');
+      await this.pool.query(sql);
+    }
   }
 
   async close(): Promise<void> {
@@ -157,7 +160,8 @@ export class PostgresOrderStore implements OrderStore {
           ingredients = COALESCE($10, ingredients),
           fulfillment = COALESCE($11, fulfillment),
           ingredient_jobs = COALESCE($12, ingredient_jobs),
-          operator_audit = COALESCE($13, operator_audit)
+          operator_audit = COALESCE($13, operator_audit),
+          probe_meta = COALESCE($14, probe_meta)
         WHERE order_id = $1
         RETURNING *`,
         [
@@ -174,6 +178,7 @@ export class PostgresOrderStore implements OrderStore {
           patch.fulfillment ? JSON.stringify(patch.fulfillment) : null,
           patch.ingredient_jobs ? JSON.stringify(patch.ingredient_jobs) : null,
           patch.operator_audit ? JSON.stringify(patch.operator_audit) : null,
+          patch.probe_meta ? JSON.stringify(patch.probe_meta) : null,
         ],
       );
 
@@ -220,7 +225,8 @@ export class PostgresOrderStore implements OrderStore {
         ingredients = COALESCE($9, ingredients),
         fulfillment = COALESCE($10, fulfillment),
         ingredient_jobs = COALESCE($11, ingredient_jobs),
-        operator_audit = COALESCE($12, operator_audit)
+        operator_audit = COALESCE($12, operator_audit),
+        probe_meta = COALESCE($13, probe_meta)
       WHERE order_id = $1
       RETURNING *`,
       [
@@ -236,6 +242,7 @@ export class PostgresOrderStore implements OrderStore {
         patch.fulfillment ? JSON.stringify(patch.fulfillment) : null,
         patch.ingredient_jobs ? JSON.stringify(patch.ingredient_jobs) : null,
         patch.operator_audit ? JSON.stringify(patch.operator_audit) : null,
+        patch.probe_meta ? JSON.stringify(patch.probe_meta) : null,
       ],
     );
     return rowToRecord(res.rows[0]);

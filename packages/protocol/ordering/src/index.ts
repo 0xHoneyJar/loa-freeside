@@ -47,3 +47,15 @@ export {
   PRESETS,
   resolvePreset,
 } from './preset.js';
+
+export {
+  EnqueueIngredientKey,
+  IngredientJob,
+  ProbeSource,
+  IngredientProbeMeta,
+  OrderProbeMeta,
+  OperatorAuditEntry,
+  PublicOrderSchema,
+  type PublicOrder,
+  ingredientJobIdempotencyKey,
+} from './kitchen.js';

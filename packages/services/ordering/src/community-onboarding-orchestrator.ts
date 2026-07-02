@@ -21,7 +21,7 @@ import type { ProcessResult } from './orchestrator.js';
 import type { TriagePorts } from './triage-ports.js';
 import type { IngredientEnqueueService } from './ingredient-enqueue.js';
 import { fireEnqueue } from './ingredient-enqueue.js';
-import type { OperatorAuditEntry } from './kitchen-types.js';
+import type { OperatorAuditEntry, OrderProbeMeta, ProbeSource } from './kitchen-types.js';
 
 export interface CommunityOnboardingOrchestratorDeps {
   store: OrderStore;
@@ -36,6 +36,11 @@ type IngredientKey = keyof CommunityOnboardingIngredients;
 
 const REQUIRED_INGREDIENTS: IngredientKey[] = ['sonar', 'score', 'worlds_manifest'];
 
+/** Reprobe bounds (SDD D1 / SKP-001a). Env-tunable for tests only. */
+const REPROBE_COOLDOWN_MS = Number(process.env.REPROBE_COOLDOWN_MS ?? 10_000);
+const REPROBE_PER_PROBE_TIMEOUT_MS = Number(process.env.REPROBE_PER_PROBE_TIMEOUT_MS ?? 10_000);
+const REPROBE_FANOUT = 3;
+
 export function canFulfillCommunityOnboarding(
   ingredients: CommunityOnboardingIngredients,
   fulfillment?: CommunityOnboardingOutput,
@@ -49,12 +54,13 @@ export function canFulfillCommunityOnboarding(
 
 export function mergeProbedIngredients(
   existing: CommunityOnboardingIngredients | undefined,
-  probed: CommunityOnboardingIngredients,
+  probed: Partial<CommunityOnboardingIngredients>,
 ): CommunityOnboardingIngredients {
   const base = existing ?? INITIAL_COMMUNITY_ONBOARDING_INGREDIENTS;
   const merged = { ...base };
   for (const key of Object.keys(probed) as IngredientKey[]) {
     const next = probed[key];
+    if (next === undefined) continue;
     const prev = base[key];
     if (prev === 'complete' || prev === 'optional') continue;
     if (prev === 'blocked' && next === 'pending') continue;
@@ -62,6 +68,56 @@ export function mergeProbedIngredients(
     merged[key] = next;
   }
   return merged;
+}
+
+/** probe_meta entries for a set of raw probe results (SDD D1 — raw probe truth, pre-merge). */
+export function probeMetaEntries(
+  probed: Partial<CommunityOnboardingIngredients>,
+  atUnix: number,
+  source: ProbeSource,
+): OrderProbeMeta {
+  const meta: OrderProbeMeta = {};
+  for (const [key, status] of Object.entries(probed)) {
+    if (status === undefined) continue;
+    meta[key] = { status, probed_at_unix: atUnix, source };
+  }
+  return meta;
+}
+
+/** Per-ingredient outcome of an on-demand reprobe (SDD D1 failure semantics). */
+export interface ReprobeIngredientOutcome {
+  status?: IngredientStatus;
+  probed_at_unix: number;
+  source: 'reprobe';
+  freshness: 'fresh' | 'ambiguous';
+  error_class?: 'timeout' | 'probe_error';
+}
+
+export type ReprobeResult =
+  | { ok: true; record: OrderRecord; probes: Record<string, ReprobeIngredientOutcome> }
+  | { ok: false; error: 'order not found' | 'not a community-onboarding order' | 'order already terminal' | 'cooldown'; retry_after_unix?: number };
+
+/** Race a probe against a deadline. loa:shortcut: no AbortController propagation — TriagePorts
+ * has no signal param, so a timed-out probe's underlying fetch may linger until its own network
+ * timeout; add signal support to TriagePorts if lingering probes ever matter. */
+async function probeWithTimeout<T>(
+  probe: () => Promise<T>,
+  timeoutMs: number,
+): Promise<{ ok: true; value: T } | { ok: false; error_class: 'timeout' | 'probe_error' }> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const result = await Promise.race([
+      probe().then((value) => ({ ok: true as const, value })),
+      new Promise<{ ok: false; error_class: 'timeout' }>((resolve) => {
+        timer = setTimeout(() => resolve({ ok: false, error_class: 'timeout' }), timeoutMs);
+      }),
+    ]);
+    return result;
+  } catch {
+    return { ok: false, error_class: 'probe_error' };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 /** Preset #2 triage orchestrator (SDD §3.2.3). */
@@ -98,6 +154,10 @@ export class CommunityOnboardingOrchestrator {
 
       const probed = await this.probeIngredients(inputs.chain_id, inputs.contract_address);
       const ingredients = mergeProbedIngredients(record.ingredients, probed.ingredients);
+      const probe_meta: OrderProbeMeta = {
+        ...record.probe_meta,
+        ...probeMetaEntries(probed.ingredients, Math.floor(this.deps.now() / 1000), 'interval'),
+      };
       let fulfillment = record.fulfillment;
       if (probed.world_slug) {
         fulfillment = this.buildFulfillment(inputs, ingredients, probed.world_slug);
@@ -111,7 +171,7 @@ export class CommunityOnboardingOrchestrator {
       }));
       const routing: OrderRouting = { order_id: orderId, recipe_id: preset.id, resolved_buildings };
       const claim = await this.deps.store.transition(orderId, 'placed', 'routing', {
-        patch: { recipe_id: preset.id, resolved_buildings, ingredients, ...(fulfillment ? { fulfillment } : {}) },
+        patch: { recipe_id: preset.id, resolved_buildings, ingredients, probe_meta, ...(fulfillment ? { fulfillment } : {}) },
         event: { subject: ORDER_LIFECYCLE_SUBJECTS.routing, payload: routing },
       });
       record = await this.reread(orderId, claim.ok ? claim.record : undefined);
@@ -153,7 +213,13 @@ export class CommunityOnboardingOrchestrator {
           fulfillment?.world_slug !== record.fulfillment?.world_slug ||
           fulfillment?.contact_email !== record.fulfillment?.contact_email;
         if (ingredientsChanged || fulfillmentChanged) {
-          record = await this.deps.store.patchRecord(orderId, { ingredients: merged, fulfillment });
+          // probe_meta piggybacks on patches the merge already requires — the on-demand
+          // freshness path is `reprobe()`, not the interval tick (SDD D1).
+          const probe_meta: OrderProbeMeta = {
+            ...record.probe_meta,
+            ...probeMetaEntries(probed.ingredients, Math.floor(this.deps.now() / 1000), 'interval'),
+          };
+          record = await this.deps.store.patchRecord(orderId, { ingredients: merged, fulfillment, probe_meta });
         }
 
         fireEnqueue(orderId, this.deps.enqueue);
@@ -176,12 +242,19 @@ export class CommunityOnboardingOrchestrator {
     return { success: true };
   }
 
-  /** Operator MVP: patch one ingredient and attempt fulfill (SDD §3.2.4). */
+  /** Operator MVP: patch one ingredient and attempt fulfill (SDD §3.2.4).
+   *
+   * Audit evidence + actor are SERVER-derived (SDD D3): `evidence` is a value copy of
+   * this order's own `probe_meta[ingredient]` at advance time (`null` when never probed —
+   * the HITL escape hatch, visibly ungrounded); `token_label` names the credential that
+   * authenticated the request. `caller_note` is untrusted display metadata.
+   */
   async advanceIngredient(
     orderId: string,
     ingredient: IngredientKey,
     status: IngredientStatus,
     worldSlug?: string,
+    opts?: { tokenLabel?: string; callerNote?: string },
   ): Promise<{ ok: boolean; record?: OrderRecord; error?: string }> {
     const record = await this.deps.store.get(orderId);
     if (!record) return { ok: false, error: 'order not found' };
@@ -210,12 +283,18 @@ export class CommunityOnboardingOrchestrator {
       fulfillment = this.buildFulfillment(parsedInputs.data, ingredients, worldSlug);
     }
 
+    const priorMeta = record.probe_meta?.[ingredient];
     const auditEntry: OperatorAuditEntry = {
       event: 'operator.advance',
       ingredient,
       status,
       world_slug: worldSlug,
       at_unix: Math.floor(this.deps.now() / 1000),
+      token_label: opts?.tokenLabel,
+      caller_note: opts?.callerNote,
+      // Immutable value COPY of the server's own probe truth (never a live reference —
+      // later reprobes must not mutate past audit entries).
+      evidence: priorMeta ? { ...priorMeta } : null,
     };
     const operator_audit = [...(record.operator_audit ?? []), auditEntry];
 
@@ -232,6 +311,127 @@ export class CommunityOnboardingOrchestrator {
     }
 
     return { ok: true, record: updated };
+  }
+
+  /** Per-order last-reprobe clock (unix ms). loa:shortcut: in-memory — correct for the
+   * single-instance Railway deploy; move to the store if the service ever scales out. */
+  private readonly reprobeCooldown = new Map<string, number>();
+
+  /**
+   * On-demand synchronous reprobe (SDD D1, FR-4). Bounds: 10s per probe (race-timeout),
+   * fan-out ≤3, 10s per-order cooldown. Worst case 2 batches × 10s = 20s — structurally
+   * inside the 30s global budget. A probe failure/timeout is a RESULT (`ambiguous`),
+   * never an HTTP error; probe_meta and the ingredient merge are only updated for
+   * fresh successes (ambiguity never overwrites recorded truth).
+   */
+  async reprobe(orderId: string, ingredient?: IngredientKey): Promise<ReprobeResult> {
+    const initial = await this.deps.store.get(orderId);
+    if (!initial) return { ok: false, error: 'order not found' };
+    if (initial.product !== 'community-onboarding') return { ok: false, error: 'not a community-onboarding order' };
+    if (isTerminal(initial.state)) return { ok: false, error: 'order already terminal' };
+
+    const nowMs = this.deps.now();
+    const last = this.reprobeCooldown.get(orderId);
+    if (last !== undefined && nowMs - last < REPROBE_COOLDOWN_MS) {
+      return { ok: false, error: 'cooldown', retry_after_unix: Math.ceil((last + REPROBE_COOLDOWN_MS) / 1000) };
+    }
+    this.reprobeCooldown.set(orderId, nowMs);
+
+    const parsedInputs = CommunityOnboardingInputs.safeParse(initial.inputs);
+    if (!parsedInputs.success) return { ok: false, error: 'not a community-onboarding order' };
+    const inputs = parsedInputs.data;
+
+    const current = initial.ingredients ?? INITIAL_COMMUNITY_ONBOARDING_INGREDIENTS;
+    const targets: IngredientKey[] = ingredient
+      ? [ingredient]
+      : (Object.keys(current) as IngredientKey[]).filter(
+          (k) => current[k] === 'pending' || current[k] === 'in_progress',
+        );
+
+    // Probe with fan-out ≤3, 10s per probe.
+    const probes: Record<string, ReprobeIngredientOutcome> = {};
+    const probedStatuses: Partial<CommunityOnboardingIngredients> = {};
+    let worldSlug: string | undefined;
+    for (let i = 0; i < targets.length; i += REPROBE_FANOUT) {
+      const batch = targets.slice(i, i + REPROBE_FANOUT);
+      await Promise.all(
+        batch.map(async (key) => {
+          const atUnix = Math.floor(this.deps.now() / 1000);
+          if (key === 'worlds_manifest' && this.deps.triage.worlds.probeDetail) {
+            // world_slug travels INSIDE the raced value — a timed-out probe that
+            // resolves late can never contribute data (review finding #3).
+            const res = await probeWithTimeout(
+              () => this.deps.triage.worlds.probeDetail!(inputs.chain_id, inputs.contract_address),
+              REPROBE_PER_PROBE_TIMEOUT_MS,
+            );
+            probes[key] = res.ok
+              ? { status: res.value.status, probed_at_unix: atUnix, source: 'reprobe', freshness: 'fresh' }
+              : { probed_at_unix: atUnix, source: 'reprobe', freshness: 'ambiguous', error_class: res.error_class };
+            if (res.ok) {
+              probedStatuses[key] = res.value.status;
+              if (res.value.world_slug) worldSlug = res.value.world_slug;
+            }
+            return;
+          }
+          const port = this.probePortFor(key);
+          const res = await probeWithTimeout(
+            () => port(inputs.chain_id, inputs.contract_address),
+            REPROBE_PER_PROBE_TIMEOUT_MS,
+          );
+          probes[key] = res.ok
+            ? { status: res.value, probed_at_unix: atUnix, source: 'reprobe', freshness: 'fresh' }
+            : { probed_at_unix: atUnix, source: 'reprobe', freshness: 'ambiguous', error_class: res.error_class };
+          if (res.ok) probedStatuses[key] = res.value;
+        }),
+      );
+    }
+
+    // Merge against a FRESH read — probes take seconds; an advance may have landed
+    // meanwhile. The monotonic merge cannot downgrade a concurrent 'complete' (IMP-003).
+    const fresh = (await this.deps.store.get(orderId)) ?? initial;
+    if (isTerminal(fresh.state)) return { ok: true, record: fresh, probes };
+    const merged = mergeProbedIngredients(fresh.ingredients, probedStatuses);
+    const probe_meta: OrderProbeMeta = {
+      ...fresh.probe_meta,
+      ...probeMetaEntries(probedStatuses, Math.floor(this.deps.now() / 1000), 'reprobe'),
+    };
+    let fulfillment = fresh.fulfillment;
+    if (worldSlug && !fulfillment?.world_slug) {
+      fulfillment = this.buildFulfillment(inputs, merged, worldSlug);
+    }
+    let record = await this.deps.store.patchRecord(orderId, { ingredients: merged, fulfillment, probe_meta });
+
+    // Attempt fulfill via the existing CAS transition — a lost CAS means someone else
+    // settled the order first; return their truth.
+    if (record.state === 'producing' && canFulfillCommunityOnboarding(merged, fulfillment) && fulfillment) {
+      const fulfilled: OrderFulfilled = {
+        order_id: orderId,
+        result_ref: orderId,
+        output_digest: fulfillment.world_slug,
+      };
+      const claim = await this.deps.store.transition(orderId, 'producing', 'fulfilled', {
+        patch: { fulfillment, result_ref: orderId },
+        event: { subject: ORDER_LIFECYCLE_SUBJECTS.fulfilled, payload: fulfilled },
+      });
+      record = claim.record ?? (await this.deps.store.get(orderId)) ?? record;
+    }
+
+    return { ok: true, record, probes };
+  }
+
+  private probePortFor(key: IngredientKey): (chainId: string, contract: string) => Promise<IngredientStatus> {
+    switch (key) {
+      case 'sonar':
+        return (c, a) => this.deps.triage.sonar.probe(c, a);
+      case 'score':
+        return (c, a) => this.deps.triage.score.probe(c, a);
+      case 'worlds_manifest':
+        return (c, a) => this.deps.triage.worlds.probe(c, a);
+      case 'discord_observer':
+        return (c, a) => this.deps.triage.discord?.probe(c, a) ?? Promise.resolve('optional' as const);
+      case 'shadow_preview':
+        return (c, a) => this.deps.triage.shadow.probe(c, a);
+    }
   }
 
   private buildFulfillment(

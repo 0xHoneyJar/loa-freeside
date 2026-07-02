@@ -73,3 +73,44 @@ export function serviceTokenFromEnv(): string | undefined {
   const token = process.env.SERVICE_TOKEN?.trim() || process.env.ORDERING_SERVICE_TOKEN?.trim();
   return token || undefined;
 }
+
+/** Write-route posture (SDD D4/D8 — FR-10a fail-closed). */
+export type WriteRoutePosture = 'open_dev' | 'token' | 'disabled_no_token';
+
+export interface WriteRoutePostureEnv {
+  serviceToken?: string;
+  railwayEnvironment?: string;
+  nodeEnv?: string;
+}
+
+/**
+ * D8 auth matrix, one row per (deployed?, token?) combination:
+ *
+ * | env        | token | posture             | write routes |
+ * |------------|-------|---------------------|--------------|
+ * | local/dev  | unset | `open_dev`          | mounted, tokenless (in-memory convenience) |
+ * | local/dev  | set   | `token`             | mounted, Bearer required |
+ * | deployed   | unset | `disabled_no_token` | NOT mounted (fail-closed, FR-10a) |
+ * | deployed   | set   | `token`             | mounted, Bearer required |
+ *
+ * "Deployed" marker: RAILWAY_ENVIRONMENT set OR NODE_ENV=production. GET routes and
+ * /healthz stay open in EVERY row by design (registry doctor probes tokenless).
+ */
+export function resolveWriteRoutePosture(env: WriteRoutePostureEnv): WriteRoutePosture {
+  const deployed = Boolean(env.railwayEnvironment?.trim()) || env.nodeEnv === 'production';
+  if (env.serviceToken) return 'token';
+  return deployed ? 'disabled_no_token' : 'open_dev';
+}
+
+export function writeRoutePostureFromEnv(): WriteRoutePosture {
+  return resolveWriteRoutePosture({
+    serviceToken: serviceTokenFromEnv(),
+    railwayEnvironment: process.env.RAILWAY_ENVIRONMENT,
+    nodeEnv: process.env.NODE_ENV,
+  });
+}
+
+/** Label naming the write credential — recorded as audit actor identity (NFR-8b). */
+export function serviceTokenLabelFromEnv(): string {
+  return process.env.SERVICE_TOKEN_LABEL?.trim() || 'ordering-service-token';
+}
