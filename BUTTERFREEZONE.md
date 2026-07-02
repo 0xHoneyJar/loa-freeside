@@ -187,9 +187,9 @@ Directory structure:
 | `drizzle/` | 1 | Udrizzle | \u2014 |
 | `evals/` | 122 | Benchmarking and regression framework for the Loa agent development system. Ensures framework changes don't degrade agent behavior through | [evals/README.md](evals/README.md) |
 | `grimoires/` | 1051 | Home to all grimoire directories for the Loa | [grimoires/README.md](grimoires/README.md) |
-| `infrastructure/` | 260 | This directory contains the Infrastructure as Code (IaC) for Freeside, using Terraform to provision AWS | [docs/infrastructure.md](docs/infrastructure.md) |
+| `infrastructure/` | 260 | This directory contains the Infrastructure as Code (IaC) for Freeside, using Terraform to provision AWS | [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md) |
 | `lib/` | 1 | Source code | \u2014 |
-| `packages/` | 62610 | Workspace packages for the loa-freeside monorepo. Domain assignment per [ADR-007 §D-1](../decisions/007-loa-freeside-absorption.md) and | [packages/README.md](packages/README.md) |
+| `packages/` | 62610 | Workspace packages for the loa-freeside monorepo. Domain assignment per [ADR-007 §D-1](decisions/007-loa-freeside-absorption.md) and | [packages/README.md](packages/README.md) |
 | `scripts/` | 34 | Utility scripts | \u2014 |
 | `sites/` | 21 | Web properties for the Freeside | [sites/README.md](sites/README.md) |
 | `spec/` | 10 | Test suites | \u2014 |
