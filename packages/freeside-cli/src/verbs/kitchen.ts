@@ -73,10 +73,24 @@ export async function kitchenVerb(args: string[]): Promise<ExitCode> {
           EXIT.USAGE,
         );
       }
-      // Client-side bound: ingredient ∈ the order's OWN ingredient set (fetched, never hardcoded).
+      // Client-side bound: ingredient ∈ the order's OWN ingredient set (fetched, never
+      // hardcoded). FAIL CLOSED (DISS-001): a drifted or checklist-less GET response must
+      // never let the mutating POST proceed unguarded.
       const current = await apiRequest(cfg.config, "GET", `/v1/orders/${encodeURIComponent(orderId)}`);
       if (!current.ok) return emitError(current.envelope, current.code);
-      if (isPublicOrder(current.body) && current.body.ingredients && !(ingredient in current.body.ingredients)) {
+      if (!isPublicOrder(current.body)) {
+        return emitError(
+          { error: "response did not match the PublicOrder contract (shape drift?)", order_id: orderId, hint: "run the differential test: ORDERING_DIFFERENTIAL=1" },
+          EXIT.API_ERROR,
+        );
+      }
+      if (!current.body.ingredients) {
+        return emitError(
+          { error: "order has no ingredients checklist — advance is not applicable", order_id: orderId, hint: "kitchen advance applies to community-onboarding orders" },
+          EXIT.AMBIGUOUS,
+        );
+      }
+      if (!(ingredient in current.body.ingredients)) {
         return emitError(
           { error: `ingredient '${ingredient}' not on order`, order_id: orderId, hint: `order has: ${Object.keys(current.body.ingredients).join(", ")}` },
           EXIT.USAGE,

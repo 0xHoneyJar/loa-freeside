@@ -78,3 +78,11 @@ cd ../.. && bash tools/check-beacon-domain.sh   # → network
 # live smoke (optional): ORDERING_SERVICE_URL=https://ordering-service-production.up.railway.app \
 #   node --import tsx bin/freeside-cli.ts order status 6ddc06f5-0c6f-42b8-8377-768a4c2a302e
 ```
+
+## Feedback Addressed (iteration 2 — cross-model dissent, 2026-07-01)
+
+Operator enabled `flatline_protocol.code_review` post-cycle and ran the adversarial dissent (codex) on both sprint diffs:
+- **Sprint-1**: clean, 0 findings.
+- **Sprint-2**: **DISS-001 (BLOCKING, spec-violation)** — `kitchen advance` silently skipped the ingredient bound when the preflight GET body failed `isPublicOrder` or lacked `ingredients`, letting the mutating POST proceed. **Fixed fail-closed** (`src/verbs/kitchen.ts` advance case): drift → contract envelope exit 3; missing checklist → envelope exit 4; both proven to send NO write (fixture hit-counting). +2 tests → **68 pass / 0 fail / 1 skip**. Dissent re-run on the updated diff: **clean, 0 findings**.
+
+Meta: the dissenter caught what same-session self-review missed — generator-never-settles, demonstrated.

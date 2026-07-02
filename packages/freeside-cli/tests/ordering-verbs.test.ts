@@ -266,6 +266,39 @@ test("kitchen advance: unknown ingredient (not on the order) rejected before wri
   });
 });
 
+test("kitchen advance: DRIFTED 200 GET body → exit 3, NO write sent (DISS-001 fail-closed)", async () => {
+  const script: Script = new Map([["GET /v1/orders/ord-fx-1", [{ status: 200, body: { nope: true } }]]]);
+  await withServer(script, async (baseUrl, hits) => {
+    const { code, lines } = await runVerb(
+      kitchenVerb,
+      ["advance", "ord-fx-1", "--ingredient", "sonar", "--status", "complete"],
+      baseUrl,
+      { token: TOKEN },
+    );
+    assert.equal(code, EXIT.API_ERROR);
+    assert.match((lines[0] as { error: string }).error, /contract/);
+    assert.ok(!hits.some((h) => h.includes("advance-ingredient")), "write must not be sent on drift");
+  });
+});
+
+test("kitchen advance: order WITHOUT ingredients checklist → exit 4, NO write sent (DISS-001)", async () => {
+  const noChecklist = makeOrder();
+  delete (noChecklist as Record<string, unknown>).ingredients;
+  delete (noChecklist as Record<string, unknown>).probe_meta;
+  const script: Script = new Map([["GET /v1/orders/ord-fx-1", [{ status: 200, body: noChecklist }]]]);
+  await withServer(script, async (baseUrl, hits) => {
+    const { code, lines } = await runVerb(
+      kitchenVerb,
+      ["advance", "ord-fx-1", "--ingredient", "sonar", "--status", "complete"],
+      baseUrl,
+      { token: TOKEN },
+    );
+    assert.equal(code, EXIT.AMBIGUOUS);
+    assert.match((lines[0] as { error: string }).error, /no ingredients checklist/);
+    assert.ok(!hits.some((h) => h.includes("advance-ingredient")), "write must not be sent without checklist");
+  });
+});
+
 test("kitchen advance: happy path sends caller_note, prints audit tail, exit 0", async () => {
   const advanced = makeOrder({ operator_audit: [{ event: "operator.advance", ingredient: "sonar", status: "complete", token_label: "ordering-service-token", caller_note: "probes green", evidence: null, at_unix: 1 }] });
   const script: Script = new Map([
