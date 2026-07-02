@@ -23,6 +23,12 @@ The packet is a value; both surfaces build the same value; a parity differential
 
 ## 2. Design Decisions
 
+### D0 — `buildOrientationPacket` contract (flatline-SDD IMP-002/IMP-006)
+The pure builder `buildOrientationPacket(registryEntry, probe, beacon?)` has a defined input+output contract, since both repos depend on it:
+- **Input**: `registryEntry` (always — slug/deployment_url/runtime_state); `probe: BeaconProbe` (always — the classification + target); `beacon?: BeaconV3` (present ONLY when `probe.classification === 'beacon_valid'`).
+- **Missing-field policy** (IMP-006): if `beacon` is absent OR any BeaconV3 optional field is absent, the corresponding packet field is `null` — NEVER partial-filled from an invalid/partial beacon (an invalid beacon → `beacon_invalid` classification, ALL beacon fields null, packet still returned). A packet never presents unvalidated beacon data as authoritative.
+- **Output**: a total `OrientationPacket` (D1) — the function is total (never throws; a bad input → a packet with the right verdict).
+
 ### D1 — `OrientationPacket`: single-owned type in `@freeside/beacon-schema`
 The packet shape lands ONCE in `packages/beacon-schema/src/orientation-packet.ts`, exported from the index [CODE:packages/beacon-schema/src/index.ts]. freeside-cli imports it directly (it already depends on beacon-schema). Shape:
 
@@ -59,16 +65,21 @@ Rewrite `packages/freeside-cli/src/verbs/inspect.ts` (currently a 37-line stub [
 3. `classifyProbe(probe)` [CODE:doctor.ts:184] → `RemoteVerdict` → map to `classification` (D5).
 4. If reachable+valid: `loadBeaconFromText`/`validateBeaconV3` [CODE:doctor.ts:27,31] → populate beacon fields.
 5. Build `OrientationPacket` (registry fields always; beacon fields or null; verdict).
-6. Emit single-line JSON (`--pretty` human-formats; `--raw` returns raw beacon JSON + verdict).
+6. Emit single-line JSON (`--pretty` human-formats).
+
+**`--raw` semantics** (flatline-SDD IMP-004): on `beacon_valid`, `--raw` returns the raw fetched BeaconV3 JSON + the verdict block. On any non-valid classification, `--raw` returns `{raw: null, verdict}` — it NEVER emits an unvalidated/oversize/off-host body (the body was never read for void; is capped for oversize; NFR-6e no-leak holds for `--raw` too). Exit code is the classification's (D5) regardless of `--raw`.
 
 NO new fetch/validate code — reuse the EXPORTED helpers only (no coupling to doctor internals, NFR).
 
-### D3 — SSRF hardening in the shared fetcher (BLOCKER SKP-004 → NFR-6)
-`defaultBeaconFetcher` [CODE:doctor.ts:203] already does redirect:manual + host-pin + off-host→void + 12s timeout. ADD three guards INTO it (benefits `doctor --remote` too — a deliberate, tested improvement):
-- (a) **https-only**: reject non-https `beacon_url` before fetch → status-0 result with detail `scheme_rejected`.
-- (c) **private/loopback/link-local block**: resolve the target host; if it's a literal private IP (127/8, 10/8, 172.16/12, 192.168/16, 169.254/16, ::1) or `localhost`, refuse → status-0 `private_target_blocked`. (Literal-IP + hostname-literal check; full DNS-rebind defense noted as a `loa:shortcut` ceiling — the host-pin already blocks the classic rebind-after-redirect vector.)
-- (d) **size cap**: read the body with a byte cap (e.g. 256KB) → oversize truncates to `beacon_invalid` rather than buffering unbounded.
-Existing redirect:manual + host-pin + timeout (b/d-timeout) are kept as-is. Errors never echo body/headers (NFR-6e). The fetcher stays injectable (tests pass a fake — never live network by default, NFR-5).
+**`verdict.detail` enumerated strings** (flatline-SDD IMP-005): a fixed set — `ok`, `scheme_rejected`, `host_not_allowlisted`, `resolved_private`, `off_host_redirect`, `not_found`, `not_a_beacon`, `invalid_beacon`, `oversize`, `timeout`, `transport_error`, `unknown_slug`. Agent-parseable; never contains a response body/header substring. One-to-one-ish with classification (a classification may carry a more specific detail, e.g. `beacon_unreachable` + `timeout` vs `+ scheme_rejected`).
+
+### D3 — SSRF hardening in the shared fetcher (BLOCKER SKP-004 + flatline-SDD SKP-001 → NFR-6)
+`defaultBeaconFetcher` [CODE:doctor.ts:203] already does redirect:manual + host-pin + off-host→void + 12s timeout. ADD, INTO it (benefits `doctor --remote` too):
+- (a) **https-only**: reject non-https `beacon_url` before fetch → status-0 `scheme_rejected`.
+- (b) **Registry-host allowlist** [flatline SKP-001 — the primary control]: a beacon_url host MUST match the allowlist of cluster-controlled domain suffixes (`*.0xhoneyjar.xyz`, `*.up.railway.app`, `*.vercel.app` — sourced from a single `ALLOWED_BEACON_HOST_SUFFIXES` const, not scattered). `beacon_url` is registry-controlled, so an allowlist means even a compromised registry entry cannot point the fetcher at `169.254.169.254`/internal — it must be a known cluster host. Non-allowlisted host → status-0 `host_not_allowlisted`. This is the load-bearing SSRF control; the literal-IP + DNS checks below are defense-in-depth.
+- (c) **DNS pre-resolution private-range reject** [flatline SKP-001]: `dns.lookup(host, {all:true})` BEFORE fetch; if ANY resolved A/AAAA record is private/loopback/link-local/metadata (127/8, 10/8, 172.16/12, 192.168/16, 169.254/16 incl. 169.254.169.254, ::1, fc00::/7), refuse → status-0 `resolved_private`. Closes the public-hostname→private-IP hole that literal-IP-only checks miss. Residual TOCTOU between lookup and fetch is bounded by (b)'s allowlist (a cluster host won't flip to internal) — documented, not hand-waved.
+- (d) **size cap**: read the body with a byte cap (256KB) → oversize → `beacon_invalid`.
+Existing redirect:manual + host-pin + timeout kept. Errors never echo body/headers (NFR-6e). Fetcher stays injectable (NFR-5). **These guards ship as one `hardenBeaconFetch(url)` pre-check helper** so freeside-cli and the loa-cli mjs mirror apply IDENTICAL rules from ONE spec (the conformance suite D6 enforces parity of the guards, not just the packet).
 
 ### D4 — `loa model <building> --brief`: mirror in external loa-cli (pure mjs)
 New `lib/model.mjs` + a `model` case in `bin/loa.mjs` [external: `~/Documents/GitHub/loa-cli`]. loa-cli is zero-dep pure-`.mjs` and CANNOT import the TS beacon-schema, so it re-implements the read in mjs: read the registry entry, fetch the beacon with the SAME hardening rules (https-only, host-pin, redirect-manual, private-IP block, timeout, size cap — ported, not imported), lighter BeaconV3 validation (JSON parse + required-field presence: slug/publisher/is/is_not/cycle_state), and build the SAME `OrientationPacket` shape. It is a **discovery/read verb** — no `run`/`pipe`/dispatch, no proof-of-run (loa-cli anti-corruption rule, NFR-4). `--brief` is the packet; without it, a fuller render is allowed later (out of scope).
@@ -84,8 +95,13 @@ New `lib/model.mjs` + a `model` case in `bin/loa.mjs` [external: `~/Documents/Gi
 | off-host redirect | `beacon_void` | 5 |
 One table, both surfaces (D6 pins it).
 
-### D6 — parity differential (FR-8)
-`packages/freeside-cli/src/verbs/__tests__/orientation-parity.test.ts`: render a FIXTURE cell's beacon through the freeside-cli packet builder; assert it deep-equals the `OrientationPacket` schema shape (strict). The loa-cli side ships its own parity test in the loa-cli repo asserting its mjs builder produces the byte-identical packet for the same fixture beacon. The fixture beacon + expected packet live in a shared test fixture (committed in freeside-cli; copied into loa-cli's test dir). Drift on either side fails its repo's test.
+### D6 — shared conformance vector suite (FR-8 + flatline-SDD SKP-002 + IMP-003)
+Two implementations are unavoidable (loa-cli is zero-dep pure-`.mjs`, Finn-safe standalone — it CANNOT import the TS beacon-schema; this is a deliberate architecture constraint, not laziness). Full code-dedup is precluded, so drift is bound LOUDLY by a **canonical machine-readable conformance-vector suite** — not one happy-path fixture:
+
+- `packages/beacon-schema/test-vectors/orientation-conformance.json` — versioned WITH beacon-schema. Each vector: `{name, input: {registry_entry, fetch_result (status/finalUrl/body) OR fetch_error}, expect: {packet, classification, exit_code}}`. Covers **every** classification + hardening case: valid, dark(404/non-beacon), void(off-host), invalid(bad-V3/oversize), unreachable(timeout), scheme_rejected, host_not_allowlisted, resolved_private, unknown-slug.
+- **Both repos are required consumers**: freeside-cli's test drives its builder+fetcher-guards through every vector; loa-cli's mjs test drives its mirror through the SAME committed vectors (copied in, with a checksum-pinned drift check: the loa-cli copy's sha256 must match beacon-schema's — a stale copy fails). A security-guard fix that lands in one repo but not the other fails the other's vector run.
+
+This makes the mirror's security guards (D3) conformance-tested, not just the packet shape.
 
 ### D7 — the ~50-token reach pointer (FR-10/10a)
 Text: *"Freeside building? `loa model <slug> --brief` (or `freeside-cli inspect <slug>`) reads its beacon — what it is, does, composes with, and whether it's usable — in one call. Prefer it over grepping registry.yaml."* Home: `loa-freeside/CLAUDE.md` §"Ecosystem Navigation" block. Landed in release step 4 (the pointer-flip), never before `loa model` exists.
@@ -104,8 +120,8 @@ Text: *"Freeside building? `loa model <slug> --brief` (or `freeside-cli inspect 
 ### 3.3 loa-cli (EXTERNAL repo, PR-B, operator-gated)
 - `lib/model.mjs` (D4) + `bin/loa.mjs` `model` case + usage. Parity test + fixture.
 
-### 3.4 pointer (network domain, PR-A — but flipped LAST per release order)
-`CLAUDE.md` navigation-block edit (D7). Committed in PR-A but the PR is sequenced so the pointer text lands only after loa-cli deploys — OR (simpler) the pointer references `freeside-cli inspect` on land and adds `loa model` in a tiny follow-up commit once PR-B merges. **Chosen**: pointer lands referencing BOTH but with a one-line "loa model available once loa-cli#<n> merges" honesty note removed in the flip. (Release ordering §4.)
+### 3.4 pointer (network domain — landed in PR-A referencing `inspect` only; `loa model` added at step 4)
+To eliminate the release-sequencing contradiction (flatline-SDD IMP-001): PR-A's CLAUDE.md pointer references **only `freeside-cli inspect`** (which exists on PR-A land). The `loa model` reference is added by the **step-4 flip commit**, AFTER PR-B merges + parity is green. At no point does the pointer name a command that doesn't yet exist (partial-rollout invariant). §4 is the single source of truth for ordering; there is no "honesty note" interim state.
 
 ## 4. Delivery Plan (PRD §7.0 — strict order, ADR-007)
 
@@ -121,11 +137,13 @@ Rollback: PR-A stands alone (inspect useful without loa-cli); PR-B independently
 ## 5. Security
 | Control | Where | Test |
 |---------|-------|------|
-| https-only beacon fetch | `defaultBeaconFetcher` (D3) | unit: http:// url → `beacon_unreachable`/scheme_rejected, no fetch |
-| host-pin + off-host→void | doctor (existing, reused) | unit: off-host redirect → `beacon_void` exit 5 (existing doctor test covers; add inspect-level) |
-| private/loopback block | `defaultBeaconFetcher` (D3) | unit: 127.0.0.1 / localhost / 10.x beacon_url → blocked, no fetch |
-| size cap + timeout | `defaultBeaconFetcher` (D3) | unit: oversize body → `beacon_invalid`; hung fetch → timeout → `beacon_unreachable` |
-| no body/header in errors | packet.verdict.detail | unit: error detail never contains response body substrings |
+| https-only beacon fetch | `hardenBeaconFetch` (D3a) | conformance vector: http:// → `scheme_rejected`, no fetch |
+| **registry-host allowlist** (primary SSRF control) | `hardenBeaconFetch` (D3b) | vector: non-cluster host → `host_not_allowlisted`, no fetch — BOTH repos |
+| **DNS resolves-to-private reject** | `hardenBeaconFetch` (D3c) | vector: host resolving to 169.254.169.254 / 10.x → `resolved_private`, no fetch |
+| host-pin + off-host→void | doctor (existing, reused) | vector: off-host redirect → `beacon_void` exit 5 |
+| size cap + timeout | `hardenBeaconFetch` (D3d) | vector: oversize → `beacon_invalid`; hung → timeout → `beacon_unreachable` |
+| no body/header in errors | packet.verdict.detail (enumerated) | vector: detail ∈ fixed set, never a body substring |
+| guard parity across repos | conformance vector suite (D6) | both freeside-cli + loa-cli run the SAME vectors; checksum-pinned copy |
 | read-only (no dispatch) | inspect + loa model | design review: no run/pipe/mutate path |
 
 ## 6. Testing (network-free by default)
