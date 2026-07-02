@@ -26,6 +26,7 @@ export type VerdictDetail =
   | "resolved_private"
   | "off_host_redirect"
   | "not_found"
+  | "server_error"
   | "not_a_beacon"
   | "slug_mismatch"
   | "invalid_beacon"

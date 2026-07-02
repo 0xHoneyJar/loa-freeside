@@ -96,6 +96,16 @@ test("404 at the declared host → beacon_dark, exit 4, not_found", async () => 
   assert.equal(r.packet?.verdict.detail, "not_found");
 });
 
+test("503 at the declared host → beacon_dark, exit 4, server_error (distinct from 404 not_found, BC-008)", async () => {
+  const r = await inspectModule("score-api", {
+    registry: makeRegistry("score-api", { beacon_url: SCORE_URL }),
+    fetcher: fetcherReturning({ status: 503, finalUrl: SCORE_URL, body: "" }),
+  });
+  assert.equal(r.exit, 4);
+  assert.equal(r.packet?.verdict.classification, "beacon_dark");
+  assert.equal(r.packet?.verdict.detail, "server_error");
+});
+
 test("off-host redirect (finalUrl host differs) → beacon_void, exit 5", async () => {
   const r = await inspectModule("score-api", {
     registry: makeRegistry("score-api", { beacon_url: SCORE_URL }),

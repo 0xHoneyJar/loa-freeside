@@ -66,7 +66,7 @@ const main = async (): Promise<number> => {
       if (!slug || slug.startsWith("--")) {
         console.error("Error: 'inspect' requires a module slug.");
         console.error("       freeside-cli inspect <slug> [--raw] [--pretty]");
-        return 1;
+        return 64; // EX_USAGE — distinct from unknown_slug (exit 1), so an agent can tell 'called wrong' from 'no such slug' (BC-009)
       }
       const flags = args.slice(2);
       const result = await inspectModule(slug);

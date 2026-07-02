@@ -41,6 +41,7 @@ function guardUrl(rawUrl: string): { reject: boolean; detail?: string } {
     return { reject: true, detail: "transport_error" };
   }
   if (u.protocol !== "https:") return { reject: true, detail: "scheme_rejected" };
+  if (u.port && u.port !== "443") return { reject: true, detail: "host_not_allowlisted" }; // BC-006
   const host = normalizeHost(u.hostname);
   if (!host) return { reject: true, detail: "transport_error" };
   if (!isHostAllowlisted(host)) return { reject: true, detail: "host_not_allowlisted" };
@@ -110,6 +111,30 @@ test("hardenedBeaconFetcher rejects a non-allowlisted host before opening a sock
 test("hardenedBeaconFetcher rejects the suffix-as-substring bypass (evil0xhoneyjar.xyz)", async () => {
   const r = await hardenedBeaconFetcher("https://evil0xhoneyjar.xyz/.well-known/beacon.json");
   assert.equal(r.error, "host_not_allowlisted");
+});
+
+test("BC-001: shared multi-tenant PaaS apexes are NOT allowlisted (vercel.app / up.railway.app)", async () => {
+  for (const host of ["attacker.vercel.app", "attacker.up.railway.app"]) {
+    const r = await hardenedBeaconFetcher(`https://${host}/.well-known/beacon.json`);
+    assert.equal(r.error, "host_not_allowlisted", host);
+  }
+});
+
+test("BC-006: an explicit non-443 port is rejected before any socket", async () => {
+  const r = await hardenedBeaconFetcher("https://sonar.0xhoneyjar.xyz:8443/.well-known/beacon.json");
+  assert.equal(r.error, "host_not_allowlisted");
+  assert.equal(r.status, 0);
+});
+
+test("BC-002: a malformed redirect Location does NOT throw — classified transport_error", async () => {
+  const transport: HardenTransport = {
+    resolveAll: async () => [{ address: "93.184.216.34", family: 4 }],
+    get: async () => ({ status: 302, location: "https://", body: "" }), // unparseable Location
+  };
+  const r = await makeHardenedBeaconFetcher(transport)("https://sonar.0xhoneyjar.xyz/b.json");
+  assert.equal(r.status, 0);
+  assert.equal(r.error, "transport_error");
+  assert.equal(r.body, "");
 });
 
 // ── DNS-rebinding TOCTOU + private-range reject (injected transport, network-free) ──

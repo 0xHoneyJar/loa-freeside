@@ -65,8 +65,9 @@ function classify(
     if (v.beacon.slug !== expectedSlug) return { classification: "beacon_dark", detail: "slug_mismatch" };
     return { classification: "beacon_valid", detail: "ok", beacon: toBeaconInput(v.beacon) };
   }
-  // reachable host, non-2xx (404 / non-beacon) → dark.
-  return { classification: "beacon_dark", detail: "not_found" };
+  // reachable host, non-2xx → dark. Preserve the 4xx/5xx distinction in the detail (a 503 is a
+  // building erroring, not a missing beacon) even though the classification is the same (BC-008).
+  return { classification: "beacon_dark", detail: fetched.status >= 500 ? "server_error" : "not_found" };
 }
 
 function toBeaconInput(b: {

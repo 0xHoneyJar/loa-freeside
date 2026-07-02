@@ -22,12 +22,18 @@ import type { RemoteFetchResult } from "../verbs/doctor.js";
 // Re-export so the fetcher's consumers (inspect) import the result shape from one place.
 export type { RemoteFetchResult } from "../verbs/doctor.js";
 
-/** Cluster-controlled domain suffixes the beacon_url host MUST match (SDD D3b). */
-export const ALLOWED_BEACON_HOST_SUFFIXES: readonly string[] = [
-  "0xhoneyjar.xyz",
-  "up.railway.app",
-  "vercel.app",
-];
+/**
+ * Cluster-controlled domain suffixes the beacon_url host MUST match (SDD D3b).
+ *
+ * ONLY suffixes whose registration boundary the cluster controls belong here (BB BC-001):
+ * `0xhoneyjar.xyz` is cluster-owned, so `*.0xhoneyjar.xyz` proves cluster identity. Shared
+ * multi-tenant PaaS apexes (`up.railway.app`, `vercel.app`) are deliberately EXCLUDED — under
+ * the registry-compromise threat model a bare platform suffix is a hole, not a control (any
+ * tenant can mint `attacker.vercel.app`), and it would let attacker-authored BeaconV3 bodies
+ * validate + render into agent-consumed packets. All 8 registry beacon_urls are `*.0xhoneyjar.xyz`;
+ * a building served from a PaaS deployment URL must front it behind the cluster domain.
+ */
+export const ALLOWED_BEACON_HOST_SUFFIXES: readonly string[] = ["0xhoneyjar.xyz"];
 
 const REQUEST_TIMEOUT_MS = 12_000; // matches doctor's REMOTE_TIMEOUT_MS
 const MAX_BODY_BYTES = 256 * 1024;
@@ -65,7 +71,7 @@ export function isBlockedAddress(ip: string): boolean {
 function isBlockedV4(ip: string): boolean {
   const parts = ip.split(".").map((n) => Number(n));
   if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return true;
-  const [a, b] = parts;
+  const a = parts[0];
   const u = ((parts[0] << 24) >>> 0) + (parts[1] << 16) + (parts[2] << 8) + parts[3];
   const inRange = (netStr: string, bits: number): boolean => {
     const np = netStr.split(".").map(Number);
@@ -83,7 +89,7 @@ function isBlockedV4(ip: string): boolean {
     inRange("192.0.0.0", 24) || // IETF protocol assignments
     inRange("192.168.0.0", 16) ||
     inRange("198.18.0.0", 15) || // benchmarking
-    a === 224 || (a >= 224 && a <= 239) || // 224/4 multicast
+    (a >= 224 && a <= 239) || // 224/4 multicast
     a >= 240 // 240/4 reserved incl. 255.255.255.255 broadcast
   );
 }
@@ -173,48 +179,70 @@ async function resolveValidated(
 function pinnedGet(urlStr: string, host: string, ip: string, family: 4 | 6): Promise<PinnedGetResult> {
   return new Promise((resolve) => {
     const u = new URL(urlStr);
+    let settled = false;
+    const done = (r: PinnedGetResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadline);
+      resolve(r);
+    };
     const req = httpsRequest(
       {
         protocol: "https:",
         host,
+        port: 443, // beacons are https/443 only; a declared non-443 port is rejected at the guard (BC-006)
         servername: host, // TLS SNI + cert hostname verified against the declared host
         path: u.pathname + u.search,
         method: "GET",
-        timeout: REQUEST_TIMEOUT_MS,
-        // PIN: connect only to the pre-validated IP; no connect-time re-resolution (rebinding TOCTOU closed).
-        lookup: (_hostname, _opts, cb) => cb(null, ip as never, family),
+        timeout: REQUEST_TIMEOUT_MS, // socket-idle guard (secondary to the absolute deadline below)
+        // PIN: connect only to the pre-validated IP; no connect-time re-resolution (rebinding TOCTOU
+        // closed). Honor the {all:true} lookup contract (autoSelectFamily) so the pin holds on all
+        // Node configs — a bare-string callback breaks under happy-eyeballs (BC-004).
+        lookup: (_hostname, opts, cb) => {
+          if ((opts as { all?: boolean }).all) {
+            (cb as (e: Error | null, a: Array<{ address: string; family: number }>) => void)(null, [{ address: ip, family }]);
+          } else {
+            cb(null, ip as never, family);
+          }
+        },
       },
       (res) => {
         const status = res.statusCode ?? 0;
         const location = res.headers.location ?? null;
         if (status >= 300 && status < 400) {
           res.resume(); // drain, do not read a redirect body
-          resolve({ status, location, body: "" });
+          done({ status, location, body: "" });
           return;
         }
-        let body = "";
+        // Accumulate raw Buffer chunks and decode ONCE — a multi-byte UTF-8 char split across two
+        // TCP chunks would corrupt under per-chunk toString (BC-005).
+        const chunks: Buffer[] = [];
         let bytes = 0;
-        let aborted = false;
         res.on("data", (chunk: Buffer) => {
           bytes += chunk.length;
           if (bytes > MAX_BODY_BYTES) {
-            aborted = true;
             req.destroy();
-            resolve({ status, location: null, body: "", error: "oversize" });
+            done({ status, location: null, body: "", error: "oversize" });
             return;
           }
-          body += chunk.toString("utf8");
+          chunks.push(chunk);
         });
-        res.on("end", () => {
-          if (!aborted) resolve({ status, location: null, body });
-        });
+        res.on("end", () => done({ status, location: null, body: Buffer.concat(chunks).toString("utf8") }));
       },
     );
+    // Absolute deadline: bounds total time regardless of drip-feeding (the socket-idle `timeout`
+    // resets on every byte and cannot bound a slow-drip response) (BC-003).
+    const deadline = setTimeout(() => {
+      req.destroy();
+      done({ status: 0, location: null, body: "", error: "timeout" });
+    }, REQUEST_TIMEOUT_MS);
+    deadline.unref?.();
     req.on("timeout", () => {
       req.destroy();
-      resolve({ status: 0, location: null, body: "", error: "timeout" });
+      done({ status: 0, location: null, body: "", error: "timeout" });
     });
-    req.on("error", (err) => resolve({ status: 0, location: null, body: "", error: err.message }));
+    // Enumerated detail only — never surface a raw socket message (may carry the pinned IP) (BB BC-004/F4).
+    req.on("error", () => done({ status: 0, location: null, body: "", error: "transport_error" }));
     req.end();
   });
 }
@@ -248,6 +276,9 @@ export function makeHardenedBeaconFetcher(transport: HardenTransport = realTrans
         return { status: 0, finalUrl: current, body: "", error: "transport_error" };
       }
       if (u.protocol !== "https:") return { status: 0, finalUrl: current, body: "", error: "scheme_rejected" };
+      // Reject an explicit non-443 port: the pin connects to 443, so honoring a declared port would
+      // silently connect elsewhere. Fail closed + honest rather than connect to a surprising port (BC-006).
+      if (u.port && u.port !== "443") return { status: 0, finalUrl: current, body: "", error: "host_not_allowlisted" };
       const host = normalizeHost(u.hostname);
       if (!host) return { status: 0, finalUrl: current, body: "", error: "transport_error" };
       if (!isHostAllowlisted(host)) return { status: 0, finalUrl: current, body: "", error: "host_not_allowlisted" };
@@ -261,7 +292,14 @@ export function makeHardenedBeaconFetcher(transport: HardenTransport = realTrans
 
       if (res.status >= 300 && res.status < 400) {
         if (!res.location) return { status: res.status, finalUrl: current, body: "" };
-        const next = new URL(res.location, current).toString();
+        // A malformed Location (e.g. `https://`) must NOT throw out of the fetcher — the contract is
+        // "every reject becomes a status-0 result", and the header is remote-controlled input (BC-002).
+        let next: string;
+        try {
+          next = new URL(res.location, current).toString();
+        } catch {
+          return { status: 0, finalUrl: current, body: "", error: "transport_error" };
+        }
         // off-host redirect → surface finalUrl so the host-integrity guard classifies VOID.
         if (safeHost(next) !== declaredHost) return { status: res.status, finalUrl: next, body: "" };
         current = next; // same-host → re-loop (re-validated + re-pinned)
