@@ -47,27 +47,27 @@ Unknown-preset 400 lists available presets in the error body (FR-1). `docs/runbo
 
 **Entry gate** [FLATLINE IMP-001, 905]: Sprint 2 implementation of the probe verb starts only after the deployed `/healthz` shows PR-A's `write_routes` field (proof the new service version is live). `place/status/watch` may start against the current deploy; anything touching reprobe waits for the gate. Owner: whoever runs the sprint checks it at sprint start and records the healthz body in NOTES.md.
 
-### S2-T1 — Client + schemas + exit codes
+### ✅ S2-T1 — Client + schemas + exit codes
 `src/lib/ordering-client.ts` (global fetch; `ORDERING_SERVICE_URL`/`ORDERING_SERVICE_TOKEN`; HTTP/transport errors → exit-code classes; token redaction) and `src/lib/ordering-schemas.ts` (per-verb success/error types + runtime guards). **Single sources** [FLATLINE IMP-003/IMP-008]: the exit-code table is SDD D6 verbatim (one exported const, no per-verb variants); the error envelope is `{error, http_status?, order_id?, hint?}` pinned by its own schema guard — every verb's failure path emits exactly this shape. Zero new deps.
 **Accept**: unit tests — error mapping per class; error-envelope schema conformance on every failure path; redaction test (token never in output/errors); schema guards reject shape drift.
 
-### S2-T2 — `order place|status|ingredients`
+### ✅ S2-T2 — `order place|status|ingredients`
 Three verbs per SDD §3.1 rows 1–3, wired into the `switch(verb)` dispatch. No client preset table — server 400 surfaced verbatim (SDD §3.1 resolution).
 **Accept**: contract tests vs fixture server — happy path + unknown-preset error + schema/exit-code conformance per row.
 
-### S2-T3 — `kitchen probe|advance`
+### ✅ S2-T3 — `kitchen probe|advance`
 Probe verb maps reprobe response (`fresh|ambiguous` per ingredient; any ambiguous → exit 4). Advance verb: client-side bounds (`--status` ∈ enum, `--ingredient` ∈ order's ingredient set — fetched, not hardcoded), `--note` → `caller_note`, CAS-lost → exit 4 with server state in error JSON.
 **Accept**: contract tests — bounds rejection happens before any HTTP call (fixture asserts no request); ambiguous → 4; CAS-lost → 4; cooldown 429 surfaced distinctly.
 
-### S2-T4 — `fulfill watch`
+### ✅ S2-T4 — `fulfill watch`
 Poll loop per SDD §3.1: change-only JSON lines, `--interval`/`--timeout`/`--once`, bounded transient retries → exit 2, terminal exits 0/6, timeout 5. Stateless (safe to interrupt/re-invoke).
 **Accept**: contract tests with scripted fixture sequences — change detection (no repeated-state lines), fulfilled→0, failed→6, timeout→5, `--once` snapshot, retry exhaustion→2.
 
-### S2-T5 — Registry entry + doctor probe (FR-9/9a)
+### ✅ S2-T5 — Registry entry + doctor probe (FR-9/9a)
 `ordering` module in `registry.yaml` (deployment URL from S1-T0 truth, probe `/healthz`); doctor classifies mocked 200 → ok, mocked timeout → error.
 **Accept**: doctor probe test; `freeside-cli list` shows ordering; G-3 check: `loa census` sees the node (operator-run, recorded).
 
-### S2-T6 — Differential check + help
+### ✅ S2-T6 — Differential check + help
 Env-gated (`ORDERING_DIFFERENTIAL=1`) fixture-vs-deployed shape comparison on `GET /v1/orders/:id` (anti-fixture-tautology); verb help text. **CI boundary explicit** [FLATLINE IMP-004]: default test run makes ZERO network calls (fixture-only); the differential is the only live-touching test and is opt-in via the env flag; skip is a visible `skipped` in the report, never a silent pass.
 **Accept**: differential test passes against live service when enabled, skips visibly in CI; grep-level assertion that no other test file references the live URL; `freeside-cli --help` lists new verbs.
 
