@@ -6,7 +6,7 @@ import type {
   CommunityOnboardingOutput,
 } from '@freeside/ordering-protocol';
 import { assertTransition, type OrderState } from './order-state.js';
-import type { IngredientJob, OperatorAuditEntry } from './kitchen-types.js';
+import type { IngredientJob, OperatorAuditEntry, OrderProbeMeta } from './kitchen-types.js';
 
 /**
  * Durable order-state store + transactional outbox (SDD §13 H-3 / H-4).
@@ -71,6 +71,8 @@ export interface OrderRecord {
   ingredient_jobs?: IngredientJob[];
   /** Kitchen V2 — operator advance-ingredient audit trail. */
   operator_audit?: OperatorAuditEntry[];
+  /** Fulfillment-surface — last raw probe truth per ingredient (SDD D1). Legacy rows: absent. */
+  probe_meta?: OrderProbeMeta;
   created_at_unix: number;
   updated_at_unix: number;
 }
@@ -89,6 +91,7 @@ export type OrderPatch = Partial<
     | 'fulfillment'
     | 'ingredient_jobs'
     | 'operator_audit'
+    | 'probe_meta'
   >
 >;
 

@@ -284,3 +284,10 @@ shadow-mode-api = the MISSING member-graph composition spine. Build as evolution
 - Recovered non-destructively via `git show stash@{0}:<path>` (stash left intact for the other session)
 - This cycle now lives in worktree `.worktrees/fulfillment-surface` on branch `cycle/fulfillment-surface` (cut from origin/main) — artifacts committed immediately; simstim state copied to worktree .run/
 - LESSON: multi-session repo work needs worktree isolation from the start; uncommitted grimoires artifacts in a shared tree are one checkout away from loss
+
+### S1-T0 CLOSED — deployed truth + fixture pin (2026-07-01)
+
+- **Ordering-service URL (S2-T5 registry input)**: `https://ordering-service-production.up.railway.app` — healthz `{"ok":true,"service":"ordering-service","store":"postgres","kitchen_enqueue":true}` (Railway project ordering-service/production, id da981788)
+- **DEPLOY.md correction to the correction**: `kitchen-api-production-1937` is the SONAR_API_URL example in DEPLOY.md — it was never the ordering URL; no DEPLOY.md fix needed
+- **G-1 fixture PIN**: order `6ddc06f5-0c6f-42b8-8377-768a4c2a302e` (Azuki, community-onboarding) — state `producing`; ingredients: score=pending, sonar=blocked, shadow_preview=blocked, worlds_manifest=complete, discord_observer=optional; world_slug=azuki
+- Fallback rule active: fixture terminal at demo time → place fresh order, update this pin, rerun
