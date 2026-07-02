@@ -289,3 +289,9 @@ shadow-mode-api = the MISSING member-graph composition spine. Build as evolution
 - Ordering-service URL: https://ordering-service-production.up.railway.app (healthz ok, postgres store)
 - G-1 fixture: order 6ddc06f5-0c6f-42b8-8377-768a4c2a302e (Azuki) — producing; score=pending, sonar=blocked, worlds_manifest=complete
 - S2 entry gate: PR-A not yet deployed at S2 build time — probe verb built against the SDD contract fixture; differential test env-gated (ORDERING_DIFFERENTIAL=1); gate re-checked before G-1 demo
+
+### beacon-consumer Sprint 1 — checkpoint (2026-07-02)
+- Branch feature/beacon-consumer-s1 (off cycle/beacon-consumer, off origin/main). PRD+SDD+sprint flatline-reviewed+committed on cycle branch; beads arrakis-beacon-consumer-rgey.1..6.
+- **S1-T1 DONE + green**: packages/beacon-schema/src/orientation-packet.ts (OrientationPacket type, total buildOrientationPacket w/ missing-field policy, BEACON_EXIT table) + 5 node:test cases (57 total green). Bead .1 closed.
+- **Remaining S1-T2..T6** (resume /run-resume or /implement sprint-1): T2 conformance-vector suite (beacon-schema/test-vectors/orientation-conformance.json — bypass+family cases); T3 **SECURITY-CRITICAL** hardenBeaconFetch (canonical IDNA/dot-boundary host allowlist, complete v4+v6 private/metadata/IPv4-mapped CIDR set, IP-pinned fetch via undici Agent closing DNS-rebind TOCTOU + TLS-SNI, or documented residual+operator-accept); T4 inspect un-stub reusing doctor probeBeacon/classifyProbe (map RemoteVerdict discoverable/dark/void → the 5-class BeaconClassification: status0→unreachable, redirectedOff→void, 2xx+valid+slug-match→valid, 2xx+valid+slug-mismatch/404→dark, 2xx+!valid→invalid); T5 CLAUDE.md inspect-only pointer; T6 verify.
+- Deliberately paused: S1-T3 SSRF is security-critical; not rushing IP-pin/rebind-defense at a marathon-session tail.
