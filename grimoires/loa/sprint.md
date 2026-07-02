@@ -8,34 +8,34 @@
 
 **Goal**: the service exposes everything an agent-driven CLI needs: on-demand fresh probes, evidence-grounded advances, fail-closed auth. (G-4, G-5; enables G-1)
 
-### S1-T0 — Deployed-truth probe + fixture decision gate (no code) [FLATLINE SKP-001 + IMP-010]
+### ✅ S1-T0 — Deployed-truth probe + fixture decision gate (no code) [FLATLINE SKP-001 + IMP-010]
 Verify the live ordering-service before building against it: `GET /healthz` + `GET /v1/orders/6ddc06f5` at the DEPLOY.md URL (`kitchen-api-production-1937.up.railway.app`).
 **Decision gate — no implementation task starts until this closes**:
 - URL wrong/unreachable → correct DEPLOY.md (and later the S2-T5 registry entry) with the observed truth first.
 - Fixture lifecycle: if order `6ddc06f5` is terminal/missing/advanced, **place a fresh dedicated demo order** (community-onboarding preset) as the G-1 fixture. The demo fixture is treated as mutable-by-design: its ID + expected starting state are pinned in NOTES.md AND read by S2 tests/demo from that single record (never hardcoded twice). Fallback rule: fixture found terminal at demo time → place a new order, update the pin, rerun.
 **Accept**: NOTES.md entry with observed healthz/order responses, the pinned fixture ID + expected state, and the URL truth that S2-T5 will consume.
 
-### S1-T1 — `probe_meta` shape + single write path
+### ✅ S1-T1 — `probe_meta` shape + single write path
 Type `probe_meta: {[ingredient]: {status, probed_at_unix, source}}` in `@freeside/ordering-protocol`; shared merge helper writes it from BOTH `ReProbeWorker` and the new reprobe endpoint (SDD D1/IMP-002). Legacy rows read as `{}`.
 **Accept**: unit tests — worker probe run populates probe_meta; legacy record without probe_meta reads clean; monotonic merge preserved (`mergeProbedIngredients` untouched or extended with tests).
 
-### S1-T2 — `POST /v1/orders/:id/reprobe`
+### ✅ S1-T2 — `POST /v1/orders/:id/reprobe`
 Synchronous on-demand probe per SDD D1: token-gated; body `{ingredient?}`; bounds (30s global timeout, fan-out ≤3, 10s/probe with AbortController, 10s per-order cooldown → 429 + retry_after); failure semantics 401/404/409/429; probe failure/timeout → in-body `ambiguous`, never 5xx; CAS-lost merge retries once (SDD IMP-003).
 **Accept**: vitest suite — fresh probe path, timeout→ambiguous, cooldown 429, global-timeout with hung-probe fake, CAS-race retry, 409 on terminal order.
 
-### S1-T3 — Advance: server-derived evidence + actor (SDD D3)
+### ✅ S1-T3 — Advance: server-derived evidence + actor (SDD D3)
 `AdvanceIngredientBodySchema` + optional `caller_note` (≤120 chars); handler resolves `token_label` from the authenticating credential; audit entry gains `{token_label, evidence: probe_meta[ingredient] ?? null, caller_note?}`. **Evidence immutability** [FLATLINE IMP-006]: the audit `evidence` is a value COPY taken at advance time — later reprobes update `probe_meta` but never mutate past audit entries.
 **Accept**: unit tests — audit entry carries token_label regardless of body; evidence == server probe_meta snapshot at advance time; a subsequent reprobe leaves the prior audit entry byte-identical; never-probed → `evidence: null`; legacy body (dashboard shape) still valid; caller_note stored verbatim but never substitutes for token_label.
 
-### S1-T4 — Fail-closed boot + auth matrix (SDD D4/D8)
+### ✅ S1-T4 — Fail-closed boot + auth matrix (SDD D4/D8)
 Deployed marker (`RAILWAY_ENVIRONMENT` || `NODE_ENV=production`) + unset `SERVICE_TOKEN` → write routes not mounted; `/healthz` reports `write_routes: open_dev|token|disabled_no_token`; loud boot log.
 **Accept**: integration test matrix — all 4 D8 rows; deployed-tokenless boot leaves POSTs 404 and healthz shows `disabled_no_token` (FR-10b, G-4). **Read-route posture explicit** [FLATLINE IMP-007]: GET routes + `/healthz` remain unauthenticated BY DESIGN in every row (registry doctor probes healthz tokenless) — one test asserts reads stay open in deployed-tokenless mode.
 
-### S1-T5 — Canonical projection (SDD D7)
+### ✅ S1-T5 — Canonical projection (SDD D7)
 One `toPublicOrder(record)` used by `GET /v1/orders/:id`, advance response, reprobe response; internal fields excluded. **Shape defined up front** [FLATLINE IMP-002]: the public projection TYPE lands in `@freeside/ordering-protocol` in THIS task, before Sprint 2 consumes it — the CLI's S2-T1 schemas import/mirror it, never re-derive it.
 **Accept**: projection stability test — all three routes deep-equal on shared fields for the same record; snapshot test pins the public shape; the exported type exists in ordering-protocol.
 
-### S1-T6 — Preset error support + rotation runbook
+### ✅ S1-T6 — Preset error support + rotation runbook
 Unknown-preset 400 lists available presets in the error body (FR-1). `docs/runbooks/ordering-token-rotation.md` (NFR-8c: issue → update consumers → revoke).
 **Accept**: 400-body test; runbook exists and names both consumers (dashboard, CLI).
 
