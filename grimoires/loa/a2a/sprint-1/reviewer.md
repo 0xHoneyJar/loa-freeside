@@ -1,116 +1,59 @@
-# Sprint 1 Implementation Report — ordering-service capabilities (PR-A, platform/ordering)
+# Sprint 1 Implementation Report — beacon-consumer (PR-A, network domain)
 
-> Cycle: fulfillment-surface · Branch: `feature/fulfillment-s1-platform` (worktree `.worktrees/fulfillment-surface`) · Beads: `arrakis-fulfillment-surface-7xor.1–.7` (all closed) · Supersedes the stale prior-cycle report (archived under `_archive-prior-cycle-20260622`).
+> Cycle: beacon-consumer · Branch: `feature/beacon-consumer-s1` (worktree `.worktrees/beacon-consumer`) · Commits: `04eddd0d` (S1-T2..T6) + `dfa9598e` (FAGAN F1 fix). S1-T1 already on `cycle/beacon-consumer`. Supersedes the archived fulfillment-surface report (`_archive-fulfillment-20260702/`).
 
 ## Executive Summary
 
-Sprint 1 gives the ordering service everything an agent-driven CLI needs: on-demand fresh probes (`POST /v1/orders/:id/reprobe` with load bounds and honest failure semantics), server-derived audit evidence + actor identity on advance, fail-closed write routes in deployed environments, one canonical public projection, and unknown-preset support. **100/100 tests green** (80 pre-existing + 20 new), `tsc --noEmit` clean, protocol package 15/15 green. Zero network-domain paths touched.
+`freeside-cli inspect <slug>` is now the first **live beacon consumer**: it fetches a cell's declared `beacon_url` over an SSRF-safe path, validates BeaconV3, and renders the single-owned `OrientationPacket` with an honest classification (`beacon_valid`/`dark`/`void`/`invalid`/`unreachable`) mapped to a stable exit code. The security-critical `hardenBeaconFetch` (https-only + IDNA/dot-boundary host allowlist + complete private-range reject + **IP-pinned connect closing the DNS-rebinding TOCTOU** + 256KB cap) is shared by `inspect` and `doctor --remote` — one hardened path, no parallel copy. Cross-model adversarial review (FAGAN) ran on the committed diff; its one MEDIUM finding (hex-form IPv4-mapped bypass) is fixed and regression-tested.
+
+Both suites green, network-domain only.
 
 ## AC Verification
 
-### S1-T0 (closed before implementation)
-> "NOTES.md entry with observed healthz/order responses, the pinned fixture ID + expected state, and the URL truth that S2-T5 will consume."
+### S1-T2 — Shared conformance-vector suite
+> "the JSON parses + is schema-checked; a beacon-schema test drives `buildOrientationPacket` + the `hardenBeaconFetch` classifier through EVERY vector and asserts `expect` (incl. enumerated `detail`)."
 
-✓ Met — `grimoires/loa/NOTES.md` §"S1-T0 CLOSED": URL `https://ordering-service-production.up.railway.app` (healthz verbatim), fixture `6ddc06f5-0c6f-42b8-8377-768a4c2a302e` pinned at `producing` with full ingredient map. Correction recorded: `kitchen-api-production-1937` was DEPLOY.md's *sonar* example — no DEPLOY.md fix needed.
+**✓ Met.** Vectors: `packages/beacon-schema/test-vectors/orientation-conformance.json` (host_guard bypass set incl. `0xhoneyjar.xyz.evil.tld`/trailing-dot/UPPERCASE/punycode; private_range v4+v6+IPv4-mapped **dotted AND hex** form; classification→exit rows). Driven at the owner package: `packages/beacon-schema/tests/orientation-conformance.test.ts:36,50` (builder + `BEACON_EXIT`), and the guard side at `packages/freeside-cli/tests/harden-beacon-fetch.test.ts:38,52` (host_guard + private_range). freeside-cli reads the vectors from the beacon-schema package path (`tests/harden-beacon-fetch.test.ts:22`).
 
-### S1-T1 — probe_meta shape + single write path
-> "unit tests — worker probe run populates probe_meta; legacy record without probe_meta reads clean; monotonic merge preserved (`mergeProbedIngredients` untouched or extended with tests)."
+### S1-T3 — SSRF hardening `hardenBeaconFetch` [SECURITY]
+> "http→scheme_rejected; suffix-bypass set→host_not_allowlisted, no fetch; each private range (v4+v6+IPv4-mapped) resolving→resolved_private, no fetch (DNS mocked); DNS-rebinding test — pinned-IP fetch connects to the validated address; oversize→beacon_invalid; off-host redirect→void; error-detail never a body substring. Existing doctor tests stay green."
 
-✓ Met —
-- Shape typed in protocol: `packages/protocol/ordering/src/kitchen.ts:39-50` (`IngredientProbeMeta`, `OrderProbeMeta`).
-- Single write path: `probeMetaEntries()` helper `packages/services/ordering/src/community-onboarding-orchestrator.ts:74-86`, called from `process()` placed branch (`:117-120`) and producing branch (piggybacked on merge patches, `:170-175`) and from `reprobe()` (`:385-388`). `ReProbeWorker` drives `process()` → same path.
-- Worker-path populate: `advance-evidence.test.ts:88-93` (process seeds `probe_meta`, source `interval`).
-- Legacy read: `store-postgres.ts:41` (`row.probe_meta ?? undefined`); in-memory absent-field is naturally undefined; migration `migrations/002_probe_meta.sql` is additive `ADD COLUMN IF NOT EXISTS`; runner extended `store-postgres.ts:69-74`.
-- Monotonic merge: signature widened to `Partial<>` only (`community-onboarding-orchestrator.ts:50-53`), skip-undefined guard added; all 5 pre-existing merge tests still green (e.g. `community-onboarding-orchestrator.test.ts` "does not downgrade in_progress to pending on reprobe").
+**✓ Met.** `packages/freeside-cli/src/lib/harden-beacon-fetch.ts`:
+- https-only `harden-beacon-fetch.ts:212`; canonical IDNA/dot-boundary allowlist `normalizeHost`+`isHostAllowlisted` `:35,:48`; complete private-range set `isBlockedV4`/`isBlockedV6` `:62,:120` (v4 0/8,10/8,100.64/10,127/8,169.254/16,172.16/12,192.0.0/24,192.168/16,198.18/15,224/4,240/4; v6 loopback/unspecified/link-local/ULA/multicast/fec0 + **numeric** IPv4-mapped unwrap).
+- **IP-pinned connect** `pinnedGet` custom `lookup` returning the validated IP with TLS `servername` preserved `:135`; single-resolution + reject-if-ANY-blocked `resolveValidated` `:126`.
+- oversize→`beacon_invalid`(detail `oversize`) `:153` + `inspect.ts:46`; off-host redirect surfaced as `finalUrl`→void `:203`; errors carry no body `:196`.
+- **DNS-rebinding test** (injected transport, network-free): `tests/harden-beacon-fetch.test.ts:120` asserts connect pins the pre-validated IP; resolved-private-no-connect `:88`; mixed-record poison `:101`.
+- Existing doctor tests green (redirect tests ported to the injectable transport `tests/doctor.test.ts:471,496`).
 
-### S1-T2 — POST /v1/orders/:id/reprobe
-> "vitest suite — fresh probe path, timeout→ambiguous, cooldown 429, global-timeout with hung-probe fake, CAS-race retry, 409 on terminal order."
+### S1-T4 — `freeside-cli inspect` un-stub
+> "contract tests via injected fetcher — happy (valid→full packet exit 0), each classification→exit row (0/2/3/4/5), unknown slug→exit 1+list, `--raw` valid vs non-valid, `--pretty`. Verdict agrees with doctor for the same cell (G-5)."
 
-✓ Met — route `intake.ts:209-243`; orchestrator method `community-onboarding-orchestrator.ts:327-412`; bounds at `:39-42` (cooldown 10s, per-probe timeout 10s, fan-out 3). Tests in `reprobe-endpoint.test.ts`:
-- fresh path → "fresh probe: returns fresh statuses…" (status merged + probe_meta source `reprobe`)
-- probe error → ambiguous, meta NOT updated ("probe error: reports ambiguous…")
-- hung probes → timeout-ambiguous + wall-clock bound ("hung probes classify as timeout-ambiguous…")
-- cooldown → orchestrator-level ("cooldown: a second reprobe within 10s…") + HTTP 429 with `retry_after_unix` (route test)
-- concurrent-advance race → monotonic survival ("concurrent advance survives the reprobe merge") — see Known Limitations (1) for the CAS-retry design note
-- terminal → `order already terminal` (orchestrator) + 409 mapping (route `intake.ts:232`); 401/404 also covered.
+**✓ Met.** `packages/freeside-cli/src/verbs/inspect.ts` — async `inspectModule`→`InspectResult{packet,exit,raw}` `:98`; 5-class `classify`→exit `:40`; error JSON shape `{error,slug?,available_slugs?,detail?}` `:25`; `--raw`(null on non-valid)+`--pretty` in `bin/freeside-cli.ts:72`. Contract tests (injected fetcher, no live network): `tests/inspect.test.ts` — happy `:38`, mismatch→4 `:63`, non-beacon→3 `:76`, 404→4 `:86`, off-host→5 `:96`, timeout→2 `:106`, oversize→3 `:116`, guard-reject→2 `:126`, unknown-slug→1+list (no fetch) `:138`, null-url→4 (no fetch) `:154`, `--raw` `:172`. Exit table is the single-owned `BEACON_EXIT` (beacon-schema) shared by inspect + doctor + loa model (G-5, IMP-003/004): `orientation-packet.ts:126`.
 
-### S1-T3 — advance server-derived evidence + actor
-> "unit tests — audit entry carries token_label regardless of body; evidence == server probe_meta snapshot at advance time; a subsequent reprobe leaves the prior audit entry byte-identical; never-probed → `evidence: null`; legacy body (dashboard shape) still valid; caller_note stored verbatim but never substitutes for token_label."
+### S1-T5 — CLAUDE.md reach pointer (inspect-only)
+> "pointer present in the nav block; references only `freeside-cli inspect`; ≤~50 tokens; no forward-reference to an unbuilt command."
 
-✓ Met — evidence copy `community-onboarding-orchestrator.ts:288-298` (`evidence: priorMeta ? { ...priorMeta } : null`, `token_label: opts?.tokenLabel`); schema `kitchen.ts:62-72`; route threading `intake.ts:196`; `caller_note` bound ≤120 (`intake.ts:68`). All six assertions in `advance-evidence.test.ts` (5 tests, incl. `structuredClone` byte-identity check after a later reprobe).
+**✓ Met.** `CLAUDE.md` §"Ecosystem Navigation", the paragraph after the `loa census` block — names `freeside-cli inspect <slug>` only; no `loa model` reference (that is the PR-B step-4 flip).
 
-### S1-T4 — fail-closed boot + D8 auth matrix
-> "integration test matrix — all 4 D8 rows; deployed-tokenless boot leaves POSTs 404 and healthz shows `disabled_no_token` (FR-10b, G-4). Read-route posture explicit [IMP-007]: … one test asserts reads stay open in deployed-tokenless mode."
+### S1-T6 — Wire + verify
+> "all green; `tools/check-beacon-domain.sh` → network-only (zero platform paths); grep-assert no live-network in default test run."
 
-✓ Met — posture helper `composition.ts:78-116` (matrix documented in-code); boot wiring `bin/http.ts:19-43` (writes unmounted + loud `console.error` + healthz `write_routes`); healthz moved into intake for testability (`intake.ts:162-168`). Tests: `write-route-posture.test.ts` — all 4 matrix rows (+ whitespace-marker edge), POSTs 404 when unmounted, healthz `disabled_no_token`, reads-stay-open (IMP-007).
+**✓ Met.** beacon-schema `pnpm test` 59+3 green; freeside-cli `pnpm build`+`pnpm test` 89 pass / 0 fail / 1 skip (the pre-existing `ORDERING_DIFFERENTIAL`-env-gated live test — not run by default). `tools/check-beacon-domain.sh --since origin/main` → `✓ Domain: network`. Grep-assert: zero live-network primitives in the beacon-consumer test files (all injected fetcher/transport).
 
-### S1-T5 — canonical projection
-> "projection stability test — all three routes deep-equal on shared fields for the same record; snapshot test pins the public shape; the exported type exists in ordering-protocol."
+## Cross-model review (FAGAN)
 
-✓ Met — `PublicOrderSchema` in `packages/protocol/ordering/src/kitchen.ts:78-99` (strict); `toPublicOrder()` `packages/services/ordering/src/projection.ts:12-29`; used by GET (`intake.ts:159`), advance (`intake.ts:204`), reprobe (`intake.ts:242`). `projection.test.ts`: strict-parse pins the shape on all three responses (reprobe = projection + `probes` report), deep-equal on shared fields, redaction assertions (`placed_by`/`inputs`/`inputs_digest`/`created_at_unix`/`output_digest` never appear). Strict zod parse is the shape pin (stronger than a snapshot: unknown keys fail).
+Adversarial dissent on the committed diff. Verdict APPROVE-WITH-FINDINGS; 7 anti-SSRF guards affirmed sound (check-and-connect-same-host, exact-IP pin / rebind TOCTOU closed, reject-if-ANY-blocked, v4 bitmask across 26 boundary cases, redirect body containment, classify ordering, doctor unification). Findings:
+- **F1 MEDIUM (FIXED, `dfa9598e`)** — hex-form IPv4-mapped IPv6 (`::ffff:a9fe:a9fe`=169.254.169.254) bypassed the private-range block. Fixed by numeric hextet unwrap; hex vectors added.
+- **F2 LOW (documented, no live impact)** — `doctor --remote` now reports non-allowlisted hosts as dark; all 12 registry hosts are `*.0xhoneyjar.xyz` (allowlisted). Fail-closed, and it *fixes* a prior doctor SSRF. Follow-up: a distinct `host_not_consumable` verdict for operator clarity.
+- **F3/F4/F5 LOW/INFO** — non-internal TEST-NET ranges (not SSRF vectors); raw socket `err.message` reaches doctor findings (inspect sanitizes via the `VerdictDetail` enum; doctor is operator-facing); port dropped (fail-safe). No action.
 
-### S1-T6 — unknown-preset 400 + rotation runbook
-> "400-body test; runbook exists and names both consumers (dashboard, CLI)."
+## Known limitations / deferrals
+- PR-B (`loa model` in external loa-cli) is the operator-gated cross-repo follow-on (not this PR); the CLAUDE.md pointer names only `freeside-cli inspect` until it lands (partial-rollout invariant).
+- G-1 kill-test is operator-run post-land.
 
-✓ Met — pre-check `intake.ts:87-103` (error + `available_presets`); test `projection.test.ts` §"unknown-preset support". Runbook `packages/services/ordering/docs/token-rotation-runbook.md` names freeside-dashboard (Vercel env) + freeside-cli (shell env), documents issue→update→revoke + `SERVICE_TOKEN_LABEL` audit-era practice + fail-closed degradation.
-
-### Sprint 1 verification
-> "full ordering-service vitest suite green; commit scope `platform/ordering`; PR contains zero `packages/freeside-cli` or `packages/freeside-registry` paths — checked mechanically [IMP-005]: run `tools/check-beacon-domain.sh`…"
-
-✓ Met — 100/100 green; commit scoped `platform/ordering`; domain check run pre-commit (see Verification Steps).
-
-## Tasks Completed (files)
-
-| File | Change |
-|------|--------|
-| `packages/protocol/ordering/src/kitchen.ts` | NEW — canonical kitchen contract: probe meta, audit entry (+`token_label`/`caller_note`/`evidence`), `PublicOrderSchema` |
-| `packages/protocol/ordering/src/index.ts` | export kitchen contract |
-| `packages/services/ordering/src/kitchen-types.ts` | now re-exports from protocol (imports unchanged everywhere) |
-| `packages/services/ordering/src/store.ts` | `probe_meta` on record + patch |
-| `packages/services/ordering/src/store-postgres.ts` | probe_meta column mapping in row/transition/patch; migration runner iterates both files |
-| `packages/services/ordering/migrations/002_probe_meta.sql` | NEW — additive column |
-| `packages/services/ordering/src/community-onboarding-orchestrator.ts` | probeMetaEntries + probe_meta writes; advance evidence/actor; `reprobe()` with bounds; `probeWithTimeout` |
-| `packages/services/ordering/src/intake.ts` | reprobe route, caller_note, projection everywhere, healthz-in-app, unknown-preset 400 |
-| `packages/services/ordering/src/projection.ts` | NEW — `toPublicOrder` |
-| `packages/services/ordering/src/composition.ts` | `resolveWriteRoutePosture` + env helpers |
-| `packages/services/ordering/bin/http.ts` | fail-closed mount + posture healthz + loud log |
-| `packages/services/ordering/docs/token-rotation-runbook.md` | NEW — NFR-8c |
-| 4 new test files | `reprobe-endpoint`, `advance-evidence`, `write-route-posture`, `projection` (20 tests) |
-
-## Technical Highlights
-
-- **Ambiguity never overwrites truth**: a failed/timed-out probe reports `ambiguous` in the response but leaves `probe_meta` and the ingredient merge untouched — recorded truth only moves on fresh success.
-- **Evidence chain is unfakeable**: nothing evidence-shaped is client-supplied; audit `evidence` is a value copy of the server's own `probe_meta` (the SDD-gate design revision, operator-approved).
-- **Fail-closed degrades to read-only**: a botched token rotation in production disables writes, never opens them; `/healthz` says so.
-- **`.strict()` projection parse as the contract test** — leaked internals or accidental shape growth fail CI, not review.
-
-## Testing Summary
-
-`pnpm test` in `packages/services/ordering` → 21 files, 100 tests, green. `pnpm typecheck` clean. Protocol package: 15/15 + typecheck clean. New coverage: reprobe (8 tests), evidence/actor (5), posture/fail-closed (6), projection/preset (2 — with multi-assertion bodies). Timeout test uses `REPROBE_PER_PROBE_TIMEOUT_MS` env + fresh module import; cooldown/clock tests use injected `now()`.
-
-## Known Limitations
-
-1. **Reprobe merge race handling** (SDD IMP-003 drift, deliberate): SDD D1 said "a reprobe whose merge loses CAS retries the merge once." Implemented instead as **re-read-fresh-after-probes + monotonic merge** — the merge is computed against the freshest record after the slow probe I/O completes, and the monotonic merge cannot downgrade a concurrent `complete` (proven by the race test). A literal conditional-patch CAS would need a new store-port method for equal harm-bound; marked in code. `// loa:shortcut` ceiling: if concurrent writers multiply beyond operator+worker, add conditional patch to the port.
-2. **Reprobe cooldown is per-instance in-memory** (`community-onboarding-orchestrator.ts:302-304`) — correct for the single-instance Railway deploy; move to the store if the service scales out (marked in code).
-3. **Per-probe timeout is race-based, no AbortController propagation** — `TriagePorts` has no signal param; a timed-out probe's fetch may linger until its own network timeout (marked at `probeWithTimeout`). Observable behavior (timeout→ambiguous, wall-clock bound) is tested.
-4. **`process()` (interval path) has no probe timeouts** — pre-existing behavior, untouched (surgical-changes rule). The on-demand path is the bounded one.
-
-## Verification Steps
-
-```bash
-cd .worktrees/fulfillment-surface/packages/services/ordering
-pnpm typecheck && pnpm test          # 100/100
-cd ../../protocol/ordering && pnpm test  # 15/15
-cd ../../.. && bash tools/check-beacon-domain.sh  # domain firewall (pre-commit mirror)
-git diff --stat cycle/fulfillment-surface..feature/fulfillment-s1-platform -- packages/freeside-cli packages/freeside-registry  # MUST be empty
+## Verification steps
 ```
-
-## Feedback Addressed (iteration 2, 2026-07-01)
-
-All three review items from `engineer-feedback.md` fixed; suite now **101/101**, typecheck clean.
-
-1. **DEPLOY.md contract drift** → routes table gains `reprobe` (cooldown/429/ambiguous/409 semantics) + `caller_note` + healthz `write_routes`; env table gains `SERVICE_TOKEN_LABEL` + fail-closed note on `SERVICE_TOKEN`; `RUN_MIGRATIONS` now says `migrations/*.sql`; new fail-closed paragraph points at the rotation runbook. (`packages/services/ordering/DEPLOY.md:8-24,33`)
-2. **Prototype-chain `in`** → `Object.hasOwn(PRESETS, product)` (`intake.ts:95`); new test: `product: "constructor"` receives the friendly 400 + `available_presets` (`projection.test.ts:139-149`).
-3. **Timed-out worlds probe leaking `world_slug`** → `probeWithTimeout` is generic (`<T>`), worlds branch races `probeDetail` itself and reads `world_slug` from the raced success value only — a late-resolving timed-out probe can no longer contribute data (`community-onboarding-orchestrator.ts:103-121` + worlds branch comment "review finding #3").
-
-Non-blocking items acknowledged: timing-safe compare logged as tech debt (pre-existing, both routes, follow-up); `PublicOrderSchema.state` looseness accepted for v0.3.
+cd packages/beacon-schema && pnpm test           # 59 unit + 3 cli green
+cd packages/freeside-cli && pnpm build && pnpm test   # 89 pass, 1 env-gated skip
+tools/check-beacon-domain.sh --since origin/main # ✓ network
+```
