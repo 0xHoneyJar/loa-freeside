@@ -284,3 +284,8 @@ shadow-mode-api = the MISSING member-graph composition spine. Build as evolution
 - Recovered non-destructively via `git show stash@{0}:<path>` (stash left intact for the other session)
 - This cycle now lives in worktree `.worktrees/fulfillment-surface` on branch `cycle/fulfillment-surface` (cut from origin/main) — artifacts committed immediately; simstim state copied to worktree .run/
 - LESSON: multi-session repo work needs worktree isolation from the start; uncommitted grimoires artifacts in a shared tree are one checkout away from loss
+
+### S2 branch context pin (fulfillment-surface, re-added — branch cut predates S1 NOTES commit)
+- Ordering-service URL: https://ordering-service-production.up.railway.app (healthz ok, postgres store)
+- G-1 fixture: order 6ddc06f5-0c6f-42b8-8377-768a4c2a302e (Azuki) — producing; score=pending, sonar=blocked, worlds_manifest=complete
+- S2 entry gate: PR-A not yet deployed at S2 build time — probe verb built against the SDD contract fixture; differential test env-gated (ORDERING_DIFFERENTIAL=1); gate re-checked before G-1 demo
