@@ -100,14 +100,14 @@ export type ReprobeResult =
 /** Race a probe against a deadline. loa:shortcut: no AbortController propagation — TriagePorts
  * has no signal param, so a timed-out probe's underlying fetch may linger until its own network
  * timeout; add signal support to TriagePorts if lingering probes ever matter. */
-async function probeWithTimeout(
-  probe: () => Promise<IngredientStatus>,
+async function probeWithTimeout<T>(
+  probe: () => Promise<T>,
   timeoutMs: number,
-): Promise<{ ok: true; status: IngredientStatus } | { ok: false; error_class: 'timeout' | 'probe_error' }> {
+): Promise<{ ok: true; value: T } | { ok: false; error_class: 'timeout' | 'probe_error' }> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const result = await Promise.race([
-      probe().then((status) => ({ ok: true as const, status })),
+      probe().then((value) => ({ ok: true as const, value })),
       new Promise<{ ok: false; error_class: 'timeout' }>((resolve) => {
         timer = setTimeout(() => resolve({ ok: false, error_class: 'timeout' }), timeoutMs);
       }),
@@ -358,15 +358,19 @@ export class CommunityOnboardingOrchestrator {
         batch.map(async (key) => {
           const atUnix = Math.floor(this.deps.now() / 1000);
           if (key === 'worlds_manifest' && this.deps.triage.worlds.probeDetail) {
-            const res = await probeWithTimeout(async () => {
-              const detail = await this.deps.triage.worlds.probeDetail!(inputs.chain_id, inputs.contract_address);
-              if (detail.world_slug) worldSlug = detail.world_slug;
-              return detail.status;
-            }, REPROBE_PER_PROBE_TIMEOUT_MS);
+            // world_slug travels INSIDE the raced value — a timed-out probe that
+            // resolves late can never contribute data (review finding #3).
+            const res = await probeWithTimeout(
+              () => this.deps.triage.worlds.probeDetail!(inputs.chain_id, inputs.contract_address),
+              REPROBE_PER_PROBE_TIMEOUT_MS,
+            );
             probes[key] = res.ok
-              ? { status: res.status, probed_at_unix: atUnix, source: 'reprobe', freshness: 'fresh' }
+              ? { status: res.value.status, probed_at_unix: atUnix, source: 'reprobe', freshness: 'fresh' }
               : { probed_at_unix: atUnix, source: 'reprobe', freshness: 'ambiguous', error_class: res.error_class };
-            if (res.ok) probedStatuses[key] = res.status;
+            if (res.ok) {
+              probedStatuses[key] = res.value.status;
+              if (res.value.world_slug) worldSlug = res.value.world_slug;
+            }
             return;
           }
           const port = this.probePortFor(key);
@@ -375,9 +379,9 @@ export class CommunityOnboardingOrchestrator {
             REPROBE_PER_PROBE_TIMEOUT_MS,
           );
           probes[key] = res.ok
-            ? { status: res.status, probed_at_unix: atUnix, source: 'reprobe', freshness: 'fresh' }
+            ? { status: res.value, probed_at_unix: atUnix, source: 'reprobe', freshness: 'fresh' }
             : { probed_at_unix: atUnix, source: 'reprobe', freshness: 'ambiguous', error_class: res.error_class };
-          if (res.ok) probedStatuses[key] = res.status;
+          if (res.ok) probedStatuses[key] = res.value;
         }),
       );
     }

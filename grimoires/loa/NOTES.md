@@ -291,3 +291,6 @@ shadow-mode-api = the MISSING member-graph composition spine. Build as evolution
 - **DEPLOY.md correction to the correction**: `kitchen-api-production-1937` is the SONAR_API_URL example in DEPLOY.md — it was never the ordering URL; no DEPLOY.md fix needed
 - **G-1 fixture PIN**: order `6ddc06f5-0c6f-42b8-8377-768a4c2a302e` (Azuki, community-onboarding) — state `producing`; ingredients: score=pending, sonar=blocked, shadow_preview=blocked, worlds_manifest=complete, discord_observer=optional; world_slug=azuki
 - Fallback rule active: fixture terminal at demo time → place fresh order, update this pin, rerun
+
+### Technical Debt (fulfillment-surface sprint-1 review)
+- [ ] Bearer token comparison is not timing-safe (`intake.ts` requireToken + pre-existing advance pattern) — use crypto.timingSafeEqual; follow-up, both write routes

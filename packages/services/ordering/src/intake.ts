@@ -92,7 +92,7 @@ export function createIntakeApp(deps: IntakeDeps): Hono {
       typeof raw === 'object' &&
       raw !== null &&
       typeof (raw as Record<string, unknown>).product === 'string' &&
-      !((raw as Record<string, unknown>).product as string in PRESETS)
+      !Object.hasOwn(PRESETS, (raw as Record<string, unknown>).product as string)
     ) {
       return c.json(
         {

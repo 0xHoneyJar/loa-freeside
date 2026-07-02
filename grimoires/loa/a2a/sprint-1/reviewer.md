@@ -104,3 +104,13 @@ cd ../../protocol/ordering && pnpm test  # 15/15
 cd ../../.. && bash tools/check-beacon-domain.sh  # domain firewall (pre-commit mirror)
 git diff --stat cycle/fulfillment-surface..feature/fulfillment-s1-platform -- packages/freeside-cli packages/freeside-registry  # MUST be empty
 ```
+
+## Feedback Addressed (iteration 2, 2026-07-01)
+
+All three review items from `engineer-feedback.md` fixed; suite now **101/101**, typecheck clean.
+
+1. **DEPLOY.md contract drift** → routes table gains `reprobe` (cooldown/429/ambiguous/409 semantics) + `caller_note` + healthz `write_routes`; env table gains `SERVICE_TOKEN_LABEL` + fail-closed note on `SERVICE_TOKEN`; `RUN_MIGRATIONS` now says `migrations/*.sql`; new fail-closed paragraph points at the rotation runbook. (`packages/services/ordering/DEPLOY.md:8-24,33`)
+2. **Prototype-chain `in`** → `Object.hasOwn(PRESETS, product)` (`intake.ts:95`); new test: `product: "constructor"` receives the friendly 400 + `available_presets` (`projection.test.ts:139-149`).
+3. **Timed-out worlds probe leaking `world_slug`** → `probeWithTimeout` is generic (`<T>`), worlds branch races `probeDetail` itself and reads `world_slug` from the raced success value only — a late-resolving timed-out probe can no longer contribute data (`community-onboarding-orchestrator.ts:103-121` + worlds branch comment "review finding #3").
+
+Non-blocking items acknowledged: timing-safe compare logged as tech debt (pre-existing, both routes, follow-up); `PublicOrderSchema.state` looseness accepted for v0.3.
