@@ -1,7 +1,18 @@
 # =============================================================================
-# World: score-api — Hono API for THJ scoring/leaderboard (Railway migration)
+# World: score-api — ECS experiment (DORMANT — not production compute)
 # =============================================================================
-# Issue: https://github.com/0xHoneyJar/loa-freeside/issues/159
+# Status: DORMANT as of 2026-07-01 (loa-freeside#417, posture A).
+#
+# Production score-api runs on Railway only:
+#   - Public URL: https://score.0xhoneyjar.xyz (DNS → Railway)
+#   - Registry SoT: packages/freeside-registry/registry.yaml → deployment_url
+#
+# This module remains in terraform as staging/infrastructure scaffolding from
+# #159. Do NOT treat ALB listener rules, ECR, or score-api.0xhoneyjar.xyz as
+# live production paths. Agents: read registry.yaml + this header before acting.
+#
+# Original RFC: https://github.com/0xHoneyJar/loa-freeside/issues/159
+# Worldline parent: https://github.com/0xHoneyJar/loa/issues/1169
 # =============================================================================
 
 # -----------------------------------------------------------------------------

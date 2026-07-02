@@ -19,7 +19,7 @@ adapter consumes it when `ORDERING_SERVICE_URL` is set.
 | `PORT` | Railway sets | bind port (default 8090 local) |
 | `SERVICE_TOKEN` or `ORDERING_SERVICE_TOKEN` | recommended | Bearer for `advance-ingredient`; dashboard sends same value as `ORDERING_SERVICE_TOKEN` on POST/GET |
 | `SONAR_API_URL` | optional | kitchen-api base URL when K3 HTTP probes enabled (e.g. `https://kitchen-api-production-1937.up.railway.app`) |
-| `SCORE_API_URL` | optional | score-api base URL for community lookup/register |
+| `SCORE_API_URL` | optional | score-api base URL for community lookup/register (default `https://score.0xhoneyjar.xyz`) |
 | `WORLDS_API_URL` | optional | worlds-api base URL for manifest lookup/create |
 | `CTA_PRODUCT`, `CTA_CONVERSATION` | optional | CTA URLs in lifecycle metadata (defaults freeside.app) |
 | `ORDER_OPS_WEBHOOK_URL` | optional | Fire-and-forget POST when a `community-onboarding` order is placed. Second POST when triage issues are filed (`community_onboarding.ingredients_enqueued`). |
