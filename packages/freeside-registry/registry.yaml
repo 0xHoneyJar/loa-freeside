@@ -218,6 +218,9 @@ modules:
       with full health response at `/` (NOT `/healthz`):
         {status:"ok", service:"score-api", db:"connected", scoring_version:"v0.7",
          last_run_id:5903, last_run_at:"2026-05-26 03:35:21+00"}
+      Canonical public URL: https://score.0xhoneyjar.xyz (DNS CNAME → Railway).
+      ECS module.world_score_api + score-api.0xhoneyjar.xyz ALB path is DORMANT
+      (loa-freeside#417) — do not treat as production compute.
       mcp-gateway's probeTenant() calls `/healthz` which 404s — the gateway will
       show this tenant as "down" even though the service is operational. Fix
       candidate: per-tenant `health_path` field in tenants.ts (deferred —
