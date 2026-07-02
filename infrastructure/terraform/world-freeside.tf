@@ -39,7 +39,7 @@ module "world_freeside" {
     NEXT_PUBLIC_APP_URL      = "https://freeside.0xhoneyjar.xyz"
     IDENTITY_API_URL         = "https://identity.0xhoneyjar.xyz"
     IDENTITY_RESOLVE_ENABLED = "true"
-    SCORE_API_URL            = "https://score-api.0xhoneyjar.xyz"
+    SCORE_API_URL            = "https://score.0xhoneyjar.xyz"
     TRUST_PROXY_HEADERS      = "true"
     NODE_ENV                 = "production"
   }

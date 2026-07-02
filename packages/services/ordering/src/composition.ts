@@ -27,7 +27,7 @@ function triageCapabilityConfig(): CapabilityConfig {
     },
     'community-register': {
       building: 'score-api',
-      endpoint: process.env.SCORE_API_URL?.trim() || 'http://score.internal',
+      endpoint: process.env.SCORE_API_URL?.trim() || 'https://score.0xhoneyjar.xyz',
     },
     'world-manifest': {
       building: 'worlds-api',

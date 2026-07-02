@@ -32,6 +32,17 @@ resource "aws_route53_record" "identity_api" {
   records = ["identity-api-production-317b.up.railway.app"]
 }
 
+# score-api — THJ scoring/leaderboard (Railway production compute).
+# Canonical public hostname per packages/freeside-registry/registry.yaml beacon_url.
+# ECS module.world_score_api + score-api.0xhoneyjar.xyz ALB path is DORMANT (#417).
+resource "aws_route53_record" "score_api" {
+  zone_id = aws_route53_zone.honeyjar.zone_id
+  name    = "score.${var.domain}"
+  type    = "CNAME"
+  ttl     = 300
+  records = ["score-api-production.up.railway.app"]
+}
+
 # cluster-nats — self-hosted nats-server for cluster-events-pillar-v1 (Path ε,
 # 2026-05-26). Hosts: sonar-api publisher + characters-bot subscriber +
 # operator-dash subscriber. mTLS via cluster-owned CA.

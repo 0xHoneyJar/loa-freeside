@@ -17,10 +17,11 @@ locals {
   # Honey Road is an ECS-hosted world.
   # 2026-07-01: "freeside" stays on Vercel (freeside-dashboard) until Freeside ECS
   # DX beats Vercel; wildcard *.0xhoneyjar.xyz → cname.vercel-dns.com serves it.
+  # 2026-07-01: "score-api" removed — prod compute is Railway at score.0xhoneyjar.xyz
+  # (see honeyjar-xyz-railway.tf). module.world_score_api ECS stack is DORMANT (#417).
   world_subdomains = var.enable_production_api ? toset([
     "apdao",
     "rektdrop",
-    "score-api",
   ]) : toset([])
 }
 
