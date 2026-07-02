@@ -88,15 +88,50 @@ function isBlockedV4(ip: string): boolean {
   );
 }
 
+/** Expand any IPv6 literal to its 8 numeric hextets (handles `::` compression, an embedded
+ *  dotted-v4 tail, and a zone id), or null if unparseable. Numeric — never textual-form
+ *  dependent, so the block set below cannot be evaded by an alternate serialization (FAGAN F1). */
+function parseV6Hextets(ip: string): number[] | null {
+  let s = ip.toLowerCase();
+  const pct = s.indexOf("%");
+  if (pct >= 0) s = s.slice(0, pct); // strip zone id (fe80::1%eth0)
+  // Embedded dotted IPv4 tail (::ffff:1.2.3.4) → fold into two hextets so the check is numeric.
+  const v4 = s.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
+  if (v4) {
+    const o = v4[1].split(".").map(Number);
+    if (o.some((n) => n > 255)) return null;
+    s = s.slice(0, v4.index) + ((o[0] << 8) | o[1]).toString(16) + ":" + ((o[2] << 8) | o[3]).toString(16);
+  }
+  const halves = s.split("::");
+  if (halves.length > 2) return null;
+  const head = halves[0] ? halves[0].split(":") : [];
+  const tail = halves.length === 2 ? (halves[1] ? halves[1].split(":") : []) : null;
+  let hextets: number[];
+  if (tail === null) {
+    hextets = head.map((h) => parseInt(h, 16));
+  } else {
+    const fill = 8 - head.length - tail.length;
+    if (fill < 0) return null;
+    hextets = [...head.map((h) => parseInt(h, 16)), ...Array(fill).fill(0), ...tail.map((h) => parseInt(h, 16))];
+  }
+  if (hextets.length !== 8 || hextets.some((h) => Number.isNaN(h) || h < 0 || h > 0xffff)) return null;
+  return hextets;
+}
+
 function isBlockedV6(ip: string): boolean {
-  const lower = ip.toLowerCase();
-  // IPv4-mapped ::ffff:a.b.c.d — unwrap and re-check as v4.
-  const mapped = lower.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
-  if (mapped) return isBlockedV4(mapped[1]);
-  if (lower === "::1" || lower === "::") return true; // loopback / unspecified
-  if (lower.startsWith("fe8") || lower.startsWith("fe9") || lower.startsWith("fea") || lower.startsWith("feb")) return true; // fe80::/10 link-local
-  if (lower.startsWith("fc") || lower.startsWith("fd")) return true; // fc00::/7 ULA
-  if (lower.startsWith("ff")) return true; // ff00::/8 multicast
+  const h = parseV6Hextets(ip);
+  if (!h) return true; // unparseable v6 → fail-closed
+  // IPv4-mapped (::ffff:x:x) and IPv4-compatible (::x:x, deprecated) — unwrap the embedded v4
+  // NUMERICALLY (hex or dotted form) and apply the full v4 block set. Subsumes :: (→0.0.0.0/8)
+  // and ::1 (→0.0.0.0/8). Closes the hex-form metadata bypass (::ffff:a9fe:a9fe = 169.254.169.254).
+  if (h[0] === 0 && h[1] === 0 && h[2] === 0 && h[3] === 0 && h[4] === 0 && (h[5] === 0xffff || h[5] === 0)) {
+    const v4 = `${(h[6] >> 8) & 0xff}.${h[6] & 0xff}.${(h[7] >> 8) & 0xff}.${h[7] & 0xff}`;
+    return isBlockedV4(v4);
+  }
+  if ((h[0] & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
+  if ((h[0] & 0xffc0) === 0xfec0) return true; // fec0::/10 deprecated site-local (defense-in-depth)
+  if ((h[0] & 0xfe00) === 0xfc00) return true; // fc00::/7 ULA
+  if ((h[0] & 0xff00) === 0xff00) return true; // ff00::/8 multicast
   return false;
 }
 

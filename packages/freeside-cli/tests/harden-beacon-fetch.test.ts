@@ -78,9 +78,16 @@ test("normalizeHost canonicalizes and rejects malformed hosts", () => {
   assert.equal(normalizeHost("host:8080"), null); // embedded port rejected defensively
 });
 
-test("isBlockedAddress: IPv4-mapped IPv6 metadata is unwrapped and blocked", () => {
-  assert.equal(isBlockedAddress("::ffff:169.254.169.254"), true);
+test("isBlockedAddress: IPv4-mapped IPv6 is unwrapped and blocked in BOTH dotted and hex form (F1)", () => {
+  assert.equal(isBlockedAddress("::ffff:169.254.169.254"), true); // dotted metadata
+  assert.equal(isBlockedAddress("::ffff:a9fe:a9fe"), true); // HEX form of 169.254.169.254 — no bypass
+  assert.equal(isBlockedAddress("::ffff:7f00:1"), true); // HEX form of 127.0.0.1 loopback
+  assert.equal(isBlockedAddress("::ffff:0a00:0005"), true); // HEX form of 10.0.0.5 RFC1918
   assert.equal(isBlockedAddress("::ffff:93.184.216.34"), false); // mapped public → allowed
+  assert.equal(isBlockedAddress("::ffff:5db8:d822"), false); // hex mapped public (= 93.184.216.34) → allowed
+  assert.equal(isBlockedAddress("::"), true); // unspecified
+  assert.equal(isBlockedAddress("::1"), true); // loopback
+  assert.equal(isBlockedAddress("fe80::1"), true); // link-local
   assert.equal(isBlockedAddress("not-an-ip"), true); // non-IP literal → fail-closed
 });
 

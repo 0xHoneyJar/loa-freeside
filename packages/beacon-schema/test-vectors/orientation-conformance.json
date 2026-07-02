@@ -21,7 +21,11 @@
     { "name": "v6 loopback ::1 blocked", "resolves": ["::1"], "expect": { "detail": "resolved_private" } },
     { "name": "v6 link-local fe80 blocked", "resolves": ["fe80::1"], "expect": { "detail": "resolved_private" } },
     { "name": "v6 ULA fc00 blocked", "resolves": ["fc00::1"], "expect": { "detail": "resolved_private" } },
-    { "name": "v6 IPv4-mapped metadata blocked", "resolves": ["::ffff:169.254.169.254"], "expect": { "detail": "resolved_private" } },
+    { "name": "v6 IPv4-mapped metadata (dotted) blocked", "resolves": ["::ffff:169.254.169.254"], "expect": { "detail": "resolved_private" } },
+    { "name": "v6 IPv4-mapped metadata (HEX form) blocked — no textual-form bypass", "resolves": ["::ffff:a9fe:a9fe"], "expect": { "detail": "resolved_private" } },
+    { "name": "v6 IPv4-mapped loopback (HEX form) blocked", "resolves": ["::ffff:7f00:1"], "expect": { "detail": "resolved_private" } },
+    { "name": "v6 IPv4-mapped RFC1918 (HEX form) blocked", "resolves": ["::ffff:0a00:0005"], "expect": { "detail": "resolved_private" } },
+    { "name": "v6 IPv4-mapped PUBLIC (hex form) allowed", "resolves": ["::ffff:5db8:d822"], "expect": { "detail": null } },
     { "name": "mixed records: one private → reject all", "resolves": ["93.184.216.34", "10.0.0.1"], "expect": { "detail": "resolved_private" } },
     { "name": "public v4 allowed", "resolves": ["93.184.216.34"], "expect": { "detail": null } }
   ],
