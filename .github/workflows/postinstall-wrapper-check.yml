@@ -1,0 +1,43 @@
+# Postinstall Wrapper Check — issue #328 install contract
+#
+# Proves that plain dependency install is deterministic and side-effect-minimal:
+#   - default postinstall performs NO hounfour rebuild and exits 0
+#   - opt-in (FREESIDE_REBUILD_HOUNFOUR_ON_INSTALL=1) dispatches the rebuild
+#   - rebuild failures propagate a nonzero exit code
+#
+# See DEVELOPMENT.md "Install-Time Behavior (postinstall contract)".
+
+name: Postinstall Wrapper Check
+
+on:
+  pull_request:
+    paths:
+      - 'package.json'
+      - 'scripts/postinstall.mjs'
+      - 'scripts/check-postinstall-wrapper.mjs'
+      - 'scripts/rebuild-hounfour-dist.sh'
+      - '.github/workflows/postinstall-wrapper-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'package.json'
+      - 'scripts/postinstall.mjs'
+      - 'scripts/check-postinstall-wrapper.mjs'
+      - 'scripts/rebuild-hounfour-dist.sh'
+      - '.github/workflows/postinstall-wrapper-check.yml'
+
+jobs:
+  check:
+    name: Postinstall Wrapper Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate wrapper contract (default skip, opt-in dispatch, failure propagation)
+        run: node scripts/check-postinstall-wrapper.mjs

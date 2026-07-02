@@ -183,6 +183,37 @@ After merge to main:
 
 ---
 
+## Install-Time Behavior (postinstall contract)
+
+Plain dependency install is deterministic and side-effect-minimal (issue #328).
+The root `postinstall` runs `scripts/postinstall.mjs`, a wrapper that does
+**nothing** by default — it only prints a notice.
+
+The `@0xhoneyjar/loa-hounfour` devDependency is pinned to a git commit, and the
+GitHub tarball ships a stale `dist/`. When you need a fresh dist (e.g. hounfour
+schema work, or a bumped pin), rebuild explicitly:
+
+```bash
+# Explicit rebuild (clone at pinned SHA + compile, with supply-chain checks)
+npm run build:hounfour
+
+# Or opt in to rebuild during install
+FREESIDE_REBUILD_HOUNFOUR_ON_INSTALL=1 pnpm install
+```
+
+| Context | Behavior |
+|---------|----------|
+| `pnpm install` / `npm install` (default) | No rebuild, no network side effects, exit 0 |
+| `FREESIDE_REBUILD_HOUNFOUR_ON_INSTALL=1` | Runs `scripts/rebuild-hounfour-dist.sh`; failure fails the install |
+| `pnpm install --ignore-scripts` (CI/audit) | Wrapper never runs at all |
+
+Validation: `npm run check:postinstall-wrapper` (also enforced in CI by
+`.github/workflows/postinstall-wrapper-check.yml`) proves the default path is
+side-effect-free, the opt-in path dispatches the rebuild, and rebuild failures
+propagate a nonzero exit.
+
+---
+
 ## Quality Gates
 
 ### Gate 1: Local Development
