@@ -7,24 +7,31 @@ adapter consumes it when `ORDERING_SERVICE_URL` is set.
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
-| GET | `/healthz` | none | Railway healthcheck |
-| POST | `/v1/orders` | none (MVP) | Place order → `{ order_id }` |
-| GET | `/v1/orders/:id` | none (MVP) | Poll state + ingredients |
-| POST | `/v1/orders/:id/advance-ingredient` | `Bearer $SERVICE_TOKEN` when set | Operator triage |
+| GET | `/healthz` | none | Railway healthcheck; reports `write_routes: open_dev\|token\|disabled_no_token` |
+| POST | `/v1/orders` | none (MVP) | Place order → `{ order_id }`; unknown product → 400 + `available_presets` |
+| GET | `/v1/orders/:id` | none (MVP) | Poll state + ingredients + `probe_meta` (public projection) |
+| POST | `/v1/orders/:id/advance-ingredient` | `Bearer $SERVICE_TOKEN` | Operator/agent advance. Optional body field `caller_note` (≤120 chars, untrusted display metadata). Audit entry records server-derived `token_label` + `evidence` (probe_meta snapshot, `null` if never probed) |
+| POST | `/v1/orders/:id/reprobe` | `Bearer $SERVICE_TOKEN` | On-demand fresh probe. Body `{ "ingredient"?: "sonar"\|… }` (absent = all pending/in_progress). 10s per-order cooldown → `429` + `retry_after_unix`. Probe failure/timeout reported IN the body as per-ingredient `freshness: "ambiguous"`, never a 5xx. `409` if order terminal |
+
+**Fail-closed (FR-10a)**: in deployed environments (`RAILWAY_ENVIRONMENT` set or `NODE_ENV=production`)
+with no `SERVICE_TOKEN`, the two POST write routes are **not mounted** — reads and `/healthz` stay up,
+and `/healthz` shows `write_routes: "disabled_no_token"`. If advance/reprobe 404 in prod, check the
+token env first. Rotation: `docs/token-rotation-runbook.md`.
 
 ## Environment
 
 | Var | Required | What |
 |-----|----------|------|
 | `PORT` | Railway sets | bind port (default 8090 local) |
-| `SERVICE_TOKEN` or `ORDERING_SERVICE_TOKEN` | recommended | Bearer for `advance-ingredient`; dashboard sends same value as `ORDERING_SERVICE_TOKEN` on POST/GET |
+| `SERVICE_TOKEN` or `ORDERING_SERVICE_TOKEN` | recommended (required for writes in deployed envs — fail-closed) | Bearer for `advance-ingredient` + `reprobe`; dashboard sends same value as `ORDERING_SERVICE_TOKEN` on POST/GET |
+| `SERVICE_TOKEN_LABEL` | optional | Names the credential in `operator_audit.token_label` (default `ordering-service-token`); bump on rotation to date the credential era |
 | `SONAR_API_URL` | optional | kitchen-api base URL when K3 HTTP probes enabled (e.g. `https://kitchen-api-production-1937.up.railway.app`) |
 | `SCORE_API_URL` | optional | score-api base URL for community lookup/register (default `https://score.0xhoneyjar.xyz`) |
 | `WORLDS_API_URL` | optional | worlds-api base URL for manifest lookup/create |
 | `CTA_PRODUCT`, `CTA_CONVERSATION` | optional | CTA URLs in lifecycle metadata (defaults freeside.app) |
 | `ORDER_OPS_WEBHOOK_URL` | optional | Fire-and-forget POST when a `community-onboarding` order is placed. Second POST when triage issues are filed (`community_onboarding.ingredients_enqueued`). |
 | `DATABASE_URL` | recommended (kitchen K0) | Postgres store — orders survive restart |
-| `RUN_MIGRATIONS` | optional | Set `true` on deploy to apply `migrations/001_orders.sql` |
+| `RUN_MIGRATIONS` | optional | Set `true` on deploy to apply `migrations/*.sql` (001 orders, 002 probe_meta) |
 | `GITHUB_TOKEN` | required for kitchen K1 | PAT with `issues:write` on kitchen repos |
 | `KITCHEN_ISSUE_REPO_SONAR` | optional | Default `0xHoneyJar/sonar-api` |
 | `KITCHEN_ISSUE_REPO_SCORE` | optional | Default `0xHoneyJar/score-api` |

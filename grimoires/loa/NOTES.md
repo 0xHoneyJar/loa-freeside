@@ -233,3 +233,64 @@ shadow-mode-api = the MISSING member-graph composition spine. Build as evolution
 - REVIEW: FAGAN cross-model review dispatched on the diff (adversarial-review.sh config-disabled → used FAGAN). AUDIT: self-audit clean (no secrets/eval/exec; read-only dependency-boundary test passes).
 - Beads: 13 created (cycle:shadow-mode-ledger); dep-graph got inverted (br dep direction) → bookkeeping friction, partial close. NOT load-bearing (work is in the commit/PR).
 - Worktree: /Users/zksoju/Documents/GitHub/loa-freeside-shadow-mode (off origin/main 5d69285a). Operator's main checkout + uncommitted packages/events WIP untouched.
+
+---
+
+## Discovery Session 2026-07-01 — Issue #415 (Fulfillment Orchestrator epic)
+
+- Trigger: /plan (discovering-requirements) against https://github.com/0xHoneyJar/loa-freeside/issues/415
+- Context assessment: LARGE (173 files / ~21k lines) — scoped ingestion to issue-cited sources, not full sweep
+- Reality files: mtime 2026-06-30 but governance-quarantined (`use_label: do_not_use_for_action`, /ride capture 2026-05-18, "CORPSE") — using live-code ingestion instead
+- Citation gap: `grimoires/loa/context/harness-upstream-discovery/rfc-issue-draft.md` cited in #415 does NOT exist — locating implement-gate.sh / Worldline Harness RFC separately
+- 4 parallel ingestors dispatched: ordering spine, Loa post-PR gates, freeside-cli+topology, related-issue states
+
+### Ingestion synthesis (3 of 4 reports in — 2026-07-01)
+
+**Loa post-PR gates (verified file:line):**
+- Mechanical TODAY: bridge-orchestrator.sh → findings JSON; post-pr-triage.sh:254-281 classify_action (BLOCKER→dispatch_bug gated on --auto-triage, HIGH→log_only, PRAISE→lore_candidate); 3 queues (.run/bridge-pending-bugs.jsonl, bridge-lore-candidates.jsonl, trajectory jsonl w/ mandatory reasoning, schema-validated)
+- STILL PROSE: bug-queue CONSUMPTION (nothing reads bridge-pending-bugs.jsonl; run-bridge-reference.md:100-107 = prose for "next /bug"); Amendments A2 (review cross-ref) + A3 (lore aggregation) unbuilt
+- Phase machine: POST_PR_AUDIT→CONTEXT_CLEAR→E2E_TESTING→FLATLINE_PR→BRIDGEBUILDER_REVIEW(config-gated, default OFF)→READY_FOR_HITL
+- No typed capsule at READY_FOR_HITL; load-bearing artifact = .run/bridge-triage-convergence.json (post-pr-triage.sh:590-602)
+- CORRECTION to #415: "loa #1036 DISS-003 DEGRADED" is likely mislabel — DEGRADED convergence hardening is loa #1025/sprint-bug-210; #1036 = orchestrator keys on exit code not convergence_state (visibility fix, OPEN)
+
+**freeside-cli + topology (verified):**
+- CLI verbs: list/inspect/doctor only, ALL read-only, switch-dispatch (bin/freeside-cli.ts:45-91); status:scaffold; NO auth primitive — grant-gating lives at EXTERNAL loa-cli launcher; write verbs need auth surface decision
+- Registry: NO ordering entry in registry.yaml — ordering-service invisible to doctor
+- Deploy topology: ordering-service = in-monolith package (packages/services/ordering), OWN Railway service (railway.toml, Dockerfile port 8090), OWN Postgres (DATABASE_URL, store-factory.ts:6-8); bundles shadow-audit-service in-process
+- KEY: orchestrator ALREADY EXISTS both ways — embedded fire-and-forget in HTTP edge (bin/http.ts:10,17-19 onPlaced→orchestrator.process) AND sibling worker (bin/worker.ts, ReProbeWorker 15min interval, same composition.ts:51, shared Postgres). Epic's open Q is really "promote sibling worker to primary" not "build from scratch"
+- Dashboard: EXTERNAL freeside-dashboard (Vercel) via ORDERING_SERVICE_URL/TOKEN (DEPLOY.md:66-74); operator-dash does NOT consume ordering
+
+**Related issues (verified 2026-07-01):**
+- #401 OPEN — StubTriagePorts.shadow.probe hardcoded `blocked` → zero-operator fulfill impossible; core blocker
+- #405 OPEN — discord channel health gate, deps freeside-characters + identity-api#45
+- #375/#386 OPEN — shared-red CI merge-blindness (every PR inherits red gates)
+- sonar-api #117 MERGED 2026-07-01; #111 (Azuki E2E) OPEN — stuck on manual advance-ingredient curl (order 6ddc06f5)
+- transmission.md: order system built (16 modules, 54 green tests) but deployed-but-unconsumed; registry edge + grant missing
+- CITATION GAPS in #415: harness-upstream-discovery/ does not exist; NO "Worldline Harness RFC" in repo; implement-gate.sh = .claude/hooks/compliance/implement-gate.sh (PreToolUse compliance hook, different thing)
+
+### Ordering-spine ingestion (4th report, recovered from transcript)
+
+- OrderState (order-state.ts:15): placed→routing→producing→fulfilled|failed (CAS transitions, store.ts:180-201). IngredientStatus (preset.ts:79): pending|in_progress|complete|blocked|optional
+- TWO presets shipped (preset.ts:117,131): access-risk-audit (deployed composition injects NoopAudit — NOT live) + community-onboarding (LIVE): sonar/score/worlds_manifest=pending, discord_observer=optional, shadow_preview=blocked; fulfillable when 3 complete + shadow complete|optional + world_slug (community-onboarding-orchestrator.ts:39)
+- ORCHESTRATOR ALREADY EXISTS: in-process onPlaced fire-and-forget (bin/http.ts:17) + sibling ReProbeWorker (reprobe-worker.ts:31, 15-min interval) + IngredientEnqueueService fan-out (ingredient-enqueue.ts:34, GitHub issue OR HTTP enqueue)
+- NOT wired: NO NATS consumer; LifecyclePublisher = RecordingPublisher only (lifecycle-publisher.ts:17) — outbox events NEVER published; not in registry.yaml; order signing built not wired
+- advance-ingredient (intake.ts:149): optional Bearer SERVICE_TOKEN — NO AUTH if env unset (NFR flag); auto-unblocks shadow_preview (orchestrator:196-203); CAS-safe
+- Probes: HttpBuildingProbes real for sonar/score/worlds (http-building-probes.ts:57); shadow_preview stub-blocked (= #401)
+- Commit trail through PR #397 (4f91f372 kitchen K0-K3); zero uncommitted changes
+
+### Session collision + worktree isolation (2026-07-01 ~18:05)
+
+- Another session switched the shared working tree's branch (goal-validator → worldline-417, reset --hard in reflog) mid-simstim; uncommitted prd.md/sdd.md were swept into their `temp-signoff-418` stash
+- Recovered non-destructively via `git show stash@{0}:<path>` (stash left intact for the other session)
+- This cycle now lives in worktree `.worktrees/fulfillment-surface` on branch `cycle/fulfillment-surface` (cut from origin/main) — artifacts committed immediately; simstim state copied to worktree .run/
+- LESSON: multi-session repo work needs worktree isolation from the start; uncommitted grimoires artifacts in a shared tree are one checkout away from loss
+
+### S1-T0 CLOSED — deployed truth + fixture pin (2026-07-01)
+
+- **Ordering-service URL (S2-T5 registry input)**: `https://ordering-service-production.up.railway.app` — healthz `{"ok":true,"service":"ordering-service","store":"postgres","kitchen_enqueue":true}` (Railway project ordering-service/production, id da981788)
+- **DEPLOY.md correction to the correction**: `kitchen-api-production-1937` is the SONAR_API_URL example in DEPLOY.md — it was never the ordering URL; no DEPLOY.md fix needed
+- **G-1 fixture PIN**: order `6ddc06f5-0c6f-42b8-8377-768a4c2a302e` (Azuki, community-onboarding) — state `producing`; ingredients: score=pending, sonar=blocked, shadow_preview=blocked, worlds_manifest=complete, discord_observer=optional; world_slug=azuki
+- Fallback rule active: fixture terminal at demo time → place fresh order, update this pin, rerun
+
+### Technical Debt (fulfillment-surface sprint-1 review)
+- [ ] Bearer token comparison is not timing-safe (`intake.ts` requireToken + pre-existing advance pattern) — use crypto.timingSafeEqual; follow-up, both write routes

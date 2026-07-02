@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -6,12 +6,14 @@ import {
   resolvePreset,
   ORDER_LIFECYCLE_SUBJECTS,
   INITIAL_COMMUNITY_ONBOARDING_INGREDIENTS,
+  PRESETS,
   type OrderPlaced,
 } from '@freeside/ordering-protocol';
 import type { OrderStore } from './store.js';
 import { digestOf } from './digest.js';
 import type { OrderOrchestrator } from './orchestrator.js';
 import { IngredientStatus } from '@freeside/ordering-protocol';
+import { toPublicOrder } from './projection.js';
 import {
   buildCommunityOnboardingOpsNotice,
   fireCommunityOnboardingOpsWebhook,
@@ -39,10 +41,14 @@ export interface IntakeDeps {
    * (bin/demo.ts) wires it to drive the orchestrator in-process. Never blocks the 200 response.
    */
   onPlaced?: (orderId: string) => void;
-  /** When set, enables operator POST /v1/orders/:id/advance-ingredient. */
+  /** When set, enables the write routes (advance-ingredient, reprobe). */
   orchestrator?: OrderOrchestrator;
-  /** Bearer token required for advance-ingredient when set. */
+  /** Bearer token required for write routes when set. */
   serviceToken?: string;
+  /** Label naming the credential — recorded as audit actor identity (NFR-8b). */
+  serviceTokenLabel?: string;
+  /** Deploy-facing healthz payload extras (write-route posture, store kind, …). */
+  healthz?: Record<string, unknown>;
 }
 
 const PlaceOrderBodySchema = z
@@ -58,6 +64,14 @@ const AdvanceIngredientBodySchema = z
     ingredient: z.enum(['sonar', 'score', 'worlds_manifest', 'discord_observer', 'shadow_preview']),
     status: IngredientStatus,
     world_slug: z.string().min(1).optional(),
+    /** Untrusted display metadata (SDD D3) — never audit authority. */
+    caller_note: z.string().max(120).optional(),
+  })
+  .strict();
+
+const ReprobeBodySchema = z
+  .object({
+    ingredient: z.enum(['sonar', 'score', 'worlds_manifest', 'discord_observer', 'shadow_preview']).optional(),
   })
   .strict();
 
@@ -70,6 +84,23 @@ export function createIntakeApp(deps: IntakeDeps): Hono {
       raw = await c.req.json();
     } catch {
       return c.json({ error: 'request body must be JSON' }, 400);
+    }
+
+    // Unknown-preset support (FR-1): an unrecognized product gets the available-preset
+    // list in the error body — the CLI ships no preset table and surfaces this verbatim.
+    if (
+      typeof raw === 'object' &&
+      raw !== null &&
+      typeof (raw as Record<string, unknown>).product === 'string' &&
+      !Object.hasOwn(PRESETS, (raw as Record<string, unknown>).product as string)
+    ) {
+      return c.json(
+        {
+          error: `unknown product: ${(raw as Record<string, unknown>).product as string}`,
+          available_presets: Object.keys(PRESETS),
+        },
+        400,
+      );
     }
 
     const body = PlaceOrderBodySchema.safeParse(raw);
@@ -124,35 +155,26 @@ export function createIntakeApp(deps: IntakeDeps): Hono {
   app.get('/v1/orders/:id', async (c) => {
     const record = await deps.store.get(c.req.param('id'));
     if (!record) return c.json({ error: 'order not found' }, 404);
-    return c.json(
-      {
-        order_id: record.order_id,
-        product: record.product,
-        state: record.state,
-        placed_at_unix: record.placed_at_unix,
-        updated_at_unix: record.updated_at_unix,
-        recipe_id: record.recipe_id,
-        resolved_buildings: record.resolved_buildings,
-        result_ref: record.result_ref,
-        output: record.output,
-        refusal: record.refusal,
-        ingredients: record.ingredients,
-        fulfillment: record.fulfillment,
-        ingredient_jobs: record.ingredient_jobs,
-        operator_audit: record.operator_audit,
-      },
-      200,
-    );
+    // ONE public projection for every route (SDD D7).
+    return c.json(toPublicOrder(record), 200);
   });
 
+  app.get('/healthz', (c) =>
+    c.json({
+      ok: true,
+      service: 'ordering-service',
+      ...deps.healthz,
+    }),
+  );
+
   if (deps.orchestrator) {
+    const requireToken = (c: Context): boolean => {
+      if (!deps.serviceToken) return true;
+      return c.req.header('authorization') === `Bearer ${deps.serviceToken}`;
+    };
+
     app.post('/v1/orders/:id/advance-ingredient', async (c) => {
-      if (deps.serviceToken) {
-        const auth = c.req.header('authorization');
-        if (auth !== `Bearer ${deps.serviceToken}`) {
-          return c.json({ error: 'unauthorized' }, 401);
-        }
-      }
+      if (!requireToken(c)) return c.json({ error: 'unauthorized' }, 401);
 
       let raw: unknown;
       try {
@@ -171,6 +193,7 @@ export function createIntakeApp(deps: IntakeDeps): Hono {
         body.data.ingredient,
         body.data.status,
         body.data.world_slug,
+        { tokenLabel: deps.serviceTokenLabel, callerNote: body.data.caller_note },
       );
 
       if (!result.ok) {
@@ -178,18 +201,44 @@ export function createIntakeApp(deps: IntakeDeps): Hono {
         return c.json({ error: result.error }, status);
       }
 
-      const record = result.record!;
-      return c.json(
-        {
-          order_id: record.order_id,
-          state: record.state,
-          ingredients: record.ingredients,
-          fulfillment: record.fulfillment,
-          ingredient_jobs: record.ingredient_jobs,
-          operator_audit: record.operator_audit,
-        },
-        200,
+      return c.json(toPublicOrder(result.record!), 200);
+    });
+
+    // On-demand fresh probe (SDD D1, FR-4). Token-gated — it triggers outbound
+    // building calls. Probe failure is a RESULT in the body, never a 5xx.
+    app.post('/v1/orders/:id/reprobe', async (c) => {
+      if (!requireToken(c)) return c.json({ error: 'unauthorized' }, 401);
+
+      let raw: unknown = {};
+      const text = await c.req.text();
+      if (text.length > 0) {
+        try {
+          raw = JSON.parse(text);
+        } catch {
+          return c.json({ error: 'request body must be JSON' }, 400);
+        }
+      }
+
+      const body = ReprobeBodySchema.safeParse(raw);
+      if (!body.success) {
+        return c.json({ error: 'invalid reprobe payload', issues: body.error.issues }, 400);
+      }
+
+      const result = await deps.orchestrator!.communityOnboarding.reprobe(
+        c.req.param('id'),
+        body.data.ingredient,
       );
+
+      if (!result.ok) {
+        if (result.error === 'order not found') return c.json({ error: result.error }, 404);
+        if (result.error === 'order already terminal') return c.json({ error: result.error }, 409);
+        if (result.error === 'cooldown') {
+          return c.json({ error: 'reprobe cooldown active', retry_after_unix: result.retry_after_unix }, 429);
+        }
+        return c.json({ error: result.error }, 400);
+      }
+
+      return c.json({ ...toPublicOrder(result.record), probes: result.probes }, 200);
     });
   }
 
