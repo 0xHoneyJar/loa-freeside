@@ -1410,6 +1410,12 @@ prompt_enhancement:
 # Multi-model adversarial review for planning documents
 # Uses Claude Opus 4.5 + GPT-5.2 for cross-validation with consensus extraction
 flatline_protocol:
+  code_review:
+    # Cross-model adversarial dissent at /review-sprint Phase 2.5 (enabled 2026-07-01 by operator)
+    enabled: true
+    model: "codex-headless"   # cheval CLI route — never raw API key (operator doctrine 2026-06-07)
+    budget_cents: 150
+    timeout_seconds: 120
   # Master toggle - set to false to disable Flatline Protocol
   enabled: true
   # Auto-trigger after planning commands (plan-and-analyze, architect, sprint-plan)

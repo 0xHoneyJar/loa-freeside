@@ -202,6 +202,23 @@ modules:
       only → false-healthy; a /health 404 should read as unhealthy.
       (de-quirked 2026-06-03 via cubquests dogfood probes.)
 
+  ordering:
+    git_url: https://github.com/0xHoneyJar/loa-freeside.git
+    beacon_url: ~
+    deployment_url: https://ordering-service-production.up.railway.app
+    visibility: internal
+    owner: 0xHoneyJar
+    added: "2026-07-01"
+    runtime_state: deployed
+    notes: |
+      Order intake + kitchen triage for community-onboarding (packages/services/ordering,
+      in-monolith — deploys as its own Railway service). Health: GET /healthz → 200
+      {"ok":true,...,"write_routes":...}; non-200/timeout(5s)/refused = down (PRD FR-9a).
+      Write routes (advance-ingredient, reprobe) are Bearer SERVICE_TOKEN gated and
+      fail-closed when the token is unset in deployed envs. Consumed by freeside-dashboard
+      (Vercel) and freeside-cli order/kitchen/fulfill verbs. Beacon deferred — not a
+      federation cell yet; registry entry is the declaration keystone (transmission.md).
+
   score-api:
     # The runtime building (was 'score-mibera' in pre-2026-05-23 registry). GH repo
     # renamed score-mibera → score-api. The SCHEMA package @freeside/freeside-score

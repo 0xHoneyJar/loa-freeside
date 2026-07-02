@@ -13,6 +13,9 @@
 import { listModules, printList } from "../src/verbs/list.js";
 import { inspectModule } from "../src/verbs/inspect.js";
 import { doctor } from "../src/verbs/doctor.js";
+import { orderVerb } from "../src/verbs/order.js";
+import { kitchenVerb } from "../src/verbs/kitchen.js";
+import { fulfillVerb } from "../src/verbs/fulfill.js";
 
 const usage = `freeside-cli — ecosystem CLI for freeside-* module network
 
@@ -29,6 +32,16 @@ Usage:
                                        inputs from a per-cell clone at <dir>/cell-<slug>/
                                        (the per-cell resolution bridge — backed buildings
                                        report contract_status: bound).
+
+Ordering zone (fulfillment-surface v0.3 — env: ORDERING_SERVICE_URL, ORDERING_SERVICE_TOKEN):
+  freeside-cli order place --preset <p> --inputs <@file|json> [--placed-by <who>]
+  freeside-cli order status <order_id>
+  freeside-cli order ingredients <order_id>
+  freeside-cli kitchen probe <order_id> [--ingredient <i>]      (fresh probe; ambiguous → exit 4)
+  freeside-cli kitchen advance <order_id> --ingredient <i> --status <s> [--note <text>]
+  freeside-cli fulfill watch <order_id> [--interval <s>] [--timeout <s>] [--once]
+  Output: single-line JSON. Exit codes: 0 ok · 1 usage · 2 unreachable · 3 API error ·
+  4 ambiguous/conflict · 5 watch timeout · 6 order failed.
 
 Reference: decisions/007-loa-freeside-absorption.md §D-6
 `;
@@ -82,6 +95,15 @@ const main = async (): Promise<number> => {
     case undefined: {
       console.log(usage);
       return 0;
+    }
+    case "order": {
+      return orderVerb(args.slice(1));
+    }
+    case "kitchen": {
+      return kitchenVerb(args.slice(1));
+    }
+    case "fulfill": {
+      return fulfillVerb(args.slice(1));
     }
     default: {
       console.error(`Error: unknown verb '${verb}'`);
