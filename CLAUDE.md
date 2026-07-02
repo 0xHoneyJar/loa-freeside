@@ -159,6 +159,12 @@ the verified path must be the path of least resistance.
 > arbitrary cwd: `LOA_WORKSPACE=~/Documents/GitHub loa census --graph` (reads 4 registries →
 > buildings + constructs + worlds + zones). `ADR-011 §D-5` is the cited floor.
 
+To orient to ONE building — its `is`/`is_not`, capabilities, and composition edges — from its
+live beacon, run `freeside-cli inspect <slug>` (single-line JSON; `--pretty` to expand). It
+fetches the declared beacon over the SSRF-safe path and returns a keyed orientation packet with
+an honest classification (`beacon_valid`/`dark`/`void`/`invalid`/`unreachable`) — reach for it
+instead of grepping a building's source to learn what it does.
+
 ---
 
 ## Chain Provider Architecture (Sprint 14-16)

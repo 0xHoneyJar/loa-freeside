@@ -63,19 +63,25 @@ const main = async (): Promise<number> => {
     }
     case "inspect": {
       const slug = args[1];
-      if (!slug) {
+      if (!slug || slug.startsWith("--")) {
         console.error("Error: 'inspect' requires a module slug.");
-        console.error("       freeside-cli inspect <slug>");
-        return 2;
-      }
-      try {
-        const output = inspectModule(slug);
-        console.log(JSON.stringify(output, null, 2));
-        return 0;
-      } catch (err) {
-        console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
+        console.error("       freeside-cli inspect <slug> [--raw] [--pretty]");
         return 1;
       }
+      const flags = args.slice(2);
+      const result = await inspectModule(slug);
+      const pretty = flags.includes("--pretty");
+      const fmt = (v: unknown) => (pretty ? JSON.stringify(v, null, 2) : JSON.stringify(v));
+      if (result.error) {
+        console.log(fmt(result.error));
+        return result.exit;
+      }
+      if (flags.includes("--raw")) {
+        console.log(fmt({ raw: result.raw ?? null, verdict: result.packet?.verdict ?? null }));
+      } else {
+        console.log(fmt(result.packet));
+      }
+      return result.exit;
     }
     case "doctor": {
       const flags = args.slice(1);

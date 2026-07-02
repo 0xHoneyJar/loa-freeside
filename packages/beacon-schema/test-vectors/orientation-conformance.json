@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "note": "Shared conformance vectors for the beacon orientation reader (SDD D6). Both freeside-cli and loa-cli MUST pass these. host-guard vectors assert the fetch is rejected pre-connect (no request sent); classification vectors assert the mapped BeaconClassification + exit + detail.",
+  "host_guard": [
+    { "name": "https-only: http scheme rejected", "url": "http://sonar.0xhoneyjar.xyz/b.json", "expect": { "reject": true, "detail": "scheme_rejected" } },
+    { "name": "allowlist: exact suffix ok", "url": "https://0xhoneyjar.xyz/b.json", "expect": { "reject": false } },
+    { "name": "allowlist: dot-boundary subdomain ok", "url": "https://sonar-api-production.up.railway.app/b.json", "expect": { "reject": false } },
+    { "name": "bypass: suffix-as-substring blocked", "url": "https://evil0xhoneyjar.xyz/b.json", "expect": { "reject": true, "detail": "host_not_allowlisted" } },
+    { "name": "bypass: trailing-attacker-domain blocked", "url": "https://0xhoneyjar.xyz.evil.tld/b.json", "expect": { "reject": true, "detail": "host_not_allowlisted" } },
+    { "name": "bypass: trailing dot normalized then matched", "url": "https://sonar.0xhoneyjar.xyz./b.json", "expect": { "reject": false } },
+    { "name": "bypass: uppercase normalized then matched", "url": "https://SONAR.0XHONEYJAR.XYZ/b.json", "expect": { "reject": false } },
+    { "name": "bypass: punycode homograph of a non-cluster host blocked", "url": "https://xn--0xhneyjar-xyz.tld/b.json", "expect": { "reject": true, "detail": "host_not_allowlisted" } }
+  ],
+  "private_range": [
+    { "name": "v4 metadata 169.254.169.254 blocked", "resolves": ["169.254.169.254"], "expect": { "detail": "resolved_private" } },
+    { "name": "v4 loopback 127.0.0.1 blocked", "resolves": ["127.0.0.1"], "expect": { "detail": "resolved_private" } },
+    { "name": "v4 rfc1918 10/8 blocked", "resolves": ["10.1.2.3"], "expect": { "detail": "resolved_private" } },
+    { "name": "v4 rfc1918 172.16/12 blocked", "resolves": ["172.16.5.5"], "expect": { "detail": "resolved_private" } },
+    { "name": "v4 rfc1918 192.168/16 blocked", "resolves": ["192.168.1.1"], "expect": { "detail": "resolved_private" } },
+    { "name": "v4 cgnat 100.64/10 blocked", "resolves": ["100.64.0.1"], "expect": { "detail": "resolved_private" } },
+    { "name": "v6 loopback ::1 blocked", "resolves": ["::1"], "expect": { "detail": "resolved_private" } },
+    { "name": "v6 link-local fe80 blocked", "resolves": ["fe80::1"], "expect": { "detail": "resolved_private" } },
+    { "name": "v6 ULA fc00 blocked", "resolves": ["fc00::1"], "expect": { "detail": "resolved_private" } },
+    { "name": "v6 IPv4-mapped metadata blocked", "resolves": ["::ffff:169.254.169.254"], "expect": { "detail": "resolved_private" } },
+    { "name": "mixed records: one private → reject all", "resolves": ["93.184.216.34", "10.0.0.1"], "expect": { "detail": "resolved_private" } },
+    { "name": "public v4 allowed", "resolves": ["93.184.216.34"], "expect": { "detail": null } }
+  ],
+  "classification": [
+    { "name": "valid beacon, slug match → beacon_valid exit 0", "status": 200, "slug_match": true, "body_valid": true, "expect": { "classification": "beacon_valid", "exit": 0, "detail": "ok" } },
+    { "name": "valid beacon, slug mismatch → dark exit 4", "status": 200, "slug_match": false, "body_valid": true, "expect": { "classification": "beacon_dark", "exit": 4, "detail": "slug_mismatch" } },
+    { "name": "2xx non-beacon body → invalid exit 3", "status": 200, "body_valid": false, "expect": { "classification": "beacon_invalid", "exit": 3, "detail": "invalid_beacon" } },
+    { "name": "404 → dark exit 4", "status": 404, "expect": { "classification": "beacon_dark", "exit": 4, "detail": "not_found" } },
+    { "name": "off-host redirect → void exit 5", "off_host": true, "expect": { "classification": "beacon_void", "exit": 5, "detail": "off_host_redirect" } },
+    { "name": "timeout → unreachable exit 2", "fetch_error": "timeout", "expect": { "classification": "beacon_unreachable", "exit": 2, "detail": "timeout" } },
+    { "name": "oversize → invalid exit 3", "fetch_error": "oversize", "expect": { "classification": "beacon_invalid", "exit": 3, "detail": "oversize" } },
+    { "name": "unknown slug → exit 1", "unknown_slug": true, "expect": { "exit": 1 } }
+  ]
+}
