@@ -25,7 +25,7 @@
     "build": "tsc -b && chmod +x dist/bin/build-beacon-json.js",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
-    "test:unit": "tsx --test tests/schema.test.ts tests/acvp-bindings.test.ts",
+    "test:unit": "tsx --test tests/schema.test.ts tests/acvp-bindings.test.ts tests/orientation-packet.test.ts",
     "test:cli": "tsx --test tests/cli.test.ts",
     "test": "pnpm build && pnpm test:unit && pnpm test:cli"
   },
