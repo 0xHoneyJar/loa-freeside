@@ -1,6 +1,7 @@
 import { Hono, type Context } from 'hono';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import { clusterFpSalt } from '@freeside/cluster-fp';
 import {
   ProductId,
   resolvePreset,
@@ -166,6 +167,20 @@ export function createIntakeApp(deps: IntakeDeps): Hono {
       ...deps.healthz,
     }),
   );
+
+  // Data-store self-report (datastore-legibility SDD C-1). Authed behind the
+  // SAME SERVICE_TOKEN Bearer gate as the write routes — engine + reachability +
+  // host_fp is topology, not public beacon data. The connection string and
+  // credentials NEVER appear in the body: the store derives only the salted
+  // host_fp (NFR-1). When no serviceToken is configured (local/dev) the route is
+  // open, mirroring the existing write-route posture.
+  app.get('/admin/data-store', async (c) => {
+    if (deps.serviceToken && c.req.header('authorization') !== `Bearer ${deps.serviceToken}`) {
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    const facts = await deps.store.dataStoreFacts(clusterFpSalt());
+    return c.json(facts, 200);
+  });
 
   if (deps.orchestrator) {
     const requireToken = (c: Context): boolean => {

@@ -372,3 +372,15 @@ shadow-mode-api = the MISSING member-graph composition spine. Build as evolution
 - **Remaining (deploy/follow-on, not domain logic):** wire COLLECTION_SNAPSHOT_PATH in the shadow-audit
   deploy (generate snapshot via `collections export-snapshot` in a build step); the 7 pg-integration tests
   need a live postgres; QMD-source registration of the entity export (documented seam, next cycle).
+
+## datastore-legibility bridge — S1 foundation built (2026-07-03, RESUMABLE)
+- Bridge `bridge-20260703-fbeb2d` (depth 3), branch cycle/datastore-legibility.
+- DONE + committed + tested: S1-T1 (register shadow-mode/shadow-audit/worker/operator-dash as
+  registry modules, 10 registry tests) · S1-T2 (host_fp salted-correlation helper in
+  packages/adapters/storage/host-fp.ts, 9 tests; creds excluded from preimage, fail-closed salt).
+- REMAINING S1: S1-T3 (ordering GET /admin/data-store authed self-report — wire into ordering Hono
+  app + a PostgresOrderStore.dataStoreFacts() method) · S1-T4 (freeside-cli doctor --data mode
+  reusing hardenedBeaconFetcher). Then S2 (fan-out + registry data_store label layer) · S3
+  (projection + drift-loud + git-commit --propose ratify) · bridgebuilder review iterations (×3).
+- RESUME: `/run-bridge --resume` (bridge state + beads arrakis-knaa..uqj0 + run-state persist).
+  Beads S1-T3=arrakis-knaa, S1-T4=arrakis-0muf, S2-T1=824h, S2-T2=68eb, S3-T1=prx8, S3-T2=30tk, S3-T3=uqj0.

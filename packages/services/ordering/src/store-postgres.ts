@@ -3,9 +3,11 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 
+import { hostFp, parseConnectionParts, type ConnectionParts } from '@freeside/cluster-fp';
 import type { OrderState } from './order-state.js';
 import {
   OrderNotFoundError,
+  type DataStoreFacts,
   type NewOrder,
   type OrderPatch,
   type OrderRecord,
@@ -268,5 +270,41 @@ export class PostgresOrderStore implements OrderStore {
   async listByState(state: OrderState): Promise<OrderRecord[]> {
     const res = await this.pool.query('SELECT * FROM orders WHERE state = $1', [state]);
     return res.rows.map(rowToRecord);
+  }
+
+  /**
+   * Sanitized DB facts (SDD C-1). Derives `host_fp` from the pool's own config —
+   * NEVER the raw pool, NEVER the connection string. `migrations_applied` is null:
+   * this store runs raw SQL files with no version-tracking table to count.
+   */
+  async dataStoreFacts(salt: string): Promise<DataStoreFacts> {
+    const opts = this.pool.options;
+    let parts: ConnectionParts | null = null;
+    if (opts.connectionString) {
+      parts = parseConnectionParts(opts.connectionString);
+    } else if (opts.host) {
+      // Default-port elision mirrors parseConnectionParts so the two derivation
+      // paths fingerprint an identical host identically.
+      const port = opts.port && opts.port !== 5432 ? String(opts.port) : '';
+      parts = { engine: 'postgres', host: opts.host.toLowerCase(), port, db: (opts.database ?? '').toLowerCase() };
+    }
+    const host_fp = parts ? hostFp(parts, salt) : null;
+
+    let reachable = false;
+    try {
+      await this.pool.query('SELECT 1');
+      reachable = true;
+    } catch {
+      reachable = false; // reachability is a fact, not a 5xx — the report tells the truth
+    }
+
+    return {
+      schema_version: 'datastore.report.v1',
+      engine: 'postgres',
+      host_fp,
+      reachable,
+      migrations_applied: null,
+      store: 'postgres',
+    };
   }
 }
